@@ -461,7 +461,7 @@ const REQUIRED_COVERAGE = [
     // Kept rather than deleted because the REASONING is still the house rule and
     // still governs PACK CONSUMER LIMB (c) below: a guard on owner-only work must
     // print rather than block every CI run. What limb (c) prints on is the one
-    // pack gate still shut - the SHELF ([4]B-18, no `r2_buckets` bound), not the
+    // pack gate still shut - the SHELF ([4]B-18, no pack bucket bound; `BACKUPS_R2` is backups), not the
     // key.
     //
     // TWO needs, because the seam has two separable halves and deleting either
@@ -953,8 +953,8 @@ try {
 // its owner-gated branch. Failing on the key count would therefore fail on the
 // real tree today, which is why this limb does not GATE on it - it only reports
 // the measured count, so this paragraph cannot quietly go stale. The gate that IS
-// still shut is the SHELF: `services/platform/wrangler.jsonc` declares no
-// `r2_buckets`, so the bucket, the `packs.nikatru.com` binding, the cache policy
+// still shut is the SHELF: `services/platform/wrangler.jsonc` binds only the
+// backup bucket `BACKUPS_R2`, so the pack bucket, the `packs.nikatru.com` binding, the cache policy
 // and `latest.json` hosting do not exist ([4]B-18; `assert-publish-gate.mjs`
 // prints the same blockage, and tooling/content_pipeline `publish` refuses before
 // it would need one). With no shelf, no pack has ever been published, so a

@@ -180,6 +180,31 @@ export interface Env {
    * vault's `PADDLE_API_KEY_LIVE` ([ADR 044]).
    */
   PADDLE_API_KEY?: string;
+  /**
+   * ⏱ 2026-09-24 · THE INDIA RAIL'S THREE SECRETS ([ADR 076] §10, [ADR 094];
+   * O-RAZORPAY-CHECKOUT-ADAPTER). Declared here so every name is discoverable
+   * from the type — the `PADDLE_API_KEY` story above is why a name read through a
+   * cast is a trap — and so tooling/capability-register.json's `razorpay` vendor
+   * claims them.
+   *
+   * 🔴 ALL THREE ARE ABSENT TODAY, AND NOTHING READS THE TWO KEYS YET. The owner
+   * pastes them, live and sandbox, through the vault one-command; no workflow
+   * names them. Optional so the Worker builds and deploys without them.
+   *
+   * `RAZORPAY_WEBHOOK_SECRET` is the key the `X-Razorpay-Signature` HMAC is
+   * computed with (src/lib/mor/razorpay.ts `secretEnvVar`); absent, POST
+   * /v1/money/razorpay answers 503 before it reads anything. `RAZORPAY_KEY_ID` and
+   * `RAZORPAY_KEY_SECRET` are the API key pair a checkout creator will use.
+   *
+   * Set with `wrangler secret put <NAME>`. NEVER a committed var:
+   * tooling/ci/assert-money-config.mjs fails the build on a destination secret
+   * in any `vars` block, and this repository is public.
+   */
+  RAZORPAY_KEY_ID?: string;
+  /** The secret half of the API key pair above. `wrangler secret put`, NEVER a var. */
+  RAZORPAY_KEY_SECRET?: string;
+  /** The webhook signing secret. `wrangler secret put`, NEVER a var. */
+  RAZORPAY_WEBHOOK_SECRET?: string;
   SUPABASE_URL: string;
   /**
    * OPTIONAL comma-separated list of Supabase project URLs the nightly cron keeps

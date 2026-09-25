@@ -130,7 +130,7 @@
     // it from this Worker.
   ]
 
-  // 🔴 NO "r2_buckets". The per-app `EXPORTS` → `subscriptiontracker-exports` binding was
+  // 🔴 NO "r2_buckets". The per-app `EXPORTS` → `subly-exports` binding was
   // REMOVED on 2026-08-01 ([4]B-18, [4]B-1 limb 3). It had been bound since
   // 2026-07-17 and its ONLY occurrence in the entire TypeScript tree was its own
   // declaration in src/types.ts — no writer, no reader, on the live app. It is
@@ -141,13 +141,22 @@
   // enumerates every binding in every wrangler config in the repo — this one and
   // the brick template included — and fails on any with no resolved reader.
   //
+  // ⚠️ RENAME NOTE — `subly-exports` IS DELIBERATE, AND A RENAME SWEEP MUST
+  // LEAVE IT. It is a history name: the bucket's real name when it was bound,
+  // cited (not run) as `22e5d2b5:services/subly-api/wrangler.jsonc:52` (#110,
+  // 2026-08-01). The sweep c92bfb80 (#567, 2026-09-09) rewrote it here to
+  // `subscriptiontracker-exports`, a name this repository never bound.
+  //
   // WHEN OBJECT STORAGE IS ACTUALLY NEEDED: ONE portfolio bucket, bound in
   // `services/platform`, addressed with an `<app_id>/` key prefix. Per-app
   // buckets multiply buckets, lifecycle rules and CORS policies by the number of
   // apps to store the same kind of blob.
   //
-  // ⚠️ THE BUCKET ITSELF IS STILL IN THE ACCOUNT. Removing the binding is the
-  // reversible half and is agent work; deleting `subscriptiontracker-exports` is destructive
-  // and is the owner's (it holds nothing — no writer has ever existed — but
-  // "nothing" is a claim about a live resource, not a fact this repo can check).
+  // ⚠️ THE BUCKET IS GONE FROM THE ACCOUNT. A read-only `GET r2/buckets` at
+  // 2026-09-21T22:20Z found neither name above, re-measured 2026-09-24T17:27:42Z
+  // by ops-watch run 36034416847 (subly-* only).
+  // `tooling/ops/check-retired-names-live.mjs` refuses a `subly`-named bucket on
+  // every ops-watch run; nothing reads the account for any other name.
+  //   ⏱ Until 2026-09-25 this said "THE BUCKET ITSELF IS STILL IN THE ACCOUNT"
+  //   and that deleting it was the owner's; the reading above retired that.
 }

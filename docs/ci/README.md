@@ -49,8 +49,7 @@ a bare `true` back and nothing in the tree goes red.
 
 | job | what it is | in `ci-gate`'s `needs` |
 |---|---|---|
-| `worker-subscriptiontracker-api` | the subscriptiontracker-api Worker: `npm ci`, `tsc --noEmit`, `npm test`, `wrangler deploy --dry-run` | yes |
-| `worker-platform` | the platform Worker, the same four steps | yes |
+| `lane-workers` | a call to `lane-workers.yml` (below): `detect`, then the subscriptiontracker-api and platform Workers (`npm ci`, `tsc --noEmit`, `npm test`, `wrangler deploy --dry-run`) when affected, then `lane-verdict` | yes |
 | `guard-meta` | the guards' own mutation suite plus the guards-about-guards | yes |
 | `guards-platform` | platform, data, ops and registry assertions | yes |
 | `guards-legal` | privacy, legal, consent and money assertions | yes |
@@ -71,6 +70,34 @@ Two security lanes live in their **own** workflow files and are deliberately
 **not** in `ci-gate`'s `needs` — `codeql.yml` and `trufflehog.yml`. They are
 alert sinks rather than merge gates; §7.3 says why, and each has a duty row in
 `tooling/ops/register.json` that carries its cadence.
+
+### Lane callees and `tooling/ci/lane-map.json` (ADR 095)
+
+A lane is moving out of `ci.yml` into its own `on: workflow_call` file, one PR
+per lane (row O-CI-LANES-NOT-CALLABLE-UNITS). **The workers lane is the first:**
+`lane-workers.yml`, called by `ci.yml`'s `lane-workers` job with no `if:`. Every
+callee has the same three parts:
+
+- **`detect`** runs `node tooling/ci/lane-detect.mjs --lane <name>`. It reads
+  **`tooling/ci/lane-map.json`**, the one register of which paths each lane
+  answers to, and says `affected=true` on a push to `main`, on any event that is
+  not a pull request, on a changed path the map does not name at all (unmapped
+  runs every lane), and whenever the diff cannot be read. Otherwise it is true
+  only when a changed path matches the lane's globs.
+- **the work jobs** carry `if: needs.detect.outputs.affected == 'true'`.
+- **`lane-verdict`** needs every other job, runs `always()`, and runs
+  `tooling/ci/lane-verdict.mjs` over `toJSON(needs)`: red on a failure, a
+  cancellation, a `detect` that did not succeed, or a skip `detect` did not
+  license. `ci-gate` sees one call job whose result is the callee's conclusion,
+  so this job is where "skipped is not green" holds inside a callee
+  (`assert-green-means-ran.mjs` A8 checks its shape).
+
+A lane's globs name everything its jobs **read**, not just the directory they
+build: the Worker tests read every workflow file, the ops register and one Dart
+source, so those paths are in `workers`. `lane-detect.mjs --check` runs in
+`guard-meta` and fails on a tracked file the map does not place and on a glob
+that matches no tracked file. The other lanes' globs are already in the map, so
+"unmapped" means a path new to the tree, not a lane that has not moved yet.
 
 ### Why the platform job was split
 

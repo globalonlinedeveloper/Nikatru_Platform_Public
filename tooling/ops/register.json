@@ -1397,6 +1397,26 @@
       "source": "verified"
     },
     {
+      "id": "duty.workflow.lane-workers.yml",
+      "kind": "duty",
+      "what": "The workers CI lane — detect, the subscriptiontracker-api and platform Workers (npm ci, tsc --noEmit, npm test, wrangler deploy --dry-run) and the lane-verdict job — as a reusable workflow that runs only as a call. Moved out of ci.yml on 2026-09-24 (ADR 095, O-CI-LANES-NOT-CALLABLE-UNITS), the first lane to become a callee behind tooling/ci/lane-map.json.",
+      "detector": "ci-gate red on the pull request or push that caused it (required check), through ci.yml's `lane-workers` call job, whose result is red when any job of this workflow is. The two Worker jobs skip only under detect's affected=false; lane-verdict is red on any other skip.",
+      "response": "Fix before merge. Branch protection is the enforcement, through ci-gate; `lane-verdict` is not, and must never be, a required check of its own.",
+      "cadence": "trigger",
+      "trigger": "called by ci.yml (`lane-workers` job) on every push to main and every pull request",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/lane-workers.yml",
+        "record": "GitHub Actions run history for ci.yml (a called workflow's jobs run inside the caller's run)",
+        "failingValue": "conclusion = failure",
+        "readBy": "ci-gate (required check), through ci.yml's `lane-workers` call job"
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "verified"
+    },
+    {
       "id": "duty.workflow.build-platforms.yml",
       "kind": "duty",
       "what": "The six-platform compile proof — the ONLY place macOS, iOS, Windows, Linux and Android are ever compiled.",
@@ -4342,18 +4362,20 @@
       "kind": "retention",
       "store": "d1:platform_db:ext_devices",
       "what": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. One row per browser that has linked the extension to an account: a random link id (`link_id`), the Supabase `sub`, the product, the store channel, SHA-256 of the device credential (never the credential), `created_at`, `last_seen_at` (written at most once per UTC day) and `revoked_at`. Written by POST /v1/ext/token and POST /v1/ext/revoke; read by middleware/ext-device-auth.ts.",
-      "rule": "keep",
-      "keepWhy": "A row IS a live credential: while it exists and `revoked_at` is NULL, the extension on that browser can read its entitlement. An age sweep would sign a paying user out of a product they still use, with no signal to them. It goes when the user revokes the device (`revoked_at`) or erases the account (the `user_id` walk). ⬜ OPEN: a REVOKED row answers 401 whether or not it exists, so it has no function; whether and after how long to sweep revoked rows is a question for the parent — no number is invented here.",
+      "rule": "period",
+      "periodDays": 30,
+      "declaredBy": "⏱ 2026-09-25 · the parent's decision (storage limitation): a REVOKED row is deleted 30 days after `revoked_at`, or the longest credential lifetime + 7 days if that lifetime exceeds 23 days. The device credential has no lifetime (routes/ext.ts mints it with no expiry; middleware/ext-device-auth.ts refuses only an absent or revoked row), so 30 stands. The value lives in services/platform/src/scheduled.ts `EXT_DEVICES_RETENTION_DAYS`, and this row and that constant are cross-checked by services/platform/test/retention-sweep.test.ts",
       "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
-      "response": "n/a",
+      "response": "n/a — a row that was never revoked IS a live credential and is never swept: an age sweep would sign a paying user out of a product they still use. The nightly sweep deletes a row 30 days after its `revoked_at`; a revoked row already answers 401, and an absent one answers the same 401, so nothing live is lost. Erasure: DELETE /v1/account empties the table for the account, because the column is spelled `user_id` (tooling/legal/data-inventory.json `table:platform_db.ext_devices`, erasure `purge`).",
       "cadence": "365d",
       "mechanism": {
         "substrate": "cloudflare-d1",
         "anchor": "services/platform/migrations/0017_ext_devices.sql",
         "record": "the table itself",
-        "failingValue": "rows older than a declared period — not applicable to a reasoned keep",
-        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+        "failingValue": "a row whose `revoked_at` is more than 30 days in the past",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half); the deletion half is `deletingJob`"
       },
+      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. The `ext_devices` limb deletes rows whose `revoked_at` is older than EXT_DEVICES_RETENTION_DAYS and is an ISO-8601 date-time, at most 1000 per run (MAX_ROWS_PER_SWEEP). Held by services/platform/test/retention-sweep.test.ts, which keeps a never-revoked 400-day-old device and a device revoked 29 days ago through the sweep.",
       "accessProviders": [
         "cloudflare"
       ],

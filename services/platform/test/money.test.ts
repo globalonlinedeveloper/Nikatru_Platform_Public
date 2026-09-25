@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Hono } from 'hono';
 import money, { MAX_MONEY_BODY_BYTES } from '../src/routes/money';
 import type { AppEnv } from '../src/types';
@@ -11,6 +11,7 @@ import {
   paddleSignature,
   paddleVerifier,
 } from '../src/lib/mor/paddle';
+import { razorpaySignature, razorpayVerifier } from '../src/lib/mor/razorpay';
 import { REVOCATION_REASONS } from '../src/lib/mor/contract';
 // The SAME symbol, reached through the shared contract rather than through the
 // Worker's re-export. Importing both is what lets the case below assert they are
@@ -41,6 +42,8 @@ import { realPlatformDb, type RealDb } from './harness';
 // ─────────────────────────────────────────────────────────────────────────────
 
 const SECRET = `${PADDLE_SECRET_PREFIX}01test_notification_destination_secret`;
+/** An obviously fake Razorpay webhook secret — no real key shape is needed. */
+const RAZORPAY_SECRET = 'fixture_razorpay_webhook_secret_PR_A';
 
 class FakeLimiter {
   keys: string[] = [];
@@ -72,6 +75,7 @@ function harness(
     MONEY_CEILING_LIMITER: ceiling,
     MONEY_ENVIRONMENT: 'environment' in opts ? opts.environment : 'live',
     PADDLE_NOTIFICATION_SECRET: 'secret' in opts ? opts.secret : SECRET,
+    RAZORPAY_WEBHOOK_SECRET: RAZORPAY_SECRET,
   } as unknown as AppEnv['Bindings'];
 
   /** POST a raw body with a signature computed for `ts`. */
@@ -95,7 +99,22 @@ function harness(
     );
   };
 
-  return { app, db, env, ceiling, send };
+  /** POST a raw body to the Razorpay door, signed over the body alone, with the
+   *  event id in `x-razorpay-event-id` when one is given. */
+  const sendRazorpay = async (raw: string, o: { eventId?: string; signature?: string } = {}) => {
+    const headers: Record<string, string> = {
+      'content-type': 'application/json',
+      'x-razorpay-signature': o.signature ?? (await razorpaySignature(RAZORPAY_SECRET, raw)),
+    };
+    if (o.eventId !== undefined) headers['x-razorpay-event-id'] = o.eventId;
+    return app.fetch(
+      new Request('https://x/v1/money/razorpay', { method: 'POST', headers, body: raw }),
+      env,
+      { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext,
+    );
+  };
+
+  return { app, db, env, ceiling, send, sendRazorpay };
 }
 
 // ── payload builders — the documented Paddle shapes (V7/V9/V10) ──────────────
@@ -849,5 +868,90 @@ describe('the route is bounded and does not leak', () => {
   it('the adapter refuses a body that is not JSON at all', () => {
     const out = paddleVerifier.parse('<html>gateway error</html>');
     expect(out.ok).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-24 · THE EVENT-ID SEAM (O-RAZORPAY-CHECKOUT-ADAPTER). A rail whose
+// event id is a HEADER names it (`eventIdHeader`); the door reads it after verify
+// and before parse, refuses without it, and hands it to `parse` as the hint.
+//
+// Razorpay's `parse` still REFUSES every body, so no Razorpay row can be persisted
+// through the door and nothing here can read a stored `provider_event_id`. What is
+// observed instead is the CALL: a spy on the registered verifier's `parse`.
+// ─────────────────────────────────────────────────────────────────────────────
+const RZP_BODY = '{"entity":"event","event":"subscription.charged","created_at":1757650000}';
+
+describe('the event-id seam — a header-borne event id reaches parse, or the delivery is refused', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('money door passes x-razorpay-event-id to parse as the event id', async () => {
+    const spy = vi.spyOn(razorpayVerifier, 'parse');
+    const { sendRazorpay, db } = harness();
+    const res = await sendRazorpay(RZP_BODY, { eventId: 'evt_TEST_PR_A_0001' });
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith(RZP_BODY, 'evt_TEST_PR_A_0001');
+    // And parse still refuses, so nothing is stored: PR A opens no money path.
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: 'unparseable_notification' });
+    expect(db.count('provider_notifications')).toBe(0);
+  });
+
+  it('a razorpay body with no event-id header is refused 400, not persisted', async () => {
+    const spy = vi.spyOn(razorpayVerifier, 'parse');
+    const { sendRazorpay, db } = harness();
+    const res = await sendRazorpay(RZP_BODY);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: 'missing_event_id' });
+    expect(db.count('provider_notifications')).toBe(0);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('an EMPTY x-razorpay-event-id is refused the same way as an absent one', async () => {
+    const spy = vi.spyOn(razorpayVerifier, 'parse');
+    const { sendRazorpay, db } = harness();
+    const res = await sendRazorpay(RZP_BODY, { eventId: '' });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: 'missing_event_id' });
+    expect(db.count('provider_notifications')).toBe(0);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('the event id is looked at only AFTER verify: an unsigned body is 401, not 400', async () => {
+    // The order is the design: nothing below verify runs for an unverified body.
+    const spy = vi.spyOn(razorpayVerifier, 'parse');
+    const { sendRazorpay } = harness();
+    const res = await sendRazorpay(RZP_BODY, { signature: 'a'.repeat(64) });
+    expect(res.status).toBe(401);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('a rail that names no event-id header is parsed with the body alone, exactly as before', async () => {
+    const spy = vi.spyOn(paddleVerifier, 'parse');
+    const { send } = harness();
+    const raw = subscriptionBody({ occurredAt: '2026-08-01T00:00:00.000Z', status: 'active', periodEnd: FUTURE, userId: USER, appId: APP });
+    expect((await send(raw)).status).toBe(200);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0]).toEqual([raw]);
+  });
+
+  it('paddle parse output is byte-identical with and without a hint', () => {
+    // Paddle's body names its own `event_id`; a hint must change nothing, on a
+    // grant, a refund, an ignored entity and a refusal alike.
+    const fixtures = [
+      subscriptionBody({ eventId: 'evt_paddle_hint_1', occurredAt: '2026-08-01T00:00:00.000Z', status: 'active', periodEnd: FUTURE, userId: USER, appId: APP }),
+      subscriptionBody({ eventId: 'evt_paddle_hint_2', occurredAt: '2026-08-01T00:00:00.000Z', status: 'canceled', periodEnd: PAST }),
+      adjustmentBody({ eventId: 'evt_paddle_hint_3', occurredAt: '2026-08-02T00:00:00.000Z', action: 'refund' }),
+      JSON.stringify({ event_id: 'evt_paddle_hint_4', notification_id: 'n', event_type: 'product.updated', occurred_at: '2026-08-02T00:00:00.000Z', data: { id: 'pro_1' } }),
+      '<html>gateway error</html>',
+    ];
+    for (const raw of fixtures) {
+      expect(JSON.stringify(paddleVerifier.parse(raw, 'evt_TEST_PR_A_0001'))).toBe(JSON.stringify(paddleVerifier.parse(raw)));
+    }
+    // The comparison is not over nothing: the grant parsed, and kept its own id.
+    const granted = paddleVerifier.parse(fixtures[0], 'evt_TEST_PR_A_0001');
+    expect(granted.ok && granted.notification.eventId).toBe('evt_paddle_hint_1');
   });
 });

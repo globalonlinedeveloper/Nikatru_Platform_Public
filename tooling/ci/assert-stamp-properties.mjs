@@ -2870,7 +2870,7 @@ checkBrandSeedReachesPaint();
 // measuring ONE, the same over-reach this file exists to catch.
 //
 // 🔴 THE SECOND GATE IS THE SHELF, and it IS shut: `services/platform/
-// wrangler.jsonc` binds no `r2_buckets`, so the bucket, the packs.nikatru.com
+// wrangler.jsonc` binds only the backup bucket `BACKUPS_R2`, so the pack bucket, the packs.nikatru.com
 // binding and `latest.json` hosting do not exist, no pack has ever been
 // published, and a consumer built today could only ever render the fallback.
 // MEASURED 2026-08-21 by reading the file: its only occurrence of the key name
@@ -2957,7 +2957,7 @@ function pinnedPackKeys() {
 
 /** THE SECOND GATE — the SHELF. A pinned key lets a pack be VERIFIED; it does
  *  not make one exist. Nothing has ever been published because the Worker binds
- *  no object storage, so a consumer built today could only render the fallback.
+ *  no pack bucket (`BACKUPS_R2` holds backups), so a consumer built today could only render the fallback.
  *
  *  🔴 READ AS STRUCTURE, NOT PROSE, and this one is not theoretical: the file's
  *  closing comment is the literal sentence `NO "r2_buckets" YET`, quotes and

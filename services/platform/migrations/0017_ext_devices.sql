@@ -44,8 +44,10 @@
 -- re-applies cleanly and is listed in REPLAY_SAFE_MIGRATIONS (test/harness.ts).
 --
 -- RETENTION: `ext_codes` is swept 24 h after `expires_at` by `retentionSweep`
--- (EXT_CODES_RETENTION_DAYS). `ext_devices` is kept while the account exists: a
--- row is a live credential until it is revoked or the account is erased.
+-- (EXT_CODES_RETENTION_DAYS). An `ext_devices` row is a live credential until it
+-- is revoked or the account is erased, and a never-revoked row is never swept; a
+-- REVOKED row is swept 30 days after `revoked_at` (EXT_DEVICES_RETENTION_DAYS,
+-- added 2026-09-25 — this paragraph is a comment and changes no schema).
 -- ─────────────────────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS ext_codes (

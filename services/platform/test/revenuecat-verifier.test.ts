@@ -575,6 +575,31 @@ describe('revenuecat parse — the rest of the table', () => {
   });
 });
 
+// ⏱ 2026-09-24 · THE EVENT-ID SEAM (O-RAZORPAY-CHECKOUT-ADAPTER). `parse` takes an
+// optional event-id hint for a rail whose body carries none. RevenueCat's body
+// names its own `event.id`, so the hint must change nothing — on the routed
+// verifier and on the registered one, over a grant, a refusal, an ignored TEST
+// event, a transfer and a body that is not an event at all.
+describe('revenuecat parse — the event-id hint is ignored', () => {
+  it('revenuecat parse output is byte-identical with and without a hint', () => {
+    const fixtures = [
+      rcEvent(),
+      rcEvent({ app_id: 'app_undeclared' }),
+      rcEvent({ type: 'TEST', app_id: 'app_nobody' }),
+      rcEvent({ type: 'TRANSFER', transferred_from: ['a'], transferred_to: [USER] }),
+      BODY,
+      '',
+    ];
+    for (const raw of fixtures) {
+      expect(JSON.stringify(routed.parse(raw, 'evt_TEST_PR_A_0001'))).toBe(JSON.stringify(routed.parse(raw)));
+      expect(JSON.stringify(revenuecatVerifier.parse(raw, 'evt_TEST_PR_A_0001'))).toBe(JSON.stringify(revenuecatVerifier.parse(raw)));
+    }
+    // The comparison is not over nothing: the grant parsed, and kept its own id.
+    const granted = routed.parse(rcEvent(), 'evt_TEST_PR_A_0001');
+    expect(granted.ok && granted.notification.eventId).toBe('evt_rc_1');
+  });
+});
+
 describe('revenuecat in the registry', () => {
   it('is reachable by its provider id — the same `revenuecat` the legacy writer stamps — and names its own secret', () => {
     const v = verifierFor('revenuecat');

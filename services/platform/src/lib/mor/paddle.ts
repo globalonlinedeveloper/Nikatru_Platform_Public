@@ -467,7 +467,8 @@ export const paddleVerifier: MoRWebhookVerifier = {
     return { ok: true };
   },
 
-  parse(raw: string): ParseOutcome {
+  // `_eventIdHint` is ignored: Paddle's body carries its own `event_id` (V7).
+  parse(raw: string, _eventIdHint?: string): ParseOutcome {
     let body: unknown;
     try {
       body = JSON.parse(raw);

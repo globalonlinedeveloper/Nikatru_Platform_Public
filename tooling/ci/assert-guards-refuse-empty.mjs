@@ -112,6 +112,7 @@ import { join, resolve, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { codeMask, NON_CODE } from './text-reductions.mjs';
+import { parseResolvedWorkflows, workflowSteps, refusalText, shellSegments, commandAt, WORKFLOW_DIR } from './workflow-scan.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /* The root is read AFTER the fixture flag is parsed, a few lines below, so that a
@@ -551,6 +552,95 @@ for (const [rel, src] of sourceOf) {
   }
 }
 
+// ⏱ ADDED 2026-09-25 — A PRELOAD IS IMPORTED TOO, by node rather than by a
+// sibling. tooling/scripts/spawn-ceiling.mjs has no main BY DESIGN: it wraps
+// spawnSync the moment it is loaded, and every workflow `node --test` loads it
+// with `node --import <path>`. The edges above are only `from`/`import()` between
+// guard-home sources, so this file called the preload dead ("nothing imports
+// it") and reddened PR #942 (run 36130094190, job 108055127917). A `--import` in
+// a workflow's executable text is the same edge with the runtime as the
+// importer. It is DERIVED from the workflows GitHub runs, never listed, and read
+// through workflow-scan.mjs like every other workflow reader: composites and
+// local callees inlined, comments stripped, and only a step's `run:` text read,
+// one shell segment at a time, where the segment's command is `node` itself. A
+// step `name:`, an `if:`/`env:` value, or an `echo "node --import …"` naming a
+// preload is no edge. The home prefix is required, so a `--import` of another
+// tree's file promotes nothing here, and the name must end at `.mjs`, so
+// `x.mjs.bak` is no edge. The leading `./` or `../` is not resolved — it
+// depends on the step's working-directory, and a wrong one fails that step
+// loudly on its own. Every miss here LOSES an edge, which reports the module
+// dead, loudly; none passes one silently.
+// The first version walked .github/workflows itself over raw YAML and reddened
+// PR #942 again (run 36133361080, job 108065752801) on two guards:
+// assert-walks-bounded (a second directory walker) and assert-workflow-readers
+// (a reader with no row in tooling/workflow-readers.json).
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const PRELOAD_RE = new RegExp(
+  `--import(?:=|\\s+)['"]?(?:\\.{1,2}/)*(${HOMES.map(escapeRe).join('|')})/([A-Za-z0-9][A-Za-z0-9._-]*\\.mjs)(?![A-Za-z0-9._-])`,
+  'g',
+);
+/** The preloads a step's `run:` text names, from its `node` segments only. */
+const preloadsFrom = (runText) =>
+  shellSegments(runText)
+    .filter((seg) => commandAt(seg, 'node(?=\\s)'))
+    .flatMap((seg) => [...seg.matchAll(PRELOAD_RE)].map((m) => `${m[1]}/${m[2]}`));
+
+// The matcher's own negative test, on every run, like the import canaries above.
+// Assembled from halves so no whole path to a file that is not on disk appears
+// as one token in this repository.
+const CANARY_PRELOAD_NAME = 'canary-' + 'preload.mjs';
+const canaryPreloadRun = preloadsFrom(
+  `node --import ../tooling/scripts/${CANARY_PRELOAD_NAME} --test-timeout=600000 --test x.test.mjs`,
+);
+const canaryPreloadEcho = preloadsFrom(`echo "node --import ./tooling/scripts/${CANARY_PRELOAD_NAME} --test x.test.mjs"`);
+const canaryPreloadForeign = preloadsFrom(`node --import ./packages/lib/${CANARY_PRELOAD_NAME} --test x.test.mjs`);
+const canaryPreloadSuffix = preloadsFrom(`node --import ./tooling/scripts/${CANARY_PRELOAD_NAME}.bak --test x.test.mjs`);
+if (
+  canaryPreloadRun.length !== 1 ||
+  canaryPreloadRun[0] !== `tooling/scripts/${CANARY_PRELOAD_NAME}` ||
+  canaryPreloadEcho.length !== 0 ||
+  canaryPreloadForeign.length !== 0 ||
+  canaryPreloadSuffix.length !== 0
+) {
+  coverageLost([
+    'the preload matcher no longer reads `node --import <guard-home file>` as an edge, or reads one it must not.',
+    `A node run segment yielded [${canaryPreloadRun.join(', ')}] (must be exactly tooling/scripts/${CANARY_PRELOAD_NAME});`,
+    `the same text inside an echo yielded [${canaryPreloadEcho.join(', ')}], a preload from outside the guard homes`,
+    `[${canaryPreloadForeign.join(', ')}], and a \`.mjs.bak\` name [${canaryPreloadSuffix.join(', ')}] (all three must be empty).`,
+  ]);
+}
+
+const resolvedWorkflows = parseResolvedWorkflows(ROOT);
+if (resolvedWorkflows.refusal !== null) {
+  coverageLost([
+    refusalText(resolvedWorkflows.refusal),
+    'The workflow `--import` preloads are read from the resolved workflows; a step this cannot resolve could',
+    'hold one, and the module it loads would be reported dead or, worse, a dead one passed.',
+  ]);
+}
+const preloaded = new Set();
+let runStepsRead = 0;
+for (const wf of resolvedWorkflows.workflows) {
+  for (const job of wf.jobs.values()) {
+    for (const step of workflowSteps(job)) {
+      if (!step.run) continue;
+      runStepsRead++;
+      for (const target of preloadsFrom(step.run.text)) {
+        preloaded.add(target);
+        importedBy.set(target, (importedBy.get(target) ?? 0) + 1);
+      }
+    }
+  }
+}
+// A fixture tree carries no workflows; the real repository always does. Zero
+// here is a parse that read nothing, and every preload would then read as dead.
+if (scanningRealRepo && runStepsRead === 0) {
+  coverageLost([
+    `read ${resolvedWorkflows.workflows.length} workflow(s) and ZERO \`run:\` steps under ${WORKFLOW_DIR}.`,
+    'The workflow `--import` preloads cannot be derived from nothing.',
+  ]);
+}
+
 const libraries = [];
 const probed = [];
 // COUNTED, not assumed to be 1. This file is absent from a checkout of any
@@ -845,7 +935,7 @@ try {
       `ok  guards refuse empty — ${refused} of ${probed.length} probed executable(s) refused a tree with no ` +
         `subject in it; ${vacuousDeclared.length} exited 0 and declared why. ${executables.length} enumerated ` +
         `across ${HOMES.join(' + ')} (${tracked.length} tracked), ${libraries.length} derived as libraries with ` +
-        `no main, ${EXEMPT.size} exempt, ${selfExcluded} self-excluded. Private/requirements/tooling is deliberately out of ` +
+        `no main (${libraries.filter((l) => preloaded.has(l)).length} of them a workflow \`--import\` preload), ${EXEMPT.size} exempt, ${selfExcluded} self-excluded. Private/requirements/tooling is deliberately out of ` +
         'scope: it is not in the public checkout, so a probe of it would pass by finding nothing.',
     );
   }

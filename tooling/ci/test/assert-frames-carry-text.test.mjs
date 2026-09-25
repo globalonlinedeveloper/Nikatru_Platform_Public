@@ -37,8 +37,14 @@ const SERVED = join(FIXTURES, 'served');
 const GLYPHLESS = join(FIXTURES, 'glyphless');
 const STORE_PHONE = join(ROOT, 'apps', 'subscriptiontracker', 'store', 'android-play', 'screenshots');
 
-const run = (...args) =>
-  spawnSync(process.execPath, [GUARD, ...args], { cwd: ROOT, encoding: 'utf8' });
+// ⏱ 2026-09-25 · the spawn has a ceiling. With none, one hung run held ci.yml's
+// guard-meta job until its 25-minute kill (run 36106900356, job 107981386553)
+// and named nothing; this file took 23.5 s in the green run 36104371801.
+const run = (...args) => {
+  const r = spawnSync(process.execPath, [GUARD, ...args], { cwd: ROOT, encoding: 'utf8', timeout: 120_000 });
+  assert.equal(r.error, undefined, `tooling/e2e/assert-frames-carry-text.mjs did not finish (${r.error?.code ?? r.error}): the 120 s spawn ceiling stopped it`);
+  return r;
+};
 
 const pngs = (dir) => readdirSync(dir).filter((f) => f.endsWith('.png')).sort();
 

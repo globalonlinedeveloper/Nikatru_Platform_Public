@@ -43,6 +43,22 @@ PADDLE_NOTIFICATION_SECRET=
 # wrangler.jsonc, and never committed (.gitleaks.toml carries both prefixes).
 PADDLE_API_KEY=
 
+# ── THE INDIA RAIL (RAZORPAY) ─────────────────────────────────────────────────
+# [ADR 076] §10 · [ADR 094]. POST /v1/money/razorpay verifies an HMAC-SHA256 over
+# the raw body with the webhook secret, and takes the event id from the
+# `x-razorpay-event-id` header (400 `missing_event_id` without one).
+#
+# 🔴 ALL THREE ARE ABSENT TODAY. The owner pastes them, test mode and live, via
+# the vault one-command. Until the webhook secret exists the route answers 503.
+# For local work use TEST-MODE values only, never a live key.
+#
+# Deploy: `wrangler secret put <NAME>` for each — NEVER as a var in
+# wrangler.jsonc, and never committed anywhere (assert-money-config.mjs refuses
+# a destination secret in any `vars` block).
+RAZORPAY_KEY_ID=
+RAZORPAY_KEY_SECRET=
+RAZORPAY_WEBHOOK_SECRET=
+
 # Which money world THIS local run is. Exactly `live` or `sandbox`. The deployed
 # value lives in wrangler.jsonc `vars` and is `live`; a local run against Paddle's
 # sandbox destination sets `sandbox` HERE so a sandbox notification can never be

@@ -370,6 +370,97 @@ for (const callee of calledOnly) {
   calledOnlyGated++;
 }
 
+// A7/A8's canary. Both rules range over `calledOnly`, which is only as good as
+// `workflowEvents`: it reads the flow and block forms of `on:`, not the scalar
+// `on: workflow_call`. A callee written that way would leave both rules checking
+// nothing while this guard printed ok, so a header that SAYS workflow_call and an
+// event set that lacks it is COVERAGE LOST.
+for (const w of everyWorkflow) {
+  const head = [];
+  for (const l of w.lines) {
+    if (/^jobs:\s*$/.test(l.text)) break;
+    head.push(l.text);
+  }
+  const says = head.some((t) => /^\s+workflow_call\s*:?\s*$/.test(t) || /^on:.*\bworkflow_call\b/.test(t));
+  if (says && !workflowEvents(w).has('workflow_call')) {
+    coverageLost([
+      `${w.rel} names workflow_call above \`jobs:\`, and the event reader did not read it as a trigger.`,
+      'Rules A7 and A8 range over the workflows only workflow_call can start; with this one unread,',
+      'both would pass over a callee they never judged.',
+    ]);
+  }
+}
+
+// A8. ⏱ 2026-09-24 — INSIDE A CALLEE, `skipped` IS STILL NOT GREEN. [ADR 095]
+// ci-gate sees a called-only workflow as ONE call job whose result is the callee's
+// conclusion, and a callee whose jobs were skipped concludes success. So A3's
+// `skipped` clause cannot see a lane callee whose work jobs skipped themselves; only
+// a job INSIDE the callee can. Every called-only workflow therefore has exactly one
+// verdict job: it `needs` every other job in its file, carries `if: always()` (or
+// the first red need would skip it too, and a skipped job fails nothing), and runs
+// tooling/ci/lane-verdict.mjs with `toJSON(needs)` in env LANE_NEEDS. That script's
+// only licence to skip is the detect job's affected=false. A callee written before
+// the script existed is accepted by its verdict job's NAME below; it still has to
+// need every other job and run always().
+const VERDICT_BY_NAME = new Map([
+  // slot 7's in-callee aggregator; it licenses a skip only under discover's count=0.
+  ['.github/workflows/extensions-ci.yml', 'ci-required'],
+]);
+const LANE_VERDICT_RUN = /(^|[\s;&|])node\s+tooling\/ci\/lane-verdict\.mjs(\s|$)/m;
+const NEEDS_AS_JSON = /^(['"]?)\$\{\{\s*toJSON\(\s*needs\s*\)\s*\}\}\1$/;
+let calleeVerdicts = 0;
+for (const callee of calledOnly) {
+  const jobNames = [...callee.jobs.keys()];
+  const named = VERDICT_BY_NAME.get(callee.rel) ?? null;
+  if (named !== null && !callee.jobs.has(named)) {
+    problems.push(
+      `${callee.rel} is accepted by its verdict job's name, "${named}", and declares no such job (jobs: ${jobNames.join(', ')}). ` +
+        'Re-point it, or give the callee a job that runs tooling/ci/lane-verdict.mjs.',
+    );
+    continue;
+  }
+  const verdictJobs = jobNames.filter(
+    (j) => j === named || jobSteps(bodyOf(callee.jobs.get(j))).some((s) => LANE_VERDICT_RUN.test(s.run)),
+  );
+  if (verdictJobs.length !== 1) {
+    problems.push(
+      `${callee.rel} can be started only by \`workflow_call\` and has ${verdictJobs.length === 0 ? 'NO' : `${verdictJobs.length}`} verdict job(s)` +
+        `${verdictJobs.length ? ` (${verdictJobs.join(', ')})` : ''}; it needs exactly one, running tooling/ci/lane-verdict.mjs. ` +
+        'Its caller sees the callee as one job whose result is the callee conclusion, and a callee whose work jobs were all skipped concludes success: only a verdict job inside it can refuse an unlicensed skip.',
+    );
+    continue;
+  }
+  const v = verdictJobs[0];
+  const job = callee.jobs.get(v);
+  const where = `${callee.rel}: verdict job "${v}"`;
+  const before = problems.length;
+  const missing = jobNames.filter((j) => j !== v && !job.needs.includes(j));
+  if (missing.length) {
+    problems.push(
+      `${where} does not \`need\` ${missing.map((j) => `"${j}"`).join(', ')}. ` +
+        'A job outside the verdict can fail or skip while the verdict, the call job and ci-gate all report green.',
+    );
+  }
+  const cond = job.jobIf === null ? null : job.jobIf.cond;
+  if (cond === null || !/\balways\s*\(\s*\)/.test(cond)) {
+    problems.push(
+      `${where} has no job-level \`if: always()\` (found ${cond === null ? 'no `if:` at all' : `\`${cond}\``}). ` +
+        'Without it the first red need SKIPS the verdict, and a skipped job fails nothing, so the callee concludes on whatever else ran.',
+    );
+  }
+  if (v !== named) {
+    const step = jobSteps(bodyOf(job)).find((s) => LANE_VERDICT_RUN.test(s.run));
+    const given = step.env.get('LANE_NEEDS') ?? null;
+    if (given === null || !NEEDS_AS_JSON.test(given)) {
+      problems.push(
+        `${where} runs lane-verdict.mjs without \`LANE_NEEDS: \${{ toJSON(needs) }}\` in that step's env (found ${given === null ? 'none' : `\`${given}\``}). ` +
+          'The script judges exactly the object it is handed.',
+      );
+    }
+  }
+  if (problems.length === before) calleeVerdicts++;
+}
+
 if (aggregatorsChecked !== AGGREGATORS.length) {
   coverageLost([
     `${aggregatorsChecked} of ${AGGREGATORS.length} declared aggregator(s) were checked.`,
@@ -517,5 +608,6 @@ const drifts = [...driftFiles.values()].reduce((n, xs) => n + xs.length, 0);
 console.log(
   `ok  green means ran — ${aggregatorsChecked} aggregating job(s) fail on failure/cancelled/skipped over every lane, ` +
     `${gates} secret-presence check(s) fail closed, ${drifts} drift check(s) delete their artifact before rebuilding it` +
-    `${calledOnly.length ? `, ${calledOnlyGated} of ${calledOnly.length} called-only workflow(s) called by an aggregator constituent` : ''}`,
+    `${calledOnly.length ? `, ${calledOnlyGated} of ${calledOnly.length} called-only workflow(s) called by an aggregator constituent` : ''}` +
+    `${calledOnly.length ? `, ${calleeVerdicts} of ${calledOnly.length} ending in one always-run verdict job over every other job` : ''}`,
 );

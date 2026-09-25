@@ -365,6 +365,14 @@ describe('real-repo mode', () => {
     rmSync(root, { recursive: true, force: true });
     return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
   };
+  // 120 trivial refusing executables in tooling/ci and 8 in tooling/scripts: over both floors.
+  const overTheFloors = () => {
+    const files = {};
+    for (let i = 0; i < 120; i++) files[`tooling/ci/probe-${String(i).padStart(3, '0')}.mjs`] = REFUSES;
+    for (let i = 0; i < 8; i++) files[`tooling/scripts/probe-s${i}.mjs`] = REFUSES;
+    return files;
+  };
+  const ONE_RUN_STEP = 'on: push\njobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n';
 
   test('the guard-count floor fires when the corpus is a fraction of itself', () => {
     const { code, out } = inRepoMode({
@@ -380,14 +388,24 @@ describe('real-repo mode', () => {
     // trivial refusing executables in tooling/ci and 8 in tooling/scripts. Every
     // recorded exemption then names a path this tree does not have, and each one
     // must be called out rather than sitting there covering nothing.
-    const files = {};
-    for (let i = 0; i < 120; i++) files[`tooling/ci/probe-${String(i).padStart(3, '0')}.mjs`] = REFUSES;
-    for (let i = 0; i < 8; i++) files[`tooling/scripts/probe-s${i}.mjs`] = REFUSES;
-    const { code, out } = inRepoMode(files);
+    // It also needs one workflow with a `run:` step: on the real repository a
+    // tree with zero `run:` steps is COVERAGE LOST (the next test), and that
+    // refusal would end the run before classification.
+    const { code, out } = inRepoMode({ ...overTheFloors(), '.github/workflows/ci.yml': ONE_RUN_STEP });
     assert.equal(code, 1, out);
     assert.match(out, /is excused .* and this scan did not enumerate it/s);
     // every recorded entry must be reported, not just the first one found
     const reported = [...out.matchAll(/is excused/g)].length;
     assert.ok(reported >= 6, `expected every recorded exemption to be reported, saw ${reported}\n${out}`);
+  });
+
+  test('zero workflow `run:` steps on the real repository is COVERAGE LOST, not zero preloads', () => {
+    // The preload edges are read from the workflows' `run:` text. A checkout
+    // whose workflows cannot be read, or hold no `run:` step, would otherwise
+    // report "no preload" and let a guard loaded only by `node --import` read
+    // as dead.
+    const { code, out } = inRepoMode(overTheFloors());
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — read 0 workflow\(s\) and ZERO `run:` steps/);
   });
 });
