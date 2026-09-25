@@ -15,7 +15,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { Hono } from 'hono';
 import { SignJWT, exportJWK, generateKeyPair, type JWK, type KeyLike } from 'jose';
-import { platformAuth } from '../src/middleware/auth';
+import { entitlementsAuth } from '../src/middleware/ext-device-auth';
 import entitlements from '../src/routes/entitlements';
 import type { AppEnv } from '../src/types';
 import { realPlatformDb, type RealDb } from './harness';
@@ -58,10 +58,14 @@ async function token(sub: string) {
 }
 
 /**
- * 🔴 BOTH MOUNTS, exactly as src/index.ts has them. `app.use('/v1/entitlements', …)`
- * matches THAT PATH AND NOTHING BELOW IT in Hono, so a harness with only the
- * first line would run every sub-route test against an UNAUTHENTICATED route and
- * report green — which is how the real defect got in.
+ * 🔴 THE MOUNT, exactly as src/index.ts has it. It was two lines until
+ * 2026-09-24 (`'/v1/entitlements'` and `'/v1/entitlements/*'`, both platformAuth);
+ * a harness with only the exact-path line ran every sub-route test against an
+ * UNAUTHENTICATED route and reported green — which is how the real defect got in.
+ * Measured since (test/ext-auth.test.ts): `/*` also matches the exact path, so
+ * index.ts now mounts ONE path-aware `entitlementsAuth` on `/v1/entitlements/*`,
+ * and this copy follows it. test/ext-auth.test.ts's G9 mount test reads the REAL
+ * app, which a mutation of index.ts cannot slip past the way it could this copy.
  */
 function harness({ db = realPlatformDb(), environment = 'live' as string | null } = {}) {
   const app = new Hono<AppEnv>();
@@ -69,8 +73,7 @@ function harness({ db = realPlatformDb(), environment = 'live' as string | null 
     c.set('requestId', 'rid-test');
     await next();
   });
-  app.use('/v1/entitlements', platformAuth);
-  app.use('/v1/entitlements/*', platformAuth);
+  app.use('/v1/entitlements/*', entitlementsAuth);
   app.route('/v1', entitlements);
 
   const env = {

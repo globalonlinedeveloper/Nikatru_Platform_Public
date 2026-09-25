@@ -13,7 +13,9 @@
 // recorded in runbooks/backup-restore.md; this is the half that runs on every PR.
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect } from 'vitest';
-import { realPlatformDb } from './harness';
+import { RealDb, realPlatformDb } from './harness';
+import appInit0001 from '../../subscriptiontracker-api/migrations/0001_init.sql?raw';
+import appSchemaDebt0002 from '../../subscriptiontracker-api/migrations/0002_schema_debt.sql?raw';
 import { runBackup, isExpired, backupDate, BACKUP_RETENTION_DAYS } from '../src/backup';
 import { dumpD1Database } from '../src/backup/dump';
 import type { BackupEnv } from '../src/backup';
@@ -55,11 +57,22 @@ class FakeKv {
   }
 }
 
+// 🔴 SUBSCRIPTIONTRACKER_DB IS ITS OWN DATABASE, BUILT FROM ITS OWN MIGRATIONS.
+// It used to be `db` — a SECOND COPY OF platform_db — so every platform table was
+// counted twice against MAX_D1_QUERIES_PER_RUN. ⏱ 2026-09-25 (O-EXTENSION-ACCOUNT-CHECK-UNBUILT):
+// 0017 took platform_db to 22 tables, the fixture spent 2 + 2 × 22 = 46 of 45
+// queries and the second dump truncated — while the real estate costs 2 + 23 + 5
+// (d1_migrations included). A fixture that doubles the platform cannot tell the
+// budget running out from its own shape; this one spends what production spends.
+function appDb(): RealDb {
+  return new RealDb([appInit0001, appSchemaDebt0002]);
+}
+
 function envWith(bucket: FakeBucket | undefined, db = realPlatformDb()) {
   return {
     env: {
       PLATFORM_DB: db as unknown as D1Database,
-      SUBSCRIPTIONTRACKER_DB: db as unknown as D1Database,
+      SUBSCRIPTIONTRACKER_DB: appDb() as unknown as D1Database,
       CONFIG_KV: new FakeKv({ 'config:subscriptiontracker': '{"flags":{}}' }) as unknown as KVNamespace,
       JWKS_CACHE: new FakeKv({ jwks: '{"keys":[]}' }) as unknown as KVNamespace,
       SIGNUPS: new FakeKv({}) as unknown as KVNamespace,

@@ -86,6 +86,11 @@ describe('the delete set is derived from the real platform schema', () => {
       // their account takes their reports (and the note they typed) with them.
       'content_reports',
       'entitlements',
+      // ⏱ 2026-09-24 · the extension account check. Spelt `user_id` ON PURPOSE:
+      // erasing the account deletes every one-time code and every linked device,
+      // and a deleted device row answers 401 — the credential dies with it.
+      'ext_codes',
+      'ext_devices',
       'identity',
       'provider_accounts',
       'provider_notifications',

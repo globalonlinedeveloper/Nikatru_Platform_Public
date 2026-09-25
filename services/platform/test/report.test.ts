@@ -227,6 +227,7 @@ describe('retention — the rows age out on the declared period', () => {
       provider_notifications: null,
       signups: null,
       content_reports: CONTENT_REPORTS_RETENTION_DAYS,
+      ext_codes: null,
     };
     await retentionSweep({ PLATFORM_DB: db } as unknown as AppEnv['Bindings'], periods, NOW);
     expect(db.rows('SELECT id FROM content_reports').map((r) => r.id)).toEqual(['kept']);

@@ -686,7 +686,7 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
   // The numbers are PINNED rather than derived on purpose — a derived count
   // agrees with any register, including one that quietly stopped enumerating —
   // so they move in the same change as the routes that moved them.
-  test('PASSES on the real tree: 14 routes, 10 pinned, 4 printed gaps', () => {
+  test('PASSES on the real tree: 17 routes, 10 pinned, 7 printed gaps', () => {
     const r = run(makeRepo());
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /wire health — deploy-smoke fields/);
@@ -705,7 +705,15 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     // …and the fourth, added with the receipt route. Its gap is a STATE too: the
     // day a Dart client builds /v1/receipts the guard fails and demands a pin.
     assert.match(r.out, /GAP {2}wire receipts/);
-    assert.match(r.out, /14 shared route\(s\) from tooling\/platform-register\.json: 10 pinned, 4 printed gap/); // ⏱ 2026-09-18: POST /v1/report joined as a gap, then became a body pin the same day when the chassis transport landed (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: PUT /v1/account/provider-token joined as a request pin (O-GOOGLE-SIGN-IN-NOT-BUILT).
+    // ⏱ 2026-09-24 · …and three more, the extension account check
+    // (O-EXTENSION-ACCOUNT-CHECK-UNBUILT). Gaps BY CONSTRUCTION — the callers are
+    // the nikatru.com connect page and the browser extension, neither Dart — and
+    // each `absentFromDart` claim is checked, so a Dart client of any of them fails.
+    assert.match(r.out, /GAP {2}wire ext-codes/);
+    assert.match(r.out, /GAP {2}wire ext-token/);
+    assert.match(r.out, /GAP {2}wire ext-revoke/);
+    // ⏱ 2026-09-25: 14 -> 17 routes, 4 -> 7 gaps with the three extension routes.
+    assert.match(r.out, /17 shared route\(s\) from tooling\/platform-register\.json: 10 pinned, 7 printed gap/); // ⏱ 2026-09-18: POST /v1/report joined as a gap, then became a body pin the same day when the chassis transport landed (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: PUT /v1/account/provider-token joined as a request pin (O-GOOGLE-SIGN-IN-NOT-BUILT).
     assert.match(r.out, /wire account-provider-token — request pinned: client sends \{provider, refreshToken, appId\}/);
     // [4]B-14's last clause: the config route's client half resolves in the
     // BRICK, so the count above is about apps that do not exist yet too.
@@ -1070,7 +1078,8 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     // and the route stops counting as pinned — the number moves, honestly.
     // ⏱ 4 gaps since 2026-09-09 — TWO routes joined that day, not one; see the
     // re-measurement note on the real-tree case.
-    assert.match(r.out, /9 pinned, 4 printed gap/); // ⏱ 2026-09-18: POST /v1/report is now a body pin, not a gap (O-PLAY-AI-CONTENT-REPORTING chassis half). ⏱ 2026-09-24: +1 for the provider-token request pin.
+    // ⏱ 2026-09-25: 4 -> 7 gaps with the three extension account-check routes.
+    assert.match(r.out, /9 pinned, 7 printed gap/); // ⏱ 2026-09-18: POST /v1/report is now a body pin, not a gap (O-PLAY-AI-CONTENT-REPORTING chassis half). ⏱ 2026-09-24: +1 for the provider-token request pin.
   });
 
   test('FAILS when the brick drops a key the server still requires', () => {

@@ -615,7 +615,7 @@ if (!existsSync(join(ROOT, CONTRACT))) {
       `${indexPath} does not mount the shared entitlement read at /v1/entitlements. [5]M-4 — an unmounted route is ` +
         'a row nobody can read.',
     );
-  } else if (!/app\.use\(\s*['"`]\/v1\/entitlements['"`]\s*,\s*platformAuth\s*\)/.test(idx)) {
+  } else if (!entitlementsTreeAuthed(idx)) {
     // The scoping limb the whole shared-table design rests on starts here: an
     // unauthenticated entitlement read has no `user_id` to scope by.
     fail(
@@ -624,6 +624,34 @@ if (!existsSync(join(ROOT, CONTRACT))) {
         'subject to scope by, so it would answer for everybody or for nobody.',
     );
   }
+}
+
+/**
+ * ⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. Whether index.ts puts the
+ * `/v1/entitlements` tree behind authentication, in one of exactly TWO shapes:
+ *
+ *   · the bare `app.use('/v1/entitlements', platformAuth)` this limb was written
+ *     against; or
+ *   · ONE path-aware `app.use('/v1/entitlements/*', entitlementsAuth)` — the
+ *     shape the extension's device credential needs, because Hono's `/*` also
+ *     matches the exact path (measured; services/platform/test/ext-auth.test.ts)
+ *     — and ONLY while middleware/ext-device-auth.ts's `entitlementsAuth` hands
+ *     every request it does not route to the device check to `platformAuth`.
+ *     A composite whose fall-through is anything else (`next()`, a 200) is an
+ *     unauthenticated read with extra steps, and it fails here like a deletion.
+ */
+function entitlementsTreeAuthed(idx) {
+  if (/app\.use\(\s*['"`]\/v1\/entitlements['"`]\s*,\s*platformAuth\s*\)/.test(idx)) return true;
+  if (!/app\.use\(\s*['"`]\/v1\/entitlements\/\*['"`]\s*,\s*entitlementsAuth\s*\)/.test(idx)) return false;
+  const mwPath = 'services/platform/src/middleware/ext-device-auth.ts';
+  if (!existsSync(join(ROOT, mwPath))) return false;
+  const mw = stripComments(readFileSync(join(ROOT, mwPath), 'utf8'));
+  const at = mw.search(/export\s+const\s+entitlementsAuth\b/);
+  if (at < 0) return false;
+  const body = mw.slice(at);
+  // The device branch is limited to the ONE request the extension makes, and the
+  // body's last word — its fall-through — is platformAuth.
+  return /c\.req\.path\s*===\s*['"`]\/v1\/entitlements['"`]/.test(body) && /return\s+platformAuth\(\s*c\s*,\s*next\s*\)\s*;?\s*\}\s*;?\s*$/.test(body);
 }
 
 // ── the OWNER-GATED half — PRINTED, NEVER FAILED ─────────────────────────────
