@@ -2707,6 +2707,7 @@
       ".github/workflows/deploy-workers.yml#platform",
       ".github/workflows/deploy-workers.yml#subscriptiontracker-api",
       ".github/workflows/extensions.yml#release",
+      ".github/workflows/extensions.yml#store-publish",
       ".github/workflows/submit-play.yml#submit",
       ".github/workflows/submit-snap.yml#submit",
       ".github/workflows/submit-windows-store.yml#submit"
@@ -3173,6 +3174,7 @@
       ".github/workflows/deploy-workers.yml#platform",
       ".github/workflows/deploy-workers.yml#subscriptiontracker-api",
       ".github/workflows/extensions.yml#release",
+      ".github/workflows/extensions.yml#store-publish",
       ".github/workflows/submit-play.yml#submit"
     ],
     "kind": "script",
