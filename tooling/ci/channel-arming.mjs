@@ -15,6 +15,10 @@
 //   `needs:` all three; so THE FIRST RELEASE THIS REPOSITORY EVER PUBLISHES IS
 //   SKIPPED, by three checks that were each individually defensible.
 //
+// ⏱ 2026-09-25 — two of those seams remain: apple-signing.mjs and
+// appimage-signing.mjs. windows-signing.mjs was retired with its only step
+// (O-WINDOWS-DIRECT-DEAD-CHANNEL-LIVES, branch 2); the paragraph above is history.
+//
 // The scope error is a specific one, and naming it is the whole of this file.
 // "A release lane that cannot sign must not produce a shippable artifact" is a
 // statement about a CHANNEL — it is only true when the channel in question can
@@ -72,8 +76,9 @@
 // verdict out. There is no filesystem, no environment and no channel name — the
 // callers find their own rows in the register and hand them over, so this file
 // cannot drift from the register by carrying a copy of it. "Did my scan still
-// reach the tree" belongs to the three callers, each of which already refuses to
-// run when its row is missing from the register.
+// reach the tree" belongs to the two signing callers, apple-signing.mjs and
+// appimage-signing.mjs, each of which already refuses to run when its row is
+// missing from the register.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const REGISTER = 'tooling/channel-register.json';
@@ -152,7 +157,7 @@ export function armingOf(row) {
  * ARMING, PER TOOL — the same rule with the axis the register does not have.
  *
  * 🔴 WHY A SECOND FUNCTION AND NOT A WIDER `armingOf`. A register row answers
- * "can this CHANNEL reach a user"; three signing seams already ask exactly that
+ * "can this CHANNEL reach a user"; two signing seams already ask exactly that
  * and must keep getting exactly that answer, so `armingOf` is untouched. What
  * the register cannot answer is "can this channel reach a user WITH THIS TOOL'S
  * PACKAGE", and on the extensions lane that second question is the load-bearing

@@ -811,6 +811,14 @@ absent from the upload.
 
 ### before step **Prepare the Windows code-signing certificate, and read the signature back**
 
+⏱ 2026-09-25 — this step and `tooling/ci/windows-signing.mjs`, its only
+callee, are retired (O-WINDOWS-DIRECT-DEAD-CHANNEL-LIVES, branch 2): the
+script signed for windows-direct, which C-WINDOWS-STORE-ONLY rules out, and
+the Store re-signs the .msix this job builds. What follows is history. Read
+the script back with `git show <commit>^:tooling/ci/windows-signing.mjs`,
+where `<commit>` is `git log -1 --format=%H --diff-filter=D --
+tooling/ci/windows-signing.mjs`.
+
 ── THE CERTIFICATE, AND THE READ-BACK IT EXISTS FOR ────────────────
 🔴 THIS STEP RAN BEFORE `Build windows` UNTIL 2026-08-20, AND WAS NEVER
 GIVEN `--artifact`. Both halves of that were defects and the second is

@@ -577,16 +577,6 @@ jobs:
             apps/${{ matrix.app }}/build/windows/msix/*.msix.channel.json
           retention-days: 14
           if-no-files-found: warn
-      - name: Prepare the Windows code-signing certificate, and read the signature back
-        shell: bash
-        env:
-          WINDOWS_CODESIGN_PFX_BASE64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
-          WINDOWS_CODESIGN_PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
-        run: >
-          node tooling/ci/windows-signing.mjs --app ${{ matrix.app }}
-          $(for f in apps/${{ matrix.app }}/build/windows/x64/runner/Release/*.exe
-          apps/${{ matrix.app }}/build/windows/x64/runner/Release/*.dll; do
-          if [ -e "$f" ]; then printf -- '--artifact %s ' "$f"; fi; done)
       - name: Every artifact this lane claims exists, and is not empty
         run: >
           node tooling/ci/assert-artifact-shape.mjs

@@ -134,8 +134,9 @@ describe('bounded-spawn — the call sites', () => {
   // a cancelled job with the log stopping mid-guard and nothing naming the
   // command — the shape that read as five separate mysteries in #616, #617,
   // #618, #619 and on main before `flutter create` was bounded.
+  // ⏱ 2026-09-25 — windows-signing.mjs retired with its only step, so two seams remain.
   test('B7c no signing seam spawns an external tool without a wall clock', () => {
-    const SEAMS = ['windows-signing.mjs', 'apple-signing.mjs', 'appimage-signing.mjs'];
+    const SEAMS = ['apple-signing.mjs', 'appimage-signing.mjs'];
     const offenders = [];
     for (const f of SEAMS) {
       const src = stripSourceComments(readFileSync(join(CI_DIR, f), 'utf8'), '.mjs');
