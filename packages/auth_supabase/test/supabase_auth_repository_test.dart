@@ -837,6 +837,87 @@ void main() {
   });
 
   // ══════════════════════════════════════════════════════════════════════════
+  // ⏱ 2026-09-25 · SIGN-IN, RESET AND RESEND WRAP THE VENDOR TYPE TOO. Each
+  // let `sb.AuthException` escape as itself, so a screen met GoTrue's English
+  // and never its code. One case per method; each goes red if that method's
+  // wrap is put back to `rethrow`.
+  // ══════════════════════════════════════════════════════════════════════════
+  group('sign-in, reset and resend wrap sb.AuthException', () {
+    test('signInWithEmail: a wrong password arrives as OUR type, coded',
+        () async {
+      final _FakeGoTrue g = _FakeGoTrue(
+        session: null,
+        signInError: const sb.AuthApiException(
+          'Invalid login credentials',
+          statusCode: '400',
+          code: 'invalid_credentials',
+        ),
+      );
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
+
+      final Object? thrown = await auth
+          .signInWithEmail(email: 'a@b.com', password: 'wrong-horse')
+          .then<Object?>((_) => null, onError: (Object e) => e);
+
+      expect(thrown, isA<core.AuthFailure>());
+      expect(thrown, isNot(isA<sb.AuthException>()));
+      final core.AuthFailure f = thrown! as core.AuthFailure;
+      expect(f.code, 'invalid_credentials');
+      expect(f.reasons, isEmpty);
+      expect(f.message, 'Invalid login credentials');
+      expect(f.localized, isFalse);
+    });
+
+    test('sendPasswordReset: a captcha refusal arrives as OUR type, coded',
+        () async {
+      final _FakeGoTrue g = _FakeGoTrue(
+        session: null,
+        resetError: const sb.AuthApiException(
+          'captcha protection: request disallowed (invalid-input-response)',
+          statusCode: '400',
+          code: 'captcha_failed',
+        ),
+      );
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
+
+      final Object? thrown = await auth
+          .sendPasswordReset('a@b.com')
+          .then<Object?>((_) => null, onError: (Object e) => e);
+
+      expect(thrown, isA<core.AuthFailure>());
+      expect(thrown, isNot(isA<sb.AuthException>()));
+      final core.AuthFailure f = thrown! as core.AuthFailure;
+      expect(f.code, 'captcha_failed');
+      expect(f.reasons, isEmpty);
+      expect(f.message, contains('captcha protection'));
+    });
+
+    test('resendVerificationEmail: a rate limit arrives as OUR type, coded',
+        () async {
+      final _FakeGoTrue g = _FakeGoTrue(
+        session: _session('live'),
+        resendError: const sb.AuthApiException(
+          'For security purposes, you can only request this after 60 seconds.',
+          statusCode: '429',
+          code: 'over_email_send_rate_limit',
+        ),
+      );
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
+
+      final Object? thrown = await auth
+          .resendVerificationEmail()
+          .then<Object?>((_) => null, onError: (Object e) => e);
+
+      expect(thrown, isA<core.AuthFailure>());
+      expect(thrown, isNot(isA<sb.AuthException>()));
+      final core.AuthFailure f = thrown! as core.AuthFailure;
+      expect(f.code, 'over_email_send_rate_limit');
+      expect(f.reasons, isEmpty);
+      expect(f.message, contains('60 seconds'));
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
   // 🔴 THE AUTH EVENT — the half that was being thrown away.
   //
   // `authStateChanges()` maps `AuthState` down to `AuthUser?`, so the
@@ -1188,11 +1269,20 @@ class _FakeGoTrue extends sb.GoTrueClient {
     this.updateUserError,
     this.signOutFailure = false,
     this.signUpError,
+    this.signInError,
+    this.resetError,
+    this.resendError,
   }) : super(autoRefreshToken: false);
 
   /// What `signUp` throws instead of succeeding — ⏱ 2026-09-24, so the wrap
   /// of the vendor type on the sign-up path is observable at all.
   final sb.AuthException? signUpError;
+
+  /// What `signInWithPassword`, `resetPasswordForEmail` and `resend` throw
+  /// instead of succeeding — ⏱ 2026-09-25, the same reason as [signUpError].
+  final sb.AuthException? signInError;
+  final sb.AuthException? resetError;
+  final sb.AuthException? resendError;
 
   sb.Session? session;
   final bool failRefresh;
@@ -1263,6 +1353,8 @@ class _FakeGoTrue extends sb.GoTrueClient {
   }) async {
     resetRequests.add(<String?>[email, redirectTo]);
     resetCaptchaTokens.add(captchaToken);
+    final sb.AuthException? boom = resetError;
+    if (boom != null) throw boom;
   }
 
   /// The captcha token each call carried, in order, null included.
@@ -1305,6 +1397,8 @@ class _FakeGoTrue extends sb.GoTrueClient {
   }) async {
     resendEmails.add(email ?? '(none)');
     resendCaptchaTokens.add(captchaToken);
+    final sb.AuthException? boom = resendError;
+    if (boom != null) throw boom;
     return sb.ResendResponse();
   }
 
@@ -1373,6 +1467,8 @@ class _FakeGoTrue extends sb.GoTrueClient {
     String? captchaToken,
   }) async {
     signInCaptchaTokens.add(captchaToken);
+    final sb.AuthException? boom = signInError;
+    if (boom != null) throw boom;
     session = _session('signed-in');
     return sb.AuthResponse(session: session);
   }

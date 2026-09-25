@@ -150,8 +150,8 @@ void main() {
       expect(find.textContaining('Invalid login credentials'), findsNothing);
     });
 
-    // 🔴 THE `'$e'` ARM. `signInWithEmail` lets the vendor's own exception out,
-    // and this view printed it whole.
+    // 🔴 THE `'$e'` ARM. `signInWithEmail` let the vendor's own exception out
+    // until 2026-09-25, and this view printed it whole.
     testWidgets('a NON-AuthFailure is mapped, never printed',
         (WidgetTester tester) async {
       await pumpChassis(

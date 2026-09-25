@@ -177,11 +177,11 @@ class _SignInViewState extends State<SignInView> {
       await action();
     } catch (e) {
       // ⏱ 2026-09-24 — ONE arm, through the mapper. This was `e.message` for an
-      // AuthFailure and `'$e'` for anything else, and `signInWithEmail` lets
-      // the vendor's own exception out: a wrong password printed
-      // `AuthApiException(message: Invalid login credentials, …)`. This
-      // screen's own sentences above are `AuthFailure.localized`, which the
-      // mapper shows as written.
+      // AuthFailure and `'$e'` for anything else, and `signInWithEmail` let
+      // the vendor's own exception out until 2026-09-25: a wrong password
+      // printed `AuthApiException(message: Invalid login credentials, …)`.
+      // This screen's own sentences above are `AuthFailure.localized`, which
+      // the mapper shows as written.
       if (mounted) {
         setState(() => _error = authErrorText(context.chassisL10n, e));
       }

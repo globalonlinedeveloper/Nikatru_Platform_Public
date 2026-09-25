@@ -12,9 +12,10 @@ import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 /// built on a copy of that format would stay green after gotrue-dart changed
 /// it.
 ///
-/// These are the exceptions that STILL reach a screen unwrapped: the Supabase
-/// adapter wraps `signUpWithEmail` and `updatePassword`, not `signInWithEmail`,
-/// so a wrong password arrives at the login screen as the vendor's own type.
+/// These are the exceptions a screen meets when a repository method does not
+/// wrap them. Since 2026-09-25 the Supabase adapter wraps every email-auth
+/// call, so this is the FALLBACK's contract: a method added unwrapped, or
+/// another adapter, still reaches the right sentence.
 void main() {
   final ChassisLocalizations en = lookupChassisLocalizations(
     const Locale('en'),
