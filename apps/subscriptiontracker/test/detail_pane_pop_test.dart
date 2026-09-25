@@ -68,7 +68,9 @@ class _SignedInAuth extends core.AuthRepository {
   Stream<core.AuthUser?> authStateChanges() => _changes.stream;
 
   @override
-  Future<void> signOut() async {}
+  Future<void> signOut({
+    core.SignOutScope scope = core.SignOutScope.local,
+  }) async {}
   @override
   Future<core.AuthUser> signInWithEmail({
     required String email,

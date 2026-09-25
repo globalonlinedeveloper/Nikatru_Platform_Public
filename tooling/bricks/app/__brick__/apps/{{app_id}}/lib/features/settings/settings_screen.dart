@@ -123,6 +123,12 @@ class SettingsScreen extends ConsumerWidget {
           ? () => showReportContentDialog(context, ref)
           : null,
       onSignOut: () => _signOut(context, ref, context.chassisL10n),
+      onSignOutEverywhere: () => _signOut(
+        context,
+        ref,
+        context.chassisL10n,
+        scope: core.SignOutScope.global,
+      ),
       onDeleteAccount: () => _confirmDelete(context, ref, context.chassisL10n),
       applicationName: AppConfig.appName,
       applicationVersion: runningVersion,
@@ -211,16 +217,30 @@ class SettingsScreen extends ConsumerWidget {
   /// replaces the page immediately, and on a failed one it does not, so the same
   /// call has to survive both. The messenger is captured BEFORE the await for the
   /// same reason.
+  ///
+  /// [scope] is global for "Sign out of all devices" only. Its failure gets its
+  /// own sentence, and it names no cause: the step that failed may be the
+  /// server revoke, this device's stored session or the per-user forget, and
+  /// "this device" is not the whole of what did not finish.
   Future<void> _signOut(
     BuildContext context,
     WidgetRef ref,
-    ChassisLocalizations l10n,
-  ) async {
+    ChassisLocalizations l10n, {
+    core.SignOutScope scope = core.SignOutScope.local,
+  }) async {
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
     try {
-      await signOutAndForgetUser(ref);
+      await signOutAndForgetUser(ref, scope: scope);
     } catch (_) {
-      messenger.showSnackBar(SnackBar(content: Text(l10n.signOutFailed)));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            scope == core.SignOutScope.global
+                ? l10n.signOutEverywhereFailed
+                : l10n.signOutFailed,
+          ),
+        ),
+      );
     }
   }
 

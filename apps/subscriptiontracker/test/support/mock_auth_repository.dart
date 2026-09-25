@@ -120,7 +120,9 @@ class MockAuthRepository extends AuthRepository {
   }
 
   @override
-  Future<void> signOut() async {
+  Future<void> signOut({
+    core.SignOutScope scope = core.SignOutScope.local,
+  }) async {
     _user = null;
     _controller.add(null);
   }

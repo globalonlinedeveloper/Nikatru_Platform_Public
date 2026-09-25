@@ -254,6 +254,30 @@
   "@signOutFailed": {
     "description": "Shown when signing out throws. Says DID NOT FINISH rather than 'failed': the session may already be gone on the server while the persisted copy or the per-user state on this device is not, and the honest instruction for both is to try again."
   },
+  "signOutEverywhere": "Sign out of all devices",
+  "@signOutEverywhere": {
+    "description": "Settings entry that ends every session of this account on every device, this one included. Distinct from signOut, which ends this device's session only."
+  },
+  "signOutEverywhereSubtitle": "Ends every session of this account, on every device, including this one.",
+  "@signOutEverywhereSubtitle": {
+    "description": "Subtitle under signOutEverywhere. Says INCLUDING THIS ONE because the control also signs this device out, which a user reading 'all devices' as 'my other devices' would not expect."
+  },
+  "signOutEverywhereFailed": "Signing out of all devices did not finish. Please try again.",
+  "@signOutEverywhereFailed": {
+    "description": "Shown when signing out of all devices throws. Says DID NOT FINISH, like signOutFailed, and names no cause: the step that failed may be reaching the server, clearing the session stored on this device, or forgetting this device's per-user state, and trying again is the honest instruction for all three. It never claims the other devices were signed out, because nothing proves they were."
+  },
+  "signOutEverywhereConfirmTitle": "Sign out of all devices?",
+  "@signOutEverywhereConfirmTitle": {
+    "description": "Title of the dialog shown before signing out of all devices. The control is never fired by one tap: it signs THIS device out too, so it asks first (parent ruling L2, 2026-09-24)."
+  },
+  "signOutEverywhereConfirmBody": "Every device signed in to this account, including this one, will need to sign in again.",
+  "@signOutEverywhereConfirmBody": {
+    "description": "The one sentence in the sign-out-everywhere confirm dialog. Says INCLUDING THIS ONE for the same reason as signOutEverywhereSubtitle."
+  },
+  "signOutEverywhereConfirmAction": "Sign out everywhere",
+  "@signOutEverywhereConfirmAction": {
+    "description": "The confirm button of the sign-out-everywhere dialog; the other button is cancel. Uses the chassis 'Sign out' wording, like signOut and signOutEverywhere."
+  },
   "notifications": "Notifications",
   "@notifications": {
     "description": "Settings section for reminders."

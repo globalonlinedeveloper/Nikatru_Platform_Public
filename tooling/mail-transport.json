@@ -117,7 +117,30 @@
       "confirmation": "Confirm your email — Nikatru",
       "magic_link": "Your sign-in link — Nikatru",
       "recovery": "Reset your password — Nikatru"
-    }
+    },
+    "_whySessions": [
+      "⏱ 2026-09-24 — AUTH-LOGOUT-ALL (R4-11). The five keys after this note are the SESSION lifetime:",
+      "how long a stolen or revoked access token keeps passing a Worker's signature check (`jwt_exp`),",
+      "whether a refresh token is single-use (`refresh_token_rotation_enabled`) and for how long a",
+      "replayed one is forgiven (`security_refresh_token_reuse_interval`), and whether a session ever",
+      "ends on its own (`sessions_timebox`, `sessions_inactivity_timeout`: null = never, which is the",
+      "owner's rule — signed in until a password reset or a sign-out from all devices).",
+      "",
+      "⚠️ THEY WERE NOT IN THE 2026-09-16 READ-BACK the note above describes. `jwt_exp` is the value",
+      "tooling/ops/verify-password-reset-revokes.mjs records as live; the two `sessions_*` keys are",
+      "unset per the owner's brief; rotation and the reuse interval are GoTrue's defaults, NOT a",
+      "reading. The live checker compares every key here by name, so a wrong one is a nightly DRIFT",
+      "line in Ops watch, never a silent pass — and `verifiedLiveOn` is deliberately NOT moved until",
+      "`node tooling/ops/verify-supabase-templates.mjs` has been run against the project.",
+      "",
+      "docs/design/auth-sessions.md reads `jwt_exp` from HERE for the revocation-gap arithmetic, so",
+      "changing it changes that design's numbers too."
+    ],
+    "jwt_exp": 3600,
+    "refresh_token_rotation_enabled": true,
+    "security_refresh_token_reuse_interval": 10,
+    "sessions_timebox": null,
+    "sessions_inactivity_timeout": null
   },
 
   "supersededTransportClaims": {

@@ -167,6 +167,7 @@ void main() {
           supportEmail: 'support@example.com',
           onContactSupport: () {},
           onSignOut: () {},
+          onSignOutEverywhere: () {},
           onDeleteAccount: () {},
           applicationName: 'Probe',
           applicationVersion: '1.2.3',
