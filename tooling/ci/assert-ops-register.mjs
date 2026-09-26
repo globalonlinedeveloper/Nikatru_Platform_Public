@@ -2921,12 +2921,16 @@ export function zeroEntryNeutral(job, run, apiJobs, wf) {
 export function scheduleWeekdays(cond) {
   if (!nonEmpty(cond)) return null;
   const body = String(cond).trim().replace(/^\$\{\{\s*([\s\S]*?)\s*\}\}$/, '$1');
-  if (/&&|!/.test(body)) return null;
+  // ⏱ 2026-09-26 · `&&` is allowed in ONE shape only: a dispatch clause gated by a workflow_dispatch input,
+  // `(github.event_name == 'workflow_dispatch' && inputs.<name>)`. A dispatch clause never adds a schedule
+  // weekday, so it is skipped like the bare one; any other `&&`, and any `!`, still makes the whole unreadable.
+  if (/!/.test(body)) return null;
   const days = new Set();
   let crons = 0;
   for (const raw of body.split('||')) {
     const clause = raw.trim().replace(/^\((.*)\)$/, '$1').trim();
-    if (/^github\.event_name == 'workflow_dispatch'$/.test(clause)) continue;
+    if (/^github\.event_name == 'workflow_dispatch'(?:\s*&&\s*inputs\.[A-Za-z_][A-Za-z0-9_-]*)?$/.test(clause)) continue;
+    if (/&&/.test(clause)) return null;
     const m = clause.match(/^github\.event\.schedule == '([^']+)'$/);
     if (!m) return null;
     const f = m[1].trim().split(/\s+/);

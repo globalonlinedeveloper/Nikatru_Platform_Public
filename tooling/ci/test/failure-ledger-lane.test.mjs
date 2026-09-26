@@ -38,6 +38,9 @@ const REPO = resolve(CI_DIR, '..', '..');
 const WORKFLOW = '.github/workflows/ops-watch.yml';
 const JOB = 'failure-ledger';
 const SLOT = "github.event.schedule == '45 7 * * 1' || github.event_name == 'workflow_dispatch'";
+// ⏱ 2026-09-26 · the LEDGER job runs on the Monday slot, or on a dispatch that asks for it: every land script
+// dispatches ops-watch after a merge, and #526/#527 went red on the first two. The digest keeps SLOT.
+const LEDGER_SLOT = "github.event.schedule == '45 7 * * 1' || (github.event_name == 'workflow_dispatch' && inputs.failure_ledger)";
 const OPS = join(REPO, 'tooling', 'ops');
 /** The shape of the installation token `github.token` is, built at run time. */
 const FIXTURE_TOKEN = `ghs_${'a'.repeat(36)}`;
@@ -168,8 +171,8 @@ describe('L1 — the job exists, on the Monday slot and on dispatch only', () =>
     assert.ok(job, `${WORKFLOW} has no \`${JOB}\` job — the ledger is back to running when a person remembers it`);
   });
 
-  test("the job's `if:` is the digest's slot predicate, verbatim", () => {
-    assert.equal(job?.jobIf?.cond, SLOT);
+  test("the job's `if:` is the Monday slot, or a dispatch that asks for it (inputs.failure_ledger)", () => {
+    assert.equal(job?.jobIf?.cond, LEDGER_SLOT);
   });
 
   test('the digest carries the same slot predicate, so the two cannot fire on different slots', () => {
