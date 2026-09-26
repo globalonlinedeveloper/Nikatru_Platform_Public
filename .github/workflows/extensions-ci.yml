@@ -206,6 +206,20 @@ jobs:
             exit 1
           fi
 
+      # why: a tool's own store gates are DATA — tool.json `gates`, run per stage by
+      # `discover.mjs --run-gates` — and this is what keeps a tool id out of a step.
+      # It exits 1 on a line of extensions-ci.yml or extensions.yml that compares the
+      # matrix tool or the tag's id with a literal, on a stage some tool declares a gate
+      # at that no step runs, and on a declared gate whose script is missing. It exits
+      # 2 when no tool declares a gate: that scan would be clean over nothing.
+      # (⏱ 2026-09-25, O-EXTENSION-GATES-NAME-ONE-TOOL. The inventory above greps
+      # workflow text, so publish/verify-firefox-package.node.js left its list when
+      # the FullShot steps left the workflows; declared scripts are checked here now.)
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with: { node-version: '${{ env.NODE_VERSION }}' }
+      - name: No workflow step names a tool; every declared store gate has a runner
+        run: node scripts/discover.mjs --assert-generic
+
   discover:
     name: Discover affected tools
     runs-on: ubuntu-24.04
@@ -453,9 +467,13 @@ jobs:
       # with the URL it was read from, and this grades the committed pictures against it.
       - name: Listing pictures are the size, format and count the stores state
         run: node scripts/check-listing-assets.mjs ${{ matrix.tool }}
-      - name: The tool's own AMO submission gate (FullShot)
-        if: matrix.tool == 'fullshot'
-        run: node Extension/Full_Screen_Shot/publish/verify-firefox-package.node.js
+      # why: a tool's own store gates are declared in its tool.json `gates`, and this
+      # step runs the ones at stage `gates` — FullShot's AMO source grader today. A
+      # tool that declares none prints so and passes. (⏱ 2026-09-25,
+      # O-EXTENSION-GATES-NAME-ONE-TOOL: this was a step only the tool id 'fullshot'
+      # ran; `discover.mjs --assert-generic` in gate-inventory refuses that shape.)
+      - name: The tool's own declared store gates (tool.json gates, stage gates)
+        run: node scripts/discover.mjs --run-gates --tool ${{ matrix.tool }} --stage gates
 
   sims:
     name: sims · ${{ matrix.tool }} · node ${{ matrix.node }}
@@ -576,40 +594,18 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
-      - name: The tool's own AMO submission gate, on the built zip (FullShot)
-        if: matrix.tool == 'fullshot' && matrix.target == 'firefox' && matrix.os == 'ubuntu-24.04'
-        shell: bash
-        run: |
-          # 🔴 `-euo`, NOT `-uo`. GitHub runs an explicit `shell: bash` as
-          # `bash --noprofile --norc -eo pipefail {0}`, so `-e` is ALREADY ON
-          # when this body starts and `set -uo pipefail` only added `-u`. Under
-          # `-e` the capture below aborted the shell the instant the gate
-          # failed, so `code` was unreachable as anything but 0 and the
-          # `printf '%s\n' "$out"` that shows WHY never ran. Measured 2026-08-22
-          # on this exact body against a corrupt dist/fullshot-firefox.zip:
-          # `bash --noprofile --norc -eo pipefail <body>` exited 1 having
-          # printed 0 bytes, while a bare `bash <body>` printed 3976. A step
-          # that fails silently is a check whose diagnostics do not exist. `-e`
-          # is now written where a reader sees it, and the one command whose
-          # exit code this step REPORTS carries `|| code=$?`. Re-measured after
-          # the fix, same corrupt zip, RUNNER flags: EXIT 1 and 3976 bytes — the
-          # log the bare shell used to be needed for. Against the real zip the
-          # same body is EXIT 0 and 4242 bytes ending `ALL PASS`, so the step
-          # still discriminates rather than having been turned green.
-          set -euo pipefail
-          zip="dist/${{ matrix.tool }}-${{ matrix.target }}.zip"
-          if [ ! -f "$zip" ]; then
-            echo "::error::$zip does not exist, though the pack step above reported success — so this gate would have graded the source tree and exited 0 while inspecting no package at all."
-            exit 1
-          fi
-          code=0
-          out=$(node Extension/Full_Screen_Shot/publish/verify-firefox-package.node.js --zip "$zip" 2>&1) || code=$?
-          printf '%s\n' "$out"
-          if [ "$code" -ne 0 ]; then exit "$code"; fi
-          if ! printf '%s\n' "$out" | grep -q '^ALL PASS$'; then
-            echo "::error::the AMO gate exited 0 but never printed ALL PASS. Its only other exit-0 path is 'SOURCE PASSES — NO PACKAGE WAS GRADED', i.e. it graded the source tree and opened no zip. An empty subject must not print the same verdict as a verified one."
-            exit 1
-          fi
+      # why: the tool's declared store gates at stage `package`, on this leg's built zip.
+      # tool.json `when` picks the leg — FullShot's AMO gate runs on firefox/ubuntu-24.04
+      # only, and every other leg prints that it ran none. (⏱ 2026-09-25,
+      # O-EXTENSION-GATES-NAME-ONE-TOOL: until this date this was a `shell: bash` body
+      # behind an `if:` naming the tool; it is Extension/Full_Screen_Shot/publish/
+      # amo-gate-built-zip.node.js now, with the same outcomes and ::error:: text, and
+      # its header keeps what the `-euo` comment here measured on 2026-08-22.)
+      - name: The tool's own declared store gates, on the built zip (tool.json gates, stage package)
+        run: >-
+          node scripts/discover.mjs --run-gates --tool ${{ matrix.tool }} --stage package
+          --target ${{ matrix.target }} --os ${{ matrix.os }}
+          --zip "dist/${{ matrix.tool }}-${{ matrix.target }}.zip"
 
       - name: web-ext lint (Firefox only)
         if: matrix.target == 'firefox' && matrix.os == 'ubuntu-24.04'
@@ -649,6 +645,15 @@ jobs:
       # the exemption in selftest.node.js's NO_CASE_RECORDED points at it by name.
       - name: The hang guard's ceiling must be proven to fire
         run: node --import ../tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test scripts/test/hang-guard.test.mjs
+
+      # why: FullShot's two AMO zip wrappers (its tool.json gates at `package` and
+      # `release`) take --zip, not --repo-root, so their cases cannot live in
+      # selftest.node.js either — the same reason as the pair above. They run against a
+      # stand-in grader and prove each refusal the workflow steps they replaced made:
+      # a missing zip, a grader failure, and an exit 0 that graded no package.
+      # (⏱ 2026-09-25, O-EXTENSION-GATES-NAME-ONE-TOOL.)
+      - name: The AMO zip gates must be proven to fail
+        run: node --import ../tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test scripts/test/amo-gate-zip.test.mjs
 
   templates:
     name: templates parse (the tree every future tool is stamped from)

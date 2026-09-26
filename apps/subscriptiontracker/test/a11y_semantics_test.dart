@@ -980,6 +980,24 @@ const Color kSublySeed = Color(0xFF6459F5);
 ThemeData appTheme({Brightness brightness = Brightness.light}) =>
     buildAppTheme(seed: kSublySeed, brightness: brightness);
 
+/// The five platforms the `48×48` tap-target sweep runs on.
+///
+/// O-DESKTOP-TAP-TARGETS-BELOW-48. `ThemeData` derives `materialTapTargetSize`
+/// and `visualDensity` from the platform, and flutter_test's default platform
+/// is android, so a sweep pumped only there graded the MOBILE defaults and
+/// said nothing about linux, macOS or windows. The variant sets the platform
+/// override for the test body, which is why each case builds its theme inside
+/// the body with `theme: appTheme()`. `ThemeData.copyWith(platform:)` would be
+/// the wrong tool: it keeps the mobile sizes and relabels them.
+const TargetPlatformVariant kTapTargetPlatforms =
+    TargetPlatformVariant(<TargetPlatform>{
+      TargetPlatform.android,
+      TargetPlatform.iOS,
+      TargetPlatform.linux,
+      TargetPlatform.macOS,
+      TargetPlatform.windows,
+    });
+
 /// [pumpAt]'s shape plus a locale, and it hands the container back.
 ///
 /// The container is the point: every expected label below is built from the
@@ -3329,31 +3347,35 @@ void main() {
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const InsightsScreen());
+        await pumpScreen(tester, const InsightsScreen(), theme: appTheme());
         // 3 subjects. All three are the unused-plan "Cancel" buttons, and all
         // three were 73.5×36.0 until this increment.
         await expectGuidelineHadSubjects(tester, 'insights');
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       });
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('every tap target on calendar is at least 48×48', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, CalendarScreen(clock: _pinnedNow));
+        await pumpScreen(
+          tester,
+          CalendarScreen(clock: _pinnedNow),
+          theme: appTheme(),
+        );
         // 3 subjects — the renewal rows, the hand-rolled RowCard twin whose
         // semantics the naked sweep found on this same pump.
         await expectGuidelineHadSubjects(tester, 'calendar');
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       });
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('every tap target on scan (results) is at least 48×48', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const ScanScreen());
+        await pumpScreen(tester, const ScanScreen(), theme: appTheme());
         final AppLocalizations l10n = await _load('en');
         // Six ticks to the DONE phase, for the naked sweep's reason: during
         // SCANNING the only control is genuinely disabled and contributes no
@@ -3372,24 +3394,28 @@ void main() {
         await expectGuidelineHadSubjects(tester, 'scan (results)');
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       });
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('every tap target on detail is at least 48×48', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const SubscriptionDetailScreen(id: '1'));
+        await pumpScreen(
+          tester,
+          const SubscriptionDetailScreen(id: '1'),
+          theme: appTheme(),
+        );
         // 4 subjects — back, more-options and the two hero actions.
         await expectGuidelineHadSubjects(tester, 'detail');
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       });
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('every tap target on the shell is at least 48×48', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpShell(tester);
+        await pumpShell(tester, theme: appTheme());
         // 11 subjects, the largest domain outside settings: five pill tabs, the
         // FAB and home's own header and rows underneath them. This case is also
         // the one that pumps the REAL router, so it attributes to no single
@@ -3398,25 +3424,29 @@ void main() {
         await expectGuidelineHadSubjects(tester, 'the shell (landed on /home)');
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       });
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('every tap target on verify-email is at least 48×48', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const VerifyEmailScreen());
+        await pumpScreen(tester, const VerifyEmailScreen(), theme: appTheme());
         // 2 of the three stacked controls; the third sits under this screen's
         // scroll boundary, which the guideline steps around.
         await expectGuidelineHadSubjects(tester, 'verify-email');
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       });
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('every tap target on re-accept terms is at least 48×48', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const ReacceptTermsScreen());
+        await pumpScreen(
+          tester,
+          const ReacceptTermsScreen(),
+          theme: appTheme(),
+        );
         // 1 subject.
         //
         // ⚠️ AND THE CLICKWRAP TICK IS NOT THE DEFECT IT WAS EXPECTED TO BE.
@@ -3430,26 +3460,26 @@ void main() {
         await expectGuidelineHadSubjects(tester, 're-accept terms');
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       });
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('every tap target on sign-in is at least 48×48', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const LoginScreen());
+        await pumpScreen(tester, const LoginScreen(), theme: appTheme());
         // 5 subjects. One of them — "New here? Create account" — was 319.0×40.0
         // until this increment, and it is the only route to registration from
         // the screen the router hands every signed-out visitor.
         await expectGuidelineHadSubjects(tester, 'sign-in');
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       });
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('every tap target on the SIGN-UP ARM is at least 48×48', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const LoginScreen());
+        await pumpScreen(tester, const LoginScreen(), theme: appTheme());
         final AppLocalizations l10n = await _load('en');
         // The second door, and a DIFFERENT TREE — the naked sweep's reason,
         // unchanged here: this arm is where the two consent boxes and their
@@ -3472,18 +3502,18 @@ void main() {
         await expectGuidelineHadSubjects(tester, 'sign-in (sign-up arm)');
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       });
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('every tap target on sign-up is at least 48×48', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const SignUpScreen());
+        await pumpScreen(tester, const SignUpScreen(), theme: appTheme());
         // 4 subjects.
         await expectGuidelineHadSubjects(tester, 'sign-up');
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       });
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('every tap target on the reset FORM is at least 48×48', (
       WidgetTester tester,
@@ -3512,6 +3542,7 @@ void main() {
           UncontrolledProviderScope(
             container: c,
             child: MaterialApp(
+              theme: appTheme(),
               localizationsDelegates: <LocalizationsDelegate<dynamic>>[
                 ...AppLocalizations.localizationsDelegates,
                 ChassisLocalizations.delegate,
@@ -3535,13 +3566,13 @@ void main() {
         await expectGuidelineHadSubjects(tester, 'reset-password (the form)');
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       });
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('every tap target on home is at least 48×48', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const HomeScreen());
+        await pumpScreen(tester, const HomeScreen(), theme: appTheme());
         // 7 subjects, and TWO of them were defects: the account avatar at
         // 44.0×44.0 and the "Calendar →" jump at 112.0×13.0. Both are labelled
         // controls, i.e. both are outside `_iconOnlyControls` and neither could
@@ -3549,7 +3580,7 @@ void main() {
         await expectGuidelineHadSubjects(tester, 'home');
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       });
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('every tap target on settings is at least 48×48', (
       WidgetTester tester,
@@ -3561,6 +3592,7 @@ void main() {
           tester,
           const SettingsScreen(),
           size: const Size(375, 3000),
+          theme: appTheme(),
         );
         // 24 subjects — by some way the largest domain in the app, and the one
         // that most needed the `sizeSurface` fix: at the stale 800×600 view rect
@@ -3568,20 +3600,24 @@ void main() {
         await expectGuidelineHadSubjects(tester, 'settings');
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       });
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('every tap target on notifications is at least 48×48', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const NotificationsScreen());
+        await pumpScreen(
+          tester,
+          const NotificationsScreen(),
+          theme: appTheme(),
+        );
         // 1 subject — the close button is the only control on a screen of
         // cards, stated rather than defaulted (the naked case measures the
         // same 1).
         await expectGuidelineHadSubjects(tester, 'notifications');
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       });
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('every tap target on the paywall is at least 48×48', (
       WidgetTester tester,
@@ -3631,12 +3667,13 @@ void main() {
             ],
             child: const PaywallScreen(),
           ),
+          theme: appTheme(),
         );
         // 2 subjects — one Upgrade per offering.
         await expectGuidelineHadSubjects(tester, 'paywall (choosing)');
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       });
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('every tap target on manage-plan is at least 48×48', (
       WidgetTester tester,
@@ -3658,25 +3695,26 @@ void main() {
             ],
             child: const ManagePlanScreen(),
           ),
+          theme: appTheme(),
         );
         // 2 subjects — restore and cancel.
         await expectGuidelineHadSubjects(tester, 'manage-plan (pro)');
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       });
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('every tap target on onboarding is at least 48×48', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const OnboardingScreen());
+        await pumpScreen(tester, const OnboardingScreen(), theme: appTheme());
         // 2 subjects — Skip and Next. Both were invisible to the guideline
         // before `sizeSurface`: they sit at the bottom of an 812-tall phone,
         // i.e. below the 600 logical pixels the stale view rect stopped at.
         await expectGuidelineHadSubjects(tester, 'onboarding');
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       });
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('every tap target on the add sheet is at least 48×48', (
       WidgetTester tester,
@@ -3694,6 +3732,7 @@ void main() {
               ),
             ),
           ),
+          theme: appTheme(),
         );
         await tester.tap(find.text('open'));
         await tester.pumpAndSettle();
@@ -3709,7 +3748,7 @@ void main() {
         await expectGuidelineHadSubjects(tester, 'the add sheet');
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       });
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('every tap target on the cancel sheet is at least 48×48 — in '
         'EITHER step', (WidgetTester tester) async {
@@ -3734,6 +3773,7 @@ void main() {
               ),
             ),
           ),
+          theme: appTheme(),
         );
         await tester.tap(find.text('open'));
         await tester.pumpAndSettle();
@@ -3760,7 +3800,7 @@ void main() {
         await expectGuidelineHadSubjects(tester, 'the cancel sheet (step 1)');
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       });
-    });
+    }, variant: kTapTargetPlatforms);
 
     // ── THE TWO SURFACES THAT GET NO SWEEP, AND WHY — ASSERTED, NOT ASSERTED
     //    ABOUT ────────────────────────────────────────────────────────────
