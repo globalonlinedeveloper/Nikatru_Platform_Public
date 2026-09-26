@@ -70,9 +70,30 @@
 // of the merge-base with origin/main and fails only on a red that main does not
 // have. This file's exit code is unchanged: completeness, never greenness.
 //
+// ── 2026-09-24 — `job`, `--budget-ms <n>` AND `--times`, FOR A SMOKE THAT SAYS
+//    WHAT IT DID NOT RUN (O-PRE-PUSH-RUNS-NO-CI-GATE-LEG) ─────────────────────
+// The pre-push hook ran the spec guards and nothing of ci-gate, so a guard red
+// on the pushed commit was first seen ~6 minutes later in CI. `preflight.mjs
+// --smoke` closes that with THIS sweep, run lock-free on the pushed SHA inside a
+// time budget — and a budgeted run is only honest if it says what the budget
+// cut. So:
+//   · every invocation records the `job` that makes it, and every --json row
+//     carries `jobs` ({ wf, job } for each workflow job that invokes the guard),
+//     which is what lets a reader say which of ci-gate's `needs` a run reached;
+//   · `--budget-ms <n>` starts no guard once n ms have passed since the first
+//     one could have started. A guard it does not start is a BUDGET row: never
+//     executed, never red, and counted. A guard already running finishes, so the
+//     wall time is the budget plus at most one guard. Only a row that WOULD run
+//     can be BUDGET — NEEDS-CI and MUTATES are classified exactly as before;
+//   · `--times` prints each executed row's wall time and a median / p90 line.
+//     The --json rows carry `ms` either way (null when nothing ran).
+// With neither flag the sweep runs, classifies and exits exactly as it did.
+//
 // Usage:  node tooling/scripts/guard-sweep.mjs [--verbose] [--scan-only] [--json <path>] [--ceilings]
+//                                              [--budget-ms <n>] [--times]
 // Exit:   0 = every file run or explained · 1 = a file the sweep could not reach
-//         2 = a usage error (`--json` without a path)
+//         2 = a usage error (`--json` without a path, `--budget-ms` without a
+//             non-negative number)
 // ─────────────────────────────────────────────────────────────────────────────
 import { readdirSync, readFileSync, existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -106,6 +127,20 @@ const JSON_OUT = (() => {
   }
   return resolve(v);
 })();
+/** `--budget-ms <n>`: start no guard once n ms have passed (see the header).
+ *  Refuses a missing value or one that is not a non-negative number, like --json. */
+const BUDGET_MS = (() => {
+  const i = process.argv.indexOf('--budget-ms');
+  if (i === -1) return null;
+  const v = process.argv[i + 1];
+  const n = Number(v);
+  if (v === undefined || v.startsWith('-') || v.trim() === '' || !Number.isFinite(n) || n < 0) {
+    console.error('✗ --budget-ms needs a non-negative number of milliseconds after it (got ' + (v === undefined ? 'nothing' : `\`${v}\``) + ').');
+    process.exit(2);
+  }
+  return n;
+})();
+const TIMES = process.argv.includes('--times');
 /** Keep at most this much of a RED guard's output in the JSON — enough for a
  *  reader to compare it with the same guard's output on another tree. */
 const OUT_CAP = 64 * 1024;
@@ -192,15 +227,19 @@ for (const parsed of parsedWorkflows) {
   const wf = parsed.rel.split('/').pop();
   for (const job of parsed.jobs.values()) {
     for (const line of job.logical) {
-      for (const segment of shellSegments(line.text)) logicalSegments.push({ wf, segment });
+      for (const segment of shellSegments(line.text)) logicalSegments.push({ wf, job: job.name, segment });
     }
   }
 }
+/** basename -> every { wf, job } that invokes it. Kept apart from `invocations`,
+ *  whose dedupe (arguments, workflow, flags) decides what EXECUTES and must not
+ *  change: one call made identically by two jobs runs once, and is in both. */
+const jobsOf = new Map();
 if (logicalSegments.length === 0) {
   console.error('✗ COVERAGE LOST — the workflows parsed to ZERO job lines, so no invocation could be read and every guard would look unreferenced.');
   process.exit(1);
 }
-for (const { wf, segment } of logicalSegments) {
+for (const { wf, job, segment } of logicalSegments) {
   {
     const code = segment;
     // 🔴 NODE FLAGS SIT BETWEEN `node` AND THE PATH, AND IGNORING THEM MADE FOUR
@@ -241,7 +280,10 @@ for (const { wf, segment } of logicalSegments) {
     // started are two different invocations, and collapsing them would hide the
     // one this machine cannot reproduce.
     const key = flags.join(' ');
-    if (!list.some((x) => x.raw === raw && x.wf === wf && x.flags.join(' ') === key)) list.push({ wf, raw, flags });
+    if (!list.some((x) => x.raw === raw && x.wf === wf && x.flags.join(' ') === key)) list.push({ wf, job, raw, flags });
+    if (!jobsOf.has(name)) jobsOf.set(name, []);
+    const where = jobsOf.get(name);
+    if (!where.some((x) => x.wf === wf && x.job === job)) where.push({ wf, job });
   }
 }
 
@@ -339,6 +381,10 @@ const rows = [];
 let unreached = 0;
 let ran = 0;
 let red = 0;
+let budgetCut = 0;
+/** The budget's clock: from the first moment a guard could start, so the scan
+ *  above (the same for every run) is not charged to it. */
+const loopStarted = Date.now();
 
 for (const name of files) {
   const calls = invocations.get(name) ?? [];
@@ -432,8 +478,18 @@ for (const name of files) {
     // clean tree (2026-09-12), because `--scan-only` returns before the spawn and
     // so never exercises it: the fix looked proven by a path that could not see
     // the line it changed.
-    runnable = [{ wf: calls[0].wf, raw: '', flags: calls[0].flags ?? [] }];
+    runnable = [{ wf: calls[0].wf, job: calls[0].job, raw: '', flags: calls[0].flags ?? [] }];
     usedFallback = true;
+  }
+
+  // ── THE BUDGET (--budget-ms, 2026-09-24): only a guard that WOULD run is cut.
+  // `runnable.length > 0` is exactly "not NEEDS-CI" below, so a guard CI alone can
+  // run keeps that verdict and a cut guard is never mistaken for one. Checked
+  // before the archive a tree scanner needs, so a cut guard costs nothing.
+  if (runnable.length > 0 && BUDGET_MS !== null && Date.now() - loopStarted >= BUDGET_MS) {
+    budgetCut++;
+    rows.push({ name, verdict: 'BUDGET', note: `not started — the --budget-ms ${BUDGET_MS} ceiling was spent before its turn; NOT run, NOT judged` });
+    continue;
   }
 
   // ── A GUARD THAT SCANS THE WORKING TREE MUST BE GIVEN CI'S TREE, NOT THIS ONE ──
@@ -497,6 +553,7 @@ for (const name of files) {
   let last = null;
   let passed = null;
   const tried = [];
+  const guardStarted = Date.now();
   for (const call of runnable.slice().sort((a, b) => a.raw.length - b.raw.length)) {
     const scriptArgs = call.raw.length ? call.raw.split(/\s+/) : [];
     const argv = scanRoot ? [scanRoot, ...scriptArgs] : [...scriptArgs];
@@ -520,6 +577,7 @@ for (const name of files) {
     if (r.status === 0) { passed = last; break; }
   }
   if (scanRoot) { try { rmSync(scanRoot, { recursive: true, force: true }); } catch {} }
+  const ms = Date.now() - guardStarted;
 
   if (passed) {
     rows.push({
@@ -531,6 +589,7 @@ for (const name of files) {
       status: 0,
       tried,
       treeScanner: Boolean(scanRoot),
+      ms,
     });
   } else {
     red++;
@@ -544,14 +603,16 @@ for (const name of files) {
       tried,
       treeScanner: Boolean(scanRoot),
       fullOut: last.full.length > OUT_CAP ? last.full.slice(0, OUT_CAP) : last.full,
+      ms,
     });
   }
 }
+const loopMs = Date.now() - loopStarted;
 
 const width = Math.max(...rows.map((r) => r.name.length));
 for (const r of rows) {
   const mark = r.verdict === 'ok' ? 'ok ' : r.verdict.startsWith('RED') ? '✗  ' : '⬜ ';
-  const line = `${mark} ${r.name.padEnd(width)}  ${r.verdict.padEnd(9)} ${r.note}`;
+  const line = `${mark} ${r.name.padEnd(width)}  ${r.verdict.padEnd(9)} ${r.note}${TIMES && r.ms !== undefined ? `  (${r.ms} ms)` : ''}`;
   console.log(line);
   // A red always shows WHY, without a second run. A sweep whose reader has to
   // re-invoke each failure to learn anything is a sweep that gets skimmed.
@@ -572,6 +633,20 @@ console.log(
   '   This asserts COMPLETENESS, not greenness. A RED above is a guard reporting a finding — read it. ' +
     'Exit 1 here means a file was neither run nor explained, which is the failure a name-pattern sweep produced silently.',
 );
+if (BUDGET_MS !== null) {
+  console.log(`⬜ --budget-ms ${BUDGET_MS}: ${budgetCut} guard(s) that would have run were NOT started (BUDGET above); ` +
+    `the guards that did run took ${loopMs} ms.`);
+}
+/** Nearest-rank percentile over executed rows' wall times. */
+const timed = rows.filter((r) => typeof r.ms === 'number').map((r) => r.ms).sort((a, b) => a - b);
+const pct = (p) => (timed.length ? timed[Math.max(0, Math.ceil(p * timed.length) - 1)] : null);
+if (TIMES) {
+  const slowest = rows.filter((r) => typeof r.ms === 'number').sort((a, b) => b.ms - a.ms).slice(0, 5)
+    .map((r) => `${r.name} ${r.ms} ms`).join(', ');
+  console.log(timed.length
+    ? `⏱ --times: ${timed.length} guard(s) executed in ${loopMs} ms · median ${pct(0.5)} ms · p90 ${pct(0.9)} ms · slowest: ${slowest}`
+    : `⏱ --times: no guard executed (${loopMs} ms).`);
+}
 
 // ── the machine-readable copy (2026-09-19, see the header) ──────────────────
 // Written BEFORE the exit decision and never able to change it. A write that
@@ -587,12 +662,19 @@ if (JSON_OUT) {
     executed: ran,
     unreached,
     counts,
+    budgetMs: BUDGET_MS,
+    budgetCut,
+    elapsedMs: loopMs,
+    medianMs: pct(0.5),
+    p90Ms: pct(0.9),
     rows: rows.map((r) => ({
       name: r.name,
       verdict: r.verdict,
       red: r.verdict.startsWith('RED'),
       status: r.status ?? null,
       note: r.note,
+      jobs: jobsOf.get(r.name) ?? [],
+      ms: r.ms ?? null,
       treeScanner: r.treeScanner ?? false,
       tried: r.tried ?? [],
       ...(r.fullOut !== undefined ? { out: r.fullOut } : {}),

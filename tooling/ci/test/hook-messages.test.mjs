@@ -46,6 +46,9 @@ function sandbox() {
     'process.exit(code);',
     '',
   ].join('\n'));
+  // ⏱ 2026-09-26 (train W17, pf1): pre-push refuses when no preflight.mjs sits beside the
+  // runner; no ref arrives on stdin here, so this stub is found and never run.
+  writeFileSync(join(root, 'tooling', 'scripts', 'preflight.mjs'), "console.log('stub smoke'); process.exit(0);\n");
   return root;
 }
 

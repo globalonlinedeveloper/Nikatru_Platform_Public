@@ -1,6 +1,7 @@
 #!/bin/sh
 # ─────────────────────────────────────────────────────────────────────────────
-# pre-push — the FULL spec guards (~1 s).
+# pre-push — the FULL spec guards (~1 s), then a lock-free smoke of the ci-gate
+# guards on each pushed commit (budget 60 s; see the 2026-09-24 block below).
 #
 # Why a separate full tier exists at all: it is where a guard too slow for every
 # commit goes. `assert-enforcers-exist` lived here at 10.9 s, 94% of the total —
@@ -13,6 +14,18 @@
 # spec-guards.mjs is picked up by this hook with no edit.
 #
 # See pre-commit for why no status is ever read across a pipeline.
+#
+# 🔴 2026-09-24 — AND THEN A SMOKE OF THE ci-gate GUARDS, ON EACH PUSHED COMMIT
+# (O-PRE-PUSH-RUNS-NO-CI-GATE-LEG). The spec guards read the private corpus, and
+# no CI job can; of the guards ci-gate needs, this hook ran only the few that
+# spec-guards also lists, so a guard the push turned red was usually first seen in
+# CI, ~6 minutes later. After the spec guards pass,
+# this hook runs `preflight.mjs --smoke --sha <sha>` once for every distinct
+# commit the push sends (git names them on stdin; a deletion sends none). It
+# judges a checkout of that commit, not the working tree, and takes no machine
+# lock. Its budget is NIKATRU_SMOKE_BUDGET_S, default 60 s. It ends with the
+# verdict line and a NOT CI-GATE line saying what it did not cover. A red that
+# the commit caused refuses the push; exit 2 (COVERAGE LOST) refuses it too.
 # ─────────────────────────────────────────────────────────────────────────────
 set -u
 
@@ -33,6 +46,11 @@ if [ -z "${NIKATRU_RUNNER_ADVANCED:-}" ] && [ -f "$ADVANCER" ] && command -v nod
     exit "$adv"
   fi
 fi
+
+# The pushed refs arrive on stdin, one `<local ref> <local sha> <remote ref> <remote sha>`
+# per line. Read them HERE: after the self-advance block, whose `exec` re-run must
+# still find them on stdin, and before the spec guards or any other child runs.
+PUSHED=$(cat)
 
 # 🔴 2026-08-18 — same repair as pre-commit, for the same measured reason: after the
 # corpus became a sibling repo, every candidate below was written from the pre-move
@@ -83,5 +101,42 @@ if [ "$code" -ne 0 ]; then
   echo "  A red hook is fixed, never skipped: never push with --no-verify." >&2
   exit "$code"
 fi
+
+# ── the ci-gate smoke (2026-09-24, see the header) ───────────────────────────
+PREFLIGHT="$(dirname "$RUNNER")/preflight.mjs"
+if [ ! -f "$PREFLIGHT" ]; then
+  echo "pre-push: preflight.mjs not found beside $RUNNER, so the ci-gate smoke did not run. Refusing." >&2
+  exit 1
+fi
+
+SHAS=''
+for sha in $(printf '%s\n' "$PUSHED" | cut -d' ' -f2); do
+  case "$sha" in
+    *[!0]*) ;;       # a real commit
+    *) continue ;;   # all zeros: a deletion, nothing to smoke
+  esac
+  case " $SHAS " in
+    *" $sha "*) ;;   # two refs, one commit: smoke it once
+    *) SHAS="$SHAS $sha" ;;
+  esac
+done
+
+if [ -z "$SHAS" ]; then
+  echo "pre-push: no commit to smoke (the push only deletes, or git named no ref on stdin), so no ci-gate smoke."
+  exit 0
+fi
+
+for sha in $SHAS; do
+  echo "pre-push: smoking the ci-gate guards on $sha (no machine lock; budget ${NIKATRU_SMOKE_BUDGET_S:-60} s)…"
+  node "$PREFLIGHT" --smoke --sha "$sha"
+  code=$?
+  if [ "$code" -ne 0 ]; then
+    echo "" >&2
+    echo "pre-push: the ci-gate smoke of $sha is not clean (exit $code). Push refused." >&2
+    echo "  Read the first REGRESSION or COVERAGE LOST line above, fix what it names, commit the fix and push again." >&2
+    echo "  A red hook is fixed, never skipped: never push with --no-verify." >&2
+    exit "$code"
+  fi
+done
 
 exit 0

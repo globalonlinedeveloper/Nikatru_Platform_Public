@@ -45,6 +45,9 @@ const freshRepo = () => {
   put(root, 'tracked.txt');
   mkdirSync(join(root, 'tooling', 'scripts'), { recursive: true });
   copyFileSync(PREFLIGHT, join(root, 'tooling', 'scripts', 'preflight.mjs'));
+  // preflight.mjs imports the one workflow parse (ci-gate's needs, 2026-09-24).
+  mkdirSync(join(root, 'tooling', 'ci'), { recursive: true });
+  for (const f of ['workflow-scan.mjs', 'tree-walk.mjs']) copyFileSync(join(dirname(PREFLIGHT), '..', 'ci', f), join(root, 'tooling', 'ci', f));
   git(root, 'add', '-A');
   git(root, 'commit', '-q', '-m', 'base');
   return root;
@@ -165,7 +168,8 @@ describe('preflight CLI — the untracked leg runs FIRST and STOPS the run', () 
     const green = cli('--untracked-only');
     assert.equal(green.status, 0, green.out);
     git(root, 'reset', '-q', '--', 'tooling/ci/test/zz-probe.test.mjs');
-    rmSync(join(root, 'tooling', 'ci'), { recursive: true, force: true });
+    // Only the probe's own directory: tooling/ci/ holds the workflow parse preflight imports.
+    rmSync(join(root, 'tooling', 'ci', 'test'), { recursive: true, force: true });
   });
 
   test('--sweep-only runs the untracked leg too, and never reaches the sweep while it is red', () => {

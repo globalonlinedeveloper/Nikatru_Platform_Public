@@ -57,6 +57,8 @@ const write = (abs, text) => { mkdirSync(dirname(abs), { recursive: true }); wri
 
 /** The stub runner: prints the label of the commit it came from, and passes. */
 const stubRunner = (label) => `console.log('stub runner ${label}');\nprocess.exit(0);\n`;
+/** The stub smoke: `--smoke --sha <sha>` prints `stub smoke <sha>` and passes (PF1-3). */
+const STUB_PREFLIGHT = "const i = process.argv.indexOf('--sha');\nconsole.log('stub smoke ' + process.argv[i + 1]);\nprocess.exit(0);\n";
 
 /** Author one commit in SEED, push it as origin/main, and fetch it into PUB — the
  *  only way origin/main moves in real life. `hookText` replaces pre-commit when given. */
@@ -71,11 +73,11 @@ function advanceOrigin(label, hookText = null) {
 }
 
 /** Run the RUNNER's real pre-commit from the corpus, as git would. */
-function runHook(extraEnv = {}) {
+function runHook(extraEnv = {}, { hook = 'pre-commit', input } = {}) {
   const env = { ...process.env, ...extraEnv };
   if (!('NIKATRU_RUNNER_ADVANCED' in extraEnv)) delete env.NIKATRU_RUNNER_ADVANCED;
   for (const k of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_PREFIX', 'GIT_COMMON_DIR', 'GIT_OBJECT_DIRECTORY']) delete env[k];
-  const r = spawnSync('sh', [join(RUNNER, '.githooks', 'pre-commit')], { cwd: CORPUS, env, encoding: 'utf8', timeout: 60_000 });
+  const r = spawnSync('sh', [join(RUNNER, '.githooks', hook)], { cwd: CORPUS, env, encoding: 'utf8', timeout: 60_000, input });
   return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
 
@@ -103,6 +105,8 @@ before(() => {
     copyFileSync(join(SCRIPTS, f), join(SEED, 'tooling', 'scripts', f));
   }
   write(join(SEED, 'tooling', 'scripts', 'spec-guards.mjs'), stubRunner('v1'));
+  // pre-push finds the smoke as `$(dirname "$RUNNER")/preflight.mjs` (PF1-3).
+  write(join(SEED, 'tooling', 'scripts', 'preflight.mjs'), STUB_PREFLIGHT);
   git(SEED, 'add', '-A');
   git(SEED, 'commit', '-q', '-m', 'v1');
   git(SEED, 'remote', 'add', 'origin', ORIGIN);
@@ -296,4 +300,30 @@ test('runnerDrift: the pinned runner behind origin/main is a finding (1)', () =>
   } finally {
     assert.equal(advanceRunner(RUNNER).code, 3);
   }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-26 (train W17, PF1-3). pre-push reads the pushed refs from stdin ONCE, and
+// the self-advance block re-runs the hook with `exec`. Measured 2026-09-25: a read
+// placed BEFORE the block left the re-run 0 bytes, so a push that advanced a stale
+// runner printed "no commit to smoke" and exited 0 — a false green on exactly the push
+// that moved the runner. The read sits after the block; these two cases pin it.
+// ─────────────────────────────────────────────────────────────────────────────
+const PUSHED_SHA = 'c0ffee0000000000000000000000000000000001';
+const PUSH_STDIN = `refs/heads/t ${PUSHED_SHA} refs/heads/t 0000000000000000000000000000000000000000\n`;
+
+test('pre-push: a stale runner advances, and the re-run still reads the pushed refs and smokes the commit once', () => {
+  const want = advanceOrigin('v8');
+  const r = runHook({}, { hook: 'pre-push', input: PUSH_STDIN });
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /hook runner: advanced/, `the block did not advance the runner:\n${r.out}`);
+  assert.equal((r.out.match(new RegExp(`stub smoke ${PUSHED_SHA}`, 'g')) ?? []).length, 1, `the re-run must smoke the pushed commit exactly once — zero means the refs were read before the exec:\n${r.out}`);
+  assert.equal(git(RUNNER, 'rev-parse', 'HEAD'), want);
+});
+
+test('pre-push: a current runner reads the pushed refs and smokes the commit once', () => {
+  const r = runHook({}, { hook: 'pre-push', input: PUSH_STDIN });
+  assert.equal(r.code, 0, r.out);
+  assert.doesNotMatch(r.out, /hook runner: advanced/, r.out);
+  assert.equal((r.out.match(new RegExp(`stub smoke ${PUSHED_SHA}`, 'g')) ?? []).length, 1, `a current runner must smoke the pushed commit exactly once:\n${r.out}`);
 });

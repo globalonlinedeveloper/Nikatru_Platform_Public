@@ -745,7 +745,9 @@ for (const r of results) {
 
 const total = Date.now() - t0;
 console.log(`  ${results.length} guard(s) in ${total} ms` +
-  (FULL ? '' : '   (fast set — pre-push runs the full set)'));
+  (FULL
+    ? '   (full set — pre-push smokes the ci-gate guards next, on each pushed commit)'
+    : '   (fast set — pre-push runs the full set, then a smoke of the ci-gate guards on each pushed commit)'));
 
 if (broke.length) {
   console.error(`\n  ${broke.length} guard(s) could not run. Treating as a refusal, not a pass.`);

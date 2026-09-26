@@ -94,7 +94,29 @@
 // naming the holder. With CI set, both are skipped: a hosted runner has neither.
 // Anything else heavy runs under the same lock through tooling/scripts/heavy.mjs.
 //
+// 🔴 2026-09-24 — THE PUSH RAN NOTHING OF ci-gate (O-PRE-PUSH-RUNS-NO-CI-GATE-LEG).
+// The pre-push hook ran the spec guards, which read the private corpus, and no
+// guard that ci-gate needs. A tree-only red on the pushed commit was therefore
+// first seen in CI, a push and ~6 minutes later. This full run is too slow, and
+// too heavy, for every push. So `--smoke` is the hook's leg:
+//   · it judges the PUSHED COMMIT, not this working tree: a detached checkout of
+//     `--sha <rev>` (default HEAD), placed beside the other worktrees for the same
+//     reason as the base re-run below, and removed after;
+//   · it takes NO machine lock. It is one budgeted sweep, and a push must not
+//     queue 90 minutes behind another lane's full suite;
+//   · it runs guard-sweep with `--budget-ms` (NIKATRU_SMOKE_BUDGET_S, default
+//     60 s) and judges its reds against the merge-base exactly as leg 2 does. Only
+//     RUN rows run; NEEDS-CI and MUTATES never run anywhere in this file;
+//   · it ends with a NOT CI-GATE line. That line is generated from ci.yml's own
+//     `ci-gate` job, whose `needs` come from workflow-scan.mjs's parse. It names
+//     how many guards ran, what the budget cut, and every need no guard of this
+//     run reached.
+// A full run ends with the same generated line where it printed "CI should
+// agree": nothing here runs the builds, uploads or runner-only steps of those
+// needs, and the sentence said otherwise.
+//
 // Usage:  node tooling/scripts/preflight.mjs [--fast] [--sweep-only] [--untracked-only] [--base <ref>] [--lock-wait <min>]
+//         node tooling/scripts/preflight.mjs --smoke [--sha <rev>] [--base <ref>]
 //         --fast skips the stamped-app leg (mason + flutter analyze), which is
 //         the slow one, for iterating on a guard-only change.
 //         --sweep-only runs the untracked-files leg, then the guard-sweep leg
@@ -105,20 +127,28 @@
 //         instead of origin/main. No fetch happens: the local ref is used as is.
 //         --lock-wait <min> is the ceiling on waiting for the heavy-run lock and
 //         the backup task together (default 90).
+//         --smoke runs ONLY the budgeted, lock-free guard sweep on a checkout of
+//         --sha <rev> (default HEAD), then the NOT CI-GATE line. .githooks/pre-push
+//         runs it once per pushed commit.
 // Exit:   0 = safe to push · 1 = CI would have failed, here is what
 //         2 = a usage error, or COVERAGE LOST: the heavy-run lock or the backup
-//             did not free up within --lock-wait, and no heavy leg ran
+//             did not free up within --lock-wait, and no heavy leg ran; or ci.yml's
+//             ci-gate needs could not be read, so no NOT CI-GATE line can be
+//             generated; or (--smoke) the commit could not be checked out
 // ─────────────────────────────────────────────────────────────────────────────
 import { spawnSync } from 'node:child_process';
 import { existsSync, rmSync, readFileSync, mkdtempSync, openSync, closeSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+// The ONE workflow parse (tooling/workflow-readers.json): ci-gate's needs, for the NOT CI-GATE line.
+import { parseWorkflow } from '../ci/workflow-scan.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const FAST = process.argv.includes('--fast');
 const SWEEP_ONLY = process.argv.includes('--sweep-only');
 const UNTRACKED_ONLY = process.argv.includes('--untracked-only');
+const SMOKE = process.argv.includes('--smoke');
 const SWEEP_LEG = 'guard sweep (every guard run or explained; reds judged against main)';
 const UNTRACKED_LEG = 'no untracked files (the index CI commits is the index the guards read)';
 /** Imported by tooling/ci/test/preflight-sweep-regression.test.mjs for its
@@ -148,6 +178,17 @@ const LOCK_WAIT_MIN = (() => {
   const v = Number(process.argv[i + 1]);
   if (!Number.isFinite(v) || v < 0) {
     console.error(`✗ --lock-wait needs a number of minutes after it (got ${process.argv[i + 1] === undefined ? 'nothing' : `\`${process.argv[i + 1]}\``}).`);
+    process.exit(2);
+  }
+  return v;
+})();
+/** `--sha <rev>`: the commit --smoke judges. Read only when run directly. */
+const SMOKE_REV = (() => {
+  const i = process.argv.indexOf('--sha');
+  if (i === -1 || !IS_MAIN) return 'HEAD';
+  const v = process.argv[i + 1];
+  if (v === undefined || v.startsWith('-')) {
+    console.error('✗ --sha needs a commit after it (got ' + (v === undefined ? 'nothing' : `\`${v}\``) + ').');
     process.exit(2);
   }
   return v;
@@ -280,6 +321,37 @@ export function newOutputLines(branchOut, baseOut, branchRoot, baseRoot) {
   return norm(branchOut, branchRoot).filter((l) => !before.has(l));
 }
 
+/** A clean, detached checkout of `sha` at `<main checkout>/.worktrees/<tag>-<sha8>-<pid>`.
+ *  Where it goes is part of the measurement — see rerunRedsOnBase below, the
+ *  first user; --smoke is the second. Returns { dir } or { dir, error } (dir is
+ *  null when nothing was created). Never throws. */
+export function detachedCheckout({ root = ROOT, sha, tag }) {
+  const cd = exec('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: root });
+  const commonDir = cd.status === 0 ? cd.out.trim().split(/\r?\n/)[0] : '';
+  if (!commonDir) {
+    return { dir: null, error: `\`git rev-parse --git-common-dir\` failed (${firstLine(cd.out)})` };
+  }
+  const dir = join(dirname(resolve(commonDir)), '.worktrees', `${tag}-${sha.slice(0, 8)}-${process.pid}`);
+  if (existsSync(dir)) {
+    return { dir, error: `${dir} already exists — a leftover ${tag === 'pfb' ? 'base' : 'smoke'} checkout; remove it (git worktree remove --force) and re-run`, leftover: true };
+  }
+  const add = exec('git', ['worktree', 'add', '--detach', dir, sha], { cwd: root });
+  if (add.status !== 0) {
+    return { dir: null, error: `\`git worktree add --detach\` of ${sha.slice(0, 8)} failed (${firstLine(add.out)})` };
+  }
+  return { dir };
+}
+
+/** Remove a checkout made by detachedCheckout. Returns null, or the sentence
+ *  that tells a human how to remove what could not be. */
+export function removeCheckout({ root = ROOT, dir }) {
+  const rm = exec('git', ['worktree', 'remove', '--force', dir], { cwd: root });
+  if (rm.status !== 0 || existsSync(dir)) {
+    return `could not remove the checkout ${dir} (${firstLine(rm.out)}) — remove it by hand: git worktree remove --force "${dir}"`;
+  }
+  return null;
+}
+
 /** Re-run each RED row of a guard-sweep --json document against a clean,
  *  detached checkout of merge-base(HEAD, baseRef), then remove the checkout.
  *
@@ -308,22 +380,9 @@ export function rerunRedsOnBase(reds, { root = ROOT, baseRef = 'origin/main', ti
     const error = `\`git merge-base HEAD ${baseRef}\` gave no commit (${firstLine(mb.out) || `exit ${mb.status}`})`;
     return done({ sha: null, dir: null, error, cleanup: null, results: unevaluable(error) });
   }
-  const cd = exec('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: root });
-  const commonDir = cd.status === 0 ? cd.out.trim().split(/\r?\n/)[0] : '';
-  if (!commonDir) {
-    const error = `\`git rev-parse --git-common-dir\` failed (${firstLine(cd.out)})`;
-    return done({ sha, dir: null, error, cleanup: null, results: unevaluable(error) });
-  }
-  const dir = join(dirname(resolve(commonDir)), '.worktrees', `pfb-${sha.slice(0, 8)}-${process.pid}`);
-  if (existsSync(dir)) {
-    const error = `${dir} already exists — a leftover base checkout; remove it (git worktree remove --force) and re-run`;
-    return done({ sha, dir, error, cleanup: null, results: unevaluable(error) });
-  }
-  const add = exec('git', ['worktree', 'add', '--detach', dir, sha], { cwd: root });
-  if (add.status !== 0) {
-    const error = `\`git worktree add --detach\` of ${sha.slice(0, 8)} failed (${firstLine(add.out)})`;
-    return done({ sha, dir: null, error, cleanup: null, results: unevaluable(error) });
-  }
+  const co = detachedCheckout({ root, sha, tag: 'pfb' });
+  if (co.error) return done({ sha, dir: co.dir, error: co.error, cleanup: null, results: unevaluable(co.error) });
+  const { dir } = co;
 
   const results = [];
   let cleanup = null;
@@ -362,16 +421,15 @@ export function rerunRedsOnBase(reds, { root = ROOT, baseRef = 'origin/main', ti
       else results.push({ row, base: { evaluable: false, reason: `every invocation names a subject absent at the base (${[...new Set(absent)].join(', ')})` } });
     }
   } finally {
-    const rm = exec('git', ['worktree', 'remove', '--force', dir], { cwd: root });
-    if (rm.status !== 0 || existsSync(dir)) {
-      cleanup = `could not remove the base checkout ${dir} (${firstLine(rm.out)}) — remove it by hand: git worktree remove --force "${dir}"`;
-    }
+    cleanup = removeCheckout({ root, dir });
   }
   return done({ sha, dir, error: null, cleanup, results });
 }
 
 /** Leg 2's body: sweep with --json, then judge the reds against the base.
- *  `sweep` is injectable for tests; by default it runs the real sweep. */
+ *  `sweep` is injectable for tests; by default it runs the real sweep. The
+ *  parsed sweep document comes back as `doc` (null when there was none), for
+ *  the NOT CI-GATE line. */
 export function sweepLeg({ root = ROOT, baseRef = 'origin/main', sweep } = {}) {
   const tmp = mkdtempSync(join(tmpdir(), 'nikatru-preflight-'));
   const jsonPath = join(tmp, 'sweep.json');
@@ -388,10 +446,10 @@ export function sweepLeg({ root = ROOT, baseRef = 'origin/main', sweep } = {}) {
       why = `the sweep wrote no readable --json output (${e?.code ?? e?.message ?? e})`;
     }
     if (why) {
-      return { code: 1, out: `${s.out}\n🔴 COVERAGE LOST — ${why}. Without per-guard verdicts a RED cannot be told from an environmental one, so this leg refuses rather than reading the exit code alone (the 2026-09-19 defect).` };
+      return { code: 1, doc: null, out: `${s.out}\n🔴 COVERAGE LOST — ${why}. Without per-guard verdicts a RED cannot be told from an environmental one, so this leg refuses rather than reading the exit code alone (the 2026-09-19 defect).` };
     }
     const reds = doc.rows.filter((r) => r.red);
-    if (reds.length === 0) return { code: s.status === 0 ? 0 : 1, out: s.out };
+    if (reds.length === 0) return { code: s.status === 0 ? 0 : 1, out: s.out, doc };
 
     const cmp = rerunRedsOnBase(reds, { root, baseRef });
     const judged = cmp.results.map(({ row, base }) => ({ row, base, ...classifyRed({ status: row.status }, base) }));
@@ -420,7 +478,7 @@ export function sweepLeg({ root = ROOT, baseRef = 'origin/main', sweep } = {}) {
     lines.push(`   ${regressions} regression(s) · ${judged.length - regressions - lost} environmental · ${lost} coverage lost. ` +
       'This leg fails on a regression or on a red the base could not explain; an environmental red is main\'s too.');
     const code = s.status !== 0 || regressions > 0 || lost > 0 ? 1 : 0;
-    return { code, out: `${s.out}${lines.join('\n')}\n` };
+    return { code, out: `${s.out}${lines.join('\n')}\n`, doc };
   } finally {
     try { rmSync(tmp, { recursive: true, force: true }); } catch {}
   }
@@ -468,6 +526,132 @@ export function untrackedLeg({ root = ROOT } = {}) {
   }
   if (repos.length && !plain.length) lines.push('  Fix: gitignore or move the embedded repository, then re-run.');
   return { code: 1, out: lines.join('\n') };
+}
+
+// ── what this run is NOT: ci-gate's needs, read from ci.yml (2026-09-24) ─────
+
+export const CI_WORKFLOW = '.github/workflows/ci.yml';
+
+/** ci-gate's `needs` in `root`'s ci.yml, through workflow-scan.mjs's parse, which
+ *  reads all three YAML forms. Returns { needs } or { error }; zero needs is an
+ *  error, never an empty pass. */
+export function ciGateNeeds(root = ROOT) {
+  const wf = parseWorkflow(root, CI_WORKFLOW);
+  if (wf === null) return { error: `${CI_WORKFLOW} does not exist under ${root}` };
+  const gate = wf.jobs.get('ci-gate');
+  if (!gate) return { error: `${CI_WORKFLOW} has no \`ci-gate\` job` };
+  if (gate.needs.length === 0) return { error: `\`ci-gate\` in ${CI_WORKFLOW} parses to ZERO needs` };
+  return { needs: [...gate.needs] };
+}
+
+/** THE NOT CI-GATE LINE. `needs` is ciGateNeeds().needs and `doc` a guard-sweep
+ *  --json document (null when the sweep gave none). A need is REACHED when at
+ *  least one guard ci.yml invokes in that job ran here (ok or red); a guard cut
+ *  by the budget, NEEDS-CI or otherwise not executed is counted as not run.
+ *  `besides` names the other legs this run executed (none for --smoke). */
+export function notCiGateLine({ needs, doc, besides = [] }) {
+  const wf = CI_WORKFLOW.split('/').pop();
+  const rows = Array.isArray(doc?.rows) ? doc.rows : [];
+  const ran = (row) => row.verdict === 'ok' || row.red === true;
+  const invoked = new Map();
+  const reached = [];
+  const unreached = [];
+  for (const need of needs) {
+    const mine = rows.filter((row) => (row.jobs ?? []).some((j) => j.wf === wf && j.job === need));
+    for (const row of mine) invoked.set(row.name, row);
+    (mine.some(ran) ? reached : unreached).push(need);
+  }
+  const all = [...invoked.values()];
+  const notRun = {};
+  for (const row of all.filter((r) => !ran(r))) notRun[row.verdict] = (notRun[row.verdict] ?? 0) + 1;
+  const notRunText = Object.entries(notRun).map(([k, v]) => `${v} ${k}`).join(' · ') || 'none';
+  const tail = besides.length
+    ? `Besides guards this run ran ${besides.length} other leg(s); every build, upload and runner-only step of those jobs is CI's alone.`
+    : 'Only tooling/ci guards ran here; every build, test suite, upload and runner-only step of those jobs is CI\'s alone.';
+  return `⬜ NOT CI-GATE — ci-gate needs ${needs.length} job(s) in ${CI_WORKFLOW}. This run ran ${all.filter(ran).length} of the ` +
+    `${all.length} tooling/ci guard(s) they invoke (not run: ${notRunText}) and reached ${reached.length} of the ${needs.length}. ` +
+    `No guard ran for: ${unreached.join(', ') || '(none)'}. ${tail}`;
+}
+
+// ── --smoke: the pre-push leg (2026-09-24, see the header) ──────────────────
+
+export const SMOKE_BUDGET_ENV = 'NIKATRU_SMOKE_BUDGET_S';
+export const SMOKE_BUDGET_DEFAULT_S = 60;
+
+/** The smoke's sweep budget in ms: $NIKATRU_SMOKE_BUDGET_S seconds, default 60.
+ *  Returns { ms } or { error } — a value that is set and unusable refuses. */
+export function smokeBudgetMs(env = process.env) {
+  const v = env[SMOKE_BUDGET_ENV];
+  if (v === undefined || v === '') return { ms: SMOKE_BUDGET_DEFAULT_S * 1000 };
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return { error: `${SMOKE_BUDGET_ENV}=\`${v}\` is not a positive number of seconds` };
+  return { ms: Math.round(n * 1000) };
+}
+
+/** The sweep's output without its ok / explained rows: the reds, their ↳ line,
+ *  an UNREACHED row (the one verdict that fails the sweep itself) and the summary
+ *  lines. A push prints this, and 200 green lines bury a red. */
+export const briefSweepOut = (out) => String(out ?? '').split(/\r?\n/)
+  .filter((l) => /^(✗|\s+↳|⬜ guard sweep|⬜ --budget-ms|⏱ --times)/.test(l) || /^⬜\s+\S+\s+UNREACHED\b/.test(l)).join('\n') + '\n';
+
+/** The whole --smoke run: check out `rev`, read ci-gate's needs FROM THAT COMMIT,
+ *  run its guard-sweep under the budget, judge the reds at the merge-base with
+ *  `baseRef`, remove the checkout, and end with the verdict and NOT CI-GATE
+ *  lines. Takes no lock. `sweep(jsonPath, dir)` is injectable for tests.
+ *  Returns { code, out }: 0 green, 1 a red this commit caused (or one the base
+ *  could not explain), 2 COVERAGE LOST. */
+export function smokeLeg({ root = ROOT, rev = 'HEAD', baseRef = 'origin/main', budgetMs = SMOKE_BUDGET_DEFAULT_S * 1000, sweep } = {}) {
+  const rp = exec('git', ['rev-parse', '--verify', '--quiet', `${rev}^{commit}`], { cwd: root });
+  const sha = rp.status === 0 ? rp.out.trim().split(/\r?\n/)[0] : '';
+  if (!/^[0-9a-f]{40}$/.test(sha)) {
+    return { code: 2, out: `🔴 COVERAGE LOST — \`${rev}\` names no commit here, so there is nothing to smoke.\n` };
+  }
+  const short = sha.slice(0, 8);
+  const co = detachedCheckout({ root, sha, tag: 'pfs' });
+  if (co.error) {
+    return { code: 2, out: `🔴 COVERAGE LOST — ${co.error}. The smoke judges a checkout of the commit, never this working tree, so nothing was judged.\n` };
+  }
+  let gate;
+  let leg = null;
+  let cleanup;
+  try {
+    gate = ciGateNeeds(co.dir);
+    if (!gate.error) {
+      const run = sweep
+        ? (jsonPath) => sweep(jsonPath, co.dir)
+        : (jsonPath) => exec(process.execPath, [join(co.dir, 'tooling', 'scripts', 'guard-sweep.mjs'), '--json', jsonPath, '--budget-ms', String(budgetMs), '--times'], { cwd: co.dir });
+      leg = sweepLeg({ root: co.dir, baseRef, sweep: (jsonPath) => { const s = run(jsonPath); return { ...s, out: briefSweepOut(s.out) }; } });
+    }
+  } finally {
+    cleanup = removeCheckout({ root, dir: co.dir });
+  }
+  const after = cleanup ? `⚠️ ${cleanup}\n` : '';
+  if (gate.error) {
+    return { code: 2, out: `🔴 COVERAGE LOST — ${gate.error} at ${short}, so this smoke cannot say what it did not cover. No guard was run.\n${after}` };
+  }
+  const doc = leg.doc;
+  const secs = (ms) => `${Math.round(ms / 100) / 10} s`;
+  const ran = doc ? doc.rows.filter((r) => r.verdict === 'ok' || r.red).length : 0;
+  const cut = doc?.budgetCut ?? 0;
+  const reds = doc ? doc.rows.filter((r) => r.red).length : 0;
+  const budget = doc && doc.budgetMs === undefined
+    ? `this commit's guard-sweep has no --budget-ms, so it ran unbudgeted`
+    : `budget ${secs(budgetMs)}, ${cut} cut`;
+  const verdict = `preflight --smoke ${short}: ${leg.code === 0 ? 'ok' : 'FAIL'} — ${ran} of ${ran + cut} runnable guard(s) ran` +
+    `${doc ? ` in ${secs(doc.elapsedMs ?? 0)}` : ''} (${budget}), ${reds} red, judged against ${baseRef} above. ` +
+    'No machine lock; a checkout of the commit, not this working tree.';
+  return { code: leg.code, out: `${leg.out}${after}${verdict}\n${notCiGateLine({ needs: gate.needs, doc })}\n` };
+}
+
+if (IS_MAIN && SMOKE) {
+  const budget = smokeBudgetMs();
+  if (budget.error) {
+    console.error(`✗ ${budget.error}.`);
+    process.exit(2);
+  }
+  const r = smokeLeg({ rev: SMOKE_REV, baseRef: BASE_REF, budgetMs: budget.ms });
+  process.stdout.write(r.out);
+  process.exit(r.code);
 }
 
 const results = [];
@@ -543,6 +727,10 @@ if (IS_MAIN && results.length && results[results.length - 1].code !== 0) {
  * stops the lock depending on an exit that may never come.
  */
 let releaseWorkLock = () => {};
+/** The sweep's --json document, kept for the NOT CI-GATE line in the verdict.
+ *  Declared HERE, outside the `try` that holds the legs, because the verdict
+ *  that reads it is outside that block too. */
+let sweepDoc = null;
 
 if (IS_MAIN && !UNTRACKED_ONLY) {
   const { machineFree, releaseOnExit, releaseHeavyLock } = await import('./heavy-lock.mjs');
@@ -586,7 +774,11 @@ step(
 step(
   SWEEP_LEG,
   'assert-app-dod and assert-sworn-store-files both failed CI while never being run locally. The sweep is what reaches them without a hand-kept list; and a guard the BRANCH turned red (PR #818, assert-walks-bounded, 2026-09-19) fails here, while one that is red on main too is only printed.',
-  () => sweepLeg({ baseRef: BASE_REF }),
+  () => {
+    const r = sweepLeg({ baseRef: BASE_REF });
+    sweepDoc = r.doc ?? null;
+    return r;
+  },
 );
 
 // ── 3 · format drift, PRINTED, NEVER FAILED ─────────────────────────────────
@@ -825,11 +1017,22 @@ if (IS_MAIN) {
   console.log('\n' + '─'.repeat(78));
   if (failed.length === 0) {
     // --sweep-only proved one leg; it must not borrow the whole run's sentence.
-    console.log(UNTRACKED_ONLY
-      ? 'preflight --untracked-only: ok — no untracked file. The other legs did not run; this is not "CI should agree".'
-      : SWEEP_ONLY
-      ? 'preflight --sweep-only: ok — the untracked-files and guard-sweep legs are green. The other legs did not run; this is not "CI should agree".'
-      : `preflight: ok — ${results.length} leg(s) green${FAST ? ' (--fast: stamped-app leg skipped)' : ''}. CI should agree.`);
+    if (UNTRACKED_ONLY || SWEEP_ONLY) {
+      console.log(UNTRACKED_ONLY
+        ? 'preflight --untracked-only: ok — no untracked file. The other legs did not run; this is not "CI should agree".'
+        : 'preflight --sweep-only: ok — the untracked-files and guard-sweep legs are green. The other legs did not run; this is not "CI should agree".');
+      process.exit(0);
+    }
+    // 2026-09-24: "CI should agree." was a promise about ci-gate that no leg here
+    // keeps — see the header. The line that replaces it is generated from ci.yml.
+    const gate = ciGateNeeds(ROOT);
+    console.log(`preflight: ok — ${results.length} leg(s) green${FAST ? ' (--fast: stamped-app leg skipped)' : ''}.`);
+    if (gate.error) {
+      console.log(`🔴 COVERAGE LOST — ${gate.error}, so this run cannot say what of ci-gate it did not cover. Exit 2: the legs are green, and that is not "safe to push".`);
+      process.exit(2);
+    }
+    const besides = results.map((r) => r.name).filter((n) => n !== SWEEP_LEG && n !== UNTRACKED_LEG);
+    console.log(notCiGateLine({ needs: gate.needs, doc: sweepDoc, besides }));
     process.exit(0);
   }
   for (const f of failed) {

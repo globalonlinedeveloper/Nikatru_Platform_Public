@@ -658,6 +658,9 @@ describe('preflight takes the lock after the untracked leg, and only then', () =
     mkdirSync(join(root, 'tooling', 'scripts'), { recursive: true });
     copyFileSync(PREFLIGHT, join(root, 'tooling', 'scripts', 'preflight.mjs'));
     copyFileSync(LOCK_MODULE, join(root, 'tooling', 'scripts', 'heavy-lock.mjs'));
+    // preflight.mjs imports the one workflow parse (ci-gate's needs, 2026-09-24).
+    mkdirSync(join(root, 'tooling', 'ci'), { recursive: true });
+    for (const f of ['workflow-scan.mjs', 'tree-walk.mjs']) copyFileSync(join(SCRIPTS, '..', 'ci', f), join(root, 'tooling', 'ci', f));
     git('init', '-q', '-b', 'main');
     git('add', '-A');
     git('commit', '-q', '-m', 'base');
