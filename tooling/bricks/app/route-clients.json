@@ -1,0 +1,51 @@
+{
+  "_what": "Who calls each route the brick's backend Worker template mounts. tooling/scripts/provision-backend.mjs step [6] writes a stamped Worker's `appWorkers` row in tooling/platform-register.json: its `routes` are DERIVED from the stamped entrypoint by tooling/ci/worker-routes.mjs, and each route's `auth`, `purpose`, `client` and (for a public route) `noLimiterReason` are copied from the entry here with the same method and path, `<<app_id>>` replaced by the app id.",
+  "_why": [
+    "Added 2026-09-26 (O-SERVICE-KIT-UNBUILT, E-a1). assert-platform-register.mjs holds every appWorkers row to two",
+    "rules: its routes EQUAL what the entrypoint mounts, both ways (limb 1), and every route names a real client, a",
+    "file outside the Worker whose comment-stripped text carries an expression with the route's own path (limb 2).",
+    "Step [6] meets limb 1 by construction and takes limb 2 from here. A mounted route with no entry here stops step",
+    "[6] with exit 1 naming it; the script never writes an `unconsumedReason`, because a waiver a script writes is",
+    "a waiver nobody decided. So a template route that gains a caller, or a new template route, is declared here",
+    "by hand, reviewed with the template change.",
+    "",
+    "assert-platform-register.mjs limb 6 holds this map to the template itself: the entries EQUAL the template",
+    "entrypoint's mounts, both ways, and each entry passes limbs 1, 2 and 4 as if it were a register row. A client",
+    "`file` holding `<<app_id>>` names a file the brick stamps; the guard resolves it inside",
+    "tooling/bricks/app/__brick__/ with `{{app_id}}` in its place, as mason would render it.",
+    "",
+    "⚠️ What the two clients below are, measured 2026-09-26: the brick stamps NO code that calls its own Worker.",
+    "Its api group mounts no route yet, and the stamped app's account deletion calls the SHARED platform Worker",
+    "(apps/{{app_id}}/lib/state/providers.dart, platformRestClientProvider), never this one. Both routes are",
+    "called by shared machinery that already serves app #1, so each entry names that caller."
+  ],
+  "clientBasePath": "/v1",
+  "_clientBasePathWhy": "Written into the row as `clientBasePath`. The template mounts every route under /v1 (src/index.ts), the same base app #1's row declares; limb 2 then also accepts a client expression carrying the path below it.",
+  "routes": [
+    {
+      "id": "<<app_id>>-health",
+      "method": "GET",
+      "path": "/v1/health",
+      "auth": "public",
+      "purpose": "Deploy verification and dependency health for the stamped Worker. Answers `{ ok, status, app, version, time, checks }` after probing APP_DB (`SELECT 1 FROM records LIMIT 1`), PLATFORM_DB (`SELECT 1 FROM entitlements LIMIT 1`) and the Supabase JWKS, each through a per-isolate memoised reading (services/_shared/src/health.ts). Stamped from the brick's Worker template.",
+      "client": {
+        "file": "tooling/ci/worker-set.mjs",
+        "expression": "/\\/health$/.test(String(x?.path ?? ''))",
+        "note": "THE SMOKE URL IS BUILT HERE. worker-set.mjs --for-deploy selects this row's GET …/health route and prints `smokeUrl` as https://<hosts[0]><this path>; the deploy lane's post-deploy smoke calls that URL (E-a2 moves the deploy onto the Worker set). Until then a stamped Worker is not deployed at all, and lane-workers.yml's detect (`worker-set.mjs --for-deploy --emit`) refuses a row with no such route. A MACHINE consumer, like app #1's, whose smoke is a literal in deploy-workers.yml."
+      },
+      "noLimiterReason": "It DOES I/O: two D1 reads (APP_DB, PLATFORM_DB) and one JWKS subrequest. What bounds it is the per-isolate MEMO, not a limiter: each probe is a reading with a TTL (services/_shared/src/health.ts, READING_TTL_MS = 5 s for D1, JWKS_READING_TTL_MS for the JWKS fetch), so a flood buys at most one fan-out per TTL per isolate, and every other request costs the Worker invocation itself, which the account-wide request ceiling already bounds. The same reasoning as app #1's and the shared host's health rows. [4]B-13"
+    },
+    {
+      "id": "<<app_id>>-account-delete",
+      "method": "DELETE",
+      "path": "/v1/account",
+      "auth": "required",
+      "purpose": "G2 erasure for the app's own database: mounted under `erasureAuth` (ES256/JWKS only, no HS256 fallback), and it re-checks `tokenAssurance` itself, so moving the mount produces a logged 403 rather than a silent downgrade. The table set is DERIVED from the schema (a `user_id` column is the selector). Stamped from the brick's Worker template.",
+      "client": {
+        "file": "services/platform/src/routes/account.ts",
+        "expression": "`${origin}/v1/account`",
+        "note": "The relay. THE CALLER IS THE SHARED HOST, NOT THE APP: the stamped app calls platform's /v1/account, and platform empties platform_db, relays to each app's own DELETE /v1/account at the origin its APP_ERASURE_ENDPOINTS var names for that app, and deletes the identity LAST. A stamped Worker is reached once that var names it."
+      }
+    }
+  ]
+}

@@ -40,12 +40,14 @@ jobs:
         run: node tooling/ci/lane-detect.mjs --lane workers
       # why: the matrix comes from the directories under services/, never from this
       # file (tooling/ci/worker-set.mjs). It runs whatever detect said, so the set is
-      # read, and refused when empty, on every run.
+      # read, and refused when empty, on every run. --for-deploy holds each Worker to
+      # its tooling/platform-register.json row and its COMMITTED package-lock.json
+      # first, so a Worker with no row or no lockfile is red here before any npm ci.
       - id: workers
         name: The Worker set comes from services/, never from this file
         run: |
           set -euo pipefail
-          workers="$(node tooling/ci/worker-set.mjs --emit)"
+          workers="$(node tooling/ci/worker-set.mjs --for-deploy --emit)"
           echo "workers=${workers}" >> "$GITHUB_OUTPUT"
 
   worker:
