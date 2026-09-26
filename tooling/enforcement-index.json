@@ -2649,11 +2649,13 @@
     "claims": [
       "C-6"
     ],
-    "invokedBy": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guard-meta"
+    ],
     "kind": "guard",
     "ref": "tooling/ci/channel-arming.mjs",
     "references": [],
-    "state": "LIBRARY"
+    "state": "WIRED"
   },
   {
     "claims": [],
@@ -2768,6 +2770,27 @@
     "ref": "tooling/ci/flutter-stock-assets.mjs",
     "references": [],
     "state": "LIBRARY"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guard-meta"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/gen-ci-map.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/extensions-ci.yml#discover",
+      ".github/workflows/extensions-ci.yml#templates"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/gen-issue-forms.mjs",
+    "references": [],
+    "state": "WIRED"
   },
   {
     "claims": [
@@ -3026,6 +3049,7 @@
     "invokedBy": [
       ".github/workflows/build-platforms.yml#prepare",
       ".github/workflows/ci.yml#app-brick",
+      ".github/workflows/extensions-ci.yml#templates",
       ".github/workflows/extensions.yml#release"
     ],
     "kind": "guard",

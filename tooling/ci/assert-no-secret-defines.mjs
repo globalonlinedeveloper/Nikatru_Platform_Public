@@ -53,7 +53,8 @@
 // the `--dart-define` comment it meant was at `deploy-workers.yml:244` on
 // origin/main and NOT at :136 (which was a bare `#` inside a paths filter),
 // so the pointer was already landing on another real line — TRAPS git-08 — and
-// it is now at `docs/ci/deploy-workers.md:231`, a page this guard does not
+// it is now in `docs/ci/deploy-workers.md`, job subscriptiontracker-api (§inside
+// the `id: deploy` step, above `command:`), a page this guard does not
 // scan. `grep -nE '^\s*#.*dart-define' .github/workflows/*.yml` returns exactly
 // one live subject, and it is the line named above, so the limb still has a
 // real comment that would be miscounted if comment-blanking stopped.

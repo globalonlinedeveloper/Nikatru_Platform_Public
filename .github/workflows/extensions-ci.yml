@@ -277,54 +277,17 @@ jobs:
             echo "::notice::no tool has been onboarded to tool.json yet. That is a real state, not a search failure — the per-tool jobs below have nothing to grade, and say so rather than reporting a green run over an empty set."
           fi
 
-      # ⚠️ THE TWO TEMPLATE PATHS BELOW ARE ABSOLUTE, AND THAT IS THE WHOLE POINT
-      # OF THIS STEP AS OF 2026-09-08. `defaults.run.working-directory: extensions`
-      # governs every `run:` in this workflow, so the relative
-      # `.github/ISSUE_TEMPLATE/bad-page.yml` this step used to carry resolved to
-      # `extensions/.github/ISSUE_TEMPLATE/bad-page.yml` — a path GitHub has never
-      # read, because issue forms resolve at the repository ROOT only. The step was
-      # therefore grading two files that could not appear to a single user, while
-      # this repository offered its users NO issue forms at all.
-      #
-      # The forms were promoted to the root in the same change, and this step now
-      # names them from $GITHUB_WORKSPACE so that the file it grades is the file a
-      # reporter fills in. `find .` below is deliberately still relative: its
-      # subject is the tool tree, which really does live under `extensions/`.
+      # ⏱ 2026-09-26 (F-c): THE DROPDOWNS ARE GENERATED, AND THIS STEP IS THE
+      # GENERATOR'S --check. Until then this was a bash loop that grepped the two ROOT
+      # forms for "(<id>)" per tool.json (since 2026-09-08 from the repository root,
+      # because issue forms resolve there only; the generator is run from the root
+      # for the same reason). tooling/ci/gen-issue-forms.mjs holds the same `find`
+      # walk, verbatim, and writes a marked region of each form; --check exits 1 on a
+      # missing id or a stale region, 2 on a missing form or zero tools, and prints
+      # the same "graded against N tool id(s)" coverage line.
       - name: Issue templates list every tool id
-        shell: bash
-        run: |
-          set -euo pipefail  # 🔴 FIXED 2026-08-22, same pre-existing hole again. GitHub runs an explicit `shell: bash` as `bash --noprofile --norc -eo pipefail {0}`, so `-e` IS ALREADY ON when this body starts. This line used to read `set -uo pipefail`, which added `-u` and removed nothing — and under `-e` a command whose failure this step means to REPORT kills the shell first, so the report is dead code on the runner. `-e` is spelled out here so the flag a reader sees is the flag that is running, and every reported command below carries its own `||`. Here the reported command is the per-file `node -p` that reads the id: a tool.json that does not PARSE made node exit 1, and the capture then killed the whole loop — no `::error file=`, no dropdown check for any later tool, and no `graded against N tool id(s)` accounting.
-          fail=0
-          checked=0
-          while IFS= read -r f; do
-            [ -n "$f" ] || continue
-            id=$(node -p "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')).id || ''" "$f") || id=''  # `|| id=''` keeps an unparseable tool.json inside the loop; the message below covers both states because from here they are one state: no usable id.
-            if [ -z "$id" ]; then
-              echo "::error file=$f::tool.json has no \"id\", or could not be parsed at all — the id is the stable public handle every tag, zip and matrix entry is built from."
-              fail=1
-              continue
-            fi
-            checked=$((checked + 1))
-            for t in "$GITHUB_WORKSPACE/.github/ISSUE_TEMPLATE/bad-page.yml" "$GITHUB_WORKSPACE/.github/ISSUE_TEMPLATE/bug.yml"; do
-              if [ ! -f "$t" ]; then
-                echo "::error::$t does not exist. This step greps the issue forms a reporter actually sees, and it cannot grade a file that is not there — a missing form must not read as a form with every id in it."
-                fail=1
-                continue
-              fi
-              if ! grep -qF -- "($id)" "$t"; then
-                echo "::error file=$t::tool id '$id' is missing from the extension dropdown — a reporter cannot name this tool"
-                fail=1
-              fi
-            done
-          done < <(find . -mindepth 3 -maxdepth 3 -name tool.json \
-                     -not -path './.git/*' -not -path './templates/*' \
-                     -not -path './_skeleton/*' -not -path './private/*' \
-                     -not -path './node_modules/*')
-          # Coverage, printed rather than assumed: with no tools this check cannot
-          # fail, and an assertion that cannot fail inflates apparent coverage.
-          # The cross-check above is what decides whether zero is legitimate.
-          echo "issue-template dropdowns graded against $checked tool id(s), in $GITHUB_WORKSPACE/.github/ISSUE_TEMPLATE/."
-          exit $fail
+        working-directory: .
+        run: node tooling/ci/gen-issue-forms.mjs --check
 
       - id: set
         name: Build the matrix
@@ -376,6 +339,13 @@ jobs:
       # private generators' --check into the repo's pre-commit runner (spec-guards).
       - name: The README catalog table is what the tool.json files generate
         run: node scripts/gen-catalog.mjs --check
+      # why: O-NEW-TOOL-IS-A-COPIER-NOT-THE-COMMAND (2026-09-26). The listing graphics
+      # renderer existed and ran in no workflow, so a committed tile or logo could drift
+      # from the icon and accents it is derived from with every lane green. --check
+      # re-renders each tool's assets and compares DECODED PIXELS; it exited 0 over
+      # fullshot's three assets on the tree it was added on.
+      - name: The listing graphics are what the renderer derives from each tool
+        run: node scripts/render-extension-graphics.mjs --all --check
       # why: O-NEW-TOOL-HAS-NO-FIREFOX-IDENTITY. tooling/house-identity.json holds the
       # owner domain every Firefox add-on id is built from, and AMO fixes that id at
       # first signing; every tool's publish/identity.json must equal it. Runs from the
@@ -742,6 +712,60 @@ jobs:
             echo "::error::$failed file(s) above do not parse. new-tool.mjs copies this tree into every new tool, so a syntax error here is not one broken file — it is one broken file per tool created from today onward, discovered by whoever creates the next one."
             exit 1
           fi
+      # 2026-09-26, O-NEW-TOOL-IS-A-COPIER-NOT-THE-COMMAND and the confirm of
+      # O-NEW-TOOL-HAS-NO-FIREFOX-IDENTITY: THE PROBE. new-tool.mjs stamps a scratch
+      # tool and runs the chain a new tool needs; this step proves it on every run, on
+      # a copy of HEAD in $RUNNER_TEMP, so it never writes the checkout (the last line
+      # below holds it to that: extensions/catalog/extensions.json is a deploy-workers
+      # path). Each check prints its own exit. ADAPTATION: no AMO step can run here —
+      # the submit needs a tag dispatch and the owner's word — so "the AMO step is
+      # skipped with a reason" is read as the arming verdict the release step would
+      # take, which `publish-arming.mjs --plan` prints: "SKIPPED: not a release run",
+      # with the add-on id derived from the house identity, probetool@nikatru.com.
+      # The red control (the chain with tag-owner skipped, so tag-owner --check exits
+      # 1) is RC-F7 in tooling/ci/test/new-tool-chain.test.mjs, not here.
+      - name: The probe — new-tool stamps a scratch tool, and every check stays green
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe="$RUNNER_TEMP/probe"
+          rm -rf "$probe"
+          mkdir -p "$probe"
+          git archive HEAD | tar -x -C "$probe"
+          fail=0
+          step() {
+            local label="$1"
+            shift
+            local code=0
+            "$@" > "$RUNNER_TEMP/probe-step.log" 2>&1 || code=$?
+            cat "$RUNNER_TEMP/probe-step.log"
+            echo "PROBE $label: EXIT $code"
+            if [ "$code" -ne 0 ]; then fail=1; fi
+          }
+          step "new-tool" node "$probe/extensions/scripts/new-tool.mjs" --repo-root "$probe/extensions" \
+            --category Extension --name "Probe Tool" --id probetool --tagline "Probe tool."
+          step "check-catalog" node "$probe/extensions/scripts/check-catalog.mjs" --repo-root "$probe/extensions"
+          step "tag-owner --check" node "$probe/tooling/ci/tag-owner.mjs" --check --root "$probe"
+          step "gen-issue-forms --check" node "$probe/tooling/ci/gen-issue-forms.mjs" --check --root "$probe"
+          step "publish-arming --plan" node "$probe/extensions/scripts/publish-arming.mjs" \
+            --channel amo --tool probetool --plan --repo-root "$probe"
+          plan=$(cat "$RUNNER_TEMP/probe-step.log")
+          case "$plan" in
+            *"SKIPPED: not a release run"*) ;;
+            *) echo "::error::publish-arming --plan did not print \"SKIPPED: not a release run\""; fail=1 ;;
+          esac
+          case "$plan" in
+            *'"probetool@nikatru.com" — derived'*) ;;
+            *) echo "::error::publish-arming --plan did not derive the add-on id probetool@nikatru.com"; fail=1 ;;
+          esac
+          dirty=$(git -C "$GITHUB_WORKSPACE" status --porcelain)
+          echo "PROBE git status --porcelain in the checkout: ${dirty:-(empty)}"
+          if [ -n "$dirty" ]; then
+            echo "::error::the probe wrote the checkout; it must write only \$RUNNER_TEMP/probe."
+            fail=1
+          fi
+          exit $fail
       # 2026-09-14: THE FLEET AUDIT BROKE THREE TIMES, AND WAS WIRED INTO NOTHING
       # EACH TIME. templates/tool/tools/audit-fleet.mjs finds the fleet by walking
       # up from its own folder; the walk root has moved with the template twice and

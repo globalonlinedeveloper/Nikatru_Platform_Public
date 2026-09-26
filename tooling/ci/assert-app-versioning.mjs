@@ -258,7 +258,8 @@ if (emitApp) {
 // `subscriptiontracker-v9.9.9-app-release.aab` whose build name is whatever
 // pubspec says. The tag is the one claim a downloader reads BEFORE
 // opening the file, and nothing cross-read it; the requirement existed in prose
-// only, at tooling/release/RELEASE-RUNBOOK.md:264.
+// only, in tooling/release/RELEASE-RUNBOOK.md §5 ("The owner's exact two commands for
+// the first release").
 //
 // 🔴 WHAT THIS PROVES AND WHAT IT DOES NOT. Two STRINGS agree: the version the
 // tag names, and the build name THIS parser reads from pubspec. Nothing here

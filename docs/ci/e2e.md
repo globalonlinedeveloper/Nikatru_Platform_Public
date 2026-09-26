@@ -200,7 +200,7 @@ leg. It emits nothing on an empty workspace — it exits 1 — because a matrix
 of `[]` runs zero legs and reports success, which is the exact green-over-
 nothing this workflow's header was rewritten to remove.
 
-## job `strategy`
+### key `strategy:`
 
 ### above `strategy:`
 
@@ -210,7 +210,7 @@ the evidence that would have told a real outage from one app's bug. It also
 keeps the `always()` purge below reachable on every leg. With one app in the
 workspace this changes nothing.
 
-## job `with`
+### key `with:`
 
 ### above `with:`
 

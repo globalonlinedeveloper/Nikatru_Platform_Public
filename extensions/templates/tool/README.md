@@ -167,7 +167,8 @@ The move has landed, so the default is correct and `--template` is no longer nee
 
 ```sh
 node scripts/new-tool.mjs --category Extension --name "Tab Digest" --id tabdigest \
-  --dry-run     # prints what it would do; drop --dry-run to write it
+  --tagline "One sentence, one purpose." \
+  --dry-run     # prints what it would do; drop --dry-run to write it (and run the chain)
 ```
 
 The script prints which template it used, because "where did this tool come from" is the first question a
