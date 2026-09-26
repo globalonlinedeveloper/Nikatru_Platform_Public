@@ -34,16 +34,24 @@
 // fixed alike. What separates them is whether the corpus was REACHED at all; the
 // note above the cases sets out exactly which lines say so.
 //
-// The only repositories written to are the fixture's own, by the last case, which
-// runs a real install and reads the corpus's config back. The first two cases pass
-// `--check` and write nothing.
+// The only repositories written to are the fixture's own, by the cases after the
+// first two, which run real installs and read the corpus's config back. The first
+// two cases pass `--check` and write nothing.
+//
+// ⏱ 2026-09-24 (O-PRIVATE-HOOK-RUNNER-FOLLOWS-A-LIVE-BRANCH). The case that used to
+// close this file asserted that a run from the worktree pointed the corpus INTO the
+// worktree (`../.worktrees/<lane>/.githooks`), and said a change making that
+// main-checkout-relative should show up here "as a decision rather than as a
+// surprise". This is that decision: the corpus now points at the pinned runner,
+// `.worktrees/hooks-runner-main`, by an absolute value, and only `--pin-private`
+// writes it. The cases after the first two assert exactly that.
 //
 // Run:  node --test "tooling/ci/test/install-hooks-worktree.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, rmSync, existsSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -61,6 +69,8 @@ let BASE;   // the throwaway workspace: holds Projects/ and nikatru/
 let PUB;    // <BASE>/Projects/Acme_Public   — the MAIN checkout
 let PRIV;   // <BASE>/Projects/Acme_Private  — the corpus
 let WT;     // <BASE>/Projects/.worktrees/<LANE> — the linked worktree
+let RUNNER; // <BASE>/Projects/.worktrees/hooks-runner-main — the pinned runner, created mid-file
+let PINNED; // the corpus pointer `--pin-private` must write: RUNNER/.githooks, absolute, forward slashes
 
 const git = (where, ...args) => {
   const r = spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-C', where, ...args], { encoding: 'utf8' });
@@ -77,6 +87,7 @@ const hooksPathOf = (where) => {
 };
 
 const write = (abs, text) => { mkdirSync(dirname(abs), { recursive: true }); writeFileSync(abs, text, 'utf8'); };
+const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Run the copied script from `cwd` and hand back everything it printed.
  *  `shell: false`, so no argument is re-parsed by cmd.exe. */
@@ -88,15 +99,19 @@ function installHooks(cwd, ...args) {
 }
 
 before(() => {
-  BASE = mkdtempSync(join(tmpdir(), 'install-hooks-wt-'));
+  BASE = realpathSync.native(mkdtempSync(join(tmpdir(), 'install-hooks-wt-')));
   mkdirSync(join(BASE, 'nikatru'), { recursive: true });        // the second anchor marker
   PUB = join(BASE, 'Projects', 'Acme_Public');
   PRIV = join(BASE, 'Projects', 'Acme_Private');
   WT = join(BASE, 'Projects', '.worktrees', LANE);
+  RUNNER = join(BASE, 'Projects', '.worktrees', 'hooks-runner-main');
+  // Typed out here rather than asked of hook-runner-pin.mjs, so the assertions on it
+  // are not the module agreeing with itself.
+  PINNED = `${join(RUNNER, '.githooks').split('\\').join('/')}`;
 
   // ── the main checkout ──────────────────────────────────────────────────────
   mkdirSync(join(PUB, 'tooling', 'scripts'), { recursive: true });
-  for (const f of ['install-hooks.mjs', 'repo-git.mjs']) {
+  for (const f of ['install-hooks.mjs', 'repo-git.mjs', 'hook-runner-pin.mjs']) {
     copyFileSync(join(SCRIPTS, f), join(PUB, 'tooling', 'scripts', f));
   }
   // Both hooks must EXIST or the script refuses with code 2 before it reaches the
@@ -123,6 +138,7 @@ before(() => {
 
 after(() => {
   try { git(PUB, 'worktree', 'remove', '--force', WT); } catch { /* the rm below covers it */ }
+  try { git(PUB, 'worktree', 'remove', '--force', RUNNER); } catch { /* absent if a case failed early */ }
   try { rmSync(BASE, { recursive: true, force: true }); } catch { /* Windows may hold a handle; temp litter is harmless */ }
 });
 
@@ -160,29 +176,84 @@ describe('install-hooks names the corpus after the main checkout, not after the 
     assert.equal(r.code, 1, r.out);
   }, { timeout: 120_000 });
 
-  // ⚠️ RUNS LAST AND MUTATES THE FIXTURE: this is the only case that installs.
-  test('and the repair actually lands: a real run from the worktree SETS the corpus hooksPath', () => {
+  // ⚠️ THE CASES BELOW RUN IN ORDER AND MUTATE THE FIXTURE: they install.
+  test('a plain run from the worktree installs the public hooks and does NOT repoint the corpus', () => {
     const before = hooksPathOf(PRIV);
     assert.equal(before, '', 'the fixture corpus should start with no hooksPath, or this case proves nothing');
 
     const r = installHooks(WT);
-    assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /SET\s+private corpus\s+core\.hooksPath/, r.out);
+    assert.match(r.out, /SET\s+public repo\s+core\.hooksPath = \.githooks/, r.out);
+    // Reached, judged, and refused — not skipped: the corpus line names the value it wants.
+    assert.ok(r.out.includes(`want ${PINNED}`), `the corpus must be judged against the pinned runner ${PINNED}:\n${r.out}`);
+    assert.match(r.out, /only --pin-private points the corpus at the pinned runner/, r.out);
+    assert.equal(r.code, 1, `an unpinned corpus is a failure, not a clean install:\n${r.out}`);
 
-    // Read it back out of the OTHER repository, which is where the defect lived:
-    // the config this script exists to repair is local to the corpus and no clone
-    // or worktree carries it. Before the fix this stayed empty and the run still
-    // exited 0.
+    // 🔴 THE ASSERTION. Before 2026-09-24 this run wrote `../.worktrees/<lane>/.githooks`
+    // into the corpus — hooks that vanish when the lane is removed.
+    assert.equal(hooksPathOf(PRIV), '', 'a plain run from a worktree wrote the corpus pointer');
+  }, { timeout: 120_000 });
+
+  test('--pin-private refuses while there is no runner, and prints the command that creates it', () => {
+    const r = installHooks(WT, '--pin-private');
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /ERR\s+private corpus\s+not pinned: the runner absent/, r.out);
+    assert.match(r.out, /worktree add --detach .*hooks-runner-main origin\/main/, r.out);
+    assert.equal(hooksPathOf(PRIV), '', 'a pointer at a runner that does not exist runs no hook at all, silently');
+  }, { timeout: 120_000 });
+
+  test('--pin-private from the worktree points the corpus at the runner: absolute, forward slashes, read back', () => {
+    // The owner's step, done here by hand: origin/main, and a detached worktree at it.
+    git(PUB, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+    git(PUB, 'worktree', 'add', '-q', '--detach', RUNNER, 'origin/main');
+
+    const r = installHooks(WT, '--pin-private');
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, new RegExp(`SET\\s+private corpus\\s+core\\.hooksPath = ${esc(PINNED)}\\n`), r.out);
     const after = hooksPathOf(PRIV);
-    assert.notEqual(after, '', 'the corpus hooksPath is still unset: the run reported success without repairing anything');
-    // 📍 It resolves INTO THE WORKTREE (`../.worktrees/<lane>/.githooks`), because
-    // the value is `relative(corpus, <this tree>/.githooks)` and this tree is the
-    // worktree. That is a separate, smaller hazard — a corpus pointed at hooks
-    // that vanish when the lane is removed — and is deliberately NOT fixed here:
-    // this row is about finding the corpus at all. Asserted, so that a later change
-    // which makes the value main-checkout-relative shows up here as a decision
-    // rather than as a surprise.
-    assert.ok(existsSync(resolve(PRIV, after)), `the corpus was pointed at ${after}, which does not resolve to a directory that exists`);
-    assert.match(after, new RegExp(LANE), `expected the value to still resolve into the worktree; it is now ${after} — if that was deliberate, update this case and the note above it`);
+    assert.equal(after, PINNED, 'the value read back out of the corpus is not the pinned runner');
+    assert.doesNotMatch(after, new RegExp(LANE), 'the corpus was pointed into the lane it was run from');
+    assert.ok(existsSync(join(after, 'pre-commit')), `the corpus was pointed at ${after}, which holds no pre-commit`);
+  }, { timeout: 120_000 });
+
+  test('once pinned, a plain run from the worktree leaves the pointer alone and reports it ok', () => {
+    const r = installHooks(WT);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, new RegExp(`ok\\s+private corpus\\s+core\\.hooksPath = ${esc(PINNED)}\\n`), r.out);
+    assert.match(r.out, /runner current/, r.out);
+    assert.equal(hooksPathOf(PRIV), PINNED);
+    const check = installHooks(PUB, '--check');
+    assert.equal(check.code, 0, `the main checkout's --check must agree with the worktree's:\n${check.out}`);
+  }, { timeout: 120_000 });
+
+  test('the pinned pointer is compared as a directory: another spelling passes, a relative value never does', () => {
+    try {
+      // The owner's step types this value by hand; a trailing slash is a spelling, not a
+      // different runner (on Windows so are `C:` against `c:` and `\` against `/`).
+      git(PRIV, 'config', 'core.hooksPath', `${PINNED}/`);
+      const spelled = installHooks(PUB, '--check');
+      assert.equal(spelled.code, 0, `the same runner, spelled differently, must pass:\n${spelled.out}`);
+      assert.match(spelled.out, /ok\s+private corpus/, spelled.out);
+
+      // Resolves to the runner FROM THE CORPUS, and is still not the pin: a relative value
+      // is resolved against whichever tree reads it, which is the defect.
+      git(PRIV, 'config', 'core.hooksPath', '../.worktrees/hooks-runner-main/.githooks');
+      const rel = installHooks(PUB, '--check');
+      assert.equal(rel.code, 1, `a relative corpus pointer must be RED even when it resolves to the runner:\n${rel.out}`);
+      assert.match(rel.out, /RED\s+private corpus\s+core\.hooksPath = \.\.\/\.worktrees/, rel.out);
+    } finally {
+      git(PRIV, 'config', 'core.hooksPath', PINNED);
+    }
+  }, { timeout: 120_000 });
+
+  test('--check reds a pointer at the right path when the runner is on a branch', () => {
+    git(RUNNER, 'switch', '-q', '-c', 'live-branch');
+    try {
+      const r = installHooks(PUB, '--check');
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /RED\s+private corpus\s+core\.hooksPath = .*, but the runner on-branch/, r.out);
+    } finally {
+      git(RUNNER, 'checkout', '-q', '--detach');
+      git(PUB, 'branch', '-q', '-D', 'live-branch');
+    }
   }, { timeout: 120_000 });
 });

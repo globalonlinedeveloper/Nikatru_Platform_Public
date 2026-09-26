@@ -63,6 +63,7 @@ const REPO = resolve(HERE, '..', '..', '..'); // tooling/ci/test -> repo root
 const RUNNER_SRC = resolve(REPO, 'tooling', 'scripts', 'spec-guards.mjs');
 const GIT_HELPER_SRC = resolve(REPO, 'tooling', 'scripts', 'repo-git.mjs');
 const LOADER_SRC = resolve(REPO, 'tooling', 'scripts', 'guard-declaration.mjs');
+const PIN_SRC = resolve(REPO, 'tooling', 'scripts', 'hook-runner-pin.mjs');   // imported by the runner since 2026-09-24
 const SOURCE = readFileSync(RUNNER_SRC, 'utf8');
 
 /* The two paths the ENFORCEMENT rows need at the repo root, read out of the runner
@@ -255,6 +256,7 @@ before(() => {
   cpSync(RUNNER_SRC, join(PUB, 'tooling', 'scripts', 'spec-guards.mjs'));
   cpSync(GIT_HELPER_SRC, join(PUB, 'tooling', 'scripts', 'repo-git.mjs'));
   cpSync(LOADER_SRC, join(PUB, 'tooling', 'scripts', 'guard-declaration.mjs'));
+  cpSync(PIN_SRC, join(PUB, 'tooling', 'scripts', 'hook-runner-pin.mjs'));
   git(PUB, 'init', '-q');
   git(PUB, 'config', 'user.email', 'fixture@example.test');
   git(PUB, 'config', 'user.name', 'fixture');
@@ -412,12 +414,63 @@ test('MUTANT — CHILD_ENV back to a bare copy of process.env: GIT_DIR reaches t
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// THE DRIFT LIMB, 2026-09-24 (O-PRIVATE-HOOK-RUNNER-FOLLOWS-A-LIVE-BRANCH). A
+// corpus commit runs whichever copy of this runner the corpus's `core.hooksPath`
+// reaches. Measured in a scratch pair before the fix: a corpus commit through the
+// main checkout on branch `live-feature` exited 0, graded by that branch's guards.
+// From the corpus, the runner now refuses (exit 1) any runner but the pinned one —
+// `.worktrees/hooks-runner-main`, detached at origin/main, no edits — before a
+// single guard runs. The cases below run it with cwd = the corpus, which is where
+// git runs every corpus hook from, and with the GIT_DIR git exports into one.
+// ─────────────────────────────────────────────────────────────────────────────
+const PINNED_RUNNER = () => join(BASE, 'Projects', '.worktrees', 'hooks-runner-main');
+
+/** The corpus is a directory of stubs until here; the limb asks git which repository
+ *  the cwd sits in, so it becomes one. Idempotent. */
+function corpusIsARepo() {
+  if (!existsSync(join(PRIV, '.git'))) git(PRIV, 'init', '-q');
+}
+
+test('the drift limb: a corpus commit through a BRANCH checkout of the runner is a finding (1) that names it', () => {
+  corpusIsARepo();
+  const branch = git(PUB, 'symbolic-ref', '--short', 'HEAD').trim();
+  const r = runRunner(PUB, 'spec-guards.mjs', { cwd: PRIV, gitDir: join(PRIV, '.git') });
+  assert.equal(r.code, 1, `a corpus commit judged by a branch checkout must be refused: ${r.out}`);
+  assert.match(r.out, /RUNNER DRIFT/, r.out);
+  assert.ok(r.out.includes(PUB), `the finding must name the checkout that loaded the runner: ${r.out}`);
+  assert.ok(r.out.includes(`branch \`${branch}\``), `the finding must name its branch: ${r.out}`);
+  assert.doesNotMatch(r.out, /guard\(s\) in/, 'guards ran after the limb refused, so their verdict was reported as if it counted');
+});
+
+test('MUTANT — the drift limb never applies: the same corpus commit through a branch checkout passes (the pre-fix behaviour)', () => {
+  corpusIsARepo();
+  writeMutant('mutant-no-drift-limb.mjs', 'if (INVOKED_FROM && sameDir(INVOKED_FROM, PRIVATE_ROOT)) {', 'if (false) {');
+  const r = runRunner(PUB, 'mutant-no-drift-limb.mjs', { cwd: PRIV, gitDir: join(PRIV, '.git') });
+  assert.equal(r.code, 0, `with the limb off the branch checkout must pass, or the case above is red for some other reason: ${r.out}`);
+  assert.doesNotMatch(r.out, /RUNNER DRIFT/);
+});
+
+test('the drift limb: the pinned runner at origin/main passes (0), says so, and every guard runs', () => {
+  corpusIsARepo();
+  git(PUB, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+  if (!existsSync(PINNED_RUNNER())) git(PUB, 'worktree', 'add', '-q', '--detach', PINNED_RUNNER(), 'origin/main');
+  const r = runRunner(PINNED_RUNNER(), 'spec-guards.mjs', { cwd: PRIV, gitDir: join(PRIV, '.git') });
+  assert.equal(r.code, 0, `the pinned runner must judge a corpus commit: ${r.out}`);
+  assert.match(r.out, /the pinned runner at origin\/main/, r.out);
+  // A corpus commit runs the corpus side of the declared set (cwd = the corpus).
+  assert.match(r.out, new RegExp(`${CORPUS_ROWS.length} guard\\(s\\) in`), r.out);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ⏱ 2026-09-24 — THE DECLARED SET (O-GUARD-SET-DECLARED-NOWHERE). The corpus's own
 // guards are entries in its `requirements/tooling/guards.json`, and the runner reads
 // them out of a git blob: `HEAD:` from a commit outside the corpus, the index from a
 // commit in it. These cases run the runner end to end over the fixture corpus — which
 // side a run is on, which blob that side reads, and the refusal when the pin breaks.
 // The loader's own limbs are graded in guard-declaration.test.mjs.
+// ⏱ 2026-09-26 (train W17): these run AFTER the drift limb's first three cases, and a run
+// with cwd = the corpus goes through the PINNED runner those cases create — from any other
+// checkout the drift limb now refuses a corpus commit before the declared set is read.
 // ─────────────────────────────────────────────────────────────────────────────
 test('a commit outside the corpus runs the hook:["public"] entries from HEAD, and not a hook:["private"] one', () => {
   const r = runRunner(PUB);
@@ -428,7 +481,7 @@ test('a commit outside the corpus runs the hook:["public"] entries from HEAD, an
 });
 
 test('a commit IN the corpus reads the STAGED declaration and runs its hook:["private"] entries', () => {
-  const r = runRunner(PUB, 'spec-guards.mjs', { cwd: PRIV });
+  const r = runRunner(PINNED_RUNNER(), 'spec-guards.mjs', { cwd: PRIV });
   assert.equal(r.code, 0, r.out);
   assert.ok(r.out.includes(`hook the private side, read from :${DECLARATION_REL}`), `the run did not read the staged declaration: ${r.out}`);
   assert.equal(r.privateRan, true, 'the hook:["private"] entry did not run from a commit in the corpus');
@@ -439,7 +492,9 @@ test('MUTANT — the side named from REPO alone: the corpus\'s own hook runs the
   // The corpus's hook runs THIS repo's runner, so REPO is never the corpus there; only
   // the working directory git runs the hook from names it.
   writeMutant('mutant-side-from-repo.mjs', 'sameRoot(REPO, PRIVATE_ROOT) || sameRoot(process.cwd(), PRIVATE_ROOT)', 'sameRoot(REPO, PRIVATE_ROOT)');
-  const r = runRunner(PUB, 'mutant-side-from-repo.mjs', { cwd: PRIV });
+  // Untracked, so the pinned runner stays current (runnerState reads tracked edits only).
+  cpSync(join(PUB, 'tooling', 'scripts', 'mutant-side-from-repo.mjs'), join(PINNED_RUNNER(), 'tooling', 'scripts', 'mutant-side-from-repo.mjs'));
+  const r = runRunner(PINNED_RUNNER(), 'mutant-side-from-repo.mjs', { cwd: PRIV });
   assert.equal(r.code, 0, r.out);
   assert.equal(r.privateRan, false, 'the mutant still ran the hook:["private"] entry, so the case above is not what proves the side comes from the working directory');
   assert.ok(r.out.includes('hook the public side'), r.out);
@@ -475,4 +530,22 @@ test('a committed declaration without a pinned guard is COVERAGE LOST, exit 2, n
   // CONTROL — restored, the same run is green, so the refusal was the pin and not the fixture.
   const again = runRunner(PUB);
   assert.equal(again.code, 0, again.out);
+});
+
+test('the drift limb: the pinned runner behind origin/main is a finding (1), not a stale pass', () => {
+  corpusIsARepo();
+  assert.ok(existsSync(PINNED_RUNNER()), 'the previous case did not create the runner, so this case has nothing to judge');
+  write(join(PUB, 'moved.txt'), 'origin/main moves\n');
+  git(PUB, 'add', 'moved.txt');
+  git(PUB, 'commit', '-q', '-m', 'origin/main moves', '--no-gpg-sign');
+  git(PUB, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+  const r = runRunner(PINNED_RUNNER(), 'spec-guards.mjs', { cwd: PRIV, gitDir: join(PRIV, '.git') });
+  assert.equal(r.code, 1, `a runner that is not at origin/main must not judge a corpus commit: ${r.out}`);
+  assert.match(r.out, /the pinned runner is stale/, r.out);
+});
+
+test('the drift limb does not apply to a run from the public repo, whatever branch it is on', () => {
+  const r = runRunner(PUB);
+  assert.equal(r.code, 0, `a public-repo run must not be judged as a corpus commit: ${r.out}`);
+  assert.doesNotMatch(r.out, /RUNNER DRIFT|pinned runner/, r.out);
 });

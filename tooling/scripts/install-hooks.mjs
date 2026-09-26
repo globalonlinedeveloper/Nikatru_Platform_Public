@@ -41,18 +41,44 @@
 // underneath it is HOW the corpus is found: by ANCHORING on the workspace root rather than
 // counting levels from here. The reasoning is in the block above `PRIVATE`, below.
 //
-// Usage:  node tooling/scripts/install-hooks.mjs           install + verify
-//         node tooling/scripts/install-hooks.mjs --check   verify only, exit 1 if not installed
+// ⏱ 2026-09-24 — THE CORPUS NO LONGER POINTS AT THE TREE THIS SCRIPT RUNS FROM
+// (O-PRIVATE-HOOK-RUNNER-FOLLOWS-A-LIVE-BRANCH). It points at ONE detached worktree
+// pinned to origin/main, `<parent of the main checkout>/.worktrees/hooks-runner-main`,
+// by an ABSOLUTE value, and only `--pin-private` writes it. A plain run, from the
+// main checkout or from any lane, READS the corpus pointer and reports it; it can no
+// longer repoint it at itself. The reasoning is in `hook-runner-pin.mjs`.
+//
+// Usage:  node tooling/scripts/install-hooks.mjs                  install + verify
+//         node tooling/scripts/install-hooks.mjs --check          verify only, exit 1 if not installed
+//         node tooling/scripts/install-hooks.mjs --pin-private    also point the corpus at the pinned runner
+//         node tooling/scripts/install-hooks.mjs --advance-runner the hooks' self-advance (see below)
 // ─────────────────────────────────────────────────────────────────────────────
 import { repoGitRaw, RepoGitError, mainCheckoutOf } from './repo-git.mjs';
+import { advanceRunner, runnerState, runnerHooksPathOf, createRunnerCommand, sameDir } from './hook-runner-pin.mjs';
 import { existsSync, statSync, readdirSync } from 'node:fs';
-import { resolve, dirname, basename, join, relative } from 'node:path';
+import { resolve, dirname, basename, join, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..');
 const HOOKS = join(REPO, '.githooks');
 const CHECK_ONLY = process.argv.includes('--check');
+const PIN_PRIVATE = process.argv.includes('--pin-private');
+
+/* ⏱ 2026-09-24 — `--advance-runner` IS THE HOOKS' SELF-ADVANCE, and it is answered
+   HERE, before the anchor walk and before anything is printed, because both hooks
+   call it FIRST on every commit and every push in every checkout of this repository.
+   Every tree not named like the runner leaves in `advanceRunner`'s first line with
+   code 0 and no git call, so a public clone and a CI runner pay one node start for it.
+   From the runner itself it moves the worktree to the LOCAL origin/main (no fetch)
+   and exits 3, which tells the hook to re-execute itself once so the hook text that
+   runs is the text origin/main carries. The exit codes are the hook's contract and
+   are listed on `advanceRunner`. */
+if (process.argv.includes('--advance-runner')) {
+  const { code, lines } = advanceRunner(REPO);
+  for (const line of lines) console.error(line);
+  process.exit(code);
+}
 
 /* 🔴 ONE PRIVATE REPO SINCE THE 2026-08-15 FLATTEN, NOT TWO — and the old list did
    not merely go stale, it went QUIET. `Private/company` and `Private/knowledge` (deleted
@@ -178,9 +204,11 @@ const PRIVATE_WAS = [
   join(REPO, 'Private'),
 ];
 
+/* `pinned` (2026-09-24): this repo's pointer is the pinned runner's hooks directory,
+   not this tree's. See the block above `want` in the loop below. */
 const REPOS = [
   { name: 'public repo', path: REPO, expected: true },
-  { name: 'private corpus', path: PRIVATE, expected: true, movedFrom: PRIVATE_WAS },
+  { name: 'private corpus', path: PRIVATE, expected: true, movedFrom: PRIVATE_WAS, pinned: true },
 ];
 
 /* 🔴 2026-09-07 — THIS RUNS `git config` IN A REPOSITORY THAT IS NOT THIS ONE, and
@@ -307,8 +335,67 @@ for (const r of REPOS) {
   // of `git -C <corpus> config --get core.hooksPath` and confirmed to reach the two real
   // hook files. RE-RUN THIS SCRIPT AFTER ANY RENAME OR RE-NEST; it is the only thing that
   // repairs the other repo's copy.
-  const want = relative(r.path, HOOKS).split('\\').join('/');
+  // ⏱ 2026-09-24 — THE CORPUS'S VALUE IS NOW ABSOLUTE, AND THE PARAGRAPHS ABOVE ARE WHY IT
+  // HAD TO STOP BEING RELATIVE TO THIS TREE (O-PRIVATE-HOOK-RUNNER-FOLLOWS-A-LIVE-BRANCH).
+  // `relative(corpus, HOOKS)` names THIS tree's hooks, so the corpus followed whichever tree
+  // the script last ran in: the main checkout on whatever branch it held, or a lane that is
+  // deleted on merge. The public repo keeps its relative `.githooks` — it is the same value
+  // from every checkout of it, and each checkout runs its own hooks by design. The corpus
+  // gets `runnerHooksPathOf(HOST_ROOT)`: absolute, forward slashes, the same from the main
+  // checkout and from every lane. The rename hazard above still holds, and `--pin-private`
+  // is now the run that repairs it.
+  const want = r.pinned ? runnerHooksPathOf(HOST_ROOT) : relative(r.path, HOOKS).split('\\').join('/');
   const cur = git(r.path, ['config', '--get', 'core.hooksPath']);
+
+  if (r.pinned) {
+    /* A pointer at the right path is still worth nothing if the runner is not there to
+       answer: git runs no hook from a missing directory and prints nothing. So the
+       runner is judged with the pointer. `stale` is fine here — the next hook advances
+       it — and every other state is RED. */
+    const st = runnerState(HOST_ROOT);
+    const usable = (st.status === 'current' || st.status === 'stale') && st.hooksMissing.length === 0;
+    const about = `runner ${st.status}${st.hooksMissing.length ? `, no .githooks/${st.hooksMissing.join(' or .githooks/')}` : ''} — ${st.why}`;
+    const repair = st.status === 'absent'
+      ? `create it:  ${createRunnerCommand(HOST_ROOT)}`
+      : 'restore it to a clean, detached checkout of origin/main — nothing here discards an edit or leaves a branch';
+    /* Compared as DIRECTORIES, not as bytes. The owner's step types this value by hand,
+       and `want` is built from git's own spelling of the main checkout, so on Windows
+       `C:/…` against `c:/…`, or `\` against `/`, would otherwise RED a pointer that runs
+       the right hooks. A RELATIVE value is never the pin, whatever it resolves to: git
+       resolves it against the corpus, and that is the defect this row closes. */
+    const pinnedHere = cur.out !== '' && isAbsolute(cur.out) && sameDir(cur.out, want);
+    if (pinnedHere) {
+      if (usable) {
+        console.log(`  ok   ${r.name.padEnd(20)} core.hooksPath = ${cur.out}`);
+        console.log(`       ${about}`);
+      } else {
+        console.log(`  RED  ${r.name.padEnd(20)} core.hooksPath = ${cur.out}, but the ${about}`);
+        console.log(`       ${repair}`);
+        failures++;
+      }
+      continue;
+    }
+    if (CHECK_ONLY || !PIN_PRIVATE) {
+      console.log(`  RED  ${r.name.padEnd(20)} core.hooksPath = ${cur.out || '(unset)'}   want ${want}`);
+      if (!CHECK_ONLY) console.log('       not written: only --pin-private points the corpus at the pinned runner.');
+      failures++;
+      continue;
+    }
+    // --pin-private. Refuse rather than write a pointer that runs nothing, or one derived
+    // from THIS tree because the main checkout could not be elected.
+    if (ELECTED.why) {
+      console.log(`  ERR  ${r.name.padEnd(20)} not pinned: the main checkout could not be elected (${ELECTED.why}),`);
+      console.log(`       so ${want} was derived from this tree and may be the wrong runner.`);
+      failures++;
+      continue;
+    }
+    if (!usable) {
+      console.log(`  ERR  ${r.name.padEnd(20)} not pinned: the ${about}`);
+      console.log(`       ${repair}`);
+      failures++;
+      continue;
+    }
+  }
 
   if (cur.out === want) {
     console.log(`  ok   ${r.name.padEnd(20)} core.hooksPath = ${want}`);
