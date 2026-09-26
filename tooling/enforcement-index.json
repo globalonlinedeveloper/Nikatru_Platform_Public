@@ -907,6 +907,7 @@
   },
   {
     "claims": [
+      "ADR 053",
       "F-10"
     ],
     "invokedBy": [
@@ -3500,6 +3501,7 @@
   },
   {
     "claims": [
+      "ADR 053",
       "O-3"
     ],
     "invokedBy": [
