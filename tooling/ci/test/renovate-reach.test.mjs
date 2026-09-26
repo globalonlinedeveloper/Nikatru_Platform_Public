@@ -27,13 +27,16 @@ import { fileURLToPath } from 'node:url';
 
 import { collectTargets } from '../assert-version-consistency.mjs';
 import { matchesPath } from '../assert-update-coverage.mjs';
+import { BRICK_LOCK, brickLockProblems } from '../assert-renovate-reach.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
 const GUARD = join(CI_DIR, 'assert-renovate-reach.mjs');
 const VERSIONS = 'tooling/versions.json';
 const RENOVATE = 'renovate.json';
-const COPY_SET = [...new Set([...collectTargets(REPO).map((p) => p.replace(/\\/g, '/')), VERSIONS, RENOVATE])];
+const BRICK_PKG = BRICK_LOCK.replace(/package-lock\.json$/, 'package.json');
+// The brick lockfile is not a version-guard target, so it joins the copy by name.
+const COPY_SET = [...new Set([...collectTargets(REPO).map((p) => p.replace(/\\/g, '/')), VERSIONS, RENOVATE, BRICK_LOCK])];
 const WORKFLOWS = COPY_SET.filter((p) => /^\.github\/workflows\/[^/]+\.ya?ml$/.test(p));
 const CI_YML = WORKFLOWS.find((p) => /\/ci\.yml$/.test(p));
 
@@ -89,6 +92,7 @@ test('T1 green control: the real target set gives exit 0 and the summary line', 
   assert.match(r.out, /^ok {2}renovate reach — \d+ managed key\(s\), 0 unreached$/m);
   assert.match(r.out, /declared FLOOR \(packageRules\[\d+\]\) +java /);
   assert.match(r.out, /declared HAND \(packageRules\[\d+\]\) +gitleaks /);
+  assert.match(r.out, /^ok {2}brick lockfile — packages\[""\] carries the package's name and all \d+ of its dependency range\(s\)$/m);
 });
 
 test('T2 the ci.yml mason_cli customManager deleted: exit 1 naming ci.yml', () => {
@@ -285,4 +289,58 @@ test('T17 the pubspec Flutter-floor customManager deleted: exit 1 naming a membe
   assert.equal(r.code, 1, r.out + r.err);
   assert.match(r.err, new RegExp(`^ {4}${member.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}:\\d+ flutter — `, 'm'));
   assert.match(r.err, /^ {4}tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}\/pubspec\.yaml:\d+ flutter — /m);
+});
+
+// ── the brick lockfile (O-SERVICE-KIT-UNBUILT, E-a1) ─────────────────────────
+
+test('T18 (RC3) the brick lockfile loses a dependency its package.json keeps: exit 1 naming it', () => {
+  const root = scratch();
+  editJson(root, BRICK_LOCK, (l) => {
+    assert.equal(typeof l.packages[''].dependencies.hono, 'string', 'the brick lockfile has no hono to delete — the case would test nothing');
+    delete l.packages[''].dependencies.hono;
+  });
+  const r = reach(root);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.err, /is not the lockfile of the package\.json beside it \(1 finding\(s\)\):/);
+  assert.match(r.err, /^ {4}dependencies\.hono: package\.json asks for "[^"]+" and packages\[""\] does not list it\.$/m);
+});
+
+test('T19 the brick package.json moves a range the lockfile does not: exit 1 naming both values', () => {
+  const root = scratch();
+  replaceIn(root, BRICK_PKG, /"jose": "[^"]+"/, '"jose": "^6.0.0"');
+  const r = reach(root);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.err, /^ {4}dependencies\.jose: package\.json asks for "\^6\.0\.0"; packages\[""\] records "[^"]+"\.$/m);
+});
+
+test('T20 the brick lockfile deleted: exit 1, it is missing', () => {
+  const root = scratch();
+  rmSync(join(root, BRICK_LOCK));
+  const r = reach(root);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.err, /^ {4}it is missing\. Without it a stamped Worker resolves its ranges on the day it is provisioned/m);
+});
+
+test('T21 brickLockProblems: a range only the lockfile root records is a finding (the reverse direction)', () => {
+  const pkg = { name: '{{app_id}}-api', dependencies: { hono: '^4.6.0' } };
+  const lock = { name: '{{app_id}}-api', packages: { '': { name: '{{app_id}}-api', dependencies: { hono: '^4.6.0' }, devDependencies: { left: '1.0.0' } } } };
+  assert.deepEqual(brickLockProblems(pkg, lock), ['devDependencies.left: packages[""] records "1.0.0" and package.json does not ask for it.']);
+});
+
+test('T22 brickLockProblems: a lockfile named for another package is a finding, once per name field', () => {
+  const pkg = { name: '{{app_id}}-api', dependencies: { hono: '^4.6.0' } };
+  const lock = { name: 'subscriptiontracker-api', packages: { '': { name: 'subscriptiontracker-api', dependencies: { hono: '^4.6.0' } } } };
+  assert.deepEqual(brickLockProblems(pkg, lock), [
+    'its name is "subscriptiontracker-api"; the package.json beside it is "{{app_id}}-api".',
+    'its packages[""].name is "subscriptiontracker-api"; the package.json beside it is "{{app_id}}-api".',
+  ]);
+});
+
+test('T23 brickLockProblems: the package itself is a match, and a lockfile with no root entry is not', () => {
+  const pkg = { name: '{{app_id}}-api', dependencies: { hono: '^4.6.0' }, devDependencies: { wrangler: '4.135.0' } };
+  const same = { name: '{{app_id}}-api', packages: { '': { name: '{{app_id}}-api', dependencies: { hono: '^4.6.0' }, devDependencies: { wrangler: '4.135.0' } } } };
+  assert.deepEqual(brickLockProblems(pkg, same), []);
+  assert.deepEqual(brickLockProblems(pkg, { name: '{{app_id}}-api', packages: {} }), [
+    'it has no `packages[""]` entry, so it records no root package at all.',
+  ]);
 });

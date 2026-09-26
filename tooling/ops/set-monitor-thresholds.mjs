@@ -25,48 +25,15 @@
 // place, so a genuine outage still alerts, once, within `threshold × interval`.
 // Fix the signal, not the reporting of it.
 //
-// ## 🔴 THE REQUEST AND THE RESPONSE DO NOT USE THE SAME KEY FOR THE PROJECT,
-// ## AND GETTING THAT WRONG DETACHES EVERY MONITOR FROM ITS ALERTS
-// Measured on this instance (GlitchTip 6.2.2) on 2026-08-11, the hard way:
-//
-//   · the RESPONSE calls it `projectID`, and its value is a STRING — `"1"`.
-//   · the REQUEST calls it **`project`**, and it is ALSO a string. Sending
-//     `project: 1` as an integer is rejected: HTTP 422,
-//     `{"loc":["body","payload","project"],"msg":"Input should be a valid string"}`.
-//   · sending the RESPONSE's key, `projectID`, is **accepted with HTTP 200 and
-//     silently ignored** — the field is not in the input schema, so the project
-//     falls to its default of null.
-//
-// That last line is the whole hazard. Echoing a monitor's own representation
-// straight back — the obvious, careful-looking thing to do — returns 200 and
-// detaches the monitor from its project. GlitchTip resolves recipients by
-// joining alert → project → monitor, so a null project means **an empty
-// recipient set**: the dashboard still draws the monitor, still turns it red,
-// and tells nobody. That precise failure already happened once to monitor 6 and
-// is written up in `register.json` under `duty.laptop.nikatru-daily-backup` —
-// "it went Down 13 times of 41 checks telling nobody".
-//
-// It happened AGAIN on 2026-08-11, to all nine monitors at once, from this very
-// script — and the read-back diff below is the only reason it was noticed and
-// repaired within the minute rather than discovered by an outage nobody was
-// told about. The guard caught the guard's own author. Keep the diff.
-//
-// The threshold field is `confirmationThreshold` in both directions. Note the
-// upstream Python model spells these `confirmation_threshold` and `project`;
-// reading field names off the source rather than off the wire is what produced
-// the broken body in the first place.
-//
-// 🔴 PUT IS A FULL REPLACE. There is no PATCH route (`apps/uptime/api.py`
-// registers POST/GET/PUT/DELETE and no `@router.patch`), and the handler does
-// `payload.dict()` rather than `exclude_unset`, so **every field absent from the
-// body is reset to its schema default** — including the project, which is how a
-// monitor ends up with `project_id = NULL`, an empty recipient set, and a
-// dashboard that draws it red while it tells nobody. That exact failure already
-// happened to monitor 6 and is written up in `register.json`
-// (`duty.laptop.nikatru-daily-backup`). So this script never composes a body: it
-// GETs the monitor, changes ONE field, PUTs the whole thing back, and then
-// re-GETs and diffs every field to prove nothing else moved. A write that
-// cannot show what it changed is a write nobody can trust.
+// ## 🔴 THE PROJECT KEY, AND PUT IS A FULL REPLACE
+// Both traps — the request spells the project `project` (a string) while the
+// response spells it `projectID`, and a PUT resets every field it does not carry —
+// are written up in tooling/ops/glitchtip-monitor-api.mjs, where the request code
+// this script used to hold now lives (moved 2026-09-26, E-b2, so ensure-monitors.mjs
+// creates monitors through the same body). The header there is this file's own
+// text, verbatim. What stays here is the policy run and the read-back diff: this
+// script GETs the monitor, changes ONE field, PUTs the whole thing back, and then
+// re-GETs and diffs every field to prove nothing else moved.
 //
 // Usage:
 //   node tooling/ops/set-monitor-thresholds.mjs           # DRY RUN — prints the diff
@@ -77,51 +44,14 @@
 // Exit 1 = a write did not take, or changed a field it was not supposed to.
 // Exit 2 = could not look — no token, or the API was unreachable.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync } from 'node:fs';
-import { join, resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+// The request code — the call, the retry, the body and the threshold POLICY
+// ([ADR 043] decision 2) — is tooling/ops/glitchtip-monitor-api.mjs. This file
+// keeps the verdict: which monitors to write, the read-back and the diff.
+import { api as glitchtip, ORG, POLICY, requestBodyFrom, vaultToken } from './glitchtip-monitor-api.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const VAULT = join(ROOT, '.claude', 'secrets.env');
-const BASE = process.env.GLITCHTIP_URL || 'https://glitchtip.nikatru.com';
-const ORG = process.env.GLITCHTIP_ORG || 'nikatru';
 const APPLY = process.argv.includes('--apply');
-
-// The vault quotes its values; a reader that keeps the quotes sends
-// `Bearer "…"` and gets a 400 that reads exactly like a revoked token.
-const unquote = (v) => v.replace(/^(['"])([\s\S]*)\1$/, '$2');
-function vault(key) {
-  if (!existsSync(VAULT)) return null;
-  for (const line of readFileSync(VAULT, 'utf8').split(/\r?\n/)) {
-    const i = line.indexOf('=');
-    if (i < 0) continue;
-    if (line.slice(0, i).trim() === key) return unquote(line.slice(i + 1).trim());
-  }
-  return null;
-}
-const TOKEN = process.env.GLITCHTIP_TOKEN?.trim() || vault('GLITCHTIP_TOKEN');
-
-/// THE POLICY — and it is [ADR 043] decision 2, not this script's own opinion.
-///
-/// · GET monitors → 2. They run every 60 s, so two consecutive failures means
-///   about two minutes of continuous failure before anyone is told. A real
-///   outage still pages within ~2 min, while a single blip and an ALTERNATING
-///   flap (fail, ok, fail, ok — the pattern that actually produced the 122
-///   emails) never reach two and are silent. ADR 043 priced this against the
-///   real check rows and against the precedent already inside this install:
-///   monitors 11 and 12 were created with 2 and neither has ever flapped.
-///
-/// · HEARTBEAT monitors → NOT MANAGED HERE, deliberately. ADR 043 says "leave
-///   6 and 16 alone". Their intervals are 12 h and 3 h, so each extra
-///   confirmation costs a whole interval of detection latency, and turning
-///   "the daily backup stopped" into a 24 h-late finding is a real cost that
-///   the ADR did not price. Monitor 6 HAS flapped (14 down checks, 11
-///   transitions, including 8 consecutive downs 30 s apart on 2026-07-27), so
-///   there is a case to answer — but it is a decision to take with evidence,
-///   not a number to slip in inside a script. Raised as a follow-up on ADR 043.
-///
-/// A type absent from this map is reported and left untouched.
-const POLICY = { GET: 2 };
+const TOKEN = vaultToken();
+const api = (method, path, body) => glitchtip(method, path, body, { token: TOKEN });
 
 /// Fields this script is permitted to change. Everything else must come back
 /// from the read-back byte-identical, and the diff below enforces that.
@@ -130,25 +60,6 @@ const INTENTIONAL = new Set(['confirmationThreshold']);
 /// Volatile by nature — these move on their own between two reads and are not
 /// evidence of a bad write.
 const VOLATILE = new Set(['checks', 'isUp', 'lastChange']);
-
-async function api(method, path, body) {
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${TOKEN}`,
-      Accept: 'application/json',
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-  let parsed = null;
-  try {
-    parsed = await res.json();
-  } catch {
-    /* a 204 or an error page — status is what matters */
-  }
-  return { status: res.status, body: parsed };
-}
 
 function diff(before, after) {
   const changed = [];
@@ -225,17 +136,7 @@ async function main() {
       );
       continue;
     }
-    const payload = {
-      monitorType: before.monitorType,
-      name: before.name,
-      url: before.url,
-      expectedStatus: before.expectedStatus,
-      expectedBody: before.expectedBody,
-      interval: before.interval,
-      timeout: before.timeout,
-      project: before.projectID,
-      confirmationThreshold: want,
-    };
+    const payload = requestBodyFrom(before, { confirmationThreshold: want });
 
     const put = await api('PUT', `/api/0/organizations/${ORG}/monitors/${m.id}/`, payload);
     if (put.status < 200 || put.status >= 300) {

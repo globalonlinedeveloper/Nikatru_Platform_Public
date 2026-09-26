@@ -37,9 +37,51 @@
 //   2. `wrangler d1 info <app_id>_db` returns the uuid now in the config
 //   3. the starter migration has been APPLIED to that database
 //
+// ⏱ 2026-09-26 — THE LOCKFILE, THE REGISTER ROW, AND `--check` (O-SERVICE-KIT-UNBUILT, E-a1).
+//   · Step [1] installs with `npm ci`, never `npm install`, and refuses a service
+//     directory with no package-lock.json (exit 1) before it installs or calls
+//     anything. The brick carries the lockfile its package.json resolves to, which
+//     OSV-Scanner reads in this repository on every ci run; `npm install` would
+//     resolve the ranges afresh on the day and ship a tree nobody reviewed.
+//   · Step [6] writes the Worker's `appWorkers` row into tooling/platform-register.json
+//     (and names its config in `bindingSources.configs`): name, entrypoint, config,
+//     hosts (the config's custom domains), `dsnSecret` GLITCHTIP_DSN_<APP>,
+//     `clientBasePath` and `routes`. The routes are DERIVED from the stamped
+//     entrypoint by tooling/ci/worker-routes.mjs, the parser assert-platform-register
+//     holds them to, and each route's auth, purpose, client and noLimiterReason come
+//     from tooling/bricks/app/route-clients.json. A mounted route the map does not
+//     name stops the step with exit 1 naming it; it never writes an
+//     `unconsumedReason`. A row already there is left as it is. Step [6] writes files
+//     only: it deploys nothing.
+//   · 🔴 THE FIRST DEPLOY IS NOT HERE, by design (service-kit design §4.1 item 4).
+//     This script runs before the new app's PR merges, and a deploy from here would
+//     ship unmerged code past ci-gate and past record-deployment. The Worker's first
+//     deploy belongs to the deploy lane (E-a2).
+//   · `--check` (offline: no app_id, no token, no install, no network, no writes)
+//     exits 1 naming each Worker directory under services/ that the register has no
+//     row for (`servingWorker` or `appWorkers`), and 0 otherwise.
+//
+// ⏱ 2026-09-26 — THE INVENTORY ROW AND THE MONITOR HOST ROW (O-SERVICE-KIT-UNBUILT, E-b2).
+//   · Step [7] copies tooling/legal/data-inventory.json's `d1:{{app_id}}_db` template
+//     row into a concrete `d1:<app>_db` row (the name, `writtenBy` and the two
+//     sentences that described a template are the app's; the kind, personalData and
+//     retention kind are the template's), and adds tooling/monitor-register.json's
+//     host row for each of the Worker's hosts: `derivedFrom: appCatalogue`,
+//     `monitor: null`, and a `gap` whose `create` block is the GET monitor on the
+//     Worker's health route. tooling/ops/ensure-monitors.mjs creates that monitor
+//     and writes its id onto the row; this script sends nothing to GlitchTip. A row
+//     already there is left as it is. The table rows of the app's own migrations are
+//     NOT written here: what each table holds and the sentence that discloses it are
+//     a person's to write, and assert-data-inventory.mjs names every one missing.
+//   · `--check` also exits 1 on a registered Worker whose owned D1 (the walk in
+//     tooling/ci/d1-stores.mjs) has no data-inventory row, or one of whose hosts has
+//     no monitor-register host row.
+//
 // Usage:
 //   CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… \
 //     node tooling/scripts/provision-backend.mjs <app_id> [--location apac] [--dry]
+//   node tooling/scripts/provision-backend.mjs <app_id> --self-check
+//   node tooling/scripts/provision-backend.mjs --check
 //
 // Credentials are read from the ENVIRONMENT only; this script never opens
 // `.claude/secrets.env` itself.
@@ -69,12 +111,26 @@
 // success true, status active.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, resolve, posix } from 'node:path';
 import { spawnSync } from 'node:child_process';
 // The app-id rule, resolved against THIS module's URL (a static import always is),
 // never the working directory: the script runs from the repo root, its tests from
 // a temp dir. Row O-APP-ID-FORM-UNVALIDATED (a).
 import { appIdProblems } from '../../contracts/app-id/app-id.js';
+// Step [6] and `--check` read the Worker set, the register and the mounts with the
+// same modules the guards use, resolved the same way (against this module's URL).
+import { mountedRoutes } from '../ci/worker-routes.mjs';
+import { workerSet, registerRows, REGISTER, SERVICES_DIR, WORKER_CONFIG } from '../ci/worker-set.mjs';
+import { parseJsonc as parseConfig } from '../ci/d1-sql-inventory.mjs';
+// Step [7] and `--check`: the one D1 walk, and the one writer of a monitor-register host row.
+import { ownedD1 } from '../ci/d1-stores.mjs';
+import { REGISTER_REL as MONITOR_REGISTER, appendHostRow } from '../ops/monitor-register.mjs';
+
+/** Step [6]'s source for every route's auth, purpose and client (see the header). */
+const ROUTE_CLIENTS = 'tooling/bricks/app/route-clients.json';
+/** Step [7]'s inventory, and the template row it copies. */
+const INVENTORY = 'tooling/legal/data-inventory.json';
+const TEMPLATE_STORE = 'd1:{{app_id}}_db';
 
 const PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -105,6 +161,86 @@ function die(lines) {
   process.exit(1);
 }
 const step = (n, msg) => console.log(`\n[${n}] ${msg}`);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `--check` — has every Worker directory a register row? Tree-wide, so it runs
+// before the app_id rule and takes no app_id; offline, so it needs no token.
+// A tree it cannot read is COVERAGE LOST (exit 2), never a pass.
+if (args.includes('--check')) {
+  if (appId) {
+    die([`✗ --check covers every Worker under ${SERVICES_DIR}/ and takes no app_id (got "${appId}").`, 'usage: provision-backend.mjs --check']);
+  }
+  const root = resolve(process.cwd());
+  const lost = (line) => {
+    console.error(`✗ COVERAGE LOST — ${line}`);
+    console.error('  --check could not look, which is not a pass.');
+    process.exit(2);
+  };
+  const set = workerSet(root);
+  if (set === null || set.workers.length === 0) {
+    lost(`no Worker directory (a ${SERVICES_DIR}/<dir> holding ${WORKER_CONFIG}) under ${root}.`);
+  }
+  let register;
+  try {
+    register = JSON.parse(readFileSync(join(root, REGISTER), 'utf8'));
+  } catch (e) {
+    lost(`${REGISTER} is missing or not JSON (${e.message}), so no Worker can be matched to a row.`);
+  }
+  const rowFor = new Map(registerRows(register).map((r) => [String(r.row?.config ?? '').replace(/\\/g, '/'), r.field]));
+  const missing = [];
+  for (const dir of set.workers) {
+    const cfg = `${SERVICES_DIR}/${dir}/${WORKER_CONFIG}`;
+    if (rowFor.has(cfg)) console.log(`  ok  ${SERVICES_DIR}/${dir} — ${rowFor.get(cfg)}`);
+    else missing.push(`${SERVICES_DIR}/${dir}`);
+  }
+  if (missing.length) {
+    die(missing.map((m) =>
+      `✗ ${m} holds a ${WORKER_CONFIG} and ${REGISTER} has no appWorkers row for it. ` +
+        'Provisioning writes that row at step [6]; a Worker without one has no host, routes or crash-sink secret any lane can read.'));
+  }
+  // Step [7]'s two rows, for every registered Worker that has a directory here.
+  let storeIds;
+  let hostnames;
+  try {
+    storeIds = new Set(JSON.parse(readFileSync(join(root, INVENTORY), 'utf8')).stores.map((s) => s?.id));
+  } catch (e) {
+    lost(`${INVENTORY} is missing, not JSON or has no \`stores\` (${e.message}), so no Worker's database can be matched to a row.`);
+  }
+  try {
+    hostnames = new Set(JSON.parse(readFileSync(join(root, MONITOR_REGISTER), 'utf8')).hosts.map((h) => h?.hostname));
+  } catch (e) {
+    lost(`${MONITOR_REGISTER} is missing, not JSON or has no \`hosts\` (${e.message}), so no Worker's host can be matched to a row.`);
+  }
+  const dirConfigs = new Set(set.workers.map((dir) => `${SERVICES_DIR}/${dir}/${WORKER_CONFIG}`));
+  const unrecorded = [];
+  for (const { row } of registerRows(register)) {
+    const cfg = String(row?.config ?? '').replace(/\\/g, '/');
+    if (!dirConfigs.has(cfg)) continue;
+    let parsed;
+    try {
+      parsed = parseConfig(readFileSync(join(root, cfg), 'utf8'));
+    } catch (e) {
+      lost(`${cfg} does not parse as JSONC (${e.message}), so the databases it owns cannot be read.`);
+    }
+    const dbs = ownedD1(root, cfg, parsed, (lines) => lost(lines.join(' ')));
+    for (const db of dbs.owned) {
+      if (!storeIds.has(`d1:${db.databaseName}`)) {
+        unrecorded.push(`${cfg} owns D1 ${db.databaseName} and ${INVENTORY} has no \`d1:${db.databaseName}\` row. Provisioning writes it at step [7].`);
+      }
+    }
+    for (const h of Array.isArray(row.hosts) ? row.hosts : []) {
+      if (!hostnames.has(h)) {
+        unrecorded.push(`${cfg} serves ${h} and ${MONITOR_REGISTER} has no host row for it. Provisioning writes it at step [7]; ensure-monitors.mjs creates its monitor.`);
+      }
+    }
+    if (dbs.owned.length || row.hosts?.length) {
+      console.log(`  ok  ${cfg} — ${dbs.owned.map((d) => `d1:${d.databaseName}`).join(', ') || 'no owned D1'}; hosts ${(row.hosts ?? []).join(', ') || 'none'}`);
+    }
+  }
+  if (unrecorded.length) die(unrecorded.map((u) => `✗ ${u}`));
+  console.log(`\n✅ --check: all ${set.workers.length} Worker director(ies) under ${SERVICES_DIR}/ have a register row, and every owned D1 and host of theirs has its inventory and monitor-register row.`);
+  process.exit(0);
+}
 
 if (!appId) {
   die(['usage: provision-backend.mjs <app_id> [--location apac] [--dry]']);
@@ -158,7 +294,7 @@ if (cfgInitial === null) {
 // rots exactly like a guard nobody feeds bad input to". This one had neither.
 //
 // WHY NOT REUSE `--dry`. `--dry` is not offline: it exits at the credential gate
-// below without CLOUDFLARE_API_TOKEN/ACCOUNT_ID, then runs `npm install` and
+// below without CLOUDFLARE_API_TOKEN/ACCOUNT_ID, then runs `npm ci` and
 // calls `wrangler d1 info` before it stops. In CI that would fail for people who
 // have no secret — a fork PR — rather than for defects, which is the worst kind
 // of red. `--self-check` stops HERE, above the gate: no token, no install, no
@@ -353,17 +489,25 @@ function ensureInstalled() {
   // has to send. Running `node .../wrangler/bin/wrangler.js` sidesteps both:
   // no shim, no shell, arguments verbatim, and identical on every platform.
   const local = join(svcDir, 'node_modules', 'wrangler', 'bin', 'wrangler.js');
+  // 🔴 THE LOCKFILE FIRST, EVEN WHEN node_modules IS ALREADY THERE: a tree installed
+  // with no lockfile is the unreviewed tree this refusal exists to stop, whoever
+  // installed it. `npm ci` would refuse too, but only when it runs.
+  if (!existsSync(join(svcDir, 'package-lock.json'))) {
+    die([
+      `✗ ${join(svcDir, 'package-lock.json')} does not exist.`,
+      '  Step [1] installs with `npm ci`, which installs exactly the committed lockfile. The brick stamps one',
+      '  beside package.json; restore it (re-stamp, or copy the brick\'s), never `npm install` a fresh tree here.',
+    ]);
+  }
   if (existsSync(local)) return local;
-  console.log('    node_modules missing → npm install (this is the only network wait)');
+  console.log('    node_modules missing → npm ci (this is the only network wait)');
   // npm is itself a .cmd on Windows, so this one call does need a shell — it
   // takes no argument that a shell could mangle.
-  const inst = spawnSync('npm', ['install', '--no-audit', '--no-fund'], {
+  const inst = spawnSync('npm', ['ci', '--no-audit', '--no-fund'], {
     cwd: svcDir, encoding: 'utf8', env: process.env, shell: process.platform === 'win32',
   });
-  if (inst.status !== 0) die(['✗ npm install failed:', `${inst.stdout ?? ''}${inst.stderr ?? ''}`]);
-  const instOk = { code: 0, out: '' };
-  void instOk;
-  if (!existsSync(local)) die([`✗ npm install succeeded but ${local} is still absent.`]);
+  if (inst.status !== 0) die(['✗ npm ci failed:', `${inst.stdout ?? ''}${inst.stderr ?? ''}`]);
+  if (!existsSync(local)) die([`✗ npm ci succeeded but ${local} is still absent.`]);
   return local;
 }
 
@@ -474,5 +618,211 @@ if (problems.length) {
 
 console.log(`    d1 info      → ${liveUuid}  (matches the config)`);
 console.log(`    tables       → ${(tables.out.match(/"name":\s*"([a-z_]+)"/g) ?? []).length} present, including d1_migrations`);
-console.log(`\n✅ ${appId}: provisioned, patched and migrated. Zero manual edits.`);
+
+// ── 6. the register row — files only, it deploys nothing (see the header) ────
+const cfgRel = `${SERVICES_DIR}/${appId}-api/${WORKER_CONFIG}`;
+
+/** The `appWorkers` row for this Worker, or exit 1 naming why none can be written.
+ *  Its routes are the stamped entrypoint's mounts; each one's auth, purpose, client
+ *  and noLimiterReason are the ROUTE_CLIENTS entry with the same method and path. */
+function appWorkerRow() {
+  let cfg;
+  try {
+    cfg = parseConfig(readFileSync(cfgPath, 'utf8'));
+  } catch (e) {
+    die([`✗ ${cfgRel} does not parse as JSONC (${e.message}); no row can be read off it.`]);
+  }
+  if (typeof cfg.main !== 'string' || cfg.main === '') {
+    die([`✗ ${cfgRel} declares no \`main\`, so there is no entrypoint to read the Worker's routes from.`]);
+  }
+  const entrypoint = posix.normalize(`${SERVICES_DIR}/${appId}-api/${cfg.main}`);
+  const hosts = (Array.isArray(cfg.routes) ? cfg.routes : [])
+    .filter((r) => r?.custom_domain === true && typeof r.pattern === 'string' && r.pattern)
+    .map((r) => r.pattern);
+  if (hosts.length === 0) {
+    die([`✗ ${cfgRel} declares no \`routes\` entry with \`custom_domain: true\`, so the row would name no host to smoke.`]);
+  }
+  let map;
+  try {
+    map = JSON.parse(readFileSync(join(ROOT, ROUTE_CLIENTS), 'utf8'));
+  } catch (e) {
+    die([`✗ ${ROUTE_CLIENTS} is missing or not JSON (${e.message}); it is where each route's client comes from.`]);
+  }
+  if (!Array.isArray(map?.routes)) die([`✗ ${ROUTE_CLIENTS} has no \`routes\` array.`]);
+
+  const notes = [];
+  const mounted = mountedRoutes(ROOT, entrypoint, '', notes);
+  if (mounted.length === 0) {
+    die([
+      `✗ found no mounted route in ${entrypoint}. A row with \`routes: []\` describes a Worker that answers nothing,`,
+      '  and assert-platform-register.mjs would refuse it. What the parser could not follow:',
+      ...(notes.length ? notes.map((n) => `    · ${n}`) : ['    (nothing — it found no route at all)']),
+    ]);
+  }
+  const sub = (s) => String(s).replaceAll('<<app_id>>', appId);
+  const unmapped = [];
+  const routes = [];
+  for (const m of mounted) {
+    const e = map.routes.find((r) => String(r?.method).toUpperCase() === m.method && r?.path === m.path);
+    if (!e || !e.client?.file || !e.client?.expression) {
+      unmapped.push(`${m.method} ${m.path} (mounted by ${m.owningFile})${e ? ': its entry names no client' : ''}`);
+      continue;
+    }
+    const route = {
+      id: sub(e.id),
+      method: m.method,
+      path: m.path,
+      auth: e.auth,
+      owningFile: m.owningFile,
+      purpose: sub(e.purpose),
+      client: {
+        file: sub(e.client.file),
+        expression: sub(e.client.expression),
+        ...(e.client.note ? { note: sub(e.client.note) } : {}),
+      },
+    };
+    if (e.noLimiterReason) route.noLimiterReason = sub(e.noLimiterReason);
+    routes.push(route);
+  }
+  if (unmapped.length) {
+    die([
+      `✗ step [6]: ${ROUTE_CLIENTS} names no client for ${unmapped.length} route(s) that ${entrypoint} mounts:`,
+      ...unmapped.map((u) => `    ${u}`),
+      '  Name each route\'s caller in that map, or write this row by hand. This step writes no `unconsumedReason`:',
+      '  a waiver a script writes is one nobody decided. Nothing was written to the register.',
+    ]);
+  }
+  return {
+    _why: [
+      `Written by tooling/scripts/provision-backend.mjs step [6]: \`routes\` are what ${entrypoint} mounts`,
+      `(tooling/ci/worker-routes.mjs), and each route's auth, purpose and client are ${ROUTE_CLIENTS}'s entry for it.`,
+    ],
+    name: cfg.name,
+    entrypoint,
+    config: cfgRel,
+    hosts,
+    // The app-id contract is ^[a-z][a-z0-9]*$, so the upper-cased id is a valid secret-name suffix.
+    dsnSecret: `GLITCHTIP_DSN_${appId.toUpperCase()}`,
+    _dsnSecretWhy:
+      "The GitHub secret holding THIS Worker's crash-sink DSN, read by tooling/ci/worker-set.mjs --for-deploy. " +
+      'Named for this app so its crashes file under its own GlitchTip project; creating the project and the secret is an owner step.',
+    clientBasePath: map.clientBasePath,
+    routes,
+  };
+}
+
+step(6, `Writing ${appId}-api's appWorkers row into ${REGISTER}`);
+const regPath = join(ROOT, REGISTER);
+let register;
+try {
+  register = JSON.parse(readFileSync(regPath, 'utf8'));
+} catch (e) {
+  die([`✗ ${REGISTER} is missing or not JSON (${e.message}). The Worker is provisioned and has no register row.`]);
+}
+if (!Array.isArray(register.appWorkers)) die([`✗ ${REGISTER} has no \`appWorkers\` array to add the row to.`]);
+const existing = register.appWorkers.find((w) => String(w?.config ?? '').replace(/\\/g, '/') === cfgRel);
+if (existing) {
+  console.log(`    ${cfgRel} already has a row (${existing.name}); left unchanged. assert-platform-register.mjs holds it to the tree.`);
+} else {
+  const row = appWorkerRow();
+  register.appWorkers.push(row);
+  const configs = register.bindingSources?.configs;
+  if (Array.isArray(configs) && !configs.includes(cfgRel)) {
+    configs.push(cfgRel);
+    configs.sort();
+  }
+  writeFileSync(regPath, `${JSON.stringify(register, null, 2)}\n`);
+  console.log(`    appWorkers[${register.appWorkers.length - 1}] ${row.name} → ${row.hosts.join(', ')}, dsnSecret ${row.dsnSecret}`);
+  console.log(`    routes: ${row.routes.map((r) => `${r.method} ${r.path}`).join(' · ')}`);
+  console.log(`    ${cfgRel} is named in bindingSources.configs.`);
+}
+
+// ── 7. the inventory row and the monitor host row — files only (see the header) ──
+step(7, `Writing ${dbName}'s ${INVENTORY} row and ${appId}-api's ${MONITOR_REGISTER} host row(s)`);
+const workerRow = register.appWorkers.find((w) => String(w?.config ?? '').replace(/\\/g, '/') === cfgRel);
+
+/** The concrete inventory row: the template's kind, personalData and retention kind,
+ *  with this app's name and config, and the two sentences that described a template
+ *  replaced by ones that describe this database. The template's `note` argues for
+ *  keeping the TEMPLATE row, so it is not copied. */
+function inventoryRowFrom(template) {
+  const { note: _templateOnly, ...rest } = JSON.parse(JSON.stringify(template).replaceAll('{{app_id}}', appId));
+  return {
+    ...rest,
+    id: `d1:${dbName}`,
+    name: dbName,
+    // The sentence app #1's row uses. It describes the store and nothing else: this
+    // file feeds the published privacy notice, so provenance belongs in git.
+    holds: `${appId}'s own database. Holds no rows of its own; its tables do.`,
+    retention: { ...rest.retention, reason: 'A container. Each table its migrations create carries its own row.' },
+    writtenBy: [cfgRel],
+  };
+}
+
+const invPath = join(ROOT, INVENTORY);
+let inventory;
+try {
+  inventory = JSON.parse(readFileSync(invPath, 'utf8'));
+} catch (e) {
+  die([`✗ ${INVENTORY} is missing or not JSON (${e.message}). The Worker is registered and its database has no inventory row.`]);
+}
+if (!Array.isArray(inventory.stores)) die([`✗ ${INVENTORY} has no \`stores\` array to add the row to.`]);
+if (inventory.stores.some((s) => s?.id === `d1:${dbName}`)) {
+  console.log(`    ${INVENTORY} already has d1:${dbName}; left unchanged.`);
+} else {
+  const at = inventory.stores.findIndex((s) => s?.id === TEMPLATE_STORE);
+  if (at < 0) {
+    die([`✗ ${INVENTORY} has no ${TEMPLATE_STORE} template row to copy. Nothing was written to it; restore the template row, or write d1:${dbName} by hand.`]);
+  }
+  inventory.stores.splice(at, 0, inventoryRowFrom(inventory.stores[at]));
+  writeFileSync(invPath, `${JSON.stringify(inventory, null, 2)}\n`);
+  console.log(`    ${INVENTORY}: d1:${dbName} (copied from ${TEMPLATE_STORE}).`);
+}
+
+const health = (workerRow?.routes ?? []).find((r) => r?.method === 'GET' && /\/health$/.test(String(r?.path ?? '')));
+if (!health) {
+  die([`✗ ${cfgRel}'s register row mounts no GET …/health route, so there is nothing for a monitor to watch. Nothing was written to ${MONITOR_REGISTER}.`]);
+}
+const monPath = join(ROOT, MONITOR_REGISTER);
+let monText;
+try {
+  monText = readFileSync(monPath, 'utf8');
+  JSON.parse(monText);
+} catch (e) {
+  die([`✗ ${MONITOR_REGISTER} is missing or not JSON (${e.message}). Nothing was written to it.`]);
+}
+const monBefore = monText;
+for (const hostname of workerRow?.hosts ?? []) {
+  if ((JSON.parse(monText).hosts ?? []).some((h) => h?.hostname === hostname)) {
+    console.log(`    ${MONITOR_REGISTER} already has ${hostname}; left unchanged.`);
+    continue;
+  }
+  monText = appendHostRow(monText, {
+    hostname,
+    what: `the ${appId}-api Worker`,
+    derivedFrom: 'appCatalogue',
+    _why:
+      `Written by tooling/scripts/provision-backend.mjs step [7]. \`monitor\` is null until tooling/ops/ensure-monitors.mjs ` +
+      '--apply creates the monitor `gap.create` describes, reads it back, and writes it here with its id.',
+    monitor: null,
+    gap: {
+      why: `${hostname} is provisioned, and GlitchTip has no monitor for it yet.`,
+      action:
+        "node tooling/ops/ensure-monitors.mjs prints the POST; its --apply creates the monitor (a vendor write: a parent step, after the owner's go).",
+      create: {
+        name: `${appId}-api health`,
+        type: 'GET',
+        path: health.path,
+        expectedStatus: 200,
+        expectedBody: '"ok":true',
+        intervalSeconds: 60,
+        project: appId,
+      },
+    },
+  });
+  console.log(`    ${MONITOR_REGISTER}: ${hostname} (monitor: null; ensure-monitors.mjs creates GET ${health.path}).`);
+}
+if (monText !== monBefore) writeFileSync(monPath, monText);
+
+console.log(`\n✅ ${appId}: provisioned, patched, migrated and registered. Zero manual edits.`);
 console.log(`   Run log above is S-12 limbs 2 and 3; limb 1 is enforced in CI by assert-d1-bindings.mjs.`);

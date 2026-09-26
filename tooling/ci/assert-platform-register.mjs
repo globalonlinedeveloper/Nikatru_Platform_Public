@@ -60,6 +60,13 @@ import { join, resolve, dirname, posix } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments } from './text-reductions.mjs';
+import { stripComments, mountedRoutes } from './worker-routes.mjs';
+
+// The comment stripper and the Hono mount parser live in worker-routes.mjs since
+// 2026-09-26, moved there verbatim so provision-backend.mjs step [6] derives a
+// new Worker's routes with the same parser this guard holds them to. The two
+// modules that import `stripComments` from here still do.
+export { stripComments };
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER = join(ROOT, 'tooling', 'platform-register.json');
@@ -122,203 +129,8 @@ function parseJsonc(text, where) {
   }
 }
 
-/**
- * Blank comments in TS/Dart source, preserving offsets. Strings are KEPT because
- * every route path and every client URL IS a string literal — the thing being
- * matched. That is why the client rule additionally requires the expression to
- * live outside the serving Worker: keeping strings means a doc comment is the
- * only false positive available, and comments are what this strips.
- */
-export function stripComments(src, { alsoStrings = false } = {}) {
-  let out = '';
-  let i = 0;
-  const n = src.length;
-  const blank = (ch) => (ch === '\n' ? '\n' : ' ');
-  while (i < n) {
-    const c = src[i];
-    const c2 = src[i + 1];
-    if (c === '/' && c2 === '/') {
-      while (i < n && src[i] !== '\n') { out += ' '; i++; }
-      continue;
-    }
-    if (c === '/' && c2 === '*') {
-      i += 2; out += '  ';
-      while (i < n && !(src[i] === '*' && src[i + 1] === '/')) { out += blank(src[i]); i++; }
-      i += 2; out += '  ';
-      continue;
-    }
-    // ── 🔴 STRINGS ARE ALWAYS *TRACKED*; `alsoStrings` ONLY DECIDES WHETHER THEY
-    // ARE BLANKED. CORRECTED 2026-08-05, AND IT HAD SILENTLY BLINDED THE GUARD.
-    //
-    // This branch used to be gated entirely on `alsoStrings`, so with it false
-    // the scanner walked straight THROUGH string literals — and
-    // `services/platform/src/index.ts:114` is:
-    //
-    //     app.use('/v1/plan/*', platformAuth);
-    //
-    // The `/*` inside that path opened a block comment that never closed, so
-    // EVERY LINE AFTER IT WAS BLANKED — including `:115 app.route('/v1',
-    // cancellation);`. The guard then reported "7 mounted route(s) reconciled
-    // with 7 register entry(ies)" and exited 0, while `POST /v1/plan/cancel`
-    // was mounted, deployed and answering 401 in production, and appeared in
-    // `tooling/platform-register.json` exactly ZERO times. Real mount count: 12.
-    //
-    // The parser-liveness self-check could not catch it: it fires on
-    // `mounted.length === 0`, and this was a PARTIAL loss — 7 of 12 — which
-    // looks exactly like a healthy read.
-    //
-    // 📌 This is the same family as the 2026-08-04 finding that
-    // `stripSourceComments` returned its input unchanged for unknown
-    // extensions, and it arrived the same way: the docstring above already
-    // said strings are kept because a route path IS a string literal. The
-    // INTENT was right and the implementation only honoured it in one of two
-    // modes.
-    if (c === "'" || c === '"' || c === '`') {
-      const q = c;
-      let j = i + 1;
-      while (j < n) {
-        if (src[j] === '\\') { j += 2; continue; }
-        if (src[j] === q) { j++; break; }
-        if (q !== '`' && src[j] === '\n') break;
-        j++;
-      }
-      // Blank the literal when asked, otherwise copy it through verbatim — but
-      // either way, SKIP PAST IT so its contents can never be read as syntax.
-      if (alsoStrings) for (const ch of src.slice(i, j)) out += blank(ch);
-      else out += src.slice(i, j);
-      i = j;
-      continue;
-    }
-    out += c;
-    i++;
-  }
-  return out;
-}
-
-/** The balanced `(...)` starting at `open`, or '' — used to scope a check to ONE
- *  route handler instead of to the whole file. Without it, a new unlimited route
- *  added beside a limited one in the same file passes on its sibling's limiter. */
-function balanced(src, open) {
-  let depth = 0;
-  for (let k = open; k < src.length; k++) {
-    if (src[k] === '(') depth++;
-    else if (src[k] === ')') { depth--; if (depth === 0) return src.slice(open, k + 1); }
-  }
-  return '';
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ROUTE MOUNT PARSER — structural, following app.route() into each sub-router.
-// Grepping for a path string would match the header comment at the top of
-// index.ts, which lists three of these routes in prose.
-// ─────────────────────────────────────────────────────────────────────────────
-const METHODS = ['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'all'];
-
-/** EVERY `new Hono` instance a file declares, in source order. The first is the
- *  file's own router; the rest are IN-FILE GROUPS, and missing them is not a
- *  cosmetic gap — see the block above `mountedRoutes`. */
-function honoIdents(code) {
-  return [...code.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*new\s+Hono\b/g)].map((m) => m[1]);
-}
-
-/** Mount prefix + leaf path, joined the way Hono's own `mergePath` joins them.
- *
- *  🔴 THE TRAILING SLASH IS NOT COSMETIC AND IT IS NOT GUESSED. `posix.join`
- *  turns ('/v1/subscriptions', '/') into '/v1/subscriptions/', and a register
- *  entry written against that string would describe a path the Worker does not
- *  serve. Measured against hono 4.12.34 before this line was written: mounting a
- *  sub-router whose leaf is '/' answers 200 on '/v1/subscriptions' and 404 on
- *  '/v1/subscriptions/'. Five of subscriptiontracker-api's twelve routes declare their leaf as
- *  '/', so without this the register and the Worker would disagree on five paths
- *  while limb 1 reported perfect agreement with the register it was handed. */
-function joinPath(prefix, p) {
-  const j = rel(posix.join(prefix || '/', p));
-  return j.length > 1 ? j.replace(/\/+$/, '') : j;
-}
-
-/** `import <ident> from '<spec>'` → repo-relative .ts path, resolved from `from`. */
-function resolveDefaultImport(code, ident, fromFileRel) {
-  const re = new RegExp(`import\\s+${ident}\\s+from\\s+['"]([^'"]+)['"]`);
-  const m = re.exec(code);
-  if (!m) return null;
-  const spec = m[1];
-  if (!spec.startsWith('.')) return null;
-  return rel(posix.join(posix.dirname(fromFileRel), `${spec}.ts`));
-}
-
+/** What the mount parser could not follow, printed with a COVERAGE LOST below. */
 const parseNotes = [];
-
-/** Walk ONE Hono identifier inside an already-stripped file, at `prefix`.
- *
- *  🔴 THE SUB-ROUTER A FILE DECLARES ITSELF IS STILL A SUB-ROUTER. The walk used
- *  to follow `app.route(prefix, ident)` ONLY when `ident` resolved to a default
- *  import, and pushed a parse note otherwise. services/platform/src/index.ts
- *  happens to mount every group from an import, so nothing was lost there — but
- *  services/subscriptiontracker-api/src/index.ts builds its authenticated group in the file:
- *
- *      const api = new Hono<AppEnv>();
- *      api.use('*', supabaseAuth);
- *      api.route('/subscriptions', subscriptions);
- *      …
- *      app.route('/v1', api);
- *
- *  `api` is not imported, so the old walk stopped at that line and reported
- *  THREE mounted routes for a Worker that mounts TWELVE. That is the same
- *  PARTIAL loss as the 2026-08-05 `/*`-in-a-string defect recorded below — 7 of
- *  12 then, 3 of 12 here — and the liveness self-check cannot see either,
- *  because it fires on zero. */
-function walkHono(code, fileRel, id, prefix, localIdents, seenFiles, out, seenLocal) {
-  const localKey = `${id}@${prefix}`;
-  if (seenLocal.has(localKey)) return;
-  seenLocal.add(localKey);
-
-  const methodRe = new RegExp(`\\b${id}\\s*\\.\\s*(${METHODS.join('|')})\\s*\\(\\s*(['"\`])([^'"\`]*)\\2`, 'g');
-  for (const m of code.matchAll(methodRe)) {
-    const openParen = code.indexOf('(', m.index + id.length);
-    out.push({
-      method: m[1].toUpperCase(),
-      path: joinPath(prefix, m[3]),
-      owningFile: fileRel,
-      handler: balanced(code, openParen),
-    });
-  }
-
-  const routeRe = new RegExp(`\\b${id}\\s*\\.\\s*route\\s*\\(\\s*(['"\`])([^'"\`]*)\\1\\s*,\\s*([A-Za-z_$][\\w$]*)\\s*\\)`, 'g');
-  for (const m of code.matchAll(routeRe)) {
-    const target = m[3];
-    const nextPrefix = joinPath(prefix, m[2]);
-    if (localIdents.includes(target)) {
-      walkHono(code, fileRel, target, nextPrefix, localIdents, seenFiles, out, seenLocal);
-      continue;
-    }
-    const sub = resolveDefaultImport(code, target, fileRel);
-    if (!sub) {
-      parseNotes.push(`${fileRel} mounts \`${target}\` at ${m[2]} but no default import and no in-file \`new Hono\` resolves it`);
-      continue;
-    }
-    out.push(...mountedRoutes(sub, nextPrefix, seenFiles));
-  }
-}
-
-/** Returns [{ method, path, owningFile, handler }] mounted at `prefix`. */
-function mountedRoutes(fileRel, prefix, seen = new Set()) {
-  if (seen.has(fileRel)) return [];
-  seen.add(fileRel);
-  const abs = join(ROOT, fileRel);
-  if (!existsSync(abs)) {
-    parseNotes.push(`route file ${fileRel} does not exist`);
-    return [];
-  }
-  const code = stripComments(readFileSync(abs, 'utf8'));
-  const idents = honoIdents(code);
-  if (idents.length === 0) {
-    parseNotes.push(`${fileRel} declares no \`new Hono\` instance — the parser found nothing to walk`);
-    return [];
-  }
-  const out = [];
-  walkHono(code, fileRel, idents[0], prefix, idents, seen, out, new Set());
-  return out;
-}
 
 // ── MAIN GUARD ─────────────────────────────────────────────────────────
 // EVERYTHING BELOW IS THE CHECK, AND IT RUNS ONLY WHEN THIS FILE IS THE
@@ -489,9 +301,86 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     return out;
   }
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // ── LIMB 6 · THE BRICK'S ROUTE-CLIENT MAP IS A ROW FOR THE TEMPLATE ──────────
+  //
+  // ⏱ 2026-09-26 (O-SERVICE-KIT-UNBUILT, E-a1). tooling/scripts/provision-backend.mjs
+  // step [6] writes a stamped Worker's `appWorkers` row: its routes DERIVED from the
+  // stamped entrypoint (worker-routes.mjs, the parser above), and each route's auth,
+  // purpose, client and noLimiterReason copied from tooling/bricks/app/route-clients.json.
+  // The template was out of limb 1's subject because it had no client tree to resolve a
+  // caller in (the block above `deployableWorkers`); the map is that client tree. So the
+  // map is checked HERE, before any app is stamped, as if it were a register row for the
+  // template: its entries EQUAL the template entrypoint's mounts, both ways, and each one
+  // passes limbs 1, 2 and 4 in the loop below. A template route with no entry, or an
+  // entry whose client no longer resolves, is red on the template's own PR instead of
+  // stopping step [6] on the day somebody stamps an app.
+  //
+  // A client `file` holding `<<app_id>>` names a file the brick STAMPS; it resolves
+  // inside the brick's `__brick__/` tree with `{{app_id}}` in its place, as mason
+  // renders it. An entry may carry no `unconsumedReason`: step [6] would copy it into
+  // every stamped row, and a waiver copied by a script is a waiver nobody decided.
+  //
+  // Scoped to a template config that declares `main`, the predicate the host limb and
+  // limb 5 use. The template's route files and every `purpose` are the map's; its
+  // `owningFile`s are the parser's, since a stamped row takes them from the same parse.
+  // ─────────────────────────────────────────────────────────────────────────────
+  const BRICK_ROOT = 'tooling/bricks/app/__brick__';
+  const ROUTE_CLIENTS = 'tooling/bricks/app/route-clients.json';
+  function templateRow() {
+    const tpl = onDiskConfigs.find((c) => c.startsWith(`${BRICK_ROOT}/`));
+    if (!tpl) return null;
+    const cfg = parseJsonc(readFileSync(join(ROOT, tpl), 'utf8'), tpl);
+    if (typeof cfg.main !== 'string' || cfg.main === '') return null;
+    let map;
+    try {
+      map = JSON.parse(readFileSync(join(ROOT, ROUTE_CLIENTS), 'utf8'));
+    } catch (err) {
+      problems.push(
+        `${ROUTE_CLIENTS} — ${err.code === 'ENOENT' ? 'missing' : `not valid JSON (${err.message})`}. The brick stamps ` +
+          `a Worker (${tpl}), and provision-backend.mjs step [6] takes each of its routes' clients from this map.`,
+      );
+      return null;
+    }
+    if (!Array.isArray(map?.routes)) {
+      problems.push(`${ROUTE_CLIENTS} — has no \`routes\` array, so it names no client for any route the template mounts.`);
+      return null;
+    }
+    const entrypoint = rel(posix.join(posix.dirname(tpl), cfg.main));
+    const owners = new Map(mountedRoutes(ROOT, entrypoint, '', []).map((m) => [key(m.method, m.path), m.owningFile]));
+    const asTemplate = (s) => String(s ?? '').replaceAll('<<app_id>>', '{{app_id}}');
+    const routes = map.routes.map((r) => {
+      if (r && Object.hasOwn(r, 'unconsumedReason')) {
+        problems.push(
+          `${ROUTE_CLIENTS} — ${r.method} ${r.path} carries an \`unconsumedReason\`. Step [6] copies each entry into every ` +
+            'stamped row, so this would be a waiver written by a script; name the caller, or leave the route out of the template.',
+        );
+      }
+      const file = String(r?.client?.file ?? '');
+      return {
+        ...r,
+        id: asTemplate(r?.id),
+        owningFile: owners.get(key(String(r?.method).toUpperCase(), rel(String(r?.path)))) ?? '',
+        client: r?.client && {
+          ...r.client,
+          file: file.includes('<<app_id>>') ? `${BRICK_ROOT}/${asTemplate(file)}` : file,
+          expression: asTemplate(r.client.expression),
+        },
+      };
+    });
+    return {
+      spec: { name: cfg.name, entrypoint, config: tpl, clientBasePath: map.clientBasePath },
+      field: ROUTE_CLIENTS,
+      routes,
+      registerName: ROUTE_CLIENTS,
+      template: true,
+    };
+  }
+  const brickRow = templateRow();
+
   const allMounted = [];
   let mountedInServing = 0;
-  for (const w of declaredWorkers) {
+  for (const w of brickRow ? [...declaredWorkers, brickRow] : declaredWorkers) {
     const workerName = String(w.spec?.name ?? w.field);
 
     // ── LIMB 1 · route set == what the entrypoint mounts, both directions ──────
@@ -517,8 +406,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
       }
     }
 
-    const mounted = mountedRoutes(entrypoint, '');
-    allMounted.push(...mounted);
+    const mounted = mountedRoutes(ROOT, entrypoint, '', parseNotes);
+    if (!w.template) allMounted.push(...mounted);
     if (w.field === 'servingWorker') mountedInServing = mounted.length;
 
     // Self-check: a parser that matches nothing agrees perfectly with any register.
@@ -555,7 +444,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     for (const [k, r] of mountedByKey) {
       if (!registeredByKey.has(k)) {
         problems.push(
-          `${k} — MOUNTED by ${r.owningFile} and absent from the register. [B-1] An unregistered shared ` +
+          `${k} — MOUNTED by ${r.owningFile} and absent from ${w.registerName ?? 'the register'}. [B-1] An unregistered shared ` +
             'route is one no other requirement can quantify over: B-13 cannot ask whether it is limited, ' +
             'B-14 cannot ask whether its wire shape is pinned, B-4a cannot ask whether it validates app_id.',
         );
@@ -1120,6 +1009,12 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
       `each with a resolved reader; ${sharedValues.length} shared value(s) compared ${sharedComparisons} ` +
       `time(s) across those configs, all agreeing; ${printed.length} declared gap(s) printed above`,
   );
+  if (brickRow) {
+    console.log(
+      `ok  brick route clients — ${ROUTE_CLIENTS} names a resolving client for each of the ${brickRow.routes.length} ` +
+        `route(s) ${brickRow.spec.entrypoint} mounts, and for no other`,
+    );
+  }
 }
 
 /** The scan could not look, so this run is not evidence either way — exit 2,

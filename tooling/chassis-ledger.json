@@ -19,8 +19,8 @@
   ],
   "_rootsNote": "TWO roots since 2026-09-07 ([ADR 067] phase 2, unit app-shell). The Worker half of the template - 13 files, 917 lines every stamped backend app inherits - was outside this ledger entirely while `root` was one string, and `git ls-files -- <that one root>` could not see it to complain. assert-chassis-ledger.mjs is the authority on this list and cross-checks it; a row's `root` is optional and defaults to roots[0], which is why the 96 rows written against the single root are unchanged. ⏱ THE FIGURES IN THIS NOTE MOVED ON 2026-09-08 AND ARE CORRECTED RATHER THAN REWRITTEN: the Worker half is now 14 files and 1,021 lines, because the template gained src/lib/error-sink.ts — a stamped backend had NO crash sink at all and failed tooling/ci/assert-worker-error-sink.mjs on limbs 2, 3 and 5 at its first CI run. The guard PRINTS both figures per root on every run, which is the number to read; this sentence is prose and prose rots.",
   "totals": {
-    "files": 139,
-    "lines": 19431,
+    "files": 140,
+    "lines": 22233,
     "unclassified": 0,
     "unclassifiedLines": 0
   },
@@ -749,6 +749,13 @@
       "lines": 24,
       "verdict": "STAYS",
       "why": "Per-app Worker manifest; each Worker runs its own npm ci in its own directory, which is the measured reason services/_shared can carry no bare import."
+    },
+    {
+      "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
+      "path": "package-lock.json",
+      "lines": 2802,
+      "verdict": "STAYS",
+      "why": "Per-app Worker lockfile, resolved from package.json by `npm install --package-lock-only --ignore-scripts` and rendered with its name as {{app_id}}-api, so a stamped Worker's first install (provision-backend step [1], `npm ci`) is a tree OSV-Scanner reads here before any app is stamped. assert-renovate-reach.mjs holds its packages[\"\"] to package.json. Added 2026-09-26, O-SERVICE-KIT-UNBUILT (E-a1)."
     },
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",

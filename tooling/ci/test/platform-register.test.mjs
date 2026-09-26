@@ -1582,3 +1582,153 @@ describe('assert-platform-register — limb 5 across two Workers', () => {
     assert.doesNotMatch(out, /nomain.*declares no `vars\./);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LIMB 6 · the brick's route-client map is held to the TEMPLATE's mounts (2026-09-26,
+// O-SERVICE-KIT-UNBUILT, E-a1). provision-backend.mjs step [6] copies each entry into a
+// stamped Worker's row, so the map is checked before any app is stamped: its entries
+// EQUAL what the template entrypoint mounts, both ways, and each passes limbs 1, 2 and 4.
+// The real tree's controls (a template route with no entry, an entry the template does
+// not mount, a waiver, a client that stopped resolving, the map deleted) were each run
+// NEW-vs-OLD before these were written; these pin the same shapes on a fixture.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-platform-register — limb 6, the brick route-client map', () => {
+  const BRICK_API = BRICK_CFG.replace(/\/wrangler\.jsonc$/, '');
+  const MAP = 'tooling/bricks/app/route-clients.json';
+  const BRICK_WORKER_CFG = `{
+  "name": "{{app_id}}-api",
+  "main": "src/index.ts",
+  "vars": { "SUPABASE_URL": "https://fixture.supabase.co", "API_VERSION": "v1" },
+  "d1_databases": [{ "binding": "PLATFORM_DB", "database_name": "platform_db", "database_id": "11111111-1111-1111-1111-111111111111" }],
+  "kv_namespaces": [{ "binding": "CONFIG_KV", "id": "k1" }],
+  "routes": [{ "pattern": "{{app_id}}-api.nikatru.com", "custom_domain": true }],
+}`;
+  const BRICK_INDEX = `
+import { Hono } from 'hono';
+import account from './routes/account';
+const app = new Hono();
+app.get('/v1/health', (c) => c.json({ ok: true }));
+app.route('/v1/account', account);
+export default app;
+`;
+  const BRICK_ACCOUNT = `
+import { Hono } from 'hono';
+const account = new Hono();
+account.delete('/', (c) => c.body(null, 204));
+export default account;
+`;
+  const CALLERS = "export const smoke = (host) => `https://${host}` + '/v1/health';\nexport const relay = (origin) => fetch(`${origin}/v1/account`, { method: 'DELETE' });\n";
+  const baseMap = () => ({
+    clientBasePath: '/v1',
+    routes: [
+      {
+        id: '<<app_id>>-health',
+        method: 'GET',
+        path: '/v1/health',
+        auth: 'public',
+        purpose: 'Deploy verification.',
+        noLimiterReason: 'Answers from vars alone; the account request ceiling bounds it.',
+        client: { file: 'tooling/fixture-callers.mjs', expression: "'/v1/health'" },
+      },
+      {
+        id: '<<app_id>>-account-delete',
+        method: 'DELETE',
+        path: '/v1/account',
+        auth: 'required',
+        purpose: 'G2 erasure for the app database.',
+        client: { file: 'tooling/fixture-callers.mjs', expression: '`${origin}/v1/account`' },
+      },
+    ],
+  });
+  /** The base fixture (with the app Worker too when `app`) plus a brick Worker template
+   *  and its map; `map: null` leaves the map out. */
+  function brickTree({ map = baseMap(), files = {}, app = false } = {}) {
+    const reg = app ? appRegister() : baseRegister();
+    reg.bindingSources.configs.push(BRICK_CFG);
+    return tree({
+      register: reg,
+      files: {
+        ...(app ? SUBLY_FILES : {}),
+        [BRICK_CFG]: BRICK_WORKER_CFG,
+        [`${BRICK_API}/src/index.ts`]: BRICK_INDEX,
+        [`${BRICK_API}/src/routes/account.ts`]: BRICK_ACCOUNT,
+        'tooling/fixture-callers.mjs': CALLERS,
+        [MAP]: map === null ? null : JSON.stringify(map, null, 2),
+        ...files,
+      },
+    });
+  }
+
+  test('L1 green control: every template mount has an entry, and every client resolves', () => {
+    const { code, out } = run(brickTree());
+    assert.equal(code, 0, out);
+    assert.match(out, /^ok {2}brick route clients — tooling\/bricks\/app\/route-clients\.json names a resolving client for each of the 2 route\(s\) /m);
+    // The template is not an app Worker: the platform line's counts are the register's alone.
+    assert.match(out, /3 mounted route\(s\) reconciled with 3 register entry\(ies\);/);
+    assert.match(out, /⚠ {2}GET \/v1\/health — PUBLIC AND UNLIMITED\. · \{\{app_id\}\}-api /);
+  });
+
+  test('L2 (RC) a template mount with no entry: exit 1, absent from the map', () => {
+    const { code, out } = run(
+      brickTree({ files: { [`${BRICK_API}/src/index.ts`]: BRICK_INDEX.replace("app.route('/v1/account', account);", "app.route('/v1/account', account);\napp.get('/v1/records', (c) => c.json([]));") } }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /GET \/v1\/records — MOUNTED by tooling\/bricks\/app\/__brick__\/.+\/src\/index\.ts and absent from tooling\/bricks\/app\/route-clients\.json\./);
+  });
+
+  test('L3 an entry the template does not mount: exit 1', () => {
+    const map = baseMap();
+    map.routes.push({ ...map.routes[1], id: '<<app_id>>-account-put', method: 'PUT' });
+    const { code, out } = run(brickTree({ map }));
+    assert.equal(code, 1, out);
+    assert.match(out, /PUT \/v1\/account \(register id `\{\{app_id\}\}-account-put`\) — registered but NOT mounted by tooling\/bricks\//);
+  });
+
+  test('L4 a waiver in the map is refused, even though limb 2 would print one from the register', () => {
+    const map = baseMap();
+    delete map.routes[0].client;
+    map.routes[0].unconsumedReason = 'nothing calls it yet';
+    const { code, out } = run(brickTree({ map }));
+    assert.equal(code, 1, out);
+    assert.match(out, /route-clients\.json — GET \/v1\/health carries an `unconsumedReason`\. Step \[6\] copies each entry into every stamped row/);
+  });
+
+  test('L5 a client expression that no longer appears in its file: exit 1 (limb 2 on the map)', () => {
+    const map = baseMap();
+    map.routes[1].client.expression = '`${origin}/v1/accounts`';
+    const { code, out } = run(brickTree({ map }));
+    assert.equal(code, 1, out);
+    assert.match(out, /DELETE \/v1\/account — client expression ``\$\{origin\}\/v1\/accounts`` does not appear in `tooling\/fixture-callers\.mjs`/);
+  });
+
+  test('L6 the map deleted while the brick stamps a Worker: exit 1 naming it', () => {
+    const { code, out } = run(brickTree({ map: null }));
+    assert.equal(code, 1, out);
+    assert.match(out, /tooling\/bricks\/app\/route-clients\.json — missing\. The brick stamps a Worker/);
+  });
+
+  test('L7 a `<<app_id>>` client file resolves inside the brick tree, as mason would render it', () => {
+    const map = baseMap();
+    map.routes[0].client = { file: 'apps/<<app_id>>/lib/smoke.dart', expression: "'/health'" };
+    const green = run(brickTree({ map, files: { 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/smoke.dart': "final u = base + '/health';\n" } }));
+    assert.equal(green.code, 0, green.out);
+    const red = run(brickTree({ map }));
+    assert.equal(red.code, 1, red.out);
+    assert.match(red.out, /client file `tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}\/lib\/smoke\.dart` does not exist on disk\./);
+  });
+
+  test('L8 beside an app Worker, the template adds nothing to the app Workers\' mount count', () => {
+    const { code, out } = run(brickTree({ app: true }));
+    assert.equal(code, 0, out);
+    assert.match(out, /plus 4 across 1 app Worker\(s\) reconciled with 4;/);
+    assert.match(out, /^ok {2}brick route clients — .+ each of the 2 route\(s\) /m);
+  });
+
+  test('L9 a template config with NO `main` is outside limb 6, as it is outside the host limb and limb 5', () => {
+    const reg = baseRegister();
+    reg.bindingSources.configs.push(BRICK_CFG);
+    const { code, out } = run(tree({ register: reg, files: { [BRICK_CFG]: '{ "name": "{{app_id}}-api" }' } }));
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /brick route clients|route-clients\.json/);
+  });
+});

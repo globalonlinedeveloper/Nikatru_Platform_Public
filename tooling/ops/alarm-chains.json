@@ -149,28 +149,25 @@
     "🔴 AND THE DETECTION WAS PROVEN BY MUTATION, not by a green run. `verify-alarm-chains.mjs` was run",
     "green first (exit 0, 23 of 23), then one of the three new ids was pointed at a monitor that does",
     "not exist and the same script exited 1 naming it COVERAGE LOST; the file was restored with its",
-    "sha256 re-checked. A canary that has never been shown to fire is a claim, not a canary."
+    "sha256 re-checked. A canary that has never been shown to fire is a claim, not a canary.",
+    "",
+    "⏱ 2026-09-26 (O-SERVICE-KIT-UNBUILT, E-b2) — THE HOST IDS LEFT THIS LIST, AND THE CANARY STILL CHECKS EVERY ONE OF",
+    "THEM. verify-alarm-chains.mjs now expects the UNION of two sources, each id in exactly one: every host row's",
+    "monitor id in tooling/monitor-register.json, and this list, which keeps only the monitors that are NOT a host",
+    "(heartbeats, routine beats, the auth-box crons). 12 ids moved out in this change because their host row already",
+    "names them: 1, 2, 4, 5, 11, 12, 31, 32, 34, 35, 36, 39. This list went from 31 rows to 19; the canary's set is unchanged at",
+    "31 ids (12 from host rows + 19 here), measured by tooling/ops/monitor-register.mjs expectedMonitors().",
+    "An id in BOTH places is now a broken chain (\"ONE PLACE PER ID\", exit 1), so re-adding a host id here is refused",
+    "rather than silently counted once. WHY: a new app Worker's host row is written by provision-backend.mjs step [7],",
+    "and ensure-monitors.mjs writes its monitor id onto that row after creating it; with host ids also typed here, every",
+    "new Worker would need a second hand edit in this file, and the canary would miss the monitor of whoever forgot it.",
+    "A host row with no monitor id yet prints as EXPECTED BUT ABSENT and does not fail, for the reason the asymmetry",
+    "paragraphs above give: a canary red for the hours between provisioning and creation gets switched off."
   ],
   "expectedMonitors": [
     {
-      "id": 1,
-      "name": "GlitchTip"
-    },
-    {
-      "id": 2,
-      "name": "Subscription Tracker API health"
-    },
-    {
       "id": 3,
       "name": "Subscription Tracker web"
-    },
-    {
-      "id": 4,
-      "name": "nikatru.com"
-    },
-    {
-      "id": 5,
-      "name": "rajasekarselvam.com"
     },
     {
       "id": 6,
@@ -179,14 +176,6 @@
     {
       "id": 16,
       "name": "GlitchTip backup chain"
-    },
-    {
-      "id": 11,
-      "name": "platform.nikatru.com"
-    },
-    {
-      "id": 12,
-      "name": "config.nikatru.com"
     },
     {
       "id": 17,
@@ -225,14 +214,6 @@
       "name": "Supabase disk alert"
     },
     {
-      "id": 31,
-      "name": "ntfy.nikatru.com"
-    },
-    {
-      "id": 32,
-      "name": "vault.nikatru.com"
-    },
-    {
       "id": 29,
       "name": "Laptop routine: ops check"
     },
@@ -245,24 +226,8 @@
       "name": "Laptop routine: pipeline driver"
     },
     {
-      "id": 34,
-      "name": "subscriptiontracker origin (pages.dev)"
-    },
-    {
-      "id": 35,
-      "name": "www.nikatru.com"
-    },
-    {
-      "id": 36,
-      "name": "www.rajasekarselvam.com"
-    },
-    {
       "id": 38,
       "name": "Box B Diun run"
-    },
-    {
-      "id": 39,
-      "name": "Box B dashboards origin"
     },
     {
       "id": 37,
