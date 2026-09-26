@@ -26,6 +26,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
+import { workspaceMembers } from './app-set.mjs';
 
 // ⚠️ THE TABLE AND THE TARGET LIST ARE EXPORTED, AND THE RUN IS GATED ON `isMain`.
 // tooling/scripts/propagate-versions.mjs WRITES the values this file REFUSES to
@@ -208,8 +209,9 @@ export function collectTargets(repoRoot) {
   // workspace is a target in the same change; the brick's app template and its hooks
   // are named because the brick is not a workspace member. A listed member whose
   // pubspec is missing refuses, and so does a list that yields nobody: either shrinks
-  // the floor rules' reach while the global count stays clear.
-  const members = workspaceMembers(readFileSync(join(repoRoot, 'pubspec.yaml'), 'utf8'));
+  // the floor rules' reach while the global count stays clear. The list is read by
+  // app-set.mjs, the one reader of that block (assert-release-lane-generic limb A).
+  const members = workspaceMembers(repoRoot) ?? [];
   if (members.length === 0) {
     console.error('✗ COVERAGE LOST — the root pubspec.yaml lists no `workspace:` members.');
     console.error('  The Dart language and Flutter floor rules read every member pubspec; with the list');
@@ -328,25 +330,6 @@ export function collectTargets(repoRoot) {
   TARGETS.push(WRANGLER_ISLAND_PKG);
 
   return TARGETS;
-}
-
-/** The root pubspec's `workspace:` entries, in order. `#` comments are stripped
- *  first; the list ends at the first line that is not an indented `- <path>` item. */
-function workspaceMembers(text) {
-  const out = [];
-  let inList = false;
-  for (const raw of text.split('\n')) {
-    const line = raw.replace(/#.*$/, '').replace(/\s+$/, '');
-    if (!inList) {
-      if (line === 'workspace:') inList = true;
-      continue;
-    }
-    if (line === '') continue;
-    const m = /^\s+-\s+(\S+)$/.exec(line);
-    if (!m) break;
-    out.push(m[1]);
-  }
-  return out;
 }
 
 /** A scan that quietly matches nothing reports "clean" forever. */
