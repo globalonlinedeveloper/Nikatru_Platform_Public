@@ -88,7 +88,9 @@ const SUBMIT_STEP = '      - run: node tooling/release/submit-store.mjs --submit
 
 /** The run-time half limb 4 (b) demands, as real code. The template literal
  *  carrying `//` in a URL is on purpose: it is the shape that breaks a stripper
- *  that is not string-aware, and submit-play.mjs:453 is written exactly so. */
+ *  that is not string-aware. submit-snap.mjs and submit-windows-store.mjs were
+ *  written exactly so until C4b (2026-09-25) moved the read into
+ *  submit-common.mjs, which builds the URL from `${gh.base}`. */
 const SUBMIT_SCRIPT_REAL =
   'const envUrl = `https://api.github.com/repos/${repo}/environments/store-publish`;\n' +
   'const rules = Array.isArray(envJson.protection_rules) ? envJson.protection_rules : [];\n';
@@ -171,6 +173,9 @@ function tree({
   // in the tree so the two calls can disagree. `{ path, body }`, path relative
   // to the tree root.
   extraScript = null,
+  // ADDED 2026-09-25 (C4b): the body of tooling/release/submit-common.mjs, the
+  // module limb 4 (b) credits a caller through. `null` writes no such file.
+  commonScript = null,
   // ADDED 2026-08-22 by the exhaustive `if (false)` sweep — see the block at the
   // foot of this file. Three floors sit ABOVE the job parse and no case could
   // reach them, because every tree this helper built had a populated
@@ -198,6 +203,7 @@ function tree({
   }
   if (submitScript !== null) write('tooling/release/submit-store.mjs', submitScript);
   if (extraScript !== null) write(extraScript.path, extraScript.body);
+  if (commonScript !== null) write('tooling/release/submit-common.mjs', commonScript);
   // The stub carries the real script's `GATE` declaration on purpose: the
   // guard DERIVES the gate check name from assert-gate-passed.mjs (single
   // declaration, [pipeline F-2]) and goes COVERAGE LOST when it cannot.
@@ -233,6 +239,37 @@ describe('assert-release-provenance — a release build must be gated first', ()
     const { code, out } = run(tree({ build: buildWorkflow({ gateJob: false, needsForm: 'none' }) }));
     assert.equal(code, 1, out);
     assert.match(out, /neither it nor any job it `needs` calls/);
+  });
+
+  // A release build made through the composer, whose text holds no `flutter build`.
+  const COMPOSER_BUILD_STEP = '      - run: node tooling/ci/flutter-release-build.mjs fixture linux linux-snap';
+  const withComposerApp = (root) => {
+    writeFileSync(
+      join(root, 'tooling', 'channel-register.json'),
+      JSON.stringify({
+        channels: [
+          { id: 'web', served: true, lane: { workflow: '.github/workflows/deploy.yml', job: 'deploy' } },
+          { id: 'linux-snap', platforms: ['linux'], purchaseRail: { rail: 'paddle' } },
+        ],
+        purchaseRails: { storeKeyDefine: { define: 'STORE_KEY', secretByRail: {} } },
+      }),
+    );
+    mkdirSync(join(root, 'apps', 'fixture'), { recursive: true });
+    writeFileSync(join(root, 'apps', 'fixture', 'app.yaml'), 'id: fixture\nhosts:\n  api: fixture-api.nikatru.com\n');
+    return root;
+  };
+
+  test('PASSES a gated build made through the composer', () => {
+    const { code, out } = run(withComposerApp(tree({ build: buildWorkflow().replace(BUILD_STEP, COMPOSER_BUILD_STEP) })));
+    assert.equal(code, 0, out);
+    assert.match(out, /assert-release-provenance: ok/);
+  });
+
+  test('FAILS when a build made through the composer does not reach the gate job', () => {
+    const build = buildWorkflow({ needsForm: 'none' }).replace(BUILD_STEP, COMPOSER_BUILD_STEP);
+    const { code, out } = run(withComposerApp(tree({ build })));
+    assert.equal(code, 1, out);
+    assert.match(out, /build\.yml: job "build" runs 1 release build\(s\) \(first at :13\) and neither it nor any job it `needs` calls/);
   });
 
   test('FAILS when the gate runs AFTER the build in the same job', () => {
@@ -709,7 +746,7 @@ describe('assert-release-provenance — a --submit job is gated on an environmen
     // The stripper is load-bearing, not decoration: submit-play.mjs spends ~30
     // lines of comment on this exact check, so a raw text match would credit any
     // script that merely talks about it. Same defect this repo shipped twice
-    // (the guard-coverage counter at dd30feb, assert-stamp-platforms.mjs:41-46,
+    // (the guard-coverage counter at dd30feb, assert-stamp-platforms.mjs:43-48,
     // whose header records deleting the real `flutter build web` step and
     // staying GREEN because the comment above it said the words).
     const { code, out } = run(tree({ submitScript: SUBMIT_SCRIPT_COMMENT_ONLY }));
@@ -1682,6 +1719,177 @@ describe('assert-release-provenance — a --submit job is gated on an environmen
 //    The line is tight over the prefix its case matches, and NOT over its tail;
 //    no comment in either file claims otherwise, and none should acquire one.
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-25 (C4b) — THE READ MOVED INTO submit-common.mjs, AND (b) FOLLOWED
+// IT. submit-play, submit-snap and submit-windows-store now import
+// `requirePublishEnvironment` from tooling/release/submit-common.mjs and call it.
+// The guard as it stood read only the invoked script's OWN source, and on the
+// moved tree it exited 1 naming all three (RC4-OLD). The credit it gained takes
+// an import that RESOLVES to that module, AND a call, AND the module performing
+// the read — each case below removes exactly one of those.
+
+/** submit-common.mjs performing both halves of the read, as real code. */
+const COMMON_READ_REAL =
+  'export async function requirePublishEnvironment() {\n' +
+  '  const envUrl = `https://api.github.com/repos/${repo}/environments/store-publish`;\n' +
+  '  const rules = Array.isArray(body.protection_rules) ? body.protection_rules : [];\n' +
+  '}\n';
+
+/** The shape the three real scripts take: import it from the sibling, call it. */
+const CALLS_COMMON_READ =
+  "import { submitCli, requirePublishEnvironment } from './submit-common.mjs';\n" +
+  "const gate = await requirePublishEnvironment({ label: 'PG-6' });\n";
+
+describe('assert-release-provenance — limb 4 (b) follows the read into submit-common.mjs', () => {
+  test('PASSES a script that imports requirePublishEnvironment from submit-common.mjs and calls it', () => {
+    const { code, out } = run(tree({ submitScript: CALLS_COMMON_READ, commonScript: COMMON_READ_REAL }));
+    assert.equal(code, 0, out);
+    assert.match(out, /1 script\(s\) opened for the run-time half \(tooling\/release\/submit-store\.mjs\); each declares an `environment:` and its script performs a run-time protection-rules read/);
+  });
+
+  test('FAILS when submit-common.mjs is not on disk — an import of nothing reads nothing', () => {
+    const { code, out } = run(tree({ submitScript: CALLS_COMMON_READ }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never reads the deployment environment's protection rules/);
+    assert.match(out, /it does not both import requirePublishEnvironment from tooling\/release\/submit-common\.mjs and call it/);
+  });
+
+  test('FAILS when submit-common.mjs performs only half the read', () => {
+    const half =
+      'export async function requirePublishEnvironment() {\n' +
+      '  const envUrl = `https://api.github.com/repos/${repo}/environments/store-publish`;\n' +
+      '}\n';
+    const { code, out } = run(tree({ submitScript: CALLS_COMMON_READ, commonScript: half }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never reads the deployment environment's protection rules/);
+  });
+
+  test('FAILS on an import nobody calls', () => {
+    const importOnly = "import { requirePublishEnvironment } from './submit-common.mjs';\nconsole.log(typeof requirePublishEnvironment);\n";
+    const { code, out } = run(tree({ submitScript: importOnly, commonScript: COMMON_READ_REAL }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never reads the deployment environment's protection rules/);
+  });
+
+  test('FAILS on a call with no import — a local function of the same name reads nothing', () => {
+    const local = 'async function requirePublishEnvironment() { return { ok: true, lines: [] }; }\nawait requirePublishEnvironment();\n';
+    const { code, out } = run(tree({ submitScript: local, commonScript: COMMON_READ_REAL }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never reads the deployment environment's protection rules/);
+  });
+
+  test('FAILS when the import is RENAMED and the call reaches a local of the original name', () => {
+    const renamed =
+      "import { requirePublishEnvironment as sharedRead } from './submit-common.mjs';\n" +
+      'const requirePublishEnvironment = async () => ({ ok: true, lines: [] });\n' +
+      'await requirePublishEnvironment();\n';
+    const { code, out } = run(tree({ submitScript: renamed, commonScript: COMMON_READ_REAL }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never reads the deployment environment's protection rules/);
+  });
+
+  test('FAILS when the import exists only in a comment', () => {
+    const commented = "// import { requirePublishEnvironment } from './submit-common.mjs';\nawait requirePublishEnvironment();\n";
+    const { code, out } = run(tree({ submitScript: commented, commonScript: COMMON_READ_REAL }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never reads the deployment environment's protection rules/);
+  });
+
+  test('FAILS on a BARE specifier — `submit-common.mjs` without `./` is a package, not the sibling', () => {
+    const bare = "import { requirePublishEnvironment } from 'submit-common.mjs';\nawait requirePublishEnvironment();\n";
+    const { code, out } = run(tree({ submitScript: bare, commonScript: COMMON_READ_REAL }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never reads the deployment environment's protection rules/);
+  });
+
+  test('FAILS when `./submit-common.mjs` resolves to a same-named file in ANOTHER directory', () => {
+    // tooling/other/submit-store.mjs importing './submit-common.mjs' imports
+    // tooling/other/submit-common.mjs — not the module that performs the read,
+    // though tooling/release/submit-common.mjs does perform it in this tree.
+    const { code, out } = run(
+      tree({
+        submit: submitWorkflow({ step: '      - run: node tooling/other/submit-store.mjs --submit --app subscriptiontracker' }),
+        extraScript: { path: 'tooling/other/submit-store.mjs', body: CALLS_COMMON_READ },
+        commonScript: COMMON_READ_REAL,
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /invokes `tooling\/other\/submit-store\.mjs --submit`.*never reads the deployment environment's protection rules/);
+  });
+
+  test('PASSES a script in another directory whose relative import RESOLVES to the module', () => {
+    const fromCi = "import { requirePublishEnvironment } from '../release/submit-common.mjs';\nawait requirePublishEnvironment();\n";
+    const { code, out } = run(
+      tree({
+        submit: submitWorkflow({ step: '      - run: node tooling/other/submit-store.mjs --submit --app subscriptiontracker' }),
+        extraScript: { path: 'tooling/other/submit-store.mjs', body: fromCi },
+        commonScript: COMMON_READ_REAL,
+      }),
+    );
+    assert.equal(code, 0, out);
+  });
+
+  test('PASSES a double-quoted specifier and a multi-line import list', () => {
+    const multiLine =
+      'import {\n  submitCli,\n  requirePublishEnvironment,\n  PUBLISH_ENVIRONMENT,\n} from "./submit-common.mjs";\n' +
+      'const gate = await requirePublishEnvironment({ label: PUBLISH_ENVIRONMENT });\n';
+    const { code, out } = run(tree({ submitScript: multiLine, commonScript: COMMON_READ_REAL }));
+    assert.equal(code, 0, out);
+  });
+});
+
+// ── the extension helper, which re-exports that read since C4b ───────────────
+// A publisher calling requireStorePublishEnvironment() is credited through
+// extensions/scripts/lib/store-environment.mjs: when the helper performs the
+// read itself (EXT-3's shape, which had no case here), or when it re-exports
+// submit-common's read under THAT name and submit-common performs it.
+const STORE_ENV_HELPER_PATH = 'extensions/scripts/lib/store-environment.mjs';
+const CALLS_STORE_HELPER = "import { requireStorePublishEnvironment } from './lib/store-environment.mjs';\nconst gate = await requireStorePublishEnvironment();\n";
+const HELPER_RE_EXPORT =
+  "export {\n  requirePublishEnvironment as requireStorePublishEnvironment,\n  requirePublishEnvironment,\n} from '../../../tooling/release/submit-common.mjs';\n";
+
+describe('assert-release-provenance — limb 4 (b) credits the extension helper', () => {
+  test('PASSES a helper that performs the read itself (the EXT-3 shape)', () => {
+    const { code, out } = run(tree({ submitScript: CALLS_STORE_HELPER, extraScript: { path: STORE_ENV_HELPER_PATH, body: SUBMIT_SCRIPT_REAL } }));
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS when the helper neither performs the read nor re-exports it', () => {
+    const { code, out } = run(
+      tree({ submitScript: CALLS_STORE_HELPER, extraScript: { path: STORE_ENV_HELPER_PATH, body: 'export async function requireStorePublishEnvironment() { return { ok: true, lines: [] }; }\n' }, commonScript: COMMON_READ_REAL }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /never reads the deployment environment's protection rules/);
+  });
+
+  test('PASSES a helper that re-exports submit-common\'s read under the name its callers call', () => {
+    const { code, out } = run(tree({ submitScript: CALLS_STORE_HELPER, extraScript: { path: STORE_ENV_HELPER_PATH, body: HELPER_RE_EXPORT }, commonScript: COMMON_READ_REAL }));
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS when the helper re-exports it but submit-common does not perform the read', () => {
+    const { code, out } = run(tree({ submitScript: CALLS_STORE_HELPER, extraScript: { path: STORE_ENV_HELPER_PATH, body: HELPER_RE_EXPORT } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never reads the deployment environment's protection rules/);
+  });
+
+  test('FAILS when the helper re-exports it under ANOTHER name — the callers\' name is then someone else\'s', () => {
+    const otherName =
+      "export { requirePublishEnvironment as sharedRead } from '../../../tooling/release/submit-common.mjs';\n" +
+      'export async function requireStorePublishEnvironment() { return { ok: true, lines: [] }; }\n';
+    const { code, out } = run(tree({ submitScript: CALLS_STORE_HELPER, extraScript: { path: STORE_ENV_HELPER_PATH, body: otherName }, commonScript: COMMON_READ_REAL }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never reads the deployment environment's protection rules/);
+  });
+
+  test('FAILS when the helper re-exports from a path that is not submit-common.mjs', () => {
+    const wrongPath = "export { requirePublishEnvironment as requireStorePublishEnvironment } from '../../../tooling/ci/submit-common.mjs';\n";
+    const { code, out } = run(tree({ submitScript: CALLS_STORE_HELPER, extraScript: { path: STORE_ENV_HELPER_PATH, body: wrongPath }, commonScript: COMMON_READ_REAL }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never reads the deployment environment's protection rules/);
+  });
+});
 
 /** An ungated, unrecorded publish. Dropped into a tree by filename, it is the
  *  cheapest way to ask "did the guard SEE this file?" — if it did, it fails. */

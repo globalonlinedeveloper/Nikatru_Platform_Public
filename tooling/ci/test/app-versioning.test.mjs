@@ -414,6 +414,28 @@ describe('assert-app-versioning — the lane set is derived from the channel reg
     assert.match(out, /1 served and checked, 1 deferred and printed/);
   });
 
+  // ⏱ ADDED 2026-09-25 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 2 of 3): the count is read off
+  // the census, one build per shell segment. It was one per logical line, and a `run: |`
+  // block is ONE line joined with ` ; `, so two builds read as one, numbered by the other.
+  test('a DEFERRED lane counts each build of a `run: |` block, and each one\'s own --build-number', () => {
+    const register = registerJson([
+      WEB_ROW,
+      { id: 'android-play', served: false, lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' } },
+    ]);
+    const workflow =
+      'name: Build all\npermissions:\n  contents: read\njobs:\n  linux_web_android:\n    runs-on: ubuntu-24.04\n' +
+      `    steps:\n${EMIT_STEP}      - name: Build two\n        run: |\n` +
+      `          flutter build apk --release ${STAMP}\n` +
+      `          flutter build linux --release --build-name=${BNAME} --dart-define=APP_VERSION=${BNAME}+\${GITHUB_SHA::7}\n` +
+      '      - uses: actions/upload-artifact@abc\n';
+    const dir = lane('reg-deferred-block', {
+      extra: { '.github/workflows/build-platforms.yml': workflow, 'tooling/channel-register.json': register },
+    });
+    const { code, out } = run({ args: [dir] });
+    assert.equal(code, 0, out);
+    assert.match(out, /job "linux_web_android" builds 2 artifact\(s\), 1 of them passing --build-number/);
+  });
+
   // THE RECORDED FAILING CASE: flip `served` AND remove the flag. Flipping
   // alone must pass, because the flag is really in build-platforms.yml now.
   test('FAILS the moment a lane is SERVED and its build passes no --build-number', () => {

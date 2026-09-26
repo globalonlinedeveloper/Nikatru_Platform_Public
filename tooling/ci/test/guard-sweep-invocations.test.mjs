@@ -234,6 +234,12 @@ describe('guard-sweep: job, --budget-ms and --times', () => {
       mkdirSync(join(root, 'tooling', 'ci'), { recursive: true });
       copyFileSync(join(REPO, 'tooling', 'ci', 'workflow-scan.mjs'), join(root, 'tooling', 'ci', 'workflow-scan.mjs'));
       copyFileSync(join(REPO, 'tooling', 'ci', 'tree-walk.mjs'), join(root, 'tooling', 'ci', 'tree-walk.mjs'));
+      // ⏱ 2026-09-26 (O-FLUTTER-BUILD-TYPED-PER-LINE): workflow-scan.mjs imports the release-build
+      // composer and the app set, and calls them only to compose a composer call, which no fixture
+      // here has. Each gets a stand-in with no entry point (a LIBRARY row) that throws if called; a
+      // copy of the real module is runnable, and the sweep would list it as UNREACHED.
+      put('tooling/ci/flutter-release-build.mjs', "// fixture stand-in: workflow-scan.mjs imports these names (no entry point: a LIBRARY row)\nconst refuse = () => { throw new Error('fixture stand-in: this fixture has no composer call'); };\nexport const composeReleaseBuild = refuse;\nexport const printed = refuse;\nexport const substitute = refuse;\n");
+      put('tooling/ci/app-set.mjs', "// fixture stand-in: workflow-scan.mjs imports this name (no entry point: a LIBRARY row)\nexport const workspaceApps = () => { throw new Error('fixture stand-in: this fixture has no composer call'); };\n");
       // The sweep reads the exemption declaration out of this file by shape; with no
       // exit call in it, the stub itself is a LIBRARY row.
       put('tooling/ci/assert-guard-coverage.mjs', "const NOT_CI_RUNNABLE = new Map([\n  ['z-exempt.mjs',\n    'fixture'],\n]);\nexport default NOT_CI_RUNNABLE;\n");

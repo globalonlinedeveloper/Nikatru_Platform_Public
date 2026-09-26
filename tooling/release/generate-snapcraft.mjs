@@ -82,8 +82,10 @@
 //   [--repo-root path]  read the maintained artifacts from another tree (tests)
 //   [--print]           write the recipe to stdout as well as to --out
 //
-// Exit 0 = a complete recipe was written. 1 = it could not be derived, and the
-// reason names the artifact that is missing rather than the key that is absent.
+// Exit 0 = a complete recipe was written. 2 = it could not be derived, and the
+// reason names the artifact that is missing rather than the key that is absent:
+// every SnapcraftUngenerable refusal, since 2026-09-25 (it exited 1, a finding's
+// code, under a COVERAGE LOST line). 1 = a usage error: --out not given.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, dirname, relative, isAbsolute } from 'node:path';
@@ -93,7 +95,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 // the one way that reports clean: WHICH LINES IT CAN SEE. The apt list below is
 // inside a `run: |` block, which is exactly the shape a line-anchored regex gets
 // wrong.
-import { parseWorkflow, shellSegments } from '../ci/workflow-scan.mjs';
+import { parseWorkflow, shellSegments, flutterBuilds } from '../ci/workflow-scan.mjs';
 // THE ONE READING OF AN APP'S LINUX IDENTITY. `readLinuxIdentity` parses
 // `set(...)` calls with comments stripped, because that file's own comments name
 // both variables in prose — a bare text match reads the explanation, not the
@@ -549,10 +551,26 @@ export function readLinuxBuildLane(root) {
     ]);
   }
 
+  // ⏱ CHANGED 2026-09-25 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 2 of 3): whether a
+  // job builds Linux is workflow-scan's flutterBuilds census, every mode, not a
+  // regex over the job's text: a Linux build made through
+  // tooling/ci/flutter-release-build.mjs has no `flutter build linux` in it. A
+  // call the composer refuses leaves no reading of which job builds Linux, so it
+  // is refused here as COVERAGE LOST rather than guessed around.
+  let builds;
+  try {
+    builds = flutterBuilds(root, [wf]);
+  } catch (e) {
+    refuse([
+      `COVERAGE LOST — ${e.message}`,
+      'Which job builds Linux is then unknown, and the packages a snap stages must come from that job.',
+    ]);
+  }
+  const linuxJobs = new Set(builds.filter((b) => b.target === 'linux').map((b) => b.job));
+
   const found = [];
   for (const job of wf.jobs.values()) {
-    const body = job.logical.map((l) => l.text).join('\n');
-    const buildsLinux = /flutter\s+build\s+linux\b/.test(body);
+    const buildsLinux = linuxJobs.has(job.name);
     for (const line of job.logical) {
       // Step 3: undo the ` ; ` that joinBlockScalars put where a shell line
       // continuation was. Everything after this is a real command boundary.
@@ -1181,7 +1199,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       if (!(e instanceof SnapcraftUngenerable)) throw e;
       console.error('generate-snapcraft: REFUSING to emit a build-dep list');
       for (const l of e.lines) console.error(`  ${l}`);
-      process.exit(1);
+      process.exit(2);
     }
     process.stdout.write(`${lane.packages.join(' ')}\n`);
     console.error(
@@ -1203,7 +1221,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     if (!(e instanceof SnapcraftUngenerable)) throw e;
     console.error('generate-snapcraft: REFUSING');
     for (const l of e.lines) console.error(`  ${l}`);
-    process.exit(1);
+    process.exit(2);
   }
 
   const target = join(resolve(out), RECIPE_PATH);

@@ -121,7 +121,9 @@ import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
 import { FLUTTER_APP_FIELD, flutterAppChannel } from './channel-surface.mjs';
-import { parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt, shellSegments, resolveLocalCalls, workflowSteps, commandAt, joinShellContinuations } from './workflow-scan.mjs';
+import {
+  parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt, shellSegments, resolveLocalCalls, workflowSteps, commandAt, joinShellContinuations, parseWorkflow, flutterBuilds,
+} from './workflow-scan.mjs';
 import { parseYaml } from '../app-yaml/yaml.mjs';
 import { lanesOfSurface } from './tag-owner.mjs';
 import { ARTIFACT_FORMATS } from '../../contracts/store/vocabulary.js';
@@ -1250,9 +1252,35 @@ if (existsSync(join(ROOT, RELEASE_DIR))) {
       .flatMap((c) => [c.submission?.script, c.submission?.recipeScript])
       .filter((s) => typeof s === 'string' && s.trim() !== ''),
   );
-  for (const entry of listDir(join(ROOT, RELEASE_DIR))) {
-    if (!entry.endsWith('.mjs')) continue;
+  // ⏱ 2026-09-25 (O-SUBMIT-SCRIPTS-SHARE-NO-MODULE): a LIBRARY the release
+  // scripts import is not a submission path, so no row can name it. It is
+  // admitted by name, with its reason, and only while a release script in this
+  // directory imports it: a member nothing imports is the same abandoned file
+  // this check exists to refuse, so it fails exactly as an orphan does.
+  const RELEASE_LIBRARIES = new Map([
+    ['submit-common.mjs', 'the preamble every submit-*.mjs imports: the argument reader, the repo root, the printers and the two stops (COVERAGE LOST exits 2)'],
+  ]);
+  const releaseEntries = listDir(join(ROOT, RELEASE_DIR)).filter((e) => e.endsWith('.mjs'));
+  for (const [lib, why] of RELEASE_LIBRARIES) {
+    const rel = `${RELEASE_DIR}/${lib}`;
+    if (!releaseEntries.includes(lib)) {
+      problems.push(`${rel} is listed in RELEASE_LIBRARIES ("${why}") and does not exist. Remove the entry.`);
+      continue;
+    }
+    const literal = lib.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const importSite = new RegExp(String.raw`\bfrom\s+['"]\./${literal}['"]`);
+    const importers = releaseEntries.filter(
+      (e) => e !== lib && importSite.test(readFileSync(join(ROOT, RELEASE_DIR, e), 'utf8')),
+    );
+    if (importers.length === 0) {
+      problems.push(
+        `${rel} is a release library (RELEASE_LIBRARIES: "${why}") that NO script in ${RELEASE_DIR} imports. An unimported library is an orphan like any other file here: import it or delete it, and remove its entry.`,
+      );
+    }
+  }
+  for (const entry of releaseEntries) {
     const rel = `${RELEASE_DIR}/${entry}`;
+    if (RELEASE_LIBRARIES.has(entry)) continue;
     if (declaredScripts.has(rel)) continue;
     problems.push(
       `${rel} is a release script that NO channel row names in its \`submission.script\`. [10]D-10 limb (i) makes the register the one place a submission path is declared; an unreferenced script is a path nobody can reach from the register and nothing keeps working. Declare it on its channel or delete it.`,
@@ -1530,8 +1558,9 @@ function uploadPaths(lines) {
   return out;
 }
 
-/** platform -> { formats:Set, where:Set } for one job body. */
-function jobEmits(lines, label) {
+/** platform -> { formats:Set, where:Set } for one job body; `builds` is that job's
+ *  records in the census (workflow-scan.mjs flutterBuilds, every mode). */
+function jobEmits(lines, label, builds) {
   const out = new Map();
   const add = (p, f) => {
     if (!PLATFORMS.has(p)) return;
@@ -1539,10 +1568,17 @@ function jobEmits(lines, label) {
     out.get(p).formats.add(f);
     out.get(p).where.add(label);
   };
-  for (const m of lines.join('\n').matchAll(/flutter\s+build\s+([a-z]+)/g)) {
-    const t = BUILD_TARGETS.get(m[1]);
+  // ⏱ CHANGED 2026-09-25 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 2 of 3): this read
+  // `flutter build <target>` off the job's text, and a build the job asks
+  // tooling/ci/flutter-release-build.mjs to compose has none, so a lane that
+  // builds through the composer emitted nothing here. The target's leading
+  // lowercase word is what the text match read.
+  for (const b of builds) {
+    const target = /^[a-z]+/.exec(b.target)?.[0];
+    if (target === undefined) continue;
+    const t = BUILD_TARGETS.get(target);
     if (!t) {
-      unknownTargets.add(m[1]);
+      unknownTargets.add(target);
       continue;
     }
     for (const f of t.formats) add(t.platform, f);
@@ -1570,13 +1606,25 @@ function jobEmits(lines, label) {
   return out;
 }
 
+/** The census's builds for one workflow. A workflow the register names outside the
+ *  scan is parsed off disk, as `workflow()` above reads it: COVERAGE (a) below is
+ *  the finding about such a lane, and this comparison must not refuse first. */
+const buildsCache = new Map();
+function buildsOf(wfRel) {
+  if (!buildsCache.has(wfRel)) {
+    const parsed = gateScanned.find((w) => w.rel === wfRel) ?? parseWorkflow(ROOT, wfRel);
+    buildsCache.set(wfRel, parsed === null ? [] : flutterBuilds(ROOT, [parsed]));
+  }
+  return buildsCache.get(wfRel);
+}
 const emitCache = new Map();
 function emitsFor(wfRel, jobName) {
   const key = `${wfRel}::${jobName}`;
   if (!emitCache.has(key)) {
     const wf = workflow(wfRel);
     const lines = wf?.jobs.get(jobName) ?? [];
-    emitCache.set(key, jobEmits(lines, `${wfRel}:${jobName}`));
+    const builds = buildsOf(wfRel).filter((b) => b.job === jobName);
+    emitCache.set(key, jobEmits(lines, `${wfRel}:${jobName}`, builds));
   }
   return emitCache.get(key);
 }

@@ -2177,6 +2177,11 @@
       "firstSeen": "2026-09-26",
       "evidence": []
     },
+    "tooling/ci/flutter-release-build.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-26",
+      "evidence": []
+    },
     "tooling/ci/flutter-stock-assets.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-04",
@@ -2682,6 +2687,11 @@
       "evidence": []
     },
     "tooling/store/msix-visual-name.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-26",
+      "evidence": []
+    },
+    "tooling/web/connect-origins.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-26",
       "evidence": []

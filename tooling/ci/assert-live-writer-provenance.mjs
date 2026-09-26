@@ -48,6 +48,17 @@
 //
 // ⚠️ A SCRIPT-LAUNCHED `flutter build` is refused, not graded: nothing here can
 // yet say which lane such a build writes under. Extend this guard first.
+// ⏱ 2026-09-26 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 1 of 3) — EXTENDED FOR ONE
+// SCRIPT, the release composer tooling/ci/flutter-release-build.mjs, which the
+// release lanes call in place of their literal `flutter build` lines (part 3). Its
+// answer to the two questions: it writes under NO lane, because it runs
+// `flutter build` and never `flutter drive`, so it launches nothing that could
+// write a row; and there is nothing to purge. A binary it makes writes rows only
+// when a user runs it, stamped with the release APP_VERSION the census readers
+// grade (workflow-scan.mjs composes each call into the literal line it replaces),
+// exactly as a YAML `flutter build` line was never this guard's subject. So a
+// step that calls it is not a writer step. Every OTHER script-launched build is
+// still refused below.
 //
 // Usage:  node tooling/ci/assert-live-writer-provenance.mjs [repoRoot]
 // Exit 0 = every live writer is stamped and purged. 1 = a finding.
@@ -78,6 +89,8 @@ const STAMP_MODULE_REL = 'tooling/e2e/app-version-stamp.mjs';
 const SPAWNER_ROOTS = ['tooling', 'extensions/scripts'];
 const SPAWNER_SKIP = new Set(['test', 'fixtures', 'node_modules']);
 const PROVISION_REL = 'tooling/e2e/provision_user.mjs';
+/** The one script-launched `flutter build` this guard accepts: the release composer (header). */
+const RELEASE_COMPOSER_REL = 'tooling/ci/flutter-release-build.mjs';
 const PURGE_REL = 'tooling/e2e/purge.mjs';
 const DRIVE_FAMILY = ['E2E_DRIVE_LOG', 'E2E_RESPONSE_DATA'];
 const LEDGER = 'E2E_CONSENT_LEDGER';
@@ -186,7 +199,9 @@ const walk = (rel) => {
 };
 for (const r of SPAWNER_ROOTS) walk(r);
 if (scannedScripts === 0) coverageLost([`read ZERO .mjs files under ${SPAWNER_ROOTS.join(', ')}. The walk is broken, not the tree.`]);
-const spawnerFiles = [...new Set(spawners.map((s) => s.rel))];
+// Only a `flutter drive` spawner writes rows, so only its steps are writer steps:
+// a step calling a build spawner (the composer) is graded by L3 alone.
+const spawnerFiles = [...new Set(spawners.filter((s) => s.kind === 'drive').map((s) => s.rel))];
 
 /** Every step of every job, with the shell segments its run holds. */
 const stepsOf = [];
@@ -335,6 +350,7 @@ function reachesArgv(sp) {
 for (const sp of spawners) {
   const where = `${sp.rel}:${sp.line}`;
   if (sp.kind === 'build') {
+    if (sp.rel === RELEASE_COMPOSER_REL) continue;
     problems.push(`${where} — a script-launched flutter build is not yet supported: extend this guard before adding one (which lane does it write under, and what purges it?).`);
     continue;
   }
