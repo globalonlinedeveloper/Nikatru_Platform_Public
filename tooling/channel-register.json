@@ -1256,7 +1256,7 @@
       "",
       "WHY THIS BLOCK IS NEEDED AT ALL, rather than just reading `signing.ciSecrets`. The failing",
       "condition is 'names a secret that is NOT in the register', and a release workflow legitimately",
-      "names ~20 secrets that are not signing identities — API_BASE_URL, SUPABASE_ANON_KEY, a store's",
+      "names ~20 secrets that are not signing identities — SUPABASE_ANON_KEY, a store's",
       "upload credentials. Checking only against the signing names would fail every workflow in the",
       "tree; checking only the four that happen to look Android-ish would be a hardcoded classifier",
       "that silently mis-files the next secret somebody adds. So the register carries BOTH SIDES of a",

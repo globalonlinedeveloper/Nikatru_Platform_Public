@@ -313,8 +313,8 @@ The Apple items are gated on hardware, not on money: there is no web enrolment
 in India, so the developer account cannot be created from this machine.
 
 There are also **zero repository variables**. Non-secret values such as
-`API_BASE_URL`, `SUPABASE_URL` and `SUPABASE_PROJECT_REF` are stored as secrets,
-which is why deploy logs are masked and hard to read. Moving them to variables
+`SUPABASE_URL` and `SUPABASE_PROJECT_REF` are stored as secrets (`API_BASE_URL` is not
+a secret: `tooling/ci/flutter-release-build.mjs` composes it from the app's rule), which is why deploy logs are masked and hard to read. Moving them to variables
 is a follow-up, not done here.
 
 ## 7. Repository settings CI depends on
