@@ -1254,6 +1254,10 @@ jobs:
       - name: The Apple privacy manifests still describe the binaries that ship
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-apple-privacy-manifest.mjs
+      # why: bp does not run on a PR; this holds its PROVE step and uploads to the register's Apple artifact paths.
+      - name: The Apple prover reads the archives at the paths bp writes and uploads
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-artifact-signed-apple.mjs --static
       - name: melos run analyze
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"

@@ -91,9 +91,12 @@ describe('the repaired tree passes', () => {
     assert.match(r.out, new RegExp(`reads? ${DECL_REL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
     // A FLOOR, not an equality: a new lane that uploads symbols must not fail
     // this test, but a rewrite that deletes every call site must not pass it.
-    // Twelve on 2026-09-09.
+    // Twelve on 2026-09-09. ⏱ RE-BASED 12 → 11 on 2026-09-25: thirteen before C2
+    // (O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT), eleven after, and the two gone are
+    // exactly the symbol uploads of submit-play.yml#submit and submit-windows-store.yml#submit,
+    // whose jobs now ship their dry-run job's bytes (its mapping went up from that job).
     const named = r.out.split('\n').filter((l) => /^\s+\S+\.ya?ml:\d+/.test(l));
-    assert.ok(named.length >= 12, `only ${named.length} call site(s) named:\n${r.out}`);
+    assert.ok(named.length >= 11, `only ${named.length} call site(s) named:\n${r.out}`);
   });
 
   test('at least one call site actually reads the declaration in its own step', () => {

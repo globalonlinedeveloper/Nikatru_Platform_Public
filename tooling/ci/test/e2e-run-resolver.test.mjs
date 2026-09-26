@@ -33,6 +33,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, exist
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { databaseSources } from '../migration-tables.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const MONITOR = join(REPO, 'tooling', 'ops', 'check-prod-provenance.mjs');
@@ -80,14 +81,17 @@ describe('the register and the implementation name the same thing', () => {
     // is not `released-build`. Moving `e2e-run` into that field would swap the
     // strongest marker in the schema for a shape check on the one table this
     // repository has already had residue in.
-    assert.equal(register.tables.consent_artifacts.resolver, 'released-build');
+    assert.equal(register.databases.platform_db.tables.consent_artifacts.resolver, 'released-build');
     // ⏱ 2026-09-23 · `store-capture` joined it: the store capture's own narrow resolver
     // (tooling/ci/test/store-capture-resolver.test.mjs holds its refusals).
-    assert.deepEqual(register.tables.consent_artifacts.alsoResolves, ['e2e-run', 'store-capture']);
+    assert.deepEqual(register.databases.platform_db.tables.consent_artifacts.alsoResolves, ['e2e-run', 'store-capture']);
   });
 
   test('NOTHING ELSE carries alsoResolves — the addition stays narrow', () => {
-    const carriers = Object.entries(register.tables)
+    // ⏱ 2026-09-26 — over EVERY database's tables (O-PROVENANCE-WALKS-ONE-DATABASE), so a carrier
+    // added to an app database is counted too.
+    const carriers = Object.entries(register.databases)
+      .flatMap(([db, d]) => Object.entries(d.tables).map(([name, r]) => [`${db}.${name}`, r]))
       .filter(([, r]) => Array.isArray(r.alsoResolves) && r.alsoResolves.length > 0)
       .map(([name]) => name);
     // ⏱ 2026-09-15 · [ADR 087] the SECOND carrier, with its own argument: `pending_erasures`
@@ -96,18 +100,18 @@ describe('the register and the implementation name the same thing', () => {
     // set is the `export const <NAME>_STEP` literals the Worker declares, not a list here.
     assert.deepEqual(
       carriers,
-      ['consent_artifacts', 'pending_erasures'],
+      ['platform_db.consent_artifacts', 'platform_db.pending_erasures'],
       'a second resolver is a value this monitor will no longer go red for; each one needs its own argument',
     );
-    assert.deepEqual(register.tables.pending_erasures.alsoResolves, ['erasure-step']);
-    assert.equal(register.tables.pending_erasures.resolver, 'app-catalogue');
+    assert.deepEqual(register.databases.platform_db.tables.pending_erasures.alsoResolves, ['erasure-step']);
+    assert.equal(register.databases.platform_db.tables.pending_erasures.resolver, 'app-catalogue');
   });
 
   test('`events` is NOT given the e2e exemption, though it also carries app_version', () => {
     // The suite declines analytics, so the events rail is off for the nightly.
     // If that ever changes, an events row IS unremoved residue — purge.mjs does
     // not delete from `events` — and this monitor going red is correct.
-    assert.equal(register.tables.events.alsoResolves, undefined);
+    assert.equal(register.databases.platform_db.tables.events.alsoResolves, undefined);
   });
 });
 
@@ -241,6 +245,9 @@ describe('alsoResolves refuses to be half-applied', () => {
     // migration-tables.mjs enumerates the schema; cronJobNames() walks the
     // Worker source for `export const <NAME>_JOB`.
     cpSync(join(REPO, 'services/platform/migrations'), join(root, 'services/platform/migrations'), { recursive: true });
+    // ⏱ 2026-09-26 — the monitor derives its databases from the platform register and each Worker's
+    // wrangler config, and enumerates every one of them (O-PROVENANCE-WALKS-ONE-DATABASE).
+    for (const rel of databaseSources(REPO)) cpSync(join(REPO, rel), join(root, rel), { recursive: true });
     cpSync(join(REPO, 'services/platform/src'), join(root, 'services/platform/src'), { recursive: true });
     // releaseLines() reads apps/*/pubspec.yaml and nothing else under apps/.
     for (const e of readdirSync(join(REPO, 'apps'), { withFileTypes: true })) {
@@ -289,7 +296,7 @@ describe('alsoResolves refuses to be half-applied', () => {
 
   test('THE MUTATION THAT PROVES THE ACCEPT CASE IS NOT VACUOUS: drop alsoResolves and the e2e row goes red', () => {
     const r = withRegister((reg) => {
-      delete reg.tables.consent_artifacts.alsoResolves;
+      delete reg.databases.platform_db.tables.consent_artifacts.alsoResolves;
     }, 'e2e-742-6fad3a3');
     assert.equal(r.status, 1, r.stdout + r.stderr);
     assert.match(r.stderr, /not the shape a shipped build produces/);
@@ -301,7 +308,7 @@ describe('alsoResolves refuses to be half-applied', () => {
     // the shape of a finding, which is the one direction that weakens without
     // announcing itself.
     const r = withRegister((reg) => {
-      reg.tables.consent_artifacts.alsoResolves = ['no-such-resolver'];
+      reg.databases.platform_db.tables.consent_artifacts.alsoResolves = ['no-such-resolver'];
     }, 'e2e-742-6fad3a3');
     assert.equal(r.status, 2, r.stdout + r.stderr);
     assert.match(r.stderr, /COULD NOT LOOK/);

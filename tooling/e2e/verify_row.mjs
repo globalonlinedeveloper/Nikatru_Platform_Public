@@ -1,6 +1,8 @@
-// Server-side proof that the app's "add subscription" POST actually landed in
-// live D1: counts subscription rows for the E2E user via the Cloudflare D1 HTTP
-// API. Fails the job if none exist. Node 20 global fetch only.
+// Server-side proof that the app's golden-path POST actually landed in live D1:
+// counts the E2E user's rows in the app's `rowTable` (tooling/e2e-leg-register.json
+// `apps.<E2E_APP_ID>`) via the Cloudflare D1 HTTP API, in the database the app's
+// Worker binds as APP_DB (tooling/e2e/backend.mjs). Fails the job if none exist.
+// Node 20 global fetch only.
 //
 // TRUST-AWARE since 2026-09-22 (re-keyed from the target name 2026-09-25) — the
 // expectation and every verdict line live in tooling/e2e/auth_target_expectation.mjs:
@@ -14,16 +16,25 @@
 //   unset or anything else → exit 2, "could not decide what to expect". Never
 //            defaulted: the two answers expect opposite outcomes.
 //
-// Env: CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, SUBSCRIPTIONTRACKER_D1_DATABASE_ID,
-//      E2E_USER_ID, E2E_WORKERS_TRUST (written to $GITHUB_ENV by e2e.yml's step
-//      "Derive what this run expects")
+// Env: CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, E2E_APP_ID, E2E_USER_ID,
+//      E2E_WORKERS_TRUST (written to $GITHUB_ENV by e2e.yml's step
+//      "Derive what this run expects"). The database id is not an env key:
+//      E2E_APP_ID resolves it, and a refusal from backend.mjs is exit 1 before
+//      any request.
 // NOTE: CLOUDFLARE_API_TOKEN must have D1 read access for this account.
 import { decideTrust, expectationLine, rowVerdict, say } from './auth_target_expectation.mjs';
+import { e2eTargetOrExit } from './backend.mjs';
 
 const acct = need('CLOUDFLARE_ACCOUNT_ID');
-const dbId = need('SUBSCRIPTIONTRACKER_D1_DATABASE_ID');
+const appId = need('E2E_APP_ID');
 const token = need('CLOUDFLARE_API_TOKEN');
 const userId = need('E2E_USER_ID');
+const { appDb: dbId, rowTable } = e2eTargetOrExit(appId, { code: 1, prefix: 'verify_row: REFUSED' });
+// D1 cannot bind a table name, so it is checked here, where the statement is built.
+if (!/^[A-Za-z_][A-Za-z0-9_$]*$/.test(rowTable)) {
+  console.error(`verify_row: REFUSED: rowTable ${JSON.stringify(rowTable)} is not a plain table name.`);
+  process.exit(1); // safe: this runs BEFORE any request, so no undici handle is open
+}
 
 const auth = decideTrust(process.env.E2E_WORKERS_TRUST);
 if (!auth.trust) {
@@ -33,12 +44,12 @@ if (!auth.trust) {
 console.log(expectationLine('verify_row', auth.trust));
 
 const result = await d1(
-  'SELECT COUNT(*) AS n FROM subscriptions WHERE user_id = ?',
+  `SELECT COUNT(*) AS n FROM ${rowTable} WHERE user_id = ?`,
   [userId],
 );
 const raw = result?.[0]?.results?.[0]?.n;
 const n = Number(raw ?? 0);
-console.log(`D1 subscriptions for user ${userId}: ${n}`);
+console.log(`D1 ${appId} ${rowTable} for user ${userId}: ${n}`);
 
 // `exitCode`, not `exit()`: an undici keep-alive handle is open by now, and
 // exiting over one crashes libuv on Windows (see verify_purged.mjs's header).

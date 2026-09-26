@@ -597,3 +597,39 @@ the two readers and is reported as UNATTRIBUTED — COVERAGE LOST. Every
 other record call in this repository is written on one line for the same
 reason (deploy-web.yml:391, deploy-workers.yml:135, :225 — re-measured 2026-09-25, after each publishing job gained its ref-check first step and each record step the id it published).
 
+
+---
+
+## ⏱ 2026-09-25 — `submit` ships the bundle `dry-run` built (O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT)
+
+**Appended, not rewritten.** Until this date the `submit` job compiled the app a second time, so the
+bundle Play received was not the bytes the dry run had graded, and an obfuscated rebuild shipped with
+a mapping from a different compile. Now there is ONE compile per dispatch:
+
+* `dry-run` hashes its bundle in step **Hand the submit job this bundle's name and sha256**
+  (`id: bytes`) and exports `outputs.artifact` and `outputs.sha256`. The artifact name carries
+  `ANDROID_SIGNING_POSTURE`, which only that job can know, so it travels as an output, and the
+  upload reads the same output.
+* `submit` downloads that artifact, then **The bundle is the one the dry-run job hashed (sha256)**
+  runs `sha256sum --check --strict` against `needs.dry-run.outputs.sha256`, passed through `env:`.
+  An approval older than the 7-day retention finds nothing and FAILS; the retention is not raised,
+  because a stale approval should rebuild.
+* Removed from `submit`: `setup-flutter`, **Resolve the workspace**, **Derive the release line from
+  pubspec**, **Build the app bundle**, **Install glitchtip-cli** and **Upload the native debug symbols
+  to GlitchTip**. The mapping for these bytes went to the crash sink from `dry-run`; `submit`
+  re-keeps that job's symbols directory as `symbols-subscriptiontracker-android-play` for 90 days.
+* Kept in `submit`, each for a reason read from the tree: **Prepare the Android upload key**
+  (`submit-play.mjs --submit` §3 and §3b read the four keystore variables and
+  `ANDROID_SIGNING_POSTURE` it exports), the signer check on the downloaded bundle (PG-4), the
+  screenshot and 16 KB gates (assert-publish-steps-guarded limb 3), and **The versionCode lies above
+  what Play consumed** — since #915 it also reads the ledger's last recorded upload at run time,
+  which can move while an approval waits.
+
+This supersedes the sentence under **Every native library is aligned for a 16 KB memory page** in
+job `submit` above ("the two jobs build their own bundles"): the two jobs now grade the same
+bytes, and the gate still runs here, on the downloaded bundle, after the sha256 check.
+
+Held by `tooling/ci/test/submit-lanes-take-dry-run-bytes.test.mjs` (a rebuild step, a missing or
+unresolved sha256 hand-off, or a check after `--submit` fails it) and by
+`assert-app-versioning.mjs` limb (b), which bounds this upload through the hand-off. The proof is
+static: the owner's next real dispatch is the first live run.

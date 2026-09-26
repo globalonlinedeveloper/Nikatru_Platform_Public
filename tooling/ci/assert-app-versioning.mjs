@@ -58,7 +58,7 @@
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
-import { parseWorkflow, parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt, shellSegments, workflowEvents } from './workflow-scan.mjs';
+import { parseWorkflow, parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt, shellSegments, workflowEvents, sha256HandOffs } from './workflow-scan.mjs';
 import { UNTAGGED_REF, releaseTagOf } from './tag-owner.mjs';
 
 // ── The release lanes are DERIVED FROM THE REGISTER, never typed here ─────────
@@ -929,7 +929,9 @@ if (unreached.length) {
 //   (a) every android-play-stamped release build outside releaseBuildsNeverShipped
 //       stamps the run counter itself, and its file's floor is >= every consumed code;
 //   (b) every job that runs `tooling/release/submit-play.mjs --submit` builds an (a)
-//       bundle in the same job, and its --app has a `consumed` entry.
+//       bundle in the same job, or ships the bytes of a job it needs that builds one,
+//       checked by sha256 against that job's output (workflow-scan.mjs sha256HandOffs,
+//       ⏱ 2026-09-25), and its --app has a `consumed` entry.
 // This half reads files and cannot see the live counter; submit-play.yml runs
 // `--play-floor` (the block above) before each build to compare the counter a run
 // actually gets against the recorded mark.
@@ -982,7 +984,8 @@ console.log(
     ` ${wfFiles.length} workflow(s), ${appsChecked} app pubspec(s);` +
     ' version derived from pubspec + github.run_number;' +
     (play.active
-      ? ` ${play.bounded} Play build(s) bounded above versionCode ${play.mark}`
+      ? ` ${play.bounded} Play build(s) bounded above versionCode ${play.mark}` +
+        (play.handedOff > 0 ? `, ${play.handedOff} upload job(s) shipping a bounded job's bytes by sha256` : '')
       : ' no Play build source and no versionCode high-water record, so no Play bound to hold'),
 );
 
@@ -1135,13 +1138,13 @@ function playHighWater({ census, exemptKeys, allParsed, register }) {
         if (/^\s*#/.test(l.text)) continue;
         for (const seg of shellSegments(l.text)) {
           if (!/\bnode\b/.test(seg) || !SUBMIT_FLAG.test(seg) || !SUBMIT_PLAY.test(seg)) continue;
-          uploads.push({ workflow: wf.rel, job: job.name, n: l.n, app: APP_ARG.exec(seg)?.[1] ?? null });
+          uploads.push({ wf, workflow: wf.rel, job: job.name, n: l.n, app: APP_ARG.exec(seg)?.[1] ?? null });
         }
       }
     }
   }
 
-  const out = { active: block !== undefined || builds.length > 0 || uploads.length > 0, lost: [], problems: [], bounded: 0, mark: 0 };
+  const out = { active: block !== undefined || builds.length > 0 || uploads.length > 0, lost: [], problems: [], bounded: 0, handedOff: 0, mark: 0 };
   if (!out.active) return out;
 
   let consumed = null;
@@ -1229,10 +1232,16 @@ function playHighWater({ census, exemptKeys, allParsed, register }) {
   for (const u of uploads) {
     const at = `${u.workflow}:${u.n} (job "${u.job}")`;
     if (!builtIn.has(`${u.workflow}#${u.job}`)) {
-      out.problems.push(
-        `${at} runs submit-play.mjs --submit with no android-play-stamped release build in the job, so it` +
-          ' uploads a bundle this limb does not bound: build it in the job, or extend the limb',
-      );
+      // ⏱ 2026-09-25 — the job may instead ship a needed job's bytes, bounded there, same run counter.
+      const takes = sha256HandOffs(u.wf, u.job).filter((h) => h.resolved !== null && builtIn.has(`${u.workflow}#${h.from}`));
+      if (takes.length > 0) out.handedOff++;
+      else {
+        out.problems.push(
+          `${at} runs submit-play.mjs --submit with no android-play-stamped release build in the job, and checks no` +
+            ' sha256 hand-off from a job it needs that builds one, so it uploads a bundle this limb does not bound:' +
+            " build it in the job, or take a building job's bytes and check them by sha256",
+        );
+      }
     }
     if (consumed !== null && (u.app === null || !has(consumed, u.app))) {
       out.problems.push(

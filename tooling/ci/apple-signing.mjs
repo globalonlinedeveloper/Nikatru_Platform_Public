@@ -120,11 +120,22 @@
 //
 // Usage:
 //   node tooling/ci/apple-signing.mjs [--app <slug>] [--out <dir>]
+//                                     [--channel <ios-appstore|macos-appstore>]…
 //                                     [--repo-root <path>] [--github-env <path>]
 //                                     [--method <app-store-connect|…>]
 //          --app also chooses the profiles: only those whose bundle id is
 //          apps.<slug>.bundleId in tooling/apple-provisioning.json go further,
 //          and exactly one iOS and one macOS profile must match.
+// `--channel` is repeatable and names the register rows this run signs for; the
+// release lane and the arming verdict are read over exactly those rows. Absent,
+// it is both Apple rows. ONE identity signs both, so the build-platforms `apple`
+// job names both.
+//
+// ⏱ 2026-09-25 — the ADAPTER over tooling/ci/signing-seam.mjs
+// (O-SIGNING-PRIMITIVES-IN-FOUR-COPIES): the all-or-none law, the release-lane
+// derivation, the base64 decode, key placement and the $GITHUB_ENV export are
+// the seam's; the role map, the Apple messages, the keychain plan and both
+// exits are this file's.
 // Env in:  the four names WANTED below (the register declares them on both Apple
 //          rows; the fifth, row-only name is recognised and never read here)
 //          GITHUB_REF, GITHUB_WORKFLOW_REF — read to DERIVE whether this is a
@@ -135,15 +146,26 @@
 // Exit 0 = the posture is decided and legal for this lane. 1 = it is not.
 //      2 = COVERAGE LOST — the question could not be asked (register, row or input missing).
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync, mkdtempSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, mkdtempSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { inflateRawSync } from 'node:zlib';
 import { join, resolve, dirname, isAbsolute } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { armedFatalLines, releaseGapVerdict, unarmedGapLines } from './channel-arming.mjs';
+import { armedFatalLines, unarmedGapLines } from './channel-arming.mjs';
 import { boundedSpawn, timeoutFromEnv } from './bounded-spawn.mjs';
 import { REGISTER as PROVISIONING_REGISTER, bundleIdOf } from './apple-provisioning.mjs';
+import {
+  decideSecretSet,
+  decodeKey,
+  exportEnv,
+  newlineOffenders,
+  placeKey,
+  releaseLane as laneOfRows,
+  releaseSignal,
+} from './signing-seam.mjs';
+
+export { newlineOffenders };
 
 export const APPS = 'catalog/apps.json';
 export const REGISTER = 'tooling/channel-register.json';
@@ -153,6 +175,25 @@ export const REGISTER = 'tooling/channel-register.json';
  *  saying they were is what broke this file (see the role map). macos-appstore
  *  carries one name iOS cannot use; the comparison is therefore per row. */
 export const CHANNEL_IDS = ['ios-appstore', 'macos-appstore'];
+
+// The one path of an Apple row's artifact for one app (O-APPLE-PROVER-SKIPS-THE-PKG): the row's
+// `signing.seam.artifactGlob` with the app directory and the file stem both set to `slug`.
+// `apps/*/build/macos/pkg/*.pkg` gives `apps/<slug>/build/macos/pkg/<slug>.pkg`, which is where
+// build-platforms.yml's `Package the macOS .pkg` step writes it. submit-appstore.mjs and
+// assert-artifact-shape.mjs read their paths here, and `assert-artifact-signed-apple.mjs --static`
+// holds bp's upload and PROVE paths to the same glob.
+//
+// Throws on a row with no glob, on a glob that is not `apps/*/<dir>/*<.ext>`, and on a slug that is
+// not one path segment: a caller handed a wrong path reports the artifact MISSING, which blames the
+// build for a fault in the register.
+export function appleArtifactPath(row, slug) {
+  const glob = row?.signing?.seam?.artifactGlob;
+  if (typeof glob !== 'string') throw new Error(`channel "${row?.id}" declares no signing.seam.artifactGlob`);
+  const m = /^apps\/\*\/([^*]+)\/\*(\.[A-Za-z0-9]+)$/.exec(glob);
+  if (!m) throw new Error(`channel "${row.id}" artifactGlob "${glob}" is not apps/*/<dir>/*<.ext>`);
+  if (typeof slug !== 'string' || !/^[a-z0-9][a-z0-9_-]*$/.test(slug)) throw new Error(`${JSON.stringify(slug)} is not an app slug`);
+  return `apps/${slug}/${m[1]}/${slug}${m[2]}`;
+}
 
 export const POSTURE_ENV = 'APPLE_SIGNING_POSTURE';
 export const RELEASE_SIGNED = 'release-signed';
@@ -367,11 +408,7 @@ export const OWNER_GAP = 'App Store screenshots and the owner-run first submissi
  * `kind` is 'all' | 'none' | 'partial'; 'partial' is fatal on EVERY lane.
  */
 export function secretSetLaw(values, wanted = WANTED) {
-  const has = (n) => String(values[n] ?? '').trim() !== '';
-  const supplied = wanted.filter(has);
-  const missing = wanted.filter((n) => !has(n));
-  const kind = missing.length === 0 ? 'all' : supplied.length === 0 ? 'none' : 'partial';
-  return { kind, supplied, missing };
+  return decideSecretSet(wanted, values);
 }
 
 /**
@@ -396,37 +433,13 @@ export function secretSetLaw(values, wanted = WANTED) {
  * platform proof — is a BUILD PROOF and is allowed to be unsigned provided it
  * says so. A fork PR holds no secrets, so the unsigned ending must stay a
  * passing one or every fork contribution fails on work only the owner can do.
+ *
+ * ⏱ 2026-09-25 — the derivation is signing-seam.mjs's `releaseSignal`; this is
+ * its Apple reading. main() asks the seam's `releaseLane` instead, over the rows
+ * `--channel` named, which adds channel-arming's verdict to the same answer.
  */
 export function releaseLane({ gitRef = '', workflowRef = '', submissionWorkflows = [] } = {}) {
-  const reasons = [];
-  const blind = [];
-  const ref = String(gitRef).trim();
-  const wfRef = String(workflowRef).trim();
-  const declared = submissionWorkflows.filter((w) => typeof w === 'string' && w !== '');
-
-  if (ref.startsWith('refs/tags/')) reasons.push(`the run is a TAG push (${ref})`);
-
-  if (declared.length > 0 && wfRef !== '') {
-    // `owner/repo/.github/workflows/x.yml@refs/heads/main` — compare the PATH
-    // part only. Matching the whole string would tie the answer to a branch name.
-    const runningPath = wfRef.split('@')[0];
-    for (const w of new Set(declared)) {
-      if (runningPath.endsWith(`/${w}`) || runningPath === w) {
-        reasons.push(`this is a declared Apple submission workflow (${w})`);
-        break;
-      }
-    }
-  }
-  if (declared.length === 0) {
-    blind.push(
-      `no Apple row in ${REGISTER} declares a \`submission.workflow\`, so limb (b) contributed nothing — ` +
-        'only a tag push can mark a release here.',
-    );
-  }
-  if (wfRef === '' && declared.length > 0) {
-    blind.push('GITHUB_WORKFLOW_REF is unset (not a GitHub job), so limb (b) could not be evaluated.');
-  }
-  return { required: reasons.length > 0, reasons, blind };
+  return releaseSignal({ gitRef, workflowRef, submissionWorkflows, label: 'Apple' });
 }
 
 /**
@@ -899,10 +912,10 @@ export function signedExportPlan({ appSlug, exportOptionsPath, keychain, teamId,
  * secret becomes a way to set PATH. No Apple credential contains a line break,
  * so refusing costs nothing, and the alternative (a heredoc with a random
  * delimiter) only moves the same question to the delimiter.
+ *
+ * ⏱ 2026-09-25 — `newlineOffenders` is signing-seam.mjs's, imported and
+ * re-exported at the top of this file (O-SIGNING-PRIMITIVES-IN-FOUR-COPIES).
  */
-export function newlineOffenders(pairs) {
-  return Object.entries(pairs).filter(([, v]) => /[\r\n]/.test(String(v))).map(([k]) => k);
-}
 
 /** ZIP64 marks an absent 32-bit value with an all-ones sentinel and carries the
  *  real one in a 64-bit field elsewhere. 0xFFFFFFFF read as an offset is how
@@ -1140,6 +1153,11 @@ const opt = (name, fallback = null) => {
   const i = argv.indexOf(`--${name}`);
   return i !== -1 && i + 1 < argv.length ? argv[i + 1] : fallback;
 };
+/** Every value of a repeatable flag, in order. A flag with nothing after it (or
+ *  another flag) comes back as null, so the caller refuses it instead of
+ *  dropping it and signing for the default set. */
+const optAll = (name) =>
+  argv.flatMap((a, i) => (a === `--${name}` ? [i + 1 < argv.length && !argv[i + 1].startsWith('--') ? argv[i + 1] : null] : []));
 
 /** 🔴 AN EMPTY STRING IS NOT AN UNSET VARIABLE, and `??` cannot tell them apart.
  *  Recorded on the Android side by mutation, 2026-08-04, and reused unchanged
@@ -1210,8 +1228,20 @@ function main() {
     coverageLost([`${REGISTER} is not valid JSON — ${e.message}`]);
   }
 
+  // ── which rows: `--channel <id>`, repeatable; absent, both Apple rows ──────
+  const named = optAll('channel');
+  const notOurs = named.filter((c) => c === null || !CHANNEL_IDS.includes(c));
+  if (notOurs.length) {
+    die([
+      `FAIL --channel ${notOurs.map((c) => c ?? '(no value)').join(', ')} is not a channel this script signs.`,
+      `     It signs ${CHANNEL_IDS.join(' and ')}. Another key kind's channel has its own adapter — the one`,
+      `     its row names in \`signing.seam.prepare\` in ${REGISTER}.`,
+    ]);
+  }
+  const channelIds = named.length > 0 ? [...new Set(named)] : CHANNEL_IDS;
+
   const rows = [];
-  for (const id of CHANNEL_IDS) {
+  for (const id of channelIds) {
     const row = (register.channels ?? []).find((c) => c.id === id);
     if (!row) {
       coverageLost([
@@ -1266,11 +1296,18 @@ function main() {
   const app = apps.find((a) => a.slug === appId);
   if (!app) die([`FAIL no app "${appId}" in ${APPS}.`, `     Known: ${apps.map((a) => a.slug).join(', ')}`]);
 
-  // ── is this a release lane? ───────────────────────────────────────────────
-  const lane = releaseLane({
+  // ── is this a release lane, and is a row it serves armed? ─────────────────
+  // 🔴 IS EITHER APPLE ROW ARMED? Derived from the rows this script already
+  // found by id, out of their own `served` / `submittable` / `lane` fields —
+  // there is no channel name in this decision, only the rows the register
+  // handed back. Any row arming makes the release lane fatal: ONE identity
+  // signs both, so a partial answer is not on offer. The seam's `releaseLane`
+  // asks channel-arming for that verdict; `mustSign` is "release lane AND armed".
+  const { lane, gap, mustSign: releaseFatal } = laneOfRows({
+    rows,
     gitRef: process.env.GITHUB_REF ?? '',
     workflowRef: process.env.GITHUB_WORKFLOW_REF ?? '',
-    submissionWorkflows: rows.map((r) => r.submission?.workflow).filter((w) => typeof w === 'string'),
+    label: 'Apple',
   });
 
   const values = Object.fromEntries(WANTED.map((n) => [n, (process.env[n] ?? '').trim()]));
@@ -1280,14 +1317,6 @@ function main() {
   for (const r of lane.reasons) console.log(`   required because ${r}`);
   if (!lane.required) console.log('   no release signal (not a tag push, not a declared submission workflow) — a BUILD PROOF is legal here');
   for (const b of lane.blind) console.log(`   ⬜ ${b}`);
-
-  // 🔴 IS EITHER APPLE ROW ARMED? Derived from the rows this script already
-  // found by id, out of their own `served` / `submittable` / `lane` fields —
-  // there is no channel name in this decision, only the two rows the register
-  // handed back. Either row arming makes the release lane fatal: ONE identity
-  // signs both, so a partial answer is not on offer.
-  const gap = releaseGapVerdict(rows);
-  const releaseFatal = lane.required && gap.fatal;
 
   // ── partial and the missing-on-an-ARMED-release-lane endings ──────────────
   // `proofLane` is the NEGATION of the derived release signal, never a flag a
@@ -1352,7 +1381,7 @@ function main() {
     console.log('   🔴 AN UNSIGNED BUNDLE CANNOT BE UPLOADED TO APP STORE CONNECT. This artifact is a build');
     console.log('      proof: it proves the Apple modules compile, and nothing about a signing identity.');
     console.log('   This is the correct outcome for a branch, a fork PR and the weekly platform proof.');
-    exportEnv({ [POSTURE_ENV]: UNSIGNED_PROOF }, GITHUB_ENV);
+    exportEnv({ [POSTURE_ENV]: UNSIGNED_PROOF }, GITHUB_ENV, EXPORT_STOPS);
     console.log('\napple-signing: OK (unsigned build proof, labelled)');
     process.exit(0);
   }
@@ -1406,20 +1435,20 @@ function main() {
     ]);
   }
 
-  const p12 = decodeB64(values[ROLE_ENV.p12], ROLE_ENV.p12);
   // A PKCS#12 is DER: a SEQUENCE, first byte 0x30. Structure, not a size floor —
   // an invented minimum length would fire on a correct small file and pass a
   // padded stub. The usual real-world failure is base64 of an HTML error page.
-  if (p12[0] !== 0x30) {
-    die([
-      `FAIL ${ROLE_ENV.p12} decodes to ${p12.length} byte(s) that are not a PKCS#12.`,
-      `     Expected DER (first byte 0x30); found 0x${p12[0]?.toString(16).padStart(2, '0') ?? '--'}.`,
+  const p12 = decodeSecret(values[ROLE_ENV.p12], ROLE_ENV.p12, {
+    magic: DER,
+    magicLines: (d) => [
+      `FAIL ${ROLE_ENV.p12} decodes to ${d.length} byte(s) that are not a PKCS#12.`,
+      `     Expected DER (first byte 0x30); found ${d.found}.`,
       '     No part of the value is printed. The usual cause is base64 of the wrong file, or of an error',
       '     page a download produced. Re-export the identity from Keychain Access as a .p12 and re-encode it.',
-    ]);
-  }
+    ],
+  });
 
-  const profileBytes = decodeB64(values[ROLE_ENV.profiles], ROLE_ENV.profiles);
+  const profileBytes = decodeSecret(values[ROLE_ENV.profiles], ROLE_ENV.profiles);
   const { kind: blobKind, members } = profileMembers(profileBytes);
   if (members === null) {
     die([
@@ -1546,12 +1575,13 @@ function main() {
       'repository — the one place this file exists to keep key material out of.',
     ]);
   }
-  // 0600 on a POSIX runner. Written outside the workspace either way.
-  writeFileSync(p12Path, p12, { mode: 0o600 });
+  // 0600 on a POSIX runner. Written outside the workspace either way — the
+  // seam's `placeKey` refuses a relative path and chmods after the write.
+  placeOrStop(p12Path, p12);
   mkdirSync(profileDir, { recursive: true });
   for (const p of kept) {
     const member = members.find((m) => m.name === p.member);
-    writeFileSync(join(profileDir, p.member.split('/').pop()), member.bytes, { mode: 0o600 });
+    placeOrStop(join(profileDir, p.member.split('/').pop()), member.bytes);
   }
 
   // ── and INSTALLED where Xcode actually looks ──────────────────────────────
@@ -1594,7 +1624,7 @@ function main() {
           'directory that does not contain it, which fails minutes later with a message about entitlements.',
         ]);
       }
-      writeFileSync(join(dir, `${p.uuid}.${ext}`), member.bytes, { mode: 0o600 });
+      placeOrStop(join(dir, `${p.uuid}.${ext}`), member.bytes);
     }
     installedTo.push(dir);
   }
@@ -1629,16 +1659,16 @@ function main() {
   const installerRaw = (process.env[ROLE_ENV.installerP12] ?? '').trim();
   const installerP12Path = join(OUT_DIR, `${app.slug}-installer.p12`);
   if (installerRaw !== '') {
-    const ip12 = decodeB64(installerRaw, ROLE_ENV.installerP12);
-    if (ip12[0] !== 0x30) {
-      die([
-        `FAIL ${ROLE_ENV.installerP12} decodes to ${ip12.length} byte(s) that are not a PKCS#12.`,
-        `     Expected DER (first byte 0x30); found 0x${ip12[0]?.toString(16).padStart(2, '0') ?? '--'}.`,
+    const ip12 = decodeSecret(installerRaw, ROLE_ENV.installerP12, {
+      magic: DER,
+      magicLines: (d) => [
+        `FAIL ${ROLE_ENV.installerP12} decodes to ${d.length} byte(s) that are not a PKCS#12.`,
+        `     Expected DER (first byte 0x30); found ${d.found}.`,
         '     No part of the value is printed. This is the Mac Installer Distribution identity that signs',
         '     the .pkg; it is a DIFFERENT certificate from the one that signs the .app inside it.',
-      ]);
-    }
-    writeFileSync(installerP12Path, ip12, { mode: 0o600 });
+      ],
+    });
+    placeOrStop(installerP12Path, ip12);
     plan.splice(4, 0, ...installerImportPlan({
       keychain,
       p12Path: installerP12Path,
@@ -1771,6 +1801,7 @@ function main() {
       ),
     },
     GITHUB_ENV,
+    EXPORT_STOPS,
   );
 
   console.log('');
@@ -1799,23 +1830,38 @@ function main() {
   console.log('\napple-signing: OK');
 }
 
-/** Base64 that is not base64 decodes to SOMETHING — `Buffer.from` ignores what
- *  it cannot read rather than throwing — so a secret pasted with a stray
- *  fragment truncates silently and is discovered later, by a tool, in a message
- *  about a file format. Re-encoding and comparing is the only way to see it. */
-function decodeB64(raw, name) {
-  const b64 = String(raw).replace(/\s+/g, '');
-  if (b64 === '') coverageLost([`${name} is whitespace only after trimming — it passed the presence check and carries nothing.`]);
-  const bytes = Buffer.from(b64, 'base64');
-  if (bytes.length === 0 || bytes.toString('base64').replace(/=+$/, '') !== b64.replace(/=+$/, '')) {
-    die([
-      `FAIL ${name} is not valid base64 (it decodes to ${bytes.length} byte(s) and does not round-trip).`,
-      '     The value is never printed. Re-create it with a tool that emits a single unbroken base64 string,',
-      '     and paste it without added line breaks or quotes.',
-    ]);
-  }
-  return bytes;
+/** DER opens with a SEQUENCE: first byte 0x30. Both .p12 files are DER. */
+const DER = [[0x30]];
+
+/** The seam's `decodeKey`, with this file's two stops on its answer. A value
+ *  that passed the presence check and is whitespace only is COVERAGE LOST (the
+ *  check above it did not check enough); one that does not round-trip, or is
+ *  not the format asked for, is a FAIL. `magicLines` is the Apple wording for
+ *  the second — the reader needs the key KIND, which the seam does not know. */
+function decodeSecret(raw, name, { magic = null, magicLines = null } = {}) {
+  const d = decodeKey(raw, { name, magic });
+  if (d.problem === 'empty') coverageLost(d.lines);
+  if (d.problem === 'magic' && magicLines !== null) die(magicLines(d));
+  if (d.problem !== null) die(d.lines);
+  return d.bytes;
 }
+
+/** The seam's `placeKey`: a refusal (a relative path, zero bytes) wrote nothing
+ *  and is COVERAGE LOST here, the same stop the absolute-path check above uses. */
+function placeOrStop(path, bytes) {
+  const refused = placeKey(path, bytes);
+  if (refused !== null) coverageLost(refused);
+}
+
+/** What the seam's `exportEnv` does with a refusal, and what it says when there
+ *  is no $GITHUB_ENV: not a failure (this script is runnable by hand), and not a
+ *  silent pass — assert-artifact-signed-apple.mjs requires the posture and
+ *  refuses to run without it, so a build in which this export did not happen
+ *  fails there rather than proceeding unlabelled. */
+const EXPORT_STOPS = {
+  fail: die,
+  unexported: ['   assert-artifact-signed-apple.mjs refuses to run without APPLE_SIGNING_POSTURE.'],
+};
 
 /** The current user search list, so adding ours does not REMOVE the system one.
  *  `security list-keychains -s` REPLACES the list; the shorter form that passes
@@ -1832,39 +1878,6 @@ function existingUserKeychains() {
   });
   if (!r.ok) return [];
   return [...r.stdout.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
-}
-
-/**
- * Append to $GITHUB_ENV so every later step in the job sees the same complete
- * set.
- *
- * 🔴 ALL OF THEM OR NONE, AND THAT IS WHY THIS IS ONE CALL. Exporting only the
- * keychain path — the tidier-looking option — makes every other reader of the
- * environment see one variable of several and conclude the configuration is
- * HALF supplied, which is a state this repository refuses on purpose.
- */
-function exportEnv(pairs, githubEnv) {
-  const offenders = newlineOffenders(pairs);
-  if (offenders.length) {
-    die([
-      `FAIL the value for ${offenders.join(', ')} contains a line break, and $GITHUB_ENV is line-oriented.`,
-      '     Writing it would inject a second, attacker-chosen assignment into the job environment.',
-      '     Re-create the secret without the trailing newline. The value itself is never printed.',
-    ]);
-  }
-  if (githubEnv === null) {
-    // Not a failure: this script is runnable by hand. It is also not a silent
-    // pass — assert-artifact-signed-apple.mjs requires APPLE_SIGNING_POSTURE and
-    // refuses to run without it, so a build in which this export did not happen
-    // fails there rather than proceeding unlabelled.
-    console.log('');
-    console.log('⬜ NOT EXPORTED — no $GITHUB_ENV and no --github-env, so nothing was written for later');
-    console.log('   steps. Outside a GitHub job that is expected. Inside one it is a wiring fault, and');
-    console.log('   assert-artifact-signed-apple.mjs refuses to run without APPLE_SIGNING_POSTURE.');
-    for (const k of Object.keys(pairs)) console.log(`   would export: ${k}`);
-    return;
-  }
-  appendFileSync(githubEnv, `${Object.entries(pairs).map(([k, v]) => `${k}=${v}`).join('\n')}\n`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {

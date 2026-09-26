@@ -39,6 +39,7 @@ import {
   REHEARSAL_SHAPE,
 } from '../../e2e/app-version-stamp.mjs';
 import { makeStoreCaptureResolver } from '../../ops/check-prod-provenance.mjs';
+import { databaseSources } from '../migration-tables.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const MONITOR = join(REPO, 'tooling', 'ops', 'check-prod-provenance.mjs');
@@ -242,6 +243,9 @@ describe('the register is what makes store-capture apply', () => {
     // releaseLanes() reads the channel register even offline.
     cpSync(join(REPO, 'tooling/channel-register.json'), join(root, 'tooling/channel-register.json'));
     cpSync(join(REPO, 'services/platform/migrations'), join(root, 'services/platform/migrations'), { recursive: true });
+    // ⏱ 2026-09-26 — the monitor derives its databases from the platform register and each Worker's
+    // wrangler config, and enumerates every one of them (O-PROVENANCE-WALKS-ONE-DATABASE).
+    for (const rel of databaseSources(REPO)) cpSync(join(REPO, rel), join(root, rel), { recursive: true });
     cpSync(join(REPO, 'services/platform/src'), join(root, 'services/platform/src'), { recursive: true });
     for (const e of readdirSync(join(REPO, 'apps'), { withFileTypes: true })) {
       if (!e.isDirectory()) continue;
@@ -264,7 +268,7 @@ describe('the register is what makes store-capture apply', () => {
       assert.match(control.stderr, /a sandbox lane wrote production: cap-57-40c0787/);
       const regPath = join(root, 'tooling', 'prod-provenance.json');
       const reg = JSON.parse(readFileSync(regPath, 'utf8'));
-      reg.tables.consent_artifacts.alsoResolves = reg.tables.consent_artifacts.alsoResolves.filter((id) => id !== 'store-capture');
+      reg.databases.platform_db.tables.consent_artifacts.alsoResolves = reg.databases.platform_db.tables.consent_artifacts.alsoResolves.filter((id) => id !== 'store-capture');
       writeFileSync(regPath, JSON.stringify(reg, null, 2));
       const r = run(consent('cap-57-40c0787'), { root });
       assert.equal(r.status, 1, r.stdout + r.stderr);

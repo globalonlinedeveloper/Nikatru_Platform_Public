@@ -9,6 +9,8 @@
 //
 // Run:  node --test tooling/ci/test/capture-backend.test.mjs
 // ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-26 · the fixture database ids are UUIDs: backend.mjs now refuses a database_id that is not a D1 id
+// (CodeQL #467, #966), so the old placeholder names would stop every case at that refusal instead of its own.
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, dirname } from 'node:path';
@@ -37,7 +39,7 @@ const fixture = () => ({
   platform: {
     name: 'platform',
     routes: [{ pattern: 'platform.example.com', custom_domain: true }],
-    d1_databases: [{ binding: 'PLATFORM_DB', database_name: 'platform_db', database_id: 'top-platform-db' }],
+    d1_databases: [{ binding: 'PLATFORM_DB', database_name: 'platform_db', database_id: '22222222-2222-4222-8222-000000000001' }],
     kv_namespaces: [{ binding: 'CONFIG_KV', id: 'top-config-kv' }],
     ratelimits: [{ name: 'EVENTS_LIMITER', namespace_id: '1001', simple: { limit: 120, period: 60 } }],
     env: {
@@ -46,7 +48,7 @@ const fixture = () => ({
         workers_dev: true,
         triggers: { crons: [] },
         vars: { SUPABASE_URL: SUPA },
-        d1_databases: [{ binding: 'PLATFORM_DB', database_name: 'platform_db_sandbox', database_id: 'sbx-platform-db' }],
+        d1_databases: [{ binding: 'PLATFORM_DB', database_name: 'platform_db_sandbox', database_id: '22222222-2222-4222-8222-00000000000b' }],
         kv_namespaces: [{ binding: 'CONFIG_KV', id: 'sbx-config-kv' }],
         ratelimits: [{ name: 'EVENTS_LIMITER', namespace_id: '1007', simple: { limit: 120, period: 60 } }],
       },
@@ -56,8 +58,8 @@ const fixture = () => ({
     name: 'subscriptiontracker-api',
     routes: [{ pattern: 'subscriptiontracker-api.example.com', custom_domain: true }],
     d1_databases: [
-      { binding: 'APP_DB', database_name: 'subscriptiontracker_db', database_id: 'top-app-db' },
-      { binding: 'PLATFORM_DB', database_name: 'platform_db', database_id: 'top-platform-db' },
+      { binding: 'APP_DB', database_name: 'subscriptiontracker_db', database_id: '11111111-1111-4111-8111-000000000001' },
+      { binding: 'PLATFORM_DB', database_name: 'platform_db', database_id: '22222222-2222-4222-8222-000000000001' },
     ],
     env: {
       sandbox: {
@@ -66,8 +68,8 @@ const fixture = () => ({
         triggers: { crons: [] },
         vars: { SUPABASE_URL: SUPA },
         d1_databases: [
-          { binding: 'APP_DB', database_name: 'subscriptiontracker_db_sandbox', database_id: 'sbx-app-db' },
-          { binding: 'PLATFORM_DB', database_name: 'platform_db_sandbox', database_id: 'sbx-platform-db' },
+          { binding: 'APP_DB', database_name: 'subscriptiontracker_db_sandbox', database_id: '11111111-1111-4111-8111-00000000000b' },
+          { binding: 'PLATFORM_DB', database_name: 'platform_db_sandbox', database_id: '22222222-2222-4222-8222-00000000000b' },
         ],
       },
     },
@@ -208,10 +210,24 @@ describe('capture-backend: an env.sandbox that would inherit production is refus
 
   test('B10: a sandbox id equal to a top-level id in either config throws', () => {
     const f = fixture();
-    f['subscriptiontracker-api'].env.sandbox.d1_databases[0].database_id = 'top-platform-db';
+    f['subscriptiontracker-api'].env.sandbox.d1_databases[0].database_id = '22222222-2222-4222-8222-000000000001';
     assert.throws(
       () => sandboxBackend({ read: reader(f) }),
-      refusedOn('id-reuse', /env\.sandbox d1:APP_DB = top-platform-db is also the .* top-level d1:PLATFORM_DB/),
+      refusedOn('id-reuse', /env\.sandbox d1:APP_DB = 22222222-2222-4222-8222-000000000001 is also the .* top-level d1:PLATFORM_DB/),
+    );
+  });
+
+  // O-E2E-LANE-WIRED-TO-ONE-APP: an app Worker's sandbox goes through
+  // tooling/e2e/backend.mjs, the resolver a capture's purge uses for its app
+  // database. Without the call this fixture passes: no id is empty or reused.
+  test('B12: an app sandbox with no APP_DB binding is refused on limb `backend`, naming the file and the binding', () => {
+    const f = fixture();
+    f['subscriptiontracker-api'].env.sandbox.d1_databases = [
+      { binding: 'PLATFORM_DB', database_name: 'platform_db_sandbox', database_id: '22222222-2222-4222-8222-00000000000b' },
+    ];
+    assert.throws(
+      () => sandboxBackend({ read: reader(f) }),
+      refusedOn('backend', /services\/subscriptiontracker-api\/wrangler\.jsonc env\.sandbox declares no D1 binding APP_DB/),
     );
   });
 });

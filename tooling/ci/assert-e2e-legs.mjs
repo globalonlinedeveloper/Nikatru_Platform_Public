@@ -189,10 +189,25 @@ if (missing.length || extra.length) {
   ]);
 }
 
+// ── the app under test ──────────────────────────────────────────────────────
+// ⏱ 2026-09-25 (O-E2E-LANE-WIRED-TO-ONE-APP): the register is keyed by app,
+// `apps.<id>`. The legs above are still one app's six, so exactly one entry is
+// graded; any other count is COVERAGE LOST, never a guess at which app they mean.
+const appEntries =
+  reg.apps && typeof reg.apps === 'object' && !Array.isArray(reg.apps) ? Object.entries(reg.apps) : [];
+if (appEntries.length !== 1) {
+  coverageLost([
+    `${REGISTER_REL} names ${appEntries.length} app(s) under \`apps\`; this guard grades exactly one.`,
+    "The six legs are one app's, anchored in one suite. With no app there is no suite to resolve them",
+    "against; with two, a leg one app's suite proves would be credited to the other.",
+  ]);
+}
+const [, E2E] = appEntries[0];
+
 // ── the suite under test ────────────────────────────────────────────────────
-const testRel = reg.e2e?.test;
+const testRel = E2E?.test;
 if (typeof testRel !== 'string' || testRel.length === 0) {
-  coverageLost([`${REGISTER_REL} names no \`e2e.test\`, so there is no suite to resolve anchors against.`]);
+  coverageLost([`${REGISTER_REL} names no \`apps.<id>.test\`, so there is no suite to resolve anchors against.`]);
 }
 const testPath = join(ROOT, testRel);
 if (!existsSync(testPath)) {
@@ -218,7 +233,7 @@ if (!/\btestWidgets\s*\(/.test(suite)) {
 
 // The workflow must still be the one that runs this suite. The register names
 // both; if they have drifted, "the leg is proven nightly" is proven by nothing.
-const wfRel = reg.e2e?.workflow;
+const wfRel = E2E?.workflow;
 if (typeof wfRel !== 'string' || !existsSync(join(ROOT, wfRel))) {
   coverageLost([
     `${REGISTER_REL} names workflow ${JSON.stringify(wfRel)}, which does not exist.`,
@@ -239,7 +254,7 @@ if (!workflow.includes(testRel.split('/').slice(-2).join('/'))) {
 
 // ── the blocker predicates' inputs ──────────────────────────────────────────
 // Read once, comment-stripped once, and handed to every predicate.
-const APP_DIR = reg.e2e?.app ?? 'apps/subscriptiontracker';
+const APP_DIR = E2E?.app ?? 'apps/subscriptiontracker';
 const readDartTree = (dir) => {
   const out = [];
   const walk = (d) => {
@@ -388,7 +403,7 @@ if (blocked.length) {
   for (const l of blocked) notes.push(`   · ${l.id} — ${l.blockedBy} (declared ${l.declaredOn ?? 'undated'})`);
 }
 notes.push(
-  `⬜ web only, by policy, dated ${reg.e2e?.declaredOn ?? 'undated'} — Apple 3.1.1 / Play billing make a web ` +
+  `⬜ web only, by policy, dated ${E2E?.declaredOn ?? 'undated'} — Apple 3.1.1 / Play billing make a web ` +
     'checkout structurally invalid as the unlock path on iOS and Android; the other four platforms are a ' +
     'cost cut, not a tooling limit. (Guideline numbers COULD-NOT-ESTABLISH — carried from research, not re-read.)',
 );
