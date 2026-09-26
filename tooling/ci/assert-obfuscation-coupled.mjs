@@ -51,7 +51,7 @@
 // comment at `packages/platform_storage/lib/src/storage_capabilities.dart:43`.
 // A guard that matched either would fire on correct input on day one and be
 // switched off. Comments are blanked before anything is read — the
-// `assert-stamp-platforms.mjs:37-42` lesson, where a comment kept a guard green
+// `assert-stamp-platforms.mjs:43-48` lesson, where a comment kept a guard green
 // after the real build step was deleted.
 //
 // ── CARRIED AS NOTES, NOT AS CODE ────────────────────────────────────────────
@@ -216,15 +216,19 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseAllWorkflows, shellSegments, flutterReleaseBuilds, gradeDomain } from './workflow-scan.mjs';
+import {
+  parseAllWorkflows, flutterBuilds, flutterReleaseBuilds, gradeDomain, RELEASE_MODES, NOT_RELEASE_BUILD,
+} from './workflow-scan.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
-/** A Flutter build command. `web-server` is a dev server, not an artifact. */
-const BUILD_CMD = /flutter\s+build\s+(?!web-server\b)\S+/;
-
-/** The build TARGET, for the floor's domain. */
-const BUILD_TARGET = /flutter\s+build\s+(\S+)/;
+// ⏱ CHANGED 2026-09-25 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 2 of 3): the builds
+// this guard grades are workflow-scan's flutterBuilds census, every mode, one
+// record per shell segment, a composer call composed. It kept a raw `flutter
+// build` loop of its own because the release census dropped the --debug/--profile
+// builds it must print; that loop walked past a composer call, so a composed
+// release build was never held to the floor. The census's `web-server` exclusion,
+// its target and its `mode` are the three regexes this file carried.
 
 /** A release build. `--release` is Flutter's own word for it — but it is NOT
  *  the signal, because it is not required. `flutter build <target>` DEFAULTS to
@@ -243,9 +247,9 @@ const BUILD_TARGET = /flutter\s+build\s+(\S+)/;
  *  Only an explicit `--debug` or `--profile` takes a build out of the domain,
  *  and those exits are COUNTED AND PRINTED, never silent. A command carrying
  *  BOTH `--release` and `--debug`/`--profile` is contradictory and is COVERAGE
- *  LOST, not a guess. */
-const RELEASE = /--release(?=\s|$)/;
-const NOT_RELEASE = /--(?:debug|profile)(?=\s|$)/;
+ *  LOST, not a guess. The census's `mode` is that rule: `release` and `default`
+ *  are RELEASE_MODES, `debug`/`profile` the explicit exits, `contradictory` the
+ *  command with both. */
 
 /** DECLARED, from Flutter's own documentation rather than from taste:
  *  docs.flutter.dev/deployment/obfuscate — "Obfuscation is supported on these
@@ -257,7 +261,7 @@ const OBFUSCATABLE_TARGETS = new Set([
 
 /** DECLARED. `web` is from the same source and the same sentence: "Web apps
  *  don't support obfuscation." `web-server` is Flutter's dev server rather than
- *  an artifact, which is why BUILD_CMD above already refuses to see it; it is
+ *  an artifact, which is why the census already refuses to see it; it is
  *  named here as well so the two lists read as one statement.
  *
  *  ⏱ CORRECTED 2026-09-07 — `bundle` WAS in this set and is now REMOVED. The
@@ -414,6 +418,14 @@ const nonReleaseBuilds = [];
  *          neverShippedWhy: string|null, nsKey: string}[]} */
 const sinkSubjects = [];
 
+/** workflow + job → that job's census records, in the census's walk order. */
+const buildsByJob = new Map();
+for (const b of flutterBuilds(ROOT, workflows)) {
+  const key = `${b.workflow}\0${b.job}`;
+  if (!buildsByJob.has(key)) buildsByJob.set(key, []);
+  buildsByJob.get(key).push(b);
+}
+
 for (const wf of workflows) {
   for (const job of wf.jobs.values()) {
     const jobText = job.logical.map((l) => l.text).join('\n');
@@ -427,122 +439,120 @@ for (const wf of workflows) {
       .map((l) => l.n);
     const paths = uploadedPaths(job);
 
-    for (const l of job.logical) {
-      for (const seg of shellSegments(l.text)) {
-        if (!BUILD_CMD.test(seg)) continue;
-        buildsChecked++;
-        const obf = OBFUSCATE.test(seg);
-        const split = SPLIT_DEBUG.exec(seg);
+    for (const b of buildsByJob.get(`${wf.rel}\0${job.name}`) ?? []) {
+      const seg = b.segment;
+      const line = b.runLine;
+      buildsChecked++;
+      const obf = OBFUSCATE.test(seg);
+      const split = SPLIT_DEBUG.exec(seg);
 
-        const at = `${wf.rel}:${l.n} (job "${job.name}")`;
-        /** Non-null only for a build `releaseBuildsNeverShipped` lists. The FLOOR
-         *  below never reads it; COUPLING and SINK read it only where they would
-         *  otherwise fail. */
-        const nsKey = neverShippedKey(wf.rel, l.n, seg);
-        const neverShippedWhy = neverShipped.get(nsKey) ?? null;
-        if (neverShippedWhy !== null) neverShippedSeen.set(nsKey, { at, why: neverShippedWhy });
+      const at = `${wf.rel}:${line} (job "${job.name}")`;
+      /** Non-null only for a build `releaseBuildsNeverShipped` lists. The FLOOR
+       *  below never reads it; COUPLING and SINK read it only where they would
+       *  otherwise fail. */
+      const nsKey = neverShippedKey(wf.rel, line, seg);
+      const neverShippedWhy = neverShipped.get(nsKey) ?? null;
+      if (neverShippedWhy !== null) neverShippedSeen.set(nsKey, { at, why: neverShippedWhy });
 
-        // ── THE FLOOR ─────────────────────────────────────────────────────
-        // Its domain is a RELEASE build on a target Flutter can obfuscate.
-        // A target in neither declared set is COVERAGE LOST, not a skip:
-        // silently falling outside a floor is how a floor stops being one.
-        // And "release" is decided by ABSENCE of --debug/--profile, not by the
-        // presence of --release, because Flutter builds release by default —
-        // see NOT_RELEASE above. Contradictory mode flags are COVERAGE LOST.
-        const target = (BUILD_TARGET.exec(seg)?.[1] ?? '').replace(/^['"]|['"]$/g, '');
-        const notRelease = NOT_RELEASE.test(seg);
-        /** Set by the floor below: this command IS a release build on a target
-         *  Flutter can obfuscate. The sink limb's domain is exactly that set
-         *  intersected with "and it does obfuscate". */
-        let inFloorDomain = false;
-        if (!OBFUSCATABLE_TARGETS.has(target) && !NON_OBFUSCATABLE_TARGETS.has(target)) {
-          unknownTargets.push(`${at} builds target "${target}"`);
-        } else if (notRelease && RELEASE.test(seg)) {
-          contradictoryModes.push(
-            `${at} passes --release AND ${(seg.match(NOT_RELEASE) ?? [''])[0]} on the same command`,
-          );
-        } else if (!notRelease) {
-          if (OBFUSCATABLE_TARGETS.has(target)) {
-            releaseBuilds++;
-            inFloorDomain = true;
-            if (!obf) {
-              problems.push(
-                `${at} is a RELEASE build of "${target}" and does not pass --obfuscate. ` +
-                  '[ADR 067] decision 6: every release build is obfuscated with split debug info and its ' +
-                  'symbols retained. An un-obfuscated release ships every Dart symbol name in the binary, ' +
-                  'and the audit of 2026-09-07 found 15 of these and zero obfuscating — which this guard ' +
-                  'reported as "ok, 0 obfuscating" because it had no floor. Add ' +
-                  `--obfuscate --split-debug-info=<dir> and retain <dir> in job "${job.name}".`,
-              );
-            }
-          } else {
-            webReleaseBuilds++;
+      // ── THE FLOOR ─────────────────────────────────────────────────────
+      // Its domain is a RELEASE build on a target Flutter can obfuscate.
+      // A target in neither declared set is COVERAGE LOST, not a skip:
+      // silently falling outside a floor is how a floor stops being one.
+      // And "release" is decided by ABSENCE of --debug/--profile, not by the
+      // presence of --release, because Flutter builds release by default —
+      // see the census's `mode` above. Contradictory mode flags are COVERAGE LOST.
+      const target = b.target;
+      /** Set by the floor below: this command IS a release build on a target
+       *  Flutter can obfuscate. The sink limb's domain is exactly that set
+       *  intersected with "and it does obfuscate". */
+      let inFloorDomain = false;
+      if (!OBFUSCATABLE_TARGETS.has(target) && !NON_OBFUSCATABLE_TARGETS.has(target)) {
+        unknownTargets.push(`${at} builds target "${target}"`);
+      } else if (b.mode === 'contradictory') {
+        contradictoryModes.push(
+          `${at} passes --release AND ${(seg.match(NOT_RELEASE_BUILD) ?? [''])[0]} on the same command`,
+        );
+      } else if (RELEASE_MODES.has(b.mode)) {
+        if (OBFUSCATABLE_TARGETS.has(target)) {
+          releaseBuilds++;
+          inFloorDomain = true;
+          if (!obf) {
+            problems.push(
+              `${at} is a RELEASE build of "${target}" and does not pass --obfuscate. ` +
+                '[ADR 067] decision 6: every release build is obfuscated with split debug info and its ' +
+                'symbols retained. An un-obfuscated release ships every Dart symbol name in the binary, ' +
+                'and the audit of 2026-09-07 found 15 of these and zero obfuscating — which this guard ' +
+                'reported as "ok, 0 obfuscating" because it had no floor. Add ' +
+                `--obfuscate --split-debug-info=<dir> and retain <dir> in job "${job.name}".`,
+            );
           }
         } else {
-          // An EXPLICIT --debug/--profile. Counted and printed, never silent:
-          // the whole point of inverting the rule was that a build must not be
-          // able to leave the floor's domain without saying so out loud.
-          nonReleaseBuilds.push(`${at} builds "${target}" in ${(seg.match(NOT_RELEASE) ?? [''])[0]} mode`);
+          webReleaseBuilds++;
         }
-
-        if (!obf && !split) continue;
-        obfuscating++;
-
-        // The two flags travel together or the build is broken in a way no
-        // upload can repair: `--obfuscate` with no `--split-debug-info` writes
-        // NO mapping file anywhere, so the symbols do not exist to be kept.
-        if (obf && !split) {
-          problems.push(
-            `${at} passes --obfuscate with no --split-debug-info. Flutter then writes no symbol mapping ` +
-              'at all, so every crash report from this build is permanently unreadable — there is nothing ' +
-              'to upload and nothing to recover. The two flags are one flag.',
-          );
-          continue;
-        }
-        if (!obf && split) {
-          // Harmless on its own (symbols split out of a non-obfuscated binary
-          // are still readable in the binary), so this is a NOTE, not a failure.
-          notes.push(`${at} passes --split-debug-info without --obfuscate — the binary is still readable, so nothing is lost; the flag is doing less than it looks like.`);
-          continue;
-        }
-
-        const dir = split[1].replace(/^['"]|['"]$/g, '');
-
-        // ── THE SINK ──────────────────────────────────────────────────────
-        // Recorded here rather than judged here: the verdict needs the whole
-        // set so a stale exemption can be found in the same pass.
-        if (inFloorDomain) {
-          sinkSubjects.push({
-            wf: wf.rel,
-            job: job.name,
-            line: l.n,
-            dir,
-            sinkAfter: sinkLines.some((n) => n > l.n),
-            neverShippedWhy,
-            nsKey,
-          });
-        }
-
-        const named = paths.some((p) => p.includes(dir) || dir.includes(p.replace(/\/\*+$/, '')));
-        if (hasSinkUpload || named) continue;
-        if (neverShippedWhy !== null) {
-          waivedKeys.add(nsKey);
-          couplingWaived++;
-          waived.push(
-            `${at} obfuscates into "${dir}" and nothing in job "${job.name}" retains it — COUPLING WAIVED, ` +
-              `held to the FLOOR only; listed in releaseBuildsNeverShipped: ${neverShippedWhy}`,
-          );
-          continue;
-        }
-
-        problems.push(
-          `${at} obfuscates into "${dir}" and nothing in job "${job.name}" retains it. ` +
-            'A rebuild produces a DIFFERENT mapping, so the symbols for this release exist only on this ' +
-            'runner and only until it is reclaimed — after that every crash report from the build is ' +
-            'unreadable and cannot be made readable. Upload the symbols to the crash sink in the same ' +
-            `job, or upload "${dir}" as an artifact in the same job, or drop --obfuscate.`,
-        );
+      } else {
+        // An EXPLICIT --debug/--profile. Counted and printed, never silent:
+        // the whole point of inverting the rule was that a build must not be
+        // able to leave the floor's domain without saying so out loud.
+        nonReleaseBuilds.push(`${at} builds "${target}" in --${b.mode} mode`);
       }
+
+      if (!obf && !split) continue;
+      obfuscating++;
+
+      // The two flags travel together or the build is broken in a way no
+      // upload can repair: `--obfuscate` with no `--split-debug-info` writes
+      // NO mapping file anywhere, so the symbols do not exist to be kept.
+      if (obf && !split) {
+        problems.push(
+          `${at} passes --obfuscate with no --split-debug-info. Flutter then writes no symbol mapping ` +
+            'at all, so every crash report from this build is permanently unreadable — there is nothing ' +
+            'to upload and nothing to recover. The two flags are one flag.',
+        );
+        continue;
+      }
+      if (!obf && split) {
+        // Harmless on its own (symbols split out of a non-obfuscated binary
+        // are still readable in the binary), so this is a NOTE, not a failure.
+        notes.push(`${at} passes --split-debug-info without --obfuscate — the binary is still readable, so nothing is lost; the flag is doing less than it looks like.`);
+        continue;
+      }
+
+      const dir = split[1].replace(/^['"]|['"]$/g, '');
+
+      // ── THE SINK ──────────────────────────────────────────────────────
+      // Recorded here rather than judged here: the verdict needs the whole
+      // set so a stale exemption can be found in the same pass.
+      if (inFloorDomain) {
+        sinkSubjects.push({
+          wf: wf.rel,
+          job: job.name,
+          line,
+          dir,
+          sinkAfter: sinkLines.some((n) => n > line),
+          neverShippedWhy,
+          nsKey,
+        });
+      }
+
+      const named = paths.some((p) => p.includes(dir) || dir.includes(p.replace(/\/\*+$/, '')));
+      if (hasSinkUpload || named) continue;
+      if (neverShippedWhy !== null) {
+        waivedKeys.add(nsKey);
+        couplingWaived++;
+        waived.push(
+          `${at} obfuscates into "${dir}" and nothing in job "${job.name}" retains it — COUPLING WAIVED, ` +
+            `held to the FLOOR only; listed in releaseBuildsNeverShipped: ${neverShippedWhy}`,
+        );
+        continue;
+      }
+
+      problems.push(
+        `${at} obfuscates into "${dir}" and nothing in job "${job.name}" retains it. ` +
+          'A rebuild produces a DIFFERENT mapping, so the symbols for this release exist only on this ' +
+          'runner and only until it is reclaimed — after that every crash report from the build is ' +
+          'unreadable and cannot be made readable. Upload the symbols to the crash sink in the same ' +
+          `job, or upload "${dir}" as an artifact in the same job, or drop --obfuscate.`,
+      );
     }
   }
 }

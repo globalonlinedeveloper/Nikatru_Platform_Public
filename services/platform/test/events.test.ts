@@ -50,6 +50,9 @@ function harness(
     db?: RealDb;
     /** Omit a binding entirely, to exercise the documented fail-OPEN. */
     omit?: Array<'EVENTS_LIMITER' | 'EVENTS_CEILING_LIMITER'>;
+    /** `MONEY_ENVIRONMENT`. `'live'` is the production Worker
+     *  (lib/build-stamp.ts); omitted is a local run, as every older case means. */
+    world?: string;
   } = {},
 ) {
   const db = opts.db ?? realPlatformDb();
@@ -66,6 +69,7 @@ function harness(
     PLATFORM_DB: db,
     EVENTS_LIMITER: omit.includes('EVENTS_LIMITER') ? undefined : fairness,
     EVENTS_CEILING_LIMITER: omit.includes('EVENTS_CEILING_LIMITER') ? undefined : ceiling,
+    ...(opts.world === undefined ? {} : { MONEY_ENVIRONMENT: opts.world }),
   } as unknown as AppEnv['Bindings'];
 
   const post = (path: string, body: unknown, cf?: Record<string, unknown>) => {
@@ -895,5 +899,105 @@ describe('the route is executed against platform_db, not asserted about', () => 
       expect(cols, table).not.toContain('ip');
       expect(cols.join(','), table).not.toMatch(/(^|,)(ip_address|client_ip|remote_addr)(,|$)/);
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-26 · PRODUCTION REFUSES A ROW FROM A BUILD WITH NO OFFICIAL STAMP.
+// ops-watch 36241509870 found two `events` and two `consent_artifacts` rows
+// stamped `dev` from a build of the public repo. Every refusal below is graded
+// on what LANDED (`db.count`), never on which methods the route called.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('production refuses an unreleased build (lib/build-stamp.ts)', () => {
+  const SHIPPED = '1.0.144+40c0787';
+  const consent = (over: Record<string, unknown> = {}) => ({
+    consent_id: '33333333-3333-4333-8333-333333333333',
+    app_id: 'subscriptiontracker',
+    anon_id: 'install-1',
+    purpose: 'terms',
+    granted: true,
+    policy_version: '2026-07-25',
+    ts: '2026-07-25T10:00:00.000Z',
+    ...over,
+  });
+
+  it('events: production accepts the shipped shape and writes it', async () => {
+    const { db, post } = harness({ world: 'live' });
+    const res = await post('/v1/events', { app_id: 'subscriptiontracker', events: [ev({ app_version: SHIPPED })] });
+    expect(res.status).toBe(200);
+    expect(db.count('events', 'app_version = ?', SHIPPED)).toBe(1);
+  });
+
+  it('events: production refuses `dev` with 422 unreleased_build and writes nothing', async () => {
+    const { db, post } = harness({ world: 'live' });
+    const res = await post('/v1/events', { app_id: 'subscriptiontracker', events: [ev({ app_version: 'dev' })] });
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual({ ok: false, error: 'unreleased_build', received: 0 });
+    expect(db.count('events')).toBe(0);
+  });
+
+  it('events: one unreleased row refuses the whole batch, the shipped row included', async () => {
+    const { db, post } = harness({ world: 'live' });
+    const res = await post('/v1/events', {
+      app_id: 'subscriptiontracker',
+      events: [
+        ev({ app_version: SHIPPED }),
+        ev({ event_id: '44444444-4444-4444-8444-444444444444', app_version: 'dev' }),
+      ],
+    });
+    expect(res.status).toBe(422);
+    expect(db.count('events')).toBe(0);
+  });
+
+  it('events: production refuses an absent app_version, an e2e stamp and an over-long value', async () => {
+    for (const app_version of [undefined, '', 'e2e-12-abcdef0', `1.0.1+${'a'.repeat(40)}`]) {
+      const { db, post } = harness({ world: 'live' });
+      const res = await post('/v1/events', { app_id: 'subscriptiontracker', events: [ev({ app_version })] });
+      expect(res.status, String(app_version)).toBe(422);
+      expect(db.count('events'), String(app_version)).toBe(0);
+    }
+  });
+
+  it('events: the sandbox Worker and a local run still accept `dev`', async () => {
+    for (const world of ['sandbox', undefined]) {
+      const { db, post } = harness({ world });
+      const res = await post('/v1/events', { app_id: 'subscriptiontracker', events: [ev({ app_version: 'dev' })] });
+      expect(res.status, String(world)).toBe(200);
+      expect(db.count('events', 'app_version = ?', 'dev'), String(world)).toBe(1);
+    }
+  });
+
+  it('consent: production accepts the shipped shape and the e2e live drive stamp', async () => {
+    for (const app_version of [SHIPPED, 'e2e-12-abcdef0']) {
+      const { db, post } = harness({ world: 'live' });
+      const res = await post('/v1/consent', consent({ app_version }));
+      expect(res.status, app_version).toBe(200);
+      expect(db.count('consent_artifacts', 'app_version = ?', app_version), app_version).toBe(1);
+    }
+  });
+
+  it('consent: production refuses `dev`, an absent value and a store-capture stamp, writing nothing', async () => {
+    for (const app_version of ['dev', undefined, 'cap-5-abcdef0']) {
+      const { db, post } = harness({ world: 'live' });
+      const res = await post('/v1/consent', consent({ app_version }));
+      expect(res.status, String(app_version)).toBe(422);
+      expect(await res.json()).toEqual({ ok: false, error: 'unreleased_build' });
+      expect(db.count('consent_artifacts'), String(app_version)).toBe(0);
+    }
+  });
+
+  it('consent: the sandbox Worker and a local run still accept `dev`', async () => {
+    for (const world of ['sandbox', undefined]) {
+      const { db, post } = harness({ world });
+      const res = await post('/v1/consent', consent({ app_version: 'dev' }));
+      expect(res.status, String(world)).toBe(200);
+      expect(db.count('consent_artifacts', 'app_version = ?', 'dev'), String(world)).toBe(1);
+    }
+  });
+
+  it('an unknown app is still 404 in production, before the stamp is read', async () => {
+    const { post } = harness({ world: 'live' });
+    const res = await post('/v1/consent', consent({ app_id: 'no-such-app', app_version: 'dev' }));
+    expect(res.status).toBe(404);
   });
 });

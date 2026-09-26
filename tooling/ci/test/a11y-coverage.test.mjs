@@ -883,7 +883,10 @@ describe('the chassis floors, which were zero until its first sweeps landed', ()
     for (let i = 0; i < 4; i++) {
       const at = src.indexOf("\n    testWidgets('dark, kPhone");
       assert.ok(at !== -1, `only ${i} \`dark, kPhone\` case(s) were found; the case names moved`);
-      const close = src.indexOf('\n    });\n', at) + '\n    });\n'.length;
+      // A case closes `    });` or, under dtap's TargetPlatformVariant, `    }, variant: <name>);`.
+      const end = /\n    \}(?:, variant: \w+)?\);\n/.exec(src.slice(at));
+      assert.ok(end, 'no case close after a `dark, kPhone` case; the case shape moved');
+      const close = at + end.index + end[0].length;
       src = src.slice(0, at) + src.slice(close);
     }
     writeIn(root, CHASSIS_AUTH, src);

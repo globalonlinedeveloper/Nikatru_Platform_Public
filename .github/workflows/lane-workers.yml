@@ -4,8 +4,9 @@ name: Lane — workers
 # `lane-workers` job calls it with no `if:` on every push to main and every pull
 # request, and ci-gate needs that job, so a red job here is a red required check.
 # `detect` decides from tooling/ci/lane-map.json whether this change touches the
-# lane; the two Worker jobs run only when it says affected=true; `lane-verdict`
-# refuses every skip detect did not license. docs/ci/README.md §3 has the lane map.
+# lane and reads the Worker set; `worker` runs one leg per Worker only when detect
+# says affected=true; `lane-verdict` refuses every skip detect did not license.
+# docs/ci/README.md §3 has the lane map.
 
 on:
   workflow_call:
@@ -27,6 +28,7 @@ jobs:
     outputs:
       affected: ${{ steps.detect.outputs.affected }}
       reason: ${{ steps.detect.outputs.reason }}
+      workers: ${{ steps.workers.outputs.workers }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -36,41 +38,32 @@ jobs:
       - id: detect
         name: Does this change touch the workers lane
         run: node tooling/ci/lane-detect.mjs --lane workers
+      # why: the matrix comes from the directories under services/, never from this
+      # file (tooling/ci/worker-set.mjs). It runs whatever detect said, so the set is
+      # read, and refused when empty, on every run.
+      - id: workers
+        name: The Worker set comes from services/, never from this file
+        run: |
+          set -euo pipefail
+          workers="$(node tooling/ci/worker-set.mjs --emit)"
+          echo "workers=${workers}" >> "$GITHUB_OUTPUT"
 
-  worker-subscriptiontracker-api:
-    name: subscriptiontracker-api Worker (typecheck + test + dry-run)
+  worker:
+    # why: one leg per Worker directory (the detect job's `workers` output), so a
+    # Worker added under services/ is typechecked, tested and dry-run deployed with no
+    # edit here. fail-fast off: one Worker's red leaves every other leg's verdict.
+    name: ${{ matrix.worker }} Worker (typecheck + test + dry-run)
     needs: detect
     if: needs.detect.outputs.affected == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        worker: ${{ fromJSON(needs.detect.outputs.workers) }}
     defaults:
       run:
-        working-directory: services/subscriptiontracker-api
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-node
-      - run: npm ci
-      - run: npx tsc --noEmit
-      - run: npm test
-      - run: npx wrangler deploy --dry-run
-      # why: env.sandbox is deployed only by the manual deploy-sandbox.yml, so
-      # this is the one place a broken sandbox block fails before a dispatch.
-      - run: npx wrangler deploy --env sandbox --dry-run
-
-  worker-platform:
-    # why: this job was 1,818 of ci.yml's 2,696 lines and ran 105 guards behind a
-    # name that described four steps. It is now only those four steps; the guards
-    # are ci.yml's guard-* shards.
-    name: platform Worker (typecheck + test + dry-run)
-    needs: detect
-    if: needs.detect.outputs.affected == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: services/platform
+        working-directory: services/${{ matrix.worker }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -90,7 +83,7 @@ jobs:
     # and is red on failure, cancelled, a detect that did not succeed, or a skip
     # detect did not license (assert-green-means-ran A8 asserts the shape).
     name: lane-verdict
-    needs: [detect, worker-subscriptiontracker-api, worker-platform]
+    needs: [detect, worker]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5

@@ -83,6 +83,8 @@ import {
   RETRY_WALL_CEILING_MS,
   REQUEST_TIMEOUT_MS,
   READ_WALL_CEILING_MS,
+  DOWNLOAD_TIMEOUT_MS,
+  DOWNLOAD_WALL_CEILING_MS,
   requestTimeoutMs,
   runDeadline,
   SECOND_LOOK_ATTEMPTS,
@@ -1379,6 +1381,21 @@ describe('B12 — the per-request ceiling: a read that never answers still ends'
     for (const bad of ['', '0', '-5', 'abc', null]) {
       assert.equal(requestTimeoutMs(bad, { OPS_REQUEST_TIMEOUT_MS: bad }), REQUEST_TIMEOUT_MS, `${JSON.stringify(bad)} is not a ceiling`);
     }
+  });
+
+  // ⏱ 2026-09-26 (train W30, ruling W30-20): a download is the one named
+  // exception, chosen by a boolean. Only `true` selects it, and the same two
+  // inputs still only shorten it.
+  test('a `download` read gets DOWNLOAD_TIMEOUT_MS (60 s); `timeoutMs` and the knob still only SHORTEN it', () => {
+    assert.equal(DOWNLOAD_TIMEOUT_MS, 60_000);
+    assert.equal(requestTimeoutMs(undefined, {}, { download: true }), DOWNLOAD_TIMEOUT_MS);
+    assert.equal(requestTimeoutMs(120_000, {}, { download: true }), DOWNLOAD_TIMEOUT_MS, 'a caller may not lengthen a download either');
+    assert.equal(requestTimeoutMs(20_000, {}, { download: true }), 20_000);
+    assert.equal(requestTimeoutMs(undefined, { OPS_REQUEST_TIMEOUT_MS: '50' }, { download: true }), 50);
+    for (const notTrue of [false, 'yes', 1, undefined]) {
+      assert.equal(requestTimeoutMs(undefined, {}, { download: notTrue }), REQUEST_TIMEOUT_MS, `${JSON.stringify(notTrue)} is not a download`);
+    }
+    assert.equal(DOWNLOAD_WALL_CEILING_MS, READ_ATTEMPTS * DOWNLOAD_TIMEOUT_MS + RETRY_WALL_CEILING_MS);
   });
 
   test('the wall ceiling of one read is DERIVED, and ten of them fit a 10-minute job', () => {

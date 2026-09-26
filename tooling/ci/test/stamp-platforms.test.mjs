@@ -378,6 +378,38 @@ jobs:
     assert.equal(code, 0, out);
   });
 
+  // ⏱ ADDED 2026-09-25 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 2 of 3): the builds
+  // come off the census, so a build made through tooling/ci/flutter-release-build.mjs
+  // counts, and it runs where the composer runs `flutter` — apps/<app> — whatever the
+  // step's working-directory says. The raw reader saw no `flutter build` in either.
+  const withComposer = (root, app) => {
+    writeFileSync(join(root, 'tooling', 'channel-register.json'), JSON.stringify({
+      channels: [{ id: 'web', platforms: ['web'], purchaseRail: { rail: 'paddle' } }],
+      purchaseRails: { storeKeyDefine: { define: 'STORE_KEY', secretByRail: {} } },
+    }));
+    mkdirSync(join(root, 'apps', app), { recursive: true });
+    writeFileSync(join(root, 'apps', app, 'app.yaml'), `id: ${app}\nhosts:\n  api: ${app}-api.nikatru.com\n`);
+    return root;
+  };
+
+  test('passes when the stamped app is built through the composer', () => {
+    const { code, out } = run(withComposer(tree({
+      ci: goodCi
+        .replace('        working-directory: apps/probe\n', '')
+        .replace('run: flutter build web --pwa-strategy=none', 'run: node tooling/ci/flutter-release-build.mjs probe web web'),
+    }), 'probe'));
+    assert.equal(code, 0, out);
+    assert.match(out, /every claimed platform is stamped and built in CI/);
+  });
+
+  test('FAILS when the composer builds another app, though the step sits in the stamp', () => {
+    const { code, out } = run(withComposer(tree({
+      ci: goodCi.replace('run: flutter build web --pwa-strategy=none', 'run: node tooling/ci/flutter-release-build.mjs other web web'),
+    }), 'other'));
+    assert.equal(code, 1, out);
+    assert.match(out, /runs `flutter build web`, but not in `apps\/probe` — it runs in `apps\/other`/);
+  });
+
   // ── 🔴 [pipeline S-4] THE WORKSPACE-RESOLUTION HALF ───────────────────────
   // Registering the app in the workspace was only half of S-4. The stamped
   // pubspec never said `resolution: workspace`, and Dart refuses the WHOLE

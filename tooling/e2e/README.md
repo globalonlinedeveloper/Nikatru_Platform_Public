@@ -18,6 +18,13 @@ build being a canvas with no DOM.
    (server-side proof).
 4. `assert_one_issuer.mjs` — asks the deployed Worker whether it accepts this
    target's session.
+4a. `delete_headless.mjs` — captcha-gated stacks only
+   (`E2E_EXPECT_CAPTCHA_GATE=yes`). There the delete dialog's reauth is the
+   Turnstile-gated password grant, a headless browser has no token, and the
+   suite asserts the refusal ("Not deleted"). This step then erases the
+   delete-leg account through the ungated `/verify` and the deployed
+   `DELETE /v1/account`, reading the account before and after. Without Worker
+   trust (a rehearsal before the switch) it expects the door's 401 instead.
 5. `verify_purged.mjs` — re-reads the delete-leg user's identity (GoTrue admin
    API) and every user-owned D1 table.
 6. `verify_consent.mjs` — reads the consent artifact the run wrote to

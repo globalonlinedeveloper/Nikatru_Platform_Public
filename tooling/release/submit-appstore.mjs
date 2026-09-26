@@ -68,6 +68,7 @@
 //   [--repo-root <path>]   point every path below at a different tree (tests)
 //
 // Exit 0 = the submission path is walkable. 1 = it is not, or --submit.
+//       2 = COVERAGE LOST: an input it must read is absent or unreadable (submit-common.mjs).
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
@@ -75,45 +76,21 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { readAppleBundleId } from '../ci/read-identity.mjs';
 import { appleArtifactPath } from '../ci/apple-signing.mjs';
+import { submitCli } from './submit-common.mjs';
 
 const CHANNELS = ['ios-appstore', 'macos-appstore'];
 const REGISTER = 'tooling/channel-register.json';
 const APPS = 'catalog/apps.json';
 
-// ── arguments ────────────────────────────────────────────────────────────────
-const argv = process.argv.slice(2);
-const flag = (name) => argv.includes(`--${name}`);
-const opt = (name, fallback = null) => {
-  const i = argv.indexOf(`--${name}`);
-  return i !== -1 && i + 1 < argv.length ? argv[i + 1] : fallback;
-};
+// ── arguments, and the two stops (submit-common.mjs: COVERAGE LOST exits 2) ──
+const { flag, opt, root: ROOT, ok, abs, read, coverageLost, die } = submitCli('submit-appstore');
 
 const DRY_RUN = flag('dry-run');
 const SUBMIT = flag('submit');
 const ALLOW_MISSING_ARTIFACT = flag('allow-missing-artifact');
-const ROOT = resolve(opt('repo-root') ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
 const problems = [];
 const prints = [];
-const ok = (m) => console.log(`ok   ${m}`);
-const abs = (rel) => join(ROOT, rel);
-const read = (rel) => (existsSync(abs(rel)) ? readFileSync(abs(rel), 'utf8') : null);
-
-/** The scan cannot continue and reporting "clean" would be a lie about nothing. */
-function coverageLost(lines) {
-  console.error('');
-  console.error(`FAIL COVERAGE LOST — ${lines[0]}`);
-  for (const l of lines.slice(1)) console.error(`     ${l}`);
-  console.error('\nsubmit-appstore: FAILED');
-  process.exit(1);
-}
-
-function die(lines) {
-  console.error('');
-  for (const l of lines) console.error(l);
-  console.error('\nsubmit-appstore: FAILED');
-  process.exit(1);
-}
 
 if (DRY_RUN === SUBMIT) {
   die([

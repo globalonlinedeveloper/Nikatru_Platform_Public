@@ -126,6 +126,12 @@ class AnalyticsRecorder implements Analytics {
   /// already queued on the event loop cannot re-arm a disposed recorder.
   bool _disposed = false;
 
+  /// Latched when the server answers [UnreleasedBuildFailure]: this build's
+  /// stamp is refused, so nothing more is collected, queued or sent for the
+  /// life of the recorder. Without it every [log] past [batchSize] re-POSTed a
+  /// batch the server would refuse again.
+  bool _refused = false;
+
   /// Bumped by [purge]. A flush that was already awaiting its request when the
   /// user withdrew must not write the queue back to a key the withdrawal just
   /// deleted — see [flush].
@@ -133,6 +139,9 @@ class AnalyticsRecorder implements Analytics {
 
   /// Events waiting to be delivered (test/diagnostic view).
   int get queuedCount => _queue.length;
+
+  /// Whether the server refused this build (test/diagnostic view).
+  bool get refused => _refused;
 
   /// Whether a time-based flush is currently armed (test/diagnostic view).
   ///
@@ -209,6 +218,7 @@ class AnalyticsRecorder implements Analytics {
 
   @override
   Future<void> log(String event, {Map<String, Object?>? params}) async {
+    if (_refused) return; // the server takes nothing from this build
     if (_consent.statusOf(ConsentPurpose.analytics) != ConsentStatus.granted) {
       return; // discard, never buffer-for-later
     }
@@ -282,7 +292,7 @@ class AnalyticsRecorder implements Analytics {
     // The re-entrancy guard is UNCHANGED. A timer that fires mid-flight lands
     // here and returns without sending; the in-flight flush's `finally` re-arms
     // if anything is still queued, so the no-op does not strand the remainder.
-    if (_flushing || _queue.isEmpty) return;
+    if (_flushing || _queue.isEmpty || _refused) return;
     if (_consent.statusOf(ConsentPurpose.analytics) != ConsentStatus.granted) {
       return;
     }
@@ -312,9 +322,18 @@ class AnalyticsRecorder implements Analytics {
         _removeSent(batch);
         delivered = true;
         await _persist();
+      } else if (r case Err<void>(failure: UnreleasedBuildFailure())) {
+        // ⏱ 2026-09-26 — the one Err that is NOT retried. The server refuses
+        // this build's stamp, and the stamp cannot change while it runs, so
+        // keeping the queue only re-sent it on every later log(). Drop it, in
+        // memory and on disk, and latch. Not re-armed (`delivered` is false).
+        _refused = true;
+        _queue.clear();
+        await _clearStore();
       }
-      // On Err: keep everything. The next log() or flush() retries, and the
-      // server dedups on event_id, so a retry after a lost response is safe.
+      // On any other Err: keep everything. The next log() or flush()
+      // retries, and the server dedups on event_id, so a retry after a lost
+      // response is safe.
     } catch (_) {
       // Analytics must never surface an error into a user-facing flow.
     } finally {

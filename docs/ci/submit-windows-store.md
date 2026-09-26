@@ -201,3 +201,33 @@ had validated and read back. Now there is ONE compile and ONE `msix:create` per 
 
 Held by `tooling/ci/test/submit-lanes-take-dry-run-bytes.test.mjs`. The proof is static: the job has
 never run (the Entra tenant above), so its first dispatch is also its first live run.
+
+---
+
+## The client secret leaves the dry run — 2026-09-25 (O-STORE-SECRETS-REACH-THE-DRY-RUN)
+
+**Appended, not rewritten.** "before step **Dry-run the Microsoft Store
+submission**" above describes five credentials reaching the dry run. From this
+date it is four.
+
+`MS_STORE_CLIENT_SECRET` is scoped to the `store-publish` environment in
+`tooling/channel-register.json` (`ciSecretRegister.nonSigning`, key
+`environment`), and `assert-channel-register.mjs` §8c fails any job that reads
+it without `environment: store-publish`. The `dry-run` job has no environment,
+so it no longer receives the secret: it gets the four ids, and
+`submit-windows-store.mjs --dry-run` reads the register row and prints
+`client secret: checked in the environment-bound submit job` instead of
+counting the secret's absence as a gap. `--submit` still requires all five.
+
+Before this, 19b252af's version of this file handed the secret to the dry run,
+a job with no owner-approval pause, one `run:` edit away from a submission
+nobody approved. §8c exits 1 on that file (rule (a), `:148`).
+
+The presence check for the secret now runs **straight after the ref check** of
+the `submit` job (assert-workflow-hardening limb 10 holds that one first), the only job that can see an environment secret. It ends the run before a
+build or any upload, and its error names the owner step. The owner's two steps:
+
+1. GitHub → Settings → Environments → `store-publish` → add
+   `MS_STORE_CLIENT_SECRET` with the current value (either side of the merge).
+2. After the merge, delete the repository-level copy. Verified by listing
+   secret NAMES only (`gh secret list`, `gh secret list --env store-publish`).

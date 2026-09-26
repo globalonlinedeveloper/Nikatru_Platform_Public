@@ -1776,4 +1776,13 @@ describe('sites/nikatru/functions/_middleware.js — the apex serves no Markdown
     assert.equal(res.status, 200);
     assert.deepEqual([calls.next, calls.fetch], [1, 0]);
   });
+
+  // The apex job deploys FROM the directory it uploads, so its filled wrangler.jsonc sits
+  // among the assets: `ROUTER_REFUSED_NAMES` refuses a wrangler config by name, at any depth.
+  test('a wrangler config is never served (/wrangler.jsonc, /a/wrangler.toml → 404); /version.json and /index.html are', async () => {
+    await refuses('/wrangler.jsonc');
+    await refuses('/a/wrangler.toml');
+    await unchanged('/version.json', '{"sha":"0000000"}');
+    await unchanged('/index.html', '<!doctype html><title>Nikatru</title>');
+  });
 });

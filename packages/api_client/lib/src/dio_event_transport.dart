@@ -56,6 +56,11 @@ class DioEventTransport implements core.EventTransport {
       );
       return const core.Result<void>.ok(null);
     } catch (e) {
+      // 422 `unreleased_build`: production refuses this build's app_version,
+      // so the recorder must stop, not retry (core.UnreleasedBuildFailure).
+      if (_refusesBuild(e)) {
+        return core.Result<void>.err(core.UnreleasedBuildFailure(cause: e));
+      }
       // Includes 429 (breaker shed it) and 503 (D1 hiccup) — both mean KEEP the
       // batch. The server dedups on event_id, so retrying is always safe.
       return core.Result<void>.err(
@@ -63,4 +68,13 @@ class DioEventTransport implements core.EventTransport {
       );
     }
   }
+}
+
+/// The 422 production answers a build with no official stamp, by its code.
+bool _refusesBuild(Object e) {
+  if (e is! DioException) return false;
+  final Response<dynamic>? res = e.response;
+  if (res?.statusCode != 422) return false;
+  final Object? data = res?.data;
+  return data is Map && data['error'] == core.kUnreleasedBuildError;
 }

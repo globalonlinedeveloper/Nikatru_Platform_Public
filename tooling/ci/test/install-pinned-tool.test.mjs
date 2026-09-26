@@ -14,10 +14,16 @@
 //   P4 a cache entry whose sha256 does NOT match is discarded, not installed
 //   P5 downloaded bytes whose sha256 is wrong are never handed back
 //   P6 the retry is BOUNDED — attempts stop at the configured number
-//   P7 no workflow step downloads one of these four tools any other way
+//   P7 no workflow step downloads one of these tools any other way
 //   P8 a version reaching a URL is rebuilt out of integers; anything else refuses
 //   P9 a digest is 64 lowercase hex characters or nothing is verified against it
 //   P10 the REAL tooling/versions.json satisfies both
+//   G1-G6 glitchtip-cli (⏱ 2026-09-25, O-GLITCHTIP-CLI-INSTALLED-BY-HAND): one entry,
+//      three runner platforms, each its own digest, asset and file name; a platform
+//      with no pin and a binary that names another version both REFUSE
+//   RC1 a re-added glitchtip-cli curl install is refused by P7
+//   RC2 a fifth TOOLS member is checked by its own URL (the old ternary mapped it away)
+//   RC3 a wrong digest refuses on linux, win32 and darwin — fixture bytes, no network
 //
 // Mutations run against install-pinned-tool.mjs (predictions written first):
 //   · `attempts = 1` forced (the retry loop runs once)              → P1, P6 RED
@@ -41,7 +47,9 @@ import { fileURLToPath } from 'node:url';
 
 import {
   acquire,
+  installPinnedTool,
   PinnedToolUnavailable,
+  specFor,
   TOOLS,
   DEFAULT_ATTEMPTS,
   safeVersion,
@@ -85,6 +93,38 @@ function fakeDownload({ failFor = 0, body = BYTES } = {}) {
 }
 
 const noSleep = () => {};
+
+/** Each TOOLS member's FETCH STEM — the URL a hand install would have to spell, up to the
+ *  version, with scheme and host dropped: `gitleaks/gitleaks/releases/download/`,
+ *  `glitchtip/glitchtip-cli/-/jobs/artifacts/`. DERIVED from the member's own `url`, on
+ *  every platform it pins, so no name is ever mapped onto another tool's host. */
+function fetchStems(tools) {
+  const stems = new Map();
+  for (const [name, spec] of tools) {
+    for (const p of spec.platforms ? Object.values(spec.platforms) : [undefined]) {
+      const u = spec.url('0.0.0', p);
+      const at = u.indexOf('0.0.0');
+      if (at < 0) throw new Error(`${name}'s url does not carry its version, so no stem can be derived from it: ${u}`);
+      stems.set(u.slice(0, at).replace(/v$/, '').replace(/^https?:\/\/[^/]+\//, ''), name);
+    }
+  }
+  return stems;
+}
+
+/** Every non-comment workflow line that spells a member's fetch stem, as `file:line text`.
+ *  No wget/curl pre-filter: a hand install puts its URL in a variable one line above the
+ *  curl as often as not, and that pre-filter is how a URL line went unread. */
+function handInstalls(tools, bodies) {
+  const stems = [...fetchStems(tools).keys()];
+  const offenders = [];
+  for (const [file, body] of bodies) {
+    body.split('\n').forEach((line, i) => {
+      if (line.trimStart().startsWith('#')) return;
+      if (stems.some((s) => line.includes(s))) offenders.push(`${file}:${i + 1} ${line.trim()}`);
+    });
+  }
+  return offenders;
+}
 
 describe('install-pinned-tool — a transient failure retries, a real one stops the build', () => {
   test('P1 one failed attempt then a good one INSTALLS (the 2026-09-12 red)', () => {
@@ -204,7 +244,7 @@ describe('install-pinned-tool — a transient failure retries, a real one stops 
   });
 });
 
-describe('install-pinned-tool — no workflow may fetch these four any other way', () => {
+describe('install-pinned-tool — no workflow may fetch these tools any other way', () => {
   // 🔴 THE RATCHET. Without this, the next hand to add a scanner writes the same
   // `wget -q -O` and the 2026-09-12 red comes back with nothing to notice it.
   // The check is over the REAL workflow set, so it cannot pass vacuously: it
@@ -219,17 +259,8 @@ describe('install-pinned-tool — no workflow may fetch these four any other way
       installerUsers.length > 0,
       'no workflow calls install-pinned-tool.mjs — the installer is dead code and this check is vacuous',
     );
-    const offenders = [];
-    for (const [file, body] of bodies) {
-      body.split('\n').forEach((line, i) => {
-        if (line.trimStart().startsWith('#')) return;
-        if (!/\b(wget|curl)\b/.test(line) && !/releases\/download\//.test(line)) return;
-        for (const name of TOOLS.keys()) {
-          const host = name === 'gitleaks' ? 'gitleaks/gitleaks' : name === 'zizmor' ? 'zizmorcore/zizmor' : name === 'trivy' ? 'aquasecurity/trivy' : 'google/osv-scanner';
-          if (line.includes(`${host}/releases/download/`)) offenders.push(`${file}:${i + 1} ${line.trim()}`);
-        }
-      });
-    }
+    assert.ok(fetchStems(TOOLS).size >= TOOLS.size, 'a TOOLS member yielded no fetch stem, so it would be checked for nothing');
+    const offenders = handInstalls(TOOLS, bodies);
     assert.deepEqual(
       offenders,
       [],
@@ -237,18 +268,44 @@ describe('install-pinned-tool — no workflow may fetch these four any other way
     );
   });
 
-  test('P7b the four tools this installer knows are the four ci.yml installs', () => {
-    const ci = bodies.get('ci.yml');
-    assert.ok(ci, 'ci.yml must exist');
+  // ⏱ RE-SCOPED 2026-09-25 (O-GLITCHTIP-CLI-INSTALLED-BY-HAND). It read "the four tools
+  // this installer knows are the four ci.yml installs"; glitchtip-cli is a member no
+  // ci.yml job runs, and a PR-time download of it for no reader was refused.
+  test('P7b every tool this installer knows is installed through it by at least one workflow', () => {
     for (const name of TOOLS.keys()) {
       // A plain substring, not a built regex: the tool names are data, and a
       // regex assembled from data is a sanitiser question nobody should have to
       // answer to check that a step exists.
-      assert.ok(
-        ci.includes(`install-pinned-tool.mjs ${name} --out`),
-        `ci.yml must install ${name} through the installer`,
-      );
+      const users = [...bodies].filter(([, b]) => b.includes(`install-pinned-tool.mjs ${name} --out`)).map(([f]) => f);
+      assert.ok(users.length > 0, `no workflow installs ${name} through the installer — the TOOLS entry is dead`);
     }
+    assert.ok(bodies.get('ci.yml')?.includes('install-pinned-tool.mjs gitleaks --out'), 'ci.yml must still install gitleaks through the installer');
+  });
+
+  // ⏱ ADDED 2026-09-25. Until then P7 mapped every name to a host through a ternary of
+  // the first four, so a fifth member fell through to `google/osv-scanner` and was
+  // checked for nothing (measured on the tree before this change: exit 0 with a planted
+  // hand install of a fifth tool, and exit 0 with a re-added glitchtip-cli curl).
+  test('RC2 a fifth TOOLS member is checked by the URL it declares, not mapped onto another', () => {
+    const fifth = new Map([
+      ...TOOLS,
+      ['fake-tool', { versionKey: 'fake_tool', digestKey: 'fake_tool_sha256', url: (v) => `https://github.com/fake-org/fake-tool/releases/download/v${v}/fake-tool.tar.gz`, archive: 'tar.gz', member: 'fake-tool' }],
+    ]);
+    const planted = new Map([['x.yml', 'jobs:\n  a:\n    steps:\n      - run: curl -fsSL -o t.tgz https://github.com/fake-org/fake-tool/releases/download/v1.0.0/fake-tool.tar.gz\n']]);
+    assert.deepEqual(handInstalls(fifth, planted), ['x.yml:4 - run: curl -fsSL -o t.tgz https://github.com/fake-org/fake-tool/releases/download/v1.0.0/fake-tool.tar.gz']);
+    assert.deepEqual(handInstalls(TOOLS, planted), [], 'without the member, the same line is nobody\'s business here');
+  });
+
+  test('RC1 a re-added glitchtip-cli curl install in deploy-web.yml is refused, the URL on its own line', () => {
+    const real = bodies.get('deploy-web.yml');
+    assert.ok(real, 'deploy-web.yml must exist');
+    const planted = new Map([[
+      'deploy-web.yml',
+      `${real}\n      - run: |\n          url="https://gitlab.com/glitchtip/glitchtip-cli/-/jobs/artifacts/v\${ver}/raw/artifacts/glitchtip-cli-linux-x86_64?job=build-linux-x86_64"\n          curl --fail --location --output "\${RUNNER_TEMP}/glitchtip-cli" "$url"\n`,
+    ]]);
+    const f = handInstalls(TOOLS, planted);
+    assert.equal(f.length, 1, f.join('\n'));
+    assert.match(f[0], /^deploy-web\.yml:\d+ url="https:\/\/gitlab\.com\/glitchtip\/glitchtip-cli\/-\/jobs\/artifacts\//);
   });
 });
 
@@ -289,7 +346,96 @@ describe('install-pinned-tool — the pin is read strictly, because it reaches a
     const versions = readVersions();
     for (const [name, spec] of TOOLS) {
       assert.equal(safeVersion(versions[spec.versionKey], spec.versionKey), versions[spec.versionKey], name);
-      assert.equal(safeDigest(versions[spec.digestKey], spec.digestKey), versions[spec.digestKey], name);
+      // A member with `platforms` pins one digest per runner platform, and each must read.
+      for (const key of spec.platforms ? Object.values(spec.platforms).map((p) => p.digestKey) : [spec.digestKey]) {
+        assert.equal(safeDigest(versions[key], key), versions[key], `${name} ${key}`);
+      }
     }
+  });
+});
+
+// ⏱ ADDED 2026-09-25 (O-GLITCHTIP-CLI-INSTALLED-BY-HAND) — glitchtip-cli, the member with
+// one version and three sets of bytes. NO NETWORK: every case serves fixture bytes through
+// `download`, and the binary's `--version` through `runVersion`, the installer's own seams.
+describe('install-pinned-tool — glitchtip-cli, one entry and three runner platforms', () => {
+  const OTHER = createHash('sha256').update('bytes nobody pinned\n').digest('hex');
+  const pinned = (digest = DIGEST) => ({
+    glitchtip_cli: '1.0.0',
+    glitchtip_cli_sha256: digest,
+    glitchtip_cli_windows_x86_64_sha256: digest,
+    glitchtip_cli_macos_arm64_sha256: digest,
+  });
+  const reportsPin = () => 'glitchtip-cli 1.0.0';
+  const install = ({ platform, versions = pinned(), runVersion = reportsPin }) => {
+    const outDir = workDir();
+    const download = fakeDownload();
+    const r = installPinnedTool({ name: 'glitchtip-cli', outDir, versions, cacheDir: null, attempts: 2, download, sleep: noSleep, platform, runVersion });
+    return { r, outDir, download };
+  };
+
+  test('G1 linux-x64 installs the linux asset against glitchtip_cli_sha256, as glitchtip-cli', () => {
+    const { r, outDir, download } = install({ platform: 'linux-x64' });
+    assert.deepEqual(download.calls, ['https://gitlab.com/glitchtip/glitchtip-cli/-/jobs/artifacts/v1.0.0/raw/artifacts/glitchtip-cli-linux-x86_64?job=build-linux-x86_64']);
+    assert.equal(r.binary, join(outDir, 'glitchtip-cli'));
+    assert.equal(readFileSync(r.binary, 'utf8'), BYTES);
+    assert.equal(specFor('glitchtip-cli', 'linux-x64').digestKey, 'glitchtip_cli_sha256');
+  });
+
+  test('G2 win32-x64 installs the .exe asset against the windows digest, as glitchtip-cli.exe', () => {
+    const { r, outDir, download } = install({ platform: 'win32-x64' });
+    assert.deepEqual(download.calls, ['https://gitlab.com/glitchtip/glitchtip-cli/-/jobs/artifacts/v1.0.0/raw/artifacts/glitchtip-cli-windows-x86_64.exe?job=build-windows-x86_64']);
+    assert.equal(r.binary, join(outDir, 'glitchtip-cli.exe'));
+    assert.equal(specFor('glitchtip-cli', 'win32-x64').digestKey, 'glitchtip_cli_windows_x86_64_sha256');
+  });
+
+  test('G3 darwin-arm64 installs the macOS asset against the macOS digest', () => {
+    const { r, outDir, download } = install({ platform: 'darwin-arm64' });
+    assert.deepEqual(download.calls, ['https://gitlab.com/glitchtip/glitchtip-cli/-/jobs/artifacts/v1.0.0/raw/artifacts/glitchtip-cli-macos-arm64?job=build-macos-arm64']);
+    assert.equal(r.binary, join(outDir, 'glitchtip-cli'));
+    assert.equal(specFor('glitchtip-cli', 'darwin-arm64').digestKey, 'glitchtip_cli_macos_arm64_sha256');
+  });
+
+  test('G4 a runner platform with no pinned bytes REFUSES before any download', () => {
+    const download = fakeDownload();
+    assert.throws(
+      () => installPinnedTool({ name: 'glitchtip-cli', outDir: workDir(), versions: pinned(), download, sleep: noSleep, platform: 'darwin-x64', runVersion: reportsPin }),
+      (e) => e instanceof PinnedToolUnavailable && /no pinned bytes for this runner \(darwin-x64\)/.test(e.lines.join('\n')),
+    );
+    assert.equal(download.calls.length, 0);
+  });
+
+  test('G5 bytes that match the digest but name another version REFUSE', () => {
+    assert.throws(
+      () => install({ platform: 'linux-x64', runVersion: () => 'glitchtip-cli 0.9.0' }),
+      (e) => e instanceof PinnedToolUnavailable && /reports "glitchtip-cli 0\.9\.0", not "glitchtip-cli 1\.0\.0"/.test(e.lines.join('\n')),
+    );
+  });
+
+  test('G6 a binary that cannot report its version at all REFUSES', () => {
+    assert.throws(
+      () => install({ platform: 'win32-x64', runVersion: () => null }),
+      (e) => e instanceof PinnedToolUnavailable && /reports null, not "glitchtip-cli 1\.0\.0"/.test(e.lines.join('\n')),
+    );
+  });
+
+  test('RC3 linux: a wrong digest in versions.json refuses — the fixture bytes are never installed', () => {
+    assert.throws(
+      () => install({ platform: 'linux-x64', versions: pinned(OTHER) }),
+      (e) => e instanceof PinnedToolUnavailable && /failed on all 2 attempt\(s\)/.test(e.lines.join('\n')) && e.lines.some((l) => l.includes(`expected ${OTHER}`)),
+    );
+  });
+
+  test('RC3 win32: a wrong digest in versions.json refuses', () => {
+    assert.throws(
+      () => install({ platform: 'win32-x64', versions: pinned(OTHER) }),
+      (e) => e instanceof PinnedToolUnavailable && e.lines.some((l) => l.includes(`expected ${OTHER}`)),
+    );
+  });
+
+  test('RC3 darwin: a wrong digest in versions.json refuses', () => {
+    assert.throws(
+      () => install({ platform: 'darwin-arm64', versions: pinned(OTHER) }),
+      (e) => e instanceof PinnedToolUnavailable && e.lines.some((l) => l.includes(`expected ${OTHER}`)),
+    );
   });
 });

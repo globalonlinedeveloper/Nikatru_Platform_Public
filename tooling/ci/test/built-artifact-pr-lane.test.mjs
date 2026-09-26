@@ -38,7 +38,7 @@ const REPO = resolve(CI_DIR, '..', '..');
 const PR_WORKFLOW = '.github/workflows/ci.yml';
 const MAIN_WORKFLOW = '.github/workflows/build-platforms.yml';
 const PR_JOB = 'android-artifacts';
-const APPS_JOB = 'android-apps';
+const APPS_JOB = 'prepare';
 const MAIN_JOB = 'linux_web_android';
 const GATE_JOB = 'ci-gate';
 

@@ -780,6 +780,7 @@
       ".github/workflows/deploy-sandbox.yml#platform",
       ".github/workflows/deploy-sandbox.yml#subscriptiontracker-api",
       ".github/workflows/deploy-web.yml#deploy-web",
+      ".github/workflows/deploy-web.yml#site",
       ".github/workflows/deploy-workers.yml#platform",
       ".github/workflows/deploy-workers.yml#subscriptiontracker-api",
       ".github/workflows/extensions.yml#store-publish",
@@ -906,6 +907,7 @@
   },
   {
     "claims": [
+      "ADR 053",
       "F-10"
     ],
     "invokedBy": [
@@ -1987,8 +1989,8 @@
     ],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#prepare",
-      ".github/workflows/ci.yml#android-apps",
       ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/ci.yml#prepare",
       ".github/workflows/deploy-web.yml#prepare",
       ".github/workflows/e2e.yml#prepare"
     ],
@@ -2209,6 +2211,17 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-sink-disclosure.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#sites",
+      ".github/workflows/deploy-web.yml#site"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-site-bindings.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -2636,11 +2649,13 @@
     "claims": [
       "C-6"
     ],
-    "invokedBy": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guard-meta"
+    ],
     "kind": "guard",
     "ref": "tooling/ci/channel-arming.mjs",
     "references": [],
-    "state": "LIBRARY"
+    "state": "WIRED"
   },
   {
     "claims": [],
@@ -2688,7 +2703,7 @@
     ],
     "invokedBy": [
       ".github/workflows/ci.yml#sites",
-      ".github/workflows/site-drift-repair.yml#repair"
+      ".github/workflows/deploy-web.yml#site"
     ],
     "kind": "guard",
     "ref": "tooling/ci/check-site-integrity.mjs",
@@ -2743,16 +2758,55 @@
     "claims": [],
     "invokedBy": [],
     "kind": "guard",
+    "ref": "tooling/ci/flutter-release-build.mjs",
+    "references": [],
+    "state": "IMPORTED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
     "ref": "tooling/ci/flutter-stock-assets.mjs",
     "references": [],
     "state": "LIBRARY"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guard-meta"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/gen-ci-map.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/extensions-ci.yml#discover",
+      ".github/workflows/extensions-ci.yml#templates"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/gen-issue-forms.mjs",
+    "references": [],
+    "state": "WIRED"
   },
   {
     "claims": [
       "F-2"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#security-scan"
+      ".github/workflows/build-platforms.yml#apple",
+      ".github/workflows/build-platforms.yml#linux_web_android",
+      ".github/workflows/build-platforms.yml#windows",
+      ".github/workflows/ci.yml#security-scan",
+      ".github/workflows/deploy-web.yml#deploy-web",
+      ".github/workflows/submit-appstore.yml#dry-run",
+      ".github/workflows/submit-play.yml#dry-run",
+      ".github/workflows/submit-snap.yml#dry-run",
+      ".github/workflows/submit-snap.yml#submit",
+      ".github/workflows/submit-windows-store.yml#dry-run",
+      ".github/workflows/symbolication-proof.yml#prove"
     ],
     "kind": "guard",
     "ref": "tooling/ci/install-pinned-tool.mjs",
@@ -2809,6 +2863,7 @@
     "claims": [],
     "invokedBy": [
       ".github/workflows/deploy-web.yml#deploy-web",
+      ".github/workflows/deploy-web.yml#site",
       ".github/workflows/deploy-workers.yml#platform",
       ".github/workflows/deploy-workers.yml#subscriptiontracker-api"
     ],
@@ -2860,6 +2915,7 @@
     "invokedBy": [
       ".github/workflows/build-platforms.yml#release",
       ".github/workflows/deploy-web.yml#deploy-web",
+      ".github/workflows/deploy-web.yml#site",
       ".github/workflows/deploy-workers.yml#platform",
       ".github/workflows/deploy-workers.yml#subscriptiontracker-api",
       ".github/workflows/extensions.yml#release",
@@ -2992,6 +3048,7 @@
     "invokedBy": [
       ".github/workflows/build-platforms.yml#prepare",
       ".github/workflows/ci.yml#app-brick",
+      ".github/workflows/extensions-ci.yml#templates",
       ".github/workflows/extensions.yml#release"
     ],
     "kind": "guard",
@@ -3024,6 +3081,18 @@
     "ref": "tooling/ci/tree-walk.mjs",
     "references": [],
     "state": "LIBRARY"
+  },
+  {
+    "claims": [
+      "ADR 095"
+    ],
+    "invokedBy": [
+      ".github/workflows/lane-workers.yml#detect"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/worker-set.mjs",
+    "references": [],
+    "state": "WIRED"
   },
   {
     "claims": [
@@ -3119,6 +3188,16 @@
     ],
     "kind": "script",
     "ref": "tooling/e2e/captcha_posture.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/e2e.yml#e2e"
+    ],
+    "kind": "script",
+    "ref": "tooling/e2e/delete_headless.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -3445,6 +3524,7 @@
   },
   {
     "claims": [
+      "ADR 053",
       "O-3"
     ],
     "invokedBy": [
@@ -3570,7 +3650,7 @@
       "F-2"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/ci.yml#app-dryrun",
       ".github/workflows/submit-appstore.yml#dry-run"
     ],
     "kind": "script",
@@ -3586,7 +3666,7 @@
       "D-9"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/ci.yml#app-dryrun",
       ".github/workflows/submit-play.yml#dry-run",
       ".github/workflows/submit-play.yml#submit"
     ],
@@ -3604,7 +3684,7 @@
       "D-9"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/ci.yml#app-dryrun",
       ".github/workflows/submit-snap.yml#dry-run",
       ".github/workflows/submit-snap.yml#submit"
     ],
@@ -3622,7 +3702,7 @@
       "D-9"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/ci.yml#app-dryrun",
       ".github/workflows/submit-windows-store.yml#dry-run",
       ".github/workflows/submit-windows-store.yml#submit"
     ],
@@ -3740,7 +3820,9 @@
     ],
     "invokedBy": [
       ".github/workflows/ci.yml#app-brick",
-      ".github/workflows/site-drift-repair.yml#repair"
+      ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/ci.yml#sites",
+      ".github/workflows/deploy-web.yml#site"
     ],
     "kind": "script",
     "ref": "tooling/sites/generate-discovery.mjs",
@@ -3771,24 +3853,22 @@
     "state": "WIRED"
   },
   {
-    "claims": [
-      "W-3a"
-    ],
+    "claims": [],
     "invokedBy": [
-      ".github/workflows/site-drift-repair.yml#repair"
+      ".github/workflows/ci.yml#sites"
     ],
     "kind": "script",
-    "ref": "tooling/sites/lastmod.mjs",
+    "ref": "tooling/sites/regen.mjs",
     "references": [],
     "state": "WIRED"
   },
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/site-drift-repair.yml#repair"
+      ".github/workflows/deploy-web.yml#site"
     ],
     "kind": "script",
-    "ref": "tooling/sites/regen.mjs",
+    "ref": "tooling/sites/smoke-site-deploy.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -3854,6 +3934,27 @@
     ],
     "kind": "script",
     "ref": "tooling/store/measure-frame-ink.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#windows",
+      ".github/workflows/submit-windows-store.yml#dry-run"
+    ],
+    "kind": "script",
+    "ref": "tooling/store/msix-visual-name.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/deploy-web.yml#deploy-web"
+    ],
+    "kind": "script",
+    "ref": "tooling/web/connect-origins.mjs",
     "references": [],
     "state": "WIRED"
   },

@@ -134,7 +134,7 @@ function run({ missingGroups = 0, protect = [], commentOutPackAnchor = false, wo
 
 // The floor the guard records for apps/subscriptiontracker. Named once here so a case that
 // moves off it says which direction it moved in.
-const FLOOR = 10;
+const FLOOR = 11;
 
 describe('assert-stamp-properties — EXEMPT_APPS is visible, existent and sized', () => {
   // ── LIMB (1) · VISIBLE ─────────────────────────────────────────────────────
@@ -498,6 +498,47 @@ describe('assert-stamp-properties — COVERAGE LOST is exit 2, a finding is exit
       assert.match(out, /COVERAGE LOST — tooling\/ci\/check-site-integrity\.mjs unreadable/);
     } finally {
       cpSync(join(REPO, SITE), join(BASE, SITE));
+    }
+  });
+});
+
+// ── O-DESKTOP-TAP-TARGETS-BELOW-48: the 48px limb's two anchors, one case each ──
+// Both mutate the REAL files the fixture copied in (the shared theme, the brick's
+// own property test) and restore them from the real tree, so each case changes one
+// thing on the floor tree that the green control above exits 0 on.
+describe('assert-stamp-properties — ui-invariants-inherited anchors the padded theme and the five-platform variant', () => {
+  const THEME = 'packages/design_system/lib/src/theme/build_app_theme.dart';
+
+  test('exit 1 when the padded line is only a COMMENT — the anchor reads comment-stripped source', () => {
+    const real = readFileSync(join(REPO, THEME), 'utf8');
+    const mutated = real.replace(/^(\s*)(materialTapTargetSize:\s*MaterialTapTargetSize\.padded,)$/m, '$1// $2');
+    assert.notEqual(mutated, real, 'the fixture could not find the padded line to comment out');
+    writeFileSync(join(BASE, THEME), mutated);
+    try {
+      const { code, out } = run({ missingGroups: FLOOR });
+      assert.equal(code, 1, out);
+      assert.match(
+        out,
+        /tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}: property 'ui-invariants-inherited' is asserted but its IMPLEMENTATION is gone in packages\/design_system\/lib\/src\/theme\/build_app_theme\.dart — the shared theme must set materialTapTargetSize: padded/,
+      );
+    } finally {
+      writeFileSync(join(BASE, THEME), real);
+    }
+  });
+
+  test('exit 1 when LIMB 2 loses its variant — the brick grades android alone again', () => {
+    const mutated = PRISTINE_PROP.replace(/\n\s*variant:\s*const TargetPlatformVariant\(<TargetPlatform>\{[^}]*\}\),/, '');
+    assert.notEqual(mutated, PRISTINE_PROP, 'the fixture could not find LIMB 2\'s variant to remove');
+    writeFileSync(join(BASE, BRICK, PROP_TEST), mutated);
+    try {
+      const { code, out } = run({ missingGroups: FLOOR });
+      assert.equal(code, 1, out);
+      assert.match(
+        out,
+        /tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}: property 'ui-invariants-inherited' is asserted but its IMPLEMENTATION is gone in tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}\/test\/chassis_properties_test\.dart — the 48px limb must run under a TargetPlatformVariant/,
+      );
+    } finally {
+      writeFileSync(join(BASE, BRICK, PROP_TEST), PRISTINE_PROP);
     }
   });
 });

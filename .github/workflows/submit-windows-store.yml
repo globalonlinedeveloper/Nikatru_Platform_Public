@@ -112,29 +112,11 @@ jobs:
           path: apps/subscriptiontracker/build/symbols/windows
           retention-days: 7
           if-no-files-found: error
-      # why: pwsh, for the same reason the msstore-cli install below is — this is
-      # a Windows runner and `$RUNNER_TEMP` is a backslash path, which MSYS
-      # coreutils inside `shell: bash` handle badly. `Invoke-WebRequest` +
-      # `Get-FileHash` is exactly the shape used there. Both halves of the pin are
-      # read from tooling/versions.json at run time.
+      # why: ONE code path on every lane (O-GLITCHTIP-CLI-INSTALLED-BY-HAND): the digest tooling/versions.json
+      # pins for this runner's OS, a bounded retry, and the binary's own --version held to the pin.
       - name: Install glitchtip-cli (pinned by version AND by digest)
         shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $ver = node -p "require('./tooling/versions.json').glitchtip_cli"
-          $sum = node -p "require('./tooling/versions.json').glitchtip_cli_windows_x86_64_sha256"
-          $url = "https://gitlab.com/glitchtip/glitchtip-cli/-/jobs/artifacts/v$ver/raw/artifacts/glitchtip-cli-windows-x86_64.exe?job=build-windows-x86_64"
-          $out = Join-Path $env:RUNNER_TEMP 'glitchtip-cli.exe'
-          Invoke-WebRequest -Uri $url -OutFile $out -MaximumRetryCount 3 -RetryIntervalSec 5
-          $got = (Get-FileHash -Algorithm SHA256 -Path $out).Hash.ToLower()
-          if ($got -ne $sum) {
-            Write-Error "glitchtip-cli digest mismatch: the download hashes to $got and tooling/versions.json declares $sum. A version names a release; the sha256 names the BYTES, and the asset is a GitLab JOB ARTIFACT URL, which is re-runnable. This refusal is the mechanism, not a gap in it."
-          }
-          $reported = & $out --version
-          if ($reported -ne "glitchtip-cli $ver") {
-            Write-Error "the pinned binary reports '$reported', not 'glitchtip-cli $ver'"
-          }
-          Write-Host $reported
+        run: node tooling/ci/install-pinned-tool.mjs glitchtip-cli --out "$env:RUNNER_TEMP"
       # why: FAILS CLOSED on a missing GLITCHTIP_TOKEN, never skips. Placed AFTER
       # the retention step above and BEFORE the MSIX packaging and the store dry
       # run below, so a GlitchTip outage cannot take the mapping with it.
@@ -148,18 +130,23 @@ jobs:
           --cli "${env:RUNNER_TEMP}/glitchtip-cli.exe"
           --dir apps/subscriptiontracker/build/symbols/windows
           --org nikatru --project subscriptiontracker
+      # why: msix writes one name as both the Store title and the Start-menu label; the second line sets the label to app.yaml shortName (O-MSIX-IDENTITY-UNGRADED). bash, so either line failing stops the step.
       - name: Package MSIX (Microsoft Store)
         working-directory: apps/subscriptiontracker
-        run: dart run msix:create --version=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}.0
+        shell: bash
+        run: |
+          dart run msix:create --version=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}.0
+          node ../../tooling/store/msix-visual-name.mjs --app subscriptiontracker build/windows/msix/subscriptiontracker.msix
       # why: straight after msix:create, before the dry run touches the package: it must carry the identity the register declares. bash, because pwsh is this runner's default.
       - name: The MSIX carries the identity the register declares
         shell: bash
-        run: node tooling/ci/assert-artifact-signed-msix.mjs apps/subscriptiontracker/build/windows/msix/subscriptiontracker.msix
+        run: node tooling/ci/assert-artifact-signed-msix.mjs --app subscriptiontracker apps/subscriptiontracker/build/windows/msix/subscriptiontracker.msix
+      # why: no MS_STORE_CLIENT_SECRET. It lives in the store-publish environment and this job has none;
+      # the submit job checks it straight after its ref check (O-STORE-SECRETS-REACH-THE-DRY-RUN, assert-channel-register §8c).
       - name: Dry-run the Microsoft Store submission
         env:
           MS_STORE_TENANT_ID: ${{ secrets.MS_STORE_TENANT_ID }}
           MS_STORE_CLIENT_ID: ${{ secrets.MS_STORE_CLIENT_ID }}
-          MS_STORE_CLIENT_SECRET: ${{ secrets.MS_STORE_CLIENT_SECRET }}
           MS_STORE_PRODUCT_ID: ${{ secrets.MS_STORE_PRODUCT_ID }}
           MS_STORE_SELLER_ID: ${{ secrets.MS_STORE_SELLER_ID }}
         # why: NO --allow-missing-artifact. The job builds Windows and packages the MSIX
@@ -217,6 +204,34 @@ jobs:
       - name: Refuse any ref but main
         shell: bash
         run: node tooling/ci/assert-deploy-ref.mjs --allow main
+      # why: the shape assert-green-means-ran.mjs section B counts -- the branch that
+      # discovers the secret is absent ENDS the job. A submission job that finds it
+      # cannot authenticate and then reports success is a green tick over a store that
+      # received nothing. Straight after the ref check (assert-workflow-hardening limb 10
+      # holds that one first), because MS_STORE_CLIENT_SECRET is a store-publish
+      # environment secret: this job is the only one that can see it, so no earlier run
+      # has checked it, and an absent one ends the run before a build or any upload.
+      - name: Preflight — every Microsoft Store credential must be present
+        shell: bash
+        env:
+          MS_STORE_TENANT_ID: ${{ secrets.MS_STORE_TENANT_ID }}
+          MS_STORE_CLIENT_ID: ${{ secrets.MS_STORE_CLIENT_ID }}
+          MS_STORE_CLIENT_SECRET: ${{ secrets.MS_STORE_CLIENT_SECRET }}
+          MS_STORE_PRODUCT_ID: ${{ secrets.MS_STORE_PRODUCT_ID }}
+          MS_STORE_SELLER_ID: ${{ secrets.MS_STORE_SELLER_ID }}
+        run: |
+          set -euo pipefail
+          missing=''
+          if [ -z "$MS_STORE_TENANT_ID" ];     then missing="$missing MS_STORE_TENANT_ID"; fi
+          if [ -z "$MS_STORE_CLIENT_ID" ];     then missing="$missing MS_STORE_CLIENT_ID"; fi
+          if [ -z "$MS_STORE_CLIENT_SECRET" ]; then missing="$missing MS_STORE_CLIENT_SECRET"; fi
+          if [ -z "$MS_STORE_PRODUCT_ID" ];    then missing="$missing MS_STORE_PRODUCT_ID"; fi
+          if [ -z "$MS_STORE_SELLER_ID" ];     then missing="$missing MS_STORE_SELLER_ID"; fi
+          if [ -n "$missing" ]; then
+            echo "::error title=Microsoft Store submission cannot run::these secrets are empty in this store-publish job:$missing. MS_STORE_CLIENT_SECRET is a store-publish ENVIRONMENT secret (tooling/channel-register.json scopes it there) and the four ids are repository secrets. OWNER STEP for the client secret: GitHub -> Settings -> Environments -> store-publish -> Environment secrets -> add MS_STORE_CLIENT_SECRET. The values come from an Entra application associated with the Partner Center account (Private/runbooks/store-submission-windows.md). This is a FAILED submission, not a skipped one."
+            exit 1
+          fi
+          echo "all five MS_STORE_* secrets present — the submission may proceed."
       - name: A real submission must name the listing it will be recorded against
         shell: bash
         env:
@@ -242,31 +257,6 @@ jobs:
               exit 1
               ;;
           esac
-      # why: the shape assert-green-means-ran.mjs section B counts -- the branch that
-      # discovers the secret is absent ENDS the job. A submission job that finds it
-      # cannot authenticate and then reports success is a green tick over a store that
-      # received nothing.
-      - name: Preflight — every Microsoft Store credential must be present
-        shell: bash
-        env:
-          MS_STORE_TENANT_ID: ${{ secrets.MS_STORE_TENANT_ID }}
-          MS_STORE_CLIENT_ID: ${{ secrets.MS_STORE_CLIENT_ID }}
-          MS_STORE_CLIENT_SECRET: ${{ secrets.MS_STORE_CLIENT_SECRET }}
-          MS_STORE_PRODUCT_ID: ${{ secrets.MS_STORE_PRODUCT_ID }}
-          MS_STORE_SELLER_ID: ${{ secrets.MS_STORE_SELLER_ID }}
-        run: |
-          set -euo pipefail
-          missing=''
-          if [ -z "$MS_STORE_TENANT_ID" ];     then missing="$missing MS_STORE_TENANT_ID"; fi
-          if [ -z "$MS_STORE_CLIENT_ID" ];     then missing="$missing MS_STORE_CLIENT_ID"; fi
-          if [ -z "$MS_STORE_CLIENT_SECRET" ]; then missing="$missing MS_STORE_CLIENT_SECRET"; fi
-          if [ -z "$MS_STORE_PRODUCT_ID" ];    then missing="$missing MS_STORE_PRODUCT_ID"; fi
-          if [ -z "$MS_STORE_SELLER_ID" ];     then missing="$missing MS_STORE_SELLER_ID"; fi
-          if [ -n "$missing" ]; then
-            echo "::error title=Microsoft Store submission cannot run::these repository secrets are empty:$missing. They come from an Entra application associated with the Partner Center account (Private/runbooks/store-submission-windows.md). This is a FAILED submission, not a skipped one."
-            exit 1
-          fi
-          echo "all five MS_STORE_* secrets present — the submission may proceed."
       # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. A lane green over a name the owner has not HELD
       # or proven free submits one nobody ruled on; limb 3 of assert-publish-steps-guarded.mjs.
       - name: Name clearance holds for windows-store (owner HELD or PROVEN-FREE)

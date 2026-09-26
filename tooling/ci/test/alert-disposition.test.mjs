@@ -280,9 +280,13 @@ describe('[14]O-5 · LIMB A — the firing history must be READABLE (fail-closed
     //    are the whole dependency closure: the guard, workflow-scan, tree-walk.
     const root = tree();
     mkdirSync(join(root, 'tooling/ci'), { recursive: true });
-    for (const f of ['assert-alert-disposition.mjs', 'workflow-scan.mjs', 'tree-walk.mjs']) {
+    // ⏱ 2026-09-26: workflow-scan now imports the composer and app-set, and the
+    // composer imports ../app-yaml/yaml.mjs (O-FLUTTER-BUILD-TYPED-PER-LINE).
+    for (const f of ['assert-alert-disposition.mjs', 'workflow-scan.mjs', 'tree-walk.mjs', 'flutter-release-build.mjs', 'app-set.mjs']) {
       cpSync(join(CI_DIR, f), join(root, 'tooling/ci', f));
     }
+    mkdirSync(join(root, 'tooling/app-yaml'), { recursive: true });
+    cpSync(join(CI_DIR, '..', 'app-yaml', 'yaml.mjs'), join(root, 'tooling/app-yaml', 'yaml.mjs'));
     rmSync(join(root, '.github/workflows'), { recursive: true });
     const r = spawnSync(process.execPath, [join(root, 'tooling/ci/assert-alert-disposition.mjs')], { cwd: root, encoding: 'utf8' });
     assert.match(r.stderr, /COVERAGE LOST — \.github\/workflows does not exist/);

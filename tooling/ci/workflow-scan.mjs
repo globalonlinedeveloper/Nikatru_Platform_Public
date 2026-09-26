@@ -40,6 +40,11 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
+// The census composes each call to the release-build composer (flutterReleaseBuilds, below).
+// ⚠️ A CYCLE, deliberately: flutter-release-build.mjs imports BUILD_TARGET_PLATFORM from here.
+// Neither module reads the other's bindings at load time, only inside functions.
+import { composeReleaseBuild, printed, substitute } from './flutter-release-build.mjs';
+import { workspaceApps } from './app-set.mjs';
 
 export const WORKFLOW_DIR = '.github/workflows';
 
@@ -181,6 +186,11 @@ export function parseWorkflow(root, rel) {
     rawStepCount,
     strippedStepCount,
     lines: lines.map((text, i) => ({ n: i + 1, text })),
+    // The file as written, comments included. Only for a caller that quotes the
+    // file back as TEXT (gen-ci-map.mjs's `### above` anchors, which can sit over
+    // a kept `# why:` line); every question about what the workflow RUNS reads
+    // `lines`, where a comment is blank.
+    rawLines: rawLines.map((text, i) => ({ n: i + 1, text })),
     jobsAt: jobsAt === -1 ? null : jobsAt + 1,
   };
 }
@@ -437,6 +447,63 @@ export function parseAllWorkflows(root) {
     .sort()
     .map((f) => parseWorkflow(root, `${WORKFLOW_DIR}/${f}`))
     .filter(Boolean);
+}
+
+// ── THE FACTS THE CI DOCS QUOTE ─────────────────────────────────────────────
+// ⏱ ADDED 2026-09-24 for tooling/ci/gen-ci-map.mjs, which writes docs/ci/README.md's
+// lane map, workflow list, action list and secret list from the files instead of
+// from a hand copy of them. Here rather than there for the reason releaseTrigger
+// moved here: one reading of a workflow. Each is a view over `parseWorkflow`'s
+// comment-blanked `lines`, so a name that appears only in a comment is not read.
+
+/** Where composite actions live: one `action.yml` (or `.yaml`) per subdirectory. */
+export const ACTION_DIR = '.github/actions';
+
+/** Every composite action under `.github/actions/<name>/action.y(a)ml`, parsed
+ *  with parseWorkflow (it has no `jobs:`, so only `lines` is meaningful), sorted
+ *  by directory name. */
+export function parseAllActions(root) {
+  const dir = join(root, ACTION_DIR);
+  if (!existsSync(dir)) return [];
+  const out = [];
+  for (const d of listDir(dir).sort()) {
+    for (const f of ['action.yml', 'action.yaml']) {
+      if (existsSync(join(dir, d, f))) out.push(parseWorkflow(root, `${ACTION_DIR}/${d}/${f}`));
+    }
+  }
+  return out.filter(Boolean);
+}
+
+/** The file's top-level `name:` with its YAML quotes removed, or null. */
+export function workflowName(wf) {
+  for (const { text } of wf?.lines ?? []) {
+    const m = text.match(/^name:\s*(\S.*?)\s*$/);
+    if (m) return unquote(m[1]);
+  }
+  return null;
+}
+
+/** Every `uses:` key in the file, as `{ n, uses }` in file order: the step form
+ *  (`- uses: x@ref`) and the key form (`uses: x@ref`, a job calling a reusable
+ *  workflow). A `uses:` quoted inside a `run:` body is shell text, not a key. */
+export function workflowUses(wf) {
+  const out = [];
+  for (const { n, text } of wf?.lines ?? []) {
+    const m = text.match(/^\s*(?:-\s+)?uses:\s*(\S+)\s*$/);
+    if (m) out.push({ n, uses: unquote(m[1]) });
+  }
+  return out;
+}
+
+/** Every `secrets.NAME` the file reads, as `{ n, name }` in file order. The
+ *  lookbehind keeps a path such as `scan-secrets.mjs` in a `run:` line from
+ *  being read as a secret called `mjs`. */
+export function workflowSecrets(wf) {
+  const out = [];
+  for (const { n, text } of wf?.lines ?? []) {
+    for (const m of text.matchAll(/(?<![\w./-])secrets\.([A-Za-z_][A-Za-z0-9_]*)/g)) out.push({ n, name: m[1] });
+  }
+  return out;
 }
 
 /**
@@ -712,36 +779,191 @@ export function defineValueIn(segment, name) {
  * does not pay for a second parse — two parses of one tree are two answers
  * waiting to disagree, which is this module's whole reason for existing.
  *
+ * ⏱ 2026-09-25: a VIEW of flutterBuilds below — its records in RELEASE_MODES, each
+ * without `mode`, so every record here is the one this function always returned.
+ *
  * @returns {{workflow: string, job: string, runLine: number, segment: string,
  *            target: string, platform: string|null, stamp: string|null,
  *            defines: Set<string>}[]}
  */
 export function flutterReleaseBuilds(root, parsed = null) {
+  return flutterBuilds(root, parsed).map(releaseBuildRecord).filter((b) => b !== null);
+}
+
+// ── EVERY BUILD, AND ITS MODE ─ ⏱ ADDED 2026-09-25 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 2 of 3)
+// The release census above drops a --debug/--profile build, and a reader whose
+// domain is wider than release builds — assert-obfuscation-coupled prints every
+// explicit --debug/--profile build and refuses a --release beside one — therefore
+// kept a raw `flutter build` loop of its own, which a composer call walks past.
+// This is the one walk of the workflows' `flutter build` segments; each record
+// carries the mode the segment asks for, a wider reader filters on it, and
+// flutterReleaseBuilds is its filter, not a second parser.
+
+/** Flutter's own word for release mode. Release is the DEFAULT, so this flag is
+ *  not what makes a build release (the absence of NOT_RELEASE_BUILD is); it
+ *  matters beside a --debug/--profile, where the command has no single mode. */
+export const RELEASE_MODE_FLAG = /--release(?=\s|$)/;
+
+/** The modes flutterReleaseBuilds keeps: exactly the segments NOT_RELEASE_BUILD
+ *  does not match. */
+export const RELEASE_MODES = new Set(['release', 'default']);
+
+/** The mode one shell segment asks for:
+ *  `release` — `--release`, and no --debug/--profile;
+ *  `default` — no mode flag at all, which Flutter builds as release;
+ *  `debug` / `profile` — the first such flag, and no `--release`;
+ *  `contradictory` — `--release` AND a --debug/--profile on one command. */
+export function buildMode(seg) {
+  const not = NOT_RELEASE_BUILD.exec(seg);
+  if (not === null) return RELEASE_MODE_FLAG.test(seg) ? 'release' : 'default';
+  return RELEASE_MODE_FLAG.test(seg) ? 'contradictory' : not[0].slice(2);
+}
+
+/**
+ * EVERY `flutter build` IN EVERY WORKFLOW, one record per shell SEGMENT, whatever
+ * its mode: flutterReleaseBuilds' record plus `mode` (buildMode above). A composer
+ * call is composed, as it is for the release census.
+ *
+ * @returns {{workflow: string, job: string, runLine: number, segment: string,
+ *            target: string, platform: string|null, stamp: string|null,
+ *            defines: Set<string>,
+ *            mode: 'release'|'default'|'debug'|'profile'|'contradictory'}[]}
+ */
+export function flutterBuilds(root, parsed = null) {
   const workflows = parsed ?? parseAllWorkflows(root);
   const out = [];
   for (const wf of workflows) {
     for (const job of wf.jobs.values()) {
       for (const l of job.logical) {
         for (const seg of shellSegments(l.text)) {
-          const m = RELEASE_BUILD.exec(seg);
-          if (!m || NOT_RELEASE_BUILD.test(seg)) continue;
-          const target = unquote(m[1]);
-          const stamp = RELEASE_CHANNEL_STAMP.exec(seg);
-          out.push({
-            workflow: wf.rel,
-            job: job.name,
-            runLine: l.n,
-            segment: seg,
-            target,
-            platform: BUILD_TARGET_PLATFORM.get(target) ?? null,
-            stamp: stamp === null ? null : unquote(stamp[1]),
-            defines: definesIn(seg),
-          });
+          // A call behind a shell `#` is prose, as a define is to definesIn.
+          const call = COMPOSER_CALL.exec(seg.split('#')[0]);
+          if (call !== null) {
+            out.push(...composedBuilds(root, wf, job, l, seg, call));
+            continue;
+          }
+          const b = buildRecord(wf, job, l, seg);
+          if (b !== null) out.push(b);
         }
       }
     }
   }
   return out;
+}
+
+/** One full census record for one shell segment, or null when it runs no `flutter build`. */
+function buildRecord(wf, job, l, seg) {
+  const m = RELEASE_BUILD.exec(seg);
+  if (!m) return null;
+  const target = unquote(m[1]);
+  const stamp = RELEASE_CHANNEL_STAMP.exec(seg);
+  return {
+    workflow: wf.rel,
+    job: job.name,
+    runLine: l.n,
+    segment: seg,
+    target,
+    platform: BUILD_TARGET_PLATFORM.get(target) ?? null,
+    stamp: stamp === null ? null : unquote(stamp[1]),
+    defines: definesIn(seg),
+    mode: buildMode(seg),
+  };
+}
+
+/** The release view of one full record: null outside RELEASE_MODES, else the
+ *  record without `mode` — the shape flutterReleaseBuilds has always returned. */
+function releaseBuildRecord(b) {
+  if (!RELEASE_MODES.has(b.mode)) return null;
+  const { mode: _mode, ...record } = b;
+  return record;
+}
+
+// ── THE CENSUS FOLLOWS THE CALL ─ ⏱ ADDED 2026-09-25 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 1 of 3)
+// A release build a workflow asks tooling/ci/flutter-release-build.mjs to make has
+// no `flutter build` in its text, so the RELEASE_BUILD match above cannot see it,
+// and every census reader would grade one build fewer while printing ok. The
+// census composes the call with the composer's own function instead, resolves each
+// `$NAME` the composition reads through the step's `env:` (then the job's, then
+// GitHub's own run counter), and puts the composed `flutter build …` where the call
+// stood — so the record is the one a literal line with those values would give.
+// A `$NAME` nothing maps stays `$NAME` in the segment: the composer refuses it at
+// run time, so that build fails rather than ships without the value.
+
+/** `node tooling/ci/flutter-release-build.mjs <app> <target> <channel> …`. */
+export const COMPOSER_CALL = /(?:^|\s)node\s+(?:\S*\/)?tooling\/ci\/flutter-release-build\.mjs(?=\s|$)(.*)$/;
+
+/** GitHub's own variables a composed build reads, as the expression each one is. */
+const GITHUB_DEFAULT_ENV = new Map([['GITHUB_RUN_NUMBER', '${{ github.run_number }}']]);
+
+/** The literal values of `matrix.<key>` in a job: an array for a flow or block
+ *  list, null for an expression (`${{ fromJSON(…) }}`), undefined when the job
+ *  declares no such key — which GitHub expands to the EMPTY string. */
+function matrixValues(job, key) {
+  const lines = job.lines;
+  const at = lines.findIndex((l) => /^ {6}matrix:\s*$/.test(l.text));
+  if (at === -1) return undefined;
+  for (let i = at + 1; i < lines.length; i++) {
+    const t = lines[i].text;
+    if (t.trim() === '') continue;
+    if (indentOf(t) <= 6) break;
+    const m = t.match(/^ {8}([A-Za-z_][A-Za-z0-9_-]*):\s*(.*?)\s*$/);
+    if (!m || m[1] !== key) continue;
+    if (m[2].startsWith('${{')) return null;
+    const flow = m[2].match(/^\[(.*)\]$/);
+    if (flow) return flow[1].split(',').map((v) => unquote(v)).filter((v) => v !== '');
+    const items = [];
+    for (let j = i + 1; j < lines.length; j++) {
+      const item = lines[j].text.match(/^ {10}-\s+(.+?)\s*$/);
+      if (!item) break;
+      items.push(unquote(item[1]));
+    }
+    return items;
+  }
+  return undefined;
+}
+
+/** The records a composer call makes: one per app the call's `<app>` resolves to.
+ *  A call the composer refuses THROWS, naming its line — it would refuse in CI. */
+function composedBuilds(root, wf, job, l, seg, call) {
+  const at = `${wf.rel}:${l.n}`;
+  const args = call[1].replace(/\$\{\{\s*([^}]*?)\s*\}\}/g, (_m, inner) => `\${{${inner.replace(/\s+/g, '')}}}`);
+  const tokens = args.trim().split(/\s+/).filter((t) => t !== '').map(unquote);
+  if (tokens.includes('--print') || tokens.includes('--emit-env')) return [];
+  const laneAt = tokens.indexOf('--lane');
+  const lane = laneAt === -1 ? 'release' : tokens[laneAt + 1];
+  const positional = tokens.filter((t, i) => !t.startsWith('--') && (laneAt === -1 || i !== laneAt + 1));
+  if (positional.length !== 3) {
+    throw new Error(`${at}: the flutter-release-build.mjs call names ${positional.length} of its three arguments <app> <target> <channel>.`);
+  }
+  const [appArg, target, channel] = positional;
+  const mx = appArg.match(/^\$\{\{matrix\.([A-Za-z_][A-Za-z0-9_-]*)\}\}$/);
+  let apps;
+  if (mx !== null) {
+    apps = matrixValues(job, mx[1]);
+    if (apps === undefined) throw new Error(`${at}: the composer's app is matrix.${mx[1]}, which job "${job.name}" does not declare.`);
+    // An expression matrix is the workspace emitter's (`--emit-apps`): the app set.
+    if (apps === null) apps = (workspaceApps(root) ?? []).map((d) => d.slice('apps/'.length));
+  } else if (/^[a-z][a-z0-9-]*$/.test(appArg)) {
+    apps = [appArg];
+  } else {
+    throw new Error(`${at}: the composer's app "${appArg}" is neither an app id nor \${{ matrix.<key> }}.`);
+  }
+  const step = workflowSteps(job).find((s) => s.first <= l.n && l.n <= s.last) ?? null;
+  const env = new Map([...jobEnv(job), ...(step?.env ?? new Map())]);
+  const lookup = (name) => (name === 'GITHUB_SHA::7' ? '${GITHUB_SHA::7}' : env.get(name)?.value ?? GITHUB_DEFAULT_ENV.get(name) ?? null);
+  const start = call.index + call[0].indexOf('node');
+  const live = seg.split('#')[0];
+  const tail = live.match(/\s*$/)[0] + seg.slice(live.length);
+  return apps.map((app) => {
+    let composed;
+    try {
+      composed = composeReleaseBuild({ root, app, channel, target, lane });
+    } catch (e) {
+      throw new Error(`${at}: the composer refuses this call for app "${app}": ${e.message}`);
+    }
+    const segment = `${seg.slice(0, start)}${printed(substitute(composed.argv, lookup).argv)}${tail}`;
+    return buildRecord(wf, job, l, segment);
+  });
 }
 
 /** Where a build is, written the one way every reader prints it. */
@@ -973,6 +1195,45 @@ export function sha256HandOffs(wf, jobName) {
     }
   }
   return out;
+}
+
+/**
+ * A job's `environment:` (the key at 4 spaces), as `{ n, name }`, or null when
+ * the job declares none. GitHub takes three spellings and all three are read:
+ * the scalar `environment: store-publish`, the block form whose `name:` child
+ * carries it, and the flow mapping `environment: { name: store-publish, … }`.
+ * Quotes are removed; an expression (`${{ … }}`) is returned AS WRITTEN, because
+ * which environment it names is decided at run time and a caller comparing it to
+ * a literal must see that it is not one. A block or flow form with no `name`
+ * comes back with `name: ''`, never null: the job DOES declare the key.
+ *
+ * ⏱ ADDED 2026-09-25 for assert-channel-register.mjs limb 8c, which grades every
+ * job that reads a publishing credential against the environment the register
+ * says the credential lives in. `^ {4}environment:` presence is what
+ * assert-release-provenance and assert-publish-steps-guarded test; this is the
+ * same key, read for its value.
+ */
+export function jobEnvironment(job) {
+  const lines = job?.lines ?? [];
+  const at = lines.findIndex((l) => /^ {4}environment:/.test(l.text));
+  if (at === -1) return null;
+  const n = lines[at].n;
+  const rest = lines[at].text.replace(/^ {4}environment:\s*/, '').trim();
+  if (rest.startsWith('{')) {
+    const m = rest.match(/(?:^\{|,)\s*name\s*:\s*([^,}]*)/);
+    return { n, name: m ? unquote(m[1]) : '' };
+  }
+  if (rest !== '') return { n, name: unquote(rest) };
+  let child = null;
+  for (const l of lines.slice(at + 1)) {
+    if (l.text.trim() === '') continue;
+    const indent = l.text.match(/^ */)[0].length;
+    if (indent <= 4) break;
+    child ??= indent;
+    const m = l.text.match(/^\s*name:\s*(.*?)\s*$/);
+    if (m && indent === child) return { n: l.n, name: unquote(m[1]) };
+  }
+  return { n, name: '' };
 }
 
 /** `cmd \` continued on the next line of a `run: |` block arrives from

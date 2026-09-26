@@ -227,6 +227,19 @@ export function resolveEnvironment(register, environment) {
     return { app: null, channel: { ...row, kind: row.kind ?? 'service' } };
   }
 
+  // ── SITE ENVIRONMENTS — a static site and its Pages Functions ──────────────
+  // ⏱ 2026-09-25 · row O-APEX-SITE-DEPLOYS-OUTSIDE-THE-PIPELINE (D3a). Matched
+  // exactly, like a service, and for the same reason: `nikatru-site` is ONE
+  // deployment with no app in it. Its own list, because a site is neither a
+  // release channel nor a Worker: rollback.mjs reads `source` of a service row
+  // as a Worker directory, and `kind: 'site'` is re-promoted by nothing there.
+  const sites = Array.isArray(register?.siteEnvironments) ? register.siteEnvironments : [];
+  for (const row of sites) {
+    if (typeof row?.deploymentEnvironment !== 'string') continue;
+    if (row.deploymentEnvironment !== environment) continue;
+    return { app: null, channel: { ...row, kind: row.kind ?? 'site' } };
+  }
+
   return null;
 }
 

@@ -62,7 +62,32 @@ ThemeData _themeFrom({
   required Color ink,
   required Color divider,
 }) {
-  final ThemeData base = ThemeData(useMaterial3: true, brightness: brightness);
+  // O-DESKTOP-TAP-TARGETS-BELOW-48. The button themes keep the standard
+  // density on every platform; the global `visualDensity` stays the platform's
+  // own (compact on the desktop three), which is what RowCard's pointer layout
+  // reads. Measured under the five-platform sweeps, 2026-09-25: with `padded`
+  // alone a desktop FilledButton, OutlinedButton, TextButton or SegmentedButton
+  // segment was 40 tall (the padded minimum is 48 plus the density's
+  // adjustment, and compact takes 8 off); with the standard density here it
+  // is 48. Checkbox and the icon buttons, 40x40 on the desktop three before,
+  // reach 48 from `padded` alone.
+  const ButtonStyle standardDensity = ButtonStyle(
+    visualDensity: VisualDensity.standard,
+  );
+  final ThemeData base = ThemeData(
+    useMaterial3: true,
+    brightness: brightness,
+    // O-DESKTOP-TAP-TARGETS-BELOW-48. The platform default is `shrinkWrap` on
+    // linux, macOS and windows, which left Checkbox, Radio and IconButton hit
+    // areas under 48 there; android and iOS already default to `padded`.
+    materialTapTargetSize: MaterialTapTargetSize.padded,
+    filledButtonTheme: const FilledButtonThemeData(style: standardDensity),
+    outlinedButtonTheme: const OutlinedButtonThemeData(style: standardDensity),
+    segmentedButtonTheme: const SegmentedButtonThemeData(
+      style: standardDensity,
+    ),
+    textButtonTheme: const TextButtonThemeData(style: standardDensity),
+  );
   return base.copyWith(
     scaffoldBackgroundColor: scaffoldBackground,
     colorScheme: scheme,

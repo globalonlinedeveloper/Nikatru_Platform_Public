@@ -64,7 +64,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseWorkflow, shellSegments } from './workflow-scan.mjs';
+import { parseWorkflow, shellSegments, flutterBuilds } from './workflow-scan.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER = 'tooling/channel-register.json';
@@ -259,10 +259,22 @@ if (served.length > 0 && mustSmoke.length === 0) {
 // (a) BUILD-FAILING
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** A step that produces the artifact. Release is Flutter's DEFAULT build mode,
- *  so `--release` is not required — the same correction assert-release-provenance
- *  had to make after an ungated `flutter build appbundle` was invisible to it. */
-const BUILD_CMD = /flutter\s+build\s+(?!web-server\b)\S+/;
+/** The last step in a job that produces the artifact, off workflow-scan's census:
+ *  every `flutter build` in every mode, since release is Flutter's DEFAULT build
+ *  mode and `--release` is not required — the same correction
+ *  assert-release-provenance had to make after an ungated `flutter build
+ *  appbundle` was invisible to it.
+ *  ⏱ CHANGED 2026-09-25 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 2 of 3): this was
+ *  `/flutter\s+build\s+(?!web-server\b)\S+/` over the job's lines, which a build
+ *  made through tooling/ci/flutter-release-build.mjs never matches; the census
+ *  composes that call into its `flutter build`. */
+function lastBuildIn(wf, jobName) {
+  let last = null;
+  for (const b of flutterBuilds(ROOT, [wf])) {
+    if (b.job === jobName && (last === null || b.runLine >= last.n)) last = { n: b.runLine };
+  }
+  return last;
+}
 
 /** A step that hands the artifact to something outside the run.
  *
@@ -279,7 +291,6 @@ const PUBLISH_CMD = [
 ];
 
 const firstMatch = (job, test) => job.logical.find((l) => test(l.text)) ?? null;
-const lastMatch = (job, test) => [...job.logical].reverse().find((l) => test(l.text)) ?? null;
 
 for (const c of mustSmoke) {
   const mech = LAUNCH_MECHANISM.get(c.platforms[0]);
@@ -351,7 +362,7 @@ for (const c of mustSmoke) {
     continue;
   }
 
-  const lastBuild = lastMatch(job, (t) => BUILD_CMD.test(t));
+  const lastBuild = lastBuildIn(wf, jobName);
   const firstPublish = firstMatch(job, (t) => PUBLISH_CMD.some((p) => p.re.test(t)));
   let ordered = true;
 

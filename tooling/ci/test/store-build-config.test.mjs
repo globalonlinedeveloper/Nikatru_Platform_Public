@@ -24,7 +24,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -431,6 +431,39 @@ describe('assert-store-build-config — [ADR 084] the captcha key is WEB-ONLY', 
     const r = run(root);
     assert.equal(r.status, 2, out(r));
     assert.match(out(r), /ZERO release `flutter build web` steps were graded/);
+  });
+
+  // ⏱ ADDED 2026-09-25 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 2 of 3): W1 reads the
+  // census. A web build made through tooling/ci/flutter-release-build.mjs has no
+  // `flutter build web` in its text; the raw line test graded ZERO web steps for it
+  // and exited 2. The composer passes the key on every web build, so a composed
+  // web lane can only pass W1 — what it proves is that the build is graded at all.
+  test('a web lane that builds through the composer is graded, and passes the key', () => {
+    const root = makeRoot({ config: TURNSTILE_CONFIG, extraLib: GATE, web: WEB_OK });
+    writeFileSync(
+      join(root, '.github', 'workflows', 'web.yml'),
+      'name: web\non:\n  push:\npermissions:\n  contents: read\njobs:\n  deploy-web:\n    runs-on: ubuntu-24.04\n    steps:\n      - name: Build\n        run: node tooling/ci/flutter-release-build.mjs subscriptiontracker web web\n',
+    );
+    const regPath = join(root, 'tooling', 'channel-register.json');
+    const reg = JSON.parse(readFileSync(regPath, 'utf8'));
+    reg.purchaseRails = { storeKeyDefine: { define: 'STORE_KEY', secretByRail: {} } };
+    writeFileSync(regPath, JSON.stringify(reg));
+    writeFileSync(join(root, 'apps', 'subscriptiontracker', 'app.yaml'), 'id: subscriptiontracker\nhosts:\n  api: subscriptiontracker-api.nikatru.com\n');
+    const r = run(root);
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /passed by 1 web build step\(s\), refused on 1 store build step\(s\)/);
+  });
+
+  test('W1 grades each build on a line by its own defines — a keyed build does not answer for a keyless one', () => {
+    const root = makeRoot({ config: TURNSTILE_CONFIG, extraLib: GATE, web: WEB_OK });
+    const base = 'flutter build web --release --dart-define=RELEASE_CHANNEL=web --dart-define=SUPABASE_URL=x --dart-define=SUPABASE_ANON_KEY=x --dart-define=API_BASE_URL=x';
+    writeFileSync(
+      join(root, '.github', 'workflows', 'web.yml'),
+      `name: web\non:\n  push:\npermissions:\n  contents: read\njobs:\n  deploy-web:\n    runs-on: ubuntu-24.04\n    steps:\n      - name: Build\n        run: |\n          ${base} --dart-define=TURNSTILE_SITE_KEY=x\n          ${base}\n`,
+    );
+    const r = run(root);
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /W1 \.github\/workflows\/web\.yml:\d+ \(web channel "web", lane job "deploy-web", `flutter build web`\) does not pass TURNSTILE_SITE_KEY/);
   });
 
   test('an app with NO captcha and no getter grades nothing web-only, and says so', () => {

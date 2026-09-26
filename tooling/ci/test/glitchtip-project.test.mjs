@@ -282,6 +282,17 @@ describe('no call sites is COVERAGE LOST, never a pass', () => {
   });
 });
 
+/** ⏱ 2026-09-26 — workflow-scan.mjs imports tooling/ci/flutter-release-build.mjs and
+ *  tooling/ci/app-set.mjs (the census composes a composer call, O-FLUTTER-BUILD-TYPED-PER-LINE),
+ *  and the composer imports tooling/app-yaml/yaml.mjs. A shadow repo without them dies with
+ *  ERR_MODULE_NOT_FOUND before the guard reaches the property a case is about. */
+function copyWorkflowScanImports(shadow) {
+  cpSync(join(REPO, 'tooling', 'ci', 'flutter-release-build.mjs'), join(shadow, 'tooling', 'ci', 'flutter-release-build.mjs'));
+  cpSync(join(REPO, 'tooling', 'ci', 'app-set.mjs'), join(shadow, 'tooling', 'ci', 'app-set.mjs'));
+  mkdirSync(join(shadow, 'tooling', 'app-yaml'), { recursive: true });
+  cpSync(join(REPO, 'tooling', 'app-yaml', 'yaml.mjs'), join(shadow, 'tooling', 'app-yaml', 'yaml.mjs'));
+}
+
 describe('the declaration itself is graded', () => {
   test('R5 — a repo with no declaration file: exit 2 (COVERAGE LOST), naming the file', () => {
     // A whole shadow repo, so the guard resolves its own REPO root to a tree
@@ -292,6 +303,7 @@ describe('the declaration itself is graded', () => {
     cpSync(GUARD, join(shadow, 'tooling', 'ci', 'assert-glitchtip-project.mjs'));
     cpSync(join(REPO, 'tooling', 'ci', 'tree-walk.mjs'), join(shadow, 'tooling', 'ci', 'tree-walk.mjs'));
     cpSync(join(REPO, 'tooling', 'ci', 'workflow-scan.mjs'), join(shadow, 'tooling', 'ci', 'workflow-scan.mjs'));
+    copyWorkflowScanImports(shadow);
     const r = spawnSync(
       process.execPath,
       [join(shadow, 'tooling', 'ci', 'assert-glitchtip-project.mjs'), '--workflows', WORKFLOWS],
@@ -308,6 +320,7 @@ describe('the declaration itself is graded', () => {
     cpSync(GUARD, join(shadow, 'tooling', 'ci', 'assert-glitchtip-project.mjs'));
     cpSync(join(REPO, 'tooling', 'ci', 'tree-walk.mjs'), join(shadow, 'tooling', 'ci', 'tree-walk.mjs'));
     cpSync(join(REPO, 'tooling', 'ci', 'workflow-scan.mjs'), join(shadow, 'tooling', 'ci', 'workflow-scan.mjs'));
+    copyWorkflowScanImports(shadow);
     writeFileSync(join(shadow, 'tooling', 'ops', 'glitchtip-project.json'), JSON.stringify({ org: 'nikatru' }));
     const r = spawnSync(
       process.execPath,
@@ -335,6 +348,8 @@ describe('the declaration itself is graded', () => {
       writeFileSync(join(ci, f), body);
       for (const m of body.matchAll(/from '\.\/([\w.-]+\.mjs)'/g)) pending.push(m[1]);
     }
+    // The walk above follows `./` imports only; the composer reaches `../app-yaml/yaml.mjs`.
+    copyWorkflowScanImports(shadow);
     writeFileSync(join(shadow, 'tooling', 'ops', 'glitchtip-project.json'), JSON.stringify(declaration, null, 2));
     return join(ci, 'assert-glitchtip-project.mjs');
   }
@@ -516,6 +531,7 @@ describe('the offline inputs: could-not-read is exit 2', () => {
     cpSync(GUARD, join(shadow, 'tooling', 'ci', 'assert-glitchtip-project.mjs'));
     cpSync(join(REPO, 'tooling', 'ci', 'tree-walk.mjs'), join(shadow, 'tooling', 'ci', 'tree-walk.mjs'));
     cpSync(join(REPO, 'tooling', 'ci', 'workflow-scan.mjs'), join(shadow, 'tooling', 'ci', 'workflow-scan.mjs'));
+    copyWorkflowScanImports(shadow);
     writeFileSync(join(shadow, 'tooling', 'ops', 'glitchtip-project.json'), '{ "org": ');
     const r = spawnSync(
       process.execPath,

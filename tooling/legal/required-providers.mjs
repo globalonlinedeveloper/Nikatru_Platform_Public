@@ -235,3 +235,17 @@ export function neverProviders(providerRegister) {
     .filter((row) => row?.requiredWhen?.kind === 'never')
     .map((row) => row.id);
 }
+
+/** The kinds whose `requiredWhen` names a purchase rail: every kind that reads a
+ *  `rail` key in KIND_KEYS, so a rail-carrying kind added there is read here too. */
+export const RAIL_KINDS = Object.freeze(Object.keys(KIND_KEYS).filter((kind) => KIND_KEYS[kind].includes('rail')));
+
+/** The provider rows a purchase rail resolves to, in register order: each row
+ *  whose `requiredWhen` is a rail-carrying kind naming `rail` (paddle → paddle,
+ *  apple-iap → apple-app-store). assert-policy-claims reads the seller of a rail
+ *  through this, and treats an empty answer as coverage lost. */
+export function providersOnRail(providerRegister, rail) {
+  return (Array.isArray(providerRegister?.providers) ? providerRegister.providers : []).filter(
+    (row) => RAIL_KINDS.includes(row?.requiredWhen?.kind) && row.requiredWhen.rail === rail,
+  );
+}

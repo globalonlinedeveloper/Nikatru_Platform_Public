@@ -47,9 +47,13 @@
 //   C6  redirect list    GOTRUE_URI_ALLOW_LIST / GOTRUE_SITE_URL vs mail-transport.json
 //   C7  templates        the served mail templates, byte for byte (selfhosted-auth.mjs)
 //   C8  secret names     repo secrets SUPABASE_URL / _ANON_KEY / _SERVICE_ROLE_KEY exist
-//   C9  live Worker vars Cloudflare `workers/scripts/<name>/settings`, the SUPABASE_URL
-//                        binding: plain_text, pre = the hosted origin C2 reads,
-//                        post = the target; secret_text or absent is FAIL
+//   C9  live Worker vars the SUPABASE_URL binding of each version the ACTIVE
+//                        deployment serves (Cloudflare `/deployments`, then
+//                        `/versions/<id>`; never `/settings`, which answers the
+//                        newest UPLOADED version): plain_text, pre = the hosted
+//                        origin C2 reads, post = the target; secret_text or absent
+//                        is FAIL. A newest uploaded version that does not serve is
+//                        named beside the active one, never graded
 //   C10 KV               Cloudflare `storage/kv/.../values/<JWKS_KV_KEY>` in the
 //                        JWKS_CACHE namespace: absent (404) PASS; post: every cached
 //                        kid is one the target's JWKS (C4's read) serves
@@ -445,38 +449,109 @@ async function cfRefusal(res, shown, cf) {
   return scrub(`${shown} answered HTTP ${res.status}${why ? ` (${why})` : ''}`, cf);
 }
 
-/** C9's read, which C11 (post) reuses: each Worker's SUPABASE_URL binding as
- *  Cloudflare holds it. `{ script, binding: { type, text } | null }`, or
- *  `{ script, lost }`. A secret_text binding carries no `text`. */
+/** One read-only Cloudflare GET whose answer must be a JSON success:
+ *  `{ body, shown }`, or `{ lost }` saying why it is not. */
+async function cfJson(doFetch, cf, path) {
+  const { res, lost, shown } = await cfGet(doFetch, cf, path);
+  if (lost) return { lost };
+  if (!res.ok) return { lost: await cfRefusal(res, shown, cf) };
+  let body;
+  try { body = await res.json(); } catch { return { lost: `${shown}: the body is not JSON` }; }
+  if (body?.success !== true) return { lost: `${shown}: the answer is not a success` };
+  return { body, shown };
+}
+
+/** A Worker version id as the lines print it (and as wrangler's output is quoted). */
+const shortId = (id) => String(id ?? '?').slice(0, 8);
+
+/** C9's read, which C11 (post) reuses: each Worker's SUPABASE_URL binding as the
+ *  ACTIVE deployment serves it. Never `workers/scripts/<name>/settings`: that
+ *  answers the newest UPLOADED version's bindings whether or not it serves, so
+ *  after a rollback it read the rolled-back version (Phase 5, 2026-09-26: C13.5
+ *  refused at C9 while both Workers served hosted). Three GETs per Worker:
+ *    /deployments       the active deployment (listed first) and its version(s)
+ *                       with their traffic share;
+ *    /versions/<id>     each serving version's bindings (result.resources);
+ *    /versions          the newest uploaded version (listed first). It is named
+ *                       when it is not one that serves, because the next
+ *                       `wrangler deploy` keeps ITS secret_text bindings.
+ *  `{ script, deployment, versions: [{ id, percentage, binding }], newest, binding }`,
+ *  or `{ script, lost }`. `binding` ({ type, text } | null; secret_text carries no
+ *  text) is the one every serving version holds, else null with `split` set. */
 export async function readWorkerVars({ workers, cf, doFetch }) {
   const reads = [];
   for (const w of workers) {
-    if (cf.lost) { reads.push({ script: w.script, lost: cf.lost }); continue; }
-    const { res, lost, shown } = await cfGet(doFetch, cf, `workers/scripts/${encodeURIComponent(w.script)}/settings`);
-    if (lost) { reads.push({ script: w.script, lost }); continue; }
-    if (!res.ok) { reads.push({ script: w.script, lost: await cfRefusal(res, shown, cf) }); continue; }
-    let body;
-    try { body = await res.json(); } catch { reads.push({ script: w.script, lost: `${shown}: the body is not JSON` }); continue; }
-    if (body?.success !== true || !Array.isArray(body?.result?.bindings)) {
-      reads.push({ script: w.script, lost: `${shown}: no result.bindings[] in a successful answer` });
-      continue;
-    }
-    const b = body.result.bindings.find((x) => x?.name === 'SUPABASE_URL');
-    reads.push({ script: w.script, binding: b ? { type: b.type, text: b.text } : null });
+    reads.push(cf.lost ? { script: w.script, lost: cf.lost } : await readServingVars({ script: w.script, cf, doFetch }));
   }
   return reads;
 }
 
-/** One Worker's SUPABASE_URL against the origin the phase expects: [leg, note]. */
+async function readServingVars({ script, cf, doFetch }) {
+  const base = `workers/scripts/${encodeURIComponent(script)}`;
+  const dep = await cfJson(doFetch, cf, `${base}/deployments`);
+  if (dep.lost) return { script, lost: dep.lost };
+  const deployments = dep.body?.result?.deployments;
+  if (!Array.isArray(deployments)) return { script, lost: `${dep.shown}: no result.deployments[] in a successful answer` };
+  const active = deployments[0];
+  if (!active) return { script, lost: `${dep.shown}: no deployment is listed — nothing serves to be read` };
+  const serving = (Array.isArray(active.versions) ? active.versions : []).filter((v) => v?.version_id && Number(v.percentage) > 0);
+  if (serving.length === 0) return { script, lost: `${dep.shown}: the active deployment ${shortId(active.id)} names no version with a traffic share` };
+  const versions = [];
+  for (const v of serving) {
+    const ver = await cfJson(doFetch, cf, `${base}/versions/${encodeURIComponent(v.version_id)}`);
+    if (ver.lost) return { script, lost: ver.lost };
+    const bindings = ver.body?.result?.resources?.bindings;
+    if (!Array.isArray(bindings)) return { script, lost: `${ver.shown}: no result.resources.bindings[] in a successful answer` };
+    const b = bindings.find((x) => x?.name === 'SUPABASE_URL');
+    versions.push({ id: v.version_id, percentage: Number(v.percentage), binding: b ? { type: b.type, text: b.text } : null });
+  }
+  const list = await cfJson(doFetch, cf, `${base}/versions`);
+  if (list.lost) return { script, lost: `the newest uploaded version could not be read: ${list.lost}` };
+  const newest = Array.isArray(list.body?.result?.items) ? list.body.result.items[0] : undefined;
+  if (!newest?.id) return { script, lost: `${list.shown}: no result.items[] with an id in a successful answer` };
+  const key = (b) => (b ? `${b.type} ${b.text ?? ''}` : 'none');
+  const split = versions.some((v) => key(v.binding) !== key(versions[0].binding));
+  return {
+    script,
+    deployment: active.id,
+    versions,
+    newest: { id: newest.id, created: newest.metadata?.created_on ?? null },
+    binding: split ? null : versions[0].binding,
+    ...(split ? { split: `the active deployment ${shortId(active.id)} splits traffic across versions whose SUPABASE_URL differs` } : {}),
+  };
+}
+
+/** One serving version's SUPABASE_URL against the origin the phase expects: [leg, note]. */
+function gradeBinding(binding, want, phase) {
+  if (!binding) return ['FAIL', 'no SUPABASE_URL binding — the design says plain_text (a wrangler.jsonc var)'];
+  if (binding.type === 'secret_text') return ['FAIL', 'SUPABASE_URL is secret_text, whose value is never returned — the design says plain_text (a wrangler.jsonc var)'];
+  if (binding.type !== 'plain_text') return ['FAIL', `SUPABASE_URL is a ${binding.type} binding — the design says plain_text`];
+  const got = trimSlash(binding.text);
+  if (got !== want) return ['FAIL', `SUPABASE_URL is ${got}, not the ${phase} origin ${want}`];
+  return ['PASS', `plain_text ${got}`];
+}
+
+/** `58380a03 (100%)`: the version(s) the active deployment serves. */
+const servingIds = (read) => read.versions.map((v) => `${shortId(v.id)} (${v.percentage}%)`).join(' + ');
+
+/** One Worker's serving version(s) against the origin the phase expects: [leg, note]. */
 function gradeWorkerVar(read, want, phase) {
   const s = read.script;
   if (read.lost) return ['LOST', `${s}: ${read.lost}`];
-  if (!read.binding) return ['FAIL', `${s}: no SUPABASE_URL binding — the design says plain_text (a wrangler.jsonc var)`];
-  if (read.binding.type === 'secret_text') return ['FAIL', `${s}: SUPABASE_URL is secret_text, whose value is never returned — the design says plain_text (a wrangler.jsonc var)`];
-  if (read.binding.type !== 'plain_text') return ['FAIL', `${s}: SUPABASE_URL is a ${read.binding.type} binding — the design says plain_text`];
-  const got = trimSlash(read.binding.text);
-  if (got !== want) return ['FAIL', `${s}: SUPABASE_URL is ${got}, not the ${phase} origin ${want}`];
-  return ['PASS', `${s}: plain_text ${got}`];
+  const graded = read.versions.map((v) => [v, ...gradeBinding(v.binding, want, phase)]);
+  const one = graded.length === 1;
+  const note = graded.map(([v, , n]) => (one ? `${n} (active version ${servingIds(read)})` : `version ${shortId(v.id)} (${v.percentage}%) ${n}`)).join(', ');
+  return [verdictOf(graded.map(([, leg]) => leg)), `${s}: ${note}`];
+}
+
+/** The newest uploaded version, named with the active one when it is not one that
+ *  serves — never folded into the verdict, which grades what serves: a rollback,
+ *  and a re-put secret after one (`wrangler versions secret put`), leave it so by
+ *  design. Null when the newest is serving. */
+function uploadedNotServing(read) {
+  if (read.lost || !read.newest || read.versions.some((v) => v.id === read.newest.id)) return null;
+  const at = read.newest.created ? `, uploaded ${read.newest.created}` : '';
+  return `${read.script}: the newest UPLOADED version ${shortId(read.newest.id)}${at} is NOT the active ${servingIds(read)} — the next \`wrangler deploy\` keeps its secret_text bindings, not the active one's`;
 }
 
 export function checkWorkerVars({ root, phase, target, fleet, reads }) {
@@ -485,12 +560,10 @@ export function checkWorkerVars({ root, phase, target, fleet, reads }) {
   if (!want) return { verdict: 'LOST', detail: 'pre expects the hosted origin, and platform-register.json records no hosted vars.SUPABASE_URL' };
   const graded = reads.map((r) => gradeWorkerVar(r, want, phase));
   const verdict = verdictOf(graded.map(([leg]) => leg));
-  return {
-    verdict,
-    detail: verdict === 'PASS'
-      ? `SUPABASE_URL is plain_text ${want} (the ${phase} origin) on ${reads.map((r) => r.script).join(', ')}`
-      : graded.map(([, note]) => note).join('; '),
-  };
+  const body = verdict === 'PASS'
+    ? `SUPABASE_URL is plain_text ${want} (the ${phase} origin) on ${reads.map((r) => r.script).join(', ')}, read from each ACTIVE deployment: ${reads.map((r) => `${r.script} ${servingIds(r)}`).join(', ')}`
+    : graded.map(([, note]) => note).join('; ');
+  return { verdict, detail: [body, ...reads.map(uploadedNotServing).filter(Boolean)].join('; ') };
 }
 
 /** `kid alg` for each key — never key material. */
@@ -563,7 +636,7 @@ async function gradeWorkerHealth({ worker, phase, target, reads, doFetch }) {
   const origin = read?.binding?.type === 'plain_text' ? trimSlash(read.binding.text) : null;
   if (origin === target) return ['PASS', `${worker.host} ${HEALTH_JWKS_CHECK} ok${age}, and C9 read ${worker.script} as holding the target`];
   if (origin) return ['FAIL', `${worker.host} ${HEALTH_JWKS_CHECK} ok${age}, but C9 read ${worker.script} as holding ${origin}, not the target ${target} — that ok is a reading of ${origin}'s JWKS`];
-  return ['LOST', `${worker.host} ${HEALTH_JWKS_CHECK} ok${age}, but the route names no origin and C9 could not read which SUPABASE_URL ${worker.script} holds (${read?.lost ?? 'no plain_text binding'})`];
+  return ['LOST', `${worker.host} ${HEALTH_JWKS_CHECK} ok${age}, but the route names no origin and C9 could not read which SUPABASE_URL ${worker.script} holds (${read?.lost ?? read?.split ?? 'no plain_text binding'})`];
 }
 
 export async function checkWorkersHealth({ phase, target, fleet, reads = [], doFetch }) {

@@ -38,6 +38,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { parseWorkflow, workflowSteps, jobEnvironment } from '../workflow-scan.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SCRIPT = join(REPO, 'tooling', 'release', 'submit-snap.mjs');
@@ -225,6 +226,35 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
     ]);
     assert.equal(code, 1, out);
     assert.match(out, /runs only inside GitHub Actions/);
+  });
+
+  // ⏱ C4b, 2026-09-25 — PG-6 IS NOW submit-common's requirePublishEnvironment,
+  // and this is the case that RUNS it. Before the move PG-6 hard-coded
+  // https://api.github.com and no case reached it. The lane below is the shape
+  // PG-5 demands (an `environment:`, the recipe guard and the pack before the
+  // submit step); the shared read honours the loopback-only GITHUB_API_URL seam,
+  // so a closed loopback port makes the GET itself fail and PG-6 refuses naming
+  // the environment URL only that read builds.
+  test('PG-6 · the shared environment read runs once the lane is gated, and an unreachable gate refuses', () => {
+    const root = tree({ withArtifact: true });
+    mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
+    writeFileSync(
+      join(root, '.github', 'workflows', 'submit-snap.yml'),
+      'name: Submit\non:\n  workflow_dispatch:\njobs:\n  submit:\n    runs-on: ubuntu-24.04\n    environment: store-publish\n    steps:\n' +
+        '      - run: node tooling/ci/assert-snapcraft-generable.mjs\n' +
+        '      - run: snapcraft pack\n' +
+        '      - run: node tooling/release/submit-snap.mjs --submit --app subscriptiontracker\n',
+    );
+    const { code, out } = run(root, ['--submit', '--app', 'subscriptiontracker', '--confirm', 'SUBMIT-TO-SNAP-STORE', '--channel', 'latest/edge'], {
+      GITHUB_ACTIONS: 'true',
+      GITHUB_REPOSITORY: 'o/r',
+      GITHUB_TOKEN: 'ghs-fixture',
+      GITHUB_API_URL: 'http://127.0.0.1:9',
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /PG-5 lane shape — /);
+    assert.match(out, /FAIL PG-6 · could not reach http:\/\/127\.0\.0\.1:9\/repos\/o\/r\/environments\/store-publish/);
+    assert.doesNotMatch(out, /ghs-fixture/);
   });
 
   test('FAILS when neither --dry-run nor --submit is given', () => {
@@ -417,7 +447,7 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
         }),
       }),
     );
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
     // 🔴 IT FAILS HARDER THAN THE PER-FIELD FAULT, and that is correct. An
     // unsourced limit is never EVALUATED, so `limitsChecked` stays 0 and the
     // declared-but-none-measured branch fires first — the same COVERAGE LOST
@@ -514,16 +544,83 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
     assert.doesNotMatch(out, /SNAPCRAFT_STORE_CREDENTIALS_EXPIRES is ABSENT/);
   });
 
+  // ── O-STORE-SECRETS-REACH-THE-DRY-RUN (2026-09-25) ─────────────────────────
+  // The register scopes SNAPCRAFT_STORE_CREDENTIALS to the store-publish
+  // environment, and the dry-run job has none. The dry run then reads the expiry
+  // DATE alone: it must not look for the credential, must not report its absence
+  // as a gap, and must still grade the date it does receive.
+  const SCOPED = (r) => {
+    r.ciSecretRegister = {
+      nonSigning: [
+        { name: 'SNAPCRAFT_STORE_CREDENTIALS', kind: 'publishing-credential', why: 'the fixture store credential', environment: 'store-publish' },
+      ],
+    };
+  };
+
+  test('scoped credential: the dry run prints NO credential gap, says where it IS checked, and grades the date', () => {
+    const { code, out } = run(tree({ withArtifact: true, mutateRegister: SCOPED }), ['--dry-run'], {
+      SNAPCRAFT_STORE_CREDENTIALS_EXPIRES: inDays(120),
+    });
+    assert.equal(code, 0, out);
+    assert.match(out, /credential: checked in the environment-bound submit job — SNAPCRAFT_STORE_CREDENTIALS lives in the "store-publish" environment/);
+    assert.match(out, /credential expiry — .*day\(s\) away \(floor 30\)/);
+    assert.doesNotMatch(out, /CREDENTIALS NOT CONFIGURED/);
+  });
+
+  test('scoped credential: an expiry 29 days out still FAILS the dry run — the date alone is enough to act on', () => {
+    const { code, out } = run(tree({ withArtifact: true, mutateRegister: SCOPED }), ['--dry-run'], {
+      SNAPCRAFT_STORE_CREDENTIALS_EXPIRES: inDays(29),
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /credential expires in \d+ day\(s\).*and the floor is 30/s);
+  });
+
+  test('scoped credential: an absent expiry PRINTS, naming where a missing date fails', () => {
+    const { code, out } = run(tree({ withArtifact: true, mutateRegister: SCOPED }), ['--dry-run']);
+    assert.equal(code, 0, out);
+    assert.match(out, /credential expiry: unknown to this dry run — SNAPCRAFT_STORE_CREDENTIALS_EXPIRES is absent/);
+    assert.doesNotMatch(out, /SNAPCRAFT_STORE_CREDENTIALS_EXPIRES is ABSENT/);
+  });
+
+  test('scoped credential: a value exported into the dry run is not read, so it cannot be reported present', () => {
+    const secret = 'THIS-MUST-NEVER-BE-PRINTED';
+    const { code, out } = run(tree({ withArtifact: true, mutateRegister: SCOPED }), ['--dry-run'], {
+      SNAPCRAFT_STORE_CREDENTIALS: secret,
+      SNAPCRAFT_STORE_CREDENTIALS_EXPIRES: inDays(120),
+    });
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /credentials — SNAPCRAFT_STORE_CREDENTIALS present/);
+    assert.doesNotMatch(out, new RegExp(secret));
+  });
+
+  test('the real lane: the dry run holds the expiry only, and the submit job CHECKS the credential straight after the ref check and fails closed', () => {
+    const wf = parseWorkflow(REPO, '.github/workflows/submit-snap.yml');
+    const dryRun = workflowSteps(wf.jobs.get('dry-run')).find((s) => s.name === 'Dry-run the Snap Store submission');
+    assert.ok(dryRun, 'the dry-run step is gone or renamed');
+    assert.deepEqual([...dryRun.env.keys()], ['SNAPCRAFT_STORE_CREDENTIALS_EXPIRES']);
+    const submit = wf.jobs.get('submit');
+    assert.equal(jobEnvironment(submit)?.name, 'store-publish');
+    const steps = workflowSteps(submit);
+    const ref = steps.findIndex((s) => s.name === 'Refuse any ref but main');
+    assert.ok(ref >= 0, 'the submit job has no `Refuse any ref but main` step');
+    const first = steps[ref + 1];
+    assert.equal(first?.name, 'Preflight — the Snap Store credential must be present', 'the step straight after the ref check must be the credential preflight');
+    assert.ok(first.env.has('SNAPCRAFT_STORE_CREDENTIALS'), 'the step straight after the ref check must read the credential');
+    assert.match(first.run.text, /-z "\$SNAPCRAFT_STORE_CREDENTIALS"/);
+    assert.match(first.run.text, /exit 1/);
+    assert.match(first.run.text, /OWNER STEP: GitHub -> Settings -> Environments -> store-publish/);
+  });
+
   // ── the register is the single declaration ────────────────────────────────
   test('COVERAGE LOST when the register declares no linux-snap row', () => {
     const { code, out } = dry(tree({ withArtifact: true, mutateRegister: (r) => (r.channels = []) }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
     assert.match(out, /COVERAGE LOST — .*declares no "linux-snap" channel/);
   });
 
   test('COVERAGE LOST when storeMetadataContract.requiredFiles is emptied', () => {
     const { code, out } = dry(tree({ withArtifact: true, mutateRegister: (r) => (r.storeMetadataContract.requiredFiles = []) }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
     assert.match(out, /COVERAGE LOST — .*requiredFiles/);
   });
 

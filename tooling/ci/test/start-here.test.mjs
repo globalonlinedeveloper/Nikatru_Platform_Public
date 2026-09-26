@@ -139,9 +139,22 @@ before(() => {
   cpSync(GEN_SRC, join(ROOT, 'tooling', 'scripts', 'gen-start-here.mjs'));
   cpSync(resolve(REPO, 'tooling', 'ci', 'workflow-scan.mjs'), join(ROOT, 'tooling', 'ci', 'workflow-scan.mjs'));
   cpSync(resolve(REPO, 'tooling', 'ci', 'tree-walk.mjs'), join(ROOT, 'tooling', 'ci', 'tree-walk.mjs'));
+  copyComposerImports(ROOT);
 });
 
 after(() => { rmSync(BASE, { recursive: true, force: true }); });
+
+/** ⏱ 2026-09-26 — workflow-scan.mjs imports tooling/ci/flutter-release-build.mjs and
+ *  tooling/ci/app-set.mjs (the census composes a composer call, O-FLUTTER-BUILD-TYPED-PER-LINE),
+ *  and the composer imports tooling/app-yaml/yaml.mjs. A static import resolves before the module body runs, so a
+ *  fixture without both dies with ERR_MODULE_NOT_FOUND (0 of 7 cases, measured) instead of
+ *  reaching the property each case is about. */
+function copyComposerImports(root) {
+  cpSync(resolve(REPO, 'tooling', 'ci', 'app-set.mjs'), join(root, 'tooling', 'ci', 'app-set.mjs'));
+  cpSync(resolve(REPO, 'tooling', 'ci', 'flutter-release-build.mjs'), join(root, 'tooling', 'ci', 'flutter-release-build.mjs'));
+  mkdirSync(join(root, 'tooling', 'app-yaml'), { recursive: true });
+  cpSync(resolve(REPO, 'tooling', 'app-yaml', 'yaml.mjs'), join(root, 'tooling', 'app-yaml', 'yaml.mjs'));
+}
 
 test('it WRITES a card, and the card is inside the 4 KiB the cap allows', () => {
   const r = run(ROOT);
@@ -352,6 +365,7 @@ test('a tree under the floors is COVERAGE LOST — exit 2, never a pass and neve
   mkdirSync(join(thin, 'tooling', 'ci'), { recursive: true });
   cpSync(resolve(REPO, 'tooling', 'ci', 'workflow-scan.mjs'), join(thin, 'tooling', 'ci', 'workflow-scan.mjs'));
   cpSync(resolve(REPO, 'tooling', 'ci', 'tree-walk.mjs'), join(thin, 'tooling', 'ci', 'tree-walk.mjs'));
+  copyComposerImports(thin);
 
   const r = run(thin);
   assert.equal(r.code, 2, `a tree it cannot measure must REFUSE, not write a confident wrong card: ${r.out}`);
@@ -377,6 +391,7 @@ test('a tree missing a sentinel is COVERAGE LOST — exit 2, and it names the se
      one. Measured while writing this file. */
   cpSync(resolve(REPO, 'tooling', 'ci', 'workflow-scan.mjs'), join(nope, 'tooling', 'ci', 'workflow-scan.mjs'));
   cpSync(resolve(REPO, 'tooling', 'ci', 'tree-walk.mjs'), join(nope, 'tooling', 'ci', 'tree-walk.mjs'));
+  copyComposerImports(nope);
   const r = run(nope);
   assert.equal(r.code, 2, `a tree that is not this repository must REFUSE: ${r.out}`);
   assert.match(r.out, /COVERAGE LOST/);

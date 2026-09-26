@@ -173,6 +173,10 @@ listings:
 # that declare the same identityName, and fails this record while it disagrees
 # with the channel row's copy. `publisher` and `publisherDisplayName` are
 # account-wide and stay on the channel row.
+# ⏱ 2026-09-25 (B4a-2): the channel row's copy is gone, and with it the check
+# that held this record equal to it. This record is the ONE declaration of this
+# app's Windows identity: tooling/app-yaml/render.mjs writes pubspec.yaml's
+# msix_config.identity_name from it, so change the name here and re-render.
 stores:
   windows-store:
     identityName: 60210NIKATRU.NikatruSubscriptionTracker

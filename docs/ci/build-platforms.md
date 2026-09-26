@@ -213,7 +213,7 @@ the tag itself, which is what keeps its app-existence and exact-leaf
 text and `${{ }}` inside a `run:` is substituted before bash ever sees it.
 [zizmor template-injection]
 
-## job `strategy`
+### key `strategy:`
 
 ### above `strategy:`
 
@@ -222,7 +222,7 @@ one build: app #2 failing to compile says nothing about app #1, and
 cancelling app #1's run destroys the evidence that would have told them
 apart. With one app in the workspace this changes nothing.
 
-## job `with`
+### key `with:`
 
 ### above `with:`
 
@@ -777,6 +777,12 @@ compares the packaged manifest to those values exactly as it compared the
 sentinel. Still NOT submitted: the row is `served: false`, and a submission
 is the owner's word.
 
+⏱ 2026-09-26 — the identity NAME and Package Family Name moved per app to apps/<id>/app.yaml
+`stores.windows-store` (O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1)); the channel row keeps the account
+(`publisher`, `publisherDisplayName`) and the sentinel. assert-store-metadata compares each app's pubspec
+with its own record, and assert-artifact-signed-msix compares the package with the record of the app it
+belongs to.
+
 ### before step **Keep the .msix even if what follows refuses it**
 
 ── WHAT msix:create ACTUALLY WROTE ────────────────────────────
@@ -1149,7 +1155,7 @@ Only the staging + manifest half has ever run (max 1m41s). Everything from
 `gh release create` down is tag-only and has NEVER executed — see the ⬜ in
 the header — so 20 is headroom for an unmeasured publish, not an estimate.
 
-## job `needs`
+### key `needs:`
 
 ### above `needs:`
 
@@ -1548,7 +1554,7 @@ only against a Play install.
 *Added 2026-09-23 · closes `O-BUILT-ARTIFACT-GUARDS-RUN-ONLY-AFTER-MERGE`.*
 
 This workflow never runs on a pull request. Its three Android builds now also run on every pull
-request, as `ci.yml` `android-artifacts`: one matrix leg per app, from `ci.yml` `android-apps`,
+request, as `ci.yml` `android-artifacts`: one matrix leg per app, from `ci.yml` `prepare`,
 which runs the same `assert-release-lane-generic.mjs --emit-apps` as `prepare` here. Both jobs are
 in `ci-gate`'s `needs`. The overlay above gets its first build proof on a pull request there.
 
@@ -1879,7 +1885,7 @@ unsourced entry in an exemption set, and it exempted nothing in this tree — an
 gets the COVERAGE LOST verdict it deserves.
 
 **3. In `build-platforms.yml` the `symbols-*` retention step was the LAST step of every job**, behind
-`Install glitchtip-cli` (a `curl --fail` against gitlab.com) and `Upload the native debug symbols to
+`Install glitchtip-cli` (a `curl --fail` against gitlab.com; ⏱ 2026-09-25 one `install-pinned-tool.mjs glitchtip-cli` call, O-GLITCHTIP-CLI-INSTALLED-BY-HAND) and `Upload the native debug symbols to
 GlitchTip` (fails closed on a missing token). Any earlier failure — a GitLab 404, a GlitchTip outage,
 a rotated token, an unrelated assertion — took the mapping with it. Not hypothetical: in this unit's
 own dispatch run `34093704881`, `Build linux` succeeded **with the flags**, a later step failed, and

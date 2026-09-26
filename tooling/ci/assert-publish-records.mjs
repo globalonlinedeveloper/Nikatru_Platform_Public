@@ -444,8 +444,8 @@ function openServedLane(rel, jobName, why) {
 const seenRecordLines = new Set();
 /** Mark every RAW line a record call occupies as reached. ⏱ 2026-09-22 — a call
  *  inside a `run: |` block is ONE logical line numbered at its `run:` key, while
- *  the flat reader below numbers it at its own raw line (extensions.yml:1637 sits
- *  three lines under its `run: |` at :1634; re-measured 2026-09-24). Marking only the logical number
+ *  the flat reader below numbers it at its own raw line (extensions.yml:1461 sits
+ *  three lines under its `run: |` at :1458; re-measured 2026-09-25). Marking only the logical number
  *  reported a call the census HAD read as one it never reached — COVERAGE LOST
  *  the moment arming the amo row made extensions.yml a declared submission
  *  workflow. The span runs to the line before the job's next logical line. */
@@ -559,6 +559,29 @@ for (const row of servedRows) {
       continue;
     }
     gradeSkippability(wf, job.name, hit, `the step recording "${env}"`, `"${env}"`);
+  }
+
+  // ⏱ 2026-09-25 · D3a (row O-APEX-SITE-DEPLOYS-OUTSIDE-THE-PIPELINE). A served lane's
+  // file can run a SECOND publishing job beside the channel's: deploy-web.yml's `site`
+  // job records `nikatru-site`, a `siteEnvironments` row. Its record calls are reached
+  // here, through the same run host the lane opened by, and rule 6 grades them like the
+  // lane's own, but only when the environment resolves to a row with no app in it (a
+  // service or a site). A sibling job recording a CHANNEL environment is left
+  // unattributed, and the accounting identity below still refuses it.
+  const host = laneRunHost(resolved, rel);
+  const siblings = (host.callJob === null ? [...wf.jobs.values()] : host.children).filter((j) => j !== job && j.calledBy !== job.name);
+  for (const j of siblings) {
+    for (const c of recordCalls(j)) {
+      if (seenRecordLines.has(placeOf(wf, c.n))) continue;
+      const r = resolveEnvironment(register, c.environment);
+      if (r === null || r.app !== null) continue;
+      markRecordLinesSeen(wf, j, [c]);
+      gradeSkippability(wf, j.name, c, `the step recording "${c.environment}"`, `"${c.environment}"`);
+      prints.push(
+        `[10]D-9 · ${placeOf(wf, c.n)} — reached in job "${j.name}" beside the "${row.id}" lane; it records ` +
+          `"${c.environment}", a kind "${r.channel.kind}" row and not a channel, so rule 1 does not ask for it and rule 6 grades it.`,
+      );
+    }
   }
 }
 

@@ -896,6 +896,41 @@ jobs:
     rmSync(root, { recursive: true, force: true });
   });
 
+  test('flutterBuildTargets counts a build made through the composer as its target', () => {
+    const root = mkdtempSync(join(tmpdir(), 'nikatru-f4-unit-'));
+    mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
+    mkdirSync(join(root, 'tooling'), { recursive: true });
+    mkdirSync(join(root, 'apps', 'fixture'), { recursive: true });
+    writeFileSync(
+      join(root, 'tooling', 'channel-register.json'),
+      JSON.stringify({
+        channels: [{ id: 'play', platforms: ['android'], purchaseRail: { rail: 'google-play-billing' } }],
+        purchaseRails: { storeKeyDefine: { define: 'STORE_KEY', secretByRail: {} } },
+      }),
+    );
+    writeFileSync(join(root, 'apps', 'fixture', 'app.yaml'), 'id: fixture\nhosts:\n  api: fixture-api.nikatru.com\n');
+    writeFileSync(
+      join(root, '.github', 'workflows', 'w.yml'),
+      `name: w
+on:
+  workflow_dispatch:
+jobs:
+  a:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: the store bundle, composed
+        run: node tooling/ci/flutter-release-build.mjs fixture appbundle play
+      - name: an echo naming the composer is not a build
+        run: echo "node tooling/ci/flutter-release-build.mjs fixture ios play"
+`,
+    );
+    const wf = parseWorkflow(root, '.github/workflows/w.yml');
+    const { found } = flutterBuildTargets(wf, root);
+    assert.deepEqual([...found.keys()], ['appbundle']);
+    assert.deepEqual(found.get('appbundle'), [{ job: 'a', n: 9 }]);
+    rmSync(root, { recursive: true, force: true });
+  });
+
   test('requiredTargets is the register union, and every mapped platform names a real subcommand', () => {
     const { platforms, required, unmapped } = requiredTargets({
       surfaces: { app: { flutterApp: true }, extension: { flutterApp: false } },

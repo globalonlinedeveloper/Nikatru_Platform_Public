@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_chassis_screens/firstrun/onboarding_screen.dart';
@@ -65,7 +66,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('dark, kPhone', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
@@ -94,7 +95,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('light, kDesktop — where the reading cap engages', (
       WidgetTester tester,
@@ -124,7 +125,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
   });
 
   // ── ManagePlanView ────────────────────────────────────────────────────────
@@ -132,6 +133,14 @@ void main() {
   // ROSCA is a rule about how hard the cancel control is to FIND, and a control
   // a screen reader cannot identify is one a reader cannot find at all — so the
   // labelled-tap-target limb is this surface's compliance limb, not decoration.
+  //
+  // ⏱ 2026-09-25 · O-DESKTOP-TAP-TARGETS-BELOW-48. The `labelled` floor is
+  // per platform here, and only here, because this is the one swept surface
+  // with a `BackButton`. Flutter gives that button a semantics LABEL on
+  // android only; on iOS, linux, macOS and windows it is named by its
+  // tooltip alone, so the same view announces one labelled node fewer. Both
+  // numbers are measured under [kTapTargetPlatforms]: android 5 / 5 / 4 as
+  // before, every other platform 4 / 4 / 3.
   group('a11y: manage-plan', () {
     testWidgets('light, kPhone — an active plan, both controls live', (
       WidgetTester tester,
@@ -153,14 +162,19 @@ void main() {
             onCancel: () {},
           ),
         );
-        expectSweepHadSubjects(tester, 'manage-plan', tappable: 3, labelled: 5);
+        expectSweepHadSubjects(
+          tester,
+          'manage-plan',
+          tappable: 3,
+          labelled: defaultTargetPlatform == TargetPlatform.android ? 5 : 4,
+        );
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
         await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('dark, kPhone', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
@@ -185,7 +199,7 @@ void main() {
           tester,
           'manage-plan (dark)',
           tappable: 3,
-          labelled: 5,
+          labelled: defaultTargetPlatform == TargetPlatform.android ? 5 : 4,
         );
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
         await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
@@ -193,7 +207,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('light, kDesktop — NO plan, which removes the cancel row and '
         'is therefore a different reading order', (WidgetTester tester) async {
@@ -218,7 +232,7 @@ void main() {
           tester,
           'manage-plan (no plan, kDesktop)',
           tappable: 2,
-          labelled: 4,
+          labelled: defaultTargetPlatform == TargetPlatform.android ? 4 : 3,
         );
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
         await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
@@ -226,7 +240,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
   });
 
   // ── PaywallView ───────────────────────────────────────────────────────────
@@ -263,7 +277,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('dark, kPhone — choosing', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
@@ -296,7 +310,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('light, kPhone — unlocked, the terminal SUCCESS state', (
       WidgetTester tester,
@@ -330,7 +344,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('light, kPhone — pending, which NEVER SETTLES and is pumped '
         'once rather than settled', (WidgetTester tester) async {
@@ -364,7 +378,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('light, kDesktop — refused, whose one control is Try again', (
       WidgetTester tester,
@@ -405,7 +419,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
   });
 
   // ── SettingsView ──────────────────────────────────────────────────────────
@@ -471,7 +485,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('dark, kPhone — the consent switches in their OFF state, which '
         'is the low-contrast one', (WidgetTester tester) async {
@@ -529,7 +543,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('light, kPhone — SIGNED OUT, which is a different control set '
         'and not a different width', (WidgetTester tester) async {
@@ -582,7 +596,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('light, kDesktop — where the page cap engages and the rows stop '
         'stretching', (WidgetTester tester) async {
@@ -639,7 +653,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
   });
 
   // ── EditProfileDialog ─────────────────────────────────────────────────────
@@ -666,7 +680,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('dark, kPhone', (WidgetTester tester) async {
       final TextEditingController name = TextEditingController(text: 'Old');
@@ -691,7 +705,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('light, kDesktop', (WidgetTester tester) async {
       final TextEditingController name = TextEditingController(text: 'Old');
@@ -715,7 +729,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
   });
 
   // ── ReportContentDialog ───────────────────────────────────────────────────
@@ -745,7 +759,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('dark, kPhone', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
@@ -771,7 +785,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('light, kDesktop', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
@@ -796,6 +810,6 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
   });
 }

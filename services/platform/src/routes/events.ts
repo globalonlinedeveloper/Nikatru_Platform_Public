@@ -8,6 +8,7 @@ import { withinEdgeCeiling, withinRateLimit } from '../lib/edge-ceiling';
 // of the same source — an app the shared server will answer for is one thing,
 // not four spellings of it that can drift apart.
 import { isKnownApp } from '../config';
+import { UNRELEASED_BUILD, refusesStamp } from '../lib/build-stamp';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // G-12 — first-party product analytics ingest ([ADR 011]).
@@ -186,6 +187,12 @@ function sanitizeParams(v: unknown): string {
 // posts one artifact and has no such field to be consistent with.
 const RATE_LIMITED_BATCH = { ok: false, error: 'rate_limited', received: 0 } as const;
 const RATE_LIMITED = { ok: false, error: 'rate_limited' } as const;
+// 422 with ok:false — PRODUCTION ONLY, and the one refusal the client must NOT
+// retry: the build's stamp cannot change while it runs, so the next send would
+// be refused identically. See lib/build-stamp.ts for which stamps production
+// takes and why; packages/core's AnalyticsRecorder stops sending on this code.
+const UNRELEASED_BATCH = { ok: false, error: UNRELEASED_BUILD, received: 0 } as const;
+const UNRELEASED = { ok: false, error: UNRELEASED_BUILD } as const;
 
 events.post('/events', async (c) => {
   // 1 · SHED FIRST, ON A KEY THAT NEEDS NO BODY. Nothing below this line runs
@@ -273,6 +280,12 @@ events.post('/events', async (c) => {
     // Borrowing attributed one install's events to a different install id.
     const anonId = str(e?.anon_id, MAX_ID_LEN);
     if (!eventId || !name || !anonId) continue; // skip malformed, keep the rest
+    const appVersion = str(e?.app_version, 32);
+    // ⏱ 2026-09-26 — one unreleased row refuses the WHOLE batch, before
+    // anything is written. One build stamps one version, so a mixed batch is
+    // not a real client, and a partial write would leave the rows the
+    // provenance monitor reddens on.
+    if (refusesStamp(c.env, 'events', appVersion)) return c.json(UNRELEASED_BATCH, 422);
     rows.push(
       stmt.bind(
         eventId,
@@ -280,7 +293,7 @@ events.post('/events', async (c) => {
         anonId,
         str(e?.session_id, MAX_ID_LEN),
         str(e?.platform, 32),
-        str(e?.app_version, 32),
+        appVersion,
         name,
         sanitizeParams(e?.params),
         str(e?.ts, 40), // client clock — untrusted, stored for skew analysis
@@ -357,6 +370,10 @@ events.post('/consent', async (c) => {
   ) {
     return c.json(RATE_LIMITED, 429);
   }
+  const appVersion = str(body?.app_version, 32);
+  // ⏱ 2026-09-26 — same rule as /v1/events; `e2e-*` also passes here, because
+  // e2e.yml's live drive writes consent rows to production and purges them.
+  if (refusesStamp(c.env, 'consent_artifacts', appVersion)) return c.json(UNRELEASED, 422);
 
   try {
     // Append-only: a withdrawal is a NEW row with granted=0, never an UPDATE.
@@ -375,7 +392,7 @@ events.post('/consent', async (c) => {
         purpose,
         body?.granted === true ? 1 : 0,
         policyVersion,
-        str(body?.app_version, 32),
+        appVersion,
         str(body?.platform, 32),
         str(body?.ts, 40),
         nowIso(),

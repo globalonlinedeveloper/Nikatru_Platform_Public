@@ -333,10 +333,18 @@ for (const pattern of ['**/wrangler.jsonc', 'wrangler.jsonc']) {
 }
 const LIVE_PREFIX = 'services/';
 const TEMPLATE_PREFIX = 'tooling/bricks/';
+// ⏱ 2026-09-25 · THE THIRD CLASSIFICATION, WIDENED DELIBERATELY (row
+// O-APEX-SITE-DEPLOYS-OUTSIDE-THE-PIPELINE, D3a). `tooling/sites/<project>/wrangler.jsonc` is a
+// Pages Functions config, not a Worker: it may BIND a database, never OWN one. So it
+// joins no floor, and the site limb below holds it to exactly that: no
+// `migrations_dir`, and every database it binds owned by a LIVE-root Worker, whose
+// tables and erasure route the limbs below already sweep.
+const SITE_PREFIX = 'tooling/sites/';
 const liveConfigs = [...allConfigs].filter((r) => r.startsWith(LIVE_PREFIX)).sort();
 const templateConfigs = [...allConfigs].filter((r) => r.startsWith(TEMPLATE_PREFIX)).sort();
+const siteConfigs = [...allConfigs].filter((r) => r.startsWith(SITE_PREFIX)).sort();
 const unclassified = [...allConfigs]
-  .filter((r) => !r.startsWith(LIVE_PREFIX) && !r.startsWith(TEMPLATE_PREFIX))
+  .filter((r) => !r.startsWith(LIVE_PREFIX) && !r.startsWith(TEMPLATE_PREFIX) && !r.startsWith(SITE_PREFIX))
   .sort();
 if (unclassified.length) {
   coverageLost([
@@ -427,6 +435,37 @@ for (const entry of listDir(SERVICES, { withFileTypes: true })) {
 }
 
 const owners = services.filter((s) => s.owns.length > 0);
+
+// ── the site limb: a Pages Functions config binds, never owns ─────────────────
+// Every database a site binds is swept only through the Worker that owns it, so a
+// site binding a database no LIVE-root Worker owns is a store no limb here reaches,
+// and a site declaring a `migrations_dir` owns one outside both floors.
+let siteBindingsChecked = 0;
+for (const site of siteConfigs) {
+  let cfg;
+  try {
+    cfg = jsoncParse(readFileSync(join(ROOT, site), 'utf8'));
+  } catch (err) {
+    problems.push(`${site} could not be parsed as JSONC (${err.message}), so the databases it binds could not be enumerated.`);
+    continue;
+  }
+  for (const d of Array.isArray(cfg.d1_databases) ? cfg.d1_databases : []) {
+    siteBindingsChecked++;
+    if (typeof d?.migrations_dir === 'string') {
+      problems.push(
+        `${site} declares a migrations_dir for ${d.database_name}: a Pages Functions config that OWNS a database sits outside ` +
+          'both floors, so its tables and erasure route are swept by nothing here. Own it from a Worker under services/.',
+      );
+    }
+    if (!owners.some((s) => s.owns.includes(d?.database_name))) {
+      problems.push(
+        `${site} binds ${d?.database_name ?? '(no database_name)'}, which no Worker under services/ owns. A site's database is ` +
+          'erased through the Worker that owns it, so this one is reached by no delete-my-account route.',
+      );
+    }
+  }
+}
+
 if (owners.length < 2) {
   coverageLost([
     `only ${owners.length} service(s) own a database (${owners.map((s) => s.id).join(', ') || 'none'}).`,
@@ -1539,7 +1578,8 @@ console.log(
 );
 console.log(
   `    ${allConfigs.size} wrangler.jsonc enumerated across the whole tree, every one classified into a root ` +
-    `(${liveConfigs.length} live, ${templateConfigs.length} template, 0 unclassified)` +
+    `(${liveConfigs.length} live, ${templateConfigs.length} template, ${siteConfigs.length} site binding ` +
+    `${siteBindingsChecked} D1 database(s), each owned by a live Worker; 0 unclassified)` +
     (IS_FULL_CHECKOUT
       ? `; FULL CHECKOUT — the template floor was APPLIED, and the git ls-files cross-check ${
           existsSync(join(ROOT, '.git')) ? 'was APPLIED' : 'was SKIPPED (no .git at the root)'

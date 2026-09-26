@@ -133,6 +133,36 @@
         "out": { "type": "string" },
         "deps": { "type": "string" }
       }
+    },
+
+    "gates": {
+      "type": "array",
+      "description": "This tool's own store gates, one entry per gate, run by `node scripts/discover.mjs --run-gates --tool <id> --stage <stage>` — the one step each CI job carries for them. A workflow step never names a tool; `discover.mjs --assert-generic` refuses one that does. discover.mjs checks every entry (the script exists, a when.target is a target this tool builds) and refuses the matrix when one does not.",
+      "items": {
+        "type": "object",
+        "required": ["id", "stage", "run"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "description": "Unique within this tool. The log names a failing gate by it." },
+          "stage": {
+            "enum": ["gates", "package", "release"],
+            "description": "The job that runs it: `gates` on the source tree, `package` on each built zip, `release` on the exact bytes a tag uploads."
+          },
+          "run": {
+            "type": "string",
+            "description": "A node script relative to the extensions root, then fixed arguments, split on whitespace. Spawned with node and no shell. `--zip <path>` is appended when the job passes one."
+          },
+          "when": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Narrows the gate to one matrix leg. Every key given must equal the leg's --target / --os, or the gate does not run there (and the log says so).",
+            "properties": {
+              "target": { "type": "string", "description": "A key of this tool's `targets`." },
+              "os": { "type": "string", "description": "A runner label the workflow's matrix uses, e.g. \"ubuntu-24.04\"." }
+            }
+          }
+        }
+      }
     }
   },
 

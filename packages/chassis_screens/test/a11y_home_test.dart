@@ -53,7 +53,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('dark, kDesktop', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
@@ -78,7 +78,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
   });
 
   // ── CatchUpBannerView ─────────────────────────────────────────────────────
@@ -109,7 +109,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('dark, kDesktop', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
@@ -136,6 +136,6 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
   });
 }

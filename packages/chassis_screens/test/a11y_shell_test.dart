@@ -73,7 +73,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('dark, kDesktop', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
@@ -106,7 +106,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
   });
 
   // ── OfflineBannerHost ─────────────────────────────────────────────────────
@@ -138,7 +138,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('dark, kDesktop', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
@@ -167,7 +167,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
   });
 
   // ── ConsentScrim + AppLifecycleFlush ──────────────────────────────────────
@@ -210,7 +210,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('dark, kDesktop — asking', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
@@ -245,7 +245,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('light, kPhone — NOT asking, which is the state the app spends '
         'its life in and the one that must not swallow the tree', (
@@ -288,7 +288,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
   });
 
   // ── NikatruApp, composed exactly as the brick's `app.dart` composes it ─────
@@ -351,7 +351,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('dark, kDesktop', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
@@ -414,7 +414,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('light, kPhone — the consent question OVER the routed page, '
         'which is the first thing a new install is handed', (
@@ -480,7 +480,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('light, kPhone — the force-update gate, the one screen that '
         'REPLACES the app and cannot be dismissed', (WidgetTester tester) async {
@@ -536,7 +536,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('light, kPhone — offline: the banner is announced THROUGH the '
         'router, and swept with the page', (WidgetTester tester) async {
@@ -637,7 +637,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
   });
 }
 

@@ -26,6 +26,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
 import 'package:subscriptiontracker/core/a11y/web_semantics.dart'
@@ -1783,6 +1784,81 @@ void main() {
     );
     await pumpFor(tester, const Duration(milliseconds: 500));
     await tester.tap(find.byKey(E2EKeys.deleteAccountConfirm));
+
+    // ── 20g On a captcha-gated stack the reauth is REFUSED, and that is the pass ─
+    // 🔴 MEASURED 2026-09-26, E2E live #145 (run 36220597628), the first run
+    // after the switch to Box C. The dialog re-authenticates with
+    // `signInWithEmail` before it deletes, which is `token?grant_type=password`
+    // — Turnstile-gated on Box C — and a headless browser gets no captcha
+    // token. Box C's GoTrue answered 400 `captcha_failed`, the app mapped the
+    // AuthFailure to `reauthFailed` and showed "Not deleted" IN THE DIALOG, and
+    // the 40s wait below for a login-screen notice expired over it. Nothing
+    // reached the Worker. Sign-in moved to the ungated `/verify` for exactly
+    // this reason (`signInWithMagicToken`); the delete reauth, the one other
+    // gated call on the golden path, was never given an equivalent.
+    //
+    // So on a gated stack this leg asserts what IS true: the gate covers
+    // erasure, the refusal is the provider's (`reauthFailed`, not
+    // `couldNotReach`), and nothing was destroyed — the dialog says so and the
+    // session is still live. The erasure itself runs after the drive, in
+    // `tooling/e2e/delete_headless.mjs`: a session minted through the same
+    // ungated `/verify`, sent to the same deployed DELETE /v1/account, after a
+    // server-side read that this account and its row are still there. Then
+    // `verify_purged.mjs` audits it exactly as it audits the in-app deletion.
+    if (captchaGateOn) {
+      final Finder resultTitle = find.byKey(E2EKeys.deleteAccountResultTitle);
+      expect(
+        await waitFor(
+          tester,
+          resultTitle,
+          timeout: const Duration(seconds: 20),
+        ),
+        isTrue,
+        reason:
+            'E2E_EXPECT_CAPTCHA_GATE=yes and the delete dialog showed no '
+            'outcome: the reauth is still in flight, or the dialog went away. '
+            'On screen: ${onScreen(tester)}',
+      );
+      final AppLocalizations l10n = AppLocalizations.of(
+        tester.element(resultTitle),
+      );
+      expect(
+        tester.widget<Text>(resultTitle).data,
+        l10n.deleteAccountResultNotDeleted,
+        reason:
+            'E2E_EXPECT_CAPTCHA_GATE=yes, so the password grant the reauth '
+            'uses is Turnstile-gated and a headless browser has no token: the '
+            'account must NOT be deletable from here. Anything but "Not '
+            'deleted" means the gate did not refuse the reauth.',
+      );
+      expect(
+        tester.widget<Text>(find.byKey(E2EKeys.deleteAccountResult)).data,
+        core.AccountDeletionOutcome.reauthFailed.plainMessage,
+        reason:
+            'The dialog refused, but not as the auth provider refusing the '
+            'reauth (`reauthFailed`). `couldNotReach` or `unknown` here is a '
+            'network or client fault, not the captcha gate, and says nothing '
+            'about whether the gate covers erasure.',
+      );
+      await shot('20-delete-reauth-refused');
+      expect(
+        sb.Supabase.instance.client.auth.currentSession,
+        isNotNull,
+        reason:
+            'The refused reauth signed the user out. `reauthFailed` leaves the '
+            'session untouched, because nothing was sent and nothing deleted.',
+      );
+      expect(
+        find.byKey(E2EKeys.accountDeletionNotice),
+        findsNothing,
+        reason:
+            'An account-deletion outcome was parked for the login screen, so '
+            'the app believes a deletion request was sent past a refused '
+            'reauth.',
+      );
+      restoreGlobals();
+      return;
+    }
 
     // ── 20 The real round-trip: reauth → DELETE → identity gone → sign-out ────
     // Three network hops before the router moves, so this is the longest wait in

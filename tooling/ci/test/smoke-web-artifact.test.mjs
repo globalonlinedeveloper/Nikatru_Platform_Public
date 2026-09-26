@@ -538,20 +538,19 @@ describe("smoke-web-artifact.mjs — in Chrome, the fixture boots under the app'
   });
 });
 
-describe("deploy-web.yml — the pre-publication smoke probes the build's URL-valued defines", () => {
-  test('the smoke step passes --connect for SUPABASE_URL, API_BASE_URL and the GlitchTip DSN, each from its secret', () => {
+describe("deploy-web.yml — the pre-publication smoke probes the build's derived connect origins", () => {
+  test('the smoke step takes its --connect flags from the connect-src compare, and hand-passes no define', () => {
     // Without the flags the probe silently probes nothing: the smoke prints a
-    // `--` note and exits 0. Until the set is derived, this is what holds them.
+    // `--` note and exits 0. ⏱ 2026-09-25 — the three hand-passed defines are
+    // gone: tooling/web/connect-origins.mjs emits the set it compared with
+    // connect-src, and tooling/ci/test/connect-origins.test.mjs holds that step.
     const wf = parseWorkflow(ROOT, '.github/workflows/deploy-web.yml');
     assert.ok(wf, 'deploy-web.yml was not found');
     const steps = [...wf.jobs.values()].flatMap((j) => workflowSteps(j));
     const smoke = steps.find((s) => s.run?.text.includes('node tooling/smoke/smoke-web-artifact.mjs'));
     assert.ok(smoke, 'deploy-web.yml no longer runs the launch smoke');
-    assert.match(smoke.run.text, /--connect "\$SUPABASE_URL"/);
-    assert.match(smoke.run.text, /--connect "\$API_BASE_URL"/);
-    assert.match(smoke.run.text, /--connect "\$GLITCHTIP_DSN"/);
-    assert.equal(smoke.env.get('SUPABASE_URL')?.value, '${{ secrets.SUPABASE_URL }}');
-    assert.equal(smoke.env.get('API_BASE_URL')?.value, '${{ secrets.API_BASE_URL }}');
-    assert.equal(smoke.env.get('GLITCHTIP_DSN')?.value, '${{ secrets.GLITCHTIP_DSN }}');
+    assert.match(smoke.run.text, /\$\{\{ steps\.connect\.outputs\.connect \}\}/);
+    assert.doesNotMatch(smoke.run.text, /--connect\b/);
+    assert.equal(smoke.env.size, 0, `the smoke step needs no secret now: ${[...smoke.env.keys()].join(', ')}`);
   });
 });

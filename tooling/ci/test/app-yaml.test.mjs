@@ -38,7 +38,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { parseYaml, YamlError } from '../../app-yaml/yaml.mjs';
 import { validate, assertSchemaUnderstood, SchemaError } from '../../app-yaml/schema-validate.mjs';
-import { appleCategoryUti } from '../../app-yaml/render.mjs';
+import { appleCategoryUti, MSIX_IDENTITY_TARGET } from '../../app-yaml/render.mjs';
 import { resolveRequiredProviders } from '../../legal/required-providers.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -88,6 +88,8 @@ function tree() {
     // a COVERAGE LOST refusal in the renderer, so a fixture missing these would
     // exercise that refusal on every case below instead of the case's own
     // mutation. They are exactly the files ICON_LABEL_TARGETS names.
+    // ⏱ 2026-09-25: the pubspec is MSIX_TITLE_TARGET's file now, not a label
+    // target, and stays here for that (O-MSIX-IDENTITY-UNGRADED).
     'apps/subscriptiontracker/web/manifest.json',
     'apps/subscriptiontracker/android/app/src/main/AndroidManifest.xml',
     'apps/subscriptiontracker/ios/Runner/Info.plist',
@@ -1479,6 +1481,12 @@ describe('limb 6 — the mobile-IAP opt-in and the bridge dependency travel toge
 // The label used below shares a token with the declaration's `name` on purpose:
 // that rule belongs to assert-app-naming.mjs, and a fixture that violated it
 // would be testing two guards at once.
+//
+// ⏱ 2026-09-25 — FOUR targets now, not five. msix_config.display_name left
+// ICON_LABEL_TARGETS: `msix` writes it as the Store title too, so it renders
+// app.yaml `name` (MSIX_TITLE_TARGET, its cases after this block), and the
+// Start-menu label is set in the packaged manifest by
+// tooling/store/msix-visual-name.mjs (O-MSIX-IDENTITY-UNGRADED).
 // ─────────────────────────────────────────────────────────────────────────────
 const LABEL = 'Subly Label';
 const LABEL_TARGETS = [
@@ -1486,8 +1494,9 @@ const LABEL_TARGETS = [
   ['apps/subscriptiontracker/android/app/src/main/AndroidManifest.xml', (t) => t.match(/android:label="([^"]*)"/)?.[1]],
   ['apps/subscriptiontracker/ios/Runner/Info.plist', (t) => t.match(/<key>CFBundleDisplayName<\/key>\s*<string>([^<]*)<\/string>/)?.[1]],
   ['apps/subscriptiontracker/macos/Runner/Info.plist', (t) => t.match(/<key>CFBundleDisplayName<\/key>\s*<string>([^<]*)<\/string>/)?.[1]],
-  ['apps/subscriptiontracker/pubspec.yaml', (t) => t.match(/^msix_config:[\s\S]*?^ {2}display_name: (.*)$/m)?.[1]],
 ];
+const MSIX_PUBSPEC = 'apps/subscriptiontracker/pubspec.yaml';
+const msixDisplayName = (t) => t.match(/^msix_config:[\s\S]*?^ {2}display_name: (.*)$/m)?.[1];
 
 /** Set (or replace) `shortName:` in the fixture's declaration. */
 function declareShortName(root, value) {
@@ -1506,8 +1515,8 @@ const stripMsix = (root) => {
   put(root, 'apps/subscriptiontracker/pubspec.yaml', `${text.slice(0, at)}\n`);
 };
 
-describe('the icon label reaches the five OS-level name fields this renderer owns', () => {
-  test('declaring shortName makes --check RED naming every one of the five files', () => {
+describe('the icon label reaches the four OS-level name fields this renderer owns', () => {
+  test('declaring shortName makes --check RED naming every one of the four files', () => {
     const root = tree();
     try {
       declareShortName(root, LABEL);
@@ -1517,22 +1526,18 @@ describe('the icon label reaches the five OS-level name fields this renderer own
     } finally { kill(root); }
   });
 
-  test('a write run puts the label in all five, ESCAPED for each format, and --check then passes', () => {
+  test('a write run puts the label in all four, ESCAPED for each format, and --check then passes', () => {
     const root = tree();
     try {
       declareShortName(root, 'Subly & Co');
       const first = spawn(RENDER, [root]);
       assert.equal(first.code, 0, first.out);
       for (const [rel, extract] of LABEL_TARGETS) {
-        // One value, three encodings, and that is the point: `&` is markup in
-        // XML, ordinary text in JSON and a YAML anchor sigil that forces the
-        // scalar to be quoted. A single shared `replace` would get two of the
-        // three wrong and produce files that no longer parse.
-        const expected = rel.endsWith('.plist') || rel.endsWith('.xml')
-          ? 'Subly &amp; Co'
-          : rel.endsWith('pubspec.yaml')
-            ? '"Subly & Co"'
-            : 'Subly & Co';
+        // One value, two encodings here, and that is the point: `&` is markup
+        // in XML and ordinary text in JSON. (The YAML encoding, which quotes
+        // it, is MSIX_TITLE_TARGET's and has its own case below.) A single
+        // shared `replace` would produce files that no longer parse.
+        const expected = rel.endsWith('.plist') || rel.endsWith('.xml') ? 'Subly &amp; Co' : 'Subly & Co';
         assert.equal(extract(get(root, rel)), expected, `${rel} did not receive the label`);
       }
       // The manifest must still PARSE and the plist must still be well formed —
@@ -1605,7 +1610,7 @@ describe('the icon label reaches the five OS-level name fields this renderer own
       stripMsix(root);
       const { code, out } = spawn(RENDER, [root, '--check']);
       assert.equal(code, 2, `a label that reaches no operating system is not a rendered label:\n${out}`);
-      assert.ok(out.includes('NOT ONE of the 5 icon-label'), out);
+      assert.ok(out.includes('NOT ONE of the 4 icon-label'), out);
     } finally { kill(root); }
   });
 
@@ -1628,6 +1633,178 @@ describe('the icon label reaches the five OS-level name fields this renderer own
       assert.equal(code, 0, out);
       LABEL_TARGETS.forEach(([rel], i) => assert.equal(get(root, rel), before[i], `${rel} must be untouched`));
     } finally { kill(root); }
+  });
+});
+
+// ⏱ 2026-09-25 · msix_config.display_name is the STORE TITLE (O-MSIX-IDENTITY-UNGRADED).
+describe('msix_config.display_name renders the declaration\'s `name`, not its `shortName`', () => {
+  const declaredName = (root) => get(root, APP_YAML).match(/^name: (.*)$/m)[1];
+
+  test('a write run puts `name` in display_name, and a shortName does not reach it', () => {
+    const root = tree();
+    try {
+      declareShortName(root, LABEL);
+      const { code, out } = spawn(RENDER, [root]);
+      assert.equal(code, 0, out);
+      assert.equal(msixDisplayName(get(root, MSIX_PUBSPEC)), declaredName(root));
+      assert.notEqual(msixDisplayName(get(root, MSIX_PUBSPEC)), LABEL);
+    } finally { kill(root); }
+  });
+
+  // The recorded failing case: the pubspec as it was rendered before this date.
+  test('display_name hand-set to the shortName is stale — --check names the pubspec', () => {
+    const root = tree();
+    try {
+      declareShortName(root, LABEL);
+      assert.equal(spawn(RENDER, [root]).code, 0);
+      put(root, MSIX_PUBSPEC, get(root, MSIX_PUBSPEC).replace(/^( {2}display_name: ).*$/m, `$1${LABEL}`));
+      const { code, out } = spawn(RENDER, [root, '--check']);
+      assert.equal(code, 1, out);
+      assert.ok(out.includes(MSIX_PUBSPEC), out);
+    } finally { kill(root); }
+  });
+
+  test('a `name` that needs quoting is quoted for YAML', () => {
+    const root = tree();
+    try {
+      put(root, APP_YAML, get(root, APP_YAML).replace(/^name: .*$/m, 'name: Subly & Co Tracker'));
+      spawn(RENDER, [root]);
+      assert.equal(msixDisplayName(get(root, MSIX_PUBSPEC)), '"Subly & Co Tracker"');
+    } finally { kill(root); }
+  });
+
+  test('an msix_config with no display_name is COVERAGE LOST, not a skip', () => {
+    const root = tree();
+    try {
+      const text = get(root, MSIX_PUBSPEC);
+      const stripped = text.replace(/^ {2}display_name: .*\n/m, '');
+      assert.notEqual(stripped, text, 'the fixture pubspec must carry the field this case removes');
+      put(root, MSIX_PUBSPEC, stripped);
+      const { code, out } = spawn(RENDER, [root, '--check']);
+      assert.equal(code, 2, out);
+      assert.ok(out.includes('msix_config block with no display_name'), out);
+    } finally { kill(root); }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-25 — O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1). msix_config.identity_name
+// is RENDERED from the app's own record, app.yaml stores.windows-store.identityName.
+// It used to be copied from the ONE identity on the channel row by the brick, so a
+// second app packaged the first app's identity. The fixture is a copy of the real
+// app.yaml and pubspec, so the record and the packaged name start equal.
+// ─────────────────────────────────────────────────────────────────────────────
+const PUBSPEC = 'apps/subscriptiontracker/pubspec.yaml';
+const packagedIdentity = (text) => text.match(/^msix_config:[\s\S]*?^ {2}identity_name: (.*)$/m)?.[1];
+
+describe('msix_config.identity_name is rendered from the app\'s own stores.windows-store record', () => {
+  test('a hand edit to identity_name is stale under --check, and only the pubspec is named', () => {
+    const root = tree();
+    try {
+      put(root, PUBSPEC, get(root, PUBSPEC).replace(/^ {2}identity_name: .*$/m, '  identity_name: ZZTest.AppTwo'));
+      const { code, out } = spawn(RENDER, [root, '--check']);
+      assert.equal(code, 1, out);
+      assert.ok(out.includes(PUBSPEC), out);
+      assert.ok(!out.includes('Info.plist'), `only the file that drifted is stale:\n${out}`);
+    } finally { kill(root); }
+  });
+
+  test('the record moved to the sentinel re-renders identity_name on a write run, and --check then passes', () => {
+    const root = tree();
+    try {
+      const yaml = get(root, APP_YAML);
+      const next = yaml
+        .replace(/^ {4}identityName: .*$/m, '    identityName: PARTNER-CENTER-PENDING')
+        .replace(/^ {4}packageFamilyName: .*$/m, '    packageFamilyName: PARTNER-CENTER-PENDING');
+      assert.notEqual(next, yaml, 'the fixture declaration must carry a stores.windows-store record');
+      put(root, APP_YAML, next);
+      const publisherBefore = get(root, PUBSPEC).match(/^ {2}publisher: (.*)$/m)?.[1];
+      const first = spawn(RENDER, [root]);
+      assert.equal(first.code, 0, first.out);
+      assert.equal(packagedIdentity(get(root, PUBSPEC)), 'PARTNER-CENTER-PENDING');
+      // The account's publisher is NOT this renderer's: it stays what the file says.
+      assert.equal(get(root, PUBSPEC).match(/^ {2}publisher: (.*)$/m)?.[1], publisherBefore);
+      const second = spawn(RENDER, [root, '--check']);
+      assert.equal(second.code, 0, second.out);
+    } finally { kill(root); }
+  });
+
+  test('identity_name gone from a block that is still there is COVERAGE LOST, not a skip', () => {
+    const root = tree();
+    try {
+      const text = get(root, PUBSPEC);
+      const stripped = text.replace(/^ {2}identity_name: .*\n/m, '');
+      assert.notEqual(stripped, text, 'the fixture pubspec must carry identity_name');
+      put(root, PUBSPEC, stripped);
+      const { code, out } = spawn(RENDER, [root, '--check']);
+      assert.equal(code, 2, out);
+      assert.ok(out.includes('msix_config.identity_name (Package/Identity/@Name)'), out);
+    } finally { kill(root); }
+  });
+
+  // The span is bounded by the block: a same-named key under a LATER top-level
+  // block must never be the one rewritten, which an unbounded `[\s\S]*?` would do.
+  test('an identity_name under a later top-level block is not the one rewritten', () => {
+    const root = tree();
+    try {
+      const text = get(root, PUBSPEC).replace(/^ {2}identity_name: .*\n/m, '');
+      put(root, PUBSPEC, `${text}zz_other_block:\n  identity_name: ZZTest.NotMsix\n`);
+      const { code, out } = spawn(RENDER, [root]);
+      assert.equal(code, 2, out);
+      assert.match(get(root, PUBSPEC), /^zz_other_block:\n {2}identity_name: ZZTest\.NotMsix$/m);
+    } finally { kill(root); }
+  });
+
+  test('a declaration with no stores record leaves identity_name alone', () => {
+    const root = tree();
+    try {
+      const yaml = get(root, APP_YAML);
+      const next = yaml.replace(/^stores:\n {2}windows-store:\n {4}identityName: .*\n {4}packageFamilyName: .*\n/m, '');
+      assert.notEqual(next, yaml, 'the fixture declaration must carry a stores block');
+      put(root, APP_YAML, next);
+      const before = get(root, PUBSPEC);
+      const { code, out } = spawn(RENDER, [root]);
+      assert.equal(code, 0, out);
+      assert.equal(get(root, PUBSPEC), before);
+    } finally { kill(root); }
+  });
+
+  test('a pubspec with no msix_config block is skipped — the brick appends it after its render', () => {
+    const root = tree();
+    try {
+      stripMsix(root);
+      const before = get(root, PUBSPEC);
+      const { code, out } = spawn(RENDER, [root]);
+      assert.equal(code, 0, `an app not packaged for the Microsoft Store has no identity_name to render:\n${out}`);
+      assert.equal(get(root, PUBSPEC), before, 'a pubspec with no msix_config block must be left exactly as it is');
+    } finally { kill(root); }
+  });
+
+  // ⏱ 2026-09-27 — CodeQL js/redos (PR #993). An indented CRLF line inside the
+  // span was read two ways (`[^\n]*` took its `\r`, or `\r?` did), so a block of
+  // n of them with no identity_name after it backtracked 2^n ways. The regex the
+  // renderer runs, fed CodeQL's input: 26 lines (about a second for the OLD
+  // regex on the host that recorded it), then 5000.
+  test('a block of indented CRLF lines with no identity_name is refused in under 100 ms', () => {
+    for (const n of [26, 5000]) {
+      const t0 = performance.now();
+      const hit = MSIX_IDENTITY_TARGET.re.test(`msix_config:\n${'\t\r\n'.repeat(n)}`);
+      const ms = performance.now() - t0;
+      assert.equal(hit, false);
+      assert.ok(ms < 100, `${n} lines: ${ms.toFixed(1)} ms, over the 100 ms a linear read takes`);
+    }
+  });
+
+  test('a CRLF block with blank, comment and indented lines still renders identity_name, keeping the \\r', () => {
+    const text = 'msix_config:\r\n  display_name: Subly\r\n\r\n  # the id\r\n\n  identity_name: NIKATRU.Old\r\nzz: 1\r\n';
+    const m = MSIX_IDENTITY_TARGET.re.exec(text);
+    assert.ok(m, 'the span must reach identity_name across a CRLF blank line and an LF one');
+    assert.equal(m[1], 'msix_config:\r\n  display_name: Subly\r\n\r\n  # the id\r\n\n  identity_name: ');
+    assert.equal(m[2], '\r');
+    assert.equal(
+      text.replace(MSIX_IDENTITY_TARGET.re, (_m, pre, post) => `${pre}NIKATRU.New${post}`),
+      'msix_config:\r\n  display_name: Subly\r\n\r\n  # the id\r\n\n  identity_name: NIKATRU.New\r\nzz: 1\r\n',
+    );
   });
 });
 

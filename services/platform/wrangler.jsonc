@@ -475,14 +475,14 @@
           "simple": { "limit": 120, "period": 60 }
         },
         {
-          // why: src/routes/events.ts:250 and :356, src/routes/report.ts:126.
+          // why: src/routes/events.ts:257 and :369, src/routes/report.ts:126.
           // The top level's EVENTS_LIMITER (1001), same limit.
           "name": "EVENTS_LIMITER",
           "namespace_id": "1007",
           "simple": { "limit": 120, "period": 60 }
         },
         {
-          // why: src/routes/events.ts:194 and :324. The top level's
+          // why: src/routes/events.ts:201 and :337. The top level's
           // EVENTS_CEILING_LIMITER (1002), same limit.
           "name": "EVENTS_CEILING_LIMITER",
           "namespace_id": "1008",

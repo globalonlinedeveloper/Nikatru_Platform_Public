@@ -1101,7 +1101,17 @@ describe('check-prod-provenance — the environments witness (b) is read from', 
       .replace(/\$\{\{\s*matrix\.app\s*\}\}/g, '{app}')
       .replace(/\$\{\{[^}]*\}\}/g, 'EXPR');
 
-    const templates = [...lane.matchAll(/record-deployment\.mjs\s+(\S+)/g)].map((m) => m[1]);
+    const recorded = [...lane.matchAll(/record-deployment\.mjs\s+(\S+)/g)].map((m) => m[1]);
+    // ⏱ 2026-09-25 · D3a: the `site` job records `nikatru-site`, a `siteEnvironments` row
+    // of tooling/channel-register.json — the apex site, not a release channel, so it is not
+    // this reader's. Every record WITHOUT an `{app}` must be exactly such a row; every one
+    // WITH it is a channel environment and is held below as before.
+    const register = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
+    const siteEnvs = new Set((register.siteEnvironments ?? []).map((s) => s.deploymentEnvironment));
+    for (const t of recorded.filter((x) => !x.includes('{app}'))) {
+      assert.ok(siteEnvs.has(t), `deploy-web.yml records "${t}", which is neither an {app} channel environment nor a siteEnvironments row`);
+    }
+    const templates = recorded.filter((x) => x.includes('{app}'));
     assert.ok(templates.length > 0, 'deploy-web.yml must still call record-deployment.mjs');
     const slugs = JSON.parse(readFileSync(join(REPO, 'catalog', 'apps.json'), 'utf8')).map((a) => a.slug);
     assert.ok(slugs.length > 0, 'the app catalogue must name at least one app');

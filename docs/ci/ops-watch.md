@@ -111,7 +111,7 @@ trusted the name.
 Fixed in both directions: the register reader is now a step below, so the
 schedule-backed duties ARE examined here, and the name says what runs.
 
-## job `permissions`
+### key `permissions:`
 
 ### above `permissions:`
 
@@ -187,8 +187,8 @@ most one of the twelve daily slots. `tooling/ops/alarm-chains.json` is
 **not** touched: it ledgers GlitchTip monitor → recipient chains, and
 this finding does not travel a monitor.
 
-**Why `ci.yml`, `deploy-web.yml`, `deploy-workers.yml` and
-`site-drift-repair.yml` are OUT of the domain, stated rather than left to
+**Why `ci.yml`, `deploy-web.yml` and `deploy-workers.yml`
+are OUT of the domain, stated rather than left to
 be discovered.** They are `cadence: trigger` rows. `ci.yml`'s newest run
 on `main` can be made green **only by merging**, so blocking merges on it
 would be a deadlock with no exit — the `ci-18` bootstrap shape, and this
@@ -369,7 +369,7 @@ is resolved against the actual successful runs of the served release lane,
 not against a list in a file that would go stale the way B-17's own
 four-table prose did.
 
-## job `permissions`
+### key `permissions:`
 
 ### above `permissions:`
 
@@ -508,7 +508,7 @@ human having looked.
 
 SCHEDULED RUNS ONLY: a workflow_dispatch failure is attended by definition.
 
-## job `needs`
+### key `needs:`
 
 ### above `needs:`
 

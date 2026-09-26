@@ -202,7 +202,7 @@ const MAX_BYTES = 16 * 1024 * 1024;
    ⚠️ NOTHING IS UNGUARDED BY ITS REMOVAL, and that was measured before deleting
    it rather than assumed. The nine CONTENT_RE alternatives are, one for one, the
    nine CONTENT_RULES below, and both of the live scanners that DO run cover them:
-     · this file, `node scripts/secret-scan.mjs .`, at extensions-ci.yml:339 and extensions.yml:1201 (the release job)
+     · this file, `node scripts/secret-scan.mjs .`, at extensions-ci.yml:353 and extensions.yml:1215 (the release job)
      · `tooling/ci/scan-secrets.mjs . --gitleaks …`, at ci.yml:598, repo-wide
    The retired hook is readable at
    `ref/pre-prune-2026-09-08:extensions/.githooks/pre-commit`.

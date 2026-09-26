@@ -440,7 +440,6 @@ for (const e of domain.exempt) {
   prints.push(`NOT GRADED — ${buildAt(e)} is listed in ${REGISTER} \`releaseBuildsNeverShipped\`: ${e.why}`);
 }
 
-const NON_RELEASE = /--debug\b|--profile\b/;
 let graded = 0;
 let storeStepsGradedForWebOnly = 0;
 // ⚠️ THE DECLARED FIELDS STILL HAVE TO POINT SOMEWHERE. The domain no longer comes
@@ -559,13 +558,18 @@ if (WEB_ONLY.size > 0) {
         problems.push(`W1 ${REGISTER}: web channel "${row.id}" declares ${kind} ${decl.workflow} job "${decl.job}", which this scan did not find, so no web build was graded for it.`);
         continue;
       }
-      for (const line of job.logical) {
-        if (!/flutter\s+build\s+web\b/.test(line.text) || NON_RELEASE.test(line.text)) continue;
+      // ⏱ CHANGED 2026-09-25 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 2 of 3): the job's
+      // release web builds come off the census, per SEGMENT, as the store limb's do.
+      // This loop used to test each logical line for `flutter build web` without
+      // --debug/--profile, so a web build made through flutter-release-build.mjs was
+      // no web build here, and one line's defines answered for every build on it.
+      for (const b of census) {
+        if (b.workflow !== decl.workflow || b.job !== decl.job || b.target !== 'web') continue;
         webGraded++;
-        const absent = [...WEB_ONLY].filter((name) => !new RegExp(`--dart-define(?:=|\\s+)${name}=`).test(line.text));
+        const absent = [...WEB_ONLY].filter((name) => !b.defines.has(name));
         if (absent.length) {
           problems.push(
-            `W1 ${decl.workflow}:${line.n} (web channel "${row.id}", ${kind} job "${decl.job}", \`flutter build web\`) does not pass ${absent.join(', ')}. ` +
+            `W1 ${decl.workflow}:${b.runLine} (web channel "${row.id}", ${kind} job "${decl.job}", \`flutter build web\`) does not pass ${absent.join(', ')}. ` +
               `[ADR 084]: Turnstile guards WEB sign-in, and a web build with a live backend and no key is an error — the ` +
               'identity provider refuses every sign-in it sends without a captcha token.',
           );

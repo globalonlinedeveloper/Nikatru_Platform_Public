@@ -366,13 +366,13 @@ describe('submit-appstore — both Apple channels are walkable, and --submit ref
     const root = tree({ withArtifact: true });
     writeFileSync(join(root, 'apps/subscriptiontracker/ios/Runner.xcodeproj/project.pbxproj'), '// nothing here\n');
     const { code, out } = ios(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
     assert.match(out, /COVERAGE LOST — .*contains ZERO `PRODUCT_BUNDLE_IDENTIFIER` assignments/);
   });
 
   test('COVERAGE LOST when the register declares no bundleIdentifier', () => {
     const { code, out } = ios(tree({ withArtifact: true, mutateRegister: (r) => delete r.channels.find((c) => c.id === 'ios-appstore').bundleIdentifier }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
     assert.match(out, /COVERAGE LOST — .*declares no `bundleIdentifier`/);
   });
 
@@ -432,7 +432,7 @@ describe('submit-appstore — both Apple channels are walkable, and --submit ref
 
   test('FAILS COVERAGE LOST when the row declares no artifactGlob', () => {
     const { code, out } = ios(tree({ withArtifact: true, mutateRegister: (r) => delete r.channels.find((c) => c.id === 'ios-appstore').signing }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assertComplained(out);
     assert.match(out, /COVERAGE LOST — channel "ios-appstore" gives no artifact path: channel "ios-appstore" declares no signing\.seam\.artifactGlob/);
   });
@@ -479,13 +479,13 @@ describe('submit-appstore — both Apple channels are walkable, and --submit ref
   // ── the register is the single declaration ────────────────────────────────
   test('COVERAGE LOST when the register declares no such channel', () => {
     const { code, out } = ios(tree({ withArtifact: true, mutateRegister: (r) => (r.channels = r.channels.filter((c) => c.id !== 'ios-appstore')) }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
     assert.match(out, /COVERAGE LOST — .*declares no "ios-appstore" channel/);
   });
 
   test('COVERAGE LOST when storeMetadataContract.requiredFiles is emptied', () => {
     const { code, out } = ios(tree({ withArtifact: true, mutateRegister: (r) => (r.storeMetadataContract.requiredFiles = []) }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
     assert.match(out, /COVERAGE LOST — .*requiredFiles/);
   });
 

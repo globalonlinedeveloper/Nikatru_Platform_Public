@@ -200,7 +200,7 @@ leg. It emits nothing on an empty workspace — it exits 1 — because a matrix
 of `[]` runs zero legs and reports success, which is the exact green-over-
 nothing this workflow's header was rewritten to remove.
 
-## job `strategy`
+### key `strategy:`
 
 ### above `strategy:`
 
@@ -210,7 +210,7 @@ the evidence that would have told a real outage from one app's bug. It also
 keeps the `always()` purge below reachable on every leg. With one app in the
 workspace this changes nothing.
 
-## job `with`
+### key `with:`
 
 ### above `with:`
 
@@ -442,7 +442,7 @@ verification against production is permitted and EXPECTED; what is
 required is that it cleans up, and that a row it writes SAYS who wrote it.
 
 ⚠️ THE VALUE HAS TO FIT IN 32 CHARACTERS, and overflowing is WORSE than
-`dev`. services/platform/src/routes/events.ts:378 binds it as
+`dev`. services/platform/src/routes/events.ts:373 binds it as
 `str(body?.app_version, 32)`, and that helper returns NULL — not a
 truncation — for anything longer, so an over-long stamp lands as a row
 that fails the resolver carrying NO information at all.

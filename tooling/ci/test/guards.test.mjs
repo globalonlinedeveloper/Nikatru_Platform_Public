@@ -1255,7 +1255,8 @@ describe('assert-workflow-hardening', () => {
     assert.equal(code.split(SUBJECT).length - 1, 1, 'the judged counter must appear exactly once outside comments');
     const at = code.indexOf(SUBJECT);
     const modules = {};
-    for (const m of ['tree-walk.mjs', 'workflow-scan.mjs']) modules[m] = readFileSync(join(CI_DIR, m), 'utf8');
+    for (const m of ['tree-walk.mjs', 'workflow-scan.mjs', 'flutter-release-build.mjs', 'app-set.mjs']) modules[m] = readFileSync(join(CI_DIR, m), 'utf8');
+    modules['../app-yaml/yaml.mjs'] = readFileSync(join(CI_DIR, '..', 'app-yaml', 'yaml.mjs'), 'utf8'); // ⏱ 2026-09-26: the composer's import (O-FLUTTER-BUILD-TYPED-PER-LINE)
     const copy = (name, body) => join(fixture(name, { ...modules, 'g.mjs': body }), 'g.mjs');
     const exec = (script) => {
       const r = spawnSync(process.execPath, [script, dir], { cwd: ROOT, encoding: 'utf8' });
@@ -1284,8 +1285,9 @@ describe('assert-workflow-hardening', () => {
       y += `  guards-s${k}:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n    steps:\n      - uses: actions/checkout@${SHA}\n`;
       for (let i = 0; i < 25; i++) {
         y += `      - name: Guard ${k}.${i}\n`;
-        if (!(bare && bare.shard === k && bare.step === i)) y += '        if: ${{ !cancelled() }}\n';
-        y += `        run: node tooling/ci/assert-g${k}-${i}.mjs\n`;
+        const isBare = bare && bare.shard === k && bare.step === i;
+        if (!isBare) y += '        if: ${{ !cancelled() }}\n';
+        y += `        run: node ${isBare && bare.flags ? `${bare.flags} ` : ''}tooling/ci/assert-g${k}-${i}.mjs\n`;
       }
     }
     return y;
@@ -1301,6 +1303,17 @@ describe('assert-workflow-hardening', () => {
     const { code, out } = run('assert-workflow-hardening.mjs', { args: [buildShards('wh-shard-bare', 4, { shard: 2, step: 7 })] });
     assert.equal(code, 1, out);
     assert.match(out, /ci\.yml:\d+ job "guards-s2" step "Guard 2\.7" has no `if:`/);
+  });
+
+  // ⏱ 2026-09-26 · `node --single-threaded tooling/ci/assert-….mjs` did not read as an
+  // assert step, so four flagged steps in ci.yml sat outside this limb. With the old
+  // pattern this case exits 2: the bare step drops out and the fixture reads 99 < 100.
+  test('limb 11 — a step run as `node --single-threaded …` is an assert step too: bare, it FAILS', () => {
+    const { code, out } = run('assert-workflow-hardening.mjs', {
+      args: [buildShards('wh-shard-flagged', 4, { shard: 1, step: 3, flags: '--single-threaded --stack-size=900' })],
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /ci\.yml:\d+ job "guards-s1" step "Guard 1\.3" has no `if:`/);
   });
 
   test('limb 11 — every assert step carrying it PASSES, and the ok block says what it judged', () => {
@@ -1343,6 +1356,70 @@ describe('assert-workflow-hardening', () => {
     });
     assert.equal(code, 0, out);
     assert.match(out, /limb 12 — 2 `for … in` loop\(s\) across every `run:` body; none loops over a `\$\(…\)`/);
+  });
+
+  // ── limb 13 · ⏱ 2026-09-26 · main run 36224483330 ─────────────────────────────
+  // wrangler-action's `secrets:` input edits the Worker's secrets before its command,
+  // and Cloudflare refuses that edit after a rollback. Two ordinary workflows plus one
+  // Worker deploy job that limb 10 grades as a publisher, so it carries its
+  // `environment:` and its first-step ref check; every other limb is held green.
+  const buildWrangler = (name, deploySteps) => {
+    const files = {};
+    for (const f of ['a', 'b']) files[`.github/workflows/${f}.yml`] = wf(Array.from({ length: 4 }, (_, i) => `actions/act${i}@${SHA}`));
+    files['.github/workflows/dep.yml'] =
+      'name: D\non: push\npermissions:\n  contents: read\njobs:\n  platform:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n' +
+      `    environment: production\n    steps:\n      - uses: actions/checkout@${SHA}\n` +
+      '      - name: Refuse any ref but main\n        run: node tooling/ci/assert-deploy-ref.mjs --allow main\n' +
+      deploySteps;
+    return fixture(name, files);
+  };
+  const WITH_SECRETS_INPUT =
+    `      - uses: cloudflare/wrangler-action@${SHA}\n        id: deploy\n        with:\n          accountId: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}\n` +
+    '          secrets: |\n            SUPABASE_ANON_KEY\n          command: deploy --var RELEASE:${{ github.sha }}\n' +
+    '        env:\n          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}\n';
+  const WITH_SECRETS_FILE =
+    "      - name: Write this version's secrets file\n        env:\n          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}\n" +
+    '        run: node write.mjs "$RUNNER_TEMP/s.json"\n' +
+    `      - uses: cloudflare/wrangler-action@${SHA}\n        id: deploy\n        with:\n          accountId: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}\n` +
+    '          command: deploy --var RELEASE:${{ github.sha }} --secrets-file ${{ runner.temp }}/s.json\n' +
+    "      - name: Delete this version's secrets file\n        if: always()\n        run: rm -f \"$RUNNER_TEMP/s.json\"\n";
+
+  test('limb 13 — a wrangler-action `secrets:` input FAILS, naming the file, the line, the job and the step', () => {
+    const { code, out } = run('assert-workflow-hardening.mjs', { args: [buildWrangler('wh-wrangler-secrets', WITH_SECRETS_INPUT)] });
+    assert.equal(code, 1, out);
+    assert.match(out, /dep\.yml:\d+ job "platform" step "deploy" hands `secrets:` to cloudflare\/wrangler-action/);
+    assert.match(out, /`--secrets-file <path>`/);
+  });
+
+  test('limb 13 — the `--secrets-file` shape PASSES, and the ok block counts the wrangler-action steps it judged', () => {
+    const { code, out } = run('assert-workflow-hardening.mjs', { args: [buildWrangler('wh-wrangler-file', WITH_SECRETS_FILE)] });
+    assert.equal(code, 0, out);
+    assert.match(out, /limb 13 — 1 cloudflare\/wrangler-action step\(s\), none with a `secrets:` input \(a raw read of their lines agrees, 0\)/);
+  });
+
+  test('COVERAGE LOST when limb 13 stops seeing a `secrets:` key a raw read of the step still finds', () => {
+    // A COPY whose `with:` lookup asks for a key no step has goes blind while the raw
+    // read does not; the unmutated copy runs first, and must exit 1 on the same root.
+    const dir = buildWrangler('wh-wrangler-cov-root', WITH_SECRETS_INPUT);
+    const src = readFileSync(join(CI_DIR, 'assert-workflow-hardening.mjs'), 'utf8');
+    const SUBJECT = "s.with.get('secrets')";
+    const code = stripSourceComments(src, '.mjs');
+    assert.equal(code.split(SUBJECT).length - 1, 1, 'the `with:` lookup must appear exactly once outside comments');
+    const at = code.indexOf(SUBJECT);
+    const modules = {};
+    for (const m of ['tree-walk.mjs', 'workflow-scan.mjs', 'flutter-release-build.mjs', 'app-set.mjs']) modules[m] = readFileSync(join(CI_DIR, m), 'utf8');
+    modules['../app-yaml/yaml.mjs'] = readFileSync(join(CI_DIR, '..', 'app-yaml', 'yaml.mjs'), 'utf8'); // ⏱ 2026-09-26: the composer's import (O-FLUTTER-BUILD-TYPED-PER-LINE)
+    const copy = (name, body) => join(fixture(name, { ...modules, 'g.mjs': body }), 'g.mjs');
+    const exec = (script) => {
+      const r = spawnSync(process.execPath, [script, dir], { cwd: ROOT, encoding: 'utf8' });
+      return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+    };
+    const control = exec(copy('wh-wrangler-cov-control', src));
+    assert.equal(control.code, 1, control.out);
+    assert.match(control.out, /hands `secrets:` to cloudflare\/wrangler-action/);
+    const blind = exec(copy('wh-wrangler-cov-off', `${src.slice(0, at)}s.with.get('secretz')${src.slice(at + SUBJECT.length)}`));
+    assert.equal(blind.code, 2, blind.out);
+    assert.match(blind.out, /COVERAGE LOST — limb 13 judged 0 wrangler-action `secrets:` input\(s\) from their `with:` field, but a raw read of those steps' lines finds 1/);
   });
 
   test('limb 11 — THREE shards is COVERAGE LOST (2), never a pass over a remnant', () => {
@@ -1948,7 +2025,8 @@ describe('assert-workflow-hardening', () => {
       const at = code.indexOf(SUBJECT);
       const mutate = () => `${src.slice(0, at)}if (false) continue;${src.slice(at + SUBJECT.length)}`;
       const modules = {};
-      for (const m of ['tree-walk.mjs', 'workflow-scan.mjs']) modules[m] = readFileSync(join(CI_DIR, m), 'utf8');
+      for (const m of ['tree-walk.mjs', 'workflow-scan.mjs', 'flutter-release-build.mjs', 'app-set.mjs']) modules[m] = readFileSync(join(CI_DIR, m), 'utf8');
+    modules['../app-yaml/yaml.mjs'] = readFileSync(join(CI_DIR, '..', 'app-yaml', 'yaml.mjs'), 'utf8'); // ⏱ 2026-09-26: the composer's import (O-FLUTTER-BUILD-TYPED-PER-LINE)
       const root = build('wh-canary-root');
       const copy = (name, body) => join(fixture(name, { ...modules, 'g.mjs': body }), 'g.mjs');
       const exec = (at) => {
@@ -2070,7 +2148,8 @@ describe('assert-workflow-hardening', () => {
     const copyHarness = () => {
       const src = readFileSync(join(CI_DIR, 'assert-workflow-hardening.mjs'), 'utf8');
       const modules = {};
-      for (const m of ['tree-walk.mjs', 'workflow-scan.mjs']) modules[m] = readFileSync(join(CI_DIR, m), 'utf8');
+      for (const m of ['tree-walk.mjs', 'workflow-scan.mjs', 'flutter-release-build.mjs', 'app-set.mjs']) modules[m] = readFileSync(join(CI_DIR, m), 'utf8');
+    modules['../app-yaml/yaml.mjs'] = readFileSync(join(CI_DIR, '..', 'app-yaml', 'yaml.mjs'), 'utf8'); // ⏱ 2026-09-26: the composer's import (O-FLUTTER-BUILD-TYPED-PER-LINE)
       const root = build('wh-expr-harness-root');
       const copy = (name, body) => join(fixture(name, { ...modules, 'g.mjs': body }), 'g.mjs');
       const exec = (script) => {
@@ -4959,7 +5038,17 @@ group('property: onboarding-shown-once', () {
 });
 group('property: ui-invariants-inherited', () {
   testWidgets('q', (t) async {});
-  testWidgets('r', (t) async {});
+  testWidgets(
+    'every tap target on every declared route is at least 48px',
+    (t) async {},
+    variant: const TargetPlatformVariant(<TargetPlatform>{
+      TargetPlatform.android,
+      TargetPlatform.iOS,
+      TargetPlatform.linux,
+      TargetPlatform.macOS,
+      TargetPlatform.windows,
+    }),
+  );
   test('s', () {});
   testWidgets('u', (t) async {});
 });
@@ -5093,6 +5182,17 @@ class _NotificationTapGateState extends ConsumerState<_NotificationTapGate> {
   // fixture carries that file too — Material's exact 600 boundary and all FIVE
   // classes. 640 is not a Material breakpoint and was the live bug.
   const SCAFFOLD = 'packages/design_system/lib/src/widgets/app_scaffold.dart';
+  // O-DESKTOP-TAP-TARGETS-BELOW-48. The shared theme, for the padded-tap-target
+  // anchor on ui-invariants-inherited: the ThemeData constructor call as the
+  // real file writes it.
+  const BUILD_THEME = 'packages/design_system/lib/src/theme/build_app_theme.dart';
+  const goodBuildTheme = `
+  final ThemeData base = ThemeData(
+    useMaterial3: true,
+    brightness: brightness,
+    materialTapTargetSize: MaterialTapTargetSize.padded,
+  );
+`;
   const goodScaffold = `
 class AppBreakpoints {
   static const double medium = 600;
@@ -6059,11 +6159,11 @@ onTap: () => _openUrl(AppConfig.termsUrl),
 onTap: () => _openUrl(AppConfig.refundUrl),
 `;
 
-  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, packRail = goodPackRail, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, authAdapter = goodAuthAdapter, settings = goodSettings, router = goodRouter, signUp = goodSignUp, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, tapObserver = goodTapObserver, accountRoute = goodAccountRoute, moneyProviders = goodMoneyProviders, home = goodHome, coreCache = goodCoreCache, coreLifecycle = goodCoreLifecycle, workspace = goodWorkspace, appConfig = goodAppConfig, siteIntegrity = goodSiteIntegrity, legalLinks = goodLegalLinks, permissionProbe = goodPermissionProbe, subscriptiontrackerMain = goodSublyMain, subscriptiontrackerNotifs = goodSublyNotifs, paywall = goodPaywall, moneyFunnel = goodMoneyFunnel, platformTypes = goodPlatformTypes, platformCatalogue = goodPlatformCatalogue, platformConfigData = goodPlatformConfigData, channelRegister = goodChannelRegister, extra = {}, omitArbTa = false, omitProp = false, omitTapObserver = false } = {}) => {
+  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, packRail = goodPackRail, themeX = goodThemeX, scaffold = goodScaffold, buildTheme = goodBuildTheme, authBarrel = goodAuthBarrel, authAdapter = goodAuthAdapter, settings = goodSettings, router = goodRouter, signUp = goodSignUp, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, tapObserver = goodTapObserver, accountRoute = goodAccountRoute, moneyProviders = goodMoneyProviders, home = goodHome, coreCache = goodCoreCache, coreLifecycle = goodCoreLifecycle, workspace = goodWorkspace, appConfig = goodAppConfig, siteIntegrity = goodSiteIntegrity, legalLinks = goodLegalLinks, permissionProbe = goodPermissionProbe, subscriptiontrackerMain = goodSublyMain, subscriptiontrackerNotifs = goodSublyNotifs, paywall = goodPaywall, moneyFunnel = goodMoneyFunnel, platformTypes = goodPlatformTypes, platformCatalogue = goodPlatformCatalogue, platformConfigData = goodPlatformConfigData, channelRegister = goodChannelRegister, extra = {}, omitArbTa = false, omitProp = false, omitTapObserver = false } = {}) => {
     // The pack rail is APPENDED rather than folded into `goodProviders` so the
     // many cases that replace `providers` wholesale keep satisfying it — and so
     // the cases that are ABOUT the pack rail can drop it on its own.
-    const files = { [APP]: app, [BRICK_WEB_INDEX]: webIndex, [BRICK_PROVIDERS]: providers + packRail, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [AUTH_ADAPTER]: authAdapter, [SETTINGS]: settings + legalLinks, [ROUTER]: router, [SIGN_UP]: signUp, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [CORE_LIFECYCLE]: coreLifecycle, [WORKSPACE]: workspace, [APP_CONFIG]: appConfig, [SITE_INTEGRITY]: siteIntegrity, [PERMISSION_PROBE]: permissionProbe, [SUBLY_MAIN]: subscriptiontrackerMain, [SUBLY_NOTIFS]: subscriptiontrackerNotifs, [PAYWALL]: paywall, [MONEY_FUNNEL]: moneyFunnel, [PLATFORM_TYPES]: platformTypes, [PLATFORM_CATALOGUE]: platformCatalogue, [PLATFORM_CONFIG_DATA]: platformConfigData, [CHANNEL_REGISTER]: channelRegister, ...extra };
+    const files = { [APP]: app, [BRICK_WEB_INDEX]: webIndex, [BRICK_PROVIDERS]: providers + packRail, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [BUILD_THEME]: buildTheme, [AUTH_BARREL]: authBarrel, [AUTH_ADAPTER]: authAdapter, [SETTINGS]: settings + legalLinks, [ROUTER]: router, [SIGN_UP]: signUp, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [CORE_LIFECYCLE]: coreLifecycle, [WORKSPACE]: workspace, [APP_CONFIG]: appConfig, [SITE_INTEGRITY]: siteIntegrity, [PERMISSION_PROBE]: permissionProbe, [SUBLY_MAIN]: subscriptiontrackerMain, [SUBLY_NOTIFS]: subscriptiontrackerNotifs, [PAYWALL]: paywall, [MONEY_FUNNEL]: moneyFunnel, [PLATFORM_TYPES]: platformTypes, [PLATFORM_CATALOGUE]: platformCatalogue, [PLATFORM_CONFIG_DATA]: platformConfigData, [CHANNEL_REGISTER]: channelRegister, ...extra };
     if (!omitArbTa) files[ARB_TA] = arbTa;
     if (!omitProp) files[PROP] = propTest;
     // [13]T-9 Omittable on its own, because "the observer file is not there at

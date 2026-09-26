@@ -32,7 +32,7 @@ import 'dart:io';
 // integrity check runs rather than being handed a digest it cannot refuse.
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart'
-    show debugDefaultTargetPlatformOverride;
+    show debugDefaultTargetPlatformOverride, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 // SemanticsNode — the icon-label limb asserts on what a SCREEN READER receives,
 // not on a widget field a screen reader never sees.
@@ -1247,71 +1247,90 @@ void main() {
     // reliably hit; both platforms' own guidance says so. This limb used to
     // range over `find.byType(NavigationDestination)` on ONE screen, so the
     // other seven surfaces the router declares were outside it entirely.
-    testWidgets('every tap target on every declared route is at least 48px', (
-      WidgetTester tester,
-    ) async {
-      // A PHONE-sized window, explicitly. Flutter's default test surface is
-      // 800x600, and 800 now resolves to `medium` — a rail, not a bottom bar —
-      // so this limb silently had nothing to measure until the size was pinned.
-      // Tap-target size matters most exactly here, on touch.
-      await tester.binding.setSurfaceSize(const Size(400, 800));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      final ProviderContainer c = await _signedInContainer(_MemStore());
-      addTearDown(c.dispose);
-      await tester.pumpWidget(
-        UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
-      );
-      await _turns(tester);
+    //
+    // ⏱ 2026-09-25 · O-DESKTOP-TAP-TARGETS-BELOW-48. This limb ran on android
+    // alone, and `ThemeData` derives the tap-target size and the density from
+    // the platform: `shrinkWrap` and compact on linux, macOS and windows, so no
+    // desktop size was ever measured here. The variant runs the limb on all five
+    // platforms, and the stamped app builds its theme inside the test body, so
+    // each run grades that platform's theme. The set is written AT the
+    // `variant:` argument rather than in a shared constant: that is where
+    // assert-stamp-properties.mjs anchors it, and a constant would stay
+    // declared with the argument deleted.
+    testWidgets(
+      'every tap target on every declared route is at least 48px',
+      (WidgetTester tester) async {
+        // A PHONE-sized window, explicitly. Flutter's default test surface is
+        // 800x600, and 800 now resolves to `medium` — a rail, not a bottom bar —
+        // so this limb silently had nothing to measure until the size was pinned.
+        // Tap-target size matters most exactly here, on touch.
+        await tester.binding.setSurfaceSize(const Size(400, 800));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final ProviderContainer c = await _signedInContainer(_MemStore());
+        addTearDown(c.dispose);
+        await tester.pumpWidget(
+          UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
+        );
+        await _turns(tester);
 
-      final _DeclaredRoutes routes = _declaredRoutes();
-      final List<String> visited = <String>[];
-      int examined = 0;
-      for (final String surface in routes.surfaces) {
-        final String landed = await _pumpAt(tester, c, surface);
-        visited.add(surface);
-        examined += _interactiveControlCount(tester);
-        for (final Element e in _iconOnlyControls(tester)) {
-          final Size size = tester.getSize(find.byWidget(e.widget));
-          expect(
-            size.shortestSide,
-            greaterThanOrEqualTo(48.0),
-            reason:
-                'route "$surface" (landed on "$landed") carries a '
-                '${e.widget.runtimeType} of ${size.width}x${size.height} whose '
-                'only affordance is a glyph — below the 48px floor both '
-                'platforms publish',
-          );
+        final _DeclaredRoutes routes = _declaredRoutes();
+        final List<String> visited = <String>[];
+        int examined = 0;
+        for (final String surface in routes.surfaces) {
+          final String landed = await _pumpAt(tester, c, surface);
+          visited.add(surface);
+          examined += _interactiveControlCount(tester);
+          for (final Element e in _iconOnlyControls(tester)) {
+            final Size size = tester.getSize(find.byWidget(e.widget));
+            expect(
+              size.shortestSide,
+              greaterThanOrEqualTo(48.0),
+              reason:
+                  'route "$surface" (landed on "$landed") on '
+                  '$defaultTargetPlatform carries a '
+                  '${e.widget.runtimeType} of ${size.width}x${size.height} whose '
+                  'only affordance is a glyph — below the 48px floor both '
+                  'platforms publish',
+            );
+          }
         }
-      }
 
-      // ── NON-EMPTY DOMAIN, asserted in AGGREGATE and not per route. ────────
-      // 🔴 Measured, not reasoned. The per-route version of this went red on
-      // `/paywall`, and `/paywall` was right: with no purchase rail configured
-      // the screen correctly renders one sentence saying so, and nothing to
-      // press. A screen may legitimately have nothing to tap; the LIMB may not
-      // legitimately have inspected nothing. So the floor sits here, where it
-      // catches a pump that silently stopped rendering anything at all.
-      expect(
-        examined,
-        greaterThan(0),
-        reason:
-            'not one interactive control was found across '
-            '${routes.surfaces.length} routes — the size check ranged over ∅ '
-            'and reported clean',
-      );
-      // NOT `expect(covered, greaterThan(n))`. A count is a number somebody
-      // lowers; this is the relationship, and the only way to shrink the domain
-      // is to delete a route from the router itself.
-      expect(
-        visited.length,
-        routes.paths.length + (routes.hasErrorBuilder ? 1 : 0),
-        reason:
-            'visited ${visited.length} surfaces but router.dart declares '
-            '${routes.paths.length} GoRoute(s)'
-            '${routes.hasErrorBuilder ? ' plus an errorBuilder' : ''} — a '
-            'screen would be outside every UI invariant above',
-      );
-    });
+        // ── NON-EMPTY DOMAIN, asserted in AGGREGATE and not per route. ────────
+        // 🔴 Measured, not reasoned. The per-route version of this went red on
+        // `/paywall`, and `/paywall` was right: with no purchase rail configured
+        // the screen correctly renders one sentence saying so, and nothing to
+        // press. A screen may legitimately have nothing to tap; the LIMB may not
+        // legitimately have inspected nothing. So the floor sits here, where it
+        // catches a pump that silently stopped rendering anything at all.
+        expect(
+          examined,
+          greaterThan(0),
+          reason:
+              'not one interactive control was found across '
+              '${routes.surfaces.length} routes — the size check ranged over ∅ '
+              'and reported clean',
+        );
+        // NOT `expect(covered, greaterThan(n))`. A count is a number somebody
+        // lowers; this is the relationship, and the only way to shrink the domain
+        // is to delete a route from the router itself.
+        expect(
+          visited.length,
+          routes.paths.length + (routes.hasErrorBuilder ? 1 : 0),
+          reason:
+              'visited ${visited.length} surfaces but router.dart declares '
+              '${routes.paths.length} GoRoute(s)'
+              '${routes.hasErrorBuilder ? ' plus an errorBuilder' : ''} — a '
+              'screen would be outside every UI invariant above',
+        );
+      },
+      variant: const TargetPlatformVariant(<TargetPlatform>{
+        TargetPlatform.android,
+        TargetPlatform.iOS,
+        TargetPlatform.linux,
+        TargetPlatform.macOS,
+        TargetPlatform.windows,
+      }),
+    );
 
     // LIMB 3 — ADAPTIVE LAYOUT at Material's exact boundaries. Asserted on the
     // PURE resolver, so the five classes are checked at their exact edges rather

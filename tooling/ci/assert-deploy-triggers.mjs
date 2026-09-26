@@ -94,6 +94,7 @@ import {
   UNITS_REL, readUnits, plannedEnvironments, unitKeyFor, globClaims,
   relativeSpecifiersOf, resolveSpecifier, bundledFilesUnder, claimedTree,
 } from './assert-deploy-triggers-deploy.mjs';
+import { parseWorkflow, flutterBuilds } from './workflow-scan.mjs';
 
 const ROOT = resolve(process.argv[2] ?? process.cwd());
 const WF_DIR = join(ROOT, '.github', 'workflows');
@@ -163,6 +164,12 @@ const stripComments = (raw) =>
     .map((l) => l.replace(/(^|\s)#.*$/, '$1'))
     .join('\n');
 
+/** Every `flutter build` workflow-scan's census finds in one workflow file. */
+function laneBuilds(name) {
+  const wf = parseWorkflow(ROOT, `.github/workflows/${name}`);
+  return wf === null ? [] : flutterBuilds(ROOT, [wf]);
+}
+
 const files = listDir(WF_DIR).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'));
 const problems = [];
 const undecidable = [];
@@ -172,8 +179,14 @@ let checks = 0;
 for (const name of files) {
   const text = stripComments(readFileSync(join(WF_DIR, name), 'utf8'));
 
-  // Only lanes that actually resolve the Dart workspace are in scope.
-  if (!/flutter\s+(build|pub\s+get)/.test(text)) continue;
+  // Only lanes that actually resolve the Dart workspace are in scope: one that
+  // runs `flutter pub get`, or one workflow-scan's census finds a build in.
+  // ⏱ CHANGED 2026-09-25 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 2 of 3): the build half was
+  // `/flutter\s+build/` on this text, which a lane building only through
+  // tooling/ci/flutter-release-build.mjs never matches. The census composes
+  // that call into its `flutter build`, in every mode, so that lane stays a
+  // build lane and its filter is still graded.
+  if (!/flutter\s+pub\s+get/.test(text) && laneBuilds(name).length === 0) continue;
 
   // A Flutter workflow that plans no unit publishes nothing through a plan, so
   // there is no unit to under-claim. An environment with NO unit is

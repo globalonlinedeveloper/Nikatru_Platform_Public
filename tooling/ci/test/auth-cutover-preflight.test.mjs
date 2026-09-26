@@ -100,17 +100,52 @@ const ST_HEALTH = 'https://subscriptiontracker-api.example.test/v1/health';
 const KEY_X = 'x-CANARY-KEYMATERIAL';
 const TARGET_JWKS = { keys: [{ kty: 'EC', crv: 'P-256', alg: 'ES256', kid: 'k1', x: KEY_X, y: 'y1' }] };
 const HOSTED_JWKS = { keys: [{ kty: 'EC', crv: 'P-256', alg: 'ES256', kid: 'hosted-k0', x: KEY_X, y: 'y0' }] };
-/** A Cloudflare script-settings answer whose SUPABASE_URL is `text` of `type`
- *  (null = no SUPABASE_URL binding; secret_text carries no text, as live). */
-const workerSettings = (text, type = 'plain_text') => json({
+/** A Worker's bindings whose SUPABASE_URL is `text` of `type` (null = no
+ *  SUPABASE_URL binding; secret_text carries no text, as live). */
+const bindings = (text, type = 'plain_text') => [
+  { name: 'APP_ID', type: 'plain_text', text: 'platform' },
+  ...(text === null ? [] : [type === 'secret_text' ? { name: 'SUPABASE_URL', type } : { name: 'SUPABASE_URL', type, text }]),
+];
+/** A Cloudflare script-settings answer: the NEWEST UPLOADED version's bindings,
+ *  whether or not that version serves. C9 no longer reads it; the routes keep it
+ *  so a read of it is a read of the wrong version, as live. */
+const workerSettings = (text, type) => json({ success: true, errors: [], result: { bindings: bindings(text, type) } });
+// Version ids, shaped as live (a uuid; the lines print the first 8 characters).
+const V_ACTIVE = 'a1a1a1a1-0000-4000-8000-000000000001';
+const V_NEWEST = 'b2b2b2b2-0000-4000-8000-000000000002';
+const V_CANARY = 'c3c3c3c3-0000-4000-8000-000000000003';
+/** `/deployments`: the active deployment first, with its versions and traffic
+ *  share, then an older one; `served` is [[versionId, percentage], ...]. */
+const deploymentsOf = (served = [[V_ACTIVE, 100]]) => json({
   success: true,
   errors: [],
   result: {
-    bindings: [
-      { name: 'APP_ID', type: 'plain_text', text: 'platform' },
-      ...(text === null ? [] : [type === 'secret_text' ? { name: 'SUPABASE_URL', type } : { name: 'SUPABASE_URL', type, text }]),
+    deployments: [
+      { id: 'd1d1d1d1-0000-4000-8000-000000000001', created_on: '2026-09-26T05:36:04Z', source: 'wrangler', strategy: 'percentage', versions: served.map(([version_id, percentage]) => ({ version_id, percentage })) },
+      { id: 'd0d0d0d0-0000-4000-8000-000000000000', created_on: '2026-09-26T02:16:40Z', source: 'wrangler', strategy: 'percentage', versions: [{ version_id: 'e0e0e0e0-0000-4000-8000-000000000000', percentage: 100 }] },
     ],
   },
+});
+/** `/versions/<id>`: that version's bindings, under result.resources as live. */
+const versionOf = (id, text, type) => json({ success: true, errors: [], result: { id, number: 7, metadata: { created_on: '2026-09-26T02:16:40Z', source: 'wrangler' }, resources: { bindings: bindings(text, type), script: { etag: 'e' } } } });
+/** `/versions`: the newest uploaded version first. */
+const versionsList = (...ids) => json({ success: true, errors: [], result: { items: ids.map((id, i) => ({ id, number: 9 - i, metadata: { created_on: `2026-09-26T06:2${6 - i}:36Z`, source: 'wrangler' } })) } });
+/** The routes for one Worker whose active deployment serves V_ACTIVE with
+ *  SUPABASE_URL `text` of `type`, and whose newest uploaded version is V_ACTIVE. */
+const serving = (script, text, type) => ({
+  [`${CF}/workers/scripts/${script}/settings`]: () => workerSettings(text, type),
+  [`${CF}/workers/scripts/${script}/deployments`]: () => deploymentsOf(),
+  [`${CF}/workers/scripts/${script}/versions/${V_ACTIVE}`]: () => versionOf(V_ACTIVE, text, type),
+  [`${CF}/workers/scripts/${script}/versions`]: () => versionsList(V_ACTIVE, 'e0e0e0e0-0000-4000-8000-000000000000'),
+});
+/** A Worker after a rollback: the active deployment serves V_ACTIVE (`active`),
+ *  and a NEWER upload V_NEWEST (`newest`) does not serve — /settings answers it. */
+const rolledBack = (script, { active, newest }) => ({
+  [`${CF}/workers/scripts/${script}/settings`]: () => workerSettings(newest),
+  [`${CF}/workers/scripts/${script}/deployments`]: () => deploymentsOf(),
+  [`${CF}/workers/scripts/${script}/versions/${V_ACTIVE}`]: () => versionOf(V_ACTIVE, active),
+  [`${CF}/workers/scripts/${script}/versions/${V_NEWEST}`]: () => versionOf(V_NEWEST, newest),
+  [`${CF}/workers/scripts/${script}/versions`]: () => versionsList(V_NEWEST, V_ACTIVE),
 });
 /** A /v1/health body: the jwks entry is an ARRAY entry of checks[], as live. */
 const health = (status = 'ok', reason = null) => json({
@@ -185,9 +220,10 @@ function fakeFetch(over = {}) {
     [MAIL_URL['magic-link.html']]: () => new Response(MAIL['magic-link.html']),
     [MAIL_URL['reset-password.html']]: () => new Response(MAIL['reset-password.html']),
     // The state read at 17:20Z on 2026-09-24: both Workers on the hosted origin,
-    // plain_text; the JWKS key absent from KV; both health readings ok.
-    [`${CF}/workers/scripts/platform/settings`]: () => workerSettings(HOSTED),
-    [`${CF}/workers/scripts/subscriptiontracker-api/settings`]: () => workerSettings(HOSTED),
+    // plain_text, the newest upload the one serving; the JWKS key absent from KV;
+    // both health readings ok.
+    ...serving('platform', HOSTED),
+    ...serving('subscriptiontracker-api', HOSTED),
     [KV_VALUE]: KV_ABSENT,
     [`${CF}/storage/kv/namespaces/${KV_NS}`]: () => json({ success: true, errors: [], result: { id: KV_NS, title: 'jwks-cache' } }),
     [PLATFORM_HEALTH]: () => health(),
@@ -521,7 +557,7 @@ const assertNothingSecret = (text) => {
 };
 const cfCalls = (calls) => calls.filter((c) => c.url.startsWith('https://api.cloudflare.com/'));
 
-/** C9 as runPreflight chains it: the settings read, then the grade. */
+/** C9 as runPreflight chains it: the active deployment's read, then the grade. */
 async function c9({ root = makeRoot(), phase = 'pre', over = {}, env = CF_ENV } = {}) {
   const doFetch = fakeFetch(over);
   const fleet = cutoverWorkers(root);
@@ -537,7 +573,7 @@ async function c10({ root = makeRoot(), phase = 'pre', over = {}, env = CF_ENV }
   return { ...r, calls: doFetch.calls };
 }
 
-/** C11 as runPreflight chains it: C9's settings read, then each health route. */
+/** C11 as runPreflight chains it: C9's active-deployment read, then each health route. */
 async function c11({ root = makeRoot(), phase = 'pre', over = {}, env = CF_ENV } = {}) {
   const doFetch = fakeFetch(over);
   const fleet = cutoverWorkers(root);
@@ -545,10 +581,8 @@ async function c11({ root = makeRoot(), phase = 'pre', over = {}, env = CF_ENV }
   return { ...await checkWorkersHealth({ phase, target: TARGET, fleet, reads, doFetch }), calls: doFetch.calls };
 }
 
-const bothSettings = (text, type) => ({
-  [`${CF}/workers/scripts/platform/settings`]: () => workerSettings(text, type),
-  [`${CF}/workers/scripts/subscriptiontracker-api/settings`]: () => workerSettings(text, type),
-});
+const bothServing = (text, type) => ({ ...serving('platform', text, type), ...serving('subscriptiontracker-api', text, type) });
+const bothRolledBack = (states) => ({ ...rolledBack('platform', states), ...rolledBack('subscriptiontracker-api', states) });
 
 describe('C9-C11 inputs — the Workers, the namespace and the key are derived, never listed', () => {
   test('every config that binds JWKS_CACHE, by name, with the custom domain named after it', () => {
@@ -586,35 +620,61 @@ describe('C9-C11 inputs — the Workers, the namespace and the key are derived, 
   });
 });
 
-describe('C9 live Worker vars — SUPABASE_URL as Cloudflare holds it on each Worker', () => {
-  test('pre PASS: both Workers hold the hosted origin C2 reads, as plain_text, and the token went in the header', async () => {
+describe('C9 live Worker vars — SUPABASE_URL as each Worker ACTIVE deployment serves it', () => {
+  const settingsCalls = (calls) => calls.filter((c) => c.url.endsWith('/settings'));
+
+  test('pre PASS: both Workers serve the hosted origin C2 reads, as plain_text, read from the active deployment, the token in the header', async () => {
     const r = await c9();
     assert.equal(r.verdict, 'PASS', r.detail);
-    assert.match(r.detail, /plain_text https:\/\/abcdefghijklmnop\.supabase\.co \(the pre origin\) on platform, subscriptiontracker-api/);
-    assert.equal(cfCalls(r.calls).length, 2);
+    assert.match(r.detail, /plain_text https:\/\/abcdefghijklmnop\.supabase\.co \(the pre origin\) on platform, subscriptiontracker-api, read from each ACTIVE deployment: platform a1a1a1a1 \(100%\), subscriptiontracker-api a1a1a1a1 \(100%\)/);
+    // Per Worker: /deployments, /versions/<the serving id>, /versions (the newest).
+    assert.deepEqual(cfCalls(r.calls).map((c) => c.url.slice(CF.length)), [
+      '/workers/scripts/platform/deployments',
+      `/workers/scripts/platform/versions/${V_ACTIVE}`,
+      '/workers/scripts/platform/versions',
+      '/workers/scripts/subscriptiontracker-api/deployments',
+      `/workers/scripts/subscriptiontracker-api/versions/${V_ACTIVE}`,
+      '/workers/scripts/subscriptiontracker-api/versions',
+    ]);
     assert.ok(cfCalls(r.calls).every((c) => c.headers.Authorization === `Bearer ${CF_TOKEN}`));
+    // The newest upload is the one serving: nothing to name.
+    assert.doesNotMatch(r.detail, /newest UPLOADED/);
     assertNothingSecret(said(r));
   });
 
-  test('post PASS when both Workers hold the target', async () => {
-    const r = await c9({ phase: 'post', over: bothSettings(`${TARGET}/`) });
+  test('post PASS when both Workers serve the target', async () => {
+    const r = await c9({ phase: 'post', over: bothServing(`${TARGET}/`) });
     assert.equal(r.verdict, 'PASS', r.detail);
   });
 
-  test('pre FAIL when one Worker holds another origin, and it names that Worker', async () => {
-    const r = await c9({ over: { [`${CF}/workers/scripts/subscriptiontracker-api/settings`]: () => workerSettings('https://other.example.test') } });
+  test('pre FAIL when one Worker serves another origin, and it names that Worker and the version', async () => {
+    const r = await c9({ over: serving('subscriptiontracker-api', 'https://other.example.test') });
     assert.equal(r.verdict, 'FAIL');
-    assert.match(r.detail, /subscriptiontracker-api: SUPABASE_URL is https:\/\/other\.example\.test, not the pre origin https:\/\/abcdefghijklmnop\.supabase\.co/);
+    assert.match(r.detail, /subscriptiontracker-api: SUPABASE_URL is https:\/\/other\.example\.test, not the pre origin https:\/\/abcdefghijklmnop\.supabase\.co \(active version a1a1a1a1 \(100%\)\)/);
     assert.match(r.detail, /platform: plain_text/);
   });
 
   test('FAIL on a secret_text binding, and on a missing one — the design says plain_text', async () => {
-    const secret = await c9({ over: { [`${CF}/workers/scripts/platform/settings`]: () => workerSettings(HOSTED, 'secret_text') } });
+    const secret = await c9({ over: serving('platform', HOSTED, 'secret_text') });
     assert.equal(secret.verdict, 'FAIL');
     assert.match(secret.detail, /platform: SUPABASE_URL is secret_text, whose value is never returned — the design says plain_text/);
-    const missing = await c9({ over: { [`${CF}/workers/scripts/platform/settings`]: () => workerSettings(null) } });
+    const missing = await c9({ over: serving('platform', null) });
     assert.equal(missing.verdict, 'FAIL');
     assert.match(missing.detail, /platform: no SUPABASE_URL binding — the design says plain_text/);
+  });
+
+  test('pre FAIL when the active deployment splits traffic and one serving version holds another origin — that version is named', async () => {
+    const r = await c9({
+      over: {
+        [`${CF}/workers/scripts/platform/deployments`]: () => deploymentsOf([[V_ACTIVE, 90], [V_CANARY, 10]]),
+        [`${CF}/workers/scripts/platform/versions/${V_CANARY}`]: () => versionOf(V_CANARY, TARGET),
+        [`${CF}/workers/scripts/platform/versions`]: () => versionsList(V_CANARY, V_ACTIVE),
+      },
+    });
+    assert.equal(r.verdict, 'FAIL');
+    assert.match(r.detail, /platform: version a1a1a1a1 \(90%\) plain_text https:\/\/abcdefghijklmnop\.supabase\.co, version c3c3c3c3 \(10%\) SUPABASE_URL is https:\/\/auth-api\.example\.test, not the pre origin/);
+    // The newest upload serves 10%: it is one that serves, so it is not named apart.
+    assert.doesNotMatch(r.detail, /newest UPLOADED/);
   });
 
   test('LOST without the token, with the reason — and no Cloudflare call is made', async () => {
@@ -627,22 +687,61 @@ describe('C9 live Worker vars — SUPABASE_URL as Cloudflare holds it on each Wo
   test('LOST when Cloudflare refuses the token (HTTP 403), quoting its error code, never the account id', async () => {
     const r = await c9({ env: { CLOUDFLARE_API_TOKEN: 'tok-FAKE-REVOKED', CLOUDFLARE_ACCOUNT_ID: CF_ACCOUNT } });
     assert.equal(r.verdict, 'LOST');
-    assert.match(r.detail, /GET \/accounts\/<account>\/workers\/scripts\/platform\/settings answered HTTP 403 \(10000 Authentication error\)/);
+    assert.match(r.detail, /GET \/accounts\/<account>\/workers\/scripts\/platform\/deployments answered HTTP 403 \(10000 Authentication error\)/);
     assertNothingSecret(said(r));
   });
 
   test('LOST on a network error, and a message that carries the URL is scrubbed of the account id', { timeout: 30_000 }, async () => {
-    const r = await c9({ over: { [`${CF}/workers/scripts/platform/settings`]: () => { throw new TypeError(`fetch failed: ${CF}/workers/scripts/platform/settings`); } } });
+    const r = await c9({ over: { [`${CF}/workers/scripts/platform/deployments`]: () => { throw new TypeError(`fetch failed: ${CF}/workers/scripts/platform/deployments`); } } });
     assert.equal(r.verdict, 'LOST');
-    assert.match(r.detail, /platform: GET \/accounts\/<account>\/workers\/scripts\/platform\/settings failed/);
+    assert.match(r.detail, /platform: GET \/accounts\/<account>\/workers\/scripts\/platform\/deployments failed/);
     assert.match(r.detail, /the same on all 3 attempt\(s\)/);
     assertNothingSecret(said(r));
   });
 
-  test('🔴 RED CONTROL — post, the settings stubbed to return the HOSTED origin, turns C9 red', async () => {
-    const green = await c9({ phase: 'post', over: bothSettings(TARGET) });
+  test('LOST, never PASS, when any of the three reads cannot say what serves or what was uploaded last', async () => {
+    const noList = await c9({ over: { [`${CF}/workers/scripts/platform/deployments`]: () => json({ success: true, errors: [], result: {} }) } });
+    assert.equal(noList.verdict, 'LOST');
+    assert.match(noList.detail, /platform: GET \/accounts\/<account>\/workers\/scripts\/platform\/deployments: no result\.deployments\[\] in a successful answer/);
+    const none = await c9({ over: { [`${CF}/workers/scripts/platform/deployments`]: () => json({ success: true, errors: [], result: { deployments: [] } }) } });
+    assert.equal(none.verdict, 'LOST');
+    assert.match(none.detail, /platform: .*no deployment is listed/);
+    const noShare = await c9({ over: { [`${CF}/workers/scripts/platform/deployments`]: () => deploymentsOf([[V_ACTIVE, 0]]) } });
+    assert.equal(noShare.verdict, 'LOST');
+    assert.match(noShare.detail, /the active deployment d1d1d1d1 names no version with a traffic share/);
+    const version = await c9({ over: { [`${CF}/workers/scripts/platform/versions/${V_ACTIVE}`]: () => json({ success: false, errors: [{ code: 10007, message: 'version not found' }] }, 404) } });
+    assert.equal(version.verdict, 'LOST');
+    assert.match(version.detail, /platform: GET \/accounts\/<account>\/workers\/scripts\/platform\/versions\/a1a1a1a1-0000-4000-8000-000000000001 answered HTTP 404 \(10007 version not found\)/);
+    const newest = await c9({ over: { [`${CF}/workers/scripts/subscriptiontracker-api/versions`]: () => json({ success: false, errors: [{ code: 10000, message: 'Authentication error' }] }, 403) } });
+    assert.equal(newest.verdict, 'LOST');
+    assert.match(newest.detail, /subscriptiontracker-api: the newest uploaded version could not be read: GET \/accounts\/<account>\/workers\/scripts\/subscriptiontracker-api\/versions answered HTTP 403/);
+    assertNothingSecret([noList, none, noShare, version, newest].map(said).join('\n'));
+  });
+
+  test('🔴 RED CONTROL — after a rollback, /settings answers the newest UPLOAD (the target) while the active deployment serves hosted: pre PASS on what serves, and both ids are named', async () => {
+    // The live state of 2026-09-26 05:45-06:26Z: C13.5 read /settings and refused
+    // at C9 while both Workers served hosted. Restoring that read turns this red.
+    const r = await c9({ over: bothRolledBack({ active: HOSTED, newest: TARGET }) });
+    assert.equal(r.verdict, 'PASS', r.detail);
+    assert.match(r.detail, /plain_text https:\/\/abcdefghijklmnop\.supabase\.co \(the pre origin\) on platform, subscriptiontracker-api, read from each ACTIVE deployment: platform a1a1a1a1 \(100%\), subscriptiontracker-api a1a1a1a1 \(100%\)/);
+    assert.match(r.detail, /platform: the newest UPLOADED version b2b2b2b2, uploaded 2026-09-26T06:26:36Z is NOT the active a1a1a1a1 \(100%\) — the next `wrangler deploy` keeps its secret_text bindings, not the active one's/);
+    assert.match(r.detail, /subscriptiontracker-api: the newest UPLOADED version b2b2b2b2/);
+    assert.equal(settingsCalls(r.calls).length, 0, 'C9 must not read /settings: it answers the newest upload, not what serves');
+    assert.equal(r.calls.filter((c) => c.url.endsWith(`/versions/${V_NEWEST}`)).length, 0, 'the newest upload is named, never graded');
+    assertNothingSecret(said(r));
+  });
+
+  test('post FAIL in the same rolled-back state: the switch is not what serves, whatever the newest upload holds', async () => {
+    const r = await c9({ phase: 'post', over: bothRolledBack({ active: HOSTED, newest: TARGET }) });
+    assert.equal(r.verdict, 'FAIL');
+    assert.match(r.detail, /platform: SUPABASE_URL is https:\/\/abcdefghijklmnop\.supabase\.co, not the post origin https:\/\/auth-api\.example\.test \(active version a1a1a1a1 \(100%\)\)/);
+    assert.match(r.detail, /platform: the newest UPLOADED version b2b2b2b2, uploaded 2026-09-26T06:26:36Z is NOT the active a1a1a1a1/);
+  });
+
+  test('🔴 RED CONTROL — post, the active version stubbed to serve the HOSTED origin, turns C9 red', async () => {
+    const green = await c9({ phase: 'post', over: bothServing(TARGET) });
     assert.equal(green.verdict, 'PASS', `green control: ${green.detail}`);
-    const red = await c9({ phase: 'post', over: bothSettings(HOSTED) });
+    const red = await c9({ phase: 'post', over: bothServing(HOSTED) });
     assert.equal(red.verdict, 'FAIL');
     assert.match(red.detail, /platform: SUPABASE_URL is https:\/\/abcdefghijklmnop\.supabase\.co, not the post origin https:\/\/auth-api\.example\.test/);
   });
@@ -756,10 +855,24 @@ describe('C11 Workers health — the checks[] entry supabase_jwks on each Worker
     assert.match(r.detail, /the route names no origin and C9 could not read which SUPABASE_URL platform holds \(CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are not in the environment\)/);
   });
 
-  test('🔴 RED CONTROL — post, the Worker settings stubbed to return the HOSTED origin, turns the same ok readings red', async () => {
-    const green = await c11({ phase: 'post', over: bothSettings(TARGET) });
+  test('post LOST when the active deployment splits traffic across versions whose origins differ — the ok is not attributed to either', async () => {
+    const r = await c11({
+      phase: 'post',
+      over: {
+        ...bothServing(TARGET),
+        [`${CF}/workers/scripts/platform/deployments`]: () => deploymentsOf([[V_ACTIVE, 50], [V_CANARY, 50]]),
+        [`${CF}/workers/scripts/platform/versions/${V_CANARY}`]: () => versionOf(V_CANARY, HOSTED),
+      },
+    });
+    assert.equal(r.verdict, 'LOST');
+    assert.match(r.detail, /C9 could not read which SUPABASE_URL platform holds \(the active deployment d1d1d1d1 splits traffic across versions whose SUPABASE_URL differs\)/);
+    assert.match(r.detail, /subscriptiontracker-api\.example\.test supabase_jwks ok, ageMs 0, and C9 read subscriptiontracker-api as holding the target/);
+  });
+
+  test('🔴 RED CONTROL — post, the active version stubbed to serve the HOSTED origin, turns the same ok readings red', async () => {
+    const green = await c11({ phase: 'post', over: bothServing(TARGET) });
     assert.equal(green.verdict, 'PASS', `green control: ${green.detail}`);
-    const red = await c11({ phase: 'post', over: bothSettings(HOSTED) });
+    const red = await c11({ phase: 'post', over: bothServing(HOSTED) });
     assert.equal(red.verdict, 'FAIL');
     assert.match(red.detail, /platform\.example\.test supabase_jwks ok, ageMs 0, but C9 read platform as holding https:\/\/abcdefghijklmnop\.supabase\.co, not the target/);
   });
@@ -862,6 +975,16 @@ describe('runPreflight — all fourteen, end to end on a fixture', () => {
     assert.match(r.lines.find((l) => l.startsWith('LOST  C9')), /CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are not in the environment/);
     assert.match(r.lines.at(-1), /12 PASS · 0 FAIL · 2 LOST → exit 2/);
     assert.match(r.lines.join('\n'), /CLOUDFLARE_API_TOKEN NOT SET · CLOUDFLARE_ACCOUNT_ID NOT SET/);
+  });
+
+  test('after a rollback (the Phase 5 read-back, C13.5): pre reads what SERVES — all fourteen PASS, exit 0 — and the C9 line names the newest upload that does not', async () => {
+    const r = await full(makeRoot(), { doFetch: fakeFetch(bothRolledBack({ active: HOSTED, newest: TARGET })) });
+    assert.equal(r.code, 0, r.lines.join('\n'));
+    assert.match(r.lines[0], /--phase pre: READY — all 14 checks PASS/);
+    const c9line = r.lines.find((l) => l.startsWith('PASS  C9'));
+    assert.match(c9line, /read from each ACTIVE deployment: platform a1a1a1a1 \(100%\), subscriptiontracker-api a1a1a1a1 \(100%\)/);
+    assert.match(c9line, /platform: the newest UPLOADED version b2b2b2b2, uploaded 2026-09-26T06:26:36Z is NOT the active a1a1a1a1 \(100%\)/);
+    assertNothingSecret(r.lines.join('\n'));
   });
 
   test('C4 and C10 share ONE read of the target JWKS', async () => {

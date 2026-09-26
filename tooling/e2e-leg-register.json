@@ -149,7 +149,12 @@
         "refused by design until Phase 5 moves it. tooling/e2e/verify_purged.mjs still runs and still",
         "re-reads the admin API, so nothing is skipped; what changes is which fact the run proves.",
         "⏱ 2026-09-25: as for sign-in, the reading keys on E2E_WORKERS_TRUST, not a target name:",
-        "`asserted` is a fact of a run with trust `yes`; a run with trust `no` reads as boxa did above."
+        "`asserted` is a fact of a run with trust `yes`; a run with trust `no` reads as boxa did above.",
+        "⏱ 2026-09-26: and on a CAPTCHA-GATED stack (E2E_EXPECT_CAPTCHA_GATE=yes) the in-app half cannot delete:",
+        "the dialog's reauth is the Turnstile-gated password grant and a headless browser has no token (E2E live",
+        "run 36220597628). The suite then asserts the refusal (\"Not deleted\", reauthFailed, still signed in) and",
+        "tooling/e2e/delete_headless.mjs performs the erasure through the ungated /verify and the deployed",
+        "DELETE /v1/account; verify_purged.mjs audits it unchanged. The anchors below are the ungated walk's."
       ],
       "_why": [
         "PROMOTED 2026-08-08, and the excuse it replaced is the THIRD this leg has killed — which is the",
@@ -183,6 +188,32 @@
       ]
     }
   ],
+  "captchaGatedSurfaces": {
+    "_why": [
+      "READ BY tooling/ci/assert-captcha-gated-call-sites.mjs limb R3 (2026-09-26). Every captcha-gated call site",
+      "the suite above DRIVES — measured, not listed: the file uses an E2EKeys key the comment-stripped suite",
+      "uses — must appear here with two anchors. `refusal` resolves in the suite and is how it asserts the gate",
+      "refuses that surface on a gated stack. `headlessRoute` is how the leg still does its work there: a call",
+      "in the suite, or a tooling/e2e script the e2e workflow runs.",
+      "",
+      "WHY: E2E live run 36220597628, the first run after the switch to Box C, failed its delete leg. The",
+      "dialog re-authenticates with the Turnstile-gated password grant, a headless browser has no token, and",
+      "GoTrue refused `captcha_failed` before any Worker was reached. Sign-in had been given /verify; the",
+      "delete dialog, driven by the same suite, had no route at all, and nothing could say so before the switch."
+    ],
+    "surfaces": [
+      {
+        "file": "apps/subscriptiontracker/lib/features/auth/login_screen.dart",
+        "refusal": "l10n.authCaptchaFailed",
+        "headlessRoute": "signInWithMagicToken(tester,"
+      },
+      {
+        "file": "apps/subscriptiontracker/lib/features/settings/settings_screen.dart",
+        "refusal": "core.AccountDeletionOutcome.reauthFailed.plainMessage",
+        "headlessRoute": "tooling/e2e/delete_headless.mjs"
+      }
+    ]
+  },
   "framesCarryText": {
     "_why": [
       "🔴 THE e2e LANE'S OWN THRESHOLD, read by tooling/e2e/assert-frames-carry-text.mjs and by nothing else.",

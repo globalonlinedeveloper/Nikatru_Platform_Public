@@ -72,6 +72,14 @@
 //     every check that talks to GitHub or Microsoft sits after the problems block
 //     that exits — so this proves the refusal without being able to submit anything.
 //
+// ⏱ 2026-09-25 — O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1). "that register field"
+// above was ONE value for every app, so a second app packaging the first app's
+// identity agreed with it. The row now says
+// `expectedFrom: "apps/{app}/app.yaml stores.windows-store.identityName"`: the
+// expected value is the record of the app being graded, read through
+// read-identity.mjs windowsIdentityOf. The sentinel and the placeholder stay the
+// row's, because they define the placeholder for every app.
+//
 // Usage:  node tooling/ci/assert-store-identity.mjs [repoRoot]
 // Exit 0 = every app × declared platform resolves to the one canonical id.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -79,7 +87,7 @@ import { readFileSync, existsSync, statSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolveIdentity } from './read-identity.mjs';
+import { resolveIdentity, windowsIdentityOf, WINDOWS_STORE } from './read-identity.mjs';
 import { appIdProblems } from '../../contracts/app-id/app-id.js';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
@@ -104,21 +112,22 @@ const PLATFORM_DIR = new Map([
 const problems = [];
 const prints = [];
 
+/** The one `expectedFrom` this guard reads: the identity Partner Center issued
+ *  to THE APP BEING GRADED, from its own declaration. */
+const APP_RECORD_FIELD = `apps/{app}/app.yaml stores.${WINDOWS_STORE}.identityName`;
+
 /** What a row's identity must equal. The default is the canonical form; a row
- *  whose identity is ASSIGNED by the store (MSIX) names the register field that
+ *  whose identity is ASSIGNED by the store (MSIX) names the per-app record that
  *  holds it instead. An `expectedFrom` this guard cannot read is COVERAGE LOST,
  *  never a silent fall-back to the canonical form. */
 function expectationFor(row, slug) {
   const from = row.identity.expectedFrom;
   if (from === undefined) return { want: canonical(slug), label: "architecture §24's canonical form" };
-  if (from !== 'packageIdentity.identityName') {
-    return { lost: `channel "${row.id}" identity.expectedFrom is ${JSON.stringify(from)}; the only field this guard knows how to read is "packageIdentity.identityName".` };
+  if (from !== APP_RECORD_FIELD) {
+    return { lost: `channel "${row.id}" identity.expectedFrom is ${JSON.stringify(from)}; the only field this guard knows how to read is "${APP_RECORD_FIELD}".` };
   }
   const pi = row.packageIdentity;
-  if (!pi || typeof pi.identityName !== 'string' || pi.identityName.trim() === '') {
-    return { lost: `channel "${row.id}" says its identity is expected from packageIdentity.identityName and declares none.` };
-  }
-  if (typeof pi.notYetConfiguredSentinel !== 'string' || pi.notYetConfiguredSentinel === '') {
+  if (!pi || typeof pi.notYetConfiguredSentinel !== 'string' || pi.notYetConfiguredSentinel === '') {
     return { lost: `channel "${row.id}" declares no packageIdentity.notYetConfiguredSentinel, so a placeholder cannot be told from a real Partner Center value.` };
   }
   if (row.identity.placeholderValue !== pi.notYetConfiguredSentinel) {
@@ -129,7 +138,21 @@ function expectationFor(row, slug) {
         'sentinel the submitter refuses must be ONE string, or a value can be "not the placeholder" to one reader and "the placeholder" to the other.',
     };
   }
-  return { want: pi.identityName, label: `${REGISTER_REL} channel "${row.id}" packageIdentity.identityName`, sentinel: pi.notYetConfiguredSentinel };
+  const record = windowsIdentityOf(ROOT, slug);
+  if (record.missing) return { problem: record.missing };
+  if (!record.value) {
+    return {
+      problem:
+        `${record.rel} declares no stores.${WINDOWS_STORE} record, and it is the one declaration of the identity Partner Center ` +
+        `issued this app. An app with no Partner Center product yet declares ${pi.notYetConfiguredSentinel} in both of its fields.`,
+    };
+  }
+  return {
+    want: record.value.identityName,
+    label: `${record.rel} stores.${WINDOWS_STORE}.identityName`,
+    declaredIn: record.rel,
+    sentinel: pi.notYetConfiguredSentinel,
+  };
 }
 
 /** Run the channel's own submitter with `--submit` and NO credentials, and
@@ -317,8 +340,8 @@ for (const app of apps) {
       if (exp.sentinel !== undefined) {
         if (r.value !== want) {
           problems.push(
-            `${at}: ${r.rel} declares "${r.value}" and ${exp.label} is "${want}". The register is the one declaration of an ` +
-              'identity the store assigns; the pubspec is what gets packaged. Two answers means the wrong one ships.',
+            `${at}: ${r.rel} declares "${r.value}" and ${exp.label} is "${want}". The app's record is the one declaration of the ` +
+              'identity the store issued it; the pubspec is what gets packaged. Two answers means the wrong one ships.',
           );
           continue;
         }
@@ -338,7 +361,7 @@ for (const app of apps) {
           // ⏱ 2026-09-25 (D3a): an open account's closed item is `accountStatus.openedBy`.
           const owner = row.ownerQueue ?? (row.accountStatus?.openedBy ? `owner; account opened by ${row.accountStatus.openedBy}` : 'owner');
           prints.push(
-            `OWNER-GATED (${owner}) · ${at}: the package identity is the placeholder "${r.value}" in both the register ` +
+            `OWNER-GATED (${owner}) · ${at}: the package identity is the placeholder "${r.value}" in both ${exp.declaredIn} ` +
               `and ${r.rel}. ${row.submission.script} --submit REFUSES it (run here with no credentials, exit non-zero, refusal named), ` +
               'so it cannot reach a store upload. It stops printing when Partner Center\'s real values land in both files.',
           );
@@ -474,7 +497,7 @@ if (prints.length) {
 }
 
 console.log(
-  `ok  store identity — ${checked} (app × platform) identity(ies) compared to com.nikatru.<slug> (or the register's store-assigned value) across ` +
+  `ok  store identity — ${checked} (app × platform) identity(ies) compared to com.nikatru.<slug> (or the app's own store-issued record) across ` +
     `${apps.length} app(s) and ${withIdentity.length} identity-declaring channel(s); ${skippedNoFolder} pair(s) ` +
     'skipped for having no platform folder (a web-only app is not missing an Android package name)',
 );

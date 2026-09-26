@@ -80,6 +80,9 @@
 import { readFileSync, existsSync, openSync, fstatSync, closeSync } from 'node:fs';
 import { join, resolve, relative, sep } from 'node:path';
 import { listDir } from './tree-walk.mjs';
+// The API base rule is the one every release build composes with (flutter-release-build.mjs),
+// so a stamped default and a shipped binary are graded against the same function.
+import { apiBaseUrl } from './flutter-release-build.mjs';
 
 const args = process.argv.slice(2);
 const flag = (name) => {
@@ -253,6 +256,8 @@ else {
     // `short_name` is its web surface. tooling/app-yaml/render.mjs renders the
     // same value into CFBundleDisplayName, android:label, the .desktop `Name=`
     // and msix_config.display_name from the stamped app.yaml's `shortName:`.
+    // ⏱ 2026-09-25: not msix_config.display_name any more — that is the Store
+    // title, rendered from `name:` (O-MSIX-IDENTITY-UNGRADED).
     ['short_name', iconLabel],
     ['description', description],
   ]) {
@@ -364,7 +369,7 @@ if (escaped.length) {
 // ── 2 · a blank optional var was DERIVED, not interpolated as nothing ────────
 const expectedSub = `${appId}.nikatru.com`;
 const expectedApiHost = `${appId}-api.nikatru.com`;
-const expectedBase = needsBackend ? `https://${expectedApiHost}` : 'https://platform.nikatru.com/v1';
+const expectedBase = apiBaseUrl(needsBackend ? expectedApiHost : null);
 /** The shape the defect produced: a scheme with no authority. */
 const EMPTY_URL = /^https?:\/\/\s*$/;
 

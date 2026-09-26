@@ -29,10 +29,11 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { parseWorkflow, workflowSteps } from '../workflow-scan.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const HELPER = join(CI_DIR, 'single-threaded-relaunch.mjs');
@@ -255,5 +256,66 @@ describe('every workflow step that runs a relaunching guard runs it as node --si
         assert.ok(stillPending.has(`${wf}|${g}`), `the declared gap ${wf} → ${g} is closed: remove it from PENDING`);
       }
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-26 · THE HANG LEFT THE PIXEL PROGRAMS. tooling/scripts/check-agent-docs.mjs
+// reads blobs through `git cat-file --batch`, decodes nothing, imports no relaunch,
+// and still printed `ok  no new finding.` and never exited: ci.yml guards-platform
+// runs 36229452526 (PR #979) and 36232580493 (main) were cancelled at the job's 15
+// minutes, with an orphan `(MainThread)` killed at cleanup, where 59 other runs
+// took 0-1 s. So the steps in that job whose script spawns git synchronously, the
+// shape that hung, run as `node --single-threaded`, and each carries a step-level
+// `timeout-minutes` below the job's, so a hang the flag misses fails one named step.
+//
+// The set is DERIVED from each step's own script source, never listed. Its scope is
+// the job the hang was measured in, and that is a declared limit, not a claim about
+// the other jobs: their git-spawning guards have not hung, and this block does not
+// grade them.
+//
+//   X1 the derivation finds the step that hung, and enough others to mean anything
+//   X2 every such step runs --single-threaded and is bounded on its own, under the job
+//
+// Mutations run against ci.yml (2026-09-26, predictions written first):
+//   · `--single-threaded` dropped from the check-agent-docs step    → X2 RED
+//   · its `timeout-minutes: 2` dropped                              → X2 RED
+//   · its `timeout-minutes` raised to the job's 15                  → X2 RED
+// ─────────────────────────────────────────────────────────────────────────────
+describe('a guards-platform step that spawns git runs single-threaded and bounded', () => {
+  const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
+  const JOB = 'guards-platform';
+  const RUN = /\bnode((?:\s+--[\w-]+(?:=\S+)?)*)\s+(tooling\/[\w/.-]+\.mjs)\b/;
+  const SPAWNS_GIT = /\b(?:spawnSync|execFileSync|execSync)\(\s*['"`]git['"`]/;
+  const STEP_TIMEOUT = /^ {8}timeout-minutes:\s*(\S+)\s*$/;
+  const JOB_TIMEOUT = /^ {4}timeout-minutes:\s*(\d+)\s*$/;
+
+  const wf = parseWorkflow(REPO_ROOT, '.github/workflows/ci.yml');
+  const job = wf?.jobs.get(JOB);
+  const jobBound = Number(job?.lines.map((l) => l.text.match(JOB_TIMEOUT)?.[1]).find(Boolean));
+  const gitSteps = [];
+  for (const s of job ? workflowSteps(job) : []) {
+    const m = s.run?.text.match(RUN);
+    if (!m) continue;
+    if (!SPAWNS_GIT.test(readFileSync(join(REPO_ROOT, m[2]), 'utf8'))) continue;
+    const bound = job.lines.filter((l) => l.n >= s.first && l.n <= s.last).map((l) => l.text.match(STEP_TIMEOUT)?.[1]).find(Boolean) ?? null;
+    gitSteps.push({ at: `ci.yml:${s.first}`, script: m[2], flags: m[1], bound });
+  }
+
+  test('X1 the derivation finds the step that hung, and enough others to mean anything', () => {
+    assert.ok(job, `ci.yml has no job ${JOB}, so nothing below is graded`);
+    assert.ok(Number.isInteger(jobBound) && jobBound > 0, `${JOB} declares no job-level timeout-minutes this block can compare a step bound with`);
+    assert.ok(gitSteps.some((g) => g.script === 'tooling/scripts/check-agent-docs.mjs'), `the derivation no longer finds check-agent-docs.mjs, the step that hung:\n${gitSteps.map((g) => g.script).join('\n')}`);
+    assert.ok(gitSteps.length >= 8, `expected the eight git-spawning steps of 2026-09-26, found ${gitSteps.length}:\n${gitSteps.map((g) => `${g.at} ${g.script}`).join('\n')}`);
+  });
+
+  test('X2 every such step runs --single-threaded and is bounded on its own, under the job', () => {
+    const bad = [];
+    for (const g of gitSteps) {
+      if (!/(^|\s)--single-threaded(\s|$)/.test(g.flags)) bad.push(`${g.at} runs ${g.script} with V8 background tasks ON (nodejs/node#54918)`);
+      if (g.bound === null) bad.push(`${g.at} ${g.script} has no step-level timeout-minutes, so a hang eats the job's ${jobBound}`);
+      else if (!/^[0-9]+$/.test(g.bound) || Number(g.bound) < 2 || Number(g.bound) >= jobBound) bad.push(`${g.at} ${g.script} is bounded at ${g.bound}: a step bound is a whole number of minutes, at least 2 and under the job's ${jobBound}`);
+    }
+    assert.deepEqual(bad, [], bad.join('\n'));
   });
 });

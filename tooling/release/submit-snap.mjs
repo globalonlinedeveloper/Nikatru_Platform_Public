@@ -85,12 +85,14 @@
 //
 // Exit 0 = the submission path is walkable (or the upload was accepted).
 //       1 = it is not, or a gate refused, or `snapcraft` did.
+//       2 = COVERAGE LOST: an input it must read is absent or unreadable (submit-common.mjs).
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { parseWorkflow } from '../ci/workflow-scan.mjs';
+import { submitCli, requirePublishEnvironment, PUBLISH_ENVIRONMENT } from './submit-common.mjs';
 
 const CHANNEL_ID = 'linux-snap';
 const REGISTER = 'tooling/channel-register.json';
@@ -180,56 +182,25 @@ const DEFAULT_CHANNEL = `${DEFAULT_TRACK}/edge`;
 const REFUSED_RISK = 'stable';
 
 const CONFIRM_TOKEN = 'SUBMIT-TO-SNAP-STORE';
-const PUBLISH_ENVIRONMENT = 'store-publish';
-/** ONE gate for the factory, not one per channel. submit-play.yml already names
- *  this environment and documents the exact `gh api` calls that create it with a
- *  required reviewer. A second environment would be a second thing to configure
- *  and a second thing to be silently missing. */
 const CREDENTIAL_ENV = 'SNAPCRAFT_STORE_CREDENTIALS';
 /** The owner step, written ONCE and printed by every limb that needs it, so the
  *  person reading a refusal is told the exact command rather than pointed at a
  *  document that carries a different spelling of it. `--acls` and `--expires` are
  *  both documented flags of `snapcraft export-login`. */
 const EXPORT_LOGIN_STEP =
-  'snapcraft export-login --snaps <snap-name> --acls package_push,package_release --expires <YYYY-MM-DDTHH:MM:SSZ> credentials.txt  → put the file contents in the SNAPCRAFT_STORE_CREDENTIALS repository secret and the same date in SNAPCRAFT_STORE_CREDENTIALS_EXPIRES (Private/runbooks/store-submission-snap.md)';
+  'snapcraft export-login --snaps <snap-name> --acls package_push,package_release --expires <YYYY-MM-DDTHH:MM:SSZ> credentials.txt  → put the file contents in the SNAPCRAFT_STORE_CREDENTIALS secret of the store-publish ENVIRONMENT (GitHub → Settings → Environments → store-publish) and the same date in the SNAPCRAFT_STORE_CREDENTIALS_EXPIRES repository secret (Private/runbooks/store-submission-snap.md)';
 const RECIPE_GUARD = 'assert-snapcraft-generable.mjs';
 const PACK_VERB = 'snapcraft pack';
 
-// ── arguments ────────────────────────────────────────────────────────────────
-const argv = process.argv.slice(2);
-const flag = (name) => argv.includes(`--${name}`);
-const opt = (name, fallback = null) => {
-  const i = argv.indexOf(`--${name}`);
-  return i !== -1 && i + 1 < argv.length ? argv[i + 1] : fallback;
-};
+// ── arguments, and the two stops (submit-common.mjs: COVERAGE LOST exits 2) ──
+const { flag, opt, root: ROOT, ok, step, abs, read, coverageLost, die } = submitCli('submit-snap');
 
 const DRY_RUN = flag('dry-run');
 const SUBMIT = flag('submit');
 const ALLOW_MISSING_ARTIFACT = flag('allow-missing-artifact');
-const ROOT = resolve(opt('repo-root') ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
 const problems = [];
 const prints = [];
-const ok = (m) => console.log(`ok   ${m}`);
-const step = (m) => console.log(`→    ${m}`);
-const abs = (rel) => join(ROOT, rel);
-const read = (rel) => (existsSync(abs(rel)) ? readFileSync(abs(rel), 'utf8') : null);
-
-/** The scan cannot continue and reporting "clean" would be a lie about nothing. */
-function coverageLost(lines) {
-  console.error('');
-  console.error(`FAIL COVERAGE LOST — ${lines[0]}`);
-  for (const l of lines.slice(1)) console.error(`     ${l}`);
-  console.error('\nsubmit-snap: FAILED');
-  process.exit(1);
-}
-
-function die(lines) {
-  console.error('');
-  for (const l of lines) console.error(l);
-  console.error('\nsubmit-snap: FAILED');
-  process.exit(1);
-}
 
 if (DRY_RUN === SUBMIT) {
   die([
@@ -457,79 +428,17 @@ if (SUBMIT) {
   // environments each returned `"protection_rules": []`.
   //
   // The remedy is the same read submit-play.mjs makes, against the same
-  // environment. Source: ${PRIMARY_SOURCES.githubEnvironmentsApi} — "GET
-  // /repos/{owner}/{repo}/environments/{environment_name}", whose response
-  // carries `protection_rules`, and "Anyone with read access to the repository
-  // can use this endpoint". The assertion is on a NON-EMPTY `reviewers` list
-  // rather than on the label `required_reviewers`, which could not be confirmed
-  // from a rendered example — an assertion keyed to an unconfirmed string fails
-  // OPEN if the string is different.
+  // environment (${PRIMARY_SOURCES.githubEnvironmentsApi}). ⏱ C4b, 2026-09-25:
+  // it is ONE function now, `requirePublishEnvironment` in submit-common.mjs,
+  // and what it requires is what stood here — the job token, the GET, a rule
+  // carrying a NON-EMPTY `reviewers` list, and `can_admins_bypass` reported
+  // (MEASURED true on this repository 2026-08-27) rather than claimed as an
+  // approval. The environment's name is submit-common's PUBLISH_ENVIRONMENT:
+  // one gate for every store, not one per channel.
   {
-    const repo = process.env.GITHUB_REPOSITORY.trim();
-    const ghToken = (process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN ?? '').trim();
-    if (ghToken === '') {
-      die([
-        'FAIL --submit needs GITHUB_TOKEN to read the publish environment\'s protection rules.',
-        '     Without it PG-6 cannot tell a gated environment from one GitHub auto-created when this',
-        '     workflow first named it, and those two look identical from inside the job. Pass',
-        '     `GITHUB_TOKEN: ${{ github.token }}` on the submit step.',
-      ]);
-    }
-    const envUrl = `https://api.github.com/repos/${repo}/environments/${PUBLISH_ENVIRONMENT}`;
-    let res;
-    try {
-      res = await fetch(envUrl, {
-        headers: {
-          authorization: `Bearer ${ghToken}`,
-          accept: 'application/vnd.github+json',
-          'x-github-api-version': '2022-11-28',
-          'user-agent': 'nikatru-submit-snap',
-        },
-      });
-    } catch (e) {
-      die([`FAIL PG-6 could not reach ${envUrl} (${e.message}). A gate that cannot be read has not been shown to exist.`]);
-    }
-    if (res.status === 404) {
-      die([
-        `FAIL the "${PUBLISH_ENVIRONMENT}" environment does not exist in ${repo}.`,
-        '     [ADR 031:117-124] the publish gate IS that environment plus a required reviewer, and GitHub',
-        '     documents that referencing a missing environment CREATES it — with no protection rules — so',
-        '     relying on `environment:` alone would have let this run publish unapproved while looking',
-        '     gated. Creating it is a repo-admin act and belongs to a human; the exact `gh api` commands',
-        '     are in the header of .github/workflows/submit-play.yml, and this channel uses the SAME',
-        '     environment rather than a second one.',
-      ]);
-    }
-    if (!res.ok) die([`FAIL PG-6 got HTTP ${res.status} from ${envUrl}. A gate that cannot be read has not been shown to exist.`]);
-    const envJson = await res.json().catch(() => ({}));
-    const rules = Array.isArray(envJson.protection_rules) ? envJson.protection_rules : [];
-    const reviewerRule = rules.find((r) => Array.isArray(r?.reviewers) && r.reviewers.length > 0);
-    if (!reviewerRule) {
-      die([
-        `FAIL the "${PUBLISH_ENVIRONMENT}" environment exists in ${repo} and carries NO required reviewer.`,
-        `     protection_rules = ${JSON.stringify(rules)}`,
-        '     An environment with no rules does not pause anything — the job runs the instant it is',
-        '     dispatched. That is the state GitHub leaves behind when a workflow auto-creates one, and it',
-        '     is indistinguishable from a real gate anywhere except here.',
-      ]);
-    }
-    // 🔴 THIS LINE CLAIMED AN APPROVAL IT HAD NOT CHECKED. It read "this job only
-    // reached this line because one of them approved it", which is false whenever
-    // an administrator can bypass the reviewer. `can_admins_bypass` comes from
-    // the SAME GET already in hand, and MEASURED on this repository 2026-08-27 it
-    // is `true` — as .github/workflows/submit-snap.yml's header has said since
-    // submit-play.mjs's PG-5 retracted the identical sentence on 2026-08-20.
-    // This file kept it. The remedy is not to fail (bypass is a legitimate
-    // setting and turning it off is a repo-admin act) but to stop asserting what
-    // was not observed: the reviewer requirement IS verified and still reported;
-    // that it was EXERCISED no longer is.
-    const adminsCanBypass = envJson.can_admins_bypass !== false;
-    ok(
-      `PG-6 publish gate — "${PUBLISH_ENVIRONMENT}" carries ${reviewerRule.reviewers.length} required reviewer(s)` +
-        (adminsCanBypass
-          ? '. ⚠️ `can_admins_bypass` is true, so reaching this line does NOT prove one of them approved: an administrator can dispatch straight past the gate. The requirement is verified; the approval is not.'
-          : ' and `can_admins_bypass` is false, so this job only reached this line because one of them approved it'),
-    );
+    const gate = await requirePublishEnvironment({ label: 'PG-6', userAgent: 'nikatru-submit-snap' });
+    if (!gate.ok) die(gate.lines);
+    for (const l of gate.lines) console.log(l);
   }
 
 }
@@ -838,8 +747,23 @@ if (recipe) {
 // `whoami` as a liveness proof and does NOT parse it. Issue it with
 // `--snaps <name> --channels <non-stable> --expires <date>`; that is a runbook
 // instruction, not something this file can enforce.
-const credentialPresent = (process.env[CREDENTIAL_ENV] ?? '').trim() !== '';
-if (credentialPresent) {
+//
+// ⏱ 2026-09-25 — O-STORE-SECRETS-REACH-THE-DRY-RUN. When the credential's
+// `ciSecretRegister.nonSigning` row scopes it to a GitHub environment, only a job
+// bound to that environment can read it, and the dry-run job has none. The dry run
+// then does not look for it (an absence it cannot see is not a gap it can report);
+// it says where the credential IS checked — the submit job's first step, and the
+// --submit path, which still requires it — and grades the expiry DATE alone, the
+// one input it still receives. A register with no such row (a test fixture) keeps
+// the credential checked here, as before.
+const credentialScope = (Array.isArray(register.ciSecretRegister?.nonSigning) ? register.ciSecretRegister.nonSigning : []).find(
+  (e) => e?.name === CREDENTIAL_ENV && typeof e?.environment === 'string' && e.environment.trim() !== '',
+)?.environment.trim() ?? null;
+const credentialReadHere = SUBMIT || credentialScope === null;
+const credentialPresent = credentialReadHere && (process.env[CREDENTIAL_ENV] ?? '').trim() !== '';
+if (!credentialReadHere) {
+  ok(`credential: checked in the environment-bound submit job — ${CREDENTIAL_ENV} lives in the "${credentialScope}" environment, which this dry run cannot see`);
+} else if (credentialPresent) {
   ok(`credentials — ${CREDENTIAL_ENV} present (value never read or printed)`);
 } else {
   const line = `credential: absent — CREDENTIALS NOT CONFIGURED. ${CREDENTIAL_ENV} is the exported store credential \`snapcraft\` reads for a non-interactive upload, and it cannot exist before OWNER_QUEUE A-6. owner step: ${EXPORT_LOGIN_STEP}`;
@@ -869,7 +793,14 @@ if (credentialPresent) {
 // "unknown" must never read as "fine".
 const EXPIRY_ENV = 'SNAPCRAFT_STORE_CREDENTIALS_EXPIRES';
 const EXPIRY_FLOOR_DAYS = 30;
-if (credentialPresent) {
+const expiryDeclared = (process.env[EXPIRY_ENV] ?? '').trim() !== '';
+if (!credentialReadHere && !expiryDeclared) {
+  prints.push(
+    `credential expiry: unknown to this dry run — ${EXPIRY_ENV} is absent, and ${CREDENTIAL_ENV} itself is readable only in the job bound to the "${credentialScope}" environment, where a credential with no declared expiry FAILS the upload. ` +
+      `Record the date you passed to --expires beside it. owner step: ${EXPORT_LOGIN_STEP}`,
+  );
+}
+if (credentialPresent || (!credentialReadHere && expiryDeclared)) {
   const raw = (process.env[EXPIRY_ENV] ?? '').trim();
   const parsed = raw === '' ? null : new Date(raw);
   if (raw === '') {
@@ -1031,7 +962,7 @@ let failure = null;
     failure = [
       ...r.failed,
       `     Nothing was uploaded. Re-issue the credential with \`snapcraft export-login\` and reinstall it as the`,
-      `     ${CREDENTIAL_ENV} repository secret (${PRIMARY_SOURCES.exportLogin}).`,
+      `     ${CREDENTIAL_ENV} secret of the "${PUBLISH_ENVIRONMENT}" environment (${PRIMARY_SOURCES.exportLogin}).`,
     ];
   } else {
     ok('credential accepted by the Snap Store (`snapcraft whoami` exited 0; its output was not parsed)');

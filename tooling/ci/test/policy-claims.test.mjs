@@ -80,15 +80,18 @@ const DEFAULT_CLAIMS = {
     },
     { page: 'terms.html', claim: 'Cloudmark', type: 'provider', providers: ['cloudmark'] },
     { page: 'refund.html', claim: '7 days', type: 'descriptive', why: 'our own commitment' },
+    { type: 'seller-by-rail', rail: 'paddle', pages: ['terms.html', 'refund.html'], note: 'the merchant of record sells' },
+    { type: 'seller-by-rail', rail: 'razorpay', pages: ['terms.html', 'refund.html'], note: 'Nikatru sells; the gateway processes' },
   ],
 };
 
 const DEFAULT_PROVIDERS = {
   nonProviderRouteSegments: { segments: ['v1', 'health', 'webhooks', 'events'] },
   roles: {
-    merchant_of_record: 'the legal seller',
-    infrastructure: 'hosts the service',
-    iap_aggregator: 'normalises purchase events',
+    merchant_of_record: { means: 'the legal seller', sellerIs: 'provider' },
+    payment_gateway: { means: 'takes the payment on our behalf', sellerIs: 'nikatru' },
+    infrastructure: { means: 'hosts the service', sellerIs: 'not-applicable' },
+    iap_aggregator: { means: 'normalises purchase events', sellerIs: 'never' },
   },
   providers: [
     {
@@ -109,6 +112,7 @@ const DEFAULT_PROVIDERS = {
       reachableAt: null,
       tells: ['seller co'],
       namedIn: [],
+      requiredWhen: { kind: 'channelRail', rail: 'paddle' },
     },
     {
       id: 'payrail',
@@ -117,15 +121,43 @@ const DEFAULT_PROVIDERS = {
       status: 'wired-not-live',
       reachableAt: '/payrail',
       tells: ['payrail'],
+      namedIn: ['terms.html'],
+    },
+    {
+      id: 'gatepay',
+      name: 'GatePay',
+      role: 'payment_gateway',
+      status: 'wired-not-live',
+      reachableAt: null,
+      tells: ['gatepay'],
       namedIn: [],
+      requiredWhen: { kind: 'channelRail', rail: 'razorpay', regionToo: true },
     },
   ],
   disclosureGaps: [],
 };
 
+/** The rails the seller-by-rail limb quantifies over, and one channel moving
+ *  India off its base rail — the shape tooling/channel-register.json has. */
+const DEFAULT_CHANNELS = {
+  purchaseRails: { rails: { paddle: 'merchant of record', razorpay: 'the India gateway', none: 'sells nothing' } },
+  channels: [{ id: 'web', purchaseRail: { rail: 'paddle', regionRails: [{ region: 'IN', rail: 'razorpay' }] } }],
+};
+
+/** Who sells, said the way the published pages say it. Plain text, no emphasis:
+ *  these blocks are not claim spans, so the span pairing never sees them. */
+const TERMS_SELLERS =
+  '<p>For every other purchase, Seller Co is our merchant of record and the legal seller, in every country we sell to except India.</p>' +
+  '<ul><li>In India, GatePay takes the payment on our behalf; Nikatru remains the seller.</li></ul>' +
+  '<p>PayRail records store purchases on our behalf and is never the seller.</p>';
+const REFUND_SELLERS =
+  '<ul><li>Outside India, Seller Co is the merchant of record.</li>' +
+  '<li>In India, GatePay is our payment gateway and Nikatru is the seller.</li></ul>';
+const withText = (html, extra) => html.replace('</main>', `${extra}</main>`);
+
 /** A synthetic tree with the shape the guard reads. Every option mutates one
- *  limb's input and nothing else. */
-function fixture({ claims = {}, providers = {}, pages = {}, routes = null, subscribe, events } = {}) {
+ *  limb's input and nothing else. `channels: null` writes no channel register. */
+function fixture({ claims = {}, providers = {}, pages = {}, channels = DEFAULT_CHANNELS, routes = null, subscribe, events } = {}) {
   const root = join(TMP, `f${seq++}`);
   mkdirSync(root, { recursive: true });
 
@@ -133,11 +165,12 @@ function fixture({ claims = {}, providers = {}, pages = {}, routes = null, subsc
   const providerReg = { ...structuredClone(DEFAULT_PROVIDERS), ...providers };
   write(root, join('tooling', 'legal', 'policy-claims.json'), JSON.stringify(claimsReg, null, 2));
   write(root, join('tooling', 'legal', 'provider-register.json'), JSON.stringify(providerReg, null, 2));
+  if (channels !== null) write(root, join('tooling', 'channel-register.json'), JSON.stringify(channels, null, 2));
 
   const defaults = {
     'privacy.html': page('Privacy', ['NIKATRU', 'we store only your email', 'we never read your address']),
-    'terms.html': page('Terms', ['Cloudmark']),
-    'refund.html': page('Refunds', ['7 days']),
+    'terms.html': withText(page('Terms', ['Cloudmark']), TERMS_SELLERS),
+    'refund.html': withText(page('Refunds', ['7 days']), REFUND_SELLERS),
   };
   for (const [name, body] of Object.entries({ ...defaults, ...pages })) {
     if (body !== null) write(root, join('sites', 'nikatru', name), body);
@@ -487,7 +520,7 @@ describe('the egress limb — every host a shipped CSP lets a browser reach is o
   test('registering the provider with its tell makes the same policy pass', () => {
     const r = run(
       withHeaders(['https://browser.sentry-cdn.com'], {
-        roles: { ...DEFAULT_PROVIDERS.roles, content_delivery: 'serves a file the browser loads' },
+        roles: { ...DEFAULT_PROVIDERS.roles, content_delivery: { means: 'serves a file the browser loads', sellerIs: 'not-applicable' } },
         providers: [
           ...DEFAULT_PROVIDERS.providers,
           { id: 'sentry-cdn', name: 'Sentry', role: 'content_delivery', status: 'live', reachableAt: null, tells: ['sentry'], namedIn: [] },
@@ -554,5 +587,135 @@ describe('an owner-gated gap about an OMISSION closes itself when the page names
     const r = run(fixture({ providers: { disclosureGaps: [{ ...GAP, closedWhenNamed: ['nobody'] }] } }));
     assert.equal(r.status, 1, out(r));
     assert.match(out(r), /closedWhenNamed names "nobody", which has no provider row/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-26 — THE SELLER BY RAIL (O-PRIVACY-OMITS-THE-INDIA-SELLER). terms.html sold
+// India through Paddle "in every country we sell to, including India" three lines above
+// the item naming Nikatru the India seller, and privacy.html named no India seller at all;
+// every span was paired, so nothing failed. One case per `sellerIs` value, the
+// contradiction, the row relation and the coverage exits, each written out by hand.
+describe('the seller by rail — every page names one seller per purchase rail', () => {
+  const termsWith = (sellers) => withText(page('Terms', ['Cloudmark']), sellers);
+  const refundWith = (sellers) => withText(page('Refunds', ['7 days']), sellers);
+
+  test('PASSES the baseline, and counts the rows, the rails and the statements it read', () => {
+    const r = run(fixture());
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /sellers — 2 seller-by-rail row\(s\) covering all 2 selling rail\(s\), 5 page statement\(s\) of who sells verified/);
+  });
+
+  test('sellerIs provider: a page naming the merchant of record without saying it sells FAILS', () => {
+    const refund = refundWith(
+      '<ul><li>Seller Co handles support for these purchases.</li><li>In India, GatePay is our payment gateway and Nikatru is the seller.</li></ul>',
+    );
+    const r = run(fixture({ pages: { 'refund.html': refund } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /refund\.html: rail paddle — no <p> or <li> names Seller Co together with "merchant of record"/);
+  });
+
+  test('sellerIs nikatru: deleting the India sentence FAILS (the row\'s own red control)', () => {
+    const terms = termsWith(
+      '<p>For every other purchase, Seller Co is our merchant of record and the legal seller, in every country we sell to except India.</p>' +
+        '<p>PayRail records store purchases on our behalf and is never the seller.</p>',
+    );
+    const r = run(fixture({ pages: { 'terms.html': terms } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /terms\.html: rail razorpay — no <p> or <li> names GatePay together with "Nikatru is the seller"/);
+  });
+
+  test('sellerIs nikatru: a block naming the gateway the seller FAILS, even beside a correct one', () => {
+    const refund = refundWith(
+      '<ul><li>Outside India, Seller Co is the merchant of record.</li>' +
+        '<li>In India, GatePay is our payment gateway and GatePay is the seller.</li></ul>' +
+        '<p>For purchases made in India, Nikatru is the seller and GatePay collects the money.</p>',
+    );
+    const r = run(fixture({ pages: { 'refund.html': refund } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /refund\.html: rail razorpay — a block names GatePay as the seller \("GatePay is the seller"\)/);
+  });
+
+  test('sellerIs never: an aggregator no longer called never the seller FAILS', () => {
+    const terms = termsWith(TERMS_SELLERS.replace('and is never the seller', 'and is the seller'));
+    const r = run(fixture({ pages: { 'terms.html': terms } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /terms\.html: provider payrail — no <p> or <li> names PayRail together with "is never the seller"/);
+  });
+
+  test('sellerIs never: an aggregator named the seller FAILS, even beside the never sentence', () => {
+    const terms = termsWith(`${TERMS_SELLERS}<p>For an app purchase, PayRail is the seller.</p>`);
+    const r = run(fixture({ pages: { 'terms.html': terms } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /terms\.html: provider payrail — a block names PayRail as the seller \("PayRail is the seller"\)/);
+  });
+
+  test('sellerIs not-applicable: a rail resolving to a provider whose role takes no payment FAILS', () => {
+    const providers = structuredClone(DEFAULT_PROVIDERS);
+    providers.providers[3].role = 'infrastructure';
+    const r = run(fixture({ providers }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /rail "razorpay" resolves to gatepay \(GatePay\), whose role infrastructure says sellerIs not-applicable/);
+  });
+
+  test('a role that does not answer who sells FAILS', () => {
+    const providers = structuredClone(DEFAULT_PROVIDERS);
+    providers.roles.payment_gateway = { means: 'takes the payment on our behalf' };
+    const r = run(fixture({ providers }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /role "payment_gateway" carries sellerIs null/);
+  });
+
+  test('the contradiction: the base rail\'s seller "in every country, including India" FAILS', () => {
+    const terms = termsWith(TERMS_SELLERS.replace('in every country we sell to except India.', 'in every country we sell to, including India.'));
+    const r = run(fixture({ pages: { 'terms.html': terms } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /terms\.html: a block states Seller Co \(rail paddle\) sells in "every country" and names India with no "except" or "outside"/);
+  });
+
+  test('a selling rail with no seller-by-rail row FAILS', () => {
+    const claims = structuredClone(DEFAULT_CLAIMS);
+    claims.claims = claims.claims.filter((c) => c.rail !== 'razorpay');
+    const r = run(fixture({ claims }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /sells on rail "razorpay" and tooling\/legal\/policy-claims\.json has no `seller-by-rail` row for it/);
+  });
+
+  test('a seller-by-rail row for a rail nobody sells on FAILS', () => {
+    const claims = structuredClone(DEFAULT_CLAIMS);
+    claims.claims.push({ type: 'seller-by-rail', rail: 'stripe', pages: ['terms.html'], note: 'a rail that does not exist' });
+    const r = run(fixture({ claims }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /seller-by-rail row "stripe" names a rail that is not a selling rail/);
+  });
+
+  test('COVERAGE LOST: zero seller-by-rail rows', () => {
+    const claims = structuredClone(DEFAULT_CLAIMS);
+    claims.claims = claims.claims.filter((c) => c.type !== 'seller-by-rail');
+    const r = run(fixture({ claims }));
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /COVERAGE LOST — tooling\/legal\/policy-claims\.json declares no `seller-by-rail` row/);
+  });
+
+  test('COVERAGE LOST: a rail no provider row resolves to', () => {
+    const providers = structuredClone(DEFAULT_PROVIDERS);
+    delete providers.providers[3].requiredWhen;
+    const r = run(fixture({ providers }));
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /COVERAGE LOST — rail "razorpay" resolves to 0 provider row\(s\) through requiredWhen\.rail \(none\)/);
+  });
+
+  test('COVERAGE LOST: a regionRails region this guard has no name for', () => {
+    const channels = structuredClone(DEFAULT_CHANNELS);
+    channels.channels[0].purchaseRail.regionRails[0].region = 'ZZ';
+    const r = run(fixture({ channels }));
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /COVERAGE LOST — channel web carries regionRails for region "ZZ"/);
+  });
+
+  test('COVERAGE LOST: no channel register to read the rails from', () => {
+    const r = run(fixture({ channels: null }));
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /COVERAGE LOST — tooling\/channel-register\.json does not exist/);
   });
 });

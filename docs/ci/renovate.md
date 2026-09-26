@@ -25,6 +25,11 @@ names both. The alternative — a copy of this file in each repo — doubles the
 number of schedules that can silently stop, and silent-stopping is this
 project's recurring failure mode. One schedule, one token, one place to look.
 
+⏱ CORRECTED 2026-09-26 (E1-04): the workflow now renovates ONE repository.
+`RENOVATE_REPOSITORIES` names `globalonlinedeveloper/Nikatru_Platform_Public` only, and the job is
+named "Renovate the public platform repository". The paragraph above is the record of the two-repository
+setup it replaced.
+
 ⛔ THIS MUST NOT RUN ALONGSIDE THE MEND-HOSTED APP. Two Renovates on one repo
 open competing branches for the same upgrade. Before this lands, the Mend
 Renovate GitHub App has to be uninstalled (or suspended) for both repos —
@@ -117,7 +122,7 @@ RENOVATE_TOKEN, which belongs to the owner's account, so GitHub
 attributes them there whatever this field says. What the field buys
 is a reader of `git log` being able to tell a bot commit from a hand
 -written one. It is NOT `github-actions[bot]` (the identity
-site-drift-repair.yml and store-screenshots.yml use) because this is
+name-clearance.yml and store-screenshots.yml use) because this is
 not that App and borrowing its address would be a false claim about
 provenance in the one place provenance is recorded.
 

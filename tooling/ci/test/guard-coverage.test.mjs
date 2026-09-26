@@ -1020,6 +1020,129 @@ describe('assert-guard-coverage', () => {
       assert.equal(withIdiom.status, 0, withIdiom.stderr);
     });
 
+    // ── limb 2b over tooling/release (2026-09-25) ──────────────────────────────
+    // The four submit scripts' coverageLost() all exited 1 while this limb read
+    // tooling/ci only. The census now reads tooling/release, follows a stop taken
+    // by import, and follows a THROWING stop to the catches that decide its exit.
+    test('a tooling/release stop that exits 1 is a problem, named with its path and line', () => {
+      const r = run(
+        repo(
+          compliant(),
+          {
+            files: {
+              'tooling/release/submit-x.mjs':
+                "function coverageLost(lines) {\n  console.error(`FAIL COVERAGE LOST — ${lines[0]}`);\n  process.exit(1);\n}\nif (!x) coverageLost(['nothing']);\n",
+            },
+          },
+        ),
+      );
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /tooling\/release\/submit-x\.mjs:1 — its coverageLost\(\) COVERAGE LOST stop exits 1/);
+    });
+
+    test('a release script whose stop comes BY IMPORT is credited to the module, and the module exit is what is graded', () => {
+      const script = "import { submitCli } from './submit-common.mjs';\nconst { coverageLost } = submitCli('submit-x');\nif (!x) coverageLost(['nothing']);\n";
+      const exits2 = run(
+        repo(compliant(), {
+          files: {
+            'tooling/release/submit-common.mjs':
+              'export function submitCli(name) {\n  function coverageLost(lines) {\n    console.error(`FAIL COVERAGE LOST — ${lines[0]}`);\n    process.exit(2);\n  }\n  return { coverageLost };\n}\n',
+            'tooling/release/submit-x.mjs': script,
+          },
+        }),
+      );
+      assert.equal(exits2.status, 0, exits2.stderr);
+      assert.match(exits2.stdout, /tooling\/release: 2 file\(s\) read by limb 2b — 1 named stop\(s\) read as exit 2, 1 taking theirs by import \(submit-x\.mjs → submit-common\.mjs:2\)/);
+      const exits1 = run(
+        repo(compliant(), {
+          files: {
+            'tooling/release/submit-common.mjs':
+              'export function submitCli(name) {\n  function coverageLost(lines) {\n    console.error(`FAIL COVERAGE LOST — ${lines[0]}`);\n    process.exit(1);\n  }\n  return { coverageLost };\n}\n',
+            'tooling/release/submit-x.mjs': script,
+          },
+        }),
+      );
+      assert.equal(exits1.status, 1, exits1.stdout);
+      assert.match(exits1.stderr, /tooling\/release\/submit-common\.mjs:2 — its coverageLost\(\) COVERAGE LOST stop exits 1/);
+    });
+
+    test('a release stop that throws a PLAIN Error is a problem: nothing can catch it by class', () => {
+      const r = run(
+        repo(compliant(), {
+          files: { 'tooling/release/gen-x.mjs': "function refuse(why) {\n  throw new Error(`COVERAGE LOST — ${why}`);\n}\nif (!x) refuse('nothing');\n" },
+        }),
+      );
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /tooling\/release\/gen-x\.mjs:1 — its refuse\(\) COVERAGE LOST stop reaches no exit this check can read/);
+    });
+
+    /** A generator whose stop THROWS a named class, with its CLI block's body
+     *  supplied by the case — the generate-snapcraft.mjs shape. Line 16 is the
+     *  first line of the CLI body. */
+    const THROWING_GENERATOR = (cli) =>
+      "import { pathToFileURL } from 'node:url';\n" +
+      'export class Ungenerable extends Error {\n  constructor(lines) {\n    super(lines[0]);\n    this.lines = lines;\n  }\n}\n' +
+      'const refuse = (lines) => {\n  throw new Ungenerable(lines);\n};\n' +
+      'export function readLane(root) {\n  if (!root) refuse([`COVERAGE LOST — no workflow under ${root}`]);\n  return root;\n}\n' +
+      `if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {\n${cli}}\n`;
+
+    test('a THROWING stop whose CLI catches the class and exits 2 passes (mapped = green)', () => {
+      const r = run(
+        repo(compliant(), {
+          files: {
+            'tooling/release/gen-x.mjs': THROWING_GENERATOR(
+              '  try {\n    readLane(process.argv[2]);\n  } catch (e) {\n    if (!(e instanceof Ungenerable)) throw e;\n    for (const l of e.lines) console.error(l);\n    process.exit(2);\n  }\n',
+            ),
+          },
+        }),
+      );
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /1 entr\(ies\) of a throwing stop graded, 1 call\(s\) of a carrier each caught and mapped to exit 2/);
+    });
+
+    test('a THROWING stop that ESCAPES the CLI to node\'s default handler is a problem (escaping = red)', () => {
+      const r = run(repo(compliant(), { files: { 'tooling/release/gen-x.mjs': THROWING_GENERATOR('  readLane(process.argv[2]);\n') } }));
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(
+        r.stderr,
+        /tooling\/release\/gen-x\.mjs:16 — readLane\(\) can throw Ungenerable carrying COVERAGE LOST, and no catch around it tests for Ungenerable: it escapes to node's default handler, which exits 1/,
+      );
+    });
+
+    test('a THROWING stop whose CLI catches the class and exits 1 is a problem', () => {
+      const r = run(
+        repo(compliant(), {
+          files: {
+            'tooling/release/gen-x.mjs': THROWING_GENERATOR(
+              '  try {\n    readLane(process.argv[2]);\n  } catch (e) {\n    if (!(e instanceof Ungenerable)) throw e;\n    process.exit(1);\n  }\n',
+            ),
+          },
+        }),
+      );
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /tooling\/release\/gen-x\.mjs:17 — readLane\(\) can throw Ungenerable carrying COVERAGE LOST, and the catch at :18 maps it to exit 1/);
+    });
+
+    test('EVERY entry that imports the throwing function is graded — a guard mapping it to exit 1 is red, to its exit-2 stop green', () => {
+      const generator = THROWING_GENERATOR(
+        '  try {\n    readLane(process.argv[2]);\n  } catch (e) {\n    if (!(e instanceof Ungenerable)) throw e;\n    process.exit(2);\n  }\n',
+      );
+      const importer = (catchExit) =>
+        "import { readLane, Ungenerable } from '../release/gen-x.mjs';\n" +
+        'const coverageLost = (lines) => {\n  console.error(`COVERAGE LOST — ${lines[0]}`);\n  process.exit(2);\n};\n' +
+        `try {\n  readLane(process.argv[2]);\n} catch (e) {\n  if (!(e instanceof Ungenerable)) throw e;\n  ${catchExit}\n}\n`;
+      const mapped = run(
+        repo(compliant({ 'assert-imports-gen.mjs': importer('coverageLost(e.lines);') }), { files: { 'tooling/release/gen-x.mjs': generator } }),
+      );
+      assert.equal(mapped.status, 0, mapped.stderr);
+      assert.match(mapped.stdout, /2 entr\(ies\) of a throwing stop graded, 2 call\(s\) of a carrier/);
+      const toOne = run(
+        repo(compliant({ 'assert-imports-gen.mjs': importer('process.exit(1);') }), { files: { 'tooling/release/gen-x.mjs': generator } }),
+      );
+      assert.equal(toOne.status, 1, toOne.stdout);
+      assert.match(toOne.stderr, /tooling\/ci\/assert-imports-gen\.mjs:7 — readLane\(\) can throw Ungenerable carrying COVERAGE LOST, and the catch at :8 maps it to exit 1/);
+    });
+
     test('a scanner with NO named helper is not failed, and is NAMED rather than counted as converted', () => {
       const r = run(repo(compliant()));
       assert.equal(r.status, 0, r.stderr);

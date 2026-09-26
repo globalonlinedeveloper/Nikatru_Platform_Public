@@ -140,30 +140,10 @@ jobs:
           path: apps/subscriptiontracker/build/symbols/android-aab
           retention-days: 7
           if-no-files-found: error
-      # why: pinned by version AND by digest, byte-identical to the step
-      # build-platforms.yml's linux lane runs. Both halves live in
-      # tooling/versions.json. The release asset is a GitLab JOB ARTIFACT, which
-      # is a re-runnable address rather than an immutable object — so the version
-      # alone is a label, and the digest is what makes it an address. This job
-      # runs on ubuntu-24.04, which is the runner the pinned linux-x86_64 binary
-      # was always for: NOTHING new had to be pinned to wire this lane, and the
-      # "one glitchtip-cli and it is linux-x86_64" sentence never excused it.
+      # why: ONE code path on every lane (O-GLITCHTIP-CLI-INSTALLED-BY-HAND): the digest tooling/versions.json
+      # pins for this runner's OS, a bounded retry, and the binary's own --version held to the pin.
       - name: Install glitchtip-cli (pinned by version AND by digest)
-        run: |
-          set -euo pipefail
-          ver="$(node -p "require('./tooling/versions.json').glitchtip_cli")"
-          sum="$(node -p "require('./tooling/versions.json').glitchtip_cli_sha256")"
-          url="https://gitlab.com/glitchtip/glitchtip-cli/-/jobs/artifacts/v${ver}/raw/artifacts/glitchtip-cli-linux-x86_64?job=build-linux-x86_64"
-          curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
-            --output "${RUNNER_TEMP}/glitchtip-cli" "$url"
-          printf '%s  %s\n' "$sum" "${RUNNER_TEMP}/glitchtip-cli" | sha256sum --check --strict -
-          chmod +x "${RUNNER_TEMP}/glitchtip-cli"
-          got="$("${RUNNER_TEMP}/glitchtip-cli" --version)"
-          if [ "$got" != "glitchtip-cli ${ver}" ]; then
-            echo "::error title=glitchtip-cli::the pinned binary reports \"${got}\", not \"glitchtip-cli ${ver}\""
-            exit 1
-          fi
-          echo "$got"
+        run: node tooling/ci/install-pinned-tool.mjs glitchtip-cli --out "$RUNNER_TEMP"
       # why: FAILS CLOSED on a missing GLITCHTIP_TOKEN, never skips — the wrapper
       # exits 1 naming the secret, because a symbol upload that quietly skips
       # itself is how a release ships unreadable. Placed AFTER the retention step

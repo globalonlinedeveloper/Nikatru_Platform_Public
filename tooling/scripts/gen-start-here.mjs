@@ -131,8 +131,8 @@ if (under.length > 0) {
 
    🔴 THE FIX IS TO REMOVE THE COUPLING, NOT TO AUTOMATE AROUND IT. The other
    candidate was to have CI regenerate the card and commit its own output, on the
-   precedent of `.github/workflows/site-drift-repair.yml`. That precedent does not
-   reach: site-drift-repair pushes to `main` AFTER a merge, where nothing races
+   precedent of the (since retired) post-merge sitemap repair. That precedent does
+   not reach: that repair pushed to `main` AFTER a merge, where nothing races
    it, and the value it repairs (`<lastmod>`, a page's git date) genuinely cannot
    exist before the merge. This value CAN be computed on the branch — it is simply
    worthless there — so a repair would have to push onto the pull request's own

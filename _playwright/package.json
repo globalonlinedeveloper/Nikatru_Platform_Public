@@ -3,6 +3,6 @@
   "private": true,
   "description": "The ONE Playwright install every extension browser tier resolves first. No node_modules is committed; npm ci installs it. See extensions/templates/tool/test/browser/README.md.",
   "devDependencies": {
-    "playwright": "1.61.1"
+    "playwright": "1.63.0"
   }
 }

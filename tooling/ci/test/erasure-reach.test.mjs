@@ -155,6 +155,48 @@ describe('the real tree', () => {
   });
 });
 
+// ⏱ 2026-09-25 · D3a (row O-APEX-SITE-DEPLOYS-OUTSIDE-THE-PIPELINE): tooling/sites/nikatru-apex/wrangler.jsonc
+// is a Pages Functions config, classified into a third bucket that binds and never owns.
+const SITE_WRANGLER = 'tooling/sites/nikatru-apex/wrangler.jsonc';
+const withSite = (mutate) => (root) => {
+  mkdirSync(join(root, 'tooling', 'sites', 'nikatru-apex'), { recursive: true });
+  cpSync(join(REPO, SITE_WRANGLER), join(root, SITE_WRANGLER));
+  mutate(root);
+};
+
+describe('the site classification — a Pages Functions config binds a database, never owns one', () => {
+  test('the shipping site config passes, and the census names it', () => {
+    withTree(withSite(() => {}), (r) => {
+      assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+      assert.match(r.stdout, /1 site binding 1 D1 database\(s\), each owned by a live Worker; 0 unclassified/);
+    });
+  });
+
+  test('FAILS when the site binds a database no Worker under services/ owns', () => {
+    withTree(withSite((root) => edit(root, SITE_WRANGLER, (t) => t.replace('"database_name": "platform_db"', '"database_name": "orphan_db"'))), (r) => {
+      assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+      assert.match(`${r.stdout}${r.stderr}`, /tooling\/sites\/nikatru-apex\/wrangler\.jsonc binds orphan_db, which no Worker under services\/ owns/);
+    });
+  });
+
+  test('FAILS when the site declares a migrations_dir — it would own a database outside both floors', () => {
+    withTree(withSite((root) => edit(root, SITE_WRANGLER, (t) => t.replace('"database_name": "platform_db",', '"database_name": "platform_db",\n      "migrations_dir": "migrations",'))), (r) => {
+      assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+      assert.match(`${r.stdout}${r.stderr}`, /declares a migrations_dir for platform_db/);
+    });
+  });
+
+  test('a wrangler.jsonc outside services/, tooling/bricks/ and tooling/sites/ is still COVERAGE LOST', () => {
+    withTree((root) => {
+      mkdirSync(join(root, 'packages', 'x'), { recursive: true });
+      cpSync(join(REPO, SITE_WRANGLER), join(root, 'packages', 'x', 'wrangler.jsonc'));
+    }, (r) => {
+      assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+      assert.match(`${r.stdout}${r.stderr}`, /belong to neither root: packages\/x\/wrangler\.jsonc/);
+    });
+  });
+});
+
 // ⏱ 2026-09-15 · [ADR 081] LIMB 4b — every app in APP_ERASURE_ENDPOINTS can be
 // RETRIED over a Service Binding into its `ErasureEntrypoint`. Each mutation is
 // declared on its own (assert-no-loop-cases).

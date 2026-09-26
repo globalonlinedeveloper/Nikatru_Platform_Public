@@ -51,7 +51,7 @@ them is the session:
   `sub`, `email` and `authRecencyOf(payload)`.
 
 Nothing anywhere reads `payload.session_id` or `payload.iat`. The `session_id` that does appear in
-`services/` (`services/platform/src/routes/events.ts:262`, `services/platform/src/types.ts:725`) is the
+`services/` (`services/platform/src/routes/events.ts:269`, `services/platform/src/types.ts:725`) is the
 analytics envelope's own field and is unrelated.
 
 **No Worker can reach Postgres.** The bindings are D1, KV, R2, a service binding and rate limits. A grep for

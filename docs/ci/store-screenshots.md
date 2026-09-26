@@ -201,7 +201,7 @@ workflow_dispatch  30922349590  4m9s  2026-08-04T15:05:35Z`. Nothing is
 dispatched, the rename landed on no run in flight, and the tablet capture
 is still un-run. Nothing in this file changed this pass except this note.
 
-## job `permissions`
+### key `permissions:`
 
 ### above `permissions:`
 
@@ -212,7 +212,7 @@ touches a store — [pipeline F-11] is about scope, not about refusing to
 write, and the alternative on offer was an artifact with a 90-day timer
 that no human ever opened.
 
-## job `with`
+### key `with:`
 
 ### above `with:`
 
@@ -423,7 +423,7 @@ purge to carry the `env.sandbox` id and neither top-level one, and purge.mjs
 itself refuses a production id whenever an E2E_CONSENT_LEDGER is set, before
 its first request.
 
-## Backend
+## The backend a capture runs against
 
 ⏱ ADDED 2026-09-25 (capsand-b, O-STORE-CAPTURE-WRITES-UNATTRIBUTED-ROWS). The
 capture used to drive a LIVE build against the production Workers, and every

@@ -57,12 +57,12 @@ let n = 0;
  *  guard reads NOTHING else, which is itself the claim — the subject set comes
  *  from the register, so a fixture that names no lane is a fixture the guard
  *  must refuse rather than pass. */
-function fixture({ channels, workflows }) {
+function fixture({ channels, workflows, register = {} }) {
   const root = join(TMP, `fx${n++}`);
   mkdirSync(join(root, 'tooling'), { recursive: true });
   mkdirSync(join(root, 'catalog'), { recursive: true });
   mkdirSync(join(root, '.github/workflows'), { recursive: true });
-  writeFileSync(join(root, 'tooling/channel-register.json'), JSON.stringify({ channels }, null, 2));
+  writeFileSync(join(root, 'tooling/channel-register.json'), JSON.stringify({ channels, ...register }, null, 2));
   writeFileSync(
     join(root, 'catalog/apps.json'),
     JSON.stringify([{ slug: 'subscriptiontracker', platforms: ['web', 'android'], status: 'live' }], null, 2),
@@ -138,6 +138,48 @@ ${steps}
  *  tree where the submission limb has quietly lost its subject. */
 const served = (workflows) =>
   fixture({ channels: [WEB_ROW, storeRow()], workflows: { 'submit-play.yml': REHEARSAL_WF, ...workflows } });
+
+// ⏱ 2026-09-25 · D3a (row O-APEX-SITE-DEPLOYS-OUTSIDE-THE-PIPELINE): deploy-web.yml runs a
+// `site` job beside the web lane, recording `nikatru-site`, a `siteEnvironments` row.
+const SITE_REGISTER = { siteEnvironments: [{ id: 'nikatru-site', deploymentEnvironment: 'nikatru-site', kind: 'site' }] };
+const siteSibling = (environment, condition) => `  site:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Deploy the apex site
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          command: pages deploy . --project-name=nikatru-apex
+      - name: Record the deployed SHA
+        if: ${condition}
+        run: node tooling/ci/record-deployment.mjs ${environment} https://nikatru-apex.pages.dev
+`;
+const servedWithSite = (sibling) =>
+  fixture({
+    channels: [WEB_ROW, storeRow()],
+    register: SITE_REGISTER,
+    workflows: { 'submit-play.yml': REHEARSAL_WF, 'deploy-web.yml': `${DEPLOY_WEB_OK}${sibling}` },
+  });
+
+describe('assert-publish-records — a site job beside the served lane (D3a)', () => {
+  test('a sibling job recording a site environment on the accepted widening is reached, graded and passes', () => {
+    const { code, out } = run(servedWithSite(siteSibling('nikatru-site', "always() && steps.deploy.outcome == 'success'")));
+    assert.equal(code, 0, out);
+    assert.match(out, /reached in job "site" beside the "web" lane; it records "nikatru-site", a kind "site" row/);
+  });
+
+  test('that sibling\'s record behind a NARROWING `if:` fails: rule 6 grades it like the lane\'s own', () => {
+    const { code, out } = run(servedWithSite(siteSibling('nikatru-site', "github.actor == 'nobody'")));
+    assert.equal(code, 1, out);
+    assert.match(out, /NARROWING/);
+  });
+
+  test('a sibling job recording a CHANNEL environment is still unattributed: COVERAGE LOST', () => {
+    const { code, out } = run(servedWithSite(siteSibling('subscriptiontracker-web', "always() && steps.deploy.outcome == 'success'")));
+    assert.equal(code, 2, out);
+    assert.match(out, /sit inside a register-declared lane file and this parse did not reach them/);
+  });
+});
 
 describe('assert-publish-records — the SERVED lane must record what it shipped', () => {
   test('a served channel whose lane job records its environment passes', () => {

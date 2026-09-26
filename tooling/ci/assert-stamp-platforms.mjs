@@ -23,6 +23,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
+import { parseWorkflow, flutterBuilds, workflowSteps as jobSteps, shellSegments, COMPOSER_CALL } from './workflow-scan.mjs';
 
 const ROOT = process.cwd();
 const BRICK_APP = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
@@ -59,70 +60,22 @@ const postGen = read(POST_GEN);
 const ciRaw = read(CI);
 const ci = ciRaw === null ? null : ciRaw.replace(/^\s*#.*$/gm, '');
 
-/** The workflow split into STEPS — each the line range from its `- ` marker to
- *  the next marker at the same indent (or a dedent). Needed because a step is
- *  the unit that carries `working-directory:`, and a `run:` command means
- *  nothing until you know which directory it runs in. Block-scalar bodies are
- *  indented deeper than the marker, so a shell line beginning `- ` cannot be
- *  mistaken for the next step. */
-function workflowSteps(yaml) {
-  const out = [];
-  let cur = null;
-  for (const line of yaml.split('\n')) {
-    const dash = line.match(/^(\s*)-\s+\S/);
-    if (dash && (cur === null || dash[1].length <= cur.indent)) {
-      if (cur) out.push(cur);
-      cur = { indent: dash[1].length, lines: [line] };
-      continue;
-    }
-    if (cur === null) continue;
-    if (line.trim() === '') { cur.lines.push(line); continue; }
-    if (line.match(/^\s*/)[0].length <= cur.indent) { out.push(cur); cur = null; continue; }
-    cur.lines.push(line);
-  }
-  if (cur) out.push(cur);
-  return out;
-}
-
 /** A step's `working-directory:`, read at the step's own mapping indent so a
- *  string inside a block scalar cannot supply one. `null` = the repo root. */
-function stepWorkdir(step) {
-  const re = new RegExp(`^\\s{${step.indent + 2}}working-directory:\\s*(.+)$`);
-  for (const line of step.lines) {
-    const m = line.match(re);
+ *  string inside a block scalar cannot supply one. `null` = the repo root.
+ *  ⏱ CHANGED 2026-09-25 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 2 of 3): the step is
+ *  workflow-scan's `workflowSteps` line range of the parsed job, not a split of the
+ *  raw text this file used to make; its lines are read the same way. */
+function stepWorkdir(job, step) {
+  const lines = job.lines.filter((l) => l.n >= step.first && l.n <= step.last);
+  const indent = (lines[0]?.text.match(/^(\s*)-\s/)?.[1].length ?? 0) + 2;
+  const re = new RegExp(`^\\s{${indent}}working-directory:\\s*(.+)$`);
+  for (const { text } of lines) {
+    const m = text.match(re);
     if (m) {
       return m[1].replace(/\s#.*$/, '').trim().replace(/^(['"])(.*)\1$/, '$2').replace(/\/+$/, '');
     }
   }
   return null;
-}
-
-/** The command text of every `run:` scalar in a set of workflow lines, comments
- *  stripped. Handles the three shapes this repo's workflows use: a plain
- *  one-line scalar (YAML trailing ` #comment` removed), and `|`/`>` block
- *  scalars (each body line collected until dedent — a `#` there is SHELL
- *  syntax, handled later). */
-function runBlocks(lines) {
-  const blocks = [];
-  for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(/^(\s*)(?:-\s+)?run:\s*(.*)$/);
-    if (!m) continue;
-    const keyIndent = m[1].length;
-    const rest = m[2];
-    if (/^[|>][+-]?\d*\s*(?:#.*)?$/.test(rest)) {
-      const body = [];
-      for (let j = i + 1; j < lines.length; j++) {
-        if (lines[j].trim() === '') { body.push(''); continue; }
-        const indent = lines[j].match(/^\s*/)[0].length;
-        if (indent <= keyIndent) break;
-        body.push(lines[j]);
-      }
-      blocks.push(body.join('\n'));
-    } else {
-      blocks.push(rest.replace(/\s#.*$/, ''));
-    }
-  }
-  return blocks;
 }
 
 /** Every place CI actually INVOKES `flutter build <p>` — in command position,
@@ -136,20 +89,41 @@ function runBlocks(lines) {
  *  stamped probe to `apps/subscriptiontracker` left the guard printing `ok every claimed
  *  platform is stamped and built in CI`, while the thing being built was the
  *  hand-maintained legacy app that has compiled for a year. "A fresh stamp
- *  really builds" was then proven by building something that was never stamped. */
-function buildInvocations(yaml, p) {
+ *  really builds" was then proven by building something that was never stamped.
+ *
+ *  ⏱ CHANGED 2026-09-25 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 2 of 3): the builds
+ *  are workflow-scan's flutterBuilds census of ci.yml, every mode, so a build a
+ *  step asks tooling/ci/flutter-release-build.mjs to make is one. This file's own
+ *  step split and `run:`-block reader walked past it. The census matches
+ *  `flutter build` anywhere in a segment, so each record still has to put it in
+ *  COMMAND position once quoted strings are blanked, and a segment left holding
+ *  a quote is the tail of a quoted string the census split at a `;`: prose, not
+ *  a command. parseWorkflow has already blanked `#` comments, full-line and
+ *  trailing. A composed build runs where the composer runs `flutter`, which is
+ *  apps/<app>, whatever the step's `working-directory` says; a line with more
+ *  than one composer call names no single app, so its builds anchor nowhere. */
+function buildInvocations(p) {
+  const wf = parseWorkflow(ROOT, CI);
+  if (wf === null) return [];
   const invoke = new RegExp(`^\\s*flutter\\s+build\\s+${p}\\b`);
+  const unRun = (s) => s.replace(/^\s*(?:-\s+)?run:\s*/, '');
   const found = [];
-  for (const step of workflowSteps(yaml)) {
-    const workdir = stepWorkdir(step);
-    for (const block of runBlocks(step.lines)) {
-      const segments = block
-        .replace(/'[^'\n]*'/g, ' ')      // quoted prose is not a command
-        .replace(/"[^"\n]*"/g, ' ')
-        .replace(/(^|\s)#.*$/gm, '$1')   // a shell comment is not a command
-        .split(/\n|&&|\|\||;|\|/);       // one command per segment
-      if (segments.some((seg) => invoke.test(seg))) found.push({ workdir, segments });
+  for (const b of flutterBuilds(ROOT, [wf])) {
+    const seg = unRun(b.segment).replace(/'[^'\n]*'/g, ' ').replace(/"[^"\n]*"/g, ' ');
+    if (/["']/.test(seg) || !invoke.test(seg)) continue;
+    const job = wf.jobs.get(b.job);
+    const line = job.logical.find((l) => l.n === b.runLine);
+    const segments = shellSegments(line.text).map(unRun);
+    let workdir = null;
+    if (segments.includes(unRun(b.segment))) {
+      const step = jobSteps(job).find((s) => s.first <= b.runLine && b.runLine <= s.last);
+      if (step !== undefined) workdir = stepWorkdir(job, step);
+    } else {
+      const calls = segments.map((s) => COMPOSER_CALL.exec(s)).filter((m) => m !== null);
+      const app = calls.length === 1 ? calls[0][1].trim().split(/\s+/).find((t) => !t.startsWith('-')) : undefined;
+      if (app !== undefined) workdir = `apps/${app}`;
     }
+    found.push({ workdir, segments });
   }
   return found;
 }
@@ -217,7 +191,7 @@ if (postGen !== null && ci !== null) {
         `the stamp CLAIMS "${p}" but the brick stamps no \`${p}/\` folder. \`flutter build ${p}\` fails immediately on a fresh stamp, and its error suggests \`flutter create . --platforms ${p}\` — the hand-repair a stamper exists to make unnecessary.`,
       );
     }
-    const builds = buildInvocations(ci, p);
+    const builds = buildInvocations(p);
     if (builds.length === 0) {
       problems.push(
         `the stamp CLAIMS "${p}" but ${CI} never runs \`flutter build ${p}\` against a stamped app. A claim nothing builds is a promise made to a public catalogue and never kept.`,

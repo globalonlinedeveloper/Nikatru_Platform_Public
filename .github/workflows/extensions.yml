@@ -1314,27 +1314,17 @@ jobs:
           fi
           echo "every declared target had a built package graded: $covered of $declared target(s), $graded package(s)."
 
-      - name: The tool's own AMO submission gate, on the built zip (FullShot)
-        if: steps.tag.outputs.id == 'fullshot'
-        shell: bash
-        run: |
-          set -euo pipefail
-          zip="dist/${{ steps.tag.outputs.id }}-firefox.zip"
-          if [ ! -f "$zip" ]; then
-            echo "::error::$zip does not exist. The pack step above was supposed to write it, so this gate would have graded the source tree and exited 0 over a release that ships a Firefox package."
-            exit 1
-          fi
-          code=0
-          out=$(node Extension/Full_Screen_Shot/publish/verify-firefox-package.node.js --zip "$zip" 2>&1) || code=$?
-          printf '%s\n' "$out"
-          if [ "$code" -ne 0 ]; then
-            echo "::error::the AMO gate exited $code on $zip. These are the exact bytes this tag would upload to addons.mozilla.org, and an accepted-but-wrong upload cannot be taken back."
-            exit "$code"
-          fi
-          if ! printf '%s\n' "$out" | grep -q '^ALL PASS$'; then
-            echo "::error::the AMO gate exited 0 but never printed ALL PASS. Its only other exit-0 path is 'SOURCE PASSES — NO PACKAGE WAS GRADED', i.e. it opened no zip and graded the source tree instead. A pass that inspected no package must not clear a release."
-            exit 1
-          fi
+      # why: the tag's tool's declared store gates at stage `release`, on the exact bytes
+      # this tag would upload — FullShot's AMO gate on its Firefox zip today. A tool
+      # that declares none prints so and passes. (⏱ 2026-09-25,
+      # O-EXTENSION-GATES-NAME-ONE-TOOL: until this date this was a `shell: bash` body
+      # behind an `if:` naming the tool; it is Extension/Full_Screen_Shot/publish/
+      # amo-gate-release-zip.node.js now, with the same outcomes and ::error:: text. The
+      # tag's id reaches the command through `env:`, never `${{ }}` inside `run:`.)
+      - name: The tool's own declared store gates, on the release zip (tool.json gates, stage release)
+        env:
+          TOOL_ID: ${{ steps.tag.outputs.id }}
+        run: node scripts/discover.mjs --run-gates --tool "$TOOL_ID" --stage release --zip "dist/${TOOL_ID}-firefox.zip"
 
       # why: the listing the AMO first submit will carry, printed on every release run so the
       # owner reads it before typing the word (O-AMO-FIRST-SUBMIT-SENDS-NO-METADATA). A

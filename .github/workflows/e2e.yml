@@ -522,6 +522,33 @@ jobs:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
         run: node tooling/e2e/assert_one_issuer.mjs
 
+      # why: ON A CAPTCHA-GATED STACK THE ERASURE CANNOT HAPPEN IN THE BROWSER.
+      # The delete dialog re-authenticates with the Turnstile-gated password
+      # grant, and a headless driver has no token: E2E live run 36220597628 (the
+      # first after the Box C switch) was refused `captcha_failed`, showed "Not
+      # deleted", and sent nothing to any Worker. So when E2E_EXPECT_CAPTCHA_GATE
+      # is yes, app_test.dart asserts that refusal and THIS step erases the
+      # delete-leg account through the ungated `/verify` and the deployed
+      # DELETE /v1/account, then verify_purged.mjs audits it as before. It runs
+      # for both trust answers: without trust (a rehearsal before the switch) it
+      # expects the door's 401 and the account untouched. With the gate off the
+      # in-app leg deletes and this step is skipped — a second deleter there
+      # would pass over a broken in-app deletion — and the script itself refuses
+      # (exit 2) if it is ever run there. Logic and verdicts:
+      # tooling/e2e/delete_headless_expectation.mjs.
+      - name: Erase the delete-leg account headlessly (captcha-gated stack)
+        if: env.E2E_EXPECT_CAPTCHA_GATE == 'yes'
+        env:
+          SUPABASE_URL: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_URL || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_URL || '' }}
+          SUPABASE_ANON_KEY: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_ANON_KEY || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_ANON_KEY || '' }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_SERVICE_ROLE_KEY || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
+          E2E_DELETE_EMAIL: ${{ steps.delete_user.outputs.email }}
+          E2E_DELETE_USER_ID: ${{ steps.delete_user.outputs.user_id }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          E2E_APP_ID: ${{ matrix.app }}
+        run: node tooling/e2e/delete_headless.mjs
+
       - name: Verify the in-app deletion really purged (leg 6)
         env:
           SUPABASE_URL: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_URL || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_URL || '' }}

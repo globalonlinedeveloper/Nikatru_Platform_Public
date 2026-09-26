@@ -282,11 +282,22 @@ const EXEMPT_APPS = new Map([
       // implementation this file classes A/B/C/D in the prose above. It agrees with
       // the 2026-08-21 hand measurement to the line, which is what makes it a
       // reproduction rather than a new claim.
-      floor: 10,
-      floorAsOf: '2026-08-25',
+      //
+      // RE-MEASURED 2026-09-25 by the same limb: ELEVEN. The one line above the
+      // old floor is `ui-invariants-inherited`, whose new PROP_TEST anchor asks
+      // for LIMB 2's five-platform variant (O-DESKTOP-TAP-TARGETS-BELOW-48).
+      // What was traded: this app's own copy of LIMB 2 stays on android. Run
+      // under the variant it measured the same 40x40 as the brick on the desktop
+      // three, AND on iOS and macOS its shell threw `Duplicate GlobalKey`
+      // (StatefulNavigationShellState, under `_FabBand`) during the route walk —
+      // a lib/ defect in this app's shell, outside that row. The theme fix
+      // reaches this app regardless: its a11y sweep runs all five platforms.
+      floor: 11,
+      floorAsOf: '2026-09-25',
       floorNote:
         'The prose above records 9 with the anchors read RAW and 10 with them COMMENT-STRIPPED (2026-08-21); ' +
-        'the strip is on, so that is the read this number comes from. Getting the RAW number back means the stripping was undone.',
+        'the strip is on, so that is the read this number comes from. Getting the RAW number back means the stripping was undone. ' +
+        '2026-09-25: 11 — ui-invariants-inherited gained a PROP_TEST anchor on LIMB 2\'s five-platform variant, and this app\'s own LIMB 2 stays on android (its shell throws a duplicate GlobalKey on iOS and macOS).',
     },
   ],
 ]);
@@ -940,6 +951,20 @@ const REQUIRED_COVERAGE = [
       // the explanation of the thing it is checking for. (The r2_buckets
       // lesson — assert on structure, not on words.)
       { file: WEB_INDEX, re: /<meta\s+name="viewport"[^>]*content="[^"]*width=device-width/, what: 'the stamped web shell must declare a device-width viewport — without it a mobile browser lays the app out at ~980px and scales it down, so every window class is resolved from a lie and the compact layout is unreachable on real phones' },
+      // ⏱ 2026-09-25 · O-DESKTOP-TAP-TARGETS-BELOW-48 · THE 48px LIMB, ON THE
+      // PLATFORMS IT WAS SILENT ABOUT. `ThemeData` derives the tap-target size
+      // and the density from the platform: `padded` and standard on android and
+      // iOS, `shrinkWrap` and compact on linux, macOS and windows. LIMB 2 ran on
+      // android alone, so the desktop sizes (measured 40x40 on the stamped
+      // probe's back button) were never graded, and this entry anchored nothing
+      // about size or platform. Two anchors, one per half:
+      //   · the shared theme sets `padded` in the ThemeData CONSTRUCTOR;
+      //   · LIMB 2 runs under a TargetPlatformVariant naming the desktop three.
+      // The second is matched from LIMB 2's own title to its own `variant:`
+      // argument, never across another `testWidgets(`: a platform set declared
+      // elsewhere in the file, or on a different limb, does not satisfy it.
+      { file: 'packages/design_system/lib/src/theme/build_app_theme.dart', re: /materialTapTargetSize:\s*MaterialTapTargetSize\.padded/, what: 'the shared theme must set materialTapTargetSize: padded — ThemeData defaults it to shrinkWrap on linux, macOS and windows, and every checkbox, radio and icon button there falls under 48px' },
+      { file: PROP_TEST, re: /'every tap target on every declared route is at least 48px',(?:(?!\btestWidgets\()[\s\S])*?\bvariant:\s*(?:const\s+)?TargetPlatformVariant\(\s*<TargetPlatform>\{(?=[^}]*\bTargetPlatform\.linux\b)(?=[^}]*\bTargetPlatform\.macOS\b)(?=[^}]*\bTargetPlatform\.windows\b)[^}]*\}\s*\)/, what: 'the 48px limb must run under a TargetPlatformVariant naming linux, macOS and windows — on android alone it grades the mobile defaults and passes whatever the desktop size is' },
     ],
     why: 'these are near-free in the chassis and near-impossible to retrofit across 50 shipped apps',
   },

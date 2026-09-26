@@ -14,7 +14,7 @@
 //
 // 🔴🔴 THE HOUSE RULE INVERTS HERE, AND THAT IS DELIBERATE — DO NOT "FIX" IT.
 // Every other guard in this repo strips comments before scanning, each with its
-// reason recorded (assert-stamp-platforms.mjs:39-45, assert-no-clone-tells.mjs:
+// reason recorded (assert-stamp-platforms.mjs:43-48, assert-no-clone-tells.mjs:
 // 12-19). THIS GUARD SCANS RAW TEXT, comments included, because here **the
 // comment is the payload**: `sites/nikatru/index.html`'s Flathub tell lived
 // inside the `/* … */` block a human is instructed to copy when adding an app,

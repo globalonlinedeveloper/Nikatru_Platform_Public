@@ -48,6 +48,12 @@ const SUBLY_CHECK_INBOX = `${SUBLY}/lib/features/auth/check_inbox_screen.dart`;
  *  them now delegate here, so it is part of what this guard READS. */
 const CHASSIS_LIB = 'packages/chassis_screens/lib';
 
+/** What limb R3 reads besides the roots. */
+const LEG_REGISTER = 'tooling/e2e-leg-register.json';
+const SUITE = `${SUBLY}/integration_test/app_test.dart`;
+const E2E_WORKFLOW = '.github/workflows/e2e.yml';
+const HEADLESS_DELETE = 'tooling/e2e/delete_headless.mjs';
+
 /** A real-tree copy carrying exactly what the guard reads, and nothing else.
  *
  *  🔴 THE CHASSIS PACKAGE IS COPIED FROM THE REAL TREE, NOT STUBBED. [ADR 071]
@@ -67,6 +73,12 @@ function realTree() {
   cpSync(join(REPO, INTERFACE), join(root, INTERFACE));
   mkdirSync(join(root, CHASSIS_LIB), { recursive: true });
   cpSync(join(REPO, CHASSIS_LIB), join(root, CHASSIS_LIB), { recursive: true });
+  // R3 reads the leg register, the suite it names, that suite's workflow and
+  // the tooling/e2e script the register names as a headless route.
+  for (const rel of [LEG_REGISTER, SUITE, E2E_WORKFLOW, HEADLESS_DELETE]) {
+    mkdirSync(dirname(join(root, rel)), { recursive: true });
+    cpSync(join(REPO, rel), join(root, rel));
+  }
   const git = (...a) => execFileSync('git', a, { cwd: root, encoding: 'utf8' });
   git('init', '-q');
   git('config', 'user.email', 'test@example.invalid');
@@ -365,5 +377,89 @@ describe('a gated call site that moved into the chassis package', () => {
       assert.equal(r.status, 2, r.stdout);
       assert.match(r.stdout + r.stderr, /that file is not on disk/);
     });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R3 — A GATED CALL SITE THE E2E SUITE DRIVES NAMES ITS HEADLESS ROUTE
+//
+// E2E live run 36220597628 (2026-09-26), the first after the switch to Box C:
+// the delete dialog's reauth was refused `captcha_failed` in a headless browser
+// and nothing reached a Worker, while R1 and R2 were green over that tree. On
+// the switch commit e97a111c, with sign-in's route declared, this limb names
+// `settings_screen.dart:1412` and nothing else (measured on a detached checkout
+// the day it was written). The MUTATION cases below take the real tree back to
+// that shape one piece at a time.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('R3 — every gated surface the e2e suite drives names its headless route', () => {
+  const dropSurface = (file) => (root) =>
+    edit(root, LEG_REGISTER, (s) => {
+      const j = JSON.parse(s);
+      j.captchaGatedSurfaces.surfaces = j.captchaGatedSurfaces.surfaces.filter((e) => e.file !== file);
+      return `${JSON.stringify(j, null, 2)}\n`;
+    });
+
+  test('GREEN CONTROL · the real tree names a route for sign-in and for the delete dialog', () => {
+    withTree(
+      () => {},
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /ok {3}R3 — 2 captcha-gated surface\(s\) the e2e suite drives/);
+        assert.match(r.stdout, /settings_screen\.dart → tooling\/e2e\/delete_headless\.mjs/);
+      },
+    );
+  });
+
+  test('🔴 the delete dialog with no route is the Box C switch failure, named', () => {
+    withTree(dropSurface(SUBLY_SETTINGS), (r) => {
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /\[R3\] apps\/subscriptiontracker\/lib\/features\/settings\/settings_screen\.dart:\d+ \(signInWithEmail\) is a captcha-gated call site the live e2e suite DRIVES/);
+      assert.doesNotMatch(r.stderr, /\[R3\] apps\/subscriptiontracker\/lib\/features\/auth\/login_screen\.dart/);
+    });
+  });
+
+  test('a route script the e2e workflow never runs is not a route', () => {
+    withTree(
+      (root) => edit(root, E2E_WORKFLOW, (s) => s.replace('run: node tooling/e2e/delete_headless.mjs', 'run: echo skipped')),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /the headless route tooling\/e2e\/delete_headless\.mjs exists, and \.github\/workflows\/e2e\.yml never runs it/);
+      },
+    );
+  });
+
+  test('a refusal the suite no longer asserts does not resolve', () => {
+    withTree(
+      (root) => edit(root, SUITE, (s) => s.replace('core.AccountDeletionOutcome.reauthFailed.plainMessage', "'Not deleted'")),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /the refusal anchor "core\.AccountDeletionOutcome\.reauthFailed\.plainMessage" does not resolve/);
+      },
+    );
+  });
+
+  test('an entry for a surface nothing drives is stale, and refused', () => {
+    withTree(
+      (root) =>
+        edit(root, LEG_REGISTER, (s) => {
+          const j = JSON.parse(s);
+          j.captchaGatedSurfaces.surfaces.push({ file: SUBLY_CHECK_INBOX, refusal: 'l10n.authCaptchaFailed', headlessRoute: 'signInWithMagicToken(tester,' });
+          return `${JSON.stringify(j, null, 2)}\n`;
+        }),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /names a headless route for "apps\/subscriptiontracker\/lib\/features\/auth\/check_inbox_screen\.dart", which is not a captcha-gated surface the e2e suite drives/);
+      },
+    );
+  });
+
+  test('a missing leg register is COVERAGE LOST', () => {
+    withTree(
+      (root) => rmSync(join(root, LEG_REGISTER)),
+      (r) => {
+        assert.equal(r.status, 2, r.stdout);
+        assert.match(r.stderr, /COVERAGE LOST — tooling\/e2e-leg-register\.json could not be read/);
+      },
+    );
   });
 });

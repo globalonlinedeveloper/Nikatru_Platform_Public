@@ -75,7 +75,7 @@ was real; the repair is these three globs — the trigger path here, and the sam
 filters — plus the limb in `tooling/ci/assert-deploy-triggers-deploy.mjs` that fails the build when a
 filter claims a source tree without claiming what that tree imports from outside itself.
 
-## `permissions:`
+### `permissions:`
 
 ### above `permissions:`
 
@@ -87,9 +87,9 @@ severity / HIGH confidence: at workflow level EVERY job gets it, including
 `detect`, which only reads ci-gate's verdict and writes nothing. It now sits on
 the two jobs that actually record a deployment marker. [pipeline F-11]
 
-## job `detect`
+## The retired job `detect` (gone since #947: the gate and the path decision run in ci.yml)
 
-### above `timeout-minutes: 25`
+### was above `timeout-minutes: 25` (gone since #947, which made this file a post-gate call job of ci.yml)
 
 25 because the gate check below polls for up to assert-gate-passed.mjs's own
 1200 s default. That is not hypothetical here: this job's longest recorded
@@ -107,7 +107,7 @@ does git push/tag/commit, so none of these checkouts need the credential.
 [zizmor artipacked] Verified 2026-07-27: no current artifact path includes
 .git/ — so this closes a FUTURE mistake, not a live leak.
 
-### above `Require ci-gate to have passed for this commit`
+### was above `Require ci-gate to have passed for this commit` (gone since #947, which made this file a post-gate call job of ci.yml)
 
 The gate check lives HERE, not in the deploy jobs, for two reasons:
 both deploy jobs already `needs: detect`, so one insertion blocks both;
@@ -168,7 +168,7 @@ top-level trigger cannot supply — a trigger starts the run, and the inner filt
 jobs are allowed to do anything. `contracts/entitlement/*` shows the other side of the same rule:
 only `platform` builds from it, so only `platform` claims it.
 
-### above `id: decide`
+### was above `id: decide` (gone since #947, which made this file a post-gate call job of ci.yml)
 
 Manual dispatch has no diff to filter on → deploy both. Push → per-path.
 
@@ -301,6 +301,13 @@ It binds subscriptiontracker_db as well as platform_db, so the check executes it
 statements against BOTH — a route reads the databases it reads, not the
 ones its Worker binds, and this is the seam where that stopped being true.
 
+### above `Write this version's secrets file` — added 2026-09-26
+
+The file the deploy below carries with `--secrets-file`. See the dated block
+under the next heading for why the secret stopped being the action's
+`secrets:` input. `flag: "wx"` refuses a file that already exists, so a
+stale file is never uploaded in place of this run's value.
+
 ### above the `id: deploy` step
 
 ── ONE DEPLOY PER JOB, AND IT CARRIES THE VARS ─────────────────────────
@@ -338,6 +345,51 @@ for `platform` (live since 2026-07) but would fail on the first-ever
 deploy of a brand-new Worker. A new Worker needs one deploy before its
 first secret — do not copy this shape to one until it exists.
 
+── ⏱ 2026-09-26 · THE SECRET RIDES THE VERSION; THE TWO PARAGRAPHS ABOVE ARE RETIRED ──
+
+The `secrets:` input is gone from this step. Main CI run 36224483330 (the
+#974 merge, 160b786c) went red at `deploy-workers / Deploy platform` at
+06:54:52Z: "Secret edit failed. You attempted to modify a secret, but the
+latest version of your Worker isn't currently deployed." (Cloudflare error
+10215, endpoint `workers/scripts/platform/secrets-bulk`). The
+`uploadSecrets()` described above is a SEPARATE secret edit on the Worker,
+made before the deploy. Cloudflare refuses that edit whenever the newest
+uploaded version is not the deployed one, and every rollback leaves the
+Worker in that state: rollback.yml re-promotes an older version, and the
+newest stays undeployed. The Phase 5 rollback of 2026-09-26 left platform
+that way, so every later platform deploy failed at this step until one
+was deployed by hand (07:03Z, version 191f606f).
+
+The secret now rides the version. The step before the deploy writes it to
+`$RUNNER_TEMP/platform-secrets.json`: JSON, mode 0600, read from the step
+env by name and never echoed. An unset or empty value exits 1 there, as the
+action's input did. The deploy command gains `--secrets-file <that path>`,
+and a step on `always()` deletes the file. Wrangler turns the file's entries
+into `secret_text` bindings of the uploaded version, and the flag sets
+`keep_bindings: ["secret_text", "secret_key"]`, so a secret the file does not
+name is carried forward, never deleted (read in the pinned 4.135.0's
+`wrangler-dist/cli.js`: the flag is in `sharedDeployVersionsArgs`, and
+`deployWorker` sets `keepSecrets: keepVars || !!props.secretsFile`). No
+secret edit is left to refuse. The value still never
+appears in an argument list or a log, because the argument is the file's
+path.
+
+What this retires: "The action runs `uploadSecrets()` BEFORE
+`wranglerCommands()`" no longer describes this step, and the ORDERING
+CAVEAT goes with it. A secret carried by `--secrets-file` is part of the
+upload, so a new Worker's first deploy can carry its first secret. The
+ONE-DEPLOY rule above still holds: the secret travels with the one deploy
+that carries the vars.
+
+⚠️ A carried-forward secret is copied from the NEWEST uploaded version, not
+from the deployed one. That is the hazard in
+O-CUTOVER-PREFLIGHT-READS-UPLOADED-NOT-DEPLOYED. This change neither causes
+nor fixes it, because only SUPABASE_ANON_KEY is written fresh on every
+deploy.
+
+Held by `tooling/ci/assert-workflow-hardening.mjs` limb 13, which refuses a
+`secrets:` input on any `cloudflare/wrangler-action` step in any workflow.
+
 ── [pipeline O-4] WHAT THE SECRET IS FOR ───────────────────────────────
 `platform_db.cron_heartbeat` carried, every night for three consecutive
 nights: "HTTP 401 — REJECTED (unauthenticated, no SUPABASE_ANON_KEY
@@ -354,6 +406,12 @@ on it; see the block there.
 [pipeline 11]E-8 — see the identical pair in the subscriptiontracker-api job above
 for why the DSN is a `--var` and why the release is the SHA rather
 than API_VERSION.
+
+### above `Delete this version's secrets file` — added 2026-09-26
+
+`if: always()`, so the file goes whether the deploy passed, failed or never
+ran. It is right after the deploy, not at the end of the job, so the file
+exists only for as long as the deploy step runs.
 
 ### above `Smoke — the live Worker answers at THIS commit`
 

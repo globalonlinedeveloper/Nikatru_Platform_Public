@@ -20,6 +20,11 @@
 // msix_config.display_name and the PWA manifest `short_name`. Those are SURGICAL
 // renderings into files this script does not otherwise own; see
 // ICON_LABEL_TARGETS below for the anchor rule that makes that safe.
+// ⏱ 2026-09-25 — FOUR now: msix_config.display_name is rendered from `name`,
+// the Store title, by MSIX_TITLE_TARGET (O-MSIX-IDENTITY-UNGRADED), and the
+// Start-menu label is written into the packaged manifest by
+// tooling/store/msix-visual-name.mjs. The counts in the comments below are the
+// ones measured when the list was written.
 //
 // and, into both Apple Info.plists, the TWO keys App Store review reads from the
 // bundle: LSApplicationCategoryType (from `category`, through the vocabulary's
@@ -27,6 +32,10 @@
 // `exportCompliance.usesNonExemptEncryption`, a legal answer). Those are UPSERTS,
 // not replace-only, because `flutter create` writes neither; see
 // PLIST_KEY_TARGETS below (O-APPLE-PLIST-KEYS-UNRENDERED).
+//
+// and, into the pubspec's `msix_config`, the MSIX `identity_name` — from the
+// app's OWN record, `stores.windows-store.identityName`, never from the channel
+// row (O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1)); see MSIX_IDENTITY_TARGET below.
 //
 // ⛔ THE SIXTH OS-LEVEL LABEL — the .desktop `Name=` — IS NOT WRITTEN HERE, and
 // that is not an omission. `tooling/store/render-linux-icons.mjs` derives that
@@ -246,21 +255,38 @@ export const ICON_LABEL_TARGETS = [
     re: /(<key>CFBundleDisplayName<\/key>\s*<string>)[^<]*(<\/string>)/,
     encode: xmlText,
   },
-  {
-    // `msix` writes this into the generated AppxManifest as
-    // uap:VisualElements/@DisplayName — the Start-menu tile's label.
-    field: 'msix_config.display_name (uap:VisualElements/@DisplayName)',
-    in: 'pubspec.yaml',
-    // Every app has a pubspec; only an app packaged for the Microsoft Store has
-    // an `msix_config:` block in it. `applies` is the difference between "this
-    // platform is not configured" (skip) and "the field this renderer owns has
-    // moved" (COVERAGE LOST) — without it a freshly stamped app, whose pubspec
-    // carries no msix_config at all, would fail the renderer on its first run.
-    applies: /^msix_config:/m,
-    re: /(^msix_config:[\s\S]*?^ {2}display_name: )[^\r\n]*(\r?)$/m,
-    encode: yamlScalar,
-  },
 ];
+
+/**
+ * ⏱ 2026-09-25 — O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1). The MSIX
+ * Package/Identity/Name an app packages, rendered from ITS OWN record,
+ * `stores.windows-store.identityName` in apps/<id>/app.yaml. It used to be
+ * copied from the ONE identity on the windows-store channel row, by the brick
+ * at stamp time, so a second app packaged the first app's identity and every
+ * guard agreed with it.
+ *
+ * The same surgical rule as ICON_LABEL_TARGETS, with the span BOUNDED BY THE
+ * BLOCK: the lines between `msix_config:` and `identity_name:` must all be
+ * indented, blank or comments, so a key of the same name under a later
+ * top-level block is never the one rewritten (tooling/ci/read-identity.mjs
+ * readMsixIdentityName records paying for that once). A pubspec with no
+ * `msix_config:` is an app not packaged for the Microsoft Store and is skipped;
+ * the brick appends the block AFTER its render, on the same sentinel the record
+ * carries.
+ *
+ * A line of the span is `[ \t#]` and the rest of it, or a bare `\r`, or
+ * nothing, then its `\n`. It used to be `(?:[ \t#][^\n]*)?\r?\n`, where
+ * `[^\n]*` and `\r?` could each take an indented CRLF line's `\r`, so n such
+ * lines with no identity_name after them backtracked 2^n ways (CodeQL
+ * js/redos). The text matched and both groups are unchanged.
+ */
+export const MSIX_IDENTITY_TARGET = {
+  field: 'msix_config.identity_name (Package/Identity/@Name)',
+  in: 'pubspec.yaml',
+  applies: /^msix_config:/m,
+  re: /(^msix_config:[^\n]*\n(?:(?:[ \t#][^\n]*|\r)?\n)*? {2}identity_name: )[^\r\n]*(\r?)$/m,
+  encode: yamlScalar,
+};
 
 /** The Apple category UTI a portfolio category word maps to, through the
  *  vocabulary's APPLE_CATEGORY_UTI. An unmapped word is an authoring error
@@ -337,6 +363,37 @@ const plistValue = ({ type, v }) => (type === 'bool' ? (v ? '<true/>' : '<false/
 
 /** The root dictionary's close: the one place a missing key is inserted. */
 const PLIST_ROOT_CLOSE = /(\r?\n)(<\/dict>\r?\n<\/plist>\s*)$/;
+
+/**
+ * ⏱ 2026-09-25 — `msix_config.display_name` LEFT the list above
+ * (O-MSIX-IDENTITY-UNGRADED). `msix` writes that one value into BOTH
+ * `Properties/DisplayName` — the name the Store lists the package under, which
+ * Partner Center requires to be a name reserved for the product — and
+ * `uap:VisualElements/@DisplayName`, the Start-menu label. Rendered from
+ * `shortName`, the package carried the label as its Store title. It is now
+ * rendered from `name`, the same value this script writes into
+ * store/windows-store/title.txt, and the label reaches VisualElements through
+ * tooling/store/msix-visual-name.mjs in the packaging step, which reads
+ * `shortName` through readDeclaration below.
+ */
+export const MSIX_TITLE_TARGET = Object.freeze({
+  field: 'msix_config.display_name (Properties/DisplayName, the Store title)',
+  in: 'pubspec.yaml',
+  // Every app has a pubspec; only an app packaged for the Microsoft Store has
+  // an `msix_config:` block in it. `applies` is the difference between "this
+  // platform is not configured" (skip) and "the field this renderer owns has
+  // moved" (COVERAGE LOST) — without it a freshly stamped app, whose pubspec
+  // carries no msix_config at all, would fail the renderer on its first run.
+  applies: /^msix_config:/m,
+  re: /(^msix_config:[\s\S]*?^ {2}display_name: )[^\r\n]*(\r?)$/m,
+  encode: yamlScalar,
+});
+
+/** The one reader of `apps/<id>/app.yaml`: plan() below reads every declaration
+ *  through it, and so do the .msix tools. Throws on a file that does not parse. */
+export function readDeclaration(root, id) {
+  return parseYaml(readFileSync(join(root, APPS_DIR, id, 'app.yaml'), 'utf8'));
+}
 
 /** The catalogue row's key order. Locked, because the row is the published record
  *  and the bytes are compared by two positive controls: a row whose keys arrive
@@ -443,7 +500,7 @@ export function plan(root) {
     const rel = `${APPS_DIR}/${id}/app.yaml`;
     let doc;
     try {
-      doc = parseYaml(readFileSync(join(root, rel), 'utf8'));
+      doc = readDeclaration(root, id);
     } catch (e) {
       problems.push(`${rel}: ${e instanceof YamlError ? e.message : String(e)}`);
       continue;
@@ -621,6 +678,33 @@ export function plan(root) {
     lost.push(`${labelApps} declaration(s) carry a \`shortName\` and zero icon-label fields were rendered from any of them.`);
   }
 
+  // ── the MSIX identity name (O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1)) ───────
+  // Only for a declaration that carries the record; the schema has already
+  // required both of its fields. A pubspec that is not on disk, or carries no
+  // `msix_config:`, is an app not packaged for the Microsoft Store and is
+  // skipped. A block that no longer carries `identity_name:` is COVERAGE LOST:
+  // the renderer has lost a field it owns, and `msix` would package whatever the
+  // block says instead.
+  {
+    const t = MSIX_IDENTITY_TARGET;
+    for (const { id, doc } of declarations) {
+      const record = doc?.stores?.['windows-store'];
+      if (!record || typeof record.identityName !== 'string') continue;
+      const rel = `${APPS_DIR}/${id}/${t.in}`;
+      const current = files.get(rel) ?? read(root, rel);
+      if (current === null || !t.applies.test(current)) continue;
+      if (!t.re.test(current)) {
+        lost.push(
+          `${rel} carries an \`msix_config:\` block and no ${t.field} this renderer can find. ${APPS_DIR}/${id}/app.yaml ` +
+            'declares stores.windows-store, so this block packages the app for the Microsoft Store, and a rendering that skipped ' +
+            "it would leave the packaged identity to whatever the file happens to say. Restore `  identity_name:` inside the block.",
+        );
+        continue;
+      }
+      files.set(rel, current.replace(t.re, (_m, pre, post) => `${pre}${t.encode(record.identityName)}${post}`));
+    }
+  }
+
   // ── the two Apple Info.plist keys (O-APPLE-PLIST-KEYS-UNRENDERED) ──────────
   // Every declaration carries `exportCompliance` (the schema requires it), so
   // this runs for every app that has an Apple target. A target file that is not
@@ -669,6 +753,26 @@ export function plan(root) {
         files.set(rel, current.replace(PLIST_ROOT_CLOSE, (_m, nl, close) => `${nl}\t${keyTag}${nl}\t${plistValue(val)}${nl}${close}`));
       }
     }
+  }
+
+  // ── ⏱ 2026-09-25 · the .msix Store title (O-MSIX-IDENTITY-UNGRADED) ───────
+  // `name`, not `shortName`: see MSIX_TITLE_TARGET. A pubspec with no
+  // msix_config is an app not packaged for the Microsoft Store and is skipped;
+  // one whose msix_config has lost its display_name anchor is COVERAGE LOST.
+  for (const { id, doc } of declarations) {
+    const t = MSIX_TITLE_TARGET;
+    const rel = `${APPS_DIR}/${id}/${t.in}`;
+    const current = files.get(rel) ?? read(root, rel);
+    if (current === null || !t.applies.test(current)) continue;
+    if (!t.re.test(current)) {
+      lost.push(
+        `${rel} carries an msix_config block with no display_name this renderer can find. It is the name the .msix ` +
+          'declares as Properties/DisplayName, which Partner Center compares to the name reserved for the product — ' +
+          'restore the field.',
+      );
+      continue;
+    }
+    files.set(rel, current.replace(t.re, (_m, pre, post) => `${pre}${t.encode(doc.name)}${post}`));
   }
 
   // ── ⏱ 2026-09-15 · the RevenueCat app-id routing map ([ADR 085] decision A) ──

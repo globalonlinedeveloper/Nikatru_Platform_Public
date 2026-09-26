@@ -35,6 +35,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, cpSync } f
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { stripSourceComments } from '../text-reductions.mjs';
+import { parseWorkflow, workflowSteps, jobEnvironment } from '../workflow-scan.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SCRIPT = join(REPO, 'tooling', 'release', 'submit-windows-store.mjs');
@@ -60,8 +62,18 @@ const CONFIGURED_IDENTITY = {
   publisherDisplayName: 'Nikatru Fixture',
   publisher: 'CN=00000000-0000-0000-0000-000000000000',
 };
+// ⏱ 2026-09-25 — O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1). The identity NAME is
+// the --app's own record (apps/<id>/app.yaml stores.windows-store); the row keeps
+// the account's publisher and display name. CONFIGURED sets both halves.
+const CONFIGURED_RECORD = { identityName: CONFIGURED_IDENTITY.identityName, packageFamilyName: `${CONFIGURED_IDENTITY.identityName}_aaaaaaaaaaaaa` };
+const PENDING_RECORD = { identityName: SENTINEL, packageFamilyName: SENTINEL };
 const CONFIGURED = {
-  mutateRegister: (reg) => Object.assign(reg.channels[0].packageIdentity, CONFIGURED_IDENTITY),
+  mutateRegister: (reg) =>
+    Object.assign(reg.channels[0].packageIdentity, {
+      publisherDisplayName: CONFIGURED_IDENTITY.publisherDisplayName,
+      publisher: CONFIGURED_IDENTITY.publisher,
+    }),
+  record: CONFIGURED_RECORD,
   pubspecOver: {
     identity_name: CONFIGURED_IDENTITY.identityName,
     publisher_display_name: CONFIGURED_IDENTITY.publisherDisplayName,
@@ -89,6 +101,9 @@ function tree({
   artifactBytes = 1024,
   pubspecOver = {},
   noMsixConfig = false,
+  // apps/subscriptiontracker/app.yaml stores.windows-store; null writes an
+  // app.yaml with no stores block.
+  record = PENDING_RECORD,
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   const write = (rel, body) => {
@@ -115,7 +130,6 @@ function tree({
         ownerQueue: 'A-2',
         packageIdentity: {
           notYetConfiguredSentinel: SENTINEL,
-          identityName: SENTINEL,
           publisherDisplayName: SENTINEL,
           publisher: `CN=${SENTINEL}`,
         },
@@ -127,6 +141,10 @@ function tree({
 
   write('tooling/channel-register.json', JSON.stringify(register, null, 2));
   write('catalog/apps.json', JSON.stringify([{ slug: 'subscriptiontracker', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'], status: 'live' }]));
+  write(
+    'apps/subscriptiontracker/app.yaml',
+    `id: subscriptiontracker\n${record ? `stores:\n  windows-store:\n    identityName: ${record.identityName}\n    packageFamilyName: ${record.packageFamilyName}\n` : ''}`,
+  );
 
   const cfg = {
     display_name: 'Subly',
@@ -215,6 +233,45 @@ describe('submit-windows-store — the submission path is walkable, and --submit
     assert.doesNotMatch(out, /primary sources — \d+ citation\(s\) present/, 'the placeholder walked past the problems block toward the upload');
   });
 
+  // ⏱ 2026-09-25 — the state the brick stamps since B4a-2: the account is
+  // configured and THIS app's identity name is not yet issued. The submit must
+  // refuse on the name alone; "partly real" is not submittable.
+  test('--submit REFUSES a stamped app whose own identity name is still the placeholder under a configured account', () => {
+    const { code, out } = run(
+      tree({ withArtifact: true, ...CONFIGURED, record: PENDING_RECORD, pubspecOver: { ...CONFIGURED.pubspecOver, identity_name: SENTINEL } }),
+      ['--submit', '--app', 'subscriptiontracker', '--confirm', 'SUBMIT-TO-MICROSOFT-STORE'],
+      CREDS,
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /PLACEHOLDER PACKAGE IDENTITY — --submit REFUSED: identity_name is still PARTNER-CENTER-PENDING in both apps\/subscriptiontracker\/app\.yaml and apps\/subscriptiontracker\/pubspec\.yaml/);
+    assert.doesNotMatch(out, /HALF configured/);
+    assert.doesNotMatch(out, /primary sources — \d+ citation\(s\) present/, 'the placeholder walked past the problems block toward the upload');
+  });
+
+  test('--dry-run FAILS when the app declares no stores.windows-store record', () => {
+    const { code, out } = run(tree({ withArtifact: true, record: null }), ['--dry-run', '--app', 'subscriptiontracker']);
+    assert.equal(code, 1, out);
+    assert.match(out, /apps\/subscriptiontracker\/app\.yaml declares no stores\.windows-store record/);
+  });
+
+  // The row's own identityName, if one were left there, is not read: the name
+  // is the --app's record. A row naming ANOTHER identity changes nothing.
+  test("the identity name is the --app's record: a different identityName left on the row is not read", () => {
+    const { code, out } = run(
+      tree({
+        withArtifact: true,
+        ...CONFIGURED,
+        mutateRegister: (reg) => {
+          CONFIGURED.mutateRegister(reg);
+          reg.channels[0].packageIdentity.identityName = 'ZZTest.SomeOtherApp';
+        },
+      }),
+      ['--dry-run', '--app', 'subscriptiontracker'],
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /package identity — 3 field\(s\), register and apps\/subscriptiontracker\/pubspec\.yaml agree/);
+  });
+
   test('--dry-run only PRINTS the placeholder — the account step is owner work, not a defect', () => {
     const { code, out } = run(tree({ withArtifact: true }), ['--dry-run', '--app', 'subscriptiontracker']);
     assert.equal(code, 0, out);
@@ -242,8 +299,27 @@ describe('submit-windows-store — the submission path is walkable, and --submit
       GH_TOKEN: '',
     });
     assert.equal(code, 1, out);
-    assert.match(out, /needs GITHUB_REPOSITORY and GITHUB_TOKEN to read the publish environment/);
+    assert.match(out, /PG-6 · a store publish needs GITHUB_TOKEN to read the publish environment's protection rules/);
     assert.match(out, /environments/);
+  });
+
+  // ⏱ C4b, 2026-09-25 — PG-6 IS NOW submit-common's requirePublishEnvironment,
+  // and this is the case that RUNS it. Before the move PG-6 hard-coded
+  // https://api.github.com, so no case here could get past the token check
+  // without the network. The shared read honours the loopback-only
+  // GITHUB_API_URL seam: pointed at a closed loopback port, the GET itself fails
+  // and PG-6 refuses naming the environment URL only that read builds — through
+  // `fail`, so the exit code is process.exitCode's (TRAPS shell-12).
+  test('PG-6 · the shared environment read runs, and an unreachable gate refuses', () => {
+    const { code, out } = run(tree({ withArtifact: true, ...CONFIGURED }), ['--submit', '--app', 'subscriptiontracker', '--confirm', 'SUBMIT-TO-MICROSOFT-STORE'], {
+      ...CREDS,
+      GITHUB_TOKEN: 'ghs-fixture',
+      GITHUB_API_URL: 'http://127.0.0.1:9',
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL PG-6 · could not reach http:\/\/127\.0\.0\.1:9\/repos\/globalonlinedeveloper\/Nikatru_Platform_Public\/environments\/store-publish/);
+    assert.match(out, /submit-windows-store: FAILED/);
+    assert.doesNotMatch(out, /ghs-fixture/);
   });
 
   test('--submit prints the sourced-citation tally before it touches anything remote', () => {
@@ -271,8 +347,14 @@ describe('submit-windows-store — the submission path is walkable, and --submit
       recursive: true,
       filter: (src) => !src.split(/[\\/]/).includes('test'),
     });
+    // ⏱ 2026-09-25 — the script reads the app's record through
+    // tooling/ci/read-identity.mjs, which imports the one YAML reader.
+    mkdirSync(join(root, 'tooling', 'app-yaml'), { recursive: true });
+    cpSync(join(REPO, 'tooling', 'app-yaml', 'yaml.mjs'), join(root, 'tooling', 'app-yaml', 'yaml.mjs'));
     const mutated = join(root, 'tooling', 'release', 'submit-windows-store.mjs');
     mkdirSync(dirname(mutated), { recursive: true });
+    // Its shared preamble travels with it, or the copy dies on LOAD (the same shell-16 red).
+    cpSync(join(REPO, 'tooling', 'release', 'submit-common.mjs'), join(root, 'tooling', 'release', 'submit-common.mjs'));
     const source = readFileSync(SCRIPT, 'utf8');
     const before = source.match(/msstoreCli: '(https:\/\/[^']+)'/);
     assert.ok(before !== null, 'the msstoreCli citation is not where this mutation expects it');
@@ -392,11 +474,20 @@ describe('submit-windows-store — the submission path is walkable, and --submit
     assert.ok(!source.includes('--submit is NOT IMPLEMENTED'), 'the refusal is back');
     assert.match(source, /const UNSOURCED = Object\.freeze\(\[/);
     assert.match(source, /const PRIMARY_SOURCES = Object\.freeze\(\{/);
-    // limb 4 of assert-release-provenance.mjs reads BOTH of these out of the
-    // script with comments stripped; they are asserted here too so a refactor
-    // that drops one is caught by this suite as well as by that guard.
-    assert.match(source.replace(/^\s*\/\/.*$/gm, ''), /\/environments\//);
-    assert.match(source.replace(/^\s*\/\/.*$/gm, ''), /protection_rules/);
+    // limb 4 of assert-release-provenance.mjs credits this script with the
+    // run-time read because it imports requirePublishEnvironment from
+    // submit-common.mjs AND calls it, and that module holds BOTH halves of the
+    // read (C4b, 2026-09-25: before then they stood in this file). Asserted here
+    // too so a refactor that drops one is caught by this suite as well as by
+    // that guard.
+    const code = source.replace(/^\s*\/\/.*$/gm, '');
+    assert.match(code, /^import \{[^}]*\brequirePublishEnvironment\b[^}]*\} from '\.\/submit-common\.mjs';$/m);
+    assert.match(code, /\brequirePublishEnvironment\(/);
+    // The guard's own stripper, not the line-comment regex above: submit-common
+    // documents the endpoint in a /** */ block, which that regex leaves standing.
+    const common = stripSourceComments(readFileSync(join(REPO, 'tooling', 'release', 'submit-common.mjs'), 'utf8'), '.mjs');
+    assert.match(common, /\/environments\//);
+    assert.match(common, /protection_rules/);
   });
 
   test('FAILS when neither --dry-run nor --submit is given', () => {
@@ -492,15 +583,77 @@ describe('submit-windows-store — the submission path is walkable, and --submit
     assert.doesNotMatch(out, /the-actual-secret/);
   });
 
+  // ── O-STORE-SECRETS-REACH-THE-DRY-RUN (2026-09-25) ─────────────────────────
+  // The register scopes MS_STORE_CLIENT_SECRET to the store-publish environment,
+  // and the dry-run job has none, so the dry run cannot see it. It must neither
+  // look for it nor report its absence as a gap; --submit, which runs in the
+  // environment-bound job, still requires all five.
+  const SCOPED = (r) => {
+    r.ciSecretRegister = {
+      nonSigning: [
+        { name: 'MS_STORE_CLIENT_SECRET', kind: 'publishing-credential', why: 'the fixture client secret', environment: 'store-publish' },
+      ],
+    };
+  };
+  const IDS = {
+    MS_STORE_TENANT_ID: 'tenant-fixture',
+    MS_STORE_CLIENT_ID: 'client-fixture',
+    MS_STORE_PRODUCT_ID: 'product-fixture',
+    MS_STORE_SELLER_ID: 'seller-fixture',
+  };
+
+  test('scoped secret, the four ids set: the dry run prints NO gap for it, and says where it IS checked', () => {
+    const { code, out } = run(tree({ withArtifact: true, mutateRegister: SCOPED }), ['--dry-run'], IDS);
+    assert.equal(code, 0, out);
+    assert.match(out, /client secret: checked in the environment-bound submit job — MS_STORE_CLIENT_SECRET lives in the "store-publish" environment/);
+    assert.match(out, /credentials — all 4 environment variable\(s\) present/);
+    assert.doesNotMatch(out, /CREDENTIALS NOT CONFIGURED/);
+  });
+
+  test('scoped secret, nothing set: the printed gap names the four ids and never the secret', () => {
+    const { code, out } = run(tree({ withArtifact: true, mutateRegister: SCOPED }), ['--dry-run']);
+    assert.equal(code, 0, out);
+    assert.match(out, /CREDENTIALS NOT CONFIGURED — 4 of 4 absent: MS_STORE_TENANT_ID, MS_STORE_CLIENT_ID, MS_STORE_PRODUCT_ID, MS_STORE_SELLER_ID\./);
+  });
+
+  test('scoped secret: --submit still requires it, and names the environment owner step', () => {
+    const { code, out } = run(
+      tree({ withArtifact: true, mutateRegister: (r) => { CONFIGURED.mutateRegister(r); SCOPED(r); }, pubspecOver: CONFIGURED.pubspecOver }),
+      ['--submit', '--app', 'subscriptiontracker', '--confirm', 'SUBMIT-TO-MICROSOFT-STORE'],
+      IDS,
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /1 of 5 Microsoft Store credential\(s\) are EMPTY: MS_STORE_CLIENT_SECRET\./);
+    assert.match(out, /MS_STORE_CLIENT_SECRET is a "store-publish" ENVIRONMENT secret, readable only in a job bound to that environment\. OWNER STEP: GitHub → Settings → Environments → store-publish/);
+  });
+
+  test('the real lane: the dry run holds no client secret, and the submit job CHECKS it straight after the ref check and fails closed', () => {
+    const wf = parseWorkflow(REPO, '.github/workflows/submit-windows-store.yml');
+    const dryRun = workflowSteps(wf.jobs.get('dry-run')).find((s) => s.name === 'Dry-run the Microsoft Store submission');
+    assert.ok(dryRun, 'the dry-run step is gone or renamed');
+    assert.deepEqual([...dryRun.env.keys()], ['MS_STORE_TENANT_ID', 'MS_STORE_CLIENT_ID', 'MS_STORE_PRODUCT_ID', 'MS_STORE_SELLER_ID']);
+    const submit = wf.jobs.get('submit');
+    assert.equal(jobEnvironment(submit)?.name, 'store-publish');
+    const steps = workflowSteps(submit);
+    const ref = steps.findIndex((s) => s.name === 'Refuse any ref but main');
+    assert.ok(ref >= 0, 'the submit job has no `Refuse any ref but main` step');
+    const first = steps[ref + 1];
+    assert.equal(first?.name, 'Preflight — every Microsoft Store credential must be present', 'the step straight after the ref check must be the credential preflight');
+    assert.ok(first.env.has('MS_STORE_CLIENT_SECRET'), 'the step straight after the ref check must read the client secret');
+    assert.match(first.run.text, /-z "\$MS_STORE_CLIENT_SECRET"/);
+    assert.match(first.run.text, /exit 1/);
+    assert.match(first.run.text, /OWNER STEP for the client secret: GitHub -> Settings -> Environments -> store-publish/);
+  });
+
   test('COVERAGE LOST when storeMetadataContract.requiredFiles is emptied', () => {
     const { code, out } = run(tree({ withArtifact: true, mutateRegister: (r) => (r.storeMetadataContract.requiredFiles = []) }), ['--dry-run']);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
     assert.match(out, /COVERAGE LOST/);
   });
 
   test('COVERAGE LOST when the register declares no windows-store row', () => {
     const { code, out } = run(tree({ withArtifact: true, mutateRegister: (r) => (r.channels = []) }), ['--dry-run']);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
     assert.match(out, /COVERAGE LOST — .*declares no "windows-store" channel/);
   });
 

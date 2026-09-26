@@ -143,7 +143,7 @@ guard, so labelling a PR does not re-run CI it has already run.
 Read-only by default, stated explicitly rather than inherited. Exactly one job
 below raises it, to `contents: write`, and only to create a release.
 
-### above `cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}`
+### above `cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}`
 
 ⚠️ NEVER CANCEL A TAG RUN. A cancelled release leaves a tag with no release
 behind it, which is indistinguishable from a release that was never started.
@@ -164,7 +164,7 @@ Both read files on BOTH sides of what used to be a repository boundary. That
 is the whole argument for one repository, so they run first and they run on
 every lane, including a release.
 
-## job `defaults`
+### key `defaults:`
 
 ### above `defaults:`
 
@@ -244,7 +244,7 @@ with `--check` (fact (d)). Delete this step and that guard goes RED on the
 generated Dart, naming the missing invocation.
 
 
-## job `steps`
+### key `steps:`
 
 ### above `steps:`
 
@@ -349,6 +349,14 @@ teaches people to distrust both.
 Issue forms cannot be generated, so their dropdowns are the one place a
 new tool has to be added by hand — exactly the kind of step that gets
 forgotten. Checked here so it fails in the PR that adds the tool.
+
+> ⏱ **2026-09-26 (F-c): the paragraph above is superseded.** The dropdowns ARE
+> generated: `tooling/ci/gen-issue-forms.mjs --write` writes a marked region of each
+> root form from every extension `tool.json` (the same `find` walk this step used),
+> `new-tool.mjs` runs it as part of its chain, and this step is now its `--check`,
+> run from the repository root in extensions-ci.yml's `discover` job. It still fails
+> the PR that adds a tool without its option, and still prints the
+> "graded against N tool id(s)" line.
 
 ### in step **Issue templates list every tool id**, above `- id: set`
 
@@ -484,7 +492,19 @@ Nothing is `served` yet, so a missing listing directory PRINTS. What is
 owner-gated is CREATING a listing, not KEEPING one: an emptied field
 fails at any served state.
 
-### before step **The tool's own AMO submission gate (FullShot)**
+### before step **The tool's own declared store gates (tool.json gates, stage gates)**
+
+⏱ 2026-09-25 (O-EXTENSION-GATES-NAME-ONE-TOOL): this step was named
+"The tool's own AMO submission gate (FullShot)" and carried an `if:`
+naming the tool. It is now `node scripts/discover.mjs --run-gates --tool
+<id> --stage gates`, which runs what the tool's tool.json `gates` list
+declares at stage `gates` — for FullShot, the same
+publish/verify-firefox-package.node.js, bare, as before. The "NAMED
+EXPLICITLY" paragraph below is the 2026-08-20 record and no longer
+describes the step: a second tool DECLARES its gate in its own tool.json
+and adds no line here, and the gate-inventory job's
+`discover.mjs --assert-generic` step checks every declared script exists,
+which the inventory's workflow grep can no longer see.
 
 ── THE TOOL'S OWN AMO SUBMISSION GATE ─────────────────────────────────
 🔴 UNTIL 2026-08-20 THIS RAN IN NO WORKFLOW AT ALL. It is the most
@@ -520,7 +540,7 @@ reason; it is a rule this tree cleaned up once and does not regress.
 Runs exactly the commands in tool.json "tests". No npm install, ever —
 the sims load the real shipped source on bare Node.
 
-## job `steps`
+### key `steps:`
 
 ### above `steps:`
 
@@ -603,7 +623,16 @@ is what produced the six stale zips this guard was written for.
 It runs on BOTH targets on purpose: the chromium leg asserts the package
 carries no Firefox-only key, and the same bytes go to Chrome AND Edge.
 
-### before step **The tool's own AMO submission gate, on the built zip (FullShot)**
+### before step **The tool's own declared store gates, on the built zip (tool.json gates, stage package)**
+
+⏱ 2026-09-25 (O-EXTENSION-GATES-NAME-ONE-TOOL): this step was named
+"The tool's own AMO submission gate, on the built zip (FullShot)", with
+an `if:` naming the tool, the target and the os, and a `shell: bash`
+body. The body is Extension/Full_Screen_Shot/publish/amo-gate-built-zip.node.js
+now (same three outcomes, same ::error:: text), declared in FullShot's
+tool.json at stage `package` with `when: { target: firefox, os:
+ubuntu-24.04 }`; the step runs `discover.mjs --run-gates` on every leg,
+and the legs that match no declaration print so and pass.
 
 ── THE AMO GATE AGAIN, THIS TIME WITH A PACKAGE UNDER IT ──────────────
 The `gates` job runs this same script BARE, and measured 2026-08-22 that
@@ -641,7 +670,7 @@ meaning, for one reason: inserting a job above shifts every `ci.yml:NNN`
 citation below it, and this repository cites this file by line in prose that
 nothing recomputes. Job order has no effect on execution.
 
-## job `steps`
+### key `steps:`
 
 ### above `steps:`
 
@@ -763,7 +792,7 @@ file shifts every `ci.yml:NNN` citation below it, and this repository cites
 this file by line in prose that nothing recomputes. Job order has no effect
 on execution.
 
-## job `steps`
+### key `steps:`
 
 ### above `steps:`
 
@@ -922,7 +951,7 @@ reason; it is a rule this tree cleaned up once and does not regress.
 Appended at the bottom for the reason written above `templates`: inserting a
 job higher in this file shifts every `ci.yml:NNN` citation below it.
 
-## job `permissions`
+### key `permissions:`
 
 ### above `permissions:`
 
@@ -980,7 +1009,10 @@ the label the discover job is skipped, its outputs are empty strings, and
 exact moment there is none, and fromJSON('') would then error inside the
 matrix rather than in a step anyone can read.
 
-### above `timeout-minutes: 75`
+### above `timeout-minutes: 60`
+
+⏱ Re-quoted 2026-09-24: the line now reads `timeout-minutes: 60`. The sizing below is the
+record of the 75 it replaced, left as written.
 
 45 until 2026-08-25, when it was sized for ONE suite. The five wired
 suites total 685s (11m25s) on the author machine — run.mjs 122s,
@@ -1100,9 +1132,7 @@ sleep in this step, or a retry around a failing suite, would convert a
 race that CI has just exposed back into a green tick. A two-core runner
 is the slow machine this favours.
 
-## job `e2e-proof-record`
-
-### above `e2e-proof-record:`
+## `e2e-proof-record` — a job deleted on 2026-09-08, kept as a record
 
 ── PROOF FRESHNESS ALARM — ADDED 2026-08-26, COLLAPSED TO ONE FILE 2026-08-27 ─
 A RED WEEKLY RUN AND A DEAD CRON LOOK IDENTICAL, AND BOTH LOOK LIKE NOTHING.
@@ -1244,7 +1274,7 @@ The schedule-event job was the only one reading its own in-flight run. And no
 green here proves the scheduled lane is fixed: that is measured by the next
 scheduled run, not by this change.
 
-### above `if: (!startsWith(github.ref, 'refs/tags/') && (github.event_name == 'schedule' || (gith…`
+### its `if:`, the same gate as `discover`
 
 Same gate as `discover`: on a PR this is silent unless somebody asks for
 e2e by label. It deliberately does NOT `needs: e2e` — it grades PAST runs,
@@ -1287,14 +1317,14 @@ keep-alive, so it never named this job; `ci-required` derives its membership
 from the `inputs.lane == 'ci'` guard, which this job never carried. The
 script keeps its ci-lane call site, so `gate-inventory` still finds it.
 
-## job `permissions`
+### key `permissions:`
 
 ### above `permissions:`
 
 The workflow-level block is `contents: read`, and a job block replaces it
 wholly, so both lines are needed. `actions: read` is what reads run history.
 
-## job `e2e-proof-record`
+### its checkout, deleted with it
 
 ### above `with: { persist-credentials: false }`
 
@@ -1313,7 +1343,7 @@ reason; it is a rule this tree cleaned up once and does not regress.
                         check, which is why it counts what it read and refuses
                         a count that is too small to be real.
 
-## job `steps`
+### key `steps:`
 
 ### above `steps:`
 
@@ -1694,7 +1724,16 @@ Same harness, same two fixtures, measured 2026-08-25:
 Keyed on the POSITIVE wording on purpose — the ⚠️ note above says why a
 tripwire keyed on the "no built package found" failure text is worthless.
 
-### before step **The tool's own AMO submission gate, on the built zip (FullShot)**
+### before step **The tool's own declared store gates, on the release zip (tool.json gates, stage release)**
+
+⏱ 2026-09-25 (O-EXTENSION-GATES-NAME-ONE-TOOL): this step was named
+"The tool's own AMO submission gate, on the built zip (FullShot)", with
+an `if:` naming the tag's tool and a `shell: bash` body. The body is
+Extension/Full_Screen_Shot/publish/amo-gate-release-zip.node.js now
+(same three outcomes, same ::error:: text), declared in FullShot's
+tool.json at stage `release`; the step runs `discover.mjs --run-gates
+--tool "$TOOL_ID" --stage release --zip "dist/${TOOL_ID}-firefox.zip"`.
+The 2026-08-22 record below keeps the step names it had then.
 
 ── THE TOOL'S OWN AMO GATE, ON THE BYTES THIS TAG SHIPS ───────────────
 🔴 THE RELEASE PATH HAD NEVER OPENED THIS GATE AT ALL. Measured
@@ -2005,7 +2044,7 @@ Each store gets a pair inside the `release` job:
 
 | store | transport | source (fetched 2026-09-07) |
 |---|---|---|
-| AMO | `web-ext@10.6.0 sign --channel listed` — exact pin, because a range resolves at run time | extensionworkshop.com web-ext command reference |
+| AMO | `web-ext sign --channel listed`, the binary of the locked `tooling/web-ext/` island — exact pin in its package.json, because a range resolves at run time | extensionworkshop.com web-ext command reference |
 | Chrome Web Store | `POST …/upload/v2/publishers/{P}/items/{I}:upload` then `POST …/v2/publishers/{P}/items/{I}:publish`, on a **service-account JWT-bearer mint** at `https://oauth2.googleapis.com/token` | developer.chrome.com "Use the Chrome Web Store API" + "Service accounts" (2026-09-09) |
 | Edge Add-ons | four steps with `Authorization: ApiKey` + `X-ClientID` — upload, poll the upload to a terminal state, publish, poll the publish to a terminal state — at `https://api.addons.microsoftedge.microsoft.com` | learn.microsoft.com "Use the REST API" |
 

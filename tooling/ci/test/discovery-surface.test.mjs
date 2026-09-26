@@ -492,6 +492,13 @@ import {
   pricingMeta,
   pricingPlans,
   pricingTable,
+  applyAppsBlock,
+  supportAppsBlock,
+  aboutAppsBlock,
+  SUPPORT_APPS_OPEN,
+  SUPPORT_APPS_CLOSE,
+  ABOUT_APPS_OPEN,
+  ABOUT_APPS_CLOSE,
 } from '../../sites/generate-discovery.mjs';
 import { today, lastmodFor, isGitRepo } from '../../sites/lastmod.mjs';
 
@@ -1397,6 +1404,63 @@ describe('the drift limb (W-9)', () => {
     assert.doesNotMatch(r.out, /apps\/subscriptiontracker\.html DRIFTED/);
   });
 
+  // ⏱ 2026-09-26 · D3b (row O-APEX-SITE-DEPLOYS-OUTSIDE-THE-PIPELINE; ADR 028 §3 as amended by
+  // ADR no.098): the deploy root's sitemap.xml is generated in the job, never
+  // committed. These fixtures are REAL git work trees, because "tracked" is a git fact.
+  const gitIn = (root, ...args) => {
+    const r = spawnSync('git', ['-c', 'commit.gpgsign=false', '-c', 'init.defaultBranch=main', '-c', 'user.name=w9', '-c', 'user.email=w9@test.invalid', ...args], { cwd: root, encoding: 'utf8' });
+    assert.equal(r.status, 0, `git ${args.join(' ')}: ${r.stderr}`);
+  };
+
+  test('RC5 (D3b): a COMMITTED sitemap.xml FAILS — generated in the job, never committed', () => {
+    const root = tree([SUBLY]);
+    gitIn(root, 'init', '-q');
+    generate(root);
+    gitIn(root, 'add', '-A');
+    gitIn(root, 'commit', '-q', '-m', 'everything, the sitemap included');
+    const r = guard(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /sites\/nikatru\/sitemap\.xml is COMMITTED, and it is generated in the job, never committed/);
+  });
+
+  test('RC5 green control (D3b): the same work tree with the sitemap generated and UNTRACKED passes', () => {
+    const root = tree([SUBLY]);
+    gitIn(root, 'init', '-q');
+    generate(root);
+    rmSync(p(root, 'sitemap.xml'));
+    gitIn(root, 'add', '-A');
+    gitIn(root, 'commit', '-q', '-m', 'everything but the sitemap');
+    generate(root);
+    assert.ok(existsSync(p(root, 'sitemap.xml')), 'the generator must write the sitemap');
+    const r = guard(root);
+    assert.equal(r.code, 0, r.out);
+    assert.doesNotMatch(r.out, /is COMMITTED/);
+  });
+
+  test('D3b: an absent sitemap is not a finding — it is generated in the job — and the guard says so', () => {
+    const root = tree([SUBLY]);
+    generate(root);
+    rmSync(p(root, 'sitemap.xml'));
+    const r = guard(root);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /sites\/nikatru\/sitemap\.xml is not on disk — it is generated in the job/);
+    assert.doesNotMatch(r.out, /sitemap\.xml is MISSING/);
+  });
+
+  test('RC5b (D3b): every OTHER generated file is still diffed — a hand-edited landing still FAILS beside an untracked sitemap', () => {
+    const root = tree([SUBLY]);
+    generate(root);
+    rmSync(p(root, 'sitemap.xml'));
+    const f = p(root, 'apps', 'subscriptiontracker.html');
+    const before = readFileSync(f, 'utf8');
+    const after = before.replace('</main>', '<p>hand edit</p></main>');
+    assert.notEqual(after, before, 'the mutation must change the landing');
+    writeFileSync(f, after);
+    const r = guard(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /sites\/nikatru\/apps\/subscriptiontracker\.html DRIFTED/);
+  });
+
   test('a registry entry added and never regenerated FAILS', () => {
     const root = tree([SUBLY]);
     generate(root);
@@ -1610,6 +1674,14 @@ describe('the real repository', () => {
 
     // The registry and the homepage now agree, so the print is gone. Its absence
     // is the assertion: a print that never clears is a print nobody reads.
+    //
+    // ⏱ 2026-09-26 · D3b (ADR 028 §3 as amended by ADR no.098): sitemap.xml is generated in
+    // the job and never committed, so a fresh checkout has none, and check-site-integrity
+    // over the real tree is one of its readers. Generate first, in ci.yml `sites`'s order.
+    // The generator writes only bytes that differ: on a tree whose committed surfaces are
+    // current (the case above), that is the gitignored sitemap alone.
+    const gen = spawnSync(process.execPath, [join(REPO, 'tooling', 'sites', 'generate-discovery.mjs'), REPO], { encoding: 'utf8' });
+    assert.equal(gen.status, 0, gen.stdout + gen.stderr);
     const site = spawnSync(process.execPath, [join(CI_DIR, 'check-site-integrity.mjs'), REPO], { encoding: 'utf8' });
     assert.equal(site.status, 0, site.stdout + site.stderr);
     assert.doesNotMatch(site.stdout, /UNANNOUNCED/);
@@ -3014,5 +3086,182 @@ describe('applyPricing - the price list derives its numbers and REFUSES to skip'
     }
     const stray = outside.match(/[$€£¥₹]\s?\d[\d,]*(?:\.\d{1,2})?/g) ?? [];
     assert.deepEqual(stray, [], `hand-written price literal(s) outside the generated spans: ${stray.join(', ')}`);
+  });
+});
+
+
+// -----------------------------------------------------------------------------
+// THE PER-APP BLOCKS - support.html's "Help for each app" and about.html's app
+// section, spliced by tooling/sites/generate-discovery.mjs `applyAppsBlock`
+//
+// 🔴 TWO PRODUCTS IS THE INPUT CLASS THAT MATTERS. Both pages were hand-written
+// for app #1 until 2026-09-25, so every one-product fixture passed them while the
+// second product would have gone live with a support page that named only the
+// first. The first case below builds a tree with TWO live products, runs the real
+// generator and the real guard over it, and reads what the pages say.
+// -----------------------------------------------------------------------------
+describe('the support and about pages list every live app from the catalogue', () => {
+  const TALLY = {
+    slug: 'tallybook',
+    name: 'Nikatru Tally Book',
+    tagline: 'Count anything, anywhere',
+    url: 'https://nikatru.com/tallybook',
+    origin: 'https://tallybook-4ab.pages.dev',
+    platforms: ['web'],
+    listings: { web: 'https://nikatru.com/tallybook', play: null },
+    status: 'live',
+  };
+  const between = (html, open, close) => {
+    const a = html.indexOf(open);
+    const b = html.indexOf(close);
+    assert.ok(a !== -1 && b > a, `no ${open} … ${close} span`);
+    return html.slice(a + open.length, b);
+  };
+  /** The two pages as the real ones carry them: chrome, hand-written prose on
+   *  both sides, and the sentinel pair between. `notices` writes the per-app
+   *  notice render-privacy.mjs would; `declared` writes an app.yaml whose
+   *  legal.privacyPolicyUrl is the fallback. */
+  function withAppPages(root, { notices = [], declared = {} } = {}) {
+    writeFileSync(p(root, 'support.html'), chromed(
+      '<h1>Support</h1>\n  <h2>Help for each app</h2>\n  ' + SUPPORT_APPS_OPEN + '\n' + SUPPORT_APPS_CLOSE +
+        '\n  <p>All of our apps are listed on the Apps page.</p>',
+    ));
+    writeFileSync(p(root, 'about.html'), chromed(
+      '<h1>About</h1>\n  <h2>What we build</h2>\n  ' + ABOUT_APPS_OPEN + '\n' + ABOUT_APPS_CLOSE +
+        '\n  <h2>Where we actually stand</h2>',
+    ));
+    for (const slug of notices) {
+      mkdirSync(p(root, slug), { recursive: true });
+      writeFileSync(p(root, slug, 'privacy.html'), chromed('<h1>What this app collects</h1>'));
+    }
+    for (const [slug, url] of Object.entries(declared)) {
+      mkdirSync(join(root, 'apps', slug), { recursive: true });
+      writeFileSync(join(root, 'apps', slug, 'app.yaml'), `id: ${slug}\nlegal:\n  privacyPolicyUrl: ${url}\n  supportUrl: https://nikatru.com/contact\n`);
+    }
+    return root;
+  }
+
+  test('🔴 RC-G6 — TWO live products: both pages name both, and the build is green', () => {
+    const root = withAppPages(tree([SUBLY, TALLY]), {
+      notices: ['subscriptiontracker'],
+      declared: { tallybook: 'https://nikatru.com/privacy' },
+    });
+    const g = generate(root);
+    assert.equal(g.code, 0, g.out);
+
+    const support = between(readFileSync(p(root, 'support.html'), 'utf8'), SUPPORT_APPS_OPEN, SUPPORT_APPS_CLOSE);
+    for (const app of [SUBLY, TALLY]) {
+      assert.ok(support.includes(`<h3>${app.name}</h3>`), `support.html does not name ${app.name}`);
+      assert.ok(support.includes(`<p>${app.tagline}.</p>`), `support.html does not carry ${app.slug}'s tagline`);
+      assert.ok(support.includes(`<a href="/apps/${app.slug}">${app.name}</a>`), `support.html does not link ${app.slug}'s landing`);
+      // The SLASHED apex form: the router 301s the bare one.
+      assert.ok(support.includes(`<a href="${app.url}/" target="_blank" rel="noopener">${app.url.slice('https://'.length)}</a>`), `support.html does not open ${app.slug}`);
+    }
+    // The privacy link: the app's own notice where the site ships one, else the
+    // URL its app.yaml declares.
+    assert.match(support, /<a href="\/subscriptiontracker\/privacy">Subly privacy notice<\/a>/);
+    assert.match(support, /What this app collects: <a href="\/privacy">Privacy Policy<\/a>/);
+    assert.doesNotMatch(support, /tallybook\/privacy/, 'a notice the site does not ship was linked');
+
+    const about = between(readFileSync(p(root, 'about.html'), 'utf8'), ABOUT_APPS_OPEN, ABOUT_APPS_CLOSE);
+    assert.match(about, /<h2>Our apps<\/h2>/);
+    assert.doesNotMatch(about, /Our first app/);
+    assert.doesNotMatch(about, /the only app/);
+    for (const app of [SUBLY, TALLY]) assert.ok(about.includes(`<b>${app.name}</b> &mdash; ${app.tagline}.`), `about.html does not name ${app.name}`);
+
+    const r = guard(root);
+    assert.equal(r.code, 0, r.out);
+    // Idempotent: the second run writes nothing.
+    const again = generate(root);
+    assert.equal(again.code, 0, again.out);
+    assert.match(again.out, /, 0 changed/);
+  });
+
+  test('ONE live product: "Our first app" and "the only app" are said because the list is one long', () => {
+    const root = withAppPages(tree([SUBLY, { ...TALLY, status: 'preview' }]), { notices: ['subscriptiontracker'] });
+    const g = generate(root);
+    assert.equal(g.code, 0, g.out);
+    const about = between(readFileSync(p(root, 'about.html'), 'utf8'), ABOUT_APPS_OPEN, ABOUT_APPS_CLOSE);
+    assert.match(about, /<h2>Our first app<\/h2>/);
+    assert.match(about, /It is the only app we have published so far\.<\/p>/);
+    assert.doesNotMatch(about, /where our attention is/);
+    // A preview app is not listed on either page: the grid's rule, not a new one.
+    const support = between(readFileSync(p(root, 'support.html'), 'utf8'), SUPPORT_APPS_OPEN, SUPPORT_APPS_CLOSE);
+    assert.doesNotMatch(support, /Tally Book/);
+    assert.doesNotMatch(about, /Tally Book/);
+    const r = guard(root);
+    assert.equal(r.code, 0, r.out);
+  });
+
+  test('🔴 a live app with NO privacy route is refused, naming the app', () => {
+    const root = withAppPages(tree([SUBLY, TALLY]), { notices: ['subscriptiontracker'] });
+    const g = generate(root);
+    assert.equal(g.code, 1, g.out);
+    assert.match(g.out, /"tallybook" and has no privacy link/);
+    assert.match(g.out, /privacyPolicyUrl/);
+  });
+
+  test('🔴 a page that LOSES its sentinel pair is refused, not skipped', () => {
+    const root = withAppPages(tree([SUBLY]), { notices: ['subscriptiontracker'] });
+    assert.equal(generate(root).code, 0);
+    const page = readFileSync(p(root, 'support.html'), 'utf8');
+    writeFileSync(p(root, 'support.html'), page.replace(SUPPORT_APPS_OPEN, ''));
+    const g = generate(root);
+    assert.equal(g.code, 1, g.out);
+    assert.match(g.out, /support\.html: expected exactly one <!-- SUPPORT-APPS -->/);
+    const r = guard(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /support\.html/);
+  });
+
+  test('🔴 a hand edit inside the generated block FAILS the drift limb, naming the page', () => {
+    const root = withAppPages(tree([SUBLY]), { notices: ['subscriptiontracker'] });
+    assert.equal(generate(root).code, 0);
+    const page = readFileSync(p(root, 'about.html'), 'utf8');
+    writeFileSync(p(root, 'about.html'), page.replace('It is the only app we have published so far.', 'It is the only app we have published so far, and it is where our attention is.'));
+    const r = guard(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /about\.html/);
+  });
+
+  test('the blocks are pure functions of the list: none live says so, and no link is drawn to nothing', () => {
+    assert.equal(supportAppsBlock([]), '  <p>No app is published yet.</p>');
+    assert.equal(aboutAppsBlock([]), '  <h2>Our apps</h2>\n  <p>No app is published yet.</p>');
+    // No url: no open link and no "live on the web" sentence. No privacy link:
+    // no privacy item.
+    const bare = { ...TALLY, url: undefined };
+    const s = supportAppsBlock([bare], new Map([[bare.slug, null]]));
+    assert.doesNotMatch(s, /Open the app/);
+    assert.doesNotMatch(s, /What this app collects/);
+    assert.match(s, /<a href="\/apps\/tallybook">Nikatru Tally Book<\/a>/);
+    assert.doesNotMatch(aboutAppsBlock([bare]), /live on the web/);
+    // A url that is not the apex app path is linked as the catalogue wrote it.
+    assert.match(supportAppsBlock([{ ...TALLY, url: 'https://tally.example.com/start' }]), /href="https:\/\/tally\.example\.com\/start"/);
+  });
+
+  test('🔴 applyAppsBlock REFUSES a duplicated or reversed pair', () => {
+    const page = `a\n${ABOUT_APPS_OPEN}\n${ABOUT_APPS_CLOSE}\nb`;
+    assert.throws(() => applyAppsBlock(page + page, 'about.html', ABOUT_APPS_OPEN, ABOUT_APPS_CLOSE, 'x'), /found 2 opening/);
+    assert.throws(() => applyAppsBlock(`${ABOUT_APPS_CLOSE}\n${ABOUT_APPS_OPEN}`, 'about.html', ABOUT_APPS_OPEN, ABOUT_APPS_CLOSE, 'x'), /reversed/);
+    // The prose on both sides survives byte for byte.
+    assert.equal(applyAppsBlock(page, 'about.html', ABOUT_APPS_OPEN, ABOUT_APPS_CLOSE, 'x'), `a\n${ABOUT_APPS_OPEN}\nx\n${ABOUT_APPS_CLOSE}\nb`);
+  });
+
+  test('🔴 THE REAL PAGES carry the pairs, name every live catalogue app, and a re-run leaves both byte-identical', () => {
+    const live = JSON.parse(readFileSync(join(REPO, 'catalog', 'apps.json'), 'utf8')).filter((r) => r.status === 'live');
+    assert.ok(live.length > 0, 'the catalogue lists no live app, so this case would assert nothing');
+    const { files } = planDiscovery(REPO);
+    for (const [page, open, close] of [
+      ['support.html', SUPPORT_APPS_OPEN, SUPPORT_APPS_CLOSE],
+      ['about.html', ABOUT_APPS_OPEN, ABOUT_APPS_CLOSE],
+    ]) {
+      const onDisk = readFileSync(join(REPO, 'sites', 'nikatru', page), 'utf8');
+      const block = between(onDisk, open, close);
+      for (const row of live) {
+        assert.ok(block.includes(row.name), `${page} does not name ${row.name}`);
+        assert.ok(block.includes(row.url.slice('https://'.length)), `${page} does not carry ${row.url}`);
+      }
+      assert.equal(files.get(`sites/nikatru/${page}`), onDisk, `${page} is not what the generator writes`);
+    }
   });
 });

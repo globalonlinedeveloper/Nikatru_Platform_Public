@@ -141,6 +141,19 @@
 // it too (`Math.min`), on the VERIFY_FREE_API_SCOPE_RETRY_MS precedent — a knob
 // that could raise it would be a way to switch the ceiling off from outside.
 //
+// ⏱ APPENDED 2026-09-26 (train W30, lead ruling W30-20): ONE named exception, a
+// DOWNLOAD. A read that fetches a large body passes `download: true`, and each
+// of its attempts gets DOWNLOAD_TIMEOUT_MS = 60 000 instead. It is a boolean
+// choosing between two numbers written HERE, never a number a caller supplies,
+// so nothing outside this module can raise a ceiling past 60 s or switch it off;
+// `timeoutMs` and OPS_REQUEST_TIMEOUT_MS still only shorten it. Why: a CI job
+// log is a body, not an answer — 306 cached failure logs of the Guards job measured
+// a median of 170 KB and a max of 1.77 MB, and one log GET missed the 15 s ceiling
+// on all three attempts (W30's second live fetch, run 36025008104). The attempt
+// count is unchanged. DOWNLOAD_WALL_CEILING_MS = 3 × 60 s + 10 s = 190 s is
+// DERIVED like READ_WALL_CEILING_MS. The one caller is triage-failed-runs.mjs's
+// job-log GET; every JSON read keeps 15 s.
+//
 // The sum that has to fit: every reader job in ops-watch.yml is
 // `timeout-minutes: 10` (600 s), and one read costs at most READ_WALL_CEILING_MS
 // (55 s). Ten sequential reads that ALL hang already reach 550 s, and the
@@ -324,12 +337,21 @@ export const REQUEST_TIMEOUT_MS = 15_000;
  *  the same reason RETRY_WALL_CEILING_MS is. */
 export const READ_WALL_CEILING_MS = Math.max(1, READ_ATTEMPTS) * REQUEST_TIMEOUT_MS + RETRY_WALL_CEILING_MS;
 
+/** The longest ONE attempt of a `download: true` read may take. Defended in the
+ *  header (⏱ 2026-09-26 under "THE PER-REQUEST CEILING"). Chosen by a boolean,
+ *  never supplied by a caller. */
+export const DOWNLOAD_TIMEOUT_MS = 60_000;
+
+/** READ_WALL_CEILING_MS for a download read. DERIVED. */
+export const DOWNLOAD_WALL_CEILING_MS = Math.max(1, READ_ATTEMPTS) * DOWNLOAD_TIMEOUT_MS + RETRY_WALL_CEILING_MS;
+
 /** PURE. The ceiling one attempt actually gets: the SHORTEST of the module's
- *  ceiling, the caller's `timeoutMs` and the test-only `OPS_REQUEST_TIMEOUT_MS`
- *  knob. Every input can only shorten it — a value that is missing, zero,
- *  negative or not a number is ignored rather than read as "no ceiling". */
-export function requestTimeoutMs(timeoutMs, env = process.env) {
-  let ms = REQUEST_TIMEOUT_MS;
+ *  ceiling (DOWNLOAD_TIMEOUT_MS for a download, else REQUEST_TIMEOUT_MS), the
+ *  caller's `timeoutMs` and the test-only `OPS_REQUEST_TIMEOUT_MS` knob. Every
+ *  input can only shorten it — a value that is missing, zero, negative or not a
+ *  number is ignored rather than read as "no ceiling". */
+export function requestTimeoutMs(timeoutMs, env = process.env, { download = false } = {}) {
+  let ms = download === true ? DOWNLOAD_TIMEOUT_MS : REQUEST_TIMEOUT_MS;
   for (const v of [timeoutMs, env?.OPS_REQUEST_TIMEOUT_MS]) {
     const n = Number(v);
     if (v !== undefined && v !== null && v !== '' && Number.isFinite(n) && n > 0) ms = Math.min(ms, n);
@@ -436,6 +458,7 @@ async function attemptWithCeiling(read, attempt, ceilingMs, callerSignal) {
  * signal, armed here with the per-request ceiling (header, "THE PER-REQUEST
  * CEILING"). Pass it to the fetch. `signal` in the options is the caller's own,
  * combined with ours and never replaced; `timeoutMs` may only shorten the ceiling.
+ * `download: true` swaps the ceiling for DOWNLOAD_TIMEOUT_MS (header, ⏱ 2026-09-26).
  */
 export async function readWithBoundedRetry(
   read,
@@ -446,12 +469,13 @@ export async function readWithBoundedRetry(
     note = () => {},
     signal: callerSignal,
     timeoutMs,
+    download = false,
     secondLook: withSecondLook = false,
     slowPath = (line) => console.warn(line),
   } = {},
 ) {
   const gaps = backoffPlan(attempts, baseMs);
-  const ceilingMs = requestTimeoutMs(timeoutMs);
+  const ceilingMs = requestTimeoutMs(timeoutMs, process.env, { download });
   let last = null;
   let waited = 0;
   for (let i = 0; i < Math.max(1, attempts); i += 1) {
@@ -485,7 +509,7 @@ export async function readWithBoundedRetry(
   if (!withSecondLook) throw exhausted;
   // ⏱ 2026-09-25 — opted in: one more, time-spread look before the verdict
   // ("THE SECOND LOOK", below). Its own exhaustion is still COULD NOT LOOK.
-  const { value, attempt } = await secondLook(read, { sleep, note, signal: callerSignal, timeoutMs, firstPass: exhausted });
+  const { value, attempt } = await secondLook(read, { sleep, note, signal: callerSignal, timeoutMs, download, firstPass: exhausted });
   slowPath(
     `⚠ SLOW PATH — nothing answered on any of the ${attempts} first-pass attempt(s); second-look attempt ` +
       `${attempt}/${SECOND_LOOK_ATTEMPTS} answered. Graded on that answer, exactly like a first-pass one.`,
@@ -572,8 +596,8 @@ export function secondLookWallMs(timeoutMs = REQUEST_TIMEOUT_MS) {
  * un-retried, exactly as in the first pass. Exhaustion throws a plain
  * `CouldNotLook` naming both passes.
  */
-export async function secondLook(read, { sleep = nap, note = () => {}, signal: callerSignal, timeoutMs, firstPass } = {}) {
-  const ceilingMs = requestTimeoutMs(timeoutMs);
+export async function secondLook(read, { sleep = nap, note = () => {}, signal: callerSignal, timeoutMs, download = false, firstPass } = {}) {
+  const ceilingMs = requestTimeoutMs(timeoutMs, process.env, { download });
   const gap = secondLookGapMs();
   let last = null;
   for (let i = 0; i < SECOND_LOOK_ATTEMPTS; i += 1) {

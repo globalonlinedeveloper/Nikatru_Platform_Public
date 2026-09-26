@@ -30,6 +30,12 @@
     "              consequence (a refund window, a heading, the trading name). Paired, not proven.",
     "  known-gap   the claim is WRONG or contradicted today, and fixing it means editing published legal",
     "              copy — owner work. Carries an ownerItem and PRINTS on every run.",
+    "  seller-by-rail  ⏱ 2026-09-26 (O-PRIVACY-OMITS-THE-INDIA-SELLER). NOT a span row: it carries `rail`, `pages` and",
+    "              `note`, no `page` or `claim`. One per selling rail of tooling/channel-register.json `purchaseRails.rails`",
+    "              (`none` aside). The rail resolves to its provider through provider-register.json `requiredWhen.rail`,",
+    "              the provider's role gives `sellerIs`, and each listed page must say that seller in one <p> or <li>",
+    "              that names the provider. A rail with no row FAILS; zero rows, or a rail no provider resolves to, is",
+    "              COVERAGE LOST.",
     "",
     "Enforced by tooling/ci/assert-policy-claims.mjs. COVERAGE LOST if zero spans are extracted from any",
     "page: an emphasis-stripping rewrite must be loud, not silently satisfying.",
@@ -201,9 +207,36 @@
     },
     {
       "page": "privacy.html",
-      "claim": "Apple App Store, Google Play and Microsoft Store",
+      "claim": "In an app from the Apple App Store or Google Play",
       "type": "provider",
-      "providers": ["apple-app-store", "google-play", "microsoft-store"]
+      "providers": ["apple-app-store", "google-play"],
+      "note": "⏱ 2026-09-26 · O-PRIVACY-OMITS-THE-INDIA-SELLER. Replaces the span 'Apple App Store, Google Play and Microsoft Store' of versions up to 2026-09-25, which named three stores as billers. Two of them bill: the apple-iap and play-billing rails of tooling/channel-register.json resolve to these two rows (requiredWhen mobileIapRail), both role store_billing, and the `seller-by-rail` rows for those rails make assert-policy-claims fail this page if the item stops saying the store bills the purchase."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "On this website, in the Microsoft Store and in our direct downloads",
+      "type": "provider",
+      "providers": ["microsoft-store"],
+      "note": "⏱ 2026-09-26 · O-PRIVACY-OMITS-THE-INDIA-SELLER. The Paddle rail's reach, and the Microsoft Store's new place on the page: it moved OUT of the biller clause, because tooling/channel-register.json windows-store sells on `paddle` and this register's microsoft-store row says requiredWhen `never` — the old sentence called it a biller, which both registers deny. The `Paddle` and `merchant of record` spans in the same item carry the seller; the `seller-by-rail` row for paddle holds it there."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "in India",
+      "type": "descriptive",
+      "why": "⏱ 2026-09-26 · O-PRIVACY-OMITS-THE-INDIA-SELLER. The region the third §4 item is about, emphasised as the lead of that item the way the other two lead with where you buy. It is the region code IN of tooling/channel-register.json `regionRails` (chrome-webstore, edge-addons, amo → razorpay; [ADR 094]). Nothing asserts the word itself; the razorpay `seller-by-rail` row asserts the seller statement it introduces."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "Nikatru is the seller",
+      "type": "descriptive",
+      "why": "⏱ 2026-09-26 · O-PRIVACY-OMITS-THE-INDIA-SELLER. The India seller, stated where it was missing until policy version 2026-09-26 ([ADR 076] §10, [ADR 094]). Not typed `code`: no file in this tree sells anything. What holds the sentence is the razorpay `seller-by-rail` row — its provider's role payment_gateway says sellerIs `nikatru`, so assert-policy-claims fails this page if no block names Razorpay with 'Nikatru is the seller'. The same span on refund.html is a known-gap only because the rail is not live and that page describes how a refund on it is issued; this page says in the same section that nothing is sold from the website today."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "Razorpay",
+      "type": "provider",
+      "providers": ["razorpay"],
+      "note": "⏱ 2026-09-26 · O-PRIVACY-OMITS-THE-INDIA-SELLER. The India gateway, named on this page for the first time at policy version 2026-09-26 and disclosed as a processor acting on our behalf, never as the seller. provider-register.json razorpay `namedIn` now lists privacy.html, so §3(b) re-reads the page for it on every run."
     },
     {
       "page": "privacy.html",
@@ -474,7 +507,7 @@
       "type": "known-gap",
       "ownerItem": "O-3",
       "stillTrue": "Nikatru is the seller",
-      "what": "THE PAGES AND THE REGISTER NOW NAME DIFFERENT SELLERS FOR INDIA. Section 3 says Nikatru is the seller for purchases made in India on nikatru.com, with Razorpay as the gateway that collects the money. Two things in this tree say otherwise. (1) tooling/legal/provider-register.json carries razorpay at status not-named-not-wired with an empty namedIn, recording that the naming had been removed and that no Razorpay integration exists anywhere in this repository - no route, no key, no webhook. (2) That row cites [ADR 039] D6, which settled India on measurement rather than preference and concluded that the India clause names Paddle, not a domestic rail, because a gateway leaves Nikatru the domestic seller and the worldwide sales-tax duty with us - the exact burden [ADR 004] chose a merchant of record to remove. terms.html section 4 carries the same split and so contains the same tension: it says the seller is Paddle for every purchase that is not store-billed, and then carves India out to Nikatru. Nothing here decides which side is right: the page is published copy and the register is a locked decision, and reconciling them is owner work (publish a corrected clause, or re-open [ADR 039] D6 and update provider-register.json). PRINTED, not failed, for the reason the guard header gives - failing CI on owner-only copy blocks every other lane. It retires the day refund.html stops saying 'Nikatru is the seller' or the register names Razorpay as a live India rail. ⏱ 2026-09-22 — HALF OF THIS GAP IS SETTLED AND THE GAP STAYS. Everything above is the dated record of 2026-09-09 and is left verbatim. (1) The owner decided India: [ADR 076] §10 (2026-09-11) ruled that Nikatru is the seller on the India rail with Razorpay as the gateway, and [ADR 094] (LOCKED 2026-09-22) extended that to apps.gov.in and to India buyers of the three browser extensions. So the page and the decision now agree, and [ADR 039] D6 is amended, not in tension. (2) The register has caught up as far as it honestly can: the razorpay row reads status `wired-not-live` with `namedIn` covering terms.html and refund.html. (3) THE GAP DOES NOT RETIRE, because the retirement condition asks for `live` and this rail is not live: there is no Razorpay checkout route, no INR offering and no `RAZORPAY_WEBHOOK_SECRET`, so nikatru.com cannot take an India payment today while the page describes how one is refunded. What retires it now is the row reaching `live` — i.e. `platform-state/open.json` O-RAZORPAY-CHECKOUT-ADAPTER closing — or the page ceasing to make the claim. ⚠️ AND ONE PIECE OF THE DISCLOSURE IS STILL UNDONE: privacy.html names Razorpay nowhere, and correcting it is a policy-version bump plus an archive snapshot plus the owner's signature."
+      "what": "THE PAGES AND THE REGISTER NOW NAME DIFFERENT SELLERS FOR INDIA. Section 3 says Nikatru is the seller for purchases made in India on nikatru.com, with Razorpay as the gateway that collects the money. Two things in this tree say otherwise. (1) tooling/legal/provider-register.json carries razorpay at status not-named-not-wired with an empty namedIn, recording that the naming had been removed and that no Razorpay integration exists anywhere in this repository - no route, no key, no webhook. (2) That row cites [ADR 039] D6, which settled India on measurement rather than preference and concluded that the India clause names Paddle, not a domestic rail, because a gateway leaves Nikatru the domestic seller and the worldwide sales-tax duty with us - the exact burden [ADR 004] chose a merchant of record to remove. terms.html section 4 carries the same split and so contains the same tension: it says the seller is Paddle for every purchase that is not store-billed, and then carves India out to Nikatru. Nothing here decides which side is right: the page is published copy and the register is a locked decision, and reconciling them is owner work (publish a corrected clause, or re-open [ADR 039] D6 and update provider-register.json). PRINTED, not failed, for the reason the guard header gives - failing CI on owner-only copy blocks every other lane. It retires the day refund.html stops saying 'Nikatru is the seller' or the register names Razorpay as a live India rail. ⏱ 2026-09-22 — HALF OF THIS GAP IS SETTLED AND THE GAP STAYS. Everything above is the dated record of 2026-09-09 and is left verbatim. (1) The owner decided India: [ADR 076] §10 (2026-09-11) ruled that Nikatru is the seller on the India rail with Razorpay as the gateway, and [ADR 094] (LOCKED 2026-09-22) extended that to apps.gov.in and to India buyers of the three browser extensions. So the page and the decision now agree, and [ADR 039] D6 is amended, not in tension. (2) The register has caught up as far as it honestly can: the razorpay row reads status `wired-not-live` with `namedIn` covering terms.html and refund.html. (3) THE GAP DOES NOT RETIRE, because the retirement condition asks for `live` and this rail is not live: there is no Razorpay checkout route, no INR offering and no `RAZORPAY_WEBHOOK_SECRET`, so nikatru.com cannot take an India payment today while the page describes how one is refunded. What retires it now is the row reaching `live` — i.e. `platform-state/open.json` O-RAZORPAY-CHECKOUT-ADAPTER closing — or the page ceasing to make the claim. ⚠️ AND ONE PIECE OF THE DISCLOSURE IS STILL UNDONE: privacy.html names Razorpay nowhere, and correcting it is a policy-version bump plus an archive snapshot plus the owner's signature. ⏱ 2026-09-26 — THAT PIECE IS WRITTEN (O-PRIVACY-OMITS-THE-INDIA-SELLER): policy version 2026-09-26 names Razorpay in privacy.html §4 with Nikatru as the India seller, and the razorpay `seller-by-rail` row now holds privacy, terms and refund to that one seller. The gap still does not retire, for the reason above: the rail is not live."
     },
     {
       "page": "refund.html",
@@ -572,6 +605,31 @@
       "claim": "2 business days",
       "type": "descriptive",
       "why": "Our reply time to a delivery problem. A support commitment made by people rather than by code; nothing in this tree measures or enforces it, and no queue or ticketing system exists in this repository to point at. The same figure is stated unemphasised on refund.html, and the two are one promise."
+    },
+
+    {
+      "type": "seller-by-rail",
+      "rail": "paddle",
+      "pages": ["privacy.html", "terms.html", "refund.html"],
+      "note": "⏱ 2026-09-26 · O-PRIVACY-OMITS-THE-INDIA-SELLER. The rail of the website, the Microsoft Store and the direct downloads ([ADR 039] D1). It resolves to the `paddle` row (requiredWhen channelRail paddle), role merchant_of_record, sellerIs `provider`: each page must carry a block naming Paddle as the merchant of record or the legal seller. It is also the BASE rail of the three channels whose regionRails move India to razorpay (chrome-webstore, edge-addons, amo), so the contradiction limb reads these pages for a block selling to India under an 'every country' clause — the defect terms.html §4 carried until 2026-09-25."
+    },
+    {
+      "type": "seller-by-rail",
+      "rail": "razorpay",
+      "pages": ["privacy.html", "terms.html", "refund.html"],
+      "note": "⏱ 2026-09-26 · O-PRIVACY-OMITS-THE-INDIA-SELLER. The India rail ([ADR 076] §10, [ADR 094]). It resolves to the `razorpay` row (requiredWhen channelRail razorpay), role payment_gateway, sellerIs `nikatru`: each page must carry a block naming Razorpay with 'Nikatru is the seller' or 'Nikatru remains the seller', and no block may name Razorpay as the seller itself. refund.html §1 and §3 and terms.html §4 already said so; privacy.html said nothing about India until the version that adds its §4 India item."
+    },
+    {
+      "type": "seller-by-rail",
+      "rail": "apple-iap",
+      "pages": ["privacy.html", "terms.html"],
+      "note": "⏱ 2026-09-26 · O-PRIVACY-OMITS-THE-INDIA-SELLER. In-app purchase on Apple's stores ([ADR 039] D3). It resolves to the `apple-app-store` row (requiredWhen mobileIapRail apple-iap), role store_billing, sellerIs `provider`: the store bills and sells. refund.html is not listed: its §4 sends the buyer to the store's own refund process rather than stating the seller this row asks about. RevenueCat, which records the purchase, is held to sellerIs `never` through its own role wherever its namedIn lists one of these pages."
+    },
+    {
+      "type": "seller-by-rail",
+      "rail": "play-billing",
+      "pages": ["privacy.html", "terms.html"],
+      "note": "⏱ 2026-09-26 · O-PRIVACY-OMITS-THE-INDIA-SELLER. Google Play Billing ([ADR 039] D2). It resolves to the `google-play` row (requiredWhen mobileIapRail play-billing), role store_billing, sellerIs `provider`. refund.html is not listed, for the reason given on the apple-iap row."
     }
   ]
 }

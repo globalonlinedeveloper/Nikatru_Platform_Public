@@ -141,7 +141,10 @@ describe('end to end: preflight releases the machine lock though a hung descenda
     copyFileSync(LOCK_MODULE, join(root, 'tooling', 'scripts', 'heavy-lock.mjs'));
     // preflight.mjs imports the one workflow parse (ci-gate's needs, 2026-09-24).
     mkdirSync(join(root, 'tooling', 'ci'), { recursive: true });
-    for (const f of ['workflow-scan.mjs', 'tree-walk.mjs']) copyFileSync(join(SCRIPTS, '..', 'ci', f), join(root, 'tooling', 'ci', f));
+    for (const f of ['workflow-scan.mjs', 'tree-walk.mjs', 'flutter-release-build.mjs', 'app-set.mjs']) copyFileSync(join(SCRIPTS, '..', 'ci', f), join(root, 'tooling', 'ci', f));
+    // ⏱ 2026-09-26: workflow-scan.mjs imports the release-build composer and the app set (O-FLUTTER-BUILD-TYPED-PER-LINE)
+    mkdirSync(join(root, 'tooling', 'app-yaml'), { recursive: true });
+    copyFileSync(join(SCRIPTS, '..', 'app-yaml', 'yaml.mjs'), join(root, 'tooling', 'app-yaml', 'yaml.mjs'));
     git('init', '-q', '-b', 'main');
     git('add', '-A');
     git('commit', '-q', '-m', 'base');

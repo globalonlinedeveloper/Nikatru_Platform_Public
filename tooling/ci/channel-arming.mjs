@@ -79,7 +79,15 @@
 // reach the tree" belongs to the two signing callers, apple-signing.mjs and
 // appimage-signing.mjs, each of which already refuses to run when its row is
 // missing from the register.
+//
+// ⏱ APPENDED 2026-09-24: the functions stay pure and the two signing callers keep
+// their own COVERAGE LOST. A CLI now sits at the end of this file and reads the
+// register and tooling/release/RELEASE-RUNBOOK.md, only when this file is run
+// as a script; importing it reads nothing.
 // ─────────────────────────────────────────────────────────────────────────────
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { join, resolve, dirname } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const REGISTER = 'tooling/channel-register.json';
 
@@ -454,4 +462,156 @@ export function availabilityRow(rows, listings = {}) {
     hidden: all.filter((a) => !a.renders),
     lost: all.map((a) => a.lost).filter((m) => m !== null),
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE CLI — added 2026-09-24, row O-RELEASE-RUNBOOK-ARMING-HAND-WRITTEN.
+//
+// tooling/release/RELEASE-RUNBOOK.md §2 said "All four rows above are unarmed
+// today" and §3b said "Both Apple rows are `lane: null`", both typed by hand,
+// and both went on saying it after the register gave the two Apple rows a lane
+// on 2026-09-09 and so armed them. Those lines are now two marker blocks this
+// CLI writes from the register, through the functions above:
+//
+//   (no flag) | --list [root]  one line per register channel: its id, ARMED or
+//                              unarmed, the field that arms it or the fields
+//                              that leave it unarmed, and availabilityOf's state
+//                              for each catalogue app
+//   --write [root]             write the `arming` and `apple-rows` blocks
+//   --check [root]             exit 1 when either block is not what --write writes
+//
+// Exit 2 is COVERAGE LOST: the register cannot be read or holds no channel, an
+// Apple row apple-signing.mjs serves is missing from it, or a block's markers
+// are missing. The functions above stay pure. This CLI is the only code in the
+// file that reads one, and it runs only when this file is the entry point.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const RUNBOOK = 'tooling/release/RELEASE-RUNBOOK.md';
+export const CATALOG = 'catalog/apps.json';
+const CLI_TOOL = 'channel-arming';
+const CLI_COMMAND = 'node tooling/ci/channel-arming.mjs';
+
+/** The field that arms a row, or the fields that leave it unarmed, in a few words. */
+export function armingField(a) {
+  if (a.armed) {
+    const parts = [];
+    if (a.served) parts.push('`served: true`');
+    if (a.submittable && a.lane) parts.push(`\`submittable: true\` + lane ${a.lane.workflow} · job \`${a.lane.job}\``);
+    return parts.join(' and ');
+  }
+  return a.submittable ? '`served: false`; `submittable: true` but `lane: null`' : '`served: false`; `submittable: false`';
+}
+
+/** The `--list` lines, one per row, tab-separated. `apps` is catalog/apps.json's array. */
+export function listLines(rows, apps = []) {
+  return rows.map((row) => {
+    const a = armingOf(row);
+    const availability = apps.length === 0
+      ? 'no catalogue app to read listings from'
+      : apps.map((app) => `${app?.slug ?? '(unnamed app)'}=${availabilityOf(row, app?.listings ?? {}).state}`).join(', ');
+    return [a.id, a.armed ? 'ARMED' : 'unarmed', armingField(a), `availability ${availability}`].join('\t');
+  });
+}
+
+/** RELEASE-RUNBOOK §2's `arming` block: every register row, armed or not, and why. */
+export function armingBlock(rows) {
+  const armings = rows.map(armingOf);
+  const armed = armings.filter((a) => a.armed).length;
+  return [
+    `What ${REGISTER} says today: **${armed}** of its ${armings.length} channels are ARMED: a signing seam that serves one of them fails the tag when its credential is missing. For an unarmed one the seam **prints the gap in full and continues**, and the artifact for that platform is a labelled build proof.`,
+    '',
+    '| channel | today | why |',
+    '|---|---|---|',
+    ...armings.map((a) => `| \`${a.id}\` | ${a.armed ? '**ARMED**' : 'unarmed'} | ${armingField(a)} |`),
+  ];
+}
+
+/** RELEASE-RUNBOOK §3b's `apple-rows` block: the rows apple-signing.mjs serves, by id. */
+export function appleRowsBlock(rows, ids) {
+  return ids.map((id) => {
+    const a = armingOf(rows.find((r) => r?.id === id));
+    return `- \`${id}\` is **${a.armed ? 'ARMED' : 'unarmed'}** in §2: ${armingField(a)}.`;
+  });
+}
+
+/** The COVERAGE LOST stop: every reason, then exit 2. */
+function coverageLost(lines) {
+  for (const l of lines) console.error(`COVERAGE LOST — channel-arming: ${l}`);
+  process.exitCode = 2;
+}
+
+async function main(argv) {
+  const positional = argv.filter((a) => !a.startsWith('--'));
+  const root = resolve(positional[0] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
+  const lost = [];
+  let rows = [];
+  try {
+    const register = JSON.parse(readFileSync(join(root, REGISTER), 'utf8'));
+    rows = Array.isArray(register?.channels) ? register.channels : [];
+    if (rows.length === 0) lost.push(`${REGISTER} holds no channel row, so every line would describe nothing`);
+  } catch (e) {
+    lost.push(`${REGISTER} could not be read (${e.message})`);
+  }
+  const writing = argv.includes('--write');
+  const checking = argv.includes('--check');
+
+  if (lost.length === 0 && !writing && !checking) {
+    let apps = [];
+    try {
+      const catalog = JSON.parse(readFileSync(join(root, CATALOG), 'utf8'));
+      apps = Array.isArray(catalog) ? catalog : [];
+    } catch {
+      apps = [];
+    }
+    for (const line of listLines(rows, apps)) console.log(line);
+    return;
+  }
+
+  let text = null;
+  const blocks = [];
+  if (lost.length === 0) {
+    // Imported here, not at the top: the three signing seams import this module,
+    // and neither of these belongs in their import graph.
+    const { CHANNEL_IDS: appleIds } = await import('./apple-signing.mjs');
+    const { findBlock, spliceBlock, blockMatches } = await import('./gen-ci-map.mjs');
+    const missing = appleIds.filter((id) => !rows.some((r) => r?.id === id));
+    if (missing.length) lost.push(`apple-signing.mjs serves ${missing.join(', ')}, and ${REGISTER} holds no such row`);
+    const abs = join(root, RUNBOOK);
+    text = existsSync(abs) ? readFileSync(abs, 'utf8') : null;
+    if (text === null) lost.push(`${RUNBOOK} does not exist`);
+    if (lost.length === 0) {
+      for (const [name, body] of [['arming', armingBlock(rows)], ['apple-rows', appleRowsBlock(rows, appleIds)]]) {
+        const f = findBlock(text, CLI_TOOL, name);
+        if (!f.ok) lost.push(`${RUNBOOK} has no complete \`${name}\` block (${f.why})`);
+        else blocks.push({ name, body, line: f.begin + 1, same: blockMatches(text, CLI_TOOL, name, CLI_COMMAND, body), spliceBlock });
+      }
+    }
+  }
+  if (lost.length) {
+    coverageLost(lost);
+    return;
+  }
+
+  if (writing) {
+    for (const b of blocks) text = b.spliceBlock(text, CLI_TOOL, b.name, CLI_COMMAND, b.body);
+    writeFileSync(join(root, RUNBOOK), text);
+    console.log(`wrote ${blocks.map((b) => b.name).join(', ')} into ${RUNBOOK}`);
+    return;
+  }
+  const stale = blocks.filter((b) => !b.same);
+  for (const b of stale) {
+    console.error(`${RUNBOOK}:${b.line} — the \`${b.name}\` block is not what ${REGISTER} says — run \`${CLI_COMMAND} --write\` and commit what it writes`);
+  }
+  if (stale.length) {
+    process.exitCode = 1;
+    return;
+  }
+  console.log(`✓ channel-arming: the runbook's ${blocks.map((b) => b.name).join(' and ')} blocks match ${REGISTER} (${rows.length} channels)`);
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main(process.argv.slice(2)).catch((e) => {
+    console.error(`✗ channel-arming: ${e?.stack ?? e}`);
+    process.exitCode = 1;
+  });
 }

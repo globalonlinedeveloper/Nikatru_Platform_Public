@@ -22,11 +22,13 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseYaml } from '../../app-yaml/yaml.mjs';
 import {
+  RAIL_KINDS,
   REQUIRED_WHEN_KINDS,
   RequiredWhenError,
   gradeRequiredWhen,
   jsonIdLine,
   neverProviders,
+  providersOnRail,
   resolveRequiredProviders,
   yamlKeyLine,
 } from '../../legal/required-providers.mjs';
@@ -271,9 +273,42 @@ describe('required-providers — line helpers', () => {
   });
 });
 
+describe('required-providers — the provider a rail resolves to', () => {
+  test('the rail-carrying kinds are the two that read a `rail` key', () => {
+    assert.deepEqual([...RAIL_KINDS], ['mobileIapRail', 'channelRail']);
+    assert.ok(Object.isFrozen(RAIL_KINDS));
+  });
+
+  test('a channelRail row and a mobileIapRail row each resolve their own rail', () => {
+    const reg = register(
+      { id: 'mor', requiredWhen: { kind: 'channelRail', rail: 'paddle' } },
+      { id: 'store', requiredWhen: { kind: 'mobileIapRail', rail: 'apple-iap' } },
+      { id: 'host', requiredWhen: { kind: 'always' } },
+    );
+    assert.deepEqual(ids(providersOnRail(reg, 'paddle')), ['mor']);
+    assert.deepEqual(ids(providersOnRail(reg, 'apple-iap')), ['store']);
+  });
+
+  test('a rail no row names resolves to nothing, and a never row never resolves', () => {
+    const reg = register(
+      { id: 'mor', requiredWhen: { kind: 'channelRail', rail: 'paddle' } },
+      { id: 'retired', requiredWhen: { kind: 'never', why: 'no channel sells on it any more' } },
+    );
+    assert.deepEqual(providersOnRail(reg, 'razorpay'), []);
+    assert.deepEqual(providersOnRail(register(), 'paddle'), []);
+  });
+});
+
 describe('required-providers — the real register (positive control)', () => {
   const providerRegister = JSON.parse(readFileSync(join(REPO, 'tooling', 'legal', 'provider-register.json'), 'utf8'));
   const channelRegister = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
+
+  test('each selling rail of the real channel register resolves to exactly one provider row', () => {
+    assert.deepEqual(ids(providersOnRail(providerRegister, 'paddle')), ['paddle']);
+    assert.deepEqual(ids(providersOnRail(providerRegister, 'razorpay')), ['razorpay']);
+    assert.deepEqual(ids(providersOnRail(providerRegister, 'apple-iap')), ['apple-app-store']);
+    assert.deepEqual(ids(providersOnRail(providerRegister, 'play-billing')), ['google-play']);
+  });
 
   test('every row of the real register carries a requiredWhen this module can judge', () => {
     assert.ok(providerRegister.providers.length > 0);

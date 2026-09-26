@@ -572,9 +572,11 @@ describe('§A8 — every called-only workflow ends in one always-run verdict job
     caught(run(withLaneX(text)), /lane-x\.yml can be started only by `workflow_call` and has 2 verdict job\(s\) \(lane-verdict, second-verdict\)/);
   });
 
-  test("RC5: dropping worker-platform from lane-workers.yml's lane-verdict needs fails A8", () => {
-    const root = mutant([['lane-workers.yml', 'needs: [detect, worker-subscriptiontracker-api, worker-platform]', 'needs: [detect, worker-subscriptiontracker-api]']]);
-    caught(run(root), /lane-workers\.yml: verdict job "lane-verdict" does not `need` "worker-platform"/);
+  // ⏱ 2026-09-26 — the two Worker jobs are one `worker` matrix (O-CI-AND-WORKER-LANES-NAME-ONE-APP),
+  // so the need this mutant drops is that job.
+  test("RC5: dropping the worker matrix from lane-workers.yml's lane-verdict needs fails A8", () => {
+    const root = mutant([['lane-workers.yml', 'needs: [detect, worker]', 'needs: [detect]']]);
+    caught(run(root), /lane-workers\.yml: verdict job "lane-verdict" does not `need` "worker"/);
   });
 
   test("RC4: dropping lane-workers from ci-gate's needs fails A2, and A7 with it", () => {

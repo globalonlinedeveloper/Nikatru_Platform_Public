@@ -4,6 +4,8 @@
 //
 // [pipeline K-3] "Every published legal claim is asserted true of the code."
 // [pipeline K-5] "The commercial surface names the actual seller and payment path."
+// ⏱ 2026-09-26 · O-PRIVACY-OMITS-THE-INDIA-SELLER: §3b holds privacy, terms and
+// refund to ONE seller per purchase rail, read from the rail's provider's role.
 //
 // Grouped in one guard because K-5 is K-3's relation with one more pair on it,
 // and both read the same three documents. Splitting them would mean parsing
@@ -53,13 +55,17 @@ import {
   emphasisedSpans,
   visibleText,
   normaliseForMatch,
+  stripInert,
   stripSourceComments,
   stripStringLiterals,
 } from './text-reductions.mjs';
+import { providersOnRail } from '../legal/required-providers.mjs';
 
 const repoRoot = resolve(process.argv[2] ?? process.cwd());
 const CLAIMS = join(repoRoot, 'tooling', 'legal', 'policy-claims.json');
 const PROVIDERS = join(repoRoot, 'tooling', 'legal', 'provider-register.json');
+/** The purchase rails, and the per-region rails, the seller-by-rail limb (§3b) reads. */
+const CHANNELS = join(repoRoot, 'tooling', 'channel-register.json');
 
 /** Where Worker route declarations live. The K-5 route limb walks this. */
 const SERVICES = join(repoRoot, 'services');
@@ -138,9 +144,13 @@ if (rows.length === 0) {
 }
 
 const TYPES = new Set(['code', 'provider', 'descriptive', 'known-gap']);
+/** A row that states who sells on one purchase rail. It names no span, so the
+ *  pairing below skips it and §3b reads it. */
+const SELLER_BY_RAIL = 'seller-by-rail';
 /** page → Set(claim) covered by a row */
 const rowsByPage = new Map(pages.map((p) => [p, new Map()]));
 for (const row of rows) {
+  if (row.type === SELLER_BY_RAIL) continue;
   if (!rowsByPage.has(row.page)) {
     problems.push(
       `a claims row names page ${JSON.stringify(row.page)}, which is not in the declared page set ` +
@@ -589,6 +599,240 @@ if (headerFiles.length > 0 && cspSources === 0) {
   );
 }
 
+// ── §3b · THE SELLER BY RAIL (K-5) ──────────────────────────────────────────
+// ⏱ 2026-09-26 · O-PRIVACY-OMITS-THE-INDIA-SELLER. The three documents a buyer
+// reads about one purchase said three different things about India: refund.html
+// named Nikatru the seller with Razorpay the gateway, terms.html said Paddle sold
+// "in every country we sell to, including India" and then carved India out three
+// lines later, and privacy.html named no India seller at all. Every span was
+// paired and every provider was named, so §1-§3 passed on all of it — naming a
+// company is not the same claim as saying who sells.
+//
+// So each purchase rail of tooling/channel-register.json (`none` aside) has a
+// `seller-by-rail` row in policy-claims.json listing the pages that must say who
+// sells on it. The rail resolves to its provider through the register's
+// `requiredWhen.rail` (providersOnRail, the same reader assert-app-yaml limb 9
+// goes through), the provider's ROLE carries `sellerIs`, and each listed page must
+// carry ONE <p> or <li> naming that provider together with the matching statement.
+// Where the answer is `nikatru` or `never`, a block that names the provider as the
+// seller itself is a contradiction even when another block says it right.
+//
+// The contradiction limb: a `regionRails` entry moves one region off a channel's
+// base rail, so a block stating the base rail's seller for "every country" and
+// naming that region, with no "except" or "outside", says two sellers at once.
+//
+// COVERAGE LOST (exit 2): no channel register, no selling rail, zero rows, a rail
+// no provider row resolves to (or two do), or a region this guard cannot name.
+const SELLER_IS = new Set(['provider', 'nikatru', 'never', 'not-applicable']);
+/** How a page states each seller answer, inside a block that names the provider. */
+const SELLER_STATEMENT = {
+  provider: { re: /merchant of record|\bis the (?:legal )?seller\b|\bbills\b/i, says: '"merchant of record", "is the (legal) seller" or "bills"' },
+  nikatru: { re: /\bNikatru (?:is|remains) the seller\b/i, says: '"Nikatru is the seller" or "Nikatru remains the seller"' },
+  never: { re: /\bis never the seller\b/i, says: '"is never the seller"' },
+};
+/** The name a page uses for a `regionRails` region code. The register names IN
+ *  only (ADR 094); a code missing here is COVERAGE LOST, never skipped. */
+const REGION_NAMES = new Map([['IN', 'India']]);
+const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** "<name> is the seller", allowing one comma-fenced aside between the two. */
+const namesItselfSeller = (name) =>
+  new RegExp(`\\b${escapeRe(name)}\\b(?:\\s*,[^,.;:]*,)?\\s+(?:is|remains)\\s+(?:the|our)\\s+(?:legal\\s+)?seller\\b`, 'i');
+/** Every <p> and <li> of a page, as its visible text normalised for matching. */
+const blockCache = new Map();
+const blocksOf = (page) => {
+  if (!blockCache.has(page)) {
+    const html = stripInert(readFileSync(join(siteRoot, page), 'utf8'));
+    const out = [];
+    for (const m of html.matchAll(/<(p|li)\b[^>]*>([\s\S]*?)<\/\1\s*>/gi)) {
+      const text = normaliseForMatch(m[2].replace(/<[^>]*>/g, ' '));
+      if (text !== '') out.push(text);
+    }
+    blockCache.set(page, out);
+  }
+  return blockCache.get(page);
+};
+
+const channelReg = readJson(CHANNELS, 'seller-by-rail limb');
+const railIds = Object.keys(channelReg.purchaseRails?.rails ?? {}).filter((r) => r !== 'none' && !r.startsWith('_'));
+if (railIds.length === 0) {
+  coverageLost(
+    'tooling/channel-register.json declares no selling rail in `purchaseRails.rails`.',
+    'The seller-by-rail limb quantifies over those rails; with none, "every rail names one seller" holds over nothing.',
+  );
+}
+const sellerRows = rows.filter((r) => r.type === SELLER_BY_RAIL);
+if (sellerRows.length === 0) {
+  coverageLost(
+    `tooling/legal/policy-claims.json declares no \`${SELLER_BY_RAIL}\` row.`,
+    'Nothing asks the pages who sells on each rail, so privacy, terms and refund could name three different sellers',
+    'for one purchase and this guard would print ok.',
+  );
+}
+
+// The role vocabulary answers the seller question for every role, not only the
+// roles a rail uses today: a gateway added tomorrow must already say `nikatru`.
+for (const [role, def] of Object.entries(roles)) {
+  if (role.startsWith('_')) continue;
+  if (!SELLER_IS.has(def?.sellerIs)) {
+    problems.push(
+      `provider-register.json role ${JSON.stringify(role)} carries sellerIs ${JSON.stringify(def?.sellerIs ?? null)}; it must be one of ` +
+        `${[...SELLER_IS].join(' / ')}. The seller-by-rail limb reads who sells from the role, so a role with no answer ` +
+        'leaves every rail its providers take unjudged.',
+    );
+  }
+}
+
+/** rail → its row, and the union of the pages any row lists. */
+const sellerRowByRail = new Map();
+const sellerPages = new Set();
+for (const row of sellerRows) {
+  const where = `${SELLER_BY_RAIL} row ${JSON.stringify(row.rail ?? null)}`;
+  if (!railIds.includes(row.rail)) {
+    problems.push(
+      `${where} names a rail that is not a selling rail of tooling/channel-register.json (${railIds.join(', ')}). ` +
+        'A row for a rail nobody sells on states a seller for purchases that cannot happen; retire it or fix the rail id.',
+    );
+    continue;
+  }
+  if (sellerRowByRail.has(row.rail)) {
+    problems.push(`${where} appears twice. One rail, one row — two rows could list different pages and hide a gap behind a pass.`);
+    continue;
+  }
+  const listed = Array.isArray(row.pages) ? row.pages : [];
+  const undeclared = listed.filter((p) => !pages.includes(p));
+  if (listed.length === 0 || undeclared.length) {
+    problems.push(
+      `${where} must list at least one page, each one of policy-claims.json's \`pages\` (${pages.join(', ')}); ` +
+        `it lists ${JSON.stringify(row.pages ?? null)}.`,
+    );
+    continue;
+  }
+  sellerRowByRail.set(row.rail, row);
+  for (const p of listed) sellerPages.add(p);
+}
+for (const rail of railIds) {
+  if (!sellerRows.some((r) => r.rail === rail)) {
+    problems.push(
+      `tooling/channel-register.json sells on rail ${JSON.stringify(rail)} and tooling/legal/policy-claims.json has no ` +
+        `\`${SELLER_BY_RAIL}\` row for it, so no page is asked who sells a purchase taken on that rail. Add the row.`,
+    );
+  }
+}
+
+/** rail → { provider, sellerIs } for every row this limb can judge. */
+const railSeller = new Map();
+/** Rails whose row could not be judged; reported at the end of §3b. */
+const unresolvedRails = [];
+for (const rail of sellerRowByRail.keys()) {
+  const onRail = providersOnRail(providerReg, rail);
+  if (onRail.length !== 1) {
+    unresolvedRails.push(
+      `rail ${JSON.stringify(rail)} resolves to ${onRail.length} provider row(s) through requiredWhen.rail ` +
+        `(${onRail.map((p) => p.id).join(', ') || 'none'}), so its ${SELLER_BY_RAIL} row cannot be judged`,
+    );
+    continue;
+  }
+  const provider = onRail[0];
+  const sellerIs = roles[provider.role]?.sellerIs;
+  if (!SELLER_IS.has(sellerIs)) continue; // already a finding: the role carries no answer
+  if (sellerIs === 'not-applicable') {
+    problems.push(
+      `rail ${JSON.stringify(rail)} resolves to ${provider.id} (${provider.name}), whose role ${provider.role} says sellerIs ` +
+        'not-applicable. A provider that takes payments on a rail must say who sells; give it a role that does.',
+    );
+    continue;
+  }
+  railSeller.set(rail, { provider, sellerIs });
+}
+
+let sellerChecks = 0;
+/** One page, one provider: the right statement is made, and (for `nikatru` and
+ *  `never`) the provider is nowhere made the seller itself. */
+const checkSeller = (page, provider, sellerIs, label) => {
+  sellerChecks++;
+  const statement = SELLER_STATEMENT[sellerIs];
+  const name = String(provider.name);
+  const naming = blocksOf(page).filter((b) => b.toLowerCase().includes(name.toLowerCase()));
+  if (!naming.some((b) => statement.re.test(b))) {
+    problems.push(
+      `${page}: ${label} — no <p> or <li> names ${name} together with ${statement.says} (${provider.role} → sellerIs ${sellerIs}). ` +
+        'The page must say who sells a purchase taken this way, in the same block that names the provider.',
+    );
+  }
+  if (sellerIs === 'provider') return;
+  const selfSeller = namesItselfSeller(name);
+  for (const b of naming) {
+    const m = b.match(selfSeller);
+    if (m) {
+      problems.push(
+        `${page}: ${label} — a block names ${name} as the seller ("${m[0]}"), and its role ${provider.role} says sellerIs ` +
+          `${sellerIs}. ${sellerIs === 'nikatru' ? 'Nikatru is the seller on this rail; the provider processes the payment.' : 'This provider is never the seller.'}`,
+      );
+    }
+  }
+};
+
+for (const [rail, { provider, sellerIs }] of railSeller) {
+  for (const page of sellerRowByRail.get(rail).pages) checkSeller(page, provider, sellerIs, `rail ${rail}`);
+}
+// A `never` role takes no rail of its own (an aggregator records a store's sale),
+// so its providers are read where they are disclosed: each seller-by-rail page
+// their `namedIn` lists must call them never the seller.
+for (const p of providers) {
+  if (roles[p.role]?.sellerIs !== 'never') continue;
+  for (const page of Array.isArray(p.namedIn) ? p.namedIn : []) {
+    if (sellerPages.has(page)) checkSeller(page, p, 'never', `provider ${p.id}`);
+  }
+}
+
+// The contradiction limb.
+const contradictions = new Set();
+for (const ch of Array.isArray(channelReg.channels) ? channelReg.channels : []) {
+  const base = ch?.purchaseRail?.rail;
+  for (const rr of Array.isArray(ch?.purchaseRail?.regionRails) ? ch.purchaseRail.regionRails : []) {
+    const region = REGION_NAMES.get(rr?.region);
+    if (!region) {
+      coverageLost(
+        `channel ${ch.id} carries regionRails for region ${JSON.stringify(rr?.region ?? null)}, which this guard has no name for.`,
+        'The contradiction limb looks for the region by the name a page uses; add it to REGION_NAMES in',
+        'tooling/ci/assert-policy-claims.mjs so a page claiming the base seller there can be found.',
+      );
+    }
+    const seller = railSeller.get(base);
+    if (!seller) continue; // a base rail with no row, or no judgeable seller, is already a finding
+    const statement = SELLER_STATEMENT[seller.sellerIs];
+    const regionRe = new RegExp(`\\b${escapeRe(region)}\\b`, 'i');
+    for (const page of sellerRowByRail.get(base).pages) {
+      for (const b of blocksOf(page)) {
+        if (!b.toLowerCase().includes(String(seller.provider.name).toLowerCase()) || !statement.re.test(b)) continue;
+        if (!/\bevery country\b/i.test(b) || !regionRe.test(b) || /\b(?:except|outside)\b/i.test(b)) continue;
+        const key = `${page}|${b}`;
+        if (contradictions.has(key)) continue;
+        contradictions.add(key);
+        problems.push(
+          `${page}: a block states ${seller.provider.name} (rail ${base}) sells in "every country" and names ${region} with no ` +
+            `"except" or "outside" — but a buyer in ${region} is on rail ${rr.rail} (tooling/channel-register.json ${ch.id} ` +
+            `regionRails), whose seller is another. "${b.slice(0, 160)}…"`,
+        );
+      }
+    }
+  }
+}
+
+// An unjudged rail is COVERAGE LOST only when nothing above is wrong: a register
+// with its merchant-of-record row deleted already carries that precise finding,
+// and exiting 2 here would replace it with a vaguer one (the §4 rule, below).
+if (unresolvedRails.length > 0) {
+  if (problems.length === 0) {
+    coverageLost(
+      `${unresolvedRails.join('; ')}.`,
+      'The seller of a rail is read from the ONE provider row whose requiredWhen names it (tooling/legal/required-providers.mjs',
+      'providersOnRail). With none there is no seller to look for; with two the answer depends on which is read first.',
+    );
+  }
+  for (const u of unresolvedRails) problems.push(`${u}: the seller-by-rail limb read nothing for it.`);
+}
+
 // ── §4 · THE OWNER-GATED GAPS, PRINTED AND SELF-RETIRING ────────────────────
 // Every gap declares `stillTrue`: a fragment that must still be present in the
 // page it complains about. When the owner publishes the correction the fragment
@@ -694,6 +938,10 @@ console.log(
 console.log(
   `    providers — ${providers.length} row(s), ${providerLinks} claim link(s), ${namedInChecks} disclosure(s) ` +
     `verified against page text, ${seenSegments.size} route segment(s) accounted for, ${egressHosts} third-party browser egress host(s) matched to a row`,
+);
+console.log(
+  `    sellers — ${sellerRows.length} ${SELLER_BY_RAIL} row(s) covering all ${railIds.length} selling rail(s), ` +
+    `${sellerChecks} page statement(s) of who sells verified, no page claiming a base-rail seller in a region another rail serves`,
 );
 console.log(
   '    ⚠️ only `code` rows carry a mechanical assertion. A `descriptive` row proves the sentence was read, not',
