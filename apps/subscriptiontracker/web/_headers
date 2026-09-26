@@ -52,7 +52,8 @@
 #     declared BEFORE `vars.TURNSTILE_SITE_KEY` is ever set, so the gate cannot
 #     fail closed on the day it is switched on. ⚠️ The widget's own configured
 #     domain list is a SEPARATE console setting and still names the old subdomain.
-#   · `connect-src` names the five first-party hosts the app calls. It does NOT
+#   · `connect-src` names the hosts the app calls, and deploy-web holds it to the
+#     set tooling/web/connect-origins.mjs computes, before the build. It does NOT
 #     name the apex, because `'self'` IS the apex once the app is served there.
 #   · ⏱ 2026-09-24 — `https://auth-api.nikatru.com`, the self-hosted sign-in host
 #     [ADR 080] names, is added in the auth cutover PREP, before `SUPABASE_URL`
@@ -76,8 +77,10 @@
 # violation; it then fetches the build's SUPABASE_URL, API_BASE_URL and
 # GlitchTip origins from the page, each answered by the smoke and never sent.
 # A host the build calls and the line above omits is a red deploy, not a
-# sign-in that fails for every visitor. The line names six origins: the
-# hosted Supabase project and the five first-party hosts above.
+# sign-in that fails for every visitor. ⏱ 2026-09-25 — and before the build,
+# tooling/web/connect-origins.mjs compares the line's origins with the build's
+# URL-valued defines, app_config.dart's fetched hosts and its own DECLARED
+# pre-stages, both ways; the smoke then probes that same set.
 # (Row O-WEB-CSP-HAND-LIST-UNSMOKED.)
 # ═══════════════════════════════════════════════════════════════════════════
 #

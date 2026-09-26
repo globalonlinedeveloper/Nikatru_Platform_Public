@@ -319,9 +319,13 @@ const DOC_KEYS = ['README', 'NOTES', 'absent'];
    `discover.mjs` run printed `unknown key "storeMetadata" — nothing reads it`.
    That is worse than a missing warning: a reader who believed it would have deleted a key three store
    listings and a wired CI gate depend on. A vocabulary list is a second declaration of what exists,
-   and the second declaration is the one that goes stale. */
+   and the second declaration is the one that goes stale.
+   ⏱ 2026-09-25 (O-EXTENSION-GATES-NAME-ONE-TOOL): `gates` — a tool's own store
+   gates, per CI stage. scripts/discover.mjs reads it (`--run-gates`,
+   `--assert-generic`) and checks each declaration; this loader only knows the
+   key exists. */
 const KNOWN_KEYS = ['$schema', 'id', 'name', 'surface', 'status', 'summary', 'aiHandoff',
-  'manifest', 'core', 'package', 'targets', 'tests', 'policy', 'listings', 'storeMetadata', 'build', ...DOC_KEYS];
+  'manifest', 'core', 'package', 'targets', 'tests', 'policy', 'listings', 'storeMetadata', 'build', 'gates', ...DOC_KEYS];
 
 export function loadTool(root, entry) {
   const rel = typeof entry === 'string' ? entry : entry.rel;
