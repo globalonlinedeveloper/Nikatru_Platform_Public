@@ -114,7 +114,7 @@
 // Exit 0 = the bundle is signed by the identity this lane intended. 1 = it is not.
 //      2 = COVERAGE LOST — the question could not be asked.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, statSync, mkdtempSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, mkdtempSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname, isAbsolute, relative } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -123,6 +123,7 @@ import { whatToolReturned } from './tool-output.mjs';
 import { parseMobileProvision } from './apple-signing.mjs';
 import { REGISTER as PROVISIONING_REGISTER, bundleIdOf } from './apple-provisioning.mjs';
 import { parseWorkflow, workflowSteps } from './workflow-scan.mjs';
+import { listDir } from './tree-walk.mjs';
 
 export const REGISTER = 'tooling/channel-register.json';
 export const CHANNEL_IDS = ['ios-appstore', 'macos-appstore'];
@@ -504,6 +505,7 @@ export function pinnedTeamId(register, channelIds = CHANNEL_IDS) {
 //                     `env.APPLE_SIGNING_POSTURE == 'release-signed'`.
 // A register row with no artifactGlob, or a bp with no parsed step, is COVERAGE
 // LOST: each limb ranges over them, and over nothing each would pass.
+// LANE-BOUND: build-platforms.yml — --static grades the Apple build lane itself: both Apple rows of tooling/channel-register.json name .github/workflows/build-platforms.yml (job apple) as their lane.workflow, and it is the one workflow that builds, proves and uploads the .ipa and the .pkg; a second Apple lane in the register would have to be derived from lane.workflow here instead.
 
 export const BUILD_WORKFLOW = '.github/workflows/build-platforms.yml';
 export const PROVER = 'tooling/ci/assert-artifact-signed-apple.mjs';
@@ -890,7 +892,7 @@ function check({ argv, env, platform, run, log, error }) {
       ...whatToolReturned({ name, path: result?.error ? null : name, result }),
     ]);
   const appsIn = (dir) =>
-    existsSync(dir) ? readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name.endsWith('.app')).map((e) => join(dir, e.name)) : [];
+    existsSync(dir) ? listDir(dir, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name.endsWith('.app')).map((e) => join(dir, e.name)) : [];
 
   /** ipa-payload / pkg-signature / pkg-payload: the one wrapped .app, or null with the problem pushed. */
   const openArchive = (kind, rel, abs) => {
@@ -917,7 +919,7 @@ function check({ argv, env, platform, run, log, error }) {
     const r = run('pkgutil', ['--expand-full', abs, out]);
     if (r.error || r.status !== 0) toolLost('pkg-payload', 'pkgutil --expand-full', r);
     const components = existsSync(out)
-      ? readdirSync(out, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name.endsWith('.pkg')).map((e) => join(out, e.name, 'Payload'))
+      ? listDir(out, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name.endsWith('.pkg')).map((e) => join(out, e.name, 'Payload'))
       : [];
     const apps = [join(out, 'Payload'), ...components].flatMap(appsIn);
     if (apps.length !== 1) {
