@@ -431,14 +431,17 @@ describe('assert-auth-callbacks — derivation and wiring', () => {
 // ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT · limb PROVIDER-POLICY. Google is
 // never shipped without Apple (App Store Review Guideline 4.8). Each case sets
 // BOTH flags in the fixture's `AuthProviders.configured`, written out by hand.
+// ⏱ 2026-09-26 — Google went live, so the REAL tree is now the google: true,
+// apple: true case, and the state PR B shipped (google off beside Apple) is
+// kept as a mutation below so that arm is still read.
 describe('assert-auth-callbacks — provider policy', () => {
   const PROVIDERS = 'packages/auth_supabase/lib/src/auth_providers.dart';
-  const CONFIGURED = /apple: true,\s*google: false,/;
+  const CONFIGURED = /apple: true,\s*google: true,/;
 
-  test('the real tree reads apple=true google=false and passes', () => {
+  test('the real tree reads apple=true google=true and passes', () => {
     const r = run(fixture());
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /providers apple=true google=false/);
+    assert.match(r.out, /providers apple=true google=true/);
   });
 
   test('🔴 google: true with apple: false FAILS, naming the file', () => {
@@ -449,12 +452,12 @@ describe('assert-auth-callbacks — provider policy', () => {
     );
   });
 
-  test('google: true with apple: true passes', () => {
+  test('google: false with apple: true passes', () => {
     const root = fixture();
-    mutate(root, PROVIDERS, CONFIGURED, 'apple: true,\n    google: true,');
+    mutate(root, PROVIDERS, CONFIGURED, 'apple: true,\n    google: false,');
     const r = run(root);
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /providers apple=true google=true/);
+    assert.match(r.out, /providers apple=true google=false/);
   });
 
   test('google: false with apple: false passes', () => {

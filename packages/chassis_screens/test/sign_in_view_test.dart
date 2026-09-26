@@ -232,6 +232,8 @@ void main() {
 
   // ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. The same both-directions pair
   // for Google, whose default is OFF: `AuthProviders.configured` says false.
+  // ⏱ 2026-09-26: configured is now true; this group pins the VIEW's own
+  // default, which stays off.
   group('property: sign-in-shows-google-only-when-told-to', () {
     testWidgets('absent by default, even beside Apple',
         (WidgetTester tester) async {

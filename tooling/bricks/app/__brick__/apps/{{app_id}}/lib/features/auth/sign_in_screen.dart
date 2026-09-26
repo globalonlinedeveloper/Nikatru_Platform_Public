@@ -61,7 +61,7 @@ class SignInScreen extends ConsumerWidget {
       showAppleButton: caps.oauthRedirect && providers.any && providers.apple,
       onSignInWithApple: () => auth.signInWithApple(),
       // ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT — the same two facts, and
-      // `providers.google` is false until the owner provisions the client.
+      // `providers.google` is true since 2026-09-26: the owner provisioned it.
       showGoogleButton: caps.oauthRedirect && providers.any && providers.google,
       onSignInWithGoogle: () => auth.signInWithGoogle(),
       // ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP — Sign in with Apple can create an
