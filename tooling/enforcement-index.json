@@ -544,6 +544,7 @@
       "W-9"
     ],
     "invokedBy": [
+      ".github/workflows/build-platforms.yml#linux_web_android",
       ".github/workflows/ci.yml#sites",
       ".github/workflows/deploy-web.yml#deploy-web"
     ],
@@ -2754,11 +2755,23 @@
   },
   {
     "claims": [],
-    "invokedBy": [],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#apple",
+      ".github/workflows/build-platforms.yml#linux_web_android",
+      ".github/workflows/build-platforms.yml#windows",
+      ".github/workflows/ci.yml#android-artifacts",
+      ".github/workflows/deploy-web.yml#deploy-web",
+      ".github/workflows/e2e.yml#e2e",
+      ".github/workflows/submit-appstore.yml#dry-run",
+      ".github/workflows/submit-play.yml#dry-run",
+      ".github/workflows/submit-snap.yml#dry-run",
+      ".github/workflows/submit-snap.yml#submit",
+      ".github/workflows/submit-windows-store.yml#dry-run"
+    ],
     "kind": "guard",
     "ref": "tooling/ci/flutter-release-build.mjs",
     "references": [],
-    "state": "IMPORTED"
+    "state": "WIRED"
   },
   {
     "claims": [],

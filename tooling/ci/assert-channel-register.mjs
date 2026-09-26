@@ -58,6 +58,10 @@
 //      ONE app.yaml may declare `billing.mobileIap`. Resolved by STAMP, never by
 //      artifact type: the same .apk is `play-billing` for Play and `none` for
 //      apps.gov.in. Its domain is 6b-ii's census, so the two cannot disagree.
+//   6b-v. ⏱ 2026-09-26: and it is COMPOSED — a release `flutter build` a
+//      workflow types by hand fails unless its `releaseBuildsNeverShipped`
+//      entry carries a `handTyped` reason; every other one calls
+//      tooling/ci/flutter-release-build.mjs (O-FLUTTER-BUILD-TYPED-PER-LINE).
 //   7. disqualified channels name a LOCKED ADR that exists on disk
 //   6d. a `signing.*` block carrying a `notYetConfiguredSentinel` — a pinned
 //      certificate fingerprint or public key — is complete, dated and sourced.
@@ -123,6 +127,7 @@ import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs'
 import { FLUTTER_APP_FIELD, flutterAppChannel } from './channel-surface.mjs';
 import {
   parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt, shellSegments, resolveLocalCalls, workflowSteps, commandAt, joinShellContinuations, parseWorkflow, flutterBuilds,
+  flutterBuildsByOrigin, RELEASE_MODES,
 } from './workflow-scan.mjs';
 import { parseYaml } from '../app-yaml/yaml.mjs';
 import { lanesOfSurface } from './tag-owner.mjs';
@@ -1912,6 +1917,15 @@ if (agg === null || typeof agg !== 'object' || typeof agg.workflow !== 'string' 
       });
     }
   }
+  // ⏱ 2026-09-26 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 3 of 3): a release lane that
+  // calls tooling/ci/flutter-release-build.mjs types no stamp; the census composes the
+  // call, and its RELEASE_CHANNEL is the call's channel. Counted at the call's line, so
+  // a lane switching to the composer does not quietly shrink this limb's domain.
+  if (scanned > 0) {
+    for (const b of flutterBuildsByOrigin(ROOT, parseAllWorkflows(ROOT)).composed) {
+      if (b.stamp !== null) stamps.push({ at: `${b.workflow}:${b.runLine}`, value: b.stamp });
+    }
+  }
   if (scanned === 0) {
     coverageLost([
       `no workflow file was read under ${wfDir}, so the RELEASE_CHANNEL check ranged over nothing.`,
@@ -2466,6 +2480,73 @@ let releaseCensus = { workflows: [], domain: null };
   if (sites.length) {
     ok(
       `${sites.length} channel stamp(s) across ${pairWorkflows.length} workflow(s): ${paired} paired with the row's lane, submission workflow or submission script, ${exemptUsed.size} declared cross-lane, ${unanchored} printed as unanchored (their row declares no lane and no submission)`,
+    );
+  }
+}
+
+// ── 6b-v. a release build is COMPOSED, never typed by hand ──────────────────
+// ⏱ ADDED 2026-09-26 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 3 of 3). Twenty-one
+// release lines each typed the same eleven decisions (the channel stamp, the
+// store key, the symbols, the API base, the version) until every one of them
+// called tooling/ci/flutter-release-build.mjs, which makes those decisions once.
+// A hand-typed release `flutter build` in any workflow now FAILS: it is a copy
+// the composer's rules no longer reach. The domain is the census —
+// workflow-scan's flutterBuildsByOrigin, its `typed` half, in RELEASE_MODES —
+// so a build is judged by the command that runs, not by a grep for one.
+//
+// The excuse is the register's, not this file's: a `releaseBuildsNeverShipped`
+// entry carrying a `handTyped` reason (a proof whose command IS its subject).
+// Exempt from grading is NOT exempt from composition — the PR lanes stay listed
+// and call the composer with `--lane pr`. Graded both ways: a `handTyped` entry
+// whose job types no release build is a stale excuse and FAILS.
+//
+// A tree that does not carry the composer has nothing to call: a FIXTURE root
+// without tooling/ci/flutter-release-build.mjs skips the limb (as 6b-ii skips a
+// fixture's absent workflow); the REAL repository without it is COVERAGE LOST.
+{
+  const KEY = 'releaseBuildsNeverShipped';
+  const COMPOSER_REL = 'tooling/ci/flutter-release-build.mjs';
+  const hasComposer = existsSync(abs(COMPOSER_REL));
+  if (!hasComposer && scanningRealRepo) {
+    coverageLost([
+      `${COMPOSER_REL} does not exist, so "every release build calls the composer" has no composer to be called.`,
+      'Every release lane calls it; a tree without it cannot build a release, and this limb would grade nothing.',
+    ]);
+  }
+  if (hasComposer) {
+    const entries = Array.isArray(register[KEY]?.entries) ? register[KEY].entries : [];
+    const matches = (e, b) => e?.workflow === b.workflow && e?.job === b.job && (e?.target === undefined || e?.target === null || e.target === b.target);
+    // An unreasoned excuse excuses nothing: it is refused below AND leaves its build graded.
+    const excuses = (e) => typeof e?.handTyped === 'string' && e.handTyped.length >= 40;
+    const { workflows } = releaseCensus;
+    const typedRelease = flutterBuildsByOrigin(ROOT, workflows).typed.filter((b) => RELEASE_MODES.has(b.mode));
+    const used = new Set();
+    for (const b of typedRelease) {
+      const i = entries.findIndex((e) => excuses(e) && matches(e, b));
+      if (i !== -1) {
+        used.add(i);
+        continue;
+      }
+      problems.push(
+        `${buildAt(b)} types its release \`flutter build\` by hand. Every release build is composed by ${COMPOSER_REL}: call \`node ${COMPOSER_REL} <app> ${b.target} <channel>\` (with \`--lane pr\` for a build nobody ships), so the channel stamp, the store key, the symbols, the API base and the version come from its one set of rules. A proof whose command IS its subject is declared in ${REGISTER} \`${KEY}\` with a \`handTyped\` reason.`,
+      );
+    }
+    entries.forEach((e, i) => {
+      if (e?.handTyped === undefined) return;
+      const name = `${KEY} ${e?.workflow}#${e?.job}${e?.target ? ` (${e.target})` : ''}`;
+      if (typeof e.handTyped !== 'string' || e.handTyped.length < 40) {
+        problems.push(`${REGISTER} ${name} carries a \`handTyped\` with no written reason. An unexplained excuse from composition is indistinguishable from a line nobody switched.`);
+        return;
+      }
+      if (used.has(i)) return;
+      const wfPresent = workflows.some((w) => w.rel === e?.workflow);
+      if (!scanningRealRepo && !wfPresent) return;
+      problems.push(
+        `${REGISTER} ${name} excuses a hand-typed release \`flutter build\`, and that job types none. The excuse outlived its subject — delete its \`handTyped\` in the same commit.`,
+      );
+    });
+    ok(
+      `${typedRelease.length} hand-typed release \`flutter build\` command(s), each a declared \`handTyped\` proof (${typedRelease.filter((b) => entries.some((e) => excuses(e) && matches(e, b))).map(buildAt).join('; ') || 'none'}); every other release build is composed by ${COMPOSER_REL}`,
     );
   }
 }

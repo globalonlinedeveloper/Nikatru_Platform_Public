@@ -1388,33 +1388,15 @@ jobs:
       # signs with its debug fallback. The one secret is the PUBLIC RevenueCat SDK key
       # that storeKeyDefine requires of an android-play stamp; the rest stay empty.
       - name: Build android (apk — sideloadable build proof)
-        working-directory: apps/${{ matrix.app }}
-        run: >
-          flutter build apk --release
-          --obfuscate --split-debug-info=build/symbols/android-apk
-          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
-          --build-number=${{ github.run_number }}
-          --dart-define=SUPABASE_URL=
-          --dart-define=SUPABASE_ANON_KEY=
-          --dart-define=API_BASE_URL=
-          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+pr
-          --dart-define=RELEASE_CHANNEL=android-play
-          --dart-define=REVENUECAT_KEY=${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
-          --dart-define=GLITCHTIP_DSN=
+        env:
+          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+          REVENUECAT_PUBLIC_KEY_GOOGLE: ${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
+        run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} apk android-play --lane pr
       - name: Build android (aab — the Google Play artifact)
-        working-directory: apps/${{ matrix.app }}
-        run: >
-          flutter build appbundle --release
-          --obfuscate --split-debug-info=build/symbols/android-aab
-          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
-          --build-number=${{ github.run_number }}
-          --dart-define=SUPABASE_URL=
-          --dart-define=SUPABASE_ANON_KEY=
-          --dart-define=API_BASE_URL=
-          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+pr
-          --dart-define=RELEASE_CHANNEL=android-play
-          --dart-define=REVENUECAT_KEY=${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
-          --dart-define=GLITCHTIP_DSN=
+        env:
+          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+          REVENUECAT_PUBLIC_KEY_GOOGLE: ${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
+        run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} appbundle android-play --lane pr
       # why: Flutter writes every .apk to one path, so the Play .apk is set aside and put back — §apps-gov-in.
       - name: Set the Play .apk aside (Flutter writes every .apk to one path)
         working-directory: apps/${{ matrix.app }}
@@ -1427,18 +1409,9 @@ jobs:
       # why: no env block — main's step env points Gradle at the apps.gov.in key; here no key
       # exists, so this build is debug-signed too. RELEASE_CHANNEL=apps-gov-in sells nothing.
       - name: Build android (apk — apps.gov.in, its own key, sells nothing)
-        working-directory: apps/${{ matrix.app }}
-        run: >
-          flutter build apk --release
-          --obfuscate --split-debug-info=build/symbols/android-apk-apps-gov-in
-          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
-          --build-number=${{ github.run_number }}
-          --dart-define=SUPABASE_URL=
-          --dart-define=SUPABASE_ANON_KEY=
-          --dart-define=API_BASE_URL=
-          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+pr
-          --dart-define=RELEASE_CHANNEL=apps-gov-in
-          --dart-define=GLITCHTIP_DSN=
+        env:
+          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+        run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} apk apps-gov-in --lane pr
       - name: Take the apps.gov.in .apk out, and put the Play .apk back
         id: agi_apk
         working-directory: apps/${{ matrix.app }}
@@ -1593,7 +1566,6 @@ jobs:
     secrets:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-      API_BASE_URL: ${{ secrets.API_BASE_URL }}
       GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
       GLITCHTIP_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

@@ -101,7 +101,7 @@ const NO_BUILD_NUMBER = new Set(['linux']);
 export const LANES = ['release', 'pr'];
 
 /** The defines `--lane pr` blanks: the backend and the crash sink. */
-const PR_BLANKED = new Set(['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'API_BASE_URL', 'GLITCHTIP_DSN']);
+export const PR_BLANKED = new Set(['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'API_BASE_URL', 'GLITCHTIP_DSN']);
 
 /** The version the binary reports: `<release line>.<run number>+<commit>`, or
  *  `+pr` on the PR lane. The build name is the part before `+`. */

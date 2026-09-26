@@ -20,8 +20,6 @@ on:
         required: true
       SUPABASE_ANON_KEY:
         required: true
-      API_BASE_URL:
-        required: true
       GLITCHTIP_DSN:
         required: true
       GLITCHTIP_TOKEN:
@@ -203,19 +201,22 @@ jobs:
 
       - name: Build web (release, no service worker)
         if: steps.plan.outputs.deploy == 'true'
-        run: >
-          flutter build web --release --pwa-strategy=none --source-maps --no-web-resources-cdn
-          --base-href ${{ steps.base.outputs.base_href }}
-          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
-          --build-number=${{ github.run_number }}
-          --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-          --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
-          --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
-          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${GITHUB_SHA::7}
-          --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
-          --dart-define=TURNSTILE_SITE_KEY=${{ vars.TURNSTILE_SITE_KEY }}
-          --dart-define=APP_ENV=production
-          --dart-define=RELEASE_CHANNEL=web
+        working-directory: .
+        env:
+          BASE_HREF: ${{ steps.base.outputs.base_href }}
+          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
+          TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
+        run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} web web
+
+      # why: the smoke must --connect the origin the build was composed with, so the value
+      # comes from the composer's own rule, never from a secret (O-FLUTTER-BUILD-TYPED-PER-LINE).
+      - name: The API base the build composed, for the smoke's --connect
+        if: steps.plan.outputs.deploy == 'true'
+        working-directory: .
+        run: node tooling/ci/flutter-release-build.mjs --emit-env API_BASE_URL ${{ matrix.app }} >> "$GITHUB_ENV"
 
       - uses: ./.github/actions/setup-node
         if: steps.plan.outputs.deploy == 'true'

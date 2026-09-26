@@ -107,19 +107,13 @@ jobs:
       # already consumed — docs/ci/submit-play.md §versioning. assert-app-versioning.mjs
       # holds every release build in every workflow to this, found by scan, not by list.
       - name: Build the app bundle
-        working-directory: apps/subscriptiontracker
-        run: >
-          flutter build appbundle --release
-          --obfuscate --split-debug-info=build/symbols/android-aab
-          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
-          --build-number=${{ github.run_number }}
-          --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-          --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
-          --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
-          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${GITHUB_SHA::7}
-          --dart-define=RELEASE_CHANNEL=android-play
-          --dart-define=REVENUECAT_KEY=${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
-          --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
+        env:
+          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          REVENUECAT_PUBLIC_KEY_GOOGLE: ${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
+          GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
+        run: node tooling/ci/flutter-release-build.mjs subscriptiontracker appbundle android-play
       # ⏱ MOVED 2026-09-07 (unit `symbols-everywhere`) — THIS STEP USED TO BE THE
       # LAST ONE IN THE JOB, behind the Play dry run. That is the ordering
       # post-audit-obfuscation-and-symbols.md §9.3 reproduced on a real runner:

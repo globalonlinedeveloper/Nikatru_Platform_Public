@@ -768,8 +768,31 @@ export function buildMode(seg) {
  *            mode: 'release'|'default'|'debug'|'profile'|'contradictory'}[]}
  */
 export function flutterBuilds(root, parsed = null) {
-  const workflows = parsed ?? parseAllWorkflows(root);
   const out = [];
+  walkBuilds(root, parsed, (_origin, records) => out.push(...records));
+  return out;
+}
+
+/**
+ * ⏱ ADDED 2026-09-26 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 3 of 3). flutterBuilds,
+ * split by where each command came from: `typed` — a `flutter build` a workflow
+ * line spells out; `composed` — one a tooling/ci/flutter-release-build.mjs call
+ * made. The same walk and the same records (no field is added, so a composed
+ * record stays the record its literal line would give); the split is the one
+ * question a record cannot answer about itself, and the refusal of a hand-typed
+ * release build (assert-channel-register 6b-v) asks exactly that.
+ */
+export function flutterBuildsByOrigin(root, parsed = null) {
+  const typed = [];
+  const composed = [];
+  walkBuilds(root, parsed, (origin, records) => (origin === 'composed' ? composed : typed).push(...records));
+  return { typed, composed };
+}
+
+/** The one walk of every workflow's `flutter build` segments. `sink(origin, records)`
+ *  receives each segment's records in file order, `origin` 'typed' or 'composed'. */
+function walkBuilds(root, parsed, sink) {
+  const workflows = parsed ?? parseAllWorkflows(root);
   for (const wf of workflows) {
     for (const job of wf.jobs.values()) {
       for (const l of job.logical) {
@@ -777,16 +800,15 @@ export function flutterBuilds(root, parsed = null) {
           // A call behind a shell `#` is prose, as a define is to definesIn.
           const call = COMPOSER_CALL.exec(seg.split('#')[0]);
           if (call !== null) {
-            out.push(...composedBuilds(root, wf, job, l, seg, call));
+            sink('composed', composedBuilds(root, wf, job, l, seg, call));
             continue;
           }
           const b = buildRecord(wf, job, l, seg);
-          if (b !== null) out.push(b);
+          if (b !== null) sink('typed', [b]);
         }
       }
     }
   }
-  return out;
 }
 
 /** One full census record for one shell segment, or null when it runs no `flutter build`. */
@@ -862,18 +884,36 @@ function matrixValues(job, key) {
 
 /** The records a composer call makes: one per app the call's `<app>` resolves to.
  *  A call the composer refuses THROWS, naming its line — it would refuse in CI. */
-function composedBuilds(root, wf, job, l, seg, call) {
-  const at = `${wf.rel}:${l.n}`;
+/**
+ * The arguments of the composer call in one shell segment: `{app, target, channel,
+ * lane}` (`app` as written, `${{ matrix.<key> }}` with its spaces folded out), or
+ * null when the segment calls no composer BUILD (`--print` and `--emit-env` build
+ * nothing). THROWS when the call names other than its three positionals, naming
+ * `at` — the composer would refuse it in CI. ⏱ 2026-09-26: lifted out of
+ * composedBuilds so assert-release-json limb 9 reads a call's channel through this
+ * one parse, not a second one.
+ */
+export function composerCallArgs(seg, at = 'a workflow step') {
+  const call = COMPOSER_CALL.exec(String(seg ?? '').split('#')[0]);
+  if (call === null) return null;
   const args = call[1].replace(/\$\{\{\s*([^}]*?)\s*\}\}/g, (_m, inner) => `\${{${inner.replace(/\s+/g, '')}}}`);
   const tokens = args.trim().split(/\s+/).filter((t) => t !== '').map(unquote);
-  if (tokens.includes('--print') || tokens.includes('--emit-env')) return [];
+  if (tokens.includes('--print') || tokens.includes('--emit-env')) return null;
   const laneAt = tokens.indexOf('--lane');
   const lane = laneAt === -1 ? 'release' : tokens[laneAt + 1];
   const positional = tokens.filter((t, i) => !t.startsWith('--') && (laneAt === -1 || i !== laneAt + 1));
   if (positional.length !== 3) {
     throw new Error(`${at}: the flutter-release-build.mjs call names ${positional.length} of its three arguments <app> <target> <channel>.`);
   }
-  const [appArg, target, channel] = positional;
+  const [app, target, channel] = positional;
+  return { app, target, channel, lane };
+}
+
+function composedBuilds(root, wf, job, l, seg, call) {
+  const at = `${wf.rel}:${l.n}`;
+  const parsedCall = composerCallArgs(seg, at);
+  if (parsedCall === null) return [];
+  const { app: appArg, target, channel, lane } = parsedCall;
   const mx = appArg.match(/^\$\{\{matrix\.([A-Za-z_][A-Za-z0-9_-]*)\}\}$/);
   let apps;
   if (mx !== null) {

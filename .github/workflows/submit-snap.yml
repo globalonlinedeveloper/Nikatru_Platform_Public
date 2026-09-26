@@ -69,17 +69,12 @@ jobs:
       - name: Name clearance holds for linux-snap (owner HELD or PROVEN-FREE)
         run: node tooling/ci/assert-name-clearance.mjs --for-submission=linux-snap
       - name: Build linux
-        working-directory: apps/subscriptiontracker
-        run: >
-          flutter build linux --release
-          --obfuscate --split-debug-info=build/symbols/linux
-          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
-          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${GITHUB_SHA::7}
-          --dart-define=RELEASE_CHANNEL=linux-snap
-          --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-          --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
-          --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
-          --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
+        env:
+          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
+        run: node tooling/ci/flutter-release-build.mjs subscriptiontracker linux linux-snap
       # ⏱ MOVED 2026-09-07 (unit `symbols-everywhere`) — THIS STEP USED TO BE THE
       # LAST ONE IN THE JOB, behind `snapcraft pack` and the Snap Store dry run.
       # That is the ordering post-audit-obfuscation-and-symbols.md §9.3
@@ -240,17 +235,12 @@ jobs:
       - name: Name clearance holds for linux-snap (owner HELD or PROVEN-FREE)
         run: node tooling/ci/assert-name-clearance.mjs --for-submission=linux-snap
       - name: Build linux
-        working-directory: apps/subscriptiontracker
-        run: >
-          flutter build linux --release
-          --obfuscate --split-debug-info=build/symbols/linux
-          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
-          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${GITHUB_SHA::7}
-          --dart-define=RELEASE_CHANNEL=linux-snap
-          --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-          --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
-          --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
-          --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
+        env:
+          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
+        run: node tooling/ci/flutter-release-build.mjs subscriptiontracker linux linux-snap
       # ⏱ MOVED 2026-09-07 (unit `symbols-everywhere`) — this step used to sit
       # after `snapcraft pack`, which was already "BEFORE the upload, not after"
       # and is now earlier still: a pack failure is a step failure like any

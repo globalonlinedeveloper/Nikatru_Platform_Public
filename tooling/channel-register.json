@@ -1291,11 +1291,6 @@
     },
     "nonSigning": [
       {
-        "name": "API_BASE_URL",
-        "kind": "build-config",
-        "why": "The Worker endpoint the app is built against, passed as --dart-define. A URL, not a credential."
-      },
-      {
         "name": "SUPABASE_URL",
         "kind": "build-config",
         "why": "Project endpoint, --dart-define. Public in every shipped client; held as a secret only to keep the project ref out of the public tree."
@@ -1766,14 +1761,22 @@
       "in any workflow has outlived its subject and is reported stale by assert-channel-register 6b-ii.",
       "`target` is optional — omit it to cover every release build in that job, give it to name one.",
       "Every `why` is printed on every run of every reader: an exemption nobody reads is indistinguishable",
-      "from an omission."
+      "from an omission.",
+      "",
+      "⏱ 2026-09-26 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 3 of 3) — `handTyped`. Every release build is now composed by",
+      "tooling/ci/flutter-release-build.mjs, and assert-channel-register 6b-v FAILS a release `flutter build` a workflow",
+      "types by hand. An entry here excuses a build from GRADING; only an entry that also carries a `handTyped` reason",
+      "excuses a build from being COMPOSED, and 6b-v grades that field both ways (a `handTyped` entry whose job types no",
+      "release build is stale). The PR lanes stay listed, since their output is still thrown away, and call the composer",
+      "with `--lane pr`: exempt from grading is not exempt from composition."
     ],
     "entries": [
       {
         "workflow": ".github/workflows/ci.yml",
         "job": "app-brick",
         "target": "web",
-        "why": "the BRICK smoke build — it proves a freshly stamped app compiles and the output is discarded in the same job. It is stamped with no channel because it is for no channel."
+        "why": "the BRICK smoke build — it proves a freshly stamped app compiles and the output is discarded in the same job. It is stamped with no channel because it is for no channel.",
+        "handTyped": "C6-3 (O-FLUTTER-BUILD-TYPED-PER-LINE): the command IS the proof — it builds a freshly stamped app that has no channel row, so there is no <channel> the composer could be called with, and composing it would prove the composer rather than the brick."
       },
       {
         "workflow": ".github/workflows/ci.yml",
@@ -1784,7 +1787,8 @@
         "workflow": ".github/workflows/symbolication-proof.yml",
         "job": "prove",
         "target": "apk",
-        "why": "[ADR 090] the symbolication fixture — an apk built to be crashed on purpose so the uploaded debug symbols can be proved to resolve a real stack. Nothing installs it."
+        "why": "[ADR 090] the symbolication fixture — an apk built to be crashed on purpose so the uploaded debug symbols can be proved to resolve a real stack. Nothing installs it.",
+        "handTyped": "C6-3 (O-FLUTTER-BUILD-TYPED-PER-LINE): [ADR 090] the fixture is built with the exact flags its proof is about, typed where the proof can be read; nothing installs it, and routing it through the composer would put the thing under test behind the thing that makes release builds."
       }
     ]
   },

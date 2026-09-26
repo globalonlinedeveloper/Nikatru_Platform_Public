@@ -4235,3 +4235,81 @@ describe('assert-channel-register — grader-is-run: every storeMetadataGradedBy
     assert.match(out, /COVERAGE LOST — \.github\/workflows\/lane-ci\.yml, called by ci-gate's need `extensions`, has no verdict job: neither `ci-required` nor a job that runs tooling\/ci\/lane-verdict\.mjs/);
   });
 });
+
+// ⏱ ADDED 2026-09-26 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 3 of 3) — limb 6b-v. A tree
+// that carries the composer fails a release build a workflow types by hand; the only
+// excuse is a `releaseBuildsNeverShipped` entry with a `handTyped` reason, graded both
+// ways. The stub below is what arms the limb in a fixture root (the census composes
+// through the real module; the stub's presence is the only property read).
+describe('assert-channel-register — 6b-v: a release build is composed, never typed by hand', () => {
+  const COMPOSER_STUB = '// fixture stub — its presence arms 6b-v\n';
+  const FIXTURE_APP = 'id: fixture\nhosts:\n  api: fixture-api.nikatru.com\n';
+  const HAND_TYPED = 'the fixture lane types its build because the command is the thing this case proves, and says so here.';
+
+  test('FAILS a hand-typed release build in a tree that carries the composer', () => {
+    const { code, out } = run(tree({ extraFiles: { 'tooling/ci/flutter-release-build.mjs': COMPOSER_STUB } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /deploy-web\.yml:\d+ \(job "deploy-web", `flutter build web`\) types its release `flutter build` by hand/);
+  });
+
+  test('PASSES the same lane once it calls the composer', () => {
+    const { code, out } = run(
+      tree({
+        releaseChannel: null,
+        laneBuilds: 'node tooling/ci/flutter-release-build.mjs fixture web web',
+        extraFiles: { 'tooling/ci/flutter-release-build.mjs': COMPOSER_STUB, 'apps/fixture/app.yaml': FIXTURE_APP },
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /0 hand-typed release `flutter build` command\(s\)/);
+  });
+
+  test('a fixture root without the composer is not graded by 6b-v', () => {
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /hand-typed release/);
+  });
+
+  test('a `handTyped` entry excuses the build its job types', () => {
+    const { code, out } = run(
+      tree({
+        extraFiles: { 'tooling/ci/flutter-release-build.mjs': COMPOSER_STUB },
+        mutate: (r) => {
+          r.releaseBuildsNeverShipped.entries.push({ workflow: LANE_WORKFLOW, job: 'deploy-web', target: 'web', why: HAND_TYPED, handTyped: HAND_TYPED });
+        },
+      }),
+    );
+    assert.doesNotMatch(out, /types its release `flutter build` by hand/);
+    assert.match(out, /1 hand-typed release `flutter build` command\(s\), each a declared `handTyped` proof/);
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS a `handTyped` entry whose job types no release build (stale)', () => {
+    const { code, out } = run(
+      tree({
+        releaseChannel: null,
+        laneBuilds: 'node tooling/ci/flutter-release-build.mjs fixture web web',
+        extraFiles: { 'tooling/ci/flutter-release-build.mjs': COMPOSER_STUB, 'apps/fixture/app.yaml': FIXTURE_APP },
+        mutate: (r) => {
+          r.releaseBuildsNeverShipped.entries.push({ workflow: LANE_WORKFLOW, job: 'deploy-web', target: 'web', why: HAND_TYPED, handTyped: HAND_TYPED });
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /releaseBuildsNeverShipped \.github\/workflows\/deploy-web\.yml#deploy-web \(web\) excuses a hand-typed release `flutter build`, and that job types none/);
+  });
+
+  test('FAILS a `handTyped` with no written reason', () => {
+    const { code, out } = run(
+      tree({
+        extraFiles: { 'tooling/ci/flutter-release-build.mjs': COMPOSER_STUB },
+        mutate: (r) => {
+          r.releaseBuildsNeverShipped.entries.push({ workflow: LANE_WORKFLOW, job: 'deploy-web', target: 'web', why: HAND_TYPED, handTyped: 'short' });
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /deploy-web\.yml#deploy-web \(web\) carries a `handTyped` with no written reason/);
+    assert.match(out, /types its release `flutter build` by hand/);
+  });
+});
