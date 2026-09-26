@@ -95,6 +95,73 @@
 //   `served: false` is another stage's refactor, and failing the build over it
 //   would claim work this guard has no mandate for.
 //
+// LIMB D-all — NO APP-NAMED KEY AND NO UUID LITERAL IN ANY GRADED LANE, added
+//   2026-09-25 with O-E2E-LANE-WIRED-TO-ONE-APP. Limb D asks its question of the
+//   deploy path only, and e2e.yml is `deployPath: false`. So e2e.yml carried
+//   an env key spelled as the app id upper-cased plus `_D1_DATABASE_ID`, set
+//   to a production database id, on four steps, and the platform database's id
+//   on two more, while this guard printed ok: the key is upper case, which
+//   limb D's case-sensitive `idToken` cannot see, and the lane is not a deploy
+//   path, so limb D never read it. A second
+//   app in e2e.yml's matrix would have been verified and purged against the
+//   first app's database. That lane now resolves both ids at run time from the
+//   app's own wrangler file (tooling/e2e/backend.mjs), and this limb stops the
+//   literals coming back, on EVERY lane in GRADED_LANES, whatever `deployPath`
+//   says:
+//
+//     (i)  an `env:` key (at any depth) or a step/job OUTPUT name (an
+//          `outputs:` key, `<name>=` appended to $GITHUB_OUTPUT, or a
+//          `steps.<id>.outputs.<name>` reference) that contains a workspace
+//          app id as a whole token, case-insensitively. Tokens split on `_`
+//          and `-`, so `SUBSCRIPTIONTRACKER_DB`, `subscriptiontracker_db` and
+//          `subscriptiontracker-db` all name the app, and `resubscriptiontrackerx_db`
+//          does not. A hyphenated id matches as its run of tokens (`second-app`
+//          is named by `SECOND_APP_TOKEN`).
+//          An app-named key is a hand-off wired to one app: app #2's leg
+//          reads app #1's value under app #1's name.
+//     (ii) a UUID literal (8-4-4-4-12 hex, either case) in a `run:`, `with:`
+//          or `env:` value, or in any other field limb D reads, after the
+//          same `${{ env.X }}` / `${{ matrix.X }}` expansion. A database, a
+//          project or an account is addressed by a UUID, and a UUID in a lane
+//          is one app's resource written into a file every app's leg runs.
+//          The refusal exempts no lane and no value: a lane that needs an id
+//          reads it at run time, as e2e.yml's `backend` step does. A finding
+//          names the file, the line and the field, never the id itself.
+//
+//   Each hit is its own finding, exit 1, naming `file:line`. A graded lane this
+//   limb reads no value from, or zero graded lanes read at all, is COVERAGE LOST
+//   (exit 2), as for every other limb in this file. Comments are blanked by the
+//   shared parser before either check, so prose that names an id is not a hit.
+//
+// THE GATE — graded under limbs D, D-all and A′, never under limbs A or B,
+//   added 2026-09-26 with O-CI-AND-WORKER-LANES-NAME-ONE-APP (the ci.yml half).
+//   The gate is not a release lane (the gate block below says why limbs A and B
+//   leave it out), and while it was left out of everything it named one app
+//   freely: the five store submission dry runs each carried `--app` with app #1's
+//   id, workspace-gate formatted app #1's directory, and the Workers lane ran one
+//   job per Worker with its directory written into `working-directory:`. App #2
+//   would have been walked, formatted and tested by none of them, with every
+//   check green. So the gate is read the way limbs D and D-all read a lane, field
+//   by field and after expansion, through workflow-scan's RESOLVED view, so that
+//   a job the gate runs through a local `uses:` (lane-workers.yml,
+//   extensions-ci.yml, a composite action) is read as the gate's own:
+//
+//     · no workspace app id as a whole token in a `run:`, a `with:`, a
+//       `working-directory:` or a `paths:` entry (limb D's fields);
+//     · no app-named env key or output name, and no UUID literal (limb D-all);
+//     · every `matrix.<k>` a job reads is a key that job's own `strategy.matrix`
+//       declares (limb A′, per job: GitHub expands an undeclared key to the
+//       empty string, so `--app ${{ matrix.ap }}` walks no app and passes).
+//
+//   ITS SUBJECT IS WHAT THE GATE JUDGES: every job of the gate workflow except
+//   its post-gate call jobs (workflow-scan's postGateJobs: they need the gate,
+//   run after it on a push to main, and the gate never reads their result) and
+//   the callee jobs those run. Today those are deploy-web.yml, graded above as
+//   its own lane, and deploy-workers.yml, classified below; that lane's literals
+//   are the service-kit row's (O-SERVICE-KIT-UNBUILT). A gate this cannot
+//   resolve, whose gate job it cannot find, or from which it reads no value is
+//   COVERAGE LOST (exit 2).
+//
 // ── WHAT IS DELIBERATELY NOT ASSERTED ────────────────────────────────────────
 // The workflows R-1 owns are `build-platforms.yml` and `e2e.yml` — named by
 // Private/requirements/ ([9]R-1). The naming argument was reconciliation PART 6 of
@@ -122,7 +189,9 @@
 //
 // Usage:  node tooling/ci/assert-release-lane-generic.mjs [repoRoot]
 //         node tooling/ci/assert-release-lane-generic.mjs --emit-apps [repoRoot] [--tag <app>-v<version>]
-// Exit 0 = every R-1 lane covers the whole workspace and no guard hides a lane.
+// Exit 0 = every R-1 lane covers the whole workspace, no guard hides a lane,
+//          no graded lane carries an app-named key or a UUID literal, and the
+//          gate, read with its callees, names no app.
 // Exit 1 = a finding (or `--emit-apps` refusing an empty or nested matrix, or a
 //          `--tag` that names no app of the workspace). 2 = COVERAGE LOST.
 //
@@ -147,7 +216,14 @@ import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
-import { parseAllWorkflows, WORKFLOW_DIR } from './workflow-scan.mjs';
+import {
+  parseAllWorkflows,
+  parseResolvedWorkflows,
+  postGateJobs,
+  placeOf,
+  refusalText,
+  WORKFLOW_DIR,
+} from './workflow-scan.mjs';
 import { stripSourceComments } from './text-reductions.mjs';
 import { workspaceApps, emitApps } from './app-set.mjs';
 import { releaseTagOf } from './tag-owner.mjs';
@@ -239,6 +315,10 @@ function coverageLost(lines) {
 // which is the same boundary violation CLASSIFIED_ELSEWHERE exists to respect.
 // D-2b's acceptance says "no literal app id anywhere on the deploy path", and
 // the deploy path is what this flag marks.
+//
+// ⏱ 2026-09-25 — limb D-all reads EVERY lane here and ignores `deployPath`. It
+// refuses app-named keys and UUID literals, not an app path in a value, so it
+// leaves limb A's literal-equality criterion for R-1's lanes as decided.
 const GRADED_LANES = new Map([
   ['build-platforms.yml', { owner: '[pipeline 9]R-1', deployPath: false }],
   ['e2e.yml', { owner: '[pipeline 9]R-1', deployPath: false }],
@@ -301,11 +381,12 @@ const CLASSIFIED_ELSEWHERE = new Map([
     // The Worker test jobs moved out of ci.yml into this callee (ADR 095, row
     // O-CI-LANES-NOT-CALLABLE-UNITS). It has only a `workflow_call` trigger.
     'lane-workers.yml',
-    'runs the CI jobs of the two Workers (services/subscriptiontracker-api and services/platform), which ' +
-      'are Workers and not apps from the pubspec workspace. It is started only by `workflow_call`: ' +
+    'runs the CI jobs of the Workers, one `worker` matrix leg per services/<dir> that tooling/ci/worker-set.mjs ' +
+      'reads, and Workers are not apps from the pubspec workspace. It is started only by `workflow_call`: ' +
       "ci.yml's `lane-workers` job calls it on every push and pull request. It builds no app, deploys " +
-      'nothing and submits nothing to a store. R-1 quantifies over the workspace APP set, so this lane has ' +
-      'nothing for this guard to compare and would report a permanent empty-set pass if it were graded. ' +
+      'nothing and submits nothing to a store. R-1 quantifies over the workspace APP set, so limb A has ' +
+      'nothing to compare here and would report a permanent empty-set pass if it graded this lane. Its jobs ' +
+      "ARE read, as the gate's own, under limbs D, D-all and A′ (the header's THE GATE paragraph). " +
       'The owning stage is stage 14 ops, through the duty row `duty.workflow.lane-workers.yml` in ' +
       'tooling/ops/register.json. [ADR 095].',
   ],
@@ -529,6 +610,8 @@ if (seen.length === 0) {
 // found the way assert-release-provenance.mjs finds it: from that script's own
 // `const GATE`, never from a filename typed here. If the gate is renamed, this
 // follows it; if it is ambiguous, that is a coverage loss and not a default.
+// ⏱ 2026-09-26 — excluded from limbs A and B ONLY. It is graded under limbs D,
+// D-all and A′, read with its callees (the header's THE GATE paragraph).
 const gateSrc = existsSync(join(ROOT, GATE_SCRIPT)) ? readFileSync(join(ROOT, GATE_SCRIPT), 'utf8') : null;
 const gateName = gateSrc?.match(/const GATE = '([^']+)'/)?.[1] ?? null;
 if (gateName === null && scanningRealRepo) {
@@ -549,6 +632,67 @@ if (gateName !== null && gateWorkflows.length !== 1 && scanningRealRepo) {
   ]);
 }
 const GATE_WORKFLOW = gateWorkflows[0] ?? null;
+
+// ── the gate's RESOLVED view ─────────────────────────────────────────────────
+// ⏱ 2026-09-26 (O-CI-AND-WORKER-LANES-NAME-ONE-APP). What limbs D, D-all and A′
+// read of the gate: every job of it, each callee job a local `uses:` runs read
+// as the gate's own, minus the post-gate call jobs and their callee jobs (the
+// header's THE GATE paragraph). `orphan-callee` is the one refusal that is not
+// the gate's: the resolver records it only when every local reference in the
+// tree resolved, and a workflow nobody calls is not in the gate's view
+// (assert-green-means-ran A7 is its rule).
+let GATE_VIEW = null;
+let gatePostGate = [];
+if (GATE_WORKFLOW !== null) {
+  const scan = parseResolvedWorkflows(ROOT);
+  if (scan.refusal !== null && scan.refusal.kind !== 'orphan-callee') {
+    coverageLost([
+      refusalText(scan.refusal),
+      `The gate (${GATE_WORKFLOW}) is graded together with every callee it runs, through the resolved view; a job`,
+      'it cannot follow would be read as naming no app, which is the very answer this limb exists to prove.',
+    ]);
+  }
+  const wf = scan.workflows.find((w) => w.rel === `${WORKFLOW_DIR}/${GATE_WORKFLOW}`) ?? null;
+  const gateJob =
+    wf === null ? null : ([...wf.jobs.values()].find((j) => !j.calledBy && (j.displayName ?? j.name) === gateName) ?? null);
+  if (gateJob === null) {
+    coverageLost([
+      `the resolved view of ${GATE_WORKFLOW} holds no job producing the "${gateName}" check, so the gate's post-gate`,
+      'jobs cannot be told from its constituents, and limbs D, D-all and A′ would read the gate as nothing.',
+    ]);
+  }
+  gatePostGate = postGateJobs(wf, gateJob.name);
+  const after = new Set(gatePostGate);
+  const jobs = new Map([...wf.jobs].filter(([id, j]) => !after.has(id) && !after.has(j.calledBy)));
+  const headOf = (w) => (w.jobsAt === null ? w.lines : w.lines.filter((l) => l.n < w.jobsAt));
+  // A callee's own workflow-level lines (`env:`, `defaults:`, `on.workflow_call`'s
+  // `outputs:`) govern every job the gate runs through it, and the resolver copies
+  // only the callee's JOB lines. So each callee's head is read as the gate's too: a
+  // Worker directory hoisted from a job's `defaults.run.working-directory` to the
+  // callee's workflow-level `defaults:` is the same literal one level up. Those
+  // lines get keys of their own, below zero, and `origin` names the real line.
+  const origin = new Map(wf.origin);
+  const calleeHeads = [...new Set([...jobs.values()].filter((j) => j.callee).map((j) => j.callee))].flatMap((rel, k) => {
+    const cw = parsed.find((w) => w.rel === rel);
+    return cw === undefined
+      ? []
+      : headOf(cw).map((l) => {
+          const n = -((k + 1) * 1e6 + l.n);
+          origin.set(n, `${rel}:${l.n}`);
+          return { n, text: l.text };
+        });
+  });
+  GATE_VIEW = {
+    rel: wf.rel,
+    origin,
+    jobs,
+    lines: [...headOf(wf), ...[...jobs.values()].flatMap((j) => j.lines), ...calleeHeads],
+  };
+}
+/** The workflow files the gate's view reads as callees (lane-workers.yml, extensions-ci.yml). */
+const GATE_CALLEES = new Set(
+  GATE_VIEW === null ? [] : [...GATE_VIEW.jobs.values()].filter((j) => j.callee).map((j) => j.callee.split('/').pop()),
+);
 
 // Every workflow is owned: graded here, the gate, or a written classification.
 const unclassified = seen.filter(
@@ -907,10 +1051,135 @@ export function literalAppIds(wf, env, matrix, appIds) {
   return hits;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// LIMB D-all — EVERY graded lane, whatever `deployPath` says.
+// O-E2E-LANE-WIRED-TO-ONE-APP. The header's limb D-all paragraph says why.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Each child key of a block opened by `key:` at `indent`: `{ n, key, text }`,
+ *  where `text` is the value plus any deeper continuation lines (a `|` or `>`
+ *  scalar), so a UUID on the second line of a block value is still read. The
+ *  children's own indent is taken from the first of them; a shallower line ends
+ *  the block. */
+function blockEntries(lines, i, indent) {
+  const out = [];
+  let childIndent = null;
+  for (let j = i + 1; j < lines.length; j++) {
+    const t = lines[j].text;
+    if (t.trim() === '') continue;
+    const ind = t.match(/^ */)[0].length;
+    if (ind <= indent) break;
+    if (childIndent === null) childIndent = ind;
+    if (ind < childIndent) break;
+    if (ind > childIndent) {
+      if (out.length) out[out.length - 1].text += `\n${t.trim()}`;
+      continue;
+    }
+    const kv = t.match(/^\s*([A-Za-z_][A-Za-z0-9_-]*):\s*(.*)$/);
+    if (!kv) break;
+    out.push({ n: lines[j].n, key: kv[1], text: kv[2].trim().replace(/^['"]|['"]$/g, '') });
+  }
+  return out;
+}
+
+/** The entries of a one-line flow map, `key: { A: x, B: y }`. */
+function flowEntries(n, body) {
+  return body
+    .split(',')
+    .map((s) => s.match(/^\s*([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*?)\s*$/))
+    .filter(Boolean)
+    .map((m) => ({ n, key: m[1], text: m[2].replace(/^['"]|['"]$/g, '') }));
+}
+
+/** `{ n, key, text }` for EVERY entry of EVERY `env:` block — workflow, job and
+ *  step, a step whose first key is `env:` (`- env:`) included, and the one-line
+ *  flow form. `collectEnv` above merges them into one map for expansion and
+ *  keeps no line; this keeps each entry at its line. */
+export function envEntries(lines) {
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].text;
+    let m;
+    if ((m = t.match(/^(\s*(?:-\s+)?)env:\s*$/))) out.push(...blockEntries(lines, i, m[1].length));
+    else if ((m = t.match(/^\s*(?:-\s+)?env:\s*\{(.*)\}\s*$/))) out.push(...flowEntries(lines[i].n, m[1]));
+  }
+  return out;
+}
+
+/** Every step/job OUTPUT name a lane declares or reads, as `{ n, key, field }`:
+ *  a key of an `outputs:` block (a job's, or `workflow_call`'s), a `<name>=`
+ *  line appended to $GITHUB_OUTPUT, and a `steps.<id>.outputs.<name>` or
+ *  `needs.<job>.outputs.<name>` reference. The reference form catches any
+ *  output something consumes, however the step that wrote it spelled the
+ *  write. */
+export function outputNames(lines) {
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].text;
+    const m = t.match(/^(\s*)outputs:\s*$/);
+    if (m) for (const e of blockEntries(lines, i, m[1].length)) out.push({ n: e.n, key: e.key, field: 'outputs' });
+    for (const r of t.matchAll(/\b(?:steps|needs|jobs)\.[A-Za-z0-9_-]+\.outputs\.([A-Za-z0-9_-]+)/g)) {
+      out.push({ n: lines[i].n, key: r[1], field: 'output reference' });
+    }
+    if (/>>\s*["']?\$\{?GITHUB_OUTPUT\b/.test(t)) {
+      for (const r of t.matchAll(/(?:^|[\s"'(;])([A-Za-z_][A-Za-z0-9_-]*)=/g)) {
+        out.push({ n: lines[i].n, key: r[1], field: '$GITHUB_OUTPUT' });
+      }
+    }
+  }
+  return out;
+}
+
+/** Does `key` contain the app id as a whole token? Case-insensitive; tokens
+ *  split on `_` and `-`, and a hyphenated id must appear as its whole run of
+ *  tokens. `SUBSCRIPTIONTRACKER_DB` names `subscriptiontracker`; `RESUBSCRIPTIONTRACKERX_DB` does not. */
+export function keyNamesApp(key, id) {
+  const k = key.toLowerCase().split(/[_-]+/).filter(Boolean);
+  const a = id.toLowerCase().split(/[_-]+/).filter(Boolean);
+  if (a.length === 0) return false;
+  for (let i = 0; i + a.length <= k.length; i++) {
+    if (a.every((t, j) => k[i + j] === t)) return true;
+  }
+  return false;
+}
+
+/** A UUID literal, 8-4-4-4-12 hex in either case, not a run inside a longer
+ *  hex string. A 40-hex action pin (`uses: owner/action@<sha>`) is not one. */
+export const UUID_LITERAL = /(?<![0-9A-Fa-f])[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}(?![0-9A-Fa-f])/;
+
+/** Limb D-all over one lane: `{ keyHits, uuidHits, keysRead, valuesRead }`.
+ *  `keyHits` are `{ n, field, key, id }`; `uuidHits` are `{ n, field }` and
+ *  carry no value, so a finding cannot print the id it refuses. */
+export function allLaneFindings(wf, env, matrix, appIds) {
+  const envs = envEntries(wf.lines);
+  const keys = [...envs.map((e) => ({ n: e.n, key: e.key, field: 'env' })), ...outputNames(wf.lines)];
+  const keyHits = [];
+  for (const k of keys) {
+    for (const id of appIds) {
+      if (keyNamesApp(k.key, id)) keyHits.push({ ...k, id });
+    }
+  }
+  const values = [...deployPathValues(wf), ...envs.map((e) => ({ n: e.n, field: `env.${e.key}`, text: e.text }))];
+  const uuidHits = [];
+  const seenAt = new Set();
+  for (const v of values) {
+    const hit = [v.text, ...expandExpressions(v.text, env, matrix)].some((t) => UUID_LITERAL.test(t));
+    const at = `${v.n} ${v.field}`;
+    if (hit && !seenAt.has(at)) {
+      seenAt.add(at);
+      uuidHits.push({ n: v.n, field: v.field });
+    }
+  }
+  return { keyHits, uuidHits, keysRead: keys.length, valuesRead: values.length };
+}
+
 const expected = [...APPS].sort().join(', ');
 const APP_IDS = [...APPS].map((a) => a.slice('apps/'.length)).filter(Boolean);
 let gradedLanes = 0;
 let deployFieldsRead = 0;
+let allLanesRead = 0;
+let allKeysRead = 0;
+let allValuesRead = 0;
 for (const wf of parsed) {
   const file = wf.rel.split('/').pop();
   const env = collectEnv(wf.lines);
@@ -919,7 +1188,13 @@ for (const wf of parsed) {
   const got = [...resolved].sort().join(', ') || '(none)';
 
   if (!GRADED.includes(file)) {
-    note(`${file} — resolves to ${parameterised ? 'a PARAMETERISED app path' : got}; owned by ${file === GATE_WORKFLOW ? 'the gate, not a channel' : 'another stage'}, not graded here`);
+    const owned =
+      file === GATE_WORKFLOW
+        ? 'the gate, not a channel: not graded by limb A, and read below under limbs D, D-all and A′'
+        : GATE_CALLEES.has(file)
+          ? "another stage: not graded by limb A, and read below as the gate's callee"
+          : 'another stage, not graded here';
+    note(`${file} — resolves to ${parameterised ? 'a PARAMETERISED app path' : got}; owned by ${owned}`);
     continue;
   }
   gradedLanes++;
@@ -946,6 +1221,43 @@ for (const wf of parsed) {
           'That is the per-app workflow authoring this criterion abolishes: shipping app #2 means finding and editing ' +
           'every one of them, on the one lane that reaches users. An app id belongs to the matrix leg — ' +
           '`${{ matrix.app }}` — or to a file the lane READS at run time, never to this YAML.',
+      );
+    }
+  }
+
+  // ── LIMB D-all, for EVERY graded lane, whatever `deployPath` says ─────────
+  {
+    const d = allLaneFindings(wf, env, matrix, APP_IDS);
+    allLanesRead++;
+    allKeysRead += d.keysRead;
+    allValuesRead += d.valuesRead;
+    if (d.valuesRead === 0) {
+      coverageLost([
+        `limb D-all read ZERO values from ${file}, a graded lane.`,
+        'No step `run:`, no `with:`, no `env:` value — a lane cannot be all three at once, so the field',
+        'selection is broken and limb D-all would report every lane free of UUID literals forever.',
+      ]);
+    }
+    for (const h of d.keyHits) {
+      fail(
+        `${owner} · ${file}:${h.n} — limb D-all: the ${h.field === 'env' ? 'env key' : `output name (${h.field})`} ` +
+          `\`${h.key}\` names the app "${h.id}". A key named after one app is a hand-off wired to that app: ` +
+          "app #2's leg would read app #1's value under app #1's name. Name the key for what it holds " +
+          '(`platform_db`, `E2E_APP_ID`) and resolve the value at run time from `matrix.app`.',
+      );
+    }
+    for (const h of d.uuidHits) {
+      fail(
+        `${owner} · ${file}:${h.n} — limb D-all: a UUID literal in \`${h.field}\`. A graded lane runs for every ` +
+          "app, and a UUID in it is one app's database, project or account written into the file every leg runs. " +
+          "Read the id at run time instead (e2e.yml's `backend` step resolves it from services/<app>-api/wrangler.jsonc). " +
+          'This limb exempts no lane and no value.',
+      );
+    }
+    if (!d.keyHits.length && !d.uuidHits.length) {
+      ok(
+        `${file} (${owner}) — limb D-all: ${d.keysRead} env/output key(s) name no app and ${d.valuesRead} ` +
+          'run/with/env value(s) carry no UUID literal',
       );
     }
   }
@@ -998,6 +1310,143 @@ for (const wf of parsed) {
     ok(`${file} (${owner}) — covers exactly the workspace app set {${got}}`);
   }
 }
+// ─────────────────────────────────────────────────────────────────────────────
+// THE GATE — limbs D, D-all and A′ over GATE_VIEW. The header's THE GATE
+// paragraph says why; the gate block above says why limbs A and B do not apply.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The keys a job's own `strategy.matrix` declares, the first key of an
+ *  `include:` row too. Null when the matrix is ONE expression
+ *  (`matrix: ${{ … }}`), whose keys are a run-time fact this cannot read. */
+export function jobMatrixKeys(lines) {
+  const keys = new Set();
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].text.match(/^(\s*)matrix:\s*(.*)$/);
+    if (!m) continue;
+    if (m[2].trim() !== '') return null;
+    const indent = m[1].length;
+    for (let j = i + 1; j < lines.length; j++) {
+      const t = lines[j].text;
+      if (t.trim() === '') continue;
+      if (t.match(/^ */)[0].length <= indent) break;
+      const kv = t.match(/^\s*(?:-\s+)?([A-Za-z_][A-Za-z0-9_-]*):/);
+      if (kv) keys.add(kv[1]);
+    }
+  }
+  return keys;
+}
+
+/** Every `matrix.<k>` a job reads, `{ n, key }`: inside a `${{ … }}`, and in an
+ *  `if:`, which is an expression with or without the braces. A `matrix.json` in
+ *  a shell command is neither, and is not read. */
+export function matrixRefs(lines) {
+  const out = [];
+  for (const l of lines) {
+    const exprs = [...l.text.matchAll(/\$\{\{([^}]*)\}\}/g)].map((m) => m[1]);
+    const cond = l.text.match(/^\s*(?:-\s+)?if:\s*(.*)$/);
+    if (cond && !cond[1].includes('${{')) exprs.push(cond[1]);
+    for (const e of exprs) {
+      for (const m of e.matchAll(/(?<![\w.])matrix\.([A-Za-z_][A-Za-z0-9_-]*)/g)) out.push({ n: l.n, key: m[1] });
+    }
+  }
+  return out;
+}
+
+let gateJobsRead = 0;
+let gateCalleeJobs = 0;
+let gateFieldsRead = 0;
+let gateKeysRead = 0;
+let gateValuesRead = 0;
+if (GATE_VIEW !== null) {
+  const at = (n) => placeOf(GATE_VIEW, n);
+  const env = collectEnv(GATE_VIEW.lines);
+  const matrix = collectMatrix(GATE_VIEW.lines);
+  const before = problems.length;
+
+  // limb D's fields: an app id as a whole token in `run:`, `with:`, `working-directory:`, `paths:`.
+  gateFieldsRead = deployPathValues(GATE_VIEW).length;
+  const seenLiteral = new Set();
+  for (const l of literalAppIds(GATE_VIEW, env, matrix, APP_IDS)) {
+    const key = `${l.n} ${l.field} ${l.id}`;
+    if (seenLiteral.has(key)) continue;
+    seenLiteral.add(key);
+    fail(
+      `the gate · ${at(l.n)} names the app id "${l.id}" literally in \`${l.field}\`. The gate runs this for every ` +
+        "change, and a step nailed to app #1 walks, formats or tests app #1 alone: app #2's leg of it is run by " +
+        'nothing while the gate stays green. Take the id from a matrix over a derived set (`${{ matrix.app }}` over ' +
+        "prepare's `apps`, `${{ matrix.worker }}` over worker-set.mjs), or read it at run time.",
+    );
+  }
+
+  // limb D-all: app-named env keys and output names, UUID literals.
+  const d = allLaneFindings(GATE_VIEW, env, matrix, APP_IDS);
+  gateKeysRead = d.keysRead;
+  gateValuesRead = d.valuesRead;
+  if (d.valuesRead === 0) {
+    coverageLost([
+      `limb D-all read ZERO values from the gate (${GATE_VIEW.rel}) and its callees.`,
+      'No step `run:`, no `with:`, no `env:` value in the job the required check runs on is not a gate; the',
+      'selection is broken, and the gate would read as naming no app forever.',
+    ]);
+  }
+  for (const h of d.keyHits) {
+    fail(
+      `the gate · ${at(h.n)} — limb D-all: the ${h.field === 'env' ? 'env key' : `output name (${h.field})`} ` +
+        `\`${h.key}\` names the app "${h.id}". A key named after one app is a hand-off wired to that app; name it ` +
+        'for what it holds and resolve the value from the matrix leg.',
+    );
+  }
+  for (const h of d.uuidHits) {
+    fail(
+      `the gate · ${at(h.n)} — limb D-all: a UUID literal in \`${h.field}\`. A UUID in the gate is one app's ` +
+        'database, project or account written into a job every change runs. Read the id at run time instead.',
+    );
+  }
+
+  // limb A′, per job: every matrix key a job reads is one its own strategy.matrix declares.
+  for (const [id, job] of GATE_VIEW.jobs) {
+    gateJobsRead++;
+    if (job.calledBy) gateCalleeJobs++;
+    const refs = matrixRefs(job.lines);
+    if (refs.length === 0) continue;
+    const keys = jobMatrixKeys(job.lines);
+    if (keys === null) {
+      coverageLost([
+        `the gate's job "${id}" reads \`matrix.${refs[0].key}\` (${at(refs[0].n)}), and its matrix is ONE expression,`,
+        'so which keys it declares is a run-time fact limb A′ cannot read. Declare each key under `matrix:`.',
+      ]);
+    }
+    for (const r of refs.filter((x) => !keys.has(x.key))) {
+      fail(
+        `the gate · ${at(r.n)} — job "${id}" reads \`matrix.${r.key}\` and its strategy.matrix declares ` +
+          `${keys.size ? [...keys].join(', ') : 'no key'}. GitHub expands an undeclared matrix key to the EMPTY STRING ` +
+          'rather than erroring, so this step runs with nothing where the app or Worker should be and reads as generic.',
+      );
+    }
+  }
+  if (gateJobsRead === 0) {
+    coverageLost([
+      `the gate's view of ${GATE_VIEW.rel} holds ZERO jobs besides its post-gate ones, so limbs D, D-all and A′ read`,
+      'no gate at all.',
+    ]);
+  }
+  if (problems.length === before) {
+    ok(
+      `${GATE_WORKFLOW} (the gate) — ${gateJobsRead} job(s), ${gateCalleeJobs} of them from ${GATE_CALLEES.size} callee(s) ` +
+        `(${[...GATE_CALLEES].sort().join(', ') || 'none'}): ${gateFieldsRead} run/with/working-directory/paths field(s) name ` +
+        `no app id, ${gateKeysRead} env/output key(s) name no app, ${gateValuesRead} value(s) carry no UUID literal, and ` +
+        `every matrix key a job reads is declared. Post-gate, not read here: ${gatePostGate.join(', ') || 'none'}`,
+    );
+  }
+}
+
+// Limb D-all's own floor, checked first so an emptied GRADED_LANES names it.
+if (allLanesRead === 0) {
+  coverageLost([
+    'limb D-all read ZERO graded lanes, so "no app-named key and no UUID literal" was asked of no lane.',
+    `GRADED_LANES names ${GRADED.join(', ') || 'nothing'}; limb D-all reads every lane it names, whatever \`deployPath\` says.`,
+  ]);
+}
 if (gradedLanes === 0) {
   coverageLost([
     'limbs A/A′/D graded ZERO lanes, so the equality they exist to assert ranged over nothing.',
@@ -1006,7 +1455,7 @@ if (gradedLanes === 0) {
 }
 if (APP_IDS.length === 0) {
   coverageLost([
-    'limb D has an EMPTY app-id set, so "does this lane name an app literally" was asked about no app at all.',
+    'limbs D and D-all have an EMPTY app-id set, so "does this lane name an app literally" was asked about no app at all.',
     `The set is derived from the workspace entries {${expected}}; an empty right-hand side certifies every lane.`,
   ]);
 }
@@ -1123,7 +1572,9 @@ if (problems.length > bindingProblems) {
 
 console.log(
   `\nscanned ${seen.length} workflow(s) and ${guardFiles.length} guard(s); graded ${gradedLanes} lane(s) ` +
-    `(${GRADED.join(', ')}) over ${deployFieldsRead} deploy-path field(s); workspace apps: {${expected}}`,
+    `(${GRADED.join(', ')}) over ${deployFieldsRead} deploy-path field(s); limb D-all read ${allKeysRead} key(s) ` +
+    `and ${allValuesRead} value(s) across ${allLanesRead} lane(s); the gate: ${gateJobsRead} job(s) with ` +
+    `${gateCalleeJobs} from its callee(s); workspace apps: {${expected}}`,
 );
 
 if (problems.length) {

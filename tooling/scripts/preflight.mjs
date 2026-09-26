@@ -808,10 +808,12 @@ step(
 // "CI does not gate these", which was false by then. Drift under a CI-gated path
 // fails here — unless the local Flutter is not the tooling/versions.json pin, the
 // same skew downgrade leg 5 applies, because then this machine's dart_style is not CI's.
-const CI_FORMAT_GATED = ['apps/subscriptiontracker/'];
+// ⏱ 2026-09-26 — that step now formats apps/, every workspace app, so this leg gates
+// the same directory (O-CI-AND-WORKER-LANES-NAME-ONE-APP).
+const CI_FORMAT_GATED = ['apps/'];
 step(
   'format drift in tracked Dart (fails on CI-gated paths, prints the rest)',
-  'ci.yml format-gates the stamped apps (leg 5) and apps/subscriptiontracker (workspace-gate). Drift there fails; drift elsewhere is real but NOT a CI failure, so it is printed and never blocks.',
+  'ci.yml format-gates the stamped apps (leg 5) and every app under apps/ (workspace-gate). Drift there fails; drift elsewhere is real but NOT a CI failure, so it is printed and never blocks.',
   () => {
     const files = run('git', ['ls-files', '*.dart']).out.split(/\r?\n/).filter(Boolean)
       // The brick template is not parseable Dart — it carries mustache in
