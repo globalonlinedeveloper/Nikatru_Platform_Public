@@ -72,6 +72,8 @@
 //      RECOMPUTED here. Every other reader compares one copy of the identity
 //      with another, so a publisher mistyped identically in the register and
 //      the pubspec passed them all. Added 2026-09-22 with the real values.
+//      ⏱ 2026-09-25: per app — each app's record (app.yaml stores.windows-store)
+//      recomputed against the row's publisher (O-SECOND-APP-SIGNS-AS-THE-FIRST).
 //   8. [9]R-3 LIMB 2 — every `${{ secrets.X }}` a workflow names is DECLARED in
 //      the register, as signing material on a row or as non-signing with a
 //      reason. An undeclared name FAILS; a declared name no lane uses PRINTS.
@@ -132,6 +134,7 @@ import {
   parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt, shellSegments, resolveLocalCalls, workflowSteps, commandAt, joinShellContinuations, parseWorkflow, flutterBuilds, jobEnvironment,
 } from './workflow-scan.mjs';
 import { parseYaml } from '../app-yaml/yaml.mjs';
+import { windowsIdentityOf, WINDOWS_STORE, WINDOWS_RECORD_FIELDS } from './read-identity.mjs';
 import { lanesOfSurface } from './tag-owner.mjs';
 import { ARTIFACT_FORMATS } from '../../contracts/store/vocabulary.js';
 
@@ -2825,6 +2828,21 @@ let releaseCensus = { workflows: [], domain: null };
 //     `${identityName}_${publisherId(publisher)}`; otherwise FAIL naming both.
 // ⚠️ `publisherDisplayName` is NOT an input to the PFN, so nothing here can
 // catch it mistyped in both copies; only the package comparison reads it.
+//
+// ⏱ 2026-09-25 — PER APP (O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1)). The
+// identity NAME and its Package Family Name are no longer the row's: each app
+// declares the pair Partner Center issued IT, in apps/<id>/app.yaml
+// `stores.windows-store` (read through read-identity.mjs windowsIdentityOf). The
+// row keeps the ACCOUNT — `publisher`, `publisherDisplayName` — and the sentinel.
+// So the account is graded once per row (both real, or both sentinel), and every
+// app record is recomputed against the row's publisher, in the same three states:
+//   · both record fields on the sentinel → NOT YET ISSUED (the stamped state);
+//   · the PFN real while the name is the sentinel → FAILS (it predates its inputs);
+//   · the name real and the PFN the sentinel → FAILS (HALF issued);
+//   · both real → the PFN must equal `${identityName}_${publisherId(publisher)}`,
+//     and an account still on the sentinel FAILS (nothing to derive it from).
+// And the row carrying `identityName` or `packageFamilyName` again FAILS: a
+// per-app field on the channel row is the shape limb (1) removed.
 {
   const PFN_ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
   const publisherId = (publisher) => {
@@ -2836,8 +2854,11 @@ let releaseCensus = { workflows: [], domain: null };
     for (let i = 0; i < 65; i += 5) out += PFN_ALPHABET[parseInt(bits.slice(i, i + 5), 2)];
     return out;
   };
-  const PFN_INPUTS = ['identityName', 'publisher', 'publisherDisplayName'];
+  const ACCOUNT_INPUTS = ['publisher', 'publisherDisplayName'];
+  const appsAbs = abs('apps');
+  const appIds = existsSync(appsAbs) ? listDir(appsAbs).filter((x) => existsSync(join(appsAbs, x, 'app.yaml'))).sort() : [];
   let identities = 0;
+  let recordsRead = 0;
   let identitiesConfigured = 0;
   let identitiesPending = 0;
   const problemsBefore6e = problems.length;
@@ -2853,47 +2874,74 @@ let releaseCensus = { workflows: [], domain: null };
       );
       continue;
     }
-    const holes = PFN_INPUTS.filter((f) => typeof pi[f] !== 'string' || pi[f].trim() === '');
+    // The two PER-APP fields do not come back to the row: a copy here is one
+    // value for every app, which is how a second app packaged the first app's
+    // identity. They live in each app's record.
+    const perApp = WINDOWS_RECORD_FIELDS.filter((f) => Object.hasOwn(pi, f));
+    if (perApp.length > 0) {
+      problems.push(
+        `${at} carries ${perApp.map((f) => `\`${f}\``).join(' and ')} — a per-app field on the channel row. Partner Center issues the identity per PRODUCT, and a row value is one value for every app: the brick copied it into every app it stamped, and every guard agreed with the copy. Declare it in apps/<id>/app.yaml stores.${WINDOWS_STORE}; the row keeps the sentinel and the account (publisher, publisherDisplayName).`,
+      );
+    }
+    const holes = ACCOUNT_INPUTS.filter((f) => typeof pi[f] !== 'string' || pi[f].trim() === '');
     if (holes.length > 0) {
-      problems.push(`${at}.${holes.join(', .')} missing or empty — a hole, not a placeholder. The register is the single declaration of this identity ([pipeline F-2]).`);
+      problems.push(`${at}.${holes.join(', .')} missing or empty — a hole, not a placeholder. The register is the single declaration of the account these apps publish under ([pipeline F-2]).`);
       continue;
     }
-    const onSentinel = PFN_INPUTS.filter((f) => pi[f].includes(sentinel));
-    const pfn = pi.packageFamilyName;
-    if (onSentinel.length === PFN_INPUTS.length) {
-      if (pfn !== undefined && pfn !== sentinel) {
-        problems.push(
-          `${at}.packageFamilyName is ${JSON.stringify(pfn)} while every identity field still reads "${sentinel}". A Package Family Name is DERIVED from identityName and publisher; one that exists before they do was copied from somewhere else, and would silently certify whatever values land next.`,
-        );
-      } else {
-        identitiesPending++;
+    const onSentinel = ACCOUNT_INPUTS.filter((f) => pi[f].includes(sentinel));
+    if (onSentinel.length > 0 && onSentinel.length < ACCOUNT_INPUTS.length) {
+      problems.push(
+        `${at} is HALF configured: ${onSentinel.map((f) => `\`${f}\``).join(', ')} still read "${sentinel}" while ${ACCOUNT_INPUTS.filter((f) => !onSentinel.includes(f)).map((f) => `\`${f}\``).join(', ')} carry real values. Both are the one Partner Center account's, and a package under half of it submits under a publisher that is part placeholder.`,
+      );
+      continue;
+    }
+    const accountPending = onSentinel.length === ACCOUNT_INPUTS.length;
+    for (const appId of appIds) {
+      const r = windowsIdentityOf(ROOT, appId);
+      if (r.undeclared || r.absent) continue; // no record, no Package Family Name to recompute
+      if (r.missing) {
+        problems.push(`${r.missing} It is the input to ${at}'s Package Family Name recomputation for app "${appId}".`);
+        continue;
       }
-      continue;
+      recordsRead++;
+      const rec = r.value;
+      const where = `${r.rel} stores.${WINDOWS_STORE}`;
+      if (rec.identityName === sentinel) {
+        if (rec.packageFamilyName !== sentinel) {
+          problems.push(
+            `${where}.packageFamilyName is ${JSON.stringify(rec.packageFamilyName)} while its identityName still reads "${sentinel}". A Package Family Name is DERIVED from identityName and publisher; one that exists before they do was copied from somewhere else, and would silently certify whatever values land next.`,
+          );
+        } else {
+          identitiesPending++;
+        }
+        continue;
+      }
+      if (rec.packageFamilyName === sentinel) {
+        problems.push(
+          `${where} is HALF issued: identityName ${JSON.stringify(rec.identityName)} is real and packageFamilyName still reads "${sentinel}". Partner Center prints both on one screen, and the PFN is the one value derived from the publisher. Copy it from Product → Product identity.`,
+        );
+        continue;
+      }
+      if (accountPending) {
+        problems.push(
+          `${where} carries an issued identity (${JSON.stringify(rec.identityName)}) while ${at}'s publisher is still "${sentinel}". An issued identity belongs to a real account; with no real publisher its Package Family Name cannot be derived, and it would package under nobody's.`,
+        );
+        continue;
+      }
+      const expected = `${rec.identityName}_${publisherId(pi.publisher)}`;
+      if (rec.packageFamilyName !== expected) {
+        problems.push(
+          `${where}.packageFamilyName is ${JSON.stringify(rec.packageFamilyName)}, but identityName ${JSON.stringify(rec.identityName)} + ${at}.publisher ${JSON.stringify(pi.publisher)} derive ${JSON.stringify(expected)} (publisher id "${publisherId(pi.publisher)}" against "${String(rec.packageFamilyName).split('_').pop()}"). One of the three was transcribed wrong — most often the publisher, which is compared nowhere else against anything but its own copy — and an MSIX packaged under the wrong publisher submits under an identity we do not own.`,
+        );
+        continue;
+      }
+      identitiesConfigured++;
     }
-    if (onSentinel.length > 0) {
-      problems.push(
-        `${at} is HALF configured: ${onSentinel.map((f) => `\`${f}\``).join(', ')} still read "${sentinel}" while ${PFN_INPUTS.filter((f) => !onSentinel.includes(f)).map((f) => `\`${f}\``).join(', ')} carry real values. A partially-filled identity packages and submits cleanly under a name that is part real and part placeholder.`,
-      );
-      continue;
-    }
-    if (typeof pfn !== 'string' || pfn.trim() === '') {
-      problems.push(
-        `${at} is configured but declares no \`packageFamilyName\`. It is REQUIRED once the identity is real: it is the one value Partner Center prints that is DERIVED from the publisher, so without it a publisher mistyped identically in ${REGISTER} and the pubspec passes every guard. Copy it from Partner Center → Product → Product identity.`,
-      );
-      continue;
-    }
-    const expected = `${pi.identityName}_${publisherId(pi.publisher)}`;
-    if (pfn !== expected) {
-      problems.push(
-        `${at}.packageFamilyName is ${JSON.stringify(pfn)}, but identityName ${JSON.stringify(pi.identityName)} + publisher ${JSON.stringify(pi.publisher)} derive ${JSON.stringify(expected)} (publisher id "${publisherId(pi.publisher)}" against "${String(pfn).split('_').pop()}"). One of the three was transcribed wrong — most often the publisher, which is compared nowhere else against anything but its own copy — and an MSIX packaged under the wrong publisher submits under an identity we do not own.`,
-      );
-      continue;
-    }
-    identitiesConfigured++;
   }
   // COVERAGE. The windows-store row declares one today; a real tree with none
   // means the block was deleted or the walk stopped reaching it. Real repo only,
-  // for the reason §6d gives.
+  // for the reason §6d gives. The same for the records: every app declares one
+  // since B4a-2, so zero read on the real tree means the walk reached none.
   if (scanningRealRepo && identities === 0) {
     coverageLost([
       `no channel in ${REGISTER} declares a \`packageIdentity\` object.`,
@@ -2901,11 +2949,21 @@ let releaseCensus = { workflows: [], domain: null };
       'channel was retired, retire this check in the same change.',
     ]);
   }
+  if (scanningRealRepo && identities > 0 && recordsRead === 0 && problems.length === problemsBefore6e) {
+    coverageLost([
+      `${appIds.length} apps/*/app.yaml read and NOT ONE declares stores.${WINDOWS_STORE}.`,
+      'The Package Family Name recomputation then has no subject, which reads exactly like every PFN',
+      'being right. Every app declares a record since B4a-2 (the brick writes one on the sentinel).',
+    ]);
+  }
   // Only a clean pass prints: a count of "configured" beside a FAIL for the same
-  // row would read as two answers. Every identity is either configured (and its
-  // PFN recomputed), pending (every field on the sentinel, no PFN), or FAILED above.
+  // record would read as two answers. Every record is either configured (and its
+  // PFN recomputed), pending (both fields on the sentinel), or FAILED above.
   if (identities > 0 && problems.length === problemsBefore6e) {
-    ok(`${identities} MSIX package identit${identities === 1 ? 'y' : 'ies'}: ${identitiesConfigured} configured with its Package Family Name recomputed from the publisher, ${identitiesPending} not yet configured`);
+    ok(
+      `${identities} MSIX package identit${identities === 1 ? 'y' : 'ies'} (account on the channel row), ${recordsRead} app record(s) (apps/*/app.yaml stores.${WINDOWS_STORE}): ` +
+        `${identitiesConfigured} configured with its Package Family Name recomputed from the publisher, ${identitiesPending} not yet configured`,
+    );
   }
 }
 

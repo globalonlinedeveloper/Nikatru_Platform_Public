@@ -777,6 +777,12 @@ compares the packaged manifest to those values exactly as it compared the
 sentinel. Still NOT submitted: the row is `served: false`, and a submission
 is the owner's word.
 
+⏱ 2026-09-26 — the identity NAME and Package Family Name moved per app to apps/<id>/app.yaml
+`stores.windows-store` (O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1)); the channel row keeps the account
+(`publisher`, `publisherDisplayName`) and the sentinel. assert-store-metadata compares each app's pubspec
+with its own record, and assert-artifact-signed-msix compares the package with the record of the app it
+belongs to.
+
 ### before step **Keep the .msix even if what follows refuses it**
 
 ── WHAT msix:create ACTUALLY WROTE ────────────────────────────

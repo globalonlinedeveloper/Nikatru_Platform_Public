@@ -38,6 +38,7 @@ import {
   readVisualIdentity, tileProblems, tileMembersFor, msixLogoPath, pinnedMsixVersion, MSIX_PLUGIN_DEFAULT_TILE_HASHES,
 } from '../assert-artifact-signed-msix.mjs';
 import { readDeclaration } from '../../app-yaml/render.mjs';
+import { windowsIdentityOf } from '../read-identity.mjs';
 
 const GUARD = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'assert-artifact-signed-msix.mjs');
 /** The root the guard falls back to when no `--repo-root` is given — the CI shape. */
@@ -229,6 +230,10 @@ const LOCK = [
   '',
 ].join('\n');
 
+/** ⏱ 2026-09-25 — O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1). The row carries the
+ *  ACCOUNT's facts and the sentinel; the identity NAME is each app's own record,
+ *  apps/<id>/app.yaml stores.windows-store, so the fixture writes one. The row
+ *  deliberately carries no identityName: the guard must not need one. */
 const REGISTER = {
   channels: [
     {
@@ -236,7 +241,6 @@ const REGISTER = {
       storeMetadataDir: 'apps/{app}/store/windows-store',
       packageIdentity: {
         notYetConfiguredSentinel: SENTINEL,
-        identityName: SENTINEL,
         publisher: `CN=${SENTINEL}`,
         publisherDisplayName: SENTINEL,
       },
@@ -244,9 +248,17 @@ const REGISTER = {
   ],
 };
 
+/** Where CI's package lands, and so where the guard reads the app from. */
+const PKG_REL = 'apps/subscriptiontracker/build/windows/msix/subscriptiontracker.msix';
+const PENDING_RECORD = { identityName: SENTINEL, packageFamilyName: SENTINEL };
+const recordYaml = (slug, record) =>
+  `id: ${slug}\nstores:\n  windows-store:\n    identityName: ${record.identityName}\n    packageFamilyName: ${record.packageFamilyName}\n`;
+
 /** @param opts.members  zip members; default is a correct store-mode package.
  *  @param opts.zip64    write the package in the ZIP64 form MakeAppx actually
- *                       emits, which is what CI hands this guard. */
+ *                       emits, which is what CI hands this guard.
+ *  @param opts.record   subscriptiontracker's stores.windows-store record; null
+ *                       writes no stores.windows-store section. */
 function fixture({
   register = REGISTER,
   members = null,
@@ -257,10 +269,11 @@ function fixture({
   pubspec = PUBSPEC,
   lock = LOCK,
   logo = true,
+  record = PENDING_RECORD,
 } = {}) {
   const root = join(TMP, `f${seq++}`);
   mkdirSync(join(root, 'tooling'), { recursive: true });
-  mkdirSync(join(root, 'pkg'), { recursive: true });
+  mkdirSync(dirname(join(root, PKG_REL)), { recursive: true });
   if (register !== null) {
     writeFileSync(
       join(root, 'tooling', 'channel-register.json'),
@@ -270,7 +283,11 @@ function fixture({
   const app = join(root, 'apps', 'subscriptiontracker');
   mkdirSync(join(app, 'store', 'windows-store'), { recursive: true });
   if (title !== null) writeFileSync(join(app, 'store', 'windows-store', 'title.txt'), title);
-  if (appYaml !== null) writeFileSync(join(app, 'app.yaml'), appYaml);
+  // ⏱ 2026-09-26 (train W23, FIX-B): one app.yaml carries arb5a's shortName and pb4a2's
+  // stores.windows-store record; `record: null` leaves the record out.
+  const stores = record === null ? '' : recordYaml('subscriptiontracker', record).replace(/^id: [^\n]*\n/, '');
+  if (appYaml !== null) writeFileSync(join(app, 'app.yaml'), appYaml + stores);
+  else if (record !== null) writeFileSync(join(app, 'app.yaml'), recordYaml('subscriptiontracker', record));
   if (pubspec !== null) writeFileSync(join(app, 'pubspec.yaml'), pubspec);
   if (lock !== null) writeFileSync(join(root, 'pubspec.lock'), lock);
   if (logo) {
@@ -282,7 +299,7 @@ function fixture({
     { name: 'subscriptiontracker.exe', bytes: Buffer.from('PE-BYTES'), method: 0 },
     ...TILES,
   ];
-  writeFileSync(join(root, 'pkg', 'subscriptiontracker.msix'), raw ?? makeZip(entries, { zip64 }));
+  writeFileSync(join(root, PKG_REL), raw ?? makeZip(entries, { zip64 }));
   return root;
 }
 
@@ -292,7 +309,7 @@ const withManifest = (opts) => [
   ...TILES,
 ];
 
-const run = (root, args = ['--app', 'subscriptiontracker', 'pkg/subscriptiontracker.msix']) => {
+const run = (root, args = [PKG_REL]) => {
   const r = spawnSync(process.execPath, [GUARD, '--repo-root', root, ...args], { encoding: 'utf8' });
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
 };
@@ -416,7 +433,7 @@ describe('assert-artifact-signed-msix — the declaration is compared to the BYT
 describe('assert-artifact-signed-msix — the ZIP64 package MakeAppx actually writes', () => {
   test('the fixture really is ZIP64 — the sentinel is read off the bytes, not assumed', () => {
     const root = fixture({ zip64: true });
-    const raw = readFileSync(join(root, 'pkg', 'subscriptiontracker.msix'));
+    const raw = readFileSync(join(root, PKG_REL));
     const sig = (v) => Buffer.from([v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff]);
     assert.notEqual(raw.indexOf(sig(0x07064b50)), -1, 'EOCD64 locator 0x07064b50 must be present');
     assert.notEqual(raw.indexOf(sig(0x06064b50)), -1, 'EOCD64 record 0x06064b50 must be present');
@@ -469,7 +486,7 @@ describe('assert-artifact-signed-msix — the ZIP64 package MakeAppx actually wr
     // that shrugged and used the sentinel as an offset is the original crash; a
     // reader that shrugged and returned members would be worse.
     const root = fixture({ zip64: true });
-    const p = join(root, 'pkg', 'subscriptiontracker.msix');
+    const p = join(root, PKG_REL);
     const raw = readFileSync(p);
     raw.writeUInt32LE(0x07064b51, raw.indexOf(Buffer.from([0x50, 0x4b, 0x06, 0x07])));
     writeFileSync(p, raw);
@@ -491,6 +508,79 @@ describe('assert-artifact-signed-msix — the ZIP64 package MakeAppx actually wr
     assert.equal(classic.code, 0, classic.out);
     assert.equal(wide.code, classic.code, wide.out);
     assert.equal(wide.out.replaceAll('\r\n', '\n'), classic.out.replaceAll('\r\n', '\n'));
+  });
+});
+
+// ── ⏱ 2026-09-25 · WHOSE identity: the package's own app ─────────────────────
+// O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1). The name used to be the ONE value on
+// the channel row, so a second app's package built under the first app's
+// identity matched it. Every identity below is synthetic (ZZTest.*).
+describe("assert-artifact-signed-msix — the identity is the package's OWN app's record", () => {
+  const ZZ_TWO = { identityName: 'ZZTest.AppTwo', packageFamilyName: 'ZZTest.AppTwo_bbbbbbbbbbbbb' };
+  const secondApp = (root, pkgName) => {
+    mkdirSync(join(root, 'apps', 'zztwo', 'build', 'windows', 'msix'), { recursive: true });
+    // ⏱ 2026-09-26 (train W23, FIX-B): the second app declares its own face too, and its package
+    // carries its tiles, because arb5a's limbs now read each package's own app.
+    const two = join(root, 'apps', 'zztwo');
+    mkdirSync(join(two, 'store', 'windows-store'), { recursive: true });
+    writeFileSync(join(two, 'store', 'windows-store', 'title.txt'), `${TITLE}\n`);
+    writeFileSync(join(two, 'app.yaml'), `id: zztwo\nname: ${TITLE}\nshortName: ${LABEL}\n` + recordYaml('zztwo', ZZ_TWO).replace(/^id: [^\n]*\n/, ''));
+    writeFileSync(join(two, 'pubspec.yaml'), PUBSPEC.replace('name: subscriptiontracker', 'name: zztwo'));
+    mkdirSync(join(two, 'assets', 'icon'), { recursive: true });
+    writeFileSync(join(two, 'assets', 'icon', 'app_icon_1024.png'), 'fixture mark');
+    writeFileSync(
+      join(root, 'apps', 'zztwo', 'build', 'windows', 'msix', 'zztwo.msix'),
+      makeZip(withManifest({ name: pkgName })),
+    );
+    return 'apps/zztwo/build/windows/msix/zztwo.msix';
+  };
+
+  test("a second app's package carrying ITS record passes, beside the first app's sentinel", () => {
+    const root = fixture();
+    const second = secondApp(root, ZZ_TWO.identityName);
+    const { code, out } = run(root, [PKG_REL, second]);
+    assert.equal(code, 0, out);
+    assert.match(out, /2 package\(s\) opened/);
+  });
+
+  test("a second app's package built under the FIRST app's identity FAILS, naming its own record", () => {
+    const root = fixture({ record: { identityName: 'ZZTest.AppOne', packageFamilyName: 'ZZTest.AppOne_aaaaaaaaaaaaa' } });
+    const second = secondApp(root, 'ZZTest.AppOne');
+    const { code, out } = run(root, [second]);
+    assert.equal(code, 1, out);
+    assert.match(out, /Package\/Identity\/@Name is "ZZTest\.AppOne" and apps\/zztwo\/app\.yaml stores\.windows-store\.identityName declares "ZZTest\.AppTwo"/);
+  });
+
+  test('--app names the app for a package outside apps/<id>/', () => {
+    const root = fixture();
+    const outside = join(root, 'elsewhere.msix');
+    writeFileSync(outside, makeZip(withManifest()));
+    const { code, out } = run(root, ['elsewhere.msix', '--app', 'subscriptiontracker']);
+    assert.equal(code, 0, out);
+  });
+
+  test('a package outside apps/<id>/ with no --app is COVERAGE LOST, never compared with some app', () => {
+    const root = fixture();
+    writeFileSync(join(root, 'elsewhere.msix'), makeZip([{ name: MANIFEST_MEMBER, bytes: Buffer.from(manifestXml(), 'utf8'), method: 8 }]));
+    const { code, out } = run(root, ['elsewhere.msix']);
+    assert.equal(code, 2, out);
+    assert.match(out, /does not sit under apps\/<id>\/ and no --app was given/);
+  });
+
+  test('an app with no stores.windows-store record is COVERAGE LOST', () => {
+    const root = fixture({ record: null });
+    writeFileSync(join(root, 'apps', 'subscriptiontracker', 'app.yaml'), 'id: subscriptiontracker\n');
+    const { code, out } = run(root);
+    assert.equal(code, 2, out);
+    assert.match(out, /apps\/subscriptiontracker\/app\.yaml declares no stores\.windows-store record/);
+  });
+
+  test("an app record with a hole is COVERAGE LOST, naming the helper's reason", () => {
+    const root = fixture({ record: null });
+    writeFileSync(join(root, 'apps', 'subscriptiontracker', 'app.yaml'), 'id: subscriptiontracker\nstores:\n  windows-store:\n    identityName: ZZTest.AppOne\n');
+    const { code, out } = run(root);
+    assert.equal(code, 2, out);
+    assert.match(out, /stores\.windows-store\.packageFamilyName missing or empty — a hole, not a placeholder/);
   });
 });
 
@@ -629,18 +719,24 @@ describe('assert-artifact-signed-msix — the path CI actually passes is not dis
   });
 
   test('parseArgs on a truly empty argv reports no packages and no flag', () => {
-    assert.deepEqual(parseArgs([]), { rootFlagSeen: false, rootArg: undefined, packages: [], app: undefined });
+    assert.deepEqual(parseArgs([]), { rootFlagSeen: false, rootArg: undefined, appArg: undefined, packages: [] });
+  });
+
+  test('parseArgs takes the value after --app as the app, never as a package, and never a flag', () => {
+    assert.deepEqual(parseArgs(['--app', 'zzone', 'x.msix']), { rootFlagSeen: false, rootArg: undefined, appArg: 'zzone', packages: ['x.msix'] });
+    assert.deepEqual(parseArgs(['--app', '--verbose', 'x.msix']).appArg, undefined);
+    assert.deepEqual(parseArgs(['--app', '--verbose', 'x.msix']).packages, ['x.msix']);
   });
 
   test('parseArgs takes the value after --app as the app, not as a package', () => {
     const got = parseArgs(['--app', 'subscriptiontracker', 'pkg/subscriptiontracker.msix']);
-    assert.equal(got.app, 'subscriptiontracker');
+    assert.equal(got.appArg, 'subscriptiontracker');
     assert.deepEqual(got.packages, ['pkg/subscriptiontracker.msix']);
   });
 
   test('parseArgs does not swallow a following FLAG as the app', () => {
     const got = parseArgs(['--app', '--repo-root', '/tmp/root', 'a.msix']);
-    assert.equal(got.app, undefined);
+    assert.equal(got.appArg, undefined);
     assert.equal(got.rootArg, '/tmp/root');
     assert.deepEqual(got.packages, ['a.msix']);
   });
@@ -661,9 +757,13 @@ describe('assert-artifact-signed-msix — the path CI actually passes is not dis
   // whatever the REAL register declares today must PASS with no --repo-root.
   // Built from the live register rather than a copy of it, so the day Partner
   // Center replaces the sentinel this test follows instead of going stale.
+  // ⏱ 2026-09-25 — the identity NAME is the live app's record now, and a package
+  // outside apps/<id>/ names its app with --app (O-SECOND-APP-SIGNS-AS-THE-FIRST).
   test('a correct package at an absolute path PASSES with no --repo-root', () => {
     const live = JSON.parse(readFileSync(join(REPO_ROOT, REGISTER_REL), 'utf8'));
-    const declared = (live.channels ?? []).find((c) => c && c.id === CHANNEL_ID).packageIdentity;
+    const account = (live.channels ?? []).find((c) => c && c.id === CHANNEL_ID).packageIdentity;
+    const record = windowsIdentityOf(REPO_ROOT, 'subscriptiontracker');
+    assert.ok(record.value, `the live app declares no stores.windows-store record: ${JSON.stringify(record)}`);
     // ⏱ 2026-09-25: and the face the live tree declares — title.txt, app.yaml
     // `shortName` — graded against the live pubspec's logo_path and lock pin.
     const row = (live.channels ?? []).find((c) => c && c.id === CHANNEL_ID);
@@ -677,9 +777,9 @@ describe('assert-artifact-signed-msix — the path CI actually passes is not dis
           name: MANIFEST_MEMBER,
           bytes: Buffer.from(
             manifestXml({
-              name: declared.identityName,
-              publisher: declared.publisher,
-              displayName: declared.publisherDisplayName,
+              name: record.value.identityName,
+              publisher: account.publisher,
+              displayName: account.publisherDisplayName,
               title: liveTitle,
               label: liveLabel,
             }),
@@ -690,7 +790,7 @@ describe('assert-artifact-signed-msix — the path CI actually passes is not dis
         ...TILES,
       ]),
     );
-    const { code, out } = runBare('--app', 'subscriptiontracker', pkg);
+    const { code, out } = runBare(pkg, '--app', 'subscriptiontracker');
     assert.equal(code, 0, out);
     assert.match(out, /ok {2}msix identity/);
     assert.match(out, /1 package\(s\) opened/);
@@ -862,10 +962,14 @@ describe('assert-artifact-signed-msix — the title, the label and the tiles are
   });
 
   // ── the questions that could not be asked ──────────────────────────────────
-  test('no --app is COVERAGE LOST, after the identity was graded', () => {
-    const { code, out } = run(fixture(), ['pkg/subscriptiontracker.msix']);
+  // ⏱ 2026-09-26 (train W23, FIX-B): the app is `--app`, else the package's apps/<id>/.
+  // With neither, NEITHER half is graded against a guessed app.
+  test('no --app and no apps/<id>/ path is COVERAGE LOST, before either half is graded', () => {
+    const root = fixture();
+    writeFileSync(join(root, 'elsewhere.msix'), makeZip(withManifest()));
+    const { code, out } = run(root, ['elsewhere.msix']);
     assert.equal(code, 2, out);
-    assert.match(out, /`--app <id>` was not given/);
+    assert.match(out, /does not sit under apps\/<id>\/ and no --app was given/);
   });
 
   test('a declaration with no shortName is COVERAGE LOST', () => {

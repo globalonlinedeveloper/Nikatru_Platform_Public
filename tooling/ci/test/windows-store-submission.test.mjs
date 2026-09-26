@@ -62,8 +62,18 @@ const CONFIGURED_IDENTITY = {
   publisherDisplayName: 'Nikatru Fixture',
   publisher: 'CN=00000000-0000-0000-0000-000000000000',
 };
+// ⏱ 2026-09-25 — O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1). The identity NAME is
+// the --app's own record (apps/<id>/app.yaml stores.windows-store); the row keeps
+// the account's publisher and display name. CONFIGURED sets both halves.
+const CONFIGURED_RECORD = { identityName: CONFIGURED_IDENTITY.identityName, packageFamilyName: `${CONFIGURED_IDENTITY.identityName}_aaaaaaaaaaaaa` };
+const PENDING_RECORD = { identityName: SENTINEL, packageFamilyName: SENTINEL };
 const CONFIGURED = {
-  mutateRegister: (reg) => Object.assign(reg.channels[0].packageIdentity, CONFIGURED_IDENTITY),
+  mutateRegister: (reg) =>
+    Object.assign(reg.channels[0].packageIdentity, {
+      publisherDisplayName: CONFIGURED_IDENTITY.publisherDisplayName,
+      publisher: CONFIGURED_IDENTITY.publisher,
+    }),
+  record: CONFIGURED_RECORD,
   pubspecOver: {
     identity_name: CONFIGURED_IDENTITY.identityName,
     publisher_display_name: CONFIGURED_IDENTITY.publisherDisplayName,
@@ -91,6 +101,9 @@ function tree({
   artifactBytes = 1024,
   pubspecOver = {},
   noMsixConfig = false,
+  // apps/subscriptiontracker/app.yaml stores.windows-store; null writes an
+  // app.yaml with no stores block.
+  record = PENDING_RECORD,
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   const write = (rel, body) => {
@@ -117,7 +130,6 @@ function tree({
         ownerQueue: 'A-2',
         packageIdentity: {
           notYetConfiguredSentinel: SENTINEL,
-          identityName: SENTINEL,
           publisherDisplayName: SENTINEL,
           publisher: `CN=${SENTINEL}`,
         },
@@ -129,6 +141,10 @@ function tree({
 
   write('tooling/channel-register.json', JSON.stringify(register, null, 2));
   write('catalog/apps.json', JSON.stringify([{ slug: 'subscriptiontracker', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'], status: 'live' }]));
+  write(
+    'apps/subscriptiontracker/app.yaml',
+    `id: subscriptiontracker\n${record ? `stores:\n  windows-store:\n    identityName: ${record.identityName}\n    packageFamilyName: ${record.packageFamilyName}\n` : ''}`,
+  );
 
   const cfg = {
     display_name: 'Subly',
@@ -217,6 +233,45 @@ describe('submit-windows-store — the submission path is walkable, and --submit
     assert.doesNotMatch(out, /primary sources — \d+ citation\(s\) present/, 'the placeholder walked past the problems block toward the upload');
   });
 
+  // ⏱ 2026-09-25 — the state the brick stamps since B4a-2: the account is
+  // configured and THIS app's identity name is not yet issued. The submit must
+  // refuse on the name alone; "partly real" is not submittable.
+  test('--submit REFUSES a stamped app whose own identity name is still the placeholder under a configured account', () => {
+    const { code, out } = run(
+      tree({ withArtifact: true, ...CONFIGURED, record: PENDING_RECORD, pubspecOver: { ...CONFIGURED.pubspecOver, identity_name: SENTINEL } }),
+      ['--submit', '--app', 'subscriptiontracker', '--confirm', 'SUBMIT-TO-MICROSOFT-STORE'],
+      CREDS,
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /PLACEHOLDER PACKAGE IDENTITY — --submit REFUSED: identity_name is still PARTNER-CENTER-PENDING in both apps\/subscriptiontracker\/app\.yaml and apps\/subscriptiontracker\/pubspec\.yaml/);
+    assert.doesNotMatch(out, /HALF configured/);
+    assert.doesNotMatch(out, /primary sources — \d+ citation\(s\) present/, 'the placeholder walked past the problems block toward the upload');
+  });
+
+  test('--dry-run FAILS when the app declares no stores.windows-store record', () => {
+    const { code, out } = run(tree({ withArtifact: true, record: null }), ['--dry-run', '--app', 'subscriptiontracker']);
+    assert.equal(code, 1, out);
+    assert.match(out, /apps\/subscriptiontracker\/app\.yaml declares no stores\.windows-store record/);
+  });
+
+  // The row's own identityName, if one were left there, is not read: the name
+  // is the --app's record. A row naming ANOTHER identity changes nothing.
+  test("the identity name is the --app's record: a different identityName left on the row is not read", () => {
+    const { code, out } = run(
+      tree({
+        withArtifact: true,
+        ...CONFIGURED,
+        mutateRegister: (reg) => {
+          CONFIGURED.mutateRegister(reg);
+          reg.channels[0].packageIdentity.identityName = 'ZZTest.SomeOtherApp';
+        },
+      }),
+      ['--dry-run', '--app', 'subscriptiontracker'],
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /package identity — 3 field\(s\), register and apps\/subscriptiontracker\/pubspec\.yaml agree/);
+  });
+
   test('--dry-run only PRINTS the placeholder — the account step is owner work, not a defect', () => {
     const { code, out } = run(tree({ withArtifact: true }), ['--dry-run', '--app', 'subscriptiontracker']);
     assert.equal(code, 0, out);
@@ -292,6 +347,10 @@ describe('submit-windows-store — the submission path is walkable, and --submit
       recursive: true,
       filter: (src) => !src.split(/[\\/]/).includes('test'),
     });
+    // ⏱ 2026-09-25 — the script reads the app's record through
+    // tooling/ci/read-identity.mjs, which imports the one YAML reader.
+    mkdirSync(join(root, 'tooling', 'app-yaml'), { recursive: true });
+    cpSync(join(REPO, 'tooling', 'app-yaml', 'yaml.mjs'), join(root, 'tooling', 'app-yaml', 'yaml.mjs'));
     const mutated = join(root, 'tooling', 'release', 'submit-windows-store.mjs');
     mkdirSync(dirname(mutated), { recursive: true });
     // Its shared preamble travels with it, or the copy dies on LOAD (the same shell-16 red).

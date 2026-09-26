@@ -2786,11 +2786,17 @@
           "`packageIdentity.notYetConfiguredSentinel`. While apps/{app}/pubspec.yaml carries it, the guard PRINTS",
           "the owner-gated gap (OWNER_QUEUE A-2) AND runs `submission.script --submit` with no credentials in",
           "its environment to prove the submitter REFUSES the placeholder, so it cannot reach `msstore publish`.",
-          "This row turning `served: true` while the placeholder is still packaged is a FAILURE."
+          "This row turning `served: true` while the placeholder is still packaged is a FAILURE.",
+          "",
+          "⏱ 2026-09-25 — O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1): \"Its one declaration is",
+          "`packageIdentity.identityName`\" above was ONE value for every app, so a second app packaging the",
+          "first app's identity agreed with it. `expectedFrom` now names each app's OWN record,",
+          "apps/{app}/app.yaml `stores.windows-store.identityName`, which tooling/ci/assert-store-identity.mjs",
+          "reads through tooling/ci/read-identity.mjs windowsIdentityOf. The placeholder stays this row's."
         ],
         "kind": "msix-identity-name",
         "declaredIn": "apps/{app}/pubspec.yaml",
-        "expectedFrom": "packageIdentity.identityName",
+        "expectedFrom": "apps/{app}/app.yaml stores.windows-store.identityName",
         "placeholderValue": "PARTNER-CENTER-PENDING"
       },
       "packageIdentity": {
@@ -2820,13 +2826,21 @@
           "copies agreeing was the only thing checked before. ⚠️ `publisherDisplayName` is NOT covered by",
           "that recomputation (it is not an input to the PFN); only the pubspec and package comparisons",
           "read it. `source` corrected the same day: Publisher sits on Package/Identity, not",
-          "Package/Properties (tooling/ci/assert-artifact-signed-msix.mjs reads Package/Identity/@Publisher)."
+          "Package/Properties (tooling/ci/assert-artifact-signed-msix.mjs reads Package/Identity/@Publisher).",
+          "",
+          "⏱ 2026-09-25 — identityName moved per app to app.yaml stores.windows-store",
+          "(O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1)), and packageFamilyName with it. apps/subscriptiontracker/",
+          "app.yaml carries the two values this row held, verbatim; tooling/bricks/app/hooks/post_gen.dart",
+          "had copied this row's identityName into every app it stamped. This row keeps the sentinel and",
+          "the ACCOUNT: `publisher` and `publisherDisplayName`. §6e of tooling/ci/assert-channel-register.mjs",
+          "recomputes each app's PFN from its own identityName and this publisher, and FAILS this row if a",
+          "per-app field comes back. CORRECTION to \"`identityName` and `publisherDisplayName` are PER-APP\"",
+          "above: `publisherDisplayName` is ACCOUNT-WIDE — Partner Center shows one publisher display name",
+          "per account, and this row holds NIKATRU for every app (parent ruling B4a-2)."
         ],
         "notYetConfiguredSentinel": "PARTNER-CENTER-PENDING",
-        "identityName": "60210NIKATRU.NikatruSubscriptionTracker",
         "publisherDisplayName": "NIKATRU",
         "publisher": "CN=9D0DEF58-EDA2-448E-9498-42C2C3083994",
-        "packageFamilyName": "60210NIKATRU.NikatruSubscriptionTracker_ab30hnb4490ma",
         "declaredIn": "apps/{app}/pubspec.yaml → msix_config",
         "source": "https://partner.microsoft.com/dashboard → Product → Product identity → Package/Identity/Name · Package/Identity/Publisher · Package/Properties/PublisherDisplayName · Package Family Name (PFN)"
       },
@@ -2870,7 +2884,11 @@
         "apps/subscriptiontracker/pubspec.yaml's msix_config in the same commit. Nothing was uploaded.",
         "`served` stays FALSE: what remains before a first submission is the listing, the age rating and",
         "the privacy-policy URL in the console, and the owner's word to submit. The Store ID and the",
-        "seller ID stay OUT of this tree — the submitter reads both from the environment."
+        "seller ID stay OUT of this tree — the submitter reads both from the environment.",
+        "",
+        "⏱ 2026-09-25 — `packageIdentity` carries the ACCOUNT's two values and the sentinel only: the",
+        "identity name and the Package Family Name moved per app, to apps/{app}/app.yaml",
+        "`stores.windows-store` (O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1); see packageIdentity._why)."
       ]
     },
     {

@@ -1688,6 +1688,100 @@ describe('msix_config.display_name renders the declaration\'s `name`, not its `s
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-25 — O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1). msix_config.identity_name
+// is RENDERED from the app's own record, app.yaml stores.windows-store.identityName.
+// It used to be copied from the ONE identity on the channel row by the brick, so a
+// second app packaged the first app's identity. The fixture is a copy of the real
+// app.yaml and pubspec, so the record and the packaged name start equal.
+// ─────────────────────────────────────────────────────────────────────────────
+const PUBSPEC = 'apps/subscriptiontracker/pubspec.yaml';
+const packagedIdentity = (text) => text.match(/^msix_config:[\s\S]*?^ {2}identity_name: (.*)$/m)?.[1];
+
+describe('msix_config.identity_name is rendered from the app\'s own stores.windows-store record', () => {
+  test('a hand edit to identity_name is stale under --check, and only the pubspec is named', () => {
+    const root = tree();
+    try {
+      put(root, PUBSPEC, get(root, PUBSPEC).replace(/^ {2}identity_name: .*$/m, '  identity_name: ZZTest.AppTwo'));
+      const { code, out } = spawn(RENDER, [root, '--check']);
+      assert.equal(code, 1, out);
+      assert.ok(out.includes(PUBSPEC), out);
+      assert.ok(!out.includes('Info.plist'), `only the file that drifted is stale:\n${out}`);
+    } finally { kill(root); }
+  });
+
+  test('the record moved to the sentinel re-renders identity_name on a write run, and --check then passes', () => {
+    const root = tree();
+    try {
+      const yaml = get(root, APP_YAML);
+      const next = yaml
+        .replace(/^ {4}identityName: .*$/m, '    identityName: PARTNER-CENTER-PENDING')
+        .replace(/^ {4}packageFamilyName: .*$/m, '    packageFamilyName: PARTNER-CENTER-PENDING');
+      assert.notEqual(next, yaml, 'the fixture declaration must carry a stores.windows-store record');
+      put(root, APP_YAML, next);
+      const publisherBefore = get(root, PUBSPEC).match(/^ {2}publisher: (.*)$/m)?.[1];
+      const first = spawn(RENDER, [root]);
+      assert.equal(first.code, 0, first.out);
+      assert.equal(packagedIdentity(get(root, PUBSPEC)), 'PARTNER-CENTER-PENDING');
+      // The account's publisher is NOT this renderer's: it stays what the file says.
+      assert.equal(get(root, PUBSPEC).match(/^ {2}publisher: (.*)$/m)?.[1], publisherBefore);
+      const second = spawn(RENDER, [root, '--check']);
+      assert.equal(second.code, 0, second.out);
+    } finally { kill(root); }
+  });
+
+  test('identity_name gone from a block that is still there is COVERAGE LOST, not a skip', () => {
+    const root = tree();
+    try {
+      const text = get(root, PUBSPEC);
+      const stripped = text.replace(/^ {2}identity_name: .*\n/m, '');
+      assert.notEqual(stripped, text, 'the fixture pubspec must carry identity_name');
+      put(root, PUBSPEC, stripped);
+      const { code, out } = spawn(RENDER, [root, '--check']);
+      assert.equal(code, 2, out);
+      assert.ok(out.includes('msix_config.identity_name (Package/Identity/@Name)'), out);
+    } finally { kill(root); }
+  });
+
+  // The span is bounded by the block: a same-named key under a LATER top-level
+  // block must never be the one rewritten, which an unbounded `[\s\S]*?` would do.
+  test('an identity_name under a later top-level block is not the one rewritten', () => {
+    const root = tree();
+    try {
+      const text = get(root, PUBSPEC).replace(/^ {2}identity_name: .*\n/m, '');
+      put(root, PUBSPEC, `${text}zz_other_block:\n  identity_name: ZZTest.NotMsix\n`);
+      const { code, out } = spawn(RENDER, [root]);
+      assert.equal(code, 2, out);
+      assert.match(get(root, PUBSPEC), /^zz_other_block:\n {2}identity_name: ZZTest\.NotMsix$/m);
+    } finally { kill(root); }
+  });
+
+  test('a declaration with no stores record leaves identity_name alone', () => {
+    const root = tree();
+    try {
+      const yaml = get(root, APP_YAML);
+      const next = yaml.replace(/^stores:\n {2}windows-store:\n {4}identityName: .*\n {4}packageFamilyName: .*\n/m, '');
+      assert.notEqual(next, yaml, 'the fixture declaration must carry a stores block');
+      put(root, APP_YAML, next);
+      const before = get(root, PUBSPEC);
+      const { code, out } = spawn(RENDER, [root]);
+      assert.equal(code, 0, out);
+      assert.equal(get(root, PUBSPEC), before);
+    } finally { kill(root); }
+  });
+
+  test('a pubspec with no msix_config block is skipped — the brick appends it after its render', () => {
+    const root = tree();
+    try {
+      stripMsix(root);
+      const before = get(root, PUBSPEC);
+      const { code, out } = spawn(RENDER, [root]);
+      assert.equal(code, 0, `an app not packaged for the Microsoft Store has no identity_name to render:\n${out}`);
+      assert.equal(get(root, PUBSPEC), before, 'a pubspec with no msix_config block must be left exactly as it is');
+    } finally { kill(root); }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ⏱ 2026-09-25 — O-APPLE-PLIST-KEYS-UNRENDERED. LSApplicationCategoryType and
 // ITSAppUsesNonExemptEncryption are rendered from app.yaml into both Apple
 // Info.plists. Until then neither key was in either file and assert-app-yaml

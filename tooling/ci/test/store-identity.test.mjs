@@ -41,6 +41,7 @@ import {
   readCMakeApplicationId,
   readMsixIdentityName,
   resolveIdentity,
+  windowsIdentityOf,
 } from '../read-identity.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -158,6 +159,76 @@ describe('read-identity — each reader answers found / missing / lost, never a 
   test('resolveIdentity: a declaredIn with no {app} is LOST', () => {
     const r = resolveIdentity(TMP, 'subscriptiontracker', { kind: 'gradle-application-id', declaredIn: 'apps/subscriptiontracker/x' });
     assert.match(r.lost, /is not an "\{app\}" template/);
+  });
+});
+
+// ⏱ 2026-09-25 — O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1). windowsIdentityOf reads
+// the identity Partner Center issued to ONE app out of that app's own app.yaml.
+// Every identity here is synthetic (ZZTest.*): none was issued by Partner Center.
+describe('read-identity — windowsIdentityOf reads the app it is asked about, and nothing else', () => {
+  const declare = (slug, body) => {
+    const root = join(TMP, `w${seq++}`);
+    if (body !== null) {
+      mkdirSync(join(root, 'apps', slug), { recursive: true });
+      writeFileSync(join(root, 'apps', slug, 'app.yaml'), body);
+    }
+    return root;
+  };
+
+  test('a complete record is FOUND, both fields, with the declaration it came from', () => {
+    const root = declare('zzone', 'id: zzone\nstores:\n  windows-store:\n    identityName: ZZTest.AppOne\n    packageFamilyName: ZZTest.AppOne_aaaaaaaaaaaaa\n');
+    const r = windowsIdentityOf(root, 'zzone');
+    assert.deepEqual(r.value, { identityName: 'ZZTest.AppOne', packageFamilyName: 'ZZTest.AppOne_aaaaaaaaaaaaa' });
+    assert.equal(r.rel, 'apps/zzone/app.yaml');
+    assert.equal(r.missing, null);
+  });
+
+  test('a record on the sentinel is FOUND as written — "not yet issued" is the caller\'s to tell', () => {
+    const root = declare('zzone', 'id: zzone\nstores:\n  windows-store:\n    identityName: PARTNER-CENTER-PENDING\n    packageFamilyName: PARTNER-CENTER-PENDING\n');
+    assert.deepEqual(windowsIdentityOf(root, 'zzone').value, { identityName: 'PARTNER-CENTER-PENDING', packageFamilyName: 'PARTNER-CENTER-PENDING' });
+  });
+
+  test('two apps in one root each answer with their OWN record', () => {
+    const root = declare('zzone', 'id: zzone\nstores:\n  windows-store:\n    identityName: ZZTest.AppOne\n    packageFamilyName: ZZTest.AppOne_aaaaaaaaaaaaa\n');
+    mkdirSync(join(root, 'apps', 'zztwo'), { recursive: true });
+    writeFileSync(join(root, 'apps', 'zztwo', 'app.yaml'), 'id: zztwo\nstores:\n  windows-store:\n    identityName: ZZTest.AppTwo\n    packageFamilyName: ZZTest.AppTwo_bbbbbbbbbbbbb\n');
+    assert.equal(windowsIdentityOf(root, 'zzone').value.identityName, 'ZZTest.AppOne');
+    assert.equal(windowsIdentityOf(root, 'zztwo').value.identityName, 'ZZTest.AppTwo');
+  });
+
+  test('an app.yaml with no stores record is UNDECLARED, not missing and not found', () => {
+    const r = windowsIdentityOf(declare('zzone', 'id: zzone\n'), 'zzone');
+    assert.equal(r.undeclared, 'apps/zzone/app.yaml');
+    assert.equal(r.value, null);
+    assert.equal(r.missing, null);
+  });
+
+  test('no app.yaml at all is ABSENT', () => {
+    const r = windowsIdentityOf(declare('zzone', null), 'zzone');
+    assert.equal(r.absent, 'apps/zzone/app.yaml');
+    assert.equal(r.value, null);
+    assert.equal(r.undeclared, undefined);
+  });
+
+  test('a record with one field is MISSING — a hole, not a placeholder', () => {
+    const r = windowsIdentityOf(declare('zzone', 'id: zzone\nstores:\n  windows-store:\n    identityName: ZZTest.AppOne\n'), 'zzone');
+    assert.equal(r.value, null);
+    assert.match(r.missing, /apps\/zzone\/app\.yaml stores\.windows-store\.packageFamilyName missing or empty — a hole, not a placeholder/);
+  });
+
+  test('an empty field is a hole too', () => {
+    const r = windowsIdentityOf(declare('zzone', 'id: zzone\nstores:\n  windows-store:\n    identityName: ""\n    packageFamilyName: ZZTest.AppOne_aaaaaaaaaaaaa\n'), 'zzone');
+    assert.match(r.missing, /stores\.windows-store\.identityName missing or empty/);
+  });
+
+  test('a record that is a scalar is MISSING, not undeclared', () => {
+    const r = windowsIdentityOf(declare('zzone', 'id: zzone\nstores:\n  windows-store: ZZTest.AppOne\n'), 'zzone');
+    assert.match(r.missing, /stores\.windows-store is "ZZTest\.AppOne", not a record of identityName and packageFamilyName/);
+  });
+
+  test('an app.yaml that does not parse is MISSING, naming the parse failure', () => {
+    const r = windowsIdentityOf(declare('zzone', 'id: zzone\nid: zzone\n'), 'zzone');
+    assert.match(r.missing, /apps\/zzone\/app\.yaml does not parse \(.*duplicate key "id"/);
   });
 });
 
@@ -362,8 +433,22 @@ describe('assert-store-identity', () => {
 const WIN_SENTINEL = 'PARTNER-CENTER-PENDING';
 const WIN_REAL = { identityName: 'NikatruFixture.SubscriptionTracker', publisherDisplayName: 'Nikatru Fixture', publisher: 'CN=00000000-0000-0000-0000-000000000000' };
 
-function windowsFixture({ identity = WIN_SENTINEL, packaged = identity, served = false, placeholderValue = WIN_SENTINEL, submitter = null, dropRefusal = false } = {}) {
-  const real = identity !== WIN_SENTINEL;
+// ⏱ 2026-09-25 — O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1). `identity` is now the
+// app's OWN record (apps/subscriptiontracker/app.yaml stores.windows-store), which
+// `expectedFrom` names; the row keeps only the sentinel and the ACCOUNT, whose
+// state is `accountReal` (by default real exactly when the identity is). `record`
+// null writes an app.yaml with no stores block.
+function windowsFixture({
+  identity = WIN_SENTINEL,
+  packaged = identity,
+  served = false,
+  placeholderValue = WIN_SENTINEL,
+  submitter = null,
+  dropRefusal = false,
+  accountReal = identity !== WIN_SENTINEL,
+  record = true,
+} = {}) {
+  const real = accountReal;
   const register = REGISTER();
   register.storeMetadataContract = {
     requiredFiles: ['README.md', 'title.txt', 'short-description.txt', 'long-description.txt', 'category.txt', 'privacy-policy-url.txt', 'support-url.txt', 'screenshots/README.md'],
@@ -379,10 +464,9 @@ function windowsFixture({ identity = WIN_SENTINEL, packaged = identity, served =
     artifactFormats: ['.msix'],
     storeMetadataDir: 'apps/{app}/store/windows-store',
     ownerQueue: 'A-2',
-    identity: { kind: 'msix-identity-name', declaredIn: 'apps/{app}/pubspec.yaml', expectedFrom: 'packageIdentity.identityName', placeholderValue },
+    identity: { kind: 'msix-identity-name', declaredIn: 'apps/{app}/pubspec.yaml', expectedFrom: 'apps/{app}/app.yaml stores.windows-store.identityName', placeholderValue },
     packageIdentity: {
       notYetConfiguredSentinel: WIN_SENTINEL,
-      identityName: identity,
       publisherDisplayName: real ? WIN_REAL.publisherDisplayName : WIN_SENTINEL,
       publisher: real ? WIN_REAL.publisher : `CN=${WIN_SENTINEL}`,
     },
@@ -409,9 +493,13 @@ function windowsFixture({ identity = WIN_SENTINEL, packaged = identity, served =
     'screenshots/README.md': 'slot\n',
     'search-terms.txt': 'a\nb\n',
   };
+  const pfn = identity === WIN_SENTINEL ? WIN_SENTINEL : `${identity}_aaaaaaaaaaaaa`;
   const files = {
     'apps/subscriptiontracker/pubspec.yaml': `name: subscriptiontracker\n\n${msix}\n`,
     'apps/subscriptiontracker/windows/runner/main.cpp': 'int main(){}\n',
+    'apps/subscriptiontracker/app.yaml':
+      'id: subscriptiontracker\nname: Nikatru Subscription Tracker # the store title\n' +
+      (record ? `stores:\n  windows-store:\n    identityName: ${identity}\n    packageFamilyName: ${pfn}\n` : ''),
   };
   for (const [k, v] of Object.entries(listing)) files[`apps/subscriptiontracker/store/windows-store/${k}`] = v;
   const root = fixture({
@@ -420,6 +508,10 @@ function windowsFixture({ identity = WIN_SENTINEL, packaged = identity, served =
     files,
   });
   cpSync(join(REPO, 'tooling', 'ci'), join(root, 'tooling', 'ci'), { recursive: true, filter: (src) => !src.split(/[\\/]/).includes('test') });
+  // The submitter reads the app's record through tooling/ci/read-identity.mjs,
+  // which parses app.yaml with the one YAML reader; without it the copy dies on load.
+  mkdirSync(join(root, 'tooling', 'app-yaml'), { recursive: true });
+  cpSync(join(REPO, 'tooling', 'app-yaml', 'yaml.mjs'), join(root, 'tooling', 'app-yaml', 'yaml.mjs'));
   const script = join(root, 'tooling', 'release', 'submit-windows-store.mjs');
   mkdirSync(dirname(script), { recursive: true });
   let source = submitter ?? readFileSync(join(REPO, 'tooling', 'release', 'submit-windows-store.mjs'), 'utf8');
@@ -450,10 +542,24 @@ describe('assert-store-identity — Windows: a store-assigned identity, and a pl
     assert.match(out, /still packages the placeholder identity and tooling\/release\/submit-windows-store\.mjs --submit did NOT refuse it by name/);
   });
 
-  test('FAILS when the pubspec packages a different identity from the register', () => {
+  test("FAILS when the pubspec packages a different identity from the app's own record", () => {
     const { code, out } = run(windowsFixture({ identity: WIN_REAL.identityName, packaged: 'NikatruFixture.SomethingElse' }));
     assert.equal(code, 1, out);
-    assert.match(out, /declares "NikatruFixture\.SomethingElse" and tooling\/channel-register\.json channel "windows-store" packageIdentity\.identityName is "NikatruFixture\.SubscriptionTracker"/);
+    assert.match(out, /declares "NikatruFixture\.SomethingElse" and apps\/subscriptiontracker\/app\.yaml stores\.windows-store\.identityName is "NikatruFixture\.SubscriptionTracker"/);
+  });
+
+  test('FAILS when an app built for windows declares no stores.windows-store record', () => {
+    const { code, out } = run(windowsFixture({ record: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /apps\/subscriptiontracker\/app\.yaml declares no stores\.windows-store record, and it is the one declaration of the identity Partner Center issued this app/);
+  });
+
+  // The state the brick stamps since B4a-2: the account configured, this app's
+  // own identity not yet issued. Still owner-gated, and still REFUSED by --submit.
+  test("PRINTS a stamped app's sentinel name under a configured account — the submitter was run and REFUSED it", () => {
+    const { code, out } = run(windowsFixture({ accountReal: true }));
+    assert.equal(code, 0, out);
+    assert.match(out, /OWNER-GATED \(A-2\) · app "subscriptiontracker" × channel "windows-store" \(windows\): the package identity is the placeholder "PARTNER-CENTER-PENDING" in both apps\/subscriptiontracker\/app\.yaml and apps\/subscriptiontracker\/pubspec\.yaml/);
   });
 
   test('a CONFIGURED identity that agrees passes without printing the gap, and is not held to com.nikatru.<slug>', () => {
@@ -484,7 +590,7 @@ describe('assert-store-identity — Windows: a store-assigned identity, and a pl
     const { code, out } = run(root);
     assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
-    assert.match(out, /the only field this guard knows how to read is "packageIdentity\.identityName"/);
+    assert.match(out, /the only field this guard knows how to read is "apps\/\{app\}\/app\.yaml stores\.windows-store\.identityName"/);
   });
 
   test('FAILS a native store channel that declares no identity block — the shape windows-store sat in', () => {
