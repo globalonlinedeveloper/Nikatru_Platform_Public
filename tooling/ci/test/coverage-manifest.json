@@ -132,7 +132,7 @@
   "indexnow-ping.test.mjs": 11,
   "input-contract.test.mjs": 29,
   "install-hooks-worktree.test.mjs": 8,
-  "install-pinned-tool.test.mjs": 11,
+  "install-pinned-tool.test.mjs": 22,
   "lane-detect.test.mjs": 19,
   "lane-verdict.test.mjs": 12,
   "launch-smoke.test.mjs": 16,
