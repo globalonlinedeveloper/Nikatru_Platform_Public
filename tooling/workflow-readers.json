@@ -221,6 +221,10 @@
       "property": "workflow-scan"
     },
     {
+      "path": "tooling/ci/assert-site-bindings.mjs",
+      "property": "workflow-scan"
+    },
+    {
       "path": "tooling/ci/assert-stamp-platforms.mjs",
       "property": "refuses-blind",
       "evidence": "contains ZERO recognisable steps.",
