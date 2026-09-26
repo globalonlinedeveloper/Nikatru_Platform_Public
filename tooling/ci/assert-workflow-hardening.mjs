@@ -88,6 +88,9 @@
 //      See "limb 11" below.
 //  12. no `run:` body loops `for x in $(…)`: `set -e` never sees that command's
 //      exit (⏱ 2026-09-26, O-APP-RELEASE-RECORDS-NO-DEPLOYMENT-SILENTLY). See "limb 12".
+//  13. no `cloudflare/wrangler-action` step carries a `secrets:` input: the action
+//      edits secrets before its command, and Cloudflare refuses that edit after a
+//      rollback (⏱ 2026-09-26, main run 36224483330). See "limb 13".
 //
 // ⚠️ TRADE-OFF ON RECORD: a pinned action stops receiving updates, including
 // security fixes. That is the deliberate exchange — "silently gets new code"
@@ -110,7 +113,8 @@
 // Exit 0 = hardened. 1 = a real defect (a movable reference, a missing or
 // over-broad permissions block, an unbounded job, a single-brace expression, a
 // cancel that reaches main, a failure-path input that can resolve to empty, a
-// publishing job with no `environment:` or no first-step ref check).
+// publishing job with no `environment:` or no first-step ref check, a
+// wrangler-action `secrets:` input).
 // 2 = COVERAGE LOST or REFUSED — the repo-wide convention (AGENTS.md; the
 // markerInCode self-check in assert-guard-coverage.mjs holds it). COVERAGE LOST:
 // a lost coverage relationship, including a workflow GitHub holds that this
@@ -530,9 +534,10 @@ const refuse = (lines) => {
 //   · `run:` IS THE ONLY FOREIGN-LANGUAGE KEY IT KNOWS. A `script: |` body
 //     (actions/github-script) is JavaScript, where `${x}` is a template literal,
 //     and this limb would report it. There is not one in this tree today — the
-//     only non-`run:` block scalars are `path:`, `filters:` and `secrets:`,
-//     whose bodies are paths and names — so the case is documented rather than
-//     coded for, and it would fail LOUDLY on the first one rather than silently.
+//     only non-`run:` block scalars are `path:` and `description:`, whose bodies
+//     are paths and prose (⏱ 2026-09-26: `filters:` left with the deploy
+//     workflows' triggers, and `secrets:` with limb 13) — so the case is documented rather
+//     than coded for, and it would fail LOUDLY on the first one rather than silently.
 const SINGLE_BRACE = /\$\{(?!\{)/g;
 /** A `run:` line, INCLUDING the folded form `joinBlockScalars` produces (the
  *  `run:` key with its whole body appended) and the inline form `run: echo "$X"`.
@@ -1234,6 +1239,61 @@ if (scanningRealRepo && forLoops < FOR_LOOP_FLOOR) {
   coverageLost([
     `limb 12 read ${forLoops} \`for … in\` loop(s) across every \`run:\` body; the floor is ${FOR_LOOP_FLOOR}.`,
     'Fewer means the `run:` reading changed shape under it, and "no loop swallows an exit" would be true of a remnant.',
+  ]);
+}
+
+// ── limb 13: no wrangler-action step edits a Worker's secrets before its command ──
+// ⏱ 2026-09-26 · main run 36224483330 (the #974 merge). `cloudflare/wrangler-action`'s
+// `secrets:` input makes a secret bulk edit on the Worker BEFORE it runs `command:`,
+// whatever the command is. Cloudflare refuses a secret edit (error 10215) while the
+// Worker's newest uploaded version is not the deployed one, and every rollback leaves it
+// that way: rollback.yml re-promotes an older version. So after the Phase 5 rollback every
+// platform deploy went red at the edit until one was deployed by hand. The secret now
+// rides the version: a 0600 JSON file under $RUNNER_TEMP, `deploy --secrets-file <it>`,
+// and the file deleted on `always()` (deploy-workers.yml's platform job). Read through
+// workflow-scan's `workflowSteps`. A raw read of each wrangler-action step's own lines
+// must find the same `secrets:` keys the `with:` reading judged, or it is COVERAGE LOST;
+// so is a wrangler-action count below WRANGLER_ACTION_FLOOR on the real tree (the four
+// in deploy-workers.yml alone). Not caught: `wrangler secret put|bulk` in a `run:` body,
+// or as a `command:` — each is its own shape.
+const WRANGLER_ACTION = /^cloudflare\/wrangler-action@/;
+const RAW_SECRETS_KEY = /^\s*secrets\s*:/;
+const WRANGLER_ACTION_FLOOR = 4;
+let wranglerSteps = 0;
+let secretsInputsRaw = 0;
+let secretsInputsJudged = 0;
+for (const wf of parsedAll) {
+  for (const job of wf.jobs.values()) {
+    for (const s of workflowSteps(job)) {
+      if (s.uses === null || !WRANGLER_ACTION.test(s.uses)) continue;
+      wranglerSteps++;
+      if (wf.lines.slice(s.first - 1, s.last).some((l) => RAW_SECRETS_KEY.test(l.text))) secretsInputsRaw++;
+      const input = s.with.get('secrets');
+      if (input === undefined) continue;
+      secretsInputsJudged++;
+      problems.push(
+        `${wf.rel}:${input.n} job "${job.name}" step "${s.name ?? s.id ?? '(unnamed)'}" hands \`secrets:\` to ` +
+          'cloudflare/wrangler-action, which edits the Worker\'s secrets BEFORE its command. Cloudflare refuses that edit ' +
+          '(error 10215) while the newest uploaded version is not the deployed one, which is every Worker after a rollback, ' +
+          'so every later deploy fails. Write the secrets to a 0600 JSON file under $RUNNER_TEMP in the step before, add ' +
+          '`--secrets-file <path>` to the deploy command, and delete the file on `always()`, as deploy-workers.yml\'s platform job does.',
+      );
+    }
+  }
+}
+if (secretsInputsRaw !== secretsInputsJudged) {
+  coverageLost([
+    `limb 13 judged ${secretsInputsJudged} wrangler-action \`secrets:\` input(s) from their \`with:\` field, but a raw read of ` +
+      `those steps' lines finds ${secretsInputsRaw}.`,
+    'The `with:` reading has stopped seeing a key the file still carries, so a secret edit that a rollback turns into a red',
+    'deploy would still print as clean.',
+  ]);
+}
+if (scanningRealRepo && wranglerSteps < WRANGLER_ACTION_FLOOR) {
+  coverageLost([
+    `limb 13 read ${wranglerSteps} cloudflare/wrangler-action step(s); the floor is ${WRANGLER_ACTION_FLOOR}.`,
+    'deploy-workers.yml alone has four, so fewer means the `uses:` reading went blind, and "no step edits a secret before',
+    'its command" would be true of a remnant.',
   ]);
 }
 
@@ -2283,3 +2343,7 @@ console.log(
     : '    limb 11 — no `guards-*` shard in this tree, so no assert step was judged',
 );
 console.log(`    limb 12 — ${forLoops} \`for … in\` loop(s) across every \`run:\` body; none loops over a \`$(…)\`, so no loop swallows an exit`);
+console.log(
+  `    limb 13 — ${wranglerSteps} cloudflare/wrangler-action step(s), none with a \`secrets:\` input (a raw read of their lines ` +
+    `agrees, ${secretsInputsRaw}): every Worker secret rides the version it deploys with`,
+);
