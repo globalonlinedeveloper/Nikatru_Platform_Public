@@ -36,6 +36,12 @@
       "reads": "the e2e cron out of extensions.yml or e2e.yml, to derive the freshness ceiling"
     },
     {
+      "path": "extensions/scripts/discover.mjs",
+      "property": "refuses-blind",
+      "evidence": "A workflow this check cannot read is not a workflow that names no tool.",
+      "reads": "--assert-generic only: extensions-ci.yml and extensions.yml, for any line comparing the matrix tool or the release tag id with a literal, and for each discover.mjs --run-gates step and the stage it runs"
+    },
+    {
       "path": "tooling/ci/assert-alert-disposition.mjs",
       "property": "workflow-scan"
     },

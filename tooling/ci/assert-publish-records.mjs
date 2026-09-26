@@ -444,8 +444,8 @@ function openServedLane(rel, jobName, why) {
 const seenRecordLines = new Set();
 /** Mark every RAW line a record call occupies as reached. ⏱ 2026-09-22 — a call
  *  inside a `run: |` block is ONE logical line numbered at its `run:` key, while
- *  the flat reader below numbers it at its own raw line (extensions.yml:1637 sits
- *  three lines under its `run: |` at :1634; re-measured 2026-09-24). Marking only the logical number
+ *  the flat reader below numbers it at its own raw line (extensions.yml:1461 sits
+ *  three lines under its `run: |` at :1458; re-measured 2026-09-25). Marking only the logical number
  *  reported a call the census HAD read as one it never reached — COVERAGE LOST
  *  the moment arming the amo row made extensions.yml a declared submission
  *  workflow. The span runs to the line before the job's next logical line. */

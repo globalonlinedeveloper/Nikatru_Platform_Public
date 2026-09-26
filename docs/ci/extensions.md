@@ -484,7 +484,19 @@ Nothing is `served` yet, so a missing listing directory PRINTS. What is
 owner-gated is CREATING a listing, not KEEPING one: an emptied field
 fails at any served state.
 
-### before step **The tool's own AMO submission gate (FullShot)**
+### before step **The tool's own declared store gates (tool.json gates, stage gates)**
+
+⏱ 2026-09-25 (O-EXTENSION-GATES-NAME-ONE-TOOL): this step was named
+"The tool's own AMO submission gate (FullShot)" and carried an `if:`
+naming the tool. It is now `node scripts/discover.mjs --run-gates --tool
+<id> --stage gates`, which runs what the tool's tool.json `gates` list
+declares at stage `gates` — for FullShot, the same
+publish/verify-firefox-package.node.js, bare, as before. The "NAMED
+EXPLICITLY" paragraph below is the 2026-08-20 record and no longer
+describes the step: a second tool DECLARES its gate in its own tool.json
+and adds no line here, and the gate-inventory job's
+`discover.mjs --assert-generic` step checks every declared script exists,
+which the inventory's workflow grep can no longer see.
 
 ── THE TOOL'S OWN AMO SUBMISSION GATE ─────────────────────────────────
 🔴 UNTIL 2026-08-20 THIS RAN IN NO WORKFLOW AT ALL. It is the most
@@ -603,7 +615,16 @@ is what produced the six stale zips this guard was written for.
 It runs on BOTH targets on purpose: the chromium leg asserts the package
 carries no Firefox-only key, and the same bytes go to Chrome AND Edge.
 
-### before step **The tool's own AMO submission gate, on the built zip (FullShot)**
+### before step **The tool's own declared store gates, on the built zip (tool.json gates, stage package)**
+
+⏱ 2026-09-25 (O-EXTENSION-GATES-NAME-ONE-TOOL): this step was named
+"The tool's own AMO submission gate, on the built zip (FullShot)", with
+an `if:` naming the tool, the target and the os, and a `shell: bash`
+body. The body is Extension/Full_Screen_Shot/publish/amo-gate-built-zip.node.js
+now (same three outcomes, same ::error:: text), declared in FullShot's
+tool.json at stage `package` with `when: { target: firefox, os:
+ubuntu-24.04 }`; the step runs `discover.mjs --run-gates` on every leg,
+and the legs that match no declaration print so and pass.
 
 ── THE AMO GATE AGAIN, THIS TIME WITH A PACKAGE UNDER IT ──────────────
 The `gates` job runs this same script BARE, and measured 2026-08-22 that
@@ -1694,7 +1715,16 @@ Same harness, same two fixtures, measured 2026-08-25:
 Keyed on the POSITIVE wording on purpose — the ⚠️ note above says why a
 tripwire keyed on the "no built package found" failure text is worthless.
 
-### before step **The tool's own AMO submission gate, on the built zip (FullShot)**
+### before step **The tool's own declared store gates, on the release zip (tool.json gates, stage release)**
+
+⏱ 2026-09-25 (O-EXTENSION-GATES-NAME-ONE-TOOL): this step was named
+"The tool's own AMO submission gate, on the built zip (FullShot)", with
+an `if:` naming the tag's tool and a `shell: bash` body. The body is
+Extension/Full_Screen_Shot/publish/amo-gate-release-zip.node.js now
+(same three outcomes, same ::error:: text), declared in FullShot's
+tool.json at stage `release`; the step runs `discover.mjs --run-gates
+--tool "$TOOL_ID" --stage release --zip "dist/${TOOL_ID}-firefox.zip"`.
+The 2026-08-22 record below keeps the step names it had then.
 
 ── THE TOOL'S OWN AMO GATE, ON THE BYTES THIS TAG SHIPS ───────────────
 🔴 THE RELEASE PATH HAD NEVER OPENED THIS GATE AT ALL. Measured
