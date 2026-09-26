@@ -8,12 +8,12 @@ was taken away.
 | `contract.js` | **the authored source.** Plain ES module, `// @ts-check`, JSDoc types, zero dependencies | a TypeScript Worker and a vanilla-JS extension import the *same bytes* |
 | `contract.d.ts` | hand-written declarations beside it — a declaration file emits nothing | TypeScript, for both consumers |
 | `contract.json` | **generated** from `contract.js` by `generate.mjs` | Dart code generation (Dart cannot import JavaScript) |
-| `contract.schema.json` | JSON Schema (2020-12) that grades `contract.json` | a schema validator, and a reader |
+| `contract.schema.json` | JSON Schema (2020-12) for `contract.json` | limb 11 of `tooling/ci/assert-entitlement-contract.mjs`, which grades `contract.json` against it through `tooling/app-yaml/schema-validate.mjs` |
 | `generate.mjs` | writes `contract.json`; `--check` fails on drift | CI - `extensions.yml`, job `contracts`, step *contract.json is what contract.js derives* |
 | `bundle.js` | **the authored BUNDLE source** — how a bundle grant came to exist (`bundle_sources`), and what kinds of product a bundle may span. Separate from `contract.js` on purpose: the extension runtime decides revocation strings and never decides a bundle source, so folding these tables in would push a second copy into every extension zip and into the generated Dart, where nothing reads them | the platform Worker, `tooling/bundle-availability.mjs`, and `tooling/ops/check-prod-provenance.mjs` |
 | `bundle.d.ts` | hand-written declarations beside `bundle.js`, same arrangement as `contract.d.ts` — a declaration file emits nothing, so it does not make an importer a "built" artefact | TypeScript, in the Worker twin `services/platform/src/lib/bundle/availability.ts` |
-| `bundle.json` | **generated** from `bundle.js` by `generate-bundle.mjs` | a JSON-schema-graded reader, and limb 9 of `assert-entitlement-contract.mjs`, which holds it and the SQL seed equal in BOTH directions |
-| `bundle.schema.json` | JSON Schema (2020-12) that grades `bundle.json` | a schema validator, and a reader |
+| `bundle.json` | **generated** from `bundle.js` by `generate-bundle.mjs` | limb 9 of `assert-entitlement-contract.mjs`, which holds it and the SQL seed equal in BOTH directions, and limb 11, which grades it against `bundle.schema.json` |
+| `bundle.schema.json` | JSON Schema (2020-12) for `bundle.json` | limb 11 of `tooling/ci/assert-entitlement-contract.mjs`, which grades `bundle.json` against it through `tooling/app-yaml/schema-validate.mjs` |
 | `generate-bundle.mjs` | writes `bundle.json`; `--check` fails on drift. **No Dart generator, deliberately** — nothing in Dart reads a bundle source ([ADR 057] §6: the client contract does not change), and a fourth copy with no reader is a file that can drift without any consumer noticing | CI - `extensions.yml`, job `contracts`, step *bundle.json is what bundle.js derives* |
 | `generate-dart.mjs` | writes `packages/purchases/lib/src/generated/entitlement_contract.g.dart`; `--check` fails on drift | CI - `extensions.yml`, job `contracts`, step *the generated Dart is what contract.js derives* |
 

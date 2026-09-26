@@ -6291,6 +6291,84 @@ onTap: () => _openUrl(AppConfig.refundUrl),
     assert.match(out, /android-play \(kind=store, served=true, deferral=none\)/);
   });
 
+  // ── O-UPDATE-FLOOR-HAS-NO-CHANNEL · `update_url` AND THE FLOOR ARE PER CHANNEL ─
+  //
+  // app-config-data.json may key both fields by channel id, `default` answering
+  // the rest. MEASURED ON THE REAL TREE before the guard learned maps: it read
+  // `update_url` as "a string, else null", so every map read as null — a map
+  // serving web its own compiled-in fallback, a key `androidplay`, and a map with
+  // no `default` all left it at EXIT 0. Each case below is one of those.
+  test('limb (c) judges a MAP per channel: web served its compiled-in fallback FAILS', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-map-web-same', { platformConfigData: platformConfigData({ default: null, web: 'https://nikatru.com' }) }),
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /which is EXACTLY what a 'web' build already compiles in/);
+    // Only web is served that value; the other channels get `default` (null).
+    assert.doesNotMatch(out, /a 'linux-appimage' build already compiles in/);
+  });
+
+  test('limb (2a) is per channel: a LIVE channel given its own url by the map passes', () => {
+    // The green control the scalar could not express: web keeps null, the live
+    // direct channel is served a real destination of its own.
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-map-live-own', {
+        channelRegister: channelRegister({ kind: 'direct', served: true, deferral: null }),
+        platformConfigData: platformConfigData({ default: null, 'linux-appimage': 'https://dl.example.invalid/appimage' }),
+      }),
+    });
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /an update_url of null while/);
+  });
+
+  test("limb (2a) is per channel: an app's own map merges over `defaults`' map", () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-map-app-merge', {
+        channelRegister: channelRegister({ kind: 'direct', served: true, deferral: null }),
+        platformConfigData: JSON.stringify({
+          sharedApiBaseUrl: 'https://platform.nikatru.com/v1',
+          defaults: { min_supported_version: { default: '1.0.0' }, update_url: { default: null } },
+          apps: { subscriptiontracker: { update_url: { 'linux-appimage': 'https://dl.example.invalid/appimage' } } },
+        }),
+      }),
+    });
+    assert.equal(code, 0, out);
+    assert.match(out, /per-channel maps: 3 map\(s\)/);
+  });
+
+  test('limb (2a) is per channel: the live channel left on a null `default` still FAILS', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-map-live-null', {
+        channelRegister: channelRegister({ kind: 'direct', served: true, deferral: null }),
+        platformConfigData: platformConfigData({ default: null, 'windows-store': 'https://dl.example.invalid/win' }),
+      }),
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /an update_url of null while .* 1 live non-web channel\(s\) — linux-appimage/);
+  });
+
+  test('RC3 — a map key that is not a channel id FAILS, naming the key', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-map-bad-key', {
+        platformConfigData: JSON.stringify({
+          sharedApiBaseUrl: 'https://platform.nikatru.com/v1',
+          defaults: { min_supported_version: { default: '1.0.0', androidplay: '2.0.0' }, update_url: null },
+          apps: { subscriptiontracker: {} },
+        }),
+      }),
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /defaults\.min_supported_version carries the key "androidplay"/);
+  });
+
+  test('RC4 — a merged map with no `default` FAILS', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-map-no-default', { platformConfigData: platformConfigData({ web: null }) }),
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /serves 'subscriptiontracker' its update_url as a map with no "default" key \(keys: web\)/);
+  });
+
   // ── [13]T-9 · A NOTIFICATION TAP IS OBSERVABLE END TO END ──────────────────
   //
   // THE SENTENCE: *"A stamped app records `notification_opened` when a user taps

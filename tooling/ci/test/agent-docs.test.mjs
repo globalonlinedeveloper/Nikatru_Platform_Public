@@ -32,11 +32,11 @@
 // branch — which is case 5 below, and is worth exactly one case rather than all
 // of them.
 //
-// THE CASE THAT MATTERS MOST is 3: the same tree, read by the guard as shipped,
-// exits 0 with `WARN`; read by the guard with one limb id removed from
-// `warnLimbs`, exits 1 with `FAIL`. That is the promotion of 2026-09-22
-// performed under test, today, so the date arrives on a guard whose failing path
-// has been run.
+// THE CASE THAT MATTERS MOST is D1: an over-cap doc, read by the guard as
+// shipped, exits 1 with `FAIL`; read by the guard with that limb id put BACK into
+// `warnLimbs`, the same tree exits 0 with `WARN`. The five limbs were promoted
+// together (O-PUBLIC-DOCS-HAND-WRITTEN-FACTS), and the demoted mutant is the
+// guard as it stood before that, so the pair proves the promotion is what bites.
 //
 // Run:  node --test "tooling/ci/test/agent-docs.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
@@ -91,17 +91,18 @@ function run(file = 'check-agent-docs.mjs', ...argv) {
   return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
 
-/** The guard with one limb id taken OUT of `warnLimbs` — which is exactly how its
- *  own header says a limb is promoted ("a one-line diff a reviewer can see"). This
- *  is the 2026-09-22 change, performed here so its consequence is measured before
- *  the date rather than discovered on it. */
-function writePromotedMutant(limb) {
+/** The guard with one limb id put BACK into `warnLimbs` — the promotion undone,
+ *  which is the guard as it stood before O-PUBLIC-DOCS-HAND-WRITTEN-FACTS. The
+ *  shipped guard declares the array empty; a guard that stopped declaring it
+ *  would leave this file no mutant to build, so that is asserted, not assumed. */
+function writeDemotedMutant(limb) {
   const src = readFileSync(GUARD_SRC, 'utf8');
-  const from = `    "${limb}",`;
-  assert.ok(src.includes(from), `check-agent-docs.mjs no longer lists "${limb}" in warnLimbs — this file cannot build its mutant`);
-  const mutant = src.replace(from, '');
+  const from = '  "warnLimbs": [],';
+  assert.ok(src.includes(from), 'check-agent-docs.mjs no longer declares an empty `"warnLimbs": [],` — this file cannot build its demoted mutant');
+  assert.ok(CONFIG.warnLimbs.length === 0, `warnLimbs is not empty (${CONFIG.warnLimbs.join(', ')}), so a limb has been demoted again`);
+  const mutant = src.replace(from, `  "warnLimbs": ["${limb}"],`);
   assert.notEqual(mutant, src, 'the mutation changed nothing');
-  writeFileSync(join(ROOT, 'tooling', 'scripts', `mutant-promoted-${limb}.mjs`), mutant, 'utf8');
+  writeFileSync(join(ROOT, 'tooling', 'scripts', `mutant-demoted-${limb}.mjs`), mutant, 'utf8');
 }
 
 /** The root AGENTS.md byte cap, READ from the guard rather than typed here — it
@@ -185,7 +186,7 @@ before(() => {
   /* Copied in AFTER the commit and left UNTRACKED — the guard's subject is the
      index, so an untracked copy is not part of its own subject. */
   cpSync(GUARD_SRC, join(ROOT, 'tooling', 'scripts', 'check-agent-docs.mjs'));
-  writePromotedMutant('A-SIZE');
+  writeDemotedMutant('A-SIZE');
 
   assert.ok(written >= FLOORS.trackedFiles, `the fixture wrote ${written} filler file(s), below the guard's own trackedFiles floor of ${FLOORS.trackedFiles}`);
 });
@@ -212,7 +213,8 @@ test('limb A-SIZE bites: an over-cap root AGENTS.md is reported', () => {
   git(ROOT, 'add', '--', 'AGENTS.md');
   try {
     const r = run();
-    assert.match(r.out, /WARN A-SIZE AGENTS\.md/, `the over-cap doc must be named: ${r.out}`);
+    assert.equal(r.code, 1, `an over-cap doc on a promoted limb must exit 1: ${r.out}`);
+    assert.match(r.out, /FAIL A-SIZE AGENTS\.md/, `the over-cap doc must be named: ${r.out}`);
     assert.match(r.out, new RegExp(`cap ${ROOT_AGENTS_CAP.bytes}`), `the finding must state the cap it broke: ${r.out}`);
     assert.equal((r.out.match(/A-SIZE AGENTS\.md/g) ?? []).length, 1, `one over-cap dimension must produce exactly one finding, or the baseline counts below are measuring the wrong thing: ${r.out}`);
   } finally {
@@ -223,28 +225,25 @@ test('limb A-SIZE bites: an over-cap root AGENTS.md is reported', () => {
   assert.equal(after.code, 0, `restored, the fixture must be green again: ${after.out}`);
 });
 
-test('THE PROMOTION, performed under test: warn exits 0, the same tree on a promoted limb exits 1', () => {
+test('D1 — THE PROMOTION: a doc over its cap exits 1, and the same tree on the demoted guard exits 0', () => {
   const abs = join(ROOT, 'AGENTS.md');
   const keep = readFileSync(abs, 'utf8');
   writeFileSync(abs, overByteCap());
   git(ROOT, 'add', '--', 'AGENTS.md');
   try {
-    /* As shipped: A-SIZE is in warnLimbs, so a real finding is printed and the
-       run still exits 0. That is deliberate and it is also why nobody would
-       notice this guard breaking — it cannot fail today. */
-    const warn = run();
-    assert.equal(warn.code, 0, `a finding on a WARN limb must still exit 0 by design: ${warn.out}`);
-    assert.match(warn.out, /WARN A-SIZE/);
-    assert.match(warn.out, /still a WARNING, so this run exits 0 by design/);
-    assert.ok(warn.out.includes(CONFIG.promoteOn), `the warn line must name the promotion date so a reader knows when this stops being free. Got: ${warn.out}`);
-
-    /* Promoted — one limb id removed from warnLimbs, which is exactly the
-       one-line diff the guard's header says promotion is. The finding is the
-       same finding; only the verdict moves. */
-    const failed = run('mutant-promoted-A-SIZE.mjs');
-    assert.equal(failed.code, 1, `once A-SIZE is promoted the SAME tree must exit 1, or the promotion of 2026-09-22 lands on a guard that cannot fail: ${failed.out}`);
-    assert.match(failed.out, /FAIL A-SIZE/);
+    /* As shipped: every limb is promoted, so the finding fails the run. */
+    const failed = run();
+    assert.equal(failed.code, 1, `a doc over its cap must exit 1 on the guard as shipped: ${failed.out}`);
+    assert.match(failed.out, /FAIL A-SIZE AGENTS\.md/);
     assert.match(failed.out, /new finding\(s\) on a promoted limb/);
+
+    /* Demoted — the limb id put back into warnLimbs, which is the guard before the
+       promotion. The finding is the same finding; only the verdict moves, so the
+       exit 1 above is the promotion's doing and nothing else's. */
+    const warn = run('mutant-demoted-A-SIZE.mjs');
+    assert.equal(warn.code, 0, `the same tree with A-SIZE demoted must exit 0 by design: ${warn.out}`);
+    assert.match(warn.out, /WARN A-SIZE AGENTS\.md/);
+    assert.match(warn.out, /still a WARNING, so this run exits 0 by design/);
   } finally {
     writeFileSync(abs, keep);
     git(ROOT, 'add', '--', 'AGENTS.md');
@@ -270,14 +269,11 @@ test('the START-HERE.md cap bites, and it is a SEPARATE cap from AGENTS.md', () 
   const width = Math.ceil(START_HERE_CAP.bytes / lines) + 20;
   withTracked('START-HERE.md', `# ${'x'.repeat(width)}\n`.repeat(lines), () => {
     const r = run();
-    assert.match(r.out, /WARN A-SIZE START-HERE\.md/, `the over-cap card must be named: ${r.out}`);
+    /* The cap FAILS a build, not only prints. */
+    assert.equal(r.code, 1, `the START-HERE.md cap must be able to FAIL, not only warn: ${r.out}`);
+    assert.match(r.out, /FAIL A-SIZE START-HERE\.md/, `the over-cap card must be named: ${r.out}`);
     assert.match(r.out, new RegExp(`cap ${START_HERE_CAP.bytes}`), `the finding must state the cap it broke: ${r.out}`);
     assert.equal((r.out.match(/A-SIZE START-HERE\.md/g) ?? []).length, 1, `one over-cap dimension must produce exactly one finding: ${r.out}`);
-    /* And the same tree on a promoted limb EXITS 1, so this cap is proved to be
-       able to fail a build and not only to print. */
-    const failed = run('mutant-promoted-A-SIZE.mjs');
-    assert.equal(failed.code, 1, `the START-HERE.md cap must be able to FAIL, not only warn: ${failed.out}`);
-    assert.match(failed.out, /FAIL A-SIZE START-HERE\.md/);
   });
   assert.equal(run().code, 0, 'the fixture must be green again after the case');
 });
@@ -305,7 +301,8 @@ test('limb A-BOM bites: a UTF-8 BOM on a tracked text blob is reported', () => {
   assert.equal(run().code, 0, 'green control first');
   withTracked('filler/bommed.md', '﻿# a doc with a byte order mark\n', () => {
     const r = run();
-    assert.match(r.out, /WARN A-BOM filler\/bommed\.md/, `the BOM'd file must be named: ${r.out}`);
+    assert.equal(r.code, 1, `a BOM on a promoted limb must exit 1: ${r.out}`);
+    assert.match(r.out, /FAIL A-BOM filler\/bommed\.md/, `the BOM'd file must be named: ${r.out}`);
   });
   assert.equal(run().code, 0, 'the fixture must be green again after the case');
 });
@@ -368,13 +365,10 @@ test('the baseline freezes a finding, and freezing is per limb+path rather than 
     const r = run();
     assert.equal(r.code, 0, `a baselined finding must not fail the run: ${r.out}`);
     assert.match(r.out, /BASELINE A-SIZE AGENTS\.md/);
-    assert.doesNotMatch(r.out, /WARN A-SIZE/, 'a frozen finding must not also be reported as new');
-
-    /* And the promoted mutant agrees: a frozen finding is frozen for a promoted
-       limb too, or the baseline would be a warning-only courtesy rather than the
-       record it claims to be. */
-    const promoted = run('mutant-promoted-A-SIZE.mjs');
-    assert.equal(promoted.code, 0, `a baselined finding must stay green even once its limb is promoted: ${promoted.out}`);
+    assert.doesNotMatch(r.out, /(WARN|FAIL) A-SIZE/, 'a frozen finding must not also be reported as new');
+    /* `r` is the guard as shipped, with A-SIZE promoted: a frozen finding stays
+       frozen on a promoted limb, or the baseline would be a warning-only courtesy
+       rather than the record it claims to be. */
   } finally {
     rmSync(join(ROOT, '.agentdocs.baseline.json'), { force: true });
     writeFileSync(abs, keep);
@@ -395,7 +389,7 @@ test('the guard is WIRED — a workflow actually invokes it', () => {
     if (!existsSync(p)) continue;
     if (readFileSync(p, 'utf8').includes(GUARD_REL)) hits.push(f);
   }
-  assert.ok(hits.length > 0, `no workflow invokes ${GUARD_REL}. A guard nobody runs is a guard that is not enforcing anything, and its promoteOn date (${CONFIG.promoteOn}) would arrive on a step that has never executed in CI.`);
+  assert.ok(hits.length > 0, `no workflow invokes ${GUARD_REL}. A guard nobody runs is a guard that is not enforcing anything, and its promoted limbs would fail nothing.`);
 });
 
 test('the fixture guard file is the committed one, byte for byte', () => {

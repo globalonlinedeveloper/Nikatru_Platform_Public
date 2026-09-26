@@ -47,10 +47,8 @@ goes stale silently:
 - **Node/TypeScript dependencies** — resolved from the `package.json` files and
   their lockfiles.
 - **Bundled assets** — fonts, icons and content packs shipped inside an app
-  binary. ⚠️ These are **not yet enumerated in a machine-checked register**; that
-  register and its guard are stage 8 / K-10 and are not built at the time of
-  writing. Until they are, the absence of a listing here is a known gap, not a
-  claim that nothing is bundled.
+  binary. They are enumerated in `tooling/legal/asset-register.json`, graded by
+  `tooling/ci/assert-licence-register.mjs`, and not restated here.
 
 ## Trade marks
 

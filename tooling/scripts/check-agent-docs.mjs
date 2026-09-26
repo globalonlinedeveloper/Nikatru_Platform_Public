@@ -10,11 +10,13 @@
 // COVERAGE LOST is deliberately NOT a pass: it means the guard did not check
 // enough to be evidence. The first error line always names the limb that refused.
 //
-// EVERY LIMB IN THIS FILE IS STILL A WARNING. A new finding prints and the process
-// exits 0. S1 section 5.7 lands a new limb as a warning and promotes it to exit 1
-// only under a measured false-positive rate below 1 in 20. The promotion review
-// date is in CONFIG.promoteOn, and promotion is done by moving a limb id OUT of
-// CONFIG.warnLimbs, which is a one-line diff a reviewer can see.
+// EVERY LIMB IN THIS FILE IS AN ERROR: a new finding exits 1. S1 section 5.7 lands
+// a new limb as a warning (its id in CONFIG.warnLimbs, where a finding prints and
+// exits 0) and promotes it to exit 1 only under a measured false-positive rate
+// below 1 in 20, by moving its id OUT of CONFIG.warnLimbs — a one-line diff a
+// reviewer can see. All five limbs here were promoted together
+// (O-PUBLIC-DOCS-HAND-WRITTEN-FACTS); the array is empty and the warn branch below
+// stays for the next limb that lands.
 //
 // THE BASELINE. `.agentdocs.baseline.json` at the repo root freezes the findings
 // that existed the day this guard landed, so it could land without a flag day.
@@ -45,15 +47,7 @@ const CONFIG = {
     "tooling",
     "apps"
   ],
-  "today": "2026-09-08",
-  "promoteOn": "2026-09-22",
-  "warnLimbs": [
-    "A-BOM",
-    "A-PATH",
-    "A-LINK",
-    "A-SIZE",
-    "B-CODEX"
-  ],
+  "warnLimbs": [],
   "floors": {
     "trackedFiles": 1000,
     "docsScanned": 1,
@@ -378,7 +372,7 @@ if (WRITE_BASELINE) {
     _what: 'Findings frozen on the day check-agent-docs.mjs landed. Each is printed on every run and none of them fails the guard. A finding that is NOT in here does fail, once its limb is promoted.',
     _generatedFrom: 'node ' + CONFIG.selfPath + ' --write-baseline. Never typed by hand.',
     _rule: 'This file may not GROW except in a commit whose message says why it grew. Shrinking it needs no ceremony: a cleared finding is the point of the exercise.',
-    generatedAt: CONFIG.today,
+    generatedAt: new Date().toISOString().slice(0, 10),
     repo: CONFIG.repo,
     count: findings.length,
     entries: findings
@@ -433,7 +427,7 @@ console.log('');
 for (const f of fresh) console.log('  ' + (warnOnly ? 'WARN' : 'FAIL') + ' ' + f.limb + ' ' + f.path + ' - ' + f.message);
 console.log('');
 if (warnOnly) {
-  console.log('!  ' + fresh.length + ' new finding(s), every one of them on a limb that is still a WARNING, so this run exits 0 by design. S1 section 5.7 lands a new limb as a warning and promotes it only under a measured false-positive rate below 1 in 20. Promotion review date: ' + CONFIG.promoteOn + '.');
+  console.log('!  ' + fresh.length + ' new finding(s), every one of them on a limb that is still a WARNING, so this run exits 0 by design. S1 section 5.7 lands a new limb as a warning and promotes it only under a measured false-positive rate below 1 in 20, by moving its id out of CONFIG.warnLimbs.');
   process.exit(0);
 }
 console.error('x ' + fresh.length + ' new finding(s) on a promoted limb.');

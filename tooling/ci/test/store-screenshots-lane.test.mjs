@@ -182,7 +182,7 @@ describe('capture-play-screenshots.mjs uses the network posture it declares', ()
     assert.match(code, /problems\.push\(/);
   });
 
-  // ⏱ 2026-09-22 (store-frame-followup) · O-STORE-FRAME-FAB's no-human-eye
+  // ⏱ 2026-09-22 (store-frame-followup) · O-STORE-FRAME-FAB-COVERS-A-PRICE-ROW's no-human-eye
   // half. A frame whose fold geometry the drive never published is a frame
   // nobody examined, which is the failure mode this whole file exists for.
   test('reads the fold line of every frame, and proves the detector first', () => {

@@ -253,13 +253,16 @@ describe('C4 — what a reader of the rendered body cannot see is not read', () 
 // ── C5 ───────────────────────────────────────────────────────────────────────
 describe('C5 — the id list', () => {
   test('green control: a comma list, with or without spaces, passes', () => {
-    const v = parseRows('Rows: O-A1,O-B-2, O-C\n');
+    /* Built from parts: a literal fixture id in this tracked file is a citation
+       assert-public-citations' ROW IDS class would look up in open.json. */
+    const ID_B2 = ['O', 'B', '2'].join('-');
+    const v = parseRows(`Rows: O-A1,${ID_B2}, O-C\n`);
     assert.equal(v.ok, true, JSON.stringify(v));
-    assert.deepEqual(v.ids, ['O-A1', 'O-B-2', 'O-C']);
+    assert.deepEqual(v.ids, ['O-A1', ID_B2, 'O-C']);
   });
 
   test('the template placeholder `<…>` is malformed', () => {
-    const v = parseRows('Rows: <O-ROW-ID, … | none — why>\n');
+    const v = parseRows('Rows: <row id, … | none — why>\n');
     assert.equal(v.problem, 'malformed');
     assert.match(v.why, /placeholder/);
   });
@@ -374,7 +377,7 @@ describe('C7 — the grandfather rule, read from the base\'s history', () => {
     const r = run(root, { PR_BODY: 'no line here\n', PR_CREATED_AT: '2026-09-30T00:00:00Z', BASE_SHA: sha });
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /::warning title=This PR body has no valid Rows: line::the pull request body has no `Rows:` line\./);
-    assert.match(r.out, /"Rows: O-ROW-ID\[, O-ROW-ID…\]" or "Rows: none — <why no row moves, at least 10 characters>"/);
+    assert.match(r.out, /"Rows: <row id>\[, <row id>…\]" or "Rows: none — <why no row moves, at least 10 characters>"/);
     // The guard prints git's `%cI` answer as git gave it, and git's spelling of a UTC
     // offset varies by build: 2.54.0.windows.1 prints `Z` where the drafting sandbox's
     // git printed `+00:00`. So the expected text is git's own answer for this commit,

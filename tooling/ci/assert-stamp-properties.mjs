@@ -738,12 +738,11 @@ function checkUpdateDestinationIsRepointable() {
   const isDeferred = (d) => typeof d === 'object' && d !== null;
   const liveNonWeb = channels
     .filter((row) => row?.kind !== 'web' && (row?.served === true || !isDeferred(row?.deferral)))
-    .map(
-      (row) =>
-        `${row?.id ?? '<unnamed row>'} (kind=${row?.kind ?? 'none'}, served=${row?.served === true}, ` +
+    .map((row) => ({
+      id: row?.id,
+      text: `${row?.id ?? '<unnamed row>'} (kind=${row?.kind ?? 'none'}, served=${row?.served === true}, ` +
         `deferral=${isDeferred(row?.deferral) ? 'declared' : 'none'})`,
-    );
-
+    }));
   let nullServed = 0;
   let compared = 0;
   for (const appId of apps) {
@@ -759,25 +758,25 @@ function checkUpdateDestinationIsRepointable() {
       );
       continue;
     }
-    const raw = hasOwnKey ? own.update_url : defaults.update_url;
-    const value = typeof raw === 'string' ? raw : null;
-    if (value === null) {
-      if (liveNonWeb.length > 0) {
-        fail(
-          `[10]D-8: ${PLATFORM_CONFIG_DATA} serves '${appId}' an update_url of null while ` +
-            `${CHANNEL_REGISTER} carries ${liveNonWeb.length} live non-web channel(s) — ${liveNonWeb.join('; ')}. ` +
-            'A channel is live here when it is `served: true` or when nothing defers it, and such a ' +
-            'channel has no store reload to fall back on: config `min_supported_version` → ' +
-            '`ForceUpdateGate` → `update_url` is the only way its users are ever told to update, and a ' +
-            'null destination leaves the wall opening the compiled-in fallback with no way to repoint ' +
-            "it. Serve a real update_url for this app, or record the channel's deferral in the " +
-            'register — live and null cannot both be true.',
-        );
-      }
-      nullServed++;
-      continue;
+    // PER CHANNEL (O-UPDATE-FLOOR-HAS-NO-CHANNEL): each channel is judged on the value IT is served.
+    const served = servedByChannel(defaults, own, 'update_url', channels);
+    const nullLive = liveNonWeb.filter((row) => typeof served.get(row.id) !== 'string');
+    if (nullLive.length > 0) {
+      fail(
+        `[10]D-8: ${PLATFORM_CONFIG_DATA} serves '${appId}' an update_url of null while ` +
+          `${CHANNEL_REGISTER} carries ${nullLive.length} live non-web channel(s) — ${nullLive.map((r) => r.text).join('; ')}. ` +
+          'A channel is live here when it is `served: true` or when nothing defers it, and such a ' +
+          'channel has no store reload to fall back on: config `min_supported_version` → ' +
+          '`ForceUpdateGate` → `update_url` is the only way its users are ever told to update, and a ' +
+          'null destination leaves the wall opening the compiled-in fallback with no way to repoint ' +
+          "it. Serve a real update_url to that channel, or record the channel's deferral in the " +
+          'register — live and null cannot both be true.',
+      );
     }
+    if ([...served.values()].some((v) => typeof v !== 'string')) nullServed++;
     for (const [id, base] of compiledByChannel) {
+      const value = served.get(id);
+      if (typeof value !== 'string') continue;
       compared++;
       if (value === base) {
         fail(
@@ -789,6 +788,7 @@ function checkUpdateDestinationIsRepointable() {
       }
     }
   }
+  checkChannelKeyedMaps(defaults, perApp, apps, channels); // O-UPDATE-FLOOR-HAS-NO-CHANNEL, declared last
   // The null count is printed BESIDE the number that licenses it, both derived —
   // so the passing line states the coupling instead of claiming it. A rise in the
   // second number with the first still non-zero is not a line to read past: it is
@@ -3317,4 +3317,91 @@ if (failed) {
  *  line it names. */
 function coverageLost() {
   process.exit(2);
+}
+
+// ── O-UPDATE-FLOOR-HAS-NO-CHANNEL · THE PER-CHANNEL MAPS ─────────────────────
+// services/platform/src/app-config-data.json keys `min_supported_version` and
+// `update_url` by channel id, `default` answering every channel a map does not
+// name; the Worker collapses each to one value per `?channel=` (src/config.ts
+// `forChannel`). The two helpers below read the file the way the Worker does,
+// and are DECLARED LAST, hoisted, for the reason `coverageLost` is.
+//
+// 🔴 WHY [10]D-8 ABOVE HAD TO LEARN MAPS. Before this, it read `update_url` as
+// "a string, else null". A map is not a string, so every map read as NULL —
+// measured on the real tree before the change landed: with `update_url` set to
+// `{ "default": null, "web": "https://nikatru.com" }` (web served its own
+// compiled-in fallback, the exact value limb (c) exists to refuse) the guard
+// exited 0 and printed "0 comparison(s)". A key `androidplay` and a map with no
+// `default` passed the same way. A guard that stopped checking by reading a new
+// shape as an old one is the failure this file keeps paying for.
+
+/** Two per-channel maps merge key-wise (the app's keys win); anything else replaces. */
+function mergedChannelField(defaults, own, field) {
+  const isMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+  const ownHas = own !== null && typeof own === 'object' && Object.prototype.hasOwnProperty.call(own, field);
+  const d = Object.prototype.hasOwnProperty.call(defaults, field) ? defaults[field] : undefined;
+  if (!ownHas) return d;
+  return isMap(own[field]) && isMap(d) ? { ...d, ...own[field] } : own[field];
+}
+
+/** channel id → the value of `field` that channel is served: the map's own key, else its `default`. */
+function servedByChannel(defaults, own, field, channels) {
+  const merged = mergedChannelField(defaults, own, field);
+  const isMap = merged !== null && typeof merged === 'object' && !Array.isArray(merged);
+  const pick = (key) => (Object.prototype.hasOwnProperty.call(merged, key) ? merged[key] : undefined);
+  const out = new Map();
+  for (const row of channels) {
+    if (typeof row?.id !== 'string') continue;
+    out.set(row.id, !isMap ? merged : pick(row.id) !== undefined ? pick(row.id) : pick('default'));
+  }
+  return out;
+}
+
+/**
+ * The key limb. (i) Every key of every map, in `defaults` and in each app's
+ * entry, is `default` or a channel id the register declares — the Worker
+ * answers `?channel=` from that register, so any other key is a value no
+ * request can reach, and the channel it was meant for silently gets `default`.
+ * (ii) Every app's MERGED map carries `default`: it answers every channel the
+ * map does not name, and every client that sends no channel at all.
+ */
+function checkChannelKeyedMaps(defaults, perApp, apps, channels) {
+  const FIELDS = ['min_supported_version', 'update_url'];
+  const isMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+  const ids = new Set(channels.map((row) => row?.id).filter((id) => typeof id === 'string'));
+  const docs = [['defaults', defaults], ...Object.entries(perApp).map(([slug, entry]) => [`apps.${slug}`, entry])];
+  let maps = 0;
+  for (const [path, doc] of docs) {
+    for (const field of FIELDS) {
+      if (!isMap(doc) || !Object.prototype.hasOwnProperty.call(doc, field) || !isMap(doc[field])) continue;
+      maps++;
+      for (const key of Object.keys(doc[field])) {
+        if (key === 'default' || ids.has(key)) continue;
+        fail(
+          `O-UPDATE-FLOOR-HAS-NO-CHANNEL: ${PLATFORM_CONFIG_DATA} ${path}.${field} carries the key "${key}", which ` +
+            `is neither "default" nor a channel id in ${CHANNEL_REGISTER}. The Worker answers ?channel= from that ` +
+            "register, so no request reaches this value, and the channel it was meant for is served the map's " +
+            '"default" instead. Spell the channel id as the register does.',
+        );
+      }
+    }
+  }
+  for (const appId of apps) {
+    const own = Object.prototype.hasOwnProperty.call(perApp, appId) ? perApp[appId] : null;
+    for (const field of FIELDS) {
+      const merged = mergedChannelField(defaults, own, field);
+      if (!isMap(merged) || Object.prototype.hasOwnProperty.call(merged, 'default')) continue;
+      fail(
+        `O-UPDATE-FLOOR-HAS-NO-CHANNEL: ${PLATFORM_CONFIG_DATA} serves '${appId}' its ${field} as a map with no ` +
+          `"default" key (keys: ${Object.keys(merged).join(', ') || 'none'}). \`default\` answers every channel the ` +
+          'map does not name and every client that sends no channel, so each of those would be served NOTHING ' +
+          'for this field. Add "default" to the map in `defaults` (or in this app\'s entry).',
+      );
+    }
+  }
+  ok(
+    `per-channel maps: ${maps} map(s) across \`defaults\` and ${Object.keys(perApp).length} app entr(ies), ` +
+      `every key "default" or one of ${ids.size} channel id(s), and every one of ${apps.length} served app(s) ` +
+      'resolves each merged map with a "default"',
+  );
 }

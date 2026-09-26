@@ -103,7 +103,7 @@ app.use('*', corsMiddleware);
 // ── WHY THESE THREE DEPENDENCIES AND NOT OTHERS ──────────────────────────────
 //   PLATFORM_DB    the shared entitlements DB. Every authenticated read and the
 //                  whole analytics rail land here.
-//   CONFIG_KV      GET /config/:app reads it UNGUARDED (routes/config.ts:52 —
+//   CONFIG_KV      GET /config/:app reads it UNGUARDED (routes/config.ts:67 —
 //                  no try/catch), so a KV that refuses turns the FIRST request
 //                  every launching app makes into a 500.
 //   SUPABASE_JWKS  the document every ES256 verification rests on. When it

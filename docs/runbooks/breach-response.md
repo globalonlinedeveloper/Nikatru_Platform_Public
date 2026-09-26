@@ -60,13 +60,16 @@ has an `ip` column. There is no route from a row to a person, so there is nobody
 - **Supabase auth** — email addresses of every account across the portfolio.
 - **`platform_db.signups`** — the nikatru.com launch-notification list (email address and signup
   time). ⏱ Since 2026-09-15 ([ADR 087]) it lives in D1, not in the `nikatru-signups` KV namespace, and
-  every row is deleted 400 days after its ORIGINAL signup time by the platform Worker's nightly
-  `retentionSweep` — including the rows migrated from KV, which keep their original time. Count it,
+  every row is deleted `SIGNUPS_RETENTION_DAYS` (`services/platform/src/scheduled.ts`) after its
+  ORIGINAL signup time by the platform Worker's nightly `retentionSweep` — including the rows migrated
+  from KV, which keep their original time. Count it,
   never list it: `wrangler d1 execute platform_db --remote --command "SELECT COUNT(*) FROM signups"`.
   🔴 **Until the ADR 087 operator migration has run, also count the KV namespace's `sub:` keys**
   (`wrangler kv key list --binding SIGNUPS`, prefix `sub:`, count only): the keys written before the
-  move stay there until that migration reads them back from D1 and deletes them. The namespace's
-  `rl:` keys are salted one-way fingerprints with a one-hour expiry and identify nobody.
+  move stay there until that migration reads them back from D1 and deletes them. Whether it has run is
+  state the Private register holds, not this page. The namespace's `rl:` keys are salted one-way
+  fingerprints that expire after `RATE_WINDOW_SECONDS` (`sites/nikatru/functions/api/subscribe.js`) and
+  identify nobody.
 
 **And the crash rail is neither.** GlitchTip fills `user.ip_address` **server-side** despite
 `sendDefaultPii = false`, so a breach of the telemetry host has a different notifiable population

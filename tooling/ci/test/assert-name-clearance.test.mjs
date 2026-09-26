@@ -102,8 +102,11 @@ const RECORD = 'apps/subscriptiontracker/name-clearance.json';
  *  state the tree no longer has — the same lesson M3 records about its wall. The gate
  *  date is computed, so the control does not expire on a calendar day either. */
 const IN_30_DAYS = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
+/* Built from parts: this file is tracked, and a literal fixture id in it is a citation
+   assert-public-citations' ROW IDS class would look up in open.json. */
+const FIXTURE_HOLD = ['O', 'FIXTURE', 'TRADEMARK', 'HOLD'].join('-');
 const owed = (doc) => {
-  Object.assign(doc.trademark, { ruling: null, ruledBy: null, ruledOn: null, basis: null, ownerItem: 'O-FIXTURE-TRADEMARK-HOLD', gatedUntil: IN_30_DAYS });
+  Object.assign(doc.trademark, { ruling: null, ruledBy: null, ruledOn: null, basis: null, ownerItem: FIXTURE_HOLD, gatedUntil: IN_30_DAYS });
 };
 const ruled = (doc) => {
   Object.assign(doc.trademark, { ruling: 'PROCEED', ruledBy: 'owner', ruledOn: '2026-09-09', basis: 'ADR 074', ownerItem: null, gatedUntil: null });

@@ -112,7 +112,7 @@ the reason is **derived, not waived**:
   re-probe can never extend its own gate.
 - ⏱ **2026-09-24:** the owner's ruling is recorded — `PROCEED`, 2026-09-09,
   `basis: "ADR 074"` — so the record carries no gate. That gate had held on
-  `O-NAME-SUBLY-TRADEMARK`, a row that was never opened (§ 8, item 2).
+  an owner id whose row was never opened (§ 8, item 2).
   `tooling/scripts/assert-public-citations.mjs` now refuses a hold on a row that
   does not exist, and limb 7 refuses a ruling without `ruledBy`, a dated
   `ruledOn` and a `basis`.
@@ -153,9 +153,9 @@ build.
    parent (2026-09-24, under the owner's 2026-09-23 delegation). The record held
    its gate on this id for fifteen days while the row did not exist — apps-review
    F1. The proposal is kept below as it was written:
-   ```json
+   ```jsonc
    {
-     "id": "O-NAME-SUBLY-TRADEMARK",
+     "id": "O-NAME-SUBLY-TRADEMARK", // (retired 2026-09-24, never opened)
      "owner": "owner",
      "state": "open",
      "closedOn": null,
