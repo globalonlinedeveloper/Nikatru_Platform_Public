@@ -2551,6 +2551,188 @@ describe('assert-channel-register — [9]R-3 limb 2: only declared secrets may b
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SECTION 8c — O-STORE-SECRETS-REACH-THE-DRY-RUN: a publishing credential is
+// read only where its row says it lives. The fixture workflow is the real shape
+// in miniature: an env-less `dry-run` job beside an environment-bound `submit`
+// job. 19b252af's submit-windows-store.yml handed the client secret to the first
+// of the two; the first-line evidence is the guard run against that file itself
+// (the PR's red-control table). Every case is written out by hand.
+describe('assert-channel-register — §8c: a publishing credential is read only where its row says it lives', () => {
+  const SCOPE_WORKFLOW = '.github/workflows/submit-fixture.yml';
+  /** Line 10 is the dry-run job's first secret; the submit job's follow. */
+  const scopeWorkflow = ({
+    dryRunSecrets = [],
+    submitSecrets = ['FIXTURE_CLIENT_SECRET'],
+    submitEnvironment = ['    environment: store-publish'],
+    header = [],
+  } = {}) =>
+    [
+      'name: submit fixture',
+      'on:',
+      '  workflow_dispatch:',
+      ...header,
+      'jobs:',
+      '  dry-run:',
+      '    runs-on: ubuntu-24.04',
+      '    steps:',
+      '      - name: Dry run',
+      '        env:',
+      ...dryRunSecrets.map((n) => '          ' + n + ': ${{ secrets.' + n + ' }}'),
+      '          PLACEHOLDER: fixture',
+      '        run: echo dry',
+      '  submit:',
+      '    runs-on: ubuntu-24.04',
+      ...submitEnvironment,
+      '    steps:',
+      '      - name: Submit',
+      '        env:',
+      ...submitSecrets.map((n) => '          ' + n + ': ${{ secrets.' + n + ' }}'),
+      '          PLACEHOLDER: fixture',
+      '        run: echo submit',
+      '',
+    ].join(NL);
+  const scopeRegister = (nonSigning) => ({
+    kinds: {
+      'build-config': 'a value compiled into or read by a build; not signing material',
+      'publishing-credential': 'authorises an upload; is not what signs the artifact',
+    },
+    nonSigning,
+  });
+  const inEnvironment = (name, environment = 'store-publish') => ({
+    name,
+    kind: 'publishing-credential',
+    why: 'the fixture store credential; authorises a submission and signs nothing',
+    environment,
+  });
+  const atRepository = (name, repositoryWhy = 'read by the env-less fixture job `dry-run`, by decision') => ({
+    name,
+    kind: 'publishing-credential',
+    why: 'the fixture store credential; authorises a submission and signs nothing',
+    environment: null,
+    repositoryWhy,
+  });
+  const scoped = (rows, workflow = {}) =>
+    tree({
+      extraFiles: { [SCOPE_WORKFLOW]: scopeWorkflow(workflow) },
+      mutate: (r) => {
+        r.ciSecretRegister = scopeRegister(rows);
+      },
+    });
+
+  test('GREEN CONTROL: the environment-scoped secret read only in the bound job, a repository-scoped one with its reason', () => {
+    const { code, out } = run(
+      scoped([inEnvironment('FIXTURE_CLIENT_SECRET'), atRepository('FIXTURE_PARTNER_SECRET')], {
+        dryRunSecrets: ['FIXTURE_PARTNER_SECRET'],
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /2 `nonSigning` row\(s\) declare a scope — 1 bound to an environment \(FIXTURE_CLIENT_SECRET → store-publish\), 1 at repository level with a reason/);
+    assert.match(out, /\[8c\]/);
+  });
+
+  test('rule (a): the 19b252af shape — the env-scoped secret in the env-less dry-run job FAILS, at its line', () => {
+    const { code, out } = run(scoped([inEnvironment('FIXTURE_CLIENT_SECRET')], { dryRunSecrets: ['FIXTURE_CLIENT_SECRET'] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /8c rule \(a\): \.github\/workflows\/submit-fixture\.yml:10 \(job "dry-run", no environment\) reads `secrets\.FIXTURE_CLIENT_SECRET`, which `ciSecretRegister\.nonSigning` scopes to environment "store-publish"/);
+    assert.doesNotMatch(out, /job "submit"/, 'the bound job read it too, and that read is the allowed one');
+  });
+
+  test('rule (a): a job bound to a DIFFERENT environment is not the credential\'s environment', () => {
+    const { code, out } = run(scoped([inEnvironment('FIXTURE_CLIENT_SECRET')], { submitEnvironment: ['    environment: staging'] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /8c rule \(a\): .*\(job "submit", environment "staging"\) reads `secrets\.FIXTURE_CLIENT_SECRET`/);
+  });
+
+  test('rule (a): a workflow-level `env:` reaches every job, so it is graded as a job with no environment', () => {
+    const { code, out } = run(
+      scoped([inEnvironment('FIXTURE_CLIENT_SECRET')], {
+        header: ['env:', '  EVERYWHERE: ${{ secrets.FIXTURE_CLIENT_SECRET }}'],
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /8c rule \(a\): \.github\/workflows\/submit-fixture\.yml:5 \(job "\(workflow level\)", no environment\)/);
+  });
+
+  test('rule (a): the BLOCK form (`environment:` with a `name:` child) binds the job exactly as the scalar does', () => {
+    const { code, out } = run(
+      scoped([inEnvironment('FIXTURE_CLIENT_SECRET')], {
+        submitEnvironment: ['    environment:', '      name: store-publish', '      url: https://example.invalid/listing'],
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /8c rule/);
+  });
+
+  test('rule (a): an environment written as an EXPRESSION is not the literal the row names', () => {
+    const { code, out } = run(
+      scoped([inEnvironment('FIXTURE_CLIENT_SECRET')], { submitEnvironment: ['    environment: ${{ inputs.target }}'] }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /8c rule \(a\): .*\(job "submit", environment "\$\{\{ inputs\.target \}\}"\)/);
+  });
+
+  test('rule (b): a publishing-credential row with no `environment` key FAILS', () => {
+    const row = inEnvironment('FIXTURE_CLIENT_SECRET');
+    delete row.environment;
+    const { code, out } = run(scoped([row]));
+    assert.equal(code, 1, out);
+    assert.match(out, /8c rule \(b\): `ciSecretRegister\.nonSigning` entry "FIXTURE_CLIENT_SECRET" is a publishing-credential and declares no `environment`/);
+  });
+
+  test('rule (b): `environment: null` with no `repositoryWhy` FAILS — repository level is a decision, not a default', () => {
+    const { code, out } = run(scoped([atRepository('FIXTURE_CLIENT_SECRET', '')]));
+    assert.equal(code, 1, out);
+    assert.match(out, /8c rule \(b\): .*"FIXTURE_CLIENT_SECRET" declares `environment: null` with no `repositoryWhy`/);
+  });
+
+  test('rule (b): a `repositoryWhy` left on a row scoped to an environment FAILS — a reason for a scope it no longer has', () => {
+    const { code, out } = run(scoped([{ ...inEnvironment('FIXTURE_CLIENT_SECRET'), repositoryWhy: 'read by the env-less fixture job `dry-run`' }]));
+    assert.equal(code, 1, out);
+    assert.match(out, /8c rule \(b\): .*"FIXTURE_CLIENT_SECRET" is scoped to environment "store-publish" and still carries a `repositoryWhy`/);
+  });
+
+  test('rule (b): a scope that is neither a name nor null FAILS', () => {
+    const { code, out } = run(scoped([inEnvironment('FIXTURE_CLIENT_SECRET', true)]));
+    assert.equal(code, 1, out);
+    assert.match(out, /8c rule \(b\): .*"FIXTURE_CLIENT_SECRET" declares `environment: true`/);
+  });
+
+  test('rule (c): a *_SECRET read in an env-less job, declared with no scope, FAILS (the RC4 shape)', () => {
+    const { code, out } = run(
+      scoped([inEnvironment('FIXTURE_CLIENT_SECRET'), { name: 'FOO_SECRET', kind: 'build-config', why: 'a fixture value that happens to be secret-shaped' }], {
+        dryRunSecrets: ['FOO_SECRET'],
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /8c rule \(c\): \.github\/workflows\/submit-fixture\.yml:10 \(job "dry-run", no environment\) reads `secrets\.FOO_SECRET`, a \*_SECRET \/ \*_CREDENTIALS name/);
+    assert.match(out, /its `ciSecretRegister\.nonSigning` row does not declare `environment: null` with a `repositoryWhy`/);
+  });
+
+  test('rule (c): a *_CREDENTIALS read in an env-less job with NO register row FAILS on both §8 and §8c', () => {
+    const { code, out } = run(scoped([inEnvironment('FIXTURE_CLIENT_SECRET')], { dryRunSecrets: ['FOO_CREDENTIALS'] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /8c rule \(c\): .*reads `secrets\.FOO_CREDENTIALS`.*no `ciSecretRegister\.nonSigning` row declares its scope/);
+    assert.match(out, /name\(s\) `secrets\.FOO_CREDENTIALS`, which the register does not declare/);
+  });
+
+  test('rule (c): the suffix is anchored — *_CREDENTIALS_EXPIRES is a date, not a credential, and passes unscoped', () => {
+    const { code, out } = run(
+      scoped([inEnvironment('FIXTURE_CLIENT_SECRET'), { name: 'FOO_CREDENTIALS_EXPIRES', kind: 'build-config', why: 'the date a fixture credential lapses; authenticates nothing' }], {
+        dryRunSecrets: ['FOO_CREDENTIALS_EXPIRES'],
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /8c rule/);
+  });
+
+  test('rule (d): COVERAGE LOST when a secret scoped to an environment is read by no job at all', () => {
+    const { code, out } = run(scoped([inEnvironment('FIXTURE_CLIENT_SECRET'), inEnvironment('FIXTURE_UNREAD_SECRET')]));
+    assert.equal(code, 2, out);
+    assert.match(out, /FAIL COVERAGE LOST — 8c rule \(d\): `ciSecretRegister\.nonSigning` scopes "FIXTURE_UNREAD_SECRET" to environment "store-publish", and no job/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SECTION 9 — [9]R-3: the register's signing declaration vs the REAL Gradle
 // build. Section 8 compares the register to the WORKFLOWS and its own header
 // recorded what that left open: "a rename in Gradle alone is still silent".

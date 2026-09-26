@@ -83,6 +83,13 @@
 //      partition had the rule on one side only, so for any row §9 cannot reach
 //      — every non-Android row — pasting a name into `signing.ciSecrets.names`
 //      silenced limb 2 with no reason recorded and nothing to review.
+//   8c. every `publishing-credential` row declares its SCOPE — `environment`, a
+//      GitHub environment name or null with a `repositoryWhy` — and every JOB
+//      that reads a `${{ secrets.X }}` is graded against it: a credential scoped
+//      to an environment is read only in jobs bound to that environment, and a
+//      `*_SECRET` / `*_CREDENTIALS` name is read outside every environment only
+//      when its row says so, with a reason. §8 grades the FILE; this grades the
+//      job, because an environment belongs to a job.
 //   9. [9]R-3 REGISTER ↔ GRADLE — the same declaration compared to the REAL
 //      `apps/*/android/app/build.gradle.kts`, which is where the signing
 //      identity is actually read. Section 8 compares the register to the
@@ -122,7 +129,7 @@ import { listDir } from './tree-walk.mjs';
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
 import { FLUTTER_APP_FIELD, flutterAppChannel } from './channel-surface.mjs';
 import {
-  parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt, shellSegments, resolveLocalCalls, workflowSteps, commandAt, joinShellContinuations, parseWorkflow, flutterBuilds,
+  parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt, shellSegments, resolveLocalCalls, workflowSteps, commandAt, joinShellContinuations, parseWorkflow, flutterBuilds, jobEnvironment,
 } from './workflow-scan.mjs';
 import { parseYaml } from '../app-yaml/yaml.mjs';
 import { lanesOfSurface } from './tag-owner.mjs';
@@ -3272,6 +3279,181 @@ for (const name of nonSigningSecrets.keys()) {
 if (observedSecrets.size > 0) {
   ok(
     `${observedSecrets.size} secret(s) named across ${workflowFiles.length} workflow(s), all declared; ${signingSecrets.size} signing, ${signingSecretsNamedByALane.length} of those named by a lane [9]R-3 limb 2`,
+  );
+}
+
+// ── 8c. a publishing credential is read only where its row says it lives ────
+//
+// 🔴 O-STORE-SECRETS-REACH-THE-DRY-RUN. Section 8 reads every `${{ secrets.X }}`
+// per FILE and asks one question: is the name declared? It holds no job context,
+// so it could not see that submit-windows-store.yml handed MS_STORE_CLIENT_SECRET
+// to its `dry-run` job, a job with no `environment:`, while the owner-approval
+// pause (ADR 031 class A) sits on the `submit` job alone. The same shape held for
+// SNAPCRAFT_STORE_CREDENTIALS in submit-snap.yml. A rehearsal that carries the
+// credential is one `run:` edit away from a submission nobody approved. 19b252af's
+// submit-windows-store.yml is the recorded instance, and this limb exits 1 on it.
+//
+// WHY A DECLARED SCOPE, NOT A SUFFIX LINT. The closes asks for a lint refusing a
+// `*_SECRET` or `*_CREDENTIALS` reference in a job without an environment. Taken
+// alone that fails in both directions: it goes red on AMO_JWT_SECRET, which the
+// extension keepalive jobs read at repository level by EXT-3's ruling
+// (design-ext-3.md: "Secrets stay at repository level"), and it is blind to
+// PLAY_SERVICE_ACCOUNT_JSON, APP_STORE_CONNECT_PRIVATE_KEY and
+// CWS_SERVICE_ACCOUNT_JSON, publishing credentials whose names carry no suffix.
+// The register already classifies every secret, so the scope goes on the row:
+//   · `environment: "<env>"` — the credential lives in that GitHub environment,
+//     and a job reading it must declare `environment: <env>`;
+//   · `environment: null` + `repositoryWhy` (20+ characters, §8's own floor) —
+//     it lives at repository level, and the sentence names the env-less job that
+//     needs it, so the choice is visible and reviewable rather than a default.
+//
+// The rules:
+//   (a) a secret whose row says `environment: "<env>"`, read in a job whose
+//       `environment:` is not `<env>`, FAILS. A reference outside every job (a
+//       workflow-level `env:`) reaches every job and is graded as env-less.
+//   (b) a `publishing-credential` row with no `environment` key FAILS, as does a
+//       scope that is neither a name nor null, a null with no `repositoryWhy`,
+//       and a `repositoryWhy` on a row that is scoped to an environment (a reason
+//       for a scope the row does not have reads as live and justifies nothing).
+//   (c) THE CLOSES' FLOOR: a `secrets.<NAME>` matching `_SECRET$|_CREDENTIALS$`,
+//       read in a job with no `environment:`, whose row does not declare
+//       `environment: null` with a `repositoryWhy`, FAILS — whatever its kind,
+//       and whether or not it is declared at all.
+//   (d) COVERAGE LOST when the job reader places zero jobs, or when a secret
+//       scoped to an environment is read nowhere: a scope nobody reads is a
+//       declaration with no subject, and every (a) verdict on it is vacuous.
+//       ⚠️ The zero-jobs half is a BACKSTOP today, stated rather than implied:
+//       measured 2026-09-25 on a copy of the tree with every `jobs:` key made
+//       unreadable, the grader-is-run walk above exits 2 first ("ci.yml has no
+//       job `ci-gate`"). It stays so that reordering or deleting that limb
+//       cannot leave this one grading nothing.
+//
+// ⚠️ WHAT THIS DOES NOT CHECK: where GitHub actually STORES the value. A row that
+// says `store-publish` while the repository-level copy still exists passes here;
+// deleting that copy is an owner step, verified by listing secret NAMES
+// (`gh secret list`, `gh secret list --env store-publish`), never by this guard.
+const SCOPE_SUFFIX = /_SECRET$|_CREDENTIALS$/;
+const scopeWhyOk = (e) => typeof e?.repositoryWhy === 'string' && e.repositoryWhy.trim().length >= 20;
+const scopedToEnvironment = new Map(); // name -> environment
+let scopeRows = 0;
+let repositoryScoped = 0;
+for (const [name, e] of nonSigningSecrets) {
+  const declares = Object.hasOwn(e, 'environment');
+  if (declares) scopeRows += 1;
+  if (!declares) {
+    if (e.kind === 'publishing-credential') {
+      problems.push(
+        `8c rule (b): \`ciSecretRegister.nonSigning\` entry "${name}" is a publishing-credential and declares no \`environment\`. Every publishing credential says where it lives: a GitHub environment name (every job reading it must be bound to that environment), or null with a \`repositoryWhy\` naming the env-less job that needs it. Without the key nothing can say whether a rehearsal is allowed to hold it.`,
+      );
+    }
+    continue;
+  }
+  const env = e.environment;
+  if (env === null) {
+    repositoryScoped += 1;
+    if (!scopeWhyOk(e)) {
+      problems.push(
+        `8c rule (b): \`ciSecretRegister.nonSigning\` entry "${name}" declares \`environment: null\` with no \`repositoryWhy\` (a string of at least 20 characters). Repository level is the scope every job can read; choosing it is a decision, and the sentence naming the env-less job that needs it is what makes it one.`,
+      );
+    }
+  } else if (typeof env === 'string' && env.trim() !== '') {
+    scopedToEnvironment.set(name, env.trim());
+    if (Object.hasOwn(e, 'repositoryWhy')) {
+      problems.push(
+        `8c rule (b): \`ciSecretRegister.nonSigning\` entry "${name}" is scoped to environment "${env.trim()}" and still carries a \`repositoryWhy\`. A reason for a repository-level scope the row no longer has reads as a live justification; delete it with the move.`,
+      );
+    }
+  } else {
+    problems.push(
+      `8c rule (b): \`ciSecretRegister.nonSigning\` entry "${name}" declares \`environment: ${JSON.stringify(env)}\`. A scope is a GitHub environment name or null; anything else grades every job against nothing.`,
+    );
+  }
+}
+
+/** Every `${{ secrets.X }}` in `lines` ({n, text}, comment-blanked), with the
+ *  line it starts on. The same expression-then-name extraction §8 applies to a
+ *  whole file, applied here to one job's lines at a time. */
+const secretRefsIn = (lines) => {
+  const refs = [];
+  const starts = [];
+  let offset = 0;
+  for (const l of lines) {
+    starts.push([offset, l.n]);
+    offset += l.text.length + 1;
+  }
+  const lineAtOffset = (at) => {
+    let n = starts[0]?.[1] ?? 0;
+    for (const [o, ln] of starts) {
+      if (o > at) break;
+      n = ln;
+    }
+    return n;
+  };
+  const text = lines.map((l) => l.text).join('\n');
+  for (const expr of text.matchAll(/\$\{\{([\s\S]*?)\}\}/g)) {
+    for (const m of expr[1].matchAll(/\bsecrets\.([A-Za-z_][A-Za-z0-9_]*)/g)) {
+      refs.push({ name: m[1], n: lineAtOffset(expr.index + 3 + m.index) });
+    }
+  }
+  return refs;
+};
+
+const scopeWorkflows = parseAllWorkflows(ROOT);
+const scopeJobCount = scopeWorkflows.reduce((s, wf) => s + wf.jobs.size, 0);
+if (scopeJobCount === 0) {
+  coverageLost([
+    `8c rule (d): workflow-scan read ${scopeWorkflows.length} workflow(s) under ${WORKFLOW_DIR} and placed ZERO jobs in them.`,
+    'Every secret reference would then sit outside every job, and "is this credential read only inside its',
+    'environment" would be asked of no job at all. The job reader has stopped reaching the tree.',
+  ]);
+}
+/** One graded reference: which file and line, which job, and the job's environment. */
+const scopeRefs = [];
+for (const wf of scopeWorkflows) {
+  const inAJob = new Set();
+  for (const job of wf.jobs.values()) {
+    const env = jobEnvironment(job);
+    for (const l of job.lines) inAJob.add(l.n);
+    for (const r of secretRefsIn(job.lines)) scopeRefs.push({ ...r, rel: wf.rel, job: job.name, env });
+  }
+  // A workflow-level `env:` (above or below `jobs:`) reaches every job, and an
+  // environment secret never resolves there: graded as a job with no environment.
+  const outside = wf.lines.filter((l) => !inAJob.has(l.n));
+  for (const r of secretRefsIn(outside)) scopeRefs.push({ ...r, rel: wf.rel, job: '(workflow level)', env: null });
+}
+const scopeAt = (r) => `${r.rel}:${r.n} (job "${r.job}", ${r.env === null ? 'no environment' : `environment "${r.env.name}"`})`;
+
+for (const r of scopeRefs) {
+  const want = scopedToEnvironment.get(r.name);
+  if (want !== undefined) {
+    if (r.env === null || r.env.name !== want) {
+      problems.push(
+        `8c rule (a): ${scopeAt(r)} reads \`secrets.${r.name}\`, which \`ciSecretRegister.nonSigning\` scopes to environment "${want}". Only a job bound to that environment may read it: a job outside it runs with no owner-approval pause (ADR 031 class A), so a rehearsal holding the credential is one \`run:\` edit away from an unapproved submission. Move the read into the ${want}-bound job, or — if this job genuinely needs it — change the row's scope and say why.`,
+      );
+    }
+    continue;
+  }
+  if (r.env !== null || !SCOPE_SUFFIX.test(r.name)) continue;
+  const row = nonSigningSecrets.get(r.name);
+  if (row && row.environment === null && scopeWhyOk(row)) continue;
+  problems.push(
+    `8c rule (c): ${scopeAt(r)} reads \`secrets.${r.name}\`, a *_SECRET / *_CREDENTIALS name, in a job with no \`environment:\`, and ${row ? 'its `ciSecretRegister.nonSigning` row does not declare `environment: null` with a `repositoryWhy`' : 'no `ciSecretRegister.nonSigning` row declares its scope'}. A secret-shaped name outside every environment is readable by any job with no approval pause; that is allowed only when the register says so, with the reason. Bind the job to the credential's environment, or declare the row \`environment: null\` with a \`repositoryWhy\` naming this job.`,
+  );
+}
+
+for (const [name, env] of scopedToEnvironment) {
+  if (scopeRefs.some((r) => r.name === name)) continue;
+  coverageLost([
+    `8c rule (d): \`ciSecretRegister.nonSigning\` scopes "${name}" to environment "${env}", and no job in any of the ${scopeWorkflows.length} workflow(s) scanned reads it.`,
+    'Rule (a) would then hold that credential to its environment over zero references and report clean.',
+    'A scope nobody reads is a declaration with no subject: move the read back, or drop the row with its lane.',
+  ]);
+}
+
+if (scopeRows > 0 || scopedToEnvironment.size > 0) {
+  const inEnv = scopeRefs.filter((r) => scopedToEnvironment.has(r.name)).length;
+  ok(
+    `${scopeRows} \`nonSigning\` row(s) declare a scope — ${scopedToEnvironment.size} bound to an environment (${[...scopedToEnvironment].map(([n, e]) => `${n} → ${e}`).join(', ') || 'none'}), ${repositoryScoped} at repository level with a reason; ${scopeRefs.length} secret reference(s) across ${scopeJobCount} job(s) graded, ${inEnv} of them environment-bound reads [8c]`,
   );
 }
 

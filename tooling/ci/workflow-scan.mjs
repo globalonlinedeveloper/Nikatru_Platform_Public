@@ -1135,6 +1135,45 @@ export function sha256HandOffs(wf, jobName) {
   return out;
 }
 
+/**
+ * A job's `environment:` (the key at 4 spaces), as `{ n, name }`, or null when
+ * the job declares none. GitHub takes three spellings and all three are read:
+ * the scalar `environment: store-publish`, the block form whose `name:` child
+ * carries it, and the flow mapping `environment: { name: store-publish, … }`.
+ * Quotes are removed; an expression (`${{ … }}`) is returned AS WRITTEN, because
+ * which environment it names is decided at run time and a caller comparing it to
+ * a literal must see that it is not one. A block or flow form with no `name`
+ * comes back with `name: ''`, never null: the job DOES declare the key.
+ *
+ * ⏱ ADDED 2026-09-25 for assert-channel-register.mjs limb 8c, which grades every
+ * job that reads a publishing credential against the environment the register
+ * says the credential lives in. `^ {4}environment:` presence is what
+ * assert-release-provenance and assert-publish-steps-guarded test; this is the
+ * same key, read for its value.
+ */
+export function jobEnvironment(job) {
+  const lines = job?.lines ?? [];
+  const at = lines.findIndex((l) => /^ {4}environment:/.test(l.text));
+  if (at === -1) return null;
+  const n = lines[at].n;
+  const rest = lines[at].text.replace(/^ {4}environment:\s*/, '').trim();
+  if (rest.startsWith('{')) {
+    const m = rest.match(/(?:^\{|,)\s*name\s*:\s*([^,}]*)/);
+    return { n, name: m ? unquote(m[1]) : '' };
+  }
+  if (rest !== '') return { n, name: unquote(rest) };
+  let child = null;
+  for (const l of lines.slice(at + 1)) {
+    if (l.text.trim() === '') continue;
+    const indent = l.text.match(/^ */)[0].length;
+    if (indent <= 4) break;
+    child ??= indent;
+    const m = l.text.match(/^\s*name:\s*(.*?)\s*$/);
+    if (m && indent === child) return { n: l.n, name: unquote(m[1]) };
+  }
+  return { n, name: '' };
+}
+
 /** `cmd \` continued on the next line of a `run: |` block arrives from
  *  joinBlockScalars as `cmd \ ; next`: ONE shell command, rejoined here. */
 export const joinShellContinuations = (text) => String(text ?? '').replace(/\s\\\s+;\s/g, ' ');

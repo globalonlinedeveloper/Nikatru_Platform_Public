@@ -552,3 +552,40 @@ dispatch.
 reads it off `submit-snap.mjs` on every run: when PG-5(c) stops naming the pack, the test fails this
 lane until it takes its dry run's `.snap` by sha256 too. The same-run sha256 hand-off is at least
 the provenance PG-5(c) asks for; the script change is the open follow-up.
+
+---
+
+## The credential leaves the dry run — 2026-09-25 (O-STORE-SECRETS-REACH-THE-DRY-RUN)
+
+**Appended, not rewritten.** The table above grades the credential "in both
+modes". From this date the dry run no longer receives it.
+
+`SNAPCRAFT_STORE_CREDENTIALS` is scoped to the `store-publish` environment in
+`tooling/channel-register.json` (`ciSecretRegister.nonSigning`, key
+`environment`), and `assert-channel-register.mjs` §8c fails any job that reads
+it without `environment: store-publish`. The `dry-run` job has no environment,
+so it receives `SNAPCRAFT_STORE_CREDENTIALS_EXPIRES` only (re-kinded
+`build-config` the same day: a date authenticates nothing). On `--dry-run`,
+when the register scopes the credential to an environment:
+
+| state | verdict |
+|---|---|
+| the credential | not read; prints `credential: checked in the environment-bound submit job` |
+| expiry absent | **print**: the dry run cannot know when the credential lapses |
+| expiry unreadable, or under 30 days away | **fail**, as before: the date alone is enough to act on |
+| expiry 30 days or more away | ok, printing the date and the margin |
+
+`--submit` is unchanged: it runs in the environment-bound job and still fails
+on an absent credential or an absent expiry.
+
+The presence check now runs **straight after the ref check** of the `submit`
+job (assert-workflow-hardening limb 10 holds that one first), the only job
+that can see an environment secret. It ends the run before the build and before
+any upload, and its error names the owner step. The owner's two steps:
+
+1. GitHub → Settings → Environments → `store-publish` → add
+   `SNAPCRAFT_STORE_CREDENTIALS` with the current value (either side of the
+   merge). `SNAPCRAFT_STORE_CREDENTIALS_EXPIRES` stays a repository secret.
+2. After the merge, delete the repository-level copy of the credential.
+   Verified by listing secret NAMES only (`gh secret list`,
+   `gh secret list --env store-publish`).

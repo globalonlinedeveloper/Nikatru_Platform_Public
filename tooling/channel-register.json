@@ -1280,7 +1280,17 @@
       "hides that for the Android row by comparing its list to build.gradle.kts name for name; no other",
       "row has a build file to compare against, and the four registered on that date have no lane at all.",
       "So `signing.ciSecrets.why` is now required and enforced identically, with the same 20-character",
-      "floor reused rather than re-chosen — two thresholds for one property is [pipeline F-2] in miniature."
+      "floor reused rather than re-chosen — two thresholds for one property is [pipeline F-2] in miniature.",
+      "",
+      "⏱ 2026-09-25 — EVERY `publishing-credential` ROW DECLARES ITS SCOPE (O-STORE-SECRETS-REACH-THE-DRY-RUN).",
+      "`environment` is the GitHub environment the credential lives in (`store-publish`), or null with a",
+      "`repositoryWhy` of 20+ characters naming the env-less job that needs it at repository level.",
+      "assert-channel-register.mjs §8c grades every JOB against it: a credential scoped to an environment",
+      "is read only in jobs bound to that environment, and a *_SECRET / *_CREDENTIALS name is read outside",
+      "every environment only when its row says so. The warning above still holds: this records where a",
+      "credential is MEANT to live and holds the workflows to it; where GitHub actually stores the value",
+      "is an owner setting, read back by listing secret names, never by the guard. Moving a credential",
+      "into an environment is a one-field edit here, and every job that still reads it outside goes red."
     ],
     "kinds": {
       "publishing-credential": "authenticates an upload or deploy to a distribution channel. It authorises PUBLISHING; it is not key material any artifact is signed with — the channel either re-signs (MS Store, Snap) or holds the signing key itself (Play App Signing).",
@@ -1343,12 +1353,16 @@
       {
         "name": "CLOUDFLARE_API_TOKEN",
         "kind": "publishing-credential",
-        "why": "Deploys the web channel and the Workers. The web row's keyKind is `none` for exactly this reason: Cloudflare serves our bytes under Cloudflare's certificate, so there is no identity of ours in the path — losing this token costs a rotation, not a channel."
+        "why": "Deploys the web channel and the Workers. The web row's keyKind is `none` for exactly this reason: Cloudflare serves our bytes under Cloudflare's certificate, so there is no identity of ours in the path — losing this token costs a rotation, not a channel.",
+        "environment": null,
+        "repositoryWhy": "Read by env-less jobs on every merge: deploy-web.yml `deploy-web` and deploy-workers.yml `platform` / `subscriptiontracker-api` deploy production with the merge as their approval, and ci.yml (`guard-meta`, `guards-platform`), e2e.yml `e2e`, ops-watch.yml (`heartbeats`, `prod-provenance`, `pages-deployments`, `glitchtip`, `digest`) and store-screenshots.yml's capture jobs read Cloudflare state. An environment scope would put a reviewer pause in front of every deploy."
       },
       {
         "name": "CLOUDFLARE_ACCOUNT_ID",
         "kind": "publishing-credential",
-        "why": "Account identifier that scopes the token above. Not itself an authenticator; kept as a secret to avoid publishing the account id."
+        "why": "Account identifier that scopes the token above. Not itself an authenticator; kept as a secret to avoid publishing the account id.",
+        "environment": null,
+        "repositoryWhy": "Read beside CLOUDFLARE_API_TOKEN by the same env-less jobs (deploy-web.yml `deploy-web`, deploy-workers.yml `platform` / `subscriptiontracker-api`, ci.yml, e2e.yml, ops-watch.yml, store-screenshots.yml). It names the account the token acts on and authenticates nothing by itself."
       },
       {
         "name": "SUBSCRIBE_RATE_LIMIT_SALT",
@@ -1358,97 +1372,131 @@
       {
         "name": "PLAY_SERVICE_ACCOUNT_JSON",
         "kind": "publishing-credential",
-        "why": "🔴 THE DISTINCTION THIS ENTRY EXISTS TO MAKE. This authorises an UPLOAD to the Play Console; the four ANDROID_* names on the android-play row are what SIGNS the bundle. Losing this is a rotation in the Google Cloud console. Losing the upload key is a request to Google to reset it, and losing the app-signing key Play holds would be unrecoverable — which is why only one of the two sets is signing material."
+        "why": "🔴 THE DISTINCTION THIS ENTRY EXISTS TO MAKE. This authorises an UPLOAD to the Play Console; the four ANDROID_* names on the android-play row are what SIGNS the bundle. Losing this is a rotation in the Google Cloud console. Losing the upload key is a request to Google to reset it, and losing the app-signing key Play holds would be unrecoverable — which is why only one of the two sets is signing material.",
+        "environment": null,
+        "repositoryWhy": "Read outside every environment by submit-play.yml `dry-run` (the rehearsal's read of the Play edit it validates against; it uploads nothing) and by ops-watch.yml `glitchtip` (tooling/ops/verify-free-api-scope.mjs proves the account is still powerless on GCP). Kept at repository level on 2026-09-25 (O-STORE-SECRETS-REACH-THE-DRY-RUN: the moved set was not widened); moving it is this field plus those two reads."
       },
       {
         "name": "APP_STORE_CONNECT_PRIVATE_KEY",
         "kind": "publishing-credential",
-        "why": "An App Store Connect API key. It signs the JWT that authenticates the upload — NOT the artifact. The Apple identity that signs a build is a distribution certificate, and `ios-appstore.signing.identity` is null because NO DISTRIBUTION CERTIFICATE HAS BEEN ISSUED. Corrected 2026-09-08: the account is ACTIVE (App Store Connect answered HTTP 200; OWNER_QUEUE A-4 closed 2026-08-31) and GET /v1/certificates returned an EMPTY set, so the certificate is issuable through the ASC API today. When that certificate arrives it belongs on the row as signing material, not here."
+        "why": "An App Store Connect API key. It signs the JWT that authenticates the upload — NOT the artifact. The Apple identity that signs a build is a distribution certificate, and `ios-appstore.signing.identity` is null because NO DISTRIBUTION CERTIFICATE HAS BEEN ISSUED. Corrected 2026-09-08: the account is ACTIVE (App Store Connect answered HTTP 200; OWNER_QUEUE A-4 closed 2026-08-31) and GET /v1/certificates returned an EMPTY set, so the certificate is issuable through the ASC API today. When that certificate arrives it belongs on the row as signing material, not here.",
+        "environment": null,
+        "repositoryWhy": "Read outside every environment by submit-appstore.yml `dry-run`, by apple-expiry-write.yml `write` and by ops-watch.yml `glitchtip` (tooling/ops/check-apple-signing-expiry.mjs reads the certificate and profile expiries through the ASC API). Kept at repository level on 2026-09-25 (O-STORE-SECRETS-REACH-THE-DRY-RUN: the moved set was not widened); moving it is this field plus those three reads."
       },
       {
         "name": "APP_STORE_CONNECT_KEY_ID",
         "kind": "publishing-credential",
-        "why": "Names which ASC API key the private key above is. An identifier."
+        "why": "Names which ASC API key the private key above is. An identifier.",
+        "environment": null,
+        "repositoryWhy": "An identifier read beside APP_STORE_CONNECT_PRIVATE_KEY by the same env-less jobs: submit-appstore.yml `dry-run`, apple-expiry-write.yml `write` and ops-watch.yml `glitchtip`."
       },
       {
         "name": "APP_STORE_CONNECT_ISSUER_ID",
         "kind": "publishing-credential",
-        "why": "The ASC issuer the key belongs to. An identifier."
+        "why": "The ASC issuer the key belongs to. An identifier.",
+        "environment": null,
+        "repositoryWhy": "An identifier read beside APP_STORE_CONNECT_PRIVATE_KEY by the same env-less jobs: submit-appstore.yml `dry-run`, apple-expiry-write.yml `write` and ops-watch.yml `glitchtip`."
       },
       {
         "name": "APP_STORE_CONNECT_IOS_APP_ID",
         "kind": "publishing-credential",
-        "why": "Which App Store record an iOS upload targets. An identifier."
+        "why": "Which App Store record an iOS upload targets. An identifier.",
+        "environment": null,
+        "repositoryWhy": "An identifier read by submit-appstore.yml `dry-run`, which has no environment: the rehearsal validates the iOS App Store record it would submit to."
       },
       {
         "name": "APP_STORE_CONNECT_MACOS_APP_ID",
         "kind": "publishing-credential",
-        "why": "Which App Store record a macOS upload targets. An identifier."
+        "why": "Which App Store record a macOS upload targets. An identifier.",
+        "environment": null,
+        "repositoryWhy": "An identifier read by submit-appstore.yml `dry-run`, which has no environment: the rehearsal validates the macOS App Store record it would submit to."
       },
       {
         "name": "MS_STORE_CLIENT_ID",
         "kind": "publishing-credential",
-        "why": "Partner Center Azure AD application id used to submit the .msix. The windows-store row's keyKind is `none` because the Store re-signs the package, so nothing in this path is key material of ours."
+        "why": "Partner Center Azure AD application id used to submit the .msix. The windows-store row's keyKind is `none` because the Store re-signs the package, so nothing in this path is key material of ours.",
+        "environment": null,
+        "repositoryWhy": "An identifier the env-less submit-windows-store.yml `dry-run` job still receives: the rehearsal presence-checks the four ids, and without the client secret beside it the id authenticates nothing."
       },
       {
         "name": "MS_STORE_CLIENT_SECRET",
         "kind": "publishing-credential",
-        "why": "The credential half of the Partner Center application above. Authorises submission; the Store still re-signs."
+        "why": "The credential half of the Partner Center application above. Authorises submission; the Store still re-signs.",
+        "environment": "store-publish"
       },
       {
         "name": "MS_STORE_TENANT_ID",
         "kind": "publishing-credential",
-        "why": "Azure AD tenant the Partner Center application lives in. An identifier."
+        "why": "Azure AD tenant the Partner Center application lives in. An identifier.",
+        "environment": null,
+        "repositoryWhy": "An identifier the env-less submit-windows-store.yml `dry-run` job still receives: the rehearsal presence-checks the four ids, and the tenant id authenticates nothing on its own."
       },
       {
         "name": "MS_STORE_PRODUCT_ID",
         "kind": "publishing-credential",
-        "why": "Which Partner Center product a submission targets. An identifier."
+        "why": "Which Partner Center product a submission targets. An identifier.",
+        "environment": null,
+        "repositoryWhy": "An identifier the env-less submit-windows-store.yml `dry-run` job still receives: the rehearsal presence-checks the four ids, and a product id authenticates nothing on its own."
       },
       {
         "name": "MS_STORE_SELLER_ID",
         "kind": "publishing-credential",
-        "why": "The Partner Center SELLER id — which ACCOUNT `msstore reconfigure` configures against, passed as `--sellerId`. An identifier, not key material: the windows-store row's keyKind stays `none` because the Store re-signs the package. Added 2026-09-09, when the lane stopped passing only three of Microsoft's four account parameters. ⚠️ This account has carried TWO seller ids differing by three digits; the retired one authenticates against nothing and looks entirely plausible in a log, so the live value is read from Private/runbooks/store-submission-windows.md and never from memory."
+        "why": "The Partner Center SELLER id — which ACCOUNT `msstore reconfigure` configures against, passed as `--sellerId`. An identifier, not key material: the windows-store row's keyKind stays `none` because the Store re-signs the package. Added 2026-09-09, when the lane stopped passing only three of Microsoft's four account parameters. ⚠️ This account has carried TWO seller ids differing by three digits; the retired one authenticates against nothing and looks entirely plausible in a log, so the live value is read from Private/runbooks/store-submission-windows.md and never from memory.",
+        "environment": null,
+        "repositoryWhy": "An identifier the env-less submit-windows-store.yml `dry-run` job still receives: the rehearsal presence-checks the four ids, and a seller id authenticates nothing on its own."
       },
       {
         "name": "SNAPCRAFT_STORE_CREDENTIALS",
         "kind": "publishing-credential",
-        "why": "Exported `snapcraft` store credentials. The linux-snap row's keyKind is `none` because Canonical signs the binary — this authorises the upload and nothing else."
+        "why": "Exported `snapcraft` store credentials. The linux-snap row's keyKind is `none` because Canonical signs the binary — this authorises the upload and nothing else.",
+        "environment": "store-publish"
       },
       {
         "name": "SNAPCRAFT_STORE_CREDENTIALS_EXPIRES",
-        "kind": "publishing-credential",
-        "why": "The ISO 8601 date passed to `snapcraft export-login --expires` when SNAPCRAFT_STORE_CREDENTIALS was issued. It is a DATE and not a secret in the ordinary sense; it is held beside the credential because tooling/release/submit-snap.mjs refuses to parse the exported blob (its internal format is documented on no page fetched, the same reason `snapcraft whoami` output is not parsed) and an expiry nobody records is an expiry nobody finds out about until a release is in flight. Authorises nothing on its own and signs nothing."
+        "kind": "build-config",
+        "why": "The ISO 8601 date passed to `snapcraft export-login --expires` when SNAPCRAFT_STORE_CREDENTIALS was issued. It is a DATE and not a secret in the ordinary sense; it is held beside the credential because tooling/release/submit-snap.mjs refuses to parse the exported blob (its internal format is documented on no page fetched, the same reason `snapcraft whoami` output is not parsed) and an expiry nobody records is an expiry nobody finds out about until a release is in flight. Authorises nothing on its own and signs nothing. ⏱ RE-KINDED 2026-09-25 from publishing-credential to build-config (O-STORE-SECRETS-REACH-THE-DRY-RUN): a date authenticates nothing, and it stays at repository level on purpose, because the env-less submit-snap.yml `dry-run` job reads it to warn before the credential lapses while the credential itself is readable only in the store-publish job."
       },
       {
         "name": "AMO_JWT_ISSUER",
         "kind": "publishing-credential",
-        "why": "The addons.mozilla.org API key (JWT issuer) web-ext passes as --api-key. Mozilla holds the signing key for this channel and signs what we upload, so this authorises a SUBMISSION and signs nothing."
+        "why": "The addons.mozilla.org API key (JWT issuer) web-ext passes as --api-key. Mozilla holds the signing key for this channel and signs what we upload, so this authorises a SUBMISSION and signs nothing.",
+        "environment": null,
+        "repositoryWhy": "Read outside every environment by extensions.yml `store-key-keepalive`, the scheduled job that exercises the AMO key so a dead one is found before a release, beside the store-publish job's own read. EXT-3's ruling keeps the extension store secrets at repository level (design-ext-3.md: \"Secrets stay at repository level\")."
       },
       {
         "name": "AMO_JWT_SECRET",
         "kind": "publishing-credential",
-        "why": "The addons.mozilla.org API secret (JWT secret) web-ext passes as --api-secret. Pairs with AMO_JWT_ISSUER; same reasoning, and it is not signing material for the same reason."
+        "why": "The addons.mozilla.org API secret (JWT secret) web-ext passes as --api-secret. Pairs with AMO_JWT_ISSUER; same reasoning, and it is not signing material for the same reason.",
+        "environment": null,
+        "repositoryWhy": "Read outside every environment by extensions.yml `store-key-keepalive`, the scheduled job that exercises the AMO key pair so a dead one is found before a release, beside the store-publish job's own read. EXT-3's ruling keeps the extension store secrets at repository level (design-ext-3.md: \"Secrets stay at repository level\"), so this *_SECRET name is outside an environment by decision, not by default."
       },
       {
         "name": "CWS_SERVICE_ACCOUNT_JSON",
         "kind": "publishing-credential",
-        "why": "The Google service-account key JSON the Chrome Web Store lane authenticates with, by the JWT-bearer grant. REPLACED CWS_CLIENT_ID + CWS_CLIENT_SECRET + CWS_REFRESH_TOKEN on 2026-09-09: https://developer.chrome.com/docs/webstore/service-accounts (fetched that day) documents service accounts for this API -- the account email is added in the Developer Dashboard under Account, and \"you can only add one service account to your publisher\". The refresh-token shape was a stale assumption, not a requirement, and it gave this repository a second way of authenticating to Google beside the Play lane's PLAY_SERVICE_ACCOUNT_JSON; there is now one. The Chrome Web Store re-signs the uploaded zip and owns the extension key, so this authorises a SUBMISSION and signs nothing. Account nikatru-free-api@nikatru-platform.iam.gserviceaccount.com, project nikatru-platform -- the same account [ADR 033] keeps powerless on GCP, measured by tooling/ops/verify-free-api-scope.mjs. ⚠ A minted token proves the KEY works, NOT that it is linked to the publisher: measured 2026-09-09, `:fetchStatus` answers an identical 403 for the real and a bogus publisher id while a bogus token answers 401, so with zero items in the account linkage is unreadable from the API and remains an owner console step."
+        "why": "The Google service-account key JSON the Chrome Web Store lane authenticates with, by the JWT-bearer grant. REPLACED CWS_CLIENT_ID + CWS_CLIENT_SECRET + CWS_REFRESH_TOKEN on 2026-09-09: https://developer.chrome.com/docs/webstore/service-accounts (fetched that day) documents service accounts for this API -- the account email is added in the Developer Dashboard under Account, and \"you can only add one service account to your publisher\". The refresh-token shape was a stale assumption, not a requirement, and it gave this repository a second way of authenticating to Google beside the Play lane's PLAY_SERVICE_ACCOUNT_JSON; there is now one. The Chrome Web Store re-signs the uploaded zip and owns the extension key, so this authorises a SUBMISSION and signs nothing. Account nikatru-free-api@nikatru-platform.iam.gserviceaccount.com, project nikatru-platform -- the same account [ADR 033] keeps powerless on GCP, measured by tooling/ops/verify-free-api-scope.mjs. ⚠ A minted token proves the KEY works, NOT that it is linked to the publisher: measured 2026-09-09, `:fetchStatus` answers an identical 403 for the real and a bogus publisher id while a bogus token answers 401, so with zero items in the account linkage is unreadable from the API and remains an owner console step.",
+        "environment": null,
+        "repositoryWhy": "Read outside every environment by extensions.yml `cws-token-keepalive`, the scheduled job that mints a token so a disabled key is found before a release, beside the store-publish job's own read. EXT-3's ruling keeps the extension store secrets at repository level (design-ext-3.md: \"Secrets stay at repository level\")."
       },
       {
         "name": "CWS_PUBLISHER_ID",
         "kind": "publishing-credential",
-        "why": "The publisher id the Chrome Web Store v2 API path carries between `publishers/` and `items/`, read from the Developer Dashboard under Publisher -> Settings. It exists in this list because the v2 path documented at https://developer.chrome.com/docs/webstore/using-api (fetched 2026-09-07) needs it and the older v1.1 path did not; a guessed publisher id would address somebody else's account. Identifies a publisher, signs nothing."
+        "why": "The publisher id the Chrome Web Store v2 API path carries between `publishers/` and `items/`, read from the Developer Dashboard under Publisher -> Settings. It exists in this list because the v2 path documented at https://developer.chrome.com/docs/webstore/using-api (fetched 2026-09-07) needs it and the older v1.1 path did not; a guessed publisher id would address somebody else's account. Identifies a publisher, signs nothing.",
+        "environment": null,
+        "repositoryWhy": "No env-less job reads it today: only extensions.yml `store-publish` does. It stays at repository level with the other extension store secrets by EXT-3's ruling (design-ext-3.md: \"Secrets stay at repository level\"), and it is a publisher identifier that authenticates nothing on its own."
       },
       {
         "name": "EDGE_CLIENT_ID",
         "kind": "publishing-credential",
-        "why": "The Partner Center client id sent as the X-ClientID header by the Edge Add-ons v1.1 API. Partner Center re-signs the uploaded package and issues the product id, so nothing of ours signs this artifact."
+        "why": "The Partner Center client id sent as the X-ClientID header by the Edge Add-ons v1.1 API. Partner Center re-signs the uploaded package and issues the product id, so nothing of ours signs this artifact.",
+        "environment": null,
+        "repositoryWhy": "Read outside every environment by extensions.yml `store-key-keepalive`, which exercises the Edge key so a dead one is found before a release, beside the store-publish job's own read. EXT-3's ruling keeps the extension store secrets at repository level."
       },
       {
         "name": "EDGE_API_KEY",
         "kind": "publishing-credential",
-        "why": "The Partner Center API key sent as `Authorization: ApiKey <key>` by the Edge Add-ons v1.1 API. It authorises an upload and a publish; it is not a code-signing key, which is a property of the channel rather than a choice."
+        "why": "The Partner Center API key sent as `Authorization: ApiKey <key>` by the Edge Add-ons v1.1 API. It authorises an upload and a publish; it is not a code-signing key, which is a property of the channel rather than a choice.",
+        "environment": null,
+        "repositoryWhy": "Read outside every environment by extensions.yml `store-key-keepalive`, which exercises the Edge key so a dead one is found before a release, beside the store-publish job's own read. EXT-3's ruling keeps the extension store secrets at repository level (design-ext-3.md: \"Secrets stay at repository level\")."
       },
       {
         "name": "GITHUB_TOKEN",

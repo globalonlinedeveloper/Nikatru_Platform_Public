@@ -499,7 +499,8 @@ if (existsSync(abs(msixRel))) {
 // it is passed; see Private/runbooks/store-submission-windows.md for which of the two
 // seller ids on this account is the live one — they differ by three digits and the
 // wrong one authenticates against nothing. The VALUES live in that runbook and in the
-// repository secret; neither is written into this public tree.
+// GitHub secrets (the four ids at repository level, the client secret in the
+// store-publish environment); none is written into this public tree.
 const CREDENTIAL_ENV = [
   ['MS_STORE_TENANT_ID', 'the Entra tenant the Partner Center account is associated with'],
   ['MS_STORE_CLIENT_ID', 'the Entra application (client) id authorised in Partner Center'],
@@ -507,12 +508,30 @@ const CREDENTIAL_ENV = [
   ['MS_STORE_PRODUCT_ID', 'the Partner Center product this app record is'],
   ['MS_STORE_SELLER_ID', 'the Partner Center SELLER id — the account `msstore reconfigure` configures against'],
 ];
-const missingCreds = CREDENTIAL_ENV.filter(([k]) => !process.env[k] || process.env[k].trim() === '');
+// ⏱ 2026-09-25 — O-STORE-SECRETS-REACH-THE-DRY-RUN. A credential whose
+// `ciSecretRegister.nonSigning` row is scoped to a GitHub environment is readable
+// only in a job bound to that environment, and the dry-run job has none. So the
+// dry run does not look for it — an absence it cannot see is not a gap it can
+// report — and says instead where it IS checked: the submit job's first step, and
+// this script's --submit path below, which still requires all five. The scope is
+// read from the register row assert-channel-register §8c grades the workflows
+// against; a register with no such row (a test fixture) leaves every name checked.
+const scopedTo = new Map(
+  (Array.isArray(register.ciSecretRegister?.nonSigning) ? register.ciSecretRegister.nonSigning : [])
+    .filter((e) => typeof e?.name === 'string' && typeof e?.environment === 'string' && e.environment.trim() !== '')
+    .map((e) => [e.name, e.environment.trim()]),
+);
+const checkedHere = SUBMIT ? CREDENTIAL_ENV : CREDENTIAL_ENV.filter(([k]) => !scopedTo.has(k));
+for (const [k, why] of CREDENTIAL_ENV) {
+  if (SUBMIT || !scopedTo.has(k)) continue;
+  ok(`${why.replace(/^that application's /, '')}: checked in the environment-bound submit job — ${k} lives in the "${scopedTo.get(k)}" environment, which this dry run cannot see`);
+}
+const missingCreds = checkedHere.filter(([k]) => !process.env[k] || process.env[k].trim() === '');
 if (missingCreds.length === 0) {
-  ok(`credentials — all ${CREDENTIAL_ENV.length} environment variable(s) present (values never read or printed)`);
+  ok(`credentials — all ${checkedHere.length} environment variable(s) present (values never read or printed)`);
 } else {
   prints.push(
-    `CREDENTIALS NOT CONFIGURED — ${missingCreds.length} of ${CREDENTIAL_ENV.length} absent: ${missingCreds.map(([k]) => k).join(', ')}. They cannot exist before OWNER_QUEUE A-2 creates the account, so this is a printed gap and not a failure. (${missingCreds.map(([k, why]) => `${k} = ${why}`).join(' · ')})`,
+    `CREDENTIALS NOT CONFIGURED — ${missingCreds.length} of ${checkedHere.length} absent: ${missingCreds.map(([k]) => k).join(', ')}. They cannot exist before OWNER_QUEUE A-2 creates the account, so this is a printed gap and not a failure. (${missingCreds.map(([k, why]) => `${k} = ${why}`).join(' · ')})`,
   );
   // 🔴 …AND ON `--submit` IT IS A FAILURE, RAISED HERE SO THE EMPTY SECRET IS
   // NAMED BEFORE any later check can fail first. The artifact check below runs
@@ -525,13 +544,19 @@ if (missingCreds.length === 0) {
     problems.push(
       `${missingCreds.length} of ${CREDENTIAL_ENV.length} Microsoft Store credential(s) are EMPTY: ${missingCreds.map(([k]) => k).join(', ')}. --submit cannot authenticate without them, and a submission job that discovers that and reports success is a green tick over a store that received nothing.`,
     );
+    for (const [k] of missingCreds) {
+      if (!scopedTo.has(k)) continue;
+      problems.push(
+        `${k} is a "${scopedTo.get(k)}" ENVIRONMENT secret, readable only in a job bound to that environment. OWNER STEP: GitHub → Settings → Environments → ${scopedTo.get(k)} → Environment secrets → add ${k}.`,
+      );
+    }
     // 🔴 THE SELLER ID GETS ITS OWN SENTENCE, because it is the newest of the five and
     // the only one whose absence used to be INVISIBLE. Before 2026-09-09 this script
     // passed tenant/client/secret and no seller id at all, so a missing one produced
     // no message here and no message from the CLI either — there was nothing to miss.
     // Now that `--sellerId` is passed, an empty value reaches `msstore reconfigure` as
     // a bare `--sellerId` with nothing after it, and what comes back is the CLI's own
-    // argument error naming no repository secret. This line is what stops that.
+    // argument error naming no secret at all. This line is what stops that.
     if (missingCreds.some(([k]) => k === 'MS_STORE_SELLER_ID')) {
       problems.push(
         'MS_STORE_SELLER_ID specifically: it is the Partner Center SELLER id, which `msstore reconfigure` takes as --sellerId, and it is NOT the product id. This account has carried TWO seller ids that differ by three digits; the retired one authenticates against nothing while looking entirely plausible in a log, so read the live one from Private/runbooks/store-submission-windows.md rather than from memory or from an old workflow run.',
@@ -650,6 +675,9 @@ async function submitPath() {
       `     ${PRIMARY_SOURCES.submissionApi} — "You must associate an Azure AD application with your`,
       '     Partner Center account and obtain your tenant ID, client ID and key."',
       '     OWNER STEP: Private/runbooks/store-submission-windows.md, section "the four secrets" (FIVE since 2026-09-09 — MS_STORE_SELLER_ID joined them).',
+      ...emptyCreds
+        .filter(([k]) => scopedTo.has(k))
+        .map(([k]) => `     ${k} is a "${scopedTo.get(k)}" ENVIRONMENT secret: GitHub → Settings → Environments → ${scopedTo.get(k)} → Environment secrets → add ${k}.`),
     ]);
   }
   ok(`credentials — all ${CREDENTIAL_ENV.length} environment variable(s) present (values never read or printed)`);

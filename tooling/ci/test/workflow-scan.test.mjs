@@ -31,7 +31,7 @@ import { fileURLToPath } from 'node:url';
 import {
   parseWorkflow, parseAllWorkflows, joinBlockScalars, shellSegments, workflowEvents, dispatchInputs, stepShell,
   stepItemAround, workflowSteps, jobEnv, githubEnvWrites, joinShellContinuations, commandAt, flutterDrives,
-  resolveLocalCalls, parseResolvedWorkflows, lineAt, placeOf, refusalText,
+  resolveLocalCalls, parseResolvedWorkflows, lineAt, placeOf, refusalText, jobEnvironment,
   POST_GATE_IF, postGateClass, postGateJobs, laneRunHost, laneRefusalText,
   EMIT_RELEASE_JSON_MODE, emitOutputDir, emitInvocations,
   flutterBuilds, flutterReleaseBuilds, buildMode, RELEASE_MODES,
@@ -1222,5 +1222,61 @@ jobs:
     assert.deepEqual(release[1], withoutMode(full[1]));
     assert.equal('mode' in release[0], false);
     assert.equal('mode' in release[1], false);
+  });
+});
+
+// ⏱ 2026-09-25 — assert-channel-register §8c grades a job's secret reads by the
+// environment NAME, where the other readers only ask whether the key is there.
+describe('workflow-scan jobEnvironment', () => {
+  const envRoot = () =>
+    fixture({
+      'e.yml': [
+        'name: E',
+        'jobs:',
+        '  scalar:',
+        '    runs-on: ubuntu-24.04',
+        "    environment: 'store-publish'",
+        '    steps:',
+        '      - run: echo a',
+        '  block:',
+        '    runs-on: ubuntu-24.04',
+        '    environment:',
+        '      url: https://example.invalid',
+        '      name: store-publish',
+        '    steps:',
+        '      - run: echo b',
+        '  flow:',
+        '    runs-on: ubuntu-24.04',
+        '    environment: { url: https://example.invalid, name: "store-publish" }',
+        '    steps:',
+        '      - run: echo c',
+        '  none:',
+        '    runs-on: ubuntu-24.04',
+        '    steps:',
+        '      - uses: some/action@v1',
+        '        with:',
+        '          environment: store-publish',
+        '',
+      ].join('\n'),
+    });
+
+  test('the scalar form, quotes removed, at the key\'s line', () => {
+    const wf = parseWorkflow(envRoot(), '.github/workflows/e.yml');
+    assert.deepEqual(jobEnvironment(wf.jobs.get('scalar')), { n: 5, name: 'store-publish' });
+  });
+
+  test('the block form reads the `name:` child wherever it sits among the others, at the child\'s line', () => {
+    const wf = parseWorkflow(envRoot(), '.github/workflows/e.yml');
+    assert.deepEqual(jobEnvironment(wf.jobs.get('block')), { n: 12, name: 'store-publish' });
+  });
+
+  test('the flow form reads `name` after another key, quotes removed', () => {
+    const wf = parseWorkflow(envRoot(), '.github/workflows/e.yml');
+    assert.deepEqual(jobEnvironment(wf.jobs.get('flow')), { n: 17, name: 'store-publish' });
+  });
+
+  test('a job with no `environment:` is null — a step input of that name is not the job\'s key', () => {
+    const wf = parseWorkflow(envRoot(), '.github/workflows/e.yml');
+    assert.equal(jobEnvironment(wf.jobs.get('none')), null);
   });
 });

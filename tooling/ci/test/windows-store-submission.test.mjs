@@ -36,6 +36,7 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { stripSourceComments } from '../text-reductions.mjs';
+import { parseWorkflow, workflowSteps, jobEnvironment } from '../workflow-scan.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SCRIPT = join(REPO, 'tooling', 'release', 'submit-windows-store.mjs');
@@ -521,6 +522,68 @@ describe('submit-windows-store — the submission path is walkable, and --submit
     assert.equal(code, 0, out);
     assert.match(out, /credentials — all 5 environment variable\(s\) present/);
     assert.doesNotMatch(out, /the-actual-secret/);
+  });
+
+  // ── O-STORE-SECRETS-REACH-THE-DRY-RUN (2026-09-25) ─────────────────────────
+  // The register scopes MS_STORE_CLIENT_SECRET to the store-publish environment,
+  // and the dry-run job has none, so the dry run cannot see it. It must neither
+  // look for it nor report its absence as a gap; --submit, which runs in the
+  // environment-bound job, still requires all five.
+  const SCOPED = (r) => {
+    r.ciSecretRegister = {
+      nonSigning: [
+        { name: 'MS_STORE_CLIENT_SECRET', kind: 'publishing-credential', why: 'the fixture client secret', environment: 'store-publish' },
+      ],
+    };
+  };
+  const IDS = {
+    MS_STORE_TENANT_ID: 'tenant-fixture',
+    MS_STORE_CLIENT_ID: 'client-fixture',
+    MS_STORE_PRODUCT_ID: 'product-fixture',
+    MS_STORE_SELLER_ID: 'seller-fixture',
+  };
+
+  test('scoped secret, the four ids set: the dry run prints NO gap for it, and says where it IS checked', () => {
+    const { code, out } = run(tree({ withArtifact: true, mutateRegister: SCOPED }), ['--dry-run'], IDS);
+    assert.equal(code, 0, out);
+    assert.match(out, /client secret: checked in the environment-bound submit job — MS_STORE_CLIENT_SECRET lives in the "store-publish" environment/);
+    assert.match(out, /credentials — all 4 environment variable\(s\) present/);
+    assert.doesNotMatch(out, /CREDENTIALS NOT CONFIGURED/);
+  });
+
+  test('scoped secret, nothing set: the printed gap names the four ids and never the secret', () => {
+    const { code, out } = run(tree({ withArtifact: true, mutateRegister: SCOPED }), ['--dry-run']);
+    assert.equal(code, 0, out);
+    assert.match(out, /CREDENTIALS NOT CONFIGURED — 4 of 4 absent: MS_STORE_TENANT_ID, MS_STORE_CLIENT_ID, MS_STORE_PRODUCT_ID, MS_STORE_SELLER_ID\./);
+  });
+
+  test('scoped secret: --submit still requires it, and names the environment owner step', () => {
+    const { code, out } = run(
+      tree({ withArtifact: true, mutateRegister: (r) => { CONFIGURED.mutateRegister(r); SCOPED(r); }, pubspecOver: CONFIGURED.pubspecOver }),
+      ['--submit', '--app', 'subscriptiontracker', '--confirm', 'SUBMIT-TO-MICROSOFT-STORE'],
+      IDS,
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /1 of 5 Microsoft Store credential\(s\) are EMPTY: MS_STORE_CLIENT_SECRET\./);
+    assert.match(out, /MS_STORE_CLIENT_SECRET is a "store-publish" ENVIRONMENT secret, readable only in a job bound to that environment\. OWNER STEP: GitHub → Settings → Environments → store-publish/);
+  });
+
+  test('the real lane: the dry run holds no client secret, and the submit job CHECKS it straight after the ref check and fails closed', () => {
+    const wf = parseWorkflow(REPO, '.github/workflows/submit-windows-store.yml');
+    const dryRun = workflowSteps(wf.jobs.get('dry-run')).find((s) => s.name === 'Dry-run the Microsoft Store submission');
+    assert.ok(dryRun, 'the dry-run step is gone or renamed');
+    assert.deepEqual([...dryRun.env.keys()], ['MS_STORE_TENANT_ID', 'MS_STORE_CLIENT_ID', 'MS_STORE_PRODUCT_ID', 'MS_STORE_SELLER_ID']);
+    const submit = wf.jobs.get('submit');
+    assert.equal(jobEnvironment(submit)?.name, 'store-publish');
+    const steps = workflowSteps(submit);
+    const ref = steps.findIndex((s) => s.name === 'Refuse any ref but main');
+    assert.ok(ref >= 0, 'the submit job has no `Refuse any ref but main` step');
+    const first = steps[ref + 1];
+    assert.equal(first?.name, 'Preflight — every Microsoft Store credential must be present', 'the step straight after the ref check must be the credential preflight');
+    assert.ok(first.env.has('MS_STORE_CLIENT_SECRET'), 'the step straight after the ref check must read the client secret');
+    assert.match(first.run.text, /-z "\$MS_STORE_CLIENT_SECRET"/);
+    assert.match(first.run.text, /exit 1/);
+    assert.match(first.run.text, /OWNER STEP for the client secret: GitHub -> Settings -> Environments -> store-publish/);
   });
 
   test('COVERAGE LOST when storeMetadataContract.requiredFiles is emptied', () => {
