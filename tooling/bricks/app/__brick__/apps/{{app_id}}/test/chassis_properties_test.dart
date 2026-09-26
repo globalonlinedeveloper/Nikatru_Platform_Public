@@ -620,9 +620,9 @@ const String kProbeUpdateUrl = 'https://update.invalid/from-config';
 
 /// Every URL the app really handed to `url_launcher`, in order.
 ///
-/// The platform channel, not a seam: `app.dart` calls `launchUrl` directly, and
-/// a test that stubbed a seam we invented for it would prove that our own stub
-/// was called. The handler is scoped to the running test and removed after it.
+/// The platform channel, not the seam: `app.dart` opens through core's
+/// `ExternalLinkLauncher`, and stubbing that would only prove our own stub was
+/// called. The handler is scoped to the running test and removed after it.
 ///
 /// ⚠️ IT CANNOT PASS SILENTLY IF url_launcher RENAMES ITS CHANNEL. The
 /// assertions below require a URL to have ARRIVED, so a handler that never fires

@@ -463,9 +463,9 @@ function checkLegalLinkSet() {
   //
   // ⚠️ HONEST LIMIT, stated rather than implied: this proves a call site exists
   // on the screen the settings register row claims, NOT that a tap reaches the
-  // platform URL launcher. Proving that needs a launcher SEAM the chassis does
-  // not have (`_openUrl` calls `url_launcher` directly), which is a stage-2/3
-  // chassis change and is not claimed here.
+  // platform URL launcher. ⏱ 2026-09-24: the SEAM exists now (`_openUrl` opens
+  // through core's `ExternalLinkLauncher`), but no property taps these links —
+  // only the update wall's launch is captured — so it is still not claimed here.
   let settingsSrc = '';
   try {
     settingsSrc = readFileSync(join(repo, BRICK, SETTINGS), 'utf8');

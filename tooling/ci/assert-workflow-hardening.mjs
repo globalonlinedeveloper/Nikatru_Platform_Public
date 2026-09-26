@@ -86,6 +86,8 @@
 //  11. every `run: node tooling/ci/assert-*` step of a `guards-*` job carries
 //      `if: ${{ !cancelled() }}` (⏱ 2026-09-25, O-GUARD-SHARD-STOPS-AT-FIRST-RED).
 //      See "limb 11" below.
+//  12. no `run:` body loops `for x in $(…)`: `set -e` never sees that command's
+//      exit (⏱ 2026-09-26, O-APP-RELEASE-RECORDS-NO-DEPLOYMENT-SILENTLY). See "limb 12".
 //
 // ⚠️ TRADE-OFF ON RECORD: a pinned action stops receiving updates, including
 // security fixes. That is the deliberate exchange — "silently gets new code"
@@ -1195,6 +1197,46 @@ if (scanningRealRepo || shards > 0) {
   }
 }
 
+// ── limb 12: no `run:` body spends a command substitution as a `for` word list ──
+// ⏱ 2026-09-26 · O-APP-RELEASE-RECORDS-NO-DEPLOYMENT-SILENTLY. `set -e` acts on a
+// command's exit and on an assignment's, never on a `$(…)` spent as a `for` word
+// list: the substitution fails, the loop runs zero times, the step exits 0. Since
+// #958 build-platforms.yml's record step did exactly that on every app tag —
+// `--emit-environments` exited 1 and the release published with no [10]D-9 record
+// and no red. release-manifest.mjs had written the defect down on 2026-08-24 and
+// left it as "build-platforms.yml's to do". The fix is an assignment first
+// (`envs="$(…)"`), then `for e in $envs`. Read through workflow-scan's
+// `workflowSteps`: a `run: |` body arrives joined by ` ; `, so a `for` at the start
+// of a line follows a `;`. Not caught: a `$(…)` spent as an ARGUMENT, and a
+// `< <(…)` process substitution — each is its own shape. A `for` count below
+// FOR_LOOP_FLOOR on the real tree is COVERAGE LOST.
+const FOR_LOOP = /(?:^|[;&|({]|\bthen|\bdo|\belse)\s*for\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\b([^;]*)/g;
+const WORD_LIST_SUBSTITUTION = /\$\(|`/;
+const FOR_LOOP_FLOOR = 20;
+let forLoops = 0;
+for (const wf of parsedAll) {
+  for (const job of wf.jobs.values()) {
+    for (const s of workflowSteps(job)) {
+      if (!s.run) continue;
+      for (const m of s.run.text.matchAll(FOR_LOOP)) {
+        forLoops++;
+        if (!WORD_LIST_SUBSTITUTION.test(m[2])) continue;
+        problems.push(
+          `${wf.rel}:${s.run.n} job "${job.name}" step "${s.name ?? '(unnamed)'}" loops \`for ${m[1]} in\` over a command ` +
+            'substitution, so that command\'s exit is swallowed: `set -e` never sees a `$(…)` spent as a word list, the loop ' +
+            `runs zero times and the step passes. Assign it first (\`list="$(…)"\`), then \`for ${m[1]} in $list\`.`,
+        );
+      }
+    }
+  }
+}
+if (scanningRealRepo && forLoops < FOR_LOOP_FLOOR) {
+  coverageLost([
+    `limb 12 read ${forLoops} \`for … in\` loop(s) across every \`run:\` body; the floor is ${FOR_LOOP_FLOOR}.`,
+    'Fewer means the `run:` reading changed shape under it, and "no loop swallows an exit" would be true of a remnant.',
+  ]);
+}
+
 // ── limb 5: SCAN vs THE LIVE WORKFLOW LIST — the orphan blind spot ───────────
 // 🔴 CHECK (1) ABOVE ANSWERS "DID I REACH THE TREE", AND THAT IS A SMALLER
 // QUESTION THAN "DID I REACH EVERY WORKFLOW GITHUB WILL RUN". Both of its inputs
@@ -2240,3 +2282,4 @@ console.log(
     ? `    limb 11 — ${shardAsserts} assert step(s) across ${shards} \`guards-*\` shard(s), each \`if: \${{ !cancelled() }}\`: an earlier red skips none of them`
     : '    limb 11 — no `guards-*` shard in this tree, so no assert step was judged',
 );
+console.log(`    limb 12 — ${forLoops} \`for … in\` loop(s) across every \`run:\` body; none loops over a \`$(…)\`, so no loop swallows an exit`);

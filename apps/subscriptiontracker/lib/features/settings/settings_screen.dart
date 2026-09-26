@@ -36,7 +36,6 @@ import 'package:nikatru_notifications/nikatru_notifications.dart';
 // before it offers one. Same package `home_screen.dart` imports for the promo
 // card's `offerings`, so this adds no dependency.
 import 'package:nikatru_purchases/nikatru_purchases.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 // ⚠️ THE STAMP'S PATH, NOT THE LIVE ONE. P2.5 keeps `lib/core/app_config.dart`
 // (the chassis convention `assert-stamp-text-fidelity.mjs:328` iterates) and
@@ -1238,11 +1237,10 @@ class SettingsScreen extends ConsumerWidget {
       'mailto:${AppConfig.supportEmail}'
       '?subject=${Uri.encodeComponent('${AppConfig.appName} support')}',
     );
-    try {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (_) {
-      // No mail client / launch failed — best-effort; never crash settings.
-    }
+    // Through the app's ONE launcher: its policy admits a mailto to the
+    // configured support address and nothing else. No mail client / launch
+    // failed reads as not opened, never as a throw — settings cannot crash here.
+    await externalLinks.open(uri);
   }
 
   /// [pipeline C-13] EDIT DISPLAY NAME.

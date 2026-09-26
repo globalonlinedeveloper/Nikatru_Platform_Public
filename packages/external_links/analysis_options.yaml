@@ -1,0 +1,4 @@
+# [pipeline C-12] ONE inherited convention set. Change a rule in
+# packages/analysis/lib/analysis_options.yaml and it reaches every package, every
+# app and every app the factory ever stamps.
+include: package:nikatru_lints/analysis_options.yaml

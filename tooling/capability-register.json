@@ -488,6 +488,13 @@
       },
       "detail": "A hosted checkout is an external URL, and opening one is a per-platform native call with real gaps -- which is why PurchaseCapabilities exists. It also has to be a package rather than app code for three requirements to be enforceable at all: assert-adapter-capabilities.mjs derives its domain from packages/ with a third-party dep, assert-no-seam-forks.mjs forbids a registered seam under apps/, and assert-no-price-literals.mjs needs the price to live behind a model. Leaving the adapter in apps/subscriptiontracker satisfied none of them while appearing to satisfy M-15 -- see [ADR 026]."
     },
+    "packages/external_links": {
+      "reason": "native-binary",
+      "evidence": {
+        "dependency": "url_launcher"
+      },
+      "detail": "2026-09-24 · O-LINK-LAUNCHER-SEAM-UNOWNED. Opening an external link is a per-platform native call with real gaps (ExternalLinkCapabilities), and until this package existed the brick and apps/subscriptiontracker each imported url_launcher directly -- the two dated `|url_launcher` bypasses assert-package-boundaries.mjs printed on every run. It is a package rather than a second capability on packages/purchases because that seam, CheckoutLauncher, opens checkout pages https-only and refuses mailto: by design; hosting legal pages and the support address there would make a money seam own the privacy policy. It is not in platform_storage because the adapter must enforce core's LinkPolicy on every link, and a separate package keeps the one url_launcher import for non-checkout links in a place assert-package-boundaries limb C can name."
+    },
     "packages/chassis_screens": {
       "reason": "chassis",
       "evidence": {
@@ -637,6 +644,13 @@
         {
           "file": "packages/core/lib/src/cancellation_transport.dart",
           "symbol": "CancellationTransport"
+        },
+        {
+          "file": "packages/core/lib/src/links/external_link_launcher.dart",
+          "symbol": "ExternalLinkLauncher",
+          "methods": [
+            "open"
+          ]
         }
       ],
       "consumers": [
@@ -934,6 +948,28 @@
         "test": "packages/purchases/test/purchase_capabilities_test.dart",
         "pinnedTo": "url_launcher 6.x, and store commerce policy as read on 2026-08-01 — re-review on any dependency bump AND whenever a channel changes its policy",
         "degradesOn": "TWO FIELDS PER ROW, and the distinction is what makes this a compliance artifact rather than a table of booleans: `technicallySupported` is url_launcher's question (yes on all six targets) and `channelPermitted` is a store-policy question (no on the mobile stores no matter how well the code works). A one-boolean matrix has to pick a lie -- 'we cannot take payment on iOS' (false: the code works) or 'we can' (false in the way that gets an app rejected). FORBIDDEN: ios-appstore + macos-appstore (App Store Review Guideline 3.1.1 requires IAP for digital content; an external checkout is a documented rejection cause), android-play (Play Billing required; 39-CHASSIS S4 cut 5 defers a native IAP rail so nothing is sold there), windows-store (UNVERIFIED -- Microsoft Store commerce policy has never been read against a primary source in this repo, and undecidable means denied). PERMITTED: web, windows-direct, linux-snap, linux-appimage. `forPlatform` takes the RESTRICTIVE answer where a platform ships through more than one channel, because a build cannot tell at runtime which channel installed it."
+      }
+    },
+    {
+      "id": "external_links",
+      "capability": "Opening an external link -- the legal pages, the site, the contact page, the support mailto and the force-update destination -- in the platform's own browser or mail client, after core's LinkPolicy has allowed it. O-LINK-LAUNCHER-SEAM-UNOWNED.",
+      "owner": "packages/external_links",
+      "package": "nikatru_external_links",
+      "seams": [],
+      "implementsSeams": [
+        "ExternalLinkLauncher"
+      ],
+      "consumers": [
+        "apps/subscriptiontracker",
+        "tooling/bricks/app/__brick__/apps/{{app_id}}"
+      ],
+      "note": "2026-09-24 · replaces the two dated `|url_launcher` bypasses in assert-package-boundaries.mjs. Each app builds ONE UrlLauncherExternalLinks at its composition root (lib/state/providers), from a LinkPolicy over its AppConfig URLs and support address; every screen reaches it through core's ExternalLinkLauncher. The force-update wall widens that policy by the ONE destination the config service resolved, because owner decision #19 made that destination runtime config. CheckoutLauncher (packages/purchases) is untouched: checkout pages stay on the money rail's own https-only seam.",
+      "capabilityMatrix": {
+        "file": "packages/external_links/lib/src/external_link_capabilities.dart",
+        "symbol": "ExternalLinkCapabilities",
+        "test": "packages/external_links/test/external_link_capabilities_test.dart",
+        "pinnedTo": "url_launcher 6.x — re-review on any major bump",
+        "degradesOn": "https: and mailto: can be HANDED OVER on all six targets and web, and whether anything answers is the platform's call: a device or desktop with no handler registered for the scheme (no mail client, a headless Linux session) answers false or throws, and a web popup blocker can refuse a link not started by a tap. The adapter reports all of these as LinkOutcome.notOpened, never as success. Fuchsia has no implementation (MissingPluginException, also notOpened)."
       }
     },
     {
