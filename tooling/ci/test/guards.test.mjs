@@ -1284,8 +1284,9 @@ describe('assert-workflow-hardening', () => {
       y += `  guards-s${k}:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n    steps:\n      - uses: actions/checkout@${SHA}\n`;
       for (let i = 0; i < 25; i++) {
         y += `      - name: Guard ${k}.${i}\n`;
-        if (!(bare && bare.shard === k && bare.step === i)) y += '        if: ${{ !cancelled() }}\n';
-        y += `        run: node tooling/ci/assert-g${k}-${i}.mjs\n`;
+        const isBare = bare && bare.shard === k && bare.step === i;
+        if (!isBare) y += '        if: ${{ !cancelled() }}\n';
+        y += `        run: node ${isBare && bare.flags ? `${bare.flags} ` : ''}tooling/ci/assert-g${k}-${i}.mjs\n`;
       }
     }
     return y;
@@ -1301,6 +1302,17 @@ describe('assert-workflow-hardening', () => {
     const { code, out } = run('assert-workflow-hardening.mjs', { args: [buildShards('wh-shard-bare', 4, { shard: 2, step: 7 })] });
     assert.equal(code, 1, out);
     assert.match(out, /ci\.yml:\d+ job "guards-s2" step "Guard 2\.7" has no `if:`/);
+  });
+
+  // ⏱ 2026-09-26 · `node --single-threaded tooling/ci/assert-….mjs` did not read as an
+  // assert step, so four flagged steps in ci.yml sat outside this limb. With the old
+  // pattern this case exits 2: the bare step drops out and the fixture reads 99 < 100.
+  test('limb 11 — a step run as `node --single-threaded …` is an assert step too: bare, it FAILS', () => {
+    const { code, out } = run('assert-workflow-hardening.mjs', {
+      args: [buildShards('wh-shard-flagged', 4, { shard: 1, step: 3, flags: '--single-threaded --stack-size=900' })],
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /ci\.yml:\d+ job "guards-s1" step "Guard 1\.3" has no `if:`/);
   });
 
   test('limb 11 — every assert step carrying it PASSES, and the ok block says what it judged', () => {
