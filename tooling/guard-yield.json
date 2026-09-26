@@ -2318,6 +2318,11 @@
       "firstSeen": "2026-08-02",
       "evidence": []
     },
+    "tooling/ci/worker-set.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-26",
+      "evidence": []
+    },
     "tooling/ci/worker-shared-modules.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-07",
@@ -3467,5 +3472,5 @@
       "signature": "guard-test:B2: an env carrying API_BASE_URL is refused, whatever it names"
     }
   ],
-  "zeroCatch": 142
+  "zeroCatch": 143
 }
