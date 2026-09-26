@@ -276,6 +276,10 @@
       "property": "workflow-scan"
     },
     {
+      "path": "tooling/ci/gen-ci-map.mjs",
+      "property": "workflow-scan"
+    },
+    {
       "path": "tooling/ci/lane-detect.mjs",
       "property": "workflow-scan"
     },

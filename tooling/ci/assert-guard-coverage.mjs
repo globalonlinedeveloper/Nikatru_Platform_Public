@@ -70,6 +70,10 @@
 // moved out of assert-android-vapt-manifest.mjs when dump-aab-permissions.mjs
 // needed the same zip walk and AXML decoder (O-PLAY-DATA-SAFETY-FROM-A-STALE-RUN).
 //
+// ⏱ APPENDED 2026-09-26 (drafted 2026-09-24) — one entry fewer. channel-arming.mjs left the map
+// when it gained a CLI that writes tooling/release/RELEASE-RUNBOOK.md's arming
+// lines from the register: it reads a tree now, and carries its own COVERAGE LOST.
+//
 // It also self-checks, because a guard-coverage guard that stopped finding
 // guards would report perfect coverage over an empty set.
 //
@@ -539,10 +543,6 @@ const NOT_A_SCANNER = new Map([
   [
     'workflow-scan.mjs',
     'is not a guard: it is the ONE parse of a GitHub workflow into jobs, `needs` edges and LOGICAL lines (a `run: >` block folded with spaces, a `run: |` block joined with ` ; `, comments blanked so line numbers survive). It was extracted from assert-release-provenance.mjs on 2026-08-03, unchanged, when a fourth guard needed it — four copies of a workflow parser drift in the one way that reports "clean", which is WHICH LINES THEY CAN SEE. It reads only the path its caller hands it and asserts nothing about the tree, so "did my scan still reach the tree" belongs to the four importers, each of which carries its own COVERAGE LOST over what it read — and assert-no-secret-defines.mjs specifically re-scans the same files FLAT and fails when a define is in the text but outside the parsed set, which is a negative test of THIS module reaching the file. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
-  ],
-  [
-    'channel-arming.mjs',
-    'is not a guard: it is the ONE reading of "does tooling/channel-register.json say this channel can reach a user today?" — `served: true`, or `submittable: true` with a real `lane` — imported by the two signing seams (apple-signing, appimage-signing; windows-signing retired 2026-09-25 with its only step) that must decide whether a missing credential FAILS a release or is PRINTED as an owner-gated gap. Pure functions: register rows in, verdict out, no filesystem, no environment and deliberately no channel name, so it cannot carry a stale copy of the register to drift from. "Did my scan still reach the tree" belongs to those two importers, each of which already exits COVERAGE LOST when its own row is absent from the register — the case where this module would otherwise be asked about nothing. Its own failing cases are in test/channel-arming.test.mjs, including a positive control against the REAL register (the served `web` row must come out ARMED) without which every negative result there would be consistent with a derivation that returns false always. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
   ],
   [
     'signing-seam.mjs',

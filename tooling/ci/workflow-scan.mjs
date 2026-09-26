@@ -186,6 +186,11 @@ export function parseWorkflow(root, rel) {
     rawStepCount,
     strippedStepCount,
     lines: lines.map((text, i) => ({ n: i + 1, text })),
+    // The file as written, comments included. Only for a caller that quotes the
+    // file back as TEXT (gen-ci-map.mjs's `### above` anchors, which can sit over
+    // a kept `# why:` line); every question about what the workflow RUNS reads
+    // `lines`, where a comment is blank.
+    rawLines: rawLines.map((text, i) => ({ n: i + 1, text })),
     jobsAt: jobsAt === -1 ? null : jobsAt + 1,
   };
 }
@@ -442,6 +447,63 @@ export function parseAllWorkflows(root) {
     .sort()
     .map((f) => parseWorkflow(root, `${WORKFLOW_DIR}/${f}`))
     .filter(Boolean);
+}
+
+// ── THE FACTS THE CI DOCS QUOTE ─────────────────────────────────────────────
+// ⏱ ADDED 2026-09-24 for tooling/ci/gen-ci-map.mjs, which writes docs/ci/README.md's
+// lane map, workflow list, action list and secret list from the files instead of
+// from a hand copy of them. Here rather than there for the reason releaseTrigger
+// moved here: one reading of a workflow. Each is a view over `parseWorkflow`'s
+// comment-blanked `lines`, so a name that appears only in a comment is not read.
+
+/** Where composite actions live: one `action.yml` (or `.yaml`) per subdirectory. */
+export const ACTION_DIR = '.github/actions';
+
+/** Every composite action under `.github/actions/<name>/action.y(a)ml`, parsed
+ *  with parseWorkflow (it has no `jobs:`, so only `lines` is meaningful), sorted
+ *  by directory name. */
+export function parseAllActions(root) {
+  const dir = join(root, ACTION_DIR);
+  if (!existsSync(dir)) return [];
+  const out = [];
+  for (const d of listDir(dir).sort()) {
+    for (const f of ['action.yml', 'action.yaml']) {
+      if (existsSync(join(dir, d, f))) out.push(parseWorkflow(root, `${ACTION_DIR}/${d}/${f}`));
+    }
+  }
+  return out.filter(Boolean);
+}
+
+/** The file's top-level `name:` with its YAML quotes removed, or null. */
+export function workflowName(wf) {
+  for (const { text } of wf?.lines ?? []) {
+    const m = text.match(/^name:\s*(\S.*?)\s*$/);
+    if (m) return unquote(m[1]);
+  }
+  return null;
+}
+
+/** Every `uses:` key in the file, as `{ n, uses }` in file order: the step form
+ *  (`- uses: x@ref`) and the key form (`uses: x@ref`, a job calling a reusable
+ *  workflow). A `uses:` quoted inside a `run:` body is shell text, not a key. */
+export function workflowUses(wf) {
+  const out = [];
+  for (const { n, text } of wf?.lines ?? []) {
+    const m = text.match(/^\s*(?:-\s+)?uses:\s*(\S+)\s*$/);
+    if (m) out.push({ n, uses: unquote(m[1]) });
+  }
+  return out;
+}
+
+/** Every `secrets.NAME` the file reads, as `{ n, name }` in file order. The
+ *  lookbehind keeps a path such as `scan-secrets.mjs` in a `run:` line from
+ *  being read as a secret called `mjs`. */
+export function workflowSecrets(wf) {
+  const out = [];
+  for (const { n, text } of wf?.lines ?? []) {
+    for (const m of text.matchAll(/(?<![\w./-])secrets\.([A-Za-z_][A-Za-z0-9_]*)/g)) out.push({ n, name: m[1] });
+  }
+  return out;
 }
 
 /**

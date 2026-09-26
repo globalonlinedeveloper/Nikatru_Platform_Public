@@ -213,7 +213,7 @@ the tag itself, which is what keeps its app-existence and exact-leaf
 text and `${{ }}` inside a `run:` is substituted before bash ever sees it.
 [zizmor template-injection]
 
-## job `strategy`
+### key `strategy:`
 
 ### above `strategy:`
 
@@ -222,7 +222,7 @@ one build: app #2 failing to compile says nothing about app #1, and
 cancelling app #1's run destroys the evidence that would have told them
 apart. With one app in the workspace this changes nothing.
 
-## job `with`
+### key `with:`
 
 ### above `with:`
 
@@ -1149,7 +1149,7 @@ Only the staging + manifest half has ever run (max 1m41s). Everything from
 `gh release create` down is tag-only and has NEVER executed — see the ⬜ in
 the header — so 20 is headroom for an unmeasured publish, not an estimate.
 
-## job `needs`
+### key `needs:`
 
 ### above `needs:`
 

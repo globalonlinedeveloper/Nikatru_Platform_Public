@@ -16,7 +16,7 @@ ledger Deployment that was good, and the Pages deployment or Worker version it
 recorded goes back live, behind the `production` environment, a main-only ref
 check, the unit's own smoke and a ledger record.
 
-## Inputs
+## The dispatch inputs
 
 | input | what it is |
 |---|---|

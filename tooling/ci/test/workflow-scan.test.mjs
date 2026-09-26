@@ -32,6 +32,7 @@ import {
   parseWorkflow, parseAllWorkflows, joinBlockScalars, shellSegments, workflowEvents, dispatchInputs, stepShell,
   stepItemAround, workflowSteps, jobEnv, githubEnvWrites, joinShellContinuations, commandAt, flutterDrives,
   resolveLocalCalls, parseResolvedWorkflows, lineAt, placeOf, refusalText, jobEnvironment,
+  ACTION_DIR, parseAllActions, workflowName, workflowUses, workflowSecrets,
   POST_GATE_IF, postGateClass, postGateJobs, laneRunHost, laneRefusalText,
   EMIT_RELEASE_JSON_MODE, emitOutputDir, emitInvocations,
   flutterBuilds, flutterReleaseBuilds, buildMode, RELEASE_MODES,
@@ -282,6 +283,48 @@ jobs:
       '.github/workflows/a.yaml',
       '.github/workflows/b.yml',
     ]);
+  });
+
+  test('workflowName, workflowUses and workflowSecrets read code lines only, and rawLines keeps the comments', () => {
+    const root = fixture({
+      'a.yml': [
+        "name: 'Build it'",
+        'on:',
+        '  push:',
+        'jobs:',
+        '  one:',
+        '    uses: owner/repo/.github/workflows/reusable.yml@v1',
+        '  two:',
+        '    runs-on: ubuntu-24.04',
+        '    steps:',
+        '      # - uses: commented/out@v1  ${{ secrets.COMMENTED }}',
+        '      - uses: actions/checkout@abc # v4',
+        '      - run: node tooling/ci/scan-secrets.mjs && echo "uses: not-a-key@v1"',
+        '        env:',
+        '          A: ${{ secrets.FIRST }}',
+        '          B: ${{ secrets.SECOND }} ${{ secrets.FIRST }}',
+        '',
+      ].join('\n'),
+    });
+    const wf = parseWorkflow(root, '.github/workflows/a.yml');
+    assert.equal(workflowName(wf), 'Build it');
+    assert.deepEqual(workflowUses(wf).map((u) => u.uses), ['owner/repo/.github/workflows/reusable.yml@v1', 'actions/checkout@abc']);
+    assert.deepEqual(workflowSecrets(wf).map((s) => [s.n, s.name]), [[14, 'FIRST'], [15, 'SECOND'], [15, 'FIRST']]);
+    assert.match(wf.rawLines[9].text, /commented\/out/);
+    assert.equal(wf.lines[9].text, '');
+    assert.equal(workflowName(parseWorkflow(fixture({ 'b.yml': 'on:\n  push:\n' }), '.github/workflows/b.yml')), null);
+  });
+
+  test('parseAllActions reads each .github/actions/<name>/action.yml, sorted, and [] when there is none', () => {
+    const root = fixture({ 'a.yml': 'name: A\n' });
+    assert.deepEqual(parseAllActions(root), []);
+    for (const [d, f] of [['setup-z', 'action.yml'], ['setup-a', 'action.yaml']]) {
+      mkdirSync(join(root, ACTION_DIR, d), { recursive: true });
+      writeFileSync(join(root, ACTION_DIR, d, f), `name: ${d}\nruns:\n  using: composite\n  steps:\n    - uses: x/${d}@v1\n`);
+    }
+    const actions = parseAllActions(root);
+    assert.deepEqual(actions.map((a) => a.rel), ['.github/actions/setup-a/action.yaml', '.github/actions/setup-z/action.yml']);
+    assert.deepEqual(actions.map((a) => workflowUses(a)[0].uses), ['x/setup-a@v1', 'x/setup-z@v1']);
   });
 
   test('joinBlockScalars leaves a plain `run:` line untouched', () => {

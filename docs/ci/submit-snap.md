@@ -293,7 +293,7 @@ from the one being uploaded is "green means ran" with extra steps. Snap
 auto-updates SILENTLY, so the wrong revision does not fail cleanly — it
 lands on machines.
 
-## job `permissions`
+### key `permissions:`
 
 ### above `permissions:`
 
