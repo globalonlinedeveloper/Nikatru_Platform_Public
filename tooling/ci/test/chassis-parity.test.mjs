@@ -8,12 +8,16 @@
 //   · new drift (an undeclared unadopted package) → 1
 //   · a stale declaration (the app adopted it and the row stayed) → 1
 //   · a declaration whose file list no longer matches the template → 1
-//   · a row missing why / since / plan / files → 1
+//   · a row missing why / since / plan / files / forks → 1
+//   · a fork above its ceiling, or below it with the shrink unrecorded → 1
+//   · a ceiling raised, or a frozen measurement edited, against the base commit → 1
 //   · every coverage floor → 2, never 0
 //
 // 🔴 THE CONTROL IS LOAD-BEARING HERE. Three of the five failing shapes differ from
 // the passing tree by ONE line of JSON, so a control that passes is the only thing
 // that proves the failures are caused by the mutation rather than by the fixture.
+// The fork ratchet has its own control WITH history: a lowered ceiling over a real
+// parent commit passes, so the raised one failing is the raise and not the git.
 //
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
@@ -24,6 +28,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { cleanGitEnv } from '../../scripts/repo-git.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-chassis-parity.mjs');
@@ -39,10 +44,15 @@ after(() => {
 
 let seq = 0;
 
-const run = (root) => {
-  const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
+const run = (root, ...flags) => {
+  const r = spawnSync(process.execPath, [GUARD, root, ...flags], { encoding: 'utf8' });
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
 };
+
+/** The app's private copy of the template's sign-in screen, and its entry. */
+const FORK_FILE = 'apps/demo/lib/features/auth/sign_in_screen.dart';
+const FORK_LINES = 12;
+const FORK = { file: FORK_FILE, linesAtSince: 10, ceiling: FORK_LINES, template: 4 };
 
 /** The row a passing tree declares: one unadopted package, fully justified. */
 const ROW = {
@@ -53,15 +63,28 @@ const ROW = {
   cost: 'its pubspec does not declare the dependency either',
   plan: 'screen by screen, smallest first; delete this row on the last one',
   files: ['features/auth/sign_in_screen.dart'],
+  forks: [FORK],
+};
+const withFork = (fields) => ({ ...ROW, forks: [{ ...FORK, ...fields }] });
+
+const writeManifest = (root, rows) => {
+  mkdirSync(join(root, 'tooling'), { recursive: true });
+  writeFileSync(join(root, 'tooling', 'chassis-parity.json'), `${JSON.stringify({ notAdopted: rows }, null, 2)}\n`);
+};
+const writeFork = (root, lines) => {
+  const p = join(root, ...FORK_FILE.split('/'));
+  mkdirSync(dirname(p), { recursive: true });
+  writeFileSync(p, '// a private copy of the chassis sign-in screen\n'.repeat(lines));
 };
 
 /**
  * A tree where the template delegates two packages and the app adopts one.
  *
  * `templateFiles` and `appFiles` are `relative path → source`; `rows` is the
- * manifest's `notAdopted`. Every case below changes exactly one of the three.
+ * manifest's `notAdopted`; `fork` is how many lines the app's fork has (null: no
+ * file). Every case below changes exactly one of the four.
  */
-function tree({ templateFiles, appFiles, rows, manifest = true, apps = true } = {}) {
+function tree({ templateFiles, appFiles, rows, manifest = true, apps = true, fork = FORK_LINES } = {}) {
   const root = join(TMP, `t${seq++}`);
   const tpl = templateFiles ?? {
     'features/auth/sign_in_screen.dart': "import 'package:nikatru_chassis_screens/auth/sign_in_screen.dart';\n",
@@ -79,14 +102,37 @@ function tree({ templateFiles, appFiles, rows, manifest = true, apps = true } = 
       mkdirSync(dirname(p), { recursive: true });
       writeFileSync(p, body);
     }
+    if (fork !== null) writeFork(root, fork);
   }
-  if (manifest) {
-    mkdirSync(join(root, 'tooling'), { recursive: true });
-    writeFileSync(
-      join(root, 'tooling', 'chassis-parity.json'),
-      `${JSON.stringify({ notAdopted: rows ?? [ROW] }, null, 2)}\n`,
-    );
-  }
+  if (manifest) writeManifest(root, rows ?? [ROW]);
+  return root;
+}
+
+/** `git -C root …` with the caller's GIT_DIR and friends removed, so a suite run
+ *  from a hook cannot commit a fixture into the repository under test. */
+const git = (root, ...args) => {
+  const r = spawnSync('git', ['-C', root, ...args], { encoding: 'utf8', env: cleanGitEnv().env });
+  assert.equal(r.status, 0, `git ${args.join(' ')} exited ${r.status}: ${r.stderr}`);
+};
+const commitAll = (root, message) => {
+  git(root, 'add', '-A');
+  git(root, 'commit', '-q', '-m', message, '--no-gpg-sign');
+};
+
+/**
+ * A git history of two commits: the parent carries `parent` rows with the fork at
+ * `parentFork` lines, the child `child` rows at `childFork` lines. HEAD^1 is the
+ * parent, as it is in a PR's merge checkout.
+ */
+function history(parent, child, { parentFork = FORK_LINES, childFork = parentFork } = {}) {
+  const root = tree({ rows: parent, fork: parentFork });
+  git(root, 'init', '-q');
+  git(root, 'config', 'user.email', 'f@e.test');
+  git(root, 'config', 'user.name', 'f');
+  commitAll(root, 'parent');
+  writeManifest(root, child);
+  writeFork(root, childFork);
+  commitAll(root, 'child');
   return root;
 }
 
@@ -173,6 +219,15 @@ describe('assert-chassis-parity — a debt must be justified', () => {
     assert.equal(code, 1, out);
     assert.match(out, /has no `files` array/);
     assert.match(out, /could grow one silently/);
+  });
+
+  test('a row with no `forks` array fails — nothing would hold the private copies to a size', () => {
+    const row = { ...ROW };
+    delete row.forks;
+    const { code, out } = run(tree({ rows: [row] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /has no `forks` array/);
+    assert.match(out, /O-CHASSIS-PARITY-GRADES-IMPORTS-ONLY/);
   });
 });
 
@@ -276,6 +331,126 @@ describe('assert-chassis-parity — partial adoption ([ADR 086])', () => {
     );
     assert.equal(code, 1, out);
     assert.match(out, /ADDED: features\/auth\/sign_up_screen\.dart/);
+  });
+});
+
+// ⏱ 2026-09-26 · O-CHASSIS-PARITY-GRADES-IMPORTS-ONLY — each fork holds a ceiling
+// that only falls. Each case is declared on its own (assert-no-loop-cases).
+describe('assert-chassis-parity — each fork holds a ceiling', () => {
+  test('a fork at its ceiling passes, and with no git history says the ratchet was not checked', () => {
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    assert.match(out, /fork ceilings — not checked here: no parent commit/);
+    assert.match(out, /1 fork\(s\) at their ceilings/);
+  });
+
+  test('GROWTH: one line above the ceiling FAILS, naming the file, both numbers and O-CHASSIS-PHASE-2B', () => {
+    const { code, out } = run(tree({ fork: FORK_LINES + 1 }));
+    assert.equal(code, 1, out);
+    assert.match(out, /sign_in_screen\.dart is 13 line\(s\), 1 above its ceiling 12 \(10 at 2026-09-12; template 4\)/);
+    assert.match(out, /O-CHASSIS-PHASE-2B/);
+  });
+
+  test('SHRINK: one line below the ceiling FAILS until the shrink is written down', () => {
+    const { code, out } = run(tree({ fork: FORK_LINES - 1 }));
+    assert.equal(code, 1, out);
+    assert.match(out, /Record the shrink: set ceiling to 11/);
+  });
+
+  test('…and the recorded shrink passes', () => {
+    const { code, out } = run(tree({ fork: FORK_LINES - 1, rows: [withFork({ ceiling: FORK_LINES - 1 })] }));
+    assert.equal(code, 0, out);
+  });
+
+  test('an entry whose file is gone FAILS: delete the entry in the same commit', () => {
+    const { code, out } = run(tree({ fork: null }));
+    assert.equal(code, 1, out);
+    assert.match(out, /sign_in_screen\.dart no longer exists\. Delete the entry in the same commit/);
+  });
+
+  test('an entry outside apps/<app>/lib FAILS', () => {
+    const { code, out } = run(tree({ rows: [withFork({ file: 'packages/chassis_screens/lib/auth/sign_in_screen.dart' })] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /which is not a file under apps\/demo\/lib\//);
+  });
+
+  test('an entry whose template counterpart is not in `files` FAILS', () => {
+    const { code, out } = run(
+      tree({ rows: [withFork({ file: 'apps/demo/lib/state/providers/auth.dart', linesAtSince: 1, ceiling: 1, template: 1 })] }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /template counterpart `state\/providers\/auth\.dart` is not in this row's `files`, so the entry measures a file the row does not owe \(O-CHASSIS-PHASE-2B\)/);
+  });
+
+  test('a ceiling that is not a whole line count FAILS', () => {
+    const { code, out } = run(tree({ rows: [withFork({ ceiling: '12' })] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /records `ceiling` "12", not a positive whole line count/);
+  });
+});
+
+describe('assert-chassis-parity — the ceiling only falls, read against the base commit', () => {
+  test('the control WITH history: a ceiling lowered below the parent commit\'s passes', () => {
+    const { code, out } = run(history([ROW], [withFork({ ceiling: FORK_LINES - 1 })], { childFork: FORK_LINES - 1 }));
+    assert.equal(code, 0, out);
+    assert.match(out, /each ceiling read against `HEAD\^1`/);
+  });
+
+  test('RAISED: a ceiling above the parent commit\'s FAILS, even with the fork at it', () => {
+    const { code, out } = run(history([ROW], [withFork({ ceiling: FORK_LINES + 1 })], { childFork: FORK_LINES + 1 }));
+    assert.equal(code, 1, out);
+    assert.match(out, /ceiling 13 is above 12 at `HEAD\^1`\. A fork's ceiling only falls/);
+  });
+
+  test('FROZEN: `linesAtSince` edited against the parent commit FAILS', () => {
+    const { code, out } = run(history([ROW], [withFork({ linesAtSince: 11 })]));
+    assert.equal(code, 1, out);
+    assert.match(out, /`linesAtSince` is 11, and `HEAD\^1` recorded 10\. It was measured once, at 2026-09-12, and is never re-measured \(O-CHASSIS-PHASE-2B\)/);
+  });
+
+  test('FROZEN: `template` edited against the parent commit FAILS', () => {
+    const { code, out } = run(history([ROW], [withFork({ template: 5 })]));
+    assert.equal(code, 1, out);
+    assert.match(out, /`template` is 5, and `HEAD\^1` recorded 4/);
+  });
+
+  test('DROPPED: an entry the parent had, removed while its file stays, FAILS', () => {
+    const { code, out } = run(history([ROW], [{ ...ROW, forks: [] }]));
+    assert.equal(code, 1, out);
+    assert.match(out, /had a fork entry at `HEAD\^1` \(ceiling 12\) and has none now/);
+  });
+
+  test('an entry the parent commit did not have is accepted once', () => {
+    const parent = { ...ROW };
+    delete parent.forks;
+    const { code, out } = run(history([parent], [ROW]));
+    assert.equal(code, 0, out);
+    assert.match(out, /1 new entry accepted once/);
+  });
+
+  test('--base moves the comparison: the raised ceiling read against itself passes', () => {
+    const root = history([ROW], [withFork({ ceiling: FORK_LINES + 1 })], { childFork: FORK_LINES + 1 });
+    const { code, out } = run(root, '--base', 'HEAD');
+    assert.equal(code, 0, out);
+    assert.match(out, /each ceiling read against `HEAD`/);
+  });
+
+  test('--require-history with no parent commit is COVERAGE LOST (2), not a pass', () => {
+    const root = tree();
+    git(root, 'init', '-q');
+    git(root, 'config', 'user.email', 'f@e.test');
+    git(root, 'config', 'user.name', 'f');
+    commitAll(root, 'only');
+    const { code, out } = run(root, '--require-history');
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /`HEAD\^1` names no commit in this clone/);
+  });
+
+  test('an argument the guard does not read is COVERAGE LOST (2)', () => {
+    const { code, out } = run(tree(), '--requre-history');
+    assert.equal(code, 2, out);
+    assert.match(out, /unknown argument "--requre-history"/);
   });
 });
 

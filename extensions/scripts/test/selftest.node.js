@@ -316,6 +316,52 @@ expect('--expect disagreeing with the manifest fails', {
 expect('a tag naming another tool fails', {
   script: 'check-version.mjs', argv: ['goodtool', '--tag', 'othertool-v1.0.0'], root: fixture(), code: 1, contains: 'tag names this tool'
 });
+/* F-b, 2026-09-25: §4 the Firefox overlay, and §4b — it holds only what differs
+   from manifest.json. Each overlay is written out whole, one case at a time. */
+const ffOverlayFixture = overlay => fixture(root => {
+  const t = readJson(root, TOOL + '/tool.json');
+  t.targets.firefox = { overlay: 'publish/manifest.firefox.json' };
+  writeJson(root, TOOL + '/tool.json', t);
+  writeJson(root, TOOL + '/publish/manifest.firefox.json', overlay);
+});
+expect('a Firefox overlay carrying only what differs passes §4 and §4b', {
+  script: 'check-version.mjs', argv: ['goodtool'], code: 0, contains: 'holds only what differs from manifest.json',
+  root: ffOverlayFixture({
+    background: { scripts: ['background.js'] },
+    browser_specific_settings: { gecko: { id: 'goodtool@example.test' } }
+  })
+});
+expect('an overlay restating a base member fails, naming it', {
+  script: 'check-version.mjs', argv: ['goodtool'], code: 1, contains: 'already has: default_locale.',
+  root: ffOverlayFixture({
+    default_locale: 'en',
+    background: { scripts: ['background.js'] },
+    browser_specific_settings: { gecko: { id: 'goodtool@example.test' } }
+  })
+});
+expect('an overlay restating a member INSIDE an object it changes fails, naming the path', {
+  script: 'check-version.mjs', argv: ['goodtool'], code: 1, contains: 'already has: background.service_worker.',
+  root: ffOverlayFixture({
+    background: { service_worker: 'background.js', scripts: ['background.js'] },
+    browser_specific_settings: { gecko: { id: 'goodtool@example.test' } }
+  })
+});
+expect('an overlay null that deletes a key the base does not have fails, naming it', {
+  script: 'check-version.mjs', argv: ['goodtool'], code: 1, contains: 'already has: options_page.',
+  root: ffOverlayFixture({
+    background: { scripts: ['background.js'] },
+    browser_specific_settings: { gecko: { id: 'goodtool@example.test' } },
+    options_page: null
+  })
+});
+expect('an overlay whose version disagrees fails §4 (RC-F6)', {
+  script: 'check-version.mjs', argv: ['goodtool'], code: 1, contains: 'publish/manifest.firefox.json says v9.9.9',
+  root: ffOverlayFixture({
+    version: '9.9.9',
+    background: { scripts: ['background.js'] },
+    browser_specific_settings: { gecko: { id: 'goodtool@example.test' } }
+  })
+});
 /* A malformed version must be reported BY the version gate, as its own
    failure (exit 1) — not by the loader as "cannot run" (exit 2). The first
    version of toolinfo.mjs made it a tool.json contract error, which meant the
