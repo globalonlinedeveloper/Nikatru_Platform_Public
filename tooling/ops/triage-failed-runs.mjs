@@ -780,8 +780,25 @@ const reEscape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
  *  a fine-grained `github_pat_`, and a legacy 40-hex token. Anything else — a
  *  pasted `Bearer …`, a trailing newline, a second header after CR/LF — is
  *  refused before it can be sent. */
-const GITHUB_TOKEN_SHAPE = /^(?:gh[pousr]_[A-Za-z0-9]{36,251}|github_pat_[A-Za-z0-9_]{22,251}|[0-9a-f]{40})$/;
+// ⏱ 2026-09-26 · the Actions job token failed this shape on its FIRST live run (ops-watch #526, run 36203215773,
+// job 108294094867, the day #959 wired GH_TOKEN: ${{ github.token }}): "does not have the shape of a GitHub
+// token", exit 2, while every fixture and the laptop's gho_ token passed. GitHub's issued tokens are longer than
+// 251 characters, or carry `_`/`-`/`.`, so the body is now any run of header-safe token characters up to 2048,
+// still prefix-anchored. What the check exists to refuse is unchanged: a `Bearer ` paste, whitespace, CR/LF
+// (a second header), and anything that is not one of these shapes. On a refusal, credentialShape() says why in
+// words that carry no part of the value, so the next miss is diagnosable from the log.
+const GITHUB_TOKEN_SHAPE = /^(?:gh[pousr]_[A-Za-z0-9_.-]{30,2048}|github_pat_[A-Za-z0-9_]{22,2048}|[0-9a-f]{40})$/;
 export const isValidGithubToken = (tok) => typeof tok === 'string' && GITHUB_TOKEN_SHAPE.test(tok);
+
+/** PURE. A description of a credential's SHAPE that holds no part of its value: its length, whether it starts
+ *  with a known prefix (named only by its family), and which character classes occur. Safe to print. */
+export function credentialShape(tok) {
+  if (typeof tok !== 'string') return `not a string (${typeof tok})`;
+  const family = /^gh[pousr]_/.test(tok) ? 'a gh?_ prefix' : tok.startsWith('github_pat_') ? 'a github_pat_ prefix' : /^[0-9a-f]+$/.test(tok) ? 'hex only' : 'no known prefix';
+  const classes = [[/[A-Za-z]/, 'letters'], [/[0-9]/, 'digits'], [/_/, 'underscore'], [/-/, 'hyphen'], [/\./, 'dot'], [/\s/, 'WHITESPACE'], [/[^A-Za-z0-9_.\s-]/, 'OTHER symbols']]
+    .filter(([re]) => re.test(tok)).map(([, n]) => n);
+  return `length ${tok.length}, ${family}, characters: ${classes.join(', ') || 'none'}`;
+}
 
 /** `owner/name` by GitHub's character rules; a name may not start with `.`, so
  *  `..` can never climb out of `/repos/`. */
@@ -1174,7 +1191,7 @@ async function main(argv) {
     if (!isValidGithubToken(tok)) {
       // The value is never printed: a mis-pasted vault line is still a secret.
       console.error(
-        '✗ COVERAGE LOST — the GitHub credential does not have the shape of a GitHub token (ghp_/gho_/ghu_/ghs_/ghr_/github_pat_/40-hex), so it was not sent. Its value is not printed.',
+        `✗ COVERAGE LOST — the GitHub credential does not have the shape of a GitHub token (ghp_/gho_/ghu_/ghs_/ghr_/github_pat_/40-hex), so it was not sent. Its value is not printed; its shape: ${credentialShape(tok)}.`,
       );
       return 2;
     }

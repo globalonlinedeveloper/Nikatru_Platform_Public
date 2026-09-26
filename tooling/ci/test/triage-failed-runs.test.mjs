@@ -56,6 +56,7 @@ import {
   CoverageLost,
   readThroughCache,
   isValidGithubToken,
+  credentialShape,
   isValidRepoSlug,
   isAllowedApiPath,
   liveApi,
@@ -896,10 +897,23 @@ describe('transport hardening', () => {
   });
 
   test('only GitHub token SHAPES are accepted as a credential', () => {
-    const accepted = ['ghp_' + 'a'.repeat(36), 'ghs_' + 'A1'.repeat(20), 'github_pat_' + 'x_'.repeat(20), 'f'.repeat(40)];
-    const refused = ['', 'Bearer ghp_' + 'a'.repeat(36), 'ghp_' + 'a'.repeat(36) + '\n', 'ghp_' + 'a'.repeat(36) + '\r\nx-evil: 1', 'ghp_short', 'not a token', null, undefined, 42];
+    const accepted = ['ghp_' + 'a'.repeat(36), 'ghs_' + 'A1'.repeat(20), 'github_pat_' + 'x_'.repeat(20), 'f'.repeat(40),
+      // ⏱ 2026-09-26 · ops-watch #526 (run 36203215773): the live Actions job token failed the old 251-character,
+      // alphanumeric-only body. A long job token, and one whose body carries `_`, `-` or `.`, are GitHub shapes too.
+      'ghs_' + 'Ab9'.repeat(200), 'ghs_' + 'a_b-c.d'.repeat(10) + 'e'.repeat(10)];
+    const refused = ['', 'Bearer ghp_' + 'a'.repeat(36), 'ghp_' + 'a'.repeat(36) + '\n', 'ghp_' + 'a'.repeat(36) + '\r\nx-evil: 1', 'ghp_short', 'not a token', null, undefined, 42,
+      'ghs_' + 'a'.repeat(36) + ' x', 'ghs_' + 'a'.repeat(2049), 'ghs_' + 'a'.repeat(36) + '/x', 'ghs_' + 'a'.repeat(36) + ':x'];
     for (const t of accepted) assert.equal(isValidGithubToken(t), true, String(t).slice(0, 12));
     for (const t of refused) assert.equal(isValidGithubToken(t), false, String(t).slice(0, 12));
+  });
+
+  test('a refused credential is described by its SHAPE only: length, prefix family, character classes, no value', () => {
+    const secret = 'pasted-by-mistake SECRETVALUE';
+    const d = credentialShape(secret);
+    assert.equal(d, 'length 29, no known prefix, characters: letters, hyphen, WHITESPACE');
+    assert.doesNotMatch(d, /SECRETVALUE|pasted/);
+    assert.equal(credentialShape('ghs_' + 'A'.repeat(300)), 'length 304, a gh?_ prefix, characters: letters, underscore');
+    assert.equal(credentialShape(undefined), 'not a string (undefined)');
   });
 
   test('an UNSHAPED credential is COVERAGE LOST (exit 2), its value is not printed, and no transport is built', () => {
@@ -907,6 +921,7 @@ describe('transport hardening', () => {
     assert.equal(r.code, 2, r.out + r.err);
     assert.match(r.err, /COVERAGE LOST — the GitHub credential does not have the shape of a GitHub token/);
     assert.doesNotMatch(r.out + r.err, /SECRETVALUE/);
+    assert.match(r.err, /its shape: length 29, no known prefix, characters: letters, hyphen, WHITESPACE\./);
     assert.doesNotMatch(r.out, /triage-failed-runs — /, 'the live transport must not have been constructed');
   });
 
