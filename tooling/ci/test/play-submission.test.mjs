@@ -545,13 +545,13 @@ describe('submit-play — the submission path is walkable', () => {
 
   test('COVERAGE LOST when requiredFiles is emptied', () => {
     const { code, out } = run(tree({ mutateRegister: (r) => { r.storeMetadataContract.requiredFiles = []; } }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
     assert.match(out, /COVERAGE LOST/);
   });
 
   test('COVERAGE LOST when the register declares no android-play row', () => {
     const { code, out } = run(tree({ mutateRegister: (r) => { r.channels = []; } }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
     assert.match(out, /declares no "android-play" channel/);
   });
 
@@ -570,7 +570,7 @@ describe('submit-play — the submission path is walkable', () => {
 
   test('COVERAGE LOST when the gradle file declares no applicationId at all', () => {
     const { code, out } = run(tree({ gradleOver: { appId: null } }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
     assert.match(out, /declares no `applicationId`/);
   });
 
@@ -585,7 +585,7 @@ describe('submit-play — the submission path is walkable', () => {
   // signing block is COVERAGE LOST rather than a silent "no keystore".
   test('COVERAGE LOST when the release-signing env map is removed from gradle', () => {
     const { code, out } = run(tree({ gradleOver: { envMap: false } }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
     assert.match(out, /declares no release-signing environment map/);
   });
 

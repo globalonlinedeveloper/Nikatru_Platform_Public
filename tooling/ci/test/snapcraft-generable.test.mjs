@@ -112,9 +112,11 @@ const workflowWith = (packages, { runner = 'ubuntu-24.04', extraInstallStep = fa
     `          sudo apt-get install -y \\`,
     `            ${head} \\`,
     `            ${tail}`,
-    ...(buildsLinux
-      ? ['      - name: Build linux', '        run: >', '          flutter build linux --release', '          --build-name=1.0.0']
-      : []),
+    ...(buildsLinux === 'composer'
+      ? ['      - name: Build linux', '        run: node tooling/ci/flutter-release-build.mjs subscriptiontracker linux linux-snap']
+      : buildsLinux
+        ? ['      - name: Build linux', '        run: >', '          flutter build linux --release', '          --build-name=1.0.0']
+        : []),
     ...(extraInstallStep
       ? ['  other:', '    runs-on: ubuntu-24.04', '    steps:', '      - name: More deps', '        run: sudo apt-get install -y zip']
       : []),
@@ -161,6 +163,9 @@ function tree({
   omitStoreTree = false,
   runner = 'ubuntu-24.04',
   extraInstallStep = false,
+  // true: a literal `flutter build linux`; false: no Linux build; 'composer': the
+  // build is tooling/ci/flutter-release-build.mjs's, which needs the register's
+  // storeKeyDefine and the app's app.yaml, so both are written.
   buildsLinux = true,
   // Per-file listing overrides. The licence cases need a tree whose
   // `license.txt` is a real SPDX identifier, which the default fixture is not.
@@ -194,6 +199,10 @@ function tree({
       { id: 'web', kind: 'web', platforms: ['web'], served: true, storeMetadataDir: null },
     ],
   };
+  if (buildsLinux === 'composer') {
+    register.purchaseRails = { storeKeyDefine: { define: 'STORE_KEY', secretByRail: {} } };
+    write('apps/subscriptiontracker/app.yaml', 'id: subscriptiontracker\n');
+  }
   if (mutateRegister) mutateRegister(register);
   write('tooling/channel-register.json', JSON.stringify(register, null, 2));
 
@@ -327,7 +336,7 @@ describe('generate-snapcraft — the recipe is derived, and refuses when it cann
   // 🔴 R3 — a lane package RUNTIME_OF does not know.
   test('REFUSES a lane package with no RUNTIME_OF entry rather than passing it through', () => {
     const g = generate(tree({ packages: [...FIXTURE_PACKAGES, 'libmpv-dev'] }), ['--bundle', bundle()]);
-    assert.equal(g.code, 1, g.out);
+    assert.equal(g.code, 2, g.out); // a refusal exits 2 since 2026-09-25; 1 is a finding
     assertComplained(g.out);
     assert.match(g.out, /names libmpv-dev, which has no entry in RUNTIME_OF/);
   });
@@ -343,7 +352,7 @@ describe('generate-snapcraft — the recipe is derived, and refuses when it cann
 
   test('REFUSES an unmapped (floating) runner label rather than guessing a base', () => {
     const g = generate(tree({ runner: 'ubuntu-latest' }), ['--bundle', bundle()]);
-    assert.equal(g.code, 1, g.out);
+    assert.equal(g.code, 2, g.out); // a refusal exits 2 since 2026-09-25; 1 is a finding
     assertComplained(g.out);
     assert.match(g.out, /has no snapcraft base recorded in BASE_FOR_RUNNER/);
     assert.match(g.out, /names an image family, not a release/);
@@ -351,7 +360,7 @@ describe('generate-snapcraft — the recipe is derived, and refuses when it cann
 
   test('REFUSES when the workflow holds more than one apt-get install', () => {
     const g = generate(tree({ extraInstallStep: true }), ['--bundle', bundle()]);
-    assert.equal(g.code, 1, g.out);
+    assert.equal(g.code, 2, g.out); // a refusal exits 2 since 2026-09-25; 1 is a finding
     assertComplained(g.out);
     assert.match(g.out, /COVERAGE LOST/);
     assert.match(g.out, /requires exactly one/);
@@ -359,14 +368,33 @@ describe('generate-snapcraft — the recipe is derived, and refuses when it cann
 
   test('REFUSES when the only apt-get install is in a job that does not build linux', () => {
     const g = generate(tree({ buildsLinux: false }), ['--bundle', bundle()]);
-    assert.equal(g.code, 1, g.out);
+    assert.equal(g.code, 2, g.out); // a refusal exits 2 since 2026-09-25; 1 is a finding
     assertComplained(g.out);
     assert.match(g.out, /does not run `flutter build linux`/);
   });
 
+  // ⏱ 2026-09-25 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 2 of 3): which job builds
+  // Linux is workflow-scan's census, so a lane whose build is composed by
+  // tooling/ci/flutter-release-build.mjs, with no `flutter build linux` text in
+  // it, is still the Linux lane.
+  test('a Linux build made through the composer is the Linux lane', () => {
+    const g = generate(tree({ buildsLinux: 'composer' }), ['--bundle', bundle()]);
+    assert.equal(g.code, 0, g.out);
+    assert.match(readFileSync(g.recipe, 'utf8'), /^ {6}- libjsoncpp25$/m);
+  });
+
+  test('REFUSES as COVERAGE LOST when the composer refuses the lane call, rather than guessing the lane', () => {
+    const root = tree({ buildsLinux: 'composer' });
+    rmSync(join(root, 'apps/subscriptiontracker/app.yaml'));
+    const g = generate(root, ['--bundle', bundle()]);
+    assert.equal(g.code, 2, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /COVERAGE LOST — \.github\/workflows\/build-platforms\.yml:\d+: the composer refuses .*app\.yaml does not exist/);
+  });
+
   test('REFUSES when the build workflow is gone', () => {
     const g = generate(tree({ omitWorkflow: true }), ['--bundle', bundle()]);
-    assert.equal(g.code, 1, g.out);
+    assert.equal(g.code, 2, g.out); // a refusal exits 2 since 2026-09-25; 1 is a finding
     assertComplained(g.out);
     assert.match(g.out, /COVERAGE LOST/);
     assert.match(g.out, /build-platforms\.yml does not exist/);
@@ -374,21 +402,21 @@ describe('generate-snapcraft — the recipe is derived, and refuses when it cann
 
   test('REFUSES when snap-name.txt is missing', () => {
     const g = generate(tree({ renameSnapName: true }), ['--bundle', bundle()]);
-    assert.equal(g.code, 1, g.out);
+    assert.equal(g.code, 2, g.out); // a refusal exits 2 since 2026-09-25; 1 is a finding
     assertComplained(g.out);
     assert.match(g.out, /snap-name\.txt does not exist/);
   });
 
   test('REFUSES when a listing field is emptied', () => {
     const g = generate(tree({ emptyListing: ['short-description.txt'] }), ['--bundle', bundle()]);
-    assert.equal(g.code, 1, g.out);
+    assert.equal(g.code, 2, g.out); // a refusal exits 2 since 2026-09-25; 1 is a finding
     assertComplained(g.out);
     assert.match(g.out, /short-description\.txt is EMPTY/);
   });
 
   test('REFUSES a bundle directory that does not hold the BINARY_NAME file', () => {
     const g = generate(tree(), ['--bundle', bundle('subscriptiontracker', 'com.nikatru.subscriptiontracker', { omitBinary: true })]);
-    assert.equal(g.code, 1, g.out);
+    assert.equal(g.code, 2, g.out); // a refusal exits 2 since 2026-09-25; 1 is a finding
     assertComplained(g.out);
     assert.match(g.out, /contains no file named "subscriptiontracker"/);
   });
@@ -396,7 +424,7 @@ describe('generate-snapcraft — the recipe is derived, and refuses when it cann
   test('REFUSES without --version rather than minting a second version', () => {
     const out = join(TMP, `o${seq++}`);
     const r = run(GENERATOR, ['--repo-root', tree(), '--app', 'subscriptiontracker', '--out', out, '--bundle', bundle()]);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out); // a refusal exits 2 since 2026-09-25; 1 is a finding
     assertComplained(r.out);
     assert.match(r.out, /--version is required/);
   });
@@ -404,7 +432,7 @@ describe('generate-snapcraft — the recipe is derived, and refuses when it cann
   test('REFUSES when the register declares no linux store row', () => {
     const root = tree({ mutateRegister: (reg) => { reg.channels[0].kind = 'direct'; } });
     const g = generate(root, ['--bundle', bundle()]);
-    assert.equal(g.code, 1, g.out);
+    assert.equal(g.code, 2, g.out); // a refusal exits 2 since 2026-09-25; 1 is a finding
     assertComplained(g.out);
     assert.match(g.out, /COVERAGE LOST/);
     assert.match(g.out, /no `kind: "store"` row whose platforms include linux/);
@@ -862,14 +890,14 @@ describe('the launcher: snap/gui, an absolute Icon, and no `desktop:` key', () =
   // all before 2026-08-09; a tree without it must refuse rather than crash.
   test('REFUSES, without crashing, when the category the launcher needs is missing', () => {
     const g = generate(tree({ omitListing: ['category.txt'] }), ['--bundle', bundle()]);
-    assert.equal(g.code, 1, g.out);
+    assert.equal(g.code, 2, g.out); // a refusal exits 2 since 2026-09-25; 1 is a finding
     assertComplained(g.out);
     assert.match(g.out, /category\.txt does not exist/);
   });
 
   test('REFUSES a store category with no freedesktop equivalent rather than passing it through', () => {
     const g = generate(tree({ listing: { 'category.txt': 'Nonexistent\n' } }), ['--bundle', bundle()]);
-    assert.equal(g.code, 1, g.out);
+    assert.equal(g.code, 2, g.out); // a refusal exits 2 since 2026-09-25; 1 is a finding
     assertComplained(g.out);
     assert.match(g.out, /has no freedesktop equivalent recorded/);
   });
@@ -1211,7 +1239,7 @@ describe('generate-snapcraft --emit-build-deps — one apt list, two jobs', () =
   test('REFUSES rather than emitting an empty list when the workflow parse breaks', () => {
     const root = tree({ omitWorkflow: true });
     const r = spawnSync(process.execPath, [GENERATOR, '--repo-root', root, '--emit-build-deps'], { encoding: 'utf8' });
-    assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+    assert.equal(r.status, 2, `${r.stdout}${r.stderr}`); // a refusal exits 2 since 2026-09-25; 1 is a finding
     assert.equal(r.stdout.trim(), '', 'nothing may reach stdout on a refusal — it would be read as a package name');
     assert.match(r.stderr, /COVERAGE LOST/);
   });

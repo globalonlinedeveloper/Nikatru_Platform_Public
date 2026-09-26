@@ -2756,6 +2756,14 @@
     "claims": [],
     "invokedBy": [],
     "kind": "guard",
+    "ref": "tooling/ci/flutter-release-build.mjs",
+    "references": [],
+    "state": "IMPORTED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
     "ref": "tooling/ci/flutter-stock-assets.mjs",
     "references": [],
     "state": "LIBRARY"
@@ -3923,6 +3931,16 @@
     ],
     "kind": "script",
     "ref": "tooling/store/msix-visual-name.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/deploy-web.yml#deploy-web"
+    ],
+    "kind": "script",
+    "ref": "tooling/web/connect-origins.mjs",
     "references": [],
     "state": "WIRED"
   },

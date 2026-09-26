@@ -429,6 +429,7 @@ function windowsFixture({ identity = WIN_SENTINEL, packaged = identity, served =
     source = source.slice(0, cut) + '  if (false) {\n    problems.push(\n      `PLACEHOLDER PACKAGE IDENTITY' + source.slice(cut + '  if (SUBMIT) {\n    problems.push(\n      `PLACEHOLDER PACKAGE IDENTITY'.length);
   }
   writeFileSync(script, source);
+  writeFileSync(join(root, 'tooling', 'release', 'submit-common.mjs'), readFileSync(join(REPO, 'tooling', 'release', 'submit-common.mjs'), 'utf8'));
   // The guard's own copy must be the one under test, not the fixture's snapshot of it.
   writeFileSync(join(root, 'tooling', 'ci', 'assert-store-identity.mjs'), readFileSync(GUARD, 'utf8'));
   return root;

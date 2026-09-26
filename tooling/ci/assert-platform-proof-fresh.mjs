@@ -141,7 +141,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseWorkflow, shellSegments, WORKFLOW_DIR } from './workflow-scan.mjs';
+import { parseWorkflow, flutterBuilds, WORKFLOW_DIR } from './workflow-scan.mjs';
 import { cronExpressions } from './assert-e2e-proof-fresh.mjs';
 import { flutterAppChannel, undeclaredSurfaceLine } from './channel-surface.mjs';
 import { anchoredRunRead, gradeUnion, describeRead } from './anchored-run-read.mjs';
@@ -337,31 +337,40 @@ export function blankStringLiterals(text) {
  * A `flutter build` inside an unquoted command substitution is deliberately NOT
  * matched: that direction fails CLOSED (a missing target, a red guard), which is
  * the safe way to be wrong here.
+ *
+ * ⏱ CHANGED 2026-09-25 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 2 of 3): the builds
+ * are workflow-scan's flutterBuilds census for this workflow, every mode, a
+ * composer call composed — this walk of the segments did not see a build a step
+ * asks tooling/ci/flutter-release-build.mjs to make. The census matches `flutter
+ * build` anywhere in a segment, so each record still passes the command-word
+ * test above, on a `run:` line, before it counts. The census splits a line
+ * before its quotes are blanked, so `echo "a ; flutter build ios"` reaches here
+ * as the segment `flutter build ios"`: a target holding a quote is the tail of a
+ * quoted string, and does not count. `root` is where a composer call's register
+ * and app.yaml are read.
  */
-export function flutterBuildTargets(wf) {
+export function flutterBuildTargets(wf, root = ROOT) {
   const found = new Map();
-  let runBlocks = 0;
+  const runLines = new Set();
   for (const job of wf.jobs.values()) {
-    for (const line of job.logical) {
-      const m = line.text.match(/^\s*(?:-\s+)?run:\s*(\S.*)$/);
-      if (!m) continue;
-      runBlocks++;
-      for (const seg of shellSegments(blankStringLiterals(m[1]))) {
-        const tokens = seg.trim().split(/\s+/).filter(Boolean);
-        let i = 0;
-        while (i < tokens.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i]) || tokens[i] === 'sudo' || tokens[i] === 'env')) i++;
-        const cmd = tokens[i];
-        if (cmd === undefined) continue;
-        if ((cmd.split('/').pop() ?? '').replace(/\.(exe|bat|cmd)$/i, '') !== 'flutter') continue;
-        if (tokens[i + 1] !== 'build') continue;
-        const target = tokens[i + 2];
-        if (!target || target.startsWith('-')) continue;
-        if (!found.has(target)) found.set(target, []);
-        found.get(target).push({ job: job.name, n: line.n });
-      }
-    }
+    for (const line of job.logical) if (/^\s*(?:-\s+)?run:\s*\S/.test(line.text)) runLines.add(`${job.name}\0${line.n}`);
   }
-  return { found, runBlocks };
+  for (const b of flutterBuilds(root, [wf])) {
+    if (!runLines.has(`${b.job}\0${b.runLine}`)) continue;
+    const seg = blankStringLiterals(b.segment.replace(/^\s*(?:-\s+)?run:\s*/, ''));
+    const tokens = seg.trim().split(/\s+/).filter(Boolean);
+    let i = 0;
+    while (i < tokens.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i]) || tokens[i] === 'sudo' || tokens[i] === 'env')) i++;
+    const cmd = tokens[i];
+    if (cmd === undefined) continue;
+    if ((cmd.split('/').pop() ?? '').replace(/\.(exe|bat|cmd)$/i, '') !== 'flutter') continue;
+    if (tokens[i + 1] !== 'build') continue;
+    const target = tokens[i + 2];
+    if (!target || target.startsWith('-') || /["']/.test(target)) continue;
+    if (!found.has(target)) found.set(target, []);
+    found.get(target).push({ job: b.job, n: b.runLine });
+  }
+  return { found, runBlocks: runLines.size };
 }
 
 /** The platforms this factory claims, and the build targets that prove each. */
@@ -595,7 +604,7 @@ export function platformProofCoverage(root = ROOT) {
   // only place anything compiles for macOS, iOS, Windows or Linux (main CI runs
   // analyze/test, which compile no native target), so two of six could vanish
   // from the factory's only compile proof with ci-gate green throughout.
-  const { found, runBlocks } = flutterBuildTargets(wf);
+  const { found, runBlocks } = flutterBuildTargets(wf, root);
   if (runBlocks === 0) {
     return lost(
       `COVERAGE LOST — the run-block parse found ZERO \`run:\` commands in ${WORKFLOW}'s ${wf.jobs.size} job(s). ` +

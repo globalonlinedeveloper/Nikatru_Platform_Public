@@ -78,50 +78,27 @@
 //
 // Exit 0 = the submission path is walkable, or the submission succeeded.
 //       1 = it is not, or a gate refused.
+//       2 = COVERAGE LOST: an input it must read is absent or unreadable (submit-common.mjs).
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { submitCli, requirePublishEnvironment, PUBLISH_ENVIRONMENT } from './submit-common.mjs';
 
 const CHANNEL_ID = 'windows-store';
 const REGISTER = 'tooling/channel-register.json';
 const APPS = 'catalog/apps.json';
 
-// ── arguments ────────────────────────────────────────────────────────────────
-const argv = process.argv.slice(2);
-const flag = (name) => argv.includes(`--${name}`);
-const opt = (name, fallback = null) => {
-  const i = argv.indexOf(`--${name}`);
-  return i !== -1 && i + 1 < argv.length ? argv[i + 1] : fallback;
-};
+// ── arguments, and the two stops (submit-common.mjs: COVERAGE LOST exits 2) ──
+const { flag, opt, root: ROOT, ok, abs, read, coverageLost, die } = submitCli('submit-windows-store');
 
 const DRY_RUN = flag('dry-run');
 const SUBMIT = flag('submit');
 const ALLOW_MISSING_ARTIFACT = flag('allow-missing-artifact');
-const ROOT = resolve(opt('repo-root') ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
 const problems = [];
 const prints = [];
-const ok = (m) => console.log(`ok   ${m}`);
-const abs = (rel) => join(ROOT, rel);
-const read = (rel) => (existsSync(abs(rel)) ? readFileSync(abs(rel), 'utf8') : null);
-
-/** The scan cannot continue and reporting "clean" would be a lie about nothing. */
-function coverageLost(lines) {
-  console.error('');
-  console.error(`FAIL COVERAGE LOST — ${lines[0]}`);
-  for (const l of lines.slice(1)) console.error(`     ${l}`);
-  console.error('\nsubmit-windows-store: FAILED');
-  process.exit(1);
-}
-
-function die(lines) {
-  console.error('');
-  for (const l of lines) console.error(l);
-  console.error('\nsubmit-windows-store: FAILED');
-  process.exit(1);
-}
 
 if (DRY_RUN === SUBMIT) {
   die([
@@ -208,10 +185,6 @@ const UNSOURCED = Object.freeze([
  *  the order is a documented constraint and not a preference. */
 const CLI = 'msstore';
 const CONFIRM_TOKEN = 'SUBMIT-TO-MICROSOFT-STORE';
-/** ONE gate for the factory, not one per channel — the same environment
- *  submit-play.yml and submit-snap.yml name. A second environment would be a
- *  second thing to configure and a second thing to be silently missing. */
-const PUBLISH_ENVIRONMENT = 'store-publish';
 
 /** Is the citation for a sourced fact still there? Called before any remote call
  *  that depends on it; the mutation test blanks one URL and asserts exit 1.
@@ -604,10 +577,10 @@ if (DRY_RUN) {
 // documents that running a workflow which references an environment that does
 // not exist CREATES one with that name — and no protection rules — so the job
 // proceeds immediately, unapproved, while the run history shows an environment
-// as if a gate had been honoured. `environment:` on its own FAILS OPEN. This
-// reads the rules back at run time from
-// GET /repos/{owner}/{repo}/environments/{environment_name} and refuses a
-// `protection_rules` array carrying no `required_reviewers` entry.
+// as if a gate had been honoured. `environment:` on its own FAILS OPEN. PG-6
+// reads the rules back at run time, through submit-common.mjs
+// `requirePublishEnvironment` (C4b, 2026-09-25), and refuses an environment with
+// no rule carrying a reviewer.
 //
 // ⚠️ EVERY REFUSAL BELOW SETS `process.exitCode` AND RETURNS; none calls
 // `process.exit()`. On Windows, `process.exit()` while undici still holds a
@@ -682,48 +655,20 @@ async function submitPath() {
   ok(`credentials — all ${CREDENTIAL_ENV.length} environment variable(s) present (values never read or printed)`);
 
   // ── PG-6 · the environment EXISTS and carries a REQUIRED REVIEWER ───────────
-  const repo = process.env.GITHUB_REPOSITORY ?? '';
-  const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN ?? '';
-  if (repo === '' || token === '') {
-    return fail([
-      "FAIL --submit needs GITHUB_REPOSITORY and GITHUB_TOKEN to read the publish environment's protection rules.",
-      '     Without them PG-6 cannot tell a gated environment from one GitHub auto-created when this',
-      '     workflow first referenced it — and an auto-created environment has no rules at all.',
-      `     ${PRIMARY_SOURCES.githubEnvironmentsApi}`,
-    ]);
-  }
-  const envUrl = `https://api.github.com/repos/${repo}/environments/${PUBLISH_ENVIRONMENT}`;
-  let protection = null;
-  try {
-    const r = await fetch(envUrl, {
-      headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'user-agent': 'submit-windows-store' },
-    });
-    if (r.status === 404) {
-      return fail([
-        `FAIL the "${PUBLISH_ENVIRONMENT}" environment does not exist in ${repo}.`,
-        '     GitHub creates a referenced environment on first use, with NO protection rules, and runs',
-        '     the job — so the `environment:` line in the workflow would pause nothing at all.',
-        '     Create it with a required reviewer before any submission runs.',
-      ]);
-    }
-    if (!r.ok) {
-      return fail([`FAIL reading ${envUrl} returned HTTP ${r.status}. PG-6 fails closed rather than assuming the gate is there.`]);
-    }
-    const body = await r.json();
-    protection = Array.isArray(body.protection_rules) ? body.protection_rules : [];
-  } catch (e) {
-    return fail([`FAIL could not read the publish environment's protection rules — ${e.message}. PG-6 fails closed.`]);
-  }
-  const reviewers = protection.filter((p) => p !== null && typeof p === 'object' && p.type === 'required_reviewers');
-  if (reviewers.length === 0) {
-    return fail([
-      `FAIL the "${PUBLISH_ENVIRONMENT}" environment in ${repo} carries ${protection.length} protection rule(s) and NONE is \`required_reviewers\`.`,
-      '     Measured on this very repository once: three auto-created environments each returned',
-      '     `"protection_rules": []`. An environment with no reviewer pauses for nobody, and the run',
-      '     history still shows an environment name as though a human had approved something.',
-    ]);
-  }
-  ok(`PG-6 — "${PUBLISH_ENVIRONMENT}" carries ${reviewers.length} required-reviewer rule(s); this submission paused for a human`);
+  // ⏱ C4b, 2026-09-25: `requirePublishEnvironment` in submit-common.mjs, the one
+  // read submit-play and submit-snap make too. It returns a verdict and never
+  // exits, so this path still stops through `fail` (process.exitCode, shell-12).
+  // 🔴 ITS REVIEWER RULE IS THE STRICT INTERSECTION. This file keyed on a rule
+  // whose `type` was `required_reviewers`; the other three copies keyed on a
+  // NON-EMPTY `reviewers` list. The shared read requires both at once, so it
+  // refuses everything any of the four refused (its doc says what changed in
+  // each direction). And its success line no
+  // longer says "this submission paused for a human": `can_admins_bypass` is
+  // read off the same response and reported, since where it is not false an
+  // administrator can dispatch past the reviewer.
+  const gate = await requirePublishEnvironment({ label: 'PG-6', userAgent: 'nikatru-submit-windows-store' });
+  if (!gate.ok) return fail(gate.lines);
+  for (const l of gate.lines) console.log(l);
 
   // ── the transport ──────────────────────────────────────────────────────────
   // 🔴 THE CLI, NOT RAW REST, AND FOR THE SAME REASON SNAP SPEAKS `snapcraft`.

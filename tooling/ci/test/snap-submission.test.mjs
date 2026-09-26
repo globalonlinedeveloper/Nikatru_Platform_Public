@@ -227,6 +227,35 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
     assert.match(out, /runs only inside GitHub Actions/);
   });
 
+  // ⏱ C4b, 2026-09-25 — PG-6 IS NOW submit-common's requirePublishEnvironment,
+  // and this is the case that RUNS it. Before the move PG-6 hard-coded
+  // https://api.github.com and no case reached it. The lane below is the shape
+  // PG-5 demands (an `environment:`, the recipe guard and the pack before the
+  // submit step); the shared read honours the loopback-only GITHUB_API_URL seam,
+  // so a closed loopback port makes the GET itself fail and PG-6 refuses naming
+  // the environment URL only that read builds.
+  test('PG-6 · the shared environment read runs once the lane is gated, and an unreachable gate refuses', () => {
+    const root = tree({ withArtifact: true });
+    mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
+    writeFileSync(
+      join(root, '.github', 'workflows', 'submit-snap.yml'),
+      'name: Submit\non:\n  workflow_dispatch:\njobs:\n  submit:\n    runs-on: ubuntu-24.04\n    environment: store-publish\n    steps:\n' +
+        '      - run: node tooling/ci/assert-snapcraft-generable.mjs\n' +
+        '      - run: snapcraft pack\n' +
+        '      - run: node tooling/release/submit-snap.mjs --submit --app subscriptiontracker\n',
+    );
+    const { code, out } = run(root, ['--submit', '--app', 'subscriptiontracker', '--confirm', 'SUBMIT-TO-SNAP-STORE', '--channel', 'latest/edge'], {
+      GITHUB_ACTIONS: 'true',
+      GITHUB_REPOSITORY: 'o/r',
+      GITHUB_TOKEN: 'ghs-fixture',
+      GITHUB_API_URL: 'http://127.0.0.1:9',
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /PG-5 lane shape — /);
+    assert.match(out, /FAIL PG-6 · could not reach http:\/\/127\.0\.0\.1:9\/repos\/o\/r\/environments\/store-publish/);
+    assert.doesNotMatch(out, /ghs-fixture/);
+  });
+
   test('FAILS when neither --dry-run nor --submit is given', () => {
     const { code, out } = run(tree(), []);
     assert.equal(code, 1, out);
@@ -417,7 +446,7 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
         }),
       }),
     );
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
     // 🔴 IT FAILS HARDER THAN THE PER-FIELD FAULT, and that is correct. An
     // unsourced limit is never EVALUATED, so `limitsChecked` stays 0 and the
     // declared-but-none-measured branch fires first — the same COVERAGE LOST
@@ -517,13 +546,13 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
   // ── the register is the single declaration ────────────────────────────────
   test('COVERAGE LOST when the register declares no linux-snap row', () => {
     const { code, out } = dry(tree({ withArtifact: true, mutateRegister: (r) => (r.channels = []) }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
     assert.match(out, /COVERAGE LOST — .*declares no "linux-snap" channel/);
   });
 
   test('COVERAGE LOST when storeMetadataContract.requiredFiles is emptied', () => {
     const { code, out } = dry(tree({ withArtifact: true, mutateRegister: (r) => (r.storeMetadataContract.requiredFiles = []) }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
     assert.match(out, /COVERAGE LOST — .*requiredFiles/);
   });
 

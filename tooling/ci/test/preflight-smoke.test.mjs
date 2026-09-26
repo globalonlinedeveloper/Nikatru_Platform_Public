@@ -51,6 +51,14 @@ const standInCeilings = (root) => {
     put(root, `tooling/ci/${m[1]}`, '// fixture stand-in: guard-sweep.mjs CEILINGS names this file (no entry point: a LIBRARY row)\nexport {};\n');
   }
 };
+// ⏱ 2026-09-26 (O-FLUTTER-BUILD-TYPED-PER-LINE): workflow-scan.mjs imports the release-build
+// composer and the app set, and calls them only to compose a composer call, which no fixture
+// here has. Each gets a stand-in with no entry point (a LIBRARY row) that throws if called; a
+// copy of the real module is runnable, and the sweep would list it as UNREACHED.
+const standInComposer = (root) => {
+  put(root, 'tooling/ci/flutter-release-build.mjs', "// fixture stand-in: workflow-scan.mjs imports these names (no entry point: a LIBRARY row)\nconst refuse = () => { throw new Error('fixture stand-in: this fixture has no composer call'); };\nexport const composeReleaseBuild = refuse;\nexport const printed = refuse;\nexport const substitute = refuse;\n");
+  put(root, 'tooling/ci/app-set.mjs', "// fixture stand-in: workflow-scan.mjs imports this name (no entry point: a LIBRARY row)\nexport const workspaceApps = () => { throw new Error('fixture stand-in: this fixture has no composer call'); };\n");
+};
 /** A directory holding only `.github/workflows/ci.yml` with this text. */
 const ciTree = (name, lines) => {
   const root = join(TMP, name);
@@ -181,6 +189,7 @@ describe('the full run closes with the generated line, not "CI should agree."', 
       copyFileSync(join(REPO, rel), join(root, rel));
     }
     standInCeilings(root);
+    standInComposer(root);
     put(root, 'tooling/ci/assert-guard-coverage.mjs', "const NOT_CI_RUNNABLE = new Map([\n  ['z-exempt.mjs',\n    'fixture'],\n]);\nexport default NOT_CI_RUNNABLE;\n");
     put(root, 'tooling/ci/a-guard.mjs', "console.log('ok a'); process.exit(0);\n");
     put(root, 'tooling/ci/assert-sworn-store-files.mjs', "console.log('ok sworn'); process.exit(0);\n");
@@ -302,6 +311,7 @@ describe('preflight --smoke end to end — the pushed commit, no lock, a budget,
       copyFileSync(join(REPO, rel), join(root, rel));
     }
     standInCeilings(root);
+    standInComposer(root);
     put(root, 'tooling/ci/assert-guard-coverage.mjs', "const NOT_CI_RUNNABLE = new Map([\n  ['z-exempt.mjs',\n    'fixture'],\n]);\nexport default NOT_CI_RUNNABLE;\n");
     put(root, 'tooling/ci/a-subject-guard.mjs',
       "import { readFileSync } from 'node:fs';\n" +

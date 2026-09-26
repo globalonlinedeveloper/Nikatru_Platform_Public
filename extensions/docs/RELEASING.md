@@ -160,7 +160,10 @@ node Extension/Full_Screen_Shot/publish/verify-firefox-package.node.js --zip dis
 ⚠️ **`verify-firefox-package.node.js` run bare exits 0 printing `SOURCE PASSES — NO PACKAGE WAS
 GRADED`.** Without `--zip` its package limb opens nothing, so a bare green from it says nothing about any
 archive. `release.yml`'s step *"The tool's own AMO submission gate, on the built zip (FullShot)"* asserts
-the *positive* `ALL PASS` wording for exactly this reason.
+the *positive* `ALL PASS` wording for exactly this reason. ⏱ 2026-09-25: that check is
+`Extension/Full_Screen_Shot/publish/amo-gate-release-zip.node.js` now, run by the release job's
+step *"The tool's own declared store gates, on the release zip (tool.json gates, stage release)"*
+from FullShot's tool.json `gates`.
 
 > **CORRECTION — 2026-08-22.** §1b replaces a paragraph headed **"FullShot is on an older toolchain"**,
 > which read: *"It carries `publish/package.node.js` instead of `pack.mjs`, and it has no

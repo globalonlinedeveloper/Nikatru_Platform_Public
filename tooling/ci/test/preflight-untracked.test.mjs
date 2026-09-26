@@ -47,7 +47,10 @@ const freshRepo = () => {
   copyFileSync(PREFLIGHT, join(root, 'tooling', 'scripts', 'preflight.mjs'));
   // preflight.mjs imports the one workflow parse (ci-gate's needs, 2026-09-24).
   mkdirSync(join(root, 'tooling', 'ci'), { recursive: true });
-  for (const f of ['workflow-scan.mjs', 'tree-walk.mjs']) copyFileSync(join(dirname(PREFLIGHT), '..', 'ci', f), join(root, 'tooling', 'ci', f));
+  for (const f of ['workflow-scan.mjs', 'tree-walk.mjs', 'flutter-release-build.mjs', 'app-set.mjs']) copyFileSync(join(dirname(PREFLIGHT), '..', 'ci', f), join(root, 'tooling', 'ci', f));
+  // ⏱ 2026-09-26: workflow-scan.mjs imports the release-build composer and the app set (O-FLUTTER-BUILD-TYPED-PER-LINE)
+  mkdirSync(join(root, 'tooling', 'app-yaml'), { recursive: true });
+  copyFileSync(join(dirname(PREFLIGHT), '..', 'app-yaml', 'yaml.mjs'), join(root, 'tooling', 'app-yaml', 'yaml.mjs'));
   git(root, 'add', '-A');
   git(root, 'commit', '-q', '-m', 'base');
   return root;

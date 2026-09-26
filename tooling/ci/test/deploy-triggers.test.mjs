@@ -222,6 +222,35 @@ jobs:
     assert.match(r.out, /1 Flutter deploy unit\(s\)/);
   });
 
+  // A lane whose one build is a call to the composer, with no `flutter pub get`
+  // and no `flutter build` in its text, still resolves the workspace.
+  const COMPOSER_LANE = () => lane().replace('      - run: flutter pub get --enforce-lockfile\n      - run: flutter build web --release\n', '      - run: node tooling/ci/flutter-release-build.mjs fixture linux linux-snap\n');
+  const withComposerApp = (root) => {
+    mkdirSync(join(root, 'tooling'), { recursive: true });
+    writeFileSync(
+      join(root, 'tooling', 'channel-register.json'),
+      JSON.stringify({
+        channels: [{ id: 'linux-snap', platforms: ['linux'], purchaseRail: { rail: 'paddle' } }],
+        purchaseRails: { storeKeyDefine: { define: 'STORE_KEY', secretByRail: {} } },
+      }),
+    );
+    mkdirSync(join(root, 'apps', 'fixture'), { recursive: true });
+    writeFileSync(join(root, 'apps', 'fixture', 'app.yaml'), 'id: fixture\nhosts:\n  api: fixture-api.nikatru.com\n');
+    return root;
+  };
+
+  test('a lane that builds only through the composer is graded, and its missing lockfile named', () => {
+    const r = run(withComposerApp(fixture({ 'deploy-web.yml': COMPOSER_LANE() }, { '<app>-web': [...without('pubspec.lock'), 'tooling/ci/flutter-release-build.mjs'] })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /deployUnits\["<app>-web"\] never claims `pubspec\.lock`/);
+  });
+
+  test('…and passes once the lockfile is listed', () => {
+    const r = run(withComposerApp(fixture({ 'deploy-web.yml': COMPOSER_LANE() }, { '<app>-web': [...ALL, 'tooling/ci/flutter-release-build.mjs'] })));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /1 Flutter deploy unit\(s\) \(<app>-web by deploy-web\.yml\)/);
+  });
+
   // A plan named only in a comment is not a step the workflow runs.
   test('a plan named only in a COMMENT is not graded', () => {
     const r = run(
