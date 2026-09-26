@@ -1345,6 +1345,69 @@ describe('assert-workflow-hardening', () => {
     assert.match(out, /limb 12 — 2 `for … in` loop\(s\) across every `run:` body; none loops over a `\$\(…\)`/);
   });
 
+  // ── limb 13 · ⏱ 2026-09-26 · main run 36224483330 ─────────────────────────────
+  // wrangler-action's `secrets:` input edits the Worker's secrets before its command,
+  // and Cloudflare refuses that edit after a rollback. Two ordinary workflows plus one
+  // Worker deploy job that limb 10 grades as a publisher, so it carries its
+  // `environment:` and its first-step ref check; every other limb is held green.
+  const buildWrangler = (name, deploySteps) => {
+    const files = {};
+    for (const f of ['a', 'b']) files[`.github/workflows/${f}.yml`] = wf(Array.from({ length: 4 }, (_, i) => `actions/act${i}@${SHA}`));
+    files['.github/workflows/dep.yml'] =
+      'name: D\non: push\npermissions:\n  contents: read\njobs:\n  platform:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n' +
+      `    environment: production\n    steps:\n      - uses: actions/checkout@${SHA}\n` +
+      '      - name: Refuse any ref but main\n        run: node tooling/ci/assert-deploy-ref.mjs --allow main\n' +
+      deploySteps;
+    return fixture(name, files);
+  };
+  const WITH_SECRETS_INPUT =
+    `      - uses: cloudflare/wrangler-action@${SHA}\n        id: deploy\n        with:\n          accountId: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}\n` +
+    '          secrets: |\n            SUPABASE_ANON_KEY\n          command: deploy --var RELEASE:${{ github.sha }}\n' +
+    '        env:\n          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}\n';
+  const WITH_SECRETS_FILE =
+    "      - name: Write this version's secrets file\n        env:\n          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}\n" +
+    '        run: node write.mjs "$RUNNER_TEMP/s.json"\n' +
+    `      - uses: cloudflare/wrangler-action@${SHA}\n        id: deploy\n        with:\n          accountId: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}\n` +
+    '          command: deploy --var RELEASE:${{ github.sha }} --secrets-file ${{ runner.temp }}/s.json\n' +
+    "      - name: Delete this version's secrets file\n        if: always()\n        run: rm -f \"$RUNNER_TEMP/s.json\"\n";
+
+  test('limb 13 — a wrangler-action `secrets:` input FAILS, naming the file, the line, the job and the step', () => {
+    const { code, out } = run('assert-workflow-hardening.mjs', { args: [buildWrangler('wh-wrangler-secrets', WITH_SECRETS_INPUT)] });
+    assert.equal(code, 1, out);
+    assert.match(out, /dep\.yml:\d+ job "platform" step "deploy" hands `secrets:` to cloudflare\/wrangler-action/);
+    assert.match(out, /`--secrets-file <path>`/);
+  });
+
+  test('limb 13 — the `--secrets-file` shape PASSES, and the ok block counts the wrangler-action steps it judged', () => {
+    const { code, out } = run('assert-workflow-hardening.mjs', { args: [buildWrangler('wh-wrangler-file', WITH_SECRETS_FILE)] });
+    assert.equal(code, 0, out);
+    assert.match(out, /limb 13 — 1 cloudflare\/wrangler-action step\(s\), none with a `secrets:` input \(a raw read of their lines agrees, 0\)/);
+  });
+
+  test('COVERAGE LOST when limb 13 stops seeing a `secrets:` key a raw read of the step still finds', () => {
+    // A COPY whose `with:` lookup asks for a key no step has goes blind while the raw
+    // read does not; the unmutated copy runs first, and must exit 1 on the same root.
+    const dir = buildWrangler('wh-wrangler-cov-root', WITH_SECRETS_INPUT);
+    const src = readFileSync(join(CI_DIR, 'assert-workflow-hardening.mjs'), 'utf8');
+    const SUBJECT = "s.with.get('secrets')";
+    const code = stripSourceComments(src, '.mjs');
+    assert.equal(code.split(SUBJECT).length - 1, 1, 'the `with:` lookup must appear exactly once outside comments');
+    const at = code.indexOf(SUBJECT);
+    const modules = {};
+    for (const m of ['tree-walk.mjs', 'workflow-scan.mjs']) modules[m] = readFileSync(join(CI_DIR, m), 'utf8');
+    const copy = (name, body) => join(fixture(name, { ...modules, 'g.mjs': body }), 'g.mjs');
+    const exec = (script) => {
+      const r = spawnSync(process.execPath, [script, dir], { cwd: ROOT, encoding: 'utf8' });
+      return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+    };
+    const control = exec(copy('wh-wrangler-cov-control', src));
+    assert.equal(control.code, 1, control.out);
+    assert.match(control.out, /hands `secrets:` to cloudflare\/wrangler-action/);
+    const blind = exec(copy('wh-wrangler-cov-off', `${src.slice(0, at)}s.with.get('secretz')${src.slice(at + SUBJECT.length)}`));
+    assert.equal(blind.code, 2, blind.out);
+    assert.match(blind.out, /COVERAGE LOST — limb 13 judged 0 wrangler-action `secrets:` input\(s\) from their `with:` field, but a raw read of those steps' lines finds 1/);
+  });
+
   test('limb 11 — THREE shards is COVERAGE LOST (2), never a pass over a remnant', () => {
     const { code, out } = run('assert-workflow-hardening.mjs', { args: [buildShards('wh-shard-three', 3)] });
     assert.equal(code, 2, out);
