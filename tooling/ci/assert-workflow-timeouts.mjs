@@ -7,7 +7,7 @@
 // Owner rule, 2026-09-06 (`platform-state/constraints.json` C-EXPECTED-DURATION):
 // "Every waiting thing carries an EXPECTED DURATION and an ACTION ON OVERRUN."
 // Charter [ADR 067] decision 4 puts every one of those waits on a GitHub-hosted
-// runner. `platform-state/open.json` O-WORKFLOW-TIMEOUTS-GUARD is the row this
+// runner. A `platform-state/open.json` row is what this
 // file closes.
 //
 // ⚠️ THE PRESENCE HALF IS NOT NEW AND THIS FILE DOES NOT PRETEND IT IS.

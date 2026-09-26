@@ -1240,7 +1240,7 @@ jobs:
           # `#/minSupported: "1.0" does not match ^[0-9]+\.[0-9]+\.[0-9]+$`. The
           # emitter reads the app surface's floor from the file the platform Worker
           # enforces force-update from, services/platform/src/app-config-data.json
-          # (apps.<app>.min_supported_version, else defaults), and REFUSES the flag on
+          # (apps.<app>.min_supported_version[<channel>], else [default], else defaults), and REFUSES the flag on
           # this surface, so a second, typed copy of that number cannot come back.
           RELEASED_AT="$(TZ=UTC git show -s --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ "$GITHUB_SHA")"
           node tooling/ci/release-manifest.mjs --emit-release-json dist \

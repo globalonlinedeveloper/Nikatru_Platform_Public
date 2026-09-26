@@ -84,7 +84,7 @@
 // its reason.
 //
 // ⏱ 2026-09-24 (apps-review F1, O-NAME-CLEARANCE-WAITS-ON-A-MISSING-ROW). The gate
-// above held for fifteen days on `O-NAME-SUBLY-TRADEMARK`, a row that was never
+// above held for fifteen days on an owner id whose row was never
 // opened: this limb read `ownerItem` for PRESENCE and nothing read it for
 // EXISTENCE. And any ruling other than null or DO-NOT-PROCEED fell through the
 // limb as a pass, dated or not. So the limb now checks SHAPE — the ruling is one

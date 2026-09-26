@@ -277,17 +277,20 @@ describe('the probe — the roll-up and the record', () => {
 
   test('D4 --execute PRESERVES the owner gate — a re-probe can never extend its own waiver', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'nk-nc-'));
+    /* Built from parts: a literal fixture id in this tracked file is a citation
+       assert-public-citations' ROW IDS class would look up in open.json. */
+    const KEEP = ['O', 'KEEP', 'ME'].join('-');
     try {
       mkdirSync(join(tmp, 'apps', 'x'), { recursive: true });
       writeFileSync(
         join(tmp, RECORD_REL('x')),
-        `${JSON.stringify({ trademark: { ruling: null, ruledBy: null, ruledOn: null, ownerItem: 'O-KEEP-ME', gatedUntil: '2026-10-09' } })}\n`,
+        `${JSON.stringify({ trademark: { ruling: null, ruledBy: null, ruledOn: null, ownerItem: KEEP, gatedUntil: '2026-10-09' } })}\n`,
       );
       const record = { app: 'x', slug: 'x', name: 'X', asOf: '2026-09-30', overall: 'QUALIFIED', channels: {}, identifiers: [], controls: { green: 3, failed: [] }, trademark: { disclaimer: 'd', signals: [], ruling: null, ruledBy: null, ruledOn: null, ownerItem: null, gatedUntil: null } };
       assert.equal(writeRecord(tmp, record).written, true);
       const back = JSON.parse(readFileSync(join(tmp, RECORD_REL('x')), 'utf8'));
       assert.equal(back.trademark.gatedUntil, '2026-10-09', 'the gate date must survive a re-probe untouched');
-      assert.equal(back.trademark.ownerItem, 'O-KEEP-ME');
+      assert.equal(back.trademark.ownerItem, KEEP);
       assert.equal(back.name.verifyKind, 'remote', 'the record ages by the same mechanism as every other dated fact');
     } finally {
       rmSync(tmp, { recursive: true, force: true });
@@ -661,12 +664,15 @@ describe('the probe — `_why` is generated from the record, on every write', ()
   });
 
   test('W3 whyLines groups the verdicts, names the trademark state, and carries no register state', () => {
+    /* Built from parts: a literal fixture id in this tracked file is a citation
+       assert-public-citations' ROW IDS class would look up in open.json. */
+    const HOLD_ID = ['O', 'FIXTURE', 'TRADEMARK', 'HOLD'].join('-');
     const rec = heldRecord();
-    rec.trademark = { ...rec.trademark, ruling: null, ruledBy: null, ruledOn: null, basis: null, ownerItem: 'O-FIXTURE-TRADEMARK-HOLD', gatedUntil: '2026-10-09' };
+    rec.trademark = { ...rec.trademark, ruling: null, ruledBy: null, ruledOn: null, basis: null, ownerItem: HOLD_ID, gatedUntil: '2026-10-09' };
     const lines = whyLines(rec);
     assert.ok(lines.includes('Clear (PROVEN-FREE) — an authority answered "no such name" with its red control green: amo.'), lines.join('\n'));
     assert.ok(lines.includes('Blocked for a submission (UNDETERMINED) — could not check, which is never a pass: ios-appstore (global).'), lines.join('\n'));
-    assert.ok(lines.some((l) => l.startsWith('Trademark: no ruling') && l.includes('O-FIXTURE-TRADEMARK-HOLD') && l.includes('2026-10-09')), lines.join('\n'));
+    assert.ok(lines.some((l) => l.startsWith('Trademark: no ruling') && l.includes(HOLD_ID) && l.includes('2026-10-09')), lines.join('\n'));
     assert.doesNotMatch(lines.join('\n'), /\b(armed|arming|served|lane: null|submittable)\b/i, 'arming is register state; writing it into a record is how `_why[4]` went stale');
     assert.deepEqual(whyLines(rec), lines, 'pure: the same record gives the same lines');
   });

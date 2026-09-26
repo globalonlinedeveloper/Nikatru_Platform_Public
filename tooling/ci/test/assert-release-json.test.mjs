@@ -126,7 +126,7 @@ describe('assert-release-json', () => {
   test('M1 the record is schema-valid, and the schema is one the validator understands', () => {
     // A keyword schema-validate.mjs does not implement is REFUSED, not skipped,
     // so this also asserts that contracts/release.schema.json never grows a
-    // `minimum` or a `$ref` the grader would silently ignore.
+    // `maximum` or a `$ref` the grader would silently ignore.
     assert.ok(existsSync(SCHEMA));
     const s = stage();
     const g = grade(s.dir);
@@ -481,6 +481,109 @@ describe('the release record\'s minSupported is the served floor', () => {
     });
     assert.deepEqual(findings, []);
     rmSync(s.dir, { recursive: true, force: true });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// O-UPDATE-FLOOR-HAS-NO-CHANNEL — THE FLOOR IS KEYED BY CHANNEL, AND THE RECORD
+// STATES THE HIGHEST ONE ITS STAGED CHANNELS ARE SERVED.
+//
+// app-config-data.json's `min_supported_version` is a map by channel id with a
+// `default`; `servedFloor` resolves one channel the way the Worker serves
+// `?channel=`, and the emitter takes the MAX over the channels the stamps name.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** An app-surface emit against `root` with the two stamped installers a real
+ *  release carries: the Play .aab and the apps.gov.in .apk. */
+function emitPlayAndAgi(root) {
+  const dir = mkdtempSync(join(tmpdir(), 'release-floor-dir-'));
+  const stamps = scratchDir('release-floor-stamps-');
+  const aab = 'subscriptiontracker-v1.0.0-app-release.aab';
+  writeFileSync(join(dir, aab), 'aab bytes');
+  writeStamp(join(stamps, aab), { channel: 'android-play', file: 'app-release.aab', body: 'aab bytes' });
+  writeFileSync(join(dir, AGI_APK), 'apk bytes');
+  writeStamp(join(stamps, AGI_APK), { channel: 'apps-gov-in', file: AGI_APK.slice('subscriptiontracker-v1.0.0-'.length), body: 'apk bytes' });
+  const r = run(EMITTER, [
+    '--emit-release-json', dir, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1.0.0',
+    '--sha', 'a'.repeat(40), '--run-url', 'https://x/1', '--notes-url', 'https://x/2',
+    '--released-at', '2026-09-22T10:00:00Z', '--version', '1.0.7', '--stamps', stamps, '--repo-root', root,
+  ]);
+  const record = existsSync(join(dir, 'release.json')) ? JSON.parse(readFileSync(join(dir, 'release.json'), 'utf8')) : null;
+  rmSync(dir, { recursive: true, force: true });
+  return { r, record };
+}
+
+describe('the served floor is per channel, and the record states the highest staged', () => {
+  test('P1 a channel the map names is served its own floor; any other is served `default`', () => {
+    const data = { defaults: { min_supported_version: { default: '1.0.0', web: '9.0.0' } }, apps: {} };
+    assert.deepEqual(servedFloor(data, 'x', 'web'), { value: '9.0.0', from: 'defaults.min_supported_version.web' });
+    assert.deepEqual(servedFloor(data, 'x', 'android-play'), { value: '1.0.0', from: 'defaults.min_supported_version.default' });
+    assert.deepEqual(servedFloor(data, 'x'), { value: '1.0.0', from: 'defaults.min_supported_version.default' });
+  });
+
+  test("P2 an app's own map merges KEY-WISE over the defaults' map (the Worker's deep merge)", () => {
+    const data = {
+      defaults: { min_supported_version: { default: '1.0.0', web: '9.0.0' } },
+      apps: { x: { min_supported_version: { 'android-play': '1.2.0' } } },
+    };
+    assert.deepEqual(servedFloor(data, 'x', 'android-play'), { value: '1.2.0', from: 'apps.x.min_supported_version.android-play' });
+    assert.deepEqual(servedFloor(data, 'x', 'web'), { value: '9.0.0', from: 'defaults.min_supported_version.web' });
+    assert.deepEqual(servedFloor(data, 'x', 'ios-appstore'), { value: '1.0.0', from: 'defaults.min_supported_version.default' });
+  });
+
+  test("P3 an app's own SCALAR replaces the defaults' map for every channel", () => {
+    const data = { defaults: { min_supported_version: { default: '1.0.0', web: '9.0.0' } }, apps: { x: { min_supported_version: '1.5.0' } } };
+    assert.deepEqual(servedFloor(data, 'x', 'web'), { value: '1.5.0', from: 'apps.x.min_supported_version' });
+  });
+
+  test('P4 RED — a map with neither the channel nor `default` is REFUSED, never guessed', () => {
+    const f = servedFloor({ defaults: { min_supported_version: { web: '9.0.0' } }, apps: {} }, 'x', 'android-play');
+    assert.equal(f.value, undefined);
+    assert.match(f.refused, /defaults\.min_supported_version is a map with no "android-play" key and no "default" key/);
+  });
+
+  test('P5 RED — a map entry that is not a version is refused, naming the key', () => {
+    const f = servedFloor({ defaults: { min_supported_version: { default: '1.0.0', web: '' } }, apps: {} }, 'x', 'web');
+    assert.match(f.refused, /defaults\.min_supported_version\.web is "", which is not a version/);
+  });
+
+  test('P6 END TO END — web raised to 9.0.0 does not raise a record that stages no web build', () => {
+    // The release half of the row's closes condition: the record describes a
+    // Play .aab, so its floor is the one android-play is served.
+    const root = floorTree({ defaults: { min_supported_version: { default: '1.0.0', web: '9.0.0' } }, apps: {} });
+    const { r, record } = emitApp(root);
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+    assert.equal(record.minSupported, '1.0.0');
+    assert.match(r.stdout, /defaults\.min_supported_version\.default \(channel android-play\)/);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test('P7 END TO END — two staged channels, the record carries the HIGHER floor', () => {
+    const root = floorTree({ defaults: { min_supported_version: { default: '1.0.0', 'apps-gov-in': '1.10.0' } }, apps: {} });
+    const { r, record } = emitPlayAndAgi(root);
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+    // 1.10.0 over 1.0.0 — ordered as numbers, not as strings.
+    assert.equal(record.minSupported, '1.10.0');
+    assert.match(r.stdout, /the highest of android-play 1\.0\.0, apps-gov-in 1\.10\.0/);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test('P8 RED — a staged channel with no floor refuses the record, naming the channel', () => {
+    const root = floorTree({ defaults: { min_supported_version: { web: '1.0.0' } }, apps: {} });
+    const { r, record } = emitApp(root);
+    assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /declares no served floor for --app "subscriptiontracker" on channel "android-play"/);
+    assert.equal(record, null);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test('P9 RED — two staged floors that differ and cannot be ordered are refused', () => {
+    const root = floorTree({ defaults: { min_supported_version: { default: '1.0.0', 'apps-gov-in': 'latest' } }, apps: {} });
+    const { r, record } = emitPlayAndAgi(root);
+    assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /floors that cannot be ordered/);
+    assert.equal(record, null);
+    rmSync(root, { recursive: true, force: true });
   });
 });
 

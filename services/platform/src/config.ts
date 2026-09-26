@@ -50,11 +50,11 @@
 // the edge stops answering 404. The step that is gone is the SOURCE EDIT, which
 // is what B-2 asks for; a redeploy is CI's job and already automated.
 // ─────────────────────────────────────────────────────────────────────────────
-import type { AppConfig } from './types';
+import type { AppConfig, StoredAppConfig } from './types';
 import catalogueJson from '../../../catalog/apps.json';
 import configDataJson from './app-config-data.json';
 import { isProductKind } from '../../../contracts/entitlement/bundle.js';
-import { type RegisterProduct, productsFromRegisters } from './lib/bundle/availability';
+import { type RegisterProduct, channelIdsFromRegister, productsFromRegisters } from './lib/bundle/availability';
 
 /**
  * A row of the public catalogue, as post_gen.dart writes it. Declared as the
@@ -192,11 +192,11 @@ function apiBaseUrl(row: CatalogueRow, shared: string): string {
  * INPUT this repo generates, and a test that could only ever see the committed
  * catalogue could not write one of them.
  */
-export function buildRegistry(catalogue: unknown, data: ConfigData): Record<string, AppConfig> {
+export function buildRegistry(catalogue: unknown, data: ConfigData): Record<string, StoredAppConfig> {
   const shared = typeof data.sharedApiBaseUrl === 'string' ? data.sharedApiBaseUrl : '';
   const defaults = isPlainObject(data.defaults) ? data.defaults : {};
   const perApp = isPlainObject(data.apps) ? data.apps : {};
-  const out: Record<string, AppConfig> = {};
+  const out: Record<string, StoredAppConfig> = {};
   if (!Array.isArray(catalogue)) return out;
   for (const row of catalogue as CatalogueRow[]) {
     if (!isPlainObject(row)) continue;
@@ -213,7 +213,7 @@ export function buildRegistry(catalogue: unknown, data: ConfigData): Record<stri
     // `app_id` and `api_base_url` FIRST so the served key order is unchanged
     // from the literal this replaced — the response bytes a client caches are
     // the same bytes, which is what "preserve subscriptiontracker exactly" has to mean.
-    out[slug] = { app_id: slug, api_base_url: apiBaseUrl(row, shared), ...merged } as unknown as AppConfig;
+    out[slug] = { app_id: slug, api_base_url: apiBaseUrl(row, shared), ...merged } as unknown as StoredAppConfig;
   }
   return out;
 }
@@ -225,7 +225,7 @@ export function buildRegistry(catalogue: unknown, data: ConfigData): Record<stri
  * compiled-in fallback (`packages/core`) so it works offline when this host is
  * unreachable; these are the authoritative ones, overlaid by KV overrides.
  */
-export const DEFAULT_CONFIGS: Readonly<Record<string, AppConfig>> = buildRegistry(
+export const DEFAULT_CONFIGS: Readonly<Record<string, StoredAppConfig>> = buildRegistry(
   catalogueJson,
   configDataJson as ConfigData,
 );
@@ -323,35 +323,152 @@ export function productKindOf(id: unknown): string | null {
   return isKnownProduct(id) ? (KNOWN_PRODUCTS.get(id) ?? null) : null;
 }
 
-/** Base default config for a known app, or null if the app is unregistered. */
-export function baseConfig(appId: string): AppConfig | null {
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 THE FLOOR AND THE EXIT ARE PER CHANNEL — O-UPDATE-FLOOR-HAS-NO-CHANNEL.
+//
+// `min_supported_version` and `update_url` were one value per app. The web build
+// reloads itself; a store build waits for its store to approve the version the
+// wall asks for. So raising the floor for web walled every store build with it,
+// and one `update_url` had to serve a direct download and a store listing alike.
+//
+// Each of the two may now be a MAP in app-config-data.json or in a KV override,
+// keyed by a channel id from tooling/channel-register.json, with `default`
+// answering every channel the map does not name (types.ts `PerChannel`). A
+// scalar still means every channel, so every override written before this
+// change keeps its meaning. The WIRE STAYS SCALAR: `forChannel` collapses both
+// fields to the requesting channel's value, and a request with no `?channel=`
+// is served `default`.
+//
+// ⚠️ THE MERGE IS THE ONE `deepMerge` ABOVE. Two maps merge key-wise — a KV map
+// naming one channel keeps every other channel's committed value — and a scalar
+// replaces a map whole. tooling/ci/release-manifest.mjs `servedFloor` and
+// tooling/ci/assert-stamp-properties.mjs `servedByChannel` read the file the same
+// way; assert-stamp-properties refuses a map key that is not a channel id and a
+// merged map with no `default`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The map key every channel falls back to, and what a request with no `?channel=` is served. */
+export const DEFAULT_CHANNEL = 'default';
+
+/** The AppConfig fields a map may key by channel. Everything else is one value for every build. */
+export const CHANNEL_KEYED_FIELDS = ['min_supported_version', 'update_url'] as const;
+
+/**
+ * The channel ids `?channel=` accepts: every id the register declares.
+ *
+ * Exported so a test can hand it a register it wrote. A row named `default`
+ * THROWS at module load, for the reason `buildKnownProducts` throws: it would
+ * collide with the fallback key, so that channel's own map entry and every other
+ * channel's fallback would be one key. The suite imports this module, so the
+ * throw is a red build before it is a Worker that fails to start.
+ */
+export function buildReleaseChannels(ids: readonly string[]): ReadonlySet<string> {
+  const out = new Set<string>();
+  for (const id of ids) {
+    if (id === DEFAULT_CHANNEL) {
+      throw new Error(
+        `tooling/channel-register.json declares a channel "${DEFAULT_CHANNEL}", which is the per-channel maps' ` +
+          'fallback key (O-UPDATE-FLOOR-HAS-NO-CHANNEL). Rename the channel; refusing to serve an ambiguous map.',
+      );
+    }
+    out.add(id);
+  }
+  return out;
+}
+
+/** Every channel this Worker resolves, read once at module load. */
+export const RELEASE_CHANNELS: ReadonlySet<string> = buildReleaseChannels(channelIdsFromRegister());
+
+/** Is `v` a channel id the register declares? A `Set` lookup: `__proto__` and friends are simply absent. */
+export function isKnownChannel(v: unknown): v is string {
+  return typeof v === 'string' && RELEASE_CHANNELS.has(v);
+}
+
+/**
+ * The value `channel` is served out of one per-channel field: a scalar as it
+ * is; a map's own entry for the channel, else its `default`; `undefined` when a
+ * map names neither.
+ */
+export function channelValue(v: unknown, channel: string): unknown {
+  if (!isPlainObject(v)) return v;
+  if (Object.prototype.hasOwnProperty.call(v, channel)) return v[channel];
+  if (Object.prototype.hasOwnProperty.call(v, DEFAULT_CHANNEL)) return v[DEFAULT_CHANNEL];
+  return undefined;
+}
+
+/**
+ * Collapse a stored config to the scalar config `channel` is served.
+ *
+ * Key ORDER is kept — each field is overwritten in place, never re-added — so
+ * the bytes of a no-channel response are the bytes this route served before the
+ * fields became maps. A field an override left with no value for this channel
+ * (a KV map with neither the channel nor `default`, laid over a committed
+ * scalar) is answered from `base`, the committed config, rather than dropped
+ * from the response.
+ */
+export function forChannel(
+  stored: StoredAppConfig,
+  channel: string,
+  base: StoredAppConfig = stored,
+): AppConfig {
+  const out: Record<string, unknown> = { ...stored };
+  for (const field of CHANNEL_KEYED_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(out, field)) continue;
+    const v = channelValue(out[field], channel);
+    out[field] = v === undefined ? channelValue(base[field], channel) : v;
+  }
+  return out as unknown as AppConfig;
+}
+
+/** The stored default config for a known app, or null if the app is unregistered. */
+function storedConfig(appId: string): StoredAppConfig | null {
   if (!isKnownApp(appId)) return null;
   return structuredCloneSafe(DEFAULT_CONFIGS[appId]);
 }
 
+/**
+ * Base default config for a known app as `channel` is served it (no channel ⇒
+ * `default`), or null if the app is unregistered.
+ */
+export function baseConfig(appId: string, channel: string = DEFAULT_CHANNEL): AppConfig | null {
+  const stored = storedConfig(appId);
+  return stored === null ? null : forChannel(stored, channel);
+}
+
 /** Deep-merge a partial override onto a base config (override wins). */
-export function mergeConfig(
-  base: AppConfig,
+export function mergeConfig<T extends AppConfig | StoredAppConfig>(
+  base: T,
   override: Record<string, unknown> | null | undefined,
-): AppConfig {
+): T {
   if (!override || typeof override !== 'object') return base;
-  return deepMerge(base as unknown as Record<string, unknown>, override) as unknown as AppConfig;
+  return deepMerge(base as unknown as Record<string, unknown>, override) as unknown as T;
 }
 
 /**
- * Resolve the config for `appId` given the raw KV value (JSON string or null).
- * Returns null for an unregistered app. Malformed KV JSON is ignored (defaults
- * win) so a bad override can never take an app down.
+ * Resolve the config for `appId` given the raw KV value (JSON string or null),
+ * as `channel` is served it. Returns null for an unregistered app. Malformed KV
+ * JSON is ignored (defaults win) so a bad override can never take an app down.
+ *
+ * The override is merged onto the STORED config and only then collapsed, so a
+ * KV map naming one channel lands beside the committed map's other channels
+ * instead of replacing a value that was already collapsed. `channel` is NOT
+ * validated here: the route refuses an unknown one before it reads KV, and an
+ * unknown id here would only ever be answered `default`.
  */
-export function resolveConfig(appId: string, kvValue: string | null): AppConfig | null {
-  const base = baseConfig(appId);
-  if (!base) return null;
-  if (!kvValue) return base;
+export function resolveConfig(
+  appId: string,
+  kvValue: string | null,
+  channel: string = DEFAULT_CHANNEL,
+): AppConfig | null {
+  const stored = storedConfig(appId);
+  if (!stored) return null;
+  if (!kvValue) return forChannel(stored, channel);
+  let override: Record<string, unknown>;
   try {
-    const override = JSON.parse(kvValue) as Record<string, unknown>;
-    return mergeConfig(base, override);
+    override = JSON.parse(kvValue) as Record<string, unknown>;
   } catch {
-    return base;
+    return forChannel(stored, channel);
   }
+  return forChannel(mergeConfig(stored, override), channel, stored);
 }
 
