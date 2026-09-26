@@ -32,7 +32,12 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { deflateRawSync } from 'node:zlib';
-import { readIdentity, parseArgs, IDENTITY_FIELDS, MANIFEST_MEMBER, SIGNATURE_MEMBER, REGISTER_REL, CHANNEL_ID } from '../assert-artifact-signed-msix.mjs';
+import { createHash } from 'node:crypto';
+import {
+  readIdentity, parseArgs, IDENTITY_FIELDS, MANIFEST_MEMBER, SIGNATURE_MEMBER, REGISTER_REL, CHANNEL_ID,
+  readVisualIdentity, tileProblems, tileMembersFor, msixLogoPath, pinnedMsixVersion, MSIX_PLUGIN_DEFAULT_TILE_HASHES,
+} from '../assert-artifact-signed-msix.mjs';
+import { readDeclaration } from '../../app-yaml/render.mjs';
 
 const GUARD = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'assert-artifact-signed-msix.mjs');
 /** The root the guard falls back to when no `--repo-root` is given — the CI shape. */
@@ -155,21 +160,80 @@ function makeZip(entries, { zip64 = false } = {}) {
   return Buffer.concat([...locals, centralBuf, ...tail, eocd]);
 }
 
-const manifestXml = ({ name = SENTINEL, publisher = `CN=${SENTINEL}`, displayName = SENTINEL, version = '1.0.3.0' } = {}) =>
+/** ⏱ 2026-09-25 (O-MSIX-IDENTITY-UNGRADED): the fixture package now carries
+ *  what `msix` 3.18.0 writes after tooling/store/msix-visual-name.mjs — the
+ *  Store title in Properties, the launcher label in VisualElements and
+ *  DefaultTile, and three tile references. `visual: false` drops the
+ *  Applications block. */
+const TITLE = 'Nikatru Subscription Tracker';
+const LABEL = 'Subscriptions';
+const manifestXml = ({
+  name = SENTINEL,
+  publisher = `CN=${SENTINEL}`,
+  displayName = SENTINEL,
+  version = '1.0.3.0',
+  title = TITLE,
+  label = LABEL,
+  tileShortName = label,
+  visual = true,
+} = {}) =>
   `<?xml version="1.0" encoding="utf-8"?>
-<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10" xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10">
   <Identity Name="${name}" Publisher="${publisher}" Version="${version}" ProcessorArchitecture="x64" />
   <Properties>
-    <DisplayName>Subly</DisplayName>
+    <DisplayName>${title}</DisplayName>
     <PublisherDisplayName>${displayName}</PublisherDisplayName>
+    <Logo>Images\\StoreLogo.png</Logo>
   </Properties>
-</Package>
+${visual ? `  <Applications>
+    <Application Id="subscriptiontracker" Executable="subscriptiontracker.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements BackgroundColor="transparent"
+        DisplayName="${label}" Square150x150Logo="Images\\Square150x150Logo.png"
+        Square44x44Logo="Images\\Square44x44Logo.png" Description="${title}">
+        <uap:DefaultTile ShortName="${tileShortName}" Square310x310Logo="Images\\LargeTile.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+` : ''}</Package>
 `;
+
+/** One file per tile reference above, in the resource-qualified form `msix`
+ *  generates from a logo_path. Their bytes are not PNGs, so none can hash to
+ *  a plugin default. */
+const TILES = [
+  { name: 'Images/StoreLogo.scale-100.png', bytes: Buffer.from('fixture tile: store logo'), method: 0 },
+  { name: 'Images/Square150x150Logo.scale-100.png', bytes: Buffer.from('fixture tile: 150'), method: 0 },
+  { name: 'Images/Square44x44Logo.scale-100.png', bytes: Buffer.from('fixture tile: 44'), method: 0 },
+  { name: 'Images/Square44x44Logo.targetsize-16_altform-unplated.png', bytes: Buffer.from('fixture tile: 44 unplated'), method: 0 },
+  { name: 'Images/LargeTile.scale-100.png', bytes: Buffer.from('fixture tile: large'), method: 0 },
+];
+
+const APP_YAML = `id: subscriptiontracker\nname: ${TITLE}\nshortName: ${LABEL}\n`;
+const PUBSPEC = [
+  'name: subscriptiontracker',
+  'msix_config:',
+  `  display_name: ${TITLE}`,
+  '  store: true',
+  '  logo_path: assets/icon/app_icon_1024.png',
+  '',
+].join('\n');
+const LOCK = [
+  'packages:',
+  '  msix:',
+  '    dependency: transitive',
+  '    description:',
+  '      name: msix',
+  '      url: "https://pub.dev"',
+  '    source: hosted',
+  `    version: "${MSIX_PLUGIN_DEFAULT_TILE_HASHES.version}"`,
+  '',
+].join('\n');
 
 const REGISTER = {
   channels: [
     {
       id: 'windows-store',
+      storeMetadataDir: 'apps/{app}/store/windows-store',
       packageIdentity: {
         notYetConfiguredSentinel: SENTINEL,
         identityName: SENTINEL,
@@ -183,7 +247,17 @@ const REGISTER = {
 /** @param opts.members  zip members; default is a correct store-mode package.
  *  @param opts.zip64    write the package in the ZIP64 form MakeAppx actually
  *                       emits, which is what CI hands this guard. */
-function fixture({ register = REGISTER, members = null, raw = null, zip64 = false } = {}) {
+function fixture({
+  register = REGISTER,
+  members = null,
+  raw = null,
+  zip64 = false,
+  title = `${TITLE}\n`,
+  appYaml = APP_YAML,
+  pubspec = PUBSPEC,
+  lock = LOCK,
+  logo = true,
+} = {}) {
   const root = join(TMP, `f${seq++}`);
   mkdirSync(join(root, 'tooling'), { recursive: true });
   mkdirSync(join(root, 'pkg'), { recursive: true });
@@ -193,15 +267,32 @@ function fixture({ register = REGISTER, members = null, raw = null, zip64 = fals
       typeof register === 'string' ? register : JSON.stringify(register, null, 2),
     );
   }
+  const app = join(root, 'apps', 'subscriptiontracker');
+  mkdirSync(join(app, 'store', 'windows-store'), { recursive: true });
+  if (title !== null) writeFileSync(join(app, 'store', 'windows-store', 'title.txt'), title);
+  if (appYaml !== null) writeFileSync(join(app, 'app.yaml'), appYaml);
+  if (pubspec !== null) writeFileSync(join(app, 'pubspec.yaml'), pubspec);
+  if (lock !== null) writeFileSync(join(root, 'pubspec.lock'), lock);
+  if (logo) {
+    mkdirSync(join(app, 'assets', 'icon'), { recursive: true });
+    writeFileSync(join(app, 'assets', 'icon', 'app_icon_1024.png'), 'fixture mark');
+  }
   const entries = members ?? [
     { name: MANIFEST_MEMBER, bytes: Buffer.from(manifestXml(), 'utf8'), method: 8 },
     { name: 'subscriptiontracker.exe', bytes: Buffer.from('PE-BYTES'), method: 0 },
+    ...TILES,
   ];
   writeFileSync(join(root, 'pkg', 'subscriptiontracker.msix'), raw ?? makeZip(entries, { zip64 }));
   return root;
 }
 
-const run = (root, args = ['pkg/subscriptiontracker.msix']) => {
+/** A package whose manifest is `manifestXml(opts)` and which carries every tile. */
+const withManifest = (opts) => [
+  { name: MANIFEST_MEMBER, bytes: Buffer.from(manifestXml(opts), 'utf8'), method: 8 },
+  ...TILES,
+];
+
+const run = (root, args = ['--app', 'subscriptiontracker', 'pkg/subscriptiontracker.msix']) => {
   const r = spawnSync(process.execPath, [GUARD, '--repo-root', root, ...args], { encoding: 'utf8' });
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
 };
@@ -249,6 +340,7 @@ describe('assert-artifact-signed-msix — the declaration is compared to the BYT
     // The sentinel is reported, so a package that cannot be submitted never
     // reads as one that can.
     assert.match(out, /NOT-YET-CONFIGURED sentinel/);
+    assert.match(out, /ok {2}msix face — the Store title "Nikatru Subscription Tracker", the launcher label "Subscriptions", 5 tile file\(s\)/);
   });
 
   // 🔴 THE RECORDED FAILING CASE E7 EXISTS FOR. A plausible invented identity,
@@ -392,6 +484,7 @@ describe('assert-artifact-signed-msix — the ZIP64 package MakeAppx actually wr
     const members = [
       { name: MANIFEST_MEMBER, bytes: Buffer.from(manifestXml(), 'utf8'), method: 8 },
       { name: 'subscriptiontracker.exe', bytes: Buffer.from('PE-BYTES'), method: 0 },
+      ...TILES,
     ];
     const classic = run(fixture({ members }));
     const wide = run(fixture({ members, zip64: true }));
@@ -536,7 +629,20 @@ describe('assert-artifact-signed-msix — the path CI actually passes is not dis
   });
 
   test('parseArgs on a truly empty argv reports no packages and no flag', () => {
-    assert.deepEqual(parseArgs([]), { rootFlagSeen: false, rootArg: undefined, packages: [] });
+    assert.deepEqual(parseArgs([]), { rootFlagSeen: false, rootArg: undefined, packages: [], app: undefined });
+  });
+
+  test('parseArgs takes the value after --app as the app, not as a package', () => {
+    const got = parseArgs(['--app', 'subscriptiontracker', 'pkg/subscriptiontracker.msix']);
+    assert.equal(got.app, 'subscriptiontracker');
+    assert.deepEqual(got.packages, ['pkg/subscriptiontracker.msix']);
+  });
+
+  test('parseArgs does not swallow a following FLAG as the app', () => {
+    const got = parseArgs(['--app', '--repo-root', '/tmp/root', 'a.msix']);
+    assert.equal(got.app, undefined);
+    assert.equal(got.rootArg, '/tmp/root');
+    assert.deepEqual(got.packages, ['a.msix']);
   });
 
   // ── spawned, in the exact CI shape ────────────────────────────────────────
@@ -558,6 +664,11 @@ describe('assert-artifact-signed-msix — the path CI actually passes is not dis
   test('a correct package at an absolute path PASSES with no --repo-root', () => {
     const live = JSON.parse(readFileSync(join(REPO_ROOT, REGISTER_REL), 'utf8'));
     const declared = (live.channels ?? []).find((c) => c && c.id === CHANNEL_ID).packageIdentity;
+    // ⏱ 2026-09-25: and the face the live tree declares — title.txt, app.yaml
+    // `shortName` — graded against the live pubspec's logo_path and lock pin.
+    const row = (live.channels ?? []).find((c) => c && c.id === CHANNEL_ID);
+    const liveTitle = readFileSync(join(REPO_ROOT, row.storeMetadataDir.replace('{app}', 'subscriptiontracker'), 'title.txt'), 'utf8').trim();
+    const liveLabel = readDeclaration(REPO_ROOT, 'subscriptiontracker').shortName;
     const pkg = join(TMP, `ci-shape${seq++}.msix`);
     writeFileSync(
       pkg,
@@ -569,17 +680,21 @@ describe('assert-artifact-signed-msix — the path CI actually passes is not dis
               name: declared.identityName,
               publisher: declared.publisher,
               displayName: declared.publisherDisplayName,
+              title: liveTitle,
+              label: liveLabel,
             }),
             'utf8',
           ),
           method: 8,
         },
+        ...TILES,
       ]),
     );
-    const { code, out } = runBare(pkg);
+    const { code, out } = runBare('--app', 'subscriptiontracker', pkg);
     assert.equal(code, 0, out);
     assert.match(out, /ok {2}msix identity/);
     assert.match(out, /1 package\(s\) opened/);
+    assert.match(out, /ok {2}msix face/);
   });
 
   // 🔴 AND THE MESSAGE ITSELF. It used to say the packaging step "produced no
@@ -609,5 +724,173 @@ describe('assert-artifact-signed-msix — the path CI actually passes is not dis
     assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /`--repo-root` was given with no path after it/);
+  });
+});
+
+// ── ⏱ 2026-09-25 · what a person sees (O-MSIX-IDENTITY-UNGRADED) ─────────────
+// The identity above is what Partner Center matches; these are what a reviewer
+// and a user read: the Store title, the Start-menu label, the tiles, and the
+// logo the tiles were generated from.
+describe('assert-artifact-signed-msix — the title, the label and the tiles are graded', () => {
+  test('readVisualIdentity reads the title, the label, the tile short name and every tile reference', () => {
+    const v = readVisualIdentity(manifestXml());
+    assert.equal(v.displayName, TITLE);
+    assert.equal(v.visualDisplayName, LABEL);
+    assert.equal(v.tileShortName, LABEL);
+    assert.equal(v.hasVisualElements, true);
+    assert.deepEqual(v.tileRefs, ['Images\\StoreLogo.png', 'Images\\Square150x150Logo.png', 'Images\\Square44x44Logo.png', 'Images\\LargeTile.png']);
+  });
+
+  test('readVisualIdentity decodes an escaped label', () => {
+    assert.equal(readVisualIdentity(manifestXml({ label: 'Subs &amp; Co' })).visualDisplayName, 'Subs & Co');
+  });
+
+  test('readVisualIdentity reports a manifest with no VisualElements as such', () => {
+    const v = readVisualIdentity(manifestXml({ visual: false }));
+    assert.equal(v.hasVisualElements, false);
+    assert.equal(v.visualDisplayName, null);
+    assert.equal(v.tileShortName, null);
+  });
+
+  test('tileMembersFor finds the resource-qualified variants of a reference and nothing with a longer stem', () => {
+    const names = ['Images/Square44x44Logo.scale-100.png', 'Images/Square44x44Logo.targetsize-16.png', 'Images/Square44x44LogoX.png'];
+    assert.deepEqual(tileMembersFor('Images\\Square44x44Logo.png', names), ['Images/Square44x44Logo.scale-100.png', 'Images/Square44x44Logo.targetsize-16.png']);
+  });
+
+  test('an all-correct package passes both halves', () => {
+    const { code, out } = run(fixture());
+    assert.equal(code, 0, out);
+    assert.match(out, /ok {2}msix face/);
+    assert.match(out, /logo_path "assets\/icon\/app_icon_1024\.png"/);
+  });
+
+  // RC1 — the Store title is the launcher label: what render.mjs produced while
+  // msix_config.display_name was rendered from shortName.
+  test('RC1: Properties/DisplayName carrying the launcher label FAILS, naming title.txt', () => {
+    const { code, out } = run(fixture({ members: withManifest({ title: LABEL }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /Package\/Properties\/DisplayName is "Subscriptions" and apps\/subscriptiontracker\/store\/windows-store\/title\.txt declares "Nikatru Subscription Tracker"/);
+  });
+
+  // RC2 — the label is the Store title: what `msix` writes when nothing runs
+  // msix-visual-name.mjs after it.
+  test('RC2: uap:VisualElements/@DisplayName carrying the Store title FAILS, naming shortName', () => {
+    const { code, out } = run(fixture({ members: withManifest({ label: TITLE, tileShortName: LABEL }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /uap:VisualElements\/@DisplayName is "Nikatru Subscription Tracker" and apps\/subscriptiontracker\/app\.yaml declares `shortName: Subscriptions`/);
+  });
+
+  test('a DefaultTile ShortName that is not the label FAILS', () => {
+    const { code, out } = run(fixture({ members: withManifest({ tileShortName: TITLE }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /uap:DefaultTile\/@ShortName is "Nikatru Subscription Tracker"/);
+  });
+
+  test('a package with no VisualElements FAILS', () => {
+    const { code, out } = run(fixture({ members: withManifest({ visual: false }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /carries no uap:VisualElements/);
+  });
+
+  test('a Properties block with no DisplayName FAILS', () => {
+    const xml = manifestXml().replace(`    <DisplayName>${TITLE}</DisplayName>\n`, '');
+    const { code, out } = run(fixture({ members: [{ name: MANIFEST_MEMBER, bytes: Buffer.from(xml, 'utf8'), method: 8 }, ...TILES] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /Package\/Properties\/DisplayName is absent/);
+  });
+
+  test('a tile reference with no file in the package FAILS', () => {
+    const members = [{ name: MANIFEST_MEMBER, bytes: Buffer.from(manifestXml(), 'utf8'), method: 8 }, ...TILES.filter((t) => !t.name.startsWith('Images/LargeTile'))];
+    const { code, out } = run(fixture({ members }));
+    assert.equal(code, 1, out);
+    assert.match(out, /references "Images\\\\LargeTile\.png" and the package holds no file for it/);
+  });
+
+  // RC3 — a tile byte-identical to a plugin default. The real default bytes
+  // are the plugin's, not this repository's, so the table is injected: the
+  // fixture tile's own hash stands in for a default one.
+  test('RC3: a tile whose sha256 is in the default table FAILS, naming the default it matches', () => {
+    const tile = TILES[1];
+    const table = {
+      version: MSIX_PLUGIN_DEFAULT_TILE_HASHES.version,
+      files: [['Square150x150Logo.scale-100.png', createHash('sha256').update(tile.bytes).digest('hex')]],
+    };
+    const got = tileProblems('pkg/x.msix', TILES, ['Images\\Square150x150Logo.png'], table);
+    assert.equal(got.graded, 1);
+    assert.equal(got.problems.length, 1);
+    assert.match(got.problems[0], /tile Images\/Square150x150Logo\.scale-100\.png is byte-identical to msix 3\.18\.0's default Square150x150Logo\.scale-100\.png/);
+  });
+
+  test('RC3 control: the same tile against the real table is not a default', () => {
+    const got = tileProblems('pkg/x.msix', TILES, ['Images\\Square150x150Logo.png']);
+    assert.deepEqual(got.problems, []);
+    assert.equal(got.graded, 1);
+  });
+
+  test('the default table is the 57 files of the pinned plugin, each a sha256', () => {
+    assert.equal(MSIX_PLUGIN_DEFAULT_TILE_HASHES.files.length, 57);
+    assert.equal(new Set(MSIX_PLUGIN_DEFAULT_TILE_HASHES.files.map(([, h]) => h)).size, 43);
+    assert.ok(MSIX_PLUGIN_DEFAULT_TILE_HASHES.files.every(([f, h]) => /\.png$/.test(f) && /^[0-9a-f]{64}$/.test(h)));
+  });
+
+  test('a manifest that references no .png at all FAILS', () => {
+    const got = tileProblems('pkg/x.msix', TILES, []);
+    assert.match(got.problems[0], /references no \.png at all/);
+  });
+
+  // RC4 — no logo_path: `msix` builds every tile from its bundled placeholder.
+  test('RC4: a pubspec whose msix_config sets no logo_path FAILS', () => {
+    const { code, out } = run(fixture({ pubspec: PUBSPEC.replace('  logo_path: assets/icon/app_icon_1024.png\n', '') }));
+    assert.equal(code, 1, out);
+    assert.match(out, /msix_config sets no `logo_path`/);
+  });
+
+  test('RC4: a logo_path naming a file that is not there FAILS', () => {
+    const { code, out } = run(fixture({ logo: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /msix_config\.logo_path is "assets\/icon\/app_icon_1024\.png" and apps\/subscriptiontracker\/assets\/icon\/app_icon_1024\.png does not exist/);
+  });
+
+  test('msixLogoPath reads only the msix_config block', () => {
+    assert.equal(msixLogoPath('flutter_launcher_icons:\n  logo_path: x.png\nmsix_config:\n  store: true\n'), null);
+    assert.equal(msixLogoPath('msix_config:\n  logo_path: "a/b.png"\n'), 'a/b.png');
+  });
+
+  test('pinnedMsixVersion reads the msix entry, not another package\'s version', () => {
+    assert.equal(pinnedMsixVersion(LOCK), MSIX_PLUGIN_DEFAULT_TILE_HASHES.version);
+    assert.equal(pinnedMsixVersion('packages:\n  mime:\n    source: hosted\n    version: "1.0.0"\n'), null);
+  });
+
+  // ── the questions that could not be asked ──────────────────────────────────
+  test('no --app is COVERAGE LOST, after the identity was graded', () => {
+    const { code, out } = run(fixture(), ['pkg/subscriptiontracker.msix']);
+    assert.equal(code, 2, out);
+    assert.match(out, /`--app <id>` was not given/);
+  });
+
+  test('a declaration with no shortName is COVERAGE LOST', () => {
+    const { code, out } = run(fixture({ appYaml: `id: subscriptiontracker\nname: ${TITLE}\n` }));
+    assert.equal(code, 2, out);
+    assert.match(out, /declares no `shortName`/);
+  });
+
+  test('no title.txt is COVERAGE LOST', () => {
+    const { code, out } = run(fixture({ title: null }));
+    assert.equal(code, 2, out);
+    assert.match(out, /title\.txt does not exist/);
+  });
+
+  test('a lock pinning another msix version is COVERAGE LOST — the default table is of 3.18.0', () => {
+    const { code, out } = run(fixture({ lock: LOCK.replace(`"${MSIX_PLUGIN_DEFAULT_TILE_HASHES.version}"`, '"3.19.0"') }));
+    assert.equal(code, 2, out);
+    assert.match(out, /pubspec\.lock pins msix 3\.19\.0/);
+  });
+
+  test('a register row with no storeMetadataDir is COVERAGE LOST', () => {
+    const reg = JSON.parse(JSON.stringify(REGISTER));
+    delete reg.channels[0].storeMetadataDir;
+    const { code, out } = run(fixture({ register: reg }));
+    assert.equal(code, 2, out);
+    assert.match(out, /declares no `storeMetadataDir`/);
   });
 });
