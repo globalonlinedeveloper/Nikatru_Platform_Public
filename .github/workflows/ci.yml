@@ -149,9 +149,28 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - uses: ./.github/actions/setup-node
+      # ⏱ 2026-09-26 · A GUARD THAT PRINTS ITS VERDICT AND NEVER EXITS MUST NOT EAT
+      # THIS JOB. check-agent-docs.mjs printed `ok  no new finding.`, the line
+      # before its process.exit(0), and then never ended: runs 36229452526 (PR #979)
+      # and 36232580493 (main) were cancelled at this job's 15 minutes, and
+      # 36233164494 was still stuck at 316 s when a newer push superseded it. Each
+      # time the runner then killed an orphan `(MainThread)`: node, alive after its
+      # own exit. In the other 59 completed runs the step took 0-1 s. That is
+      # nodejs/node#54918, the class tooling/ci/single-threaded-relaunch.mjs records
+      # (a background compile waiting on a GC that the exiting main thread will
+      # never run), so the fix is the one that class already uses: `node
+      # --single-threaded` on every step here whose script spawns git synchronously
+      # and then exits, which is the shape that hung, plus
+      # assert-platform-proof-fresh.mjs, which spawns git and exits through
+      # `exitCode` (a natural exit deadlocks too; same file). Each flagged step also
+      # carries a `timeout-minutes` of its own: 3 x its slowest green run over those
+      # 62 runs, rounded up to a whole minute, never under 2, and never under the
+      # guard's own read ceiling. A hang the flag does not prevent then fails ONE
+      # step, by name, in minutes. The job's 15 is still the job's one bound.
       - name: No Worker schedules itself with a Durable Object alarm
         if: ${{ !cancelled() }}
-        run: node tooling/ci/assert-no-do-alarms.mjs
+        timeout-minutes: 2
+        run: node --single-threaded tooling/ci/assert-no-do-alarms.mjs
       - name: Schema evolution is additive-only
         run: node tooling/ci/check-migrations.mjs
       - name: D1 bindings are real and consistent across Workers
@@ -232,14 +251,16 @@ jobs:
       - name: No crash event carries an IP address, truncated or not
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-glitchtip-no-ip.mjs
+      # Slowest green 49 s (median 37), so 3 minutes.
       - name: Every failure has a detector, a response and a cadence
         if: ${{ !cancelled() }}
+        timeout-minutes: 3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GLITCHTIP_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: node tooling/ci/assert-ops-register.mjs
+        run: node --single-threaded tooling/ci/assert-ops-register.mjs
       - name: Every alerting firing has a recorded disposition
         if: ${{ !cancelled() }}
         env:
@@ -250,7 +271,8 @@ jobs:
         run: node tooling/ci/assert-no-dead-repo-names.mjs
       - name: No tracked text cites a line of a generated file, or asks for a hand edit to one
         if: ${{ !cancelled() }}
-        run: node tooling/ci/assert-no-generated-line-cites.mjs
+        timeout-minutes: 2
+        run: node --single-threaded tooling/ci/assert-no-generated-line-cites.mjs
       - name: Every pinned input is reached by a live update manager
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-update-coverage.mjs
@@ -265,10 +287,12 @@ jobs:
         run: node tooling/ci/assert-deploy-triggers.mjs
       - name: Dependency resolution is reproducible
         if: ${{ !cancelled() }}
-        run: node tooling/ci/assert-lockfile-discipline.mjs
+        timeout-minutes: 2
+        run: node --single-threaded tooling/ci/assert-lockfile-discipline.mjs
       - name: Workflows are SHA-pinned and least-privilege
         if: ${{ !cancelled() }}
-        run: node tooling/ci/assert-workflow-hardening.mjs
+        timeout-minutes: 2
+        run: node --single-threaded tooling/ci/assert-workflow-hardening.mjs
       - name: Every job is bounded once, at a number somebody chose
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-workflow-timeouts.mjs
@@ -278,11 +302,15 @@ jobs:
       - name: Every deploy trigger can reach a deploy job
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-deploy-triggers-deploy.mjs
+      # Slowest green 17 s, but its run-history read (a page, then a cross-read)
+      # may spend READ_WALL_CEILING_MS on each (55 s, tooling/ops/bounded-retry.mjs)
+      # before it answers COVERAGE LOST itself, so 3 minutes, not 2.
       - name: The 6-platform proof is fresh
         if: ${{ !cancelled() }}
+        timeout-minutes: 3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node tooling/ci/assert-platform-proof-fresh.mjs
+        run: node --single-threaded tooling/ci/assert-platform-proof-fresh.mjs
       - name: The nightly golden-path proof is fresh
         if: ${{ !cancelled() }}
         env:
@@ -300,6 +328,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-prod-provenance.mjs
       - name: Every live drive stamps a resolvable APP_VERSION and hands its purge the consent settings
+        if: ${{ !cancelled() }}
         run: node --single-threaded tooling/ci/assert-live-writer-provenance.mjs
       - name: No provider reads a provider that already watches it
         if: ${{ !cancelled() }}
@@ -315,15 +344,19 @@ jobs:
       # COVERAGE LOST, so a step that goes red here is a real finding or a real
       # refusal, never a warning. It reads the git INDEX, which is why this job's
       # checkout uses fetch-depth: 0.
+      # ⏱ 2026-09-26 · This is the step that hung after its verdict (see the block at
+      # the top of this job): --single-threaded, and bounded at 2 minutes.
       - name: The instruction docs stay inside their caps
-        run: node tooling/scripts/check-agent-docs.mjs
+        timeout-minutes: 2
+        run: node --single-threaded tooling/scripts/check-agent-docs.mjs
       # START-HERE.md is GENERATED and has TWO guards, because they catch
       # different things. This one fails on a HAND EDIT: the card is the first
       # thing a cold session reads, and a card somebody typed into can say
       # anything. check-agent-docs limb A-SIZE is the other, and it fails on a
       # card that grew legitimately, through the generator, past 4 KiB.
       - name: START-HERE.md is what the tree generates
-        run: node tooling/scripts/gen-start-here.mjs --check
+        timeout-minutes: 2
+        run: node --single-threaded tooling/scripts/gen-start-here.mjs --check
 
   guards-legal:
     name: Guards — privacy, legal and money
@@ -478,6 +511,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-snapcraft-generable.mjs
       - name: The Play listing graphics exist, are the sourced size, and say where they came from
+        if: ${{ !cancelled() }}
         run: node --single-threaded tooling/ci/assert-listing-assets.mjs
       - name: The Play screenshot set spans enough device types
         if: ${{ !cancelled() }}
@@ -490,6 +524,7 @@ jobs:
       # cannot be submitted while a product it references sits in "Missing
       # Metadata", and this is the cheapest place to find that out.
       - name: Every auto-renewable subscription has an App Store review screenshot
+        if: ${{ !cancelled() }}
         run: node --single-threaded tooling/ci/assert-iap-review-screenshots.mjs
       - name: The Data safety and content-rating declarations still describe the code
         if: ${{ !cancelled() }}
@@ -500,16 +535,6 @@ jobs:
       - name: The advertising declarations still describe the shipped tree
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-ads-declarations.mjs
-      - name: The Microsoft Store submission path still walks (dry run)
-        run: node tooling/release/submit-windows-store.mjs --dry-run --app subscriptiontracker --allow-missing-artifact
-      - name: The App Store submission path still walks — iOS (dry run)
-        run: node tooling/release/submit-appstore.mjs --dry-run --channel ios-appstore --app subscriptiontracker --allow-missing-artifact
-      - name: The App Store submission path still walks — macOS (dry run)
-        run: node tooling/release/submit-appstore.mjs --dry-run --channel macos-appstore --app subscriptiontracker --allow-missing-artifact
-      - name: The Snap Store submission path still walks (dry run)
-        run: node tooling/release/submit-snap.mjs --dry-run --app subscriptiontracker --allow-missing-artifact
-      - name: The Google Play submission path still walks (dry run)
-        run: node tooling/release/submit-play.mjs --dry-run --app subscriptiontracker --allow-missing-artifact
       - name: No release build from an ungated commit, no publish unrecorded
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-release-provenance.mjs
@@ -585,6 +610,7 @@ jobs:
       # why: the apps.gov.in media is DERIVED from the Play set; a PR that re-captures the Play set must re-derive it
       # in the same PR, not at the next build-platforms run — docs/ci/build-platforms.md §apps-gov-in.
       - name: The apps.gov.in listing media is still the derivation of the Play set
+        if: ${{ !cancelled() }}
         run: node --single-threaded tooling/ci/assert-apps-gov-in-media.mjs
       # why: O-APP-ID-FORM-UNVALIDATED (a). Appended at the END of this job, like
       # the store vocabulary step, so it shifts as few `ci.yml:NNNN` citations as it can.
@@ -1154,6 +1180,8 @@ jobs:
         run: git diff --exit-code -- catalog/apps-landing.json
       - name: Discovery surfaces match the registry that generated them
         run: node tooling/ci/assert-discovery-surface.mjs
+      - name: The apex site's Pages bindings agree with its README, its Functions and its deploy job
+        run: node tooling/ci/assert-site-bindings.mjs
       - name: Every inline palette copy still matches the token source
         run: node tooling/ci/assert-palette-consistent.mjs
       - name: No page claims a store channel the catalogue has not published to
@@ -1245,11 +1273,13 @@ jobs:
       # Flutter 3.47 rewrites the app's analysis_options.yaml as a side effect
       # (measured on run 35814243238), so a whole-tree diff reds on a file nobody
       # edited, and assert-green-means-ran reads such a diff as a drift check.
+      # The subject is apps/, the directory every workspace app lives in, so app #2
+      # is format-gated with no edit here (O-CI-AND-WORKER-LANES-NAME-ONE-APP).
       - name: The shipping app is dart format-clean
         run: |
-          if dart format --output=none --set-exit-if-changed apps/subscriptiontracker; then exit 0; fi
-          dart format apps/subscriptiontracker > /dev/null
-          git --no-pager diff -- 'apps/subscriptiontracker/*.dart'
+          if dart format --output=none --set-exit-if-changed apps/; then exit 0; fi
+          dart format apps/ > /dev/null
+          git --no-pager diff -- 'apps/*.dart'
           exit 1
       - name: The Apple privacy manifests still describe the binaries that ship
         working-directory: ${{ github.workspace }}
@@ -1274,8 +1304,10 @@ jobs:
           echo "Chrome: $CHROME_EXECUTABLE"
           dart test -p chrome
 
-  android-apps:
-    name: Derive the Android app set from the pub workspace
+  prepare:
+    # why: the ONE app-set emitter in this file. android-artifacts and app-dryrun both
+    # fan out over its `apps` output, so every app-shaped job here iterates one set.
+    name: Derive the app set from the pub workspace
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -1293,16 +1325,48 @@ jobs:
           apps="$(node tooling/ci/assert-release-lane-generic.mjs --emit-apps)"
           echo "apps=${apps}" >> "$GITHUB_OUTPUT"
 
+  app-dryrun:
+    # why: the five store submission dry runs, one leg per app. They ran in
+    # guards-store with one app's id written into each `--app`, so app #2's
+    # submission paths were walked by nothing (O-CI-AND-WORKER-LANES-NAME-ONE-APP).
+    # No job-level `if:` (green-means-ran A6); fail-fast off, so one app's red leaves
+    # every other leg's verdict. assert-release-lane-generic grades this file for a
+    # literal app id.
+    name: Store submission dry runs
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.prepare.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-node
+      - name: The Microsoft Store submission path still walks (dry run)
+        run: node tooling/release/submit-windows-store.mjs --dry-run --app ${{ matrix.app }} --allow-missing-artifact
+      - name: The App Store submission path still walks — iOS (dry run)
+        run: node tooling/release/submit-appstore.mjs --dry-run --channel ios-appstore --app ${{ matrix.app }} --allow-missing-artifact
+      - name: The App Store submission path still walks — macOS (dry run)
+        run: node tooling/release/submit-appstore.mjs --dry-run --channel macos-appstore --app ${{ matrix.app }} --allow-missing-artifact
+      - name: The Snap Store submission path still walks (dry run)
+        run: node tooling/release/submit-snap.mjs --dry-run --app ${{ matrix.app }} --allow-missing-artifact
+      - name: The Google Play submission path still walks (dry run)
+        run: node tooling/release/submit-play.mjs --dry-run --app ${{ matrix.app }} --allow-missing-artifact
+
   android-artifacts:
     name: Android artifacts (built, inspected, discarded)
     runs-on: ubuntu-24.04
     # why 30: the same three builds measured 11.5–11.7 min inside build-platforms.yml linux_web_android — docs/ci/build-platforms.md §PR lane.
     timeout-minutes: 30
-    needs: android-apps
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
-        app: ${{ fromJSON(needs.android-apps.outputs.apps) }}
+        app: ${{ fromJSON(needs.prepare.outputs.apps) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -1480,7 +1544,8 @@ jobs:
       - app-brick
       - sites
       - workspace-gate
-      - android-apps
+      - prepare
+      - app-dryrun
       - android-artifacts
       - extensions
     if: always()
@@ -1500,7 +1565,8 @@ jobs:
           echo "app-brick=${{ needs.app-brick.result }}"
           echo "sites=${{ needs.sites.result }}"
           echo "workspace-gate=${{ needs.workspace-gate.result }}"
-          echo "android-apps=${{ needs.android-apps.result }}"
+          echo "prepare=${{ needs.prepare.result }}"
+          echo "app-dryrun=${{ needs.app-dryrun.result }}"
           echo "android-artifacts=${{ needs.android-artifacts.result }}"
           echo "extensions=${{ needs.extensions.result }}"
           if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ] || [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ] || [ "${{ contains(needs.*.result, 'skipped') }}" = "true" ]; then
@@ -1532,6 +1598,7 @@ jobs:
       GLITCHTIP_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      SUBSCRIBE_RATE_LIMIT_SALT: ${{ secrets.SUBSCRIBE_RATE_LIMIT_SALT }}
 
   deploy-workers:
     name: deploy-workers

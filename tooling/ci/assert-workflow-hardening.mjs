@@ -1169,8 +1169,18 @@ if (scanningRealRepo && failureUsesJudged === 0) {
 // SHARD_FLOOR or an assert-step count below ASSERT_STEP_FLOOR is COVERAGE LOST —
 // on the real repository, and on any tree that has a `guards-*` job at all — so
 // a renamed shard or a reshaped `run:` cannot shrink the limb to nothing.
+//
+// ⏱ 2026-09-26 · A NODE FLAG TOOK A STEP OUT OF THIS LIMB, AND THE FLOOR COULD NOT
+// SEE IT. The pattern read `node` then whitespace then the path, so `node
+// --single-threaded tooling/ci/assert-….mjs` was not an assert step at all: four
+// such steps (assert-live-writer-provenance in guards-platform, and
+// assert-listing-assets, assert-iap-review-screenshots and assert-apps-gov-in-media
+// in guards-store) ran on `success()` with no finding, and flagging six more for
+// the exit hang of runs 36229452526 and 36232580493 would have taken the count from
+// 124 to 118 with the floor of 100 still satisfied. Node flags before the path are
+// now part of the shape; guard-sweep.mjs learned the same lesson on 2026-09-12.
 const NOT_CANCELLED = /^\$\{\{\s*!cancelled\(\)\s*\}\}$/;
-const SHARD_ASSERT_RUN = /^node\s+tooling\/ci\/assert-[A-Za-z0-9._-]+\.mjs(?:\s|$)/;
+const SHARD_ASSERT_RUN = /^node(?:\s+--[\w-]+(?:=\S+)?)*\s+tooling\/ci\/assert-[A-Za-z0-9._-]+\.mjs(?:\s|$)/;
 const SHARD_FLOOR = 4;
 const ASSERT_STEP_FLOOR = 100;
 let shards = 0;

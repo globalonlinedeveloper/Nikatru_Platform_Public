@@ -5487,7 +5487,10 @@ async function main() {
         }
         continue;
       }
-      const smokes = (text.match(/post-deploy-smoke\.mjs/g) ?? []).length;
+      // ⏱ 2026-09-25 · D3a: tooling/sites/smoke-site-deploy.mjs is the apex site's probe
+      // (deploy-web.yml's `site` job). It joins on version.json's `sha` through
+      // post-deploy-smoke.mjs's own `judge`, so it counts as a probe of what shipped.
+      const smokes = (text.match(/post-deploy-smoke\.mjs|smoke-site-deploy\.mjs/g) ?? []).length;
       for (const environment of new Set(envs)) {
         deployJobs.push({ workflow: wf.rel ?? wf.file ?? '?', job: jobName, environment, smokes });
       }

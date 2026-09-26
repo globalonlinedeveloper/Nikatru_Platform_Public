@@ -205,14 +205,39 @@
   },
   "roles": {
     "_why": "The vocabulary rows are validated against, declared once HERE rather than inside the guard — the same reason keyKinds lives in tooling/channel-register.json. Renaming a role out from under the rows still using it fails.",
-    "store_billing": "an app store that sells to the user and pays us. It is the seller of record for that sale and we never see the card.",
-    "merchant_of_record": "the legal seller for anything sold outside an app store. It collects and remits sales tax worldwide and is who the buyer contracted with.",
-    "payment_gateway": "processes a card payment on our behalf. NOT the seller — we remain the seller, and the tax duty stays with us.",
-    "iap_aggregator": "normalises store purchase events into one entitlement feed. Holds purchase state, not payment instruments.",
-    "infrastructure": "runs or hosts the Services. Sees traffic and whatever the Services store, and is disclosed as a processor rather than as a seller.",
-    "identity": "authenticates users and holds account credentials.",
-    "email_delivery": "sends the transactional email the Services generate — sign-in links, verification. Holds the recipient address in order to deliver to it, and is disclosed as a processor. NOT a marketing channel: a mailing list is a separate purpose with its own consent (ConsentPurpose.marketingEmail) and would be its own disclosure.",
-    "content_delivery": "serves a file the Services load into the visitor's browser at run time — a script, a font, a WebAssembly runtime. It sees that request (the visitor's IP address, user agent and referrer) and nothing the Services store. Disclosed as a party the browser contacts, not as a processor of stored data, and never a seller."
+    "_sellerIsWhy": "⏱ 2026-09-26 · O-PRIVACY-OMITS-THE-INDIA-SELLER. `sellerIs` answers, per ROLE, who a buyer contracts with when a provider in that role takes the payment: `provider` (the provider itself sells: a store, a merchant of record), `nikatru` (Nikatru sells and the provider processes the payment on our behalf: a gateway), `never` (the provider must never be described as the seller) or `not-applicable` (the role takes no payment). It is a fact about the role, not about a channel, which is why it lives here and not in tooling/channel-register.json. assert-policy-claims reads it for every `seller-by-rail` row of tooling/legal/policy-claims.json: the rail resolves to its provider through `requiredWhen.rail` (tooling/legal/required-providers.mjs providersOnRail), and each listed page must state that provider's seller answer.",
+    "store_billing": {
+      "means": "an app store that sells to the user and pays us. It is the seller of record for that sale and we never see the card.",
+      "sellerIs": "provider"
+    },
+    "merchant_of_record": {
+      "means": "the legal seller for anything sold outside an app store. It collects and remits sales tax worldwide and is who the buyer contracted with.",
+      "sellerIs": "provider"
+    },
+    "payment_gateway": {
+      "means": "processes a card payment on our behalf. NOT the seller — we remain the seller, and the tax duty stays with us.",
+      "sellerIs": "nikatru"
+    },
+    "iap_aggregator": {
+      "means": "normalises store purchase events into one entitlement feed. Holds purchase state, not payment instruments.",
+      "sellerIs": "never"
+    },
+    "infrastructure": {
+      "means": "runs or hosts the Services. Sees traffic and whatever the Services store, and is disclosed as a processor rather than as a seller.",
+      "sellerIs": "not-applicable"
+    },
+    "identity": {
+      "means": "authenticates users and holds account credentials.",
+      "sellerIs": "not-applicable"
+    },
+    "email_delivery": {
+      "means": "sends the transactional email the Services generate — sign-in links, verification. Holds the recipient address in order to deliver to it, and is disclosed as a processor. NOT a marketing channel: a mailing list is a separate purpose with its own consent (ConsentPurpose.marketingEmail) and would be its own disclosure.",
+      "sellerIs": "not-applicable"
+    },
+    "content_delivery": {
+      "means": "serves a file the Services load into the visitor's browser at run time — a script, a font, a WebAssembly runtime. It sees that request (the visitor's IP address, user agent and referrer) and nothing the Services store. Disclosed as a party the browser contacts, not as a processor of stored data, and never a seller.",
+      "sellerIs": "not-applicable"
+    }
   },
   "dataCategories": {
     "_why": [
@@ -639,6 +664,7 @@
       "namedIn": [
         "terms.html",
         "refund.html",
+        "privacy.html",
         "subscriptiontracker/privacy.html"
       ],
       "privateRecord": null,
@@ -754,7 +780,16 @@
         "[ADR 094] (LOCKED 2026-09-22) adds the apps.gov.in build and any buyer IN INDIA of the three",
         "browser extensions. `tooling/channel-register.json` records the extension half today as",
         "`purchaseRail.regionRails` on `chrome-webstore`, `edge-addons` and `amo`; `apps-gov-in` keeps",
-        "`rail: none` until a build carries the checkout ([ADR 094] §4 item 5)."
+        "`rail: none` until a build carries the checkout ([ADR 094] §4 item 5).",
+        "",
+        "⏱ 2026-09-26 — `namedIn` GAINS `privacy.html` (O-PRIVACY-OMITS-THE-INDIA-SELLER). EVERYTHING ABOVE",
+        "IS LEFT VERBATIM. Policy version 2026-09-26 names Razorpay in §4, in the item saying that for a",
+        "purchase made in India outside the Apple App Store and Google Play Nikatru is the seller and",
+        "Razorpay takes the payment as our payment gateway — the disclosure gap the ⬜ and ⏱ 2026-09-22",
+        "paragraphs name is closed. The re-disclosure is no longer a human duty alone: the razorpay",
+        "`seller-by-rail` row of tooling/legal/policy-claims.json makes assert-policy-claims fail any of",
+        "privacy, terms and refund that stops naming Razorpay with Nikatru as the seller. Switching",
+        "processor now costs a re-disclosure on three pages, and on privacy.html that is a version bump."
       ]
     },
     {

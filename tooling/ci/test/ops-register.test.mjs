@@ -2893,6 +2893,18 @@ describe('assert-ops-register — HOSTNAMES ARE DELEGATED, and the delegation ca
     assert.match(r.out, /\[14\]O-7 — 1 deploy job\(s\) derived from record-deployment calls; 1 probe the surface they ship/);
   });
 
+  // ⏱ 2026-09-25 · D3a: deploy-web.yml's `site` job probes with tooling/sites/smoke-site-deploy.mjs.
+  test('[14]O-7 — a planted deploy job that probes with smoke-site-deploy.mjs is counted as probing, and green', () => {
+    const r = runRoot(fixtureRoot((s, root) => {
+      plantDeploy(s, root, DEPLOY_WF('zz-planted-env', { smoke: false }).replace(
+        '      - run: node tooling/ops/record-deployment.mjs',
+        '      - run: node tooling/sites/smoke-site-deploy.mjs --origin https://example.test --expect-sha x\n      - run: node tooling/ops/record-deployment.mjs',
+      ));
+    }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /\[14\]O-7 — 1 deploy job\(s\) derived from record-deployment calls; 1 probe the surface they ship/);
+  });
+
   test('🔴 [14]O-7 — a planted deploy job that records and never probes is FOUND by main() and named', () => {
     const r = runRoot(fixtureRoot((s, root) => {
       plantDeploy(s, root, DEPLOY_WF('zz-planted-env', { smoke: false }));
