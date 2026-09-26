@@ -1596,23 +1596,77 @@ describe('assert-channel-register — the lane\'s output vs the formats its chan
   });
 });
 
-describe('assert-channel-register — [10]D-4\'s store/ownerQueue mapping, shape only', () => {
-  test('FAILS when a store row carries no ownerQueue id', () => {
+// ⏱ 2026-09-25 · D3a (O-CAPTURE-LEAVES-DERIVED-SETS-STALE). This block was
+// "[10]D-4's store/ownerQueue mapping, shape only": an APP store row had to carry
+// an `ownerQueue` id, while an extension row could answer with a dated open
+// `accountStatus` instead. So an app row whose account was open had to keep a
+// queue id, and the id went stale when its owner item closed. One rule now holds
+// on both surfaces. The fixture's windows-store row is an app row whose
+// accountStatus is `none`, so the first two cases still fail, under the unified
+// message. RC4 and RC5 are the two answers the rule gives an app row with no id.
+describe('assert-channel-register — [10]D-4: an ownerQueue id OR a dated open account, on both surfaces', () => {
+  test('FAILS when a store row carries no ownerQueue id and its account is not open', () => {
     const { code, out } = run(tree({ mutate: (r) => { r.channels[1].ownerQueue = null; } }));
     assert.equal(code, 1, out);
-    assert.match(out, /is a store channel with no `ownerQueue` id/);
+    assert.match(out, /channel "windows-store" — is a store channel with neither an `ownerQueue` id nor a dated `accountStatus`/);
     assert.match(out, /\[10\]D-4/);
   });
 
-  test('FAILS when a store row\'s ownerQueue is an empty string', () => {
+  test('FAILS when a store row\'s ownerQueue is an empty string and its account is not open', () => {
     const { code, out } = run(tree({ mutate: (r) => { r.channels[1].ownerQueue = '   '; } }));
     assert.equal(code, 1, out);
-    assert.match(out, /no `ownerQueue` id/);
+    assert.match(out, /neither an `ownerQueue` id nor a dated `accountStatus`/);
   });
 
   test('does NOT require an ownerQueue on a non-store row', () => {
     const { code, out } = run(tree({ mutate: (r) => { r.channels[0].ownerQueue = null; } }));
     assert.equal(code, 0, out);
+  });
+
+  test('RC4 — an APP store row with ownerQueue null and a dated VERIFIED account passes, and its prints name openedBy', () => {
+    const { code, out } = run(tree({
+      mutate: (r) => {
+        r.channels[1].ownerQueue = null;
+        r.channels[1].accountStatus = { status: 'verified', asOf: '2026-09-22', note: 'the account is open', openedBy: 'A-2' };
+      },
+    }));
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /neither an `ownerQueue` id/);
+    assert.match(out, /NO SUBMISSION PATH: channel "windows-store"[^\n]*Blocked on OWNER_QUEUE \(none live; account opened by A-2\)/);
+  });
+
+  test('RC5 — an APP store row with ownerQueue null and accountStatus `none` FAILS: silence is still refused', () => {
+    const { code, out } = run(tree({
+      mutate: (r) => {
+        r.channels[1].ownerQueue = null;
+        r.channels[1].accountStatus = { status: 'none', asOf: '2026-08-03', note: 'no account', openedBy: 'A-2' };
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /channel "windows-store" — is a store channel with neither an `ownerQueue` id nor a dated `accountStatus`/);
+    assert.match(out, /ACCOUNT NONE: windows-store — OWNER_QUEUE \(none live; account opened by A-2\)/);
+  });
+
+  test('an APP store row with ownerQueue null and an `applied` account FAILS: applied is not open', () => {
+    const { code, out } = run(tree({
+      mutate: (r) => {
+        r.channels[1].ownerQueue = null;
+        r.channels[1].accountStatus.status = 'applied';
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /channel "windows-store" — is a store channel with neither an `ownerQueue` id nor a dated `accountStatus`/);
+  });
+
+  test('an APP store row with ownerQueue null and an UNDATED verified account FAILS: the date is what makes it ageable', () => {
+    const { code, out } = run(tree({
+      mutate: (r) => {
+        r.channels[1].ownerQueue = null;
+        r.channels[1].accountStatus = { status: 'verified', asOf: null, note: 'no date' };
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /channel "windows-store" — is a store channel with neither an `ownerQueue` id nor a dated `accountStatus`/);
   });
 });
 
