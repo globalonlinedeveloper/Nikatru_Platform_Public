@@ -175,6 +175,9 @@ import {
   unitConclusion,
   decideUnitFreshness,
   decideUnitRedSince,
+  scheduleWeekdays,
+  unitScheduleWeekdays,
+  runOutsideScheduleDays,
   checkRunUnits,
   checkLiveVerdictScopes,
   githubDarkness,
@@ -6007,7 +6010,7 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
         assert.equal(r.printed.some((p) => p.line.startsWith(`${id} —`)), false, `${name}: ${id} is still printed as failing`);
         assert.match(r.out, new RegExp(`\\[14\\]O-3 — ${reEscape(id)} — queried: newest success 2\\.7h ago, inside \\[1d x 1\\.5 = 36\\.0h\\]\\. run 34533663312 \\(schedule on main\\)`), `${name}: ${id} must be judged by run 34533663312's unit`);
       }
-      assert.match(r.out, /\[INV3\] ops-watch\.yml — 4 duty rows, each judged by its OWN unit/);
+      assert.match(r.out, /\[INV3\] ops-watch\.yml — 5 duty rows, each judged by its OWN unit/);
     }
   });
 
@@ -6169,14 +6172,14 @@ describe('INV3 · a duty is judged by the unit that performs it — the pure hal
     assert.match(errs(row('a', { jobs: 'status' })), /is not "run", \{ "jobs"/);
     assert.match(errs(row('a', { jobs: ['status'] }), row('b', { jobs: ['status'] })), /job status of ops-watch\.yml is already the unit of a/);
     assert.match(errs(row('a', { jobs: ['heartbeats'] }), row('b', { job: 'heartbeats', step: "Judge whether the analytics rail's silence is a FAULT" })), /the units overlap/);
-    assert.match(errs(row('a', { jobs: ['status'] }), row('b', { jobs: ['pages-deployments'] })), /job\(s\) supabase-drift · prod-provenance · runner-budget · glitchtip · alert · digest are the unit of none/);
+    assert.match(errs(row('a', { jobs: ['status'] }), row('b', { jobs: ['pages-deployments'] })), /job\(s\) supabase-drift · prod-provenance · runner-budget · glitchtip · failure-ledger · alert · digest are the unit of none/);
     const real = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
     const out = checkRunUnits(real, files, topo);
     assert.deepEqual(out.errors, []);
     const runRows = real.rows.filter((r) => r?.mechanism?.recordQuery?.reader === 'github-run-history');
     assert.ok(runRows.length >= 12, `expected every workflow row and the three ops-watch duties; found ${runRows.length}`);
     for (const r of runRows) assert.ok(unitOf(r.mechanism.recordQuery).declared, `${r.id} names no unit`);
-    assert.ok(out.prints.some((p) => /\[INV3\] ops-watch\.yml — 4 duty rows/.test(p)), 'the shared workflow and its units must print on every run');
+    assert.ok(out.prints.some((p) => /\[INV3\] ops-watch\.yml — 5 duty rows/.test(p)), 'the shared workflow and its units must print on every run');
   });
 
   test('jobSteps reads the committed heartbeats job the way the API names its steps', () => {
@@ -6482,5 +6485,79 @@ describe('post-gate call jobs of the gate workflow — read, graded, admitted (A
 
     const printed = evaluateRedSince(reg, LIVE_READS_NOT_MADE, new Set(), pg).prints.join('\n');
     assert.match(printed, /admitted: duty\.workflow\.deploy-web\.yml \(post-gate\)/);
+  });
+});
+
+describe('a weekly job in a twelve-slot workflow — the scan reads no job list a schedule run cannot carry (2026-09-25)', () => {
+  const REPO = resolve(CI_DIR, '..', '..');
+  const OPS_WF = () => parseWorkflow(REPO, '.github/workflows/ops-watch.yml');
+  const SLOT = "github.event.schedule == '45 7 * * 1' || github.event_name == 'workflow_dispatch'";
+  const q = (unit) => ({ reader: 'github-run-history', workflow: 'ops-watch.yml', event: 'schedule', headBranch: 'main', unit });
+  const MON = new Set([1]);
+
+  test('the ledger job\'s own `if:` admits schedule runs on Monday only', () => {
+    assert.deepEqual([...scheduleWeekdays(SLOT)], [1]);
+  });
+
+  test('the `${{ }}` wrapper and a parenthesised clause are read the same', () => {
+    assert.deepEqual([...scheduleWeekdays("${{ (github.event.schedule == '45 7 * * 1') || github.event_name == 'workflow_dispatch' }}")], [1]);
+  });
+
+  test('a list, a range and Sunday-as-7 are all weekdays', () => {
+    assert.deepEqual([...scheduleWeekdays("github.event.schedule == '0 6 * * 1,3'")].sort(), [1, 3]);
+    assert.deepEqual([...scheduleWeekdays("github.event.schedule == '0 6 * * 2-4'")].sort(), [2, 3, 4]);
+    assert.deepEqual([...scheduleWeekdays("github.event.schedule == '0 6 * * 7'")], [0]);
+  });
+
+  test('two schedule clauses are a union', () => {
+    assert.deepEqual([...scheduleWeekdays("github.event.schedule == '0 6 * * 1' || github.event.schedule == '0 6 * * 5'")].sort(), [1, 5]);
+  });
+
+  test('every day of the week, or a day-of-month, is NO restriction — every run is read', () => {
+    assert.equal(scheduleWeekdays("github.event.schedule == '0 6 * * *'"), null);
+    assert.equal(scheduleWeekdays("github.event.schedule == '0 6 1 * 1'"), null);
+    assert.equal(scheduleWeekdays("github.event.schedule == '0 6 * 1 1'"), null);
+  });
+
+  test('a clause the parse does not know makes the whole condition unreadable', () => {
+    assert.equal(scheduleWeekdays("github.event.schedule == '45 7 * * 1' || github.ref == 'refs/heads/main'"), null);
+    assert.equal(scheduleWeekdays("github.event.schedule != '45 7 * * 1'"), null);
+    assert.equal(scheduleWeekdays("github.event.schedule == '45 7 * * 1' && github.ref == 'refs/heads/main'"), null);
+    assert.equal(scheduleWeekdays("github.event.schedule == '45 7 * * MON'"), null);
+  });
+
+  test('no condition, or a dispatch-only condition, restricts nothing', () => {
+    assert.equal(scheduleWeekdays(undefined), null);
+    assert.equal(scheduleWeekdays(''), null);
+    assert.equal(scheduleWeekdays("github.event_name == 'workflow_dispatch'"), null);
+  });
+
+  test('the committed ops-watch.yml: the ledger unit is Monday; a unit of daily jobs is unrestricted', () => {
+    const wf = OPS_WF();
+    assert.deepEqual([...unitScheduleWeekdays(q({ jobs: ['failure-ledger'] }), wf)], [1]);
+    assert.equal(unitScheduleWeekdays(q({ jobs: ['status'] }), wf), null);
+    assert.equal(unitScheduleWeekdays(q({ jobs: ['failure-ledger', 'status'] }), wf), null, 'one unrestricted job means every run is read');
+  });
+
+  test('a run unit, a step unit and an undeclared job are never filtered', () => {
+    const wf = OPS_WF();
+    assert.equal(unitScheduleWeekdays(q('run'), wf), null);
+    assert.equal(unitScheduleWeekdays(q({ job: 'failure-ledger', step: 'Grade every failed run of the last eight days' }), wf), null);
+    assert.equal(unitScheduleWeekdays(q({ jobs: ['nope'] }), wf), null);
+  });
+
+  test('a schedule run created on a Wednesday is outside a Monday unit; one created on a Monday is not', () => {
+    assert.equal(runOutsideScheduleDays({ id: 1, event: 'schedule', created_at: '2026-09-09T09:12:00Z' }, MON), true);
+    assert.equal(runOutsideScheduleDays({ id: 2, event: 'schedule', created_at: '2026-09-07T08:02:00Z' }, MON), false);
+  });
+
+  test('a Monday run re-run on a Wednesday is still read — `created_at` is the slot, `updated_at` moved', () => {
+    assert.equal(runOutsideScheduleDays({ id: 3, event: 'schedule', created_at: '2026-09-07T08:02:00Z', updated_at: '2026-09-09T10:00:00Z' }, MON), false);
+  });
+
+  test('a dispatched run, a run with no created_at and an unrestricted unit are always read', () => {
+    assert.equal(runOutsideScheduleDays({ id: 4, event: 'workflow_dispatch', created_at: '2026-09-09T09:12:00Z' }, MON), false);
+    assert.equal(runOutsideScheduleDays({ id: 5, event: 'schedule' }, MON), false);
+    assert.equal(runOutsideScheduleDays({ id: 6, event: 'schedule', created_at: '2026-09-09T09:12:00Z' }, null), false);
   });
 });

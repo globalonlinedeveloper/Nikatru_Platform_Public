@@ -252,6 +252,16 @@ collects:
 # only (HANDOFF-stores REVIEW #12). Each processor here is also recorded in its
 # register row's `namedIn`, so assert-policy-claims re-reads the rendered page
 # for it on every run and a dropped row is a build failure, not a quiet edit.
+#
+# ⏱ 2026-09-25 — O-APP-PRIVACY-OMITS-STORE-BILLING. `billing.mobileIap` in
+# app.yaml made RevenueCat, the Apple App Store and Google Play parties to a
+# purchase, and this list did not name them. Which providers must appear here
+# is now read from each register row's `requiredWhen`, evaluated against
+# app.yaml and the laned channels of tooling/channel-register.json by
+# tooling/legal/required-providers.mjs, and assert-app-yaml limb 9 fails a
+# list that omits one. `supabase` is required by that rule until the Phase 5
+# cutover: both Workers still point SUPABASE_URL at the HOSTED project (P4-2),
+# a vendor, which the self-hosted stack above is not.
 processors:
   - id: cloudflare
     role: infrastructure
@@ -271,11 +281,41 @@ processors:
     source: tooling/legal/provider-register.json
     asOf: "2026-09-24"
 
+  - id: supabase
+    role: identity
+    purpose: Runs the hosted account and sign-in service the app's servers are still configured to use.
+    source: tooling/legal/provider-register.json
+    asOf: "2026-09-25"
+
   - id: paddle
     role: merchant_of_record
     purpose: Takes the payment and is the seller of record for the web channel.
     source: tooling/legal/provider-register.json
     asOf: "2026-09-05"
+
+  - id: revenuecat
+    role: iap_aggregator
+    purpose: Records which store purchase entitles the account to Pro, on our behalf; it is never the seller.
+    source: tooling/legal/provider-register.json
+    asOf: "2026-09-25"
+
+  - id: apple-app-store
+    role: store_billing
+    purpose: Bills and delivers in-app purchases made through that store, under its own terms.
+    source: tooling/legal/provider-register.json
+    asOf: "2026-09-25"
+
+  - id: google-play
+    role: store_billing
+    purpose: Bills and delivers in-app purchases made through that store, under its own terms.
+    source: tooling/legal/provider-register.json
+    asOf: "2026-09-25"
+
+  - id: razorpay
+    role: payment_gateway
+    purpose: When you buy in India anywhere other than the Apple App Store or Google Play, Nikatru is the seller and Razorpay takes the payment as our payment gateway, processing your payment details on our behalf.
+    source: tooling/legal/provider-register.json
+    asOf: "2026-09-25"
 
   - id: resend
     role: email_delivery

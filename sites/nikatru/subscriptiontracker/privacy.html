@@ -197,14 +197,19 @@
 </ul>
 
 <h2>4. Who else touches it</h2>
-<p>5 service providers. Services Nikatru runs on its own machines are deliberately not listed: they are infrastructure this company operates, not a party the data is disclosed to.</p>
+<p>10 service providers. Services Nikatru runs on its own machines are deliberately not listed: they are infrastructure this company operates, not a party the data is disclosed to.</p>
 <table>
 <tr><th>Who</th><th>Role</th><th>What they do with it</th></tr>
-<tr><td>cloudflare</td><td>infrastructure</td><td>Serves the web app, runs the Workers and holds the D1 rows.</td></tr>
-<tr><td>oracle-cloud</td><td>infrastructure</td><td>Stores an encrypted copy of the backups; it runs none of the services.</td></tr>
-<tr><td>hostinger</td><td>infrastructure</td><td>Hosts the machines the self-hosted identity stack and crash-report service run on.</td></tr>
-<tr><td>paddle</td><td>merchant of record</td><td>Takes the payment and is the seller of record for the web channel.</td></tr>
-<tr><td>resend</td><td>email delivery</td><td>Delivers the transactional email an account needs to exist.</td></tr>
+<tr><td>Cloudflare</td><td>infrastructure</td><td>Serves the web app, runs the Workers and holds the D1 rows.</td></tr>
+<tr><td>Oracle Cloud</td><td>infrastructure</td><td>Stores an encrypted copy of the backups; it runs none of the services.</td></tr>
+<tr><td>Hostinger</td><td>infrastructure</td><td>Hosts the machines the self-hosted identity stack and crash-report service run on.</td></tr>
+<tr><td>Supabase</td><td>identity</td><td>Runs the hosted account and sign-in service the app's servers are still configured to use.</td></tr>
+<tr><td>Paddle</td><td>merchant of record</td><td>Takes the payment and is the seller of record for the web channel.</td></tr>
+<tr><td>RevenueCat</td><td>iap aggregator</td><td>Records which store purchase entitles the account to Pro, on our behalf; it is never the seller.</td></tr>
+<tr><td>Apple App Store</td><td>store billing</td><td>Bills and delivers in-app purchases made through that store, under its own terms.</td></tr>
+<tr><td>Google Play</td><td>store billing</td><td>Bills and delivers in-app purchases made through that store, under its own terms.</td></tr>
+<tr><td>Razorpay</td><td>payment gateway</td><td>When you buy in India anywhere other than the Apple App Store or Google Play, Nikatru is the seller and Razorpay takes the payment as our payment gateway, processing your payment details on our behalf.</td></tr>
+<tr><td>Resend</td><td>email delivery</td><td>Delivers the transactional email an account needs to exist.</td></tr>
 </table>
 
 <h2>5. What is never collected</h2>

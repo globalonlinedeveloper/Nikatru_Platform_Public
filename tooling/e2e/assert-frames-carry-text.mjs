@@ -53,6 +53,26 @@
 // floor was not measured at, a register that no longer carries the block or
 // carries it against a different metric, or an ink metric that fails its own
 // self-test. A run that could not look is not a run that found nothing.
+//
+// 🔴 IT DOES ITS WORK WITH V8 BACKGROUND TASKS OFF — ⏱ 2026-09-25. CI run
+// 36192015901 (PR #957, job 108259112450) killed this guard at its test's 120 s
+// spawn ceiling on the glyphless fixtures, while the served, mixed and filtered
+// runs of the SAME five pages took 3.2, 3.6 and 5.6 s in the same file on the
+// same runner. The work is deterministic, so a 37x outlier is not the work: it is
+// the exit. Pixel loops like `textlessFrame` are what V8 compiles on background
+// threads, and Node's shutdown can deadlock joining them (nodejs/node#54918) —
+// the hang single-threaded-relaunch.mjs was written for. Measured 2026-09-25
+// with the amplifier `--stress-concurrent-allocation`, 12 glyphless runs each:
+// on Linux (WSL, node 22.22.1) 2 printed the whole verdict and then HUNG until
+// a 60 s SIGKILL, CI's exact shape; on Windows (node 24.18.0) 4 died after the
+// verdict (0xC0000409); with `--single-threaded` 0 of 12 on both. With default
+// flags 0 of 20 locally: the amplifier makes a rare race frequent, it does not
+// invent one. The glyphless run is the one that ends in `process.exit(1)`;
+// served exits naturally and was 0 of 12 on both,
+// but a natural exit has deadlocked too (assert-launcher-icons.mjs, 2026-09-11),
+// so the flag is the fix for both. The relaunch below is the first statement
+// after the imports, before anything is computed, and e2e.yml runs this guard as
+// `node --single-threaded`, so in CI there is no relaunching parent at all.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join, dirname, basename, resolve } from 'node:path';
@@ -60,6 +80,11 @@ import { fileURLToPath } from 'node:url';
 
 import { decodeRgba } from '../store/png-codec.mjs';
 import { METRIC_ID, measureFrameInk, inkFixtureFrame } from '../store/frame-ink.mjs';
+import { backgroundTasksNote, relaunchSingleThreaded } from '../ci/single-threaded-relaunch.mjs';
+
+// ── the process that does the work runs with V8 background tasks OFF ────────
+const relaunched = relaunchSingleThreaded(import.meta.url, process.argv.slice(2), coverageLost);
+if (relaunched !== null) process.exit(relaunched);
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
@@ -216,6 +241,7 @@ for (const f of judged) {
     `  ${f.rel} (${f.width}x${f.height}) measured ${f.measured}, textless ${f.textlessControl}, removed ${f.removed}`,
   );
 }
+console.log(`  ${backgroundTasksNote()}`);
 
 const runMedian = median(judged.map((f) => f.removed));
 const carriesText = runMedian >= floor;

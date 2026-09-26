@@ -4,8 +4,9 @@
 //
 // single-threaded-relaunch.mjs is how assert-launcher-icons.mjs,
 // assert-elf-page-alignment.mjs, assert-listing-assets.mjs,
-// assert-stamp-brand-assets.mjs and (since 2026-09-22)
-// assert-apps-gov-in-media.mjs do their work with V8 background tasks OFF, so
+// assert-stamp-brand-assets.mjs, (since 2026-09-22) assert-apps-gov-in-media.mjs
+// and (since 2026-09-25) tooling/e2e/assert-frames-carry-text.mjs and
+// tooling/store/measure-frame-ink.mjs do their work with V8 background tasks OFF, so
 // that their exit cannot deadlock (nodejs/node#54918 — the hang that cancelled CI
 // runs 34442894882 and 34553250403). Each of those guards pins the relaunch in
 // its own test file ("V8 background tasks: OFF"). THIS file pins what the five
@@ -150,10 +151,38 @@ describe('single-threaded-relaunch', () => {
 // Its two steps (ci.yml guards-store, build-platforms.yml) carry the flag, so
 // the floors below are ratcheted to what the tree holds: five importers, nine
 // flagged steps.
+//
+// ⏱ 2026-09-25 · THE DERIVATION STOPPED AT tooling/ci/, AND THE NEXT HANG WAS
+// ONE DIRECTORY OVER. tooling/e2e/assert-frames-carry-text.mjs runs the same
+// 9x9 mode-filter loop as assert-listing-assets.mjs and had no relaunch; CI run
+// 36192015901 killed it at its test's 120 s ceiling where the same pages took
+// 3.2 s. A list derived from one directory is a list somebody chose. So the
+// importers are now derived from every tooling/ directory that holds a pixel
+// program (ci, e2e, store), and a PROGRAM that imports the ink metric
+// (frame-ink.mjs) must be one of them — the class, not the instance. Floors:
+// seven importers, eleven flagged steps (e2e.yml's text check, and
+// store-screenshots.yml's measure-frame-ink.mjs step now that it relaunches).
 // ─────────────────────────────────────────────────────────────────────────────
 describe('every workflow step that runs a relaunching guard runs it as node --single-threaded', () => {
   const HERE = new URL('.', import.meta.url);
   const REPO_ROOT = new URL('../../../', HERE);
+  // The tooling/ directories a pixel or archive program lives in.
+  const PROGRAM_DIRS = ['ci', 'e2e', 'store'];
+  const RELAUNCH_IMPORT = /from '(?:\.|\.\.\/ci)\/single-threaded-relaunch\.mjs'/;
+
+  /** `<dir>/<file>` of every tooling/<dir>/*.mjs whose source passes `keep`. */
+  async function toolingFiles(keep) {
+    const { readdirSync, readFileSync: read } = await import('node:fs');
+    const out = [];
+    for (const dir of PROGRAM_DIRS) {
+      const at = new URL(`tooling/${dir}/`, REPO_ROOT);
+      for (const f of readdirSync(at).filter((n) => n.endsWith('.mjs') && n !== 'single-threaded-relaunch.mjs')) {
+        if (keep(read(new URL(f, at), 'utf8'))) out.push(`${dir}/${f}`);
+      }
+    }
+    return out;
+  }
+  const relaunchImporters = () => toolingFiles((src) => RELAUNCH_IMPORT.test(src));
   // ⬜ NO DECLARED GAPS. There was one: store-screenshots.yml:81 ran
   // assert-listing-assets.mjs bare, because that file belonged to the Subly
   // rename wave on 2026-09-11 and the fix was written up in
@@ -165,19 +194,44 @@ describe('every workflow step that runs a relaunching guard runs it as node --si
   const PENDING = new Map();
 
   test('the importers are derived from the tree, and there are some', async () => {
-    const { readdirSync, readFileSync: read } = await import('node:fs');
-    const ci = new URL('tooling/ci/', REPO_ROOT);
-    const importers = readdirSync(ci).filter((f) => f.endsWith('.mjs') && f !== 'single-threaded-relaunch.mjs' && /from '\.\/single-threaded-relaunch\.mjs'/.test(read(new URL(f, ci), 'utf8')));
-    assert.ok(importers.length >= 5, `expected the five heavy guards to import the relaunch, found: ${importers.join(', ')}`);
-    for (const g of ['assert-launcher-icons.mjs', 'assert-elf-page-alignment.mjs', 'assert-listing-assets.mjs', 'assert-stamp-brand-assets.mjs', 'assert-apps-gov-in-media.mjs']) {
-      assert.ok(importers.includes(g), `${g} no longer imports the relaunch`);
+    const importers = await relaunchImporters();
+    assert.ok(importers.length >= 7, `expected the seven pixel programs to import the relaunch, found: ${importers.join(', ')}`);
+    for (const g of [
+      'ci/assert-launcher-icons.mjs',
+      'ci/assert-elf-page-alignment.mjs',
+      'ci/assert-listing-assets.mjs',
+      'ci/assert-stamp-brand-assets.mjs',
+      'ci/assert-apps-gov-in-media.mjs',
+      'e2e/assert-frames-carry-text.mjs',
+      'store/measure-frame-ink.mjs',
+    ]) {
+      assert.ok(importers.includes(g), `tooling/${g} no longer imports the relaunch`);
+    }
+  });
+
+  test('every PROGRAM that runs the ink metric (frame-ink.mjs) relaunches single-threaded', async () => {
+    // A program is a file that reads its arguments or exits — the line
+    // assert-guards-refuse-empty draws. A library that imports the metric runs
+    // inside a program that must relaunch itself; a program that imports it IS
+    // that process, and its 9x9 mode-filter loop is the background-compile
+    // bait that hung CI run 36192015901.
+    const metricPrograms = await toolingFiles(
+      (src) => /from '[./a-z]*\/?frame-ink\.mjs'/.test(src) && /process\.(argv|exit)\b/.test(src),
+    );
+    assert.ok(metricPrograms.length >= 3, `the derivation found too few ink programs to mean anything: ${metricPrograms.join(', ')}`);
+    const importers = await relaunchImporters();
+    const bare = metricPrograms.filter((p) => !importers.includes(p));
+    assert.deepEqual(bare, [], `these programs run the ink metric with V8 background tasks ON (nodejs/node#54918):\n${bare.map((p) => `tooling/${p}`).join('\n')}`);
+    // Importing is not calling: each must relaunch before it computes.
+    const { readFileSync: read } = await import('node:fs');
+    for (const p of metricPrograms) {
+      assert.match(read(new URL(`tooling/${p}`, REPO_ROOT), 'utf8'), /relaunchSingleThreaded\(import\.meta\.url,/, `tooling/${p} imports the relaunch and never calls it`);
     }
   });
 
   test('no workflow invokes a relaunching guard without --single-threaded (declared gaps excepted, and still true)', async () => {
     const { readdirSync, readFileSync: read } = await import('node:fs');
-    const ci = new URL('tooling/ci/', REPO_ROOT);
-    const importers = readdirSync(ci).filter((f) => f.endsWith('.mjs') && f !== 'single-threaded-relaunch.mjs' && /from '\.\/single-threaded-relaunch\.mjs'/.test(read(new URL(f, ci), 'utf8')));
+    const importers = await relaunchImporters();
     const wfDir = new URL('.github/workflows/', REPO_ROOT);
     const bare = [];
     const flagged = [];
@@ -186,7 +240,7 @@ describe('every workflow step that runs a relaunching guard runs it as node --si
       read(new URL(wf, wfDir), 'utf8').split('\n').forEach((line, i) => {
         if (/^\s*#/.test(line)) return;
         for (const g of importers) {
-          const m = line.match(new RegExp(`\\bnode((?:\\s+--[\\w-]+)*)\\s+tooling/ci/${g.replace('.', '\\.')}\\b`));
+          const m = line.match(new RegExp(`\\bnode((?:\\s+--[\\w-]+)*)\\s+tooling/${g.replace('.', '\\.')}\\b`));
           if (!m) continue;
           if (/(^|\s)--single-threaded(\s|$)/.test(m[1])) { flagged.push(`${wf}:${i + 1} ${g}`); continue; }
           if ((PENDING.get(wf) ?? []).includes(g)) { stillPending.set(`${wf}|${g}`, true); continue; }
@@ -195,7 +249,7 @@ describe('every workflow step that runs a relaunching guard runs it as node --si
       });
     }
     assert.deepEqual(bare, [], `a relaunching guard runs under a relaunch parent in CI:\n${bare.join('\n')}`);
-    assert.ok(flagged.length >= 9, `expected the nine heavy-guard steps (ci.yml ×4, build-platforms.yml ×2, submit-play.yml ×2, store-screenshots.yml) to carry the flag, found ${flagged.length}:\n${flagged.join('\n')}`);
+    assert.ok(flagged.length >= 11, `expected the eleven heavy-program steps (ci.yml ×4, build-platforms.yml ×2, submit-play.yml ×2, store-screenshots.yml ×2, e2e.yml) to carry the flag, found ${flagged.length}:\n${flagged.join('\n')}`);
     for (const [wf, gs] of PENDING) {
       for (const g of gs) {
         assert.ok(stillPending.has(`${wf}|${g}`), `the declared gap ${wf} → ${g} is closed: remove it from PENDING`);

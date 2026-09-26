@@ -551,9 +551,13 @@ jobs:
       #
       # Row O-NIGHTLY-E2E-DRIVES-A-GLYPHLESS-APP. Exit 2 from this step is
       # COVERAGE LOST — no frames at all — and is not a pass.
+      #
+      # 🔴 --single-threaded, like every step that starts a relaunching guard:
+      # the pixel loop can deadlock this process at exit (nodejs/node#54918;
+      # CI run 36192015901 killed it at 120 s where the same pages took 3 s).
       - name: The captured frames carry drawn text
         if: steps.drive.outcome == 'success'
-        run: node tooling/e2e/assert-frames-carry-text.mjs apps/${{ matrix.app }}/screenshots
+        run: node --single-threaded tooling/e2e/assert-frames-carry-text.mjs apps/${{ matrix.app }}/screenshots
 
       - name: Upload per-page screenshots
         if: always() && steps.user.outcome != 'skipped'
