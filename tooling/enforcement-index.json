@@ -2756,6 +2756,14 @@
     "claims": [],
     "invokedBy": [],
     "kind": "guard",
+    "ref": "tooling/ci/flutter-release-build.mjs",
+    "references": [],
+    "state": "IMPORTED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
     "ref": "tooling/ci/flutter-stock-assets.mjs",
     "references": [],
     "state": "LIBRARY"

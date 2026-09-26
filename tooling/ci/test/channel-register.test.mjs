@@ -756,10 +756,11 @@ function tree({
     }
   }
   if (withSubmission) {
-    if (submissionScriptOnDisk) write(SUBMIT_SCRIPT, '// the submission path\n');
+    if (submissionScriptOnDisk) write(SUBMIT_SCRIPT, "import { submitCli } from './submit-common.mjs';\n// the submission path\n");
+    if (submissionScriptOnDisk || (withRecipeScript && recipeScriptOnDisk)) write('tooling/release/submit-common.mjs', '// RELEASE_LIBRARIES member\n');
     if (submissionWorkflowOnDisk) write(SUBMIT_WORKFLOW, submitWorkflow({ jobRunsScript }));
     if (withRecipeScript) {
-      if (recipeScriptOnDisk) write(RECIPE_SCRIPT, '// the packaging path\n');
+      if (recipeScriptOnDisk) write(RECIPE_SCRIPT, "import { submitCli } from './submit-common.mjs';\n// the packaging path\n");
       write(PACKAGE_WORKFLOW, packageWorkflow({ invoked: recipeScriptInvoked }));
     }
   }
@@ -1401,6 +1402,28 @@ describe('assert-channel-register — the lane\'s output vs the formats its chan
     assert.match(out, /1 submission path\(s\) resolve to a workflow job that runs the named script/);
   });
 
+  test('FAILS when a RELEASE_LIBRARIES member is not on disk', () => {
+    const root = tree({ withSubmission: true });
+    rmSync(join(root, 'tooling/release/submit-common.mjs'));
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /tooling\/release\/submit-common\.mjs is listed in RELEASE_LIBRARIES .* and does not exist/);
+  });
+
+  test('FAILS when no release script imports a RELEASE_LIBRARIES member', () => {
+    const { code, out } = run(tree({ withSubmission: true, extraFiles: { [SUBMIT_SCRIPT]: '// the submission path\n' } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /tooling\/release\/submit-common\.mjs is a release library .* that NO script in tooling\/release imports/);
+  });
+
+  // The library's name is matched as literal text: its `.` is not a wildcard,
+  // so an import of `./submit-commonXmjs` is not an import of it.
+  test('FAILS when the only import names the library with another character where its dot is', () => {
+    const { code, out } = run(tree({ withSubmission: true, extraFiles: { [SUBMIT_SCRIPT]: "import { submitCli } from './submit-commonXmjs';\n// the submission path\n" } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /tooling\/release\/submit-common\.mjs is a release library .* that NO script in tooling\/release imports/);
+  });
+
   test('FAILS when the submission script is not on disk', () => {
     const { code, out } = run(tree({ withSubmission: true, submissionScriptOnDisk: false }));
     assert.equal(code, 1, out);
@@ -1581,6 +1604,22 @@ describe('assert-channel-register — the lane\'s output vs the formats its chan
     assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /NOT ONE yielded a readable artifact/);
+  });
+
+  // ⏱ ADDED 2026-09-25 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 2 of 3): a lane's builds are
+  // read off the census, which composes a flutter-release-build.mjs call. The text
+  // match this replaced found no `flutter build` in such a lane and exited 2 on the
+  // COVERAGE LOST above.
+  test('a served lane that builds through the composer yields its artifact', () => {
+    const { code, out } = run(
+      tree({
+        releaseChannel: null,
+        laneBuilds: 'node tooling/ci/flutter-release-build.mjs fixture web web',
+        extraFiles: { 'apps/fixture/app.yaml': 'id: fixture\nhosts:\n  api: fixture-api.nikatru.com\n' },
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /NOT ONE yielded a readable artifact/);
   });
 
   test('PRINTS an unmapped `flutter build` target rather than comparing against nothing', () => {

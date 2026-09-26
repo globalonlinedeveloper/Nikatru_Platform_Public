@@ -135,6 +135,25 @@ describe('assert-launch-smoke.mjs — (a) the build-failing half', () => {
     assert.match(r.out, /found no `flutter build` in it/);
   });
 
+  test('a build made through the composer is a build: build → launch → publish, ok', () => {
+    const composed = `      - name: Build web
+        run: node tooling/ci/flutter-release-build.mjs fixture web web
+`;
+    const root = fixture({ channels: [], workflow: LANE(composed + SMOKE_STEP + DEPLOY_STEP) });
+    writeFileSync(
+      join(root, 'tooling', 'channel-register.json'),
+      JSON.stringify({
+        channels: [webRow({ purchaseRail: { rail: 'paddle' } })],
+        purchaseRails: { storeKeyDefine: { define: 'STORE_KEY', secretByRail: {} } },
+      }),
+    );
+    mkdirSync(join(root, 'apps', 'fixture'), { recursive: true });
+    writeFileSync(join(root, 'apps', 'fixture', 'app.yaml'), 'id: fixture\nhosts:\n  api: fixture-api.nikatru.com\n');
+    const r = run(root);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /deploy-web builds at :10, launches it at :12 .* publishes at :14 — the launch is BEFORE publication/);
+  });
+
   test('a smoke commented out inside the run body is prose, not a step', () => {
     const commented = `      - name: Launch
         run: echo nope # node ${SMOKE} apps/subscriptiontracker/build/web

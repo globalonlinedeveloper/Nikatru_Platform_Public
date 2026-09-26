@@ -34,6 +34,7 @@ import {
   resolveLocalCalls, parseResolvedWorkflows, lineAt, placeOf, refusalText,
   POST_GATE_IF, postGateClass, postGateJobs, laneRunHost, laneRefusalText,
   EMIT_RELEASE_JSON_MODE, emitOutputDir, emitInvocations,
+  flutterBuilds, flutterReleaseBuilds, buildMode, RELEASE_MODES,
 } from '../workflow-scan.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -1172,5 +1173,54 @@ describe('workflow-scan emit-release-json call sites', () => {
       ],
     );
     assert.deepEqual(emitInvocations(root, []), []);
+  });
+});
+
+describe('workflow-scan flutterBuilds: every build, and its mode', () => {
+  const MODES_YML = `name: Modes
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: flutter build web --pwa-strategy=none
+      - run: |
+          flutter build apk --release --dart-define=RELEASE_CHANNEL=android-play
+          flutter build apk --debug
+      - run: flutter build linux --profile
+      - run: flutter build windows --release --profile
+`;
+
+  test('buildMode: no flag is default, --release is release, --debug/--profile is itself, --release beside one is contradictory', () => {
+    assert.equal(buildMode('flutter build web --pwa-strategy=none'), 'default');
+    assert.equal(buildMode('flutter build apk --release'), 'release');
+    assert.equal(buildMode('flutter build apk --debug'), 'debug');
+    assert.equal(buildMode('flutter build linux --profile'), 'profile');
+    assert.equal(buildMode('flutter build windows --release --profile'), 'contradictory');
+    assert.equal(buildMode('flutter build apk --debug --release'), 'contradictory');
+    assert.equal(buildMode('flutter build apk --release-notes=x'), 'default');
+  });
+
+  test('flutterBuilds carries EVERY segment with its mode, a --debug beside a --release in one block included', () => {
+    const root = fixture({ 'modes.yml': MODES_YML });
+    const builds = flutterBuilds(root);
+    assert.deepEqual(
+      builds.map((b) => [b.target, b.mode, b.runLine]),
+      [['web', 'default', 6], ['apk', 'release', 7], ['apk', 'debug', 7], ['linux', 'profile', 10], ['windows', 'contradictory', 11]],
+    );
+    assert.equal(builds[1].stamp, 'android-play');
+    assert.equal(builds[2].stamp, null);
+  });
+
+  test('flutterReleaseBuilds is the RELEASE_MODES records of flutterBuilds, each without its mode', () => {
+    const root = fixture({ 'modes.yml': MODES_YML });
+    const full = flutterBuilds(root);
+    const release = flutterReleaseBuilds(root);
+    assert.deepEqual([...RELEASE_MODES].sort(), ['default', 'release']);
+    assert.equal(release.length, 2);
+    const withoutMode = ({ mode: _mode, ...record }) => record;
+    assert.deepEqual(release[0], withoutMode(full[0]));
+    assert.deepEqual(release[1], withoutMode(full[1]));
+    assert.equal('mode' in release[0], false);
+    assert.equal('mode' in release[1], false);
   });
 });

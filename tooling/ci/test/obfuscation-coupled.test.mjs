@@ -21,7 +21,7 @@
 //      pass — the 13 real build commands are what this guard speaks about.
 //   6. a COMMENT reading "we deliberately do not pass --obfuscate
 //      --split-debug-info=build/symbols here" ⇒ exit 0. This is the case the
-//      repo has lost twice before ([1]F-10, assert-stamp-platforms.mjs:37-42).
+//      repo has lost twice before ([1]F-10, assert-stamp-platforms.mjs:43-48).
 //
 // ── ➕ APPENDED 2026-09-07 · THE FLOOR ARRIVED AND FOUR CASES ABOVE CHANGED ──
 //    ANSWER. THE OLD WORDING IS LEFT STANDING; THIS IS WHAT SUPERSEDES IT.
@@ -361,6 +361,50 @@ jobs:
     assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /builds target "fuchsia"/);
+  });
+
+  // ⏱ ADDED 2026-09-25 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 2 of 3). A build the
+  // workflow asks tooling/ci/flutter-release-build.mjs to make has no `flutter
+  // build` in its text, and the guard's own loop found ZERO builds in this tree
+  // (COVERAGE LOST, exit 2). It reads workflow-scan's census now, which composes
+  // the call — so the composed build is graded, and graded on all three limbs.
+  const COMPOSER_JOB = (sinkStep) => `name: Build
+on:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build linux
+        run: node tooling/ci/flutter-release-build.mjs fixture linux linux-snap
+${sinkStep}`;
+  /** The two register fields the composer reads, and the app it builds. */
+  const COMPOSER_REGISTER = {
+    channels: [{ id: 'linux-snap', platforms: ['linux'], purchaseRail: { rail: 'paddle' } }],
+    purchaseRails: { storeKeyDefine: { define: 'STORE_KEY', secretByRail: {} } },
+  };
+  const withComposerApp = (root) => {
+    mkdirSync(join(root, 'apps', 'fixture'), { recursive: true });
+    writeFileSync(join(root, 'apps', 'fixture', 'app.yaml'), 'id: fixture\nhosts:\n  api: fixture-api.nikatru.com\n');
+    return root;
+  };
+
+  test('a release build made through the composer is held to the floor, and its sink step satisfies the sink', () => {
+    const root = withComposerApp(fixture({ 'build.yml': COMPOSER_JOB(SINK_STEP) }, COMPOSER_REGISTER));
+    const { code, out } = run(root);
+    assert.equal(code, 0, out);
+    assert.match(out, /1 `flutter build` command\(s\), 1 release build\(s\) on an obfuscatable target, 1 obfuscating/);
+    assert.match(out, /SINK: all 1 of them upload those symbols/);
+  });
+
+  test('MUTATION of that control — the sink step DELETED ⇒ exit 1 naming the composer call\'s line', () => {
+    const root = withComposerApp(fixture({ 'build.yml': COMPOSER_JOB('') }, COMPOSER_REGISTER));
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /build\.yml:11 \(job "linux"\)/);
+    assert.match(out, /obfuscates into "build\/symbols\/linux" and nothing in job "linux" retains it/);
   });
 
   // ── the coupling limb the guard shipped with ──────────────────────────────

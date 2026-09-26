@@ -357,6 +357,12 @@ describe('real-repo mode', () => {
     for (const [, spec] of readFileSync(GUARD, 'utf8').matchAll(/^import\s[^\n]*?from\s+'\.\/([\w.-]+\.mjs)'/gm)) {
       copyFileSync(join(CI_DIR, spec), join(root, 'tooling/ci', spec));
     }
+    // ⏱ 2026-09-26: one level is no longer the closure — workflow-scan imports the
+    // composer and app-set, and the composer imports ../app-yaml/yaml.mjs
+    // (O-FLUTTER-BUILD-TYPED-PER-LINE).
+    for (const spec of ['flutter-release-build.mjs', 'app-set.mjs']) copyFileSync(join(CI_DIR, spec), join(root, 'tooling/ci', spec));
+    mkdirSync(join(root, 'tooling/app-yaml'), { recursive: true });
+    copyFileSync(join(CI_DIR, '..', 'app-yaml', 'yaml.mjs'), join(root, 'tooling/app-yaml', 'yaml.mjs'));
     const r = spawnSync(process.execPath, ['tooling/ci/assert-guards-refuse-empty.mjs'], {
       cwd: root,
       encoding: 'utf8',

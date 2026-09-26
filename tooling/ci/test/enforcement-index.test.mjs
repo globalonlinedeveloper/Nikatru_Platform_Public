@@ -505,9 +505,13 @@ describe('assert-enforcement-index — the index is regenerated and compared, ne
 
     const genRoot = join(TMP, `gen${seq++}`, 'tooling', 'ci');
     mkdirSync(genRoot, { recursive: true });
-    for (const dep of ['tree-walk.mjs', 'workflow-scan.mjs']) {
+    // ⏱ 2026-09-26: workflow-scan now imports the composer and app-set, and the
+    // composer imports ../app-yaml/yaml.mjs (O-FLUTTER-BUILD-TYPED-PER-LINE).
+    for (const dep of ['tree-walk.mjs', 'workflow-scan.mjs', 'flutter-release-build.mjs', 'app-set.mjs']) {
       writeFileSync(join(genRoot, dep), readFileSync(join(CI_DIR, dep), 'utf8'));
     }
+    mkdirSync(join(genRoot, '..', 'app-yaml'), { recursive: true });
+    writeFileSync(join(genRoot, '..', 'app-yaml', 'yaml.mjs'), readFileSync(join(CI_DIR, '..', 'app-yaml', 'yaml.mjs'), 'utf8'));
     const src = readFileSync(GENERATOR, 'utf8');
     // String.raw, because the needle is a REGEX LITERAL: written as an ordinary
     // quoted string its escapes would become a carriage return and a newline and

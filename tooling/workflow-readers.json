@@ -272,6 +272,10 @@
       "property": "workflow-scan"
     },
     {
+      "path": "tooling/ci/flutter-release-build.mjs",
+      "property": "workflow-scan"
+    },
+    {
       "path": "tooling/ci/lane-detect.mjs",
       "property": "workflow-scan"
     },
