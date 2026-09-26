@@ -82,8 +82,8 @@
 // `display_name` into both `Properties/DisplayName` and
 // `uap:VisualElements/@DisplayName`, so the pubspec could carry the title or the
 // ADR 074 label, never both; and with no `logo_path` it copies its own bundled
-// tiles into every package it builds. `--app <id>` names the app, and four
-// limbs follow:
+// tiles into every package it builds. The app the package belongs to (below)
+// names the app, and four limbs follow:
 //   1. `Properties/DisplayName` equals the app's store/windows-store/title.txt;
 //   2. `uap:VisualElements/@DisplayName` (and `uap:DefaultTile/@ShortName`)
 //      equal the app's `shortName`, read through render.mjs's `readDeclaration`;
@@ -94,18 +94,29 @@
 // The package gets 1 and 2 from tooling/store/msix-visual-name.mjs, which runs
 // in the packaging step, after `msix:create` and before this guard.
 //
+// ── ⏱ 2026-09-25 · WHOSE IDENTITY (O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1)) ──
+// The declared identity NAME was the ONE value on the windows-store row, so a
+// second app's package built under the first app's identity matched it. The name
+// is now the record of the app the package BELONGS TO, apps/<id>/app.yaml
+// `stores.windows-store`, read through read-identity.mjs windowsIdentityOf; the
+// row keeps the account's publisher and publisher display name. The app is read
+// from the package path CI passes (apps/<id>/build/windows/msix/<id>.msix) or
+// named with `--app <id>`; a package whose app cannot be told is COVERAGE LOST,
+// never compared against somebody else's record.
+//
 // Usage:
-//   node tooling/ci/assert-artifact-signed-msix.mjs [--repo-root <path>] --app <id> <pkg.msix>…
+//   node tooling/ci/assert-artifact-signed-msix.mjs [--repo-root <path>] [--app <id>] <pkg.msix>…
 // Exit 0 = every package carries the declared identity and no signature.
 //      1 = one does not.
 //      2 = COVERAGE LOST — the question could not be asked.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
-import { join, resolve, dirname } from 'node:path';
+import { join, resolve, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { unzip } from './apple-signing.mjs';
 import { APPS_DIR, readDeclaration } from '../app-yaml/render.mjs';
+import { windowsIdentityOf, WINDOWS_STORE } from './read-identity.mjs';
 
 export const REGISTER_REL = 'tooling/channel-register.json';
 export const CHANNEL_ID = 'windows-store';
@@ -140,11 +151,12 @@ export function readIdentity(xml) {
   };
 }
 
-/** Pure. The register field each manifest field must equal. */
+/** Pure. The declared field each manifest field must equal, and whose it is:
+ *  `app` from the package's app record, `account` from the channel row. */
 export const IDENTITY_FIELDS = Object.freeze([
-  ['identityName', 'identityName', 'Package/Identity/@Name'],
-  ['publisher', 'publisher', 'Package/Identity/@Publisher'],
-  ['publisherDisplayName', 'publisherDisplayName', 'Package/Properties/PublisherDisplayName'],
+  ['identityName', 'identityName', 'Package/Identity/@Name', 'app'],
+  ['publisher', 'publisher', 'Package/Identity/@Publisher', 'account'],
+  ['publisherDisplayName', 'publisherDisplayName', 'Package/Properties/PublisherDisplayName', 'account'],
 ]);
 
 const xmlDecode = (s) =>
@@ -320,6 +332,15 @@ export function pinnedMsixVersion(lockText) {
   return m ? m[1] : null;
 }
 
+/** Pure. The app a package belongs to: `--app` when given, otherwise the
+ *  `apps/<id>/` its path sits under relative to the root, otherwise null. */
+export function appOfPackage(root, pkgAbs, appArg) {
+  if (typeof appArg === 'string' && appArg !== '') return appArg;
+  const rel = relative(root, pkgAbs).split(sep).join('/');
+  const m = /^apps\/([^/]+)\//.exec(rel);
+  return m ? m[1] : null;
+}
+
 /**
  * Pure. Split argv into the `--repo-root` value and the positional package paths.
  *
@@ -344,19 +365,9 @@ export function parseArgs(argv) {
   const packages = [];
   let rootFlagSeen = false;
   let rootArg;
-  let app;
+  let appArg;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    // `--app` takes its value the way `--repo-root` does, and for the same
-    // reason: a value left in the positional list would be graded as a package.
-    if (a === '--app') {
-      const next = argv[i + 1];
-      if (next !== undefined && !next.startsWith('--')) {
-        app = next;
-        i++;
-      }
-      continue;
-    }
     if (a === '--repo-root') {
       rootFlagSeen = true;
       const next = argv[i + 1];
@@ -368,10 +379,20 @@ export function parseArgs(argv) {
       }
       continue;
     }
+    // `--app <id>` names the app whose record a package is compared with, for a
+    // package that does not sit under apps/<id>/. Same rule: never a flag.
+    if (a === '--app') {
+      const next = argv[i + 1];
+      if (next !== undefined && !next.startsWith('--')) {
+        appArg = next;
+        i++;
+      }
+      continue;
+    }
     if (a.startsWith('--')) continue;
     packages.push(a);
   }
-  return { rootFlagSeen, rootArg, packages, app };
+  return { rootFlagSeen, rootArg, appArg, packages };
 }
 
 function coverageLost(first, ...more) {
@@ -386,7 +407,7 @@ function coverageLost(first, ...more) {
 
 function main() {
   const argv = process.argv.slice(2);
-  const { rootFlagSeen, rootArg, packages, app } = parseArgs(argv);
+  const { rootFlagSeen, rootArg, appArg, packages } = parseArgs(argv);
   if (rootFlagSeen && rootArg === undefined) {
     coverageLost(
       '`--repo-root` was given with no path after it, so the root to compare against is unknown.',
@@ -426,19 +447,43 @@ function main() {
   }
   const row = (register.channels ?? []).find((c) => c && c.id === CHANNEL_ID);
   if (!row) coverageLost(`${REGISTER_REL} declares no channel "${CHANNEL_ID}", so the identity this package must carry is unknown.`);
-  const declared = row.packageIdentity;
-  if (!declared || typeof declared !== 'object') {
+  const account = row.packageIdentity;
+  if (!account || typeof account !== 'object') {
     coverageLost(
       `channel "${CHANNEL_ID}" declares no \`packageIdentity\`.`,
-      'It is the SINGLE declaration of this identity. With it absent every comparison below would pass by',
-      'having nothing to disagree with.',
+      "It is the SINGLE declaration of the account's publisher and of the sentinel. With it absent every comparison",
+      'below would pass by having nothing to disagree with.',
     );
   }
-  for (const [regField] of IDENTITY_FIELDS) {
-    if (typeof declared[regField] !== 'string' || declared[regField].trim() === '') {
+  for (const [regField, , , whose] of IDENTITY_FIELDS) {
+    if (whose !== 'account') continue;
+    if (typeof account[regField] !== 'string' || account[regField].trim() === '') {
       coverageLost(`${REGISTER_REL} packageIdentity.${regField} is missing or empty — a hole, not a placeholder.`);
     }
   }
+  /** The identity one package must carry: its app's record for the name, the
+   *  row for the account. Anything that cannot be told is COVERAGE LOST — a
+   *  package compared with another app's record is the defect this closes. */
+  const declaredFor = (rel, abs) => {
+    const appId = appOfPackage(ROOT, abs, appArg);
+    if (appId === null) {
+      coverageLost(
+        `${rel} does not sit under apps/<id>/ and no --app was given, so the app whose identity this package must carry is unknown.`,
+        'Each app declares its own Windows identity (apps/<id>/app.yaml stores.windows-store); comparing the package with',
+        "any one app's record would certify it as that app.",
+      );
+    }
+    const record = windowsIdentityOf(ROOT, appId);
+    if (!record.value) {
+      coverageLost(
+        record.missing ?? `${record.rel} declares no stores.${WINDOWS_STORE} record, so the identity package ${rel} must carry is undeclared.`,
+      );
+    }
+    return {
+      declared: { identityName: record.value.identityName, publisher: account.publisher, publisherDisplayName: account.publisherDisplayName },
+      source: { app: `${record.rel} stores.${WINDOWS_STORE}.identityName`, account: `${REGISTER_REL} packageIdentity` },
+    };
+  };
 
   const problems = [];
   const prints = [];
@@ -482,20 +527,21 @@ function main() {
       continue;
     }
     const seen = readIdentity(manifest.bytes.toString('utf8'));
-    graded.push({ rel, entries, visual: readVisualIdentity(manifest.bytes.toString('utf8')) });
+    graded.push({ rel, entries, app: appOfPackage(ROOT, abs, appArg), visual: readVisualIdentity(manifest.bytes.toString('utf8')) });
     if (seen === null) {
       problems.push(`${rel} — ${MANIFEST_MEMBER} carries no <Identity> element, so the packaged identity cannot be read.`);
       continue;
     }
 
-    for (const [regField, seenField, where] of IDENTITY_FIELDS) {
+    const { declared, source } = declaredFor(rel, abs);
+    for (const [regField, seenField, where, whose] of IDENTITY_FIELDS) {
       const want = declared[regField];
       const got = seen[seenField];
       if (got === null) {
-        problems.push(`${rel} — ${where} is absent from ${MANIFEST_MEMBER}; ${REGISTER_REL} declares ${JSON.stringify(want)}.`);
+        problems.push(`${rel} — ${where} is absent from ${MANIFEST_MEMBER}; ${source[whose]} declares ${JSON.stringify(want)}.`);
       } else if (got !== want) {
         problems.push(
-          `${rel} — ${where} is ${JSON.stringify(got)} and ${REGISTER_REL} declares ${JSON.stringify(want)}. ` +
+          `${rel} — ${where} is ${JSON.stringify(got)} and ${source[whose]} declares ${JSON.stringify(want)}. ` +
             'Partner Center binds the identity to the PRODUCT, not to the upload, so a package submitted under the ' +
             'wrong one is unrecoverable rather than re-uploadable.',
         );
@@ -503,10 +549,10 @@ function main() {
     }
 
     if (seen.version) prints.push(`${rel} — Package/Identity/@Version is ${JSON.stringify(seen.version)}, read and printed; nothing in the register declares it, so it is reported rather than compared.`);
-    if (declared.notYetConfiguredSentinel && seen.identityName === declared.notYetConfiguredSentinel) {
+    if (account.notYetConfiguredSentinel && seen.identityName === account.notYetConfiguredSentinel) {
       prints.push(
-        `${rel} — the packaged identity is the NOT-YET-CONFIGURED sentinel ${JSON.stringify(declared.notYetConfiguredSentinel)}, ` +
-          'which matches the register and is the correct state until OWNER_QUEUE A-2 assigns the real values. ' +
+        `${rel} — the packaged identity is the NOT-YET-CONFIGURED sentinel ${JSON.stringify(account.notYetConfiguredSentinel)}, ` +
+          `which matches ${source.app} and is the correct state until Partner Center issues this app its own identity. ` +
           'This package cannot be submitted, and it is not pretending it can.',
       );
     }
@@ -521,30 +567,9 @@ function main() {
   }
 
   // ── what a person sees: the title, the label, the tiles (limbs 1-4) ──────
-  if (app === undefined) {
-    coverageLost(
-      '`--app <id>` was not given, so the title, the launcher label and the logo this package must carry are unknown.',
-      'The identity above was graded; the half a reviewer reads first was not.',
-    );
-  }
-  const appRel = `${APPS_DIR}/${app}`;
-  if (typeof row.storeMetadataDir !== 'string' || !row.storeMetadataDir.includes('{app}')) {
-    coverageLost(`channel "${CHANNEL_ID}" declares no \`storeMetadataDir\` with an {app} slot, so the app's store title cannot be found.`);
-  }
-  const titleRel = `${row.storeMetadataDir.replace('{app}', app)}/title.txt`;
-  if (!existsSync(join(ROOT, titleRel))) coverageLost(`${titleRel} does not exist, so the Store title the package must carry is unknown.`);
-  const title = readFileSync(join(ROOT, titleRel), 'utf8').trim();
-  if (title === '') coverageLost(`${titleRel} is empty — a hole, not a title.`);
-  let declaration;
-  try {
-    declaration = readDeclaration(ROOT, app);
-  } catch (e) {
-    coverageLost(`${appRel}/app.yaml could not be read (${e.message}), so the launcher label is unknown.`);
-  }
-  const label = declaration && declaration.shortName;
-  if (typeof label !== 'string' || label === '') {
-    coverageLost(`${appRel}/app.yaml declares no \`shortName\`, so the Start-menu label (ADR 074) this package must carry is unknown.`);
-  }
+  // ⏱ 2026-09-26 (train W23, FIX-B): each package's face is read from the app it
+  // belongs to — `--app`, else the apps/<id>/ its path sits under — the same app
+  // its identity was read from above. One app per package, never one per run.
   const lockText = existsSync(join(ROOT, 'pubspec.lock')) ? readFileSync(join(ROOT, 'pubspec.lock'), 'utf8') : '';
   const pinned = pinnedMsixVersion(lockText);
   if (pinned !== MSIX_PLUGIN_DEFAULT_TILE_HASHES.version) {
@@ -554,9 +579,42 @@ function main() {
       'Re-measure the table from the pinned version in the pub cache and move its `version` with it.',
     );
   }
+  if (typeof row.storeMetadataDir !== 'string' || !row.storeMetadataDir.includes('{app}')) {
+    coverageLost(`channel "${CHANNEL_ID}" declares no \`storeMetadataDir\` with an {app} slot, so the app's store title cannot be found.`);
+  }
+  /** The face one app declares: its store title, its launcher label, its logo. */
+  const faces = new Map();
+  const faceOf = (rel, app) => {
+    if (app === null) {
+      coverageLost(
+        `${rel} does not sit under apps/<id>/ and \`--app <id>\` was not given, so the title, the launcher label and the logo this package must carry are unknown.`,
+        'The identity above was graded; the half a reviewer reads first was not.',
+      );
+    }
+    if (faces.has(app)) return faces.get(app);
+    const appRel = `${APPS_DIR}/${app}`;
+    const titleRel = `${row.storeMetadataDir.replace('{app}', app)}/title.txt`;
+    if (!existsSync(join(ROOT, titleRel))) coverageLost(`${titleRel} does not exist, so the Store title the package must carry is unknown.`);
+    const title = readFileSync(join(ROOT, titleRel), 'utf8').trim();
+    if (title === '') coverageLost(`${titleRel} is empty — a hole, not a title.`);
+    let declaration;
+    try {
+      declaration = readDeclaration(ROOT, app);
+    } catch (e) {
+      coverageLost(`${appRel}/app.yaml could not be read (${e.message}), so the launcher label is unknown.`);
+    }
+    const label = declaration && declaration.shortName;
+    if (typeof label !== 'string' || label === '') {
+      coverageLost(`${appRel}/app.yaml declares no \`shortName\`, so the Start-menu label (ADR 074) this package must carry is unknown.`);
+    }
+    const f = { appRel, titleRel, title, label, logoPath: null };
+    faces.set(app, f);
+    return f;
+  };
 
   let tilesGraded = 0;
-  for (const { rel, entries, visual } of graded) {
+  for (const { rel, entries, app, visual } of graded) {
+    const { appRel, titleRel, title, label } = faceOf(rel, app);
     if (visual.displayName === null) {
       problems.push(`${rel} — Package/Properties/DisplayName is absent; ${titleRel} declares ${JSON.stringify(title)}.`);
     } else if (visual.displayName !== title) {
@@ -583,16 +641,18 @@ function main() {
     tilesGraded += tiles.graded;
   }
 
-  const pubspecRel = `${appRel}/pubspec.yaml`;
-  if (!existsSync(join(ROOT, pubspecRel))) coverageLost(`${pubspecRel} does not exist, so the logo the package was built from is unknown.`);
-  const logoPath = msixLogoPath(readFileSync(join(ROOT, pubspecRel), 'utf8'));
-  if (logoPath === null) {
-    problems.push(
-      `${pubspecRel} — msix_config sets no \`logo_path\`, so \`msix\` builds every tile from its own bundled placeholder. ` +
-        "Point it at the app's own mark.",
-    );
-  } else if (!existsSync(join(ROOT, appRel, logoPath))) {
-    problems.push(`${pubspecRel} — msix_config.logo_path is ${JSON.stringify(logoPath)} and ${appRel}/${logoPath} does not exist.`);
+  for (const f of faces.values()) {
+    const pubspecRel = `${f.appRel}/pubspec.yaml`;
+    if (!existsSync(join(ROOT, pubspecRel))) coverageLost(`${pubspecRel} does not exist, so the logo the package was built from is unknown.`);
+    f.logoPath = msixLogoPath(readFileSync(join(ROOT, pubspecRel), 'utf8'));
+    if (f.logoPath === null) {
+      problems.push(
+        `${pubspecRel} — msix_config sets no \`logo_path\`, so \`msix\` builds every tile from its own bundled placeholder. ` +
+          "Point it at the app's own mark.",
+      );
+    } else if (!existsSync(join(ROOT, f.appRel, f.logoPath))) {
+      problems.push(`${pubspecRel} — msix_config.logo_path is ${JSON.stringify(f.logoPath)} and ${f.appRel}/${f.logoPath} does not exist.`);
+    }
   }
 
   if (prints.length) {
@@ -606,13 +666,14 @@ function main() {
   }
   console.log(
     `ok  msix identity — ${opened} package(s) opened; each carries the ${IDENTITY_FIELDS.length} identity field(s) ` +
-      `${REGISTER_REL} declares for "${CHANNEL_ID}" and NO ${SIGNATURE_MEMBER}, which is the positive evidence that ` +
-      '`store: true` took effect and the Store will re-sign [pipeline F-2]',
+      `its app's stores.${WINDOWS_STORE} record and ${REGISTER_REL}'s "${CHANNEL_ID}" account declare, and NO ${SIGNATURE_MEMBER}, ` +
+      'which is the positive evidence that `store: true` took effect and the Store will re-sign [pipeline F-2]',
   );
   console.log(
-    `ok  msix face — the Store title ${JSON.stringify(title)}, the launcher label ${JSON.stringify(label)}, ` +
+    `ok  msix face — the Store title ${[...faces.values()].map((f) => JSON.stringify(f.title)).join(', ')}, ` +
+      `the launcher label ${[...faces.values()].map((f) => JSON.stringify(f.label)).join(', ')}, ` +
       `${tilesGraded} tile file(s) none of which is an msix ${MSIX_PLUGIN_DEFAULT_TILE_HASHES.version} default, and ` +
-      `logo_path ${JSON.stringify(logoPath)} [O-MSIX-IDENTITY-UNGRADED]`,
+      `logo_path ${[...faces.values()].map((f) => JSON.stringify(f.logoPath)).join(', ')} [O-MSIX-IDENTITY-UNGRADED]`,
   );
 }
 

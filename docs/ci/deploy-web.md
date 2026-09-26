@@ -51,7 +51,7 @@ than erroring, so a bare `apps/${{ matrix.app }}` with no matrix builds
 what limb A′ of assert-release-lane-generic.mjs checks, and deleting the
 `matrix:` block below is its recorded failing case.
 
-### above `paths:`
+### was above `paths:` (gone since #947, which made this file a post-gate call job of ci.yml)
 
 🔴 A PATH FILTER IS A CLAIM ABOUT WHAT CHANGES THE ARTIFACT, and this list
 named only the SOURCE (2026-08-01 full-corpus review, #30). The build step
@@ -90,7 +90,7 @@ Enforced by tooling/ci/assert-deploy-triggers.mjs, which derives the script
 list from this file's own steps — so adding a step adds its path or fails
 the build. A list nobody checks drifts back the moment a new input appears.
 
-### above `- 'tooling/smoke/smoke-web-artifact.mjs'`
+### was above `- 'tooling/smoke/smoke-web-artifact.mjs'` (gone since #947, which made this file a post-gate call job of ci.yml)
 
 [pipeline 9]R-13's launch smoke. Listed for the same reason as the ones
 above — this lane EXECUTES it, and it is the one step that can stop a
@@ -99,7 +99,7 @@ publish. assert-deploy-triggers.mjs derives its requirement from
 a smoke that changed and never ran again would be a gate that quietly
 stopped gating, which is this repository's most repeated failure.
 
-### above `- 'tooling/ops/post-deploy-smoke.mjs'`
+### was above `- 'tooling/ops/post-deploy-smoke.mjs'` (gone since #947, which made this file a post-gate call job of ci.yml)
 
 [pipeline 14]O-7's post-deploy smoke, listed for the same reason and
 subject to the same non-enforcement: it is the step that decides whether
@@ -107,7 +107,7 @@ this lane goes green. (Until 2026-08-09 it also decided whether the
 deployment record got written; it no longer does — the record follows
 the DEPLOY step, see the block on it at the bottom of this file.)
 
-### above `- 'tooling/ops/create-glitchtip-release.mjs'`
+### was above `- 'tooling/ops/create-glitchtip-release.mjs'` (gone since #947, which made this file a post-gate call job of ci.yml)
 
 ⏱ APPENDED 2026-09-23 (row O-GLITCHTIP-CALLS-HAVE-NO-RETRY). The two
 GlitchTip writes this lane runs, listed under the rule in the `# why:`
@@ -171,7 +171,7 @@ to its own 1200 s default before the build starts (a shorter bound would kill
 the poll and hide why the gate never arrived), and the build+deploy behind it
 has been observed at 9m03s. 20 + 9 with a little air. [pipeline F-5b]
 
-## job `permissions`
+### key `permissions:`
 
 ### above `permissions:`
 
@@ -181,7 +181,7 @@ ci-gate's verdict) and `deployments: write` for record-deployment.mjs.
 `contents: read` is restated because naming any permission here replaces
 the workflow-level set outright rather than adding to it.
 
-## job `strategy`
+### key `strategy:`
 
 ### above `strategy:`
 
@@ -190,7 +190,7 @@ stage of one: app #2 failing to build is no reason to cancel a deploy of
 app #1 that has already uploaded and is waiting to be smoked and recorded.
 With one app in the workspace this changes nothing.
 
-## job `concurrency`
+### key `concurrency:`
 
 ### above `concurrency:`
 
@@ -201,7 +201,7 @@ a half-published Pages project with a green-ish log. The group has to
 carry the dimension the matrix iterates, and only a job-level
 `concurrency:` can read `matrix`.
 
-## job `with`
+### key `with:`
 
 ### above `with:`
 

@@ -69,6 +69,13 @@
 // and the row is still `served: false`. Nothing has been submitted; the submit
 // is the owner's word, never an agent's.
 //
+// ⏱ 2026-09-25 — O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1). The identity NAME is
+// no longer the row's: it is the record of the app named by `--app`,
+// apps/<id>/app.yaml `stores.windows-store`, read through
+// tooling/ci/read-identity.mjs windowsIdentityOf. The row keeps the sentinel and
+// the account's `publisher` and `publisherDisplayName`. A second app therefore
+// validates and submits under its OWN identity, or refuses on the placeholder.
+//
 // Usage:
 //   node tooling/release/submit-windows-store.mjs --dry-run [--app <id>]
 //   node tooling/release/submit-windows-store.mjs --dry-run --allow-missing-artifact
@@ -85,6 +92,7 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { submitCli, requirePublishEnvironment, PUBLISH_ENVIRONMENT } from './submit-common.mjs';
+import { windowsIdentityOf } from '../ci/read-identity.mjs';
 
 const CHANNEL_ID = 'windows-store';
 const REGISTER = 'tooling/channel-register.json';
@@ -338,9 +346,10 @@ if (!problems.length) ok(`metadata tree ${metaDir} — ${filesChecked} field(s) 
 }
 
 // ── 2. the package identity ──────────────────────────────────────────────────
-// Read from BOTH declarations and compare. The register is authoritative; the
-// pubspec is what `msix` actually packages with. Two copies of an identity is
-// how the wrong one ships.
+// Read from BOTH declarations and compare. The declarations are authoritative
+// (the app's own record for the identity name, the register row for the
+// account); the pubspec is what `msix` actually packages with. Two copies of an
+// identity is how the wrong one ships.
 const identity = channel.packageIdentity ?? {};
 const SENTINEL = identity.notYetConfiguredSentinel ?? null;
 if (!SENTINEL) {
@@ -395,45 +404,67 @@ if (Object.keys(cfg).length === 0) {
   ]);
 }
 
-/** register field -> pubspec field. Both names are load-bearing: the register
- *  speaks camelCase and `msix` speaks snake_case, and neither can be renamed to
- *  match the other. */
+/** declared field -> pubspec field -> whose it is. The names are load-bearing:
+ *  the declarations speak camelCase and `msix` speaks snake_case, and neither
+ *  can be renamed to match the other. `app` is read from the app's own record
+ *  (O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1)); `account` from the channel row. */
 const IDENTITY_FIELDS = [
-  ['identityName', 'identity_name'],
-  ['publisherDisplayName', 'publisher_display_name'],
-  ['publisher', 'publisher'],
+  ['identityName', 'identity_name', 'app'],
+  ['publisherDisplayName', 'publisher_display_name', 'account'],
+  ['publisher', 'publisher', 'account'],
 ];
 
-let pending = 0;
-let configured = 0;
-for (const [regField, yamlField] of IDENTITY_FIELDS) {
-  const declared = identity[regField];
+const record = windowsIdentityOf(ROOT, app.slug);
+if (record.missing) {
+  problems.push(record.missing);
+} else if (!record.value) {
+  problems.push(
+    `${record.rel} declares no stores.${CHANNEL_ID} record. It is the one declaration of the identity Partner Center issued app "${app.slug}"; with none there is nothing to package or submit under. An app with no product yet declares ${SENTINEL} in both fields.`,
+  );
+}
+
+const pending = { app: 0, account: 0 };
+const configured = { app: 0, account: 0 };
+for (const [field, yamlField, whose] of IDENTITY_FIELDS) {
+  const declared = whose === 'app' ? record.value?.identityName : identity[field];
+  const source = whose === 'app' ? `${record.rel} stores.${CHANNEL_ID}.${field}` : `${REGISTER} channel "${CHANNEL_ID}" packageIdentity.${field}`;
   const packaged = cfg[yamlField];
   if (declared === undefined || declared === null || String(declared).trim() === '') {
-    problems.push(`${REGISTER} channel "${CHANNEL_ID}" packageIdentity.${regField} is missing. The register is the single declaration of this identity; an absent field is not a placeholder, it is a hole.`);
+    // The app's record was named above; the account's facts are a hole here.
+    if (whose === 'account') {
+      problems.push(`${source} is missing. It is the ACCOUNT's, declared once for every app; an absent field is not a placeholder, it is a hole.`);
+    }
     continue;
   }
   if (packaged === undefined) {
-    problems.push(`${pubspecRel} msix_config.${yamlField} is missing while the register declares ${regField}. \`msix\` would package a DIFFERENT identity from the one the register documents.`);
+    problems.push(`${pubspecRel} msix_config.${yamlField} is missing while ${source} declares it. \`msix\` would package a DIFFERENT identity from the one declared.`);
     continue;
   }
   if (String(declared) !== String(packaged)) {
     problems.push(
-      `package identity DISAGREES: ${REGISTER} says ${regField} = ${JSON.stringify(String(declared))}, ${pubspecRel} says ${yamlField} = ${JSON.stringify(String(packaged))}. One of the two ships and nothing says which.`,
+      `package identity DISAGREES: ${source} = ${JSON.stringify(String(declared))}, ${pubspecRel} says ${yamlField} = ${JSON.stringify(String(packaged))}. One of the two ships and nothing says which.`,
     );
     continue;
   }
-  if (String(declared).includes(SENTINEL)) pending++;
-  else configured++;
+  if (String(declared).includes(SENTINEL)) pending[whose]++;
+  else configured[whose]++;
 }
+const pendingAll = pending.app + pending.account;
+const configuredAll = configured.app + configured.account;
 
-if (pending > 0 && configured > 0) {
+if (pending.account > 0 && configured.account > 0) {
   problems.push(
-    `package identity is HALF configured — ${configured} real value(s) and ${pending} still ${SENTINEL}. A partially-assigned identity packages cleanly and submits under a name that is part real and part placeholder.`,
+    `package identity is HALF configured — the account's publisher and publisher display name are ${configured.account} real and ${pending.account} still ${SENTINEL}. A partially-assigned identity packages cleanly and submits under a name that is part real and part placeholder.`,
   );
-} else if (pending > 0) {
+} else if (configured.app > 0 && pending.account > 0) {
+  problems.push(
+    `package identity is HALF configured — identity_name is issued and the account's ${pending.account} field(s) are still ${SENTINEL}. An issued identity packaged under a placeholder publisher submits as nobody's.`,
+  );
+} else if (pending.app > 0) {
   prints.push(
-    `PACKAGE IDENTITY NOT YET CONFIGURED — all ${pending} field(s) are ${SENTINEL}. Assigned by Partner Center after OWNER_QUEUE A-2 (Product → Product identity). The .msix BUILDS and is NOT SUBMITTABLE; that is the expected state, not a fault.`,
+    pending.account > 0
+      ? `PACKAGE IDENTITY NOT YET CONFIGURED — all ${pendingAll} field(s) are ${SENTINEL}. Assigned by Partner Center after OWNER_QUEUE A-2 (Product → Product identity). The .msix BUILDS and is NOT SUBMITTABLE; that is the expected state, not a fault.`
+      : `PACKAGE IDENTITY NOT YET CONFIGURED — identity_name is ${SENTINEL} under the account's configured publisher: Partner Center has not issued app "${app.slug}" its own identity. The .msix BUILDS and is NOT SUBMITTABLE; reserve the app's name in Partner Center and copy the issued values into ${record.rel} stores.${CHANNEL_ID}.`,
   );
   // ⏱ 2026-09-11 — "NOT SUBMITTABLE" ABOVE WAS A SENTENCE, NOT A CHECK. With every field
   // still the sentinel this branch only PRINTED, so `--submit` walked on to `msstore publish`
@@ -444,13 +475,20 @@ if (pending > 0 && configured > 0) {
   // "PLACEHOLDER PACKAGE IDENTITY — --submit REFUSED" is read by
   // tooling/ci/assert-store-identity.mjs, which runs this script with every credential blanked
   // on every push to prove the refusal still stands.
+  // ⏱ 2026-09-25 — and it refuses on the identity NAME alone: under a configured
+  // account, an app Partner Center has not issued its own identity yet (the state
+  // the brick stamps) would otherwise be "partly real" and walk on.
   if (SUBMIT) {
     problems.push(
-      `PLACEHOLDER PACKAGE IDENTITY — --submit REFUSED: all ${pending} identity field(s) are still ${SENTINEL} in both ${REGISTER} and ${pubspecRel}. Microsoft binds a product to its Package/Identity/Name at the first upload; publishing under a placeholder is a package no Partner Center product owns. Copy the three values from Partner Center → Product → Product identity into packageIdentity AND msix_config (OWNER_QUEUE A-2), then submit.`,
+      `PLACEHOLDER PACKAGE IDENTITY — --submit REFUSED: ${pending.account > 0 ? `all ${pendingAll} identity field(s) are still ${SENTINEL} in ${record.rel}, ${REGISTER} and ${pubspecRel}` : `identity_name is still ${SENTINEL} in both ${record.rel} and ${pubspecRel}`}. Microsoft binds a product to its Package/Identity/Name at the first upload; publishing under a placeholder is a package no Partner Center product owns. Reserve this app's name in Partner Center, copy the issued identity (Product → Product identity) into ${record.rel} stores.${CHANNEL_ID}, render it into msix_config (node tooling/app-yaml/render.mjs), then submit.`,
     );
   }
 } else {
-  ok(`package identity — ${configured} field(s), register and ${pubspecRel} agree`);
+  // 🔴 THIS LINE IS THE LIVE LANE'S DRY-RUN OUTPUT and is kept byte-for-byte as it
+  // was before the identity name moved to the app's record (B4a-2): "register"
+  // here reads as the declarations, the app's record for the name and the row
+  // for the account.
+  ok(`package identity — ${configuredAll} field(s), register and ${pubspecRel} agree`);
 }
 
 // `store: true` is the keyKind "none" half of the row made real.
@@ -499,7 +537,8 @@ if (existsSync(abs(msixRel))) {
 // it is passed; see Private/runbooks/store-submission-windows.md for which of the two
 // seller ids on this account is the live one — they differ by three digits and the
 // wrong one authenticates against nothing. The VALUES live in that runbook and in the
-// repository secret; neither is written into this public tree.
+// GitHub secrets (the four ids at repository level, the client secret in the
+// store-publish environment); none is written into this public tree.
 const CREDENTIAL_ENV = [
   ['MS_STORE_TENANT_ID', 'the Entra tenant the Partner Center account is associated with'],
   ['MS_STORE_CLIENT_ID', 'the Entra application (client) id authorised in Partner Center'],
@@ -507,12 +546,30 @@ const CREDENTIAL_ENV = [
   ['MS_STORE_PRODUCT_ID', 'the Partner Center product this app record is'],
   ['MS_STORE_SELLER_ID', 'the Partner Center SELLER id — the account `msstore reconfigure` configures against'],
 ];
-const missingCreds = CREDENTIAL_ENV.filter(([k]) => !process.env[k] || process.env[k].trim() === '');
+// ⏱ 2026-09-25 — O-STORE-SECRETS-REACH-THE-DRY-RUN. A credential whose
+// `ciSecretRegister.nonSigning` row is scoped to a GitHub environment is readable
+// only in a job bound to that environment, and the dry-run job has none. So the
+// dry run does not look for it — an absence it cannot see is not a gap it can
+// report — and says instead where it IS checked: the submit job's first step, and
+// this script's --submit path below, which still requires all five. The scope is
+// read from the register row assert-channel-register §8c grades the workflows
+// against; a register with no such row (a test fixture) leaves every name checked.
+const scopedTo = new Map(
+  (Array.isArray(register.ciSecretRegister?.nonSigning) ? register.ciSecretRegister.nonSigning : [])
+    .filter((e) => typeof e?.name === 'string' && typeof e?.environment === 'string' && e.environment.trim() !== '')
+    .map((e) => [e.name, e.environment.trim()]),
+);
+const checkedHere = SUBMIT ? CREDENTIAL_ENV : CREDENTIAL_ENV.filter(([k]) => !scopedTo.has(k));
+for (const [k, why] of CREDENTIAL_ENV) {
+  if (SUBMIT || !scopedTo.has(k)) continue;
+  ok(`${why.replace(/^that application's /, '')}: checked in the environment-bound submit job — ${k} lives in the "${scopedTo.get(k)}" environment, which this dry run cannot see`);
+}
+const missingCreds = checkedHere.filter(([k]) => !process.env[k] || process.env[k].trim() === '');
 if (missingCreds.length === 0) {
-  ok(`credentials — all ${CREDENTIAL_ENV.length} environment variable(s) present (values never read or printed)`);
+  ok(`credentials — all ${checkedHere.length} environment variable(s) present (values never read or printed)`);
 } else {
   prints.push(
-    `CREDENTIALS NOT CONFIGURED — ${missingCreds.length} of ${CREDENTIAL_ENV.length} absent: ${missingCreds.map(([k]) => k).join(', ')}. They cannot exist before OWNER_QUEUE A-2 creates the account, so this is a printed gap and not a failure. (${missingCreds.map(([k, why]) => `${k} = ${why}`).join(' · ')})`,
+    `CREDENTIALS NOT CONFIGURED — ${missingCreds.length} of ${checkedHere.length} absent: ${missingCreds.map(([k]) => k).join(', ')}. They cannot exist before OWNER_QUEUE A-2 creates the account, so this is a printed gap and not a failure. (${missingCreds.map(([k, why]) => `${k} = ${why}`).join(' · ')})`,
   );
   // 🔴 …AND ON `--submit` IT IS A FAILURE, RAISED HERE SO THE EMPTY SECRET IS
   // NAMED BEFORE any later check can fail first. The artifact check below runs
@@ -525,13 +582,19 @@ if (missingCreds.length === 0) {
     problems.push(
       `${missingCreds.length} of ${CREDENTIAL_ENV.length} Microsoft Store credential(s) are EMPTY: ${missingCreds.map(([k]) => k).join(', ')}. --submit cannot authenticate without them, and a submission job that discovers that and reports success is a green tick over a store that received nothing.`,
     );
+    for (const [k] of missingCreds) {
+      if (!scopedTo.has(k)) continue;
+      problems.push(
+        `${k} is a "${scopedTo.get(k)}" ENVIRONMENT secret, readable only in a job bound to that environment. OWNER STEP: GitHub → Settings → Environments → ${scopedTo.get(k)} → Environment secrets → add ${k}.`,
+      );
+    }
     // 🔴 THE SELLER ID GETS ITS OWN SENTENCE, because it is the newest of the five and
     // the only one whose absence used to be INVISIBLE. Before 2026-09-09 this script
     // passed tenant/client/secret and no seller id at all, so a missing one produced
     // no message here and no message from the CLI either — there was nothing to miss.
     // Now that `--sellerId` is passed, an empty value reaches `msstore reconfigure` as
     // a bare `--sellerId` with nothing after it, and what comes back is the CLI's own
-    // argument error naming no repository secret. This line is what stops that.
+    // argument error naming no secret at all. This line is what stops that.
     if (missingCreds.some(([k]) => k === 'MS_STORE_SELLER_ID')) {
       problems.push(
         'MS_STORE_SELLER_ID specifically: it is the Partner Center SELLER id, which `msstore reconfigure` takes as --sellerId, and it is NOT the product id. This account has carried TWO seller ids that differ by three digits; the retired one authenticates against nothing while looking entirely plausible in a log, so read the live one from Private/runbooks/store-submission-windows.md rather than from memory or from an old workflow run.',
@@ -650,6 +713,9 @@ async function submitPath() {
       `     ${PRIMARY_SOURCES.submissionApi} — "You must associate an Azure AD application with your`,
       '     Partner Center account and obtain your tenant ID, client ID and key."',
       '     OWNER STEP: Private/runbooks/store-submission-windows.md, section "the four secrets" (FIVE since 2026-09-09 — MS_STORE_SELLER_ID joined them).',
+      ...emptyCreds
+        .filter(([k]) => scopedTo.has(k))
+        .map(([k]) => `     ${k} is a "${scopedTo.get(k)}" ENVIRONMENT secret: GitHub → Settings → Environments → ${scopedTo.get(k)} → Environment secrets → add ${k}.`),
     ]);
   }
   ok(`credentials — all ${CREDENTIAL_ENV.length} environment variable(s) present (values never read or printed)`);

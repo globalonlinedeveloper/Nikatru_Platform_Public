@@ -333,7 +333,7 @@ const NEUTRALIZING_IF = /\balways\s*\(|\bfailure\s*\(/;
 // enforcement — "a GitHub environment with a required reviewer".
 //
 // 🔴 `environment:` ON ITS OWN FAILS OPEN, and that is not a worry, it is
-// documented GitHub behaviour quoted verbatim at docs/ci/submit-play.md:41-44:
+// documented GitHub behaviour quoted verbatim in docs/ci/submit-play.md §File header:
 // "Running a workflow that references an environment that does not exist will
 // create an environment with the referenced name" — with no protection rules,
 // and the run history then shows a deployment that reads exactly like an
@@ -444,7 +444,7 @@ const SUBMIT_SCRIPT = /\bnode\b[\s\S]*?(\S+\.mjs)\b/;
  *  it must BUILD the environments API URL and READ the protection rules. Both,
  *  because a script that fetches the environment and never looks at its rules
  *  has confirmed only that the environment exists — which is the state
- *  docs/ci/submit-play.md:51-55 records measuring on this very repo, where all
+ *  docs/ci/submit-play.md §File header records measuring on this very repo, where all
  *  three auto-created environments returned `"protection_rules": []`.
  *
  *  🔴 THE TWO SLASHES ARE TWO CONDITIONS AND ARE NOW HELD SEPARATELY. Dropping
@@ -1076,7 +1076,7 @@ for (const wf of workflows) {
           problems.push(
             `${wf.rel}: job "${job.name}" invokes \`${call.script} --submit\` at ${lineAt(wf, call.n)}, and that script never reads the deployment environment's protection rules ` +
               `(no \`/environments/\` API path AND \`protection_rules\` survives comment stripping in it, and it does not both import ${COMMON_FN} from ${COMMON_READER} and call it, with that module performing the read). ` +
-              '`environment:` on its own FAILS OPEN — GitHub\'s own documentation, quoted at docs/ci/submit-play.md:41-44, says a workflow referencing an environment that does not exist CREATES it, unprotected, and runs. ' +
+              '`environment:` on its own FAILS OPEN — GitHub\'s own documentation, quoted in docs/ci/submit-play.md §File header, says a workflow referencing an environment that does not exist CREATES it, unprotected, and runs. ' +
               'The run history then shows a deployment that reads exactly like an approval. So the YAML line is the pause and this read is the proof the pause was real; a lane with only the first has a gate that a typo silently removes.',
           );
         }

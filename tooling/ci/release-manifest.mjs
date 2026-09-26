@@ -547,7 +547,7 @@ export function missingReleaseFormats(expected, assetNames) {
  * `git grep WINDOWS_SIGNING_POSTURE` over every tracked file returns FOUR hits
  * OUTSIDE THIS COMMENT — the command also matches the two lines you are reading,
  * so re-running it prints six. Measured 2026-08-21:
- * `docs/ci/build-platforms.md:743` (a comment
+ * `docs/ci/build-platforms.md`, job `windows` (a comment
  * recording that nothing consumes it) and three inside `windows-signing.mjs`
  * (`:12`, `:116`, and `:134`, its declaration). Zero readers outside the script
  * that publishes it — and it is set on the `windows` JOB, while this runs in

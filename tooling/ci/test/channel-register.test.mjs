@@ -2551,6 +2551,188 @@ describe('assert-channel-register — [9]R-3 limb 2: only declared secrets may b
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SECTION 8c — O-STORE-SECRETS-REACH-THE-DRY-RUN: a publishing credential is
+// read only where its row says it lives. The fixture workflow is the real shape
+// in miniature: an env-less `dry-run` job beside an environment-bound `submit`
+// job. 19b252af's submit-windows-store.yml handed the client secret to the first
+// of the two; the first-line evidence is the guard run against that file itself
+// (the PR's red-control table). Every case is written out by hand.
+describe('assert-channel-register — §8c: a publishing credential is read only where its row says it lives', () => {
+  const SCOPE_WORKFLOW = '.github/workflows/submit-fixture.yml';
+  /** Line 10 is the dry-run job's first secret; the submit job's follow. */
+  const scopeWorkflow = ({
+    dryRunSecrets = [],
+    submitSecrets = ['FIXTURE_CLIENT_SECRET'],
+    submitEnvironment = ['    environment: store-publish'],
+    header = [],
+  } = {}) =>
+    [
+      'name: submit fixture',
+      'on:',
+      '  workflow_dispatch:',
+      ...header,
+      'jobs:',
+      '  dry-run:',
+      '    runs-on: ubuntu-24.04',
+      '    steps:',
+      '      - name: Dry run',
+      '        env:',
+      ...dryRunSecrets.map((n) => '          ' + n + ': ${{ secrets.' + n + ' }}'),
+      '          PLACEHOLDER: fixture',
+      '        run: echo dry',
+      '  submit:',
+      '    runs-on: ubuntu-24.04',
+      ...submitEnvironment,
+      '    steps:',
+      '      - name: Submit',
+      '        env:',
+      ...submitSecrets.map((n) => '          ' + n + ': ${{ secrets.' + n + ' }}'),
+      '          PLACEHOLDER: fixture',
+      '        run: echo submit',
+      '',
+    ].join(NL);
+  const scopeRegister = (nonSigning) => ({
+    kinds: {
+      'build-config': 'a value compiled into or read by a build; not signing material',
+      'publishing-credential': 'authorises an upload; is not what signs the artifact',
+    },
+    nonSigning,
+  });
+  const inEnvironment = (name, environment = 'store-publish') => ({
+    name,
+    kind: 'publishing-credential',
+    why: 'the fixture store credential; authorises a submission and signs nothing',
+    environment,
+  });
+  const atRepository = (name, repositoryWhy = 'read by the env-less fixture job `dry-run`, by decision') => ({
+    name,
+    kind: 'publishing-credential',
+    why: 'the fixture store credential; authorises a submission and signs nothing',
+    environment: null,
+    repositoryWhy,
+  });
+  const scoped = (rows, workflow = {}) =>
+    tree({
+      extraFiles: { [SCOPE_WORKFLOW]: scopeWorkflow(workflow) },
+      mutate: (r) => {
+        r.ciSecretRegister = scopeRegister(rows);
+      },
+    });
+
+  test('GREEN CONTROL: the environment-scoped secret read only in the bound job, a repository-scoped one with its reason', () => {
+    const { code, out } = run(
+      scoped([inEnvironment('FIXTURE_CLIENT_SECRET'), atRepository('FIXTURE_PARTNER_SECRET')], {
+        dryRunSecrets: ['FIXTURE_PARTNER_SECRET'],
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /2 `nonSigning` row\(s\) declare a scope — 1 bound to an environment \(FIXTURE_CLIENT_SECRET → store-publish\), 1 at repository level with a reason/);
+    assert.match(out, /\[8c\]/);
+  });
+
+  test('rule (a): the 19b252af shape — the env-scoped secret in the env-less dry-run job FAILS, at its line', () => {
+    const { code, out } = run(scoped([inEnvironment('FIXTURE_CLIENT_SECRET')], { dryRunSecrets: ['FIXTURE_CLIENT_SECRET'] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /8c rule \(a\): \.github\/workflows\/submit-fixture\.yml:10 \(job "dry-run", no environment\) reads `secrets\.FIXTURE_CLIENT_SECRET`, which `ciSecretRegister\.nonSigning` scopes to environment "store-publish"/);
+    assert.doesNotMatch(out, /job "submit"/, 'the bound job read it too, and that read is the allowed one');
+  });
+
+  test('rule (a): a job bound to a DIFFERENT environment is not the credential\'s environment', () => {
+    const { code, out } = run(scoped([inEnvironment('FIXTURE_CLIENT_SECRET')], { submitEnvironment: ['    environment: staging'] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /8c rule \(a\): .*\(job "submit", environment "staging"\) reads `secrets\.FIXTURE_CLIENT_SECRET`/);
+  });
+
+  test('rule (a): a workflow-level `env:` reaches every job, so it is graded as a job with no environment', () => {
+    const { code, out } = run(
+      scoped([inEnvironment('FIXTURE_CLIENT_SECRET')], {
+        header: ['env:', '  EVERYWHERE: ${{ secrets.FIXTURE_CLIENT_SECRET }}'],
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /8c rule \(a\): \.github\/workflows\/submit-fixture\.yml:5 \(job "\(workflow level\)", no environment\)/);
+  });
+
+  test('rule (a): the BLOCK form (`environment:` with a `name:` child) binds the job exactly as the scalar does', () => {
+    const { code, out } = run(
+      scoped([inEnvironment('FIXTURE_CLIENT_SECRET')], {
+        submitEnvironment: ['    environment:', '      name: store-publish', '      url: https://example.invalid/listing'],
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /8c rule/);
+  });
+
+  test('rule (a): an environment written as an EXPRESSION is not the literal the row names', () => {
+    const { code, out } = run(
+      scoped([inEnvironment('FIXTURE_CLIENT_SECRET')], { submitEnvironment: ['    environment: ${{ inputs.target }}'] }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /8c rule \(a\): .*\(job "submit", environment "\$\{\{ inputs\.target \}\}"\)/);
+  });
+
+  test('rule (b): a publishing-credential row with no `environment` key FAILS', () => {
+    const row = inEnvironment('FIXTURE_CLIENT_SECRET');
+    delete row.environment;
+    const { code, out } = run(scoped([row]));
+    assert.equal(code, 1, out);
+    assert.match(out, /8c rule \(b\): `ciSecretRegister\.nonSigning` entry "FIXTURE_CLIENT_SECRET" is a publishing-credential and declares no `environment`/);
+  });
+
+  test('rule (b): `environment: null` with no `repositoryWhy` FAILS — repository level is a decision, not a default', () => {
+    const { code, out } = run(scoped([atRepository('FIXTURE_CLIENT_SECRET', '')]));
+    assert.equal(code, 1, out);
+    assert.match(out, /8c rule \(b\): .*"FIXTURE_CLIENT_SECRET" declares `environment: null` with no `repositoryWhy`/);
+  });
+
+  test('rule (b): a `repositoryWhy` left on a row scoped to an environment FAILS — a reason for a scope it no longer has', () => {
+    const { code, out } = run(scoped([{ ...inEnvironment('FIXTURE_CLIENT_SECRET'), repositoryWhy: 'read by the env-less fixture job `dry-run`' }]));
+    assert.equal(code, 1, out);
+    assert.match(out, /8c rule \(b\): .*"FIXTURE_CLIENT_SECRET" is scoped to environment "store-publish" and still carries a `repositoryWhy`/);
+  });
+
+  test('rule (b): a scope that is neither a name nor null FAILS', () => {
+    const { code, out } = run(scoped([inEnvironment('FIXTURE_CLIENT_SECRET', true)]));
+    assert.equal(code, 1, out);
+    assert.match(out, /8c rule \(b\): .*"FIXTURE_CLIENT_SECRET" declares `environment: true`/);
+  });
+
+  test('rule (c): a *_SECRET read in an env-less job, declared with no scope, FAILS (the RC4 shape)', () => {
+    const { code, out } = run(
+      scoped([inEnvironment('FIXTURE_CLIENT_SECRET'), { name: 'FOO_SECRET', kind: 'build-config', why: 'a fixture value that happens to be secret-shaped' }], {
+        dryRunSecrets: ['FOO_SECRET'],
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /8c rule \(c\): \.github\/workflows\/submit-fixture\.yml:10 \(job "dry-run", no environment\) reads `secrets\.FOO_SECRET`, a \*_SECRET \/ \*_CREDENTIALS name/);
+    assert.match(out, /its `ciSecretRegister\.nonSigning` row does not declare `environment: null` with a `repositoryWhy`/);
+  });
+
+  test('rule (c): a *_CREDENTIALS read in an env-less job with NO register row FAILS on both §8 and §8c', () => {
+    const { code, out } = run(scoped([inEnvironment('FIXTURE_CLIENT_SECRET')], { dryRunSecrets: ['FOO_CREDENTIALS'] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /8c rule \(c\): .*reads `secrets\.FOO_CREDENTIALS`.*no `ciSecretRegister\.nonSigning` row declares its scope/);
+    assert.match(out, /name\(s\) `secrets\.FOO_CREDENTIALS`, which the register does not declare/);
+  });
+
+  test('rule (c): the suffix is anchored — *_CREDENTIALS_EXPIRES is a date, not a credential, and passes unscoped', () => {
+    const { code, out } = run(
+      scoped([inEnvironment('FIXTURE_CLIENT_SECRET'), { name: 'FOO_CREDENTIALS_EXPIRES', kind: 'build-config', why: 'the date a fixture credential lapses; authenticates nothing' }], {
+        dryRunSecrets: ['FOO_CREDENTIALS_EXPIRES'],
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /8c rule/);
+  });
+
+  test('rule (d): COVERAGE LOST when a secret scoped to an environment is read by no job at all', () => {
+    const { code, out } = run(scoped([inEnvironment('FIXTURE_CLIENT_SECRET'), inEnvironment('FIXTURE_UNREAD_SECRET')]));
+    assert.equal(code, 2, out);
+    assert.match(out, /FAIL COVERAGE LOST — 8c rule \(d\): `ciSecretRegister\.nonSigning` scopes "FIXTURE_UNREAD_SECRET" to environment "store-publish", and no job/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SECTION 9 — [9]R-3: the register's signing declaration vs the REAL Gradle
 // build. Section 8 compares the register to the WORKFLOWS and its own header
 // recorded what that left open: "a rename in Gradle alone is still silent".
@@ -3100,19 +3282,22 @@ describe('assert-channel-register — §6d: pinned signing material and its sent
 // so the first test IS the algorithm's pin. The two failing publishers are the
 // mistakes the limb exists for: one digit off, and the CN in lower case — each
 // typed IDENTICALLY into both copies, which every copy-vs-copy guard accepts.
+// ⏱ 2026-09-25 — PER APP (O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1)). The row
+// carries the ACCOUNT (publisher, publisherDisplayName) and the sentinel; the name
+// and the PFN are each app's record, apps/<id>/app.yaml stores.windows-store. The
+// real pair is still the algorithm's pin, now split the way the register is.
 describe('assert-channel-register — §6e: the Package Family Name is derived, not trusted', () => {
   const SENTINEL = 'PARTNER-CENTER-PENDING';
-  const REAL = {
-    identityName: '60210NIKATRU.NikatruSubscriptionTracker',
+  const ACCOUNT = {
     publisherDisplayName: 'NIKATRU',
     publisher: 'CN=9D0DEF58-EDA2-448E-9498-42C2C3083994',
+  };
+  const RECORD = {
+    identityName: '60210NIKATRU.NikatruSubscriptionTracker',
     packageFamilyName: '60210NIKATRU.NikatruSubscriptionTracker_ab30hnb4490ma',
   };
-  const PENDING = {
-    identityName: SENTINEL,
-    publisherDisplayName: SENTINEL,
-    publisher: `CN=${SENTINEL}`,
-  };
+  const PENDING_ACCOUNT = { publisherDisplayName: SENTINEL, publisher: `CN=${SENTINEL}` };
+  const PENDING_RECORD = { identityName: SENTINEL, packageFamilyName: SENTINEL };
   const identity = (values) => (r) => {
     r.channels.find((c) => c.id === 'windows-store').packageIdentity = {
       notYetConfiguredSentinel: SENTINEL,
@@ -3120,53 +3305,120 @@ describe('assert-channel-register — §6e: the Package Family Name is derived, 
       declaredIn: 'apps/{app}/pubspec.yaml → msix_config',
     };
   };
+  /** apps/<slug>/app.yaml carrying `record` (fields written only when present). */
+  const recordFile = (slug, record) => {
+    const lines = [`id: ${slug}`, 'stores:', '  windows-store:'];
+    if (record.identityName !== undefined) lines.push(`    identityName: ${record.identityName}`);
+    if (record.packageFamilyName !== undefined) lines.push(`    packageFamilyName: ${record.packageFamilyName}`);
+    return { [`apps/${slug}/app.yaml`]: `${lines.join('\n')}\n` };
+  };
 
   test('PASSES the real pair — the known answer `ab30hnb4490ma` Partner Center printed', () => {
-    const { code, out } = run(tree({ mutate: identity(REAL) }));
+    const { code, out } = run(tree({ mutate: identity(ACCOUNT), extraFiles: recordFile('subscriptiontracker', RECORD) }));
     assert.equal(code, 0, out);
-    assert.match(out, /1 MSIX package identity: 1 configured with its Package Family Name recomputed/);
+    assert.match(out, /1 MSIX package identity \(account on the channel row\), 1 app record\(s\) \(apps\/\*\/app\.yaml stores\.windows-store\): 1 configured with its Package Family Name recomputed/);
   });
 
   test('FAILS a publisher one digit off (…3995), typed the same way in both copies', () => {
-    const { code, out } = run(tree({ mutate: identity({ ...REAL, publisher: 'CN=9D0DEF58-EDA2-448E-9498-42C2C3083995' }) }));
+    const { code, out } = run(
+      tree({ mutate: identity({ ...ACCOUNT, publisher: 'CN=9D0DEF58-EDA2-448E-9498-42C2C3083995' }), extraFiles: recordFile('subscriptiontracker', RECORD) }),
+    );
     assert.equal(code, 1, out);
-    assert.match(out, /packageFamilyName is "60210NIKATRU\.NikatruSubscriptionTracker_ab30hnb4490ma"/);
+    assert.match(out, /apps\/subscriptiontracker\/app\.yaml stores\.windows-store\.packageFamilyName is "60210NIKATRU\.NikatruSubscriptionTracker_ab30hnb4490ma"/);
     assert.match(out, /publisher id "b71dt9xvs34za" against "ab30hnb4490ma"/);
-    // A FAIL for the row and a pass line counting it "configured" would be two
+    // A FAIL for the record and a pass line counting it "configured" would be two
     // answers; the pass line prints only when §6e found nothing.
     assert.doesNotMatch(out, /MSIX package identit/);
   });
 
   test('FAILS the same CN in lower case — the hash is over the exact string', () => {
-    const { code, out } = run(tree({ mutate: identity({ ...REAL, publisher: 'CN=9d0def58-eda2-448e-9498-42c2c3083994' }) }));
+    const { code, out } = run(
+      tree({ mutate: identity({ ...ACCOUNT, publisher: 'CN=9d0def58-eda2-448e-9498-42c2c3083994' }), extraFiles: recordFile('subscriptiontracker', RECORD) }),
+    );
     assert.equal(code, 1, out);
     assert.match(out, /publisher id "gex56p498cnxe" against "ab30hnb4490ma"/);
   });
 
-  test('FAILS a configured identity that declares no packageFamilyName', () => {
-    const noPfn = { ...REAL };
-    delete noPfn.packageFamilyName;
-    const { code, out } = run(tree({ mutate: identity(noPfn) }));
+  test('FAILS a record that declares no packageFamilyName — a hole, not a placeholder', () => {
+    const { code, out } = run(tree({ mutate: identity(ACCOUNT), extraFiles: recordFile('subscriptiontracker', { identityName: RECORD.identityName }) }));
     assert.equal(code, 1, out);
-    assert.match(out, /is configured but declares no `packageFamilyName`/);
+    assert.match(out, /stores\.windows-store\.packageFamilyName missing or empty — a hole, not a placeholder/);
   });
 
-  test('PASSES the sentinel row with no PFN — not yet configured is not a failure', () => {
-    const { code, out } = run(tree({ mutate: identity(PENDING) }));
+  test('PASSES the sentinel account and a sentinel record — not yet configured is not a failure', () => {
+    const { code, out } = run(tree({ mutate: identity(PENDING_ACCOUNT), extraFiles: recordFile('subscriptiontracker', PENDING_RECORD) }));
     assert.equal(code, 0, out);
-    assert.match(out, /1 MSIX package identity: 0 configured .* 1 not yet configured/);
+    assert.match(out, /1 app record\(s\) .*: 0 configured .* 1 not yet configured/);
+  });
+
+  test('PASSES a sentinel record under a configured account — the state the brick stamps', () => {
+    const { code, out } = run(tree({ mutate: identity(ACCOUNT), extraFiles: recordFile('subscriptiontracker', PENDING_RECORD) }));
+    assert.equal(code, 0, out);
+    assert.match(out, /0 configured .* 1 not yet configured/);
   });
 
   test('FAILS a PFN that exists before its inputs do', () => {
-    const { code, out } = run(tree({ mutate: identity({ ...PENDING, packageFamilyName: REAL.packageFamilyName }) }));
+    const { code, out } = run(
+      tree({ mutate: identity(ACCOUNT), extraFiles: recordFile('subscriptiontracker', { identityName: SENTINEL, packageFamilyName: RECORD.packageFamilyName }) }),
+    );
     assert.equal(code, 1, out);
-    assert.match(out, /while every identity field still reads "PARTNER-CENTER-PENDING"/);
+    assert.match(out, /while its identityName still reads "PARTNER-CENTER-PENDING"/);
   });
 
-  test('FAILS a HALF configured identity — the display name left on the sentinel', () => {
-    const { code, out } = run(tree({ mutate: identity({ ...REAL, publisherDisplayName: SENTINEL }) }));
+  test('FAILS a HALF issued record — the PFN left on the sentinel', () => {
+    const { code, out } = run(
+      tree({ mutate: identity(ACCOUNT), extraFiles: recordFile('subscriptiontracker', { identityName: RECORD.identityName, packageFamilyName: SENTINEL }) }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /stores\.windows-store is HALF issued/);
+  });
+
+  test('FAILS an issued record while the account is still on the sentinel', () => {
+    const { code, out } = run(tree({ mutate: identity(PENDING_ACCOUNT), extraFiles: recordFile('subscriptiontracker', RECORD) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /carries an issued identity \("60210NIKATRU\.NikatruSubscriptionTracker"\) while channel "windows-store" packageIdentity's publisher is still "PARTNER-CENTER-PENDING"/);
+  });
+
+  test('FAILS a HALF configured account — the display name left on the sentinel', () => {
+    const { code, out } = run(
+      tree({ mutate: identity({ ...ACCOUNT, publisherDisplayName: SENTINEL }), extraFiles: recordFile('subscriptiontracker', RECORD) }),
+    );
     assert.equal(code, 1, out);
     assert.match(out, /packageIdentity is HALF configured: `publisherDisplayName` still read/);
+  });
+
+  // RC6. The per-app fields do not come back to the row, even equal to a record.
+  test('FAILS the channel row given identityName back — a per-app field on the channel row', () => {
+    const { code, out } = run(
+      tree({ mutate: identity({ ...ACCOUNT, identityName: RECORD.identityName }), extraFiles: recordFile('subscriptiontracker', RECORD) }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /channel "windows-store" packageIdentity carries `identityName` — a per-app field on the channel row/);
+  });
+
+  test('FAILS the channel row given packageFamilyName back', () => {
+    const { code, out } = run(
+      tree({ mutate: identity({ ...ACCOUNT, packageFamilyName: RECORD.packageFamilyName }), extraFiles: recordFile('subscriptiontracker', RECORD) }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /carries `packageFamilyName` — a per-app field on the channel row/);
+  });
+
+  // Each app is recomputed against ITS OWN name: a second app that copied the
+  // first app's PFN beside its own name fails, naming the second app's record.
+  test("FAILS a second app whose PFN is the first app's — each record is recomputed against its own name", () => {
+    const { code, out } = run(
+      tree({
+        mutate: identity(ACCOUNT),
+        extraFiles: {
+          ...recordFile('subscriptiontracker', RECORD),
+          ...recordFile('zztwo', { identityName: 'ZZTest.AppTwo', packageFamilyName: RECORD.packageFamilyName }),
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /apps\/zztwo\/app\.yaml stores\.windows-store\.packageFamilyName is "60210NIKATRU\.NikatruSubscriptionTracker_ab30hnb4490ma", but identityName "ZZTest\.AppTwo"/);
+    assert.doesNotMatch(out, /apps\/subscriptiontracker\/app\.yaml stores\.windows-store\.packageFamilyName is/);
   });
 });
 

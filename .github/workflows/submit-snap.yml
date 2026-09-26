@@ -152,9 +152,10 @@ jobs:
       # gap, not dressed as coverage: snapcraft publishes no machine-readable revision
       # id, so nothing a probe could join on exists. docs/ci/submit-snap.md carries the
       # three reasons and what would retire the exemption.
+      # why: the expiry date only. SNAPCRAFT_STORE_CREDENTIALS lives in the store-publish environment and
+      # this job has none; the submit job checks it straight after its ref check (O-STORE-SECRETS-REACH-THE-DRY-RUN, §8c).
       - name: Dry-run the Snap Store submission
         env:
-          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
           SNAPCRAFT_STORE_CREDENTIALS_EXPIRES: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS_EXPIRES }}
         run: node tooling/release/submit-snap.mjs --dry-run --app subscriptiontracker
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -192,6 +193,20 @@ jobs:
       # assert-workflow-hardening limb 10.
       - name: Refuse any ref but main
         run: node tooling/ci/assert-deploy-ref.mjs --allow main
+      # why: straight after the ref check (assert-workflow-hardening limb 10 holds that one first),
+      # and the absent branch ENDS the job (assert-green-means-ran.mjs section B).
+      # SNAPCRAFT_STORE_CREDENTIALS is a store-publish environment secret, so this job is the only
+      # one that can see it; an absent one ends the run before the build and before any upload.
+      - name: Preflight — the Snap Store credential must be present
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SNAPCRAFT_STORE_CREDENTIALS" ]; then
+            echo "::error title=Snap Store upload cannot run::SNAPCRAFT_STORE_CREDENTIALS is empty in this store-publish job. It is a store-publish ENVIRONMENT secret (tooling/channel-register.json scopes it there). OWNER STEP: GitHub -> Settings -> Environments -> store-publish -> Environment secrets -> add SNAPCRAFT_STORE_CREDENTIALS (the snapcraft export-login blob; Private/runbooks/store-submission-snap.md). This is a FAILED upload, not a skipped one."
+            exit 1
+          fi
+          echo "SNAPCRAFT_STORE_CREDENTIALS present — the upload may proceed."
       - name: A real submission must name the listing it will be recorded against
         env:
           LISTING_URL: ${{ inputs.listing_url }}

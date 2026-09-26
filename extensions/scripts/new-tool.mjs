@@ -3,13 +3,16 @@
 
    BUILD-TIME MODULE. NEVER SHIPPED.
 
-     node scripts/new-tool.mjs --category Extension --name "Tab Digest" --id tabdigest
-     node scripts/new-tool.mjs --category Extension --name "Tab Digest" --id tabdigest --dry-run
+     node scripts/new-tool.mjs --category Extension --name "Tab Digest" --id tabdigest --tagline "One sentence."
+     node scripts/new-tool.mjs --category Extension --name "Tab Digest" --id tabdigest --tagline "One sentence." --dry-run
 
    Copies the template, stamps the four facts that must be right on day one, and
-   writes the tool.json that makes the monorepo see it. Everything else — the
-   strings, the code, the icons, the listing — is TEMPLATE.md's job, and this
-   script deliberately does not pretend to do it.
+   writes the tool.json that makes the monorepo see it. Then it runs the chain a
+   new tool needs (since 2026-09-26): publish-catalog, tag-owner --write,
+   gen-issue-forms --write and gen-catalog, and their checks, and exits 1 naming
+   the first step that fails. Everything else — the strings, the code, the icons,
+   the listing — is TEMPLATE.md's job, and this script deliberately does not
+   pretend to do it.
 
    WHICH TEMPLATE
 
@@ -44,6 +47,8 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { Report, parseArgs, die, EXIT_FAIL } from './lib/report.mjs';
 import {
   repoRoot, loadAllTools, readJson, walk,
@@ -56,15 +61,61 @@ import { readHouseIdentity, identityFromHouse, geckoIdFor, isPlaceholderValue } 
    script WRITES a tool directory there is no undo for. Same treatment as
    lint.mjs:48; every other option here takes a value. */
 const BOOLEAN_FLAGS = ['dry-run'];
+/* ⏱ 2026-09-26 (F-c): --summary was renamed --tagline and is REQUIRED. It is
+   refused by name, before the generic unknown-flag refusal, so the message says
+   what to type instead. */
+if (process.argv.slice(2).some(a => a === '--summary' || a.startsWith('--summary='))) {
+  die('--summary was renamed to --tagline, and it is required:\n' +
+    '  node scripts/new-tool.mjs --category Extension --name "Tab Digest" --id tabdigest --tagline "One sentence, one purpose."\n' +
+    'It is written to tool.json `summary`, which publish-catalog.mjs publishes as the catalogue `tagline`.');
+}
 const args = parseArgs(process.argv.slice(2)
   .map(a => (a.startsWith('--') && BOOLEAN_FLAGS.includes(a.slice(2)) ? a + '=true' : a)));
-args.rejectUnknown(['category', 'name', 'id', 'dir', 'summary', 'template', 'dry-run', 'repo-root']);
+args.rejectUnknown(['category', 'name', 'id', 'dir', 'tagline', 'template', 'dry-run', 'repo-root', 'skip']);
 const root = repoRoot(args);
 const dryRun = args.bool('dry-run');
+
+/* --skip <step|chain> is a RED-CONTROL flag, never a way to stamp a tool without
+   its chain: it exits 2 unless NIKATRU_PROBE_RC=1 is set. It exists so a test can
+   prove the chain's checks bite (RC-F7: skip tag-owner --write, and tag-owner
+   --check goes red), and so selftest.node.js can stamp into a fixture that has no
+   tooling/ beside it (`chain`). A skipped step is printed as skipped. */
+const CHAIN_WRITE_STEPS = ['publish-catalog', 'tag-owner', 'gen-issue-forms', 'gen-catalog'];
+const skipArg = args.get('skip');
+let skip = [];
+if (skipArg !== undefined && skipArg !== null) {
+  if (process.env.NIKATRU_PROBE_RC !== '1') {
+    die('--skip is a red-control flag for the probe and the self-test, and it is refused unless NIKATRU_PROBE_RC=1.\n' +
+      'A tool stamped without its chain carries no catalogue row, no release tag filter and no issue-form option.');
+  }
+  skip = String(skipArg).split(',').map(s => s.trim()).filter(Boolean);
+  const unknown = skip.filter(s => s !== 'chain' && !CHAIN_WRITE_STEPS.includes(s));
+  if (!skip.length || unknown.length) {
+    die('--skip takes "chain" or one of ' + CHAIN_WRITE_STEPS.join(', ') + (unknown.length ? '; got ' + unknown.join(', ') : '') + '.');
+  }
+}
 
 const category = String(args.get('category', 'Extension'));
 const name = args.get('name');
 const id = args.get('id');
+
+/* The tagline is the one line under the name in the catalogue and on every
+   discovery page. The sentence this script used to write when none was given is
+   refused by name: it passed check-catalog's non-empty test and published an
+   instruction to the author as the product's description. */
+const OLD_PLACEHOLDER_TAGLINE = 'ONE SENTENCE, user-facing. This becomes the README catalog row.';
+const taglineArg = args.get('tagline');
+const tagline = typeof taglineArg === 'string' ? taglineArg.trim() : '';
+if (!tagline) {
+  console.error('FAIL  --tagline is required and may not be empty: one sentence, one purpose, e.g. --tagline "Capture a whole page as one image."\n' +
+    '      It is published as the catalogue `tagline`, and check-catalog.mjs refuses an empty one.');
+  process.exit(EXIT_FAIL);
+}
+if (tagline === OLD_PLACEHOLDER_TAGLINE) {
+  console.error('FAIL  --tagline is the placeholder sentence this script used to write ("' + OLD_PLACEHOLDER_TAGLINE + '").\n' +
+    '      Write the tool\'s own sentence; the catalogue would publish this one as its description.');
+  process.exit(EXIT_FAIL);
+}
 
 if (typeof name !== 'string' || !name.trim()) die('--name is required, e.g. --name "Tab Digest" (free text; it becomes the product name in the manifest and the store).');
 if (typeof id !== 'string' || !id.trim()) die('--id is required, e.g. --id tabdigest.\nThe id is lowercase-kebab and is the STABLE PUBLIC HANDLE: git tags, zip names and the CI matrix are all built from it. Directories can be renamed later; this cannot.');
@@ -195,7 +246,7 @@ const toolJson = {
   name: String(name).trim(),
   surface: category.toLowerCase(),
   status: 'wip',
-  summary: String(args.get('summary', '')) || 'ONE SENTENCE, user-facing. This becomes the README catalog row.',
+  summary: tagline,
   aiHandoff: '',
   manifest: 'manifest.json',
   package: { include, exclude },
@@ -285,6 +336,8 @@ if (dryRun) {
   r.note('tool.json that would be written:');
   for (const line of JSON.stringify(toolJson, null, 2).split('\n')) r.note('  ' + line);
   r.pass('dry run — nothing was written');
+  r.note('the chain did NOT run: publish-catalog, tag-owner --write, gen-issue-forms --write, gen-catalog and their checks');
+  r.note('run only after a real stamp, because each of them reads the tool this run did not write.');
   process.exit(r.finish());
 }
 
@@ -380,9 +433,95 @@ if (!sourceFiles.includes('CHANGELOG.md')) {
   r.pass('wrote ' + relDir + '/CHANGELOG.md', 'seeded at v' + v + ' to match the manifest');
 }
 
-/* ---------------- what a human must now do ---------------- */
+/* ---------------- the chain a new tool needs ----------------
+   O-NEW-TOOL-IS-A-COPIER-NOT-THE-COMMAND (2026-09-26, F-c). Until this date the
+   script stopped here and printed the rest as NEXT steps for a person — the
+   catalogue row, the release tag filter, the issue-form options — and the next
+   push failed CI on whichever one was forgotten. They are derived, so they are
+   run: each WRITE step regenerates its file from the tree this run just wrote,
+   then each CHECK step grades the result, and the first non-zero exit makes this
+   script exit 1, naming the step and printing its output. A step that leaves a
+   diff behind is therefore refused here rather than in CI.
+
+   The scripts are the ones beside this file; the TREE they read is --repo-root
+   (this extensions root) and the repository root above it, which is where the
+   house identity is read from too. tag-owner and gen-issue-forms take `--root`,
+   the repository root; the extension scripts take `--repo-root`, except
+   publish-arming, whose `--repo-root` is the repository root because the channel
+   register lives there. */
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const PUBLIC_ROOT = path.join(root, '..');
+const TOOLING_CI = path.join(HERE, '..', '..', 'tooling', 'ci');
+const step = (name, script, argv) => ({ name, script, argv });
+const WRITES = [
+  step('publish-catalog', path.join(HERE, 'publish-catalog.mjs'), ['--repo-root', root]),
+  step('tag-owner', path.join(TOOLING_CI, 'tag-owner.mjs'), ['--write', '--root', PUBLIC_ROOT]),
+  step('gen-issue-forms', path.join(TOOLING_CI, 'gen-issue-forms.mjs'), ['--write', '--root', PUBLIC_ROOT]),
+  /* The README catalog row: the extensions-ci `catalogue` job runs its --check, so a
+     stamp that left it stale would still be red on the next push. */
+  step('gen-catalog', path.join(HERE, 'gen-catalog.mjs'), ['--repo-root', root])
+];
+const CHECKS = [
+  step('publish-catalog --check', path.join(HERE, 'publish-catalog.mjs'), ['--check', '--repo-root', root]),
+  step('tag-owner --check', path.join(TOOLING_CI, 'tag-owner.mjs'), ['--check', '--root', PUBLIC_ROOT]),
+  step('gen-issue-forms --check', path.join(TOOLING_CI, 'gen-issue-forms.mjs'), ['--check', '--root', PUBLIC_ROOT]),
+  step('gen-catalog --check', path.join(HERE, 'gen-catalog.mjs'), ['--check', '--repo-root', root]),
+  step('check-catalog', path.join(HERE, 'check-catalog.mjs'), ['--repo-root', root])
+];
+/* The listing graphics are rendered FROM the tool's committed icon and accents,
+   and a freshly stamped tool has none of the committed assets yet, so the
+   renderer's --check runs only once the tool carries at least one of the assets
+   scripts/store-graphics.json declares. Until then the reason is printed. */
+let graphicsNote = null;
+{
+  let spec = null;
+  try { spec = JSON.parse(fs.readFileSync(path.join(HERE, 'store-graphics.json'), 'utf8')); } catch (_) { /* named below */ }
+  const assets = spec && Array.isArray(spec.assets) ? spec.assets : null;
+  const have = assets ? assets.filter(a => typeof a.path === 'string' && fs.existsSync(path.join(destAbs, 'store', a.path))) : [];
+  if (!assets) graphicsNote = 'scripts/store-graphics.json could not be read, so the listing graphics were not graded';
+  else if (have.length) CHECKS.push(step('render-extension-graphics --check', path.join(HERE, 'render-extension-graphics.mjs'), [id, '--check', '--repo-root', root]));
+  else graphicsNote = 'no listing graphic is committed under ' + relDir + '/store/ yet (' + assets.map(a => a.path).join(', ') + '), so render-extension-graphics.mjs ' + id + ' --check has nothing to compare; render them with `node scripts/render-extension-graphics.mjs ' + id + '`';
+}
+CHECKS.push(step('publish-arming --plan', path.join(HERE, 'publish-arming.mjs'), ['--channel', 'amo', '--tool', id, '--plan', '--repo-root', PUBLIC_ROOT]));
+
+function runStep(s) {
+  const res = spawnSync(process.execPath, [s.script, ...s.argv], { encoding: 'utf8', cwd: root, timeout: 300000 });
+  const out = ((res.stdout || '') + (res.stderr || '')).trimEnd();
+  return { code: res.error ? null : res.status, out: res.error ? String(res.error.message) : out };
+}
 r.blank();
-r.note('NEXT — in this order, and none of it is optional:');
+if (skip.includes('chain')) {
+  r.warn('the chain did NOT run (--skip chain, NIKATRU_PROBE_RC=1)',
+    'publish-catalog, tag-owner --write, gen-issue-forms --write, gen-catalog and their checks were skipped by request.');
+} else {
+  for (const s of [...WRITES, ...CHECKS]) {
+    if (WRITES.includes(s) && skip.includes(s.name)) {
+      r.warn('chain · ' + s.name + ' SKIPPED (--skip ' + s.name + ', NIKATRU_PROBE_RC=1)', 'its --check below is expected to go red');
+      continue;
+    }
+    const res = runStep(s);
+    const last = res.out.split('\n').filter(l => l.trim()).pop() || '(no output)';
+    if (res.code === 0) { r.pass('chain · ' + s.name, last.trim().slice(0, 160)); continue; }
+    r.fail('chain · ' + s.name + ' exited ' + res.code,
+      'node ' + path.relative(root, s.script).split(path.sep).join('/') + ' ' + s.argv.join(' ') + '\n' +
+      res.out.split('\n').map(l => '  | ' + l).join('\n') + '\n' +
+      relDir + ' WAS written, and every step before this one ran. Fix what this step names and re-run it;\n' +
+      'the tool directory does not need to be stamped again.');
+    process.exit(r.finish());
+  }
+  if (graphicsNote) r.note('chain · render-extension-graphics: ' + graphicsNote);
+}
+
+/* ---------------- what a person must now do ---------------- */
+/* ⏱ 2026-09-26 (F-c): the chain above already wrote the catalogue row
+   (extensions/catalog/extensions.json), the README catalog row, the release tag filter
+   (.github/workflows/extensions.yml `on.push.tags`) and the issue-form options
+   (.github/ISSUE_TEMPLATE/bad-page.yml and bug.yml), and graded each. What is
+   left is work no script can do. Every workflow named here is the file that
+   holds that step. */
+r.blank();
+r.note('NEXT — the chain above has already run. Commit what it wrote together with the tool:');
+r.note('       git add ' + relDir + ' catalog/extensions.json README.md ../.github/workflows/extensions.yml ../.github/ISSUE_TEMPLATE/');
 r.note('');
 r.note('  1. Write the permission justifications in ' + relDir + '/tool.json.');
 r.note('     They are empty strings right now, so this FAILS:');
@@ -390,32 +529,21 @@ r.note('       node scripts/policy-check.mjs ' + id);
 r.note('     That failure is the design. A justification a script could write is a justification');
 r.note('     that explains nothing, and Chrome review asks for this exact text at submission.');
 r.note('');
-r.note('  2. Add the tool to the issue-form dropdowns, or CI fails on the next push:');
-/* ⏱ 2026-09-08 — REPOINTED TO THE REPOSITORY ROOT. These two lines told an author to
-   edit `.github/ISSUE_TEMPLATE/`, which from inside `extensions/` is the subtree copy
-   GitHub never reads: issue forms resolve at the repository ROOT only. The forms were
-   promoted to the root in the 2026-09-08 prune, so the instruction now names where they
-   are. The workflow step that grades these ids moved with them and reads
-   `$GITHUB_WORKSPACE/.github/ISSUE_TEMPLATE/`, so an author who follows the OLD
-   instruction now gets a red build instead of a silently unreachable edit. */
-r.note('       <repo root>/.github/ISSUE_TEMPLATE/bad-page.yml   (../.github/... from here)');
-r.note('       <repo root>/.github/ISSUE_TEMPLATE/bug.yml        (../.github/... from here)');
-r.note('     add this option line to each:   - ' + String(name).trim() + ' (' + id + ')');
-r.note('     (ci.yml greps for "(' + id + ')" in both — issue forms cannot be generated, so this is');
-r.note('     the one place a new tool has to be added by hand.)');
-r.note('');
-r.note('  3. Work through ' + relDir + '/TEMPLATE.md top to bottom. Its §14 is the finish line, and');
+r.note('  2. Work through ' + relDir + '/TEMPLATE.md top to bottom. Its §14 is the finish line, and');
 r.note('       node publish/preflight.mjs        (from ' + relDir + ')');
 r.note('     is red by design until you get there.');
 r.note('');
-r.note('  4. Write ' + relDir + '/publish/STORE-LISTING.md in YOUR OWN WORDS.');
+r.note('  3. Write ' + relDir + '/publish/STORE-LISTING.md in YOUR OWN WORDS.');
 r.note('     Microsoft Store policy 10.1.4 requires DISTINCT metadata per listing — a description');
 r.note('     reused from a sibling extension is a rejection, and this repo will one day hold many.');
 r.note('');
-r.note('  5. Then the repo gates:');
+r.note('  4. The per-tool gates .github/workflows/extensions-ci.yml runs (its `gates` job) are then green:');
 r.note('       node scripts/lint.mjs ' + id);
 r.note('       node scripts/policy-check.mjs ' + id);
 r.note('       node scripts/check-version.mjs ' + id);
-r.note('       node scripts/gen-catalog.mjs        (adds the README row)');
+r.note('');
+r.note('  5. The OWNER\'s store consoles, the only step left that is not in this repository: create the');
+r.note('     Chrome Web Store and Edge listings (their ids are issued by the store), and the AMO listing,');
+r.note('     whose add-on id is not typed anywhere — it is derived, ' + geckoIdFor(identity) + '.');
 
 process.exit(r.finish());

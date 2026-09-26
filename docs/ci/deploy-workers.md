@@ -75,7 +75,7 @@ was real; the repair is these three globs — the trigger path here, and the sam
 filters — plus the limb in `tooling/ci/assert-deploy-triggers-deploy.mjs` that fails the build when a
 filter claims a source tree without claiming what that tree imports from outside itself.
 
-## `permissions:`
+### `permissions:`
 
 ### above `permissions:`
 
@@ -87,9 +87,9 @@ severity / HIGH confidence: at workflow level EVERY job gets it, including
 `detect`, which only reads ci-gate's verdict and writes nothing. It now sits on
 the two jobs that actually record a deployment marker. [pipeline F-11]
 
-## job `detect`
+## The retired job `detect` (gone since #947: the gate and the path decision run in ci.yml)
 
-### above `timeout-minutes: 25`
+### was above `timeout-minutes: 25` (gone since #947, which made this file a post-gate call job of ci.yml)
 
 25 because the gate check below polls for up to assert-gate-passed.mjs's own
 1200 s default. That is not hypothetical here: this job's longest recorded
@@ -107,7 +107,7 @@ does git push/tag/commit, so none of these checkouts need the credential.
 [zizmor artipacked] Verified 2026-07-27: no current artifact path includes
 .git/ — so this closes a FUTURE mistake, not a live leak.
 
-### above `Require ci-gate to have passed for this commit`
+### was above `Require ci-gate to have passed for this commit` (gone since #947, which made this file a post-gate call job of ci.yml)
 
 The gate check lives HERE, not in the deploy jobs, for two reasons:
 both deploy jobs already `needs: detect`, so one insertion blocks both;
@@ -168,7 +168,7 @@ top-level trigger cannot supply — a trigger starts the run, and the inner filt
 jobs are allowed to do anything. `contracts/entitlement/*` shows the other side of the same rule:
 only `platform` builds from it, so only `platform` claims it.
 
-### above `id: decide`
+### was above `id: decide` (gone since #947, which made this file a post-gate call job of ci.yml)
 
 Manual dispatch has no diff to filter on → deploy both. Push → per-path.
 

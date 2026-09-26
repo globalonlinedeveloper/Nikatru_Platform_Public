@@ -474,9 +474,9 @@ if (target === 'chromium') {
     r.fail('targets.firefox.overlay names a manifest overlay',
       tool.rel + '/tool.json has targets.firefox.overlay = ' +
       JSON.stringify(overlayRel === undefined ? null : overlayRel) + ', so there is nothing to apply and no\n' +
-      'Firefox manifest to ship. A full second manifest — publish/manifest.firefox.json in every tool\n' +
-      'here today — is NOT an overlay: it restates version, description and every permission, so a bump\n' +
-      'has to be right twice.\n' +
+      'Firefox manifest to ship. A full second manifest (what publish/manifest.firefox.json was in every\n' +
+      'tool until FullShot converted on 2026-08-20, and in the template until NP-Fb) is NOT an overlay: it\n' +
+      'restates version, description and every permission, so a bump has to be right twice.\n' +
       'Convert it to an RFC 7386 merge patch carrying only what differs (background.scripts,\n' +
       'browser_specific_settings.gecko, options_ui, and "options_page": null to delete the Chrome key),\n' +
       'then point targets.firefox.overlay at it. This leg is red until then, on purpose.');

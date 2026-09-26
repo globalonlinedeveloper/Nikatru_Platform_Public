@@ -155,7 +155,7 @@ import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { STORE_FORM_RULES } from '../../contracts/store/vocabulary.js';
 import { PRICE, LIFETIME } from './price-figure.mjs';
-import { parseYaml } from '../app-yaml/yaml.mjs';
+import { windowsIdentityOf, WINDOWS_STORE, WINDOWS_RECORD_FIELDS } from './read-identity.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER = 'tooling/channel-register.json';
@@ -1285,10 +1285,25 @@ function msixConfig(text) {
   return out;
 }
 
+// ⏱ 2026-09-25 — O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1). The block below used
+// to compare all three fields with the ONE copy on the channel row, so a second
+// app packaging the first app's identity agreed with that row and passed — the
+// state tooling/bricks/app/hooks/post_gen.dart stamped every new app in. The
+// identity NAME is now each app's own (apps/<id>/app.yaml `stores.windows-store`,
+// read through tooling/ci/read-identity.mjs windowsIdentityOf); only the
+// account's two facts are read from the row. An app with no record packages the
+// sentinel, and anything else it packages is a DISAGREEMENT.
+//
+// The third column says whose fact it is, and that decides "half configured":
+//   · the account's two facts must be real together or sentinel together;
+//   · an app identity on the sentinel under a configured account is an app
+//     Partner Center has not issued one to YET — the brick stamps exactly that —
+//     and PRINTS;
+//   · an issued app identity under an account still on the sentinel FAILS.
 const IDENTITY_FIELDS = [
-  ['identityName', 'identity_name'],
-  ['publisherDisplayName', 'publisher_display_name'],
-  ['publisher', 'publisher'],
+  ['identityName', 'identity_name', 'app'],
+  ['publisherDisplayName', 'publisher_display_name', 'account'],
+  ['publisher', 'publisher', 'account'],
 ];
 
 let identitiesChecked = 0;
@@ -1332,38 +1347,63 @@ for (const row of storeRows) {
         'undefined to undefined and agrees.',
       ]);
     }
-    let pending = 0;
-    let configured = 0;
-    for (const [regField, yamlField] of IDENTITY_FIELDS) {
-      const declaredValue = identity[regField];
+    // The app's own record. A record that is a FAULT (unparseable, a hole) is
+    // named once, by ONE WINDOWS IDENTITY PER APP below, which reads the same
+    // helper; comparing a packaged name with a broken record here would be a
+    // second message for one defect.
+    const record = windowsIdentityOf(ROOT, app.slug);
+    if (record.missing) continue;
+    const pending = { app: 0, account: 0 };
+    const configured = { app: 0, account: 0 };
+    for (const [field, yamlField, whose] of IDENTITY_FIELDS) {
       const packaged = cfg[yamlField];
-      if (typeof declaredValue !== 'string' || declaredValue.trim() === '') {
-        problems.push(`channel "${row.id}" packageIdentity.${regField} is missing or empty in ${REGISTER}. The register is the SINGLE declaration of this identity ([pipeline F-2]); an absent field is a hole, not a placeholder.`);
-        continue;
+      let declaredValue;
+      let source;
+      if (whose === 'app') {
+        declaredValue = record.value ? record.value.identityName : sentinel;
+        source = record.value
+          ? `${record.rel} stores.${WINDOWS_STORE}.${field}`
+          : `${record.rel} (no stores.${WINDOWS_STORE} record, so nothing issued: ${sentinel})`;
+      } else {
+        declaredValue = identity[field];
+        source = `${REGISTER} channel "${row.id}" packageIdentity.${field}`;
+        if (typeof declaredValue !== 'string' || declaredValue.trim() === '') {
+          problems.push(`channel "${row.id}" packageIdentity.${field} is missing or empty in ${REGISTER}. It is the ACCOUNT's, declared once for every app ([pipeline F-2]); an absent field is a hole, not a placeholder.`);
+          continue;
+        }
       }
       if (packaged === undefined) {
-        problems.push(`${pubspecRel} msix_config.${yamlField} is absent while ${REGISTER} declares packageIdentity.${regField}. \`msix\` would package a different identity from the one the register documents, and only one of the two can ship.`);
+        problems.push(`${pubspecRel} msix_config.${yamlField} is absent while ${source} declares it. \`msix\` would package a different identity from the one declared, and only one of the two can ship.`);
         continue;
       }
       identitiesChecked++;
       if (declaredValue !== packaged) {
         problems.push(
-          `package identity DISAGREES for app "${app.slug}": ${REGISTER} says ${regField} = ${JSON.stringify(declaredValue)}, ${pubspecRel} says ${yamlField} = ${JSON.stringify(packaged)}. Two copies of an identity is how the wrong one ships, and an MSIX published under the wrong identity cannot be taken back.`,
+          `package identity DISAGREES for app "${app.slug}": ${source} = ${JSON.stringify(declaredValue)}, ${pubspecRel} says ${yamlField} = ${JSON.stringify(packaged)}. Two copies of an identity is how the wrong one ships, and an MSIX published under the wrong identity cannot be taken back.`,
         );
         continue;
       }
-      if (declaredValue.includes(sentinel)) pending++;
-      else configured++;
+      if (declaredValue.includes(sentinel)) pending[whose]++;
+      else configured[whose]++;
     }
-    if (pending > 0 && configured > 0) {
+    const pendingAll = pending.app + pending.account;
+    if (pending.account > 0 && configured.account > 0) {
       problems.push(
-        `package identity for app "${app.slug}" on channel "${row.id}" is HALF configured — ${configured} real value(s) and ${pending} still ${sentinel}. It packages cleanly and submits under a name that is part real and part placeholder.`,
+        `package identity for app "${app.slug}" on channel "${row.id}" is HALF configured — the account's publisher and publisher display name are ${configured.account} real and ${pending.account} still ${sentinel}. Both come from the one Partner Center account, and a package under half of it submits under a publisher that is part placeholder.`,
       );
-    } else if (pending > 0) {
+    } else if (configured.app > 0 && pending.account > 0) {
+      problems.push(
+        `package identity for app "${app.slug}" on channel "${row.id}" is HALF configured — identity_name is issued and the account's ${pending.account} field(s) are still ${sentinel}. An issued identity belongs to a real account; packaged under a placeholder publisher it submits as nobody's.`,
+      );
+    } else if (pending.app > 0 && pending.account > 0) {
       // ⏱ 2026-09-25 (D3a): an open account's closed item is `accountStatus.openedBy`.
       const owner = row.ownerQueue ?? (row.accountStatus?.openedBy ? `(none live; account opened by ${row.accountStatus.openedBy})` : '(unnamed)');
       prints.push(
-        `PACKAGE IDENTITY NOT YET CONFIGURED — app "${app.slug}", channel "${row.id}": all ${pending} field(s) are ${sentinel}. Partner Center assigns them after OWNER_QUEUE ${owner}; there is nothing to derive them from and an invented value would publish under an identity we do not own.`,
+        `PACKAGE IDENTITY NOT YET CONFIGURED — app "${app.slug}", channel "${row.id}": all ${pendingAll} field(s) are ${sentinel}. Partner Center assigns them after OWNER_QUEUE ${owner}; there is nothing to derive them from and an invented value would publish under an identity we do not own.`,
+      );
+    } else if (pending.app > 0) {
+      prints.push(
+        `PACKAGE IDENTITY NOT YET CONFIGURED — app "${app.slug}", channel "${row.id}": identity_name is ${sentinel} under the account's configured publisher. Partner Center has not issued this app its own identity; the owner reserves the app's name there and copies the issued values into ${record.rel} stores.${WINDOWS_STORE}, and tooling/app-yaml/render.mjs writes identity_name from it.`,
       );
     }
   }
@@ -1382,52 +1422,47 @@ for (const row of storeRows) {
 //   (a) SHARED — two apps declaring the same non-sentinel identityName FAIL,
 //       naming both. The sentinel is what every app with no Partner Center
 //       product yet declares, so two of them are not a collision.
-//   (b) TRANSITION — while the channel row still carries its own copy, a
-//       non-sentinel record must equal it, and a configured copy must be
-//       declared by some app. ⏳ (b) retires in the commit that deletes the
-//       channel copy (pipeline B4a-2): a check goes with its only subject. It
-//       also holds only while one app has a real identity, which is why B4a-2
-//       lands before app #2 is issued one.
-// A record on the sentinel PRINTS, and so does an app with no record: the brick
-// writes none until B4a-2, and the app-brick CI job runs this guard over a
-// freshly stamped probe.
-const STORES_CHANNEL = 'windows-store';
-const STORE_RECORD_FIELDS = ['identityName', 'packageFamilyName'];
+//   (b) TRANSITION — while the channel row still carried its own copy, a
+//       non-sentinel record had to equal it, and a configured copy had to be
+//       declared by some app.
+//       ⏱ 2026-09-25 — (b) RETIRED with its only subject: B4a-2 deleted the
+//       row's identityName and packageFamilyName, and a check goes with its
+//       subject. What (b) held now holds per app: the msix_config block above
+//       compares each app's packaged name with its OWN record, render.mjs
+//       renders that name from the record, and assert-channel-register.mjs §6e
+//       recomputes each record's Package Family Name from the row's publisher.
+// A record on the sentinel PRINTS, and so does an app with no record.
+// ⏱ 2026-09-25 (B4a-2) — the brick now writes every stamped app a record on
+// the sentinel, and every record is read through tooling/ci/read-identity.mjs
+// windowsIdentityOf, the one reader the other Windows identity readers share.
+const STORES_CHANNEL = WINDOWS_STORE;
+const STORE_RECORD_FIELDS = WINDOWS_RECORD_FIELDS;
 let storeRecordsRead = 0;
-let storeRecordsCompared = 0;
+let storeRecordsIssued = 0;
 let storeNamesShared = 0;
 const windowsRow = storeRows.find((c) => c.id === STORES_CHANNEL && c.packageIdentity && typeof c.packageIdentity === 'object');
 const windowsSentinel = windowsRow?.packageIdentity.notYetConfiguredSentinel;
 // A row with no sentinel is already a FAIL above; without one nothing here can
 // tell "not yet issued" from "issued".
 if (windowsRow && typeof windowsSentinel === 'string' && windowsSentinel.trim() !== '') {
-  const copy = windowsRow.packageIdentity;
   const byName = new Map();
   for (const app of apps) {
     if (typeof app.slug !== 'string' || app.slug === '') continue;
-    const rel = `apps/${app.slug}/app.yaml`;
-    const text = read(rel);
-    if (text === null) continue; // assert-app-yaml owns a missing declaration
-    let doc;
-    try {
-      doc = parseYaml(text);
-    } catch (e) {
-      problems.push(`${rel} does not parse (${e.message}), so app "${app.slug}"'s Windows identity cannot be compared with any other app's.`);
+    const r = windowsIdentityOf(ROOT, app.slug);
+    if (r.absent) continue; // assert-app-yaml owns a missing declaration
+    if (r.missing) {
+      problems.push(r.missing);
       continue;
     }
-    const rec = doc?.stores?.[STORES_CHANNEL];
-    if (rec === undefined || rec === null) {
+    const rel = r.rel;
+    if (r.undeclared) {
       prints.push(
-        `NO stores.${STORES_CHANNEL} RECORD: ${rel} — app "${app.slug}" declares no Windows identity of its own, so the one-identity-per-app check cannot see it. A stamped app gets the record (on ${windowsSentinel}) when the brick writes it.`,
+        `NO stores.${STORES_CHANNEL} RECORD: ${rel} — app "${app.slug}" declares no Windows identity of its own, so the one-identity-per-app check cannot see it. The brick writes one on ${windowsSentinel} into every app it stamps; an app with none packages ${windowsSentinel} or fails above.`,
       );
       continue;
     }
     storeRecordsRead++;
-    const holes = STORE_RECORD_FIELDS.filter((f) => typeof rec[f] !== 'string' || rec[f].trim() === '');
-    if (holes.length > 0) {
-      problems.push(`${rel} stores.${STORES_CHANNEL}.${holes.join(', .')} missing or empty — a hole, not a placeholder. An app with no Partner Center product yet writes ${windowsSentinel}.`);
-      continue;
-    }
+    const rec = r.value;
     const onSentinel = STORE_RECORD_FIELDS.filter((f) => rec[f] === windowsSentinel);
     if (onSentinel.length === STORE_RECORD_FIELDS.length) {
       prints.push(
@@ -1439,29 +1474,16 @@ if (windowsRow && typeof windowsSentinel === 'string' && windowsSentinel.trim() 
       problems.push(`${rel} stores.${STORES_CHANNEL} is HALF issued: ${onSentinel.join(', ')} still ${windowsSentinel}, the rest real. Both fields come from the same Partner Center screen.`);
       continue;
     }
+    storeRecordsIssued++;
     const sharers = byName.get(rec.identityName) ?? [];
     sharers.push(app.slug);
     byName.set(rec.identityName, sharers);
-    for (const f of STORE_RECORD_FIELDS) {
-      storeRecordsCompared++;
-      if (rec[f] !== copy[f]) {
-        problems.push(
-          `Windows identity DISAGREES for app "${app.slug}": ${rel} stores.${STORES_CHANNEL}.${f} = ${JSON.stringify(rec[f])}, ${REGISTER} channel "${STORES_CHANNEL}" packageIdentity.${f} = ${JSON.stringify(copy[f])}. Until the channel copy retires, the two must be the same value.`,
-        );
-      }
-    }
   }
   for (const [name, slugs] of byName) {
     if (slugs.length < 2) continue;
     storeNamesShared++;
     problems.push(
       `Windows identity SHARED: apps ${slugs.map((s) => `"${s}"`).join(' and ')} all declare stores.${STORES_CHANNEL}.identityName = ${JSON.stringify(name)}. Partner Center issues one per product, so every one of them but the owner would package and submit as that owner, and a published MSIX cannot be taken back. Each app declares its own identity, or ${windowsSentinel} until it has one.`,
-    );
-  }
-  const copyName = copy.identityName;
-  if (typeof copyName === 'string' && copyName.trim() !== '' && !copyName.includes(windowsSentinel) && !byName.has(copyName)) {
-    problems.push(
-      `${REGISTER} channel "${STORES_CHANNEL}" packageIdentity.identityName = ${JSON.stringify(copyName)} is issued, and no apps/<id>/app.yaml declares it under stores.${STORES_CHANNEL}. The identity belongs to one app, and that app's record is the declaration the channel copy is checked against.`,
     );
   }
 }
@@ -1626,7 +1648,7 @@ if (problems.length) {
   );
   ok(`${formRuleChecks} store form rule(s) checked against the store's own upload form (contracts/store/vocabulary.js STORE_FORM_RULES)`);
   ok(`${filesChecked} listing field(s) non-empty, ${derivedChecked} of them compared to their spec source, ${limitsChecked} measured against a SOURCED store limit, ${identitiesChecked} package-identity field(s) agree`);
-  ok(`ONE WINDOWS IDENTITY PER APP — ${storeRecordsRead} app.yaml stores.${STORES_CHANNEL} record(s) read, ${storeRecordsCompared} issued field(s) equal to the channel copy, ${storeNamesShared} identityName shared`);
+  ok(`ONE WINDOWS IDENTITY PER APP — ${storeRecordsRead} app.yaml stores.${STORES_CHANNEL} record(s) read, ${storeRecordsIssued} issued, ${storeNamesShared} identityName shared`);
   ok(`${statedChecked} derived value(s) found stated verbatim where derivedFields[].alsoStatedIn requires them, app trees and brick templates together`);
   ok(
     `REQUIRED_COVERAGE (THE FACTORY) — ${storeRows.length} store channel(s) → ${brickTreesChecked} brick template tree(s) under ${BRICK}, ` +
