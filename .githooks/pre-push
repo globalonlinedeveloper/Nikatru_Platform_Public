@@ -16,6 +16,24 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -u
 
+# ── Self-advance: the pinned runner moves to origin/main BEFORE it runs ─────────
+# ⏱ 2026-09-24 — the same block as pre-commit, for the same reason; read it there.
+# `exec` keeps stdin, so the ref lines git feeds a pre-push hook reach the re-run.
+ADVANCER="$(dirname "$0")/../tooling/scripts/install-hooks.mjs"
+if [ -z "${NIKATRU_RUNNER_ADVANCED:-}" ] && [ -f "$ADVANCER" ] && command -v node >/dev/null 2>&1; then
+  node "$ADVANCER" --advance-runner
+  adv=$?         # captured immediately
+  if [ "$adv" -eq 3 ]; then
+    NIKATRU_RUNNER_ADVANCED=1
+    export NIKATRU_RUNNER_ADVANCED
+    exec sh "$0" "$@"
+  fi
+  if [ "$adv" -ne 0 ]; then
+    echo "pre-push: the pinned hook runner is off origin/main and was not advanced (exit $adv). Push refused." >&2
+    exit "$adv"
+  fi
+fi
+
 # 🔴 2026-08-18 — same repair as pre-commit, for the same measured reason: after the
 # corpus became a sibling repo, every candidate below was written from the pre-move
 # layout and none of them resolved from it. `$0` is the path git invokes this hook

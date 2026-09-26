@@ -165,6 +165,7 @@ import { cleanGitEnv, repoGit, RepoGitError, strippedNote } from './repo-git.mjs
    declaration, `Private/requirements/tooling/guards.json`, read through this loader out
    of a git blob; see the DECLARED SET block below and the loader's header. */
 import { DECLARATION_REL, GuardDeclarationError, loadGuardDeclaration } from './guard-declaration.mjs';
+import { invokingCheckout, runnerDrift, sameDir } from './hook-runner-pin.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..');          // tooling/scripts -> repo root
@@ -562,6 +563,35 @@ if (!PRIVATE_ROOT) {
   console.error('  If the corpus moved, add its new home to PRIVATE_ROOT_CANDIDATES in this file — that');
   console.error('  list is the single place this runner learns where the corpus lives.\n');
   process.exit(2);
+}
+
+/* 🔴 THE DRIFT LIMB — THE FIRST CHECK ONCE THE CORPUS IS LOCATED, AND IT RUNS ONLY WHEN
+   THE CORPUS INVOKED US (⏱ 2026-09-24, O-PRIVATE-HOOK-RUNNER-FOLLOWS-A-LIVE-BRANCH).
+   The corpus's hooks are this repository's hooks, so a corpus commit is judged by
+   whichever copy of THIS file its `core.hooksPath` reaches. Until today that was the
+   main checkout on whatever branch it held, or a lane worktree: measured in a scratch
+   pair, a corpus commit through a checkout on branch `live-feature` exited 0, graded by
+   that branch's guards. Every guard below would have run and printed ok; what was wrong
+   was the rules, and no guard can see its own rules. So before any guard runs, this asks
+   the one question none of them can: is the runner that loaded me the pinned runner,
+   detached at origin/main, with no edits? A no is a finding (exit 1) that names the tree
+   that loaded it; "cannot tell" is COVERAGE LOST (exit 2).
+   "Invoked by the corpus" is the repository `cwd` sits in — git runs every hook from the
+   top of the committing work tree — whose main checkout is the corpus this run elected.
+   From this repository's own hooks, and from a hand run here, the limb does not apply and
+   costs one walk up to `.git` plus one `git rev-parse --git-common-dir`. */
+const INVOKED_FROM = invokingCheckout(process.cwd());
+if (INVOKED_FROM && sameDir(INVOKED_FROM, PRIVATE_ROOT)) {
+  const drift = runnerDrift(REPO);
+  if (drift.code !== 0) {
+    console.error(`\n  ${drift.code === 1 ? 'RUNNER DRIFT' : 'CANNOT RUN — COVERAGE LOST'} — a corpus commit, judged by ${REPO}:`);
+    for (const line of drift.lines) console.error(`  ${line}`);
+    console.error(drift.code === 1
+      ? '  No guard below was run: their verdict would have been this tree\'s, not origin/main\'s.\n'
+      : '  No guard below was run: which rules they would apply is unknown.\n');
+    process.exit(drift.code);
+  }
+  console.log(`  runner — the pinned runner at origin/main: ${REPO}`);
 }
 
 /* 🔴 THE DECLARED SET (2026-09-24, O-GUARD-SET-DECLARED-NOWHERE). The corpus's own

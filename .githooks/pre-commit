@@ -14,6 +14,35 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -u
 
+# ── Self-advance: the pinned runner moves to origin/main BEFORE it runs ─────────
+# ⏱ 2026-09-24 (O-PRIVATE-HOOK-RUNNER-FOLLOWS-A-LIVE-BRANCH). The private corpus's
+# core.hooksPath points at ONE detached worktree of this repo pinned to origin/main
+# (`install-hooks.mjs --pin-private`). When this file runs FROM that worktree and a
+# fetch has moved origin/main, `--advance-runner` checks the worktree out at the new
+# origin/main (the LOCAL ref: no fetch, no network) and exits 3, and this file is
+# re-executed ONCE, so the hook text and the runner that judge the commit are the
+# ones origin/main carries. From any other tree it exits 0 before touching git.
+# The checkout is done by node, never by `git` here: git exports GIT_INDEX_FILE
+# (and can export GIT_DIR) into this process, and a `git -C <runner> checkout` that
+# inherits it treats the CORPUS's index as the runner's. Measured in a scratch pair:
+# such a checkout read the corpus's entries as local edits and refused. node goes
+# through repo-git.mjs, which deletes those variables first.
+# NIKATRU_RUNNER_ADVANCED is what makes it once: the re-executed copy skips this.
+ADVANCER="$(dirname "$0")/../tooling/scripts/install-hooks.mjs"
+if [ -z "${NIKATRU_RUNNER_ADVANCED:-}" ] && [ -f "$ADVANCER" ] && command -v node >/dev/null 2>&1; then
+  node "$ADVANCER" --advance-runner
+  adv=$?         # captured immediately
+  if [ "$adv" -eq 3 ]; then
+    NIKATRU_RUNNER_ADVANCED=1
+    export NIKATRU_RUNNER_ADVANCED
+    exec sh "$0" "$@"
+  fi
+  if [ "$adv" -ne 0 ]; then
+    echo "pre-commit: the pinned hook runner is off origin/main and was not advanced (exit $adv). Commit refused." >&2
+    exit "$adv"
+  fi
+fi
+
 # 🔴 2026-08-18 — THE CORPUS BECAME A SIBLING AND THIS SEARCH LIST STOPPED REACHING
 # THE RUNNER. The three relative candidates below are all written from the PRE-MOVE
 # layout, where the corpus was `<public repo>/Private` and `../tooling/scripts/…`
