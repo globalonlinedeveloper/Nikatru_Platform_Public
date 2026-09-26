@@ -2044,7 +2044,7 @@ Each store gets a pair inside the `release` job:
 
 | store | transport | source (fetched 2026-09-07) |
 |---|---|---|
-| AMO | `web-ext@10.6.0 sign --channel listed` — exact pin, because a range resolves at run time | extensionworkshop.com web-ext command reference |
+| AMO | `web-ext sign --channel listed`, the binary of the locked `tooling/web-ext/` island — exact pin in its package.json, because a range resolves at run time | extensionworkshop.com web-ext command reference |
 | Chrome Web Store | `POST …/upload/v2/publishers/{P}/items/{I}:upload` then `POST …/v2/publishers/{P}/items/{I}:publish`, on a **service-account JWT-bearer mint** at `https://oauth2.googleapis.com/token` | developer.chrome.com "Use the Chrome Web Store API" + "Service accounts" (2026-09-09) |
 | Edge Add-ons | four steps with `Authorization: ApiKey` + `X-ClientID` — upload, poll the upload to a terminal state, publish, poll the publish to a terminal state — at `https://api.addons.microsoftedge.microsoft.com` | learn.microsoft.com "Use the REST API" |
 
