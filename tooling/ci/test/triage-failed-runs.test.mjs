@@ -317,6 +317,46 @@ describe('signatures', () => {
     assert.equal(normalise('run 34330000000 at 2026-09-09T05:50:00Z, 4.1h EARLIER deadbeef1'), 'run <n> at <ts>, <dur> EARLIER <sha>');
   });
 
+  // ⏱ 2026-09-26 (O-FAILURE-LEDGER-UNEXPLAINED-BEFORE-MONDAY): each block below
+  // is the measured first lines of the run named beside it, which read as
+  // `other:` (no cause may claim that) or as a quote before these entries.
+  test('the 2026-09-26 signatures read the measured blocks of the runs that needed them', () => {
+    const cases = [
+      // 36206329284: a red ledger's block quotes a simulator refusal and a register duty.
+      [
+        'Every failed run of the last eight days, and the recorded cause it maps to',
+        '##[error]The register names "iPhone <n> Pro Max" and this runner image has no available simulator by that name. Apple\'s  | 1 (1 UNEXPLAINED) | — NO CAUSE IN REGISTER — | — | OPEN\n✗ tooling/ops/register.json — 1 problem(s):\n      signature: ops-register:red-since:duty.workflow.ops-watch.yml · no later green\nUNEXPLAINED: 63',
+        'failure-ledger:unexplained',
+      ],
+      ['Every failed run of the last eight days, and the recorded cause it maps to', '✗ COVERAGE LOST — the GitHub credential does not have the shape of a GitHub token (ghp_/gho_/ghu_/ghs_/ghr_/github_pat_/40-hex), so it was not sent.', 'failure-ledger:credential-unshaped'],
+      ['Count the rows whose provenance does not resolve', '✗ COULD NOT LOOK — listing runs of ci.yml (branch=main&event=push): all 10 pages of 100 came back full, so rows exist that this reader never asked for', 'provenance:run-listing-capped'],
+      ['Probe every surface the register enumerates', '✗ COVERAGE LOST — 1 of 11 probed surface(s) NEVER ANSWERED, on any of the 3 attempts:', 'surfaces:never-answered'],
+      ['Compare the live Supabase auth config against tooling/mail-transport.json', '✗ auth `sessions_timebox`: register says null, live says 0.\n  ✗ auth `sessions_inactivity_timeout`: register says null, live says 0.', 'supabase-auth:session-limit-null-read-as-drift'],
+      ['Create and finalize the GlitchTip release', 'error: Failed to create release: POST https://glitchtip.nikatru.com/api/0/organizations/nikatru/releases/ returned 522 <unknown status code>: error code: 522', 'glitchtip:release-create-5xx'],
+      ['The captured frames carry drawn text', '✗ COVERAGE LOST — screenshots/00-consent.png is 1600x881; the floor in tooling/e2e-leg-register.json framesCarryText was measured on frames 430 wide.', 'e2e:frames-wrong-size'],
+      ['Preflight — a rehearsal target may not run on the default branch', '##[error]auth_target=boxa is a REHEARSAL against a stack the deployed Workers deliberately refuse, and this dispatch is on main. duty.workflow.e2e.yml grades', 'e2e:rehearsal-refused-on-main'],
+      ['The store service account is still powerless on GCP', '✗ 🔓 serviceusage — list enabled APIs SUCCEEDED. nikatru-free-api@nikatru-platform.iam.gserviceaccount.com can now read project state on GCP, so it has been granted an IAM role since 2026-08-05.', 'gcp-scope:store-account-holds-a-role'],
+      [
+        "Every Pages project's newest PRODUCTION deployment succeeded, at the commit main names",
+        '✗ 1 project(s) RED, 0 NOT JUDGED.\n    ✗   rajasekarselvam (git) — the newest production deployment 973e96da-edd7-43d7-ba11-93e5e33ad1ae stopped at stage `build` with status `active`. Production is therefore still serving the PREVIOUS build',
+        'pages-freshness:in-flight-read-as-failure',
+      ],
+      ["Every Pages project's newest PRODUCTION deployment succeeded, at the commit main names", '✗ 0 project(s) RED, 1 NOT JUDGED.\n    ?   nikatru (git) — TypeError: fetch failed\n    ok  rajasekarselvam (git) — deployment 4d6c5dfd succeeded', 'pages-freshness:read-dropped'],
+      [
+        "Every Pages project's newest PRODUCTION deployment succeeded, at the commit main names",
+        '✗ 1 project(s) RED, 0 NOT JUDGED.\n    ✗   nikatru (git) — the newest production deployment 57e2d2f9-a0bc-45a4-bc97-1736e7941f21 stopped at stage `initialize` with status `failure`. Production is therefore',
+        'pages-freshness:git-build-failed:initialize',
+      ],
+      ['Boot the simulators the register names', '##[error]The register names "iPhone 16 Pro Max" and this runner image has no available simulator by that name.', 'store-screenshots:simulator-aged-out'],
+    ];
+    for (const [step, block, want] of cases) assert.equal(signatureOf({ step, block }), want, `${step}\n${block}`);
+    // The ledger's own verdict is read only on its own step: the same block
+    // under any other step is never taken for a ledger verdict.
+    assert.notEqual(signatureOf({ step: 'Boot the simulators the register names', block: cases[0][1] }), 'failure-ledger:unexplained');
+    // A Pages build Cloudflare failed at a stage other than `initialize` is its own group.
+    assert.equal(signatureOf({ step: cases[11][0], block: cases[11][1].replace('`initialize`', '`build`') }), 'pages-freshness:git-build-failed:build');
+  });
+
   test('every signature id is unique and every pattern is a RegExp', () => {
     const ids = SIGNATURES.map((s) => s.id);
     assert.equal(new Set(ids).size, ids.length);
