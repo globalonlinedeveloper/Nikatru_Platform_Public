@@ -122,7 +122,7 @@ describe('monitor-register.mjs — the canary list is the host rows plus `expect
     const hostIds = new Set(reg.hosts.filter((h) => h.monitor).map((h) => String(h.monitor.id)));
     assert.ok(hostIds.size >= 10, `only ${hostIds.size} host monitor ids — the host half stopped reading`);
     assert.equal(r.expected.length, hostIds.size + realLedger().expectedMonitors.length);
-    assert.ok(r.expected.some((e) => e.id === '2' && e.from.some((f) => f.includes('subscriptiontracker-api.nikatru.com'))));
+    assert.ok(r.expected.some((e) => e.id === '2' && e.from.some((f) => f === `${REGISTER} subscriptiontracker-api.nikatru.com`)));
     assert.ok(r.expected.some((e) => e.id === '39' && e.from.length === 2), 'monitor 39 watches two hosts and is one id');
   });
 

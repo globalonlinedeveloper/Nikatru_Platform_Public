@@ -429,10 +429,15 @@ describe('R2 — required coverage, both directions', () => {
         // one that felt like the source. tooling/e2e/backend.mjs joined the set
         // on 2026-09-25: it imports parseJsonc from the module to read the
         // Workers' wrangler files, and with it left in place this case exited 0.
+        // tooling/ci/worker-set.mjs and tooling/scripts/provision-backend.mjs
+        // joined it on 2026-09-26 (O-SERVICE-KIT-UNBUILT, E-a1), each for
+        // parseJsonc, with the same exit 0 while either stayed. So: ALL SIX.
         rmSync(join(root, 'tooling', 'ci', 'd1-sql-inventory.mjs'), { force: true });
         rmSync(join(root, 'tooling', 'ci', 'assert-d1-sql-inventory.mjs'), { force: true });
         rmSync(join(root, 'tooling', 'ops', 'check-d1-accepts-live-sql.mjs'), { force: true });
         rmSync(join(root, 'tooling', 'e2e', 'backend.mjs'), { force: true });
+        rmSync(join(root, 'tooling', 'ci', 'worker-set.mjs'), { force: true });
+        rmSync(join(root, 'tooling', 'scripts', 'provision-backend.mjs'), { force: true });
       },
       (r) => {
         assert.equal(r.status, 2);
