@@ -3877,6 +3877,17 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/build-platforms.yml#windows",
+      ".github/workflows/submit-windows-store.yml#dry-run"
+    ],
+    "kind": "script",
+    "ref": "tooling/store/msix-visual-name.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
       ".github/workflows/ci.yml#app-brick",
       ".github/workflows/ci.yml#web-artifacts",
       ".github/workflows/deploy-web.yml#deploy-web"
