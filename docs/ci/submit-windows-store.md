@@ -174,3 +174,30 @@ The Partner Center account has **no Entra tenant** today, and the API needs one
 with Global administrator permission plus an application assigned the Manager
 role. Until the owner creates it, this lane is fail-closed and cannot be
 exercised end to end. Nothing here invents an endpoint to work around that.
+
+---
+
+## ⏱ 2026-09-25 — `submit` ships the package `dry-run` built (O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT)
+
+**Appended, not rewritten.** Until this date the `submit` job ran `flutter build windows` and
+`dart run msix:create` a second time, so the package Microsoft received was not the bytes the dry run
+had validated and read back. Now there is ONE compile and ONE `msix:create` per dispatch:
+
+* `dry-run` hashes its .msix in step **Hand the submit job this package's name and sha256**
+  (`id: bytes`, `shell: bash`) and exports `outputs.artifact` and `outputs.sha256`; the upload reads
+  the same output for its name.
+* `submit` downloads that artifact into `build/windows/msix`, the path `submit-windows-store.mjs`
+  derives from `msix_config`, then **The package is the one the dry-run job hashed (sha256)** runs
+  `sha256sum --check --strict` against `needs.dry-run.outputs.sha256`, passed through `env:`. An
+  approval older than the 7-day retention finds nothing and FAILS.
+* Removed from `submit`: `setup-flutter`, **Resolve the workspace**, **Derive the release line from
+  pubspec**, **Build windows**, **Install glitchtip-cli**, **Upload the native debug symbols to
+  GlitchTip**, **Package MSIX (Microsoft Store)** and its read-back **The MSIX carries the identity
+  the register declares**. The read-back ran on these bytes in `dry-run`, straight after packaging
+  them (assert-channel-register.mjs §10 limb (iv)), and the sha256 proves they are the same bytes; the
+  packaging-step census drops 3 → 2 for that reason. The mapping went to the crash sink from
+  `dry-run`; `submit` re-keeps that job's symbols directory as
+  `symbols-subscriptiontracker-windows-store` for 90 days.
+
+Held by `tooling/ci/test/submit-lanes-take-dry-run-bytes.test.mjs`. The proof is static: the job has
+never run (the Entra tenant above), so its first dispatch is also its first live run.

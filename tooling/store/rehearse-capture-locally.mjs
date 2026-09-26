@@ -619,14 +619,14 @@ try {
       E2E_USER_ID: provisioned.userId,
       CLOUDFLARE_ACCOUNT_ID: vault.get('CLOUDFLARE_ACCOUNT_ID') ?? '',
       CLOUDFLARE_API_TOKEN: vault.get('CLOUDFLARE_API_TOKEN') ?? '',
-      // The SANDBOX databases the capture wrote into, read from the two
-      // wrangler.jsonc `env.sandbox` blocks by sandboxBackend() — the same ids
-      // store-screenshots.yml's purge steps carry. A database id is not a
-      // credential. The consent rows are in platform_db_sandbox, the seeded
-      // subscriptions in subscriptiontracker_db_sandbox; with the ledger the
-      // capture wrote, purge.mjs deletes by every drive's install id and by the
-      // rehearsal stamp, and it refuses a production id beside a ledger.
-      SUBSCRIPTIONTRACKER_D1_DATABASE_ID: SANDBOX['subscriptiontracker-api'].sandboxIds['d1:APP_DB'],
+      // The SANDBOX databases the capture wrote into. The consent rows are in
+      // platform_db_sandbox, read from its wrangler.jsonc `env.sandbox` block by
+      // sandboxBackend(); a database id is not a credential. The seeded
+      // subscriptions are in the app's sandbox APP_DB, which purge.mjs resolves
+      // itself from E2E_APP_ID (tooling/e2e/backend.mjs, the `env.sandbox` block
+      // because a ledger is set). With the ledger the capture wrote, purge.mjs
+      // deletes by every drive's install id and by the rehearsal stamp, and it
+      // refuses a production id beside a ledger.
       PLATFORM_D1_DATABASE_ID: SANDBOX.platform.sandboxIds['d1:PLATFORM_DB'],
       E2E_APP_ID: APP,
       E2E_CONSENT_LEDGER: consentLedger,

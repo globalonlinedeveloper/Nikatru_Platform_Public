@@ -1,0 +1,12 @@
+Package "subscriptiontracker.pkg":
+   Status: signed by a developer certificate issued by Apple
+   Signed with a trusted timestamp on: 2026-09-25 09:00:00 +0000
+   Certificate Chain:
+    1. 3rd Party Mac Developer Installer: <PERSONAL-NAME> (A1B2C3D4E5)
+       Expires: 2027-09-25 00:00:00 +0000
+       ------------------------------------------------------------------------
+    2. Apple Worldwide Developer Relations Certification Authority
+       Expires: 2030-02-20 00:00:00 +0000
+       ------------------------------------------------------------------------
+    3. Apple Root CA
+       Expires: 2035-02-09 21:40:36 +0000
