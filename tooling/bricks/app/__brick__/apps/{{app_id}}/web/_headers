@@ -52,9 +52,6 @@
 #     the cutover PREP, BEFORE `SUPABASE_URL` moves at Phase 5, so no stamped
 #     app's sign-in is blocked by its own policy on switch day; the hosted
 #     project stays as the rollback and is removed in Phase 6, when it is retired.
-#   · ⏱ 2026-09-25 Phase 5: the hosted origin leaves connect-src with the switch.
-#     Rollback re-serves the pre-switch Pages deployment, whose _headers still
-#     names it, or a revert of this commit restores it.
 #
 # ⚠️ `frame-ancestors 'none'` and `X-Frame-Options: DENY` are both set: the app must
 # not be framed, including by another path on its own origin, because same-origin
@@ -64,7 +61,7 @@
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin
   Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
-  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval' https://challenges.cloudflare.com; worker-src 'self' blob:; child-src 'self' blob:; frame-src 'self' https://challenges.cloudflare.com; connect-src 'self' https://auth-api.nikatru.com{{#needs_backend}} https://{{{api_domain}}}{{/needs_backend}} https://config.nikatru.com https://platform.nikatru.com https://glitchtip.nikatru.com; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval' https://challenges.cloudflare.com; worker-src 'self' blob:; child-src 'self' blob:; frame-src 'self' https://challenges.cloudflare.com; connect-src 'self' https://lcrkiurkvzhkonjwhpiv.supabase.co https://auth-api.nikatru.com{{#needs_backend}} https://{{{api_domain}}}{{/needs_backend}} https://config.nikatru.com https://platform.nikatru.com https://glitchtip.nikatru.com; upgrade-insecure-requests
 # ===========================================================================
 #
 # 🔴 WHY THIS FILE EXISTS — [pipeline 9]R-9, the cache limb.
