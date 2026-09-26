@@ -827,6 +827,12 @@ const WALK_ATTEMPTS = 3;
 const WALK_PAUSE_MS = 2000;
 const nap = (ms) => new Promise((done) => setTimeout(done, ms));
 
+/** The page-cap refusal, as its own class so that `collectWindowed` can tell
+ *  "this window holds more than the cap reaches" (split it) from every other
+ *  COULD NOT LOOK (re-thrown untouched). It IS a CouldNotLook: anything that does
+ *  not catch it by name still exits 2 with the message it always had. */
+class WalkTruncated extends CouldNotLook {}
+
 /** One walk's line, the SAME text in the summary and on COULD NOT LOOK. */
 function formatWalk(w) {
   const claim = w.claims?.length ? w.claims.join(' → ') : 'not given';
@@ -910,7 +916,7 @@ async function collectPaged({
   for (let i = 0; i < attempts; i++) {
     const { entry, rows, truncated } = await walkOnce(i + 1);
     if (truncated) {
-      throw new CouldNotLook(
+      throw new WalkTruncated(
         `${what}: all ${pageCap} pages of ${perPage} came back full, so rows exist that this reader never asked ` +
           'for — a walk that stopped at its own cap is COVERAGE LOST, not a complete read',
       );
@@ -929,6 +935,140 @@ async function collectPaged({
         )
         .join('; ') +
       '. Rows a listing claims and did not serve are rows this reader cannot see, so this is COVERAGE LOST, not a complete read',
+  );
+}
+
+/**
+ * ONE LISTING READ WHOLE ACROSS `created` DATE WINDOWS, each read by
+ * `collectPaged` with every check above intact.
+ *
+ * 🔴 WHY, ⏱ 2026-09-26. Ops watch #536 (run 36214720117) went exit 2:
+ *     ✗ COULD NOT LOOK — listing runs of ci.yml (branch=main&event=push): all 10 pages of 100 came back full …
+ * main crossed 1,000 completed push runs of ci.yml that night. GitHub's
+ * list-workflow-runs endpoint serves AT MOST 1,000 results for a filtered
+ * query — page 11 answers `total_count 0` and no rows, and `total_count`
+ * itself is capped at 1,000 (both measured 2026-09-26 03:33Z) — so raising
+ * `pageCap` could never have read the rest: the rows beyond 1,000 are not
+ * reachable through one listing at all.
+ *
+ * THE WALK, newest first. `edge` is the day on and after which every run has
+ * been read (none, at the start). Each step:
+ *   1. asks the API how many runs are OLDER than `edge` — a query with NO LOWER
+ *      BOUND (`created=<=edge-1`, or no `created` at all on the first step), one
+ *      row a page, read only for its `total_count`;
+ *   2. if that count is under the cap, reads that whole remainder through
+ *      `collectPaged` — consistent, de-duplicated, as many distinct rows as
+ *      claimed — and the walk ENDS. A remainder that still comes back full (the
+ *      count under-claimed) is treated as over the cap, never as read;
+ *   3. otherwise reads the next `windowDays`-day window below `edge` (the first
+ *      one open above, `created=>=…`, so a run created while the walk runs, or
+ *      on a clock ahead of this one, is not cut off) and moves `edge` down.
+ * A window that is itself truncated is split in half, newer half first, down to
+ * ONE DAY; a one-day window that is still full is COULD NOT LOOK, naming it.
+ *
+ * 🔴 THE START OF THE WALK IS NOT A GUESSED FLOOR. It ends only on a complete,
+ * internally consistent read of EVERYTHING older than its oldest window, by a
+ * query that has no lower bound. So a run from any date — before any quiet gap,
+ * any number of empty weeks — is still read; "two empty windows in a row" would
+ * have dropped every run before a fortnight's pause, and a recorded floor would
+ * have dropped every run before it. A step cap exists only so a misbehaving API
+ * cannot walk this forever, and reaching it is COULD NOT LOOK.
+ *
+ * `created` is immutable, so windows never shift under a walk the way page
+ * offsets do; the union is still de-duplicated by `idOf`. With no window needed
+ * (under 1,000 runs) the one read is the old whole listing, plus one count.
+ */
+const WINDOW_DAYS = 7;
+const WINDOW_STEP_CAP = 530;
+const DAY_MS = 86_400_000;
+const isoDay = (day) => new Date(day * DAY_MS).toISOString().slice(0, 10);
+
+/** The GitHub search-syntax `created` value of a window of whole UTC days, or
+ *  null for no `created` filter at all. `from`/`to` null = open that side. */
+function createdQualifier({ from, to }) {
+  if (from === null && to === null) return null;
+  if (from === null) return `<=${isoDay(to)}`;
+  if (to === null) return `>=${isoDay(from)}`;
+  return `${isoDay(from)}..${isoDay(to)}`;
+}
+
+async function collectWindowed({
+  fetchPage,
+  idOf,
+  what,
+  today = new Date(),
+  windowDays = WINDOW_DAYS,
+  stepCap = WINDOW_STEP_CAP,
+  perPage = 100,
+  pageCap = 10,
+  log = WALKS,
+  attempts,
+  pauseMs,
+  sleep,
+}) {
+  const cap = perPage * pageCap;
+  const todayDay = Math.floor(today.getTime() / DAY_MS);
+  const byId = new Map();
+  const keep = (rows) => {
+    for (const row of rows) {
+      const id = idOf(row);
+      if (!byId.has(id)) byId.set(id, row);
+    }
+  };
+  const labelOf = (w) => {
+    const q = createdQualifier(w);
+    return q === null ? what : `${what} · created ${q}`;
+  };
+  const paged = (w) =>
+    collectPaged({
+      what: labelOf(w),
+      idOf,
+      perPage,
+      pageCap,
+      log,
+      attempts,
+      pauseMs,
+      sleep,
+      fetchPage: (page, { attempt } = { attempt: 1 }) => fetchPage({ created: createdQualifier(w), page, perPage, attempt }),
+    });
+
+  const readWindow = async (w) => {
+    try {
+      keep(await paged(w));
+    } catch (e) {
+      if (!(e instanceof WalkTruncated)) throw e;
+      const days = (w.to ?? todayDay) - w.from + 1;
+      if (days <= 1) {
+        throw new CouldNotLook(
+          `${e.message} — and the window created ${createdQualifier(w)} is ONE DAY wide, so it cannot be split any further`,
+        );
+      }
+      const mid = w.from + Math.floor(days / 2);
+      await readWindow({ from: mid, to: w.to });
+      await readWindow({ from: w.from, to: mid - 1 });
+    }
+  };
+
+  let edge = null;
+  for (let step = 0; step < stepCap; step++) {
+    const rest = { from: null, to: edge === null ? null : edge - 1 };
+    const probe = await fetchPage({ created: createdQualifier(rest), page: 1, perPage: 1, attempt: 1 });
+    const claim = probe?.totalCount;
+    if (typeof claim === 'number' && Number.isFinite(claim) && claim < cap) {
+      try {
+        keep(await paged(rest));
+        return [...byId.values()];
+      } catch (e) {
+        if (!(e instanceof WalkTruncated)) throw e;
+      }
+    }
+    const from = (edge ?? todayDay + 1) - windowDays;
+    await readWindow({ from, to: edge === null ? null : edge - 1 });
+    edge = from;
+  }
+  throw new CouldNotLook(
+    `${what}: ${stepCap} windows of ${windowDays} day(s) back from ${isoDay(todayDay)} and the API still claims ${cap} or more ` +
+      'older rows — a walk that stopped at its own step cap is COVERAGE LOST, not a complete read',
   );
 }
 
@@ -975,15 +1115,18 @@ async function githubRuns(workflowFile, { status = 'completed', filter = '' } = 
   const what =
     (status === 'completed' ? `listing runs of ${workflowFile}` : `listing ${status ?? 'all'} runs of ${workflowFile}`) +
     (filter ? ` (${filter})` : '');
-  return collectPaged({
+  // ⏱ 2026-09-26 — walked in `created` windows (collectWindowed), because one
+  // filtered listing never serves more than 1,000 runs.
+  return collectWindowed({
     what,
     idOf: (r) => r.id,
-    fetchPage: async (page) => {
+    fetchPage: async ({ created, page, perPage }) => {
       const body = await ghJson(
         repo,
         token,
-        `/actions/workflows/${workflowFile}/runs?${filter ? `${filter}&` : ''}${status ? `status=${status}&` : ''}per_page=100&page=${page}`,
-        what,
+        `/actions/workflows/${workflowFile}/runs?${filter ? `${filter}&` : ''}${created ? `created=${encodeURIComponent(created)}&` : ''}` +
+          `${status ? `status=${status}&` : ''}per_page=${perPage}&page=${page}`,
+        created ? `${what} · created ${created}` : what,
       );
       const runs = body?.workflow_runs;
       if (!Array.isArray(runs)) throw new CouldNotLook(`the GitHub API response for ${workflowFile} carried no workflow_runs array`);
@@ -2606,6 +2749,11 @@ export {
   releaseLines,
   CouldNotLook,
   collectPaged,
+  collectWindowed,
+  githubRuns,
+  WALKS,
+  WalkTruncated,
+  WINDOW_DAYS,
   formatWalk,
   WALK_ATTEMPTS,
   WALK_PAUSE_MS,

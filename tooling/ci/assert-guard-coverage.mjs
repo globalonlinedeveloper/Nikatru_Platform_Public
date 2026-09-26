@@ -401,7 +401,7 @@ const NOT_A_SCANNER = new Map([
   ],
   [
     'chassis-delegation.mjs',
-    'is not a guard: it is the ONE reading of "this brick screen was emptied into `package:nikatru_chassis_screens`, and here is the file that now carries its behaviour" — the single-import rule, the one-level barrel expansion, the on-disk check, and the USE check that refuses an import nothing in the adapter references. It answers one of exactly three ways: `null` (no delegation), `{ lost }` (a delegation that could not be followed, which the CALLER reports as COVERAGE LOST) and `{ files, symbols, usedSymbol }`. That second channel IS the coverage report, raised to the caller instead of exited on. Pure functions plus the one directory listing it is handed; it reads only the paths its caller names and asserts nothing about the tree, so "did my scan still reach the tree" belongs to the eleven importers ([ADR 067] decision 2 re-points them all), each of which already carries its own COVERAGE LOST over what it read and prints every `lost` this module returns. It exists because the rule shipped as ELEVEN COPIES on 2026-09-05 and an independent review measured the cost before a single screen had moved: ten `delegationOf` bodies, 283 lines, SEVEN distinct implementations by sha256, three signatures and two different regex constructions, with nothing in the tree comparing them — the exact shape assert-copy-parity.mjs:10-15 records this repository\'s doctrine against. Its own failing cases are in test/chassis-delegation.test.mjs, which mutates every refusal (an unused import, a use hidden in a comment, a use hidden in a string literal, a target not on disk, two imports, a two-level barrel) and fails when any of them starts answering `{ files }` — plus a green control, without which every one of those reds would be consistent with a resolver that refuses everything. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
+    'is not a guard: it is the ONE reading of "this brick screen was emptied into `package:nikatru_chassis_screens`, and here is the file that now carries its behaviour" — the single-import rule, the one-level barrel expansion, the on-disk check, and the USE check that refuses an import nothing in the adapter references. It answers one of exactly three ways: `null` (no delegation), `{ lost }` (a delegation that could not be followed, which the CALLER reports as COVERAGE LOST) and `{ files, symbols, usedSymbol }`. That second channel IS the coverage report, raised to the caller instead of exited on. Pure functions plus the one directory listing it is handed; it reads only the paths its caller names and asserts nothing about the tree, so "did my scan still reach the tree" belongs to the eleven importers ([ADR 067] decision 2 re-points them all), each of which already carries its own COVERAGE LOST over what it read and prints every `lost` this module returns. It exists because the rule shipped as ELEVEN COPIES on 2026-09-05 and an independent review measured the cost before a single screen had moved: ten `delegationOf` bodies, 283 lines, SEVEN distinct implementations by sha256, three signatures and two different regex constructions, with nothing in the tree comparing them — the exact shape this repository\'s doctrine against copied rules forbids (recorded in the copy parity guard\'s header until that guard was retired on 2026-09-25). Its own failing cases are in test/chassis-delegation.test.mjs, which mutates every refusal (an unused import, a use hidden in a comment, a use hidden in a string literal, a target not on disk, two imports, a two-level barrel) and fails when any of them starts answering `{ files }` — plus a green control, without which every one of those reds would be consistent with a resolver that refuses everything. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
   ],
   [
     'worker-shared-modules.mjs',
@@ -438,7 +438,7 @@ const NOT_A_SCANNER = new Map([
   ],
   [
     'bounded-spawn.mjs',
-    'is not a guard: it is the ONE way a guard in tooling/ci runs an EXTERNAL tool — `boundedSpawn` gives the spawn a wall clock, kills it with SIGKILL when it runs out, and answers with a `timedOut` flag the CALLER turns into its own COVERAGE LOST, which is why the marker lives in its importers\' code and not in its own. Pure spawn plumbing: it reads no directory, asserts nothing about any tree, and never throws or exits — the wording of "I could not look" belongs to the duty that could not be done, and a module that exited would take that choice away from every caller that already has the right sentence. It exists because an unbounded spawn does not FAIL when the outside program hangs: the job is cancelled at its own timeout-minutes with the log stopping mid-guard and nothing naming the command, which is exactly how the launcher-icons hang read across five runs (#616, #617, #618, #619 and one on main) before `flutter create` was bounded in flutter-stock-assets.mjs. The two org-listing call sites — assert-github-matrix.mjs and assert-store-matrix.mjs — had the same shape against a network the runner does not control, and both now take a named environment bound that can be moved and not removed (a value <= 0, unparseable or absent falls back to the call-site default; the floor is one second). The pattern is flutter-stock-assets.mjs\'s, lifted unchanged in behaviour the first time a second family of call sites needed it, because inline copies of a bound drift in the one way a green run cannot show: which of them still treats a time-out as "I could not look" rather than as a tool that answered no. Its own failing cases are in test/bounded-spawn.test.mjs — a child that never ends killed at the bound, the bound measured as a wall clock, a program that answers left undisturbed, a non-zero exit reported as an ANSWER rather than a time-out, a program that cannot start distinguished from one that timed out, every way an environment override could disable the bound, and a corpus check that reads CODE rather than prose that no org-listing spawn escapes it. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
+    'is not a guard: it is the ONE way a guard in tooling/ci runs an EXTERNAL tool — `boundedSpawn` gives the spawn a wall clock, kills it with SIGKILL when it runs out, and answers with a `timedOut` flag the CALLER turns into its own COVERAGE LOST, which is why the marker lives in its importers\' code and not in its own. Pure spawn plumbing: it reads no directory, asserts nothing about any tree, and never throws or exits — the wording of "I could not look" belongs to the duty that could not be done, and a module that exited would take that choice away from every caller that already has the right sentence. It exists because an unbounded spawn does not FAIL when the outside program hangs: the job is cancelled at its own timeout-minutes with the log stopping mid-guard and nothing naming the command, which is exactly how the launcher-icons hang read across five runs (#616, #617, #618, #619 and one on main) before `flutter create` was bounded in flutter-stock-assets.mjs. The org-listing call sites — assert-github-matrix.mjs, and a store-slot guard retired on 2026-09-25 — had the same shape against a network the runner does not control, and each took a named environment bound that can be moved and not removed (a value <= 0, unparseable or absent falls back to the call-site default; the floor is one second). The pattern is flutter-stock-assets.mjs\'s, lifted unchanged in behaviour the first time a second family of call sites needed it, because inline copies of a bound drift in the one way a green run cannot show: which of them still treats a time-out as "I could not look" rather than as a tool that answered no. Its own failing cases are in test/bounded-spawn.test.mjs — a child that never ends killed at the bound, the bound measured as a wall clock, a program that answers left undisturbed, a non-zero exit reported as an ANSWER rather than a time-out, a program that cannot start distinguished from one that timed out, every way an environment override could disable the bound, and a corpus check that reads CODE rather than prose that no org-listing spawn escapes it. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
   ],
   [
     'tool-output.mjs',
@@ -550,24 +550,6 @@ const NO_NEGATIVE_TEST_NEEDED = new Map([
  *  `probe` (the argv a CI runner would use — the mode being claimed unrunnable),
  *  `why` (the reason, which has to survive being read aloud). */
 const NOT_CI_RUNNABLE = new Map([
-  [
-    'assert-copy-parity.mjs',
-    {
-      since: '2026-08-18',
-      probe: [],
-      why:
-        'its subject is the slot directories declared live in catalog/store-matrix.json, which sit OUTSIDE ' +
-        'any single checkout: it walks UP for the ancestor holding both Projects/ and nikatru/ and reads that ' +
-        "ancestor's siblings (30 slot directories across the workspace today). A runner clones ONE repository, " +
-        'so the anchor is not there and this guard REFUSES — exit 2, naming every directory it walked. On the ' +
-        'workspace, where the anchor IS reachable, it exits 3 NOT PROVEN instead: the registry marks exactly ' +
-        'one slot `live` and that one is the origin itself, so a parity check has nothing to compare against. ' +
-        'It becomes CI-runnable only when a second slot carries a real source copy AND the runner can see both. ' +
-        'Neither is true today, so a CI step could only be permanently non-zero, or tolerate the refusal by ' +
-        'number — and a job that swallows "I compared nothing" is the green tick over an empty set that ' +
-        'check-migrations.mjs and assert-clone-contract.mjs already cost this repo.',
-    },
-  ],
   [
     'assert-github-matrix.mjs',
     {
@@ -907,9 +889,9 @@ if (unfound.length) {
 //       🔴 2026-08-18 — THE LAST SENTENCE ABOVE IS NO LONGER THE WHOLE TRUTH,
 //       AND IT IS LEFT STANDING RATHER THAN REWRITTEN BECAUSE IT RECORDS WHY THE
 //       BAR IS WHERE IT IS. A second genuinely different case arrived, and it is
-//       not the shared-module shape: assert-copy-parity.mjs and
-//       assert-github-matrix.mjs are guards with mains, whose SUBJECTS ARE NOT IN
-//       A CHECKOUT — thirty slot directories across the workspace, and an
+//       not the shared-module shape: the copy parity guard (retired 2026-09-25)
+//       and assert-github-matrix.mjs are guards with mains, whose SUBJECTS ARE NOT
+//       IN A CHECKOUT — thirty slot directories across the workspace, and an
 //       organisation only an authenticated `gh` can see. Neither is importable by
 //       anything, so the derived relation cannot reach them, and neither has ANY
 //       invocation a runner could make that is capable of exiting 0. The three

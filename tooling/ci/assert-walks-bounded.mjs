@@ -37,8 +37,9 @@
 // 2026-08-18 — WHY THERE IS A SECOND SANCTIONED ROUTE, AND WHY IT IS NEITHER AN
 // EXEMPTION LIST NOR A LOOSER `listDir`.
 //
-// On this date this guard reported six problems: assert-store-matrix.mjs,
-// assert-copy-parity.mjs and assert-github-matrix.mjs each imported AND called
+// On this date this guard reported six problems: the store matrix guard, the copy
+// parity guard (both retired 2026-09-25 with the store matrix) and
+// assert-github-matrix.mjs each imported AND called
 // `readdirSync` directly. The obvious repair — route all three through `listDir`
 // — WOULD HAVE TURNED THEM GREEN OVER NOTHING, and that is the whole reason this
 // section exists.
@@ -73,7 +74,7 @@
 // day it lands, without being added to anything.
 //
 // TWO OTHER REPAIRS WERE REJECTED, and the reasons are the reusable part:
-//   · AN EXEMPTION LIST HERE — "assert-store-matrix.mjs may use readdirSync" —
+//   · AN EXEMPTION LIST HERE — "<a named guard> may use readdirSync" —
 //     names three FILES instead of the property. It goes stale in silence, every
 //     matrix guard written after it is born outside it, and what it hands back
 //     is the UNBOUNDED primitive: an exempted file may then walk anywhere,

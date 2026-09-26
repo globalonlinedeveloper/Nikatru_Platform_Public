@@ -1,0 +1,109 @@
+{
+  "_what": "The GitHub organisation this platform lives in, and every repository that organisation holds, each accounted for by name. Read by tooling/ci/assert-github-matrix.mjs, which reconciles this file against the REAL org with a read-only `gh repo list` and fails on any repository the org holds that no entry here names (an ORPHAN), and on any entry naming a repository the org does not hold (a STALE DECLARATION).",
+  "_whyThisFile": "Until 2026-09-25 these facts sat in the `github` block of the store matrix, a register of Store x Target x Type slots that the one-repo/one-pipeline lock of 2026-08-19 had reduced to one row, which nothing but its own guards read (O-STORE-MATRIX-IS-A-DEAD-DECLARATION). The matrix and its two guards were retired; the GitHub facts were the one live subject left in it, so they moved here, together with the dated records that were kept there. What is published to which store lives in tooling/channel-register.json.",
+  "org": "globalonlinedeveloper",
+  "accountingRule": "Every repository the org holds must be accounted for by EXACTLY ONE of: (a) a `platform` entry's `repo`, or the repository named by its `boundRemote`; (b) an `otherRepos` entry. Anything the org holds that matches none of those is an ORPHAN, and assert-github-matrix.mjs FAILS on it: the fix is one line in THIS file and needs nobody's permission. A name recorded DEAD in tooling/dead-repos.json is NOT an accounting surface: a dead name the org holds again is a re-claimed name (see the Cloudflare Pages pin below), so it is reported as an ORPHAN that names its death record, never passed. A `platform` or `otherRepos` entry naming a repository the org does not hold fails the same way, because deleting a line needs nobody's permission either.",
+  "platformRule": "The repositories this platform is built from. `repo` is the name GitHub holds and `visibility` is GitHub's own spelling of it (PUBLIC/PRIVATE/INTERNAL); both are MEASURED facts, and a disagreement with the org is a finding. `checkout` is the directory under Projects/ holding the local working copy, and `boundRemote` is that checkout's `origin` as owner/repo, or null for a checkout with no origin; the guard reads the real `git remote get-url origin` and fails on a disagreement.",
+  "platform": [
+    {
+      "repo": "Nikatru_Platform_Public",
+      "visibility": "PUBLIC",
+      "checkout": "Nikatru_Platform_Public",
+      "boundRemote": "globalonlinedeveloper/Nikatru_Platform_Public",
+      "measured": "Directory and repository names AGREE again as of 2026-08-19 evening: the directories were renamed to match the repos, so the template-derived `intended` name is no longer what is checked — publicDir is, and it equals the live repo. Confirmed with read-only `gh repo list`, never `gh api`, which follows rename redirects and would answer for both the old and new name."
+    },
+    {
+      "repo": "Nikatru_Platform_Private",
+      "visibility": "PRIVATE",
+      "checkout": "Nikatru_Platform_Private",
+      "boundRemote": null,
+      "measured": "Directory and repository names AGREE again as of 2026-08-19 evening: the directories were renamed to match the repos, so the template-derived `intended` name is no longer what is checked — publicDir is, and it equals the live repo. Confirmed with read-only `gh repo list`, never `gh api`, which follows rename redirects and would answer for both the old and new name."
+    }
+  ],
+  "otherReposRule": "Repositories that exist in the org and are deliberately NOT part of this platform. Each carries `why` in prose. A bare allow-list is a place to silence findings; a list where every line must say what it is for is a list somebody has to defend. `measured` records HOW MUCH is actually known about the entry, so a name-only declaration cannot be read later as a statement about the repo's contents.",
+  "otherRepos": [
+    {
+      "repo": "nikatru-private",
+      "why": "Not part of this platform. Declared by NAME ONLY so that a NEW repo appearing in the org is loud instead of drowned.",
+      "measured": "2026-08-18: name and visibility from `gh repo list` only. Contents NOT examined. This line is not a statement about what the repo holds."
+    },
+    {
+      "repo": "ATS",
+      "why": "Not part of this platform. Declared by NAME ONLY.",
+      "measured": "2026-08-18: name and visibility from `gh repo list` only. Contents NOT examined."
+    },
+    {
+      "repo": "Project_R",
+      "why": "Not part of this platform. Declared by NAME ONLY.",
+      "measured": "2026-08-18: name and visibility from `gh repo list` only. Contents NOT examined."
+    },
+    {
+      "repo": "Project_Char",
+      "why": "Not part of this platform. Declared by NAME ONLY.",
+      "measured": "2026-08-18: name and visibility from `gh repo list` only. Contents NOT examined."
+    },
+    {
+      "repo": "ratel",
+      "why": "Not part of this platform. Declared by NAME ONLY.",
+      "measured": "2026-08-18: name and visibility from `gh repo list` only. Contents NOT examined."
+    },
+    {
+      "repo": "pdfcraftai",
+      "why": "Not part of this platform. Declared by NAME ONLY.",
+      "measured": "2026-08-18: name and visibility from `gh repo list` only. Contents NOT examined."
+    },
+    {
+      "repo": "chatwithpdfai",
+      "why": "Not part of this platform. Declared by NAME ONLY.",
+      "measured": "2026-08-18: name and visibility from `gh repo list` only. Contents NOT examined."
+    },
+    {
+      "repo": "globalonlinecalculator",
+      "why": "Not part of this platform. Declared by NAME ONLY.",
+      "measured": "2026-08-18: name and visibility from `gh repo list` only. Contents NOT examined."
+    },
+    {
+      "repo": "coursera",
+      "why": "Not part of this platform. Declared by NAME ONLY.",
+      "measured": "2026-08-18: name and visibility from `gh repo list` only. Contents NOT examined."
+    }
+  ],
+  "renamePins": {
+    "note": "Things OUTSIDE this repository that pin a GitHub repo BY NAME. This block exists because a rename is the one matrix operation whose blast radius is not visible from inside the repo being renamed. assert-github-matrix.mjs prints every entry below whenever a `platform` entry's checkout is bound to a repository whose name differs from the entry's `repo` - and it prints the unobservable ones EVERY time, because the pin whose state cannot be read is the one most likely to be forgotten.",
+    "whyNotAFailure": "A rename can only be performed by the owner, in the GitHub UI or with a write-scoped API call this repository deliberately does not make. A build that stays red until the owner does owner-work teaches everybody that red is negotiable, and this corpus has already written that lesson down. So a pending rename PRINTS on every run and does not change the exit code.",
+    "observable": [],
+    "unobservable": [
+      {
+        "id": "cloudflare-pages",
+        "what": "Cloudflare Pages Git bindings for the two Pages projects `nikatru` and `rajasekarselvam` (root directories sites/nikatru and sites/rajasekarselvam, output /, framework preset None, build command blank - CUTOVER-RUNBOOK.md section 4). 2026-08-19: THE TWO PAGES PROJECTS NO LONGER SIT IN ONE REPOSITORY. Measured on disk: Projects/Nikatru_Storefront_Public/sites holds _shared and nikatru ONLY, and sites/rajasekarselvam now lives in the separate repo globalonlinedeveloper/Rajasekar_Site_Public. So the `rajasekarselvam` Pages project is bound to a repo that no longer contains what it is bound to serve, OR it has already been repointed - and NOTHING IN THIS TREE CAN TELL WHICH. That is the same unobservability this entry was created for, now with two repos in it instead of one.",
+        "why": "The binding lives in the Cloudflare dashboard, OUTSIDE git. NOTHING in any repository in this tree can observe it, and this guard does not pretend to. CUTOVER-RUNBOOK.md section 6b - the ROLLBACK procedure - names globalonlinedeveloper/Project_Cross_Platform_Apps literally as the repo to reconnect to.",
+        "notMeasured": "Whether a Cloudflare Pages Git binding SURVIVES a repository rename is NOT MEASURED and MUST NOT BE ASSUMED. It is plausible either way; it is owner-verifiable in minutes; and a guess in this position is how the storefront goes dark. STORE-MATRIX-PLAN.md section 5.8. 2026-08-19, AND THIS ONE IS LIVE RATHER THAN LATENT: which repository the `rajasekarselvam` Pages project is bound to TODAY was NOT MEASURED and cannot be from here. It is now an OWNER ACTION independent of any rename - the split already happened.",
+        "measured20260819After": "🔴 NO LONGER A RISK. A MEASURED, OUTSTANDING OWNER ACTION, AND THE ONE THING THE RENAME LEFT BROKEN-BUT-WORKING. Both Pages projects still read repo_name=Project_Cross_Platform_Apps and repo_id=1304047609 - a name that NO LONGER EXISTS in the org - and both nikatru.com and rajasekarselvam.com still return 200, because the binding resolves by repository ID and GitHub still answers for the renamed repo under its old id. That is a redirect holding a production site up, not a correct configuration. GitHub frees the old NAME on rename, so anything that re-claims `globalonlinedeveloper/Project_Cross_Platform_Apps` inherits a live Pages binding.",
+        "provenNotAssumed20260819": "🔴 CLOUDFLARE CANNOT BE REPOINTED BY API. THIS IS MEASURED, NOT INFERRED, AND IT REVERSES THE DIRECTION OF THIS ENTRY. A PATCH of the Pages project source.config returned `success: true`, and a fresh GET immediately afterwards showed the values UNCHANGED. The token is not the problem, and that was tested separately: a different, harmless PATCH against the same project returned HTTP 200 and TOOK EFFECT, so the credential does hold write scope. Cloudflare simply accepts and silently ignores a change to a Pages project's Git source. So this entry no longer says only 'nothing here can OBSERVE the binding' - it now also says NOTHING HERE CAN CHANGE IT, and, worse for anyone automating it, an attempt REPORTS SUCCESS. Repointing both Pages projects onto the new repository names is an OWNER ACTION in the Cloudflare dashboard, it is the last item the rename left outstanding, and a script that tries it and checks only the response body will report the job done."
+      }
+    ],
+    "observableEmpty20260819": "ZERO observable pins, and that is a measured fact rather than an omission. The only one this workspace ever had was `storefront-upstreams` — Nikatru_Storefront_Public/catalog/upstreams.json, which byte-compared raw.githubusercontent.com blobs and therefore pinned bound-remote names from OUTSIDE git. That repository was DELETED on 2026-08-19 after the one-repo/one-pipeline lock. Searched afterwards for a replacement: no JSON array in this repository pins a repo name (checked every tracked *.json). The 9 packages/*/pubspec.yaml `repository:` URLs DO pin the name and were repointed with the rename, but they are YAML and this mechanism reads JSON arrays, so they are not expressible here. The remaining pin is the Cloudflare Pages binding, which is declared under `unobservable` and resolves by repo_id — which is why all four renames left both domains returning 200."
+  },
+  "records": {
+    "_note": "DATED RECORDS, moved verbatim on 2026-09-25 from the retired store matrix, where they were kept as the one place their old names survive. Nothing reads this block and nothing should: it is not an accounting surface, and a repository named ONLY here is an ORPHAN by `accountingRule`. tooling/dead-repos.json excludes this file from its dead-name scan for that reason.",
+    "removedSlot20260906_Chrome_Web_Store": "REMOVED 2026-09-06. This file carried a Chrome_Web_Store/Chrome/Extensions slot declaring publicDir Nikatru_Extensions_Public (private half derived as Nikatru_Extensions_Private) and repos.public/private existsOnGitHub=true, bound to globalonlinedeveloper/Nikatru_Extensions_{Public,Private}. ALL FOUR OF THOSE FACTS ARE NOW FALSE. Under [ADR 067] decision 1 the two repositories were merged into Nikatru_Platform_Public/extensions/ and Nikatru_Platform_Private/pre-minimal-2026-09-08:extensions/ on 2026-09-05 and then DELETED on GitHub. Measured 2026-09-06: `gh api repos/globalonlinedeveloper/Nikatru_Extensions_Public` and the _Private one both exit non-zero, neither name appears in `gh api user/repos` (11 repos), and `ls Projects/Nikatru_Extensions_*` returns No such file or directory - the only copies are the frozen snapshots under Projects/_archived-2026-09-05/. The row was DELETED rather than repointed because a slot IS a repository pair and there is no longer a pair: fullshot now ships out of the Google_Play_Store slot own repository, from its extensions/ subtree. The store filing is not lost with the row - what is published where lives in tooling/channel-register.json, and resolve-slot.mjs reads store facts from there and never from here, exactly as reducedTo20260819 records for the 13 rows dropped before it. Measured before and after: `node tooling/ci/assert-store-matrix.mjs` with the tree limbs exited 1 with 7 findings, four of them caused directly by this row; after the removal 3 remain, all three naming the deliberate _archived-2026-09-05 snapshots, which cannot be declared in the `infrastructure` block because that block rejects any dir containing a path separator.",
+    "deletionRecord20260819": "The 26 empty placeholder slot repos and the two site repos (Nikatru_Storefront_Public, Rajasekar_Site_Public) were DELETED from the org on 2026-08-19 after the owner locked one-repo/one-pipeline. Measured immediately after: `gh repo list` returns 13 repos, of which 4 are Nikatru_* and all four carry real source. Both live domains still returned HTTP 200 because both Cloudflare Pages projects build from Nikatru_Android_Apps_Public (repo_id 1304047609) and always did — the split was staged and never cut over, so deleting the staged repos changed nothing on the wire. The local working copies were NOT deleted and the app repo still holds all 61 files under sites/.",
+    "supersededOutOfMatrix": {
+      "note": "Lifted out-of-matrix declarations, kept whole. github.outOfMatrix must name only repos the org ACTUALLY HOLDS - assert-github-matrix.mjs fails on a line naming a repo that is not there, in the same direction and for the same reason it fails on an orphan. So a rename forces the line to be deleted. Deleting it silently would destroy the argument the line was carrying, and the argument is the whole reason the list is expensive to add to. They are moved here instead. 🔴 NOTHING READS THIS BLOCK AND NOTHING SHOULD: it is not an accounting surface, and a repo listed ONLY here is an ORPHAN by github.accountingRule.",
+      "liftedOn": "2026-08-19",
+      "whyLifted": "Both repos were RENAMED by the owner. Neither was deleted and neither stopped mattering; each simply stopped answering to the name its line was keyed on. Project_Web_Presence -> Nikatru_Storefront_Public, which is re-declared under its new name in github.outOfMatrix. Project_Cross_Platform_Apps_Private -> Nikatru_Android_Apps_Private, which is NOT re-declared out of matrix, because that name is now the INTENDED private name of Google_Play_Store/Android/Apps and github.accountingRule permits a repo exactly ONE accounting: declaring it both ways is the shape where a repo looks accounted for from either end while nobody owns it. Its hazard did not go away with its line - it got worse, and it now lives in collisions[latent-backup-remote-name].",
+      "entries": [
+        {
+          "repo": "Project_Web_Presence",
+          "why": "The storefront - the CONSUMER of the catalogues, not a product in one. backing.products[storefront] deliberately claims no slot: Nikatru_Web_Store/Web/Apps by the tree's own pattern means 'products shipped to a web store', and filing the store there makes the store a product of itself and hands the rename rules to the very repo holding the pinned owner/repo strings. STORE-MATRIX-PLAN.md section 5.3 is OPEN; this is an absence on purpose.",
+          "measured": "2026-08-18: local sibling Projects/Project_Web_Presence has origin https://github.com/globalonlinedeveloper/Project_Web_Presence.git. 2026-08-19 RE-MEASURED: the working copy has MOVED to Projects/Nikatru_Storefront_Public and its origin was UNCHANGED at that reading - still globalonlinedeveloper/Project_Web_Presence, read from .git/config. The GitHub repo was NOT renamed by that MOVE and nothing in this work renamed it. 🔴 SUPERSEDED later the same day: the owner renamed it to Nikatru_Storefront_Public, and the working copy's origin now reads that name (re-measured 2026-08-19 evening with `git remote get-url origin`, and again 2026-08-19 by a later session). The directory is now declared in the top-level `infrastructure` block, which is what stops its Nikatru_-prefixed, _Public-suffixed name from reading as a slot hiding at depth 1."
+        },
+        {
+          "repo": "Project_Cross_Platform_Apps_Private",
+          "why": "THE LATENT COLLISION OF STORE-MATRIX-PLAN.md section 2.5, AND IT IS REAL - this repo EXISTS in the org, measured read-only on 2026-08-18. The live slot's private half (Google_Play_Store/Android/Apps/Nikatru_Android_Apps_Private) has NO remote: `git remote -v` printed nothing. So this GitHub repo is NOT that directory's remote, and the corpus records that the two hold DIFFERENT SHAPES - the remote carries the corpus under a `private/` subtree prefix plus plain files at its root. It is declared out-of-matrix so it stops reading as an orphan; it is NOT declared as any slot's boundRemote, because it is not bound to one. If the private slots ever get remotes (STORE-MATRIX-PLAN.md section 5.4), pushing the wrong shape into this name is a data-loss-shaped event.",
+          "measured": "2026-08-18: exists in the org, PRIVATE. Its CONTENTS were NOT fetched or compared - the shape difference above is quoted from the corpus, not measured here."
+        }
+      ]
+    }
+  }
+}

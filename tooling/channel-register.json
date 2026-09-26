@@ -15,7 +15,8 @@
     "  [9]R-5  release only to declared channels, never a partial  -> this file + aggregatingJob",
     "  [9]R-6  every artifact names the gated commit it came from  -> lane.*",
     "  [10]D-1 no channel is claimed that is not served            -> platforms x served",
-    "  [10]D-4 every store channel has a publisher account         -> kind=store + ownerQueue",
+    "  [10]D-4 every store channel has a publisher account         -> kind=store + ownerQueue, or a",
+    "                                                                 dated open accountStatus",
     "  [10]D-5 store listing metadata generated from the spec      -> storeMetadataDir +",
     "                                                                 storeMetadataContract",
     "  [10]D-9 what is live on which channel, machine-answerable   -> deploymentEnvironment",
@@ -67,8 +68,9 @@
     "    on the sentinel FAILS, a deferred row PRINTS, and a HALF-configured block fails in either state —",
     "    the same rule `packageIdentity` follows, for the same reason: a half-filled identity packages and",
     "    ships cleanly under the wrong name                                          [9]R-3",
-    "  · every `kind: store` row names an `ownerQueue` id. SHAPE ONLY: CI cannot read OWNER_QUEUE.md",
-    "    (see below), but a store row with no id at all is checkable here          [D-4]",
+    "  · every `kind: store` row names an `ownerQueue` id OR carries an `accountStatus` that is open",
+    "    (`live` or `verified`) and dated — one rule on both surfaces since 2026-09-25. SHAPE ONLY: CI",
+    "    cannot read OWNER_QUEUE.md (see below), but a store row with neither is checkable here  [D-4]",
     "  · the aggregating job's `needs` equals every other job in its workflow — the 'never a partial",
     "    set' half, which is how a new platform job silently stops being required  [R-5]",
     "  · disqualified channels are named with the LOCKED ADR that killed them, and printed every run",
@@ -96,6 +98,13 @@
     "SEPARATE private repo, not on the CI checkout at all, so no CI guard can read it. [10]D-4's machine",
     "limbs as written are unimplementable in CI for that reason — they are a LOCAL check. Recorded here",
     "so the ids are at least in one place a guard could reach if the brain ever ships.",
+    "⏱ 2026-09-25 (D3a, O-CAPTURE-LEAVES-DERIVED-SETS-STALE): THE LOCAL CHECK EXISTS. The",
+    "`register-owner-queue` subject of tooling/scripts/owner-ids.mjs, run by",
+    "tooling/scripts/assert-public-citations.mjs in the git hooks, resolves each `channels[].ownerQueue`",
+    "to a LIVE row (open in Private/platform-state/open.json, or pending in the owner queue) and each",
+    "`accountStatus.openedBy` and `disqualified[].ownerQueue` to a row in any state. So an `ownerQueue`",
+    "names the owner item still owed for a channel. When that item closes and the account is open, the",
+    "row carries `ownerQueue: null` and keeps the item as `accountStatus.openedBy`, its provenance.",
     "",
     "⚠️ MINIMUM TOOLCHAIN NAMES KEYS, NOT VALUES. [pipeline F-2] says every version is declared once;",
     "duplicating '3.44.8' here would make this file the second declaration and the first to drift. So a",
@@ -2152,7 +2161,7 @@
       },
       "deploymentEnvironment": "{app}-android-play",
       "storeMetadataDir": "apps/{app}/store/android-play",
-      "ownerQueue": "A-3",
+      "ownerQueue": null,
       "identity": {
         "_why": [
           "[10]D-3 — one app_id derives every store identity, and this is where the ANDROID one is",
@@ -2178,10 +2187,15 @@
           "whether an enrolment has completed. assert-channel-register.mjs holds it to a RELATIONSHIP",
           "instead — a `served: true` row whose status is not `verified` FAILS the build (a channel",
           "cannot be served through an account that does not exist), and every other gap PRINTS on every",
-          "run. Failing on the rest would block every merge on work only the owner can do."
+          "run. Failing on the rest would block every merge on work only the owner can do.",
+          "",
+          "⏱ 2026-09-25 (D3a, O-CAPTURE-LEAVES-DERIVED-SETS-STALE): A-3 was closed and the account opened, so",
+          "`ownerQueue` is null and A-3 is `openedBy` below. An `ownerQueue` names a LIVE owner item; the git",
+          "hooks resolve both fields (tooling/scripts/owner-ids.mjs), which CI cannot."
         ],
         "status": "verified",
         "asOf": "2026-08-04",
+        "openedBy": "A-3",
         "note": "Play ORGANIZATION account, VERIFIED 2026-08-04 11:12 IST — Organization ✅ and Authorized representative ✅, website verified, $25 paid, OWNER_QUEUE A-3 CLOSED. ⚠️ THIS FIELD SAID \"none — No Play Console account\" AND WAS FALSE FOR TWO DAYS, in the PUBLIC repo, while three other files in this same tree already said the opposite (apps/subscriptiontracker/store/android-play/content-rating.json, tooling/ci/assert-play-declarations.mjs, and ci.yml's own comment). And it was NOT unguarded — assert-channel-register printed 'ACCOUNT NONE: android-play … as of 2026-08-03 · No Play Console account' on EVERY CI run for two days after it became false. That is the sharper lesson: the gap-printer worked perfectly and printed a gap that had closed, in a message identical to the one it had printed correctly for weeks. A print that repeats an expected line is wallpaper, and a `verified` row printed NOTHING at all — so the freshness of the claim was never surfaced in either state. `accountStatus` also only FAILS on `served: true`, and this row is deliberately not served. Exactly the defect fixed one channel over for windows-store; found the same way, by reviewing a vendor file against the artefacts. The account record is nikatru/vendors/google.md."
       },
       "submission": {
@@ -2406,10 +2420,11 @@
       },
       "deploymentEnvironment": "{app}-ios-appstore",
       "storeMetadataDir": "apps/{app}/store/ios-appstore",
-      "ownerQueue": "A-4",
+      "ownerQueue": null,
       "accountStatus": {
         "status": "verified",
         "asOf": "2026-09-08",
+        "openedBy": "A-4",
         "note": "Membership ACTIVE. Individual enrolment paid 2026-08-31; an authenticated App Store Connect call on 2026-09-05 and again on 2026-09-08 answered HTTP 200 with an ACCOUNT_HOLDER record. OWNER_QUEUE A-4 CLOSED 2026-08-31. The account holds ZERO apps, ZERO bundle ids, ZERO certificates and ZERO profiles: what blocks this channel is a distribution certificate nobody has issued and a packaging step nothing runs, both of which an agent can close through the ASC API. It is NOT blocked by the account."
       },
       "bundleIdentifier": {
@@ -2571,10 +2586,11 @@
       },
       "deploymentEnvironment": "{app}-macos-appstore",
       "storeMetadataDir": "apps/{app}/store/macos-appstore",
-      "ownerQueue": "A-4",
+      "ownerQueue": null,
       "accountStatus": {
         "status": "verified",
         "asOf": "2026-09-08",
+        "openedBy": "A-4",
         "note": "Membership ACTIVE. Individual enrolment paid 2026-08-31; an authenticated App Store Connect call on 2026-09-05 and again on 2026-09-08 answered HTTP 200 with an ACCOUNT_HOLDER record. OWNER_QUEUE A-4 CLOSED 2026-08-31. The account holds ZERO apps, ZERO bundle ids, ZERO certificates and ZERO profiles: what blocks this channel is a distribution certificate nobody has issued and a packaging step nothing runs, both of which an agent can close through the ASC API. It is NOT blocked by the account. The SAME single membership as ios-appstore: one account, two App Store Connect records, so this row's status can never legitimately differ from the iOS row's."
       },
       "bundleIdentifier": {
@@ -2694,10 +2710,11 @@
       },
       "deploymentEnvironment": "{app}-windows-store",
       "storeMetadataDir": "apps/{app}/store/windows-store",
-      "ownerQueue": "A-2",
+      "ownerQueue": null,
       "accountStatus": {
         "status": "verified",
         "asOf": "2026-09-22",
+        "openedBy": "A-2",
         "note": "COMPANY account created and SUBMITTED 2026-08-05 via storedeveloper.microsoft.com. Email ✅ and employment ✅ verified INSTANTLY (the sign-in domain matches the company domain — a Google Workspace identity, see nikatru/vendors/google.md); business verification under review, Microsoft quotes ~5 business days, follow-up armed 13 Aug. D-U-N-S auto-retrieved and validated with nothing uploaded and no document reviewed. ⚠️ THIS FIELD SAID \"none\" AND \"OWNER_QUEUE A-2 currently points at Individual\", AND BOTH WERE FALSE — A-2 stopped pointing at Individual on 2026-07-29 and the account was created as a COMPANY on 2026-08-05. The commit that fixed the very same stale claim in this row's `deferral.alsoBlockedBy` (5cefd88, 2026-08-05) did not touch this field, so one fact lived in two fields of one object and only one was corrected. That is the duplication failure the vendor-file restructure exists to remove, reproduced inside a single JSON row. The one-way door is REAL and retained as the reason the Company choice was deliberate: Microsoft does not support converting Individual to Company, and the only remedy is a second publisher account — exactly the related-account posture [10]D-6 and L21 exist to avoid. The account record is nikatru/vendors/microsoft.md. ⏱ 2026-09-22 — `applied` → `verified`: Partner Center Account settings → Legal info read ~09:36Z in the owner's signed-in session: Company, Active, Authorized. The same session read the three Product identity values that `packageIdentity` below now carries. The seller ID is deliberately NOT written here (tooling/release/submit-windows-store.mjs keeps seller-ID values out of the public tree)."
       },
       "identity": {
@@ -3506,7 +3523,12 @@
         "`O-APPS-GOV-IN-SUSPENSION-CLOCK` is a real row in Private/platform-state/open.json: owner-owned,",
         "dated (due 2026-10-31), and carrying both legs of this channel — the owner's upload and this",
         "agent-written runbook. It is the more checkable pointer of the two, and it is checkable by a",
-        "reader with the corpus rather than by CI, which is exactly the standing of the ids beside it."
+        "reader with the corpus rather than by CI, which is exactly the standing of the ids beside it.",
+        "",
+        "⏱ 2026-09-25 (D3a, O-CAPTURE-LEAVES-DERIVED-SETS-STALE): of the queue ids named above only A-6",
+        "is still an `ownerQueue`; A-2, A-3 and A-4 closed and are `accountStatus.openedBy` on their rows.",
+        "This id STAYS although this account is open, because the row is still the live owner item for",
+        "the channel. The git hooks now resolve it (tooling/scripts/owner-ids.mjs); CI still cannot."
       ],
       "identity": {
         "_why": [

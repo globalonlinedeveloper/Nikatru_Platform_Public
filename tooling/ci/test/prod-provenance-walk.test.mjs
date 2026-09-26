@@ -45,7 +45,10 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { createServer } from 'node:http';
+
 import { backoffPlan } from '../../ops/bounded-retry.mjs';
+import { KILL_MS, runBounded } from './fixtures/silent-server.mjs';
 // A NAMESPACE import on purpose: against the code this file was written to
 // fail, the new names do not exist yet, and a named import would refuse the
 // whole module instead of letting each case show what it catches.
@@ -390,6 +393,165 @@ describe('the point read — a callee lane is looked up in its caller\'s runs', 
       assert.match(r.stderr, /no release lane has a completed run numbered 3850 at it \(the completed runs at it: ci\.yml run 3850\)/);
     } finally {
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+// ── THE DATE WINDOWS ─────────────────────────────────────────────────────────
+// ⏱ 2026-09-26 · Ops watch #536 (run 36214720117) went exit 2 on
+//     ✗ COULD NOT LOOK — listing runs of ci.yml (branch=main&event=push): all 10 pages of 100 came back full, …
+// main had crossed 1,000 completed push runs of ci.yml, and GitHub serves at
+// most 1,000 results for one filtered listing (page 11 answers total_count 0;
+// total_count itself caps at 1,000 — measured 2026-09-26 03:33Z). The listing
+// is now walked in `created` windows (collectWindowed). `fakeRunsApi` below is
+// that endpoint as measured: newest first, `created` in GitHub's search syntax
+// on whole UTC days, and nothing past the 1,000th result of any query.
+describe('the date windows — a listing past GitHub\'s 1,000-result ceiling is read whole', () => {
+  const { collectWindowed, WalkTruncated } = monitor;
+  const TODAY = new Date('2026-09-26T03:30:00Z');
+  const DAY = 86_400_000;
+
+  /** `perDay` runs on each of the `days` days ending `lastDay` (YYYY-MM-DD), ids from `firstId`. */
+  function runsOver(lastDay, days, perDay, firstId = 1) {
+    const out = [];
+    const end = Date.parse(`${lastDay}T00:00:00Z`);
+    for (let d = days - 1; d >= 0; d--) {
+      for (let k = 0; k < perDay; k++) out.push({ id: firstId + out.length, created_at: new Date(end - d * DAY + (k + 1) * 60_000).toISOString() });
+    }
+    return out;
+  }
+
+  function fakeRunsApi(runs, { resultCap = 1000 } = {}) {
+    const asked = [];
+    const sorted = [...runs].sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id - a.id);
+    const matches = (created, r) => {
+      if (created === null) return true;
+      const d = r.created_at.slice(0, 10);
+      let m;
+      if ((m = /^>=(\d{4}-\d\d-\d\d)$/.exec(created))) return d >= m[1];
+      if ((m = /^<=(\d{4}-\d\d-\d\d)$/.exec(created))) return d <= m[1];
+      if ((m = /^(\d{4}-\d\d-\d\d)\.\.(\d{4}-\d\d-\d\d)$/.exec(created))) return d >= m[1] && d <= m[2];
+      throw new Error(`a created qualifier GitHub's syntax does not have: ${created}`);
+    };
+    const answer = (created, page, perPage) => {
+      const hit = sorted.filter((r) => matches(created, r));
+      const start = (page - 1) * perPage;
+      if (start >= resultCap) return { rows: [], totalCount: 0 };
+      return { rows: hit.slice(0, resultCap).slice(start, start + perPage), totalCount: Math.min(hit.length, resultCap) };
+    };
+    const fetchPage = async ({ created, page, perPage }) => {
+      asked.push({ created, page, perPage });
+      return answer(created, page, perPage);
+    };
+    return { fetchPage, asked, answer };
+  }
+
+  const walked = (api) => {
+    const log = [];
+    return {
+      log,
+      done: collectWindowed({
+        what: 'listing runs of ci.yml (branch=main&event=push)',
+        idOf: (r) => r.id,
+        fetchPage: api.fetchPage,
+        today: TODAY,
+        log,
+        sleep: async () => {},
+      }),
+    };
+  };
+
+  test('a lane with 1,500 runs across 30 days is read WHOLE, every window consistent and under the ceiling', async () => {
+    const runs = runsOver('2026-09-26', 30, 50);
+    const api = fakeRunsApi(runs);
+    const { log, done } = walked(api);
+    const got = await done;
+    assert.equal(got.length, 1500);
+    assert.deepEqual(got.map((r) => r.id).sort((a, b) => a - b), runs.map((r) => r.id), 'every run, each once');
+    assert.ok(log.length >= 2, 'more than one window was needed');
+    for (const w of log) {
+      assert.equal(w.consistent, true, formatWalk(w));
+      assert.ok(w.distinct < 1000, `a window read under the ceiling: ${formatWalk(w)}`);
+    }
+    assert.match(formatWalk(log[0]), /^walk · listing runs of ci\.yml \(branch=main&event=push\) · created >=2026-09-20: total_count 350 /);
+  });
+
+  test('🔴 the walk START is no guessed floor: runs before a year-long quiet gap are still read', async () => {
+    // 1,100 recent runs, then nothing for over a year, then 3 old ones. A walk
+    // that stopped after "two empty windows" would never reach them.
+    const runs = [...runsOver('2025-06-03', 3, 1, 1), ...runsOver('2026-09-26', 22, 50, 100)];
+    const api = fakeRunsApi(runs);
+    const got = await walked(api).done;
+    assert.equal(got.length, 1103);
+    for (const id of [1, 2, 3]) assert.ok(got.some((r) => r.id === id), `pre-gap run ${id} was read`);
+    assert.match(api.asked.at(-1).created, /^<=\d{4}-\d\d-\d\d$/, 'the walk ENDS on a read with no lower bound');
+  });
+
+  test('🔴 a window still full at ONE DAY is COULD NOT LOOK (exit 2), naming that day', async () => {
+    const runs = [...runsOver('2026-09-24', 1, 1200), ...runsOver('2026-09-22', 1, 5, 5000)];
+    const { done } = walked(fakeRunsApi(runs));
+    await assert.rejects(done, (e) => {
+      assert.ok(e instanceof CouldNotLook, `expected COVERAGE LOST, got ${e}`);
+      assert.ok(!(e instanceof WalkTruncated), 'the one-day refusal is final, not one more split');
+      assert.match(e.message, /listing runs of ci\.yml \(branch=main&event=push\) · created 2026-09-24\.\.2026-09-24: all 10 pages of 100 came back full/);
+      assert.match(e.message, /the window created 2026-09-24\.\.2026-09-24 is ONE DAY wide, so it cannot be split any further/);
+      return true;
+    });
+  });
+
+  test('🔴 RED CONTROL — the old single listing refuses on the same 1,500-run fixture', async () => {
+    const api = fakeRunsApi(runsOver('2026-09-26', 30, 50));
+    await assert.rejects(
+      collectPaged({
+        what: 'listing runs of ci.yml (branch=main&event=push)',
+        idOf: (r) => r.id,
+        log: [],
+        sleep: async () => {},
+        fetchPage: async (page) => api.answer(null, page, 100),
+      }),
+      (e) => {
+        assert.ok(e instanceof WalkTruncated && e instanceof CouldNotLook);
+        assert.equal(
+          e.message,
+          'listing runs of ci.yml (branch=main&event=push): all 10 pages of 100 came back full, so rows exist that this reader never asked ' +
+            'for — a walk that stopped at its own cap is COVERAGE LOST, not a complete read',
+          'the refusal ops watch #536 printed, verbatim',
+        );
+        return true;
+      },
+    );
+  });
+
+  test('🔴 the REAL monitor, against a loopback GitHub holding a one-day burst, exits 2 naming the day', { timeout: KILL_MS + 10_000 }, async () => {
+    const yesterday = new Date(Date.now() - DAY).toISOString().slice(0, 10);
+    const api = fakeRunsApi(runsOver(yesterday, 1, 1200));
+    const server = createServer((req, res) => {
+      const u = new URL(req.url, 'http://127.0.0.1');
+      if (!/^\/repos\/fixture\/repo\/actions\/workflows\/[^/]+\/runs$/.test(u.pathname)) {
+        res.writeHead(404, { 'content-type': 'application/json' });
+        res.end('{}');
+        return;
+      }
+      const { rows, totalCount } = api.answer(u.searchParams.get('created'), Number(u.searchParams.get('page')), Number(u.searchParams.get('per_page')));
+      const workflow_runs = rows.map((r) => ({ ...r, run_number: r.id, conclusion: 'success', head_sha: 'a'.repeat(40) }));
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ total_count: totalCount, workflow_runs }));
+    });
+    await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
+    try {
+      const { code, out } = await runBounded(MONITOR, {
+        GITHUB_TOKEN: 'fixture-token',
+        GH_TOKEN: '',
+        GITHUB_REPOSITORY: 'fixture/repo',
+        CLOUDFLARE_API_TOKEN: '',
+        CLOUDFLARE_ACCOUNT_ID: '',
+        GITHUB_API_URL: `http://127.0.0.1:${server.address().port}`,
+      });
+      assert.equal(code, 2, out);
+      assert.match(out, new RegExp(`✗ COULD NOT LOOK — listing runs of \\S+.* · created ${yesterday}\\.\\.${yesterday}: all 10 pages of 100 came back full`));
+      assert.match(out, new RegExp(`the window created ${yesterday}\\.\\.${yesterday} is ONE DAY wide`));
+    } finally {
+      await new Promise((ok) => server.close(ok));
     }
   });
 });
