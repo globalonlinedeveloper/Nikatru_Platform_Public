@@ -85,7 +85,7 @@
   "observability": { "enabled": true },
   "vars": {
     "APP_ID": "{{app_id}}",
-    "SUPABASE_URL": "https://auth-api.nikatru.com",
+    "SUPABASE_URL": "https://lcrkiurkvzhkonjwhpiv.supabase.co",
     "API_VERSION": "v1",
     // CLOCK 2026-09-12 DOT THE APEX, NOT A PER-APP SUBDOMAIN. This stamped
     // `https://{{app_id}}.nikatru.com`, which [ADR 075] retired as an app address

@@ -24,7 +24,7 @@
   "observability": { "enabled": true },
   "vars": {
     "APP_ID": "platform",
-    "SUPABASE_URL": "https://auth-api.nikatru.com",
+    "SUPABASE_URL": "https://lcrkiurkvzhkonjwhpiv.supabase.co",
     "API_VERSION": "v1",
     // WHICH MONEY WORLD THIS DEPLOY IS — [pipeline 5]M-12. Exactly "live" or
     // "sandbox"; POST /v1/money/:provider answers 503 for anything else, because
@@ -437,7 +437,7 @@
         // why: the SAME identity project as production (D1 identity option
         // (a)). ES256 verification reads its JWKS, and /v1/health probes it
         // (src/index.ts:143).
-        "SUPABASE_URL": "https://auth-api.nikatru.com",
+        "SUPABASE_URL": "https://lcrkiurkvzhkonjwhpiv.supabase.co",
         // why: src/types.ts:348.
         "API_VERSION": "v1",
         // why: src/middleware/cors.ts:22, copied from the top level. Web stays
