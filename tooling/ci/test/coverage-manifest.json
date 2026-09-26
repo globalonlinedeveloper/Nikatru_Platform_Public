@@ -58,7 +58,7 @@
   "ceiling-budget.test.mjs": 73,
   "channel-arming.test.mjs": 27,
   "channel-claims.test.mjs": 50,
-  "channel-register.test.mjs": 307,
+  "channel-register.test.mjs": 308,
   "channel-surface.test.mjs": 7,
   "chassis-delegation.test.mjs": 54,
   "chassis-ledger.test.mjs": 37,

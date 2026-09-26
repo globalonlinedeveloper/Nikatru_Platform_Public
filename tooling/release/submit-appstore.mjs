@@ -83,7 +83,7 @@ const REGISTER = 'tooling/channel-register.json';
 const APPS = 'catalog/apps.json';
 
 // ── arguments, and the two stops (submit-common.mjs: COVERAGE LOST exits 2) ──
-const { argv, flag, opt, root: ROOT, ok, abs, read, coverageLost, die } = submitCli('submit-appstore');
+const { flag, opt, root: ROOT, ok, abs, read, coverageLost, die } = submitCli('submit-appstore');
 
 const DRY_RUN = flag('dry-run');
 const SUBMIT = flag('submit');

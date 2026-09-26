@@ -1267,7 +1267,8 @@ if (existsSync(join(ROOT, RELEASE_DIR))) {
       problems.push(`${rel} is listed in RELEASE_LIBRARIES ("${why}") and does not exist. Remove the entry.`);
       continue;
     }
-    const importSite = new RegExp(String.raw`\bfrom\s+['"]\./${lib.replace(/[.]/g, '\\.')}['"]`);
+    const literal = lib.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const importSite = new RegExp(String.raw`\bfrom\s+['"]\./${literal}['"]`);
     const importers = releaseEntries.filter(
       (e) => e !== lib && importSite.test(readFileSync(join(ROOT, RELEASE_DIR, e), 'utf8')),
     );

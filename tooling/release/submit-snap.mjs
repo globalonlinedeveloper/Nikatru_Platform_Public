@@ -193,7 +193,7 @@ const RECIPE_GUARD = 'assert-snapcraft-generable.mjs';
 const PACK_VERB = 'snapcraft pack';
 
 // ── arguments, and the two stops (submit-common.mjs: COVERAGE LOST exits 2) ──
-const { argv, flag, opt, root: ROOT, ok, step, abs, read, coverageLost, die } = submitCli('submit-snap');
+const { flag, opt, root: ROOT, ok, step, abs, read, coverageLost, die } = submitCli('submit-snap');
 
 const DRY_RUN = flag('dry-run');
 const SUBMIT = flag('submit');

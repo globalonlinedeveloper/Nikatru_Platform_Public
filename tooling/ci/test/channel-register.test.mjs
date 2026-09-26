@@ -1416,6 +1416,14 @@ describe('assert-channel-register — the lane\'s output vs the formats its chan
     assert.match(out, /tooling\/release\/submit-common\.mjs is a release library .* that NO script in tooling\/release imports/);
   });
 
+  // The library's name is matched as literal text: its `.` is not a wildcard,
+  // so an import of `./submit-commonXmjs` is not an import of it.
+  test('FAILS when the only import names the library with another character where its dot is', () => {
+    const { code, out } = run(tree({ withSubmission: true, extraFiles: { [SUBMIT_SCRIPT]: "import { submitCli } from './submit-commonXmjs';\n// the submission path\n" } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /tooling\/release\/submit-common\.mjs is a release library .* that NO script in tooling\/release imports/);
+  });
+
   test('FAILS when the submission script is not on disk', () => {
     const { code, out } = run(tree({ withSubmission: true, submissionScriptOnDisk: false }));
     assert.equal(code, 1, out);

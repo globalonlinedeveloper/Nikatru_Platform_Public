@@ -266,7 +266,7 @@ import { stripSourceComments } from './text-reductions.mjs';
 // ⏱ 2026-09-25 (pd2c) — the publish classification and the per-segment dry-run
 // rule followed the parser out, AS THEY WERE: assert-workflow-hardening limb 10
 // grades the same publish set. The gate walk stays here.
-import { parseWorkflow, parseResolvedWorkflows, lineAt, placeOf, refusalText, storePublishSteps, laneRunHost, laneRefusalText, shellSegments, classifyPublishes, flutterReleaseBuilds } from './workflow-scan.mjs';
+import { parseResolvedWorkflows, lineAt, placeOf, refusalText, storePublishSteps, laneRunHost, laneRefusalText, shellSegments, classifyPublishes, flutterReleaseBuilds } from './workflow-scan.mjs';
 // limb 2b. The repo's one JSONC reader, and the one sandbox predicate.
 import { parseJsonc } from './d1-sql-inventory.mjs';
 import { isObject, sandboxEnvironmentFindings } from './wrangler-environments.mjs';
