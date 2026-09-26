@@ -996,7 +996,10 @@ describe('assert-play-declarations — answer shape and the honest null', () => 
     assert.match(out(r), /names no entry in the declaration's own `unresolved` list/);
   });
 
-  test('a null WITH an open question passes, and PRINTS that the form cannot be submitted', () => {
+  // RC2. ⏱ 2026-09-25 (O-PLAY-DATA-SAFETY-FROM-A-STALE-RUN): this case was
+  // "a null WITH an open question passes" and asserted exit 0. Limb U turned the
+  // print into a failure; the print is kept, because it says who owns what.
+  test('🔴 RC2 · a null WITH an open question FAILS (limb U), and still PRINTS what is open', () => {
     const r = run(makeRoot({
       ds: (x) => {
         findAnswer(x, 'Email address').collected.demo = null;
@@ -1004,7 +1007,8 @@ describe('assert-play-declarations — answer shape and the honest null', () => 
         x.unresolved = [{ id: 'q1', affects: ['Email address'], ownerItem: 'O-3', question: 'is it?', howToResolve: 'observe it', status: 'UNVERIFIED' }];
       },
     }));
-    assert.equal(r.status, 0, out(r));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /carries 1 open question\(s\): "q1" \(referenced by Personal info > Email address\)/);
     assert.match(out(r), /THE FORM CANNOT BE SUBMITTED YET/);
     assert.match(out(r), /is UNANSWERED \(q1\)/);
   });
@@ -2067,5 +2071,201 @@ describe('assert-play-declarations — the IAP limb', () => {
     const r = run(makeRoot({ files: (f) => { f['apps/subscriptiontracker/app.yaml'] = null; } }));
     assert.equal(r.status, 1, out(r));
     assert.match(out(r), /apps\/subscriptiontracker\/app\.yaml does not exist/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-25 · O-PLAY-DATA-SAFETY-FROM-A-STALE-RUN — limbs U, P and M.
+// The Purchase history row said in prose that its `shared` answer was not
+// re-graded and that the merged set had to be measured again, while
+// `unresolved` was empty and the guard printed ok. RC1 (the real pre-change
+// declaration, run through --repo-root) is recorded in the guard's header; the
+// cases below are the fixture half. Each DEFERRAL_MARKERS phrase has its own
+// case, spelled out: the guard runs on import, so the list cannot be imported.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-play-declarations — limb P: a deferral in prose with nothing owning it', () => {
+  test('🔴 FAILS on "NOT re-graded" in an answer, naming the file, the JSON path and the phrase', () => {
+    const r = run(makeRoot({ ds: (x) => { findAnswer(x, 'Email address').basis = 'The shared answer is NOT re-graded in this change.'; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /data-safety\.json answers\[1\]\.basis says "NOT re-graded"/);
+  });
+
+  test('FAILS on "has to be re-taken" in the merged block', () => {
+    const r = run(makeRoot({ ds: (x) => { x.androidPermissions.merged.measuredFrom.note = 'the reading has to be re-taken'; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /androidPermissions\.merged\.measuredFrom\.note says "has to be re-taken"/);
+  });
+
+  test('FAILS on "is NOT made in this change"', () => {
+    const r = run(makeRoot({ ds: (x) => { findAnswer(x, 'Precise location').basis = 'The re-grade is NOT made in this change.'; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /answers\[0\]\.basis says "is NOT made in this change"/);
+  });
+
+  test('FAILS on "deliberately leaves open"', () => {
+    const r = run(makeRoot({ ds: (x) => { findAnswer(x, 'Contacts').basis = 'this change deliberately leaves open the question'; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /answers\[2\]\.basis says "deliberately leaves open"/);
+  });
+
+  test('FAILS on "left open"', () => {
+    const r = run(makeRoot({ ds: (x) => { findAnswer(x, 'Email address').note = 'the shared answer is left open'; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /answers\[1\]\.note says "left open"/);
+  });
+
+  test('FAILS on "until the next build"', () => {
+    const r = run(makeRoot({ ds: (x) => { findAnswer(x, 'Email address').basis = 'true until the next build'; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /answers\[1\]\.basis says "until the next build"/);
+  });
+
+  test('FAILS on "not yet re-measured"', () => {
+    const r = run(makeRoot({ ds: (x) => { x.androidPermissions.merged.permissions[0].why = 'not yet re-measured'; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /androidPermissions\.merged\.permissions\[0\]\.why says "not yet re-measured"/);
+  });
+
+  test('is case-sensitive: the same words in lower case are ordinary prose and pass', () => {
+    const r = run(makeRoot({ ds: (x) => { findAnswer(x, 'Email address').basis = 'an earlier text said this was not re-graded; it now is'; } }));
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /none of \d+ string\(s\) in the answers and the merged block defers an answer in prose/);
+  });
+
+  test('a deferral inside a block that names a live open question is limb U\'s finding, not limb P\'s', () => {
+    const r = run(makeRoot({
+      ds: (x) => {
+        findAnswer(x, 'Email address').collected.demo = null;
+        findAnswer(x, 'Email address').unresolved = 'q1';
+        findAnswer(x, 'Email address').basis = 'the demo column is left open until q1 is settled';
+        x.unresolved = [{ id: 'q1', affects: ['Email address'], ownerItem: 'O-3', question: 'is it?', howToResolve: 'observe it', status: 'UNVERIFIED' }];
+      },
+    }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /carries 1 open question\(s\): "q1"/);
+    assert.doesNotMatch(out(r), /says "left open"/);
+  });
+});
+
+describe('assert-play-declarations — limb U and the merged block as a referrer', () => {
+  test('🔴 an open question the merged block points at is referenced, and still FAILS the build', () => {
+    const r = run(makeRoot({
+      ds: (x) => {
+        x.androidPermissions.merged.unresolved = 'merged-stale';
+        x.androidPermissions.merged.measuredFrom.note = 'the reading has to be re-taken';
+        x.unresolved = [{ id: 'merged-stale', affects: ['Email address'], ownerItem: 'O-3', question: 'which set does the next .aab carry?', howToResolve: 'read the dump', status: 'OPEN' }];
+      },
+    }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /"merged-stale" \(referenced by androidPermissions\.merged\)/);
+    assert.doesNotMatch(out(r), /is referenced by NO answer/);
+    assert.doesNotMatch(out(r), /says "has to be re-taken"/);
+  });
+
+  test('FAILS when the merged block points at an open question that does not exist', () => {
+    const r = run(makeRoot({ ds: (x) => { x.androidPermissions.merged.unresolved = 'nowhere'; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /androidPermissions\.merged\.unresolved is "nowhere", which names no entry/);
+  });
+
+  test('the brick keeps its non-empty `unresolved` list, and limb U does not read it', () => {
+    const r = run(makeRoot());
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /still stamps UNANSWERED declarations/);
+    assert.match(out(r), /0 open question\(s\)/);
+  });
+});
+
+describe('assert-play-declarations — limb M: the merged set against the .aab this build produced', () => {
+  const runWith = (root, ...args) => spawnSync(process.execPath, [GUARD, root, ...args], { encoding: 'utf8' });
+  const FIXTURE_SET = [
+    'android.permission.VIBRATE',
+    'android.permission.INTERNET',
+    'com.example.subscriptiontracker.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION',
+  ];
+  const dumpFile = (permissions, schema = 1) => {
+    const file = join(TMP, `dump${seq++}.json`);
+    writeFileSync(file, `${JSON.stringify({ schema, runId: '7', commit: 'c0ffee', artifact: 'a', entry: 'base/manifest/AndroidManifest.xml', method: 'm', measuredOn: '2026-09-25', permissions }, null, 2)}\n`);
+    return file;
+  };
+
+  test('with no dump, the run PRINTS that the merged set was not compared', () => {
+    const r = run(makeRoot());
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /merged set NOT compared in this run: no \.aab here; it is compared in the android build job/);
+  });
+
+  test('a dump equal to the recorded set passes and says which run it was compared to', () => {
+    const r = runWith(makeRoot(), '--merged-dump', dumpFile(FIXTURE_SET), '--app', 'subscriptiontracker');
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /merged set equals the \.aab of run 7 at commit c0ffee \(recorded from run 1; 3 permission\(s\)\)/);
+  });
+
+  test('🔴 RC3 · FAILS when the .aab carries a permission the record lacks (BILLING)', () => {
+    const r = runWith(makeRoot(), '--merged-dump', dumpFile([...FIXTURE_SET, 'com.android.vending.BILLING']), '--app', 'subscriptiontracker');
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /the \.aab of run 7 at commit c0ffee carries `com\.android\.vending\.BILLING`, and neither merged\.permissions nor this tree's own Play manifests declare it/);
+  });
+
+  test('🔴 RC3 · FAILS when the record names a permission the .aab no longer carries', () => {
+    const r = runWith(makeRoot(), '--merged-dump', dumpFile(FIXTURE_SET.slice(1)), '--app', 'subscriptiontracker');
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /records `android\.permission\.VIBRATE`, and the \.aab of run 7 at commit c0ffee does not carry it/);
+  });
+
+  test('a permission the release manifest declares is expected in the .aab, not a finding', () => {
+    const MAIN = 'apps/subscriptiontracker/android/app/src/main/AndroidManifest.xml';
+    const r = runWith(
+      makeRoot({
+        files: (f) => { f[MAIN] = MANIFEST.replace('<application', '<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>\n    <application'); },
+        ds: (x) => { x.androidPermissions.declaredInRepo[MAIN] = ['android.permission.RECEIVE_BOOT_COMPLETED']; },
+      }),
+      '--merged-dump', dumpFile([...FIXTURE_SET, 'android.permission.RECEIVE_BOOT_COMPLETED']), '--app', 'subscriptiontracker',
+    );
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /merged set equals the \.aab of run 7/);
+  });
+
+  test('a permission the android-play channel overlay declares is expected in the .aab too', () => {
+    const PLAY = 'apps/subscriptiontracker/android/app/src/channel/android-play/AndroidManifest.xml';
+    const r = runWith(
+      makeRoot({
+        files: (f) => { f[PLAY] = '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.WAKE_LOCK"/>\n</manifest>\n'; },
+        ds: (x) => { x.androidPermissions.declaredInRepo[PLAY] = ['android.permission.WAKE_LOCK']; },
+      }),
+      '--merged-dump', dumpFile([...FIXTURE_SET, 'android.permission.WAKE_LOCK']), '--app', 'subscriptiontracker',
+    );
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /merged set equals the \.aab of run 7/);
+  });
+
+  test('RC4 · a --merged-dump that names a missing file is COVERAGE LOST, never "the set matches"', () => {
+    const r = runWith(makeRoot(), '--merged-dump', join(TMP, 'no-such-dump.json'), '--app', 'subscriptiontracker');
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /no-such-dump\.json, which does not exist/);
+  });
+
+  test('--merged-dump without --app is COVERAGE LOST', () => {
+    const r = runWith(makeRoot(), '--merged-dump', dumpFile(FIXTURE_SET));
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /--merged-dump <file> and --app <id> go together/);
+  });
+
+  test('--app naming no workspace app is COVERAGE LOST', () => {
+    const r = runWith(makeRoot(), '--merged-dump', dumpFile(FIXTURE_SET), '--app', 'nosuchapp');
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /--app nosuchapp is not an apps\/ member/);
+  });
+
+  test('a dump with an empty permission list is COVERAGE LOST', () => {
+    const r = runWith(makeRoot(), '--merged-dump', dumpFile([]), '--app', 'subscriptiontracker');
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /is not a schema-1 dump with a non-empty `permissions` list/);
+  });
+
+  test('an unknown flag is COVERAGE LOST', () => {
+    const r = runWith(makeRoot(), '--merged-dumps', 'x');
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /unknown argument\(s\) --merged-dumps/);
   });
 });

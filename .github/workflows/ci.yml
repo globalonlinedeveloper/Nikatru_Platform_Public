@@ -1351,6 +1351,23 @@ jobs:
         run: >
           node --single-threaded tooling/ci/assert-elf-page-alignment.mjs
           apps/${{ matrix.app }}/build/app/outputs/bundle/release/app-release.aab
+      # why: the Data safety form swears to the merged permission set, and only the
+      # built .aab carries it. Read from the .aab, cross-checked against the Play .apk
+      # restored above, then compared by limb M. O-PLAY-DATA-SAFETY-FROM-A-STALE-RUN.
+      - name: Dump the .aab's merged permissions, cross-checked against the Play .apk
+        run: >
+          node tooling/ci/dump-aab-permissions.mjs
+          --aab apps/${{ matrix.app }}/build/app/outputs/bundle/release/app-release.aab
+          --apk apps/${{ matrix.app }}/build/app/outputs/flutter-apk/app-release.apk
+          --out ${{ runner.temp }}/android-permissions.json
+          --run-id ${{ github.run_id }}
+          --commit ${{ github.sha }}
+          --artifact ci-android-${{ matrix.app }}
+      - name: The Data safety merged set equals this build's .aab
+        run: >
+          node tooling/ci/assert-play-declarations.mjs
+          --merged-dump ${{ runner.temp }}/android-permissions.json
+          --app ${{ matrix.app }}
       # why: apps.gov.in runs MobSF over the built .apk, and the merged manifest
       # exists only inside it. docs/ci/build-platforms.md §vapt.
       - name: The built .apk passes the static apps.gov.in VAPT items

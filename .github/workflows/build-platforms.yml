@@ -334,6 +334,30 @@ jobs:
         run: >
           node --single-threaded tooling/ci/assert-elf-page-alignment.mjs
           apps/${{ matrix.app }}/build/app/outputs/bundle/release/app-release.aab
+      # why: the Data safety form swears to the merged permission set; limb M compares this .aab's — O-PLAY-DATA-SAFETY-FROM-A-STALE-RUN.
+      - name: Dump the .aab's merged permissions, cross-checked against the Play .apk
+        id: aab_permissions
+        run: >
+          node tooling/ci/dump-aab-permissions.mjs
+          --aab apps/${{ matrix.app }}/build/app/outputs/bundle/release/app-release.aab
+          --apk apps/${{ matrix.app }}/build/app/outputs/flutter-apk/app-release.apk
+          --out ${{ runner.temp }}/android-permissions.json
+          --run-id ${{ github.run_id }}
+          --commit ${{ github.sha }}
+          --artifact ${{ matrix.app }}-linux-web-android-${{ env.ANDROID_SIGNING_POSTURE }}
+      - name: The Data safety merged set equals this build's .aab
+        run: >
+          node tooling/ci/assert-play-declarations.mjs
+          --merged-dump ${{ runner.temp }}/android-permissions.json
+          --app ${{ matrix.app }}
+      # why: `ci-proof-*`, not `<app>-*`: the release job publishes every `<app>-*` artifact.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: ${{ !cancelled() && steps.aab_permissions.outcome == 'success' }}
+        with:
+          name: ci-proof-android-permissions-${{ matrix.app }}
+          path: ${{ runner.temp }}/android-permissions.json
+          retention-days: 90
+          if-no-files-found: error
       # why: apps.gov.in runs MobSF over the built .apk, and the merged manifest
       # exists only inside it. docs/ci/build-platforms.md §vapt.
       - name: The built .apk passes the static apps.gov.in VAPT items
