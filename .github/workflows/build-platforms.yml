@@ -549,14 +549,18 @@ jobs:
             apps/${{ matrix.app }}/build/symbols/windows
           retention-days: 90
           if-no-files-found: error
+      # why: msix writes one name as both the Store title and the Start-menu label; the second line sets the label to app.yaml shortName (O-MSIX-IDENTITY-UNGRADED). bash, so either line failing stops the step.
       - name: Package MSIX (Microsoft Store)
         working-directory: apps/${{ matrix.app }}
-        run: dart run msix:create --version=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}.0
+        shell: bash
+        run: |
+          dart run msix:create --version=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}.0
+          node ../../tooling/store/msix-visual-name.mjs --app ${{ matrix.app }} build/windows/msix/${{ matrix.app }}.msix
       # why: straight after msix:create, before the stamp or any upload uses the package — assert-channel-register §10 limb (iv).
       - name: The MSIX carries the identity the register declares
         shell: bash
         run: >
-          node tooling/ci/assert-artifact-signed-msix.mjs
+          node tooling/ci/assert-artifact-signed-msix.mjs --app ${{ matrix.app }}
           apps/${{ matrix.app }}/build/windows/msix/${{ matrix.app }}.msix
       # why: bash, because pwsh hands a glob to node unexpanded; the .msix is what `build_windows` compiled — docs/ci/build-platforms.md §channel-stamps.
       - name: Stamp the .msix with the channel its build compiled in

@@ -87,6 +87,8 @@ function tree() {
     // a COVERAGE LOST refusal in the renderer, so a fixture missing these would
     // exercise that refusal on every case below instead of the case's own
     // mutation. They are exactly the files ICON_LABEL_TARGETS names.
+    // ⏱ 2026-09-25: the pubspec is MSIX_TITLE_TARGET's file now, not a label
+    // target, and stays here for that (O-MSIX-IDENTITY-UNGRADED).
     'apps/subscriptiontracker/web/manifest.json',
     'apps/subscriptiontracker/android/app/src/main/AndroidManifest.xml',
     'apps/subscriptiontracker/ios/Runner/Info.plist',
@@ -1267,6 +1269,12 @@ describe('limb 6 — the mobile-IAP opt-in and the bridge dependency travel toge
 // The label used below shares a token with the declaration's `name` on purpose:
 // that rule belongs to assert-app-naming.mjs, and a fixture that violated it
 // would be testing two guards at once.
+//
+// ⏱ 2026-09-25 — FOUR targets now, not five. msix_config.display_name left
+// ICON_LABEL_TARGETS: `msix` writes it as the Store title too, so it renders
+// app.yaml `name` (MSIX_TITLE_TARGET, its cases after this block), and the
+// Start-menu label is set in the packaged manifest by
+// tooling/store/msix-visual-name.mjs (O-MSIX-IDENTITY-UNGRADED).
 // ─────────────────────────────────────────────────────────────────────────────
 const LABEL = 'Subly Label';
 const LABEL_TARGETS = [
@@ -1274,8 +1282,9 @@ const LABEL_TARGETS = [
   ['apps/subscriptiontracker/android/app/src/main/AndroidManifest.xml', (t) => t.match(/android:label="([^"]*)"/)?.[1]],
   ['apps/subscriptiontracker/ios/Runner/Info.plist', (t) => t.match(/<key>CFBundleDisplayName<\/key>\s*<string>([^<]*)<\/string>/)?.[1]],
   ['apps/subscriptiontracker/macos/Runner/Info.plist', (t) => t.match(/<key>CFBundleDisplayName<\/key>\s*<string>([^<]*)<\/string>/)?.[1]],
-  ['apps/subscriptiontracker/pubspec.yaml', (t) => t.match(/^msix_config:[\s\S]*?^ {2}display_name: (.*)$/m)?.[1]],
 ];
+const MSIX_PUBSPEC = 'apps/subscriptiontracker/pubspec.yaml';
+const msixDisplayName = (t) => t.match(/^msix_config:[\s\S]*?^ {2}display_name: (.*)$/m)?.[1];
 
 /** Set (or replace) `shortName:` in the fixture's declaration. */
 function declareShortName(root, value) {
@@ -1294,8 +1303,8 @@ const stripMsix = (root) => {
   put(root, 'apps/subscriptiontracker/pubspec.yaml', `${text.slice(0, at)}\n`);
 };
 
-describe('the icon label reaches the five OS-level name fields this renderer owns', () => {
-  test('declaring shortName makes --check RED naming every one of the five files', () => {
+describe('the icon label reaches the four OS-level name fields this renderer owns', () => {
+  test('declaring shortName makes --check RED naming every one of the four files', () => {
     const root = tree();
     try {
       declareShortName(root, LABEL);
@@ -1305,22 +1314,18 @@ describe('the icon label reaches the five OS-level name fields this renderer own
     } finally { kill(root); }
   });
 
-  test('a write run puts the label in all five, ESCAPED for each format, and --check then passes', () => {
+  test('a write run puts the label in all four, ESCAPED for each format, and --check then passes', () => {
     const root = tree();
     try {
       declareShortName(root, 'Subly & Co');
       const first = spawn(RENDER, [root]);
       assert.equal(first.code, 0, first.out);
       for (const [rel, extract] of LABEL_TARGETS) {
-        // One value, three encodings, and that is the point: `&` is markup in
-        // XML, ordinary text in JSON and a YAML anchor sigil that forces the
-        // scalar to be quoted. A single shared `replace` would get two of the
-        // three wrong and produce files that no longer parse.
-        const expected = rel.endsWith('.plist') || rel.endsWith('.xml')
-          ? 'Subly &amp; Co'
-          : rel.endsWith('pubspec.yaml')
-            ? '"Subly & Co"'
-            : 'Subly & Co';
+        // One value, two encodings here, and that is the point: `&` is markup
+        // in XML and ordinary text in JSON. (The YAML encoding, which quotes
+        // it, is MSIX_TITLE_TARGET's and has its own case below.) A single
+        // shared `replace` would produce files that no longer parse.
+        const expected = rel.endsWith('.plist') || rel.endsWith('.xml') ? 'Subly &amp; Co' : 'Subly & Co';
         assert.equal(extract(get(root, rel)), expected, `${rel} did not receive the label`);
       }
       // The manifest must still PARSE and the plist must still be well formed —
@@ -1393,7 +1398,7 @@ describe('the icon label reaches the five OS-level name fields this renderer own
       stripMsix(root);
       const { code, out } = spawn(RENDER, [root, '--check']);
       assert.equal(code, 2, `a label that reaches no operating system is not a rendered label:\n${out}`);
-      assert.ok(out.includes('NOT ONE of the 5 icon-label'), out);
+      assert.ok(out.includes('NOT ONE of the 4 icon-label'), out);
     } finally { kill(root); }
   });
 
@@ -1415,6 +1420,57 @@ describe('the icon label reaches the five OS-level name fields this renderer own
       const { code, out } = spawn(RENDER, [root]);
       assert.equal(code, 0, out);
       LABEL_TARGETS.forEach(([rel], i) => assert.equal(get(root, rel), before[i], `${rel} must be untouched`));
+    } finally { kill(root); }
+  });
+});
+
+// ⏱ 2026-09-25 · msix_config.display_name is the STORE TITLE (O-MSIX-IDENTITY-UNGRADED).
+describe('msix_config.display_name renders the declaration\'s `name`, not its `shortName`', () => {
+  const declaredName = (root) => get(root, APP_YAML).match(/^name: (.*)$/m)[1];
+
+  test('a write run puts `name` in display_name, and a shortName does not reach it', () => {
+    const root = tree();
+    try {
+      declareShortName(root, LABEL);
+      const { code, out } = spawn(RENDER, [root]);
+      assert.equal(code, 0, out);
+      assert.equal(msixDisplayName(get(root, MSIX_PUBSPEC)), declaredName(root));
+      assert.notEqual(msixDisplayName(get(root, MSIX_PUBSPEC)), LABEL);
+    } finally { kill(root); }
+  });
+
+  // The recorded failing case: the pubspec as it was rendered before this date.
+  test('display_name hand-set to the shortName is stale — --check names the pubspec', () => {
+    const root = tree();
+    try {
+      declareShortName(root, LABEL);
+      assert.equal(spawn(RENDER, [root]).code, 0);
+      put(root, MSIX_PUBSPEC, get(root, MSIX_PUBSPEC).replace(/^( {2}display_name: ).*$/m, `$1${LABEL}`));
+      const { code, out } = spawn(RENDER, [root, '--check']);
+      assert.equal(code, 1, out);
+      assert.ok(out.includes(MSIX_PUBSPEC), out);
+    } finally { kill(root); }
+  });
+
+  test('a `name` that needs quoting is quoted for YAML', () => {
+    const root = tree();
+    try {
+      put(root, APP_YAML, get(root, APP_YAML).replace(/^name: .*$/m, 'name: Subly & Co Tracker'));
+      spawn(RENDER, [root]);
+      assert.equal(msixDisplayName(get(root, MSIX_PUBSPEC)), '"Subly & Co Tracker"');
+    } finally { kill(root); }
+  });
+
+  test('an msix_config with no display_name is COVERAGE LOST, not a skip', () => {
+    const root = tree();
+    try {
+      const text = get(root, MSIX_PUBSPEC);
+      const stripped = text.replace(/^ {2}display_name: .*\n/m, '');
+      assert.notEqual(stripped, text, 'the fixture pubspec must carry the field this case removes');
+      put(root, MSIX_PUBSPEC, stripped);
+      const { code, out } = spawn(RENDER, [root, '--check']);
+      assert.equal(code, 2, out);
+      assert.ok(out.includes('msix_config block with no display_name'), out);
     } finally { kill(root); }
   });
 });
