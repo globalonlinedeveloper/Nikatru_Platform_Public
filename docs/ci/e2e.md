@@ -442,7 +442,7 @@ verification against production is permitted and EXPECTED; what is
 required is that it cleans up, and that a row it writes SAYS who wrote it.
 
 ⚠️ THE VALUE HAS TO FIT IN 32 CHARACTERS, and overflowing is WORSE than
-`dev`. services/platform/src/routes/events.ts:378 binds it as
+`dev`. services/platform/src/routes/events.ts:373 binds it as
 `str(body?.app_version, 32)`, and that helper returns NULL — not a
 truncation — for anything longer, so an over-long stamp lands as a row
 that fails the resolver carrying NO information at all.

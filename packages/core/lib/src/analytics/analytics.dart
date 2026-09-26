@@ -130,12 +130,27 @@ class NoOpAnalytics implements Analytics {
   Future<void> purge() async {}
 }
 
+/// The platform Worker's stable error code for a row whose `app_version` is
+/// not an official release stamp. PRODUCTION ONLY, answered with 422
+/// (services/platform/src/lib/build-stamp.ts).
+const String kUnreleasedBuildError = 'unreleased_build';
+
+/// The server refused this BUILD, not this batch. A build's `app_version` is
+/// compiled in, so every later send from this process would be refused the
+/// same way: [AnalyticsRecorder] stops sending on it instead of retrying. Only
+/// a copy built without the release lane's APP_VERSION define (`dev`) sees it.
+class UnreleasedBuildFailure extends Failure {
+  const UnreleasedBuildFailure({Object? cause})
+      : super('the server accepts no rows from this build', cause: cause);
+}
+
 /// Seam for shipping a batch. The implementation lives in the app layer (dio on
 /// the existing `RestClient`) so `core` stays pure Dart — the same shape as
 /// `ConfigTransport` (ADR 005).
 abstract interface class EventTransport {
   /// POST a batch. [Ok] means the server accepted it and the client may drop
-  /// those events; [Err] means keep them queued and retry.
+  /// those events; [Err] means keep them queued and retry — EXCEPT an [Err]
+  /// carrying [UnreleasedBuildFailure], which means stop sending for good.
   Future<Result<void>> send({
     required String appId,
     required String anonId,
