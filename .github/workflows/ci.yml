@@ -947,6 +947,26 @@ jobs:
         run: node tooling/ci/assert-stamp-text-fidelity.mjs --vars tooling/bricks/app/_probe_vars.json
       - name: A freshly stamped app carries a COMPLETE, spec-derived store listing
         run: node tooling/ci/assert-store-metadata.mjs
+      # why: O-BRICK-STAMPS-NO-PRIVACY-DECLARATION. The brick stamps privacy.yaml
+      # `state: pending`; the log must count app #1 and the probe as `1 declared, 1 pending`.
+      - name: Every app declares privacy, the stamped probe as pending
+        run: node tooling/ci/assert-app-yaml.mjs
+      # why: the row's red control, every run. Without its privacy.yaml the probe
+      # must be refused (exit exactly 1, naming the file), and restored it must pass.
+      - name: RED CONTROL — the probe without its privacy.yaml is refused, naming it
+        run: |
+          cp apps/probe/privacy.yaml "$RUNNER_TEMP/probe-privacy.yaml"
+          rm apps/probe/privacy.yaml
+          set +e
+          node tooling/ci/assert-app-yaml.mjs > "$RUNNER_TEMP/privacy-red.log" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/privacy-red.log"
+          echo "assert-app-yaml exit: $code"
+          cp "$RUNNER_TEMP/probe-privacy.yaml" apps/probe/privacy.yaml
+          if [ "$code" -ne 1 ]; then echo "::error::assert-app-yaml exited $code with apps/probe/privacy.yaml deleted; the red control requires exactly 1"; exit 1; fi
+          if ! grep -qF 'apps/probe/privacy.yaml does not exist' "$RUNNER_TEMP/privacy-red.log"; then echo "::error::assert-app-yaml exited 1 without naming apps/probe/privacy.yaml"; exit 1; fi
+          node tooling/ci/assert-app-yaml.mjs
       - name: SHOW-1 — probe is in the catalogue, and a RE-STAMP changes nothing
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"
