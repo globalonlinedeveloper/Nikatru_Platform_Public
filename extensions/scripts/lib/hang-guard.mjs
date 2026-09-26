@@ -61,10 +61,13 @@
      - when the command is `node`, injects `--report-on-signal
        --report-signal=SIGUSR1 --report-directory=<dir>` directly after it;
      - at the ceiling, sends SIGUSR1 on POSIX to make the child write that
-       report, waits --grace-seconds (default 10) for it to land, then kills the
+       report, waits UP TO --grace-seconds (default 10) for it to be COMPLETE —
+       its size has stopped changing and it parses as JSON — then kills the
        whole process TREE — SIGKILL on POSIX, `taskkill /T /F` on Windows,
        because a plain kill(pid) leaves grandchildren holding the pipe and the
-       runner keeps waiting on them;
+       runner keeps waiting on them. A report still being written when the
+       grace runs out is named INCOMPLETE in a `::warning::`, never listed as
+       collected: half a report is not evidence;
      - prints a `::warning::` naming the attempt and the elapsed time, then
        retries;
      - exits with the child's own code the moment an attempt COMPLETES — a
@@ -173,6 +176,88 @@ function killTree(child) {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+/* ---------------- the report, and when it is COMPLETE ----------------
+   🔴 A REPORT FILE THAT EXISTS IS NOT A REPORT THAT HAS BEEN WRITTEN.
+   ⏱ 2026-09-26 00:19Z, PR #965, run 36204413291, job 108297753995: the
+   `selftest` job's hang case failed with `SyntaxError: Unexpected end of JSON
+   input` reading the report this guard had just reported as collected. Node
+   creates the file EMPTY, then fills it through an ~8 KiB stream buffer —
+   measured on node 22 (WSL, 8 cores): the file appears 1-49 ms after the
+   signal at 0 bytes, and is complete 5-16 ms after it idle (n=8) or
+   16-141 ms after it under an 8-way CPU load (n=32). It is written by a
+   `process.on(signal)` listener on the child's MAIN thread, so anything that
+   stalls the child in that window (CPU steal, a writeback stall on the
+   runner's disk) stretches it. The old code slept the grace BLIND and killed,
+   so a stall longer than the grace left 0 or 8192 bytes on disk, and the log
+   still said "diagnostic report(s) collected". Freezing the child for 3 s the
+   moment its report appears reproduced it 10 times in 10 against a 2 s grace,
+   9 of them with the exact CI message.
+
+   So the grace is now an UPPER BOUND on a wait for completion: every report
+   that appeared after the signal must hold the same size across two polls
+   AND parse as JSON. A healthy report ends the wait in tens of milliseconds,
+   which is why the grace can stay generous at no cost. Same 3 s freeze, this
+   code, 10 s grace: 10 of 10 reports complete. A freeze LONGER than the grace
+   is still cut off — the wait is bounded, or this file would hang — and is
+   then named INCOMPLETE rather than collected. */
+const REPORT_POLL_MS = 50;
+
+function listReports(dir) {
+  try { return fs.readdirSync(dir).filter(f => f.endsWith('.json')); }
+  catch (_) { return []; }
+}
+
+/* One read of one report: its size and whether it parses. Read once and
+   judged from the bytes read, so the size and the verdict describe the same
+   content. */
+function readReport(dir, name) {
+  let buf;
+  try { buf = fs.readFileSync(path.join(dir, name)); }
+  catch (_) { return { name, size: -1, parses: false }; }
+  let parses = false;
+  try { JSON.parse(buf.toString('utf8')); parses = true; } catch (_) {}
+  return { name, size: buf.length, parses };
+}
+
+/* Split every report in `dir` into complete and incomplete. Used after the
+   kill, when nothing can grow any more, so "parses" alone is the verdict. */
+function classifyReports(dir) {
+  const complete = [], incomplete = [];
+  for (const name of listReports(dir)) {
+    const r = readReport(dir, name);
+    (r.parses ? complete : incomplete).push(r);
+  }
+  return { complete, incomplete };
+}
+
+/* Wait until every report that was not in `before` is COMPLETE, bounded by
+   `graceMs`. Stops early, too, once `childGone()` says the child has exited:
+   a dead process writes nothing more, so waiting on it would only burn the
+   grace. Resolves { complete, incomplete, waitedMs, timedOut }. */
+async function awaitReports(dir, before, graceMs, childGone = () => false) {
+  const started = Date.now();
+  const deadline = started + graceMs;
+  const lastSize = new Map();
+  for (;;) {
+    const gone = childGone();
+    const complete = [], incomplete = [];
+    const fresh = listReports(dir).filter(f => !before.has(f));
+    for (const name of fresh) {
+      const r = readReport(dir, name);
+      /* Settled = same size as the previous poll. When the child is gone the
+         size cannot move again, so it is settled by definition. */
+      const settled = gone || lastSize.get(name) === r.size;
+      lastSize.set(name, r.size);
+      (settled && r.parses ? complete : incomplete).push(r);
+    }
+    const waitedMs = Date.now() - started;
+    if (fresh.length > 0 && incomplete.length === 0) return { complete, incomplete, waitedMs, timedOut: false };
+    if (gone) return { complete, incomplete, waitedMs, timedOut: false };
+    if (Date.now() >= deadline) return { complete, incomplete, waitedMs, timedOut: true };
+    await sleep(Math.min(REPORT_POLL_MS, Math.max(1, deadline - Date.now())));
+  }
+}
+
 /* One attempt. Resolves { hung, code } — `code` is meaningless when hung. */
 function runOnce(command, opts, attempt, reportDir) {
   return new Promise((resolve) => {
@@ -221,12 +306,24 @@ function runOnce(command, opts, attempt, reportDir) {
       console.log('::warning::hang-guard: attempt ' + attempt + ' passed its ' + opts.seconds +
         's ceiling (elapsed ' + elapsed + 's). Asking the child for a diagnostic report, then killing its process tree.');
       if (process.platform !== 'win32') {
-        /* SIGUSR1 is what --report-signal was set to. Node writes the report on
-           a separate thread, so it lands even when the main loop is wedged —
-           which is the only reason this is worth doing at all. */
+        /* SIGUSR1 is what --report-signal was set to. Node answers it with a
+           `process.on(signal)` listener on the child's MAIN thread (read out of
+           node v24.18.0's internal/process/report with --expose-internals), so
+           a loop that never drains still writes one; a main thread wedged in a
+           synchronous loop does not, and the NO-report line below says so.
+           The files present BEFORE the signal are set aside, so an earlier
+           attempt's report neither ends this wait nor extends it. */
+        const before = new Set(listReports(reportDir));
         try { process.kill(child.pid, 'SIGUSR1'); }
         catch (e) { console.log('hang-guard: could not signal the child (' + e.message + ')'); }
-        await sleep(opts.graceSeconds * 1000);
+        const waited = await awaitReports(reportDir, before, opts.graceSeconds * 1000,
+          () => child.exitCode !== null || child.signalCode !== null);
+        if (waited.complete.length && !waited.incomplete.length) {
+          /* The number this incident lacked: how long the report took on the
+             machine that hung. */
+          console.log('hang-guard: diagnostic report(s) complete ' + waited.waitedMs +
+            ' ms after the signal; killing the process tree now.');
+        }
       } else {
         console.log('hang-guard: on Windows Node cannot be signalled for a report, so the tree is killed without one.');
       }
@@ -238,13 +335,25 @@ function runOnce(command, opts, attempt, reportDir) {
          succeeds makes the step GREEN, and a green step is where nobody looks —
          so the one line that tells a reader an artifact is waiting has to be in
          the log of the run that collected it, not in the run that went red. */
-      let landed = [];
-      try { landed = fs.readdirSync(reportDir).filter(f => f.endsWith('.json')); } catch (_) {}
+      /* 🔴 ONLY A REPORT THAT PARSES IS "COLLECTED". The tree is dead by now,
+         so no file can grow again and parsing is the whole verdict. A file
+         that does not parse is named on its own line with its size — a reader
+         who downloads the artifact must not find half a report that the log
+         called evidence. */
+      const { complete, incomplete } = classifyReports(reportDir);
+      const landed = complete.map(r => r.name);
+      for (const r of incomplete) {
+        console.log('::warning::hang-guard: diagnostic report ' + r.name + ' in ' + reportDir +
+          ' is INCOMPLETE (' + r.size + ' bytes, does not parse as JSON): the child was still writing it when the ' +
+          opts.graceSeconds + 's grace ran out and its tree was killed. It is not evidence; a longer ' +
+          '--grace-seconds gives the next hang room to finish it.');
+      }
       if (landed.length) {
         console.log('hang-guard: diagnostic report(s) collected in ' + reportDir + ': ' + landed.join(', ') +
           ' — the `javascriptStack` and `libuv` sections name what was still holding the process. ' +
           'Download the hang-report-* artifact; a re-run does not reproduce this.');
-      } else {
+      } else if (!incomplete.length) {
+        /* An INCOMPLETE one was named above; this line is for none at all. */
         console.log('hang-guard: NO diagnostic report was written to ' + reportDir + '. On Windows that is expected ' +
           '(Node cannot be signalled for one); on POSIX it means the process was too wedged even for the report thread.');
       }
