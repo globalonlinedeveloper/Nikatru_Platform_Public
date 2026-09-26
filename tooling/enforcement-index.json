@@ -780,6 +780,7 @@
       ".github/workflows/deploy-sandbox.yml#platform",
       ".github/workflows/deploy-sandbox.yml#subscriptiontracker-api",
       ".github/workflows/deploy-web.yml#deploy-web",
+      ".github/workflows/deploy-web.yml#site",
       ".github/workflows/deploy-workers.yml#platform",
       ".github/workflows/deploy-workers.yml#subscriptiontracker-api",
       ".github/workflows/extensions.yml#store-publish",
@@ -2213,6 +2214,17 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#sites",
+      ".github/workflows/deploy-web.yml#site"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-site-bindings.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 015",
       "D-10",
@@ -2688,6 +2700,7 @@
     ],
     "invokedBy": [
       ".github/workflows/ci.yml#sites",
+      ".github/workflows/deploy-web.yml#site",
       ".github/workflows/site-drift-repair.yml#repair"
     ],
     "kind": "guard",
@@ -2752,7 +2765,17 @@
       "F-2"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#security-scan"
+      ".github/workflows/build-platforms.yml#apple",
+      ".github/workflows/build-platforms.yml#linux_web_android",
+      ".github/workflows/build-platforms.yml#windows",
+      ".github/workflows/ci.yml#security-scan",
+      ".github/workflows/deploy-web.yml#deploy-web",
+      ".github/workflows/submit-appstore.yml#dry-run",
+      ".github/workflows/submit-play.yml#dry-run",
+      ".github/workflows/submit-snap.yml#dry-run",
+      ".github/workflows/submit-snap.yml#submit",
+      ".github/workflows/submit-windows-store.yml#dry-run",
+      ".github/workflows/symbolication-proof.yml#prove"
     ],
     "kind": "guard",
     "ref": "tooling/ci/install-pinned-tool.mjs",
@@ -2809,6 +2832,7 @@
     "claims": [],
     "invokedBy": [
       ".github/workflows/deploy-web.yml#deploy-web",
+      ".github/workflows/deploy-web.yml#site",
       ".github/workflows/deploy-workers.yml#platform",
       ".github/workflows/deploy-workers.yml#subscriptiontracker-api"
     ],
@@ -2860,6 +2884,7 @@
     "invokedBy": [
       ".github/workflows/build-platforms.yml#release",
       ".github/workflows/deploy-web.yml#deploy-web",
+      ".github/workflows/deploy-web.yml#site",
       ".github/workflows/deploy-workers.yml#platform",
       ".github/workflows/deploy-workers.yml#subscriptiontracker-api",
       ".github/workflows/extensions.yml#release",
@@ -3750,6 +3775,7 @@
     ],
     "invokedBy": [
       ".github/workflows/ci.yml#app-brick",
+      ".github/workflows/deploy-web.yml#site",
       ".github/workflows/site-drift-repair.yml#repair"
     ],
     "kind": "script",
@@ -3799,6 +3825,16 @@
     ],
     "kind": "script",
     "ref": "tooling/sites/regen.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/deploy-web.yml#site"
+    ],
+    "kind": "script",
+    "ref": "tooling/sites/smoke-site-deploy.mjs",
     "references": [],
     "state": "WIRED"
   },

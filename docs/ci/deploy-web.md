@@ -551,6 +551,15 @@ stamped app with no backend now stops at that compare, before its build.
 
 ### before step **Install glitchtip-cli (pinned by version AND by digest)**
 
+⏱ 2026-09-25 (O-GLITCHTIP-CLI-INSTALLED-BY-HAND) — the step is ONE call now,
+`node tooling/ci/install-pinned-tool.mjs glitchtip-cli --out "$RUNNER_TEMP"`, as it is
+on every other lane that installs the client (ten steps, seven workflows, three runner
+OSes). The version and the linux digest are read from tooling/versions.json exactly as
+before; the installer adds a bounded retry and holds the binary's `--version` to the
+pin. `tooling/ci/install-pinned-tool.mjs` joined `deployUnits["<app>-web"]` in
+tooling/ci/lane-map.json, because this lane now runs it. P7 of
+install-pinned-tool.test.mjs refuses a hand install of any TOOLS member.
+
 ── SOURCE MAPS · INSTALL AND INJECT, BEFORE THE ARTIFACT IS SMOKED ─────
 🔴 WHAT THIS PAIR OF STEPS BUYS, MEASURED 2026-09-03 AND NOT INFERRED.
 `GET /api/0/organizations/nikatru/releases/{version}/files/` answered 200
@@ -905,4 +914,76 @@ newer push can cancel this leg mid-run — and runs 145 and 146 were
 cancelled exactly that way on 2026-08-08 while 144's bundle stayed live.
 A leg cancelled AFTER its upload succeeded has still published something,
 so it must still say what. `!cancelled()` would re-open the hole.
+
+## job `site` — ⏱ 2026-09-25 (row O-APEX-SITE-DEPLOYS-OUTSIDE-THE-PIPELINE, D3a)
+
+The apex site `sites/nikatru` publishes through this file too, by Direct Upload, to a NEW Pages
+project `nikatru-apex`. It is proven on `https://nikatru-apex.pages.dev` while `nikatru.com` stays
+on the Git-connected project `nikatru`. The owner moves the domain after the first green smoke,
+and D3b then points the smoke and the record at `nikatru.com`. The unit is
+`deployUnits["nikatru-site"]`, recorded under the ledger environment `nikatru-site`, a
+`siteEnvironments` row in `tooling/channel-register.json` (`kind: "site"`: no published-id flag,
+and `rollback.mjs` does not re-promote it).
+
+Steps: ref check → plan → `generate-discovery.mjs` → `check-site-integrity.mjs . sites/nikatru` →
+stage `sites/nikatru` into `build/nikatru-apex` and write `version.json` = `{sha, build_number}` there →
+`assert-site-bindings.mjs --fill-kv-id --out build/nikatru-apex` → ensure the project →
+`wrangler pages secret put SUBSCRIBE_RATE_LIMIT_SALT` through stdin → deploy from `build/nikatru-apex` →
+`tooling/sites/smoke-site-deploy.mjs` → record.
+
+### 🔴 the config is NOT in sites/nikatru, and the deploy runs from a staged copy
+
+`sites/nikatru` is the ROOT directory of the Git-connected project `nikatru` that serves
+`nikatru.com` (README: root `sites/nikatru`, output `/`). Cloudflare Pages reads a wrangler
+config that carries `pages_build_output_dir` in a project's root as that project's configuration
+(Cloudflare's documentation; not measured here). The D3a design put `sites/nikatru/wrangler.toml`
+there. The next Git build of `nikatru.com` would then have read a placeholder KV id and the name
+`nikatru-apex` as its own. So the config is `tooling/sites/nikatru-apex/wrangler.jsonc`. The job
+copies `sites/nikatru` into `build/nikatru-apex` (gitignored by `**/build/`), writes the
+filled config and `version.json` into the copy, and deploys the copy. `assert-site-bindings.mjs`
+refuses any wrangler config in `sites/nikatru`.
+
+Read in the pinned wrangler 4.135.0 (`tooling/wrangler/node_modules/wrangler/wrangler-dist/cli.js`,
+installed from the island's lockfile; not run):
+
+- `pages deploy` resolves Functions as
+  `customFunctionsDirectory || path.join(process.cwd(), "functions")`: the WORKING directory,
+  never the directory argument. So `pages deploy sites/nikatru` from the repo root would upload
+  the pages and ship no Function, and nothing would fail. The smoke's POST limb is the check on
+  that outcome: a host with no Function answers the POST 405 or 404.
+- The Pages config is `findWranglerConfig(process.cwd())`: `wrangler.json`, then `wrangler.jsonc`,
+  then `wrangler.toml`, in the working directory. It is a Pages config when it carries
+  `pages_build_output_dir`. Its bindings travel in the Functions bundle
+  (`createUploadWorkerBundleContents(workerBundle, config)`).
+- JSONC, not the TOML the D3a brief named. Three guards walk every wrangler config in the tree and
+  parse it as JSONC: `assert-ops-register.mjs` and `assert-retention-coverage.mjs` exit 2 on a
+  `.toml`, and `assert-data-inventory.mjs` refuses one by name ("Convert it, or teach this guard
+  TOML"). `assert-erasure-reach.mjs` classifies `tooling/sites/*/wrangler.jsonc` as a config that
+  binds a database and never owns one.
+- The upload skips `_worker.js`, `_redirects`, `_headers`, `_routes.json`, `functions`,
+  `**/.DS_Store`, `**/node_modules`, `**/.git` and `.wrangler`. `wrangler.jsonc` is NOT on that list,
+  so `nikatru-apex` serves the filled copy as `/wrangler.jsonc`. It holds identifiers only: the D1
+  id is already public in `services/platform/wrangler.jsonc`, and the KV namespace id is an
+  identifier, not a credential.
+- `pages secret put` reads the value from stdin when not interactive, and PATCHes the project's
+  `deployment_configs.production.env_vars`. A deployment sees the secrets set before it, so the
+  put runs before the deploy.
+
+### the KV namespace id is an Actions VARIABLE
+
+`tooling/sites/nikatru-apex/wrangler.jsonc` commits the placeholder `__NIKATRU_SIGNUPS_KV_ID__`.
+`assert-site-bindings.mjs --fill-kv-id --out build/nikatru-apex` grades the committed file, then
+writes it into the staged copy with the value of `vars.NIKATRU_SIGNUPS_KV_ID` in the placeholder's
+place, refusing a value that is not 32 hex characters. An unset variable fails the job before the
+project is created. The committed file is never rewritten.
+
+### the smoke writes nothing
+
+`POST /api/subscribe` with an EMPTY body and `content-type: application/json`: `subscribe.js`
+cannot parse it and answers `400 { ok: false, "Could not read your submission." }` from its
+catch, before the binding check and before any write. `tooling/ci/test/smoke-site-deploy.test.mjs`
+runs the shipping `onRequestPost` on that request with an `env` that throws on any read, and
+asserts that 400 and an untouched `env`. The same fact bounds the limb: it cannot show the
+bindings are present, because only a valid address reaches that check, and a valid address
+would write a row. `assert-site-bindings.mjs` grades the bindings before the deploy instead.
 
