@@ -6499,6 +6499,15 @@ describe('a weekly job in a twelve-slot workflow — the scan reads no job list 
     assert.deepEqual([...scheduleWeekdays(SLOT)], [1]);
   });
 
+  test('a dispatch clause gated by an input is still a dispatch clause: the Monday restriction stays readable (2026-09-26)', () => {
+    // the ledger job's if: after #526/#527 went red on post-merge dispatches: the Monday slot, or a dispatch that asks.
+    assert.deepEqual([...scheduleWeekdays("github.event.schedule == '45 7 * * 1' || (github.event_name == 'workflow_dispatch' && inputs.failure_ledger)")], [1]);
+    // RED CONTROLS: an input AND-ed onto the SCHEDULE clause, or onto anything but a dispatch, is not this shape.
+    assert.equal(scheduleWeekdays("(github.event.schedule == '45 7 * * 1' && inputs.failure_ledger) || github.event_name == 'workflow_dispatch'"), null);
+    assert.equal(scheduleWeekdays("github.event.schedule == '45 7 * * 1' || (github.ref == 'refs/heads/main' && inputs.failure_ledger)"), null);
+    assert.equal(scheduleWeekdays("github.event.schedule == '45 7 * * 1' || (github.event_name == 'workflow_dispatch' && !inputs.failure_ledger)"), null);
+  });
+
   test('the `${{ }}` wrapper and a parenthesised clause are read the same', () => {
     assert.deepEqual([...scheduleWeekdays("${{ (github.event.schedule == '45 7 * * 1') || github.event_name == 'workflow_dispatch' }}")], [1]);
   });
