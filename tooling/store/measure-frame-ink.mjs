@@ -40,6 +40,20 @@ import { fileURLToPath } from 'node:url';
 
 import { decodeRgba } from './png-codec.mjs';
 import { METRIC_ID, INK_DELTA, measureFrameInk, removedInkRunMedian } from './frame-ink.mjs';
+import { relaunchSingleThreaded } from '../ci/single-threaded-relaunch.mjs';
+
+// ── the process that reads the pixels runs with V8 background tasks OFF ─────
+// ⏱ 2026-09-25: the same 9x9 mode-filter loop hung
+// tooling/e2e/assert-frames-carry-text.mjs at exit in CI run 36192015901
+// (nodejs/node#54918). store-screenshots.yml already starts this tool as
+// `node --single-threaded`; the relaunch covers every other caller, its own test
+// file among them. A relaunch that cannot run is a reading that did not happen:
+// exit 2, never the 0 of a reading.
+const relaunched = relaunchSingleThreaded(import.meta.url, process.argv.slice(2), (lines) => {
+  console.error(`measure-frame-ink: REFUSING — ${lines[0]}`);
+  for (const line of lines.slice(1)) console.error(`  ${line}`);
+});
+if (relaunched !== null) process.exit(relaunched);
 
 const argv = process.argv.slice(2);
 const rootAt = argv.indexOf('--root');

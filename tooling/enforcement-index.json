@@ -3382,6 +3382,18 @@
   },
   {
     "claims": [
+      "O-3"
+    ],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#failure-ledger"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/triage-failed-runs.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
       "ADR 067",
       "R-7"
     ],
