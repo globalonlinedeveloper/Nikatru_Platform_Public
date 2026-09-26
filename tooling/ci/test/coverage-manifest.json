@@ -283,7 +283,7 @@
   "symbolication-proof.test.mjs": 73,
   "test-clock-mix.test.mjs": 25,
   "text-reductions.test.mjs": 46,
-  "triage-failed-runs.test.mjs": 92,
+  "triage-failed-runs.test.mjs": 98,
   "turnstile-hosts.test.mjs": 14,
   "ungraded-baseline-doc.test.mjs": 26,
   "update-coverage.test.mjs": 35,
