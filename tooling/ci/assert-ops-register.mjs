@@ -3495,8 +3495,8 @@ async function probeUnitRedSince(q, repo, wf, cache) {
 // `self` verdict in `evaluateRedSince`.
 //
 // 🔴 THAT IS ALSO WHY THE DOMAIN IS THE SCHEDULED PROOFS AND NOT EVERY
-// `duty.workflow.*` ROW. `ci.yml`, `deploy-web.yml`, `deploy-workers.yml` and
-// `site-drift-repair.yml` are `cadence: trigger` rows: `ci.yml`'s newest run on
+// `duty.workflow.*` ROW. `ci.yml`, `deploy-web.yml` and `deploy-workers.yml`
+// are `cadence: trigger` rows: `ci.yml`'s newest run on
 // `main` can be made green only BY MERGING, so blocking merges on it would be a
 // deadlock with no exit at all — the `ci-18` bootstrap shape, one level up, and
 // this repository has already paid ~46h of frozen queue for a milder version of
@@ -3535,19 +3535,19 @@ async function probeUnitRedSince(q, repo, wf, cache) {
 // is reachable without a merge", the workflow file is where that property
 // actually lives, and so that is what is read.
 //
-// ⬜ AND THE TWO ROWS THAT STAY OUT, NAMED HERE RATHER THAN INFERRED:
+// ⬜ AND THE ROWS THAT STAY OUT, NAMED HERE RATHER THAN INFERRED:
 //   · `ci.yml`             — `on:` is `push` + `pull_request`, NO
 //                            `workflow_dispatch`. Its newest run on `main` can
 //                            be made green only by merging, so grading it is
 //                            the deadlock the paragraph above refuses. The
 //                            derivation reaches that same answer on its own.
-//   · `site-drift-repair.yml` — `on:` is `push: branches: [main]` alone, NO
+//   · any other trigger row — `on:` is a push or a pull request alone, NO
 //                            `workflow_dispatch`. Same shape, same answer: a red
 //                            run there is cleared by the next push to `main`,
 //                            which is a merge. Excluded, and it is excluded by
 //                            the DERIVATION rather than by being left off a list
 //                            somebody could put it back on.
-// The moment either file grows a `workflow_dispatch:` trigger it joins the
+// The moment such a file grows a `workflow_dispatch:` trigger it joins the
 // domain automatically, and the moment a deploy workflow LOSES one it leaves —
 // which is a shrink, so `evaluateRedSince` PRINTS every trigger row it did not
 // admit, with the reason, on every run. A domain that can shrink in silence is

@@ -17,10 +17,10 @@
 // and the site feed is built from the catalogue as it was BEFORE the new app
 // joined it; every file is well-formed, every generator exits 0, and the feed
 // is one app short. Until this file the order was carried by whoever typed the
-// commands: post_gen.dart ran render alone, site-drift-repair.yml runs discovery
+// commands: post_gen.dart ran render alone, the deploy job runs discovery
 // alone, and a new app's author ran the rest from memory. `ORDER` below is the
 // list; post_gen.dart and tooling/kit/stamp-app.mjs run this CLI, and
-// site-drift-repair.yml runs its `--check`. A generator that joins the site
+// ci.yml's `sites` job runs its `--check`. A generator that joins the site
 // surface joins it by gaining a row here.
 //
 // ── THREE KINDS OF ENTRY ────────────────────────────────────────────────────
@@ -30,7 +30,7 @@
 //                  the plan with the disk in memory and spawns nothing.
 //   · 'git-dated'  discovery. Its sitemap <lastmod> is each page's git date, so
 //                  the right bytes for a page a PR changes exist only after that
-//                  PR merges; site-drift-repair.yml repairs it on main. --check
+//                  PR merges; the deploy job generates it, uncommitted. --check
 //                  names the skip on its own line and compares it (in memory,
 //                  through planDiscovery) only under --with-discovery.
 //
@@ -157,8 +157,8 @@ export function regen(root, { check = false, withDiscovery = false } = {}) {
     if (r === null) {
       skipped.push(entry.id);
       lines.push(
-        `skip ${entry.id} — git-dated: its sitemap <lastmod> is the merge date, so site-drift-repair.yml ` +
-          `regenerates it on main. Pass --with-discovery to compare it in memory.`,
+        `skip ${entry.id} — git-dated: its sitemap <lastmod> is the merge date, so the deploy job ` +
+          `generates it, uncommitted. Pass --with-discovery to compare it in memory.`,
       );
       continue;
     }

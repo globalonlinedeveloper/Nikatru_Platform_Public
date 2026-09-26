@@ -427,8 +427,8 @@ if (isMain) {
     // 🔴 READ, DO NOT `existsSync` THEN READ. The check-then-act form is a
     // time-of-check/time-of-use race (CodeQL js/file-system-race): between the
     // two calls the file can appear, vanish or change, and on this repository's
-    // own machinery that is not hypothetical — `site-drift-repair` regenerates
-    // this surface while a local generator may be running. Attempting the read
+    // own machinery that is not hypothetical — a CI job regenerates a surface
+    // on disk while a local generator may be running. Attempting the read
     // and treating its failure as "absent" collapses the two calls into one, so
     // there is no window to lose.
     let current = null;

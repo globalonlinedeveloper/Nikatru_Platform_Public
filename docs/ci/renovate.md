@@ -122,7 +122,7 @@ RENOVATE_TOKEN, which belongs to the owner's account, so GitHub
 attributes them there whatever this field says. What the field buys
 is a reader of `git log` being able to tell a bot commit from a hand
 -written one. It is NOT `github-actions[bot]` (the identity
-site-drift-repair.yml and store-screenshots.yml use) because this is
+name-clearance.yml and store-screenshots.yml use) because this is
 not that App and borrowing its address would be a false claim about
 provenance in the one place provenance is recorded.
 

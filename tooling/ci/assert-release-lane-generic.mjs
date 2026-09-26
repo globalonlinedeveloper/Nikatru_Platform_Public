@@ -438,8 +438,8 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'It builds no app, produces no release artefact and names no app id — its subject is a LANGUAGE, ' +
       'resolved by walking the checkout. R-1 quantifies over the workspace APP set, so this lane has ' +
       'nothing for this guard to compare and would sit in the denominator as a permanent empty-set pass, ' +
-      'the same reason already written out for deploy-workers.yml, ops-watch.yml, renovate.yml and ' +
-      'site-drift-repair.yml. Owned by stage 14 ops through `duty.workflow.codeql.yml` in ' +
+      'the same reason already written out for deploy-workers.yml, ops-watch.yml and renovate.yml. ' +
+      'Owned by stage 14 ops through `duty.workflow.codeql.yml` in ' +
       'tooling/ops/register.json. [ADR 067] decision 4.',
   ],
   [
@@ -460,7 +460,7 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'builds no app, produces no release artifact and names no app id. R-1 quantifies over the ' +
       'workspace APP set to prove a lane is generic, so a lane that ships no app has nothing for this ' +
       'guard to compare and would sit in the denominator as a permanent empty-set pass — the same ' +
-      'reason already written out for deploy-workers.yml, ops-watch.yml and site-drift-repair.yml. ' +
+      'reason already written out for deploy-workers.yml and ops-watch.yml. ' +
       'The owning stage is stage 14 ops, through the duty row `duty.workflow.renovate.yml` in ' +
       'tooling/ops/register.json, and that ownership is not prose: assert-ops-register.mjs holds ' +
       '`watched workflows === .github/workflows/*.yml` in BOTH directions, so this lane cannot be in ' +
@@ -481,7 +481,7 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'tooling/ops/name-clearance-sweep.mjs walks catalog/apps.json for its app set. R-1 quantifies over the ' +
       'workspace APP set to prove a lane is generic, so a lane that ships no app has nothing for this guard to ' +
       'compare and would sit in the denominator as a permanent empty-set pass, the reason already written out ' +
-      'for site-drift-repair.yml, whose pull-request shape it copies. The owning stage is stage 14 ops, through ' +
+      'for renovate.yml. The owning stage is stage 14 ops, through ' +
       'the duty row `duty.workflow.name-clearance.yml` in tooling/ops/register.json. What holds its OUTPUT ' +
       'correct is tooling/ci/assert-name-clearance.mjs, which ci.yml runs on the pull request it opens. ' +
       'Classified 2026-09-24, the round the workflow landed.',
@@ -492,8 +492,8 @@ const CLASSIFIED_ELSEWHERE = new Map([
       "main's head is green. It builds no app, produces no release artifact and names no app id: the lanes " +
       'it re-enters are DERIVED from the workflow files by tooling/ops/redeploy-stranded.mjs, and those lanes ' +
       '(build-platforms.yml, deploy-web.yml, deploy-workers.yml) are classified on their own rows. R-1 would carry it in the ' +
-      'denominator as a permanent empty-set pass, the reason already written out for deploy-workers.yml, ' +
-      'ops-watch.yml and site-drift-repair.yml. The owning stage is stage 14 ops, through the duty row ' +
+      'denominator as a permanent empty-set pass, the reason already written out for deploy-workers.yml ' +
+      'and ops-watch.yml. The owning stage is stage 14 ops, through the duty row ' +
       '`duty.workflow.redeploy-stranded.yml` in tooling/ops/register.json. What holds its behaviour correct ' +
       'is tooling/ci/test/redeploy-stranded.test.mjs. Classified 2026-09-23, the round the workflow landed.',
   ],
@@ -503,24 +503,9 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'from App Store Connect, dispatch-only and never on main, and pushes that one file to the dispatched ' +
       'branch. It builds no app, produces no release artifact and names no app id, so R-1 would carry it in ' +
       'the denominator as a permanent empty-set pass, the reason already written out for ops-watch.yml and ' +
-      'site-drift-repair.yml. The owning stage is stage 14 ops, through the duty row ' +
+      'renovate.yml. The owning stage is stage 14 ops, through the duty row ' +
       '`duty.workflow.apple-expiry-write.yml` in tooling/ops/register.json. What holds its behaviour correct ' +
       'is tooling/ci/test/apple-signing-expiry.test.mjs. Classified 2026-09-24, the round the workflow landed.',
-  ],
-  [
-    'site-drift-repair.yml',
-    'regenerates the discovery surface after a push to main and opens a pull request when the regenerated ' +
-      'bytes differ from what main carries. It builds no app, produces no release artifact and names no ' +
-      'app id. R-1 quantifies over the workspace APP set to prove a lane is generic, so a lane that ships ' +
-      'no app has nothing for this guard to compare and would sit in the denominator as a permanent ' +
-      'empty-set pass — the same reason already written out above for deploy-workers.yml and ops-watch.yml. ' +
-      'The owning stage is stage 14 ops, through the duty row `duty.workflow.site-drift-repair.yml` in ' +
-      'tooling/ops/register.json, and that ownership is not prose: assert-ops-register.mjs:23 holds ' +
-      '`watched workflows ≡ .github/workflows/*.yml` in BOTH directions, so this lane cannot be in the ' +
-      'tree without a row there. What holds its OUTPUT correct is tooling/ci/check-site-integrity.mjs, ' +
-      'which the workflow runs as its own last step, AFTER the regeneration. Classified 2026-08-25, the ' +
-      'round the workflow landed; between the two, this guard exited 1 naming it — the unclassified-lane ' +
-      'limb working exactly as designed, not a defect in the lane.',
   ],
   [
     'submit-appstore.yml',
@@ -712,6 +697,20 @@ if (missingGraded.length) {
     `GRADED_LANES names ${missingGraded.join(', ')}, which ${missingGraded.length === 1 ? 'is' : 'are'} not in ${WORKFLOW_DIR}.`,
     'Limbs A/A′/D would then grade fewer lanes than this file claims and still print ok.',
   ]);
+}
+// ⏱ 2026-09-26 · D3b — the other direction for the written classifications. An
+// entry naming a workflow that is not in the tree is a reader left behind by a
+// retirement: site-drift-repair.yml was retired in D3b and its entry here was one
+// of its readers. A finding, not COVERAGE LOST — nothing is graded through
+// CLASSIFIED_ELSEWHERE, so a stale entry hides no lane; it is an ownership claim
+// about a lane that is gone. The real repository only: a fixture root carries a
+// handful of workflows and this map names the real tree's.
+const staleClassified = [...CLASSIFIED_ELSEWHERE.keys()].filter((f) => !seen.includes(f));
+if (staleClassified.length && scanningRealRepo) {
+  fail(
+    `CLASSIFIED_ELSEWHERE names ${staleClassified.join(', ')}, which ${staleClassified.length === 1 ? 'is' : 'are'} ` +
+      `not in ${WORKFLOW_DIR}. A retired workflow leaves with every reader in the same change; delete the entry.`,
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

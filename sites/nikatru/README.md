@@ -24,6 +24,8 @@ bindings come from `tooling/sites/nikatru-apex/wrangler.jsonc`, which the job wr
 copy of this directory, and the salt from the Actions secret of the same name. No wrangler config may
 sit in this directory: it is the root of the Git-connected project, which would read it as its own.
 `nikatru.com` stays on the Git-connected project `nikatru` above until the owner moves the domain.
+⏱ 2026-09-26 (D3b): the domain is on `nikatru-apex`, the job smokes and records `https://nikatru.com`,
+and `sitemap.xml` is generated at deploy (it is no longer in git).
 `tooling/ci/assert-site-bindings.mjs` reads this table against that file, the Function's `env.*`
 reads and the job's `pages secret put`:
 
