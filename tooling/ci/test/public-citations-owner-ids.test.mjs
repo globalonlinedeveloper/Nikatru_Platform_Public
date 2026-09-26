@@ -24,6 +24,16 @@
 //   L3    a duplicate held id, a register with zero rows, an unparseable subject
 //         -> 2 each; case and whitespace variants of a real id -> 1 each; a
 //         recorded ruling beside its old id holds nothing       -> 0
+//   ⏱ 2026-09-25, D3a (O-CAPTURE-LEAVES-DERIVED-SETS-STALE), the channel
+//   register's owner ids, over a copy of the REAL tooling/channel-register.json
+//   projected onto the fields the subject reads:
+//   D3a-RC1  the register as it stood at BASE, --all-subjects  -> 1, the four
+//            closed store ids; the guard without the subject   -> 0
+//            and the register as committed after the data commit -> 0
+//   D3a-RC1b the same, outside this branch's diff              -> 0, STALE HOLD x4
+//   D3a-RC2  linux-snap.ownerQueue set to A-3                  -> 1, closed
+//   D3a-RC3  NIKATRU_BUSINESS_ROOT an empty directory          -> 2
+//   plus: an openedBy nobody carries -> 1 ABSENT; `channels` not an array -> 2.
 //   Each is written out by hand; none is declared in a loop.
 //
 // ⚠️ THE FIXTURE IS A REAL WORKSPACE, as in public-citations-shards.test.mjs: the
@@ -42,7 +52,7 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { idClass, isOwnerId, indexRows, resolveHold, holdsIn, subjectFor, subjectText, HOLD_SUBJECTS } from '../../scripts/owner-ids.mjs';
+import { idClass, isOwnerId, indexRows, resolveHold, holdsIn, subjectFor, subjectText, subjectPaths, HOLD_SUBJECTS, KINDS, SubjectShapeError } from '../../scripts/owner-ids.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..', '..');
@@ -74,6 +84,7 @@ const ID_BY_CLOSES = ['O', 'BY', 'CLOSES'].join('-');
 const ID_BY_WHAT = ['O', 'BY', 'WHAT'].join('-');
 const ID_BOTH = ['O', 'BOTH', 'PLACES'].join('-');
 const ID_NOPE = ['O', 'NOPE', 'NOPE'].join('-');
+const ID_CHANNEL_CLOCK = ['O', 'CHANNEL', 'CLOCK'].join('-');
 
 let BASE, PUB, PRIV, OPEN_JSON, QUEUE_JSON;
 
@@ -268,8 +279,9 @@ describe('owner-ids.mjs — the grammar and the resolver, as pure functions', ()
     assert.equal(resolveHold(hold('nobody'), rows).verdict, 'malformed');
   });
 
-  test('the one subject F1 ships is the clearance record, and a null there holds nothing', () => {
-    assert.equal(HOLD_SUBJECTS.length, 1);
+  test('the subject F1 ships is the clearance record, and a null there holds nothing', () => {
+    // ⏱ 2026-09-25 (D3a): was `HOLD_SUBJECTS.length === 1`. The register is the second subject.
+    assert.deepEqual(HOLD_SUBJECTS.map((x) => x.id), ['name-clearance-trademark', 'register-owner-queue']);
     const s = subjectFor('apps/subscriptiontracker/name-clearance.json');
     assert.ok(s);
     assert.equal(s.kind, 'owner-ruling');
@@ -361,6 +373,51 @@ describe('owner-ids.mjs — the grammar and the resolver, as pure functions', ()
     const rows = { open: new Map(), queue: new Map() };
     assert.equal(resolveHold({ id: 7, kind: 'owner-ruling', file: SUBJECT }, rows).verdict, 'malformed');
     assert.equal(resolveHold({ id: 'O-Name-Subly-Trademark', kind: 'owner-ruling', file: SUBJECT }, rows).verdict, 'absent', 'a mixed-case id has an id\'s shape and is looked up; no row carries it');
+  });
+
+  // ⏱ 2026-09-25, D3a: the channel register is the second subject.
+  test('D3a — the register subject reads three fields, names each hold by its channel, and a null holds nothing', () => {
+    const s = subjectFor('tooling/channel-register.json');
+    assert.ok(s);
+    assert.equal(s.kind, 'register-owner-queue');
+    assert.deepEqual(subjectPaths(s), ['channels[].ownerQueue', 'channels[].accountStatus.openedBy', 'disqualified[].ownerQueue']);
+    assert.equal(subjectFor('tooling/ci/channel-register.json'), null);
+    const R = 'tooling/channel-register.json';
+    const doc = {
+      channels: [
+        { id: 'web', ownerQueue: null },
+        { id: 'linux-snap', ownerQueue: 'A-6', accountStatus: { status: 'none' } },
+        { id: 'android-play', ownerQueue: null, accountStatus: { status: 'verified', openedBy: 'A-3' } },
+        { ownerQueue: 'A-9' },
+      ],
+      disqualified: [{ id: 'flathub', ownerQueue: 'A-5' }],
+    };
+    assert.deepEqual(holdsIn(s, R, doc), [
+      { file: R, jsonPath: 'channels[linux-snap].ownerQueue', id: 'A-6', kind: 'register-owner-queue', requires: 'live', anchor: 'linux-snap', key: 'ownerQueue' },
+      { file: R, jsonPath: 'channels[3].ownerQueue', id: 'A-9', kind: 'register-owner-queue', requires: 'live', anchor: null, key: 'ownerQueue' },
+      { file: R, jsonPath: 'channels[android-play].accountStatus.openedBy', id: 'A-3', kind: 'register-owner-queue', requires: 'exists', anchor: 'android-play', key: 'openedBy' },
+      { file: R, jsonPath: 'disqualified[flathub].ownerQueue', id: 'A-5', kind: 'register-owner-queue', requires: 'exists', anchor: 'flathub', key: 'ownerQueue' },
+    ]);
+    assert.deepEqual(holdsIn(s, R, { channels: [] }), [], 'no channel and no disqualified array hold nothing');
+    assert.throws(() => holdsIn(s, R, { channels: { 'android-play': { ownerQueue: 'A-3' } } }), SubjectShapeError);
+  });
+
+  test('D3a — `ownerQueue` must be LIVE, `openedBy` need only EXIST, and the kind takes no subject-text rule', () => {
+    const queue = new Map([
+      ['A-3', { id: 'A-3', status: 'closed', what: 'a fixture item about an account' }],
+      ['A-6', { id: 'A-6', status: 'pending', what: 'a fixture item about another account' }],
+    ]);
+    const open = new Map([[ID_CHANNEL_CLOCK, openRow(ID_CHANNEL_CLOCK, { owner: 'agent', blocks: 'a fixture clock', closes: 'a fixture upload' })]]);
+    const rows = { open, queue };
+    const hold = (id, requires) => ({ id, requires, kind: 'register-owner-queue', file: 'tooling/channel-register.json', jsonPath: 'channels[x].ownerQueue' });
+    assert.deepEqual(resolveHold(hold('A-6', 'live'), rows), { verdict: 'live', cls: 'queue', state: 'status=pending' }, 'a live row whose text never names the register still counts for this kind');
+    assert.deepEqual(resolveHold(hold('A-3', 'live'), rows), { verdict: 'not-live', cls: 'queue', state: 'status=closed' });
+    assert.deepEqual(resolveHold(hold('A-3', 'exists'), rows), { verdict: 'exists', cls: 'queue', state: 'status=closed' });
+    assert.deepEqual(resolveHold(hold('A-404', 'exists'), rows), { verdict: 'absent', guess: 'queue' });
+    assert.equal(resolveHold(hold('not an id', 'exists'), rows).verdict, 'malformed');
+    assert.equal(resolveHold(hold(ID_CHANNEL_CLOCK, 'live'), rows).verdict, 'live', 'a pointer is not an owner RULING, so an agent-owned open row is live');
+    assert.deepEqual(KINDS['owner-ruling'], { ownerOnly: true, namesSubject: true });
+    assert.equal(resolveHold({ ...hold(ID_CHANNEL_CLOCK, 'live'), kind: 'owner-ruling' }, rows).verdict, 'not-live', 'green control: the same row under the owner-ruling kind is refused');
   });
 });
 
@@ -590,5 +647,199 @@ describe('assert-public-citations — the ID CITATIONS class over a fixture work
     assert.equal(readFileSync(join(PUB, 'tooling', 'scripts', 'assert-public-citations.mjs'), 'utf8'), readFileSync(GUARD_SRC, 'utf8'));
     assert.equal(readFileSync(join(PUB, 'tooling', 'scripts', 'owner-ids.mjs'), 'utf8'), readFileSync(OWNER_IDS_SRC, 'utf8'));
     assert.ok(existsSync(join(PUB, 'tooling', 'scripts', 'repo-git.mjs')));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-25 · D3a (O-CAPTURE-LEAVES-DERIVED-SETS-STALE): the channel register's
+// owner ids. The register is the REAL one, projected onto the fields the subject
+// reads; the two stores carry the STATES the brief measured and no row text.
+// ─────────────────────────────────────────────────────────────────────────────
+const REGISTER = 'tooling/channel-register.json';
+const REAL_REGISTER_SRC = resolve(REPO, REGISTER);
+
+/** The real register, cut down to each channel's `id`, `ownerQueue` and
+ *  `accountStatus` {status, asOf, openedBy} and each disqualified row's `id` and
+ *  `ownerQueue`. The prose is dropped because its `Private/…` paths and
+ *  `[pipeline …]` tags would be graded against this fixture's corpus and fail for
+ *  reasons that are not about owner ids. */
+function projectedRealRegister() {
+  const real = JSON.parse(readFileSync(REAL_REGISTER_SRC, 'utf8'));
+  const status = (st) => ({ status: st.status, asOf: st.asOf, ...(st.openedBy !== undefined ? { openedBy: st.openedBy } : {}) });
+  return {
+    channels: real.channels.map((c) => ({ id: c.id, ownerQueue: c.ownerQueue ?? null, ...(c.accountStatus ? { accountStatus: status(c.accountStatus) } : {}) })),
+    disqualified: (real.disqualified ?? []).map((d) => ({ id: d.id, ownerQueue: d.ownerQueue ?? null })),
+  };
+}
+
+/** The register as it stood at BASE 1cb7c630: a channel whose account an owner
+ *  item opened carried that item as its `ownerQueue`. Rebuilt by moving each
+ *  `openedBy` back, so this reads BASE's shape whether or not the data commit
+ *  has landed; RC1 asserts the four ids it lands on. */
+function registerAtBase() {
+  const doc = projectedRealRegister();
+  doc.channels = doc.channels.map((c) => {
+    const openedBy = c.accountStatus?.openedBy;
+    if (openedBy === undefined || c.ownerQueue !== null) return c;
+    const { openedBy: _moved, ...rest } = c.accountStatus;
+    return { ...c, ownerQueue: openedBy, accountStatus: rest };
+  });
+  return doc;
+}
+
+/** The states the brief measured: `owner-queue.json` read 2026-09-24T00:19Z, and
+ *  the apps-gov-in clock row of open.json. Ids and states only; the owner's
+ *  file is never copied. ⚠️ A register edit that names an id not listed here
+ *  turns the committed-register case ABSENT, and the fix is to measure that id
+ *  and add its state, never to widen the resolver. */
+const MEASURED_QUEUE = [
+  { id: 'A-2', status: 'closed' },
+  { id: 'A-3', status: 'closed' },
+  { id: 'A-4', status: 'closed' },
+  { id: 'A-5', status: 'closed' },
+  { id: 'A-6', status: 'pending' },
+];
+const MEASURED_OPEN = [openRow('O-APPS-GOV-IN-SUSPENSION-CLOCK', { blocks: 'a fixture clock', closes: 'a fixture upload' })];
+
+/** Commit `doc` as the register and point `origin/main` at it. `changed` then
+ *  edits the working tree, which is a branch that touches the register. */
+function setRegister(doc, { changed = false } = {}) {
+  mkdirSync(dirname(join(PUB, REGISTER)), { recursive: true });
+  writeFileSync(join(PUB, REGISTER), `${JSON.stringify(doc, null, 2)}\n`, 'utf8');
+  git(PUB, 'add', '--', REGISTER);
+  git(PUB, 'commit', '-q', '--allow-empty', '-m', 'register', '--no-gpg-sign');
+  git(PUB, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+  if (changed) writeJson(join(PUB, REGISTER), { ...doc, _edited: 'on this branch' });
+}
+
+/** The stores as measured, and a clearance record that holds nothing, so every
+ *  finding below is the register's. */
+function measuredStores() {
+  setSubject(null);
+  setOpen(MEASURED_OPEN);
+  setQueue(QUEUE_JSON, MEASURED_QUEUE);
+}
+
+/** The mutant: owner-ids.mjs with the `REGISTER SUBJECT BEGIN … END` region
+ *  deleted, beside a copy of the guard. That is the guard as it stood before the
+ *  subject existed. */
+function writeNoRegisterMutant() {
+  const src = readFileSync(OWNER_IDS_SRC, 'utf8');
+  const begin = src.indexOf('/* ── REGISTER SUBJECT BEGIN');
+  const end = src.indexOf('REGISTER SUBJECT END', begin);
+  assert.notEqual(begin, -1, 'the REGISTER SUBJECT BEGIN marker is gone from owner-ids.mjs, so no mutant can be built');
+  assert.notEqual(end, -1, 'the REGISTER SUBJECT END marker is gone from owner-ids.mjs');
+  const mutant = src.slice(0, begin) + src.slice(src.indexOf('\n', end) + 1);
+  assert.ok(!mutant.includes("'tooling/channel-register.json'"), 'the mutant still declares the register subject, so the region deleted was not the one doing the work');
+  const dir = join(PUB, 'tooling', 'scripts', 'mutant-no-register');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'owner-ids.mjs'), mutant, 'utf8');
+  cpSync(GUARD_SRC, join(dir, 'assert-public-citations.mjs'));
+  cpSync(GIT_HELPER_SRC, join(dir, 'repo-git.mjs'));
+}
+
+describe('assert-public-citations — the channel register\'s owner ids (D3a)', () => {
+  test('D3a-RC1 — the register as it stood at BASE is exit 1 under --all-subjects, naming the four closed store ids; the guard without the subject passes it', () => {
+    measuredStores();
+    const atBase = registerAtBase();
+    const oq = (id) => atBase.channels.find((c) => c.id === id)?.ownerQueue;
+    assert.deepEqual(
+      [oq('android-play'), oq('ios-appstore'), oq('macos-appstore'), oq('windows-store'), oq('linux-snap'), oq('apps-gov-in')],
+      ['A-3', 'A-4', 'A-4', 'A-2', 'A-6', 'O-APPS-GOV-IN-SUSPENSION-CLOCK'],
+      'the rebuilt BASE register must carry the ids BASE carried, or this case is about some other tree',
+    );
+    setRegister(atBase);
+    const r = runGuard({ args: ['--all-subjects'] });
+    assert.equal(r.code, 1, r.out);
+    assert.ok(r.out.includes('channels[android-play].ownerQueue holds on a row that is NOT LIVE (status=closed) in owner-queue.json  A-3'), r.out);
+    assert.ok(r.out.includes('channels[ios-appstore].ownerQueue holds on a row that is NOT LIVE (status=closed) in owner-queue.json  A-4'), r.out);
+    assert.ok(r.out.includes('channels[macos-appstore].ownerQueue holds on a row that is NOT LIVE (status=closed) in owner-queue.json  A-4'), r.out);
+    assert.ok(r.out.includes('channels[windows-store].ownerQueue holds on a row that is NOT LIVE (status=closed) in owner-queue.json  A-2'), r.out);
+    assert.doesNotMatch(r.out, /channels\[linux-snap\]/, 'A-6 is pending');
+    assert.doesNotMatch(r.out, /channels\[apps-gov-in\]/, 'the clock row is open');
+    assert.doesNotMatch(r.out, /disqualified\[flathub\]/, 'a disqualification cites a ruled item, and a ruled item is closed');
+    assert.match(r.out, /moves to[\s\S]*`accountStatus\.openedBy`/);
+
+    writeNoRegisterMutant();
+    const old = runGuard({ file: join('mutant-no-register', 'assert-public-citations.mjs'), args: ['--all-subjects'] });
+    assert.equal(old.code, 0, `the guard without the register subject must pass this tree, or RC1 is not about the subject: ${old.out}`);
+  });
+
+  test('D3a-RC1b — the same register, NOT changed on this branch and without the flag, prints four STALE HOLD lines and exits 0', () => {
+    measuredStores();
+    setRegister(registerAtBase());
+    const r = runGuard();
+    assert.equal(r.code, 0, r.out);
+    assert.ok(r.out.includes(`STALE HOLD ${REGISTER} channels[android-play].ownerQueue A-3 status=closed`), r.out);
+    assert.ok(r.out.includes(`STALE HOLD ${REGISTER} channels[ios-appstore].ownerQueue A-4 status=closed`), r.out);
+    assert.ok(r.out.includes(`STALE HOLD ${REGISTER} channels[macos-appstore].ownerQueue A-4 status=closed`), r.out);
+    assert.ok(r.out.includes(`STALE HOLD ${REGISTER} channels[windows-store].ownerQueue A-2 status=closed`), r.out);
+    assert.match(r.out, /4 STALE and printed above/);
+  });
+
+  test('D3a-RC1c — the same register, CHANGED on this branch, is exit 1 without the flag', () => {
+    measuredStores();
+    setRegister(registerAtBase(), { changed: true });
+    const r = runGuard();
+    assert.equal(r.code, 1, r.out);
+    assert.ok(r.out.includes('channels[android-play].ownerQueue holds on a row that is NOT LIVE (status=closed) in owner-queue.json  A-3'), r.out);
+  });
+
+  test('D3a-RC1 after the data commit — the committed register is exit 0 under --all-subjects; its closed ids are provenance', () => {
+    measuredStores();
+    setRegister(projectedRealRegister());
+    const r = runGuard({ args: ['--all-subjects'] });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /provenance id\(s\) found in any state/);
+    assert.doesNotMatch(r.out, /STALE HOLD/);
+  });
+
+  test('D3a-RC2 — linux-snap.ownerQueue set to A-3, a CLOSED item, is exit 1 naming the channel, the id and the state', () => {
+    measuredStores();
+    const doc = projectedRealRegister();
+    doc.channels.find((c) => c.id === 'linux-snap').ownerQueue = 'A-3';
+    setRegister(doc);
+    const r = runGuard({ args: ['--all-subjects'] });
+    assert.equal(r.code, 1, r.out);
+    assert.ok(r.out.includes('channels[linux-snap].ownerQueue holds on a row that is NOT LIVE (status=closed) in owner-queue.json  A-3'), r.out);
+    assert.match(r.out, /1 unresolved citation\(s\) in 1 file\(s\)/, 'the mutation is the only finding: the committed register is green (the case above)');
+
+    writeNoRegisterMutant();
+    const old = runGuard({ file: join('mutant-no-register', 'assert-public-citations.mjs'), args: ['--all-subjects'] });
+    assert.equal(old.code, 0, `the guard without the register subject must pass this tree: ${old.out}`);
+  });
+
+  test('D3a-RC3 — the register holds ids, so a business root with no owner-queue.json is exit 2, and so is one whose queue has no row', () => {
+    measuredStores();
+    setRegister(projectedRealRegister());
+    const empty = mkdtempSync(join(BASE, 'empty-business-'));
+    const r = runGuard({ env: { NIKATRU_BUSINESS_ROOT: empty } });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /owner-queue\.json is unreadable/);
+    assert.match(r.out, /A-6/);
+
+    setQueue(QUEUE_JSON, []);
+    const rowless = runGuard();
+    setQueue(QUEUE_JSON, MEASURED_QUEUE);
+    assert.equal(rowless.code, 2, rowless.out);
+    assert.match(rowless.out, /not one object in it carries an owner-id-shaped `id` and a `status`/);
+  });
+
+  test('D3a — an `openedBy` no register carries is exit 1 ABSENT on every run, without the flag', () => {
+    measuredStores();
+    const doc = projectedRealRegister();
+    doc.channels.find((c) => c.id === 'windows-store').accountStatus.openedBy = 'A-404';
+    setRegister(doc);
+    const r = runGuard();
+    assert.equal(r.code, 1, r.out);
+    assert.ok(r.out.includes('channels[windows-store].accountStatus.openedBy holds on a row neither open.json nor owner-queue.json carries (ABSENT)  A-404'), r.out);
+  });
+
+  test('D3a — a register whose `channels` is not an array is exit 2: what it holds is unknown', () => {
+    measuredStores();
+    setRegister({ channels: { 'linux-snap': { ownerQueue: 'A-6' } }, disqualified: [] });
+    const r = runGuard();
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /tooling\/channel-register\.json is a hold subject \(tooling\/channel-register\.json\) and `channels` is object, and channels\[\]\.ownerQueue steps through it as an array/);
   });
 });

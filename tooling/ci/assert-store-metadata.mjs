@@ -1360,8 +1360,10 @@ for (const row of storeRows) {
         `package identity for app "${app.slug}" on channel "${row.id}" is HALF configured — ${configured} real value(s) and ${pending} still ${sentinel}. It packages cleanly and submits under a name that is part real and part placeholder.`,
       );
     } else if (pending > 0) {
+      // ⏱ 2026-09-25 (D3a): an open account's closed item is `accountStatus.openedBy`.
+      const owner = row.ownerQueue ?? (row.accountStatus?.openedBy ? `(none live; account opened by ${row.accountStatus.openedBy})` : '(unnamed)');
       prints.push(
-        `PACKAGE IDENTITY NOT YET CONFIGURED — app "${app.slug}", channel "${row.id}": all ${pending} field(s) are ${sentinel}. Partner Center assigns them after OWNER_QUEUE ${row.ownerQueue ?? '(unnamed)'}; there is nothing to derive them from and an invented value would publish under an identity we do not own.`,
+        `PACKAGE IDENTITY NOT YET CONFIGURED — app "${app.slug}", channel "${row.id}": all ${pending} field(s) are ${sentinel}. Partner Center assigns them after OWNER_QUEUE ${owner}; there is nothing to derive them from and an invented value would publish under an identity we do not own.`,
       );
     }
   }

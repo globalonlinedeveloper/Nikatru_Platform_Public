@@ -100,7 +100,7 @@
       "died": "2026-08-19",
       "how": "deleted",
       "wentTo": "Nikatru_Platform_Public/sites/ — the storefront is a directory in the monorepo, not a repository.",
-      "measured": "2026-09-06: absent from `gh api user/repos`. Recorded in catalog/store-matrix.json deletionRecord20260819."
+      "measured": "2026-09-06: absent from `gh api user/repos`. Recorded in tooling/github-org.json records.deletionRecord20260819 (in the store matrix until its 2026-09-25 retirement)."
     }
   ],
 
@@ -155,14 +155,14 @@
   "_codeMentionsWhy": "THE RESIDUE AFTER COMMENTS ARE STRIPPED, DECLARED WITH A COUNT RATHER THAN WAIVED BY PATH. An entry excuses EXACTLY `count` occurrences in that file: MORE is a finding, because a new mention appeared that nobody argued for; FEWER is COVERAGE LOST, because the reason has expired and the row must retire with it. That asymmetry is the whole point — an excludedPaths entry blinds a whole file forever, and blinding tooling/scripts/install-hooks.mjs is precisely how the hole the .mjs glob just closed would have been re-opened under a politer name.",
 
   "excludedPaths": [
-    "catalog/store-matrix.json",
+    "tooling/github-org.json",
     "tooling/ops/register.json",
     "tooling/ci/test/",
     "tooling/bricks/",
     "node_modules/",
     "tooling/dead-repos.json"
   ],
-  "_excludedPathsWhy": "DATED RECORDS and fixtures, each excluded for a stated reason, not for convenience. catalog/store-matrix.json carries removedSlot20260906_Chrome_Web_Store and deletionRecord20260819 — dated records OF the deaths this file lists, and the one place the old names must survive verbatim. tooling/ops/register.json carries dated operational history. tooling/ci/test/ holds FIXTURES that deliberately name dead repos to prove guards catch them, this guard's own mutation test included. tooling/bricks/ is template source, not a live register. tooling/dead-repos.json is this file, which names every dead repo by definition and would otherwise be its own first finding.",
+  "_excludedPathsWhy": "DATED RECORDS and fixtures, each excluded for a stated reason, not for convenience. tooling/github-org.json carries removedSlot20260906_Chrome_Web_Store and deletionRecord20260819 under `records` — dated records OF the deaths this file lists, and the one place the old names must survive verbatim (moved there verbatim on 2026-09-25 from the retired store matrix, which held them until then). tooling/ops/register.json carries dated operational history. tooling/ci/test/ holds FIXTURES that deliberately name dead repos to prove guards catch them, this guard's own mutation test included. tooling/bricks/ is template source, not a live register. tooling/dead-repos.json is this file, which names every dead repo by definition and would otherwise be its own first finding.",
 
   "floors": {
     "files": 240,

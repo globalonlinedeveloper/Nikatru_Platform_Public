@@ -7,8 +7,10 @@
 // timeout-minutes, the log stops mid-guard, and nothing names the command. That
 // is how the launcher-icons hang read across five runs (#616, #617, #618, #619
 // and one on main) before `flutter create` was bounded in
-// flutter-stock-assets.mjs. The two `gh repo list` call sites had exactly the
-// same shape, against a network the runner does not control.
+// flutter-stock-assets.mjs. The `gh repo list` call sites had exactly the
+// same shape, against a network the runner does not control (two until
+// 2026-09-25, when the store-slot guard was retired with the store matrix;
+// assert-github-matrix.mjs is the one left).
 //
 //   B1 a process that never ends is killed at the bound, and says so
 //   B2 the bound is a WALL CLOCK — it fires in about the time it was given
@@ -114,10 +116,13 @@ describe('bounded-spawn — the call sites', () => {
       queriers.push(f);
       if (!/boundedSpawn\(/.test(src)) unbounded.push(f);
     }
+    // ⏱ 2026-09-25 — RE-AIMED from `queriers.length >= 2`: the second call site was retired with the
+    // store matrix. Pinning the KNOWN call site by name is stricter than a count of one — a scan that
+    // stopped reaching tooling/ci, or a reduction that blanked the argv, fails here by name.
     assert.ok(
-      queriers.length >= 2,
-      `expected the two \`gh repo list\` call sites, found ${queriers.length}: ${queriers.join(', ')} — ` +
-        'if they are gone this check is vacuous and must be re-aimed, not deleted',
+      queriers.includes('assert-github-matrix.mjs'),
+      `expected assert-github-matrix.mjs among the \`gh repo list\` call sites, found ${queriers.length}: ${queriers.join(', ')} — ` +
+        'if it is gone this check is vacuous and must be re-aimed, not deleted',
     );
     assert.deepEqual(
       unbounded,
@@ -155,8 +160,9 @@ describe('bounded-spawn — the call sites', () => {
     );
   });
 
-  test('B7b both call sites name GH_LIST_TIMEOUT_MS, so the bound is tunable without being removable', () => {
+  test('B7b the call site names GH_LIST_TIMEOUT_MS, so the bound is tunable without being removable', () => {
     const named = files.filter((f) => f !== 'bounded-spawn.mjs' && readFileSync(join(CI_DIR, f), 'utf8').includes('GH_LIST_TIMEOUT_MS'));
-    assert.deepEqual(named.sort(), ['assert-github-matrix.mjs', 'assert-store-matrix.mjs']);
+    // One name since 2026-09-25: the store-slot guard that also carried it was retired with the store matrix.
+    assert.deepEqual(named.sort(), ['assert-github-matrix.mjs']);
   });
 });
