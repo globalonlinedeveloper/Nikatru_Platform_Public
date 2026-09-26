@@ -142,6 +142,7 @@ function main() {
       // still the right offset in the line the edit is applied to.
       const code = stripComments(rel, line);
       for (const rule of RULES) {
+        if (rule.files && !rule.files.test(rel)) continue;
         const scanner = new RegExp(rule.re.source, `${rule.re.flags.replace('d', '')}d`);
         let m;
         while ((m = scanner.exec(code)) !== null) {
@@ -175,19 +176,24 @@ function main() {
             });
             continue;
           }
-          if (actual === String(declared)) continue;
+          // What the site must READ for the declared value: the value itself, or the
+          // rule's own `literal` spelling of it (`dart_language` 3.9.0 is written
+          // `^3.9.0`). The guard compares against the same spelling, so the round
+          // trip below proves the written text is the one the guard wants.
+          const want = rule.literal ? rule.literal(String(declared)) : String(declared);
+          if (actual === want) continue;
 
           const handReason = HAND_ONLY.get(rule.label);
           if (handReason !== undefined) {
-            refusals.push({ kind: 'handOnly', text: `${where} is "${actual}", declared "${declared}" — MOVES BY HAND. ${handReason}` });
+            refusals.push({ kind: 'handOnly', text: `${where} is "${actual}", declared "${want}" — MOVES BY HAND. ${handReason}` });
             continue;
           }
           const [cs, ce] = span;
-          if (!roundTrips(rule, m[0], cs - m.index, ce - m.index, String(declared))) {
+          if (!roundTrips(rule, m[0], cs - m.index, ce - m.index, want)) {
             refusals.push({
               kind: 'cannotExpress',
               text:
-                `${where} is "${actual}" and CANNOT EXPRESS "${declared}" — the site would not read back the ` +
+                `${where} is "${actual}" and CANNOT EXPRESS "${want}" — the site would not read back the ` +
                 'value written into it.',
             });
             continue;
@@ -195,8 +201,8 @@ function main() {
           if (!edits.has(rel)) edits.set(rel, new Map());
           const perLine = edits.get(rel);
           if (!perLine.has(i)) perLine.set(i, []);
-          perLine.get(i).push({ start: cs, end: ce, declared: String(declared) });
-          moved.push(`${rel}:${i + 1}  ${rule.label}  ${actual} -> ${declared}`);
+          perLine.get(i).push({ start: cs, end: ce, declared: want });
+          moved.push(`${rel}:${i + 1}  ${rule.label}  ${actual} -> ${want}`);
         }
       }
     });

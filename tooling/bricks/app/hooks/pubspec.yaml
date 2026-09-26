@@ -2,6 +2,6 @@ name: app_hooks
 description: Mason generation hooks for the NIKATRU app brick.
 publish_to: none
 environment:
-  sdk: ">=3.5.0 <4.0.0"
+  sdk: ^3.9.0
 dependencies:
   mason: ">=0.1.0 <0.2.0"

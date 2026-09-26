@@ -53,6 +53,7 @@ const DECL = {
   runner_ubuntu: 'ubuntu-24.04',
   runner_windows: 'windows-2025',
   runner_macos: 'macos-26',
+  dart_language: '3.9.0',
 };
 
 // The five targets assert-version-consistency.mjs REFUSES to run without. They
@@ -65,6 +66,12 @@ const ANDROID = 'apps/demo/android/app/build.gradle.kts';
 const SCAN_SECRETS = 'tooling/ci/scan-secrets.mjs';
 // The wrangler island (EXT-3, 2026-09-24): a REQUIRED target of collectTargets, like the brick.
 const WRANGLER_ISLAND = 'tooling/wrangler/package.json';
+// The pubspecs the two floor rules read (O-PUBSPEC-FLOORS-UNTIED-TO-THE-PIN): the
+// members the root's `workspace:` list names, and the brick's app template and hooks.
+const CORE = 'packages/core/pubspec.yaml';
+const APP = 'apps/demo/pubspec.yaml';
+const TEMPLATE = 'tooling/bricks/app/__brick__/apps/{{app_id}}/pubspec.yaml';
+const HOOKS = 'tooling/bricks/app/hooks/pubspec.yaml';
 
 const workflow = ({ flutter = DECL.flutter, node = DECL.node, melos = DECL.melos, java = DECL.java } = {}) =>
   `name: X\njobs:\n  j:\n    steps:\n` +
@@ -74,14 +81,18 @@ const workflow = ({ flutter = DECL.flutter, node = DECL.node, melos = DECL.melos
   `      - run: dart pub global activate melos ${melos}\n` +
   `      - run: dart pub global activate mason_cli ${DECL.mason_cli}\n`;
 
-/** The workspace root manifest. The `#` comment above the pin is not decoration
- *  here — it is the case that proves the propagator strips comments before it
- *  scans, exactly as the guard does. The real pubspec.yaml carries three call
- *  sites quoted in prose above this very line. */
+/** The workspace root manifest. Its comment names a call site WITHOUT a version,
+ *  the way the real one does since 2026-09-25: the guard names any comment that
+ *  quotes a melos version other than the pin, and the propagator never rewrites
+ *  one. The case that proves both carries its own versioned comment. */
 const rootManifest = (melos = DECL.melos) =>
-  `name: ws\nworkspace:\n  - packages/core\n\n` +
-  `# 2. .github/workflows/ci.yml   \`dart pub global activate melos ${DECL.melos}\` — the CI runner\n` +
+  `name: ws\nenvironment:\n  sdk: ^${DECL.dart_language}\n\nworkspace:\n  - packages/core\n  - apps/demo\n\n` +
+  '# .github/workflows/ci.yml activates melos at the pin before the gate\n' +
   `dev_dependencies:\n  melos: ${melos}\n`;
+
+const dartPubspec = (name, sdk = `^${DECL.dart_language}`) => `name: ${name}\nenvironment:\n  sdk: ${sdk}\n`;
+const flutterPubspec = (name, sdk = `^${DECL.dart_language}`) =>
+  `name: ${name}\nenvironment:\n  sdk: ${sdk}\n  flutter: ">=${DECL.flutter}"\n\ndependencies:\n  flutter:\n    sdk: flutter\n`;
 
 const readmeDoc = (melos = DECL.melos) =>
   `# ws\n\n## Building it\n\n\`\`\`bash\ndart pub global activate melos ${melos}\nflutter pub get\n\`\`\`\n`;
@@ -105,7 +116,7 @@ const scanSecrets = (ver = DECL.gitleaks) =>
 /** Build a throwaway tree. `decl` overrides tooling/versions.json only — the
  *  call sites always start at DECL, which is what makes a bumped declaration a
  *  drift the propagator has to resolve. */
-function build(name, { decl = {}, omit = [], workflowOpts = {} } = {}) {
+function build(name, { decl = {}, omit = [], workflowOpts = {}, bodies = {} } = {}) {
   const dir = join(ROOT, name);
   const files = {
     'tooling/versions.json': `${JSON.stringify({ ...DECL, ...decl }, null, 2)}\n`,
@@ -116,6 +127,11 @@ function build(name, { decl = {}, omit = [], workflowOpts = {} } = {}) {
     [ANDROID]: androidModule(),
     [BRICK]: JSON.stringify({ devDependencies: { wrangler: DECL.wrangler } }),
     [WRANGLER_ISLAND]: JSON.stringify({ devDependencies: { wrangler: DECL.wrangler } }),
+    [CORE]: dartPubspec('core'),
+    [APP]: flutterPubspec('demo'),
+    [TEMPLATE]: flutterPubspec('{{app_id}}'),
+    [HOOKS]: dartPubspec('app_hooks'),
+    ...bodies,
   };
   for (const [rel, body] of Object.entries(files)) {
     if (omit.includes(rel)) continue;
@@ -139,6 +155,10 @@ function snapshot(dir) {
     ANDROID,
     BRICK,
     WRANGLER_ISLAND,
+    CORE,
+    APP,
+    TEMPLATE,
+    HOOKS,
   ];
   return rels
     .filter((r) => existsSync(join(dir, r)))
@@ -203,12 +223,28 @@ describe('propagate-versions', () => {
   // pubspec.yaml block that enumerates the six melos call sites in `#` prose
   // would be edited on every bump, and the enumeration is a record of what was
   // measured on a date — a frozen record, not a call site.
-  test('a version quoted inside a `#` comment is left alone', () => {
-    const dir = build('pv-comment', { decl: { melos: '8.6.0' } });
-    propagate(dir, ['--write']);
+  // Since 2026-09-25 the guard also READS the root pubspec's comments and names a
+  // melos version in one that is not the pin — so the sentence the propagator
+  // leaves alone is then the one thing the guard reports.
+  test('a version quoted inside a `#` comment is left alone, and the guard then names that comment', () => {
+    const dir = build('pv-comment', {
+      decl: { melos: '8.6.0' },
+      bodies: {
+        'pubspec.yaml': rootManifest().replace(
+          '\ndev_dependencies:\n',
+          `\n# 2. .github/workflows/ci.yml   \`dart pub global activate melos ${DECL.melos}\` — the CI runner\ndev_dependencies:\n`,
+        ),
+      },
+    });
+    const { code, out } = propagate(dir, ['--write']);
+    assert.equal(code, 0, out);
     const manifest = readFileSync(join(dir, 'pubspec.yaml'), 'utf8');
     assert.match(manifest, /# 2\. \.github\/workflows\/ci\.yml.*activate melos 8\.2\.2/);
     assert.match(manifest, /^ {2}melos: 8\.6\.0$/m);
+    const g = guard(dir);
+    assert.equal(g.code, 1, g.out);
+    assert.match(g.out, /pubspec\.yaml:10 a comment quotes melos "8\.2\.2" but versions\.json declares "8\.6\.0"/);
+    assert.match(g.out, /1 version drift problem\(s\)/, 'every call site moved; the comment is all that is left');
   });
 
   // ── (c) the floor class ────────────────────────────────────────────────────
@@ -292,13 +328,19 @@ describe('propagate-versions', () => {
     const dir = build('pv-silent');
     // Empty every call site while leaving every required target present: the
     // tree now "agrees" with versions.json only because nothing was compared.
+    // The `workspace:` list stays: without it collectTargets refuses first, and
+    // this case would prove that refusal instead of the empty scan.
     writeFileSync(join(dir, '.github/workflows/ci.yml'), 'name: X\njobs: {}\n');
-    writeFileSync(join(dir, 'pubspec.yaml'), 'name: ws\n');
+    writeFileSync(join(dir, 'pubspec.yaml'), 'name: ws\nworkspace:\n  - packages/core\n  - apps/demo\n');
     writeFileSync(join(dir, 'README.md'), '# ws\n');
     writeFileSync(join(dir, SCAN_SECRETS), '// nothing here\n');
     writeFileSync(join(dir, ANDROID), 'android {\n}\n');
     writeFileSync(join(dir, BRICK), '{}\n');
     writeFileSync(join(dir, WRANGLER_ISLAND), '{}\n');
+    writeFileSync(join(dir, CORE), 'name: core\n');
+    writeFileSync(join(dir, APP), 'name: demo\n');
+    writeFileSync(join(dir, TEMPLATE), 'name: app\n');
+    writeFileSync(join(dir, HOOKS), 'name: app_hooks\n');
     const { code, out } = propagate(dir, ['--write']);
     assert.equal(code, 2);
     assert.match(out, /matched 0 version reference\(s\)/);
@@ -310,5 +352,56 @@ describe('propagate-versions', () => {
     const { code, out } = propagate(dir, ['--write']);
     assert.equal(code, 2);
     assert.match(out, /no tooling\/versions\.json/);
+  });
+
+  // ── the two pubspec floors (O-PUBSPEC-FLOORS-UNTIED-TO-THE-PIN) ────────────
+  test('the range the tree carried is written as the caret the declaration spells, and the guard then passes', () => {
+    // The real tree on 2026-09-25: every member and the brick hooks at
+    // `sdk: ">=3.5.0 <4.0.0"`. The rule captures the whole constraint and spells
+    // `dart_language` 3.9.0 as `^3.9.0`, so the quotes and the upper bound go too.
+    const dir = build('pv-sdk-range', {
+      bodies: { [CORE]: dartPubspec('core', '">=3.5.0 <4.0.0"'), [HOOKS]: dartPubspec('app_hooks', '">=3.5.0 <4.0.0"') },
+    });
+    assert.equal(guard(dir).code, 1, 'the fixture must start RED or the case proves nothing');
+    const { code, out } = propagate(dir, ['--write']);
+    assert.equal(code, 0, out);
+    assert.match(out, /packages\/core\/pubspec\.yaml:3 +Dart language floor \(pubspec environment sdk\) +">=3\.5\.0 <4\.0\.0" -> \^3\.9\.0/);
+    assert.match(out, /wrote 2 site\(s\) across 2 file\(s\)/);
+    assert.equal(readFileSync(join(dir, CORE), 'utf8'), 'name: core\nenvironment:\n  sdk: ^3.9.0\n');
+    assert.equal(readFileSync(join(dir, HOOKS), 'utf8'), 'name: app_hooks\nenvironment:\n  sdk: ^3.9.0\n');
+    assert.equal(guard(dir).code, 0);
+  });
+
+  test('a Flutter bump moves every Flutter floor with the workflow pins, keeping the quotes', () => {
+    const dir = build('pv-flutter-floor', { decl: { flutter: '3.45.0' } });
+    const { code, out } = propagate(dir, ['--write']);
+    assert.equal(code, 0, out);
+    // five workflow `flutter-version:` inputs, the member's floor and the template's
+    assert.match(out, /wrote 7 site\(s\) across 3 file\(s\)/);
+    assert.match(readFileSync(join(dir, APP), 'utf8'), /^ {2}flutter: ">=3\.45\.0"$/m);
+    assert.match(readFileSync(join(dir, TEMPLATE), 'utf8'), /^ {2}flutter: ">=3\.45\.0"$/m);
+    assert.equal(guard(dir).code, 0);
+  });
+
+  test('a workflow `sdk:` input is not a pubspec floor and is never rewritten', () => {
+    const dir = build('pv-setup-dart', { bodies: { [CORE]: dartPubspec('core', '^3.0.0') } });
+    const ci = join(dir, '.github/workflows/ci.yml');
+    writeFileSync(ci, `${readFileSync(ci, 'utf8')}      - uses: dart-lang/setup-dart@v1\n        with:\n          sdk: 3.1.0\n`);
+    const { code, out } = propagate(dir, ['--write']);
+    assert.equal(code, 0, out);
+    assert.match(out, /wrote 1 site\(s\) across 1 file\(s\)/);
+    assert.match(readFileSync(ci, 'utf8'), /^ {10}sdk: 3\.1\.0$/m);
+  });
+
+  test('`dart_language` missing from the declaration is refused by key, with nothing written', () => {
+    const dir = build('pv-no-dart-language');
+    const decl = JSON.parse(readFileSync(join(dir, 'tooling/versions.json'), 'utf8'));
+    delete decl.dart_language;
+    writeFileSync(join(dir, 'tooling/versions.json'), `${JSON.stringify(decl, null, 2)}\n`);
+    const before = snapshot(dir);
+    const { code, out } = propagate(dir, ['--write']);
+    assert.equal(code, 2);
+    assert.equal(snapshot(dir), before);
+    assert.match(out, /packages\/core\/pubspec\.yaml:3 Dart language floor \(pubspec environment sdk\) — the rule reads versions\.json key `dart_language`, which that file does not declare/);
   });
 });

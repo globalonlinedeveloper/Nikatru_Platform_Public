@@ -43,6 +43,30 @@ const zlib = require('zlib');
 const ROOT = process.env.SK_ROOT ? path.resolve(process.env.SK_ROOT) : path.join(__dirname, '..');
 const PUBLISH = path.join(ROOT, 'publish');
 
+/* The manifest the Firefox package carries. Since 2026-09-25 (F-b)
+   publish/manifest.firefox.json is an RFC 7386 merge patch over manifest.json,
+   not a second full manifest, so every Firefox check grades the MERGE — through
+   scripts/lib/merge-patch.mjs, the implementation publish/pack.mjs and
+   scripts/pack.mjs build with. require() of an ES module needs node 22.12+ (or
+   20.19+), the floor Full_Screen_Shot's publish/package.node.js already
+   documents; it is loaded only when a Firefox manifest is asked for, so the
+   Chrome half never pays it. Returns { base, overlay, merged } or { error }. */
+function firefoxManifest(root, publishDir) {
+  const r = root || ROOT;
+  const pub = publishDir || path.join(r, 'publish');
+  let base, overlay;
+  try { base = JSON.parse(fs.readFileSync(path.join(r, 'manifest.json'), 'utf8')); }
+  catch (e) { return { error: 'manifest.json does not parse — ' + e.message }; }
+  try { overlay = JSON.parse(fs.readFileSync(path.join(pub, 'manifest.firefox.json'), 'utf8')); }
+  catch (e) { return { error: 'publish/manifest.firefox.json does not parse — ' + e.message }; }
+  if (overlay === null || typeof overlay !== 'object' || Array.isArray(overlay)) {
+    return { error: 'publish/manifest.firefox.json is not a JSON object, so it is not an RFC 7386 merge patch — ' +
+      'a top-level null or array would REPLACE the whole manifest' };
+  }
+  const { mergePatch } = require('../../../scripts/lib/merge-patch.mjs');
+  return { base, overlay, merged: mergePatch(base, overlay) };
+}
+
 /* Belt and braces, and the leak check. Kept here rather than in pack.mjs so the
    grader can condemn an entry the builder should never have produced — two
    independent statements of the same rule.
@@ -563,12 +587,18 @@ function verifyPackage(opts) {
         ? 'the same file loads as a Chrome service worker and a Firefox event page'
         : 'UNGUARDED — Firefox runs background.js as an event-page script where importScripts is undefined, so the add-on throws on load and is dead');
 
-  const expectPath = kind === 'firefox' ? path.join(publishDir, 'manifest.firefox.json') : path.join(root, 'manifest.json');
-  let expect = null;
-  try { expect = JSON.parse(fs.readFileSync(expectPath, 'utf8')); } catch (_) {}
+  /* Firefox: manifest.json with the overlay applied, not the overlay file itself —
+     a package manifest compared with a merge patch never matches. */
+  let expect = null, expectFrom = 'manifest.json';
+  if (kind === 'firefox') {
+    const ffm = firefoxManifest(root, publishDir);
+    expect = ffm.merged || null;
+    expectFrom = ffm.error || 'manifest.json + publish/manifest.firefox.json, merged';
+  } else {
+    try { expect = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8')); } catch (_) {}
+  }
   add('the packaged manifest is byte-for-byte the one it should be',
-    !!expect && JSON.stringify(mf) === JSON.stringify(expect),
-    path.relative(root, expectPath).replace(/\\/g, '/'));
+    !!expect && JSON.stringify(mf) === JSON.stringify(expect), expectFrom);
 
   if (kind === 'firefox') {
     const gecko = (mf.browser_specific_settings || {}).gecko || {};
@@ -595,7 +625,7 @@ module.exports = {
   ROOT, PUBLISH, NEVER, LEAK_EXEMPT,
   NAME_MAX, NAME_TRUNCATES_AT, SHORT_NAME_MAX, DESCRIPTION_MAX,
   readZip, resolveRef, refExtra, resolveMsg, messageKeys, manifestGates, verifyPackage,
-  stripComments
+  stripComments, firefoxManifest
 };
 
 /* ------------------------------------------------------------------ */

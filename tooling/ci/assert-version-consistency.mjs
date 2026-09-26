@@ -26,6 +26,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
+import { workspaceMembers } from './app-set.mjs';
 
 // ⚠️ THE TABLE AND THE TARGET LIST ARE EXPORTED, AND THE RUN IS GATED ON `isMain`.
 // tooling/scripts/propagate-versions.mjs WRITES the values this file REFUSES to
@@ -115,6 +116,26 @@ export const RULES = [
   { key: 'runner_ubuntu', label: 'Ubuntu runner', re: /runs-on:\s*(ubuntu-[^\s'"#]+)/g },
   { key: 'runner_windows', label: 'Windows runner', re: /runs-on:\s*(windows-[^\s'"#]+)/g },
   { key: 'runner_macos', label: 'macOS runner', re: /runs-on:\s*(macos-[^\s'"#]+)/g },
+  // 🔴 THE TWO PUBSPEC FLOORS, which no rule read until 2026-09-25
+  // (O-PUBSPEC-FLOORS-UNTIED-TO-THE-PIN). Measured that day: eleven workspace members
+  // and the brick's hooks said `sdk: ">=3.5.0 <4.0.0"` beside a root at `^3.9.0`, and
+  // every Flutter pubspec said `flutter: ">=3.24.0"` while every lane built on the
+  // `flutter` pin. `files` holds both rules to pubspecs: an `sdk:` input in a workflow
+  // (setup-dart's, say) selects a toolchain rather than a language, and
+  // propagate-versions.mjs must never write a caret into one.
+  // The sdk rule captures the WHOLE constraint, for the reason on the brick rule
+  // above: `">=3.5.0 <4.0.0"` must come back unequal to `^3.9.0` whatever numbers it
+  // holds, so a range form returning is a finding (the shape limb), never a pass.
+  // `literal` is how the site spells the declared value — the key holds `3.9.0`, the
+  // pubspec holds `^3.9.0` — and the comparison below and the propagator's write both
+  // go through it. `sdk: flutter`, a dependency source, never matches: the value must
+  // open with `^`, a digit or a quote.
+  { key: 'dart_language', label: 'Dart language floor (pubspec environment sdk)', files: /(^|[\\/])pubspec\.yaml$/, literal: (v) => `^${v}`, re: /^\s+sdk:\s*(\^[^\s'"#]*|[0-9][^\s'"#]*|"[^"\n]*"|'[^'\n]*')\s*$/g },
+  // The Flutter floor IS the `flutter` pin, so no member claims to build on a Flutter
+  // older than the one every lane installs. The value alone is captured; the quoted
+  // `>=` around it is the one spelling the pubspecs here use, and a pubspec that
+  // depends on Flutter without it is caught by REQUIRED_YIELD below.
+  { key: 'flutter', label: 'Flutter floor (pubspec environment)', files: /(^|[\\/])pubspec\.yaml$/, re: /^\s+flutter:\s*["']>=([0-9][^\s'"#]*)["']\s*$/g },
 ];
 
 /** Files that may name a build version.
@@ -178,6 +199,34 @@ export function collectTargets(repoRoot) {
       console.error(`✗ COVERAGE LOST — required target ${rel} is missing under ${repoRoot}.`);
       console.error('  It is deliberately not existsSync-gated: a target that can vanish silently shrinks');
       console.error('  this scan while it still prints "ok". If the file moved, fix the path in the same change.');
+      coverageLost();
+    }
+    TARGETS.push(rel);
+  }
+  // 🔴 EVERY PUBSPEC THAT CARRIES A LANGUAGE OR FLUTTER FLOOR, REQUIRED LIKE THE TWO
+  // ABOVE (O-PUBSPEC-FLOORS-UNTIED-TO-THE-PIN, 2026-09-25). The members come from the
+  // root's own `workspace:` list, the list pub resolves, so a package that joins the
+  // workspace is a target in the same change; the brick's app template and its hooks
+  // are named because the brick is not a workspace member. A listed member whose
+  // pubspec is missing refuses, and so does a list that yields nobody: either shrinks
+  // the floor rules' reach while the global count stays clear. The list is read by
+  // app-set.mjs, the one reader of that block (assert-release-lane-generic limb A).
+  const members = workspaceMembers(repoRoot) ?? [];
+  if (members.length === 0) {
+    console.error('✗ COVERAGE LOST — the root pubspec.yaml lists no `workspace:` members.');
+    console.error('  The Dart language and Flutter floor rules read every member pubspec; with the list');
+    console.error('  unreadable they would read the root alone and still print "ok".');
+    coverageLost();
+  }
+  for (const rel of [
+    ...members.map((m) => `${m}/pubspec.yaml`),
+    'tooling/bricks/app/__brick__/apps/{{app_id}}/pubspec.yaml',
+    'tooling/bricks/app/hooks/pubspec.yaml',
+  ]) {
+    if (!existsSync(join(repoRoot, rel))) {
+      console.error(`✗ COVERAGE LOST — required pubspec ${rel} is missing under ${repoRoot}.`);
+      console.error('  It carries an `environment:` floor the Dart language and Flutter floor rules compare');
+      console.error('  with tooling/versions.json. If it moved, fix the root `workspace:` list or this path.');
       coverageLost();
     }
     TARGETS.push(rel);
@@ -313,18 +362,45 @@ const MIN_OCCURRENCES = 10;
  *  call sites in prose, so that is not a hypothetical line to protect. */
 export const stripComments = (rel, line) =>
   /\.gradle(\.kts)?$|\.kts?$/.test(rel) ? line.replace(/\/\/.*$/, '') : line.replace(/#.*$/, '');
+/** 📏 THIS TABLE IS THE MELOS INVENTORY, and the root pubspec's comment points here
+ *  rather than listing the places itself (O-PUBSPEC-FLOORS-UNTIED-TO-THE-PIN). The
+ *  places the melos pin is written are: the root pubspec's dev_dependency, ci.yml's
+ *  activate and README.md's activate, each an entry below; tooling/versions.json,
+ *  which every one is compared to; and pubspec.lock, which the resolver writes and
+ *  `flutter pub get --enforce-lockfile` holds to the dev_dependency. `when` narrows an
+ *  entry to the targets whose text makes it apply. */
 const REQUIRED_YIELD = [
   {
-    where: /(^|[\\/])pubspec\.yaml$/,
+    // The ROOT only: member pubspecs are targets too, and none of them declares melos.
+    where: /^pubspec\.yaml$/,
     key: 'melos',
     min: 1,
     what: 'the `melos:` dev_dependency — the runner `melos run gate` actually resolves',
+  },
+  {
+    where: /(^|[\\/])\.github[\\/]workflows[\\/]ci\.yml$/,
+    key: 'melos',
+    min: 1,
+    what: 'the `dart pub global activate melos <version>` CI runs before `melos run gate`',
   },
   {
     where: /(^|[\\/])README\.md$/,
     key: 'melos',
     min: 1,
     what: 'the `dart pub global activate melos <version>` line in the copy-paste build block',
+  },
+  {
+    where: /(^|[\\/])pubspec\.yaml$/,
+    key: 'dart_language',
+    min: 1,
+    what: 'the `environment:` `sdk: ^<dart_language>` constraint every pubspec here carries',
+  },
+  {
+    where: /(^|[\\/])pubspec\.yaml$/,
+    when: (text) => /^\s+sdk:\s*flutter\s*$/m.test(text),
+    key: 'flutter',
+    min: 1,
+    what: 'the `environment:` `flutter: ">=<flutter>"` floor a pubspec with an `sdk: flutter` dependency carries',
   },
   {
     where: /(^|[\\/])wsl-setup\.sh$/,
@@ -387,20 +463,26 @@ function main() {
     text.split('\n').forEach((line, i) => {
       const code = stripComments(rel, line);
       for (const rule of RULES) {
+        if (rule.files && !rule.files.test(rel)) continue;
         rule.re.lastIndex = 0;
         let m;
         while ((m = rule.re.exec(code)) !== null) {
           found++;
           perKey.set(rule.key, (perKey.get(rule.key) ?? 0) + 1);
           const actual = (m[1] ?? '').trim();
-          const expected = String(decl[rule.key] ?? '');
+          const declared = decl[rule.key];
+          const expected = declared === undefined ? '' : rule.literal ? rule.literal(String(declared)) : String(declared);
           if (actual === '') {
             problems.push(
               `${rel}:${i + 1} ${rule.label} is UNPINNED — it takes whatever is newest on every run` +
                 ` (declare ${expected})`,
             );
           } else if (actual !== expected) {
-            problems.push(`${rel}:${i + 1} ${rule.label} is "${actual}" but versions.json declares "${expected}"`);
+            problems.push(
+              rule.literal && declared !== undefined
+                ? `${rel}:${i + 1} ${rule.label} is ${actual} but versions.json \`${rule.key}\` "${declared}" is written here as ${expected}`
+                : `${rel}:${i + 1} ${rule.label} is "${actual}" but versions.json declares "${expected}"`,
+            );
           }
         }
       }
@@ -427,6 +509,28 @@ function main() {
     }
   }
 
+  // ── THE ROOT PUBSPEC'S COMMENTS, which RULES never see ───────────────────────
+  // stripComments hides every `#` from RULES on purpose: it is what keeps the
+  // propagator out of prose. The cost was measured 2026-09-25: the melos block above
+  // the root's dev_dependency still quoted the 2026-08-17 pin eight times while the
+  // line under it had moved on (O-PUBSPEC-FLOORS-UNTIED-TO-THE-PIN). So this limb
+  // reads that one file's comments and names any `melos <version>` in them that
+  // differs from versions.json. It only reports — the propagator writes no comment —
+  // and the fix is the sentence without the number.
+  const COMMENT_MELOS = /\bmelos:?\s+[\^~]?v?([0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.+-]*)/gi;
+  readFileSync(join(repoRoot, 'pubspec.yaml'), 'utf8').split('\n').forEach((line, i) => {
+    const hash = line.indexOf('#');
+    if (hash === -1) return;
+    for (const m of line.slice(hash).matchAll(COMMENT_MELOS)) {
+      if (m[1] !== String(decl.melos)) {
+        problems.push(
+          `pubspec.yaml:${i + 1} a comment quotes melos "${m[1]}" but versions.json declares "${decl.melos}"` +
+            ' — no script rewrites a comment, so write that sentence without the version',
+        );
+      }
+    }
+  });
+
   // ── REQUIRED PER-TARGET YIELD: the global floor cannot see one file go quiet ──
   // The five java literals and the melos dev_dependency contribute six matches out
   // of the eighty-eight this repo yields today, so ALL SIX could stop matching and
@@ -446,7 +550,8 @@ function main() {
   //
   // 🔴 THE EXISTENCE QUESTION IS ANSWERED ABOVE, AND FOR THREE OF THE FOUR SHAPES
   // ONLY. `pubspec.yaml`, `README.md`, the brick package.json and "at least one
-  // apps/*/android/app/build.gradle.kts" each refuse outright when missing;
+  // apps/*/android/app/build.gradle.kts" each refuse outright when missing, as do
+  // (since 2026-09-25) each member pubspec the root lists and the brick's two pubspecs;
   // `tooling/wsl-setup.sh` does not, so deleting it removes its two java literals
   // from the scan and no entry here fires. This comment previously claimed the
   // existence question was answered for EACH target — it was not, and the gradle
@@ -457,6 +562,7 @@ function main() {
   for (const rel of TARGETS) {
     for (const req of REQUIRED_YIELD) {
       if (!req.where.test(rel)) continue;
+      if (req.when && !req.when(readFileSync(join(repoRoot, rel), 'utf8'))) continue;
       const n = yields.get(rel)?.get(req.key) ?? 0;
       if (n < req.min) {
         lostBlocks.push([

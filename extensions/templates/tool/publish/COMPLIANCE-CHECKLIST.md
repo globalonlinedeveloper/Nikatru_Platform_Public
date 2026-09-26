@@ -122,8 +122,8 @@ so you know what the command covers, not so you can tick it by hand.
 - No `test/`, no `.md`, no build script, no `node_modules`, no scratch file
 - The `LICENSE` **is** in the package, deliberately: PolyForm Shield's "Notices"
   section makes the terms travel with every copy
-- Version parity across `manifest.json`, `publish/manifest.firefox.json`, the
-  CHANGELOG heading and both filenames
+- Version parity across `manifest.json` (which `publish/manifest.firefox.json`,
+  a merge patch, inherits), the CHANGELOG heading and both filenames
 - A diff against the previous release, so a silently dropped file is caught
 
 ## F. Firefox / AMO
