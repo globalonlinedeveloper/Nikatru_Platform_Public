@@ -124,8 +124,9 @@ export function listDir(dir, options) {
  *  that reading one is a decision somebody made rather than a walk that drifted.
  *
  *  ⚠️ WHY IT EXISTS. Added 2026-08-18, when assert-walks-bounded.mjs reported
- *  assert-store-matrix.mjs, assert-copy-parity.mjs and assert-github-matrix.mjs
- *  as three files still enumerating directories themselves. Their SUBJECT is the
+ *  the store matrix guard, the copy parity guard (both retired 2026-09-25 with
+ *  the store matrix) and assert-github-matrix.mjs as three files still
+ *  enumerating directories themselves. Their SUBJECT is the
  *  thirty store-slot directories spread across the workspace, and every one of
  *  those directories is a SEPARATE REPOSITORY — being a checkout is the property
  *  that makes a directory a slot, not an accident of the machine. `listDir`

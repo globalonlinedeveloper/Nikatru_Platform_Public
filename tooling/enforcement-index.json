@@ -694,14 +694,6 @@
     "state": "WIRED"
   },
   {
-    "claims": [],
-    "invokedBy": [],
-    "kind": "guard",
-    "ref": "tooling/ci/assert-copy-parity.mjs",
-    "references": [],
-    "state": "NOT-CI-RUNNABLE"
-  },
-  {
     "claims": [
       "ADR 075",
       "B-2",
@@ -2371,16 +2363,6 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-store-identity.mjs",
-    "references": [],
-    "state": "WIRED"
-  },
-  {
-    "claims": [],
-    "invokedBy": [
-      ".github/workflows/ci.yml#sites"
-    ],
-    "kind": "guard",
-    "ref": "tooling/ci/assert-store-matrix.mjs",
     "references": [],
     "state": "WIRED"
   },

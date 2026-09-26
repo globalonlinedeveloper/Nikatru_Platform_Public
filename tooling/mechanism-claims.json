@@ -385,18 +385,6 @@
       "reason": "Design rationale for importing the renderer's `plan` instead of re-deriving it. The claim is the import statement directly below; a shared reader and an identical copy produce the same output, so no test can fail on the difference."
     },
     {
-      "file": "tooling/ci/assert-copy-parity.mjs",
-      "anchor": "because there was no second copy.",
-      "status": "demoted",
-      "reason": "A runtime failure message describing the matrix (no second live copy of the product exists to compare). It says nothing about how this guard is built, so the shape matched a false positive."
-    },
-    {
-      "file": "tooling/ci/assert-copy-parity.mjs",
-      "anchor": "so there is no second COPY —",
-      "status": "demoted",
-      "reason": "A runtime failure message describing the matrix (no slot besides the origin carries the product). It says nothing about how this guard is built, so the shape matched a false positive."
-    },
-    {
       "file": "tooling/ci/assert-discovery-surface.mjs",
       "anchor": "below cannot drift from the file it is about.",
       "status": "demoted",
@@ -405,12 +393,6 @@
     {
       "file": "tooling/ci/assert-input-contract.mjs",
       "anchor": "Named here rather than inlined so the failure text and the walk cannot drift",
-      "status": "demoted",
-      "reason": "Describes how the code is organised: one named constant or function that several call sites share. A shared definition and two copies that happen to agree behave identically, so no test can fail on the difference; the structure is checked by reading the definition, which sits directly under the sentence."
-    },
-    {
-      "file": "tooling/ci/assert-store-matrix.mjs",
-      "anchor": "of the message cannot drift apart between limbs.",
       "status": "demoted",
       "reason": "Describes how the code is organised: one named constant or function that several call sites share. A shared definition and two copies that happen to agree behave identically, so no test can fail on the difference; the structure is checked by reading the definition, which sits directly under the sentence."
     },
@@ -1184,12 +1166,6 @@
       "test": "tooling/ci/test/guard-sweep-invocations.test.mjs",
       "case": "🔴 arguments folded onto a `run: >` continuation line are recorded",
       "proves": "Derives every folded guard invocation from the REAL workflows and requires `guard-sweep.mjs --invocations` to have recorded the argument the YAML passes. A sweep whose arguments stopped being read from the YAML (typed, or a one-line reader) records them empty and this case goes red."
-    },
-    {
-      "file": "catalog/store-matrix.json",
-      "anchor": "precisely so the two blocks cannot drift into each thinking the other declared it",
-      "status": "demoted",
-      "reason": "A data note in the registry. The limb it names exists (assert-store-matrix.mjs, the `infrastructure` repo with NO github.outOfMatrix line), but no case in store-matrix.test.mjs or github-matrix.test.mjs plants an infrastructure entry without its outOfMatrix line, so no named test fails if that limb goes. Coverage gap, recorded. Judged 2026-09-19."
     },
     {
       "file": "docs/ci/README.md",

@@ -726,7 +726,9 @@ for (const row of withGraphics) {
       if (row.served === true) {
         problems.push(`channel "${row.id}" is SERVED and ${why}`);
       } else {
-        prints.push(`NO SCREENSHOTS (blocked on a CI run, OWNER_QUEUE ${row.ownerQueue ?? '(unnamed)'}): ${why}`);
+        // ⏱ 2026-09-25 (D3a): an open account's closed item is `accountStatus.openedBy`.
+        const owner = row.ownerQueue ?? (row.accountStatus?.openedBy ? `(none live; account opened by ${row.accountStatus.openedBy})` : '(unnamed)');
+        prints.push(`NO SCREENSHOTS (blocked on a CI run, OWNER_QUEUE ${owner}): ${why}`);
       }
       continue;
     }
