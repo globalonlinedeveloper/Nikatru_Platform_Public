@@ -140,7 +140,7 @@ describe('e2e-run ACCEPTS the stamp e2e.yml actually produces', () => {
   });
 
   test('the widest value it can produce fits inside the Worker\'s 32-char bind', () => {
-    // events.ts:378 binds `str(body?.app_version, 32)`, which returns NULL — not
+    // events.ts:373 binds `str(body?.app_version, 32)`, which returns NULL — not
     // a truncation — above 32. 9 digits is assert-app-versioning.mjs's ceiling.
     const widest = 'e2e-999999999-6fad3a3';
     assert.equal(widest.length, 21);
