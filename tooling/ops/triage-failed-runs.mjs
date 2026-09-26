@@ -937,6 +937,19 @@ export function liveApi(repo, tok, cacheDir, { maxRequests = DEFAULT_MAX_REQUEST
     new CoverageLost(
       `request ceiling — ${sent} of ${maxRequests} request(s) sent, and GET ${path} would be one more, so it was not sent and nothing after this point was read. Raise --max-requests only with the quota floor in view.`,
     );
+  // ⏱ 2026-09-26 — THE BODY IS READ INSIDE THE ATTEMPT. bounded-retry arms its
+  // per-request ceiling when an attempt starts and, on success, only unrefs it
+  // (attemptWithCeiling), so a body read after the helper returned was still
+  // under that signal: a job log still arriving 15 s after its request began was
+  // aborted with the bare "no answer within 15s", OUTSIDE the retry loop, and the
+  // walk exited 2 (train W30's first live fetch, at 358 requests). Read here, a
+  // slow body is a slow attempt — a transient look, re-asked under a fresh
+  // ceiling like a slow header. A non-2xx answer is handed back unread, as before.
+  const bodyInAttempt = async (res) => {
+    if (!res.ok) return res;
+    const body = await res.text();
+    return { ok: true, status: res.status, headers: res.headers, text: async () => body, json: async () => JSON.parse(body) };
+  };
   const send = async (path, { counted }) => {
     if (!isAllowedApiPath(repo, path)) {
       throw new CoverageLost(
@@ -961,7 +974,7 @@ export function liveApi(repo, tok, cacheDir, { maxRequests = DEFAULT_MAX_REQUEST
             }
             sent += 1;
           }
-          return fetch(url, { headers, redirect: 'follow', signal });
+          return fetch(url, { headers, redirect: 'follow', signal }).then(bodyInAttempt);
         },
         { describe: (s) => `GET ${path} — ${s}` },
       );
