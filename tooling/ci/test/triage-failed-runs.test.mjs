@@ -63,6 +63,8 @@ import {
   quotaFloor,
   QUOTA_FLOOR,
   DEFAULT_MAX_REQUESTS,
+  newestCompleted,
+  selfRunIdFrom,
 } from '../../ops/triage-failed-runs.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -313,6 +315,46 @@ describe('signatures', () => {
 
   test('normalise folds shas, timestamps, durations and counts', () => {
     assert.equal(normalise('run 34330000000 at 2026-09-09T05:50:00Z, 4.1h EARLIER deadbeef1'), 'run <n> at <ts>, <dur> EARLIER <sha>');
+  });
+
+  // ⏱ 2026-09-26 (O-FAILURE-LEDGER-UNEXPLAINED-BEFORE-MONDAY): each block below
+  // is the measured first lines of the run named beside it, which read as
+  // `other:` (no cause may claim that) or as a quote before these entries.
+  test('the 2026-09-26 signatures read the measured blocks of the runs that needed them', () => {
+    const cases = [
+      // 36206329284: a red ledger's block quotes a simulator refusal and a register duty.
+      [
+        'Every failed run of the last eight days, and the recorded cause it maps to',
+        '##[error]The register names "iPhone <n> Pro Max" and this runner image has no available simulator by that name. Apple\'s  | 1 (1 UNEXPLAINED) | — NO CAUSE IN REGISTER — | — | OPEN\n✗ tooling/ops/register.json — 1 problem(s):\n      signature: ops-register:red-since:duty.workflow.ops-watch.yml · no later green\nUNEXPLAINED: 63',
+        'failure-ledger:unexplained',
+      ],
+      ['Every failed run of the last eight days, and the recorded cause it maps to', '✗ COVERAGE LOST — the GitHub credential does not have the shape of a GitHub token (ghp_/gho_/ghu_/ghs_/ghr_/github_pat_/40-hex), so it was not sent.', 'failure-ledger:credential-unshaped'],
+      ['Count the rows whose provenance does not resolve', '✗ COULD NOT LOOK — listing runs of ci.yml (branch=main&event=push): all 10 pages of 100 came back full, so rows exist that this reader never asked for', 'provenance:run-listing-capped'],
+      ['Probe every surface the register enumerates', '✗ COVERAGE LOST — 1 of 11 probed surface(s) NEVER ANSWERED, on any of the 3 attempts:', 'surfaces:never-answered'],
+      ['Compare the live Supabase auth config against tooling/mail-transport.json', '✗ auth `sessions_timebox`: register says null, live says 0.\n  ✗ auth `sessions_inactivity_timeout`: register says null, live says 0.', 'supabase-auth:session-limit-null-read-as-drift'],
+      ['Create and finalize the GlitchTip release', 'error: Failed to create release: POST https://glitchtip.nikatru.com/api/0/organizations/nikatru/releases/ returned 522 <unknown status code>: error code: 522', 'glitchtip:release-create-5xx'],
+      ['The captured frames carry drawn text', '✗ COVERAGE LOST — screenshots/00-consent.png is 1600x881; the floor in tooling/e2e-leg-register.json framesCarryText was measured on frames 430 wide.', 'e2e:frames-wrong-size'],
+      ['Preflight — a rehearsal target may not run on the default branch', '##[error]auth_target=boxa is a REHEARSAL against a stack the deployed Workers deliberately refuse, and this dispatch is on main. duty.workflow.e2e.yml grades', 'e2e:rehearsal-refused-on-main'],
+      ['The store service account is still powerless on GCP', '✗ 🔓 serviceusage — list enabled APIs SUCCEEDED. nikatru-free-api@nikatru-platform.iam.gserviceaccount.com can now read project state on GCP, so it has been granted an IAM role since 2026-08-05.', 'gcp-scope:store-account-holds-a-role'],
+      [
+        "Every Pages project's newest PRODUCTION deployment succeeded, at the commit main names",
+        '✗ 1 project(s) RED, 0 NOT JUDGED.\n    ✗   rajasekarselvam (git) — the newest production deployment 973e96da-edd7-43d7-ba11-93e5e33ad1ae stopped at stage `build` with status `active`. Production is therefore still serving the PREVIOUS build',
+        'pages-freshness:in-flight-read-as-failure',
+      ],
+      ["Every Pages project's newest PRODUCTION deployment succeeded, at the commit main names", '✗ 0 project(s) RED, 1 NOT JUDGED.\n    ?   nikatru (git) — TypeError: fetch failed\n    ok  rajasekarselvam (git) — deployment 4d6c5dfd succeeded', 'pages-freshness:read-dropped'],
+      [
+        "Every Pages project's newest PRODUCTION deployment succeeded, at the commit main names",
+        '✗ 1 project(s) RED, 0 NOT JUDGED.\n    ✗   nikatru (git) — the newest production deployment 57e2d2f9-a0bc-45a4-bc97-1736e7941f21 stopped at stage `initialize` with status `failure`. Production is therefore',
+        'pages-freshness:git-build-failed:initialize',
+      ],
+      ['Boot the simulators the register names', '##[error]The register names "iPhone 16 Pro Max" and this runner image has no available simulator by that name.', 'store-screenshots:simulator-aged-out'],
+    ];
+    for (const [step, block, want] of cases) assert.equal(signatureOf({ step, block }), want, `${step}\n${block}`);
+    // The ledger's own verdict is read only on its own step: the same block
+    // under any other step is never taken for a ledger verdict.
+    assert.notEqual(signatureOf({ step: 'Boot the simulators the register names', block: cases[0][1] }), 'failure-ledger:unexplained');
+    // A Pages build Cloudflare failed at a stage other than `initialize` is its own group.
+    assert.equal(signatureOf({ step: cases[11][0], block: cases[11][1].replace('`initialize`', '`build`') }), 'pages-freshness:git-build-failed:build');
   });
 
   test('every signature id is unique and every pattern is a RegExp', () => {
@@ -941,6 +983,7 @@ describe('transport hardening', () => {
       `/repos/${R}/actions/runs/34546423386/jobs?per_page=100&filter=all`,
       `/repos/${R}/actions/jobs/98765/logs`,
       `/repos/${R}/actions/workflows/123/runs?branch=${encodeURIComponent('feat/x')}&per_page=1`,
+      `/repos/${R}/actions/workflows/123/runs?branch=main&status=completed&per_page=2`,
       `/repos/${R}/branches?per_page=100&page=2`,
       `/repos/${R}/pulls?head=${encodeURIComponent('globalonlinedeveloper:feat/x')}&state=all&per_page=5`,
       '/rate_limit',
@@ -1000,7 +1043,7 @@ describe('a cache never serves an answer that changes', () => {
     writeFileSync(join(dir, STALE_NAME), JSON.stringify({ id: 1, conclusion: null, created_at: '2026-09-10T06:03:13Z' }));
     return dir;
   };
-  const today = { workflow_runs: [{ id: 2, conclusion: 'success', created_at: '2026-09-11T09:00:00Z' }] };
+  const today = { workflow_runs: [{ id: 2, status: 'completed', conclusion: 'success', created_at: '2026-09-11T09:00:00Z' }] };
 
   test("newestRun asks GitHub every time, even with yesterday's answer on disk", async () => {
     const dir = staleDir();
@@ -1102,18 +1145,22 @@ describe('D1 — the quota floor and the hard request ceiling', () => {
    *  first request the live path makes. Its sibling imports point at the real
    *  files. The child's `fetch` is fetch-stub.mjs: /rate_limit answers
    *  STUB_REMAINING, the run lists answer the `runs` of the asked `status` (and,
-   *  as GitHub does, of the asked `branch` when one is asked), a job list and a
-   *  workflow's run list answer empty, the branch list answers empty, and every
-   *  path asked for is appended to STUB_LOG. */
-  function liveCopy(remaining, runs = []) {
+   *  as GitHub does, of the asked `branch` when one is asked), a job list
+   *  answers empty, a workflow's run list answers `workflowRuns` (empty unless
+   *  given) kept to the asked `status` — a status or a conclusion, as GitHub
+   *  reads it — and cut to the asked `per_page`, the branch list answers
+   *  `branches` (empty unless given), and every path asked for is appended to
+   *  STUB_LOG. `causes` replaces the one-row register; `mutate` rewrites the
+   *  copy's source. */
+  function liveCopy(remaining, runs = [], { workflowRuns = [], branches = [], causes = [CAUSES[3]], mutate = (src) => src } = {}) {
     const d = temp();
     const ops = join(d, 'tooling', 'ops');
     mkdirSync(ops, { recursive: true });
-    const src = readFileSync(SCRIPT, 'utf8')
+    const src = mutate(readFileSync(SCRIPT, 'utf8').replaceAll('\r\n', '\n'))
       .replace("from './safe-rerun.mjs'", `from ${JSON.stringify(pathToFileURL(SAFE_RERUN).href)}`)
       .replace("from './bounded-retry.mjs'", `from ${JSON.stringify(pathToFileURL(BOUNDED_RETRY).href)}`);
     writeFileSync(join(ops, 'triage-failed-runs.mjs'), src);
-    writeFileSync(join(ops, 'failed-run-causes.json'), JSON.stringify({ causes: [CAUSES[3]] }));
+    writeFileSync(join(ops, 'failed-run-causes.json'), JSON.stringify({ causes }));
     // GIT_* is dropped: an inherited GIT_DIR (a hook sets one) would point this
     // fixture's commit and update-ref at the real repository.
     const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
@@ -1140,8 +1187,12 @@ describe('D1 — the quota floor and the hard request ceiling', () => {
         '    return json({ total_count: runs.length, workflow_runs: runs });',
         '  }',
         "  if (path.endsWith('/jobs')) return json({ total_count: 0, jobs: [] });",
-        "  if (path.includes('/actions/workflows/')) return json({ total_count: 0, workflow_runs: [] });",
-        "  if (path.endsWith('/branches')) return json([]);",
+        "  if (path.includes('/actions/workflows/')) {",
+        '    const q = new URL(String(url)).searchParams;',
+        "    const listed = JSON.parse(process.env.STUB_WORKFLOW_RUNS || '[]').filter((r) => !q.has('status') || r.status === q.get('status') || r.conclusion === q.get('status'));",
+        "    return json({ total_count: listed.length, workflow_runs: listed.slice(0, Number(q.get('per_page') || 30)) });",
+        '  }',
+        "  if (path.endsWith('/branches')) return json(JSON.parse(process.env.STUB_BRANCHES || '[]').map((name) => ({ name })));",
         "  return new Response('{}', { status: 404 });",
         '};',
         '',
@@ -1149,7 +1200,7 @@ describe('D1 — the quota floor and the hard request ceiling', () => {
     );
     return {
       script: join(ops, 'triage-failed-runs.mjs'),
-      env: { GH_TOKEN: TOKEN, GITHUB_TOKEN: '', NODE_OPTIONS: `--import=${pathToFileURL(stub).href}`, STUB_LOG: log, STUB_REMAINING: String(remaining), STUB_RUNS: JSON.stringify(runs) },
+      env: { GH_TOKEN: TOKEN, GITHUB_TOKEN: '', NODE_OPTIONS: `--import=${pathToFileURL(stub).href}`, STUB_LOG: log, STUB_REMAINING: String(remaining), STUB_RUNS: JSON.stringify(runs), STUB_WORKFLOW_RUNS: JSON.stringify(workflowRuns), STUB_BRANCHES: JSON.stringify(branches) },
       fetched: () => readFileSync(log, 'utf8').split('\n').filter(Boolean),
     };
   }
@@ -1197,7 +1248,7 @@ describe('D1 — the quota floor and the hard request ceiling', () => {
   });
 
   test('GET /rate_limit is not counted, and the request past the ceiling is refused UNSENT', async () => {
-    const today = { workflow_runs: [{ id: 2, conclusion: 'success', created_at: '2026-09-11T09:00:00Z' }] };
+    const today = { workflow_runs: [{ id: 2, status: 'completed', conclusion: 'success', created_at: '2026-09-11T09:00:00Z' }] };
     await stubFetch((path) => (path === '/rate_limit' ? json(core(900)) : json(today)), async (calls) => {
       const api = liveApi(SLUG, TOKEN, null, { maxRequests: 2 });
       assert.equal((await api.rateLimit()).remaining, 900);
@@ -1294,5 +1345,89 @@ describe('D1 — the quota floor and the hard request ceiling', () => {
     assert.match(fx.out, /COVERAGE: 1 non-green run\(s\)/);
     assert.match(fx.out, /ops-register:red-since:duty\.workflow\.ops-watch\.yml \| 1 \| /);
     assert.doesNotMatch(fx.out, /start-here:drift|dart:format/);
+  });
+
+  // ⏱ 2026-09-26 (O-FAILURE-LEDGER-CANNOT-CLEAR-OPS-WATCH): the ledger runs
+  // INSIDE ops-watch, so ops-watch's newest run on main is the run executing the
+  // ledger, still in progress. Read as the later-green proof, it held all 45
+  // failed ops-watch.yml runs of run 36206329284 OPEN whatever cause was filed.
+  test('newestCompleted: the first completed run, never one in flight and never the executing run; nothing completed is null', () => {
+    const self = { id: 603, status: 'in_progress', conclusion: null };
+    const green = { id: 602, status: 'completed', conclusion: 'success' };
+    const red = { id: 601, status: 'completed', conclusion: 'failure' };
+    assert.equal(newestCompleted([self, green, red]).id, 602);
+    assert.equal(newestCompleted([{ ...self, status: 'queued' }, red]).id, 601);
+    assert.equal(newestCompleted([green, red], { selfRunId: '602' }).id, 601, 'the executing run is never its own proof, whatever its status reads');
+    assert.equal(newestCompleted([green, red], { selfRunId: 602 }).id, 601);
+    assert.equal(newestCompleted([self]), null);
+    assert.equal(newestCompleted([]), null);
+    assert.equal(newestCompleted(undefined), null);
+  });
+
+  test('selfRunIdFrom: GITHUB_RUN_ID when it is a run id, else null', () => {
+    assert.equal(selfRunIdFrom({ GITHUB_RUN_ID: '36206329284' }), '36206329284');
+    assert.equal(selfRunIdFrom({}), null);
+    assert.equal(selfRunIdFrom({ GITHUB_RUN_ID: '' }), null);
+    assert.equal(selfRunIdFrom({ GITHUB_RUN_ID: '12a' }), null);
+  });
+
+  /** The Monday slot's shape: an ops-watch failure on main, a COMPLETED green
+   *  after it, and the run executing the ledger (GITHUB_RUN_ID 603) in progress. */
+  const opsWatch = (id, status, conclusion, day) => ({ id, name: 'ops-watch', path: OPS, workflow_id: 9, head_branch: 'main', head_sha: 'b'.repeat(40), event: 'schedule', status, conclusion, run_attempt: 1, created_at: `2026-09-${day}T07:45:00Z`, updated_at: `2026-09-${day}T07:55:00Z` });
+  const failedOps = opsWatch(601, 'completed', 'failure', '20');
+  const greenOps = opsWatch(602, 'completed', 'success', '21');
+  const selfOps = opsWatch(603, 'in_progress', null, '28');
+  const startupCause = { signature: 'startup:failure', rootCause: 'fixture: a failed run whose jobs the API withheld', fix: 'fixture', fixedBy: { kind: 'infrastructure' } };
+  const LEDGER_ARGS = ['--repo', 'fixture/fixture', '--since', '2026-09-17T00:00:00Z', '--no-prs', '--branch', 'main'];
+  const NEW_QUERY = [
+    '    const body = await get(`/repos/${repo}/actions/workflows/${workflowId}/runs?branch=${encodeURIComponent(branch)}&status=completed&per_page=2`);',
+    '    return newestCompleted(body.workflow_runs, { selfRunId });',
+    '',
+  ].join('\n');
+  const OLD_QUERY = [
+    '    const body = await get(`/repos/${repo}/actions/workflows/${workflowId}/runs?branch=${encodeURIComponent(branch)}&per_page=1`);',
+    '    return body.workflow_runs?.[0] ?? null;',
+    '',
+  ].join('\n');
+
+  test('CLI — an ops-watch failure followed by a COMPLETED green reads explained; the in-progress run executing the ledger is never its proof: exit 0', () => {
+    const c = liveCopy(5000, [failedOps], { workflowRuns: [selfOps, greenOps, failedOps], branches: ['main'], causes: [startupCause] });
+    const r = run(c.script, LEDGER_ARGS, { ...c.env, GITHUB_RUN_ID: '603' });
+    assert.equal(r.code, 0, r.out + r.err);
+    assert.match(r.out, /later green: run 602 @ 2026-09-21T07:45:00Z/);
+    assert.doesNotMatch(r.out, /run 603/);
+    assert.match(r.out, /UNEXPLAINED: 0/);
+    assert.ok(c.fetched().includes('/repos/fixture/fixture/actions/workflows/9/runs'), 'the proof must have been asked of GitHub');
+  });
+
+  test('MUTATION: the old unfiltered per_page=1 query restored, in a COPY of the script, takes the executing run as the proof — exit 1, OPEN', () => {
+    const original = readFileSync(SCRIPT, 'utf8');
+    const c = liveCopy(5000, [failedOps], {
+      workflowRuns: [selfOps, greenOps, failedOps],
+      branches: ['main'],
+      causes: [startupCause],
+      mutate: (src) => {
+        assert.ok(src.includes(NEW_QUERY), 'the query this mutation replaces is not in the script');
+        return src.replace(NEW_QUERY, OLD_QUERY);
+      },
+    });
+    const r = run(c.script, LEDGER_ARGS, { ...c.env, GITHUB_RUN_ID: '603' });
+    assert.equal(r.code, 1, r.out + r.err);
+    assert.match(r.out, /OPEN — newest ops-watch\.yml on main is run 603 \(null\)/);
+    assert.match(r.out, /UNEXPLAINED: 1/);
+    assert.equal(readFileSync(SCRIPT, 'utf8'), original, 'the real script must not have been touched');
+  });
+
+  test('CLI — a listing that answers the executing run as completed still never makes it the proof: GITHUB_RUN_ID is skipped (exit 0); without GITHUB_RUN_ID it is read (exit 1)', () => {
+    const staleSelf = { ...selfOps, status: 'completed', conclusion: 'failure' };
+    const opts = { workflowRuns: [staleSelf, greenOps, failedOps], branches: ['main'], causes: [startupCause] };
+    const inside = liveCopy(5000, [failedOps], opts);
+    const r = run(inside.script, LEDGER_ARGS, { ...inside.env, GITHUB_RUN_ID: '603' });
+    assert.equal(r.code, 0, r.out + r.err);
+    assert.match(r.out, /later green: run 602 @ /);
+    const outside = liveCopy(5000, [failedOps], opts);
+    const o = run(outside.script, LEDGER_ARGS, outside.env);
+    assert.equal(o.code, 1, o.out + o.err);
+    assert.match(o.out, /OPEN — newest ops-watch\.yml on main is run 603 \(failure\)/);
   });
 });
