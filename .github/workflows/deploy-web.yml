@@ -112,6 +112,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node tooling/ci/plan-deploy.mjs ${{ matrix.app }}-web
 
+      # why: the origins the build calls (its URL-valued defines, app_config.dart's CONNECT_KEYS, the module's DECLARED
+      # list) must equal _headers' connect-src both ways, before anything is built; it prints origins, never a value.
+      - name: The build's connect origins must equal the app's connect-src, before it is built
+        id: connect
+        working-directory: .
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
+        run: node tooling/web/connect-origins.mjs --app ${{ matrix.app }} --check --emit-connect >> "$GITHUB_OUTPUT"
+
       - uses: ./.github/actions/setup-flutter
         if: steps.plan.outputs.deploy == 'true'
 
@@ -243,18 +254,14 @@ jobs:
       # why: the bundle is BOOTED before it is published, not after. A Pages SPA answers
       # 200 for every missing path, so no post-deploy status code can tell a served
       # build from a served fallback (TRAPS ci-02).
-      # why: it boots under its own _headers CSP, and each --connect origin (the build's URL-valued defines) is
-      # fetched from the page and answered by the smoke, never sent; hand-passed until row O-WEB-CSP-HAND-LIST-UNSMOKED derives them.
+      # why: it boots under its own _headers CSP, and each --connect origin is fetched from the page and answered by
+      # the smoke, never sent; the origins are the set the connect-src compare emitted (row O-WEB-CSP-HAND-LIST-UNSMOKED).
       - name: Launch the built bundle once, before it is published
         if: steps.plan.outputs.deploy == 'true'
         working-directory: .
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          API_BASE_URL: ${{ secrets.API_BASE_URL }}
-          GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
         run: >
           node tooling/smoke/smoke-web-artifact.mjs apps/${{ matrix.app }}/build/web
-          --connect "$SUPABASE_URL" --connect "$API_BASE_URL" --connect "$GLITCHTIP_DSN"
+          ${{ steps.connect.outputs.connect }}
 
       # why: the release is created by a node script, not `glitchtip-cli releases new`: the
       # CLI has no retry, and one 522 from the origin failed run 35831511489. The script

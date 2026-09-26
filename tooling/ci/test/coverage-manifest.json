@@ -67,6 +67,7 @@
   "chrome-splice.test.mjs": 26,
   "clone-contract.test.mjs": 46,
   "config-registry.test.mjs": 61,
+  "connect-origins.test.mjs": 31,
   "consent-anon-id.test.mjs": 26,
   "consent-withdrawal-surface.test.mjs": 45,
   "content-licences.test.mjs": 13,

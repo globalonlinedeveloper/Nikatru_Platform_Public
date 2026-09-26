@@ -222,6 +222,40 @@ on CI, so without this the deploy and the tests race — and the deploy
 (~3 min) finishes first (~6 min). Also gates the manual redeploy button,
 which previously consulted nothing at all. Fails closed. [pipeline F-5b]
 
+### before step **The build's connect origins must equal the app's connect-src, before it is built**
+
+⏱ 2026-09-25 — row O-WEB-CSP-HAND-LIST-UNSMOKED, the derivation half. Until
+today `connect-src` in `apps/<id>/web/_headers` was a hand list of hosts, and
+the launch smoke probed three origins passed to it by hand. Nothing compared
+either list with what the build is configured to call.
+
+`tooling/web/connect-origins.mjs --check` computes the set of origins the
+build calls and requires it to EQUAL `connect-src` minus `'self'`:
+
+- **the URL-valued defines** of the `flutter build web` step (`SUPABASE_URL`,
+  `API_BASE_URL`, `GLITCHTIP_DSN`), read from this step's `env:`. Only the
+  origin is kept; the DSN's key and path are dropped before anything is
+  printed.
+- **`CONNECT_KEYS`**: the `app_config.dart` constants the app fetches from
+  (`platformBaseUrl`, `configBaseUrl`). A key the file no longer declares is
+  COVERAGE LOST (exit 2).
+- **`DECLARED`**: origins `connect-src` carries ahead of the configuration.
+  Today there is one `prestage` entry, `https://auth-api.nikatru.com` (#920).
+  Once a define derives it, the step is red until the entry is deleted. The
+  Phase 5 switch PR deletes it and adds the hosted Supabase origin as a
+  `rollback` entry, which stays until Phase 6.
+
+Either direction fails the step: a derived origin `connect-src` does not name
+(the browser would refuse it), or a listed origin nothing derives. So does an
+`app_config.dart` constant naming an https origin that is in neither
+`CONNECT_KEYS` nor `LINK_KEYS`, a build define in neither `URL_DEFINES` nor
+`VALUE_DEFINES`, an empty URL define, and a placeholder (`YOUR_…`) host.
+
+It runs before the Flutter toolchain is even set up, so a mismatch costs
+seconds, and nothing is built or published. On a pass it appends
+`connect=--connect <origin> …` to `$GITHUB_OUTPUT`, and the launch smoke
+probes exactly that set. It prints origins and define names, never a value.
+
 ### before step **Derive the release line from pubspec**
 
 The version is DERIVED, never typed. `apps/<id>/pubspec.yaml` declares
@@ -508,6 +542,12 @@ to https, past the pattern. What this does not cover:
   equal to a secret.
 - Until E1b, every app is probed with the repository-wide `API_BASE_URL`, so
   a stamped app with no backend stops here on that origin.
+
+⏱ 2026-09-25 — E1b. The three hand-passed `--connect` flags are gone. The
+smoke now probes the set the connect-src compare emitted (the step before the
+Flutter setup, above), so it needs no secret in its own `env:`. The
+repository-wide `API_BASE_URL` is still one of the derived defines, so a
+stamped app with no backend now stops at that compare, before its build.
 
 ### before step **Install glitchtip-cli (pinned by version AND by digest)**
 

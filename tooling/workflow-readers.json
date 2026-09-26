@@ -337,6 +337,12 @@
       "path": "tooling/scripts/preflight.mjs",
       "property": "workflow-scan",
       "reads": "ci.yml's ci-gate needs list, for the NOT CI-GATE line (--smoke and the full run)"
+    },
+    {
+      "path": "tooling/web/connect-origins.mjs",
+      "property": "refuses-blind",
+      "evidence": "command(s); the compare models exactly one.",
+      "reads": "the --dart-define names and value expressions of deploy-web.yml's one `flutter build web` command; a URL define that is gone is COVERAGE LOST too"
     }
   ],
   "_resolves": [
