@@ -592,6 +592,213 @@ describe('assert-release-lane-generic.mjs — limb D (no literal app id on the d
   });
 });
 
+// ⏱ 2026-09-25 — O-E2E-LANE-WIRED-TO-ONE-APP. Limb D-all reads EVERY graded lane,
+// whatever `deployPath` says, and refuses an env key or output name that names an
+// app, and a UUID literal. Measured on BASE 779f2e1f with the three real-tree
+// mutations RC1-RC3 (the closes' control is RC1): each exited 0 there, because
+// limb D reads the deploy path only and its `idToken` is case-sensitive.
+//
+// Every UUID below is SYNTHETIC. The app-named key is BUILT from `APP`, like every
+// other fixture in this file, so no real key or id is spelled here.
+describe('assert-release-lane-generic.mjs — limb D-all (every graded lane: no app-named key, no UUID literal)', () => {
+  const SYN_UUID = '00000000-0000-4000-8000-0000000000b2';
+  const SYN_UUID_UPPER = '0000ABCD-0000-4000-8000-0000000000B2';
+  /** The key e2e.yml carried before the resolver: the app id upper-cased, then `_D1_DATABASE_ID`. */
+  const APP_KEY = `${APP.toUpperCase().replace(/-/g, '_')}_D1_DATABASE_ID`;
+  const R1 = { 'build-platforms.yml': platforms(literalLane(APP_PATH)), 'e2e.yml': E2E };
+  /** 1-based line of the first line of `body` holding `needle`; fails the case when absent. */
+  const lineOf = (body, needle) => {
+    const n = body.split('\n').findIndex((l) => l.includes(needle)) + 1;
+    assert.ok(n > 0, `fixture anchor absent: ${needle}`);
+    return n;
+  };
+  const keyHit = (file, n, key, id = APP) =>
+    new RegExp(`${rx(file)}:${n} — limb D-all: the [^\\n]*\`${rx(key)}\` names the app "${rx(id)}"`);
+  const uuidHit = (file, n, field) => new RegExp(`${rx(file)}:${n} — limb D-all: a UUID literal in \`${rx(field)}\``);
+  /** e2e.yml with one verify step whose `env:` ends with `extra`. */
+  const e2eWith = (extra) => `name: E2E (live)
+on:
+  workflow_dispatch:
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Build web
+        working-directory: ${APP_PATH}
+        run: flutter build web --release
+      - name: Verify the in-app deletion really purged (leg 6)
+        env:
+          E2E_APP_ID: ${APP}
+${extra}        run: node tooling/e2e/verify_purged.mjs
+`;
+  /** build-platforms.yml with `steps` appended after the literal build step. */
+  const platformsWith = (steps) => platforms(`${literalLane(APP_PATH)}${steps}`);
+
+  test('every graded lane is read, deploy path or not, and the report says how much', () => {
+    const r = run(fixture({ workflows: R1 }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /build-platforms\.yml \(\[pipeline 9\]R-1\) — limb D-all: \d+ env\/output key\(s\) name no app and \d+ run\/with\/env value\(s\) carry no UUID literal/);
+    assert.match(r.out, /e2e\.yml \(\[pipeline 9\]R-1\) — limb D-all: /);
+    assert.match(r.out, /deploy-web\.yml \(\[pipeline 10\]D-2b\) — limb D-all: /);
+    assert.match(r.out, /limb D-all read \d+ key\(s\) and \d+ value\(s\) across 3 lane\(s\)/);
+  });
+
+  test('RC1 · THE CLOSES\' CONTROL — the app-named key with a UUID, back in e2e.yml, fails naming both hits', () => {
+    const body = e2eWith(`          ${APP_KEY}: ${SYN_UUID}\n`);
+    const n = lineOf(body, APP_KEY);
+    const r = run(fixture({ workflows: { ...R1, 'e2e.yml': body } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, keyHit('e2e.yml', n, APP_KEY));
+    assert.match(r.out, uuidHit('e2e.yml', n, `env.${APP_KEY}`));
+    assert.ok(!r.out.includes(SYN_UUID), 'a finding names the field, never the id it refuses');
+  });
+
+  test('RC2 · a lower-case app-named env key in build-platforms.yml fails, with no UUID in sight', () => {
+    const key = `${APP}_db`;
+    const body = platformsWith(`      - name: Read the database\n        env:\n          ${key}: x\n        run: echo read\n`);
+    const r = run(fixture({ workflows: { ...R1, 'build-platforms.yml': body } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, keyHit('build-platforms.yml', lineOf(body, key), key));
+    assert.doesNotMatch(r.out, /a UUID literal/);
+  });
+
+  test('RC3 · a UUID literal in a deploy-web.yml `env:` value fails — a field limb D never read', () => {
+    const body = DEPLOY_WEB.replace(
+      '      - run: flutter build web --release\n',
+      `      - name: Build\n        env:\n          WEB_DB_ID: ${SYN_UUID}\n        run: flutter build web --release\n`,
+    );
+    const r = run(fixture({ workflows: { ...R1, 'deploy-web.yml': body } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, uuidHit('deploy-web.yml', lineOf(body, 'WEB_DB_ID'), 'env.WEB_DB_ID'));
+    assert.doesNotMatch(r.out, /names the app/);
+  });
+
+  test('…a UUID literal in a `run:` line of a lane that is not a deploy path', () => {
+    const body = platformsWith(`      - run: node tooling/tool.mjs --database ${SYN_UUID}\n`);
+    const r = run(fixture({ workflows: { ...R1, 'build-platforms.yml': body } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, uuidHit('build-platforms.yml', lineOf(body, '--database'), 'run'));
+  });
+
+  test('…an UPPER-CASE UUID in a `with:` value', () => {
+    const body = e2eWith('').replace(
+      '        run: node tooling/e2e/verify_purged.mjs\n',
+      `        run: node tooling/e2e/verify_purged.mjs\n      - uses: some/action@0123456789abcdef0123456789abcdef01234567\n        with:\n          database: ${SYN_UUID_UPPER}\n`,
+    );
+    const r = run(fixture({ workflows: { ...R1, 'e2e.yml': body } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, uuidHit('e2e.yml', lineOf(body, 'database:'), 'with.database'));
+  });
+
+  test('…a UUID hoisted into workflow `env:` is refused where it sits AND where a `run:` expands it', () => {
+    const body = platformsWith('      - run: node tooling/tool.mjs --database ${{ env.DB }}\n').replace(
+      'jobs:',
+      `env:\n  DB: ${SYN_UUID}\njobs:`,
+    );
+    const r = run(fixture({ workflows: { ...R1, 'build-platforms.yml': body } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, uuidHit('build-platforms.yml', lineOf(body, '  DB: '), 'env.DB'));
+    assert.match(r.out, uuidHit('build-platforms.yml', lineOf(body, '--database'), 'run'));
+  });
+
+  test('…a step whose FIRST key is `env:` (`- env:`) is read', () => {
+    const key = `${APP.toUpperCase()}_TOKEN`;
+    const body = platformsWith(`      - env:\n          ${key}: x\n        run: echo read\n`);
+    const r = run(fixture({ workflows: { ...R1, 'build-platforms.yml': body } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, keyHit('build-platforms.yml', lineOf(body, key), key));
+  });
+
+  test('…the one-line flow form `env: { … }` is read', () => {
+    const key = `${APP.toUpperCase()}_URL`;
+    const body = platformsWith(`      - name: Flow\n        env: { ${key}: x, OTHER: y }\n        run: echo read\n`);
+    const r = run(fixture({ workflows: { ...R1, 'build-platforms.yml': body } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, keyHit('build-platforms.yml', lineOf(body, key), key));
+  });
+
+  test('an app-named OUTPUT name fails where it is declared, written and read', () => {
+    const out = `${APP}_db`;
+    const body = `name: E2E (live)
+on:
+  workflow_dispatch:
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    outputs:
+      ${out}: \${{ steps.backend.outputs.${out} }}
+    steps:
+      - name: Build web
+        working-directory: ${APP_PATH}
+        run: flutter build web --release
+      - name: Resolve
+        id: backend
+        run: echo "${out}=1" >> "$GITHUB_OUTPUT"
+`;
+    const r = run(fixture({ workflows: { ...R1, 'e2e.yml': body } }));
+    assert.equal(r.code, 1, r.out);
+    const declared = lineOf(body, `      ${out}: `);
+    assert.match(r.out, new RegExp(`e2e\\.yml:${declared} — limb D-all: the output name \\(outputs\\) \`${rx(out)}\``));
+    assert.match(r.out, new RegExp(`e2e\\.yml:${declared} — limb D-all: the output name \\(output reference\\) \`${rx(out)}\``));
+    assert.match(r.out, new RegExp(`e2e\\.yml:${lineOf(body, 'GITHUB_OUTPUT')} — limb D-all: the output name \\(\\$GITHUB_OUTPUT\\) \`${rx(out)}\``));
+  });
+
+  test('a hyphenated app id is matched as its whole run of tokens', () => {
+    const called = `name: Build all 6 platforms
+on:
+  workflow_call:
+    inputs:
+      app:
+        type: string
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - working-directory: apps/\${{ inputs.app }}
+        run: flutter build web --release
+`;
+    const body = `${called}      - name: Token\n        env:\n          SECOND_APP_TOKEN: x\n        run: echo read\n`;
+    const r = run(
+      fixture({ workspace: [APP_PATH, 'apps/second-app'], workflows: { 'build-platforms.yml': body, 'e2e.yml': called } }),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, keyHit('build-platforms.yml', lineOf(body, 'SECOND_APP_TOKEN'), 'SECOND_APP_TOKEN', 'second-app'));
+  });
+
+  test('NO FALSE RED on keys — a substring of the id, `E2E_APP_ID`, and the app id as a VALUE all pass', () => {
+    const body = platformsWith(
+      `      - name: Keys\n        env:\n          RE${APP.toUpperCase()}X_DB: x\n          E2E_APP_ID: ${APP}\n        run: echo read\n`,
+    );
+    const r = run(fixture({ workflows: { ...R1, 'build-platforms.yml': body } }));
+    assert.equal(r.code, 0, r.out);
+  });
+
+  test('NO FALSE RED on UUIDs — a COMMENT, a 40-hex commit sha in `run:` and a longer hex run all pass', () => {
+    const body = platformsWith(
+      `      # the old database was ${SYN_UUID}\n` +
+        '      - run: git checkout 0123456789abcdef0123456789abcdef01234567\n' +
+        `      - run: echo f${SYN_UUID}\n`,
+    );
+    const r = run(fixture({ workflows: { ...R1, 'build-platforms.yml': body } }));
+    assert.equal(r.code, 0, r.out);
+  });
+
+  test('COVERAGE LOST — a graded lane limb D-all reads no value from', () => {
+    const bare = `name: E2E (live)
+on:
+  workflow_dispatch:
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@0123456789abcdef0123456789abcdef01234567
+`;
+    const r = run(fixture({ workflows: { ...R1, 'e2e.yml': bare } }));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — limb D-all read ZERO values from e2e\.yml, a graded lane/);
+  });
+});
+
 describe('assert-release-lane-generic.mjs — limb B (no guard hides a lane)', () => {
   const lanes = { 'build-platforms.yml': platforms(literalLane(APP_PATH)), 'e2e.yml': E2E };
 

@@ -95,6 +95,44 @@
 //   `served: false` is another stage's refactor, and failing the build over it
 //   would claim work this guard has no mandate for.
 //
+// LIMB D-all — NO APP-NAMED KEY AND NO UUID LITERAL IN ANY GRADED LANE, added
+//   2026-09-25 with O-E2E-LANE-WIRED-TO-ONE-APP. Limb D asks its question of the
+//   deploy path only, and e2e.yml is `deployPath: false`. So e2e.yml carried
+//   an env key spelled as the app id upper-cased plus `_D1_DATABASE_ID`, set
+//   to a production database id, on four steps, and the platform database's id
+//   on two more, while this guard printed ok: the key is upper case, which
+//   limb D's case-sensitive `idToken` cannot see, and the lane is not a deploy
+//   path, so limb D never read it. A second
+//   app in e2e.yml's matrix would have been verified and purged against the
+//   first app's database. That lane now resolves both ids at run time from the
+//   app's own wrangler file (tooling/e2e/backend.mjs), and this limb stops the
+//   literals coming back, on EVERY lane in GRADED_LANES, whatever `deployPath`
+//   says:
+//
+//     (i)  an `env:` key (at any depth) or a step/job OUTPUT name (an
+//          `outputs:` key, `<name>=` appended to $GITHUB_OUTPUT, or a
+//          `steps.<id>.outputs.<name>` reference) that contains a workspace
+//          app id as a whole token, case-insensitively. Tokens split on `_`
+//          and `-`, so `SUBSCRIPTIONTRACKER_DB`, `subscriptiontracker_db` and
+//          `subscriptiontracker-db` all name the app, and `resubscriptiontrackerx_db`
+//          does not. A hyphenated id matches as its run of tokens (`second-app`
+//          is named by `SECOND_APP_TOKEN`).
+//          An app-named key is a hand-off wired to one app: app #2's leg
+//          reads app #1's value under app #1's name.
+//     (ii) a UUID literal (8-4-4-4-12 hex, either case) in a `run:`, `with:`
+//          or `env:` value, or in any other field limb D reads, after the
+//          same `${{ env.X }}` / `${{ matrix.X }}` expansion. A database, a
+//          project or an account is addressed by a UUID, and a UUID in a lane
+//          is one app's resource written into a file every app's leg runs.
+//          The refusal exempts no lane and no value: a lane that needs an id
+//          reads it at run time, as e2e.yml's `backend` step does. A finding
+//          names the file, the line and the field, never the id itself.
+//
+//   Each hit is its own finding, exit 1, naming `file:line`. A graded lane this
+//   limb reads no value from, or zero graded lanes read at all, is COVERAGE LOST
+//   (exit 2), as for every other limb in this file. Comments are blanked by the
+//   shared parser before either check, so prose that names an id is not a hit.
+//
 // ── WHAT IS DELIBERATELY NOT ASSERTED ────────────────────────────────────────
 // The workflows R-1 owns are `build-platforms.yml` and `e2e.yml` — named by
 // Private/requirements/ ([9]R-1). The naming argument was reconciliation PART 6 of
@@ -122,7 +160,8 @@
 //
 // Usage:  node tooling/ci/assert-release-lane-generic.mjs [repoRoot]
 //         node tooling/ci/assert-release-lane-generic.mjs --emit-apps [repoRoot] [--tag <app>-v<version>]
-// Exit 0 = every R-1 lane covers the whole workspace and no guard hides a lane.
+// Exit 0 = every R-1 lane covers the whole workspace, no guard hides a lane, and
+//          no graded lane carries an app-named key or a UUID literal.
 // Exit 1 = a finding (or `--emit-apps` refusing an empty or nested matrix, or a
 //          `--tag` that names no app of the workspace). 2 = COVERAGE LOST.
 //
@@ -239,6 +278,10 @@ function coverageLost(lines) {
 // which is the same boundary violation CLASSIFIED_ELSEWHERE exists to respect.
 // D-2b's acceptance says "no literal app id anywhere on the deploy path", and
 // the deploy path is what this flag marks.
+//
+// ⏱ 2026-09-25 — limb D-all reads EVERY lane here and ignores `deployPath`. It
+// refuses app-named keys and UUID literals, not an app path in a value, so it
+// leaves limb A's literal-equality criterion for R-1's lanes as decided.
 const GRADED_LANES = new Map([
   ['build-platforms.yml', { owner: '[pipeline 9]R-1', deployPath: false }],
   ['e2e.yml', { owner: '[pipeline 9]R-1', deployPath: false }],
@@ -907,10 +950,135 @@ export function literalAppIds(wf, env, matrix, appIds) {
   return hits;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// LIMB D-all — EVERY graded lane, whatever `deployPath` says.
+// O-E2E-LANE-WIRED-TO-ONE-APP. The header's limb D-all paragraph says why.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Each child key of a block opened by `key:` at `indent`: `{ n, key, text }`,
+ *  where `text` is the value plus any deeper continuation lines (a `|` or `>`
+ *  scalar), so a UUID on the second line of a block value is still read. The
+ *  children's own indent is taken from the first of them; a shallower line ends
+ *  the block. */
+function blockEntries(lines, i, indent) {
+  const out = [];
+  let childIndent = null;
+  for (let j = i + 1; j < lines.length; j++) {
+    const t = lines[j].text;
+    if (t.trim() === '') continue;
+    const ind = t.match(/^ */)[0].length;
+    if (ind <= indent) break;
+    if (childIndent === null) childIndent = ind;
+    if (ind < childIndent) break;
+    if (ind > childIndent) {
+      if (out.length) out[out.length - 1].text += `\n${t.trim()}`;
+      continue;
+    }
+    const kv = t.match(/^\s*([A-Za-z_][A-Za-z0-9_-]*):\s*(.*)$/);
+    if (!kv) break;
+    out.push({ n: lines[j].n, key: kv[1], text: kv[2].trim().replace(/^['"]|['"]$/g, '') });
+  }
+  return out;
+}
+
+/** The entries of a one-line flow map, `key: { A: x, B: y }`. */
+function flowEntries(n, body) {
+  return body
+    .split(',')
+    .map((s) => s.match(/^\s*([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*?)\s*$/))
+    .filter(Boolean)
+    .map((m) => ({ n, key: m[1], text: m[2].replace(/^['"]|['"]$/g, '') }));
+}
+
+/** `{ n, key, text }` for EVERY entry of EVERY `env:` block — workflow, job and
+ *  step, a step whose first key is `env:` (`- env:`) included, and the one-line
+ *  flow form. `collectEnv` above merges them into one map for expansion and
+ *  keeps no line; this keeps each entry at its line. */
+export function envEntries(lines) {
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].text;
+    let m;
+    if ((m = t.match(/^(\s*(?:-\s+)?)env:\s*$/))) out.push(...blockEntries(lines, i, m[1].length));
+    else if ((m = t.match(/^\s*(?:-\s+)?env:\s*\{(.*)\}\s*$/))) out.push(...flowEntries(lines[i].n, m[1]));
+  }
+  return out;
+}
+
+/** Every step/job OUTPUT name a lane declares or reads, as `{ n, key, field }`:
+ *  a key of an `outputs:` block (a job's, or `workflow_call`'s), a `<name>=`
+ *  line appended to $GITHUB_OUTPUT, and a `steps.<id>.outputs.<name>` or
+ *  `needs.<job>.outputs.<name>` reference. The reference form catches any
+ *  output something consumes, however the step that wrote it spelled the
+ *  write. */
+export function outputNames(lines) {
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].text;
+    const m = t.match(/^(\s*)outputs:\s*$/);
+    if (m) for (const e of blockEntries(lines, i, m[1].length)) out.push({ n: e.n, key: e.key, field: 'outputs' });
+    for (const r of t.matchAll(/\b(?:steps|needs|jobs)\.[A-Za-z0-9_-]+\.outputs\.([A-Za-z0-9_-]+)/g)) {
+      out.push({ n: lines[i].n, key: r[1], field: 'output reference' });
+    }
+    if (/>>\s*["']?\$\{?GITHUB_OUTPUT\b/.test(t)) {
+      for (const r of t.matchAll(/(?:^|[\s"'(;])([A-Za-z_][A-Za-z0-9_-]*)=/g)) {
+        out.push({ n: lines[i].n, key: r[1], field: '$GITHUB_OUTPUT' });
+      }
+    }
+  }
+  return out;
+}
+
+/** Does `key` contain the app id as a whole token? Case-insensitive; tokens
+ *  split on `_` and `-`, and a hyphenated id must appear as its whole run of
+ *  tokens. `SUBSCRIPTIONTRACKER_DB` names `subscriptiontracker`; `RESUBSCRIPTIONTRACKERX_DB` does not. */
+export function keyNamesApp(key, id) {
+  const k = key.toLowerCase().split(/[_-]+/).filter(Boolean);
+  const a = id.toLowerCase().split(/[_-]+/).filter(Boolean);
+  if (a.length === 0) return false;
+  for (let i = 0; i + a.length <= k.length; i++) {
+    if (a.every((t, j) => k[i + j] === t)) return true;
+  }
+  return false;
+}
+
+/** A UUID literal, 8-4-4-4-12 hex in either case, not a run inside a longer
+ *  hex string. A 40-hex action pin (`uses: owner/action@<sha>`) is not one. */
+export const UUID_LITERAL = /(?<![0-9A-Fa-f])[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}(?![0-9A-Fa-f])/;
+
+/** Limb D-all over one lane: `{ keyHits, uuidHits, keysRead, valuesRead }`.
+ *  `keyHits` are `{ n, field, key, id }`; `uuidHits` are `{ n, field }` and
+ *  carry no value, so a finding cannot print the id it refuses. */
+export function allLaneFindings(wf, env, matrix, appIds) {
+  const envs = envEntries(wf.lines);
+  const keys = [...envs.map((e) => ({ n: e.n, key: e.key, field: 'env' })), ...outputNames(wf.lines)];
+  const keyHits = [];
+  for (const k of keys) {
+    for (const id of appIds) {
+      if (keyNamesApp(k.key, id)) keyHits.push({ ...k, id });
+    }
+  }
+  const values = [...deployPathValues(wf), ...envs.map((e) => ({ n: e.n, field: `env.${e.key}`, text: e.text }))];
+  const uuidHits = [];
+  const seenAt = new Set();
+  for (const v of values) {
+    const hit = [v.text, ...expandExpressions(v.text, env, matrix)].some((t) => UUID_LITERAL.test(t));
+    const at = `${v.n} ${v.field}`;
+    if (hit && !seenAt.has(at)) {
+      seenAt.add(at);
+      uuidHits.push({ n: v.n, field: v.field });
+    }
+  }
+  return { keyHits, uuidHits, keysRead: keys.length, valuesRead: values.length };
+}
+
 const expected = [...APPS].sort().join(', ');
 const APP_IDS = [...APPS].map((a) => a.slice('apps/'.length)).filter(Boolean);
 let gradedLanes = 0;
 let deployFieldsRead = 0;
+let allLanesRead = 0;
+let allKeysRead = 0;
+let allValuesRead = 0;
 for (const wf of parsed) {
   const file = wf.rel.split('/').pop();
   const env = collectEnv(wf.lines);
@@ -946,6 +1114,43 @@ for (const wf of parsed) {
           'That is the per-app workflow authoring this criterion abolishes: shipping app #2 means finding and editing ' +
           'every one of them, on the one lane that reaches users. An app id belongs to the matrix leg — ' +
           '`${{ matrix.app }}` — or to a file the lane READS at run time, never to this YAML.',
+      );
+    }
+  }
+
+  // ── LIMB D-all, for EVERY graded lane, whatever `deployPath` says ─────────
+  {
+    const d = allLaneFindings(wf, env, matrix, APP_IDS);
+    allLanesRead++;
+    allKeysRead += d.keysRead;
+    allValuesRead += d.valuesRead;
+    if (d.valuesRead === 0) {
+      coverageLost([
+        `limb D-all read ZERO values from ${file}, a graded lane.`,
+        'No step `run:`, no `with:`, no `env:` value — a lane cannot be all three at once, so the field',
+        'selection is broken and limb D-all would report every lane free of UUID literals forever.',
+      ]);
+    }
+    for (const h of d.keyHits) {
+      fail(
+        `${owner} · ${file}:${h.n} — limb D-all: the ${h.field === 'env' ? 'env key' : `output name (${h.field})`} ` +
+          `\`${h.key}\` names the app "${h.id}". A key named after one app is a hand-off wired to that app: ` +
+          "app #2's leg would read app #1's value under app #1's name. Name the key for what it holds " +
+          '(`platform_db`, `E2E_APP_ID`) and resolve the value at run time from `matrix.app`.',
+      );
+    }
+    for (const h of d.uuidHits) {
+      fail(
+        `${owner} · ${file}:${h.n} — limb D-all: a UUID literal in \`${h.field}\`. A graded lane runs for every ` +
+          "app, and a UUID in it is one app's database, project or account written into the file every leg runs. " +
+          "Read the id at run time instead (e2e.yml's `backend` step resolves it from services/<app>-api/wrangler.jsonc). " +
+          'This limb exempts no lane and no value.',
+      );
+    }
+    if (!d.keyHits.length && !d.uuidHits.length) {
+      ok(
+        `${file} (${owner}) — limb D-all: ${d.keysRead} env/output key(s) name no app and ${d.valuesRead} ` +
+          'run/with/env value(s) carry no UUID literal',
       );
     }
   }
@@ -998,6 +1203,13 @@ for (const wf of parsed) {
     ok(`${file} (${owner}) — covers exactly the workspace app set {${got}}`);
   }
 }
+// Limb D-all's own floor, checked first so an emptied GRADED_LANES names it.
+if (allLanesRead === 0) {
+  coverageLost([
+    'limb D-all read ZERO graded lanes, so "no app-named key and no UUID literal" was asked of no lane.',
+    `GRADED_LANES names ${GRADED.join(', ') || 'nothing'}; limb D-all reads every lane it names, whatever \`deployPath\` says.`,
+  ]);
+}
 if (gradedLanes === 0) {
   coverageLost([
     'limbs A/A′/D graded ZERO lanes, so the equality they exist to assert ranged over nothing.',
@@ -1006,7 +1218,7 @@ if (gradedLanes === 0) {
 }
 if (APP_IDS.length === 0) {
   coverageLost([
-    'limb D has an EMPTY app-id set, so "does this lane name an app literally" was asked about no app at all.',
+    'limbs D and D-all have an EMPTY app-id set, so "does this lane name an app literally" was asked about no app at all.',
     `The set is derived from the workspace entries {${expected}}; an empty right-hand side certifies every lane.`,
   ]);
 }
@@ -1123,7 +1335,8 @@ if (problems.length > bindingProblems) {
 
 console.log(
   `\nscanned ${seen.length} workflow(s) and ${guardFiles.length} guard(s); graded ${gradedLanes} lane(s) ` +
-    `(${GRADED.join(', ')}) over ${deployFieldsRead} deploy-path field(s); workspace apps: {${expected}}`,
+    `(${GRADED.join(', ')}) over ${deployFieldsRead} deploy-path field(s); limb D-all read ${allKeysRead} key(s) ` +
+    `and ${allValuesRead} value(s) across ${allLanesRead} lane(s); workspace apps: {${expected}}`,
 );
 
 if (problems.length) {
