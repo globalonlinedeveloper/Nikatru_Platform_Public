@@ -125,6 +125,18 @@ describe('backendOf: one app id, its own databases', () => {
     );
   });
 
+  test('a database_id that is not a D1 id (a UUID) throws, so file text never reaches a request URL (CodeQL #467)', () => {
+    for (const bad of ['alpha-db', '11111111-1111-4111-8111-111111111111/../x', '11111111-1111-4111-8111-11111111111', ' 11111111-1111-4111-8111-111111111111']) {
+      const f = fixture();
+      f['services/alpha-api/wrangler.jsonc'].d1_databases[0].database_id = bad;
+      assert.throws(
+        () => backendOf('alpha', { read: reader(f), appIds: TWO_APPS }),
+        refused(/binding APP_DB has a database_id that is not a D1 id \(a UUID\)/),
+        JSON.stringify(bad),
+      );
+    }
+  });
+
   test('an APP_DB binding with an empty database_id throws', () => {
     const f = fixture();
     f['services/alpha-api/wrangler.jsonc'].d1_databases[0].database_id = '';

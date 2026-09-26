@@ -88,7 +88,7 @@
   "discovery-surface.test.mjs": 139,
   "dod-sync.test.mjs": 20,
   "e2e-auth-target.test.mjs": 48,
-  "e2e-backend.test.mjs": 25,
+  "e2e-backend.test.mjs": 26,
   "e2e-legs.test.mjs": 28,
   "e2e-proof-fresh.test.mjs": 61,
   "e2e-run-resolver.test.mjs": 17,

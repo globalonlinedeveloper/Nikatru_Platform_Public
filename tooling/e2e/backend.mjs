@@ -87,11 +87,20 @@ function blockOf(appId, env, read) {
   return { rel, block, where: `env.${env}` };
 }
 
+/** The shape of a Cloudflare D1 database id: a UUID. */
+export const D1_DATABASE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function databaseIdOf({ rel, block, where }, binding) {
   const d = (block?.d1_databases ?? []).find((x) => x?.binding === binding);
   if (!d) throw new BackendRefused(`${rel} ${where} declares no D1 binding ${binding}.`);
   if (typeof d.database_id !== 'string' || d.database_id === '') {
     throw new BackendRefused(`${rel} ${where} binding ${binding} has no database_id.`);
+  }
+  // ⏱ 2026-09-26 · CodeQL #467 (js/file-access-to-http): this id is READ FROM A FILE and becomes a path segment
+  // of a Cloudflare D1 API URL (verify_purged.mjs, verify_row.mjs, purge.mjs). It is held to the only shape
+  // Cloudflare issues for a D1 database, a UUID, so no other text read from a wrangler file can reach a request.
+  if (!D1_DATABASE_ID.test(d.database_id)) {
+    throw new BackendRefused(`${rel} ${where} binding ${binding} has a database_id that is not a D1 id (a UUID), so it is never put in a request URL.`);
   }
   return d.database_id;
 }

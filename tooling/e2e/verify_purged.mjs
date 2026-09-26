@@ -85,7 +85,7 @@ import {
   purgedSummary,
   say,
 } from './auth_target_expectation.mjs';
-import { backendOf, BackendRefused } from './backend.mjs';
+import { backendOf, BackendRefused, D1_DATABASE_ID } from './backend.mjs';
 
 /** The route whose EFFECT this file audits — the in-app "Delete account" tap
  *  reaches the shared platform Worker's `DELETE /v1/account`, which sweeps
@@ -114,6 +114,12 @@ try {
   process.exit(2); // safe: this runs BEFORE any fetch, so no undici handle is open
 }
 const appDbName = `${appId}'s APP_DB`;
+// ⏱ 2026-09-26 · CodeQL #467: held to the D1 id shape again HERE, at the request's own file, because the value
+// was read from a wrangler file; backendOf() already refuses any other shape, and this keeps the sink self-evidently safe.
+if (!D1_DATABASE_ID.test(dbId)) {
+  console.error(`COULD NOT LOOK: ${appDbName}'s database_id is not a D1 id (a UUID); refusing to put it in a request URL.`);
+  process.exit(2); // safe: this runs BEFORE any fetch, so no undici handle is open
+}
 
 const auth = decideTrust(process.env.E2E_WORKERS_TRUST);
 if (!auth.trust) {
