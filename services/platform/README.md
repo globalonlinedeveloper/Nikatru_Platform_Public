@@ -64,7 +64,10 @@ because a caller can get them wrong in ways the others do not offer.)
    app is behind `CONFIG_CEILING_LIMITER`, the same server-derived
    (`edge:<colo>:<asn>`) ceiling `/v1/events` uses — the 5-minute edge cache does
    not collapse cache-busting query strings, so without it an anonymous caller
-   can spend one KV read per request.
+   can spend one KV read per request. `?channel=<id>` selects that release
+   channel's `min_supported_version` and `update_url` (see "Config overrides
+   (KV)" below); an id the channel register does not declare is
+   `400 {"error":"unknown_channel"}`, answered before the ceiling and before KV.
 2. **Consolidated nightly cron** (`0 6 * * *`) — the nightly handler for the whole
    account, below. `wrangler.jsonc` declares six triggers in all: `0 0`, `0 12` and
    `0 18 * * *` run the GitHub dispatcher and the 6-hourly ops watchdog and nothing
@@ -134,6 +137,19 @@ Store a partial JSON override; it deep-merges over the defaults:
 ```bash
 wrangler kv key put --binding=CONFIG_KV "config:subscriptiontracker" \
   '{"paywall":{"enabled":true},"min_supported_version":"1.1.0"}'
+```
+
+`min_supported_version` and `update_url` are resolved **per release channel**
+(O-UPDATE-FLOOR-HAS-NO-CHANNEL). A client asks `GET /config/<app>?channel=<id>`
+with its compiled `RELEASE_CHANNEL`; no parameter is served `default`, and an id
+`tooling/channel-register.json` does not declare is `400 {"error":"unknown_channel"}`,
+before the ceiling and before KV. The response stays scalar. The scalar
+override above still means every channel; a map raises one channel alone and
+merges key-wise over the committed map:
+
+```bash
+wrangler kv key put --binding=CONFIG_KV "config:subscriptiontracker" \
+  '{"min_supported_version":{"web":"1.1.0"}}'
 ```
 
 ## Why `package.json` carries an `overrides` block

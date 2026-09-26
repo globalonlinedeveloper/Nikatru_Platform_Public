@@ -1,7 +1,7 @@
 // capture-row-edge.mjs — no card in a store frame is cut by the page's bottom
 // edge with nothing drawn over the cut.
 //
-// ⏱ 2026-09-22 (store-frame-followup). O-STORE-FRAME-FAB: the phone frames
+// ⏱ 2026-09-22 (store-frame-followup). O-STORE-FRAME-FAB-COVERS-A-PRICE-ROW: the phone frames
 // showed a price row sliced by the fold, a hard horizontal line through a
 // card. The fix is a fade in `app_shell.dart` that ends in a solid band of the
 // page ground; this module is the check that the PIXELS agree, without a human
@@ -130,7 +130,7 @@ export function foldLineProblems(img, fold, label, tol = FOLD_TOLERANCE) {
         `${scan.rows[0]}..${scan.rows[1] - 1} (just above the page's bottom edge) are off the page ground ` +
         `rgb(${g.ground.join(',')}) by more than ${tol}, worst ${scan.worst}; first at x=${f.x}, y=${f.y}, ` +
         `rgb(${f.rgb.join(',')}). Those rows should be a gap or the fade's solid tail. A hard line through a ` +
-        'card at the frame edge is O-STORE-FRAME-FAB; the fade that removes it is `AppShell.foldFadeKey` in ' +
+        'card at the frame edge is O-STORE-FRAME-FAB-COVERS-A-PRICE-ROW; the fade that removes it is `AppShell.foldFadeKey` in ' +
         '`app_shell.dart`.',
     ],
   };

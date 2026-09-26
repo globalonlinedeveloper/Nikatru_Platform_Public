@@ -284,7 +284,7 @@ jobs:
       # packaging is a mapping the packaging can take with it. Its comment also
       # said the symbols were retained rather than sent to the crash sink
       # "because tooling/versions.json pins ONE glitchtip-cli binary and it is
-      # linux-x86_64; this job runs on Windows (O-NATIVE-SYMBOL-UPLOAD-LINUX-ONLY)".
+      # linux-x86_64; this job runs on Windows".
       # The Windows binary of the same release is now pinned by digest as
       # `glitchtip_cli_windows_x86_64_sha256` and the sink upload is two steps
       # below, which is what closes that open row.

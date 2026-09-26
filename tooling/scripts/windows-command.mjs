@@ -25,7 +25,7 @@
 // ⚠️ TELLING CALLERS TO TYPE `//c` IS NOT THE REPAIR. That is a workaround for a
 // tool which accepts an invocation that cannot work and then calls it a pass.
 //
-// ⏱ 2026-09-22 (O-HEAVY-CMD-C). `C:\Windows\System32\cmd.exe` and `$COMSPEC` are
+// ⏱ 2026-09-22 (O-HEAVY-CMD-C-IDIOM-IS-A-SILENT-FALSE-GREEN). `C:\Windows\System32\cmd.exe` and `$COMSPEC` are
 // cmd too. The rule below used to compare the WHOLE word against `cmd`, so a
 // full-path invocation walked straight past the refusal, fell through to the
 // final pass-through, and reproduced the exact vacuous green this module exists

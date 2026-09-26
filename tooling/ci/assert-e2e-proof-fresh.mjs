@@ -85,7 +85,7 @@
 // guard has only ever asserted that a proof is RECENT and TIMER-DRIVEN: it
 // grades the freshness of the evidence, never the evidence itself, and changing
 // how it reads the timer cannot advance a count of green nights. What this DOES
-// close is O-E2E-PROOF-FRESH — the last GitHub-scheduler dependency in a duty
+// close is the last GitHub-scheduler dependency in a duty
 // reader — and it advances O-GITHUB-SCHEDULER.
 //
 // ── EXIT CODES IN THIS FILE ─────────────────────────────────────────────────
@@ -1009,7 +1009,7 @@ async function main() {
     console.error('      nightly as production being broken until proven a flake. [pipeline N-6]');
     console.error('');
     console.error('      ⛔ AND A GREEN VERDICT HERE IS NOT A PROOF THAT THE LIVE PATH WORKS. This guard grades');
-    console.error('      the FRESHNESS of the evidence, never the evidence. O-E2E-UNPROVEN stays open.');
+    console.error('      the FRESHNESS of the evidence, never the evidence; the live-path proof is O-E2E-UNPROVEN.');
     return;
   }
 

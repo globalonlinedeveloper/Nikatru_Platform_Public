@@ -97,7 +97,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, copyFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-entitlement-contract.mjs');
@@ -372,6 +372,9 @@ const RC_EVENTS = [
 /** `, notAGrant: <n>` for one fixture row, or nothing when the row omits it. */
 const notAGrantKey = (n) => (n === OMIT_NOT_A_GRANT ? '' : `, notAGrant: ${n === undefined ? false : n}`);
 
+/** Long enough for contract.schema.json's `why.minLength`, which limb 11 grades. */
+const RC_WHY = 'a sourced sentence the mapping rests on';
+
 const rcJs = (events = RC_EVENTS) =>
   `
 /** @type {readonly RevenueCatEventReason[]} */
@@ -379,7 +382,7 @@ export const REVENUECAT_EVENT_REASONS = [
 ${events
   .map(
     ([e, r, d, n]) =>
-      `  { event: '${e}', reason: ${r === null ? 'null' : `'${r}'`}, dateDerived: ${d === true}${notAGrantKey(n)}, why: 'a sourced sentence' },`,
+      `  { event: '${e}', reason: ${r === null ? 'null' : `'${r}'`}, dateDerived: ${d === true}${notAGrantKey(n)}, why: '${RC_WHY}' },`,
   )
   .join('\n')}
 ];
@@ -404,7 +407,7 @@ const rcJson = (events = RC_EVENTS) =>
     reason,
     dateDerived: dateDerived === true,
     ...(n === OMIT_NOT_A_GRANT ? {} : { notAGrant: n === undefined ? false : n }),
-    why: 'a sourced sentence',
+    why: RC_WHY,
   }));
 
 // ── the four RUNTIME COPIES limb 4 now compares against the seed ─────────────
@@ -442,6 +445,24 @@ const BUNDLE_SOURCES = [
   ['owner_comp', false],
 ];
 
+/** bundle.json's fields other than the sources, as the committed file carries them. */
+const BUNDLE_REST = {
+  productKinds: ['app', 'extension', 'script'],
+  productRegisters: [
+    { kind: 'app', register: 'catalog/apps.json' },
+    { kind: 'extension', register: 'extensions/catalog/extensions.json' },
+    { kind: 'script', register: null },
+  ],
+  productStatuses: ['live', 'preview'],
+  minLiveProductsForBundle: 2,
+};
+
+/** The two COMMITTED schemas limb 11 grades against, read once. The fixture carries
+ *  the real bytes: a schema written for the fixture would test a schema nothing ships. */
+const REPO_ROOT = resolve(CI_DIR, '..', '..');
+const CONTRACT_SCHEMA = readFileSync(join(REPO_ROOT, 'contracts', 'entitlement', 'contract.schema.json'), 'utf8');
+const BUNDLE_SCHEMA = readFileSync(join(REPO_ROOT, 'contracts', 'entitlement', 'bundle.schema.json'), 'utf8');
+
 /** contracts/entitlement/bundle.js — the authored bundle copy, as limb 9 parses it. */
 function bundleJs(sources = BUNDLE_SOURCES) {
   const rows = sources
@@ -450,9 +471,16 @@ function bundleJs(sources = BUNDLE_SOURCES) {
   return `export const BUNDLE_SOURCES = [\n${rows}\n];\n`;
 }
 
-/** contracts/entitlement/bundle.json — generated from bundle.js. */
-function bundleJson(sources = BUNDLE_SOURCES) {
-  const doc = { bundleSources: sources.map(([s, r]) => ({ source: s, requiresReceipt: r })) };
+/** contracts/entitlement/bundle.json — generated from bundle.js. Every field the
+ *  schema requires is carried, because limb 11 grades this file against the REAL
+ *  bundle.schema.json; `over` replaces or adds a top-level field for one case. */
+function bundleJson(sources = BUNDLE_SOURCES, over = {}) {
+  const doc = {
+    $schema: './bundle.schema.json',
+    bundleSources: sources.map(([s, r]) => ({ source: s, requiresReceipt: r })),
+    ...BUNDLE_REST,
+    ...over,
+  };
   return `${JSON.stringify(doc, null, 2)}\n`;
 }
 
@@ -627,6 +655,10 @@ function run(o = {}) {
   // still assert that limb 9's own coverage check bites.
   if (o.bundleJs !== null) writeFileSync(join(contracts, 'bundle.js'), o.bundleJs ?? bundleJs(o.bundleSources ?? BUNDLE_SOURCES));
   if (o.bundleJson !== null) writeFileSync(join(contracts, 'bundle.json'), o.bundleJson ?? bundleJson(o.bundleJsonSources ?? o.bundleSources ?? BUNDLE_SOURCES));
+  // The two schemas limb 11 grades the JSON copies against — the committed bytes by
+  // default; `contractSchema` / `bundleSchema` replace one, and null omits it.
+  if (o.contractSchema !== null) writeFileSync(join(contracts, 'contract.schema.json'), o.contractSchema ?? CONTRACT_SCHEMA);
+  if (o.bundleSchema !== null) writeFileSync(join(contracts, 'bundle.schema.json'), o.bundleSchema ?? BUNDLE_SCHEMA);
   if (o.vendored !== null) {
     writeFileSync(join(extCore, 'entitlement-contract.js'), o.vendored ?? contractJs(o.vendoredReasons ?? codeReasons, o.vendoredRc ?? RC_EVENTS));
   }
@@ -646,7 +678,7 @@ function run(o = {}) {
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, o.extraFile.name), o.extraFile.body);
   }
-  const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
+  const r = spawnSync(process.execPath, [o.guard ?? GUARD, root], { encoding: 'utf8' });
   return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}`, root };
 }
 
@@ -874,7 +906,8 @@ describe('assert-entitlement-contract limb 4 — every runtime copy of the vocab
 
   const COPIES = [
     { name: 'contracts/entitlement/contract.js', reasons: 'jsReasons', absent: 'js', junk: 'export const NOTHING = [];\n', junkExit: 1 },
-    { name: 'contracts/entitlement/contract.json', reasons: 'jsonReasons', absent: 'json', junk: '{ "moneyEnvironments": ["live"] }\n', junkExit: 2 },
+    // junkExit 1 since limb 11 (O-PUBLIC-DOCS-HAND-WRITTEN-FACTS): this junk also fails contract.schema.json, a real finding.
+    { name: 'contracts/entitlement/contract.json', reasons: 'jsonReasons', absent: 'json', junk: '{ "moneyEnvironments": ["live"] }\n', junkExit: 1 },
     { name: 'extensions/core/v1/entitlement-contract.js', reasons: 'vendoredReasons', absent: 'vendored', junk: 'export const NOTHING = [];\n', junkExit: 1 },
     { name: 'packages/purchases/lib/src/generated/entitlement_contract.g.dart', reasons: 'dartReasons', absent: 'dart', junk: '// nothing generated\n', junkExit: 2 },
   ];
@@ -898,7 +931,8 @@ describe('assert-entitlement-contract limb 4 — every runtime copy of the vocab
       // An empty right-hand side agrees with any left-hand side. This is the
       // shape that prints ok while checking nothing.
       // junkExit (O-EXIT2-CONVENTION-GAP): the two .js copies are also a byte-identical PAIR, so
-      // junk in one is ALSO a real finding and the run is 1; the other two are COVERAGE LOST alone, 2.
+      // junk in one is ALSO a real finding and the run is 1; the JSON copy's junk also fails its
+      // schema under limb 11, so it is 1 too; the Dart copy is COVERAGE LOST alone, 2.
       const r = run({ [copy.absent]: copy.junk });
       assert.equal(r.code, copy.junkExit, r.out);
       assert.match(r.out, /parsed zero revocation reasons out of/);
@@ -1653,5 +1687,70 @@ describe('assert-entitlement-contract limbs 8-9 — their own coverage checks', 
     const r = run({ bundleSources: BUNDLE_SOURCES, bundleJs: bundleJs(flipped) });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /THIS IS THE FIELD THAT MATTERS/);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// LIMB 11 · D3 — each generated JSON conforms to the schema written for it
+// (O-PUBLIC-DOCS-HAND-WRITTEN-FACTS). Before this limb, `contract.schema.json`
+// and `bundle.schema.json` graded nothing: the first grading run found the
+// committed `contract.json` failing its own schema, and no build had noticed.
+// The mutant is this guard with the `LIMB 11 GRADE BEGIN … END` region deleted,
+// which is the guard as it stood before the limb.
+// ═════════════════════════════════════════════════════════════════════════════
+function writeNoLimb11Mutant() {
+  const src = readFileSync(GUARD, 'utf8');
+  const begin = src.indexOf('/* ── LIMB 11 GRADE BEGIN');
+  const end = src.indexOf('LIMB 11 GRADE END', begin);
+  assert.notEqual(begin, -1, 'the LIMB 11 GRADE BEGIN marker is gone from the guard, so no mutant can be built');
+  assert.notEqual(end, -1, 'the LIMB 11 GRADE END marker is gone from the guard');
+  /* The mutant lives in the temp dir, so its relative imports are pointed back at
+     the real modules beside the guard. */
+  const ciUrl = pathToFileURL(CI_DIR).href;
+  const mutant = (src.slice(0, begin) + src.slice(src.indexOf('\n', end) + 1))
+    .replace(/from '\.\/([^']+)'/g, `from '${ciUrl}/$1'`)
+    .replace(/from '\.\.\/app-yaml\/([^']+)'/g, `from '${ciUrl}/../app-yaml/$1'`);
+  assert.ok(!mutant.includes('validateSchema(inst.doc'), 'the mutant still grades, so the region deleted was not the one doing the work');
+  const path = join(TMP, 'mutant-no-limb-11.mjs');
+  writeFileSync(path, mutant, 'utf8');
+  return path;
+}
+
+describe('assert-entitlement-contract limb 11 — D3, the generated JSON is graded against its schema', () => {
+  test('D3 — a contract.json field the schema does not declare is exit 1; the guard without limb 11 passes it', () => {
+    const extra = JSON.parse(contractJson());
+    extra.unreviewedField = true;
+    const r = run({ json: `${JSON.stringify(extra, null, 2)}\n` });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /contracts\/entitlement\/contract\.json does not conform to contracts\/entitlement\/contract\.schema\.json: .*"unreviewedField" is not a declared property/);
+
+    const old = run({ json: `${JSON.stringify(extra, null, 2)}\n`, guard: writeNoLimb11Mutant() });
+    assert.equal(old.code, 0, `without limb 11 the same tree passed — that is the defect: ${old.out}`);
+  });
+
+  test('D3b — bundle.json below the schema minimum is exit 1: `minimum` is graded, not skipped', () => {
+    const r = run({ bundleJson: bundleJson(BUNDLE_SOURCES, { minLiveProductsForBundle: 1 }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /bundle\.json does not conform to .*minLiveProductsForBundle: 1 is below the minimum 2/);
+  });
+
+  test('D3c — a schema carrying a keyword the validator does not implement is refused, by name', () => {
+    const schema = JSON.parse(CONTRACT_SCHEMA);
+    schema.properties.moneyEnvironments.maximumItems = 2;
+    const r = run({ contractSchema: JSON.stringify(schema, null, 2) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /keyword "maximumItems" is not implemented by this validator/);
+  });
+
+  test('D3d — a schema that is absent is COVERAGE LOST, never a pass', () => {
+    const r = run({ bundleSchema: null });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — limb 11 could not grade contracts\/entitlement\/bundle\.json/);
+  });
+
+  test('the green fixture is graded, and says so', () => {
+    const r = run();
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /limb 11: 2 of 2 generated JSON file\(s\) conform to their schema/);
   });
 });

@@ -124,60 +124,30 @@ The rules that keep a copy honest:
 
 ## 5. Status: what exists today
 
-Verified against the tree on **2026-08-14**, while it was being written. `core/core.json` is the
-machine-readable version of this section — it carries a per-module status, the counts, and its own `gaps`
-list. Where the two ever disagree, believe `core.json` and fix this page.
+**`core/core.json` is the status record, and this page does not restate it.** It carries the
+`version` (with a `versionNote` on why it is below 1.0.0), a per-module `status` for every specified
+module with what exists instead where one is partial or absent, the `counts`, and its own `gaps` list.
+`core/test/coverage.node.js` recomputes the counts from that map and the tree on every CI run. A copy of
+those figures on this page went stale without any run noticing (O-PUBLIC-DOCS-HAND-WRITTEN-FACTS), so
+the figures are read there and only the reasoning behind them is kept here.
 
-**`core/` exists at version 0.1.0. `vendor/core/` does not exist anywhere.** No tool vendors the shared
-runtime — there is no `vendor/` directory in the tree at all — so the hash gate that makes a copy honest
-(§4) is written down and exercised by nothing. Until a tool carries a verified copy, the substrate a
-stamped tool actually inherits is still the template's own files, copied wholesale, with two weaker
-mechanisms standing in: `skeleton.json` declares the inherited files a tool is expected not to edit, and
-`tools/audit-fleet.mjs` reports what has drifted. That is copy-with-provenance, not copy-with-verification.
+What the record does not say, and a reader should not have to infer:
 
-Three things about `core/` that a reader should not have to infer:
-
-- **The version number is 0.1.0 on purpose.** `v1` is the *directory*, and the directory is the major
-  version. The number is a claim about how much of that channel exists — and that is **one of the eleven
-  specified modules**. Three files are in `core/v1/`; two of them were never on the list. It becomes
-  1.0.0 when the surface is real, not when the folder was created.
+- **The version stays below 1.0.0 on purpose.** `v1` is the *directory*, and the directory is the major
+  version. The number is a claim about how much of that channel exists. It becomes 1.0.0 when the surface
+  is real, not when the folder was created.
 - **Everything in it was promoted from code that already ran**, byte for byte, with the source path and
   the sha256 of the source recorded in the header. Nothing there was written from a description.
-- **`core/test/` holds no sims, which violates §2 rule 3 today.** That is a red gate, not a silent one:
-  `ci.yml` fails the core job when `core/` exists and `core/test/` is empty, precisely so an empty loop
-  cannot report success. Fixing it is the price of the next promotion.
+- **Until a tool vendors a verified copy, the hash gate of §4 is written down and exercised by nothing**
+  (`core.json` `gaps` records whether one does). The substrate a stamped tool inherits meanwhile is the
+  template's own files, copied wholesale, with two weaker mechanisms standing in: `skeleton.json` declares
+  the inherited files a tool is expected not to edit, and `tools/audit-fleet.mjs` reports what has
+  drifted. That is copy-with-provenance, not copy-with-verification.
+- **A module the architecture never listed may still earn a place** under these rules, when it solves a
+  platform problem rather than a product one. `core.json` labels such a file `"specified": false` rather
+  than folding it into the list; the plan being wrong about which modules land first is a fact worth
+  keeping.
 
-The architecture names eleven shared modules. Their honest status:
-
-| Specified module | Status today | What exists instead |
-| --- | --- | --- |
-| `settings.js` | **Promoted** | `core/v1/settings.js`, from `templates/tool/lib/settings.js` — defaults, the sync/local partition with its reasoning, schema version, migrations. Not yet drop-in vendorable: it still declares a tool's own defaults inline and carries PLACEHOLDER markers, while a vendored file is hash-checked and must not be hand-edited. |
-| `idb.js` (generic IndexedDB) | **Partial** | `core/v1/storage.js` (from `templates/tool/lib/storage.js`) is a real IndexedDB wrapper, and it is **not** the generic module described: it carries a two-store scratch/items policy, retention sweeps and a fixed database name. Under §1.2 only part of it is admissible as-is, and renaming it `idb.js` would be the whole lie in one move. |
-| `i18n.js` | **Partial** | Message lookup, plurals, locale and direction, and a `[data-i18n]` applier exist in `templates/tool/pages/common.js`, with `_locales/make-locales.mjs` behind the catalogues. Real code, but page-scope helpers in a copied file rather than a module with the specified boundary. |
-| `download.js` | **Partial** | `skDownloadBlob`, `skDownloadJson` and filename building in `templates/tool/pages/common.js`. Page scope; the worker-side and blob-lifecycle discipline described in the architecture is not factored out. |
-| `clipboard.js` | **Partial** | `skCopyText` writes text. No image write, no permission or focus handling. |
-| `diag.js` | **Partial** | `skBuildDiagnostic` builds a local report, and a last-failure note is kept in session storage. The N-entry error ring buffer described in the architecture **does not exist**. |
-| `ui/tokens.css`, `ui/base.css`, `ui/controls.js` | **Partial** | `templates/tool/pages/common.css` carries a `:root` token block with light and dark; toast and confirm primitives live in `pages/common.js`. Not a separable UI kit. |
-| `ns.js` (namespace bootstrap) | **ABSENT** | Shared files attach globals directly. There is no namespace object and no bootstrap file. |
-| `msg.js` (MV3 messaging + worker-lifetime guards) | **ABSENT** | Each tool's `background.js` has its own `onMessage` router with sender checks. Nothing is factored out, and the promise-wrapped send, keepalive and tab guards described in the architecture do not exist. |
-| `detect/pii.js` | **ABSENT** | No shared detection module. Any detection today is tool-local. |
-| `imaging.js` | **ABSENT** | No shared imaging module. Any imaging today is tool-local. |
-
-One module the architecture never listed is in `core/v1/` anyway, and it earns its place under these
-rules: `jobs.js`, a write-through job table over `chrome.storage.session`. It solves a platform problem
-rather than a product one — an MV3 service worker is killed while a job is still running, and a job table
-held in a module-scope `Map` is empty when the worker returns — which is precisely the shape §1.2 asks
-for. It is labelled `"specified": false` in `core.json` rather than quietly folded into the list; the
-plan being wrong about which modules would land first is a fact worth keeping.
-
-Note what the ordering says. The architecture expected `ns.js`, `msg.js` and the UI kit to land first,
-and all three are unbuilt, while what did land is one specified module and two that were never on the
-list. The order inverted for one reason: **implementations existed for those three and for none of the
-others** — the sequence follows what was real, not what was planned. With `ns.js`
-unbuilt there is no namespace object either, so the promoted files keep the globals their sources define
-rather than the namespaced form §2 rule 4 requires — a debt that has to be paid before a tool vendors any
-of them.
-
-**Do not read the "partial" rows as "nearly done".** Each is real code that covers part of a specified
-module's job, in a copied file, without the boundary, the namespace, the sim, or the hash gate the
-policy above requires. Promoting one is a piece of work with a review attached, not a file move.
+**Do not read a "partial" status in `core.json` as "nearly done".** Each is real code that covers part of
+a specified module's job, in a copied file, without the boundary, the namespace, the sim, or the hash gate
+the policy above requires. Promoting one is a piece of work with a review attached, not a file move.

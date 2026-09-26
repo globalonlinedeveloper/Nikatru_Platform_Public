@@ -91,6 +91,8 @@ function buildFixture(root, { full = true } = {}) {
   mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
   writeFileSync(join(root, 'AGENTS.md'), '# fixture agents card\n');
   writeFileSync(join(root, 'apps', 'demo', 'app.md'), 'fixture app\n');
+  /* An app is counted by its declaration, not by its directory (D2 below). */
+  writeFileSync(join(root, 'apps', 'demo', 'app.yaml'), 'id: demo\n');
 
   const needs = Array.from({ length: Math.max(FLOORS.gateNeeds, 3) }, (_, i) => `lane-${i}`);
   writeFileSync(join(root, '.github', 'workflows', 'ci.yml'), ciYml(needs));
@@ -265,6 +267,76 @@ test('🔴 the card carries NO per-file inventory count, so adding a guard or a 
         `2026-09-09, and it is reported on the run line instead. Card:\n${card}`,
     );
   }
+});
+
+/** Stage tracked files for one case, run `fn`, and take them out again. */
+function withStaged(files, fn) {
+  for (const [rel, body] of Object.entries(files)) {
+    mkdirSync(dirname(join(ROOT, rel)), { recursive: true });
+    writeFileSync(join(ROOT, rel), body);
+  }
+  git(ROOT, 'add', '--', ...Object.keys(files));
+  try {
+    return fn();
+  } finally {
+    git(ROOT, 'rm', '-q', '-f', '--cached', '--', ...Object.keys(files));
+    for (const rel of Object.keys(files)) rmSync(join(ROOT, rel), { force: true });
+  }
+}
+
+test('D2 — each figure counts its DEFINING set: a helper directory moves nothing, a real member moves the card', () => {
+  /* O-PUBLIC-DOCS-HAND-WRITTEN-FACTS. Counting directories under a root printed
+     3 Workers, 3 sites, 6 extensions and 12 Dart packages over a tree holding 2, 2,
+     1 and 11, because `_shared/`, `extensions/docs/` and a JS package sit beside the
+     members. So the property has two halves, and each is asserted on its own. */
+  const abs = join(ROOT, 'START-HERE.md');
+  const keep = readFileSync(abs, 'utf8');
+  assert.equal(run(ROOT).code, 0, 'the card must be written first');
+  assert.equal(run(ROOT, '--check').code, 0, 'green control, or this case proves nothing');
+  const card = readFileSync(abs, 'utf8');
+  const figures = (text) => text.match(/(\d+) app\(s\)[^·]*· (\d+) shared Dart packages · (\d+) Cloudflare Worker\(s\) ·\n(\d+) static site\(s\) · (\d+) extension\(s\)/);
+  assert.ok(figures(card), `the card no longer carries the five shape figures in the shape this case reads. Card:\n${card}`);
+  /* The fixture has helper directories under services/, sites/ and extensions/ and
+     no defining file in any of them, so those three figures are 0, not 1. */
+  assert.deepEqual(figures(card).slice(1).map(Number), [1, Math.max(FLOORS.pkgs + 2, 6), 0, 0, 0], `every figure must be its defining set's size. Card:\n${card}`);
+
+  /* HALF ONE: helper directories with no defining file must NOT move the card. */
+  withStaged({
+    'services/_shared/src/util.ts': 'export {};\n',
+    'sites/_shared/package.json': '{}\n',
+    'extensions/docs/README.md': '# docs\n',
+    'packages/tokens/package.json': '{}\n',
+    'apps/notes/README.md': '# not an app: no app.yaml\n',
+  }, () => {
+    const r = run(ROOT, '--check');
+    assert.equal(r.code, 0, `a directory that is not a member must move no figure: ${r.out}`);
+  });
+
+  /* HALF TWO: one real member of each set MUST move the card. */
+  withStaged({
+    'services/worker-two/wrangler.jsonc': '{}\n',
+    'sites/site-two/index.html': '<!doctype html>\n',
+    'extensions/Extension/Ext_Two/manifest.json': '{}\n',
+  }, () => {
+    const r = run(ROOT, '--check');
+    assert.equal(r.code, 1, `a new Worker, site and extension must red a card that does not carry them: ${r.out}`);
+    const w = run(ROOT);
+    assert.equal(w.code, 0, w.out);
+    assert.deepEqual(figures(readFileSync(abs, 'utf8')).slice(3).map(Number), [1, 1, 1], 'each staged member must count once');
+  });
+  writeFileSync(abs, keep);
+  assert.equal(run(ROOT).code, 0, 'rewritten over the restored tree');
+  assert.equal(readFileSync(abs, 'utf8'), card, 'restored, the card must be the card the green control read');
+});
+
+test('the card carries no size of a private register — the generator reads nothing outside the index', () => {
+  /* CI's `--check` has no private corpus, so a size read off `Private/` would make the
+     card differ between a host and CI; a typed one is a hand-written fact. */
+  assert.equal(run(ROOT).code, 0);
+  const card = readFileSync(join(ROOT, 'START-HERE.md'), 'utf8');
+  assert.doesNotMatch(card, /\d+\s*KiB of register|another \d+\s*KiB/, `the card carries a register size again. Card:\n${card}`);
+  const src = readFileSync(GEN_SRC, 'utf8');
+  assert.doesNotMatch(src, /Nikatru_Platform_Private['"`]\s*[,)]|join\([^)]*['"`]Private['"`]/, 'the generator builds a path into the private corpus');
 });
 
 test('a tree under the floors is COVERAGE LOST — exit 2, never a pass and never a card', () => {

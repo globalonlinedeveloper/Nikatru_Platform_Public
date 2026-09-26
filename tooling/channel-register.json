@@ -3868,7 +3868,7 @@
       },
       "deferral": {
         "reason": "NO EXTENSION HAS EVER BEEN SUBMITTED ANYWHERE. ADR 067 decision 8: every new product carries ONE MANUAL FIRST PUBLISH per store, and no store API allows a first submission except Firefox — so `served` here cannot flip on a decision alone.",
-        "alsoBlockedBy": "THIS ROW IS THE EXCEPTION TO ITS OWN REASON and the deferral is ours, not Mozilla's: AMO is the one store whose API can make a first submission, so what defers this channel is that this factory has written no submission script for it and the listing screenshots are still owed (open.json O-STORE-SCREENSHOTS). ⏱ 2026-09-22 — the first half is closed: this row is `submittable: true` with a `submission` block naming publish-amo.mjs. The screenshots are still owed, and `served` stays false until a dispatch the owner types actually lands a listing."
+        "alsoBlockedBy": "THIS ROW IS THE EXCEPTION TO ITS OWN REASON and the deferral is ours, not Mozilla's: AMO is the one store whose API can make a first submission, so what defers this channel is that this factory has written no submission script for it and the listing screenshots are still owed (open.json O-STORE-SCREENSHOTS). ⏱ 2026-09-22 — the first half landed: this row is `submittable: true` with a `submission` block naming publish-amo.mjs. The screenshots are still owed, and `served` stays false until a dispatch the owner types actually lands a listing."
       },
       "notes": [
         "⬜ NOT SERVED. ⚠️ THIS IS THE ONE CHANNEL IN THE WHOLE REGISTER WHOSE API CAN MAKE A FIRST",

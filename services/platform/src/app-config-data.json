@@ -21,13 +21,13 @@
     "  · tooling/ci/assert-config-registry.mjs `DATA` — every key here names a catalogue app, and every served feature has a reader",
     "  · tooling/ci/assert-no-store-bundle-copy.mjs `SERVED_COPY` — served copy promises no bundle while none can be bought (G6)",
     "  · tooling/ci/assert-purchase-path.mjs `SERVER_CONFIG` — [5]M-8/T-11, every offering's term + trial",
-    "  · tooling/ci/assert-stamp-properties.mjs `PLATFORM_CONFIG_DATA` — [10]D-8, every served `update_url`",
+    "  · tooling/ci/assert-stamp-properties.mjs `PLATFORM_CONFIG_DATA` — [10]D-8, every served `update_url`, per channel; and every per-channel map's keys",
     "  · tooling/sites/generate-discovery.mjs `RAIL_CONFIG` — `features` → the landing page's bullets; `paywall` → its prices",
     "  · tooling/sites/generate-landing-payload.mjs `RAIL_CONFIG` (in `REQUIRED_SOURCES`) — the landing payload's prices",
     "  · tooling/ci/assert-discovery-surface.mjs `RAIL_CONFIG` — re-parses this file and re-derives those prices",
     "  · tooling/ci/assert-render-payload.mjs `RAIL_CONFIG` — own price arithmetic, one currency per app, no price in prose",
     "  · tooling/ci/assert-ads-declarations.mjs, pointed here by the android-play ads-declaration.json `configPayloads`",
-    "  · tooling/ci/release-manifest.mjs `releaseFloor` — the release record's minSupported is the served `min_supported_version`",
+    "  · tooling/ci/release-manifest.mjs `releaseFloor` — the release record's minSupported is the highest `min_supported_version` served to the channels it stages",
     "",
     "🔴 THAT LINE SAID \"THREE READERS\" UNTIL 2026-08-21 AND \"EIGHT\" UNTIL 2026-09-22, AND BOTH UNDERCOUNTS",
     "COST AN INVESTIGATION. A reader who trusted the first concluded `apps.subscriptiontracker.features` was",
@@ -76,7 +76,18 @@
     "exists would be a price nothing can charge, on a page nobody in India should be shown by default. The",
     "decision lives in the ADR; this paragraph is the pointer, and the open work is row O-WEB-INR-PRICE-BOOK",
     "in Private platform-state/, which closes when the India book is generated, linked both ways with",
-    "hreflang, re-derived by both guards, and its buy action reaches a Razorpay route charging those amounts."
+    "hreflang, re-derived by both guards, and its buy action reaches a Razorpay route charging those amounts.",
+    "",
+    "🔴 `min_supported_version` AND `update_url` ARE KEYED BY CHANNEL (O-UPDATE-FLOOR-HAS-NO-CHANNEL). Each is a",
+    "map from a channel id in tooling/channel-register.json to that channel's value, and `default` answers every",
+    "channel the map does not name. A client asks `GET /config/<app>?channel=<its RELEASE_CHANNEL>` and is served",
+    "ONE value per field — the wire is scalar, so no client parses a map. No `?channel=` is served `default`; an",
+    "id the register does not declare is a 400. An app's own map merges key-wise over the one in `defaults`, and",
+    "a scalar anywhere (here, per app, or in a KV override) replaces the map and means every channel. So raising",
+    "the floor for `web` alone is one key, `\"web\": \"<version>\"`, and it walls no store build. Keys are refused",
+    "by assert-stamp-properties.mjs unless they are `default` or a channel id, and every merged map must carry",
+    "`default`. The release record's minSupported is the highest floor served to the channels that release",
+    "stages (release-manifest.mjs `releaseFloor`)."
   ],
 
   "sharedApiBaseUrl": "https://platform.nikatru.com/v1",
@@ -87,9 +98,9 @@
     "paywall": { "enabled": false, "offerings": [] },
     "content_pack": null,
     "copy": {},
-    "min_supported_version": "1.0.0",
+    "min_supported_version": { "default": "1.0.0" },
     "max_promos_per_week": 0,
-    "update_url": null
+    "update_url": { "default": null }
   },
 
   "apps": {

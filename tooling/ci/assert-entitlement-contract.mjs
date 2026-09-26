@@ -90,6 +90,10 @@
 //     ⏱ 2026-09-16 — that route is RETIRED (O-REVENUECAT-VERIFIER leg b). The one
 //     runtime that reads a RevenueCat event is now
 //     services/platform/src/lib/mor/revenuecat.ts, and limb 7 reads THAT file.
+//  (8 to 10, the bundle tables, sources and writer, are described at their blocks.)
+//  11 EACH GENERATED JSON CONFORMS TO ITS SCHEMA — contract.json to
+//     contract.schema.json and bundle.json to bundle.schema.json, through
+//     tooling/app-yaml/schema-validate.mjs (O-PUBLIC-DOCS-HAND-WRITTEN-FACTS).
 //
 // ⚠️ EVERYTHING IS PARSED, NOTHING IS GREPPED. Comments AND string literals are
 // blanked before the structural scan, because this repo has already shipped a
@@ -179,6 +183,7 @@ import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments } from './text-reductions.mjs';
 import { parseSeededRows } from './sql-seed.mjs';
+import { validate as validateSchema, SchemaError } from '../app-yaml/schema-validate.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
@@ -1834,6 +1839,53 @@ let bundleCopiesCompared = 0;
   }
 }
 
+// ── LIMB 11 · each generated JSON conforms to the schema written for it ──────
+// (O-PUBLIC-DOCS-HAND-WRITTEN-FACTS) `contract.schema.json` and `bundle.schema.json`
+// were written to grade `contract.json` and `bundle.json`, and nothing ran them:
+// the README said each schema "grades" its JSON while the first grading run found
+// `contract.json` failing its own schema. This limb runs both through the shared
+// `tooling/app-yaml/schema-validate.mjs`, which REFUSES a keyword it does not
+// implement, so a schema that grows one is a SchemaError here rather than a
+// constraint nobody checks. When a JSON fails, the SCHEMA is what gets reviewed:
+// the JSON is generated from contract.js / bundle.js, which limbs 4, 6 and 9 hold
+// to the SQL seed, and a schema is not allowed to overrule the seed.
+const SCHEMA_PAIRS = [
+  { json: 'contracts/entitlement/contract.json', schema: 'contracts/entitlement/contract.schema.json' },
+  { json: 'contracts/entitlement/bundle.json', schema: 'contracts/entitlement/bundle.schema.json' },
+];
+let schemasGraded = 0;
+/* ── LIMB 11 GRADE BEGIN ── deleting this region is the guard before limb 11,
+   which is how entitlement-contract.test.mjs builds its D3 mutant. */
+for (const { json, schema } of SCHEMA_PAIRS) {
+  const read = (rel) => {
+    const abs = join(ROOT, rel);
+    if (!existsSync(abs)) return { missing: true };
+    try { return { doc: JSON.parse(readFileSync(abs, 'utf8')) }; } catch (e) { return { error: e.message }; }
+  };
+  const inst = read(json);
+  const sch = read(schema);
+  if (inst.missing || sch.missing) {
+    fail(`COVERAGE LOST — limb 11 could not grade ${json} against ${schema}: ${inst.missing ? json : schema} does not exist.`);
+    continue;
+  }
+  if (inst.error || sch.error) {
+    fail(`COVERAGE LOST — limb 11 could not parse ${inst.error ? json : schema} (${inst.error ?? sch.error}), so it graded nothing.`);
+    continue;
+  }
+  let found;
+  try {
+    found = validateSchema(inst.doc, sch.doc, json);
+  } catch (e) {
+    if (!(e instanceof SchemaError)) throw e;
+    fail(`${schema} — ${e.message}`);
+    continue;
+  }
+  schemasGraded++;
+  for (const p of found) {
+    fail(`${json} does not conform to ${schema}: ${p}. The JSON is generated from the authored .js and held to the SQL seed by the limbs above, so fix the schema unless the .js is wrong.`);
+  }
+}
+/* ── LIMB 11 GRADE END ── */
 
 if (problems.length) {
   console.error(`✗ entitlement contract — ${problems.length} problem(s):`);
@@ -1872,7 +1924,8 @@ console.log(
         `${DECLARED_CONTRACT_ONLY.length} contract-only name(s)`) +
     `; limb 7's sweep read ${rcSwept} .ts source(s) under ${WRITER_SCAN.dir}/ and found ${rcTranscribers.length} ` +
     'transcription(s) of that vocabulary, each of which either IS the declared runtime above or imports ' +
-    'the contract instead of restating it',
+    `the contract instead of restating it; limb 11: ${schemasGraded} of ${SCHEMA_PAIRS.length} generated JSON file(s) ` +
+    'conform to their schema',
 );
 
 /** The one COVERAGE LOST stop for the migration-set reads above: each could-not-look branch prints

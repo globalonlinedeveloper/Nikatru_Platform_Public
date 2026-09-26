@@ -15,10 +15,16 @@
 //      the first place, because the registry of known apps is compiled in.
 //
 // So the 404 is decided from memory, before any I/O at all.
+//
+// `?channel=<id>` (O-UPDATE-FLOOR-HAS-NO-CHANNEL) picks which channel's floor
+// and update destination the response carries; src/config.ts says why the two
+// are per channel. No parameter ⇒ `default`. A value the channel register does
+// not declare ⇒ 400 `unknown_channel`, decided the same way as the 404: from
+// memory, before the ceiling and before KV.
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
-import { isKnownApp, resolveConfig } from '../config';
+import { DEFAULT_CHANNEL, isKnownApp, isKnownChannel, resolveConfig } from '../config';
 import { withinEdgeCeiling } from '../lib/edge-ceiling';
 
 const app = new Hono<AppEnv>();
@@ -30,6 +36,15 @@ app.get('/:app', async (c) => {
   // never reaches KV and never consumes the breaker's budget either.
   if (!isKnownApp(appId)) return c.json({ error: 'unknown_app' }, 404);
   c.set('appId', appId); // [pipeline B-16] attribution, post-validation.
+
+  // The same rule for the channel, for the same reason: an id the register does
+  // not declare is answered from memory, so it never reaches KV and never
+  // charges the ceiling below. An EMPTY value is refused too — a client with no
+  // channel sends no parameter, never an empty one.
+  const channel = c.req.query('channel');
+  if (channel !== undefined && !isKnownChannel(channel)) {
+    return c.json({ error: 'unknown_channel' }, 400);
+  }
 
   // The SAME server-derived ceiling /v1/events got in PR #91, on its own
   // namespace so it cannot spend that route's budget (and that route cannot
@@ -50,7 +65,7 @@ app.get('/:app', async (c) => {
   }
 
   const kvValue = await c.env.CONFIG_KV.get(`config:${appId}`);
-  const cfg = resolveConfig(appId, kvValue);
+  const cfg = resolveConfig(appId, kvValue, channel ?? DEFAULT_CHANNEL);
   if (!cfg) return c.json({ error: 'unknown_app' }, 404);
   // Edge + client cache; overrides propagate within the TTL.
   c.header('Cache-Control', 'public, max-age=300, s-maxage=300');

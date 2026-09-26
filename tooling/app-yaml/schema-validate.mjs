@@ -21,8 +21,11 @@
 // Implemented: type · enum · const · required · properties ·
 // additionalProperties (false or a schema) · items · minItems · maxItems ·
 // uniqueItems · minLength · maxLength · pattern · format (a closed set) ·
-// anyOf · allOf. Annotations ($schema, $id, title, description, examples) are
-// carried and ignored.
+// minimum · anyOf · allOf. Annotations ($schema, $id, $comment, title,
+// description, examples) are carried and ignored. `minimum` and `$comment` were
+// added for `contracts/entitlement/*.schema.json`, which use both and which
+// `assert-entitlement-contract.mjs` grades through this file
+// (O-PUBLIC-DOCS-HAND-WRITTEN-FACTS).
 //
 // Usage:  const problems = validate(instance, schema);   // [] when it conforms
 // ─────────────────────────────────────────────────────────────────────────────
@@ -34,11 +37,12 @@ export class SchemaError extends Error {
   }
 }
 
-const ANNOTATIONS = new Set(['$schema', '$id', 'title', 'description', 'examples', 'default', '_why']);
+const ANNOTATIONS = new Set(['$schema', '$id', '$comment', 'title', 'description', 'examples', 'default', '_why']);
 const UNDERSTOOD = new Set([
   'type', 'enum', 'const', 'required', 'properties', 'additionalProperties',
   'items', 'minItems', 'maxItems', 'uniqueItems',
   'minLength', 'maxLength', 'pattern', 'format',
+  'minimum',
   'anyOf', 'allOf',
 ]);
 
@@ -103,6 +107,9 @@ export function assertSchemaUnderstood(schema, where = '#') {
       schema[branch].forEach((s, i) => assertSchemaUnderstood(s, `${where}/${branch}/${i}`));
     }
   }
+  if (schema.minimum !== undefined && (typeof schema.minimum !== 'number' || !Number.isFinite(schema.minimum))) {
+    throw new SchemaError(`${where}/minimum: must be a finite number, found ${JSON.stringify(schema.minimum)}`);
+  }
   if (schema.format !== undefined && !Object.hasOwn(FORMATS, schema.format)) {
     throw new SchemaError(
       `${where}/format: "${schema.format}" has no implementation here. Known: ${Object.keys(FORMATS).join(', ')}.`,
@@ -148,6 +155,9 @@ function check(value, schema, path, problems) {
     if (schema.format !== undefined && !FORMATS[schema.format](value)) {
       problems.push(`${path}: ${JSON.stringify(value)} is not a valid ${schema.format}`);
     }
+  }
+  if (typeof value === 'number' && schema.minimum !== undefined && value < schema.minimum) {
+    problems.push(`${path}: ${value} is below the minimum ${schema.minimum}`);
   }
   if (Array.isArray(value)) {
     if (schema.minItems !== undefined && value.length < schema.minItems) {
