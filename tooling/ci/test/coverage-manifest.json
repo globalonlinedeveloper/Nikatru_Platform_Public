@@ -40,7 +40,7 @@
   "availability.test.mjs": 33,
   "await-pr-checks.test.mjs": 46,
   "bounded-spawn.test.mjs": 9,
-  "built-artifact-pr-lane.test.mjs": 25,
+  "built-artifact-pr-lane.test.mjs": 13,
   "built-info-plist.test.mjs": 15,
   "bundle-availability.test.mjs": 15,
   "bundle-contract-limbs.test.mjs": 16,
