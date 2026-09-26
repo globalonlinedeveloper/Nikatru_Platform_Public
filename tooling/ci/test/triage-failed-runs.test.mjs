@@ -13,16 +13,17 @@
 // never having been applied to it.
 //
 // ⚠️ NOTHING HERE TOUCHES THE NETWORK OR GITHUB. Every CLI case runs through
-// the fixture transport, which has no `fetch` in it. The one live-shaped case
-// asserts only the "no credential" exit, driven by withholding the token and
-// pointing the vault at an absent file.
+// the fixture transport, which has no `fetch` in it. The live-shaped cases
+// assert exits that come before any transport is built: "no credential"
+// (the token withheld, the vault pointed at an absent file), and the
+// merge-base refusal (its child process has `fetch` replaced by a thrower).
 //
 // Run:  node --test tooling/ci/test/triage-failed-runs.test.mjs
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync, readFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -40,6 +41,10 @@ import {
   classifyRun,
   newerRunDuring,
   loadCauses,
+  validateCauses,
+  FIXED_BY_FIELDS,
+  mergeShas,
+  checkFixesOnMain,
   causeFor,
   proofFor,
   isExplained,
@@ -51,15 +56,22 @@ import {
   CoverageLost,
   readThroughCache,
   isValidGithubToken,
+  credentialShape,
   isValidRepoSlug,
   isAllowedApiPath,
   liveApi,
+  quotaFloor,
+  QUOTA_FLOOR,
+  DEFAULT_MAX_REQUESTS,
 } from '../../ops/triage-failed-runs.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
 const SCRIPT = join(REPO, 'tooling', 'ops', 'triage-failed-runs.mjs');
 const SAFE_RERUN = join(REPO, 'tooling', 'ops', 'safe-rerun.mjs');
+// A COPY of the script lives in a temp dir, so both sibling imports are
+// re-pointed at the real files.
+const BOUNDED_RETRY = join(REPO, 'tooling', 'ops', 'bounded-retry.mjs');
 
 const temps = [];
 function temp() {
@@ -211,11 +223,11 @@ function fixture(dir, { causes = CAUSES, signatureMutation = null } = {}) {
 }
 
 const CAUSES = [
-  { signature: 'start-here:drift', rootCause: 'START-HERE.md counted whole-tree files, so any branch adding a test drifted it.', fix: 'PR #606 74bf73d4' },
-  { signature: 'ops-register:red-since:*', rootCause: 'The RED-SINCE verdict failed the gate its own remedy needed.', fix: 'PR #593 846d90a0' },
-  { signature: 'cancelled:superseded-in-group', rootCause: 'A newer push to the same ref evicted the in-flight run (cancel-in-progress).', fix: 'not a defect; superseded by the newer run' },
-  { signature: 'cancelled:by-hand-or-unknown', rootCause: 'Cancelled with no successor in its concurrency group.', fix: 'not a defect; no verdict rendered' },
-  { signature: 'dart:format', rootCause: 'A Dart file in the PR was not format-clean; the log names it.', fix: 'superseded: fixed on the branch before merge' },
+  { signature: 'start-here:drift', rootCause: 'START-HERE.md counted whole-tree files, so any branch adding a test drifted it.', fix: 'PR #606 74bf73d4', fixedBy: { kind: 'merge', sha: '74bf73d4', pr: 606 } },
+  { signature: 'ops-register:red-since:*', rootCause: 'The RED-SINCE verdict failed the gate its own remedy needed.', fix: 'PR #593 846d90a0', fixedBy: { kind: 'merge', sha: '846d90a0', pr: 593 } },
+  { signature: 'cancelled:superseded-in-group', rootCause: 'A newer push to the same ref evicted the in-flight run (cancel-in-progress).', fix: 'not a defect; superseded by the newer run', fixedBy: { kind: 'not-a-defect', reason: 'superseded by the newer run' } },
+  { signature: 'cancelled:by-hand-or-unknown', rootCause: 'Cancelled with no successor in its concurrency group.', fix: 'not a defect; no verdict rendered', fixedBy: { kind: 'not-a-defect', reason: 'no verdict rendered' } },
+  { signature: 'dart:format', rootCause: 'A Dart file in the PR was not format-clean; the log names it.', fix: 'superseded: fixed on the branch before merge', fixedBy: { kind: 'superseded', by: 'fixed on the branch before merge' } },
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -428,6 +440,13 @@ describe('causes and proof', () => {
     assert.equal(causes.find((c) => c.signature.startsWith('other')), undefined, 'no cause may claim the `other:` fallback');
   });
 
+  test('every row of the REAL register carries a typed `fixedBy` that validateCauses accepts', () => {
+    const raw = JSON.parse(readFileSync(join(REPO, CAUSES_REL), 'utf8')).causes;
+    assert.deepEqual(validateCauses(raw), []);
+    for (const c of raw) assert.ok(FIXED_BY_FIELDS.has(c.fixedBy.kind), `${c.signature}: ${c.fixedBy.kind}`);
+    assert.ok(mergeShas(raw).length > 0, 'the real register names no merge commit, so the merge-base check would hold nothing');
+  });
+
   test('renderTable marks a group with an unexplained member and a group without a cause', () => {
     const groups = [
       { signature: 's', count: 2, unexplained: 1, cause: { rootCause: 'r', fix: 'f' }, proofs: new Map([['p', 2]]) },
@@ -474,7 +493,8 @@ describe('the ledger, end to end (fixture transport, no network)', () => {
     assert.ok(original.includes(needle), 'the mutation target must be the line as written, or this proves nothing');
     const mutated = original
       .replace(needle, "{ id: 'start-here:drift', re: /^THIS-LINE-NEVER-MATCHES-ANYTHING/ },")
-      .replace("from './safe-rerun.mjs'", `from ${JSON.stringify(pathToFileURL(SAFE_RERUN).href)}`);
+      .replace("from './safe-rerun.mjs'", `from ${JSON.stringify(pathToFileURL(SAFE_RERUN).href)}`)
+      .replace("from './bounded-retry.mjs'", `from ${JSON.stringify(pathToFileURL(BOUNDED_RETRY).href)}`);
     assert.notEqual(mutated, original);
     const copy = join(dir, 'triage-failed-runs.mutated.mjs');
     writeFileSync(copy, mutated);
@@ -559,12 +579,208 @@ describe('CLI contract', () => {
     assert.match(r.err, /COVERAGE LOST — no GitHub credential/);
   });
 
-  test('the script is not wired into any workflow — it is a reader that spends the shared quota', () => {
+  test('only ops-watch.yml invokes the script, and only from its failure-ledger job — never ci.yml, never a gate', () => {
     const wf = join(REPO, '.github', 'workflows');
-    const { readdirSync } = process.getBuiltinModule('node:fs');
-    for (const f of readdirSync(wf)) {
-      if (!/\.ya?ml$/.test(f)) continue;
-      assert.doesNotMatch(readFileSync(join(wf, f), 'utf8'), /triage-failed-runs/, `${f} must not invoke the triage reader`);
+    const invokers = readdirSync(wf).filter((f) => /\.ya?ml$/.test(f) && /triage-failed-runs/.test(readFileSync(join(wf, f), 'utf8')));
+    assert.deepEqual(invokers, ['ops-watch.yml']);
+    const lines = readFileSync(join(wf, 'ops-watch.yml'), 'utf8').split(/\r?\n/);
+    // The job a line belongs to is the nearest two-space `name:` key above it.
+    const jobOf = (i) => {
+      for (let j = i; j >= 0; j -= 1) {
+        const m = /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(lines[j]);
+        if (m) return m[1];
+      }
+      return null;
+    };
+    const runs = lines.flatMap((l, i) => (/node tooling\/ops\/triage-failed-runs\.mjs/.test(l) ? [jobOf(i)] : []));
+    assert.deepEqual(runs, ['failure-ledger']);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THE TYPED FIX — `fixedBy` is a kind a machine can hold, and a `merge` is
+// held to main. Every case is written out; none is generated.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('validateCauses — the typed fix', () => {
+  const row = (fixedBy) => ({ signature: 'x:y', rootCause: 'a root cause long enough', fix: 'prose', ...(fixedBy === undefined ? {} : { fixedBy }) });
+
+  test('an empty register is one problem, not a pass', () => {
+    assert.deepEqual(validateCauses([]), ['the register carries no causes']);
+  });
+
+  test('a row with a prose `fix` and no `fixedBy` is refused, naming the row', () => {
+    assert.deepEqual(validateCauses([row(undefined)]), ['x:y — lacks `fixedBy`; the prose `fix` is not a kind a machine can hold']);
+  });
+
+  test('a `fixedBy` that is a string is refused', () => {
+    assert.deepEqual(validateCauses([row('merge')]), ['x:y — `fixedBy` is not an object']);
+  });
+
+  test('an unknown kind is refused, and the six kinds are named', () => {
+    assert.deepEqual(validateCauses([row({ kind: 'fixed' })]), [
+      'x:y — `fixedBy.kind` "fixed" is not one of merge · superseded · infrastructure · not-a-defect · live-action · lost-race',
+    ]);
+  });
+
+  test('each of the six kinds, well formed, is accepted', () => {
+    assert.deepEqual(validateCauses([row({ kind: 'merge', sha: '74bf73d4', pr: 606 })]), []);
+    assert.deepEqual(validateCauses([row({ kind: 'superseded', by: 'PR #587' })]), []);
+    assert.deepEqual(validateCauses([row({ kind: 'infrastructure' })]), []);
+    assert.deepEqual(validateCauses([row({ kind: 'not-a-defect', reason: 'cancelled' })]), []);
+    assert.deepEqual(validateCauses([row({ kind: 'live-action', what: 'the owner set the variable' })]), []);
+    assert.deepEqual(validateCauses([row({ kind: 'lost-race' })]), []);
+  });
+
+  test('a merge sha that is not 7-40 lowercase hex is refused', () => {
+    assert.deepEqual(validateCauses([row({ kind: 'merge', sha: '74BF73D4', pr: 606 })]), ['x:y — fixedBy.sha "74BF73D4" is not 7-40 lowercase hex']);
+    assert.deepEqual(validateCauses([row({ kind: 'merge', sha: '74bf73', pr: 606 })]), ['x:y — fixedBy.sha "74bf73" is not 7-40 lowercase hex']);
+  });
+
+  test('a merge pr of null is a direct push and accepted; zero, a string or a missing pr is refused', () => {
+    assert.deepEqual(validateCauses([row({ kind: 'merge', sha: '92414846', pr: null })]), []);
+    assert.deepEqual(validateCauses([row({ kind: 'merge', sha: '92414846', pr: 0 })]), [
+      'x:y — fixedBy.pr 0 is not a pull request number (or null for a direct push)',
+    ]);
+    assert.deepEqual(validateCauses([row({ kind: 'merge', sha: '92414846', pr: '606' })]), [
+      'x:y — fixedBy.pr "606" is not a pull request number (or null for a direct push)',
+    ]);
+    assert.deepEqual(validateCauses([row({ kind: 'merge', sha: '92414846' })]), [
+      'x:y — fixedBy.pr undefined is not a pull request number (or null for a direct push)',
+    ]);
+  });
+
+  test('`also` must be a non-empty array, and a bad entry is named by its index', () => {
+    assert.deepEqual(validateCauses([row({ kind: 'merge', sha: 'ddfc63d4', pr: 582, also: [] })]), ['x:y — `fixedBy.also` is not a non-empty array']);
+    assert.deepEqual(
+      validateCauses([row({ kind: 'merge', sha: 'ddfc63d4', pr: 582, also: [{ sha: '846d90a0', pr: 593 }, { sha: 'nothex!', pr: 1 }] })]),
+      ['x:y — fixedBy.also[1].sha "nothex!" is not 7-40 lowercase hex'],
+    );
+  });
+
+  test('a field that belongs to another kind is refused', () => {
+    assert.deepEqual(validateCauses([row({ kind: 'infrastructure', by: 'x' })]), ['x:y — `fixedBy.by` is not a field of kind "infrastructure"']);
+    assert.deepEqual(validateCauses([row({ kind: 'superseded', by: 'x', sha: '74bf73d4' })]), ['x:y — `fixedBy.sha` is not a field of kind "superseded"']);
+  });
+
+  test('a required string that is blank is refused', () => {
+    assert.deepEqual(validateCauses([row({ kind: 'not-a-defect', reason: '   ' })]), ['x:y — `fixedBy.reason` is empty']);
+    assert.deepEqual(validateCauses([row({ kind: 'live-action' })]), ['x:y — `fixedBy.what` is empty']);
+  });
+
+  test('mergeShas lists the head merge and every `also`, each with its row', () => {
+    const causes = [
+      { signature: 'a', fixedBy: { kind: 'merge', sha: 'ddfc63d4', pr: 582, also: [{ sha: '846d90a0', pr: 593 }] } },
+      { signature: 'b', fixedBy: { kind: 'infrastructure' } },
+      { signature: 'c', fixedBy: { kind: 'merge', sha: '92414846', pr: null } },
+    ];
+    assert.deepEqual(mergeShas(causes), [
+      { signature: 'a', sha: 'ddfc63d4', pr: 582 },
+      { signature: 'a', sha: '846d90a0', pr: 593 },
+      { signature: 'c', sha: '92414846', pr: null },
+    ]);
+  });
+
+  test('CLI — a causes file with one untyped row is COVERAGE LOST (exit 2), naming the row, before any transport', () => {
+    const { dir } = fixture(temp(), { causes: [...CAUSES.slice(0, 4), { signature: 'dart:format', rootCause: 'not format-clean', fix: 'superseded' }] });
+    const r = run(SCRIPT, ['--fixture-dir', dir, '--causes', join(dir, 'causes.json')]);
+    assert.equal(r.code, 2, r.out + r.err);
+    assert.match(r.err, /1 problem\(s\) in 5 cause\(s\):\n {2}dart:format — lacks `fixedBy`/);
+    assert.doesNotMatch(r.out, /FIXTURE TRANSPORT/);
+  });
+});
+
+describe('checkFixesOnMain — a merge that never reached main is not a fix', () => {
+  // A real repository: main (two commits, published as origin/main) and a
+  // side branch whose commit is NOT on main.
+  const git = (cwd, ...args) => {
+    const r = spawnSync('git', ['-c', 'user.name=fixture', '-c', 'user.email=fixture@example.invalid', '-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8', timeout: 30_000 });
+    assert.equal(r.status, 0, `git ${args.join(' ')}: ${r.stderr}`);
+    return r.stdout.trim();
+  };
+  const repo = () => {
+    const d = temp();
+    git(d, 'init', '-q', '-b', 'main');
+    writeFileSync(join(d, 'f.txt'), 'one\n');
+    git(d, 'add', 'f.txt');
+    git(d, 'commit', '-q', '-m', 'one');
+    writeFileSync(join(d, 'f.txt'), 'two\n');
+    git(d, 'commit', '-q', '-am', 'two');
+    git(d, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+    const [one, two] = git(d, 'rev-list', '--reverse', 'HEAD').split('\n');
+    git(d, 'checkout', '-q', '-b', 'side');
+    writeFileSync(join(d, 'f.txt'), 'side\n');
+    git(d, 'commit', '-q', '-am', 'side');
+    const side = git(d, 'rev-parse', 'HEAD');
+    return { d, one, two, side };
+  };
+  const merge = (signature, sha, pr, also) => ({ signature, rootCause: 'r', fix: 'f', fixedBy: { kind: 'merge', sha, pr, ...(also ? { also } : {}) } });
+
+  test('GREEN CONTROL — every merge (and its `also`) on origin/main: nothing missing, three checked', () => {
+    const { d, one, two } = repo();
+    const r = checkFixesOnMain([merge('a', one.slice(0, 8), 1, [{ sha: two, pr: 2 }]), merge('b', two.slice(0, 12), null)], { cwd: d });
+    assert.deepEqual(r, { lost: null, missing: [], checked: 3 });
+  });
+
+  test('R5 — a merge sha on a side branch only is missing, and the row is named', () => {
+    const { d, one, side } = repo();
+    const r = checkFixesOnMain([merge('a', one, 1), merge('dart:format', side.slice(0, 10), 7)], { cwd: d });
+    assert.equal(r.lost, null);
+    assert.deepEqual(r.missing, [{ signature: 'dart:format', sha: side.slice(0, 10), pr: 7, why: 'not an ancestor of origin/main' }]);
+  });
+
+  test('a sha this complete clone has never seen is missing too (git exits 128), not skipped', () => {
+    const { d } = repo();
+    const r = checkFixesOnMain([merge('ghost', '0123456789abcdef0123456789abcdef01234567', 9)], { cwd: d });
+    assert.equal(r.lost, null);
+    assert.equal(r.missing.length, 1);
+    assert.equal(r.missing[0].signature, 'ghost');
+    assert.match(r.missing[0].why, /^unknown to this clone \(git exited 128\), and the clone is complete$/);
+  });
+
+  test('a ref that does not resolve is COVERAGE LOST, not a pass', () => {
+    const { d, one } = repo();
+    const r = checkFixesOnMain([merge('a', one, 1)], { cwd: d, ref: 'origin/nope' });
+    assert.equal(r.lost, 'origin/nope does not resolve in this clone, so no fix can be held to it');
+  });
+
+  test('a SHALLOW clone is COVERAGE LOST — a commit missing from it proves nothing', () => {
+    const { d, one } = repo();
+    const shallow = join(temp(), 'shallow');
+    git(d, 'checkout', '-q', 'main');
+    git(temp(), 'clone', '-q', '--depth', '1', pathToFileURL(d).href, shallow);
+    assert.equal(git(shallow, 'rev-parse', '--is-shallow-repository'), 'true');
+    const r = checkFixesOnMain([merge('a', one, 1)], { cwd: shallow });
+    assert.match(r.lost, /^the clone is SHALLOW/);
+  });
+
+  test('a git that cannot answer is COVERAGE LOST (the seam)', () => {
+    const r = checkFixesOnMain([merge('a', '74bf73d4', 606)], { cwd: 'x', git: () => ({ code: 128, out: '', err: 'not a git repository' }) });
+    assert.match(r.lost, /^`git rev-parse` exited 128 in x: not a git repository$/);
+  });
+
+  test('CLI — a register naming a commit not on main exits 1 before any request, naming the row', () => {
+    // fetch is replaced by a thrower in the child, so a regression that skipped
+    // the check would fail this case rather than reach the network.
+    const noNet = join(temp(), 'no-network.mjs');
+    writeFileSync(noNet, "globalThis.fetch = () => { throw new Error('this test must never reach the network'); };\n");
+    const dir = temp();
+    const causes = [...CAUSES.slice(1), merge('start-here:drift', '0123456789abcdef0123456789abcdef01234567', 606)];
+    writeFileSync(join(dir, 'causes.json'), JSON.stringify({ causes }));
+    const shallow = spawnSync('git', ['rev-parse', '--is-shallow-repository'], { cwd: REPO, encoding: 'utf8' }).stdout.trim();
+    const hasMain = spawnSync('git', ['rev-parse', '--verify', '--quiet', 'origin/main^{commit}'], { cwd: REPO }).status === 0;
+    const r = run(SCRIPT, ['--repo', 'fixture/fixture', '--causes', join(dir, 'causes.json')], {
+      GH_TOKEN: `ghp_${'a'.repeat(36)}`,
+      NODE_OPTIONS: `--import=${pathToFileURL(noNet).href}`,
+    });
+    assert.doesNotMatch(r.out, /triage-failed-runs — /, 'the live transport must not have been constructed');
+    if (shallow === 'false' && hasMain) {
+      assert.equal(r.code, 1, r.out + r.err);
+      assert.match(r.err, /1 fix commit\(s\) named in tooling\/ops\/failed-run-causes\.json are not on main/);
+      assert.match(r.err, /start-here:drift — fixedBy 0123456789abcdef0123456789abcdef01234567 \(PR #606\): unknown to this clone/);
+    } else {
+      // A shallow CI checkout, or one with no origin/main: the check refuses.
+      assert.equal(r.code, 2, r.out + r.err);
+      assert.match(r.err, /COVERAGE LOST — the merge-base check could not run/);
     }
   });
 });
@@ -629,7 +845,8 @@ describe('transport hardening', () => {
     const mutated = original
       .replaceAll('\r\n', '\n')
       .replace(block, "  let raw = null;\n  if (fs.existsSync(p)) raw = fs.readFileSync(p, 'utf8');\n")
-      .replace("from './safe-rerun.mjs'", `from ${JSON.stringify(pathToFileURL(SAFE_RERUN).href)}`);
+      .replace("from './safe-rerun.mjs'", `from ${JSON.stringify(pathToFileURL(SAFE_RERUN).href)}`)
+      .replace("from './bounded-retry.mjs'", `from ${JSON.stringify(pathToFileURL(BOUNDED_RETRY).href)}`);
     const copy = join(temp(), 'triage-failed-runs.race-mutated.mjs');
     writeFileSync(copy, mutated);
     const m = await import(pathToFileURL(copy).href);
@@ -680,10 +897,23 @@ describe('transport hardening', () => {
   });
 
   test('only GitHub token SHAPES are accepted as a credential', () => {
-    const accepted = ['ghp_' + 'a'.repeat(36), 'ghs_' + 'A1'.repeat(20), 'github_pat_' + 'x_'.repeat(20), 'f'.repeat(40)];
-    const refused = ['', 'Bearer ghp_' + 'a'.repeat(36), 'ghp_' + 'a'.repeat(36) + '\n', 'ghp_' + 'a'.repeat(36) + '\r\nx-evil: 1', 'ghp_short', 'not a token', null, undefined, 42];
+    const accepted = ['ghp_' + 'a'.repeat(36), 'ghs_' + 'A1'.repeat(20), 'github_pat_' + 'x_'.repeat(20), 'f'.repeat(40),
+      // ⏱ 2026-09-26 · ops-watch #526 (run 36203215773): the live Actions job token failed the old 251-character,
+      // alphanumeric-only body. A long job token, and one whose body carries `_`, `-` or `.`, are GitHub shapes too.
+      'ghs_' + 'Ab9'.repeat(200), 'ghs_' + 'a_b-c.d'.repeat(10) + 'e'.repeat(10)];
+    const refused = ['', 'Bearer ghp_' + 'a'.repeat(36), 'ghp_' + 'a'.repeat(36) + '\n', 'ghp_' + 'a'.repeat(36) + '\r\nx-evil: 1', 'ghp_short', 'not a token', null, undefined, 42,
+      'ghs_' + 'a'.repeat(36) + ' x', 'ghs_' + 'a'.repeat(2049), 'ghs_' + 'a'.repeat(36) + '/x', 'ghs_' + 'a'.repeat(36) + ':x'];
     for (const t of accepted) assert.equal(isValidGithubToken(t), true, String(t).slice(0, 12));
     for (const t of refused) assert.equal(isValidGithubToken(t), false, String(t).slice(0, 12));
+  });
+
+  test('a refused credential is described by its SHAPE only: length, prefix family, character classes, no value', () => {
+    const secret = 'pasted-by-mistake SECRETVALUE';
+    const d = credentialShape(secret);
+    assert.equal(d, 'length 29, no known prefix, characters: letters, hyphen, WHITESPACE');
+    assert.doesNotMatch(d, /SECRETVALUE|pasted/);
+    assert.equal(credentialShape('ghs_' + 'A'.repeat(300)), 'length 304, a gh?_ prefix, characters: letters, underscore');
+    assert.equal(credentialShape(undefined), 'not a string (undefined)');
   });
 
   test('an UNSHAPED credential is COVERAGE LOST (exit 2), its value is not printed, and no transport is built', () => {
@@ -691,6 +921,7 @@ describe('transport hardening', () => {
     assert.equal(r.code, 2, r.out + r.err);
     assert.match(r.err, /COVERAGE LOST — the GitHub credential does not have the shape of a GitHub token/);
     assert.doesNotMatch(r.out + r.err, /SECRETVALUE/);
+    assert.match(r.err, /its shape: length 29, no known prefix, characters: letters, hyphen, WHITESPACE\./);
     assert.doesNotMatch(r.out, /triage-failed-runs — /, 'the live transport must not have been constructed');
   });
 
@@ -703,7 +934,7 @@ describe('transport hardening', () => {
     assert.doesNotMatch(r.out, /triage-failed-runs — /);
   });
 
-  test('only the six request paths this reader builds may reach fetch — numeric ids only', () => {
+  test('only the seven request paths this reader builds may reach fetch — numeric ids only', () => {
     const R = 'globalonlinedeveloper/Nikatru_Platform_Public';
     const allowed = [
       `/repos/${R}/actions/runs?status=failure&per_page=100&created=${encodeURIComponent('2026-09-05..2026-09-10')}&page=1`,
@@ -712,6 +943,7 @@ describe('transport hardening', () => {
       `/repos/${R}/actions/workflows/123/runs?branch=${encodeURIComponent('feat/x')}&per_page=1`,
       `/repos/${R}/branches?per_page=100&page=2`,
       `/repos/${R}/pulls?head=${encodeURIComponent('globalonlinedeveloper:feat/x')}&state=all&per_page=5`,
+      '/rate_limit',
     ];
     const refused = [
       `/repos/${R}/actions/jobs/12a/logs`,
@@ -723,6 +955,8 @@ describe('transport hardening', () => {
       `//evil.example/repos/${R}/actions/runs?page=1`,
       `/repos/${R}/actions/workflows/ci.yml/runs?per_page=1`,
       '/user',
+      '/rate_limit?resource=core',
+      '/rate_limit/../user',
     ];
     for (const p of allowed) assert.equal(isAllowedApiPath(R, p), true, p);
     for (const p of refused) assert.equal(isAllowedApiPath(R, p), false, p);
@@ -797,7 +1031,8 @@ describe('a cache never serves an answer that changes', () => {
     assert.ok(flat.includes(line), 'the line this mutation replaces is not in the script');
     const mutated = flat
       .replace(line, "    newestRun: (workflowId, branch, key) => cached('newest-' + key.split('/').join('_').split('|').join('_') + '.json', () => fetchNewest(workflowId, branch)),\n")
-      .replace("from './safe-rerun.mjs'", `from ${JSON.stringify(pathToFileURL(SAFE_RERUN).href)}`);
+      .replace("from './safe-rerun.mjs'", `from ${JSON.stringify(pathToFileURL(SAFE_RERUN).href)}`)
+      .replace("from './bounded-retry.mjs'", `from ${JSON.stringify(pathToFileURL(BOUNDED_RETRY).href)}`);
     const copy = join(temp(), 'triage-failed-runs.newest-cached.mjs');
     writeFileSync(copy, mutated);
     const m = await import(pathToFileURL(copy).href);
@@ -817,7 +1052,8 @@ describe('a cache never serves an answer that changes', () => {
     assert.ok(flat.includes(keyed), 'the expression this mutation replaces is not in the script');
     const mutated = flat
       .replace(keyed, '`${id}.jobs.json`')
-      .replace("from './safe-rerun.mjs'", `from ${JSON.stringify(pathToFileURL(SAFE_RERUN).href)}`);
+      .replace("from './safe-rerun.mjs'", `from ${JSON.stringify(pathToFileURL(SAFE_RERUN).href)}`)
+      .replace("from './bounded-retry.mjs'", `from ${JSON.stringify(pathToFileURL(BOUNDED_RETRY).href)}`);
     const copy = join(temp(), 'triage-failed-runs.jobs-unkeyed.mjs');
     writeFileSync(copy, mutated);
     const m = await import(pathToFileURL(copy).href);
@@ -827,5 +1063,236 @@ describe('a cache never serves an answer that changes', () => {
       assert.equal((await m.liveApi(SLUG, TOKEN, dir).listJobs(1001, 2)).jobs[0].id, 5);
     });
     assert.equal(readFileSync(SCRIPT, 'utf8'), original, 'the real script must not have been touched');
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// D1 (2026-09-25) — THE QUOTA FLOOR AND THE HARD REQUEST CEILING. The ledger
+// runs under the workflow token, whose quota other readers share, so it reads
+// GET /rate_limit first and starts only when `remaining - ceiling >= 400`, and
+// `--max-requests` (default 300) is never exceeded. `fetch` is stubbed in every
+// case, in-process or in the child; nothing reaches the network. Every case is
+// written out; none is generated.
+// ═════════════════════════════════════════════════════════════════════════════
+describe('D1 — the quota floor and the hard request ceiling', () => {
+  const TOKEN = 'ghs_' + 'a'.repeat(36);
+  const SLUG = 'owner/name';
+  const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+  const core = (remaining) => ({ resources: { core: { limit: 1000, used: 1000 - remaining, remaining, reset: 1790000000 } } });
+
+  /** Replace `fetch` for the length of `fn`; `answer(path)` returns the Response. */
+  async function stubFetch(answer, fn) {
+    const calls = [];
+    const real = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const path = new URL(String(url)).pathname;
+      calls.push(path);
+      return answer(path);
+    };
+    try {
+      return await fn(calls);
+    } finally {
+      globalThis.fetch = real;
+    }
+  }
+
+  /** A COPY of the real script inside a temp git repository whose origin/main
+   *  resolves, beside a one-row causes register that names no merge: the
+   *  merge-base check then holds nothing and answers, so the quota read is the
+   *  first request the live path makes. Its sibling imports point at the real
+   *  files. The child's `fetch` is fetch-stub.mjs: /rate_limit answers
+   *  STUB_REMAINING, the run lists answer the `runs` of the asked `status` (and,
+   *  as GitHub does, of the asked `branch` when one is asked), a job list and a
+   *  workflow's run list answer empty, the branch list answers empty, and every
+   *  path asked for is appended to STUB_LOG. */
+  function liveCopy(remaining, runs = []) {
+    const d = temp();
+    const ops = join(d, 'tooling', 'ops');
+    mkdirSync(ops, { recursive: true });
+    const src = readFileSync(SCRIPT, 'utf8')
+      .replace("from './safe-rerun.mjs'", `from ${JSON.stringify(pathToFileURL(SAFE_RERUN).href)}`)
+      .replace("from './bounded-retry.mjs'", `from ${JSON.stringify(pathToFileURL(BOUNDED_RETRY).href)}`);
+    writeFileSync(join(ops, 'triage-failed-runs.mjs'), src);
+    writeFileSync(join(ops, 'failed-run-causes.json'), JSON.stringify({ causes: [CAUSES[3]] }));
+    // GIT_* is dropped: an inherited GIT_DIR (a hook sets one) would point this
+    // fixture's commit and update-ref at the real repository.
+    const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
+    for (const args of [['init', '-q', '-b', 'main'], ['commit', '-q', '--allow-empty', '-m', 'fixture'], ['update-ref', 'refs/remotes/origin/main', 'HEAD']]) {
+      const r = spawnSync('git', ['-c', 'user.name=fixture', '-c', 'user.email=fixture@example.invalid', '-c', 'commit.gpgsign=false', ...args], { cwd: d, encoding: 'utf8', timeout: 30_000, env });
+      assert.equal(r.status, 0, `git ${args.join(' ')}: ${r.stderr}`);
+    }
+    const log = join(d, 'fetch-log.txt');
+    writeFileSync(log, '');
+    const stub = join(d, 'fetch-stub.mjs');
+    writeFileSync(
+      stub,
+      [
+        "import { appendFileSync } from 'node:fs';",
+        "const json = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });",
+        'globalThis.fetch = async (url) => {',
+        '  const path = new URL(String(url)).pathname;',
+        "  appendFileSync(process.env.STUB_LOG, path + '\\n');",
+        '  const remaining = Number(process.env.STUB_REMAINING);',
+        "  if (path === '/rate_limit') return json({ resources: { core: { limit: 5000, used: 5000 - remaining, remaining, reset: 1790000000 } } });",
+        "  if (path.endsWith('/actions/runs')) {",
+        '    const q = new URL(String(url)).searchParams;',
+        "    const runs = JSON.parse(process.env.STUB_RUNS || '[]').filter((r) => r.conclusion === q.get('status') && (!q.has('branch') || r.head_branch === q.get('branch')));",
+        '    return json({ total_count: runs.length, workflow_runs: runs });',
+        '  }',
+        "  if (path.endsWith('/jobs')) return json({ total_count: 0, jobs: [] });",
+        "  if (path.includes('/actions/workflows/')) return json({ total_count: 0, workflow_runs: [] });",
+        "  if (path.endsWith('/branches')) return json([]);",
+        "  return new Response('{}', { status: 404 });",
+        '};',
+        '',
+      ].join('\n'),
+    );
+    return {
+      script: join(ops, 'triage-failed-runs.mjs'),
+      env: { GH_TOKEN: TOKEN, GITHUB_TOKEN: '', NODE_OPTIONS: `--import=${pathToFileURL(stub).href}`, STUB_LOG: log, STUB_REMAINING: String(remaining), STUB_RUNS: JSON.stringify(runs) },
+      fetched: () => readFileSync(log, 'utf8').split('\n').filter(Boolean),
+    };
+  }
+
+  test('the floor is 400 and the default ceiling is 300, and parseArgs defaults to that ceiling', () => {
+    assert.equal(QUOTA_FLOOR, 400);
+    assert.equal(DEFAULT_MAX_REQUESTS, 300);
+    assert.equal(parseArgs(['--since', '2026-09-17T00:00:00Z']).maxRequests, 300);
+  });
+
+  test('quotaFloor: 350 remaining against a ceiling of 300 is refused, naming the quota floor', () => {
+    const v = quotaFloor({ remaining: 350, reset: 1790000000 }, 300);
+    assert.equal(v.ok, false);
+    assert.match(v.line, /^quota floor — 350 remaining - ceiling 300 = 50, under the floor of 400, so the walk did not start/);
+    assert.match(v.line, /The quota resets at 2026-09-21T/);
+  });
+
+  test('quotaFloor: exactly at the floor (700 - 300 = 400) starts; one under (699) does not', () => {
+    assert.deepEqual(quotaFloor({ remaining: 700 }, 300), { ok: true, line: 'quota floor: 700 remaining - ceiling 300 = 400 >= 400; the walk may start' });
+    assert.equal(quotaFloor({ remaining: 699 }, 300).ok, false);
+  });
+
+  test('quotaFloor: a bucket with no integer `remaining` is a refusal, never a start', () => {
+    assert.equal(quotaFloor(null, 300).ok, false);
+    assert.equal(quotaFloor({}, 300).ok, false);
+    assert.equal(quotaFloor({ remaining: '5000' }, 300).ok, false);
+    assert.match(quotaFloor({ remaining: 4999.5 }, 300).line, /^quota floor — GET \/rate_limit carried no integer resources\.core\.remaining/);
+  });
+
+  test('parseArgs: --max-requests takes a whole number from 1, and refuses 0, a negative, a fraction, a word and a missing value', () => {
+    assert.equal(parseArgs(['--max-requests', '50']).maxRequests, 50);
+    assert.match(parseArgs(['--max-requests', '0']).error, /--max-requests must be a whole number from 1, got `0`/);
+    assert.match(parseArgs(['--max-requests', '-5']).error, /--max-requests must be a whole number from 1/);
+    assert.match(parseArgs(['--max-requests', '2.5']).error, /--max-requests must be a whole number from 1/);
+    assert.match(parseArgs(['--max-requests', 'lots']).error, /--max-requests must be a whole number from 1/);
+    assert.match(parseArgs(['--max-requests']).error, /--max-requests must be a whole number from 1, got `null`/);
+  });
+
+  test('liveApi refuses a ceiling that is not a positive whole number before anything is sent', async () => {
+    await stubFetch(() => json({}), async (calls) => {
+      assert.throws(() => liveApi(SLUG, TOKEN, null, { maxRequests: 0 }), (e) => e instanceof CoverageLost && /request ceiling 0 is not a positive whole number/.test(e.message));
+      assert.throws(() => liveApi(SLUG, TOKEN, null, { maxRequests: '300' }), (e) => e instanceof CoverageLost);
+      assert.deepEqual(calls, []);
+    });
+  });
+
+  test('GET /rate_limit is not counted, and the request past the ceiling is refused UNSENT', async () => {
+    const today = { workflow_runs: [{ id: 2, conclusion: 'success', created_at: '2026-09-11T09:00:00Z' }] };
+    await stubFetch((path) => (path === '/rate_limit' ? json(core(900)) : json(today)), async (calls) => {
+      const api = liveApi(SLUG, TOKEN, null, { maxRequests: 2 });
+      assert.equal((await api.rateLimit()).remaining, 900);
+      assert.equal(api.requestsSent(), 0, 'the quota read is not a counted request');
+      assert.equal((await api.newestRun(7, 'main')).id, 2);
+      assert.equal((await api.newestRun(7, 'main')).id, 2);
+      await assert.rejects(api.newestRun(7, 'main'), (e) => e instanceof CoverageLost && /^request ceiling — 2 of 2 request\(s\) sent, and GET \/repos\/owner\/name\/actions\/workflows\/7\/runs\?/.test(e.message));
+      assert.equal(api.requestsSent(), 2);
+      assert.deepEqual(calls, ['/rate_limit', '/repos/owner/name/actions/workflows/7/runs', '/repos/owner/name/actions/workflows/7/runs']);
+    });
+  });
+
+  test('a RETRY is a request: with a ceiling of 1, a 503 is sent once and its retry is refused unsent, naming the ceiling', async () => {
+    await stubFetch(() => json({ message: 'unavailable' }, 503), async (calls) => {
+      const api = liveApi(SLUG, TOKEN, null, { maxRequests: 1 });
+      await assert.rejects(api.newestRun(7, 'main'), (e) => e instanceof CoverageLost && /^request ceiling — 1 of 1 request\(s\) sent/.test(e.message));
+      assert.equal(calls.length, 1, 'the retry must not have been sent');
+    });
+  });
+
+  test('a 403 on a counted request is still COVERAGE LOST', async () => {
+    await stubFetch(() => json({ message: 'API rate limit exceeded' }, 403), async () => {
+      const api = liveApi(SLUG, TOKEN, null);
+      await assert.rejects(api.newestRun(7, 'main'), (e) => e instanceof CoverageLost && /→ HTTP 403 — the quota or the credential refused/.test(e.message));
+    });
+  });
+
+  test('a GET /rate_limit that is not a 200 is COVERAGE LOST, never a start', async () => {
+    await stubFetch(() => json({ message: 'forbidden' }, 403), async () => {
+      await assert.rejects(liveApi(SLUG, TOKEN, null).rateLimit(), (e) => e instanceof CoverageLost && /^GET \/rate_limit → HTTP 403$/.test(e.message));
+    });
+  });
+
+  test('CLI — /rate_limit at 350 against the default ceiling of 300: exit 2 naming the quota floor, and the quota read is the only request', () => {
+    const c = liveCopy(350);
+    const r = run(c.script, ['--repo', 'fixture/fixture', '--since', '2026-09-17T00:00:00Z', '--no-prs'], c.env);
+    assert.equal(r.code, 2, r.out + r.err);
+    assert.match(r.err, /✗ COVERAGE LOST — quota floor — 350 remaining - ceiling 300 = 50, under the floor of 400/);
+    assert.deepEqual(c.fetched(), ['/rate_limit']);
+    assert.doesNotMatch(r.out, /triage-failed-runs — |UNEXPLAINED:/);
+  });
+
+  test('CLI — --max-requests 3 against a walk that needs 5: exit 2 naming the request ceiling, three counted requests, and no UNEXPLAINED line (never a partial pass)', () => {
+    const c = liveCopy(5000);
+    const r = run(c.script, ['--repo', 'fixture/fixture', '--since', '2026-09-17T00:00:00Z', '--no-prs', '--max-requests', '3'], c.env);
+    assert.equal(r.code, 2, r.out + r.err);
+    assert.match(r.out, /quota floor: 5000 remaining - ceiling 3 = 4997 >= 400; the walk may start/);
+    assert.match(r.err, /✗ COVERAGE LOST — request ceiling — 3 of 3 request\(s\) sent, and GET \/repos\/fixture\/fixture\/actions\/runs\?/);
+    assert.deepEqual(c.fetched(), ['/rate_limit', '/repos/fixture/fixture/actions/runs', '/repos/fixture/fixture/actions/runs', '/repos/fixture/fixture/actions/runs']);
+    assert.doesNotMatch(r.out, /UNEXPLAINED:/);
+  });
+
+  test('CLI GREEN CONTROL — the same walk under the default ceiling: it starts, sends its five requests, and exits 0', () => {
+    const c = liveCopy(5000);
+    const r = run(c.script, ['--repo', 'fixture/fixture', '--since', '2026-09-17T00:00:00Z', '--no-prs'], c.env);
+    assert.equal(r.code, 0, r.out + r.err);
+    assert.match(r.out, /REQUESTS: 5 sent, ceiling 300/);
+    assert.match(r.out, /UNEXPLAINED: 0/);
+    assert.equal(c.fetched().length, 6);
+  });
+
+  // FIX-1 (C), 2026-09-25: the ops-watch job reads main's runs only, so the
+  // walk fits under the ceiling; a PR's own reds belong to that PR.
+  test('parseArgs: --branch takes a branch name (default: every branch), and refuses a missing, empty or whitespace name', () => {
+    assert.equal(parseArgs(['--since', '2026-09-17T00:00:00Z']).branch, null);
+    assert.equal(parseArgs(['--branch', 'main']).branch, 'main');
+    assert.match(parseArgs(['--branch']).error, /--branch must be a branch name without whitespace, got `null`/);
+    assert.match(parseArgs(['--branch', '']).error, /--branch must be a branch name without whitespace, got ``/);
+    assert.match(parseArgs(['--branch', 'feat x']).error, /--branch must be a branch name without whitespace/);
+  });
+
+  test('CLI — --branch main grades only the failed run on main, live (the run lists ask for branch=main) and from a fixture; without it, every branch as before', () => {
+    const failed = (id, branch) => ({ id, name: 'CI', path: CI, workflow_id: 7, head_branch: branch, head_sha: 'a'.repeat(40), event: 'push', conclusion: 'failure', run_attempt: 1, created_at: '2026-09-20T10:00:00Z', updated_at: '2026-09-20T10:05:00Z' });
+    const runs = [failed(501, 'main'), failed(502, 'feat/x')];
+
+    const main = liveCopy(5000, runs);
+    const onMain = run(main.script, ['--repo', 'fixture/fixture', '--since', '2026-09-17T00:00:00Z', '--no-prs', '--branch', 'main'], main.env);
+    assert.equal(onMain.code, 1, onMain.out + onMain.err);
+    assert.match(onMain.out, /COVERAGE: 1 non-green run\(s\)/);
+    assert.match(onMain.out, /· run 501 · /);
+    assert.doesNotMatch(onMain.out, /· run 502 · /);
+
+    const every = liveCopy(5000, runs);
+    const all = run(every.script, ['--repo', 'fixture/fixture', '--since', '2026-09-17T00:00:00Z', '--no-prs'], every.env);
+    assert.equal(all.code, 1, all.out + all.err);
+    assert.match(all.out, /COVERAGE: 2 non-green run\(s\)/);
+    assert.match(all.out, /· run 501 · /);
+    assert.match(all.out, /· run 502 · /);
+
+    // The fixture holds runs on feat-a, main and feat-b; only R2 is on main.
+    const { dir } = fixture(temp());
+    const fx = run(SCRIPT, ['--fixture-dir', dir, '--causes', join(dir, 'causes.json'), '--branch', 'main']);
+    assert.equal(fx.code, 0, fx.out + fx.err);
+    assert.match(fx.out, /COVERAGE: 1 non-green run\(s\)/);
+    assert.match(fx.out, /ops-register:red-since:duty\.workflow\.ops-watch\.yml \| 1 \| /);
+    assert.doesNotMatch(fx.out, /start-here:drift|dart:format/);
   });
 });
