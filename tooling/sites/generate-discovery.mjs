@@ -2028,10 +2028,13 @@ export function planDiscovery(repoRoot) {
   // stale landing that no registry entry owns stays listed for exactly as long
   // as it is served. (That stale page is limb B of assert-discovery-surface.mjs
   // — reported once, there, naming the file.)
-  const sitemapPath = join(repoRoot, ...SITEMAP.split('/'));
-  if (!existsSync(sitemapPath)) {
-    problems.push(`${SITEMAP} does not exist, so the generated landings have nowhere to be listed.`);
-  } else {
+  //
+  // ⏱ 2026-09-26 · D3b (ADR 028 §3 as amended by ADR no.098): the sitemap is
+  // GENERATED IN THE JOB AND NEVER COMMITTED, so a fresh checkout has none. It is rendered
+  // WHOLE from the page set below — no byte of a previous copy is read — so it is written
+  // whether or not one is on disk. Until today a missing sitemap was a problem here,
+  // which was only true while the file was committed.
+  {
     const pages = new Set(htmlUnder(repoRoot, DEPLOY_ROOT));
     for (const rel of files.keys()) if (rel.endsWith('.html')) pages.add(rel);
 

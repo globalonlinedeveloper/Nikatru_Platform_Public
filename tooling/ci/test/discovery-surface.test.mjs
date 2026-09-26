@@ -1404,6 +1404,63 @@ describe('the drift limb (W-9)', () => {
     assert.doesNotMatch(r.out, /apps\/subscriptiontracker\.html DRIFTED/);
   });
 
+  // ⏱ 2026-09-26 · D3b (row O-APEX-SITE-DEPLOYS-OUTSIDE-THE-PIPELINE; ADR 028 §3 as amended by
+  // ADR no.098): the deploy root's sitemap.xml is generated in the job, never
+  // committed. These fixtures are REAL git work trees, because "tracked" is a git fact.
+  const gitIn = (root, ...args) => {
+    const r = spawnSync('git', ['-c', 'commit.gpgsign=false', '-c', 'init.defaultBranch=main', '-c', 'user.name=w9', '-c', 'user.email=w9@test.invalid', ...args], { cwd: root, encoding: 'utf8' });
+    assert.equal(r.status, 0, `git ${args.join(' ')}: ${r.stderr}`);
+  };
+
+  test('RC5 (D3b): a COMMITTED sitemap.xml FAILS — generated in the job, never committed', () => {
+    const root = tree([SUBLY]);
+    gitIn(root, 'init', '-q');
+    generate(root);
+    gitIn(root, 'add', '-A');
+    gitIn(root, 'commit', '-q', '-m', 'everything, the sitemap included');
+    const r = guard(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /sites\/nikatru\/sitemap\.xml is COMMITTED, and it is generated in the job, never committed/);
+  });
+
+  test('RC5 green control (D3b): the same work tree with the sitemap generated and UNTRACKED passes', () => {
+    const root = tree([SUBLY]);
+    gitIn(root, 'init', '-q');
+    generate(root);
+    rmSync(p(root, 'sitemap.xml'));
+    gitIn(root, 'add', '-A');
+    gitIn(root, 'commit', '-q', '-m', 'everything but the sitemap');
+    generate(root);
+    assert.ok(existsSync(p(root, 'sitemap.xml')), 'the generator must write the sitemap');
+    const r = guard(root);
+    assert.equal(r.code, 0, r.out);
+    assert.doesNotMatch(r.out, /is COMMITTED/);
+  });
+
+  test('D3b: an absent sitemap is not a finding — it is generated in the job — and the guard says so', () => {
+    const root = tree([SUBLY]);
+    generate(root);
+    rmSync(p(root, 'sitemap.xml'));
+    const r = guard(root);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /sites\/nikatru\/sitemap\.xml is not on disk — it is generated in the job/);
+    assert.doesNotMatch(r.out, /sitemap\.xml is MISSING/);
+  });
+
+  test('RC5b (D3b): every OTHER generated file is still diffed — a hand-edited landing still FAILS beside an untracked sitemap', () => {
+    const root = tree([SUBLY]);
+    generate(root);
+    rmSync(p(root, 'sitemap.xml'));
+    const f = p(root, 'apps', 'subscriptiontracker.html');
+    const before = readFileSync(f, 'utf8');
+    const after = before.replace('</main>', '<p>hand edit</p></main>');
+    assert.notEqual(after, before, 'the mutation must change the landing');
+    writeFileSync(f, after);
+    const r = guard(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /sites\/nikatru\/apps\/subscriptiontracker\.html DRIFTED/);
+  });
+
   test('a registry entry added and never regenerated FAILS', () => {
     const root = tree([SUBLY]);
     generate(root);

@@ -489,6 +489,11 @@ jobs:
       - name: Every store in the platform manifest has a channel row, and every store channel has a store
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-store-bijection.mjs
+      # why: assert-channel-claims.mjs scans sites/nikatru/sitemap.xml, which is generated in
+      # the job and never committed since D3b.
+      - name: Generate the discovery surface (the sitemap is never committed)
+        if: ${{ !cancelled() }}
+        run: node tooling/sites/generate-discovery.mjs
       - name: No public surface advertises an unserved or dead channel
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-channel-claims.mjs
@@ -1156,6 +1161,10 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      # why: sites/nikatru/sitemap.xml is generated in the job, never committed (D3b); every
+      # reader below grades the bytes this writes. Needs the full history above (lastmod).
+      - name: Generate the discovery surface (the sitemap is never committed)
+        run: node tooling/sites/generate-discovery.mjs
       - name: Site integrity
         run: node tooling/ci/check-site-integrity.mjs . sites/nikatru sites/rajasekarselvam
       - name: The published catalogue satisfies its contract

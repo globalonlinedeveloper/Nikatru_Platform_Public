@@ -420,8 +420,8 @@ jobs:
       - uses: ./.github/actions/setup-node
         if: steps.plan.outputs.deploy == 'true'
 
-      # why: the committed sitemap drifts after a merge (its lastmod is a function of git
-      # history), so the served bytes are regenerated here and graded before anything publishes.
+      # why: sitemap.xml is generated here, never committed (D3b): its lastmod is a function of
+      # git history. The served bytes are regenerated and graded before anything publishes.
       - name: Regenerate the discovery surface from the registry
         if: steps.plan.outputs.deploy == 'true'
         run: node tooling/sites/generate-discovery.mjs
