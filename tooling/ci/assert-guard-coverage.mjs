@@ -244,6 +244,10 @@ const markerInCode = (source) => stripSourceComments(source, '.mjs').includes(CO
  * Any named helper whose exit this reading cannot find — it delegates, throws a
  * plain Error, calls a differently-named stop — fails unless its guard is in
  * COVERAGE_EXIT_UNREADABLE with a reason.
+ *
+ * A HELPER THAT THROWS A NAMED CLASS (`throw new SnapcraftUngenerable(lines)`)
+ * reads as 'throw': it has no exit of its own, so the exit is whatever catches
+ * it, and throwStopProblems below follows it there (2026-09-25).
  */
 const COVERAGE_HELPER_DECL =
   /\bfunction\s+(coverageLost|refuse|lost)\s*\(|\b(?:const|let|var)\s+(coverageLost|refuse|lost)\s*=\s*(?:async\s*)?(?:function\b[^(]*\(|\([^()]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)/g;
@@ -304,9 +308,153 @@ const coverageHelperExits = (source) => {
     }
     const body = stripSourceComments(source.slice(start, i + 1), '.mjs');
     const verdict = exitShapes(body, consts, 1) ? 'exit1' : exitShapes(body, consts, 2) ? 'exit2' : 'unread';
-    out.push({ name, line, verdict });
+    // A plain `Error` stays 'unread': nothing can test for it by class, so it
+    // reaches node's default handler, which exits 1.
+    const thrown = verdict === 'unread' ? body.match(/\bthrow\s+new\s+([A-Z][\w$]*)\s*\(/) : null;
+    if (thrown && thrown[1] !== 'Error') out.push({ name, line, verdict: 'throw', cls: thrown[1] });
+    else out.push({ name, line, verdict });
   }
   return out;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A STOP THAT THROWS — accepted only where every entry that can receive it maps
+// the class to exit 2 (2026-09-25, O-SUBMIT-SCRIPTS-SHARE-NO-MODULE).
+//
+// A helper whose body is `throw new SomeClass(...)` has no exit of its own. Its
+// exit is what the CATCH does, and uncaught it is node's default handler, which
+// exits 1: a FINDING, printed under a COVERAGE LOST line. So the throw is
+// followed to its catchers:
+//   · CARRIERS — the `function NAME(` declarations of the throwing file whose
+//     code carries the marker, or that call a carrier (to a fixpoint);
+//   · ENTRIES — the throwing file itself when its code reads `process.argv`, and
+//     every scanned file (tooling/ci, tooling/release) that imports a carrier
+//     from it and reads `process.argv`;
+//   · every call of a carrier in an entry, outside the entry's own function
+//     declarations, must sit inside a `try` whose `catch` tests
+//     `instanceof <Class>` and reaches exit 2 — a literal, a const equal to 2, or
+//     a coverage helper of that file read as exit 2. No such try is an ESCAPE
+//     (exit 1); a catch that exits 1, or reaches no exit 2, maps the class to a
+//     finding.
+// ⚠️ WHAT THIS DOES NOT SEE, said out loud: a carrier called from inside a
+// function the entry declares (the throw leaves through that function's callers,
+// which this lexical reading does not follow), and a namespace import
+// (`ns.carrier()`). A catch around NON-carriers only is not graded: the same
+// class is thrown for findings too — generate-snapcraft's unmapped runner label
+// and unmapped apt package — and assert-snapcraft-generable maps those to 1.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** An identifier, as a RegExp source: `$` is legal in a name and special in a pattern. */
+const identSource = (name) => name.replaceAll('$', '\\$');
+
+/** `[start, end]` of every `function NAME(…) { … }` in `source`, by name. */
+const functionBodies = (source) => {
+  const mask = codeMask(source);
+  const isCode = (i) => mask[i] !== NON_CODE;
+  const out = new Map();
+  for (const m of source.matchAll(/\bfunction\s+([A-Za-z_$][\w$]*)\s*\(/g)) {
+    if (!isCode(m.index)) continue;
+    let i = m.index + m[0].length;
+    for (let depth = 1; i < source.length && depth > 0; i++) {
+      if (!isCode(i)) continue;
+      if (source[i] === '(') depth++;
+      else if (source[i] === ')') depth--;
+    }
+    while (i < source.length && !(source[i] === '{' && isCode(i))) i++;
+    for (let depth = 0; i < source.length; i++) {
+      if (!isCode(i)) continue;
+      if (source[i] === '{') depth++;
+      else if (source[i] === '}' && --depth === 0) break;
+    }
+    out.set(m[1], [m.index, i]);
+  }
+  return out;
+};
+
+/** The functions of `source` that can throw with the marker in hand. */
+const markerCarriers = (source) => {
+  const code = new Map(
+    [...functionBodies(source)].map(([name, [s, e]]) => [name, stripSourceComments(source.slice(s, e + 1), '.mjs')]),
+  );
+  const carriers = new Set([...code].filter(([, body]) => body.includes(COVERAGE_MARKER)).map(([name]) => name));
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const [name, body] of code) {
+      if (carriers.has(name)) continue;
+      if ([...carriers].some((c) => new RegExp(String.raw`(?<![\w$.])${identSource(c)}\s*\(`).test(body))) {
+        carriers.add(name);
+        grew = true;
+      }
+    }
+  }
+  return carriers;
+};
+
+/** One entry's calls of `callable`, each graded against the catch around it.
+ *  Returns `{ problems, calls }` — `calls` is how many were graded at all. */
+const throwEntryProblems = (entryRel, source, callable, cls) => {
+  const mask = codeMask(source);
+  const isCode = (i) => mask[i] !== NON_CODE;
+  const fileCode = stripSourceComments(source, '.mjs');
+  const consts = new Map(
+    [...fileCode.matchAll(/^(?:export\s+)?const\s+([A-Z_][A-Z0-9_]*)\s*=\s*(\d+)\s*;/gm)].map((m) => [m[1], Number(m[2])]),
+  );
+  const exit2Helpers = coverageHelperExits(source).filter((h) => h.verdict === 'exit2').map((h) => h.name);
+  const lineOf = (i) => source.slice(0, i).split('\n').length;
+  const catches = [];
+  for (const m of source.matchAll(/\bcatch\s*\(\s*[A-Za-z_$][\w$]*\s*\)\s*\{/g)) {
+    if (!isCode(m.index)) continue;
+    let i = m.index + m[0].length - 1;
+    const bodyStart = i;
+    for (let depth = 0; i < source.length; i++) {
+      if (!isCode(i)) continue;
+      if (source[i] === '{') depth++;
+      else if (source[i] === '}' && --depth === 0) break;
+    }
+    const body = stripSourceComments(source.slice(bodyStart, i + 1), '.mjs');
+    if (!new RegExp(String.raw`\binstanceof\s+${identSource(cls)}(?![\w$])`).test(body)) continue;
+    // the try it closes: the `}` just before `catch`, back to its `{`
+    let j = m.index - 1;
+    while (j >= 0 && /\s/.test(source[j])) j--;
+    if (source[j] !== '}') continue;
+    const tryEnd = j;
+    for (let depth = 0; j >= 0; j--) {
+      if (!isCode(j)) continue;
+      if (source[j] === '}') depth++;
+      else if (source[j] === '{' && --depth === 0) break;
+    }
+    const exits1 = exitShapes(body, consts, 1);
+    const exits2 =
+      !exits1 &&
+      (exitShapes(body, consts, 2) || exit2Helpers.some((n) => new RegExp(String.raw`(?<![\w$.])${identSource(n)}\s*\(`).test(body)));
+    catches.push({ tryStart: j, tryEnd, line: lineOf(m.index), exits1, exits2 });
+  }
+  const declared = [...functionBodies(source).values()];
+  const problems = [];
+  let calls = 0;
+  for (const name of callable) {
+    for (const m of source.matchAll(new RegExp(String.raw`(?<![\w$.])${identSource(name)}\s*\(`, 'g'))) {
+      if (!isCode(m.index)) continue;
+      if (declared.some(([s, e]) => m.index > s && m.index < e)) continue; // not followed: see above
+      calls++;
+      const around = catches
+        .filter((c) => m.index > c.tryStart && m.index < c.tryEnd)
+        .sort((a, b) => b.tryStart - a.tryStart)[0];
+      const at = `${entryRel}:${lineOf(m.index)}`;
+      if (!around) {
+        problems.push(
+          `${at} — ${name}() can throw ${cls} carrying COVERAGE LOST, and no catch around it tests for ${cls}: ` +
+            "it escapes to node's default handler, which exits 1 — a FINDING. Catch it and process.exit(2).",
+        );
+      } else if (!around.exits2) {
+        problems.push(
+          `${at} — ${name}() can throw ${cls} carrying COVERAGE LOST, and the catch at :${around.line} maps it to ` +
+            `${around.exits1 ? 'exit 1' : 'no exit this check can read'}. A stop that could not look exits 2.`,
+        );
+      }
+    }
+  }
+  return { problems, calls };
 };
 
 /** Guards whose named coverage helper reaches its exit by a route the reading
@@ -700,8 +848,12 @@ if (markerInCode(CANARY_COMMENT_ONLY) || !markerInCode(CANARY_IN_CODE)) {
 // scan that stops at the first brace of a template substitution, a comment no
 // longer stripped, the accumulator idiom no longer matched — every guard would
 // read as 'unread' or, worse, as 'exit2', and the limb would print a clean run.
-// Five synthetic sources, each with a known answer.
+// Seven synthetic sources, each with a known answer.
 const EXIT_CANARIES = [
+  ['a helper that throws a named class',
+    "class Ungenerable extends Error {}\nconst refuse = (lines) => {\n  throw new Ungenerable(lines);\n};\n", 'throw'],
+  ['a helper that throws a plain Error',
+    "function refuse(why) {\n  throw new Error(`COVERAGE LOST — ${why}`);\n}\n", 'unread'],
   ['a helper that exits 2, with a dated comment naming exit(1)',
     "function coverageLost(lines) {\n  console.error(`COVERAGE LOST — ${lines[0]}`);\n  // process.exit(1) until today\n  process.exit(2);\n}\n", 'exit2'],
   ['a helper that exits 1',
@@ -1331,6 +1483,58 @@ if (manifestText !== serialised) {
 
 const totalCases = [...perFile.values()].reduce((a, b) => a + b, 0);
 
+// ── limb 2b's census, widened to tooling/release (2026-09-25) ────────────────
+// The submit scripts and the snap generator print COVERAGE LOST too, and a
+// workflow runs them exactly as it runs a guard. Until this limb read them, all
+// four submit scripts' coverageLost() exited 1 with no check able to say so.
+// An empty census is not silent: the count is on the summary line, and a
+// workflow still running tooling/release/<x>.mjs after the directory moved is
+// the "does not exist" finding of the outside-scripts limb below.
+const RELEASE = join(ROOT, 'tooling', 'release');
+const releaseScripts = existsSync(RELEASE) ? listDir(RELEASE).filter((f) => f.endsWith('.mjs')).sort() : [];
+/** Every file a throwing stop's importers are looked for in: {rel, abs, src}. */
+const scanned = [
+  ...guards.map((g) => ({ rel: `tooling/ci/${g}`, abs: join(CI, g) })),
+  ...releaseScripts.map((f) => ({ rel: `tooling/release/${f}`, abs: join(RELEASE, f) })),
+].map((p) => ({ ...p, src: readFileSync(p.abs, 'utf8') }));
+let throwEntries = 0;
+let throwCalls = 0;
+/** Problems for helper `h` (verdict 'throw') of `owner`, one of `scanned`. */
+const throwStopProblems = (owner, h) => {
+  const carriers = markerCarriers(owner.src);
+  const entries = [];
+  const readsArgv = (src) => /\bprocess\.argv\b/.test(stripSourceComments(src, '.mjs'));
+  if (readsArgv(owner.src)) entries.push({ file: owner, callable: [...carriers] });
+  for (const p of scanned) {
+    if (p.abs === owner.abs || !readsArgv(p.src)) continue;
+    const callable = [];
+    for (const m of stripSourceComments(p.src, '.mjs').matchAll(/\bimport\s*\{([^}]*)\}\s*from\s*'(\.{1,2}\/[^']+)'/g)) {
+      if (resolve(dirname(p.abs), m[2]) !== resolve(owner.abs)) continue;
+      for (const spec of m[1].split(',')) {
+        const [imported, local = imported] = spec.trim().split(/\s+as\s+/);
+        if (carriers.has(imported)) callable.push(local);
+      }
+    }
+    if (callable.length) entries.push({ file: p, callable });
+  }
+  const out = [];
+  let calls = 0;
+  for (const e of entries) {
+    const graded = throwEntryProblems(e.file.rel, e.file.src, e.callable, h.cls);
+    throwEntries++;
+    calls += graded.calls;
+    out.push(...graded.problems);
+  }
+  throwCalls += calls;
+  if (carriers.size && calls === 0) {
+    out.push(
+      `${owner.rel}:${h.line} — its ${h.name}() throws ${h.cls}, and no entry calls a function that can throw it ` +
+        'with the marker, so whether that stop exits 2 was graded nowhere. Name the entry, or give the stop an exit.',
+    );
+  }
+  return out;
+};
+
 let scanners = 0;
 let exempt = 0;
 /** Guards that carry the marker but no helper by name — limb 2b cannot read their exit. Printed, never hidden. */
@@ -1374,7 +1578,9 @@ for (const guard of guards) {
   const unreadableWhy = COVERAGE_EXIT_UNREADABLE.get(guard);
   if (helpers.length === 0) noNamedHelper.push(guard);
   for (const h of helpers) {
-    if (h.verdict === 'exit1') {
+    if (h.verdict === 'throw') {
+      problems.push(...throwStopProblems(scanned.find((p) => p.rel === `tooling/ci/${guard}`), h));
+    } else if (h.verdict === 'exit1') {
       problems.push(
         `${guard}:${h.line} — its ${h.name}() COVERAGE LOST stop exits 1. Exit 1 is a FINDING; a guard that could ` +
           'not look must exit 2 (AGENTS.md exit-code convention, O-EXIT2-CONVENTION-GAP). Change it to ' +
@@ -1399,6 +1605,51 @@ for (const guard of guards) {
 for (const g of COVERAGE_EXIT_UNREADABLE.keys()) {
   if (scanningRealRepo && !guards.includes(g)) {
     problems.push(`${g} is listed in COVERAGE_EXIT_UNREADABLE and is not in tooling/ci. Remove the entry.`);
+  }
+}
+
+// ── 2b over tooling/release — the same reading, and a stop taken BY IMPORT ───
+// A submit script declares no stop of its own: `submitCli()` in
+// submit-common.mjs hands it one, marker and all, so the script's own code may
+// not even carry the phrase. A release file with no named helper is therefore
+// credited to the release module it imports that declares one — whose own exit
+// is graded here like any other — and one that prints the marker with neither
+// is NAMED below, never counted.
+let releaseStops = 0;
+const releaseByImport = [];
+const releaseNoHelper = [];
+const releaseHelpers = new Map(releaseScripts.map((f) => [f, coverageHelperExits(scanned.find((p) => p.rel === `tooling/release/${f}`).src)]));
+for (const f of releaseScripts) {
+  const rel = `tooling/release/${f}`;
+  const owner = scanned.find((p) => p.rel === rel);
+  const helpers = releaseHelpers.get(f);
+  for (const h of helpers) {
+    if (h.verdict === 'exit2') {
+      releaseStops++;
+    } else if (h.verdict === 'throw') {
+      problems.push(...throwStopProblems(owner, h));
+    } else if (h.verdict === 'exit1') {
+      problems.push(
+        `${rel}:${h.line} — its ${h.name}() COVERAGE LOST stop exits 1. Exit 1 is a FINDING; a script that could ` +
+          'not look must exit 2 (AGENTS.md exit-code convention). A submit script takes its stop from ' +
+          "submit-common.mjs's submitCli(), which exits 2.",
+      );
+    } else {
+      problems.push(
+        `${rel}:${h.line} — its ${h.name}() COVERAGE LOST stop reaches no exit this check can read ` +
+          '(process.exit(2), process.exitCode = 2, a const equal to 2, or a throw of a named class that every ' +
+          'entry maps to exit 2). Make it one of those.',
+      );
+    }
+  }
+  if (helpers.length) continue;
+  const from = [...stripSourceComments(owner.src, '.mjs').matchAll(/\bfrom\s*'\.\/([\w.-]+\.mjs)'/g)]
+    .map((m) => m[1])
+    .filter((m) => (releaseHelpers.get(m) ?? []).length);
+  if (from.length) {
+    releaseByImport.push(`${f} → ${from.map((m) => `${m}:${releaseHelpers.get(m).map((h) => h.line).join(',')}`).join(', ')}`);
+  } else if (markerInCode(owner.src)) {
+    releaseNoHelper.push(f);
   }
 }
 
@@ -1745,6 +1996,18 @@ if (noNamedHelper.length) {
   );
   console.log(`    ${noNamedHelper.join(', ')}`);
 }
+if (releaseNoHelper.length) {
+  console.log(
+    `⬜ ${releaseNoHelper.length} tooling/release file(s) print "${COVERAGE_MARKER}" with no named stop, declared or ` +
+      'imported, so whether that stop exits 2 is NOT read — printed, not hidden:',
+  );
+  console.log(`    ${releaseNoHelper.join(', ')}`);
+}
+console.log(
+  `    tooling/release: ${releaseScripts.length} file(s) read by limb 2b — ${releaseStops} named stop(s) read as ` +
+    `exit 2, ${releaseByImport.length} taking theirs by import${releaseByImport.length ? ` (${releaseByImport.join('; ')})` : ''}; ` +
+    `${throwEntries} entr(ies) of a throwing stop graded, ${throwCalls} call(s) of a carrier each caught and mapped to exit 2`,
+);
 
 console.log(
   `ok  guard coverage — ${guards.length} file(s) in tooling/ci, all accounted for: ${invokedGuards.size} invoked by ` +

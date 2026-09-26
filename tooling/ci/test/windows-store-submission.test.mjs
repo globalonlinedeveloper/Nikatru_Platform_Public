@@ -273,6 +273,8 @@ describe('submit-windows-store — the submission path is walkable, and --submit
     });
     const mutated = join(root, 'tooling', 'release', 'submit-windows-store.mjs');
     mkdirSync(dirname(mutated), { recursive: true });
+    // Its shared preamble travels with it, or the copy dies on LOAD (the same shell-16 red).
+    cpSync(join(REPO, 'tooling', 'release', 'submit-common.mjs'), join(root, 'tooling', 'release', 'submit-common.mjs'));
     const source = readFileSync(SCRIPT, 'utf8');
     const before = source.match(/msstoreCli: '(https:\/\/[^']+)'/);
     assert.ok(before !== null, 'the msstoreCli citation is not where this mutation expects it');
@@ -494,13 +496,13 @@ describe('submit-windows-store — the submission path is walkable, and --submit
 
   test('COVERAGE LOST when storeMetadataContract.requiredFiles is emptied', () => {
     const { code, out } = run(tree({ withArtifact: true, mutateRegister: (r) => (r.storeMetadataContract.requiredFiles = []) }), ['--dry-run']);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
     assert.match(out, /COVERAGE LOST/);
   });
 
   test('COVERAGE LOST when the register declares no windows-store row', () => {
     const { code, out } = run(tree({ withArtifact: true, mutateRegister: (r) => (r.channels = []) }), ['--dry-run']);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
     assert.match(out, /COVERAGE LOST — .*declares no "windows-store" channel/);
   });
 

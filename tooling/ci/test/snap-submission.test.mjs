@@ -417,7 +417,7 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
         }),
       }),
     );
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
     // 🔴 IT FAILS HARDER THAN THE PER-FIELD FAULT, and that is correct. An
     // unsourced limit is never EVALUATED, so `limitsChecked` stays 0 and the
     // declared-but-none-measured branch fires first — the same COVERAGE LOST
@@ -517,13 +517,13 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
   // ── the register is the single declaration ────────────────────────────────
   test('COVERAGE LOST when the register declares no linux-snap row', () => {
     const { code, out } = dry(tree({ withArtifact: true, mutateRegister: (r) => (r.channels = []) }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
     assert.match(out, /COVERAGE LOST — .*declares no "linux-snap" channel/);
   });
 
   test('COVERAGE LOST when storeMetadataContract.requiredFiles is emptied', () => {
     const { code, out } = dry(tree({ withArtifact: true, mutateRegister: (r) => (r.storeMetadataContract.requiredFiles = []) }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
     assert.match(out, /COVERAGE LOST — .*requiredFiles/);
   });
 

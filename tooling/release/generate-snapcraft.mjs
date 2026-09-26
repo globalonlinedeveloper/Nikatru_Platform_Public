@@ -82,8 +82,10 @@
 //   [--repo-root path]  read the maintained artifacts from another tree (tests)
 //   [--print]           write the recipe to stdout as well as to --out
 //
-// Exit 0 = a complete recipe was written. 1 = it could not be derived, and the
-// reason names the artifact that is missing rather than the key that is absent.
+// Exit 0 = a complete recipe was written. 2 = it could not be derived, and the
+// reason names the artifact that is missing rather than the key that is absent:
+// every SnapcraftUngenerable refusal, since 2026-09-25 (it exited 1, a finding's
+// code, under a COVERAGE LOST line). 1 = a usage error: --out not given.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, dirname, relative, isAbsolute } from 'node:path';
@@ -1181,7 +1183,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       if (!(e instanceof SnapcraftUngenerable)) throw e;
       console.error('generate-snapcraft: REFUSING to emit a build-dep list');
       for (const l of e.lines) console.error(`  ${l}`);
-      process.exit(1);
+      process.exit(2);
     }
     process.stdout.write(`${lane.packages.join(' ')}\n`);
     console.error(
@@ -1203,7 +1205,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     if (!(e instanceof SnapcraftUngenerable)) throw e;
     console.error('generate-snapcraft: REFUSING');
     for (const l of e.lines) console.error(`  ${l}`);
-    process.exit(1);
+    process.exit(2);
   }
 
   const target = join(resolve(out), RECIPE_PATH);

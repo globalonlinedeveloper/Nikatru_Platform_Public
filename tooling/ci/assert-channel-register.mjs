@@ -1225,9 +1225,34 @@ if (existsSync(join(ROOT, RELEASE_DIR))) {
       .flatMap((c) => [c.submission?.script, c.submission?.recipeScript])
       .filter((s) => typeof s === 'string' && s.trim() !== ''),
   );
-  for (const entry of listDir(join(ROOT, RELEASE_DIR))) {
-    if (!entry.endsWith('.mjs')) continue;
+  // ⏱ 2026-09-25 (O-SUBMIT-SCRIPTS-SHARE-NO-MODULE): a LIBRARY the release
+  // scripts import is not a submission path, so no row can name it. It is
+  // admitted by name, with its reason, and only while a release script in this
+  // directory imports it: a member nothing imports is the same abandoned file
+  // this check exists to refuse, so it fails exactly as an orphan does.
+  const RELEASE_LIBRARIES = new Map([
+    ['submit-common.mjs', 'the preamble every submit-*.mjs imports: the argument reader, the repo root, the printers and the two stops (COVERAGE LOST exits 2)'],
+  ]);
+  const releaseEntries = listDir(join(ROOT, RELEASE_DIR)).filter((e) => e.endsWith('.mjs'));
+  for (const [lib, why] of RELEASE_LIBRARIES) {
+    const rel = `${RELEASE_DIR}/${lib}`;
+    if (!releaseEntries.includes(lib)) {
+      problems.push(`${rel} is listed in RELEASE_LIBRARIES ("${why}") and does not exist. Remove the entry.`);
+      continue;
+    }
+    const importSite = new RegExp(String.raw`\bfrom\s+['"]\./${lib.replace(/[.]/g, '\\.')}['"]`);
+    const importers = releaseEntries.filter(
+      (e) => e !== lib && importSite.test(readFileSync(join(ROOT, RELEASE_DIR, e), 'utf8')),
+    );
+    if (importers.length === 0) {
+      problems.push(
+        `${rel} is a release library (RELEASE_LIBRARIES: "${why}") that NO script in ${RELEASE_DIR} imports. An unimported library is an orphan like any other file here: import it or delete it, and remove its entry.`,
+      );
+    }
+  }
+  for (const entry of releaseEntries) {
     const rel = `${RELEASE_DIR}/${entry}`;
+    if (RELEASE_LIBRARIES.has(entry)) continue;
     if (declaredScripts.has(rel)) continue;
     problems.push(
       `${rel} is a release script that NO channel row names in its \`submission.script\`. [10]D-10 limb (i) makes the register the one place a submission path is declared; an unreferenced script is a path nobody can reach from the register and nothing keeps working. Declare it on its channel or delete it.`,

@@ -756,10 +756,11 @@ function tree({
     }
   }
   if (withSubmission) {
-    if (submissionScriptOnDisk) write(SUBMIT_SCRIPT, '// the submission path\n');
+    if (submissionScriptOnDisk) write(SUBMIT_SCRIPT, "import { submitCli } from './submit-common.mjs';\n// the submission path\n");
+    if (submissionScriptOnDisk || (withRecipeScript && recipeScriptOnDisk)) write('tooling/release/submit-common.mjs', '// RELEASE_LIBRARIES member\n');
     if (submissionWorkflowOnDisk) write(SUBMIT_WORKFLOW, submitWorkflow({ jobRunsScript }));
     if (withRecipeScript) {
-      if (recipeScriptOnDisk) write(RECIPE_SCRIPT, '// the packaging path\n');
+      if (recipeScriptOnDisk) write(RECIPE_SCRIPT, "import { submitCli } from './submit-common.mjs';\n// the packaging path\n");
       write(PACKAGE_WORKFLOW, packageWorkflow({ invoked: recipeScriptInvoked }));
     }
   }
@@ -1399,6 +1400,20 @@ describe('assert-channel-register — the lane\'s output vs the formats its chan
     const { code, out } = run(tree({ withSubmission: true }));
     assert.equal(code, 0, out);
     assert.match(out, /1 submission path\(s\) resolve to a workflow job that runs the named script/);
+  });
+
+  test('FAILS when a RELEASE_LIBRARIES member is not on disk', () => {
+    const root = tree({ withSubmission: true });
+    rmSync(join(root, 'tooling/release/submit-common.mjs'));
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /tooling\/release\/submit-common\.mjs is listed in RELEASE_LIBRARIES .* and does not exist/);
+  });
+
+  test('FAILS when no release script imports a RELEASE_LIBRARIES member', () => {
+    const { code, out } = run(tree({ withSubmission: true, extraFiles: { [SUBMIT_SCRIPT]: '// the submission path\n' } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /tooling\/release\/submit-common\.mjs is a release library .* that NO script in tooling\/release imports/);
   });
 
   test('FAILS when the submission script is not on disk', () => {
