@@ -2538,13 +2538,51 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
     assert.match(r.out.split('\n')[0], new RegExp(`${MANIFEST_NAME}$`));
   });
 
-  test('--emit-environments refuses to print nothing — publishing while recording nothing is an unrecorded deploy', () => {
+  // ⏱ 2026-09-26 (O-APP-RELEASE-RECORDS-NO-DEPLOYMENT-SILENTLY) — this case was
+  // `notes.txt` → exit 1 on the real register. Since #958 every app lane emits only
+  // store-only files, so a release carrying NO installer is the register's declared
+  // empty (the one `--stage` prints as "none is owed"), and every app tag reached
+  // the refusal. The refusal stays for a release that carries an installer no origin
+  // row takes; both halves are held here against the LIVE register.
+  test('--emit-environments: the post-#958 app release (archives and its record, no installer) is the declared empty — exit 0, stdout empty', () => {
     const d = join(TMP, `d${seq++}`);
     mkdirSync(d, { recursive: true });
-    writeFileSync(join(d, 'notes.txt'), 'x');
+    for (const n of ['release.json', 'subscriptiontracker-v1.0.0-subscriptiontracker-linux-web-android-unsigned.tar.gz', 'subscriptiontracker-v1.0.0-subscriptiontracker-macos.tar.gz']) writeFileSync(join(d, n), 'x');
+    const r = cli(['--emit-environments', d, '--app', 'subscriptiontracker']);
+    assert.equal(r.code, 0, r.out);
+    assert.equal(r.stdout, '', 'nothing is recorded: stdout is the record step\'s word list');
+    assert.match(r.stderr, /^no \[10\]D-9 origin record for this release, and none is owed: it carries no installer \(release\.json, subscriptiontracker-v1\.0\.0-subscriptiontracker-linux-web-android-unsigned\.tar\.gz, subscriptiontracker-v1\.0\.0-subscriptiontracker-macos\.tar\.gz\)\.$/m);
+    assert.match(r.stderr, /Every format a lane on surface "app" emits is store-only: \.aab, \.ipa, \.msix, \.pkg, \.snap/);
+  });
+
+  test('--emit-environments still refuses a release carrying an installer no origin row takes — the apps.gov.in .apk today', () => {
+    const d = join(TMP, `d${seq++}`);
+    mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, 'release.json'), 'x');
+    writeFileSync(join(d, 'subscriptiontracker-v1.0.0-subscriptiontracker.apk'), 'x');
     const r = cli(['--emit-environments', d, '--app', 'subscriptiontracker']);
     assert.equal(r.code, 1, r.out);
+    assert.equal(r.stdout, '');
     assert.match(r.out, /no `kind: "direct"` and no `surface: "extension"` channel/);
+  });
+
+  test('--emit-environments refuses the empty a lane OWES — a lane-backed format a Release carries, and none is here', () => {
+    // The real register with a lane on linux-appimage: `.AppImage` is then owed, so
+    // the same archives-only release is COVERAGE the stage would have lost, not an empty.
+    const real = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
+    real.channels.find((c) => c.id === 'linux-appimage').lane = { workflow: 'build-platforms.yml', job: 'linux_web_android' };
+    const root = fixture({ register: real, apps: ['subscriptiontracker'] });
+    const d = join(TMP, `d${seq++}`);
+    mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, 'release.json'), 'x');
+    const r = cli(['--emit-environments', d, '--app', 'subscriptiontracker', '--repo-root', root]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /The release holds: release\.json, and `--app subscriptiontracker` is on the "app" surface/);
+    // …and without the lane, the same directory under the same fixture is the declared empty.
+    delete real.channels.find((c) => c.id === 'linux-appimage').lane;
+    const e = cli(['--emit-environments', d, '--app', 'subscriptiontracker', '--repo-root', fixture({ register: real, apps: ['subscriptiontracker'] })]);
+    assert.equal(e.code, 0, e.out);
+    assert.equal(e.stdout, '');
   });
 
   test('--emit-environments resolves the real register to a real environment NAME', () => {
@@ -2783,6 +2821,111 @@ describe('the real tree still satisfies the mechanism it declares', () => {
     assert.equal(versioning.length, 1, `one version check in the staging step; found ${JSON.stringify(versioning)}`);
     assert.match(versioning[0], /(?:^|\s)--tag "\$TAG"(?:\s|$)/);
     assert.match(versioning[0], /(?:^|\s)--app "apps\/\$APP"(?:\s|$)/, 'the tag is checked against THIS matrix app, not the app its own slug names');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-26 · O-APP-RELEASE-RECORDS-NO-DEPLOYMENT-SILENTLY — THE RECORD STEP
+// FAILS WHEN ITS PRODUCER REFUSES. Since #958 `--emit-environments` exited 1 on
+// every app tag and the step passed: `for environment in $(…)` is a word list, and
+// `set -e` never sees a word list's exit. Each workflow's REAL step is read from the
+// raw file and run under bash with `node` stubbed: the producer refuses (exit 1) or
+// prints two names, and record-deployment.mjs prints what it would record. The
+// pre-fix shape runs beside it as the control that the harness sees the difference.
+describe('the record step fails when --emit-environments refuses', () => {
+  const RECORD_STEP = 'Record what shipped, per channel this release is the origin for';
+  /** The step's `run: |` body as bash receives it, raw lines, `#` comments kept. */
+  const recordScript = (rel) => {
+    const wf = parseWorkflow(REPO, rel);
+    const step = workflowSteps(wf.jobs.get('release')).find((s) => s.name === RECORD_STEP);
+    assert.ok(step?.run, `${rel}'s release job must keep "${RECORD_STEP}"`);
+    const raw = readFileSync(join(REPO, rel), 'utf8').split('\n');
+    const at = step.run.n - 1;
+    const keyIndent = raw[at].search(/\S/);
+    assert.match(raw[at], /run:\s*\|\s*$/, `${rel}:${step.run.n} is a literal block`);
+    const body = [];
+    for (let k = at + 1; k < raw.length && (raw[k].trim() === '' || raw[k].search(/\S/) > keyIndent); k++) body.push(raw[k]);
+    const cut = Math.min(...body.filter((l) => l.trim() !== '').map((l) => l.search(/\S/)));
+    return body.map((l) => l.slice(cut)).join('\n');
+  };
+  const STUB = [
+    'node() {',
+    '  case "$1" in',
+    '    tooling/ci/release-manifest.mjs) [ -n "$EMIT_OUT" ] && printf \'%s\\n\' $EMIT_OUT; echo "stub: emit exits $EMIT_EXIT" >&2; return "$EMIT_EXIT" ;;',
+    '    tooling/ci/record-deployment.mjs) echo "RECORDED $2" ;;',
+    '    *) echo "stub: unexpected node $*" >&2; return 97 ;;',
+    '  esac',
+    '}',
+  ].join('\n');
+  const runStep = (script, { exit, out = '' }) => {
+    const r = spawnSync('bash', ['--noprofile', '--norc', '-e', '-c', `${STUB}\n${script}`], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        EMIT_EXIT: String(exit),
+        EMIT_OUT: out,
+        APP: 'subscriptiontracker',
+        TOOL: 'fullshot',
+        RELEASE_URL: 'https://example.invalid/r',
+        GITHUB_SERVER_URL: 'https://example.invalid',
+        GITHUB_REPOSITORY: 'o/r',
+        GITHUB_REF_NAME: 'fullshot-v1.0.0',
+      },
+    });
+    return { code: r.status, out: `${r.stdout}${r.stderr}`, recorded: r.stdout.split('\n').filter((l) => l.startsWith('RECORDED ')) };
+  };
+  const LEGACY = [
+    'set -euo pipefail',
+    'for environment in $(node tooling/ci/release-manifest.mjs --emit-environments dist --app "$APP"); do',
+    '  node tooling/ci/record-deployment.mjs "$environment" "$RELEASE_URL"',
+    'done',
+  ].join('\n');
+
+  test('CONTROL: the pre-fix `for … in $(…)` shape swallows the refusal — exit 0, nothing recorded', () => {
+    const r = runStep(LEGACY, { exit: 1 });
+    assert.equal(r.code, 0, `the harness must reproduce the swallow it exists to catch:\n${r.out}`);
+    assert.deepEqual(r.recorded, []);
+    assert.match(r.out, /stub: emit exits 1/, 'the producer ran and refused');
+  });
+
+  const refusalFailsTheStep = (rel) => {
+    const r = runStep(recordScript(rel), { exit: 1 });
+    assert.notEqual(r.code, 0, `a refusing --emit-environments must fail the step:\n${r.out}`);
+    assert.deepEqual(r.recorded, []);
+    assert.match(r.out, /stub: emit exits 1/);
+  };
+  const namesAreRecorded = (rel) => {
+    const r = runStep(recordScript(rel), { exit: 0, out: 'x-one x-two' });
+    assert.equal(r.code, 0, r.out);
+    assert.deepEqual(r.recorded, ['RECORDED x-one', 'RECORDED x-two']);
+  };
+
+  test('build-platforms.yml: the producer exits 1, so the step exits non-zero and records nothing', () => {
+    refusalFailsTheStep('.github/workflows/build-platforms.yml');
+  });
+
+  test('build-platforms.yml: the producer prints two names, so the step records both and exits 0', () => {
+    namesAreRecorded('.github/workflows/build-platforms.yml');
+  });
+
+  test('extensions.yml: the producer exits 1, so the step exits non-zero and records nothing', () => {
+    refusalFailsTheStep('.github/workflows/extensions.yml');
+  });
+
+  test('extensions.yml: the producer prints two names, so the step records both and exits 0', () => {
+    namesAreRecorded('.github/workflows/extensions.yml');
+  });
+
+  test('build-platforms.yml asks the register BEFORE it publishes, on every run, and bare', () => {
+    const wf = parseWorkflow(REPO, '.github/workflows/build-platforms.yml');
+    const steps = workflowSteps(wf.jobs.get('release'));
+    const gate = steps.findIndex((s) => s.run && /^node tooling\/ci\/release-manifest\.mjs --emit-environments dist --app "\$APP"$/.test(s.run.text.trim()));
+    const publish = steps.findIndex((s) => s.run && /gh release create/.test(s.run.text));
+    assert.ok(gate !== -1, 'a bare `--emit-environments` step must exist, so its exit is the step\'s');
+    assert.ok(publish !== -1);
+    assert.ok(gate < publish, 'the refusal must come before `gh release create`, never after it');
+    assert.equal(steps[gate].cond, null, 'no `if:` — the untagged dist of a cron or a dispatch rehearses the tag\'s');
+    assert.equal(steps[gate].env.get('APP')?.value, '${{ matrix.app }}');
   });
 });
 

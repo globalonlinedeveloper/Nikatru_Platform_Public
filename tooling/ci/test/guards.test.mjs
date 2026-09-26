@@ -1309,6 +1309,42 @@ describe('assert-workflow-hardening', () => {
     assert.match(out, /limb 11 — 100 assert step\(s\) across 4 `guards-\*` shard\(s\)/);
   });
 
+  // ── limb 12 · ⏱ 2026-09-26 · O-APP-RELEASE-RECORDS-NO-DEPLOYMENT-SILENTLY ─────
+  // `for x in $(cmd)` hides cmd's exit from `set -e`. Two ordinary workflows plus
+  // one whose `run: |` body carries the loop; every other limb is held green.
+  const buildLoop = (name, body) => {
+    const files = {};
+    for (const f of ['a', 'b']) files[`.github/workflows/${f}.yml`] = wf(Array.from({ length: 4 }, (_, i) => `actions/act${i}@${SHA}`));
+    files['.github/workflows/rec.yml'] =
+      'name: R\non: push\npermissions:\n  contents: read\njobs:\n  rec:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n    steps:\n' +
+      `      - uses: actions/checkout@${SHA}\n      - name: Record\n        run: |\n${body.map((l) => `          ${l}\n`).join('')}`;
+    return fixture(name, files);
+  };
+
+  test('limb 12 — `for e in $(…)` in a run: body FAILS, naming the file, the job, the step and the loop variable', () => {
+    const { code, out } = run('assert-workflow-hardening.mjs', {
+      args: [buildLoop('wh-loop-subst', ['set -euo pipefail', 'for environment in $(node emit.mjs); do', '  echo "$environment"', 'done'])],
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /rec\.yml:\d+ job "rec" step "Record" loops `for environment in` over a command substitution/);
+  });
+
+  test('limb 12 — the backtick form FAILS too, and so does a loop after `then` on one line', () => {
+    const { code, out } = run('assert-workflow-hardening.mjs', {
+      args: [buildLoop('wh-loop-tick', ['if true; then for f in `ls`; do echo "$f"; done; fi'])],
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /loops `for f in` over a command substitution/);
+  });
+
+  test('limb 12 — an assignment first, then `for e in $list`, PASSES, and the ok block counts the loops', () => {
+    const { code, out } = run('assert-workflow-hardening.mjs', {
+      args: [buildLoop('wh-loop-ok', ['set -euo pipefail', 'list="$(node emit.mjs)"', 'for environment in $list; do', '  echo "$(date) $environment"', 'done', 'for d in a/*/; do echo "$d"; done'])],
+    });
+    assert.equal(code, 0, out);
+    assert.match(out, /limb 12 — 2 `for … in` loop\(s\) across every `run:` body; none loops over a `\$\(…\)`/);
+  });
+
   test('limb 11 — THREE shards is COVERAGE LOST (2), never a pass over a remnant', () => {
     const { code, out } = run('assert-workflow-hardening.mjs', { args: [buildShards('wh-shard-three', 3)] });
     assert.equal(code, 2, out);
