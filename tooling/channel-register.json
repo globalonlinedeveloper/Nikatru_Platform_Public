@@ -1286,7 +1286,8 @@
       "publishing-credential": "authenticates an upload or deploy to a distribution channel. It authorises PUBLISHING; it is not key material any artifact is signed with — the channel either re-signs (MS Store, Snap) or holds the signing key itself (Play App Signing).",
       "service-credential": "authenticates CI to a backend service it operates on (Supabase management, service-role access). Never enters an artifact and signs nothing.",
       "build-config": "a value compiled into or read by a build — an endpoint, a project ref, a publishable key. Held as a repository secret to keep it out of the public tree, not because it is signing material.",
-      "github-provided": "issued by GitHub per run. Nobody declares, rotates or custodies it, so it has no signing-identity dimension at all."
+      "github-provided": "issued by GitHub per run. Nobody declares, rotates or custodies it, so it has no signing-identity dimension at all.",
+      "runtime-secret": "a secret CI hands to a deployed surface as that surface's own encrypted secret (e.g. `wrangler pages secret put`, through stdin). The deployed code reads it at request time; it authenticates CI to nothing, enters no artifact and signs nothing."
     },
     "nonSigning": [
       {
@@ -1348,6 +1349,11 @@
         "name": "CLOUDFLARE_ACCOUNT_ID",
         "kind": "publishing-credential",
         "why": "Account identifier that scopes the token above. Not itself an authenticator; kept as a secret to avoid publishing the account id."
+      },
+      {
+        "name": "SUBSCRIBE_RATE_LIMIT_SALT",
+        "kind": "runtime-secret",
+        "why": "The HMAC key sites/nikatru/functions/api/subscribe.js keys its per-IP rate-limit counter with, so the counter never holds a reversible fingerprint of an address. deploy-web.yml's `site` job puts it on the nikatru-apex Pages project through stdin (row O-APEX-SITE-DEPLOYS-OUTSIDE-THE-PIPELINE, D3a). It signs no artifact and authenticates CI to nothing; rotating it resets only one-hour counters."
       },
       {
         "name": "PLAY_SERVICE_ACCOUNT_JSON",
@@ -3990,6 +3996,25 @@
       "url": "https://platform.nikatru.com",
       "source": "services/platform",
       "notes": "NOT app-scoped — one instance serves every app (config, analytics, consent, entitlements, money webhook, cron). Deployed by .github/workflows/deploy-workers.yml."
+    }
+  ],
+  "_siteEnvironmentsWhy": [
+    "⏱ 2026-09-25 · row O-APEX-SITE-DEPLOYS-OUTSIDE-THE-PIPELINE (D3a). The apex site sites/nikatru is",
+    "published by deploy-web.yml's `site` job and recorded under ONE ledger environment. It is not a",
+    "release channel (no `{app}` in it, no store) and it is not a Worker: rollback.mjs reads a service row's",
+    "`source` as the directory it runs `wrangler rollback` from. So it gets a list of its own, matched",
+    "exactly by resolveEnvironment in tooling/ci/deployment-record.mjs, and `kind: \"site\"`, which",
+    "record-deployment.mjs gives no published-id flag and rollback.mjs refuses by kind."
+  ],
+  "siteEnvironments": [
+    {
+      "id": "nikatru-site",
+      "deploymentEnvironment": "nikatru-site",
+      "kind": "site",
+      "name": "Apex site (sites/nikatru) and its Pages Functions",
+      "url": "https://nikatru-apex.pages.dev",
+      "source": "sites/nikatru",
+      "notes": "Direct Upload Pages project nikatru-apex, deployed by the `site` job of .github/workflows/deploy-web.yml. nikatru.com still serves the Git-connected project `nikatru` until the owner moves the custom domain (D3b)."
     }
   ],
   "nonChannelSigningIdentities": [

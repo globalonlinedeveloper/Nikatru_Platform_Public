@@ -1812,6 +1812,11 @@
         }
       ]
     },
+    "tooling/ci/assert-site-bindings.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-26",
+      "evidence": []
+    },
     "tooling/ci/assert-snapcraft-generable.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-08",
@@ -2641,6 +2646,11 @@
       "firstSeen": "2026-09-26",
       "evidence": []
     },
+    "tooling/sites/smoke-site-deploy.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-26",
+      "evidence": []
+    },
     "tooling/smoke/smoke-web-artifact.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-03",
@@ -3457,5 +3467,5 @@
       "signature": "guard-test:B2: an env carrying API_BASE_URL is refused, whatever it names"
     }
   ],
-  "zeroCatch": 141
+  "zeroCatch": 142
 }
