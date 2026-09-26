@@ -52,12 +52,16 @@ const BARE_HTTPS = /^https:\/\/[a-z0-9.-]+$/;
 /** A made-up DSN key. The output of every case that passes it is searched for it. */
 const DSN_KEY = 'dsn0dsn0dsn0dsn0dsn0';
 /** The build's three URL defines as FIXTURE values — the public origins the app's
- *  `_headers` already names, never the secrets. */
+ *  `_headers` already names, never the secrets. SUPABASE_URL is the self-hosted
+ *  host since the Phase 5 switch (#982) dropped the hosted project from connect-src. */
 const FIXTURE_ENV = {
-  SUPABASE_URL: 'https://lcrkiurkvzhkonjwhpiv.supabase.co',
+  SUPABASE_URL: 'https://auth-api.nikatru.com',
   API_BASE_URL: 'https://subscriptiontracker-api.nikatru.com',
   GLITCHTIP_DSN: `https://${DSN_KEY}@glitchtip.nikatru.com/7`,
 };
+
+/** A well-formed `prestage` entry on an origin FIXTURE_ENV's SUPABASE_URL derives. */
+const PRESTAGE = { origin: 'https://auth-api.nikatru.com', kind: 'prestage', reason: 'SUPABASE_URL moves here', retire: 'when D derives it' };
 
 let TMP;
 before(() => {
@@ -250,9 +254,13 @@ describe('the compare, on the real tree and on mutated copies of it (red control
   });
 
   test('RC8 — a pre-stage that a define now derives is red until its DECLARED entry is deleted', () => {
-    const r = run(tree(), { ...FIXTURE_ENV, SUPABASE_URL: 'https://auth-api.nikatru.com' });
-    assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /pre-stage is now derived: delete its DECLARED entry — https:\/\/auth-api\.nikatru\.com is derived from SUPABASE_URL/);
+    // The real list held auth-api as a pre-stage until the Phase 5 switch deleted it (#982), so the
+    // entry is put back here: the rule it proved must stay able to fail.
+    const r = checkConnectOrigins({ ...realInputs(), env: FIXTURE_ENV, declared: [PRESTAGE] });
+    assert.ok(
+      r.findings.some((f) => /^pre-stage is now derived: delete its DECLARED entry — https:\/\/auth-api\.nikatru\.com is derived from SUPABASE_URL$/.test(f)),
+      r.findings.join('\n'),
+    );
   });
 
   test('RC9 — a new app_config.dart constant naming an https origin, in neither list, is red', () => {
@@ -305,10 +313,10 @@ describe('the compare, on the real tree and on mutated copies of it (red control
   });
 
   test('a DECLARED rollback that a define derives again is no finding, and a malformed entry is one', () => {
-    const rollback = { origin: FIXTURE_ENV.SUPABASE_URL, kind: 'rollback', reason: 'the hosted project, until Phase 6', retire: 'Phase 6' };
+    const rollback = { origin: FIXTURE_ENV.SUPABASE_URL, kind: 'rollback', reason: 'a secret moved away and then back', retire: 'when it is retired' };
     const green = checkConnectOrigins({ ...realInputs(), env: FIXTURE_ENV, declared: [...DECLARED, rollback] });
     assert.deepEqual([green.lost, green.findings], [[], []]);
-    const bad = checkConnectOrigins({ ...realInputs(), env: FIXTURE_ENV, declared: [{ ...DECLARED[0], origin: 'https://auth-api.nikatru.com/path' }] });
+    const bad = checkConnectOrigins({ ...realInputs(), env: FIXTURE_ENV, declared: [{ ...PRESTAGE, origin: 'https://auth-api.nikatru.com/path' }] });
     assert.ok(bad.findings.some((f) => /^DECLARED entry #1 is malformed/.test(f)), bad.findings.join('\n'));
   });
 
