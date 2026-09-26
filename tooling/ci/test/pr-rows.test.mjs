@@ -20,7 +20,7 @@
 //       base without the guard, exits 1
 //   C8  the PR template, unedited, is red; filled, it is green
 //   C9  (live only: a body edit on a real PR re-runs guard-meta; not a unit case)
-//   and the automated bodies site-drift-repair.yml and store-screenshots.yml
+//   and the automated bodies name-clearance.yml and store-screenshots.yml
 //   write each carry a valid line, read out of the workflows themselves.
 //
 // Every case builds its repository with `git init` in a temp directory: no
@@ -39,7 +39,7 @@ const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
 const GUARD = join(CI_DIR, 'assert-pr-rows.mjs');
 const TEMPLATE = join(REPO, '.github', 'PULL_REQUEST_TEMPLATE.md');
-const SITE_DRIFT = join(REPO, '.github', 'workflows', 'site-drift-repair.yml');
+const NAME_CLEARANCE = join(REPO, '.github', 'workflows', 'name-clearance.yml');
 const SCREENSHOTS = join(REPO, '.github', 'workflows', 'store-screenshots.yml');
 
 /** This PR's own body, as the brief wrote it: the guard's first real subject. */
@@ -430,14 +430,15 @@ describe('C8 — the PR template', () => {
 // ── the automated bodies ─────────────────────────────────────────────────────
 // Two workflows open pull requests with no human writing the body, and one of
 // them auto-merges: a body without the line would sit red with nobody reading it.
-// The bodies are rebuilt from the workflow text: site-drift-repair's `printf`
+// The bodies are rebuilt from the workflow text: name-clearance's `printf`
 // lines into pr-body.md, and each store-screenshots `--body "…"$'…'` argument.
 
-/** site-drift-repair: the single-quoted `printf '%s\n…' '<text>'` lines of the
- *  block redirected into pr-body.md, in order. */
-function siteDriftBody(src) {
+/** name-clearance: the single-quoted `printf '%s\n…' '<text>'` lines of the
+ *  block redirected into pr-body.md, in order. A line whose text splices a quote
+ *  (`'…'"'"'…'`) is not matched and so is left out, which no case below needs. */
+function printfBody(src) {
   const at = src.indexOf('} > "${RUNNER_TEMP}/pr-body.md"');
-  assert.ok(at > 0, 'site-drift-repair.yml no longer writes pr-body.md from a { … } block');
+  assert.ok(at > 0, 'name-clearance.yml no longer writes pr-body.md from a { … } block');
   const open = src.lastIndexOf('{\n', at);
   const parts = [];
   for (const line of src.slice(open, at).split('\n')) {
@@ -460,17 +461,17 @@ function screenshotBodies(src) {
 }
 
 describe('the automated PR bodies carry a valid line', () => {
-  test('site-drift-repair: green control, the body it writes names `none` with its reason', () => {
-    const parts = siteDriftBody(readFileSync(SITE_DRIFT, 'utf8'));
+  test('name-clearance: green control, the body it writes names `none` with its reason', () => {
+    const parts = printfBody(readFileSync(NAME_CLEARANCE, 'utf8'));
     assert.ok(parts.length >= 6, `read ${parts.length} printf line(s); the body has at least six paragraphs`);
     const v = parseRows(parts.join(''));
     assert.equal(v.ok, true, JSON.stringify(v));
     assert.equal(v.kind, 'none');
-    assert.equal(v.reason, 'automated site drift repair (generated sites/ only)');
+    assert.equal(v.reason, 'an automated name-clearance refresh closes no row.');
   });
 
-  test('site-drift-repair: the same body without its Rows printf is missing', () => {
-    const parts = siteDriftBody(readFileSync(SITE_DRIFT, 'utf8')).filter((p) => !p.startsWith('Rows:'));
+  test('name-clearance: the same body without its Rows printf is missing', () => {
+    const parts = printfBody(readFileSync(NAME_CLEARANCE, 'utf8')).filter((p) => !p.startsWith('Rows:'));
     assert.equal(parseRows(parts.join('')).problem, 'missing');
   });
 

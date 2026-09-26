@@ -1886,9 +1886,9 @@ export function planDiscovery(repoRoot) {
   // ⚠️ IT IS COMMITTED, and it has to be: the `nikatru` Pages project is
   // Git-connected with NO BUILD STEP (`sites/nikatru/README.md`), so a file that
   // is not in the repository is a file that is not deployed. What keeps a
-  // committed generated file honest is the lane that already exists —
-  // `site-drift-repair.yml` regenerates this surface on every merge to `main` and
-  // opens a self-merging PR when the committed bytes drift.
+  // committed generated file honest is W-9 (assert-discovery-surface.mjs), which
+  // ci.yml runs on every pull request: it regenerates this surface and exits 1
+  // when the committed bytes differ from the generator's.
   //
   // ⚠️ ONLY `live` ENTRIES. A `preview` app has no Pages project attached yet, so
   // routing its prefix would proxy the apex to a host that answers 522 — and it
@@ -1967,7 +1967,7 @@ export function planDiscovery(repoRoot) {
   // would go stale on the next generator change — silently, because a stale hash
   // does not error, it just refuses to run the script. Computing it HERE, from the
   // planned bytes rather than the bytes on disk, is what keeps the header and the
-  // pages in the same commit. `site-drift-repair.yml` diffs the result.
+  // pages in the same commit. assert-discovery-surface.mjs diffs the result.
   //
   // ⚠️ ORDER MATTERS: this runs AFTER the chrome splice, because splicing can move
   // an inline block. Hashing the on-disk bytes would produce a header that is

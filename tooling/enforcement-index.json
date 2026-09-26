@@ -2701,8 +2701,7 @@
     ],
     "invokedBy": [
       ".github/workflows/ci.yml#sites",
-      ".github/workflows/deploy-web.yml#site",
-      ".github/workflows/site-drift-repair.yml#repair"
+      ".github/workflows/deploy-web.yml#site"
     ],
     "kind": "guard",
     "ref": "tooling/ci/check-site-integrity.mjs",
@@ -3797,8 +3796,9 @@
     ],
     "invokedBy": [
       ".github/workflows/ci.yml#app-brick",
-      ".github/workflows/deploy-web.yml#site",
-      ".github/workflows/site-drift-repair.yml#repair"
+      ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/ci.yml#sites",
+      ".github/workflows/deploy-web.yml#site"
     ],
     "kind": "script",
     "ref": "tooling/sites/generate-discovery.mjs",
@@ -3829,21 +3829,9 @@
     "state": "WIRED"
   },
   {
-    "claims": [
-      "W-3a"
-    ],
-    "invokedBy": [
-      ".github/workflows/site-drift-repair.yml#repair"
-    ],
-    "kind": "script",
-    "ref": "tooling/sites/lastmod.mjs",
-    "references": [],
-    "state": "WIRED"
-  },
-  {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/site-drift-repair.yml#repair"
+      ".github/workflows/ci.yml#sites"
     ],
     "kind": "script",
     "ref": "tooling/sites/regen.mjs",

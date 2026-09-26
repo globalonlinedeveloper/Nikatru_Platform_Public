@@ -1187,6 +1187,10 @@ jobs:
         run: test -s catalog/apps-landing.json
       - name: Render payload must equal a fresh publish from the rail config
         run: git diff --exit-code -- catalog/apps-landing.json
+      # why: the whole site generator chain in its one order, compare-only. It ran post-merge
+      # in site-drift-repair.yml until D3b retired that lane; here it runs before the merge.
+      - name: The site generator chain is current (compare only)
+        run: node tooling/sites/regen.mjs --check
       - name: Discovery surfaces match the registry that generated them
         run: node tooling/ci/assert-discovery-surface.mjs
       - name: The apex site's Pages bindings agree with its README, its Functions and its deploy job

@@ -187,8 +187,8 @@ most one of the twelve daily slots. `tooling/ops/alarm-chains.json` is
 **not** touched: it ledgers GlitchTip monitor → recipient chains, and
 this finding does not travel a monitor.
 
-**Why `ci.yml`, `deploy-web.yml`, `deploy-workers.yml` and
-`site-drift-repair.yml` are OUT of the domain, stated rather than left to
+**Why `ci.yml`, `deploy-web.yml` and `deploy-workers.yml`
+are OUT of the domain, stated rather than left to
 be discovered.** They are `cadence: trigger` rows. `ci.yml`'s newest run
 on `main` can be made green **only by merging**, so blocking merges on it
 would be a deadlock with no exit — the `ci-18` bootstrap shape, and this
