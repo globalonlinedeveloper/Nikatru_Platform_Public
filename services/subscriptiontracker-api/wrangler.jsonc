@@ -33,9 +33,8 @@
   "observability": { "enabled": true },
   "vars": {
     "APP_ID": "subscriptiontracker",
-    // Shared identity: the self-hosted GoTrue on Box C at auth-api.nikatru.com
-    // [ADR 080]. The hosted project is the rollback until Phase 6.
-    "SUPABASE_URL": "https://auth-api.nikatru.com",
+    // Shared Supabase identity project (Cross_Platform_Auth, ap-south-1).
+    "SUPABASE_URL": "https://lcrkiurkvzhkonjwhpiv.supabase.co",
     "API_VERSION": "v1",
     // This app's web origins only (comma-separated). Empty/absent ⇒ '*'.
     // NARROWED 2026-09-09 -- the subdomain now 301s and serves no page, so nothing
@@ -196,7 +195,7 @@
         // why: the SAME identity project as production (D1 identity option
         // (a)). A capture signs in as the e2e user, and src/middleware/auth.ts
         // verifies that token against this project's JWKS.
-        "SUPABASE_URL": "https://auth-api.nikatru.com",
+        "SUPABASE_URL": "https://lcrkiurkvzhkonjwhpiv.supabase.co",
         "API_VERSION": "v1",
         // why: src/middleware/cors.ts:40, as at the top level. The localhost
         // pattern a web capture sends is code (cors.ts:38), not this list.
