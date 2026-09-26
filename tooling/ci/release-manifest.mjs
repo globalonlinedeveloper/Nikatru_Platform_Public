@@ -1632,7 +1632,7 @@ async function main() {
         'The flag is accepted only as a restatement the lane can be read for; it never overrides the tree.',
       );
     }
-    const minSupported = releaseFloor(treeRoot, app, surface, minSupportedFlag, version);
+    const floorFor = releaseFloor(treeRoot, app, surface, minSupportedFlag, version); // refuses here; resolved per staged channel below
     const { names, strays } = assetFiles(dir);
     if (strays.length) {
       die(
@@ -1647,17 +1647,17 @@ async function main() {
     // (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION); null on the extension surface.
     const stampsIn = stampsDirFor(surface, '--emit-release-json');
     if (stampsIn !== null) requireDir(stampsIn, '--stamps');
+    // One read per file: the hash and the size come from the same bytes, so a file
+    // swapped between a hash and a separate stat cannot pair one file's digest with another's size.
+    const files = names.map((n) => {
+      const bytes = readFileSync(join(dir, n));
+      const stamp = stampsIn === null ? null : readChannelStamp(join(stampsIn, channelStampName(n)));
+      return { name: n, sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.length, stamp };
+    });
+    const minSupported = floorFor(files.map((f) => f.stamp?.channel)); // O-UPDATE-FLOOR-HAS-NO-CHANNEL
     const json = buildReleaseJson({
       app, surface, tag, sha, runUrl, notesUrl, releasedAt, version, minSupported, build,
-      register: loadRegister(),
-      treeRoot,
-      // One read per file: the hash and the size come from the same bytes, so a file
-      // swapped between a hash and a separate stat cannot pair one file's digest with another's size.
-      files: names.map((n) => {
-        const bytes = readFileSync(join(dir, n));
-        const stamp = stampsIn === null ? null : readChannelStamp(join(stampsIn, channelStampName(n)));
-        return { name: n, sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.length, stamp };
-      }),
+      register: loadRegister(), treeRoot, files,
     });
     // O-RELEASE-EMITTER-WRITES-UNCHECKED — graded BEFORE the file exists, by the
     // schema and validator assert-release-json.mjs limb 1 uses. Written first, a
@@ -1914,6 +1914,18 @@ function readToolJson(root, id) {
  * overrides (KV)") can raise the served floor at runtime without a commit; the
  * record cannot see that and does not claim to.
  *
+ * 🔴 THE FLOOR IS PER CHANNEL, SO THE RECORD STATES THE HIGHEST ONE IT STAGES
+ * (O-UPDATE-FLOOR-HAS-NO-CHANNEL, 2026-09-24). The file keys the floor by channel
+ * id (`default` for the rest), and one record describes installers for several
+ * channels. So this RETURNS A RESOLVER: every refusal above the read (the flag,
+ * a missing or unparseable file) still happens where it always did, before any
+ * asset is looked at, and the caller hands the resolver `stagedChannels` — the
+ * channel each installer's build stamp names — once the stamps are read. Each is
+ * resolved as the Worker resolves `?channel=`, and the record carries the MAX:
+ * "the oldest version this release still serves" is true of every channel in it
+ * only at the highest of their floors. A record that stages no stamped installer
+ * is read at `default`, the floor a client with no channel is served.
+ *
  * THE EXTENSION SURFACE STATES THE RELEASE LINE: the extensions have no served
  * config and make no network call, so there is no declared floor to read. The
  * floor is the first three components of --version (EXT-3, 2026-09-24): until
@@ -1921,7 +1933,9 @@ function readToolJson(root, id) {
  * tag broke the schema's X.Y.Z. The flag is refused on this surface as well.
  *
  * The SHAPE (X.Y.Z) is not judged here. contracts/release.schema.json owns it,
- * and assert-release-json.mjs grades it two steps later in both lanes.
+ * and assert-release-json.mjs grades it two steps later in both lanes. Floors
+ * that DIFFER must still be ordered to take the highest; one that is not dotted
+ * digits is refused then, rather than guessed past.
  *
  * DECLARED LAST, HOISTED, like `coverageLost` and `buildReleaseJson` above: a
  * declaration at the end of the file moves no `release-manifest.mjs:NNN`
@@ -1952,7 +1966,7 @@ function releaseFloor(treeRoot, app, surface, passed, version) {
       die(`--version ${JSON.stringify(version)} is not X.Y.Z or X.Y.Z.N, so --app "${app}" on the "${surface}" surface has no release line to state as its floor.`);
     }
     console.log(`minSupported  ${line[1]}  the release line of --version ${version}`);
-    return line[1];
+    return () => line[1];
   }
   if (passed !== null) {
     die(
@@ -1977,44 +1991,60 @@ function releaseFloor(treeRoot, app, surface, passed, version) {
     coverageLost(`COVERAGE LOST — ${SERVED_CONFIG_REL} could not be parsed (${e.message}).`,
       `The app surface's minSupported is read from it; a file this cannot read is not a floor of 1.0.0.`);
   }
-  const floor = servedFloor(data, app);
-  if (floor.refused) {
-    die(
-      `${SERVED_CONFIG_REL} declares no served floor for --app "${app}": ${floor.refused}`,
-      'The Worker would serve no floor either (the app reads an empty one as "no floor" and fails open), so',
-      'any number written into the record would be invented. Declare it in defaults.min_supported_version,',
-      `or in apps.${app}.min_supported_version for this app alone.`,
-    );
-  }
-  console.log(`minSupported  ${floor.value}  read from ${SERVED_CONFIG_REL} ${floor.from}`);
-  return floor.value;
+  return (stagedChannels) => {
+    const channels = [...new Set(stagedChannels.filter((c) => typeof c === 'string' && c !== ''))].sort();
+    const floors = [];
+    for (const channel of channels.length > 0 ? channels : ['default']) {
+      const floor = servedFloor(data, app, channel);
+      if (floor.refused) {
+        die(
+          `${SERVED_CONFIG_REL} declares no served floor for --app "${app}" on channel "${channel}": ${floor.refused}`,
+          'The Worker would serve no floor either (the app reads an empty one as "no floor" and fails open), so',
+          'any number written into the record would be invented. Declare it in defaults.min_supported_version',
+          `(a version, or a map by channel id with a "default"), or in apps.${app}.min_supported_version for this app alone.`,
+        );
+      }
+      floors.push({ channel, ...floor });
+    }
+    const top = highestFloor(floors);
+    if (top.refused) {
+      die(`${SERVED_CONFIG_REL} serves --app "${app}" floors that cannot be ordered: ${top.refused}`,
+        'The record states the highest floor its channels are served; with no order there is no highest to state.');
+    }
+    const each = floors.length > 1 ? `, the highest of ${floors.map((f) => `${f.channel} ${f.value}`).join(', ')}` : '';
+    console.log(`minSupported  ${top.value}  read from ${SERVED_CONFIG_REL} ${top.from} (channel ${top.channel}${each})`);
+    return top.value;
+  };
 }
 
 /**
- * The served floor for one app, from the parsed app-config-data.json, the way
- * services/platform/src/config.ts `buildRegistry` resolves it: the app's own
- * entry deep-merged OVER `defaults`, so an own `apps.<app>.min_supported_version`
- * wins and `defaults.min_supported_version` answers otherwise. Pure: parsed data
- * in, `{ value, from }` or `{ refused }` out. An own key that is present but not
- * a non-empty string is REFUSED, not skipped past to the defaults: the Worker's
- * merge would serve that value, not the default's.
+ * The served floor for one app ON ONE CHANNEL, from the parsed
+ * app-config-data.json, the way services/platform/src/config.ts serves
+ * `?channel=`: `buildRegistry` deep-merges the app's own entry OVER `defaults`
+ * (two per-channel maps merge key-wise, anything else replaces the other whole),
+ * and `forChannel` answers with the channel's own key, else `default`. A scalar
+ * is every channel's floor. Pure: parsed data in, `{ value, from }` or
+ * `{ refused }` out. A value that is present but not a non-empty string is
+ * REFUSED, not skipped past to the defaults: the Worker would serve that value,
+ * not the default's. `channel` defaults to `default`, what a client that sends
+ * no channel is served.
  */
-export function servedFloor(data, app) {
+export function servedFloor(data, app, channel = 'default') {
   const isVersion = (v) => typeof v === 'string' && v.trim() !== '';
   const own = data?.apps?.[app];
-  if (own !== null && typeof own === 'object' && Object.hasOwn(own, 'min_supported_version')) {
-    const v = own.min_supported_version;
-    return isVersion(v)
-      ? { value: v, from: `apps.${app}.min_supported_version` }
-      : { refused: `apps.${app}.min_supported_version is ${JSON.stringify(v)}, which is not a version.` };
-  }
+  const ownHas = own !== null && typeof own === 'object' && Object.hasOwn(own, 'min_supported_version');
   const d = data?.defaults?.min_supported_version;
-  if (isVersion(d)) return { value: d, from: 'defaults.min_supported_version' };
+  const picked = pickServed(ownHas ? [`apps.${app}.min_supported_version`, own.min_supported_version] : null,
+    d === undefined ? null : ['defaults.min_supported_version', d], channel);
+  if (picked === null) {
+    return { refused: `apps.${app} carries no min_supported_version and defaults.min_supported_version is absent.` };
+  }
+  if (picked.missing) return { refused: `${picked.from} is a map with no "${channel}" key and no "default" key.` };
+  if (isVersion(picked.value)) return { value: picked.value, from: picked.from };
   return {
-    refused:
-      d === undefined
-        ? `apps.${app} carries no min_supported_version and defaults.min_supported_version is absent.`
-        : `apps.${app} carries no min_supported_version and defaults.min_supported_version is ${JSON.stringify(d)}, which is not a version.`,
+    refused: !ownHas && picked.from === 'defaults.min_supported_version'
+      ? `apps.${app} carries no min_supported_version and defaults.min_supported_version is ${JSON.stringify(picked.value)}, which is not a version.`
+      : `${picked.from} is ${JSON.stringify(picked.value)}, which is not a version.`,
   };
 }
 
@@ -2320,4 +2350,56 @@ function releaseSchemaProblems(treeRoot, record) {
     }
     throw e;
   }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * ⏱ 2026-09-24 — O-UPDATE-FLOOR-HAS-NO-CHANNEL. The two helpers `servedFloor` and
+ * `releaseFloor` read a per-channel floor with. Declared LAST, hoisted, for the
+ * reason `coverageLost` is.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * One channel's value out of an app's own layer and the `defaults` layer, each
+ * `[path, value]` or null, merged as the Worker merges them: two maps merge
+ * key-wise with the app's keys winning, and anything else — a scalar on either
+ * side — replaces the other whole. Then the channel's own key, else `default`.
+ * Returns `{ value, from }`, `{ missing: true, from }` for a map naming neither,
+ * or null when neither layer exists.
+ */
+function pickServed(ownLayer, defaultsLayer, channel) {
+  const isMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+  let layers;
+  if (ownLayer !== null && defaultsLayer !== null && isMap(ownLayer[1]) && isMap(defaultsLayer[1])) layers = [ownLayer, defaultsLayer];
+  else if (ownLayer !== null) layers = [ownLayer];
+  else if (defaultsLayer !== null) layers = [defaultsLayer];
+  else return null;
+  if (!isMap(layers[0][1])) return { value: layers[0][1], from: layers[0][0] };
+  for (const key of [channel, 'default']) {
+    for (const [path, map] of layers) {
+      if (Object.hasOwn(map, key)) return { value: map[key], from: `${path}.${key}` };
+    }
+  }
+  return { missing: true, from: layers[0][0] };
+}
+
+/**
+ * The highest of `{ channel, value, from }` floors, or `{ refused }` when two
+ * that differ cannot be ordered. Dotted digits compare field by field, a missing
+ * field reading as 0; equal strings need no order at all.
+ */
+function highestFloor(floors) {
+  const parse = (v) => (/^[0-9]+(\.[0-9]+)*$/.test(v) ? v.split('.').map(Number) : null);
+  let top = floors[0];
+  for (const f of floors.slice(1)) {
+    if (f.value === top.value) continue;
+    const a = parse(f.value);
+    const b = parse(top.value);
+    if (a === null || b === null) {
+      return { refused: `"${f.channel}" is served ${JSON.stringify(f.value)} and "${top.channel}" ${JSON.stringify(top.value)}; floors that differ must be dotted digits.` };
+    }
+    let cmp = 0;
+    for (let i = 0; i < Math.max(a.length, b.length) && cmp === 0; i++) cmp = (a[i] ?? 0) - (b[i] ?? 0);
+    if (cmp > 0) top = f;
+  }
+  return top;
 }

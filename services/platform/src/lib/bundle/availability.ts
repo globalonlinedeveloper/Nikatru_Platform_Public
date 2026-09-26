@@ -175,3 +175,22 @@ export function bundleAvailability(channel = 'web'): BundleAvailability {
 export function draftMembers(): readonly string[] {
   return bundleAvailability().members;
 }
+
+/**
+ * Every channel id tooling/channel-register.json declares, read from the SAME
+ * import `railForChannel` reads — src/config.ts gates `GET /config/<app>?channel=`
+ * on it (O-UPDATE-FLOOR-HAS-NO-CHANNEL). Here rather than in a second import of
+ * the register, so the rail lookup and this set read one import of one file.
+ *
+ * Every row counts, whatever its surface: the question the route asks is "is
+ * this a channel id at all", and an id the register does not carry is refused
+ * with a 400 before any I/O. A row with no string id is skipped, as
+ * `railForChannel` skips it.
+ */
+export function channelIdsFromRegister(): string[] {
+  const rows = (channelRegisterJson as { channels?: unknown }).channels;
+  if (!Array.isArray(rows)) return [];
+  return (rows as { id?: unknown }[])
+    .map((c) => c?.id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0);
+}

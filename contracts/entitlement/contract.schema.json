@@ -7,6 +7,7 @@
   "additionalProperties": false,
   "required": ["moneyEnvironments", "revocationReasons", "revenuecatEventReasons"],
   "properties": {
+    "$schema": { "type": "string" },
     "moneyEnvironments": {
       "description": "The two money worlds. [5]M-12 is that they never mix; the environment comes from the Worker's configuration, never from a notification payload.",
       "type": "array",

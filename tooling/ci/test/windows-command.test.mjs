@@ -53,7 +53,7 @@ describe('windowsCommand — the mangled cmd invocation is refused, never run', 
     }
   });
 
-  /* ⏱ 2026-09-22 (O-HEAVY-CMD-C). The refusal used to compare the WHOLE word
+  /* ⏱ 2026-09-22 (O-HEAVY-CMD-C-IDIOM-IS-A-SILENT-FALSE-GREEN). The refusal used to compare the WHOLE word
      against `cmd`, so every spelling that carries a directory walked past it:
      `C:\Windows\System32\cmd.exe` is what `$COMSPEC` holds, what an ENOENT hint
      prints, and what this module itself hands back when it wraps a .bat. The

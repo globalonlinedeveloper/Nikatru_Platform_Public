@@ -159,7 +159,7 @@
         },
         "ownerItem": {
           "anyOf": [{ "type": "null" }, { "type": "string" }],
-          "description": "The owner id that carries the owed ruling: a row of Private/platform-state/open.json such as `O-NAME-SUBLY-TRADEMARK`, or of the owner queue such as `A-12` (the id shape and the lookup are tooling/scripts/owner-ids.mjs). A null ruling with no owner item is a finding nobody owns, so the guard refuses it outright. tooling/scripts/assert-public-citations.mjs looks the id up in BOTH registers and refuses one that neither carries, one that both carry, and a live row whose text (`blocks` or `closes`, in open.json) never names this file's repo-relative path. Once `ruling` is recorded the id is provenance and holds nothing."
+          "description": "The owner id that carries the owed ruling: a row of Private/platform-state/open.json such as `O-NAME-CLEARANCE-WAITS-ON-A-MISSING-ROW`, or of the owner queue such as `A-12` (the id shape and the lookup are tooling/scripts/owner-ids.mjs). A null ruling with no owner item is a finding nobody owns, so the guard refuses it outright. tooling/scripts/assert-public-citations.mjs looks the id up in BOTH registers and refuses one that neither carries, one that both carry, and a live row whose text (`blocks` or `closes`, in open.json) never names this file's repo-relative path. Once `ruling` is recorded the id is provenance and holds nothing."
         },
         "gatedUntil": {
           "anyOf": [{ "type": "null" }, { "type": "string", "format": "date" }],

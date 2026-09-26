@@ -2,7 +2,7 @@
 // store capture; a gap or a faded edge does not.
 //
 // ⏱ 2026-09-22 (store-frame-followup). `tooling/store/capture-row-edge.mjs` is
-// the no-human-eye half of O-STORE-FRAME-FAB: it reads the device rows just
+// the no-human-eye half of O-STORE-FRAME-FAB-COVERS-A-PRICE-ROW: it reads the device rows just
 // above the fold of each captured frame and refuses ink there. These cases pin
 // the three verdicts the capture's startup self-test also demands, the row
 // range (one row off in either direction is the silent failure), the skip

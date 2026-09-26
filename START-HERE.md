@@ -6,9 +6,9 @@ fails on a diff.** Capped at 4 KiB by `check-agent-docs` limb A-SIZE.
 ## What this repo is
 
 The **live code and CI repo** of the NIKATRU app factory: a Flutter app factory publishing to
-six platforms, a build-free browser-extension factory, and two static sites. Its `origin` is
-PUBLIC and stays public — the free GitHub-hosted CI minutes depend on it, and every build runs
-on GitHub-hosted runners.
+the platforms each `app.yaml` declares, a build-free browser-extension factory, and the static
+sites. Its `origin` is PUBLIC and stays public — the free GitHub-hosted CI minutes depend on
+it, and every build runs on GitHub-hosted runners.
 
 **It is one product, not the whole business.** Decisions, the spec, runbooks and the knowledge
 set are the sibling private corpus, cited as the stable logical prefix `Private/...`. The
@@ -18,8 +18,8 @@ legal and tax identity is a third repo this one has no path to at all.
 
 `_playwright` · `apps` · `catalog` · `contracts` · `docs` · `extensions` · `packages` · `services` · `sites` · `tooling`
 
-1 app(s) (`subscriptiontracker`) · 13 shared Dart packages · 3 Cloudflare Worker(s) ·
-3 static site(s) · 6 extension(s). The guards are `tooling/ci/*.mjs` and their tests
+1 app(s) (`subscriptiontracker`) · 12 shared Dart packages · 2 Cloudflare Worker(s) ·
+2 static site(s) · 1 extension(s). The guards are `tooling/ci/*.mjs` and their tests
 are `tooling/ci/test/*.test.mjs` — counted on every run, deliberately not written down here.
 
 🔴 **`sites/` is the live deploy source and the only copy.** Cloudflare Pages builds both
@@ -39,7 +39,7 @@ the private corpus and no CI job can read it: `node tooling/scripts/spec-guards.
 
 - **Capture every exit code on its own line** (`code=$?` on the NEXT line). A `$?` after a pipe
   is the last stage's status and one printed beside `$(basename …)` is basename's; this project
-  has read four false `EXIT 0`s that way.
+  has read false `EXIT 0`s that way.
 - **`0` green, `1` a finding, `2` COVERAGE LOST** — which is deliberately not a pass. Never
   `git checkout` around it and never `--no-verify` past it.
 - **A green guard after a refactor is evidence of nothing.** Moved code leaves a guard's domain
@@ -58,6 +58,6 @@ the private corpus and no CI job can read it: `node tooling/scripts/spec-guards.
     node ../Nikatru_Platform_Private/requirements/tooling/state.mjs --next     what to pick up
     node ../Nikatru_Platform_Private/requirements/tooling/state.mjs --traps ci the traps for an area
 
-`Private/platform-state/` is ~300 KiB of register and `Private/TRAPS.md` another 105 KiB.
+`Private/platform-state/` and `Private/TRAPS.md` are registers, queried by id or class.
 Never read one whole. `AGENTS.md` (auto-loaded) holds the rest of the house rules;
 `Private/START-HERE.md` and `Private/platform-state/brief.md` are the corpus's own two cards.

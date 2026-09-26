@@ -2,9 +2,9 @@
 
 > Auto-loaded every session (`CLAUDE.md` is one line, `@AGENTS.md`, plus machine-local paths that
 > have no business in a public repo). **What this repo IS, what is in it and what the gate enforces
-> are in [`START-HERE.md`](START-HERE.md)** — GENERATED, 4 KiB, every number measured off the tree.
-> This file is the standing RULES only, capped at 8 KiB / 160 lines by `check-agent-docs` limb
-> A-SIZE. Anything dated belongs in git history, not here.
+> are in [`START-HERE.md`](START-HERE.md)** — GENERATED, every number measured off the tree.
+> This file is the standing RULES only; both are capped by `check-agent-docs` limb A-SIZE, which
+> owns the caps. Anything dated belongs in git history, not here.
 
 ## Read order (each session)
 
@@ -14,8 +14,8 @@
    (`Private/NOW.md` was retired 2026-09-08; it is a stub kept so citations resolve.)
 3. The ADR you are about to touch, from `Private/decisions/`.
 
-🔴 **Never read a `Private/platform-state/` register whole.** The eight are ~300 KiB and answer
-about forty lines' worth of question. Query by id instead — one row, with its `verify`:
+🔴 **Never read a `Private/platform-state/` register whole.** Each is far larger than the few
+lines a question needs. Query by id instead — one row, with its `verify`:
 
 ```
 node ../Nikatru_Platform_Private/requirements/tooling/state.mjs O-STORE-SCREENSHOTS
@@ -49,8 +49,8 @@ corpus index). Never read the corpus to orient yourself, and never re-litigate a
   another real line and are accepted silently. Re-measure with `grep -n` for the cited text, AFTER
   the last edit; never offset a citation by an insert size.
 - 🔴 **Every other environment trap lives in ONE place — `Private/TRAPS.md` — and you QUERY it
-  by class (`--traps`, above; the thirteen class names are in `docs/environment.md`).** Reading it
-  whole costs 105 KiB and its generated `traps.json` another 69 KiB of the same rows. `TRAPS.md` is
+  by class (`--traps`, above; the class names are in `docs/environment.md`).** Reading it whole,
+  or its generated `traps.json` (the same rows again), costs far more than a query. `TRAPS.md` is
   the SOURCE, so add a trap only there. **Quote the rows into any subagent brief** — auto-memory
   does not reach subagents, so a trap a subagent was not handed does not exist for it.
 
