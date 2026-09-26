@@ -94,7 +94,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('dark, kPhone — the brightness a contrast sweep is FOR', (
       WidgetTester tester,
@@ -119,7 +119,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets(
         'light, kDesktop — the form cap changes the layout, not the '
@@ -143,7 +143,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
   });
 
   // ── LegalConsentFieldsView ────────────────────────────────────────────────
@@ -185,7 +185,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('dark, kPhone — ticked, which repaints both boxes', (
       WidgetTester tester,
@@ -221,7 +221,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets(
         'light, kDesktop — DISABLED, which is a contrast state and not '
@@ -256,7 +256,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
   });
 
   // ── ReacceptTermsView ─────────────────────────────────────────────────────
@@ -285,7 +285,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('dark, kPhone', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
@@ -312,7 +312,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('light, kDesktop', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
@@ -338,7 +338,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
   });
 
   // ── ResetPasswordView ─────────────────────────────────────────────────────
@@ -370,7 +370,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('dark, kPhone — the live form', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
@@ -400,7 +400,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets(
         'light, kDesktop — the DEAD-LINK state, which is a different '
@@ -431,7 +431,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
   });
 
   // ── SignInView ────────────────────────────────────────────────────────────
@@ -469,7 +469,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('dark, kPhone', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
@@ -508,7 +508,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets(
         'light, kDesktop — carrying the deletion notice, the one state '
@@ -551,7 +551,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
   });
 
   // ── SignUpView ────────────────────────────────────────────────────────────
@@ -579,7 +579,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('dark, kPhone', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
@@ -610,7 +610,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('light, kDesktop', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
@@ -640,7 +640,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
   });
 
   // ── VerifyEmailView ───────────────────────────────────────────────────────
@@ -670,7 +670,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('dark, kPhone', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
@@ -698,7 +698,7 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
 
     testWidgets('light, kDesktop', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
@@ -725,6 +725,6 @@ void main() {
       } finally {
         handle.dispose();
       }
-    });
+    }, variant: kTapTargetPlatforms);
   });
 }

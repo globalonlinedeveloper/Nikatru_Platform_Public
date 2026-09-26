@@ -52,6 +52,24 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 /// ever renders.
 const Color kChassisSeed = Color(0xFF6750A4);
 
+/// The five platforms every `a11y_*_test.dart` sweep in this package runs on.
+///
+/// O-DESKTOP-TAP-TARGETS-BELOW-48. `ThemeData` derives `materialTapTargetSize`
+/// and `visualDensity` from the platform, and flutter_test's default platform
+/// is android, so a sweep pumped only there graded the MOBILE defaults and
+/// said nothing about linux, macOS or windows. The variant sets the platform
+/// override for the test body; [pumpForA11y] builds the theme inside that
+/// body, so the theme it hands `MaterialApp` is the one each platform gets.
+const TargetPlatformVariant kTapTargetPlatforms = TargetPlatformVariant(
+  <TargetPlatform>{
+    TargetPlatform.android,
+    TargetPlatform.iOS,
+    TargetPlatform.linux,
+    TargetPlatform.macOS,
+    TargetPlatform.windows,
+  },
+);
+
 /// Pumps [child] under the chassis theme at [size], in [brightness].
 Future<void> pumpForA11y(
   WidgetTester tester,

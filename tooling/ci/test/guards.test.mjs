@@ -5022,7 +5022,17 @@ group('property: onboarding-shown-once', () {
 });
 group('property: ui-invariants-inherited', () {
   testWidgets('q', (t) async {});
-  testWidgets('r', (t) async {});
+  testWidgets(
+    'every tap target on every declared route is at least 48px',
+    (t) async {},
+    variant: const TargetPlatformVariant(<TargetPlatform>{
+      TargetPlatform.android,
+      TargetPlatform.iOS,
+      TargetPlatform.linux,
+      TargetPlatform.macOS,
+      TargetPlatform.windows,
+    }),
+  );
   test('s', () {});
   testWidgets('u', (t) async {});
 });
@@ -5156,6 +5166,17 @@ class _NotificationTapGateState extends ConsumerState<_NotificationTapGate> {
   // fixture carries that file too — Material's exact 600 boundary and all FIVE
   // classes. 640 is not a Material breakpoint and was the live bug.
   const SCAFFOLD = 'packages/design_system/lib/src/widgets/app_scaffold.dart';
+  // O-DESKTOP-TAP-TARGETS-BELOW-48. The shared theme, for the padded-tap-target
+  // anchor on ui-invariants-inherited: the ThemeData constructor call as the
+  // real file writes it.
+  const BUILD_THEME = 'packages/design_system/lib/src/theme/build_app_theme.dart';
+  const goodBuildTheme = `
+  final ThemeData base = ThemeData(
+    useMaterial3: true,
+    brightness: brightness,
+    materialTapTargetSize: MaterialTapTargetSize.padded,
+  );
+`;
   const goodScaffold = `
 class AppBreakpoints {
   static const double medium = 600;
@@ -6122,11 +6143,11 @@ onTap: () => _openUrl(AppConfig.termsUrl),
 onTap: () => _openUrl(AppConfig.refundUrl),
 `;
 
-  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, packRail = goodPackRail, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, authAdapter = goodAuthAdapter, settings = goodSettings, router = goodRouter, signUp = goodSignUp, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, tapObserver = goodTapObserver, accountRoute = goodAccountRoute, moneyProviders = goodMoneyProviders, home = goodHome, coreCache = goodCoreCache, coreLifecycle = goodCoreLifecycle, workspace = goodWorkspace, appConfig = goodAppConfig, siteIntegrity = goodSiteIntegrity, legalLinks = goodLegalLinks, permissionProbe = goodPermissionProbe, subscriptiontrackerMain = goodSublyMain, subscriptiontrackerNotifs = goodSublyNotifs, paywall = goodPaywall, moneyFunnel = goodMoneyFunnel, platformTypes = goodPlatformTypes, platformCatalogue = goodPlatformCatalogue, platformConfigData = goodPlatformConfigData, channelRegister = goodChannelRegister, extra = {}, omitArbTa = false, omitProp = false, omitTapObserver = false } = {}) => {
+  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, packRail = goodPackRail, themeX = goodThemeX, scaffold = goodScaffold, buildTheme = goodBuildTheme, authBarrel = goodAuthBarrel, authAdapter = goodAuthAdapter, settings = goodSettings, router = goodRouter, signUp = goodSignUp, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, tapObserver = goodTapObserver, accountRoute = goodAccountRoute, moneyProviders = goodMoneyProviders, home = goodHome, coreCache = goodCoreCache, coreLifecycle = goodCoreLifecycle, workspace = goodWorkspace, appConfig = goodAppConfig, siteIntegrity = goodSiteIntegrity, legalLinks = goodLegalLinks, permissionProbe = goodPermissionProbe, subscriptiontrackerMain = goodSublyMain, subscriptiontrackerNotifs = goodSublyNotifs, paywall = goodPaywall, moneyFunnel = goodMoneyFunnel, platformTypes = goodPlatformTypes, platformCatalogue = goodPlatformCatalogue, platformConfigData = goodPlatformConfigData, channelRegister = goodChannelRegister, extra = {}, omitArbTa = false, omitProp = false, omitTapObserver = false } = {}) => {
     // The pack rail is APPENDED rather than folded into `goodProviders` so the
     // many cases that replace `providers` wholesale keep satisfying it — and so
     // the cases that are ABOUT the pack rail can drop it on its own.
-    const files = { [APP]: app, [BRICK_WEB_INDEX]: webIndex, [BRICK_PROVIDERS]: providers + packRail, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [AUTH_ADAPTER]: authAdapter, [SETTINGS]: settings + legalLinks, [ROUTER]: router, [SIGN_UP]: signUp, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [CORE_LIFECYCLE]: coreLifecycle, [WORKSPACE]: workspace, [APP_CONFIG]: appConfig, [SITE_INTEGRITY]: siteIntegrity, [PERMISSION_PROBE]: permissionProbe, [SUBLY_MAIN]: subscriptiontrackerMain, [SUBLY_NOTIFS]: subscriptiontrackerNotifs, [PAYWALL]: paywall, [MONEY_FUNNEL]: moneyFunnel, [PLATFORM_TYPES]: platformTypes, [PLATFORM_CATALOGUE]: platformCatalogue, [PLATFORM_CONFIG_DATA]: platformConfigData, [CHANNEL_REGISTER]: channelRegister, ...extra };
+    const files = { [APP]: app, [BRICK_WEB_INDEX]: webIndex, [BRICK_PROVIDERS]: providers + packRail, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [BUILD_THEME]: buildTheme, [AUTH_BARREL]: authBarrel, [AUTH_ADAPTER]: authAdapter, [SETTINGS]: settings + legalLinks, [ROUTER]: router, [SIGN_UP]: signUp, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [CORE_LIFECYCLE]: coreLifecycle, [WORKSPACE]: workspace, [APP_CONFIG]: appConfig, [SITE_INTEGRITY]: siteIntegrity, [PERMISSION_PROBE]: permissionProbe, [SUBLY_MAIN]: subscriptiontrackerMain, [SUBLY_NOTIFS]: subscriptiontrackerNotifs, [PAYWALL]: paywall, [MONEY_FUNNEL]: moneyFunnel, [PLATFORM_TYPES]: platformTypes, [PLATFORM_CATALOGUE]: platformCatalogue, [PLATFORM_CONFIG_DATA]: platformConfigData, [CHANNEL_REGISTER]: channelRegister, ...extra };
     if (!omitArbTa) files[ARB_TA] = arbTa;
     if (!omitProp) files[PROP] = propTest;
     // [13]T-9 Omittable on its own, because "the observer file is not there at
