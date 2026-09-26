@@ -7,7 +7,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_chassis_screens/shell/app_shell.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'core/app_config.dart';
 import 'core/e2e_keys.dart';
@@ -219,12 +218,10 @@ class SublyApp extends ConsumerWidget {
   }
 
   Future<void> _openUpdate(String url) async {
-    final Uri uri = Uri.parse(url);
-    try {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (_) {
-      // Best-effort — never crash the update screen.
-    }
+    // The wall's own launcher: the app's link policy plus the ONE destination
+    // the config resolved (`updateLinkLauncher`). Best-effort — a refusal or a
+    // missing handler reads as not opened and never crashes the update screen.
+    await updateLinkLauncher(url).openUrl(url);
   }
 }
 

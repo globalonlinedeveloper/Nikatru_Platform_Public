@@ -18,7 +18,7 @@ legal and tax identity is a third repo this one has no path to at all.
 
 `_playwright` · `apps` · `catalog` · `contracts` · `docs` · `extensions` · `packages` · `services` · `sites` · `tooling`
 
-1 app(s) (`subscriptiontracker`) · 12 shared Dart packages · 3 Cloudflare Worker(s) ·
+1 app(s) (`subscriptiontracker`) · 13 shared Dart packages · 3 Cloudflare Worker(s) ·
 3 static site(s) · 6 extension(s). The guards are `tooling/ci/*.mjs` and their tests
 are `tooling/ci/test/*.test.mjs` — counted on every run, deliberately not written down here.
 

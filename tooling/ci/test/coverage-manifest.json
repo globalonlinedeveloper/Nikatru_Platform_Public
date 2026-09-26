@@ -173,7 +173,7 @@
   "ops-status.test.mjs": 53,
   "ops-verifiers.test.mjs": 21,
   "ops-watch-readers.test.mjs": 13,
-  "package-boundaries.test.mjs": 23,
+  "package-boundaries.test.mjs": 26,
   "package-earned.test.mjs": 25,
   "pages-deployments.test.mjs": 82,
   "palette-consistent.test.mjs": 56,

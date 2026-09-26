@@ -15,6 +15,8 @@ export 'src/auth/password_policy.dart';
 // exported (keepAppleRefreshToken, AppleTokenNotKept, …) are still exported here.
 export 'src/auth/provider_token_keeper.dart';
 export 'src/legal/legal_acceptance.dart';
+export 'src/links/external_link_launcher.dart';
+export 'src/links/link_policy.dart';
 export 'src/analytics/analytics_lifecycle.dart';
 export 'src/analytics/analytics_recorder.dart';
 export 'src/analytics/consent.dart';

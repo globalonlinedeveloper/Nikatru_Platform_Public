@@ -168,10 +168,14 @@ if (dsImports.size > 0) ok(`design_system's ${dsImports.size} imported package(s
 // The derivation is adapter-set.mjs's deriveAdapters(), the SAME function
 // assert-adapter-capabilities.mjs calls for its domain, so the two guards
 // range over one adapter set by import rather than by two copies agreeing.
-const WRAPPED = new Map(); // vendor -> adapter package that wraps it
+// ⏱ 2026-09-24 · EVERY adapter that wraps a vendor, not the last one listed.
+// `url_launcher` is wrapped twice — `purchases` (checkout pages) and
+// `external_links` (every other link) — and a one-name map told an app that
+// imported it directly to go through the MONEY seam, which refuses `mailto:`.
+const WRAPPED = new Map(); // vendor -> [adapter packages that wrap it]
 const adapterNames = [];
 for (const { name, vendors } of deriveAdapters(ROOT)) {
-  for (const v of vendors) WRAPPED.set(v, name);
+  for (const v of vendors) WRAPPED.set(v, [...(WRAPPED.get(v) ?? []), name]);
   adapterNames.push(name);
 }
 
@@ -215,28 +219,26 @@ const KNOWN_BYPASSES = {
   // is for.
   'apps/subscriptiontracker|dio':
     '2026-07-28 · Subly DOES depend on nikatru_api_client (it imports ApiException from it) but supplies its own DioApiClient transport. Narrower than the other two: the seam types are used, the transport is duplicated.',
-  // 🔴 THE `supabase_flutter` SHAPE, EXACTLY, AND A SECOND TIME. These are not
-  // new bypasses: `url_launcher` has been imported directly by the brick and by
-  // Subly since long before any adapter wrapped it, because none did. It was
-  // reclassified the moment [5]M-13 created `packages/purchases`, which declares
-  // it to open a hosted checkout.
+  // 🪦 ⏱ 2026-09-24 · `apps/subscriptiontracker|url_launcher` AND `brick|url_launcher`
+  // LIVED HERE AND ARE RESOLVED, NOT MOVED (O-LINK-LAUNCHER-SEAM-UNOWNED).
   //
-  // AND THE RECLASSIFICATION IS ONLY PARTLY TRUE, which is why these are dated
-  // bypasses rather than a silent exemption. `packages/purchases` wraps
-  // url_launcher for ONE job — `CheckoutLauncher`, which refuses anything that
-  // is not absolute https, because a payment page must render in the user's own
-  // browser with its own address bar. The callers below open a support `mailto:`
-  // and the legal pages. Routing those through a checkout launcher would be
-  // wrong on both sides: it would reject `mailto:` and it would make a money
-  // seam responsible for the privacy policy.
+  // Both were dated 2026-08-01, when [5]M-13 created `packages/purchases` and its
+  // url_launcher declaration reclassified two long-standing direct imports as
+  // bypasses. That seam, `CheckoutLauncher`, opens checkout pages and refuses
+  // anything but absolute https, so it could not serve the legal pages and the
+  // support `mailto:` — and routing them through it would have made a money seam
+  // own the privacy policy. The brick's row named the real gap: "a shared
+  // `ExternalLinkLauncher` seam, not a change to the money rail".
   //
-  // The honest reading is that GENERAL external-URL opening has no shared home —
-  // the same [2]C-15-shaped gap auth had before `packages/auth_supabase` existed.
-  // Recorded here so it is visible on every CI run instead of being argued away.
-  'apps/subscriptiontracker|url_launcher':
-    '2026-08-01 · NOT A NEW BYPASS — reclassified when [5]M-13 created `packages/purchases`, which declares url_launcher for `CheckoutLauncher` (https-only, checkout pages). Subly opens legal pages and a support mailto:, which that seam is not for and would reject. General external-URL opening has no shared home; giving it one is a [2]C-3-shaped work item, and Subly is frozen by 39-CHASSIS cut 1 either way.',
-  'brick|url_launcher':
-    "2026-08-01 · same reclassification, same reason: the template opens `AppConfig.privacyUrl`, `AppConfig.termsUrl` and a support `mailto:`. `CheckoutLauncher` refuses non-https by design, so it cannot serve them. THIS ONE IS THE REAL WORK ITEM — it is the chassis, so every stamped app inherits it: the gap is a shared `ExternalLinkLauncher` seam, not a change to the money rail.",
+  // That seam exists: core declares `ExternalLinkLauncher` and a pure
+  // `LinkPolicy` (https only for configured hosts, mailto only for the configured
+  // support address), and `packages/external_links` implements it over
+  // url_launcher. Subly and the template each build ONE launcher in their
+  // lib/state/providers and open every link through it. The rows are DELETED
+  // rather than annotated, for the reason the supabase tombstone above gives: a
+  // waiver over an import that no longer exists is a standing permit to
+  // re-introduce it. A direct url_launcher import in an app or the template is
+  // now a NEW bypass and fails.
 };
 
 // ⏱ 2026-09-24 · THE APP ROOTS ARE THE WORKSPACE APP SET (tooling/ci/app-set.mjs).
@@ -268,8 +270,9 @@ for (const root of appRoots) {
     const key = `${owner}|${name}`;
     seen.add(key);
     if (KNOWN_BYPASSES[key]) continue;
+    const wrappers = WRAPPED.get(name);
     problems.push(
-      `${owner} imports \`package:${name}\` directly (${files.join(', ')}), but \`packages/${WRAPPED.get(name)}\` already wraps it behind a seam. Going around the adapter is what makes the seam decorative: the next app has to solve the same platform problem again, and the portability guarantee stops being true.`,
+      `${owner} imports \`package:${name}\` directly (${files.join(', ')}), but ${wrappers.map((a) => `\`packages/${a}\``).join(', ')} already wrap${wrappers.length === 1 ? 's' : ''} it behind a seam. Going around the adapter is what makes the seam decorative: the next app has to solve the same platform problem again, and the portability guarantee stops being true.`,
     );
   }
 }

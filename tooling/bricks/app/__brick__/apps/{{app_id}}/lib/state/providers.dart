@@ -28,6 +28,8 @@ import 'package:flutter/material.dart' show Locale, ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_external_links/nikatru_external_links.dart'
+    show UrlLauncherExternalLinks;
 import 'package:nikatru_notifications/nikatru_notifications.dart';
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart';
 import 'package:nikatru_platform_storage/age_signals.dart'
@@ -2759,3 +2761,49 @@ final Provider<Listenable> routerRefreshProvider = Provider<Listenable>((ref) {
     resetArrival,
   ]);
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// EXTERNAL LINKS (O-LINK-LAUNCHER-SEAM-UNOWNED)
+//
+// 🔴 THE ONE PLACE A STAMPED APP BUILDS AN `ExternalLinkLauncher`. The legal
+// pages, the support mailto and the force-update destination all open through
+// what this section constructs; `url_launcher` itself is imported only by
+// `packages/external_links`, which checks each link against the policy below
+// before the plugin is touched. The `brick|url_launcher` bypass this replaces
+// was the chassis one, which every stamped app inherited.
+//
+// ⚠️ TOP-LEVEL VALUES, NOT PROVIDERS: `LegalConsentFields` is a StatelessWidget
+// and the settings screen's `_openUrl(AppConfig.<name>)` takes no `ref`, and
+// `assert-stamp-properties.mjs` reads that call shape, so it stays.
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Every link this app's configuration names, and its one support address.
+/// A constant that is not absolute https widens nothing
+/// (`core.LinkPolicy.fromUrls`).
+final core.LinkPolicy appLinkPolicy = core.LinkPolicy.fromUrls(
+  httpsUrls: <String>[
+    AppConfig.companyUrl,
+    AppConfig.privacyUrl,
+    AppConfig.termsUrl,
+    AppConfig.refundUrl,
+    AppConfig.updateUrl,
+  ],
+  supportEmail: AppConfig.supportEmail,
+);
+
+/// The launcher every screen opens a link through.
+final core.ExternalLinkLauncher externalLinks = UrlLauncherExternalLinks(
+  policy: appLinkPolicy,
+);
+
+/// The force-update wall's launcher: [appLinkPolicy] plus the ONE destination
+/// the config resolved.
+///
+/// 🔴 NOT [externalLinks]. Owner decision #19 made `update_url` RUNTIME config
+/// so the wall can send users somewhere new without shipping the build it
+/// exists to replace; a fixed host list would freeze that destination at build
+/// time again. The widening is exactly one https URL, and only this wall uses it.
+core.ExternalLinkLauncher updateLinkLauncher(String resolvedUpdateUrl) =>
+    UrlLauncherExternalLinks(
+      policy: appLinkPolicy.withHttpsUrl(resolvedUpdateUrl),
+    );
