@@ -756,14 +756,20 @@
     {
       "file": "extensions/Extension/Full_Screen_Shot/publish/COMPLIANCE-CHECKLIST.md",
       "anchor": "not restate `version`, `description` or the permissions and therefore *cannot* drift from the",
-      "status": "demoted",
-      "reason": "Publishing-doc prose recording a dated run of check-version.mjs and quoting its overlay limb. The mechanism is real: publish/manifest.firefox.json is an RFC 7386 merge patch with no `version` key, and check-version.mjs limb 4 fails when an overlay states a version that disagrees with manifest.json. But no case plants a `version` in an overlay (scripts/test/selftest.node.js has no overlay expect(), and no node:test file reaches check-version), so nothing a register can name fails when the sentence goes false. Judged 2026-09-18."
+      "status": "proven",
+      "test": "extensions/scripts/test/selftest.node.js",
+      "harness": "expect",
+      "case": "an overlay whose version disagrees fails §4 (RC-F6)",
+      "proves": "Plants `\"version\": \"9.9.9\"` in the fixture tool's publish/manifest.firefox.json overlay and runs the real check-version.mjs, expecting exit 1 and \"publish/manifest.firefox.json says v9.9.9\"; a check-version whose overlay limb (§4) stopped comparing the overlay's version with manifest.json would pass it. extensions-ci.yml's selftest job runs selftest.node.js. Cited through the register's `harness` form (assert-mechanism-claims M6). Promoted 2026-09-26 (NP-Fc): the case landed with NP-Fb."
     },
     {
       "file": "extensions/Extension/Full_Screen_Shot/publish/COMPLIANCE-CHECKLIST.md",
       "anchor": "that: `publish/manifest.firefox.json is an overlay — it does not restate the version, so it cannot",
-      "status": "demoted",
-      "reason": "Publishing-doc prose recording a dated run of check-version.mjs and quoting its overlay limb. The mechanism is real: publish/manifest.firefox.json is an RFC 7386 merge patch with no `version` key, and check-version.mjs limb 4 fails when an overlay states a version that disagrees with manifest.json. But no case plants a `version` in an overlay (scripts/test/selftest.node.js has no overlay expect(), and no node:test file reaches check-version), so nothing a register can name fails when the sentence goes false. Judged 2026-09-18."
+      "status": "proven",
+      "test": "extensions/scripts/test/selftest.node.js",
+      "harness": "expect",
+      "case": "an overlay whose version disagrees fails §4 (RC-F6)",
+      "proves": "Plants `\"version\": \"9.9.9\"` in the fixture tool's publish/manifest.firefox.json overlay and runs the real check-version.mjs, expecting exit 1 and \"publish/manifest.firefox.json says v9.9.9\"; a check-version whose overlay limb (§4) stopped comparing the overlay's version with manifest.json would pass it. extensions-ci.yml's selftest job runs selftest.node.js. Cited through the register's `harness` form (assert-mechanism-claims M6). Promoted 2026-09-26 (NP-Fc): the case landed with NP-Fb."
     },
     {
       "file": "extensions/Extension/Full_Screen_Shot/publish/COMPLIANCE-CHECKLIST.md",
@@ -774,8 +780,11 @@
     {
       "file": "extensions/Extension/Full_Screen_Shot/publish/package.node.js",
       "anchor": "deliberately, so that a version bump cannot drift between the two engines.",
-      "status": "demoted",
-      "reason": "Design rationale for the overlay's shape, above the merge code. The shape (no `version` in publish/manifest.firefox.json) is what check-version.mjs limb 4 inspects, but no case plants a version in an overlay and asserts a failure (scripts/test/selftest.node.js has no overlay expect(), and it is not node:test). Judged 2026-09-18."
+      "status": "proven",
+      "test": "extensions/scripts/test/selftest.node.js",
+      "harness": "expect",
+      "case": "an overlay whose version disagrees fails §4 (RC-F6)",
+      "proves": "Plants `\"version\": \"9.9.9\"` in the fixture tool's publish/manifest.firefox.json overlay and runs the real check-version.mjs, expecting exit 1 and \"publish/manifest.firefox.json says v9.9.9\"; a check-version whose overlay limb (§4) stopped comparing the overlay's version with manifest.json would pass it. extensions-ci.yml's selftest job runs selftest.node.js. Cited through the register's `harness` form (assert-mechanism-claims M6). Promoted 2026-09-26 (NP-Fc): the case landed with NP-Fb."
     },
     {
       "file": "extensions/Extension/Full_Screen_Shot/test/aihandoff-sim.node.js",
@@ -800,8 +809,11 @@
     {
       "file": "extensions/Extension/Full_Screen_Shot/tool.json",
       "anchor": "it does not restate the version, so it cannot drift from it.",
-      "status": "demoted",
-      "reason": "Publishing-doc prose recording a dated run of check-version.mjs and quoting its overlay limb. The mechanism is real: publish/manifest.firefox.json is an RFC 7386 merge patch with no `version` key, and check-version.mjs limb 4 fails when an overlay states a version that disagrees with manifest.json. But no case plants a `version` in an overlay (scripts/test/selftest.node.js has no overlay expect(), and no node:test file reaches check-version), so nothing a register can name fails when the sentence goes false. Judged 2026-09-18."
+      "status": "proven",
+      "test": "extensions/scripts/test/selftest.node.js",
+      "harness": "expect",
+      "case": "an overlay whose version disagrees fails §4 (RC-F6)",
+      "proves": "Plants `\"version\": \"9.9.9\"` in the fixture tool's publish/manifest.firefox.json overlay and runs the real check-version.mjs, expecting exit 1 and \"publish/manifest.firefox.json says v9.9.9\"; a check-version whose overlay limb (§4) stopped comparing the overlay's version with manifest.json would pass it. extensions-ci.yml's selftest job runs selftest.node.js. Cited through the register's `harness` form (assert-mechanism-claims M6). Promoted 2026-09-26 (NP-Fc): the case landed with NP-Fb."
     },
     {
       "file": "extensions/core/test/coverage.node.js",
@@ -821,8 +833,11 @@
     {
       "file": "extensions/docs/ARCHITECTURE.md",
       "anchor": "restate the version, so it cannot drift from it`.",
-      "status": "demoted",
-      "reason": "Publishing-doc prose recording a dated run of check-version.mjs and quoting its overlay limb. The mechanism is real: publish/manifest.firefox.json is an RFC 7386 merge patch with no `version` key, and check-version.mjs limb 4 fails when an overlay states a version that disagrees with manifest.json. But no case plants a `version` in an overlay (scripts/test/selftest.node.js has no overlay expect(), and no node:test file reaches check-version), so nothing a register can name fails when the sentence goes false. Judged 2026-09-18."
+      "status": "proven",
+      "test": "extensions/scripts/test/selftest.node.js",
+      "harness": "expect",
+      "case": "an overlay whose version disagrees fails §4 (RC-F6)",
+      "proves": "Plants `\"version\": \"9.9.9\"` in the fixture tool's publish/manifest.firefox.json overlay and runs the real check-version.mjs, expecting exit 1 and \"publish/manifest.firefox.json says v9.9.9\"; a check-version whose overlay limb (§4) stopped comparing the overlay's version with manifest.json would pass it. extensions-ci.yml's selftest job runs selftest.node.js. Cited through the register's `harness` form (assert-mechanism-claims M6). Promoted 2026-09-26 (NP-Fc): the case landed with NP-Fb."
     },
     {
       "file": "extensions/docs/RELEASING.md",
@@ -845,8 +860,11 @@
     {
       "file": "extensions/scripts/check-version.mjs",
       "anchor": "'it does not restate the version, so it cannot drift from it'",
-      "status": "demoted",
-      "reason": "A runtime pass message, printed when the overlay has no `version` key. It describes the subject it just inspected, and the fail branch above it is the mechanism; no case plants a version in an overlay (selftest has no overlay expect(), and it is not node:test). Judged 2026-09-18."
+      "status": "proven",
+      "test": "extensions/scripts/test/selftest.node.js",
+      "harness": "expect",
+      "case": "an overlay whose version disagrees fails §4 (RC-F6)",
+      "proves": "Plants `\"version\": \"9.9.9\"` in the fixture tool's publish/manifest.firefox.json overlay and runs the real check-version.mjs, expecting exit 1 and \"publish/manifest.firefox.json says v9.9.9\"; a check-version whose overlay limb (§4) stopped comparing the overlay's version with manifest.json would pass it. extensions-ci.yml's selftest job runs selftest.node.js. Cited through the register's `harness` form (assert-mechanism-claims M6). Promoted 2026-09-26 (NP-Fc): the case landed with NP-Fb."
     },
     {
       "file": "extensions/scripts/lib/toolinfo.mjs",

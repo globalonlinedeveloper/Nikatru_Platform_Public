@@ -38,6 +38,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { parseWorkflow, workflowSteps, jobEnvironment } from '../workflow-scan.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SCRIPT = join(REPO, 'tooling', 'release', 'submit-snap.mjs');
@@ -541,6 +542,73 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
   test('the expiry limb does not fire at all when the credential is absent — one gap, not two', () => {
     const { out } = dry(tree({ withArtifact: true }));
     assert.doesNotMatch(out, /SNAPCRAFT_STORE_CREDENTIALS_EXPIRES is ABSENT/);
+  });
+
+  // ── O-STORE-SECRETS-REACH-THE-DRY-RUN (2026-09-25) ─────────────────────────
+  // The register scopes SNAPCRAFT_STORE_CREDENTIALS to the store-publish
+  // environment, and the dry-run job has none. The dry run then reads the expiry
+  // DATE alone: it must not look for the credential, must not report its absence
+  // as a gap, and must still grade the date it does receive.
+  const SCOPED = (r) => {
+    r.ciSecretRegister = {
+      nonSigning: [
+        { name: 'SNAPCRAFT_STORE_CREDENTIALS', kind: 'publishing-credential', why: 'the fixture store credential', environment: 'store-publish' },
+      ],
+    };
+  };
+
+  test('scoped credential: the dry run prints NO credential gap, says where it IS checked, and grades the date', () => {
+    const { code, out } = run(tree({ withArtifact: true, mutateRegister: SCOPED }), ['--dry-run'], {
+      SNAPCRAFT_STORE_CREDENTIALS_EXPIRES: inDays(120),
+    });
+    assert.equal(code, 0, out);
+    assert.match(out, /credential: checked in the environment-bound submit job — SNAPCRAFT_STORE_CREDENTIALS lives in the "store-publish" environment/);
+    assert.match(out, /credential expiry — .*day\(s\) away \(floor 30\)/);
+    assert.doesNotMatch(out, /CREDENTIALS NOT CONFIGURED/);
+  });
+
+  test('scoped credential: an expiry 29 days out still FAILS the dry run — the date alone is enough to act on', () => {
+    const { code, out } = run(tree({ withArtifact: true, mutateRegister: SCOPED }), ['--dry-run'], {
+      SNAPCRAFT_STORE_CREDENTIALS_EXPIRES: inDays(29),
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /credential expires in \d+ day\(s\).*and the floor is 30/s);
+  });
+
+  test('scoped credential: an absent expiry PRINTS, naming where a missing date fails', () => {
+    const { code, out } = run(tree({ withArtifact: true, mutateRegister: SCOPED }), ['--dry-run']);
+    assert.equal(code, 0, out);
+    assert.match(out, /credential expiry: unknown to this dry run — SNAPCRAFT_STORE_CREDENTIALS_EXPIRES is absent/);
+    assert.doesNotMatch(out, /SNAPCRAFT_STORE_CREDENTIALS_EXPIRES is ABSENT/);
+  });
+
+  test('scoped credential: a value exported into the dry run is not read, so it cannot be reported present', () => {
+    const secret = 'THIS-MUST-NEVER-BE-PRINTED';
+    const { code, out } = run(tree({ withArtifact: true, mutateRegister: SCOPED }), ['--dry-run'], {
+      SNAPCRAFT_STORE_CREDENTIALS: secret,
+      SNAPCRAFT_STORE_CREDENTIALS_EXPIRES: inDays(120),
+    });
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /credentials — SNAPCRAFT_STORE_CREDENTIALS present/);
+    assert.doesNotMatch(out, new RegExp(secret));
+  });
+
+  test('the real lane: the dry run holds the expiry only, and the submit job CHECKS the credential straight after the ref check and fails closed', () => {
+    const wf = parseWorkflow(REPO, '.github/workflows/submit-snap.yml');
+    const dryRun = workflowSteps(wf.jobs.get('dry-run')).find((s) => s.name === 'Dry-run the Snap Store submission');
+    assert.ok(dryRun, 'the dry-run step is gone or renamed');
+    assert.deepEqual([...dryRun.env.keys()], ['SNAPCRAFT_STORE_CREDENTIALS_EXPIRES']);
+    const submit = wf.jobs.get('submit');
+    assert.equal(jobEnvironment(submit)?.name, 'store-publish');
+    const steps = workflowSteps(submit);
+    const ref = steps.findIndex((s) => s.name === 'Refuse any ref but main');
+    assert.ok(ref >= 0, 'the submit job has no `Refuse any ref but main` step');
+    const first = steps[ref + 1];
+    assert.equal(first?.name, 'Preflight — the Snap Store credential must be present', 'the step straight after the ref check must be the credential preflight');
+    assert.ok(first.env.has('SNAPCRAFT_STORE_CREDENTIALS'), 'the step straight after the ref check must read the credential');
+    assert.match(first.run.text, /-z "\$SNAPCRAFT_STORE_CREDENTIALS"/);
+    assert.match(first.run.text, /exit 1/);
+    assert.match(first.run.text, /OWNER STEP: GitHub -> Settings -> Environments -> store-publish/);
   });
 
   // ── the register is the single declaration ────────────────────────────────

@@ -134,6 +134,10 @@ jobs:
           PR_CREATED_AT: ${{ github.event.pull_request.created_at }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: node tooling/ci/assert-pr-rows.mjs
+      - name: The CI docs match the workflows (gen-ci-map --check)
+        run: node tooling/ci/gen-ci-map.mjs --check
+      - name: The release runbook's arming lines match the register (channel-arming --check)
+        run: node tooling/ci/channel-arming.mjs --check
 
   guards-platform:
     name: Guards — platform, data and ops

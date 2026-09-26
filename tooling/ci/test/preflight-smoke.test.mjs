@@ -59,6 +59,20 @@ const standInComposer = (root) => {
   put(root, 'tooling/ci/flutter-release-build.mjs', "// fixture stand-in: workflow-scan.mjs imports these names (no entry point: a LIBRARY row)\nconst refuse = () => { throw new Error('fixture stand-in: this fixture has no composer call'); };\nexport const composeReleaseBuild = refuse;\nexport const printed = refuse;\nexport const substitute = refuse;\n");
   put(root, 'tooling/ci/app-set.mjs', "// fixture stand-in: workflow-scan.mjs imports this name (no entry point: a LIBRARY row)\nexport const workspaceApps = () => { throw new Error('fixture stand-in: this fixture has no composer call'); };\n");
 };
+
+/** tooling/scripts/backup-headroom.mjs in a fixture repository: the real one
+ *  reads this machine's backup sets, which a throwaway repository does not have.
+ *  It prints the real module's summary shape, a ⬜ line, and exits
+ *  $FIXTURE_HEADROOM_EXIT (default 0). */
+const HEADROOM_STUB = [
+  'const code = Number(process.env.FIXTURE_HEADROOM_EXIT || 0);',
+  "console.log(`backup-headroom: 1 of 2 bounded set(s) graded, 0 warn, ${code ? 1 : 0} refuse, 0 research intruder(s)`);",
+  "console.log(code ? '✗ REFUSE fixture set  10/10 (100%)' : '  ok   fixture set  1/10 (10%)');",
+  "console.log(\"⬜ not walked: 'outside set' (Max 5)\");",
+  'process.exit(code);',
+  '',
+].join('\n');
+
 /** A directory holding only `.github/workflows/ci.yml` with this text. */
 const ciTree = (name, lines) => {
   const root = join(TMP, name);
@@ -193,6 +207,7 @@ describe('the full run closes with the generated line, not "CI should agree."', 
     put(root, 'tooling/ci/assert-guard-coverage.mjs', "const NOT_CI_RUNNABLE = new Map([\n  ['z-exempt.mjs',\n    'fixture'],\n]);\nexport default NOT_CI_RUNNABLE;\n");
     put(root, 'tooling/ci/a-guard.mjs', "console.log('ok a'); process.exit(0);\n");
     put(root, 'tooling/ci/assert-sworn-store-files.mjs', "console.log('ok sworn'); process.exit(0);\n");
+    put(root, 'tooling/scripts/backup-headroom.mjs', HEADROOM_STUB);
     put(root, 'tooling/ci/test/fixture.test.mjs', "import { test } from 'node:test';\ntest('fixture', () => {});\n");
     // The format leg refuses a tree with no tracked Dart file at all.
     put(root, 'lib/fixture.dart', 'void main() {}\n');
@@ -230,10 +245,12 @@ describe('the full run closes with the generated line, not "CI should agree."', 
     });
     const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
     assert.equal(r.status, 0, out.slice(-3000));
-    assert.match(out, /preflight: ok — 6 leg\(s\) green \(--fast: stamped-app leg skipped\)\.\n/);
+    assert.match(out, /preflight: ok — 7 leg\(s\) green \(--fast: stamped-app leg skipped\)\.\n/);
+    // The backup-headroom leg (2026-09-26) ran, green, and its ⬜ line printed its output.
+    assert.match(out, /ok {3}backup headroom \(the backup's own sets and bounds\)\n {5}backup-headroom: 1 of 2 bounded set\(s\) graded/);
     assert.doesNotMatch(out, /CI should agree/);
     const last = out.trimEnd().split(/\r?\n/).pop();
-    assert.match(last, /^⬜ NOT CI-GATE — ci-gate needs 2 job\(s\) in \.github\/workflows\/ci\.yml\. This run ran 2 of the 2 tooling\/ci guard\(s\) they invoke \(not run: none\) and reached 1 of the 2\. No guard ran for: build\. Besides guards this run ran 4 other leg\(s\);/);
+    assert.match(last, /^⬜ NOT CI-GATE — ci-gate needs 2 job\(s\) in \.github\/workflows\/ci\.yml\. This run ran 2 of the 2 tooling\/ci guard\(s\) they invoke \(not run: none\) and reached 1 of the 2\. No guard ran for: build\. Besides guards this run ran 5 other leg\(s\);/);
   });
 });
 
@@ -321,6 +338,7 @@ describe('preflight --smoke end to end — the pushed commit, no lock, a budget,
     put(root, 'tooling/ci/ci-only.mjs', "console.log('ci only'); process.exit(0);\n");
     put(root, 'tooling/ci/m-slow-guard.mjs', "setTimeout(() => { console.log('slow ok'); process.exit(0); }, 1500);\n");
     put(root, 'tooling/ci/z-late-guard.mjs', "console.log('late ok'); process.exit(0);\n");
+    put(root, 'tooling/scripts/backup-headroom.mjs', HEADROOM_STUB);
     const ciYml = (gate) => [
       'name: ci',
       'on: [push]',
@@ -386,6 +404,20 @@ describe('preflight --smoke end to end — the pushed commit, no lock, a budget,
     const r = smoke([]);
     const last = r.out.trimEnd().split(/\r?\n/).pop();
     assert.match(last, /^⬜ NOT CI-GATE — ci-gate needs 4 job\(s\) in \.github\/workflows\/ci\.yml\. This run ran 3 of the 4 tooling\/ci guard\(s\) they invoke \(not run: 1 NEEDS-CI\) and reached 2 of the 4\. No guard ran for: secret, build\./);
+  });
+
+  test('🔴 the backup headroom prints first, is not a counted guard, and a red one refuses the push', () => {
+    const green = smoke([]);
+    assert.equal(green.status, 0, green.out);
+    assert.match(green.out, /^backup-headroom: 1 of 2 bounded set\(s\) graded, 0 warn, 0 refuse/);
+    assert.match(green.out, /^⬜ not walked: 'outside set' \(Max 5\)$/m);
+    assert.doesNotMatch(green.out, /ok {3}fixture set/, 'a green push prints only the summary and the ⬜ lines');
+    const red = smoke([], { FIXTURE_HEADROOM_EXIT: '1' });
+    assert.equal(red.status, 1, red.out);
+    assert.match(red.out, /^✗ REFUSE fixture set {2}10\/10 \(100%\)$/m);
+    // 3 of 3: the headroom leg is this machine's state, not one of the runnable guards.
+    assert.match(red.out, new RegExp(`preflight --smoke ${shas.main.slice(0, 8)}: ok — 3 of 3 runnable guard\\(s\\) ran`));
+    assert.match(red.out.trimEnd().split(/\r?\n/).pop(), /^preflight --smoke: FAIL — backup headroom \(the backup's own sets and bounds\) exited 1 \(above\)\./);
   });
 
   test('🔴 a red the pushed commit caused FAILS the smoke, judged against the merge-base', () => {

@@ -111,7 +111,7 @@ trusted the name.
 Fixed in both directions: the register reader is now a step below, so the
 schedule-backed duties ARE examined here, and the name says what runs.
 
-## job `permissions`
+### key `permissions:`
 
 ### above `permissions:`
 
@@ -369,7 +369,7 @@ is resolved against the actual successful runs of the served release lane,
 not against a list in a file that would go stale the way B-17's own
 four-table prose did.
 
-## job `permissions`
+### key `permissions:`
 
 ### above `permissions:`
 
@@ -508,7 +508,7 @@ human having looked.
 
 SCHEDULED RUNS ONLY: a workflow_dispatch failure is attended by definition.
 
-## job `needs`
+### key `needs:`
 
 ### above `needs:`
 

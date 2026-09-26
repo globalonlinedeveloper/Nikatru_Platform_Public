@@ -25,6 +25,11 @@ names both. The alternative — a copy of this file in each repo — doubles the
 number of schedules that can silently stop, and silent-stopping is this
 project's recurring failure mode. One schedule, one token, one place to look.
 
+⏱ CORRECTED 2026-09-26 (E1-04): the workflow now renovates ONE repository.
+`RENOVATE_REPOSITORIES` names `globalonlinedeveloper/Nikatru_Platform_Public` only, and the job is
+named "Renovate the public platform repository". The paragraph above is the record of the two-repository
+setup it replaced.
+
 ⛔ THIS MUST NOT RUN ALONGSIDE THE MEND-HOSTED APP. Two Renovates on one repo
 open competing branches for the same upgrade. Before this lands, the Mend
 Renovate GitHub App has to be uninstalled (or suspended) for both repos —

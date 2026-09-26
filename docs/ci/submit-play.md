@@ -409,7 +409,7 @@ It REBUILDS the bundle rather than downloading dry-run's (see the note
 above), so it repeats that job's measured 8m06s and then uploads; 30 is
 dry-run's bound, which is the closest thing to a measurement this job has.
 
-## job `permissions`
+### key `permissions:`
 
 ### above `permissions:`
 

@@ -2187,6 +2187,16 @@
       "firstSeen": "2026-08-04",
       "evidence": []
     },
+    "tooling/ci/gen-ci-map.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-26",
+      "evidence": []
+    },
+    "tooling/ci/gen-issue-forms.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-26",
+      "evidence": []
+    },
     "tooling/ci/install-pinned-tool.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-11",
@@ -3477,5 +3487,5 @@
       "signature": "guard-test:B2: an env carrying API_BASE_URL is refused, whatever it names"
     }
   ],
-  "zeroCatch": 143
+  "zeroCatch": 146
 }
