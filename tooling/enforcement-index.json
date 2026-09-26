@@ -12,6 +12,34 @@
     "state": "WIRED"
   },
   {
+    "claims": [
+      "ADR 037",
+      "ADR 045"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app-brick"
+    ],
+    "kind": "script",
+    "ref": "tooling/app-yaml/render-privacy.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 037",
+      "ADR 075",
+      "ADR 085",
+      "D-5"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app-brick"
+    ],
+    "kind": "script",
+    "ref": "tooling/app-yaml/render.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [],
     "invokedBy": [],
     "kind": "guard",
@@ -40,6 +68,14 @@
     "ref": "tooling/ci/android-signing.mjs",
     "references": [],
     "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/android-zip.mjs",
+    "references": [],
+    "state": "LIBRARY"
   },
   {
     "claims": [],
@@ -278,6 +314,7 @@
       "ADR 078"
     ],
     "invokedBy": [
+      ".github/workflows/ci.yml#app-brick",
       ".github/workflows/ci.yml#guards-store"
     ],
     "kind": "guard",
@@ -1702,6 +1739,8 @@
       "K-8"
     ],
     "invokedBy": [
+      ".github/workflows/build-platforms.yml#linux_web_android",
+      ".github/workflows/ci.yml#android-artifacts",
       ".github/workflows/ci.yml#guards-store"
     ],
     "kind": "guard",
@@ -2708,6 +2747,17 @@
   },
   {
     "claims": [],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#linux_web_android",
+      ".github/workflows/ci.yml#android-artifacts"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/dump-aab-permissions.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
     "invokedBy": [],
     "kind": "guard",
     "ref": "tooling/ci/flutter-stock-assets.mjs",
@@ -2950,6 +3000,7 @@
     "claims": [],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#prepare",
+      ".github/workflows/ci.yml#app-brick",
       ".github/workflows/extensions.yml#release"
     ],
     "kind": "guard",
@@ -3138,6 +3189,16 @@
     ],
     "kind": "script",
     "ref": "tooling/e2e/verify_row.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app-brick"
+    ],
+    "kind": "script",
+    "ref": "tooling/kit/stamp-app.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -3644,10 +3705,21 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app-brick"
+    ],
+    "kind": "script",
+    "ref": "tooling/sites/gen-auth-mail.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 075"
     ],
     "invokedBy": [
+      ".github/workflows/ci.yml#app-brick",
       ".github/workflows/ci.yml#sites"
     ],
     "kind": "script",
@@ -3668,6 +3740,7 @@
       "W-9"
     ],
     "invokedBy": [
+      ".github/workflows/ci.yml#app-brick",
       ".github/workflows/site-drift-repair.yml#repair"
     ],
     "kind": "script",
@@ -3678,10 +3751,23 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/ci.yml#app-brick",
       ".github/workflows/ci.yml#sites"
     ],
     "kind": "script",
     "ref": "tooling/sites/generate-landing-payload.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 075"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app-brick"
+    ],
+    "kind": "script",
+    "ref": "tooling/sites/generate-well-known.mjs",
     "references": [],
     "state": "WIRED"
   },
