@@ -55,6 +55,21 @@
 // what it produces, which is the dead-seam shape [pipeline C-6] names. Together
 // they say: a challenge was rendered HERE, and its answer went to THIS call.
 //
+// ⏱ 2026-09-26 — R3, THE THIRD LIMB, AND THE RUN THAT NEEDED IT.
+// R3  a gated call site the live e2e suite DRIVES names its HEADLESS ROUTE in
+//     tooling/e2e-leg-register.json `captchaGatedSurfaces`: an anchor the suite
+//     asserts the gate's refusal by, and the route that does the leg's work
+//     without a captcha — a suite call, or a tooling/e2e script the e2e
+//     workflow runs. "Drives" is MEASURED, not listed: the file uses an
+//     `E2EKeys.*` key the comment-stripped suite also uses.
+// E2E live run 36220597628, the first after the switch to Box C, failed its
+// delete leg: the dialog's reauth is `signInWithEmail`, a headless browser has
+// no Turnstile token, and GoTrue refused `captcha_failed` before any Worker was
+// reached. R1 and R2 were GREEN over that tree, correctly — the wire existed,
+// the widget was mounted; no human was there to solve it. Sign-in had been
+// given `/verify`; the delete dialog, driven by the same suite, had nothing.
+// R3 is red on that tree (e97a111c), naming settings_screen.dart.
+//
 // ⚠️ THE HONEST LIMIT, STATED SO IT IS NOT DISCOVERED LATER. `captchaToken:
 // _captchaToken` is accepted, and `_captchaToken` is a `String?` that IS null
 // until the widget calls back. This guard cannot prove a token was non-null at
@@ -100,7 +115,7 @@
 // that do not exist, which is why the reduction is mandatory and not tidy.
 // ─────────────────────────────────────────────────────────────────────────────
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -325,7 +340,7 @@ for (const root of roots) {
     }
   }
 
-  perRoot.push({ root, adopted, sites });
+  perRoot.push({ root, adopted, sites, read });
 
   if (!adopted) {
     if (sites.length) {
@@ -369,6 +384,113 @@ if (callSitesFound === 0) {
   );
 }
 
+// ── R3 · a gated call site the e2e suite drives names its headless route ────
+// See the header's R3 paragraph. The register is read, never trusted: a surface
+// the suite drives with no entry is a finding, an entry whose anchor or route
+// does not resolve is a finding, and an entry for a surface nothing drives any
+// more is a finding — a stale row reads as coverage for nothing.
+const LEG_REGISTER = 'tooling/e2e-leg-register.json';
+let legRegister;
+try {
+  legRegister = JSON.parse(readFileSync(join(REPO, LEG_REGISTER), 'utf8'));
+} catch (e) {
+  coverageLost(
+    `${LEG_REGISTER} could not be read (${e.code ?? e.name})`,
+    'It names the live e2e suite, its workflow and the headless route of every gated surface the suite',
+    'drives. Without it R3 has no suite to measure against.',
+  );
+}
+// The register is keyed by app (`apps.<id>`, O-E2E-LANE-WIRED-TO-ONE-APP), and
+// each entry names its suite and workflow. Every app is measured; none is a
+// COVERAGE LOST, because R3 would then quantify over nothing.
+const appEntries =
+  legRegister?.apps && typeof legRegister.apps === 'object' && !Array.isArray(legRegister.apps)
+    ? Object.entries(legRegister.apps)
+    : [];
+if (appEntries.length === 0) {
+  coverageLost(`${LEG_REGISTER} names no app under \`apps\``, 'R3 measures the suite each app entry names.');
+}
+const keysIn = (code) => new Set([...code.matchAll(/\bE2EKeys\.([A-Za-z_]\w*)/g)].map((m) => m[1]));
+const driven = [];
+for (const [appId, entry] of appEntries) {
+  const { app: appDir, test: suiteRel, workflow: workflowRel } = entry ?? {};
+  if (![appDir, suiteRel, workflowRel].every((v) => typeof v === 'string' && v !== '')) {
+    coverageLost(`${LEG_REGISTER} apps.${appId} does not name app, test and workflow`, 'R3 measures the suite those name.');
+  }
+  let suiteCode;
+  let workflowCode;
+  try {
+    suiteCode = stripSourceComments(readFileSync(join(REPO, suiteRel), 'utf8'), '.dart');
+    workflowCode = stripSourceComments(readFileSync(join(REPO, workflowRel), 'utf8'), '.yml');
+  } catch (e) {
+    coverageLost(`the e2e suite or its workflow could not be read (${e.code ?? e.name})`, `${suiteRel}, ${workflowRel}`);
+  }
+  const appRoot = perRoot.find((p) => p.root === `${appDir}/lib`);
+  if (!appRoot) {
+    coverageLost(`the e2e app ${appDir} is not one of the scanned roots`, 'R3 reads its gated call sites from that root.');
+  }
+  const suiteKeys = keysIn(suiteCode);
+  const before = driven.length;
+  for (const file of [...new Set(appRoot.sites.map((s) => s.file))].sort()) {
+    const shared = [...keysIn(appRoot.read.get(file))].filter((k) => suiteKeys.has(k)).sort();
+    if (shared.length) {
+      driven.push({ file, appDir, suiteRel, suiteCode, workflowRel, workflowCode, sites: appRoot.sites.filter((s) => s.file === file), keys: shared });
+    }
+  }
+  if (driven.length === before) {
+    coverageLost(
+      `R3 found no captcha-gated call site that ${suiteRel} drives`,
+      'The suite signs in and submits the login form through a gated surface, so zero means the E2EKeys',
+      'match stopped matching — not that no leg of the golden path reaches a gate.',
+    );
+  }
+}
+const declaredSurfaces = Array.isArray(legRegister?.captchaGatedSurfaces?.surfaces)
+  ? legRegister.captchaGatedSurfaces.surfaces
+  : [];
+const routeRuns = (script, workflowCode) =>
+  new RegExp(`\\bnode\\s+${script.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|$)`, 'm').test(workflowCode);
+for (const d of driven) {
+  const { suiteRel, suiteCode, workflowRel } = d;
+  const where = `${d.file}:${d.sites[0].line} (${[...new Set(d.sites.map((s) => s.method))].join(', ')})`;
+  const entry = declaredSurfaces.find((e) => e?.file === d.file);
+  if (!entry) {
+    problems.push(
+      `[R3] ${where} is a captcha-gated call site the live e2e suite DRIVES (${suiteRel} uses ` +
+        `E2EKeys.${d.keys.join(', E2EKeys.')}), and ${LEG_REGISTER} captchaGatedSurfaces names no headless route ` +
+        'for it. On a gated stack a headless browser has no Turnstile token, so that leg is refused ' +
+        '`captcha_failed` before it does anything — E2E live run 36220597628, in-app deletion after the Box C switch.',
+    );
+    continue;
+  }
+  if (typeof entry.refusal !== 'string' || entry.refusal === '' || !suiteCode.includes(entry.refusal)) {
+    problems.push(
+      `[R3] ${where}: the refusal anchor ${JSON.stringify(entry.refusal)} does not resolve in ${suiteRel} ` +
+        '(comment-stripped), so nothing asserts that the gate refuses this surface on a gated stack.',
+    );
+  }
+  const route = entry.headlessRoute;
+  if (typeof route !== 'string' || route === '') {
+    problems.push(`[R3] ${where}: its ${LEG_REGISTER} entry names no headlessRoute.`);
+  } else if (/\.mjs$/.test(route)) {
+    if (!existsSync(join(REPO, route))) {
+      problems.push(`[R3] ${where}: the headless route ${route} does not exist.`);
+    } else if (!routeRuns(route, d.workflowCode)) {
+      problems.push(`[R3] ${where}: the headless route ${route} exists, and ${workflowRel} never runs it.`);
+    }
+  } else if (!suiteCode.includes(route)) {
+    problems.push(`[R3] ${where}: the headless route ${JSON.stringify(route)} does not resolve in ${suiteRel} (comment-stripped).`);
+  }
+}
+for (const e of declaredSurfaces) {
+  if (!driven.some((d) => d.file === e?.file)) {
+    problems.push(
+      `[R3] ${LEG_REGISTER} names a headless route for ${JSON.stringify(e?.file)}, which is not a captcha-gated ` +
+        'surface the e2e suite drives. A stale entry reads as coverage for nothing — delete it.',
+    );
+  }
+}
+
 for (const p of ownerPrints) console.log(p);
 
 console.log(
@@ -400,5 +522,9 @@ if (problems.length) {
         : `ok   ${root} — ${sites.length} gated call site(s), ${WIDGET} not adopted in this tree (reported above, arms itself)`,
     );
   }
+  console.log(
+    `ok   R3 — ${driven.length} captcha-gated surface(s) the e2e suite drives, each naming its headless route: ` +
+      driven.map((d) => `${d.file.slice(`${d.appDir}/lib/`.length)} → ${declaredSurfaces.find((e) => e.file === d.file).headlessRoute}`).join('; '),
+  );
   console.log('\nassert-captcha-gated-call-sites: ok');
 }
