@@ -39,6 +39,7 @@ import { fileURLToPath } from 'node:url';
 import { parseYaml, YamlError } from '../../app-yaml/yaml.mjs';
 import { validate, assertSchemaUnderstood, SchemaError } from '../../app-yaml/schema-validate.mjs';
 import { appleCategoryUti } from '../../app-yaml/render.mjs';
+import { resolveRequiredProviders } from '../../legal/required-providers.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..', '..');
@@ -493,13 +494,18 @@ describe('assert-app-yaml — the declaration and its renderings', () => {
     } finally { kill(root); }
   });
 
-  test('COVERAGE LOST: no privacy declaration anywhere exits 2', () => {
+  test('an app with NO privacy declaration is a FINDING (1) naming the file, never COVERAGE LOST', () => {
+    // ⏱ 2026-09-25 · O-BRICK-STAMPS-NO-PRIVACY-DECLARATION. This case asserted
+    // exit 2: limb 3 skipped every app without the file and refused only when
+    // none had one. The app exists, so its missing declaration is the finding
+    // and the repair; exit 2 stays for a tree with no app at all (above).
     const root = tree();
     try {
       rmSync(join(root, PRIVACY_YAML));
       const { code, out } = spawn(GUARD, [root]);
-      assert.equal(code, 2, out);
-      assert.match(out, /privacy\.yaml/);
+      assert.equal(code, 1, out);
+      assert.match(out, /apps\/subscriptiontracker\/privacy\.yaml does not exist; every workspace app declares, pending or declared/);
+      assert.doesNotMatch(out, /COVERAGE LOST/);
     } finally { kill(root); }
   });
 
@@ -991,6 +997,212 @@ describe('limb 5 — the notice surfaces are what the declaration renders to', (
     assert.deepEqual(parseYaml('collects: []\n'), { collects: [] });
     assert.throws(() => parseYaml('collects: [a]\n'), YamlError);
     assert.throws(() => parseYaml('collects: {}\n'), YamlError);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// O-BRICK-STAMPS-NO-PRIVACY-DECLARATION. The app brick stamps a privacy.yaml in
+// `state: pending`: nothing collected (nobody has read the app's code yet), the
+// providers every app's configuration requires, and a notice page that says the
+// notice is not yet published. The second app below is that stamp's shape.
+const PENDING_APP = 'probe';
+const PENDING_YAML = `apps/${PENDING_APP}/privacy.yaml`;
+const PENDING_NOTICE = `sites/nikatru/${PENDING_APP}/privacy.html`;
+
+/** The brick's own pending declaration, filled for `id` the way mason fills
+ *  `{{app_id}}` — so every case below grades the file a stamp writes, not a
+ *  fixture that could agree with the guard by construction. */
+const BRICK_PRIVACY = join(REPO, 'tooling', 'bricks', 'app', '__brick__', 'apps', '{{app_id}}', 'privacy.yaml');
+const pendingDeclaration = (id) => readFileSync(BRICK_PRIVACY, 'utf8').replaceAll('{{app_id}}', id);
+
+describe('a PENDING app declaration renders the short "not yet published" page', () => {
+  test('the pending page names no category and no processor, links the portfolio policy, and --check is green on it', () => {
+    const root = tree();
+    try {
+      const appNotice = get(root, SITE_NOTICE);
+      mkdirSync(join(root, dirname(PENDING_YAML)), { recursive: true });
+      put(root, PENDING_YAML, pendingDeclaration(PENDING_APP));
+      const wrote = spawn(PRIVACY_RENDER, [root]);
+      assert.equal(wrote.code, 0, wrote.out);
+      assert.ok(wrote.out.includes(`wrote ${PENDING_NOTICE}`), wrote.out);
+      const page = get(root, PENDING_NOTICE);
+      assert.ok(page.includes('This app’s privacy notice is not yet published. It is not offered to anyone until it is.'), page);
+      assert.ok(page.includes('<a href="/privacy">Nikatru Privacy Policy</a>'), 'the pending page must link the portfolio policy');
+      assert.doesNotMatch(page, /<table>|What is collected|Who else touches it/, 'a pending page itemises nothing');
+      for (const company of ['Cloudflare', 'Oracle Cloud', 'Hostinger', 'Supabase', 'Paddle', 'Resend']) {
+        assert.ok(!page.includes(company), `a pending page names no processor, and it names ${company}`);
+      }
+      assert.equal(get(root, SITE_NOTICE), appNotice, 'app #1 notice must be untouched by a second app being rendered');
+      const check = spawn(PRIVACY_RENDER, [root, '--check']);
+      assert.equal(check.code, 0, check.out);
+      assert.match(check.out, /4 notice rendering\(s\) match 2 app \(1 pending\) and 1 extension declaration\(s\)/);
+      put(root, PENDING_NOTICE, page.replace('not yet published', 'published'));
+      const edited = spawn(PRIVACY_RENDER, [root, '--check']);
+      assert.equal(edited.code, 1, `a hand edit to the pending page must be caught:\n${edited.out}`);
+      assert.ok(edited.out.includes(PENDING_NOTICE), edited.out);
+    } finally { kill(root); }
+  });
+});
+
+/** A second app beside app #1, carrying what a stamp leaves for every limb of
+ *  the guard: the declaration post_gen writes, a pubspec and one Dart file
+ *  (limbs 6 and 8), the brick's UNANSWERED sworn files (limbs 4 and 7, filled
+ *  the way mason fills them), one listing tree (limb 2), and the pending
+ *  privacy.yaml. Then both renderers run, as the stamp's site chain runs them. */
+function addPendingApp(root) {
+  const brick = join(REPO, 'tooling', 'bricks', 'app', '__brick__', 'apps', '{{app_id}}');
+  const fill = (s) => s.replaceAll('{{app_id}}', PENDING_APP).replaceAll('{{category}}', 'productivity').replaceAll('{{{short_name}}}', 'Probe');
+  const urls = readJson(root, 'tooling/channel-register.json').storeMetadataContract.portfolioUrls;
+  mkdirSync(join(root, 'apps', PENDING_APP, 'lib'), { recursive: true });
+  put(root, `apps/${PENDING_APP}/app.yaml`, [
+    `id: ${PENDING_APP}`,
+    'name: "Probe"',
+    'tagline: "A stamped app nobody has declared yet."',
+    'category: "Productivity"',
+    'status: preview',
+    '',
+    'hosts:',
+    `  web: ${PENDING_APP}.nikatru.com`,
+    '',
+    'platforms:',
+    '  - web',
+    '',
+    'listings:',
+    '',
+    'legal:',
+    `  privacyPolicyUrl: ${urls.privacyUrl}`,
+    `  supportUrl: ${urls.supportUrl}`,
+    `  termsUrl: ${urls.termsUrl}`,
+    '',
+    'ai:',
+    '  generatesContent: false',
+    '',
+    'exportCompliance:',
+    '  usesNonExemptEncryption: false',
+    '  basis: "Stamped default, not a measurement: re-measure before first Apple upload."',
+    '',
+  ].join('\n'));
+  put(root, `apps/${PENDING_APP}/pubspec.yaml`, `name: ${PENDING_APP}\n\ndependencies:\n  flutter:\n    sdk: flutter\n`);
+  put(root, `apps/${PENDING_APP}/lib/main.dart`, 'void main() {}\n');
+  for (const rel of [
+    'store/android-play/data-safety.json',
+    'store/android-play/content-rating.json',
+    'store/android-play/ads-declaration.json',
+    'store/ios-appstore/privacy-manifest.json',
+  ]) {
+    mkdirSync(join(root, 'apps', PENDING_APP, dirname(rel)), { recursive: true });
+    put(root, `apps/${PENDING_APP}/${rel}`, fill(readFileSync(join(brick, rel), 'utf8')));
+  }
+  put(root, PENDING_YAML, pendingDeclaration(PENDING_APP));
+  const rendered = spawn(RENDER, [root]);
+  assert.equal(rendered.code, 0, rendered.out);
+  const notice = spawn(PRIVACY_RENDER, [root]);
+  assert.equal(notice.code, 0, notice.out);
+}
+
+describe('limb 3 — every app declares, pending or declared; limb 4 skips a pending one', () => {
+  test('POSITIVE CONTROL — app #1 declared beside a stamped app pending is green, and the ok lines count both', () => {
+    // Also the limb 4 skip, demonstrated: the stamped app's sworn files are the
+    // brick's unanswered ones, which limb 4 refuses with COVERAGE LOST the
+    // moment it pairs them. Green here means the pending declaration was
+    // skipped on its key, not compared.
+    const root = tree();
+    try {
+      addPendingApp(root);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 0, out);
+      assert.match(out, /2 privacy declaration\(s\) valid — 1 declared, 1 pending —/);
+      assert.match(out, /limb 4 — 12 collected categor\(ies\) across 1 app\(s\).*; 1 pending declaration\(s\) skipped/);
+      assert.match(out, /limb 9 — 2 app\(s\) graded/);
+      assert.match(out, /graded \(1 declared, 1 pending\)/);
+    } finally { kill(root); }
+  });
+
+  test('RC1 — the stamped app with its privacy.yaml deleted is a FINDING (1) naming it; restored, green', () => {
+    const root = tree();
+    try {
+      addPendingApp(root);
+      const text = get(root, PENDING_YAML);
+      assert.equal(spawn(GUARD, [root]).code, 0, 'the control must be green first');
+      rmSync(join(root, PENDING_YAML));
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, `expected a finding, got ${code}:\n${out}`);
+      assert.match(out, /apps\/probe\/privacy\.yaml does not exist; every workspace app declares, pending or declared/);
+      assert.doesNotMatch(out, /COVERAGE LOST/);
+      put(root, PENDING_YAML, text);
+      assert.equal(spawn(GUARD, [root]).code, 0, 'restoring the declaration must be green again');
+    } finally { kill(root); }
+  });
+
+  test('RC2 — app #1 with its `state` line deleted is a FINDING (1), never read as declared', () => {
+    const root = tree();
+    try {
+      const text = get(root, PRIVACY_YAML);
+      assert.ok(text.includes('\nstate: declared\n'), 'app #1 must carry `state: declared` for this mutation to mean anything');
+      put(root, PRIVACY_YAML, text.replace('\nstate: declared\n', '\n'));
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, `expected a finding, got ${code}:\n${out}`);
+      assert.match(out, /apps\/subscriptiontracker\/privacy\.yaml: `state` is absent/);
+      assert.match(out, /permitted shapes/);
+    } finally { kill(root); }
+  });
+
+  test('RC3 — a pending declaration with one `collects` row is a FINDING (1)', () => {
+    const root = tree();
+    try {
+      addPendingApp(root);
+      const text = get(root, PENDING_YAML);
+      assert.ok(text.includes('\ncollects: []\n'));
+      put(root, PENDING_YAML, text.replace('\ncollects: []\n', [
+        '',
+        'collects:',
+        '  - category: Location',
+        '    type: Approximate location',
+        '    purposes:',
+        '      - Analytics',
+        '    retentionClass: 400',
+        '    basis: A row on a pending declaration, which no page publishes and nobody has read against code.',
+        '    source: tooling/legal/provider-register.json',
+        '    asOf: "2026-09-25"',
+        '',
+      ].join('\n')));
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, `expected a finding, got ${code}:\n${out}`);
+      assert.match(out, /apps\/probe\/privacy\.yaml: `state: pending` with 1 `collects` row\(s\)/);
+    } finally { kill(root); }
+  });
+
+  test('the brick stamps EXACTLY the processors the resolver requires of a stamped app, no more and no fewer', () => {
+    // Limb 9 proves the required set is declared and no `never` provider is.
+    // It does not refuse an EXTRA provider, so a hand-picked row added to the
+    // brick would pass it; this equality is what keeps the stamp's list the
+    // resolver's list, for the app.yaml a stamp writes (no billing block).
+    const root = tree();
+    try {
+      addPendingApp(root);
+      const appYaml = parseYaml(get(root, `apps/${PENDING_APP}/app.yaml`));
+      assert.equal(appYaml.billing, undefined, 'the stamped declaration carries no billing block');
+      const required = resolveRequiredProviders(PENDING_APP, {
+        appYaml,
+        channelRegister: readJson(root, 'tooling/channel-register.json'),
+        providerRegister: readJson(root, 'tooling/legal/provider-register.json'),
+      }).map((r) => r.id).sort();
+      assert.ok(required.length >= 1, 'the resolver required nothing, so this equality would hold over an empty set');
+      const stamped = parseYaml(pendingDeclaration(PENDING_APP)).processors.map((p) => p.id).sort();
+      assert.deepEqual(stamped, required, 'the brick privacy.yaml `processors` must be the resolver\'s set for a stamped app');
+    } finally { kill(root); }
+  });
+
+  test('every app pending is COVERAGE LOST (2): limb 4 then paired nothing', () => {
+    const root = tree();
+    try {
+      addPendingApp(root);
+      rmSync(join(root, 'apps', 'subscriptiontracker'), { recursive: true, force: true });
+      assert.equal(spawn(RENDER, [root]).code, 0);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 2, `expected COVERAGE LOST, got ${code}:\n${out}`);
+      assert.match(out, /1 pending declaration\(s\) were skipped/);
+    } finally { kill(root); }
   });
 });
 

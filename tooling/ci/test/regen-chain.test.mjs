@@ -10,7 +10,11 @@
 //   · --check writes NOTHING, and spawns no generator without its --check;
 //   · a generator's exit 2 (COVERAGE LOST) is the chain's exit 2, named;
 //   · a stale landing payload is named by --check, and discovery's skip is a
-//     line of its own, never a silent omission.
+//     line of its own, never a silent omission;
+//   · ci.yml's stamp probe names the same generators as ORDER, both ways. The
+//     probe re-derives the site surface by naming each generator itself, so
+//     that dropping one from ORDER turns it red; this case is what keeps its
+//     list and ORDER from parting silently.
 //
 // THE FIXTURE is a tmpdir copy of the committed inputs the generators read,
 // built ONCE in `before`; each case works on its own copy of it. No case spawns
@@ -52,6 +56,12 @@ const PRIVACY_DECLARATIONS = ['apps/subscriptiontracker/privacy.yaml', 'extensio
 const SITE_FEED = 'sites/_shared/_data/apps.json';
 const LANDING = 'catalog/apps-landing.json';
 const APP_YAML = 'apps/subscriptiontracker/app.yaml';
+
+const CI_YML = '.github/workflows/ci.yml';
+const PROBE_STEP = 'A stamp leaves the site surface and the tag filter clean';
+/** The probe step runs it too, and it is not a site generator: it writes the
+ *  release lanes' `tags:` filters, so ORDER never lists it. */
+const TAG_OWNER = 'tooling/ci/tag-owner.mjs';
 
 let TMP;
 let PRISTINE;
@@ -128,6 +138,33 @@ function snapshot(root) {
 const read = (root, rel) => readFileSync(join(root, ...rel.split('/')), 'utf8');
 const put = (root, rel, text) => writeFileSync(join(root, ...rel.split('/')), text);
 
+/** The lines of the workflow step whose `- name:` is `name`: every line after
+ *  it that is blank or indented deeper than its `-`. Null when no step carries
+ *  the name, so a renamed step is a failure and never an empty list. */
+function stepBody(text, name) {
+  const lines = text.split(/\r?\n/);
+  const at = lines.findIndex((l) => /^\s*- name: /.test(l) && l.replace(/^\s*- name: /, '').trim() === name);
+  if (at === -1) return null;
+  const indent = lines[at].indexOf('-');
+  const body = [];
+  for (const l of lines.slice(at + 1)) {
+    if (l.trim() !== '' && l.search(/\S/) <= indent) break;
+    body.push(l);
+  }
+  return body;
+}
+
+/** Every `tooling/…/*.mjs` a step body runs with `node`, repo-relative, in the
+ *  order it runs them. Comment lines run nothing and are skipped. */
+function nodeScripts(body) {
+  const scripts = [];
+  for (const l of body) {
+    if (/^\s*#/.test(l)) continue;
+    for (const m of l.matchAll(/\bnode\s+(?:--\S+\s+)*(tooling\/[\w./-]+\.mjs)\b/g)) scripts.push(m[1]);
+  }
+  return scripts;
+}
+
 describe('regen.mjs — one ordered chain over the site surface', () => {
   test('ORDER holds every site generator in the tree once, each producer before the entries that read its output', () => {
     const inTree = [
@@ -201,5 +238,22 @@ describe('regen.mjs — one ordered chain over the site surface', () => {
     assert.match(r.out, /✗ STALE landing-payload/);
     assert.ok(r.out.includes(LANDING), `the output never names ${LANDING}`);
     assert.match(r.out, /^skip discovery — git-dated/m);
+  });
+
+  test('the ci.yml probe step names every ORDER script, and ORDER names every generator the probe step runs', () => {
+    const body = stepBody(readFileSync(join(REPO, ...CI_YML.split('/')), 'utf8'), PROBE_STEP);
+    assert.ok(body !== null, `${CI_YML} has no step named "${PROBE_STEP}"; the stamp probe is gone or renamed`);
+    const probe = new Set(nodeScripts(body).filter((s) => s !== TAG_OWNER));
+    const order = new Set(ORDER.map((e) => e.script));
+    assert.deepEqual(
+      [...order].filter((s) => !probe.has(s)),
+      [],
+      `ORDER runs generator(s) the "${PROBE_STEP}" step never runs, so a stamp that left their output stale stays green`,
+    );
+    assert.deepEqual(
+      [...probe].filter((s) => !order.has(s)),
+      [],
+      `the "${PROBE_STEP}" step runs script(s) ORDER does not list, so the probe checks a surface the stamp's own chain never writes`,
+    );
   });
 });
