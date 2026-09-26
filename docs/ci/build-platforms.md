@@ -1601,47 +1601,7 @@ in `ci-gate`'s `needs`. The overlay above gets its first build proof on a pull r
 - **Cost.** The Android part of `linux_web_android` measured 11.5 and 11.7 min per app (runs
   35741818599 and 35737416404), hence `timeout-minutes: 30`. It adds about 5 minutes to the pull
   request's critical path, and to `main`'s `ci-gate`, which the deploy lanes wait on. It costs $0:
-  a public repository on GitHub-hosted runners. There is no Gradle cache yet
-  (`O-PR-LANE-GRADLE-CACHE`).
-
-### PR lane — web and Linux
-
-*Added 2026-09-25 · closes `O-PR-LANE-BUILDS-ONLY-ANDROID-ARTIFACTS`.*
-
-The web bundle was built only by `deploy-web.yml` `deploy-web` (a push to `main`), and the Linux
-bundle only by this workflow's `linux_web_android`. Two more `ci.yml` jobs now build each on every
-pull request, one matrix leg per app from `android-apps`, and discard the result. Both are in
-`ci-gate`'s `needs`, carry no job-level `if:` and time out at 20 minutes.
-
-- **`web-artifacts`** twins `deploy-web.yml`'s Build web, flag for flag: `--source-maps`,
-  `--no-web-resources-cdn`, the `--base-href` from `assert-catalog-reachable.mjs --emit-base-href`,
-  `RELEASE_CHANNEL=web` and `vars.TURNSTILE_SITE_KEY`. `SUPABASE_URL`, `SUPABASE_ANON_KEY`,
-  `API_BASE_URL` and `GLITCHTIP_DSN` are empty, and `APP_VERSION` ends in `+pr`.
-- **`linux-artifacts`** twins Build linux here: `--obfuscate --split-debug-info=build/symbols/linux`
-  and `RELEASE_CHANNEL=linux-appimage`, with the same empty defines. The symbols stay on the runner.
-- **The register.** `tooling/channel-register.json` lists both jobs in `releaseBuildsNeverShipped`.
-  Without that, `assert-seams-wired.mjs` refuses the empty `GLITCHTIP_DSN`,
-  `assert-channel-register.mjs` refuses a `web` or `linux-appimage` stamp in a job that ships
-  neither, and `assert-obfuscation-coupled.mjs` refuses symbols that no step keeps.
-- **What reads the artifacts, and what stays on main.**
-
-  | step | on the PR | why |
-  |---|---|---|
-  | `self-host-fallback-fonts.mjs` | yes, `--check` | the deploy step's grading limbs against the built bundle and the committed lock, without its fetch from `fonts.gstatic.com`, which stays in `deploy-web.yml` |
-  | `assert-licence-register.mjs --bundle` | yes | every asset the web build shipped has a licence row |
-  | `smoke-web-artifact.mjs` | yes, no `--connect` | the bundle boots under its own `_headers` CSP to its first frame. Main probes each `--connect` origin with its real value; here those defines are empty, so there is no origin to probe |
-  | `assert-artifact-shape.mjs` | yes, `--platform web-artifacts` and `--platform linux-artifacts` | each lane key's `LANE_OUTPUTS` entry: `build/web` and `build/linux/x64/release/bundle` |
-  | `generate-snapcraft.mjs` + `assert-snapcraft-generable.mjs --emitted` | yes | the snapcraft input is generated from the built bundle into `$RUNNER_TEMP` and graded |
-  | `create-glitchtip-release.mjs`, `upload-web-sourcemaps.mjs` | main only | each needs a GlitchTip secret and uploads |
-  | `appimage-signing.mjs` | main only | it signs; a PR holds no key |
-
-- **The test.** `built-artifact-pr-lane.test.mjs` pairs each PR job with its main twin (`TWINS`) and
-  goes red on a target, a flag or a define name that differs from either side; a secret, an upload,
-  a source-map step or a signing script in any PR-lane job; a main guard over `build/web` or the
-  Linux bundle that is in neither the PR job nor `MAIN_ONLY`; a missing `ci-gate` need; a job-level
-  `if:`; or a lane key `assert-artifact-shape.mjs` does not know.
-- **macOS and Windows stay off the PR lane**, on this workflow's tag, schedule and dispatch.
-  Measured per app on `7f5d0bfd`: macOS 12.3-22.0 min, Windows 11.9-12.0 min.
+  a public repository on GitHub-hosted runners. There is no Gradle cache yet.
 
 ## channel-stamps — each shippable file carries the channel its build compiled in
 

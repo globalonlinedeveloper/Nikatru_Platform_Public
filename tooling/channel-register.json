@@ -1775,18 +1775,6 @@
         "why": "the PR built-artifact proof — the Play apk and aab and the apps.gov.in apk, built on every PR exactly as build-platforms.yml builds them, debug-signed because no signing key is in reach, inspected by the built-artifact guards and discarded with the runner. No user installs it. The one secret it passes is the PUBLIC RevenueCat SDK key 6b-iii requires of an android-play stamp; built-artifact-pr-lane.test.mjs holds each build equal to the build-platforms.yml build that does ship."
       },
       {
-        "workflow": ".github/workflows/ci.yml",
-        "job": "web-artifacts",
-        "target": "web",
-        "why": "the PR built-artifact proof for web — the bundle deploy-web.yml serves, built on every PR exactly as that job builds it, with every secret define passed by name and left empty because no secret is in reach. It is booted by the launch smoke, inspected by the built-artifact guards and discarded with the runner; nothing is deployed and no user loads it. built-artifact-pr-lane.test.mjs holds the build equal to the deploy-web.yml build that does ship."
-      },
-      {
-        "workflow": ".github/workflows/ci.yml",
-        "job": "linux-artifacts",
-        "target": "linux",
-        "why": "the PR built-artifact proof for Linux — the bundle the linux-appimage row ships from, built on every PR exactly as build-platforms.yml linux_web_android builds it, --obfuscate included, with every secret define passed by name and left empty. Its split debug symbols stay on the runner and are discarded with it, as the bundle is; nothing is signed or uploaded and no user installs it. built-artifact-pr-lane.test.mjs holds the build equal to the build-platforms.yml build that does ship."
-      },
-      {
         "workflow": ".github/workflows/symbolication-proof.yml",
         "job": "prove",
         "target": "apk",

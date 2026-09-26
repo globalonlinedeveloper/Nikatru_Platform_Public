@@ -64,8 +64,6 @@ a bare `true` back and nothing in the tree goes red.
 | `workspace-gate` | `melos analyze` + `melos test` over the whole workspace | yes |
 | `android-apps` | the Android app set, from `assert-release-lane-generic.mjs --emit-apps` — the emitter `build-platforms.yml` `prepare` runs | yes |
 | `android-artifacts` | per app: `build-platforms.yml` `linux_web_android`'s three Android builds (Play `.apk`, `.aab`, apps.gov.in `.apk`), then the guards that read a built binary; debug-signed and discarded | yes |
-| `web-artifacts` | per app: `deploy-web.yml`'s web build, then the fallback-font check, the licence check, one launch of the bundle and its artifact shape; discarded | yes |
-| `linux-artifacts` | per app: `build-platforms.yml` `linux_web_android`'s Linux build, then its snapcraft input and its artifact shape; unsigned and discarded | yes |
 | `ci-gate` | the aggregate — the single required status check on `main` | — |
 
 Two security lanes live in their **own** workflow files and are deliberately
@@ -158,26 +156,6 @@ refused for a Play Billing permission a merged change had pulled in.
   public repository on GitHub-hosted runners.
 - `docs/ci/build-platforms.md` §PR lane says what runs, what stays main-only and
   why, and which test holds the two copies of the build steps equal.
-
-### Why the web and Linux artifacts are built on every PR
-
-*Added 2026-09-25 · closes `O-PR-LANE-BUILDS-ONLY-ANDROID-ARTIFACTS`.*
-
-The same held for the other two platforms `ubuntu` can build. The web bundle was
-built only by `deploy-web.yml`, on a push to `main`, and the Linux bundle only by
-`build-platforms.yml`. A change that broke the web build, its fallback fonts or
-its first launch, or the Linux bundle's snapcraft input, merged green.
-
-- `web-artifacts` and `linux-artifacts` build those two targets on every pull
-  request with their main twin's flags, run the guards main runs over them, and
-  discard them. Both need `android-apps`, both are in `ci-gate`'s `needs`, and
-  neither carries a job-level `if:` (§4).
-- Nothing leaves the runner and nothing is signed: no upload, no GlitchTip
-  release, no source-map upload, no `appimage-signing.mjs`, and no secret.
-- They run beside `android-artifacts`, which is longer, so they add billed
-  minutes and no wall-clock time; $0 on a public repository.
-- `docs/ci/build-platforms.md` §PR lane — web and Linux says what runs and what
-  stays on main.
 
 ## 4. Rules any change to these files must keep
 

@@ -126,10 +126,7 @@ describe('§A — an aggregating job cannot go green over a lane that did not ru
     // failing rather than as the test rotting. Caught 2026-08-02 when the
     // content_gate lane landed, again 2026-09-23 when android-artifacts
     // landed, and again 2026-09-24 when the extensions call job landed. Keep
-    // both halves in step with ci.yml. ⏱ 2026-09-25: web-artifacts and
-    // linux-artifacts went in BEFORE `extensions`, so this literal and the two
-    // `extensions` cases below still name the real last line; re-read it here
-    // whenever a lane is appended after `extensions`.
+    // both halves in step with ci.yml.
     const root = mutant([['ci.yml', '      - extensions\n    if: always()', '    if: always()']]);
     caught(run(root), /job "ci-gate" does not `need` "extensions"/);
   });
