@@ -72,6 +72,8 @@
 //      RECOMPUTED here. Every other reader compares one copy of the identity
 //      with another, so a publisher mistyped identically in the register and
 //      the pubspec passed them all. Added 2026-09-22 with the real values.
+//      ⏱ 2026-09-25: per app — each app's record (app.yaml stores.windows-store)
+//      recomputed against the row's publisher (O-SECOND-APP-SIGNS-AS-THE-FIRST).
 //   8. [9]R-3 LIMB 2 — every `${{ secrets.X }}` a workflow names is DECLARED in
 //      the register, as signing material on a row or as non-signing with a
 //      reason. An undeclared name FAILS; a declared name no lane uses PRINTS.
@@ -83,6 +85,13 @@
 //      partition had the rule on one side only, so for any row §9 cannot reach
 //      — every non-Android row — pasting a name into `signing.ciSecrets.names`
 //      silenced limb 2 with no reason recorded and nothing to review.
+//   8c. every `publishing-credential` row declares its SCOPE — `environment`, a
+//      GitHub environment name or null with a `repositoryWhy` — and every JOB
+//      that reads a `${{ secrets.X }}` is graded against it: a credential scoped
+//      to an environment is read only in jobs bound to that environment, and a
+//      `*_SECRET` / `*_CREDENTIALS` name is read outside every environment only
+//      when its row says so, with a reason. §8 grades the FILE; this grades the
+//      job, because an environment belongs to a job.
 //   9. [9]R-3 REGISTER ↔ GRADLE — the same declaration compared to the REAL
 //      `apps/*/android/app/build.gradle.kts`, which is where the signing
 //      identity is actually read. Section 8 compares the register to the
@@ -122,9 +131,10 @@ import { listDir } from './tree-walk.mjs';
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
 import { FLUTTER_APP_FIELD, flutterAppChannel } from './channel-surface.mjs';
 import {
-  parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt, shellSegments, resolveLocalCalls, workflowSteps, commandAt, joinShellContinuations, parseWorkflow, flutterBuilds,
+  parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt, shellSegments, resolveLocalCalls, workflowSteps, commandAt, joinShellContinuations, parseWorkflow, flutterBuilds, jobEnvironment,
 } from './workflow-scan.mjs';
 import { parseYaml } from '../app-yaml/yaml.mjs';
+import { windowsIdentityOf, WINDOWS_STORE, WINDOWS_RECORD_FIELDS } from './read-identity.mjs';
 import { lanesOfSurface } from './tag-owner.mjs';
 import { ARTIFACT_FORMATS } from '../../contracts/store/vocabulary.js';
 
@@ -2331,6 +2341,18 @@ let releaseCensus = { workflows: [], domain: null };
         'captures the App Store iPhone and iPad frames from a build stamped ios-appstore, so the frames show ' +
         'the apple-iap rail. The binary is discarded with the runner; ios-appstore ships from submit-appstore.yml.',
     },
+    // ⏱ 2026-09-26 — the new-tool probe (O-NEW-TOOL-IS-A-COPIER-NOT-THE-COMMAND). Its
+    // `--channel amo` is an argument to publish-arming.mjs --plan, which READS the
+    // arming verdict for a scratch tool in $RUNNER_TEMP and builds nothing.
+    {
+      workflow: '.github/workflows/extensions-ci.yml',
+      job: 'templates',
+      channel: 'amo',
+      why:
+        'the probe asks publish-arming.mjs --plan what the amo lane would decide for a scratch tool it stamped in ' +
+        '$RUNNER_TEMP ("SKIPPED: not a release run"). Nothing is built, stamped into an artifact or shipped; amo ' +
+        'ships from extensions.yml#store-publish, its lane.',
+    },
   ];
   const CHANNEL_ARG = /--channel(?:=|\s+)(\S+)/g;
   const unquote = (v) => v.replace(/^['"]|['"]$/g, '');
@@ -2818,6 +2840,21 @@ let releaseCensus = { workflows: [], domain: null };
 //     `${identityName}_${publisherId(publisher)}`; otherwise FAIL naming both.
 // ⚠️ `publisherDisplayName` is NOT an input to the PFN, so nothing here can
 // catch it mistyped in both copies; only the package comparison reads it.
+//
+// ⏱ 2026-09-25 — PER APP (O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1)). The
+// identity NAME and its Package Family Name are no longer the row's: each app
+// declares the pair Partner Center issued IT, in apps/<id>/app.yaml
+// `stores.windows-store` (read through read-identity.mjs windowsIdentityOf). The
+// row keeps the ACCOUNT — `publisher`, `publisherDisplayName` — and the sentinel.
+// So the account is graded once per row (both real, or both sentinel), and every
+// app record is recomputed against the row's publisher, in the same three states:
+//   · both record fields on the sentinel → NOT YET ISSUED (the stamped state);
+//   · the PFN real while the name is the sentinel → FAILS (it predates its inputs);
+//   · the name real and the PFN the sentinel → FAILS (HALF issued);
+//   · both real → the PFN must equal `${identityName}_${publisherId(publisher)}`,
+//     and an account still on the sentinel FAILS (nothing to derive it from).
+// And the row carrying `identityName` or `packageFamilyName` again FAILS: a
+// per-app field on the channel row is the shape limb (1) removed.
 {
   const PFN_ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
   const publisherId = (publisher) => {
@@ -2829,8 +2866,11 @@ let releaseCensus = { workflows: [], domain: null };
     for (let i = 0; i < 65; i += 5) out += PFN_ALPHABET[parseInt(bits.slice(i, i + 5), 2)];
     return out;
   };
-  const PFN_INPUTS = ['identityName', 'publisher', 'publisherDisplayName'];
+  const ACCOUNT_INPUTS = ['publisher', 'publisherDisplayName'];
+  const appsAbs = abs('apps');
+  const appIds = existsSync(appsAbs) ? listDir(appsAbs).filter((x) => existsSync(join(appsAbs, x, 'app.yaml'))).sort() : [];
   let identities = 0;
+  let recordsRead = 0;
   let identitiesConfigured = 0;
   let identitiesPending = 0;
   const problemsBefore6e = problems.length;
@@ -2846,47 +2886,74 @@ let releaseCensus = { workflows: [], domain: null };
       );
       continue;
     }
-    const holes = PFN_INPUTS.filter((f) => typeof pi[f] !== 'string' || pi[f].trim() === '');
+    // The two PER-APP fields do not come back to the row: a copy here is one
+    // value for every app, which is how a second app packaged the first app's
+    // identity. They live in each app's record.
+    const perApp = WINDOWS_RECORD_FIELDS.filter((f) => Object.hasOwn(pi, f));
+    if (perApp.length > 0) {
+      problems.push(
+        `${at} carries ${perApp.map((f) => `\`${f}\``).join(' and ')} — a per-app field on the channel row. Partner Center issues the identity per PRODUCT, and a row value is one value for every app: the brick copied it into every app it stamped, and every guard agreed with the copy. Declare it in apps/<id>/app.yaml stores.${WINDOWS_STORE}; the row keeps the sentinel and the account (publisher, publisherDisplayName).`,
+      );
+    }
+    const holes = ACCOUNT_INPUTS.filter((f) => typeof pi[f] !== 'string' || pi[f].trim() === '');
     if (holes.length > 0) {
-      problems.push(`${at}.${holes.join(', .')} missing or empty — a hole, not a placeholder. The register is the single declaration of this identity ([pipeline F-2]).`);
+      problems.push(`${at}.${holes.join(', .')} missing or empty — a hole, not a placeholder. The register is the single declaration of the account these apps publish under ([pipeline F-2]).`);
       continue;
     }
-    const onSentinel = PFN_INPUTS.filter((f) => pi[f].includes(sentinel));
-    const pfn = pi.packageFamilyName;
-    if (onSentinel.length === PFN_INPUTS.length) {
-      if (pfn !== undefined && pfn !== sentinel) {
-        problems.push(
-          `${at}.packageFamilyName is ${JSON.stringify(pfn)} while every identity field still reads "${sentinel}". A Package Family Name is DERIVED from identityName and publisher; one that exists before they do was copied from somewhere else, and would silently certify whatever values land next.`,
-        );
-      } else {
-        identitiesPending++;
+    const onSentinel = ACCOUNT_INPUTS.filter((f) => pi[f].includes(sentinel));
+    if (onSentinel.length > 0 && onSentinel.length < ACCOUNT_INPUTS.length) {
+      problems.push(
+        `${at} is HALF configured: ${onSentinel.map((f) => `\`${f}\``).join(', ')} still read "${sentinel}" while ${ACCOUNT_INPUTS.filter((f) => !onSentinel.includes(f)).map((f) => `\`${f}\``).join(', ')} carry real values. Both are the one Partner Center account's, and a package under half of it submits under a publisher that is part placeholder.`,
+      );
+      continue;
+    }
+    const accountPending = onSentinel.length === ACCOUNT_INPUTS.length;
+    for (const appId of appIds) {
+      const r = windowsIdentityOf(ROOT, appId);
+      if (r.undeclared || r.absent) continue; // no record, no Package Family Name to recompute
+      if (r.missing) {
+        problems.push(`${r.missing} It is the input to ${at}'s Package Family Name recomputation for app "${appId}".`);
+        continue;
       }
-      continue;
+      recordsRead++;
+      const rec = r.value;
+      const where = `${r.rel} stores.${WINDOWS_STORE}`;
+      if (rec.identityName === sentinel) {
+        if (rec.packageFamilyName !== sentinel) {
+          problems.push(
+            `${where}.packageFamilyName is ${JSON.stringify(rec.packageFamilyName)} while its identityName still reads "${sentinel}". A Package Family Name is DERIVED from identityName and publisher; one that exists before they do was copied from somewhere else, and would silently certify whatever values land next.`,
+          );
+        } else {
+          identitiesPending++;
+        }
+        continue;
+      }
+      if (rec.packageFamilyName === sentinel) {
+        problems.push(
+          `${where} is HALF issued: identityName ${JSON.stringify(rec.identityName)} is real and packageFamilyName still reads "${sentinel}". Partner Center prints both on one screen, and the PFN is the one value derived from the publisher. Copy it from Product → Product identity.`,
+        );
+        continue;
+      }
+      if (accountPending) {
+        problems.push(
+          `${where} carries an issued identity (${JSON.stringify(rec.identityName)}) while ${at}'s publisher is still "${sentinel}". An issued identity belongs to a real account; with no real publisher its Package Family Name cannot be derived, and it would package under nobody's.`,
+        );
+        continue;
+      }
+      const expected = `${rec.identityName}_${publisherId(pi.publisher)}`;
+      if (rec.packageFamilyName !== expected) {
+        problems.push(
+          `${where}.packageFamilyName is ${JSON.stringify(rec.packageFamilyName)}, but identityName ${JSON.stringify(rec.identityName)} + ${at}.publisher ${JSON.stringify(pi.publisher)} derive ${JSON.stringify(expected)} (publisher id "${publisherId(pi.publisher)}" against "${String(rec.packageFamilyName).split('_').pop()}"). One of the three was transcribed wrong — most often the publisher, which is compared nowhere else against anything but its own copy — and an MSIX packaged under the wrong publisher submits under an identity we do not own.`,
+        );
+        continue;
+      }
+      identitiesConfigured++;
     }
-    if (onSentinel.length > 0) {
-      problems.push(
-        `${at} is HALF configured: ${onSentinel.map((f) => `\`${f}\``).join(', ')} still read "${sentinel}" while ${PFN_INPUTS.filter((f) => !onSentinel.includes(f)).map((f) => `\`${f}\``).join(', ')} carry real values. A partially-filled identity packages and submits cleanly under a name that is part real and part placeholder.`,
-      );
-      continue;
-    }
-    if (typeof pfn !== 'string' || pfn.trim() === '') {
-      problems.push(
-        `${at} is configured but declares no \`packageFamilyName\`. It is REQUIRED once the identity is real: it is the one value Partner Center prints that is DERIVED from the publisher, so without it a publisher mistyped identically in ${REGISTER} and the pubspec passes every guard. Copy it from Partner Center → Product → Product identity.`,
-      );
-      continue;
-    }
-    const expected = `${pi.identityName}_${publisherId(pi.publisher)}`;
-    if (pfn !== expected) {
-      problems.push(
-        `${at}.packageFamilyName is ${JSON.stringify(pfn)}, but identityName ${JSON.stringify(pi.identityName)} + publisher ${JSON.stringify(pi.publisher)} derive ${JSON.stringify(expected)} (publisher id "${publisherId(pi.publisher)}" against "${String(pfn).split('_').pop()}"). One of the three was transcribed wrong — most often the publisher, which is compared nowhere else against anything but its own copy — and an MSIX packaged under the wrong publisher submits under an identity we do not own.`,
-      );
-      continue;
-    }
-    identitiesConfigured++;
   }
   // COVERAGE. The windows-store row declares one today; a real tree with none
   // means the block was deleted or the walk stopped reaching it. Real repo only,
-  // for the reason §6d gives.
+  // for the reason §6d gives. The same for the records: every app declares one
+  // since B4a-2, so zero read on the real tree means the walk reached none.
   if (scanningRealRepo && identities === 0) {
     coverageLost([
       `no channel in ${REGISTER} declares a \`packageIdentity\` object.`,
@@ -2894,11 +2961,21 @@ let releaseCensus = { workflows: [], domain: null };
       'channel was retired, retire this check in the same change.',
     ]);
   }
+  if (scanningRealRepo && identities > 0 && recordsRead === 0 && problems.length === problemsBefore6e) {
+    coverageLost([
+      `${appIds.length} apps/*/app.yaml read and NOT ONE declares stores.${WINDOWS_STORE}.`,
+      'The Package Family Name recomputation then has no subject, which reads exactly like every PFN',
+      'being right. Every app declares a record since B4a-2 (the brick writes one on the sentinel).',
+    ]);
+  }
   // Only a clean pass prints: a count of "configured" beside a FAIL for the same
-  // row would read as two answers. Every identity is either configured (and its
-  // PFN recomputed), pending (every field on the sentinel, no PFN), or FAILED above.
+  // record would read as two answers. Every record is either configured (and its
+  // PFN recomputed), pending (both fields on the sentinel), or FAILED above.
   if (identities > 0 && problems.length === problemsBefore6e) {
-    ok(`${identities} MSIX package identit${identities === 1 ? 'y' : 'ies'}: ${identitiesConfigured} configured with its Package Family Name recomputed from the publisher, ${identitiesPending} not yet configured`);
+    ok(
+      `${identities} MSIX package identit${identities === 1 ? 'y' : 'ies'} (account on the channel row), ${recordsRead} app record(s) (apps/*/app.yaml stores.${WINDOWS_STORE}): ` +
+        `${identitiesConfigured} configured with its Package Family Name recomputed from the publisher, ${identitiesPending} not yet configured`,
+    );
   }
 }
 
@@ -3272,6 +3349,181 @@ for (const name of nonSigningSecrets.keys()) {
 if (observedSecrets.size > 0) {
   ok(
     `${observedSecrets.size} secret(s) named across ${workflowFiles.length} workflow(s), all declared; ${signingSecrets.size} signing, ${signingSecretsNamedByALane.length} of those named by a lane [9]R-3 limb 2`,
+  );
+}
+
+// ── 8c. a publishing credential is read only where its row says it lives ────
+//
+// 🔴 O-STORE-SECRETS-REACH-THE-DRY-RUN. Section 8 reads every `${{ secrets.X }}`
+// per FILE and asks one question: is the name declared? It holds no job context,
+// so it could not see that submit-windows-store.yml handed MS_STORE_CLIENT_SECRET
+// to its `dry-run` job, a job with no `environment:`, while the owner-approval
+// pause (ADR 031 class A) sits on the `submit` job alone. The same shape held for
+// SNAPCRAFT_STORE_CREDENTIALS in submit-snap.yml. A rehearsal that carries the
+// credential is one `run:` edit away from a submission nobody approved. 19b252af's
+// submit-windows-store.yml is the recorded instance, and this limb exits 1 on it.
+//
+// WHY A DECLARED SCOPE, NOT A SUFFIX LINT. The closes asks for a lint refusing a
+// `*_SECRET` or `*_CREDENTIALS` reference in a job without an environment. Taken
+// alone that fails in both directions: it goes red on AMO_JWT_SECRET, which the
+// extension keepalive jobs read at repository level by EXT-3's ruling
+// (design-ext-3.md: "Secrets stay at repository level"), and it is blind to
+// PLAY_SERVICE_ACCOUNT_JSON, APP_STORE_CONNECT_PRIVATE_KEY and
+// CWS_SERVICE_ACCOUNT_JSON, publishing credentials whose names carry no suffix.
+// The register already classifies every secret, so the scope goes on the row:
+//   · `environment: "<env>"` — the credential lives in that GitHub environment,
+//     and a job reading it must declare `environment: <env>`;
+//   · `environment: null` + `repositoryWhy` (20+ characters, §8's own floor) —
+//     it lives at repository level, and the sentence names the env-less job that
+//     needs it, so the choice is visible and reviewable rather than a default.
+//
+// The rules:
+//   (a) a secret whose row says `environment: "<env>"`, read in a job whose
+//       `environment:` is not `<env>`, FAILS. A reference outside every job (a
+//       workflow-level `env:`) reaches every job and is graded as env-less.
+//   (b) a `publishing-credential` row with no `environment` key FAILS, as does a
+//       scope that is neither a name nor null, a null with no `repositoryWhy`,
+//       and a `repositoryWhy` on a row that is scoped to an environment (a reason
+//       for a scope the row does not have reads as live and justifies nothing).
+//   (c) THE CLOSES' FLOOR: a `secrets.<NAME>` matching `_SECRET$|_CREDENTIALS$`,
+//       read in a job with no `environment:`, whose row does not declare
+//       `environment: null` with a `repositoryWhy`, FAILS — whatever its kind,
+//       and whether or not it is declared at all.
+//   (d) COVERAGE LOST when the job reader places zero jobs, or when a secret
+//       scoped to an environment is read nowhere: a scope nobody reads is a
+//       declaration with no subject, and every (a) verdict on it is vacuous.
+//       ⚠️ The zero-jobs half is a BACKSTOP today, stated rather than implied:
+//       measured 2026-09-25 on a copy of the tree with every `jobs:` key made
+//       unreadable, the grader-is-run walk above exits 2 first ("ci.yml has no
+//       job `ci-gate`"). It stays so that reordering or deleting that limb
+//       cannot leave this one grading nothing.
+//
+// ⚠️ WHAT THIS DOES NOT CHECK: where GitHub actually STORES the value. A row that
+// says `store-publish` while the repository-level copy still exists passes here;
+// deleting that copy is an owner step, verified by listing secret NAMES
+// (`gh secret list`, `gh secret list --env store-publish`), never by this guard.
+const SCOPE_SUFFIX = /_SECRET$|_CREDENTIALS$/;
+const scopeWhyOk = (e) => typeof e?.repositoryWhy === 'string' && e.repositoryWhy.trim().length >= 20;
+const scopedToEnvironment = new Map(); // name -> environment
+let scopeRows = 0;
+let repositoryScoped = 0;
+for (const [name, e] of nonSigningSecrets) {
+  const declares = Object.hasOwn(e, 'environment');
+  if (declares) scopeRows += 1;
+  if (!declares) {
+    if (e.kind === 'publishing-credential') {
+      problems.push(
+        `8c rule (b): \`ciSecretRegister.nonSigning\` entry "${name}" is a publishing-credential and declares no \`environment\`. Every publishing credential says where it lives: a GitHub environment name (every job reading it must be bound to that environment), or null with a \`repositoryWhy\` naming the env-less job that needs it. Without the key nothing can say whether a rehearsal is allowed to hold it.`,
+      );
+    }
+    continue;
+  }
+  const env = e.environment;
+  if (env === null) {
+    repositoryScoped += 1;
+    if (!scopeWhyOk(e)) {
+      problems.push(
+        `8c rule (b): \`ciSecretRegister.nonSigning\` entry "${name}" declares \`environment: null\` with no \`repositoryWhy\` (a string of at least 20 characters). Repository level is the scope every job can read; choosing it is a decision, and the sentence naming the env-less job that needs it is what makes it one.`,
+      );
+    }
+  } else if (typeof env === 'string' && env.trim() !== '') {
+    scopedToEnvironment.set(name, env.trim());
+    if (Object.hasOwn(e, 'repositoryWhy')) {
+      problems.push(
+        `8c rule (b): \`ciSecretRegister.nonSigning\` entry "${name}" is scoped to environment "${env.trim()}" and still carries a \`repositoryWhy\`. A reason for a repository-level scope the row no longer has reads as a live justification; delete it with the move.`,
+      );
+    }
+  } else {
+    problems.push(
+      `8c rule (b): \`ciSecretRegister.nonSigning\` entry "${name}" declares \`environment: ${JSON.stringify(env)}\`. A scope is a GitHub environment name or null; anything else grades every job against nothing.`,
+    );
+  }
+}
+
+/** Every `${{ secrets.X }}` in `lines` ({n, text}, comment-blanked), with the
+ *  line it starts on. The same expression-then-name extraction §8 applies to a
+ *  whole file, applied here to one job's lines at a time. */
+const secretRefsIn = (lines) => {
+  const refs = [];
+  const starts = [];
+  let offset = 0;
+  for (const l of lines) {
+    starts.push([offset, l.n]);
+    offset += l.text.length + 1;
+  }
+  const lineAtOffset = (at) => {
+    let n = starts[0]?.[1] ?? 0;
+    for (const [o, ln] of starts) {
+      if (o > at) break;
+      n = ln;
+    }
+    return n;
+  };
+  const text = lines.map((l) => l.text).join('\n');
+  for (const expr of text.matchAll(/\$\{\{([\s\S]*?)\}\}/g)) {
+    for (const m of expr[1].matchAll(/\bsecrets\.([A-Za-z_][A-Za-z0-9_]*)/g)) {
+      refs.push({ name: m[1], n: lineAtOffset(expr.index + 3 + m.index) });
+    }
+  }
+  return refs;
+};
+
+const scopeWorkflows = parseAllWorkflows(ROOT);
+const scopeJobCount = scopeWorkflows.reduce((s, wf) => s + wf.jobs.size, 0);
+if (scopeJobCount === 0) {
+  coverageLost([
+    `8c rule (d): workflow-scan read ${scopeWorkflows.length} workflow(s) under ${WORKFLOW_DIR} and placed ZERO jobs in them.`,
+    'Every secret reference would then sit outside every job, and "is this credential read only inside its',
+    'environment" would be asked of no job at all. The job reader has stopped reaching the tree.',
+  ]);
+}
+/** One graded reference: which file and line, which job, and the job's environment. */
+const scopeRefs = [];
+for (const wf of scopeWorkflows) {
+  const inAJob = new Set();
+  for (const job of wf.jobs.values()) {
+    const env = jobEnvironment(job);
+    for (const l of job.lines) inAJob.add(l.n);
+    for (const r of secretRefsIn(job.lines)) scopeRefs.push({ ...r, rel: wf.rel, job: job.name, env });
+  }
+  // A workflow-level `env:` (above or below `jobs:`) reaches every job, and an
+  // environment secret never resolves there: graded as a job with no environment.
+  const outside = wf.lines.filter((l) => !inAJob.has(l.n));
+  for (const r of secretRefsIn(outside)) scopeRefs.push({ ...r, rel: wf.rel, job: '(workflow level)', env: null });
+}
+const scopeAt = (r) => `${r.rel}:${r.n} (job "${r.job}", ${r.env === null ? 'no environment' : `environment "${r.env.name}"`})`;
+
+for (const r of scopeRefs) {
+  const want = scopedToEnvironment.get(r.name);
+  if (want !== undefined) {
+    if (r.env === null || r.env.name !== want) {
+      problems.push(
+        `8c rule (a): ${scopeAt(r)} reads \`secrets.${r.name}\`, which \`ciSecretRegister.nonSigning\` scopes to environment "${want}". Only a job bound to that environment may read it: a job outside it runs with no owner-approval pause (ADR 031 class A), so a rehearsal holding the credential is one \`run:\` edit away from an unapproved submission. Move the read into the ${want}-bound job, or — if this job genuinely needs it — change the row's scope and say why.`,
+      );
+    }
+    continue;
+  }
+  if (r.env !== null || !SCOPE_SUFFIX.test(r.name)) continue;
+  const row = nonSigningSecrets.get(r.name);
+  if (row && row.environment === null && scopeWhyOk(row)) continue;
+  problems.push(
+    `8c rule (c): ${scopeAt(r)} reads \`secrets.${r.name}\`, a *_SECRET / *_CREDENTIALS name, in a job with no \`environment:\`, and ${row ? 'its `ciSecretRegister.nonSigning` row does not declare `environment: null` with a `repositoryWhy`' : 'no `ciSecretRegister.nonSigning` row declares its scope'}. A secret-shaped name outside every environment is readable by any job with no approval pause; that is allowed only when the register says so, with the reason. Bind the job to the credential's environment, or declare the row \`environment: null\` with a \`repositoryWhy\` naming this job.`,
+  );
+}
+
+for (const [name, env] of scopedToEnvironment) {
+  if (scopeRefs.some((r) => r.name === name)) continue;
+  coverageLost([
+    `8c rule (d): \`ciSecretRegister.nonSigning\` scopes "${name}" to environment "${env}", and no job in any of the ${scopeWorkflows.length} workflow(s) scanned reads it.`,
+    'Rule (a) would then hold that credential to its environment over zero references and report clean.',
+    'A scope nobody reads is a declaration with no subject: move the read back, or drop the row with its lane.',
+  ]);
+}
+
+if (scopeRows > 0 || scopedToEnvironment.size > 0) {
+  const inEnv = scopeRefs.filter((r) => scopedToEnvironment.has(r.name)).length;
+  ok(
+    `${scopeRows} \`nonSigning\` row(s) declare a scope — ${scopedToEnvironment.size} bound to an environment (${[...scopedToEnvironment].map(([n, e]) => `${n} → ${e}`).join(', ') || 'none'}), ${repositoryScoped} at repository level with a reason; ${scopeRefs.length} secret reference(s) across ${scopeJobCount} job(s) graded, ${inEnv} of them environment-bound reads [8c]`,
   );
 }
 

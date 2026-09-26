@@ -33,6 +33,10 @@
 // not replace-only, because `flutter create` writes neither; see
 // PLIST_KEY_TARGETS below (O-APPLE-PLIST-KEYS-UNRENDERED).
 //
+// and, into the pubspec's `msix_config`, the MSIX `identity_name` — from the
+// app's OWN record, `stores.windows-store.identityName`, never from the channel
+// row (O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1)); see MSIX_IDENTITY_TARGET below.
+//
 // ⛔ THE SIXTH OS-LEVEL LABEL — the .desktop `Name=` — IS NOT WRITTEN HERE, and
 // that is not an omission. `tooling/store/render-linux-icons.mjs` derives that
 // whole file, all nine lines of it, and assert-launcher-icons.mjs limb 7
@@ -252,6 +256,37 @@ export const ICON_LABEL_TARGETS = [
     encode: xmlText,
   },
 ];
+
+/**
+ * ⏱ 2026-09-25 — O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1). The MSIX
+ * Package/Identity/Name an app packages, rendered from ITS OWN record,
+ * `stores.windows-store.identityName` in apps/<id>/app.yaml. It used to be
+ * copied from the ONE identity on the windows-store channel row, by the brick
+ * at stamp time, so a second app packaged the first app's identity and every
+ * guard agreed with it.
+ *
+ * The same surgical rule as ICON_LABEL_TARGETS, with the span BOUNDED BY THE
+ * BLOCK: the lines between `msix_config:` and `identity_name:` must all be
+ * indented, blank or comments, so a key of the same name under a later
+ * top-level block is never the one rewritten (tooling/ci/read-identity.mjs
+ * readMsixIdentityName records paying for that once). A pubspec with no
+ * `msix_config:` is an app not packaged for the Microsoft Store and is skipped;
+ * the brick appends the block AFTER its render, on the same sentinel the record
+ * carries.
+ *
+ * A line of the span is `[ \t#]` and the rest of it, or a bare `\r`, or
+ * nothing, then its `\n`. It used to be `(?:[ \t#][^\n]*)?\r?\n`, where
+ * `[^\n]*` and `\r?` could each take an indented CRLF line's `\r`, so n such
+ * lines with no identity_name after them backtracked 2^n ways (CodeQL
+ * js/redos). The text matched and both groups are unchanged.
+ */
+export const MSIX_IDENTITY_TARGET = {
+  field: 'msix_config.identity_name (Package/Identity/@Name)',
+  in: 'pubspec.yaml',
+  applies: /^msix_config:/m,
+  re: /(^msix_config:[^\n]*\n(?:(?:[ \t#][^\n]*|\r)?\n)*? {2}identity_name: )[^\r\n]*(\r?)$/m,
+  encode: yamlScalar,
+};
 
 /** The Apple category UTI a portfolio category word maps to, through the
  *  vocabulary's APPLE_CATEGORY_UTI. An unmapped word is an authoring error
@@ -641,6 +676,33 @@ export function plan(root) {
   }
   if (labelApps > 0 && labelFields === 0) {
     lost.push(`${labelApps} declaration(s) carry a \`shortName\` and zero icon-label fields were rendered from any of them.`);
+  }
+
+  // ── the MSIX identity name (O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1)) ───────
+  // Only for a declaration that carries the record; the schema has already
+  // required both of its fields. A pubspec that is not on disk, or carries no
+  // `msix_config:`, is an app not packaged for the Microsoft Store and is
+  // skipped. A block that no longer carries `identity_name:` is COVERAGE LOST:
+  // the renderer has lost a field it owns, and `msix` would package whatever the
+  // block says instead.
+  {
+    const t = MSIX_IDENTITY_TARGET;
+    for (const { id, doc } of declarations) {
+      const record = doc?.stores?.['windows-store'];
+      if (!record || typeof record.identityName !== 'string') continue;
+      const rel = `${APPS_DIR}/${id}/${t.in}`;
+      const current = files.get(rel) ?? read(root, rel);
+      if (current === null || !t.applies.test(current)) continue;
+      if (!t.re.test(current)) {
+        lost.push(
+          `${rel} carries an \`msix_config:\` block and no ${t.field} this renderer can find. ${APPS_DIR}/${id}/app.yaml ` +
+            'declares stores.windows-store, so this block packages the app for the Microsoft Store, and a rendering that skipped ' +
+            "it would leave the packaged identity to whatever the file happens to say. Restore `  identity_name:` inside the block.",
+        );
+        continue;
+      }
+      files.set(rel, current.replace(t.re, (_m, pre, post) => `${pre}${t.encode(record.identityName)}${post}`));
+    }
   }
 
   // ── the two Apple Info.plist keys (O-APPLE-PLIST-KEYS-UNRENDERED) ──────────

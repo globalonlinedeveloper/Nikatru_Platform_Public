@@ -71,7 +71,7 @@
     {
       "description": [
         "Patch, pin and digest updates automerge, gated on ci-gate. automergeType is",
-        "the DEFAULT pr, never branch: ci.yml now runs on push to main only, so a",
+        "the DEFAULT pr, never branch: ci.yml runs on push to main and on pull_request, so a",
         "Renovate branch carries no status check of its own and a branch automerge",
         "would be merging on the absence of a red rather than the presence of a green.",
         "Majors and minors keep automerge: false from the top level."

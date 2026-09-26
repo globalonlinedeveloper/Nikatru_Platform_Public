@@ -768,7 +768,7 @@ describe('assert-release-provenance — a --submit job is gated on an environmen
     // held `protection_rules` without `/environments/`. A script reading BRANCH
     // protection has the words and none of the meaning — the environment the
     // store upload actually runs in is never fetched, so its emptiness — the
-    // fail-open state measured on this repo, docs/ci/submit-play.md:51-55
+    // fail-open state measured on this repo, docs/ci/submit-play.md §File header
     // (that measurement moved out of the workflow with its prose on 2026-09-06)
     // — is never seen.
     const { code, out } = run(tree({ submitScript: SUBMIT_SCRIPT_WRONG_ENDPOINT }));
@@ -991,7 +991,7 @@ describe('assert-release-provenance — a --submit job is gated on an environmen
     // live half. `GET /repos/{owner}/{repo}/environments` — no trailing segment
     // — enumerates WHICH environments exist. It never fetches one, so it never
     // sees the empty `protection_rules` that is the fail-open state this repo
-    // measured on itself (docs/ci/submit-play.md:51-55, where that prose moved
+    // measured on itself (docs/ci/submit-play.md §File header, where that prose moved
     // on 2026-09-06). Drop the
     // trailing slash and that call buys the credit.
     const submitScript =

@@ -32,9 +32,15 @@
 // given. "Did my scan still reach the tree" belongs to its callers.
 // It is FLAT in tooling/ci because assert-guard-coverage.mjs treats any .mjs
 // below tooling/ci as a guard that has escaped its scan.
+//
+// ⏱ 2026-09-25 — `windowsIdentityOf` joins the readers (O-SECOND-APP-SIGNS-AS-
+// THE-FIRST limb (1)). It answers a different question from the four above:
+// not "what does this app PACKAGE" but "what did Partner Center ISSUE to this
+// app", which each app now declares in its own app.yaml `stores.windows-store`.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { parseYaml } from '../app-yaml/yaml.mjs';
 
 const found = (value) => ({ value, missing: null, lost: null });
 const missing = (reason) => ({ value: null, missing: reason, lost: null });
@@ -143,4 +149,59 @@ export function resolveIdentity(root, appSlug, decl) {
   const abs = join(root, rel);
   if (!existsSync(abs)) return { value: null, missing: null, lost: null, absent: rel };
   return { ...reader(readFileSync(abs, 'utf8'), rel), rel };
+}
+
+/** The store channel whose identity each app declares in its own app.yaml, and
+ *  the two fields of that record (tooling/app-yaml/schema/app.schema.json
+ *  `stores.windows-store`, which requires both). */
+export const WINDOWS_STORE = 'windows-store';
+export const WINDOWS_RECORD_FIELDS = Object.freeze(['identityName', 'packageFamilyName']);
+
+/**
+ * Windows MSIX: the identity Partner Center ISSUED to one app, read from that
+ * app's own declaration, `apps/<appId>/app.yaml` → `stores.windows-store`.
+ *
+ * O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1). The identity used to be one value on
+ * the windows-store channel row, and the app brick copied that row into every
+ * app it stamped, so app #2 would package and submit as app #1. Every reader of
+ * an app's Windows identity reads it through here, so they all ask the app they
+ * are grading and none of them asks the channel.
+ *
+ * The sentinel belongs to the channel row (`packageIdentity.notYetConfiguredSentinel`),
+ * so telling "not yet issued" from "issued" is the caller's job. The answers:
+ *   { value: { identityName, packageFamilyName } } — a complete record, real or sentinel;
+ *   { missing: reason } — the declaration exists and its record is a FAULT: it does
+ *                         not parse, is not a mapping, or has a hole;
+ *   { undeclared: rel } — the declaration exists and declares no record;
+ *   { absent: rel }     — there is no apps/<appId>/app.yaml at all.
+ * Every answer carries `rel`, the declaration's path.
+ */
+export function windowsIdentityOf(root, appId) {
+  const rel = `apps/${appId}/app.yaml`;
+  const none = { value: null, missing: null, lost: null, rel };
+  const abs = join(root, rel);
+  if (!existsSync(abs)) return { ...none, absent: rel };
+  let doc;
+  try {
+    doc = parseYaml(readFileSync(abs, 'utf8'));
+  } catch (e) {
+    return { ...missing(`${rel} does not parse (${e.message}), so app "${appId}"'s Windows identity cannot be read.`), rel };
+  }
+  const stores = doc !== null && typeof doc === 'object' ? doc.stores : undefined;
+  const rec = stores !== null && typeof stores === 'object' ? stores[WINDOWS_STORE] : undefined;
+  if (rec === undefined || rec === null) return { ...none, undeclared: rel };
+  if (typeof rec !== 'object' || Array.isArray(rec)) {
+    return { ...missing(`${rel} stores.${WINDOWS_STORE} is ${JSON.stringify(rec)}, not a record of ${WINDOWS_RECORD_FIELDS.join(' and ')}.`), rel };
+  }
+  const holes = WINDOWS_RECORD_FIELDS.filter((f) => typeof rec[f] !== 'string' || rec[f].trim() === '');
+  if (holes.length > 0) {
+    return {
+      ...missing(
+        `${rel} stores.${WINDOWS_STORE}.${holes.join(', .')} missing or empty — a hole, not a placeholder. ` +
+          "An app with no Partner Center product yet writes the channel row's notYetConfiguredSentinel in both fields.",
+      ),
+      rel,
+    };
+  }
+  return { ...found({ identityName: rec.identityName, packageFamilyName: rec.packageFamilyName }), rel };
 }

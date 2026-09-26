@@ -188,7 +188,7 @@ const CREDENTIAL_ENV = 'SNAPCRAFT_STORE_CREDENTIALS';
  *  document that carries a different spelling of it. `--acls` and `--expires` are
  *  both documented flags of `snapcraft export-login`. */
 const EXPORT_LOGIN_STEP =
-  'snapcraft export-login --snaps <snap-name> --acls package_push,package_release --expires <YYYY-MM-DDTHH:MM:SSZ> credentials.txt  → put the file contents in the SNAPCRAFT_STORE_CREDENTIALS repository secret and the same date in SNAPCRAFT_STORE_CREDENTIALS_EXPIRES (Private/runbooks/store-submission-snap.md)';
+  'snapcraft export-login --snaps <snap-name> --acls package_push,package_release --expires <YYYY-MM-DDTHH:MM:SSZ> credentials.txt  → put the file contents in the SNAPCRAFT_STORE_CREDENTIALS secret of the store-publish ENVIRONMENT (GitHub → Settings → Environments → store-publish) and the same date in the SNAPCRAFT_STORE_CREDENTIALS_EXPIRES repository secret (Private/runbooks/store-submission-snap.md)';
 const RECIPE_GUARD = 'assert-snapcraft-generable.mjs';
 const PACK_VERB = 'snapcraft pack';
 
@@ -747,8 +747,23 @@ if (recipe) {
 // `whoami` as a liveness proof and does NOT parse it. Issue it with
 // `--snaps <name> --channels <non-stable> --expires <date>`; that is a runbook
 // instruction, not something this file can enforce.
-const credentialPresent = (process.env[CREDENTIAL_ENV] ?? '').trim() !== '';
-if (credentialPresent) {
+//
+// ⏱ 2026-09-25 — O-STORE-SECRETS-REACH-THE-DRY-RUN. When the credential's
+// `ciSecretRegister.nonSigning` row scopes it to a GitHub environment, only a job
+// bound to that environment can read it, and the dry-run job has none. The dry run
+// then does not look for it (an absence it cannot see is not a gap it can report);
+// it says where the credential IS checked — the submit job's first step, and the
+// --submit path, which still requires it — and grades the expiry DATE alone, the
+// one input it still receives. A register with no such row (a test fixture) keeps
+// the credential checked here, as before.
+const credentialScope = (Array.isArray(register.ciSecretRegister?.nonSigning) ? register.ciSecretRegister.nonSigning : []).find(
+  (e) => e?.name === CREDENTIAL_ENV && typeof e?.environment === 'string' && e.environment.trim() !== '',
+)?.environment.trim() ?? null;
+const credentialReadHere = SUBMIT || credentialScope === null;
+const credentialPresent = credentialReadHere && (process.env[CREDENTIAL_ENV] ?? '').trim() !== '';
+if (!credentialReadHere) {
+  ok(`credential: checked in the environment-bound submit job — ${CREDENTIAL_ENV} lives in the "${credentialScope}" environment, which this dry run cannot see`);
+} else if (credentialPresent) {
   ok(`credentials — ${CREDENTIAL_ENV} present (value never read or printed)`);
 } else {
   const line = `credential: absent — CREDENTIALS NOT CONFIGURED. ${CREDENTIAL_ENV} is the exported store credential \`snapcraft\` reads for a non-interactive upload, and it cannot exist before OWNER_QUEUE A-6. owner step: ${EXPORT_LOGIN_STEP}`;
@@ -778,7 +793,14 @@ if (credentialPresent) {
 // "unknown" must never read as "fine".
 const EXPIRY_ENV = 'SNAPCRAFT_STORE_CREDENTIALS_EXPIRES';
 const EXPIRY_FLOOR_DAYS = 30;
-if (credentialPresent) {
+const expiryDeclared = (process.env[EXPIRY_ENV] ?? '').trim() !== '';
+if (!credentialReadHere && !expiryDeclared) {
+  prints.push(
+    `credential expiry: unknown to this dry run — ${EXPIRY_ENV} is absent, and ${CREDENTIAL_ENV} itself is readable only in the job bound to the "${credentialScope}" environment, where a credential with no declared expiry FAILS the upload. ` +
+      `Record the date you passed to --expires beside it. owner step: ${EXPORT_LOGIN_STEP}`,
+  );
+}
+if (credentialPresent || (!credentialReadHere && expiryDeclared)) {
   const raw = (process.env[EXPIRY_ENV] ?? '').trim();
   const parsed = raw === '' ? null : new Date(raw);
   if (raw === '') {
@@ -940,7 +962,7 @@ let failure = null;
     failure = [
       ...r.failed,
       `     Nothing was uploaded. Re-issue the credential with \`snapcraft export-login\` and reinstall it as the`,
-      `     ${CREDENTIAL_ENV} repository secret (${PRIMARY_SOURCES.exportLogin}).`,
+      `     ${CREDENTIAL_ENV} secret of the "${PUBLISH_ENVIRONMENT}" environment (${PRIMARY_SOURCES.exportLogin}).`,
     ];
   } else {
     ok('credential accepted by the Snap Store (`snapcraft whoami` exited 0; its output was not parsed)');

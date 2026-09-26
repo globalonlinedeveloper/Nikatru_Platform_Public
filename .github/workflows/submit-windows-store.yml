@@ -141,11 +141,12 @@ jobs:
       - name: The MSIX carries the identity the register declares
         shell: bash
         run: node tooling/ci/assert-artifact-signed-msix.mjs --app subscriptiontracker apps/subscriptiontracker/build/windows/msix/subscriptiontracker.msix
+      # why: no MS_STORE_CLIENT_SECRET. It lives in the store-publish environment and this job has none;
+      # the submit job checks it straight after its ref check (O-STORE-SECRETS-REACH-THE-DRY-RUN, assert-channel-register §8c).
       - name: Dry-run the Microsoft Store submission
         env:
           MS_STORE_TENANT_ID: ${{ secrets.MS_STORE_TENANT_ID }}
           MS_STORE_CLIENT_ID: ${{ secrets.MS_STORE_CLIENT_ID }}
-          MS_STORE_CLIENT_SECRET: ${{ secrets.MS_STORE_CLIENT_SECRET }}
           MS_STORE_PRODUCT_ID: ${{ secrets.MS_STORE_PRODUCT_ID }}
           MS_STORE_SELLER_ID: ${{ secrets.MS_STORE_SELLER_ID }}
         # why: NO --allow-missing-artifact. The job builds Windows and packages the MSIX
@@ -203,6 +204,34 @@ jobs:
       - name: Refuse any ref but main
         shell: bash
         run: node tooling/ci/assert-deploy-ref.mjs --allow main
+      # why: the shape assert-green-means-ran.mjs section B counts -- the branch that
+      # discovers the secret is absent ENDS the job. A submission job that finds it
+      # cannot authenticate and then reports success is a green tick over a store that
+      # received nothing. Straight after the ref check (assert-workflow-hardening limb 10
+      # holds that one first), because MS_STORE_CLIENT_SECRET is a store-publish
+      # environment secret: this job is the only one that can see it, so no earlier run
+      # has checked it, and an absent one ends the run before a build or any upload.
+      - name: Preflight — every Microsoft Store credential must be present
+        shell: bash
+        env:
+          MS_STORE_TENANT_ID: ${{ secrets.MS_STORE_TENANT_ID }}
+          MS_STORE_CLIENT_ID: ${{ secrets.MS_STORE_CLIENT_ID }}
+          MS_STORE_CLIENT_SECRET: ${{ secrets.MS_STORE_CLIENT_SECRET }}
+          MS_STORE_PRODUCT_ID: ${{ secrets.MS_STORE_PRODUCT_ID }}
+          MS_STORE_SELLER_ID: ${{ secrets.MS_STORE_SELLER_ID }}
+        run: |
+          set -euo pipefail
+          missing=''
+          if [ -z "$MS_STORE_TENANT_ID" ];     then missing="$missing MS_STORE_TENANT_ID"; fi
+          if [ -z "$MS_STORE_CLIENT_ID" ];     then missing="$missing MS_STORE_CLIENT_ID"; fi
+          if [ -z "$MS_STORE_CLIENT_SECRET" ]; then missing="$missing MS_STORE_CLIENT_SECRET"; fi
+          if [ -z "$MS_STORE_PRODUCT_ID" ];    then missing="$missing MS_STORE_PRODUCT_ID"; fi
+          if [ -z "$MS_STORE_SELLER_ID" ];     then missing="$missing MS_STORE_SELLER_ID"; fi
+          if [ -n "$missing" ]; then
+            echo "::error title=Microsoft Store submission cannot run::these secrets are empty in this store-publish job:$missing. MS_STORE_CLIENT_SECRET is a store-publish ENVIRONMENT secret (tooling/channel-register.json scopes it there) and the four ids are repository secrets. OWNER STEP for the client secret: GitHub -> Settings -> Environments -> store-publish -> Environment secrets -> add MS_STORE_CLIENT_SECRET. The values come from an Entra application associated with the Partner Center account (Private/runbooks/store-submission-windows.md). This is a FAILED submission, not a skipped one."
+            exit 1
+          fi
+          echo "all five MS_STORE_* secrets present — the submission may proceed."
       - name: A real submission must name the listing it will be recorded against
         shell: bash
         env:
@@ -228,31 +257,6 @@ jobs:
               exit 1
               ;;
           esac
-      # why: the shape assert-green-means-ran.mjs section B counts -- the branch that
-      # discovers the secret is absent ENDS the job. A submission job that finds it
-      # cannot authenticate and then reports success is a green tick over a store that
-      # received nothing.
-      - name: Preflight — every Microsoft Store credential must be present
-        shell: bash
-        env:
-          MS_STORE_TENANT_ID: ${{ secrets.MS_STORE_TENANT_ID }}
-          MS_STORE_CLIENT_ID: ${{ secrets.MS_STORE_CLIENT_ID }}
-          MS_STORE_CLIENT_SECRET: ${{ secrets.MS_STORE_CLIENT_SECRET }}
-          MS_STORE_PRODUCT_ID: ${{ secrets.MS_STORE_PRODUCT_ID }}
-          MS_STORE_SELLER_ID: ${{ secrets.MS_STORE_SELLER_ID }}
-        run: |
-          set -euo pipefail
-          missing=''
-          if [ -z "$MS_STORE_TENANT_ID" ];     then missing="$missing MS_STORE_TENANT_ID"; fi
-          if [ -z "$MS_STORE_CLIENT_ID" ];     then missing="$missing MS_STORE_CLIENT_ID"; fi
-          if [ -z "$MS_STORE_CLIENT_SECRET" ]; then missing="$missing MS_STORE_CLIENT_SECRET"; fi
-          if [ -z "$MS_STORE_PRODUCT_ID" ];    then missing="$missing MS_STORE_PRODUCT_ID"; fi
-          if [ -z "$MS_STORE_SELLER_ID" ];     then missing="$missing MS_STORE_SELLER_ID"; fi
-          if [ -n "$missing" ]; then
-            echo "::error title=Microsoft Store submission cannot run::these repository secrets are empty:$missing. They come from an Entra application associated with the Partner Center account (Private/runbooks/store-submission-windows.md). This is a FAILED submission, not a skipped one."
-            exit 1
-          fi
-          echo "all five MS_STORE_* secrets present — the submission may proceed."
       # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. A lane green over a name the owner has not HELD
       # or proven free submits one nobody ruled on; limb 3 of assert-publish-steps-guarded.mjs.
       - name: Name clearance holds for windows-store (owner HELD or PROVEN-FREE)
