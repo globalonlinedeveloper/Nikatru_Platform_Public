@@ -401,11 +401,27 @@ export function deployLaneInputs(root) {
 
   // The unit is resolved the way assert-deploy-triggers-deploy.mjs limb 1 and
   // plan-deploy.mjs resolve it: from the environment the workflow's plan step names.
+  // ⏱ 2026-09-25 · D3a (row O-APEX-SITE-DEPLOYS-OUTSIDE-THE-PIPELINE): deploy-web.yml runs a
+  // SECOND publishing job, `site`, which plans `nikatru-site` for the apex site's own project.
+  // The projects graded here are the apps', which the MATRIX job publishes, so the lane is the
+  // job(s) planning a per-app environment (`${{ matrix.… }}`) plus every job they `needs`, and
+  // the ceiling sums those. A workflow with no such job is read whole, as before.
   const units = readUnits(root);
+  const jobText = (job) => job.lines.map((l) => l.text).join('\n');
+  const lane = new Set();
+  const addWithNeeds = (name) => {
+    if (lane.has(name) || !parsed.jobs.has(name)) return;
+    lane.add(name);
+    for (const n of parsed.jobs.get(name).needs ?? []) addWithNeeds(n);
+  };
+  for (const job of parsed.jobs.values()) {
+    if (plannedEnvironments(jobText(job)).some((e) => /\$\{\{\s*matrix\./.test(e))) addWithNeeds(job.name);
+  }
+  const laneJobs = lane.size > 0 ? [...parsed.jobs.values()].filter((j) => lane.has(j.name)) : [...parsed.jobs.values()];
   const keys =
     units === null
       ? []
-      : [...new Set(plannedEnvironments(parsed.lines.map((l) => l.text).join('\n')).map((e) => unitKeyFor(units, e)))];
+      : [...new Set(plannedEnvironments(lane.size > 0 ? laneJobs.map(jobText).join('\n') : parsed.lines.map((l) => l.text).join('\n')).map((e) => unitKeyFor(units, e)))];
   const globs = units !== null && keys.length === 1 && keys[0] !== null ? units[keys[0]] : null;
   const pathspecs = [];
   if (!Array.isArray(globs) || globs.length === 0) {
@@ -423,7 +439,7 @@ export function deployLaneInputs(root) {
 
   const t = jobTimeouts(parsed);
   for (const p of t.problems) problems.push(`${DEPLOY_WEB_REL}: ${p}`);
-  const total = Object.values(t.minutes).reduce((s, m) => s + (Number.isInteger(m) ? m : 0), 0);
+  const total = laneJobs.reduce((s, j) => s + (Number.isInteger(t.minutes[j.name]) ? t.minutes[j.name] : 0), 0);
   const ceilingMs = t.problems.length === 0 ? DEPLOY_LANE_RUNS * total * 60 * 1000 : null;
 
   return { pathspecs, ceilingMs, problems };

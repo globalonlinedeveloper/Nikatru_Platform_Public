@@ -17,6 +17,22 @@ The `/api/subscribe` Function uses two production bindings set on the Pages proj
 config): D1 `PLATFORM_DB → platform_db`, where the signup list lives in table `signups` ([ADR 087],
 2026-09-15), and KV `SIGNUPS → nikatru-signups`, which holds only the one-hour `rl:` rate-limit counter.
 
+⏱ 2026-09-25 (row O-APEX-SITE-DEPLOYS-OUTSIDE-THE-PIPELINE, D3a): the gated deploy lane now also
+publishes this directory, by Direct Upload, to a SECOND Pages project, **`nikatru-apex`**
+(`nikatru-apex.pages.dev`), from the `site` job of `.github/workflows/deploy-web.yml`. There the
+bindings come from `tooling/sites/nikatru-apex/wrangler.jsonc`, which the job writes into a staged
+copy of this directory, and the salt from the Actions secret of the same name. No wrangler config may
+sit in this directory: it is the root of the Git-connected project, which would read it as its own.
+`nikatru.com` stays on the Git-connected project `nikatru` above until the owner moves the domain.
+`tooling/ci/assert-site-bindings.mjs` reads this table against that file, the Function's `env.*`
+reads and the job's `pages secret put`:
+
+| kind | binding | target |
+|---|---|---|
+| D1 | `PLATFORM_DB` | `platform_db` |
+| KV | `SIGNUPS` | `nikatru-signups` |
+| secret | `SUBSCRIBE_RATE_LIMIT_SALT` | the HMAC key of the rate-limit counter, never in a file |
+
 > rajasekarselvam.com is a **separate** site in the same monorepo at `sites/rajasekarselvam/`
 > (Cloudflare Pages project `rajasekarselvam`).
 

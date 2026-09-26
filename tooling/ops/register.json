@@ -4678,6 +4678,28 @@
       "source": "verified"
     },
     {
+      "id": "retention.kv.nikatru-apex.SIGNUPS",
+      "kind": "retention",
+      "store": "kv:nikatru-apex:SIGNUPS",
+      "what": "🔴 THE SAME PHYSICAL NAMESPACE AS `retention.kv.nikatru-signups.rate-limit`, SEEN FROM A THIRD BINDING. ⏱ 2026-09-25 · row O-APEX-SITE-DEPLOYS-OUTSIDE-THE-PIPELINE (D3a): tooling/sites/nikatru-apex/wrangler.jsonc gives the Direct Upload Pages project `nikatru-apex` the binding `SIGNUPS` → `nikatru-signups`, so the tree walk enumerates `kv:nikatru-apex:SIGNUPS`. It is the same Pages Function writing the same `rl:` counter as on the Git-connected project `nikatru`, whose binding is set in its dashboard and seen by no walk; the rule is the anchor's, and this row points at it rather than restating a period.",
+      "rule": "ttl",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the `ttl` limb requires `mechanism.ttlSource` to appear VERBATIM in the anchor, so this row cannot claim a period the writer does not set.",
+      "response": "n/a — every key the Function writes carries expirationTtl: RATE_WINDOW_SECONDS and expires inside the window. The pre-[ADR 087] `sub:` keys are recorded ONCE, on `retention.kv.nikatru-signups.signup`, and not restated here.",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-kv",
+        "anchor": "sites/nikatru/functions/api/subscribe.js",
+        "record": "the expirationTtl on the `rl:` counter put in the anchor — the only key kind the Pages Function writes to this namespace since [ADR 087]",
+        "failingValue": "a put without expirationTtl in the anchor",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs",
+        "ttlSource": "expirationTtl: RATE_WINDOW_SECONDS"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
       "id": "retention.r2.platform.BACKUPS_R2",
       "kind": "retention",
       "store": "r2:platform:BACKUPS_R2",

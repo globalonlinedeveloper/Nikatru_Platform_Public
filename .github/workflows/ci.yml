@@ -1154,6 +1154,8 @@ jobs:
         run: git diff --exit-code -- catalog/apps-landing.json
       - name: Discovery surfaces match the registry that generated them
         run: node tooling/ci/assert-discovery-surface.mjs
+      - name: The apex site's Pages bindings agree with its README, its Functions and its deploy job
+        run: node tooling/ci/assert-site-bindings.mjs
       - name: Every inline palette copy still matches the token source
         run: node tooling/ci/assert-palette-consistent.mjs
       - name: No page claims a store channel the catalogue has not published to
@@ -1532,6 +1534,7 @@ jobs:
       GLITCHTIP_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      SUBSCRIBE_RATE_LIMIT_SALT: ${{ secrets.SUBSCRIBE_RATE_LIMIT_SALT }}
 
   deploy-workers:
     name: deploy-workers

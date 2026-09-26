@@ -360,6 +360,27 @@ describe('deployment-record — the environment resolves against the register', 
     assert.equal(resolveEnvironment(REGISTER, 'subscriptiontracker-api-canary'), null);
   });
 
+  // ── SITE ENVIRONMENTS — ⏱ 2026-09-25, D3a (row O-APEX-SITE-DEPLOYS-OUTSIDE-THE-PIPELINE) ──
+  test('`nikatru-site` resolves from `siteEnvironments` as kind site with app null, in the SHIPPING register', () => {
+    const r = resolveEnvironment(REAL_REGISTER, 'nikatru-site');
+    assert.notEqual(r, null, 'the apex site deploy must be recordable');
+    assert.equal(r.channel.id, 'nikatru-site');
+    assert.equal(r.channel.kind, 'site');
+    assert.equal(r.app, null);
+  });
+
+  test('a site environment is matched exactly, and a register without the list refuses it', () => {
+    const withSite = { ...REGISTER, siteEnvironments: [{ id: 'nikatru-site', deploymentEnvironment: 'nikatru-site' }] };
+    assert.equal(resolveEnvironment(withSite, 'nikatru-site').channel.kind, 'site');
+    assert.equal(resolveEnvironment(withSite, 'nikatru-site-preview'), null);
+    assert.equal(resolveEnvironment(REGISTER, 'nikatru-site'), null);
+  });
+
+  test('a site record takes no published-id flag: --pages-deployment-id on kind site is REFUSED', () => {
+    const r = publishedIds('site', { 'pages-deployment-id': '0123abcd-0123-4abc-8def-0123456789ab' }, {});
+    assert.match(r.refusal, /unit of kind "site", which publishes nothing rollback\.yml can re-promote/);
+  });
+
   // A service row must never satisfy the store rules: record-deployment.mjs
   // demands --listing-url for `kind === 'store'`, and readSubmissions counts
   // only those. If a service ever resolved as a store, a Worker deploy would be
@@ -1363,12 +1384,22 @@ function recorderSteps(file) {
 }
 
 describe('the deploy workflows hand the recorder the id their deploy step published', () => {
+  // ⏱ 2026-09-25 · D3a: deploy-web.yml's `site` job records `nikatru-site`, a kind `site`
+  // row, which takes NO published-id flag (record-deployment.mjs refuses one at run time).
   test('THE REAL TREE: deploy-web.yml passes the Pages deployment id, through env:', () => {
     const steps = recorderSteps('deploy-web.yml');
-    assert.equal(steps.length, 1, `deploy-web.yml records ${steps.length} time(s)`);
-    const [{ step }] = steps;
+    assert.deepEqual(steps.map((s) => s.job), ['deploy-web', 'site'], `deploy-web.yml records ${steps.length} time(s)`);
+    const { step } = steps[0];
     assert.equal(step.env.get('PAGES_DEPLOYMENT_ID')?.value, '${{ steps.deploy.outputs.pages-deployment-id }}');
     assert.match(step.run.text, /--pages-deployment-id "\$PAGES_DEPLOYMENT_ID"(\s|$)/);
+  });
+
+  test('THE REAL TREE: the `site` job records nikatru-site with no id flag, which its kind would refuse', () => {
+    const site = recorderSteps('deploy-web.yml').find((s) => s.job === 'site');
+    assert.ok(site, 'deploy-web.yml has no recording `site` job');
+    assert.match(site.step.run.text, /record-deployment\.mjs nikatru-site https:\/\/nikatru-apex\.pages\.dev\s*$/);
+    assert.doesNotMatch(site.step.run.text, /--(pages-deployment-id|worker-version-id|wrangler-output-env)\b/);
+    assert.equal(resolveEnvironment(REAL_REGISTER, 'nikatru-site')?.channel?.kind, 'site');
   });
 
   test('THE REAL TREE: each deploy-workers.yml job passes its deploy output, through env:', () => {

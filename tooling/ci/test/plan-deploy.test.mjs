@@ -15,6 +15,9 @@
 //        only services/platform/src/x.ts changed      → deploy=true for platform only
 //   RC3  the fixture fetch throws                     → exit 1
 //   plus first-ever → first, deploy=true; and a SHALLOW clone → exit 1 (fetch-depth 0).
+//   ⏱ 2026-09-25, D3a (row O-APEX-SITE-DEPLOYS-OUTSIDE-THE-PIPELINE): the `nikatru-site`
+//   unit. Only sites/nikatru/x.html changed → nikatru-site publishes and no app or
+//   Worker does; only docs/x.md changed → nikatru-site does not publish.
 //
 // Run:  timeout 600 node --single-threaded --test tooling/ci/test/plan-deploy.test.mjs
 // ─────────────────────────────────────────────────────────────────────────────
@@ -57,6 +60,7 @@ let REPO;
 let C0; // README.md only
 let C1; // + docs/x.md                  (touches no unit)
 let C2; // + services/platform/src/x.ts (touches platform only)
+let C3; // + sites/nikatru/x.html        (touches nikatru-site only)
 const NOT_IN_HISTORY = 'f'.repeat(40);
 
 before(() => {
@@ -67,6 +71,7 @@ before(() => {
   C0 = commitFile(REPO, 'README.md', 'r\n', 'c0');
   C1 = commitFile(REPO, 'docs/x.md', 'd\n', 'c1');
   C2 = commitFile(REPO, 'services/platform/src/x.ts', 'export {};\n', 'c2');
+  C3 = commitFile(REPO, 'sites/nikatru/x.html', '<!doctype html>\n', 'c3');
 });
 after(() => {
   rmSync(TMP, { recursive: true, force: true });
@@ -177,6 +182,47 @@ describe('plan-deploy — the decision table', () => {
 
   test('RC2: only services/platform/src/x.ts changed → subscriptiontracker-web does not publish', async () => {
     const r = await plan('subscriptiontracker-web', C2, ledger('subscriptiontracker-web', [{ id: 1, sha: C1, at: '2026-09-24T09:00:00Z', statuses: ['success'] }]));
+    assert.equal(r.code, 0);
+    assert.equal(r.line.decision, 'unchanged');
+    assert.equal(r.line.deploy, false);
+  });
+
+  test('RC3 (D3a): only sites/nikatru/x.html changed → nikatru-site publishes', async () => {
+    const r = await plan('nikatru-site', C3, ledger('nikatru-site', [{ id: 1, sha: C2, at: '2026-09-25T09:00:00Z', statuses: ['success'] }]));
+    assert.equal(r.code, 0);
+    assert.equal(r.line.unit, 'nikatru-site');
+    assert.equal(r.line.decision, 'changed');
+    assert.equal(r.line.deploy, true);
+    assert.deepEqual(r.line.matched, ['sites/nikatru/x.html']);
+    assert.equal(r.output, 'deploy=true\ndecision=changed\n');
+  });
+
+  test('RC3 (D3a): only docs/x.md changed → nikatru-site does not publish', async () => {
+    const r = await plan('nikatru-site', C1, ledger('nikatru-site', [{ id: 1, sha: C0, at: '2026-09-25T09:00:00Z', statuses: ['success'] }]));
+    assert.equal(r.code, 0);
+    assert.equal(r.line.unit, 'nikatru-site');
+    assert.equal(r.line.decision, 'unchanged');
+    assert.equal(r.line.deploy, false);
+    assert.deepEqual(r.line.matched, []);
+    assert.equal(r.output, 'deploy=false\ndecision=unchanged\n');
+  });
+
+  test('D3a: only services/platform/src/x.ts changed → nikatru-site does not publish', async () => {
+    const r = await plan('nikatru-site', C2, ledger('nikatru-site', [{ id: 1, sha: C1, at: '2026-09-25T09:00:00Z', statuses: ['success'] }]));
+    assert.equal(r.code, 0);
+    assert.equal(r.line.decision, 'unchanged');
+    assert.equal(r.line.deploy, false);
+  });
+
+  test('D3a: only sites/nikatru/x.html changed → subscriptiontracker-web does not publish', async () => {
+    const r = await plan('subscriptiontracker-web', C3, ledger('subscriptiontracker-web', [{ id: 1, sha: C2, at: '2026-09-25T09:00:00Z', statuses: ['success'] }]));
+    assert.equal(r.code, 0);
+    assert.equal(r.line.decision, 'unchanged');
+    assert.equal(r.line.deploy, false);
+  });
+
+  test('D3a: only sites/nikatru/x.html changed → platform does not publish', async () => {
+    const r = await plan('platform', C3, ledger('platform', [{ id: 1, sha: C2, at: '2026-09-25T09:00:00Z', statuses: ['success'] }]));
     assert.equal(r.code, 0);
     assert.equal(r.line.decision, 'unchanged');
     assert.equal(r.line.deploy, false);
@@ -339,6 +385,12 @@ describe('plan-deploy — the pure parts', () => {
     assert.equal(unitFor(units, 'subscriptiontracker-web').key, '<app>-web');
     assert.equal(unitFor(units, 'subscriptiontracker-api'), null);
     assert.equal(unitFor(units, '-web'), null);
+  });
+
+  test('unitFor: the shipping `nikatru-site` resolves to its own key, never to the `<app>-web` template', () => {
+    const units = JSON.parse(readFileSync(join(CI_DIR, 'lane-map.json'), 'utf8')).deployUnits;
+    assert.equal(unitFor(units, 'nikatru-site').key, 'nikatru-site');
+    assert.ok(unitFor(units, 'nikatru-site').globs.includes('sites/nikatru/**'));
   });
 
   test('matchUnit: a glob shape globClaims cannot decide is a refusal, not "no match"', () => {

@@ -623,10 +623,31 @@ describe('deployLaneInputs — the expected commit and the window come FROM depl
     for (const need of [':(literal)apps', ':(literal)packages', ':(literal)pubspec.lock', `:(literal)${DEPLOY_WEB_REL}`]) {
       assert.ok(lane.pathspecs.includes(need), `${need} — a web build input the lane redeploys on`);
     }
-    const sum = Object.values(jobTimeouts(parseWorkflow(REPO, DEPLOY_WEB_REL)).minutes).reduce((s, m) => s + m, 0);
+    // ⏱ 2026-09-25 · D3a: the ceiling sums the APP lane — the matrix job and the job it
+    // needs — and not the `site` job, which runs beside it for the apex site's own project.
+    const minutes = jobTimeouts(parseWorkflow(REPO, DEPLOY_WEB_REL)).minutes;
+    assert.ok(Number.isInteger(minutes.site), 'deploy-web.yml has no `site` job with a timeout');
+    const sum = minutes.prepare + minutes['deploy-web'];
     assert.ok(sum > 0);
     assert.equal(lane.ceilingMs, DEPLOY_LANE_RUNS * sum * 60 * 1000);
     assert.equal(DEPLOY_LANE_RUNS, 2, 'one run in progress ahead plus its own: the concurrency group never cancels on main');
+  });
+
+  test('D3a — a second job planning another unit beside the matrix job is not the app lane: unit and ceiling are the matrix job\'s', () => {
+    const root = join(TMP, 'lane-two-jobs');
+    mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
+    mkdirSync(join(root, ...dirname(UNITS_REL).split('/')), { recursive: true });
+    writeFileSync(
+      join(root, ...DEPLOY_WEB_REL.split('/')),
+      'on:\n  workflow_call:\njobs:\n  prepare:\n    timeout-minutes: 5\n    steps:\n      - run: echo apps\n' +
+        '  apps:\n    timeout-minutes: 35\n    needs: prepare\n    steps:\n      - run: node tooling/ci/plan-deploy.mjs ${{ matrix.app }}-web\n' +
+        '  site:\n    timeout-minutes: 20\n    steps:\n      - run: node tooling/ci/plan-deploy.mjs nikatru-site\n',
+    );
+    writeFileSync(join(root, ...UNITS_REL.split('/')), JSON.stringify({ deployUnits: { '<app>-web': ['apps/**'], 'nikatru-site': ['sites/nikatru/**'] } }));
+    const lane = deployLaneInputs(root);
+    assert.deepEqual(lane.problems, []);
+    assert.deepEqual(lane.pathspecs, [':(literal)apps']);
+    assert.equal(lane.ceilingMs, DEPLOY_LANE_RUNS * (5 + 35) * 60 * 1000);
   });
 
   /** A root holding a deploy-web.yml whose one job plans `env`, and a lane-map.json with `units`. */

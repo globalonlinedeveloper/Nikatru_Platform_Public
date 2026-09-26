@@ -1,0 +1,49 @@
+{
+  // ───────────────────────────────────────────────────────────────────────────
+  // The bindings of the Direct Upload Pages project `nikatru-apex`, which
+  // deploy-web.yml's `site` job publishes sites/nikatru to (row
+  // O-APEX-SITE-DEPLOYS-OUTSIDE-THE-PIPELINE, D3a).
+  //
+  // 🔴 NOT IN sites/nikatru, ON PURPOSE. That directory is the ROOT of the
+  // Git-connected project `nikatru`, which serves nikatru.com until the owner moves
+  // the domain (D3b). Cloudflare Pages reads a wrangler config with
+  // `pages_build_output_dir` in a project's root as that project's configuration,
+  // so a file there would reconfigure the live site. The job copies sites/nikatru
+  // into build/nikatru-apex, writes this file there with the KV id filled
+  // (`assert-site-bindings.mjs --fill-kv-id --out build/nikatru-apex`), and runs
+  // `wrangler pages deploy .` FROM that directory: the pinned wrangler (4.135.0)
+  // looks for this file and for functions/ in its working directory, not in the
+  // directory it uploads (docs/ci/deploy-web.md, job `site`).
+  //
+  // Graded by tooling/ci/assert-site-bindings.mjs against the bindings table in
+  // sites/nikatru/README.md and the `env.*` reads of sites/nikatru/functions/.
+  // JSONC, like every Worker config here: the guards that walk wrangler configs
+  // (assert-ops-register, assert-retention-coverage, assert-data-inventory) read
+  // JSONC and refuse TOML.
+  //
+  // The rate-limit salt is never written here. The job puts it on the project
+  // from the Actions secret of the same name, through stdin.
+  // ───────────────────────────────────────────────────────────────────────────
+  "name": "nikatru-apex",
+  "pages_build_output_dir": ".",
+  "compatibility_date": "2026-07-01",
+  "d1_databases": [
+    {
+      // The signup list, table `signups` ([ADR 087]). The id is platform_db's,
+      // copied from services/platform/wrangler.jsonc; the check holds the two equal.
+      "binding": "PLATFORM_DB",
+      "database_name": "platform_db",
+      "database_id": "9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      // The one-hour `rl:` rate-limit counter, namespace `nikatru-signups`. The
+      // committed id is a placeholder: the job fills it from the Actions variable
+      // NIKATRU_SIGNUPS_KV_ID into its staged copy, and refuses when that variable
+      // is not a namespace id.
+      "binding": "SIGNUPS",
+      "id": "__NIKATRU_SIGNUPS_KV_ID__"
+    }
+  ]
+}

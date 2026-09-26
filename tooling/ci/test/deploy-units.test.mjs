@@ -39,8 +39,10 @@ const ownTriggers = (text) => [
 ];
 
 describe('deployUnits is the one reading of what a deploy publishes', () => {
-  test('the units are exactly the three ledger environments', () => {
-    assert.deepEqual(Object.keys(UNITS).sort(), ['<app>-web', 'platform', 'subscriptiontracker-api']);
+  // ⏱ 2026-09-25, D3a: `nikatru-site` joins, the apex site's ledger environment
+  // (row O-APEX-SITE-DEPLOYS-OUTSIDE-THE-PIPELINE).
+  test('the units are exactly the four ledger environments', () => {
+    assert.deepEqual(Object.keys(UNITS).sort(), ['<app>-web', 'nikatru-site', 'platform', 'subscriptiontracker-api']);
   });
 
   test('neither deploy workflow carries a push path list or a dorny filter of its own', () => {
@@ -72,5 +74,20 @@ describe('deployUnits is the one reading of what a deploy publishes', () => {
     assert.equal(resolveEnvironment(register, `${slug}-web`)?.channel?.id, 'web');
     assert.equal(resolveEnvironment(register, 'subscriptiontracker-api')?.channel?.kind, 'service');
     assert.equal(resolveEnvironment(register, 'platform')?.channel?.kind, 'service');
+    assert.equal(resolveEnvironment(register, 'nikatru-site')?.channel?.kind, 'site');
+    assert.equal(resolveEnvironment(register, 'nikatru-site')?.app, null);
+  });
+
+  test('the site unit claims the site, the generator it runs and the workflow that publishes it', () => {
+    const site = UNITS['nikatru-site'];
+    assert.ok(Array.isArray(site), 'deployUnits has no nikatru-site');
+    assert.equal(globClaims('sites/nikatru/**', 'sites/nikatru/index.html'), true);
+    assert.ok(site.some((g) => globClaims(g, 'sites/nikatru/index.html')), 'a page change would not publish the site');
+    assert.ok(site.some((g) => globClaims(g, 'sites/nikatru/functions/api/subscribe.js')), 'a Function change would not publish the site');
+    assert.ok(site.some((g) => globClaims(g, 'tooling/sites/nikatru-apex/wrangler.jsonc')), 'a binding change would not publish the site');
+    assert.ok(site.some((g) => globClaims(g, 'tooling/sites/generate-discovery.mjs')), 'a generator change would not publish the site');
+    assert.ok(site.some((g) => globClaims(g, '.github/workflows/deploy-web.yml')), 'a change to the publishing workflow would not publish the site');
+    assert.ok(!site.some((g) => globClaims(g, 'apps/subscriptiontracker/lib/main.dart')), 'an app change would publish the site');
+    assert.ok(!site.some((g) => globClaims(g, 'docs/x.md')), 'a docs change would publish the site');
   });
 });

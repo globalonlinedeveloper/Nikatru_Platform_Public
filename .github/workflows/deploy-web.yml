@@ -30,6 +30,10 @@ on:
         required: true
       CLOUDFLARE_ACCOUNT_ID:
         required: true
+      # why: the `site` job puts it on the nikatru-apex Pages project through stdin; the
+      # Function's rate limit is OFF without it (sites/nikatru/functions/api/subscribe.js).
+      SUBSCRIBE_RATE_LIMIT_SALT:
+        required: true
 
 permissions:
   contents: read
@@ -373,3 +377,129 @@ jobs:
           # O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 4). Through env:, never spliced into run:.
           PAGES_DEPLOYMENT_ID: ${{ steps.deploy.outputs.pages-deployment-id }}
         run: node tooling/ci/record-deployment.mjs ${{ matrix.app }}-web ${{ steps.target.outputs.site_url }} --pages-deployment-id "$PAGES_DEPLOYMENT_ID"
+
+  # why: THE APEX SITE, BESIDE THE LIVE ONE (row O-APEX-SITE-DEPLOYS-OUTSIDE-THE-PIPELINE, D3a).
+  # sites/nikatru publishes by Direct Upload to a NEW project, nikatru-apex, proven on its
+  # pages.dev host; nikatru.com stays on the Git-connected project `nikatru` until the owner
+  # moves the domain. Its unit is deployUnits["nikatru-site"], planned like each app's.
+  site:
+    name: Deploy the apex site to Cloudflare Pages (nikatru-apex)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: production
+    permissions:
+      contents: read
+      deployments: write
+    concurrency:
+      group: deploy-web-nikatru-site
+      # why: false on main, as the app job's (assert-workflow-hardening limb 7).
+      cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          # why: the plan reads ancestry, and lastmod.mjs dates every page from git history.
+          fetch-depth: 0
+
+      - name: Refuse any ref but main
+        run: node tooling/ci/assert-deploy-ref.mjs --allow main
+
+      - name: Plan from the Deployment ledger
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node tooling/ci/plan-deploy.mjs nikatru-site
+
+      - uses: ./.github/actions/setup-node
+        if: steps.plan.outputs.deploy == 'true'
+
+      # why: the committed sitemap drifts after a merge (its lastmod is a function of git
+      # history), so the served bytes are regenerated here and graded before anything publishes.
+      - name: Regenerate the discovery surface from the registry
+        if: steps.plan.outputs.deploy == 'true'
+        run: node tooling/sites/generate-discovery.mjs
+
+      - name: Grade the bytes about to be served
+        if: steps.plan.outputs.deploy == 'true'
+        run: node tooling/ci/check-site-integrity.mjs . sites/nikatru
+
+      # why: a STAGED COPY, never sites/nikatru itself. That directory is the root of the
+      # Git-connected project serving nikatru.com, and a wrangler config there would become
+      # its configuration. version.json is written in the copy only, in the shape the app
+      # deploys serve; the smoke below joins on `sha`. build/ is gitignored.
+      - name: Stage the site and stamp version.json with this commit
+        if: steps.plan.outputs.deploy == 'true'
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          rm -rf build/nikatru-apex
+          mkdir -p build/nikatru-apex
+          cp -R sites/nikatru/. build/nikatru-apex/
+          printf '{"sha":"%s","build_number":%s}\n' "$GITHUB_SHA" "$RUN_NUMBER" > build/nikatru-apex/version.json
+          cat build/nikatru-apex/version.json
+
+      # why: the KV namespace id is the owner's, and arrives as the Actions VARIABLE
+      # NIKATRU_SIGNUPS_KV_ID. The committed tooling/sites/nikatru-apex/wrangler.jsonc holds a
+      # placeholder; it is graded, then written filled into the staged copy.
+      - name: Grade the bindings, then write the filled config into the staged copy
+        if: steps.plan.outputs.deploy == 'true'
+        env:
+          NIKATRU_SIGNUPS_KV_ID: ${{ vars.NIKATRU_SIGNUPS_KV_ID }}
+        run: node tooling/ci/assert-site-bindings.mjs --fill-kv-id --out build/nikatru-apex
+
+      - name: Ensure the nikatru-apex Pages project exists (Direct Upload, idempotent)
+        if: steps.plan.outputs.deploy == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PROJECT: nikatru-apex
+        run: |
+          set -uo pipefail
+          npm ci --ignore-scripts --prefix tooling/wrangler || { echo "::error title=Pages project::the tooling/wrangler island did not install from its lockfile."; exit 1; }
+          out="$(tooling/wrangler/node_modules/.bin/wrangler pages project create "$PROJECT" --production-branch=main 2>&1)" && code=0 || code=$?
+          printf '%s\n' "$out"
+          if [ "$code" -eq 0 ]; then echo "Created Direct Upload Pages project \"$PROJECT\"."; exit 0; fi
+          if printf '%s' "$out" | grep -qiE 'already exists|\b8000002\b'; then echo "Pages project \"$PROJECT\" already exists — nothing to create."; exit 0; fi
+          echo "::error title=Pages project::could not ensure the Direct Upload Pages project \"$PROJECT\" exists (wrangler exit ${code})."
+          exit 1
+
+      # why: the value goes through stdin and is never echoed. A Pages secret reaches the
+      # deployments made AFTER it is set, so this runs before the deploy.
+      - name: Put the rate-limit salt on the project
+        if: steps.plan.outputs.deploy == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SUBSCRIBE_RATE_LIMIT_SALT: ${{ secrets.SUBSCRIBE_RATE_LIMIT_SALT }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SUBSCRIBE_RATE_LIMIT_SALT" ]; then echo "::error title=salt::the SUBSCRIBE_RATE_LIMIT_SALT secret reached this job empty."; exit 1; fi
+          printf '%s' "$SUBSCRIBE_RATE_LIMIT_SALT" | tooling/wrangler/node_modules/.bin/wrangler pages secret put SUBSCRIBE_RATE_LIMIT_SALT --project-name nikatru-apex
+
+      # why: FROM the staged copy, deploying `.`: wrangler 4.135.0 reads functions/ and
+      # wrangler.jsonc from its working directory, never from the directory it uploads
+      # (docs/ci/deploy-web.md). Run from anywhere else, the Function and its bindings
+      # would not ship.
+      - name: Deploy the apex site to nikatru-apex
+        if: steps.plan.outputs.deploy == 'true'
+        id: deploy
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          wranglerVersion: '4.135.0'
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: build/nikatru-apex
+          command: pages deploy . --project-name=nikatru-apex --branch=main
+
+      # why: a SHA from version.json, then an EMPTY POST, which the Function refuses with 400
+      # before it touches a binding: it proves functions/ shipped, and it writes nothing.
+      - name: Smoke — nikatru-apex.pages.dev serves THIS commit, and its Function answers
+        if: steps.plan.outputs.deploy == 'true'
+        run: node tooling/sites/smoke-site-deploy.mjs --origin https://nikatru-apex.pages.dev --expect-sha ${{ github.sha }}
+
+      - name: Record the deployed SHA
+        if: always() && steps.deploy.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node tooling/ci/record-deployment.mjs nikatru-site https://nikatru-apex.pages.dev

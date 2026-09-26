@@ -38,6 +38,11 @@ export const PAGES_FUNCTIONS_DIR = 'functions';
  *  them. Lower case; matched case-insensitively against the last path segment. */
 export const ROUTER_REFUSED_EXTENSIONS = Object.freeze(['.md']);
 
+/** Wrangler config files: the apex job deploys FROM the directory it uploads, so its filled
+ *  wrangler.jsonc sits among the assets, and wrangler 4.135.0 uploads it (IGNORE_LIST has no
+ *  config name). Refused by name, at any depth. */
+export const ROUTER_REFUSED_NAMES = Object.freeze(['wrangler.json', 'wrangler.jsonc', 'wrangler.toml']);
+
 /**
  * True when the apex router refuses to let the static site serve `pathname`.
  * Percent-encoding is decoded first, so `/README%2Emd` is the same refusal as
@@ -51,7 +56,7 @@ export function refusedByRouter(pathname) {
     // matched as written
   }
   const last = p.slice(p.lastIndexOf('/') + 1).toLowerCase();
-  return ROUTER_REFUSED_EXTENSIONS.some((ext) => last.endsWith(ext));
+  return ROUTER_REFUSED_NAMES.includes(last) || ROUTER_REFUSED_EXTENSIONS.some((ext) => last.endsWith(ext));
 }
 
 /**

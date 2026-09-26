@@ -780,6 +780,7 @@
       ".github/workflows/deploy-sandbox.yml#platform",
       ".github/workflows/deploy-sandbox.yml#subscriptiontracker-api",
       ".github/workflows/deploy-web.yml#deploy-web",
+      ".github/workflows/deploy-web.yml#site",
       ".github/workflows/deploy-workers.yml#platform",
       ".github/workflows/deploy-workers.yml#subscriptiontracker-api",
       ".github/workflows/extensions.yml#store-publish",
@@ -2213,6 +2214,17 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#sites",
+      ".github/workflows/deploy-web.yml#site"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-site-bindings.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 015",
       "D-10",
@@ -2688,6 +2700,7 @@
     ],
     "invokedBy": [
       ".github/workflows/ci.yml#sites",
+      ".github/workflows/deploy-web.yml#site",
       ".github/workflows/site-drift-repair.yml#repair"
     ],
     "kind": "guard",
@@ -2819,6 +2832,7 @@
     "claims": [],
     "invokedBy": [
       ".github/workflows/deploy-web.yml#deploy-web",
+      ".github/workflows/deploy-web.yml#site",
       ".github/workflows/deploy-workers.yml#platform",
       ".github/workflows/deploy-workers.yml#subscriptiontracker-api"
     ],
@@ -2870,6 +2884,7 @@
     "invokedBy": [
       ".github/workflows/build-platforms.yml#release",
       ".github/workflows/deploy-web.yml#deploy-web",
+      ".github/workflows/deploy-web.yml#site",
       ".github/workflows/deploy-workers.yml#platform",
       ".github/workflows/deploy-workers.yml#subscriptiontracker-api",
       ".github/workflows/extensions.yml#release",
@@ -3760,6 +3775,7 @@
     ],
     "invokedBy": [
       ".github/workflows/ci.yml#app-brick",
+      ".github/workflows/deploy-web.yml#site",
       ".github/workflows/site-drift-repair.yml#repair"
     ],
     "kind": "script",
@@ -3809,6 +3825,16 @@
     ],
     "kind": "script",
     "ref": "tooling/sites/regen.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/deploy-web.yml#site"
+    ],
+    "kind": "script",
+    "ref": "tooling/sites/smoke-site-deploy.mjs",
     "references": [],
     "state": "WIRED"
   },
