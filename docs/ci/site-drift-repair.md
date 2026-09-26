@@ -227,7 +227,7 @@ Cancelling is precisely the defect ci.yml:22 was changed to stop.
 
 Least privilege at the workflow level, exactly as every other workflow in this
 tree does it. The write scopes live on the ONE job that needs them, which is
-where assert-workflow-hardening.mjs:260 says a write scope belongs.
+where assert-workflow-hardening.mjs:328 says a write scope belongs.
 
 ## job `permissions`
 
