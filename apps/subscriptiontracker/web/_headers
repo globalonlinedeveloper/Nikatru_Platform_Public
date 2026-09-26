@@ -60,6 +60,9 @@
 #     violation that no server log shows. The hosted project
 #     (`lcrkiurkvzhkonjwhpiv.supabase.co`) STAYS until Phase 6 — it is the
 #     rollback — and is removed only when it is retired.
+#   · ⏱ 2026-09-25 Phase 5: the hosted origin leaves connect-src with the switch.
+#     Rollback re-serves the pre-switch Pages deployment, whose _headers still
+#     names it, or a revert of this commit restores it.
 #
 # ⚠️ `frame-ancestors 'none'` and `X-Frame-Options: DENY` are both set: the app
 # must not be framed, including by another path on its own origin, because
@@ -69,15 +72,15 @@
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin
   Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
-  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval' 'sha256-SqMf+O735lfNTprKa7S7jIWl1q79qFSdJCsyK+SUFsM=' https://challenges.cloudflare.com; worker-src 'self' blob:; child-src 'self' blob:; frame-src 'self' https://challenges.cloudflare.com; connect-src 'self' https://lcrkiurkvzhkonjwhpiv.supabase.co https://auth-api.nikatru.com https://subscriptiontracker-api.nikatru.com https://config.nikatru.com https://platform.nikatru.com https://glitchtip.nikatru.com; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval' 'sha256-SqMf+O735lfNTprKa7S7jIWl1q79qFSdJCsyK+SUFsM=' https://challenges.cloudflare.com; worker-src 'self' blob:; child-src 'self' blob:; frame-src 'self' https://challenges.cloudflare.com; connect-src 'self' https://auth-api.nikatru.com https://subscriptiontracker-api.nikatru.com https://config.nikatru.com https://platform.nikatru.com https://glitchtip.nikatru.com; upgrade-insecure-requests
 # ⏱ 2026-09-24 — THIS POLICY IS BOOTED BEFORE IT SHIPS. The launch smoke
 # (tooling/smoke/smoke-web-artifact.mjs, in deploy-web.yml before the deploy)
 # serves the built bundle under THIS file's rules and fails on any CSP
 # violation; it then fetches the build's SUPABASE_URL, API_BASE_URL and
 # GlitchTip origins from the page, each answered by the smoke and never sent.
 # A host the build calls and the line above omits is a red deploy, not a
-# sign-in that fails for every visitor. The line names six origins: the
-# hosted Supabase project and the five first-party hosts above.
+# sign-in that fails for every visitor. The line names five origins: the
+# five first-party hosts above (the hosted Supabase project left it at Phase 5).
 # (Row O-WEB-CSP-HAND-LIST-UNSMOKED.)
 # ═══════════════════════════════════════════════════════════════════════════
 #
