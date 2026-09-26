@@ -22,6 +22,7 @@ workspace:
   - packages/billing_revenuecat
   - packages/chassis_screens
   - packages/design_system
+  - packages/external_links
   - packages/notifications
   - packages/platform_storage
   - packages/purchases

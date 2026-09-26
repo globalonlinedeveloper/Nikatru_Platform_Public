@@ -20,22 +20,22 @@
   "_rootsNote": "TWO roots since 2026-09-07 ([ADR 067] phase 2, unit app-shell). The Worker half of the template - 13 files, 917 lines every stamped backend app inherits - was outside this ledger entirely while `root` was one string, and `git ls-files -- <that one root>` could not see it to complain. assert-chassis-ledger.mjs is the authority on this list and cross-checks it; a row's `root` is optional and defaults to roots[0], which is why the 96 rows written against the single root are unchanged. ⏱ THE FIGURES IN THIS NOTE MOVED ON 2026-09-08 AND ARE CORRECTED RATHER THAN REWRITTEN: the Worker half is now 14 files and 1,021 lines, because the template gained src/lib/error-sink.ts — a stamped backend had NO crash sink at all and failed tooling/ci/assert-worker-error-sink.mjs on limbs 2, 3 and 5 at its first CI run. The guard PRINTS both figures per root on every run, which is the number to read; this sentence is prose and prose rots.",
   "totals": {
     "files": 138,
-    "lines": 19279,
+    "lines": 19324,
     "unclassified": 0,
     "unclassifiedLines": 0
   },
   "floors": {
-    "_why": "ADR 096: brick lib/ and lib/state are CEILINGS, not bands, set at their measured size with zero headroom. assert-chassis-ledger.mjs counts every git-tracked file under the Dart app root's lib/ (the .arb files included) with the same line rule as the rows, prints both totals, and exits 1 when either is over its max. A PR that grows brick lib/ raises floors.*.max in the same PR and names why in its body; a fall is banked by lowering the max. First values measured at 60b63fb9 (#931): ADR 096 recorded 6,702 / 3,046 at 24189ff3 (#930), and #931 (sign-out-everywhere) then moved lib/ by net +31 (settings_screen.dart +20, state/providers.dart +11) and lib/state by net +11, named under ADR 096 rule 4. ⏱ 2026-09-25 (O-GOOGLE-SIGN-IN-NOT-BUILT): lib.max 6733 -> 6737, lib/features/auth/sign_in_screen.dart +4 (104 -> 108) — the two arguments that hand the chassis SignInView its Google door (`showGoogleButton`, gated on caps.oauthRedirect and AuthProviders.google, and `onSignInWithGoogle`) and the two comment lines that say google stays false until the owner provisions the client. lib/state is unchanged in size (the two version constants moved in place). Raised 2026-09-25 to 6784 (+47) by O-PAYWALL-SPEAKS-ONLY-WEB-CHECKOUT, named under ADR 096 rule 4: the brick paywall_screen.dart grew 229 -> 276 for the exhaustive refusal-route switch and the rail-kind in-flight copy; lib/state is unchanged at 3057. Raised 2026-09-25 to 6824 (+40) and lib/state to 3097 (+40) by O-BRICK-ERASURE-DESTROYS-THE-IDENTITY, named under ADR 096 rule 4: the brick lib/state/providers.dart grew 2721 -> 2761 for platformRestClientProvider on the platform base URL, which account deletion and the Apple token now ride to the shared platform Worker instead of the stamped Worker.",
+    "_why": "ADR 096: brick lib/ and lib/state are CEILINGS, not bands, set at their measured size with zero headroom. assert-chassis-ledger.mjs counts every git-tracked file under the Dart app root's lib/ (the .arb files included) with the same line rule as the rows, prints both totals, and exits 1 when either is over its max. A PR that grows brick lib/ raises floors.*.max in the same PR and names why in its body; a fall is banked by lowering the max. First values measured at 60b63fb9 (#931): ADR 096 recorded 6,702 / 3,046 at 24189ff3 (#930), and #931 (sign-out-everywhere) then moved lib/ by net +31 (settings_screen.dart +20, state/providers.dart +11) and lib/state by net +11, named under ADR 096 rule 4. ⏱ 2026-09-25 (O-GOOGLE-SIGN-IN-NOT-BUILT): lib.max 6733 -> 6737, lib/features/auth/sign_in_screen.dart +4 (104 -> 108) — the two arguments that hand the chassis SignInView its Google door (`showGoogleButton`, gated on caps.oauthRedirect and AuthProviders.google, and `onSignInWithGoogle`) and the two comment lines that say google stays false until the owner provisions the client. lib/state is unchanged in size (the two version constants moved in place). Raised 2026-09-25 to 6784 (+47) by O-PAYWALL-SPEAKS-ONLY-WEB-CHECKOUT, named under ADR 096 rule 4: the brick paywall_screen.dart grew 229 -> 276 for the exhaustive refusal-route switch and the rail-kind in-flight copy; lib/state is unchanged at 3057. Raised 2026-09-25 to 6824 (+40) and lib/state to 3097 (+40) by O-BRICK-ERASURE-DESTROYS-THE-IDENTITY, named under ADR 096 rule 4: the brick lib/state/providers.dart grew 2721 -> 2761 for platformRestClientProvider on the platform base URL, which account deletion and the Apple token now ride to the shared platform Worker instead of the stamped Worker. Raised 2026-09-26 to 6863 (+39) and lib/state to 3145 (+48) by O-LINK-LAUNCHER-SEAM-UNOWNED, named under ADR 096 rule 4: the brick lib/state/providers.dart grew 2761 -> 2809 for the appended external-link section (the one ExternalLinkLauncher the brick builds over the nikatru_external_links adapter, and updateLinkLauncher for the force-update wall), while app.dart (352 -> 349), legal_consent_fields.dart (74 -> 72) and settings_screen.dart (707 -> 703) lost their direct url_launcher calls.",
     "lib": {
-      "max": 6824,
+      "max": 6863,
       "adr": "ADR 096",
-      "asOf": "2026-09-25",
+      "asOf": "2026-09-26",
       "verify": "node tooling/ci/assert-chassis-ledger.mjs"
     },
     "state": {
-      "max": 3097,
+      "max": 3145,
       "adr": "ADR 096",
-      "asOf": "2026-09-25",
+      "asOf": "2026-09-26",
       "verify": "node tooling/ci/assert-chassis-ledger.mjs"
     }
   },
@@ -84,7 +84,7 @@
     },
     {
       "path": "lib/app.dart",
-      "lines": 352,
+      "lines": 349,
       "verdict": "MOVES",
       "why": "[ADR 067] decision 2 / unit app-shell - MEASURED 2026-09-07: 570 -> 347 brick lines, 519 package lines, callSiteDelta -223. RE-MEASURED 2026-09-07 ([ADR 067] phase 2b, unit app-shell-residues), appended and not rewritten: `wc -l packages/chassis_screens/lib/shell/app_shell.dart` at the app-shell merge 5c87a753 gives 519, which is what this row records and is correct; the app-shell report's 649 for the SHELL DIRECTORY was not (519 + 133 = 652). That directory total is corrected in the report and the spine ledger, not here. This unit then added a 16-line comment correction to the same package file, so `wc -l` on it now reads 532; the BRICK count this row's `lines` field grades is untouched at 347 and `callSiteDelta` is still -223. MaterialApp.router, the clamped text scaling, the force-update gate, the consent card, the consent scrim, the offline banner and the four-state lifecycle flush all moved into `NikatruApp` and the four surfaces beside it. What stayed is the COMPOSITION ROOT and only that: the stamped `const Color(0xFF{{seed_hex}})` seed (mustache, so it cannot leave), this app's own localisation delegates, every `ref.watch`/`ref.read`, the `url_launcher` call, `recordAnalyticsConsent(`, and the three ConsumerWidget gates the shell is handed. Anchors held where they were: assert-vendor-portability:513 (`valueOrNull?.updateUrl ??`), dod.json:123/125 (AnalyticsGate) and :135/137 (darkTheme), seven screen-register rows, and 13 of the 14 stamp-properties APP_ROOT anchors. The fourteenth (`child: AnalyticsGate(`) was re-pointed to `shell: (...) => AnalyticsGate(`, the same mounting claim, with a mutation proving it.",
       "target": "packages/chassis_screens/lib/shell/app_shell.dart",
@@ -120,7 +120,7 @@
     },
     {
       "path": "lib/features/auth/legal_consent_fields.dart",
-      "lines": 74,
+      "lines": 72,
       "verdict": "MOVES",
       "why": "[ADR 067] decision 2 / [ADR 071] — MEASURED 2026-09-06: 265 -> 74 brick lines, 291 package lines, callSiteDelta -191. What stayed is the ONE thing that could not travel: url_launcher and AppConfig.termsUrl/privacyUrl. Declaring url_launcher in packages/chassis_screens would make it an ADAPTER under assert-package-boundaries limb C (:185-201) and :288-298 would then fail the brick and every app for importing it directly, so the package takes onOpenTerms/onOpenPrivacy callbacks and the launcher call lives here under the dated brick|url_launcher bypass. This widget is still MOUNTED, not merely still present: sign_up and reaccept_terms hand their chassis views a ConsentFieldsBuilder that builds THIS class.",
       "target": "packages/chassis_screens/lib/auth/legal_consent_fields.dart",
@@ -200,7 +200,7 @@
     },
     {
       "path": "lib/features/settings/settings_screen.dart",
-      "lines": 707,
+      "lines": 703,
       "verdict": "MOVES",
       "why": "[ADR 067] decision 2 — MEASURED 2026-09-06: 968 -> 616 brick lines, 519 package lines, callSiteDelta -352. THE [ADR 066] PRESUMED 'NO' WAS WRONG, AND THE MEASUREMENT IS WHY. That presumption was taken before `ChassisLocalizations` existed: the page reads 46 chassis strings, and a package that could not see them would have taken all 46 as parameters — the 58-parameter tax the presumption was about. With the chassis catalogue in the package the constructor is 26 values and callbacks, and the page (the ListView, the width cap, every tile) is 352 lines lighter here. RETAINED, each for a named guard rather than for taste: `recordAnalyticsConsent(ref, granted: on)` and `ref.watch(analyticsConsentProvider)` (assert-consent-withdrawal-surface — DPDP §6(3)); `recordPromoObjection(` and `promoObjectedProvider` (GDPR Art 21); `NotificationCapabilities.forPlatform(` and `applyReminderChoice(` (stamp-properties :1123/:1131); `ref.watch(authUserProvider)` (:1081); `onSave: () => _saveProfile(` and `.updateProfile(displayName:` (:1077/:1078); `onConfirm: () => _deleteAccount(`, `await auth.deleteAccount()`, `await auth.signInWithEmail(` and `core.accountDeletionOutcomeOf(` (:1043-:1061); `_openUrl(AppConfig.<name>)` for all three published legal pages (:459); and `deleteAccountFailureMessage`, which `chassis_properties_test.dart:2100` calls by name. Every one of them needs a WidgetRef, url_launcher or nikatru_notifications — none of which `packages/chassis_screens` may declare (assert-package-boundaries limb C). Four screen-register rows were re-pointed at the adapter's wiring in the same commit and each says so in its own `why`. ⏱ RE-MEASURED 2026-09-24 (AUTH-LOGOUT-ALL): 687 -> 707. The tile is in the package; what grew here is the wiring a package cannot hold — `onSignOutEverywhere:` handing `_signOut` the global `core.SignOutScope`, and `_signOut` choosing the all-devices failure sentence. Proven end to end by test/sign_out_everywhere_test.dart.",
       "target": "packages/chassis_screens/lib/settings/settings_screen.dart",
@@ -244,13 +244,13 @@
     },
     {
       "path": "lib/state/providers.dart",
-      "lines": 2761,
+      "lines": 2809,
       "verdict": "STAYS",
       "why": "MEASURED: undeletable (9 guards) and NOT reducible to declarations — a 98-line stub carrying all 51 provider names and all 14 class/typedef signatures still left 8 guards red. MIN_DOMAIN=59 is NOT the binding constraint (its regex does accept a one-line delegation, verified: 51 such lines count 51); the binding constraints are 37 literal anchors in assert-stamp-properties, the analytics envelope literal (assert-analytics-contract:207), the consent gate (assert-policy-claims POLICY_CONSTS), two sole non-test seam call sites (assert-seams-wired:588,622) and MIN_PROVIDERS=20 (assert-provider-graph-acyclic:419, the stub parsed 9). [ADR 072] D1, 2026-09-22 (O-CHASSIS-PHASE-2B): STAYS as the composition root — the brick's Riverpod graph is what every adapter reads and every package view is handed values from; nothing here moves, callSiteDelta 0. ⏱ RE-MEASURED 2026-09-24 (AUTH-LOGOUT-ALL): 2710 -> 2721 — `signOutAndForgetUser` takes a `scope`, because the `session_end` trigger permits `.signOut(` in this file only."
     },
     {
       "path": "pubspec.yaml",
-      "lines": 187,
+      "lines": 193,
       "verdict": "STAYS",
       "why": "Per-app manifest; its dependency list is swept by assert-play-declarations as of PR #474."
     },

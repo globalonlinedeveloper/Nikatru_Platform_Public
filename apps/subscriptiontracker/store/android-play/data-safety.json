@@ -254,7 +254,7 @@
       "  providers/auth.dart:130          isBackendLive ? SupabaseAuthRepository : InMemoryAuthRepository",
       "  providers/subscriptions.dart:80  !isApiConfigured -> SeedApiClient (wrapped by PersistedApiClient: device-local storage, never leaves the device)",
       "  analytics_providers.dart:536  !isBackendLive (via analyticsEnabledProvider) -> NoOpAnalytics",
-      "  app.dart:476                  the consent prompt shows only when analyticsEnabledProvider is true",
+      "  app.dart:473                  the consent prompt shows only when analyticsEnabledProvider is true",
       "",
       "⚠️ THOSE FOUR LINE NUMBERS WERE RE-MEASURED 2026-08-10 AND THREE OF THEM WERE WRONG — the two",
       "providers.dart citations were ~500 and ~1300 lines out (they predate the P2.6 re-stamp), the",
@@ -1867,10 +1867,6 @@
         "introduces": [],
         "why": "An icon font."
       },
-      "url_launcher": {
-        "introduces": [],
-        "why": "Hands four hardcoded nikatru.com legal URLs to the system browser. The app receives nothing back and learns nothing about what the browser does."
-      },
       "package_info_plus": {
         "introduces": [],
         "why": "Reads the app's OWN version and build number from the OS package manager — input to the CFG-1 force-update kill-switch comparison. No personal data, no network. Added 2026-08-08 with productization P2.4a under [ADR 037]."
@@ -1885,6 +1881,10 @@
           "User IDs"
         ],
         "why": "⏱ ADDED 2026-09-22 (O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP). First-party bridge package (packages/billing_revenuecat) wrapping `purchases_flutter` ^10.13.1 — the RevenueCat SDK, which on Android drives GOOGLE PLAY BILLING. It is a dependency of the app, but it is linked into a SELLING binary only in the sense that any dependency is: the app hands it to the rail only on a store channel and only when the build carries its public key (`--dart-define=REVENUECAT_KEY`), and the Play lanes pass REVENUECAT_PUBLIC_KEY_GOOGLE. What it does on the device: asks the store what it sells (product ids, the STORE's own prices), opens the store's purchase sheet, and identifies the buyer to RevenueCat by the NIKATRU user id ([ADR 085] B) so an entitlement resolves to an account. INTRODUCES, stated rather than implied: a purchase made in the app is reported to a THIRD PARTY (RevenueCat, and Google as the biller), keyed to that user id — which is why this entry names Purchase history and User IDs rather than []. No name, no email and no payment instrument reaches it: the card is entered in Google's own sheet, not in this app. ⚠️ THE CONSOLE FORM'S `shared` ANSWER FOR Financial info > Purchase history IS NOT RE-GRADED IN THIS CHANGE and must be before the next Play submission — see that row's clientAbsence correction. The SDK's own data collection is NOT read from prose here: the inventory row and the version live in store/ios-appstore/privacy-manifest.json, and assert-app-yaml limb 6 holds this entry and the `billing.mobileIap` declaration together."
+      },
+      "nikatru_external_links": {
+        "introduces": [],
+        "why": "⏱ ADDED 2026-09-24 (O-LINK-LAUNCHER-SEAM-UNOWNED). First-party adapter package (packages/external_links) that now owns the app's ONE url_launcher call: it hands the nikatru.com legal pages, the site, the contact page, the support mailto and the force-update destination to the system browser or mail client, after core's LinkPolicy has allowed the link, and receives nothing back. It is url_launcher's former role in this app behind a policy, so it introduces no data type url_launcher did not."
       },
       "flutter_localizations": {
         "introduces": [],
