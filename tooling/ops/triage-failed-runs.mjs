@@ -945,12 +945,16 @@ export function liveApi(repo, tok, cacheDir, { maxRequests = DEFAULT_MAX_REQUEST
   // walk exited 2 (train W30's first live fetch, at 358 requests). Read here, a
   // slow body is a slow attempt — a transient look, re-asked under a fresh
   // ceiling like a slow header. A non-2xx answer is handed back unread, as before.
+  // ⏱ 2026-09-26 (W30-20) — so a job log's WHOLE body must now fit one attempt,
+  // and at 15 s one did not on all three (W30's second fetch). A job-log GET is
+  // sent as a `download` (bounded-retry.mjs, DOWNLOAD_TIMEOUT_MS, 60 s); every
+  // JSON GET keeps the 15 s ceiling, and the attempt count is unchanged.
   const bodyInAttempt = async (res) => {
     if (!res.ok) return res;
     const body = await res.text();
     return { ok: true, status: res.status, headers: res.headers, text: async () => body, json: async () => JSON.parse(body) };
   };
-  const send = async (path, { counted }) => {
+  const send = async (path, { counted, download = false }) => {
     if (!isAllowedApiPath(repo, path)) {
       throw new CoverageLost(
         `refusing to request ${JSON.stringify(String(path)).slice(0, 160)} — not one of the seven GitHub API paths this reader builds (numeric ids only)`,
@@ -976,7 +980,7 @@ export function liveApi(repo, tok, cacheDir, { maxRequests = DEFAULT_MAX_REQUEST
           }
           return fetch(url, { headers, redirect: 'follow', signal }).then(bodyInAttempt);
         },
-        { describe: (s) => `GET ${path} — ${s}` },
+        { describe: (s) => `GET ${path} — ${s}`, download },
       );
     } catch (e) {
       // The plan re-wraps whatever the fetch threw; the ceiling is said plainly.
@@ -984,8 +988,8 @@ export function liveApi(repo, tok, cacheDir, { maxRequests = DEFAULT_MAX_REQUEST
       throw e;
     }
   };
-  const get = async (path, { text = false } = {}) => {
-    const res = await send(path, { counted: true });
+  const get = async (path, { text = false, download = false } = {}) => {
+    const res = await send(path, { counted: true, download });
     if (res.status === 403 || res.status === 429) {
       throw new CoverageLost(`GET ${path} → HTTP ${res.status} — the quota or the credential refused; nothing after this point was read`);
     }
@@ -1054,7 +1058,7 @@ export function liveApi(repo, tok, cacheDir, { maxRequests = DEFAULT_MAX_REQUEST
         `${id}.job-${jobId}.log`,
         async () => {
           try {
-            return await get(`/repos/${repo}/actions/jobs/${jobId}/logs`, { text: true });
+            return await get(`/repos/${repo}/actions/jobs/${jobId}/logs`, { text: true, download: true });
           } catch (e) {
             if (e.status === 404) return '';
             throw e;
