@@ -188,7 +188,7 @@
   "palette-consistent.test.mjs": 56,
   "password-reset-revokes.test.mjs": 9,
   "plan-deploy.test.mjs": 36,
-  "platform-proof-fresh.test.mjs": 89,
+  "platform-proof-fresh.test.mjs": 91,
   "platform-register.test.mjs": 83,
   "play-declarations.test.mjs": 180,
   "play-device-coverage.test.mjs": 61,

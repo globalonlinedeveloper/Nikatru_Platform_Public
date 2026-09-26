@@ -849,8 +849,13 @@ function releaseBuildRecord(b) {
 // A `$NAME` nothing maps stays `$NAME` in the segment: the composer refuses it at
 // run time, so that build fails rather than ships without the value.
 
-/** `node tooling/ci/flutter-release-build.mjs <app> <target> <channel> …`. */
-export const COMPOSER_CALL = /(?:^|\s)node\s+(?:\S*\/)?tooling\/ci\/flutter-release-build\.mjs(?=\s|$)(.*)$/;
+/** `node tooling/ci/flutter-release-build.mjs <app> <target> <channel> …`.
+ *  ⏱ 2026-09-26 (lead ruling W37-R2): the tail is `[^\n]*`, not `.*`. parseWorkflow
+ *  splits on `\n` alone, so a CRLF file's lines keep their `\r`, `.` stops there, and
+ *  `$` then failed: the census saw NO composer call in a CRLF workflow, where the
+ *  literal `flutter build` line it replaced (RELEASE_BUILD, unanchored) was seen.
+ *  The `\r` is whitespace to every reader of group 1. */
+export const COMPOSER_CALL = /(?:^|\s)node\s+(?:\S*\/)?tooling\/ci\/flutter-release-build\.mjs(?=\s|$)([^\n]*)$/;
 
 /** GitHub's own variables a composed build reads, as the expression each one is. */
 const GITHUB_DEFAULT_ENV = new Map([['GITHUB_RUN_NUMBER', '${{ github.run_number }}']]);
