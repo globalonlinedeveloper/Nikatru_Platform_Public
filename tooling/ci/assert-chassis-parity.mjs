@@ -57,14 +57,44 @@
 //     only where the calling code measurably shrinks;
 //   · an app that imports the package with a row and NO `adopted` is still rule 3.
 //
+// ── ⏱ 2026-09-26 · EACH FORK HOLDS A CEILING THAT ONLY FALLS ─────────────────
+// O-CHASSIS-PARITY-GRADES-IMPORTS-ONLY. Everything above grades IMPORTS, so an
+// app that keeps a private copy of a chassis screen passed while that copy grew:
+// settings 1969 -> 2116 lines between 2026-09-12 and this change, paywall 302 ->
+// 375, manage_plan 238 -> 322. The sizes sat in the row's prose `plan`, which no
+// line of this file read. So a row now carries `forks`, one entry per app file
+// that forks a template file: `{file, linesAtSince, ceiling, template}`. It sits
+// BESIDE `files`, which already means the TEMPLATE's delegations (rule 2).
+//   4. GROWTH. A fork above its `ceiling` is a finding: the private copy grew.
+//   5. THE SHRINK IS RECORDED. A fork below its `ceiling` is a finding too, until
+//      the commit that shrank it writes the new ceiling down — so the next growth
+//      is measured from the smaller size, not from the old one.
+//   6. THE CEILING ONLY FALLS. Each entry is compared with the same entry in the
+//      manifest at `--base` (default `HEAD^1`: the base main in a PR's merge
+//      checkout, the previous main on a push). A higher `ceiling` is a finding;
+//      `linesAtSince` and `template` are measurements taken at `since` and must
+//      equal the base's; an entry the base had and this commit dropped, while its
+//      file is still here, is a finding (dropping it would lift the ceiling). An
+//      entry the base did not have is accepted once. When the base cannot be
+//      read the limb prints `not checked here: no parent commit`, and with
+//      `--require-history` it exits 2 instead. CI passes the flag: the job
+//      checks out with `fetch-depth: 0`.
+//   7. COMPLETENESS. An entry names a file under `apps/<app>/lib/` whose template
+//      counterpart is in `files`; an entry whose file is gone is deleted in the
+//      same commit as the file.
+// A line is what `wc -l` counts: one per LF byte. A CRLF checkout has the same
+// number of LF bytes, so a Windows working tree and the committed blob agree.
+//
 // ── COVERAGE, FAIL-CLOSED ────────────────────────────────────────────────────
 // Exit 2 when the scan cannot establish its own subject: no template lib, no
 // shared-package import found in it, or no app with a `lib/`. A guard that finds
 // nothing must say so rather than print ok over an empty question.
 //
-// Usage:  node tooling/ci/assert-chassis-parity.mjs [repoRoot]
+// Usage:  node tooling/ci/assert-chassis-parity.mjs [repoRoot] [--base <ref>] [--require-history]
 // Exit 0 = every app imports every shared package the template does, or a row
-//          declares why not. 1 = a finding. 2 = COVERAGE LOST.
+//          declares why not, and every fork is at its ceiling.
+//          1 = a finding. 2 = COVERAGE LOST (an unknown argument, or the base
+//          unreadable under --require-history).
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, relative, sep, dirname } from 'node:path';
@@ -75,8 +105,37 @@ import { fileURLToPath } from 'node:url';
 // one's: green in CI, which creates no worktrees, and red only on the machine of
 // the person actually looking. `listDir` refuses that descent.
 import { listDir } from './tree-walk.mjs';
+// The fork ratchet reads the manifest at `--base` through the shared git helper, so
+// a GIT_DIR a hook exported cannot answer for a different repository than ROOT.
+import { repoGitRaw, RepoGitError } from '../scripts/repo-git.mjs';
 
-const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
+// ── arguments ────────────────────────────────────────────────────────────────
+// `[repoRoot]` stays the one positional; the two flags belong to the fork ratchet.
+const USAGE = 'usage: node tooling/ci/assert-chassis-parity.mjs [repoRoot] [--base <ref>] [--require-history]';
+let rootArg = null;
+let baseRef = 'HEAD^1';
+let requireHistory = false;
+{
+  const argv = process.argv.slice(2);
+  for (let i = 0; i < argv.length; i += 1) {
+    const a = argv[i];
+    if (a === '--require-history') {
+      requireHistory = true;
+    } else if (a === '--base' || a.startsWith('--base=')) {
+      const v = a === '--base' ? argv[(i += 1)] : a.slice('--base='.length);
+      if (typeof v !== 'string' || v === '' || v.startsWith('-')) {
+        coverageLost([`\`--base\` needs a ref after it. ${USAGE}`]);
+      }
+      baseRef = v;
+    } else if (a.startsWith('-') || rootArg !== null) {
+      coverageLost([`unknown argument ${JSON.stringify(a)}: a flag this guard does not read would be checked by nothing. ${USAGE}`]);
+    } else {
+      rootArg = a;
+    }
+  }
+}
+
+const ROOT = resolve(rootArg ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const abs = (...p) => join(ROOT, ...p);
 
 const TEMPLATE_LIB = join('tooling', 'bricks', 'app', '__brick__', 'apps', '{{app_id}}', 'lib');
@@ -193,6 +252,12 @@ for (const [i, r] of rows.entries()) {
   if (!Array.isArray(r?.files)) {
     problems.push(`${where} has no \`files\` array, so nothing pins WHICH delegations the row covers — and the template could grow one silently.`);
   }
+  if (!Array.isArray(r?.forks)) {
+    problems.push(
+      `${where} has no \`forks\` array, so no ceiling holds the app's private copies of the template's files — they grow ` +
+        'unseen while this row only grades imports (O-CHASSIS-PARITY-GRADES-IMPORTS-ONLY).',
+    );
+  }
   if (typeof r?.app === 'string' && typeof r?.package === 'string') declared.set(`${r.app}|${r.package}`, r);
 }
 
@@ -298,6 +363,140 @@ for (const app of apps) {
   }
 }
 
+// ── 5 · each fork holds a ceiling that only falls ────────────────────────────
+const PHASE = 'O-CHASSIS-PHASE-2B';
+/** Lines as `wc -l` counts them: the LF bytes. CRLF carries the same number. */
+const lfLines = (buf) => {
+  let n = 0;
+  for (const b of buf) if (b === 0x0a) n += 1;
+  return n;
+};
+const isCount = (v) => Number.isInteger(v) && v > 0;
+
+/** The manifest's rows as `baseRef` committed them: `{ rows }`, or `{ lost }` saying
+ *  why they could not be read. A base commit without the file answers `{ rows: [] }`:
+ *  every entry is then new, which is the case of the commit that adds it. */
+function baseRows() {
+  let r;
+  try {
+    r = repoGitRaw(ROOT, ['show', `${baseRef}:${MANIFEST_REL}`]);
+  } catch (err) {
+    if (!(err instanceof RepoGitError)) throw err;
+    return { lost: err.message };
+  }
+  if (r.status !== 0) {
+    const c = repoGitRaw(ROOT, ['rev-parse', '--verify', '--quiet', `${baseRef}^{commit}`]);
+    if (c.status !== 0) return { lost: `\`${baseRef}\` names no commit in this clone (a shallow clone, or the first commit)` };
+    return { rows: [] };
+  }
+  try {
+    const m = JSON.parse(r.stdout);
+    return { rows: Array.isArray(m?.notAdopted) ? m.notAdopted : [] };
+  } catch (err) {
+    return { lost: `${baseRef}:${MANIFEST_REL} did not parse (${err.message})` };
+  }
+}
+
+let forkCount = 0;
+let base = null;
+for (const [i, r] of rows.entries()) {
+  if (!Array.isArray(r?.forks)) continue; // already a finding at the row read
+  const where = `${MANIFEST_REL} notAdopted[${i}]`;
+  const prefix = `apps/${r.app}/lib/`;
+  const seen = new Set();
+  let now = 0;
+  let atSince = 0;
+  for (const [j, f] of r.forks.entries()) {
+    const at = `${where} forks[${j}]`;
+    const file = f?.file;
+    if (typeof file !== 'string' || !file.startsWith(prefix) || file.split('/').some((s) => s === '' || s === '.' || s === '..')) {
+      problems.push(`${at} names ${JSON.stringify(file)}, which is not a file under ${prefix}. An entry measures one of this app's own copies of a template file (${PHASE}).`);
+      continue;
+    }
+    if (seen.has(file)) {
+      problems.push(`${at} repeats ${file}. One entry per fork, or two ceilings answer for one file (${PHASE}).`);
+      continue;
+    }
+    seen.add(file);
+    forkCount += 1;
+    const counterpart = file.slice(prefix.length);
+    if (!(Array.isArray(r.files) ? r.files : []).includes(counterpart)) {
+      problems.push(`${at} (${file}): its template counterpart \`${counterpart}\` is not in this row's \`files\`, so the entry measures a file the row does not owe (${PHASE}).`);
+    }
+    for (const field of ['linesAtSince', 'ceiling', 'template']) {
+      if (!isCount(f[field])) {
+        problems.push(`${at} (${file}) records \`${field}\` ${JSON.stringify(f[field])}, not a positive whole line count (${PHASE}).`);
+      }
+    }
+    const p = join(ROOT, ...file.split('/'));
+    if (!existsSync(p)) {
+      problems.push(`${at}: ${file} no longer exists. Delete the entry in the same commit as the file (${PHASE}).`);
+      continue;
+    }
+    const n = lfLines(readFileSync(p));
+    now += n;
+    if (isCount(f.linesAtSince)) atSince += f.linesAtSince;
+    if (isCount(f.ceiling) && n > f.ceiling) {
+      problems.push(
+        `${file} is ${n} line(s), ${n - f.ceiling} above its ceiling ${f.ceiling} (${f.linesAtSince} at ${r.since}; template ${f.template}). ` +
+          `A private copy of a chassis file may not grow: make the change in the package, or adopt the screen (${PHASE}).`,
+      );
+    } else if (isCount(f.ceiling) && n < f.ceiling) {
+      problems.push(
+        `${file} is ${n} line(s), below its ceiling ${f.ceiling} (${f.linesAtSince} at ${r.since}). Record the shrink: set ceiling to ${n} ` +
+          `in ${MANIFEST_REL}, in the same commit, so the next growth is measured from there (${PHASE}).`,
+      );
+    }
+  }
+
+  // The ratchet, against the manifest at the base.
+  if (base === null) base = baseRows();
+  if (base.lost !== undefined) {
+    if (requireHistory) {
+      coverageLost([
+        `the fork ratchet reads ${MANIFEST_REL} at \`${baseRef}\` and could not: ${base.lost}.`,
+        '--require-history makes that a refusal: without the base, "the ceiling only falls" is unchecked. Check out with fetch-depth: 0.',
+      ]);
+    }
+    prints.push(`⬜ fork ceilings — not checked here: no parent commit (${base.lost}). CI passes --require-history, where this exits 2.`);
+  } else {
+    const baseRow = base.rows.find((x) => x?.app === r.app && x?.package === r.package);
+    const baseForks = (Array.isArray(baseRow?.forks) ? baseRow.forks : []).filter((x) => typeof x?.file === 'string');
+    for (const bf of baseForks) {
+      const cf = r.forks.find((x) => x?.file === bf.file);
+      if (!cf) {
+        const stillHere = bf.file.startsWith(prefix) && existsSync(join(ROOT, ...bf.file.split('/')));
+        if (stillHere) {
+          problems.push(
+            `${bf.file} had a fork entry at \`${baseRef}\` (ceiling ${bf.ceiling}) and has none now, while the file is still here. ` +
+              `Dropping the entry would lift its ceiling; restore it (${PHASE}).`,
+          );
+        }
+        continue;
+      }
+      if (isCount(bf.ceiling) && isCount(cf.ceiling) && cf.ceiling > bf.ceiling) {
+        problems.push(
+          `${cf.file}: ceiling ${cf.ceiling} is above ${bf.ceiling} at \`${baseRef}\`. A fork's ceiling only falls; ` +
+            `growth goes into the package, or the screen is adopted (${PHASE}).`,
+        );
+      }
+      for (const field of ['linesAtSince', 'template']) {
+        if (cf[field] !== bf[field]) {
+          problems.push(
+            `${cf.file}: \`${field}\` is ${JSON.stringify(cf[field])}, and \`${baseRef}\` recorded ${JSON.stringify(bf[field])}. ` +
+              `It was measured once, at ${r.since}, and is never re-measured (${PHASE}).`,
+          );
+        }
+      }
+    }
+    const fresh = r.forks.filter((x) => !baseForks.some((bf) => bf.file === x?.file)).length;
+    prints.push(
+      `⬜ fork ceilings — apps/${r.app}: ${r.forks.length} fork(s), ${now} line(s) now against ${atSince} at ${r.since}; ` +
+        `each ceiling read against \`${baseRef}\`${fresh > 0 ? `, ${fresh} new entr${fresh === 1 ? 'y' : 'ies'} accepted once` : ''}.`,
+    );
+  }
+}
+
 // ── verdict ──────────────────────────────────────────────────────────────────
 for (const p of prints) console.log(`  ${p}`);
 if (problems.length > 0) {
@@ -309,5 +508,5 @@ if (problems.length > 0) {
 console.log(
   `✓ chassis parity — every shared package the template delegates to is imported by every app, or its absence is ` +
     `declared: ${graded} app x package pair(s), ${apps.length} app(s) [${apps.join(', ')}], ${delegated.size} package(s) ` +
-    `[${[...delegated.keys()].sort().join(', ')}], ${rows.length} declared debt(s).`,
+    `[${[...delegated.keys()].sort().join(', ')}], ${rows.length} declared debt(s), ${forkCount} fork(s) at their ceilings.`,
 );

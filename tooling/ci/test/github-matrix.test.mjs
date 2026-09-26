@@ -26,12 +26,14 @@
 // A test seam able to produce the same exit code as a passing real run is a way
 // to fake a passing real run. `T_CLEAN_NEVER_ZERO` is that case.
 //
-// 🔴 EXPECTATIONS ARE DERIVED FROM catalog/store-matrix.json, NEVER TYPED. The
-// clean-listing fixture is BUILT from the registry at run time — the repos it
-// declares as existing, at the visibility it declares, plus every outOfMatrix
-// line. A typed listing would go red the day a row is added, for a reason having
-// nothing to do with the behaviour under test; that is the failure copy-parity's
-// own header records against a re-typed "1 of 1" that killed nineteen cases.
+// 🔴 EXPECTATIONS ARE DERIVED FROM tooling/github-org.json, NEVER TYPED. The
+// clean-listing fixture is BUILT from the registry at run time — the platform
+// repos it declares, at the visibility it declares, plus every otherRepos line.
+// A typed listing would go red the day an entry is added, for a reason having
+// nothing to do with the behaviour under test; that is the failure a retired
+// sibling suite's header recorded against a re-typed "1 of 1" that killed
+// nineteen cases. (Re-keyed 2026-09-25 from the retired store matrix's `github`
+// block, O-STORE-MATRIX-IS-A-DEAD-DECLARATION.)
 //
 // Exit codes under test:  0 clean real run (unreachable here, by design)
 //                         1 FINDINGS · 2 REFUSED / could not look
@@ -64,7 +66,8 @@ import { repoGit } from '../../scripts/repo-git.mjs';
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
 const GUARD = join(CI_DIR, 'assert-github-matrix.mjs');
-const REGISTRY = join(REPO, 'catalog', 'store-matrix.json');
+const REGISTRY = join(REPO, 'tooling', 'github-org.json');
+const DEAD_REPOS = join(REPO, 'tooling', 'dead-repos.json');
 
 /** The guard's in-tree sibling imports, DERIVED from its source rather than typed. Two cases below
  *  plant a hermetic copy of the guard and need every one of these beside it, or node dies at MODULE
@@ -107,9 +110,8 @@ const cleanEnv = () => {
  * `cancelledByParent` — 24 red with no assertion having run. Measured, not
  * theorised. Keep them above `before`. */
 const reg = JSON.parse(readFileSync(REGISTRY, 'utf8'));
-const ORG = reg.github.org;
-const privateDirOf = (s) => String(s.publicDir).replace(/_Public$/, '_Private');
-const dirOf = (s, side) => (side === 'public' ? s.publicDir : privateDirOf(s));
+const ORG = reg.org;
+const dead = JSON.parse(readFileSync(DEAD_REPOS, 'utf8'));
 
 /** 🔴 THE ANCHOR IS CONSTRUCTED HERE, NOT INHERITED FROM THE BOX.
  *
@@ -165,13 +167,13 @@ const runRaw = (guardPath, ...argv) =>
  */
 function buildAnchor(root) {
   mkdirSync(root, { recursive: true });
-  const pins = reg.github?.renamePins?.observable ?? [];
+  const pins = reg.renamePins?.observable ?? [];
   // ZERO observable pins became a legitimate state on 2026-08-19, when the only one this
   // workspace ever had (storefront-upstreams) was deleted with Nikatru_Storefront_Public.
   // An empty mechanism is still not allowed to be SILENT: if there are no pins the registry
   // must say why, in the same file, or this is a fixture builder quietly modelling nothing.
   if (pins.length === 0) {
-    const declared = reg.github?.renamePins?.observableEmpty20260819;
+    const declared = reg.renamePins?.observableEmpty20260819;
     assert.ok(
       typeof declared === 'string' && declared.length > 40,
       'the registry declares no observable rename pins AND gives no reason — an empty mechanism must be declared, not silent',
@@ -180,11 +182,8 @@ function buildAnchor(root) {
   // Every boundRemote the registry declares, so the report counts real subjects
   // rather than printing "0 of 0" over an array invented to be empty.
   const rows = [];
-  for (const s of reg.slots) {
-    for (const side of ['public', 'private']) {
-      const bound = s.repos?.[side]?.boundRemote;
-      if (typeof bound === 'string') rows.push({ repo: bound, category: 'fixture', path: 'catalog/vendor/apps.json', state: 'pinned' });
-    }
+  for (const e of reg.platform) {
+    if (typeof e.boundRemote === 'string') rows.push({ repo: e.boundRemote, category: 'fixture', path: 'catalog/vendor/apps.json', state: 'pinned' });
   }
   for (const e of pins) {
     const fileAbs = join(root, ...String(e.repoDir).split('/'), ...String(e.path).split('/'));
@@ -214,28 +213,20 @@ const fixture = (value) => {
 
 /**
  * THE CLEAN LISTING, DERIVED. Exactly the repos the registry says the org holds,
- * at the visibility it declares, plus every outOfMatrix line so none of them
+ * at the visibility it declares, plus every otherRepos line so none of them
  * reads as a STALE DECLARATION, plus every boundRemote so none reads as missing.
- * Nothing typed; add a row to the registry and this follows it.
+ * Nothing typed; add an entry to the registry and this follows it.
  */
 function cleanListing() {
   const out = new Map();
   const put = (name, visibility) => {
     if (!out.has(name)) out.set(name, { name, visibility, isArchived: false });
   };
-  for (const s of reg.slots) {
-    for (const side of ['public', 'private']) {
-      const rec = s.repos?.[side];
-      if (!rec) continue;
-      const name = dirOf(s, side);
-      if (rec.existsOnGitHub === true) put(name, rec.visibility ?? (side === 'public' ? 'PUBLIC' : 'PRIVATE'));
-      if (typeof rec.boundRemote === 'string') {
-        const bound = rec.boundRemote.split('/')[1];
-        put(bound, side === 'public' ? 'PUBLIC' : 'PRIVATE');
-      }
-    }
+  for (const e of reg.platform) {
+    put(e.repo, e.visibility);
+    if (typeof e.boundRemote === 'string') put(e.boundRemote.split('/')[1], e.visibility);
   }
-  for (const e of reg.github.outOfMatrix ?? []) put(e.repo, 'PRIVATE');
+  for (const e of reg.otherRepos ?? []) put(e.repo, 'PRIVATE');
   return [...out.values()];
 }
 
@@ -318,7 +309,6 @@ describe('assert-github-matrix', () => {
       // locator's refusal into a default, which is how a check becomes a skip.
       const base = join(TMP, `noanchor-${seq++}`);
       mkdirSync(join(base, 'tooling', 'ci'), { recursive: true });
-      mkdirSync(join(base, 'catalog'), { recursive: true });
       const copy = join(base, 'tooling', 'ci', 'assert-github-matrix.mjs');
       writeFileSync(copy, readFileSync(GUARD, 'utf8'));
       // 2026-08-18: the guard now imports `listDir` from ./tree-walk.mjs, so the planted copy needs
@@ -331,7 +321,8 @@ describe('assert-github-matrix', () => {
       // expected, saying nothing whatever about the anchor. The list is now DERIVED from the guard's
       // own relative imports rather than typed, so the next sibling does not cost a third red run.
       for (const sib of GUARD_SIBLINGS) { const dest = join(base, 'tooling', sib); mkdirSync(dirname(dest), { recursive: true }); copyFileSync(join(CI_DIR, '..', sib), dest); }
-      writeFileSync(join(base, 'catalog', 'store-matrix.json'), readFileSync(REGISTRY, 'utf8'));
+      writeFileSync(join(base, 'tooling', 'github-org.json'), readFileSync(REGISTRY, 'utf8'));
+      writeFileSync(join(base, 'tooling', 'dead-repos.json'), readFileSync(DEAD_REPOS, 'utf8'));
       const r = runRaw(copy, '--offline');
       assert.equal(r.status, 2, r.stdout + r.stderr);
       assert.match(r.stderr, /ANCHOR NOT FOUND/);
@@ -454,7 +445,7 @@ describe('assert-github-matrix', () => {
       const r = runStubbed('list', cleanListing());
       assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
       assert.match(r.stderr, /NOT ONE was compared against a checkout on disk/);
-      assert.match(r.stderr, /COVERAGE LOST — the local limb compared NONE of the \d+ declared boundRemote side\(s\)/);
+      assert.match(r.stderr, /COVERAGE LOST — the local limb compared NONE of the \d+ declared boundRemote checkout\(s\)/);
       assert.doesNotMatch(r.stdout, /ok — registry and org reconcile/);
     });
 
@@ -475,55 +466,42 @@ describe('assert-github-matrix', () => {
       assert.match(r.stderr, new RegExp(`org ${ORG}`));
     });
 
-    test('an outOfMatrix line naming a repo the org does not hold is a STALE DECLARATION', () => {
-      const dropped = (reg.github.outOfMatrix ?? [])[0]?.repo;
-      assert.ok(dropped, 'the registry declares no outOfMatrix entry — this case has no subject');
+    test('an otherRepos line naming a repo the org does not hold is a STALE DECLARATION', () => {
+      const dropped = (reg.otherRepos ?? [])[0]?.repo;
+      assert.ok(dropped, 'the registry declares no otherRepos entry — this case has no subject');
       const r = run('--gh-fixture', fixture(cleanListing().filter((x) => x.name !== dropped)));
       assert.equal(r.status, 1, r.stdout);
-      assert.match(r.stderr, /STALE DECLARATION/);
+      assert.match(r.stderr, /STALE DECLARATION — otherRepos names/);
       assert.match(r.stderr, new RegExp(dropped.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     });
 
-    // 🔴 THE MUTATION IS DERIVED FROM WHAT THE REGISTRY ACTUALLY DECLARES, AND
-    // THE DIRECTION IS NOT ASSUMED. Today every slot row says
-    // `existsOnGitHub: false` with `visibility: null` — the thirty store repos
-    // are intended, not built — so "the registry says true and the org says
-    // false" HAS NO SUBJECT in this tree, and a case written that way asserts
-    // nothing while looking thorough. Both cases below contradict whatever the
-    // row says, in whichever direction has a subject, so they keep working when
-    // the first store repo is created and the declaration flips.
-    const target = (() => {
-      for (const s of reg.slots) {
-        for (const side of ['public', 'private']) {
-          if (s.repos?.[side]) return { name: dirOf(s, side), rec: s.repos[side], side };
-        }
-      }
-      return null;
-    })();
+    // 🔴 THE MUTATION IS DERIVED FROM WHAT THE REGISTRY ACTUALLY DECLARES. The
+    // subject is the FIRST `platform` entry, whatever it is named, so these cases
+    // keep working when an entry is added or renamed. Until 2026-09-25 they read a
+    // store-slot row's `existsOnGitHub`; a platform entry is a repository the org
+    // HOLDS, so "the registry declares it and the org does not" is now the stale
+    // direction, and it is a finding for the same reason that field's was.
+    const target = reg.platform[0] ? { name: reg.platform[0].repo, rec: reg.platform[0] } : null;
 
-    test('a measured existsOnGitHub that CONTRADICTS the org FAILS', () => {
-      // Either direction is a measured field that has gone stale, and fixing it
-      // is a JSON edit nobody needs permission for — which is exactly why it is
-      // red rather than an owner action.
-      assert.ok(target, 'the registry declares no slot side at all — this case has no subject');
-      const declared = target.rec.existsOnGitHub === true;
-      const listing = declared
-        ? cleanListing().filter((x) => x.name !== target.name)
-        : [...cleanListing(), { name: target.name, visibility: 'PRIVATE', isArchived: false }];
-      const r = run('--gh-fixture', fixture(listing));
+    test('a platform repo the org does not hold is a STALE DECLARATION and FAILS', () => {
+      // A measured fact that has gone stale, and fixing it is a JSON edit nobody
+      // needs permission for — which is exactly why it is red rather than an
+      // owner action.
+      assert.ok(target, 'the registry declares no platform entry at all — this case has no subject');
+      const r = run('--gh-fixture', fixture(cleanListing().filter((x) => x.name !== target.name)));
       assert.equal(r.status, 1, r.stdout);
-      assert.match(r.stderr, new RegExp(`existsOnGitHub says ${declared}, GitHub says ${!declared}`));
-      assert.match(r.stderr, new RegExp(target.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+      assert.match(r.stderr, /STALE DECLARATION — platform\[0\]/);
+      assert.match(r.stderr, new RegExp(`does not hold "${target.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`));
     });
 
     test('a visibility that disagrees with GitHub FAILS', () => {
-      // ⚠️ IT MUST BE AN INTENDED NAME, NOT WHICHEVER ROW SORTS FIRST. A
-      // boundRemote whose visibility is wrong is an OWNER ACTION and leaves the
-      // exit code alone — correctly, since only the owner can change a repo's
-      // visibility. Written the lazy way first, this case ran against exit 4 and
-      // would have recorded "the guard fails on visibility" while exercising the
-      // branch that deliberately does not fail.
-      assert.ok(target, 'the registry declares no slot side at all — this case has no subject');
+      // ⚠️ THE ENTRY'S OWN `visibility`, NOT ITS BOUND REMOTE'S. A boundRemote
+      // whose visibility is wrong is an OWNER ACTION and leaves the exit code
+      // alone — correctly, since only the owner can change a repo's visibility.
+      // Written the lazy way first, this case ran against exit 4 and would have
+      // recorded "the guard fails on visibility" while exercising the branch that
+      // deliberately does not fail.
+      assert.ok(target, 'the registry declares no platform entry at all — this case has no subject');
       const declaredVis = target.rec.visibility ?? null;
       const actualVis = declaredVis === 'PUBLIC' ? 'PRIVATE' : 'PUBLIC';
       const listing = [
@@ -533,6 +511,96 @@ describe('assert-github-matrix', () => {
       const r = run('--gh-fixture', fixture(listing));
       assert.equal(r.status, 1, r.stdout);
       assert.match(r.stderr, new RegExp(`visibility says ${JSON.stringify(declaredVis)}, GitHub says "${actualVis}"`));
+    });
+
+    // 🔴 A DEAD NAME IS NOT AN ACCOUNTING SURFACE. tooling/dead-repos.json records
+    // names that died; the org holding one again is a RE-CLAIMED name (a live
+    // Cloudflare Pages binding still resolves an old repository id), so it must be
+    // LOUDER than a new orphan, never quieter.
+    test('a DEAD name the org holds again is an ORPHAN that names its death record', () => {
+      const deadName = dead.repos[0]?.name;
+      assert.ok(deadName, 'tooling/dead-repos.json declares no dead repo — this case has no subject');
+      const r = run('--gh-fixture', fixture([...cleanListing(), { name: deadName, visibility: 'PRIVATE', isArchived: false }]));
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, new RegExp(`ORPHAN — org ${ORG} holds "${deadName}"`));
+      assert.match(r.stderr, /records "[^"]+" as DEAD/);
+      assert.match(r.stderr, /RE-CLAIMED name/);
+    });
+
+    test('a new orphan carries no death record — the dead-name note is not printed for every orphan', () => {
+      const r = run('--gh-fixture', fixture([...cleanListing(), { name: 'nikatru-undeclared-thing', visibility: 'PRIVATE', isArchived: false }]));
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /ORPHAN/);
+      assert.doesNotMatch(r.stderr, /as DEAD/);
+    });
+  });
+
+  // ── THE REGISTRY FILES ARE READ, NEVER GUESSED. Re-keyed 2026-09-25: the guard
+  //    reads tooling/github-org.json and tooling/dead-repos.json, and a missing or
+  //    malformed one is exit 2 — "I could not look", never an empty org. ─────────
+  describe('the registry files are read, never guessed', () => {
+    /** A hermetic copy of the guard with its siblings and the two registry files
+     *  as given (`null` leaves a file out), so the refusal under test is the only
+     *  thing that differs from the real tree. */
+    const plantRegistry = ({ registry, deadRepos }) => {
+      const base = join(TMP, `regplant-${seq++}`);
+      mkdirSync(join(base, 'tooling', 'ci'), { recursive: true });
+      const copy = join(base, 'tooling', 'ci', 'assert-github-matrix.mjs');
+      writeFileSync(copy, readFileSync(GUARD, 'utf8'));
+      for (const sib of GUARD_SIBLINGS) { const dest = join(base, 'tooling', sib); mkdirSync(dirname(dest), { recursive: true }); copyFileSync(join(CI_DIR, '..', sib), dest); }
+      if (registry !== null) writeFileSync(join(base, 'tooling', 'github-org.json'), registry);
+      if (deadRepos !== null) writeFileSync(join(base, 'tooling', 'dead-repos.json'), deadRepos);
+      return copy;
+    };
+    const realRegistry = () => readFileSync(REGISTRY, 'utf8');
+    const realDead = () => readFileSync(DEAD_REPOS, 'utf8');
+
+    test('the planted control: both files present reaches the report, so the refusals below are not the plant', () => {
+      const copy = plantRegistry({ registry: realRegistry(), deadRepos: realDead() });
+      const r = runRaw(copy, '--offline', '--projects', ANCHOR);
+      assert.equal(r.status, 3, `${r.stdout}${r.stderr}`);
+      assert.match(r.stdout, /tooling\/github-org\.json {2}vs {2}github\.com\//);
+    });
+
+    test('tooling/github-org.json absent is REGISTRY NOT FOUND, exit 2', () => {
+      const copy = plantRegistry({ registry: null, deadRepos: realDead() });
+      const r = runRaw(copy, '--offline', '--projects', ANCHOR);
+      assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+      assert.match(r.stderr, /REGISTRY NOT FOUND/);
+    });
+
+    test('a registry with an empty `platform` is refused, exit 2', () => {
+      const doc = JSON.parse(realRegistry());
+      doc.platform = [];
+      const copy = plantRegistry({ registry: JSON.stringify(doc), deadRepos: realDead() });
+      const r = runRaw(copy, '--offline', '--projects', ANCHOR);
+      assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+      assert.match(r.stderr, /no `platform` array, or it is empty/);
+    });
+
+    test('tooling/dead-repos.json absent is refused, exit 2 — a dead name would otherwise read as a new one', () => {
+      const copy = plantRegistry({ registry: realRegistry(), deadRepos: null });
+      const r = runRaw(copy, '--offline', '--projects', ANCHOR);
+      assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+      assert.match(r.stderr, /DEAD-REPO LIST UNREADABLE/);
+    });
+
+    test('a platform entry with no `boundRemote` key is a FINDING — absent is not null', () => {
+      const doc = JSON.parse(realRegistry());
+      delete doc.platform[0].boundRemote;
+      const copy = plantRegistry({ registry: JSON.stringify(doc), deadRepos: realDead() });
+      const r = runRaw(copy, '--offline', '--projects', ANCHOR);
+      assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+      assert.match(r.stderr, /`boundRemote` is absent/);
+    });
+
+    test('a repo declared both as platform and in otherRepos is a FINDING — accountingRule says EXACTLY ONE', () => {
+      const doc = JSON.parse(realRegistry());
+      doc.otherRepos = [...doc.otherRepos, { repo: doc.platform[0].repo, why: 'planted double declaration', measured: 'planted by this case' }];
+      const copy = plantRegistry({ registry: JSON.stringify(doc), deadRepos: realDead() });
+      const r = runRaw(copy, '--offline', '--projects', ANCHOR);
+      assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+      assert.match(r.stderr, /accountingRule says EXACTLY ONE/);
     });
   });
 
@@ -653,11 +721,11 @@ describe('assert-github-matrix', () => {
     const plant = (probes) => {
       const base = join(TMP, `ghlimb-${seq++}`);
       mkdirSync(join(base, 'tooling', 'ci'), { recursive: true });
-      mkdirSync(join(base, 'catalog'), { recursive: true });
       const copy = join(base, 'tooling', 'ci', 'assert-github-matrix.mjs');
       writeFileSync(copy, readFileSync(GUARD, 'utf8'));
       for (const sib of SIBLINGS) { const dest = join(base, 'tooling', sib); mkdirSync(dirname(dest), { recursive: true }); copyFileSync(join(CI_DIR, '..', sib), dest); }
-      writeFileSync(join(base, 'catalog', 'store-matrix.json'), readFileSync(REGISTRY, 'utf8'));
+      writeFileSync(join(base, 'tooling', 'github-org.json'), readFileSync(REGISTRY, 'utf8'));
+      writeFileSync(join(base, 'tooling', 'dead-repos.json'), readFileSync(DEAD_REPOS, 'utf8'));
       for (const [name, body] of Object.entries(probes)) {
         writeFileSync(join(base, 'tooling', 'ci', name), `${body}\n`);
       }
@@ -777,7 +845,7 @@ describe('assert-github-matrix', () => {
       const copy = plant({
         'probe-regprose.mjs': [
           "import { execFileSync } from 'node:child_process';",
-          '// TODO: read `github.org` from catalog/store-matrix.json instead of hardcoding this.',
+          '// TODO: read `github.org` from tooling/github-org.json instead of hardcoding this.',
           "export const list = () => execFileSync('gh', ['repo', 'list', 'some-other-org']);",
         ].join('\n'),
       });
@@ -793,10 +861,10 @@ describe('assert-github-matrix', () => {
       // tightening and is the opposite: every real invocation of this command —
       // the shell form inside a quoted command string, and the `['repo','list',…]`
       // argv — is a STRING. Measured on the live tree 2026-08-21: with the string
-      // blanking composed in, the querier count goes 1 -> 0 and
-      // assert-store-matrix.mjs stops containing the org literal, because :642 is
-      // one execFileSync argv carrying both facts at once. The limb would go blind
-      // and still print a green count.
+      // blanking composed in, the querier count went 1 -> 0 and the one real
+      // querier of that day (a store-slot guard, retired 2026-09-25) stopped
+      // containing the org literal, because one argv carried both facts at once.
+      // The limb would go blind and still print a green count.
       // This case is about the guard's SOURCE because the mistake would be made
       // there, and nothing downstream of it can fail loudly enough to say so.
       // 🔴 AND IT READS THE GUARD'S CODE, NOT ITS COMMENTS. The guard's margin
@@ -808,11 +876,19 @@ describe('assert-github-matrix', () => {
       assert.match(src, /stripSourceComments\(raw, '\.mjs'\)/, 'the org-literal limb must route its read through the shared stripper');
       assert.doesNotMatch(src, /stripStringLiterals/, 'this guard must never compose the string-literal blanker onto that read');
       // And the property that makes that non-negotiable, measured rather than asserted in prose.
-      const store = readFileSync(join(CI_DIR, 'assert-store-matrix.mjs'), 'utf8');
-      const bare = stripStringLiterals(stripSourceComments(store, '.mjs'));
-      assert.match(store, /['"]repo['"]\s*,\s*['"]list['"]/, 'assert-store-matrix.mjs is the real querier this limb exists to see');
-      assert.doesNotMatch(bare, /['"]repo['"]\s*,\s*['"]list['"]/, 'blanking strings would hide the one real querier');
-      assert.ok(!bare.includes(ORG), 'blanking strings would also hide its copy of the org literal');
+      // ⏱ 2026-09-25 — RE-AIMED, NOT DELETED. This read the store-slot guard, the one real querier
+      // on the tree until it was retired with the store matrix (O-STORE-MATRIX-IS-A-DEAD-DECLARATION).
+      // The property is about a querier's SHAPE, so it is measured on the two queriers that remain
+      // to be read: this guard's own argv (the limb skips SELF, but its code is the real shape), and
+      // the org-spelling probe the middle-branch case above plants, for the org-literal half.
+      const selfRaw = readFileSync(GUARD, 'utf8');
+      const selfBare = stripStringLiterals(stripSourceComments(selfRaw, '.mjs'));
+      assert.match(stripSourceComments(selfRaw, '.mjs'), /['"]repo['"]\s*,\s*['"]list['"]/, 'assert-github-matrix.mjs is a real querier: its argv must survive the comment strip');
+      assert.doesNotMatch(selfBare, /['"]repo['"]\s*,\s*['"]list['"]/, 'blanking strings would hide a real querier');
+      const agrees = `import { execFileSync } from 'node:child_process';\nexport const list = () => execFileSync('gh', ['repo', 'list', '${ORG}', '--json', 'name']);\n`;
+      const agreesBare = stripStringLiterals(stripSourceComments(agrees, '.mjs'));
+      assert.ok(stripSourceComments(agrees, '.mjs').includes(ORG), 'the comment strip alone must keep an argv copy of the org literal');
+      assert.ok(!agreesBare.includes(ORG), 'blanking strings would also hide its copy of the org literal');
     });
   });
 });

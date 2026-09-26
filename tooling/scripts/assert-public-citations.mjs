@@ -31,6 +31,8 @@
 //      subject file, and, within this branch's diff, one still owed. The
 //      subjects, the id shape and the resolver are `owner-ids.mjs`; the rules
 //      and the `--all-subjects` flag are at the ID CITATIONS block below.
+//      ⏱ 2026-09-25: the channel register's owner ids are a subject too
+//      (`channels[].ownerQueue` live; `openedBy` and `disqualified[]` existing).
 //
 //   4. ROW IDS IN PROSE (O-PUBLIC-DOCS-HAND-WRITTEN-FACTS) — an `O-<WORDS>` id in
 //      any tracked line names a row of `Private/platform-state/open.json`, and a
@@ -157,7 +159,7 @@
    `repo-git.mjs`, which deletes the six redirecting variables from the child
    environment and proves the root is its own repository before reading it. */
 import { repoGit, repoGitRaw, RepoGitError, strippedNote } from './repo-git.mjs';
-import { HOLD_SUBJECTS, LIVENESS, subjectFor, holdsIn, indexRows, isOwnerId, resolveHold } from './owner-ids.mjs';
+import { HOLD_SUBJECTS, LIVENESS, SubjectShapeError, subjectFor, subjectPaths, holdsIn, indexRows, isOwnerId, resolveHold } from './owner-ids.mjs';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { resolve, dirname, join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -786,7 +788,7 @@ for (const rel of files) {
    shard descent gives about `shardDecl`: deleting the block must leave this file
    valid and behaving exactly as it did before the class existed, which is how the
    test puts the defect back and watches the class bite. */
-let holdSubjectFiles = 0, holdsChecked = 0, holdsLive = 0;
+let holdSubjectFiles = 0, holdsChecked = 0, holdsLive = 0, holdsFound = 0;
 const staleHolds = [];
 
 /* ── ID CITATIONS BEGIN ──────────────────────────────────────────────────────
@@ -823,6 +825,21 @@ const staleHolds = [];
      open.json from the private root, and `owner-queue.json` from
      $NIKATRU_BUSINESS_ROOT, else `<private root>/../../nikatru` — the one
      business file this guard opens.
+
+   ⏱ 2026-09-25 (D3a, O-CAPTURE-LEAVES-DERIVED-SETS-STALE): A SECOND SUBJECT,
+   `tooling/channel-register.json`. Its `channels[].ownerQueue` is held to a
+   LIVE row. Its `channels[].accountStatus.openedBy` and
+   `disqualified[].ownerQueue` are held only to a row that EXISTS, in any state,
+   because each names the item that opened an account or ruled a channel out,
+   and that item is closed by design. The rules above apply unchanged: ABSENT,
+   UNRELATED, AMBIGUOUS and MALFORMED are exit 1 on every run, and NOT LIVE
+   waits for the branch that edits the register or for `--all-subjects`.
+   ⚠️ The register holds an id on every tree that carries it, so from this
+   subject on BOTH registers are read on every run of this repository, and a
+   host without the business root's `owner-queue.json` is exit 2 here. That is
+   the precedent Private `requirements/tooling/assert-held-reasons.mjs` set for
+   the same file. A `[]` path that meets a non-array is exit 2 as well: the
+   holds under it are unknown.
 
    🔴 CI NEVER RUNS THIS, for the reason at the head of the file: its subject
    registers are private. `tooling/ci/test/public-citations-owner-ids.test.mjs`
@@ -901,8 +918,18 @@ for (const rel of files) {
   }
   holdSubjectFiles++;
   const rawLines = raw.split(/\r?\n/);
-  for (const h of holdsIn(subject, rel, doc)) {
-    const at = rawLines.findIndex((l) => l.includes(JSON.stringify(h.id)));
+  let holds;
+  try { holds = holdsIn(subject, rel, doc); } catch (e) {
+    if (!(e instanceof SubjectShapeError)) throw e;
+    idRefuse([`${rel} is a hold subject (${subject.glob}) and ${e.message}.`, 'What it holds there is unknown.']);
+  }
+  for (const h of holds) {
+    /* A hold inside an array element is found from that element's `"id"` line
+       onward, so two channels citing one id each get their own line. */
+    const from = h.anchor ? Math.max(0, rawLines.findIndex((l) => l.includes(`"id": ${JSON.stringify(h.anchor)}`))) : 0;
+    const needle = h.key ? `"${h.key}": ${JSON.stringify(h.id)}` : JSON.stringify(h.id);
+    const hit = rawLines.findIndex((l, i) => i >= from && l.includes(needle));
+    const at = hit === -1 ? rawLines.findIndex((l) => l.includes(JSON.stringify(h.id))) : hit;
     held.push({ ...h, line: at === -1 ? 1 : at + 1 });
   }
 }
@@ -910,7 +937,7 @@ for (const rel of files) {
 /* An id is looked up in BOTH registers, so both are read the moment any subject
    holds a value that could be an id. A malformed value needs neither. */
 const rowsByClass = { open: null, queue: null };
-const lookedUp = held.filter((h) => isOwnerId(h.id)).map((h) => h.id);
+const lookedUp = [...new Set(held.filter((h) => isOwnerId(h.id)).map((h) => h.id))];
 if (lookedUp.length) {
   rowsByClass.open = readRegister('open', join(PRIVATE, 'platform-state', 'open.json'), lookedUp);
   const business = process.env.NIKATRU_BUSINESS_ROOT
@@ -924,20 +951,21 @@ for (const h of held) {
   holdsChecked++;
   const r = resolveHold(h, rowsByClass);
   if (r.verdict === 'live') { holdsLive++; continue; }
+  if (r.verdict === 'exists') { holdsFound++; continue; }
   if (r.verdict === 'malformed') {
-    failures.push({ rel: h.file, line: h.line, kind: 'owner-id', what: String(h.id), why: `${h.jsonPath} — ${r.why}` });
+    failures.push({ rel: h.file, line: h.line, kind: 'owner-id', holdKind: h.kind, what: String(h.id), why: `${h.jsonPath} — ${r.why}` });
     continue;
   }
   if (r.verdict === 'absent') {
-    failures.push({ rel: h.file, line: h.line, kind: 'owner-id', what: h.id, why: `${h.jsonPath} holds on a row neither ${LIVENESS.open.register} nor ${LIVENESS.queue.register} carries (ABSENT)` });
+    failures.push({ rel: h.file, line: h.line, kind: 'owner-id', holdKind: h.kind, what: h.id, why: `${h.jsonPath} holds on a row neither ${LIVENESS.open.register} nor ${LIVENESS.queue.register} carries (ABSENT)` });
     continue;
   }
   if (r.verdict === 'ambiguous') {
-    failures.push({ rel: h.file, line: h.line, kind: 'owner-id', what: h.id, why: `${h.jsonPath} holds on an id that ${r.classes.map((c) => LIVENESS[c].register).join(' and ')} BOTH carry (AMBIGUOUS); which row decides is a guess` });
+    failures.push({ rel: h.file, line: h.line, kind: 'owner-id', holdKind: h.kind, what: h.id, why: `${h.jsonPath} holds on an id that ${r.classes.map((c) => LIVENESS[c].register).join(' and ')} BOTH carry (AMBIGUOUS); which row decides is a guess` });
     continue;
   }
   if (r.verdict === 'unrelated') {
-    failures.push({ rel: h.file, line: h.line, kind: 'owner-id', what: h.id, why: `${h.jsonPath} holds on ${r.id}, a live ${LIVENESS[r.cls].register} row whose text never names ${h.file} (UNRELATED)` });
+    failures.push({ rel: h.file, line: h.line, kind: 'owner-id', holdKind: h.kind, what: h.id, why: `${h.jsonPath} holds on ${r.id}, a live ${LIVENESS[r.cls].register} row whose text never names ${h.file} (UNRELATED)` });
     continue;
   }
   notLive.push({ ...h, cls: r.cls, state: r.state });
@@ -946,7 +974,7 @@ if (notLive.length) {
   const changed = ALL_SUBJECTS ? null : changedSinceMergeBase();
   for (const h of notLive) {
     if (ALL_SUBJECTS || (changed && changed.has(h.file))) {
-      failures.push({ rel: h.file, line: h.line, kind: 'owner-id', what: h.id, why: `${h.jsonPath} holds on a row that is NOT LIVE (${h.state}) in ${LIVENESS[h.cls].register}` });
+      failures.push({ rel: h.file, line: h.line, kind: 'owner-id', holdKind: h.kind, what: h.id, why: `${h.jsonPath} holds on a row that is NOT LIVE (${h.state}) in ${LIVENESS[h.cls].register}` });
     } else {
       staleHolds.push(h);
       console.log(`STALE HOLD ${h.file} ${h.jsonPath} ${h.id} ${h.state}`);
@@ -1112,8 +1140,9 @@ const label = `${filesScanned} tracked file(s) · ${pathsChecked} Private/ path 
   `${tagsChecked} [pipeline] tag(s) yielding ${idsChecked} id(s), resolved against ` +
   `${origins.size} origin(s) from ${specFiles} spec file(s)` +
   (shardDecl ? `, ${shardsRead} of them declared shard(s) under ${Object.keys(shardDecl.declared.reduce((a, r) => { a[r.split('/')[0]] = 1; return a; }, {})).length} sharded register(s)` : ' (no `shards` block declared)') +
-  ` · ${holdsChecked} owner-id hold(s) in ${holdSubjectFiles} subject file(s) (${HOLD_SUBJECTS.map((s) => `${s.glob} ${s.jsonPath}`).join('; ')}), ` +
-  `${holdsLive} live` + (staleHolds.length ? `, ${staleHolds.length} STALE and printed above, outside this branch's diff` : '') +
+  ` · ${holdsChecked} owner-id hold(s) in ${holdSubjectFiles} subject file(s) (${HOLD_SUBJECTS.map((s) => `${s.glob} ${subjectPaths(s).join(', ')}`).join('; ')}), ` +
+  `${holdsLive} live` + (holdsFound ? `, ${holdsFound} provenance id(s) found in any state` : '') +
+  (staleHolds.length ? `, ${staleHolds.length} STALE and printed above, outside this branch's diff` : '') +
   ` · ${rowIdsChecked} O-/P- row id(s) on ${rowIdLines} line(s), resolved against every row of open.json (${openRowCount}) ` +
   `and programme.json (${programmeItemCount}) whatever its state, ${stateLines} of those line(s) carrying a state phrase`;
 
@@ -1156,8 +1185,15 @@ console.error('\n  A citation that still parses and no longer points at the righ
 console.error('  corpus\'s most repeated defect. Repoint it, or disclose the absence on the same');
 console.error('  line — `(deleted 2026-08-15)` — which this guard accepts and a reader can see.\n');
 if (failures.some((f) => f.kind === 'owner-id')) {
-  console.error('  An owner-id hold is not settled by a disclosure. Hold on a live row whose `blocks` or');
-  console.error('  `closes` names the subject file, or record the ruling it waits on, which ends the hold.');
+  console.error('  An owner-id hold is not settled by a disclosure.');
+  if (failures.some((f) => f.kind === 'owner-id' && f.holdKind !== 'register-owner-queue')) {
+    console.error('  Hold on a live row whose `blocks` or `closes` names the subject file, or record the ruling');
+    console.error('  it waits on, which ends the hold.');
+  }
+  if (failures.some((f) => f.holdKind === 'register-owner-queue')) {
+    console.error('  A register `ownerQueue` whose owner item has closed while the account is open moves to');
+    console.error('  `accountStatus.openedBy`, where any existing row is accepted. An `ownerQueue` names a live item.');
+  }
   console.error('  `--all-subjects` grades every subject, not only the ones this branch changes.\n');
 }
 process.exit(1);

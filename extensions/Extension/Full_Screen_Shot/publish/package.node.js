@@ -163,7 +163,9 @@ function collect() {
    reads, and a hardcoded filename would silently degrade this script to grading
    a file that is no longer the overlay the rest of the repo applies. */
 const TOOL_JSON = path.join(ROOT, 'tool.json');
-const PACK_MJS = path.join(ROOT, '..', '..', 'scripts', 'pack.mjs');
+/* ⏱ 2026-09-25 (F-b): the comparison's other side moved with the function, out of
+   scripts/pack.mjs (which now imports it) into scripts/lib/merge-patch.mjs. */
+const MERGE_LIB = path.join(ROOT, '..', '..', 'scripts', 'lib', 'merge-patch.mjs');
 
 function readJson(p) {
   try { return { value: JSON.parse(fs.readFileSync(p, 'utf8')) }; }
@@ -181,7 +183,11 @@ function readJson(p) {
    NOTHING — `grep -n export scripts/pack.mjs` returns no lines, measured
    2026-09-20 — and it is a script that packs a tool when it is loaded, so there
    is no mergePatch to require and requiring the file would run the builder
-   inside the tool that grades what the builder produced. */
+   inside the tool that grades what the builder produced.
+   ⏱ 2026-09-25 (F-b): the function now lives in scripts/lib/merge-patch.mjs,
+   which exports it and which pack.mjs imports, so `mergePatchDrift()` reads that
+   file. The paragraph above is the record of why this was a comparison until
+   then. */
 
 /* RFC 7386 §2, all of it: a null member DELETES, an object member merges
    recursively, anything else replaces. Arrays replace wholesale — which is what
@@ -202,22 +208,22 @@ function normalizeFn(src) {
     .replace(/\s+/g, ' ').trim();
 }
 
-/* Returns null when pack.mjs is not reachable from here (this tool packaged on
-   its own), a string when the two implementations differ, and '' when they
-   agree. Never silently "passes" for a file it could not read. */
+/* Returns null when scripts/lib/merge-patch.mjs is not reachable from here (this
+   tool packaged on its own), a string when the two implementations differ, and ''
+   when they agree. Never silently "passes" for a file it could not read. */
 function mergePatchDrift() {
-  if (!fs.existsSync(PACK_MJS)) return null;
-  const src = fs.readFileSync(PACK_MJS, 'utf8');
+  if (!fs.existsSync(MERGE_LIB)) return null;
+  const src = fs.readFileSync(MERGE_LIB, 'utf8');
   const start = src.indexOf('function mergePatch');
-  if (start < 0) return 'scripts/pack.mjs no longer defines a function named mergePatch';
+  if (start < 0) return 'scripts/lib/merge-patch.mjs no longer defines a function named mergePatch';
   let i = src.indexOf('{', start), depth = 0, end = -1;
   for (; i < src.length; i++) {
     if (src[i] === '{') depth++;
     else if (src[i] === '}' && --depth === 0) { end = i; break; }
   }
-  if (end < 0) return 'scripts/pack.mjs mergePatch does not close — cannot compare';
+  if (end < 0) return 'scripts/lib/merge-patch.mjs mergePatch does not close — cannot compare';
   return normalizeFn(src.slice(start, end + 1)) === normalizeFn(mergePatch)
-    ? '' : 'the copy in publish/package.node.js and the one in scripts/pack.mjs are no longer the same code';
+    ? '' : 'the copy in publish/package.node.js and the one in scripts/lib/merge-patch.mjs are no longer the same code';
 }
 
 /* The whole Firefox story in one object, so no caller has to re-derive it:
@@ -491,7 +497,8 @@ function chromeKeepsImportScripts(bgSrc) {
      · the allowlist still reaches _locales on its own  -> test/i18n-sim.node.js
      · the Firefox overlay is usable, is an OBJECT and
        sets only the documented Firefox deltas         -> publish/verify-firefox-package.node.js
-     · its mergePatch is pack.mjs's mergePatch          -> tooling/ci/test/extensions-shared-constants.test.mjs
+     · its mergePatch is lib/merge-patch.mjs's (pack.mjs
+       imports that one since 2026-09-25)                -> tooling/ci/test/extensions-shared-constants.test.mjs
      · RTCPeerConnection and SharedWorker, which only
        verifyPackage()'s NET regex named               -> scripts/policy-check.mjs NETWORK
    The packages themselves are built by `node scripts/pack.mjs fullshot` and

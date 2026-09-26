@@ -35,9 +35,15 @@
 // Callers own the COVERAGE LOST decision — this module reports what it read
 // (`filesRead`, `tables.size`) and never exits. Its own failing cases are in
 // tooling/ci/test/prod-provenance.test.mjs.
+//
+// ⏱ 2026-09-26 · O-PROVENANCE-WALKS-ONE-DATABASE. The table set is per
+// database, and WHICH databases is read here too (`registeredD1Databases`,
+// below), for the same reason: the gate and the monitor must walk one set.
+// Until today both read one hard-coded wrangler path, so a table added to
+// subscriptiontracker_db was seen by neither limb.
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, posix } from 'node:path';
 
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
 import { listDir } from './tree-walk.mjs';
@@ -222,4 +228,150 @@ export function enumerateMigrationTables(dir) {
   }
 
   return { tables, filesRead, problems };
+}
+
+// ── ⏱ 2026-09-26 · WHICH DATABASES ──────────────────────────────────────────
+// The Workers are tooling/platform-register.json's `servingWorker`, then each of
+// its `appWorkers`, in that order. In each Worker's wrangler config, a database
+// is every TOP-LEVEL `d1_databases` binding that carries `migrations_dir`: the
+// Worker that applies a database's migrations owns it, and a binding without one
+// is a reader of a database another Worker owns (the app Worker's PLATFORM_DB),
+// so each database is counted once.
+//
+// 🔴 `env.<name>.d1_databases` IS NEVER READ. An environment block is not
+// production: `env.sandbox` holds the store capture's throwaway databases, and
+// B-17 is a walk of production. tooling/ci/test/prod-provenance-databases.test.mjs
+// holds that exclusion to a failing case.
+//
+// A glob over services/*/wrangler.jsonc was rejected: the register is the
+// declared Worker set (assert-platform-register.mjs holds it to every config
+// that declares `main`), and a glob would admit a scratch Worker.
+
+/** Where the Worker set is declared. */
+export const PLATFORM_REGISTER_REL = 'tooling/platform-register.json';
+/** The rule kind for a table whose columns carry no marker any resolver reads. */
+export const EXEMPT = 'exempt';
+/** The shortest reason an exemption may carry (it must also name every column). */
+export const MIN_EXEMPTION_REASON = 20;
+
+const SAFE_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+/** `// comment` and trailing commas — wrangler.jsonc is JSONC. */
+const parseJsonc = (text) => JSON.parse(stripSourceComments(text, '.ts').replace(/,(\s*[}\]])/g, '$1'));
+
+/**
+ * The D1 databases the platform register's Workers own.
+ *
+ * @param {string} root the repository root
+ * @returns {{databases: Array<{name: string, id: string, binding: string, worker: string, serving: boolean,
+ *            wrangler: string, migrationsDir: string, migrationsTable: string}>, problems: string[]}}
+ *   `problems` non-empty means the set could not be read whole; callers own
+ *   that verdict, exactly as for `enumerateMigrationTables`.
+ */
+export function registeredD1Databases(root) {
+  const databases = [];
+  const problems = [];
+  let reg;
+  try {
+    reg = JSON.parse(readFileSync(join(root, PLATFORM_REGISTER_REL), 'utf8'));
+  } catch (e) {
+    return { databases, problems: [`${PLATFORM_REGISTER_REL} is unreadable (${e.message}), so which Workers own a database cannot be said`] };
+  }
+  if (!reg?.servingWorker) problems.push(`${PLATFORM_REGISTER_REL} names no \`servingWorker\``);
+  if (reg?.appWorkers !== undefined && !Array.isArray(reg.appWorkers)) problems.push(`${PLATFORM_REGISTER_REL} \`appWorkers\` is not an array`);
+  const workers = [reg?.servingWorker, ...(Array.isArray(reg?.appWorkers) ? reg.appWorkers : [])].filter(Boolean);
+  for (const w of workers) {
+    const rel = w?.config;
+    if (typeof rel !== 'string' || rel.length === 0) {
+      problems.push(`${PLATFORM_REGISTER_REL}: Worker \`${w?.name ?? '?'}\` names no \`config\``);
+      continue;
+    }
+    let cfg;
+    try {
+      cfg = parseJsonc(readFileSync(join(root, rel), 'utf8'));
+    } catch (e) {
+      problems.push(`${rel} could not be read or parsed (${e.message})`);
+      continue;
+    }
+    for (const d of Array.isArray(cfg?.d1_databases) ? cfg.d1_databases : []) {
+      if (!d?.migrations_dir) continue;
+      const where = `${rel} binding \`${d.binding ?? '?'}\``;
+      if (typeof d.database_name !== 'string' || typeof d.database_id !== 'string' || !d.database_name || !d.database_id) {
+        problems.push(`${where} carries \`migrations_dir\` and no \`database_name\`/\`database_id\``);
+        continue;
+      }
+      const migrationsTable = d.migrations_table ?? 'd1_migrations';
+      if (typeof migrationsTable !== 'string' || !SAFE_IDENTIFIER.test(migrationsTable)) {
+        problems.push(`${where} names \`migrations_table\` ${JSON.stringify(migrationsTable)}, which no reader will quote into SQL`);
+        continue;
+      }
+      const twin = databases.find((x) => x.name === d.database_name);
+      if (twin) {
+        problems.push(`\`${d.database_name}\` carries \`migrations_dir\` in both ${twin.wrangler} and ${rel}, so two Workers claim to apply its migrations`);
+        continue;
+      }
+      databases.push({
+        name: d.database_name,
+        id: d.database_id,
+        binding: String(d.binding ?? ''),
+        worker: String(w.name ?? ''),
+        serving: w === reg.servingWorker,
+        wrangler: rel,
+        migrationsDir: posix.normalize(posix.join(posix.dirname(rel), String(d.migrations_dir))),
+        migrationsTable,
+      });
+    }
+  }
+  if (databases.length === 0 && problems.length === 0) {
+    problems.push(`no Worker ${PLATFORM_REGISTER_REL} names declares a top-level D1 binding carrying \`migrations_dir\``);
+  }
+  return { databases, problems };
+}
+
+/**
+ * PURE. The derived set against tooling/prod-provenance.json's `databases`, both
+ * ways: `unregistered` (derived, no entry — its tables would go unread),
+ * `stale` (an entry nothing derives) and `mismatched` (an entry whose
+ * `wrangler` or `migrationsDir` is not the owning config's).
+ */
+export function databaseLock(derived, registered) {
+  const reg = registered !== null && typeof registered === 'object' && !Array.isArray(registered) ? registered : {};
+  const has = (n) => Object.prototype.hasOwnProperty.call(reg, n);
+  const unregistered = derived.filter((d) => !has(d.name)).map((d) => `${d.name} (${d.wrangler} binding \`${d.binding}\`)`);
+  const stale = Object.keys(reg).filter((n) => !derived.some((d) => d.name === n));
+  const mismatched = [];
+  for (const d of derived.filter((x) => has(x.name))) {
+    for (const key of ['wrangler', 'migrationsDir']) {
+      if (reg[d.name]?.[key] !== d[key]) mismatched.push(`${d.name}.${key} is ${JSON.stringify(reg[d.name]?.[key])}, and the owning config gives ${JSON.stringify(d[key])}`);
+    }
+  }
+  return { unregistered, stale, mismatched };
+}
+
+/**
+ * PURE. Why an `exempt` rule is not an exemption, or null when it is one: no
+ * marker (it reads no column), a reason of MIN_EXEMPTION_REASON+ characters,
+ * and every column the migrations give the table named in that reason — so the
+ * argument is about this column set, and a column added later re-opens it.
+ */
+export function exemptionProblem(table, rule, columns) {
+  if (rule?.resolver !== EXEMPT) return null;
+  if (rule.marker !== undefined) return `\`${table}\` is ${EXEMPT} and declares marker \`${rule.marker}\`: an exempt table reads no column, so the marker is a rule nobody applies`;
+  const reason = typeof rule.reason === 'string' ? rule.reason.trim() : '';
+  if (reason.length < MIN_EXEMPTION_REASON) {
+    return `\`${table}\` is ${EXEMPT} with a reason of ${reason.length} character(s); an exemption needs ${MIN_EXEMPTION_REASON}+, naming the columns that carry no marker`;
+  }
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const unnamed = [...columns].filter((c) => !new RegExp(`(^|[^A-Za-z0-9_])${esc(c)}([^A-Za-z0-9_]|$)`).test(reason));
+  if (unnamed.length) {
+    return `\`${table}\` is ${EXEMPT} and its reason never names ${unnamed.map((c) => `\`${c}\``).join(', ')}: an exemption names every column the migrations give the table`;
+  }
+  return null;
+}
+
+/** The files `registeredD1Databases` and the enumeration read, relative to
+ *  `root`: the platform register, each owning config, each migrations dir. For
+ *  a test that copies the real tree into a fixture root. */
+export function databaseSources(root) {
+  const { databases } = registeredD1Databases(root);
+  return [...new Set([PLATFORM_REGISTER_REL, ...databases.flatMap((d) => [d.wrangler, d.migrationsDir])])];
 }

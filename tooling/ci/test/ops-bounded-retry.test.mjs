@@ -610,30 +610,51 @@ describe('B8 — ADOPTION: the class imports it, and no rival reading exists', (
     assert.deepEqual(missing, [], `these ops-watch readers still hold a private reading of "is this transient?"`);
   });
 
-  /** The ONE reader whose loop is NOT a transient retry, with the reason, in the
-   *  shape assert-guard-coverage.mjs's NOT_A_SCANNER uses. An exemption without a
-   *  reason is an exemption that outlives its reason.
+  /** The readers whose loop is NOT a transient retry, each with the ONE constant
+   *  that loop counts by and the reason, in the shape assert-guard-coverage.mjs's
+   *  NOT_A_SCANNER uses. An exemption without a reason is an exemption that
+   *  outlives its reason.
    *
    *  ⚠️ IT IS ASSERTED TO BE LIVE below, so a stale entry is a failure rather than
    *  a silent widening — the exact defect the `staleExemptions` limb of
-   *  assert-guard-coverage.mjs exists for. */
+   *  assert-guard-coverage.mjs exists for.
+   *
+   *  ⏱ 2026-09-26 · O-PROVENANCE-WALKS-ONE-DATABASE rider (a). The exemption is
+   *  per CONSTANT, not per file: a second private attempt count in an exempted
+   *  reader is still a rival. It was per file while there was one entry. */
   const NOT_A_TRANSIENT_RETRY = new Map([
     [
       'post-deploy-smoke.mjs',
-      'its ATTEMPTS/GAP_MS loop is a PROPAGATION POLL, not a retry: it re-asks an answer that ' +
-        'SUCCEEDED but is still serving the previous build, which is a different question from ' +
-        '"was that a blip" and legitimately has different numbers (6 × 10 s ≈ one minute, sized to ' +
-        'CDN propagation, against this module\'s 3 attempts over 3 s sized to one dropped socket). ' +
-        'Folding the two together would either make a deploy smoke give up on propagation after ' +
-        'three seconds or make every ops-watch reader wait a minute on a dead endpoint.',
+      {
+        constant: 'ATTEMPTS',
+        reason:
+          'its ATTEMPTS/GAP_MS loop is a PROPAGATION POLL, not a retry: it re-asks an answer that ' +
+          'SUCCEEDED but is still serving the previous build, which is a different question from ' +
+          '"was that a blip" and legitimately has different numbers (6 × 10 s ≈ one minute, sized to ' +
+          'CDN propagation, against this module\'s 3 attempts over 3 s sized to one dropped socket). ' +
+          'Folding the two together would either make a deploy smoke give up on propagation after ' +
+          'three seconds or make every ops-watch reader wait a minute on a dead endpoint.',
+      },
+    ],
+    [
+      'check-prod-provenance.mjs',
+      {
+        constant: 'WALK_ATTEMPTS',
+        reason:
+          'its WALK_ATTEMPTS loop is a RE-WALK FROM PAGE 1, not a retry: every page read inside a walk ' +
+          'already goes through the shared plan (ghRead), and the loop re-asks a listing whose pages all ' +
+          'SUCCEEDED and contradicted each other (a claim that moved, a row served twice, fewer rows than ' +
+          'claimed). Its pauses come from backoffPlan itself, so there is no second formula. The #899 ' +
+          'follow-on: the census matched ATTEMPTS/READ_ATTEMPTS/RETRY_ATTEMPTS only, so it never saw this loop.',
+      },
     ],
   ]);
 
-  test('the exemption is LIVE — a reason that outlived its file is not an exemption', () => {
-    for (const name of NOT_A_TRANSIENT_RETRY.keys()) {
+  test('the exemption is LIVE — a reason that outlived its file or its constant is not an exemption', () => {
+    for (const [name, { constant }] of NOT_A_TRANSIENT_RETRY) {
       const r = readers.find((x) => x.name === name);
       assert.ok(r, `${name} is exempted here but no longer exists in tooling/ops/`);
-      assert.match(r.src, /^\s*const\s+ATTEMPTS\s*=/m, `${name} no longer has the loop it is exempted for`);
+      assert.match(r.src, new RegExp(`^\\s*const\\s+${constant}\\s*=`, 'm'), `${name} no longer has the ${constant} loop it is exempted for`);
     }
   });
 
@@ -653,18 +674,40 @@ describe('B8 — ADOPTION: the class imports it, and no rival reading exists', (
     assert.deepEqual(wired, [], 'these readers import the shared plan and never run it');
   });
 
-  test('🔴 NO RIVAL LOOP — no reader declares its own attempt count or its own transient predicate', () => {
+  /** The shapes a fork takes: a private attempts constant, a private status
+   *  predicate, or a private CouldNotLook class.
+   *
+   *  ⏱ 2026-09-26 — the attempts constant is EVERY `const <X>_ATTEMPTS =`, not
+   *  the three spellings ATTEMPTS / READ_ATTEMPTS / RETRY_ATTEMPTS: check-prod-
+   *  provenance.mjs's WALK_ATTEMPTS was a bounded loop this census never saw. */
+  function rivalsIn(files) {
     const rivals = [];
-    for (const { name, src } of readers) {
+    for (const { name, src } of files) {
       if (!touchesNetwork(src)) continue;
-      if (NOT_A_TRANSIENT_RETRY.has(name)) continue;
-      // The shapes a fork takes: a private attempts constant, a private status
-      // predicate, or a private CouldNotLook class.
-      if (/^\s*const\s+(ATTEMPTS|READ_ATTEMPTS|RETRY_ATTEMPTS)\s*=/m.test(src)) rivals.push(`${name}: a private attempt count`);
+      const exempt = NOT_A_TRANSIENT_RETRY.get(name)?.constant;
+      for (const m of src.matchAll(/^\s*(?:export\s+)?const\s+(\w*ATTEMPTS)\s*=/gm)) {
+        if (m[1] !== exempt) rivals.push(`${name}: a private attempt count (${m[1]})`);
+      }
       if (/^\s*(const|function)\s+transientStatus\b/m.test(src)) rivals.push(`${name}: a private transient-status predicate`);
       if (/^\s*(export\s+)?class\s+CouldNotLook\b/m.test(src)) rivals.push(`${name}: a private CouldNotLook class`);
     }
-    assert.deepEqual(rivals, [], 'two readings of "is this transient?" eventually disagree, silently');
+    return rivals;
+  }
+
+  test('🔴 NO RIVAL LOOP — no reader declares its own attempt count or its own transient predicate', () => {
+    assert.deepEqual(rivalsIn(readers), [], 'two readings of "is this transient?" eventually disagree, silently');
+  });
+
+  test('🔴 R6: a private FOO_ATTEMPTS in a network reader is a rival — the census reads every _ATTEMPTS spelling', () => {
+    const planted = [{ name: 'fixture-reader.mjs', src: "import https from 'node:https';\nconst FOO_ATTEMPTS = 3;\n" }];
+    assert.deepEqual(rivalsIn(planted), ['fixture-reader.mjs: a private attempt count (FOO_ATTEMPTS)']);
+  });
+
+  test('🔴 the WALK_ATTEMPTS exemption is per constant: a second attempt count in check-prod-provenance.mjs is still a rival', () => {
+    const r = readers.find((x) => x.name === 'check-prod-provenance.mjs');
+    assert.ok(r, 'check-prod-provenance.mjs is gone from tooling/ops — this control lost its subject');
+    assert.deepEqual(rivalsIn([r]), [], 'the real file, with its one exempted loop, is not a rival');
+    assert.deepEqual(rivalsIn([{ name: r.name, src: `${r.src}\nconst RETRY_ATTEMPTS = 5;\n` }]), ['check-prod-provenance.mjs: a private attempt count (RETRY_ATTEMPTS)']);
   });
 
   test('the shared class is the ONE class — every reader re-exports it rather than declaring one', () => {

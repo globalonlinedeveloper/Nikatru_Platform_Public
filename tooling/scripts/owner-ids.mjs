@@ -65,6 +65,31 @@
 //       field that plays the part `blocks` / `closes` play in open.json.
 //   A live row that names no subject is UNRELATED, and the guard costs it exactly
 //   what it costs ABSENT.
+//
+// ── ⏱ 2026-09-25: A SECOND SUBJECT, THE CHANNEL REGISTER (D3a) ───────────────
+//   Row O-CAPTURE-LEAVES-DERIVED-SETS-STALE, its clause "ownerQueue resolves
+//   against open rows". `tooling/channel-register.json` names an owner item on
+//   every store row (`channels[].ownerQueue`), and nothing read what the id
+//   named: A-3, A-4 (twice) and A-2 were all CLOSED in the owner queue while
+//   the register still pointed at them, and android-play's own note said
+//   "OWNER_QUEUE A-3 CLOSED". This file declares that subject with THREE fields
+//   and, for each, what the named row must be:
+//     · `channels[].ownerQueue` — a LIVE row: the item somebody still owes for
+//       the channel. A closed one moves to `accountStatus.openedBy`.
+//     · `channels[].accountStatus.openedBy` — any row that EXISTS, in any
+//       state. It is provenance: the item that opened the account.
+//     · `disqualified[].ownerQueue` — any row that EXISTS. A disqualification
+//       cites the item that ruled it, and a ruled item is closed.
+//   A field path may step through an array (`channels[]`). Each hold's path
+//   carries the element's `id` (`channels[linux-snap].ownerQueue`), so every
+//   message names the channel. A `[]` key that is present and not an array is
+//   a SubjectShapeError, and the guard makes it COVERAGE LOST.
+//   ⚠️ THE SUBJECT RULE ABOVE DOES NOT APPLY TO THIS KIND, and the reason is not
+//   leniency. The rule stops any live owner row from lifting a build GATE, and a
+//   register pointer lifts no gate: it names who is accountable for a channel.
+//   Requiring the row to name `tooling/channel-register.json` would require the
+//   owner to cite a Public path in the owner's own file, which no agent writes.
+//   `KINDS` below is where each kind says which rules it takes.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const OPEN_ID = /^O-[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*$/;
@@ -96,11 +121,26 @@ export const LIVENESS = Object.freeze({
   queue: Object.freeze({ register: 'owner-queue.json', field: 'status', live: 'pending' }),
 });
 
-/** THE SUBJECTS: every Public field that holds a build on an owner id.
- *  F1 ships one. A subject is a tracked-file shape and a JSON path into it; a
- *  null at that path holds nothing and is not read as an id. `heldWhileNull` is
- *  the path of the answer the hold waits on: once a value is recorded there the
- *  id is provenance, not a hold, which is how limb 7 of
+/** What each kind of hold is held to, beyond existing and being live.
+ *    · `ownerOnly` — an open.json row counts only when `owner: "owner"`;
+ *    · `namesSubject` — a live row counts only when its text names the subject
+ *      file (the PR 913 review's M1 rule, in the header).
+ *  A kind this table does not list takes `namesSubject` and not `ownerOnly`,
+ *  which is how the resolver treated every kind before the table existed. */
+export const KINDS = Object.freeze({
+  'owner-ruling': Object.freeze({ ownerOnly: true, namesSubject: true }),
+  'register-owner-queue': Object.freeze({ ownerOnly: false, namesSubject: false }),
+});
+const DEFAULT_KIND = Object.freeze({ ownerOnly: false, namesSubject: true });
+
+/** THE SUBJECTS: every Public field that holds a build on an owner id, or
+ *  points at one. A subject is a tracked-file shape and either ONE `jsonPath`
+ *  (F1's shape, held to `live`) or a list of `fields`, each a `jsonPath` that
+ *  may step through arrays and the `requires` its id is held to: `live` (a row
+ *  still owed) or `exists` (a row in any state, for provenance). A null at a
+ *  path holds nothing and is not read as an id. `heldWhileNull` is the path of
+ *  the answer the hold waits on: once a value is recorded there the id is
+ *  provenance, not a hold, which is how limb 7 of
  *  `tooling/ci/assert-name-clearance.mjs` reads the same record. */
 export const HOLD_SUBJECTS = Object.freeze([
   Object.freeze({
@@ -111,7 +151,28 @@ export const HOLD_SUBJECTS = Object.freeze([
     heldWhileNull: 'trademark.ruling',
     kind: 'owner-ruling',
   }),
+  /* ── REGISTER SUBJECT BEGIN ── the test deletes this region to rebuild the
+     guard as it stood before the subject existed, and watches the subject bite. */
+  Object.freeze({
+    id: 'register-owner-queue',
+    glob: 'tooling/channel-register.json',
+    file: /^tooling\/channel-register\.json$/,
+    kind: 'register-owner-queue',
+    fields: Object.freeze([
+      Object.freeze({ jsonPath: 'channels[].ownerQueue', requires: 'live' }),
+      Object.freeze({ jsonPath: 'channels[].accountStatus.openedBy', requires: 'exists' }),
+      Object.freeze({ jsonPath: 'disqualified[].ownerQueue', requires: 'exists' }),
+    ]),
+  }),
+  /* ── REGISTER SUBJECT END ── */
 ]);
+
+/** The JSON paths a subject reads, for the guard's report line. */
+export const subjectPaths = (subject) => (subject.fields ? subject.fields.map((f) => f.jsonPath) : [subject.jsonPath]);
+
+/** A subject file whose shape leaves what it holds unknown: a `[]` key that is
+ *  present and is not an array. The guard makes it COVERAGE LOST. */
+export class SubjectShapeError extends Error {}
 
 /** The subject a tracked path belongs to, or null. Forward slashes only, which
  *  is what `git ls-files` prints on every host. */
@@ -129,6 +190,7 @@ const at = (doc, jsonPath) => {
 };
 
 /** The holds one parsed subject file carries: `[{ file, jsonPath, id, kind }]`.
+ *  A subject declaring `fields` is read by `fieldHolds` below instead.
  *  An absent or null value holds nothing, and neither does any value once the
  *  subject's `heldWhileNull` path carries a recorded answer (a ruling kept
  *  beside its old id for provenance is not a hold). A null or ABSENT answer
@@ -137,6 +199,7 @@ const at = (doc, jsonPath) => {
  *  malformed string reaches the resolver and is reported there rather than
  *  being dropped here. */
 export function holdsIn(subject, rel, doc) {
+  if (subject.fields) return subject.fields.flatMap((f) => fieldHolds(subject, f, rel, doc));
   const v = at(doc, subject.jsonPath);
   if (v === undefined || v === null) return [];
   if (subject.heldWhileNull) {
@@ -144,6 +207,41 @@ export function holdsIn(subject, rel, doc) {
     if (answer !== undefined && answer !== null) return [];
   }
   return [{ file: rel, jsonPath: subject.jsonPath, id: v, kind: subject.kind }];
+}
+
+/** The holds one `fields` entry carries: `[{ file, jsonPath, id, kind, requires,
+ *  anchor, key }]`, one per non-null value its path reaches. A `name[]` segment
+ *  steps into every element of the array at `name`, and the hold's `jsonPath`
+ *  names the element by its `id` (by its index when it has none). `anchor` is
+ *  that element id and `key` the last segment, which is how the guard finds the
+ *  line. An absent key reaches nothing; a `[]` key that is present and is not an
+ *  array throws SubjectShapeError. */
+function fieldHolds(subject, field, rel, doc) {
+  let frontier = [{ v: doc, path: '', anchor: null }];
+  const segs = field.jsonPath.split('.');
+  for (const seg of segs) {
+    const many = seg.endsWith('[]');
+    const key = many ? seg.slice(0, -2) : seg;
+    const next = [];
+    for (const { v, path, anchor } of frontier) {
+      if (v === null || typeof v !== 'object' || !Object.prototype.hasOwnProperty.call(v, key)) continue;
+      const child = v[key];
+      const base = path ? `${path}.${key}` : key;
+      if (!many) { next.push({ v: child, path: base, anchor }); continue; }
+      if (!Array.isArray(child)) {
+        throw new SubjectShapeError(`\`${base}\` is ${child === null ? 'null' : typeof child}, and ${field.jsonPath} steps through it as an array`);
+      }
+      child.forEach((el, i) => {
+        const named = el !== null && typeof el === 'object' && typeof el.id === 'string' && el.id !== '';
+        next.push({ v: el, path: `${base}[${named ? el.id : i}]`, anchor: named ? el.id : anchor });
+      });
+    }
+    frontier = next;
+  }
+  const key = segs[segs.length - 1];
+  return frontier
+    .filter(({ v }) => v !== undefined && v !== null)
+    .map(({ v, path, anchor }) => ({ file: rel, jsonPath: path, id: v, kind: subject.kind, requires: field.requires, anchor, key }));
 }
 
 /** Every row-shaped object in a register, keyed by id: an object carrying an
@@ -199,10 +297,14 @@ export const namesSubject = (row, cls, hold) => typeof hold.file === 'string' &&
  *    { verdict: 'absent',    guess }           — neither register carries it;
  *                                                `guess` is `idClass`, for the message
  *    { verdict: 'ambiguous', classes }         — both registers carry it
+ *    { verdict: 'exists',    cls, state }      — a row, in any state, for a hold
+ *                                                whose `requires` is `exists`
  *    { verdict: 'not-live',  cls, state }      — a row, and it no longer owes it
  *    { verdict: 'unrelated', cls, id, state }  — a live row whose text never
- *                                                names the subject file
- *    { verdict: 'live',      cls, state }  */
+ *                                                names the subject file, for a
+ *                                                kind that takes that rule
+ *    { verdict: 'live',      cls, state }
+ *  A hold with no `requires` (F1's shape) is held to `live`. */
 export function resolveHold(hold, rowsByClass) {
   if (!isOwnerId(hold.id)) {
     return {
@@ -220,10 +322,12 @@ export function resolveHold(hold, rowsByClass) {
   const row = rowsByClass[cls].get(hold.id);
   const { field, live } = LIVENESS[cls];
   const state = row[field];
+  if (hold.requires === 'exists') return { verdict: 'exists', cls, state: `${field}=${String(state)}` };
   if (state !== live) return { verdict: 'not-live', cls, state: `${field}=${String(state)}` };
-  if (cls === 'open' && hold.kind === 'owner-ruling' && row.owner !== 'owner') {
+  const rules = KINDS[hold.kind] ?? DEFAULT_KIND;
+  if (cls === 'open' && rules.ownerOnly && row.owner !== 'owner') {
     return { verdict: 'not-live', cls, state: `owner=${String(row.owner)}` };
   }
-  if (!namesSubject(row, cls, hold)) return { verdict: 'unrelated', cls, id: row.id, state: `${field}=${state}` };
+  if (rules.namesSubject && !namesSubject(row, cls, hold)) return { verdict: 'unrelated', cls, id: row.id, state: `${field}=${state}` };
   return { verdict: 'live', cls, state: `${field}=${state}` };
 }

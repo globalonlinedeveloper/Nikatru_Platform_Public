@@ -11,7 +11,13 @@
 //   · a vars file that cannot be read, or an app id the contract refuses, stops
 //     the stamp before mason;
 //   · the three post-conditions exist, in order, and a failing one makes the
-//     exit non-zero.
+//     exit non-zero;
+//   · no workflow stamps with a raw `mason make`: a stamp step that skips this
+//     file skips its post-conditions too. The one raw `mason make` a workflow
+//     may carry is over a vars file whose app_id the contract refuses, which
+//     can only prove that pre_gen refuses it too (ci.yml's "A bad app id is
+//     refused before anything is written"); this file refuses such an id
+//     before mason runs, so routed through it, pre_gen would never be asked.
 //
 // The suite reads the PLAN and drives the runner with an injected `run`: it
 // spawns no mason and stamps nothing. No test is declared inside a loop
@@ -21,13 +27,44 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { planStamp, runStamp, REGEN, TAG_OWNER } from '../../kit/stamp-app.mjs';
+import { appIdProblems } from '../../../contracts/app-id/app-id.js';
+import { planStamp, runStamp, REPO, REGEN, TAG_OWNER } from '../../kit/stamp-app.mjs';
 
 let ROOT;
 const GOOD = 'good-vars.json';
+
+/** Where a workflow's steps can live: the workflows themselves, and the local
+ *  composite actions a `uses: ./.github/actions/<x>` step runs in their place. */
+const WORKFLOW_DIRS = ['.github/workflows', '.github/actions'];
+
+/** Every workflow or local-action YAML file under `rel`, repo-relative. */
+function yamlFiles(rel) {
+  const abs = join(REPO, ...rel.split('/'));
+  if (!existsSync(abs)) return [];
+  return readdirSync(abs, { recursive: true })
+    .map((f) => String(f).split('\\').join('/'))
+    .filter((f) => /\.ya?ml$/.test(f))
+    .sort()
+    .map((f) => `${rel}/${f}`);
+}
+
+/** True when the line's `-c <vars>` names a vars file whose app_id the contract
+ *  refuses: mason's pre_gen throws on it before writing anything, so the line
+ *  cannot stamp an app. Anything unreadable is false. */
+function refusedIdVars(line) {
+  const vars = /\s-c\s+(\S+)/.exec(line)?.[1];
+  if (!vars) return false;
+  let spec;
+  try {
+    spec = JSON.parse(readFileSync(join(REPO, ...vars.split('/')), 'utf8'));
+  } catch {
+    return false;
+  }
+  return typeof spec?.app_id === 'string' && appIdProblems(spec.app_id).length > 0;
+}
 
 before(() => {
   ROOT = mkdtempSync(join(tmpdir(), 'nikatru-stamp-app-'));
@@ -154,5 +191,19 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
     const code = runStamp(p, { run: (c) => { ran.push(c); return 0; }, exists: () => true, log: () => {}, error: () => {} });
     assert.equal(code, 1);
     assert.deepEqual(ran, [], 'a refused stamp ran a command');
+  });
+
+  test('no workflow under .github/workflows runs mason make itself', () => {
+    const files = WORKFLOW_DIRS.flatMap(yamlFiles);
+    assert.ok(files.includes('.github/workflows/ci.yml'), `the scan found no .github/workflows/ci.yml; it read ${files.length} file(s)`);
+    const raw = [];
+    for (const rel of files) {
+      const lines = readFileSync(join(REPO, ...rel.split('/')), 'utf8').split(/\r?\n/);
+      for (const [i, line] of lines.entries()) {
+        if (/^\s*#/.test(line) || !/\bmason(?:\.bat)?\s+make\b/.test(line)) continue;
+        if (!refusedIdVars(line)) raw.push(`${rel}:${i + 1}  ${line.trim()}`);
+      }
+    }
+    assert.deepEqual(raw, [], 'a workflow stamps with a raw `mason make`; call `node tooling/kit/stamp-app.mjs --vars <file.json>` instead, so the stamp runs its post-conditions');
   });
 });

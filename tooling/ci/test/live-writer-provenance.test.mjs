@@ -140,10 +140,15 @@ const REG_OBJ = () => ({
     'erasure-step': { why: 'an erasure' },
     'operator-minted': { why: 'an operator' },
   },
-  tables: {
-    consent_artifacts: { marker: 'app_version', resolver: 'released-build', alsoResolves: ['e2e-run', 'store-capture'] },
-    events: { marker: 'app_version', resolver: 'released-build' },
-    pending_erasures: { marker: 'app_id', resolver: 'operator-minted', alsoResolves: ['erasure-step'] },
+  // ⏱ 2026-09-26 — the rules sit under `databases.<name>.tables` (O-PROVENANCE-WALKS-ONE-DATABASE).
+  databases: {
+    platform_db: {
+      tables: {
+        consent_artifacts: { marker: 'app_version', resolver: 'released-build', alsoResolves: ['e2e-run', 'store-capture'] },
+        events: { marker: 'app_version', resolver: 'released-build' },
+        pending_erasures: { marker: 'app_id', resolver: 'operator-minted', alsoResolves: ['erasure-step'] },
+      },
+    },
   },
 });
 const REG_GREEN = JSON.stringify(REG_OBJ(), null, 2);
@@ -343,9 +348,9 @@ describe('assert-live-writer-provenance: a YAML drive stamps a resolvable APP_VE
   });
 
   test('RED: the lane resolver is not in consent_artifacts.alsoResolves', () => {
-    const r = run(tree({ [REG]: regWith((g) => { g.tables.consent_artifacts.alsoResolves = ['e2e-run']; }) }));
+    const r = run(tree({ [REG]: regWith((g) => { g.databases.platform_db.tables.consent_artifacts.alsoResolves = ['e2e-run']; }) }));
     expectExit(r, 1);
-    says(r, "resolver `store-capture` is not in tooling/prod-provenance.json tables.consent_artifacts.alsoResolves");
+    says(r, "resolver `store-capture` is not in tooling/prod-provenance.json databases.platform_db.tables.consent_artifacts.alsoResolves");
   });
 });
 
@@ -636,9 +641,9 @@ console.log(argv.join(' '));
 // ── L5 and COVERAGE LOST ─────────────────────────────────────────────────────
 describe('assert-live-writer-provenance: the register, and a census too thin to be evidence', () => {
   test('RED: the register widens app_version acceptance through a resolver no stamp lane defines', () => {
-    const r = run(tree({ [REG]: regWith((g) => { g.tables.consent_artifacts.alsoResolves.push('erasure-step'); }) }));
+    const r = run(tree({ [REG]: regWith((g) => { g.databases.platform_db.tables.consent_artifacts.alsoResolves.push('erasure-step'); }) }));
     expectExit(r, 1);
-    says(r, 'tables.consent_artifacts — the register widens app_version acceptance through `erasure-step`');
+    says(r, 'databases.platform_db.tables.consent_artifacts — the register widens app_version acceptance through `erasure-step`');
   });
 
   test('COVERAGE LOST: an empty .github/workflows', () => {
@@ -663,7 +668,7 @@ describe('assert-live-writer-provenance: the register, and a census too thin to 
     const notJson = run(tree({ [REG]: '{ "resolvers": ' }));
     expectExit(notJson, 2);
     says(notJson, 'is unreadable or not JSON');
-    const wrongShape = run(tree({ [REG]: JSON.stringify({ resolvers: [], tables: { consent_artifacts: {} } }) }));
+    const wrongShape = run(tree({ [REG]: JSON.stringify({ resolvers: [], databases: { platform_db: { tables: { consent_artifacts: {} } } } }) }));
     expectExit(wrongShape, 2);
     says(wrongShape, 'has no `resolvers` object');
   });

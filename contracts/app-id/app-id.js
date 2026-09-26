@@ -20,6 +20,8 @@
 //   · the platform Worker's served set  services/platform/src/config.ts
 //     APP_ID_PATTERN, which DROPS a longer id with no error                     at most 32 characters
 // The pattern is the intersection of those alphabets; 32 is the tightest length.
+// An id never contains '-': the release job's `<app>-*` artifact pattern and
+// the `<app>-v*` tag filter rely on it (PR 18 F9).
 //
 // ── WHO READS IT ─────────────────────────────────────────────────────────────
 //   · tooling/scripts/provision-backend.mjs     imports appIdProblems

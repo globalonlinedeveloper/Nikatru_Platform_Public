@@ -102,6 +102,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { Report, parseArgs, die } from './lib/report.mjs';
 import { DOS_TIME, DOS_DATE } from './lib/zip-time.mjs';
+import { mergePatch } from './lib/merge-patch.mjs';
 import { repoRoot, resolveTool, packagedFiles, readJson, listToolPaths, versionProblem } from './lib/toolinfo.mjs';
 
 /* ================= the zip primitives ==================================
@@ -276,18 +277,9 @@ function extractTo(abs, dest) {
   }
 }
 
-/* RFC 7386 §2, all of it: a null member DELETES, an object member merges
-   recursively, anything else replaces. Arrays replace wholesale — which is what
-   lets an overlay state background.scripts at all. */
-function mergePatch(base, patch) {
-  if (patch === null || typeof patch !== 'object' || Array.isArray(patch)) return patch;
-  const out = (base !== null && typeof base === 'object' && !Array.isArray(base)) ? { ...base } : {};
-  for (const key of Object.keys(patch)) {
-    if (patch[key] === null) delete out[key];
-    else out[key] = mergePatch(out[key], patch[key]);
-  }
-  return out;
-}
+/* mergePatch (RFC 7386 §2) is imported from lib/merge-patch.mjs, where it moved
+   on 2026-09-25 so the template's own packer and lib/tool-identity.mjs apply the
+   same implementation this script does. */
 
 /* ================= arguments ================= */
 /* `--release` and the two strictness flags are BOOLEANS, and parseArgs is

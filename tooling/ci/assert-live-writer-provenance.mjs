@@ -117,11 +117,19 @@ try {
   coverageLost([`${REGISTER_REL} is unreadable or not JSON — ${e.message}`, 'Without it no lane resolver can be checked against what the monitor accepts.']);
 }
 const resolvers = reg?.resolvers;
-const tables = reg?.tables;
-const consentAlso = tables?.consent_artifacts?.alsoResolves;
-if (!resolvers || typeof resolvers !== 'object' || Array.isArray(resolvers) || !tables || typeof tables !== 'object' || !Array.isArray(consentAlso)) {
+// ⏱ 2026-09-26 — the rules sit under `databases.<name>.tables`
+// (O-PROVENANCE-WALKS-ONE-DATABASE). Every table of every database is read, each
+// named by its path, so a stamp lane is judged against whichever database holds
+// the table it writes.
+const dbEntries = reg?.databases && typeof reg.databases === 'object' && !Array.isArray(reg.databases) ? Object.entries(reg.databases) : [];
+const tableRules = dbEntries.flatMap(([db, d]) =>
+  Object.entries(d?.tables && typeof d.tables === 'object' ? d.tables : {}).map(([name, rule]) => ({ path: `databases.${db}.tables.${name}`, name, rule })),
+);
+const consent = tableRules.find((r) => r.name === 'consent_artifacts');
+const consentAlso = consent?.rule?.alsoResolves;
+if (!resolvers || typeof resolvers !== 'object' || Array.isArray(resolvers) || dbEntries.length === 0 || !Array.isArray(consentAlso)) {
   coverageLost([
-    `${REGISTER_REL} has no \`resolvers\` object, no \`tables\` object, or no \`tables.consent_artifacts.alsoResolves\` array.`,
+    `${REGISTER_REL} has no \`resolvers\` object, no \`databases\` object, or no \`consent_artifacts.alsoResolves\` array in any database's \`tables\`.`,
     'Those three are what a stamp lane must be registered in; malformed, every lane would be judged against nothing.',
   ]);
 }
@@ -294,7 +302,7 @@ function judgeRender(where, lane, renders) {
 }
 function judgeResolver(where, lane) {
   if (!Object.prototype.hasOwnProperty.call(resolvers, lane.resolver)) return `${where} — its lane's resolver \`${lane.resolver}\` is not a key of ${REGISTER_REL} \`resolvers\`.`;
-  if (!consentAlso.includes(lane.resolver)) return `${where} — its lane's resolver \`${lane.resolver}\` is not in ${REGISTER_REL} tables.consent_artifacts.alsoResolves, so the monitor refuses every row it stamps.`;
+  if (!consentAlso.includes(lane.resolver)) return `${where} — its lane's resolver \`${lane.resolver}\` is not in ${REGISTER_REL} ${consent.path}.alsoResolves, so the monitor refuses every row it stamps.`;
   return null;
 }
 
@@ -495,11 +503,11 @@ for (const lane of STAMP_LANES) {
   const r = judgeResolver(`${STAMP_MODULE_REL} STAMP_LANES \`${lane.resolver}\``, lane);
   if (r) problems.push(r);
 }
-for (const [name, t] of Object.entries(tables)) {
+for (const { path, rule: t } of tableRules) {
   if (t?.marker !== 'app_version' || !Array.isArray(t.alsoResolves)) continue;
   for (const id of t.alsoResolves) {
     if (!laneByResolver(id)) {
-      problems.push(`${REGISTER_REL} tables.${name} — the register widens app_version acceptance through \`${id}\`, which no stamp lane in ${STAMP_MODULE_REL} defines, so no writer is held to its shape.`);
+      problems.push(`${REGISTER_REL} ${path} — the register widens app_version acceptance through \`${id}\`, which no stamp lane in ${STAMP_MODULE_REL} defines, so no writer is held to its shape.`);
     }
   }
 }

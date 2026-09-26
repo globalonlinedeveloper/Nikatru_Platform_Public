@@ -28,7 +28,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, copyFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -44,6 +44,13 @@ import {
   verdict,
   pinnedTeamId,
   unreadableSuffix,
+  archiveKind,
+  archiveRow,
+  plistTopKeys,
+  profileEntitlementKeys,
+  entitlementProblems,
+  workflowGlob,
+  normaliseCond,
   main,
 } from '../assert-artifact-signed-apple.mjs';
 
@@ -333,7 +340,7 @@ describe('assert-artifact-signed-apple — the pin comes out of the register', (
 });
 
 describe('assert-artifact-signed-apple — archives codesign cannot read', () => {
-  for (const bad of ['build/ios/ipa/Subly.ipa', 'out/Subly.pkg', 'Subly.app.zip', 'Subly.dmg', 'BUILD/SUBLY.IPA']) {
+  for (const bad of ['Subly.app.zip', 'Subly.dmg', 'BUILD/SUBLY.DMG']) {
     test(`${bad} is refused BY NAME, never read as unsigned`, () => {
       assert.notEqual(unreadableSuffix(bad), null);
     });
@@ -342,6 +349,15 @@ describe('assert-artifact-signed-apple — archives codesign cannot read', () =>
   test('a .app bundle and a bare Mach-O binary are readable', () => {
     assert.equal(unreadableSuffix('build/macos/Build/Products/Release/Subly.app'), null);
     assert.equal(unreadableSuffix('Subly.app/Contents/MacOS/Subly'), null);
+  });
+
+  test('an .ipa and a .pkg are OPENED, not refused — any case of the suffix', () => {
+    // Until 2026-09-25 both were in the refused list above (O-APPLE-PROVER-SKIPS-THE-PKG).
+    assert.equal(unreadableSuffix('build/ios/ipa/Subly.ipa'), null);
+    assert.equal(unreadableSuffix('out/Subly.pkg'), null);
+    assert.equal(archiveKind('BUILD/SUBLY.IPA'), '.ipa');
+    assert.equal(archiveKind('out/Subly.pkg'), '.pkg');
+    assert.equal(archiveKind('Subly.app'), null);
   });
 });
 
@@ -512,5 +528,398 @@ describe('assert-artifact-signed-apple — the captured output of run 3574181859
     const r = main({ argv: ['--repo-root', root, bundle], env: releaseEnv(TEAM), platform: 'darwin', run: replay(noTeam).run });
     assert.equal(r.code, 1, `${r.stdout}${r.stderr}`);
     assert.match(r.stderr, /carries no readable TeamIdentifier/);
+  });
+});
+
+// ═════ the archives, opened through main({ run }) — O-APPLE-PROVER-SKIPS-THE-PKG ══════════════════════
+// ⚠️ SYNTHETIC: the pkgutil text, the two profiles and the signed-entitlements XML are HAND-WRITTEN
+// (fixtures/apple-pkg-synthetic/README.md says so on its first line). The codesign reports are the captured
+// ones above. The fake `run` builds the tree `unzip` and `pkgutil --expand-full` would write — through the
+// guard's one seam, the same one every other tool call takes — so each case walks the path CI walks.
+const SYNTH = join(CI_DIR, 'test', 'fixtures', 'apple-pkg-synthetic');
+const synth = (f) => readFileSync(join(SYNTH, f), 'utf8');
+const SLUG = 'subscriptiontracker';
+const BUNDLE_ID = 'com.nikatru.subscriptiontracker';
+const IPA = `apps/${SLUG}/build/ios/ipa/${SLUG}.ipa`;
+const PKG = `apps/${SLUG}/build/macos/pkg/${SLUG}.pkg`;
+const DIST = 'Apple Distribution: <PERSONAL-NAME> (A1B2C3D4E5)';
+const INSTALLER = '3rd Party Mac Developer Installer: <PERSONAL-NAME> (A1B2C3D4E5)';
+const plistOf = (keys) =>
+  `<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">\n<dict>\n${keys.map((k) => `\t<key>${k}</key>\n\t<true/>\n`).join('')}</dict>\n</plist>\n`;
+
+/** A root holding the two Apple rows the way the register declares them, the app's entitlements files, and
+ *  a non-empty file at each `extra` path (both archives by default). */
+function archiveRoot(extra = [IPA, PKG]) {
+  const root = join(TMP, `root${seq++}`);
+  const row = (id, artifactGlob) => ({ id, signing: { seam: { artifactGlob } }, bundleIdentifier: { value: BUNDLE_ID } });
+  mkdirSync(join(root, 'tooling'), { recursive: true });
+  writeFileSync(
+    join(root, 'tooling', 'channel-register.json'),
+    JSON.stringify({ channels: [row('ios-appstore', 'apps/*/build/ios/ipa/*.ipa'), row('macos-appstore', 'apps/*/build/macos/pkg/*.pkg')] }),
+  );
+  // The profile limb reads the app's bundle id from the REAL provisioning register (bundleIdOf, per slug).
+  copyFileSync(join(REPO_ROOT, 'tooling', 'apple-provisioning.json'), join(root, 'tooling', 'apple-provisioning.json'));
+  mkdirSync(join(root, 'apps', SLUG, 'ios', 'Runner'), { recursive: true });
+  mkdirSync(join(root, 'apps', SLUG, 'macos', 'Runner'), { recursive: true });
+  writeFileSync(join(root, 'apps', SLUG, 'ios', 'Runner', 'Runner.entitlements'), plistOf(['com.apple.developer.declared-age-range']));
+  writeFileSync(
+    join(root, 'apps', SLUG, 'macos', 'Runner', 'Release.entitlements'),
+    plistOf(['com.apple.security.app-sandbox', 'com.apple.security.network.client']),
+  );
+  for (const rel of extra) {
+    mkdirSync(join(root, dirname(rel)), { recursive: true });
+    writeFileSync(join(root, rel), 'SYNTHETIC archive bytes\n');
+  }
+  return root;
+}
+
+/** The macOS runner, faked at `run`. Each key of `o` changes ONE tool's answer; a case sets one key. */
+function archiveRun(o = {}) {
+  const calls = [];
+  const ok = (stdout = '', stderr = '') => ({ status: 0, stdout, stderr });
+  const run = (cmd, args) => {
+    calls.push([cmd, ...args]);
+    const target = String(args[args.length - 1]);
+    const ios = target.includes('Runner.app');
+    if (cmd === 'unzip') {
+      const app = join(args[3], 'Payload', 'Runner.app');
+      if (o.ipaPayload !== false) mkdirSync(app, { recursive: true });
+      if (o.ipaPayload !== false && o.iosProfile !== null) writeFileSync(join(app, 'embedded.mobileprovision'), o.iosProfile ?? synth('profile-ios.plist'));
+      return ok();
+    }
+    if (cmd === 'pkgutil' && args[0] === '--check-signature') return ok(o.pkgText ?? synth('pkgutil-check-signature.txt'));
+    if (cmd === 'pkgutil' && args[0] === '--expand-full') {
+      if (o.expandStatus) return { status: o.expandStatus, stdout: '', stderr: 'Error: could not expand the package\n' };
+      const contents = join(args[2], 'Subscriptions.pkg', 'Payload', 'Subscriptions.app', 'Contents');
+      mkdirSync(contents, { recursive: true });
+      writeFileSync(join(contents, 'embedded.provisionprofile'), o.macProfile ?? synth('profile-macos.plist'));
+      return ok();
+    }
+    if (cmd === 'security') return o.cms ? { stdout: '', stderr: '', ...o.cms } : ok();
+    if (cmd === 'codesign' && args[0] === '--help') return ok();
+    if (cmd === 'codesign' && args[0] === '--verify') {
+      return o.verifyStatus ? { status: o.verifyStatus, stdout: '', stderr: `${target}: a sealed resource is missing or invalid\n` } : ok();
+    }
+    if (cmd === 'codesign' && args.includes('--entitlements')) {
+      return ok(o.signedEntitlements ?? synth(ios ? 'entitlements-ios.xml' : 'entitlements-macos.xml'));
+    }
+    if (cmd === 'codesign') return ok('', ios ? CAPTURED_IPA : CAPTURED_APP);
+    if (cmd === process.execPath) {
+      return o.plistStatus ? { status: o.plistStatus, stdout: '', stderr: 'FAIL CFBundleIdentifier is com.example.other\n' } : ok('assert-built-info-plist: OK\n');
+    }
+    if (cmd === 'which') return { status: 0, stdout: `/usr/bin/${args[0]}\n`, stderr: '' };
+    if (cmd === 'sw_vers') return { status: 0, stdout: '26.0\n', stderr: '' };
+    return { status: null, stdout: '', stderr: '', error: Object.assign(new Error(`spawn ${cmd} ENOENT`), { code: 'ENOENT' }) };
+  };
+  return { run, calls };
+}
+
+/** Run the guard over `artifacts` (both archives by default), release-signed, with `envExtra` on top. */
+function openArchives(o = {}, envExtra = {}, { root = archiveRoot(), artifacts = [IPA, PKG] } = {}) {
+  const { run, calls } = archiveRun(o);
+  const env = { ...releaseEnv(TEAM), APPLE_DIST_IDENTITY: DIST, APPLE_INSTALLER_IDENTITY: INSTALLER, RUNNER_TEMP: TMP, ...envExtra };
+  const r = main({ argv: ['--repo-root', root, ...artifacts], env, platform: 'darwin', run });
+  return { ...r, root, calls, all: `${r.stdout}${r.stderr}` };
+}
+
+describe('assert-artifact-signed-apple — the archive decisions, pure', () => {
+  test('the archive is matched to its row by the row artifactGlob, and the glob first * is the slug', () => {
+    const rows = [
+      { id: 'ios-appstore', signing: { seam: { artifactGlob: 'apps/*/build/ios/ipa/*.ipa' } } },
+      { id: 'macos-appstore', signing: { seam: { artifactGlob: 'apps/*/build/macos/pkg/*.pkg' } } },
+    ];
+    assert.equal(archiveRow(rows, PKG).row.id, 'macos-appstore');
+    assert.equal(archiveRow(rows, IPA).slug, SLUG);
+    // The glob this change replaced: a .pkg there is at no row's path.
+    assert.equal(archiveRow(rows, `apps/${SLUG}/build/macos/Build/Products/Release/${SLUG}.pkg`), null);
+  });
+
+  test('a profile top-level keys are not its Entitlements keys — nested dicts are skipped', () => {
+    const profile = synth('profile-ios.plist');
+    assert.ok(plistTopKeys(profile).includes('Entitlements'));
+    assert.ok(!plistTopKeys(profile).includes('application-identifier'));
+    assert.ok(profileEntitlementKeys(profile).includes('com.apple.developer.declared-age-range'));
+  });
+
+  test('on macOS a com.apple.security.* key is held to the signature only; any other key to the profile too', () => {
+    const p = entitlementProblems({
+      kind: '.pkg',
+      rel: PKG,
+      declared: ['com.apple.security.app-sandbox', 'com.apple.developer.example'],
+      signed: ['com.apple.security.app-sandbox', 'com.apple.developer.example'],
+      profiled: [],
+    });
+    assert.deepEqual(p, [`entitlements: ${PKG}'s embedded profile lacks declared entitlement com.apple.developer.example.`]);
+  });
+});
+
+describe('assert-artifact-signed-apple — the archives, opened (SYNTHETIC tool output)', () => {
+  test('RC2: the .ipa and the .pkg, each matching its row — exit 0, both opened, every named limb run', () => {
+    const r = openArchives();
+    assert.equal(r.code, 0, r.all);
+    assert.ok(r.stdout.includes(`ok   ${IPA} — opened`), r.stdout);
+    assert.ok(r.stdout.includes(`ok   ${PKG} — opened`), r.stdout);
+    assert.match(r.stdout, /2\/2 bundle\(s\) read with codesign/);
+    const ran = r.calls.map((c) => c.slice(0, 2).join(' '));
+    assert.ok(ran.includes('unzip -q'), JSON.stringify(ran));
+    assert.ok(ran.includes('pkgutil --check-signature'), JSON.stringify(ran));
+    assert.ok(ran.includes('pkgutil --expand-full'), JSON.stringify(ran));
+    assert.ok(ran.includes('codesign --verify'), JSON.stringify(ran));
+    assert.ok(ran.includes('codesign -d'), JSON.stringify(ran));
+    assert.ok(ran.includes('security cms'), JSON.stringify(ran));
+    assert.equal(r.calls.filter((c) => c[0] === process.execPath && c.includes('--app') && c.includes(SLUG)).length, 2);
+    // The macOS profile carries no com.apple.security.* key and the sandbox keys are declared: exit 0 is the scope rule.
+    assert.doesNotMatch(synth('profile-macos.plist'), /com\.apple\.security\./);
+  });
+
+  test('RC1: a .pkg whose embedded profile is for ANOTHER bundle id FAILS, naming the profile mismatch', () => {
+    const other = synth('profile-macos.plist').replace(`${TEAM}.${BUNDLE_ID}`, `${TEAM}.com.nikatru.other`);
+    assert.notEqual(other, synth('profile-macos.plist'));
+    const r = openArchives({ macProfile: other });
+    assert.equal(r.code, 1, r.all);
+    assert.match(
+      r.stderr,
+      /FAIL profile: apps\/subscriptiontracker\/build\/macos\/pkg\/subscriptiontracker\.pkg's embedded profile is for "A1B2C3D4E5\.com\.nikatru\.other", not "A1B2C3D4E5\.com\.nikatru\.subscriptiontracker"/,
+    );
+  });
+
+  test('profile: an embedded profile `security cms -D` cannot decode FAILS — a bare plist is not a CMS envelope', () => {
+    const r = openArchives({ cms: { status: 1 } });
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.stderr, /FAIL profile: .*not a CMS envelope/);
+  });
+
+  test('profile: `security` that cannot be run is COVERAGE LOST, naming security cms -D', () => {
+    const r = openArchives({ cms: { status: null, error: Object.assign(new Error('spawn security ENOENT'), { code: 'ENOENT' }) } });
+    assert.equal(r.code, 2, r.all);
+    assert.match(r.stderr, /COVERAGE LOST — profile: `security cms -D` could not be run/);
+  });
+
+  test('profile: an app the provisioning register does not name is COVERAGE LOST, naming the slug', () => {
+    const root = archiveRoot();
+    const reg = JSON.parse(readFileSync(join(root, 'tooling', 'apple-provisioning.json'), 'utf8'));
+    reg.apps = { othertracker: reg.apps[SLUG] };
+    writeFileSync(join(root, 'tooling', 'apple-provisioning.json'), JSON.stringify(reg));
+    const r = openArchives({}, {}, { root });
+    assert.equal(r.code, 2, r.all);
+    assert.match(r.stderr, /COVERAGE LOST — profile: no bundle id for "subscriptiontracker"/);
+  });
+
+  test('profile: an .ipa whose app carries no embedded.mobileprovision FAILS', () => {
+    const r = openArchives({ iosProfile: null });
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.stderr, /FAIL profile: apps\/subscriptiontracker\/build\/ios\/ipa\/subscriptiontracker\.ipa's wrapped app has no embedded\.mobileprovision/);
+  });
+
+  test('ipa-payload: an .ipa with no Payload/*.app FAILS by that name', () => {
+    const r = openArchives({ ipaPayload: false });
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.stderr, /FAIL ipa-payload: apps\/subscriptiontracker\/build\/ios\/ipa\/subscriptiontracker\.ipa holds 0 Payload\/\*\.app/);
+  });
+
+  test('pkg-signature: pkgutil not reporting an Apple-issued certificate FAILS', () => {
+    const r = openArchives({ pkgText: 'Package "subscriptiontracker.pkg":\n   Status: no signature\n' });
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.stderr, /FAIL pkg-signature: pkgutil does not report .*subscriptiontracker\.pkg as signed by a developer certificate issued by Apple/);
+  });
+
+  test('pkg-signature: a .pkg signed by an installer other than APPLE_INSTALLER_IDENTITY FAILS', () => {
+    const r = openArchives({}, { APPLE_INSTALLER_IDENTITY: 'Developer ID Installer: <PERSONAL-NAME> (A1B2C3D4E5)' });
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.stderr, /FAIL pkg-signature: .*subscriptiontracker\.pkg is not signed by "Developer ID Installer: <PERSONAL-NAME> \(A1B2C3D4E5\)"/);
+  });
+
+  test('pkg-payload: a .pkg pkgutil cannot expand is COVERAGE LOST, never a pass', () => {
+    const r = openArchives({ expandStatus: 1 });
+    assert.equal(r.code, 2, r.all);
+    assert.match(r.stderr, /FAIL COVERAGE LOST — pkg-payload: `pkgutil --expand-full` could not be run, or refused the archive/);
+    assert.match(r.stderr, /Error: could not expand the package/);
+  });
+
+  test('identity: a wrapped app signed by an identity other than APPLE_DIST_IDENTITY FAILS', () => {
+    const r = openArchives({}, { APPLE_DIST_IDENTITY: 'Apple Distribution: Someone Else (A1B2C3D4E5)' });
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.stderr, /FAIL identity: .*subscriptiontracker\.ipa's wrapped app is not signed by "Apple Distribution: Someone Else \(A1B2C3D4E5\)"/);
+  });
+
+  test('identity: release-signed with APPLE_DIST_IDENTITY empty is COVERAGE LOST', () => {
+    const r = openArchives({}, { APPLE_DIST_IDENTITY: '' });
+    assert.equal(r.code, 2, r.all);
+    assert.match(r.stderr, /release-signed and APPLE_DIST_IDENTITY is empty/);
+  });
+
+  test('verify-strict: a wrapped app codesign --verify --strict rejects FAILS', () => {
+    const r = openArchives({ verifyStatus: 3 });
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.stderr, /FAIL verify-strict: `codesign --verify --strict` rejects .*\(exit 3\): .*a sealed resource is missing or invalid/);
+  });
+
+  test('entitlements: a declared key missing from the SIGNATURE FAILS', () => {
+    const r = openArchives({ signedEntitlements: plistOf([]) });
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.stderr, /FAIL entitlements: .*\.ipa's wrapped app lacks declared entitlement com\.apple\.developer\.declared-age-range in its signature/);
+    assert.match(r.stderr, /FAIL entitlements: .*\.pkg's wrapped app lacks declared entitlement com\.apple\.security\.app-sandbox in its signature/);
+  });
+
+  test('entitlements: a declared iOS key missing from the embedded PROFILE FAILS', () => {
+    const without = synth('profile-ios.plist').replace(/<key>com\.apple\.developer\.declared-age-range<\/key>\s*<true\/>/, '');
+    assert.notEqual(without, synth('profile-ios.plist'));
+    const r = openArchives({ iosProfile: without });
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.stderr, /FAIL entitlements: .*\.ipa's embedded profile lacks declared entitlement com\.apple\.developer\.declared-age-range/);
+  });
+
+  test('info-plist: C1 refusing the wrapped app FAILS, carrying what C1 said', () => {
+    const r = openArchives({ plistStatus: 1 });
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.stderr, /FAIL info-plist: assert-built-info-plist\.mjs refuses .*\.pkg's wrapped app \(exit 1\): FAIL CFBundleIdentifier is com\.example\.other/);
+  });
+
+  test('an archive at no row artifactGlob FAILS — no row gives it a bundle id to be held to', () => {
+    const stray = `apps/${SLUG}/build/macos/Build/Products/Release/${SLUG}.pkg`;
+    const r = openArchives({}, {}, { root: archiveRoot([IPA, stray]), artifacts: [IPA, stray] });
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.stderr, /FAIL apps\/subscriptiontracker\/build\/macos\/Build\/Products\/Release\/subscriptiontracker\.pkg is at no Apple row's signing\.seam\.artifactGlob/);
+  });
+});
+
+// ═════ --static: build-platforms.yml held to the register's artifact globs ═══
+// ⏱ ADDED 2026-09-25 (O-APPLE-PROVER-SKIPS-THE-PKG). `run` throws in every case
+// below: --static reads text and must never reach a tool.
+const REPO_ROOT = resolve(CI_DIR, '..', '..');
+const WF_IPA = 'apps/${{ matrix.app }}/build/ios/ipa/*.ipa';
+const WF_PKG = 'apps/${{ matrix.app }}/build/macos/pkg/*.pkg';
+const RELEASE_IF = "if: env.APPLE_SIGNING_POSTURE == 'release-signed'";
+
+/** A minimal build-platforms.yml: one prover step over `proved`, one upload of `uploaded`. */
+function bpText({ proveIf = RELEASE_IF, proved = [WF_IPA, WF_PKG], uploaded = [WF_PKG, WF_IPA] } = {}) {
+  return [
+    'name: build-platforms',
+    'on: workflow_dispatch',
+    'jobs:',
+    '  apple:',
+    '    runs-on: macos-15',
+    '    steps:',
+    '      - name: PROVE the .ipa and .pkg are real and signed',
+    ...(proveIf === null ? [] : [`        ${proveIf}`]),
+    '        run: >',
+    '          node tooling/ci/assert-artifact-signed-apple.mjs',
+    ...proved.map((p) => `          ${p}`),
+    '      - name: Upload the archives',
+    '        uses: actions/upload-artifact@0000000000000000000000000000000000000000',
+    '        with:',
+    '          name: apple',
+    '          path: |',
+    ...uploaded.map((p) => `            ${p}`),
+    '',
+  ].join('\n');
+}
+
+/** archiveRoot's register, with `bp` written as build-platforms.yml (none when null) and `register` replacing the register. */
+function staticRoot({ bp = bpText(), register } = {}) {
+  const root = archiveRoot([]);
+  if (register !== undefined) writeFileSync(join(root, 'tooling', 'channel-register.json'), JSON.stringify(register));
+  if (bp !== null) {
+    mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
+    writeFileSync(join(root, '.github', 'workflows', 'build-platforms.yml'), bp);
+  }
+  return root;
+}
+
+function runStatic(root) {
+  const r = main({
+    argv: ['--repo-root', root, '--static'],
+    env: {},
+    platform: 'linux',
+    run: () => {
+      throw new Error('--static ran a tool');
+    },
+  });
+  return { ...r, all: `${r.stdout}${r.stderr}` };
+}
+
+const staticRow = (id, artifactGlob) => ({ id, signing: { seam: { artifactGlob } }, bundleIdentifier: { value: BUNDLE_ID } });
+
+describe('assert-artifact-signed-apple --static — the decisions, pure', () => {
+  test("a register glob's app `*` is bp's matrix app; an `if:` is compared as the expression it evaluates", () => {
+    assert.equal(workflowGlob('apps/*/build/ios/ipa/*.ipa'), WF_IPA);
+    assert.equal(workflowGlob('apps/*/build/macos/pkg/*.pkg'), WF_PKG);
+    assert.equal(normaliseCond(null), null);
+    assert.equal(normaliseCond('${{ env.APPLE_SIGNING_POSTURE  ==  "release-signed" }}'), "env.APPLE_SIGNING_POSTURE == 'release-signed'");
+  });
+});
+
+describe('assert-artifact-signed-apple --static — bp held to the register', () => {
+  test('the real tree: bp proves and uploads both register globs, and no tool is run', () => {
+    const r = runStatic(REPO_ROOT);
+    assert.equal(r.code, 0, r.all);
+    assert.match(r.stdout, /ok static-prove · ios-appstore: .*build-platforms\.yml:\d+ runs the prover on apps\/\$\{\{ matrix\.app \}\}\/build\/ios\/ipa\/\*\.ipa/);
+    assert.match(r.stdout, /ok static-prove · macos-appstore: .*build-platforms\.yml:\d+ runs the prover on apps\/\$\{\{ matrix\.app \}\}\/build\/macos\/pkg\/\*\.pkg/);
+    assert.match(r.stdout, /ok static-upload · macos-appstore: /);
+    assert.match(r.stdout, /ok static-upload · ios-appstore: /);
+  });
+
+  test('green control: the release-signed `if:`, no `if:`, and the `${{ }}` spelling all pass', () => {
+    assert.equal(runStatic(staticRoot()).code, 0);
+    assert.equal(runStatic(staticRoot({ bp: bpText({ proveIf: null }) })).code, 0);
+    const wrapped = runStatic(staticRoot({ bp: bpText({ proveIf: 'if: ${{ env.APPLE_SIGNING_POSTURE == "release-signed" }}' }) }));
+    assert.equal(wrapped.code, 0, wrapped.all);
+  });
+
+  test('RC3: the register glob moved back to Release/*.pkg FAILS static-prove and static-upload for macos-appstore', () => {
+    const register = {
+      channels: [staticRow('ios-appstore', 'apps/*/build/ios/ipa/*.ipa'), staticRow('macos-appstore', 'apps/*/build/macos/Build/Products/Release/*.pkg')],
+    };
+    const r = runStatic(staticRoot({ register }));
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.stderr, /FAIL static-prove · macos-appstore: no step in \.github\/workflows\/build-platforms\.yml runs tooling\/ci\/assert-artifact-signed-apple\.mjs on apps\/\$\{\{ matrix\.app \}\}\/build\/macos\/Build\/Products\/Release\/\*\.pkg/);
+    assert.match(r.stderr, /FAIL static-upload · macos-appstore: /);
+    assert.doesNotMatch(r.stderr, /· ios-appstore/);
+  });
+
+  test('RC4b: the prover step on `!= release-signed` FAILS static-posture — it would never see an archive', () => {
+    const r = runStatic(staticRoot({ bp: bpText({ proveIf: "if: env.APPLE_SIGNING_POSTURE != 'release-signed'" }) }));
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.stderr, /FAIL static-posture · ios-appstore: \.github\/workflows\/build-platforms\.yml:\d+ "PROVE the \.ipa and \.pkg are real and signed" runs the prover on .* only when `env\.APPLE_SIGNING_POSTURE != 'release-signed'`/);
+    assert.match(r.stderr, /FAIL static-posture · macos-appstore: /);
+  });
+
+  test('an archive proven but not uploaded FAILS static-upload', () => {
+    const r = runStatic(staticRoot({ bp: bpText({ uploaded: [WF_IPA] }) }));
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.stderr, /FAIL static-upload · macos-appstore: no actions\/upload-artifact step .* uploads apps\/\$\{\{ matrix\.app \}\}\/build\/macos\/pkg\/\*\.pkg/);
+    assert.doesNotMatch(r.stderr, /static-upload · ios-appstore/);
+  });
+
+  test('a QUOTED glob is not the glob — the shell would pass it to the prover unexpanded — and FAILS static-prove', () => {
+    const r = runStatic(staticRoot({ bp: bpText({ proved: [`"${WF_IPA}"`, WF_PKG] }) }));
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.stderr, /FAIL static-prove · ios-appstore: /);
+    assert.doesNotMatch(r.stderr, /static-prove · macos-appstore/);
+  });
+
+  test('COVERAGE LOST (exit 2) when build-platforms.yml is absent', () => {
+    const r = runStatic(staticRoot({ bp: null }));
+    assert.equal(r.code, 2, r.all);
+    assert.match(r.stderr, /FAIL COVERAGE LOST — --static: \.github\/workflows\/build-platforms\.yml does not exist/);
+  });
+
+  test('COVERAGE LOST (exit 2) when build-platforms.yml parses to no step', () => {
+    const r = runStatic(staticRoot({ bp: 'name: build-platforms\non: workflow_dispatch\njobs:\n  apple:\n    runs-on: macos-15\n' }));
+    assert.equal(r.code, 2, r.all);
+    assert.match(r.stderr, /FAIL COVERAGE LOST — --static: no step was parsed out of/);
+  });
+
+  test('COVERAGE LOST (exit 2) when an Apple row has no artifactGlob', () => {
+    const register = { channels: [staticRow('ios-appstore', 'apps/*/build/ios/ipa/*.ipa'), { id: 'macos-appstore', signing: {} }] };
+    const r = runStatic(staticRoot({ register }));
+    assert.equal(r.code, 2, r.all);
+    assert.match(r.stderr, /FAIL COVERAGE LOST — --static: tooling\/channel-register\.json's "macos-appstore" row has no signing\.seam\.artifactGlob/);
+  });
+
+  test('COVERAGE LOST (exit 2) when an Apple row is missing', () => {
+    const r = runStatic(staticRoot({ register: { channels: [staticRow('macos-appstore', 'apps/*/build/macos/pkg/*.pkg')] } }));
+    assert.equal(r.code, 2, r.all);
+    assert.match(r.stderr, /FAIL COVERAGE LOST — --static: tooling\/channel-register\.json declares no "ios-appstore" channel/);
   });
 });

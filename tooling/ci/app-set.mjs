@@ -30,8 +30,11 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-/** The workspace app set. Derived, never listed here. */
-export function workspaceApps(root) {
+/** Every root pubspec `workspace:` entry, packages and apps, in order; null when
+ *  the pubspec or its `workspace:` block is missing. The one parse of that block:
+ *  a guard that needs the whole member list (assert-version-consistency's floor
+ *  targets) reads it here too. */
+export function workspaceMembers(root) {
   const p = join(root, 'pubspec.yaml');
   if (!existsSync(p)) return null;
   const lines = readFileSync(p, 'utf8')
@@ -46,7 +49,13 @@ export function workspaceApps(root) {
     if (!m) break;
     out.push(m[2].replace(/\/+$/, ''));
   }
-  return out.filter((e) => e.startsWith('apps/'));
+  return out;
+}
+
+/** The workspace app set. Derived, never listed here. */
+export function workspaceApps(root) {
+  const members = workspaceMembers(root);
+  return members === null ? null : members.filter((e) => e.startsWith('apps/'));
 }
 
 /** Ids that nest below `apps/<id>`. The lanes address an app as

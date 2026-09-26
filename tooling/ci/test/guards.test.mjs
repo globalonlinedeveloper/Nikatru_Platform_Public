@@ -2299,6 +2299,7 @@ describe('assert-version-consistency', () => {
     runner_ubuntu: 'ubuntu-24.04',
     runner_windows: 'windows-2025',
     runner_macos: 'macos-26',
+    dart_language: '3.9.0',
   };
 
   // The brick's stamped-service package.json — the ONLY target of the
@@ -2310,11 +2311,12 @@ describe('assert-version-consistency', () => {
   const brickPkg = (pin) => JSON.stringify({ devDependencies: { wrangler: pin } });
 
   /** 12 references clears the scan's own MIN_OCCURRENCES floor. */
-  const wf = ({ flutter = DECL.flutter, node = DECL.node, mason = DECL.mason_cli, extra = '' } = {}) =>
+  const wf = ({ flutter = DECL.flutter, node = DECL.node, mason = DECL.mason_cli, ciMelos = DECL.melos, extra = '' } = {}) =>
     `name: X\njobs:\n  j:\n    steps:\n` +
     Array.from({ length: 5 }, () => `      - uses: x\n        with:\n          flutter-version: ${flutter}\n`).join('') +
     Array.from({ length: 5 }, () => `      - uses: y\n        with:\n          node-version: ${node}\n`).join('') +
-    `      - run: dart pub global activate melos ${DECL.melos}\n` +
+    // `ciMelos: null` drops ci.yml's activate line, the RC5 mutation.
+    (ciMelos === null ? '' : `      - run: dart pub global activate melos ${ciMelos}\n`) +
     `      - run: dart pub global activate mason_cli ${mason}\n` +
     extra;
 
@@ -2329,8 +2331,23 @@ describe('assert-version-consistency', () => {
    *  `rootManifest` and not `pubspec` because a module-level `pubspec` helper
    *  already exists above and means something else. */
   const rootManifest = (melos = DECL.melos) =>
-    `name: ws\nworkspace:\n  - packages/core\n\ndev_dependencies:\n  melos: ${melos}\n\n` +
+    `name: ws\nenvironment:\n  sdk: ^${DECL.dart_language}\n\n` +
+    `workspace:\n  - packages/core\n  - apps/demo\n\ndev_dependencies:\n  melos: ${melos}\n\n` +
     `melos:\n  scripts:\n    gate:\n      run: melos run analyze && melos run test\n`;
+
+  // ── the pubspecs that carry a floor (O-PUBSPEC-FLOORS-UNTIED-TO-THE-PIN) ────
+  // The root's `workspace:` list names a pure-Dart member and a Flutter one; the
+  // brick's app template and its hooks are named targets. All four are required,
+  // so every fixture carries them. A Flutter pubspec is one with an `sdk: flutter`
+  // dependency, and only that kind owes a `flutter: ">=<flutter>"` floor.
+  const CORE = 'packages/core/pubspec.yaml';
+  const APP = 'apps/demo/pubspec.yaml';
+  const TEMPLATE = 'tooling/bricks/app/__brick__/apps/{{app_id}}/pubspec.yaml';
+  const HOOKS = 'tooling/bricks/app/hooks/pubspec.yaml';
+  const dartPubspec = (name, sdk = `^${DECL.dart_language}`) =>
+    `name: ${name}\nenvironment:\n  sdk: ${sdk}\n\ndependencies:\n  meta: ^1.15.0\n`;
+  const flutterPubspec = (name, floor = `">=${DECL.flutter}"`, sdk = `^${DECL.dart_language}`) =>
+    `name: ${name}\nenvironment:\n  sdk: ${sdk}\n  flutter: ${floor}\n\ndependencies:\n  flutter:\n    sdk: flutter\n`;
 
   /** README's copy-paste build block — a real call site, read by the same rule
    *  that reads ci.yml. A human installs whatever this line says. */
@@ -2388,6 +2405,10 @@ describe('assert-version-consistency', () => {
       scanBody,
       wranglerIsland = true,
       islandPin = DECL.wrangler,
+      coreBody,
+      appBody,
+      templateBody,
+      hooksBody,
       ...wfOpts
     } = opts;
     const files = {
@@ -2398,6 +2419,10 @@ describe('assert-version-consistency', () => {
       'pubspec.yaml': manifestBody === undefined ? rootManifest(melosPin) : manifestBody,
       'README.md': readmeBody === undefined ? readmeDoc(readmeMelos) : readmeBody,
       [SCAN_SECRETS]: scanBody === undefined ? scanSecrets(gitleaksPin) : scanBody,
+      [CORE]: coreBody === undefined ? dartPubspec('core') : coreBody,
+      [APP]: appBody === undefined ? flutterPubspec('demo') : appBody,
+      [TEMPLATE]: templateBody === undefined ? flutterPubspec('{{app_id}}') : templateBody,
+      [HOOKS]: hooksBody === undefined ? dartPubspec('app_hooks') : hooksBody,
     };
     if (android) files[ANDROID] = androidModule(java, gradleExtra);
     if (brick) files[BRICK] = brickPkg(wranglerPin);
@@ -2466,12 +2491,15 @@ describe('assert-version-consistency', () => {
   });
 
   test('FAILS its own coverage check when the scan finds almost nothing', () => {
-    // Every REQUIRED target is present and yielding (their absence is a
-    // DIFFERENT COVERAGE LOST, tested below), so the only failure here is the
-    // global MIN_OCCURRENCES floor itself. The 8 it does find are the brick's
-    // wrangler pin, the tooling/wrangler island's pin, melos in pubspec.yaml and
-    // README.md, the Android module's three java literals, and scan-secrets.mjs's
-    // VALIDATED_AGAINST — the workflow contributes nothing.
+    // Every REQUIRED target is present (their absence is a DIFFERENT COVERAGE
+    // LOST, tested below). Since 2026-09-25 the per-file REQUIRED_YIELD minima
+    // alone add up to more than MIN_OCCURRENCES, so the global floor can no
+    // longer be the ONLY loss in a run — this proves it still reports beside the
+    // per-file ones. The 9 it finds are the brick's wrangler pin, the
+    // tooling/wrangler island's pin, melos and the `sdk:` floor in the root
+    // pubspec, melos in README.md, the Android module's three java literals, and
+    // scan-secrets.mjs's VALIDATED_AGAINST — the workflow and the four
+    // floor-less pubspecs contribute nothing.
     const dir = fixture('vc-cov', {
       'tooling/versions.json': JSON.stringify(DECL),
       '.github/workflows/ci.yml': `name: X\njobs:\n  j:\n    steps:\n      - run: echo hi\n`,
@@ -2481,10 +2509,14 @@ describe('assert-version-consistency', () => {
       [BRICK]: brickPkg(DECL.wrangler),
       'tooling/wrangler/package.json': brickPkg(DECL.wrangler),
       [SCAN_SECRETS]: scanSecrets(),
+      [CORE]: 'name: core\n',
+      [APP]: 'name: demo\n',
+      [TEMPLATE]: 'name: app\n',
+      [HOOKS]: 'name: app_hooks\n',
     });
     const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
     assert.equal(code, 2);
-    assert.match(out, /COVERAGE LOST — matched 8 version reference\(s\), expected at least 10/);
+    assert.match(out, /COVERAGE LOST — matched 9 version reference\(s\), expected at least 10/);
   });
 
   // ── the two rules PR #79 added, untested until triage 2026-07-31 ───────────
@@ -2722,6 +2754,10 @@ describe('assert-version-consistency', () => {
       [BRICK]: brickPkg(DECL.wrangler),
       'tooling/wrangler/package.json': brickPkg(DECL.wrangler),
       [SCAN_SECRETS]: scanSecrets(),
+      [CORE]: dartPubspec('core'),
+      [APP]: flutterPubspec('demo'),
+      [TEMPLATE]: flutterPubspec('{{app_id}}'),
+      [HOOKS]: dartPubspec('app_hooks'),
     });
     assert.equal(run('assert-version-consistency.mjs', { args: [dir] }).code, 0);
     const { code, out } = run('assert-version-consistency.mjs', { args: [alt] });
@@ -2800,6 +2836,123 @@ describe('assert-version-consistency', () => {
     const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
     assert.equal(code, 2, out);
     assert.match(out, /calls a REMOTE reusable workflow owner\/repo\/\.github\/workflows\/x\.yml@0000000 \(remote\)/);
+  });
+
+  // ── the two pubspec floors (O-PUBSPEC-FLOORS-UNTIED-TO-THE-PIN) ────────────
+  // Measured on the real tree 2026-09-25 before these rules existed: every member
+  // and the brick hooks at `sdk: ">=3.5.0 <4.0.0"`, every Flutter pubspec at
+  // `flutter: ">=3.24.0"`, and this guard at exit 0. Each case below is one of the
+  // red controls run against that tree, reproduced in a fixture.
+  test('PASSES when every pubspec carries `sdk: ^<dart_language>` and every Flutter pubspec `flutter: ">=<flutter>"`', () => {
+    const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-floors-ok')] });
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS when a member lowers its language floor, naming the member, the line and the declared form', () => {
+    const { code, out } = run('assert-version-consistency.mjs', {
+      args: [build('vc-sdk-drift', { coreBody: dartPubspec('core', '^3.0.0') })],
+    });
+    assert.equal(code, 1, out);
+    assert.match(
+      out,
+      /packages[\\/]core[\\/]pubspec\.yaml:3 Dart language floor \(pubspec environment sdk\) is \^3\.0\.0 but versions\.json `dart_language` "3\.9\.0" is written here as \^3\.9\.0/,
+    );
+  });
+
+  test('FAILS on the range form the tree carried, even though its lower bound is a version', () => {
+    // The capture is the WHOLE constraint. Capture only the number and
+    // `">=3.9.0 <4.0.0"` would equal the declaration while saying something else.
+    const { code, out } = run('assert-version-consistency.mjs', {
+      args: [build('vc-sdk-range', { hooksBody: dartPubspec('app_hooks', '">=3.5.0 <4.0.0"') })],
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /tooling[\\/]bricks[\\/]app[\\/]hooks[\\/]pubspec\.yaml:3 Dart language floor .* is ">=3\.5\.0 <4\.0\.0" but .* is written here as \^3\.9\.0/);
+  });
+
+  test('FAILS on a bare `sdk: 3.9.0` — the right number in the wrong shape pins one exact SDK', () => {
+    const { code, out } = run('assert-version-consistency.mjs', {
+      args: [build('vc-sdk-bare', { coreBody: dartPubspec('core', '3.9.0') })],
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /packages[\\/]core[\\/]pubspec\.yaml:3 Dart language floor .* is 3\.9\.0 but .* is written here as \^3\.9\.0/);
+  });
+
+  test('FAILS when a Flutter pubspec keeps a Flutter floor older than the pin — the brick template, which stamps every app', () => {
+    const { code, out } = run('assert-version-consistency.mjs', {
+      args: [build('vc-floor-drift', { templateBody: flutterPubspec('{{app_id}}', '">=3.24.0"') })],
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /\{\{app_id\}\}[\\/]pubspec\.yaml:4 Flutter floor \(pubspec environment\) is "3\.24\.0" but versions\.json declares "3\.44\.7"/);
+  });
+
+  test('COVERAGE LOST when a pubspec that depends on Flutter carries no Flutter floor', () => {
+    const { code, out } = run('assert-version-consistency.mjs', {
+      args: [build('vc-floor-gone', { appBody: 'name: demo\nenvironment:\n  sdk: ^3.9.0\n\ndependencies:\n  flutter:\n    sdk: flutter\n' })],
+    });
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — apps[\\/]demo[\\/]pubspec\.yaml yielded 0 `flutter` reference\(s\), expected at least 1/);
+  });
+
+  test('COVERAGE LOST when a pubspec states its language floor in a shape the rule does not read', () => {
+    const { code, out } = run('assert-version-consistency.mjs', {
+      args: [build('vc-sdk-unread', { coreBody: 'name: core\nenvironment:\n  sdk: any\n' })],
+    });
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — packages[\\/]core[\\/]pubspec\.yaml yielded 0 `dart_language` reference\(s\), expected at least 1/);
+  });
+
+  test('does NOT compare a workflow `sdk:` input — setup-dart takes a channel or an exact SDK, not a floor', () => {
+    const dir = build('vc-setup-dart', { extra: '      - uses: dart-lang/setup-dart@v1\n        with:\n          sdk: 3.1.0\n' });
+    const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
+    assert.equal(code, 0, out);
+  });
+
+  test('REFUSES when a pubspec the root `workspace:` list names is missing', () => {
+    const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-nomember', { coreBody: null })] });
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — required pubspec packages\/core\/pubspec\.yaml is missing/);
+  });
+
+  test("REFUSES when the brick's app template pubspec is missing — it is not a workspace member, so it is named", () => {
+    const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-notemplate', { templateBody: null })] });
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — required pubspec tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}\/pubspec\.yaml is missing/);
+  });
+
+  test('REFUSES when the root pubspec lists no `workspace:` members', () => {
+    const dir = build('vc-noworkspace', {
+      manifestBody: `name: ws\nenvironment:\n  sdk: ^${DECL.dart_language}\n\ndev_dependencies:\n  melos: ${DECL.melos}\n`,
+    });
+    const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — the root pubspec\.yaml lists no `workspace:` members/);
+  });
+
+  // ── the melos inventory: ci.yml's activate is an entry, and so are comments ─
+  test("COVERAGE LOST when ci.yml stops activating melos — the pin CI installs before `melos run gate`", () => {
+    const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-ci-melos-gone', { ciMelos: null })] });
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — \.github[\\/]workflows[\\/]ci\.yml yielded 0 `melos` reference\(s\), expected at least 1/);
+  });
+
+  test('FAILS when a root pubspec comment quotes a melos version the declaration does not name', () => {
+    // The propagator never rewrites a comment, so a versioned sentence goes stale
+    // the next time the pin moves. The root's melos block quoted 8.2.2 eight times
+    // on 2026-09-25 while its dev_dependency said otherwise.
+    const dir = build('vc-comment-melos', {
+      manifestBody: rootManifest().replace('\ndev_dependencies:\n', '\n# CI activates melos 8.1.0 before the gate.\ndev_dependencies:\n'),
+    });
+    const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
+    assert.equal(code, 1, out);
+    assert.match(out, /pubspec\.yaml:9 a comment quotes melos "8\.1\.0" but versions\.json declares "8\.2\.2"/);
+  });
+
+  test('PASSES when a root pubspec comment names melos without a version', () => {
+    const dir = build('vc-comment-melos-plain', {
+      manifestBody: rootManifest().replace('\ndev_dependencies:\n', '\n# CI activates melos at the pin before the gate.\ndev_dependencies:\n'),
+    });
+    const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
+    assert.equal(code, 0, out);
   });
 });
 
@@ -3449,7 +3602,9 @@ Future<void> _signOut(BuildContext context, WidgetRef ref, AppLocalizations l10n
    *  ⏱ 2026-09-24 — the lanes are now a CROSS-CHECK and the floor is on graded
    *  BUILDS (MIN_GRADED, 18 on the real census). Each row declares `platforms`
    *  because gradeDomain holds a stamp to the row's platforms; the four lane
-   *  builds plus CENSUS_FILL undeclared ones make the eighteen. */
+   *  builds plus CENSUS_FILL undeclared ones make the eighteen.
+   *  ⏱ 2026-09-25 — sixteen: MIN_GRADED re-based 18 → 16 when C2 removed the two
+   *  submit-job rebuilds, so CENSUS_FILL is twelve. */
   // ⏱ 2026-09-15 — lanes are scoped by the surface's DECLARED `flutterApp` (O-EXT-SURFACE-AXIS).
   const CHANNEL_REGISTER = JSON.stringify(
     {
@@ -3465,9 +3620,9 @@ Future<void> _signOut(BuildContext context, WidgetRef ref, AppLocalizations l10n
     2,
   );
   /** The graded builds beyond the four lanes that bring the fixture's census to
-   *  the guard's MIN_GRADED (18): the real tree's census grades 18, most of them
-   *  in jobs no row names, which is the point of grading a census. */
-  const CENSUS_FILL = 14;
+   *  the guard's MIN_GRADED (16 since 2026-09-25; 18 before): the real tree's census
+   *  grades 16, most of them in jobs no row names, which is the point of grading a census. */
+  const CENSUS_FILL = 12;
   /** `count` web builds, one per job, in a workflow no row declares. */
   const censusFill = (count) => {
     const jobs = [];
@@ -3872,7 +4027,7 @@ Future<void> main() async {
       cwd: build('seams-census-shrunk', { fill: CENSUS_FILL - 1 }),
     });
     assert.equal(code, 2, out);
-    assert.match(out, /the census graded only 17 release build\(s\) on a Flutter channel, fewer than the 18 that exist today/);
+    assert.match(out, /the census graded only 15 release build\(s\) on a Flutter channel, fewer than the 16 that exist today/);
   });
 
   // A lane naming a job that is gone is a register that has drifted from the
@@ -3944,7 +4099,7 @@ Future<void> main() async {
     });
     assert.equal(code, 0, out);
     assert.match(out, /NOT GRADED — \.github\/workflows\/deploy-web\.yml:13 \(job "preview", `flutter build web`\): a fixture preview build: deployed to a throwaway URL/);
-    assert.match(out, /crash sink wired — 18 census-graded release build\(s\).*1 exempt build\(s\) named above/);
+    assert.match(out, /crash sink wired — 16 census-graded release build\(s\).*1 exempt build\(s\) named above/);
   });
 
   test('T5 · FAILS when a `#` on the build line puts the define behind a comment', () => {
@@ -3976,7 +4131,7 @@ Future<void> main() async {
       cwd: build('seams-exempt-below-floor', { register: JSON.stringify(exempted, null, 2) }),
     });
     assert.equal(code, 2, out);
-    assert.match(out, /the census graded only 17 release build\(s\) on a Flutter channel, fewer than the 18 that exist today/);
+    assert.match(out, /the census graded only 15 release build\(s\) on a Flutter channel, fewer than the 16 that exist today/);
     assert.match(out, /NOT GRADED — \.github\/workflows\/census-fill\.yml:8 \(job "fill_0", `flutter build web`\)/);
   });
 
@@ -4403,13 +4558,14 @@ class Ed25519PackVerifier implements PackVerifier {
   // both lane workflows — a bare deploy-web.yml no longer answers the question
   // the guard now asks.
   // ⏱ 2026-09-24 — and since the limb grades workflow-scan's CENSUS, each build
-  // stamps the channel it is for, and the tree carries the 18 graded builds the
-  // guard floors at (MIN_GRADED): the four lanes plus fourteen in census-fill.yml.
+  // stamps the channel it is for, and the tree carries the 16 graded builds the
+  // guard floors at (MIN_GRADED, re-based 18 → 16 on 2026-09-25): the four lanes
+  // plus twelve in census-fill.yml.
   const laneJob = (name, target = 'web', channel = 'web') =>
     `  ${name}:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: flutter build ${target} --release --dart-define=RELEASE_CHANNEL=${channel} --dart-define=GLITCHTIP_DSN=\${{ secrets.GLITCHTIP_DSN }}\n`;
   const fillJobs = () => {
     let jobs = '';
-    for (let i = 0; i < 14; i++) jobs += laneJob(`fill_${i}`);
+    for (let i = 0; i < 12; i++) jobs += laneJob(`fill_${i}`);
     return jobs;
   };
   // [pipeline 7]P-9 consumer half · [8]K-9. Since 2026-08-03 `pack_verifier` is

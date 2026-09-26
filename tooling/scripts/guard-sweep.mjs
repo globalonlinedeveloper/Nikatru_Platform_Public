@@ -58,8 +58,8 @@
 // printed `✗ assert-walks-bounded.mjs RED(1) no invocation passes here` — and
 // exited 0, as designed above — and preflight.mjs read only that exit code, so it
 // closed with "CI should agree". A deterministic, tree-only regression looked
-// exactly like the environmental reds (assert-ops-register, assert-store-matrix
-// --registry-only, the assert-stamp-* guards that need a stamped app).
+// exactly like the environmental reds (assert-ops-register, the store matrix guard
+// before its 2026-09-25 retirement, the assert-stamp-* guards that need a stamped app).
 //
 // The fix is NOT to make this sweep exit 1 on a red: that would conflate the two
 // again, and the environmental reds would make it red on every run. It is to hand

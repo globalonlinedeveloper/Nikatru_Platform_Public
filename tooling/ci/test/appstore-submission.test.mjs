@@ -93,6 +93,7 @@ const appleRow = (id, over = {}) => ({
     declaredIn: id === 'ios-appstore' ? 'apps/{app}/ios/Runner.xcodeproj/project.pbxproj' : 'apps/{app}/macos/Runner/Configs/AppInfo.xcconfig',
   },
   submission: { runbook: 'Private/runbooks/store-submission-apple.md' },
+  signing: { seam: { artifactGlob: id === 'ios-appstore' ? 'apps/*/build/ios/ipa/*.ipa' : 'apps/*/build/macos/pkg/*.pkg' } },
   ...over,
 });
 
@@ -413,6 +414,27 @@ describe('submit-appstore — both Apple channels are walkable, and --submit ref
     assert.equal(code, 1, out);
     assertComplained(out);
     assert.match(out, /matches none of the formats channel "ios-appstore" accepts/);
+  });
+
+  // ⏱ ADDED 2026-09-25 (O-APPLE-PROVER-SKIPS-THE-PKG): the artifact path is the
+  // row's signing.seam.artifactGlob, read through apple-signing.mjs's appleArtifactPath.
+  test('the artifact path follows the row\'s artifactGlob — the old Release/ glob misses the .pkg bp writes', () => {
+    const { code, out } = macos(
+      tree({
+        withArtifact: true,
+        mutateRegister: (r) => (r.channels.find((c) => c.id === 'macos-appstore').signing.seam.artifactGlob = 'apps/*/build/macos/Build/Products/Release/*.pkg'),
+      }),
+    );
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /apps\/subscriptiontracker\/build\/macos\/Build\/Products\/Release\/subscriptiontracker\.pkg/);
+  });
+
+  test('FAILS COVERAGE LOST when the row declares no artifactGlob', () => {
+    const { code, out } = ios(tree({ withArtifact: true, mutateRegister: (r) => delete r.channels.find((c) => c.id === 'ios-appstore').signing }));
+    assert.equal(code, 2, out);
+    assertComplained(out);
+    assert.match(out, /COVERAGE LOST — channel "ios-appstore" gives no artifact path: channel "ios-appstore" declares no signing\.seam\.artifactGlob/);
   });
 
   // ── credentials and floors: printed, never failed, never read ─────────────

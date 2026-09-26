@@ -1517,7 +1517,7 @@ function liveVerdict(label, raw, scanned) {
 }
 
 /** THE NEGATIVE HALF, RUN ON EVERY INVOCATION — the same in-file canary pattern
- *  as `assert-copy-parity.mjs`'s self-test, and here for a specific reason: the
+ *  as the retired copy parity guard's self-test, and here for a specific reason: the
  *  comparison this limb performs needs an input CI does not supply today, so
  *  without these canaries the detector would ship with nothing ever exercising
  *  its failing path. They run against every root this guard is ever pointed at,

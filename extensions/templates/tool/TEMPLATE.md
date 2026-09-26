@@ -889,7 +889,8 @@ a real browser in front of the bytes a reviewer receives.
   set is diffed against the previous release.
 
 **Firefox is solved, not deferred.** `publish/manifest.firefox.json` is a
-documented five-key delta — `background.scripts` alongside `service_worker` (its
+documented five-key delta, written as an RFC 7386 merge patch over `manifest.json`
+(`publish/pack.mjs` applies it) — `background.scripts` alongside `service_worker` (its
 absence is the addons-linter *error* `BACKGROUND_SERVICE_WORKER_NOFALLBACK`),
 `options_ui` instead of `options_page`, no `minimum_chrome_version`, and the
 `gecko` block with `data_collection_permissions` (mandatory for new add-ons since
@@ -922,7 +923,8 @@ node publish/bump-version.mjs patch|minor|major|1.2.3
 node publish/bump-version.mjs --check     # the sim runs this too
 ```
 
-It rewrites every declared site (`manifest.json`, `publish/manifest.firefox.json`),
+It rewrites every declared site (`manifest.json`; `publish/manifest.firefox.json`
+is an RFC 7386 merge patch that carries no version and inherits this one),
 stamps a dated `CHANGELOG.md` stanza carrying anything under *Unreleased*,
 re-derives `gecko.id`, and then **greps the tree for the old number** and fails if
 it survives anywhere it should not. Adding a new site is one line in

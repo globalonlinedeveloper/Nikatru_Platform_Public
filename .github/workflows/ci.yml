@@ -613,7 +613,7 @@ jobs:
         run: node tooling/ci/assert-no-seam-forks.mjs
       - name: Every shared package the template delegates to is adopted by every app
         if: ${{ !cancelled() }}
-        run: node tooling/ci/assert-chassis-parity.mjs
+        run: node tooling/ci/assert-chassis-parity.mjs --require-history
       - name: Shared code carries no app-specific vocabulary
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-no-clone-tells.mjs
@@ -933,28 +933,75 @@ jobs:
           flutter --version
           node --single-threaded tooling/ci/assert-launcher-icons.mjs
 
+      # why: O-NEW-APP-IS-NOT-ONE-COMMAND. Every stamp in this job runs the one
+      # command, which runs `mason get` first and exits 1 when its post-conditions
+      # (regen.mjs --check, tag-owner.mjs --check) fail. stamp-app.test.mjs fails
+      # on a workflow that stamps with raw mason instead.
       - name: Stamp the default (client-only) app
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"
-          export NIKATRU_ALLOW_OVERWRITE=1
-          mason get
-          mason make app -c tooling/bricks/app/_probe_vars.json -o . --on-conflict overwrite
+          node tooling/kit/stamp-app.mjs --vars tooling/bricks/app/_probe_vars.json --overwrite
       - name: Stamped app carries ITS brand assets, not Flutter's
         run: |
           SEED=$(node -p "require('./tooling/bricks/app/_probe_vars.json').seed_hex")
           node --single-threaded tooling/ci/assert-stamp-brand-assets.mjs apps/probe --seed "$SEED"
+      # why: O-NEW-APP-IS-NOT-ONE-COMMAND, the probe. stamp-app.mjs's own
+      # post-condition is regen.mjs --check, which compares only what ORDER lists:
+      # drop a generator from ORDER and the stamp stops writing its output AND the
+      # check stops comparing it, so the stamp step stays green. This step
+      # re-derives the surface WITHOUT reading ORDER, naming each generator in the
+      # sites job's form, and any byte it changes is a stamp that left the tree
+      # stale. regen-chain.test.mjs holds this list and ORDER equal, both ways.
+      # `git add -A` stages the stamp in the runner's throwaway index, so the diff
+      # is only what the generators changed; `git reset -q` then puts the index
+      # back, so the `git checkout --` reverts below still restore HEAD.
+      - name: A stamp leaves the site surface and the tag filter clean
+        run: |
+          git add -A
+          node tooling/app-yaml/render.mjs
+          node tooling/app-yaml/render-privacy.mjs
+          rm -f sites/_shared/_data/apps.json
+          node tooling/sites/generate-apps-data.mjs
+          rm -f catalog/apps-landing.json
+          node tooling/sites/generate-landing-payload.mjs
+          node tooling/sites/gen-auth-mail.mjs
+          node tooling/sites/generate-discovery.mjs
+          node tooling/sites/generate-well-known.mjs
+          node tooling/ci/tag-owner.mjs --write
+          git diff --stat
+          git diff --exit-code
+          git reset -q
       - name: Stamped text is the spec's, its release id is its own, and blank hosts were DERIVED
         run: node tooling/ci/assert-stamp-text-fidelity.mjs --vars tooling/bricks/app/_probe_vars.json
       - name: A freshly stamped app carries a COMPLETE, spec-derived store listing
         run: node tooling/ci/assert-store-metadata.mjs
+      # why: O-BRICK-STAMPS-NO-PRIVACY-DECLARATION. The brick stamps privacy.yaml
+      # `state: pending`; the log must count app #1 and the probe as `1 declared, 1 pending`.
+      - name: Every app declares privacy, the stamped probe as pending
+        run: node tooling/ci/assert-app-yaml.mjs
+      # why: the row's red control, every run. Without its privacy.yaml the probe
+      # must be refused (exit exactly 1, naming the file), and restored it must pass.
+      - name: RED CONTROL — the probe without its privacy.yaml is refused, naming it
+        run: |
+          cp apps/probe/privacy.yaml "$RUNNER_TEMP/probe-privacy.yaml"
+          rm apps/probe/privacy.yaml
+          set +e
+          node tooling/ci/assert-app-yaml.mjs > "$RUNNER_TEMP/privacy-red.log" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/privacy-red.log"
+          echo "assert-app-yaml exit: $code"
+          cp "$RUNNER_TEMP/probe-privacy.yaml" apps/probe/privacy.yaml
+          if [ "$code" -ne 1 ]; then echo "::error::assert-app-yaml exited $code with apps/probe/privacy.yaml deleted; the red control requires exactly 1"; exit 1; fi
+          if ! grep -qF 'apps/probe/privacy.yaml does not exist' "$RUNNER_TEMP/privacy-red.log"; then echo "::error::assert-app-yaml exited 1 without naming apps/probe/privacy.yaml"; exit 1; fi
+          node tooling/ci/assert-app-yaml.mjs
       - name: SHOW-1 — probe is in the catalogue, and a RE-STAMP changes nothing
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"
-          export NIKATRU_ALLOW_OVERWRITE=1
           grep -q '"slug": "probe"' catalog/apps.json
           cp catalog/apps.json "$RUNNER_TEMP/apps-after-1.json"
           cp pubspec.yaml "$RUNNER_TEMP/pubspec-after-1.yaml"
-          mason make app -c tooling/bricks/app/_probe_vars.json -o . --on-conflict overwrite
+          node tooling/kit/stamp-app.mjs --vars tooling/bricks/app/_probe_vars.json --overwrite
           diff -u "$RUNNER_TEMP/apps-after-1.json" catalog/apps.json
           diff -u "$RUNNER_TEMP/pubspec-after-1.yaml" pubspec.yaml
           git checkout -- catalog/apps.json sites/_shared/_data/apps.json
@@ -973,8 +1020,7 @@ jobs:
       - name: Stamp the opt-in backend app
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"
-          export NIKATRU_ALLOW_OVERWRITE=1
-          mason make app -c tooling/bricks/app/_probe_backend_vars.json -o . --on-conflict overwrite
+          node tooling/kit/stamp-app.mjs --vars tooling/bricks/app/_probe_backend_vars.json --overwrite
       - name: Stamped backend app is dart format-clean
         run: |
           cp -r apps/probeapi "$RUNNER_TEMP/probeapi-as-stamped"
@@ -984,6 +1030,9 @@ jobs:
       # throws, so mason exits non-zero having written NOTHING. `habit_tracker` is
       # the id the old snake_case rule let through. Exit code alone is not the
       # proof: the log must carry the contract's message, and no app may exist.
+      # It calls mason itself, not stamp-app.mjs: that command refuses this id
+      # before mason runs, so pre_gen would never be asked. stamp-app.test.mjs
+      # admits a raw mason stamp only over a vars file the contract refuses.
       - name: A bad app id is refused before anything is written
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"
@@ -1109,8 +1158,6 @@ jobs:
         run: node tooling/ci/assert-palette-consistent.mjs
       - name: No page claims a store channel the catalogue has not published to
         run: node tooling/ci/assert-availability.mjs
-      - name: The store matrix registry is internally consistent (tree limbs run locally)
-        run: node tooling/ci/assert-store-matrix.mjs --registry-only
 
   workspace-gate:
     name: Workspace gate (melos analyze + test)
@@ -1207,6 +1254,10 @@ jobs:
       - name: The Apple privacy manifests still describe the binaries that ship
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-apple-privacy-manifest.mjs
+      # why: bp does not run on a PR; this holds its PROVE step and uploads to the register's Apple artifact paths.
+      - name: The Apple prover reads the archives at the paths bp writes and uploads
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-artifact-signed-apple.mjs --static
       - name: melos run analyze
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"
@@ -1351,6 +1402,23 @@ jobs:
         run: >
           node --single-threaded tooling/ci/assert-elf-page-alignment.mjs
           apps/${{ matrix.app }}/build/app/outputs/bundle/release/app-release.aab
+      # why: the Data safety form swears to the merged permission set, and only the
+      # built .aab carries it. Read from the .aab, cross-checked against the Play .apk
+      # restored above, then compared by limb M. O-PLAY-DATA-SAFETY-FROM-A-STALE-RUN.
+      - name: Dump the .aab's merged permissions, cross-checked against the Play .apk
+        run: >
+          node tooling/ci/dump-aab-permissions.mjs
+          --aab apps/${{ matrix.app }}/build/app/outputs/bundle/release/app-release.aab
+          --apk apps/${{ matrix.app }}/build/app/outputs/flutter-apk/app-release.apk
+          --out ${{ runner.temp }}/android-permissions.json
+          --run-id ${{ github.run_id }}
+          --commit ${{ github.sha }}
+          --artifact ci-android-${{ matrix.app }}
+      - name: The Data safety merged set equals this build's .aab
+        run: >
+          node tooling/ci/assert-play-declarations.mjs
+          --merged-dump ${{ runner.temp }}/android-permissions.json
+          --app ${{ matrix.app }}
       # why: apps.gov.in runs MobSF over the built .apk, and the merged manifest
       # exists only inside it. docs/ci/build-platforms.md §vapt.
       - name: The built .apk passes the static apps.gov.in VAPT items

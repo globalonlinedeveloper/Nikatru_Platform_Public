@@ -79,11 +79,12 @@
 // the scan can no longer tell.
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { join, resolve, dirname } from 'node:path';
+import { join, resolve, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { listDir } from './tree-walk.mjs';
 import { installableExtensions, BUNDLE_MEMBERS } from './release-manifest.mjs';
+import { appleArtifactPath } from './apple-signing.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = resolve(join(HERE, '..', '..'));  // tooling/ci -> repo root
@@ -263,14 +264,18 @@ const LANE_OUTPUTS = new Map([
         // changed.
         ...(APPLE_SIGNED
           ? [
+              // ⏱ 2026-09-25 (O-APPLE-PROVER-SKIPS-THE-PKG): `channel`, not `dir`.
+              // The directory is resolved below from that row's artifactGlob
+              // through apple-signing.mjs's appleArtifactPath, the one path the
+              // upload, PROVE and submit-appstore.mjs read.
               {
                 ext: '.ipa',
-                dir: 'build/ios/ipa',
+                channel: 'ios-appstore',
                 why: 'the iOS SUBMITTABLE artifact, produced by `flutter build ipa --export-options-plist` (archive + exportArchive) since 2026-09-09. This is the format the ios-appstore row declares; before that date the row declared `.ipa` and nothing in the repository could emit one. Asserted as a FILE with bytes because an export that fails part-way leaves the directory present and empty',
               },
               {
                 ext: '.pkg',
-                dir: 'build/macos/pkg',
+                channel: 'macos-appstore',
                 why: 'the macOS SUBMITTABLE artifact, produced by `productbuild --component … --sign "3rd Party Mac Developer Installer: …"` since 2026-09-09. The macos-appstore row has declared a `*.pkg` glob since 2026-08-20 and NOTHING FILLED IT: `productbuild` appeared in zero workflows and existed only as printed plan text in apple-signing.mjs. The Mac App Store takes a .pkg, never a .app',
               },
             ]
@@ -415,8 +420,26 @@ for (const e of lane.expect) {
   }
 }
 
-// (c) every format a channel binds to THIS job is a format this guard looks for.
 const rows = Array.isArray(register?.channels) ? register.channels : [];
+
+// An entry that names a `channel` takes its directory from that row's artifactGlob.
+for (const e of lane.expect) {
+  if (!e.channel) continue;
+  const row = rows.find((c) => c?.id === e.channel);
+  let path = null;
+  try {
+    path = appleArtifactPath(row, app);
+  } catch (err) {
+    coverageLost(
+      `lane "${platform}" expects its "${e.ext}" at channel "${e.channel}"'s artifactGlob, and ${REGISTER_REL} gives no path: ${err.message}.`,
+      'That glob is the one path the upload, PROVE and submit-appstore.mjs read; without it this entry',
+      'would be asserted at a directory nothing else agrees on.',
+    );
+  }
+  e.dir = posix.relative(`${APPS_DIR}/${app}`, posix.dirname(path));
+}
+
+// (c) every format a channel binds to THIS job is a format this guard looks for.
 const boundRows = rows.filter((c) => c?.lane?.job === platform);
 for (const row of boundRows) {
   const formats = (row.artifactFormats ?? []).filter((f) => typeof f === 'string' && /^\.[A-Za-z0-9]+$/.test(f));

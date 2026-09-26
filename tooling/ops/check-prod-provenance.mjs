@@ -34,9 +34,24 @@
 //
 // The rules are per table because the columns are (tooling/prod-provenance.json
 // carries each marker and the written reason for it), and the table set is
-// ENUMERATED from services/platform/migrations rather than listed — the same
+// ENUMERATED from each database's migrations rather than listed — the same
 // reading the gate uses, from the same module, so the two limbs cannot come to
 // range over different schemas.
+//
+// ⏱ 2026-09-26 · EVERY DATABASE THE PLATFORM REGISTER'S WORKERS OWN
+// (O-PROVENANCE-WALKS-ONE-DATABASE). This file read ONE wrangler path,
+// services/platform/wrangler.jsonc, so a table added to subscriptiontracker_db
+// was never enumerated, never queried and never missed. The set is now
+// tooling/ci/migration-tables.mjs `registeredD1Databases`: servingWorker then
+// each appWorker, every TOP-LEVEL D1 binding carrying `migrations_dir` —
+// `env.*` blocks (the capture sandbox) are not production and are not walked.
+// prod-provenance.json keeps `databases.<name>.{wrangler, migrationsDir,
+// tables}`, held to that set both ways: a database with no entry is COVERAGE
+// LOST (exit 2), an entry no Worker owns is a finding (exit 1). Every step
+// below — completeness, both schema reads, the pending path, the census — runs
+// per database, and every finding names `<database>.<table>`. A table whose
+// columns carry no marker any resolver reads is `exempt`: never queried,
+// printed as such, and its reason must name every one of its columns.
 //
 // ── PRIVACY: IT NEVER READS A ROW ───────────────────────────────────────────
 // Every query is `SELECT <marker>, COUNT(*) … GROUP BY <marker>`. It reads ONE
@@ -202,7 +217,9 @@
 // migrated. Either schema read failing, or answering in a shape this reader
 // cannot believe, is exit 2 — never "every migration applied".
 //
-// Env: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID (D1 read)
+// Env: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID (D1 read, on EVERY walked
+//      database — a refusal names the database, so a token scoped to one of
+//      them is exit 2 naming the other, never a clean total over one)
 //      GITHUB_TOKEN or GH_TOKEN, GITHUB_REPOSITORY (release-lane run history and
 //      the deployment ledger)
 //      GITHUB_API_URL (the loopback test seam of record-deployment.mjs; Actions
@@ -213,8 +230,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { enumerateMigrationTables } from '../ci/migration-tables.mjs';
-import { stripSourceComments } from '../ci/text-reductions.mjs';
+import { enumerateMigrationTables, registeredD1Databases, databaseLock, exemptionProblem, EXEMPT } from '../ci/migration-tables.mjs';
 // ⏱ 2026-09-24 — where the GitHub reads go is record-deployment.mjs's loopback-only
 // seam, the rule assert-gate-passed.mjs already imports, not a third copy of it.
 import { githubApiBase } from '../ci/record-deployment.mjs';
@@ -247,9 +263,6 @@ const flag = (name) => {
   return i === -1 || i === args.length - 1 ? null : args[i + 1];
 };
 const ROOT = resolve(flag('--root') ?? join(HERE, '..', '..'));
-
-/** `// comment` and trailing commas — wrangler.jsonc is JSONC. */
-const parseJsonc = (text) => JSON.parse(stripSourceComments(text, '.ts').replace(/,(\s*[}\]])/g, '$1'));
 
 // ⏱ 2026-09-21 — THE ONE SHAPE OF "I COULD NOT LOOK" NOW COMES FROM
 // tooling/ops/bounded-retry.mjs. It was declared here, which meant `e instanceof
@@ -795,9 +808,10 @@ function githubBase() {
  * shared plan (ghRead). This loop re-asks a question whose answers all
  * SUCCEEDED and contradicted each other — the same class as post-deploy-smoke's
  * propagation poll, which ops-bounded-retry.test.mjs exempts by name in
- * NOT_A_TRANSIENT_RETRY. That guard's NO RIVAL LOOP pattern matches
- * ATTEMPTS/READ_ATTEMPTS/RETRY_ATTEMPTS and not WALK_ATTEMPTS, so it does not
- * see this loop at all; registering it there is a named follow-on, not a pass.
+ * NOT_A_TRANSIENT_RETRY. ⏱ 2026-09-26: that census's NO RIVAL LOOP pattern is
+ * now every `const <X>_ATTEMPTS =`, so it sees this loop, and WALK_ATTEMPTS is
+ * registered there by file AND constant, with this reason; a second private
+ * attempt count in this file is still a rival.
  * The gaps come from backoffPlan itself, so there is no second backoff formula.
  */
 /** Every walk this process made, one entry PER ATTEMPT, in order: what the API
@@ -1630,26 +1644,21 @@ function providerIds() {
 }
 
 // ── D1 ──────────────────────────────────────────────────────────────────────
-/** The D1 database that owns the tables — `{ id, migrationsTable }`, from the
- *  one binding carrying `migrations_dir`. ⏱ 2026-09-25 — `migrationsTable` is
- *  that entry's wrangler ledger, read by the pending-migration path. */
-function platformD1() {
-  const rel = 'services/platform/wrangler.jsonc';
-  const p = join(ROOT, rel);
-  if (!existsSync(p)) throw new CouldNotLook(`${rel} does not exist, so the database that owns the tables cannot be resolved`);
-  let cfg;
+// ⏱ 2026-09-26 — `platformD1()` read the one binding carrying `migrations_dir`
+// in services/platform/wrangler.jsonc. Each database is now an entry of
+// `registeredD1Databases` (tooling/ci/migration-tables.mjs), which carries its
+// id and its wrangler ledger (`migrationsTable`) the same way.
+
+/** One D1 read against one walked database. A refusal names the database: a
+ *  token whose D1 scope covers one database and not the other is exit 2 naming
+ *  that database, which is the owner's cue to widen the token. */
+async function queryDb(db, sql) {
   try {
-    cfg = parseJsonc(readFileSync(p, 'utf8'));
+    return await queryD1(db.id, sql);
   } catch (e) {
-    throw new CouldNotLook(`${rel} could not be parsed (${e.message})`);
+    if (e instanceof CouldNotLook) throw new CouldNotLook(`${db.name} (${db.binding}): ${e.message}`);
+    throw e;
   }
-  const entry = (cfg.d1_databases ?? []).find((d) => d.migrations_dir);
-  if (!entry?.database_id) throw new CouldNotLook(`${rel} has no D1 binding carrying \`migrations_dir\``);
-  const migrationsTable = entry.migrations_table ?? 'd1_migrations';
-  if (typeof migrationsTable !== 'string' || !SAFE_IDENTIFIER.test(migrationsTable)) {
-    throw new CouldNotLook(`${rel} names \`migrations_table\` ${JSON.stringify(migrationsTable)}, which this reader will not quote into SQL`);
-  }
-  return { id: entry.database_id, migrationsTable };
 }
 
 async function queryD1(dbId, sql) {
@@ -1697,7 +1706,6 @@ export const PENDING_LIMIT_HOURS = 24;
  *  (a plain sqlite_master read — tooling/ci/d1-sql-inventory.mjs) and the one
  *  tooling/e2e/verify_purged.mjs already runs against live D1. */
 export const SCHEMA_TABLES_SQL = "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name";
-const SAFE_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** A migration's ledger key. wrangler records the file name; the `.sql` is
  *  dropped on BOTH sides so a ledger that omits it cannot call every table
  *  pending — and a ledger naming none of the files is refused outright below. */
@@ -1803,8 +1811,10 @@ export function commitContains(dir, ancestor, descendant, git = runGit) {
 }
 
 /** PURE. One pending migration's verdict: `{ overdue, line }`. `containing` is
- *  the platform Deployments at a commit that contains the merge. */
-export function pendingMigrationVerdict({ table, file, merged, nowMs, containing = [], migrationsTable = 'd1_migrations' }) {
+ *  the owning Worker's Deployments at a commit that contains the merge.
+ *  ⏱ 2026-09-26 — `worker` and `binding` name the database's owner and its
+ *  binding (they were the literals `platform` and `PLATFORM_DB`). */
+export function pendingMigrationVerdict({ table, file, merged, nowMs, containing = [], migrationsTable = 'd1_migrations', worker = 'platform', binding = 'PLATFORM_DB' }) {
   const mergedMs = Date.parse(merged?.mergedAt);
   if (!Number.isFinite(mergedMs)) throw new CouldNotLook(`${file} has no readable merge time, so how long \`${table}\` has waited cannot be said`);
   if (!Number.isFinite(nowMs)) throw new CouldNotLook(`the pending-migration path has no clock, so how long \`${table}\` has waited cannot be said`);
@@ -1815,8 +1825,8 @@ export function pendingMigrationVerdict({ table, file, merged, nowMs, containing
       overdue: true,
       line:
         `${table}: absent from production and ${file} is not in \`${migrationsTable}\` (${at}, ${hours} h ago), yet ${containing.length} ` +
-        `platform Deployment(s) at a commit containing it exist (${containing.map((d) => `${d.sha.slice(0, 7)}${d.id != null ? ` · Deployment ${d.id}` : ''}`).join(', ')}). ` +
-        'deploy-workers applies PLATFORM_DB migrations before it deploys, so the applier has run this one — waiting will not bring the table',
+        `${worker} Deployment(s) at a commit containing it exist (${containing.map((d) => `${d.sha.slice(0, 7)}${d.id != null ? ` · Deployment ${d.id}` : ''}`).join(', ')}). ` +
+        `deploy-workers applies ${binding} migrations before it deploys, so the applier has run this one — waiting will not bring the table`,
     };
   }
   if (Number(hours) >= PENDING_LIMIT_HOURS) {
@@ -1828,14 +1838,15 @@ export function pendingMigrationVerdict({ table, file, merged, nowMs, containing
   return { overdue: false, line: `⬜ not yet migrated: ${table} (${file}, merged ${isoZ(mergedMs)})` };
 }
 
-/** The GitHub Deployment environment the platform Worker's deploys record into:
- *  the ONE service environment whose `source` is the directory of the
- *  register's `wrangler` file. */
-function platformEnvironment(register) {
-  const src = String(register.wrangler ?? '').split('/').slice(0, -1).join('/');
+/** The GitHub Deployment environment a database's owning Worker records its
+ *  deploys into: the ONE service environment whose `source` is the directory of
+ *  that Worker's wrangler file. ⏱ 2026-09-26 — per database; it read the
+ *  register's one `wrangler` until then. */
+function serviceEnvironment(db) {
+  const src = String(db.wrangler ?? '').split('/').slice(0, -1).join('/');
   const hits = (readJson(CHANNELS_REL).serviceEnvironments ?? []).filter((s) => s?.source === src && typeof s?.deploymentEnvironment === 'string');
   if (hits.length !== 1) {
-    throw new CouldNotLook(`${CHANNELS_REL} declares ${hits.length} service environment(s) with source \`${src || '(none)'}\` — the platform Deployment ledger needs exactly one`);
+    throw new CouldNotLook(`${CHANNELS_REL} declares ${hits.length} service environment(s) with source \`${src || '(none)'}\` — ${db.name}'s Deployment ledger needs exactly one`);
   }
   return hits[0].deploymentEnvironment;
 }
@@ -1920,29 +1931,58 @@ async function main() {
   }
 
   const register = readJson(REGISTER_REL);
-  const rules = register.tables ?? {};
   const legacyBindings = legacyDeploymentBindings(register);
-  const migrationsRel = register.migrationsDir;
-  if (typeof migrationsRel !== 'string') throw new CouldNotLook(`${REGISTER_REL} declares no migrationsDir`);
+  const registered = register.databases;
+  if (registered === null || typeof registered !== 'object' || Array.isArray(registered) || Object.keys(registered).length === 0) {
+    throw new CouldNotLook(`${REGISTER_REL} declares no \`databases\`, so no table in any database has a rule`);
+  }
 
-  const { tables, filesRead } = enumerateMigrationTables(join(ROOT, migrationsRel));
-  if (filesRead === 0 || tables.size === 0) {
+  // ── ⏱ 2026-09-26 · WHICH DATABASES — see the header ──────────────────────
+  // Read, never listed: the platform register's Workers, each one's top-level
+  // D1 bindings carrying `migrations_dir`. A database a Worker owns and the
+  // register does not name is COVERAGE LOST — its tables would go unread and
+  // the total would still print — and an entry no Worker owns is a finding.
+  const derived = registeredD1Databases(ROOT);
+  if (derived.problems.length) throw new CouldNotLook(`the D1 databases to walk could not be derived: ${derived.problems.join('; ')}`);
+  const lock = databaseLock(derived.databases, registered);
+  if (lock.unregistered.length) {
     throw new CouldNotLook(
-      `${filesRead} migration file(s) read and ${tables.size} table(s) enumerated under ${migrationsRel} — ` +
-        'the schema could not be read, so "every table is clean" would range over nothing',
+      `COVERAGE LOST — ${lock.unregistered.length} database(s) a Worker in tooling/platform-register.json owns have NO entry in ${REGISTER_REL} \`databases\`: ` +
+        `${lock.unregistered.join(', ')}. This reader would have walked ${derived.databases.length - lock.unregistered.length} of ${derived.databases.length} database(s) and printed a clean total.`,
     );
   }
+  const registerViolations = [
+    ...lock.stale.map((n) => `databases.${n}: no Worker in tooling/platform-register.json owns a database of that name, so these rules are applied to nothing`),
+    ...lock.mismatched.map((m) => `databases.${m}`),
+  ];
 
   // COVERAGE LOST is the gate's verdict, but the monitor must not sail past it:
   // a table with no rule is a table this reader would not query, and a silent
   // shorter list is the failure mode both limbs are written against.
-  const uncovered = [...tables.keys()].filter((t) => !Object.prototype.hasOwnProperty.call(rules, t));
-  if (uncovered.length) {
-    throw new CouldNotLook(
-      `COVERAGE LOST — ${uncovered.length} table(s) the migrations create have NO rule in ${REGISTER_REL}: ` +
-        `${uncovered.join(', ')}. This reader would have queried ${Object.keys(rules).length} of ${tables.size} tables and printed a clean total.`,
-    );
-  }
+  const dbs = derived.databases.map((db) => {
+    const rules = registered[db.name]?.tables ?? {};
+    const { tables, filesRead } = enumerateMigrationTables(join(ROOT, db.migrationsDir));
+    if (filesRead === 0 || tables.size === 0) {
+      throw new CouldNotLook(
+        `${db.name}: ${filesRead} migration file(s) read and ${tables.size} table(s) enumerated under ${db.migrationsDir} — ` +
+          'the schema could not be read, so "every table is clean" would range over nothing',
+      );
+    }
+    const uncovered = [...tables.keys()].filter((t) => !Object.prototype.hasOwnProperty.call(rules, t));
+    if (uncovered.length) {
+      throw new CouldNotLook(
+        `COVERAGE LOST — ${uncovered.length} table(s) the migrations create have NO rule in ${REGISTER_REL}: ` +
+          `${uncovered.map((t) => `${db.name}.${t}`).join(', ')}. This reader would have queried ${Object.keys(rules).length} of ${tables.size} tables in ${db.name} and printed a clean total.`,
+      );
+    }
+    // An `exempt` rule is an argument, not a waiver: no marker, and a reason
+    // that names every column the migrations give the table.
+    for (const [name, rule] of Object.entries(rules)) {
+      const why = tables.has(name) ? exemptionProblem(name, rule, tables.get(name).columns) : null;
+      if (why) registerViolations.push(`databases.${db.name}.tables: ${why}`);
+    }
+    return { ...db, rules, tables, filesRead };
+  });
 
   const rowsFile = flag('--rows-file');
   const runsFile = flag('--runs-file');
@@ -2256,82 +2296,110 @@ async function main() {
     'migration-seed': null, // built per table below — the allowed set is that table's own seeds
   };
 
-  const d1 = rowsFile && !schemaFile ? null : platformD1();
-  const dbId = rowsFile ? null : d1.id;
   const fixture = rowsFile ? JSON.parse(readFileSync(rowsFile, 'utf8')) : null;
+  /** ⏱ 2026-09-26 — a fixture's rows for one table: the key `<database>.<table>`,
+   *  or a bare `<table>` for the serving Worker's database, which is what every
+   *  older fixture means. */
+  const fixtureRows = (db, name) => fixture[`${db.name}.${name}`] ?? (db.serving ? fixture[name] : undefined) ?? [];
+  /** ⏱ 2026-09-26 — `--schema-file`: `{tables, migrations}` is the serving
+   *  Worker's database (every older fixture); `{<database>: {tables,
+   *  migrations}}` names each. A database it does not name is NOT READ. */
+  const schemaDoc = schemaFile ? JSON.parse(readFileSync(schemaFile, 'utf8')) : null;
+  const schemaEntry = (db) => {
+    if (!schemaFile) return undefined;
+    // Not an object at all: handed to the judges below, which refuse it.
+    if (schemaDoc === null || typeof schemaDoc !== 'object' || Array.isArray(schemaDoc)) return schemaDoc;
+    if (Object.prototype.hasOwnProperty.call(schemaDoc, 'tables') || Object.prototype.hasOwnProperty.call(schemaDoc, 'migrations')) return db.serving ? schemaDoc : undefined;
+    return schemaDoc[db.name];
+  };
 
   // ── (0) HAS EVERY TABLE ARRIVED? · ⏱ 2026-09-25 — see the header ─────────
   // Live: two bounded reads through `queryD1`, the ledger only once the table
   // read has shown it exists. Fixture: `--schema-file`, through the same two
   // judges; WITHOUT it, `null` — every table present, which is what every older
   // fixture means and the only state in which this block reads nothing.
-  const readSchema = async () => {
-    if (schemaFile) {
-      const s = JSON.parse(readFileSync(schemaFile, 'utf8'));
-      const present = presentTablesFrom(s?.tables, d1.migrationsTable);
-      if (s?.migrations?.error !== undefined) throw new CouldNotLook(`the \`${d1.migrationsTable}\` read failed: ${s.migrations.error}`);
-      return { present, applied: appliedMigrationsFrom(s?.migrations, d1.migrationsTable) };
+  // ⏱ 2026-09-26 — once PER DATABASE, against that database's own ledger.
+  const readSchema = async (db) => {
+    const s = schemaEntry(db);
+    if (s !== undefined) {
+      const present = presentTablesFrom(s?.tables, db.migrationsTable);
+      if (s?.migrations?.error !== undefined) throw new CouldNotLook(`the \`${db.migrationsTable}\` read failed: ${s.migrations.error} (${db.name})`);
+      return { present, applied: appliedMigrationsFrom(s?.migrations, db.migrationsTable) };
     }
     if (rowsFile) return null;
-    const present = presentTablesFrom(await queryD1(dbId, SCHEMA_TABLES_SQL), d1.migrationsTable);
-    return { present, applied: appliedMigrationsFrom(await queryD1(dbId, `SELECT name FROM "${d1.migrationsTable}" ORDER BY name`), d1.migrationsTable) };
+    const present = presentTablesFrom(await queryDb(db, SCHEMA_TABLES_SQL), db.migrationsTable);
+    return { present, applied: appliedMigrationsFrom(await queryDb(db, `SELECT name FROM "${db.migrationsTable}" ORDER BY name`), db.migrationsTable) };
   };
-  const everyTable = { present: [...tables.keys()].sort(), pending: [], vanished: [] };
-  let schema = await readSchema();
-  let migState = schema === null ? everyTable : classifyMigrationState(tables, schema);
-  let platformEnv = null;
-  let platformDeploys = null;
-  if (migState.pending.length) {
-    platformEnv = platformEnvironment(register);
-    platformDeploys = platformDeploymentsFile
-      ? (() => {
-          const arr = JSON.parse(readFileSync(platformDeploymentsFile, 'utf8'));
-          if (!Array.isArray(arr)) throw new CouldNotLook(`${platformDeploymentsFile} is not an array of deployments`);
-          return arr.map((d) => deploymentRecord(typeof d === 'string' ? { sha: d } : d, platformEnv));
-        })()
-      : rowsFile
-        ? null
-        : await githubDeployments([platformEnv]);
-    // 🔴 READ AGAIN, AFTER THE LEDGER. A Deployment the ledger lists was
-    // recorded after its migrations applied, so a schema read that FOLLOWS the
-    // ledger read has to see them; the first read may predate a deploy that
-    // finished in between, and would call that deploy a contradiction.
-    if (!rowsFile) {
-      schema = await readSchema();
-      migState = classifyMigrationState(tables, schema);
-    }
-  }
-  const quiet = new Set([...migState.pending, ...migState.vanished].map((p) => p.table));
-  const migrationViolations = migState.vanished.map(
-    ({ table, file }) => `${table}: absent from production, yet ${file} is recorded in \`${d1.migrationsTable}\` — the migration ran and the table it creates is not there`,
-  );
+  const migrationViolations = [];
   const pendingLines = [];
   const unplaced = new Set();
-  if (migState.pending.length) {
-    const nowMs = nowFlag !== null ? Date.parse(nowFlag) : rowsFile ? NaN : Date.now();
-    if (!Number.isFinite(nowMs)) {
-      throw new CouldNotLook(
-        nowFlag !== null
-          ? `--now ${JSON.stringify(nowFlag)} is not a time`
-          : `fixture mode reached ${migState.pending.length} pending migration(s) with no --now — a test must never read the wall clock`,
-      );
-    }
-    const history = resolve(historyFlag ?? ROOT);
-    const mergeOf = new Map();
-    for (const { table, file } of migState.pending) {
-      if (!mergeOf.has(file)) mergeOf.set(file, migrationMerge(history, `${migrationsRel}/${file}`));
-      const merged = mergeOf.get(file);
-      const mergedMs = Date.parse(merged.mergedAt);
-      const containing = [];
-      // A Deployment created before the merge cannot contain it, so only the
-      // ones after it cost a git call.
-      for (const d of (platformDeploys ?? []).filter((x) => x.created_at === null || !(Date.parse(x.created_at) < mergedMs))) {
-        const c = commitContains(history, merged.sha, d.sha);
-        if (c === true) containing.push(d);
-        else if (c === null) unplaced.add(`platform Deployment ${d.sha.slice(0, 7)} is not in this checkout's history, so it neither shows nor rules out ${file}`);
+  for (const db of dbs) {
+    let schema = await readSchema(db);
+    let migState = schema === null ? { present: [...db.tables.keys()].sort(), pending: [], vanished: [] } : classifyMigrationState(db.tables, schema);
+    let env = null;
+    let deploys = null;
+    if (migState.pending.length) {
+      env = serviceEnvironment(db);
+      // `--platform-deployments-file` is the SERVING Worker's ledger, as its
+      // name says; another database's ledger is NOT READ in fixture mode, and
+      // the clock alone decides there.
+      deploys = platformDeploymentsFile && db.serving
+        ? (() => {
+            const arr = JSON.parse(readFileSync(platformDeploymentsFile, 'utf8'));
+            if (!Array.isArray(arr)) throw new CouldNotLook(`${platformDeploymentsFile} is not an array of deployments`);
+            return arr.map((d) => deploymentRecord(typeof d === 'string' ? { sha: d } : d, env));
+          })()
+        : rowsFile
+          ? null
+          : await githubDeployments([env]);
+      // 🔴 READ AGAIN, AFTER THE LEDGER. A Deployment the ledger lists was
+      // recorded after its migrations applied, so a schema read that FOLLOWS the
+      // ledger read has to see them; the first read may predate a deploy that
+      // finished in between, and would call that deploy a contradiction.
+      if (!rowsFile) {
+        schema = await readSchema(db);
+        migState = classifyMigrationState(db.tables, schema);
       }
-      const v = pendingMigrationVerdict({ table, file, merged, nowMs, containing, migrationsTable: d1.migrationsTable });
-      (v.overdue ? migrationViolations : pendingLines).push(v.line);
+    }
+    Object.assign(db, { schema, migState, env, deploys, quiet: new Set([...migState.pending, ...migState.vanished].map((p) => p.table)) });
+    for (const { table, file } of migState.vanished) {
+      migrationViolations.push(`${db.name}.${table}: absent from production, yet ${file} is recorded in \`${db.migrationsTable}\` — the migration ran and the table it creates is not there`);
+    }
+    if (migState.pending.length) {
+      const nowMs = nowFlag !== null ? Date.parse(nowFlag) : rowsFile ? NaN : Date.now();
+      if (!Number.isFinite(nowMs)) {
+        throw new CouldNotLook(
+          nowFlag !== null
+            ? `--now ${JSON.stringify(nowFlag)} is not a time`
+            : `fixture mode reached ${migState.pending.length} pending migration(s) in ${db.name} with no --now — a test must never read the wall clock`,
+        );
+      }
+      const history = resolve(historyFlag ?? ROOT);
+      const mergeOf = new Map();
+      for (const { table, file } of migState.pending) {
+        if (!mergeOf.has(file)) mergeOf.set(file, migrationMerge(history, `${db.migrationsDir}/${file}`));
+        const merged = mergeOf.get(file);
+        const mergedMs = Date.parse(merged.mergedAt);
+        const containing = [];
+        // A Deployment created before the merge cannot contain it, so only the
+        // ones after it cost a git call.
+        for (const d of (deploys ?? []).filter((x) => x.created_at === null || !(Date.parse(x.created_at) < mergedMs))) {
+          const c = commitContains(history, merged.sha, d.sha);
+          if (c === true) containing.push(d);
+          else if (c === null) unplaced.add(`${db.worker} Deployment ${d.sha.slice(0, 7)} is not in this checkout's history, so it neither shows nor rules out ${file}`);
+        }
+        const v = pendingMigrationVerdict({
+          table: `${db.name}.${table}`,
+          file,
+          merged,
+          nowMs,
+          containing,
+          migrationsTable: db.migrationsTable,
+          worker: db.worker,
+          binding: db.binding,
+        });
+        (v.overdue ? migrationViolations : pendingLines).push(v.line);
+      }
     }
   }
 
@@ -2340,51 +2408,60 @@ async function main() {
   // groups and resolver chain; (B) collect the `released-build` values the
   // walked runs cannot place; (C) point-read them; (D) judge. The D1 reads are
   // the same reads as before, in the same order — only the judging moved.
+  // ⏱ 2026-09-26 — database by database, in the derived order.
   const plan = [];
-  for (const name of [...tables.keys()].sort()) {
-    const rule = rules[name];
-    const marker = rule.marker;
-    let resolve_ = resolverFns[rule.resolver];
-    if (rule.resolver === 'migration-seed') {
-      const seeded = tables.get(name).seeds.get(marker) ?? new Set();
-      if (seeded.size === 0) throw new CouldNotLook(`COVERAGE LOST — \`${name}\` resolves by \`migration-seed\` on \`${marker}\` and the migrations seed nothing there`);
-      resolve_ = (v) => (typeof v === 'string' && seeded.has(v) ? null : `\`${v}\` is not one of the ${seeded.size} values the migrations seed into \`${marker}\``);
-    }
-    if (typeof resolve_ !== 'function') throw new CouldNotLook(`\`${name}\` names resolver \`${rule.resolver}\`, which this reader cannot execute`);
-
-    // ── the table's SECOND resolvers, if it declares any ─────────────────────
-    // Consulted ONLY for a value the primary has already refused, so this can
-    // never make the primary weaker — it can only admit a value the primary
-    // named, and it has to name that value itself, in a shape it declares.
-    //
-    // 🔴 AN UNEXECUTABLE ENTRY IS `CouldNotLook`, NOT A SKIP. A silently ignored
-    // `alsoResolves` reads as "the rule was applied and nothing matched", which
-    // is the direction that weakens without announcing itself — the same reason
-    // the run-with-no-`conclusion` case above refuses to guess.
-    const alts = (Array.isArray(rule.alsoResolves) ? rule.alsoResolves : []).map((id) => {
-      const fn = resolverFns[id];
-      if (typeof fn !== 'function') {
-        throw new CouldNotLook(
-          `\`${name}\` lists \`${id}\` in \`alsoResolves\` and this reader cannot execute it. A second resolver ` +
-            'that is quietly skipped would leave rows counted as unattributable for a rule nobody applied.',
-        );
+  for (const db of dbs) {
+    for (const name of [...db.tables.keys()].sort()) {
+      const rule = db.rules[name];
+      // An exempt table has no marker to read: it is not queried, and the
+      // census prints it as exempt rather than as a clean zero.
+      if (rule.resolver === EXEMPT) {
+        plan.push({ db, name, rule, marker: null, resolve_: null, alts: [], groups: [], quiet: db.quiet.has(name), exempt: true });
+        continue;
       }
-      return [id, fn];
-    });
+      const marker = rule.marker;
+      let resolve_ = resolverFns[rule.resolver];
+      if (rule.resolver === 'migration-seed') {
+        const seeded = db.tables.get(name).seeds.get(marker) ?? new Set();
+        if (seeded.size === 0) throw new CouldNotLook(`COVERAGE LOST — \`${db.name}.${name}\` resolves by \`migration-seed\` on \`${marker}\` and the migrations seed nothing there`);
+        resolve_ = (v) => (typeof v === 'string' && seeded.has(v) ? null : `\`${v}\` is not one of the ${seeded.size} values the migrations seed into \`${marker}\``);
+      }
+      if (typeof resolve_ !== 'function') throw new CouldNotLook(`\`${db.name}.${name}\` names resolver \`${rule.resolver}\`, which this reader cannot execute`);
 
-    // ⏱ 2026-09-25 — a table production does not have yet is ZERO rows, and a
-    // table that vanished is its own finding above: neither is queried.
-    const groups = quiet.has(name)
-      ? []
-      : fixture
-        ? (fixture[name] ?? [])
-        : await queryD1(
-            dbId,
-            rule.resolver === 'not-reserved-address'
-              ? reservedAddressCensusSql(name, marker)
-              : `SELECT "${marker}" AS marker, COUNT(*) AS n FROM "${name}" GROUP BY "${marker}"`,
+      // ── the table's SECOND resolvers, if it declares any ───────────────────
+      // Consulted ONLY for a value the primary has already refused, so this can
+      // never make the primary weaker — it can only admit a value the primary
+      // named, and it has to name that value itself, in a shape it declares.
+      //
+      // 🔴 AN UNEXECUTABLE ENTRY IS `CouldNotLook`, NOT A SKIP. A silently ignored
+      // `alsoResolves` reads as "the rule was applied and nothing matched", which
+      // is the direction that weakens without announcing itself — the same reason
+      // the run-with-no-`conclusion` case above refuses to guess.
+      const alts = (Array.isArray(rule.alsoResolves) ? rule.alsoResolves : []).map((id) => {
+        const fn = resolverFns[id];
+        if (typeof fn !== 'function') {
+          throw new CouldNotLook(
+            `\`${db.name}.${name}\` lists \`${id}\` in \`alsoResolves\` and this reader cannot execute it. A second resolver ` +
+              'that is quietly skipped would leave rows counted as unattributable for a rule nobody applied.',
           );
-    plan.push({ name, rule, marker, resolve_, alts, groups, quiet: quiet.has(name) });
+        }
+        return [id, fn];
+      });
+
+      // ⏱ 2026-09-25 — a table production does not have yet is ZERO rows, and a
+      // table that vanished is its own finding above: neither is queried.
+      const groups = db.quiet.has(name)
+        ? []
+        : fixture
+          ? fixtureRows(db, name)
+          : await queryDb(
+              db,
+              rule.resolver === 'not-reserved-address'
+                ? reservedAddressCensusSql(name, marker)
+                : `SELECT "${marker}" AS marker, COUNT(*) AS n FROM "${name}" GROUP BY "${marker}"`,
+            );
+      plan.push({ db, name, rule, marker, resolve_, alts, groups, quiet: db.quiet.has(name), exempt: false });
+    }
   }
 
   // ── (B) the builds a point read must look up ─────────────────────────────
@@ -2459,7 +2536,13 @@ async function main() {
   // and here it is what keeps a crashed nightly's residue visible in this log
   // even though it no longer turns the run red.
   const alsoAccepted = [];
-  for (const { name, rule, marker, resolve_, alts, groups, quiet: unread } of plan) {
+  for (const { db, name, rule, marker, resolve_, alts, groups, quiet: unread, exempt } of plan) {
+    // ⏱ 2026-09-26 — every finding names its database.
+    const label = `${db.name}.${name}`;
+    if (exempt) {
+      census.push({ db, name, total: 0, bad: 0, marker: null, resolver: rule.resolver, unread, exempt: true });
+      continue;
+    }
     let total = 0;
     let bad = 0;
     for (const g of groups) {
@@ -2478,15 +2561,15 @@ async function main() {
           }
           alsoAccepted.push(
             id === 'erasure-step'
-              ? `${name}: ${n} row(s) with \`${marker}\` = \`${g.marker}\` — refused by \`${rule.resolver}\` and accepted by ` +
+              ? `${label}: ${n} row(s) with \`${marker}\` = \`${g.marker}\` — refused by \`${rule.resolver}\` and accepted by ` +
                   'the narrower `erasure-step`: a non-app step of an erasure that is still pending ([ADR 087]). The nightly ' +
                   'erasure_retry heartbeat, not this census, is what turns red if it never finishes.'
               : id === 'store-capture'
-                ? `${name}: ${n} row(s) with \`${marker}\` = \`${g.marker}\` — refused by \`${rule.resolver}\` and accepted by ` +
+                ? `${label}: ${n} row(s) with \`${marker}\` = \`${g.marker}\` — refused by \`${rule.resolver}\` and accepted by ` +
                     `the narrower \`store-capture\`: written by ${CAPTURE_WORKFLOW} run ${String(g.marker).match(STORE_CAPTURE_SHAPE)?.[1] ?? '?'}, ` +
                     'whose purge step owns removing it. A row that survives the purge is residue; this line printing on the ' +
                     'next ops-watch IS that signal.'
-              : `${name}: ${n} row(s) with \`${marker}\` = \`${g.marker}\` — refused by \`${rule.resolver}\` and accepted by ` +
+              : `${label}: ${n} row(s) with \`${marker}\` = \`${g.marker}\` — refused by \`${rule.resolver}\` and accepted by ` +
                   `the narrower \`${id}\`. These rows were written by a live verification, which B-17 permits; what B-17 ` +
                   'also requires is that the harness removed them, and THAT is asserted by the harness, not here.',
           );
@@ -2500,14 +2583,24 @@ async function main() {
         // lookup found, so a finding is never a finding about the listing alone.
         const pr = pointReadOf.get(g.marker);
         if (pr && !pr.found) why = `${why} · looked up directly: ${pr.verdict}`;
-        violations.push(`${name}: ${n} row(s) — ${why}  [marker \`${marker}\`, resolver \`${rule.resolver}\`]`);
+        violations.push(`${label}: ${n} row(s) — ${why}  [marker \`${marker}\`, resolver \`${rule.resolver}\`]`);
       }
     }
-    census.push({ name, total, bad, marker, resolver: rule.resolver, unread });
+    census.push({ db, name, total, bad, marker, resolver: rule.resolver, unread, exempt: false });
   }
 
   const grandTotal = census.reduce((a, c) => a + c.total, 0);
-  console.log(`⬜  MONITOR · [pipeline B-17] · ${census.length} table(s) enumerated from ${migrationsRel} (${filesRead} migration file(s)), ${grandTotal} row(s) in ${register.database}`);
+  // ⏱ 2026-09-26 — one line per walked database, then the total, so a database
+  // that was walked and found empty is a count and never an absence.
+  for (const db of dbs) {
+    const mine = census.filter((c) => c.db === db);
+    const exempt = mine.filter((c) => c.exempt).length;
+    console.log(
+      `⬜  MONITOR · [pipeline B-17] · ${db.name}: ${mine.length} table(s) enumerated from ${db.migrationsDir} (${db.filesRead} migration file(s)), ` +
+        `${mine.reduce((a, c) => a + c.total, 0)} row(s)${exempt ? ` · ${exempt} exempt table(s), not queried` : ''}`,
+    );
+  }
+  console.log(`⬜  MONITOR · [pipeline B-17] · ${dbs.length} database(s) walked (${dbs.map((d) => d.name).join(', ')}): ${census.length} table(s), ${grandTotal} row(s)`);
   console.log(
     `⬜  released-build set: ${runs.length} completed lane run(s), ${runs.filter((r) => (r.conclusion ?? 'success') === 'success').length} successful · ` +
       `deployment ledger: ${deployedShas === null ? 'NOT READ (fixture mode)' : `${deployedShas.size} commit(s) with a GitHub Deployment on a served environment`}`,
@@ -2515,16 +2608,17 @@ async function main() {
   // ⏱ 2026-09-23 — one line per release lane, so a lane that was read and found
   // empty is visible as a count and not as an absence.
   // ⏱ 2026-09-25 — what the schema reads found, on every run, as counts.
-  console.log(
-    schema === null
-      ? '⬜  migration ledger: NOT READ (fixture mode, no --schema-file) — every enumerated table taken as present'
-      : `⬜  migration ledger: ${schema.applied.size} migration(s) recorded in \`${d1.migrationsTable}\` · ${migState.present.length} of ${tables.size} table(s) present · ` +
-          `${migState.pending.length} not yet migrated · ${migState.vanished.length} missing though recorded`,
-  );
-  if (platformEnv !== null) {
+  // ⏱ 2026-09-26 — per database.
+  for (const db of dbs) {
     console.log(
-      `⬜  platform Deployment ledger (${platformEnv}): ${platformDeploys === null ? 'NOT READ (fixture mode) — the clock alone decides' : `${platformDeploys.length} Deployment(s)`}`,
+      db.schema === null
+        ? `⬜  ${db.name} migration ledger: NOT READ (fixture mode, ${schemaFile ? 'the --schema-file names no schema for it' : 'no --schema-file'}) — every enumerated table taken as present`
+        : `⬜  ${db.name} migration ledger: ${db.schema.applied.size} migration(s) recorded in \`${db.migrationsTable}\` · ${db.migState.present.length} of ${db.tables.size} table(s) present · ` +
+            `${db.migState.pending.length} not yet migrated · ${db.migState.vanished.length} missing though recorded`,
     );
+  }
+  for (const db of dbs.filter((d) => d.env !== null)) {
+    console.log(`⬜  ${db.worker} Deployment ledger (${db.env}): ${db.deploys === null ? 'NOT READ (fixture mode) — the clock alone decides' : `${db.deploys.length} Deployment(s)`}`);
   }
   for (const l of pendingLines) console.log(l);
   for (const u of unplaced) console.log(`⬜  ${u}`);
@@ -2561,20 +2655,36 @@ async function main() {
   // ⏱ 2026-09-23 — and a store-capture stamp says which capture run witnessed it.
   for (const w of captureWitnessed) console.log(`⬜  store-capture-witnessed stamp accepted: ${w}`);
   for (const a of alsoAccepted) console.log(`⬜  second-resolver acceptance: ${a}`);
-  for (const c of census) {
-    if (c.unread) {
-      console.log(`    ⬜  ${c.name.padEnd(24)} ${String(c.total).padStart(6)} row(s) — not in production, not queried   [${c.marker} · ${c.resolver}]`);
-      continue;
+  for (const db of dbs) {
+    console.log(`    ${db.name} (${db.wrangler} \`${db.binding}\`):`);
+    for (const c of census.filter((x) => x.db === db)) {
+      if (c.exempt) {
+        console.log(`    ⬜  ${c.name.padEnd(24)} ${c.unread ? 'not in production, ' : ''}exempt — not queried   [no marker · ${c.resolver}]`);
+        continue;
+      }
+      if (c.unread) {
+        console.log(`    ⬜  ${c.name.padEnd(24)} ${String(c.total).padStart(6)} row(s) — not in production, not queried   [${c.marker} · ${c.resolver}]`);
+        continue;
+      }
+      console.log(`    ${c.bad === 0 ? 'ok ' : '✗  '} ${c.name.padEnd(24)} ${String(c.total).padStart(6)} row(s), ${c.bad} unattributable   [${c.marker} · ${c.resolver}]`);
     }
-    console.log(`    ${c.bad === 0 ? 'ok ' : '✗  '} ${c.name.padEnd(24)} ${String(c.total).padStart(6)} row(s), ${c.bad} unattributable   [${c.marker} · ${c.resolver}]`);
   }
 
+  // ⏱ 2026-09-26 — the register's database map against the Workers that own
+  // databases, and every exemption's argument. A finding about the register,
+  // never about a row.
+  if (registerViolations.length) {
+    console.error('');
+    console.error(`✗ ${registerViolations.length} problem(s) with ${REGISTER_REL}'s databases:`);
+    for (const v of registerViolations) console.error(`    ${v}`);
+    process.exitCode = 1;
+  }
   if (migrationViolations.length) {
     console.error('');
     console.error(`✗ ${migrationViolations.length} table(s) the migrations create are not in production, and waiting will not bring them:`);
     for (const v of migrationViolations) console.error(`    ${v}`);
     console.error('');
-    console.error('  deploy-workers is the one applier of PLATFORM_DB migrations. A migration still waiting past the limit is a');
+    console.error("  deploy-workers is the one applier of each database's migrations. A migration still waiting past the limit is a");
     console.error('  deploy that has not happened — find what is blocking it; one the applier has run, or one recorded with');
     console.error('  its table gone, is a database this reader and the deploy do not agree on.');
     process.exitCode = 1;
@@ -2600,9 +2710,13 @@ async function main() {
     process.exitCode = 1;
     return;
   }
-  if (migrationViolations.length) return;
+  if (migrationViolations.length || registerViolations.length) return;
 
-  console.log('ok  every row in every shared table resolves to a released build or its declared equivalent [pipeline B-17]');
+  const exemptCount = census.filter((c) => c.exempt).length;
+  console.log(
+    `ok  every row in every shared table resolves to a released build or its declared equivalent [pipeline B-17] — ${dbs.length} database(s)` +
+      `${exemptCount ? `; ${exemptCount} exempt table(s) were not queried, and say so above` : ''}`,
+  );
   console.log('⬜  THIS IS A MONITOR, NOT A GATE. Green means "nothing has contradicted B-17 since this run", never');
   console.log('    "B-17 holds" — the next write to production happens between two runs of this reader.');
   process.exitCode = 0;

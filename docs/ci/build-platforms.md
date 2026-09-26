@@ -596,6 +596,15 @@ why a toolchain move can change it with no diff. Placed AFTER the shape
 check, so a missing or empty .aab is reported as a missing .aab rather
 than as an unreadable archive.
 
+### before step **Dump the .aab's merged permissions, cross-checked against the Play .apk**
+
+Not in `submit-play.yml`: both of its jobs build ONLY the appbundle, the dumper exits 2
+without the Play `.apk`, and an `.apk` built inside a store-publish job only to feed a check adds
+minutes and attack surface to `store-publish`. Its `gate` job requires `ci-gate`, which needs
+`android-artifacts`, and that job runs limb M on the same sha's `.aab` built with the same
+`RELEASE_CHANNEL=android-play`. The proof uploads as `ci-proof-android-permissions-<app>`, not
+`<app>-*`, because the release job publishes every `<app>-*` artifact (O-PLAY-DATA-SAFETY-FROM-A-STALE-RUN).
+
 ### before step **The built .apk passes the static apps.gov.in VAPT items**
 
 §vapt — ADDED 2026-09-14, register row O-APPS-GOV-IN-VAPT-CHECKLIST.
