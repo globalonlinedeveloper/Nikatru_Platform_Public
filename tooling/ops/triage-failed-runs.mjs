@@ -17,17 +17,20 @@
 // ── WHAT ONE ROW IS ─────────────────────────────────────────────────────────
 //   run id · workflow · branch · conclusion · the FAILING JOB · the FAILING STEP
 //   · the FIRST ERROR LINE of that step's log · a SIGNATURE derived from the
-//   error (never from the job name — see below) · the verdict of the NEWEST run
-//   of that same workflow on that same branch · whether the branch still exists.
+//   error (never from the job name — see below) · the verdict of the NEWEST
+//   COMPLETED run of that same workflow on that same branch · whether the
+//   branch still exists.
 //
 // ── WHAT "EXPLAINED" MEANS, AND IT IS A CONJUNCTION ─────────────────────────
 //   (a) the row's signature has an entry in tooling/ops/failed-run-causes.json
 //       naming a root cause and a fix (a merged SHA/PR, "infrastructure,
 //       self-cleared", "superseded: branch merged/deleted", or "lost race
 //       under strict protection"), AND
-//   (b) the newest run of that workflow on that branch is GREEN (cited by run
-//       id and timestamp), OR the branch no longer exists (cited, with its PR
-//       when one can be found).
+//   (b) the newest COMPLETED run of that workflow on that branch is GREEN
+//       (cited by run id and timestamp) — never a run still in flight, and
+//       never the run executing this ledger (GITHUB_RUN_ID), which inside
+//       ops-watch IS ops-watch's newest run — OR the branch no longer exists
+//       (cited, with its PR when one can be found).
 //   Either half missing = UNEXPLAINED. A cause with no later green is an OPEN
 //   defect; a later green with no cause is a fix nobody can name.
 //
@@ -262,6 +265,14 @@ export function errorBlock(scopedLines, after = 400) {
  *  group per subject (per duty, per route, per platform). The FIRST match
  *  wins, so a narrower reading must sit above the wider one it refines. */
 export const SIGNATURES = [
+  // ── this ledger's own verdict: FIRST, above everything ────────────────────
+  // A red ledger prints the error lines of the runs it could not explain, so
+  // its block quotes other runs' failures verbatim (a simulator refusal, a
+  // register duty); any pattern below would take the quote for the fault.
+  // Measured on runs 36206110356 and 36206329284 (2026-09-26), filed as
+  // `ops-register:problem:signature: …` before this entry existed.
+  { id: 'failure-ledger:unexplained', re: /^Every failed run of the last eight days, and the recorded cause it maps to\n[\s\S]*(?:^UNEXPLAINED: [1-9]|\(\d+ UNEXPLAINED\) \|)/m },
+  { id: 'failure-ledger:credential-unshaped', re: /COVERAGE LOST — the GitHub credential does not have the shape of a GitHub token/ },
   // ── a test job: the failing CASE is the fact ──────────────────────────────
   { id: 'guard-test', re: /^\s*✖ (.+?) \(\d/m, key: 1 },
   // ── the ops register ([14]O-3 reader) ──────────────────────────────────────
@@ -279,10 +290,18 @@ export const SIGNATURES = [
   { id: 'github-api:403-installation-quota', re: /API rate limit exceeded for installation|GitHub API returned 403|returned 403 listing runs|HTTP 403/ },
   // ── freshness / provenance readers ────────────────────────────────────────
   { id: 'pages-freshness:strict-equality', re: /succeeded, but it is serving commit .* while the newest commit on `main` touching/ },
+  // The three refinements sit above `no-deployment`, which is the step name
+  // and so matches every red of that step. Measured on runs 35422355154 (a
+  // build still running, read as failed), 35478397730 (one read dropped) and
+  // 35981313508 (a Git build Cloudflare failed at `initialize`).
+  { id: 'pages-freshness:in-flight-read-as-failure', re: /stopped at stage `\w+` with status `(?:active|idle)`/ },
+  { id: 'pages-freshness:read-dropped', re: /^\s*\?\s+[\w.-]+ \(\w+\) — TypeError: fetch failed/m },
+  { id: 'pages-freshness:git-build-failed', re: /— the newest production deployment \S+ stopped at stage `(\w+)` with status `failure`/, key: 1 },
   { id: 'pages-freshness:no-deployment', re: /Every Pages project's newest PRODUCTION deployment succeeded/ },
   { id: 'provenance:unresolved-rows', re: /group\(s\) of rows in production cannot be traced to a released build/ },
   { id: 'provenance:d1-api-unreadable', re: /COULD NOT LOOK — the D1 API returned (\d{3})/, key: 1 },
   { id: 'provenance:github-api-unreadable', re: /COULD NOT LOOK — the GitHub API returned (\d{3})/, key: 1 },
+  { id: 'provenance:run-listing-capped', re: /COULD NOT LOOK — listing runs of [\w.-]+ \([^)\n]*\): all \d+ pages of \d+ came back full/ },
   { id: 'proof-fresh:no-green-scheduled', re: /NO GREEN SCHEDULED RUN in the newest/ },
   { id: 'proof-fresh:other', re: /must be RECENT, SCHEDULED and GREEN/ },
   // ── registers and generated files ─────────────────────────────────────────
@@ -302,11 +321,14 @@ export const SIGNATURES = [
   // Measured on run 34511747076 (Supabase answered 504).
   { id: 'supabase-auth:unreadable-read-as-drift', re: /^Compare the live Supabase auth config[^\n]*\n##\[error\]The live project no longer matches what the repo recorded/ },
   { id: 'supabase-templates:drift', re: /DIFFERS from live `mailer_templates/ },
+  // GoTrue reads unset and 0 alike ("no limit"); the comparator did not. Run 36097413255.
+  { id: 'supabase-auth:session-limit-null-read-as-drift', re: /✗ auth `sessions_(?:timebox|inactivity_timeout)`: register says null, live says 0\./ },
   { id: 'catalogue:reachability', re: /✗ catalogue reachability/ },
   { id: 'privacy-notice:drift', re: /notice surface\(s\) no longer match the privacy declaration/ },
   { id: 'site-integrity', re: /✗ \d+ site problem\(s\)/ },
   { id: 'deploy-triggers:unreachable', re: /A TRIGGER PATH CANNOT REACH THE JOBS IT TRIGGERS/ },
   { id: 'surfaces:unhealthy', re: /probed surface\(s\) are NOT healthy/ },
+  { id: 'surfaces:never-answered', re: /probed surface\(s\) NEVER ANSWERED, on any of the \d+ attempts/ },
   // ── downstream refusals ───────────────────────────────────────────────────
   { id: 'ci-gate:refused-downstream', re: /ci-gate concluded "(?:failure|cancelled)" for|waiting for "ci-gate"/ },
   { id: 'smoke:stale-build', re: /POST-DEPLOY SMOKE FAILED/ },
@@ -318,6 +340,7 @@ export const SIGNATURES = [
   { id: 'macos:build-failed', re: /^Build macos[\s\S]*BUILD FAILED/ },
   { id: 'apple:signing-failed', re: /apple-signing: FAILED|assert-artifact-signed-apple: FAILED|find: build\/ios\/ipa: No such file/ },
   { id: 'glitchtip:symbol-upload', re: /debug-files upload exited|difs\/assemble/ },
+  { id: 'glitchtip:release-create-5xx', re: /Failed to create release: POST https:\/\/glitchtip\.\S+ returned 5\d\d/ },
   { id: 'dart:format', re: /dart format-clean[\s\S]*(?:Changed |Formatted \d+ files)/ },
   { id: 'dart:package-uri-unresolved', re: /Failed to resolve package URI/ },
   { id: 'dart:pub-resolve', re: /incompatible with dependency constraints|Failed to update packages/ },
@@ -332,6 +355,8 @@ export const SIGNATURES = [
   { id: 'npm-test:assertion', re: /AssertionError/ },
   // ── the nightly live e2e and its preflights ───────────────────────────────
   { id: 'e2e:consent-artifact-mismatch', re: /the newest artifact says granted=\d, but the suite tapped/ },
+  { id: 'e2e:frames-wrong-size', re: /screenshots\/[\w.-]+\.png is \d+x\d+; the floor in tooling\/e2e-leg-register\.json framesCarryText was measured on frames \d+ wide/ },
+  { id: 'e2e:rehearsal-refused-on-main', re: /auth_target=\w+ is a REHEARSAL against a stack the deployed Workers deliberately refuse, and this dispatch is on main/ },
   { id: 'e2e:leg-failed', re: /##\[error\]Failure in method: ([^\n]+)/, key: 1 },
   { id: 'e2e:preflight-variable-unset', re: /repository VARIABLE (\w+) is unset/, key: 1 },
   { id: 'e2e:preflight-secrets-missing', re: /auth_target=\w+ needs \w+/ },
@@ -341,6 +366,7 @@ export const SIGNATURES = [
   { id: 'heartbeat-table:unhealthy', re: /scheduled duty is not reporting healthy/ },
   { id: 'alarm-chains:monitor-missing', re: /expected monitor "[^"]*" is not in the live list/ },
   { id: 'actions-usage:over-ceiling', re: /net-billed Actions spend is over the declared ceiling/ },
+  { id: 'gcp-scope:store-account-holds-a-role', re: /can now read project state on GCP, so it has been granted an IAM role/ },
   { id: 'supabase-config:no-credential', re: /found no SUPABASE_PAT/ },
   { id: 'd1-live-sql:refused', re: /D1 REFUSES A STATEMENT THIS REPOSITORY DEPLOYS/ },
   { id: 'd1-live-sql:could-not-complete', re: /This check COULD NOT COMPLETE, so nothing above may be read as proof/ },
@@ -354,6 +380,7 @@ export const SIGNATURES = [
   { id: 'msix:identity-guard', re: /assert-artifact-signed-msix|^The MSIX carries the identity the register declares/ },
   { id: 'play:device-coverage', re: /✗ play device coverage/ },
   { id: 'snap:pack-failed', re: /Cannot pack snap|^Pack the snap/ },
+  { id: 'store-screenshots:simulator-aged-out', re: /The register names "[^"\n]+" and this runner image has no available simulator by that name/ },
   { id: 'store-screenshots:capture', re: /^(?:Capture the set|Propose the set for human review)/ },
   { id: 'site-drift-repair:pr-setting', re: /Allow GitHub Actions to create and approve pull requests/ },
   { id: 'renovate:docker-failed', re: /^Run Renovate/ },
@@ -654,8 +681,9 @@ export function causeFor(signature, causes, branch = null) {
 // PROOF OF CLOSURE, AND THE GROUPING
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** newest: Map "<path>|<branch>" → newest run of that workflow on that branch
- *  (any conclusion). branches: Set of live branch names. prs: Map branch → pr. */
+/** newest: Map "<path>|<branch>" → newest COMPLETED run of that workflow on that
+ *  branch, any conclusion, never the run executing this ledger (newestCompleted,
+ *  below). branches: Set of live branch names. prs: Map branch → pr. */
 export function proofFor(row, { newest, branches, prs }) {
   const key = `${row.workflowPath}|${row.branch}`;
   const n = newest.get(key) ?? null;
@@ -864,7 +892,24 @@ export async function readThroughCache(cacheDir, name, fetcher, { text = false, 
   return v;
 }
 
-export function liveApi(repo, tok, cacheDir, { maxRequests = DEFAULT_MAX_REQUESTS } = {}) {
+/** PURE. The run the later-green proof reads, from a workflow's run list as
+ *  GitHub orders it (newest first): the first COMPLETED run that is not
+ *  `selfRunId`, the run executing this ledger. ⏱ 2026-09-26
+ *  (O-FAILURE-LEDGER-CANNOT-CLEAR-OPS-WATCH): the ledger runs INSIDE ops-watch,
+ *  and the unfiltered `per_page=1` query answered the executing run itself,
+ *  still in progress (conclusion null), so every failed ops-watch.yml run read
+ *  OPEN whatever cause was recorded. The query now asks `status=completed`;
+ *  this holds the same line on whatever the API answers. */
+export function newestCompleted(runs, { selfRunId = null } = {}) {
+  if (!Array.isArray(runs)) return null;
+  const self = selfRunId === null ? null : String(selfRunId);
+  return runs.find((r) => r?.status === 'completed' && String(r.id) !== self) ?? null;
+}
+
+/** GITHUB_RUN_ID as a run id, or null when it is absent or not numeric. */
+export const selfRunIdFrom = (env) => (/^[0-9]{1,20}$/.test(String(env?.GITHUB_RUN_ID ?? '')) ? env.GITHUB_RUN_ID : null);
+
+export function liveApi(repo, tok, cacheDir, { maxRequests = DEFAULT_MAX_REQUESTS, selfRunId = null } = {}) {
   // Held HERE, where the header is built, as well as in main(): a caller that
   // skips main() must not be able to send an unshaped credential either.
   if (!isValidGithubToken(tok)) {
@@ -939,10 +984,11 @@ export function liveApi(repo, tok, cacheDir, { maxRequests = DEFAULT_MAX_REQUEST
     return text ? res.text() : res.json();
   };
   const cached = (name, fetcher, { text = false } = {}) => readThroughCache(cacheDir, name, fetcher, { text });
-  /** A branch's newest run. NEVER cached — see --cache-dir in the header. */
+  /** A branch's newest COMPLETED run (newestCompleted, above). NEVER cached —
+   *  see --cache-dir in the header. */
   const fetchNewest = async (workflowId, branch) => {
-    const body = await get(`/repos/${repo}/actions/workflows/${workflowId}/runs?branch=${encodeURIComponent(branch)}&per_page=1`);
-    return body.workflow_runs?.[0] ?? null;
+    const body = await get(`/repos/${repo}/actions/workflows/${workflowId}/runs?branch=${encodeURIComponent(branch)}&status=completed&per_page=2`);
+    return newestCompleted(body.workflow_runs, { selfRunId });
   };
   return {
     live: true,
@@ -1213,7 +1259,7 @@ async function main(argv) {
       return 1;
     }
     console.log(`merge-base: ${onMain.checked} fix commit(s) named by the causes register are all on origin/main`);
-    api = liveApi(repo, tok, args.cacheDir ? resolve(args.cacheDir) : null, { maxRequests: args.maxRequests });
+    api = liveApi(repo, tok, args.cacheDir ? resolve(args.cacheDir) : null, { maxRequests: args.maxRequests, selfRunId: selfRunIdFrom(process.env) });
     // THE QUOTA FLOOR (D1, in the header), before the first counted request.
     let floor;
     try {
