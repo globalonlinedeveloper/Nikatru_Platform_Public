@@ -92,7 +92,7 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { parseWorkflow } from '../ci/workflow-scan.mjs';
-import { submitCli } from './submit-common.mjs';
+import { submitCli, requirePublishEnvironment, PUBLISH_ENVIRONMENT } from './submit-common.mjs';
 
 const CHANNEL_ID = 'linux-snap';
 const REGISTER = 'tooling/channel-register.json';
@@ -182,11 +182,6 @@ const DEFAULT_CHANNEL = `${DEFAULT_TRACK}/edge`;
 const REFUSED_RISK = 'stable';
 
 const CONFIRM_TOKEN = 'SUBMIT-TO-SNAP-STORE';
-const PUBLISH_ENVIRONMENT = 'store-publish';
-/** ONE gate for the factory, not one per channel. submit-play.yml already names
- *  this environment and documents the exact `gh api` calls that create it with a
- *  required reviewer. A second environment would be a second thing to configure
- *  and a second thing to be silently missing. */
 const CREDENTIAL_ENV = 'SNAPCRAFT_STORE_CREDENTIALS';
 /** The owner step, written ONCE and printed by every limb that needs it, so the
  *  person reading a refusal is told the exact command rather than pointed at a
@@ -433,79 +428,17 @@ if (SUBMIT) {
   // environments each returned `"protection_rules": []`.
   //
   // The remedy is the same read submit-play.mjs makes, against the same
-  // environment. Source: ${PRIMARY_SOURCES.githubEnvironmentsApi} — "GET
-  // /repos/{owner}/{repo}/environments/{environment_name}", whose response
-  // carries `protection_rules`, and "Anyone with read access to the repository
-  // can use this endpoint". The assertion is on a NON-EMPTY `reviewers` list
-  // rather than on the label `required_reviewers`, which could not be confirmed
-  // from a rendered example — an assertion keyed to an unconfirmed string fails
-  // OPEN if the string is different.
+  // environment (${PRIMARY_SOURCES.githubEnvironmentsApi}). ⏱ C4b, 2026-09-25:
+  // it is ONE function now, `requirePublishEnvironment` in submit-common.mjs,
+  // and what it requires is what stood here — the job token, the GET, a rule
+  // carrying a NON-EMPTY `reviewers` list, and `can_admins_bypass` reported
+  // (MEASURED true on this repository 2026-08-27) rather than claimed as an
+  // approval. The environment's name is submit-common's PUBLISH_ENVIRONMENT:
+  // one gate for every store, not one per channel.
   {
-    const repo = process.env.GITHUB_REPOSITORY.trim();
-    const ghToken = (process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN ?? '').trim();
-    if (ghToken === '') {
-      die([
-        'FAIL --submit needs GITHUB_TOKEN to read the publish environment\'s protection rules.',
-        '     Without it PG-6 cannot tell a gated environment from one GitHub auto-created when this',
-        '     workflow first named it, and those two look identical from inside the job. Pass',
-        '     `GITHUB_TOKEN: ${{ github.token }}` on the submit step.',
-      ]);
-    }
-    const envUrl = `https://api.github.com/repos/${repo}/environments/${PUBLISH_ENVIRONMENT}`;
-    let res;
-    try {
-      res = await fetch(envUrl, {
-        headers: {
-          authorization: `Bearer ${ghToken}`,
-          accept: 'application/vnd.github+json',
-          'x-github-api-version': '2022-11-28',
-          'user-agent': 'nikatru-submit-snap',
-        },
-      });
-    } catch (e) {
-      die([`FAIL PG-6 could not reach ${envUrl} (${e.message}). A gate that cannot be read has not been shown to exist.`]);
-    }
-    if (res.status === 404) {
-      die([
-        `FAIL the "${PUBLISH_ENVIRONMENT}" environment does not exist in ${repo}.`,
-        '     [ADR 031:117-124] the publish gate IS that environment plus a required reviewer, and GitHub',
-        '     documents that referencing a missing environment CREATES it — with no protection rules — so',
-        '     relying on `environment:` alone would have let this run publish unapproved while looking',
-        '     gated. Creating it is a repo-admin act and belongs to a human; the exact `gh api` commands',
-        '     are in the header of .github/workflows/submit-play.yml, and this channel uses the SAME',
-        '     environment rather than a second one.',
-      ]);
-    }
-    if (!res.ok) die([`FAIL PG-6 got HTTP ${res.status} from ${envUrl}. A gate that cannot be read has not been shown to exist.`]);
-    const envJson = await res.json().catch(() => ({}));
-    const rules = Array.isArray(envJson.protection_rules) ? envJson.protection_rules : [];
-    const reviewerRule = rules.find((r) => Array.isArray(r?.reviewers) && r.reviewers.length > 0);
-    if (!reviewerRule) {
-      die([
-        `FAIL the "${PUBLISH_ENVIRONMENT}" environment exists in ${repo} and carries NO required reviewer.`,
-        `     protection_rules = ${JSON.stringify(rules)}`,
-        '     An environment with no rules does not pause anything — the job runs the instant it is',
-        '     dispatched. That is the state GitHub leaves behind when a workflow auto-creates one, and it',
-        '     is indistinguishable from a real gate anywhere except here.',
-      ]);
-    }
-    // 🔴 THIS LINE CLAIMED AN APPROVAL IT HAD NOT CHECKED. It read "this job only
-    // reached this line because one of them approved it", which is false whenever
-    // an administrator can bypass the reviewer. `can_admins_bypass` comes from
-    // the SAME GET already in hand, and MEASURED on this repository 2026-08-27 it
-    // is `true` — as .github/workflows/submit-snap.yml's header has said since
-    // submit-play.mjs's PG-5 retracted the identical sentence on 2026-08-20.
-    // This file kept it. The remedy is not to fail (bypass is a legitimate
-    // setting and turning it off is a repo-admin act) but to stop asserting what
-    // was not observed: the reviewer requirement IS verified and still reported;
-    // that it was EXERCISED no longer is.
-    const adminsCanBypass = envJson.can_admins_bypass !== false;
-    ok(
-      `PG-6 publish gate — "${PUBLISH_ENVIRONMENT}" carries ${reviewerRule.reviewers.length} required reviewer(s)` +
-        (adminsCanBypass
-          ? '. ⚠️ `can_admins_bypass` is true, so reaching this line does NOT prove one of them approved: an administrator can dispatch straight past the gate. The requirement is verified; the approval is not.'
-          : ' and `can_admins_bypass` is false, so this job only reached this line because one of them approved it'),
-    );
+    const gate = await requirePublishEnvironment({ label: 'PG-6', userAgent: 'nikatru-submit-snap' });
+    if (!gate.ok) die(gate.lines);
+    for (const l of gate.lines) console.log(l);
   }
 
 }

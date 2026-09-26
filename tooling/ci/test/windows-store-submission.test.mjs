@@ -35,6 +35,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, cpSync } f
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { stripSourceComments } from '../text-reductions.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SCRIPT = join(REPO, 'tooling', 'release', 'submit-windows-store.mjs');
@@ -242,8 +243,27 @@ describe('submit-windows-store — the submission path is walkable, and --submit
       GH_TOKEN: '',
     });
     assert.equal(code, 1, out);
-    assert.match(out, /needs GITHUB_REPOSITORY and GITHUB_TOKEN to read the publish environment/);
+    assert.match(out, /PG-6 · a store publish needs GITHUB_TOKEN to read the publish environment's protection rules/);
     assert.match(out, /environments/);
+  });
+
+  // ⏱ C4b, 2026-09-25 — PG-6 IS NOW submit-common's requirePublishEnvironment,
+  // and this is the case that RUNS it. Before the move PG-6 hard-coded
+  // https://api.github.com, so no case here could get past the token check
+  // without the network. The shared read honours the loopback-only
+  // GITHUB_API_URL seam: pointed at a closed loopback port, the GET itself fails
+  // and PG-6 refuses naming the environment URL only that read builds — through
+  // `fail`, so the exit code is process.exitCode's (TRAPS shell-12).
+  test('PG-6 · the shared environment read runs, and an unreachable gate refuses', () => {
+    const { code, out } = run(tree({ withArtifact: true, ...CONFIGURED }), ['--submit', '--app', 'subscriptiontracker', '--confirm', 'SUBMIT-TO-MICROSOFT-STORE'], {
+      ...CREDS,
+      GITHUB_TOKEN: 'ghs-fixture',
+      GITHUB_API_URL: 'http://127.0.0.1:9',
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL PG-6 · could not reach http:\/\/127\.0\.0\.1:9\/repos\/globalonlinedeveloper\/Nikatru_Platform_Public\/environments\/store-publish/);
+    assert.match(out, /submit-windows-store: FAILED/);
+    assert.doesNotMatch(out, /ghs-fixture/);
   });
 
   test('--submit prints the sourced-citation tally before it touches anything remote', () => {
@@ -394,11 +414,20 @@ describe('submit-windows-store — the submission path is walkable, and --submit
     assert.ok(!source.includes('--submit is NOT IMPLEMENTED'), 'the refusal is back');
     assert.match(source, /const UNSOURCED = Object\.freeze\(\[/);
     assert.match(source, /const PRIMARY_SOURCES = Object\.freeze\(\{/);
-    // limb 4 of assert-release-provenance.mjs reads BOTH of these out of the
-    // script with comments stripped; they are asserted here too so a refactor
-    // that drops one is caught by this suite as well as by that guard.
-    assert.match(source.replace(/^\s*\/\/.*$/gm, ''), /\/environments\//);
-    assert.match(source.replace(/^\s*\/\/.*$/gm, ''), /protection_rules/);
+    // limb 4 of assert-release-provenance.mjs credits this script with the
+    // run-time read because it imports requirePublishEnvironment from
+    // submit-common.mjs AND calls it, and that module holds BOTH halves of the
+    // read (C4b, 2026-09-25: before then they stood in this file). Asserted here
+    // too so a refactor that drops one is caught by this suite as well as by
+    // that guard.
+    const code = source.replace(/^\s*\/\/.*$/gm, '');
+    assert.match(code, /^import \{[^}]*\brequirePublishEnvironment\b[^}]*\} from '\.\/submit-common\.mjs';$/m);
+    assert.match(code, /\brequirePublishEnvironment\(/);
+    // The guard's own stripper, not the line-comment regex above: submit-common
+    // documents the endpoint in a /** */ block, which that regex leaves standing.
+    const common = stripSourceComments(readFileSync(join(REPO, 'tooling', 'release', 'submit-common.mjs'), 'utf8'), '.mjs');
+    assert.match(common, /\/environments\//);
+    assert.match(common, /protection_rules/);
   });
 
   test('FAILS when neither --dry-run nor --submit is given', () => {

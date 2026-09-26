@@ -756,7 +756,7 @@ describe('EXT-3 — the AMO first submit carries the listing, and the store step
     const unguarded = await requireStorePublishEnvironment({ env, fetchImpl: answer(200, { protection_rules: [] }) });
     assert.equal(unguarded.ok, false);
     assert.match(unguarded.lines[0], /carries NO required reviewer/);
-    const gated = await requireStorePublishEnvironment({ env, fetchImpl: answer(200, { protection_rules: [{ reviewers: [{ id: 1 }] }], can_admins_bypass: false }) });
+    const gated = await requireStorePublishEnvironment({ env, fetchImpl: answer(200, { protection_rules: [{ type: 'required_reviewers', reviewers: [{ id: 1 }] }], can_admins_bypass: false }) });
     assert.equal(gated.ok, true, gated.lines.join('\n'));
   });
 

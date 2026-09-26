@@ -88,7 +88,7 @@ import { spawnSync } from 'node:child_process';
 import { createHash, createSign } from 'node:crypto';
 import { readGradleApplicationId } from '../ci/read-identity.mjs';
 import { parseWorkflow } from '../ci/workflow-scan.mjs';
-import { submitCli } from './submit-common.mjs';
+import { submitCli, requirePublishEnvironment, PUBLISH_ENVIRONMENT, githubToken } from './submit-common.mjs';
 
 const CHANNEL_ID = 'android-play';
 const REGISTER = 'tooling/channel-register.json';
@@ -137,7 +137,6 @@ const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 /** Named identically on all ten androidpublisher pages fetched:
  *  "https://www.googleapis.com/auth/androidpublisher". */
 const PLAY_SCOPE = 'https://www.googleapis.com/auth/androidpublisher';
-const GITHUB_API_ORIGIN = 'https://api.github.com';
 
 /** 🔴 THE ONE FACT NO PRIMARY SOURCE SETTLED, RECORDED RATHER THAN GUESSED.
  *  `tracksGuide` names four identifiers — "alpha", "beta", "production", and
@@ -183,7 +182,6 @@ const CHANGES_IN_REVIEW_BEHAVIOR = 'ERROR_IF_IN_REVIEW';
 const ALLOWED_RELEASE_STATUS = Object.freeze(['draft', 'completed']);
 
 const CONFIRM_TOKEN = 'SUBMIT-TO-PLAY';
-const PUBLISH_ENVIRONMENT = 'store-publish';
 const POSTURE_ENV = 'ANDROID_SIGNING_POSTURE';
 const RELEASE_SIGNED = 'release-signed';
 const SIGNATURE_GUARD = 'assert-artifact-signed.mjs';
@@ -254,12 +252,12 @@ function loopbackOr(envName, canonical) {
 
 let PLAY_BASE = PLAY_API_ORIGIN;
 let TOKEN_URL = GOOGLE_TOKEN_URL;
-let GITHUB_BASE = GITHUB_API_ORIGIN;
 
 if (SUBMIT) {
   PLAY_BASE = loopbackOr('PLAY_API_BASE_URL', PLAY_API_ORIGIN);
   TOKEN_URL = loopbackOr('PLAY_OAUTH_TOKEN_URL', GOOGLE_TOKEN_URL);
-  GITHUB_BASE = loopbackOr('GITHUB_API_URL', GITHUB_API_ORIGIN);
+  // GITHUB_API_URL is not read here: requirePublishEnvironment (PG-5) holds the
+  // same loopback-or-real rule for the GitHub origin, through githubApiBase.
 
   // ── PG-1 · the confirm token ───────────────────────────────────────────────
   // A dispatch input, mirrored here. The workflow ALSO guards the job with an
@@ -380,116 +378,28 @@ if (SUBMIT) {
   }
 
   // ── PG-5 · the environment EXISTS and carries a REQUIRED REVIEWER ──────────
-  // 🔴 THIS IS THE LIMB WITHOUT WHICH `environment:` IS DECORATION, and the
-  // reason is a documented GitHub behaviour, not a suspicion.
-  //
+  // 🔴 THIS IS THE LIMB WITHOUT WHICH `environment:` IS DECORATION.
   //   ${PRIMARY_SOURCES.githubEnvironments}, VERBATIM:
   //     "Running a workflow that references an environment that does not exist
   //      will create an environment with the referenced name."
+  // A freshly created environment has NO protection rules, so the job proceeds
+  // immediately, unapproved, and the run history shows an environment as if a
+  // gate had been honoured. `environment:` on its own FAILS OPEN.
   //
-  // So a job that says `environment: store-publish` against a repository that
-  // has no such environment does NOT fail, and does NOT wait. GitHub silently
-  // creates one, and a freshly created environment has NO protection rules — so
-  // the job proceeds immediately, unapproved, and the run history shows an
-  // environment as if a gate had been honoured. A typo in the environment name
-  // has exactly the same effect. `environment:` on its own therefore FAILS OPEN,
-  // which is the precise opposite of what ADR 031 asked for.
-  //
-  // ⚠️ MEASURED, NOT ASSUMED. On 2026-08-09 this repository's three existing
-  // environments — `platform`, `subscriptiontracker-api`, `subscriptiontracker-web`, all auto-created by
-  // deploy lanes — each returned `"protection_rules": []`. That is the fail-open
-  // state, observed, in this repo.
-  //
-  // The remedy is to ask the API what the environment actually carries.
-  // Source: ${PRIMARY_SOURCES.githubEnvironmentsApi} — "GET /repos/{owner}/{repo}/
-  // environments/{environment_name}", whose response carries `protection_rules`,
-  // and "Anyone with read access to the repository can use this endpoint", which
-  // is why the job's own `github.token` with `contents: read` is enough.
-  //
-  // 📌 THE ASSERTION IS ON A NON-EMPTY `reviewers` LIST, NOT ON A MAGIC STRING.
-  // GitHub labels the rule `type: "required_reviewers"`, but that literal could
-  // not be confirmed from a rendered example on the REST page, and an assertion
-  // keyed to an unconfirmed string fails OPEN if the string is different. What
-  // was confirmed — empirically, above — is that the fail-open state has NO
-  // rules at all. So the check is: some rule must carry reviewers. That cannot
-  // pass on an auto-created environment, and it does not depend on a word this
-  // session could not source. The full `protection_rules` JSON is printed on
-  // failure so the first run names its own fix.
+  // ⏱ C4b, 2026-09-25: THE READ IS `requirePublishEnvironment` IN
+  // submit-common.mjs, the one function submit-snap, submit-windows-store and the
+  // extension publishers call too. What it requires is what stood here: the job
+  // token, a GET of ${PRIMARY_SOURCES.githubEnvironmentsApi}, a rule carrying a
+  // non-empty `reviewers` list (its doc records why not the `required_reviewers`
+  // label), and `can_admins_bypass` reported rather than claimed as an approval.
+  // PG-5b below reads more of the same response, so the call hands it back.
   {
-    const repo = process.env.GITHUB_REPOSITORY.trim();
-    const ghToken = (process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN ?? '').trim();
-    if (ghToken === '') {
-      die([
-        'FAIL --submit needs GITHUB_TOKEN to read the publish environment\'s protection rules.',
-        `     Without it PG-5 cannot tell a gated environment from one GitHub auto-created when this`,
-        '     workflow first named it, and those two look identical from inside the job. Pass',
-        '     `GITHUB_TOKEN: ${{ github.token }}` on the submit step.',
-      ]);
-    }
-    const envUrl = `${GITHUB_BASE}/repos/${repo}/environments/${PUBLISH_ENVIRONMENT}`;
-    let res;
-    try {
-      res = await fetch(envUrl, {
-        headers: {
-          authorization: `Bearer ${ghToken}`,
-          accept: 'application/vnd.github+json',
-          'x-github-api-version': '2022-11-28',
-          'user-agent': 'nikatru-submit-play',
-        },
-      });
-    } catch (e) {
-      die([`FAIL PG-5 could not reach ${envUrl} (${e.message}). A gate that cannot be read has not been shown to exist.`]);
-    }
-    if (res.status === 404) {
-      die([
-        `FAIL the "${PUBLISH_ENVIRONMENT}" environment does not exist in ${repo}.`,
-        '     [ADR 031:117-124] the publish gate IS that environment plus a required reviewer. GitHub',
-        '     documents that referencing a missing environment CREATES it — with no protection rules —',
-        '     so relying on `environment:` alone would have let this run publish unapproved while looking',
-        '     gated. Creating it is a repo-admin act and belongs to a human; the exact commands are in the',
-        `     header of .github/workflows/submit-play.yml.`,
-      ]);
-    }
-    if (!res.ok) {
-      die([`FAIL PG-5 got HTTP ${res.status} from ${envUrl}. A gate that cannot be read has not been shown to exist.`]);
-    }
-    const envJson = await res.json().catch(() => ({}));
-    const rules = Array.isArray(envJson.protection_rules) ? envJson.protection_rules : [];
-    const reviewerRule = rules.find((r) => Array.isArray(r?.reviewers) && r.reviewers.length > 0);
-    if (!reviewerRule) {
-      die([
-        `FAIL the "${PUBLISH_ENVIRONMENT}" environment exists in ${repo} and carries NO required reviewer.`,
-        `     protection_rules = ${JSON.stringify(rules)}`,
-        '     An environment with no rules does not pause anything — the job runs the instant it is',
-        '     dispatched. That is the state GitHub leaves behind when a workflow auto-creates an',
-        '     environment, and it is indistinguishable from a real gate anywhere except here.',
-      ]);
-    }
-    // 🔴 `can_admins_bypass` COMES FROM THE SAME GET, AND UNTIL 2026-08-20 THIS
-    // LINE CLAIMED AN APPROVAL IT HAD NOT CHECKED. It read "this job only
-    // reached this line because one of them approved it" — which is false
-    // whenever an administrator can bypass the reviewer, and MEASURED on this
-    // repository that flag is `true`. The gate is then a gate for everyone
-    // except the one person who runs every release here.
-    //
-    // The remedy is not to fail: bypass is a legitimate setting and turning it
-    // off is a repo-admin act (OWNER_QUEUE). The remedy is to STOP ASSERTING
-    // WHAT WAS NOT OBSERVED. The reviewer requirement IS verified and still
-    // reported; what is no longer claimed is that it was exercised.
-    const adminsCanBypass = envJson.can_admins_bypass !== false;
-    if (adminsCanBypass) {
-      ok(
-        `PG-5 publish gate — "${PUBLISH_ENVIRONMENT}" carries ${reviewerRule.reviewers.length} required reviewer(s). ` +
-          '⚠️ `can_admins_bypass` is true, so reaching this line does NOT prove one of them approved: an ' +
-          'administrator can dispatch straight past the gate. The requirement is verified; the approval is not. ' +
-          'Set it false to make this lane say what it used to claim.',
-      );
-    } else {
-      ok(
-        `PG-5 publish gate — "${PUBLISH_ENVIRONMENT}" carries ${reviewerRule.reviewers.length} required reviewer(s) and ` +
-          '`can_admins_bypass` is false, so this job only reached this line because one of them approved it',
-      );
-    }
+    const gate = await requirePublishEnvironment({ label: 'PG-5', userAgent: 'nikatru-submit-play' });
+    if (!gate.ok) die(gate.lines);
+    for (const l of gate.lines) console.log(l);
+    const envUrl = gate.url;
+    const envJson = gate.body;
+    const ghToken = githubToken();
 
     // ── PG-5b · what this environment's own policy SAYS about the REF ────────
     // 🔴 THE SAME GET, A FIELD NOTHING HAS EVER READ. Until now

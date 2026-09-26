@@ -240,7 +240,7 @@
 // Exit 1 = a finding. 2 = COVERAGE LOST (EXIT 1 in the dated measurements below, before 2026-09-16).
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
-import { join, resolve, dirname } from 'node:path';
+import { join, resolve, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 // limb 4 reads a release SCRIPT's source, not a workflow's, and the hazard the
@@ -500,12 +500,66 @@ const ENV_PROTECTION_READ = /protection_rules/;
  *  the import: an imported helper nobody calls reads nothing. */
 const STORE_ENV_HELPER = 'extensions/scripts/lib/store-environment.mjs';
 const STORE_ENV_CALL = /\brequireStorePublishEnvironment\(/;
+const STORE_ENV_FN = 'requireStorePublishEnvironment';
 const performsRead = (code) => ENV_API_READ.test(code) && ENV_PROTECTION_READ.test(code);
-const helperPerformsRead = (() => {
-  const src = existsSync(join(ROOT, STORE_ENV_HELPER)) ? readFileSync(join(ROOT, STORE_ENV_HELPER), 'utf8') : null;
+
+/** ⏱ 2026-09-25 (C4b, O-SUBMIT-SCRIPTS-SHARE-NO-MODULE) — THE ONE READ, AND THE
+ *  MOVE THAT WOULD OTHERWISE HAVE TURNED THIS LIMB RED. submit-play, submit-snap
+ *  and submit-windows-store no longer inline the environment read: each imports
+ *  `requirePublishEnvironment` from COMMON_READER and calls it. MEASURED on that
+ *  tree with this file as it stood (the rule "the read is in the invoked
+ *  script's OWN source"): EXIT 1, all three scripts named. So the credit is
+ *  widened, generalising the helper acceptance above, and it takes BOTH halves:
+ *    · an `import { … }` naming the function, NOT renamed, from a relative
+ *      specifier that RESOLVES to COMMON_READER from the importing file — a
+ *      same-named file anywhere else is not this module;
+ *    · a CALL of it — an import nobody calls reads nothing, and a call with no
+ *      such import calls whatever else carries the name.
+ *  COMMON_READER is graded by the same two patterns, so deleting the read from
+ *  it un-credits every caller at once. */
+const COMMON_READER = 'tooling/release/submit-common.mjs';
+const COMMON_FN = 'requirePublishEnvironment';
+const COMMON_CALL = /\brequirePublishEnvironment\(/;
+/** The `{ … }` bindings that every `<keyword> { … } from '<spec>'` statement in
+ *  `code` takes from `target`, as [imported, local] pairs. `rel` is the file
+ *  `code` came from, so a relative specifier is resolved as Node resolves it. */
+function bindingsFrom(code, rel, keyword, target) {
+  const pairs = [];
+  const statement = new RegExp(`\\b${keyword}\\s*\\{([^}]*)\\}\\s*from\\s*(['"])([^'"]+)\\2`, 'g');
+  for (const m of code.matchAll(statement)) {
+    if (!m[3].startsWith('.')) continue;
+    if (posix.normalize(posix.join(posix.dirname(rel), m[3])) !== target) continue;
+    for (const item of m[1].split(',')) {
+      const [imported, local = imported] = item.trim().split(/\s+as\s+/);
+      if (imported !== '') pairs.push([imported, local]);
+    }
+  }
+  return pairs;
+}
+const commonPerformsRead = (() => {
+  const src = read(COMMON_READER);
   return src !== null && performsRead(stripSourceComments(src, '.mjs'));
 })();
-const readsEnvironmentAtRunTime = (code) => performsRead(code) || (STORE_ENV_CALL.test(code) && helperPerformsRead);
+const callsCommonRead = (code, rel) =>
+  COMMON_CALL.test(code) && bindingsFrom(code, rel, 'import', COMMON_READER).some(([imported, local]) => imported === COMMON_FN && local === COMMON_FN);
+/** STORE_ENV_HELPER is credited when its own code performs the read (EXT-3's
+ *  shape) OR — C4b, 2026-09-25, its shape since — when it re-exports COMMON_FN
+ *  from COMMON_READER under the one name its callers call, STORE_ENV_FN, and
+ *  that module performs the read. MEASURED: with only the first arm, the
+ *  re-exporting helper exits 1 naming all three extension publishers. A
+ *  re-export under any other name leaves STORE_ENV_FN to whatever else defines
+ *  it, so it earns nothing. */
+const helperPerformsRead = (() => {
+  const src = read(STORE_ENV_HELPER);
+  if (src === null) return false;
+  const code = stripSourceComments(src, '.mjs');
+  const reExportsCommonRead = bindingsFrom(code, STORE_ENV_HELPER, 'export', COMMON_READER).some(
+    ([exported, as]) => exported === COMMON_FN && as === STORE_ENV_FN,
+  );
+  return performsRead(code) || (reExportsCommonRead && commonPerformsRead);
+})();
+const readsEnvironmentAtRunTime = (code, rel) =>
+  performsRead(code) || (callsCommonRead(code, rel) && commonPerformsRead) || (STORE_ENV_CALL.test(code) && helperPerformsRead);
 // 🔴 SAME FINDING ON THIS TOKEN, MEASURED 2026-08-24: its CASE is a condition and
 // the widening is the blind kind. `protection_rules` is the JSON key GitHub
 // returns; a script reading `PROTECTION_RULES` off that response reads
@@ -1007,12 +1061,12 @@ for (const wf of workflows) {
         }
         submitScriptsChecked.add(call.script);
         const code = stripSourceComments(src, '.mjs');
-        const reads = readsEnvironmentAtRunTime(code);
+        const reads = readsEnvironmentAtRunTime(code, call.script);
         if (!reads) {
           submitProblems++;
           problems.push(
             `${wf.rel}: job "${job.name}" invokes \`${call.script} --submit\` at ${lineAt(wf, call.n)}, and that script never reads the deployment environment's protection rules ` +
-              '(no `/environments/` API path AND `protection_rules` survives comment stripping in it). ' +
+              `(no \`/environments/\` API path AND \`protection_rules\` survives comment stripping in it, and it does not both import ${COMMON_FN} from ${COMMON_READER} and call it, with that module performing the read). ` +
               '`environment:` on its own FAILS OPEN — GitHub\'s own documentation, quoted at docs/ci/submit-play.md:41-44, says a workflow referencing an environment that does not exist CREATES it, unprotected, and runs. ' +
               'The run history then shows a deployment that reads exactly like an approval. So the YAML line is the pause and this read is the proof the pause was real; a lane with only the first has a gate that a typo silently removes.',
           );
@@ -1095,11 +1149,11 @@ for (const { wf, job, step, scripts } of storeSteps) {
       continue;
     }
     submitScriptsChecked.add(rel);
-    if (!readsEnvironmentAtRunTime(stripSourceComments(src, '.mjs'))) {
+    if (!readsEnvironmentAtRunTime(stripSourceComments(src, '.mjs'), rel)) {
       submitProblems++;
       problems.push(
         `${wf.rel}: job "${job.name}" runs ${rel} as a store publish at ${lineAt(wf, step.n)}, and that script never reads the deployment environment's protection rules — ` +
-          `not itself, and not by calling requireStorePublishEnvironment() from ${STORE_ENV_HELPER}. \`environment:\` on its own FAILS OPEN.`,
+          `not itself, not by importing and calling ${COMMON_FN}() from ${COMMON_READER}, and not by calling requireStorePublishEnvironment() from ${STORE_ENV_HELPER}. \`environment:\` on its own FAILS OPEN.`,
       );
     }
   }
