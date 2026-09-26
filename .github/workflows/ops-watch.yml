@@ -8,6 +8,15 @@ run-name: "Ops watch (${{ github.event_name }})"
 
 on:
   workflow_dispatch:
+    # why: the land scripts dispatch this workflow after EVERY merge. The weekly failed-run ledger (~200
+    # API requests, and red by design while a failure lacks a recorded cause) must not ride those: on
+    # 2026-09-26 it turned ops-watch #526 and #527 red on the first two post-merge dispatches after #959.
+    # A person who wants the ledger now asks for it with this input; the Monday slot runs it regardless.
+    inputs:
+      failure_ledger:
+        description: 'Also run the weekly failed-run ledger (about 200 API requests; off for post-merge dispatches)'
+        type: boolean
+        default: false
   # why: TWELVE slots, and every gap was COMPUTED including the wrap past midnight --
   # a sorted list shows every gap except the circular one. GitHub delivers this
   # repository's scheduled runs 10.1% on time, so density is what buys the alarm
@@ -567,7 +576,9 @@ jobs:
     name: Failed-run ledger (weekly, print-only)
     # why: the digest's slot predicate, verbatim. The ledger reads eight days of
     # failed runs, so one run a week is its whole cadence; every other slot skips.
-    if: github.event.schedule == '45 7 * * 1' || github.event_name == 'workflow_dispatch'
+    # why (2026-09-26): a dispatch runs the ledger only when it asks for it (inputs.failure_ledger); the digest
+    # keeps its own slot predicate and prints 'did not run' for a skipped ledger.
+    if: github.event.schedule == '45 7 * * 1' || (github.event_name == 'workflow_dispatch' && inputs.failure_ledger)
     runs-on: ubuntu-24.04
     # why: the ceiling. A cached walk of eight days is expected well under five
     # minutes, and every request is bounded by bounded-retry.mjs inside it.
