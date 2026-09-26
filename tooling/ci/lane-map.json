@@ -52,6 +52,7 @@
         "tooling/ci/lane-map.json",
         "tooling/ci/lane-detect.mjs",
         "tooling/ci/lane-verdict.mjs",
+        "tooling/ci/worker-set.mjs",
         ".github/actions/setup-node/**",
         ".github/workflows/*.yml"
       ]

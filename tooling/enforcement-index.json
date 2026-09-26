@@ -1988,8 +1988,8 @@
     ],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#prepare",
-      ".github/workflows/ci.yml#android-apps",
       ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/ci.yml#prepare",
       ".github/workflows/deploy-web.yml#prepare",
       ".github/workflows/e2e.yml#prepare"
     ],
@@ -3052,6 +3052,18 @@
   },
   {
     "claims": [
+      "ADR 095"
+    ],
+    "invokedBy": [
+      ".github/workflows/lane-workers.yml#detect"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/worker-set.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
       "ADR 067"
     ],
     "invokedBy": [],
@@ -3605,7 +3617,7 @@
       "F-2"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/ci.yml#app-dryrun",
       ".github/workflows/submit-appstore.yml#dry-run"
     ],
     "kind": "script",
@@ -3621,7 +3633,7 @@
       "D-9"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/ci.yml#app-dryrun",
       ".github/workflows/submit-play.yml#dry-run",
       ".github/workflows/submit-play.yml#submit"
     ],
@@ -3639,7 +3651,7 @@
       "D-9"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/ci.yml#app-dryrun",
       ".github/workflows/submit-snap.yml#dry-run",
       ".github/workflows/submit-snap.yml#submit"
     ],
@@ -3657,7 +3669,7 @@
       "D-9"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/ci.yml#app-dryrun",
       ".github/workflows/submit-windows-store.yml#dry-run",
       ".github/workflows/submit-windows-store.yml#submit"
     ],

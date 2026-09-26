@@ -49,11 +49,11 @@ a bare `true` back and nothing in the tree goes red.
 
 | job | what it is | in `ci-gate`'s `needs` |
 |---|---|---|
-| `lane-workers` | a call to `lane-workers.yml` (below): `detect`, then the subscriptiontracker-api and platform Workers (`npm ci`, `tsc --noEmit`, `npm test`, `wrangler deploy --dry-run`) when affected, then `lane-verdict` | yes |
+| `lane-workers` | a call to `lane-workers.yml` (below): `detect`, which also reads the Worker set (`tooling/ci/worker-set.mjs --emit`: every `services/<dir>` holding a `wrangler.jsonc`, `_shared` excluded), then one `worker` matrix leg per Worker (`npm ci`, `tsc --noEmit`, `npm test`, `wrangler deploy --dry-run`) when affected, then `lane-verdict` | yes |
 | `guard-meta` | the guards' own mutation suite plus the guards-about-guards | yes |
 | `guards-platform` | platform, data, ops and registry assertions | yes |
 | `guards-legal` | privacy, legal, consent and money assertions | yes |
-| `guards-store` | store, release, signing and versioning assertions, and the five submission dry-runs | yes |
+| `guards-store` | store, release, signing and versioning assertions | yes |
 | `guards-chassis` | chassis, app-surface, package-boundary and accessibility assertions | yes |
 | `security-scan` | gitleaks + `scan-secrets.mjs`, zizmor + `scan-workflows.mjs` | yes |
 | `site-tokens` | design tokens build + drift | yes |
@@ -61,8 +61,9 @@ a bare `true` back and nothing in the tree goes red.
 | `content-gate` | content pipeline: recipe → pack → sign → gate | yes |
 | `app-brick` | stamps both probe variants, analyzes, validates the clone contract | yes |
 | `sites` | static sites: functions parse, generated feeds, discovery surface | yes |
-| `workspace-gate` | `melos analyze` + `melos test` over the whole workspace | yes |
-| `android-apps` | the Android app set, from `assert-release-lane-generic.mjs --emit-apps` — the emitter `build-platforms.yml` `prepare` runs | yes |
+| `workspace-gate` | `melos analyze` + `melos test` over the whole workspace, and `dart format` over every app under `apps/` | yes |
+| `prepare` | the app set, from `assert-release-lane-generic.mjs --emit-apps` — the emitter `build-platforms.yml` `prepare` runs; `app-dryrun` and `android-artifacts` fan out over it | yes |
+| `app-dryrun` | per app: the five store submission dry runs (Microsoft Store, App Store iOS and macOS, Snap Store, Google Play), `--app` from the matrix | yes |
 | `android-artifacts` | per app: `build-platforms.yml` `linux_web_android`'s three Android builds (Play `.apk`, `.aab`, apps.gov.in `.apk`), then the guards that read a built binary; debug-signed and discarded | yes |
 | `ci-gate` | the aggregate — the single required status check on `main` | — |
 
