@@ -645,6 +645,34 @@ function extensionToolDirs() {
   return listDir(abs_).filter((d) => existsSync(join(abs_, d, 'tool.json')));
 }
 const EXT_TOOLS = extensionToolDirs();
+
+/** What a print names as a store row's owner item: its live `ownerQueue`, else
+ *  the item that opened its account (`accountStatus.openedBy`), else `none`. */
+const ownerQueueRef = (c, none = '(none)') =>
+  c.ownerQueue ?? (typeof c.accountStatus?.openedBy === 'string' ? `(none live; account opened by ${c.accountStatus.openedBy})` : none);
+
+/** [10]D-4, ONE RULE ON BOTH SURFACES (⏱ 2026-09-25, D3a, row
+ *  O-CAPTURE-LEAVES-DERIVED-SETS-STALE). A store row answers "does a publisher
+ *  account exist?" with EITHER an `ownerQueue` id, the live owner item somebody
+ *  still owes for the channel, OR an `accountStatus` that is open (`live` or
+ *  `verified`) and dated. Silence is refused on either surface.
+ *  Until this date only an extension row had the second answer, so an app row
+ *  whose account was open still had to keep a queue id, and the id went stale
+ *  when its owner item closed: A-3, A-4 and A-2 were all closed while four app
+ *  rows pointed at them. The item that opened an account is kept as
+ *  `accountStatus.openedBy`. Whether an id names a LIVE row is not askable here,
+ *  because CI cannot read either store; the `register-owner-queue` subject of
+ *  tooling/scripts/owner-ids.mjs asks it in the hooks. */
+function checkPublisherAccount(c, req) {
+  const st = c.accountStatus;
+  const accountOpen =
+    st !== null && typeof st === 'object' && (st.status === 'live' || st.status === 'verified') && /^\d{4}-\d{2}-\d{2}$/.test(String(st.asOf ?? ''));
+  return req(
+    (typeof c.ownerQueue === 'string' && c.ownerQueue.trim() !== '') || accountOpen,
+    'is a store channel with neither an `ownerQueue` id nor a dated `accountStatus` showing the publisher account already exists. [10]D-4 asks whether a publisher account exists; the answer may be "yes, since <date>" instead of "somebody is accountable for opening one" — but it may not be silence.',
+  );
+}
+
 let extensionStoreRows = 0;
 /** Extension store rows that NAME A LANE — the only ones §3b can compare. */
 let extensionLaneRows = 0;
@@ -659,7 +687,8 @@ let extensionLaneRows = 0;
  *    · `ownerQueue` — [10]D-4 asks whether a publisher account EXISTS. A queue id
  *      is the app-side proxy for "somebody is accountable for opening one"; a
  *      dated `accountStatus` saying it is already open answers the question
- *      itself, and one of the two is required. */
+ *      itself, and one of the two is required. ⏱ 2026-09-25: the app side takes
+ *      the same rule now, from `checkPublisherAccount` below. */
 function checkExtensionStoreRow(c, where, req) {
   const tpl = c.storeMetadataDir;
   const tplOk = req(
@@ -734,13 +763,7 @@ function checkExtensionStoreRow(c, where, req) {
     );
   }
 
-  const st = c.accountStatus;
-  const accountOpen =
-    st !== null && typeof st === 'object' && (st.status === 'live' || st.status === 'verified') && /^\d{4}-\d{2}-\d{2}$/.test(String(st.asOf ?? ''));
-  req(
-    (typeof c.ownerQueue === 'string' && c.ownerQueue.trim() !== '') || accountOpen,
-    'is a store channel with neither an `ownerQueue` id nor a dated `accountStatus` showing the publisher account already exists. [10]D-4 asks whether a publisher account exists; on this surface the answer may be "yes, since <date>" instead of "somebody is accountable for opening one" — but it may not be silence.',
-  );
+  checkPublisherAccount(c, req);
 
   // The tie to the extensions corpus. Both directions of the resolution, once
   // per tool: the directory the template names must be there, and the tool's own
@@ -954,10 +977,12 @@ for (const c of channels) {
     // shipping `kind: "store"` + `ownerQueue: null`, and nulling the ids on ALL
     // FIVE store rows still exited 0 "ok". A shape check is the half of D-4 that
     // is implementable here, so it is the half that must actually run.
-    req(
-      typeof c.ownerQueue === 'string' && c.ownerQueue.trim() !== '',
-      'is a store channel with no `ownerQueue` id. [10]D-4 maps "every store channel has a publisher account" onto kind=store + ownerQueue; a store row naming no queue row is an account nobody is accountable for opening, and CI cannot read the queue itself to notice.',
-    );
+    // ⏱ 2026-09-25 (D3a, O-CAPTURE-LEAVES-DERIVED-SETS-STALE): the id is no
+    // longer the only answer. A dated open `accountStatus` answers D-4 too, the
+    // rule extension rows already had, and an app row whose account
+    // is open moves its closed queue item to `accountStatus.openedBy`. Nulling
+    // an id with no open account still fails here, and the hooks resolve the id.
+    checkPublisherAccount(c, req);
   }
 
   // ── a lane, WHENEVER ONE IS NAMED, resolves to a real workflow job ────────
@@ -1097,7 +1122,7 @@ for (const c of channels) {
     }
   } else if (c.kind === 'store' && c.submittable === true) {
     prints.push(
-      `NO SUBMISSION PATH: channel "${c.id}" is a submittable store channel with no \`submission\` block — [10]D-10 limb (i) is unbuilt for it. Blocked on OWNER_QUEUE ${c.ownerQueue ?? '(unnamed)'}; printed rather than failed because starting that work is owner-gated.`,
+      `NO SUBMISSION PATH: channel "${c.id}" is a submittable store channel with no \`submission\` block — [10]D-10 limb (i) is unbuilt for it. Blocked on OWNER_QUEUE ${ownerQueueRef(c, '(unnamed)')}; printed rather than failed because starting that work is owner-gated.`,
     );
   }
 
@@ -2471,7 +2496,7 @@ let releaseCensus = { workflows: [], domain: null };
     const st = c.accountStatus;
     if (st === undefined || st === null || typeof st !== 'object') {
       problems.push(
-        `channel "${c.id}" is kind:"store" and carries no \`accountStatus\` {status, asOf, note}. The register maps it to OWNER_QUEUE ${c.ownerQueue ?? '(none)'} and CI cannot open that file, so without this field "does a publisher account exist for this channel?" has no answer anywhere a machine can read.`,
+        `channel "${c.id}" is kind:"store" and carries no \`accountStatus\` {status, asOf, note}. The register maps it to OWNER_QUEUE ${ownerQueueRef(c)} and CI cannot open that file, so without this field "does a publisher account exist for this channel?" has no answer anywhere a machine can read.`,
       );
       continue;
     }
@@ -2525,7 +2550,7 @@ let releaseCensus = { workflows: [], domain: null };
     const stale = ageDays > ACCOUNT_STATUS_STALE_DAYS;
     if (!accountExistsFor(c).has(st.status)) {
       prints.push(
-        `ACCOUNT ${st.status.toUpperCase()}: ${c.id} — OWNER_QUEUE ${c.ownerQueue ?? '(none)'}, asserted ${ageDays}d ago (${st.asOf})${stale ? ' ⚠️ RE-ASSERT — older than the staleness horizon; confirm it is still true rather than re-reading it' : ''}${st.note ? ` · ${st.note}` : ''}`,
+        `ACCOUNT ${st.status.toUpperCase()}: ${c.id} — OWNER_QUEUE ${ownerQueueRef(c)}, asserted ${ageDays}d ago (${st.asOf})${stale ? ' ⚠️ RE-ASSERT — older than the staleness horizon; confirm it is still true rather than re-reading it' : ''}${st.note ? ` · ${st.note}` : ''}`,
       );
     } else if (stale) {
       prints.push(

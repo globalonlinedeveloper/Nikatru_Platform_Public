@@ -29,7 +29,7 @@
 
      Residue, so the next reader does not "fix" it: `grep -rIl "Nikatru_Android_Apps_Public" .` from this
      root lists this file, the release runbook under `tooling/release/`, and dated historical records: the
-     rename/deletion rows in `catalog/store-matrix.json`, prose in `.github/workflows/submit-play.yml`,
+     rename/deletion records now in `tooling/github-org.json` (moved there from the retired store matrix on 2026-09-25), prose in `.github/workflows/submit-play.yml`,
      guard comments under `tooling/ci/`, and `.claude/` backup logs. They are DELIBERATELY LEFT STANDING,
      because a dated record naming the name it recorded is correct and rewriting one falsifies it. Run the
      grep for the population; a count typed here is one more copy of it. -->
