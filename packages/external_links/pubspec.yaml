@@ -1,0 +1,37 @@
+name: nikatru_external_links
+description: >-
+  The ONE adapter that opens an external link (O-LINK-LAUNCHER-SEAM-UNOWNED):
+  legal pages, the site, the support mailto and the force-update destination.
+  It implements core's ExternalLinkLauncher over url_launcher and checks every
+  link against core's LinkPolicy before the plugin is touched. Hosted checkout
+  pages are NOT opened here: that is packages/purchases' CheckoutLauncher,
+  https-only by design.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+repository: https://github.com/globalonlinedeveloper/Nikatru_Platform_Public
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  nikatru_core:
+    path: ../core
+
+  # THE ONLY THIRD-PARTY DEPENDENCY, and the reason this is an adapter: opening
+  # a link is a per-platform native call with real gaps (see
+  # ExternalLinkCapabilities). Same range packages/purchases declares, so the
+  # workspace resolves one url_launcher. The matrix in
+  # external_link_capabilities.dart is tied to 6.x and is re-reviewed on a bump.
+  url_launcher: ^6.3.0
+
+dev_dependencies:
+  # [pipeline C-12] resolves the shared ruleset in analysis_options.yaml.
+  nikatru_lints:
+    path: ../analysis
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
