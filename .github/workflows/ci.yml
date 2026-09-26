@@ -613,7 +613,7 @@ jobs:
         run: node tooling/ci/assert-no-seam-forks.mjs
       - name: Every shared package the template delegates to is adopted by every app
         if: ${{ !cancelled() }}
-        run: node tooling/ci/assert-chassis-parity.mjs
+        run: node tooling/ci/assert-chassis-parity.mjs --require-history
       - name: Shared code carries no app-specific vocabulary
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-no-clone-tells.mjs
