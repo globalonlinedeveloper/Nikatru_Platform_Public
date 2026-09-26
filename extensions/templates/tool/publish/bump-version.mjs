@@ -13,9 +13,11 @@
    WHY A SCRIPT FOR A THREE-CHARACTER EDIT
 
    Because it is never one edit. The version is written in manifest.json, in
-   publish/manifest.firefox.json (a SECOND manifest that AMO reads and that
-   nothing else will remind you about), in the CHANGELOG heading, and in the two
-   package filenames. The reference implementation shipped "(v1.10)" section
+   the CHANGELOG heading, and in the two package filenames. (Until 2026-09-25 it
+   was also written in publish/manifest.firefox.json, then a SECOND full
+   manifest; that file is now an RFC 7386 merge patch that carries no version
+   and inherits manifest.json's, so it is no longer a version site.) The
+   reference implementation shipped "(v1.10)" section
    labels inside a 1.9.13 build and carried a stale "build 1.9.10" comment
    that its problem-report path nearly used as the runtime version. Its own
    retro: "whoever closes an increment should grep the diff for version strings,
@@ -44,10 +46,13 @@ const exists = rel => fs.existsSync(path.join(ROOT, rel));
 
 /* Every place a version number is written, as data. A JSON site is rewritten
    with a targeted string replacement rather than JSON.stringify, so the file
-   keeps its formatting and the diff stays one line. */
+   keeps its formatting and the diff stays one line.
+   ⏱ 2026-09-25 (F-b): one site. publish/manifest.firefox.json left this list
+   when it became a merge patch: publish/pack.mjs builds the AMO manifest from
+   manifest.json with the patch applied, so the Firefox version IS this one, and
+   test/skeleton-sim.node.js asserts the patch carries no "version" key. */
 export const VERSION_SITES = [
-  { file: 'manifest.json', what: 'the Chrome/Edge manifest' },
-  { file: 'publish/manifest.firefox.json', what: 'the AMO manifest — a second file nothing else reminds you about' }
+  { file: 'manifest.json', what: 'the Chrome/Edge manifest, and through the merge patch the AMO one' }
 ];
 
 /* Files that legitimately contain a version-shaped number that is NOT this

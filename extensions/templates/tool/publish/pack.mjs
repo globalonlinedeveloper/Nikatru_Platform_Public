@@ -22,7 +22,8 @@
    Two packages, one source tree:
 
      <slug>-<version>.zip           Chrome AND Edge (the same Chromium MV3 package)
-     <slug>-<version>-firefox.zip   AMO: publish/manifest.firefox.json swapped in.
+     <slug>-<version>-firefox.zip   AMO: manifest.json with publish/manifest.firefox.json
+                                    applied as an RFC 7386 merge patch (firefoxManifest()).
                                     background.js is IDENTICAL — the importScripts
                                     guard lives in the source file, not in this
                                     script, so there is no text anchor to lose.
@@ -55,6 +56,7 @@ import { createRequire } from 'node:module';
 import { assertLocalesInPackage } from '../_locales/package-guard.mjs';
 import { DOS_TIME, DOS_DATE } from '../../../scripts/lib/zip-time.mjs';
 import { geckoIdFor, isPlaceholderValue } from '../../../scripts/lib/tool-identity.mjs';
+import { mergePatch } from '../../../scripts/lib/merge-patch.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = process.env.SK_ROOT ? path.resolve(process.env.SK_ROOT) : path.join(HERE, '..');
@@ -269,11 +271,34 @@ export function localeProblems(files, manifests, onDiskOverride) {
   return out;
 }
 
+/* ---------------- the Firefox manifest: the base with the overlay applied ----
+   ⏱ 2026-09-25 (F-b): publish/manifest.firefox.json is an RFC 7386 merge patch,
+   and the manifest the Firefox package carries is manifest.json with it applied,
+   through scripts/lib/merge-patch.mjs — the implementation scripts/pack.mjs
+   applies to the same file for the same tool. It says only what Firefox needs
+   beyond manifest.json, so the version is written once. Until that date this
+   script read the file whole, as a second complete manifest, and wrote it into
+   the zip verbatim. Returns { base, overlay, merged } or { error }. */
+export function firefoxManifest() {
+  let base, overlay;
+  try { base = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8')); }
+  catch (e) { return { error: 'manifest.json does not parse — ' + e.message }; }
+  try { overlay = JSON.parse(fs.readFileSync(path.join(PUBLISH, 'manifest.firefox.json'), 'utf8')); }
+  catch (e) { return { error: 'publish/manifest.firefox.json does not parse — ' + e.message }; }
+  if (overlay === null || typeof overlay !== 'object' || Array.isArray(overlay)) {
+    return { error: 'publish/manifest.firefox.json is not a JSON object, so it is not an RFC 7386 merge patch — ' +
+      'a top-level null or array would REPLACE the whole manifest' };
+  }
+  return { base, overlay, merged: mergePatch(base, overlay) };
+}
+
 export function readManifests() {
   const read = p => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (_) { return null; } };
   return [
     { label: 'manifest.json', mf: read(path.join(ROOT, 'manifest.json')) },
-    { label: 'publish/manifest.firefox.json', mf: read(path.join(PUBLISH, 'manifest.firefox.json')) }
+    /* The MERGED manifest: the overlay alone declares no default_locale, and the
+       package does not carry the overlay. */
+    { label: 'the Firefox manifest (manifest.json + publish/manifest.firefox.json)', mf: firefoxManifest().merged || null }
   ];
 }
 
@@ -383,17 +408,20 @@ if (invokedDirectly) {
        abandoning the install base. So this refuses to WRITE rather than warning
        and writing anyway: an artifact that exists is an artifact someone
        uploads at 11pm. */
-    const ffPath = path.join(PUBLISH, 'manifest.firefox.json');
-    let ff = null;
-    try { ff = JSON.parse(fs.readFileSync(ffPath, 'utf8')); } catch (e) {
-      FAILS++; console.log('  FAIL  publish/manifest.firefox.json does not parse — ' + e.message); return;
-    }
+    /* The checks read the MERGED manifest — what AMO receives — never the
+       overlay: an overlay that restates nothing carries no version at all. */
+    const ffm = firefoxManifest();
+    if (ffm.error) { FAILS++; console.log('  FAIL  firefox: ' + ffm.error); return; }
+    const ff = ffm.merged;
     const id = ((ff.browser_specific_settings || {}).gecko || {}).id || '';
     const want = geckoIdFor(identity);
     const blockers = [];
     if (isPlaceholderId(id)) blockers.push('gecko.id is still a placeholder: "' + id + '"');
     if (id !== want) blockers.push('gecko.id "' + id + '" does not match identity.json (' + want + ')');
-    if (ff.version !== version) blockers.push('manifest.firefox.json is at v' + ff.version + ', the tree is at v' + version);
+    if (ff.version !== version) {
+      blockers.push('the merged Firefox manifest is at v' + ff.version + ', the tree is at v' + version +
+        ' — publish/manifest.firefox.json should not carry "version" at all');
+    }
     if (blockers.length) {
       FAILS += blockers.length;
       blockers.forEach(b => console.log('  FAIL  firefox: ' + b));
@@ -404,8 +432,11 @@ if (invokedDirectly) {
       return;
     }
 
+    /* Serialised exactly as scripts/pack.mjs serialises its merge, so the two
+       packers write one Firefox manifest for one tree. */
+    const ffBytes = Buffer.from(JSON.stringify(ff, null, 2) + '\n', 'utf8');
     const ffEntries = chromeEntries.map(e =>
-      e.name === 'manifest.json' ? { name: e.name, data: fs.readFileSync(ffPath) } : e);
+      e.name === 'manifest.json' ? { name: e.name, data: ffBytes } : e);
     writeZip(firefoxZip, ffEntries);
     assertLocalesInPackage(Array.from(VERIFY.readZip(firefoxZip).keys()), { root: ROOT });
     console.log('  wrote ' + path.basename(firefoxZip) + '  (same background.js — the guard is in the source)');

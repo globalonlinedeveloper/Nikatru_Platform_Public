@@ -367,7 +367,8 @@ case-exact, and a **CASE MISMATCH is reported separately from MISSING** because
 `icons/Icon128.PNG` loads on Windows and 404s on a reviewer's Linux box.
 
 **Firefox is solved, not deferred.** `publish/manifest.firefox.json` is a
-documented five-key delta and `background.js` is byte-identical in both packages
+documented five-key delta, written as an RFC 7386 merge patch over `manifest.json`,
+and `background.js` is byte-identical in both packages
 — the `importScripts` guard lives in the source, so there is no build-time
 rewrite to lose. The one thing only the owner can do is choose the domain:
 `gecko.id` is derived from `publish/identity.json`, AMO fixes an add-on's

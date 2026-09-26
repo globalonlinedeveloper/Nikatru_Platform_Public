@@ -23,6 +23,14 @@ not your tool's.
 
 ---
 
+## [Unreleased] — the Firefox manifest is a merge patch, and the version is said once (2026-09-25)
+
+- `publish/manifest.firefox.json` — an RFC 7386 merge patch over `manifest.json` now: the five documented delta keys (`background.scripts`, `browser_specific_settings.gecko`, `options_ui`, and `null` for `minimum_chrome_version` and `options_page`), computed from the old full file. It no longer drops `content_security_policy` and `incognito` for Firefox; both are inherited from `manifest.json`.
+- `tool.json` — `targets.firefox.overlay` names that file (was `null`); the `absent` entry for the overlay form is gone and `NOTES.targets` carries its record.
+- `publish/pack.mjs` — `firefoxManifest()` builds the Firefox manifest through `scripts/lib/merge-patch.mjs`; the build, the gecko-id and version checks and the localisation gate read the MERGED manifest, and the Firefox zip carries it. `publish/verify-package.node.js` and `publish/verify-firefox-package.node.js` grade the merge too.
+- `publish/bump-version.mjs` — `VERSION_SITES` is `manifest.json` alone. `test/skeleton-sim.node.js` asserts the overlay carries no `version`. `publish/preflight.mjs`, `CHANGELOG.md`, `TEMPLATE.md`, `README-tour.md`, `publish/COMPLIANCE-CHECKLIST.md` say so.
+- A tool copied earlier keeps a full second manifest and `VERSION_SITES` with two entries; it picks this up by copying the files above together, never one of them alone.
+
 ## [Unreleased] — the fleet Playwright install exists, in CI (2026-09-14)
 
 - `README-tour.md`, `TEMPLATE.md`, `test/browser/README.md` — dated amendments: `Tools/` is the repository root in the monorepo, so the fleet install is `<repository root>/_playwright/` (tracked `package.json` + `package-lock.json`, `npm ci`), never under `extensions/` (build-free guard). CI's `templates` job creates it and runs `test/browser/smoke.mjs`, failing unless the tier resolves Playwright from there.

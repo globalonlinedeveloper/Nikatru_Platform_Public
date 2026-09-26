@@ -90,6 +90,7 @@ work only one person can do teaches everyone that red is negotiable.
 | `sha256.mjs` | the hex digest of one file, on stdout | the determinism check diffs two builds with it |
 | `changelog-section.mjs` | one version's notes on stdout, for the release body | warns when the version asked for is not the newest heading |
 | `lib/toolinfo.mjs` | loads and validates `tool.json`; answers "what ships?" | the one loader every gate reads through |
+| `lib/merge-patch.mjs` | RFC 7386 `mergePatch()`: a null member deletes, an object member merges, anything else replaces | the one implementation; `pack.mjs`, `lib/tool-identity.mjs` and the template's `publish/pack.mjs` import it |
 | `lib/zip.mjs` | **reads** one named entry out of a store package | deliberately not `verify-refs.mjs`'s whole-archive reader — different question, different cost |
 | `lib/report.mjs` | the pass/fail/warn/owner reporter and argv parser | not in the architecture's file list; added so the gates cannot disagree about what "failed" means. **All 18** `scripts/*.mjs` import it (measured 2026-08-22; this cell said "eight") |
 | `schema/tool.schema.json` | editor autocomplete and hover docs for `tool.json` | **not** the gate — `lib/toolinfo.mjs` is. Cross-file checks are the ones that matter and no JSON Schema can express them |
@@ -110,7 +111,13 @@ work only one person can do teaches everyone that red is negotiable.
 
 ---
 
-## ABSENT — one file, and it is named
+## ABSENT — one file, named, and present since 2026-09-25
+
+⏱ 2026-09-25 (F-b): `scripts/lib/merge-patch.mjs` exists — the architecture's `lib/mergepatch.mjs`,
+spelled with a hyphen. The second consumer the paragraph below was waiting for arrived: the template's
+`publish/pack.mjs` builds a stamped tool's Firefox manifest through it, and `lib/tool-identity.mjs`
+reads the add-on id off the merged manifest. `pack.mjs` imports it, so `grep -n 'mergePatch(' scripts/pack.mjs`
+now returns the one call site. The paragraph below is the record of why it stayed inline until then.
 
 `scripts/lib/mergepatch.mjs` is the only entry in the architecture's §1.2 `scripts/lib/` list that is
 not in this directory. The *algorithm* is not missing: `mergePatch()` in `pack.mjs` is RFC 7386 §2 in

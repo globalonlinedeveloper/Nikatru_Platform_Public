@@ -176,7 +176,7 @@ console.log('\n=== manifest, against the store\'s upload rules ===');
     'still 0.0.1 — 0.1.0 is the conventional first real build');
   const problems = versionProblems();
   grade('every version site agrees', problems.length === 0,
-    'manifest.json, publish/manifest.firefox.json, CHANGELOG.md', problems.join(' | '));
+    'manifest.json, CHANGELOG.md (publish/manifest.firefox.json is a merge patch and inherits the version)', problems.join(' | '));
 }
 
 console.log('\n' + PASSES + ' ready, ' + TODO.length + ' outstanding');

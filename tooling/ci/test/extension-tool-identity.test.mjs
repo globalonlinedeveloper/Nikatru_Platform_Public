@@ -10,8 +10,8 @@
 //     tooling/house-identity.json;
 //   - derivedListingId on the real Full_Screen_Shot, and on tmpdir copies with
 //     one thing broken each;
-//   - the lib's mergePatch is scripts/pack.mjs's mergePatch, compared as code
-//     (pack.mjs exports nothing and packs when loaded, so it cannot be imported);
+//   - the lib's mergePatch is lib/merge-patch.mjs's, the one implementation
+//     scripts/pack.mjs imports (since 2026-09-25; before, a copy compared as code);
 //   - the scripts that used to build the id themselves now import it.
 //
 // Run:  node --test tooling/ci/test/extension-tool-identity.test.mjs
@@ -27,6 +27,7 @@ import {
   geckoIdFor, isPlaceholderValue, isPlaceholderIdentity, LISTED_IDENTITY_FIELDS,
   readHouseIdentity, identityFromHouse, mergePatch, derivedListingId,
 } from '../../../extensions/scripts/lib/tool-identity.mjs';
+import { mergePatch as mergePatchLib } from '../../../extensions/scripts/lib/merge-patch.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const EXT = join(REPO, 'extensions');
@@ -191,19 +192,28 @@ describe('mergePatch', () => {
   test('an array replaces wholesale', () => {
     assert.deepEqual(mergePatch({ l: [1, 2, 3] }, { l: [9] }), { l: [9] });
   });
-  test('the lib\'s mergePatch is scripts/pack.mjs\'s mergePatch, as code', () => {
-    const packSrc = mergePatchSource(readFileSync(join(EXT, 'scripts', 'pack.mjs'), 'utf8'));
-    const libSrc = mergePatchSource(readFileSync(join(EXT, 'scripts', 'lib', 'tool-identity.mjs'), 'utf8'));
-    assert.notEqual(packSrc, null, 'scripts/pack.mjs no longer defines a function named mergePatch');
-    assert.notEqual(libSrc, null, 'lib/tool-identity.mjs no longer defines a function named mergePatch');
-    assert.equal(normalizeFn(libSrc), normalizeFn(packSrc),
-      'lib/tool-identity.mjs mergePatch and scripts/pack.mjs mergePatch are no longer the same code');
+  /* ⏱ 2026-09-25 (F-b): the one implementation moved out of scripts/pack.mjs into
+     lib/merge-patch.mjs. The copy this lib held is gone, so the comparison as code
+     became two plain facts: this lib's export IS the merge-patch lib's function, and
+     pack.mjs holds no definition of its own. */
+  test('the lib\'s mergePatch is lib/merge-patch.mjs\'s mergePatch, the same function', () => {
+    assert.equal(mergePatch, mergePatchLib);
   });
-  test('the comparison above can fail: a one-token change to a copy of the source is seen', () => {
-    const packSrc = mergePatchSource(readFileSync(join(EXT, 'scripts', 'pack.mjs'), 'utf8'));
-    const mutated = packSrc.replace('delete out[key]', 'out[key] = null');
-    assert.notEqual(mutated, packSrc, 'the mutation found nothing to change');
-    assert.notEqual(normalizeFn(mutated), normalizeFn(packSrc));
+  test('scripts/pack.mjs defines no mergePatch of its own, and imports the lib\'s', () => {
+    const src = readFileSync(join(EXT, 'scripts', 'pack.mjs'), 'utf8');
+    assert.equal(mergePatchSource(src), null, 'scripts/pack.mjs defines a function named mergePatch again');
+    assert.match(src, /import \{ mergePatch \} from '\.\/lib\/merge-patch\.mjs';/);
+  });
+  test('lib/tool-identity.mjs defines no mergePatch of its own', () => {
+    const src = readFileSync(join(EXT, 'scripts', 'lib', 'tool-identity.mjs'), 'utf8');
+    assert.equal(mergePatchSource(src), null, 'lib/tool-identity.mjs defines a function named mergePatch again');
+  });
+  test('the comparison Full_Screen_Shot runs can fail: a one-token change to a copy of the lib source is seen', () => {
+    const libSrc = mergePatchSource(readFileSync(join(EXT, 'scripts', 'lib', 'merge-patch.mjs'), 'utf8'));
+    assert.notEqual(libSrc, null, 'lib/merge-patch.mjs no longer defines a function named mergePatch');
+    const mutated = libSrc.replace('delete out[key]', 'out[key] = null');
+    assert.notEqual(mutated, libSrc, 'the mutation found nothing to change');
+    assert.notEqual(normalizeFn(mutated), normalizeFn(libSrc));
   });
 });
 
