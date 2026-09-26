@@ -114,6 +114,13 @@ function tree({
     'nikatru_purchases',
     '  flutter:\n    sdk: flutter\n  nikatru_core:\n    path: ../core\n  url_launcher: ^6.3.0\n',
   );
+  // ⏱ 2026-09-24 · O-LINK-LAUNCHER-SEAM-UNOWNED. The external-link adapter, the
+  // shared home the two `|url_launcher` bypasses were waiting for. It wraps the
+  // SAME vendor as purchases, so url_launcher now has two wrappers.
+  files[join(root, 'packages/external_links/pubspec.yaml')] = spec(
+    'nikatru_external_links',
+    '  flutter:\n    sdk: flutter\n  nikatru_core:\n    path: ../core\n  url_launcher: ^6.3.0\n',
+  );
   // A lint-config package. It declares a third-party dep like an adapter does,
   // but a lint ruleset is config, not a wrapped SDK — nobody imports it in code.
   // Present so the "is it excluded?" question is answered by the fixture too.
@@ -133,16 +140,22 @@ function tree({
   // defect as a waiver that outlives its violation.
   files[join(root, 'apps/subscriptiontracker/lib/data/api/dio_api_client.dart')] =
     "import 'package:dio/dio.dart';\nimport 'package:nikatru_api_client/nikatru_api_client.dart';\n";
-  // …and the FOURTH, added 2026-08-01: `packages/purchases` declares
-  // url_launcher for its checkout launcher, which reclassified Subly's
-  // long-standing direct import as a bypass. It has to be here, or the guard's
-  // stale-entry check fires on a KNOWN_BYPASSES row whose import is absent.
+  // 🪦 ⏱ 2026-09-24 · the FOURTH, Subly's direct url_launcher import, is
+  // RESOLVED (O-LINK-LAUNCHER-SEAM-UNOWNED): the real widgets.dart reaches
+  // links through core's seam, built by packages/external_links, and the
+  // `apps/subscriptiontracker|url_launcher` row left KNOWN_BYPASSES in the same
+  // change. The fixture follows the tree: a direct import here would now be an
+  // undeclared bypass the real repository does not have.
   files[join(root, 'apps/subscriptiontracker/lib/features/shared/widgets.dart')] =
-    "import 'package:url_launcher/url_launcher.dart';\n";
+    "import 'package:nikatru_core/nikatru_core.dart' show ExternalLinkLauncherUrl;\n";
 
   files[join(root, 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/app.dart')] = brickImports;
+  // 🪦 ⏱ 2026-09-24 · the template's direct url_launcher import is RESOLVED
+  // too (O-LINK-LAUNCHER-SEAM-UNOWNED): `brick|url_launcher` left
+  // KNOWN_BYPASSES, and the real settings screen opens links through the
+  // launcher its lib/state/providers.dart builds.
   files[join(root, 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart')] =
-    "import 'package:url_launcher/url_launcher.dart';\n";
+    "import 'package:nikatru_core/nikatru_core.dart' as core;\n";
 
   for (const [rel, body] of Object.entries(extra)) files[join(root, rel)] = body;
 
@@ -162,7 +175,7 @@ describe('assert-package-boundaries', () => {
   test('passes on a tree shaped like the real repository', () => {
     const { code, out } = run(tree());
     assert.equal(code, 0);
-    assert.match(out, /derived 8 wrapped vendor\(s\) from 6 adapter\(s\)/);
+    assert.match(out, /derived 8 wrapped vendor\(s\) from 7 adapter\(s\)/);
     // flutter_lints must NOT be treated as a wrapped vendor.
     assert.doesNotMatch(out, /flutter_lints/);
     // The real debt is printed, every run.
@@ -176,7 +189,12 @@ describe('assert-package-boundaries', () => {
     // than derived is deliberate — debt that shrinks silently is debt nobody is
     // credited for paying, and debt that grows silently is the thing this list
     // exists to prevent.
-    assert.match(out, /5 grandfathered adapter bypass\(es\)/);
+    //
+    // 🔻 5 → 3 ON 2026-09-24 (O-LINK-LAUNCHER-SEAM-UNOWNED): both
+    // `|url_launcher` rows are paid — Subly and the template open every link
+    // through packages/external_links.
+    assert.match(out, /3 grandfathered adapter bypass\(es\)/);
+    assert.doesNotMatch(out, /package:url_launcher/);
   });
 
   // ── A · core stays pure Dart ───────────────────────────────────────────────
@@ -309,6 +327,33 @@ describe('assert-package-boundaries', () => {
       assert.match(out, /`packages\/api_client` already wraps it/);
     });
 
+    // THE CLOSES' RED CONTROL, as a case: the waiver is gone, so the import
+    // it used to excuse is a finding.
+    test('RC1 · FAILS on a direct url_launcher import in the app — the bypass is closed', () => {
+      const { code, out } = run(tree({
+        extra: {
+          'apps/subscriptiontracker/lib/features/shared/widgets.dart': "import 'package:url_launcher/url_launcher.dart';\n",
+        },
+      }));
+      assert.equal(code, 1, out);
+      assert.match(out, /apps\/subscriptiontracker imports `package:url_launcher` directly/);
+      assert.match(out, /`packages\/external_links`/);
+    });
+
+    // The chassis half of the same control: every stamped app inherits the
+    // template, so a direct import there is the one that multiplies.
+    test('RC2 · FAILS on a direct url_launcher import in the brick — the bypass is closed', () => {
+      const { code, out } = run(tree({
+        extra: {
+          'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart':
+            "import 'package:url_launcher/url_launcher.dart';\n",
+        },
+      }));
+      assert.equal(code, 1, out);
+      assert.match(out, /brick imports `package:url_launcher` directly/);
+      assert.match(out, /`packages\/external_links`/);
+    });
+
     test('FAILS on a NEW bypass written with DOUBLE quotes — limb C', () => {
       const { code, out } = run(tree({
         brickImports: "import 'package:flutter/material.dart';\nimport \"package:dio/dio.dart\";\n",
@@ -365,6 +410,21 @@ describe('assert-package-boundaries', () => {
       );
       assert.equal(code, 1, out);
       assert.match(out, /apps\/probe imports `package:dio` directly/);
+    });
+
+    // ⏱ 2026-09-24 · a vendor two adapters wrap names BOTH. The one-name map
+    // named whichever adapter was listed last, which for url_launcher is the
+    // checkout seam — the one that refuses a mailto:.
+    test('a direct url_launcher import names every adapter that wraps it', () => {
+      const { code, out } = run(
+        tree({
+          workspace: ['packages/core', 'apps/subscriptiontracker', 'apps/probe'],
+          extra: { 'apps/probe/lib/main.dart': "import 'package:url_launcher/url_launcher.dart';\n" },
+        }),
+      );
+      assert.equal(code, 1, out);
+      assert.match(out, /apps\/probe imports `package:url_launcher` directly/);
+      assert.match(out, /`packages\/external_links`, `packages\/purchases` already wrap it/);
     });
 
     test('an apps/<dir> the workspace does not declare is not scanned, and the OK line counts the SET', () => {

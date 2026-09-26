@@ -18,10 +18,10 @@
 // ── THE LINE ─────────────────────────────────────────────────────────────────
 // Exactly one line, outside `<!-- -->` comments and fenced code blocks, of one
 // of two forms:
-//     Rows: O-ROW-ID[, O-ROW-ID…]
+//     Rows: <row id>[, <row id>…]
 //     Rows: none — <why no row moves, at least 10 characters>   (` - ` also)
 // A leading `- ` bullet and `**Rows:**` bold are stripped first, so
-// `- **Rows:** O-ROW-ID` is the same line. `<`, `>` and every other form are
+// `- **Rows:** <row id>` is the same line. `<`, `>` and every other form are
 // refused; the template's placeholder is one of them, on purpose, so a body
 // left as the template wrote it is red.
 //
@@ -63,7 +63,7 @@ export const ROW_ID = /^O-[A-Z0-9-]+$/;
 export const MIN_REASON = 10;
 /** The two forms, as a reader is told to write them. */
 export const ACCEPTED_FORMS = Object.freeze([
-  'Rows: O-ROW-ID[, O-ROW-ID…]',
+  'Rows: <row id>[, <row id>…]',
   `Rows: none — <why no row moves, at least ${MIN_REASON} characters>`,
 ]);
 

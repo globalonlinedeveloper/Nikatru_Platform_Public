@@ -13,7 +13,7 @@
 // This is the public half of ST-3 ("every pointer resolves"). The private half is
 // `assert-index-complete` + `assert-adr-citations`.
 //
-// THREE CLASSES, ALL CHECKED:
+// FOUR CLASSES, ALL CHECKED:
 //
 //   1. PRIVATE PATH REFERENCES — any `Private/...` path named in a public file
 //      must exist on disk. These rot loudly at review time and silently at read
@@ -31,6 +31,15 @@
 //      subject file, and, within this branch's diff, one still owed. The
 //      subjects, the id shape and the resolver are `owner-ids.mjs`; the rules
 //      and the `--all-subjects` flag are at the ID CITATIONS block below.
+//
+//   4. ROW IDS IN PROSE (O-PUBLIC-DOCS-HAND-WRITTEN-FACTS) — an `O-<WORDS>` id in
+//      any tracked line names a row of `Private/platform-state/open.json`, and a
+//      `P<n>-<n>` id an item of `programme.json`. Each resolves against EVERY row,
+//      whatever its state: a closed row is still a row, and a citation of it
+//      still points somewhere. Beside it, the STATE-WORD limb refuses a line that
+//      holds such an id and a state phrase, and it reads no row state at all:
+//      state lives in the register, and a public line only cites the id. Both
+//      are at the ROW IDS block below.
 //
 // 🔴 A TAG IS NOT ONE ID. This is the whole reason the guard exists rather than a
 // grep. A first pass at this with a naive `[A-Z]-[0-9]+` regex reported 55 of 157
@@ -670,11 +679,11 @@ for (const rel of files) {
   const abs = join(REPO, rel);
   let text;
   try { text = readFileSync(abs, 'utf8'); } catch { continue; }
-  if (text.includes(' ')) {
+  if (text.includes('\u0000')) {
     /* Three tracked guard sources carry literal NUL bytes, so they read as binary
        to grep. They are still TEXT and still carry citations, so they are scanned
        here rather than skipped — the NUL is stripped for matching only. */
-    text = text.split(' ').join('');
+    text = text.split('\u0000').join('');
   }
   filesScanned++;
   const lines = text.split(/\r?\n/);
@@ -785,7 +794,7 @@ const staleHolds = [];
    BUILD ON an owner id — today one field, `trademark.ownerItem` in every
    `apps/<app>/name-clearance.json` — is a citation like any other, and the one
    F1 found did not resolve: limb 7 of `tooling/ci/assert-name-clearance.mjs`
-   lifted its block on `O-NAME-SUBLY-TRADEMARK`, a row that was never opened. The
+   lifted its block on an owner id whose row was never opened. The
    subjects, the grammar and the resolver are `owner-ids.mjs`; this block reads
    the files and owns the exit codes.
 
@@ -947,6 +956,152 @@ if (notLive.length) {
 }
 /* ── ID CITATIONS END ────────────────────────────────────────────────────── */
 
+/* The ROW IDS counters, declared OUTSIDE the block below for the reason the ID
+   CITATIONS counters are: deleting the block leaves this file valid and behaving
+   as it did before the class existed, which is how the test builds its mutant. */
+let rowIdsChecked = 0, rowIdLines = 0, stateLines = 0, openRowCount = 0, programmeItemCount = 0;
+
+/* ── ROW IDS BEGIN ───────────────────────────────────────────────────────────
+   🔴 THE FOURTH CLASS (O-PUBLIC-DOCS-HAND-WRITTEN-FACTS). A public doc wrote a
+   row's STATE beside its id, the row closed in Private, and the public line went
+   on saying the opposite — nothing reads a Public line against the register. Other
+   public lines cited ids no register carries. Two limbs, one pass over the tracked
+   files, with the same two disclosure conventions as the path class:
+
+   · ID — an `O-<WORDS>` id resolves against the `id` of EVERY row of
+     `platform-state/open.json`, and a `P<n>-<n>` id against every
+     `phases[].items[].id` of `platform-state/programme.json`. NEVER FILTERED BY
+     STATE: a row that closed is still the row the line names, and a filter here
+     would turn every closure in Private into a red Public hook. A struck-through
+     id is not checked; an unresolved id with a disclosed absence on its line
+     passes, as a path does.
+   · ST — a line holding such an id AND a state phrase is refused, and this limb
+     reads NO row state: it is the same finding for an open row and a closed one.
+     The fix is to delete the state words and keep the id. Struck text is exempt;
+     a disclosure is not, because it is about absence and this is about state.
+
+   An id wrapped at a line end (`O-SOME-` then `ROW` on the next line, after any
+   comment leader) is read whole, not as its first half. A register this class
+   needs is read only when an id in its namespace is cited, and one it needs and
+   cannot read, or that carries no row, is exit 2 COVERAGE LOST.
+
+   🔴 CI NEVER RUNS THIS, for the reason at the head of the file: the registers
+   are private. `tooling/ci/test/public-citations-ids.test.mjs` drives it over a
+   fixture workspace, and the hooks run it for real. */
+const RE_ROW_ID = /(?<![A-Za-z0-9_-])(?:O-[A-Z0-9]+(?:-[A-Z0-9]+)+|P\d+-\d+)(?![A-Za-z0-9_])/g;
+const RE_ROW_ID_TAIL = /^[A-Z0-9]+(?:-[A-Z0-9]+)*(?![A-Za-z0-9_])/;
+const RE_WRAP_LEADER = /^\s*(?:\/\/+|\/?\*+|#+|--|;+|>)?\s*/;
+const RE_STATE_WORDS = /\b(?:stays open|is open|still open|remains open|is closed|is done|closed on)\b/gi;
+
+function rowIdRefuse(lines) {
+  console.error('✗  public citations — REFUSING: the ROW IDS class could not read what it resolves against.');
+  for (const l of lines) console.error(`      ${l}`);
+  console.error('   Exit 2 COVERAGE LOST: an id nobody could look up has not been checked, and "not checked"');
+  console.error('   must not share an exit code with "it resolves".');
+  process.exit(2);
+}
+
+/** The id starting at `m` in `scan`, joined across a line-end wrap. */
+function wholeRowId(m, scan, lines, i) {
+  let id = m[0];
+  let rest = scan.slice(m.index + m[0].length);
+  for (let j = i + 1; id.startsWith('O-') && /^-\s*$/.test(rest) && j < lines.length && j <= i + 3; j++) {
+    const next = lines[j].replace(RE_WRAP_LEADER, '');
+    const tail = RE_ROW_ID_TAIL.exec(next);
+    if (!tail) break;
+    id = `${id}-${tail[0]}`;
+    rest = next.slice(tail[0].length);
+  }
+  return id;
+}
+
+const rowIdHits = [];
+for (const rel of files) {
+  let text;
+  try { text = readFileSync(join(REPO, rel), 'utf8'); } catch { continue; }
+  if (text.includes('\u0000')) text = text.split('\u0000').join('');
+  /* ⏱ 2026-09-25 (train W14). THE HELD ID OF A HOLD SUBJECT IS THE ID CITATIONS
+     CLASS'S, NOT THIS ONE'S. That class resolves it in BOTH registers and reads a
+     recorded ruling's kept id as provenance; read here against open.json alone, a
+     live owner-QUEUE row was refused and a recorded ruling read a register
+     (public-citations-owner-ids.test.mjs L1, L3). Every other id in the file is
+     still read here. */
+  const subject = subjectFor(rel);
+  let held = null;
+  if (subject) {
+    try {
+      held = subject.jsonPath.split('.').reduce((v, k) => (v !== null && typeof v === 'object' ? v[k] : undefined), JSON.parse(text));
+    } catch { held = null; }
+  }
+  const lines = text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line || !(line.includes('O-') || /P\d/.test(line))) continue;
+    const scan = line.includes('~~') ? line.replace(/~~[^~]*~~/g, '') : line;
+    const ids = [...scan.matchAll(RE_ROW_ID)].map((m) => wholeRowId(m, scan, lines, i)).filter((id) => id !== held);
+    if (!ids.length) continue;
+    rowIdLines++;
+    const disclosed = DISCLOSED.test(line);
+    for (const id of ids) rowIdHits.push({ rel, line: i + 1, id, disclosed });
+    const words = [...scan.matchAll(RE_STATE_WORDS)].map((w) => w[0]);
+    if (words.length) {
+      stateLines++;
+      failures.push({ rel, line: i + 1, kind: 'state', what: [...new Set(ids)].join(', '), words: [...new Set(words)].join(', ') });
+    }
+  }
+}
+
+/** Every row-shaped object in open.json: a string `id` in the O- grammar and a
+ *  `state` field, as `owner-ids.mjs` reads a row. Its state is never consulted. */
+function openRowIds(doc) {
+  const ids = new Set();
+  const walk = (v) => {
+    if (Array.isArray(v)) { v.forEach(walk); return; }
+    if (!v || typeof v !== 'object') return;
+    if (typeof v.id === 'string' && /^O-[A-Z0-9]+(?:-[A-Z0-9]+)+$/.test(v.id) && Object.hasOwn(v, 'state')) ids.add(v.id);
+    Object.values(v).forEach(walk);
+  };
+  walk(doc);
+  return ids;
+}
+
+function readRowRegister(name, citedIds) {
+  const abs = join(PRIVATE, 'platform-state', name);
+  let doc;
+  try { doc = JSON.parse(readFileSync(abs, 'utf8')); } catch (e) {
+    rowIdRefuse([`${abs} is unreadable or not JSON (${e.code || e.message}).`, `Cited in its namespace: ${citedIds.length} id(s), e.g. ${citedIds.slice(0, 3).join(', ')}.`]);
+  }
+  return { abs, doc };
+}
+
+const citedOpen = [...new Set(rowIdHits.filter((h) => h.id.startsWith('O-')).map((h) => h.id))];
+const citedProgramme = [...new Set(rowIdHits.filter((h) => h.id.startsWith('P')).map((h) => h.id))];
+let openIds = new Set(), programmeIds = new Set();
+if (citedOpen.length) {
+  const { abs, doc } = readRowRegister('open.json', citedOpen);
+  openIds = openRowIds(doc);
+  openRowCount = openIds.size;
+  if (!openRowCount) rowIdRefuse([`${abs} parsed, and not one object in it carries an O- \`id\` and a \`state\`.`, 'Every cited id would read as unresolved, which is a true-looking report of nothing.']);
+}
+if (citedProgramme.length) {
+  const { abs, doc } = readRowRegister('programme.json', citedProgramme);
+  const phases = doc && Array.isArray(doc.phases) ? doc.phases : [];
+  for (const ph of phases) {
+    for (const it of (ph && Array.isArray(ph.items) ? ph.items : [])) {
+      if (it && typeof it.id === 'string') programmeIds.add(it.id);
+    }
+  }
+  programmeItemCount = programmeIds.size;
+  if (!programmeItemCount) rowIdRefuse([`${abs} parsed, and \`phases[].items[].id\` holds no id.`, 'Every cited P- id would read as unresolved, which is a true-looking report of nothing.']);
+}
+for (const h of rowIdHits) {
+  rowIdsChecked++;
+  if (h.id.startsWith('O-') ? openIds.has(h.id) : programmeIds.has(h.id)) continue;
+  if (h.disclosed) { skippedDisclosed++; continue; }
+  failures.push({ rel: h.rel, line: h.line, kind: 'row-id', what: h.id, why: `no row of ${h.id.startsWith('O-') ? 'open.json' : 'programme.json'} carries it` });
+}
+/* ── ROW IDS END ─────────────────────────────────────────────────────────── */
+
 /* The resolution ROOT is printed, not just the counts. After 2026-08-18 `Private/`
    is a logical prefix with more than one possible answer, so a report that says
    how many citations resolved without saying what they resolved AGAINST is not a
@@ -958,7 +1113,9 @@ const label = `${filesScanned} tracked file(s) · ${pathsChecked} Private/ path 
   `${origins.size} origin(s) from ${specFiles} spec file(s)` +
   (shardDecl ? `, ${shardsRead} of them declared shard(s) under ${Object.keys(shardDecl.declared.reduce((a, r) => { a[r.split('/')[0]] = 1; return a; }, {})).length} sharded register(s)` : ' (no `shards` block declared)') +
   ` · ${holdsChecked} owner-id hold(s) in ${holdSubjectFiles} subject file(s) (${HOLD_SUBJECTS.map((s) => `${s.glob} ${s.jsonPath}`).join('; ')}), ` +
-  `${holdsLive} live` + (staleHolds.length ? `, ${staleHolds.length} STALE and printed above, outside this branch's diff` : '');
+  `${holdsLive} live` + (staleHolds.length ? `, ${staleHolds.length} STALE and printed above, outside this branch's diff` : '') +
+  ` · ${rowIdsChecked} O-/P- row id(s) on ${rowIdLines} line(s), resolved against every row of open.json (${openRowCount}) ` +
+  `and programme.json (${programmeItemCount}) whatever its state, ${stateLines} of those line(s) carrying a state phrase`;
 
 if (!failures.length) {
   console.log(`ok  public citations — every citation resolves. ${label}` +
@@ -968,24 +1125,32 @@ if (!failures.length) {
   process.exit(0);
 }
 
-/* Group by file so a 60-hit register reads as one problem, not sixty. */
+/* Group by file so a 60-hit register reads as one problem, not sixty. A state
+   claim is printed on its own line in full instead, one per finding. */
 const byFile = new Map();
 for (const f of failures) {
+  if (f.kind === 'state') continue;
   if (!byFile.has(f.rel)) byFile.set(f.rel, []);
   byFile.get(f.rel).push(f);
 }
-console.error(`✗  public citations — ${failures.length} unresolved citation(s) in ${byFile.size} file(s). ${label}\n`);
+const stateClaims = failures.filter((f) => f.kind === 'state');
+const unresolvedCount = failures.length - stateClaims.length;
+console.error(`✗  public citations — ${unresolvedCount} unresolved citation(s) in ${byFile.size} file(s)` +
+  (stateClaims.length ? `, and ${stateClaims.length} line(s) stating a row's state beside its id` : '') + `. ${label}\n`);
 for (const [rel, hits] of [...byFile.entries()].sort((a, b) => b[1].length - a[1].length)) {
   console.error(`  ${rel}  (${hits.length})`);
   for (const h of hits.slice(0, 6)) {
     const why = h.kind === 'path' ? 'no such path'
       : h.kind === 'pin' ? 'not at that tag'
       : h.kind === 'selfpin' ? 'not at that tag in this repository'
-      : h.kind === 'owner-id' ? h.why
+      : h.kind === 'owner-id' || h.kind === 'row-id' ? h.why
       : 'unknown requirement id';
     console.error(`    :${h.line}  ${why}  ${h.what}`);
   }
   if (hits.length > 6) console.error(`    … and ${hits.length - 6} more in this file`);
+}
+for (const s of stateClaims) {
+  console.error(`  ${s.rel}:${s.line} — ${s.what} — ${s.words} — "state lives in the Private register; cite the id only"`);
 }
 console.error('\n  A citation that still parses and no longer points at the right thing is this');
 console.error('  corpus\'s most repeated defect. Repoint it, or disclose the absence on the same');

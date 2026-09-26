@@ -1233,7 +1233,7 @@ for (const cap of CAPTURES) {
       );
     }
     // ── 🔴 NO CARD CUT BY THE FOLD WITH NOTHING OVER IT (⏱ 2026-09-22) ─────
-    // O-STORE-FRAME-FAB, measured in the flattened pixels like the banner. The
+    // O-STORE-FRAME-FAB-COVERS-A-PRICE-ROW, measured in the flattened pixels like the banner. The
     // fold comes from the suite's record; a frame the record does not name is
     // a frame nobody examined, and is said so.
     let edge = null;

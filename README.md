@@ -28,14 +28,14 @@
          redirect instead of answering the question. "It resolved" is the trap, not the proof.
 
      Residue, so the next reader does not "fix" it: `grep -rIl "Nikatru_Android_Apps_Public" .` from this
-     root matches 19 files — this one, the release runbook under `tooling/release/`, and 17 others. All 17
-     are dated historical records: the rename/deletion rows in `catalog/store-matrix.json`, prose in
-     `.github/workflows/submit-play.yml`, guard comments under `tooling/ci/`, and `.claude/` backup logs.
-     They are DELIBERATELY LEFT STANDING, because a dated record naming the name it recorded is correct and
-     rewriting one falsifies it. 19 is the whole population, not a sample. -->
+     root lists this file, the release runbook under `tooling/release/`, and dated historical records: the
+     rename/deletion rows in `catalog/store-matrix.json`, prose in `.github/workflows/submit-play.yml`,
+     guard comments under `tooling/ci/`, and `.claude/` backup logs. They are DELIBERATELY LEFT STANDING,
+     because a dated record naming the name it recorded is correct and rewriting one falsifies it. Run the
+     grep for the population; a count typed here is one more copy of it. -->
 
 The NIKATRU app factory: one Flutter chassis, one Cloudflare Workers backend pattern, and the CI
-that stamps, gates and ships apps from them to six platforms.
+that stamps, gates and ships apps from them to the platforms each app's `app.yaml` declares.
 
 **This repository is source-visible, not open-source.** Read [`NOTICE.md`](NOTICE.md) before you
 copy anything — there is deliberately no `LICENSE` file, and that absence is a build-failing check

@@ -91,6 +91,12 @@ dependencies:
   # and the Apple privacy manifest name it.
   nikatru_billing_revenuecat:
     path: ../../packages/billing_revenuecat
+  # O-LINK-LAUNCHER-SEAM-UNOWNED. The ONE external-link adapter: legal pages,
+  # the site, the support mailto and the force-update destination, each checked
+  # against core's LinkPolicy before url_launcher is touched. Built once in
+  # lib/state/providers/links.dart; screens reach it through the core interface.
+  nikatru_external_links:
+    path: ../../packages/external_links
 
   # State management
   flutter_riverpod: ^2.5.0
@@ -123,8 +129,8 @@ dependencies:
   intl: ">=0.19.0 <0.21.0"
   cupertino_icons: ^1.0.8
 
-  # Open external URLs (nikatru.com legal pages + company site) on all 6 platforms.
-  url_launcher: ^6.3.0
+  # External URLs (legal pages, site, support mailto) open through
+  # nikatru_external_links above, which owns this app's url_launcher call.
 
   # Running app version — drives the CFG-1 force-update kill-switch. Union item
   # (P2.4a): the chassis config/consent spine landing in P2.3/P2.6 reads it.

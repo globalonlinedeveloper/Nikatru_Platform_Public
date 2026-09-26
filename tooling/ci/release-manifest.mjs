@@ -237,6 +237,13 @@ export const EXTRA_INSTALLABLE = new Map([]);
  * continues to exit 0. So the honest statement is that the die PRINTS the gap and
  * the lane stays GREEN. Making it fail closed means capturing the exit code in
  * that step, which is build-platforms.yml's to do and not this file's.
+ * ⏱ 2026-09-26 — DONE, AND IT WAS NOT HYPOTHETICAL (O-APP-RELEASE-RECORDS-NO-DEPLOYMENT-SILENTLY).
+ * #958 took the .msix out of every app Release, so every app tag reached that
+ * exit 1 and the lane stayed green. Both record loops now assign the substitution
+ * first (`set -e` fails the step on it), build-platforms.yml asks this command
+ * BARE before `gh release create`, and assert-workflow-hardening.mjs limb 12
+ * refuses `for … in $(…)` in any `run:` body. This file reads the post-#958
+ * release, which carries no installer, as the declared empty (`releaseOwed`).
  * ⚠️ It is still a different empty from the one `signingPosture` produces below:
  * a row that matched and was withheld for posture exits 0 with the reason on
  * stderr. The CLI distinguishes them explicitly and says why — the distinction is
@@ -432,6 +439,28 @@ export function laneBackedFormats(register, { forWorkflow = null, surface = null
     for (const f of c?.artifactFormats ?? []) if (isFileFormat(f)) out.add(f);
   }
   return out;
+}
+
+/**
+ * ⏱ 2026-09-26 (O-APP-RELEASE-RECORDS-NO-DEPLOYMENT-SILENTLY) — WHAT A RELEASE ON
+ * `surface` IS OWED, read ONE way for both of its readers: `--stage` (did an
+ * installer arrive?) and `--emit-environments` (does this release owe a [10]D-9
+ * origin record?). Two copies of this derivation are how the first reader learnt,
+ * in #958, that "no installer, none owed" is the register's own answer, while the
+ * second kept calling the identical release an undeclared gap and exited 1.
+ *   · `carried`    — the formats a Release on the surface may carry as a loose
+ *                    installer: installable, not a bundle member, not store-only.
+ *   · `laneBacked` — the formats a declared lane on the surface emits.
+ *   · `owed`       — the lane-backed formats a Release carries. EMPTY while
+ *                    `laneBacked` is not is the declared empty: every lane emits
+ *                    only store-only files, so no lane owes this release anything.
+ */
+export function releaseOwed(register, surface) {
+  const storeOnly = storeOnlyFormats(register, surface);
+  const carried = new Set([...installableExtensions(register, surface)].filter((x) => !BUNDLE_MEMBERS.has(x) && !storeOnly.has(x)));
+  const laneBacked = laneBackedFormats(register, { surface });
+  const owed = [...laneBacked].filter((f) => carried.has(f));
+  return { storeOnly, carried, laneBacked, owed, noneOwed: laneBacked.size > 0 && owed.length === 0 };
 }
 
 /**
@@ -1219,8 +1248,10 @@ async function main() {
     const stageRegister = loadRegister();
     // ⏱ 2026-09-24 — and MINUS the store-only formats, which the judge below
     // refuses rather than stages (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER).
-    const storeOnly = storeOnlyFormats(stageRegister, stageSurface);
-    const exts = new Set([...installableExtensions(stageRegister, stageSurface)].filter((x) => !BUNDLE_MEMBERS.has(x) && !storeOnly.has(x)));
+    // ⏱ 2026-09-26 — read through `releaseOwed`, the one derivation --emit-environments shares.
+    const owedHere = releaseOwed(stageRegister, stageSurface);
+    const storeOnly = owedHere.storeOnly;
+    const exts = owedHere.carried;
     mkdirSync(out, { recursive: true });
 
     // ⏱ 2026-09-24 — COLLECT, JUDGE, THEN MOVE (O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN).
@@ -1275,9 +1306,8 @@ async function main() {
       // release only once its pin is set. That empty is the register's own answer,
       // printed, exit 0. COVERAGE LOST stays for the other empty: a lane on this
       // surface DOES emit a format a Release carries, and none arrived.
-      const laneBacked = laneBackedFormats(stageRegister, { surface: stageSurface });
-      const laneCarried = [...laneBacked].filter((f) => exts.has(f));
-      if (laneBacked.size > 0 && laneCarried.length === 0) {
+      const laneBacked = owedHere.laneBacked;
+      if (owedHere.noneOwed) {
         const stampsDir = stampsDirFor(stageSurface, '--stage');
         if (stampsDir !== null) mkdirSync(stampsDir, { recursive: true });
         console.log(`nothing staged: no installer under ${from}, and none is owed.`);
@@ -1489,7 +1519,8 @@ async function main() {
     // emitted `subscriptiontracker-chrome-webstore`.
     const emitSurface = requireSurface(resolve(flag('repo-root') ?? DEFAULT_ROOT), app, '--emit-environments');
     const { names } = assetFiles(dir);
-    const { environments, omitted, submitted, ruledOut } = originEnvironments(loadRegister(), app, names, emitSurface);
+    const emitRegister = loadRegister();
+    const { environments, omitted, submitted, ruledOut } = originEnvironments(emitRegister, app, names, emitSurface);
     // 🔴 STDERR, NOT STDOUT. The release job reads this command as a word list
     // (`for environment in $(node … --emit-environments …)`), so a reason printed
     // on stdout becomes an argument to record-deployment.mjs.
@@ -1535,6 +1566,27 @@ async function main() {
       console.error(`ruled-out  ${x.environment} — channel "${x.id}" is forbidden by ${x.constraint}: a release is never its origin, whatever its signing posture.`);
     }
     if (environments.length === 0 && omitted.length === 0 && submitted.length === 0 && ruledOut.length === 0) {
+      // ⏱ 2026-09-26 — TWO EMPTIES, THE SAME TWO `--stage` TELLS APART, read through
+      // the same `releaseOwed` (O-APP-RELEASE-RECORDS-NO-DEPLOYMENT-SILENTLY). Since
+      // #958 (7d037113) no app Release carries an .msix, so the only row an app
+      // Release ever matched (windows-direct, now ruled out) matches nothing, and
+      // every app tag reached the `die` below: exit 1, which the record step's
+      // `for … in $(…)` swallowed. A release carrying NO installer of ANY surface,
+      // on a surface whose lanes emit only store-only files, is the register's
+      // declared empty: nothing here is the origin of a channel, and each store's
+      // own submission writes its record. Exit 0, the reason on stderr. A release
+      // that carries an installer no origin row takes (the apps.gov.in .apk once
+      // its pin is set, a stray extension .zip), or that a lane owes an installer
+      // it lacks, is still the undeclared gap, and still exits 1.
+      const owed = releaseOwed(emitRegister, emitSurface);
+      const anyInstaller = [...installableExtensions(emitRegister, null)];
+      const installers = names.filter((n) => anyInstaller.some((f) => n.toLowerCase().endsWith(f.toLowerCase())));
+      if (installers.length === 0 && owed.noneOwed) {
+        console.error(`no [10]D-9 origin record for this release, and none is owed: it carries no installer (${names.join(', ') || '(nothing)'}).`);
+        console.error(`  Every format a lane on surface "${emitSurface}" emits is store-only: ${[...owed.laneBacked].sort().join(', ')} (derived from ${REGISTER_REL}); each store's submission records its own.`);
+        console.error(`  A Release on this surface may carry ${[...owed.carried].sort().join(', ') || 'no file format'} as an installer; this one carries none, as --stage said.`);
+        process.exit(0);
+      }
       die(
         `no \`kind: "direct"\` and no \`surface: "extension"\` channel in ${REGISTER_REL} declares a format this release carries.`,
         `The release holds: ${names.join(', ') || '(nothing)'}, and \`--app ${app}\` is on the "${emitSurface}" surface — only that surface's channels were considered.`,
@@ -1561,6 +1613,8 @@ async function main() {
     // what the log says, and exit 0 with a printed reason is the honest reading of
     // a state the register declares out loud. The `die` above keeps exit 1 for the
     // undeclared gap for the same reason: it is the reading, not the lane.
+    // ⏱ 2026-09-26 — THE LANE NOW READS IT (O-APP-RELEASE-RECORDS-NO-DEPLOYMENT-SILENTLY):
+    // each exit code here is the step's, before the publish and in the record loop.
     if (environments.length === 0 && omitted.length > 0) {
       // ⬜ DECLARED WIDENING, not a hole: the leading `\n` is a blank SEPARATOR
       // line, and dropping it leaves release-durable.test.mjs at EXIT 0 / 86 pass /
@@ -1632,7 +1686,7 @@ async function main() {
         'The flag is accepted only as a restatement the lane can be read for; it never overrides the tree.',
       );
     }
-    const minSupported = releaseFloor(treeRoot, app, surface, minSupportedFlag, version);
+    const floorFor = releaseFloor(treeRoot, app, surface, minSupportedFlag, version); // refuses here; resolved per staged channel below
     const { names, strays } = assetFiles(dir);
     if (strays.length) {
       die(
@@ -1647,17 +1701,17 @@ async function main() {
     // (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION); null on the extension surface.
     const stampsIn = stampsDirFor(surface, '--emit-release-json');
     if (stampsIn !== null) requireDir(stampsIn, '--stamps');
+    // One read per file: the hash and the size come from the same bytes, so a file
+    // swapped between a hash and a separate stat cannot pair one file's digest with another's size.
+    const files = names.map((n) => {
+      const bytes = readFileSync(join(dir, n));
+      const stamp = stampsIn === null ? null : readChannelStamp(join(stampsIn, channelStampName(n)));
+      return { name: n, sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.length, stamp };
+    });
+    const minSupported = floorFor(files.map((f) => f.stamp?.channel)); // O-UPDATE-FLOOR-HAS-NO-CHANNEL
     const json = buildReleaseJson({
       app, surface, tag, sha, runUrl, notesUrl, releasedAt, version, minSupported, build,
-      register: loadRegister(),
-      treeRoot,
-      // One read per file: the hash and the size come from the same bytes, so a file
-      // swapped between a hash and a separate stat cannot pair one file's digest with another's size.
-      files: names.map((n) => {
-        const bytes = readFileSync(join(dir, n));
-        const stamp = stampsIn === null ? null : readChannelStamp(join(stampsIn, channelStampName(n)));
-        return { name: n, sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.length, stamp };
-      }),
+      register: loadRegister(), treeRoot, files,
     });
     // O-RELEASE-EMITTER-WRITES-UNCHECKED — graded BEFORE the file exists, by the
     // schema and validator assert-release-json.mjs limb 1 uses. Written first, a
@@ -1914,6 +1968,18 @@ function readToolJson(root, id) {
  * overrides (KV)") can raise the served floor at runtime without a commit; the
  * record cannot see that and does not claim to.
  *
+ * 🔴 THE FLOOR IS PER CHANNEL, SO THE RECORD STATES THE HIGHEST ONE IT STAGES
+ * (O-UPDATE-FLOOR-HAS-NO-CHANNEL, 2026-09-24). The file keys the floor by channel
+ * id (`default` for the rest), and one record describes installers for several
+ * channels. So this RETURNS A RESOLVER: every refusal above the read (the flag,
+ * a missing or unparseable file) still happens where it always did, before any
+ * asset is looked at, and the caller hands the resolver `stagedChannels` — the
+ * channel each installer's build stamp names — once the stamps are read. Each is
+ * resolved as the Worker resolves `?channel=`, and the record carries the MAX:
+ * "the oldest version this release still serves" is true of every channel in it
+ * only at the highest of their floors. A record that stages no stamped installer
+ * is read at `default`, the floor a client with no channel is served.
+ *
  * THE EXTENSION SURFACE STATES THE RELEASE LINE: the extensions have no served
  * config and make no network call, so there is no declared floor to read. The
  * floor is the first three components of --version (EXT-3, 2026-09-24): until
@@ -1921,7 +1987,9 @@ function readToolJson(root, id) {
  * tag broke the schema's X.Y.Z. The flag is refused on this surface as well.
  *
  * The SHAPE (X.Y.Z) is not judged here. contracts/release.schema.json owns it,
- * and assert-release-json.mjs grades it two steps later in both lanes.
+ * and assert-release-json.mjs grades it two steps later in both lanes. Floors
+ * that DIFFER must still be ordered to take the highest; one that is not dotted
+ * digits is refused then, rather than guessed past.
  *
  * DECLARED LAST, HOISTED, like `coverageLost` and `buildReleaseJson` above: a
  * declaration at the end of the file moves no `release-manifest.mjs:NNN`
@@ -1952,7 +2020,7 @@ function releaseFloor(treeRoot, app, surface, passed, version) {
       die(`--version ${JSON.stringify(version)} is not X.Y.Z or X.Y.Z.N, so --app "${app}" on the "${surface}" surface has no release line to state as its floor.`);
     }
     console.log(`minSupported  ${line[1]}  the release line of --version ${version}`);
-    return line[1];
+    return () => line[1];
   }
   if (passed !== null) {
     die(
@@ -1977,44 +2045,60 @@ function releaseFloor(treeRoot, app, surface, passed, version) {
     coverageLost(`COVERAGE LOST — ${SERVED_CONFIG_REL} could not be parsed (${e.message}).`,
       `The app surface's minSupported is read from it; a file this cannot read is not a floor of 1.0.0.`);
   }
-  const floor = servedFloor(data, app);
-  if (floor.refused) {
-    die(
-      `${SERVED_CONFIG_REL} declares no served floor for --app "${app}": ${floor.refused}`,
-      'The Worker would serve no floor either (the app reads an empty one as "no floor" and fails open), so',
-      'any number written into the record would be invented. Declare it in defaults.min_supported_version,',
-      `or in apps.${app}.min_supported_version for this app alone.`,
-    );
-  }
-  console.log(`minSupported  ${floor.value}  read from ${SERVED_CONFIG_REL} ${floor.from}`);
-  return floor.value;
+  return (stagedChannels) => {
+    const channels = [...new Set(stagedChannels.filter((c) => typeof c === 'string' && c !== ''))].sort();
+    const floors = [];
+    for (const channel of channels.length > 0 ? channels : ['default']) {
+      const floor = servedFloor(data, app, channel);
+      if (floor.refused) {
+        die(
+          `${SERVED_CONFIG_REL} declares no served floor for --app "${app}" on channel "${channel}": ${floor.refused}`,
+          'The Worker would serve no floor either (the app reads an empty one as "no floor" and fails open), so',
+          'any number written into the record would be invented. Declare it in defaults.min_supported_version',
+          `(a version, or a map by channel id with a "default"), or in apps.${app}.min_supported_version for this app alone.`,
+        );
+      }
+      floors.push({ channel, ...floor });
+    }
+    const top = highestFloor(floors);
+    if (top.refused) {
+      die(`${SERVED_CONFIG_REL} serves --app "${app}" floors that cannot be ordered: ${top.refused}`,
+        'The record states the highest floor its channels are served; with no order there is no highest to state.');
+    }
+    const each = floors.length > 1 ? `, the highest of ${floors.map((f) => `${f.channel} ${f.value}`).join(', ')}` : '';
+    console.log(`minSupported  ${top.value}  read from ${SERVED_CONFIG_REL} ${top.from} (channel ${top.channel}${each})`);
+    return top.value;
+  };
 }
 
 /**
- * The served floor for one app, from the parsed app-config-data.json, the way
- * services/platform/src/config.ts `buildRegistry` resolves it: the app's own
- * entry deep-merged OVER `defaults`, so an own `apps.<app>.min_supported_version`
- * wins and `defaults.min_supported_version` answers otherwise. Pure: parsed data
- * in, `{ value, from }` or `{ refused }` out. An own key that is present but not
- * a non-empty string is REFUSED, not skipped past to the defaults: the Worker's
- * merge would serve that value, not the default's.
+ * The served floor for one app ON ONE CHANNEL, from the parsed
+ * app-config-data.json, the way services/platform/src/config.ts serves
+ * `?channel=`: `buildRegistry` deep-merges the app's own entry OVER `defaults`
+ * (two per-channel maps merge key-wise, anything else replaces the other whole),
+ * and `forChannel` answers with the channel's own key, else `default`. A scalar
+ * is every channel's floor. Pure: parsed data in, `{ value, from }` or
+ * `{ refused }` out. A value that is present but not a non-empty string is
+ * REFUSED, not skipped past to the defaults: the Worker would serve that value,
+ * not the default's. `channel` defaults to `default`, what a client that sends
+ * no channel is served.
  */
-export function servedFloor(data, app) {
+export function servedFloor(data, app, channel = 'default') {
   const isVersion = (v) => typeof v === 'string' && v.trim() !== '';
   const own = data?.apps?.[app];
-  if (own !== null && typeof own === 'object' && Object.hasOwn(own, 'min_supported_version')) {
-    const v = own.min_supported_version;
-    return isVersion(v)
-      ? { value: v, from: `apps.${app}.min_supported_version` }
-      : { refused: `apps.${app}.min_supported_version is ${JSON.stringify(v)}, which is not a version.` };
-  }
+  const ownHas = own !== null && typeof own === 'object' && Object.hasOwn(own, 'min_supported_version');
   const d = data?.defaults?.min_supported_version;
-  if (isVersion(d)) return { value: d, from: 'defaults.min_supported_version' };
+  const picked = pickServed(ownHas ? [`apps.${app}.min_supported_version`, own.min_supported_version] : null,
+    d === undefined ? null : ['defaults.min_supported_version', d], channel);
+  if (picked === null) {
+    return { refused: `apps.${app} carries no min_supported_version and defaults.min_supported_version is absent.` };
+  }
+  if (picked.missing) return { refused: `${picked.from} is a map with no "${channel}" key and no "default" key.` };
+  if (isVersion(picked.value)) return { value: picked.value, from: picked.from };
   return {
-    refused:
-      d === undefined
-        ? `apps.${app} carries no min_supported_version and defaults.min_supported_version is absent.`
-        : `apps.${app} carries no min_supported_version and defaults.min_supported_version is ${JSON.stringify(d)}, which is not a version.`,
+    refused: !ownHas && picked.from === 'defaults.min_supported_version'
+      ? `apps.${app} carries no min_supported_version and defaults.min_supported_version is ${JSON.stringify(picked.value)}, which is not a version.`
+      : `${picked.from} is ${JSON.stringify(picked.value)}, which is not a version.`,
   };
 }
 
@@ -2320,4 +2404,56 @@ function releaseSchemaProblems(treeRoot, record) {
     }
     throw e;
   }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * ⏱ 2026-09-24 — O-UPDATE-FLOOR-HAS-NO-CHANNEL. The two helpers `servedFloor` and
+ * `releaseFloor` read a per-channel floor with. Declared LAST, hoisted, for the
+ * reason `coverageLost` is.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * One channel's value out of an app's own layer and the `defaults` layer, each
+ * `[path, value]` or null, merged as the Worker merges them: two maps merge
+ * key-wise with the app's keys winning, and anything else — a scalar on either
+ * side — replaces the other whole. Then the channel's own key, else `default`.
+ * Returns `{ value, from }`, `{ missing: true, from }` for a map naming neither,
+ * or null when neither layer exists.
+ */
+function pickServed(ownLayer, defaultsLayer, channel) {
+  const isMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+  let layers;
+  if (ownLayer !== null && defaultsLayer !== null && isMap(ownLayer[1]) && isMap(defaultsLayer[1])) layers = [ownLayer, defaultsLayer];
+  else if (ownLayer !== null) layers = [ownLayer];
+  else if (defaultsLayer !== null) layers = [defaultsLayer];
+  else return null;
+  if (!isMap(layers[0][1])) return { value: layers[0][1], from: layers[0][0] };
+  for (const key of [channel, 'default']) {
+    for (const [path, map] of layers) {
+      if (Object.hasOwn(map, key)) return { value: map[key], from: `${path}.${key}` };
+    }
+  }
+  return { missing: true, from: layers[0][0] };
+}
+
+/**
+ * The highest of `{ channel, value, from }` floors, or `{ refused }` when two
+ * that differ cannot be ordered. Dotted digits compare field by field, a missing
+ * field reading as 0; equal strings need no order at all.
+ */
+function highestFloor(floors) {
+  const parse = (v) => (/^[0-9]+(\.[0-9]+)*$/.test(v) ? v.split('.').map(Number) : null);
+  let top = floors[0];
+  for (const f of floors.slice(1)) {
+    if (f.value === top.value) continue;
+    const a = parse(f.value);
+    const b = parse(top.value);
+    if (a === null || b === null) {
+      return { refused: `"${f.channel}" is served ${JSON.stringify(f.value)} and "${top.channel}" ${JSON.stringify(top.value)}; floors that differ must be dotted digits.` };
+    }
+    let cmp = 0;
+    for (let i = 0; i < Math.max(a.length, b.length) && cmp === 0; i++) cmp = (a[i] ?? 0) - (b[i] ?? 0);
+    if (cmp > 0) top = f;
+  }
+  return top;
 }

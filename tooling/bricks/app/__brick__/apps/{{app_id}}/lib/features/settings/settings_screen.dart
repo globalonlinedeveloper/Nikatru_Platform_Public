@@ -6,7 +6,6 @@ import 'package:nikatru_chassis_screens/settings/settings_screen.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:nikatru_notifications/nikatru_notifications.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_config.dart';
 import '../../l10n/app_localizations.dart';
@@ -196,12 +195,11 @@ class SettingsScreen extends ConsumerWidget {
         );
   }
 
+  /// Through the app's ONE launcher (`externalLinks`, lib/state/providers.dart),
+  /// whose policy admits only the links `app_config.dart` names. Best-effort: a
+  /// refusal or a missing handler reads as not opened, never as a throw.
   Future<void> _openUrl(String url) async {
-    try {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-    } catch (_) {
-      // Best-effort — never crash settings.
-    }
+    await externalLinks.openUrl(url);
   }
 
   /// 🔴 AWAITED, AND ITS FAILURE IS SAID OUT LOUD. This was
@@ -249,11 +247,9 @@ class SettingsScreen extends ConsumerWidget {
       'mailto:${AppConfig.supportEmail}'
       '?subject=${Uri.encodeComponent('${AppConfig.appName} support')}',
     );
-    try {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (_) {
-      // No mail client / launch failed — best-effort; never crash settings.
-    }
+    // The policy admits a mailto to the configured support address and nothing
+    // else. No mail client / launch failed reads as not opened, never a throw.
+    await externalLinks.open(uri);
   }
 
   /// [pipeline C-13] EDIT DISPLAY NAME.

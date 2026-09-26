@@ -460,10 +460,18 @@ describe('deployment-record — the environment resolves against the register', 
       const name = c.written.replace(/^\$\{?/, '').replace(/\}$/, '');
       // rollback.yml records the unit rollback.mjs resolved (fedByRollbackResolution).
       if (fedByRollbackResolution(c.file, c.line, name)) continue;
-      const producer = readFileSync(join(dir, c.file), 'utf8')
+      // ⏱ 2026-09-26 (O-APP-RELEASE-RECORDS-NO-DEPLOYMENT-SILENTLY) — THE PRODUCER IS AN
+      // ASSIGNMENT, and the loop reads the variable. This case used to accept ONLY
+      // `for <name> in $(… --emit-environments …)`, the one form whose exit `set -e`
+      // never sees, so it pinned the swallow. assert-workflow-hardening.mjs limb 12
+      // now refuses that form in every `run:` body.
+      const codeLines = readFileSync(join(dir, c.file), 'utf8')
         .split('\n')
-        .filter((l) => !/^\s*#/.test(l))
-        .find((l) => new RegExp(`for\\s+${name}\\s+in\\s+\\$\\(`).test(l)
+        .filter((l) => !/^\s*#/.test(l));
+      const loopVar = codeLines
+        .map((l) => l.match(new RegExp(`for\\s+${name}\\s+in\\s+"?\\$\\{?([A-Za-z_][A-Za-z0-9_]*)\\}?"?\\s*;`)))
+        .find(Boolean)?.[1];
+      const producer = loopVar && codeLines.find((l) => new RegExp(`^\\s*${loopVar}="\\$\\(`).test(l)
           && /release-manifest\.mjs\s+--emit-environments/.test(l));
       assert.ok(
         producer,

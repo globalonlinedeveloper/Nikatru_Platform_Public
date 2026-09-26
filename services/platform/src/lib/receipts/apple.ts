@@ -11,7 +11,7 @@
 //      iss/iid/bid/aud, to authenticate `GET /inApps/v1/subscriptions/{id}`.
 //      The key is not provisioned for this purpose
 //      (research/2026-09-09 / apple-status-2026-09-08.md: an Admin-scope key
-//      exists and is owner-accepted, and narrowing it is filed as O-ASC-KEY-NARROW).
+//      exists and is owner-accepted, and narrowing it is a follow-up).
 //   2. 🔴 THE PART THAT MATTERS MORE. Apple's answer is not JSON facts — it is
 //      `signedTransactionInfo` / `signedRenewalInfo`, JWS blobs whose payload is
 //      only trustworthy after the x5c CERTIFICATE CHAIN has been verified up to

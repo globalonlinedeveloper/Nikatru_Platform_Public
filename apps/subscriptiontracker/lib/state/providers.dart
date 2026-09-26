@@ -64,6 +64,7 @@ export 'providers/config.dart';
 export 'providers/content_pack.dart';
 export 'providers/force_update.dart';
 export 'providers/legal.dart';
+export 'providers/links.dart';
 export 'providers/notifications.dart';
 export 'providers/persistence.dart';
 export 'providers/preferences.dart';

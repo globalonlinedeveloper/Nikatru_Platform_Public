@@ -1159,7 +1159,7 @@ jobs:
           # `#/minSupported: "1.0" does not match ^[0-9]+\.[0-9]+\.[0-9]+$`. The
           # emitter reads the app surface's floor from the file the platform Worker
           # enforces force-update from, services/platform/src/app-config-data.json
-          # (apps.<app>.min_supported_version, else defaults), and REFUSES the flag on
+          # (apps.<app>.min_supported_version[<channel>], else [default], else defaults), and REFUSES the flag on
           # this surface, so a second, typed copy of that number cannot come back.
           RELEASED_AT="$(TZ=UTC git show -s --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ "$GITHUB_SHA")"
           node tooling/ci/release-manifest.mjs --emit-release-json dist \
@@ -1204,6 +1204,13 @@ jobs:
             dist/SHA256SUMS
           if-no-files-found: warn
           retention-days: 90
+      # why: BEFORE the publish, and on EVERY run (O-APP-RELEASE-RECORDS-NO-DEPLOYMENT-SILENTLY). The record
+      # step below reads the same command after `gh release create`; a refusal there came after the publish.
+      # Bare, so its exit is the step's; the untagged dist of a cron or a dispatch rehearses the tag's.
+      - name: The register must be able to name where this ships
+        env:
+          APP: ${{ matrix.app }}
+        run: node tooling/ci/release-manifest.mjs --emit-environments dist --app "$APP"
       - name: Publish the GitHub Release (tag pushes only)
         if: github.ref_type == 'tag'
         env:
@@ -1221,8 +1228,13 @@ jobs:
             echo
             echo "Produced by ${RUN_URL}"
           } > dist-notes.md
-          gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file dist-notes.md $(node tooling/ci/release-manifest.mjs --emit-assets dist)
-          echo "RELEASE_URL=$(gh release view "$RELEASE_TAG" --json url --jq .url)" >> "$GITHUB_ENV"
+          # 🔴 EACH SUBSTITUTION IS AN ASSIGNMENT OF ITS OWN: `set -e` never sees a `$(…)` spent as an
+          # argument, so a failing --emit-assets published an EMPTY release and a failing view wrote ''.
+          assets="$(node tooling/ci/release-manifest.mjs --emit-assets dist)"
+          # shellcheck disable=SC2086 # one asset name per word, none holds a space
+          gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file dist-notes.md $assets
+          release_url="$(gh release view "$RELEASE_TAG" --json url --jq .url)"
+          echo "RELEASE_URL=${release_url}" >> "$GITHUB_ENV"
       - name: The release must carry the assets this job just uploaded
         if: github.ref_type == 'tag'
         env:
@@ -1240,6 +1252,9 @@ jobs:
           APP: ${{ matrix.app }}
         run: |
           set -euo pipefail
-          for environment in $(node tooling/ci/release-manifest.mjs --emit-environments dist --app "$APP"); do
+          # 🔴 AN ASSIGNMENT, NOT A `for` WORD LIST: `set -e` fails the step on the assignment's
+          # exit and never on a word list's (O-APP-RELEASE-RECORDS-NO-DEPLOYMENT-SILENTLY).
+          environments="$(node tooling/ci/release-manifest.mjs --emit-environments dist --app "$APP")"
+          for environment in $environments; do
             node tooling/ci/record-deployment.mjs "$environment" "$RELEASE_URL"
           done

@@ -16,6 +16,15 @@ import catalogue from '../../../catalog/apps.json';
 import extensions from '../../../extensions/catalog/extensions.json';
 import configData from '../src/app-config-data.json';
 import { productsFromRegisters } from '../src/lib/bundle/availability';
+import {
+  DEFAULT_CHANNEL,
+  RELEASE_CHANNELS,
+  buildReleaseChannels,
+  channelValue,
+  forChannel,
+  isKnownChannel,
+} from '../src/config';
+import channelRegister from '../../../tooling/channel-register.json';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 🔴 THE KNOWN-PRODUCT SET IS THE UNION OF EVERY REGISTER — apps, extensions,
@@ -239,7 +248,9 @@ describe('the served app set comes from the catalogue, not from this Worker', ()
     expect(cfg.api_base_url).toBe(configData.sharedApiBaseUrl);
     // Complete, not a stub: every key the Dart client parses is present.
     for (const k of Object.keys(configData.defaults)) expect(Object.keys(cfg)).toContain(k);
-    expect(cfg.min_supported_version).toBe('1.0.0');
+    // The registry holds the STORED shape (the floor is a per-channel map since
+    // O-UPDATE-FLOOR-HAS-NO-CHANNEL); what a client is served is its collapse.
+    expect(forChannel(cfg, DEFAULT_CHANNEL).min_supported_version).toBe('1.0.0');
     // And it inherits the portfolio default rather than another app's product
     // data — subscriptiontracker's two SKUs must not follow it.
     expect(cfg.paywall.offerings).toEqual([]);
@@ -435,5 +446,109 @@ describe('AppConfig contract (mirrors packages/core AppConfig)', () => {
     expect(merged.flags.new_home).toBe(25);
     // and the default stays pristine for the next resolve
     expect(baseConfig('subscriptiontracker')!.flags).toEqual({});
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// O-UPDATE-FLOOR-HAS-NO-CHANNEL — THE FLOOR AND THE EXIT ARE RESOLVED PER CHANNEL.
+//
+// `min_supported_version` was one string per app, so raising it for the web
+// build walled every store build with it. The value document now keys it (and
+// `update_url`) by channel id, `default` answering the rest; `forChannel`
+// collapses both before anything reaches the wire. The route half — `?channel=`,
+// the 400, the KV map — is in config-route.test.ts.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('the per-channel floor and update destination', () => {
+  /** The committed value document with `defaults` changed in the named keys. */
+  const withDefaults = (patch: Record<string, unknown>) => ({
+    ...configData,
+    defaults: { ...configData.defaults, ...patch },
+  });
+
+  it('the channel set is every id the register declares, and nothing else', () => {
+    const ids = (channelRegister as { channels: Array<{ id: string }> }).channels.map((c) => c.id);
+    expect(ids.length, 'COVERAGE LOST — the register declares no channel').toBeGreaterThan(0);
+    expect([...RELEASE_CHANNELS].sort()).toEqual([...ids].sort());
+    expect(isKnownChannel('web')).toBe(true);
+    expect(isKnownChannel('android-play')).toBe(true);
+  });
+
+  it('the fallback key, a near-miss and a prototype name are not channels', () => {
+    expect(isKnownChannel(DEFAULT_CHANNEL)).toBe(false);
+    expect(isKnownChannel('androidplay')).toBe(false);
+    expect(isKnownChannel('__proto__')).toBe(false);
+    expect(isKnownChannel('')).toBe(false);
+    expect(isKnownChannel(42)).toBe(false);
+  });
+
+  it('🔴 a register row named `default` is an ERROR, never a silent collision', () => {
+    // MUTATION PROOF: replace the throw with `continue` and this goes RED.
+    expect(() => buildReleaseChannels(['web', 'default'])).toThrow(/per-channel maps' fallback key/);
+    expect([...buildReleaseChannels(['web', 'android-play'])]).toEqual(['web', 'android-play']);
+  });
+
+  it('RC1 (pure) — raising web to 9.0.0 in the value document leaves android-play on default', () => {
+    // THE ROW'S CLOSES CONDITION, on the data file's own shape. With the scalar
+    // this replaced, the only way to ask web for 9.0.0 walled android-play too.
+    const reg = buildRegistry(
+      [{ slug: 'x', api: '' }],
+      withDefaults({ min_supported_version: { default: '1.0.0', web: '9.0.0' } }),
+    );
+    expect(forChannel(reg.x, 'android-play').min_supported_version).toBe('1.0.0');
+    expect(forChannel(reg.x, 'web').min_supported_version).toBe('9.0.0');
+    expect(forChannel(reg.x, DEFAULT_CHANNEL).min_supported_version).toBe('1.0.0');
+  });
+
+  it("an app's own map merges KEY-WISE over the defaults' map", () => {
+    const data = {
+      ...withDefaults({ min_supported_version: { default: '1.0.0', web: '9.0.0' } }),
+      apps: { x: { min_supported_version: { 'android-play': '1.2.0' } } },
+    };
+    const reg = buildRegistry([{ slug: 'x', api: '' }], data);
+    expect(forChannel(reg.x, 'android-play').min_supported_version).toBe('1.2.0');
+    expect(forChannel(reg.x, 'web').min_supported_version).toBe('9.0.0');
+    expect(forChannel(reg.x, 'ios-appstore').min_supported_version).toBe('1.0.0');
+  });
+
+  it("an app's own SCALAR replaces the map and means every channel", () => {
+    const data = {
+      ...withDefaults({ min_supported_version: { default: '1.0.0', web: '9.0.0' } }),
+      apps: { x: { min_supported_version: '1.5.0' } },
+    };
+    const reg = buildRegistry([{ slug: 'x', api: '' }], data);
+    expect(forChannel(reg.x, 'web').min_supported_version).toBe('1.5.0');
+    expect(forChannel(reg.x, 'android-play').min_supported_version).toBe('1.5.0');
+  });
+
+  it('update_url is resolved per channel the same way', () => {
+    const reg = buildRegistry(
+      [{ slug: 'x', api: '' }],
+      withDefaults({ update_url: { default: null, 'windows-direct': 'https://dl.example.invalid/win' } }),
+    );
+    expect(forChannel(reg.x, 'windows-direct').update_url).toBe('https://dl.example.invalid/win');
+    expect(forChannel(reg.x, 'web').update_url).toBeNull();
+  });
+
+  it('channelValue: a scalar as it is; a map with neither the channel nor default is undefined', () => {
+    expect(channelValue('1.0.0', 'web')).toBe('1.0.0');
+    expect(channelValue(null, 'web')).toBeNull();
+    expect(channelValue({ default: '1.0.0', web: '2.0.0' }, 'web')).toBe('2.0.0');
+    expect(channelValue({ default: '1.0.0', web: '2.0.0' }, 'amo')).toBe('1.0.0');
+    expect(channelValue({ web: '2.0.0' }, 'amo')).toBeUndefined();
+  });
+
+  it('the COMMITTED document serves every app a scalar floor and exit on every channel', () => {
+    // The wire contract (types.ts `AppConfig`) is scalar; this is the property
+    // over the real registry and the real register, not a fixture.
+    const apps = Object.keys(DEFAULT_CONFIGS);
+    expect(apps.length, 'COVERAGE LOST — no app is served').toBeGreaterThan(0);
+    for (const appId of apps) {
+      for (const channel of [DEFAULT_CHANNEL, ...RELEASE_CHANNELS]) {
+        const cfg = baseConfig(appId, channel)!;
+        expect(typeof cfg.min_supported_version, `${appId} on ${channel}`).toBe('string');
+        expect(cfg.min_supported_version.length, `${appId} on ${channel}`).toBeGreaterThan(0);
+        expect(cfg.update_url === null || typeof cfg.update_url === 'string', `${appId} on ${channel}`).toBe(true);
+      }
+    }
   });
 });

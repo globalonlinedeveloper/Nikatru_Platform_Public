@@ -222,7 +222,7 @@ function replayStub(readFileSync, writeFileSync, fs) {
   const F = JSON.parse(readFileSync(process.env.OPS_REPLAY_FILE, 'utf8'));
   const NOW_MS = Date.parse(F.now);
   Date.now = () => NOW_MS;
-  // ⏱ 2026-09-20 · O-DRILL-DATE-BREAKS-REPLAY-FIXTURE — the THIRD face of the
+  // ⏱ 2026-09-20 · the drill-date replay fixture — the THIRD face of the
   // past-world/present-register split, and the first one that is a dated RECORD
   // rather than a missing ANSWER, so there is no `fetch` answer to supply: the
   // register the guard opens is itself the later world. `OPS_REPLAY_REGISTER_FILE`
@@ -467,7 +467,7 @@ function replayWorldFile(fixturePath, mutate = null) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ⏱ 2026-09-20 · O-DRILL-DATE-BREAKS-REPLAY-FIXTURE — the SAME split, applied to
+// ⏱ 2026-09-20 · the drill-date replay fixture — the SAME split, applied to
 // the register's own DATED RECORDS. #765 and #791 split the fixture's ANSWERS by
 // provenance; a record has no answer to split, so the split is on the DATE:
 //   · a record dated AT OR BEFORE the freeze is what run 34546423386 graded, and
@@ -2291,8 +2291,8 @@ describe('assert-ops-register — end to end, against the real repository', () =
     const env = scrubbedEnv({
       OPS_REPLAY_FILE: replayWorldFile(REPLAY_FIXTURE),
       // ⏱ 2026-09-20 — the committed register, with any record dated after the
-      // freeze normalised to the freeze's own day (O-DRILL-DATE-BREAKS-REPLAY-
-      // FIXTURE). On a register whose dates are all at or before the freeze this
+      // freeze normalised to the freeze's own day (the drill-date replay
+      // fixture). On a register whose dates are all at or before the freeze this
       // is byte-for-byte the committed file, so what this test grades is
       // unchanged; it is what stops a LATER correct record reading as a break.
       OPS_REPLAY_REGISTER_FILE: replayRegisterFile(REPLAY_FIXTURE),
@@ -5813,7 +5813,7 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
     assert.ok(has(missing.problems, TIMER_GONE), `the dropped answer must be a PROBLEM:\n${missing.problems.join('\n')}`);
   });
 
-  // ── ⏱ 2026-09-20 · O-DRILL-DATE-BREAKS-REPLAY-FIXTURE ─────────────────────
+  // ── ⏱ 2026-09-20 · the drill-date replay fixture ─────────────────────
   // The third instance of the class, and the first that is a dated RECORD rather
   // than a missing ANSWER. MEASURED by the alarm-drill lane on 2026-09-20: with
   // its three `absenceWatcher.downTransitionDrill` records in the register this
@@ -5853,7 +5853,7 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
    *  verdict changes with the hour it runs at is not a test. */
   const REAL_NOW = Date.parse('2026-09-20T23:59:59Z');
 
-  test('O-DRILL-DATE-BREAKS-REPLAY-FIXTURE · a record the freeze CANNOT have seen is dated at the freeze; one it did see, and every dated tripwire, is untouched', () => {
+  test('drill-date replay fixture · a record the freeze CANNOT have seen is dated at the freeze; one it did see, and every dated tripwire, is untouched', () => {
     const f = JSON.parse(readFileSync(FIXTURE, 'utf8'));
     const input = {
       rows: [
@@ -5881,7 +5881,7 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
     assert.equal(input.rows[0].absenceWatcher.downTransitionDrill.date, '2026-09-17', 'the committed register the caller holds is never mutated');
   });
 
-  test('O-DRILL-DATE-BREAKS-REPLAY-FIXTURE · a date the REAL clock has NOT reached is normalised by NOTHING — the replay cannot hide the defect the FUTURE limb exists for', () => {
+  test('drill-date replay fixture · a date the REAL clock has NOT reached is normalised by NOTHING — the replay cannot hide the defect the FUTURE limb exists for', () => {
     const f = JSON.parse(readFileSync(FIXTURE, 'utf8'));
     const input = { rows: [{ id: 'defect', kind: 'recovery-path', lastDrill: '2099-01-01', absenceWatcher: { downTransitionDrill: { date: '2099-01-01', how: 'forced', evidence: 'run 34546423386' } } }] };
     const { register, normalised } = replayRegister(input, f.now, REAL_NOW);
@@ -5890,7 +5890,7 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
     assert.equal(register.rows[0].lastDrill, '2099-01-01');
   });
 
-  test('O-DRILL-DATE-BREAKS-REPLAY-FIXTURE · the three drills dated 2026-09-17 and 2026-09-20 replay GREEN, and the guard READS each one as an observed down-transition', () => {
+  test('drill-date replay fixture · the three drills dated 2026-09-17 and 2026-09-20 replay GREEN, and the guard READS each one as an observed down-transition', () => {
     const clean = replay(HOST.PR);
     assert.equal(clean.code, 0, `green control: today's register replays clean\n${clean.problems.join('\n')}`);
     const r = replay(HOST.PR, { OPS_REPLAY_REGISTER_FILE: replayRegisterFile(FIXTURE, { mutate: withLaneDrills(), realNowMs: REAL_NOW }) });
@@ -5908,7 +5908,7 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
     }
   });
 
-  test('O-DRILL-DATE-BREAKS-REPLAY-FIXTURE · RED CONTROL — a drill dated past the REAL clock is NOT normalised and the spawned replay goes red on it', () => {
+  test('drill-date replay fixture · RED CONTROL — a drill dated past the REAL clock is NOT normalised and the spawned replay goes red on it', () => {
     const over = { 'duty.laptop.nikatru-pipeline-driver': { ...LANE_DRILLS['duty.laptop.nikatru-pipeline-driver'], date: '2099-01-01' } };
     const r = replay(HOST.PR, { OPS_REPLAY_REGISTER_FILE: replayRegisterFile(FIXTURE, { mutate: withLaneDrills(over), realNowMs: REAL_NOW }) });
     assert.equal(r.code, 1, `a date nothing has reached must still BLOCK:\n${r.out.slice(-3000)}`);
@@ -6497,6 +6497,15 @@ describe('a weekly job in a twelve-slot workflow — the scan reads no job list 
 
   test('the ledger job\'s own `if:` admits schedule runs on Monday only', () => {
     assert.deepEqual([...scheduleWeekdays(SLOT)], [1]);
+  });
+
+  test('a dispatch clause gated by an input is still a dispatch clause: the Monday restriction stays readable (2026-09-26)', () => {
+    // the ledger job's if: after #526/#527 went red on post-merge dispatches: the Monday slot, or a dispatch that asks.
+    assert.deepEqual([...scheduleWeekdays("github.event.schedule == '45 7 * * 1' || (github.event_name == 'workflow_dispatch' && inputs.failure_ledger)")], [1]);
+    // RED CONTROLS: an input AND-ed onto the SCHEDULE clause, or onto anything but a dispatch, is not this shape.
+    assert.equal(scheduleWeekdays("(github.event.schedule == '45 7 * * 1' && inputs.failure_ledger) || github.event_name == 'workflow_dispatch'"), null);
+    assert.equal(scheduleWeekdays("github.event.schedule == '45 7 * * 1' || (github.ref == 'refs/heads/main' && inputs.failure_ledger)"), null);
+    assert.equal(scheduleWeekdays("github.event.schedule == '45 7 * * 1' || (github.event_name == 'workflow_dispatch' && !inputs.failure_ledger)"), null);
   });
 
   test('the `${{ }}` wrapper and a parenthesised clause are read the same', () => {

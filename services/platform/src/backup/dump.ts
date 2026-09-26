@@ -17,8 +17,11 @@
 // `d1.queriesPerInvocation` is 50 on the plan of record's recorded value, so this
 // path outgrows itself at some table size. It does NOT degrade quietly: the
 // budget is counted, exhaustion sets `truncated`, and `truncated` turns the run
-// RED (see index.ts). When that day comes the upgrade is the REST/Workflows
-// export — recorded in runbooks/backup-restore.md, not left to be rediscovered.
+// RED (see index.ts), while `d1-budget` turns red first, once a night spends
+// most of the pool. When that day comes, the known next step is the REST export
+// named above, driven from a Workflow so its polling can span invocations, and
+// paying for it with the credential this file was written to avoid. No runbook
+// holds that procedure yet; this paragraph is where it is written down.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -61,6 +64,19 @@ export interface D1DumpResult {
 }
 
 /**
+ * The run's ONE D1 query pool, shared by every database the export reads.
+ *
+ * 🔴 `spent` IS CHARGED BEFORE EACH QUERY IS AWAITED, so a query that throws is
+ * still a query spent. A number handed back only on success lost the spend of
+ * a database whose dump threw, and the next database was then handed a budget
+ * the invocation no longer had.
+ */
+export interface D1QueryPool {
+  readonly budget: number;
+  spent: number;
+}
+
+/**
  * SQLite identifiers this dumper will quote into SQL.
  *
  * The names come from `sqlite_master` — the database's own catalogue, not from
@@ -81,15 +97,32 @@ function isInternalTable(name: string): boolean {
  * `d1_migrations` is KEPT deliberately: a restore that recreates the rows but
  * not the applied-migration ledger looks correct and then re-applies 0001 on the
  * next deploy.
+ *
+ * `queryBudget` is either a plain number (this dump's own allowance) or the
+ * run's shared D1QueryPool, which this dump draws from and leaves charged.
+ *
+ * 🔴 THE CATALOGUE QUERY IS BUDGETED LIKE EVERY PAGE. It used to run first and
+ * unconditionally, so a database handed a budget of 0 still spent one query:
+ * the pool could be overspent by one per database, and the arithmetic in
+ * index.ts that fits the pool and the heartbeat batch into
+ * `d1.queriesPerInvocation` was one short for each of them. A budget of 0 now
+ * spends 0 and reports `truncated`, which is RED.
  */
 export async function dumpD1Database(
   db: D1Database,
   databaseName: string,
-  queryBudget: number,
+  queryBudget: number | D1QueryPool,
   nowIso: string,
 ): Promise<D1DumpResult> {
+  const pool: D1QueryPool = typeof queryBudget === 'number' ? { budget: queryBudget, spent: 0 } : queryBudget;
+  const spentBefore = pool.spent;
+  /** Charge one query to the pool, or answer false when it is exhausted. */
+  const take = (): boolean => {
+    if (pool.spent >= pool.budget) return false;
+    pool.spent += 1;
+    return true;
+  };
   const lines: D1DumpLine[] = [];
-  let queries = 0;
   let truncated = false;
 
   lines.push({
@@ -99,12 +132,16 @@ export async function dumpD1Database(
     generator: 'platform-worker-backup/1',
   });
 
+  if (!take()) {
+    // Not even the catalogue fits: no schema, no rows, and a RED dump that says so.
+    lines.push({ kind: 'end', tables: 0, rows: 0, truncated: true, queries: 0 });
+    return { jsonl: lines.map((l) => JSON.stringify(l)).join('\n') + '\n', tables: [], rows: 0, queries: 0, truncated: true };
+  }
   const catalogue = await db
     .prepare(
       "SELECT type, name, tbl_name, sql FROM sqlite_master WHERE type IN ('table','index') ORDER BY type DESC, name",
     )
     .all<{ type: string; name: string; tbl_name: string; sql: string | null }>();
-  queries += 1;
 
   const tables: string[] = [];
   for (const entry of catalogue.results ?? []) {
@@ -130,7 +167,7 @@ export async function dumpD1Database(
     let tableRows = 0;
     let tableTruncated = false;
     for (;;) {
-      if (queries >= queryBudget) {
+      if (!take()) {
         tableTruncated = true;
         truncated = true;
         break;
@@ -139,7 +176,6 @@ export async function dumpD1Database(
         .prepare(`SELECT * FROM "${table}" LIMIT ?1 OFFSET ?2`)
         .bind(D1_PAGE_ROWS, tableRows)
         .all<Record<string, unknown>>();
-      queries += 1;
       const batch = page.results ?? [];
       for (const data of batch) lines.push({ kind: 'row', table, data });
       tableRows += batch.length;
@@ -149,6 +185,7 @@ export async function dumpD1Database(
     lines.push({ kind: 'table-end', table, rows: tableRows, truncated: tableTruncated });
   }
 
+  const queries = pool.spent - spentBefore;
   lines.push({ kind: 'end', tables: tables.length, rows, truncated, queries });
   return { jsonl: lines.map((l) => JSON.stringify(l)).join('\n') + '\n', tables, rows, queries, truncated };
 }

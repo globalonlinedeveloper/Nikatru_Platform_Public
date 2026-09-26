@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:nikatru_core/nikatru_core.dart' show ExternalLinkLauncherUrl;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show BrandFooter, BrandFooterLink, BrandWordmark;
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_config.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../l10n/app_localizations.dart';
+import '../../state/providers/links.dart' show externalLinks;
 
 const List<BoxShadow> kCardShadow = <BoxShadow>[
   BoxShadow(color: Color(0x0A141420), blurRadius: 5, offset: Offset(0, 2)),
@@ -741,14 +742,13 @@ class SoftButton extends StatelessWidget {
   }
 }
 
-/// Opens an external URL (legal pages, company site) in the platform browser.
-/// Works on all six targets via url_launcher; failures are swallowed so a
-/// missing handler never crashes the UI.
+/// Opens an external URL (legal pages, company site) in the platform browser,
+/// through the app's ONE [externalLinks] launcher
+/// (O-LINK-LAUNCHER-SEAM-UNOWNED). A link the app's `LinkPolicy` does not name
+/// is refused before it reaches the platform, and a missing handler reads as
+/// not opened — neither ever throws into the UI.
 Future<void> openExternalUrl(String url) async {
-  final Uri uri = Uri.parse(url);
-  if (await canLaunchUrl(uri)) {
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
+  await externalLinks.openUrl(url);
 }
 
 /// The Nikatru full lockup — now [BrandWordmark]'s, with this app's company

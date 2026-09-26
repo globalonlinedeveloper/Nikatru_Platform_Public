@@ -1364,6 +1364,22 @@ a widening of it.
 Nothing is hardcoded, so an AppImage lane joins this loop by being given a
 register row, not by anybody editing this file.
 
+⏱ 2026-09-26 — CORRECTED, NOT OVERWRITTEN (O-APP-RELEASE-RECORDS-NO-DEPLOYMENT-SILENTLY).
+"Today it resolves to `<app>-windows-direct`" stopped being true at #958: windows-direct is ruled
+out by C-WINDOWS-STORE-ONLY and no app Release carries an .msix, so the emitter matched nothing and
+exited 1 on every app tag. This loop was `for environment in $(…)`, and `set -e` never sees a word
+list's exit, so the step passed with no record. Three changes close it:
+- The emitter reads a release with no installer, on a surface whose lanes emit only store-only
+  files, as the declared empty: exit 0, stdout empty, the reason on stderr. The same derivation
+  (`releaseOwed`) is what `--stage` prints as "none is owed". An installer that no origin row takes
+  still exits 1: the apps.gov.in .apk once its pin is set, or a stray `.zip`.
+- The step **The register must be able to name where this ships** runs the emitter bare, with no
+  `if:`, before `gh release create`. A refusal now stops the publish, and every cron and dispatch
+  rehearses it.
+- This loop, and extensions.yml's, assign the substitution first. `assert-workflow-hardening.mjs`
+  limb 12 refuses `for … in $(…)` in any `run:` body. The publish step's `--emit-assets` and
+  `gh release view` substitutions are assignments now too.
+
 
 ## apps-gov-in — the no-checkout .apk for apps.gov.in (Mobile Seva)
 
@@ -1872,7 +1888,7 @@ and recorded here.
 
 ### ⏱ APPENDED 2026-09-07 (unit `symbols-everywhere`) — THE UPLOAD HALF IS NOW DONE, AND THE "OPEN RESIDUES" LIST ABOVE IS SUPERSEDED
 
-*[ADR 067] decision 6 · `programme.json` P1-11 · `open.json` O-NATIVE-SYMBOL-UPLOAD-LINUX-ONLY ·
+*[ADR 067] decision 6 · `programme.json` P1-11 ·
 end-to-end audit of 2026-09-07 §4 gap N9.* The wording above is left standing; read this as the
 correction.
 

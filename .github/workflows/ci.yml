@@ -315,7 +315,7 @@ jobs:
       # COVERAGE LOST, so a step that goes red here is a real finding or a real
       # refusal, never a warning. It reads the git INDEX, which is why this job's
       # checkout uses fetch-depth: 0.
-      - name: The instruction docs stay inside their caps (warn until 2026-09-22)
+      - name: The instruction docs stay inside their caps
         run: node tooling/scripts/check-agent-docs.mjs
       # START-HERE.md is GENERATED and has TWO guards, because they catch
       # different things. This one fails on a HAND EDIT: the card is the first

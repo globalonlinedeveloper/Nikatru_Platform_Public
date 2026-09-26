@@ -4,7 +4,7 @@
 //
 // 🔴 WHY THIS EXISTS (apps-review F1, O-NAME-CLEARANCE-WAITS-ON-A-MISSING-ROW).
 // `apps/subscriptiontracker/name-clearance.json` lifted limb 7's block with
-// `trademark.ownerItem: "O-NAME-SUBLY-TRADEMARK"` and a `gatedUntil` date.
+// `trademark.ownerItem` set to an owner id no row carried, and a `gatedUntil` date.
 // `assert-name-clearance.mjs` checked that the field was PRESENT and never that
 // the row it names EXISTS — and it did not: `docs/name-clearance.md` § 8 lists
 // that row as owed, and it was never opened. So the build was held on an item
@@ -20,7 +20,7 @@
 // the resolver without a workspace and the guard's fixture drive the whole path.
 //
 // ── TWO REGISTERS, AND AN ID IS LOOKED UP IN BOTH ────────────────────────────
-//   · `Private/platform-state/open.json` — rows such as `O-NAME-SUBLY-TRADEMARK`.
+//   · `Private/platform-state/open.json` — rows such as `O-NAME-CLEARANCE-WAITS-ON-A-MISSING-ROW`.
 //   · the business root's `owner-queue.json` — rows such as `A-12`, `S-3`, `O-3`.
 //   ⚠️ `O-3` IS A QUEUE ID, NOT AN OPEN ONE. The owner queue carries `O-<n>`
 //   rows (O-1 to O-8 when read on 2026-09-24, and not one open.json row has a
@@ -28,7 +28,7 @@
 //   `ownerItem: "O-3"`, and `tooling/legal/README.md` cites `OWNER_QUEUE O-1`.
 //   So "starts with O-" is not the test.
 //   ⏱ 2026-09-24 (the PR 913 review, L1): NOR IS ANY GRAMMAR. This file used to
-//   say that a word after the dash is open.json's shape. `O-ADDR-PUBLISH` is an
+//   say that a word after the dash marks open.json's shape. The queue's address row is an
 //   owner-QUEUE row with exactly that shape, so the grammar sent it to open.json,
 //   where it is ABSENT; and 18 of the queue's 70 ids fall outside QUEUE_ID, the
 //   review's count (`HOSTINGER-EXPIRY`, which is pending, `OD-6.1`, `A-13-orig`,
