@@ -211,28 +211,12 @@ jobs:
         working-directory: .
         run: node tooling/web/self-host-fallback-fonts.mjs apps/${{ matrix.app }}/build/web
 
+      # why: ONE code path on every lane (O-GLITCHTIP-CLI-INSTALLED-BY-HAND): the digest tooling/versions.json
+      # pins for this runner's OS, a bounded retry, and the binary's own --version held to the pin.
       - name: Install glitchtip-cli (pinned by version AND by digest)
         if: steps.plan.outputs.deploy == 'true'
         working-directory: .
-        run: |
-          set -euo pipefail
-          ver="$(node -p "require('./tooling/versions.json').glitchtip_cli")"
-          sum="$(node -p "require('./tooling/versions.json').glitchtip_cli_sha256")"
-          # The release asset is a GitLab JOB ARTIFACT, which is a re-runnable
-          # address rather than an immutable object — so the version alone is a
-          # label, and the digest is what makes it an address. Same reasoning as
-          # F-11's 40-character action SHAs. Both halves live in versions.json.
-          url="https://gitlab.com/glitchtip/glitchtip-cli/-/jobs/artifacts/v${ver}/raw/artifacts/glitchtip-cli-linux-x86_64?job=build-linux-x86_64"
-          curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
-            --output "${RUNNER_TEMP}/glitchtip-cli" "$url"
-          printf '%s  %s\n' "$sum" "${RUNNER_TEMP}/glitchtip-cli" | sha256sum --check --strict -
-          chmod +x "${RUNNER_TEMP}/glitchtip-cli"
-          got="$("${RUNNER_TEMP}/glitchtip-cli" --version)"
-          if [ "$got" != "glitchtip-cli ${ver}" ]; then
-            echo "::error title=glitchtip-cli::the pinned binary reports \"${got}\", not \"glitchtip-cli ${ver}\""
-            exit 1
-          fi
-          echo "$got"
+        run: node tooling/ci/install-pinned-tool.mjs glitchtip-cli --out "$RUNNER_TEMP"
 
       - name: Inject debug ids into the web bundle
         if: steps.plan.outputs.deploy == 'true'

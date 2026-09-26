@@ -112,22 +112,10 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
+      # why: ONE code path on every lane (O-GLITCHTIP-CLI-INSTALLED-BY-HAND): the digest tooling/versions.json
+      # pins for this runner's OS, a bounded retry, and the binary's own --version held to the pin.
       - name: Install glitchtip-cli (pinned by version AND by digest)
-        run: |
-          set -euo pipefail
-          ver="$(node -p "require('./tooling/versions.json').glitchtip_cli")"
-          sum="$(node -p "require('./tooling/versions.json').glitchtip_cli_sha256")"
-          url="https://gitlab.com/glitchtip/glitchtip-cli/-/jobs/artifacts/v${ver}/raw/artifacts/glitchtip-cli-linux-x86_64?job=build-linux-x86_64"
-          curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
-            --output "${RUNNER_TEMP}/glitchtip-cli" "$url"
-          printf '%s  %s\n' "$sum" "${RUNNER_TEMP}/glitchtip-cli" | sha256sum --check --strict -
-          chmod +x "${RUNNER_TEMP}/glitchtip-cli"
-          got="$("${RUNNER_TEMP}/glitchtip-cli" --version)"
-          if [ "$got" != "glitchtip-cli ${ver}" ]; then
-            echo "::error title=glitchtip-cli::the pinned binary reports \"${got}\", not \"glitchtip-cli ${ver}\""
-            exit 1
-          fi
-          echo "$got"
+        run: node tooling/ci/install-pinned-tool.mjs glitchtip-cli --out "$RUNNER_TEMP"
 
       # why: symbolication happens at INGEST, so the debug files must be stored
       # before the probe's event arrives. The wrapper fails closed on the token.

@@ -122,26 +122,10 @@ jobs:
             apps/subscriptiontracker/build/symbols/macos
           retention-days: 90
           if-no-files-found: error
-      # why: `shasum -a 256`, not `sha256sum` — macOS does not ship coreutils'
-      # `sha256sum`. Byte-identical otherwise to build-platforms.yml's apple
-      # lane, and reading both halves of the pin from tooling/versions.json at
-      # run time so a bump cannot advance one without the other.
+      # why: ONE code path on every lane (O-GLITCHTIP-CLI-INSTALLED-BY-HAND): the digest tooling/versions.json
+      # pins for this runner's OS, a bounded retry, and the binary's own --version held to the pin.
       - name: Install glitchtip-cli (pinned by version AND by digest)
-        run: |
-          set -euo pipefail
-          ver="$(node -p "require('./tooling/versions.json').glitchtip_cli")"
-          sum="$(node -p "require('./tooling/versions.json').glitchtip_cli_macos_arm64_sha256")"
-          url="https://gitlab.com/glitchtip/glitchtip-cli/-/jobs/artifacts/v${ver}/raw/artifacts/glitchtip-cli-macos-arm64?job=build-macos-arm64"
-          curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
-            --output "${RUNNER_TEMP}/glitchtip-cli" "$url"
-          printf '%s  %s\n' "$sum" "${RUNNER_TEMP}/glitchtip-cli" | shasum -a 256 --check --strict -
-          chmod +x "${RUNNER_TEMP}/glitchtip-cli"
-          got="$("${RUNNER_TEMP}/glitchtip-cli" --version)"
-          if [ "$got" != "glitchtip-cli ${ver}" ]; then
-            echo "::error title=glitchtip-cli::the pinned binary reports \"${got}\", not \"glitchtip-cli ${ver}\""
-            exit 1
-          fi
-          echo "$got"
+        run: node tooling/ci/install-pinned-tool.mjs glitchtip-cli --out "$RUNNER_TEMP"
       # why: TWO directories, one per build — iOS and macOS are two AOT
       # compilations and nothing guarantees they share a mapping. FAILS CLOSED on
       # a missing GLITCHTIP_TOKEN, never skips. Placed AFTER the retention step
