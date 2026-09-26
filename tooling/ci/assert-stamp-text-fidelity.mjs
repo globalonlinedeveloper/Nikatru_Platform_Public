@@ -253,6 +253,8 @@ else {
     // `short_name` is its web surface. tooling/app-yaml/render.mjs renders the
     // same value into CFBundleDisplayName, android:label, the .desktop `Name=`
     // and msix_config.display_name from the stamped app.yaml's `shortName:`.
+    // ⏱ 2026-09-25: not msix_config.display_name any more — that is the Store
+    // title, rendered from `name:` (O-MSIX-IDENTITY-UNGRADED).
     ['short_name', iconLabel],
     ['description', description],
   ]) {
