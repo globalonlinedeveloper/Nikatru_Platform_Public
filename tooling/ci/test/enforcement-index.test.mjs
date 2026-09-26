@@ -36,6 +36,12 @@
 //       comparison is byte-clean                           identity still names all
 //                                                          20 missing enforcers
 //   M10 leave the tree correct                             exit 0, 2 orphans PRINTED
+//   M11 (R1) drop one ref from tooling/guard-yield.json    exit 1 — the ref named,
+//                                                          with the --sync command.
+//                                                          The guard BEFORE section 8
+//                                                          exited 0 on the same tree:
+//                                                          the gap was invisible
+//   M12 (R3) delete tooling/guard-yield.json               exit 2 — COVERAGE LOST
 //
 // M9 is the one that matters. Regeneration alone proves only that the committed
 // file was not hand-edited; a generator that under-collects under-collects in
@@ -59,6 +65,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'nod
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { YIELD_REL, buildYield, serialiseYield } from '../../ops/guard-yield.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-enforcement-index.mjs');
@@ -216,8 +223,12 @@ const DEFAULTS = {
  *                      proves the guard notices a missing index; the limb under
  *                      test is what it does with a VALID index and a tree that
  *                      can no longer be re-derived.
+ * @param opts.yieldDoc tooling/guard-yield.json, keyed by the COMMITTED rows so
+ *                      every other case isolates its own limb. `null` writes no
+ *                      file; a function receives the valid document and returns
+ *                      the one to commit.
  */
-function fixture({ files = {}, workflow = WORKFLOW, index = (r) => r, breakAfter = {} } = {}) {
+function fixture({ files = {}, workflow = WORKFLOW, index = (r) => r, breakAfter = {}, yieldDoc = (d) => d } = {}) {
   const root = join(TMP, `f${seq++}`);
   const write = (rel, body) => {
     const abs = join(root, rel);
@@ -234,6 +245,10 @@ function fixture({ files = {}, workflow = WORKFLOW, index = (r) => r, breakAfter
     if (gen.status === 0) {
       const rows = index(JSON.parse(gen.stdout));
       if (rows !== null) write(INDEX_REL, `${JSON.stringify(rows, null, 2)}\n`);
+      if (rows !== null && yieldDoc !== null) {
+        const valid = buildYield({ records: [], indexRows: rows, merged: new Set(), since: '2026-09-01T00:00:00Z', until: '2026-09-20T00:00:00Z' });
+        write(YIELD_REL, serialiseYield(yieldDoc(valid)));
+      }
     }
   }
   for (const [rel, body] of Object.entries(breakAfter)) {
@@ -540,5 +555,60 @@ describe('assert-enforcement-index — the index is regenerated and compared, ne
     assert.equal(code, 1, out);
     assert.match(out, /have NO ROW in the index/);
     assert.match(out, /assert-refuses\.mjs/);
+  });
+});
+
+// ── SECTION 8: EVERY INDEX REF HAS A YIELD ENTRY (row O-GUARD-YIELD-UNMEASURED) ──
+// tooling/guard-yield.json records each enforcer's catches over PR runs, keyed
+// by every index ref. Before section 8 this guard read nothing of it: dropping a
+// ref, or the whole file, left it at exit 0 (M11/M12 in the header). The fixture
+// writes a valid file keyed by the committed rows; each case below breaks it.
+describe('assert-enforcement-index — section 8, the yield file keys every index ref', () => {
+  test('GREEN CONTROL — a yield file keying every committed ref passes, and the ok line counts them', () => {
+    const root = fixture();
+    const rows = JSON.parse(readFileSync(join(root, INDEX_REL), 'utf8'));
+    const { code, out } = run(root);
+    assert.equal(code, 0, out);
+    assert.match(out, new RegExp(`${rows.length} ref\\(s\\) keyed in tooling/guard-yield\\.json`));
+  });
+
+  test('R1: one index ref dropped from the yield file is exit 1, naming the ref and the --sync command', () => {
+    const root = fixture({
+      yieldDoc: (d) => {
+        assert.ok(Object.hasOwn(d.perRef, 'tooling/ci/assert-alpha.mjs'), 'the ref this mutation drops is not keyed — it would test nothing');
+        delete d.perRef['tooling/ci/assert-alpha.mjs'];
+        return d;
+      },
+    });
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /"tooling\/ci\/assert-alpha\.mjs" is an index ref and tooling\/guard-yield\.json has no entry for it/);
+    assert.match(out, /node tooling\/ops\/guard-yield\.mjs --sync/);
+  });
+
+  test('a yield key the index does not carry is exit 1 — a removed enforcer still carrying a yield', () => {
+    const root = fixture({
+      yieldDoc: (d) => {
+        d.perRef['tooling/ci/assert-ghost.mjs'] = { catches: 0, firstSeen: '2026-09-01', evidence: [] };
+        return d;
+      },
+    });
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /keys "tooling\/ci\/assert-ghost\.mjs", which is not an index ref/);
+  });
+
+  test('R3: the yield file ABSENT is COVERAGE LOST, exit 2 — deleting it is never the way to green', () => {
+    const { code, out } = run(fixture({ yieldDoc: null }));
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — tooling\/guard-yield\.json does not exist/);
+  });
+
+  test('the yield file UNPARSEABLE is COVERAGE LOST, exit 2', () => {
+    const root = fixture();
+    writeFileSync(join(root, YIELD_REL), '{ "perRef": ');
+    const { code, out } = run(root);
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — tooling\/guard-yield\.json is not valid JSON/);
   });
 });

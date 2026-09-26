@@ -1269,6 +1269,86 @@ describe('D1 — the quota floor and the hard request ceiling', () => {
     });
   });
 
+  // ⏱ 2026-09-26 — the body was read AFTER the retry plan returned, still under
+  // the attempt's signal, so a job log slower than the per-request ceiling ended
+  // the walk with a bare "no answer within 15s" (train W30's first live fetch).
+  // The stub answers its headers at once and, as fetch does, errors the body with
+  // the signal's reason when the signal aborts. OPS_REQUEST_TIMEOUT_MS only
+  // shortens bounded-retry's ceiling, here to 100 ms.
+  test('a body still arriving at the per-request ceiling is re-asked inside the retry plan, and the re-ask completes', async () => {
+    const before = process.env.OPS_REQUEST_TIMEOUT_MS;
+    process.env.OPS_REQUEST_TIMEOUT_MS = '100';
+    const today = JSON.stringify({ workflow_runs: [{ id: 2, status: 'completed', conclusion: 'success', created_at: '2026-09-11T09:00:00Z' }] });
+    const delays = [];
+    const real = globalThis.fetch;
+    globalThis.fetch = async (_url, { signal } = {}) => {
+      const delayMs = delays.length === 0 ? 400 : 0;
+      delays.push(delayMs);
+      const stream = new ReadableStream({
+        start(controller) {
+          const t = setTimeout(() => {
+            controller.enqueue(new TextEncoder().encode(today));
+            controller.close();
+          }, delayMs);
+          signal?.addEventListener('abort', () => {
+            clearTimeout(t);
+            controller.error(signal.reason);
+          }, { once: true });
+        },
+      });
+      return new Response(stream, { status: 200, headers: { 'content-type': 'application/json' } });
+    };
+    try {
+      const api = liveApi(SLUG, TOKEN, null);
+      assert.equal((await api.newestRun(7, 'main')).id, 2);
+      assert.deepEqual(delays, [400, 0], 'the slow body must have been re-asked exactly once');
+      assert.equal(api.requestsSent(), 2, 'the re-ask is a counted request');
+    } finally {
+      globalThis.fetch = real;
+      if (before === undefined) delete process.env.OPS_REQUEST_TIMEOUT_MS;
+      else process.env.OPS_REQUEST_TIMEOUT_MS = before;
+    }
+  });
+
+  // ⏱ 2026-09-26 (W30-20) — with the body inside the attempt, a job log's whole
+  // body had to fit the 15 s JSON ceiling, and one did not on all three attempts
+  // (W30's second fetch). A job-log GET is a `download` (60 s). REAL clock, no
+  // knob: the stub sends its headers at once and the body at 20 s on EVERY
+  // attempt, so at 15 s this case can only fail (red control: `download: true`
+  // dropped from jobLog's get exits 1), and at 60 s it completes on the first.
+  test('a job log whose body arrives after 20 s completes under the download ceiling, in one request', async () => {
+    const before = process.env.OPS_REQUEST_TIMEOUT_MS;
+    delete process.env.OPS_REQUEST_TIMEOUT_MS;
+    const log = '2026-09-24T10:00:00.0000000Z ##[error]Process completed with exit code 1.\n';
+    let calls = 0;
+    const real = globalThis.fetch;
+    globalThis.fetch = async (_url, { signal } = {}) => {
+      calls += 1;
+      const stream = new ReadableStream({
+        start(controller) {
+          const t = setTimeout(() => {
+            controller.enqueue(new TextEncoder().encode(log));
+            controller.close();
+          }, 20_000);
+          signal?.addEventListener('abort', () => {
+            clearTimeout(t);
+            controller.error(signal.reason);
+          }, { once: true });
+        },
+      });
+      return new Response(stream, { status: 200, headers: { 'content-type': 'text/plain' } });
+    };
+    try {
+      const api = liveApi(SLUG, TOKEN, null);
+      assert.equal(await api.jobLog(36025008104, 107719187641), log);
+      assert.equal(calls, 1, 'the slow body must complete on the first attempt, not be re-asked');
+      assert.equal(api.requestsSent(), 1);
+    } finally {
+      globalThis.fetch = real;
+      if (before !== undefined) process.env.OPS_REQUEST_TIMEOUT_MS = before;
+    }
+  });
+
   test('a 403 on a counted request is still COVERAGE LOST', async () => {
     await stubFetch(() => json({ message: 'API rate limit exceeded' }, 403), async () => {
       const api = liveApi(SLUG, TOKEN, null);
