@@ -1024,7 +1024,7 @@ describe('a PENDING app declaration renders the short "not yet published" page',
       put(root, PENDING_YAML, pendingDeclaration(PENDING_APP));
       const wrote = spawn(PRIVACY_RENDER, [root]);
       assert.equal(wrote.code, 0, wrote.out);
-      assert.match(wrote.out, new RegExp(`wrote ${PENDING_NOTICE.replace(/[/.]/g, '\\$&')}`));
+      assert.ok(wrote.out.includes(`wrote ${PENDING_NOTICE}`), wrote.out);
       const page = get(root, PENDING_NOTICE);
       assert.ok(page.includes('This app’s privacy notice is not yet published. It is not offered to anyone until it is.'), page);
       assert.ok(page.includes('<a href="/privacy">Nikatru Privacy Policy</a>'), 'the pending page must link the portfolio policy');
