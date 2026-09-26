@@ -51,6 +51,7 @@ import contentReports0013 from '../migrations/0013_content_reports.sql?raw';
 import revenuecatOwnership0015 from '../migrations/0015_revenuecat_ownership.sql?raw';
 import providerTokens0016 from '../migrations/0016_provider_tokens.sql?raw';
 import extDevices0017 from '../migrations/0017_ext_devices.sql?raw';
+import bundleSourceTerm0018 from '../migrations/0018_bundle_source_term.sql?raw';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
 
@@ -95,6 +96,10 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   // ⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT — the extension's one-time
   // code and its per-device credential.
   extDevices0017,
+  // ⏱ 2026-09-26 · O-BUNDLE-MEMBER-INSERT-UNLOCKED — a bundle grant's term, on
+  // its source and on the grant. ADD COLUMN, so ledger-protected and NOT in
+  // REPLAY_SAFE_MIGRATIONS below.
+  bundleSourceTerm0018,
 ];
 
 /**

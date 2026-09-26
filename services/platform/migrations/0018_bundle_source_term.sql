@@ -1,0 +1,73 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 0018_bundle_source_term.sql — A BUNDLE GRANT'S MEMBERSHIP IS A FUNCTION OF ITS
+-- TERM, AND THE TERM IS RECORDED (O-BUNDLE-MEMBER-INSERT-UNLOCKED).
+--
+-- Applies to the SHARED platform_db (services/platform is the sole applier):
+--   wrangler d1 migrations apply PLATFORM_DB --local    (or --remote)
+--
+-- 🔴 WHAT THIS IS. Two columns, below. ADR no.099, bundle membership by term,
+-- amending ADR no.093 §2 and [ADR 057] §4: the version a grant PINS at insert
+-- stays pinned and recorded; what changes is how its members RESOLVE.
+--   · a `subscription` grant is served every member of the LATEST `sellable`
+--     version of its feature set — it rolls, so a product that joins the bundle
+--     reaches every current subscriber and no grant row is ever rewritten;
+--   · a `one_time` grant is served the members of the version it pinned — it
+--     never rolls, so a lifetime buyer owns exactly what was sold.
+-- NOTHING READS EITHER COLUMN WHEN THIS FILE LANDS: services/_shared/src/
+-- entitlement-read.ts starts reading both, in ONE statement, in the pull request
+-- that follows this one (ORDER, below). Until then every reader ignores both, so
+-- this file is safe on its own.
+--
+-- ── bundle_sources.term — the term a SOURCE sells ────────────────────────────
+-- NOT NULL, so SQLite requires a non-NULL DEFAULT for ADD COLUMN
+-- (tooling/ci/check-migrations.mjs refuses one without it). THE DEFAULT IS THE
+-- BACKFILL: every row 0009 seeded takes it. An UPDATE is not a statement
+-- test/migrations-replay.test.ts classifies — 0015 records why that classifier
+-- is not widened for a backfill — and every seeded row's term is `subscription`
+-- (ADR no.099 records all seven):
+--   paddle_subscription, razorpay_subscription  → subscription (the names say so)
+--   apple_iap, google_play_billing, microsoft_store → subscription: the store
+--     rails sell both terms under ONE source, so a store grant's own term is
+--     `bundle_grants.term` below, and the source's is only its default
+--   owner_comp → subscription. Its description: "An owner comp — staff, a
+--     reviewer, a support make-good." Staff and a reviewer hold the bundle as it
+--     is sold now, and a make-good restores that access; none is a set frozen
+--     at a purchase.
+--   promo_code → subscription (ruled in ADR no.099; it is the value the default
+--     already gives, so no row changes). Its description, "An operator-issued
+--     promotional code. NO RECEIPT EXISTS AND THAT IS CORRECT — nobody paid.",
+--     states no term; a promo is operator-issued access to the bundle as it is
+--     sold now, as owner_comp is. A promo that must freeze a set writes
+--     `bundle_grants.term = 'one_time'` on its own grant, which the CHECK below
+--     permits.
+-- A source seeded after this migration states its term in its own INSERT.
+--
+-- ── bundle_grants.term — the term ONE grant was sold on, when the source sells both ──
+-- NULL for every existing row and for every source that sells one term; the
+-- effective term is COALESCE(bundle_grants.term, bundle_sources.term). The store
+-- rails set it per SKU (the next money PR). The same CHECK as the source's: a
+-- NULL passes it, because `NULL IN (…)` is NULL and SQLite fails a CHECK only
+-- on false.
+--
+-- ⚠️ CHECK CONSTRAINTS, unlike the rest of this directory (0009 section B keeps
+-- `source` a table precisely so its set can grow). The term is binary by
+-- definition — membership either rolls or it does not — so a third value is not
+-- a new member of a set, it is a row the derivation cannot resolve, and the CHECK
+-- refuses it at insert.
+--
+-- ⚠️ REPLAY. `ALTER TABLE … ADD COLUMN` has no `IF NOT EXISTS` form in SQLite, so
+-- this file is LEDGER-PROTECTED rather than replay-safe, exactly as 0004 section
+-- A and 0015 are: D1 records migration FILE NAMES, so it is applied exactly once.
+-- It is in test/harness.ts PLATFORM_MIGRATIONS and not in REPLAY_SAFE_MIGRATIONS.
+--
+-- ⚠️ ORDER. deploy-workers.yml's `platform` job applies this file before it
+-- deploys `platform` — that order holds for THAT Worker only. The
+-- `subscriptiontracker-api` job reads the same columns through services/_shared
+-- (its PLATFORM_DB binding) and deploys in PARALLEL, with no `needs:` on
+-- `platform`. A reader of `term` shipped beside this file could therefore go live
+-- before the column exists, and fail every bundle read on app #1 closed. So this
+-- file lands in its OWN pull request and is applied before any code that reads
+-- either column merges.
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE bundle_sources ADD COLUMN term TEXT NOT NULL DEFAULT 'subscription' CHECK (term IN ('subscription', 'one_time'));
+ALTER TABLE bundle_grants ADD COLUMN term TEXT CHECK (term IN ('subscription', 'one_time'));
