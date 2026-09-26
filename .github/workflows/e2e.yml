@@ -271,6 +271,21 @@ jobs:
         env:
           SUPABASE_URL: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_URL || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_URL || '' }}
         run: node tooling/e2e/derive_expectation.mjs
+      # why: THE DATABASES COME FROM THE APP ID, AND THIS FILE NAMES NEITHER.
+      # tooling/e2e/backend.mjs reads services/<matrix.app>-api/wrangler.jsonc
+      # (bindings APP_DB and PLATFORM_DB) and exits 1, naming the file and the
+      # binding, when one is missing or when two apps bind the same APP_DB.
+      # verify_row, verify_purged and purge resolve the app database themselves
+      # from E2E_APP_ID. Only the platform database is handed on, as a step
+      # output, because PLATFORM_D1_DATABASE_ID is purge.mjs's SWITCH ("this
+      # invocation handles consent"): a step either sets it or leaves it unset.
+      # It runs before the first provisioning step, so a refusal here has
+      # written nothing to production. Row O-E2E-LANE-WIRED-TO-ONE-APP.
+      - name: Resolve this app's databases from its Worker's wrangler file
+        id: backend
+        env:
+          E2E_APP_ID: ${{ matrix.app }}
+        run: node tooling/e2e/backend.mjs --app "$E2E_APP_ID" --emit-output
 
       - uses: ./.github/actions/setup-flutter
 
@@ -487,7 +502,7 @@ jobs:
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 0a36d6a0-c909-40aa-853e-970de3482321
+          E2E_APP_ID: ${{ matrix.app }}
         run: node tooling/e2e/verify_row.mjs
 
       # why: THE ONE-ISSUER FACT, ASSERTED IN BOTH DIRECTIONS RATHER THAN SKIPPED.
@@ -531,7 +546,7 @@ jobs:
           E2E_DELETE_USER_ID: ${{ steps.delete_user.outputs.user_id }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 0a36d6a0-c909-40aa-853e-970de3482321
+          E2E_APP_ID: ${{ matrix.app }}
         run: node tooling/e2e/delete_headless.mjs
 
       - name: Verify the in-app deletion really purged (leg 6)
@@ -541,7 +556,7 @@ jobs:
           E2E_DELETE_USER_ID: ${{ steps.delete_user.outputs.user_id }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 0a36d6a0-c909-40aa-853e-970de3482321
+          E2E_APP_ID: ${{ matrix.app }}
         run: node tooling/e2e/verify_purged.mjs
 
       - name: Verify the consent artifact landed in platform_db
@@ -551,7 +566,7 @@ jobs:
           E2E_DRIVE_LOG: ${{ runner.temp }}/drive.log
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          PLATFORM_D1_DATABASE_ID: 9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351
+          PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}
         run: node tooling/e2e/verify_consent.mjs
 
       # why: THE STAGING STEP ABOVE PROVES THE FONTS WERE PLACED. THIS PROVES
@@ -607,8 +622,7 @@ jobs:
           E2E_DRIVE_LOG: ${{ runner.temp }}/drive.log
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 0a36d6a0-c909-40aa-853e-970de3482321
-          PLATFORM_D1_DATABASE_ID: 9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351
+          PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}
         run: node tooling/e2e/purge.mjs
 
       - name: Purge the delete-leg user too (already gone on a green run)
@@ -619,7 +633,7 @@ jobs:
           E2E_USER_ID: ${{ steps.delete_user.outputs.user_id }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 0a36d6a0-c909-40aa-853e-970de3482321
+          E2E_APP_ID: ${{ matrix.app }}
         run: node tooling/e2e/purge.mjs
 
   alert:

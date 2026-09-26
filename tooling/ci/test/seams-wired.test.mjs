@@ -145,8 +145,9 @@ Future<void> _signOut(BuildContext context, WidgetRef ref, AppLocalizations l10n
 
   // ⏱ 2026-09-24 — the crash-sink limb grades workflow-scan's CENSUS
   // (O-SEAMS-WIRED-GRADES-DECLARED-LANES-ONLY, patch B), so each build stamps the
-  // channel it is for, and the tree carries the 18 graded builds the limb floors
-  // at (MIN_GRADED): the four lanes plus fourteen in census-fill.yml.
+  // channel it is for, and the tree carries the 16 graded builds the limb floors
+  // at (MIN_GRADED, re-based 18 → 16 on 2026-09-25): the four lanes plus twelve in
+  // census-fill.yml.
   const dsnBuild = (target, channel) =>
     `run: flutter build ${target} --release --dart-define=RELEASE_CHANNEL=${channel} --dart-define=GLITCHTIP_DSN=\${{ secrets.GLITCHTIP_DSN }}\n`;
   const DSN = dsnBuild('web', 'web');
@@ -206,7 +207,7 @@ Future<void> _signOut(BuildContext context, WidgetRef ref, AppLocalizations l10n
     // 14 more graded web builds, one per job: with the four lanes, the 18 the
     // crash-sink limb floors its census at.
     const fill = [];
-    for (let i = 0; i < 14; i++) fill.push(jobWith(`fill_${i}`, DSN));
+    for (let i = 0; i < 12; i++) fill.push(jobWith(`fill_${i}`, DSN));
     Object.assign(files, {
       'packages/core/lib/src/content/ed25519_pack_verifier.dart':
         'class Ed25519PackVerifier implements PackVerifier {\n  verify() async { if (x == null) return false; return await _ed.verify(m); }\n}\n',

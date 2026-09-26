@@ -56,7 +56,7 @@
     "          It is a WEAKER RUNG than a gate: green means 'nothing has contradicted this since the",
     "          last run', never 'this holds'.",
     "",
-    "Adding a table to services/platform/migrations/ without adding a row here FAILS THE GATE. That is",
+    "Adding a table to any registered database's migrations without adding a row here FAILS THE GATE. That is",
     "the regression this register exists to catch — B-17's prose named four shared tables and the",
     "migrations create nine, three days apart.",
     "",
@@ -76,7 +76,15 @@
     "entry maps one Deployment id to one run id, with the workflow, environment and full sha it was measured",
     "at, a date and a reason. It admits no build by itself — the run must still exist, carry that id and",
     "have that head commit. An entry is added only for a Deployment written before its writer carried the",
-    "payload, measured with `gh api repos/<owner>/<repo>/deployments?environment=<env>`."
+    "payload, measured with `gh api repos/<owner>/<repo>/deployments?environment=<env>`.",
+    "",
+    "⏱ 2026-09-26 · EVERY DATABASE, NOT ONE (O-PROVENANCE-WALKS-ONE-DATABASE). The rules sit under `databases.<database_name>`,",
+    "each with the `wrangler` config that owns it, its `migrationsDir` and its `tables`. WHICH databases is read from the tree:",
+    "tooling/platform-register.json's servingWorker, then each appWorker, and in each Worker's wrangler config every TOP-LEVEL",
+    "D1 binding carrying `migrations_dir` (tooling/ci/migration-tables.mjs `registeredD1Databases`). The gate and the monitor",
+    "both hold this map to that set, both ways: a database with no entry is COVERAGE LOST, and an entry no config owns is a",
+    "finding. `env.<name>` blocks (the store capture's `env.sandbox`) are not production and are never walked. A table whose",
+    "columns carry no marker any resolver reads is `exempt`: no `marker`, and a reason that names every one of its columns."
   ],
   "legacyDeploymentBindings": [
     {
@@ -89,9 +97,6 @@
       "why": "The first Play upload (submit-play.yml run_number 5, attempt 1, 21:38:59Z-21:59:43Z on 2026-09-22) recorded this Deployment at 21:59:38Z with `payload: {}`, before record-deployment.mjs wrote the run payload. It is the only Deployment on subscriptiontracker-android-play. Binding it to run id 35787897094 alone means no other run at 0390db6 can resolve through it."
     }
   ],
-  "database": "platform_db",
-  "wrangler": "services/platform/wrangler.jsonc",
-  "migrationsDir": "services/platform/migrations",
   "resolvers": {
     "operator-minted": "The marker value must be a NON-EMPTY provenance string recorded by the operator act that created the row — a commit sha or a register hash. Rows in these tables are neither client-written nor migration-seeded: they are minted by a dated, reviewed human act, so the honest question is not \"which build shipped this\" but \"what state was this minted against\". NULL or empty fails, which is the point: a row minted against nothing is a row nobody can review.",
     "product-kind": "The marker value must be one of the product kinds declared in contracts/entitlement/bundle.js (`app` | `extension` | `script`) — the same list tooling/bundle-availability.mjs derives the live-product set from. A value outside it is a row nothing in this tree could have written. Deliberately NOT a join against the product catalogues: a RETIRED product leaves the catalogue while grants that pinned it must keep resolving, so a catalogue join would turn honest history into a false red.",
@@ -105,126 +110,155 @@
     "erasure-step": "⏱ 2026-09-15 · [ADR 087]. The marker value must be one of the NON-APP erasure steps the platform Worker declares as `export const <NAME>_STEP = '<literal>'` in services/platform/src (today one: `platform:signups`, the launch-list purge in lib/erasure-ledger.ts), read at run time — never a list here. A SECOND resolver for `pending_erasures` only: that table's `app_id` normally names an app (primary `app-catalogue`), and it names a step only when DELETE /v1/account could not confirm the account address and queued the purge for the nightly retry. A step value outside the declared set is residue from a renamed or removed step, and stays unattributable. The `:` cannot occur in an app slug, so a step can never be read as an app.",
     "not-reserved-address": "The marker column holds an EMAIL ADDRESS, and the monitor NEVER READS IT: the query D1 runs projects each row to `reserved` or `unreserved` inside D1 and returns only a COUNT per bucket, so no address leaves platform_db, reaches a runner or appears in a log. A row resolves when its address is NOT at a domain reserved for testing by RFC 2606 / RFC 6761 — example.com, example.net, example.org and their subdomains, and the .example, .test, .invalid and .localhost names. ⏱ 2026-09-15 · [ADR 087]. ⚠️ DELIBERATELY WEAKER THAN `released-build`, AND IT SAYS SO: it cannot prove a real person signed up, only that the row is not addressed to a place no person receives mail. That is the residue this table actually produces — the 2026-09-15 live rate-limiter probe posted `limiter-probe-2026-09-15@example.com` — and a stronger marker would need a column, which the published promise (\"your email address and the time you signed up, and nothing else\") forbids.",
     "app-catalogue": "The marker value must be the slug of an app the factory actually ships, read from tooling/channel-register.json's `apps` list — the same catalogue assert-channel-register.mjs grades its own rows against, never a second list here. For DERIVED tables that carry no build marker of their own. ⚠️ DELIBERATELY WEAKER THAN `released-build`, AND IT SAYS SO: it proves the row belongs to a real app, not that a released build wrote it, so a row derived from a `dev`-stamped event still resolves. That residual is accepted only because the SOURCE table is separately held to `released-build`, and it is recorded here rather than hidden. What it does catch is the state this portfolio has actually produced — rows for an app id nothing ships, i.e. probe residue (`c6-localprobe`).",
-    "extension-catalogue": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. The marker value must be the slug of a browser extension the factory ships, read from extensions/catalog/extensions.json (each entry's `slug`) by its own reader in tooling/ops/check-prod-provenance.mjs (`extensionSlugs`) — never a list here, and never the app catalogue: an extension is not an app, so an app slug must not resolve an extension-keyed row. For the extension account-check tables, which carry no build marker of their own. ⚠️ DELIBERATELY WEAKER THAN `released-build`, AND IT SAYS SO, exactly as `app-catalogue` is: it proves the row belongs to a real extension, not that a released build wrote it. An empty or unreadable catalogue is COULD NOT LOOK, not a finding about the rows."
+    "extension-catalogue": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. The marker value must be the slug of a browser extension the factory ships, read from extensions/catalog/extensions.json (each entry's `slug`) by its own reader in tooling/ops/check-prod-provenance.mjs (`extensionSlugs`) — never a list here, and never the app catalogue: an extension is not an app, so an app slug must not resolve an extension-keyed row. For the extension account-check tables, which carry no build marker of their own. ⚠️ DELIBERATELY WEAKER THAN `released-build`, AND IT SAYS SO, exactly as `app-catalogue` is: it proves the row belongs to a real extension, not that a released build wrote it. An empty or unreadable catalogue is COULD NOT LOOK, not a finding about the rows.",
+    "exempt": "⏱ 2026-09-26 · O-PROVENANCE-WALKS-ONE-DATABASE. NOT A RESOLVER, AND IT SAYS SO: the table carries no column any resolver here can read — no build stamp, no app or extension slug, no money world, no closed set a migration seeds — so the monitor does not query it and prints it as exempt on every run. An `exempt` rule declares no `marker`, and its `reason` is 20+ characters and names every column the migrations give the table (tooling/ci/migration-tables.mjs `exemptionProblem`, applied by the gate and by the monitor), so the exemption is an argument about that exact column set and a column added later re-opens it; a table that gains `app_version` must take `released-build` (the gate's limb 5). ⚠️ AN EXEMPT TABLE'S ROWS ARE NOT TRACED AT ALL: residue a live verification leaves there is invisible to this monitor, and removing it is the purge of the harness that wrote it."
   },
-  "tables": {
-    "events": {
-      "marker": "app_version",
-      "resolver": "released-build",
-      "reason": "Carries `app_version` (0002_analytics.sql:40), written straight through from the client envelope by services/platform/src/routes/events.ts. This is the nearest thing to a marker that already existed — C-6's live probe rows carried `app_version: c6-localprobe` — which is why the inversion is cheap here."
+  "databases": {
+    "platform_db": {
+      "wrangler": "services/platform/wrangler.jsonc",
+      "migrationsDir": "services/platform/migrations",
+      "tables": {
+        "events": {
+          "marker": "app_version",
+          "resolver": "released-build",
+          "reason": "Carries `app_version` (0002_analytics.sql:40), written straight through from the client envelope by services/platform/src/routes/events.ts. This is the nearest thing to a marker that already existed — C-6's live probe rows carried `app_version: c6-localprobe` — which is why the inversion is cheap here."
+        },
+        "consent_artifacts": {
+          "marker": "app_version",
+          "resolver": "released-build",
+          "alsoResolves": [
+            "e2e-run",
+            "store-capture"
+          ],
+          "reason": "Carries `app_version` (0002_analytics.sql:77), same writer, same envelope. Append-only by design, so a stray row can never be corrected by an UPDATE — it can only be deleted, which is exactly the disposition B-17 wants proven. ⬜ `alsoResolves` ADDED 2026-08-28 (`e2e-run`); `store-capture` joined it 2026-09-23. From that date .github/workflows/e2e.yml stamps `APP_VERSION=e2e-<run_number>-<sha7>` on the nightly's live verification, so this table legitimately receives rows the release lane did not ship — B-17's own premise is that verification against production is permitted and EXPECTED. Those rows fail `released-build` by construction, and widening `released-build` to admit them is the empty-predicate failure this register's _readme was written against, so the second resolver is a SEPARATE, NARROW one instead. ⏱ 2026-09-23 — the same holds for .github/workflows/store-screenshots.yml, whose live capture drives stamp `cap-<run_number>-<sha7>` (tooling/e2e/app-version-stamp.mjs) and are resolved by the WITNESSED `store-capture`. `resolver` stays `released-build`: it is still the primary rule, assert-prod-provenance.mjs limb 5 requires exactly that of any table carrying `app_version`, and `alsoResolves` is consulted only for a value the primary has already refused."
+        },
+        "entitlements": {
+          "marker": "provider_environment",
+          "resolver": "live-environment",
+          "reason": "NO `app_version` COLUMN AND NEVER WILL HAVE ONE: the row is written by services/platform/src/lib/mor/store.ts from a merchant-of-record notification, not by a client, so no app build is involved and there is no version to record. `provider_environment` (0004_money_rail.sql:73) is the column that answers the same question — which money world produced this row. It is the highest-consequence table in the set: B-17's own first-revenue note is that a test entitlement row in production is a free Pro unlock nobody notices, and a NULL here is precisely such a row."
+        },
+        "cron_heartbeat": {
+          "marker": "job",
+          "resolver": "cron-job",
+          "reason": "NO `app_version` COLUMN: written by the Worker's own scheduled handler (services/platform/src/scheduled.ts), which has no client and no app build. `job` is its only self-describing column, and it is a closed set the source declares. THIS TABLE IS WHY 'shared tables must be empty' had to be abandoned — its 16 rows are the instrument working, not residue."
+        },
+        "provider_notifications": {
+          "marker": "environment",
+          "resolver": "live-environment",
+          "reason": "NO `app_version` COLUMN: written by the MoR webhook (0004 section B) before anything interprets it. `environment` (0004_money_rail.sql:161) is stamped by the rail itself. This is the one non-pseudonymous store in platform_db — it keeps the buyer's name, email and billing country VERBATIM — so a sandbox row lingering here is a real person's data retained for no reason, not just untidiness."
+        },
+        "provider_accounts": {
+          "marker": "provider",
+          "resolver": "provider-register",
+          "reason": "NO `app_version` COLUMN and no `environment` column either: the row is DERIVED from a notification rather than received, so the environment lives on the notification it was derived from. `provider` is the column it does carry, and it is a closed set the legal register owns. The row links a person to a subscription, which is why it deliberately carries `user_id` and joins the erasure sweep."
+        },
+        "unclaimed_payments": {
+          "marker": "environment",
+          "resolver": "live-environment",
+          "reason": "NO `app_version` COLUMN: written by the webhook when money arrived and no account could be resolved. `environment` (0004_money_rail.sql) is stamped by the rail. A sandbox row here is the most misleading kind of residue in the whole schema — it is evidence of an unresolved real payment, and a fake one wastes exactly the investigation the table exists to make possible."
+        },
+        "signups": {
+          "marker": "email",
+          "resolver": "not-reserved-address",
+          "reason": "⏱ 2026-09-15 · [ADR 087]. NO `app_version` COLUMN, AND THERE CANNOT BE ONE: the rows are written by the nikatru.com Pages Function (sites/nikatru/functions/api/subscribe.js) from a website form, which has no app build, and sites/nikatru/privacy.html promises the table holds the email address and the signup time and nothing else — so no marker column of any kind may be added. `email` is therefore the marker, read only through the `not-reserved-address` projection, which counts rows addressed to test domains without ever returning an address."
+        },
+        "pending_erasures": {
+          "marker": "app_id",
+          "resolver": "app-catalogue",
+          "alsoResolves": [
+            "erasure-step"
+          ],
+          "reason": "⏱ 2026-09-15 · [ADR 081]. NO `app_version` COLUMN: written by DELETE /v1/account (services/platform/src/routes/account.ts) from the authenticated session when an app could not be reached, and deleted by the nightly erasure retry when the erasure completes. `app_id` is NOT NULL and is always an app APP_ERASURE_ENDPOINTS names, i.e. a catalogue app, so a row naming anything else was not written by this route."
+        },
+        "cancellation_requests": {
+          "marker": "environment",
+          "resolver": "live-environment",
+          "reason": "NO `app_version` COLUMN: written by the cancellation route (0005) from the authenticated session, not from an app envelope. `environment` is NOT NULL in the DDL for the same [5]M-12 reason as the rest of the rail, so the marker is guaranteed present and only its VALUE can be wrong."
+        },
+        "bundle_grants": {
+          "marker": "provider_environment",
+          "resolver": "live-environment",
+          "reason": "THE SAME ANSWER `entitlements` GIVES, AND FOR THE SAME REASON — one vocabulary, one set of readers. No `app_version` column and never will have one: the row is written by the money rail from a merchant-of-record notification or a server-side receipt pull, not by a client, so no app build is involved and there is no version to record. `provider_environment` (0009_bundle_grants.sql section A) is the column that answers the same question — which money world produced this row. 🔴 IT CARRIES THE SAME FIRST-REVENUE CONSEQUENCE AS `entitlements`, MULTIPLIED: a test bundle grant in production is a free Pro unlock across EVERY member product, not one, and a NULL here is precisely such a row. ⚠️ THE TWO EXEMPT SOURCES DO NOT BREAK THE RULE: `promo_code` and `owner_comp` grants carry no receipt, but they are still written by this Worker in this environment and still stamp `provider_environment` — the exemption is from a RECEIPT, never from the money world.",
+          "_note": "As of 2026-09-09 this table has zero rows in production; the rule exists before the first one, which is the only time it is free."
+        },
+        "bundle_sources": {
+          "marker": "source",
+          "resolver": "migration-seed",
+          "reason": "NO `app_version` COLUMN AND NO WRITER AT ALL: reference data seeded by 0009_bundle_grants.sql section B and extendable only by an additive INSERT in a later migration. Nothing in the running system writes it, so 'traced to a released build' is the wrong question — the right one is 'is this row in the migration ledger'. Same shape as `revocation_reasons`, and the same reason emptiness could never have been the rule: it has seven rows the day it is created."
+        },
+        "feature_sets": {
+          "marker": "minted_from",
+          "resolver": "operator-minted",
+          "reason": "NO `app_version` COLUMN, BECAUSE NEITHER A CLIENT NOR THE MONEY RAIL WRITES THIS, AND IT IS NOT SEEDED EITHER — which is why it needs its own resolver rather than borrowing one that would fit badly. A feature-set version is MINTED by a dated, reviewed operator act ([ADR 057] §4: adding a product to the bundle is forward-only and explicit), and `minted_from` is the commit or register hash that act recorded. A row with a NULL or empty `minted_from` is a version somebody created by hand against no reviewed state — and because a `sellable` version's members are frozen and grants PIN it, such a row silently defines what a stranger bought. Reusing `migration-seed` here would have been the empty-predicate failure this register's _readme was written against: no migration seeds this table, so the predicate would range over nothing and print clean forever."
+        },
+        "feature_set_members": {
+          "marker": "product_kind",
+          "resolver": "product-kind",
+          "reason": "NO `app_version` COLUMN — no client build touches these rows. THE MEMBER ROWS ARE THE RESOLUTION OF A PURCHASE, so an unattributable one is the sharpest failure in this migration: a member row silently added or removed changes what an EXISTING grant unlocks, with no revocation, no notification and no trace. There is no version string and no environment on these rows; what there is, is the category the slug came from, and `product_kind` outside the declared set (`app` | `extension` | `script`) means a row nothing in the tree could have written. ⚠️ THE STRONGER CHECK — that `product_slug` names a product in `catalog/apps.json` or `extensions/catalog/extensions.json` — is deliberately NOT this rule: a RETIRED product legitimately leaves the catalogue while old grants must keep resolving it, so a catalogue join would turn honest history into a false red. That check belongs to the mint, not to the monitor."
+        },
+        "revocation_reasons": {
+          "marker": "reason",
+          "resolver": "migration-seed",
+          "reason": "NO `app_version` COLUMN and no writer at all: this is REFERENCE DATA seeded by 0004_money_rail.sql:282 and extended only by an additive INSERT in a later migration. Nothing in the running system writes it, so 'traced to a released build' is the wrong question — the right one is 'is this row in the migration ledger'. Its 8 rows are the second reason emptiness could never have been the rule."
+        },
+        "events_daily": {
+          "marker": "app_id",
+          "resolver": "app-catalogue",
+          "reason": "NO `app_version` COLUMN — the rollup DROPS it, deliberately: 0007_events_rollup.sql keeps only the five grain columns the [11]E-11 numbers need, and the build string is not one of them. So the strongest marker is genuinely absent rather than waived, and `app_id` is the only self-describing column that survives aggregation. 🔴 THE TEMPTING RULE HERE WAS 'provenance is INHERITED from `events`', and it was rejected because NO ROW COULD EVER VIOLATE IT — an assertion that cannot fail inflates the covered-table count while checking nothing, which is worse than declaring none. `app-catalogue` can fail: a row whose `app_id` names no shipped app is probe residue."
+        },
+        "rollup_state": {
+          "marker": "rollup",
+          "resolver": "migration-seed",
+          "reason": "NO `app_version` COLUMN and no app at all: this is a CONTROL, not data — one row naming the last day the rollup fully consumed, which the events sweep reads to decide how far it may delete. 0007_events_rollup.sql seeds the only legitimate value (`events_daily`) with an INSERT … ON CONFLICT DO NOTHING, so the migration ledger IS its provenance and 'traced to a released build' is the wrong question, exactly as it is for revocation_reasons one entry up. A `rollup` value outside the seeded set was put there by hand."
+        },
+        "apple_provider_tokens": {
+          "marker": "app_id",
+          "resolver": "app-catalogue",
+          "reason": "⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE. NO app_version COLUMN AND NO USABLE TIMESTAMP: rows were written by PUT /v1/account/apple-token from an authenticated app, hold the user's Apple refresh token, and that token may NEVER be read by a monitor — so the marker is app_id, the app whose sign-in produced the token, resolved against the shipped catalogue exactly as pending_erasures is. A row naming anything but an app this factory ships is unattributed and says so. ⏱ 2026-09-24: retired by 0016 (copied into provider_tokens, no longer written); the rule stands until the table is dropped."
+        },
+        "provider_tokens": {
+          "marker": "app_id",
+          "resolver": "app-catalogue",
+          "reason": "⏱ 2026-09-24 · O-GOOGLE-SIGN-IN-NOT-BUILT (migration 0016). NO app_version COLUMN AND NO USABLE TIMESTAMP: rows are written by PUT /v1/account/provider-token (and its Apple alias PUT /v1/account/apple-token) from an authenticated app, or copied from apple_provider_tokens by 0016, and hold the user's Apple or Google refresh token, which may NEVER be read by a monitor — so the marker is app_id, the app whose sign-in produced the token, resolved against the shipped catalogue exactly as apple_provider_tokens and pending_erasures are. A row naming anything but an app this factory ships is unattributed and says so."
+        },
+        "content_reports": {
+          "marker": "app_id",
+          "resolver": "app-catalogue",
+          "reason": "⏱ 2026-09-18 · O-PLAY-AI-CONTENT-REPORTING. NO app_version COLUMN: rows are written by POST /v1/report from an authenticated app, and `app_id` is validated against the shipped catalogue (isKnownApp) before the INSERT — so the marker is app_id, resolved against the catalogue exactly as apple_provider_tokens and pending_erasures are. A row naming anything but an app this factory ships is unattributed and says so."
+        },
+        "ext_codes": {
+          "marker": "product",
+          "resolver": "extension-catalogue",
+          "reason": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. NO app_version COLUMN AND NO app_id: rows are minted by POST /v1/ext/codes from the signed-in nikatru.com/ext/connect page, and `product` is refused unless it is `fullshot` before the INSERT (services/platform/src/routes/ext.ts) — so the marker is `product`, resolved against the extension catalogue. A row naming anything but an extension this factory ships is unattributed and says so. The code itself is never stored, so no marker can leak it."
+        },
+        "ext_devices": {
+          "marker": "product",
+          "resolver": "extension-catalogue",
+          "reason": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. NO app_version COLUMN AND NO app_id: rows are written by POST /v1/ext/token from a code whose `product` was already checked at mint, so the marker is `product`, resolved against the extension catalogue exactly as ext_codes is. The credential is stored only as a SHA-256 and is never read by a monitor."
+        }
+      }
     },
-    "consent_artifacts": {
-      "marker": "app_version",
-      "resolver": "released-build",
-      "alsoResolves": [
-        "e2e-run",
-        "store-capture"
-      ],
-      "reason": "Carries `app_version` (0002_analytics.sql:77), same writer, same envelope. Append-only by design, so a stray row can never be corrected by an UPDATE — it can only be deleted, which is exactly the disposition B-17 wants proven. ⬜ `alsoResolves` ADDED 2026-08-28 (`e2e-run`); `store-capture` joined it 2026-09-23. From that date .github/workflows/e2e.yml stamps `APP_VERSION=e2e-<run_number>-<sha7>` on the nightly's live verification, so this table legitimately receives rows the release lane did not ship — B-17's own premise is that verification against production is permitted and EXPECTED. Those rows fail `released-build` by construction, and widening `released-build` to admit them is the empty-predicate failure this register's _readme was written against, so the second resolver is a SEPARATE, NARROW one instead. ⏱ 2026-09-23 — the same holds for .github/workflows/store-screenshots.yml, whose live capture drives stamp `cap-<run_number>-<sha7>` (tooling/e2e/app-version-stamp.mjs) and are resolved by the WITNESSED `store-capture`. `resolver` stays `released-build`: it is still the primary rule, assert-prod-provenance.mjs limb 5 requires exactly that of any table carrying `app_version`, and `alsoResolves` is consulted only for a value the primary has already refused."
-    },
-    "entitlements": {
-      "marker": "provider_environment",
-      "resolver": "live-environment",
-      "reason": "NO `app_version` COLUMN AND NEVER WILL HAVE ONE: the row is written by services/platform/src/lib/mor/store.ts from a merchant-of-record notification, not by a client, so no app build is involved and there is no version to record. `provider_environment` (0004_money_rail.sql:73) is the column that answers the same question — which money world produced this row. It is the highest-consequence table in the set: B-17's own first-revenue note is that a test entitlement row in production is a free Pro unlock nobody notices, and a NULL here is precisely such a row."
-    },
-    "cron_heartbeat": {
-      "marker": "job",
-      "resolver": "cron-job",
-      "reason": "NO `app_version` COLUMN: written by the Worker's own scheduled handler (services/platform/src/scheduled.ts), which has no client and no app build. `job` is its only self-describing column, and it is a closed set the source declares. THIS TABLE IS WHY 'shared tables must be empty' had to be abandoned — its 16 rows are the instrument working, not residue."
-    },
-    "provider_notifications": {
-      "marker": "environment",
-      "resolver": "live-environment",
-      "reason": "NO `app_version` COLUMN: written by the MoR webhook (0004 section B) before anything interprets it. `environment` (0004_money_rail.sql:161) is stamped by the rail itself. This is the one non-pseudonymous store in platform_db — it keeps the buyer's name, email and billing country VERBATIM — so a sandbox row lingering here is a real person's data retained for no reason, not just untidiness."
-    },
-    "provider_accounts": {
-      "marker": "provider",
-      "resolver": "provider-register",
-      "reason": "NO `app_version` COLUMN and no `environment` column either: the row is DERIVED from a notification rather than received, so the environment lives on the notification it was derived from. `provider` is the column it does carry, and it is a closed set the legal register owns. The row links a person to a subscription, which is why it deliberately carries `user_id` and joins the erasure sweep."
-    },
-    "unclaimed_payments": {
-      "marker": "environment",
-      "resolver": "live-environment",
-      "reason": "NO `app_version` COLUMN: written by the webhook when money arrived and no account could be resolved. `environment` (0004_money_rail.sql) is stamped by the rail. A sandbox row here is the most misleading kind of residue in the whole schema — it is evidence of an unresolved real payment, and a fake one wastes exactly the investigation the table exists to make possible."
-    },
-    "signups": {
-      "marker": "email",
-      "resolver": "not-reserved-address",
-      "reason": "⏱ 2026-09-15 · [ADR 087]. NO `app_version` COLUMN, AND THERE CANNOT BE ONE: the rows are written by the nikatru.com Pages Function (sites/nikatru/functions/api/subscribe.js) from a website form, which has no app build, and sites/nikatru/privacy.html promises the table holds the email address and the signup time and nothing else — so no marker column of any kind may be added. `email` is therefore the marker, read only through the `not-reserved-address` projection, which counts rows addressed to test domains without ever returning an address."
-    },
-    "pending_erasures": {
-      "marker": "app_id",
-      "resolver": "app-catalogue",
-      "alsoResolves": [
-        "erasure-step"
-      ],
-      "reason": "⏱ 2026-09-15 · [ADR 081]. NO `app_version` COLUMN: written by DELETE /v1/account (services/platform/src/routes/account.ts) from the authenticated session when an app could not be reached, and deleted by the nightly erasure retry when the erasure completes. `app_id` is NOT NULL and is always an app APP_ERASURE_ENDPOINTS names, i.e. a catalogue app, so a row naming anything else was not written by this route."
-    },
-    "cancellation_requests": {
-      "marker": "environment",
-      "resolver": "live-environment",
-      "reason": "NO `app_version` COLUMN: written by the cancellation route (0005) from the authenticated session, not from an app envelope. `environment` is NOT NULL in the DDL for the same [5]M-12 reason as the rest of the rail, so the marker is guaranteed present and only its VALUE can be wrong."
-    },
-    "bundle_grants": {
-      "marker": "provider_environment",
-      "resolver": "live-environment",
-      "reason": "THE SAME ANSWER `entitlements` GIVES, AND FOR THE SAME REASON — one vocabulary, one set of readers. No `app_version` column and never will have one: the row is written by the money rail from a merchant-of-record notification or a server-side receipt pull, not by a client, so no app build is involved and there is no version to record. `provider_environment` (0009_bundle_grants.sql section A) is the column that answers the same question — which money world produced this row. 🔴 IT CARRIES THE SAME FIRST-REVENUE CONSEQUENCE AS `entitlements`, MULTIPLIED: a test bundle grant in production is a free Pro unlock across EVERY member product, not one, and a NULL here is precisely such a row. ⚠️ THE TWO EXEMPT SOURCES DO NOT BREAK THE RULE: `promo_code` and `owner_comp` grants carry no receipt, but they are still written by this Worker in this environment and still stamp `provider_environment` — the exemption is from a RECEIPT, never from the money world.",
-      "_note": "As of 2026-09-09 this table has zero rows in production; the rule exists before the first one, which is the only time it is free."
-    },
-    "bundle_sources": {
-      "marker": "source",
-      "resolver": "migration-seed",
-      "reason": "NO `app_version` COLUMN AND NO WRITER AT ALL: reference data seeded by 0009_bundle_grants.sql section B and extendable only by an additive INSERT in a later migration. Nothing in the running system writes it, so 'traced to a released build' is the wrong question — the right one is 'is this row in the migration ledger'. Same shape as `revocation_reasons`, and the same reason emptiness could never have been the rule: it has seven rows the day it is created."
-    },
-    "feature_sets": {
-      "marker": "minted_from",
-      "resolver": "operator-minted",
-      "reason": "NO `app_version` COLUMN, BECAUSE NEITHER A CLIENT NOR THE MONEY RAIL WRITES THIS, AND IT IS NOT SEEDED EITHER — which is why it needs its own resolver rather than borrowing one that would fit badly. A feature-set version is MINTED by a dated, reviewed operator act ([ADR 057] §4: adding a product to the bundle is forward-only and explicit), and `minted_from` is the commit or register hash that act recorded. A row with a NULL or empty `minted_from` is a version somebody created by hand against no reviewed state — and because a `sellable` version's members are frozen and grants PIN it, such a row silently defines what a stranger bought. Reusing `migration-seed` here would have been the empty-predicate failure this register's _readme was written against: no migration seeds this table, so the predicate would range over nothing and print clean forever."
-    },
-    "feature_set_members": {
-      "marker": "product_kind",
-      "resolver": "product-kind",
-      "reason": "NO `app_version` COLUMN — no client build touches these rows. THE MEMBER ROWS ARE THE RESOLUTION OF A PURCHASE, so an unattributable one is the sharpest failure in this migration: a member row silently added or removed changes what an EXISTING grant unlocks, with no revocation, no notification and no trace. There is no version string and no environment on these rows; what there is, is the category the slug came from, and `product_kind` outside the declared set (`app` | `extension` | `script`) means a row nothing in the tree could have written. ⚠️ THE STRONGER CHECK — that `product_slug` names a product in `catalog/apps.json` or `extensions/catalog/extensions.json` — is deliberately NOT this rule: a RETIRED product legitimately leaves the catalogue while old grants must keep resolving it, so a catalogue join would turn honest history into a false red. That check belongs to the mint, not to the monitor."
-    },
-    "revocation_reasons": {
-      "marker": "reason",
-      "resolver": "migration-seed",
-      "reason": "NO `app_version` COLUMN and no writer at all: this is REFERENCE DATA seeded by 0004_money_rail.sql:282 and extended only by an additive INSERT in a later migration. Nothing in the running system writes it, so 'traced to a released build' is the wrong question — the right one is 'is this row in the migration ledger'. Its 8 rows are the second reason emptiness could never have been the rule."
-    },
-    "events_daily": {
-      "marker": "app_id",
-      "resolver": "app-catalogue",
-      "reason": "NO `app_version` COLUMN — the rollup DROPS it, deliberately: 0007_events_rollup.sql keeps only the five grain columns the [11]E-11 numbers need, and the build string is not one of them. So the strongest marker is genuinely absent rather than waived, and `app_id` is the only self-describing column that survives aggregation. 🔴 THE TEMPTING RULE HERE WAS 'provenance is INHERITED from `events`', and it was rejected because NO ROW COULD EVER VIOLATE IT — an assertion that cannot fail inflates the covered-table count while checking nothing, which is worse than declaring none. `app-catalogue` can fail: a row whose `app_id` names no shipped app is probe residue."
-    },
-    "rollup_state": {
-      "marker": "rollup",
-      "resolver": "migration-seed",
-      "reason": "NO `app_version` COLUMN and no app at all: this is a CONTROL, not data — one row naming the last day the rollup fully consumed, which the events sweep reads to decide how far it may delete. 0007_events_rollup.sql seeds the only legitimate value (`events_daily`) with an INSERT … ON CONFLICT DO NOTHING, so the migration ledger IS its provenance and 'traced to a released build' is the wrong question, exactly as it is for revocation_reasons one entry up. A `rollup` value outside the seeded set was put there by hand."
-    },
-    "apple_provider_tokens": {
-      "marker": "app_id",
-      "resolver": "app-catalogue",
-      "reason": "⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE. NO app_version COLUMN AND NO USABLE TIMESTAMP: rows were written by PUT /v1/account/apple-token from an authenticated app, hold the user's Apple refresh token, and that token may NEVER be read by a monitor — so the marker is app_id, the app whose sign-in produced the token, resolved against the shipped catalogue exactly as pending_erasures is. A row naming anything but an app this factory ships is unattributed and says so. ⏱ 2026-09-24: retired by 0016 (copied into provider_tokens, no longer written); the rule stands until the table is dropped."
-    },
-    "provider_tokens": {
-      "marker": "app_id",
-      "resolver": "app-catalogue",
-      "reason": "⏱ 2026-09-24 · O-GOOGLE-SIGN-IN-NOT-BUILT (migration 0016). NO app_version COLUMN AND NO USABLE TIMESTAMP: rows are written by PUT /v1/account/provider-token (and its Apple alias PUT /v1/account/apple-token) from an authenticated app, or copied from apple_provider_tokens by 0016, and hold the user's Apple or Google refresh token, which may NEVER be read by a monitor — so the marker is app_id, the app whose sign-in produced the token, resolved against the shipped catalogue exactly as apple_provider_tokens and pending_erasures are. A row naming anything but an app this factory ships is unattributed and says so."
-    },
-    "content_reports": {
-      "marker": "app_id",
-      "resolver": "app-catalogue",
-      "reason": "⏱ 2026-09-18 · O-PLAY-AI-CONTENT-REPORTING. NO app_version COLUMN: rows are written by POST /v1/report from an authenticated app, and `app_id` is validated against the shipped catalogue (isKnownApp) before the INSERT — so the marker is app_id, resolved against the catalogue exactly as apple_provider_tokens and pending_erasures are. A row naming anything but an app this factory ships is unattributed and says so."
-    },
-    "ext_codes": {
-      "marker": "product",
-      "resolver": "extension-catalogue",
-      "reason": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. NO app_version COLUMN AND NO app_id: rows are minted by POST /v1/ext/codes from the signed-in nikatru.com/ext/connect page, and `product` is refused unless it is `fullshot` before the INSERT (services/platform/src/routes/ext.ts) — so the marker is `product`, resolved against the extension catalogue. A row naming anything but an extension this factory ships is unattributed and says so. The code itself is never stored, so no marker can leak it."
-    },
-    "ext_devices": {
-      "marker": "product",
-      "resolver": "extension-catalogue",
-      "reason": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. NO app_version COLUMN AND NO app_id: rows are written by POST /v1/ext/token from a code whose `product` was already checked at mint, so the marker is `product`, resolved against the extension catalogue exactly as ext_codes is. The credential is stored only as a SHA-256 and is never read by a monitor."
+    "subscriptiontracker_db": {
+      "wrangler": "services/subscriptiontracker-api/wrangler.jsonc",
+      "migrationsDir": "services/subscriptiontracker-api/migrations",
+      "tables": {
+        "subscriptions": {
+          "resolver": "exempt",
+          "reason": "⏱ 2026-09-26 · O-PROVENANCE-WALKS-ONE-DATABASE. NO app_version COLUMN AND NO OTHER MARKER: 0001_init.sql gives this table `id`, `user_id`, `name`, `category`, `price`, `cycle`, `next_renewal`, `plan`, `glyph`, `used_pct`, `usage_note`, `unused`, `created_at` and `updated_at`, and not one of them names a build, an app, a money world or a closed set a resolver could check. Rows are written by POST and PATCH /v1/subscriptions (services/subscriptiontracker-api/src/routes/subscriptions.ts) from the authenticated session, and `next_renewal` is advanced by the platform Worker's nightly renewals fan-out (services/platform/src/renewals.ts). `user_id` is a Supabase subject this database cannot resolve, and `name`/`category`/`plan` are the user's own free text. So it is exempt; a marker column added later (above all `app_version`, which the gate's limb 5 then holds to `released-build`) re-opens this rule."
+        },
+        "budgets": {
+          "resolver": "exempt",
+          "reason": "⏱ 2026-09-26 · O-PROVENANCE-WALKS-ONE-DATABASE. NO app_version COLUMN AND NO OTHER MARKER: 0001_init.sql gives this table `user_id`, `monthly_budget` and `updated_at` — a per-user singleton written by PUT /v1/budget (services/subscriptiontracker-api/src/routes/budget.ts) from the authenticated session. None of the three names a build, an app, a money world or a closed set a resolver could check, and `user_id` is a Supabase subject this database cannot resolve. So it is exempt; a marker column added later re-opens this rule."
+        },
+        "budget_categories": {
+          "resolver": "exempt",
+          "reason": "⏱ 2026-09-26 · O-PROVENANCE-WALKS-ONE-DATABASE. NO app_version COLUMN AND NO OTHER MARKER: 0001_init.sql gives this table `user_id`, `name` and `cap`, and 0002_schema_debt.sql adds the surrogate `id` (a client-generated UUIDv7, or a random backfill). Rows are written by PUT /v1/budget (services/subscriptiontracker-api/src/routes/budget.ts) from the authenticated session; `name` is the user's own category text, and none of the four names a build, an app, a money world or a closed set a resolver could check. So it is exempt; a marker column added later re-opens this rule."
+        },
+        "payment_history": {
+          "resolver": "exempt",
+          "reason": "⏱ 2026-09-26 · O-PROVENANCE-WALKS-ONE-DATABASE. NO app_version COLUMN AND NO OTHER MARKER: 0001_init.sql gives this table `id`, `subscription_id`, `user_id`, `amount` and `paid_at`, and 0002_schema_debt.sql adds `updated_at`. Rows are the history of a subscription the USER tracks, not a money-rail row: the platform Worker's nightly renewals fan-out (services/platform/src/renewals.ts) inserts one when a tracked subscription's `next_renewal` passes, and no merchant-of-record or store receipt is involved, so there is no environment stamp to read. None of the six names a build, an app, a money world or a closed set a resolver could check. So it is exempt; a marker column added later re-opens this rule."
+        }
+      }
     }
   }
 }

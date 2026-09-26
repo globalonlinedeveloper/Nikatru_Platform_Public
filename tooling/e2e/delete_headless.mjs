@@ -8,8 +8,8 @@
 // header of tooling/e2e/delete_headless_expectation.mjs (every verdict line
 // lives there). In order, it:
 //
-//   1. reads the delete-leg identity (GoTrue admin API) and its subscription
-//      rows (live D1) — the app's reauth was refused, so both must still be
+//   1. reads the delete-leg identity (GoTrue admin API) and its rows in the
+//      app's rowTable (live D1) — the app's reauth was refused, so both must still be
 //      there. Nothing is sent unless the identity resolves AS THIS USER.
 //   2. mints that user's session: `admin/generate_link` (magiclink) then
 //      `/verify` with the ANON key, the route the suite signs in by. The
@@ -32,7 +32,9 @@
 // Env: E2E_EXPECT_CAPTCHA_GATE, E2E_WORKERS_TRUST (both from e2e.yml's step
 //      "Derive what this run expects"), SUPABASE_URL, SUPABASE_ANON_KEY,
 //      SUPABASE_SERVICE_ROLE_KEY, E2E_DELETE_EMAIL, E2E_DELETE_USER_ID,
-//      CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, SUBSCRIPTIONTRACKER_D1_DATABASE_ID.
+//      CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, E2E_APP_ID. The app's
+//      database and the table its rows are counted in come from E2E_APP_ID
+//      through tooling/e2e/backend.mjs, as for verify_row and verify_purged.
 // Argv: --register <path> overrides tooling/channel-register.json (tests).
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync } from 'node:fs';
@@ -40,6 +42,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { decideTrust, say } from './auth_target_expectation.mjs';
+import { D1_DATABASE_ID, e2eTargetOrExit } from './backend.mjs';
 import {
   UNGATED_REFUSAL,
   decideCaptchaGate,
@@ -80,7 +83,19 @@ const email = need('E2E_DELETE_EMAIL');
 const userId = need('E2E_DELETE_USER_ID');
 const acct = need('CLOUDFLARE_ACCOUNT_ID');
 const cfToken = need('CLOUDFLARE_API_TOKEN');
-const dbId = need('SUBSCRIPTIONTRACKER_D1_DATABASE_ID');
+const appId = need('E2E_APP_ID');
+const { appDb: dbId, rowTable } = e2eTargetOrExit(appId, { code: 2, prefix: 'COULD NOT LOOK' });
+// Held to their shapes HERE, at the file that builds the request and the SQL:
+// the id becomes a URL path segment (CodeQL #467, as in verify_purged.mjs) and
+// the table name is interpolated, because D1 cannot bind an identifier.
+if (!D1_DATABASE_ID.test(dbId)) {
+  console.error(`COULD NOT LOOK: ${appId}'s APP_DB database_id is not a D1 id (a UUID). Exit 2: nothing was sent.`);
+  process.exit(2);
+}
+if (!/^[A-Za-z_][A-Za-z0-9_$]*$/.test(rowTable)) {
+  console.error(`COULD NOT LOOK: rowTable ${JSON.stringify(rowTable)} is not a plain table name. Exit 2: nothing was sent.`);
+  process.exit(2);
+}
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const at = process.argv.indexOf('--register');
@@ -124,8 +139,8 @@ async function run() {
   }
   const present = say(presentVerdict({ ...before, userId }));
   worse(present);
-  const rows = await subscriptionCount();
-  worse(rows === null ? 2 : say(rowsBeforeVerdict(auth.trust, rows)));
+  const rows = await rowCount();
+  worse(rows === null ? 2 : say(rowsBeforeVerdict(auth.trust, rows, rowTable)));
   if (present !== 0) return;
 
   // ── 2 · a session for exactly this user, through the ungated route ───────
@@ -161,8 +176,8 @@ async function run() {
   // ── 4 · read again ───────────────────────────────────────────────────────
   const after = await identity();
   worse(after === null ? 2 : say(identityAfterVerdict(auth.trust, { ...after, userId })));
-  const rowsAfter = await subscriptionCount();
-  worse(rowsAfter === null ? 2 : say(rowsAfterVerdict(auth.trust, rowsAfter)));
+  const rowsAfter = await rowCount();
+  worse(rowsAfter === null ? 2 : say(rowsAfterVerdict(auth.trust, rowsAfter, rowTable)));
 }
 
 /** The GoTrue admin read of the delete-leg user, or null after saying why. */
@@ -237,16 +252,16 @@ function subjectOf(token) {
   }
 }
 
-/** The delete-leg user's subscription rows AS D1 ANSWERED — not yet a number,
+/** The delete-leg user's rows in the app's rowTable AS D1 ANSWERED — not yet a number,
  *  because whether a missing count may stand for 0 is the verdict's call.
  *  `null` = the read failed (already said why). */
-async function subscriptionCount() {
+async function rowCount() {
   let res;
   try {
     res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${acct}/d1/database/${dbId}/query`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfToken}` },
-      body: JSON.stringify({ sql: 'SELECT COUNT(*) AS n FROM subscriptions WHERE user_id = ?', params: [userId] }),
+      body: JSON.stringify({ sql: `SELECT COUNT(*) AS n FROM ${rowTable} WHERE user_id = ?`, params: [userId] }),
     });
   } catch (e) {
     console.error(`COULD NOT LOOK: the D1 HTTP API was unreachable (${e.name}).`);

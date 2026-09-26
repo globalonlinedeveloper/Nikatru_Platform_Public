@@ -171,12 +171,12 @@ const ON_TAG = { GITHUB_REF: 'refs/tags/subscriptiontracker-v1.0.0' };
 // ═════ the decision law ══════════════════════════════════════════════════════
 describe('appimage-signing · the secret-set law', () => {
   test('the register declares ONE secret today, so all/none are the only reachable states', () => {
-    assert.equal(decideSecretSet([B64_ENV], {}).state, 'none');
-    assert.equal(decideSecretSet([B64_ENV], { [B64_ENV]: 'x' }).state, 'all');
+    assert.equal(decideSecretSet([B64_ENV], {}).kind, 'none');
+    assert.equal(decideSecretSet([B64_ENV], { [B64_ENV]: 'x' }).kind, 'all');
   });
 
   test('an EMPTY STRING is not a value', () => {
-    assert.equal(decideSecretSet([B64_ENV], { [B64_ENV]: '   ' }).state, 'none');
+    assert.equal(decideSecretSet([B64_ENV], { [B64_ENV]: '   ' }).kind, 'none');
   });
 
   test('🔴 the HALF branch is reachable the moment the REGISTER declares a second name — which is why it is kept', () => {
@@ -184,7 +184,7 @@ describe('appimage-signing · the secret-set law', () => {
     // future row that adds a passphrase, a key id or a separate public-key
     // transport produces exactly this input.
     const s = decideSecretSet([B64_ENV, 'APPIMAGE_SIGNING_KEY_PASSPHRASE'], { [B64_ENV]: 'x' });
-    assert.equal(s.state, 'partial');
+    assert.equal(s.kind, 'partial');
     assert.deepEqual(s.missing, ['APPIMAGE_SIGNING_KEY_PASSPHRASE']);
   });
 });
@@ -201,7 +201,7 @@ describe('appimage-signing · a release lane is DERIVED, not declared in YAML', 
     assert.equal(d.required, true);
   });
   test('the REAL row declares none, and the blind spot is printed rather than assumed away', () => {
-    assert.match(decideRelease({ workflowRef: 'owner/x/.github/workflows/ci.yml@main' }).blind.join(' '), /declares no `submission\.workflow`/);
+    assert.match(decideRelease({ workflowRef: 'owner/x/.github/workflows/ci.yml@main' }).blind.join(' '), /declares a `submission\.workflow`, so limb \(b\) contributed nothing/);
   });
 });
 
@@ -448,7 +448,7 @@ describe('appimage-signing · the three endings', () => {
       GITHUB_WORKFLOW_REF: `owner/repo/${SUBMIT_WF}@refs/heads/main`,
     });
     assert.equal(r.status, 1, out(r));
-    assert.match(out(r), /declared submission workflow/);
+    assert.match(out(r), /declared AppImage submission workflow/);
   });
 
   test('…and on an UNARMED row that same submission workflow prints and passes', () => {
@@ -456,7 +456,7 @@ describe('appimage-signing · the three endings', () => {
       GITHUB_WORKFLOW_REF: `owner/repo/${SUBMIT_WF}@refs/heads/main`,
     });
     assert.equal(r.status, 0, out(r));
-    assert.match(out(r), /declared submission workflow/);
+    assert.match(out(r), /declared AppImage submission workflow/);
     assert.match(out(r), /RELEASE LANE, NO SIGNING SECRETS/);
   });
 
@@ -629,6 +629,34 @@ describe('appimage-signing · the secret is never printed and never half-written
     assert.match(basename(dirname(written)), /^appimage-signing-[A-Za-z0-9]{6}$/, `not a fresh private directory: ${written}`);
     assert.equal(resolve(dirname(dirname(written))), resolve(shared));
     assert.equal(readFileSync(decoy, 'utf8'), 'planted by someone else');
+  });
+
+  test('🔴 a declared value with a LINE BREAK is refused through the seam, before any key touches disk', () => {
+    const { r, outDir, exported } = runPrepare(makeRoot({ names: [B64_ENV, 'APPIMAGE_SIGNING_KEY_PASSPHRASE'], pin: KEY.publicB64 }), {
+      [B64_ENV]: KEY.seedB64,
+      APPIMAGE_SIGNING_KEY_PASSPHRASE: 'first\nSECOND_ASSIGNMENT=planted',
+    });
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /the value for APPIMAGE_SIGNING_KEY_PASSPHRASE contains a line break/);
+    assert.doesNotMatch(out(r), /planted/);
+    assert.equal(exported, '');
+    assert.ok(!existsSync(join(outDir, 'subscriptiontracker-appimage-signing.pem')), 'a private key was written by a run that refused');
+  });
+
+  test('--channel reads the named row; a row signed by another script is refused', () => {
+    const root = makeRoot({ channelId: 'linux-other' });
+    const reg = JSON.parse(readFileSync(join(root, 'tooling', 'channel-register.json'), 'utf8'));
+    reg.channels[0].signing.seam = { prepare: 'tooling/ci/android-signing.mjs' };
+    writeFileSync(join(root, 'tooling', 'channel-register.json'), JSON.stringify(reg));
+    const { r } = runPrepare(root, {}, { args: ['--channel', 'linux-other'] });
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /channel "linux-other" is signed by tooling\/ci\/android-signing\.mjs/);
+  });
+
+  test('--channel naming no row is COVERAGE LOST', () => {
+    const { r } = runPrepare(makeRoot({}), {}, { args: ['--channel', 'no-such-row'] });
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /declares no "no-such-row" channel/);
   });
 
   test('an EMPTY $GITHUB_ENV is treated as unset, not as a file named ""', () => {

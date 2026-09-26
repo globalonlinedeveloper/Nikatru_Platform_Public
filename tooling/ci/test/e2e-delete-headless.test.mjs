@@ -215,7 +215,7 @@ const FULL_ENV = Object.freeze({
   E2E_DELETE_USER_ID: USER,
   CLOUDFLARE_ACCOUNT_ID: 'fixture-account',
   CLOUDFLARE_API_TOKEN: 'fixture-token',
-  SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 'fixture-db',
+  E2E_APP_ID: 'subscriptiontracker',
 });
 
 /** Runs the step with exactly `vars` from the fixture set (plus PATH). */
@@ -250,6 +250,13 @@ describe('delete_headless.mjs — refuses before it sends anything', () => {
     const r = step({ ...FULL_ENV, E2E_DELETE_USER_ID: undefined });
     assert.equal(r.code, 2, r.out);
     assert.match(r.out, /missing required env var E2E_DELETE_USER_ID/);
+  });
+
+  test('an app the resolver refuses is exit 2, nothing sent', () => {
+    const r = step({ ...FULL_ENV, E2E_APP_ID: 'no-such-app' });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /^COULD NOT LOOK: .*Nothing was requested\./m);
+    assert.doesNotMatch(r.out, /DELETE https?:/);
   });
 
   test('a register with no erasure door is exit 2, nothing sent', () => {

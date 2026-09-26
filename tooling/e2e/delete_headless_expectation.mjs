@@ -75,7 +75,7 @@ export function expectationLine(trust) {
   const decided = decideTrust(trust);
   if (!decided.trust) return decided.why;
   return decided.trust === 'yes'
-    ? "Workers trust this run's issuer: yes — expecting the delete-leg account and its subscription row " +
+    ? "Workers trust this run's issuer: yes — expecting the delete-leg account and the row it wrote " +
         'still present (the in-app reauth was refused at the captcha gate), DELETE /v1/account answering 200 ' +
         'to a session minted through /verify, and then the identity gone (404) and 0 rows.'
     : "Workers trust this run's issuer: no — expecting the delete-leg account present with 0 rows (the leg " +
@@ -172,30 +172,32 @@ export function presentVerdict({ status, ok, bodyId, userId }) {
 }
 
 /**
- * Before anything is sent: the subscription rows the delete-leg user owns.
+ * Before anything is sent: the delete-leg user's rows in the app's rowTable
+ * (tooling/e2e-leg-register.json `apps.<id>.rowTable`).
  *
  * @param {'yes'|'no'|null} trust
  * @param {unknown} raw  `result?.[0]?.results?.[0]?.n`, NOT yet defaulted.
+ * @param {string} [table]  the table counted, for the printed lines.
  */
-export function rowsBeforeVerdict(trust, raw) {
+export function rowsBeforeVerdict(trust, raw, table = 'rowTable') {
   if (trust !== 'yes' && trust !== 'no') return undecided(trust);
   const n = readCount(raw);
   if (Number.isNaN(n)) {
     return {
       code: 2,
       log: [],
-      error: [`COULD NOT LOOK: D1 answered the subscription count without a readable number (${JSON.stringify(raw) ?? 'undefined'}).`],
+      error: [`COULD NOT LOOK: D1 answered the ${table} count without a readable number (${JSON.stringify(raw) ?? 'undefined'}).`],
     };
   }
   if (trust === 'yes') {
     if (n >= 1) {
-      return { code: 0, log: [`PRESENT: ${n} subscription row(s) — the one the delete leg wrote is there to be erased.`], error: [] };
+      return { code: 0, log: [`PRESENT: ${n} row(s) in ${table} — the one the delete leg wrote is there to be erased.`], error: [] };
     }
     return {
       code: 1,
       log: [],
       error: [
-        'FAIL: 0 subscription rows before the deletion. The delete leg writes one through the live Worker and ' +
+        `FAIL: 0 rows in ${table} before the deletion. The delete leg writes one through the live Worker and ` +
           'reads it back off Home before it opens the dialog, so "0 rows" after the deletion would prove nothing.',
       ],
     };
@@ -203,7 +205,7 @@ export function rowsBeforeVerdict(trust, raw) {
   if (n === 0) {
     return {
       code: 0,
-      log: ["PRESENT: 0 subscription rows, as the one-issuer refusal predicts — the leg stops before its add."],
+      log: [`PRESENT: 0 rows in ${table}, as the one-issuer refusal predicts — the leg stops before its add.`],
       error: [],
     };
   }
@@ -211,7 +213,7 @@ export function rowsBeforeVerdict(trust, raw) {
     code: 1,
     log: [],
     error: [
-      `FAIL: ${n} subscription row(s) for a delete-leg user whose issuer the Workers refuse. The leg stops at the ` +
+      `FAIL: ${n} row(s) in ${table} for a delete-leg user whose issuer the Workers refuse. The leg stops at the ` +
         'one-issuer refusal before its add, so a row means the Worker ACCEPTED a token from an issuer it does not ' +
         'trust — two trusted issuers, a security finding.',
     ],
@@ -400,30 +402,31 @@ export function identityAfterVerdict(trust, { status, ok, bodyId, userId }) {
 }
 
 /**
- * After the request: the subscription rows. Zero under both trust answers;
+ * After the request: the same rows. Zero under both trust answers;
  * verify_purged.mjs then walks every user-owned table the schema names.
  *
  * @param {'yes'|'no'|null} trust
  * @param {unknown} raw  `result?.[0]?.results?.[0]?.n`, NOT yet defaulted.
+ * @param {string} [table]  the table counted, for the printed lines.
  */
-export function rowsAfterVerdict(trust, raw) {
+export function rowsAfterVerdict(trust, raw, table = 'rowTable') {
   if (trust !== 'yes' && trust !== 'no') return undecided(trust);
   const n = readCount(raw);
   if (Number.isNaN(n)) {
     return {
       code: 2,
       log: [],
-      error: [`COULD NOT LOOK: D1 answered the subscription count without a readable number (${JSON.stringify(raw) ?? 'undefined'}).`],
+      error: [`COULD NOT LOOK: D1 answered the ${table} count without a readable number (${JSON.stringify(raw) ?? 'undefined'}).`],
     };
   }
-  if (n === 0) return { code: 0, log: ['ok  subscriptions: 0 row(s)'], error: [] };
+  if (n === 0) return { code: 0, log: [`ok  ${table}: 0 row(s)`], error: [] };
   return {
     code: 1,
     log: [],
     error: [
       trust === 'yes'
-        ? `FAIL: subscriptions still holds ${n} row(s) for the erased user. The door answered and this data survived it.`
-        : `FAIL: subscriptions holds ${n} row(s) for a user whose issuer the Workers refuse — a security finding.`,
+        ? `FAIL: ${table} still holds ${n} row(s) for the erased user. The door answered and this data survived it.`
+        : `FAIL: ${table} holds ${n} row(s) for a user whose issuer the Workers refuse — a security finding.`,
     ],
   };
 }

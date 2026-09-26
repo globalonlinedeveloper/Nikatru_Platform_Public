@@ -400,42 +400,58 @@ try {
     'drives. Without it R3 has no suite to measure against.',
   );
 }
-const { app: e2eApp, test: suiteRel, workflow: e2eWorkflowRel } = legRegister?.e2e ?? {};
-if (![e2eApp, suiteRel, e2eWorkflowRel].every((v) => typeof v === 'string' && v !== '')) {
-  coverageLost(`${LEG_REGISTER} does not name e2e.app, e2e.test and e2e.workflow`, 'R3 measures the suite those name.');
-}
-let suiteCode;
-let e2eWorkflowCode;
-try {
-  suiteCode = stripSourceComments(readFileSync(join(REPO, suiteRel), 'utf8'), '.dart');
-  e2eWorkflowCode = stripSourceComments(readFileSync(join(REPO, e2eWorkflowRel), 'utf8'), '.yml');
-} catch (e) {
-  coverageLost(`the e2e suite or its workflow could not be read (${e.code ?? e.name})`, `${suiteRel}, ${e2eWorkflowRel}`);
-}
-const e2eRoot = perRoot.find((p) => p.root === `${e2eApp}/lib`);
-if (!e2eRoot) {
-  coverageLost(`the e2e app ${e2eApp} is not one of the scanned roots`, 'R3 reads its gated call sites from that root.');
+// The register is keyed by app (`apps.<id>`, O-E2E-LANE-WIRED-TO-ONE-APP), and
+// each entry names its suite and workflow. Every app is measured; none is a
+// COVERAGE LOST, because R3 would then quantify over nothing.
+const appEntries =
+  legRegister?.apps && typeof legRegister.apps === 'object' && !Array.isArray(legRegister.apps)
+    ? Object.entries(legRegister.apps)
+    : [];
+if (appEntries.length === 0) {
+  coverageLost(`${LEG_REGISTER} names no app under \`apps\``, 'R3 measures the suite each app entry names.');
 }
 const keysIn = (code) => new Set([...code.matchAll(/\bE2EKeys\.([A-Za-z_]\w*)/g)].map((m) => m[1]));
-const suiteKeys = keysIn(suiteCode);
 const driven = [];
-for (const file of [...new Set(e2eRoot.sites.map((s) => s.file))].sort()) {
-  const shared = [...keysIn(e2eRoot.read.get(file))].filter((k) => suiteKeys.has(k)).sort();
-  if (shared.length) driven.push({ file, sites: e2eRoot.sites.filter((s) => s.file === file), keys: shared });
-}
-if (driven.length === 0) {
-  coverageLost(
-    `R3 found no captcha-gated call site that ${suiteRel} drives`,
-    'The suite signs in and submits the login form through a gated surface, so zero means the E2EKeys',
-    'match stopped matching — not that no leg of the golden path reaches a gate.',
-  );
+for (const [appId, entry] of appEntries) {
+  const { app: appDir, test: suiteRel, workflow: workflowRel } = entry ?? {};
+  if (![appDir, suiteRel, workflowRel].every((v) => typeof v === 'string' && v !== '')) {
+    coverageLost(`${LEG_REGISTER} apps.${appId} does not name app, test and workflow`, 'R3 measures the suite those name.');
+  }
+  let suiteCode;
+  let workflowCode;
+  try {
+    suiteCode = stripSourceComments(readFileSync(join(REPO, suiteRel), 'utf8'), '.dart');
+    workflowCode = stripSourceComments(readFileSync(join(REPO, workflowRel), 'utf8'), '.yml');
+  } catch (e) {
+    coverageLost(`the e2e suite or its workflow could not be read (${e.code ?? e.name})`, `${suiteRel}, ${workflowRel}`);
+  }
+  const appRoot = perRoot.find((p) => p.root === `${appDir}/lib`);
+  if (!appRoot) {
+    coverageLost(`the e2e app ${appDir} is not one of the scanned roots`, 'R3 reads its gated call sites from that root.');
+  }
+  const suiteKeys = keysIn(suiteCode);
+  const before = driven.length;
+  for (const file of [...new Set(appRoot.sites.map((s) => s.file))].sort()) {
+    const shared = [...keysIn(appRoot.read.get(file))].filter((k) => suiteKeys.has(k)).sort();
+    if (shared.length) {
+      driven.push({ file, appDir, suiteRel, suiteCode, workflowRel, workflowCode, sites: appRoot.sites.filter((s) => s.file === file), keys: shared });
+    }
+  }
+  if (driven.length === before) {
+    coverageLost(
+      `R3 found no captcha-gated call site that ${suiteRel} drives`,
+      'The suite signs in and submits the login form through a gated surface, so zero means the E2EKeys',
+      'match stopped matching — not that no leg of the golden path reaches a gate.',
+    );
+  }
 }
 const declaredSurfaces = Array.isArray(legRegister?.captchaGatedSurfaces?.surfaces)
   ? legRegister.captchaGatedSurfaces.surfaces
   : [];
-const routeRuns = (script) =>
-  new RegExp(`\\bnode\\s+${script.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|$)`, 'm').test(e2eWorkflowCode);
+const routeRuns = (script, workflowCode) =>
+  new RegExp(`\\bnode\\s+${script.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|$)`, 'm').test(workflowCode);
 for (const d of driven) {
+  const { suiteRel, suiteCode, workflowRel } = d;
   const where = `${d.file}:${d.sites[0].line} (${[...new Set(d.sites.map((s) => s.method))].join(', ')})`;
   const entry = declaredSurfaces.find((e) => e?.file === d.file);
   if (!entry) {
@@ -459,8 +475,8 @@ for (const d of driven) {
   } else if (/\.mjs$/.test(route)) {
     if (!existsSync(join(REPO, route))) {
       problems.push(`[R3] ${where}: the headless route ${route} does not exist.`);
-    } else if (!routeRuns(route)) {
-      problems.push(`[R3] ${where}: the headless route ${route} exists, and ${e2eWorkflowRel} never runs it.`);
+    } else if (!routeRuns(route, d.workflowCode)) {
+      problems.push(`[R3] ${where}: the headless route ${route} exists, and ${workflowRel} never runs it.`);
     }
   } else if (!suiteCode.includes(route)) {
     problems.push(`[R3] ${where}: the headless route ${JSON.stringify(route)} does not resolve in ${suiteRel} (comment-stripped).`);
@@ -508,7 +524,7 @@ if (problems.length) {
   }
   console.log(
     `ok   R3 — ${driven.length} captcha-gated surface(s) the e2e suite drives, each naming its headless route: ` +
-      driven.map((d) => `${d.file.slice(`${e2eApp}/lib/`.length)} → ${declaredSurfaces.find((e) => e.file === d.file).headlessRoute}`).join('; '),
+      driven.map((d) => `${d.file.slice(`${d.appDir}/lib/`.length)} → ${declaredSurfaces.find((e) => e.file === d.file).headlessRoute}`).join('; '),
   );
   console.log('\nassert-captcha-gated-call-sites: ok');
 }

@@ -53,6 +53,7 @@ import { KILL_MS, runBounded } from './fixtures/silent-server.mjs';
 // fail, the new names do not exist yet, and a named import would refuse the
 // whole module instead of letting each case show what it catches.
 import * as monitor from '../../ops/check-prod-provenance.mjs';
+import { databaseSources } from '../migration-tables.mjs';
 
 const { collectPaged, CouldNotLook, formatWalk, WALK_ATTEMPTS, WALK_PAUSE_MS, POINT_READ_CAP } = monitor;
 
@@ -323,6 +324,9 @@ describe('the point read — a callee lane is looked up in its caller\'s runs', 
       cpSync(join(REPO, f), join(root, f));
     }
     cpSync(join(REPO, 'services/platform/migrations'), join(root, 'services/platform/migrations'), { recursive: true });
+    // ⏱ 2026-09-26 — the monitor derives its databases from the platform register and each Worker's
+    // wrangler config, and enumerates every one of them (O-PROVENANCE-WALKS-ONE-DATABASE).
+    for (const rel of databaseSources(REPO)) cpSync(join(REPO, rel), join(root, rel), { recursive: true });
     cpSync(join(REPO, 'services/platform/src'), join(root, 'services/platform/src'), { recursive: true });
     for (const e of readdirSync(join(REPO, 'apps'), { withFileTypes: true })) {
       const src = join(REPO, 'apps', e.name, 'pubspec.yaml');

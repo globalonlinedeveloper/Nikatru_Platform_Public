@@ -16,13 +16,14 @@
 //      must be unresolvable (404). A 200 means the login still works, which is
 //      the 502 case the platform route is written to report and the one thing a
 //      user is told is impossible.
-//   B. THE APP'S ROWS — live D1 (subscriptiontracker_db), through the same Cloudflare HTTP API
-//      `verify_row.mjs` uses. Every user-owned table must hold ZERO rows for the
-//      deleted id.
+//   B. THE APP'S ROWS — live D1 (the database the app's Worker binds as
+//      APP_DB), through the same Cloudflare HTTP API `verify_row.mjs` uses.
+//      Every user-owned table must hold ZERO rows for the deleted id.
 //
 // ── THE TABLE SET IS DERIVED, NEVER LISTED ──────────────────────────────────
-// 🔴 `purge.mjs` carries `['payment_history', 'subscriptions', 'budget_categories',
-// 'budgets']` — a hand list, correct today. A verifier built on a hand list
+// 🔴 `purge.mjs` deletes from the leg register's `apps.<id>.userTables`
+// (subscriptiontracker: payment_history, subscriptions, budget_categories,
+// budgets) — a hand list, correct today. A verifier built on a hand list
 // checks the tables somebody remembered, so the day a migration adds a
 // user-owned table this file would report "fully purged" over rows it never
 // looked at, and would go on doing so forever. So the SCHEMA answers: the same
@@ -68,9 +69,12 @@
 //         any request. Never defaulted: the two answers expect opposite outcomes.
 //
 // Env: E2E_DELETE_USER_ID, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
-//      CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, SUBSCRIPTIONTRACKER_D1_DATABASE_ID,
-//      E2E_WORKERS_TRUST (written to $GITHUB_ENV by e2e.yml's step "Derive what
-//      this run expects")
+//      CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, E2E_APP_ID,
+//      E2E_WORKERS_TRUST (written to $GITHUB_ENV by e2e.yml's step "Derive
+//      what this run expects"). The database audited is the one the app's
+//      Worker binds as APP_DB, resolved from E2E_APP_ID by
+//      tooling/e2e/backend.mjs; a refusal is COULD NOT LOOK (exit 2) before
+//      any request.
 // NOTE: CLOUDFLARE_API_TOKEN needs D1 READ access for this account.
 // ─────────────────────────────────────────────────────────────────────────────
 import {
@@ -81,6 +85,7 @@ import {
   purgedSummary,
   say,
 } from './auth_target_expectation.mjs';
+import { backendOf, BackendRefused, D1_DATABASE_ID } from './backend.mjs';
 
 /** The route whose EFFECT this file audits — the in-app "Delete account" tap
  *  reaches the shared platform Worker's `DELETE /v1/account`, which sweeps
@@ -98,8 +103,23 @@ const userId = need('E2E_DELETE_USER_ID');
 const supaUrl = need('SUPABASE_URL').replace(/\/+$/, '');
 const serviceKey = need('SUPABASE_SERVICE_ROLE_KEY');
 const acct = need('CLOUDFLARE_ACCOUNT_ID');
-const dbId = need('SUBSCRIPTIONTRACKER_D1_DATABASE_ID');
+const appId = need('E2E_APP_ID');
 const token = need('CLOUDFLARE_API_TOKEN');
+let dbId;
+try {
+  dbId = backendOf(appId).appDb;
+} catch (e) {
+  if (!(e instanceof BackendRefused)) throw e;
+  console.error(`COULD NOT LOOK: ${e.message}`);
+  process.exit(2); // safe: this runs BEFORE any fetch, so no undici handle is open
+}
+const appDbName = `${appId}'s APP_DB`;
+// ⏱ 2026-09-26 · CodeQL #467: held to the D1 id shape again HERE, at the request's own file, because the value
+// was read from a wrangler file; backendOf() already refuses any other shape, and this keeps the sink self-evidently safe.
+if (!D1_DATABASE_ID.test(dbId)) {
+  console.error(`COULD NOT LOOK: ${appDbName}'s database_id is not a D1 id (a UUID); refusing to put it in a request URL.`);
+  process.exit(2); // safe: this runs BEFORE any fetch, so no undici handle is open
+}
 
 const auth = decideTrust(process.env.E2E_WORKERS_TRUST);
 if (!auth.trust) {
@@ -109,7 +129,7 @@ if (!auth.trust) {
 
 console.log(
   `Auditing the effect of DELETE ${ERASURE_ROUTE} for user ${userId} — ` +
-    'the identity record and every user-owned row in subscriptiontracker_db.',
+    `the identity record and every user-owned row in ${appDbName}.`,
 );
 console.log(expectationLine('verify_purged', auth.trust));
 
@@ -171,14 +191,14 @@ if (tables === null) {
   // "0 rows, all clear". The erasure route itself refuses (503) on exactly this
   // condition for the mirror-image reason.
   console.error(
-    'COULD NOT LOOK: no user-owned table was found in subscriptiontracker_db, so this audit would report ' +
+    `COULD NOT LOOK: no user-owned table was found in ${appDbName}, so this audit would report ` +
       '"nothing survived" without reading a single row. The route derives its DELETE targets from ' +
       'the same query, so an empty set here means the derivation is broken, not that the database ' +
       'is clean.',
   );
   worse(2);
 } else {
-  console.log(`Schema-derived user-owned tables in subscriptiontracker_db: ${tables.join(', ')}`);
+  console.log(`Schema-derived user-owned tables in ${appDbName}: ${tables.join(', ')}`);
   for (const table of tables) {
     // eslint-disable-next-line no-await-in-loop
     const rows = await countFor(table);

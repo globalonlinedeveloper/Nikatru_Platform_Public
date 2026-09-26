@@ -54,6 +54,10 @@
       "property": "workflow-scan"
     },
     {
+      "path": "tooling/ci/assert-artifact-signed-apple.mjs",
+      "property": "workflow-scan"
+    },
+    {
       "path": "tooling/ci/assert-channel-register.mjs",
       "property": "refuses-blind",
       "evidence": "and the lane scan resolved NO emitted format for any of",
@@ -322,6 +326,11 @@
       "path": "tooling/scripts/guard-sweep.mjs",
       "property": "workflow-scan",
       "reads": "every tooling/ci invocation and its arguments"
+    },
+    {
+      "path": "tooling/scripts/preflight.mjs",
+      "property": "workflow-scan",
+      "reads": "ci.yml's ci-gate needs list, for the NOT CI-GATE line (--smoke and the full run)"
     }
   ],
   "_resolves": [

@@ -148,7 +148,7 @@ jobs:
       - name: Prepare the AppImage signing key
         env:
           APPIMAGE_SIGNING_KEY_B64: ${{ secrets.APPIMAGE_SIGNING_KEY_B64 }}
-        run: node tooling/ci/appimage-signing.mjs --app ${{ matrix.app }}
+        run: node tooling/ci/appimage-signing.mjs --app ${{ matrix.app }} --channel linux-appimage
       - name: Generate the snapcraft recipe
         run: >
           node tooling/release/generate-snapcraft.mjs
@@ -167,7 +167,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: node tooling/ci/android-signing.mjs --app ${{ matrix.app }}
+        run: node tooling/ci/android-signing.mjs --app ${{ matrix.app }} --channel android-play
       # why: these three Android builds also run on every PR as ci.yml android-artifacts; built-artifact-pr-lane.test.mjs holds the copies equal.
       - name: Build android (apk — sideloadable build proof)
         working-directory: apps/${{ matrix.app }}
@@ -216,13 +216,8 @@ jobs:
           set -euo pipefail
           scratch="${RUNNER_TEMP}/apps-gov-in-signing.env"
           : > "$scratch"
-          env -u GITHUB_REF -u GITHUB_WORKFLOW_REF -u GITHUB_ENV \
-            ANDROID_KEYSTORE_BASE64="$APPSGOVIN_KEYSTORE_BASE64" \
-            ANDROID_KEYSTORE_PASSWORD="$APPSGOVIN_KEYSTORE_PASSWORD" \
-            ANDROID_KEY_ALIAS="$APPSGOVIN_KEY_ALIAS" \
-            ANDROID_KEY_PASSWORD="$APPSGOVIN_KEY_PASSWORD" \
-            node tooling/ci/android-signing.mjs --app "$APP" \
-              --out "${RUNNER_TEMP}/apps-gov-in-key" --github-env "$scratch"
+          node tooling/ci/android-signing.mjs --app "$APP" --channel apps-gov-in \
+            --out "${RUNNER_TEMP}/apps-gov-in-key" --github-output "$scratch"
           posture="$(sed -n 's/^ANDROID_SIGNING_POSTURE=//p' "$scratch")"
           keystore="$(sed -n 's/^ANDROID_KEYSTORE_PATH=//p' "$scratch")"
           rm -f "$scratch"
@@ -714,7 +709,10 @@ jobs:
           APPLE_PROVISIONING_PROFILES_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILES_BASE64 }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_INSTALLER_CERT_P12_BASE64: ${{ secrets.APPLE_INSTALLER_CERT_P12_BASE64 }}
-        run: node tooling/ci/apple-signing.mjs --app ${{ matrix.app }}
+        # why: both rows by name — ONE identity signs the .ipa and the .pkg, so
+        # an arming of either makes a tag push fatal. Naming them here is what a
+        # later per-channel job narrows; absent, the script reads both anyway.
+        run: node tooling/ci/apple-signing.mjs --app ${{ matrix.app }} --channel ios-appstore --channel macos-appstore
       # why: the Flutter templates ship AUTOMATIC signing with an empty team, and
       # automatic signing asks Apple for a profile at build time — the one thing
       # `apple-signing.mjs` refuses on purpose (see the box on exportOptionsPlist).
@@ -923,99 +921,20 @@ jobs:
       # repository keeps hitting. Nothing below trusts an exit code: each check
       # reads the SIGNATURE back out of the bytes that will be uploaded.
       #
-      # An .ipa is a ZIP — `codesign` cannot read one, so it is unzipped and the
-      # payload bundle is what gets verified. The embedded profile is decoded with
-      # `security cms -D` and its bundle id compared to the one the register
-      # declares; a build signed by the right key against the wrong profile is
-      # accepted by codesign and refused at upload, so the profile is checked
-      # separately from the signature. `set -o pipefail` is why `grep -q` failing
-      # is fatal here rather than merely quiet.
+      # ⏱ CHANGED 2026-09-25 (O-APPLE-PROVER-SKIPS-THE-PKG): the inline shell that
+      # stood here is now assert-artifact-signed-apple.mjs's archive limbs. The
+      # guard unzips the .ipa and expands the .pkg, and holds each wrapped .app to
+      # named limbs: identity, verify-strict, profile, entitlements and
+      # info-plist, plus the .pkg's own pkgutil signature. The shell read the
+      # .pkg's signature and never opened it. The two paths are the register's
+      # signing.seam.artifactGlob; `assert-artifact-signed-apple.mjs --static` in
+      # ci.yml holds this step and the uploads below to them on every PR.
       - name: PROVE the .ipa and .pkg are real and signed
         if: env.APPLE_SIGNING_POSTURE == 'release-signed'
-        working-directory: apps/${{ matrix.app }}
-        run: |
-          set -euo pipefail
-          ipa="$(find build/ios/ipa -maxdepth 1 -name '*.ipa' | head -1)"
-          [ -n "$ipa" ] || { echo "::error title=ipa::no .ipa was produced"; exit 1; }
-          [ -s "$ipa" ] || { echo "::error title=ipa::the .ipa is empty"; exit 1; }
-          echo "ipa: $ipa ($(stat -f%z "$ipa") bytes)"
-
-          rm -rf "$RUNNER_TEMP/ipa-check" && mkdir -p "$RUNNER_TEMP/ipa-check"
-          unzip -q "$ipa" -d "$RUNNER_TEMP/ipa-check"
-          payload="$(find "$RUNNER_TEMP/ipa-check/Payload" -maxdepth 1 -name '*.app' | head -1)"
-          [ -n "$payload" ] || { echo "::error title=ipa::the .ipa has no Payload/*.app"; exit 1; }
-
-          echo "::group::codesign -dv --verbose=4 (the .ipa payload)"
-          codesign -dv --verbose=4 "$payload" 2>&1 | tee "$RUNNER_TEMP/ipa-codesign.txt"
-          echo "::endgroup::"
-          grep -q "^Authority=${APPLE_DIST_IDENTITY}$" "$RUNNER_TEMP/ipa-codesign.txt" \
-            || { echo "::error title=ipa::the payload's leaf Authority is not \"${APPLE_DIST_IDENTITY}\""; exit 1; }
-          grep -q "^TeamIdentifier=${APPLE_TEAM_ID}$" "$RUNNER_TEMP/ipa-codesign.txt" \
-            || { echo "::error title=ipa::the payload carries no TeamIdentifier=${APPLE_TEAM_ID}"; exit 1; }
-          codesign --verify --strict "$payload"
-
-          [ -f "$payload/embedded.mobileprovision" ] \
-            || { echo "::error title=ipa::the payload has no embedded.mobileprovision"; exit 1; }
-          security cms -D -i "$payload/embedded.mobileprovision" > "$RUNNER_TEMP/embedded.plist"
-          echo "::group::the embedded provisioning profile"
-          /usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/embedded.plist"
-          /usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$RUNNER_TEMP/embedded.plist"
-          /usr/libexec/PlistBuddy -c 'Print :ExpirationDate' "$RUNNER_TEMP/embedded.plist"
-          echo "::endgroup::"
-          appid="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$RUNNER_TEMP/embedded.plist")"
-          # why: DERIVED, NOT SPELT. `matrix.app` is the slug and architecture
-          # §24 defines the identity as `com.nikatru.<slug>` - the same rule
-          # assert-store-identity.mjs:63 enforces across gradle, pbxproj and
-          # xcconfig. Writing the id out here would either assert an id the app
-          # has stopped building under, or be rewritten by the next rename and
-          # stop being an independent statement about the PROFILE.
-          #
-          # ⚠️ A BUNDLE ID CHANGE NEEDS A NEW PROFILE FROM THE APPLE ACCOUNT.
-          # A provisioning profile is issued against one App ID, so this check
-          # fails - correctly and loudly - from the moment the slug moves until
-          # a profile for the new id is issued and the secret replaced. That is
-          # account-side work, not a repo edit.
-          want="${APPLE_TEAM_ID}.com.nikatru.${{ matrix.app }}"
-          [ "$appid" = "$want" ] \
-            || { echo "::error title=ipa::embedded profile is for \"$appid\", not \"$want\""; exit 1; }
-
-          # why: EVERY ENTITLEMENT THE APP DECLARES MUST BE IN THE SIGNATURE AND IN
-          # THE EMBEDDED PROFILE. A key the app declares but the profile lacks is a
-          # distribution rejection; a key the profile carries but the signature
-          # lost is a capability that silently answers "not entitled" on device
-          # ([ADR 082] §5: Declared Age Range then throws and the age gate reads no
-          # signal). Derived from the app's own ios/Runner/Runner.entitlements, so
-          # an app that declares nothing asserts nothing here.
-          ent="ios/Runner/Runner.entitlements"
-          if [ -f "$ent" ]; then
-            codesign -d --entitlements - --xml "$payload" > "$RUNNER_TEMP/ipa-entitlements.plist"
-            keys="$(/usr/libexec/PlistBuddy -c 'Print' "$ent" | sed -n 's/^    \([^ ]*\) = .*$/\1/p')"
-            [ -n "$keys" ] || { echo "::error title=ipa::$ent declares no key this step could read"; exit 1; }
-            echo "::group::declared entitlements, in the signature and the embedded profile"
-            for key in $keys; do
-              signed="$(/usr/libexec/PlistBuddy -c "Print :$key" "$RUNNER_TEMP/ipa-entitlements.plist" 2>/dev/null)" \
-                || { echo "::error title=ipa::the signed app lacks declared entitlement $key"; exit 1; }
-              profiled="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:$key" "$RUNNER_TEMP/embedded.plist" 2>/dev/null)" \
-                || { echo "::error title=ipa::the embedded profile lacks declared entitlement $key"; exit 1; }
-              echo "$key signature=$signed profile=$profiled"
-            done
-            echo "::endgroup::"
-          fi
-
-          pkg="build/macos/pkg/${{ matrix.app }}.pkg"
-          [ -s "$pkg" ] || { echo "::error title=pkg::the .pkg is missing or empty"; exit 1; }
-          echo "pkg: $pkg ($(stat -f%z "$pkg") bytes)"
-          echo "::group::pkgutil --check-signature"
-          pkgutil --check-signature "$pkg" 2>&1 | tee "$RUNNER_TEMP/pkg-sig.txt"
-          echo "::endgroup::"
-          grep -q "signed by a developer certificate issued by Apple" "$RUNNER_TEMP/pkg-sig.txt" \
-            || { echo "::error title=pkg::pkgutil does not report an Apple-issued signature"; exit 1; }
-          grep -qF "$APPLE_INSTALLER_IDENTITY" "$RUNNER_TEMP/pkg-sig.txt" \
-            || { echo "::error title=pkg::the .pkg is not signed by \"$APPLE_INSTALLER_IDENTITY\""; exit 1; }
-
-          echo "::group::codesign -dv --verbose=4 (the .app the .pkg wraps)"
-          codesign -dv --verbose=4 build/macos/Build/Products/Release/*.app 2>&1
-          echo "::endgroup::"
+        run: >
+          node tooling/ci/assert-artifact-signed-apple.mjs
+          apps/${{ matrix.app }}/build/ios/ipa/*.ipa
+          apps/${{ matrix.app }}/build/macos/pkg/*.pkg
       - name: The iOS bundle is signed by the identity this lane intended
         if: env.APPLE_SIGNING_POSTURE != 'release-signed'
         run: >

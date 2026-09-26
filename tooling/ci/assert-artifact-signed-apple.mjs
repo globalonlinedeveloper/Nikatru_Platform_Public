@@ -40,18 +40,52 @@
 //      step that arranges a thing and then reports its own success is the "green
 //      means ran" failure with extra stages.
 //
+// ── THE TWO ARCHIVES (⏱ 2026-09-25, O-APPLE-PROVER-SKIPS-THE-PKG) ────────────
+//   `codesign` reads a CODE OBJECT, and an `.ipa` (a ZIP) or a `.pkg` (an
+//   installer archive) is not one. Until today both were refused by name and
+//   the release-signed .ipa and .pkg were graded only by inline shell in
+//   build-platforms.yml's PROVE step. The guard now opens them itself, through
+//   the same `run(cmd, args)` seam as every other tool call, and runs the .app
+//   limbs on the bundle inside. Each moved shell check is a named limb; all but
+//   info-plist run only on a release-signed run, where an identity was arranged:
+//     · ipa-payload     `unzip` the .ipa; it must hold a Payload/*.app.
+//     · pkg-signature   `pkgutil --check-signature`: an Apple-issued certificate,
+//                       and APPLE_INSTALLER_IDENTITY.
+//     · pkg-payload     `pkgutil --expand-full`; the .pkg must wrap a .app.
+//     · identity        the wrapped .app's Authority chain names
+//                       APPLE_DIST_IDENTITY.
+//     · verify-strict   `codesign --verify --strict` on the wrapped .app.
+//     · profile         the embedded profile's application-identifier is
+//                       `<APPLE_TEAM_ID>.<bundleIdOf(apple-provisioning.json, slug)>`.
+//                       Decoded by `security cms -D` (the envelope gate), then
+//                       read in-process by parseMobileProvision (the comparison).
+//                       ⚠️ A profile is issued against one App ID, so a bundle
+//                       id change fails this limb until the Apple account
+//                       issues a profile for the new id and the secret is
+//                       replaced. That is account-side work, not a repo edit.
+//     · entitlements    every key the app's entitlements file declares is in the
+//                       signature; on iOS it must be in the profile too, and on
+//                       macOS every key outside com.apple.security.* must be.
+//                       A key the profile lacks is a distribution rejection; a
+//                       key the signature lost answers "not entitled" on device
+//                       ([ADR 082] §5: Declared Age Range then throws and the
+//                       age gate reads no signal).
+//     · info-plist      assert-built-info-plist.mjs on the wrapped .app.
+//   The archive's channel row is the one whose signing.seam.artifactGlob the
+//   path matches, and the app slug is that glob's first `*`.
+//   ⚠️ The .pkg layout `pkgutil --expand-full` writes (`Payload/*.app`, or
+//   `<component>.pkg/Payload/*.app`) is SYNTHETIC in the tests
+//   (test/fixtures/apple-pkg-synthetic/): no .pkg has been expanded by this
+//   guard on a real host yet.
+//
 // ── ⚠️ WHAT THIS GUARD CANNOT SEE, stated so green is not mistaken for safe ──
-//   · It reads a CODE OBJECT: a `.app` bundle or a Mach-O binary. An `.ipa` is a
-//     ZIP and a `.pkg` is an installer archive; `codesign` cannot read either,
-//     and pointing this guard at one would report UNSIGNED for a correctly
-//     signed app. Both are REFUSED BY NAME rather than reported as unsigned —
-//     "the tool cannot read this" and "this file is not signed" must never be
-//     the same outcome. Unzip the .ipa and pass `Payload/<App>.app`; check a
-//     .pkg with `pkgutil --check-signature`, which is a different guard nobody
-//     has needed yet because no lane produces a .pkg.
-//   · It does not run `codesign --verify`. That answers "do the sealed resources
-//     still hash correctly", which is a different question from "who signed
-//     this", and adding it here would mean one exit code for two questions.
+//   · A `.zip` or a `.dmg` is still refused by name, never reported as unsigned
+//     — "the tool cannot read this" and "this file is not signed" must never be
+//     the same outcome.
+//   · On a bare .app it does not run `codesign --verify`. That answers "do the
+//     sealed resources still hash correctly", which is a different question from
+//     "who signed this". The archive limbs run it on the wrapped bundle, where
+//     the inline PROVE shell ran it before; its failure is its own named problem.
 //   · It says nothing about whether App Store Connect will ACCEPT the build. It
 //     answers one question — which identity signed this — and leaves
 //     entitlements, version strings and review policy to the guards that own them.
@@ -65,19 +99,31 @@
 //     ⏱ CORRECTED 2026-09-24: those fixtures were HAND-WRITTEN, never captured; the captured ones are test/fixtures/apple-run-35741818599/.
 //
 // Usage:
-//   node tooling/ci/assert-artifact-signed-apple.mjs [--repo-root <path>] <bundle>…
+//   node tooling/ci/assert-artifact-signed-apple.mjs [--repo-root <path>] <.app | .ipa | .pkg>…
+//   node tooling/ci/assert-artifact-signed-apple.mjs [--repo-root <path>] --static
+//     (reads build-platforms.yml and the register only — no env, no codesign,
+//     any platform; the three limbs are described above `staticProblems`)
 // Env in: APPLE_SIGNING_POSTURE (required — exported by
 //         tooling/ci/apple-signing.mjs; the guard refuses to run without it)
 //         APPLE_TEAM_ID (required when the posture is release-signed — THE team
 //         pin, exported by the same step; the guard refuses to run without it)
+//         APPLE_DIST_IDENTITY, APPLE_INSTALLER_IDENTITY (the archive limbs
+//         `identity` and `pkg-signature`; exported by the same step, and the
+//         archive limbs refuse a release-signed run without them)
+//         RUNNER_TEMP (where an archive is opened; the OS temp dir otherwise)
 // Exit 0 = the bundle is signed by the identity this lane intended. 1 = it is not.
 //      2 = COVERAGE LOST — the question could not be asked.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, mkdtempSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { join, resolve, dirname, isAbsolute } from 'node:path';
+import { join, resolve, dirname, isAbsolute, relative } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { whatToolReturned } from './tool-output.mjs';
+import { parseMobileProvision } from './apple-signing.mjs';
+import { REGISTER as PROVISIONING_REGISTER, bundleIdOf } from './apple-provisioning.mjs';
+import { parseWorkflow, workflowSteps } from './workflow-scan.mjs';
+import { listDir } from './tree-walk.mjs';
 
 export const REGISTER = 'tooling/channel-register.json';
 export const CHANNEL_IDS = ['ios-appstore', 'macos-appstore'];
@@ -104,14 +150,104 @@ export const WRONG_KIND = Object.freeze([
   ['Developer ID Application:', 'a DIRECT-DISTRIBUTION certificate — it is for apps shipped outside the store and notarized, and the App Store rejects it'],
 ]);
 
-/** Bundle suffixes `codesign` cannot read. Refused by name; see the header. */
-export const UNREADABLE_SUFFIXES = Object.freeze(['.ipa', '.pkg', '.zip', '.dmg']);
+/** Bundle suffixes `codesign` cannot read and this guard does not open. Refused
+ *  by name; see the header. ⏱ 2026-09-25: `.ipa` and `.pkg` left this list for
+ *  ARCHIVE_SUFFIXES. */
+export const UNREADABLE_SUFFIXES = Object.freeze(['.zip', '.dmg']);
+
+/** The archives this guard opens, and the .app limbs then run on what is inside. */
+export const ARCHIVE_SUFFIXES = Object.freeze(['.ipa', '.pkg']);
 
 /** Pure so it is testable off macOS, where the loop that calls it cannot run.
  *  Returns the offending suffix or null. */
 export function unreadableSuffix(rel) {
   const lower = String(rel).toLowerCase();
   return UNREADABLE_SUFFIXES.find((s) => lower.endsWith(s)) ?? null;
+}
+
+/** `.ipa`, `.pkg`, or null for anything this guard hands straight to codesign. */
+export function archiveKind(rel) {
+  const lower = String(rel).toLowerCase();
+  return ARCHIVE_SUFFIXES.find((s) => lower.endsWith(s)) ?? null;
+}
+
+/** The Apple row whose `signing.seam.artifactGlob` a repo-relative archive path
+ *  matches, and the app slug that glob's first `*` stands for. Null when no row's
+ *  glob matches — an archive at a path the register does not declare. */
+export function archiveRow(rows, rel) {
+  const path = String(rel).replace(/\\/g, '/');
+  for (const row of rows) {
+    const glob = row?.signing?.seam?.artifactGlob;
+    if (typeof glob !== 'string') continue;
+    const re = new RegExp(`^${glob.split('*').map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('([^/]+)')}$`);
+    const m = re.exec(path);
+    if (m) return { row, slug: m[1] };
+  }
+  return null;
+}
+
+/** The top-level keys of an XML plist's root dict — an entitlements file, or
+ *  `codesign -d --entitlements - --xml` output. Nested dicts are skipped. */
+export function plistTopKeys(xml) {
+  const text = String(xml ?? '');
+  const open = text.indexOf('<dict>');
+  if (open === -1) return [];
+  const keys = [];
+  let depth = 0;
+  const re = /<(\/?)(dict|key)>([^<]*)/g;
+  re.lastIndex = open;
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    if (m[2] === 'dict') depth += m[1] ? -1 : 1;
+    else if (!m[1] && depth === 1) keys.push(m[3].trim());
+    if (depth === 0) break;
+  }
+  return keys;
+}
+
+/** The profile's Entitlements dict, as its top-level keys. */
+export function profileEntitlementKeys(xml) {
+  const text = String(xml ?? '');
+  const at = text.search(/<key>Entitlements<\/key>\s*<dict>/);
+  if (at === -1) return [];
+  return plistTopKeys(text.slice(text.indexOf('<dict>', at)));
+}
+
+/** The moved PROVE limbs' decisions, pure. `kind` is '.ipa' or '.pkg'. */
+export function entitlementProblems({ kind, rel, declared, signed, profiled }) {
+  const problems = [];
+  for (const key of declared) {
+    if (!signed.includes(key)) problems.push(`entitlements: ${rel}'s wrapped app lacks declared entitlement ${key} in its signature.`);
+    // A profile carries only the entitlements that need provisioning. On macOS the
+    // App Sandbox keys (com.apple.security.*) are signed in and never provisioned.
+    const provisioned = kind === '.ipa' || !key.startsWith('com.apple.security.');
+    if (provisioned && !profiled.includes(key)) problems.push(`entitlements: ${rel}'s embedded profile lacks declared entitlement ${key}.`);
+  }
+  return problems;
+}
+
+/** `pkgutil --check-signature` text → the S4 limb's problems. */
+export function pkgSignatureProblems({ rel, text, installerIdentity }) {
+  const problems = [];
+  if (!/signed by a developer certificate issued by Apple/.test(text)) {
+    problems.push(`pkg-signature: pkgutil does not report ${rel} as signed by a developer certificate issued by Apple.`);
+  }
+  if (installerIdentity && !text.includes(installerIdentity)) {
+    problems.push(`pkg-signature: ${rel} is not signed by "${installerIdentity}" (APPLE_INSTALLER_IDENTITY).`);
+  }
+  return problems;
+}
+
+/** The profile limb, pure: `profile` is parseMobileProvision's result. */
+export function profileProblems({ rel, profile, teamId, bundleId }) {
+  if (profile === null) return [`profile: ${rel}'s embedded profile has no plist this guard can read.`];
+  const want = teamId ? `${teamId}.${bundleId}` : null;
+  if (want !== null && profile.appIdentifier !== want) {
+    return [`profile: ${rel}'s embedded profile is for "${profile.appIdentifier}", not "${want}" (APPLE_TEAM_ID and the app's bundleId in tooling/apple-provisioning.json).`];
+  }
+  if (want === null && profile.bundleId !== bundleId) {
+    return [`profile: ${rel}'s embedded profile is for "${profile.bundleId}", not the row's "${bundleId}".`];
+  }
+  return [];
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -356,6 +492,176 @@ export function pinnedTeamId(register, channelIds = CHANNEL_IDS) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// --static — build-platforms.yml held to the register's Apple artifact globs
+// ═════════════════════════════════════════════════════════════════════════════
+// ⏱ ADDED 2026-09-25 (O-APPLE-PROVER-SKIPS-THE-PKG). The archive limbs above run
+// only in the bp step that proves a release-signed archive, and bp does not run
+// on a pull request. This mode reads no bundle and needs no Mac. It runs in
+// ci.yml on every PR and asks three questions of bp's text:
+//   · static-prove    some step runs this guard on each Apple row's
+//                     artifactGlob, with the glob's app `*` as `${{ matrix.app }}`;
+//   · static-upload   some actions/upload-artifact step uploads that same path;
+//   · static-posture  each such prover step carries no `if:`, or exactly
+//                     `env.APPLE_SIGNING_POSTURE == 'release-signed'`.
+// A register row with no artifactGlob, or a bp with no parsed step, is COVERAGE
+// LOST: each limb ranges over them, and over nothing each would pass.
+// LANE-BOUND: build-platforms.yml — --static grades the Apple build lane itself: both Apple rows of tooling/channel-register.json name .github/workflows/build-platforms.yml (job apple) as their lane.workflow, and it is the one workflow that builds, proves and uploads the .ipa and the .pkg; a second Apple lane in the register would have to be derived from lane.workflow here instead.
+
+export const BUILD_WORKFLOW = '.github/workflows/build-platforms.yml';
+export const PROVER = 'tooling/ci/assert-artifact-signed-apple.mjs';
+export const RELEASE_COND = `env.${POSTURE_ENV} == '${RELEASE_SIGNED}'`;
+
+/** The path bp names for a register glob: the glob's app `*` is the matrix's app. */
+export const workflowGlob = (glob) => String(glob).replace(/^apps\/\*\//, () => 'apps/${{ matrix.app }}/');
+
+/** `token` as one whitespace-delimited word of a command line. */
+const hasToken = (text, token) =>
+  new RegExp(`(^|\\s)${String(token).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|;|$)`).test(String(text ?? ''));
+
+/** An `if:` as the expression it evaluates: `${{ }}` removed, quotes and spacing normalised. Null stays null. */
+export const normaliseCond = (cond) =>
+  cond === null || cond === undefined
+    ? null
+    : String(cond).trim().replace(/^\$\{\{\s*([\s\S]*?)\s*\}\}$/, '$1').replace(/"/g, "'").replace(/\s+/g, ' ').trim();
+
+/**
+ * The three --static limbs. `rows` are the register's Apple rows, each with a
+ * `signing.seam.artifactGlob`; `steps` are bp's steps as
+ * `{ first, name, cond, run, uses, paths }` — `run` the step's logical command
+ * text or null, `uses` its action or null, `paths` its `path:` entries.
+ * Returns `{ problems, oks }`.
+ */
+export function staticProblems({ rows, steps }) {
+  const problems = [];
+  const oks = [];
+  const provers = steps.filter((s) => hasToken(s.run, PROVER));
+  const uploads = steps.filter((s) => /^actions\/upload-artifact@/.test(s.uses ?? ''));
+  for (const row of rows) {
+    const glob = row.signing.seam.artifactGlob;
+    const want = workflowGlob(glob);
+    const carrying = provers.filter((s) => hasToken(s.run, want));
+    if (carrying.length === 0) {
+      problems.push(
+        `static-prove · ${row.id}: no step in ${BUILD_WORKFLOW} runs ${PROVER} on ${want}. The register's ` +
+          `signing.seam.artifactGlob is ${glob}, so the archive this channel submits is never opened.`,
+      );
+    } else {
+      oks.push(`static-prove · ${row.id}: ${BUILD_WORKFLOW}:${carrying[0].first} runs the prover on ${want}`);
+    }
+    for (const s of carrying) {
+      const c = normaliseCond(s.cond);
+      if (c !== null && c !== RELEASE_COND) {
+        problems.push(
+          `static-posture · ${row.id}: ${BUILD_WORKFLOW}:${s.first} ${JSON.stringify(s.name ?? '(unnamed)')} runs the ` +
+            `prover on ${want} only when \`${s.cond}\`. The archives are built on ${RELEASE_COND}, so the step ` +
+            'carries that condition or none.',
+        );
+      }
+    }
+    const uploaded = uploads.find((s) => s.paths.includes(want));
+    if (uploaded === undefined) {
+      problems.push(
+        `static-upload · ${row.id}: no actions/upload-artifact step in ${BUILD_WORKFLOW} uploads ${want}, the path ` +
+          `the register's artifactGlob ${glob} names, so the archive the prover opens is not the one uploaded for submission.`,
+      );
+    } else {
+      oks.push(`static-upload · ${row.id}: ${BUILD_WORKFLOW}:${uploaded.first} uploads ${want}`);
+    }
+  }
+  return { problems, oks };
+}
+
+/** Each step of a parsed job with its `uses:` and its `path:` entries, the
+ *  `with:` keys workflowSteps does not read. A `path: |` block is one entry per line. */
+function stepsWithPaths(job) {
+  const at = new Map(job.lines.map((l, i) => [l.n, i]));
+  return workflowSteps(job).map((s) => {
+    const lines = job.lines.slice(at.get(s.first), at.get(s.last) + 1);
+    let uses = null;
+    const paths = [];
+    for (let i = 0; i < lines.length; i++) {
+      const u = lines[i].text.match(/^\s*(?:-\s+)?uses:\s*(\S+)/);
+      if (u) uses = u[1];
+      const p = lines[i].text.match(/^(\s*)path:\s*(.*?)\s*$/);
+      if (!p) continue;
+      if (/^[|>][-+]?$/.test(p[2])) {
+        for (let j = i + 1; j < lines.length; j++) {
+          const t = lines[j].text;
+          if (t.trim() === '') continue;
+          if (t.search(/\S/) <= p[1].length) break;
+          paths.push(t.trim());
+        }
+      } else if (p[2] !== '') {
+        paths.push(p[2].replace(/^(['"])(.*)\1$/, '$2'));
+      }
+    }
+    return { first: s.first, name: s.name, cond: s.cond, run: s.run?.text ?? null, uses, paths };
+  });
+}
+
+function staticCheck({ ROOT, log, error, coverageLost }) {
+  const registerAbs = join(ROOT, REGISTER);
+  if (!existsSync(registerAbs)) {
+    coverageLost([
+      `--static: ${REGISTER} does not exist under ${ROOT}.`,
+      'It names the path each Apple archive is written at; without it there is no path to hold bp to.',
+    ]);
+  }
+  let register;
+  try {
+    register = JSON.parse(readFileSync(registerAbs, 'utf8'));
+  } catch (e) {
+    coverageLost([`--static: ${REGISTER} is not valid JSON — ${e.message}`]);
+  }
+  const channels = Array.isArray(register?.channels) ? register.channels : [];
+  const rows = [];
+  for (const id of CHANNEL_IDS) {
+    const row = channels.find((c) => c?.id === id);
+    if (row === undefined) {
+      coverageLost([`--static: ${REGISTER} declares no "${id}" channel, so the path its archive is written at is unknown.`]);
+    }
+    const glob = row.signing?.seam?.artifactGlob;
+    if (typeof glob !== 'string' || glob === '') {
+      coverageLost([
+        `--static: ${REGISTER}'s "${id}" row has no signing.seam.artifactGlob, so there is no path to hold bp to.`,
+        'Reading it as nothing-to-check would pass a workflow that proves and uploads nothing.',
+      ]);
+    }
+    rows.push(row);
+  }
+
+  const parsed = parseWorkflow(ROOT, BUILD_WORKFLOW);
+  if (parsed === null) {
+    coverageLost([
+      `--static: ${BUILD_WORKFLOW} does not exist under ${ROOT}.`,
+      'It is the workflow that builds, proves and uploads the Apple archives.',
+    ]);
+  }
+  const steps = [...parsed.jobs.values()].flatMap((job) => stepsWithPaths(job));
+  if (steps.length === 0) {
+    coverageLost([
+      `--static: no step was parsed out of ${BUILD_WORKFLOW}.`,
+      'Every limb ranges over its steps, and over none each would pass.',
+    ]);
+  }
+
+  const { problems, oks } = staticProblems({ rows, steps });
+  for (const o of oks) log(`   ok ${o}`);
+  if (problems.length) {
+    error('');
+    for (const p of problems) error(`FAIL ${p}`);
+    error('\nassert-artifact-signed-apple --static: FAILED');
+    return 1;
+  }
+  log('');
+  log(
+    `assert-artifact-signed-apple --static: OK — ${rows.length} Apple row(s), ${steps.length} step(s) of ` +
+      `${BUILD_WORKFLOW} read; each artifactGlob is proven by ${PROVER} (under no \`if:\` or ${RELEASE_COND}) and uploaded.`,
+  );
+  return 0;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // THE IMPURE HALF — one injection seam, `main({ argv, env, platform, run })`
 // ═════════════════════════════════════════════════════════════════════════════
 // ⏱ 2026-09-24 (O-APPLE-GUARDS-PARSE-HAND-WRITTEN-OUTPUT, ADR 064): every tool
@@ -435,6 +741,9 @@ function check({ argv, env, platform, run, log, error }) {
   const ROOT = resolve(opt('repo-root') ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
   const artifacts = argv.filter((a, i) => !a.startsWith('--') && i !== rootValueIdx);
 
+  // --static reads text, not bundles: no posture, no codesign, any platform.
+  if (argv.includes('--static')) return staticCheck({ ROOT, log, error, coverageLost });
+
   // ── the posture this lane INTENDED ───────────────────────────────────────
   // Required, not defaulted. A default would make the most important comparison
   // in the file — intended vs actual — collapse into "actual vs actual" on
@@ -474,7 +783,7 @@ function check({ argv, env, platform, run, log, error }) {
     coverageLost([
       'no bundle path was given, so this guard evaluated nothing.',
       'A signature check over an empty set prints ok and is the single most repeated failure in this',
-      'repository. Pass the built .app (for an .ipa, the Payload/<App>.app inside it).',
+      'repository. Pass the built .app, the .ipa or the .pkg.',
     ]);
   }
 
@@ -549,15 +858,147 @@ function check({ argv, env, platform, run, log, error }) {
   let evaluated = 0;
   let teamChecked = 0;
   const unread = [];
+
+  /** The codesign read every bundle takes, bare or found inside an archive. */
+  const readSignature = (label, appAbs) => {
+    const args = codesignArgv(appAbs);
+    const r = run(args[0], args.slice(1));
+    // 🔬 BOTH STREAMS. `codesign -dv` writes its report to STDERR; a caller
+    // reading stdout alone gets "" and would fail every correct build.
+    const output = `${r.stdout ?? ''}${r.stderr ?? ''}`;
+    const parsed = parseCodesign(output);
+    if (parsed.unparseable) unread.push({ rel: label, r });
+    const v = verdict({ artifact: label, posture, parsed, pin: pinResult.pin, arrangedTeamId });
+    if (parsed.signed && !parsed.adhoc && !parsed.unparseable) {
+      log(`   ${label} · leaf ${JSON.stringify(leafAuthority(parsed))} · team ${parsed.teamId ?? '(none)'} · id ${parsed.identifier ?? '(none)'}`);
+    }
+    problems.push(...v.problems);
+    prints.push(...v.prints);
+    if (v.evaluated) evaluated++;
+    if (v.teamChecked) teamChecked++;
+    return { parsed, v };
+  };
+
+  // ── the archives: opened here, through `run` (O-APPLE-PROVER-SKIPS-THE-PKG) ──
+  const appleRows = Array.isArray(register?.channels) ? register.channels.filter((c) => CHANNEL_IDS.includes(c?.id)) : [];
+  const workRoot = (env.RUNNER_TEMP ?? '').trim() || tmpdir();
+  const distIdentity = (env.APPLE_DIST_IDENTITY ?? '').trim() || null;
+  const installerIdentity = (env.APPLE_INSTALLER_IDENTITY ?? '').trim() || null;
+  const BUILT_PLIST = join(dirname(fileURLToPath(import.meta.url)), 'assert-built-info-plist.mjs');
+  const toolLost = (limb, name, result) =>
+    coverageLost([
+      `${limb}: \`${name}\` could not be run, or refused the archive, so the bundle inside it was never read.`,
+      'This is the check being impossible, not the archive being fine.',
+      ...whatToolReturned({ name, path: result?.error ? null : name, result }),
+    ]);
+  const appsIn = (dir) =>
+    existsSync(dir) ? listDir(dir, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name.endsWith('.app')).map((e) => join(dir, e.name)) : [];
+
+  /** ipa-payload / pkg-signature / pkg-payload: the one wrapped .app, or null with the problem pushed. */
+  const openArchive = (kind, rel, abs) => {
+    const dest = mkdtempSync(join(workRoot, kind === '.ipa' ? 'ipa-check-' : 'pkg-check-'));
+    if (kind === '.ipa') {
+      const r = run('unzip', ['-q', abs, '-d', dest]);
+      if (r.error) toolLost('ipa-payload', 'unzip', r);
+      if (r.status !== 0) {
+        problems.push(`ipa-payload: ${rel} is not a readable zip (unzip exit ${r.status}).`);
+        return null;
+      }
+      const apps = appsIn(join(dest, 'Payload'));
+      if (apps.length !== 1) {
+        problems.push(`ipa-payload: ${rel} holds ${apps.length} Payload/*.app; exactly one is the bundle.`);
+        return null;
+      }
+      return apps[0];
+    }
+    const sig = run('pkgutil', ['--check-signature', abs]);
+    if (sig.error) toolLost('pkg-signature', 'pkgutil', sig);
+    problems.push(...pkgSignatureProblems({ rel, text: `${sig.stdout ?? ''}${sig.stderr ?? ''}`, installerIdentity }));
+    // `--expand-full` refuses a destination that exists, so it gets a fresh child.
+    const out = join(dest, 'expanded');
+    const r = run('pkgutil', ['--expand-full', abs, out]);
+    if (r.error || r.status !== 0) toolLost('pkg-payload', 'pkgutil --expand-full', r);
+    const components = existsSync(out)
+      ? listDir(out, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name.endsWith('.pkg')).map((e) => join(out, e.name, 'Payload'))
+      : [];
+    const apps = [join(out, 'Payload'), ...components].flatMap(appsIn);
+    if (apps.length !== 1) {
+      problems.push(`pkg-payload: ${rel} wraps ${apps.length} .app bundle(s) under Payload/; exactly one is the app.`);
+      return null;
+    }
+    return apps[0];
+  };
+
+  /** info-plist always; identity / verify-strict / profile / entitlements when a release identity was arranged. */
+  const wrappedAppLimbs = ({ kind, rel, appAbs, row, slug, parsed }) => {
+    if (posture === RELEASE_SIGNED) releaseLimbs({ kind, rel, appAbs, row, slug, parsed });
+    else prints.push(`${rel}: "${posture}" arranges no identity, so identity, verify-strict, profile and entitlements were not held — the signature verdict and the Info.plist were.`);
+
+    const plist = run(process.execPath, [BUILT_PLIST, '--app', slug, '--repo-root', ROOT, appAbs]);
+    if (plist.error || plist.status === 2) toolLost('info-plist', 'assert-built-info-plist.mjs', plist);
+    if (plist.status !== 0) {
+      const said = `${plist.stdout ?? ''}${plist.stderr ?? ''}`.trim().split(/\r?\n/).filter(Boolean).slice(0, 5);
+      problems.push(`info-plist: assert-built-info-plist.mjs refuses ${rel}'s wrapped app (exit ${plist.status}): ${said.join(' | ')}`);
+    }
+  };
+
+  const releaseLimbs = ({ kind, rel, appAbs, row, slug, parsed }) => {
+    if (distIdentity !== null && !parsed.authorities.includes(distIdentity)) {
+      problems.push(`identity: ${rel}'s wrapped app is not signed by "${distIdentity}" (APPLE_DIST_IDENTITY); its Authority chain is ${JSON.stringify(parsed.authorities)}.`);
+    }
+    const strict = run('codesign', ['--verify', '--strict', appAbs]);
+    if (strict.error) toolLost('verify-strict', 'codesign', strict);
+    if (strict.status !== 0) {
+      problems.push(`verify-strict: \`codesign --verify --strict\` rejects ${rel}'s wrapped app (exit ${strict.status}): ${String(strict.stderr ?? '').trim().split(/\r?\n/)[0]}`);
+    }
+
+    // The bundle id is the APP's (per slug), never one register literal shared by every app.
+    let bundleId;
+    try {
+      bundleId = bundleIdOf(JSON.parse(readFileSync(join(ROOT, PROVISIONING_REGISTER), 'utf8')), slug);
+    } catch (e) {
+      coverageLost([`profile: no bundle id for "${slug}" could be read from ${PROVISIONING_REGISTER}, so the profile in ${rel} has nothing to be compared with — ${e.message}`]);
+    }
+    const profilePath = kind === '.ipa' ? join(appAbs, 'embedded.mobileprovision') : join(appAbs, 'Contents', 'embedded.provisionprofile');
+    let profileText = '';
+    if (!existsSync(profilePath)) {
+      problems.push(`profile: ${rel}'s wrapped app has no ${kind === '.ipa' ? 'embedded.mobileprovision' : 'Contents/embedded.provisionprofile'}.`);
+    } else {
+      // The envelope gate: a bare plist named like a profile is not a profile Apple signed.
+      const cms = run('security', ['cms', '-D', '-i', profilePath]);
+      if (cms.error) toolLost('profile', 'security cms -D', cms);
+      if (cms.status !== 0) problems.push(`profile: ${rel}'s ${kind === '.ipa' ? 'embedded.mobileprovision' : 'Contents/embedded.provisionprofile'} is not a CMS envelope \`security cms -D\` can decode (exit ${cms.status}).`);
+      const bytes = readFileSync(profilePath);
+      profileText = bytes.toString('latin1');
+      const profile = parseMobileProvision(bytes);
+      // The three fields the inline PROVE shell printed with PlistBuddy, kept as diagnostics.
+      if (profile !== null) log(`   ${rel} · profile ${JSON.stringify(profile.name)} · ${profile.appIdentifier ?? '(no application-identifier)'} · expires ${profile.expires ?? '(none)'}`);
+      problems.push(...profileProblems({ rel, profile, teamId: arrangedTeamId, bundleId }));
+    }
+
+    const entRel = kind === '.ipa' ? `apps/${slug}/ios/Runner/Runner.entitlements` : `apps/${slug}/macos/Runner/Release.entitlements`;
+    if (!existsSync(join(ROOT, entRel))) {
+      prints.push(`entitlements: ${entRel} does not exist, so ${rel} was held to no declared entitlement — an app that declares none asserts none.`);
+    } else {
+      const declared = plistTopKeys(readFileSync(join(ROOT, entRel), 'utf8'));
+      if (declared.length === 0) {
+        problems.push(`entitlements: ${entRel} declares no key this guard could read.`);
+      } else {
+        const ent = run('codesign', ['-d', '--entitlements', '-', '--xml', appAbs]);
+        if (ent.error || ent.status !== 0) toolLost('entitlements', 'codesign -d --entitlements', ent);
+        problems.push(...entitlementProblems({ kind, rel, declared, signed: plistTopKeys(ent.stdout), profiled: profileEntitlementKeys(profileText) }));
+      }
+    }
+  };
+
   for (const rel of artifacts) {
     const abs = isAbsolute(rel) ? rel : join(ROOT, rel);
     const suffix = unreadableSuffix(rel);
     if (suffix !== null) {
       problems.push(
-        `${rel} is a ${suffix}, which \`codesign\` cannot read — it reads a code object (.app bundle or Mach-O ` +
-          'binary), and an archive reports as unsigned however well the app inside it is signed. Refused by name ' +
-          'rather than reported as unsigned: "the tool cannot read this" and "this is not signed" must not be the ' +
-          'same result. Unzip the .ipa and pass Payload/<App>.app.',
+        `${rel} is a ${suffix}, which \`codesign\` cannot read and this guard does not open — it reads a code ` +
+          'object (.app bundle or Mach-O binary), and opens an .ipa or a .pkg. Refused by name rather than reported ' +
+          'as unsigned: "the tool cannot read this" and "this is not signed" must not be the same result.',
       );
       continue;
     }
@@ -571,23 +1012,43 @@ function check({ argv, env, platform, run, log, error }) {
       continue;
     }
 
-    const args = codesignArgv(abs);
-    const r = run(args[0], args.slice(1));
-    // 🔬 BOTH STREAMS. `codesign -dv` writes its report to STDERR; a caller
-    // reading stdout alone gets "" and would fail every correct build.
-    const output = `${r.stdout ?? ''}${r.stderr ?? ''}`;
-    const parsed = parseCodesign(output);
-    if (parsed.unparseable) unread.push({ rel, r });
-    const v = verdict({ artifact: rel, posture, parsed, pin: pinResult.pin, arrangedTeamId });
-    if (parsed.signed && !parsed.adhoc && !parsed.unparseable) {
-      log(`   ${rel} · leaf ${JSON.stringify(leafAuthority(parsed))} · team ${parsed.teamId ?? '(none)'} · id ${parsed.identifier ?? '(none)'}`);
+    const kind = archiveKind(rel);
+    if (kind === null) {
+      const { v } = readSignature(rel, abs);
+      if (v.problems.length === 0 && v.prints.length === 0) {
+        log(`ok   ${rel} — distribution-signed by the pinned team`);
+      }
+      continue;
     }
-    problems.push(...v.problems);
-    prints.push(...v.prints);
-    if (v.evaluated) evaluated++;
-    if (v.teamChecked) teamChecked++;
-    if (v.problems.length === 0 && v.prints.length === 0) {
-      log(`ok   ${rel} — distribution-signed by the pinned team`);
+
+    const repoRel = (isAbsolute(rel) ? relative(ROOT, rel) : rel).replace(/\\/g, '/');
+    const hit = archiveRow(appleRows, repoRel);
+    if (hit === null) {
+      problems.push(
+        `${rel} is at no Apple row's signing.seam.artifactGlob ` +
+          `(${appleRows.map((c) => c.signing?.seam?.artifactGlob ?? `${c.id}: none`).join(', ')}). The row gives the bundle id ` +
+          'the embedded profile is held to, and an archive at an undeclared path is one no upload or submission reads.',
+      );
+      continue;
+    }
+    if (posture === RELEASE_SIGNED) {
+      const missing = [distIdentity === null && 'APPLE_DIST_IDENTITY', kind === '.pkg' && installerIdentity === null && 'APPLE_INSTALLER_IDENTITY'].filter(Boolean);
+      if (missing.length) {
+        coverageLost([
+          `${RELEASE_SIGNED} and ${missing.join(' and ')} ${missing.length > 1 ? 'are' : 'is'} empty, so ${rel} cannot be held to the identity that signed it.`,
+          'tooling/ci/apple-signing.mjs exports both beside APPLE_TEAM_ID; the inline PROVE shell this limb replaced',
+          'failed on an unset one too (`set -u`).',
+        ]);
+      }
+    }
+    const before = problems.length;
+    const appAbs = openArchive(kind, rel, abs);
+    if (appAbs === null) continue;
+    const label = `${rel} → ${relative(dirname(dirname(appAbs)), appAbs).replace(/\\/g, '/')}`;
+    const { parsed, v } = readSignature(label, appAbs);
+    wrappedAppLimbs({ kind, rel, appAbs, row: hit.row, slug: hit.slug, parsed });
+    if (problems.length === before && v.prints.length === 0) {
+      log(`ok   ${rel} — opened; the wrapped app is distribution-signed by the pinned team, and its profile, entitlements and Info.plist agree`);
     }
   }
 
@@ -631,7 +1092,7 @@ function check({ argv, env, platform, run, log, error }) {
       `${posture === UNSIGNED_PROOF ? ` (none — "${UNSIGNED_PROOF}" arranges no identity)` : ''}` +
       `${pinResult.pin !== null && arrangedTeamId !== null ? '; the register teamId agrees with it' : ''}`,
   );
-  log('   A code object only — an .ipa, .pkg, .zip or .dmg is refused by name, never read as unsigned.');
+  log('   An .ipa or .pkg is opened and its wrapped .app read; a .zip or .dmg is refused by name, never read as unsigned.');
   return 0;
 }
 

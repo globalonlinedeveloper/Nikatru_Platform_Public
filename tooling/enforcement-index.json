@@ -296,8 +296,7 @@
       ".github/workflows/submit-play.yml#submit",
       ".github/workflows/submit-snap.yml#dry-run",
       ".github/workflows/submit-snap.yml#submit",
-      ".github/workflows/submit-windows-store.yml#dry-run",
-      ".github/workflows/submit-windows-store.yml#submit"
+      ".github/workflows/submit-windows-store.yml#dry-run"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-app-versioning.mjs",
@@ -385,9 +384,12 @@
     "state": "WIRED"
   },
   {
-    "claims": [],
+    "claims": [
+      "ADR 082"
+    ],
     "invokedBy": [
-      ".github/workflows/build-platforms.yml#apple"
+      ".github/workflows/build-platforms.yml#apple",
+      ".github/workflows/ci.yml#workspace-gate"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-artifact-signed-apple.mjs",
@@ -400,8 +402,7 @@
     ],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#windows",
-      ".github/workflows/submit-windows-store.yml#dry-run",
-      ".github/workflows/submit-windows-store.yml#submit"
+      ".github/workflows/submit-windows-store.yml#dry-run"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-artifact-signed-msix.mjs",
@@ -2946,6 +2947,14 @@
     "claims": [],
     "invokedBy": [],
     "kind": "guard",
+    "ref": "tooling/ci/signing-seam.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
     "ref": "tooling/ci/single-threaded-relaunch.mjs",
     "references": [],
     "state": "LIBRARY"
@@ -3090,6 +3099,16 @@
     ],
     "kind": "script",
     "ref": "tooling/e2e/assert_one_issuer.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/e2e.yml#e2e"
+    ],
+    "kind": "script",
+    "ref": "tooling/e2e/backend.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -3457,11 +3476,9 @@
       ".github/workflows/build-platforms.yml#windows",
       ".github/workflows/submit-appstore.yml#dry-run",
       ".github/workflows/submit-play.yml#dry-run",
-      ".github/workflows/submit-play.yml#submit",
       ".github/workflows/submit-snap.yml#dry-run",
       ".github/workflows/submit-snap.yml#submit",
       ".github/workflows/submit-windows-store.yml#dry-run",
-      ".github/workflows/submit-windows-store.yml#submit",
       ".github/workflows/symbolication-proof.yml#prove"
     ],
     "kind": "script",

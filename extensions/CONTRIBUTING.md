@@ -219,7 +219,8 @@ about this file. Subtract this section before concluding anything from such a co
 rather than trusting these three numbers if the file has been edited since.
 
 `ref/pre-prune-2026-09-08:extensions/.githooks/pre-commit` refused a commit whose staged paths or staged diff looked like a credential (removed 2026-09-08 as inert; `scripts/secret-scan.mjs` and `tooling/ci/scan-secrets.mjs` are the live gates).
-`--no-verify` bypasses it, which is why it is a net rather than a permit.
+A hook runs only in a checkout that installed it, which is why it is a net rather than a permit;
+when one refuses, read the first FAIL line it prints and fix what it names.
 
 The hook is tracked as mode `100755`. If you ever re-add it from a filesystem that drops the
 executable bit (`git config core.filemode` is `false` on Windows), restore it with
