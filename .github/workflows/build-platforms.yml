@@ -360,27 +360,10 @@ jobs:
           node tooling/ci/assert-android-vapt-manifest.mjs
           apps/${{ matrix.app }}/build/app/outputs/flutter-apk/app-release.apk
           --app ${{ matrix.app }}
-      # why: pinned by version AND by digest, byte-identical to deploy-web.yml's
-      # step. The release asset is a GitLab JOB ARTIFACT, which is a re-runnable
-      # address rather than an immutable object — so the version alone is a
-      # label, and the digest is what makes it an address. Both halves live in
-      # tooling/versions.json.
+      # why: ONE code path on every lane (O-GLITCHTIP-CLI-INSTALLED-BY-HAND): the digest tooling/versions.json
+      # pins for this runner's OS, a bounded retry, and the binary's own --version held to the pin.
       - name: Install glitchtip-cli (pinned by version AND by digest)
-        run: |
-          set -euo pipefail
-          ver="$(node -p "require('./tooling/versions.json').glitchtip_cli")"
-          sum="$(node -p "require('./tooling/versions.json').glitchtip_cli_sha256")"
-          url="https://gitlab.com/glitchtip/glitchtip-cli/-/jobs/artifacts/v${ver}/raw/artifacts/glitchtip-cli-linux-x86_64?job=build-linux-x86_64"
-          curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
-            --output "${RUNNER_TEMP}/glitchtip-cli" "$url"
-          printf '%s  %s\n' "$sum" "${RUNNER_TEMP}/glitchtip-cli" | sha256sum --check --strict -
-          chmod +x "${RUNNER_TEMP}/glitchtip-cli"
-          got="$("${RUNNER_TEMP}/glitchtip-cli" --version)"
-          if [ "$got" != "glitchtip-cli ${ver}" ]; then
-            echo "::error title=glitchtip-cli::the pinned binary reports \"${got}\", not \"glitchtip-cli ${ver}\""
-            exit 1
-          fi
-          echo "$got"
+        run: node tooling/ci/install-pinned-tool.mjs glitchtip-cli --out "$RUNNER_TEMP"
       # why: FAILS CLOSED on a missing GLITCHTIP_TOKEN, never skips. The wrapper
       # exists because `debug-files upload` exits 0 over an empty directory, over
       # failed chunks and over an assembly that never completed — its header
@@ -604,31 +587,11 @@ jobs:
         run: >
           node tooling/ci/assert-artifact-shape.mjs
           --app ${{ matrix.app }} --platform windows
-      # why: pwsh rather than the linux lane's bash, and that is not a style
-      # choice — `$RUNNER_TEMP` on a Windows runner is a backslash path, and
-      # handing one to MSYS coreutils inside `shell: bash` is the class of bug
-      # this repository has already paid for. `Invoke-WebRequest` + `Get-FileHash`
-      # is the idiom submit-windows-store.yml's msstore-cli install already uses.
-      # The pin is read from tooling/versions.json at run time, both halves, the
-      # same way the linux lane reads its two.
+      # why: ONE code path on every lane (O-GLITCHTIP-CLI-INSTALLED-BY-HAND): the digest tooling/versions.json
+      # pins for this runner's OS, a bounded retry, and the binary's own --version held to the pin.
       - name: Install glitchtip-cli (pinned by version AND by digest)
         shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $ver = node -p "require('./tooling/versions.json').glitchtip_cli"
-          $sum = node -p "require('./tooling/versions.json').glitchtip_cli_windows_x86_64_sha256"
-          $url = "https://gitlab.com/glitchtip/glitchtip-cli/-/jobs/artifacts/v$ver/raw/artifacts/glitchtip-cli-windows-x86_64.exe?job=build-windows-x86_64"
-          $out = Join-Path $env:RUNNER_TEMP 'glitchtip-cli.exe'
-          Invoke-WebRequest -Uri $url -OutFile $out -MaximumRetryCount 3 -RetryIntervalSec 5
-          $got = (Get-FileHash -Algorithm SHA256 -Path $out).Hash.ToLower()
-          if ($got -ne $sum) {
-            Write-Error "glitchtip-cli digest mismatch: the download hashes to $got and tooling/versions.json declares $sum. A version names a release; the sha256 names the BYTES, and the asset is a GitLab JOB ARTIFACT URL, which is re-runnable. This refusal is the mechanism, not a gap in it."
-          }
-          $reported = & $out --version
-          if ($reported -ne "glitchtip-cli $ver") {
-            Write-Error "the pinned binary reports '$reported', not 'glitchtip-cli $ver'"
-          }
-          Write-Host $reported
+        run: node tooling/ci/install-pinned-tool.mjs glitchtip-cli --out "$env:RUNNER_TEMP"
       # why: FAILS CLOSED on a missing GLITCHTIP_TOKEN, never skips.
       # The wrapper exists because `debug-files upload` exits 0 over an empty
       # directory, over failed chunks and over an assembly that never completed —
@@ -953,26 +916,10 @@ jobs:
         run: >
           node tooling/ci/assert-artifact-shape.mjs
           --app ${{ matrix.app }} --platform apple
-      # why: `shasum -a 256`, not `sha256sum` — macOS ships the Perl `shasum` and
-      # does NOT ship coreutils' `sha256sum`, so the linux lane's line would fail
-      # here for a reason that has nothing to do with the digest. `--check
-      # --strict` is the same refusal either way.
+      # why: ONE code path on every lane (O-GLITCHTIP-CLI-INSTALLED-BY-HAND): the digest tooling/versions.json
+      # pins for this runner's OS, a bounded retry, and the binary's own --version held to the pin.
       - name: Install glitchtip-cli (pinned by version AND by digest)
-        run: |
-          set -euo pipefail
-          ver="$(node -p "require('./tooling/versions.json').glitchtip_cli")"
-          sum="$(node -p "require('./tooling/versions.json').glitchtip_cli_macos_arm64_sha256")"
-          url="https://gitlab.com/glitchtip/glitchtip-cli/-/jobs/artifacts/v${ver}/raw/artifacts/glitchtip-cli-macos-arm64?job=build-macos-arm64"
-          curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
-            --output "${RUNNER_TEMP}/glitchtip-cli" "$url"
-          printf '%s  %s\n' "$sum" "${RUNNER_TEMP}/glitchtip-cli" | shasum -a 256 --check --strict -
-          chmod +x "${RUNNER_TEMP}/glitchtip-cli"
-          got="$("${RUNNER_TEMP}/glitchtip-cli" --version)"
-          if [ "$got" != "glitchtip-cli ${ver}" ]; then
-            echo "::error title=glitchtip-cli::the pinned binary reports \"${got}\", not \"glitchtip-cli ${ver}\""
-            exit 1
-          fi
-          echo "$got"
+        run: node tooling/ci/install-pinned-tool.mjs glitchtip-cli --out "$RUNNER_TEMP"
       # why: TWO directories, one per build, uploaded separately — macOS and iOS
       # are two AOT compilations and nothing guarantees they share a mapping.
       # FAILS CLOSED on a missing GLITCHTIP_TOKEN, never skips.

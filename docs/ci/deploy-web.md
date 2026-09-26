@@ -511,6 +511,15 @@ to https, past the pattern. What this does not cover:
 
 ### before step **Install glitchtip-cli (pinned by version AND by digest)**
 
+⏱ 2026-09-25 (O-GLITCHTIP-CLI-INSTALLED-BY-HAND) — the step is ONE call now,
+`node tooling/ci/install-pinned-tool.mjs glitchtip-cli --out "$RUNNER_TEMP"`, as it is
+on every other lane that installs the client (ten steps, seven workflows, three runner
+OSes). The version and the linux digest are read from tooling/versions.json exactly as
+before; the installer adds a bounded retry and holds the binary's `--version` to the
+pin. `tooling/ci/install-pinned-tool.mjs` joined `deployUnits["<app>-web"]` in
+tooling/ci/lane-map.json, because this lane now runs it. P7 of
+install-pinned-tool.test.mjs refuses a hand install of any TOOLS member.
+
 ── SOURCE MAPS · INSTALL AND INJECT, BEFORE THE ARTIFACT IS SMOKED ─────
 🔴 WHAT THIS PAIR OF STEPS BUYS, MEASURED 2026-09-03 AND NOT INFERRED.
 `GET /api/0/organizations/nikatru/releases/{version}/files/` answered 200
