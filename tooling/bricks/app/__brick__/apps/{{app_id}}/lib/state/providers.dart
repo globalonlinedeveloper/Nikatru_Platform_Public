@@ -34,6 +34,7 @@ import 'package:nikatru_notifications/nikatru_notifications.dart';
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart';
 import 'package:nikatru_platform_storage/age_signals.dart'
     show currentStoreAgeSignalSource;
+import 'package:nikatru_purchases/nikatru_purchases.dart' show ChassisBilling;
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../core/app_config.dart';
@@ -102,7 +103,12 @@ networkUnreachableProvider =
       NetworkReachabilityController.new,
     );
 
-/// CFG-1 transport: dio `GET {configBaseUrl}/config/<app>`.
+/// CFG-1 transport: dio `GET {configBaseUrl}/config/<app>?channel=<id>`.
+///
+/// The channel is the compiled `RELEASE_CHANNEL` ([AppConfig.releaseChannel]),
+/// sent only when it is a declared `channel-register.json` id: the service
+/// refuses any other with a 400, so the `'dev'` default and a typo send no
+/// parameter and read the service's `default` (O-UPDATE-FLOOR-HAS-NO-CHANNEL).
 ///
 /// Decorated so the outcome of that fetch — the one network call every stamped
 /// app makes at launch — becomes the offline signal above. The decorator is
@@ -113,7 +119,12 @@ networkUnreachableProvider =
 final Provider<core.ConfigTransport> configTransportProvider =
     Provider<core.ConfigTransport>(
       (ref) => core.ReportingConfigTransport(
-        inner: DioConfigTransport(configBaseUrl: AppConfig.configBaseUrl),
+        inner: DioConfigTransport(
+          configBaseUrl: AppConfig.configBaseUrl,
+          releaseChannel: ChassisBilling.channelNamed(
+            AppConfig.releaseChannel,
+          )?.registerId,
+        ),
         report: (bool unreachable) => ref
             .read(networkUnreachableProvider.notifier)
             .report(unreachable: unreachable),

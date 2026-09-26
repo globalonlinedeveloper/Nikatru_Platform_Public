@@ -105,6 +105,20 @@ void main() {
       expect(() => AppConfig.fromJson(j), throwsFormatException);
     });
 
+    test('throws FormatException on a per-channel map floor (the wire stays scalar)',
+        () {
+      // The config service keeps min_supported_version as a per-channel map and
+      // resolves it for `?channel=` before answering, so the client parses a
+      // scalar either way (O-UPDATE-FLOOR-HAS-NO-CHANNEL). A map on the wire is
+      // a service fault the loader falls back from, never a shape to widen to.
+      final Map<String, Object?> j = subscriptiontrackerServerJson()
+        ..['min_supported_version'] = <String, Object?>{
+          'default': '1.0.0',
+          'web': '9.0.0',
+        };
+      expect(() => AppConfig.fromJson(j), throwsFormatException);
+    });
+
     test('coerces a wrong-typed content_pack to null (non-required, lenient)',
         () {
       // A non-string content_pack must not throw a TypeError — only app_id,
