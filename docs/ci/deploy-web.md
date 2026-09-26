@@ -934,7 +934,9 @@ so it must still say what. `!cancelled()` would re-open the hole.
 The apex site `sites/nikatru` publishes through this file too, by Direct Upload, to a NEW Pages
 project `nikatru-apex`. It is proven on `https://nikatru-apex.pages.dev` while `nikatru.com` stays
 on the Git-connected project `nikatru`. The owner moves the domain after the first green smoke,
-and D3b then points the smoke and the record at `nikatru.com`. The unit is
+and D3b then points the smoke and the record at `nikatru.com`. ⏱ 2026-09-26 · D3b: the job
+smokes and records `https://nikatru.com`; `sitemap.xml` is generated here and no longer committed
+(ci.yml's `sites` job generates it before grading), and site-drift-repair.yml is retired. The unit is
 `deployUnits["nikatru-site"]`, recorded under the ledger environment `nikatru-site`, a
 `siteEnvironments` row in `tooling/channel-register.json` (`kind: "site"`: no published-id flag,
 and `rollback.mjs` does not re-promote it).

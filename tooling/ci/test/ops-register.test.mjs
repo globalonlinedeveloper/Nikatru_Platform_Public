@@ -5249,14 +5249,12 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
     assert.equal(dispatchable.has('deploy-web.yml'), false, 'deploy-web.yml has grown a `workflow_dispatch` — a second way to start the lane that skips the gate');
     assert.equal(dispatchable.has('deploy-workers.yml'), false, 'deploy-workers.yml has grown a `workflow_dispatch` — same');
     assert.equal(dispatchable.has('ci.yml'), false, 'ci.yml has grown a `workflow_dispatch` — re-read the deadlock argument before letting it into this domain');
-    assert.equal(dispatchable.has('site-drift-repair.yml'), false, 'site-drift-repair.yml has grown a `workflow_dispatch` — same re-read');
 
     const real = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
     const ids = redSinceDomain(real, dispatchable, postGate).map((r) => r.id);
     assert.ok(ids.includes('duty.workflow.deploy-web.yml'), 'the web deploy lane has fallen out of the RED-SINCE domain — the 2026-09-09 defect is back');
     assert.ok(ids.includes('duty.workflow.deploy-workers.yml'), 'the workers deploy lane has fallen out of the RED-SINCE domain');
     assert.equal(ids.includes('duty.workflow.ci.yml'), false);
-    assert.equal(ids.includes('duty.workflow.site-drift-repair.yml'), false);
     const without = redSinceDomain(real, dispatchable).map((r) => r.id);
     assert.equal(without.includes('duty.workflow.deploy-web.yml'), false, 'without the post-gate admission the web lane must be out — else this test proves nothing about it');
 
@@ -5283,7 +5281,10 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
     // is its only exit and it is excluded by the same derived reason.
     // ⏱ 2026-09-24: four. duty.workflow.lane-workers.yml, the first ci.yml lane moved
     // into a callee (ADR 095), is excluded for the same reason.
-    assert.equal(census.excluded.length, 4, 'the committed register has exactly four trigger rows with no non-merge exit');
+    // ⏱ 2026-09-26: three. duty.workflow.site-drift-repair.yml left with its
+    // workflow (D3b): the sitemap is generated in the deploy job, never committed.
+    assert.equal(census.excluded.length, 3, 'the committed register has exactly three trigger rows with no non-merge exit');
+    assert.ok(census.excluded.some((l) => /duty\.workflow\.ci\.yml/.test(l)), 'ci.yml is excluded by derivation');
     assert.ok(census.excluded.some((l) => /duty\.workflow\.extensions-ci\.yml/.test(l)), 'the extensions CI callee is excluded by derivation');
     assert.ok(census.excluded.some((l) => /duty\.workflow\.lane-workers\.yml/.test(l)), 'the workers lane callee is excluded by derivation');
     assert.ok(census.excluded.every((l) => /declares NO `workflow_dispatch`/.test(l)), 'every exclusion must carry the derived reason');

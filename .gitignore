@@ -110,6 +110,12 @@ apps/subscriptiontracker/config/*.json
 **/macos/Flutter/ephemeral/
 
 # ── Node / Cloudflare / web (GLOBAL) ──
+# The apex site's sitemap is GENERATED IN THE JOB, never committed (2026-09-26, D3b; ADR 028 §3
+# as amended by ADR no.098). Its <lastmod> is a function of git history, so a
+# committed copy was stale from the next merge. deploy-web.yml's `site` job and ci.yml's
+# `sites` job run tooling/sites/generate-discovery.mjs; assert-discovery-surface.mjs refuses
+# a tracked copy.
+/sites/nikatru/sitemap.xml
 **/node_modules/
 # Worker lockfiles ARE tracked (reversed 2026-07-26, [pipeline F-8]).
 #

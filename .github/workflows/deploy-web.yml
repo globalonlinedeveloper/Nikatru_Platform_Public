@@ -388,9 +388,9 @@ jobs:
         run: node tooling/ci/record-deployment.mjs ${{ matrix.app }}-web ${{ steps.target.outputs.site_url }} --pages-deployment-id "$PAGES_DEPLOYMENT_ID"
 
   # why: THE APEX SITE, BESIDE THE LIVE ONE (row O-APEX-SITE-DEPLOYS-OUTSIDE-THE-PIPELINE, D3a).
-  # sites/nikatru publishes by Direct Upload to a NEW project, nikatru-apex, proven on its
-  # pages.dev host; nikatru.com stays on the Git-connected project `nikatru` until the owner
-  # moves the domain. Its unit is deployUnits["nikatru-site"], planned like each app's.
+  # sites/nikatru publishes by Direct Upload to the project nikatru-apex, which serves
+  # nikatru.com since the owner moved the domain (D3b); it is smoked and recorded there.
+  # Its unit is deployUnits["nikatru-site"], planned like each app's.
   site:
     name: Deploy the apex site to Cloudflare Pages (nikatru-apex)
     runs-on: ubuntu-24.04
@@ -422,8 +422,8 @@ jobs:
       - uses: ./.github/actions/setup-node
         if: steps.plan.outputs.deploy == 'true'
 
-      # why: the committed sitemap drifts after a merge (its lastmod is a function of git
-      # history), so the served bytes are regenerated here and graded before anything publishes.
+      # why: sitemap.xml is generated here, never committed (D3b): its lastmod is a function of
+      # git history. The served bytes are regenerated and graded before anything publishes.
       - name: Regenerate the discovery surface from the registry
         if: steps.plan.outputs.deploy == 'true'
         run: node tooling/sites/generate-discovery.mjs
@@ -503,12 +503,14 @@ jobs:
 
       # why: a SHA from version.json, then an EMPTY POST, which the Function refuses with 400
       # before it touches a binding: it proves functions/ shipped, and it writes nothing.
-      - name: Smoke — nikatru-apex.pages.dev serves THIS commit, and its Function answers
+      # D3b: against https://nikatru.com, which the owner moved onto nikatru-apex after
+      # D3a's first green pages.dev smoke — the zone's host, not the project's pages.dev one.
+      - name: Smoke — nikatru.com serves THIS commit, and its Function answers
         if: steps.plan.outputs.deploy == 'true'
-        run: node tooling/sites/smoke-site-deploy.mjs --origin https://nikatru-apex.pages.dev --expect-sha ${{ github.sha }}
+        run: node tooling/sites/smoke-site-deploy.mjs --origin https://nikatru.com --expect-sha ${{ github.sha }}
 
       - name: Record the deployed SHA
         if: always() && steps.deploy.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node tooling/ci/record-deployment.mjs nikatru-site https://nikatru-apex.pages.dev
+        run: node tooling/ci/record-deployment.mjs nikatru-site https://nikatru.com

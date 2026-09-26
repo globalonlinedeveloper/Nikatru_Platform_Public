@@ -65,6 +65,7 @@
 // scan lost its coverage.
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync, statSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
@@ -315,9 +316,54 @@ if (files.size === 0) {
 // The load-bearing limb. A hand edit to a generated landing, a deleted <url>
 // block, a registry change nobody regenerated for — all three land here, each
 // naming its own file so the fix goes to the right place.
+//
+// ⏱ 2026-09-26 · D3b (row O-APEX-SITE-DEPLOYS-OUTSIDE-THE-PIPELINE; ADR 028 §3 as amended by
+// ADR no.098). ONE planned file is GENERATED IN THE JOB AND NEVER COMMITTED:
+// the deploy root's sitemap.xml. Its `<lastmod>` is a function of git history, so a
+// committed copy drifted on every merge, and a post-merge repair lane chased it.
+// deploy-web.yml's `site` job and ci.yml's `sites` job generate it before anything reads
+// it. So for that file this limb asks two things instead of one: it is NOT tracked by
+// git (a finding when it is), and when it is on disk it is the generator's bytes (the
+// drift message below, as before). Every OTHER planned file is still diffed exactly as
+// before — the landings and llms.txt stay committed (ADR 028 §1-2 unchanged).
+const SITEMAP_REL = `${DEPLOY_ROOT}/sitemap.xml`;
+if (!files.has(SITEMAP_REL)) {
+  coverageLost([
+    `the generator no longer plans ${SITEMAP_REL}, so the "generated, never committed" limb ranges over nothing.`,
+    'Rename it here in the same commit as the generator, or the committed-sitemap refusal stops existing.',
+  ]);
+}
+// Only a real checkout can say what git tracks. A fixture root is not a repository, and
+// `git -C <tmp>` would walk UP to whatever repository encloses it — so the question is
+// asked only where ROOT is itself the top of a work tree.
+// `--show-prefix` is empty exactly at a work-tree top, whatever the path's spelling: a string compare of
+// `--show-toplevel` with ROOT fails under an 8.3 short name or a symlinked tmp (/var -> /private/var) and
+// skipped this limb in silence.
+const gitTop = spawnSync('git', ['-C', ROOT, 'rev-parse', '--show-prefix'], { encoding: 'utf8' });
+const rootIsCheckout = gitTop.status === 0 && gitTop.stdout.trim() === '';
+if (!rootIsCheckout) prints.push(`${ROOT} is not the top of a git work tree, so whether ${SITEMAP_REL} is COMMITTED was not asked.`);
+let sitemapTracked = null;
+if (rootIsCheckout) {
+  const ls = spawnSync('git', ['-C', ROOT, 'ls-files', '--', SITEMAP_REL], { encoding: 'utf8' });
+  if (ls.status !== 0) {
+    coverageLost([`git ls-files could not answer whether ${SITEMAP_REL} is tracked: ${(ls.stderr || '').trim()}`]);
+  }
+  sitemapTracked = ls.stdout.trim() !== '';
+  if (sitemapTracked) {
+    problems.push(
+      `${SITEMAP_REL} is COMMITTED, and it is generated in the job, never committed (ADR 028 §3 as amended). Its ` +
+        '<lastmod> is a function of git history, so a committed copy is stale from the next merge on. ' +
+        `\`git rm --cached ${SITEMAP_REL}\`: deploy-web.yml's \`site\` job and ci.yml's \`sites\` job generate it.`,
+    );
+  }
+}
 let compared = 0;
 for (const [rel, expected] of files) {
   const path = abs(rel);
+  if (rel === SITEMAP_REL && !existsSync(path)) {
+    prints.push(`${SITEMAP_REL} is not on disk — it is generated in the job, so there is nothing to diff here. Run \`node tooling/sites/generate-discovery.mjs\` to grade it locally.`);
+    continue;
+  }
   if (!existsSync(path)) {
     problems.push(
       `${rel} is MISSING. ${REGISTRY} says it should exist, and Cloudflare serves this tree with no build ` +

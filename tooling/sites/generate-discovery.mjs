@@ -1886,9 +1886,9 @@ export function planDiscovery(repoRoot) {
   // ⚠️ IT IS COMMITTED, and it has to be: the `nikatru` Pages project is
   // Git-connected with NO BUILD STEP (`sites/nikatru/README.md`), so a file that
   // is not in the repository is a file that is not deployed. What keeps a
-  // committed generated file honest is the lane that already exists —
-  // `site-drift-repair.yml` regenerates this surface on every merge to `main` and
-  // opens a self-merging PR when the committed bytes drift.
+  // committed generated file honest is W-9 (assert-discovery-surface.mjs), which
+  // ci.yml runs on every pull request: it regenerates this surface and exits 1
+  // when the committed bytes differ from the generator's.
   //
   // ⚠️ ONLY `live` ENTRIES. A `preview` app has no Pages project attached yet, so
   // routing its prefix would proxy the apex to a host that answers 522 — and it
@@ -1967,7 +1967,7 @@ export function planDiscovery(repoRoot) {
   // would go stale on the next generator change — silently, because a stale hash
   // does not error, it just refuses to run the script. Computing it HERE, from the
   // planned bytes rather than the bytes on disk, is what keeps the header and the
-  // pages in the same commit. `site-drift-repair.yml` diffs the result.
+  // pages in the same commit. assert-discovery-surface.mjs diffs the result.
   //
   // ⚠️ ORDER MATTERS: this runs AFTER the chrome splice, because splicing can move
   // an inline block. Hashing the on-disk bytes would produce a header that is
@@ -2028,10 +2028,13 @@ export function planDiscovery(repoRoot) {
   // stale landing that no registry entry owns stays listed for exactly as long
   // as it is served. (That stale page is limb B of assert-discovery-surface.mjs
   // — reported once, there, naming the file.)
-  const sitemapPath = join(repoRoot, ...SITEMAP.split('/'));
-  if (!existsSync(sitemapPath)) {
-    problems.push(`${SITEMAP} does not exist, so the generated landings have nowhere to be listed.`);
-  } else {
+  //
+  // ⏱ 2026-09-26 · D3b (ADR 028 §3 as amended by ADR no.098): the sitemap is
+  // GENERATED IN THE JOB AND NEVER COMMITTED, so a fresh checkout has none. It is rendered
+  // WHOLE from the page set below — no byte of a previous copy is read — so it is written
+  // whether or not one is on disk. Until today a missing sitemap was a problem here,
+  // which was only true while the file was committed.
+  {
     const pages = new Set(htmlUnder(repoRoot, DEPLOY_ROOT));
     for (const rel of files.keys()) if (rel.endsWith('.html')) pages.add(rel);
 

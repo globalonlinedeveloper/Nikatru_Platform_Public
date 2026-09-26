@@ -67,7 +67,7 @@
 // or the process's own TZ.
 //
 // WHY UTC AND NOT IST: CI is the arbiter. `check-site-integrity.mjs` and the
-// site-drift regenerate-and-diff run on a UTC runner, and a declared zone equal
+// deploy job's sitemap generation run on a UTC runner, and a declared zone equal
 // to the arbiter's own clock is one fewer thing that can disagree there. It is
 // also the ONLY zone name Git for Windows parses reliably: measured 2026-09-23
 // on git 2.54.0.windows.1, `TZ=America/Los_Angeles` fell back to the machine's
