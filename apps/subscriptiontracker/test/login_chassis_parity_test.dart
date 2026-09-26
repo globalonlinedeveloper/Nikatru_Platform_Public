@@ -226,11 +226,19 @@ const AuthProviders kNoProviders = AuthProviders(apple: false, google: false);
 /// Apple switched on at the identity server. No shipping build sees this yet;
 /// it exists so the "the button comes back" arm is REACHABLE, which is the only
 /// thing that stops the arm above from passing by deletion.
+///
+/// ⏱ 2026-09-26 — since Google went live this is also the GOOGLE-OFF arm: the
+/// one fixture in which the Google gate is driven closed while the limb itself
+/// still renders.
 const AuthProviders kAppleEnabled = AuthProviders(apple: true, google: false);
 
 /// ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. Google FORCED ON beside Apple —
 /// the only arrangement App Store Guideline 4.8 and `assert-auth-callbacks`'s
 /// provider-policy limb allow. No shipping build sees this.
+///
+/// ⏱ 2026-09-26, later — every shipping build sees it now: this is what
+/// `AuthProviders.configured` declares. Kept as a named fixture so the forced
+/// cases below still say what they force, whatever the default becomes.
 const AuthProviders kBothEnabled = AuthProviders(apple: true, google: true);
 
 Future<void> pumpLogin(
@@ -539,10 +547,18 @@ void main() {
             'com.nikatru.platform consent group, and external_apple_enabled is '
             'true on the live project',
       );
+      // ⏱ 2026-09-26 — THIS PIN INVERTED, same as Apple's on 2026-09-16. It
+      // read `isFalse` ("Google is still owner-gated; no credential has been
+      // created") until the owner made the Google client, and the live
+      // project is switched to `external_google_enabled: true` in the same
+      // window this declaration flips.
       expect(
         AuthProviders.configured.google,
-        isFalse,
-        reason: 'Google is still owner-gated; no credential has been created',
+        isTrue,
+        reason:
+            'provisioned 2026-09-23: one Google Web application client, its '
+            'id and secret in the vault, and external_google_enabled switched '
+            'on at the live project in the window this constant flipped',
       );
       expect(
         AuthProviders.configured.any,
@@ -558,20 +574,65 @@ void main() {
   // and forcing it on must — or the first case passes by deletion. Its
   // clickwrap and age gate are pinned in `age_gate_sign_up_test.dart`, beside
   // Apple's.
-  group('Continue with Google is built, and off', () {
-    testWidgets('THE SHIPPING DEFAULT does not offer it — no overrides', (
+  //
+  // ⏱ 2026-09-26, LATER — THE DOOR IS ON, AND BOTH DIRECTIONS ARE STILL HELD.
+  // The shipping-default case below inverted to `findsOneWidget`. What the
+  // earlier pair proved by forcing Google ON is now proved by forcing it OFF
+  // beside Apple (`kAppleEnabled`), so the per-provider gate is still driven
+  // closed while the rest of the limb renders. Without that case, a build that
+  // drew the Google button regardless of the flag would pass everything here.
+  group('Continue with Google is built, and on', () {
+    testWidgets('THE SHIPPING DEFAULT offers it — no overrides', (
       WidgetTester tester,
     ) async {
+      // 🔴 THIS CASE INVERTED, AND THE INVERSION IS THE POINT — the #780 move
+      // for Apple, made for Google. It read `findsNothing` while
+      // `AuthProviders.configured` said google: false and the identity server
+      // would have answered 400. The owner provisioned the Google client, the
+      // live project is switched on in the window this change merges, and a
+      // build that still hid the button would be hiding a door the owner
+      // stood up. `verify-auth-providers.mjs` grades that as a failure in its
+      // own right.
       await pumpLogin(tester, caps: kWithRedirect);
+
+      expect(
+        find.text(en.continueWithGoogle),
+        findsOneWidget,
+        reason:
+            '`AuthProviders.configured` says google: true, switched on at the '
+            'live project in the same window. While both say so, a shipping '
+            'build must offer the button on every platform that can complete '
+            'an OAuth redirect',
+      );
+      expect(
+        find.text(en.continueWithApple),
+        findsOneWidget,
+        reason:
+            'Google never ships without Apple beside it (App Store Review '
+            'Guideline 4.8; assert-auth-callbacks limb PROVIDER-POLICY)',
+      );
+      expect(
+        find.text(en.orDivider),
+        findsOneWidget,
+        reason: 'one divider above both doors',
+      );
+    });
+
+    testWidgets('forced OFF beside Apple, it is not offered', (
+      WidgetTester tester,
+    ) async {
+      await pumpLogin(tester, caps: kWithRedirect, providers: kAppleEnabled);
 
       expect(
         find.text(en.continueWithGoogle),
         findsNothing,
         reason:
-            '`AuthProviders.configured` says google: false — no client id '
-            'exists, so the identity server would answer 400',
+            'the Google gate must still close on its own flag. This is the '
+            'arm the shipping default no longer exercises: Apple on, Google '
+            'off, the limb and its divider rendered',
       );
       expect(find.text(en.continueWithApple), findsOneWidget);
+      expect(find.text(en.orDivider), findsOneWidget);
     });
 
     testWidgets('forced on, a capable platform offers it beside Apple', (

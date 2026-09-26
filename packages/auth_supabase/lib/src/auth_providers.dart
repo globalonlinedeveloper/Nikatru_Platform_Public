@@ -44,6 +44,19 @@ import 'package:flutter/foundation.dart' show immutable;
 /// rotation is a re-mint from the same key, not a portal visit. The sentence
 /// above is left exactly as written: it is the measurement of 2026-08-11.
 ///
+/// ⏱ **2026-09-26 — `google` IS NOW `true` AS WELL.** The owner made the
+/// Google half (design-google steps 1-6, done 2026-09-23): a consent screen in
+/// production that asks only `openid`, email and profile, and ONE
+/// "Web application" OAuth client. There is no Android, iOS or desktop client
+/// and no signing-key SHA-1, because Google rides the same `signInWithOAuth`
+/// redirect as Apple, returning through `authRedirectUrl` on every target, so
+/// no Google SDK ships on any device. The client id and secret sit in the vault
+/// as `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` and reach the
+/// identity server as `external_google_client_id` and `external_google_secret`
+/// by a PATCH in the same window this flag flips. Unlike Apple's JWT the
+/// Google secret does not expire; if the owner rotates it in the console, that
+/// PATCH is re-run and nothing here changes.
+///
 /// ⚠️ **A measured constant rots the moment somebody flips the switch in the
 /// dashboard, and nothing in this file would know.** So it is not left on
 /// trust either: `tooling/ops/verify-auth-providers.mjs` re-runs exactly the
@@ -100,8 +113,28 @@ class AuthProviders {
   /// Guideline 4.8 requires Sign in with Apple beside any third-party sign-in
   /// on iOS. `tooling/ci/assert-auth-callbacks.mjs` (limb PROVIDER-POLICY)
   /// reads this constant and fails the build when it does.
+  ///
+  /// ⏱ **2026-09-26 — THAT DAY CAME FOR GOOGLE, and the paragraph above is left
+  /// as written: it is the state the Google door was built in.** `google` is
+  /// `true` because the owner provisioned the client and the live project is
+  /// switched to `external_google_enabled: true` in the SAME window this change
+  /// merges, not before and not after. Same reason as Apple:
+  /// `tooling/ops/verify-auth-providers.mjs` fails in BOTH directions and runs
+  /// in ops-watch on main. Declared on with the server off is the 400
+  /// "Unsupported provider" defect; declared off with the server on hides a
+  /// door the owner stood up. `apple` stays `true`, which is what the policy
+  /// limb above requires.
+  ///
+  /// 🔴 THE REDIRECT URI LIST IS THE THING TO PRESERVE, NOT THIS FLAG. Google
+  /// accepts a sign-in only if it returns to a callback the Web client lists,
+  /// and each identity server has its own callback. The client lists the
+  /// hosted project's today. Before any other GoTrue, such as the self-hosted
+  /// auth box, is given the Google client, its `/auth/v1/callback` must be
+  /// added to that list in the console. Otherwise every Google sign-in on that
+  /// server ends at Google's `redirect_uri_mismatch` page, and nothing in this
+  /// repository can see it.
   static const AuthProviders configured = AuthProviders(
     apple: true,
-    google: false,
+    google: true,
   );
 }

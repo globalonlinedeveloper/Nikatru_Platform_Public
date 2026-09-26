@@ -512,6 +512,21 @@ void main() {
       // are Tab-reachable, so enabling a provider did NOT add a keyboard-dead
       // control — which is the failure this case exists to catch and the reason
       // the two numbers are asserted separately rather than as one total.
+      //
+      // ⏱ 2026-09-26 — GOOGLE WAS ENABLED AND THESE NUMBERS ARE EXPECTED NOT
+      // TO MOVE. The reason is in the pinned numbers, not a guess. The six
+      // controls Apple added are the clickwrap's two `Checkbox`es, its two
+      // links and its two SENTENCES, which is 4 reachable and 2 dead: 8 + 4 =
+      // 12 and 8 + 6 = 14. So the "Continue with Apple" button, named above,
+      // was never in the inventory. It is disabled on this pump, because the
+      // device owes the terms and the box is unticked, and a disabled
+      // `ButtonStyleButton` has no tap action for the sweep to count
+      // (`a11y_semantics_test.dart` records the same fact for sign-up's
+      // submit button). "Continue with Google" is gated on the SAME
+      // `appleTermsOwed && !_acceptedTerms` condition, so it is absent from
+      // the inventory for the same reason. If this case goes red on the day
+      // Google is switched on, read WHICH number moved before changing it. The
+      // dead list below stays exact.
       final _Sweep s = await pin(
         tester,
         'login',

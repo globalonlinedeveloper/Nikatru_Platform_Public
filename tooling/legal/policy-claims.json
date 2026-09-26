@@ -285,7 +285,7 @@
       "claim": "Sign in with Google",
       "type": "provider",
       "providers": ["sign-in-with-google"],
-      "note": "⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. BUILT AND OFF: `AuthProviders.configured` says google: false, so no app offers it yet, and the sentence opens 'Where an app offers them' for that reason. tooling/ci/assert-auth-callbacks.mjs refuses google: true while apple is false. Named before the switch on purpose, so the disclosure is in place before the button is."
+      "note": "⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. BUILT AND OFF: `AuthProviders.configured` says google: false, so no app offers it yet, and the sentence opens 'Where an app offers them' for that reason. tooling/ci/assert-auth-callbacks.mjs refuses google: true while apple is false. Named before the switch on purpose, so the disclosure is in place before the button is. ⏱ 2026-09-26: ON. `AuthProviders.configured` says google: true, flipped with the live project in one window; the sentence's 'Where an app offers them' stays true."
     },
     {
       "page": "privacy.html",

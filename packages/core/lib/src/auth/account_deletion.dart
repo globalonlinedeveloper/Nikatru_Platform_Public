@@ -148,7 +148,7 @@ enum AccountDeletionOutcome {
       case AccountDeletionOutcome.reauthFailed:
         return 'We couldn\'t confirm it was you, so nothing was deleted. '
             'You\'re still signed in. Check your password, or finish signing '
-            'in with Apple, then try again.';
+            'in, then try again.';
       case AccountDeletionOutcome.couldNotReach:
         return 'We could not reach the server, so we do not know whether '
             'anything was deleted. Check before assuming your account is gone.';

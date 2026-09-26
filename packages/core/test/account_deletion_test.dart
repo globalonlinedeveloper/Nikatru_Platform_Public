@@ -421,12 +421,24 @@ void main() {
     test('the deletion messages no longer send an Apple user to email', () {
       expect(AccountDeletionOutcome.reauthFailed.plainMessage,
           isNot(contains('by email')));
+      // ⏱ 2026-09-26 · O-REAUTH-COPY-NAMES-APPLE-ONLY — this pin read
+      // `signing in with Apple` until the sentence went provider-free.
       expect(
         AccountDeletionOutcome.reauthFailed.plainMessage,
-        contains('signing in with Apple'),
+        contains('finish signing in'),
       );
       expect(AccountDeletionOutcome.reauthFailed.plainMessage,
           contains('still signed in'));
+    });
+
+    // ⏱ 2026-09-26 · O-REAUTH-COPY-NAMES-APPLE-ONLY. Core words this failure
+    // with no provider in hand, and a Google-only account reaches it as well as
+    // an Apple one, so the sentence names no provider at all.
+    test('the reauthFailed sentence names no provider', () {
+      final String m = AccountDeletionOutcome.reauthFailed.plainMessage;
+      expect(m, isNot(contains('Apple')));
+      expect(m, isNot(contains('Google')));
+      expect(m, contains('finish signing in, then try again'));
     });
   });
   // ⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE. The provider offers its own
