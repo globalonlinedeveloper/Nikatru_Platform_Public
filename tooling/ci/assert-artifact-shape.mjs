@@ -189,6 +189,44 @@ const LANE_OUTPUTS = new Map([
     },
   ],
   [
+    // ⏱ ADDED 2026-09-25 (O-PR-LANE-BUILDS-ONLY-ANDROID-ARTIFACTS) — ci.yml's
+    // `web-artifacts`, the PR lane. It builds deploy-web.yml's web bundle and
+    // uploads nothing, so the tree is asserted where Flutter leaves it. No register
+    // row names this lane: the guard prints a note for an unbound lane key and
+    // grades the files all the same.
+    'web-artifacts',
+    {
+      what: 'the web bundle a PR builds, boots and discards',
+      expect: [
+        {
+          tree: 'build/web',
+          uploaded: false,
+          why: 'the web bundle deploy-web.yml serves, built flag for flag. This lane boots it once and deploys nothing; the served web channel is deploy-web.yml',
+        },
+      ],
+      gaps: [],
+    },
+  ],
+  [
+    // ⏱ ADDED 2026-09-25 (O-PR-LANE-BUILDS-ONLY-ANDROID-ARTIFACTS) — ci.yml's
+    // `linux-artifacts`, the PR lane. It builds linux_web_android's Build linux and
+    // uploads nothing, so the tree is asserted where Flutter leaves it. No register
+    // row names this lane: the guard prints a note for an unbound lane key and
+    // grades the files all the same.
+    'linux-artifacts',
+    {
+      what: 'the Linux desktop bundle a PR builds and discards',
+      expect: [
+        {
+          tree: 'build/linux/x64/release/bundle',
+          uploaded: false,
+          why: 'the Linux desktop bundle the linux-appimage row ships from, built flag for flag. This lane signs and uploads nothing from it',
+        },
+      ],
+      gaps: [],
+    },
+  ],
+  [
     'windows',
     {
       what: 'the Windows runner bundle and the Microsoft Store package',
