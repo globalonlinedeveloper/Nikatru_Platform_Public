@@ -139,6 +139,61 @@ describe('windowsCommand — off Windows none of this applies', () => {
   });
 });
 
+/* ⏱ 2026-09-24 (O-HEAVY-CMD-C-IDIOM-IS-A-SILENT-FALSE-GREEN). The rewrite is
+   MSYS's, not cmd's, so it reaches EVERY program's switch: `taskkill /PID 123 /T
+   /F` typed in the Bash tool reaches node as `taskkill C:/Program Files/Git/PID
+   123 T:/ F:/`. The environment and the file probe are injected, so these run —
+   and fail — on the Linux runner too. */
+const MSYS = { MSYSTEM: 'MINGW64', EXEPATH: 'C:\\Program Files\\Git\\bin' };
+const nothingThere = () => false;
+const onMsys = (cmd, env = MSYS, exists = nothingThere) => windowsCommand(cmd, 'win32', 'C:\\Windows\\System32\\cmd.exe', env, exists);
+
+describe('windowsCommand — a switch MSYS rewrote into a path is refused, for any program', () => {
+  test('W1 🔴 `/PID` rewritten under the MSYS root is REFUSED — taskkill would be handed a path', () => {
+    const r = onMsys(['taskkill', 'C:/Program Files/Git/PID', '123']);
+    assert.ok(r.refuse, 'a switch rewritten into a path under the MSYS root must be refused');
+    assert.match(r.refuse, /bare `\/PID` switch/);
+    assert.match(r.refuse, /MSYS_NO_PATHCONV=1/);
+    assert.equal(r.file, undefined, 'a refusal must not also hand back something to spawn');
+  });
+
+  test('W2 🔴 the root is read from EXEPATH in any spelling — with or without its bin, either slash, any case', () => {
+    assert.ok(onMsys(['taskkill', 'C:/Program Files/Git/IM', 'node.exe'], { MSYSTEM: 'MINGW64', EXEPATH: 'C:\\Program Files\\Git' }).refuse);
+    assert.ok(onMsys(['taskkill', 'C:/Program Files/Git/IM', 'node.exe'], { MSYSTEM: 'MINGW64', EXEPATH: 'C:/Program Files/Git/usr/bin/' }).refuse);
+    assert.ok(onMsys(['robocopy', 'a', 'b', 'c:/program files/git/MIR']).refuse, 'MSYS spells the root as EXEPATH does; the argument may not');
+  });
+
+  test('W3 🔴 a single-letter switch becomes a bare drive root — `/T` arrives as `T:/` — and is REFUSED', () => {
+    const r = onMsys(['taskkill', '/PID', '123', 'T:/', 'F:/']);
+    assert.ok(r.refuse, '`T:/` is what a bare `/T` becomes; it must be refused for taskkill as for cmd');
+    assert.match(r.refuse, /bare `\/t` switch/);
+  });
+
+  test('W4 a real file directly under the MSYS root is a path someone meant, and passes', () => {
+    const real = 'C:/Program Files/Git/git-bash.exe';
+    const r = onMsys(['explorer', real], MSYS, (p) => p === real);
+    assert.equal(r.refuse, undefined, 'an existing file under the root must not be taken for a switch');
+    assert.deepEqual(r.args, [real]);
+    // Deeper than one segment is a path, not a switch, whether it exists or not.
+    assert.equal(onMsys(['explorer', 'C:/Program Files/Git/usr/bin/bash.exe']).refuse, undefined);
+  });
+
+  test('W5 without MSYSTEM (PowerShell, cmd) nothing was rewritten: `C:/` and a path under the Git root are plain arguments', () => {
+    const plain = { EXEPATH: 'C:\\Program Files\\Git\\bin' };
+    const r = onMsys(['robocopy', 'C:/', 'D:/backup'], plain);
+    assert.equal(r.refuse, undefined, 'from PowerShell `C:/` is a drive, not a mangled switch');
+    assert.deepEqual(r.args, ['C:/', 'D:/backup']);
+    assert.equal(onMsys(['taskkill', 'C:/Program Files/Git/PID', '1'], plain).refuse, undefined);
+  });
+
+  test('W6 the escapes pass: `//PID` (collapsed to `/PID`) as a real switch, and anything under MSYS_NO_PATHCONV', () => {
+    const r = onMsys(['taskkill', '/PID', '123', '/T', '/F']);
+    assert.equal(r.refuse, undefined, 'a real switch is what the escape produces, and must pass');
+    assert.deepEqual(r.args, ['/PID', '123', '/T', '/F']);
+    assert.equal(onMsys(['robocopy', 'C:/', 'D:/backup'], { ...MSYS, MSYS_NO_PATHCONV: '1' }).refuse, undefined, 'with MSYS_NO_PATHCONV set, MSYS rewrote nothing');
+  });
+});
+
 // ── END TO END, THROUGH THE CLI — the closes clause's "mutation-proven: a
 // command that must fail, run through the fixed path, must FAIL". Every case
 // above calls windowsCommand directly, so none of them would notice heavy.mjs

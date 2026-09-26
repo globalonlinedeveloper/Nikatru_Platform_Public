@@ -81,6 +81,7 @@ const REGISTER = {
       artifactFormats: ['.ipa'],
       platforms: ['ios'],
       lane: { workflow: '.github/workflows/build-platforms.yml', job: 'apple' },
+      signing: { seam: { artifactGlob: 'apps/*/build/ios/ipa/*.ipa' } },
     },
     {
       id: 'macos-appstore',
@@ -90,6 +91,7 @@ const REGISTER = {
       artifactFormats: ['.pkg'],
       platforms: ['macos'],
       lane: { workflow: '.github/workflows/build-platforms.yml', job: 'apple' },
+      signing: { seam: { artifactGlob: 'apps/*/build/macos/pkg/*.pkg' } },
     },
     // ⏱ ADDED 2026-09-24. `.apk` reached this guard's universe through
     // release-manifest.mjs's EXTRA_INSTALLABLE until the .apk left it
@@ -369,6 +371,27 @@ describe('assert-artifact-shape — the apple lane asserts what it produces, and
     const { code, out } = run(fixture({ build: noPkg }), ['--app', 'subscriptiontracker', '--platform', 'apple'], SIGNED);
     assert.equal(code, 1, out);
     assert.match(out, /\.pkg/);
+  });
+
+  // ⏱ ADDED 2026-09-25 (O-APPLE-PROVER-SKIPS-THE-PKG). The .pkg directory is the
+  // macos-appstore row's artifactGlob, read through appleArtifactPath. Pointing
+  // that glob back at the Release/ tree it named until today moves where this
+  // guard looks, so the tree bp really writes no longer satisfies it.
+  test('the .pkg directory is the macos-appstore row\'s artifactGlob, not a path of this guard\'s own', () => {
+    const register = JSON.parse(JSON.stringify(REGISTER));
+    register.channels.find((c) => c.id === 'macos-appstore').signing.seam.artifactGlob = 'apps/*/build/macos/Build/Products/Release/*.pkg';
+    const { code, out } = run(fixture({ register, build: APPLE_SIGNED_OK }), ['--app', 'subscriptiontracker', '--platform', 'apple'], SIGNED);
+    assert.equal(code, 1, out);
+    assert.match(out, /apps\/subscriptiontracker\/build\/macos\/Build\/Products\/Release\/\*\.pkg/);
+  });
+
+  test('an Apple row with no artifactGlob is COVERAGE LOST, not a missing artifact', () => {
+    const register = JSON.parse(JSON.stringify(REGISTER));
+    delete register.channels.find((c) => c.id === 'ios-appstore').signing;
+    const { code, out } = run(fixture({ register, build: APPLE_SIGNED_OK }), ['--app', 'subscriptiontracker', '--platform', 'apple'], SIGNED);
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /"ios-appstore" declares no signing\.seam\.artifactGlob/);
   });
 
   // 🔴 THE DISJOINTNESS THAT MAKES A WRONG POSTURE UNPASSABLE. The two branches

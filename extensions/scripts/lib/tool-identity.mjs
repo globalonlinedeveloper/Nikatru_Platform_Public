@@ -21,6 +21,7 @@
    graded by tooling/ci/assert-house-identity.mjs. */
 import fs from 'node:fs';
 import path from 'node:path';
+import { mergePatch } from './merge-patch.mjs';
 
 /** The Firefox add-on id a tool's publish/identity.json implies. */
 export function geckoIdFor(identity) {
@@ -80,25 +81,11 @@ export function identityFromHouse(house, slug) {
   };
 }
 
-/* LIFTED VERBATIM from scripts/pack.mjs, and COMPARED, not maintained: the test
-   tooling/ci/test/extension-tool-identity.test.mjs reads pack.mjs's source and
-   fails when the two differ, the same arrangement publish/package.node.js has
-   (mergePatchDrift). pack.mjs exports nothing and packs a tool when it is
-   loaded, so importing it would run the packer. F-b moves the one
-   implementation into a lib of its own.
-
-   RFC 7386 §2, all of it: a null member DELETES, an object member merges
-   recursively, anything else replaces. Arrays replace wholesale — which is what
-   lets an overlay state background.scripts at all. */
-export function mergePatch(base, patch) {
-  if (patch === null || typeof patch !== 'object' || Array.isArray(patch)) return patch;
-  const out = (base !== null && typeof base === 'object' && !Array.isArray(base)) ? { ...base } : {};
-  for (const key of Object.keys(patch)) {
-    if (patch[key] === null) delete out[key];
-    else out[key] = mergePatch(out[key], patch[key]);
-  }
-  return out;
-}
+/* RFC 7386 mergePatch is lib/merge-patch.mjs's, the one implementation
+   scripts/pack.mjs also imports. Until 2026-09-25 (F-b) a verbatim copy stood
+   here, compared with pack.mjs's as code; it is re-exported under the same name
+   so this module's readers are unchanged. */
+export { mergePatch };
 
 function readJsonFile(abs) {
   try { return { value: JSON.parse(fs.readFileSync(abs, 'utf8').replace(/^﻿/, '')) }; }

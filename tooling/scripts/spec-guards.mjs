@@ -165,6 +165,7 @@ import { cleanGitEnv, repoGit, RepoGitError, strippedNote } from './repo-git.mjs
    declaration, `Private/requirements/tooling/guards.json`, read through this loader out
    of a git blob; see the DECLARED SET block below and the loader's header. */
 import { DECLARATION_REL, GuardDeclarationError, loadGuardDeclaration } from './guard-declaration.mjs';
+import { invokingCheckout, runnerDrift, sameDir } from './hook-runner-pin.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..');          // tooling/scripts -> repo root
@@ -564,6 +565,35 @@ if (!PRIVATE_ROOT) {
   process.exit(2);
 }
 
+/* 🔴 THE DRIFT LIMB — THE FIRST CHECK ONCE THE CORPUS IS LOCATED, AND IT RUNS ONLY WHEN
+   THE CORPUS INVOKED US (⏱ 2026-09-24, O-PRIVATE-HOOK-RUNNER-FOLLOWS-A-LIVE-BRANCH).
+   The corpus's hooks are this repository's hooks, so a corpus commit is judged by
+   whichever copy of THIS file its `core.hooksPath` reaches. Until today that was the
+   main checkout on whatever branch it held, or a lane worktree: measured in a scratch
+   pair, a corpus commit through a checkout on branch `live-feature` exited 0, graded by
+   that branch's guards. Every guard below would have run and printed ok; what was wrong
+   was the rules, and no guard can see its own rules. So before any guard runs, this asks
+   the one question none of them can: is the runner that loaded me the pinned runner,
+   detached at origin/main, with no edits? A no is a finding (exit 1) that names the tree
+   that loaded it; "cannot tell" is COVERAGE LOST (exit 2).
+   "Invoked by the corpus" is the repository `cwd` sits in — git runs every hook from the
+   top of the committing work tree — whose main checkout is the corpus this run elected.
+   From this repository's own hooks, and from a hand run here, the limb does not apply and
+   costs one walk up to `.git` plus one `git rev-parse --git-common-dir`. */
+const INVOKED_FROM = invokingCheckout(process.cwd());
+if (INVOKED_FROM && sameDir(INVOKED_FROM, PRIVATE_ROOT)) {
+  const drift = runnerDrift(REPO);
+  if (drift.code !== 0) {
+    console.error(`\n  ${drift.code === 1 ? 'RUNNER DRIFT' : 'CANNOT RUN — COVERAGE LOST'} — a corpus commit, judged by ${REPO}:`);
+    for (const line of drift.lines) console.error(`  ${line}`);
+    console.error(drift.code === 1
+      ? '  No guard below was run: their verdict would have been this tree\'s, not origin/main\'s.\n'
+      : '  No guard below was run: which rules they would apply is unknown.\n');
+    process.exit(drift.code);
+  }
+  console.log(`  runner — the pinned runner at origin/main: ${REPO}`);
+}
+
 /* 🔴 THE DECLARED SET (2026-09-24, O-GUARD-SET-DECLARED-NOWHERE). The corpus's own
    guards are entries in its declaration, read through guard-declaration.mjs out of a
    git blob and never out of a working tree:
@@ -715,15 +745,19 @@ for (const r of results) {
 
 const total = Date.now() - t0;
 console.log(`  ${results.length} guard(s) in ${total} ms` +
-  (FULL ? '' : '   (fast set — pre-push runs the full set)'));
+  (FULL
+    ? '   (full set — pre-push smokes the ci-gate guards next, on each pushed commit)'
+    : '   (fast set — pre-push runs the full set, then a smoke of the ci-gate guards on each pushed commit)'));
 
 if (broke.length) {
-  console.error(`\n  ${broke.length} guard(s) could not run. Treating as a refusal, not a pass.\n`);
+  console.error(`\n  ${broke.length} guard(s) could not run. Treating as a refusal, not a pass.`);
+  console.error('  Read the first ERR line above: it names the guard that refused. A refusal is about where');
+  console.error('  this ran (the anchor, the corpus, a worktree), not a finding in the change.\n');
   process.exit(2);
 }
 if (red.length) {
-  console.error(`\n  ${red.length} guard(s) reported a finding. Fix it, or commit with --no-verify` +
-    ' and say why in the message.\n');
+  console.error(`\n  ${red.length} guard(s) reported a finding. Read the first FAIL line above and fix what it`);
+  console.error('  names; a red hook is fixed, never skipped.\n');
   process.exit(1);
 }
 process.exit(0);

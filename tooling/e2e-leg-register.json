@@ -52,14 +52,30 @@
     "⚠️ ONE APP, STATED. e2e.yml is Subly-hardcoded and the brick stamps no integration_test/ at all, so",
     "app #2 is born with no E2E and no harness to put one in. Generalising e2e.yml to a per-app matrix",
     "is [9]R-1; stamping the E2E scaffold into the template is [3]S-2. This register describes the one",
-    "E2E that exists, and says so rather than implying a matrix."
+    "E2E that exists, and says so rather than implying a matrix.",
+    "",
+    "⏱ 2026-09-25 · KEYED BY APP (O-E2E-LANE-WIRED-TO-ONE-APP). The one-app block that was `e2e` is now",
+    "`apps.<id>`, and each entry also names the tables the e2e purge deletes the throwaway user's rows",
+    "from (`userTables`) and the one table verify_row counts (`rowTable`). The databases are not here:",
+    "tooling/e2e/backend.mjs resolves them from E2E_APP_ID and services/<id>-api/wrangler.jsonc. `legs`",
+    "below are still the one app's six, so assert-e2e-legs.mjs reports COVERAGE LOST for a register that",
+    "names any number of apps other than one, until the legs are keyed by app too."
   ],
-  "e2e": {
-    "app": "apps/subscriptiontracker",
-    "test": "apps/subscriptiontracker/integration_test/app_test.dart",
-    "workflow": ".github/workflows/e2e.yml",
-    "platform": "web",
-    "declaredOn": "2026-08-02"
+  "apps": {
+    "subscriptiontracker": {
+      "app": "apps/subscriptiontracker",
+      "test": "apps/subscriptiontracker/integration_test/app_test.dart",
+      "workflow": ".github/workflows/e2e.yml",
+      "platform": "web",
+      "declaredOn": "2026-08-02",
+      "userTables": [
+        "payment_history",
+        "subscriptions",
+        "budget_categories",
+        "budgets"
+      ],
+      "rowTable": "subscriptions"
+    }
   },
   "legs": [
     {

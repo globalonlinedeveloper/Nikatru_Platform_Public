@@ -582,6 +582,28 @@
       "managerFilePatterns": [
         "/^tooling\\/versions\\.json$/"
       ]
+    },
+    {
+      "customType": "regex",
+      "description": [
+        "The Flutter FLOOR in every Flutter pubspec, `environment: flutter: \">=<flutter>\"`",
+        "(O-PUBSPEC-FLOORS-UNTIED-TO-THE-PIN, 2026-09-25). assert-version-consistency.mjs holds each floor equal",
+        "to the versions.json `flutter` key, so a bump that moved versions.json alone would land red at every",
+        "Flutter pubspec; the SAME depName as the versions.json manager puts both writes on one branch, which is",
+        "the fix assert-renovate-reach.mjs names for a copy no bump reaches. The patterns are the workspace",
+        "members under packages/ and apps/ and the brick's app template. A pure-Dart pubspec has no floor and",
+        "matches nothing. The `sdk:` floor has no manager: `dart_language` is a $updateExemptions entry."
+      ],
+      "matchStrings": [
+        "\\n\\s+flutter:\\s*\">=(?<currentValue>[0-9][^\"\\s]*)\""
+      ],
+      "depNameTemplate": "flutter",
+      "datasourceTemplate": "flutter-version",
+      "managerFilePatterns": [
+        "/^packages\\/[^/]+\\/pubspec\\.yaml$/",
+        "/^apps\\/[^/]+\\/pubspec\\.yaml$/",
+        "/^tooling\\/bricks\\/app\\/__brick__\\/apps\\/\\{\\{app_id\\}\\}\\/pubspec\\.yaml$/"
+      ]
     }
   ],
   "ignorePaths": [

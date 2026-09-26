@@ -422,14 +422,17 @@ describe('R2 — required coverage, both directions', () => {
   test('losing the negative-control fixture is COVERAGE LOST', () => {
     withTree(
       (root) => {
-        // ALL THREE, because the skip set is derived from the IMPORTS and the
+        // ALL FOUR, because the skip set is derived from the IMPORTS and the
         // live half is an importer too. Deleting only the module left
         // check-d1-accepts-live-sql.mjs in the set and the guard passed — which
         // is correct, and is why this test names every member rather than the
-        // one that felt like the source.
+        // one that felt like the source. tooling/e2e/backend.mjs joined the set
+        // on 2026-09-25: it imports parseJsonc from the module to read the
+        // Workers' wrangler files, and with it left in place this case exited 0.
         rmSync(join(root, 'tooling', 'ci', 'd1-sql-inventory.mjs'), { force: true });
         rmSync(join(root, 'tooling', 'ci', 'assert-d1-sql-inventory.mjs'), { force: true });
         rmSync(join(root, 'tooling', 'ops', 'check-d1-accepts-live-sql.mjs'), { force: true });
+        rmSync(join(root, 'tooling', 'e2e', 'backend.mjs'), { force: true });
       },
       (r) => {
         assert.equal(r.status, 2);
@@ -477,9 +480,24 @@ describe('R3 — interpolated identifiers are constrained', () => {
     withTree(() => {}, (r) => {
       assert.match(r.stdout, /\[R3\][\s\S]*the identifier regex is applied in this file/);
       assert.match(r.stdout, /\[R3\][\s\S]*the file declares a closed string-literal union/);
-      assert.match(r.stdout, /\[R3\][\s\S]*is bound from an inline literal array/);
       assert.match(r.stdout, /\[R3\][\s\S]*sits inside SQL identifier quotes/);
     });
+  });
+
+  // purge.mjs now takes its tables from the leg register, so no statement in the
+  // tree binds its identifier from an inline literal array. Putting that shape back
+  // into purge's loop keeps the evidence sentence under test.
+  test('a loop over an inline literal array names that evidence', () => {
+    withTree(
+      (root) =>
+        edit(root, 'tooling/e2e/purge.mjs', (s) =>
+          s.replace('for (const table of userTables) {', "for (const table of ['alpha_rows', 'beta_rows']) {"),
+        ),
+      (r) => {
+        assert.equal(r.status, 0);
+        assert.match(r.stdout, /\[R3\] tooling\/e2e\/purge\.mjs:\d+ — table:table — [^\n]*`table` is bound from an inline literal array/);
+      },
+    );
   });
 });
 

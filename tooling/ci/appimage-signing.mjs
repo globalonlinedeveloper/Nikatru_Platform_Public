@@ -103,7 +103,7 @@
 // the same rather than implying more coverage than exists.
 //
 // Usage:
-//   node tooling/ci/appimage-signing.mjs [--app <slug>] [--out <dir>]
+//   node tooling/ci/appimage-signing.mjs [--app <slug>] [--channel <id>] [--out <dir>]
 //                                        [--repo-root <path>] [--github-env <path>]
 //                                        [--artifact <path>]…
 // Env in:  the names tooling/channel-register.json declares on `linux-appimage`
@@ -113,17 +113,22 @@
 // Exit 0 = the posture is decided and legal for this lane. 1 = it is not.
 //      2 = COVERAGE LOST — the question could not be asked (register, row or input missing).
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync, statSync, mkdtempSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, statSync, mkdtempSync } from 'node:fs';
 import { createPrivateKey, createPublicKey, sign as cryptoSign, verify as cryptoVerify, randomBytes } from 'node:crypto';
 import { join, resolve, dirname, isAbsolute } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { armedFatalLines, releaseGapVerdict, unarmedGapLines } from './channel-arming.mjs';
+import { armedFatalLines, unarmedGapLines } from './channel-arming.mjs';
 import { boundedSpawn, timeoutFromEnv } from './bounded-spawn.mjs';
+import { decideSecretSet, decodeKey, exportEnv, newlineOffenders, placeKey, releaseLane, releaseSignal } from './signing-seam.mjs';
+
+// The secret-set law is the seam's, re-exported under the name the tests import.
+export { decideSecretSet };
 
 export const APPS = 'catalog/apps.json';
 export const REGISTER = 'tooling/channel-register.json';
 export const CHANNEL_ID = 'linux-appimage';
+const ADAPTER = 'tooling/ci/appimage-signing.mjs';
 /** The transport for the key material. Declared here rather than read because
  *  openssl wants a FILE and a path cannot travel through a repository secret —
  *  the same single exception the Android and Windows seams carry. Cross-checked
@@ -153,42 +158,17 @@ export const SEED_BYTES = 32;
 // cases are ordinary assertions rather than a runner that needs openssl.
 // ═════════════════════════════════════════════════════════════════════════════
 
-/** The secret-set law: all, none, or the state that is never legal. */
-export function decideSecretSet(names, env) {
-  const value = (n) => (env[n] ?? '').trim();
-  const supplied = names.filter((n) => value(n) !== '');
-  const missing = names.filter((n) => value(n) === '');
-  const state = supplied.length === 0 ? 'none' : missing.length === 0 ? 'all' : 'partial';
-  return { supplied, missing, state };
-}
-
 /**
- * Is this a RELEASE lane? DERIVED from what GitHub sets, never declared in YAML.
+ * Is this a RELEASE lane? DERIVED from what GitHub sets, never declared in YAML —
+ * the seam's `releaseSignal` over this row's one submission workflow. Kept under
+ * this name because the tests call it; `main` asks `releaseLane`, which adds the
+ * row's arming.
  *
  * ⚠️ `linux-appimage` declares NO submission workflow (`kind: "direct"`,
  * `submittable: false`), so limb (b) contributes nothing today and says so.
  */
 export function decideRelease({ gitRef = '', workflowRef = '', submissionWorkflow = null } = {}) {
-  const reasons = [];
-  const blind = [];
-  const ref = String(gitRef).trim();
-  const wf = String(workflowRef).trim();
-  if (ref.startsWith('refs/tags/')) reasons.push(`the run is a TAG push (${ref})`);
-  if (submissionWorkflow !== null && wf !== '') {
-    const runningPath = wf.split('@')[0];
-    if (runningPath.endsWith(`/${submissionWorkflow}`) || runningPath === submissionWorkflow) {
-      reasons.push(`this is ${CHANNEL_ID}'s declared submission workflow (${submissionWorkflow})`);
-    }
-  }
-  if (submissionWorkflow === null) {
-    blind.push(
-      `${REGISTER}'s ${CHANNEL_ID} row declares no \`submission.workflow\` (it is a direct-download row served ` +
-        'from R2, not a store submission), so limb (b) contributed nothing — only a tag push can mark a release here.',
-    );
-  } else if (wf === '') {
-    blind.push('GITHUB_WORKFLOW_REF is unset (not a GitHub job), so limb (b) could not be evaluated.');
-  }
-  return { required: reasons.length > 0, reasons, blind };
+  return releaseSignal({ gitRef, workflowRef, submissionWorkflows: submissionWorkflow === null ? [] : [submissionWorkflow], label: 'AppImage' });
 }
 
 /**
@@ -208,13 +188,13 @@ export function classifyPublicKeyPin(signingPublicKey) {
   const raw = signingPublicKey?.publicKeyBase64 ?? null;
   if (raw === null) return { kind: 'absent', raw, sentinel, value: null };
   if (sentinel !== null && String(raw) === sentinel) return { kind: 'sentinel', raw, sentinel, value: null };
-  const flat = String(raw).replace(/\s+/g, '');
-  const bytes = Buffer.from(flat, 'base64');
-  // Buffer.from silently ignores non-base64 characters, so a round-trip is the
-  // only way to tell "valid base64" from "something that decoded to anything".
-  if (bytes.toString('base64').replace(/=+$/, '') !== flat.replace(/=+$/, '')) {
+  // The seam's decode round-trips, which is the only way to tell "valid base64"
+  // from "something that decoded to anything". An empty pin decodes to 0 bytes.
+  const d = decodeKey(raw, { name: 'the pinned public key' });
+  if (d.problem === 'not-base64') {
     return { kind: 'malformed', raw, sentinel, value: null, why: 'it is not valid base64 (it does not round-trip)' };
   }
+  const bytes = d.bytes ?? Buffer.alloc(0);
   if (bytes.length !== SEED_BYTES) {
     return {
       kind: 'malformed',
@@ -301,11 +281,12 @@ export function decodeSigningKey(raw) {
     return { key, form: 'pem' };
   }
 
-  const flat = text.replace(/\s+/g, '');
-  const bytes = Buffer.from(flat, 'base64');
-  if (bytes.length === 0 || bytes.toString('base64').replace(/=+$/, '') !== flat.replace(/=+$/, '')) {
-    throw new Error(`it is not valid base64 (it decodes to ${bytes.length} byte(s) and does not round-trip)`);
+  // No magic: the three forms are told apart by length and prefix below.
+  const d = decodeKey(text, { name: B64_ENV });
+  if (d.problem !== null) {
+    throw new Error(`it is not valid base64 (it decodes to ${d.length} byte(s) and does not round-trip)`);
   }
+  const bytes = d.bytes;
 
   // (b) the raw 32-byte seed — what the register describes: "the base64 Ed25519
   //     PRIVATE seed". Wrapped in the fixed RFC 8410 PKCS#8 envelope, which has
@@ -455,32 +436,9 @@ function die(lines) {
   process.exit(1);
 }
 
-/** A newline in a value is REFUSED rather than escaped — `$GITHUB_ENV` is
- *  line-oriented, so a value carrying one writes a second, attacker-chosen
- *  assignment into every later step's environment. */
-function assertExportable(pairs) {
-  for (const [k, v] of Object.entries(pairs)) {
-    if (/[\r\n]/.test(v)) {
-      die([
-        `FAIL the value for ${k} contains a line break, and $GITHUB_ENV is line-oriented.`,
-        '     Writing it would inject a second, attacker-chosen assignment into the job environment.',
-        '     Re-create the secret without the trailing newline. The value itself is never printed.',
-      ]);
-    }
-  }
-}
-
-function exportEnv(pairs) {
-  assertExportable(pairs);
-  if (GITHUB_ENV === null) {
-    console.log('');
-    console.log('⬜ NOT EXPORTED — no $GITHUB_ENV and no --github-env, so nothing was written for later');
-    console.log('   steps. Outside a GitHub job that is expected; inside one it is a wiring fault.');
-    for (const k of Object.keys(pairs)) console.log(`   would export: ${k}`);
-    return;
-  }
-  appendFileSync(GITHUB_ENV, `${Object.entries(pairs).map(([k, v]) => `${k}=${v}`).join('\n')}\n`);
-}
+/** $GITHUB_ENV is written by the seam's `exportEnv`, which refuses a value with
+ *  a line break through `die` before anything is written. */
+const exportPairs = (pairs) => exportEnv(pairs, GITHUB_ENV, { fail: die });
 
 /** Resolved rather than assumed: "the tool was missing" and "the signature is
  *  good" must not be the same outcome. */
@@ -514,13 +472,18 @@ function main() {
   } catch (e) {
     coverageLost([`${REGISTER} is not valid JSON — ${e.message}`]);
   }
-  const channel = (register.channels ?? []).find((c) => c.id === CHANNEL_ID);
+  const channelId = opt('channel') ?? CHANNEL_ID;
+  const channel = (register.channels ?? []).find((c) => c.id === channelId);
   if (!channel) {
     coverageLost([
-      `${REGISTER} declares no "${CHANNEL_ID}" channel.`,
+      `${REGISTER} declares no "${channelId}" channel.`,
       'That row carries the secret name, the pinned public key and the restore-drill record. With it gone this',
       'script would ask for a name of its own invention and pin against undefined.',
     ]);
+  }
+  const prepare = channel.signing?.seam?.prepare;
+  if (typeof prepare === 'string' && prepare !== ADAPTER) {
+    die([`FAIL channel "${channelId}" is signed by ${prepare}, not by ${ADAPTER}.`, `     ${REGISTER} names the script per row.`]);
   }
 
   const declared = channel.signing?.ciSecrets?.names;
@@ -568,11 +531,13 @@ function main() {
   if (!app) die([`FAIL no app "${appId}" in ${APPS}.`, `     Known: ${apps.map((a) => a.slug).join(', ')}`]);
 
   // ── the lane ───────────────────────────────────────────────────────────────
-  const submissionWorkflow = typeof channel.submission?.workflow === 'string' ? channel.submission.workflow : null;
-  const lane = decideRelease({
+  // 🔴 IS THE CHANNEL ARMED? From THIS row's own register fields, never from a
+  // channel name written here — the seam asks channel-arming over the row found above.
+  const { lane, gap, mustSign } = releaseLane({
+    rows: [channel],
     gitRef: process.env.GITHUB_REF ?? '',
     workflowRef: process.env.GITHUB_WORKFLOW_REF ?? '',
-    submissionWorkflow,
+    label: 'AppImage',
   });
 
   console.log(`── AppImage signing · app "${app.slug}" · lane requires signing: ${lane.required ? 'YES' : 'no'} ──`);
@@ -584,7 +549,7 @@ function main() {
   const set = decideSecretSet(declared, process.env);
   const value = (n) => (process.env[n] ?? '').trim();
 
-  if (set.state === 'partial') {
+  if (set.kind === 'partial') {
     die([
       'FAIL AppImage signing is HALF configured and this build refuses to guess.',
       `     supplied: ${set.supplied.join(', ')}`,
@@ -598,13 +563,9 @@ function main() {
   const pin = classifyPublicKeyPin(channel.signing?.signingPublicKey);
   const drill = channel.signing?.restoreDrill ?? null;
 
-  if (set.state === 'none') {
+  if (set.kind === 'none') {
     const verdict = pinVerdict(pin, UNSIGNED_PROOF);
-    // 🔴 IS THE CHANNEL ARMED? From THIS row's own register fields, never from a
-    // channel name written here — the row was found by id above and the answer
-    // is the register's from that point on.
-    const gap = releaseGapVerdict([channel]);
-    if (lane.required && gap.fatal) {
+    if (mustSign) {
       die([
         'FAIL this is a RELEASE lane and no AppImage signing key is configured.',
         `     absent: ${declared.join(', ')}`,
@@ -659,7 +620,7 @@ function main() {
     console.log('      No agent can do any of the three, and a backup nobody has restored from is a belief.');
     if (verdict.print) console.log(`   ⬜ ${verdict.print}`);
     console.log('   This is the correct outcome for a branch, a fork PR and the weekly platform proof.');
-    exportEnv({ [POSTURE_ENV]: UNSIGNED_PROOF });
+    exportPairs({ [POSTURE_ENV]: UNSIGNED_PROOF });
     console.log('\nappimage-signing: OK (unsigned build proof, labelled)');
     process.exit(0);
   }
@@ -676,7 +637,17 @@ function main() {
     ]);
   }
 
-  assertExportable(Object.fromEntries(PASSTHROUGH.map((n) => [n, value(n)])));
+  // Refused BEFORE any key material touches disk — the seam's exportEnv would
+  // refuse the same value, but only after the key had been written.
+  const offenders = newlineOffenders(Object.fromEntries(PASSTHROUGH.map((n) => [n, value(n)])));
+  if (offenders.length) {
+    die([
+      `FAIL the value for ${offenders.join(', ')} contains a line break, and $GITHUB_ENV is line-oriented.`,
+      '     Writing it would inject a second, attacker-chosen assignment into the job environment.',
+      '     Re-create the secret without the trailing newline. The value itself is never printed.',
+      '     Nothing was written to disk.',
+    ]);
+  }
 
   let decoded;
   try {
@@ -706,7 +677,6 @@ function main() {
 
   // ── materialise, outside the workspace ─────────────────────────────────────
   const OUT_DIR = OUT_DIR_CHOSEN !== null ? resolve(OUT_DIR_CHOSEN) : mkdtempSync(join(tmpdir(), 'appimage-signing-'));
-  mkdirSync(OUT_DIR, { recursive: true });
   const keyPath = join(OUT_DIR, `${app.slug}-appimage-signing.pem`);
   const pubPath = join(OUT_DIR, `${app.slug}-appimage-signing.pub.pem`);
   if (!isAbsolute(keyPath) || !isAbsolute(pubPath)) {
@@ -715,12 +685,14 @@ function main() {
       'A relative path resolves against whatever directory a later step happens to run in.',
     ]);
   }
-  writeFileSync(keyPath, decoded.key.export({ format: 'pem', type: 'pkcs8' }), { mode: 0o600 });
+  // placeKey creates OUT_DIR, writes owner-only and re-applies the mode to a file already there.
+  const refused = placeKey(keyPath, Buffer.from(decoded.key.export({ format: 'pem', type: 'pkcs8' })));
+  if (refused) coverageLost(refused);
   writeFileSync(pubPath, createPublicKey(decoded.key).export({ format: 'pem', type: 'spki' }), { mode: 0o644 });
 
   const exported = { [KEY_PATH_ENV]: keyPath, [PUB_PATH_ENV]: pubPath, [POSTURE_ENV]: RELEASE_SIGNED };
   for (const n of PASSTHROUGH) exported[n] = value(n);
-  exportEnv(exported);
+  exportPairs(exported);
 
   console.log('');
   console.log(`ok   ${ALGORITHM} key materialised from a ${decoded.form} secret — written outside the workspace`);

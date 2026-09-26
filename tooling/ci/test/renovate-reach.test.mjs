@@ -268,3 +268,21 @@ test('T16 a versions.json manager whose matchString misses its own key: exit 2, 
   assert.equal(r.code, 2, r.out + r.err);
   assert.match(r.err, /zizmor: its customManager did not move tooling\/versions\.json \(it now reads "[^"]+"\), so the bump modelled here is not the one Renovate makes\./);
 });
+
+test('T17 the pubspec Flutter-floor customManager deleted: exit 1 naming a member pubspec and the brick template', () => {
+  // O-PUBSPEC-FLOORS-UNTIED-TO-THE-PIN: the version guard reads every Flutter
+  // pubspec's `flutter: ">=<flutter>"` floor, so a Flutter bump that reaches
+  // versions.json and the workflows but not those floors is red the day it lands.
+  const root = scratch();
+  const member = COPY_SET.find((p) => /^apps\/[^/]+\/pubspec\.yaml$/.test(p));
+  assert.ok(member, 'the real target set must carry an app member pubspec');
+  editJson(root, RENOVATE, (c) => {
+    const n = c.customManagers.length;
+    c.customManagers = c.customManagers.filter((m) => !(m.depNameTemplate === 'flutter' && m.managerFilePatterns.some((p) => matchesPath(p, member))));
+    assert.equal(c.customManagers.length, n - 1);
+  });
+  const r = reach(root);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.err, new RegExp(`^ {4}${member.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}:\\d+ flutter — `, 'm'));
+  assert.match(r.err, /^ {4}tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}\/pubspec\.yaml:\d+ flutter — /m);
+});

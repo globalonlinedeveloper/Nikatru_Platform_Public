@@ -172,6 +172,33 @@ android { defaultConfig { applicationId = "com.nikatru.subscriptiontracker" } }
 
 const SUBMIT_WF = '.github/workflows/submit-play.yml';
 
+/** The apps-gov-in shape: its OWN secret names, translated onto Gradle's by
+ *  `mapsOnto`. Armed only when a test says so — the real row is not. */
+const AGI_NAMES = ['APPSGOVIN_KEYSTORE_BASE64', 'APPSGOVIN_KEYSTORE_PASSWORD', 'APPSGOVIN_KEY_ALIAS', 'APPSGOVIN_KEY_PASSWORD'];
+function agiRow({ armed = false, mapsOnto = null, prepare = 'tooling/ci/android-signing.mjs' } = {}) {
+  return {
+    id: 'apps-gov-in',
+    served: armed,
+    submittable: false,
+    lane: null,
+    submission: null,
+    signing: {
+      seam: { prepare },
+      ciSecrets: {
+        names: AGI_NAMES,
+        gradleContract: {
+          transport: { name: 'APPSGOVIN_KEYSTORE_BASE64', substitutes: 'storeFile' },
+          mapsOnto: mapsOnto ?? {
+            APPSGOVIN_KEYSTORE_PASSWORD: 'ANDROID_KEYSTORE_PASSWORD',
+            APPSGOVIN_KEY_ALIAS: 'ANDROID_KEY_ALIAS',
+            APPSGOVIN_KEY_PASSWORD: 'ANDROID_KEY_PASSWORD',
+          },
+        },
+      },
+    },
+  };
+}
+
 function makeRoot({
   pin,
   channelId = 'android-play',
@@ -179,14 +206,19 @@ function makeRoot({
   gradle = GRADLE,
   apps = [{ slug: 'subscriptiontracker' }],
   submissionWorkflow = SUBMIT_WF,
+  // ARMED like the real android-play row (submittable, with a lane), so a
+  // release lane without a key is fatal — channel-arming.mjs decides that now.
+  armed = true,
+  extraRows = [],
 } = {}) {
   const root = join(TMP, `root${seq++}`);
   mkdirSync(join(root, 'tooling'), { recursive: true });
   mkdirSync(join(root, 'catalog'), { recursive: true });
   if (register) {
     const row = { id: channelId, signing: { uploadCertificate: { sha256: pin ?? null } } };
+    if (armed) Object.assign(row, { submittable: true, lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' } });
     if (submissionWorkflow !== null) row.submission = { workflow: submissionWorkflow };
-    writeFileSync(join(root, 'tooling', 'channel-register.json'), JSON.stringify({ channels: [row] }));
+    writeFileSync(join(root, 'tooling', 'channel-register.json'), JSON.stringify({ channels: [row, ...extraRows] }));
   }
   if (apps !== null) writeFileSync(join(root, 'catalog', 'apps.json'), JSON.stringify(apps));
   if (gradle !== null) {
@@ -374,12 +406,15 @@ describe('assert-artifact-signed — coverage self-checks', () => {
 // ═════ android-signing.mjs ═══════════════════════════════════════════════════
 const b64Of = (p) => readFileSync(p).toString('base64');
 
-function runPrepare(root, env, { app = 'subscriptiontracker' } = {}) {
+/** `dest` picks the flag the result goes to: `env` (--github-env, android-play's),
+ *  `output` (--github-output, a `mapsOnto` row's) or `none`. */
+function runPrepare(root, env, { app = 'subscriptiontracker', channel = null, dest = 'env' } = {}) {
   const outDir = join(TMP, `out${seq++}`);
   const ghEnv = join(TMP, `ghenv${seq++}.txt`);
+  const destFlag = { env: ['--github-env', ghEnv], output: ['--github-output', ghEnv], none: [] }[dest];
   const r = spawnSync(
     process.execPath,
-    [PREPARE, '--app', app, '--repo-root', root, '--out', outDir, '--github-env', ghEnv],
+    [PREPARE, '--app', app, ...(channel ? ['--channel', channel] : []), '--repo-root', root, '--out', outDir, ...destFlag],
     {
       encoding: 'utf8',
       env: {
@@ -388,6 +423,11 @@ function runPrepare(root, env, { app = 'subscriptiontracker' } = {}) {
         ANDROID_KEYSTORE_PASSWORD: '',
         ANDROID_KEY_ALIAS: '',
         ANDROID_KEY_PASSWORD: '',
+        APPSGOVIN_KEYSTORE_BASE64: '',
+        APPSGOVIN_KEYSTORE_PASSWORD: '',
+        APPSGOVIN_KEY_ALIAS: '',
+        APPSGOVIN_KEY_PASSWORD: '',
+        GITHUB_ENV: '',
         // Blanked rather than inherited: these tests run INSIDE a GitHub job,
         // where both are set to this repository's own values, and a release-lane
         // derivation that read the surrounding run would answer a question about
@@ -423,7 +463,7 @@ describe('android-signing — a release lane is DERIVED, not declared in YAML', 
   test("the channel's DECLARED submission workflow requires signing", () => {
     const { r } = runPrepare(makeRoot({}), ON_SUBMISSION_WF);
     assert.equal(r.status, 1, out(r));
-    assert.match(out(r), /declared submission workflow/);
+    assert.match(out(r), /declared Android submission workflow/);
   });
 
   test('ANOTHER workflow on a branch does NOT — the build proof stays legal', () => {
@@ -440,7 +480,7 @@ describe('android-signing — a release lane is DERIVED, not declared in YAML', 
       GITHUB_WORKFLOW_REF: `owner/other-repo/${SUBMIT_WF}@refs/tags/whatever`,
     });
     assert.equal(r.status, 1, out(r));
-    assert.match(out(r), /declared submission workflow/);
+    assert.match(out(r), /declared Android submission workflow/);
   });
 
   test('COVERAGE LOST when the register is gone — the decision would default to "proof is fine"', () => {
@@ -458,7 +498,120 @@ describe('android-signing — a release lane is DERIVED, not declared in YAML', 
   test('a row with no submission.workflow PRINTS the narrowed derivation rather than hiding it', () => {
     const { r } = runPrepare(makeRoot({ submissionWorkflow: null }), ON_SUBMISSION_WF);
     assert.equal(r.status, 0, out(r));
-    assert.match(out(r), /declares no `submission.workflow`/);
+    assert.match(out(r), /declares a `submission.workflow`, so limb \(b\) contributed nothing/);
+  });
+});
+
+describe('android-signing — the register row chooses the key (--channel)', () => {
+  test('the bare --app form signs for android-play, unchanged, and exits 0 on a branch', () => {
+    const { r, exported } = runPrepare(makeRoot({ extraRows: [agiRow()] }), {});
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /channel "android-play"/);
+    assert.match(exported, /^ANDROID_SIGNING_POSTURE=debug-signed-build-proof$/m);
+  });
+
+  test('apps-gov-in on a TAG push with no key and an UNARMED row is a labelled build proof, and passes', () => {
+    const { r, exported } = runPrepare(makeRoot({ extraRows: [agiRow()] }), ON_TAG, { channel: 'apps-gov-in', dest: 'output' });
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /required because the run is a TAG push/);
+    assert.match(out(r), /channel "apps-gov-in" is NOT ARMED/);
+    assert.equal(exported, 'ANDROID_SIGNING_POSTURE=debug-signed-build-proof\n');
+  });
+
+  test('apps-gov-in on a TAG push with no key and an ARMED row FAILS', () => {
+    const { r, exported } = runPrepare(makeRoot({ extraRows: [agiRow({ armed: true })] }), ON_TAG, { channel: 'apps-gov-in', dest: 'output' });
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /channel "apps-gov-in" IS ARMED/);
+    assert.match(out(r), /APPSGOVIN_KEYSTORE_BASE64/);
+    assert.equal(exported, '');
+  });
+
+  test("apps-gov-in is not a release lane because android-play's submission workflow is running", () => {
+    const { r } = runPrepare(makeRoot({ extraRows: [agiRow({ armed: true })] }), ON_SUBMISSION_WF, { channel: 'apps-gov-in', dest: 'output' });
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /no release signal/);
+  });
+
+  test('--github-env is refused for a mapsOnto row, and nothing is written to it', () => {
+    const { r, exported } = runPrepare(makeRoot({ extraRows: [agiRow()] }), {}, { channel: 'apps-gov-in', dest: 'env' });
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /--github-env was given for channel "apps-gov-in"/);
+    assert.equal(exported, '');
+  });
+
+  test("a mapsOnto row does not read the job's $GITHUB_ENV", () => {
+    const jobEnv = join(TMP, `jobenv${seq++}.txt`);
+    writeFileSync(jobEnv, '');
+    const { r, exported } = runPrepare(makeRoot({ extraRows: [agiRow()] }), { GITHUB_ENV: jobEnv }, { channel: 'apps-gov-in', dest: 'output' });
+    assert.equal(r.status, 0, out(r));
+    assert.equal(readFileSync(jobEnv, 'utf8'), '');
+    assert.match(exported, /^ANDROID_SIGNING_POSTURE=debug-signed-build-proof$/m);
+  });
+
+  test('--github-output is refused for android-play', () => {
+    const { r } = runPrepare(makeRoot({}), {}, { dest: 'output' });
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /--github-output was given for channel "android-play"/);
+  });
+
+  test("apps-gov-in with all four of ITS secrets is release-signed, and the output carries the path and posture only", () => {
+    const full = FULL();
+    const agi = {
+      APPSGOVIN_KEYSTORE_BASE64: full.ANDROID_KEYSTORE_BASE64,
+      APPSGOVIN_KEYSTORE_PASSWORD: full.ANDROID_KEYSTORE_PASSWORD,
+      APPSGOVIN_KEY_ALIAS: full.ANDROID_KEY_ALIAS,
+      APPSGOVIN_KEY_PASSWORD: full.ANDROID_KEY_PASSWORD,
+    };
+    const { r, outDir, exported } = runPrepare(makeRoot({ extraRows: [agiRow()] }), { ...agi, ...ON_TAG }, { channel: 'apps-gov-in', dest: 'output' });
+    assert.equal(r.status, 0, out(r));
+    const written = join(outDir, 'subscriptiontracker-upload.keystore');
+    assert.deepEqual(readFileSync(written), readFileSync(join(TMP, 'release.keystore')));
+    assert.equal(exported, `ANDROID_KEYSTORE_PATH=${written}\nANDROID_SIGNING_POSTURE=release-signed\n`);
+    assert.ok(!out(r).includes(PW), 'a password reached the log');
+    assert.ok(!out(r).includes(agi.APPSGOVIN_KEYSTORE_BASE64.slice(0, 40)), 'the keystore base64 reached the log');
+  });
+
+  test("apps-gov-in reads its OWN names: the Play key's ANDROID_* values do not sign it", () => {
+    const { r, exported } = runPrepare(makeRoot({ extraRows: [agiRow()] }), FULL(), { channel: 'apps-gov-in', dest: 'output' });
+    assert.equal(r.status, 0, out(r));
+    assert.equal(exported, 'ANDROID_SIGNING_POSTURE=debug-signed-build-proof\n');
+  });
+
+  test('apps-gov-in with three of its four secrets FAILS as HALF configured, under its own names', () => {
+    const full = FULL();
+    const { r } = runPrepare(
+      makeRoot({ extraRows: [agiRow()] }),
+      { APPSGOVIN_KEYSTORE_BASE64: full.ANDROID_KEYSTORE_BASE64, APPSGOVIN_KEYSTORE_PASSWORD: PW, APPSGOVIN_KEY_PASSWORD: PW },
+      { channel: 'apps-gov-in', dest: 'output' },
+    );
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /missing:\s+APPSGOVIN_KEY_ALIAS/);
+  });
+
+  test('COVERAGE LOST when mapsOnto does not translate onto exactly the variables Gradle reads', () => {
+    const mapsOnto = { APPSGOVIN_KEYSTORE_PASSWORD: 'ANDROID_KEYSTORE_PASSWORD', APPSGOVIN_KEY_ALIAS: 'ANDROID_KEY_ALIAS', APPSGOVIN_KEY_PASSWORD: 'ANDROID_KEY_PASS' };
+    const { r } = runPrepare(makeRoot({ extraRows: [agiRow({ mapsOnto })] }), {}, { channel: 'apps-gov-in', dest: 'output' });
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /does not translate its names onto exactly the variables/);
+  });
+
+  test('a row whose prepare seam is another script is refused', () => {
+    const { r } = runPrepare(makeRoot({ extraRows: [agiRow({ prepare: 'tooling/ci/appimage-signing.mjs' })] }), {}, { channel: 'apps-gov-in', dest: 'output' });
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /is signed by tooling\/ci\/appimage-signing\.mjs/);
+  });
+
+  test('COVERAGE LOST for a channel the register does not declare', () => {
+    const { r } = runPrepare(makeRoot({}), {}, { channel: 'apps-gov-in', dest: 'output' });
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /declares no "apps-gov-in" channel/);
+  });
+
+  test('android-play UNARMED on a tag with no key prints the gap and ends as a build proof', () => {
+    const { r, exported } = runPrepare(makeRoot({ armed: false }), ON_TAG);
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /channel "android-play" is NOT ARMED/);
+    assert.match(exported, /^ANDROID_SIGNING_POSTURE=debug-signed-build-proof$/m);
   });
 });
 

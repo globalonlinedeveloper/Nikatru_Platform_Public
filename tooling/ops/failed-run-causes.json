@@ -1307,6 +1307,153 @@
         "by": "its own pull request, on the branch before the merge"
       },
       "scope": "feature-branches"
+    },
+    {
+      "signature": "failure-ledger:unexplained",
+      "scope": "main",
+      "rootCause": "The weekly failed-run ledger's own step exits 1 when it lists UNEXPLAINED runs, by design. Its first two live reads (workflow_dispatch, runs 36206110356 and 36206329284, 2026-09-26) printed UNEXPLAINED: 62 and 63: 45 were the ledger's own defect (its later-green proof took the ops-watch run executing it, still in progress, as ops-watch's newest run) and the rest had no cause row.",
+      "fix": "not a defect: the red is the report, and every run it listed is graded on its own row by the next read. The in-flight proof is fixed and the missing causes are filed in the same change as this row (branch fix/ledger-monday-2026-09-26; O-FAILURE-LEDGER-CANNOT-CLEAR-OPS-WATCH, O-FAILURE-LEDGER-UNEXPLAINED-BEFORE-MONDAY).",
+      "fixedBy": {
+        "kind": "not-a-defect",
+        "reason": "the ledger exiting 1 on the runs it cannot explain is its report, not a fault; each listed run is graded on its own row by the next read"
+      }
+    },
+    {
+      "signature": "failure-ledger:credential-unshaped",
+      "scope": "main",
+      "rootCause": "The failed-run ledger's first live run (ops-watch run 36203215773, dispatched after #959) refused the Actions job token before any request: isValidGithubToken held every gh?_ credential to gh[pousr]_[A-Za-z0-9]{36,251}, and the job token GitHub issues does not fit that pattern, so it exited 2 (COVERAGE LOST).",
+      "fix": "PR #965 8a70894d (2026-09-26): the token pattern accepts the Actions job token's real shape.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "8a70894d",
+        "pr": 965
+      }
+    },
+    {
+      "signature": "provenance:run-listing-capped",
+      "rootCause": "check-prod-provenance.mjs listed ci.yml runs on main (event=push) and all 10 pages of 100 came back full: GitHub serves at most 1,000 results per run listing, so the walk could not be complete and exited 2, COVERAGE LOST (ops-watch run 36214720117).",
+      "fix": "PR #973 e1311448 (2026-09-26): each run listing is walked in created-date windows past the 1,000-result ceiling (O-PROVENANCE-WALK-HAS-NO-COMPLETENESS-CHECK).",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "e1311448",
+        "pr": 973
+      }
+    },
+    {
+      "signature": "surfaces:never-answered",
+      "rootCause": "status.mjs asked ntfy.nikatru.com three times in about 33 s and nothing answered: the Cloudflare US edge (MSP/PDX) stalled on the tunnel to Mumbai, edge status 499 and origin status 0, while Box B was healthy. The step exited 2, COVERAGE LOST (ops-watch runs 35996417635 and 36110724525).",
+      "fix": "PR #937 70b8540a (2026-09-25): one shared second look, four more attempts 15 s apart on new connections, before COVERAGE LOST (O-OPS-PROBE-US-EDGE-STALL).",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "70b8540a",
+        "pr": 937
+      }
+    },
+    {
+      "signature": "supabase-auth:session-limit-null-read-as-drift",
+      "rootCause": "The live Supabase auth config returned sessions_timebox and sessions_inactivity_timeout as 0 where tooling/mail-transport.json records null. GoTrue reads both as 'no limit', but the verifier compared String(want) !== String(got), so ops-watch run 36097413255 reported DRIFT although nothing had changed for users.",
+      "fix": "PR #935 8026db13 (2026-09-25): 0 and unset compare equal for the two session limits (O-AUTH-SESSIONS-NEVER-READS-ZERO).",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "8026db13",
+        "pr": 935
+      }
+    },
+    {
+      "signature": "glitchtip:release-create-5xx",
+      "rootCause": "deploy-web run 35831511489's release-create call to glitchtip.nikatru.com got HTTP 522 (Cloudflare: the origin did not answer in time) and had no retry, so the step failed on one transient origin error.",
+      "fix": "PR #900 0fa7e008 (2026-09-23): every GlitchTip write goes through the shared bounded retry (O-GLITCHTIP-CALLS-HAVE-NO-RETRY).",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "0fa7e008",
+        "pr": 900
+      }
+    },
+    {
+      "signature": "e2e:frames-wrong-size",
+      "rootCause": "E2E run 35824787614's frames-carry-text check read 1600x881 frames: flutter drive's --browser-dimension default overrode --window-size=430,932, so the frames were not the 430-wide size the ink floor was measured on (exit 2).",
+      "fix": "PR #894 274545d6 (2026-09-23): the drive captures at 430x932@1 (O-E2E-DROVE-THE-DESKTOP-LAYOUT).",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "274545d6",
+        "pr": 894
+      }
+    },
+    {
+      "signature": "e2e:rehearsal-refused-on-main",
+      "rootCause": "An e2e dispatch on main asked for auth_target=boxa, a rehearsal against a stack the deployed Workers refuse. The preflight refuses a rehearsal target on the default branch, because duty.workflow.e2e.yml grades main's newest e2e run as production health (run 35690888857).",
+      "fix": "not a defect: the preflight refused a rehearsal dispatched on main, as designed; main's next e2e run (35691052548) was green.",
+      "fixedBy": {
+        "kind": "not-a-defect",
+        "reason": "the preflight refusing a rehearsal target dispatched on main is the guard doing its job"
+      }
+    },
+    {
+      "signature": "gcp-scope:store-account-holds-a-role",
+      "rootCause": "The store service account nikatru-free-api could list the project's enabled APIs, because a project-level role had been granted to it between 2026-09-22 20:19Z and 2026-09-23 00:51Z. ADR no.033's protection holds only while that account has no role (ops-watch run 35800061373).",
+      "fix": "live action: the owner removed the grant at about 2026-09-23 03:55Z, and the GCP-scope step has been green since 04:57Z.",
+      "fixedBy": {
+        "kind": "live-action",
+        "what": "the owner removed the project-level role from the store service account, about 2026-09-23 03:55Z"
+      }
+    },
+    {
+      "signature": "pages-freshness:in-flight-read-as-failure",
+      "rootCause": "check-pages-deployments.mjs read rajasekarselvam's newest production deployment about 21 s after Cloudflare created it. The build was still at stage build with status active, and the reader graded it a failure; it succeeded 7 s later (ops-watch run 35422355154).",
+      "fix": "PR #817 2f09e85d (2026-09-19): an in-flight Pages build is graded by its age, not as a failure.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "2f09e85d",
+        "pr": 817
+      }
+    },
+    {
+      "signature": "pages-freshness:read-dropped",
+      "rootCause": "One of the three Cloudflare Pages reads (nikatru) died on TypeError: fetch failed, a single dropped connection, so the project was NOT JUDGED and the step exited 2 (ops-watch run 35478397730). A dispatch 16 minutes later read all three.",
+      "fix": "PR #852 709d7910 (2026-09-21): a bounded retry on each Cloudflare Pages read.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "709d7910",
+        "pr": 852
+      }
+    },
+    {
+      "signature": "pages-freshness:git-build-failed:initialize",
+      "rootCause": "Cloudflare failed the nikatru Pages Git build 57e2d2f9 (commit 53e5fd85) at stage initialize, logging 'build failed to initialize in time', before our build started. 53e5fd85 changed no file under sites/nikatru, so the bytes served were identical (ops-watch run 35981313508).",
+      "fix": "infrastructure, self-cleared: the next nikatru production build (at 67ba28c0) succeeded; the fault was Cloudflare-side and there is no commit.",
+      "fixedBy": {
+        "kind": "infrastructure"
+      }
+    },
+    {
+      "signature": "store-screenshots:simulator-aged-out",
+      "rootCause": "The macos-26 runner image dropped the 'iPhone 16 Pro Max' and 'iPad Pro 13-inch (M4)' simulators that tooling/channel-register.json named, so the iOS capture job could not boot them (store-screenshots run 35818953373).",
+      "fix": "PR #892 7754edb2 (2026-09-23): the register names 'iPhone 17 Pro Max' and 'iPad Pro 13-inch (M5)'. The proof is still pending: no store-screenshots run on main since, because the re-dispatch is held.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "7754edb2",
+        "pr": 892
+      }
+    },
+    {
+      "signature": "guard-failed:assert-apps-gov-in-apk",
+      "rootCause": "The apps.gov.in .apk guard failed twice on main. On 2026-09-22 (build-platforms run 35720583079) it could not read apksigner's signer lines, first a v3.1 'Signer (minSdkVersion=…)' shape and then a 'V2 Signer:' shape, and exited 2. On 2026-09-23 (run 35822768347) it found the .apk requesting com.android.vending.BILLING, which the apps-gov-in channel forbids; the Play Billing Library linked in by #890 had merged it in.",
+      "fix": "PRs #872 cbf628d7 and #873 f0e85f99 (2026-09-22): the guard reads every apksigner shape. PR #893 f64cd921 (2026-09-23): the apps.gov.in .apk strips BILLING. Build apps on main has been green since run 35993088623.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "f64cd921",
+        "pr": 893,
+        "also": [
+          {
+            "sha": "cbf628d7",
+            "pr": 872
+          },
+          {
+            "sha": "f0e85f99",
+            "pr": 873
+          }
+        ]
+      }
     }
   ]
 }

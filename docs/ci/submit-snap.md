@@ -536,3 +536,19 @@ credential by the same hand in the same act. The runbook makes them one step.
 `tooling/ci/test/snap-submission.test.mjs` carries the four refusals and a
 **green control at 31 days**, without which every red would be consistent with a
 limb that refuses everything.
+
+---
+
+## ⏱ 2026-09-25 — why `submit` still packs here, when Play and Windows no longer rebuild
+
+O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT moved `submit-play.yml` and `submit-windows-store.yml` onto
+the dry-run job's bytes, checked by sha256. This lane was left as it is, on purpose:
+`tooling/release/submit-snap.mjs` PG-5(c) REFUSES `--submit` unless the SAME job runs `snapcraft pack`
+before it ("this job built the bytes it is sending"), and the change that moved the other two lanes
+was not allowed to edit a submit script. So this job still builds and packs a second time per
+dispatch.
+
+`tooling/ci/test/submit-lanes-take-dry-run-bytes.test.mjs` records this as its one exception and
+reads it off `submit-snap.mjs` on every run: when PG-5(c) stops naming the pack, the test fails this
+lane until it takes its dry run's `.snap` by sha256 too. The same-run sha256 hand-off is at least
+the provenance PG-5(c) asks for; the script change is the open follow-up.

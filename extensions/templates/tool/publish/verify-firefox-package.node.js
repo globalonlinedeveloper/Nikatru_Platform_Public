@@ -6,7 +6,9 @@
      node publish/verify-firefox-package.node.js
      node publish/verify-firefox-package.node.js --zip publish/<slug>-<v>-firefox.zip
 
-   Grades publish/manifest.firefox.json against Mozilla's current MV3 rules,
+   Grades the Firefox manifest — manifest.json with publish/manifest.firefox.json
+   applied as an RFC 7386 merge patch (since 2026-09-25; until then the file was
+   a second full manifest and was graded whole) — against Mozilla's MV3 rules,
    against publish/identity.json (which owns the add-on id), and against the
    Chrome manifest it must stay in step with. It is a SUBMISSION gate, not one
    of the test tiers: it is RED while the owner has not chosen a domain, and
@@ -45,7 +47,6 @@ const path = require('path');
 const V = require(path.join(__dirname, 'verify-package.node.js'));
 const ROOT = V.ROOT;
 const PUBLISH = path.join(ROOT, 'publish');
-const FF_PATH = path.join(PUBLISH, 'manifest.firefox.json');
 const CH_PATH = path.join(ROOT, 'manifest.json');
 
 const PLACEHOLDER_ID = /REPLACE|\.example$|^$/i;
@@ -85,17 +86,25 @@ function deepEqual(a, b) {
 }
 const exists = rel => fs.existsSync(path.join(ROOT, rel));
 
-const ff = JSON.parse(fs.readFileSync(FF_PATH, 'utf8'));
+/* Everything below grades the MERGED manifest, which is what the package carries
+   (verify-package.node.js firefoxManifest(), the same merge publish/pack.mjs
+   writes). An overlay that cannot be merged stops the run here. */
+const ffm = V.firefoxManifest(ROOT, PUBLISH);
+if (ffm.error) {
+  console.log('FAIL  the Firefox manifest can be built — ' + ffm.error);
+  process.exit(1);
+}
+const ff = ffm.merged;
 const ch = JSON.parse(fs.readFileSync(CH_PATH, 'utf8'));
 const identity = JSON.parse(fs.readFileSync(path.join(PUBLISH, 'identity.json'), 'utf8'));
 const wantId = String(identity.slug) + '@' + String(identity.ownerDomain);
 
 console.log('=== manifest: parse, version, identity ===');
-check('publish/manifest.firefox.json parses', !!ff);
+check('the Firefox manifest (manifest.json + publish/manifest.firefox.json) builds', !!ff);
 check('manifest_version is 3', ff.manifest_version === 3, ff.manifest_version);
 gate('its version is in step with manifest.json', ff.version === ch.version,
   'firefox ' + ff.version + ' vs root ' + ch.version,
-  'RELEASE: bump both manifests together — node publish/bump-version.mjs patch does it in one step.');
+  'FIX: delete "version" from publish/manifest.firefox.json — a merge patch that omits it inherits manifest.json\'s.');
 
 console.log('\n=== browser_specific_settings.gecko ===');
 const gecko = (ff.browser_specific_settings || {}).gecko || {};
@@ -189,7 +198,7 @@ console.log('\n=== the importScripts guard, in source ===');
 console.log('\n=== keys Firefox must not carry ===');
 gate('no minimum_chrome_version (a Chrome Web Store key that means nothing to Gecko)',
   !('minimum_chrome_version' in ff), ff.minimum_chrome_version,
-  'FIX: drop "minimum_chrome_version" from publish/manifest.firefox.json.');
+  'FIX: set "minimum_chrome_version": null in publish/manifest.firefox.json — a null member deletes the Chrome key from the merge.');
 check('no developer "key" field', !('key' in ff));
 check('no top-level update_url', !('update_url' in ff));
 check('options_ui is declared (the Firefox form)', !!(ff.options_ui && typeof ff.options_ui.page === 'string'), JSON.stringify(ff.options_ui));

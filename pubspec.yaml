@@ -14,6 +14,8 @@ environment:
 # Pure-Dart and Flutter packages share ONE resolution; the workspace_gate CI
 # lane resolves with `flutter pub get` because the Flutter members require the
 # Flutter tool (plain `dart pub get` cannot resolve `sdk: flutter` deps).
+# tooling/ci/assert-version-consistency.mjs reads this list: each member's
+# `environment:` floors are compared with tooling/versions.json.
 workspace:
   - packages/analysis
   - packages/core
@@ -30,27 +32,21 @@ workspace:
   - apps/subscriptiontracker
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🔴 EXACT, NOT A CARET RANGE. This line is the one no guard looked at until
-# 2026-08-17, when mutating the declaration named ci.yml and nothing else.
+# 🔴 EXACT, NOT A CARET RANGE. No guard read this line until 2026-08-17, when
+# mutating the declaration named ci.yml and nothing else.
 #
 # 📏 THE VERSION IS DECLARED ONCE, as `melos` in tooling/versions.json, and this
-# comment quotes no version number on purpose: until 2026-09-25 it quoted the
-# 2026-08-17 pin eight times while the line below had moved on to a newer one.
-# The places it is written, re-measured 2026-09-25 by running
-#   git grep -n "<the versions.json melos value>" -- . ':!pubspec.lock'
-# and reading the lock:
-#   1. tooling/versions.json         the single declaration everything is compared to
-#   2. .github/workflows/ci.yml      `dart pub global activate melos <version>` — the CI runner
-#   3. THIS LINE                     the workspace dev_dependency `melos run gate` resolves
-#   4. README.md, build block        `dart pub global activate melos <version>` — what a human copies
-#   5. pubspec.lock                  written by the resolver, never by hand
-# The README's toolchain summary no longer carries a version, so it is not a
-# place any more. Some test fixtures carry a caret range deliberately; they are
-# inputs to guards, not call sites.
+# comment carries no version number on purpose: until 2026-09-25 it quoted the
+# 2026-08-17 pin eight times while the line below had moved on
+# (O-PUBSPEC-FLOORS-UNTIED-TO-THE-PIN). No script rewrites a comment, so a number
+# written here goes stale at the next bump; tooling/ci/assert-version-consistency.mjs
+# names any melos version in this file's comments that is not the pin.
 #
-# 🛡️ 2-4 ARE HELD TO 1 by tooling/ci/assert-version-consistency.mjs (README.md
-# became a target in the 2026-08-17 change). 5 is held to THIS LINE by
-# `flutter pub get --enforce-lockfile`, not by that guard.
+# 🗂️ THE PLACES IT IS WRITTEN ARE NOT LISTED HERE EITHER. They are REQUIRED_YIELD
+# in tooling/ci/assert-version-consistency.mjs: each is an entry the guard
+# compares with tooling/versions.json, and an entry that stops matching is
+# COVERAGE LOST. pubspec.lock is the one place outside it: the resolver writes
+# it, and `flutter pub get --enforce-lockfile` holds it to this line.
 #
 # WHY THE PIN AND THE ACTIVATE ARE NOT REDUNDANT. CI activates a GLOBAL melos;
 # `melos run gate` — §14's definition of green — runs the one resolved HERE. A
@@ -62,10 +58,8 @@ workspace:
 # Measured before pinning rather than assumed (2026-08-17, on that day's pin):
 # with the version exact, `flutter pub get --enforce-lockfile` exited 0 and
 # pubspec.lock was BYTE-IDENTICAL — the lock already resolved that version, so
-# the caret was buying range it never used.
-# tooling/ci/assert-version-consistency.mjs now compares this literal whole, so a
-# range operator coming back is unequal to the pin and fails, and its
-# REQUIRED_YIELD entry fails if melos ever stops being matched here at all.
+# the caret was buying range it never used. The guard compares this literal
+# whole, so a range operator coming back is unequal to the pin and fails.
 # ─────────────────────────────────────────────────────────────────────────────
 dev_dependencies:
   melos: 8.7.0
@@ -74,11 +68,16 @@ dev_dependencies:
 # THE ONE OVERRIDE, AND WHY IT IS NOT A SHRUG
 # ─────────────────────────────────────────────────────────────────────────────
 # A pub WORKSPACE is a single resolution, so every member's dev tooling has to
-# agree with every other member's. `melos` (that day's pin) requires `cli_util ^0.5.0`;
-# NO PUBLISHED VERSION of `flutter_launcher_icons` accepts anything at or above
-# 0.5.0 (measured 2026-08-04 — pub enumerated every version back to 0.9.0 and
-# they split between `cli_util ^0.3.5` and `>=0.4.0 <0.5.0`, while `msix
-# 3.18.0`'s `image ^4.0.0` rules out the older half). So the icon generator and
+# agree with every other member's. Re-read 2026-09-25 from the local pub cache,
+# not from pub.dev: the melos pin of that day (8.7.0) requires
+# `cli_util ">=0.5.0 <0.7.0"`, and flutter_launcher_icons 0.14.4 — the version
+# pubspec.lock resolves — requires `cli_util ^0.4.1`, which stops below 0.5.0.
+# The ranges still do not meet, so the override still earns its place; the lock
+# resolves cli_util 0.5.1 under it. Whether a flutter_launcher_icons newer than
+# 0.14.4 accepts 0.5.0 was NOT re-read that day. The first measurement
+# (2026-08-04, against that day's melos) had pub enumerate every version back to
+# 0.9.0: they split between `cli_util ^0.3.5` and `>=0.4.0 <0.5.0`, while `msix
+# 3.18.0`'s `image ^4.0.0` rules out the older half. So the icon generator and
 # the workspace runner cannot coexist without this line, and the icon generator
 # is what stands between this factory and shipping Flutter's logo again.
 #
