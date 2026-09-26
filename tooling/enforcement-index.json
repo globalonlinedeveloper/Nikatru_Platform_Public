@@ -3937,6 +3937,16 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/deploy-web.yml#deploy-web"
+    ],
+    "kind": "script",
+    "ref": "tooling/web/connect-origins.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
       ".github/workflows/ci.yml#app-brick",
       ".github/workflows/deploy-web.yml#deploy-web"
     ],

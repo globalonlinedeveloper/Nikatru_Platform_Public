@@ -261,6 +261,139 @@ expect('unparseable tool.json names the line and column', {
   root: fixture(root => { edit(root, TOOL + '/tool.json', s => s.replace('{', '{ oops')); })
 });
 
+/* ---- declared store gates: `--run-gates` and `--assert-generic` ----
+   ⏱ 2026-09-25, O-EXTENSION-GATES-NAME-ONE-TOOL. A tool's own store gates are
+   its tool.json `gates`; `--run-gates` runs one (tool, stage)'s, in order, and
+   `--assert-generic` refuses a workflow line that names a tool. The fixture gate
+   is one tiny script that prints its arguments and exits with the second of
+   them, so a case can make any gate pass or fail by its declaration alone. It
+   lives under checks/, not publish/, so no fixture string here spells a path
+   the gate-inventory pattern would read. */
+const GATE_JS = TOOL + '/checks/gate.mjs';
+const withGates = (gates, workflows) => fixture(root => {
+  w(root, GATE_JS, "console.log('RAN ' + process.argv.slice(2).join(' '));\nprocess.exitCode = Number(process.argv[3] || 0);\n");
+  const t = readJson(root, TOOL + '/tool.json');
+  if (gates !== undefined) t.gates = gates;
+  writeJson(root, TOOL + '/tool.json', t);
+  for (const [name, text] of Object.entries(workflows || {})) w(root, '.github/workflows/' + name, text);
+});
+const gate = (id, stage, code, when) => Object.assign({ id, stage, run: GATE_JS + ' ' + id + ' ' + code }, when ? { when } : {});
+/* The shape each job carries: one runner step per stage, and no tool id. */
+const GENERIC_WORKFLOWS = {
+  'extensions-ci.yml': 'jobs:\n  gates:\n    runs-on: ubuntu-24.04\n    steps:\n' +
+    '      - run: node scripts/discover.mjs --run-gates --tool ${{ matrix.tool }} --stage gates\n' +
+    '  package:\n    runs-on: ${{ matrix.os }}\n    steps:\n' +
+    '      - run: node scripts/discover.mjs --run-gates --tool ${{ matrix.tool }} --stage package --os ${{ matrix.os }}\n',
+  'extensions.yml': 'jobs:\n  release:\n    steps:\n' +
+    '      - env:\n          TOOL_ID: ${{ steps.tag.outputs.id }}\n' +
+    '        run: node scripts/discover.mjs --run-gates --tool "$TOOL_ID" --stage release\n'
+};
+const TWO_STAGES = [gate('src', 'gates', 0), gate('one', 'package', 0), gate('two', 'package', 0)];
+
+expect('--run-gates runs the declared gates of the named stage, in declaration order', {
+  script: 'discover.mjs', argv: ['--run-gates', '--tool', 'goodtool', '--stage', 'package'], code: 0,
+  contains: 'RAN one 0\n── gate 2 of 2: goodtool · package · two',
+  root: withGates(TWO_STAGES)
+});
+{
+  const r = run('discover.mjs', ['--run-gates', '--tool', 'goodtool', '--stage', 'package'], withGates(TWO_STAGES));
+  if (r.code === 0 && r.out.includes('RAN two 0') && !r.out.includes('RAN src')) {
+    ok('--run-gates runs no gate of another stage', 'the `gates`-stage gate "src" did not run');
+  } else {
+    bad('--run-gates runs no gate of another stage', 'expected exit 0, "RAN two 0" and no "RAN src"\n--- output ---\n' + r.out.trim());
+  }
+}
+expect('a failing gate\'s exit code is the exit code, and the gates after it do not run', {
+  script: 'discover.mjs', argv: ['--run-gates', '--tool', 'goodtool', '--stage', 'package'], code: 3,
+  contains: 'gate "one" of goodtool exited 3. Not run after it: two.',
+  root: withGates([gate('one', 'package', 3), gate('two', 'package', 0)])
+});
+expect('a tool with no gates at the stage runs none and passes, saying so', {
+  script: 'discover.mjs', argv: ['--run-gates', '--tool', 'goodtool', '--stage', 'gates'], code: 0,
+  contains: 'no gates declared for goodtool at gates.',
+  root: withGates(undefined)
+});
+expect('a gate whose `when` names another leg is skipped, and the log says which', {
+  script: 'discover.mjs', argv: ['--run-gates', '--tool', 'goodtool', '--stage', 'package', '--os', 'windows-2022'], code: 0,
+  contains: 'not on this leg  one  (declared for os=ubuntu-24.04; this leg is os=windows-2022)',
+  root: withGates([gate('one', 'package', 0, { os: 'ubuntu-24.04' })])
+});
+expect('--zip reaches the gate after its declared arguments', {
+  script: 'discover.mjs', argv: ['--run-gates', '--tool', 'goodtool', '--stage', 'release', '--zip', 'dist/goodtool-chromium.zip'], code: 0,
+  contains: 'RAN one 0 --zip dist/goodtool-chromium.zip',
+  root: withGates([gate('one', 'release', 0)])
+});
+expect('--run-gates for a tool id that is not on disk cannot run', {
+  script: 'discover.mjs', argv: ['--run-gates', '--tool', 'fullshot', '--stage', 'gates'], code: 2,
+  contains: 'is not the id of a tool on disk',
+  root: withGates(TWO_STAGES)
+});
+expect('--run-gates with a stage outside the three cannot run', {
+  script: 'discover.mjs', argv: ['--run-gates', '--tool', 'goodtool', '--stage', 'deploy'], code: 2,
+  contains: '--run-gates needs --stage <gates|package|release>',
+  root: withGates(TWO_STAGES)
+});
+expect('a run-gates flag without --run-gates is refused, not ignored', {
+  script: 'discover.mjs', argv: ['--tool', 'goodtool'], code: 2,
+  contains: 'belong(s) to --run-gates',
+  root: withGates(TWO_STAGES)
+});
+expect('a declared gate whose script does not exist is fatal to the matrix', {
+  script: 'discover.mjs', argv: [], code: 1, contains: 'which does not exist',
+  root: withGates([{ id: 'gone', stage: 'gates', run: TOOL + '/checks/gone.mjs' }])
+});
+expect('a declared gate for a target the tool does not build is fatal', {
+  script: 'discover.mjs', argv: [], code: 1, contains: 'which this tool does not build',
+  root: withGates([gate('one', 'package', 0, { target: 'firefox' })])
+});
+expect('a misspelt key in a gate declaration is fatal, not ignored', {
+  script: 'discover.mjs', argv: [], code: 1, contains: 'has an unknown key "wen"',
+  root: withGates([Object.assign(gate('one', 'package', 0), { wen: { os: 'ubuntu-24.04' } })])
+});
+expect('--assert-generic passes when every declared stage has a runner and no step names a tool', {
+  script: 'discover.mjs', argv: ['--assert-generic'], code: 0, contains: 'no extension workflow names a tool',
+  root: withGates(TWO_STAGES, GENERIC_WORKFLOWS)
+});
+expect('--assert-generic reds on a step gated on one matrix tool id, naming the line', {
+  script: 'discover.mjs', argv: ['--assert-generic'], code: 1,
+  contains: '.github/workflows/extensions-ci.yml:5  names a tool',
+  root: withGates(TWO_STAGES, Object.assign({}, GENERIC_WORKFLOWS, {
+    'extensions-ci.yml': GENERIC_WORKFLOWS['extensions-ci.yml'].replace('    steps:\n', '    steps:\n      - if: matrix.tool' + ' == ' + "'goodtool'" + '\n')
+  }))
+});
+expect('--assert-generic reds on the release tag\'s id compared the other way round', {
+  script: 'discover.mjs', argv: ['--assert-generic'], code: 1,
+  contains: '.github/workflows/extensions.yml:4  names a tool',
+  root: withGates(TWO_STAGES, Object.assign({}, GENERIC_WORKFLOWS, {
+    'extensions.yml': GENERIC_WORKFLOWS['extensions.yml'].replace('    steps:\n', '    steps:\n      - if: ' + "'goodtool'" + ' != steps.tag.outputs.id\n')
+  }))
+});
+expect('--assert-generic reds on a declared stage that no workflow step runs', {
+  script: 'discover.mjs', argv: ['--assert-generic'], code: 1,
+  contains: 'stage "release" has 1 declared gate(s) (goodtool/rel)',
+  root: withGates([gate('src', 'gates', 0), gate('rel', 'release', 0)], Object.assign({}, GENERIC_WORKFLOWS, {
+    'extensions.yml': 'jobs:\n  release:\n    steps:\n      - run: node scripts/pack.mjs\n'
+  }))
+});
+expect('--assert-generic reds on a `when.os` no workflow names', {
+  script: 'discover.mjs', argv: ['--assert-generic'], code: 1,
+  contains: 'goodtool/one is declared for os "macos-15"',
+  root: withGates([gate('one', 'package', 0, { os: 'macos-15' })], GENERIC_WORKFLOWS)
+});
+expect('--assert-generic with no gate declared anywhere is COVERAGE LOST, not a pass', {
+  script: 'discover.mjs', argv: ['--assert-generic'], code: 2,
+  contains: 'COVERAGE LOST — no tool declares a gate',
+  root: withGates(undefined, GENERIC_WORKFLOWS)
+});
+expect('--assert-generic with a workflow file absent is COVERAGE LOST', {
+  script: 'discover.mjs', argv: ['--assert-generic'], code: 2, contains: 'cannot be read',
+  root: withGates(TWO_STAGES, { 'extensions-ci.yml': GENERIC_WORKFLOWS['extensions-ci.yml'] })
+});
+expect('--assert-generic with an empty workflow file is COVERAGE LOST', {
+  script: 'discover.mjs', argv: ['--assert-generic'], code: 2, contains: 'is empty',
+  root: withGates(TWO_STAGES, Object.assign({}, GENERIC_WORKFLOWS, { 'extensions.yml': '\n' }))
+});
+
 /* =====================================================================
    lint
    ===================================================================== */
@@ -2985,14 +3118,49 @@ function gatesInvokedByWorkflows() {
   }
 
   const found = new Map();
+  const add = (gate, f) => {
+    if (!found.has(gate)) found.set(gate, new Set());
+    found.get(gate).add(f);
+  };
   for (const f of files) {
-    for (const hit of gateHits(stripAll(fs.readFileSync(path.join(dir, f), 'utf8')))) {
-      const gate = path.posix.normalize(hit);
-      if (!found.has(gate)) found.set(gate, new Set());
-      found.get(gate).add(f);
+    const text = stripAll(fs.readFileSync(path.join(dir, f), 'utf8'));
+    for (const hit of gateHits(text)) add(path.posix.normalize(hit), f);
+    /* ⏱ 2026-09-25, O-EXTENSION-GATES-NAME-ONE-TOOL: a tool's own store gates
+       are declared in its tool.json `gates` and run by ONE workflow step per
+       stage, `discover.mjs --run-gates ... --stage <s>`, so their paths are in
+       no workflow's text any more. A workflow that runs a stage invokes every
+       gate declared at it; without this, those gates would leave the invoked
+       set by moving house and the ratchet below would stop asking for a case. */
+    for (const line of text.split('\n')) {
+      const m = line.match(/\bdiscover\.mjs\s+--run-gates\b.*?--stage\s+([A-Za-z0-9_-]+)/);
+      if (!m) continue;
+      for (const g of declaredGates()) if (g.stage === m[1]) add(g.script, f);
     }
   }
   return found;
+}
+
+/* Every `gates` entry of every <category>/<tool>/tool.json in this tree, with
+   its script as a tree-relative path — the first word of its `run`, which is
+   what discover.mjs --run-gates resolves against the tree root. Read as JSON
+   here because this file is CommonJS and the loader is an ES module; the
+   declarations themselves are validated by discover.mjs, not by this. */
+function declaredGates() {
+  const out = [];
+  for (const cat of fs.readdirSync(REPO, { withFileTypes: true })) {
+    if (!cat.isDirectory() || cat.name.startsWith('.') || cat.name === 'node_modules') continue;
+    for (const tool of fs.readdirSync(path.join(REPO, cat.name), { withFileTypes: true })) {
+      if (!tool.isDirectory()) continue;
+      let raw;
+      try { raw = fs.readFileSync(path.join(REPO, cat.name, tool.name, 'tool.json'), 'utf8'); }
+      catch (e) { if (e.code === 'ENOENT') continue; throw e; }
+      const gates = JSON.parse(raw.replace(/^﻿/, '')).gates;
+      for (const g of Array.isArray(gates) ? gates : []) {
+        out.push({ stage: g.stage, script: path.posix.normalize(String(g.run).trim().split(/\s+/)[0]) });
+      }
+    }
+  }
+  return out;
 }
 
 /* The covered set is this file, read as text. A case names its gate in the
@@ -3042,7 +3210,13 @@ const NO_CASE_RECORDED = [
   { gate: 'scripts/test/contracts-sync.test.mjs',
     why: 'PERMANENT. It is a suite, not a gate — the same reason scripts/test/selftest.node.js is in this list. It appears in the invoked set only because extensions.yml runs it by path.' },
   { gate: 'Extension/Full_Screen_Shot/publish/verify-firefox-package.node.js',
-    why: 'OPEN GAP, recorded 2026-08-25. It lives in a tool\'s publish/, not in scripts/, and the run() helper here resolves against SCRIPTS and appends --repo-root, which this gate does not take — it takes --zip. It needs its own runner before it can have a case.' },
+    why: 'OPEN GAP, recorded 2026-08-25. It lives in a tool\'s publish/, not in scripts/, and the run() helper here resolves against SCRIPTS and appends --repo-root, which this gate does not take — it takes --zip. It needs its own runner before it can have a case. Since 2026-09-25 (O-EXTENSION-GATES-NAME-ONE-TOOL) no workflow spells its path: it is FullShot\'s tool.json gate `amo-source`, reached through the `--run-gates ... --stage gates` step, and the two zip wrappers below call it.' },
+  { gate: 'Extension/Full_Screen_Shot/publish/amo-gate-built-zip.node.js',
+    why: 'COVERED ELSEWHERE, recorded 2026-09-25 — not an open gap. Its cases are in scripts/test/amo-gate-zip.test.mjs, which runs it against a stand-in grader: a missing zip, a grader failure passed through as its own code, an exit 0 that never printed ALL PASS, and a real pass. Not here for the reason above: it takes --zip, not --repo-root.' },
+  { gate: 'Extension/Full_Screen_Shot/publish/amo-gate-release-zip.node.js',
+    why: 'COVERED ELSEWHERE, recorded 2026-09-25 — not an open gap. Same suite, same four outcomes, with the release step\'s own ::error:: wording asserted on each. Not here for the same reason as amo-gate-built-zip.node.js.' },
+  { gate: 'scripts/test/amo-gate-zip.test.mjs',
+    why: 'PERMANENT, recorded 2026-09-25. It is a suite, not a gate — the same reason scripts/test/selftest.node.js is in this list. It appears in the invoked set only because the `selftest` job runs it by path.' },
   { gate: 'scripts/check-listing-assets.mjs',
     why: 'COVERED, ELSEWHERE AND IN CI, recorded 2026-09-20 — this is not an open gap. Its ten cases are in scripts/test/listing-assets.test.mjs and every one of them SPAWNS this gate (`spawnSync(process.execPath, [GUARD, \'fullshot\', \'--repo-root\', root])`), not a re-implementation of it: a GREEN CONTROL that also asserts the run graded something, then eight reds — a deleted required asset, one at the WRONG SIZE by a single pixel, the 128x128 icon stripped of its alpha channel, a file that is not a PNG at all, ZERO screenshots, SIX screenshots (Chrome takes five), a screenshot at a size only one of the three stores accepts, and a tool with no listing tree at all proven to be a NOTE rather than a failure — and a final RESTORED case proving the same tree is green again, so the reds above moved it and the green is not vacuous. extensions.yml runs that suite in the same job that runs the gate. They are not in THIS file for the same reason as check-contracts-sync: every case here mutates one tree through --repo-root, while these need a synthetic listing tree with real PNG bytes whose IHDR the gate decodes.' },
   { gate: '../tooling/scripts/spawn-ceiling.mjs',
