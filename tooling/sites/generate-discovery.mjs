@@ -77,6 +77,13 @@
 //     `"operatingSystem": "iOS, Android, Windows, macOS, Linux, Web"`. (Same
 //     correction, same day: this read `:71`, which is a `.shots img` CSS rule.)
 //
+// ── THE SUPPORT AND ABOUT PAGES: ONE GENERATED SPAN EACH ─────────────────────
+// `sites/nikatru/support.html`'s per-app list (`<!-- SUPPORT-APPS -->`) and
+// `sites/nikatru/about.html`'s app section (`<!-- ABOUT-APPS -->`) are spliced
+// by `applyAppsBlock` below from the same `live` list as the homepage grid. Until
+// 2026-09-25 both were hand-written for app #1; see the block above
+// `supportAppsBlock` for what that cost.
+//
 // ── THE HOMEPAGE GRID: GENERATED HERE, ANNOUNCED BY THE OWNER ────────────────
 // 🔴 `sites/nikatru/index.html`'s app grid, between `<!-- APPS-GRID -->` and
 // `<!-- /APPS-GRID -->`, is written by `applyHomeGrid` below (#564, 2026-09-09)
@@ -134,8 +141,9 @@ import {
   closeMarker,
 } from './chrome.mjs';
 import { lastmodFor } from './lastmod.mjs';
-import { APEX_ORIGIN } from './apex.mjs';
+import { APEX_ORIGIN, publicAppUrl, appBaseHref } from './apex.mjs';
 import { isAuthMailPath } from './gen-auth-mail.mjs';
+import { parseYaml } from '../app-yaml/yaml.mjs';
 import { renderAvailability, AVAILABILITY_CSS, availabilitySummary, availabilityRow } from './availability.mjs';
 
 /** The deploy root this generator owns. The mirror (`sites/rajasekarselvam`) is
@@ -1586,6 +1594,191 @@ export function applyPricing(html, app) {
   return out;
 }
 
+// -----------------------------------------------------------------------------
+// THE PER-APP BLOCKS - support.html's "Help for each app" list and about.html's
+// app section, spliced from the registry
+//
+// 🔴 UNTIL 2026-09-25 BOTH WERE HAND-WRITTEN FOR ONE APP, AND NOTHING READ THEM.
+// support.html named app #1's address, landing and privacy notice under "Help for
+// each app"; about.html headed its section "Our first app" and called it "the only
+// app we have published so far". Each is true of a catalogue with one live row and
+// false the day a second row goes live, and no guard compared either page with the
+// catalogue: check-site-integrity.mjs reads the HOMEPAGE grid against
+// catalog/apps.json and nothing else. App #2 would have gone live with a support
+// page that could not help its users.
+//
+// ⚠️ SPLICED, NOT REGENERATED, for the reason pricing.html is: the rest of each
+// page is hand-written argument, and the smallest span that names an app is the
+// only part a catalogue can know.
+//
+// ── WHICH APPS: THE ONE LIST THIS GENERATOR ALREADY LISTS ────────────────────
+// `live` in `planDiscovery` - the usable registry entries whose status is `live`.
+// The homepage grid, the hub, the sitemap, llms.txt and the route table read the
+// same list. A second rule here would be a second answer to "which apps does this
+// site list", and the two would disagree the first time they could.
+//
+// ── WHAT A ROW IS MADE OF ────────────────────────────────────────────────────
+//   · `name`, `tagline`, `slug`, `url` - the catalogue row, verbatim. The tagline
+//     REPLACES the sentence each page had typed for app #1: the catalogue carries
+//     no longer description, and a per-slug sentence kept in this file would be
+//     the hand-written table `LISTING_LABELS` was deleted for being.
+//   · the open link - only when the row carries a `url`, the grid's rule. An apex
+//     app path (`publicAppUrl(slug)`) is linked in its SLASHED form: the apex
+//     router 301s `/<id>` to `/<id>/` (sites/nikatru/functions/_middleware.js),
+//     and the hand-written pages already linked the form that answers first time.
+//   · the privacy link - `privacyLinkFor` below.
+//
+// ── WHAT IT REFUSES TO INVENT ────────────────────────────────────────────────
+//   · a count in words. The about heading is "Our first app" while the list has
+//     one row and "Our apps" otherwise, and "the only app we have published so
+//     far" is said only while one is the list's length. No number is typed.
+//   · a privacy link to nothing. A live app with neither a per-app notice nor a
+//     declared policy URL is a PROBLEM, not a row without the link: the support
+//     page is where a user and a store reviewer look for it.
+// -----------------------------------------------------------------------------
+const SUPPORT_PAGE = `${DEPLOY_ROOT}/support.html`;
+const ABOUT_PAGE = `${DEPLOY_ROOT}/about.html`;
+
+/** The two pages' sentinel pairs. Same discipline as `HOME_GRID_OPEN`: exactly
+ *  one pair per page, and a missing pair REFUSES. */
+export const SUPPORT_APPS_OPEN = '<!-- SUPPORT-APPS -->';
+export const SUPPORT_APPS_CLOSE = '<!-- /SUPPORT-APPS -->';
+export const ABOUT_APPS_OPEN = '<!-- ABOUT-APPS -->';
+export const ABOUT_APPS_CLOSE = '<!-- /ABOUT-APPS -->';
+
+/** Where tooling/app-yaml/render-privacy.mjs writes an app's own notice, and the
+ *  address the apex router serves it at (the static site wins where it HAS a
+ *  file - sites/nikatru/functions/_middleware.js). */
+export const appNoticeRel = (slug) => `${DEPLOY_ROOT}/${slug}/privacy.html`;
+const appNoticeHref = (slug) => `/${slug}/privacy`;
+
+/** The site's own brand where it leads an app's name, dropped from the notice
+ *  label so it reads "Subscription Tracker privacy notice" as the page always has. */
+const BRAND_LEAD = /^Nikatru\s+(?=\S)/;
+
+/** The address the open link sends a visitor to. */
+export function openHref(app) {
+  return app.url === publicAppUrl(app.slug) ? new URL(appBaseHref(app.slug), APEX_ORIGIN).href : app.url;
+}
+
+/** The address as a reader sees it: no scheme, no trailing slash. */
+const shownUrl = (url) => url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+
+/** A tagline as a sentence: its own words, closed with a full stop when it has none. */
+const asSentence = (s) => (/[.!?]$/.test(s.trim()) ? s.trim() : `${s.trim()}.`);
+
+const hasUrl = (app) => typeof app.url === 'string' && app.url !== '';
+
+/**
+ * The privacy link for one live app, or null after pushing the reason.
+ *
+ * 🔴 THE APP'S OWN NOTICE FIRST, AND THAT ORDER IS MEASURED. `app.yaml`'s
+ * `legal.privacyPolicyUrl` is the STORE LISTING's privacy URL, and for app #1 it
+ * is the portfolio policy (`https://nikatru.com/privacy`), not the per-app notice
+ * the support page has always linked as "What this app collects".
+ * render-privacy.mjs's header keeps the two apart on purpose. So an app the site
+ * ships a notice for links that notice; an app it does not links the URL its
+ * app.yaml declares; an app with neither is a problem.
+ *
+ * @returns {{href: string, label: string}|null}
+ */
+export function privacyLinkFor(repoRoot, app, problems) {
+  if (existsSync(join(repoRoot, ...appNoticeRel(app.slug).split('/')))) {
+    return { href: appNoticeHref(app.slug), label: `${app.name.replace(BRAND_LEAD, '')} privacy notice` };
+  }
+  const rel = `apps/${app.slug}/app.yaml`;
+  let declared = null;
+  try {
+    declared = parseYaml(readFileSync(join(repoRoot, ...rel.split('/')), 'utf8'))?.legal?.privacyPolicyUrl ?? null;
+  } catch (e) {
+    if (e?.code !== 'ENOENT') {
+      problems.push(`${rel} could not be read for its legal.privacyPolicyUrl (${e.message}), so ${SUPPORT_PAGE} has no privacy link for "${app.slug}".`);
+      return null;
+    }
+  }
+  if (typeof declared !== 'string' || !declared.startsWith('https://')) {
+    problems.push(
+      `${SUPPORT_PAGE} lists the live app "${app.slug}" and has no privacy link for it: ${appNoticeRel(app.slug)} ` +
+        `does not exist and ${rel} declares no https legal.privacyPolicyUrl. Render the app's notice ` +
+        '(node tooling/app-yaml/render-privacy.mjs) or declare the URL, then re-run this generator.',
+    );
+    return null;
+  }
+  const href = declared.startsWith(APEX_ORIGIN) ? `/${declared.slice(APEX_ORIGIN.length)}` : declared;
+  return { href, label: 'Privacy Policy' };
+}
+
+/**
+ * support.html's per-app list. Pure.
+ *
+ * @param {object[]} liveApps
+ * @param {Map<string, {href: string, label: string}|null>} privacy by slug
+ */
+export function supportAppsBlock(liveApps, privacy = new Map()) {
+  if (!liveApps.length) return '  <p>No app is published yet.</p>';
+  return liveApps
+    .map((app) => {
+      const items = [];
+      if (hasUrl(app)) {
+        items.push(`Open the app: <a href="${esc(openHref(app))}" target="_blank" rel="noopener">${esc(shownUrl(app.url))}</a>`);
+      }
+      items.push(`What it does and how it works: <a href="/apps/${esc(app.slug)}">${esc(app.name)}</a>`);
+      const link = privacy.get(app.slug);
+      if (link) items.push(`What this app collects: <a href="${esc(link.href)}">${esc(link.label)}</a>`);
+      return [
+        `  <h3>${esc(app.name)}</h3>`,
+        `  <p>${esc(asSentence(app.tagline))}</p>`,
+        '  <ul>',
+        ...items.map((i) => `    <li>${i}</li>`),
+        '  </ul>',
+      ].join('\n');
+    })
+    .join('\n');
+}
+
+/** about.html's app section, heading included - the heading is the part that
+ *  depends on the list's length. Pure. */
+export function aboutAppsBlock(liveApps) {
+  const heading = `  <h2>${liveApps.length === 1 ? 'Our first app' : 'Our apps'}</h2>`;
+  if (!liveApps.length) return `${heading}\n  <p>No app is published yet.</p>`;
+  const paras = liveApps.map((app) => {
+    const lines = [`  <p><b>${esc(app.name)}</b> &mdash; ${esc(asSentence(app.tagline))}`];
+    if (hasUrl(app)) {
+      lines.push(
+        `  It is live on the web now at <a href="${esc(openHref(app))}" target="_blank" rel="noopener">${esc(shownUrl(app.url))}</a>.`,
+      );
+    }
+    if (liveApps.length === 1) lines.push('  It is the only app we have published so far.');
+    return `${lines.join('\n')}</p>`;
+  });
+  return [heading, ...paras].join('\n');
+}
+
+/**
+ * Splice `body` into `html` between one sentinel pair.
+ *
+ * 🔴 REFUSES on a missing, duplicated or reversed pair, exactly as
+ * `applyHomeGrid` does: a splice that quietly does nothing leaves the page naming
+ * whichever apps it last named while this generator counts the file as written.
+ */
+export function applyAppsBlock(html, page, open, close, body) {
+  const opens = html.split(open).length - 1;
+  const closes = html.split(close).length - 1;
+  if (opens !== 1 || closes !== 1) {
+    throw new Error(
+      `${page}: expected exactly one ${open} … ${close} pair, found ${opens} opening and ${closes} closing ` +
+        "sentinel(s). The page's per-app block is generated into that span from the registry; without it the " +
+        'page would keep naming whichever apps it last named while this generator counted the file as written.',
+    );
+  }
+  const start = html.indexOf(open);
+  const end = html.indexOf(close);
+  if (end < start) {
+    throw new Error(`${page}: the ${open} sentinels are reversed, which would replace the rest of the document.`);
+  }
+  return `${html.slice(0, start + open.length)}\n${body}\n${html.slice(end)}`;
+}
+
 /**
  * The whole plan, as bytes, without touching the disk. `assert-discovery-surface.mjs`
  * calls this and compares; the CLI below calls it and writes.
@@ -1738,6 +1931,13 @@ export function planDiscovery(repoRoot) {
       // generated, and why leaving those four numbers hand-maintained was a
       // defect no guard in this repository could see.
       if (rel === PRICING_PAGE) out = applyPricing(out, pricedApp(ctx, live, problems));
+      // ... and the support and about pages take one each, for the apps they
+      // name. See `supportAppsBlock` above for why the list is `live`.
+      if (rel === SUPPORT_PAGE) {
+        const privacy = new Map(live.map((app) => [app.slug, privacyLinkFor(repoRoot, app, problems)]));
+        out = applyAppsBlock(out, rel, SUPPORT_APPS_OPEN, SUPPORT_APPS_CLOSE, supportAppsBlock(live, privacy));
+      }
+      if (rel === ABOUT_PAGE) out = applyAppsBlock(out, rel, ABOUT_APPS_OPEN, ABOUT_APPS_CLOSE, aboutAppsBlock(live));
       files.set(rel, out);
       chromeOnly.add(rel);
     } catch (e) {
