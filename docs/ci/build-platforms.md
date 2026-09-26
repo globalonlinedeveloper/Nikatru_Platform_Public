@@ -1548,7 +1548,7 @@ only against a Play install.
 *Added 2026-09-23 · closes `O-BUILT-ARTIFACT-GUARDS-RUN-ONLY-AFTER-MERGE`.*
 
 This workflow never runs on a pull request. Its three Android builds now also run on every pull
-request, as `ci.yml` `android-artifacts`: one matrix leg per app, from `ci.yml` `android-apps`,
+request, as `ci.yml` `android-artifacts`: one matrix leg per app, from `ci.yml` `prepare`,
 which runs the same `assert-release-lane-generic.mjs --emit-apps` as `prepare` here. Both jobs are
 in `ci-gate`'s `needs`. The overlay above gets its first build proof on a pull request there.
 
