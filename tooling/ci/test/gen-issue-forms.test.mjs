@@ -16,7 +16,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, cpSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, cpSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -87,6 +87,29 @@ describe('refusals', () => {
     const r = run('--check', '--root', root);
     assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — gen-issue-forms: \.github\/ISSUE_TEMPLATE\/bug\.yml does not exist/);
+  });
+  // ⏱ 2026-09-27 — CodeQL js/file-system-race (PR #993). The form is READ with no
+  // exists-check before it, so no window is left between a check and --write's
+  // write. A missing form is still COVERAGE LOST on the --write path, nothing is
+  // written in its place, and only a path that names no file is "does not exist".
+  test('a missing form under --write exits 2, COVERAGE LOST, and no form is written in its place', () => {
+    const root = rootWith([FULLSHOT]);
+    const p = join(root, '.github', 'ISSUE_TEMPLATE', 'bug.yml');
+    rmSync(p);
+    const r = run('--write', '--root', root);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — gen-issue-forms: \.github\/ISSUE_TEMPLATE\/bug\.yml does not exist/);
+    assert.equal(existsSync(p), false, '--write created the missing form');
+  });
+  test('a directory where a form should be is an error, not "does not exist" and not a pass', () => {
+    const root = rootWith([FULLSHOT]);
+    const p = join(root, '.github', 'ISSUE_TEMPLATE', 'bug.yml');
+    rmSync(p);
+    mkdirSync(p);
+    const r = run('--check', '--root', root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /EISDIR/);
+    assert.doesNotMatch(r.out, /does not exist/);
   });
   test('a form with no marker pair exits 2, COVERAGE LOST', () => {
     const root = rootWith([FULLSHOT]);

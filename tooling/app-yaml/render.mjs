@@ -273,12 +273,18 @@ export const ICON_LABEL_TARGETS = [
  * `msix_config:` is an app not packaged for the Microsoft Store and is skipped;
  * the brick appends the block AFTER its render, on the same sentinel the record
  * carries.
+ *
+ * A line of the span is `[ \t#]` and the rest of it, or a bare `\r`, or
+ * nothing, then its `\n`. It used to be `(?:[ \t#][^\n]*)?\r?\n`, where
+ * `[^\n]*` and `\r?` could each take an indented CRLF line's `\r`, so n such
+ * lines with no identity_name after them backtracked 2^n ways (CodeQL
+ * js/redos). The text matched and both groups are unchanged.
  */
 export const MSIX_IDENTITY_TARGET = {
   field: 'msix_config.identity_name (Package/Identity/@Name)',
   in: 'pubspec.yaml',
   applies: /^msix_config:/m,
-  re: /(^msix_config:[^\n]*\n(?:(?:[ \t#][^\n]*)?\r?\n)*? {2}identity_name: )[^\r\n]*(\r?)$/m,
+  re: /(^msix_config:[^\n]*\n(?:(?:[ \t#][^\n]*|\r)?\n)*? {2}identity_name: )[^\r\n]*(\r?)$/m,
   encode: yamlScalar,
 };
 

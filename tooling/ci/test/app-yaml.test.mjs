@@ -38,7 +38,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { parseYaml, YamlError } from '../../app-yaml/yaml.mjs';
 import { validate, assertSchemaUnderstood, SchemaError } from '../../app-yaml/schema-validate.mjs';
-import { appleCategoryUti } from '../../app-yaml/render.mjs';
+import { appleCategoryUti, MSIX_IDENTITY_TARGET } from '../../app-yaml/render.mjs';
 import { resolveRequiredProviders } from '../../legal/required-providers.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -1778,6 +1778,33 @@ describe('msix_config.identity_name is rendered from the app\'s own stores.windo
       assert.equal(code, 0, `an app not packaged for the Microsoft Store has no identity_name to render:\n${out}`);
       assert.equal(get(root, PUBSPEC), before, 'a pubspec with no msix_config block must be left exactly as it is');
     } finally { kill(root); }
+  });
+
+  // ⏱ 2026-09-27 — CodeQL js/redos (PR #993). An indented CRLF line inside the
+  // span was read two ways (`[^\n]*` took its `\r`, or `\r?` did), so a block of
+  // n of them with no identity_name after it backtracked 2^n ways. The regex the
+  // renderer runs, fed CodeQL's input: 26 lines (about a second for the OLD
+  // regex on the host that recorded it), then 5000.
+  test('a block of indented CRLF lines with no identity_name is refused in under 100 ms', () => {
+    for (const n of [26, 5000]) {
+      const t0 = performance.now();
+      const hit = MSIX_IDENTITY_TARGET.re.test(`msix_config:\n${'\t\r\n'.repeat(n)}`);
+      const ms = performance.now() - t0;
+      assert.equal(hit, false);
+      assert.ok(ms < 100, `${n} lines: ${ms.toFixed(1)} ms, over the 100 ms a linear read takes`);
+    }
+  });
+
+  test('a CRLF block with blank, comment and indented lines still renders identity_name, keeping the \\r', () => {
+    const text = 'msix_config:\r\n  display_name: Subly\r\n\r\n  # the id\r\n\n  identity_name: NIKATRU.Old\r\nzz: 1\r\n';
+    const m = MSIX_IDENTITY_TARGET.re.exec(text);
+    assert.ok(m, 'the span must reach identity_name across a CRLF blank line and an LF one');
+    assert.equal(m[1], 'msix_config:\r\n  display_name: Subly\r\n\r\n  # the id\r\n\n  identity_name: ');
+    assert.equal(m[2], '\r');
+    assert.equal(
+      text.replace(MSIX_IDENTITY_TARGET.re, (_m, pre, post) => `${pre}NIKATRU.New${post}`),
+      'msix_config:\r\n  display_name: Subly\r\n\r\n  # the id\r\n\n  identity_name: NIKATRU.New\r\nzz: 1\r\n',
+    );
   });
 });
 

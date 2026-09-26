@@ -137,7 +137,10 @@ export function blockMatches(text, tool, block, command, body) {
 
 // ── The tree ─────────────────────────────────────────────────────────────────
 
-const cell = (s) => String(s).replace(/\|/g, '\\|');
+/** One markdown table cell. The backslash is escaped FIRST, so a `\|` in a
+ *  name cannot turn the added escape back into a cell break (CodeQL
+ *  js/incomplete-sanitization; assert-apps-gov-in-apk.mjs mdCell is the same). */
+const cell = (s) => String(s).replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
 const code = (s) => `\`${s}\``;
 const fileOf = (rel) => rel.slice(rel.lastIndexOf('/') + 1);
 

@@ -26,7 +26,7 @@
 // no region to write, or the walk found no tool at all. A dropdown graded
 // against zero ids passes everything, which is the one answer it must never give.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, statSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
@@ -120,8 +120,17 @@ function main(argv) {
   let fail = bad.length > 0;
   for (const f of FORMS) {
     const abs = join(root, f.rel);
-    if (!existsSync(abs)) lost(`${f.rel} does not exist. This grades the issue forms a reporter actually sees, and a missing form must not read as a form with every id in it.`);
-    const text = readFileSync(abs, 'utf8');
+    // Read, never exists-checked first: a check and then --write's write left a
+    // window in which the file could change between the two (CodeQL
+    // js/file-system-race). A path that names no file is COVERAGE LOST; any
+    // other read error (a directory, say) is thrown, as it was.
+    let text;
+    try {
+      text = readFileSync(abs, 'utf8');
+    } catch (e) {
+      if (e?.code === 'ENOENT' || e?.code === 'ENOTDIR') lost(`${f.rel} does not exist. This grades the issue forms a reporter actually sees, and a missing form must not read as a form with every id in it.`);
+      throw e;
+    }
     const r = renderForm(text, tools, f.option);
     if (r.lost) lost(`${f.rel} ${r.lost}.`);
     if (write) {

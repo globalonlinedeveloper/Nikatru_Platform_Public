@@ -265,7 +265,12 @@ export function resolveSkip(skipExpr, parsed) {
     return { patterns: parsed.churn.map((d) => `*\\${d}\\*`) };
   };
   if (e === '$repoChurnSkip') return churnSkip();
-  const m = /^\(\s*@\(\s*((?:'(?:[^']|'')*'\s*,?\s*)+)\)\s*\+\s*\$repoChurnSkip\s*\)$/.exec(e);
+  // The list is ITEM (SEP ITEM)* then a trailing SEP, and SEP between two items
+  // is never empty. `'a''b'` is ONE item with a '' escape in it, so a list that
+  // also allowed two items with nothing between them read that text two ways,
+  // and a run of `''` backtracked 2^n ways before failing (CodeQL js/redos). The
+  // text accepted and m[1] are exactly what `(?:'…'\s*,?\s*)+` gave.
+  const m = /^\(\s*@\(\s*('(?:[^']|'')*'(?:(?:\s+(?:,\s*)?|,\s*)'(?:[^']|'')*')*\s*(?:,\s*)?)\)\s*\+\s*\$repoChurnSkip\s*\)$/.exec(e);
   if (m) {
     const rest = churnSkip();
     return rest.error ? rest : { patterns: [...quotedList(m[1]), ...rest.patterns] };
@@ -277,7 +282,8 @@ export function resolveSkip(skipExpr, parsed) {
  *  one form modelled. Returns { patterns } or { error }. */
 export function resolveKeep(keepExpr) {
   if (keepExpr === undefined) return { patterns: [] };
-  const m = /^@\(\s*((?:'(?:[^']|'')*'\s*,?\s*)*)\)$/.exec(norm(keepExpr));
+  // resolveSkip's list, made optional so `@()` is still the empty list.
+  const m = /^@\(\s*((?:'(?:[^']|'')*'(?:(?:\s+(?:,\s*)?|,\s*)'(?:[^']|'')*')*\s*(?:,\s*)?)?)\)$/.exec(norm(keepExpr));
   if (!m) return { error: `its Keep \`${norm(keepExpr)}\` is not a literal \`@('…', …)\` list` };
   return { patterns: quotedList(m[1]) };
 }

@@ -13,6 +13,7 @@
 //   M5  limb (a): an `### above` anchor quoting a line the workflow lacks
 //   M6  limb (b): a `## job` heading naming a key that is not a job
 //   M7  limb (c): a tracked file outside docs/ citing a doc line by number
+//   M8  a name carrying `\|` stays one table cell (the backslash escaped first)
 //
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
@@ -307,5 +308,19 @@ describe('gen-ci-map', () => {
     assert.ok(r.stderr.includes('tooling/other.json:1 — cites `RELEASE-RUNBOOK.md'), r.stderr);
     assert.doesNotMatch(r.stderr, /scratch\.mjs/);
     assert.match(r.stderr, /limb \(c\) line citations 2/);
+  });
+
+  // ⏱ 2026-09-27 — CodeQL js/incomplete-sanitization (PR #993). A cell escaped its
+  // pipes only, so a name carrying `\|` came out `\\|`: an escaped backslash, then
+  // a pipe that ENDS the cell. GFM's own row rule is the oracle here: a backslash
+  // escapes the character after it, and every other pipe is a cell break.
+  test('M8 · a job name carrying `\\|` stays one cell: the backslash is escaped before the pipe', () => {
+    const root = written({ '.github/workflows/ci.yml': CI_YML.replace('name: Lint the tree', 'name: Lint a\\|b C:\\tree') });
+    const readme = readFileSync(join(root, 'docs/ci/README.md'), 'utf8');
+    const row = readme.split('\n').find((l) => l.startsWith('| `lint` |'));
+    assert.equal(row, '| `lint` | Lint a\\\\\\|b C:\\\\tree | — | — | yes |');
+    const cells = row.slice(1, -1).match(/(?:\\[\s\S]|[^|\\])+/g).map((c) => c.trim());
+    assert.equal(cells.length, 5, `the row splits into ${cells.length} cells: ${JSON.stringify(cells)}`);
+    assert.equal(run('--check', root).status, 0);
   });
 });

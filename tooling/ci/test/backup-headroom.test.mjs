@@ -21,7 +21,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  parseBackupSets, resolveSkip, likeToRegExp, endsWithWildcard, countSet, grade, researchIntruders, evaluate,
+  parseBackupSets, resolveSkip, resolveKeep, likeToRegExp, endsWithWildcard, countSet, grade, researchIntruders, evaluate,
 } from '../../scripts/backup-headroom.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -257,5 +257,47 @@ describe('COVERAGE LOST and what is not walked', () => {
     assert.ok(start !== -1 && end !== -1, 'readPs1 is gone');
     assert.ok(reads[0].index > start && reads[0].index < end, 'the one read is not inside readPs1');
     assert.doesNotMatch(code, /node:fs\/promises|from 'fs'/);
+  });
+});
+
+// ⏱ 2026-09-27 — CodeQL js/redos ×4 (PR #993). The Skip and Keep lists were
+// `(?:'…'\s*,?\s*)+`: with the separator optional, `'a''b'` was one item with a
+// '' escape in it AND two items with nothing between them, so a run of `''`, or
+// of `\t''`, was read 2^n ways before the match failed. Each short probe is the
+// input CodeQL named, sized so the OLD regex still finishes (about a second on
+// the host that recorded it); the long one is the same input 100 times longer.
+describe('the Skip and Keep lists are read in linear time', () => {
+  const within = (label, fn) => {
+    const t0 = performance.now();
+    const out = fn();
+    const ms = performance.now() - t0;
+    assert.ok(ms < 100, `${label}: ${ms.toFixed(1)} ms, over the 100 ms a linear read takes`);
+    return out;
+  };
+  const refused = (r) => assert.match(r.error ?? '', /is not/, JSON.stringify(r));
+
+  test('an unterminated Skip list of `\'\'` or `\\t\'\'` runs is refused in under 100 ms', () => {
+    const parsed = parseBackupSets(FIXTURE);
+    refused(within('Skip, 28 × \'\'', () => resolveSkip("(@(''" + "''".repeat(28), parsed)));
+    refused(within('Skip, 24 × \\t\'\'', () => resolveSkip("(@('''" + "\t''".repeat(24), parsed)));
+    refused(within('Skip, 3000 × \'\'', () => resolveSkip("(@(''" + "''".repeat(3000), parsed)));
+    refused(within('Skip, 3000 × \\t\'\'', () => resolveSkip("(@('''" + "\t''".repeat(3000), parsed)));
+  });
+
+  test('an unterminated Keep list of `\'\'` or `\\t\'\'` runs is refused in under 100 ms', () => {
+    refused(within('Keep, 20 × \'\'', () => resolveKeep("@(''" + "''".repeat(20))));
+    refused(within('Keep, 20 × \\t\'\'', () => resolveKeep("@('''" + "\t''".repeat(20))));
+    refused(within('Keep, 3000 × \'\'', () => resolveKeep("@(''" + "''".repeat(3000))));
+    refused(within('Keep, 3000 × \\t\'\'', () => resolveKeep("@('''" + "\t''".repeat(3000))));
+  });
+
+  test('the lists still read what they read: a \'\' escape, a comma, a bare space, a trailing comma, the empty list', () => {
+    const parsed = parseBackupSets(FIXTURE);
+    assert.deepEqual(resolveKeep("@('a''b', 'c' 'd',)"), { patterns: ["a'b", 'c', 'd'] });
+    assert.deepEqual(resolveKeep("@('''')"), { patterns: ["'"] });
+    assert.deepEqual(resolveKeep('@( )'), { patterns: [] });
+    refused(resolveKeep("@(,'a')"));
+    assert.deepEqual(resolveSkip("(@('*\\x\\*' ,'y''z') + $repoChurnSkip)", parsed).patterns.slice(0, 2), ['*\\x\\*', "y'z"]);
+    refused(resolveSkip('(@() + $repoChurnSkip)', parsed));
   });
 });
