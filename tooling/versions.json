@@ -149,6 +149,21 @@
   "java": "17",
   "melos": "8.7.0",
   "mason_cli": "0.1.4",
+  "$dart_language_comment": [
+    "THE DART LANGUAGE FLOOR, written into every pubspec as `environment: sdk: ^<this value>`: the",
+    "workspace root, every workspace member, the app, the brick's app template and the brick's hooks.",
+    "It is a LANGUAGE version, not a toolchain: it decides which language features and which formatter",
+    "style a package gets, and it must never be above the Dart the `flutter` pin bundles (the workspace",
+    "would stop resolving). It is deliberately NOT tied to `flutter`, because that would change the",
+    "language of every member at every Flutter bump. Raising it is its own change with its own CI proof",
+    "(`melos run gate` analyzes and tests every member), after which",
+    "`node tooling/scripts/propagate-versions.mjs --write` writes every pubspec from this line.",
+    "The Flutter floor beside it in each Flutter pubspec, `flutter: \">=<flutter>\"`, follows the",
+    "`flutter` pin above. Both are read by tooling/ci/assert-version-consistency.mjs",
+    "(O-PUBSPEC-FLOORS-UNTIED-TO-THE-PIN, 2026-09-25: eleven members and the hooks had sat at `>=3.5.0` and every",
+    "Flutter member at `>=3.24.0` with nothing reading either line)."
+  ],
+  "dart_language": "3.9.0",
   "$native_stack_traces_comment": [
     "The DECODER behind the symbolication proof's ground truth (.github/workflows/symbolication-proof.yml).",
     "NOT `flutter symbolize`: Flutter 3.47.4's tool pins native_stack_traces 0.6.1, which predates the",
@@ -564,6 +579,10 @@
     {
       "key": "xcode",
       "why": "A STORE POLICY FLOOR, not a package this repo installs. It advances when APPLE RAISES ITS REQUIREMENT — published as a dated announcement on developer.apple.com/news/upcoming-requirements/, which is not a release feed — and no Renovate datasource resolves 'the OLDEST Xcode App Store Connect still accepts'. The datasources that do exist resolve the NEWEST Xcode, which is a different number entirely: a bot advancing this pin to it would silently overstate the floor, and an invented limit fires on CORRECT input — the rule tooling/ceilings.json and assert-store-metadata.mjs have both already paid for (a made-up '120 characters or fewer' once rejected this repo's own 129-character fixture). Which Xcode CI actually RUNS is decided by `runner_macos`, exempted directly above for the neighbouring reason, and the two must not be confused: see $xcode_comment. Advanced by the owner when Apple publishes the next requirement."
+    },
+    {
+      "key": "dart_language",
+      "why": "A LANGUAGE FLOOR, not a package or a toolchain this repo installs. No datasource resolves 'the Dart language version this workspace is written in': the dart-version datasource resolves the NEWEST Dart SDK, and a bot advancing this key to it would move every member's language version and formatter style inside a dependency PR, and could set a floor above the Dart the `flutter` pin bundles, which stops the workspace resolving. Raised by a person as its own change, proven by CI's `melos run gate`; see $dart_language_comment."
     }
   ]
 }

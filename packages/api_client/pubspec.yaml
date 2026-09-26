@@ -9,7 +9,7 @@ resolution: workspace
 repository: https://github.com/globalonlinedeveloper/Nikatru_Platform_Public
 
 environment:
-  sdk: ">=3.5.0 <4.0.0"
+  sdk: ^3.9.0
 
 dependencies:
   dio: ^5.4.0
