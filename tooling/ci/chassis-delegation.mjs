@@ -17,8 +17,8 @@
 // constructions — with nothing in the tree comparing them. A one-line change to
 // the rule (rename the package, admit a second chassis package, two-level
 // barrels, `export` as well as `import`) was twelve edits, not one, and
-// `assert-copy-parity.mjs:10-15` already states this repository's doctrine on
-// shipping copies: "a security fix lands in one repo and silently not the
+// the copy parity guard's header (retired 2026-09-25 with the store matrix; its text is
+// in git history) already stated this repository's doctrine on shipping copies: "a security fix lands in one repo and silently not the
 // others … the only thing that makes it loud is hashing the shared files."
 // `assert-guard-coverage.mjs:180-186` names the exact shape that answers it —
 // "a shared pure-function module that every caller's own self-check already
@@ -641,7 +641,7 @@ export function delegationsUnder(repoRoot, relDir, opts = {}) {
 // e187b8f1e9b8eff40849089409a022f0a05633420110b5dc6b02422a09cd2e06 at all three
 // sites — with nothing in the tree comparing them. That is the same shape, one
 // level down, that this module's own header records as the reason it exists,
-// and `assert-copy-parity.mjs:10-15` states the doctrine against it. One export,
+// and the retired copy parity guard's header stated the doctrine against it. One export,
 // no copies.
 // ─────────────────────────────────────────────────────────────────────────────
 

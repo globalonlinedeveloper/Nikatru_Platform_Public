@@ -29,8 +29,9 @@
        `gh repo list globalonlinedeveloper --limit 100` returns 13 repositories
        and none is called Nikatru_Storefront_Public. It was deleted from the org
        on 2026-08-19 after the one-repo/one-pipeline lock; Platform_Public's
-       catalog/store-matrix.json records the deletion, and the only surviving
-       copy is a git bundle.
+       tooling/github-org.json records the deletion (records.deletionRecord20260819,
+       moved there from the store matrix retired 2026-09-25), and the only
+       surviving copy is a git bundle.
 
      · NO READER EXISTS IN ANY LANGUAGE. Searched for the literal
        `extensions.json`, for `Nikatru_Extensions`, for `Storefront`, and for the
@@ -53,7 +54,8 @@
                                               .vscode/extensions.json, quoted in
                                               TOOLS-PIPELINE.md:1192
          Projects/Nikatru_Platform_Public      2 hits, BOTH PROSE COMMENTS:
-                                              catalog/store-matrix.json:163 and
+                                              the store matrix (retired
+                                              2026-09-25) and
                                               tooling/ci/assert-catalog-contract.mjs:56
          Projects/Nikatru_Platform_Private    12 hits, all notes/decisions/plans
          Claude/nikatru (the business brain)   0 hits
