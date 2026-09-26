@@ -13,12 +13,15 @@
 // recorded in runbooks/backup-restore.md; this is the half that runs on every PR.
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect } from 'vitest';
+import CEILINGS_RAW from '../../../tooling/ceilings.json?raw';
 import { RealDb, realPlatformDb } from './harness';
 import appInit0001 from '../../subscriptiontracker-api/migrations/0001_init.sql?raw';
 import appSchemaDebt0002 from '../../subscriptiontracker-api/migrations/0002_schema_debt.sql?raw';
-import { runBackup, isExpired, backupDate, BACKUP_RETENTION_DAYS } from '../src/backup';
+import { runBackup, isExpired, backupDate, BACKUP_RETENTION_DAYS, MAX_D1_QUERIES_PER_RUN } from '../src/backup';
 import { dumpD1Database } from '../src/backup/dump';
+import { scheduled, BACKUP_CRON } from '../src/scheduled';
 import type { BackupEnv } from '../src/backup';
+import type { Env } from '../src/types';
 
 const NOW = Date.parse('2026-09-06T02:30:00Z');
 
@@ -68,11 +71,11 @@ function appDb(): RealDb {
   return new RealDb([appInit0001, appSchemaDebt0002]);
 }
 
-function envWith(bucket: FakeBucket | undefined, db = realPlatformDb()) {
+function envWith(bucket: FakeBucket | undefined, db = realPlatformDb(), trackerDb: RealDb = appDb()) {
   return {
     env: {
       PLATFORM_DB: db as unknown as D1Database,
-      SUBSCRIPTIONTRACKER_DB: appDb() as unknown as D1Database,
+      SUBSCRIPTIONTRACKER_DB: trackerDb as unknown as D1Database,
       CONFIG_KV: new FakeKv({ 'config:subscriptiontracker': '{"flags":{}}' }) as unknown as KVNamespace,
       JWKS_CACHE: new FakeKv({ jwks: '{"keys":[]}' }) as unknown as KVNamespace,
       SIGNUPS: new FakeKv({}) as unknown as KVNamespace,
@@ -92,6 +95,18 @@ function linesOf(text: string): Record<string, unknown>[] {
     .split('\n')
     .filter((l) => l.length > 0)
     .map((l) => JSON.parse(l) as Record<string, unknown>);
+}
+
+/** `n` one-column tables. Each is one page, so a full dump spends n + 1 queries. */
+function padTables(n: number): string[] {
+  return Array.from({ length: n }, (_, i) => `CREATE TABLE pad_${i} (id INTEGER PRIMARY KEY)`);
+}
+
+function latestManifest(bucket: FakeBucket): { complete: boolean; objects: { key: string; queries?: number }[] } {
+  return JSON.parse(new TextDecoder().decode(bucket.objects.get('manifests/latest.json')!.body)) as {
+    complete: boolean;
+    objects: { key: string; queries?: number }[];
+  };
 }
 
 describe('the nightly export writes something a restore can actually use', () => {
@@ -185,6 +200,19 @@ describe('a backup that did not fully happen must never look like one that did',
     expect(end!.truncated).toBe(true);
   });
 
+  it('🔴 a database given 0 budget spends 0 queries and is truncated', async () => {
+    // The catalogue query used to run before the budget was ever read, so a
+    // database handed nothing still spent one query. Counted on the DATABASE,
+    // not taken from the dump's own report of itself.
+    const db = realPlatformDb();
+    const dump = await dumpD1Database(db as unknown as D1Database, 'platform_db', 0, '2026-09-06T02:30:00Z');
+    expect(db.sql).toEqual([]);
+    expect(dump.queries).toBe(0);
+    expect(dump.truncated).toBe(true);
+    const end = linesOf(dump.jsonl).find((l) => l.kind === 'end');
+    expect(end!.truncated).toBe(true);
+  });
+
   it('🔴 a MISSING bucket binding is RED — it does not skip quietly', async () => {
     const { env } = envWith(undefined);
     const out = await runBackup(env, NOW);
@@ -205,6 +233,74 @@ describe('a backup that did not fully happen must never look like one that did',
     };
     // And the manifest Box B reads says the night was incomplete.
     expect(manifest.complete).toBe(false);
+  });
+});
+
+describe('the D1 query budget is ONE pool, spent honestly and measured every night', () => {
+  it('🔴 the WHOLE 02:30 invocation, export pool AND heartbeat batch, fits d1.queriesPerInvocation, counted on the databases', async () => {
+    const ceilings = JSON.parse(CEILINGS_RAW) as { ceilings: { id: string; value: number | null }[] };
+    const ceiling = ceilings.ceilings.find((c) => c.id === 'd1.queriesPerInvocation')?.value;
+    expect(typeof ceiling).toBe('number');
+
+    // More tables than the pool has queries, so the pool is spent to its last
+    // query: the worst night this firing can have, through the REAL handler.
+    const platform = realPlatformDb(padTables(MAX_D1_QUERIES_PER_RUN));
+    const tracker = realPlatformDb();
+    const { env } = envWith(new FakeBucket(), platform, tracker);
+    const pending: Promise<unknown>[] = [];
+    const ctx = { waitUntil: (p: Promise<unknown>) => pending.push(p), passThroughOnException: () => {} };
+    await scheduled({ cron: BACKUP_CRON } as never, env as unknown as Env, ctx as never);
+    await Promise.all(pending);
+
+    const rows = platform.rows("SELECT target, ok, detail FROM cron_heartbeat WHERE job = 'backup_export'");
+    // Preconditions: the pool really ran out, and the next database was left nothing.
+    expect(rows.find((r) => r.target === 'd1:platform_db')?.ok).toBe(0);
+    expect(rows.find((r) => r.target === 'd1:subscriptiontracker_db')?.ok).toBe(0);
+    expect(tracker.sql).toEqual([]);
+    // The export spent exactly the pool, and the heartbeat one statement per row.
+    expect(platform.sql).toHaveLength(MAX_D1_QUERIES_PER_RUN + rows.length);
+    expect(platform.sql.length + tracker.sql.length).toBeLessThanOrEqual(ceiling as number);
+  });
+
+  it('spend under the warn line: d1-budget ok=true, and it names the measured spend of the pool', async () => {
+    const platform = realPlatformDb();
+    const tracker = new RealDb(padTables(4));
+    const bucket = new FakeBucket();
+    const { env } = envWith(bucket, platform, tracker);
+    const out = await runBackup(env, NOW);
+    const spent = platform.sql.length + tracker.sql.length;
+    expect(spent * 100).toBeLessThanOrEqual(MAX_D1_QUERIES_PER_RUN * 80);
+
+    const budget = out.find((o) => o.target === 'd1-budget');
+    expect(budget?.ok).toBe(true);
+    expect(budget?.detail).toContain(`${spent} of ${MAX_D1_QUERIES_PER_RUN} D1 queries`);
+    expect(budget?.detail).toContain(`platform_db ${platform.sql.length}`);
+    expect(budget?.detail).toContain(`subscriptiontracker_db ${tracker.sql.length}`);
+    // And the manifest records each database's share, as counted on it.
+    const objects = latestManifest(bucket).objects;
+    expect(objects.find((o) => o.key.startsWith('d1/platform_db/'))?.queries).toBe(platform.sql.length);
+    expect(objects.find((o) => o.key.startsWith('d1/subscriptiontracker_db/'))?.queries).toBe(tracker.sql.length);
+  });
+
+  it('🔴 spend over warnAt but complete: d1-budget ok=false AND complete=true', async () => {
+    // Sized from the pool: ~86% of it, past the 80% line this case pins and
+    // short of truncation, so every object is whole and only the budget is red.
+    const perDb = Math.floor((MAX_D1_QUERIES_PER_RUN * 0.9) / 2) - 1;
+    const platform = new RealDb(padTables(perDb));
+    const tracker = new RealDb(padTables(perDb));
+    const bucket = new FakeBucket();
+    const { env } = envWith(bucket, platform, tracker);
+    const out = await runBackup(env, NOW);
+    const spent = platform.sql.length + tracker.sql.length;
+    expect(spent * 100).toBeGreaterThan(MAX_D1_QUERIES_PER_RUN * 80);
+    expect(spent).toBeLessThanOrEqual(MAX_D1_QUERIES_PER_RUN);
+    expect(out.filter((o) => o.target.startsWith('d1:')).map((o) => o.ok)).toEqual([true, true]);
+
+    const budget = out.find((o) => o.target === 'd1-budget');
+    expect(budget?.ok).toBe(false);
+    expect(budget?.detail).toContain('OVER THE WARN LINE');
+    // Box B refuses a manifest that is not complete; a warm pool must not cost the night's copy.
+    expect(latestManifest(bucket).complete).toBe(true);
   });
 });
 
