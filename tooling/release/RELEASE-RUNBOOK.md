@@ -259,7 +259,8 @@ warn about: *"it resolved" is the trap, not the proof.*
 
 *(Residue, measured 2026-08-26 with `grep -rIl "Nikatru_Android_Apps_Public" .` from the repo root:
 **19 files match** — this runbook, the repo-root `README.md`, and **17 others**. Those 17 are dated
-historical records: the rename/deletion rows in `catalog/store-matrix.json`, prose in
+historical records: the rename/deletion records now in `tooling/github-org.json` (moved there from
+the retired store matrix on 2026-09-25), prose in
 `.github/workflows/submit-play.yml`, guard comments under `tooling/ci/`, and `.claude/` backup logs.
 They are **deliberately left standing** — a dated record naming the name it recorded is correct, and
 rewriting one falsifies it. 19 is the whole population, not a sample: if you grep and find those
