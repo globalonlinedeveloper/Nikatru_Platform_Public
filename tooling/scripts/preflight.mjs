@@ -115,6 +115,16 @@
 // agree": nothing here runs the builds, uploads or runner-only steps of those
 // needs, and the sentence said otherwise.
 //
+// ⏱ 2026-09-26 — THE BACKUP'S HEADROOM, BEFORE THE LOCK
+// (O-BACKUP-SET-BALLOON-HAS-NO-EARLY-WARNING). The 10:00 offsite backup refuses
+// a set over its bound (SET BALLOONED), and the missed beat turned main red on
+// 2026-09-18 and 2026-09-23. The leg after the untracked one runs
+// tooling/scripts/backup-headroom.mjs: each set counted as the backup counts it,
+// from the backup script's own table, a ⬜ warning at 80% on a green leg and a
+// FAIL at 100%. It is lock-free and runs under --fast. --smoke runs it first, as
+// this machine's state; it is not one of the guards the smoke's verdict counts,
+// and a red one refuses the push after the smoke has printed.
+//
 // Usage:  node tooling/scripts/preflight.mjs [--fast] [--sweep-only] [--untracked-only] [--base <ref>] [--lock-wait <min>]
 //         node tooling/scripts/preflight.mjs --smoke [--sha <rev>] [--base <ref>]
 //         --fast skips the stamped-app leg (mason + flutter analyze), which is
@@ -127,9 +137,10 @@
 //         instead of origin/main. No fetch happens: the local ref is used as is.
 //         --lock-wait <min> is the ceiling on waiting for the heavy-run lock and
 //         the backup task together (default 90).
-//         --smoke runs ONLY the budgeted, lock-free guard sweep on a checkout of
-//         --sha <rev> (default HEAD), then the NOT CI-GATE line. .githooks/pre-push
-//         runs it once per pushed commit.
+//         --smoke runs the backup-headroom leg (this machine's state), then ONLY
+//         the budgeted, lock-free guard sweep on a checkout of --sha <rev>
+//         (default HEAD), then the NOT CI-GATE line. .githooks/pre-push runs it
+//         once per pushed commit.
 // Exit:   0 = safe to push · 1 = CI would have failed, here is what
 //         2 = a usage error, or COVERAGE LOST: the heavy-run lock or the backup
 //             did not free up within --lock-wait, and no heavy leg ran; or ci.yml's
@@ -528,6 +539,30 @@ export function untrackedLeg({ root = ROOT } = {}) {
   return { code: 1, out: lines.join('\n') };
 }
 
+// ── the backup's headroom: this machine's state (2026-09-26, header) ────────
+
+export const HEADROOM_LEG = "backup headroom (the backup's own sets and bounds)";
+
+/** The headroom leg's body: tooling/scripts/backup-headroom.mjs from `root`,
+ *  graded by its exit. 0 is green (its ⬜ warn and not-walked lines print on a
+ *  green leg) and 1 is a set at or over its bound or a research/ intruder, each
+ *  only with the module's summary line in its output. Anything else — exit 2,
+ *  no exit code, or no summary line — is COVERAGE LOST: nothing was judged. */
+export function headroomLeg({ root = ROOT } = {}) {
+  const r = exec(process.execPath, [join(root, 'tooling', 'scripts', 'backup-headroom.mjs')], { cwd: root, timeout: 120_000 });
+  const judged = /^backup-headroom: \d+ of \d+ bounded set\(s\) graded/m.test(r.out ?? '');
+  if ((r.status === 0 || r.status === 1) && judged) return { code: r.status, out: r.out };
+  const why = r.status === null ? `produced no exit code (${r.error?.code ?? 'killed'})` : `exited ${r.status}${judged ? '' : ' with no summary line'}`;
+  return { code: 2, out: `🔴 COVERAGE LOST — backup-headroom ${why}: ${firstLine(r.out) || '(no output)'}\n${r.out ?? ''}` };
+}
+
+/** What a push prints of the headroom leg: the summary and the ⬜ lines when
+ *  green, every line when not. */
+export function headroomBrief(h) {
+  const lines = String(h.out ?? '').split(/\r?\n/).filter((l) => l.trim());
+  return (h.code === 0 ? lines.filter((l, k) => k === 0 || l.startsWith('⬜')) : lines).join('\n') + '\n';
+}
+
 // ── what this run is NOT: ci-gate's needs, read from ci.yml (2026-09-24) ─────
 
 export const CI_WORKFLOW = '.github/workflows/ci.yml';
@@ -649,9 +684,17 @@ if (IS_MAIN && SMOKE) {
     console.error(`✗ ${budget.error}.`);
     process.exit(2);
   }
+  // 2026-09-26 — the backup's headroom rides the push too. It is THIS MACHINE's
+  // state, not the pushed commit's, so it runs from this tree, prints before the
+  // smoke, and is not one of the runnable guards the verdict line counts.
+  const h = headroomLeg();
+  process.stdout.write(headroomBrief(h));
   const r = smokeLeg({ rev: SMOKE_REV, baseRef: BASE_REF, budgetMs: budget.ms });
   process.stdout.write(r.out);
-  process.exit(r.code);
+  if (r.code === 0 && h.code !== 0) {
+    process.stdout.write(`preflight --smoke: FAIL — ${HEADROOM_LEG} exited ${h.code} (above). The guards are green; the push is refused on this machine's backup headroom.\n`);
+  }
+  process.exit(r.code || h.code);
 }
 
 const results = [];
@@ -702,6 +745,16 @@ if (IS_MAIN && results.length && results[results.length - 1].code !== 0) {
   console.log('\npreflight: STOPPED at the first leg — no other leg ran, because each would judge a tree CI does not have. Fix the above and re-run.');
   process.exit(1);
 }
+
+// ── 0b · the backup's headroom, before the machine lock and every heavy leg ──
+// AFTER the untracked leg, which stays first: the stop block above reports the
+// last leg and says no other leg ran. Lock-free and about a second — it lists
+// directory entries and reads one file, the backup script. See the header.
+step(
+  HEADROOM_LEG,
+  'The 10:00 backup refuses a set over its bound (SET BALLOONED), and a missed beat turns main red through ops-watch. This counts each set the way the backup does, from its own table, and warns at 80%.',
+  () => headroomLeg(),
+);
 
 // ── the machine: one heavy run at a time, and the backup first (header) ─────
 // After the cheap untracked leg, before the first heavy one. Imported lazily so
