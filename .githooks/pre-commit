@@ -89,10 +89,25 @@ fi
 node "$RUNNER" --fast
 code=$?          # captured immediately; nothing may run between these two lines
 
+# The two refusals are worded apart because they are fixed apart
+# (O-PUBLIC-HOOKS-ADVERTISE-NO-VERIFY). 2 is the runner saying it could not check
+# from here: no anchor, no corpus, a guard missing, or a worktree it could not
+# resolve. Any other non-zero is a guard's finding in what is staged. Each message
+# names the fix; neither prints a way past the hook.
+if [ "$code" -eq 2 ]; then
+  echo "" >&2
+  echo "pre-commit: the spec guards could not run from this checkout (exit 2). Commit refused." >&2
+  echo "  runner: $RUNNER" >&2
+  echo "  Read the first CANNOT RUN or ERR line above: it names what refused. A missing anchor or" >&2
+  echo "  corpus is about where you commit from, not what: commit from a worktree under" >&2
+  echo "  Projects/.worktrees/. A refusal is never a reason to commit with --no-verify." >&2
+  exit "$code"
+fi
 if [ "$code" -ne 0 ]; then
   echo "" >&2
-  echo "pre-commit: the spec guards are not clean. Commit refused." >&2
-  echo "  Deliberate override:  git commit --no-verify   (and say why in the message)" >&2
+  echo "pre-commit: the spec guards are not clean (exit $code). Commit refused." >&2
+  echo "  Read the first FAIL line above, fix what it names, stage the fix and commit again." >&2
+  echo "  A red hook is fixed, never skipped: never commit with --no-verify." >&2
   exit "$code"
 fi
 

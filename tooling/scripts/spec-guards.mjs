@@ -748,12 +748,14 @@ console.log(`  ${results.length} guard(s) in ${total} ms` +
   (FULL ? '' : '   (fast set — pre-push runs the full set)'));
 
 if (broke.length) {
-  console.error(`\n  ${broke.length} guard(s) could not run. Treating as a refusal, not a pass.\n`);
+  console.error(`\n  ${broke.length} guard(s) could not run. Treating as a refusal, not a pass.`);
+  console.error('  Read the first ERR line above: it names the guard that refused. A refusal is about where');
+  console.error('  this ran (the anchor, the corpus, a worktree), not a finding in the change.\n');
   process.exit(2);
 }
 if (red.length) {
-  console.error(`\n  ${red.length} guard(s) reported a finding. Fix it, or commit with --no-verify` +
-    ' and say why in the message.\n');
+  console.error(`\n  ${red.length} guard(s) reported a finding. Read the first FAIL line above and fix what it`);
+  console.error('  names; a red hook is fixed, never skipped.\n');
   process.exit(1);
 }
 process.exit(0);

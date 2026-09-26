@@ -65,10 +65,22 @@ echo "pre-push: running the full spec guards…"
 node "$RUNNER" --full
 code=$?
 
+# Worded apart for the reason pre-commit gives: 2 is "could not check from here",
+# any other non-zero is a finding. Each names the fix, not a way past the hook.
+if [ "$code" -eq 2 ]; then
+  echo "" >&2
+  echo "pre-push: the spec guards could not run from this checkout (exit 2). Push refused." >&2
+  echo "  runner: $RUNNER" >&2
+  echo "  Read the first CANNOT RUN or ERR line above: it names what refused. A missing anchor or" >&2
+  echo "  corpus is about where you push from, not what: push from a worktree under" >&2
+  echo "  Projects/.worktrees/. A refusal is never a reason to push with --no-verify." >&2
+  exit "$code"
+fi
 if [ "$code" -ne 0 ]; then
   echo "" >&2
-  echo "pre-push: the spec guards are not clean. Push refused." >&2
-  echo "  Deliberate override:  git push --no-verify" >&2
+  echo "pre-push: the spec guards are not clean (exit $code). Push refused." >&2
+  echo "  Read the first FAIL line above, fix what it names, commit the fix and push again." >&2
+  echo "  A red hook is fixed, never skipped: never push with --no-verify." >&2
   exit "$code"
 fi
 
