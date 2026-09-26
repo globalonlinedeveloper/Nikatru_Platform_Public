@@ -204,7 +204,7 @@ build.
    `.github/workflows/name-clearance.yml` (O-NAME-CLEARANCE-SWEEP-RUN-BY-NOTHING).
    **Where the records go:** the workflow runs the sweep every Monday at 07:10
    UTC and lands the rewritten `apps/*/name-clearance.json` on `main` by pull
-   request, the `site-drift-repair.yml` pattern: branch
+   request, the pattern of the retired sitemap repair lane: branch
    `chore/name-clearance-<run_id>` pushed with the job's own token, the patch
    uploaded as the run's artifact before the proposal, the pull request opened as
    the `RENOVATE_TOKEN` actor so `ci-gate` runs on it, and any changed path outside

@@ -4,7 +4,7 @@
 // the host it published to serves THIS commit, and its Pages Function answers (row
 // O-APEX-SITE-DEPLOYS-OUTSIDE-THE-PIPELINE, D3a).
 //
-// Two limbs, in order, against one origin (D3a: https://nikatru-apex.pages.dev):
+// Two limbs, in order, against one origin (since D3b: https://nikatru.com):
 //   1. GET /version.json carries `sha` equal to --expect-sha. The job writes that file
 //      just before the deploy, and the site has no build step, so the SHA is the one
 //      joinable key. Judged by `judge` from tooling/ops/post-deploy-smoke.mjs — the same
@@ -26,7 +26,7 @@
 //      bindings are graded before the deploy, by tooling/ci/assert-site-bindings.mjs.
 //
 // Usage:
-//   node tooling/sites/smoke-site-deploy.mjs --origin https://nikatru-apex.pages.dev --expect-sha <40-hex>
+//   node tooling/sites/smoke-site-deploy.mjs --origin https://nikatru.com --expect-sha <40-hex>
 // Exit 0 = both limbs pass. 1 = a limb failed (the deploy is not serving what it should).
 //      2 = usage: a missing or malformed argument.
 // ─────────────────────────────────────────────────────────────────────────────

@@ -1397,7 +1397,7 @@ describe('the deploy workflows hand the recorder the id their deploy step publis
   test('THE REAL TREE: the `site` job records nikatru-site with no id flag, which its kind would refuse', () => {
     const site = recorderSteps('deploy-web.yml').find((s) => s.job === 'site');
     assert.ok(site, 'deploy-web.yml has no recording `site` job');
-    assert.match(site.step.run.text, /record-deployment\.mjs nikatru-site https:\/\/nikatru-apex\.pages\.dev\s*$/);
+    assert.match(site.step.run.text, /record-deployment\.mjs nikatru-site https:\/\/nikatru\.com\s*$/);
     assert.doesNotMatch(site.step.run.text, /--(pages-deployment-id|worker-version-id|wrangler-output-env)\b/);
     assert.equal(resolveEnvironment(REAL_REGISTER, 'nikatru-site')?.channel?.kind, 'site');
   });
