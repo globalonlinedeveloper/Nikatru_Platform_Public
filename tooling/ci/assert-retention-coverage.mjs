@@ -105,7 +105,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { listDir } from './tree-walk.mjs';
+import { parseJsonc, findWranglerConfigs, ownedD1 } from './d1-stores.mjs';
 import { stripSourceComments } from './text-reductions.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
@@ -127,62 +127,12 @@ const coverageLost = (lines) => {
   process.exit(2);
 };
 
-export function parseJsonc(text) {
-  let out = '';
-  let i = 0;
-  let inStr = false;
-  while (i < text.length) {
-    const c = text[i];
-    const c2 = text[i + 1];
-    if (inStr) {
-      if (c === '\\') { out += c + (c2 ?? ''); i += 2; continue; }
-      if (c === '"') inStr = false;
-      out += c; i++; continue;
-    }
-    if (c === '"') { inStr = true; out += c; i++; continue; }
-    if (c === '/' && c2 === '/') { while (i < text.length && text[i] !== '\n') i++; continue; }
-    if (c === '/' && c2 === '*') {
-      i += 2;
-      while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) i++;
-      i += 2; continue;
-    }
-    out += c; i++;
-  }
-  return JSON.parse(out.replace(/,(\s*[}\]])/g, '$1'));
-}
-
-/** Live wrangler configs. `bricks/` is a mustache TEMPLATE, not a deployed
- *  surface — excluded by name, and the exclusion is REPORTED rather than
- *  silent, because a silent exclusion is how a domain shrinks unnoticed. */
-export function findWranglerConfigs(root) {
-  const found = [];
-  const excluded = [];
-  const walk = (dir, rel) => {
-    let entries;
-    try { entries = listDir(dir, { withFileTypes: true }); } catch { return; }
-    for (const e of entries) {
-      if (e.name === 'node_modules' || e.name === '.git' || e.name === 'build') continue;
-      const r = rel ? `${rel}/${e.name}` : e.name;
-      if (e.isDirectory()) walk(join(dir, e.name), r);
-      else if (/^wrangler\.(jsonc|json|toml)$/.test(e.name)) (r.includes('bricks/') ? excluded : found).push(r);
-    }
-  };
-  walk(root, '');
-  return { found: found.sort(), excluded: excluded.sort() };
-}
-
-/**
- * SQL is stripped of comments AND string literals before the CREATE TABLE scan.
- * A `-- CREATE TABLE …` in a header comment, or a table name inside a quoted
- * string, would otherwise enter the domain as a store that does not exist — the
- * same class as the grep that matched the comment explaining why there is no
- * r2_buckets.
- */
-export function tablesIn(sql) {
-  let s = sql.replace(/--[^\n]*/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ');
-  s = s.replace(/'(?:[^'\\]|\\.)*'/g, "''");
-  return [...s.matchAll(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["'`]?(\w+)["'`]?/gi)].map((m) => m[1]);
-}
+// ⏱ 2026-09-26 (O-SERVICE-KIT-UNBUILT, E-b2) — the D1 walk, with the config walk
+// and the two parsers it needs, MOVED to tooling/ci/d1-stores.mjs so that
+// provision-backend.mjs --check enumerates the same owned databases this guard
+// does. Re-exported here, so every importer of these
+// three names from this file is unchanged.
+export { parseJsonc, findWranglerConfigs, tablesIn } from './d1-stores.mjs';
 
 /**
  * The 1-based line where `field` is declared inside the JSON object whose
@@ -246,26 +196,13 @@ export function enumerateStores(root) {
       // join the two without a second list to keep in step.
       if (r2.bucket_name) bucketKeys.set(r2.bucket_name, key);
     }
-    for (const db of cfg?.d1_databases ?? []) {
-      d1Bindings++;
-      // Only the config that OWNS the migrations enumerates the tables. A DB
-      // bound read/write elsewhere for a fan-out is the same store, not a second
-      // one — counting it twice would inflate coverage with duplicates.
-      if (!db?.migrations_dir || !db?.database_name) continue;
-      const migDir = join(root, dirname(rel), db.migrations_dir);
-      if (!existsSync(migDir)) {
-        coverageLost([
-          `${rel} declares \`migrations_dir: ${db.migrations_dir}\` for ${db.database_name} and that directory does not exist.`,
-          'Every table in that database would silently leave the domain.',
-        ]);
-      }
-      const sqls = listDir(migDir).filter((f) => f.endsWith('.sql'));
-      if (sqls.length === 0) {
-        coverageLost([`${rel}'s migrations directory ${db.migrations_dir} contains no .sql file, so ${db.database_name} contributes no tables.`]);
-      }
-      for (const f of sqls) {
-        for (const t of tablesIn(readFileSync(join(migDir, f), 'utf8'))) {
-          stores.set(`d1:${db.database_name}:${t}`, `${rel} → ${db.migrations_dir}/${f}`);
+    // The owned databases and their tables — tooling/ci/d1-stores.mjs, the one D1 walk.
+    const d1 = ownedD1(root, rel, cfg, coverageLost);
+    d1Bindings += d1.bindings;
+    for (const db of d1.owned) {
+      for (const { file, tables } of db.files) {
+        for (const tbl of tables) {
+          stores.set(`d1:${db.databaseName}:${tbl}`, `${rel} → ${db.migrationsDirDeclared}/${file}`);
         }
       }
     }

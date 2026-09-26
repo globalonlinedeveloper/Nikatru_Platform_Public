@@ -294,7 +294,7 @@ const stampRegister = () => ({
 });
 
 /** A freshly stamped, not yet provisioned `services/<appId>-api`, plus the map and a register. */
-function stampedTree(appId, { lockfile = true, wrangler = true, index = (s) => s } = {}) {
+function stampedTree(appId, { lockfile = true, wrangler = true, index = (s) => s, inventory = (s) => s } = {}) {
   const root = join(TMP, `s${seq++}`);
   const svc = `services/${appId}-api`;
   const put = (rel, body) => {
@@ -313,8 +313,14 @@ function stampedTree(appId, { lockfile = true, wrangler = true, index = (s) => s
   }
   put(ROUTE_CLIENTS, readFileSync(join(REPO, ROUTE_CLIENTS), 'utf8'));
   put('tooling/platform-register.json', `${JSON.stringify(stampRegister(), null, 2)}\n`);
+  // Step [7]'s two files, copied from the REAL tree: the template row it copies is the
+  // real one, and the host row is spliced into the real, hand-formatted register.
+  put(INVENTORY, inventory(readFileSync(join(REPO, INVENTORY), 'utf8')));
+  put(MONITORS, readFileSync(join(REPO, MONITORS), 'utf8'));
   return root;
 }
+const INVENTORY = 'tooling/legal/data-inventory.json';
+const MONITORS = 'tooling/monitor-register.json';
 
 /** The live path, with made-up credentials and (optionally) a fake npm first on PATH. */
 function provision(root, appId, { fakeNpm = false } = {}) {
@@ -378,10 +384,17 @@ describe('E-a1 step [6] — the appWorkers row, derived from the stamped mounts'
     const root = stampedTree('probeapi');
     assert.equal(provision(root, 'probeapi').code, 0);
     const before = readFileSync(join(root, 'tooling', 'platform-register.json'), 'utf8');
+    const inventoryBefore = readFileSync(join(root, INVENTORY), 'utf8');
+    const monitorsBefore = readFileSync(join(root, MONITORS), 'utf8');
     const { code, out } = provision(root, 'probeapi');
     assert.equal(code, 0, out);
     assert.match(out, /services\/probeapi-api\/wrangler\.jsonc already has a row \(probeapi-api\); left unchanged/);
     assert.equal(readFileSync(join(root, 'tooling', 'platform-register.json'), 'utf8'), before);
+    // E-b2: step [7] is idempotent too.
+    assert.match(out, /already has d1:probeapi_db; left unchanged/);
+    assert.match(out, /already has probeapi-api\.nikatru\.com; left unchanged/);
+    assert.equal(readFileSync(join(root, INVENTORY), 'utf8'), inventoryBefore);
+    assert.equal(readFileSync(join(root, MONITORS), 'utf8'), monitorsBefore);
   });
 
   test('P3 a mounted route the map does not name: exit 1 naming it, and the register untouched', () => {
@@ -410,6 +423,68 @@ describe('E-a1 step [6] — the appWorkers row, derived from the stamped mounts'
   });
 });
 
+describe('E-b2 step [7] — the inventory row and the monitor host row, files only', () => {
+  const lineSet = (text) => text.split('\n').map((l) => l.replace(/,\s*$/, ''));
+
+  test('S1 green: d1:probeapi_db is copied from the template, and the host row asks for its monitor', () => {
+    const root = stampedTree('probeapi');
+    const monitorsBefore = readFileSync(join(root, MONITORS), 'utf8');
+    const { code, out } = provision(root, 'probeapi');
+    assert.equal(code, 0, out);
+    assert.match(out, /\[7\] Writing probeapi_db's tooling\/legal\/data-inventory\.json row and probeapi-api's tooling\/monitor-register\.json host row\(s\)/);
+
+    const stores = JSON.parse(readFileSync(join(root, INVENTORY), 'utf8')).stores;
+    const at = stores.findIndex((s) => s.id === 'd1:probeapi_db');
+    assert.ok(at >= 0, 'no d1:probeapi_db row');
+    assert.equal(stores[at + 1].id, 'd1:{{app_id}}_db', 'the concrete row sits just before the template, and the template stays');
+    const row = stores[at];
+    assert.deepEqual(Object.keys(row), ['id', 'kind', 'name', 'personalData', 'holds', 'retention', 'writtenBy']);
+    assert.equal(row.kind, 'd1-database');
+    assert.equal(row.name, 'probeapi_db');
+    assert.equal(row.personalData, false);
+    assert.equal(row.retention.kind, 'derived');
+    assert.deepEqual(row.writtenBy, ['services/probeapi-api/wrangler.jsonc']);
+    assert.doesNotMatch(JSON.stringify(row), /template, not a live store|\{\{app_id\}\}|a template of one/, 'the concrete row still describes a template');
+
+    const monitorsAfter = readFileSync(join(root, MONITORS), 'utf8');
+    const hosts = JSON.parse(monitorsAfter).hosts;
+    assert.deepEqual(hosts.slice(0, -1), JSON.parse(monitorsBefore).hosts, 'only one host row was added');
+    const host = hosts.at(-1);
+    assert.equal(host.hostname, 'probeapi-api.nikatru.com');
+    assert.equal(host.derivedFrom, 'appCatalogue');
+    assert.equal(host.monitor, null);
+    assert.deepEqual(host.gap.create, {
+      name: 'probeapi-api health', type: 'GET', path: '/v1/health', expectedStatus: 200, expectedBody: '"ok":true', intervalSeconds: 60, project: 'probeapi',
+    });
+    // The hand-formatted file is spliced, never re-serialised: every line it had is still there, in order.
+    const before = lineSet(monitorsBefore);
+    let i = 0;
+    for (const line of lineSet(monitorsAfter)) if (line === before[i]) i++;
+    assert.equal(i, before.length, 'step [7] rewrote lines of the monitor register it did not add');
+    const calls = wranglerCalls(root, 'probeapi');
+    assert.ok(calls.length > 0 && !calls.some((c) => /^(deploy|versions|secret)\b/.test(c)), `step [7] must deploy nothing: ${calls.join(' | ')}`);
+  });
+
+  test('S2 no template row to copy: exit 1 naming it, and neither file is written', () => {
+    const root = stampedTree('probeapi', {
+      inventory: (s) => {
+        const inv = JSON.parse(s);
+        const n = inv.stores.length;
+        inv.stores = inv.stores.filter((x) => x.id !== 'd1:{{app_id}}_db');
+        assert.equal(inv.stores.length, n - 1, 'the real inventory has no template row — the case would test nothing');
+        return `${JSON.stringify(inv, null, 2)}\n`;
+      },
+    });
+    const inventoryBefore = readFileSync(join(root, INVENTORY), 'utf8');
+    const monitorsBefore = readFileSync(join(root, MONITORS), 'utf8');
+    const { code, out } = provision(root, 'probeapi');
+    assert.equal(code, 1, out);
+    assert.match(out, /has no d1:\{\{app_id\}\}_db template row to copy/);
+    assert.equal(readFileSync(join(root, INVENTORY), 'utf8'), inventoryBefore);
+    assert.equal(readFileSync(join(root, MONITORS), 'utf8'), monitorsBefore);
+  });
+});
+
 describe('E-a1 step [1] — `npm ci` from the stamped lockfile, never `npm install`', () => {
   test('N1 no package-lock.json: exit 1 before anything is installed or called', () => {
     const root = stampedTree('probeapi', { lockfile: false });
@@ -433,21 +508,30 @@ describe('E-a1 step [1] — `npm ci` from the stamped lockfile, never `npm insta
 
 describe('E-a1 --check — every Worker directory has a register row', () => {
   const WORKER = '{ "name": "w", "main": "src/index.ts" }\n';
-  function checkTree({ dirs, rows, register = true }) {
+  /** A Worker that OWNS a D1 (it declares `migrations_dir`) and serves one host. */
+  const OWNING = (d) => `{ "name": "${d}", "main": "src/index.ts", "d1_databases": [{ "binding": "APP_DB", "database_name": "${d.replace(/-api$/, '')}_db", "database_id": "x", "migrations_dir": "migrations" }] }\n`;
+  function checkTree({ dirs, rows, register = true, owning = [], hosts = {}, stores = [], monitorHosts = [], inventory = true }) {
     const root = join(TMP, `c${seq++}`);
     for (const d of dirs) {
       mkdirSync(join(root, 'services', d), { recursive: true });
-      writeFileSync(join(root, 'services', d, 'wrangler.jsonc'), WORKER);
+      writeFileSync(join(root, 'services', d, 'wrangler.jsonc'), owning.includes(d) ? OWNING(d) : WORKER);
+      if (owning.includes(d)) {
+        mkdirSync(join(root, 'services', d, 'migrations'), { recursive: true });
+        writeFileSync(join(root, 'services', d, 'migrations', '0001_init.sql'), 'CREATE TABLE records (id TEXT);\n');
+      }
     }
     mkdirSync(join(root, 'services', '_shared'), { recursive: true });
+    mkdirSync(join(root, 'tooling', 'legal'), { recursive: true });
     if (register) {
-      mkdirSync(join(root, 'tooling'), { recursive: true });
       const reg = {
         servingWorker: { name: 'platform', config: 'services/platform/wrangler.jsonc' },
-        appWorkers: rows.map((d) => ({ name: d, config: `services/${d}/wrangler.jsonc` })),
+        appWorkers: rows.map((d) => ({ name: d, config: `services/${d}/wrangler.jsonc`, ...(hosts[d] ? { hosts: hosts[d] } : {}) })),
       };
       writeFileSync(join(root, 'tooling', 'platform-register.json'), JSON.stringify(reg, null, 2));
     }
+    // E-b2: step [7]'s two files, which --check now reads.
+    if (inventory) writeFileSync(join(root, INVENTORY), JSON.stringify({ stores: stores.map((id) => ({ id })) }, null, 2));
+    writeFileSync(join(root, MONITORS), JSON.stringify({ hosts: monitorHosts.map((hostname) => ({ hostname, monitor: null })) }, null, 2));
     return root;
   }
 
@@ -482,5 +566,37 @@ describe('E-a1 --check — every Worker directory has a register row', () => {
     const { code, out } = run(checkTree({ dirs: ['platform'], rows: [] }), 'probeapi', '--check');
     assert.equal(code, 1, out);
     assert.match(out, /--check covers every Worker under services\/ and takes no app_id \(got "probeapi"\)/);
+  });
+
+  // ── E-b2: step [7]'s rows ─────────────────────────────────────────────────
+  const provisioned = (over = {}) => ({
+    dirs: ['platform', 'x-api'], rows: ['x-api'], owning: ['x-api'], hosts: { 'x-api': ['x-api.nikatru.com'] },
+    stores: ['d1:x_db'], monitorHosts: ['x-api.nikatru.com'], ...over,
+  });
+
+  test('K6 green: a registered Worker whose owned D1 and host both have their rows', () => {
+    const { code, out } = run(checkTree(provisioned()), '--check');
+    assert.equal(code, 0, out);
+    assert.match(out, /ok {2}services\/x-api\/wrangler\.jsonc — d1:x_db; hosts x-api\.nikatru\.com/);
+    assert.match(out, /every owned D1 and host of theirs has its inventory and monitor-register row/);
+  });
+
+  test('K7 (RC12) an appWorkers row and no inventory row: exit 1 naming d1:x_db, and only it', () => {
+    const { code, out } = run(checkTree(provisioned({ stores: [] })), '--check');
+    assert.equal(code, 1, out);
+    assert.match(out, /^✗ services\/x-api\/wrangler\.jsonc owns D1 x_db and tooling\/legal\/data-inventory\.json has no `d1:x_db` row\./m);
+    assert.doesNotMatch(out, /has no host row/);
+  });
+
+  test('K8 an appWorkers row whose host has no monitor-register row: exit 1 naming the host', () => {
+    const { code, out } = run(checkTree(provisioned({ monitorHosts: [] })), '--check');
+    assert.equal(code, 1, out);
+    assert.match(out, /^✗ services\/x-api\/wrangler\.jsonc serves x-api\.nikatru\.com and tooling\/monitor-register\.json has no host row for it\./m);
+  });
+
+  test('K9 no inventory: COVERAGE LOST, exit 2', () => {
+    const { code, out } = run(checkTree(provisioned({ inventory: false })), '--check');
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — tooling\/legal\/data-inventory\.json is missing/);
   });
 });

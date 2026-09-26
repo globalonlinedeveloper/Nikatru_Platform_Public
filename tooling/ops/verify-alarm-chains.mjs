@@ -77,6 +77,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { classifyThrown, transientLook, isTransientStatus, isSafeMethod, retryAfterMs, readWithBoundedRetry } from './bounded-retry.mjs';
+import { REGISTER_REL, expectedMonitors } from './monitor-register.mjs';
 
 // 🔴 `process.exit()` IS BANNED IN THIS FILE, AND IT IS A BUG FIX. Calling it
 // while an undici (fetch) keep-alive handle is still open CRASHES libuv on
@@ -94,6 +95,7 @@ import { classifyThrown, transientLook, isTransientStatus, isSafeMethod, retryAf
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const LEDGER = join(HERE, 'alarm-chains.json');
+const MONITOR_REGISTER = join(HERE, '..', '..', REGISTER_REL);
 
 const BASE = (process.env.GLITCHTIP_URL ?? 'https://glitchtip.nikatru.com').replace(/\/+$/, '');
 const TOKEN = process.env.GLITCHTIP_TOKEN;
@@ -242,27 +244,42 @@ async function check() {
   // deliberately never compared — see the drift note below, which reports a
   // rename WITHOUT failing, so the ledger can be tidied on purpose rather than
   // by a red build.
-  const expected = m.expectedMonitors ?? null;
-  if (!Array.isArray(expected) || expected.length === 0) {
-    problems.push(
-      'COVERAGE LOST: `expectedMonitors` is missing or empty, so the canary can never fire. ' +
-        'Never "fix" a failure by emptying it. (This key replaced `expectedMonitorNames` on 2026-09-03; ' +
-        'if you are seeing this after an upgrade, the ledger still has the old name-keyed list.)',
+  //
+  // ⏱ 2026-09-26 (O-SERVICE-KIT-UNBUILT, E-b2) — THE LIST IS TWO SOURCES, EACH
+  // ID IN ONE OF THEM. A host's monitor id is read off its row in
+  // tooling/monitor-register.json, the row provision-backend step [7] writes for a
+  // new Worker and ensure-monitors.mjs completes; `expectedMonitors` keeps only
+  // the monitors that are not a host (heartbeats, routine beats). The union is
+  // tooling/ops/monitor-register.mjs `expectedMonitors()`, and an id in both is a
+  // broken chain here ("ONE PLACE PER ID"), never counted once in silence. A host
+  // row with no monitor id yet is printed as EXPECTED BUT ABSENT: there is no id
+  // to key on, and reddening every run between a Worker's provisioning and its
+  // monitor's creation is the freeze this limb was re-keyed to stop.
+  let register = null;
+  try {
+    register = JSON.parse(readFileSync(MONITOR_REGISTER, 'utf8'));
+  } catch (err) {
+    problems.push(`COVERAGE LOST: ${REGISTER_REL} could not be read (${err.message}), so no host monitor id was read and the canary would check only the non-host half.`);
+  }
+  const union = expectedMonitors(register ?? {}, m);
+  problems.push(...(register ? union.problems : union.problems.filter((p) => !p.includes(REGISTER_REL))));
+  for (const p of union.pending) {
+    console.error(
+      `⬜ EXPECTED BUT ABSENT: ${p.hostname} is a host row in ${REGISTER_REL} with no monitor id yet` +
+        (p.name ? ` (its gap asks for "${p.name}"; tooling/ops/ensure-monitors.mjs creates it)` : `${p.why ? ` — ${p.why}` : ''}`) +
+        '. Not a failure: there is no id for the canary to key on until the monitor exists.',
     );
-  } else {
+  }
+  {
     const byId = new Map(monitors.map((x) => [String(x.id), x]));
-    for (const row of expected) {
-      const id = String(row?.id ?? '');
-      if (!/^[0-9]+$/.test(id)) {
-        problems.push(`COVERAGE LOST: \`expectedMonitors\` entry ${JSON.stringify(row)} has no numeric \`id\`; the canary keys on the id.`);
-        continue;
-      }
+    for (const row of union.expected) {
+      const id = row.id;
       const live = byId.get(id);
       if (!live) {
         problems.push(
-          `COVERAGE LOST: expected monitor id ${id} (${JSON.stringify(row.name ?? '')}) is not in the live list. ` +
+          `COVERAGE LOST: expected monitor id ${id} (${JSON.stringify(row.name ?? '')}, from ${row.from.join(', ')}) is not in the live list. ` +
             'An id disappears only when the monitor is DELETED and recreated — a rename or a move to another ' +
-            'box does NOT change it. So either it was deleted (remove it from alarm-chains.json in the same ' +
+            'box does NOT change it. So either it was deleted (remove it from where it is declared in the same ' +
             'change, deliberately) or this script is now checking less than it believes it is.',
       );
         continue;
@@ -539,7 +556,9 @@ async function selfTest() {
   // D — the canary: a monitor the live instance no longer has.
   try {
     const m = JSON.parse(original);
-    m.expectedMonitorNames.push('a monitor that does not exist');
+    // ⏱ 2026-09-26: `expectedMonitors`, the key limb D reads. This line pushed onto
+    // `expectedMonitorNames`, gone since 2026-09-03, so the self-test threw here.
+    m.expectedMonitors.push({ id: 999999999, name: 'a monitor that does not exist' });
     writeFileSync(LEDGER, JSON.stringify(m, null, 2));
     await expectRed('limb D: a monitor missing from the live list is caught');
   } finally {

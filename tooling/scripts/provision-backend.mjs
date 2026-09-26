@@ -61,6 +61,22 @@
 //     exits 1 naming each Worker directory under services/ that the register has no
 //     row for (`servingWorker` or `appWorkers`), and 0 otherwise.
 //
+// ⏱ 2026-09-26 — THE INVENTORY ROW AND THE MONITOR HOST ROW (O-SERVICE-KIT-UNBUILT, E-b2).
+//   · Step [7] copies tooling/legal/data-inventory.json's `d1:{{app_id}}_db` template
+//     row into a concrete `d1:<app>_db` row (the name, `writtenBy` and the two
+//     sentences that described a template are the app's; the kind, personalData and
+//     retention kind are the template's), and adds tooling/monitor-register.json's
+//     host row for each of the Worker's hosts: `derivedFrom: appCatalogue`,
+//     `monitor: null`, and a `gap` whose `create` block is the GET monitor on the
+//     Worker's health route. tooling/ops/ensure-monitors.mjs creates that monitor
+//     and writes its id onto the row; this script sends nothing to GlitchTip. A row
+//     already there is left as it is. The table rows of the app's own migrations are
+//     NOT written here: what each table holds and the sentence that discloses it are
+//     a person's to write, and assert-data-inventory.mjs names every one missing.
+//   · `--check` also exits 1 on a registered Worker whose owned D1 (the walk in
+//     tooling/ci/d1-stores.mjs) has no data-inventory row, or one of whose hosts has
+//     no monitor-register host row.
+//
 // Usage:
 //   CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… \
 //     node tooling/scripts/provision-backend.mjs <app_id> [--location apac] [--dry]
@@ -106,9 +122,15 @@ import { appIdProblems } from '../../contracts/app-id/app-id.js';
 import { mountedRoutes } from '../ci/worker-routes.mjs';
 import { workerSet, registerRows, REGISTER, SERVICES_DIR, WORKER_CONFIG } from '../ci/worker-set.mjs';
 import { parseJsonc as parseConfig } from '../ci/d1-sql-inventory.mjs';
+// Step [7] and `--check`: the one D1 walk, and the one writer of a monitor-register host row.
+import { ownedD1 } from '../ci/d1-stores.mjs';
+import { REGISTER_REL as MONITOR_REGISTER, appendHostRow } from '../ops/monitor-register.mjs';
 
 /** Step [6]'s source for every route's auth, purpose and client (see the header). */
 const ROUTE_CLIENTS = 'tooling/bricks/app/route-clients.json';
+/** Step [7]'s inventory, and the template row it copies. */
+const INVENTORY = 'tooling/legal/data-inventory.json';
+const TEMPLATE_STORE = 'd1:{{app_id}}_db';
 
 const PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -176,7 +198,47 @@ if (args.includes('--check')) {
       `✗ ${m} holds a ${WORKER_CONFIG} and ${REGISTER} has no appWorkers row for it. ` +
         'Provisioning writes that row at step [6]; a Worker without one has no host, routes or crash-sink secret any lane can read.'));
   }
-  console.log(`\n✅ --check: all ${set.workers.length} Worker director(ies) under ${SERVICES_DIR}/ have a register row.`);
+  // Step [7]'s two rows, for every registered Worker that has a directory here.
+  let storeIds;
+  let hostnames;
+  try {
+    storeIds = new Set(JSON.parse(readFileSync(join(root, INVENTORY), 'utf8')).stores.map((s) => s?.id));
+  } catch (e) {
+    lost(`${INVENTORY} is missing, not JSON or has no \`stores\` (${e.message}), so no Worker's database can be matched to a row.`);
+  }
+  try {
+    hostnames = new Set(JSON.parse(readFileSync(join(root, MONITOR_REGISTER), 'utf8')).hosts.map((h) => h?.hostname));
+  } catch (e) {
+    lost(`${MONITOR_REGISTER} is missing, not JSON or has no \`hosts\` (${e.message}), so no Worker's host can be matched to a row.`);
+  }
+  const dirConfigs = new Set(set.workers.map((dir) => `${SERVICES_DIR}/${dir}/${WORKER_CONFIG}`));
+  const unrecorded = [];
+  for (const { row } of registerRows(register)) {
+    const cfg = String(row?.config ?? '').replace(/\\/g, '/');
+    if (!dirConfigs.has(cfg)) continue;
+    let parsed;
+    try {
+      parsed = parseConfig(readFileSync(join(root, cfg), 'utf8'));
+    } catch (e) {
+      lost(`${cfg} does not parse as JSONC (${e.message}), so the databases it owns cannot be read.`);
+    }
+    const dbs = ownedD1(root, cfg, parsed, (lines) => lost(lines.join(' ')));
+    for (const db of dbs.owned) {
+      if (!storeIds.has(`d1:${db.databaseName}`)) {
+        unrecorded.push(`${cfg} owns D1 ${db.databaseName} and ${INVENTORY} has no \`d1:${db.databaseName}\` row. Provisioning writes it at step [7].`);
+      }
+    }
+    for (const h of Array.isArray(row.hosts) ? row.hosts : []) {
+      if (!hostnames.has(h)) {
+        unrecorded.push(`${cfg} serves ${h} and ${MONITOR_REGISTER} has no host row for it. Provisioning writes it at step [7]; ensure-monitors.mjs creates its monitor.`);
+      }
+    }
+    if (dbs.owned.length || row.hosts?.length) {
+      console.log(`  ok  ${cfg} — ${dbs.owned.map((d) => `d1:${d.databaseName}`).join(', ') || 'no owned D1'}; hosts ${(row.hosts ?? []).join(', ') || 'none'}`);
+    }
+  }
+  if (unrecorded.length) die(unrecorded.map((u) => `✗ ${u}`));
+  console.log(`\n✅ --check: all ${set.workers.length} Worker director(ies) under ${SERVICES_DIR}/ have a register row, and every owned D1 and host of theirs has its inventory and monitor-register row.`);
   process.exit(0);
 }
 
@@ -674,6 +736,93 @@ if (existing) {
   console.log(`    routes: ${row.routes.map((r) => `${r.method} ${r.path}`).join(' · ')}`);
   console.log(`    ${cfgRel} is named in bindingSources.configs.`);
 }
+
+// ── 7. the inventory row and the monitor host row — files only (see the header) ──
+step(7, `Writing ${dbName}'s ${INVENTORY} row and ${appId}-api's ${MONITOR_REGISTER} host row(s)`);
+const workerRow = register.appWorkers.find((w) => String(w?.config ?? '').replace(/\\/g, '/') === cfgRel);
+
+/** The concrete inventory row: the template's kind, personalData and retention kind,
+ *  with this app's name and config, and the two sentences that described a template
+ *  replaced by ones that describe this database. The template's `note` argues for
+ *  keeping the TEMPLATE row, so it is not copied. */
+function inventoryRowFrom(template) {
+  const { note: _templateOnly, ...rest } = JSON.parse(JSON.stringify(template).replaceAll('{{app_id}}', appId));
+  return {
+    ...rest,
+    id: `d1:${dbName}`,
+    name: dbName,
+    // The sentence app #1's row uses. It describes the store and nothing else: this
+    // file feeds the published privacy notice, so provenance belongs in git.
+    holds: `${appId}'s own database. Holds no rows of its own; its tables do.`,
+    retention: { ...rest.retention, reason: 'A container. Each table its migrations create carries its own row.' },
+    writtenBy: [cfgRel],
+  };
+}
+
+const invPath = join(ROOT, INVENTORY);
+let inventory;
+try {
+  inventory = JSON.parse(readFileSync(invPath, 'utf8'));
+} catch (e) {
+  die([`✗ ${INVENTORY} is missing or not JSON (${e.message}). The Worker is registered and its database has no inventory row.`]);
+}
+if (!Array.isArray(inventory.stores)) die([`✗ ${INVENTORY} has no \`stores\` array to add the row to.`]);
+if (inventory.stores.some((s) => s?.id === `d1:${dbName}`)) {
+  console.log(`    ${INVENTORY} already has d1:${dbName}; left unchanged.`);
+} else {
+  const at = inventory.stores.findIndex((s) => s?.id === TEMPLATE_STORE);
+  if (at < 0) {
+    die([`✗ ${INVENTORY} has no ${TEMPLATE_STORE} template row to copy. Nothing was written to it; restore the template row, or write d1:${dbName} by hand.`]);
+  }
+  inventory.stores.splice(at, 0, inventoryRowFrom(inventory.stores[at]));
+  writeFileSync(invPath, `${JSON.stringify(inventory, null, 2)}\n`);
+  console.log(`    ${INVENTORY}: d1:${dbName} (copied from ${TEMPLATE_STORE}).`);
+}
+
+const health = (workerRow?.routes ?? []).find((r) => r?.method === 'GET' && /\/health$/.test(String(r?.path ?? '')));
+if (!health) {
+  die([`✗ ${cfgRel}'s register row mounts no GET …/health route, so there is nothing for a monitor to watch. Nothing was written to ${MONITOR_REGISTER}.`]);
+}
+const monPath = join(ROOT, MONITOR_REGISTER);
+let monText;
+try {
+  monText = readFileSync(monPath, 'utf8');
+  JSON.parse(monText);
+} catch (e) {
+  die([`✗ ${MONITOR_REGISTER} is missing or not JSON (${e.message}). Nothing was written to it.`]);
+}
+const monBefore = monText;
+for (const hostname of workerRow?.hosts ?? []) {
+  if ((JSON.parse(monText).hosts ?? []).some((h) => h?.hostname === hostname)) {
+    console.log(`    ${MONITOR_REGISTER} already has ${hostname}; left unchanged.`);
+    continue;
+  }
+  monText = appendHostRow(monText, {
+    hostname,
+    what: `the ${appId}-api Worker`,
+    derivedFrom: 'appCatalogue',
+    _why:
+      `Written by tooling/scripts/provision-backend.mjs step [7]. \`monitor\` is null until tooling/ops/ensure-monitors.mjs ` +
+      '--apply creates the monitor `gap.create` describes, reads it back, and writes it here with its id.',
+    monitor: null,
+    gap: {
+      why: `${hostname} is provisioned, and GlitchTip has no monitor for it yet.`,
+      action:
+        "node tooling/ops/ensure-monitors.mjs prints the POST; its --apply creates the monitor (a vendor write: a parent step, after the owner's go).",
+      create: {
+        name: `${appId}-api health`,
+        type: 'GET',
+        path: health.path,
+        expectedStatus: 200,
+        expectedBody: '"ok":true',
+        intervalSeconds: 60,
+        project: appId,
+      },
+    },
+  });
+  console.log(`    ${MONITOR_REGISTER}: ${hostname} (monitor: null; ensure-monitors.mjs creates GET ${health.path}).`);
+}
+if (monText !== monBefore) writeFileSync(monPath, monText);
 
 console.log(`\n✅ ${appId}: provisioned, patched, migrated and registered. Zero manual edits.`);
 console.log(`   Run log above is S-12 limbs 2 and 3; limb 1 is enforced in CI by assert-d1-bindings.mjs.`);
