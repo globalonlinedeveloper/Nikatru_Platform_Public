@@ -227,11 +227,33 @@
 // and look. The run was redone against a committed baseline. It also, by
 // accident, produced the honest `pre` column above.
 //
+// ── 2026-09-25: THREE LIMBS FOR A DECLARATION THAT ADMITTED IT WAS STALE ─────
+// (O-PLAY-DATA-SAFETY-FROM-A-STALE-RUN.) The Purchase history row said in prose
+// that its `shared` answer was not re-graded and that the merged permission set
+// had to be measured again, while `unresolved` was empty and every limb printed ok.
+//  (M) THE MERGED SET AGAINST THE BUILD. With `--merged-dump <file> --app <id>`,
+//      androidPermissions.merged is compared to the permissions
+//      dump-aab-permissions.mjs read out of the .aab the same CI job built, in
+//      both directions, plus what this tree's own release and Play manifests
+//      declare (those are held out of `merged` by the releaseManifest limb).
+//      Without a dump, the run prints that the set was not compared.
+//  (U) AN OPEN QUESTION FAILS. A non-empty `unresolved` on an app root is exit 1.
+//      The brick's `unresolved` list is its contract and is not checked here.
+//  (P) DEFERRAL PROSE FAILS. A DEFERRAL_MARKERS phrase in an answer or in the
+//      merged block is exit 1 unless that block's `unresolved` names a live entry.
+// Red controls, 2026-09-25 (exits, captured on their own line):
+//   RC1  the pre-change data-safety.json, new guard via --repo-root   1 (P)   old 0
+//   RC2  fixture: one unresolved entry referenced by a null answer    1 (U)   old 0
+//   RC3  a dump carrying BILLING / lacking VIBRATE, current data      1 (M)
+//   RC4  --merged-dump naming a missing file                          2
+//
 // Usage:  node tooling/ci/assert-play-declarations.mjs [repoRoot]
+//         node tooling/ci/assert-play-declarations.mjs [--repo-root <dir>] --merged-dump <file> --app <id>
 // Exit 0 = EVERY app's declarations still describe its own tree, and the
 //          template has not started collecting on all of their behalf.
 //      1 = they do not.
-//      2 = COVERAGE LOST — a root stopped delivering a subject to check.
+//      2 = COVERAGE LOST — a root stopped delivering a subject to check, or
+//          the dump named on the command line cannot be read.
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve, dirname, posix } from 'node:path';
@@ -245,10 +267,59 @@ import { parseWorkflow } from './workflow-scan.mjs';
 // a spelling this guard cannot see.
 import { parseYaml } from '../app-yaml/yaml.mjs';
 
-const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
+// ── arguments ────────────────────────────────────────────────────────────────
+// The repository root stays POSITIONAL, as every caller and test passes it;
+// `--repo-root <dir>` says the same thing by name. `--merged-dump <file>` and
+// `--app <id>` go together: limb M compares that app's
+// androidPermissions.merged to the set dump-aab-permissions.mjs read out of the
+// .aab the same job built. They are validated once coverageLost() exists.
+const argv = process.argv.slice(2);
+const VALUE_FLAGS = new Set(['--repo-root', '--merged-dump', '--app']);
+const flags = new Map();
+const positional = [];
+const unknownFlags = [];
+for (let i = 0; i < argv.length; i++) {
+  if (VALUE_FLAGS.has(argv[i])) flags.set(argv[i], argv[++i] ?? '');
+  else if (argv[i].startsWith('--')) unknownFlags.push(argv[i]);
+  else positional.push(argv[i]);
+}
+const ROOT = resolve(flags.get('--repo-root') ?? positional[0] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
+const MERGED_DUMP = flags.has('--merged-dump') ? flags.get('--merged-dump') : null;
+const DUMP_APP = flags.has('--app') ? flags.get('--app') : null;
 const REGISTER_REL = 'tooling/channel-register.json';
 const INVENTORY_REL = 'tooling/legal/data-inventory.json';
 const CHANNEL = 'android-play';
+
+/** Limb P's phrases: prose that DEFERS an answer rather than giving one.
+ *
+ *  Case-sensitive on purpose — the declarations write a deferral in capitals
+ *  ("NOT re-graded") and the same words in lower case are ordinary prose. A
+ *  phrase is allowed only inside a block whose `unresolved` names a live entry,
+ *  because there the deferral has an owner, a question and a way to settle it.
+ *  Measured 2026-09-25 on subscriptiontracker's declaration before its re-grade:
+ *  limb P's walk found four hits in three strings — the two in Purchase history's
+ *  clientAbsence.claim, one in User payment info's basis, and one sentence
+ *  ("rather than left open") that said the opposite of a deferral and was
+ *  reworded. A fifth, "is NOT made in this change", sat in buildPosture, outside
+ *  the walk, and was re-dated by hand. The list is exported so the reason a
+ *  string failed can be read beside VALID_GRADE's; the guard runs on import, so
+ *  the test spells each phrase out. */
+export const DEFERRAL_MARKERS = Object.freeze([
+  'NOT re-graded',
+  'is NOT made in this change',
+  'has to be re-taken',
+  'deliberately leaves open',
+  'left open',
+  'until the next build',
+  'not yet re-measured',
+]);
+
+/** Every string inside `v`, with the JSON path it sits at. */
+function* stringsWithin(v, path) {
+  if (typeof v === 'string') yield [path, v];
+  else if (Array.isArray(v)) for (let i = 0; i < v.length; i++) yield* stringsWithin(v[i], `${path}[${i}]`);
+  else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) yield* stringsWithin(x, `${path}.${k}`);
+}
 
 const problems = [];
 const prints = [];
@@ -523,6 +594,55 @@ if (!isDir(BRICK)) {
     'still print the same `ok` it prints today. If the template genuinely moved, move this constant with',
     'it in the same change.',
   ]);
+}
+
+// ── limb M's inputs (O-PLAY-DATA-SAFETY-FROM-A-STALE-RUN) ─────────────────────
+// A dump that cannot be read is COVERAGE LOST, never "nothing to compare": the
+// step that passes --merged-dump is the step claiming the comparison was made.
+if (unknownFlags.length > 0) {
+  coverageLost([
+    `unknown argument(s) ${unknownFlags.join(', ')}.`,
+    'Usage: node tooling/ci/assert-play-declarations.mjs [repoRoot | --repo-root <dir>] [--merged-dump <dump.json> --app <id>]',
+  ]);
+}
+let DUMP = null;
+if (MERGED_DUMP !== null || DUMP_APP !== null) {
+  if (!MERGED_DUMP || !DUMP_APP) {
+    coverageLost([
+      '--merged-dump <file> and --app <id> go together, each with a value.',
+      'The dump carries the permission set of ONE app\'s .aab; without the app named it would be compared to nothing, or to the wrong declaration.',
+    ]);
+  }
+  if (!apps.includes(DUMP_APP)) {
+    coverageLost([`--app ${DUMP_APP} is not an apps/ member of the root pubspec.yaml workspace (${apps.join(', ')}).`]);
+  }
+  const dumpAbs = resolve(MERGED_DUMP);
+  // Read once and catch the absence: an exists-then-read pair races the file
+  // (CodeQL js/file-system-race).
+  let dumpText;
+  try {
+    dumpText = readFileSync(dumpAbs, 'utf8');
+  } catch (e) {
+    if (e.code !== 'ENOENT' && e.code !== 'EISDIR' && e.code !== 'ENOTDIR') throw e;
+    coverageLost([
+      `--merged-dump names ${MERGED_DUMP}, which does not exist (looked at ${dumpAbs}).`,
+      'The dump step did not produce what this step claims to compare. "No dump" is not "the set matches".',
+    ]);
+  }
+  try {
+    DUMP = JSON.parse(dumpText);
+  } catch (e) {
+    coverageLost([`--merged-dump ${MERGED_DUMP} is not valid JSON — ${e.message}`]);
+  }
+  if (
+    !DUMP || DUMP.schema !== 1 || !Array.isArray(DUMP.permissions) || DUMP.permissions.length === 0 ||
+    DUMP.permissions.some((p) => typeof p !== 'string' || p === '')
+  ) {
+    coverageLost([
+      `--merged-dump ${MERGED_DUMP} is not a schema-1 dump with a non-empty \`permissions\` list of names.`,
+      'It is written by tooling/ci/dump-aab-permissions.mjs, which refuses to write an empty set.',
+    ]);
+  }
 }
 
 /**
@@ -1204,6 +1324,22 @@ function checkApp(app) {
     ]);
   }
 
+  // ── the merged block is a referrer too ───────────────────────────────────────
+  // An open question about the MERGED permission set belongs to no answer row,
+  // so without this the only honest way to record one would be flagged below as
+  // "referenced by NO answer". A pointer to an id that does not exist is a
+  // deferral with nothing behind it, which is what limb P refuses.
+  const mergedBlock = ds.androidPermissions?.merged;
+  const mergedRef = mergedBlock && typeof mergedBlock === 'object' ? mergedBlock.unresolved : undefined;
+  if (mergedRef !== undefined) {
+    if (typeof mergedRef === 'string' && unresolvedById.has(mergedRef)) unresolvedReferenced.add(mergedRef);
+    else {
+      problems.push(
+        `${DS_REL} androidPermissions.merged.unresolved is ${JSON.stringify(mergedRef)}, which names no entry in the declaration's own \`unresolved\` list. The merged set is either measured or open under a named question; a pointer to nothing is neither.`,
+      );
+    }
+  }
+
   // ── the unresolved list, in both directions ──────────────────────────────────
   for (const [id, u] of unresolvedById) {
     for (const field of ['question', 'ownerItem', 'howToResolve', 'status']) {
@@ -1221,6 +1357,59 @@ function checkApp(app) {
         `${DS_REL} unresolved "${id}" is referenced by NO answer. Either the answer it belonged to was resolved and this entry outlived it — leaving a question that looks open about something already settled — or an answer lost its \`unresolved\` pointer and its null is now unattached.`,
       );
     }
+  }
+
+  // ── LIMB U: an app's sworn declaration carries no open question ──────────────
+  // 🔴 UNTIL 2026-09-25 AN OPEN QUESTION WAS A PRINT. The report block below said
+  // "THE FORM CANNOT BE SUBMITTED YET" and the run exited 0, so a declaration
+  // with a blank field stayed green on main and the only thing standing between
+  // it and the console was someone reading the log. An open question on a sworn
+  // declaration belongs in a Private owner row until it is settled, not on a
+  // green build. The brick is not checked here: its `unresolved` list is its
+  // contract (see the header), and checkApp() is never called on it.
+  if (unresolvedById.size > 0) {
+    const lines = [];
+    for (const id of unresolvedById.keys()) {
+      const by = answers.filter((a) => a && a.unresolved === id).map((a) => `${a.category} > ${a.type}`);
+      if (mergedRef === id) by.push('androidPermissions.merged');
+      lines.push(`"${id}" (referenced by ${by.length > 0 ? by.join(', ') : 'nothing'})`);
+    }
+    problems.push(
+      `🔴 ${DS_REL} carries ${unresolvedById.size} open question(s): ${lines.join('; ')}. A declaration with an open question is a form that cannot be submitted, and it does not pass. Settle each one — move it to \`resolved\` with settledOn and settledBy — or keep the change on a branch until it is.`,
+    );
+  }
+
+  // ── LIMB P: deferral prose is refused outside a recorded open question ───────
+  // 🔴 THE SAME GAP IN PROSE. On 2026-09-22 the Purchase history row said, in
+  // capitals, that its `shared` answer was "NOT re-graded in this change" and
+  // that the merged permission set "has to be re-taken", and every limb above
+  // printed ok, because each one reads values and none reads sentences. A
+  // deferral is allowed only inside a block whose `unresolved` names a live
+  // entry: there it has an owner and a way to be settled, and limb U holds the
+  // build until it is.
+  let deferralStringsChecked = 0;
+  const deferralBlocks = answers.map((a, i) => [`answers[${i}]`, a]);
+  if (mergedBlock && typeof mergedBlock === 'object') deferralBlocks.push(['androidPermissions.merged', mergedBlock]);
+  for (const [path, block] of deferralBlocks) {
+    if (!block || typeof block !== 'object') continue;
+    const covered = typeof block.unresolved === 'string' && unresolvedById.has(block.unresolved);
+    for (const [at, text] of stringsWithin(block, path)) {
+      deferralStringsChecked++;
+      if (covered) continue;
+      for (const phrase of DEFERRAL_MARKERS) {
+        if (text.includes(phrase)) {
+          problems.push(
+            `🔴 ${DS_REL} ${at} says "${phrase}". That is an answer deferred in prose, and the block it sits in names no open question in \`unresolved\`, so nothing owns it and nothing holds the build until it is settled. Settle it and say so with a date, or record it as an \`unresolved\` entry this block points at.`,
+          );
+        }
+      }
+    }
+  }
+  if (answers.length > 0 && deferralStringsChecked === 0) {
+    coverageLost([
+      `${DS_REL} has ${answers.length} answer(s) and limb P read NOT ONE string inside them.`,
+      'The deferral scan ranges over those strings, so it measured nothing while reporting ok.',
+    ]);
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -1561,6 +1750,41 @@ function checkApp(app) {
           `${DS_REL} androidPermissions.merged._why says not one of these permissions is declared in this repository, and ${releaseManifestRel} now declares \`${name}\`. The merged set no longer arrived wholly from dependencies — which changes what \`dependencySurface\` is able to watch, and changes who has to answer for the permission.`,
         );
       }
+    }
+  }
+
+  // ── LIMB M · the recorded set against the .aab this build produced ──────────
+  // O-PLAY-DATA-SAFETY-FROM-A-STALE-RUN. `merged.permissions` is what arrived
+  // from DEPENDENCIES (the limb above refuses a name the release manifest
+  // declares), so the .aab's set is compared to that list PLUS what this tree
+  // itself declares into the Play build: the release manifest and the
+  // android-play channel overlay, as the walk read them (tools:node="remove"
+  // already honoured). A name on only one side is a finding, and the message
+  // carries the dump's run, so the reading can be re-taken from that run's log.
+  if (DUMP === null) {
+    prints.push('merged set NOT compared in this run: no .aab here; it is compared in the android build job');
+  } else if (app !== DUMP_APP) {
+    prints.push(`merged set NOT compared in this run: the --merged-dump given is ${DUMP_APP}'s .aab`);
+  } else {
+    const ownRels = [releaseManifestRel, `${APP_DIR}/android/app/src/channel/${CHANNEL}/AndroidManifest.xml`];
+    const expected = new Set(mergedNames);
+    for (const rel of ownRels) for (const name of permsByFile.get(rel) ?? []) expected.add(name);
+    const fromAab = new Set(DUMP.permissions);
+    const run = `run ${DUMP.runId ?? '(no run id)'} at commit ${DUMP.commit ?? '(no commit)'}`;
+    const added = [...fromAab].filter((n) => !expected.has(n)).sort();
+    const missing = [...expected].filter((n) => !fromAab.has(n)).sort();
+    for (const name of added) {
+      problems.push(
+        `🔴 ${DS_REL} androidPermissions.merged: the .aab of ${run} carries \`${name}\`, and neither merged.permissions nor this tree's own Play manifests declare it. Re-take the reading from that run's dump: add the row with its attribution and grade, say which Play data type it moves (or why none), and set \`measuredFrom\` to that run.`,
+      );
+    }
+    for (const name of missing) {
+      problems.push(
+        `🔴 ${DS_REL} androidPermissions.merged records \`${name}\`, and the .aab of ${run} does not carry it. The sworn set names a permission the build no longer asks for; re-take the reading from that run's dump and set \`measuredFrom\` to it.`,
+      );
+    }
+    if (added.length === 0 && missing.length === 0) {
+      prints.push(`merged set equals the .aab of ${run} (recorded from run ${mf?.runId ?? '(none)'}; ${fromAab.size} permission(s))`);
     }
   }
 
@@ -2002,6 +2226,7 @@ function checkApp(app) {
     pinsChecked,
     crashLock: ds.crashSdkSurface?.lockfile ?? 'pubspec.lock',
     resolvedChecked,
+    deferralStringsChecked,
     mergedPermsChecked,
     mergedRunId: merged.measuredFrom?.runId ?? '?',
     mergedOn: merged.measuredFrom?.measuredOn ?? '?',
@@ -2346,8 +2571,10 @@ console.log('     here is narrower: no AAR manifest is in this repository or on 
 console.log('     permission (INTERNET) is carried as a named finding under merged.unattributed and one row is');
 console.log('     graded `inferred` rather than `read`. Settle both by having the Android lane upload');
 console.log('     build/outputs/logs/manifest-merger-release-report.txt, which names the contributing file for');
-console.log('     every merged node. And the reading is ONE BUILD\'S SNAPSHOT: nothing in CI re-downloads its');
-console.log('     own .aab, so merged.pinned and merged.expectedButAbsent are what make it fail rather than rot.');
+console.log('     every merged node. ⏱ 2026-09-25: the reading is no longer ONE BUILD\'S SNAPSHOT left to rot.');
+console.log('     Every Android CI build now dumps its own .aab (dump-aab-permissions.mjs) and limb M compares');
+console.log('     the set to merged.permissions; this static run has no .aab and says so above. merged.pinned');
+console.log('     and merged.expectedButAbsent still fail a version bump between builds.');
 console.log('   · WHAT THE GLITCHTIP SERVER DOES AFTER RECEIPT. What the crash SDK PUTS ON THE WIRE is settled —');
 console.log('     it was read from the pinned SDK source (contexts.device.id is a persistent per-install UUID on');
 console.log('     Android, ungated by sendDefaultPii) and the pin is compared to pubspec.lock above. What is NOT');
@@ -2411,7 +2638,8 @@ if (problems.length) {
     );
     console.log(
       `ok   ${dir} — ${s.pinsChecked} crash-SDK version pin(s) match ${s.crashLock}; ` +
-        `${s.resolvedChecked} settled question(s) re-checked against their answer rows (none has drifted back to null)`,
+        `${s.resolvedChecked} settled question(s) re-checked against their answer rows (none has drifted back to null); ` +
+        `0 open question(s), and none of ${s.deferralStringsChecked} string(s) in the answers and the merged block defers an answer in prose`,
     );
     console.log(
       `ok   ${dir} — ${s.mergedPermsChecked} MERGED manifest permission(s) graded (measured from run ${s.mergedRunId}, ` +

@@ -19,9 +19,14 @@
       "type": "string",
       "enum": ["app", "extension"]
     },
-    "asOf": {
-      "description": "The date this declaration was last re-read against the code. Same {value, asOf, verify} discipline platform-state/ is built on.",
+    "state": {
+      "description": "APP SURFACE ONLY, and required there. Whether this app has made its privacy declaration yet. `pending` is what the app brick stamps: nobody has read this app's code, so it collects nothing it can name (`collects: []`), `asOf` is null, and render-privacy renders a short page saying the notice is not yet published. `declared` is a declaration somebody re-read against the code, with every rule below applying. A closed set, and a key rather than an inference: a missing `state` is a finding, never read as either value. O-BRICK-STAMPS-NO-PRIVACY-DECLARATION.",
       "type": "string",
+      "enum": ["pending", "declared"]
+    },
+    "asOf": {
+      "description": "The date this declaration was last re-read against the code. Same {value, asOf, verify} discipline platform-state/ is built on. Null only on a `pending` app declaration, which has not been read against any code yet (see `allOf` below).",
+      "type": ["string", "null"],
       "format": "date"
     },
     "networkAddress": {
@@ -30,7 +35,7 @@
       "const": false
     },
     "collects": {
-      "description": "One row per category of personal data the surface actually collects — meaning retained or transmitted, not merely touched in memory. Derived from the surface's own sworn declarations, each row naming which one and when it was read. An APP declaration must carry at least one row (see `allOf` below); an extension that transmits nothing carries an empty list and discloses what it HANDLES under `storeDisclosures` instead, because a retention class is not a thing that exists for data that is never stored.",
+      "description": "One row per category of personal data the surface actually collects — meaning retained or transmitted, not merely touched in memory. Derived from the surface's own sworn declarations, each row naming which one and when it was read. A `declared` APP declaration must carry at least one row and a `pending` one carries none (see `allOf` below); an extension that transmits nothing carries an empty list and discloses what it HANDLES under `storeDisclosures` instead, because a retention class is not a thing that exists for data that is never stored.",
       "type": "array",
       "items": {
         "type": "object",
@@ -144,25 +149,40 @@
   },
   "allOf": [
     {
-      "description": "🔴 THE ARITY FLOORS, PER SURFACE. `collects` and `processors` carried `minItems: 1` unconditionally until the extension surface was added, and NOTHING HERE LOWERS THAT FLOOR FOR AN APP — it moves into the branch that applies to apps, which is where it can be true. An app that declares nothing collected and nobody processing is a declaration that graded itself; an extension that transmits nothing has, truthfully, neither. tooling/ci/test/app-yaml.test.mjs mutates apps/subscriptiontracker/privacy.yaml to `collects: []` and to `processors: []` and asserts EXIT 1 on both, which is the floor being demonstrated rather than asserted.",
+      "description": "🔴 THE ARITY FLOORS, PER SURFACE. `collects` and `processors` carried `minItems: 1` unconditionally until the extension surface was added, and NOTHING HERE LOWERS THAT FLOOR FOR A DECLARED APP — it moves into the branch that applies to declared apps, which is where it can be true. A declared app that declares nothing collected and nobody processing is a declaration that graded itself; an extension that transmits nothing has, truthfully, neither. A `pending` app (O-BRICK-STAMPS-NO-PRIVACY-DECLARATION) is the one app that carries no `collects` row, and it says so in its own `state` rather than by an empty list: its notice page publishes no itemised claim at all. tooling/ci/test/app-yaml.test.mjs mutates apps/subscriptiontracker/privacy.yaml to `collects: []` and to `processors: []` and asserts EXIT 1 on both, which is the floor being demonstrated rather than asserted.",
       "anyOf": [
         {
-          "description": "An app: at least one collected category, at least one processor, and no extension-only block.",
+          "description": "A declared app: a dated declaration, at least one collected category, at least one processor, and no extension-only block.",
           "type": "object",
-          "required": ["collects", "processors"],
+          "required": ["state", "collects", "processors"],
           "properties": {
             "surface": { "const": "app" },
+            "state": { "const": "declared" },
+            "asOf": { "type": "string" },
             "collects": { "minItems": 1 },
             "processors": { "minItems": 1 },
             "storeDisclosures": { "maxItems": 0 }
           }
         },
         {
-          "description": "An extension: the Chrome Web Store answers are declared and the Limited Use affirmations are present. `collects` may be empty, and is for any tool that transmits nothing.",
+          "description": "A pending app, as the brick stamps it: NO collected category, because nobody has read this app's code yet and a guessed row is a claim nobody made. The processors are the providers every app's configuration requires (assert-app-yaml limb 9 holds them), and there is no extension-only block.",
+          "type": "object",
+          "required": ["state", "collects", "processors"],
+          "properties": {
+            "surface": { "const": "app" },
+            "state": { "const": "pending" },
+            "collects": { "maxItems": 0 },
+            "processors": { "minItems": 1 },
+            "storeDisclosures": { "maxItems": 0 }
+          }
+        },
+        {
+          "description": "An extension: the Chrome Web Store answers are declared and the Limited Use affirmations are present. `collects` may be empty, and is for any tool that transmits nothing. `asOf` is a date here, as it always was.",
           "type": "object",
           "required": ["storeDisclosures", "limitedUse"],
           "properties": {
             "surface": { "const": "extension" },
+            "asOf": { "type": "string" },
             "storeDisclosures": { "minItems": 1 }
           }
         }

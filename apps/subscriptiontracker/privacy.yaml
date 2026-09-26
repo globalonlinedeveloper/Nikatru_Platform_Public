@@ -41,6 +41,7 @@ app: subscriptiontracker
 # schema's arity rules are per surface — and the app floor (at least one
 # collected category, at least one processor) is exactly what it always was.
 surface: app
+state: declared
 asOf: "2026-09-11"
 
 # C-NO-NETWORK-ADDRESS-COLUMN, restated where a renderer would have to break it.

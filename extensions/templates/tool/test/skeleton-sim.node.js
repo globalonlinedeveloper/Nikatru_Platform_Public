@@ -4496,8 +4496,26 @@ let PACK = null, BUMP = null;
     try { fs.rmSync(out, { recursive: true, force: true }); } catch (_) {}
 
     /* ---- version parity, through the real bump-version functions ---- */
-    check('every version site agrees — manifest.json, manifest.firefox.json, CHANGELOG.md',
+    /* ⏱ 2026-09-25 (F-b): the version is written once. publish/manifest.firefox.json
+       is an RFC 7386 merge patch, so it is not a version site: it must not carry
+       "version" at all, and the Firefox manifest publish/pack.mjs builds inherits
+       manifest.json's through the merge. */
+    check('every version site agrees — manifest.json and CHANGELOG.md',
       BUMP.versionProblems().length === 0, BUMP.versionProblems().join(' | ') || 'v' + BUMP.currentVersion());
+    {
+      const overlay = JSON.parse(H.readRoot('publish/manifest.firefox.json'));
+      check('the Firefox overlay carries no "version" — the merge inherits manifest.json\'s',
+        !Object.prototype.hasOwnProperty.call(overlay, 'version'),
+        Object.prototype.hasOwnProperty.call(overlay, 'version') ? 'it says v' + overlay.version : 'absent');
+      const ffm = PACK.firefoxManifest();
+      check('the Firefox manifest pack.mjs builds is at the tree\'s version',
+        !ffm.error && ffm.merged.version === BUMP.currentVersion(),
+        ffm.error || 'merged v' + ffm.merged.version + ' · manifest.json v' + BUMP.currentVersion());
+      const pubm = PUB.firefoxManifest(H.ROOT);
+      check('pack.mjs and verify-package.node.js build ONE Firefox manifest',
+        !ffm.error && !pubm.error && JSON.stringify(ffm.merged) === JSON.stringify(pubm.merged),
+        ffm.error || pubm.error || Object.keys(ffm.merged).length + ' top-level keys, both');
+    }
     check('CHANGELOG.md\'s top entry is the version the tree is at',
       BUMP.changelogTop() === BUMP.currentVersion(),
       BUMP.changelogTop() + ' vs ' + BUMP.currentVersion() + ' — a release nobody documented is a release nobody can explain');

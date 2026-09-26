@@ -286,11 +286,13 @@ describe('one network-API list, and it names what the retired packer named', () 
     assert.deepEqual(missed, [], `the template NET regex does not flag: ${missed.join(', ')}`);
   });
 
-  test('Full_Screen_Shot\'s package.node.js mergePatch is scripts/pack.mjs\'s mergePatch', () => {
+  /* ⏱ 2026-09-25 (F-b): scripts/pack.mjs's mergePatch moved to scripts/lib/merge-patch.mjs, which
+     pack.mjs now imports, so the comparison reads the lib. */
+  test('Full_Screen_Shot\'s package.node.js mergePatch is scripts/lib/merge-patch.mjs\'s mergePatch', () => {
     const PKG = createRequire(import.meta.url)(join(EXT, FULLSHOT_PKG));
     assert.equal(typeof PKG.mergePatchDrift, 'function', `${FULLSHOT_PKG} no longer exports mergePatchDrift`);
     const drift = PKG.mergePatchDrift();
-    assert.notEqual(drift, null, 'scripts/pack.mjs is not reachable from the packager, so nothing was compared');
+    assert.notEqual(drift, null, 'scripts/lib/merge-patch.mjs is not reachable from the packager, so nothing was compared');
     assert.equal(drift, '', drift);
   });
 });

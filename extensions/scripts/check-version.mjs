@@ -35,6 +35,32 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { Report, parseArgs } from './lib/report.mjs';
 import { repoRoot, resolveTool, readText, readJson, versionProblem, changelogTop } from './lib/toolinfo.mjs';
+import { mergePatch } from './lib/merge-patch.mjs';
+
+const isPlainObject = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+function sameJson(a, b) {
+  if (a === b) return true;
+  if (typeof a !== typeof b || a === null || b === null || typeof a !== 'object') return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a), kb = Object.keys(b);
+  return ka.length === kb.length && ka.every(k => Object.prototype.hasOwnProperty.call(b, k) && sameJson(a[k], b[k]));
+}
+
+/* The members of an RFC 7386 patch that change nothing when it is applied to
+   `base`, as dotted paths (§4b below). */
+function restatedMembers(base, patch, at) {
+  const out = [];
+  const b = isPlainObject(base) ? base : {};
+  for (const key of Object.keys(patch)) {
+    const where = at ? at + '.' + key : key;
+    const had = Object.prototype.hasOwnProperty.call(b, key);
+    if (patch[key] === null) { if (!had) out.push(where); continue; }
+    const merged = mergePatch(b[key], patch[key]);
+    if (had && sameJson(merged, b[key])) out.push(where);
+    else if (isPlainObject(patch[key]) && isPlainObject(b[key])) out.push(...restatedMembers(b[key], patch[key], where));
+  }
+  return out;
+}
 
 const args = parseArgs(process.argv.slice(2));
 args.rejectUnknown(['expect', 'tag', 'repo-root']);
@@ -152,6 +178,34 @@ if (typeof ffRel === 'string' && ffRel) {
     }
   } else {
     r.pass(ffRel + ' is an overlay', 'it does not restate the version, so it cannot drift from it');
+  }
+
+  /* 4b. ONLY WHAT DIFFERS (2026-09-25, F-b). A member the overlay states with
+     the value manifest.json already gives it changes nothing in the merge — and
+     it is a second copy of that value, which a later edit to manifest.json
+     leaves behind in the Firefox package. So a member whose merged value equals
+     the base's is a finding, named by its path; an object member that does
+     change something is searched inside for restated members of its own. A null
+     that deletes a key the base does not have is the same no-op. "version" is
+     left to the check above, which already grades it (warn when it agrees,
+     fail when it does not).
+     It lives HERE, not in the template's test/skeleton-sim.node.js: the sim
+     sees both of the template's files, but it runs only as a stamped tool's own
+     sim and never reads Full_Screen_Shot, while this script runs for every
+     discovered tool in the extensions CI `gates` job. */
+  if (!p.error && p.value !== null && typeof p.value === 'object' && !Array.isArray(p.value) &&
+      tool.manifest && typeof tool.manifest === 'object') {
+    const restated = restatedMembers(tool.manifest, p.value).filter(k => k !== 'version');
+    if (restated.length) {
+      r.fail(ffRel + ' holds only what differs from ' + tool.manifestRel,
+        restated.length + ' member(s) merge to the value ' + tool.manifestRel + ' already has: ' + restated.join(', ') + '.\n' +
+        'An RFC 7386 overlay carries only what Firefox needs beyond the base manifest. A restated member is\n' +
+        'a second copy of a base value: the merge hides it today, and a later edit to ' + tool.manifestRel + '\n' +
+        'leaves the Firefox package on the old one. Delete ' + (restated.length === 1 ? 'it' : 'them') + ' from ' + ffRel + '.');
+    } else {
+      r.pass(ffRel + ' holds only what differs from ' + tool.manifestRel,
+        Object.keys(p.value).length + ' member(s), each of which changes the merged manifest');
+    }
   }
 }
 

@@ -27,7 +27,7 @@
       "since": "2026-09-12",
       "why": "The app predates [ADR 067] and carries its own copy of every screen the chassis now owns. Migrating is a real change to live UI, not a rename: the app's settings screen is 1969 lines against the template's 616-line adapter, because it holds app-specific rows the chassis screen takes as parameters. The per-file sizes are recorded in `plan` so the size of the job is visible rather than guessed at.",
       "cost": "The app also does not DECLARE the dependency: apps/subscriptiontracker/pubspec.yaml has no nikatru_chassis_screens entry, so the migration starts there.",
-      "plan": "Screen by screen, smallest first, each with its own PR and its own before/after screenshot: check_inbox (88 -> 23), verify_email (182 -> 47), reaccept_terms (179 -> 57), reset_password (314 -> 77), legal_consent_fields (272 -> 74), sign_up (211 -> 94), manage_plan (238 -> 183), paywall (302 -> 212), app.dart (661 -> 347), main.dart (208 -> 88), settings (1969 -> 616). Delete this row on the last one.",
+      "plan": "Screen by screen, smallest first, each with its own PR and its own before/after screenshot: check_inbox, verify_email, reaccept_terms, reset_password, legal_consent_fields, sign_up, manage_plan, paywall, app.dart, main.dart, settings. Each one's size is in `forks`. Delete this row on the last one.",
       "_planCorrected2026-09-20": "⏱ [ADR 086] · THE `plan` ABOVE IS LEFT EXACTLY AS WRITTEN; THIS SUPERSEDES THREE OF ITS FIGURES, MEASURED. (1) reaccept_terms landed at 179 -> 103, not 179 -> 57: the residue is larger than the BRICK adapter the plan's target was read off, because it carries this app's own dated reasoning and re-raises a non-AuthFailure sign-out as `core.AuthFailure(authUnknownError)` so the chassis view renders the sentence this app rendered before. The delta is still comfortably negative and is recorded in `adopted`. (2) 🔴 check_inbox WAS BUILT, MEASURED AT 88 -> 35 (callSiteDelta -53), AND THEN DEFERRED — NOT BECAUSE IT DOES NOT WORK. `CheckInboxScreen` is the mutation SUBJECT of M1/M2/M2b in `tooling/ci/test/a11y-coverage.test.mjs`, chosen because it is the only surface in this app swept by exactly ONE family, so deleting its one sweep call is enough to unsweep it. Once it delegates, `assert-a11y-coverage` correctly reports the surface as swept in `packages/chassis_screens` instead of owed, and all three cases stop measuring what they claim. That guard's own PRECONDITION names the two repairs — re-point at another single-family surface, or delete EVERY sweep of the subject — and there is no other single-family surface in this root, while deleting the chassis-side sweeps trips that root's 18-surface and 54-case floors and turns the expected EXIT 1 into a COVERAGE LOST 2. So adopting check_inbox is blocked on re-designing that mutation group, which is a decision about a compliance guard and its own increment. (3) 🔴 `verify_email (182 -> 47)` IS NOT REACHABLE AS STATED AND MUST NOT BE ATTEMPTED AS A RENAME. `apps/subscriptiontracker/lib/features/auth/verify_email_screen.dart` MOUNTS `TurnstileGate` between its resend and continue controls and passes the token to `resendVerificationEmail(captchaToken:)` — `resend` is one of the six Box A captcha-gated endpoints — and maps `core.AuthFailure` through `authErrorText(AppLocalizations.of(context), e)`. `packages/chassis_screens/lib/auth/verify_email_screen.dart` has NEITHER a captcha slot NOR an error mapper: it renders `e.message` and has nowhere to mount the gate. Adopting it as it stands would silently send a null captcha token and downgrade the localized error text, which is a behaviour REGRESSION the call-site line count would have hidden. The same coupling holds for sign_up (TurnstileGate + authErrorText) and, for the error mapper alone, reset_password. Those three need an ADDITIVE optional parameter on the chassis view first — optional, so the brick adapters are untouched — and that package change is its own increment.",
       "files": [
         "app.dart",
@@ -45,6 +45,75 @@
         "features/settings/settings_screen.dart",
         "main.dart"
       ],
+      "forks": [
+        {
+          "file": "apps/subscriptiontracker/lib/features/auth/check_inbox_screen.dart",
+          "linesAtSince": 88,
+          "ceiling": 88,
+          "template": 23
+        },
+        {
+          "file": "apps/subscriptiontracker/lib/features/auth/verify_email_screen.dart",
+          "linesAtSince": 182,
+          "ceiling": 177,
+          "template": 47
+        },
+        {
+          "file": "apps/subscriptiontracker/lib/features/auth/reaccept_terms_screen.dart",
+          "linesAtSince": 179,
+          "ceiling": 103,
+          "template": 57
+        },
+        {
+          "file": "apps/subscriptiontracker/lib/features/auth/reset_password_screen.dart",
+          "linesAtSince": 314,
+          "ceiling": 312,
+          "template": 77
+        },
+        {
+          "file": "apps/subscriptiontracker/lib/features/auth/legal_consent_fields.dart",
+          "linesAtSince": 272,
+          "ceiling": 272,
+          "template": 74
+        },
+        {
+          "file": "apps/subscriptiontracker/lib/features/auth/sign_up_screen.dart",
+          "linesAtSince": 211,
+          "ceiling": 225,
+          "template": 94
+        },
+        {
+          "file": "apps/subscriptiontracker/lib/features/monetization/manage_plan_screen.dart",
+          "linesAtSince": 238,
+          "ceiling": 322,
+          "template": 183
+        },
+        {
+          "file": "apps/subscriptiontracker/lib/features/monetization/paywall_screen.dart",
+          "linesAtSince": 302,
+          "ceiling": 375,
+          "template": 212
+        },
+        {
+          "file": "apps/subscriptiontracker/lib/app.dart",
+          "linesAtSince": 661,
+          "ceiling": 664,
+          "template": 347
+        },
+        {
+          "file": "apps/subscriptiontracker/lib/main.dart",
+          "linesAtSince": 208,
+          "ceiling": 208,
+          "template": 88
+        },
+        {
+          "file": "apps/subscriptiontracker/lib/features/settings/settings_screen.dart",
+          "linesAtSince": 1969,
+          "ceiling": 2116,
+          "template": 616
+        }
+      ],
+      "_forksWhy": "⏱ 2026-09-26 · O-CHASSIS-PARITY-GRADES-IMPORTS-ONLY: the eleven \"app -> template\" sizes that `plan` carried as prose moved here, where tooling/ci/assert-chassis-parity.mjs reads them. `linesAtSince` is plan's first number and `template` its second, each re-measured with `git show 56648356:<path>` counted the way `wc -l` counts (56648356 is #710, the commit that wrote this row): all 22 equal what `plan` said. They are measurements taken once, at `since`, and the guard holds them equal to the base commit's. `ceiling` is each fork's size when this key landed, and it only falls: a fork may not grow, and a commit that shrinks one writes the new ceiling in the same commit. The `plan` that `_planCorrected2026-09-20` quotes is the text at 56648356.",
       "adopted": [
         {
           "file": "app.dart",
