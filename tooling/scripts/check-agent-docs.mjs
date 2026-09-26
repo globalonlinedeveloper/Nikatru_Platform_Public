@@ -18,6 +18,26 @@
 // (O-PUBLIC-DOCS-HAND-WRITTEN-FACTS); the array is empty and the warn branch below
 // stays for the next limb that lands.
 //
+// PROMOTED ON LANDING: limb X-NO-VERIFY (O-PUBLIC-HOOKS-ADVERTISE-NO-VERIFY),
+// 2026-09-24. It was never in CONFIG.warnLimbs and --write-baseline never freezes
+// it (PROMOTED_ON_LANDING), because the change that added it also fixed every line
+// it names, so its false-positive rate was measured before it could fail anything.
+// Measured on the tree it landed on (170eb673 plus train W17's dtap and pf2, plus
+// this change; first drafted on 964920a7):
+//   before the fix, 3 findings and no other: .githooks/pre-commit:95,
+//     .githooks/pre-push:71 and tooling/scripts/spec-guards.mjs:755, each the
+//     bypass printed as the way forward. extensions/CONTRIBUTING.md:221 was a 4th
+//     once CONTRIBUTING.md joined the subjects, and was reworded in the same change.
+//   after the fix: 6 file(s), 7 occurrence(s), 7 prohibition(s), 0 withdrawn,
+//     0 quoted, 0 instruction(s), 4 comment line(s) skipped in spec-guards.mjs
+//     (:228, :239, :241 and :436, the records of the incidents).
+//   The prohibitions are AGENTS.md :47 and :78, START-HERE.md :44 and two lines in
+//   each hook. CONFIG.floors.noVerifyFiles is 6, the subject count that day:
+//   both hooks, spec-guards.mjs, AGENTS.md, START-HERE.md, extensions/CONTRIBUTING.md.
+//   CLAUDE.md and .claude/**/*.md are gitignored here: 0 tracked, matched by
+//   pattern, and graded the day one is tracked. This limb never reads the working
+//   tree for them.
+//
 // THE BASELINE. `.agentdocs.baseline.json` at the repo root freezes the findings
 // that existed the day this guard landed, so it could land without a flag day.
 // Baselined findings print on every run under BASELINE and never fail. The file is
@@ -52,7 +72,8 @@ const CONFIG = {
     "trackedFiles": 1000,
     "docsScanned": 1,
     "bomScanned": 800,
-    "budgetChecked": 200
+    "budgetChecked": 200,
+    "noVerifyFiles": 6
   }
 };
 
@@ -269,6 +290,149 @@ for (const dir of leafDirs) {
   }
 }
 
+/* --- limb X, NO-VERIFY (promoted on landing) ---------------------------- */
+/* O-PUBLIC-HOOKS-ADVERTISE-NO-VERIFY. Until 2026-09-24 both hooks answered a red
+   runner by printing the bypass itself, `git commit --no-verify`, as an override,
+   and spec-guards.mjs ended its exit-1 message with "or commit with --no-verify".
+   AGENTS.md prohibits that flag twice; the hooks printed it as the way forward, at
+   the moment a writer is most tempted. This limb grades every place a writer is
+   told what to do about a red hook, and a printed or written flag passes only
+   inside a prohibition.
+
+   THE SUBJECTS are matched by pattern against the INDEX, like every limb here:
+     .githooks/*                       every line, comments included
+     tooling/scripts/spec-guards.mjs   CODE lines only (see codeLines below)
+     AGENTS.md, CLAUDE.md, CONTRIBUTING.md at any depth, START-HERE.md, and
+     .claude/**\/*.md                  one unit per paragraph or list item, its
+                                       continuation lines joined (markdownUnits)
+   CLAUDE.md and .claude/ are gitignored in this repo (.gitignore `CLAUDE.md` and
+   `.claude/`), so 0 of them are tracked and this limb grades none. They are matched
+   so the day one is tracked it is graded; the working tree is never read for them.
+
+   A FLAG OCCURRENCE is judged by Private's rule, ported (see judgeUnit): its CLAUSE runs
+   from the last CLAUSE_BREAKS mark before it (or the unit's start) up to the flag.
+     prohibition  the clause holds NEGATED (never / not / no / nor / without / n't)
+     withdrawn    a dated "⏱ <date>, APPENDED — ...WITHDRAWN" after it in the same unit,
+                  or the unit opens with the generator's "⏱ <date> AMENDED: ...WITHDRAWN"
+     quoted       the text before it ends with a NO_VERIFY_QUOTED `before` phrase
+     instruction  anything else: a finding, exit 1
+   NO_VERIFY_QUOTED is empty. An entry goes in only for text that QUOTES the flag
+   without instructing it, with its file and line in a comment beside it.
+
+   SPEC-GUARDS.MJS IS READ FOR ITS CODE, because its comments at the four
+   `--no-verify` lines there RECORD the incidents that made the flag a prohibition
+   (the worktree commits of 2026-09-07 and the retired guards of 2026-08-15). A
+   record of a bypass is not an instruction to take one. What it PRINTS is judged,
+   and that is where the exit-1 message lived. */
+const NO_VERIFY_SUBJECTS = [
+  { units: 'lines', test: (p) => /(^|\/)\.githooks\/[^/]+$/.test(p) },
+  { units: 'code-lines', test: (p) => p === 'tooling/scripts/spec-guards.mjs' },
+  { units: 'markdown', test: (p) => /(^|\/)(AGENTS|CLAUDE|CONTRIBUTING)\.md$/.test(p) || p === 'START-HERE.md' },
+  { units: 'markdown', test: (p) => /^\.claude\/.+\.md$/.test(p) },
+];
+/* A limb that finds no hook has graded nothing. Each of these must be a SUBJECT
+   (in the index AND matched above), or the run is COVERAGE LOST. */
+const NO_VERIFY_MUST_EXIST = ['.githooks/pre-commit', '.githooks/pre-push', 'tooling/scripts/spec-guards.mjs', 'AGENTS.md'];
+const NO_VERIFY_QUOTED = [];
+const PROMOTED_ON_LANDING = ['X-NO-VERIFY'];
+const FLAG = '--no-verify';
+const NEGATED = /\b(?:never|not|no|nor|without)\b|n't\b/i;
+const CLAUSE_BREAKS = ['. ', '; ', ': ', ' — ', ' – ', '(', '!', '?'];
+const APPENDED_WITHDRAWAL = /⏱ ?\d{4}-\d{2}-\d{2},? APPENDED[^⏱]*?--no-verify[^⏱]*?\bWITHDRAWN\b/g;
+const AMENDED_LEAD = /^⏱ ?\d{4}-\d{2}-\d{2} AMENDED:[^⏱]*?--no-verify[^⏱]*?\bWITHDRAWN\b/;
+
+/* One unit per line, with the line number it came from. */
+function lineUnits(text) {
+  return text.split('\n').map((t, i) => ({ text: t, starts: [0], nos: [i + 1] }));
+}
+
+/* The code lines of a JS file: a line inside a block comment, or one opening with
+   `//` or `/*`, is skipped, and code after a `*\/` on the same line is kept. Only a
+   comment that opens a line is recognised, so a mid-line `/*` never hides the code
+   around it: the error this can make is to judge a comment, which is loud, never to
+   skip code, which would be silent. */
+function codeLines(text) {
+  const units = [];
+  let skipped = 0;
+  let inBlock = false;
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length; i += 1) {
+    let rest = lines[i];
+    let comment = '';
+    if (!inBlock && rest.trim().startsWith('/*')) inBlock = true;
+    if (inBlock) {
+      const end = rest.indexOf('*/');
+      if (end === -1) { comment = rest; rest = ''; }
+      else { comment = rest.slice(0, end + 2); rest = rest.slice(end + 2); inBlock = false; }
+    }
+    if (rest.trim().startsWith('//')) { comment += rest; rest = ''; }
+    if (/--no-verify\b/.test(comment)) skipped += 1;
+    if (rest.trim() !== '') units.push({ text: rest, starts: [0], nos: [i + 1] });
+  }
+  return { units, skipped };
+}
+
+/* Markdown, one unit per paragraph or list item, so a sentence wrapped over two
+   lines is judged whole: AGENTS.md puts "Never" at the end of one line and the flag
+   at the start of the next. A heading, a table row and each line of a fenced block
+   stand alone, because each is read alone. */
+function markdownUnits(text) {
+  const units = [];
+  let cur = null;
+  text.split('\n').forEach((line, i) => {
+    const starts = line.trim() === '' || /^\s*(?:[-*+] |\d+\. |#|\||```)/.test(line);
+    if (line.trim() === '') { cur = null; return; }
+    if (starts || !cur) { cur = { at: i + 1, text: line.trim() }; units.push(cur); return; }
+    cur.text += ' ' + line.trim();
+  });
+  return units;
+}
+
+/* Every flag in one unit, judged and counted; an instruction is recorded at `path:where`.
+   FLAG, NEGATED, CLAUSE_BREAKS, APPENDED_WITHDRAWAL, AMENDED_LEAD, markdownUnits and this
+   judge are PORTED from Private's limb (requirements/tooling/check-agent-docs.mjs, 2026-09-26,
+   train W17 HOOKS-4); only the counters (nv) and the record text are this file's. */
+function judgeUnit(path, where, unit) {
+  let from = unit.indexOf(FLAG);
+  if (from < 0) return;
+  const leadWithdraws = AMENDED_LEAD.test(unit);
+  /* the END of the last withdrawal: the flag the withdrawal itself names is part of it */
+  const withdrawnUpTo = [...unit.matchAll(APPENDED_WITHDRAWAL)].reduce((m, x) => Math.max(m, x.index + x[0].length), -1);
+  while (from >= 0) {
+    nv.occurrences += 1;
+    const before = unit.slice(0, from);
+    const cut = Math.max(...CLAUSE_BREAKS.map((b) => before.lastIndexOf(b) + (before.lastIndexOf(b) < 0 ? 0 : b.length)));
+    const clause = before.slice(Math.max(0, cut));
+    const quoted = NO_VERIFY_QUOTED.find((q) => before.endsWith(q.before));
+    if (NEGATED.test(clause)) nv.prohibition += 1;
+    else if (leadWithdraws || from < withdrawnUpTo) nv.withdrawn += 1;
+    else if (quoted) nv.quoted += 1;
+    else {
+      nv.instruction += 1;
+      /* the finding quotes the clause it judged: from the break before the flag to the next one after it */
+      const ends = CLAUSE_BREAKS.map((b) => unit.indexOf(b, from + FLAG.length)).filter((i) => i >= 0);
+      const said = unit.slice(Math.max(0, cut), ends.length ? Math.min(...ends) : unit.length).trim();
+      record('X-NO-VERIFY', path + ':' + where, 'offers --no-verify as a way forward: "' + said.slice(0, 160) + '". Name the fix instead (read the first FAIL line, fix what it names); the flag may appear here only in a clause that prohibits it.');
+    }
+    from = unit.indexOf(FLAG, from + FLAG.length);
+  }
+}
+
+const noVerifyRows = indexRows.filter((r) => r.mode !== '120000' && NO_VERIFY_SUBJECTS.some((s) => s.test(r.path)));
+const noVerifyBlobs = readBlobs(noVerifyRows);
+const noVerifyFiles = noVerifyRows.length;
+const noVerifyMissing = NO_VERIFY_MUST_EXIST.filter((p) => !noVerifyRows.some((r) => r.path === p));
+const nv = { occurrences: 0, prohibition: 0, withdrawn: 0, quoted: 0, instruction: 0, skipped: 0 };
+for (const row of noVerifyRows) {
+  const kind = NO_VERIFY_SUBJECTS.find((s) => s.test(row.path)).units;
+  const text = String(noVerifyBlobs.get(row.path) || '');
+  let units;
+  if (kind === 'markdown') units = markdownUnits(text);
+  else if (kind === 'code-lines') { const c = codeLines(text); units = c.units; nv.skipped += c.skipped; }
+  else units = lineUnits(text);
+  for (const u of units) judgeUnit(row.path, u.at ?? u.nos[0], u.text);
+}
+
 /* ----------------------------------------------------------- honesty gate */
 /* THE SUBJECT OF THIS GUARD IS THE INDEX, AND THAT IS RIGHT FOR A HOOK AND WRONG
    FOR A SWEEP. Measured 2026-09-08 in the private corpus, whose copy of this file is
@@ -301,6 +465,7 @@ if (!INDEX_MODE) {
     ...textyRows.map((r) => r.path),
     ...docRows.map((r) => r.path),
     ...agentsRows.map((r) => r.path),
+    ...noVerifyRows.map((r) => r.path),
   ]);
   const REC_SEP = String.fromCharCode(0);
   const parts = String(git(['status', '--porcelain', '--untracked-files=no', '-z'])).split(REC_SEP);
@@ -367,36 +532,47 @@ if (baselineRaw !== null) {
     process.exit(2);
   }
 }
+/* A limb in PROMOTED_ON_LANDING is never frozen: it landed as exit 1 because the
+   text it grades was fixed in the same change, so a baseline entry for it could
+   only ever be a finding somebody chose to keep. --write-baseline leaves its
+   findings out and says how many; an entry for it found in the file is IGNORED
+   and printed, and the finding it names still fails. */
 if (WRITE_BASELINE) {
+  const freezable = findings.filter((f) => !PROMOTED_ON_LANDING.includes(f.limb));
   const out = {
     _what: 'Findings frozen on the day check-agent-docs.mjs landed. Each is printed on every run and none of them fails the guard. A finding that is NOT in here does fail, once its limb is promoted.',
     _generatedFrom: 'node ' + CONFIG.selfPath + ' --write-baseline. Never typed by hand.',
     _rule: 'This file may not GROW except in a commit whose message says why it grew. Shrinking it needs no ceremony: a cleared finding is the point of the exercise.',
     generatedAt: new Date().toISOString().slice(0, 10),
     repo: CONFIG.repo,
-    count: findings.length,
-    entries: findings
+    count: freezable.length,
+    entries: freezable
       .map((f) => ({ limb: f.limb, path: f.path, message: f.message }))
       .sort((a, b) => (a.limb + a.path).localeCompare(b.limb + b.path)),
   };
   writeFileSync(BASELINE_PATH, JSON.stringify(out, null, 2) + '\n', 'utf8');
   console.log('wrote ' + BASELINE_PATH + ' with ' + out.entries.length + ' frozen finding(s)');
+  const unfrozen = findings.length - freezable.length;
+  if (unfrozen > 0) console.log('  NOT FROZEN ' + unfrozen + ' finding(s) on ' + PROMOTED_ON_LANDING.join(', ') + ', promoted on landing and never baselined. Fix the text; the next run fails on it.');
   process.exit(0);
 }
-const frozen = new Set((baseline.entries || []).map(key));
+const baselineEntries = (baseline.entries || []).filter((b) => !PROMOTED_ON_LANDING.includes(b.limb));
+const ignoredEntries = (baseline.entries || []).filter((b) => PROMOTED_ON_LANDING.includes(b.limb));
+const frozen = new Set(baselineEntries.map(key));
 const fresh = findings.filter((f) => !frozen.has(key(f)));
 const stillFrozen = findings.filter((f) => frozen.has(key(f)));
-const cleared = (baseline.entries || []).filter((b) => !findings.some((f) => key(f) === key(b)));
+const cleared = baselineEntries.filter((b) => !findings.some((f) => key(f) === key(b)));
 
 /* -------------------------------------------------------- coverage floors */
 /* A guard that reports PASS over an absent subject is the defect this corpus
    exists around. Each floor forces exit 2, which is deliberately NOT a pass. */
 const floorFailures = [];
 for (const [name, min] of Object.entries(CONFIG.floors)) {
-  const got = { trackedFiles, docsScanned, bomScanned, budgetChecked }[name];
+  const got = { trackedFiles, docsScanned, bomScanned, budgetChecked, noVerifyFiles }[name];
   if (got === undefined) { floorFailures.push('floor ' + name + ' names nothing this guard measures'); continue; }
   if (got < min) floorFailures.push(name + ' ' + got + ' < ' + min);
 }
+for (const p of noVerifyMissing) floorFailures.push('X-NO-VERIFY ' + p + ' is not a subject (absent from the index, or no longer matched by NO_VERIFY_SUBJECTS), so the limb graded nothing there');
 
 /* ----------------------------------------------------------------- report */
 
@@ -407,6 +583,7 @@ for (const e of CONFIG.exemptions) {
   console.log('  exemption ' + e.id + ': ' + exemptionHits.get(e.id) + ' path(s) - ' + e.why);
 }
 console.log('  path exemptions applied: ' + pathsExempt);
+console.log('  x-no-verify: ' + noVerifyFiles + ' file(s), ' + nv.occurrences + ' occurrence(s): ' + nv.prohibition + ' prohibition(s), ' + nv.withdrawn + ' withdrawn, ' + nv.quoted + ' quoted, ' + nv.instruction + ' instruction(s); ' + nv.skipped + ' comment line(s) skipped in tooling/scripts/spec-guards.mjs');
 
 if (floorFailures.length > 0) {
   console.error('x COVERAGE LOST - ' + floorFailures[0]);
@@ -417,18 +594,21 @@ if (floorFailures.length > 0) {
 
 for (const f of stillFrozen) console.log('  BASELINE ' + f.limb + ' ' + f.path + ' - ' + f.message);
 for (const b of cleared) console.log('  CLEARED  ' + b.limb + ' ' + b.path + ' - fixed since the baseline was written. Re-run with --write-baseline to shrink the baseline.');
+for (const b of ignoredEntries) console.log('  IGNORED  ' + b.limb + ' ' + b.path + ' - a baseline entry on a limb promoted on landing freezes nothing. Delete it from .agentdocs.baseline.json.');
 
 if (fresh.length === 0) {
   console.log('ok  no new finding. ' + stillFrozen.length + ' baselined, ' + cleared.length + ' cleared.');
   process.exit(0);
 }
-const warnOnly = fresh.every((f) => CONFIG.warnLimbs.includes(f.limb));
+/* Each finding is labelled by its OWN limb, so a run mixing a warning limb and a
+   promoted one prints WARN beside the first and FAIL beside the second. */
+const failing = fresh.filter((f) => !CONFIG.warnLimbs.includes(f.limb));
 console.log('');
-for (const f of fresh) console.log('  ' + (warnOnly ? 'WARN' : 'FAIL') + ' ' + f.limb + ' ' + f.path + ' - ' + f.message);
+for (const f of fresh) console.log('  ' + (CONFIG.warnLimbs.includes(f.limb) ? 'WARN' : 'FAIL') + ' ' + f.limb + ' ' + f.path + ' - ' + f.message);
 console.log('');
-if (warnOnly) {
+if (failing.length === 0) {
   console.log('!  ' + fresh.length + ' new finding(s), every one of them on a limb that is still a WARNING, so this run exits 0 by design. S1 section 5.7 lands a new limb as a warning and promotes it only under a measured false-positive rate below 1 in 20, by moving its id out of CONFIG.warnLimbs.');
   process.exit(0);
 }
-console.error('x ' + fresh.length + ' new finding(s) on a promoted limb.');
+console.error('x ' + failing.length + ' new finding(s) on a promoted limb.');
 process.exit(1);
