@@ -2,10 +2,13 @@ import { describe, it, expect } from 'vitest';
 import MONITOR_SOURCE from '../../../tooling/ops/check-prod-provenance.mjs?raw';
 import STAMP_SOURCE from '../../../tooling/e2e/app-version-stamp.mjs?raw';
 import PROVENANCE_RAW from '../../../tooling/prod-provenance.json?raw';
+import DART_ANALYTICS from '../../../packages/core/lib/src/analytics/analytics.dart?raw';
+import DART_EVENT_TRANSPORT from '../../../packages/api_client/lib/src/dio_event_transport.dart?raw';
 import {
   E2E_RUN,
   PRODUCTION_STAMPS,
   RELEASED_BUILD,
+  UNRELEASED_BUILD,
   isProductionIngest,
   refusesStamp,
 } from '../src/lib/build-stamp';
@@ -76,6 +79,17 @@ describe('lib/build-stamp.ts mirrors the provenance monitor', () => {
   it('store-capture is dropped ONLY while the monitor calls a production cap-* consent row a finding', () => {
     expect(MONITOR_SOURCE).toContain("if (id === 'store-capture' && name === 'consent_artifacts') {");
     expect(MONITOR_SOURCE).toContain('why = `a sandbox lane wrote production:');
+  });
+});
+
+describe('the client stops on the same code the Worker answers', () => {
+  it('Dart kUnreleasedBuildError and the 422 it is read from match lib/build-stamp.ts', () => {
+    // Dart and TypeScript cannot share a literal; if either side renames the
+    // code, the recorder goes back to re-sending on every log().
+    expect(UNRELEASED_BUILD).toBe('unreleased_build');
+    expect(DART_ANALYTICS).toContain(`const String kUnreleasedBuildError = '${UNRELEASED_BUILD}';`);
+    expect(DART_EVENT_TRANSPORT).toContain('if (res?.statusCode != 422) return false;');
+    expect(DART_EVENT_TRANSPORT).toContain("data['error'] == core.kUnreleasedBuildError");
   });
 });
 
