@@ -1544,6 +1544,18 @@
       "settledOn": "2026-09-23",
       "settledBy": "The owner's written delegation of 2026-09-23 to decide this row, applied as the owner's delegated answer; written into this file on 2026-09-25 together with limb P, which refuses the prose deferral it replaces.",
       "coversOnly": "This app's Play Data safety answer for its own purchase record. It does NOT establish RevenueCat's retention or onward use of that record, which is governed by RevenueCat's processor terms, nor what Google does with it as the biller."
+    },
+    {
+      "id": "merged-set-predates-billing",
+      "affects": [
+        "Purchase history"
+      ],
+      "ownerItem": "O-PLAY-DATA-SAFETY-FROM-A-STALE-RUN",
+      "question": "The merged permission set was measured from run 34345368085, an .aab built before the billing plugin was in the graph. Does com.android.vending.BILLING, which that plugin's Play Billing Library contributes, change any Play Data safety answer?",
+      "answer": "No. BILLING is the transport of the purchase record already answered under Purchase history (collected true in backend-live, false in demo; shared false in both postures), and it moves no further Play data type. The merged set was measured again from the .aab of run 35993088623: BILLING and ACCESS_NETWORK_STATE are rows of `merged.permissions`, and neither changes an answer.",
+      "settledOn": "2026-09-24",
+      "settledBy": "The reading of run 35993088623's .aab with dump-aab-permissions.mjs, applied under ARC2-6 (rv-w6) by release train W21; limb M compares every later android-artifacts build's .aab to this set.",
+      "coversOnly": "The permission set of this app's Play .aab and what it changes in the form. It does NOT establish what Google Play Billing records about the purchase on Google's side."
     }
   ],
   "crashSdkSurface": {
@@ -1709,16 +1721,12 @@
         "the device-identifier answer to the SDK whose source was read."
       ],
       "measuredFrom": {
-        "runId": "34345368085",
-        "runName": "Build apps — run #80 (workflow_dispatch, apple-proof-2026-09-09)",
-        "commit": "ab941c1283ee92979d9b7a39e0f308de529678c3",
-        "builtOn": "2026-09-09",
-        "artifact": "subscriptiontracker-linux-web-android-release-signed",
-        "file": "app/outputs/bundle/release/app-release.aab",
+        "runId": "35993088623",
+        "commit": "42acef7c338a081702b37066ca94cc38e952b990",
+        "artifact": "subscriptiontracker-linux-web-android-release-signed (build-platforms.yml run 35993088623, a scheduled run on main, job linux_web_android): the signed .aab and the Play .apk of one build. ci.yml android-artifacts keeps nothing, so the uploaded artifact of the newest green build of this lock is what was read.",
         "entry": "base/manifest/AndroidManifest.xml",
-        "measuredOn": "2026-09-09",
-        "method": "🔬 HOW IT WAS READ, BECAUSE THE DOCUMENTED ROUTE WAS NOT AVAILABLE AND SAYING SO IS THE POINT. `bundletool dump manifest` is the documented route and bundletool is not installed on the measuring host. An .aab does NOT carry the binary AXML an .apk carries: base/manifest/AndroidManifest.xml is a serialized aapt2 `XmlNode` protobuf, and aapt2 itself refuses the container (`app-release.aab: error: could not identify format of APK`). It was decoded straight from the protobuf wire format — a short reader over the four XmlNode/XmlElement/XmlAttribute fields that carry element names and attribute values — and the manifest was then walked as a TREE, not grepped for strings. CROSS-CHECKED WITH A DOCUMENTED TOOL ON A DOCUMENTED FORMAT: `aapt2 dump permissions` (build-tools 36.0.0) against app-release.apk from the SAME run returns the identical five lines — one <permission> and four <uses-permission>. Two independent decoders, two artefacts of one build, one set. The .aab's own versionCode is 53 and the run number is 53, which is a third tie between the file read and the run cited.  ⏱ RE-MEASURED 2026-09-09, AND THE SENTENCES ABOVE ARE LEFT EXACTLY AS THEY WERE because they were true of run 32869814582. THIS ROW NOW DESCRIBES RUN 34345368085. Why it had to be re-taken: the application id moved from com.nikatru.subly to com.nikatru.subscriptiontracker, and the fourth permission in this list is an ${applicationId}-substituted name — so the value here became a statement about an id the app no longer builds under. IT WAS NOT RETYPED. A blind find-and-replace had already put the new string in once and was correctly reverted; a sworn declaration is re-measured from a built artefact or it is not changed at all. THE READING, same protobuf route as before: base/manifest/AndroidManifest.xml (12,914 bytes) was taken out of the 61,649,052-byte app-release.aab and walked for its element names and `name` attributes. FIVE nodes, unchanged in shape from the 2026-08-26 reading: four <uses-permission> — android.permission.VIBRATE, android.permission.POST_NOTIFICATIONS, android.permission.INTERNET and com.nikatru.subscriptiontracker.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION — and one <permission> declaring that same custom name. The 72-byte length prefix on that string was checked against the string itself, so it is the whole value and not a truncation. android.permission.ACCESS_NETWORK_STATE is STILL ABSENT, so `expectedButAbsent` below did not fire. ⚠️ ONE NEAR-MISS WORTH RECORDING: a first, cruder pass grepped the payload for permission-shaped strings and returned a SIXTH, android.permission.DUMP. Read in context it is a receiver-level android:permission attribute naming android.permission.DUMP on androidx.profileinstaller.ProfileInstallReceiver — an access restriction ON a receiver, not a permission this app requests. A grep would have sworn to a permission the app does not hold; walking the element and its attribute name is what kept it out. The versionName in the manifest reads 1.0.80 against run number 80, the same kind of tie the previous reading used. ⚠️ NOT CROSS-CHECKED WITH aapt2 THIS TIME: build-tools is not installed on the measuring host, so this is ONE decoder on one artefact where the 2026-08-26 record had two on two. The set is otherwise identical to that double-checked reading with one substring changed, which is why it is offered as a re-measurement of a known set rather than a first reading of an unknown one.",
-        "treeUnchangedSince": "THE ARTEFACT IS THIS BRANCH'S OWN, not a yesterday one: run 80 built commit ab941c12, which is the head of apple-proof-2026-09-09 = appid-rename-2026-09-09 + the GlitchTip/ordering fix (#577). The previous record had to argue that a day-old .aab still described the tree; this one does not, because the tree that was built is the tree this row sits in. What DID change between the two readings is the application id, and that is the entire delta — see `method`. ⏱ 2026-09-09 — NO LONGER TRUE, AND SAID SO HERE RATHER THAN QUIETLY: apps/subscriptiontracker/android/app/src/main/AndroidManifest.xml has since gained RECEIVE_BOOT_COMPLETED and SCHEDULE_EXACT_ALARM plus two `<receiver>` elements, so the union in `permissions` below is a reading of a build that PRE-DATES them and is two permissions short of what the next .aab will carry. It is left as the measurement it is rather than edited into a guess, because every value in this block carries where it came from and there is no artefact to cite for the new set yet. RE-TAKE IT off the first `Build all 6 platforms` run after this change lands, by the `method` above, and add the two rows with attribution `direct`, evidenceGrade `read`, pointing at this repository's own manifest."
+        "method": "dump-aab-permissions.mjs (added with limb M), run on 2026-09-26 over that artifact: the .aab protobuf manifest walked as a tree, cross-checked against the Play .apk's binary AXML from the same build; 8 permissions, and the two agree. pubspec.lock and apps/subscriptiontracker/android/ are unchanged from 42acef7c to the main commit release train W21 was cut from (30b70151), and every android-artifacts run from then on compares its own .aab to this set through limb M.",
+        "measuredOn": "2026-09-26"
       },
       "releaseManifest": "apps/subscriptiontracker/android/app/src/main/AndroidManifest.xml",
       "lockfile": "pubspec.lock",
@@ -1759,13 +1767,32 @@
           "residual": "The androidx.core AAR's own AndroidManifest.xml was NOT read — there is no Gradle cache on the measuring host. The two tells above put androidx.core's manifest in the merge and match its documented construct, which is why this is graded `inferred` and not `read`. Settle it by reading that AAR manifest on a machine which has resolved the Android dependency graph, or — better, because it would settle every row of this table at once — by having the Android lane upload build/outputs/logs/manifest-merger-release-report.txt, which names the contributing file for every merged node.",
           "collectionSignal": false,
           "why": "A self-defined signature-level permission androidx.core uses so that a runtime-registered BroadcastReceiver can be marked not-exported on older API levels. Signature protection means only this app's own signing key can hold it, so nothing outside the app can use it and no data type moves. The permission string does not appear anywhere in classes.dex either, so no shipped code path even requests it: it is a manifest contribution and nothing more."
+        },
+        {
+          "name": "com.android.vending.BILLING",
+          "attributedTo": "purchases_flutter (Play Billing Library)",
+          "attribution": "transitive",
+          "evidenceGrade": "read",
+          "evidence": "dump-aab-permissions.mjs output of CI run 35993088623 at 42acef7c338a081702b37066ca94cc38e952b990, job linux_web_android of build-platforms.yml (subscriptiontracker): that run's uploaded .aab and Play .apk, dumped on 2026-09-26; the .aab protobuf and the .apk AXML agree on 8 permissions.",
+          "collectionSignal": false,
+          "why": "Billing is the transport of the purchase record already answered under Purchase history: it opens Google's own purchase sheet and moves no further Play data type."
+        },
+        {
+          "name": "android.permission.ACCESS_NETWORK_STATE",
+          "attributedTo": "purchases_flutter (RevenueCat purchases-hybrid-common)",
+          "attribution": "transitive",
+          "evidenceGrade": "inferred",
+          "evidence": "Absent from the .aab of run 34345368085 (ab941c12, 2026-09-09) and present in the .aab of run 35993088623 (42acef7c, 2026-09-24). Between those two commits pubspec.lock gains purchases_flutter 10.13.1, flutter_timezone 5.1.0 and equatable 2.1.0 (pure Dart) and moves no other package, sentry_flutter included, which rules out the sentry-android route `expectedButAbsent` predicted. Both plugins' own android/src/main/AndroidManifest.xml in the pub cache declare no permission, so it arrives from a native library, and purchases_flutter's android/build.gradle pulls com.revenuecat.purchases:purchases-hybrid-common.",
+          "residual": "The RevenueCat and Play Billing AAR manifests were NOT read (there is no Gradle cache on the measuring host), and flutter_timezone's Gradle dependencies were not walked. Reading the AAR manifests from a CI runner's Gradle cache settles which library declares it.",
+          "collectionSignal": false,
+          "why": "Lets the SDK ask whether a network is up before it calls out. It reads connectivity state, not content, and moves no Play data type; what travels over the network is answered under `answers`, per posture."
         }
       ],
       "unattributed": {
         "android.permission.INTERNET": "🔴 IT IS IN THE MERGED SET AND NOTHING HERE SAYS WHO PUT IT THERE. Several libraries the merged manifest PROVES are present each plausibly declare it — sentry-android (its SentryPerformanceProvider and SentryNdkPreloadProvider are both in the merged <application>), play-services-basement (GoogleApiActivity) and play-core (PlayCoreDialogWrapperActivity) — and naming one of them would be a guess dressed as a reading, which is the exact failure this whole file is built against. What WAS read: sentry_flutter's own android/src/main/AndroidManifest.xml, which declares NO <uses-permission> of any kind — so the sentry candidate is the AAR it pulls (io.sentry:sentry-android 8.51.0, sentry_flutter-9.26.0/android/build.gradle:65), not the Dart plugin. Settle it the same way as the androidx.core row above: read the AAR manifests on a host with a resolved Gradle cache, or have CI upload manifest-merger-release-report.txt, which attributes every merged node to the file it came from. Until then this stays a NAMED FINDING on a sworn declaration rather than a blank quietly filled in. It changes no answer: INTERNET is a transport and the posture columns already declare what travels over it."
       },
       "expectedButAbsent": {
-        "android.permission.ACCESS_NETWORK_STATE": "🔴 PREDICTED BY THE ABSTENTION THIS BLOCK REPLACED, AND MEASURABLY NOT THERE. `cannotSee` reasoned from the locked plugin set that the sentry-android AAR would contribute INTERNET *and* ACCESS_NETWORK_STATE. INTERNET is present; ACCESS_NETWORK_STATE is not — under either decoder, in either artefact of run 32869814582. It is kept here rather than deleted for two reasons: it is the receipt showing what careful reasoning about a plugin list got wrong, and it is an equality with teeth — if a later sentry-android brings it in, a re-measurement finds this key contradicting the permission list and FAILS, which forces somebody to say what the new permission changes instead of appending it silently."
+        "_android.permission.ACCESS_NETWORK_STATE (arrived; a permissions row since 2026-09-26)": "🔴 PREDICTED BY THE ABSTENTION THIS BLOCK REPLACED, AND MEASURABLY NOT THERE. `cannotSee` reasoned from the locked plugin set that the sentry-android AAR would contribute INTERNET *and* ACCESS_NETWORK_STATE. INTERNET is present; ACCESS_NETWORK_STATE is not — under either decoder, in either artefact of run 32869814582. It is kept here rather than deleted for two reasons: it is the receipt showing what careful reasoning about a plugin list got wrong, and it is an equality with teeth — if a later sentry-android brings it in, a re-measurement finds this key contradicting the permission list and FAILS, which forces somebody to say what the new permission changes instead of appending it silently.  ⏱ ARRIVED, measured 2026-09-26 from the .aab of run 35993088623 (42acef7c). It is now a row of `permissions` with its attribution and grade, and this receipt is kept under a leading underscore so the guard no longer reads it as a prediction."
       },
       "pinned": {
         "flutter_local_notifications": "17.2.4"
