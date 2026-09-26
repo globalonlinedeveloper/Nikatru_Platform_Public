@@ -65,6 +65,11 @@
 // extracted from assert-money-config.mjs limb 1c when assert-release-provenance.mjs
 // limb 2b needed the same sandbox-environment predicate.
 //
+// ⏱ APPENDED 2026-09-25 — THIRTY-THREE entries now, counted the same way (32
+// before this one). The new one is the shared-module shape: android-zip.mjs,
+// moved out of assert-android-vapt-manifest.mjs when dump-aab-permissions.mjs
+// needed the same zip walk and AXML decoder (O-PLAY-DATA-SAFETY-FROM-A-STALE-RUN).
+//
 // It also self-checks, because a guard-coverage guard that stopped finding
 // guards would report perfect coverage over an empty set.
 //
@@ -451,6 +456,10 @@ const NOT_A_SCANNER = new Map([
   [
     'anchored-run-read.mjs',
     'is not a guard: it is the ONE networked read of a workflow\'s run history behind a FRESHNESS proof — one page under the shared per-request ceiling and bounded retry of tooling/ops/bounded-retry.mjs, the stale-page anchor of run-page-anchor.mjs applied to it, the cross-read by creation date, the UNION of the two that the verdict is graded on, and `describeRead`, the line saying what was read. Added 2026-09-24 (trap ci-48: PR #913 CI run 35967342865 failed assert-e2e-proof-fresh on a stale GitHub page it could not tell from a real gap) by MOVING assert-platform-proof-fresh.mjs\'s cross-read here, so three readers share it: assert-platform-proof-fresh.mjs, assert-e2e-proof-fresh.mjs and extensions/scripts/assert-e2e-proof-fresh.mjs. It sets no exit code: every caller grades the runs with its own rule and turns a thrown CouldNotLook into its OWN COVERAGE LOST. Its failing cases are in test/run-page-anchor.test.mjs (the union, the ceiling, a wiring case per caller and the class sweep that refuses a fourth unanchored reader) and test/e2e-proof-fresh.test.mjs (the PR #913 page through the CLI). It sits flat in tooling/ci for the same reason run-page-anchor.mjs does.',
+  ],
+  [
+    'android-zip.mjs',
+    'is not a guard: it is the ONE zip central-directory walk and the ONE binary-AXML manifest decoder the Android guards share — `zipEntries`, `readEntry` and `decodeAxml`. Pure functions: bytes in, entries or an element tree out; no filesystem, no tree, no exit. It moved out of assert-android-vapt-manifest.mjs on 2026-09-25, unchanged in behaviour, when tooling/ci/dump-aab-permissions.mjs needed the same reading of the Play .apk to cross-check the .aab\'s protobuf manifest (O-PLAY-DATA-SAFETY-FROM-A-STALE-RUN); two AXML decoders would disagree in the one way that reads clean, WHICH ELEMENTS THEY CAN SEE. Every refusal goes through the caller\'s `refuse`, and throws if that returns, so an unreadable archive is never an empty entry list; "did my scan still reach the artefact" belongs to its two importers, each of which carries its own COVERAGE LOST. Its failing cases are in test/dump-aab-permissions.test.mjs (called directly, with a green control) and test/android-vapt-manifest.test.mjs (through the VAPT guard, whose 49 cases ran green before and after the move). It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
   ],
   [
     'run-page-anchor.mjs',

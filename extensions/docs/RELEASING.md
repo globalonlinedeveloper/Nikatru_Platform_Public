@@ -199,7 +199,6 @@ three-character edit:
 | Site | Why it is easy to miss |
 | --- | --- |
 | `manifest.json` | The source of truth. |
-| `publish/manifest.firefox.json` | **Template-stamped tools only.** There it is a whole second manifest that AMO reads and that nothing else will remind you about. |
 | `CHANGELOG.md` heading | The release notes come from here. |
 
 > **CORRECTION — 2026-08-22.** A fourth row read **"Both package filenames — Derived:
@@ -214,6 +213,13 @@ three-character edit:
 > own words — *"publish/manifest.firefox.json is an overlay — it does not restate the version, so it
 > cannot drift from it"*. `templates/tool/publish/manifest.firefox.json` **is** a full manifest carrying
 > `"version": "0.0.1"`, so the row stands there.
+
+> **CORRECTION — 2026-09-25 (F-b).** The row is gone. `templates/tool/publish/manifest.firefox.json`
+> is an RFC 7386 merge patch now too, carrying no `version`; the template's `publish/pack.mjs` builds
+> the Firefox manifest as `manifest.json` with it applied, and its `publish/bump-version.mjs` lists
+> `manifest.json` as its one version site. A tool stamped from the template before that date keeps the
+> full second manifest and the two-site list until it copies those files across (the skeleton's
+> `CHANGELOG-skeleton.md` names them).
 
 ```
 node publish/bump-version.mjs patch     # 1.2.3 -> 1.2.4

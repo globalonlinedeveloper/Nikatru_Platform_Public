@@ -7,8 +7,9 @@ are [semantic](https://semver.org/) as far as an extension can be.
 **Do not edit the version headings by hand.** `node publish/bump-version.mjs
 <major|minor|patch|x.y.z>` writes the heading, rewrites every version site in
 the tree in one step, and refuses if the old number survives anywhere it should
-not. `node publish/bump-version.mjs --check` asserts that `manifest.json`,
-`publish/manifest.firefox.json` and the top entry here all say the same thing —
+not. `node publish/bump-version.mjs --check` asserts that `manifest.json` and
+the top entry here say the same thing (`publish/manifest.firefox.json` is a
+merge patch that carries no version and inherits `manifest.json`'s) —
 the node sim runs that check on every pass, so a release cannot go out
 undocumented.
 

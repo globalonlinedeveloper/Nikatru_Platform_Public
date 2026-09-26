@@ -37,16 +37,21 @@
 //       shows, so it cannot carry a "generated, do not edit" header any more than
 //       `sites/_shared/_data/apps.json` can (same problem, same file, recorded in
 //       generate-apps-data.mjs's header);
-//   3 · every `apps/<id>/privacy.yaml` satisfies
+//   3 · every declaring app HAS an `apps/<id>/privacy.yaml` — `state: pending`
+//       (the brick's stamp) or `state: declared` — and a missing one is a
+//       finding naming the file, never a skip (O-BRICK-STAMPS-NO-PRIVACY-
+//       DECLARATION); each satisfies
 //       tooling/app-yaml/schema/privacy.schema.json, names only processors that
 //       exist in `tooling/legal/provider-register.json`, and declares no network
 //       address — and every extension's `publish/privacy.yaml` is held to the
 //       same processor and network-address cross-checks (2026-09-25).
-//   4 · every `collects` row in `apps/<id>/privacy.yaml` appears in that app's
+//   4 · every `collects` row in a DECLARED `apps/<id>/privacy.yaml` appears in that app's
 //       `store/android-play/data-safety.json` as a row `collected: true` under
 //       the declared build posture AND in `store/ios-appstore/privacy-manifest.
 //       json` as a row whose `fromPlayRow` names it — AND VICE VERSA, in both
-//       directions, so neither side can grow or lose a category alone;
+//       directions, so neither side can grow or lose a category alone. A
+//       `pending` declaration has nothing declared to pair and is skipped,
+//       COUNTED in the ok line;
 //   5 · every NOTICE surface rendered from a privacy declaration —
 //       `sites/nikatru/<id>/privacy.html` and the fenced Chrome Web Store
 //       privacy-practices block in each `extensions/**/publish/STORE-LISTING.md`
@@ -129,7 +134,9 @@
 // Exit 2, never 0, on any run that graded nothing: no `apps/` tree, no
 // declaration in it, an unreadable channel register (the storefront key set and
 // every listing directory come from it), a declaration that rendered zero
-// listing files, or not one `privacy.yaml` anywhere. Each is a run that would
+// listing files, or a sworn comparison that paired no declared app. An app
+// with no `privacy.yaml` is NOT one of these: it is a finding (exit 1) naming
+// the file, because the app exists and the repair is to declare it. Each is a run that would
 // otherwise print "every declaration is valid" over an empty set — this
 // repository's single most repeated defect, and the reason
 // C-COVERAGE-LOST-IS-NOT-PASS forbids sharing an exit code with a pass.
@@ -201,8 +208,8 @@ if (lost.length) coverageLost(lost);
 // 🔴 A DECLARATION THAT DOES NOT PARSE STOPS THE RUN HERE, and the reason is the
 // exit code rather than tidiness. Limbs 2 and 3 both quantify over the
 // declarations limb 1 accepted, so an invalid one leaves them ranging over a
-// smaller set — and limb 3's "not one app carries a privacy.yaml" refusal then
-// fires and reports COVERAGE LOST, which is a true statement about this run and
+// smaller set — and the later limbs' zero-count refusals then fire and report
+// COVERAGE LOST, which is a true statement about this run and
 // a MISLEADING diagnosis of the tree: the finding is the broken declaration, and
 // the repair the message must point at is that file. Measured: with `id:`
 // deleted from apps/subscriptiontracker/app.yaml this guard exited 2 naming the privacy limb.
@@ -285,11 +292,29 @@ function crossCheck(rel, doc) {
   }
 }
 
+// 🔴 AN APP WITH NO privacy.yaml IS A FINDING, NEVER A SKIP. O-BRICK-STAMPS-NO-
+// PRIVACY-DECLARATION: this loop used to `continue` past a missing file, and the
+// zero-count refusal below fired only when NO app had one — so app #1 declared
+// and a freshly stamped app #2 with nothing was green, and app #2 reached the
+// site with no notice at all. The brick now stamps a `state: pending`
+// declaration, so every app has one from its first commit, and absence means
+// somebody deleted it.
 let privacyGraded = 0;
+let privacyDeclared = 0;
+let privacyPending = 0;
+const missingPrivacy = [];
 const problemsBeforePrivacy = problems.length;
 for (const { id } of declarations) {
   const rel = `${APPS_DIR}/${id}/privacy.yaml`;
-  if (!existsSync(join(ROOT, rel))) continue;
+  if (!existsSync(join(ROOT, rel))) {
+    missingPrivacy.push(rel);
+    problems.push(
+      `${rel} does not exist; every workspace app declares, pending or declared. The app brick stamps it ` +
+        '`state: pending` (nothing collected, the notice page "not yet published"); restore that, or declare ' +
+        'the app. Without it the app has no privacy notice and no limb below grades it.',
+    );
+    continue;
+  }
   privacyGraded += 1;
   let doc;
   try {
@@ -299,17 +324,45 @@ for (const { id } of declarations) {
     continue;
   }
   for (const bad of validate(doc, privacySchema, rel)) problems.push(bad);
+  // The schema already refuses both of these as "matches none of the permitted
+  // shapes"; the two lines below say WHICH rule, because that message names no
+  // repair. A missing `state` is never read as either value.
+  if (doc && doc.surface === 'app') {
+    if (doc.state === 'pending') privacyPending += 1;
+    else if (doc.state === 'declared') privacyDeclared += 1;
+    else {
+      problems.push(
+        `${rel}: \`state\` is ${doc.state === undefined ? 'absent' : JSON.stringify(doc.state)}. Every app declaration ` +
+          'says `state: pending` (stamped, nothing declared yet) or `state: declared` (re-read against the code); ' +
+          'neither is assumed.',
+      );
+    }
+    if (doc.state === 'pending' && Array.isArray(doc.collects) && doc.collects.length > 0) {
+      problems.push(
+        `${rel}: \`state: pending\` with ${doc.collects.length} \`collects\` row(s). A pending declaration collects ` +
+          'nothing it can name, and its page publishes no row; declare the app (`state: declared`, with its `asOf`), ' +
+          'or remove the row(s).',
+      );
+    }
+  }
   if (doc && doc.app !== id) {
     problems.push(`${rel}: declares app "${doc.app}" but lives in ${APPS_DIR}/${id}/ — two files describing two different apps.`);
   }
   crossCheck(rel, doc);
 }
+// Not one declaration exists (limb 1 accepted at least one app, so each missing
+// file is already a finding above). Stops HERE, for the reason a declaration
+// that does not parse stops the run above: limbs 4, 5 and 9 range over the
+// privacy declarations, and their zero-count refusals would report COVERAGE LOST
+// over a tree whose finding is the missing file(s).
 if (privacyGraded === 0) {
-  coverageLost([
-    `none of the ${declarations.length} declaring app(s) carries a privacy.yaml.`,
-    'Limb 3 then grades nothing — no schema check, no processor cross-check and no network-address refusal —',
-    'while this guard still prints two green lines about the other two limbs.',
-  ]);
+  console.error('');
+  for (const p of problems) console.error(`✗ ${p}`);
+  console.error(
+    `\nassert-app-yaml: ${problems.length} problem(s). None of the ${declarations.length} declaring app(s) carries a ` +
+      'privacy.yaml, so nothing downstream of limb 3 was graded.',
+  );
+  process.exit(1);
 }
 
 // ⏱ 2026-09-25 (EXT-4, O-EXTENSION-ACCOUNT-CHECK-UNBUILT part 2, S2-claims-08).
@@ -448,7 +501,7 @@ ok(`limb 8 — ${transmittingDeclarations.length} transmitting tools; each decla
 
 if (problems.length === problemsBeforePrivacy) {
   ok(
-    `${privacyGraded} app and ${extensionDeclarations.length} extension privacy declaration(s) valid, with every ` +
+    `${privacyGraded} privacy declaration(s) valid — ${privacyDeclared} declared, ${privacyPending} pending — and ${extensionDeclarations.length} extension declaration(s), with every ` +
       `processor named in ${PROVIDERS} and no network address anywhere`,
   );
 }
@@ -473,11 +526,12 @@ const readJson = (rel) => {
 
 let bijectionApps = 0;
 let bijectionRows = 0;
+let bijectionPending = 0;
 const problemsBeforeSworn = problems.length;
 
 for (const { id } of declarations) {
   const declRel = `${APPS_DIR}/${id}/privacy.yaml`;
-  if (!existsSync(join(ROOT, declRel))) continue;
+  if (!existsSync(join(ROOT, declRel))) continue; // limb 3 already named the missing file
   let declared;
   try {
     declared = parseYaml(readFileSync(join(ROOT, declRel), 'utf8'));
@@ -485,6 +539,15 @@ for (const { id } of declarations) {
     continue; // limb 3 already recorded the parse failure and named the repair
   }
   if (!declared || declared.surface !== 'app') continue;
+  // A PENDING declaration declares nothing, so there is nothing to pair: its
+  // sworn store files are the brick's unanswered ones, and comparing an empty
+  // declaration to them is the empty comparison the refusals below exist for.
+  // Skipped only on the explicit key; a missing `state` is graded as declared
+  // (and limb 3 has already failed it).
+  if (declared.state === 'pending') {
+    bijectionPending += 1;
+    continue;
+  }
 
   const playRel = PLAY_REL(id);
   const appleRel = APPLE_REL(id);
@@ -590,17 +653,22 @@ for (const { id } of declarations) {
   bijectionRows += declaredRows.size;
 }
 
-if (bijectionApps === 0) {
+// A missing privacy.yaml is already a finding (limb 3), and it is the repair;
+// with one present, a run that paired no app is COVERAGE LOST, pending
+// declarations included — they are counted, never graded.
+if (bijectionApps === 0 && missingPrivacy.length === 0) {
   coverageLost([
     'not one app declaration reached the sworn comparison.',
     'Limb 4 is the whole reason the declaration can be trusted as a description of what the app actually',
     'collects; a run in which it graded no app is a run in which the notice was checked against nothing.',
+    ...(bijectionPending > 0 ? [`${bijectionPending} pending declaration(s) were skipped: a pending declaration declares nothing to pair.`] : []),
   ]);
 }
 if (problems.length === problemsBeforeSworn) {
   ok(
     `limb 4 — ${bijectionRows} collected categor(ies) across ${bijectionApps} app(s) match both sworn `
-      + 'declarations in both directions (privacy.yaml ⇄ android-play/data-safety.json ⇄ ios-appstore/privacy-manifest.json)',
+      + 'declarations in both directions (privacy.yaml ⇄ android-play/data-safety.json ⇄ ios-appstore/privacy-manifest.json); '
+      + `${bijectionPending} pending declaration(s) skipped, nothing declared to pair`,
   );
 }
 
@@ -1329,6 +1397,6 @@ if (problems.length) {
 }
 console.log(
   `\nassert-app-yaml: ok — ${declarations.length} app declaration(s), ${files.size} rendering(s) fresh, ` +
-    `${privacyGraded} app and ${extensionDeclarations.length} extension privacy declaration(s) graded against ` +
+    `${privacyGraded} privacy declaration(s) graded (${privacyDeclared} declared, ${privacyPending} pending) and ${extensionDeclarations.length} extension declaration(s) against ` +
     `${providerIds.size} named provider(s).`,
 );

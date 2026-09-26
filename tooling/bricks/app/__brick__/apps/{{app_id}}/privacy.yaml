@@ -1,0 +1,78 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# The privacy declaration for "{{app_id}}". STAMPED PENDING.
+#
+# `state: pending` means NOBODY HAS DECLARED THIS APP YET. It is a real answer,
+# not a placeholder: a template cannot know what an app collects, so the stamp
+# names no data category at all, and tooling/app-yaml/render-privacy.mjs renders
+# sites/nikatru/{{app_id}}/privacy.html as a short page saying the notice is not
+# yet published. The file is stamped rather than left out because
+# tooling/ci/assert-app-yaml.mjs fails any app WITHOUT one: a missing
+# declaration is a finding, never a skip (O-BRICK-STAMPS-NO-PRIVACY-DECLARATION).
+#
+# `processors` is not a guess either. It is the set every app's configuration
+# makes a party to its users' data today, as tooling/legal/required-providers.mjs
+# resolves each tooling/legal/provider-register.json row's `requiredWhen` for an
+# app with no billing block; assert-app-yaml limb 9 holds this list to it, and
+# fails it the day the app's app.yaml or the laned channels require more.
+#
+# TO DECLARE THE APP: read its real code, add one `collects` row per category it
+# collects (each with its basis, source and asOf, matching the sworn store files
+# under store/), set `state: declared` and `asOf` to the date you read it, then
+# run:  node tooling/app-yaml/render-privacy.mjs
+# The worked example is apps/subscriptiontracker/privacy.yaml.
+# ─────────────────────────────────────────────────────────────────────────────
+
+app: {{app_id}}
+surface: app
+state: pending
+# Null until the declaration is re-read against this app's code.
+asOf: null
+
+# C-NO-NETWORK-ADDRESS-COLUMN. The schema admits only `false`.
+networkAddress: false
+
+# Nothing is declared, so nothing is published as collected.
+collects: []
+
+processors:
+  - id: cloudflare
+    role: infrastructure
+    purpose: Serves the web app, runs the Workers and holds the D1 rows.
+    source: tooling/legal/provider-register.json
+    asOf: "2026-09-25"
+
+  - id: oracle-cloud
+    role: infrastructure
+    purpose: Stores an encrypted copy of the backups; it runs none of the services.
+    source: tooling/legal/provider-register.json
+    asOf: "2026-09-25"
+
+  - id: hostinger
+    role: infrastructure
+    purpose: Hosts the machines the self-hosted identity stack and crash-report service run on.
+    source: tooling/legal/provider-register.json
+    asOf: "2026-09-25"
+
+  - id: supabase
+    role: identity
+    purpose: Runs the hosted account and sign-in service the app's servers are still configured to use.
+    source: tooling/legal/provider-register.json
+    asOf: "2026-09-25"
+
+  - id: paddle
+    role: merchant_of_record
+    purpose: Takes the payment and is the seller of record for the web channel.
+    source: tooling/legal/provider-register.json
+    asOf: "2026-09-25"
+
+  - id: razorpay
+    role: payment_gateway
+    purpose: When you buy in India anywhere other than the Apple App Store or Google Play, Nikatru is the seller and Razorpay takes the payment as our payment gateway, processing your payment details on our behalf.
+    source: tooling/legal/provider-register.json
+    asOf: "2026-09-26"
+
+  - id: resend
+    role: email_delivery
+    purpose: Delivers the transactional email an account needs to exist.
+    source: tooling/legal/provider-register.json
+    asOf: "2026-09-25"
