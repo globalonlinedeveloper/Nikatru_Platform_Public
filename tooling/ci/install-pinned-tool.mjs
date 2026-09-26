@@ -24,6 +24,11 @@
 // the four steps that were missed, plus the cache that makes a SECOND attempt
 // cost nothing.
 //
+// ⏱ 2026-09-25 (O-GLITCHTIP-CLI-INSTALLED-BY-HAND) — the paragraph above was
+// the state of the tree, not a rule: glitchtip-cli's hand-written installs (ten
+// steps in seven workflows, on linux, windows and macOS) are now each ONE call to
+// this module, as a fifth TOOLS member with a digest per runner platform.
+//
 // 🔴 THE CACHE IS NOT TRUSTED, IT IS VERIFIED. A GitHub Actions cache is writable
 // from any branch, so a cache entry is untrusted input. Every artifact this
 // module hands back — restored from cache or freshly downloaded — has its sha256
@@ -66,7 +71,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 export const VERSIONS_PATH = resolve(HERE, '..', 'versions.json');
 
 /**
- * The four pinned binaries ci.yml's `security-scan` job installs, as DATA.
+ * The pinned binaries this module installs, as DATA: the four ci.yml's
+ * `security-scan` job runs, and glitchtip-cli (⏱ 2026-09-25), the one with a
+ * `platforms` table because it runs on every runner OS.
  *
  * `versionKey` and `digestKey` name entries in tooling/versions.json — this file
  * carries no version and no digest of its own, because [pipeline F-2] gives each
@@ -124,7 +131,52 @@ export const TOOLS = new Map([
       member: 'trivy',
     },
   ],
+  [
+    'glitchtip-cli',
+    {
+      // ⏱ ADDED 2026-09-25 (O-GLITCHTIP-CLI-INSTALLED-BY-HAND) — the crash-sink client, and
+      // the one member that runs on all three runner OSes (build-platforms, deploy-web, the
+      // submit lanes, the symbolication proof). ONE version and three sets of bytes
+      // (tooling/versions.json $glitchtip_cli_platform_digests_comment), so the digest, the
+      // asset and the file name come from `platforms`, keyed `${process.platform}-${process.arch}`.
+      // A platform with no entry REFUSES: an x86_64 macOS runner has no pinned bytes.
+      versionKey: 'glitchtip_cli',
+      platforms: {
+        'linux-x64': { digestKey: 'glitchtip_cli_sha256', asset: 'glitchtip-cli-linux-x86_64', job: 'build-linux-x86_64', member: 'glitchtip-cli' },
+        'win32-x64': { digestKey: 'glitchtip_cli_windows_x86_64_sha256', asset: 'glitchtip-cli-windows-x86_64.exe', job: 'build-windows-x86_64', member: 'glitchtip-cli.exe' },
+        'darwin-arm64': { digestKey: 'glitchtip_cli_macos_arm64_sha256', asset: 'glitchtip-cli-macos-arm64', job: 'build-macos-arm64', member: 'glitchtip-cli' },
+      },
+      // A GitLab JOB ARTIFACT, a re-runnable address rather than an immutable object: the
+      // version is a label, and the digest is what makes it an address.
+      url: (v, p) => `https://gitlab.com/glitchtip/glitchtip-cli/-/jobs/artifacts/v${v}/raw/artifacts/${p.asset}?job=${p.job}`,
+      archive: 'none',
+      // The binary names its own version, and the hand-written steps this replaced compared
+      // the two; kept, so a digest written for another release's bytes still stops the step.
+      reports: (v) => `glitchtip-cli ${v}`,
+    },
+  ],
 ]);
+
+/** This runner's key into a TOOLS entry's `platforms`. */
+export const RUNNER_PLATFORM = `${process.platform}-${process.arch}`;
+
+/**
+ * One TOOLS entry resolved for one platform: `{ versionKey, digestKey, url(v), archive,
+ * member, reports }`. An entry without `platforms` is the same on every runner; an entry
+ * with them and no key for `platform` refuses, naming the platforms it does pin.
+ */
+export function specFor(name, platform = RUNNER_PLATFORM) {
+  const spec = TOOLS.get(name);
+  if (!spec?.platforms) return spec ? { ...spec, url: (v) => spec.url(v) } : undefined;
+  const p = spec.platforms[platform];
+  if (!p) {
+    throw new PinnedToolUnavailable([
+      `${name} has no pinned bytes for this runner (${platform}); tooling/versions.json pins ${Object.keys(spec.platforms).join(', ')}.`,
+      'Pin the new platform\'s digest beside the others and add it to `platforms` here — never as shell in a workflow.',
+    ]);
+  }
+  return { versionKey: spec.versionKey, digestKey: p.digestKey, url: (v) => spec.url(v, p), archive: spec.archive, member: p.member, reports: spec.reports };
+}
 
 /** Attempts at the download before the build stops. Three, because the failure
  *  this bound exists for lasted one attempt. */
@@ -290,8 +342,8 @@ function defaultSleep(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
-/** Put the binary at `outDir/<member>` and make it executable. */
-export function place({ artifact, archive, member, outDir, timeoutMs = DEFAULT_TIMEOUT_MS }) {
+/** Put the binary at `outDir/<member>` and make it executable (a win32 `.exe` needs no mode bit). */
+export function place({ artifact, archive, member, outDir, timeoutMs = DEFAULT_TIMEOUT_MS, platform = RUNNER_PLATFORM }) {
   mkdirSync(outDir, { recursive: true });
   const dest = join(outDir, member);
   if (archive === 'none') {
@@ -314,8 +366,14 @@ export function place({ artifact, archive, member, outDir, timeoutMs = DEFAULT_T
       ]);
     }
   }
-  spawnSync('chmod', ['+x', dest], { timeout: 10_000, killSignal: 'SIGKILL' });
+  if (!platform.startsWith('win32-')) spawnSync('chmod', ['+x', dest], { timeout: 10_000, killSignal: 'SIGKILL' });
   return dest;
+}
+
+/** `<binary> --version`, trimmed; null when it could not be run. Bounded like every spawn here. */
+export function binaryVersion(binary, timeoutMs = 30_000) {
+  const r = spawnSync(binary, ['--version'], { encoding: 'utf8', timeout: timeoutMs, killSignal: 'SIGKILL' });
+  return r.error || r.status !== 0 ? null : String(r.stdout ?? '').trim();
 }
 
 /** The whole job for one named tool. */
@@ -328,8 +386,10 @@ export function installPinnedTool({
   timeoutMs = Number(process.env.PINNED_TOOL_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS,
   download = curlDownload,
   sleep = defaultSleep,
+  platform = RUNNER_PLATFORM,
+  runVersion = binaryVersion,
 }) {
-  const spec = TOOLS.get(name);
+  const spec = specFor(name, platform);
   if (!spec) {
     throw new PinnedToolUnavailable([
       `${name} is not one of the pinned tools this installer knows: ${[...TOOLS.keys()].join(', ')}.`,
@@ -350,7 +410,18 @@ export function installPinnedTool({
     download,
     sleep,
   });
-  const binary = place({ artifact: path, archive: spec.archive, member: spec.member, outDir, timeoutMs });
+  const binary = place({ artifact: path, archive: spec.archive, member: spec.member, outDir, timeoutMs, platform });
+  if (spec.reports) {
+    const expected = spec.reports(version);
+    const got = runVersion(binary);
+    if (got !== expected) {
+      throw new PinnedToolUnavailable([
+        `${binary} reports ${JSON.stringify(got)}, not ${JSON.stringify(expected)}: its bytes match the pinned digest, and the digest is not the pinned version's.`,
+        `Correct ${spec.digestKey} in tooling/versions.json from that release's own asset.`,
+      ]);
+    }
+    log.push(`${binary} reports ${JSON.stringify(got)} — the pinned version`);
+  }
   return { binary, version, digest, url, attempts: used, fromCache, log };
 }
 

@@ -112,29 +112,11 @@ jobs:
           path: apps/subscriptiontracker/build/symbols/windows
           retention-days: 7
           if-no-files-found: error
-      # why: pwsh, for the same reason the msstore-cli install below is — this is
-      # a Windows runner and `$RUNNER_TEMP` is a backslash path, which MSYS
-      # coreutils inside `shell: bash` handle badly. `Invoke-WebRequest` +
-      # `Get-FileHash` is exactly the shape used there. Both halves of the pin are
-      # read from tooling/versions.json at run time.
+      # why: ONE code path on every lane (O-GLITCHTIP-CLI-INSTALLED-BY-HAND): the digest tooling/versions.json
+      # pins for this runner's OS, a bounded retry, and the binary's own --version held to the pin.
       - name: Install glitchtip-cli (pinned by version AND by digest)
         shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $ver = node -p "require('./tooling/versions.json').glitchtip_cli"
-          $sum = node -p "require('./tooling/versions.json').glitchtip_cli_windows_x86_64_sha256"
-          $url = "https://gitlab.com/glitchtip/glitchtip-cli/-/jobs/artifacts/v$ver/raw/artifacts/glitchtip-cli-windows-x86_64.exe?job=build-windows-x86_64"
-          $out = Join-Path $env:RUNNER_TEMP 'glitchtip-cli.exe'
-          Invoke-WebRequest -Uri $url -OutFile $out -MaximumRetryCount 3 -RetryIntervalSec 5
-          $got = (Get-FileHash -Algorithm SHA256 -Path $out).Hash.ToLower()
-          if ($got -ne $sum) {
-            Write-Error "glitchtip-cli digest mismatch: the download hashes to $got and tooling/versions.json declares $sum. A version names a release; the sha256 names the BYTES, and the asset is a GitLab JOB ARTIFACT URL, which is re-runnable. This refusal is the mechanism, not a gap in it."
-          }
-          $reported = & $out --version
-          if ($reported -ne "glitchtip-cli $ver") {
-            Write-Error "the pinned binary reports '$reported', not 'glitchtip-cli $ver'"
-          }
-          Write-Host $reported
+        run: node tooling/ci/install-pinned-tool.mjs glitchtip-cli --out "$env:RUNNER_TEMP"
       # why: FAILS CLOSED on a missing GLITCHTIP_TOKEN, never skips. Placed AFTER
       # the retention step above and BEFORE the MSIX packaging and the store dry
       # run below, so a GlitchTip outage cannot take the mapping with it.

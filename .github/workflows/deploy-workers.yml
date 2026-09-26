@@ -185,11 +185,31 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node tooling/ops/check-d1-accepts-live-sql.mjs
+      # why: the secret is written for the deploy below to carry. Read from the
+      # env by NAME, never echoed; an unset or empty value exits 1 here, because
+      # the file would upload it as empty. 0600, under $RUNNER_TEMP.
+      - name: Write this version's secrets file
+        if: steps.plan.outputs.deploy == 'true'
+        env:
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          node -e '
+            const names = ["SUPABASE_ANON_KEY"];
+            const empty = names.filter((n) => !process.env[n]);
+            if (empty.length) {
+              console.error(`${empty.join(", ")} is unset or empty; refusing to upload a version without it.`);
+              process.exit(1);
+            }
+            const body = JSON.stringify(Object.fromEntries(names.map((n) => [n, process.env[n]])));
+            require("node:fs").writeFileSync(process.argv[1], body, { mode: 0o600, flag: "wx" });
+          ' "$RUNNER_TEMP/platform-secrets.json"
       # why: ONE deploy per job, and it carries the vars. A second, unqualified
       # `wrangler deploy` (the action's default command) wiped both --vars off
-      # the live Worker for two days — run 30891499182. Secrets upload BEFORE
-      # the command, so do not copy this shape to a Worker that does not exist
-      # yet: a new Worker needs one deploy before its first secret.
+      # the live Worker for two days — run 30891499182. The secret rides the
+      # same deploy, as `--secrets-file`. The action's `secrets:` input edited
+      # secrets BEFORE the command, and Cloudflare refuses that edit while the
+      # newest version is not the deployed one, i.e. after every rollback: main
+      # run 36224483330. Held by assert-workflow-hardening limb 13.
       - uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
         if: steps.plan.outputs.deploy == 'true'
         id: deploy
@@ -198,11 +218,11 @@ jobs:
           wranglerVersion: '4.135.0'   # why: package.json says ^4.0.0, which floats. [F-2]
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: services/platform
-          secrets: |
-            SUPABASE_ANON_KEY
-          command: deploy --var GLITCHTIP_DSN:${{ secrets.GLITCHTIP_DSN }} --var RELEASE:${{ github.sha }}
-        env:
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          command: deploy --var GLITCHTIP_DSN:${{ secrets.GLITCHTIP_DSN }} --var RELEASE:${{ github.sha }} --secrets-file ${{ runner.temp }}/platform-secrets.json
+      # why: the file holds a live secret, so it goes however the job ended.
+      - name: Delete this version's secrets file
+        if: always()
+        run: rm -f "$RUNNER_TEMP/platform-secrets.json"
 
       # why: see the identical step in the subscriptiontracker-api job. Until this line
       # nothing ever asked this Worker whether it had actually come up.

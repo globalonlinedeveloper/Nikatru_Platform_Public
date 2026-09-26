@@ -1879,7 +1879,7 @@ unsourced entry in an exemption set, and it exempted nothing in this tree — an
 gets the COVERAGE LOST verdict it deserves.
 
 **3. In `build-platforms.yml` the `symbols-*` retention step was the LAST step of every job**, behind
-`Install glitchtip-cli` (a `curl --fail` against gitlab.com) and `Upload the native debug symbols to
+`Install glitchtip-cli` (a `curl --fail` against gitlab.com; ⏱ 2026-09-25 one `install-pinned-tool.mjs glitchtip-cli` call, O-GLITCHTIP-CLI-INSTALLED-BY-HAND) and `Upload the native debug symbols to
 GlitchTip` (fails closed on a missing token). Any earlier failure — a GitLab 404, a GlitchTip outage,
 a rotated token, an unrelated assertion — took the mapping with it. Not hypothetical: in this unit's
 own dispatch run `34093704881`, `Build linux` succeeded **with the flags**, a later step failed, and
