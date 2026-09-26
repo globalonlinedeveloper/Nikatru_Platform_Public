@@ -254,8 +254,8 @@ exactly this reason.
 ## Adding a tool
 
 ```sh
-node scripts/new-tool.mjs --category Extension --name "Tab Digest" --id tabdigest --dry-run
-node scripts/new-tool.mjs --category Extension --name "Tab Digest" --id tabdigest
+node scripts/new-tool.mjs --category Extension --name "Tab Digest" --id tabdigest --tagline "One sentence, one purpose." --dry-run
+node scripts/new-tool.mjs --category Extension --name "Tab Digest" --id tabdigest --tagline "One sentence, one purpose."
 ```
 
 It copies a whole working extension — `templates/tool/` if that directory exists, `templates/tool/`
@@ -291,6 +291,13 @@ generated:
   every reporter. From inside `extensions/` the path is `../.github/ISSUE_TEMPLATE/`. `ci.yml` greps both
   for `(<id>)` and fails the push without it. Issue forms cannot be generated, so this is the one
   place a new tool is added by hand.
+  ⏱ 2026-09-26: **superseded — you no longer add it.** `new-tool.mjs` now takes a required
+  `--tagline` and ends by running the chain a new tool needs: `publish-catalog.mjs`,
+  `tooling/ci/tag-owner.mjs --write`, `tooling/ci/gen-issue-forms.mjs --write` (which writes the
+  marked option region of both forms) and `gen-catalog.mjs`, then each one's check, `check-catalog`
+  and `publish-arming --plan`, and exits 1 naming the first that fails. The dropdown check is
+  `gen-issue-forms.mjs --check`, in extensions-ci.yml's `discover` job. Commit what the chain wrote
+  together with the tool.
 
 Then work through the copied `TEMPLATE.md` from §0, top to bottom, and write
 `publish/STORE-LISTING.md` in your own words. Nothing generates that file, and nothing should: every

@@ -2341,6 +2341,18 @@ let releaseCensus = { workflows: [], domain: null };
         'captures the App Store iPhone and iPad frames from a build stamped ios-appstore, so the frames show ' +
         'the apple-iap rail. The binary is discarded with the runner; ios-appstore ships from submit-appstore.yml.',
     },
+    // ⏱ 2026-09-26 — the new-tool probe (O-NEW-TOOL-IS-A-COPIER-NOT-THE-COMMAND). Its
+    // `--channel amo` is an argument to publish-arming.mjs --plan, which READS the
+    // arming verdict for a scratch tool in $RUNNER_TEMP and builds nothing.
+    {
+      workflow: '.github/workflows/extensions-ci.yml',
+      job: 'templates',
+      channel: 'amo',
+      why:
+        'the probe asks publish-arming.mjs --plan what the amo lane would decide for a scratch tool it stamped in ' +
+        '$RUNNER_TEMP ("SKIPPED: not a release run"). Nothing is built, stamped into an artifact or shipped; amo ' +
+        'ships from extensions.yml#store-publish, its lane.',
+    },
   ];
   const CHANNEL_ARG = /--channel(?:=|\s+)(\S+)/g;
   const unquote = (v) => v.replace(/^['"]|['"]$/g, '');

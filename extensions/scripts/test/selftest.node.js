@@ -87,12 +87,12 @@ function expect(label, { script, argv, root, code, contains, env }) {
    existence/stat/open look at a path and every read/write of it. The helpers are CALLED, never
    written as "script:" keys, so they add no case to the gate-coverage ratchet below. */
 const SPY = path.join(__dirname, 'fs-spy-preload.mjs');
-function spied(script, argv, root, { repoRoot = true } = {}) {
+function spied(script, argv, root, { repoRoot = true, env = null } = {}) {
   const dir = fs.mkdtempSync(path.join(TMP, 'spy-'));
   const out = path.join(dir, 'verdict.json');
   const res = spawnSync(process.execPath,
     ['--import', require('url').pathToFileURL(SPY).href, path.join(SCRIPTS, script), ...argv, ...(repoRoot ? ['--repo-root', root] : [])],
-    { encoding: 'utf8', cwd: REPO, timeout: 120000, env: { ...process.env, FS_SPY_OUT: out, FS_SPY_UNDER: root } });
+    { encoding: 'utf8', cwd: REPO, timeout: 120000, env: { ...process.env, ...(env || {}), FS_SPY_OUT: out, FS_SPY_UNDER: root } });
   let verdict = null;
   try { verdict = JSON.parse(fs.readFileSync(out, 'utf8')); } catch (_) { /* reported by readOnce */ }
   return { code: res.status, out: (res.stdout || '') + (res.stderr || ''), verdict };
@@ -1396,15 +1396,19 @@ w(TMP, 'tooling/house-identity.json', HOUSE_FIXTURE({
   const root = fixture(NEW_TOOL_TEMPLATE);
 
   expect('--dry-run writes nothing', {
-    script: 'new-tool.mjs', argv: ['--category', 'Extension', '--name', 'Tab Digest', '--id', 'tabdigest', '--dry-run'],
-    root, code: 0, contains: 'dry run'
+    script: 'new-tool.mjs', argv: ['--tagline', 'A fixture tool.', '--category', 'Extension', '--name', 'Tab Digest', '--id', 'tabdigest', '--dry-run'],
+    root, code: 0, contains: 'the chain did NOT run'
   });
   if (!fs.existsSync(path.join(root, 'Extension/Tab_Digest'))) ok('--dry-run really created nothing');
   else bad('--dry-run really created nothing', 'Extension/Tab_Digest exists');
 
+  /* The fixture root has no tooling/ beside it, so the chain (publish-catalog, tag-owner,
+     gen-issue-forms and their checks) cannot run here; it is skipped by the red-control flag
+     and graded on a real tree by tooling/ci/test/new-tool-chain.test.mjs and the CI probe. */
+  const CHAIN_OFF = { NIKATRU_PROBE_RC: '1' };
   expect('it scaffolds', {
-    script: 'new-tool.mjs', argv: ['--category', 'Extension', '--name', 'Tab Digest', '--id', 'tabdigest'],
-    root, code: 0, contains: 'wrote Extension/Tab_Digest/tool.json'
+    script: 'new-tool.mjs', argv: ['--tagline', 'A fixture tool.', '--category', 'Extension', '--name', 'Tab Digest', '--id', 'tabdigest', '--skip', 'chain'],
+    root, code: 0, contains: 'wrote Extension/Tab_Digest/tool.json', env: CHAIN_OFF
   });
   const made = path.join(root, 'Extension/Tab_Digest');
   const checks = [
@@ -1427,7 +1431,7 @@ w(TMP, 'tooling/house-identity.json', HOUSE_FIXTURE({
     const spyRoot = fixture(NEW_TOOL_TEMPLATE);
     const made2 = '/Extension/Spy_Digest/';
     readOnce('new-tool stamps skeleton.json, identity.json and CHANGELOG.md with no look at them first (CodeQL #72 #73)',
-      spied('new-tool.mjs', ['--category', 'Extension', '--name', 'Spy Digest', '--id', 'spydigest'], spyRoot),
+      spied('new-tool.mjs', ['--tagline', 'A fixture tool.', '--category', 'Extension', '--name', 'Spy Digest', '--id', 'spydigest', '--skip', 'chain'], spyRoot, { env: { NIKATRU_PROBE_RC: '1' } }),
       p => ['skeleton.json', 'publish/identity.json', 'CHANGELOG.md'].some(f => p.endsWith(spyKey(made2 + f))), { minUses: 2 });
   }
 
@@ -1436,21 +1440,54 @@ w(TMP, 'tooling/house-identity.json', HOUSE_FIXTURE({
     script: 'policy-check.mjs', argv: ['tabdigest'], root, code: 1, contains: 'no justification at all: storage'
   });
   expect('running it again refuses rather than overwriting', {
-    script: 'new-tool.mjs', argv: ['--category', 'Extension', '--name', 'Tab Digest', '--id', 'tabdigest2'],
+    script: 'new-tool.mjs', argv: ['--tagline', 'A fixture tool.', '--category', 'Extension', '--name', 'Tab Digest', '--id', 'tabdigest2'],
     root, code: 2, contains: 'already exists'
   });
   expect('a duplicate id is refused', {
-    script: 'new-tool.mjs', argv: ['--category', 'Extension', '--name', 'Other Thing', '--id', 'tabdigest'],
+    script: 'new-tool.mjs', argv: ['--tagline', 'A fixture tool.', '--category', 'Extension', '--name', 'Other Thing', '--id', 'tabdigest'],
     root, code: 2, contains: 'already used by'
   });
   expect('an uppercase id is refused', {
-    script: 'new-tool.mjs', argv: ['--category', 'Extension', '--name', 'Nope', '--id', 'Nope'],
+    script: 'new-tool.mjs', argv: ['--tagline', 'A fixture tool.', '--category', 'Extension', '--name', 'Nope', '--id', 'Nope'],
     root, code: 2, contains: 'not lowercase-kebab'
   });
   expect('a lowercase category is refused', {
-    script: 'new-tool.mjs', argv: ['--category', 'extension', '--name', 'Nope', '--id', 'nope'],
+    script: 'new-tool.mjs', argv: ['--tagline', 'A fixture tool.', '--category', 'extension', '--name', 'Nope', '--id', 'nope'],
     root, code: 2, contains: 'not Capitalized_Singular'
   });
+  /* F-c, 2026-09-26: --tagline is required (RC-F9), and --summary is refused by its new name. */
+  expect('an empty --tagline is refused (RC-F9)', {
+    script: 'new-tool.mjs', argv: ['--tagline', '', '--category', 'Extension', '--name', 'Nope', '--id', 'nope'],
+    root, code: 1, contains: '--tagline is required and may not be empty'
+  });
+  expect('a whitespace --tagline is refused', {
+    script: 'new-tool.mjs', argv: ['--tagline', '   ', '--category', 'Extension', '--name', 'Nope', '--id', 'nope'],
+    root, code: 1, contains: '--tagline is required and may not be empty'
+  });
+  expect('no --tagline at all is refused', {
+    script: 'new-tool.mjs', argv: ['--category', 'Extension', '--name', 'Nope', '--id', 'nope'],
+    root, code: 1, contains: '--tagline is required and may not be empty'
+  });
+  expect('the old placeholder sentence as --tagline is refused', {
+    script: 'new-tool.mjs', argv: ['--tagline', 'ONE SENTENCE, user-facing. This becomes the README catalog row.', '--category', 'Extension', '--name', 'Nope', '--id', 'nope'],
+    root, code: 1, contains: 'is the placeholder sentence this script used to write'
+  });
+  expect('--summary is refused as renamed to --tagline', {
+    script: 'new-tool.mjs', argv: ['--summary', 'Old flag.', '--category', 'Extension', '--name', 'Nope', '--id', 'nope'],
+    root, code: 2, contains: '--summary was renamed to --tagline'
+  });
+  expect('--skip is refused without NIKATRU_PROBE_RC=1', {
+    script: 'new-tool.mjs', argv: ['--tagline', 'A fixture tool.', '--category', 'Extension', '--name', 'Nope', '--id', 'nope', '--skip', 'chain'],
+    root, code: 2, contains: 'refused unless NIKATRU_PROBE_RC=1'
+  });
+  expect('--skip names only chain or a chain write step', {
+    script: 'new-tool.mjs', argv: ['--tagline', 'A fixture tool.', '--category', 'Extension', '--name', 'Nope', '--id', 'nope', '--skip', 'check-catalog'],
+    root, code: 2, contains: '--skip takes "chain" or one of publish-catalog, tag-owner, gen-issue-forms, gen-catalog; got check-catalog', env: CHAIN_OFF
+  });
+  if (!fs.existsSync(path.join(root, 'Extension/Nope'))) ok('and none of the refused taglines wrote a tool');
+  else bad('and none of the refused taglines wrote a tool', 'Extension/Nope exists');
+  if (JSON.parse(fs.readFileSync(path.join(made, 'tool.json'), 'utf8')).summary === 'A fixture tool.') ok('the --tagline is written to tool.json summary');
+  else bad('the --tagline is written to tool.json summary', 'summary is ' + JSON.stringify(JSON.parse(fs.readFileSync(path.join(made, 'tool.json'), 'utf8')).summary));
 
   /* A house holding the template placeholder is refused before anything is written. Its own
      parent directory, because the house is read from the directory above --repo-root. */
@@ -1463,7 +1500,7 @@ w(TMP, 'tooling/house-identity.json', HOUSE_FIXTURE({
       privacyPolicyUrlPattern: 'https://selftest-house.org/{slug}/privacy', homepageUrl: 'https://selftest-house.org/'
     }));
     expect('a placeholder in the house identity is refused', {
-      script: 'new-tool.mjs', argv: ['--category', 'Extension', '--name', 'Bad House', '--id', 'badhouse'],
+      script: 'new-tool.mjs', argv: ['--tagline', 'A fixture tool.', '--category', 'Extension', '--name', 'Bad House', '--id', 'badhouse'],
       root: badRoot, code: 1, contains: 'ownerDomain = "REPLACE-WITH-YOUR-DOMAIN.example"'
     });
     if (!fs.existsSync(path.join(badRoot, 'Extension/Bad_House'))) ok('and nothing was written for it');
@@ -1474,7 +1511,7 @@ w(TMP, 'tooling/house-identity.json', HOUSE_FIXTURE({
     copyDir(BASE, noHouseRoot);
     NEW_TOOL_TEMPLATE(noHouseRoot);
     expect('no house identity at all is refused', {
-      script: 'new-tool.mjs', argv: ['--category', 'Extension', '--name', 'No House', '--id', 'nohouse'],
+      script: 'new-tool.mjs', argv: ['--tagline', 'A fixture tool.', '--category', 'Extension', '--name', 'No House', '--id', 'nohouse'],
       root: noHouseRoot, code: 1, contains: 'tooling/house-identity.json could not be read'
     });
   }
@@ -1486,7 +1523,7 @@ w(TMP, 'tooling/house-identity.json', HOUSE_FIXTURE({
    building it, and the first version of this script stamped a two-file scaffold
    from it and called that a success. */
 expect('a template with no manifest.json is refused, and names the fallback', {
-  script: 'new-tool.mjs', argv: ['--category', 'Extension', '--name', 'Half Built', '--id', 'halfbuilt'],
+  script: 'new-tool.mjs', argv: ['--tagline', 'A fixture tool.', '--category', 'Extension', '--name', 'Half Built', '--id', 'halfbuilt'],
   code: 2, contains: 'has no manifest.json',
   root: fixture(r2 => {
     w(r2, 'templates/tool/tool.json', '{ "id": "template" }\n');
@@ -1496,7 +1533,7 @@ expect('a template with no manifest.json is refused, and names the fallback', {
   })
 });
 expect('and --template can then point at the complete one', {
-  script: 'new-tool.mjs', argv: ['--category', 'Extension', '--name', 'Half Built', '--id', 'halfbuilt', '--template', '_skeleton', '--dry-run'],
+  script: 'new-tool.mjs', argv: ['--tagline', 'A fixture tool.', '--category', 'Extension', '--name', 'Half Built', '--id', 'halfbuilt', '--template', '_skeleton', '--dry-run'],
   code: 0, contains: 'dry run',
   root: fixture(r2 => {
     w(r2, 'templates/tool/tool.json', '{ "id": "template" }\n');
@@ -1926,6 +1963,26 @@ function withStores(mutate = () => {}) {
 expect('a complete three-store layer passes', {
   script: 'check-store-metadata.mjs', argv: ['goodtool'], code: 0, contains: '3 store row(s) graded',
   root: withStores()
+});
+/* 🔴 render-extension-graphics.mjs, wired into extensions-ci's `catalogue` job on
+   2026-09-26 (F-c). The green renders the three listing graphics into the
+   three-store fixture and checks them; the red moves the tool's accent colour
+   after the render, which is the drift the step exists to catch: the product
+   was re-coloured and the listing was not re-rendered. */
+function withGraphics(after) {
+  const root = withStores((t, r) => { w(r, TOOL + '/popup/accent.css', ':root { --accent: #1a73e8; }\n'); });
+  const made = run('render-extension-graphics.mjs', ['goodtool'], root);
+  if (made.code !== 0) throw new Error('render-extension-graphics.mjs could not render the fixture:\n' + made.out);
+  if (after) after(root);
+  return root;
+}
+expect('the committed listing graphics are the renderer\'s own output', {
+  script: 'render-extension-graphics.mjs', argv: ['goodtool', '--check'], code: 0, contains: 'pixel-identical',
+  root: withGraphics()
+});
+expect('a listing graphic left behind by an accent change is refused', {
+  script: 'render-extension-graphics.mjs', argv: ['goodtool', '--check'], code: 1, contains: 'is this script\'s output',
+  root: withGraphics(root => { w(root, TOOL + '/popup/accent.css', ':root { --accent: #e8731a; }\n'); })
 });
 
 /* 🔴 8 · SHIPPED TEXT MAKES NO CLAIM ABOUT ANOTHER PRODUCT (EXT-4, 2026-09-25).

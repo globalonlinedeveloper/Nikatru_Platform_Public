@@ -350,6 +350,14 @@ Issue forms cannot be generated, so their dropdowns are the one place a
 new tool has to be added by hand — exactly the kind of step that gets
 forgotten. Checked here so it fails in the PR that adds the tool.
 
+> ⏱ **2026-09-26 (F-c): the paragraph above is superseded.** The dropdowns ARE
+> generated: `tooling/ci/gen-issue-forms.mjs --write` writes a marked region of each
+> root form from every extension `tool.json` (the same `find` walk this step used),
+> `new-tool.mjs` runs it as part of its chain, and this step is now its `--check`,
+> run from the repository root in extensions-ci.yml's `discover` job. It still fails
+> the PR that adds a tool without its option, and still prints the
+> "graded against N tool id(s)" line.
+
 ### in step **Issue templates list every tool id**, above `- id: set`
 
 discover.mjs diffs against the base ref and widens to ALL tools when
