@@ -80,6 +80,9 @@
 import { readFileSync, existsSync, openSync, fstatSync, closeSync } from 'node:fs';
 import { join, resolve, relative, sep } from 'node:path';
 import { listDir } from './tree-walk.mjs';
+// The API base rule is the one every release build composes with (flutter-release-build.mjs),
+// so a stamped default and a shipped binary are graded against the same function.
+import { apiBaseUrl } from './flutter-release-build.mjs';
 
 const args = process.argv.slice(2);
 const flag = (name) => {
@@ -364,7 +367,7 @@ if (escaped.length) {
 // ── 2 · a blank optional var was DERIVED, not interpolated as nothing ────────
 const expectedSub = `${appId}.nikatru.com`;
 const expectedApiHost = `${appId}-api.nikatru.com`;
-const expectedBase = needsBackend ? `https://${expectedApiHost}` : 'https://platform.nikatru.com/v1';
+const expectedBase = apiBaseUrl(needsBackend ? expectedApiHost : null);
 /** The shape the defect produced: a scheme with no authority. */
 const EMPTY_URL = /^https?:\/\/\s*$/;
 

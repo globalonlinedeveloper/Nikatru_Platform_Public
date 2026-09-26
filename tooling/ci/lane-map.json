@@ -158,6 +158,7 @@
       "tooling/ci/text-reductions.mjs",
       "tooling/ci/tree-walk.mjs",
       "tooling/ci/workflow-scan.mjs",
+      "tooling/ci/flutter-release-build.mjs",
       "tooling/ops/bounded-retry.mjs",
       "tooling/ops/glitchtip-project.json",
       "tooling/sites/apex.mjs",

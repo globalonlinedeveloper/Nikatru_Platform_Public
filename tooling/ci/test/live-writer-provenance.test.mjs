@@ -581,6 +581,35 @@ spawnSync('flutter', argv, { stdio: 'inherit' });
     says(r, 'tooling/web/build-web.mjs:3 — a script-launched flutter build is not yet supported');
   });
 
+  // ⏱ 2026-09-26 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 1 of 3): the release lanes call (part 3)
+  // the composer instead of typing `flutter build`. It launches a build, never a drive,
+  // so neither it nor a step calling it is a live writer; any other build script is.
+  const COMPOSER = `import { spawnSync } from 'node:child_process';
+const argv = ['build', 'linux', '--release'];
+spawnSync('flutter', argv, { stdio: 'inherit' });
+`;
+  const BUILD_LANE = `name: Build
+on: workflow_dispatch
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Build linux
+        run: node tooling/ci/flutter-release-build.mjs fixture linux linux-snap
+`;
+
+  test('GREEN: the release composer launches a build, and a step calling it is no writer step', () => {
+    const r = run(tree({ 'tooling/ci/flutter-release-build.mjs': COMPOSER, '.github/workflows/build.yml': BUILD_LANE }));
+    expectExit(r, 0);
+    says(r, 'spawners=1 spawnerSteps=1');
+  });
+
+  test('RED CONTROL: the same build script under any other name is still refused', () => {
+    const r = run(tree({ 'tooling/ci/flutter-release-build-copy.mjs': COMPOSER, '.github/workflows/build.yml': BUILD_LANE }));
+    expectExit(r, 1);
+    says(r, 'tooling/ci/flutter-release-build-copy.mjs:3 — a script-launched flutter build is not yet supported');
+  });
+
   test('GREEN: a printed-only flutter argv is not a spawner', () => {
     const printed = `const argv = ['flutter', 'drive', '--target=integration_test/app_test.dart'];
 console.log(argv.join(' '));

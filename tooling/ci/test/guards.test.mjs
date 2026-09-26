@@ -1255,7 +1255,8 @@ describe('assert-workflow-hardening', () => {
     assert.equal(code.split(SUBJECT).length - 1, 1, 'the judged counter must appear exactly once outside comments');
     const at = code.indexOf(SUBJECT);
     const modules = {};
-    for (const m of ['tree-walk.mjs', 'workflow-scan.mjs']) modules[m] = readFileSync(join(CI_DIR, m), 'utf8');
+    for (const m of ['tree-walk.mjs', 'workflow-scan.mjs', 'flutter-release-build.mjs', 'app-set.mjs']) modules[m] = readFileSync(join(CI_DIR, m), 'utf8');
+    modules['../app-yaml/yaml.mjs'] = readFileSync(join(CI_DIR, '..', 'app-yaml', 'yaml.mjs'), 'utf8'); // ⏱ 2026-09-26: the composer's import (O-FLUTTER-BUILD-TYPED-PER-LINE)
     const copy = (name, body) => join(fixture(name, { ...modules, 'g.mjs': body }), 'g.mjs');
     const exec = (script) => {
       const r = spawnSync(process.execPath, [script, dir], { cwd: ROOT, encoding: 'utf8' });
@@ -1948,7 +1949,8 @@ describe('assert-workflow-hardening', () => {
       const at = code.indexOf(SUBJECT);
       const mutate = () => `${src.slice(0, at)}if (false) continue;${src.slice(at + SUBJECT.length)}`;
       const modules = {};
-      for (const m of ['tree-walk.mjs', 'workflow-scan.mjs']) modules[m] = readFileSync(join(CI_DIR, m), 'utf8');
+      for (const m of ['tree-walk.mjs', 'workflow-scan.mjs', 'flutter-release-build.mjs', 'app-set.mjs']) modules[m] = readFileSync(join(CI_DIR, m), 'utf8');
+    modules['../app-yaml/yaml.mjs'] = readFileSync(join(CI_DIR, '..', 'app-yaml', 'yaml.mjs'), 'utf8'); // ⏱ 2026-09-26: the composer's import (O-FLUTTER-BUILD-TYPED-PER-LINE)
       const root = build('wh-canary-root');
       const copy = (name, body) => join(fixture(name, { ...modules, 'g.mjs': body }), 'g.mjs');
       const exec = (at) => {
@@ -2070,7 +2072,8 @@ describe('assert-workflow-hardening', () => {
     const copyHarness = () => {
       const src = readFileSync(join(CI_DIR, 'assert-workflow-hardening.mjs'), 'utf8');
       const modules = {};
-      for (const m of ['tree-walk.mjs', 'workflow-scan.mjs']) modules[m] = readFileSync(join(CI_DIR, m), 'utf8');
+      for (const m of ['tree-walk.mjs', 'workflow-scan.mjs', 'flutter-release-build.mjs', 'app-set.mjs']) modules[m] = readFileSync(join(CI_DIR, m), 'utf8');
+    modules['../app-yaml/yaml.mjs'] = readFileSync(join(CI_DIR, '..', 'app-yaml', 'yaml.mjs'), 'utf8'); // ⏱ 2026-09-26: the composer's import (O-FLUTTER-BUILD-TYPED-PER-LINE)
       const root = build('wh-expr-harness-root');
       const copy = (name, body) => join(fixture(name, { ...modules, 'g.mjs': body }), 'g.mjs');
       const exec = (script) => {
