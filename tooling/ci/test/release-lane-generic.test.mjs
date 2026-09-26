@@ -29,6 +29,18 @@
 //     refactor was warned about: GitHub expands the missing context to the empty
 //     string, so the lane runs against `apps/` and reports success.
 //
+// Re-proven 2026-09-26 against THE GATE (O-CI-AND-WORKER-LANES-NAME-ONE-APP), on
+// the real tree, NEW guard against the guard as it stood before (checked out in
+// place, then restored and byte-compared):
+//   · `--app subscriptiontracker` back in app-dryrun's Google Play dry run: NEW
+//     exit 1 naming ci.yml and the line, OLD exit 0 — the gate was graded by nothing;
+//   · `working-directory: services/subscriptiontracker-api` in lane-workers.yml's
+//     `worker` job: NEW exit 1 naming lane-workers.yml, read as the gate's; OLD exit 0;
+//   · `matrix.ap` in app-dryrun: NEW exit 1 (limb A′, per job), OLD exit 0;
+//   · keeping the post-gate call jobs in the gate's view reds the real tree on
+//     deploy-workers.yml's own literals, which are the service-kit row's
+//     (O-SERVICE-KIT-UNBUILT): the post-gate line is load-bearing.
+//
 // The cases below cover what the real tree cannot show without breaking it: the
 // `env:` hoist bypass the original criterion invited, a matrix over two apps, a
 // parameterised path, the comment bypass, an unowned workflow, and every way a
@@ -796,6 +808,251 @@ jobs:
     const r = run(fixture({ workflows: { ...R1, 'e2e.yml': bare } }));
     assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — limb D-all read ZERO values from e2e\.yml, a graded lane/);
+  });
+});
+
+// ⏱ 2026-09-26 — O-CI-AND-WORKER-LANES-NAME-ONE-APP (the ci.yml half). The gate is
+// graded under limbs D, D-all and A′, read with the callees its constituents run.
+// RC1-RC3 are the closes' controls; the real-tree mutations are in the PR text.
+describe('assert-release-lane-generic.mjs — the gate (limbs D, D-all and A′ over ci.yml and its callees)', () => {
+  const SYN_UUID = '00000000-0000-4000-8000-0000000000c3';
+  const R1 = { 'build-platforms.yml': platforms(literalLane(APP_PATH)), 'e2e.yml': E2E };
+  /** 1-based line of the first line of `body` holding `needle`; fails the case when absent. */
+  const lineOf = (body, needle) => {
+    const n = body.split('\n').findIndex((l) => l.includes(needle)) + 1;
+    assert.ok(n > 0, `fixture anchor absent: ${needle}`);
+    return n;
+  };
+  const WF = '.github/workflows';
+  /** The gate in the shape the real one has: prepare's app set, a dry-run matrix over it,
+   *  a call to the Workers lane, and a post-gate deploy call. `dryRun` is the matrix job's `run:`. */
+  const gate = ({ dryRun = 'node tooling/release/submit-play.mjs --dry-run --app ${{ matrix.app }} --allow-missing-artifact', extraStep = '', deployIf = "    if: github.event_name == 'push' && github.ref == 'refs/heads/main'\n", deployNeededByGate = false } = {}) => `name: CI
+on:
+  push:
+    branches: [main]
+jobs:
+  lane-workers:
+    uses: ./.github/workflows/lane-workers.yml
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      apps: \${{ steps.workspace.outputs.apps }}
+    steps:
+      - id: workspace
+        run: echo "apps=[]" >> "$GITHUB_OUTPUT"
+  app-dryrun:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        app: \${{ fromJSON(needs.prepare.outputs.apps) }}
+    steps:
+      - name: The Google Play submission path still walks (dry run)
+        run: ${dryRun}
+${extraStep}  ci-gate:
+    name: ci-gate
+    needs: [lane-workers, prepare, app-dryrun${deployNeededByGate ? ', deploy-workers' : ''}]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo gate
+  deploy-workers:
+${deployNeededByGate ? '' : '    needs: [ci-gate]\n'}${deployIf}    uses: ./.github/workflows/deploy-workers.yml
+`;
+  /** The Workers lane callee: detect emits the set, one matrix job runs each Worker. */
+  const laneWorkers = (workDir = 'services/${{ matrix.worker }}', extra = '') => `name: Lane — workers
+on:
+  workflow_call:
+jobs:
+  detect:
+    runs-on: ubuntu-24.04
+    outputs:
+      workers: \${{ steps.workers.outputs.workers }}
+    steps:
+      - id: workers
+        run: echo "workers=[]" >> "$GITHUB_OUTPUT"
+  worker:
+    needs: detect
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        worker: \${{ fromJSON(needs.detect.outputs.workers) }}
+    defaults:
+      run:
+        working-directory: ${workDir}
+    steps:
+      - run: npm test
+${extra}`;
+  /** The post-gate Workers deploy: it names app #1's Worker directory, the service-kit row's literal. */
+  const DEPLOY_WORKERS = `name: Deploy Workers
+on:
+  workflow_call:
+jobs:
+  api:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: services/${APP}-api
+    steps:
+      - run: npx wrangler deploy
+`;
+  const gateTree = ({ ci = gate(), lane = laneWorkers(), deploy = DEPLOY_WORKERS } = {}) =>
+    fixture({ workflows: { ...R1, 'ci.yml': ci, 'lane-workers.yml': lane, 'deploy-workers.yml': deploy } });
+
+  test('the gate in its generic shape passes, and the report names its callee and the post-gate job it left out', () => {
+    const r = run(gateTree());
+    assert.equal(r.code, 0, r.out);
+    // lane-workers, lane-workers/detect, lane-workers/worker, prepare, app-dryrun, ci-gate:
+    // deploy-workers and its callee job are post-gate and are not among them.
+    assert.match(r.out, /ci\.yml \(the gate\) — 6 job\(s\), 2 of them from 1 callee\(s\) \(lane-workers\.yml\): \d+ run\/with\/working-directory\/paths field\(s\) name no app id/);
+    assert.match(r.out, /Post-gate, not read here: deploy-workers/);
+    assert.match(r.out, /lane-workers\.yml — resolves to \(none\); owned by another stage: not graded by limb A, and read below as the gate's callee/);
+  });
+
+  test("RC1 · THE CLOSES' CONTROL — `--app <id>` back in the gate's dry run fails, naming ci.yml and the line", () => {
+    const ci = gate({ dryRun: `node tooling/release/submit-play.mjs --dry-run --app ${APP} --allow-missing-artifact` });
+    const r = run(gateTree({ ci }));
+    assert.equal(r.code, 1, r.out);
+    const n = lineOf(ci, `--app ${APP}`);
+    assert.match(r.out, new RegExp(`the gate · ${rx(WF)}/ci\\.yml:${n} names the app id "${rx(APP)}" literally in \`run\``));
+  });
+
+  test("RC2 · a Worker directory written into the Workers lane callee fails as the gate's, naming lane-workers.yml", () => {
+    const lane = laneWorkers(`services/${APP}-api`);
+    const r = run(gateTree({ lane }));
+    assert.equal(r.code, 1, r.out);
+    const n = lineOf(lane, `services/${APP}-api`);
+    assert.match(r.out, new RegExp(`the gate · ${rx(WF)}/lane-workers\\.yml:${n} names the app id "${rx(APP)}" literally in \`working-directory\``));
+  });
+
+  test("…and the same directory hoisted to the callee's OWN workflow-level `defaults:` or `env:` fails too — the callee's head is the gate's", () => {
+    const hoisted = laneWorkers().replace('jobs:\n', `defaults:\n  run:\n    working-directory: services/${APP}-api\njobs:\n`);
+    const r = run(gateTree({ lane: hoisted }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, new RegExp(`the gate · ${rx(WF)}/lane-workers\\.yml:${lineOf(hoisted, `services/${APP}-api`)} names the app id "${rx(APP)}" literally in \`working-directory\``));
+    const viaEnv = laneWorkers('${{ env.WORKER_DIR }}').replace('jobs:\n', `env:\n  WORKER_DIR: services/${APP}-api\njobs:\n`);
+    const r2 = run(gateTree({ lane: viaEnv }));
+    assert.equal(r2.code, 1, r2.out);
+    assert.match(r2.out, new RegExp(`the gate · ${rx(WF)}/lane-workers\\.yml:${lineOf(viaEnv, 'env.WORKER_DIR')} names the app id "${rx(APP)}" literally in \`working-directory\``));
+  });
+
+  test('RC3 · a matrix key the job never declared (`matrix.ap`) fails limb A′, naming the job and what it declares', () => {
+    const ci = gate({ dryRun: 'node tooling/release/submit-play.mjs --dry-run --app ${{ matrix.ap }} --allow-missing-artifact' });
+    const r = run(gateTree({ ci }));
+    assert.equal(r.code, 1, r.out);
+    const n = lineOf(ci, 'matrix.ap }}');
+    assert.match(r.out, new RegExp(`the gate · ${rx(WF)}/ci\\.yml:${n} — job "app-dryrun" reads \`matrix\\.ap\` and its strategy\\.matrix declares app\\.`));
+  });
+
+  test('…and an `if:` is read too — it is an expression with or without the braces, so `matrix.os` there must be declared', () => {
+    const extraStep = "  other:\n    runs-on: ubuntu-24.04\n    steps:\n      - if: matrix.os == 'windows-2022'\n        run: echo windows\n";
+    const ci = gate({ extraStep }).replace('needs: [lane-workers, prepare, app-dryrun]', 'needs: [lane-workers, prepare, app-dryrun, other]');
+    const r = run(gateTree({ ci }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, new RegExp(`the gate · ${rx(WF)}/ci\\.yml:${lineOf(ci, 'matrix.os')} — job "other" reads \`matrix\\.os\` and its strategy\\.matrix declares no key`));
+  });
+
+  test('…and a key declared by ANOTHER job is still undeclared here — GitHub scopes a matrix to its job', () => {
+    const extraStep = '  other:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: echo ${{ matrix.app }}\n';
+    const ci = gate({ extraStep }).replace('needs: [lane-workers, prepare, app-dryrun]', 'needs: [lane-workers, prepare, app-dryrun, other]');
+    const r = run(gateTree({ ci }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /job "other" reads `matrix\.app` and its strategy\.matrix declares no key/);
+  });
+
+  test('THE POST-GATE LINE IS A CLASS, NOT A FILENAME — the same deploy call as a gate constituent is read, and fails', () => {
+    const ci = gate({ deployIf: '', deployNeededByGate: true });
+    const r = run(gateTree({ ci }));
+    assert.equal(r.code, 1, r.out);
+    const n = lineOf(DEPLOY_WORKERS, `services/${APP}-api`);
+    assert.match(r.out, new RegExp(`the gate · ${rx(WF)}/deploy-workers\\.yml:${n} names the app id "${rx(APP)}" literally in \`working-directory\``));
+  });
+
+  test('limb D-all over the gate — an app-named env key in ci.yml and a UUID in the callee both fail, and no id is printed', () => {
+    const key = `${APP.toUpperCase().replace(/-/g, '_')}_DB`;
+    const ci = gate({ extraStep: '' }).replace(
+      '      - run: echo gate\n',
+      `      - run: echo gate\n      - name: Read\n        env:\n          ${key}: x\n        run: echo read\n`,
+    );
+    const lane = laneWorkers(undefined, `      - run: npx wrangler d1 execute --database-id ${SYN_UUID}\n`);
+    const r = run(gateTree({ ci, lane }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, new RegExp(`the gate · ${rx(WF)}/ci\\.yml:${lineOf(ci, key)} — limb D-all: the env key \`${rx(key)}\` names the app "${rx(APP)}"`));
+    assert.match(r.out, new RegExp(`the gate · ${rx(WF)}/lane-workers\\.yml:${lineOf(lane, SYN_UUID)} — limb D-all: a UUID literal in \`run\``));
+    assert.ok(!r.out.includes(SYN_UUID), 'a finding names the field, never the id it refuses');
+  });
+
+  test('a composite action the gate runs is read as the gate: `--app <id>` inside it fails, naming action.yml', () => {
+    const ci = gate({ extraStep: '' }).replace('      - run: echo gate\n', '      - uses: ./.github/actions/walk\n      - run: echo gate\n');
+    const root = gateTree({ ci });
+    const action = `name: walk
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: node tooling/release/submit-snap.mjs --dry-run --app ${APP}
+`;
+    mkdirSync(join(root, '.github', 'actions', 'walk'), { recursive: true });
+    writeFileSync(join(root, '.github', 'actions', 'walk', 'action.yml'), action);
+    const r = run(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, new RegExp(`the gate · \\.github/actions/walk/action\\.yml:${lineOf(action, `--app ${APP}`)} names the app id "${rx(APP)}" literally in \`run\``));
+  });
+
+  test('NO FALSE RED — a comment naming the app, a declared key in an `if:`, `matrix.json` in a shell line and a longer word all pass', () => {
+    const extraStep = [
+      '  shape:',
+      '    runs-on: ubuntu-24.04',
+      '    strategy:',
+      '      matrix:',
+      '        os: [ubuntu-24.04]',
+      '        include:',
+      '          - flavour: plain',
+      '    steps:',
+      `      # --app ${APP} is how the old step read`,
+      "      - if: matrix.os == 'ubuntu-24.04' && matrix.flavour == 'plain'",
+      '        run: cat matrix.json',
+      `      - run: echo re${APP}x`,
+      '',
+    ].join('\n');
+    const ci = gate({ extraStep }).replace('needs: [lane-workers, prepare, app-dryrun]', 'needs: [lane-workers, prepare, app-dryrun, shape]');
+    const r = run(gateTree({ ci }));
+    assert.equal(r.code, 0, r.out);
+  });
+
+  test('COVERAGE LOST — the gate calls a workflow that is not in the tree', () => {
+    const ci = gate().replace('uses: ./.github/workflows/lane-workers.yml', 'uses: ./.github/workflows/lane-gone.yml');
+    const r = run(gateTree({ ci }));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — workflow-scan could not resolve a local reference \(missing\)/);
+  });
+
+  test('COVERAGE LOST — a job reads a matrix key and its matrix is one expression, so its keys cannot be read', () => {
+    const ci = gate().replace(
+      '      matrix:\n        app: ${{ fromJSON(needs.prepare.outputs.apps) }}\n',
+      '      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}\n',
+    );
+    const r = run(gateTree({ ci }));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — the gate's job "app-dryrun" reads `matrix\.app` \(.*ci\.yml:\d+\), and its matrix is ONE expression/);
+  });
+
+  test('COVERAGE LOST — a gate with no run, with or env value anywhere reads as nothing, never as clean', () => {
+    const bare = `name: CI
+on:
+  push:
+    branches: [main]
+jobs:
+  ci-gate:
+    name: ci-gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@0123456789abcdef0123456789abcdef01234567
+`;
+    const r = run(fixture({ workflows: { ...R1, 'ci.yml': bare } }));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — limb D-all read ZERO values from the gate \(\.github\/workflows\/ci\.yml\) and its callees/);
   });
 });
 

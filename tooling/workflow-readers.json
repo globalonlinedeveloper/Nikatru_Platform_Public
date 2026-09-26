@@ -199,7 +199,8 @@
     },
     {
       "path": "tooling/ci/assert-release-lane-generic.mjs",
-      "property": "workflow-scan"
+      "property": "workflow-scan",
+      "resolves": "local-uses"
     },
     {
       "path": "tooling/ci/assert-release-provenance.mjs",
@@ -338,6 +339,8 @@
     "subject a step moved behind uses: ./.github/actions/<x>, or into a local reusable workflow, would hide. R5 in",
     "assert-workflow-readers.mjs checks that the file calls parseResolvedWorkflows( or lists .github/actions in executable",
     "code. Which rows carry it is this declaration: the five guards P-A1 moved onto parseResolvedWorkflows, and",
-    "assert-workflow-hardening (limb 9, P-A2). Written after readers so no line cited in this file moves further."
+    "assert-workflow-hardening (limb 9, P-A2). Written after readers so no line cited in this file moves further.",
+    "⏱ 2026-09-26 — O-CI-AND-WORKER-LANES-NAME-ONE-APP: assert-release-lane-generic carries it too. It reads the gate",
+    "(ci.yml) with every callee its constituents run (lane-workers.yml, extensions-ci.yml) through parseResolvedWorkflows."
   ]
 }

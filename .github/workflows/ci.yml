@@ -535,16 +535,6 @@ jobs:
       - name: The advertising declarations still describe the shipped tree
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-ads-declarations.mjs
-      - name: The Microsoft Store submission path still walks (dry run)
-        run: node tooling/release/submit-windows-store.mjs --dry-run --app subscriptiontracker --allow-missing-artifact
-      - name: The App Store submission path still walks — iOS (dry run)
-        run: node tooling/release/submit-appstore.mjs --dry-run --channel ios-appstore --app subscriptiontracker --allow-missing-artifact
-      - name: The App Store submission path still walks — macOS (dry run)
-        run: node tooling/release/submit-appstore.mjs --dry-run --channel macos-appstore --app subscriptiontracker --allow-missing-artifact
-      - name: The Snap Store submission path still walks (dry run)
-        run: node tooling/release/submit-snap.mjs --dry-run --app subscriptiontracker --allow-missing-artifact
-      - name: The Google Play submission path still walks (dry run)
-        run: node tooling/release/submit-play.mjs --dry-run --app subscriptiontracker --allow-missing-artifact
       - name: No release build from an ungated commit, no publish unrecorded
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-release-provenance.mjs
@@ -1281,11 +1271,13 @@ jobs:
       # Flutter 3.47 rewrites the app's analysis_options.yaml as a side effect
       # (measured on run 35814243238), so a whole-tree diff reds on a file nobody
       # edited, and assert-green-means-ran reads such a diff as a drift check.
+      # The subject is apps/, the directory every workspace app lives in, so app #2
+      # is format-gated with no edit here (O-CI-AND-WORKER-LANES-NAME-ONE-APP).
       - name: The shipping app is dart format-clean
         run: |
-          if dart format --output=none --set-exit-if-changed apps/subscriptiontracker; then exit 0; fi
-          dart format apps/subscriptiontracker > /dev/null
-          git --no-pager diff -- 'apps/subscriptiontracker/*.dart'
+          if dart format --output=none --set-exit-if-changed apps/; then exit 0; fi
+          dart format apps/ > /dev/null
+          git --no-pager diff -- 'apps/*.dart'
           exit 1
       - name: The Apple privacy manifests still describe the binaries that ship
         working-directory: ${{ github.workspace }}
@@ -1310,8 +1302,10 @@ jobs:
           echo "Chrome: $CHROME_EXECUTABLE"
           dart test -p chrome
 
-  android-apps:
-    name: Derive the Android app set from the pub workspace
+  prepare:
+    # why: the ONE app-set emitter in this file. android-artifacts and app-dryrun both
+    # fan out over its `apps` output, so every app-shaped job here iterates one set.
+    name: Derive the app set from the pub workspace
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -1329,16 +1323,48 @@ jobs:
           apps="$(node tooling/ci/assert-release-lane-generic.mjs --emit-apps)"
           echo "apps=${apps}" >> "$GITHUB_OUTPUT"
 
+  app-dryrun:
+    # why: the five store submission dry runs, one leg per app. They ran in
+    # guards-store with one app's id written into each `--app`, so app #2's
+    # submission paths were walked by nothing (O-CI-AND-WORKER-LANES-NAME-ONE-APP).
+    # No job-level `if:` (green-means-ran A6); fail-fast off, so one app's red leaves
+    # every other leg's verdict. assert-release-lane-generic grades this file for a
+    # literal app id.
+    name: Store submission dry runs
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.prepare.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-node
+      - name: The Microsoft Store submission path still walks (dry run)
+        run: node tooling/release/submit-windows-store.mjs --dry-run --app ${{ matrix.app }} --allow-missing-artifact
+      - name: The App Store submission path still walks — iOS (dry run)
+        run: node tooling/release/submit-appstore.mjs --dry-run --channel ios-appstore --app ${{ matrix.app }} --allow-missing-artifact
+      - name: The App Store submission path still walks — macOS (dry run)
+        run: node tooling/release/submit-appstore.mjs --dry-run --channel macos-appstore --app ${{ matrix.app }} --allow-missing-artifact
+      - name: The Snap Store submission path still walks (dry run)
+        run: node tooling/release/submit-snap.mjs --dry-run --app ${{ matrix.app }} --allow-missing-artifact
+      - name: The Google Play submission path still walks (dry run)
+        run: node tooling/release/submit-play.mjs --dry-run --app ${{ matrix.app }} --allow-missing-artifact
+
   android-artifacts:
     name: Android artifacts (built, inspected, discarded)
     runs-on: ubuntu-24.04
     # why 30: the same three builds measured 11.5–11.7 min inside build-platforms.yml linux_web_android — docs/ci/build-platforms.md §PR lane.
     timeout-minutes: 30
-    needs: android-apps
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
-        app: ${{ fromJSON(needs.android-apps.outputs.apps) }}
+        app: ${{ fromJSON(needs.prepare.outputs.apps) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -1516,7 +1542,8 @@ jobs:
       - app-brick
       - sites
       - workspace-gate
-      - android-apps
+      - prepare
+      - app-dryrun
       - android-artifacts
       - extensions
     if: always()
@@ -1536,7 +1563,8 @@ jobs:
           echo "app-brick=${{ needs.app-brick.result }}"
           echo "sites=${{ needs.sites.result }}"
           echo "workspace-gate=${{ needs.workspace-gate.result }}"
-          echo "android-apps=${{ needs.android-apps.result }}"
+          echo "prepare=${{ needs.prepare.result }}"
+          echo "app-dryrun=${{ needs.app-dryrun.result }}"
           echo "android-artifacts=${{ needs.android-artifacts.result }}"
           echo "extensions=${{ needs.extensions.result }}"
           if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ] || [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ] || [ "${{ contains(needs.*.result, 'skipped') }}" = "true" ]; then
