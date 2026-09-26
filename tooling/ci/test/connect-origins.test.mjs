@@ -112,7 +112,7 @@ describe('the connect-src parser', () => {
     assert.equal(sources[0], "'self'");
     const origins = listedOrigins(sources);
     assert.equal(origins.length, sources.length - 1);
-    assert.ok(origins.includes('https://subscriptiontracker-api.nikatru.com'));
+    assert.ok(origins.some((o) => o === 'https://subscriptiontracker-api.nikatru.com'), origins.join(' '));
     for (const o of origins) assert.match(o, BARE_HTTPS);
   });
 
@@ -160,7 +160,7 @@ describe('origins, and the DSN key that must never be printed', () => {
     assert.match(r.out, /https:\/\/glitchtip\.nikatru\.com {2}← GLITCHTIP_DSN/);
     assert.ok(!r.out.includes(DSN_KEY), 'the DSN key was printed');
     assert.ok(!r.out.includes('@'), 'a user part was printed');
-    assert.doesNotMatch(r.out, /glitchtip\.nikatru\.com\/7/);
+    assert.equal(r.out.split('glitchtip.nikatru.com/7').length, 1, 'the DSN path was printed');
   });
 
   test('a define value that is not an https URL is named, and its value is never printed', () => {

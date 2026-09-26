@@ -223,8 +223,8 @@ export function buildStepDefines(workflowText) {
 
 // ── app_config.dart ──────────────────────────────────────────────────────────
 
-/** Dart source with every `//` and (nested) `/* */` comment removed and every
- *  string literal kept intact — a URL's `//` is not a comment. */
+// Dart source with every line comment and every (nested) block comment removed,
+// and every string literal kept intact — a URL's `//` is not a comment.
 export function stripDartComments(src) {
   const s = String(src);
   let out = '';
