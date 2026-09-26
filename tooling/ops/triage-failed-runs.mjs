@@ -17,17 +17,20 @@
 // ── WHAT ONE ROW IS ─────────────────────────────────────────────────────────
 //   run id · workflow · branch · conclusion · the FAILING JOB · the FAILING STEP
 //   · the FIRST ERROR LINE of that step's log · a SIGNATURE derived from the
-//   error (never from the job name — see below) · the verdict of the NEWEST run
-//   of that same workflow on that same branch · whether the branch still exists.
+//   error (never from the job name — see below) · the verdict of the NEWEST
+//   COMPLETED run of that same workflow on that same branch · whether the
+//   branch still exists.
 //
 // ── WHAT "EXPLAINED" MEANS, AND IT IS A CONJUNCTION ─────────────────────────
 //   (a) the row's signature has an entry in tooling/ops/failed-run-causes.json
 //       naming a root cause and a fix (a merged SHA/PR, "infrastructure,
 //       self-cleared", "superseded: branch merged/deleted", or "lost race
 //       under strict protection"), AND
-//   (b) the newest run of that workflow on that branch is GREEN (cited by run
-//       id and timestamp), OR the branch no longer exists (cited, with its PR
-//       when one can be found).
+//   (b) the newest COMPLETED run of that workflow on that branch is GREEN
+//       (cited by run id and timestamp) — never a run still in flight, and
+//       never the run executing this ledger (GITHUB_RUN_ID), which inside
+//       ops-watch IS ops-watch's newest run — OR the branch no longer exists
+//       (cited, with its PR when one can be found).
 //   Either half missing = UNEXPLAINED. A cause with no later green is an OPEN
 //   defect; a later green with no cause is a fix nobody can name.
 //
@@ -654,8 +657,9 @@ export function causeFor(signature, causes, branch = null) {
 // PROOF OF CLOSURE, AND THE GROUPING
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** newest: Map "<path>|<branch>" → newest run of that workflow on that branch
- *  (any conclusion). branches: Set of live branch names. prs: Map branch → pr. */
+/** newest: Map "<path>|<branch>" → newest COMPLETED run of that workflow on that
+ *  branch, any conclusion, never the run executing this ledger (newestCompleted,
+ *  below). branches: Set of live branch names. prs: Map branch → pr. */
 export function proofFor(row, { newest, branches, prs }) {
   const key = `${row.workflowPath}|${row.branch}`;
   const n = newest.get(key) ?? null;
@@ -864,7 +868,24 @@ export async function readThroughCache(cacheDir, name, fetcher, { text = false, 
   return v;
 }
 
-export function liveApi(repo, tok, cacheDir, { maxRequests = DEFAULT_MAX_REQUESTS } = {}) {
+/** PURE. The run the later-green proof reads, from a workflow's run list as
+ *  GitHub orders it (newest first): the first COMPLETED run that is not
+ *  `selfRunId`, the run executing this ledger. ⏱ 2026-09-26
+ *  (O-FAILURE-LEDGER-CANNOT-CLEAR-OPS-WATCH): the ledger runs INSIDE ops-watch,
+ *  and the unfiltered `per_page=1` query answered the executing run itself,
+ *  still in progress (conclusion null), so every failed ops-watch.yml run read
+ *  OPEN whatever cause was recorded. The query now asks `status=completed`;
+ *  this holds the same line on whatever the API answers. */
+export function newestCompleted(runs, { selfRunId = null } = {}) {
+  if (!Array.isArray(runs)) return null;
+  const self = selfRunId === null ? null : String(selfRunId);
+  return runs.find((r) => r?.status === 'completed' && String(r.id) !== self) ?? null;
+}
+
+/** GITHUB_RUN_ID as a run id, or null when it is absent or not numeric. */
+export const selfRunIdFrom = (env) => (/^[0-9]{1,20}$/.test(String(env?.GITHUB_RUN_ID ?? '')) ? env.GITHUB_RUN_ID : null);
+
+export function liveApi(repo, tok, cacheDir, { maxRequests = DEFAULT_MAX_REQUESTS, selfRunId = null } = {}) {
   // Held HERE, where the header is built, as well as in main(): a caller that
   // skips main() must not be able to send an unshaped credential either.
   if (!isValidGithubToken(tok)) {
@@ -939,10 +960,11 @@ export function liveApi(repo, tok, cacheDir, { maxRequests = DEFAULT_MAX_REQUEST
     return text ? res.text() : res.json();
   };
   const cached = (name, fetcher, { text = false } = {}) => readThroughCache(cacheDir, name, fetcher, { text });
-  /** A branch's newest run. NEVER cached — see --cache-dir in the header. */
+  /** A branch's newest COMPLETED run (newestCompleted, above). NEVER cached —
+   *  see --cache-dir in the header. */
   const fetchNewest = async (workflowId, branch) => {
-    const body = await get(`/repos/${repo}/actions/workflows/${workflowId}/runs?branch=${encodeURIComponent(branch)}&per_page=1`);
-    return body.workflow_runs?.[0] ?? null;
+    const body = await get(`/repos/${repo}/actions/workflows/${workflowId}/runs?branch=${encodeURIComponent(branch)}&status=completed&per_page=2`);
+    return newestCompleted(body.workflow_runs, { selfRunId });
   };
   return {
     live: true,
@@ -1213,7 +1235,7 @@ async function main(argv) {
       return 1;
     }
     console.log(`merge-base: ${onMain.checked} fix commit(s) named by the causes register are all on origin/main`);
-    api = liveApi(repo, tok, args.cacheDir ? resolve(args.cacheDir) : null, { maxRequests: args.maxRequests });
+    api = liveApi(repo, tok, args.cacheDir ? resolve(args.cacheDir) : null, { maxRequests: args.maxRequests, selfRunId: selfRunIdFrom(process.env) });
     // THE QUOTA FLOOR (D1, in the header), before the first counted request.
     let floor;
     try {
