@@ -38,6 +38,11 @@
 // together (O-PUBLIC-DOCS-HAND-WRITTEN-FACTS), and the demoted mutant is the
 // guard as it stood before that, so the pair proves the promotion is what bites.
 //
+// LIMB X-NO-VERIFY (2026-09-24) landed PROMOTED, so it has no warning phase to
+// prove: its cases, N1-N9 at the foot of this file, run its failing path. The
+// fixture carries both hooks, a runner and enough CONTRIBUTING.md files to clear
+// its noVerifyFiles floor, and none of them holds the flag until a case adds it.
+//
 // Run:  node --test "tooling/ci/test/agent-docs.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, before, after } from 'node:test';
@@ -153,6 +158,68 @@ function withTracked(rel, body, fn) {
   }
 }
 
+/** Replace a file the FIXTURE already tracks, stage it, and put the committed
+ *  bytes back afterwards. withTracked would untrack it on the way out, and the
+ *  hooks and spec-guards.mjs are X-NO-VERIFY subjects every other case needs. */
+function withEdited(rel, body, fn) {
+  const abs = join(ROOT, rel);
+  const keep = readFileSync(abs);
+  writeFileSync(abs, body);
+  git(ROOT, 'add', '--', rel);
+  try {
+    return fn();
+  } finally {
+    writeFileSync(abs, keep);
+    git(ROOT, 'add', '--', rel);
+  }
+}
+
+/* The X-NO-VERIFY subjects the fixture carries CLEAN: neither hook nor the runner
+   holds the flag at all, so a mutation of any one judging rule reds only the case
+   that exercises it, and never the clean tree every other case starts from. */
+const PRE_COMMIT_LINES = [
+  '#!/bin/sh',
+  '# fixture pre-commit: the runner, then what it prints on a red.',
+  'node "$RUNNER" --fast',
+  'code=$?',
+  'if [ "$code" -ne 0 ]; then',
+  '  echo "pre-commit: the spec guards are not clean. Commit refused." >&2',
+  '  echo "  Read the first FAIL line above and fix what it names." >&2',
+  '  exit "$code"',
+  'fi',
+  '',
+];
+const PRE_PUSH_LINES = [
+  '#!/bin/sh',
+  'node "$RUNNER" --full',
+  'code=$?',
+  'if [ "$code" -ne 0 ]; then',
+  '  echo "pre-push: the spec guards are not clean. Push refused." >&2',
+  '  exit "$code"',
+  'fi',
+  '',
+];
+const RUNNER_LINES = [
+  '// fixture spec-guards.mjs: the limb judges what this file prints.',
+  "console.error('  1 guard(s) reported a finding. Read the first FAIL line above and fix what it names.');",
+  'process.exit(1);',
+  '',
+];
+/** A body with one line spliced in at a 1-based line number, so a case can assert
+ *  the exact `path:line` the limb names rather than only the path. */
+function spliced(lines, lineNo, text) {
+  const out = lines.slice();
+  out.splice(lineNo - 1, 0, text);
+  return out.join('\n');
+}
+/** The report line's counts, read back as numbers. */
+function nvCounts(out) {
+  const m = out.match(/x-no-verify: (\d+) file\(s\), (\d+) occurrence\(s\): (\d+) prohibition\(s\), (\d+) withdrawn, (\d+) quoted, (\d+) instruction\(s\); (\d+) comment line\(s\) skipped/);
+  assert.ok(m, `the run did not print the x-no-verify report line: ${out}`);
+  const [files, occurrences, prohibition, withdrawn, quoted, instruction, skipped] = m.slice(1).map(Number);
+  return { files, occurrences, prohibition, withdrawn, quoted, instruction, skipped };
+}
+
 before(() => {
   BASE = mkdtempSync(join(tmpdir(), 'nikatru-agentdocs-'));
   ROOT = join(BASE, 'Fixture_Public');
@@ -174,6 +241,18 @@ before(() => {
     const dir = join(ROOT, 'filler', `d-${d}`);
     mkdirSync(dir, { recursive: true });
     for (let i = 0; i < perDir; i += 1) { writeFileSync(join(dir, `f-${i}.md`), `filler ${d}/${i}\n`); written += 1; }
+  }
+
+  /* The X-NO-VERIFY subjects: the must-exist four (both hooks, the runner and the
+     root AGENTS.md above), then clean CONTRIBUTING.md files until the subject count
+     is ONE over the guard's noVerifyFiles floor, read from the guard. One over, so
+     taking a single hook out of the index (N7) trips the must-exist check alone. */
+  mkdirSync(join(ROOT, '.githooks'), { recursive: true });
+  writeFileSync(join(ROOT, '.githooks', 'pre-commit'), PRE_COMMIT_LINES.join('\n'));
+  writeFileSync(join(ROOT, '.githooks', 'pre-push'), PRE_PUSH_LINES.join('\n'));
+  writeFileSync(join(ROOT, 'tooling', 'scripts', 'spec-guards.mjs'), RUNNER_LINES.join('\n'));
+  for (let k = 0; k < Math.max(FLOORS.noVerifyFiles + 1 - 4, 0); k += 1) {
+    writeFileSync(join(ROOT, 'filler', `d-${k}`, 'CONTRIBUTING.md'), '# Contributing\n\nRead the first FAIL line a hook prints and fix what it names.\n');
   }
 
   git(ROOT, 'init', '-q');
@@ -398,4 +477,186 @@ test('the fixture guard file is the committed one, byte for byte', () => {
     readFileSync(GUARD_SRC, 'utf8'),
     'the copy under test has drifted from the guard in the tree, so every case above is about a file nothing ships',
   );
+});
+
+/* ── limb X-NO-VERIFY (O-PUBLIC-HOOKS-ADVERTISE-NO-VERIFY) ─────────────────────
+   N1-N9. The limb landed PROMOTED, so unlike the five limbs above it has no WARN
+   phase to be proved in: its failing path is what these cases run. Each one starts
+   from the clean fixture, where no subject holds the flag, and adds the one line
+   its rule is about. */
+
+/* The shape of the line both hooks printed until 2026-09-24: a label, a colon, then
+   the bypass as the command to run. */
+const BYPASS_COMMIT = '  echo "  To get past it:  git commit --no-verify   (and say why in the message)" >&2';
+const BYPASS_PUSH = '  echo "  To get past it:  git push --no-verify" >&2';
+
+test('N1 X-NO-VERIFY is PROMOTED ON LANDING: the old bypass line in .githooks/pre-commit is FAIL and exit 1', () => {
+  assert.ok(!CONFIG.warnLimbs.includes('X-NO-VERIFY'), 'X-NO-VERIFY is in warnLimbs, so the bypass line it exists to catch would print WARN and exit 0');
+  const before = run();
+  assert.equal(before.code, 0, `green control first, or the case below proves nothing: ${before.out}`);
+  assert.doesNotMatch(before.out, /X-NO-VERIFY/);
+
+  withEdited('.githooks/pre-commit', spliced(PRE_COMMIT_LINES, 7, BYPASS_COMMIT), () => {
+    const r = run();
+    assert.equal(r.code, 1, `the bypass printed as the way forward must FAIL the run: ${r.out}`);
+    assert.match(r.out, /FAIL X-NO-VERIFY \.githooks\/pre-commit:7 /, `the finding must name the file and the line: ${r.out}`);
+    assert.match(r.out, /x 1 new finding\(s\) on a promoted limb/);
+  });
+  assert.equal(run().code, 0, 'the fixture must be green again after the case');
+});
+
+test('N2 a PROHIBITION is not a finding, wrapped over two lines or not, and a WITHDRAWN instruction is counted apart', () => {
+  const before = nvCounts(run().out);
+  const card = [
+    '# fixture agents card',
+    '',
+    'Small on purpose.',
+    '',
+    '- Exiting on a COVERAGE LOST limb is the guard working. Never `git checkout` around it and never',
+    '  `--no-verify` past it.',
+    '- The runner is slow, so commit with `--no-verify` for now. ⏱ 2026-09-24, APPENDED — the `--no-verify` advice before this is WITHDRAWN: it is fast again.',
+    '',
+    '⏱ 2026-09-24 AMENDED: commit with `--no-verify` when the anchor is missing — WITHDRAWN, the worktree fix removed the reason.',
+    '',
+  ].join('\n');
+  withEdited('AGENTS.md', card, () => {
+    const r = run();
+    assert.equal(r.code, 0, `a prohibition and two withdrawn instructions must all pass: ${r.out}`);
+    assert.doesNotMatch(r.out, /X-NO-VERIFY AGENTS\.md/);
+    const after = nvCounts(r.out);
+    assert.equal(after.prohibition - before.prohibition, 1, `the wrapped "never ... --no-verify" must count as ONE prohibition: ${r.out}`);
+    /* Private's judge (ported, HOOKS-4): a dated APPENDED withdrawal names the flag itself, so it
+       withdraws the flag before it AND its own mention (2); an AMENDED lead withdraws its unit (1). */
+    assert.equal(after.withdrawn - before.withdrawn, 3, `the dated APPENDED withdrawal (2) and the AMENDED lead (1) must be counted withdrawn: ${r.out}`);
+    assert.equal(after.instruction, 0);
+  });
+  assert.equal(run().code, 0, 'the fixture must be green again after the case');
+});
+
+test('N3 .githooks/pre-push is a subject: its old bypass line is FAIL at its own line', () => {
+  withEdited('.githooks/pre-push', spliced(PRE_PUSH_LINES, 6, BYPASS_PUSH), () => {
+    const r = run();
+    assert.equal(r.code, 1, `the pre-push bypass line must FAIL the run: ${r.out}`);
+    assert.match(r.out, /FAIL X-NO-VERIFY \.githooks\/pre-push:6 /, `the finding must name pre-push and the line: ${r.out}`);
+    assert.match(r.out, /"git push --no-verify" >&2"/, `the finding must quote the clause it judged: ${r.out}`);
+  });
+  assert.equal(run().code, 0, 'the fixture must be green again after the case');
+});
+
+test('N4 CLAUDE.md is graded from the INDEX only: untracked it is invisible, tracked it fails', () => {
+  /* Public gitignores CLAUDE.md and .claude/, so 0 are tracked and the limb grades
+     none. This is the day one IS tracked, and the day before it. */
+  /* Three lines, the root CLAUDE.md cap, so A-SIZE stays silent and the one
+     finding is this limb's. */
+  const body = '# local card\nIf the hook blocks you, commit with `--no-verify`.\n';
+  const abs = join(ROOT, 'CLAUDE.md');
+  writeFileSync(abs, body);
+  try {
+    const untracked = run();
+    assert.equal(untracked.code, 0, `an untracked CLAUDE.md must be invisible: the working tree is never read: ${untracked.out}`);
+    assert.doesNotMatch(untracked.out, /X-NO-VERIFY CLAUDE\.md/);
+  } finally {
+    rmSync(abs, { force: true });
+  }
+  withTracked('CLAUDE.md', body, () => {
+    const r = run();
+    assert.equal(r.code, 1, `a TRACKED CLAUDE.md that instructs the bypass must FAIL: ${r.out}`);
+    // Private's markdownUnits (ported) joins a heading's next line into its unit: the unit starts at :1.
+    assert.match(r.out, /FAIL X-NO-VERIFY CLAUDE\.md:1 /);
+    assert.doesNotMatch(r.out, /A-SIZE CLAUDE\.md/, `the fixture card must be under its cap, or this case carries two findings: ${r.out}`);
+  });
+  assert.equal(run().code, 0, 'the fixture must be green again after the case');
+});
+
+test('N5 spec-guards.mjs is read for its CODE: a comment recording the flag is skipped, a printed one fails', () => {
+  const body = [
+    '// fixture spec-guards.mjs: the limb judges what this file prints.',
+    '/* Three agents committed with `--no-verify` on 2026-09-07; this records it. */',
+    '/* A permanently red guard trains people to pass',
+    '   `--no-verify`, which is why the entry was removed. */',
+    '// a line comment: people once ran git commit --no-verify here',
+    "console.error('  1 guard(s) reported a finding. Fix it, or commit with --no-verify and say why.');",
+    'process.exit(1);',
+    '',
+  ].join('\n');
+  withEdited('tooling/scripts/spec-guards.mjs', body, () => {
+    const r = run();
+    assert.equal(r.code, 1, `the printed bypass must FAIL the run: ${r.out}`);
+    assert.match(r.out, /FAIL X-NO-VERIFY tooling\/scripts\/spec-guards\.mjs:6 /, `the finding must name the code line: ${r.out}`);
+    assert.equal((r.out.match(/X-NO-VERIFY tooling\/scripts\/spec-guards\.mjs:/g) ?? []).length, 1, `only the code line is a finding; the three comment lines record, they do not instruct: ${r.out}`);
+    assert.equal(nvCounts(r.out).skipped, 3, `the three flag-bearing comment lines must be counted as skipped: ${r.out}`);
+  });
+  assert.equal(run().code, 0, 'the fixture must be green again after the case');
+});
+
+test('N6 a "never" in ANOTHER clause does not excuse the flag, and a CONTRIBUTING.md at any depth is a subject', () => {
+  const body = [
+    'Never skip a hook; if one blocks you, commit with `--no-verify`.',
+    '',
+    'Never push red, or push with `--no-verify` and say why.',
+    '',
+  ].join('\n');
+  withTracked('extensions/CONTRIBUTING.md', body, () => {
+    const r = run();
+    assert.equal(r.code, 1, `a flag outside the clause that holds "never" is an instruction: ${r.out}`);
+    assert.match(r.out, /FAIL X-NO-VERIFY extensions\/CONTRIBUTING\.md:1 /);
+    /* Private's CLAUSE_BREAKS (ported, HOOKS-4) break at "; " but not at ", or", so the second
+       paragraph's flag shares its clause with "Never" and is a prohibition there. */
+    assert.doesNotMatch(r.out, /FAIL X-NO-VERIFY extensions\/CONTRIBUTING\.md:3 /);
+    assert.equal(nvCounts(r.out).instruction, 1, `"; " must break the clause: ${r.out}`);
+  });
+  assert.equal(run().code, 0, 'the fixture must be green again after the case');
+});
+
+test('N7 a hook missing from the index is COVERAGE LOST — exit 2, naming X-NO-VERIFY and the hook', () => {
+  git(ROOT, 'rm', '-q', '--cached', '--', '.githooks/pre-push');
+  try {
+    const r = run();
+    assert.equal(r.code, 2, `a limb with a hook missing has not graded the hooks, and that is not a pass: ${r.out}`);
+    assert.match(r.out, /x COVERAGE LOST - X-NO-VERIFY \.githooks\/pre-push is not a subject/, `the FIRST refusal line must name the limb and the file: ${r.out}`);
+  } finally {
+    git(ROOT, 'add', '--', '.githooks/pre-push');
+  }
+  assert.equal(run().code, 0, 'the fixture must be green again after the case');
+});
+
+test('N8 a hand-written baseline entry for X-NO-VERIFY is IGNORED, and the finding it names still fails', () => {
+  const bp = join(ROOT, '.agentdocs.baseline.json');
+  writeFileSync(bp, JSON.stringify({ entries: [{ limb: 'X-NO-VERIFY', path: '.githooks/pre-commit:7', message: 'typed by hand' }] }, null, 2) + '\n');
+  try {
+    withEdited('.githooks/pre-commit', spliced(PRE_COMMIT_LINES, 7, BYPASS_COMMIT), () => {
+      const r = run();
+      assert.equal(r.code, 1, `a baseline entry must not excuse a limb promoted on landing: ${r.out}`);
+      assert.match(r.out, /IGNORED {2}X-NO-VERIFY \.githooks\/pre-commit:7 /, `the ignored entry must be printed, not dropped in silence: ${r.out}`);
+      assert.match(r.out, /FAIL X-NO-VERIFY \.githooks\/pre-commit:7 /);
+      assert.doesNotMatch(r.out, /BASELINE X-NO-VERIFY/);
+    });
+  } finally {
+    rmSync(bp, { force: true });
+  }
+  assert.equal(run().code, 0, 'the fixture must be green again after the case');
+});
+
+test('N9 --write-baseline never freezes X-NO-VERIFY, while it still freezes a warning limb', () => {
+  const bp = join(ROOT, '.agentdocs.baseline.json');
+  try {
+    withEdited('AGENTS.md', overByteCap(), () => {
+      withEdited('.githooks/pre-commit', spliced(PRE_COMMIT_LINES, 7, BYPASS_COMMIT), () => {
+        const wrote = run('check-agent-docs.mjs', '--write-baseline');
+        assert.equal(wrote.code, 0, `--write-baseline must succeed: ${wrote.out}`);
+        assert.match(wrote.out, /with 1 frozen finding\(s\)/, `the A-SIZE finding, and only it, is frozen: ${wrote.out}`);
+        assert.match(wrote.out, /NOT FROZEN 1 finding\(s\) on X-NO-VERIFY/);
+        const limbs = JSON.parse(readFileSync(bp, 'utf8')).entries.map((e) => e.limb);
+        assert.deepEqual(limbs, ['A-SIZE'], `the written baseline must carry no X-NO-VERIFY entry: ${limbs.join(', ')}`);
+
+        const r = run();
+        assert.equal(r.code, 1, `after --write-baseline the bypass line must still FAIL: ${r.out}`);
+        assert.match(r.out, /BASELINE A-SIZE AGENTS\.md/);
+        assert.match(r.out, /FAIL X-NO-VERIFY \.githooks\/pre-commit:7 /);
+      });
+    });
+  } finally {
+    rmSync(bp, { force: true });
+  }
+  assert.equal(run().code, 0, 'the fixture must be green again after the case');
 });

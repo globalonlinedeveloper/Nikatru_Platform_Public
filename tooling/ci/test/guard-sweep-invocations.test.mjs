@@ -23,12 +23,14 @@
 // construction, which is the whole reason this defect survived: the pattern was
 // correct about every example its author had in mind.
 // ─────────────────────────────────────────────────────────────────────────────
-import { test, describe } from 'node:test';
+import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, mkdtempSync, mkdirSync, writeFileSync, copyFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseWorkflow } from '../workflow-scan.mjs';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SWEEP = join(REPO, 'tooling', 'scripts', 'guard-sweep.mjs');
@@ -164,5 +166,148 @@ describe('guard-sweep sees a flagged node invocation', () => {
         `the sweep never reports carrying ${flag}, so it is dropping the flag CI starts these guards with`,
       );
     }
+  });
+});
+
+// ⏱ 2026-09-24 — O-PRE-PUSH-RUNS-NO-CI-GATE-LEG. `preflight.mjs --smoke` runs this
+// sweep inside a time budget and must then say what the budget cut and which of
+// ci-gate's needs it reached. That needs three things from the sweep, pinned here:
+// the JOB behind every invocation, a budget that cuts only guards that would run,
+// and per-row wall times.
+describe('guard-sweep: job, --budget-ms and --times', () => {
+  test('every recorded invocation names a job its own workflow really has', () => {
+    const r = spawnSync(process.execPath, [SWEEP, '--invocations'], { cwd: REPO, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    const calls = Object.values(JSON.parse(r.stdout)).flat();
+    assert.ok(calls.length > 100, `the scan recorded only ${calls.length} invocation(s)`);
+    const jobsIn = new Map();
+    const unknown = calls.filter((c) => {
+      if (!jobsIn.has(c.wf)) jobsIn.set(c.wf, parseWorkflow(REPO, `.github/workflows/${c.wf}`).jobs);
+      return typeof c.job !== 'string' || !jobsIn.get(c.wf).has(c.job);
+    });
+    assert.deepEqual(unknown.map((c) => `${c.wf}:${c.job}`), [], 'an invocation carries no job, or one its workflow does not declare');
+  });
+
+  test('🔴 --budget-ms 0 over the REAL tree starts no guard, and cuts only the rows that would have run', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sweep-budget-'));
+    try {
+      const scanJson = join(dir, 'scan.json');
+      const cutJson = join(dir, 'cut.json');
+      const scan = spawnSync(process.execPath, [SWEEP, '--scan-only', '--json', scanJson], { cwd: REPO, encoding: 'utf8' });
+      assert.equal(scan.status, 0, (scan.stdout + scan.stderr).slice(-600));
+      const cut = spawnSync(process.execPath, [SWEEP, '--budget-ms', '0', '--json', cutJson], { cwd: REPO, encoding: 'utf8', timeout: 120_000 });
+      assert.equal(cut.status, 0, (cut.stdout + cut.stderr).slice(-600));
+      const a = JSON.parse(readFileSync(scanJson, 'utf8'));
+      const b = JSON.parse(readFileSync(cutJson, 'utf8'));
+      assert.equal(b.executed, 0, `a zero budget still executed ${b.executed} invocation(s)`);
+      assert.equal(b.budgetMs, 0);
+      const verdicts = (doc) => Object.fromEntries(doc.rows.map((row) => [row.name, row.verdict]));
+      const va = verdicts(a);
+      const vb = verdicts(b);
+      // --scan-only files every would-run row and every NEEDS-CI row as SCAN. Under a
+      // zero budget each of those must be BUDGET or NEEDS-CI, and nothing else moves.
+      const moved = Object.keys(va).filter((n) => (va[n] === 'SCAN' ? !['BUDGET', 'NEEDS-CI'].includes(vb[n]) : va[n] !== vb[n]));
+      assert.deepEqual(moved, [], 'a row changed class beyond SCAN -> BUDGET | NEEDS-CI');
+      const count = (v) => Object.values(vb).filter((x) => x === v).length;
+      assert.ok(count('BUDGET') > 100, `only ${count('BUDGET')} BUDGET row(s)`);
+      assert.ok(count('NEEDS-CI') > 0, 'no NEEDS-CI row survived the cut, so this case cannot tell the two apart');
+      assert.ok(count('MUTATES') > 0, 'no MUTATES row on the real tree, so this case cannot show one is never cut');
+      assert.equal(b.budgetCut, count('BUDGET'));
+      assert.ok(b.rows.filter((row) => row.verdict === 'BUDGET').every((row) => row.ms === null && row.tried.length === 0 && row.jobs.length > 0));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  describe('against a fixture tree with a slow guard', () => {
+    let root;
+    let run;
+    let doc;
+    before(() => {
+      root = mkdtempSync(join(tmpdir(), 'sweep-fixture-'));
+      const put = (rel, text) => {
+        mkdirSync(dirname(join(root, rel)), { recursive: true });
+        writeFileSync(join(root, rel), text, 'utf8');
+      };
+      mkdirSync(join(root, 'tooling', 'scripts'), { recursive: true });
+      copyFileSync(SWEEP, join(root, 'tooling', 'scripts', 'guard-sweep.mjs'));
+      mkdirSync(join(root, 'tooling', 'ci'), { recursive: true });
+      copyFileSync(join(REPO, 'tooling', 'ci', 'workflow-scan.mjs'), join(root, 'tooling', 'ci', 'workflow-scan.mjs'));
+      copyFileSync(join(REPO, 'tooling', 'ci', 'tree-walk.mjs'), join(root, 'tooling', 'ci', 'tree-walk.mjs'));
+      // The sweep reads the exemption declaration out of this file by shape; with no
+      // exit call in it, the stub itself is a LIBRARY row.
+      put('tooling/ci/assert-guard-coverage.mjs', "const NOT_CI_RUNNABLE = new Map([\n  ['z-exempt.mjs',\n    'fixture'],\n]);\nexport default NOT_CI_RUNNABLE;\n");
+      // ⏱ 2026-09-26 (F-W17-1): the sweep refuses, exit 1, a CEILINGS key that names no file
+      // here (#945). Each key the copied sweep declares gets a stand-in with no entry point,
+      // a LIBRARY row: never run, never budgeted, never red.
+      {
+        const src = readFileSync(SWEEP, 'utf8');
+        const at = src.indexOf('const CEILINGS = {');
+        const table = at === -1 ? '' : src.slice(at, src.indexOf('\n};', at));
+        for (const m of table.matchAll(/^\s*'([^']+\.mjs)':/gm)) put(`tooling/ci/${m[1]}`, '// fixture stand-in: guard-sweep.mjs CEILINGS names this file\nexport {};\n');
+      }
+      put('tooling/ci/a-fast.mjs', "console.log('a ok'); process.exit(0);\n");
+      put('tooling/ci/b-slow.mjs', "setTimeout(() => { console.log('b ok'); process.exit(0); }, 2000);\n");
+      put('tooling/ci/c-late.mjs', "console.log('c ok'); process.exit(0);\n");
+      put('tooling/ci/d-needs-ci.mjs', "console.log('d ok'); process.exit(0);\n");
+      put('tooling/ci/e-late.mjs', "console.log('e ok'); process.exit(0);\n");
+      put('.github/workflows/ci.yml', [
+        'name: ci',
+        'on: [push]',
+        'jobs:',
+        '  guards-a:',
+        '    runs-on: ubuntu-24.04',
+        '    steps:',
+        '      - run: node tooling/ci/a-fast.mjs',
+        '      - run: node tooling/ci/b-slow.mjs',
+        '  guards-b:',
+        '    runs-on: ubuntu-24.04',
+        '    steps:',
+        '      - run: node tooling/ci/a-fast.mjs',
+        '      - run: node tooling/ci/c-late.mjs',
+        '      - run: node tooling/ci/d-needs-ci.mjs ${{ secrets.TOKEN }}',
+        '      - run: node tooling/ci/e-late.mjs',
+        '',
+      ].join('\n'));
+      const out = join(root, 'sweep.json');
+      // a-fast starts at once and b-slow before 1.5 s; b-slow ends after 2 s, so
+      // c-late and e-late are due after the budget is spent.
+      run = spawnSync(process.execPath, [join(root, 'tooling', 'scripts', 'guard-sweep.mjs'), '--budget-ms', '1500', '--times', '--json', out], { cwd: root, encoding: 'utf8', timeout: 60_000 });
+      doc = JSON.parse(readFileSync(out, 'utf8'));
+    });
+    after(() => { try { rmSync(root, { recursive: true, force: true }); } catch {} });
+
+    const verdictOf = (name) => doc.rows.find((row) => row.name === name)?.verdict;
+
+    test('🔴 the budget cuts the guards due after it is spent, and a started guard finishes', () => {
+      assert.equal(run.status, 0, (run.stdout + run.stderr).slice(-800));
+      assert.equal(verdictOf('a-fast.mjs'), 'ok');
+      assert.equal(verdictOf('b-slow.mjs'), 'ok');
+      assert.equal(verdictOf('c-late.mjs'), 'BUDGET');
+      assert.equal(verdictOf('e-late.mjs'), 'BUDGET');
+      assert.equal(doc.budgetCut, 2);
+      assert.equal(doc.executed, 2);
+      assert.match(run.stdout, /--budget-ms 1500: 2 guard\(s\) that would have run were NOT started/);
+    });
+
+    test('a guard only CI can run stays NEEDS-CI after the budget is spent', () => {
+      assert.equal(verdictOf('d-needs-ci.mjs'), 'NEEDS-CI');
+    });
+
+    test('a row carries every job that invokes it, one call made by two jobs included', () => {
+      const a = doc.rows.find((row) => row.name === 'a-fast.mjs');
+      assert.deepEqual(a.jobs, [{ wf: 'ci.yml', job: 'guards-a' }, { wf: 'ci.yml', job: 'guards-b' }]);
+      assert.equal(a.tried.length, 1, 'the call both jobs make identically ran twice');
+      assert.deepEqual(doc.rows.find((row) => row.name === 'e-late.mjs').jobs, [{ wf: 'ci.yml', job: 'guards-b' }]);
+    });
+
+    test('--times prints each executed row\'s wall time and the median / p90, and --json carries ms', () => {
+      const b = doc.rows.find((row) => row.name === 'b-slow.mjs');
+      assert.ok(b.ms >= 1900, `b-slow sleeps 2 s and recorded ${b.ms} ms`);
+      assert.equal(doc.rows.find((row) => row.name === 'c-late.mjs').ms, null);
+      assert.match(run.stdout, /b-slow\.mjs .*\(\d{4,} ms\)/);
+      assert.match(run.stdout, /⏱ --times: 2 guard\(s\) executed in \d+ ms · median \d+ ms · p90 \d+ ms · slowest: b-slow\.mjs/);
+      assert.equal(doc.p90Ms, b.ms);
+    });
   });
 });

@@ -17,7 +17,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, copyFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, copyFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -30,6 +30,7 @@ const SCRIPTS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'scrip
 const HEAVY = join(SCRIPTS, 'heavy.mjs');
 const LOCK_MODULE = join(SCRIPTS, 'heavy-lock.mjs');
 const PREFLIGHT = join(SCRIPTS, 'preflight.mjs');
+const WORK_DONE = join(SCRIPTS, 'heavy-work-done.mjs');
 
 const TMP = mkdtempSync(join(tmpdir(), 'heavy-lock-test-'));
 after(() => { try { rmSync(TMP, { recursive: true, force: true }); } catch {} });
@@ -95,6 +96,23 @@ const HANG_AT_EXIT = (() => {
   ].join('\n'));
   return pathToFileURL(file).href;
 })();
+/** The same hang one step later, INSIDE the exit event, as nodejs#54918 hangs:
+ *  process.exit runs and 'exit' is emitted, then a listener never returns.
+ *  Registered with process.on — NOT prependListener — so a listener prepended
+ *  before it (heavy-work-done.mjs's) still runs, and this is the one that blocks.
+ *  The marker is `<pid> <process.exitCode>`. Passed to the COMMAND heavy.mjs runs,
+ *  never to heavy.mjs itself. */
+const HANG_IN_EXIT = (() => {
+  const file = join(TMP, 'hang-in-exit.mjs');
+  writeFileSync(file, [
+    `import { writeFileSync } from 'node:fs';`,
+    `process.on('exit', (code) => {`,
+    `  writeFileSync(process.env.HANG_MARKER, process.pid + ' ' + (process.exitCode ?? code));`,
+    `  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);`,
+    `});`,
+  ].join('\n'));
+  return pathToFileURL(file).href;
+})();
 /** Run `args` under HANG_AT_EXIT; once it hangs, record whether it is alive and
  *  whether the lock exists, then kill it. */
 const hungRun = async (args, env, { cwd, lock }) => {
@@ -115,6 +133,35 @@ const hungRun = async (args, env, { cwd, lock }) => {
   await closed;
   return { ...state, hung, out };
 };
+/** heavy.mjs over a command that hangs in its exit (HANG_IN_EXIT). heavy.mjs is
+ *  NOT hung here — its CHILD is. Once the child has hung, record whether the lock
+ *  goes free while that child is still alive; then give heavy.mjs `ceilingMs` to
+ *  end by itself (its grace kill), and kill whatever is left after that.
+ *  `killHung` ends the child right after the observation instead. */
+const heavyHung = async (heavyArgs, env, { lock, cwd, ceilingMs = 20_000, killHung = false }) => {
+  const marker = join(dirname(lock), `hung-${++n}.marker`);
+  mkdirSync(dirname(lock), { recursive: true });
+  const c = spawn(process.execPath, [HEAVY, ...heavyArgs], { env: { ...env, HANG_MARKER: marker }, cwd });
+  let out = '';
+  c.stdout.on('data', (d) => { out += d; });
+  c.stderr.on('data', (d) => { out += d; });
+  const closed = new Promise((settle) => c.on('close', (status) => settle(status)));
+  await waitFor(() => existsSync(marker) || c.exitCode !== null, 30_000);
+  const [hungPid, hungCode] = existsSync(marker) ? readFileSync(marker, 'utf8').split(' ').map(Number) : [null, null];
+  const freed = hungPid !== null && (await waitFor(() => !existsSync(lock), 5_000));
+  const lockFreeWhileHung = freed && pidAlive(hungPid);
+  const kill = (pid) => { try { process.kill(pid, 'SIGKILL'); } catch {} };
+  if (killHung && hungPid) kill(hungPid);
+  const status = await Promise.race([closed, new Promise((r) => setTimeout(() => r('still running'), ceilingMs))]);
+  if (hungPid) kill(hungPid);
+  if (status === 'still running') {
+    c.kill('SIGKILL');
+    await closed;
+  }
+  return { status, out, hungPid, hungCode, lockFreeWhileHung };
+};
+/** The heavy-done-*.json records left in a lock's directory. */
+const doneFiles = (lock) => (existsSync(dirname(lock)) ? readdirSync(dirname(lock)).filter((f) => f.startsWith('heavy-done-')) : []);
 
 describe('a process HUNG after its work holds no lock (O-PREFLIGHT-HANGS-HOLDING-THE-MACHINE-LOCK)', () => {
   test('control: releasing only in the exit handler KEEPS the lock while hung — the harness sees the 2026-09-20 shape', async () => {
@@ -148,6 +195,134 @@ describe('a process HUNG after its work holds no lock (O-PREFLIGHT-HANGS-HOLDING
     assert.match(r.out, /COVERAGE LOST — could not start/);
     assert.ok(r.alive);
     assert.equal(r.lockHeld, false, r.out);
+  });
+});
+
+describe('a node child HUNG after its work frees the lock: the work-done channel (heavy-work-done.mjs)', () => {
+  test('H0 control: HANG_IN_EXIT really hangs inside the exit event, and its marker carries the pid and the code', async () => {
+    const lock = freshLock();
+    mkdirSync(dirname(lock), { recursive: true });
+    const marker = join(dirname(lock), 'h0.marker');
+    const c = spawn(process.execPath, ['--import', HANG_IN_EXIT, '-e', 'process.exitCode = 5'], { env: { ...childEnv(lock), HANG_MARKER: marker } });
+    const closed = new Promise((settle) => c.on('close', settle));
+    const reached = await waitFor(() => existsSync(marker) || c.exitCode !== null);
+    const text = existsSync(marker) ? readFileSync(marker, 'utf8') : null;
+    await new Promise((r) => setTimeout(r, 1000));
+    const alive = c.exitCode === null && c.signalCode === null;
+    c.kill('SIGKILL');
+    await closed;
+    assert.ok(reached, 'the process neither hung nor ended');
+    assert.equal(text, `${c.pid} 5`);
+    assert.ok(alive, 'if this goes false the harness no longer hangs, and every case below is vacuous');
+  });
+
+  test('H1 🔴 hung in its exit: the lock goes free at the REPORTED exit, the grace kills the tree, and heavy.mjs answers the reported 5', async () => {
+    const lock = freshLock();
+    const r = await heavyHung(
+      ['--timeout', '0.2', '--', process.execPath, '--import', HANG_IN_EXIT, '-e', 'process.exitCode = 5'],
+      childEnv(lock, { NIKATRU_HEAVY_EXIT_GRACE_MS: '1500' }),
+      { lock },
+    );
+    assert.equal(r.hungCode, 5, `control: the child must reach its exit with 5 and hang there\n${r.out}`);
+    assert.equal(r.lockFreeWhileHung, true, `the machine lock was still held while the finished child hung\n${r.out}`);
+    assert.equal(r.status, 5, `heavy.mjs must end by itself and answer the REPORTED code — not 2, and not a hang\n${r.out}`);
+    assert.match(r.out, /🔓 heavy-run lock released — .* reached its exit with code 5/);
+    assert.match(r.out, /⚠️ .* reported exit 5 .* hung after its work/);
+    assert.equal(existsSync(lock), false);
+    assert.deepEqual(doneFiles(lock), [], 'the report must be removed when heavy.mjs ends');
+  });
+
+  test('H1b 🔴 process.exit(6), then a hang: the lock is free while the child is STILL alive, before any grace has run out', async () => {
+    // The closes clause of O-PREFLIGHT-HANGS-HOLDING-THE-MACHINE-LOCK for a
+    // WRAPPED runner: "the lock is free while a deliberately hung process still
+    // runs". The grace is a minute, so no kill can have happened when the lock
+    // is read — only the report can have freed it.
+    const lock = freshLock();
+    const r = await heavyHung(
+      ['--timeout', '0.2', '--', process.execPath, '--import', HANG_IN_EXIT, '-e', 'process.exit(6)'],
+      childEnv(lock, { NIKATRU_HEAVY_EXIT_GRACE_MS: '60000' }),
+      { lock, killHung: true },
+    );
+    assert.equal(r.hungCode, 6, `control: process.exit(6) must reach the exit event and hang there\n${r.out}`);
+    assert.equal(r.lockFreeWhileHung, true, `a child hung after process.exit(6) still held the machine lock\n${r.out}`);
+    assert.match(r.out, /reached its exit with code 6/);
+    assert.doesNotMatch(r.out, /hung after its work/, 'the grace is 60 s: heavy.mjs must not have killed anything yet');
+  });
+
+  test('H2 the lock stays HELD while the child is still working: the report is its exit, not its start', () => {
+    const lock = freshLock();
+    const work = "setTimeout(() => console.log('LOCK DURING WORK ' + require('fs').existsSync(process.env.NIKATRU_HEAVY_LOCK)), 1000);";
+    const r = node([HEAVY, '--', process.execPath, '-e', work], childEnv(lock));
+    assert.equal(r.status, 0, r.out);
+    assert.match(r.out, /work-done channel ARMED/);
+    assert.match(r.out, /LOCK DURING WORK true/, `the lock was released while the command was still working\n${r.out}`);
+    assert.equal(existsSync(lock), false);
+  });
+
+  test('H3 a node that is NOT heavy.mjs\'s direct child never reports, even holding the channel', () => {
+    // heavy.mjs arms only a node DIRECT child, so here the script hands the
+    // channel on itself — the shape of a shim or a script that starts node one
+    // level down. That node's parent is the shell, not heavy.mjs; its exit says
+    // nothing about the command's, and it must stay silent.
+    const lock = freshLock();
+    mkdirSync(dirname(lock), { recursive: true });
+    const leaked = join(dirname(lock), 'leaked-done.json');
+    const env = childEnv(lock, { H3_FILE: leaked, H3_IMPORT: pathToFileURL(WORK_DONE).href, H3_NODE: process.execPath, H3_PARENT: String(process.pid) });
+    let cmd;
+    if (process.platform === 'win32') {
+      // Named directly, so heavy.mjs wraps it: its direct child is cmd.exe. A
+      // .cmd cannot read its parent's pid, so the parent handed on is this
+      // test's, which is not the grandchild's parent either.
+      const script = join(dirname(lock), 'grandchild.cmd');
+      writeFileSync(script, [
+        '@echo off',
+        'set "NIKATRU_HEAVY_DONE_FILE=%H3_FILE%"',
+        'set "NIKATRU_HEAVY_DONE_PARENT=%H3_PARENT%"',
+        'set "NODE_OPTIONS=--import=%H3_IMPORT%"',
+        '"%H3_NODE%" -e "process.exitCode = 3"',
+        'exit /b 4',
+        '',
+      ].join('\r\n'));
+      cmd = [script];
+    } else {
+      // $PPID is heavy.mjs's pid: the exact channel heavy.mjs would have armed,
+      // carried one level too deep. `; exit 4` keeps sh from exec-ing node.
+      cmd = ['sh', '-c', 'NIKATRU_HEAVY_DONE_FILE="$H3_FILE" NIKATRU_HEAVY_DONE_PARENT="$PPID" NODE_OPTIONS="--import=$H3_IMPORT" "$H3_NODE" -e "process.exitCode = 3"; exit 4'];
+    }
+    const r = node([HEAVY, '--', ...cmd], env);
+    assert.equal(r.status, 4, `the command's own code must come through\n${r.out}`);
+    assert.match(r.out, /work-done channel not armed/);
+    assert.equal(existsSync(leaked), false, `a node that is not heavy.mjs's direct child reported through the channel\n${r.out}`);
+    assert.equal(existsSync(lock), false);
+  });
+
+  test('H4 the channel is gone before the command\'s own code runs: both variables and the --import token, the caller\'s NODE_OPTIONS kept', () => {
+    const lock = freshLock();
+    const seen = "console.log('SEEN ' + JSON.stringify([process.env.NIKATRU_HEAVY_DONE_FILE ?? null, process.env.NIKATRU_HEAVY_DONE_PARENT ?? null, process.env.NODE_OPTIONS ?? null]));";
+    const r = node([HEAVY, '--', process.execPath, '-e', seen], childEnv(lock, { NODE_OPTIONS: '--no-deprecation' }));
+    assert.equal(r.status, 0, r.out);
+    assert.match(r.out, /work-done channel ARMED/);
+    assert.ok(r.out.includes('SEEN [null,null,"--no-deprecation"]'), `the command (and so everything it spawns) inherited the channel\n${r.out}`);
+  });
+
+  test('H5 control: a node child that simply ends leaves nothing behind — its own code, no hang warning, no report file', () => {
+    const lock = freshLock();
+    const r = node([HEAVY, '--', process.execPath, '-e', 'process.exitCode = 3'], childEnv(lock, { NIKATRU_HEAVY_EXIT_GRACE_MS: '1500' }));
+    assert.equal(r.status, 3, r.out);
+    assert.match(r.out, /work-done channel ARMED/);
+    assert.doesNotMatch(r.out, /hung after its work/);
+    assert.equal(existsSync(lock), false);
+    assert.deepEqual(doneFiles(lock), []);
+  });
+
+  test('H6 CI set: no lock is taken, so no channel is armed and no line speaks of one', () => {
+    const lock = freshLock();
+    const r = node([HEAVY, '--', process.execPath, '-e', 'console.log("ci ran")'], childEnv(lock, { CI: 'true' }));
+    assert.equal(r.status, 0, r.out);
+    assert.match(r.out, /CI is set — heavy-run lock and backup wait SKIPPED/);
+    assert.match(r.out, /ci ran/);
+    assert.doesNotMatch(r.out, /work-done channel/, `CI takes no lock: there is nothing to release early\n${r.out}`);
+    assert.deepEqual(doneFiles(lock), []);
   });
 });
 
@@ -290,7 +465,20 @@ describe('stale locks are reclaimed LOUDLY; a live one is waited for, up to the 
     plant(lock, { startedAt: new Date(Date.now() - 10 * 60_000).toISOString() });
     const r = node([HEAVY, '--lock-wait', '0.05', '--', process.execPath, '-e', '0'], childEnv(lock, { NIKATRU_HEAVY_LOCK_MAX_AGE_MIN: '5' }));
     assert.equal(r.status, 0, r.out);
-    assert.match(r.out, /RECLAIMED — held for 10 min, past the 5 min age ceiling/);
+    // `mins` rounds to a tenth of a minute (6 s), so a child that takes ~3 s to
+    // reach the judgement reads the planted 10 min as 10.1: the tenth is optional.
+    assert.match(r.out, /RECLAIMED — held for 10(\.\d)? min, past the 5 min age ceiling/);
+  });
+
+  test('the age in the RECLAIMED line is read to the tenth: 10 min and 4 s is not refused for printing 10.1', () => {
+    // O-HEAVY-LOCK-TEST-READS-A-ROUNDED-MINUTE. The literal `10 min` above held
+    // only while the child reached the judgement inside 3 s of the plant; four
+    // seconds past the ten minutes always prints 10.1, which the literal refused.
+    const lock = freshLock();
+    plant(lock, { startedAt: new Date(Date.now() - 10 * 60_000 - 4_000).toISOString() });
+    const r = node([HEAVY, '--lock-wait', '0.05', '--', process.execPath, '-e', '0'], childEnv(lock, { NIKATRU_HEAVY_LOCK_MAX_AGE_MIN: '5' }));
+    assert.equal(r.status, 0, r.out);
+    assert.match(r.out, /RECLAIMED — held for 10(\.\d)? min, past the 5 min age ceiling/);
   });
 
   test('a LIVE, fresh holder past the --lock-wait ceiling → exit 2 COVERAGE LOST naming it, and its lock untouched', () => {
@@ -470,6 +658,9 @@ describe('preflight takes the lock after the untracked leg, and only then', () =
     mkdirSync(join(root, 'tooling', 'scripts'), { recursive: true });
     copyFileSync(PREFLIGHT, join(root, 'tooling', 'scripts', 'preflight.mjs'));
     copyFileSync(LOCK_MODULE, join(root, 'tooling', 'scripts', 'heavy-lock.mjs'));
+    // preflight.mjs imports the one workflow parse (ci-gate's needs, 2026-09-24).
+    mkdirSync(join(root, 'tooling', 'ci'), { recursive: true });
+    for (const f of ['workflow-scan.mjs', 'tree-walk.mjs']) copyFileSync(join(SCRIPTS, '..', 'ci', f), join(root, 'tooling', 'ci', f));
     git('init', '-q', '-b', 'main');
     git('add', '-A');
     git('commit', '-q', '-m', 'base');
@@ -571,6 +762,22 @@ describe('preflight takes the lock after the untracked leg, and only then', () =
     assert.equal(r.marker, 'exit 1', `the throw must become a FAIL leg and a verdict, not an uncaught crash\n${r.out}`);
     assert.match(r.out, /THE LEG THREW/);
     assert.match(r.out, /injected: the sweep leg cannot make its temp dir/, 'the leg must have thrown the INJECTED error, not some other');
+  });
+
+  test('H7 🔴 heavy.mjs over a preflight HUNG in its exit: the machine lock is free at the verdict, and the verdict is the answer', async () => {
+    // The WRAPPED half of O-PREFLIGHT-HANGS-HOLDING-THE-MACHINE-LOCK. Under
+    // heavy.mjs, preflight's own lock is only re-entrant — its release at the end
+    // of the work frees nothing — and the lock the machine queues on is heavy.mjs's.
+    const lock = freshLock();
+    const r = await heavyHung(
+      ['--timeout', '0.2', '--', process.execPath, '--import', HANG_IN_EXIT, join(root, 'tooling', 'scripts', 'preflight.mjs'), '--sweep-only', '--lock-wait', '0.03'],
+      childEnv(lock, { NIKATRU_HEAVY_EXIT_GRACE_MS: '1500' }),
+      { cwd: root, lock },
+    );
+    assert.equal(r.hungCode, 1, `preflight must reach its verdict (1 in this skeleton) and then hang in exit\n${r.out}`);
+    assert.match(r.out, /re-entrant/, 'preflight must be running under heavy.mjs\'s lock, not a lock of its own');
+    assert.equal(r.lockFreeWhileHung, true, `heavy.mjs held the machine lock while the finished preflight hung\n${r.out}`);
+    assert.equal(r.status, 1, `heavy.mjs must answer preflight's verdict, not 2\n${r.out}`);
   });
 
   test('--lock-wait with no number is a usage error (exit 2)', () => {

@@ -139,6 +139,9 @@ describe('end to end: preflight releases the machine lock though a hung descenda
     mkdirSync(join(root, 'tooling', 'scripts'), { recursive: true });
     copyFileSync(PREFLIGHT, join(root, 'tooling', 'scripts', 'preflight.mjs'));
     copyFileSync(LOCK_MODULE, join(root, 'tooling', 'scripts', 'heavy-lock.mjs'));
+    // preflight.mjs imports the one workflow parse (ci-gate's needs, 2026-09-24).
+    mkdirSync(join(root, 'tooling', 'ci'), { recursive: true });
+    for (const f of ['workflow-scan.mjs', 'tree-walk.mjs']) copyFileSync(join(SCRIPTS, '..', 'ci', f), join(root, 'tooling', 'ci', f));
     git('init', '-q', '-b', 'main');
     git('add', '-A');
     git('commit', '-q', '-m', 'base');
