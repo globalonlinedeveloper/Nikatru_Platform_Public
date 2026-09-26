@@ -22,7 +22,7 @@ import { spawnSync } from 'node:child_process';
 import {
   composeReleaseBuild, apiBaseUrl, appApiHost, printed, substitute, PLATFORM_API_BASE,
 } from '../flutter-release-build.mjs';
-import { flutterReleaseBuilds } from '../workflow-scan.mjs';
+import { flutterReleaseBuilds, flutterBuilds } from '../workflow-scan.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
@@ -302,6 +302,14 @@ describe('the census follows the call', () => {
     assert.deepEqual(called[0], literal[0]);
     assert.equal(called[0].stamp, 'android-play');
     assert.equal(called[0].platform, 'android');
+  });
+
+  test('the full census carries a composer call as mode `release`, and its release view is the same record', () => {
+    const root = censusRoot('census-call-mode', buildWorkflow(CALL));
+    const [full] = flutterBuilds(root);
+    const [release] = flutterReleaseBuilds(root);
+    assert.equal(full.mode, 'release');
+    assert.deepEqual({ ...release, mode: 'release' }, full);
   });
 
   test('--print is not a build', () => {

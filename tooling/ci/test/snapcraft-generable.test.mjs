@@ -112,9 +112,11 @@ const workflowWith = (packages, { runner = 'ubuntu-24.04', extraInstallStep = fa
     `          sudo apt-get install -y \\`,
     `            ${head} \\`,
     `            ${tail}`,
-    ...(buildsLinux
-      ? ['      - name: Build linux', '        run: >', '          flutter build linux --release', '          --build-name=1.0.0']
-      : []),
+    ...(buildsLinux === 'composer'
+      ? ['      - name: Build linux', '        run: node tooling/ci/flutter-release-build.mjs subscriptiontracker linux linux-snap']
+      : buildsLinux
+        ? ['      - name: Build linux', '        run: >', '          flutter build linux --release', '          --build-name=1.0.0']
+        : []),
     ...(extraInstallStep
       ? ['  other:', '    runs-on: ubuntu-24.04', '    steps:', '      - name: More deps', '        run: sudo apt-get install -y zip']
       : []),
@@ -161,6 +163,9 @@ function tree({
   omitStoreTree = false,
   runner = 'ubuntu-24.04',
   extraInstallStep = false,
+  // true: a literal `flutter build linux`; false: no Linux build; 'composer': the
+  // build is tooling/ci/flutter-release-build.mjs's, which needs the register's
+  // storeKeyDefine and the app's app.yaml, so both are written.
   buildsLinux = true,
   // Per-file listing overrides. The licence cases need a tree whose
   // `license.txt` is a real SPDX identifier, which the default fixture is not.
@@ -194,6 +199,10 @@ function tree({
       { id: 'web', kind: 'web', platforms: ['web'], served: true, storeMetadataDir: null },
     ],
   };
+  if (buildsLinux === 'composer') {
+    register.purchaseRails = { storeKeyDefine: { define: 'STORE_KEY', secretByRail: {} } };
+    write('apps/subscriptiontracker/app.yaml', 'id: subscriptiontracker\n');
+  }
   if (mutateRegister) mutateRegister(register);
   write('tooling/channel-register.json', JSON.stringify(register, null, 2));
 
@@ -362,6 +371,25 @@ describe('generate-snapcraft — the recipe is derived, and refuses when it cann
     assert.equal(g.code, 2, g.out); // a refusal exits 2 since 2026-09-25; 1 is a finding
     assertComplained(g.out);
     assert.match(g.out, /does not run `flutter build linux`/);
+  });
+
+  // ⏱ 2026-09-25 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 2 of 3): which job builds
+  // Linux is workflow-scan's census, so a lane whose build is composed by
+  // tooling/ci/flutter-release-build.mjs, with no `flutter build linux` text in
+  // it, is still the Linux lane.
+  test('a Linux build made through the composer is the Linux lane', () => {
+    const g = generate(tree({ buildsLinux: 'composer' }), ['--bundle', bundle()]);
+    assert.equal(g.code, 0, g.out);
+    assert.match(readFileSync(g.recipe, 'utf8'), /^ {6}- libjsoncpp25$/m);
+  });
+
+  test('REFUSES as COVERAGE LOST when the composer refuses the lane call, rather than guessing the lane', () => {
+    const root = tree({ buildsLinux: 'composer' });
+    rmSync(join(root, 'apps/subscriptiontracker/app.yaml'));
+    const g = generate(root, ['--bundle', bundle()]);
+    assert.equal(g.code, 2, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /COVERAGE LOST — \.github\/workflows\/build-platforms\.yml:\d+: the composer refuses .*app\.yaml does not exist/);
   });
 
   test('REFUSES when the build workflow is gone', () => {

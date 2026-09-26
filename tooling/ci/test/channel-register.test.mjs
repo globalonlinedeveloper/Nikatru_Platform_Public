@@ -1598,6 +1598,22 @@ describe('assert-channel-register — the lane\'s output vs the formats its chan
     assert.match(out, /NOT ONE yielded a readable artifact/);
   });
 
+  // ⏱ ADDED 2026-09-25 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 2 of 3): a lane's builds are
+  // read off the census, which composes a flutter-release-build.mjs call. The text
+  // match this replaced found no `flutter build` in such a lane and exited 2 on the
+  // COVERAGE LOST above.
+  test('a served lane that builds through the composer yields its artifact', () => {
+    const { code, out } = run(
+      tree({
+        releaseChannel: null,
+        laneBuilds: 'node tooling/ci/flutter-release-build.mjs fixture web web',
+        extraFiles: { 'apps/fixture/app.yaml': 'id: fixture\nhosts:\n  api: fixture-api.nikatru.com\n' },
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /NOT ONE yielded a readable artifact/);
+  });
+
   test('PRINTS an unmapped `flutter build` target rather than comparing against nothing', () => {
     // ⏱ 2026-09-22 — this limb still only PRINTS (the line asserted below), but
     // the run now exits 1: 6b-ii fails a stamped build whose target the census in

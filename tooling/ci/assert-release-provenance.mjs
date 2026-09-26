@@ -51,7 +51,7 @@
 // and the prose around it; the gap is the same argument. This
 // repo has shipped that exact defect twice — the guard-coverage counter that
 // accepted a name in a comment ([pipeline F-10], fixed at dd30feb) and
-// `assert-stamp-platforms.mjs:41-46`, whose header records deleting the real
+// `assert-stamp-platforms.mjs:43-48`, whose header records deleting the real
 // build step and staying green because the comment above it said the words.
 //
 // ── ORDER IS THE WHOLE POINT, AND IT CROSSES JOBS ────────────────────────────
@@ -266,7 +266,7 @@ import { stripSourceComments } from './text-reductions.mjs';
 // ⏱ 2026-09-25 (pd2c) — the publish classification and the per-segment dry-run
 // rule followed the parser out, AS THEY WERE: assert-workflow-hardening limb 10
 // grades the same publish set. The gate walk stays here.
-import { parseWorkflow, parseResolvedWorkflows, lineAt, placeOf, refusalText, storePublishSteps, laneRunHost, laneRefusalText, shellSegments, classifyPublishes } from './workflow-scan.mjs';
+import { parseWorkflow, parseResolvedWorkflows, lineAt, placeOf, refusalText, storePublishSteps, laneRunHost, laneRefusalText, shellSegments, classifyPublishes, flutterReleaseBuilds } from './workflow-scan.mjs';
 // limb 2b. The repo's one JSONC reader, and the one sandbox predicate.
 import { parseJsonc } from './d1-sql-inventory.mjs';
 import { isObject, sandboxEnvironmentFindings } from './wrangler-environments.mjs';
@@ -302,9 +302,14 @@ function coverageLost(lines) {
  * command counts unless its own segment says `--debug` or `--profile`, the
  * only two spellings that make a Flutter build non-release. (`web-server` is
  * a dev-server target, not a shippable artifact.)
+ * ⏱ CHANGED 2026-09-25 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 2 of 3): that
+ * rule is now workflow-scan's census, read through its release view
+ * (flutterReleaseBuilds: mode `release` or `default`), one entry per job
+ * LINE. It was `/flutter\s+build\s+(?!web-server\b)\S+/` without
+ * `/--debug\b|--profile\b/` per segment here, which a release build made
+ * through tooling/ci/flutter-release-build.mjs never matched, so its job was
+ * no release lane and its gate was never asked for.
  */
-const RELEASE_BUILD_CMD = /flutter\s+build\s+(?!web-server\b)\S+/;
-const NON_RELEASE_MODE = /--debug\b|--profile\b/;
 
 // PUBLISH (what hands an artifact to something outside the run), DRY_RUN (the
 // per-segment dry-run exclusion) and classifyPublishes, which applies both, live
@@ -652,10 +657,14 @@ const has = (job, re) => job.logical.find((l) => re.test(l.text));
 // workflow-scan.mjs (⏱ MOVED 2026-09-25, AS IT WAS; see above RELEASE_BUILD_CMD).
 
 for (const wf of workflows) {
+  const releaseLines = new Map();
+  for (const b of flutterReleaseBuilds(ROOT, [wf])) {
+    if (!releaseLines.has(b.job)) releaseLines.set(b.job, new Set());
+    releaseLines.get(b.job).add(b.runLine);
+  }
   for (const job of wf.jobs.values()) {
-    job.releaseBuilds = job.logical.filter((l) =>
-      shellSegments(l.text).some((s) => RELEASE_BUILD_CMD.test(s) && !NON_RELEASE_MODE.test(s)),
-    );
+    const lines = releaseLines.get(job.name) ?? new Set();
+    job.releaseBuilds = job.logical.filter((l) => lines.has(l.n));
     job.gateCall = has(job, /node\s+tooling\/ci\/assert-gate-passed\.mjs/);
     job.markerCall = has(job, /node\s+tooling\/ci\/record-deployment\.mjs/);
     job.publishes = classifyPublishes(job);

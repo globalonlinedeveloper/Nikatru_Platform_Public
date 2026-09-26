@@ -58,7 +58,9 @@
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
-import { parseWorkflow, parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt, shellSegments, workflowEvents } from './workflow-scan.mjs';
+import {
+  parseWorkflow, parseAllWorkflows, flutterReleaseBuilds, flutterBuilds, gradeDomain, buildAt, shellSegments, workflowEvents,
+} from './workflow-scan.mjs';
 import { UNTAGGED_REF, releaseTagOf } from './tag-owner.mjs';
 
 // ── The release lanes are DERIVED FROM THE REGISTER, never typed here ─────────
@@ -476,30 +478,26 @@ if (!existsSync(wfDir)) {
 }
 const wfFiles = listDir(wfDir).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'));
 
-/** Fold a `run: >` block back into one command line. The flags of a Flutter
- *  build are spread over a dozen continuation lines; scanning line-by-line would
- *  see `--build-number=${{` and nothing else. */
-function commandAt(lines, idx) {
-  const indent = lines[idx].length - lines[idx].trimStart().length;
-  const parts = [lines[idx].trim()];
-  for (let i = idx + 1; i < lines.length; i++) {
-    const l = lines[i];
-    if (l.trim() === '') break;
-    if (l.length - l.trimStart().length < indent) break;
-    parts.push(l.trim());
-  }
-  // `${{ github.run_number }}` contains spaces; collapse them so the command can
-  // be tokenised on whitespace without splitting an expression in half.
-  return parts.join(' ').replace(/\$\{\{\s*([^}]*?)\s*\}\}/g, (_m, inner) => `\${{${inner.replace(/\s+/g, '')}}}`);
-}
+// ── every `flutter build`, from the census ───────────────────────────────────
+// ⏱ CHANGED 2026-09-25 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 2 of 3). The served
+// lanes, the deferred-lane count and the undeclared-lane check below each read
+// `/\bflutter build\b/` off the raw text, so a build a workflow asks
+// tooling/ci/flutter-release-build.mjs to compose was no build to any of them.
+// They read workflow-scan.mjs flutterBuilds instead: one record per shell
+// segment, every mode, a composer call composed.
+const allParsed = parseAllWorkflows(repoRoot);
+const everyBuild = flutterBuilds(repoRoot, allParsed);
 
-/** All `flutter build …` commands in a workflow, already folded. */
-function flutterBuilds(lines) {
-  const out = [];
-  lines.forEach((l, i) => {
-    if (/\bflutter build\b/.test(l)) out.push(commandAt(lines, i));
-  });
-  return out;
+// The census keeps `${{ x }}` as written; the version flags are read as whitespace-free
+// tokens, so an expression is collapsed first — `${{ github.run_number }}` would
+// otherwise split in half on the space.
+const flatten = (s) => s.replace(/\$\{\{\s*([^}]*?)\s*\}\}/g, (_m, inner) => `\${{${inner.replace(/\s+/g, '')}}}`);
+
+/** One census record's command, flattened, from its `flutter build` on. */
+function commandOf(b) {
+  const seg = flatten(b.segment);
+  const at = /\bflutter\s+build\s/.exec(seg);
+  return at ? seg.slice(at.index).trim() : seg.trim();
 }
 
 const flag = (cmd, name) => {
@@ -625,10 +623,15 @@ if (register !== null) {
 // The register is the declaration; this is the direction that catches an
 // undeclared one, and it is the reason a new native release lane cannot arrive
 // unversioned and silent.
+// A file BUILDS when the census holds a build in it. The raw text is read as well:
+// a job the parse cannot see yields no census record, and the undeclared-lane
+// finding must not wait on the `unreached` reading below to name that file.
 const laneWorkflows = new Set(RELEASE_LANES.map((l) => l.workflow));
+const buildFiles = new Set(everyBuild.map((b) => b.workflow));
 for (const f of RELEASE_LANES.length ? wfFiles : []) { // no lane resolved = a COVERAGE LOST above already, and "undeclared" against an empty set is derivative of it
   const text = stripAll(readFileSync(join(wfDir, f), 'utf8')).join('\n');
-  const ships = DEPLOY_MARKERS.test(text) && /\bflutter build\b/.test(text);
+  const builds = buildFiles.has(`.github/workflows/${f}`) || /\bflutter build\b/.test(text);
+  const ships = DEPLOY_MARKERS.test(text) && builds;
   if (ships && !laneWorkflows.has(f) && !SHIPS_NOTHING.has(f)) {
     lostCoverage.push(
       `${f} builds a Flutter app AND deploys it, but no ${REGISTER_REL} row names it as a lane —` +
@@ -722,7 +725,7 @@ for (const laneRow of servedLanes) {
     }
   }
 
-  const builds = flutterBuilds(lines);
+  const builds = everyBuild.filter((b) => b.workflow === rel).map(commandOf);
   if (builds.length === 0) {
     problems.push(`${rel} is declared a release lane but runs no \`flutter build\``);
   }
@@ -744,18 +747,16 @@ for (const laneRow of servedLanes) {
 // that wrong — an android-play build nobody "served" reached Play and production D1.
 // The builds themselves are now graded by the all-workflows pass below, served or not.
 for (const lane of deferredLanes) {
-  const lines = stripAll(readFileSync(join(wfDir, lane.workflow), 'utf8'));
-  const parsed = parseWorkflow(repoRoot, `.github/workflows/${lane.workflow}`);
-  const jobLines = parsed.jobs.get(lane.job).logical;
-  const builds = jobLines.filter((l) => /\bflutter build\b/.test(l.text)).map((l) => l.text);
+  const builds = everyBuild
+    .filter((b) => b.workflow === `.github/workflows/${lane.workflow}` && b.job === lane.job)
+    .map(commandOf);
   const withNumber = builds.filter((c) => /--build-number=/.test(c)).length;
   exemptions.push(
     `"${lane.id}" — .github/workflows/${lane.workflow} job "${lane.job}" builds ${builds.length} artifact(s), ` +
       `${withNumber} of them passing --build-number. The row is served: false, so this lane is EXEMPT from ` +
       'the lane-level rules above and this line is the exemption; its builds are still stamp-checked by ' +
       'the all-workflows pass. Flip `served` to true and every check the web lane answers becomes this ' +
-      'lane\'s to answer too.' +
-      (lines.length ? '' : ''),
+      'lane\'s to answer too.',
   );
 }
 
@@ -802,11 +803,7 @@ const longestReleaseLine = appsOnDisk
   .filter((pv) => pv && !pv.bad)
   .map((pv) => pv.releaseLine)
   .reduce((a, b) => (b.length > a.length ? b : a), '');
-// The census keeps `${{ x }}` as written; the version flags are read as whitespace-free
-// tokens, so an expression is collapsed first — the same fold commandAt() applies.
-const flatten = (s) => s.replace(/\$\{\{\s*([^}]*?)\s*\}\}/g, (_m, inner) => `\${{${inner.replace(/\s+/g, '')}}}`);
 
-const allParsed = parseAllWorkflows(repoRoot);
 const census = flutterReleaseBuilds(repoRoot, allParsed);
 const { exempt: stampExempt } = gradeDomain(census, register);
 const exemptKeys = new Set(stampExempt.map((b) => `${b.workflow}\u0000${b.runLine}\u0000${b.segment}`));
@@ -839,9 +836,7 @@ for (const wf of allParsed) {
 for (const b of census) {
   if (exemptKeys.has(`${b.workflow}\u0000${b.runLine}\u0000${b.segment}`)) continue;
   if (servedFiles.has(b.workflow)) continue;
-  const seg = flatten(b.segment);
-  const at = /\bflutter\s+build\s/.exec(seg);
-  const cmd = at ? seg.slice(at.index).trim() : seg.trim();
+  const cmd = commandOf(b);
   stampBuilds++;
   problems.push(
     ...stampProblems(buildAt(b), cmd, {
@@ -948,8 +943,8 @@ if (play.lost.length) {
 // A draft had one. Mutation testing then showed it could never fire: every route
 // to zero matched builds already pushes a strictly better-worded problem ("is
 // declared a release lane but runs no `flutter build`", or the unreadable-pubspec
-// message above), including when the matcher regex in flutterBuilds() is itself
-// broken — which is the exact scenario such a check exists for. By this repo's
+// message above), including when the census a served lane reads (flutterBuilds) is
+// itself broken — which is the exact scenario such a check exists for. By this repo's
 // own rule an assertion that cannot fail is worse than none, because it inflates
 // apparent coverage, so it was removed rather than kept for the look of it. The
 // coverage that DOES matter here — an undeclared release lane, an empty

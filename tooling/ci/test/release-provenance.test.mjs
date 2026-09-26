@@ -241,6 +241,37 @@ describe('assert-release-provenance — a release build must be gated first', ()
     assert.match(out, /neither it nor any job it `needs` calls/);
   });
 
+  // A release build made through the composer, whose text holds no `flutter build`.
+  const COMPOSER_BUILD_STEP = '      - run: node tooling/ci/flutter-release-build.mjs fixture linux linux-snap';
+  const withComposerApp = (root) => {
+    writeFileSync(
+      join(root, 'tooling', 'channel-register.json'),
+      JSON.stringify({
+        channels: [
+          { id: 'web', served: true, lane: { workflow: '.github/workflows/deploy.yml', job: 'deploy' } },
+          { id: 'linux-snap', platforms: ['linux'], purchaseRail: { rail: 'paddle' } },
+        ],
+        purchaseRails: { storeKeyDefine: { define: 'STORE_KEY', secretByRail: {} } },
+      }),
+    );
+    mkdirSync(join(root, 'apps', 'fixture'), { recursive: true });
+    writeFileSync(join(root, 'apps', 'fixture', 'app.yaml'), 'id: fixture\nhosts:\n  api: fixture-api.nikatru.com\n');
+    return root;
+  };
+
+  test('PASSES a gated build made through the composer', () => {
+    const { code, out } = run(withComposerApp(tree({ build: buildWorkflow().replace(BUILD_STEP, COMPOSER_BUILD_STEP) })));
+    assert.equal(code, 0, out);
+    assert.match(out, /assert-release-provenance: ok/);
+  });
+
+  test('FAILS when a build made through the composer does not reach the gate job', () => {
+    const build = buildWorkflow({ needsForm: 'none' }).replace(BUILD_STEP, COMPOSER_BUILD_STEP);
+    const { code, out } = run(withComposerApp(tree({ build })));
+    assert.equal(code, 1, out);
+    assert.match(out, /build\.yml: job "build" runs 1 release build\(s\) \(first at :13\) and neither it nor any job it `needs` calls/);
+  });
+
   test('FAILS when the gate runs AFTER the build in the same job', () => {
     const { code, out } = run(tree({ build: buildWorkflow({ gateJob: false, needsForm: 'none', gateInBuildJob: 'after' }) }));
     assert.equal(code, 1, out);
@@ -715,7 +746,7 @@ describe('assert-release-provenance — a --submit job is gated on an environmen
     // The stripper is load-bearing, not decoration: submit-play.mjs spends ~30
     // lines of comment on this exact check, so a raw text match would credit any
     // script that merely talks about it. Same defect this repo shipped twice
-    // (the guard-coverage counter at dd30feb, assert-stamp-platforms.mjs:41-46,
+    // (the guard-coverage counter at dd30feb, assert-stamp-platforms.mjs:43-48,
     // whose header records deleting the real `flutter build web` step and
     // staying GREEN because the comment above it said the words).
     const { code, out } = run(tree({ submitScript: SUBMIT_SCRIPT_COMMENT_ONLY }));

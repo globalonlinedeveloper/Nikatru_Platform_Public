@@ -717,11 +717,57 @@ export function defineValueIn(segment, name) {
  * does not pay for a second parse — two parses of one tree are two answers
  * waiting to disagree, which is this module's whole reason for existing.
  *
+ * ⏱ 2026-09-25: a VIEW of flutterBuilds below — its records in RELEASE_MODES, each
+ * without `mode`, so every record here is the one this function always returned.
+ *
  * @returns {{workflow: string, job: string, runLine: number, segment: string,
  *            target: string, platform: string|null, stamp: string|null,
  *            defines: Set<string>}[]}
  */
 export function flutterReleaseBuilds(root, parsed = null) {
+  return flutterBuilds(root, parsed).map(releaseBuildRecord).filter((b) => b !== null);
+}
+
+// ── EVERY BUILD, AND ITS MODE ─ ⏱ ADDED 2026-09-25 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 2 of 3)
+// The release census above drops a --debug/--profile build, and a reader whose
+// domain is wider than release builds — assert-obfuscation-coupled prints every
+// explicit --debug/--profile build and refuses a --release beside one — therefore
+// kept a raw `flutter build` loop of its own, which a composer call walks past.
+// This is the one walk of the workflows' `flutter build` segments; each record
+// carries the mode the segment asks for, a wider reader filters on it, and
+// flutterReleaseBuilds is its filter, not a second parser.
+
+/** Flutter's own word for release mode. Release is the DEFAULT, so this flag is
+ *  not what makes a build release (the absence of NOT_RELEASE_BUILD is); it
+ *  matters beside a --debug/--profile, where the command has no single mode. */
+export const RELEASE_MODE_FLAG = /--release(?=\s|$)/;
+
+/** The modes flutterReleaseBuilds keeps: exactly the segments NOT_RELEASE_BUILD
+ *  does not match. */
+export const RELEASE_MODES = new Set(['release', 'default']);
+
+/** The mode one shell segment asks for:
+ *  `release` — `--release`, and no --debug/--profile;
+ *  `default` — no mode flag at all, which Flutter builds as release;
+ *  `debug` / `profile` — the first such flag, and no `--release`;
+ *  `contradictory` — `--release` AND a --debug/--profile on one command. */
+export function buildMode(seg) {
+  const not = NOT_RELEASE_BUILD.exec(seg);
+  if (not === null) return RELEASE_MODE_FLAG.test(seg) ? 'release' : 'default';
+  return RELEASE_MODE_FLAG.test(seg) ? 'contradictory' : not[0].slice(2);
+}
+
+/**
+ * EVERY `flutter build` IN EVERY WORKFLOW, one record per shell SEGMENT, whatever
+ * its mode: flutterReleaseBuilds' record plus `mode` (buildMode above). A composer
+ * call is composed, as it is for the release census.
+ *
+ * @returns {{workflow: string, job: string, runLine: number, segment: string,
+ *            target: string, platform: string|null, stamp: string|null,
+ *            defines: Set<string>,
+ *            mode: 'release'|'default'|'debug'|'profile'|'contradictory'}[]}
+ */
+export function flutterBuilds(root, parsed = null) {
   const workflows = parsed ?? parseAllWorkflows(root);
   const out = [];
   for (const wf of workflows) {
@@ -734,7 +780,7 @@ export function flutterReleaseBuilds(root, parsed = null) {
             out.push(...composedBuilds(root, wf, job, l, seg, call));
             continue;
           }
-          const b = releaseBuildRecord(wf, job, l, seg);
+          const b = buildRecord(wf, job, l, seg);
           if (b !== null) out.push(b);
         }
       }
@@ -743,10 +789,10 @@ export function flutterReleaseBuilds(root, parsed = null) {
   return out;
 }
 
-/** One census record for one shell segment, or null when it is not a release build. */
-function releaseBuildRecord(wf, job, l, seg) {
+/** One full census record for one shell segment, or null when it runs no `flutter build`. */
+function buildRecord(wf, job, l, seg) {
   const m = RELEASE_BUILD.exec(seg);
-  if (!m || NOT_RELEASE_BUILD.test(seg)) return null;
+  if (!m) return null;
   const target = unquote(m[1]);
   const stamp = RELEASE_CHANNEL_STAMP.exec(seg);
   return {
@@ -758,7 +804,16 @@ function releaseBuildRecord(wf, job, l, seg) {
     platform: BUILD_TARGET_PLATFORM.get(target) ?? null,
     stamp: stamp === null ? null : unquote(stamp[1]),
     defines: definesIn(seg),
+    mode: buildMode(seg),
   };
+}
+
+/** The release view of one full record: null outside RELEASE_MODES, else the
+ *  record without `mode` — the shape flutterReleaseBuilds has always returned. */
+function releaseBuildRecord(b) {
+  if (!RELEASE_MODES.has(b.mode)) return null;
+  const { mode: _mode, ...record } = b;
+  return record;
 }
 
 // ── THE CENSUS FOLLOWS THE CALL ─ ⏱ ADDED 2026-09-25 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 1 of 3)
@@ -845,7 +900,7 @@ function composedBuilds(root, wf, job, l, seg, call) {
       throw new Error(`${at}: the composer refuses this call for app "${app}": ${e.message}`);
     }
     const segment = `${seg.slice(0, start)}${printed(substitute(composed.argv, lookup).argv)}${tail}`;
-    return releaseBuildRecord(wf, job, l, segment);
+    return buildRecord(wf, job, l, segment);
   });
 }
 

@@ -121,7 +121,9 @@ import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
 import { FLUTTER_APP_FIELD, flutterAppChannel } from './channel-surface.mjs';
-import { parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt, shellSegments, resolveLocalCalls, workflowSteps, commandAt, joinShellContinuations } from './workflow-scan.mjs';
+import {
+  parseAllWorkflows, flutterReleaseBuilds, gradeDomain, buildAt, shellSegments, resolveLocalCalls, workflowSteps, commandAt, joinShellContinuations, parseWorkflow, flutterBuilds,
+} from './workflow-scan.mjs';
 import { parseYaml } from '../app-yaml/yaml.mjs';
 import { lanesOfSurface } from './tag-owner.mjs';
 import { ARTIFACT_FORMATS } from '../../contracts/store/vocabulary.js';
@@ -1530,8 +1532,9 @@ function uploadPaths(lines) {
   return out;
 }
 
-/** platform -> { formats:Set, where:Set } for one job body. */
-function jobEmits(lines, label) {
+/** platform -> { formats:Set, where:Set } for one job body; `builds` is that job's
+ *  records in the census (workflow-scan.mjs flutterBuilds, every mode). */
+function jobEmits(lines, label, builds) {
   const out = new Map();
   const add = (p, f) => {
     if (!PLATFORMS.has(p)) return;
@@ -1539,10 +1542,17 @@ function jobEmits(lines, label) {
     out.get(p).formats.add(f);
     out.get(p).where.add(label);
   };
-  for (const m of lines.join('\n').matchAll(/flutter\s+build\s+([a-z]+)/g)) {
-    const t = BUILD_TARGETS.get(m[1]);
+  // ⏱ CHANGED 2026-09-25 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 2 of 3): this read
+  // `flutter build <target>` off the job's text, and a build the job asks
+  // tooling/ci/flutter-release-build.mjs to compose has none, so a lane that
+  // builds through the composer emitted nothing here. The target's leading
+  // lowercase word is what the text match read.
+  for (const b of builds) {
+    const target = /^[a-z]+/.exec(b.target)?.[0];
+    if (target === undefined) continue;
+    const t = BUILD_TARGETS.get(target);
     if (!t) {
-      unknownTargets.add(m[1]);
+      unknownTargets.add(target);
       continue;
     }
     for (const f of t.formats) add(t.platform, f);
@@ -1570,13 +1580,25 @@ function jobEmits(lines, label) {
   return out;
 }
 
+/** The census's builds for one workflow. A workflow the register names outside the
+ *  scan is parsed off disk, as `workflow()` above reads it: COVERAGE (a) below is
+ *  the finding about such a lane, and this comparison must not refuse first. */
+const buildsCache = new Map();
+function buildsOf(wfRel) {
+  if (!buildsCache.has(wfRel)) {
+    const parsed = gateScanned.find((w) => w.rel === wfRel) ?? parseWorkflow(ROOT, wfRel);
+    buildsCache.set(wfRel, parsed === null ? [] : flutterBuilds(ROOT, [parsed]));
+  }
+  return buildsCache.get(wfRel);
+}
 const emitCache = new Map();
 function emitsFor(wfRel, jobName) {
   const key = `${wfRel}::${jobName}`;
   if (!emitCache.has(key)) {
     const wf = workflow(wfRel);
     const lines = wf?.jobs.get(jobName) ?? [];
-    emitCache.set(key, jobEmits(lines, `${wfRel}:${jobName}`));
+    const builds = buildsOf(wfRel).filter((b) => b.job === jobName);
+    emitCache.set(key, jobEmits(lines, `${wfRel}:${jobName}`, builds));
   }
   return emitCache.get(key);
 }

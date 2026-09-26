@@ -95,7 +95,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 // the one way that reports clean: WHICH LINES IT CAN SEE. The apt list below is
 // inside a `run: |` block, which is exactly the shape a line-anchored regex gets
 // wrong.
-import { parseWorkflow, shellSegments } from '../ci/workflow-scan.mjs';
+import { parseWorkflow, shellSegments, flutterBuilds } from '../ci/workflow-scan.mjs';
 // THE ONE READING OF AN APP'S LINUX IDENTITY. `readLinuxIdentity` parses
 // `set(...)` calls with comments stripped, because that file's own comments name
 // both variables in prose — a bare text match reads the explanation, not the
@@ -551,10 +551,26 @@ export function readLinuxBuildLane(root) {
     ]);
   }
 
+  // ⏱ CHANGED 2026-09-25 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 2 of 3): whether a
+  // job builds Linux is workflow-scan's flutterBuilds census, every mode, not a
+  // regex over the job's text: a Linux build made through
+  // tooling/ci/flutter-release-build.mjs has no `flutter build linux` in it. A
+  // call the composer refuses leaves no reading of which job builds Linux, so it
+  // is refused here as COVERAGE LOST rather than guessed around.
+  let builds;
+  try {
+    builds = flutterBuilds(root, [wf]);
+  } catch (e) {
+    refuse([
+      `COVERAGE LOST — ${e.message}`,
+      'Which job builds Linux is then unknown, and the packages a snap stages must come from that job.',
+    ]);
+  }
+  const linuxJobs = new Set(builds.filter((b) => b.target === 'linux').map((b) => b.job));
+
   const found = [];
   for (const job of wf.jobs.values()) {
-    const body = job.logical.map((l) => l.text).join('\n');
-    const buildsLinux = /flutter\s+build\s+linux\b/.test(body);
+    const buildsLinux = linuxJobs.has(job.name);
     for (const line of job.logical) {
       // Step 3: undo the ` ; ` that joinBlockScalars put where a shell line
       // continuation was. Everything after this is a real command boundary.
