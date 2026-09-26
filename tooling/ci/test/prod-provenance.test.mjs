@@ -26,7 +26,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { enumerateMigrationTables, sqlLiteral } from '../migration-tables.mjs';
+import { databaseSources, enumerateMigrationTables, sqlLiteral } from '../migration-tables.mjs';
 import {
   attestationCommitRead,
   attestationDeployments,
@@ -63,6 +63,9 @@ function realTree() {
   cpSync(join(REPO, 'tooling', 'ops', 'check-prod-provenance.mjs'), join(root, 'tooling', 'ops', 'check-prod-provenance.mjs'));
   mkdirSync(join(root, MIGRATIONS), { recursive: true });
   cpSync(join(REPO, MIGRATIONS), join(root, MIGRATIONS), { recursive: true });
+  // ⏱ 2026-09-26 · limb 10 derives the databases from the platform register and each Worker's
+  // wrangler config, and enumerates every one of them (O-PROVENANCE-WALKS-ONE-DATABASE).
+  for (const rel of databaseSources(REPO)) cpSync(join(REPO, rel), join(root, rel), { recursive: true });
   return root;
 }
 
@@ -177,7 +180,7 @@ describe('assert-prod-provenance — the gate limb', () => {
     withTree(
       (root) => {
         const reg = readRegister(root);
-        reg.tables.ghost_table = { marker: 'app_version', resolver: 'released-build', reason: 'x'.repeat(120) };
+        reg.databases.platform_db.tables.ghost_table = { marker: 'app_version', resolver: 'released-build', reason: 'x'.repeat(120) };
         writeRegister(root, reg);
       },
       (r) => {
@@ -191,7 +194,7 @@ describe('assert-prod-provenance — the gate limb', () => {
     withTree(
       (root) => {
         const reg = readRegister(root);
-        reg.tables.cron_heartbeat.marker = 'app_version';
+        reg.databases.platform_db.tables.cron_heartbeat.marker = 'app_version';
         writeRegister(root, reg);
       },
       (r) => {
@@ -205,8 +208,8 @@ describe('assert-prod-provenance — the gate limb', () => {
     withTree(
       (root) => {
         const reg = readRegister(root);
-        reg.tables.consent_artifacts.marker = 'platform';
-        reg.tables.consent_artifacts.resolver = 'live-environment';
+        reg.databases.platform_db.tables.consent_artifacts.marker = 'platform';
+        reg.databases.platform_db.tables.consent_artifacts.resolver = 'live-environment';
         writeRegister(root, reg);
       },
       (r) => {
@@ -220,7 +223,7 @@ describe('assert-prod-provenance — the gate limb', () => {
     withTree(
       (root) => {
         const reg = readRegister(root);
-        reg.tables.entitlements.resolver = 'vibes';
+        reg.databases.platform_db.tables.entitlements.resolver = 'vibes';
         writeRegister(root, reg);
       },
       (r) => {
@@ -234,9 +237,9 @@ describe('assert-prod-provenance — the gate limb', () => {
     withTree(
       (root) => {
         const reg = readRegister(root);
-        reg.tables.revocation_reasons.marker = 'description';
-        reg.tables.cron_heartbeat.marker = 'target';
-        reg.tables.cron_heartbeat.resolver = 'migration-seed';
+        reg.databases.platform_db.tables.revocation_reasons.marker = 'description';
+        reg.databases.platform_db.tables.cron_heartbeat.marker = 'target';
+        reg.databases.platform_db.tables.cron_heartbeat.resolver = 'migration-seed';
         writeRegister(root, reg);
       },
       (r) => {
@@ -250,7 +253,7 @@ describe('assert-prod-provenance — the gate limb', () => {
     withTree(
       (root) => {
         const reg = readRegister(root);
-        reg.tables.unclaimed_payments.reason = 'n/a';
+        reg.databases.platform_db.tables.unclaimed_payments.reason = 'n/a';
         writeRegister(root, reg);
       },
       (r) => {
@@ -264,7 +267,7 @@ describe('assert-prod-provenance — the gate limb', () => {
     withTree(
       (root) => {
         const reg = readRegister(root);
-        reg.tables.cron_heartbeat.reason = 'The job column is the marker for this table and it is fine, honestly, for at least eighty characters of prose.';
+        reg.databases.platform_db.tables.cron_heartbeat.reason = 'The job column is the marker for this table and it is fine, honestly, for at least eighty characters of prose.';
         writeRegister(root, reg);
       },
       (r) => {
@@ -321,7 +324,7 @@ describe('assert-prod-provenance — the gate limb', () => {
     withTree(
       (root) => {
         const reg = readRegister(root);
-        reg.tables.signups.marker = 'signed_up_at';
+        reg.databases.platform_db.tables.signups.marker = 'signed_up_at';
         writeRegister(root, reg);
       },
       (r) => {
@@ -351,7 +354,7 @@ describe('assert-prod-provenance — the gate limb', () => {
     withTree(
       (root) => {
         const reg = readRegister(root);
-        reg.tables.consent_artifacts.alsoResolves = [...reg.tables.consent_artifacts.alsoResolves, 'no-such-resolver'];
+        reg.databases.platform_db.tables.consent_artifacts.alsoResolves = [...reg.databases.platform_db.tables.consent_artifacts.alsoResolves, 'no-such-resolver'];
         writeRegister(root, reg);
       },
       (r) => {
@@ -366,7 +369,7 @@ describe('assert-prod-provenance — the gate limb', () => {
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.doesNotMatch(r.stderr, /in `alsoResolves`, which/);
     const reg = JSON.parse(readFileSync(join(REPO, REGISTER), 'utf8'));
-    assert.deepEqual(reg.tables.consent_artifacts.alsoResolves, ['e2e-run', 'store-capture']);
+    assert.deepEqual(reg.databases.platform_db.tables.consent_artifacts.alsoResolves, ['e2e-run', 'store-capture']);
     assert.ok(Object.prototype.hasOwnProperty.call(reg.resolvers, 'store-capture'));
   });
 
@@ -634,7 +637,7 @@ describe('check-prod-provenance — the monitor limb', () => {
   test('⏱ 2026-09-15 · [ADR 087] a pending signup-purge step resolves by the second resolver; an undeclared step does not', () => {
     const ok = run({ pending_erasures: [{ marker: 'subscriptiontracker', n: 2 }, { marker: 'platform:signups', n: 1 }] });
     assert.equal(ok.status, 0, ok.stdout + ok.stderr);
-    assert.match(ok.stdout, /second-resolver acceptance: pending_erasures: 1 row\(s\) with `app_id` = `platform:signups` .* `erasure-step`/);
+    assert.match(ok.stdout, /second-resolver acceptance: platform_db\.pending_erasures: 1 row\(s\) with `app_id` = `platform:signups` .* `erasure-step`/);
     const bad = run({ pending_erasures: [{ marker: 'platform:renamed', n: 1 }] });
     assert.equal(bad.status, 1);
     assert.match(bad.stderr, /pending_erasures: 1 row\(s\)/);
@@ -777,8 +780,8 @@ describe('check-prod-provenance — a table its migration has not reached yet', 
     try {
       const r = run({ schemaJson: schema({ pending: [M17] }), now: hoursAfter(MERGED_930, 2), history: h.dir });
       assert.equal(r.status, 0, r.stdout + r.stderr);
-      assert.match(r.stdout, /^⬜ not yet migrated: ext_devices \(0017_ext_devices\.sql, merged 2026-09-25T03:44:39Z\)$/m);
-      assert.match(r.stdout, /^⬜ not yet migrated: ext_codes \(0017_ext_devices\.sql, merged 2026-09-25T03:44:39Z\)$/m);
+      assert.match(r.stdout, /^⬜ not yet migrated: platform_db\.ext_devices \(0017_ext_devices\.sql, merged 2026-09-25T03:44:39Z\)$/m);
+      assert.match(r.stdout, /^⬜ not yet migrated: platform_db\.ext_codes \(0017_ext_devices\.sql, merged 2026-09-25T03:44:39Z\)$/m);
       assert.match(r.stdout, /ext_devices\s+0 row\(s\) — not in production, not queried/);
       assert.ok(
         r.stdout.includes(
@@ -801,7 +804,7 @@ describe('check-prod-provenance — a table its migration has not reached yet', 
         r.stderr,
         /ext_devices: 0017_ext_devices\.sql is still not in `d1_migrations` 25\.0 h after the merge that added it \(merged 2026-09-25T03:44:39Z in [0-9a-f]{7}\)/,
       );
-      assert.doesNotMatch(r.stdout, /not yet migrated: ext_devices/);
+      assert.doesNotMatch(r.stdout, /not yet migrated: platform_db\.ext_devices/);
       assert.doesNotMatch(r.stdout, /^ok {2}every row/m);
     } finally {
       rmSync(h.dir, { recursive: true, force: true });
@@ -858,7 +861,7 @@ describe('check-prod-provenance — a table its migration has not reached yet', 
       for (const now of ['2026-09-25T04:00:00Z', '2026-09-25T07:00:00Z']) {
         const r = run({ schemaJson: schema({ pending: [M17] }), now, history: h.dir });
         assert.equal(r.status, 0, `${now}: ${r.stdout}${r.stderr}`);
-        assert.match(r.stdout, /⬜ not yet migrated: ext_devices \(0017_ext_devices\.sql, merged 2026-09-25T03:44:39Z\)/);
+        assert.match(r.stdout, /⬜ not yet migrated: platform_db\.ext_devices \(0017_ext_devices\.sql, merged 2026-09-25T03:44:39Z\)/);
         assert.doesNotMatch(r.stderr, /COULD NOT LOOK/);
       }
     } finally {
@@ -888,7 +891,7 @@ describe('check-prod-provenance — a table its migration has not reached yet', 
       // control: a Deployment of a commit that PREDATES the migration shows nothing about it.
       const before = run({ schemaJson: schema({ pending: [M17] }), now, history: h.dir, platformDeployments: [{ sha: pre, id: 98, created_at: null }] });
       assert.equal(before.status, 0, before.stdout + before.stderr);
-      assert.match(before.stdout, /⬜ not yet migrated: ext_devices/);
+      assert.match(before.stdout, /⬜ not yet migrated: platform_db\.ext_devices/);
 
       // control: a Deployment this history does not hold neither shows nor rules out — and says so.
       const unknown = run({ schemaJson: schema({ pending: [M17] }), now, history: h.dir, platformDeployments: [{ sha: 'f'.repeat(40), id: 97 }] });
@@ -1660,6 +1663,7 @@ describe('check-prod-provenance — a workflow_call-only lane is read in its cal
     mkdirSync(join(root, 'catalog'), { recursive: true });
     for (const f of [REGISTER, CHANNELS, 'tooling/legal/provider-register.json', 'catalog/apps.json']) cpSync(join(REPO, f), join(root, f));
     cpSync(join(REPO, MIGRATIONS), join(root, MIGRATIONS), { recursive: true });
+    for (const rel of databaseSources(REPO)) cpSync(join(REPO, rel), join(root, rel), { recursive: true });
     cpSync(join(REPO, 'services/platform/src'), join(root, 'services/platform/src'), { recursive: true });
     for (const e of readdirSync(join(REPO, 'apps'), { withFileTypes: true })) {
       const src = join(REPO, 'apps', e.name, 'pubspec.yaml');
@@ -1819,6 +1823,7 @@ describe('check-prod-provenance — a row both served and submittable is judged 
     cpSync(join(REPO, 'tooling/legal/provider-register.json'), join(root, 'tooling/legal/provider-register.json'));
     cpSync(join(REPO, 'catalog/apps.json'), join(root, 'catalog/apps.json'));
     cpSync(join(REPO, MIGRATIONS), join(root, MIGRATIONS), { recursive: true });
+    for (const rel of databaseSources(REPO)) cpSync(join(REPO, rel), join(root, rel), { recursive: true });
     cpSync(join(REPO, 'services/platform/src'), join(root, 'services/platform/src'), { recursive: true });
     for (const e of readdirSync(join(REPO, 'apps'), { withFileTypes: true })) {
       const src = join(REPO, 'apps', e.name, 'pubspec.yaml');

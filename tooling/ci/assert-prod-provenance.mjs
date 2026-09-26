@@ -10,9 +10,9 @@
 // defect this repository named on 2026-08-05, so this file asserts ONLY what is
 // decidable from the tree:
 //
-//   1. COVERAGE — the table set is ENUMERATED from services/platform/migrations,
+//   1. COVERAGE — the table set is ENUMERATED from each database's migrations,
 //      never listed. Zero tables enumerated is a broken parse, not a small
-//      schema, and it fails.
+//      schema, and it fails. Limbs 2–7 and 9 run once PER DATABASE.
 //   2. Every enumerated table has a provenance rule in tooling/prod-provenance
 //      .json. THIS IS THE REGRESSION THE WHOLE FILE EXISTS FOR: a migration that
 //      adds a table without adding a rule must be RED, because a rule set that
@@ -45,10 +45,22 @@
 //      running it keeps whole git history, and deploy-workers keeps applying the
 //      migrations before the deploy it records — each held by text, comments
 //      stripped.
+//  10. ⏱ 2026-09-26 · THE DATABASES ARE THE WORKERS' OWN
+//      (O-PROVENANCE-WALKS-ONE-DATABASE). prod-provenance.json's `databases`
+//      must name exactly the D1 databases tooling/platform-register.json's
+//      Workers own — every TOP-LEVEL binding carrying `migrations_dir`, read by
+//      tooling/ci/migration-tables.mjs `registeredD1Databases`, the reading the
+//      monitor uses. A database with no entry is COVERAGE LOST (its tables
+//      would have no rule and no reader); an entry no Worker owns, or one whose
+//      `wrangler`/`migrationsDir` is not its owner's, is a finding. Until this
+//      limb both halves read services/platform alone, and a table added to
+//      subscriptiontracker_db was seen by neither. An `exempt` rule (no marker
+//      any resolver reads) declares no marker and names every column.
 //
 // Every limb has a recorded failing case in tooling/ci/test/prod-provenance
-// .test.mjs, and limb 2 has one against the REAL TREE: adding a CREATE TABLE to
-// a real migration turns this red.
+// .test.mjs or tooling/ci/test/prod-provenance-databases.test.mjs, and limb 2
+// has one against the REAL TREE: adding a CREATE TABLE to a real migration
+// turns this red.
 //
 // LANE-BOUND: ops-watch.yml — this binding is the POINT of limb 8 rather than an oversight inside it, because ops-watch.yml is the ONLY workflow allowed to hold the credential the monitor needs.
 // assert-release-lane-generic.mjs is right to stop a guard that
@@ -62,7 +74,7 @@
 // question about that workflow and no other — deriving the name from the channel
 // register would be deriving it from the wrong set.
 //   The subject set that IS derived here is the TABLES (every CREATE TABLE in
-// services/platform/migrations/**, floored by REQUIRED_COVERAGE), so a new table
+// each registered database's migrations, floored by REQUIRED_COVERAGE), so a new table
 // acquires the obligation automatically. What cannot be derived is the single
 // credentialled workflow. If a second such workflow is ever added, this constant
 // must be widened deliberately — and limb 8's no-push-trigger assertion is what
@@ -75,7 +87,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-import { enumerateMigrationTables } from './migration-tables.mjs';
+import { enumerateMigrationTables, registeredD1Databases, databaseLock, exemptionProblem, EXEMPT, PLATFORM_REGISTER_REL } from './migration-tables.mjs';
 import { stripSourceComments } from './text-reductions.mjs';
 import { parseWorkflow } from './workflow-scan.mjs';
 
@@ -134,7 +146,6 @@ try {
   coverageLost([`${REGISTER_REL} is not valid JSON (${err.message}), so no rule could be read.`]);
 }
 
-const rules = register.tables ?? {};
 const resolvers = register.resolvers ?? {};
 if (Object.keys(resolvers).length === 0) {
   coverageLost([
@@ -144,172 +155,209 @@ if (Object.keys(resolvers).length === 0) {
   ]);
 }
 
-const migrationsRel = register.migrationsDir;
-if (typeof migrationsRel !== 'string' || migrationsRel.length === 0) {
+// ── LIMB 10 · ⏱ 2026-09-26 · THE DATABASES ARE THE WORKERS' OWN ────────────
+// Read, never listed: tooling/platform-register.json's Workers, each one's
+// TOP-LEVEL D1 bindings carrying `migrations_dir` — the one reading the monitor
+// uses (tooling/ci/migration-tables.mjs). `env.*` blocks are not production.
+const registeredDbs = register.databases;
+if (registeredDbs === null || typeof registeredDbs !== 'object' || Array.isArray(registeredDbs) || Object.keys(registeredDbs).length === 0) {
   coverageLost([
-    `${REGISTER_REL} declares no \`migrationsDir\`.`,
-    'The table set is DERIVED from that directory. Without it there is nothing to derive from, and a',
-    'hardcoded list is exactly what this guard exists to prevent: B-17\'s prose named four shared tables',
-    'while the migrations created nine.',
+    `${REGISTER_REL} declares no \`databases\`.`,
+    'Every rule lives under `databases.<database_name>.tables`. Without that map no table has a rule, and',
+    '"every table has a rule" would compare the schema against nothing.',
   ]);
 }
-
-// ── the domain, DERIVED ─────────────────────────────────────────────────────
-const migrationsDir = join(ROOT, migrationsRel);
-const { tables, filesRead, problems: parseProblems } = enumerateMigrationTables(migrationsDir);
-for (const p of parseProblems) problems.push(`${migrationsRel}/${p}`);
-
-if (filesRead === 0) {
+const derived = registeredD1Databases(ROOT);
+if (derived.problems.length) {
+  coverageLost([`the D1 databases could not be derived from ${PLATFORM_REGISTER_REL} and its Workers' wrangler configs.`, ...derived.problems]);
+}
+const lock = databaseLock(derived.databases, registeredDbs);
+if (lock.unregistered.length) {
   coverageLost([
-    `not one .sql file was read under ${migrationsRel}.`,
-    'The table set would be EMPTY, "every table has a rule" would be vacuously true, and this guard',
-    'would print ok over a database it never opened.',
+    `${lock.unregistered.length} database(s) a Worker in ${PLATFORM_REGISTER_REL} owns have no entry in ${REGISTER_REL} \`databases\`: ${lock.unregistered.join(', ')}.`,
+    'Every table in them would go without a rule, and the monitor would never enumerate them — the state',
+    'O-PROVENANCE-WALKS-ONE-DATABASE was opened for.',
   ]);
 }
-if (tables.size === 0) {
-  coverageLost([
-    `${filesRead} migration file(s) were read and NOT ONE table was found in them.`,
-    'The CREATE TABLE pattern stopped matching, so every limb below ranges over an empty set. A shared',
-    'database with no tables is a broken parse, not a schema.',
-  ]);
-}
-
-// ── LIMB 2 · every enumerated table has a rule ──────────────────────────────
-for (const [name, t] of tables) {
-  if (Object.prototype.hasOwnProperty.call(rules, name)) continue;
+for (const n of lock.stale) {
   problems.push(
-    `\`${name}\` is created by ${migrationsRel}/${t.createdIn} and has NO rule in ${REGISTER_REL}. ` +
-      'Rows can land in it and nothing declares how they are attributed, so the monitor will not count ' +
-      'them and will still print a clean total — the shape where a check silently stops checking. ' +
-      `Declare a marker column and the reason it is the honest provenance for this table.`,
+    `${REGISTER_REL} declares \`databases.${n}\`, and no Worker in ${PLATFORM_REGISTER_REL} owns a database of that name ` +
+      '(a top-level D1 binding carrying `migrations_dir`). Its rules are applied to nothing.',
   );
 }
+for (const m of lock.mismatched) problems.push(`${REGISTER_REL} \`databases.${m}\` — the register must name the files the owning Worker applies.`);
 
-// ── LIMB 3 · every rule names a table that exists ───────────────────────────
-for (const name of Object.keys(rules)) {
-  if (tables.has(name)) continue;
-  problems.push(
-    `${REGISTER_REL} carries a rule for \`${name}\`, and no migration in ${migrationsRel} creates that table. ` +
-      'A rule nobody applies inflates apparent coverage without checking anything. Either the table was ' +
-      'dropped and the rule should go with it, or the name is misspelled and one real table is uncovered.',
-  );
-}
+/** Per database, for the ok line: what was enumerated and which rules cover it. */
+const walked = [];
+for (const db of derived.databases) {
+  const rules = registeredDbs[db.name]?.tables ?? {};
+  const migrationsRel = db.migrationsDir;
+  /** Every finding in this loop names its database. */
+  const flag = (line) => problems.push(`${db.name}: ${line}`);
 
-// ── LIMBS 4–7 · each rule is executable and argued for ──────────────────────
-for (const [name, rule] of Object.entries(rules)) {
-  const t = tables.get(name);
-  if (!t) continue; // already reported by limb 3
+  // ── the domain, DERIVED ─────────────────────────────────────────────────────
+  const migrationsDir = join(ROOT, migrationsRel);
+  const { tables, filesRead, problems: parseProblems } = enumerateMigrationTables(migrationsDir);
+  for (const p of parseProblems) flag(`${migrationsRel}/${p}`);
 
-  const marker = rule?.marker;
-  if (typeof marker !== 'string' || marker.length === 0) {
-    problems.push(`\`${name}\` declares no \`marker\`. There is no column to read, so its rows can never be resolved either way.`);
-  } else if (!t.columns.has(marker)) {
-    problems.push(
-      `\`${name}\` declares marker \`${marker}\` and its schema has no such column (it has: ${[...t.columns].join(', ')}). ` +
-        'The monitor would read undefined on every row — which resolves to "unattributable" for all of them, or to ' +
-        'nothing at all, and neither is a measurement.',
+  if (filesRead === 0) {
+    coverageLost([
+      `not one .sql file was read under ${migrationsRel} (${db.name}).`,
+      'The table set would be EMPTY, "every table has a rule" would be vacuously true, and this guard',
+      'would print ok over a database it never opened.',
+    ]);
+  }
+  if (tables.size === 0) {
+    coverageLost([
+      `${filesRead} migration file(s) were read under ${migrationsRel} and NOT ONE table was found in them.`,
+      'The CREATE TABLE pattern stopped matching, so every limb below ranges over an empty set. A shared',
+      'database with no tables is a broken parse, not a schema.',
+    ]);
+  }
+
+  // ── LIMB 2 · every enumerated table has a rule ──────────────────────────────
+  for (const [name, t] of tables) {
+    if (Object.prototype.hasOwnProperty.call(rules, name)) continue;
+    flag(
+      `\`${name}\` is created by ${migrationsRel}/${t.createdIn} and has NO rule in ${REGISTER_REL}. ` +
+        'Rows can land in it and nothing declares how they are attributed, so the monitor will not count ' +
+        'them and will still print a clean total — the shape where a check silently stops checking. ' +
+        `Declare a marker column and the reason it is the honest provenance for this table.`,
     );
   }
 
-  const resolverId = rule?.resolver;
-  if (typeof resolverId !== 'string' || !Object.prototype.hasOwnProperty.call(resolvers, resolverId)) {
-    problems.push(
-      `\`${name}\` declares resolver ${JSON.stringify(resolverId)}, which ${REGISTER_REL} does not define. ` +
-        `Declared resolvers: ${Object.keys(resolvers).join(', ')}. The monitor cannot execute a resolver it has never heard of.`,
+  // ── LIMB 3 · every rule names a table that exists ───────────────────────────
+  for (const name of Object.keys(rules)) {
+    if (tables.has(name)) continue;
+    flag(
+      `${REGISTER_REL} carries a rule for \`${name}\`, and no migration in ${migrationsRel} creates that table. ` +
+        'A rule nobody applies inflates apparent coverage without checking anything. Either the table was ' +
+        'dropped and the rule should go with it, or the name is misspelled and one real table is uncovered.',
     );
   }
 
-  // ⏱ 2026-09-23 · the SECOND resolvers are held to the same rule. An `alsoResolves` id the register
-  // does not declare was caught only at monitor runtime (a CouldNotLook in ops-watch, a day late and on a
-  // different workflow); here it is caught on the push that introduces it.
-  for (const alt of Array.isArray(rule?.alsoResolves) ? rule.alsoResolves : []) {
-    if (typeof alt !== 'string' || !Object.prototype.hasOwnProperty.call(resolvers, alt)) {
-      problems.push(
-        `\`${name}\` lists ${JSON.stringify(alt)} in \`alsoResolves\`, which ${REGISTER_REL} does not define. ` +
-          `Declared resolvers: ${Object.keys(resolvers).join(', ')}. The monitor would refuse to run the census over a ` +
-          'second resolver it cannot execute.',
-      );
-    }
-  }
+  // ── LIMBS 4–7 · each rule is executable and argued for ──────────────────────
+  for (const [name, rule] of Object.entries(rules)) {
+    const t = tables.get(name);
+    if (!t) continue; // already reported by limb 3
 
-  // LIMB 5 · anti-downgrade.
-  if (t.columns.has('app_version') && resolverId !== 'released-build') {
-    problems.push(
-      `\`${name}\` HAS an \`app_version\` column and declares resolver ${JSON.stringify(resolverId)}. ` +
-        'app_version is the strongest marker in this schema — it names the build that wrote the row — so a table ' +
-        'that carries it may not be attributed by anything weaker. The per-table rules exist because seven tables ' +
-        'genuinely lack this column, not as a menu for the two that have it.',
-    );
-  }
-
-  // LIMB 6 · a seed resolver needs seeds.
-  if (resolverId === 'migration-seed') {
-    const seeded = typeof marker === 'string' ? t.seeds.get(marker) : undefined;
-    if (!seeded || seeded.size === 0) {
-      problems.push(
-        `\`${name}\` declares resolver \`migration-seed\` on \`${marker}\`, and no INSERT in ${migrationsRel} seeds that column. ` +
-          'The allowed set is EMPTY, so every row in the table is unattributable and the count is the table size — or, ' +
-          'read the other way round, the predicate matches nothing, which is exactly the empty-predicate defect that got ' +
-          "B-17's original acceptance criterion replaced.",
-      );
-    }
-  }
-
-  // LIMB 6b · a catalogue resolver needs a catalogue, and a marker that could
-  // fail against it.
-  //
-  // 🔴 THIS LIMB EXISTS BECAUSE THE RESOLVER IT CHECKS WAS ALMOST WRITTEN AS AN
-  // ASSERTION THAT CANNOT FAIL. `events_daily` is DERIVED — every row is
-  // computed from `events` by the rollup — so the tempting rule is "its
-  // provenance is inherited from its source table", which no row could ever
-  // violate and which would inflate the covered-table count while checking
-  // nothing. `app-catalogue` is falsifiable instead: an `app_id` naming an app
-  // the factory does not ship is residue or a probe, and that is a real state
-  // this repository has produced before (C-6's `c6-localprobe` rows).
-  if (resolverId === 'app-catalogue') {
-    if (typeof marker !== 'string' || marker.trim() === '') {
-      problems.push(`\`${name}\` declares resolver \`app-catalogue\` with no \`marker\` column to resolve.`);
+    const marker = rule?.marker;
+    if (rule?.resolver === EXEMPT) {
+      // ⏱ 2026-09-26 — no marker any resolver reads: the rule is an argument
+      // about this exact column set (limb 10's register, migration-tables.mjs).
+      const why = exemptionProblem(name, rule, t.columns);
+      if (why) flag(why);
+    } else if (typeof marker !== 'string' || marker.length === 0) {
+      flag(`\`${name}\` declares no \`marker\`. There is no column to read, so its rows can never be resolved either way.`);
     } else if (!t.columns.has(marker)) {
-      problems.push(
-        `\`${name}\` declares resolver \`app-catalogue\` on \`${marker}\`, which is not a column of the table as the ` +
-          'migrations create it. A marker the schema does not have resolves nothing and the monitor would count every row.',
+      flag(
+        `\`${name}\` declares marker \`${marker}\` and its schema has no such column (it has: ${[...t.columns].join(', ')}). ` +
+          'The monitor would read undefined on every row — which resolves to "unattributable" for all of them, or to ' +
+          'nothing at all, and neither is a measurement.',
       );
-    } else if (appSlugs.size === 0) {
-      problems.push(
-        `\`${name}\` declares resolver \`app-catalogue\` and the app catalogue derived from ${CATALOGUE_REL} is EMPTY, ` +
-          'so the allowed set matches nothing and every row would be unattributable. COVERAGE LOST — this is the ' +
-          'empty-predicate defect, not a clean run.',
+    }
+
+    const resolverId = rule?.resolver;
+    if (typeof resolverId !== 'string' || !Object.prototype.hasOwnProperty.call(resolvers, resolverId)) {
+      flag(
+        `\`${name}\` declares resolver ${JSON.stringify(resolverId)}, which ${REGISTER_REL} does not define. ` +
+          `Declared resolvers: ${Object.keys(resolvers).join(', ')}. The monitor cannot execute a resolver it has never heard of.`,
+      );
+    }
+
+    // ⏱ 2026-09-23 · the SECOND resolvers are held to the same rule. An `alsoResolves` id the register
+    // does not declare was caught only at monitor runtime (a CouldNotLook in ops-watch, a day late and on a
+    // different workflow); here it is caught on the push that introduces it.
+    for (const alt of Array.isArray(rule?.alsoResolves) ? rule.alsoResolves : []) {
+      if (typeof alt !== 'string' || !Object.prototype.hasOwnProperty.call(resolvers, alt)) {
+        flag(
+          `\`${name}\` lists ${JSON.stringify(alt)} in \`alsoResolves\`, which ${REGISTER_REL} does not define. ` +
+            `Declared resolvers: ${Object.keys(resolvers).join(', ')}. The monitor would refuse to run the census over a ` +
+            'second resolver it cannot execute.',
+        );
+      }
+    }
+
+    // LIMB 5 · anti-downgrade.
+    if (t.columns.has('app_version') && resolverId !== 'released-build') {
+      flag(
+        `\`${name}\` HAS an \`app_version\` column and declares resolver ${JSON.stringify(resolverId)}. ` +
+          'app_version is the strongest marker in this schema — it names the build that wrote the row — so a table ' +
+          'that carries it may not be attributed by anything weaker. The per-table rules exist because seven tables ' +
+          'genuinely lack this column, not as a menu for the two that have it.',
+      );
+    }
+
+    // LIMB 6 · a seed resolver needs seeds.
+    if (resolverId === 'migration-seed') {
+      const seeded = typeof marker === 'string' ? t.seeds.get(marker) : undefined;
+      if (!seeded || seeded.size === 0) {
+        flag(
+          `\`${name}\` declares resolver \`migration-seed\` on \`${marker}\`, and no INSERT in ${migrationsRel} seeds that column. ` +
+            'The allowed set is EMPTY, so every row in the table is unattributable and the count is the table size — or, ' +
+            'read the other way round, the predicate matches nothing, which is exactly the empty-predicate defect that got ' +
+            "B-17's original acceptance criterion replaced.",
+        );
+      }
+    }
+
+    // LIMB 6b · a catalogue resolver needs a catalogue, and a marker that could
+    // fail against it.
+    //
+    // 🔴 THIS LIMB EXISTS BECAUSE THE RESOLVER IT CHECKS WAS ALMOST WRITTEN AS AN
+    // ASSERTION THAT CANNOT FAIL. `events_daily` is DERIVED — every row is
+    // computed from `events` by the rollup — so the tempting rule is "its
+    // provenance is inherited from its source table", which no row could ever
+    // violate and which would inflate the covered-table count while checking
+    // nothing. `app-catalogue` is falsifiable instead: an `app_id` naming an app
+    // the factory does not ship is residue or a probe, and that is a real state
+    // this repository has produced before (C-6's `c6-localprobe` rows).
+    if (resolverId === 'app-catalogue') {
+      if (typeof marker !== 'string' || marker.trim() === '') {
+        flag(`\`${name}\` declares resolver \`app-catalogue\` with no \`marker\` column to resolve.`);
+      } else if (!t.columns.has(marker)) {
+        flag(
+          `\`${name}\` declares resolver \`app-catalogue\` on \`${marker}\`, which is not a column of the table as the ` +
+            'migrations create it. A marker the schema does not have resolves nothing and the monitor would count every row.',
+        );
+      } else if (appSlugs.size === 0) {
+        flag(
+          `\`${name}\` declares resolver \`app-catalogue\` and the app catalogue derived from ${CATALOGUE_REL} is EMPTY, ` +
+            'so the allowed set matches nothing and every row would be unattributable. COVERAGE LOST — this is the ' +
+            'empty-predicate defect, not a clean run.',
+        );
+      }
+    }
+
+    // LIMB 6c · ⏱ 2026-09-15 · [ADR 087]. `not-reserved-address` reads an EMAIL
+    // column through a count-only projection; on any other column its buckets mean
+    // nothing and every row would quietly resolve as "unreserved".
+    if (resolverId === 'not-reserved-address' && marker !== 'email') {
+      flag(
+        `\`${name}\` declares resolver \`not-reserved-address\` on \`${marker}\`. That resolver asks whether an EMAIL ADDRESS is at a ` +
+          'domain reserved for testing, so its marker must be the `email` column: on any other column every row reads ' +
+          '"unreserved" and the count is an assertion that cannot fail.',
+      );
+    }
+
+    // LIMB 7 · the written reason.
+    const reason = rule?.reason;
+    if (typeof reason !== 'string' || reason.trim().length < MIN_REASON) {
+      flag(
+        `\`${name}\` carries no written \`reason\` of substance (${MIN_REASON}+ characters required; found ` +
+          `${typeof reason === 'string' ? reason.trim().length : 0}). Every rule is a claim about how this table's rows ` +
+          'are attributed, and for the seven tables with no `app_version` it is also an exemption from the strongest ' +
+          'marker available. An exemption with no argument behind it is a waiver.',
+      );
+    } else if (resolverId !== 'released-build' && typeof marker === 'string' && !/app_version/i.test(reason)) {
+      flag(
+        `\`${name}\` uses resolver \`${resolverId}\` instead of \`released-build\` and its reason never mentions \`app_version\`. ` +
+          'The reason for a non-`released-build` rule has to say what it is standing in for and why that column is absent — ' +
+          'otherwise the next person reading it cannot tell a considered substitution from an oversight.',
       );
     }
   }
-
-  // LIMB 6c · ⏱ 2026-09-15 · [ADR 087]. `not-reserved-address` reads an EMAIL
-  // column through a count-only projection; on any other column its buckets mean
-  // nothing and every row would quietly resolve as "unreserved".
-  if (resolverId === 'not-reserved-address' && marker !== 'email') {
-    problems.push(
-      `\`${name}\` declares resolver \`not-reserved-address\` on \`${marker}\`. That resolver asks whether an EMAIL ADDRESS is at a ` +
-        'domain reserved for testing, so its marker must be the `email` column: on any other column every row reads ' +
-        '"unreserved" and the count is an assertion that cannot fail.',
-    );
-  }
-
-  // LIMB 7 · the written reason.
-  const reason = rule?.reason;
-  if (typeof reason !== 'string' || reason.trim().length < MIN_REASON) {
-    problems.push(
-      `\`${name}\` carries no written \`reason\` of substance (${MIN_REASON}+ characters required; found ` +
-        `${typeof reason === 'string' ? reason.trim().length : 0}). Every rule is a claim about how this table's rows ` +
-        'are attributed, and for the seven tables with no `app_version` it is also an exemption from the strongest ' +
-        'marker available. An exemption with no argument behind it is a waiver.',
-    );
-  } else if (resolverId !== 'released-build' && typeof marker === 'string' && !/app_version/i.test(reason)) {
-    problems.push(
-      `\`${name}\` uses resolver \`${resolverId}\` instead of \`released-build\` and its reason never mentions \`app_version\`. ` +
-        'The reason for a non-`released-build` rule has to say what it is standing in for and why that column is absent — ' +
-        'otherwise the next person reading it cannot tell a considered substitution from an oversight.',
-    );
-  }
+  walked.push({ db, tables: tables.size, filesRead, rules });
 }
 
 // ── LIMB 8 · THE MONITOR IS WIRED ───────────────────────────────────────────
@@ -401,73 +449,79 @@ if (opsWatch !== null) {
 }
 const DEPLOY_WORKERS_REL = '.github/workflows/deploy-workers.yml';
 const CHANNELS_REL = 'tooling/channel-register.json';
-const workerDir = String(register.wrangler ?? '').split('/').slice(0, -1).join('/');
 const deployWorkers = parseWorkflow(ROOT, DEPLOY_WORKERS_REL);
-if (!workerDir) {
-  problems.push(`${REGISTER_REL} declares no \`wrangler\`, so the job that applies ${register.database ?? 'the database'}'s migrations cannot be found.`);
-} else if (deployWorkers === null) {
-  problems.push(`${DEPLOY_WORKERS_REL} does not exist, so nothing applies ${migrationsRel} — and a pending migration would wait for an applier that is not there.`);
-} else {
-  const esc = workerDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const appliers = [...deployWorkers.jobs.values()].filter(
-    (j) => j.lines.some((l) => /\bd1 migrations apply\b.*--remote\b/.test(l.text)) && j.lines.some((l) => new RegExp(`^\\s*workingDirectory:\\s*${esc}\\s*$`).test(l.text)),
-  );
-  if (appliers.length !== 1) {
-    problems.push(
-      `${DEPLOY_WORKERS_REL} has ${appliers.length} job(s) that run \`d1 migrations apply … --remote\` in ${workerDir}; the ` +
-        'monitor treats a platform Deployment as proof the ONE applier ran, so there must be exactly one.',
-    );
+// ⏱ 2026-09-26 — once per walked database: its owner's applier job, in the
+// directory of the wrangler file that owns it (limb 10).
+for (const db of derived.databases) {
+  /** Every finding in this loop names its database. */
+  const flag = (line) => problems.push(`${db.name}: ${line}`);
+  const workerDir = db.wrangler.split('/').slice(0, -1).join('/');
+  if (!workerDir) {
+    flag('no owning wrangler file, so the job that applies its migrations cannot be found.');
+  } else if (deployWorkers === null) {
+    flag(`${DEPLOY_WORKERS_REL} does not exist, so nothing applies ${db.migrationsDir} — and a pending migration would wait for an applier that is not there.`);
   } else {
-    const j = appliers[0];
-    const at = (re) => j.lines.find((l) => re.test(l.text)) ?? null;
-    const apply = at(/\bd1 migrations apply\b.*--remote\b/);
-    const deploy = at(/^\s*id:\s*deploy\s*$/);
-    const record = at(/record-deployment\.mjs\s/);
-    const stepOf = (line) => {
-      const starts = j.lines.filter((l) => /^ {6}- /.test(l.text)).map((l) => l.n);
-      const from = Math.max(...starts.filter((n) => n <= line.n));
-      const to = Math.min(...starts.filter((n) => n > line.n), Infinity);
-      return j.lines.filter((l) => l.n >= from && l.n < to);
-    };
-    const where = `${DEPLOY_WORKERS_REL} job \`${j.name}\``;
-    if (!deploy || !record) {
-      problems.push(`${where} applies the migrations but has ${!deploy ? 'no `id: deploy` step' : 'no `record-deployment.mjs` step'}, so a platform Deployment no longer proves the applier ran.`);
-    } else if (!(apply.n < deploy.n && deploy.n < record.n)) {
-      problems.push(
-        `${where}: the migrations apply at line ${apply.n}, the deploy at ${deploy.n}, the Deployment is recorded at ${record.n}. ` +
-          'Only apply → deploy → record makes a platform Deployment proof that its migrations ran.',
+    const esc = workerDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const appliers = [...deployWorkers.jobs.values()].filter(
+      (j) => j.lines.some((l) => /\bd1 migrations apply\b.*--remote\b/.test(l.text)) && j.lines.some((l) => new RegExp(`^\\s*workingDirectory:\\s*${esc}\\s*$`).test(l.text)),
+    );
+    if (appliers.length !== 1) {
+      flag(
+        `${DEPLOY_WORKERS_REL} has ${appliers.length} job(s) that run \`d1 migrations apply … --remote\` in ${workerDir}; the ` +
+          `monitor treats a ${db.worker} Deployment as proof the ONE applier ran, so there must be exactly one.`,
       );
     } else {
-      // ⏱ 2026-09-25 [PD2B-3] The migration step may carry an `if:` only when every
-      // `if:` line in it is byte-equal, trimmed, to the `id: deploy` step's one `if:`:
-      // then both run on the one condition, and a failed migration still stops the deploy.
-      const ifsOf = (line) => stepOf(line).filter((l) => /^\s*if:/.test(l.text)).map((l) => l.text.trim());
-      const applyIfs = ifsOf(apply);
-      const deployIfs = ifsOf(deploy);
-      if (applyIfs.length && !(deployIfs.length === 1 && applyIfs.every((t) => t === deployIfs[0]))) {
-        problems.push(
-          `${where}: the migration step (line ${apply.n}) carries \`${applyIfs.join('` and `')}\` and the \`id: deploy\` step (line ${deploy.n}) carries ` +
-            `${deployIfs.length ? `\`${deployIfs.join('` and `')}\`` : 'no `if:`'}. The migration may carry an \`if:\` only when it is byte-equal to the deploy's, or a deploy can happen without it running.`,
+      const j = appliers[0];
+      const at = (re) => j.lines.find((l) => re.test(l.text)) ?? null;
+      const apply = at(/\bd1 migrations apply\b.*--remote\b/);
+      const deploy = at(/^\s*id:\s*deploy\s*$/);
+      const record = at(/record-deployment\.mjs\s/);
+      const stepOf = (line) => {
+        const starts = j.lines.filter((l) => /^ {6}- /.test(l.text)).map((l) => l.n);
+        const from = Math.max(...starts.filter((n) => n <= line.n));
+        const to = Math.min(...starts.filter((n) => n > line.n), Infinity);
+        return j.lines.filter((l) => l.n >= from && l.n < to);
+      };
+      const where = `${DEPLOY_WORKERS_REL} job \`${j.name}\``;
+      if (!deploy || !record) {
+        flag(`${where} applies the migrations but has ${!deploy ? 'no `id: deploy` step' : 'no `record-deployment.mjs` step'}, so a ${db.worker} Deployment no longer proves the applier ran.`);
+      } else if (!(apply.n < deploy.n && deploy.n < record.n)) {
+        flag(
+          `${where}: the migrations apply at line ${apply.n}, the deploy at ${deploy.n}, the Deployment is recorded at ${record.n}. ` +
+            `Only apply → deploy → record makes a ${db.worker} Deployment proof that its migrations ran.`,
         );
-      }
-      if (!stepOf(record).some((l) => /^\s*if:.*steps\.deploy\.outcome\s*==\s*'success'/.test(l.text))) {
-        problems.push(`${where}: the Deployment record (line ${record.n}) is not conditioned on \`steps.deploy.outcome == 'success'\`.`);
-      }
-      if (j.continueOnError !== null) {
-        problems.push(`${where}: \`continue-on-error: true\` at line ${j.continueOnError.n} lets the deploy and its record run past a failed migration.`);
-      }
-      let envs = [];
-      try {
-        envs = (JSON.parse(readFileSync(join(ROOT, CHANNELS_REL), 'utf8')).serviceEnvironments ?? []).filter((s) => s?.source === workerDir).map((s) => s.deploymentEnvironment);
-      } catch {
-        // an unreadable register is reported below as "no environment", never skipped
-      }
-      const recorded = record.text.match(/record-deployment\.mjs\s+(\S+)/)?.[1];
-      if (envs.length !== 1 || envs[0] !== recorded) {
-        problems.push(
-          `${where} records its Deployment into \`${recorded}\`, and ${CHANNELS_REL} gives ${workerDir} ` +
-            `${envs.length === 1 ? `\`${envs[0]}\`` : `${envs.length} environment(s)`} — the monitor reads the platform Deployment ledger from the latter.`,
-        );
+      } else {
+        // ⏱ 2026-09-25 [PD2B-3] The migration step may carry an `if:` only when every
+        // `if:` line in it is byte-equal, trimmed, to the `id: deploy` step's one `if:`:
+        // then both run on the one condition, and a failed migration still stops the deploy.
+        const ifsOf = (line) => stepOf(line).filter((l) => /^\s*if:/.test(l.text)).map((l) => l.text.trim());
+        const applyIfs = ifsOf(apply);
+        const deployIfs = ifsOf(deploy);
+        if (applyIfs.length && !(deployIfs.length === 1 && applyIfs.every((t) => t === deployIfs[0]))) {
+          flag(
+            `${where}: the migration step (line ${apply.n}) carries \`${applyIfs.join('` and `')}\` and the \`id: deploy\` step (line ${deploy.n}) carries ` +
+              `${deployIfs.length ? `\`${deployIfs.join('` and `')}\`` : 'no `if:`'}. The migration may carry an \`if:\` only when it is byte-equal to the deploy's, or a deploy can happen without it running.`,
+          );
+        }
+        if (!stepOf(record).some((l) => /^\s*if:.*steps\.deploy\.outcome\s*==\s*'success'/.test(l.text))) {
+          flag(`${where}: the Deployment record (line ${record.n}) is not conditioned on \`steps.deploy.outcome == 'success'\`.`);
+        }
+        if (j.continueOnError !== null) {
+          flag(`${where}: \`continue-on-error: true\` at line ${j.continueOnError.n} lets the deploy and its record run past a failed migration.`);
+        }
+        let envs = [];
+        try {
+          envs = (JSON.parse(readFileSync(join(ROOT, CHANNELS_REL), 'utf8')).serviceEnvironments ?? []).filter((s) => s?.source === workerDir).map((s) => s.deploymentEnvironment);
+        } catch {
+          // an unreadable register is reported below as "no environment", never skipped
+        }
+        const recorded = record.text.match(/record-deployment\.mjs\s+(\S+)/)?.[1];
+        if (envs.length !== 1 || envs[0] !== recorded) {
+          flag(
+            `${where} records its Deployment into \`${recorded}\`, and ${CHANNELS_REL} gives ${workerDir} ` +
+              `${envs.length === 1 ? `\`${envs[0]}\`` : `${envs.length} environment(s)`} — the monitor reads ${db.name}'s Deployment ledger from the latter.`,
+          );
+        }
       }
     }
   }
@@ -483,18 +537,21 @@ if (problems.length) {
   process.exit(1);
 }
 
-const byResolver = new Map();
-for (const [name, rule] of Object.entries(rules)) {
-  if (!byResolver.has(rule.resolver)) byResolver.set(rule.resolver, []);
-  byResolver.get(rule.resolver).push(name);
+for (const w of walked) {
+  const byResolver = new Map();
+  for (const [name, rule] of Object.entries(w.rules)) {
+    if (!byResolver.has(rule.resolver)) byResolver.set(rule.resolver, []);
+    byResolver.get(rule.resolver).push(name);
+  }
+  console.log(
+    `ok  prod provenance — ${w.db.name}: ${w.tables} table(s) enumerated from ${w.db.migrationsDir} ` +
+      `(${w.filesRead} migration file(s)), ${Object.keys(w.rules).length} rule(s), 0 uncovered`,
+  );
+  for (const [r, names] of [...byResolver].sort()) {
+    console.log(`    ${r}: ${names.sort().join(', ')}`);
+  }
 }
-console.log(
-  `ok  prod provenance — ${tables.size} table(s) enumerated from ${migrationsRel} ` +
-    `(${filesRead} migration file(s)), ${Object.keys(rules).length} rule(s), 0 uncovered`,
-);
-for (const [r, names] of [...byResolver].sort()) {
-  console.log(`    ${r}: ${names.sort().join(', ')}`);
-}
+console.log(`ok  prod provenance — ${walked.length} database(s), the set ${PLATFORM_REGISTER_REL}'s Workers own: ${walked.map((w) => w.db.name).join(', ')}`);
 console.log(
   '⬜  THIS IS THE GATE LIMB AND IT HAS NOT LOOKED AT PRODUCTION. It holds no credential and ci.yml can never',
 );
