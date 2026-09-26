@@ -141,6 +141,45 @@
 //
 //   Credential: GH_TOKEN / GITHUB_TOKEN, else the local vault key
 //   `Project_Cross_Platform_Apps_GITHUB_PAT` via safe-rerun.mjs's `token()`.
+//
+// ── --yield: PER-GUARD CATCHES, NOT A LEDGER ────────────────────────────────
+//   node tooling/ops/triage-failed-runs.mjs --yield --since ISO [--until ISO]
+//        [--cache-dir DIR] [--max-requests N] [--merged-ref REF] [--root DIR]
+//        [--fixture-dir DIR] [--causes FILE]
+//
+//   Row O-GUARD-YIELD-UNMEASURED ([ADR 053] rule 5). Reads the FAILED (failure,
+//   timed_out) ci.yml pull_request runs created in [since, until], every
+//   non-gate failing job's steps and log through the same transport and cache
+//   as the ledger, and hands them to tooling/ops/guard-yield.mjs, which
+//   attributes, aggregates and writes <root>/tooling/guard-yield.json. The
+//   definition of a catch and every limit are that module's header and the
+//   file's own `_readme`. Exit 0 = written; 2 = COVERAGE LOST (nothing written).
+//
+//   --max-requests N the ONE hard request ceiling of THE QUOTA FLOOR above,
+//                    default 1500 under --yield (300 for the ledger); the floor
+//                    is computed against it, so a yield walk starts only with
+//                    1500 + 400 remaining. The run list costs one request per
+//                    page per WEEK of the window (failure is listed a week at a
+//                    time, because one query stops paging at 1000 runs across
+//                    every PR workflow) plus one for timed_out. After it is
+//                    read, the run REFUSES TO START when the requests sent plus
+//                    two per run whose jobs are not cached already exceed N;
+//                    every request past N is refused unsent too. Both are exit
+//                    2, and the count of requests sent is printed either way.
+//                    A re-run with the same --cache-dir reads from disk what the
+//                    first one fetched.
+//   --merged-ref REF the ref whose `git log --format=%s` subjects ending `(#N)`
+//                    are the merged PRs (default origin/main — fetch it first).
+//                    A --fixture-dir reads `merged.json` ([numbers]),
+//                    `added.json` ({path: day}) and `pulls.json` instead.
+//   --root DIR       the checkout whose index is read and whose
+//                    tooling/guard-yield.json is written (default: this one).
+//
+//   A run's PR is `pull_requests[0].number`. That field lists OPEN pull
+//   requests matching the run, so it can be empty for a PR since merged; the
+//   fallback is one read of the pulls list (sorted by update, paged until the
+//   window is passed), matched on head branch and open span. The count of runs
+//   named each way is printed.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -762,6 +801,10 @@ export const QUOTA_FLOOR = 400;
 /** D1: the default hard ceiling on the requests one walk may send. D1's number,
  *  not a measurement: a live run prints `REQUESTS: n sent` beside it. */
 export const DEFAULT_MAX_REQUESTS = 300;
+/** P-E2: the default of the SAME ceiling under --yield — one list request per page
+ *  per week of the window plus two per uncached run. A yield walk therefore
+ *  starts only with DEFAULT_YIELD_MAX_REQUESTS + QUOTA_FLOOR remaining. */
+export const DEFAULT_YIELD_MAX_REQUESTS = 1500;
 
 /** PURE. The quota-floor verdict on GET /rate_limit's `resources.core` bucket:
  *  the walk may start only when `remaining - ceiling >= floor`. A bucket with no
@@ -909,6 +952,11 @@ export function newestCompleted(runs, { selfRunId = null } = {}) {
 /** GITHUB_RUN_ID as a run id, or null when it is absent or not numeric. */
 export const selfRunIdFrom = (env) => (/^[0-9]{1,20}$/.test(String(env?.GITHUB_RUN_ID ?? '')) ? env.GITHUB_RUN_ID : null);
 
+/** The cache name of one run attempt's jobs. Keyed by ATTEMPT: `gh run rerun`
+ *  keeps the run id, so attempt 1's cached jobs would otherwise be served for
+ *  attempt 2. Attempt 1 keeps the old name. */
+const jobsCacheName = (id, attempt = 1) => (Number(attempt) > 1 ? `${id}.attempt-${Number(attempt)}.jobs.json` : `${id}.jobs.json`);
+
 export function liveApi(repo, tok, cacheDir, { maxRequests = DEFAULT_MAX_REQUESTS, selfRunId = null } = {}) {
   // Held HERE, where the header is built, as well as in main(): a caller that
   // skips main() must not be able to send an unshaped credential either.
@@ -1018,17 +1066,34 @@ export function liveApi(repo, tok, cacheDir, { maxRequests = DEFAULT_MAX_REQUEST
       return body?.resources?.core ?? null;
     },
     requestsSent: () => sent,
-    /** Every run with one of the non-green conclusions. Never cached: the
-     *  list is the enumeration, and yesterday's list is the sample this tool
-     *  exists to replace. */
-    listNonGreen: async (since, until, branch = null) => {
+    /** How many of `runs` have no cached jobs for their attempt — the floor of
+     *  what reading them will cost. Each entry is READ, never checked: a file
+     *  that is there and unreadable counts as uncached, the safe direction. */
+    uncachedRuns: (runs) => {
+      if (!cacheDir) return runs.length;
+      let n = 0;
+      for (const r of runs) {
+        try {
+          readFileSync(join(cacheDir, jobsCacheName(r.id, r.run_attempt ?? 1)), 'utf8');
+        } catch {
+          n++;
+        }
+      }
+      return n;
+    },
+    /** Every run with one of the non-green conclusions (or of `statuses`), on
+     *  `branch` and of `event` when given. Never cached: the list is the
+     *  enumeration, and yesterday's list is the sample this tool exists to
+     *  replace. */
+    listNonGreen: async (since, until, { branch = null, event = null, statuses = NON_GREEN } = {}) => {
       const out = [];
       const capped = [];
       const created = since && until ? `${since}..${until}` : since ? `>=${since}` : until ? `<=${until}` : null;
-      for (const status of NON_GREEN) {
+      for (const status of statuses) {
         const q =
           `status=${status}&per_page=${PER_PAGE}` +
           (branch ? `&branch=${encodeURIComponent(branch)}` : '') +
+          (event ? `&event=${encodeURIComponent(event)}` : '') +
           (created ? `&created=${encodeURIComponent(created)}` : '');
         let total = null;
         for (let page = 1; page <= LIST_CEILING / PER_PAGE; page++) {
@@ -1043,12 +1108,9 @@ export function liveApi(repo, tok, cacheDir, { maxRequests = DEFAULT_MAX_REQUEST
       }
       return { runs: out, capped };
     },
-    // Keyed by ATTEMPT: `gh run rerun` keeps the run id, so attempt 1's cached
-    // jobs would otherwise be served for attempt 2. Attempt 1 keeps the old name.
+    // Keyed by ATTEMPT — see jobsCacheName.
     listJobs: (id, attempt = 1) =>
-      cached(Number(attempt) > 1 ? `${id}.attempt-${Number(attempt)}.jobs.json` : `${id}.jobs.json`, () =>
-        get(`/repos/${repo}/actions/runs/${id}/jobs?per_page=${PER_PAGE}&filter=all`),
-      ),
+      cached(jobsCacheName(id, attempt), () => get(`/repos/${repo}/actions/runs/${id}/jobs?per_page=${PER_PAGE}&filter=all`)),
     // 404 is an ANSWER here — a job cancelled before its first step ran has no
     // log (measured 2026-08-04, run 30874929577: eight lanes cancelled at +6s,
     // every log 404). It is the ONLY status turned into an empty log; a 403
@@ -1092,6 +1154,29 @@ export function liveApi(repo, tok, cacheDir, { maxRequests = DEFAULT_MAX_REQUEST
         const merged = body.find((p) => p.merged_at) ?? body[0] ?? null;
         return merged ? { number: merged.number, merged_at: merged.merged_at, merge_commit_sha: merged.merge_commit_sha, state: merged.state } : null;
       }),
+    /** Every PR updated at/after `since`, newest update first, in the one shape
+     *  prOfRun reads. Never cached: it moves with every PR. A list that never
+     *  reached `since` inside the page ceiling is COVERAGE LOST. */
+    listPulls: async (since) => {
+      const out = [];
+      const floor = since ? Date.parse(since) : -Infinity;
+      for (let page = 1; page <= 30; page++) {
+        const body = await get(`/repos/${repo}/pulls?state=all&sort=updated&direction=desc&per_page=${PER_PAGE}&page=${page}`);
+        for (const p of body) {
+          out.push({
+            number: p.number,
+            head: p.head?.ref ?? null,
+            headRepo: p.head?.repo?.full_name ?? null,
+            created_at: p.created_at,
+            closed_at: p.closed_at ?? null,
+            updated_at: p.updated_at,
+          });
+        }
+        if (body.length < PER_PAGE) return out;
+        if (Date.parse(body[body.length - 1].updated_at) < floor) return out;
+      }
+      throw new CoverageLost(`the pulls list did not reach ${since} within 30 pages, so a run's PR cannot be named from it`);
+    },
   };
 }
 
@@ -1107,7 +1192,7 @@ export function fixtureApi(dir) {
   return {
     live: false,
     repo: read('repo.json', { repo: 'fixture/fixture' }).repo,
-    listNonGreen: async (_since, _until, branch = null) => ({
+    listNonGreen: async (_since, _until, { branch = null } = {}) => ({
       runs: read('runs.json').filter((r) => !branch || r.head_branch === branch),
       capped: read('capped.json', []),
     }),
@@ -1120,6 +1205,11 @@ export function fixtureApi(dir) {
     runsBetween: async (_wf, _branch, id) => read(`between-${id}.json`, []),
     branches: async () => new Set(read('branches.json', [])),
     prFor: async (branch) => read('prs.json', {})[branch] ?? null,
+    requestsSent: () => 0,
+    uncachedRuns: () => 0,
+    listPulls: async () => read('pulls.json', []),
+    merged: () => read('merged.json', []),
+    added: () => read('added.json', {}),
   };
 }
 
@@ -1135,8 +1225,12 @@ function repoFromGit() {
 
 // ═══════════════════════════════════════════════════════════════════════════
 export function parseArgs(argv) {
-  const a = { repo: null, since: null, until: null, cacheDir: null, fixtureDir: null, prs: true, json: null, causes: null, maxRequests: DEFAULT_MAX_REQUESTS, branch: null };
+  const a = {
+    repo: null, since: null, until: null, cacheDir: null, fixtureDir: null, prs: true, json: null, causes: null, maxRequests: null, branch: null,
+    yield: false, root: null, mergedRef: 'origin/main',
+  };
   let branchGiven = false;
+  let maxGiven = false;
   for (let i = 0; i < argv.length; i++) {
     const x = argv[i];
     if (x === '--repo') a.repo = argv[++i] ?? null;
@@ -1146,25 +1240,39 @@ export function parseArgs(argv) {
     else if (x === '--fixture-dir') a.fixtureDir = argv[++i] ?? null;
     else if (x === '--causes') a.causes = argv[++i] ?? null;
     else if (x === '--json') a.json = argv[++i] ?? null;
-    else if (x === '--max-requests') a.maxRequests = argv[++i] ?? null;
-    else if (x === '--branch') {
+    else if (x === '--max-requests') {
+      maxGiven = true;
+      a.maxRequests = argv[++i] ?? null;
+    } else if (x === '--branch') {
       branchGiven = true;
       a.branch = argv[++i] ?? null;
     } else if (x === '--no-prs') a.prs = false;
+    else if (x === '--yield') a.yield = true;
+    else if (x === '--root') a.root = argv[++i] ?? null;
+    else if (x === '--merged-ref') a.mergedRef = argv[++i] ?? null;
     else return { error: `unrecognised argument \`${x}\`` };
   }
   if (a.since && !Number.isFinite(Date.parse(a.since))) return { error: `--since must be an ISO instant, got \`${a.since}\`` };
   if (a.until && !Number.isFinite(Date.parse(a.until))) return { error: `--until must be an ISO instant, got \`${a.until}\`` };
+  // ONE request ceiling (P-E2 over P-E1): --yield walks under the same --max-requests as the ledger,
+  // with a larger default, and the quota floor is computed against whichever applies.
+  if (!maxGiven) a.maxRequests = a.yield ? DEFAULT_YIELD_MAX_REQUESTS : DEFAULT_MAX_REQUESTS;
   if (!/^[1-9][0-9]{0,5}$/.test(String(a.maxRequests))) return { error: `--max-requests must be a whole number from 1, got \`${a.maxRequests}\`` };
   a.maxRequests = Number(a.maxRequests);
   if (branchGiven && !/^\S+$/.test(String(a.branch ?? ''))) return { error: `--branch must be a branch name without whitespace, got \`${a.branch}\`` };
+  // A ref starting with `-` would reach `git log` as an option.
+  if (!a.mergedRef || !/^[\w./-]+$/.test(a.mergedRef) || a.mergedRef.startsWith('-')) {
+    return { error: `--merged-ref must be a plain git ref, got \`${a.mergedRef}\`` };
+  }
+  if (a.yield && !a.since) return { error: '--yield needs --since: a yield is a number about a stated window, and attribution reads logs that retention bounds' };
+  if (a.yield && a.json) return { error: '--json writes the ledger; --yield writes tooling/guard-yield.json' };
   return a;
 }
 
 /** The whole ledger, given a transport. Exported so the test can drive it
  *  with a mutated signature table and watch UNEXPLAINED move. */
 export async function ledger(api, { since = null, until = null, branch = null, prs = true, causes, signatures = SIGNATURES, log = () => {} } = {}) {
-  const { runs: all, capped } = await api.listNonGreen(since, until, branch);
+  const { runs: all, capped } = await api.listNonGreen(since, until, { branch });
   const inWindow = (r) => (!since || Date.parse(r.created_at) >= Date.parse(since)) && (!until || Date.parse(r.created_at) <= Date.parse(until));
   const runs = all.filter((r) => NON_GREEN.has(String(r.conclusion)) && inWindow(r));
   runs.sort((x, y) => Date.parse(y.created_at) - Date.parse(x.created_at));
@@ -1217,6 +1325,145 @@ export async function ledger(api, { since = null, until = null, branch = null, p
   }
   const { groups, unexplained } = groupRows(rows, causes, { newest, branches, prs: prMap });
   return { runs, rows, groups, unexplained, capped, range, newest, branches, prs: prMap };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// --yield — the FETCH half. Attribution and the file are guard-yield.mjs's.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Compared with a run's `path` the way classifyRun derives `workflow`: the
+ *  API's value, never the workflow file, which this reader does not open. */
+export const YIELD_WORKFLOW = 'ci.yml';
+const workflowOf = (run) => String(run?.path ?? '').replace(/^\.github\/workflows\//, '');
+/** A cancelled run rendered no verdict; a startup failure ran no guard. */
+export const YIELD_CONCLUSIONS = ['failure', 'timed_out'];
+/** The failure list is read a week at a time: GitHub stops paging one query at
+ *  1000 runs, and `event=pull_request` spans every PR workflow, not ci.yml alone. */
+const SLICE_MS = 7 * 86_400_000;
+/** Whole seconds: the instant GitHub's `created` range and `git log --since` read. */
+export const isoSeconds = (t) => new Date(t).toISOString().replace(/\.\d{3}Z$/, 'Z');
+
+/** A cause that says the failure was not a defect the guard caught: its typed
+ *  `fixedBy.kind` is `infrastructure` or `not-a-defect`. validateCauses makes
+ *  `fixedBy` mandatory, so there is no prose class to fall back on. */
+export function isNonDefect(cause) {
+  return cause?.fixedBy?.kind === 'infrastructure' || cause?.fixedBy?.kind === 'not-a-defect';
+}
+
+/** The jobs whose failing step is read: failed or timed out, never the
+ *  aggregator, never a cancelled job (it rendered no verdict). */
+export const yieldJobs = (jobs) =>
+  (jobs ?? []).filter((j) => (j?.conclusion === 'failure' || j?.conclusion === 'timed_out') && !GATE_STEP.test(failingStep(j)?.name ?? ''));
+
+/** One run → one unit per failing step: its log section (prefix-stripped), its
+ *  ledger signature, and whether the causes register calls it a non-defect. */
+export function yieldUnits(run, jobs, logFor, { causes = [], signatures = SIGNATURES } = {}) {
+  return yieldJobs(jobs).map((job) => {
+    const step = failingStep(job);
+    const scoped = scopeToStep(logFor(job) ?? [], step);
+    const eb = errorBlock(scoped);
+    const signature = signatureOf({ step: step?.name, block: eb.block, conclusion: job.conclusion }, signatures);
+    return {
+      job: job.name,
+      step: step?.name ?? '(job-level)',
+      lines: scoped.map(stripPrefix),
+      signature,
+      excluded: isNonDefect(causeFor(signature, causes, run.head_branch)),
+    };
+  });
+}
+
+/** The PR a run belongs to: `pull_requests[0]`, else the ONE pull request whose
+ *  head branch (and head repository, when both are known) is the run's and
+ *  whose open span covers the run's creation. Two candidates is no answer. */
+export function prOfRun(run, pulls = []) {
+  const direct = run?.pull_requests?.[0]?.number;
+  if (Number.isInteger(direct)) return { pr: direct, via: 'run' };
+  const at = Date.parse(run?.created_at);
+  const headRepo = run?.head_repository?.full_name ?? null;
+  const SLACK = 60_000;
+  const hits = (pulls ?? []).filter(
+    (p) =>
+      p.head === run?.head_branch &&
+      (!headRepo || !p.headRepo || p.headRepo === headRepo) &&
+      Date.parse(p.created_at) - SLACK <= at &&
+      (!p.closed_at || at <= Date.parse(p.closed_at) + SLACK),
+  );
+  return hits.length === 1 ? { pr: hits[0].number, via: 'pulls' } : { pr: null, via: hits.length ? 'ambiguous' : 'none' };
+}
+
+/** A squash merge's subject ends `(#N)`; anything else on the line is prose. */
+export function mergedPrsFromSubjects(text) {
+  const out = new Set();
+  for (const line of String(text).split(/\r?\n/)) {
+    const m = /\(#(\d+)\)\s*$/.exec(line);
+    if (m) out.add(Number(m[1]));
+  }
+  return out;
+}
+
+const git = (root, args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+
+export const mergedPrsFromGit = (root, ref, since, until) =>
+  mergedPrsFromSubjects(git(root, ['log', ref, `--since=${since}`, `--until=${until}`, '--format=%s', '--']));
+
+/** path → the EARLIEST day it was added on `ref` at/after `since`. A path that
+ *  is absent was there before the window opened (or arrived by rename). */
+export function addedDatesFromGit(root, ref, since) {
+  const out = new Map();
+  const text = git(root, ['log', ref, `--since=${since}`, '--diff-filter=A', '--name-only', '--format=%x00%cs', '--', 'tooling', '.github']);
+  for (const block of text.split('\0')) {
+    const [date, ...files] = block.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    if (!date) continue;
+    for (const f of files) if (!out.has(f) || date < out.get(f)) out.set(f, date);
+  }
+  return out;
+}
+
+/** Every failed ci.yml pull_request run in the window → one record per run. */
+export async function yieldRecords(api, { since, until, causes, maxCalls = Infinity, signatures = SIGNATURES, log = () => {} }) {
+  const listed = [];
+  const capped = [];
+  const take = async (from, to, status) => {
+    const got = await api.listNonGreen(from, to, { event: 'pull_request', statuses: [status] });
+    listed.push(...got.runs);
+    for (const c of got.capped) capped.push(`${from}..${to} ${c}`);
+  };
+  for (let a = Date.parse(since); a < Date.parse(until); a += SLICE_MS) {
+    await take(isoSeconds(a), isoSeconds(Math.min(a + SLICE_MS, Date.parse(until))), 'failure');
+  }
+  await take(since, until, 'timed_out');
+  if (capped.length) throw new CoverageLost(`the run list was CAPPED by the API (${capped.join('; ')}); narrow --since`);
+  const inWindow = (r) => Date.parse(r.created_at) >= Date.parse(since) && Date.parse(r.created_at) <= Date.parse(until);
+  // Slices share their boundary instant, so a run can be listed twice: keyed by id.
+  const byId = new Map();
+  for (const r of listed) {
+    if (r.event === 'pull_request' && workflowOf(r) === YIELD_WORKFLOW && YIELD_CONCLUSIONS.includes(r.conclusion) && inWindow(r)) byId.set(r.id, r);
+  }
+  const runs = [...byId.values()].sort((x, y) => Date.parse(x.created_at) - Date.parse(y.created_at) || x.id - y.id);
+  const projected = api.requestsSent() + 2 * api.uncachedRuns(runs);
+  log(`enumerated ${runs.length} failed ci.yml pull_request run(s) in ${since} .. ${until}; ${api.requestsSent()} API call(s) so far, at least ${projected} projected (cap ${maxCalls})`);
+  if (projected > maxCalls) {
+    throw new CoverageLost(`refusing to start: at least ${projected} API call(s) projected (two per run whose jobs are not cached) and --max-requests is ${maxCalls}. Narrow --since or raise --max-requests.`);
+  }
+  const pulls = runs.some((r) => !Number.isInteger(r.pull_requests?.[0]?.number)) ? await api.listPulls(since) : [];
+  const via = { run: 0, pulls: 0, ambiguous: 0, none: 0 };
+  const records = [];
+  for (const run of runs) {
+    const body = await api.listJobs(run.id, run.run_attempt ?? 1);
+    const jobs = body?.jobs ?? [];
+    if (typeof body?.total_count === 'number' && body.total_count > jobs.length) {
+      throw new CoverageLost(`run ${run.id} reports ${body.total_count} job(s) but one page carried ${jobs.length}`);
+    }
+    const logs = new Map();
+    for (const j of yieldJobs(jobs)) logs.set(j.id, String((await api.jobLog(run.id, j.id)) ?? '').split(/\r?\n/));
+    const owner = prOfRun(run, pulls);
+    via[owner.via]++;
+    records.push({ runId: run.id, pr: owner.pr, createdAt: run.created_at, units: yieldUnits(run, jobs, (j) => logs.get(j.id) ?? [], { causes, signatures }) });
+    if (records.length % 50 === 0) log(`  … ${records.length}/${runs.length} read, ${api.requestsSent()} API call(s)`);
+  }
+  log(`PR named from pull_requests: ${via.run}; from the pulls list: ${via.pulls}; ambiguous: ${via.ambiguous}; none: ${via.none}`);
+  return { records, runs };
 }
 
 async function main(argv) {
@@ -1292,6 +1539,7 @@ async function main(argv) {
     console.log(floor.line);
     console.log(`triage-failed-runs — ${repo}${args.cacheDir ? ` (cache ${args.cacheDir})` : ''}`);
   }
+  if (args.yield) return yieldMain(api, args, causes);
 
   let result;
   try {
@@ -1334,6 +1582,62 @@ async function main(argv) {
     return 2;
   }
   return unexplained.length > 0 ? 1 : 0;
+}
+
+/** --yield: read, hand to guard-yield.mjs, write. Imported here and only here,
+ *  so the ledger never loads it. Nothing is written unless every read landed. */
+async function yieldMain(api, args, causes) {
+  const gy = await import('./guard-yield.mjs');
+  const root = resolve(args.root ?? ROOT);
+  const since = isoSeconds(args.since);
+  const until = isoSeconds(args.until ?? Date.now());
+  const maxCalls = api.live ? args.maxRequests : Infinity;
+  const lost = (msg) => {
+    console.error(`✗ COVERAGE LOST — ${msg}`);
+    console.error(`API CALLS: ${api.requestsSent()}`);
+    return 2;
+  };
+  let indexRows;
+  let merged;
+  let added;
+  try {
+    indexRows = gy.readIndexRows(root);
+    if (api.live) {
+      merged = mergedPrsFromGit(root, args.mergedRef, since, until);
+      added = addedDatesFromGit(root, args.mergedRef, since);
+    } else {
+      merged = new Set(api.merged());
+      added = new Map(Object.entries(api.added()));
+    }
+  } catch (e) {
+    // A failed `git log` says why on stderr; its message is only the command line.
+    return lost(String(e.stderr ?? '').trim().split('\n')[0] || e.message.split('\n')[0]);
+  }
+  let fetched;
+  try {
+    fetched = await yieldRecords(api, { since, until, causes, maxCalls, log: (m) => console.log(m) });
+  } catch (e) {
+    return lost(e.message);
+  }
+  const doc = gy.buildYield({ records: fetched.records, indexRows, merged, added, since, until, apiCalls: api.requestsSent() });
+  const { problems } = gy.checkYield(doc, indexRows);
+  if (problems.length) {
+    for (const p of problems) console.error(`✗ ${p}`);
+    return lost('the file built from this fetch does not pass its own --check, so it was not written');
+  }
+  gy.writeYield(root, doc);
+  const wired = indexRows.filter((r) => r && r.kind === 'guard' && r.state === 'WIRED').length;
+  console.log('');
+  console.log(`WINDOW: ${doc.window.since} .. ${doc.window.until} — ${doc.window.mergedPrs} merged PR(s) on ${api.live ? args.mergedRef : 'the fixture'}`);
+  console.log(`RUNS: ${doc.runs.considered} failed ci.yml pull_request run(s) = ${doc.runs.excluded} excluded + ${doc.runs.attributed} attributed (${doc.runs.noPr} with no PR named) + ${doc.unattributed} unattributed`);
+  for (const u of doc.unattributedRuns) console.log(`  · unattributed: run ${u.runId} · PR ${u.pr ?? '(none)'} · ${u.signature}`);
+  console.log('TOP 10 BY CATCHES:');
+  for (const t of gy.topRefs(doc, 10)) console.log(`  ${t.catches}  ${t.ref}`);
+  console.log(`ZERO CATCH: ${doc.zeroCatch} of ${wired} guard/WIRED`);
+  console.log(`UNATTRIBUTED: ${doc.unattributed}`);
+  console.log(`API CALLS: ${api.requestsSent()}`);
+  console.log(`wrote ${gy.YIELD_REL} under ${root}`);
+  return 0;
 }
 
 const invokedDirectly = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);

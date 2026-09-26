@@ -70,10 +70,25 @@
 //  · every WIRED row being non-automatic on the real repository, which is what
 //    a deleted push trigger looks like from here.
 //
+// ── EVERY REF HAS A YIELD ENTRY (section 8) ─────────────────────────────────
+// Row O-GUARD-YIELD-UNMEASURED, the measurement [ADR 053] rule 5 turns on.
+// tooling/guard-yield.json records each enforcer's CATCHES over PR runs, keyed
+// by every ref of this index, so an index ref it does not key is an enforcer
+// whose yield nobody recorded — and before this limb that gap was invisible:
+// this guard exited 0 with the file missing a ref, or with no file at all.
+// Section 8 takes `checkYield` from tooling/ops/guard-yield.mjs, the pure half
+// that imports no fetcher, and fails on every disagreement it names, the index
+// ref with no entry first, each with its repair: `node tooling/ops/guard-yield.mjs
+// --sync`, which every PR that adds or removes a ref runs. The file absent or
+// unparseable is COVERAGE LOST, exit 2, never a pass.
+//
 // Usage:  node tooling/ci/assert-enforcement-index.mjs [repoRoot]
 // Exit 0 = the committed index is byte-for-byte what this tree generates, every
-//          ref resolves in the way its kind requires, and the population holds.
-//      1 = it is not, or the index is absent, unparseable or empty.
+//          ref resolves in the way its kind requires, the population holds, and
+//          tooling/guard-yield.json keys exactly its refs.
+//      1 = it is not.
+//      2 = COVERAGE LOST — the index or tooling/guard-yield.json is absent,
+//          unparseable or empty, or a limb had nothing to look at.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
@@ -85,6 +100,7 @@ import {
   readTriggers, laneOf, laneOfInvokers,
   LANE_AUTOMATIC, LANE_SCHEDULED, LANE_DISPATCH, LANE_INHERITED, LANE_UNREADABLE,
 } from './build-enforcement-index.mjs';
+import { YIELD_REL, SYNC_COMMAND, checkYield } from '../ops/guard-yield.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const scanningRealRepo = process.argv[2] === undefined;
@@ -535,6 +551,28 @@ for (const row of orphans) {
 }
 for (const n of built.notes) prints.push(n);
 
+// ── 8. EVERY INDEX REF HAS A YIELD ENTRY ────────────────────────────────────
+// See the header. Absent or unparseable is COVERAGE LOST: with no file, "every
+// ref is keyed" has no subject, and deleting the file must never be the
+// cheapest way to turn this limb green.
+const YIELD_ABS = join(ROOT, YIELD_REL);
+if (!existsSync(YIELD_ABS)) {
+  coverageLost([
+    `${YIELD_REL} does not exist.`,
+    'It records every index ref\'s catches over PR runs; without it no ref\'s yield is recorded. Write it with',
+    '`node tooling/ops/triage-failed-runs.mjs --yield`, or restore it and run `' + SYNC_COMMAND + '`.',
+  ]);
+}
+let yieldDoc;
+try {
+  yieldDoc = JSON.parse(readFileSync(YIELD_ABS, 'utf8'));
+} catch (e) {
+  coverageLost([`${YIELD_REL} is not valid JSON — ${e.message}`, 'An unparseable yield file must never read as one that keys every ref.']);
+}
+const yieldCheck = checkYield(yieldDoc, committedRows);
+for (const p of yieldCheck.problems) problems.push(p);
+const yieldKeyed = yieldDoc && typeof yieldDoc.perRef === 'object' && yieldDoc.perRef !== null ? Object.keys(yieldDoc.perRef).length : 0;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // The banner goes FIRST and outside the ⬜ list. A finding formatted like every
 // other finding is read like every other finding.
@@ -562,5 +600,6 @@ console.log(
     // — is visible in the log of the run that introduced it. A finding that is
     // only emitted when it is non-zero is a finding nobody has a baseline for.
     `WIRED by lane: ${byLane.get(LANE_AUTOMATIC).length} automatic, ${byLane.get(LANE_SCHEDULED).length} schedule-only, ` +
-    `${byLane.get(LANE_DISPATCH).length} DISPATCH-ONLY, ${byLane.get(LANE_INHERITED).length + byLane.get(LANE_UNREADABLE).length} unresolved`,
+    `${byLane.get(LANE_DISPATCH).length} DISPATCH-ONLY, ${byLane.get(LANE_INHERITED).length + byLane.get(LANE_UNREADABLE).length} unresolved; ` +
+    `${yieldKeyed} ref(s) keyed in ${YIELD_REL}`,
 );

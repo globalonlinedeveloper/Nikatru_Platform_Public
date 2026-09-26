@@ -1,0 +1,3461 @@
+{
+  "_readme": [
+    "GUARD YIELD — per-guard catches over ci.yml pull_request runs, keyed by every ref of tooling/enforcement-index.json. Row O-GUARD-YIELD-UNMEASURED; the question is ADR 053 rule 5.",
+    "WRITTEN by `node tooling/ops/triage-failed-runs.mjs --yield --since <ISO> [--until <ISO>] --cache-dir <dir> [--max-requests N]`: one deliberate, credentialled fetch under the ledger's one request ceiling and quota floor, dated by asOf, never scheduled.",
+    "KEYED by `node tooling/ops/guard-yield.mjs --sync` (offline) in every PR that adds or removes an index ref. CHECKED by `--check` (offline) and by tooling/ci/assert-enforcement-index.mjs, which refuses an index ref this file does not key.",
+    "",
+    "A CATCH of guard G is a distinct MERGED PR with at least one failed (failure or timed_out) ci.yml pull_request run in the window attributed to G, whose failing step is not classified infrastructure or not-a-defect in tooling/ops/failed-run-causes.json. A merge needs ci-gate green, so G went green on the same branch after the failure.",
+    "ATTRIBUTION, per failing non-gate step, in order: (1) every `<name>: FAILED` line at column 0 of that step's log section, where <name>.mjs is the basename of an index ref; a step naming two guards credits both. (2) Else the step's `##[group]Run` header, when it runs exactly one `node tooling/...mjs` script and that script is an index ref. (3) Else the run is UNATTRIBUTED: counted in `unattributed`, listed in `unattributedRuns`, never dropped.",
+    "MERGED = the subjects of `git log <merged-ref> --since --until --format=%s` that end in `(#N)`, read without the API. A run's PR is run.pull_requests[0].number, else the one PR whose head branch is the run's and whose open span covers the run.",
+    "perRef.<ref>: catches = evidence.length = distinct merged PRs. evidence = {pr, runId, signature}, one per PR, the earliest run; signature is the failed-run ledger id of the failing step. firstSeen = the later of window.since and the day the ref's file was added on the merged ref, or the --sync day for a ref that entered the index after the fetch.",
+    "zeroCatch = index rows of kind guard and state WIRED whose catches is 0 and whose firstSeen is not after the day of window.until. A ref `--sync` keyed after the fetch (firstSeen = the sync day) had no chance to catch anything in the window: it is UNMEASURED, printed so by `--check`, and not counted, so the number does not move on every PR that adds a guard. Removing a zero-catch guard still lowers it. unattributed = failed runs with a live failing step attributed to no ref. runs.excluded = failed runs whose every failing step was excluded (non-defect, cancelled or gate-only). runs.noPr = attributed runs whose PR could not be named.",
+    "",
+    "LIMITS: a catch by the local pre-commit hook never reaches CI, so it is not counted, and yield is a LOWER BOUND. A PR closed unmerged is not counted. A cancelled run rendered no verdict and is not read. A failure fixed by weakening the guard itself still counts as a catch; the evidence list is there so that a reader can judge. The window is bounded by log retention: attribution reads job logs, and a log past retention cannot be read, so the window covers far fewer PRs than the repository has merged."
+  ],
+  "asOf": "2026-09-26",
+  "window": {
+    "since": "2026-06-28T10:37:36Z",
+    "until": "2026-09-26T10:37:36Z",
+    "mergedPrs": 805
+  },
+  "apiCalls": 51,
+  "perRef": {
+    ".github/workflows/ci.yml#app-brick": {
+      "catches": 0,
+      "firstSeen": "2026-07-18",
+      "evidence": []
+    },
+    "tooling/app-yaml/render-privacy.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-07",
+      "evidence": []
+    },
+    "tooling/app-yaml/render.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-06",
+      "evidence": []
+    },
+    "tooling/ci/adapter-set.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-19",
+      "evidence": []
+    },
+    "tooling/ci/anchored-run-read.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-25",
+      "evidence": []
+    },
+    "tooling/ci/android-signing.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-04",
+      "evidence": []
+    },
+    "tooling/ci/android-zip.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-26",
+      "evidence": []
+    },
+    "tooling/ci/app-set.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-24",
+      "evidence": []
+    },
+    "tooling/ci/appimage-signing.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-08",
+      "evidence": []
+    },
+    "tooling/ci/apple-provisioning.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-16",
+      "evidence": []
+    },
+    "tooling/ci/apple-signing.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-08",
+      "evidence": []
+    },
+    "tooling/ci/assert-a11y-coverage.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-12",
+      "evidence": []
+    },
+    "tooling/ci/assert-adapter-capabilities.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-29",
+      "evidence": []
+    },
+    "tooling/ci/assert-ads-declarations.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-08-10",
+      "evidence": [
+        {
+          "pr": 279,
+          "runId": 31385327426,
+          "signature": "guard-failed:assert-ads-declarations"
+        }
+      ]
+    },
+    "tooling/ci/assert-alert-disposition.mjs": {
+      "catches": 3,
+      "firstSeen": "2026-08-07",
+      "evidence": [
+        {
+          "pr": 518,
+          "runId": 34081651206,
+          "signature": "guard-refused:update coverage"
+        },
+        {
+          "pr": 598,
+          "runId": 34385982624,
+          "signature": "ops-register:alert-disposition-403"
+        },
+        {
+          "pr": 605,
+          "runId": 34385792303,
+          "signature": "ops-register:alert-disposition-403"
+        }
+      ]
+    },
+    "tooling/ci/assert-analytics-contract.mjs": {
+      "catches": 2,
+      "firstSeen": "2026-08-02",
+      "evidence": [
+        {
+          "pr": 363,
+          "runId": 32764563332,
+          "signature": "ops-register:duty-stale:duty.workflow.e2e.yml"
+        },
+        {
+          "pr": 567,
+          "runId": 34331135323,
+          "signature": "guard-failed:assert-analytics-contract"
+        }
+      ]
+    },
+    "tooling/ci/assert-android-target-sdk.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-04",
+      "evidence": []
+    },
+    "tooling/ci/assert-android-vapt-manifest.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-09-14",
+      "evidence": [
+        {
+          "pr": 908,
+          "runId": 35927201796,
+          "signature": "guard-failed:assert-android-vapt-manifest"
+        }
+      ]
+    },
+    "tooling/ci/assert-app-address-shape.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-09",
+      "evidence": []
+    },
+    "tooling/ci/assert-app-dod.mjs": {
+      "catches": 22,
+      "firstSeen": "2026-08-02",
+      "evidence": [
+        {
+          "pr": 176,
+          "runId": 31079738685,
+          "signature": "guard-failed:assert-app-dod"
+        },
+        {
+          "pr": 180,
+          "runId": 31107036707,
+          "signature": "guard-failed:assert-app-dod"
+        },
+        {
+          "pr": 203,
+          "runId": 31221335147,
+          "signature": "guard-failed:assert-app-dod"
+        },
+        {
+          "pr": 276,
+          "runId": 31375538413,
+          "signature": "guard-failed:assert-app-dod"
+        },
+        {
+          "pr": 279,
+          "runId": 31406426235,
+          "signature": "guard-failed:assert-app-dod"
+        },
+        {
+          "pr": 280,
+          "runId": 31389030079,
+          "signature": "guard-failed:assert-app-dod"
+        },
+        {
+          "pr": 291,
+          "runId": 31455574869,
+          "signature": "guard-failed:assert-app-dod"
+        },
+        {
+          "pr": 303,
+          "runId": 31527222888,
+          "signature": "guard-failed:assert-app-dod"
+        },
+        {
+          "pr": 364,
+          "runId": 33147754497,
+          "signature": "guard-failed:assert-app-dod"
+        },
+        {
+          "pr": 449,
+          "runId": 33862555344,
+          "signature": "guard-failed:assert-app-dod"
+        },
+        {
+          "pr": 454,
+          "runId": 33883632577,
+          "signature": "guard-failed:assert-app-dod"
+        },
+        {
+          "pr": 458,
+          "runId": 33901750938,
+          "signature": "guard-failed:assert-app-dod"
+        },
+        {
+          "pr": 470,
+          "runId": 33941196447,
+          "signature": "guard-failed:assert-app-dod"
+        },
+        {
+          "pr": 496,
+          "runId": 34000330656,
+          "signature": "guard-failed:assert-app-dod"
+        },
+        {
+          "pr": 567,
+          "runId": 34322206807,
+          "signature": "guard-failed:assert-app-dod"
+        },
+        {
+          "pr": 707,
+          "runId": 34669907816,
+          "signature": "flutter:analyze-stamped"
+        },
+        {
+          "pr": 742,
+          "runId": 34882499562,
+          "signature": "flutter:analyze-stamped"
+        },
+        {
+          "pr": 762,
+          "runId": 34935756247,
+          "signature": "guard-failed:assert-app-dod"
+        },
+        {
+          "pr": 772,
+          "runId": 34984049126,
+          "signature": "guard-failed:assert-app-dod"
+        },
+        {
+          "pr": 777,
+          "runId": 35049431997,
+          "signature": "guard-failed:assert-app-dod"
+        },
+        {
+          "pr": 780,
+          "runId": 35061617835,
+          "signature": "flutter:analyze-stamped"
+        },
+        {
+          "pr": 931,
+          "runId": 36090114131,
+          "signature": "guard-failed:assert-app-dod"
+        }
+      ]
+    },
+    "tooling/ci/assert-app-id-contract.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-25",
+      "evidence": []
+    },
+    "tooling/ci/assert-app-naming.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-09",
+      "evidence": []
+    },
+    "tooling/ci/assert-app-versioning.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-27",
+      "evidence": []
+    },
+    "tooling/ci/assert-app-yaml.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-06",
+      "evidence": []
+    },
+    "tooling/ci/assert-apple-entitlements.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-16",
+      "evidence": []
+    },
+    "tooling/ci/assert-apple-privacy-manifest.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-31",
+      "evidence": []
+    },
+    "tooling/ci/assert-apps-gov-in-apk.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-22",
+      "evidence": []
+    },
+    "tooling/ci/assert-apps-gov-in-media.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-22",
+      "evidence": []
+    },
+    "tooling/ci/assert-artifact-shape.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-08",
+      "evidence": []
+    },
+    "tooling/ci/assert-artifact-signed-apple.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-08",
+      "evidence": []
+    },
+    "tooling/ci/assert-artifact-signed-msix.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-20",
+      "evidence": []
+    },
+    "tooling/ci/assert-artifact-signed.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-04",
+      "evidence": []
+    },
+    "tooling/ci/assert-auth-callbacks.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-24",
+      "evidence": []
+    },
+    "tooling/ci/assert-availability.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-09",
+      "evidence": []
+    },
+    "tooling/ci/assert-built-info-plist.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-26",
+      "evidence": []
+    },
+    "tooling/ci/assert-bundle-availability.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-09-10",
+      "evidence": [
+        {
+          "pr": 763,
+          "runId": 34937192674,
+          "signature": "guard-refused:capability register"
+        }
+      ]
+    },
+    "tooling/ci/assert-bundle-provenance.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-10",
+      "evidence": []
+    },
+    "tooling/ci/assert-capability-register.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-28",
+      "evidence": []
+    },
+    "tooling/ci/assert-captcha-gated-call-sites.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-04",
+      "evidence": []
+    },
+    "tooling/ci/assert-case-count-honest.mjs": {
+      "catches": 5,
+      "firstSeen": "2026-08-27",
+      "evidence": [
+        {
+          "pr": 503,
+          "runId": 34018701706,
+          "signature": "guard-refused:tooling/ci walks"
+        },
+        {
+          "pr": 541,
+          "runId": 34171988867,
+          "signature": "guard-refused:guards refuse empty"
+        },
+        {
+          "pr": 577,
+          "runId": 34342963438,
+          "signature": "guard-refused:tooling/ci walks"
+        },
+        {
+          "pr": 599,
+          "runId": 34378420844,
+          "signature": "guard-refused:tooling/ci walks"
+        },
+        {
+          "pr": 637,
+          "runId": 34574976660,
+          "signature": "guard-refused:guards refuse empty"
+        }
+      ]
+    },
+    "tooling/ci/assert-catalog-contract.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-08-17",
+      "evidence": [
+        {
+          "pr": 673,
+          "runId": 34625852168,
+          "signature": "other:Catalogue advertises no dead app:✗ THE WILDCARD DNS RECORD IS BACK — https://wc-<sha>.nikatru.com/ returned HTTP <n>, and nobody registered that name."
+        }
+      ]
+    },
+    "tooling/ci/assert-catalog-reachable.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-29",
+      "evidence": []
+    },
+    "tooling/ci/assert-ceiling-budget.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-08-01",
+      "evidence": [
+        {
+          "pr": 792,
+          "runId": 35288614758,
+          "signature": "guard-failed:assert-ceiling-budget"
+        }
+      ]
+    },
+    "tooling/ci/assert-channel-claims.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-31",
+      "evidence": []
+    },
+    "tooling/ci/assert-channel-register.mjs": {
+      "catches": 6,
+      "firstSeen": "2026-07-31",
+      "evidence": [
+        {
+          "pr": 303,
+          "runId": 31530673924,
+          "signature": "guard-failed:assert-channel-register"
+        },
+        {
+          "pr": 304,
+          "runId": 31535158654,
+          "signature": "guard-failed:assert-channel-register"
+        },
+        {
+          "pr": 416,
+          "runId": 33717218839,
+          "signature": "guard-failed:assert-channel-register"
+        },
+        {
+          "pr": 517,
+          "runId": 34068265720,
+          "signature": "guard-failed:assert-channel-register"
+        },
+        {
+          "pr": 559,
+          "runId": 34297028310,
+          "signature": "guard-failed:assert-channel-register"
+        },
+        {
+          "pr": 830,
+          "runId": 35463173755,
+          "signature": "guard-failed:assert-channel-register"
+        }
+      ]
+    },
+    "tooling/ci/assert-chassis-ledger.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-05",
+      "evidence": []
+    },
+    "tooling/ci/assert-chassis-parity.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-12",
+      "evidence": []
+    },
+    "tooling/ci/assert-clone-contract.mjs": {
+      "catches": 3,
+      "firstSeen": "2026-07-25",
+      "evidence": [
+        {
+          "pr": 294,
+          "runId": 31459462300,
+          "signature": "dart:package-uri-unresolved"
+        },
+        {
+          "pr": 449,
+          "runId": 33863386358,
+          "signature": "dart:format"
+        },
+        {
+          "pr": 792,
+          "runId": 35288614758,
+          "signature": "npm-test:assertion"
+        }
+      ]
+    },
+    "tooling/ci/assert-config-registry.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-07",
+      "evidence": []
+    },
+    "tooling/ci/assert-consent-withdrawal-surface.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-08",
+      "evidence": []
+    },
+    "tooling/ci/assert-content-licences.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-02",
+      "evidence": []
+    },
+    "tooling/ci/assert-cors-allowlist.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-25",
+      "evidence": []
+    },
+    "tooling/ci/assert-d1-bindings.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-29",
+      "evidence": []
+    },
+    "tooling/ci/assert-d1-location-hint.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-14",
+      "evidence": []
+    },
+    "tooling/ci/assert-d1-sql-inventory.mjs": {
+      "catches": 3,
+      "firstSeen": "2026-08-09",
+      "evidence": [
+        {
+          "pr": 563,
+          "runId": 34309799469,
+          "signature": "start-here:drift"
+        },
+        {
+          "pr": 568,
+          "runId": 34320117790,
+          "signature": "start-here:drift"
+        },
+        {
+          "pr": 588,
+          "runId": 34376690144,
+          "signature": "start-here:drift"
+        }
+      ]
+    },
+    "tooling/ci/assert-data-inventory.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-08-01",
+      "evidence": [
+        {
+          "pr": 304,
+          "runId": 31535158654,
+          "signature": "ops-register:duty-stale:duty.workflow.e2e.yml"
+        }
+      ]
+    },
+    "tooling/ci/assert-deletion-control.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-08-03",
+      "evidence": [
+        {
+          "pr": 406,
+          "runId": 33361411450,
+          "signature": "versions:drift"
+        }
+      ]
+    },
+    "tooling/ci/assert-deploy-ref.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-26",
+      "evidence": []
+    },
+    "tooling/ci/assert-deploy-triggers-deploy.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-05",
+      "evidence": []
+    },
+    "tooling/ci/assert-deploy-triggers.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-01",
+      "evidence": []
+    },
+    "tooling/ci/assert-desktop-runner-identity.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-08-04",
+      "evidence": [
+        {
+          "pr": 495,
+          "runId": 33978776008,
+          "signature": "clone-tells"
+        }
+      ]
+    },
+    "tooling/ci/assert-discovery-surface.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-03",
+      "evidence": []
+    },
+    "tooling/ci/assert-e2e-legs.mjs": {
+      "catches": 11,
+      "firstSeen": "2026-08-02",
+      "evidence": [
+        {
+          "pr": 364,
+          "runId": 32809769835,
+          "signature": "versions:drift"
+        },
+        {
+          "pr": 406,
+          "runId": 33338542267,
+          "signature": "versions:drift"
+        },
+        {
+          "pr": 416,
+          "runId": 33716732638,
+          "signature": "versions:drift"
+        },
+        {
+          "pr": 556,
+          "runId": 34296274686,
+          "signature": "start-here:drift"
+        },
+        {
+          "pr": 584,
+          "runId": 34368904624,
+          "signature": "start-here:drift"
+        },
+        {
+          "pr": 585,
+          "runId": 34383248224,
+          "signature": "start-here:drift"
+        },
+        {
+          "pr": 588,
+          "runId": 34371262525,
+          "signature": "start-here:drift"
+        },
+        {
+          "pr": 599,
+          "runId": 34382388470,
+          "signature": "start-here:drift"
+        },
+        {
+          "pr": 713,
+          "runId": 34673326269,
+          "signature": "guard-refused:d1 sql inventory"
+        },
+        {
+          "pr": 762,
+          "runId": 34935756247,
+          "signature": "other:Every shared table declares how its rows are attributed:✗ <n> problem(s) with the production-provenance rules:"
+        },
+        {
+          "pr": 882,
+          "runId": 35800505108,
+          "signature": "guard-refused:d1 sql inventory"
+        }
+      ]
+    },
+    "tooling/ci/assert-e2e-proof-fresh.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-08-02",
+      "evidence": [
+        {
+          "pr": 364,
+          "runId": 32809468529,
+          "signature": "versions:drift"
+        }
+      ]
+    },
+    "tooling/ci/assert-elf-page-alignment.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-20",
+      "evidence": []
+    },
+    "tooling/ci/assert-enforcement-index.mjs": {
+      "catches": 11,
+      "firstSeen": "2026-08-20",
+      "evidence": [
+        {
+          "pr": 398,
+          "runId": 33079459109,
+          "signature": "enforcement-index:drift"
+        },
+        {
+          "pr": 462,
+          "runId": 33910988532,
+          "signature": "enforcement-index:drift"
+        },
+        {
+          "pr": 475,
+          "runId": 33944868173,
+          "signature": "enforcement-index:drift"
+        },
+        {
+          "pr": 562,
+          "runId": 34313216692,
+          "signature": "enforcement-index:drift"
+        },
+        {
+          "pr": 565,
+          "runId": 34316787472,
+          "signature": "enforcement-index:drift"
+        },
+        {
+          "pr": 573,
+          "runId": 34332949278,
+          "signature": "enforcement-index:drift"
+        },
+        {
+          "pr": 587,
+          "runId": 34380138778,
+          "signature": "enforcement-index:drift"
+        },
+        {
+          "pr": 652,
+          "runId": 34608569567,
+          "signature": "enforcement-index:drift"
+        },
+        {
+          "pr": 705,
+          "runId": 34668053175,
+          "signature": "enforcement-index:drift"
+        },
+        {
+          "pr": 770,
+          "runId": 34966333657,
+          "signature": "enforcement-index:drift"
+        },
+        {
+          "pr": 892,
+          "runId": 35824744224,
+          "signature": "enforcement-index:drift"
+        }
+      ]
+    },
+    "tooling/ci/assert-entitlement-contract.mjs": {
+      "catches": 6,
+      "firstSeen": "2026-08-01",
+      "evidence": [
+        {
+          "pr": 365,
+          "runId": 32739052765,
+          "signature": "ops-register:duty-stale:duty.workflow.e2e.yml"
+        },
+        {
+          "pr": 367,
+          "runId": 32735781331,
+          "signature": "ops-register:duty-stale:duty.workflow.e2e.yml"
+        },
+        {
+          "pr": 410,
+          "runId": 33634545643,
+          "signature": "ops-register:duty-stale:duty.analytics-silence-judgment"
+        },
+        {
+          "pr": 413,
+          "runId": 33685014570,
+          "signature": "ops-register:duty-stale:duty.analytics-silence-judgment"
+        },
+        {
+          "pr": 414,
+          "runId": 33686185038,
+          "signature": "ops-register:duty-stale:duty.analytics-silence-judgment"
+        },
+        {
+          "pr": 713,
+          "runId": 34673326269,
+          "signature": "guard-refused:erasure reach"
+        }
+      ]
+    },
+    "tooling/ci/assert-erasure-reach.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-04",
+      "evidence": []
+    },
+    "tooling/ci/assert-extensions-build-free.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-05",
+      "evidence": []
+    },
+    "tooling/ci/assert-flag-exposure.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-02",
+      "evidence": []
+    },
+    "tooling/ci/assert-gate-passed.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-26",
+      "evidence": []
+    },
+    "tooling/ci/assert-github-matrix.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-19",
+      "evidence": []
+    },
+    "tooling/ci/assert-glitchtip-no-ip.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-16",
+      "evidence": []
+    },
+    "tooling/ci/assert-glitchtip-project.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-09",
+      "evidence": []
+    },
+    "tooling/ci/assert-green-means-ran.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-08-01",
+      "evidence": [
+        {
+          "pr": 889,
+          "runId": 35814243238,
+          "signature": "guard-failed:assert-green-means-ran"
+        }
+      ]
+    },
+    "tooling/ci/assert-guard-coverage.mjs": {
+      "catches": 20,
+      "firstSeen": "2026-07-27",
+      "evidence": [
+        {
+          "pr": 141,
+          "runId": 30845218355,
+          "signature": "guard-refused:tooling/ci walks"
+        },
+        {
+          "pr": 196,
+          "runId": 31204405009,
+          "signature": "guard-refused:policy archive"
+        },
+        {
+          "pr": 303,
+          "runId": 31527222888,
+          "signature": "guard-refused:guard coverage"
+        },
+        {
+          "pr": 312,
+          "runId": 31715083153,
+          "signature": "guard-refused:licence register"
+        },
+        {
+          "pr": 321,
+          "runId": 32013746923,
+          "signature": "guard-coverage:orphan-guard"
+        },
+        {
+          "pr": 327,
+          "runId": 32159720575,
+          "signature": "guard-refused:tooling/ci walks"
+        },
+        {
+          "pr": 350,
+          "runId": 32445701616,
+          "signature": "guard-refused:policy archive"
+        },
+        {
+          "pr": 359,
+          "runId": 32506456927,
+          "signature": "guard-refused:tooling/ci walks"
+        },
+        {
+          "pr": 431,
+          "runId": 33744485381,
+          "signature": "guard-refused:guard coverage"
+        },
+        {
+          "pr": 503,
+          "runId": 34017875491,
+          "signature": "guard-coverage:orphan-guard"
+        },
+        {
+          "pr": 705,
+          "runId": 34667177039,
+          "signature": "other:The ratchet the guard just wrote is the ratchet that was committed:##[error]assert-guard-coverage.mjs rewrote the ratchet during this run, so the committed file is stale. Run `node toolin"
+        },
+        {
+          "pr": 724,
+          "runId": 34697732893,
+          "signature": "other:The ratchet the guard just wrote is the ratchet that was committed:##[error]assert-guard-coverage.mjs rewrote the ratchet during this run, so the committed file is stale. Run `node toolin"
+        },
+        {
+          "pr": 732,
+          "runId": 34853847485,
+          "signature": "other:The ratchet the guard just wrote is the ratchet that was committed:##[error]assert-guard-coverage.mjs rewrote the ratchet during this run, so the committed file is stale. Run `node toolin"
+        },
+        {
+          "pr": 737,
+          "runId": 34873009273,
+          "signature": "guard-refused:tooling/ci walks"
+        },
+        {
+          "pr": 815,
+          "runId": 35405887771,
+          "signature": "guard-failed:assert-case-count-honest"
+        },
+        {
+          "pr": 818,
+          "runId": 35429649734,
+          "signature": "guard-refused:tooling/ci walks"
+        },
+        {
+          "pr": 882,
+          "runId": 35804236719,
+          "signature": "guard-refused:loop cases"
+        },
+        {
+          "pr": 885,
+          "runId": 35801964921,
+          "signature": "guard-refused:loop cases"
+        },
+        {
+          "pr": 890,
+          "runId": 35817345445,
+          "signature": "other:The ratchet the guard just wrote is the ratchet that was committed:##[error]assert-guard-coverage.mjs rewrote the ratchet during this run, so the committed file is stale. Run `node toolin"
+        },
+        {
+          "pr": 908,
+          "runId": 35927201796,
+          "signature": "other:The ratchet the guard just wrote is the ratchet that was committed:##[error]assert-guard-coverage.mjs rewrote the ratchet during this run, so the committed file is stale. Run `node toolin"
+        }
+      ]
+    },
+    "tooling/ci/assert-guards-refuse-empty.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-17",
+      "evidence": []
+    },
+    "tooling/ci/assert-hostname-depth.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-11",
+      "evidence": []
+    },
+    "tooling/ci/assert-house-identity.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-25",
+      "evidence": []
+    },
+    "tooling/ci/assert-hyperdrive-cap.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-15",
+      "evidence": []
+    },
+    "tooling/ci/assert-iap-review-screenshots.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-23",
+      "evidence": []
+    },
+    "tooling/ci/assert-inappwebview-waivers.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-15",
+      "evidence": []
+    },
+    "tooling/ci/assert-input-contract.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-29",
+      "evidence": []
+    },
+    "tooling/ci/assert-lane-coverage.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-26",
+      "evidence": []
+    },
+    "tooling/ci/assert-launch-smoke.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-03",
+      "evidence": []
+    },
+    "tooling/ci/assert-launcher-icons.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-04",
+      "evidence": []
+    },
+    "tooling/ci/assert-legal-text-parity.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-06",
+      "evidence": []
+    },
+    "tooling/ci/assert-legal-tripwires.mjs": {
+      "catches": 3,
+      "firstSeen": "2026-08-01",
+      "evidence": [
+        {
+          "pr": 390,
+          "runId": 33023973019,
+          "signature": "ops-register:problem:duty.laptop.nikatru-daily-backup — reader `windows-scheduled-task` could not run here: this"
+        },
+        {
+          "pr": 411,
+          "runId": 33658179782,
+          "signature": "ops-register:duty-stale:duty.analytics-silence-judgment"
+        },
+        {
+          "pr": 438,
+          "runId": 33802032485,
+          "signature": "ops-register:duty-stale:duty.workflow.e2e.yml"
+        }
+      ]
+    },
+    "tooling/ci/assert-licence-register.mjs": {
+      "catches": 3,
+      "firstSeen": "2026-08-01",
+      "evidence": [
+        {
+          "pr": 279,
+          "runId": 31379975217,
+          "signature": "dart:format"
+        },
+        {
+          "pr": 312,
+          "runId": 31714562060,
+          "signature": "guard-refused:licence register"
+        },
+        {
+          "pr": 364,
+          "runId": 33149801597,
+          "signature": "dart:format"
+        }
+      ]
+    },
+    "tooling/ci/assert-lint-inheritance.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-28",
+      "evidence": []
+    },
+    "tooling/ci/assert-listing-assets.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-04",
+      "evidence": []
+    },
+    "tooling/ci/assert-live-writer-provenance.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-23",
+      "evidence": []
+    },
+    "tooling/ci/assert-lockfile-discipline.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-26",
+      "evidence": []
+    },
+    "tooling/ci/assert-mail-transport-claims.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-04",
+      "evidence": []
+    },
+    "tooling/ci/assert-mechanism-claims.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-16",
+      "evidence": []
+    },
+    "tooling/ci/assert-modal-detection.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-26",
+      "evidence": []
+    },
+    "tooling/ci/assert-money-config.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-01",
+      "evidence": []
+    },
+    "tooling/ci/assert-monitor-coverage.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-02",
+      "evidence": []
+    },
+    "tooling/ci/assert-mor-adapters.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-01",
+      "evidence": []
+    },
+    "tooling/ci/assert-mutation-proofs.mjs": {
+      "catches": 3,
+      "firstSeen": "2026-09-09",
+      "evidence": [
+        {
+          "pr": 742,
+          "runId": 34882499562,
+          "signature": "guard-failed:assert-mutation-proofs"
+        },
+        {
+          "pr": 888,
+          "runId": 35813262346,
+          "signature": "guard-failed:assert-mutation-proofs"
+        },
+        {
+          "pr": 890,
+          "runId": 35816574269,
+          "signature": "guard-failed:assert-mutation-proofs"
+        }
+      ]
+    },
+    "tooling/ci/assert-name-clearance.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-09",
+      "evidence": []
+    },
+    "tooling/ci/assert-no-clone-tells.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-28",
+      "evidence": []
+    },
+    "tooling/ci/assert-no-dead-repo-names.mjs": {
+      "catches": 4,
+      "firstSeen": "2026-09-06",
+      "evidence": [
+        {
+          "pr": 567,
+          "runId": 34331135323,
+          "signature": "retention-coverage"
+        },
+        {
+          "pr": 585,
+          "runId": 34368894864,
+          "signature": "retention-coverage"
+        },
+        {
+          "pr": 599,
+          "runId": 34375903129,
+          "signature": "deploy-triggers:unreachable"
+        },
+        {
+          "pr": 736,
+          "runId": 34865475746,
+          "signature": "other:Dependency resolution is reproducible:✗ <n> reproducibility problem(s):"
+        }
+      ]
+    },
+    "tooling/ci/assert-no-do-alarms.mjs": {
+      "catches": 25,
+      "firstSeen": "2026-08-06",
+      "evidence": [
+        {
+          "pr": 551,
+          "runId": 34263780459,
+          "signature": "ops-register:red-since:duty.workflow.ops-watch.yml"
+        },
+        {
+          "pr": 554,
+          "runId": 34282587122,
+          "signature": "ops-register:duty-stale:duty.laptop.nikatru-ops-check"
+        },
+        {
+          "pr": 556,
+          "runId": 34287912129,
+          "signature": "ops-register:red-since:duty.workflow.ops-watch.yml"
+        },
+        {
+          "pr": 566,
+          "runId": 34317678840,
+          "signature": "ops-register:red-since:duty.workflow.e2e.yml"
+        },
+        {
+          "pr": 567,
+          "runId": 34319070463,
+          "signature": "ops-register:red-since:duty.workflow.ops-watch.yml"
+        },
+        {
+          "pr": 577,
+          "runId": 34344164820,
+          "signature": "ops-register:red-since:duty.workflow.deploy-web.yml"
+        },
+        {
+          "pr": 580,
+          "runId": 34347818921,
+          "signature": "ops-register:red-since:duty.workflow.ops-watch.yml"
+        },
+        {
+          "pr": 581,
+          "runId": 34350428307,
+          "signature": "ops-register:red-since:duty.workflow.ops-watch.yml"
+        },
+        {
+          "pr": 582,
+          "runId": 34352958951,
+          "signature": "ops-register:red-since:duty.workflow.build-platforms.yml"
+        },
+        {
+          "pr": 583,
+          "runId": 34353854354,
+          "signature": "ops-register:red-since:duty.workflow.build-platforms.yml"
+        },
+        {
+          "pr": 585,
+          "runId": 34355485583,
+          "signature": "ops-register:red-since:duty.workflow.build-platforms.yml"
+        },
+        {
+          "pr": 586,
+          "runId": 34356559562,
+          "signature": "ops-register:red-since:duty.workflow.build-platforms.yml"
+        },
+        {
+          "pr": 587,
+          "runId": 34380138778,
+          "signature": "platform-register:unregistered-route:GET /v1/entitlements/subject"
+        },
+        {
+          "pr": 588,
+          "runId": 34358260776,
+          "signature": "ops-register:red-since:duty.workflow.build-platforms.yml"
+        },
+        {
+          "pr": 590,
+          "runId": 34365392559,
+          "signature": "ops-register:red-since:duty.workflow.build-platforms.yml"
+        },
+        {
+          "pr": 591,
+          "runId": 34365685289,
+          "signature": "ops-register:red-since:duty.workflow.build-platforms.yml"
+        },
+        {
+          "pr": 592,
+          "runId": 34365778963,
+          "signature": "ops-register:red-since:duty.workflow.build-platforms.yml"
+        },
+        {
+          "pr": 598,
+          "runId": 34379591814,
+          "signature": "ops-register:red-since:duty.workflow.ops-watch.yml"
+        },
+        {
+          "pr": 599,
+          "runId": 34369297029,
+          "signature": "ops-register:red-since:duty.workflow.build-platforms.yml"
+        },
+        {
+          "pr": 603,
+          "runId": 34377574083,
+          "signature": "platform-register:unregistered-route:POST /v1/receipts/:store"
+        },
+        {
+          "pr": 614,
+          "runId": 34556079522,
+          "signature": "ops-register:red-since:duty.workflow.e2e.yml"
+        },
+        {
+          "pr": 617,
+          "runId": 34557406320,
+          "signature": "ops-register:red-since:duty.workflow.e2e.yml"
+        },
+        {
+          "pr": 618,
+          "runId": 34553250403,
+          "signature": "ops-register:red-since:duty.workflow.e2e.yml"
+        },
+        {
+          "pr": 621,
+          "runId": 34556161554,
+          "signature": "ops-register:red-since:duty.workflow.e2e.yml"
+        },
+        {
+          "pr": 697,
+          "runId": 34659423222,
+          "signature": "ops-register:problem:.github/workflows/ops-watch.yml is read by <n> duty rows and job(s) dns are the unit of none"
+        }
+      ]
+    },
+    "tooling/ci/assert-no-gate-weakening.mjs": {
+      "catches": 3,
+      "firstSeen": "2026-08-02",
+      "evidence": [
+        {
+          "pr": 214,
+          "runId": 31253854404,
+          "signature": "guard-failed:assert-no-gate-weakening"
+        },
+        {
+          "pr": 312,
+          "runId": 31716853833,
+          "signature": "guard-failed:assert-no-gate-weakening"
+        },
+        {
+          "pr": 680,
+          "runId": 34639921802,
+          "signature": "guard-failed:assert-no-gate-weakening"
+        }
+      ]
+    },
+    "tooling/ci/assert-no-generated-line-cites.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-26",
+      "evidence": []
+    },
+    "tooling/ci/assert-no-hardcoded-strings.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-28",
+      "evidence": []
+    },
+    "tooling/ci/assert-no-loop-cases.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-15",
+      "evidence": []
+    },
+    "tooling/ci/assert-no-null-entitlement-key.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-10",
+      "evidence": []
+    },
+    "tooling/ci/assert-no-origin-authz.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-09",
+      "evidence": []
+    },
+    "tooling/ci/assert-no-price-literals.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-08-02",
+      "evidence": [
+        {
+          "pr": 499,
+          "runId": 33988168339,
+          "signature": "guard-failed:assert-no-price-literals"
+        }
+      ]
+    },
+    "tooling/ci/assert-no-seam-forks.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-28",
+      "evidence": []
+    },
+    "tooling/ci/assert-no-secret-defines.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-03",
+      "evidence": []
+    },
+    "tooling/ci/assert-no-store-bundle-copy.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-10",
+      "evidence": []
+    },
+    "tooling/ci/assert-no-tls-pinning.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-03",
+      "evidence": []
+    },
+    "tooling/ci/assert-obfuscation-coupled.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-03",
+      "evidence": []
+    },
+    "tooling/ci/assert-one-entitlement-reader.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-11",
+      "evidence": []
+    },
+    "tooling/ci/assert-ops-register.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-02",
+      "evidence": []
+    },
+    "tooling/ci/assert-pack-inert.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-02",
+      "evidence": []
+    },
+    "tooling/ci/assert-pack-roundtrip.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-02",
+      "evidence": []
+    },
+    "tooling/ci/assert-package-boundaries.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-07-28",
+      "evidence": [
+        {
+          "pr": 326,
+          "runId": 32111786460,
+          "signature": "guard-refused:guards refuse empty"
+        }
+      ]
+    },
+    "tooling/ci/assert-package-earned.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-07-28",
+      "evidence": [
+        {
+          "pr": 162,
+          "runId": 30984347365,
+          "signature": "secret-scan:canary-coverage"
+        }
+      ]
+    },
+    "tooling/ci/assert-palette-consistent.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-17",
+      "evidence": []
+    },
+    "tooling/ci/assert-platform-proof-fresh.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-27",
+      "evidence": []
+    },
+    "tooling/ci/assert-platform-register.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-01",
+      "evidence": []
+    },
+    "tooling/ci/assert-play-declarations.mjs": {
+      "catches": 8,
+      "firstSeen": "2026-08-04",
+      "evidence": [
+        {
+          "pr": 150,
+          "runId": 30887190400,
+          "signature": "guard-failed:assert-play-declarations"
+        },
+        {
+          "pr": 195,
+          "runId": 31192147624,
+          "signature": "guard-failed:assert-play-declarations"
+        },
+        {
+          "pr": 200,
+          "runId": 31217112575,
+          "signature": "guard-failed:assert-play-declarations"
+        },
+        {
+          "pr": 213,
+          "runId": 31253305379,
+          "signature": "guard-refused:capability register"
+        },
+        {
+          "pr": 585,
+          "runId": 34355485583,
+          "signature": "guard-failed:assert-play-declarations"
+        },
+        {
+          "pr": 587,
+          "runId": 34357769303,
+          "signature": "guard-failed:assert-play-declarations"
+        },
+        {
+          "pr": 762,
+          "runId": 34935756247,
+          "signature": "guard-failed:assert-play-declarations"
+        },
+        {
+          "pr": 763,
+          "runId": 34937192674,
+          "signature": "guard-failed:assert-play-declarations"
+        }
+      ]
+    },
+    "tooling/ci/assert-play-device-coverage.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-08-20",
+      "evidence": [
+        {
+          "pr": 890,
+          "runId": 35816574269,
+          "signature": "guard-refused:publishable inputs"
+        }
+      ]
+    },
+    "tooling/ci/assert-policy-archive.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-08-01",
+      "evidence": [
+        {
+          "pr": 364,
+          "runId": 32665553445,
+          "signature": "ops-register:duty-stale:duty.workflow.e2e.yml"
+        }
+      ]
+    },
+    "tooling/ci/assert-policy-claims.mjs": {
+      "catches": 6,
+      "firstSeen": "2026-08-01",
+      "evidence": [
+        {
+          "pr": 205,
+          "runId": 31245381322,
+          "signature": "ops-register:duty-stale:duty.analytics-silence-judgment"
+        },
+        {
+          "pr": 268,
+          "runId": 31335357737,
+          "signature": "ops-register:duty-stale:duty.analytics-silence-judgment"
+        },
+        {
+          "pr": 364,
+          "runId": 32739031094,
+          "signature": "ops-register:duty-stale:duty.workflow.e2e.yml"
+        },
+        {
+          "pr": 365,
+          "runId": 32665578338,
+          "signature": "ops-register:duty-stale:duty.workflow.e2e.yml"
+        },
+        {
+          "pr": 366,
+          "runId": 32725207454,
+          "signature": "ops-register:duty-stale:duty.workflow.e2e.yml"
+        },
+        {
+          "pr": 882,
+          "runId": 35800505108,
+          "signature": "guard-refused:entitlement contract"
+        }
+      ]
+    },
+    "tooling/ci/assert-pr-rows.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-25",
+      "evidence": []
+    },
+    "tooling/ci/assert-preflight-test-coverage.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-23",
+      "evidence": []
+    },
+    "tooling/ci/assert-privacy-manifest.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-08-21",
+      "evidence": [
+        {
+          "pr": 587,
+          "runId": 34375310215,
+          "signature": "policy-claims:unclaimed-route-segment"
+        }
+      ]
+    },
+    "tooling/ci/assert-prod-provenance.mjs": {
+      "catches": 9,
+      "firstSeen": "2026-08-06",
+      "evidence": [
+        {
+          "pr": 554,
+          "runId": 34292689288,
+          "signature": "start-here:drift"
+        },
+        {
+          "pr": 562,
+          "runId": 34308791880,
+          "signature": "start-here:drift"
+        },
+        {
+          "pr": 577,
+          "runId": 34342963438,
+          "signature": "start-here:drift"
+        },
+        {
+          "pr": 585,
+          "runId": 34396205070,
+          "signature": "start-here:drift"
+        },
+        {
+          "pr": 598,
+          "runId": 34370367903,
+          "signature": "start-here:drift"
+        },
+        {
+          "pr": 736,
+          "runId": 34866660519,
+          "signature": "start-here:drift"
+        },
+        {
+          "pr": 824,
+          "runId": 35449581752,
+          "signature": "start-here:drift"
+        },
+        {
+          "pr": 825,
+          "runId": 35449839163,
+          "signature": "start-here:drift"
+        },
+        {
+          "pr": 902,
+          "runId": 35887916528,
+          "signature": "start-here:drift"
+        }
+      ]
+    },
+    "tooling/ci/assert-prompt-provenance.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-02",
+      "evidence": []
+    },
+    "tooling/ci/assert-provider-graph-acyclic.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-09",
+      "evidence": []
+    },
+    "tooling/ci/assert-pseudonymity-firewall.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-02",
+      "evidence": []
+    },
+    "tooling/ci/assert-publish-gate.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-02",
+      "evidence": []
+    },
+    "tooling/ci/assert-publish-records.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-06",
+      "evidence": []
+    },
+    "tooling/ci/assert-publish-steps-guarded.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-07",
+      "evidence": []
+    },
+    "tooling/ci/assert-purchase-path.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-02",
+      "evidence": []
+    },
+    "tooling/ci/assert-recipe-contract.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-02",
+      "evidence": []
+    },
+    "tooling/ci/assert-release-durable.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-06",
+      "evidence": []
+    },
+    "tooling/ci/assert-release-json.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-23",
+      "evidence": []
+    },
+    "tooling/ci/assert-release-lane-generic.mjs": {
+      "catches": 5,
+      "firstSeen": "2026-08-03",
+      "evidence": [
+        {
+          "pr": 156,
+          "runId": 30937517064,
+          "signature": "guard-failed:assert-release-lane-generic"
+        },
+        {
+          "pr": 173,
+          "runId": 31070109861,
+          "signature": "guard-failed:assert-release-lane-generic"
+        },
+        {
+          "pr": 620,
+          "runId": 34555992168,
+          "signature": "guard-failed:assert-release-lane-generic"
+        },
+        {
+          "pr": 830,
+          "runId": 35464197238,
+          "signature": "guard-failed:assert-release-lane-generic"
+        },
+        {
+          "pr": 922,
+          "runId": 36049952550,
+          "signature": "guard-failed:assert-release-lane-generic"
+        }
+      ]
+    },
+    "tooling/ci/assert-release-provenance.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-07-31",
+      "evidence": [
+        {
+          "pr": 842,
+          "runId": 35495430453,
+          "signature": "guard-refused:assert-store-vocabulary"
+        }
+      ]
+    },
+    "tooling/ci/assert-render-payload.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-18",
+      "evidence": []
+    },
+    "tooling/ci/assert-renovate-reach.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-22",
+      "evidence": []
+    },
+    "tooling/ci/assert-repo-posture.mjs": {
+      "catches": 6,
+      "firstSeen": "2026-08-01",
+      "evidence": [
+        {
+          "pr": 204,
+          "runId": 31230206574,
+          "signature": "ops-register:duty-stale:duty.analytics-silence-judgment"
+        },
+        {
+          "pr": 268,
+          "runId": 31369488502,
+          "signature": "ops-register:duty-stale:duty.analytics-silence-judgment"
+        },
+        {
+          "pr": 270,
+          "runId": 31358075176,
+          "signature": "ops-register:duty-stale:duty.analytics-silence-judgment"
+        },
+        {
+          "pr": 271,
+          "runId": 31369375572,
+          "signature": "ops-register:duty-stale:duty.analytics-silence-judgment"
+        },
+        {
+          "pr": 303,
+          "runId": 31530673924,
+          "signature": "ops-register:duty-stale:duty.workflow.e2e.yml"
+        },
+        {
+          "pr": 366,
+          "runId": 32725207454,
+          "signature": "ops-register:duty-stale:duty.workflow.e2e.yml"
+        }
+      ]
+    },
+    "tooling/ci/assert-responsive-coverage.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-08-09",
+      "evidence": [
+        {
+          "pr": 249,
+          "runId": 31282369805,
+          "signature": "guard-failed:assert-responsive-coverage"
+        }
+      ]
+    },
+    "tooling/ci/assert-retention-coverage.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-02",
+      "evidence": []
+    },
+    "tooling/ci/assert-retired-names-visible.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-23",
+      "evidence": []
+    },
+    "tooling/ci/assert-retired-names.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-11",
+      "evidence": []
+    },
+    "tooling/ci/assert-review-gate.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-02",
+      "evidence": []
+    },
+    "tooling/ci/assert-rollup-lossless.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-12",
+      "evidence": []
+    },
+    "tooling/ci/assert-runner-budget.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-08",
+      "evidence": []
+    },
+    "tooling/ci/assert-screen-set.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-29",
+      "evidence": []
+    },
+    "tooling/ci/assert-seams-wired.mjs": {
+      "catches": 2,
+      "firstSeen": "2026-07-26",
+      "evidence": [
+        {
+          "pr": 294,
+          "runId": 31468378335,
+          "signature": "guard-failed:assert-seams-wired"
+        },
+        {
+          "pr": 487,
+          "runId": 33961119075,
+          "signature": "guard-failed:assert-seams-wired"
+        }
+      ]
+    },
+    "tooling/ci/assert-session-revocation.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-26",
+      "evidence": []
+    },
+    "tooling/ci/assert-signup-consent-shape.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-10",
+      "evidence": []
+    },
+    "tooling/ci/assert-sink-disclosure.mjs": {
+      "catches": 3,
+      "firstSeen": "2026-08-06",
+      "evidence": [
+        {
+          "pr": 368,
+          "runId": 32806639085,
+          "signature": "ops-register:duty-stale:duty.workflow.e2e.yml"
+        },
+        {
+          "pr": 410,
+          "runId": 33634545643,
+          "signature": "ops-register:duty-stale:duty.analytics-silence-judgment"
+        },
+        {
+          "pr": 882,
+          "runId": 35801324549,
+          "signature": "guard-refused:assert-one-entitlement-reader"
+        }
+      ]
+    },
+    "tooling/ci/assert-snapcraft-generable.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-08",
+      "evidence": []
+    },
+    "tooling/ci/assert-stamp-brand-assets.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-29",
+      "evidence": []
+    },
+    "tooling/ci/assert-stamp-platforms.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-29",
+      "evidence": []
+    },
+    "tooling/ci/assert-stamp-properties.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-07-27",
+      "evidence": [
+        {
+          "pr": 279,
+          "runId": 31406426235,
+          "signature": "guard-failed:assert-stamp-properties"
+        }
+      ]
+    },
+    "tooling/ci/assert-stamp-text-fidelity.mjs": {
+      "catches": 4,
+      "firstSeen": "2026-08-01",
+      "evidence": [
+        {
+          "pr": 364,
+          "runId": 32811502118,
+          "signature": "dart:format"
+        },
+        {
+          "pr": 509,
+          "runId": 34039661732,
+          "signature": "dart:format"
+        },
+        {
+          "pr": 511,
+          "runId": 34049240772,
+          "signature": "wrangler-jsonc:missing"
+        },
+        {
+          "pr": 888,
+          "runId": 35813926944,
+          "signature": "dart:format"
+        }
+      ]
+    },
+    "tooling/ci/assert-stamp-wiring.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-29",
+      "evidence": []
+    },
+    "tooling/ci/assert-store-bijection.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-07",
+      "evidence": []
+    },
+    "tooling/ci/assert-store-build-config.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-08-04",
+      "evidence": [
+        {
+          "pr": 180,
+          "runId": 31107624203,
+          "signature": "secret-scan:found"
+        }
+      ]
+    },
+    "tooling/ci/assert-store-identity.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-03",
+      "evidence": []
+    },
+    "tooling/ci/assert-store-metadata.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-01",
+      "evidence": []
+    },
+    "tooling/ci/assert-store-vocabulary.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-20",
+      "evidence": []
+    },
+    "tooling/ci/assert-submission-safety.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-03",
+      "evidence": []
+    },
+    "tooling/ci/assert-supabase-templates.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-04",
+      "evidence": []
+    },
+    "tooling/ci/assert-sworn-store-files.mjs": {
+      "catches": 3,
+      "firstSeen": "2026-08-08",
+      "evidence": [
+        {
+          "pr": 591,
+          "runId": 34365685289,
+          "signature": "guard-failed:assert-sworn-store-files"
+        },
+        {
+          "pr": 616,
+          "runId": 34551391763,
+          "signature": "guard-failed:assert-sworn-store-files"
+        },
+        {
+          "pr": 618,
+          "runId": 34552114939,
+          "signature": "guard-failed:assert-sworn-store-files"
+        }
+      ]
+    },
+    "tooling/ci/assert-test-clock-mix.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-21",
+      "evidence": []
+    },
+    "tooling/ci/assert-ungraded-baseline-doc.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-16",
+      "evidence": []
+    },
+    "tooling/ci/assert-update-coverage.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-02",
+      "evidence": []
+    },
+    "tooling/ci/assert-vendor-portability.mjs": {
+      "catches": 4,
+      "firstSeen": "2026-07-28",
+      "evidence": [
+        {
+          "pr": 438,
+          "runId": 33833844622,
+          "signature": "guard-failed:assert-vendor-portability"
+        },
+        {
+          "pr": 487,
+          "runId": 33961620642,
+          "signature": "guard-failed:assert-vendor-portability"
+        },
+        {
+          "pr": 720,
+          "runId": 34691010254,
+          "signature": "guard-failed:assert-vendor-portability"
+        },
+        {
+          "pr": 739,
+          "runId": 34875987349,
+          "signature": "guard-failed:assert-vendor-portability"
+        }
+      ]
+    },
+    "tooling/ci/assert-version-consistency.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-07-26",
+      "evidence": [
+        {
+          "pr": 731,
+          "runId": 34822528462,
+          "signature": "versions:drift"
+        }
+      ]
+    },
+    "tooling/ci/assert-walks-bounded.mjs": {
+      "catches": 3,
+      "firstSeen": "2026-08-02",
+      "evidence": [
+        {
+          "pr": 204,
+          "runId": 31230206574,
+          "signature": "ops-register:duty-stale:duty.analytics-silence-judgment"
+        },
+        {
+          "pr": 206,
+          "runId": 31245534634,
+          "signature": "ops-register:duty-stale:duty.analytics-silence-judgment"
+        },
+        {
+          "pr": 207,
+          "runId": 31245538155,
+          "signature": "ops-register:duty-stale:duty.analytics-silence-judgment"
+        }
+      ]
+    },
+    "tooling/ci/assert-web-cache-policy.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-08-03",
+      "evidence": [
+        {
+          "pr": 870,
+          "runId": 35718264734,
+          "signature": "guard-refused:assert-store-vocabulary"
+        }
+      ]
+    },
+    "tooling/ci/assert-well-known-shape.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-09",
+      "evidence": []
+    },
+    "tooling/ci/assert-worker-error-sink.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-02",
+      "evidence": []
+    },
+    "tooling/ci/assert-workflow-hardening.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-26",
+      "evidence": []
+    },
+    "tooling/ci/assert-workflow-readers.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-15",
+      "evidence": []
+    },
+    "tooling/ci/assert-workflow-timeouts.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-07",
+      "evidence": []
+    },
+    "tooling/ci/assert-workspace-coverage.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-26",
+      "evidence": []
+    },
+    "tooling/ci/assert-xcode-floor.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-20",
+      "evidence": []
+    },
+    "tooling/ci/bounded-spawn.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-11",
+      "evidence": []
+    },
+    "tooling/ci/build-enforcement-index.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-20",
+      "evidence": []
+    },
+    "tooling/ci/channel-arming.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-09",
+      "evidence": []
+    },
+    "tooling/ci/channel-surface.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-15",
+      "evidence": []
+    },
+    "tooling/ci/chassis-delegation.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-06",
+      "evidence": []
+    },
+    "tooling/ci/check-migrations.mjs": {
+      "catches": 2,
+      "firstSeen": "2026-07-25",
+      "evidence": [
+        {
+          "pr": 439,
+          "runId": 33831479926,
+          "signature": "ops-register:duty-stale:duty.workflow.e2e.yml"
+        },
+        {
+          "pr": 616,
+          "runId": 34442894882,
+          "signature": "ops-register:red-since:duty.workflow.ops-watch.yml"
+        }
+      ]
+    },
+    "tooling/ci/check-site-integrity.mjs": {
+      "catches": 11,
+      "firstSeen": "2026-07-26",
+      "evidence": [
+        {
+          "pr": 230,
+          "runId": 31272846125,
+          "signature": "site-integrity"
+        },
+        {
+          "pr": 300,
+          "runId": 31496823582,
+          "signature": "site-integrity"
+        },
+        {
+          "pr": 327,
+          "runId": 32148776220,
+          "signature": "site-feed:drift"
+        },
+        {
+          "pr": 365,
+          "runId": 32808513634,
+          "signature": "site-integrity"
+        },
+        {
+          "pr": 495,
+          "runId": 34021872998,
+          "signature": "site-integrity"
+        },
+        {
+          "pr": 567,
+          "runId": 34322206807,
+          "signature": "catalogue:reachability"
+        },
+        {
+          "pr": 596,
+          "runId": 34391276468,
+          "signature": "site-integrity"
+        },
+        {
+          "pr": 652,
+          "runId": 34607878297,
+          "signature": "site-integrity"
+        },
+        {
+          "pr": 666,
+          "runId": 34625034366,
+          "signature": "other:Catalogue advertises no dead app:✗ THE WILDCARD DNS RECORD IS GONE — https://wc-<sha>.nikatru.com/ could not be reached at all (ENOTFOUND), while other p"
+        },
+        {
+          "pr": 671,
+          "runId": 34624729417,
+          "signature": "other:Catalogue advertises no dead app:✗ THE WILDCARD DNS RECORD IS GONE — https://wc-<sha>.nikatru.com/ could not be reached at all (ENOTFOUND), while other p"
+        },
+        {
+          "pr": 673,
+          "runId": 34629171119,
+          "signature": "other:Catalogue advertises no dead app:✗ THE WILDCARD DNS RECORD IS BACK — https://wc-<sha>.nikatru.com/ returned HTTP <n>, and nobody registered that name."
+        }
+      ]
+    },
+    "tooling/ci/d1-sql-inventory.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-09",
+      "evidence": []
+    },
+    "tooling/ci/dart-source.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-09",
+      "evidence": []
+    },
+    "tooling/ci/deployment-record.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-03",
+      "evidence": []
+    },
+    "tooling/ci/dump-aab-permissions.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-26",
+      "evidence": []
+    },
+    "tooling/ci/flutter-stock-assets.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-04",
+      "evidence": []
+    },
+    "tooling/ci/install-pinned-tool.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-11",
+      "evidence": []
+    },
+    "tooling/ci/lane-detect.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-25",
+      "evidence": []
+    },
+    "tooling/ci/lane-verdict.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-25",
+      "evidence": []
+    },
+    "tooling/ci/licence-cross-assert.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-13",
+      "evidence": []
+    },
+    "tooling/ci/migration-tables.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-06",
+      "evidence": []
+    },
+    "tooling/ci/plan-deploy.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-25",
+      "evidence": []
+    },
+    "tooling/ci/price-figure.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-25",
+      "evidence": []
+    },
+    "tooling/ci/read-identity.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-03",
+      "evidence": []
+    },
+    "tooling/ci/read-ledger-version-code.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-24",
+      "evidence": []
+    },
+    "tooling/ci/record-deployment.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-26",
+      "evidence": []
+    },
+    "tooling/ci/release-manifest.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-06",
+      "evidence": []
+    },
+    "tooling/ci/retired-identity.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-12",
+      "evidence": []
+    },
+    "tooling/ci/run-page-anchor.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-19",
+      "evidence": []
+    },
+    "tooling/ci/scan-secrets.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-26",
+      "evidence": []
+    },
+    "tooling/ci/scan-workflows.mjs": {
+      "catches": 3,
+      "firstSeen": "2026-07-27",
+      "evidence": [
+        {
+          "pr": 554,
+          "runId": 34282587122,
+          "signature": "osv:known-vulnerable"
+        },
+        {
+          "pr": 555,
+          "runId": 34283944994,
+          "signature": "osv:known-vulnerable"
+        },
+        {
+          "pr": 556,
+          "runId": 34286069145,
+          "signature": "osv:known-vulnerable"
+        }
+      ]
+    },
+    "tooling/ci/signing-seam.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-26",
+      "evidence": []
+    },
+    "tooling/ci/single-threaded-relaunch.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-11",
+      "evidence": []
+    },
+    "tooling/ci/sql-seed.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-10",
+      "evidence": []
+    },
+    "tooling/ci/stamp-channel.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-24",
+      "evidence": []
+    },
+    "tooling/ci/submit-preconditions.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-25",
+      "evidence": []
+    },
+    "tooling/ci/tag-owner.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-23",
+      "evidence": []
+    },
+    "tooling/ci/text-reductions.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-01",
+      "evidence": []
+    },
+    "tooling/ci/tool-output.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-25",
+      "evidence": []
+    },
+    "tooling/ci/tree-walk.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-02",
+      "evidence": []
+    },
+    "tooling/ci/worker-shared-modules.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-07",
+      "evidence": []
+    },
+    "tooling/ci/workflow-scan.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-03",
+      "evidence": []
+    },
+    "tooling/ci/wrangler-environments.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-26",
+      "evidence": []
+    },
+    "tooling/content_pipeline/cli.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-02",
+      "evidence": []
+    },
+    "tooling/dod-register.json#four-states": {
+      "catches": 0,
+      "firstSeen": "2026-08-02",
+      "evidence": []
+    },
+    "tooling/e2e/assert-frames-carry-text.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-23",
+      "evidence": []
+    },
+    "tooling/e2e/assert_one_issuer.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-07",
+      "evidence": []
+    },
+    "tooling/e2e/backend.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-26",
+      "evidence": []
+    },
+    "tooling/e2e/captcha_posture.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-07",
+      "evidence": []
+    },
+    "tooling/e2e/delete_headless.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-26",
+      "evidence": []
+    },
+    "tooling/e2e/derive_expectation.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-26",
+      "evidence": []
+    },
+    "tooling/e2e/provision_user.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-21",
+      "evidence": []
+    },
+    "tooling/e2e/purge.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-21",
+      "evidence": []
+    },
+    "tooling/e2e/verify_consent.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-09",
+      "evidence": []
+    },
+    "tooling/e2e/verify_purged.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-09",
+      "evidence": []
+    },
+    "tooling/e2e/verify_row.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-21",
+      "evidence": []
+    },
+    "tooling/kit/stamp-app.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-26",
+      "evidence": []
+    },
+    "tooling/ops/check-analytics-liveness.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-08",
+      "evidence": []
+    },
+    "tooling/ops/check-apple-signing-expiry.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-25",
+      "evidence": []
+    },
+    "tooling/ops/check-d1-accepts-live-sql.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-09",
+      "evidence": []
+    },
+    "tooling/ops/check-heartbeats.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-02",
+      "evidence": []
+    },
+    "tooling/ops/check-live-signin-key.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-25",
+      "evidence": []
+    },
+    "tooling/ops/check-mail-auth-dns.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-24",
+      "evidence": []
+    },
+    "tooling/ops/check-pages-deployments.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-09",
+      "evidence": []
+    },
+    "tooling/ops/check-prod-provenance.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-06",
+      "evidence": []
+    },
+    "tooling/ops/check-retired-names-live.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-12",
+      "evidence": []
+    },
+    "tooling/ops/check-turnstile-hosts.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-12",
+      "evidence": []
+    },
+    "tooling/ops/check-wildcard-dns.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-12",
+      "evidence": []
+    },
+    "tooling/ops/create-glitchtip-release.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-23",
+      "evidence": []
+    },
+    "tooling/ops/money-dry-run.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-09",
+      "evidence": []
+    },
+    "tooling/ops/name-clearance-sweep.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-09",
+      "evidence": []
+    },
+    "tooling/ops/post-deploy-smoke.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-03",
+      "evidence": []
+    },
+    "tooling/ops/redeploy-stranded.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-23",
+      "evidence": []
+    },
+    "tooling/ops/rollback.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-26",
+      "evidence": []
+    },
+    "tooling/ops/status.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-03",
+      "evidence": []
+    },
+    "tooling/ops/symbolication-proof.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-19",
+      "evidence": []
+    },
+    "tooling/ops/triage-failed-runs.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-11",
+      "evidence": []
+    },
+    "tooling/ops/upload-native-symbols.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-07",
+      "evidence": []
+    },
+    "tooling/ops/upload-web-sourcemaps.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-03",
+      "evidence": []
+    },
+    "tooling/ops/verify-alarm-chains.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-05",
+      "evidence": []
+    },
+    "tooling/ops/verify-auth-providers.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-12",
+      "evidence": []
+    },
+    "tooling/ops/verify-free-api-scope.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-05",
+      "evidence": []
+    },
+    "tooling/ops/verify-monitors.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-02",
+      "evidence": []
+    },
+    "tooling/ops/verify-supabase-templates.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-04",
+      "evidence": []
+    },
+    "tooling/release/generate-snapcraft.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-08",
+      "evidence": []
+    },
+    "tooling/release/submit-appstore.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-08-01",
+      "evidence": [
+        {
+          "pr": 149,
+          "runId": 30886402470,
+          "signature": "clone-tells"
+        }
+      ]
+    },
+    "tooling/release/submit-play.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-08-01",
+      "evidence": [
+        {
+          "pr": 567,
+          "runId": 34319070463,
+          "signature": "other:The Google Play submission path still walks (dry run):submit-play: FAILED"
+        }
+      ]
+    },
+    "tooling/release/submit-snap.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-01",
+      "evidence": []
+    },
+    "tooling/release/submit-windows-store.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-08-01",
+      "evidence": [
+        {
+          "pr": 887,
+          "runId": 35804101485,
+          "signature": "other:No publishing lane finishes without a [<n>]D-<n> record:✗ <n> publishing lane(s) can finish without a [<n>]D-<n> record:"
+        }
+      ]
+    },
+    "tooling/scripts/assert-no-dead-files.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-17",
+      "evidence": []
+    },
+    "tooling/scripts/check-agent-docs.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-08",
+      "evidence": []
+    },
+    "tooling/scripts/check-selection-record.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-02",
+      "evidence": []
+    },
+    "tooling/scripts/gen-start-here.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-08",
+      "evidence": []
+    },
+    "tooling/scripts/provision-backend.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-07-29",
+      "evidence": []
+    },
+    "tooling/scripts/spawn-ceiling.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-25",
+      "evidence": []
+    },
+    "tooling/sites/gen-auth-mail.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-24",
+      "evidence": []
+    },
+    "tooling/sites/generate-apps-data.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-17",
+      "evidence": []
+    },
+    "tooling/sites/generate-discovery.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-03",
+      "evidence": []
+    },
+    "tooling/sites/generate-landing-payload.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-18",
+      "evidence": []
+    },
+    "tooling/sites/generate-well-known.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-09",
+      "evidence": []
+    },
+    "tooling/sites/lastmod.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-06",
+      "evidence": []
+    },
+    "tooling/sites/regen.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-26",
+      "evidence": []
+    },
+    "tooling/smoke/smoke-web-artifact.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-03",
+      "evidence": []
+    },
+    "tooling/store/capture-backend.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-25",
+      "evidence": []
+    },
+    "tooling/store/capture-fallback-fonts.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-20",
+      "evidence": []
+    },
+    "tooling/store/capture-play-screenshots.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-08-04",
+      "evidence": []
+    },
+    "tooling/store/measure-frame-ink.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-22",
+      "evidence": []
+    },
+    "tooling/store/msix-visual-name.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-26",
+      "evidence": []
+    },
+    "tooling/web/self-host-fallback-fonts.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-09-11",
+      "evidence": [
+        {
+          "pr": 700,
+          "runId": 34661023984,
+          "signature": "guard-refused:licence register"
+        }
+      ]
+    }
+  },
+  "runs": {
+    "considered": 422,
+    "excluded": 9,
+    "attributed": 260,
+    "noPr": 0
+  },
+  "unattributed": 153,
+  "unattributedRuns": [
+    {
+      "pr": 62,
+      "runId": 30420586128,
+      "signature": "dart:format"
+    },
+    {
+      "pr": 69,
+      "runId": 30443396252,
+      "signature": "guard-test:passes when every live entry answers"
+    },
+    {
+      "pr": 72,
+      "runId": 30450576406,
+      "signature": "brand-assets:no-platform-claim"
+    },
+    {
+      "pr": 78,
+      "runId": 30623816523,
+      "signature": "stamped-service:typecheck"
+    },
+    {
+      "pr": 90,
+      "runId": 30677321017,
+      "signature": "guard-test:a fully compliant tree passes"
+    },
+    {
+      "pr": 120,
+      "runId": 30716333131,
+      "signature": "workspace:missing-member"
+    },
+    {
+      "pr": 120,
+      "runId": 30716434448,
+      "signature": "dart:format"
+    },
+    {
+      "pr": 120,
+      "runId": 30716740007,
+      "signature": "dart:format"
+    },
+    {
+      "pr": 138,
+      "runId": 30783401468,
+      "signature": "guard-test:passes when the seam has a real call site and the policy matches"
+    },
+    {
+      "pr": 143,
+      "runId": 30875802373,
+      "signature": "tokens-css:drift"
+    },
+    {
+      "pr": 161,
+      "runId": 30979908678,
+      "signature": "guard-test:PASSES and PRINTS an unserved store row whose account does not exist"
+    },
+    {
+      "pr": 196,
+      "runId": 31204995508,
+      "signature": "site-integrity"
+    },
+    {
+      "pr": 205,
+      "runId": 31245168192,
+      "signature": "guard-test:an empty production is green, and announces it is only a monitor"
+    },
+    {
+      "pr": 210,
+      "runId": 31249571852,
+      "signature": "guard-test:passes when both properties are asserted and implemented"
+    },
+    {
+      "pr": 210,
+      "runId": 31250322371,
+      "signature": "guard-test:audits a stamped app on the workspace list, not only the brick"
+    },
+    {
+      "pr": 217,
+      "runId": 31256830214,
+      "signature": "guard-test:passes when the seam has a real call site and the policy matches"
+    },
+    {
+      "pr": 233,
+      "runId": 31273432955,
+      "signature": "guard-test:the committed surfaces match a fresh generator run, and the guard says so"
+    },
+    {
+      "pr": 263,
+      "runId": 31301735076,
+      "signature": "dart:format"
+    },
+    {
+      "pr": 263,
+      "runId": 31302338573,
+      "signature": "dart:format"
+    },
+    {
+      "pr": 276,
+      "runId": 31377691940,
+      "signature": "guard-test:👤 the missing policy link PRINTS and does not fail"
+    },
+    {
+      "pr": 286,
+      "runId": 31436033367,
+      "signature": "guard-test:passes when both properties are asserted and implemented"
+    },
+    {
+      "pr": 294,
+      "runId": 31458317137,
+      "signature": "dart:format"
+    },
+    {
+      "pr": 302,
+      "runId": 31509269984,
+      "signature": "guard-test:PG-4 · --submit refuses outside GitHub Actions, where the reviewer gate lives"
+    },
+    {
+      "pr": 306,
+      "runId": 31578587658,
+      "signature": "guard-test:the committed register is STRUCTURALLY sound — any failure is a duty that is failing, not a malformed register"
+    },
+    {
+      "pr": 306,
+      "runId": 31579565526,
+      "signature": "guard-test:the committed register is STRUCTURALLY sound — any failure is a duty that is failing, not a malformed register"
+    },
+    {
+      "pr": 310,
+      "runId": 31666634602,
+      "signature": "guard-test:the REAL repository — 19 reachable, 5 swept, 14 printed, exit 0"
+    },
+    {
+      "pr": 315,
+      "runId": 31859777178,
+      "signature": "guard-test:with no ledger it PRINTS UNKNOWN, never zero, and labels the rule as ours"
+    },
+    {
+      "pr": 315,
+      "runId": 31886011114,
+      "signature": "guard-test:FAILS when the harness IS checked out and the cited ADR is not on disk"
+    },
+    {
+      "pr": 315,
+      "runId": 31888213980,
+      "signature": "guard-test:FAILS when the harness IS checked out and the cited ADR is not on disk"
+    },
+    {
+      "pr": 315,
+      "runId": 31889323999,
+      "signature": "guard-test:names the runbook the console-only steps live in"
+    },
+    {
+      "pr": 319,
+      "runId": 31975377117,
+      "signature": "guard-test:verifies against the same base64-raw-32 encoding kContentPackPublicKeys pins"
+    },
+    {
+      "pr": 326,
+      "runId": 32110432299,
+      "signature": "guard-test:passes, and says so, when nothing is linked yet"
+    },
+    {
+      "pr": 329,
+      "runId": 32217034640,
+      "signature": "guard-test:the real run agrees with what catalog/store-matrix.json actually declares"
+    },
+    {
+      "pr": 349,
+      "runId": 32436157781,
+      "signature": "guard-test:losing one page trips the page floor"
+    },
+    {
+      "pr": 366,
+      "runId": 32808484551,
+      "signature": "guard-test:the committed surfaces match a fresh generator run, and the guard says so"
+    },
+    {
+      "pr": 364,
+      "runId": 32808501080,
+      "signature": "guard-test:the committed surfaces match a fresh generator run, and the guard says so"
+    },
+    {
+      "pr": 368,
+      "runId": 32808697420,
+      "signature": "guard-test:the committed surfaces match a fresh generator run, and the guard says so"
+    },
+    {
+      "pr": 390,
+      "runId": 33022753154,
+      "signature": "guard-test:the committed register is STRUCTURALLY sound — any failure is a duty that is failing, not a malformed register"
+    },
+    {
+      "pr": 393,
+      "runId": 33031416687,
+      "signature": "guard-test:🔴 the UNMUTATED copy passes, and agrees with the real tree path-for-path"
+    },
+    {
+      "pr": 364,
+      "runId": 33146839048,
+      "signature": "dart:format"
+    },
+    {
+      "pr": 409,
+      "runId": 33421556650,
+      "signature": "guard-test:readAudit REFUSES an audit that is absent, unparseable or vacuous"
+    },
+    {
+      "pr": 409,
+      "runId": 33422554190,
+      "signature": "guard-test:readAudit REFUSES an audit that is absent, unparseable or vacuous"
+    },
+    {
+      "pr": 410,
+      "runId": 33638560719,
+      "signature": "dart:pub-resolve"
+    },
+    {
+      "pr": 410,
+      "runId": 33640853970,
+      "signature": "guard-test:the committed register is STRUCTURALLY sound — any failure is a duty that is failing, not a malformed register"
+    },
+    {
+      "pr": 410,
+      "runId": 33641590804,
+      "signature": "guard-test:the committed register is STRUCTURALLY sound — any failure is a duty that is failing, not a malformed register"
+    },
+    {
+      "pr": 410,
+      "runId": 33645653060,
+      "signature": "guard-test:the committed register is STRUCTURALLY sound — any failure is a duty that is failing, not a malformed register"
+    },
+    {
+      "pr": 411,
+      "runId": 33656175978,
+      "signature": "guard-test:passes, and says how much it actually read"
+    },
+    {
+      "pr": 430,
+      "runId": 33743841407,
+      "signature": "guard-test:the real register derives cleanly and yields a NON-EMPTY probed set — the floor every case below stands on"
+    },
+    {
+      "pr": 437,
+      "runId": 33789817636,
+      "signature": "dart:package-uri-unresolved"
+    },
+    {
+      "pr": 455,
+      "runId": 33888001863,
+      "signature": "guard-test:limb (c) PRINTS the dead third link and does not fail the build"
+    },
+    {
+      "pr": 467,
+      "runId": 33940114768,
+      "signature": "guard-test:the pre-#256 correlated join is red"
+    },
+    {
+      "pr": 480,
+      "runId": 33952012034,
+      "signature": "guard-test:passes, and says how much it actually read"
+    },
+    {
+      "pr": 486,
+      "runId": 33959198110,
+      "signature": "guard-test:the control: the REAL submit-snap.yml passes, and BOTH lanes read `${{ … }}`"
+    },
+    {
+      "pr": 486,
+      "runId": 33959501104,
+      "signature": "guard-test:FAILS naming tooling/content_pipeline when the content_gate job is deleted"
+    },
+    {
+      "pr": 487,
+      "runId": 33959744027,
+      "signature": "actions-cache:not-allowed"
+    },
+    {
+      "pr": 488,
+      "runId": 33961148007,
+      "signature": "guard-test:every record-deployment.mjs call site in every workflow resolves"
+    },
+    {
+      "pr": 488,
+      "runId": 33962036513,
+      "signature": "guard-test:every record-deployment.mjs call site in every workflow resolves"
+    },
+    {
+      "pr": 491,
+      "runId": 33968889843,
+      "signature": "guard-test:🔴 THE SCHEMA REFUSES A DATE PARKED IN THE FUTURE — the one way this becomes permanent"
+    },
+    {
+      "pr": 492,
+      "runId": 33969493656,
+      "signature": "guard-test:an exclusion that matches too few files is COVERAGE LOST, not a pass"
+    },
+    {
+      "pr": 492,
+      "runId": 33969778673,
+      "signature": "guard-test:an exclusion that matches too few files is COVERAGE LOST, not a pass"
+    },
+    {
+      "pr": 501,
+      "runId": 33997200009,
+      "signature": "guard-test:adding a Cloudflare-backed row RAISES the derivation — the coupling is real"
+    },
+    {
+      "pr": 503,
+      "runId": 34017007907,
+      "signature": "guard-test:P1 the REAL registry, as this repository ships it, passes"
+    },
+    {
+      "pr": 507,
+      "runId": 34028952850,
+      "signature": "l10n:drift"
+    },
+    {
+      "pr": 507,
+      "runId": 34032468813,
+      "signature": "guard-test:the committed lane satisfies it, and the count is reported"
+    },
+    {
+      "pr": 509,
+      "runId": 34040075561,
+      "signature": "guard-test:the full checkout passes, reads all eight roots, and prints the per-root split"
+    },
+    {
+      "pr": 510,
+      "runId": 34046322279,
+      "signature": "guard-test:losing one page trips the page floor"
+    },
+    {
+      "pr": 512,
+      "runId": 34049395402,
+      "signature": "guard-test:the REAL repository — 4 derived roots, 57 surfaces, 19 swept, exit 0"
+    },
+    {
+      "pr": 518,
+      "runId": 34068685680,
+      "signature": "ops-register:problem:.github/workflows/submit-windows-store.yml:submit records a deployment for `subly-windows-s"
+    },
+    {
+      "pr": 520,
+      "runId": 34069733059,
+      "signature": "guard-test:the full checkout passes, reads all nine roots, and prints the per-root split"
+    },
+    {
+      "pr": 521,
+      "runId": 34071062960,
+      "signature": "guard-test:the REAL repository — 4 derived roots, 62 surfaces, 19 swept, exit 0"
+    },
+    {
+      "pr": 528,
+      "runId": 34089091496,
+      "signature": "versions:drift"
+    },
+    {
+      "pr": 533,
+      "runId": 34093656708,
+      "signature": "guard-test:R14b · one chassis width test file is deleted — that root's corpus floor fires"
+    },
+    {
+      "pr": 534,
+      "runId": 34096980468,
+      "signature": "dart:pub-resolve"
+    },
+    {
+      "pr": 535,
+      "runId": 34097020467,
+      "signature": "versions:drift"
+    },
+    {
+      "pr": 541,
+      "runId": 34171547555,
+      "signature": "ops-register:red-since:duty.workflow.extensions.yml"
+    },
+    {
+      "pr": 541,
+      "runId": 34173297798,
+      "signature": "ops-register:red-since:duty.workflow.extensions.yml"
+    },
+    {
+      "pr": 541,
+      "runId": 34198621137,
+      "signature": "ops-register:red-since:duty.workflow.extensions.yml"
+    },
+    {
+      "pr": 550,
+      "runId": 34255210639,
+      "signature": "guard-test:the committed ledger accounts for the real template"
+    },
+    {
+      "pr": 552,
+      "runId": 34269470560,
+      "signature": "guard-test:the committed ceiling equals the derivation"
+    },
+    {
+      "pr": 554,
+      "runId": 34279930346,
+      "signature": "osv:known-vulnerable"
+    },
+    {
+      "pr": 554,
+      "runId": 34280885648,
+      "signature": "ops-register:duty-stale:duty.laptop.nikatru-ops-check"
+    },
+    {
+      "pr": 556,
+      "runId": 34289339858,
+      "signature": "ops-register:red-since:duty.workflow.ops-watch.yml"
+    },
+    {
+      "pr": 556,
+      "runId": 34296847236,
+      "signature": "guard-test:M0 GREEN CONTROL — the unmutated fixture exits 0 and PRINTS both owed findings"
+    },
+    {
+      "pr": 563,
+      "runId": 34310576488,
+      "signature": "guard-test:🔴 BOTH Apple rows are STILL UNARMED — the day either is not, a tag stops being survivable without the enrolment"
+    },
+    {
+      "pr": 562,
+      "runId": 34311298051,
+      "signature": "guard-test:PASSES when every required origin is listed for BOTH Workers"
+    },
+    {
+      "pr": 564,
+      "runId": 34314720506,
+      "signature": "policy-claims:unrowed-emphasis"
+    },
+    {
+      "pr": 564,
+      "runId": 34319534836,
+      "signature": "guard-test:🔴 the REAL repository leaves NO stable name declared immutable"
+    },
+    {
+      "pr": 569,
+      "runId": 34321424554,
+      "signature": "npm-test:assertion"
+    },
+    {
+      "pr": 568,
+      "runId": 34322039921,
+      "signature": "guard-test:🔴 the UNMUTATED copy passes, and agrees with the real tree path-for-path"
+    },
+    {
+      "pr": 570,
+      "runId": 34327448235,
+      "signature": "npm-test:assertion"
+    },
+    {
+      "pr": 567,
+      "runId": 34335144689,
+      "signature": "dart:format"
+    },
+    {
+      "pr": 567,
+      "runId": 34344181974,
+      "signature": "guard-test:passes on the live shape: every derived origin present, nothing unjustified"
+    },
+    {
+      "pr": 579,
+      "runId": 34345859315,
+      "signature": "guard-test:POSITIVE CONTROL: the real tree is valid and every rendering is fresh"
+    },
+    {
+      "pr": 579,
+      "runId": 34349737710,
+      "signature": "guard-test:🔴 the trial badge RETURNS the moment the paywall is switched on — gated, not deleted"
+    },
+    {
+      "pr": 579,
+      "runId": 34354706747,
+      "signature": "ops-register:red-since:duty.workflow.build-platforms.yml"
+    },
+    {
+      "pr": 584,
+      "runId": 34355459129,
+      "signature": "ops-register:red-since:duty.workflow.build-platforms.yml"
+    },
+    {
+      "pr": 589,
+      "runId": 34358950588,
+      "signature": "ops-register:red-since:duty.workflow.build-platforms.yml"
+    },
+    {
+      "pr": 587,
+      "runId": 34363704955,
+      "signature": "platform-register:unregistered-route:GET /v1/entitlements/subject"
+    },
+    {
+      "pr": 594,
+      "runId": 34367993944,
+      "signature": "dart:format"
+    },
+    {
+      "pr": 595,
+      "runId": 34368163020,
+      "signature": "ops-register:red-since:duty.workflow.build-platforms.yml"
+    },
+    {
+      "pr": 598,
+      "runId": 34369290535,
+      "signature": "ops-register:red-since:duty.workflow.ops-watch.yml"
+    },
+    {
+      "pr": 587,
+      "runId": 34369566803,
+      "signature": "guard-test:PASSES on a fixture where schema, route and client agree"
+    },
+    {
+      "pr": 597,
+      "runId": 34380012744,
+      "signature": "ops-register:red-since:duty.workflow.ops-watch.yml"
+    },
+    {
+      "pr": 603,
+      "runId": 34382717172,
+      "signature": "platform-register:unregistered-route:POST /v1/receipts/:store"
+    },
+    {
+      "pr": 615,
+      "runId": 34432355526,
+      "signature": "dart:format"
+    },
+    {
+      "pr": 614,
+      "runId": 34441569730,
+      "signature": "ops-register:red-since:duty.workflow.ops-watch.yml"
+    },
+    {
+      "pr": 615,
+      "runId": 34441747818,
+      "signature": "ops-register:red-since:duty.workflow.ops-watch.yml"
+    },
+    {
+      "pr": 615,
+      "runId": 34442535175,
+      "signature": "ops-register:red-since:duty.workflow.ops-watch.yml"
+    },
+    {
+      "pr": 617,
+      "runId": 34443662985,
+      "signature": "guard-test:PASSES on a fixture where schema, route and client agree"
+    },
+    {
+      "pr": 616,
+      "runId": 34552627344,
+      "signature": "ops-register:red-since:duty.workflow.e2e.yml"
+    },
+    {
+      "pr": 619,
+      "runId": 34552656013,
+      "signature": "ops-register:red-since:duty.workflow.e2e.yml"
+    },
+    {
+      "pr": 619,
+      "runId": 34556943131,
+      "signature": "ops-register:red-since:duty.workflow.e2e.yml"
+    },
+    {
+      "pr": 628,
+      "runId": 34566468717,
+      "signature": "dart:pub-resolve"
+    },
+    {
+      "pr": 639,
+      "runId": 34575816407,
+      "signature": "guard-test:the committed ledger accounts for the real template"
+    },
+    {
+      "pr": 645,
+      "runId": 34598594907,
+      "signature": "dart:format"
+    },
+    {
+      "pr": 645,
+      "runId": 34599041364,
+      "signature": "guard-test:a service that owns a database and introspects nothing is red"
+    },
+    {
+      "pr": 650,
+      "runId": 34602820679,
+      "signature": "guard-test:the committed ledger accounts for the real template"
+    },
+    {
+      "pr": 680,
+      "runId": 34641192085,
+      "signature": "guard-test:MOVING THE ANCHORED LINE DOWN 20 LINES IS GREEN, AND PRINTED — the anchor text still resolves"
+    },
+    {
+      "pr": 697,
+      "runId": 34660163086,
+      "signature": "ops-register:problem:.github/workflows/ops-watch.yml is read by <n> duty rows and job(s) dns are the unit of none"
+    },
+    {
+      "pr": 699,
+      "runId": 34660918711,
+      "signature": "guard-test:names the legal set on the happy path"
+    },
+    {
+      "pr": 705,
+      "runId": 34666316879,
+      "signature": "guard-test:the committed ledger accounts for the real template"
+    },
+    {
+      "pr": 706,
+      "runId": 34669225452,
+      "signature": "dart:pub-resolve"
+    },
+    {
+      "pr": 706,
+      "runId": 34670172116,
+      "signature": "dart:format"
+    },
+    {
+      "pr": 715,
+      "runId": 34676309010,
+      "signature": "guard-test:a provider with no registered adapter is COVERAGE LOST, not an ignored row"
+    },
+    {
+      "pr": 715,
+      "runId": 34676626563,
+      "signature": "guard-test:a provider with no registered adapter is COVERAGE LOST, not an ignored row"
+    },
+    {
+      "pr": 723,
+      "runId": 34694479495,
+      "signature": "guard-test:🔴 the UNMUTATED copy passes, and agrees with the real tree path-for-path"
+    },
+    {
+      "pr": 723,
+      "runId": 34694798959,
+      "signature": "guard-test:🔴 the UNMUTATED copy passes, and agrees with the real tree path-for-path"
+    },
+    {
+      "pr": 729,
+      "runId": 34811749355,
+      "signature": "versions:drift"
+    },
+    {
+      "pr": 759,
+      "runId": 34929149096,
+      "signature": "dart:format"
+    },
+    {
+      "pr": 762,
+      "runId": 34936587871,
+      "signature": "guard-test:the real tree passes, and says out loud that it has not seen production"
+    },
+    {
+      "pr": 770,
+      "runId": 34965348878,
+      "signature": "guard-test:R14b · one chassis width test file is deleted — that root's corpus floor fires"
+    },
+    {
+      "pr": 777,
+      "runId": 35050411822,
+      "signature": "guard-test:the committed ledger accounts for the real template"
+    },
+    {
+      "pr": 780,
+      "runId": 35065003241,
+      "signature": "guard-test:the committed ledger accounts for the real template"
+    },
+    {
+      "pr": 782,
+      "runId": 35072651020,
+      "signature": "guard-test:the committed ledger accounts for the real template"
+    },
+    {
+      "pr": 795,
+      "runId": 35296273539,
+      "signature": "policy-claims:unclaimed-route-segment"
+    },
+    {
+      "pr": 825,
+      "runId": 35450128563,
+      "signature": "dart:format"
+    },
+    {
+      "pr": 836,
+      "runId": 35483539888,
+      "signature": "guard-test:MUTATION: editing the tagline without re-rendering fails, and NAMES every stale file"
+    },
+    {
+      "pr": 837,
+      "runId": 35483638703,
+      "signature": "guard-test:the copied subject tree reproduces the subscriptiontracker reading exactly — and derives ONE root"
+    },
+    {
+      "pr": 857,
+      "runId": 35566848287,
+      "signature": "versions:drift"
+    },
+    {
+      "pr": 858,
+      "runId": 35566878165,
+      "signature": "versions:drift"
+    },
+    {
+      "pr": 860,
+      "runId": 35577888414,
+      "signature": "versions:drift"
+    },
+    {
+      "pr": 882,
+      "runId": 35806759304,
+      "signature": "guard-test:🔴 EVERY network call under tooling/ops passes the signal, or its file is a LIVE exemption"
+    },
+    {
+      "pr": 888,
+      "runId": 35807597575,
+      "signature": "guard-refused:chassis parity"
+    },
+    {
+      "pr": 889,
+      "runId": 35813354605,
+      "signature": "dart:format"
+    },
+    {
+      "pr": 888,
+      "runId": 35814818590,
+      "signature": "guard-test:the committed ledger accounts for the real template"
+    },
+    {
+      "pr": 893,
+      "runId": 35825389633,
+      "signature": "guard-test:the real repository is green"
+    },
+    {
+      "pr": 921,
+      "runId": 36025008104,
+      "signature": "guard-test:🔴 the UNMUTATED copy passes, and agrees with the real tree path-for-path"
+    },
+    {
+      "pr": 922,
+      "runId": 36053327890,
+      "signature": "other:RC<n> planted failure (reverted in the next commit):env:"
+    },
+    {
+      "pr": 929,
+      "runId": 36088384225,
+      "signature": "guard-test:🔴 A CORRECT CITATION MAY NOT VOUCH FOR A STALE SIBLING IN THE SAME FILE"
+    },
+    {
+      "pr": 931,
+      "runId": 36091097565,
+      "signature": "guard-test:🔴 THE OTHER DIALOGS ON THE SCREEN DO NOT COVER THE DELETION"
+    },
+    {
+      "pr": 936,
+      "runId": 36100305929,
+      "signature": "osv:known-vulnerable"
+    },
+    {
+      "pr": 939,
+      "runId": 36127348703,
+      "signature": "guard-test:the real tree passes: every tracked file is placed and every glob is alive"
+    },
+    {
+      "pr": 966,
+      "runId": 36215017554,
+      "signature": "guard-test:B2: an env carrying API_BASE_URL is refused, whatever it names"
+    }
+  ],
+  "zeroCatch": 141
+}
