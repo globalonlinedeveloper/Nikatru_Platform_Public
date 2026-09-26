@@ -3138,6 +3138,16 @@
       ".github/workflows/e2e.yml#e2e"
     ],
     "kind": "script",
+    "ref": "tooling/e2e/delete_headless.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/e2e.yml#e2e"
+    ],
+    "kind": "script",
     "ref": "tooling/e2e/derive_expectation.mjs",
     "references": [],
     "state": "WIRED"
