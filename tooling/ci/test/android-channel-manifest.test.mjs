@@ -35,6 +35,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RAIL_PERMISSIONS } from '../assert-apps-gov-in-apk.mjs';
 import { stripInert } from '../text-reductions.mjs';
+import { flutterBuilds } from '../workflow-scan.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const WORKFLOW_REL = '.github/workflows/build-platforms.yml';
@@ -129,7 +130,13 @@ export function checkChannelManifests({ register, apps, workflow }) {
 /** The real tree: every app with an Android build, its gradle file and overlays. */
 function readTree() {
   const register = JSON.parse(readFileSync(join(ROOT, 'tooling', 'channel-register.json'), 'utf8'));
-  const workflow = readFileSync(join(ROOT, ...WORKFLOW_REL.split('/')), 'utf8');
+  // ⏱ 2026-09-26 (O-FLUTTER-BUILD-TYPED-PER-LINE): build-platforms.yml calls tooling/ci/flutter-release-build.mjs
+  // and types no `--dart-define=RELEASE_CHANNEL=` itself, so its builds are read through the census: each
+  // command the composer composes, as the literal line it replaced would read.
+  const workflow = flutterBuilds(ROOT)
+    .filter((b) => b.workflow === WORKFLOW_REL)
+    .map((b) => b.segment)
+    .join('\n');
   const apps = [];
   for (const app of readdirSync(join(ROOT, 'apps')).sort()) {
     const gradlePath = join(ROOT, 'apps', app, 'android', 'app', 'build.gradle.kts');
