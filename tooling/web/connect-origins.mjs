@@ -16,9 +16,11 @@
 // ── THE SET ─────────────────────────────────────────────────────────────────
 // derived = D ∪ K ∪ X, and it must EQUAL `connect-src` minus `'self'`:
 //   · D — the origin (scheme://host[:port]) of each URL-valued `--dart-define`
-//     in deploy-web.yml's `flutter build web` step (URL_DEFINES), read from the
-//     job's environment. The GlitchTip DSN carries its public key before the
-//     `@`; only the origin is ever kept or printed.
+//     of the web build deploy-web.yml asks the composer for (URL_DEFINES). A
+//     define composed as `$NAME` is read from the job's environment; one composed
+//     as a value (API_BASE_URL, the app's rule) is the value the build compiles.
+//     The GlitchTip DSN carries its public key before the `@`; only the origin is
+//     ever kept or printed.
 //   · K — the origins of the app_config.dart constants the app FETCHES from
 //     (CONNECT_KEYS). A key this file names and app_config.dart no longer
 //     declares is COVERAGE LOST (exit 2), never a silent pass.
@@ -32,18 +34,24 @@
 // in connect-src); a constant that reads one of URL_DEFINES (its origin is D's);
 // or the `defaultValue:` fallback of such a constant. Anything else exits 1
 // until it is added to CONNECT_KEYS or LINK_KEYS. The same rule holds for the
-// build step's defines: each is in URL_DEFINES or VALUE_DEFINES.
+// web build's defines: each is in URL_DEFINES or VALUE_DEFINES.
 //
 // A derived origin whose host carries `YOUR_` is the app's placeholder fallback
 // for an absent define, and exits 1: it means a define is empty.
 //
-// ── IT IMPORTS ONLY NODE BUILT-INS ──────────────────────────────────────────
+// ── IT IMPORTS ONLY NODE BUILT-INS, AND ASKS THE COMPOSER ───────────────────
 // It runs inside deploy-web, whose push trigger lists `tooling/web/**`. An
 // import from tooling/ci/ (workflow-scan.mjs) would make a file outside that
-// trigger part of what the lane runs, so it reads the build step itself and
-// refuses — COVERAGE LOST — when that step is not the one shape it models
-// (tooling/workflow-readers.json, `refuses-blind`). The test holds its define
-// reading equal to workflow-scan.mjs's release-build census.
+// trigger part of what the lane runs, so it imports nothing from there.
+// ⏱ 2026-09-26 (O-FLUTTER-BUILD-TYPED-PER-LINE): deploy-web types no
+// `flutter build web` line any more; it calls tooling/ci/flutter-release-build.mjs.
+// So this module finds that ONE call in deploy-web.yml, runs the composer's
+// `--print` with the call's own app, target and channel, and reads the defines
+// from what it prints. The composer is the one source of the defines, and no
+// copy of them lives here. A call that is not the one shape it models, and a
+// `--print` that fails or prints anything but one `flutter build web` line, are
+// COVERAGE LOST (tooling/workflow-readers.json, `refuses-blind`). The test holds
+// its define reading equal to workflow-scan.mjs's release-build census.
 //
 // ── WHAT IS PRINTED ─────────────────────────────────────────────────────────
 // The define values are repository secrets. This prints ORIGINS and define
@@ -58,14 +66,18 @@
 // Exit 0 = connect-src equals the derived set. Exit 1 = a finding. Exit 2 =
 // COVERAGE LOST: an input could not be read or modelled, so nothing was graded.
 // ─────────────────────────────────────────────────────────────────────────────
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-/** The build step's defines whose value is a URL the app calls (D). */
+/** The composer deploy-web calls for its web build, relative to the repository. */
+export const COMPOSER = 'tooling/ci/flutter-release-build.mjs';
+
+/** The web build's defines whose value is a URL the app calls (D). */
 export const URL_DEFINES = ['SUPABASE_URL', 'API_BASE_URL', 'GLITCHTIP_DSN'];
 
-/** The build step's defines that carry no origin: a key, a version, a label. */
+/** The web build's defines that carry no origin: a key, a version, a label. */
 export const VALUE_DEFINES = ['SUPABASE_ANON_KEY', 'APP_VERSION', 'TURNSTILE_SITE_KEY', 'APP_ENV', 'RELEASE_CHANNEL'];
 
 /** app_config.dart constants the app fetches from (K). Read at their call
@@ -178,47 +190,109 @@ export function listedOrigins(sources) {
   return out;
 }
 
-// ── deploy-web.yml ───────────────────────────────────────────────────────────
+// ── deploy-web.yml, and the composer ─────────────────────────────────────────
 
-const indentOf = (l) => /^ */.exec(l)[0].length;
+/** `node [<dir>/]tooling/ci/flutter-release-build.mjs …`: group 1 is what follows the script. */
+const COMPOSER_CALL = /(?:^|\s)node\s+(?:\S*\/)?tooling\/ci\/flutter-release-build\.mjs(?=\s|$)(.*)$/;
+const MATRIX_APP = '${{matrix.app}}';
+const unquote = (t) => t.replace(/^(['"])(.*)\1$/, '$2');
 
 /**
- * The `--dart-define`s of the ONE `flutter build web` command in a workflow,
- * name → the value expression as written (a `${{ secrets.X }}` reference, never
- * a value). A folded `run: >` block is one command; a `run: |` block continues
- * a command only past a trailing backslash. A word starting with `#` begins a
- * shell comment, and a define behind it is not passed.
+ * deploy-web.yml's ONE composer call that builds web: `{ line, app, target,
+ * channel, lane }`, `app` as written (`${{ matrix.app }}` with its spaces folded
+ * out) and `lane` null when the call names none. A `--print` or `--emit-env` call
+ * builds nothing and is not counted, and a word starting with `#` begins a shell
+ * comment. Any count of calls but one, or a hand-typed `flutter build web` beside
+ * it, is COVERAGE LOST: the compare would grade a build that is not the one shipped.
  */
-export function buildStepDefines(workflowText) {
-  const lines = String(workflowText).split(/\r?\n/);
-  const at = lines.flatMap((l, i) => (!/^\s*#/.test(l) && /\bflutter\s+build\s+web\b/.test(l) ? [i] : []));
-  if (at.length !== 1) {
-    throw new CoverageLost(`deploy-web.yml has ${at.length} \`flutter build web\` command(s); the compare models exactly one.`);
+export function composerWebCall(workflowText) {
+  const calls = [];
+  let typed = 0;
+  String(workflowText)
+    .split(/\r?\n/)
+    .forEach((l, i) => {
+      if (/^\s*#/.test(l)) return;
+      const live = l.split(/(?:^|\s)#/)[0];
+      if (/\bflutter\s+build\s+web\b/.test(live)) typed++;
+      const m = COMPOSER_CALL.exec(live);
+      if (m === null) return;
+      const folded = m[1].replace(/\$\{\{\s*([^}]*?)\s*\}\}/g, (_w, inner) => `\${{${inner.replace(/\s+/g, '')}}}`);
+      const tokens = folded.trim().split(/\s+/).filter((t) => t !== '').map(unquote);
+      if (tokens.includes('--print') || tokens.includes('--emit-env')) return;
+      const laneAt = tokens.indexOf('--lane');
+      const positional = tokens.filter((t, j) => !t.startsWith('--') && (laneAt === -1 || j !== laneAt + 1));
+      if (positional[1] !== 'web') return;
+      if (positional.length !== 3) {
+        throw new CoverageLost(`the composer call at deploy-web.yml:${i + 1} names ${positional.length} of its three arguments <app> <target> <channel>.`);
+      }
+      calls.push({ line: i + 1, app: positional[0], target: positional[1], channel: positional[2], lane: laneAt === -1 ? null : tokens[laneAt + 1] ?? '' });
+    });
+  if (calls.length !== 1 || typed !== 0) {
+    throw new CoverageLost(
+      `deploy-web.yml has ${calls.length} composer web build call(s) and ${typed} hand-typed \`flutter build web\` line(s); the compare models exactly one composed build.`,
+    );
   }
-  const first = at[0];
-  let style = null;
-  for (let i = first; i >= 0; i--) {
-    const m = /^\s*(?:-\s+)?run:\s*(.*)$/.exec(lines[i]);
-    if (!m) continue;
-    style = /^[>|]/.test(m[1]) ? m[1][0] : 'inline';
-    break;
+  return calls[0];
+}
+
+/**
+ * The `--dart-define`s of the ONE `flutter build web` command the composer's
+ * `--print` printed, name → the value as composed: `$NAME` for a value the
+ * build step's environment supplies, else the value the build compiles.
+ */
+export function printedDefines(printedText) {
+  const lines = String(printedText)
+    .split(/\r?\n/)
+    .filter((l) => l.trim() !== '');
+  if (lines.length !== 1 || !/^flutter\s+build\s+web(?:\s|$)/.test(lines[0].trim())) {
+    throw new CoverageLost(`the composer's --print printed ${lines.length} line(s) and not one \`flutter build web\` command, so there are no defines to read.`);
   }
-  if (style === null) throw new CoverageLost('the `flutter build web` command is not inside a `run:` step.');
-  const command = [lines[first]];
-  if (style === '>') {
-    const indent = indentOf(lines[first]);
-    for (let i = first + 1; i < lines.length && lines[i].trim() !== '' && indentOf(lines[i]) >= indent; i++) command.push(lines[i]);
-  } else if (style === '|') {
-    for (let i = first + 1; i < lines.length && /\\\s*$/.test(lines[i - 1]); i++) command.push(lines[i]);
-  }
-  const text = command.map((l) => l.replace(/\\\s*$/, '').trim()).join(' ');
-  const live = text.split(/(?:^|\s)#/)[0];
-  if (/--dart-define-from-file\b/.test(live)) {
+  const words = lines[0].trim().split(/\s+/);
+  if (words.some((w) => w.startsWith('--dart-define-from-file'))) {
     throw new CoverageLost('the web build reads defines from a file, which this compare cannot see.');
   }
   const defines = new Map();
-  for (const m of live.matchAll(/--dart-define(?:=|\s+)([A-Za-z_][A-Za-z0-9_]*)=((?:\$\{\{[^}]*\}\}|\S)*)/g)) defines.set(m[1], m[2]);
-  return { line: first + 1, defines };
+  for (let i = 0; i < words.length; i++) {
+    const d = words[i] === '--dart-define' ? words[++i] ?? '' : words[i].startsWith('--dart-define=') ? words[i].slice('--dart-define='.length) : null;
+    if (d === null) continue;
+    const m = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(d);
+    if (!m) throw new CoverageLost('the composed web build passes a --dart-define with no NAME=, which the compare cannot read.');
+    defines.set(m[1], m[2]);
+  }
+  return defines;
+}
+
+/**
+ * How the CLI asks: run `<root>/tooling/ci/flutter-release-build.mjs <app> <target>
+ * <channel> [--lane …] --print --root <root>` and return what it printed. A
+ * composer that cannot start, refuses or times out is COVERAGE LOST, naming its
+ * own first line. `--print` reads no environment, so that line holds no value.
+ */
+export function composerPrint(root) {
+  return ({ app, target, channel, lane }) => {
+    const args = [app, target, channel, ...(lane === null ? [] : ['--lane', lane]), '--print'];
+    const r = spawnSync(process.execPath, [join(root, COMPOSER), ...args, '--root', root], { encoding: 'utf8', timeout: 60000 });
+    if (r.error || r.status !== 0) {
+      const said = `${r.stderr ?? ''}\n${r.stdout ?? ''}`.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      const first = said.find((l) => /^(?:FAIL\b|\w*Error\b)/.test(l)) ?? said[0] ?? 'it printed nothing';
+      const how = r.error ? `did not run (${r.error.code ?? r.error.message})` : `exited ${r.status ?? r.signal}`;
+      throw new CoverageLost(`\`node ${COMPOSER} ${args.join(' ')}\` ${how}: ${first}`);
+    }
+    return r.stdout;
+  };
+}
+
+/**
+ * The web build's defines, read THROUGH THE COMPOSER: deploy-web.yml's one
+ * composer web call, for `app`, asked for its `--print` with `compose(call)`.
+ * @returns {{ line: number, defines: Map<string, string> }}
+ */
+export function composedBuildDefines(workflowText, app, compose) {
+  const call = composerWebCall(workflowText);
+  if (call.app !== MATRIX_APP && call.app !== app) {
+    throw new CoverageLost(`the composer call at deploy-web.yml:${call.line} builds "${call.app}", which is neither \${{ matrix.app }} nor ${app}.`);
+  }
+  return { line: call.line, defines: printedDefines(compose({ ...call, app })) };
 }
 
 // ── app_config.dart ──────────────────────────────────────────────────────────
@@ -308,8 +382,12 @@ export function resolveConstant(constants, name, depth = 0) {
 
 // ── the compare ──────────────────────────────────────────────────────────────
 
+/** A define the composer leaves to the build step's environment: exactly `$NAME`. */
+const ENV_REF = /^\$([A-Za-z_][A-Za-z0-9_]*)$/;
+
 /**
- * The whole check, pure: texts and an environment in, a verdict out.
+ * The whole check: texts, an environment and the composer in, a verdict out.
+ * Pure but for `compose` (see composedBuildDefines; the CLI passes composerPrint).
  *
  * @returns {{ lost: string[], findings: string[], derived: Map<string, string[]>, listed: string[] }}
  *   `lost` non-empty means nothing was graded (exit 2); otherwise `findings`
@@ -319,6 +397,8 @@ export function checkConnectOrigins({
   headersText,
   dartText,
   workflowText,
+  app,
+  compose,
   env = {},
   urlDefines = URL_DEFINES,
   valueDefines = VALUE_DEFINES,
@@ -326,13 +406,14 @@ export function checkConnectOrigins({
   linkKeys = LINK_KEYS,
   declared = DECLARED,
 }) {
+  if (typeof compose !== 'function') throw new TypeError('checkConnectOrigins needs compose(call), the way to ask the composer for its --print.');
   const result = { lost: [], findings: [], derived: new Map(), listed: [] };
   let listed;
   let build;
   let constants;
   try {
     listed = listedOrigins(connectSrcOf(headersText));
-    build = buildStepDefines(workflowText);
+    build = composedBuildDefines(workflowText, app, compose);
     constants = dartConstants(dartText);
   } catch (e) {
     if (!(e instanceof CoverageLost)) throw e;
@@ -351,8 +432,11 @@ export function checkConnectOrigins({
     }
   }
   for (const name of urlDefines) {
-    if (!build.defines.has(name)) {
-      result.lost.push(`${name} is not passed by the \`flutter build web\` step (deploy-web.yml:${build.line}): define renamed?`);
+    const composed = build.defines.get(name);
+    if (composed === undefined) {
+      result.lost.push(`${name} is not passed by the web build the composer composes for deploy-web.yml:${build.line}: define renamed?`);
+    } else if (composed.includes('$') && !ENV_REF.test(composed)) {
+      result.lost.push(`${name} is composed as \`${composed}\`, neither one $NAME nor a value, so the compare cannot resolve it.`);
     }
   }
 
@@ -380,16 +464,19 @@ export function checkConnectOrigins({
   }
   if (result.lost.length) return result;
 
-  // D, from the job's environment. Names and origins only, never a value.
+  // D: a `$NAME` from the job's environment, a composed value as composed.
+  // Names and origins only, never a value.
   for (const name of urlDefines) {
-    const raw = String(env[name] ?? '').trim();
+    const ref = ENV_REF.exec(build.defines.get(name));
+    const raw = (ref ? String(env[ref[1]] ?? '') : build.defines.get(name)).trim();
     if (raw === '') {
+      const why = !ref ? 'is composed empty' : ref[1] === name ? 'has no value in this job' : `reads $${ref[1]}, which has no value in this job`;
       const backing = urlBacked.find((c) => c.define === name);
       const fallback = backing ? originOf(resolveConstant(constants, backing.name) ?? '') : null;
       findings.push(
         fallback
-          ? `placeholder origin: a define is empty — ${name} has no value in this job, so the build would compile app_config.dart's fallback ${fallback}`
-          : `a define is empty — ${name} has no value in this job, and app_config.dart gives it no fallback`,
+          ? `placeholder origin: a define is empty — ${name} ${why}, so the build would compile app_config.dart's fallback ${fallback}`
+          : `a define is empty — ${name} ${why}, and app_config.dart gives it no fallback`,
       );
       continue;
     }
@@ -479,7 +566,7 @@ function main(argv) {
       lost([`${rel} could not be read (${e.code ?? e.message}), so there is nothing to compare.`]);
     }
   }
-  const r = checkConnectOrigins({ ...texts, env: process.env });
+  const r = checkConnectOrigins({ ...texts, app, compose: composerPrint(root), env: process.env });
   if (r.lost.length) lost(r.lost);
 
   const count = (prefix) => [...r.derived.values()].filter((from) => from.some(prefix)).length;

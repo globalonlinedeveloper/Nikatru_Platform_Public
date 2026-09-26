@@ -116,12 +116,13 @@ jobs:
 
       # why: the origins the build calls (its URL-valued defines, app_config.dart's CONNECT_KEYS, the module's DECLARED
       # list) must equal _headers' connect-src both ways, before anything is built; it prints origins, never a value.
+      # why: it reads the defines through the composer's --print for the build step's own call; API_BASE_URL is the
+      # composed rule value, so only the two defines composed as $NAME are mapped here (O-FLUTTER-BUILD-TYPED-PER-LINE).
       - name: The build's connect origins must equal the app's connect-src, before it is built
         id: connect
         working-directory: .
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          API_BASE_URL: ${{ secrets.API_BASE_URL }}
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
         run: node tooling/web/connect-origins.mjs --app ${{ matrix.app }} --check --emit-connect >> "$GITHUB_OUTPUT"
 
@@ -199,6 +200,13 @@ jobs:
         working-directory: .
         run: node tooling/ci/assert-catalog-reachable.mjs --emit-base-href ${{ matrix.app }} >> "$GITHUB_OUTPUT"
 
+      # why: API_BASE_URL is the composer's rule value, never a secret (O-FLUTTER-BUILD-TYPED-PER-LINE), and it is in the
+      # job's environment BEFORE the build, from the same rule the build composes; the same gate, so a skipped deploy skips it.
+      - name: The API base the build composes, into the job's environment before the build
+        if: steps.plan.outputs.deploy == 'true'
+        working-directory: .
+        run: node tooling/ci/flutter-release-build.mjs --emit-env API_BASE_URL ${{ matrix.app }} >> "$GITHUB_ENV"
+
       - name: Build web (release, no service worker)
         if: steps.plan.outputs.deploy == 'true'
         working-directory: .
@@ -210,13 +218,6 @@ jobs:
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
           TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
         run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} web web
-
-      # why: the smoke must --connect the origin the build was composed with, so the value
-      # comes from the composer's own rule, never from a secret (O-FLUTTER-BUILD-TYPED-PER-LINE).
-      - name: The API base the build composed, for the smoke's --connect
-        if: steps.plan.outputs.deploy == 'true'
-        working-directory: .
-        run: node tooling/ci/flutter-release-build.mjs --emit-env API_BASE_URL ${{ matrix.app }} >> "$GITHUB_ENV"
 
       - uses: ./.github/actions/setup-node
         if: steps.plan.outputs.deploy == 'true'
