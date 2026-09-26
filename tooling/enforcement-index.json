@@ -2725,6 +2725,14 @@
     "claims": [],
     "invokedBy": [],
     "kind": "guard",
+    "ref": "tooling/ci/d1-stores.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
     "ref": "tooling/ci/dart-source.mjs",
     "references": [],
     "state": "LIBRARY"
@@ -3079,6 +3087,14 @@
     "invokedBy": [],
     "kind": "guard",
     "ref": "tooling/ci/tree-walk.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/worker-routes.mjs",
     "references": [],
     "state": "LIBRARY"
   },
