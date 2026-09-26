@@ -61,6 +61,11 @@ jobs:
     permissions:
       contents: read
       deployments: read
+    # why: the submit job ships THIS job's bundle, not a rebuild of it, and checks it against
+    # this sha256 (O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT; docs/ci/submit-play.md).
+    outputs:
+      artifact: ${{ steps.bytes.outputs.artifact }}
+      sha256: ${{ steps.bytes.outputs.sha256 }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -96,7 +101,8 @@ jobs:
           set -euo pipefail
           RECORDED="$(node tooling/ci/read-ledger-version-code.mjs subscriptiontracker-android-play)"
           node tooling/ci/assert-app-versioning.mjs --play-floor "$RUN_NUMBER" --app subscriptiontracker --recorded-upload "$RECORDED"
-      # why: the three version flags, byte-identical to the submit job's build. Without them
+      # why: the three version flags. This is the ONE build of the dispatch: the submit job
+      # ships these bytes. Without them
       # AppConfig.appVersion is 'dev' and the versionCode is pubspec's `+1`, which Play has
       # already consumed — docs/ci/submit-play.md §versioning. assert-app-versioning.mjs
       # holds every release build in every workflow to this, found by scan, not by list.
@@ -124,8 +130,9 @@ jobs:
       # upload directly below it.
       # why: the bundle above is obfuscated, so its crash reports are unreadable
       # without this directory, and a rebuild produces a DIFFERENT one. 7 days
-      # matches the dry-run bundle it belongs to — this lane ships nothing, and
-      # the sink upload below is now the copy that lasts.
+      # matches the dry-run bundle it belongs to, and the sink upload below is
+      # the copy that lasts. ⏱ 2026-09-25: the submit job now ships this bundle
+      # and re-keeps THIS directory for 90 days as symbols-<app>-android-play.
       # tooling/ci/assert-obfuscation-coupled.mjs refuses the build without it.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -186,9 +193,23 @@ jobs:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           PLAY_TRACK: ${{ vars.PLAY_TRACK }}
         run: node tooling/release/submit-play.mjs --dry-run --app subscriptiontracker
+      # why: the hand-off the submit job verifies. The name carries the posture
+      # android-signing.mjs exported, which the submit job cannot recompute, so it
+      # travels as an output; the upload below reads the same output, so the name
+      # is written once. Nothing runs between this hash and that upload.
+      - name: Hand the submit job this bundle's name and sha256
+        id: bytes
+        env:
+          AAB: apps/subscriptiontracker/build/app/outputs/bundle/release/app-release.aab
+        run: |
+          set -euo pipefail
+          sum="$(sha256sum "$AAB" | cut -d ' ' -f 1)"
+          echo "artifact=subscriptiontracker-android-play-aab-${ANDROID_SIGNING_POSTURE:?android-signing.mjs exported no posture}" >> "$GITHUB_OUTPUT"
+          echo "sha256=${sum}" >> "$GITHUB_OUTPUT"
+          echo "${sum}  ${AAB}"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: subscriptiontracker-android-play-aab-${{ env.ANDROID_SIGNING_POSTURE }}
+          name: ${{ steps.bytes.outputs.artifact }}
           path: apps/subscriptiontracker/build/app/outputs/bundle/release/app-release.aab
           retention-days: 7
           if-no-files-found: error
@@ -248,13 +269,14 @@ jobs:
               exit 1
               ;;
           esac
+      # why: keytool, for the signer check below. No build runs in this job.
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: '17'
-      - uses: ./.github/actions/setup-flutter
-      - name: Resolve the workspace
-        run: flutter pub get --enforce-lockfile
+      # why: kept with no build to feed: submit-play.mjs --submit reads the four keystore
+      # variables and ANDROID_SIGNING_POSTURE this exports, and the signer check below holds
+      # that posture to the signature actually on the downloaded bundle.
       - name: Prepare the Android upload key
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -262,9 +284,6 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: node tooling/ci/android-signing.mjs --app subscriptiontracker
-      - name: Derive the release line from pubspec
-        id: ver
-        run: node tooling/ci/assert-app-versioning.mjs --emit apps/subscriptiontracker >> "$GITHUB_OUTPUT"
       # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. A lane green over a name the owner has not HELD
       # or proven free submits one nobody ruled on; limb 3 of assert-publish-steps-guarded.mjs.
       - name: Name clearance holds for android-play (owner HELD or PROVEN-FREE)
@@ -279,23 +298,27 @@ jobs:
           set -euo pipefail
           RECORDED="$(node tooling/ci/read-ledger-version-code.mjs subscriptiontracker-android-play)"
           node tooling/ci/assert-app-versioning.mjs --play-floor "$RUN_NUMBER" --app subscriptiontracker --recorded-upload "$RECORDED"
-      # why: `--build-number` IS THE PLAY versionCode, strictly increasing and never reusable.
-      # `github.run_number` of THIS file: code 1 is burnt (runs 4-5, 2026-09-22) and the
-      # counter is already past it. Renaming this file restarts it — see MAX_RUN_DIGITS.
-      - name: Build the app bundle
-        working-directory: apps/subscriptiontracker
-        run: >
-          flutter build appbundle --release
-          --obfuscate --split-debug-info=build/symbols/android-aab
-          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
-          --build-number=${{ github.run_number }}
-          --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-          --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
-          --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
-          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${GITHUB_SHA::7}
-          --dart-define=RELEASE_CHANNEL=android-play
-          --dart-define=REVENUECAT_KEY=${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
-          --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
+      # why: THE DRY RUN'S BYTES, NOT A REBUILD (O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT):
+      # one compile per dispatch. The versionCode is the dry-run job's --build-number,
+      # github.run_number, which this job shares. Retention is 7 days and there is no
+      # fallback: an approval older than that finds nothing and the job fails.
+      - name: Take the dry-run job's bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ needs.dry-run.outputs.artifact }}
+          path: apps/subscriptiontracker/build/app/outputs/bundle/release
+      # why: the value arrives through env:, never interpolated into run: (zizmor).
+      - name: The bundle is the one the dry-run job hashed (sha256)
+        env:
+          EXPECTED_SHA256: ${{ needs.dry-run.outputs.sha256 }}
+          AAB: apps/subscriptiontracker/build/app/outputs/bundle/release/app-release.aab
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$EXPECTED_SHA256" | grep -Eqx '[0-9a-f]{64}'; then
+            echo "FAIL the dry-run job's sha256 output is '${EXPECTED_SHA256}', not 64 hex digits: nothing to check the download against." >&2
+            exit 1
+          fi
+          printf '%s  %s\n' "$EXPECTED_SHA256" "$AAB" | sha256sum --check --strict -
       - name: The .aab must be signed by the upload key, not the debug key
         run: >
           node tooling/ci/assert-artifact-signed.mjs
@@ -306,57 +329,21 @@ jobs:
         run: >
           node --single-threaded tooling/ci/assert-elf-page-alignment.mjs
           apps/subscriptiontracker/build/app/outputs/bundle/release/app-release.aab
-      # why: BEFORE the upload, not after. This is the only copy of the mapping
-      # for a bundle that is about to reach real users, and a step that runs
-      # after a store upload does not run when the store upload fails — which is
-      # exactly when the build still exists and the symbols still can be kept.
-      # 90 days, not 7: this bundle ships.
+      # why: the mapping of the bundle above is the dry-run job's (same build), already in
+      # the crash sink from that job. BEFORE the upload, not after: kept again here for
+      # 90 days, not 7, because this bundle ships, and a step after a store upload does
+      # not run when that upload fails.
+      - name: Take the dry-run job's symbols for this bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: symbols-subscriptiontracker-android-play-dry-run
+          path: apps/subscriptiontracker/build/symbols/android-aab
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: symbols-subscriptiontracker-android-play
           path: apps/subscriptiontracker/build/symbols/android-aab
           retention-days: 90
           if-no-files-found: error
-      # why: pinned by version AND by digest, byte-identical to the step
-      # build-platforms.yml's linux lane runs. Both halves live in
-      # tooling/versions.json. The release asset is a GitLab JOB ARTIFACT, which
-      # is a re-runnable address rather than an immutable object — so the version
-      # alone is a label, and the digest is what makes it an address. This job
-      # runs on ubuntu-24.04, so the already-pinned linux-x86_64 binary is the
-      # right one and nothing new had to be pinned to wire this lane.
-      - name: Install glitchtip-cli (pinned by version AND by digest)
-        run: |
-          set -euo pipefail
-          ver="$(node -p "require('./tooling/versions.json').glitchtip_cli")"
-          sum="$(node -p "require('./tooling/versions.json').glitchtip_cli_sha256")"
-          url="https://gitlab.com/glitchtip/glitchtip-cli/-/jobs/artifacts/v${ver}/raw/artifacts/glitchtip-cli-linux-x86_64?job=build-linux-x86_64"
-          curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
-            --output "${RUNNER_TEMP}/glitchtip-cli" "$url"
-          printf '%s  %s\n' "$sum" "${RUNNER_TEMP}/glitchtip-cli" | sha256sum --check --strict -
-          chmod +x "${RUNNER_TEMP}/glitchtip-cli"
-          got="$("${RUNNER_TEMP}/glitchtip-cli" --version)"
-          if [ "$got" != "glitchtip-cli ${ver}" ]; then
-            echo "::error title=glitchtip-cli::the pinned binary reports \"${got}\", not \"glitchtip-cli ${ver}\""
-            exit 1
-          fi
-          echo "$got"
-      # why: BEFORE the store upload, for the same reason the artifact above is.
-      # This bundle reaches real users, so its mapping is the one that will
-      # actually be needed, and a step placed after a store upload does not run
-      # when that upload fails. The 90-day artifact above is already written when
-      # this runs, so a GlitchTip outage costs the sink copy and nothing else —
-      # and it FAILS THE JOB rather than skipping, deliberately: a release that
-      # goes to Play with no readable symbols is the state this whole unit
-      # exists to stop. The wrapper names GLITCHTIP_TOKEN when it is absent.
-      - name: Upload the native debug symbols to GlitchTip
-        env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
-          GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
-        run: >
-          node tooling/ops/upload-native-symbols.mjs
-          --cli "${RUNNER_TEMP}/glitchtip-cli"
-          --dir apps/subscriptiontracker/build/symbols/android-aab
-          --org nikatru --project subscriptiontracker
       - name: Upload to Google Play
         id: upload
         env:
@@ -372,7 +359,8 @@ jobs:
       # track and which the upload itself produced. The snap lane deliberately has no
       # equivalent -- no machine-readable join key exists there; docs/ci/submit-snap.md
       # records why, and warns against copying that exemption onto this lane.
-      # why the expectation is RUN_NUMBER and not pubspec's `+N`: the build above passes
+      # why the expectation is RUN_NUMBER and not pubspec's `+N`: the dry-run job's build,
+      # whose bytes this job uploads, passes
       # `--build-number=${{ github.run_number }}`, which OVERRIDES pubspec. Reading pubspec
       # here would assert `1` — the versionCode runs 4-5 burnt on 2026-09-22 — and go green
       # against the OLD bundle. So the expectation is read from the same expression the

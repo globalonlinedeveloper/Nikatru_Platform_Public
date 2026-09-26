@@ -47,6 +47,11 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 20
     needs: gate
+    # why: the submit job ships THIS job's .msix, not a repackaging of a rebuild, and checks
+    # it against this sha256 (O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT; docs/ci/submit-windows-store.md).
+    outputs:
+      artifact: ${{ steps.bytes.outputs.artifact }}
+      sha256: ${{ steps.bytes.outputs.sha256 }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -98,8 +103,9 @@ jobs:
       # `glitchtip_cli_windows_x86_64_sha256`.
       # why: the .msix below wraps an OBFUSCATED build, so its crash reports are
       # unreadable without this directory and a rebuild produces a DIFFERENT one.
-      # 7 days matches the dry-run package beside it — this lane ships nothing,
-      # and the sink upload below is now the copy that lasts.
+      # 7 days matches the dry-run package beside it, and the sink upload below is
+      # the copy that lasts. ⏱ 2026-09-25: the submit job now ships this package
+      # and re-keeps THIS directory for 90 days as symbols-<app>-windows-store.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: symbols-subscriptiontracker-windows-store-dry-run
@@ -161,9 +167,23 @@ jobs:
         # skipped the artifact would report the path healthy having never touched the one
         # output the channel accepts.
         run: node tooling/release/submit-windows-store.mjs --dry-run --app subscriptiontracker
+      # why: the hand-off the submit job verifies, and the upload below reads the same
+      # output, so the name is written once. Nothing runs between this hash and that
+      # upload. bash, because pwsh is this runner's default.
+      - name: Hand the submit job this package's name and sha256
+        id: bytes
+        shell: bash
+        env:
+          MSIX: apps/subscriptiontracker/build/windows/msix/subscriptiontracker.msix
+        run: |
+          set -euo pipefail
+          sum="$(sha256sum "$MSIX" | cut -d ' ' -f 1)"
+          echo "artifact=subscriptiontracker-windows-store-msix" >> "$GITHUB_OUTPUT"
+          echo "sha256=${sum}" >> "$GITHUB_OUTPUT"
+          echo "${sum}  ${MSIX}"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: subscriptiontracker-windows-store-msix
+          name: ${{ steps.bytes.outputs.artifact }}
           path: apps/subscriptiontracker/build/windows/msix/subscriptiontracker.msix
           retention-days: 7
           if-no-files-found: error
@@ -247,102 +267,47 @@ jobs:
             exit 1
           fi
           echo "all five MS_STORE_* secrets present — the submission may proceed."
-      - uses: ./.github/actions/setup-flutter
-      - name: Resolve the workspace
-        run: flutter pub get --enforce-lockfile
-      # why `shell: bash` and a SHA output: this runner's default shell is pwsh, where
-      # `${GITHUB_SHA::7}` is not an expansion. The short SHA is computed once here and read
-      # as a step output, the same shape as build-platforms.yml's prepare job.
-      - name: Derive the release line from pubspec
-        id: ver
-        shell: bash
-        run: |
-          set -euo pipefail
-          node tooling/ci/assert-app-versioning.mjs --emit apps/subscriptiontracker >> "$GITHUB_OUTPUT"
-          echo "GITHUB_SHA_SHORT=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
       # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. A lane green over a name the owner has not HELD
       # or proven free submits one nobody ruled on; limb 3 of assert-publish-steps-guarded.mjs.
       - name: Name clearance holds for windows-store (owner HELD or PROVEN-FREE)
         run: node tooling/ci/assert-name-clearance.mjs --for-submission=windows-store
-      - name: Build windows
-        working-directory: apps/subscriptiontracker
-        run: >
-          flutter build windows --release
-          --obfuscate --split-debug-info=build/symbols/windows
-          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
-          --build-number=${{ github.run_number }}
-          --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-          --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
-          --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
-          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${{ steps.ver.outputs.GITHUB_SHA_SHORT }}
-          --dart-define=RELEASE_CHANNEL=windows-store
-          --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
-      # ⏱ MOVED AND CORRECTED 2026-09-07 (unit `symbols-everywhere`) — this step
-      # was already "BEFORE the submission, not after" and is now earlier still,
-      # ahead of `dart run msix:create`: packaging is a step like any other, and
-      # GitHub skips the rest of a failed job, so a mapping kept only after the
-      # packaging is a mapping the packaging can take with it. Its comment also
-      # said the symbols were retained rather than sent to the crash sink
-      # "because tooling/versions.json pins ONE glitchtip-cli binary and it is
-      # linux-x86_64; this job runs on Windows (O-NATIVE-SYMBOL-UPLOAD-LINUX-ONLY)".
-      # The Windows binary of the same release is now pinned by digest as
-      # `glitchtip_cli_windows_x86_64_sha256` and the sink upload is two steps
-      # below, which is what closes that open row.
-      # why: this is the only copy of the mapping for the .msix that is about to
-      # reach real users, and a rebuild produces a DIFFERENT one. 90 days, not 7:
-      # this package ships.
+      # why: THE DRY RUN'S PACKAGE, NOT A REBUILD (O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT):
+      # one compile and one msix:create per dispatch. The dry-run job read this package's
+      # identity back straight after packaging it, and the sha256 below proves these are those
+      # bytes. Retention is 7 days and there is no fallback: an older approval fails here.
+      - name: Take the dry-run job's package
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ needs.dry-run.outputs.artifact }}
+          path: apps/subscriptiontracker/build/windows/msix
+      # why: the value arrives through env:, never interpolated into run: (zizmor). bash,
+      # because pwsh is this runner's default.
+      - name: The package is the one the dry-run job hashed (sha256)
+        shell: bash
+        env:
+          EXPECTED_SHA256: ${{ needs.dry-run.outputs.sha256 }}
+          MSIX: apps/subscriptiontracker/build/windows/msix/subscriptiontracker.msix
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$EXPECTED_SHA256" | grep -Eqx '[0-9a-f]{64}'; then
+            echo "FAIL the dry-run job's sha256 output is '${EXPECTED_SHA256}', not 64 hex digits: nothing to check the download against." >&2
+            exit 1
+          fi
+          printf '%s  %s\n' "$EXPECTED_SHA256" "$MSIX" | sha256sum --check --strict -
+      # why: the mapping of the package above is the dry-run job's (same build), already in
+      # the crash sink from that job. Kept again here for 90 days, not 7, because this
+      # package ships; BEFORE the submission, so a failed submission cannot skip it.
+      - name: Take the dry-run job's symbols for this package
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: symbols-subscriptiontracker-windows-store-dry-run
+          path: apps/subscriptiontracker/build/symbols/windows
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: symbols-subscriptiontracker-windows-store
           path: apps/subscriptiontracker/build/symbols/windows
           retention-days: 90
           if-no-files-found: error
-      # why: pwsh, for the same reason the msstore-cli install below is — this is
-      # a Windows runner and `$RUNNER_TEMP` is a backslash path. Both halves of
-      # the pin are read from tooling/versions.json at run time, so a bump cannot
-      # advance one without the other.
-      - name: Install glitchtip-cli (pinned by version AND by digest)
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $ver = node -p "require('./tooling/versions.json').glitchtip_cli"
-          $sum = node -p "require('./tooling/versions.json').glitchtip_cli_windows_x86_64_sha256"
-          $url = "https://gitlab.com/glitchtip/glitchtip-cli/-/jobs/artifacts/v$ver/raw/artifacts/glitchtip-cli-windows-x86_64.exe?job=build-windows-x86_64"
-          $out = Join-Path $env:RUNNER_TEMP 'glitchtip-cli.exe'
-          Invoke-WebRequest -Uri $url -OutFile $out -MaximumRetryCount 3 -RetryIntervalSec 5
-          $got = (Get-FileHash -Algorithm SHA256 -Path $out).Hash.ToLower()
-          if ($got -ne $sum) {
-            Write-Error "glitchtip-cli digest mismatch: the download hashes to $got and tooling/versions.json declares $sum. A version names a release; the sha256 names the BYTES, and the asset is a GitLab JOB ARTIFACT URL, which is re-runnable. This refusal is the mechanism, not a gap in it."
-          }
-          $reported = & $out --version
-          if ($reported -ne "glitchtip-cli $ver") {
-            Write-Error "the pinned binary reports '$reported', not 'glitchtip-cli $ver'"
-          }
-          Write-Host $reported
-      # why: BEFORE the submission, for the same reason the artifact above is.
-      # This package reaches real users, so its mapping is the one that will
-      # actually be needed. The 90-day artifact above is already written when this
-      # runs, so a GlitchTip outage costs the sink copy and nothing else — and it
-      # FAILS THE JOB rather than skipping, deliberately: a release that reaches
-      # the Microsoft Store with no readable symbols is the state this unit exists
-      # to stop. The wrapper names GLITCHTIP_TOKEN when it is absent.
-      - name: Upload the native debug symbols to GlitchTip
-        shell: pwsh
-        env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
-          GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
-        run: >
-          node tooling/ops/upload-native-symbols.mjs
-          --cli "${env:RUNNER_TEMP}/glitchtip-cli.exe"
-          --dir apps/subscriptiontracker/build/symbols/windows
-          --org nikatru --project subscriptiontracker
-      - name: Package MSIX (Microsoft Store)
-        working-directory: apps/subscriptiontracker
-        run: dart run msix:create --version=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}.0
-      # why: straight after msix:create, before anything reaches the Store: a package with the wrong identity stops the job here. bash, because pwsh is this runner's default.
-      - name: The MSIX carries the identity the register declares
-        shell: bash
-        run: node tooling/ci/assert-artifact-signed-msix.mjs apps/subscriptiontracker/build/windows/msix/subscriptiontracker.msix
       # why: the Microsoft Store Developer CLI is the transport, for the same reason the
       # Snap lane speaks `snapcraft`: it is Microsoft's own, documented, cross-platform
       # and actively released, and it already holds the two links this repository has no

@@ -911,6 +911,70 @@ export function jobEnv(job) {
   return at === -1 ? new Map() : mappingBelow(lines, at + 1, lines.length, 4);
 }
 
+/** A job's own `outputs:` (the key at 4 spaces), as Map NAME → {n, value}. */
+export function jobOutputs(job) {
+  const lines = job?.lines ?? [];
+  const at = lines.findIndex((l) => /^ {4}outputs:\s*$/.test(l.text));
+  return at === -1 ? new Map() : mappingBelow(lines, at + 1, lines.length, 4);
+}
+
+const NEEDS_OUTPUT = /^\$\{\{\s*needs\.([A-Za-z_][A-Za-z0-9_-]*)\.outputs\.([A-Za-z_][A-Za-z0-9_-]*)\s*\}\}$/;
+const STEP_OUTPUT = /^\$\{\{\s*steps\.([A-Za-z_][A-Za-z0-9_-]*)\.outputs\.([A-Za-z_][A-Za-z0-9_-]*)\s*\}\}$/;
+
+/**
+ * ⏱ ADDED 2026-09-25 (O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT) — every step of job
+ * `jobName` in `wf` that checks bytes against a sha256 ANOTHER job of the run emitted:
+ * a `run:` with a `sha256sum --check` segment, whose step `env:` maps a variable that
+ * run reads to `${{ needs.<job>.outputs.<name> }}`. One entry per such variable, as
+ * `{ step, variable, from, output, resolved, why }`. `resolved` is `{ stepId, key, n }`
+ * when every link holds — <job> is in this job's `needs:`, <job> declares `outputs:
+ * <name>: ${{ steps.<id>.outputs.<key> }}`, and a step `id: <id>` of <job> writes
+ * `<key>=` to $GITHUB_OUTPUT — and null otherwise, with `why` naming the first link
+ * that broke. The value is passed through `env:` because a `${{ }}` inside `run:` is a
+ * template-injection sink; a check that interpolates it is not read as a hand-off.
+ * Readers: assert-app-versioning.mjs (limb (b) of the Play high-water) and
+ * test/submit-lanes-take-dry-run-bytes.test.mjs.
+ */
+export function sha256HandOffs(wf, jobName) {
+  const job = wf?.jobs?.get(jobName);
+  if (!job) return [];
+  const out = [];
+  for (const step of workflowSteps(job)) {
+    const text = joinShellContinuations(step.run?.text ?? '');
+    if (!shellSegments(text).some((s) => /(?:^|\s)sha256sum\s+(?:-\S+\s+)*--check(?=\s|$)/.test(s))) continue;
+    for (const [variable, { value }] of step.env) {
+      const m = String(value).match(NEEDS_OUTPUT);
+      if (!m || !new RegExp(`\\$\\{?${variable}(?![A-Za-z0-9_])`).test(text)) continue;
+      const [, from, output] = m;
+      const entry = { step, variable, from, output, resolved: null, why: null };
+      out.push(entry);
+      const producer = wf.jobs.get(from);
+      if (!job.needs.includes(from) || !producer) {
+        entry.why = `job "${from}" is not in job "${jobName}"'s needs:`;
+        continue;
+      }
+      const declared = jobOutputs(producer).get(output);
+      const s = declared ? String(declared.value).match(STEP_OUTPUT) : null;
+      if (!s) {
+        entry.why = `job "${from}" declares no \`outputs: ${output}: \${{ steps.<id>.outputs.<key> }}\``;
+        continue;
+      }
+      const [, stepId, key] = s;
+      const writer = workflowSteps(producer).find((p) => p.id === stepId);
+      if (!writer) {
+        entry.why = `job "${from}" output "${output}" names step id "${stepId}", and no step of that job has it`;
+        continue;
+      }
+      if (!(writer.run?.text ?? '').includes(`${key}=`) || !/GITHUB_OUTPUT/.test(writer.run?.text ?? '')) {
+        entry.why = `step "${stepId}" of job "${from}" does not write \`${key}=\` to $GITHUB_OUTPUT`;
+        continue;
+      }
+      entry.resolved = { stepId, key, n: writer.first };
+    }
+  }
+  return out;
+}
+
 /** `cmd \` continued on the next line of a `run: |` block arrives from
  *  joinBlockScalars as `cmd \ ; next`: ONE shell command, rejoined here. */
 export const joinShellContinuations = (text) => String(text ?? '').replace(/\s\\\s+;\s/g, ' ');
