@@ -1674,6 +1674,14 @@ describe('the real repository', () => {
 
     // The registry and the homepage now agree, so the print is gone. Its absence
     // is the assertion: a print that never clears is a print nobody reads.
+    //
+    // ⏱ 2026-09-26 · D3b (ADR 028 §3 as amended by ADR no.098): sitemap.xml is generated in
+    // the job and never committed, so a fresh checkout has none, and check-site-integrity
+    // over the real tree is one of its readers. Generate first, in ci.yml `sites`'s order.
+    // The generator writes only bytes that differ: on a tree whose committed surfaces are
+    // current (the case above), that is the gitignored sitemap alone.
+    const gen = spawnSync(process.execPath, [join(REPO, 'tooling', 'sites', 'generate-discovery.mjs'), REPO], { encoding: 'utf8' });
+    assert.equal(gen.status, 0, gen.stdout + gen.stderr);
     const site = spawnSync(process.execPath, [join(CI_DIR, 'check-site-integrity.mjs'), REPO], { encoding: 'utf8' });
     assert.equal(site.status, 0, site.stdout + site.stderr);
     assert.doesNotMatch(site.stdout, /UNANNOUNCED/);
