@@ -31,19 +31,78 @@
 // final pass-through, and reproduced the exact vacuous green this module exists
 // to stop — with the mangled `C:/` still sitting where the switch belongs. It is
 // the basename that decides, never the spelling the caller happened to use.
+//
+// ── ⏱ 2026-09-24: ANY PROGRAM'S SWITCH, NOT ONLY cmd's (O-HEAVY-CMD-C-IDIOM-IS-A-SILENT-FALSE-GREEN)
+// The rewrite is MSYS's, not cmd's: every bare `/switch` typed in the Bash tool
+// reaches every native program as a path. What node receives from the Bash tool
+// on this laptop (the `/c` rows are the 2026-09-20 measurement above; `/PID` is
+// the one recorded with this change):
+//
+//     typed          node receives                   rule below
+//     /c             C:/                             (a) a bare drive root
+//     /PID           C:/Program Files/Git/PID        (b) one segment under the MSYS root
+//     //c            /c                              passed: the escape collapses to the switch
+//
+// So `taskkill /PID 123 /T /F` runs as `taskkill <path> 123 T:/ F:/`. Both
+// shapes are REFUSED, for any program, before the lock is taken:
+//   (a) an argument that is exactly a drive root, `X:/`;
+//   (b) an argument that is the MSYS root (from EXEPATH) plus ONE segment, when
+//       no such file exists — a real file there is a path someone meant.
+// Both apply only when MSYSTEM is set (the caller is an MSYS shell) and
+// MSYS_NO_PATHCONV is not (with it, nothing was rewritten): from PowerShell or
+// cmd, `C:/` is just a path.
+//
+// ⚠️ WHAT IT MISSES: a switch whose rewrite exists on disk under the root
+// (`/etc`, `/usr`, `/bin`); a switch MSYS maps to a mount other than the root
+// (`/tmp`); a switch inside an argument (`--x=/c`) or one with a `/` in it; and
+// an MSYS without EXEPATH, where limb (b) has no root to compare against.
 // ─────────────────────────────────────────────────────────────────────────────
+import { existsSync } from 'node:fs';
+
+/** The MSYS install root EXEPATH names — its `bin` or `usr/bin` stripped — in
+ *  forward slashes, as MSYS spells the rewritten switch. null without EXEPATH. */
+export function msysRoot(exepath) {
+  if (!exepath) return null;
+  const root = String(exepath).replace(/\\/g, '/').replace(/\/+$/, '').replace(/\/(usr\/)?bin$/i, '');
+  return root || null;
+}
 
 /**
  * @param {string[]} cmd            the argv after `--`
  * @param {string} [platform]       process.platform, injectable for the tests
  * @param {string} [comspec]        %ComSpec%, injectable for the tests
+ * @param {object} [env]            the environment (MSYSTEM, EXEPATH, MSYS_NO_PATHCONV), injectable
+ * @param {(p: string) => boolean} [exists]  existsSync, injectable
  * @returns {{file: string, args: string[], refuse?: undefined} | {refuse: string}}
  */
-export function windowsCommand(cmd, platform = process.platform, comspec = process.env.ComSpec) {
+export function windowsCommand(cmd, platform = process.platform, comspec = process.env.ComSpec, env = process.env, exists = existsSync) {
   const [file, ...args] = cmd;
   // Nothing here applies off Windows: `/c` is not a switch, `.bat` is not
   // executable, and a POSIX shell does not rewrite arguments into drive paths.
   if (platform !== 'win32') return { file, args };
+
+  // The MSYS limb, for EVERY program (see the header). Before the cmd rule, so a
+  // mangled switch is refused whatever program it was typed to.
+  if (env.MSYSTEM && env.MSYS_NO_PATHCONV == null) {
+    const root = msysRoot(env.EXEPATH);
+    for (const a of args.map(String)) {
+      let sw = null;
+      if (/^[A-Za-z]:\/$/.test(a)) sw = `/${a[0].toLowerCase()}`;
+      else if (root && a.toLowerCase().startsWith(`${root.toLowerCase()}/`)) {
+        const rest = a.slice(root.length + 1);
+        if (rest && !rest.includes('/') && !exists(a)) sw = `/${rest}`;
+      }
+      if (sw) {
+        return {
+          refuse:
+            `\`${a}\` is what MSYS makes of a bare \`${sw}\` switch: \`${file}\` would receive a PATH where its switch ` +
+            `belongs and run something other than what was typed — cmd given one opens interactively and would RUN NOTHING, answering 0.\n` +
+            `  Type the switch as \`/${sw}\` (MSYS collapses it to \`${sw}\`), or run with \`MSYS_NO_PATHCONV=1\`; ` +
+            `for a .bat/.cmd, name it directly — \`-- flutter.bat test\` — and it is wrapped for you.`,
+        };
+      }
+    }
+  }
 
   // ⏱ 2026-09-22: the BASENAME decides. `cmd`, `cmd.exe`, `C:\Windows\System32\cmd.exe`
   // and whatever `$COMSPEC` holds are all the same program, and all of them are
