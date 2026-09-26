@@ -44,7 +44,7 @@
 import { availabilityRow } from '../ci/channel-arming.mjs';
 // The ONE HTML escape that is already exported for reuse. tooling/sites/
 // generate-discovery.mjs carries a file-local copy of the same four rules; a
-// third would be the copy-parity shape this repository keeps deleting.
+// third would be the shipped-copy shape this repository keeps deleting.
 import { esc } from '../app-yaml/render-privacy.mjs';
 
 export { availabilityRow };

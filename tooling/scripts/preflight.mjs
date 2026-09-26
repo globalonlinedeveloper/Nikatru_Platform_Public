@@ -40,8 +40,8 @@
 // had exited 0 on the same tree. Reproduced: guard-sweep.mjs printed
 // `✗ assert-walks-bounded.mjs RED(1) no invocation passes here` and exited 0 —
 // correctly, because it asserts COMPLETENESS, and some guards are red on this
-// machine for environmental reasons (assert-ops-register, assert-store-matrix
-// --registry-only, the assert-stamp-* guards that need a stamped app). This leg
+// machine for environmental reasons (assert-ops-register, the store matrix guard
+// before its 2026-09-25 retirement, the assert-stamp-* guards that need a stamped app). This leg
 // read only the sweep's exit code, so a red that the BRANCH caused and a red the
 // MACHINE causes were the same green line, followed by "CI should agree".
 //

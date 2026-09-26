@@ -13,6 +13,20 @@
       "to": null,
       "reason": "retired with its subject: tooling/ci/windows-signing.mjs and this suite leave the tree in the same change as the build-platforms.yml step that was the script's only caller (O-WINDOWS-DIRECT-DEAD-CHANNEL-LIVES, branch 2). No green main run without the suite can exist before that change merges, so this lowering carries no run.",
       "run": null
+    },
+    {
+      "suite": "copy-parity.test.mjs",
+      "from": 28,
+      "to": null,
+      "reason": "RETIRED with the store matrix (O-STORE-MATRIX-IS-A-DEAD-DECLARATION, 2026-09-25): the suite and its guard were deleted in the same change; no run can execute it again. Lowered by hand with mergeExecutedFloor, run null: no green main run without the suite existed before the merge.",
+      "run": null
+    },
+    {
+      "suite": "store-matrix.test.mjs",
+      "from": 21,
+      "to": null,
+      "reason": "RETIRED with the store matrix (O-STORE-MATRIX-IS-A-DEAD-DECLARATION, 2026-09-25): the suite and its guard were deleted in the same change; no run can execute it again. Lowered by hand with mergeExecutedFloor, run null: no green main run without the suite existed before the merge.",
+      "run": null
     }
   ],
   "suites": {
@@ -72,7 +86,6 @@
     "content-licences.test.mjs": 13,
     "content-pipeline.test.mjs": 51,
     "content-qa-checks.test.mjs": 14,
-    "copy-parity.test.mjs": 28,
     "cors-allowlist.test.mjs": 19,
     "d1-bindings.test.mjs": 9,
     "d1-location-hint.test.mjs": 12,
@@ -210,7 +223,6 @@
     "store-bijection.test.mjs": 28,
     "store-build-config.test.mjs": 33,
     "store-identity.test.mjs": 48,
-    "store-matrix.test.mjs": 21,
     "store-metadata.test.mjs": 74,
     "submission-safety.test.mjs": 22,
     "supabase-templates.test.mjs": 19,

@@ -402,7 +402,14 @@ for (const c of printed) {
   const when = blockers.length ? LAUNCH_MECHANISM.get(blockers[0]).since : LAUNCH_MECHANISM.get(c.platforms[0]).since;
   note(
     `${c.id} — NOT LAUNCH-SMOKED. what: ${(c.artifactFormats ?? []).join(', ') || 'no declared format'} on ` +
-      `${(c.platforms ?? []).join(', ')}, served=${c.served === true}. who: ${c.ownerQueue ? `OWNER_QUEUE ${c.ownerQueue}` : 'no owner-queue row'}. ` +
+      `${(c.platforms ?? []).join(', ')}, served=${c.served === true}. who: ${
+        // ⏱ 2026-09-25 (D3a): an open account's closed item is `accountStatus.openedBy`.
+        c.ownerQueue
+          ? `OWNER_QUEUE ${c.ownerQueue}`
+          : c.accountStatus?.openedBy
+            ? `no live owner-queue row (account opened by OWNER_QUEUE ${c.accountStatus.openedBy})`
+            : 'no owner-queue row'
+      }. ` +
       `recorded ${when}. why: ${why}`,
   );
 }

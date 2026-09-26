@@ -335,8 +335,10 @@ for (const app of apps) {
             problems.push(`${at}: ${refusal}`);
             continue;
           }
+          // ⏱ 2026-09-25 (D3a): an open account's closed item is `accountStatus.openedBy`.
+          const owner = row.ownerQueue ?? (row.accountStatus?.openedBy ? `owner; account opened by ${row.accountStatus.openedBy}` : 'owner');
           prints.push(
-            `OWNER-GATED (${row.ownerQueue ?? 'owner'}) · ${at}: the package identity is the placeholder "${r.value}" in both the register ` +
+            `OWNER-GATED (${owner}) · ${at}: the package identity is the placeholder "${r.value}" in both the register ` +
               `and ${r.rel}. ${row.submission.script} --submit REFUSES it (run here with no credentials, exit non-zero, refusal named), ` +
               'so it cannot reach a store upload. It stops printing when Partner Center\'s real values land in both files.',
           );

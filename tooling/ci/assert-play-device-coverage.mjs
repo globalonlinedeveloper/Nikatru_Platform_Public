@@ -446,10 +446,12 @@ for (const row of withCoverage) {
 
     // One relationship for every kind of gap this guard finds: printed while the
     // channel is unserved, fatal when it is served or when this is the submit lane.
+    // ⏱ 2026-09-25 (D3a): an open account's closed item is `accountStatus.openedBy`.
+    const owner = row.ownerQueue ?? (row.accountStatus?.openedBy ? `(none live; account opened by ${row.accountStatus.openedBy})` : '(unnamed)');
     const route = (kind, why) => {
       if (row.id === SUBMITTING) problems.push(`SUBMITTING to "${row.id}" and ${why}`);
       else if (row.served === true) problems.push(`channel "${row.id}" is SERVED and ${why}`);
-      else prints.push(`${kind} (channel not served yet, OWNER_QUEUE ${row.ownerQueue ?? '(unnamed)'}): ${why} ` +
+      else prints.push(`${kind} (channel not served yet, OWNER_QUEUE ${owner}): ${why} ` +
         `This PRINTS here and is FATAL on the submission lane, which runs this guard with --for-submission=${row.id}.`);
     };
 
