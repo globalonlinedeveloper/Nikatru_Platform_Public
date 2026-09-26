@@ -43,6 +43,11 @@
 //      that one step silently turns the whole declaration into a lie. The
 //      define set on the `flutter build appbundle` step is PARSED and compared.
 //      This is the limb that made the whole file worth writing.
+//      ⏱ 2026-09-26 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 3 of 3): the lane now asks
+//      tooling/ci/flutter-release-build.mjs for that build, and no workflow line
+//      holds `flutter build appbundle` any more. The step is found in
+//      workflow-scan's census instead (flutterBuilds), which composes the call into
+//      the command it runs, and the defines are read off that composed command.
 //
 //  (B) THE TELLS. Nobody adds ACCESS_FINE_LOCATION to a manifest by hand; they
 //      add `geolocator` to a pubspec and Gradle merges the permission in from a
@@ -260,7 +265,7 @@ import { join, resolve, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { stripInert, stripSourceComments } from './text-reductions.mjs';
-import { parseWorkflow } from './workflow-scan.mjs';
+import { parseWorkflow, flutterBuilds } from './workflow-scan.mjs';
 // The IAP limb reads each app's OWN declaration, and reads it with the parser
 // that owns the format. A regex over YAML is a second parser, and two parsers of
 // one file drift — which in this file would mean a store billing rail declared in
@@ -813,12 +818,11 @@ function checkApp(app) {
         'posture limb — the one that catches the whole declaration silently becoming false — checks nothing.',
       ]);
     }
-    const hits = [];
-    for (const job of wf.jobs.values()) {
-      for (const l of job.logical) {
-        if (l.text.includes(bp.buildCommandContains)) hits.push(l);
-      }
-    }
+    // Every build the census finds in the lane, a composer call composed: `segment`
+    // is the command that runs, whether the workflow typed it or the composer did.
+    const hits = flutterBuilds(ROOT, [wf])
+      .filter((b) => b.segment.includes(bp.buildCommandContains))
+      .map((b) => ({ text: b.segment }));
     if (hits.length === 0) {
       coverageLost([
         `no step in ${bp.lane} contains ${JSON.stringify(bp.buildCommandContains)}.`,

@@ -31,6 +31,7 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { parseWorkflow, flutterReleaseBuilds, shellSegments, definesIn, workflowSteps } from '../workflow-scan.mjs';
+import { PR_BLANKED } from '../flutter-release-build.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
@@ -92,6 +93,10 @@ const SECRET_ONLY = /^\$\{\{\s*secrets\.[A-Za-z0-9_]+\s*\}\}$/;
  *    value are the same flag. T5 is what stops a PR secret hiding behind this;
  *  - `RELEASE_CHANNEL` and `REVENUECAT_KEY` (R-KEY A: the PR passes main's public
  *    key) are compared verbatim, and so is every other flag.
+ *  - ⏱ 2026-09-26 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 3 of 3): both twins are now
+ *    composed by tooling/ci/flutter-release-build.mjs, and main's API_BASE_URL is the
+ *    composer's rule value, not a secret. A define the composer's `--lane pr` blanks
+ *    (PR_BLANKED, imported, never listed here) therefore becomes `NAME=` too.
  */
 function normalise(segment) {
   const at = segment.search(/flutter\s+build\b/);
@@ -107,7 +112,7 @@ function normalise(segment) {
     const [, name, value] = d;
     if (name === 'APP_VERSION') out.push('--dart-define=APP_VERSION=*');
     else if (name === 'RELEASE_CHANNEL' || name === 'REVENUECAT_KEY') out.push(t);
-    else if (value === '' || SECRET_ONLY.test(value)) out.push(`--dart-define=${name}=`);
+    else if (value === '' || SECRET_ONLY.test(value) || PR_BLANKED.has(name)) out.push(`--dart-define=${name}=`);
     else out.push(t);
   }
   return out;
@@ -219,9 +224,12 @@ test('the PR lane references only the secret the register maps for its store-rai
     if (typeof secret !== 'string') continue;
     const step = steps.find((s) => s.run?.n === b.runLine);
     assert.ok(step, `${PR_WORKFLOW}:${b.runLine} — no step holds this build's run line`);
-    const token = `--dart-define=${storeKey.define}=\${{ secrets.${secret} }}`;
+    // A typed build names the secret on its define line; a composer call names it
+    // once, in its step's env, and the composer passes it as that define
+    // (⏱ 2026-09-26, O-FLUTTER-BUILD-TYPED-PER-LINE part 3 of 3).
+    const tokens = [`--dart-define=${storeKey.define}=\${{ secrets.${secret} }}`, `${secret}: \${{ secrets.${secret} }}`];
     for (const l of job.lines) {
-      if (l.n >= step.first && l.n <= step.last && l.text.trim() === token) allowed.set(l.n, token);
+      if (l.n >= step.first && l.n <= step.last && tokens.includes(l.text.trim())) allowed.set(l.n, l.text.trim());
     }
   }
 

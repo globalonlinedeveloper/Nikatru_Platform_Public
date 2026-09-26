@@ -14,7 +14,9 @@
 // every job whose `run:` invokes `node tooling/release/submit-<x>.mjs --submit`. For
 // each such job this file FAILS when:
 //   (1) a step rebuilds or repacks — `flutter build`, `msix:create` or
-//       `snapcraft pack`;
+//       `snapcraft pack`. A tooling/ci/flutter-release-build.mjs build call IS a
+//       `flutter build` (⏱ 2026-09-26, O-FLUTTER-BUILD-TYPED-PER-LINE), read with
+//       workflow-scan.mjs's composerCallArgs, the parse the census reads it with;
 //   (2) no step checks a `sha256sum --check` against `${{ needs.<job>.outputs.<o> }}`
 //       passed through `env:` (workflow-scan.mjs sha256HandOffs);
 //   (3) that output does not resolve — <job> is not in `needs:`, declares no such
@@ -41,6 +43,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import {
   WORKFLOW_DIR,
+  composerCallArgs,
   joinShellContinuations,
   jobOutputs,
   parseWorkflow,
@@ -52,8 +55,17 @@ import {
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 const SUBMIT = /(?:^|\s)node\s+(?:-\S+\s+)*tooling\/release\/submit-[a-z-]+\.mjs(?:\s+\S+)*?\s+--submit(?=\s|$)/;
+/** A composer call that builds (`--print` and `--emit-env` build nothing). A call
+ *  the composer would refuse still asks for a build, so its throw counts too. */
+const composesBuild = (seg) => {
+  try {
+    return composerCallArgs(seg) !== null;
+  } catch {
+    return true;
+  }
+};
 const REBUILDS = [
-  ['flutter build', /(?:^|\s)flutter\s+build(?=\s|$)/],
+  ['flutter build', { test: (seg) => /(?:^|\s)flutter\s+build(?=\s|$)/.test(seg) || composesBuild(seg) }],
   ['msix:create', /(?:^|\s)msix:create(?=\s|$)/],
   ['snapcraft pack', /(?:^|\s)snapcraft\s+pack(?=\s|$)/],
 ];

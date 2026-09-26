@@ -367,13 +367,17 @@ jobs:
       - name: Stage the fallback fonts the bootstrap points at
         run: node tooling/store/capture-fallback-fonts.mjs --stage apps/${{ matrix.app }}
 
+      # why: the API base the drive and the issuer check use is the composer's rule for this
+      # app — the value every release build compiles in — never a secret (O-FLUTTER-BUILD-TYPED-PER-LINE).
+      - name: The app's API base, from the composer's rule
+        run: node tooling/ci/flutter-release-build.mjs --emit-env API_BASE_URL ${{ matrix.app }} >> "$GITHUB_ENV"
+
       - name: Run integration tests (headless Chrome)
         id: drive
         working-directory: apps/${{ matrix.app }}
         env:
           SUPABASE_URL: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_URL || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_URL || '' }}
           SUPABASE_ANON_KEY: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_ANON_KEY || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_ANON_KEY || '' }}
-          API_BASE_URL: ${{ secrets.API_BASE_URL }}
           # why: a repository VARIABLE, not a secret. The Turnstile SITE key is
           # public by design — it ships inside the web bundle and is meaningless
           # without the secret half, which lives only on Box A. It can never
@@ -519,7 +523,6 @@ jobs:
           SUPABASE_ANON_KEY: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_ANON_KEY || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_ANON_KEY || '' }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ (inputs.auth_target || 'production') == 'selfhosted' && secrets.SELFHOSTED_SUPABASE_SERVICE_ROLE_KEY || (inputs.auth_target || 'production') == 'production' && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
-          API_BASE_URL: ${{ secrets.API_BASE_URL }}
         run: node tooling/e2e/assert_one_issuer.mjs
 
       # why: ON A CAPTCHA-GATED STACK THE ERASURE CANNOT HAPPEN IN THE BROWSER.

@@ -232,10 +232,16 @@ either list with what the build is configured to call.
 `tooling/web/connect-origins.mjs --check` computes the set of origins the
 build calls and requires it to EQUAL `connect-src` minus `'self'`:
 
-- **the URL-valued defines** of the `flutter build web` step (`SUPABASE_URL`,
-  `API_BASE_URL`, `GLITCHTIP_DSN`), read from this step's `env:`. Only the
-  origin is kept; the DSN's key and path are dropped before anything is
-  printed.
+- **the URL-valued defines** of the web build (`SUPABASE_URL`,
+  `API_BASE_URL`, `GLITCHTIP_DSN`). Only the origin is kept; the DSN's key and
+  path are dropped before anything is printed. ⏱ 2026-09-26 (lead ruling
+  W37-R1): the build step types no `flutter build web` line any more, so the
+  module finds the step's one `tooling/ci/flutter-release-build.mjs` call and
+  reads the defines from that composer's `--print` for the same app, target and
+  channel. A define composed as `$NAME` (`SUPABASE_URL`, `GLITCHTIP_DSN`) is
+  read from this step's `env:`; `API_BASE_URL` is composed from the app's rule,
+  so this step maps no `API_BASE_URL` and no secret holds it. A failing
+  `--print`, or any count of composer web calls but one, is COVERAGE LOST.
 - **`CONNECT_KEYS`**: the `app_config.dart` constants the app fetches from
   (`platformBaseUrl`, `configBaseUrl`). A key the file no longer declares is
   COVERAGE LOST (exit 2).
@@ -548,6 +554,14 @@ smoke now probes the set the connect-src compare emitted (the step before the
 Flutter setup, above), so it needs no secret in its own `env:`. The
 repository-wide `API_BASE_URL` is still one of the derived defines, so a
 stamped app with no backend now stops at that compare, before its build.
+
+⏱ 2026-09-26 — O-FLUTTER-BUILD-TYPED-PER-LINE. `API_BASE_URL` is no longer a
+repository secret: `tooling/ci/flutter-release-build.mjs` composes it from the
+app's `hosts.api` in its `app.yaml`, else the shared platform API. The compare
+reads that composed value through the composer's `--print`, and the step before
+the build writes the same rule's value to `$GITHUB_ENV` with `--emit-env`. For
+a stamped app with no API host of its own, the derived API origin is the
+platform API's.
 
 ### before step **Install glitchtip-cli (pinned by version AND by digest)**
 

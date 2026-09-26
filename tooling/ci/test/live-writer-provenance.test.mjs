@@ -586,7 +586,7 @@ spawnSync('flutter', argv, { stdio: 'inherit' });
     says(r, 'tooling/web/build-web.mjs:3 — a script-launched flutter build is not yet supported');
   });
 
-  // ⏱ 2026-09-26 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 1 of 3): the release lanes call (part 3)
+  // ⏱ 2026-09-26 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 3 of 3): the release lanes call
   // the composer instead of typing `flutter build`. It launches a build, never a drive,
   // so neither it nor a step calling it is a live writer; any other build script is.
   const COMPOSER = `import { spawnSync } from 'node:child_process';

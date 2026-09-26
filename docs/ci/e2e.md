@@ -17,7 +17,7 @@ Runs nightly + on demand — NOT on every push (it writes to live prod and takes
 a few minutes). To also run per-push, add `push: { branches: [main] }` below.
 
 Required repo secrets — ALL of them, on every run:
-  SUPABASE_URL, SUPABASE_ANON_KEY, API_BASE_URL,
+  SUPABASE_URL, SUPABASE_ANON_KEY (API_BASE_URL is composed; the lane reads it with `--emit-env`),
   CLOUDFLARE_API_TOKEN (needs D1 read+write), CLOUDFLARE_ACCOUNT_ID,
   SUPABASE_SERVICE_ROLE_KEY
 
