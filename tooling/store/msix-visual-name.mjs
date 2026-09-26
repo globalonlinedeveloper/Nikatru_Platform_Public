@@ -111,6 +111,19 @@ function coverageLost(msg) {
   process.exit(2);
 }
 
+/** Reads a file this script then rewrites, ONCE: a missing file or a directory
+ *  is COVERAGE LOST. No existence check before it, because a check followed by
+ *  a write to the same path is a race (CodeQL js/file-system-race). */
+function readOnce(path, shown) {
+  try {
+    return readFileSync(path, 'utf8');
+  } catch (e) {
+    if (e?.code === 'ENOENT') coverageLost(`${shown} does not exist.`);
+    if (e?.code === 'EISDIR') coverageLost(`${shown} is a directory, not a file.`);
+    throw e;
+  }
+}
+
 function main(argv) {
   let app;
   const targets = [];
@@ -134,16 +147,17 @@ function main(argv) {
   if (typeof label !== 'string' || label === '') coverageLost(`apps/${app}/app.yaml declares no \`shortName\`; there is no label to write.`);
 
   const target = resolve(targets[0]);
-  if (!existsSync(target)) coverageLost(`${targets[0]} does not exist.`);
 
   if (/\.xml$/i.test(target)) {
-    const next = setVisualName(readFileSync(target, 'utf8'), label);
+    const next = setVisualName(readOnce(target, targets[0]), label);
     if (next === null) coverageLost(`${targets[0]} has no uap:VisualElements/@DisplayName to set.`);
     writeFileSync(target, next);
     console.log(`ok  msix visual name — ${targets[0]}: VisualElements/@DisplayName = "${label}"`);
     return;
   }
 
+  // The package itself is only handed to MakeAppx, never written from here.
+  if (!existsSync(target)) coverageLost(`${targets[0]} does not exist.`);
   const makeappx = findMakeAppx(process.cwd());
   if (makeappx === null) {
     coverageLost(
@@ -161,8 +175,7 @@ function main(argv) {
       process.exit(1);
     }
     const manifestPath = join(unpacked, 'AppxManifest.xml');
-    if (!existsSync(manifestPath)) coverageLost(`${targets[0]} unpacked with no AppxManifest.xml.`);
-    const next = setVisualName(readFileSync(manifestPath, 'utf8'), label);
+    const next = setVisualName(readOnce(manifestPath, `${targets[0]} unpacked: its AppxManifest.xml`), label);
     if (next === null) coverageLost(`${targets[0]}'s AppxManifest.xml has no uap:VisualElements/@DisplayName to set.`);
     writeFileSync(manifestPath, next);
     for (const f of FOOTPRINT) rmSync(join(unpacked, f), { recursive: true, force: true });
