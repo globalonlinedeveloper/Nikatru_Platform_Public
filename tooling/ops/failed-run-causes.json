@@ -17,659 +17,1295 @@
     "never be explained by accident, and the test refuses a register that tries.",
     "",
     "Dates are the day the fix merged. SHAs are the merge commit on main. Verified 2026-09-10 with",
-    "`git merge-base --is-ancestor <sha> origin/main` for every SHA below."
+    "`git merge-base --is-ancestor <sha> origin/main` for every SHA below.",
+    "",
+    "Each row also carries `fixedBy`: the FIX as a typed kind a machine can check. {kind: merge, sha, pr,",
+    "also?} (pr is null for a direct push; `also` lists further merges the fix needed), {kind: superseded,",
+    "by}, {kind: infrastructure}, {kind: not-a-defect, reason}, {kind: live-action, what} or {kind:",
+    "lost-race}. The prose `fix` stays for the reader. validateCauses refuses a row whose `fixedBy` is",
+    "missing or malformed, and the live run asks `git merge-base --is-ancestor <sha> origin/main` of every",
+    "merge sha before it reads the API: a sha not on main exits 1 naming its row; a shallow clone is",
+    "COVERAGE LOST (exit 2)."
   ],
   "causes": [
     {
       "signature": "ops-register:red-since:duty.workflow.build-platforms.yml",
       "rootCause": "The [14]O-3 reader graded duty.workflow.build-platforms.yml FAILING because the newest build-platforms run on main was red (the Windows leg: the slug rename pushed one path past MAX_PATH 260, 'Unable to generate build files'), and that verdict then failed every CI run — including the ones carrying the remedy.",
-      "fix": "PR #582 ddfc63d4 (2026-09-09, the Windows path) + PR #593 846d90a0 (2026-09-09, the verdict no longer freezes the gate its remedy needs)"
+      "fix": "PR #582 ddfc63d4 (2026-09-09, the Windows path) + PR #593 846d90a0 (2026-09-09, the verdict no longer freezes the gate its remedy needs)",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "ddfc63d4",
+        "pr": 582,
+        "also": [
+          {
+            "sha": "846d90a0",
+            "pr": 593
+          }
+        ]
+      }
     },
     {
       "signature": "ops-register:red-since:duty.workflow.ops-watch.yml",
       "rootCause": "The [14]O-3 reader graded duty.workflow.ops-watch.yml FAILING because the newest ops-watch run on main was red (Pages freshness strict equality, the alert-disposition 403, the monitor-register drift after the subly rename), and that verdict then failed every CI run.",
-      "fix": "PR #593 846d90a0 (2026-09-09, self-gate removed) + PR #604 b7f268e5 (Pages freshness) + PR #607 bffae635 (alert disposition 403)"
+      "fix": "PR #593 846d90a0 (2026-09-09, self-gate removed) + PR #604 b7f268e5 (Pages freshness) + PR #607 bffae635 (alert disposition 403)",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "846d90a0",
+        "pr": 593,
+        "also": [
+          {
+            "sha": "b7f268e5",
+            "pr": 604
+          },
+          {
+            "sha": "bffae635",
+            "pr": 607
+          }
+        ]
+      }
     },
     {
       "signature": "ops-register:red-since:duty.workflow.e2e.yml",
       "rootCause": "The [14]O-3 reader graded duty.workflow.e2e.yml FAILING because the newest nightly e2e run on main was red, and that verdict then failed every CI run until a green e2e landed.",
-      "fix": "PR #593 846d90a0 (2026-09-09, self-gate removed); the e2e lane itself is cleared by its next green run on main"
+      "fix": "PR #593 846d90a0 (2026-09-09, self-gate removed); the e2e lane itself is cleared by its next green run on main",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "846d90a0",
+        "pr": 593
+      }
     },
     {
       "signature": "ops-register:red-since:duty.workflow.deploy-web.yml",
       "rootCause": "The [14]O-3 reader graded duty.workflow.deploy-web.yml FAILING because the newest deploy-web run on main was red (refused downstream while ci-gate was red for that SHA, or the post-deploy smoke read the previous build), and that verdict then failed every CI run.",
-      "fix": "PR #593 846d90a0 (2026-09-09, self-gate removed); cleared by the next green deploy-web on main"
+      "fix": "PR #593 846d90a0 (2026-09-09, self-gate removed); cleared by the next green deploy-web on main",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "846d90a0",
+        "pr": 593
+      }
     },
     {
       "signature": "ops-register:red-since:*",
       "rootCause": "The [14]O-3 reader graded a workflow duty FAILING because that workflow's newest run on main was red, and the verdict failed every CI run — a red duty could not be repaired because the repair could not merge (the self-gated livelock).",
-      "fix": "PR #593 846d90a0 (2026-09-09, the RED-SINCE verdict no longer freezes the gate its own remedy needs)"
+      "fix": "PR #593 846d90a0 (2026-09-09, the RED-SINCE verdict no longer freezes the gate its own remedy needs)",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "846d90a0",
+        "pr": 593
+      }
     },
     {
       "signature": "ops-register:duty-stale:duty.laptop.nikatru-daily-backup",
       "rootCause": "The laptop backup's newest SUCCESSFUL heartbeat fell outside its 12h window: the backup refused to sync because the subly rename deleted more paths than its --max-delete threshold allows.",
-      "fix": "not a defect in the tree: owner-authorised sync on 2026-09-09; heartbeat resumed 18:31:46Z (GlitchTip monitor 6)"
+      "fix": "not a defect in the tree: owner-authorised sync on 2026-09-09; heartbeat resumed 18:31:46Z (GlitchTip monitor 6)",
+      "fixedBy": {
+        "kind": "not-a-defect",
+        "reason": "an owner-authorised sync paused the beat; it resumed with no change to the tree"
+      }
     },
     {
       "signature": "ops-register:duty-stale:duty.laptop.nikatru-watchdog",
       "rootCause": "The hourly laptop watchdog's newest SUCCESSFUL heartbeat fell outside its 2h window: the routine was starved by a long-running session on the same laptop.",
-      "fix": "not a defect in the tree: the routine beat again at 2026-09-10T00:34:04Z (GlitchTip monitor 30)"
+      "fix": "not a defect in the tree: the routine beat again at 2026-09-10T00:34:04Z (GlitchTip monitor 30)",
+      "fixedBy": {
+        "kind": "not-a-defect",
+        "reason": "the routine beat again with no change to the tree"
+      }
     },
     {
       "signature": "ops-register:duty-stale:*",
       "rootCause": "A scheduled duty's newest SUCCESSFUL record fell outside its own cadence window (the register names the duty and the age on the line after the header).",
-      "fix": "cleared by the duty's next successful beat; the register reads the record live"
+      "fix": "cleared by the duty's next successful beat; the register reads the record live",
+      "fixedBy": {
+        "kind": "live-action",
+        "what": "the duty's next successful beat, read live by the register"
+      }
     },
     {
       "signature": "ops-register:alert-disposition-403",
       "rootCause": "assert-alert-disposition.mjs could not enumerate a firing history because the GitHub API answered 403 (the shared installation quota), and it graded that unreadable answer as a definite compliance finding.",
-      "fix": "PR #607 bffae635 (2026-09-09, an unreadable history is COVERAGE LOST, not a finding)"
+      "fix": "PR #607 bffae635 (2026-09-09, an unreadable history is COVERAGE LOST, not a finding)",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "bffae635",
+        "pr": 607
+      }
     },
     {
       "signature": "ops-register:firing-history-403",
       "rootCause": "The register's alerting limb could not enumerate a firing history because the GitHub API answered 403 (the shared installation quota), and graded the unreadable answer as a finding.",
-      "fix": "PR #607 bffae635 (2026-09-09); the quota itself self-clears hourly"
+      "fix": "PR #607 bffae635 (2026-09-09); the quota itself self-clears hourly",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "bffae635",
+        "pr": 607
+      }
     },
     {
       "signature": "github-api:403-installation-quota",
       "rootCause": "The GitHub API answered 403 'API rate limit exceeded for installation': the one installation token every workflow shares was exhausted by agent fan-out (measured 2026-09-09).",
-      "fix": "infrastructure, self-cleared (the installation quota resets hourly); no tree change"
+      "fix": "infrastructure, self-cleared (the installation quota resets hourly); no tree change",
+      "fixedBy": {
+        "kind": "infrastructure"
+      }
     },
     {
       "signature": "pages-freshness:strict-equality",
       "rootCause": "The Pages freshness limb required the served commit to EQUAL the newest main commit touching the site, so every healthy deployment that was an ancestor read as stale.",
-      "fix": "PR #604 b7f268e5 (2026-09-09, ancestry instead of equality)"
+      "fix": "PR #604 b7f268e5 (2026-09-09, ancestry instead of equality)",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "b7f268e5",
+        "pr": 604
+      }
     },
     {
       "signature": "provenance:unresolved-rows",
       "rootCause": "Rows in production could not be traced to a released build: the subly slug rename orphaned the deployment witnesses written under the old slug.",
-      "fix": "PR #581 ee582aef (2026-09-09, the provenance ledger follows the rename)"
+      "fix": "PR #581 ee582aef (2026-09-09, the provenance ledger follows the rename)",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "ee582aef",
+        "pr": 581
+      }
     },
     {
       "signature": "platform-register:unregistered-route:GET /v1/entitlements/subject",
       "rootCause": "services/platform mounted GET /v1/entitlements/subject before tooling/platform-register.json declared it, so the [B-1] one-home guard refused the PR's own CI.",
       "fix": "superseded: registered on the branch before merge — PR #587 78777a2b (2026-09-09)",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "PR #587 78777a2b, registered on the branch before the merge"
+      },
       "scope": "feature-branches"
     },
     {
       "signature": "platform-register:unregistered-route:POST /v1/receipts/:store",
       "rootCause": "services/platform mounted POST /v1/receipts/:store before tooling/platform-register.json declared it, so the [B-1] one-home guard refused the PR's own CI.",
       "fix": "superseded: registered on the branch before merge — PR #603 9b520606 (2026-09-09)",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "PR #603 9b520606, registered on the branch before the merge"
+      },
       "scope": "feature-branches"
     },
     {
       "signature": "policy-claims:unclaimed-route-segment",
       "rootCause": "A new route segment (/subject under entitlements) was neither a provider's tell in tooling/legal/provider-register.json nor claimed in nonProviderRouteSegments, so the policy-claims guard refused the PR's own CI.",
       "fix": "superseded: claimed on the branch before merge — PR #587 78777a2b (2026-09-09)",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "PR #587 78777a2b, claimed on the branch before the merge"
+      },
       "scope": "feature-branches"
     },
     {
       "signature": "policy-claims:unrowed-emphasis",
       "rootCause": "A legal page emphasised sentences that tooling/legal/policy-claims.json had no row for (the terms.html rewrite), so the guard refused the PR's own CI.",
       "fix": "superseded: rows added on the branch before merge — PR #579 bf04fc64 (2026-09-09)",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "PR #579 bf04fc64, rows added on the branch before the merge"
+      },
       "scope": "feature-branches"
     },
     {
       "signature": "start-here:drift",
       "rootCause": "START-HERE.md carried a whole-tree file count, so every branch that added a guard test drifted the entry card and gen-start-here --check refused it.",
-      "fix": "PR #606 74bf73d4 (2026-09-09, the count is no longer whole-tree); earlier instances were regenerated on their branches before merge"
+      "fix": "PR #606 74bf73d4 (2026-09-09, the count is no longer whole-tree); earlier instances were regenerated on their branches before merge",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "74bf73d4",
+        "pr": 606
+      }
     },
     {
       "signature": "enforcement-index:drift",
       "rootCause": "tooling/enforcement-index.json disagreed with the index regenerated from the branch's tree (a guard or citation was added without regenerating), so the guard refused the PR's own CI.",
       "fix": "superseded: regenerated with build-enforcement-index.mjs --write on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, regenerated on the branch before the merge"
+      },
       "scope": "feature-branches"
     },
     {
       "signature": "monitor-register:drift",
       "rootCause": "GlitchTip monitor 3 pointed at the renamed Subly URL while tooling/monitor-register.json still recorded the old path (or the reverse, during the cutover), so the live-vs-register comparison failed.",
-      "fix": "the register and the live monitor were brought to the same URL during the subly cutover (PR #571 b45f7fa9 / #573 a20feb47, 2026-09-09); cleared by the next green ops-watch on main"
+      "fix": "the register and the live monitor were brought to the same URL during the subly cutover (PR #571 b45f7fa9 / #573 a20feb47, 2026-09-09); cleared by the next green ops-watch on main",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "b45f7fa9",
+        "pr": 571,
+        "also": [
+          {
+            "sha": "a20feb47",
+            "pr": 573
+          }
+        ]
+      }
     },
     {
       "signature": "monitor-register:no-project",
       "rootCause": "GlitchTip monitor 12 (config.nikatru.com) had no project, so the alert join alert → project → monitor could never notify anyone.",
-      "fix": "the monitor was re-attached to its project on the live instance; cleared by the next green ops-watch on main"
+      "fix": "the monitor was re-attached to its project on the live instance; cleared by the next green ops-watch on main",
+      "fixedBy": {
+        "kind": "live-action",
+        "what": "the monitor was re-attached to its project on the live instance"
+      }
     },
     {
       "signature": "ci-gate:refused-downstream",
       "rootCause": "A deploy or build lane refused to run because ci-gate had concluded failure (or never reported) for that exact SHA — downstream of the CI failure for that commit, never a defect of its own.",
-      "fix": "downstream only: closed by whichever group explains ci-gate's red for that SHA, and by the next green run of the lane on main"
+      "fix": "downstream only: closed by whichever group explains ci-gate's red for that SHA, and by the next green run of the lane on main",
+      "fixedBy": {
+        "kind": "not-a-defect",
+        "reason": "downstream of another job's red; that job's group carries the cause"
+      }
     },
     {
       "signature": "windows:max-path",
       "rootCause": "The Windows build could not write a path: the slug rename pushed one git-written path from 248 to 262 characters, past MAX_PATH 260 ('Unable to generate build files' / 'cannot write keep file' under the sentry-native checkout).",
-      "fix": "PR #582 ddfc63d4 (2026-09-09)"
+      "fix": "PR #582 ddfc63d4 (2026-09-09)",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "ddfc63d4",
+        "pr": 582
+      }
     },
     {
       "signature": "smoke:stale-build",
       "rootCause": "The post-deploy smoke found the live surface still serving the previous build number: two agents dispatched deploy-web for consecutive commits and the concurrency group cancelled/reordered the publish under the smoke.",
-      "fix": "not a defect in the tree: the next deploy-web on main published the newer build and its smoke passed"
+      "fix": "not a defect in the tree: the next deploy-web on main published the newer build and its smoke passed",
+      "fixedBy": {
+        "kind": "not-a-defect",
+        "reason": "the next deploy-web on main published the newer build and its smoke passed"
+      }
     },
     {
       "signature": "cancelled:superseded-in-group",
       "rootCause": "A newer run of the same workflow on the same ref started while this one was still running; the workflow's concurrency group with cancel-in-progress evicted it (ci.yml's group is the ref, cancel-in-progress true off main).",
-      "fix": "not a defect: superseded by the newer run in the same group"
+      "fix": "not a defect: superseded by the newer run in the same group",
+      "fixedBy": {
+        "kind": "not-a-defect",
+        "reason": "a newer run in the same concurrency group evicted it"
+      }
     },
     {
       "signature": "cancelled:by-hand-or-unknown",
       "rootCause": "The run was cancelled with no successor in its concurrency group — by hand (an agent or the owner stopping a run whose commit had been superseded), or by GitHub with no reason recorded in the log.",
-      "fix": "not a defect: no verdict was rendered; closed by the next green run of the workflow on the branch, or by the branch being gone"
+      "fix": "not a defect: no verdict was rendered; closed by the next green run of the workflow on the branch, or by the branch being gone",
+      "fixedBy": {
+        "kind": "not-a-defect",
+        "reason": "cancelled, so no verdict was rendered"
+      }
     },
     {
       "signature": "gate-only",
       "rootCause": "Only the aggregator job was red: a lane was cancelled or never ran, so 'Require all lanes green' could not see a verdict.",
-      "fix": "not a defect of its own: closed by the next green run on the branch"
+      "fix": "not a defect of its own: closed by the next green run on the branch",
+      "fixedBy": {
+        "kind": "not-a-defect",
+        "reason": "an aggregator red with no failure of its own"
+      }
     },
     {
       "signature": "dart:format",
       "rootCause": "A Dart file in the PR was not dart-format clean (the log names the changed file), so the shipping-app format step refused the PR's own CI.",
       "fix": "superseded: formatted on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      },
       "scope": "feature-branches"
     },
     {
       "signature": "dart:pub-resolve",
       "rootCause": "flutter pub get could not resolve the workspace on the branch (a version constraint the PR introduced), so the workspace gate refused the PR's own CI.",
       "fix": "superseded: constraints fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      },
       "scope": "feature-branches"
     },
     {
       "signature": "dart:package-uri-unresolved",
       "rootCause": "analysis_options.yaml included package:nikatru_lints before the workspace had resolved it, so the stamped-app format step could not read its options.",
       "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      },
       "scope": "feature-branches"
     },
     {
       "signature": "osv:known-vulnerable",
       "rootCause": "osv-scanner found a known-vulnerable dependency pin (the log names the package, version and advisory), so the security lane refused the PR's own CI.",
       "fix": "superseded: the pin was raised on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      },
       "scope": "feature-branches"
     },
     {
       "signature": "guard-failed:*",
       "rootCause": "A named guard printed '<guard>: FAILED' against the branch's tree — the guard did its job on the PR's own CI (the log names the guard and the finding).",
       "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      },
       "scope": "feature-branches"
     },
     {
       "signature": "hang-guard:ceiling",
       "rootCause": "The extension store-identity check exceeded the 180s hang-guard ceiling on every attempt (a Node process that did not return), so the lane failed closed.",
       "fix": "superseded: fixed on the branch before merge; cleared by the next green extensions run",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      },
       "scope": "feature-branches"
     },
     {
       "signature": "tsc:error",
       "rootCause": "A TypeScript type error in a Worker or its tests (the log names the file and TS code), so the Worker lane refused the PR's own CI.",
       "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      },
       "scope": "feature-branches"
     },
     {
       "signature": "npm-test:assertion",
       "rootCause": "A Worker test assertion failed on the branch (the log names the assertion), so the Worker lane refused the PR's own CI.",
       "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      },
       "scope": "feature-branches"
     },
     {
       "signature": "retention-coverage",
       "rootCause": "A retention row named a store that the derived store set did not contain (or a store had no rule) after a rename, so assert-retention-coverage refused the PR's own CI.",
       "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      },
       "scope": "feature-branches"
     },
     {
       "signature": "site-integrity",
       "rootCause": "The site integrity guard found problems in a site's served files on the branch (the log lists them), so the sites lane refused the PR's own CI.",
       "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      },
       "scope": "feature-branches"
     },
     {
       "signature": "deploy-triggers:unreachable",
       "rootCause": "A workflow trigger path could not reach the deploy jobs it triggers after a workflow edit on the branch, so assert-deploy-triggers refused the PR's own CI.",
       "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      },
       "scope": "feature-branches"
     },
     {
       "signature": "catalogue:reachability",
       "rootCause": "The catalogue advertised an app address that was not reachable on the branch (during the subly address cutover), so the guard refused the PR's own CI.",
       "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      },
       "scope": "feature-branches"
     },
     {
       "signature": "privacy-notice:drift",
       "rootCause": "A rendered notice surface no longer matched the privacy declaration it is generated from on the branch, so the guard refused the PR's own CI.",
       "fix": "superseded: regenerated on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, regenerated on the branch before the merge"
+      },
       "scope": "feature-branches"
     },
     {
       "signature": "supabase-templates:drift",
       "rootCause": "The repo's Supabase mail template differed from the live mailer_templates_confirmation_content (repo edited, live not yet pushed), so ops-watch's template comparison failed.",
-      "fix": "the live template was pushed from the repo; cleared by the next green ops-watch on main"
+      "fix": "the live template was pushed from the repo; cleared by the next green ops-watch on main",
+      "fixedBy": {
+        "kind": "live-action",
+        "what": "the live template was pushed from the repository"
+      }
     },
     {
       "signature": "surfaces:unhealthy",
       "rootCause": "One of the register-enumerated surfaces did not answer with its expected status and body when ops-watch probed it (the log names the surface).",
-      "fix": "cleared by the next green ops-watch on main (the surface answered again)"
+      "fix": "cleared by the next green ops-watch on main (the surface answered again)",
+      "fixedBy": {
+        "kind": "live-action",
+        "what": "the surface answered again; the next ops-watch on main read it green"
+      }
     },
     {
       "signature": "proof-fresh:no-green-scheduled",
       "rootCause": "The weekly extensions e2e proof reader found no GREEN scheduled run among the newest scheduled runs, because the scheduled runs it read had themselves failed on the shared-quota 403.",
-      "fix": "infrastructure, self-cleared: the next scheduled extensions run was green"
+      "fix": "infrastructure, self-cleared: the next scheduled extensions run was green",
+      "fixedBy": {
+        "kind": "infrastructure"
+      }
     },
     {
       "signature": "macos:build-failed",
       "rootCause": "The macOS build failed in xcodebuild on the branch (the log carries the Xcode error), during the Apple signing bring-up.",
       "fix": "superseded: fixed on the branch before merge (PR #576 a7b92d8e / #577 dff75175, 2026-09-09)",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "PR #576 a7b92d8e / PR #577 dff75175, fixed on the branch before the merge"
+      },
       "scope": "feature-branches"
     },
     {
       "signature": "apple:signing-failed",
       "rootCause": "The Apple distribution identity step failed (apple-signing: FAILED): the App ID had been minted for a retired identifier, and on main the signed-artifact proof ran before the identity existed.",
-      "fix": "PR #576 a7b92d8e (App ID deleted and re-minted) and PR #577 dff75175 (proof ordering), 2026-09-09; later green build-platforms on main run 34367696898"
+      "fix": "PR #576 a7b92d8e (App ID deleted and re-minted) and PR #577 dff75175 (proof ordering), 2026-09-09; later green build-platforms on main run 34367696898",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "a7b92d8e",
+        "pr": 576,
+        "also": [
+          {
+            "sha": "dff75175",
+            "pr": 577
+          }
+        ]
+      }
     },
     {
       "signature": "glitchtip:symbol-upload",
       "rootCause": "The native debug-symbol upload to GlitchTip returned a 4xx (the project slug had changed with the subly rename), and the upload step stood between the .ipa and its own signature check.",
-      "fix": "PR #577 dff75175 (2026-09-09, the upload no longer blocks the signature proof; slug ordering fixed)"
+      "fix": "PR #577 dff75175 (2026-09-09, the upload no longer blocks the signature proof; slug ordering fixed)",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "dff75175",
+        "pr": 577
+      }
     },
     {
       "signature": "bundle-launch:404",
       "rootCause": "The built web bundle, launched once before publish, asked for files the bundle did not contain (a base-href/path mismatch during the address cutover).",
       "fix": "superseded: fixed on the branch before merge; cleared by the next green deploy-web on main",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      },
       "scope": "feature-branches"
     },
     {
       "signature": "startup:*",
       "rootCause": "The run failed before any job started (a workflow file that did not parse on that commit, or a runner that never picked it up).",
       "fix": "superseded: the workflow file was fixed on the branch, or the next run started normally",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "the workflow file fixed on its branch, or the next run starting normally"
+      },
       "scope": "feature-branches"
     },
     {
       "signature": "zizmor:install-failed",
       "rootCause": "The zizmor install step (curl of the pinned tarball from github.com/releases, sha256 check, tar) exited 8 with no output — a transient download failure, not a tree change.",
-      "fix": "infrastructure, self-cleared: the next run of the security lane installed it"
+      "fix": "infrastructure, self-cleared: the next run of the security lane installed it",
+      "fixedBy": {
+        "kind": "infrastructure"
+      }
     },
     {
       "signature": "provenance:d1-api-unreadable:*",
       "rootCause": "check-prod-provenance.mjs could not query D1 (the D1 API answered a 4xx — 400 once, 429 once) and graded it COULD NOT LOOK, exit 2, as designed; nothing in the tree was wrong.",
-      "fix": "infrastructure, self-cleared: the next ops-watch on main read D1 and traced every row"
+      "fix": "infrastructure, self-cleared: the next ops-watch on main read D1 and traced every row",
+      "fixedBy": {
+        "kind": "infrastructure"
+      }
     },
     {
       "signature": "guard-test:*",
       "scope": "feature-branches",
       "rootCause": "A guard test in tooling/ci/test failed against the branch tree on the PR's own CI (the ✖ line names the case) — the guard test did its job.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "guard-refused:*",
       "scope": "feature-branches",
       "rootCause": "A guard refused the branch tree with its house '✗ <subject> — N problem(s)' line on the PR's own CI (the log names the subject and the finding) — the guard did its job.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "osv:known-vulnerable",
       "scope": "main",
       "rootCause": "osv-scanner found newly PUBLISHED advisories against pins main already carried (js-yaml 3.15.1 GHSA-2883-xcg3-v3hh among ten) — main went red with no tree change, on the day the advisories appeared.",
-      "fix": "PR #557 5995bf03 (2026-09-08 23:53Z, ten advisories fixed rather than waived)"
+      "fix": "PR #557 5995bf03 (2026-09-08 23:53Z, ten advisories fixed rather than waived)",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "5995bf03",
+        "pr": 557
+      }
     },
     {
       "signature": "guard-test:the committed surfaces match a fresh generator run, and the guard says so",
       "scope": "main",
       "rootCause": "The pricing merge (#583 aec41ab1) changed what the discovery generator emits, so the committed sites surface no longer matched a fresh generator run on main.",
-      "fix": "PR #608 0d11d14b (2026-09-09 18:54Z, the automated Site drift repair regenerated the surface)"
+      "fix": "PR #608 0d11d14b (2026-09-09 18:54Z, the automated Site drift repair regenerated the surface)",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "0d11d14b",
+        "pr": 608
+      }
     },
     {
       "signature": "web-smoke:first-frame-timeout",
       "rootCause": "The pre-publish web smoke served the new path-based bundle (nikatru.com/<id>, #562) at the server root, so the app never reached its first frame within 90 s and the deploy refused to publish.",
-      "fix": "PR #565 c24b1ce7 (2026-09-09 06:30Z, the smoke serves the bundle at its own base path)"
+      "fix": "PR #565 c24b1ce7 (2026-09-09 06:30Z, the smoke serves the bundle at its own base path)",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "c24b1ce7",
+        "pr": 565
+      }
     },
     {
       "signature": "analytics:silence-judged-fault",
       "rootCause": "ops-watch judged the analytics rail SILENT AS A FAULT: consent artifacts landed in the 24h window while the events table received zero rows — reach proven, arrivals zero (the judgement itself landed in PR #199 3d7a7511 on 2026-08-08 and fired intermittently until 2026-09-05).",
-      "fix": "closed on main: the nightly e2e stopped leaving consent rows in production (PR #404 47b68443, 2026-08-28) and signs in by magic link (PR #444 6ad8c271, 2026-09-04); no red since 2026-09-05 and ops-watch is green on main — no single SHA is claimed as THE fix"
+      "fix": "closed on main: the nightly e2e stopped leaving consent rows in production (PR #404 47b68443, 2026-08-28) and signs in by magic link (PR #444 6ad8c271, 2026-09-04); no red since 2026-09-05 and ops-watch is green on main — no single SHA is claimed as THE fix",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "47b68443",
+        "pr": 404,
+        "also": [
+          {
+            "sha": "6ad8c271",
+            "pr": 444
+          }
+        ]
+      }
     },
     {
       "signature": "ops-register:duty-stale:duty.analytics-silence-judgment",
       "rootCause": "The register graded duty.analytics-silence-judgment stale because the ops-watch step that IS that duty had been failing (the silence-judged-fault group), so no successful record fell inside its 1d window.",
-      "fix": "same closure as analytics:silence-judged-fault — no red since 2026-09-05; the duty record is green again on main"
+      "fix": "same closure as analytics:silence-judged-fault — no red since 2026-09-05; the duty record is green again on main",
+      "fixedBy": {
+        "kind": "live-action",
+        "what": "the duty record went green again on main once the analytics silence closed"
+      }
     },
     {
       "signature": "ops-register:duty-stale:duty.workflow.e2e.yml",
       "rootCause": "The register graded duty.workflow.e2e.yml stale because the nightly live e2e had no successful run inside its window (the e2e leg failures), so every CI run inherited the stale verdict.",
-      "fix": "closed by the e2e lane going green on main (run 34327705272, 2026-09-09) after PR #444 6ad8c271, #478 3f849e1e, #537 2e2526c6 and #573 a20feb47; PR #593 846d90a0 stops a stale duty freezing the gate"
+      "fix": "closed by the e2e lane going green on main (run 34327705272, 2026-09-09) after PR #444 6ad8c271, #478 3f849e1e, #537 2e2526c6 and #573 a20feb47; PR #593 846d90a0 stops a stale duty freezing the gate",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "6ad8c271",
+        "pr": 444,
+        "also": [
+          {
+            "sha": "3f849e1e",
+            "pr": 478
+          },
+          {
+            "sha": "2e2526c6",
+            "pr": 537
+          },
+          {
+            "sha": "a20feb47",
+            "pr": 573
+          },
+          {
+            "sha": "846d90a0",
+            "pr": 593
+          }
+        ]
+      }
     },
     {
       "signature": "e2e:leg-failed:*",
       "rootCause": "A leg of the nightly live e2e suite failed against the live backend (the ##[error] names the leg: page walk / create-and-read-back, account deletion, login rejection) — a real defect in the app or harness at the time, fixed in the e2e series that followed.",
-      "fix": "closed by the e2e fixes of 2026-08-09 (#236–#260), #404 47b68443 (2026-08-28), #444 6ad8c271 (2026-09-04), #478 3f849e1e (2026-09-05) and #537 2e2526c6 (2026-09-07); e2e green on main run 34327705272 — the per-leg SHA is not traced here"
+      "fix": "closed by the e2e fixes of 2026-08-09 (#236–#260), #404 47b68443 (2026-08-28), #444 6ad8c271 (2026-09-04), #478 3f849e1e (2026-09-05) and #537 2e2526c6 (2026-09-07); e2e green on main run 34327705272 — the per-leg SHA is not traced here",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "47b68443",
+        "pr": 404,
+        "also": [
+          {
+            "sha": "6ad8c271",
+            "pr": 444
+          },
+          {
+            "sha": "3f849e1e",
+            "pr": 478
+          },
+          {
+            "sha": "2e2526c6",
+            "pr": 537
+          }
+        ]
+      }
     },
     {
       "signature": "e2e:integration-tests-failed",
       "rootCause": "The first-generation e2e harness (2026-07-18..08-01) failed inside the headless-Chrome integration test with only \"Application finished.\" in the step log — timing races in finders, recorded in the commits of 2026-07-18 (waitFor onboarding, poll snackbars, scroll-to-fold).",
-      "fix": "closed by the harness rewrite (e2e series of 2026-08-09, #236–#260) and the later green e2e on main run 34327705272; no single SHA is claimed"
+      "fix": "closed by the harness rewrite (e2e series of 2026-08-09, #236–#260) and the later green e2e on main run 34327705272; no single SHA is claimed",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "the e2e harness rewrite, #236–#260"
+      }
     },
     {
       "signature": "e2e:consent-artifact-mismatch",
       "rootCause": "The server-verified consent leg found the newest artifact saying granted=1 while the suite had tapped \"No thanks\" — the record did not match the decision.",
-      "fix": "PR #297 894959d0 (2026-08-11, the consent verifier stops conflating purposes)"
+      "fix": "PR #297 894959d0 (2026-08-11, the consent verifier stops conflating purposes)",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "894959d0",
+        "pr": 297
+      }
     },
     {
       "signature": "e2e:preflight-variable-unset:TURNSTILE_SITE_KEY",
       "rootCause": "The e2e preflight refused to run without the repository VARIABLE TURNSTILE_SITE_KEY, because a run without the captcha gate would prove the suite passes WITHOUT the gate.",
-      "fix": "owner set the repository variable on 2026-09-07 (PR #537 2e2526c6 named it); e2e green on main run 34327705272"
+      "fix": "owner set the repository variable on 2026-09-07 (PR #537 2e2526c6 named it); e2e green on main run 34327705272",
+      "fixedBy": {
+        "kind": "live-action",
+        "what": "the owner set the repository variable on 2026-09-07"
+      }
     },
     {
       "signature": "e2e:preflight-secrets-missing",
       "scope": "feature-branches",
       "rootCause": "The e2e preflight for the Box A auth target found its BOXA_SUPABASE_* secrets absent on the branch run.",
-      "fix": "superseded: PR #517 882c98d7 merged with the secrets in place"
+      "fix": "superseded: PR #517 882c98d7 merged with the secrets in place",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "PR #517 882c98d7, merged with the secrets in place"
+      }
     },
     {
       "signature": "heartbeat-table:unhealthy",
       "rootCause": "ops-watch read the D1 heartbeat table from outside Cloudflare and found a scheduled duty not reporting healthy (supabase_keepalive: the D1 API answered 429 on 2026-09-04; two duties missing their due run on 2026-08-15/16).",
-      "fix": "infrastructure / the duty caught up: the next ops-watch on main read every duty healthy; run 34422226780 (2026-09-10) is green"
+      "fix": "infrastructure / the duty caught up: the next ops-watch on main read every duty healthy; run 34422226780 (2026-09-10) is green",
+      "fixedBy": {
+        "kind": "infrastructure"
+      }
     },
     {
       "signature": "alarm-chains:monitor-missing",
       "rootCause": "verify-alarm-chains expected the GlitchTip monitor \"Oracle box backup chain\" and it was not in the live list — the monitor had been deleted while alarm-chains.json still named it.",
-      "fix": "PR #497 7fce6776 (2026-09-05, the two Box B backup heartbeats and the alarm-chains rows re-aligned); ops-watch green on main"
+      "fix": "PR #497 7fce6776 (2026-09-05, the two Box B backup heartbeats and the alarm-chains rows re-aligned); ops-watch green on main",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "7fce6776",
+        "pr": 497
+      }
     },
     {
       "signature": "actions-usage:over-ceiling",
       "rootCause": "ops-watch read the Actions usage ledger: billing period 2026-09 was NET $0.99 over the declared ceiling $0.00, so a spending limit could stop scheduled runs from starting.",
-      "fix": "owner-side: the spending assumption was re-established (billing is settled, pay-as-you-go); ops-watch green on main from 2026-09-03"
+      "fix": "owner-side: the spending assumption was re-established (billing is settled, pay-as-you-go); ops-watch green on main from 2026-09-03",
+      "fixedBy": {
+        "kind": "live-action",
+        "what": "the owner re-established the spending assumption (billing settled, pay-as-you-go)"
+      }
     },
     {
       "signature": "supabase-config:no-credential",
       "rootCause": "ops-watch found no SUPABASE_PAT / SUPABASE_PROJECT_REF secret, so nothing compared the live auth config against tooling/mail-transport.json, and the step failed on purpose.",
-      "fix": "PR #155 2cd7b7ac (2026-08-04, \"one duty had no credential\" — the secret was added); ops-watch green on main"
+      "fix": "PR #155 2cd7b7ac (2026-08-04, \"one duty had no credential\" — the secret was added); ops-watch green on main",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "2cd7b7ac",
+        "pr": 155
+      }
     },
     {
       "signature": "d1-live-sql:refused",
       "rootCause": "deploy-workers executed the deployed SQL against live D1 and D1 refused a statement (or a guarded write touched a row) — the K-7 class that once hid months of failing account deletions.",
-      "fix": "PR #453 49e1d395 (2026-09-04, the subly router split; the refused statement was re-shaped); deploy-workers green on main run 34401576788"
+      "fix": "PR #453 49e1d395 (2026-09-04, the subly router split; the refused statement was re-shaped); deploy-workers green on main run 34401576788",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "49e1d395",
+        "pr": 453
+      }
     },
     {
       "signature": "d1-live-sql:could-not-complete",
       "rootCause": "The live-SQL check could not complete (access to D1 failed mid-run), and it exits 2 rather than reading as proof.",
-      "fix": "infrastructure, self-cleared: the next deploy-workers on main completed the check"
+      "fix": "infrastructure, self-cleared: the next deploy-workers on main completed the check",
+      "fixedBy": {
+        "kind": "infrastructure"
+      }
     },
     {
       "signature": "deployment-record:no-environment-row",
       "rootCause": "record-deployment.mjs found no row in tooling/channel-register.json whose deploymentEnvironment template matched \"subly-api\" / \"platform\", so the deploy could not file its record.",
-      "fix": "PR #155 2cd7b7ac (2026-08-04, the Worker rows gained their deploymentEnvironment templates)"
+      "fix": "PR #155 2cd7b7ac (2026-08-04, the Worker rows gained their deploymentEnvironment templates)",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "2cd7b7ac",
+        "pr": 155
+      }
     },
     {
       "signature": "deployment-record:github-5xx",
       "rootCause": "record-deployment.mjs got HTTP 503 from GitHub while POSTing the Deployment record (\"No server is currently available\").",
-      "fix": "infrastructure, self-cleared (GitHub 503); the next deploy-web on main recorded normally"
+      "fix": "infrastructure, self-cleared (GitHub 503); the next deploy-web on main recorded normally",
+      "fixedBy": {
+        "kind": "infrastructure"
+      }
     },
     {
       "signature": "ci-gate:no-sha-given",
       "rootCause": "assert-gate-passed.mjs was invoked with no commit SHA (the workflow input was empty on a 2026-07-26 dispatch), so it refused rather than certify the empty set.",
-      "fix": "PR #39 7db9724e (2026-07-28, the deploy lanes pin the tool and pass the SHA)"
+      "fix": "PR #39 7db9724e (2026-07-28, the deploy lanes pin the tool and pass the SHA)",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "7db9724e",
+        "pr": 39
+      }
     },
     {
       "signature": "wrangler:npx-failed",
       "rootCause": "cloudflare/wrangler-action failed inside npx (the Worker deploy or the Pages deploy tool exited 1) on 2026-07-17..07-31 — the pre-pin era of the deploy lanes.",
-      "fix": "PR #39 7db9724e (2026-07-28, the deploy tool is pinned); PR #155 2cd7b7ac (2026-08-04, the Worker no longer deploys twice); deploy lanes green on main"
+      "fix": "PR #39 7db9724e (2026-07-28, the deploy tool is pinned); PR #155 2cd7b7ac (2026-08-04, the Worker no longer deploys twice); deploy lanes green on main",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "7db9724e",
+        "pr": 39,
+        "also": [
+          {
+            "sha": "2cd7b7ac",
+            "pr": 155
+          }
+        ]
+      }
     },
     {
       "signature": "pages:ensure-project",
       "rootCause": "deploy-web's \"Ensure the Pages project exists (Direct Upload, idempotent)\" step failed on 2026-08-07 (seven attempts in one day) while the Pages project was being re-created for the renamed app.",
-      "fix": "closed the same day: the project existed by the next deploy-web run; deploy-web green on main run 34422473874"
+      "fix": "closed the same day: the project existed by the next deploy-web run; deploy-web green on main run 34422473874",
+      "fixedBy": {
+        "kind": "live-action",
+        "what": "the Pages project existed by the next deploy-web run"
+      }
     },
     {
       "signature": "android:gradle-failed",
       "rootCause": "The Android sideloadable build failed in Gradle assembleRelease on main on 2026-09-04 (BUILD FAILED, exit 1) — one of the three platform reds PR #537 records as \"none of them was the toolchain moving\".",
-      "fix": "PR #537 2e2526c6 (2026-09-07, \"Three platform builds went red on main\"); build-platforms green on main run 34367696898"
+      "fix": "PR #537 2e2526c6 (2026-09-07, \"Three platform builds went red on main\"); build-platforms green on main run 34367696898",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "2e2526c6",
+        "pr": 537
+      }
     },
     {
       "signature": "msix:identity-guard",
       "rootCause": "The MSIX identity guard on main (2026-08-24/25) could not open the package it was handed — it discarded its own argument, then could not read a zip Windows actually writes, then the lane destroyed its own evidence.",
-      "fix": "PR #366 30ac08ce, #371 fc47cf6f, #372 4ccfbbb7, #373 57e6e103 (2026-08-25); build-platforms green on main"
+      "fix": "PR #366 30ac08ce, #371 fc47cf6f, #372 4ccfbbb7, #373 57e6e103 (2026-08-25); build-platforms green on main",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "30ac08ce",
+        "pr": 366,
+        "also": [
+          {
+            "sha": "fc47cf6f",
+            "pr": 371
+          },
+          {
+            "sha": "4ccfbbb7",
+            "pr": 372
+          },
+          {
+            "sha": "57e6e103",
+            "pr": 373
+          }
+        ]
+      }
     },
     {
       "signature": "play:device-coverage",
       "rootCause": "The Play submission path found the screenshot set covering one device type (phone) where Play requires two.",
-      "fix": "PR #393 c9be8b3d (2026-08-27, tablet set captured for the first time) and #472 007daaf1"
+      "fix": "PR #393 c9be8b3d (2026-08-27, tablet set captured for the first time) and #472 007daaf1",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "c9be8b3d",
+        "pr": 393,
+        "also": [
+          {
+            "sha": "007daaf1",
+            "pr": 472
+          }
+        ]
+      }
     },
     {
       "signature": "snap:pack-failed",
       "rootCause": "snapcraft could not pack: the desktop file named an icon absent from the prime directory, and the license \"proprietary\" was not a valid SPDX id.",
-      "fix": "PR #302 08c369dc (2026-08-11, submit-snap becomes a real submitter); the lane has not been red since"
+      "fix": "PR #302 08c369dc (2026-08-11, submit-snap becomes a real submitter); the lane has not been red since",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "08c369dc",
+        "pr": 302
+      }
     },
     {
       "signature": "store-screenshots:capture",
       "rootCause": "The store-screenshot capture lane failed to drive the app (a nav tap that missed at one viewport; an off-screen field accepting text; ErrorWidget.builder not restored).",
-      "fix": "PR #389 d6dd46b2, #391 77bda18e, #392 9c50dc21 (2026-08-27); store-screenshots green on main run 34202461387"
+      "fix": "PR #389 d6dd46b2, #391 77bda18e, #392 9c50dc21 (2026-08-27); store-screenshots green on main run 34202461387",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "d6dd46b2",
+        "pr": 389,
+        "also": [
+          {
+            "sha": "77bda18e",
+            "pr": 391
+          },
+          {
+            "sha": "9c50dc21",
+            "pr": 392
+          }
+        ]
+      }
     },
     {
       "signature": "site-drift-repair:pr-setting",
       "rootCause": "The drift-repair workflow could not open its pull request because the repository setting \"Allow GitHub Actions to create and approve pull requests\" was off.",
-      "fix": "owner enabled the setting; PR #514 3ae20c3e (2026-09-06) makes the repair merge itself; site-drift-repair green on main run 34429925060"
+      "fix": "owner enabled the setting; PR #514 3ae20c3e (2026-09-06) makes the repair merge itself; site-drift-repair green on main run 34429925060",
+      "fixedBy": {
+        "kind": "live-action",
+        "what": "the owner enabled the repository setting"
+      }
     },
     {
       "signature": "renovate:docker-failed",
       "rootCause": "The self-hosted Renovate run failed inside its docker step (exit 1) on 2026-09-06.",
-      "fix": "infrastructure, self-cleared: the next Renovate run on main (34325250415, 2026-09-09) was green"
+      "fix": "infrastructure, self-cleared: the next Renovate run on main (34325250415, 2026-09-09) was green",
+      "fixedBy": {
+        "kind": "infrastructure"
+      }
     },
     {
       "signature": "provenance:github-api-unreadable:*",
       "rootCause": "check-prod-provenance.mjs could not list deploy-web runs because the GitHub API answered 5xx, and graded it COULD NOT LOOK (exit 2) as designed.",
-      "fix": "infrastructure, self-cleared"
+      "fix": "infrastructure, self-cleared",
+      "fixedBy": {
+        "kind": "infrastructure"
+      }
     },
     {
       "signature": "flutter:analyze",
       "rootCause": "flutter analyze reported lints on main on 2026-07-17 (the first day of CI; \"Use const with the constructor\").",
-      "fix": "closed by the 2026-07-18 commits (a3789355, 4d815ba9 and the e2e finder fixes); CI green on main since"
+      "fix": "closed by the 2026-07-18 commits (a3789355, 4d815ba9 and the e2e finder fixes); CI green on main since",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "a3789355",
+        "pr": null,
+        "also": [
+          {
+            "sha": "4d815ba9",
+            "pr": null
+          }
+        ]
+      }
     },
     {
       "signature": "melos:test",
       "rootCause": "melos run test failed on main on 2026-08-10 during the auth cut-1 reversal (a package test broke between two merges).",
-      "fix": "PR #281 ba6f0d80 / #280 a6a0646c series (2026-08-10); CI green on main the same day"
+      "fix": "PR #281 ba6f0d80 / #280 a6a0646c series (2026-08-10); CI green on main the same day",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "ba6f0d80",
+        "pr": 281,
+        "also": [
+          {
+            "sha": "a6a0646c",
+            "pr": 280
+          }
+        ]
+      }
     },
     {
       "signature": "site-integrity",
       "rootCause": "assert-site-integrity found the sitemap lastmod older than the page's git date (or another site problem the log lists) — on main after a same-day merge race, on branches before merge.",
-      "fix": "main instances closed by the next merge regenerating the sitemap (PR #514 3ae20c3e makes the repair automatic); branch instances superseded before merge"
+      "fix": "main instances closed by the next merge regenerating the sitemap (PR #514 3ae20c3e makes the repair automatic); branch instances superseded before merge",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "3ae20c3e",
+        "pr": 514
+      }
     },
     {
       "signature": "no-log:*",
       "rootCause": "The failing step's log is no longer served by the API (empty or 404) for this run, so only the step name is known.",
-      "fix": "closed by proof only: the workflow is green on the branch, or the branch is gone — the message itself could not be read"
+      "fix": "closed by proof only: the workflow is green on the branch, or the branch is gone — the message itself could not be read",
+      "fixedBy": {
+        "kind": "not-a-defect",
+        "reason": "no log to read; closed by proof alone (a later green, or the branch gone)"
+      }
     },
     {
       "signature": "stamped-service:typecheck",
       "rootCause": "Typecheck + dry-run of the stamped service failed on 2026-07-31 (the probe apps' chassis property tests during the stage-5 paywall work).",
-      "fix": "closed by the 2026-08-01 merges; CI green on main by 2026-08-04 (run 30876199082)"
+      "fix": "closed by the 2026-08-01 merges; CI green on main by 2026-08-04 (run 30876199082)",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "the 2026-08-01 merges; CI green on main by 2026-08-04"
+      }
     },
     {
       "signature": "versions:drift",
       "scope": "feature-branches",
       "rootCause": "Renovate bumped a dependency in one manifest while tooling/versions.json — the single pin — still declared the old value, so the versions guard refused the Renovate branch as designed until the pin moved — the guard did its job on the PR's own CI.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "secret-scan:found",
       "scope": "feature-branches",
       "rootCause": "The secret scanner flagged a token-shaped literal on the branch (the log names the file and rule) — the guard did its job on the PR's own CI.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "secret-scan:canary-coverage",
       "scope": "feature-branches",
       "rootCause": ".gitleaks.toml declared more rules than canaries were planted, so the scanner's self-test refused — the guard did its job on the PR's own CI.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "workflow-static-analysis:finding",
       "scope": "feature-branches",
       "rootCause": "zizmor found an excessive-permissions finding in a workflow edited on the branch — the guard did its job on the PR's own CI.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "guard-coverage:orphan-guard",
       "scope": "feature-branches",
       "rootCause": "A guard was added under tooling/ci without being wired into a workflow, so guard-coverage refused it as inert — the guard did its job on the PR's own CI.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "actions-cache:not-allowed",
       "scope": "feature-branches",
       "rootCause": "A workflow on the branch referenced actions/cache@vN, which the repository's actions allowlist does not permit — the guard did its job on the PR's own CI.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "setup-node:cache-paths",
       "scope": "feature-branches",
       "rootCause": "actions/setup-node could not resolve the cache path on the branch (the lockfile moved with the extensions merge) — the guard did its job on the PR's own CI.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "upload-artifact:no-files",
       "scope": "feature-branches",
       "rootCause": "upload-artifact found no dist/*.zip on the branch (the extensions build had not produced one yet) — the guard did its job on the PR's own CI.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "workspace:missing-member",
       "scope": "feature-branches",
       "rootCause": "A workspace member listed in the melos/pubspec workspace was missing from disk on the branch — the guard did its job on the PR's own CI.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "tokens-css:drift",
       "scope": "feature-branches",
       "rootCause": "sites/_shared/assets/tokens.css did not equal a fresh build from packages/tokens on the branch — the guard did its job on the PR's own CI.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "site-feed:drift",
       "scope": "feature-branches",
       "rootCause": "The site feed did not equal a fresh generation from the catalogue on the branch — the guard did its job on the PR's own CI.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "l10n:drift",
       "scope": "feature-branches",
       "rootCause": "Regenerating the chassis localisations moved a tracked byte on the branch — the guard did its job on the PR's own CI.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "clone-tells",
       "scope": "feature-branches",
       "rootCause": "Shared code carried an app-specific domain word on the branch (the log names the file and word) — the guard did its job on the PR's own CI.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "launcher-icons:vacuous-compare",
       "scope": "feature-branches",
       "rootCause": "The launcher-icon guard found a comparison against an empty buffer — an assertion that could not fail — on the branch — the guard did its job on the PR's own CI.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "brand-assets:no-platform-claim",
       "scope": "feature-branches",
       "rootCause": "The brand-assets guard found no platform claim for the probe app in apps.json on the branch — the guard did its job on the PR's own CI.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "wrangler-jsonc:missing",
       "scope": "feature-branches",
       "rootCause": "services/_shared existed without a wrangler.jsonc on the branch, so the cron limb reported COVERAGE LOST — the guard did its job on the PR's own CI.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "extensions:gate-mutation-proof",
       "scope": "feature-branches",
       "rootCause": "The extensions gate-self-test found gates with no mutation case, or could not read the workflows dir, on the branch — the guard did its job on the PR's own CI.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "extensions:tag-reachable",
       "scope": "feature-branches",
       "rootCause": "The extensions lane's tag-reachability check failed on the branch — the guard did its job on the PR's own CI.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "proof-fresh:other",
       "scope": "feature-branches",
       "rootCause": "The extensions weekly-proof reader failed on the branch while the reader itself was being rewritten — the guard did its job on the PR's own CI.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "pipeline-tests",
       "scope": "feature-branches",
       "rootCause": "The pipeline's own tests failed on the branch — the guard did its job on the PR's own CI.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "ops-register:problem:*",
       "scope": "feature-branches",
       "rootCause": "The ops register guard refused the branch tree (the indented line after the header names the row and the problem) — the guard did its job on the PR's own CI.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "dart:pub-resolve",
       "scope": "main",
       "rootCause": "flutter pub get could not resolve the workspace on main on 2026-08-10, between the Flutter 3.44.8 → 3.44.9 pin move and the auth cut-1 reversal landing (two merges in one hour left the pins momentarily inconsistent).",
-      "fix": "PR #281 ba6f0d80 (2026-08-10, all fifteen pins in one commit); CI green on main the same day"
+      "fix": "PR #281 ba6f0d80 (2026-08-10, all fifteen pins in one commit); CI green on main the same day",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "ba6f0d80",
+        "pr": 281
+      }
     },
     {
       "signature": "macos:build-failed",
       "scope": "main",
       "rootCause": "The macOS lane failed in xcodebuild on main on 2026-07-31 (** BUILD FAILED **) during the bring-up of the six-platform proof, before the lane-generic release assertions existed.",
-      "fix": "closed by 92414846 (2026-08-03, lane-generic release assertions and a launch smoke that proves the artifact starts); build-platforms green on main since (run 34367696898) — no single SHA is claimed for the Xcode error"
+      "fix": "closed by 92414846 (2026-08-03, lane-generic release assertions and a launch smoke that proves the artifact starts); build-platforms green on main since (run 34367696898) — no single SHA is claimed for the Xcode error",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "92414846",
+        "pr": null
+      }
     },
     {
       "signature": "tsc:error",
       "scope": "main",
       "rootCause": "The very first CI run on main (c2038852, 2026-07-17 20:42Z) failed on a TypeScript error in a Worker test — the repository was one commit old.",
-      "fix": "closed by the 2026-07-18 commits (d33c15ea, a3789355, 4d815ba9); CI green on main since"
+      "fix": "closed by the 2026-07-18 commits (d33c15ea, a3789355, 4d815ba9); CI green on main since",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "d33c15ea",
+        "pr": null,
+        "also": [
+          {
+            "sha": "a3789355",
+            "pr": null
+          },
+          {
+            "sha": "4d815ba9",
+            "pr": null
+          }
+        ]
+      }
     },
     {
       "signature": "web:build-failed",
       "scope": "main",
       "rootCause": "The very first deploy-web run on main (c2038852, 2026-07-17) failed compiling lib/main.dart for the web — the repository was one commit old.",
-      "fix": "closed by the 2026-07-18 commits; deploy-web green on main since (run 34422473874)"
+      "fix": "closed by the 2026-07-18 commits; deploy-web green on main since (run 34422473874)",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "the 2026-07-18 commits; deploy-web green on main since"
+      }
     },
     {
       "signature": "actions:unresolvable-pin",
       "scope": "feature-branches",
       "rootCause": "A workflow on the branch pinned an action to a SHA GitHub could not resolve (the pin was mistyped or not yet pushed to the action repository) — the branch's own CI caught it.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "stamp:backend-r2-claim",
       "scope": "feature-branches",
       "rootCause": "The backend stamp declared a per-app R2 bucket where object storage is ONE shared bucket with an <app_id>/ prefix — the branch's own CI caught it.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "media-probe:clip-generation",
       "scope": "feature-branches",
       "rootCause": "The throwaway media probe could not generate its VP9/Opus test clip on the runner (exit 127: the encoder binary was not on PATH) — the branch's own CI caught it.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "flutter:analyze-stamped",
       "scope": "feature-branches",
       "rootCause": "flutter analyze reported lints on the stamped app on the branch (the log names them) — the branch's own CI caught it.",
-      "fix": "superseded: fixed on the branch before merge"
+      "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      }
     },
     {
       "signature": "supabase-auth:unreadable-read-as-drift",
       "rootCause": "The Supabase Management API answered HTTP 504 (a gateway time-out page, run 34511747076) and tooling/ops/verify-supabase-templates.mjs exits 1 on ANY non-OK status, so ops-watch reported 'Supabase auth config has DRIFTED' although nothing had been compared.",
-      "fix": "infrastructure, self-cleared: the next ops-watch on main read the live config and its comparison passed; the verifier's exit code for an unreadable API (2, not 1) is a separate PR"
+      "fix": "infrastructure, self-cleared: the next ops-watch on main read the live config and its comparison passed; the verifier's exit code for an unreadable API (2, not 1) is a separate PR",
+      "fixedBy": {
+        "kind": "infrastructure"
+      }
     },
     {
       "signature": "node:import-attribute-missing",
       "rootCause": "A module on the branch imported catalog/apps.json without an import attribute; Node 24 refuses that (ERR_IMPORT_ATTRIBUTE_MISSING), so the replay guard's step exited 1 and the run was cancelled.",
       "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      },
       "scope": "feature-branches"
     },
     {
       "signature": "money-dry-run:uncaught-throw",
       "rootCause": "tooling/ops/money-dry-run.mjs on the branch imported catalog/apps.json without an import attribute; Node 24 threw ERR_IMPORT_ATTRIBUTE_MISSING, the step exited 1, and the run was cancelled (run 34429437969).",
       "fix": "superseded: fixed on the branch before merge",
+      "fixedBy": {
+        "kind": "superseded",
+        "by": "its own pull request, on the branch before the merge"
+      },
       "scope": "feature-branches"
     }
   ]

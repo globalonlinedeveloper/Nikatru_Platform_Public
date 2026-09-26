@@ -69,7 +69,23 @@ The submission path this feeds is still gated elsewhere; opening a PR is the
 most this workflow may do on its own.
 
 Required repo secrets — ALL of them, on every run:
-  SUPABASE_URL, SUPABASE_ANON_KEY, API_BASE_URL, SUPABASE_SERVICE_ROLE_KEY
+  SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+
+⏱ 2026-09-25 — THREE names, not the four this list carried until today:
+`API_BASE_URL` left it when the capture moved to the sandbox Workers (section
+"Backend" below). The runner now computes every Worker host from the wrangler
+configs and REFUSES a supplied one, so a secret host would only be a second,
+unchecked answer to a question the configs already settle. The four
+preflights, the four `for k in …` loops and the four capture steps dropped it
+together, and assert-live-writer-provenance.mjs L6(a) fails the build if any
+of them names it again. The preflight's three-name loop was re-measured the
+way the passes below were — the `run:` body extracted verbatim, executed under
+`env -i bash --noprofile --norc -eo pipefail` with made-up fixture values:
+all three present -> EXIT 0, "All three secrets present — the build will be
+LIVE."; FIRST absent -> EXIT 1 naming SUPABASE_URL; LAST absent -> EXIT 1
+naming SUPABASE_SERVICE_ROLE_KEY; ALL THREE absent -> EXIT 1, all three named
+in order. The "four" in the passes below is the list as it was when they were
+taken, and they stay as written.
 
 A MISSING SECRET IS A FAILED RUN, NOT A SKIPPED ONE — the same rule e2e.yml
 records at length. A green tick over an `echo` is how a capability goes dark
@@ -387,12 +403,108 @@ to propose, and that is reported rather than skipped.
 live D1, and a throwaway user that outlives its run is exactly the kind of
 residue the nightly was built to avoid.
 
-### in step **Purge the throwaway user**, above `SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 0a36d6a0-c909-40aa-853e-970de3482321`
+### in step **Purge the throwaway user**, above `SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 4e7c7730-3dc7-4004-9895-403b17702b91`
 
 The same literal e2e.yml passes. It is a database ID, not a
 credential — the CLOUDFLARE_API_TOKEN above is what authorises
 anything — and purge.mjs `need()`s it, so omitting it turns the
 cleanup into a hard failure AFTER the rows exist.
+
+⏱ 2026-09-25 — no longer the literal e2e.yml passes. All four purges now name
+the SANDBOX databases, because that is where the capture writes: `APP_DB` of
+services/subscriptiontracker-api/wrangler.jsonc `env.sandbox`
+(`subscriptiontracker_db_sandbox`, 4e7c7730-…) and `PLATFORM_DB` of
+services/platform/wrangler.jsonc `env.sandbox` (`platform_db_sandbox`,
+ead92001-…). e2e.yml keeps the production ids: e2e is not a sandbox lane.
+"Live D1" in the `always()` note above now means the sandbox D1; the throwaway
+USER is still created in production Supabase and still deleted here. Two
+checks hold the ids: assert-live-writer-provenance.mjs L6(b) requires each
+purge to carry the `env.sandbox` id and neither top-level one, and purge.mjs
+itself refuses a production id whenever an E2E_CONSENT_LEDGER is set, before
+its first request.
+
+## Backend
+
+⏱ ADDED 2026-09-25 (capsand-b, O-STORE-CAPTURE-WRITES-UNATTRIBUTED-ROWS). The
+capture used to drive a LIVE build against the production Workers, and every
+consent row it wrote landed in production `platform_db`, stamped and then
+purged. It now drives the same live build against two SANDBOX Workers, and
+production's only role is to stay empty of `cap-*` rows.
+
+**What the sandbox is.** The `env.sandbox` block of each capture Worker's config:
+services/platform/wrangler.jsonc (script `platform-sandbox`) and
+services/subscriptiontracker-api/wrangler.jsonc (script
+`subscriptiontracker-api-sandbox`). Each declares `"routes": []`,
+`"workers_dev": true` and `"triggers": { "crons": [] }`, so it answers only at
+`https://<script>.nikatru.workers.dev`, never on a production hostname, and
+runs no cron. Its D1, KV and rate-limit bindings are its own: wrangler does not
+inherit bindings into an environment, and a sandbox binding that reused a
+top-level id would write production. The rate limiters are namespaces 1006-1010,
+beside the top level's 1001-1005.
+
+**How the capture reaches it.** tooling/store/capture-backend.mjs reads both
+configs and derives the sandbox hosts and ids (`sandboxBackend()`); the runner
+passes those hosts as the build's defines with `PIN_BACKEND_HOSTS=true`, and
+refuses a host supplied from outside, a production host, a define outside its
+allowlist and a malformed `env.sandbox`. Each capture job's
+"Preflight — both sandbox Workers answer healthy" step asks the same module
+for each host (`--print-host`) and requires `"ok":true` from its
+`/v1/health`, failing closed with "the sandbox is not deployed: dispatch
+deploy-sandbox.yml".
+
+**How it is deployed: `.github/workflows/deploy-sandbox.yml`.** Dispatch only,
+input `worker` (`all`, `platform`, `subscriptiontracker-api`), one run at a
+time (`concurrency: deploy-sandbox`). It is its own workflow rather than an
+input on deploy-workers.yml because a push that touches deploy-workers.yml
+redeploys production, and the sandbox must never ride a production merge.
+Per Worker, in order:
+
+1. `tooling/ci/assert-gate-passed.mjs` for the commit — the sandbox deploy is
+   gated like every other deploy, and it runs BEFORE the migration, which is the
+   one irreversible step;
+2. `d1 migrations apply <binding> --env sandbox --remote` (`PLATFORM_DB` for
+   platform, `APP_DB` for the API);
+3. `deploy --env sandbox --var RELEASE:<sha>`;
+4. a smoke of `/v1/health` at the host `--print-host` returns, requiring this
+   commit's build.
+
+The platform job runs first because only it migrates `platform_db_sandbox`,
+which the API's health probe reads; a skipped platform job does not block the
+API job. What it deliberately does NOT do:
+
+- **no `record-deployment.mjs`.** The deployment ledger is production's record,
+  and a sandbox row in it would say production shipped a commit it never ran.
+  assert-release-provenance.mjs limb 2b excuses this job from the marker only
+  while every publish in it is an `--env` deploy whose environment declares
+  `MONEY_ENVIRONMENT` "sandbox" and passes the sandbox checks of
+  tooling/ci/wrangler-environments.mjs; it never excuses the gate.
+- **no `GLITCHTIP_DSN`**, so sandbox errors stay out of production error
+  tracking;
+- **no secret upload.** A new Worker needs one deploy before its first secret;
+  this workflow is that first deploy, and any sandbox secret is a later,
+  separate act.
+
+**Order of operations.** A capture dispatched before the sandbox is deployed
+fails at the health preflight, by design. Dispatch deploy-sandbox.yml, see it
+green, then dispatch this workflow.
+
+**What holds it.**
+
+| check | what it refuses |
+|---|---|
+| assert-money-config.mjs limb 1c | a sandbox environment that inherits a route or a cron, lacks `workers_dev: true`, or binds a production database |
+| assert-money-config.mjs, limiter parity | a top-level rate limiter with no sandbox twin, or a sandbox namespace a top-level limiter uses |
+| assert-release-provenance.mjs limb 2b | the marker exemption for any deploy that is not a proven-sandbox `--env` deploy |
+| assert-live-writer-provenance.mjs L6 | a sandbox lane's job naming a Worker host variable or `secrets.API_BASE_URL`; a purge not on the `env.sandbox` ids; a sandbox lane with no writer job, or configs `sandboxBackend()` refuses (exit 2) |
+| check-prod-provenance.mjs | a production `cap-*` consent row: a FINDING, where it used to be a printed acceptance |
+| purge.mjs | a production D1 id while a consent ledger is set |
+
+**Named gaps, not closed here.** The sandbox D1s and KVs are outside the data
+inventory, erasure-reach and retention-coverage guards (none of them reads an
+`env` block); that is right for throwaway data the capture purges, and it is
+still a gap. assert-ceiling-budget.mjs reads top-level `ratelimits` only.
+check-d1-accepts-live-sql.mjs targets the production ids and does not run
+against the sandbox databases.
 
 ## How to rehearse locally
 
@@ -526,10 +638,19 @@ it somewhere you will scrub.**
 | `SUPABASE_URL` | `secrets.` | `.claude/secrets.env` — already held |
 | `SUPABASE_ANON_KEY` | `secrets.` | `.claude/secrets.env` — **added 2026-09-20**, the legacy `anon` JWT from `GET /v1/projects/{ref}/api-keys` |
 | `SUPABASE_SERVICE_ROLE_KEY` | `secrets.` | `.claude/secrets.env` — **added 2026-09-20**, the legacy `service_role` JWT from the same call |
-| `API_BASE_URL` | `secrets.` | `.claude/secrets.env` — **added 2026-09-20**; a public Worker hostname, the value the repo's own `apps/subscriptiontracker/config/defaults.example.json` declares |
 | `TURNSTILE_SITE_KEY` | `vars.` | **the repository variable itself**, via `gh variable get` — not a vault copy |
 | `CHROMEDRIVER` | `nanasess/setup-chromedriver` | `tooling/store/local-chromedriver.mjs` |
 | the Flutter SDK | `./.github/actions/setup-flutter`, at the `tooling/versions.json` pin | the same pin, installed isolated; `NIKATRU_FLUTTER` overrides |
+
+⏱ 2026-09-25 — the `API_BASE_URL` row is gone from this table. It read
+"`secrets.` / `.claude/secrets.env` — added 2026-09-20; a public Worker
+hostname". Neither CI nor the rehearsal reads that name any more: both hand the
+build the sandbox hosts capture-backend.mjs derives (section "Backend"), and
+the runner refuses a supplied one. The vault line itself is left where it is;
+removing a vault entry is the owner's housekeeping, not this change's. The
+rehearsal's purge still reads `CLOUDFLARE_ACCOUNT_ID` and
+`CLOUDFLARE_API_TOKEN` from the vault, the same names CI's purge reads from
+`secrets.`.
 
 **Why the management API is the honest route for the two keys.** The vault already held
 `SUPABASE_PAT`, a Supabase **management** personal access token, and

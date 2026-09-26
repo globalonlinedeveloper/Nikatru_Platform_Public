@@ -325,7 +325,7 @@ function checkCaptureConsentWiring(text, platformDbId) {
         rule: 'purge-platform-db',
         job: job.name,
         line: purge.line,
-        msg: `job ${job.name}: the purge step at :${purge.line} carries PLATFORM_D1_DATABASE_ID=${purge.env.PLATFORM_D1_DATABASE_ID ?? '(unset)'}, not platform_db's ${platformDbId}`,
+        msg: `job ${job.name}: the purge step at :${purge.line} carries PLATFORM_D1_DATABASE_ID=${purge.env.PLATFORM_D1_DATABASE_ID ?? '(unset)'}, not the sandbox platform database's ${platformDbId}`,
       });
     }
     if (!app || purge.env.E2E_APP_ID !== app) {
@@ -341,15 +341,18 @@ function checkCaptureConsentWiring(text, platformDbId) {
 describe('store-screenshots.yml purges the consent rows its capture writes', () => {
   const WORKFLOW = join(REPO, '.github', 'workflows', 'store-screenshots.yml');
   const yml = readFileSync(WORKFLOW, 'utf8');
-  const PLATFORM_DB_ID =
-    /"database_name":\s*"platform_db",\s*"database_id":\s*"([0-9a-f-]{36})"/.exec(
-      readFileSync(join(REPO, 'services', 'platform', 'wrangler.jsonc'), 'utf8'),
-    )?.[1] ?? null;
+  // S20 (2026-09-25, capsand-b): the capture writes to the SANDBOX Workers, so
+  // its purge deletes from the sandbox platform database — the id
+  // sandboxBackend() reads from services/platform/wrangler.jsonc env.sandbox,
+  // the same reading capture-backend.mjs refuses a production id through.
+  const SANDBOX = sandboxBackend();
+  const PLATFORM_DB_ID = SANDBOX.platform.sandboxIds['d1:PLATFORM_DB'] ?? null;
   const real = checkCaptureConsentWiring(yml, PLATFORM_DB_ID);
   const of = (rule) => real.findings.filter((f) => f.rule === rule).map((f) => f.msg);
 
-  test('every capture job has an always() purge carrying platform_db\'s id', () => {
-    assert.ok(PLATFORM_DB_ID, 'services/platform/wrangler.jsonc declares no platform_db database_id');
+  test('every capture job has an always() purge carrying the SANDBOX platform database\'s id', () => {
+    assert.ok(PLATFORM_DB_ID, 'services/platform/wrangler.jsonc env.sandbox declares no PLATFORM_DB database_id');
+    assert.ok(!productionD1Ids(SANDBOX).has(PLATFORM_DB_ID), `the purge id ${PLATFORM_DB_ID} is a production database`);
     // Pinned by NAME: a job that stopped matching the capture invocation would
     // otherwise shrink the census and pass every rule below over less.
     assert.deepEqual(real.spawners, ['capture', 'capture-linux', 'capture-desktop-native', 'capture-ios']);
@@ -379,6 +382,22 @@ describe('store-screenshots.yml purges the consent rows its capture writes', () 
       [`purge-platform-db capture-linux :${purge.line}`],
     );
     assert.match(findings[0].msg, /PLATFORM_D1_DATABASE_ID=\(unset\)/);
+  });
+
+  test('🔴 a purge pointed back at the PRODUCTION platform database is named', () => {
+    const production = SANDBOX.platform.productionIds['d1:PLATFORM_DB'];
+    assert.ok(production && production !== PLATFORM_DB_ID, 'services/platform/wrangler.jsonc binds no separate production PLATFORM_DB');
+    const linux = workflowJobs(yml).find((j) => j.name === 'capture-linux');
+    const purge = linux.steps.find((s) => PURGE_INVOCATION.test(s.text));
+    const at = purge.envLine.PLATFORM_D1_DATABASE_ID;
+    const lines = yml.split(/\r?\n/);
+    lines[at - 1] = lines[at - 1].replace(PLATFORM_DB_ID, production);
+    const { findings } = checkCaptureConsentWiring(lines.join('\n'), PLATFORM_DB_ID);
+    assert.deepEqual(
+      findings.map((f) => `${f.rule} ${f.job} :${f.line}`),
+      [`purge-platform-db capture-linux :${purge.line}`],
+    );
+    assert.ok(findings[0].msg.includes(`PLATFORM_D1_DATABASE_ID=${production}`), findings[0].msg);
   });
 
   test('🔴 a capture step without E2E_CONSENT_LEDGER is named, and so is its purge', () => {

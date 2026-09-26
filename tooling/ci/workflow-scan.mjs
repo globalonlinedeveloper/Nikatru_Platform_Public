@@ -1688,10 +1688,23 @@ export function classifyPublishes(job) {
         break;
       }
     }
+    // limb 2b reads the step's `workingDirectory` to find the config an
+    // `--env` names. Searched over the whole `with:` block, which the loop
+    // above leaves at the `command:` line.
+    let dir = null;
+    for (let k = i + 1; k < job.logical.length; k++) {
+      const t = job.logical[k].text;
+      if (/^\s*-\s/.test(t)) break;
+      const m = t.match(/^\s*workingDirectory:\s*(\S.*?)\s*$/);
+      if (m) {
+        dir = m[1].replace(/^['"]|['"]$/g, '');
+        break;
+      }
+    }
     if (command === null) {
       // No `command:` key — the action's DEFAULT command is `deploy`, so
       // silence here IS a publish, reported at the `uses:` line.
-      found.push({ n: line.n, what: 'a Cloudflare deploy action' });
+      found.push({ n: line.n, what: 'a Cloudflare deploy action', command: null, dir });
       continue;
     }
     consumed.add(command.n);
@@ -1720,7 +1733,7 @@ export function classifyPublishes(job) {
     // The partition the conjunct expressed also survives where it can fail —
     // the generic pass's `if (p.viaCommand) continue;`, which the sweep reddens.
     const publishes = PUBLISH.some((p) => shellSegments(cmd).some((s) => p.re.test(s) && !DRY_RUN.test(s)));
-    if (publishes) found.push({ n: command.n, what: 'a Cloudflare deploy action' });
+    if (publishes) found.push({ n: command.n, what: 'a Cloudflare deploy action', command: command.text, dir });
   }
   for (const p of PUBLISH) {
     if (p.viaCommand) continue;

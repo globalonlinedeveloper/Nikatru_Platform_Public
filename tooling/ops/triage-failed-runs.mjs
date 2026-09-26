@@ -58,14 +58,43 @@
 //   1 = UNEXPLAINED: N with N > 0 — the individual rows are printed above it.
 //   2 = COVERAGE LOST — a 403 (the shared installation quota, measured
 //       exhausted on 2026-09-09), a paged list that stopped short of
-//       `total_count`, a job log that could not be read, or no credential.
-//       NEVER readable as a pass: a ledger over a subset says nothing about
-//       the rest.
+//       `total_count`, a job log that could not be read, no credential, the
+//       quota floor refusing to start, or the request ceiling reached (both
+//       below). NEVER readable as a pass: a ledger over a subset says nothing
+//       about the rest.
 //
 // ⚠️ A READER, NOT A GATE. This does not run in ci.yml and must not: it costs
 // one API call per run plus one per failed job, and the shared quota is the
-// very thing that made 2026-09-09 red. Run it from a workstation, where `gh`'s
-// identity is separate from the installation token.
+// very thing that made 2026-09-09 red. It runs WEEKLY as the `failure-ledger`
+// job of ops-watch.yml (the Monday slot, `--since` eight days back). Its exit
+// reaches the digest and the durable issue; it gates no merge. It still runs
+// from a workstation by hand, where `gh`'s identity is separate from the
+// installation token.
+//
+// ── THE QUOTA FLOOR, AND WHY IT REPLACES A DEDICATED TOKEN ──────────────────
+// ⏱ 2026-09-25, ruling D1. The job runs under its own workflow token
+// (`GH_TOKEN: ${{ github.token }}`, job permissions contents, actions and
+// pull-requests read), not a personal access token. A PAT is a long-lived
+// credential with a 366-day expiry and an owner step to mint and renew it, and
+// an expired one fails the Monday slot with nothing watching for the expiry.
+// The ledger reads only this repository, which the job token can. What a PAT
+// bought was a quota of its own; the floor protects the shared one instead:
+//   · before its first counted request the reader asks GET /rate_limit, which
+//     GitHub does not count, and refuses to start — exit 2, COVERAGE LOST,
+//     naming "quota floor" — unless `remaining - ceiling >= QUOTA_FLOOR` (400).
+//     A walk that spends its whole ceiling still leaves 400 requests for every
+//     other reader of that quota;
+//   · `--max-requests` (default 300) is a HARD ceiling: every request SENT
+//     counts, a bounded retry included, and the one past it is refused unsent —
+//     exit 2, COVERAGE LOST, never a partial pass. A 403 is still COVERAGE LOST.
+//
+// ── THE TYPED FIX, AND THE MERGE IT NAMES ───────────────────────────────────
+// Every cause in failed-run-causes.json carries `fixedBy` beside its prose
+// `fix` (`validateCauses`, below). A `merge` names the commit that fixed it,
+// and on the live path — before the first request — every such commit is held
+// to `git merge-base --is-ancestor <sha> origin/main`: a cause whose fix never
+// reached main is not a fix, so that is exit 1, naming the row. A shallow
+// clone or a missing origin/main cannot answer, so that is exit 2, never a pass.
 //
 // ⚠️ NO `process.exit()` ONCE A `fetch` HAS BEEN MADE — an open undici handle
 // crashes libuv on Windows and returns 127 for BOTH outcomes. `process.exitCode`
@@ -74,7 +103,7 @@
 // ── USAGE ───────────────────────────────────────────────────────────────────
 //   node tooling/ops/triage-failed-runs.mjs [--repo owner/name] [--since ISO]
 //        [--until ISO] [--cache-dir DIR] [--fixture-dir DIR] [--no-prs]
-//        [--json FILE]
+//        [--branch NAME] [--max-requests N] [--json FILE]
 //
 //   --since ISO      only runs created at/after this instant. Without it, ALL
 //                    of them — and if GitHub's per-list ceiling (1000) cuts the
@@ -99,16 +128,23 @@
 //                    No network path at all.
 //   --no-prs         skip the per-deleted-branch PR lookup (saves one call per
 //                    branch; the proof line then says "branch deleted" only).
+//   --branch NAME    only runs whose head branch is NAME: the run lists ask
+//                    GitHub for `branch=NAME`, and a fixture keeps only runs
+//                    whose `head_branch` is NAME. Default: every branch.
+//   --max-requests N the hard request ceiling, default 300 (see THE QUOTA
+//                    FLOOR above); the floor is computed against it. Live
+//                    transport only.
 //   --json FILE      also write every row and group to FILE.
 //
 //   Credential: GH_TOKEN / GITHUB_TOKEN, else the local vault key
 //   `Project_Cross_Platform_Apps_GITHUB_PAT` via safe-rerun.mjs's `token()`.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { token } from './safe-rerun.mjs';
+import { fetchWithBoundedRetry } from './bounded-retry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..', '..');
@@ -468,20 +504,131 @@ export function newerRunDuring(run, allRuns) {
 // CAUSES — the register this ledger consumes
 // ═══════════════════════════════════════════════════════════════════════════
 
+/** The kinds a cause's `fixedBy` may take, each with the fields it must carry.
+ *  `fix` stays the prose a person reads; `fixedBy` is the part a machine holds:
+ *   · merge          — a commit on main fixed it: `sha` (7-40 hex) and `pr`, the
+ *                      pull request's number, or null for a direct push that
+ *                      had none. `also` lists further merges when one was not
+ *                      enough, each `{ sha, pr }`.
+ *   · superseded     — fixed on a branch before its merge, or made moot by a
+ *                      later rewrite: `by` names what superseded it.
+ *   · infrastructure — GitHub's runners, a vendor or the network; no commit.
+ *   · not-a-defect   — no fault to fix (a cancelled run, a guard doing its
+ *                      job): `reason` says why.
+ *   · live-action    — fixed by an act on a live system, not a commit: `what`.
+ *   · lost-race      — a race this repository lost to another writer. */
+export const FIXED_BY_FIELDS = new Map([
+  ['merge', { required: ['sha', 'pr'], optional: ['also'] }],
+  ['superseded', { required: ['by'], optional: [] }],
+  ['infrastructure', { required: [], optional: [] }],
+  ['not-a-defect', { required: ['reason'], optional: [] }],
+  ['live-action', { required: ['what'], optional: [] }],
+  ['lost-race', { required: [], optional: [] }],
+]);
+
+const MERGE_SHA = /^[0-9a-f]{7,40}$/;
+const nonEmpty = (v) => typeof v === 'string' && v.trim().length > 0;
+
+/** One `{ sha, pr }` of a `merge`, as problems. `pr: null` is a direct push. */
+function mergeProblems(m, where) {
+  const out = [];
+  if (!m || typeof m !== 'object' || Array.isArray(m)) return [`${where} is not an object`];
+  if (typeof m.sha !== 'string' || !MERGE_SHA.test(m.sha)) out.push(`${where}.sha ${JSON.stringify(m.sha)} is not 7-40 lowercase hex`);
+  if (m.pr !== null && !(Number.isInteger(m.pr) && m.pr > 0)) out.push(`${where}.pr ${JSON.stringify(m.pr)} is not a pull request number (or null for a direct push)`);
+  return out;
+}
+
+/** PURE. Every shape problem in the causes register, one line each, naming the
+ *  row by its signature. An empty list is a register this ledger can read. */
+export function validateCauses(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return ['the register carries no causes'];
+  const problems = [];
+  rows.forEach((c, i) => {
+    const id = nonEmpty(c?.signature) ? c.signature : `causes[${i}]`;
+    for (const k of ['signature', 'rootCause', 'fix']) {
+      if (!nonEmpty(c?.[k])) problems.push(`${id} — lacks \`${k}\``);
+    }
+    if (c?.scope !== undefined && c.scope !== 'main' && c.scope !== 'feature-branches') {
+      problems.push(`${id} — scope \`${c.scope}\`; only "main" or "feature-branches" are readable`);
+    }
+    const f = c?.fixedBy;
+    if (f === undefined) {
+      problems.push(`${id} — lacks \`fixedBy\`; the prose \`fix\` is not a kind a machine can hold`);
+      return;
+    }
+    if (!f || typeof f !== 'object' || Array.isArray(f)) {
+      problems.push(`${id} — \`fixedBy\` is not an object`);
+      return;
+    }
+    const spec = FIXED_BY_FIELDS.get(f.kind);
+    if (!spec) {
+      problems.push(`${id} — \`fixedBy.kind\` ${JSON.stringify(f.kind)} is not one of ${[...FIXED_BY_FIELDS.keys()].join(' · ')}`);
+      return;
+    }
+    const allowed = new Set(['kind', ...spec.required, ...spec.optional]);
+    for (const k of Object.keys(f)) if (!allowed.has(k)) problems.push(`${id} — \`fixedBy.${k}\` is not a field of kind "${f.kind}"`);
+    if (f.kind === 'merge') {
+      problems.push(...mergeProblems(f, 'fixedBy').map((p) => `${id} — ${p}`));
+      if (f.also !== undefined) {
+        if (!Array.isArray(f.also) || f.also.length === 0) problems.push(`${id} — \`fixedBy.also\` is not a non-empty array`);
+        else f.also.forEach((m, j) => problems.push(...mergeProblems(m, `fixedBy.also[${j}]`).map((p) => `${id} — ${p}`)));
+      }
+    } else {
+      for (const k of spec.required) if (!nonEmpty(f[k])) problems.push(`${id} — \`fixedBy.${k}\` is empty`);
+    }
+  });
+  return problems;
+}
+
 export function loadCauses(path = join(ROOT, CAUSES_REL)) {
   const doc = JSON.parse(readFileSync(path, 'utf8'));
   if (!Array.isArray(doc.causes) || doc.causes.length === 0) {
     throw new Error(`${CAUSES_REL} carries no \`causes\` array — a ledger against an empty register explains nothing`);
   }
-  for (const c of doc.causes) {
-    for (const k of ['signature', 'rootCause', 'fix']) {
-      if (typeof c[k] !== 'string' || !c[k].trim()) throw new Error(`${CAUSES_REL}: a cause lacks \`${k}\`: ${JSON.stringify(c).slice(0, 120)}`);
-    }
-    if (c.scope !== undefined && c.scope !== 'main' && c.scope !== 'feature-branches') {
-      throw new Error(`${CAUSES_REL}: cause ${c.signature} has scope \`${c.scope}\`; only "main" or "feature-branches" are readable`);
-    }
+  const problems = validateCauses(doc.causes);
+  if (problems.length) {
+    throw new Error(`${CAUSES_REL}: ${problems.length} problem(s) in ${doc.causes.length} cause(s):\n  ${problems.join('\n  ')}`);
   }
   return doc.causes;
+}
+
+/** Every commit a `merge` names, with the row that names it. */
+export function mergeShas(causes) {
+  const out = [];
+  for (const c of causes) {
+    if (c?.fixedBy?.kind !== 'merge') continue;
+    for (const m of [c.fixedBy, ...(c.fixedBy.also ?? [])]) out.push({ signature: c.signature, sha: m.sha, pr: m.pr });
+  }
+  return out;
+}
+
+const gitIn = (cwd) => (args) => {
+  const r = spawnSync('git', args, { cwd, encoding: 'utf8', timeout: 30_000 });
+  return { code: r.status, out: String(r.stdout ?? '').trim(), err: String(r.stderr ?? '').trim() };
+};
+
+/** Holds every `merge` commit to `git merge-base --is-ancestor <sha> <ref>`.
+ *  Offline: it reads the local clone and nothing else, so it runs before the
+ *  first request. Returns `{ lost }` when the clone cannot answer (shallow, or
+ *  no `ref`) — COVERAGE LOST — else `{ lost: null, missing }`, one entry per
+ *  commit that is not on `ref` (exit 1 in main, naming the row). `git` is a
+ *  seam; the test drives the real one against a fixture repository. */
+export function checkFixesOnMain(causes, { cwd = ROOT, ref = 'origin/main', git = gitIn(cwd) } = {}) {
+  const shallow = git(['rev-parse', '--is-shallow-repository']);
+  if (shallow.code !== 0) return { lost: `\`git rev-parse\` exited ${shallow.code} in ${cwd}: ${shallow.err.slice(0, 200)}` };
+  if (shallow.out === 'true') {
+    return { lost: 'the clone is SHALLOW, so a fix commit missing from it proves nothing. The ops-watch job checks out with fetch-depth: 0.' };
+  }
+  const tip = git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
+  if (tip.code !== 0) return { lost: `${ref} does not resolve in this clone, so no fix can be held to it` };
+  const missing = [];
+  for (const m of mergeShas(causes)) {
+    const r = git(['merge-base', '--is-ancestor', m.sha, ref]);
+    if (r.code === 0) continue;
+    if (r.code === 1) missing.push({ ...m, why: `not an ancestor of ${ref}` });
+    else missing.push({ ...m, why: `unknown to this clone (git exited ${r.code}), and the clone is complete` });
+  }
+  return { lost: null, missing, checked: mergeShas(causes).length };
 }
 
 /** Exact id first; then a trailing-`*` prefix, longest prefix wins. A cause
@@ -581,6 +728,30 @@ const PER_PAGE = 100;
 /** GitHub stops paging this endpoint at 1000 results per query. */
 const LIST_CEILING = 1000;
 
+/** D1: the requests a walk must leave unspent in the quota it shares with every
+ *  other reader of the same token (THE QUOTA FLOOR, in the header). */
+export const QUOTA_FLOOR = 400;
+/** D1: the default hard ceiling on the requests one walk may send. D1's number,
+ *  not a measurement: a live run prints `REQUESTS: n sent` beside it. */
+export const DEFAULT_MAX_REQUESTS = 300;
+
+/** PURE. The quota-floor verdict on GET /rate_limit's `resources.core` bucket:
+ *  the walk may start only when `remaining - ceiling >= floor`. A bucket with no
+ *  integer `remaining` is a refusal, never a start. */
+export function quotaFloor(core, ceiling, floor = QUOTA_FLOOR) {
+  const remaining = core?.remaining;
+  if (!Number.isInteger(remaining)) {
+    return { ok: false, line: 'quota floor — GET /rate_limit carried no integer resources.core.remaining, so what this walk would leave is unknown and it did not start' };
+  }
+  const left = remaining - ceiling;
+  if (left >= floor) return { ok: true, line: `quota floor: ${remaining} remaining - ceiling ${ceiling} = ${left} >= ${floor}; the walk may start` };
+  const reset = Number.isInteger(core.reset) ? ` The quota resets at ${new Date(core.reset * 1000).toISOString()}.` : '';
+  return {
+    ok: false,
+    line: `quota floor — ${remaining} remaining - ceiling ${ceiling} = ${left}, under the floor of ${floor}, so the walk did not start: spending its ceiling could leave the other readers of this quota fewer than ${floor} requests.${reset}`,
+  };
+}
+
 export class CoverageLost extends Error {
   constructor(msg) {
     super(msg);
@@ -595,7 +766,7 @@ export class CoverageLost extends Error {
 //     FILE (safe-rerun.mjs `fromVault`) into the `authorization` header. The
 //     credential and the repository slug are now held to the shapes GitHub
 //     issues before either is placed in a request, and every request path is
-//     held to the six shapes this reader builds, numeric ids only — so nothing
+//     held to the shapes this reader builds, numeric ids only — so nothing
 //     read from a file (the vault, a git remote, a cached run) reaches `fetch`
 //     unless it has one of those shapes.
 //   · js/file-system-race — the cache was `existsSync(p)` then `readFileSync(p)`;
@@ -609,8 +780,25 @@ const reEscape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
  *  a fine-grained `github_pat_`, and a legacy 40-hex token. Anything else — a
  *  pasted `Bearer …`, a trailing newline, a second header after CR/LF — is
  *  refused before it can be sent. */
-const GITHUB_TOKEN_SHAPE = /^(?:gh[pousr]_[A-Za-z0-9]{36,251}|github_pat_[A-Za-z0-9_]{22,251}|[0-9a-f]{40})$/;
+// ⏱ 2026-09-26 · the Actions job token failed this shape on its FIRST live run (ops-watch #526, run 36203215773,
+// job 108294094867, the day #959 wired GH_TOKEN: ${{ github.token }}): "does not have the shape of a GitHub
+// token", exit 2, while every fixture and the laptop's gho_ token passed. GitHub's issued tokens are longer than
+// 251 characters, or carry `_`/`-`/`.`, so the body is now any run of header-safe token characters up to 2048,
+// still prefix-anchored. What the check exists to refuse is unchanged: a `Bearer ` paste, whitespace, CR/LF
+// (a second header), and anything that is not one of these shapes. On a refusal, credentialShape() says why in
+// words that carry no part of the value, so the next miss is diagnosable from the log.
+const GITHUB_TOKEN_SHAPE = /^(?:gh[pousr]_[A-Za-z0-9_.-]{30,2048}|github_pat_[A-Za-z0-9_]{22,2048}|[0-9a-f]{40})$/;
 export const isValidGithubToken = (tok) => typeof tok === 'string' && GITHUB_TOKEN_SHAPE.test(tok);
+
+/** PURE. A description of a credential's SHAPE that holds no part of its value: its length, whether it starts
+ *  with a known prefix (named only by its family), and which character classes occur. Safe to print. */
+export function credentialShape(tok) {
+  if (typeof tok !== 'string') return `not a string (${typeof tok})`;
+  const family = /^gh[pousr]_/.test(tok) ? 'a gh?_ prefix' : tok.startsWith('github_pat_') ? 'a github_pat_ prefix' : /^[0-9a-f]+$/.test(tok) ? 'hex only' : 'no known prefix';
+  const classes = [[/[A-Za-z]/, 'letters'], [/[0-9]/, 'digits'], [/_/, 'underscore'], [/-/, 'hyphen'], [/\./, 'dot'], [/\s/, 'WHITESPACE'], [/[^A-Za-z0-9_.\s-]/, 'OTHER symbols']]
+    .filter(([re]) => re.test(tok)).map(([, n]) => n);
+  return `length ${tok.length}, ${family}, characters: ${classes.join(', ') || 'none'}`;
+}
 
 /** `owner/name` by GitHub's character rules; a name may not start with `.`, so
  *  `..` can never climb out of `/repos/`. */
@@ -622,7 +810,8 @@ export const isValidRepoSlug = (repo) => typeof repo === 'string' && REPO_SHAPE.
 const QUERY = String.raw`\?[A-Za-z0-9_.!~*'()%&=-]*`;
 const NUMERIC_ID = '[0-9]{1,20}';
 
-/** The six request paths this reader issues, and nothing else. */
+/** The seven request paths this reader issues, and nothing else: the six
+ *  repository reads, and the quota read the floor asks before them. */
 export function isAllowedApiPath(repo, path) {
   if (!isValidRepoSlug(repo) || typeof path !== 'string') return false;
   const R = `/repos/${reEscape(repo)}`;
@@ -633,6 +822,7 @@ export function isAllowedApiPath(repo, path) {
     `${R}/actions/workflows/${NUMERIC_ID}/runs${QUERY}`,
     `${R}/branches${QUERY}`,
     `${R}/pulls${QUERY}`,
+    '/rate_limit',
   ].some((shape) => new RegExp(`^${shape}$`).test(path));
 }
 
@@ -674,7 +864,7 @@ export async function readThroughCache(cacheDir, name, fetcher, { text = false, 
   return v;
 }
 
-export function liveApi(repo, tok, cacheDir) {
+export function liveApi(repo, tok, cacheDir, { maxRequests = DEFAULT_MAX_REQUESTS } = {}) {
   // Held HERE, where the header is built, as well as in main(): a caller that
   // skips main() must not be able to send an unshaped credential either.
   if (!isValidGithubToken(tok)) {
@@ -683,21 +873,61 @@ export function liveApi(repo, tok, cacheDir) {
   if (!isValidRepoSlug(repo)) {
     throw new CoverageLost(`${JSON.stringify(String(repo)).slice(0, 120)} is not an owner/name repository slug`);
   }
+  if (!Number.isInteger(maxRequests) || maxRequests < 1) {
+    throw new CoverageLost(`the request ceiling ${JSON.stringify(maxRequests)} is not a positive whole number, so no request was sent`);
+  }
   const headers = {
     authorization: `Bearer ${tok}`,
     accept: 'application/vnd.github+json',
     'x-github-api-version': '2022-11-28',
     'user-agent': 'nikatru-triage-failed-runs',
   };
-  const get = async (path, { text = false } = {}) => {
+  // THE HARD CEILING (D1). The count is taken inside the fetch the retry plan
+  // calls, once per ATTEMPT, so a retried request counts every time it is sent
+  // and the quota spent can never pass the ceiling the floor was computed
+  // against. The request past it is refused unsent. GET /rate_limit is not
+  // counted, because GitHub does not count it.
+  let sent = 0;
+  const ceilingReached = (path) =>
+    new CoverageLost(
+      `request ceiling — ${sent} of ${maxRequests} request(s) sent, and GET ${path} would be one more, so it was not sent and nothing after this point was read. Raise --max-requests only with the quota floor in view.`,
+    );
+  const send = async (path, { counted }) => {
     if (!isAllowedApiPath(repo, path)) {
       throw new CoverageLost(
-        `refusing to request ${JSON.stringify(String(path)).slice(0, 160)} — not one of the six GitHub API paths this reader builds (numeric ids only)`,
+        `refusing to request ${JSON.stringify(String(path)).slice(0, 160)} — not one of the seven GitHub API paths this reader builds (numeric ids only)`,
       );
     }
     const url = new URL(`${API}${path}`);
     if (url.origin !== API) throw new CoverageLost(`refusing a request that resolved off ${API} (${url.origin})`);
-    const res = await fetch(url, { headers, redirect: 'follow' });
+    // The shared plan (bounded-retry.mjs): a dropped wire, a 429 or a 5xx is
+    // re-asked a bounded number of times, each attempt under the per-request
+    // ceiling, and one that outlives the plan throws — COVERAGE LOST in main().
+    // Since 2026-09-25 this is an ops-watch reader, and one silent socket would
+    // otherwise hold the job until its timeout-minutes.
+    let refused = false;
+    try {
+      return await fetchWithBoundedRetry(
+        ({ signal }) => {
+          if (counted) {
+            if (sent >= maxRequests) {
+              refused = true;
+              throw ceilingReached(path);
+            }
+            sent += 1;
+          }
+          return fetch(url, { headers, redirect: 'follow', signal });
+        },
+        { describe: (s) => `GET ${path} — ${s}` },
+      );
+    } catch (e) {
+      // The plan re-wraps whatever the fetch threw; the ceiling is said plainly.
+      if (refused) throw ceilingReached(path);
+      throw e;
+    }
+  };
+  const get = async (path, { text = false } = {}) => {
+    const res = await send(path, { counted: true });
     if (res.status === 403 || res.status === 429) {
       throw new CoverageLost(`GET ${path} → HTTP ${res.status} — the quota or the credential refused; nothing after this point was read`);
     }
@@ -716,15 +946,27 @@ export function liveApi(repo, tok, cacheDir) {
   };
   return {
     live: true,
+    /** GET /rate_limit's `resources.core` bucket, read before the first counted
+     *  request (THE QUOTA FLOOR). Not counted. Anything but a 200 throws. */
+    rateLimit: async () => {
+      const res = await send('/rate_limit', { counted: false });
+      if (!res.ok) throw new CoverageLost(`GET /rate_limit → HTTP ${res.status}`);
+      const body = await res.json();
+      return body?.resources?.core ?? null;
+    },
+    requestsSent: () => sent,
     /** Every run with one of the non-green conclusions. Never cached: the
      *  list is the enumeration, and yesterday's list is the sample this tool
      *  exists to replace. */
-    listNonGreen: async (since, until) => {
+    listNonGreen: async (since, until, branch = null) => {
       const out = [];
       const capped = [];
       const created = since && until ? `${since}..${until}` : since ? `>=${since}` : until ? `<=${until}` : null;
       for (const status of NON_GREEN) {
-        const q = `status=${status}&per_page=${PER_PAGE}` + (created ? `&created=${encodeURIComponent(created)}` : '');
+        const q =
+          `status=${status}&per_page=${PER_PAGE}` +
+          (branch ? `&branch=${encodeURIComponent(branch)}` : '') +
+          (created ? `&created=${encodeURIComponent(created)}` : '');
         let total = null;
         for (let page = 1; page <= LIST_CEILING / PER_PAGE; page++) {
           const body = await get(`/repos/${repo}/actions/runs?${q}&page=${page}`);
@@ -802,7 +1044,10 @@ export function fixtureApi(dir) {
   return {
     live: false,
     repo: read('repo.json', { repo: 'fixture/fixture' }).repo,
-    listNonGreen: async () => ({ runs: read("runs.json"), capped: read("capped.json", []) }),
+    listNonGreen: async (_since, _until, branch = null) => ({
+      runs: read('runs.json').filter((r) => !branch || r.head_branch === branch),
+      capped: read('capped.json', []),
+    }),
     listJobs: async (id) => read(`${id}.jobs.json`),
     // A missing log reads as EMPTY, never as a throw: the row then classifies
     // as `other:…:(no error line)`, which has no cause and is UNEXPLAINED —
@@ -827,7 +1072,8 @@ function repoFromGit() {
 
 // ═══════════════════════════════════════════════════════════════════════════
 export function parseArgs(argv) {
-  const a = { repo: null, since: null, until: null, cacheDir: null, fixtureDir: null, prs: true, json: null, causes: null };
+  const a = { repo: null, since: null, until: null, cacheDir: null, fixtureDir: null, prs: true, json: null, causes: null, maxRequests: DEFAULT_MAX_REQUESTS, branch: null };
+  let branchGiven = false;
   for (let i = 0; i < argv.length; i++) {
     const x = argv[i];
     if (x === '--repo') a.repo = argv[++i] ?? null;
@@ -837,18 +1083,25 @@ export function parseArgs(argv) {
     else if (x === '--fixture-dir') a.fixtureDir = argv[++i] ?? null;
     else if (x === '--causes') a.causes = argv[++i] ?? null;
     else if (x === '--json') a.json = argv[++i] ?? null;
-    else if (x === '--no-prs') a.prs = false;
+    else if (x === '--max-requests') a.maxRequests = argv[++i] ?? null;
+    else if (x === '--branch') {
+      branchGiven = true;
+      a.branch = argv[++i] ?? null;
+    } else if (x === '--no-prs') a.prs = false;
     else return { error: `unrecognised argument \`${x}\`` };
   }
   if (a.since && !Number.isFinite(Date.parse(a.since))) return { error: `--since must be an ISO instant, got \`${a.since}\`` };
   if (a.until && !Number.isFinite(Date.parse(a.until))) return { error: `--until must be an ISO instant, got \`${a.until}\`` };
+  if (!/^[1-9][0-9]{0,5}$/.test(String(a.maxRequests))) return { error: `--max-requests must be a whole number from 1, got \`${a.maxRequests}\`` };
+  a.maxRequests = Number(a.maxRequests);
+  if (branchGiven && !/^\S+$/.test(String(a.branch ?? ''))) return { error: `--branch must be a branch name without whitespace, got \`${a.branch}\`` };
   return a;
 }
 
 /** The whole ledger, given a transport. Exported so the test can drive it
  *  with a mutated signature table and watch UNEXPLAINED move. */
-export async function ledger(api, { since = null, until = null, prs = true, causes, signatures = SIGNATURES, log = () => {} } = {}) {
-  const { runs: all, capped } = await api.listNonGreen(since, until);
+export async function ledger(api, { since = null, until = null, branch = null, prs = true, causes, signatures = SIGNATURES, log = () => {} } = {}) {
+  const { runs: all, capped } = await api.listNonGreen(since, until, branch);
   const inWindow = (r) => (!since || Date.parse(r.created_at) >= Date.parse(since)) && (!until || Date.parse(r.created_at) <= Date.parse(until));
   const runs = all.filter((r) => NON_GREEN.has(String(r.conclusion)) && inWindow(r));
   runs.sort((x, y) => Date.parse(y.created_at) - Date.parse(x.created_at));
@@ -938,7 +1191,7 @@ async function main(argv) {
     if (!isValidGithubToken(tok)) {
       // The value is never printed: a mis-pasted vault line is still a secret.
       console.error(
-        '✗ COVERAGE LOST — the GitHub credential does not have the shape of a GitHub token (ghp_/gho_/ghu_/ghs_/ghr_/github_pat_/40-hex), so it was not sent. Its value is not printed.',
+        `✗ COVERAGE LOST — the GitHub credential does not have the shape of a GitHub token (ghp_/gho_/ghu_/ghs_/ghr_/github_pat_/40-hex), so it was not sent. Its value is not printed; its shape: ${credentialShape(tok)}.`,
       );
       return 2;
     }
@@ -946,13 +1199,40 @@ async function main(argv) {
       console.error(`✗ COVERAGE LOST — ${JSON.stringify(String(repo)).slice(0, 120)} is not an owner/name repository slug, so no request path can be built from it.`);
       return 2;
     }
-    api = liveApi(repo, tok, args.cacheDir ? resolve(args.cacheDir) : null);
+    // Before the first request: a ledger that explains a failure by a fix main
+    // never received is explaining nothing. Live path only — a fixture run
+    // reads no clone, and a test checkout may be shallow.
+    const onMain = checkFixesOnMain(causes);
+    if (onMain.lost) {
+      console.error(`✗ COVERAGE LOST — the merge-base check could not run: ${onMain.lost}`);
+      return 2;
+    }
+    if (onMain.missing.length) {
+      console.error(`✗ ${onMain.missing.length} fix commit(s) named in ${CAUSES_REL} are not on main — a cause whose fix never reached main is not a fix:`);
+      for (const m of onMain.missing) console.error(`    ${m.signature} — fixedBy ${m.sha}${m.pr ? ` (PR #${m.pr})` : ''}: ${m.why}`);
+      return 1;
+    }
+    console.log(`merge-base: ${onMain.checked} fix commit(s) named by the causes register are all on origin/main`);
+    api = liveApi(repo, tok, args.cacheDir ? resolve(args.cacheDir) : null, { maxRequests: args.maxRequests });
+    // THE QUOTA FLOOR (D1, in the header), before the first counted request.
+    let floor;
+    try {
+      floor = quotaFloor(await api.rateLimit(), args.maxRequests);
+    } catch (e) {
+      console.error(`✗ COVERAGE LOST — quota floor — GET /rate_limit could not be read (${e.message}), so what this walk would leave is unknown and it did not start`);
+      return 2;
+    }
+    if (!floor.ok) {
+      console.error(`✗ COVERAGE LOST — ${floor.line}`);
+      return 2;
+    }
+    console.log(floor.line);
     console.log(`triage-failed-runs — ${repo}${args.cacheDir ? ` (cache ${args.cacheDir})` : ''}`);
   }
 
   let result;
   try {
-    result = await ledger(api, { since: args.since, until: args.until, prs: args.prs, causes, log: (m) => console.log(m) });
+    result = await ledger(api, { since: args.since, until: args.until, branch: args.branch, prs: args.prs, causes, log: (m) => console.log(m) });
   } catch (e) {
     if (e instanceof CoverageLost) {
       console.error(`✗ COVERAGE LOST — ${e.message}`);
@@ -963,6 +1243,7 @@ async function main(argv) {
   }
   const { rows, groups, unexplained, capped, range } = result;
   console.log('');
+  if (api.live) console.log(`REQUESTS: ${api.requestsSent()} sent, ceiling ${args.maxRequests}`);
   console.log(`COVERAGE: ${rows.length} non-green run(s), ${range}${capped.length ? ` — CAPPED (${capped.join('; ')})` : ' — the API returned every run it holds'}`);
   console.log('');
   console.log(renderTable(groups));

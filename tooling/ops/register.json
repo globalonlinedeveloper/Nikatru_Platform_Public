@@ -1766,6 +1766,47 @@
       "source": "verified"
     },
     {
+      "_whyThisRowExists": "APPENDED 2026-09-25 for O-FAILURE-LEDGER-NEVER-RUNS, in the same commit as the `failure-ledger` job of .github/workflows/ops-watch.yml. tooling/ops/triage-failed-runs.mjs existed as a laptop tool that no workflow ran, so every failed run of the last week was graded against tooling/ops/failed-run-causes.json only when a person remembered to run it. The job makes that a weekly duty, and this row is what makes its ABSENCE a finding: without it the job could stop running and nothing in the register would say so. 🔴 THE ANCHOR IS THE SCRIPT, NOT ops-watch.yml, for the reason duty.pages-deployment-landed records: the `anchored` map in tooling/ci/assert-ops-register.mjs is keyed by anchor, so a fifth row anchored at ops-watch.yml would overwrite whichever row got there first.",
+      "id": "duty.failure-ledger",
+      "kind": "duty",
+      "what": "The weekly failed-run ledger: tooling/ops/triage-failed-runs.mjs lists every failed Actions run of the last eight days on this repository, maps each to a recorded cause in tooling/ops/failed-run-causes.json, and prints the ones that map to nothing as UNEXPLAINED. Before it reads the API it asks `git merge-base --is-ancestor <sha> origin/main` of every `fixedBy: {kind: merge}` sha in that file, so a recorded fix that never reached main is a finding rather than a closed cause. Print-only: it grades, it never re-runs, cancels or edits anything. Runs in ops-watch.yml's `failure-ledger` job on the Mondays 07:45 UTC slot, and on workflow_dispatch.",
+      "detector": "The job's own exit, three-valued: 0 every failed run on main (push, schedule, workflow_dispatch) in the window maps to a recorded cause and every merge fix is on main · 1 at least one failed run is UNEXPLAINED, or a merge fix is not an ancestor of origin/main (the line names the cause row and the sha) · 2 COVERAGE LOST — the quota floor refused to start (GET /rate_limit: the remaining quota minus the request ceiling is under 400), the request ceiling (--max-requests, default 300) was reached, the API refused, the clone was shallow, or failed-run-causes.json does not validate. The digest job prints the exit and the UNEXPLAINED count under \"## Failed-run ledger\" on the same Monday slot, and `did not run (…)` when the job was skipped or cancelled.",
+      "response": "EXIT 1, UNEXPLAINED: read the named run, find its cause, and add a row to tooling/ops/failed-run-causes.json with a typed `fixedBy` in the same pull request as the fix (or as `infrastructure` / `not-a-defect` / `live-action` / `lost-race` when no code change is the fix). EXIT 1, A FIX NOT ON MAIN: the cause row names a sha that never merged; correct the row to the sha that did, or reopen the cause. EXIT 2: nothing was graded, and the step log's `✗ COVERAGE LOST — …` line names the limb that refused. A quota-floor refusal means the quota the job token shares was already low when the slot ran; the ledger spent none of it, and a workflow_dispatch once the quota has reset grades the week, though only a scheduled run records this duty. A request-ceiling refusal means the window needed more than --max-requests; read the REQUESTS line of the last run that finished before raising the ceiling, and raise it only with the floor in view.",
+      "cadence": "7d",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": "tooling/ops/triage-failed-runs.mjs",
+        "record": "GitHub Actions run history for .github/workflows/ops-watch.yml, filtered to event = schedule, read at the `failure-ledger` job — the workflow's other eleven slots skip that job by its own `if:`, and a job skipped by its own `if:` is neutral in a unit read, so only the Monday slot can supply a verdict for this row.",
+        "failingValue": "no scheduled run on main in which the `failure-ledger` job concluded success inside the window [7d x 1.5 = 252h]. Exit 1 (an unexplained failure, a fix not on main) and exit 2 (COVERAGE LOST, including a quota-floor refusal) are both failures of the job, so an unexplained failure left unrecorded ages this row exactly as a stopped schedule does. REACHABLE BY MUTATION OF THE REAL TREE: deleting the job while this row names it is an undeclared-job finding, and tooling/ci/test/failure-ledger-lane.test.mjs reds when the job, its trigger slot, one of its three read scopes or its `github.token` credential is removed, when a secret is named in its place, or when the reader's quota floor stops refusing.",
+        "readBy": ".github/workflows/ops-watch.yml — the failure-ledger job, whose non-zero exit reaches the durable issue through the alert job: this job is listed in alert's `needs`, so the Monday alert cannot run green while the ledger is red.",
+        "recordQuery": {
+          "reader": "github-run-history",
+          "workflow": "ops-watch.yml",
+          "unit": {
+            "jobs": [
+              "failure-ledger"
+            ]
+          },
+          "event": "schedule",
+          "headBranch": "main",
+          "firstDue": "2026-10-03T00:00:00Z",
+          "firstDueWhy": "⚠️ THE BOOTSTRAP, on the same terms as duty.workflow.name-clearance.yml's (TRAPS ci-18): the job's run history does not exist until the job is on the default branch, so this row and its record cannot both be true on the day of the merge. The first slot after a merge on or before 2026-09-28 07:45 UTC is that Monday; 2026-10-03 gives it ~112h of scheduler lateness and sits inside this row's own [7d x 1.5 = 252h] window from 2026-09-25, which is the bound the guard enforces. ⚠️ IF THIS MERGES AFTER 2026-09-28 07:45 UTC the first slot is 2026-10-05, so this date must move to 2026-10-08 in the same pull request. No owner step stands before the first slot: the job reads under its own workflow token (ruling D1, 2026-09-25). ⚠️ THE FIRST SLOT IS GREEN ONLY IF THE QUOTA FLOOR LETS IT START: a slot at which GET /rate_limit reports fewer than 700 remaining (the 400 floor plus the 300 ceiling) is exit 2 by design, which is a failed job. ⬜ DELETE THIS FIELD AND `firstDue` once one scheduled run has succeeded on main.",
+          "why": "🔴 `unit: { jobs: ['failure-ledger'] }` — the job, not the run: ops-watch.yml runs twelve slots a day and a run is green whenever its daily readers are, which says nothing about a job that runs on one slot a week. `event: schedule` because a workflow_dispatch run is a person pressing the button, not the cadence. duty.workflow.ops-watch.yml's own unit does NOT gain this job: a weekly job in a daily unit would be neutral six days in seven and hide nothing, and one row per duty keeps each verdict about one thing. ⚠️ THE SCAN DEPTH IS STATED, NOT ASSUMED: the unit read selects from the shared ops-watch.yml page of the newest 100 runs on main, and at twelve slots a day that page reaches back ~8.3 days, past one Monday slot. A run older than the page cannot supply a success, which is correct here — a success older than 8.3 days is already more than one weekly slot old. ⚠️ THE JOB LISTS ARE NOT READ PER RUN: the unit scan reads this job's weekdays out of its own `if:` (scheduleWeekdays in tooling/ci/assert-ops-register.mjs) and reads the job list of a schedule run only when it was created on a Monday (UTC). Without that filter every run back to the newest Monday cost one job-list read, up to ~84 per guard run, and the 2026-09-11 replay made 44 GitHub requests against its ceiling of 30; with it the replay is back inside the ceiling. The one miss is loud: a Monday slot the scheduler created on a Tuesday is not read, so no success is found and this row ages red."
+        }
+      },
+      "absenceWatcher": {
+        "substrate": "(none)",
+        "what": "NOTHING, and it is the SAME gap duty.workflow.ops-watch.yml, duty.analytics-silence-judgment, duty.d1-statement-acceptance and duty.pages-deployment-landed already carry: this duty is a job inside that workflow, so whatever silences the workflow silences this too. Recorded separately instead of borrowed, because a gap inherited by implication is a gap nobody counts.",
+        "ownerGated": true,
+        "gap": "🔴 NOTHING WATCHES THIS JOB'S ABSENCE from outside GitHub, with the same repair as the four rows that already say so: GitHub disables scheduled workflows in inactive public repositories, and a dead Monday slot looks exactly like a week with no unexplained failure. Its FAILING is loud (a non-zero exit fails the job, which reaches the durable issue through alert). Closing the absence half needs a signal hosted on a second provider: OWNER_QUEUE S-8, the same item. Declared 2026-09-25."
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "unverified",
+      "unverifiedWhy": "The job has never run: it lands with this row, so no scheduled run, no digest section and no live API read under the job's own token has been observed. Verified before the push, by mutation of the real tree: removing the job while this row names it, and removing this row while the job exists, each turn tooling/ci/assert-ops-register.mjs red; naming `secrets.GH_LEDGER_TOKEN` as the ledger step's GH_TOKEN again, or dropping `actions: read` from the job, turns tooling/ci/test/failure-ledger-lane.test.mjs red; the step's shell was executed under bash against a copy of the real reader with a stubbed GET /rate_limit (350 remaining against the 300 ceiling) and exits 2 naming the quota floor, writing `exit=2`, with no counted request sent. NOT VERIFIED: that the workflow token with contents, actions and pull-requests read answers every call the script makes, that GET /rate_limit on the runner reports the quota the walk spends from, that 300 requests cover eight days of failed runs, and that the ISO-week log cache restores on the runner. The first scheduled run is that measurement; flip this row to `verified` on its evidence."
+    },
+    {
       "id": "duty.workflow.store-screenshots.yml",
       "kind": "duty",
       "what": "The Google Play phone screenshot capture — a LIVE build of Subly driven through integration_test and photographed at 1080x1920.",
@@ -1786,6 +1827,29 @@
         "cloudflare"
       ],
       "source": "verified"
+    },
+    {
+      "_whyThisRowExists": "APPENDED 2026-09-25 for O-STORE-CAPTURE-WRITES-UNATTRIBUTED-ROWS (capsand-b). assert-ops-register.mjs holds every workflow file to a duty row anchored at it, so .github/workflows/deploy-sandbox.yml and this row land together.",
+      "id": "duty.workflow.deploy-sandbox.yml",
+      "kind": "duty",
+      "what": "Deploys the `env.sandbox` block of the platform and subscriptiontracker-api Workers (scripts platform-sandbox and subscriptiontracker-api-sandbox, on workers.dev only): gate, `d1 migrations apply <binding> --env sandbox --remote`, `deploy --env sandbox`, then a /v1/health smoke at the host tooling/store/capture-backend.mjs --print-host derives. These are the Workers store-screenshots.yml captures against. No GitHub Deployment is recorded: the ledger is production's.",
+      "detector": "Attended: a human or agent dispatches it and reads the run. The smoke fails the job unless the sandbox Worker answers ok at THIS commit's build. Between dispatches, each store-screenshots.yml capture job re-asks both sandbox hosts for /v1/health before it builds, and fails closed with \"the sandbox is not deployed: dispatch deploy-sandbox.yml\".",
+      "response": "Read the run. A red gate step means ci-gate did not pass for the dispatched SHA: dispatch from a green commit. A red migration or deploy step is a Cloudflare error on the sandbox resources only; production is not touched by this workflow. A red smoke names the host and the build it read.",
+      "cadence": "on-demand",
+      "why": "The sandbox needs a deploy when its Worker code, its migrations or its `env.sandbox` block changes and a capture is about to run, not on a clock and not on a merge: a push-triggered sandbox deploy would ride every production merge, which is the coupling this workflow exists to avoid. A failure costs nothing until the next capture, and that capture's own health preflight names it.",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/deploy-sandbox.yml",
+        "record": "GitHub Actions run history for deploy-sandbox.yml",
+        "failingValue": "conclusion = failure: the gate, a migration, a deploy or the /v1/health smoke",
+        "readBy": "the dispatching human or agent, plus the health preflight of every store-screenshots.yml capture job"
+      },
+      "accessProviders": [
+        "github",
+        "cloudflare"
+      ],
+      "source": "unverified",
+      "unverifiedWhy": "The workflow has not run yet. Its first dispatch, after this row reaches main, is the first sandbox deploy, and the Store-screenshots dispatch hold lifts only once that run is green."
     },
     {
       "id": "duty.workflow.symbolication-proof.yml",

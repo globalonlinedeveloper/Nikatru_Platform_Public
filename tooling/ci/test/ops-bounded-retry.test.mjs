@@ -784,7 +784,6 @@ describe('B8 — ADOPTION: the class imports it, and no rival reading exists', (
     ['provision-apple.mjs', 'App Store Connect provisioning, run by ci.yml, not ops-watch. Only visible here since `}` joined TOUCHES_NETWORK (2026-09-22). Follow-on.'],
     ['safe-rerun.mjs', 'run by ci.yml to re-run a failed job, not by ops-watch. Follow-on.'],
     ['set-monitor-thresholds.mjs', 'a one-off writer run by hand; no workflow runs it. Follow-on.'],
-    ['triage-failed-runs.mjs', 'a laptop triage tool; no workflow runs it. Follow-on.'],
     ['verify-password-reset-revokes.mjs', 'a hand-run proof against a live project (B11 records why it is not converted). Follow-on.'],
   ]);
 

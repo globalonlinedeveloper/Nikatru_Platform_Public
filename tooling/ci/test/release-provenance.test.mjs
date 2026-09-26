@@ -2350,3 +2350,103 @@ describe('assert-release-provenance — a call job that needs the gate verdict g
     assert.match(out, /ship\.yml#deploy runs as \.github\/workflows\/ci\.yml call job "ship", whose children are: ship\/prepare, ship\/renamed\./);
   });
 });
+
+// ── limb 2b (2026-09-25): a proven-sandbox `--env` deploy is excused from the
+// marker, never from the gate. The config is written into the tree the guard
+// reads; its env block is judged by wrangler-environments.mjs, the predicate
+// assert-money-config limb 1c fails the build on.
+const SANDBOX_CFG = {
+  name: 'w',
+  routes: [{ pattern: 'api.example.com', custom_domain: true }],
+  vars: { MONEY_ENVIRONMENT: 'live' },
+  d1_databases: [{ binding: 'PLATFORM_DB', database_id: 'prod-db' }],
+  triggers: { crons: ['0 3 * * *'] },
+  env: {
+    sandbox: {
+      routes: [],
+      workers_dev: true,
+      triggers: { crons: [] },
+      vars: { MONEY_ENVIRONMENT: 'sandbox' },
+      d1_databases: [{ binding: 'PLATFORM_DB', database_id: 'sandbox-db' }],
+    },
+  },
+};
+const cfgFile = (cfg) => ({ path: 'services/w/wrangler.jsonc', body: `// a comment, as the real configs carry\n${JSON.stringify(cfg, null, 2)}\n` });
+function sandboxDeploy({ gate = true, command = 'deploy --env sandbox --var RELEASE:${{ github.sha }}', extra = '' } = {}) {
+  return (
+    'name: Deploy sandbox\non:\n  workflow_dispatch:\njobs:\n  deploy:\n    runs-on: ubuntu-24.04\n    steps:\n' +
+    (gate ? `${GATE_STEP}\n` : '') +
+    '      - uses: cloudflare/wrangler-action@abc\n        with:\n          apiToken: x\n          workingDirectory: services/w\n' +
+    `          command: ${command}\n${extra}`
+  );
+}
+
+describe('assert-release-provenance — limb 2b, the sandbox exemption', () => {
+  test('PASSES a gated `--env sandbox` deploy with no marker when env.sandbox is a proven sandbox', () => {
+    const { code, out } = run(tree({ deploy: sandboxDeploy(), extraScript: cfgFile(SANDBOX_CFG) }));
+    assert.equal(code, 0, out);
+    assert.match(out, /limb 2b: 1 publishing job\(s\) excused .*deploy\.yml#deploy → services\/w\/wrangler\.jsonc env\.sandbox/);
+  });
+
+  test('FAILS when the deploy drops `--env` — the top level is production', () => {
+    const { code, out } = run(tree({ deploy: sandboxDeploy({ command: 'deploy --var RELEASE:${{ github.sha }}' }), extraScript: cfgFile(SANDBOX_CFG) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never calls tooling\/ci\/record-deployment\.mjs/);
+    assert.match(out, /limb 2b: 0 publishing job/);
+  });
+
+  test('FAILS when env.sandbox declares MONEY_ENVIRONMENT "live"', () => {
+    const cfg = structuredClone(SANDBOX_CFG);
+    cfg.env.sandbox.vars.MONEY_ENVIRONMENT = 'live';
+    const { code, out } = run(tree({ deploy: sandboxDeploy(), extraScript: cfgFile(cfg) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /not excused as a sandbox deploy \(limb 2b\): services\/w\/wrangler\.jsonc env\.sandbox .*MONEY_ENVIRONMENT = "live", not "sandbox"/);
+  });
+
+  test('FAILS when env.sandbox omits `routes` and so inherits the production host', () => {
+    const cfg = structuredClone(SANDBOX_CFG);
+    delete cfg.env.sandbox.routes;
+    const { code, out } = run(tree({ deploy: sandboxDeploy(), extraScript: cfgFile(cfg) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /limb 2b\): services\/w\/wrangler\.jsonc env\.sandbox declares no `routes`, so it INHERITS the top level's \(api\.example\.com\)/);
+  });
+
+  test('FAILS when env.sandbox binds the production database', () => {
+    const cfg = structuredClone(SANDBOX_CFG);
+    cfg.env.sandbox.d1_databases[0].database_id = 'prod-db';
+    const { code, out } = run(tree({ deploy: sandboxDeploy(), extraScript: cfgFile(cfg) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /binds PLATFORM_DB to a PRODUCTION database \(prod-db/);
+  });
+
+  test('FAILS when `--env` names an environment the config does not declare', () => {
+    const { code, out } = run(tree({ deploy: sandboxDeploy({ command: 'deploy --env staging' }), extraScript: cfgFile(SANDBOX_CFG) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /deploys `--env staging` and services\/w\/wrangler\.jsonc declares no `env\.staging`/);
+  });
+
+  test('the exemption does NOT excuse the gate: an ungated sandbox deploy still FAILS', () => {
+    const { code, out } = run(tree({ deploy: sandboxDeploy({ gate: false }), extraScript: cfgFile(SANDBOX_CFG) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /without any `tooling\/ci\/assert-gate-passed\.mjs` call/);
+    assert.doesNotMatch(out, /never calls tooling\/ci\/record-deployment\.mjs/);
+  });
+
+  test('a second, shell publish in the same job withdraws the excuse for the whole job', () => {
+    const { code, out } = run(tree({ deploy: sandboxDeploy({ extra: '      - run: npx wrangler deploy\n' }), extraScript: cfgFile(SANDBOX_CFG) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /limb 2b\): .* is a Cloudflare deploy, not an `--env` deploy action/);
+  });
+
+  test('an `--env` spelled as an expression is not resolved here', () => {
+    const { code, out } = run(tree({ deploy: sandboxDeploy({ command: 'deploy --env ${{ inputs.env }}' }), extraScript: cfgFile(SANDBOX_CFG) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /names its environment as an expression/);
+  });
+
+  test('`--config` withdraws the excuse: the deployed config is not the one read', () => {
+    const { code, out } = run(tree({ deploy: sandboxDeploy({ command: 'deploy --env sandbox --config other.jsonc' }), extraScript: cfgFile(SANDBOX_CFG) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /passes `--config`/);
+  });
+});
