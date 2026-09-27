@@ -25,8 +25,8 @@ flutter run --dart-define-from-file=config/defaults.json
 
 | Key | Value |
 |---|---|
-| `SUPABASE_URL` | `https://lcrkiurkvzhkonjwhpiv.supabase.co` (Cross_Platform_Auth, Mumbai) |
-| `SUPABASE_ANON_KEY` | the project **publishable** key (`sb_publishable_…`) |
+| `SUPABASE_URL` | `https://auth-api.nikatru.com` (the self-hosted GoTrue on Box C; the hosted project is the rollback until Phase 6) |
+| `SUPABASE_ANON_KEY` | Box C's **anon** key (a JWT) |
 | `API_BASE_URL` | `https://subscriptiontracker-api.nikatru.com` (Cloudflare Worker custom domain; `subscriptiontracker-api.rajasekarjavaee.workers.dev` still works as a fallback) |
 
 🔴 **THE KEYS ARE `--dart-define` NAMES, NOT THE CFG-1 WIRE NAMES.** The chassis file this pair is
