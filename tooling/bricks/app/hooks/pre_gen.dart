@@ -194,7 +194,7 @@ void run(HookContext context) {
       .hasMatch(pagesOrigin)) {
     problems.add(
       'pages_origin must be one lowercase label under pages.dev, with no scheme '
-      'or path (e.g. myapp-7qg.pages.dev) — got "$pagesOrigin".',
+      'or path (e.g. myapp-1ab.pages.dev) — got "$pagesOrigin".',
     );
   }
 
