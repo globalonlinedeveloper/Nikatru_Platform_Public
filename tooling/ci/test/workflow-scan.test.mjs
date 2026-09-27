@@ -1390,6 +1390,17 @@ jobs:
     assert.match(textOf(b.jobs.get('gate')), /echo "app=\$\{APP_INPUT\}"/);
   });
 
+  test('…and pwsh\'s `${env:APP}` and `$env:APP` are the same variable, bound the same way', () => {
+    const pwsh = PER_APP.replace(
+      '      - run: node tooling/ci/flutter-release-build.mjs "$APP" appbundle android-play\n',
+      '      - shell: pwsh\n        run: node tooling/ci/flutter-release-build.mjs "${env:APP}" windows windows-store\n      - shell: pwsh\n        run: node tooling/release/submit-windows-store.mjs --dry-run --app "$env:APP" --x "$env:APPX"\n',
+    );
+    assert.notEqual(pwsh, PER_APP, 'fixture anchor absent');
+    const dry = textOf(bindApp(parseWorkflow(fixture({ 'w.yml': pwsh }), '.github/workflows/w.yml'), 'alpha').jobs.get('dry-run'));
+    assert.match(dry, /flutter-release-build\.mjs "alpha" windows windows-store/);
+    assert.match(dry, /--dry-run --app "alpha" --x "\$env:APPX"/);
+  });
+
   test('the whole-file lines follow the jobs, at the SAME line numbers', () => {
     const wf = parseWorkflow(fixture({ 's.yml': PER_APP }), '.github/workflows/s.yml');
     const b = bindApp(wf, 'alpha');

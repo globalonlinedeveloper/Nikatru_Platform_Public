@@ -183,7 +183,7 @@
   "one-entitlement-reader.test.mjs": 13,
   "ops-auth-record-compare.test.mjs": 21,
   "ops-bounded-retry.test.mjs": 116,
-  "ops-register.test.mjs": 414,
+  "ops-register.test.mjs": 417,
   "ops-status.test.mjs": 53,
   "ops-verifiers.test.mjs": 21,
   "ops-watch-readers.test.mjs": 13,
@@ -317,7 +317,7 @@
   "worker-set.test.mjs": 24,
   "worker-shared-modules.test.mjs": 13,
   "workflow-readers.test.mjs": 19,
-  "workflow-scan.test.mjs": 84,
+  "workflow-scan.test.mjs": 85,
   "workflow-timeouts.test.mjs": 21,
   "wrangler-environments.test.mjs": 15,
   "xcode-floor.test.mjs": 21

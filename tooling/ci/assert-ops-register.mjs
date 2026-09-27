@@ -234,7 +234,7 @@ import { listDir } from './tree-walk.mjs';
 // The ONE workflow parser. Four copies of it drift in the way that reports
 // "clean" — which lines they can see — so [14]O-7's deploy-job derivation goes
 // through the same one assert-release-provenance and assert-no-secret-defines use.
-import { parseAllWorkflows, workflowEvents, shellSegments, RECORD_CALL, expandMatrixEnvironment, POST_GATE_IF, postGateJobs } from './workflow-scan.mjs';
+import { parseAllWorkflows, workflowEvents, shellSegments, RECORD_CALL, expandMatrixEnvironment, POST_GATE_IF, postGateJobs, bindEveryApp } from './workflow-scan.mjs';
 // The ONE comment tokenizer, for the same reason as the workflow parser above.
 import { stripSourceComments } from './text-reductions.mjs';
 // The ONE calendar-date check. The copy that stood here read `Date.parse(s)`
@@ -2048,6 +2048,18 @@ export function evaluate(reg, tree, nowMs) {
   // deploy-workers.yml ships two independent Workers and a single smoke
   // anywhere in the file would certify both while touching one.
   for (const d of tree.deployJobs ?? []) {
+    // ⏱ 2026-09-27 · W36-R1: the derivation binds a per-app lane's `$APP` to each
+    // workspace app. A name that still carries it was recorded in a job whose `APP`
+    // is not the gate's app, so it names no app: no exemption and no register row
+    // can match it, and a probe in the same job cannot say which app it probed.
+    if (/\$\{APP\}|\$APP(?![A-Za-z0-9_])/.test(d.environment)) {
+      bad(
+        `${d.workflow}:${d.job} records a deployment for \`${d.environment}\`, and \`APP\` in that job is not the gate's app ` +
+          '(`env: APP: ${{ needs.gate.outputs.app }}`), so the name cannot be expanded over the workspace apps. Bind the ' +
+          "job's `APP` to the gate's output, as every job of a per-app lane does.",
+      );
+      continue;
+    }
     if (d.smokes > 0) continue;
     const exemption = reg._deploySmokeExemptions?.[d.environment];
     if (nonEmpty(exemption)) {
@@ -5459,7 +5471,24 @@ async function main() {
     }
     return expanded;
   };
-  for (const wf of parseAllWorkflows(ROOT)) {
+  // ⏱ 2026-09-27 · W36-R1 (O-STORE-LANES-HARD-WIRE-ONE-APP): a per-app store lane
+  // records `"${APP}-<channel>"`, APP being the app its gate job checked. Read as
+  // written, that name is no app's: it matched no `_deploySmokeExemptions` key, which
+  // are literal ledger names, so the snap and Windows submit jobs read as recorded and
+  // never probed. So the lane is read once per app the workspace declares, bound the
+  // way every other reader of it is (workflow-scan.mjs bindEveryApp), and each name is
+  // that app's, so a second app's submit record is judged as its own name. A name
+  // still carrying `$APP` after the binding is [14]O-7's finding, below.
+  let boundWorkflows;
+  try {
+    boundWorkflows = bindEveryApp(ROOT, parseAllWorkflows(ROOT));
+  } catch (e) {
+    coverageLost([
+      `${e.message}`,
+      "A per-app lane's record-deployment names cannot be expanded to an app, so [14]O-7 could not attribute them.",
+    ]);
+  }
+  for (const wf of boundWorkflows) {
     for (const [jobName, job] of wf.jobs) {
       const text = (job.lines ?? []).map((l) => l.text ?? String(l)).join('\n');
       RECORD_CALL.lastIndex = 0;

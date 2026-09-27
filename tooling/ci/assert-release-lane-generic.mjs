@@ -401,6 +401,8 @@ const GRADED_LANES = new Map([
   // in CLASSIFIED_ELSEWHERE naming one app, printed and never failed.
   ['submit-play.yml', { owner: 'O-STORE-LANES-HARD-WIRE-ONE-APP', deployPath: false, dispatch: 'per-app' }],
   ['submit-appstore.yml', { owner: 'O-STORE-LANES-HARD-WIRE-ONE-APP', deployPath: false, dispatch: 'per-app' }],
+  ['submit-windows-store.yml', { owner: 'O-STORE-LANES-HARD-WIRE-ONE-APP', deployPath: false, dispatch: 'per-app' }],
+  ['submit-snap.yml', { owner: 'O-STORE-LANES-HARD-WIRE-ONE-APP', deployPath: false, dispatch: 'per-app' }],
 ]);
 const GRADED = [...GRADED_LANES.keys()];
 const DEPLOY_PATH_LANES = [...GRADED_LANES].filter(([, v]) => v.deployPath).map(([k]) => k);
@@ -591,21 +593,6 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'already `--app`-parameterised (`node tooling/store/capture-play-screenshots.mjs --app subscriptiontracker`), so ' +
       'the genericity R-1 cares about is in the script, and what holds its OUTPUT generic is ' +
       'assert-listing-assets.mjs, whose expected set is { channels declaring graphicAssets } x { apps }.',
-  ],
-  // ⏱ 2026-09-26 — restated rather than "same as submit-appstore.yml": that row
-  // left this map when the lane joined GRADED_LANES (O-STORE-LANES-HARD-WIRE-ONE-APP),
-  // and these two follow it there in the same row's next change.
-  [
-    'submit-snap.yml',
-    "[10]D-10 owns the store submission paths. The script it runs is already `--app`-parameterised; the " +
-      'workflow that calls it is the half that still names one app, and its channel is `served: false`. ' +
-      'It joins GRADED_LANES as a per-app lane (limb I) with O-STORE-LANES-HARD-WIRE-ONE-APP.',
-  ],
-  [
-    'submit-windows-store.yml',
-    "[10]D-10 owns the store submission paths. The script it runs is already `--app`-parameterised; the " +
-      'workflow that calls it is the half that still names one app, and its channel is `served: false`. ' +
-      'It joins GRADED_LANES as a per-app lane (limb I) with O-STORE-LANES-HARD-WIRE-ONE-APP.',
   ],
   [
     'symbolication-proof.yml',

@@ -2926,6 +2926,74 @@ describe('assert-ops-register — HOSTNAMES ARE DELEGATED, and the delegation ca
     assert.match(r.out, /✗ tooling\/ops\/register\.json — 2 problem\(s\):/, 'one finding per expanded leg, and nothing else');
   });
 
+  // ⏱ 2026-09-27 · W36-R1 (O-STORE-LANES-HARD-WIRE-ONE-APP): a per-app store lane records
+  // `"${APP}-<channel>"`, APP being its gate's checked app. The derivation binds it over the
+  // apps the root pubspec's `workspace:` declares (workflow-scan.mjs bindEveryApp), so the
+  // name O-7 judges, and the exemption it looks up, is each app's literal ledger name.
+  const PER_APP_WF = ({ appEnv = '${{ needs.gate.outputs.app }}', smoke = false } = {}) => [
+    'name: Deploy fixture',
+    'on:',
+    '  workflow_dispatch:',
+    '    inputs:',
+    '      app:',
+    '        required: true',
+    '        type: string',
+    'jobs:',
+    '  gate:',
+    '    runs-on: ubuntu-24.04',
+    '    outputs:',
+    '      app: ${{ steps.app.outputs.app }}',
+    '    steps:',
+    '      - id: app',
+    '        env:',
+    '          APP_INPUT: ${{ inputs.app }}',
+    '        run: echo "app=${APP_INPUT}" >> "$GITHUB_OUTPUT"',
+    '  ship:',
+    '    needs: gate',
+    '    runs-on: ubuntu-24.04',
+    '    env:',
+    `      APP: ${appEnv}`,
+    '    steps:',
+    '      - run: echo upload',
+    ...(smoke ? ['      - run: node tooling/ops/post-deploy-smoke.mjs https://example.test'] : []),
+    '      - run: node tooling/ops/record-deployment.mjs "${APP}-zz-store"',
+    '',
+  ].join('\n');
+  const workspaceOf = (root, ids) =>
+    writeFileSync(join(root, 'pubspec.yaml'), `name: ws\nworkspace:\n${ids.map((id) => `  - apps/${id}\n`).join('')}`);
+
+  test('🔴 [14]O-7 — a per-app lane\'s `${APP}` name is expanded over the workspace apps, and each app\'s name is judged', () => {
+    const r = runRoot(fixtureRoot((s, root) => {
+      workspaceOf(root, ['zz-app-one', 'zz-app-two']);
+      plantDeploy(s, root, PER_APP_WF());
+    }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /zz-deploy\.yml:ship records a deployment for `zz-app-one-zz-store` and never probes it/);
+    assert.match(r.out, /zz-deploy\.yml:ship records a deployment for `zz-app-two-zz-store` and never probes it/);
+    assert.doesNotMatch(r.out, /\$\{APP\}-zz-store/, 'the name is judged as each app\'s, never as written');
+    assert.match(r.out, /✗ tooling\/ops\/register\.json — 2 problem\(s\):/, 'one finding per workspace app, and nothing else');
+  });
+
+  test('[14]O-7 CONTROL — the expanded name meets its app\'s literal exemption, and is green', () => {
+    const r = runRoot(fixtureRoot((s, root) => {
+      workspaceOf(root, ['zz-app-one']);
+      plantDeploy(s, root, PER_APP_WF());
+      s.reg._deploySmokeExemptions = { ...(s.reg._deploySmokeExemptions ?? {}), 'zz-app-one-zz-store': 'a fixture store surface with nothing to join on' };
+    }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /\[14\]O-7 — \.github\/workflows\/zz-deploy\.yml:ship records `zz-app-one-zz-store` with no smoke, exempt: a fixture store surface/);
+  });
+
+  test('🔴 [14]O-7 — an UN-EXPANDED `${APP}` name (the job\'s APP is not the gate\'s app) is a finding, even beside a probe', () => {
+    const r = runRoot(fixtureRoot((s, root) => {
+      workspaceOf(root, ['zz-app-one']);
+      plantDeploy(s, root, PER_APP_WF({ appEnv: 'zz-some-literal', smoke: true }));
+    }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /zz-deploy\.yml:ship records a deployment for `\$\{APP\}-zz-store`, and `APP` in that job is not the gate's app/);
+    assert.match(r.out, /✗ tooling\/ops\/register\.json — 1 problem\(s\):/, 'the unbound name must be the ONLY problem');
+  });
+
   // ── ⏱ 2026-09-11 · THE LIVE READS ARE NOT MADE WHERE THEIR VERDICT CANNOT BLOCK ──
   // Measured the same day: 56 GitHub requests per run of this guard, in every CI
   // run, on a token allowed 1,000 an hour. On a pull_request host every live

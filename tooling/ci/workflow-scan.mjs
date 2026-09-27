@@ -523,8 +523,10 @@ export const GATE_APP = /\$\{\{\s*needs\.gate\.outputs\.app\s*\}\}/g;
 /** Does `wf` take its app from its gate job's checked output? */
 export const isPerAppLane = (wf) => (wf?.lines ?? []).some((l) => /\$\{\{\s*needs\.gate\.outputs\.app\s*\}\}/.test(l.text));
 
-/** `$APP` and `${APP}` as a shell reads them: `$APP_INPUT` is another variable. */
-const SHELL_APP = /\$\{APP\}|\$APP(?![A-Za-z0-9_])/g;
+/** `$APP` and `${APP}` as a shell reads them: `$APP_INPUT` is another variable.
+ *  ⏱ 2026-09-26 — and `${env:APP}` / `$env:APP`, the same variable as pwsh reads it:
+ *  a windows-2025 job's default shell is pwsh (submit-windows-store.yml). */
+const SHELL_APP = /\$\{APP\}|\$APP(?![A-Za-z0-9_])|\$\{env:APP\}|\$env:APP(?![A-Za-z0-9_])/g;
 
 /**
  * `wf` with the gate's app bound to `appId`: every `${{ needs.gate.outputs.app }}`

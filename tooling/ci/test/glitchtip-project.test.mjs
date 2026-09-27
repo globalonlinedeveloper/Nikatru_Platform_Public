@@ -143,8 +143,11 @@ describe('an app-derived project name is refused', () => {
 
 describe('a literal that is not the declaration is refused', () => {
   test('R3 — one lane spelling a different project: exit 1, and it is named', () => {
+    // ⏱ 2026-09-26: submit-snap.yml reads the declaration now (O-STORE-LANES-HARD-WIRE-ONE-APP)
+    // and no lane spells the literal any more, so the drift is planted as the literal a lane
+    // could carry again, in place of the variable.
     const dir = stage('drift', (f, body) =>
-      f === 'submit-snap.yml' ? body.replaceAll(`--project ${DECLARED}`, `--project ${OTHER}`) : body,
+      f === 'submit-snap.yml' ? body.replaceAll('--project "$gt_project"', `--project ${OTHER}`) : body,
     );
     const r = run(dir);
     assert.equal(r.code, 1, r.out);

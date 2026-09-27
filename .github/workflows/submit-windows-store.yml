@@ -1,6 +1,6 @@
 name: "Store submit: Microsoft Store"
 
-run-name: "Store submit: Microsoft Store (dry run) by @${{ github.actor }}"
+run-name: "Store submit: Microsoft Store — ${{ inputs.app }} — ${{ inputs.confirm == 'SUBMIT-TO-MICROSOFT-STORE' && 'SUBMIT' || 'dry run' }} by @${{ github.actor }}"
 
 # The measurements, retractions and traps behind this file are in
 # docs/ci/submit-windows-store.md. Only `# why:` lines live here, and
@@ -9,6 +9,13 @@ run-name: "Store submit: Microsoft Store (dry run) by @${{ github.actor }}"
 on:
   workflow_dispatch:
     inputs:
+      # why: required with NO default and NO choice list (O-STORE-LANES-HARD-WIRE-ONE-APP):
+      # either one is an app id written into this file. The gate job checks it against the
+      # workspace set; every other job reads the gate's output, never this input.
+      app:
+        description: 'The app to submit: one id of the workspace app set (tooling/ci/assert-release-lane-generic.mjs --emit-apps). The gate job refuses any other value.'
+        required: true
+        type: string
       confirm:
         description: 'Type SUBMIT-TO-MICROSOFT-STORE to run the submission job. Anything else runs the dry run only.'
         required: false
@@ -32,6 +39,8 @@ jobs:
     # so any bound at or under 20 kills it mid-poll and replaces "timed out waiting
     # for ci-gate" with an opaque cancellation. Byte-identical in all five gate jobs.
     timeout-minutes: 25
+    outputs:
+      app: ${{ steps.app.outputs.app }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -41,6 +50,17 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: node tooling/ci/assert-gate-passed.mjs ${{ github.sha }}
+      # why: the ONE reader of inputs.app, and only through env: (an input interpolated into
+      # run: is a shell injection). --emit-apps --app refuses a value off ^[a-z][a-z0-9-]*$
+      # before it reads the set, and one outside the set naming the set; only then is it an output.
+      - name: The app input names one app of the workspace
+        id: app
+        env:
+          APP_INPUT: ${{ inputs.app }}
+        run: |
+          set -euo pipefail
+          node tooling/ci/assert-release-lane-generic.mjs --emit-apps --app "$APP_INPUT"
+          echo "app=${APP_INPUT}" >> "$GITHUB_OUTPUT"
 
   dry-run:
     name: Validate the submission path
@@ -52,6 +72,10 @@ jobs:
     outputs:
       artifact: ${{ steps.bytes.outputs.artifact }}
       sha256: ${{ steps.bytes.outputs.sha256 }}
+    # why: the gate's checked output, never inputs.app. A bash `run:` reads $APP and a pwsh one
+    # (this runner's default) ${env:APP}; the fields no shell expands read the expression itself.
+    env:
+      APP: ${{ needs.gate.outputs.app }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -67,7 +91,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node tooling/ci/assert-app-versioning.mjs --emit apps/subscriptiontracker >> "$GITHUB_OUTPUT"
+          node tooling/ci/assert-app-versioning.mjs --emit "apps/${APP}" >> "$GITHUB_OUTPUT"
           echo "GITHUB_SHA_SHORT=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
       # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. A lane green over a name the owner has not HELD
       # or proven free submits one nobody ruled on; limb 3 of assert-publish-steps-guarded.mjs.
@@ -83,7 +107,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
-        run: node tooling/ci/flutter-release-build.mjs subscriptiontracker windows windows-store
+        run: node tooling/ci/flutter-release-build.mjs "${env:APP}" windows windows-store
       # ⏱ MOVED AND CORRECTED 2026-09-07 (unit `symbols-everywhere`) — THIS STEP
       # USED TO BE THE LAST ONE IN THE JOB, behind `dart run msix:create` and the
       # store dry run, and its comment said the symbols were retained rather than
@@ -102,8 +126,8 @@ jobs:
       # and re-keeps THIS directory for 90 days as symbols-<app>-windows-store.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: symbols-subscriptiontracker-windows-store-dry-run
-          path: apps/subscriptiontracker/build/symbols/windows
+          name: symbols-${{ needs.gate.outputs.app }}-windows-store-dry-run
+          path: apps/${{ needs.gate.outputs.app }}/build/symbols/windows
           retention-days: 7
           if-no-files-found: error
       # why: ONE code path on every lane (O-GLITCHTIP-CLI-INSTALLED-BY-HAND): the digest tooling/versions.json
@@ -113,28 +137,34 @@ jobs:
         run: node tooling/ci/install-pinned-tool.mjs glitchtip-cli --out "$env:RUNNER_TEMP"
       # why: FAILS CLOSED on a missing GLITCHTIP_TOKEN, never skips. Placed AFTER
       # the retention step above and BEFORE the MSIX packaging and the store dry
-      # run below, so a GlitchTip outage cannot take the mapping with it.
+      # run below, so a GlitchTip outage cannot take the mapping with it. The project is the
+      # ONE declaration, tooling/ops/glitchtip-project.json, never the app
+      # (assert-glitchtip-project.mjs refuses an app-derived one); read as build-platforms.yml's
+      # windows leg reads it.
       - name: Upload the native debug symbols to GlitchTip
         shell: pwsh
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
-        run: >
-          node tooling/ops/upload-native-symbols.mjs
-          --cli "${env:RUNNER_TEMP}/glitchtip-cli.exe"
-          --dir apps/subscriptiontracker/build/symbols/windows
-          --org nikatru --project subscriptiontracker
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $gt = Get-Content -Raw tooling/ops/glitchtip-project.json | ConvertFrom-Json
+          node tooling/ops/upload-native-symbols.mjs `
+            --cli "${env:RUNNER_TEMP}/glitchtip-cli.exe" `
+            --dir "apps/${env:APP}/build/symbols/windows" `
+            --org $gt.org --project $gt.project
+          if ($LASTEXITCODE -ne 0) { Write-Error "upload-native-symbols exited $LASTEXITCODE" }
       # why: msix writes one name as both the Store title and the Start-menu label; the second line sets the label to app.yaml shortName (O-MSIX-IDENTITY-UNGRADED). bash, so either line failing stops the step.
       - name: Package MSIX (Microsoft Store)
-        working-directory: apps/subscriptiontracker
+        working-directory: apps/${{ needs.gate.outputs.app }}
         shell: bash
         run: |
           dart run msix:create --version=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}.0
-          node ../../tooling/store/msix-visual-name.mjs --app subscriptiontracker build/windows/msix/subscriptiontracker.msix
+          node ../../tooling/store/msix-visual-name.mjs --app "$APP" "build/windows/msix/${APP}.msix"
       # why: straight after msix:create, before the dry run touches the package: it must carry the identity the register declares. bash, because pwsh is this runner's default.
       - name: The MSIX carries the identity the register declares
         shell: bash
-        run: node tooling/ci/assert-artifact-signed-msix.mjs --app subscriptiontracker apps/subscriptiontracker/build/windows/msix/subscriptiontracker.msix
+        run: node tooling/ci/assert-artifact-signed-msix.mjs --app "$APP" "apps/${APP}/build/windows/msix/${APP}.msix"
       # why: no MS_STORE_CLIENT_SECRET. It lives in the store-publish environment and this job has none;
       # the submit job checks it straight after its ref check (O-STORE-SECRETS-REACH-THE-DRY-RUN, assert-channel-register §8c).
       - name: Dry-run the Microsoft Store submission
@@ -147,7 +177,7 @@ jobs:
         # first, so the script validates a package that exists on disk; a dry run that
         # skipped the artifact would report the path healthy having never touched the one
         # output the channel accepts.
-        run: node tooling/release/submit-windows-store.mjs --dry-run --app subscriptiontracker
+        run: node tooling/release/submit-windows-store.mjs --dry-run --app "${env:APP}"
       # why: the hand-off the submit job verifies, and the upload below reads the same
       # output, so the name is written once. Nothing runs between this hash and that
       # upload. bash, because pwsh is this runner's default.
@@ -155,17 +185,17 @@ jobs:
         id: bytes
         shell: bash
         env:
-          MSIX: apps/subscriptiontracker/build/windows/msix/subscriptiontracker.msix
+          MSIX: apps/${{ needs.gate.outputs.app }}/build/windows/msix/${{ needs.gate.outputs.app }}.msix
         run: |
           set -euo pipefail
           sum="$(sha256sum "$MSIX" | cut -d ' ' -f 1)"
-          echo "artifact=subscriptiontracker-windows-store-msix" >> "$GITHUB_OUTPUT"
+          echo "artifact=${APP}-windows-store-msix" >> "$GITHUB_OUTPUT"
           echo "sha256=${sum}" >> "$GITHUB_OUTPUT"
           echo "${sum}  ${MSIX}"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ steps.bytes.outputs.artifact }}
-          path: apps/subscriptiontracker/build/windows/msix/subscriptiontracker.msix
+          path: apps/${{ needs.gate.outputs.app }}/build/windows/msix/${{ needs.gate.outputs.app }}.msix
           retention-days: 7
           if-no-files-found: error
 
@@ -186,6 +216,9 @@ jobs:
       contents: read
       checks: read
       deployments: write
+    # why: the same checked output the dry-run job read, so both jobs name one app.
+    env:
+      APP: ${{ needs.gate.outputs.app }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -263,14 +296,14 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ${{ needs.dry-run.outputs.artifact }}
-          path: apps/subscriptiontracker/build/windows/msix
+          path: apps/${{ needs.gate.outputs.app }}/build/windows/msix
       # why: the value arrives through env:, never interpolated into run: (zizmor). bash,
       # because pwsh is this runner's default.
       - name: The package is the one the dry-run job hashed (sha256)
         shell: bash
         env:
           EXPECTED_SHA256: ${{ needs.dry-run.outputs.sha256 }}
-          MSIX: apps/subscriptiontracker/build/windows/msix/subscriptiontracker.msix
+          MSIX: apps/${{ needs.gate.outputs.app }}/build/windows/msix/${{ needs.gate.outputs.app }}.msix
         run: |
           set -euo pipefail
           if ! printf '%s' "$EXPECTED_SHA256" | grep -Eqx '[0-9a-f]{64}'; then
@@ -284,12 +317,12 @@ jobs:
       - name: Take the dry-run job's symbols for this package
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: symbols-subscriptiontracker-windows-store-dry-run
-          path: apps/subscriptiontracker/build/symbols/windows
+          name: symbols-${{ needs.gate.outputs.app }}-windows-store-dry-run
+          path: apps/${{ needs.gate.outputs.app }}/build/symbols/windows
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: symbols-subscriptiontracker-windows-store
-          path: apps/subscriptiontracker/build/symbols/windows
+          name: symbols-${{ needs.gate.outputs.app }}-windows-store
+          path: apps/${{ needs.gate.outputs.app }}/build/symbols/windows
           retention-days: 90
           if-no-files-found: error
       # why: the Microsoft Store Developer CLI is the transport, for the same reason the
@@ -335,7 +368,7 @@ jobs:
             Write-Error 'FAIL a Microsoft Store submission runs only inside GitHub Actions (GITHUB_ACTIONS=true and GITHUB_REPOSITORY set). The publish gate is the store-publish environment, whose approval exists nowhere else.'
             exit 1
           }
-          node tooling/release/submit-windows-store.mjs --submit --app subscriptiontracker --confirm "$env:CONFIRM"
+          node tooling/release/submit-windows-store.mjs --submit --app "${env:APP}" --confirm "$env:CONFIRM"
           exit $LASTEXITCODE
       # why: `shell: bash` is load-bearing (2026-09-23). This job runs on windows-2025, whose
       # default shell is pwsh, and under pwsh "$LISTING_URL" is an unset PowerShell VARIABLE,
@@ -349,4 +382,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           LISTING_URL: ${{ inputs.listing_url }}
-        run: node tooling/ci/record-deployment.mjs subscriptiontracker-windows-store --state in_review --listing-url "$LISTING_URL"
+        run: node tooling/ci/record-deployment.mjs "${APP}-windows-store" --state in_review --listing-url "$LISTING_URL"

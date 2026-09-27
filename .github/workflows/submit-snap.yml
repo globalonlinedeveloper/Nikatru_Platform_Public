@@ -1,6 +1,6 @@
 name: "Store submit: Snap Store"
 
-run-name: "Store submit: Snap Store by @${{ github.actor }}"
+run-name: "Store submit: Snap Store — ${{ inputs.app }} — ${{ inputs.confirm == 'SUBMIT-TO-SNAP-STORE' && 'SUBMIT' || 'dry run' }} by @${{ github.actor }}"
 
 # The measurements, retractions and traps behind this file are in
 # docs/ci/submit-snap.md. Only `# why:` lines live here, and
@@ -9,6 +9,13 @@ run-name: "Store submit: Snap Store by @${{ github.actor }}"
 on:
   workflow_dispatch:
     inputs:
+      # why: required with NO default and NO choice list (O-STORE-LANES-HARD-WIRE-ONE-APP):
+      # either one is an app id written into this file. The gate job checks it against the
+      # workspace set; every other job reads the gate's output, never this input.
+      app:
+        description: 'The app to submit: one id of the workspace app set (tooling/ci/assert-release-lane-generic.mjs --emit-apps). The gate job refuses any other value.'
+        required: true
+        type: string
       confirm:
         description: 'Type SUBMIT-TO-SNAP-STORE to run the upload job. Anything else runs the dry run only.'
         required: false
@@ -32,6 +39,8 @@ jobs:
     # so any bound at or under 20 kills it mid-poll and replaces "timed out waiting
     # for ci-gate" with an opaque cancellation. Byte-identical in all five gate jobs.
     timeout-minutes: 25
+    outputs:
+      app: ${{ steps.app.outputs.app }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -41,12 +50,27 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: node tooling/ci/assert-gate-passed.mjs ${{ github.sha }}
+      # why: the ONE reader of inputs.app, and only through env: (an input interpolated into
+      # run: is a shell injection). --emit-apps --app refuses a value off ^[a-z][a-z0-9-]*$
+      # before it reads the set, and one outside the set naming the set; only then is it an output.
+      - name: The app input names one app of the workspace
+        id: app
+        env:
+          APP_INPUT: ${{ inputs.app }}
+        run: |
+          set -euo pipefail
+          node tooling/ci/assert-release-lane-generic.mjs --emit-apps --app "$APP_INPUT"
+          echo "app=${APP_INPUT}" >> "$GITHUB_OUTPUT"
 
   dry-run:
     name: Validate the submission path
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs: gate
+    # why: the gate's checked output, never inputs.app. run: reads $APP; the fields no
+    # shell expands (artifact name and path) read the expression itself.
+    env:
+      APP: ${{ needs.gate.outputs.app }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -63,7 +87,7 @@ jobs:
         run: flutter pub get --enforce-lockfile
       - name: Derive the release line from pubspec
         id: ver
-        run: node tooling/ci/assert-app-versioning.mjs --emit apps/subscriptiontracker >> "$GITHUB_OUTPUT"
+        run: node tooling/ci/assert-app-versioning.mjs --emit "apps/${APP}" >> "$GITHUB_OUTPUT"
       # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. A lane green over a name the owner has not HELD
       # or proven free submits one nobody ruled on; limb 3 of assert-publish-steps-guarded.mjs.
       - name: Name clearance holds for linux-snap (owner HELD or PROVEN-FREE)
@@ -74,7 +98,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
-        run: node tooling/ci/flutter-release-build.mjs subscriptiontracker linux linux-snap
+        run: node tooling/ci/flutter-release-build.mjs "$APP" linux linux-snap
       # ⏱ MOVED 2026-09-07 (unit `symbols-everywhere`) — THIS STEP USED TO BE THE
       # LAST ONE IN THE JOB, behind `snapcraft pack` and the Snap Store dry run.
       # That is the ordering post-audit-obfuscation-and-symbols.md §9.3
@@ -90,8 +114,8 @@ jobs:
       # tooling/ci/assert-obfuscation-coupled.mjs refuses the build without it.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: symbols-subscriptiontracker-linux-snap-dry-run
-          path: apps/subscriptiontracker/build/symbols/linux
+          name: symbols-${{ needs.gate.outputs.app }}-linux-snap-dry-run
+          path: apps/${{ needs.gate.outputs.app }}/build/symbols/linux
           retention-days: 7
           if-no-files-found: error
       # why: ONE code path on every lane (O-GLITCHTIP-CLI-INSTALLED-BY-HAND): the digest tooling/versions.json
@@ -102,36 +126,41 @@ jobs:
       # exits 1 naming the secret, because a symbol upload that quietly skips
       # itself is how a release ships unreadable. Placed AFTER the retention step
       # above and BEFORE `snapcraft pack` and the store dry run below, so neither
-      # a GlitchTip outage nor a pack failure can take the mapping with it.
+      # a GlitchTip outage nor a pack failure can take the mapping with it. The project is
+      # the ONE declaration, tooling/ops/glitchtip-project.json, never the app
+      # (assert-glitchtip-project.mjs refuses an app-derived one).
       - name: Upload the native debug symbols to GlitchTip
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
-        run: >
-          node tooling/ops/upload-native-symbols.mjs
-          --cli "${RUNNER_TEMP}/glitchtip-cli"
-          --dir apps/subscriptiontracker/build/symbols/linux
-          --org nikatru --project subscriptiontracker
+        run: |
+          set -euo pipefail
+          gt_org="$(node -p "require('./tooling/ops/glitchtip-project.json').org")"
+          gt_project="$(node -p "require('./tooling/ops/glitchtip-project.json').project")"
+          node tooling/ops/upload-native-symbols.mjs \
+            --cli "${RUNNER_TEMP}/glitchtip-cli" \
+            --dir "apps/${APP}/build/symbols/linux" \
+            --org "$gt_org" --project "$gt_project"
       - name: Generate the snapcraft recipe
         run: >
           node tooling/release/generate-snapcraft.mjs
-          --app subscriptiontracker
-          --bundle apps/subscriptiontracker/build/linux/x64/release/bundle
-          --out "$RUNNER_TEMP/snapcraft-subscriptiontracker"
+          --app "$APP"
+          --bundle "apps/${APP}/build/linux/x64/release/bundle"
+          --out "$RUNNER_TEMP/snapcraft-${APP}"
           --version ${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
       - name: The generated recipe is complete, still derived, and packable here
         run: >
           node tooling/ci/assert-snapcraft-generable.mjs
-          --emitted "$RUNNER_TEMP/snapcraft-subscriptiontracker/snap/snapcraft.yaml"
-          --app subscriptiontracker
+          --emitted "$RUNNER_TEMP/snapcraft-${APP}/snap/snapcraft.yaml"
+          --app "$APP"
           --pack-runner ubuntu-24.04
       - name: Install snapcraft
         run: sudo snap install snapcraft --classic
       - name: Pack the snap
         run: |
           set -euo pipefail
-          project="${RUNNER_TEMP}/snapcraft-subscriptiontracker"
-          collected="${GITHUB_WORKSPACE}/apps/subscriptiontracker/build/linux/snap/subscriptiontracker.snap"
+          project="${RUNNER_TEMP}/snapcraft-${APP}"
+          collected="${GITHUB_WORKSPACE}/apps/${APP}/build/linux/snap/${APP}.snap"
           cd "$project"
           sudo snapcraft pack --destructive-mode
           count="$(find "$project" -maxdepth 1 -type f -name '*.snap' | wc -l)"
@@ -157,11 +186,11 @@ jobs:
       - name: Dry-run the Snap Store submission
         env:
           SNAPCRAFT_STORE_CREDENTIALS_EXPIRES: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS_EXPIRES }}
-        run: node tooling/release/submit-snap.mjs --dry-run --app subscriptiontracker
+        run: node tooling/release/submit-snap.mjs --dry-run --app "$APP"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: subscriptiontracker-linux-snap
-          path: apps/subscriptiontracker/build/linux/snap/subscriptiontracker.snap
+          name: ${{ needs.gate.outputs.app }}-linux-snap
+          path: apps/${{ needs.gate.outputs.app }}/build/linux/snap/${{ needs.gate.outputs.app }}.snap
           retention-days: 7
           if-no-files-found: error
 
@@ -182,6 +211,9 @@ jobs:
       contents: read
       checks: read
       deployments: write
+    # why: the same checked output the dry-run job read, so both jobs name one app.
+    env:
+      APP: ${{ needs.gate.outputs.app }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -244,7 +276,7 @@ jobs:
         run: flutter pub get --enforce-lockfile
       - name: Derive the release line from pubspec
         id: ver
-        run: node tooling/ci/assert-app-versioning.mjs --emit apps/subscriptiontracker >> "$GITHUB_OUTPUT"
+        run: node tooling/ci/assert-app-versioning.mjs --emit "apps/${APP}" >> "$GITHUB_OUTPUT"
       # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. A lane green over a name the owner has not HELD
       # or proven free submits one nobody ruled on; limb 3 of assert-publish-steps-guarded.mjs.
       - name: Name clearance holds for linux-snap (owner HELD or PROVEN-FREE)
@@ -255,7 +287,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
-        run: node tooling/ci/flutter-release-build.mjs subscriptiontracker linux linux-snap
+        run: node tooling/ci/flutter-release-build.mjs "$APP" linux linux-snap
       # ⏱ MOVED 2026-09-07 (unit `symbols-everywhere`) — this step used to sit
       # after `snapcraft pack`, which was already "BEFORE the upload, not after"
       # and is now earlier still: a pack failure is a step failure like any
@@ -269,8 +301,8 @@ jobs:
       # 7: this snap ships.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: symbols-subscriptiontracker-linux-snap
-          path: apps/subscriptiontracker/build/symbols/linux
+          name: symbols-${{ needs.gate.outputs.app }}-linux-snap
+          path: apps/${{ needs.gate.outputs.app }}/build/symbols/linux
           retention-days: 90
           if-no-files-found: error
       # why: ONE code path on every lane (O-GLITCHTIP-CLI-INSTALLED-BY-HAND): the digest tooling/versions.json
@@ -283,36 +315,40 @@ jobs:
       # this runs, so a GlitchTip outage costs the sink copy and nothing else —
       # and it FAILS THE JOB rather than skipping, deliberately: a release that
       # goes to the Snap Store with no readable symbols is the state this unit
-      # exists to stop. The wrapper names GLITCHTIP_TOKEN when it is absent.
+      # exists to stop. The wrapper names GLITCHTIP_TOKEN when it is absent. The project
+      # is the ONE declaration, tooling/ops/glitchtip-project.json, never the app.
       - name: Upload the native debug symbols to GlitchTip
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
-        run: >
-          node tooling/ops/upload-native-symbols.mjs
-          --cli "${RUNNER_TEMP}/glitchtip-cli"
-          --dir apps/subscriptiontracker/build/symbols/linux
-          --org nikatru --project subscriptiontracker
+        run: |
+          set -euo pipefail
+          gt_org="$(node -p "require('./tooling/ops/glitchtip-project.json').org")"
+          gt_project="$(node -p "require('./tooling/ops/glitchtip-project.json').project")"
+          node tooling/ops/upload-native-symbols.mjs \
+            --cli "${RUNNER_TEMP}/glitchtip-cli" \
+            --dir "apps/${APP}/build/symbols/linux" \
+            --org "$gt_org" --project "$gt_project"
       - name: Generate the snapcraft recipe
         run: >
           node tooling/release/generate-snapcraft.mjs
-          --app subscriptiontracker
-          --bundle apps/subscriptiontracker/build/linux/x64/release/bundle
-          --out "$RUNNER_TEMP/snapcraft-subscriptiontracker"
+          --app "$APP"
+          --bundle "apps/${APP}/build/linux/x64/release/bundle"
+          --out "$RUNNER_TEMP/snapcraft-${APP}"
           --version ${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
       - name: The generated recipe is complete, still derived, and packable here
         run: >
           node tooling/ci/assert-snapcraft-generable.mjs
-          --emitted "$RUNNER_TEMP/snapcraft-subscriptiontracker/snap/snapcraft.yaml"
-          --app subscriptiontracker
+          --emitted "$RUNNER_TEMP/snapcraft-${APP}/snap/snapcraft.yaml"
+          --app "$APP"
           --pack-runner ubuntu-24.04
       - name: Install snapcraft
         run: sudo snap install snapcraft --classic
       - name: Pack the snap
         run: |
           set -euo pipefail
-          project="${RUNNER_TEMP}/snapcraft-subscriptiontracker"
-          collected="${GITHUB_WORKSPACE}/apps/subscriptiontracker/build/linux/snap/subscriptiontracker.snap"
+          project="${RUNNER_TEMP}/snapcraft-${APP}"
+          collected="${GITHUB_WORKSPACE}/apps/${APP}/build/linux/snap/${APP}.snap"
           cd "$project"
           sudo snapcraft pack --destructive-mode
           count="$(find "$project" -maxdepth 1 -type f -name '*.snap' | wc -l)"
@@ -340,7 +376,7 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           CONFIRM: ${{ inputs.confirm }}
         run: >
-          node tooling/release/submit-snap.mjs --submit --app subscriptiontracker
+          node tooling/release/submit-snap.mjs --submit --app "$APP"
           --confirm "$CONFIRM"
       - name: Record the submission in the [10]D-9 ledger
         if: always() && steps.upload.outcome == 'success'
@@ -348,4 +384,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           LISTING_URL: ${{ inputs.listing_url }}
-        run: node tooling/ci/record-deployment.mjs subscriptiontracker-linux-snap --state in_review --listing-url "$LISTING_URL"
+        run: node tooling/ci/record-deployment.mjs "${APP}-linux-snap" --state in_review --listing-url "$LISTING_URL"

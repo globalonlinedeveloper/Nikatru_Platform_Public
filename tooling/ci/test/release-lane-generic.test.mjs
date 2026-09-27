@@ -189,7 +189,12 @@ ${dryEnv}    steps:
           name: symbols-\${{ needs.gate.outputs.app }}-dry-run
           path: apps/\${{ needs.gate.outputs.app }}/build/symbols
 ${extraJob}`;
-const PER_APP_LANES = { 'submit-play.yml': perAppLane(), 'submit-appstore.yml': perAppLane() };
+const PER_APP_LANES = {
+  'submit-play.yml': perAppLane(),
+  'submit-appstore.yml': perAppLane(),
+  'submit-windows-store.yml': perAppLane(),
+  'submit-snap.yml': perAppLane(),
+};
 
 /** The two lanes R-1 owns, plus whatever else a case needs. Every fixture root
  *  carries a `tooling/ci` so limb B has a corpus, and the real modules the guard
@@ -771,8 +776,8 @@ ${extra}        run: node tooling/e2e/verify_purged.mjs
     assert.match(r.out, /build-platforms\.yml \(\[pipeline 9\]R-1\) — limb D-all: \d+ env\/output key\(s\) name no app and \d+ run\/with\/env value\(s\) carry no UUID literal/);
     assert.match(r.out, /e2e\.yml \(\[pipeline 9\]R-1\) — limb D-all: /);
     assert.match(r.out, /deploy-web\.yml \(\[pipeline 10\]D-2b\) — limb D-all: /);
-    // ⏱ 2026-09-26: 3 → 5, the two store lanes graded as per-app (O-STORE-LANES-HARD-WIRE-ONE-APP).
-    assert.match(r.out, /limb D-all read \d+ key\(s\) and \d+ value\(s\) across 5 lane\(s\)/);
+    // ⏱ 2026-09-26: 3 → 7, the four submit lanes graded as per-app (O-STORE-LANES-HARD-WIRE-ONE-APP).
+    assert.match(r.out, /limb D-all read \d+ key\(s\) and \d+ value\(s\) across 7 lane\(s\)/);
   });
 
   test('RC1 · THE CLOSES\' CONTROL — the app-named key with a UUID, back in e2e.yml, fails naming both hits', () => {
@@ -955,7 +960,9 @@ describe("assert-release-lane-generic.mjs — limb I (a per-app lane takes its a
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /submit-play\.yml \(O-STORE-LANES-HARD-WIRE-ONE-APP\) — limb I: a required `app` input with no default, read by the gate alone through `env:` and checked there by --emit-apps --app; 1 other job\(s\) need the gate; \d+ line\(s\) name no app id/);
     assert.match(r.out, /submit-appstore\.yml \(O-STORE-LANES-HARD-WIRE-ONE-APP\) — limb I: /);
-    assert.match(r.out, /limb I read \d+ line\(s\) across 2 per-app lane\(s\)/);
+    assert.match(r.out, /submit-windows-store\.yml \(O-STORE-LANES-HARD-WIRE-ONE-APP\) — limb I: /);
+    assert.match(r.out, /submit-snap\.yml \(O-STORE-LANES-HARD-WIRE-ONE-APP\) — limb I: /);
+    assert.match(r.out, /limb I read \d+ line\(s\) across 4 per-app lane\(s\)/);
   });
 
   test("RC1 · THE CLOSES' CONTROL — `--app <id>` planted in the dry run fails, naming submit-play.yml and the line", () => {
