@@ -697,8 +697,18 @@ jobs:
         with: { persist-credentials: false }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with: { node-version: '${{ env.NODE_VERSION }}' }
+      # 🔴 --single-threaded + a step bound (FXH-2). Main run 36316375328 attempt 1: the
+      # render-extension-graphics case's CHILD printed its three `pixel-identical` PASS
+      # lines and never exited — nodejs/node#54918, the hang #1001 fixed for the same
+      # program as the catalogue job's step. selftest.node.js now starts every node child
+      # --single-threaded under its 120 s CHILD_BOUND_MS, and runs so itself. The bound of
+      # 8 sits above a green run (16 s) plus three hung children at 120 s each, so the
+      # suite names the cases that hung before the runner stops it, and a hang in the
+      # suite's own exit costs 8 minutes, not the job's 30. Held by
+      # tooling/ci/test/single-threaded-relaunch.test.mjs S1/S2.
       - name: Every gate must be proven to fail on a real mutation
-        run: node scripts/test/selftest.node.js
+        timeout-minutes: 8
+        run: node --single-threaded scripts/test/selftest.node.js
 
       # why: the hang guard's own red/green pair. selftest.node.js cannot host it —
       # its run() helper appends `--repo-root <root>`, which the guard forwards to the

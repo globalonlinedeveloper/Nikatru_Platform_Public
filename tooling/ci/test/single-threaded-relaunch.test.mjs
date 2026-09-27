@@ -422,3 +422,130 @@ describe('an extensions-ci step that runs a zlib program runs single-threaded an
     assert.deepEqual(bad, [], bad.join('\n'));
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-27 · THE HANG REACHED THE GATE SELF-TEST'S CHILDREN (FXH-2). Main run
+// 36316375328 attempt 1, extensions-ci.yml job `selftest`: the case "the committed
+// listing graphics are the renderer's own output" spawned render-extension-graphics.mjs,
+// which printed its three `pixel-identical` PASS lines and never exited; the suite's
+// 120 s spawn bound killed it and the case read `expected exit 0, got null` over a gate
+// that had passed. E1/E2 put that program on --single-threaded as a STEP; here it was a
+// CHILD, the declared limit of that block ("a program spawned by another ... is not
+// graded"). This block grades that one spawner, extensions/scripts/test/selftest.node.js,
+// and the step that runs it.
+//
+// The launches are DERIVED from the suite's source: every `process.execPath` in it is
+// read as a launch, so prose that names one reads as a launch too and goes RED — a
+// visible false red, never a silent skip. The one exception is a NO_CASE_RECORDED
+// `why:` line, a single-quoted string by that list's construction (one quotes
+// listing-assets.test.mjs's spawn). The async key stub is a server the suite kills, so
+// it takes the flag and no bound; every synchronous launch takes both.
+//
+//   S1 the derivation finds every node launch in the suite, run()'s among them
+//   S2 each runs --single-threaded, each synchronous one under CHILD_BOUND_MS, and the
+//      step runs the suite --single-threaded, bounded above one child's bound and
+//      under its job's
+//
+// Mutations run against the real tree (2026-09-27, predictions written first):
+//   · SINGLE_THREADED dropped from run()'s spawn                        → S2 RED
+//   · `timeout: CHILD_BOUND_MS` dropped from a policy-check spawn       → S2 RED
+//   · SINGLE_THREADED dropped from the key stub's spawn                 → S2 RED
+//   · a new `spawnSync('node', ...)` launch added                       → S2 RED
+//   · `--single-threaded` dropped from the workflow step                → S2 RED
+//   · the step's `timeout-minutes: 8` dropped                           → S2 RED
+//   · run()'s spawn rewritten through `const NODE = process.execPath`   → S1 RED
+// ─────────────────────────────────────────────────────────────────────────────
+describe('the extensions gate self-test starts every node child single-threaded and bounded', () => {
+  const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
+  const SUITE = 'extensions/scripts/test/selftest.node.js';
+  const WF = '.github/workflows/extensions-ci.yml';
+  const JOB = 'selftest';
+  const STEP_RUN = /\bnode((?:\s+--[\w-]+(?:=\S+)?)*)\s+(?:\.\/)?scripts\/test\/selftest\.node\.js\b/;
+  const STEP_TIMEOUT = /^ {8}timeout-minutes:\s*(\S+)\s*$/;
+  const JOB_TIMEOUT = /^ {4}timeout-minutes:\s*(\d+)\s*$/;
+  const RECORDED_WHY = /^\s*why:\s*'/;
+  const CALL_BEFORE = /\b(spawnSync|spawn)\(\s*$/;
+  const FIRST_ARG = /^\s*,\s*\[\s*([^\s,\]]+)/;
+  const OTHER_LAUNCH = /\b(?:spawnSync|spawn|execFileSync|execFile|execSync|exec)\(\s*['"`]node(?:\.exe)?\b|\bfork\(/;
+
+  const suitePath = join(REPO_ROOT, SUITE);
+  const src = existsSync(suitePath) ? readFileSync(suitePath, 'utf8') : '';
+  const lines = src.split('\n');
+  const lineOf = (i) => src.slice(0, i).split('\n').length;
+  const flag = src.match(/^const SINGLE_THREADED = '(--single-threaded)';$/m)?.[1] ?? null;
+  const childBoundMs = Number(src.match(/^const CHILD_BOUND_MS = (\d+);$/m)?.[1] ?? NaN);
+
+  /** The call's text from its `(` to the matching `)`, or null past 2000 characters. */
+  function callText(open) {
+    let depth = 0;
+    for (let i = open; i < src.length && i < open + 2000; i++) {
+      if (src[i] === '(') depth++;
+      else if (src[i] === ')' && --depth === 0) return src.slice(open, i + 1);
+    }
+    return null;
+  }
+
+  const launches = [];
+  const unread = [];
+  for (const m of src.matchAll(/\bprocess\.execPath\b/g)) {
+    const n = lineOf(m.index);
+    if (RECORDED_WHY.test(lines[n - 1])) continue;
+    const call = src.slice(Math.max(0, m.index - 40), m.index).match(CALL_BEFORE);
+    if (!call) {
+      unread.push(`${SUITE}:${n} uses process.execPath outside a spawn/spawnSync(process.execPath, [...]) call, a launch this block cannot read`);
+      continue;
+    }
+    const text = callText(m.index - call[0].length + call[0].indexOf('('));
+    const first = src.slice(m.index + 'process.execPath'.length).match(FIRST_ARG)?.[1] ?? null;
+    launches.push({ at: `${SUITE}:${n}`, index: m.index, sync: call[1] === 'spawnSync', text, first });
+  }
+  const runStart = src.indexOf('\nfunction run(');
+  const runEnd = runStart === -1 ? -1 : src.indexOf('\n}\n', runStart);
+
+  const wf = parseWorkflow(REPO_ROOT, WF);
+  const job = wf?.jobs.get(JOB);
+  const jobBound = Number(job?.lines.map((l) => l.text.match(JOB_TIMEOUT)?.[1]).find(Boolean));
+  const steps = [];
+  for (const s of job ? workflowSteps(job) : []) {
+    const m = s.run?.text.match(STEP_RUN);
+    if (!m) continue;
+    const bound = job.lines.filter((l) => l.n >= s.first && l.n <= s.last).map((l) => l.text.match(STEP_TIMEOUT)?.[1]).find(Boolean) ?? null;
+    steps.push({ at: `extensions-ci.yml:${s.first}`, flags: m[1], bound });
+  }
+
+  test('S1 the derivation finds every node launch in the suite, run()\'s among them', () => {
+    assert.ok(src, `${SUITE} could not be read, so nothing below is graded`);
+    assert.deepEqual(unread, [], unread.join('\n'));
+    assert.ok(runStart !== -1 && runEnd !== -1 && launches.some((l) => l.index > runStart && l.index < runEnd),
+      `the derivation no longer finds run()'s launch, the one the render case hung under:\n${launches.map((l) => l.at).join('\n')}`);
+    assert.match(src, /script: 'render-extension-graphics\.mjs'/, 'the render case no longer goes through run(), so the launch that hung is not the one graded');
+    assert.ok(launches.length >= 5, `expected the five node launches of 2026-09-27 (run, spied, policy-check x2, the key stub), found ${launches.length}:\n${launches.map((l) => l.at).join('\n')}`);
+    assert.ok(launches.some((l) => !l.sync), 'the derivation no longer finds the async key-stub launch');
+    assert.ok(job, `${WF} has no job ${JOB}, so its step is not graded`);
+    assert.ok(Number.isInteger(jobBound) && jobBound > 0, `${JOB} declares no job-level timeout-minutes this block can compare a step bound with`);
+    assert.equal(steps.length, 1, `expected exactly one ${JOB} step running scripts/test/selftest.node.js, found ${steps.length}`);
+  });
+
+  test('S2 every launch runs --single-threaded, every synchronous one under CHILD_BOUND_MS, and the step is single-threaded and bounded', () => {
+    const bad = [];
+    if (flag === null) bad.push(`${SUITE} no longer declares \`const SINGLE_THREADED = '--single-threaded';\``);
+    if (!(Number.isInteger(childBoundMs) && childBoundMs > 0)) bad.push(`${SUITE} no longer declares \`const CHILD_BOUND_MS = <ms>;\``);
+    for (const l of launches) {
+      if (l.first !== 'SINGLE_THREADED') bad.push(`${l.at} starts node with ${l.first ?? 'an argument list this block cannot read'} first, not SINGLE_THREADED: V8 background tasks ON (nodejs/node#54918)`);
+      if (l.sync && !(l.text && /\btimeout:\s*CHILD_BOUND_MS\b/.test(l.text))) bad.push(`${l.at} is a spawnSync without \`timeout: CHILD_BOUND_MS\`, so a child that hangs hangs the suite`);
+    }
+    lines.forEach((text, i) => {
+      if (!RECORDED_WHY.test(text) && OTHER_LAUNCH.test(text)) {
+        bad.push(`${SUITE}:${i + 1} starts node another way (a 'node' literal or fork), which this block cannot read: launch it as spawn(Sync)(process.execPath, [SINGLE_THREADED, ...])`);
+      }
+    });
+    for (const s of steps) {
+      if (!/(^|\s)--single-threaded(\s|$)/.test(s.flags)) bad.push(`${s.at} runs the suite with V8 background tasks ON (nodejs/node#54918)`);
+      if (s.bound === null) { bad.push(`${s.at} has no step-level timeout-minutes, so a hang eats the ${JOB} job's ${jobBound}`); continue; }
+      const minutes = /^[0-9]+$/.test(s.bound) ? Number(s.bound) : NaN;
+      if (!(minutes >= 2 && minutes < jobBound)) bad.push(`${s.at} is bounded at ${s.bound}: a step bound is a whole number of minutes, at least 2 and under the ${JOB} job's ${jobBound}`);
+      else if (minutes * 60000 <= childBoundMs) bad.push(`${s.at} is bounded at ${minutes} min, not above one child's ${childBoundMs} ms bound: the runner would stop the suite before a hung child's case could name it`);
+    }
+    assert.deepEqual(bad, [], bad.join('\n'));
+  });
+});
