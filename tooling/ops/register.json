@@ -2318,7 +2318,12 @@
       "ownerGated": true,
       "ownerGap": "CI cannot see a laptop. The run record is real and is watched from outside, but no in-tree guard can read it; the register row is what makes the duty enumerable at all.",
       "source": "verified",
-      "verifiedHow": "2026-08-05 — end to end, not by reading config: the notification path was forced to fire and the resulting mail was confirmed delivered. `source: verified` on this row previously rested on the monitor existing, which is exactly what was true the whole time it was silent."
+      "verifiedHow": "2026-08-05 — end to end, not by reading config: the notification path was forced to fire and the resulting mail was confirmed delivered. `source: verified` on this row previously rested on the monitor existing, which is exactly what was true the whole time it was silent.",
+      "liveVerdictScope": {
+        "blocks": "page-only",
+        "page": "ops-watch.yml",
+        "why": "LEAD RULING FBP-1 2026-09-27, under the OWNER DECISION of 2026-09-18 (O-LAPTOP-ROUTINES-DIE-OVERNIGHT) that a laptop state pages and never holds a deploy. MEASURED: main runs 36290400205 (03:05Z, the #996 merge) and 36293604395 (04:12Z, the #1002 revert) BOTH failed at \"Guards — platform, data and ops\" on THIS row alone ([LIVE] 1 BLOCKING: newest successful heartbeat on monitor 6 at 2026-09-26T14:59:22Z, 12.1h and 13.2h old against its own [8h x 1.5 = 12.0h] window), and deploy-web and deploy-workers were SKIPPED on both, though nothing in either commit was wrong. CAUSE: the laptop's 02:14 IST run (backup-offsite-20260927-021429.log) died when `rclone lsjson --hash` of the Drive bundles folder timed out after 602.9 s, so the REMOTELESS-HISTORY check correctly threw before the heartbeat POST — a slow Drive listing on a busy laptop, not a code defect. A backup miss is a laptop state, and the right response to it is a PAGE: in ops-watch.yml this verdict still BLOCKS (the heartbeats job goes red and the alert job files the durable issue), and monitor 6 mails support@ on its own. It must not hold main's ci-gate or the deploy lanes that poll it: blocking the web deploy buys nothing for the backup."
+      }
     },
     {
       "id": "duty.laptop.nikatru-ops-check",
