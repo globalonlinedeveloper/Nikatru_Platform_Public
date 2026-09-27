@@ -13,9 +13,12 @@
 //
 // WHAT IT DECIDES, and from what:
 //   · RELEASE_CHANNEL        — the channel id, a row of tooling/channel-register.json
-//   · REVENUECAT_KEY         — `purchaseRails.storeKeyDefine`: the define, and the secret
-//                              NAME for the channel's `purchaseRail.rail`; no define at all
-//                              for a rail the map does not key
+//   · REVENUECAT_KEY         — `purchaseRails.storeKeyDefine`: the define, passed from `$<env>`
+//                              for a rail `secretFieldByRail` keys; no define at all for a
+//                              rail it does not. ⏱ 12a (O-BRICK-SELLS-NOTHING-IN-A-STORE): the
+//                              secret NAME is each app's own, resolved by the step before the
+//                              build (tooling/ci/store-key-secret.mjs), which the step env maps
+//                              into `<env>` — so this module names one variable for every app.
 //   · API_BASE_URL           — `apiBaseUrl`, below: the app's `hosts.api` from its
 //                              app.yaml, else the shared platform API. The stamp guard
 //                              (assert-stamp-text-fidelity.mjs) imports the same function.
@@ -154,8 +157,8 @@ export function composeReleaseBuild({ root, app, channel, target, lane = 'releas
     );
   }
   const keyed = register.purchaseRails?.storeKeyDefine;
-  if (!keyed?.define || typeof keyed.secretByRail !== 'object') {
-    throw new Error('tooling/channel-register.json purchaseRails.storeKeyDefine names no define and no secretByRail map.');
+  if (!keyed?.define || keyed.secretFieldByRail === null || typeof keyed.secretFieldByRail !== 'object') {
+    throw new Error('tooling/channel-register.json purchaseRails.storeKeyDefine names no define and no secretFieldByRail map.');
   }
   const apiBase = apiBaseUrl(appApiHost(root, app));
 
@@ -173,8 +176,12 @@ export function composeReleaseBuild({ root, app, channel, target, lane = 'releas
   define('API_BASE_URL', apiBase);
   define('APP_VERSION', `${BUILD_NAME}+${pr ? 'pr' : SHA7}`);
   define('RELEASE_CHANNEL', channel);
-  const secret = keyed.secretByRail[row.purchaseRail?.rail];
-  if (typeof secret === 'string' && secret !== '') define(keyed.define, `$${secret}`);
+  if (Object.hasOwn(keyed.secretFieldByRail, row.purchaseRail?.rail ?? '')) {
+    if (typeof keyed.env !== 'string' || !/^[A-Z][A-Z0-9_]*$/.test(keyed.env)) {
+      throw new Error('tooling/channel-register.json purchaseRails.storeKeyDefine keys this rail and names no `env` to pass the key from.');
+    }
+    define(keyed.define, `$${keyed.env}`);
+  }
   define('GLITCHTIP_DSN', '$GLITCHTIP_DSN');
   if (platform === 'web') {
     define('TURNSTILE_SITE_KEY', '$TURNSTILE_SITE_KEY');

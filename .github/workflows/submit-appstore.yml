@@ -94,11 +94,25 @@ jobs:
       # template. The ios-appstore audit also answers for macOS, so this step covers both submissions here.
       - name: The app's App Store declarations are sworn, not preview (--for-submission)
         run: node tooling/ci/assert-sworn-store-files.mjs --for-submission=ios-appstore --app "$APP"
+      # why: a pending mobile IAP declaration (no RevenueCat apps yet) builds keyless and is never submitted:
+      # its paywall cannot buy (O-BRICK-SELLS-NOTHING-IN-A-STORE; tooling/ci/submit-preconditions.mjs).
+      - name: A pending in-app purchase declaration is not submitted (ios-appstore)
+        run: node tooling/ci/assert-app-yaml.mjs --for-submission=ios-appstore --app "$APP"
+      # why: a pending mobile IAP declaration (no RevenueCat apps yet) builds keyless and is never submitted:
+      # its paywall cannot buy (O-BRICK-SELLS-NOTHING-IN-A-STORE; tooling/ci/submit-preconditions.mjs).
+      - name: A pending in-app purchase declaration is not submitted (macos-appstore)
+        run: node tooling/ci/assert-app-yaml.mjs --for-submission=macos-appstore --app "$APP"
       - name: Toolchain under test
         run: |
           sw_vers
           xcodebuild -version
           uname -m
+      # why: the store SDK key is each app's own (O-BRICK-SELLS-NOTHING-IN-A-STORE): this prints the NAME of
+      # the app's secret (app.yaml billing.mobileIap.publicKeySecrets), never a value, and every build step
+      # below maps the key from it. assert-channel-register 6b-iii holds --app to the build's own app.
+      - name: Resolve the app's store SDK key secret (apple-iap)
+        id: rc-key
+        run: node tooling/ci/store-key-secret.mjs --app "$APP" --rail apple-iap >> "$GITHUB_OUTPUT"
       # ⏱ RENAMED 2026-09-09. This step was called "unsigned — no distribution
       # certificate exists", and that reason stopped being true today: a
       # DISTRIBUTION certificate and an IOS_APP_STORE profile were issued through
@@ -113,7 +127,7 @@ jobs:
           RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          REVENUECAT_PUBLIC_KEY_APPLE: ${{ secrets.REVENUECAT_PUBLIC_KEY_APPLE }}
+          REVENUECAT_PUBLIC_KEY: ${{ secrets[steps.rc-key.outputs.name] }}
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
         run: node tooling/ci/flutter-release-build.mjs "$APP" ios ios-appstore
       # Same correction as the iOS step above: unsigned BY CHOICE, not for want
@@ -123,7 +137,7 @@ jobs:
           RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          REVENUECAT_PUBLIC_KEY_APPLE: ${{ secrets.REVENUECAT_PUBLIC_KEY_APPLE }}
+          REVENUECAT_PUBLIC_KEY: ${{ secrets[steps.rc-key.outputs.name] }}
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
         run: node tooling/ci/flutter-release-build.mjs "$APP" macos macos-appstore
       # ⏱ CORRECTED 2026-09-07 (unit `symbols-everywhere`) — this comment used to

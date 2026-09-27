@@ -169,13 +169,19 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: node tooling/ci/android-signing.mjs --app ${{ matrix.app }} --channel android-play
+      # why: the store SDK key is each app's own (O-BRICK-SELLS-NOTHING-IN-A-STORE): this prints the NAME of
+      # the app's secret (app.yaml billing.mobileIap.publicKeySecrets), never a value, and every build step
+      # below maps the key from it. assert-channel-register 6b-iii holds --app to the build's own app.
+      - name: Resolve the app's store SDK key secret (play-billing)
+        id: rc-key
+        run: node tooling/ci/store-key-secret.mjs --app ${{ matrix.app }} --rail play-billing >> "$GITHUB_OUTPUT"
       # why: these three Android builds also run on every PR as ci.yml android-artifacts; built-artifact-pr-lane.test.mjs holds the copies equal.
       - name: Build android (apk — sideloadable build proof)
         env:
           RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          REVENUECAT_PUBLIC_KEY_GOOGLE: ${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
+          REVENUECAT_PUBLIC_KEY: ${{ secrets[steps.rc-key.outputs.name] }}
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
         run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} apk android-play
       - name: Build android (aab — the Google Play artifact)
@@ -184,7 +190,7 @@ jobs:
           RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          REVENUECAT_PUBLIC_KEY_GOOGLE: ${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
+          REVENUECAT_PUBLIC_KEY: ${{ secrets[steps.rc-key.outputs.name] }}
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
         run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} appbundle android-play
       # why: release.json reads each file's channel from its build's stamp, never from its extension; assert-release-json.mjs --static pairs --channel with the define of --build-step — docs/ci/build-platforms.md §channel-stamps.
@@ -708,13 +714,19 @@ jobs:
           set -euo pipefail
           security list-keychains -d user
           security find-identity -v "$APPLE_KEYCHAIN_PATH"
+      # why: the store SDK key is each app's own (O-BRICK-SELLS-NOTHING-IN-A-STORE): this prints the NAME of
+      # the app's secret (app.yaml billing.mobileIap.publicKeySecrets), never a value, and every build step
+      # below maps the key from it. assert-channel-register 6b-iii holds --app to the build's own app.
+      - name: Resolve the app's store SDK key secret (apple-iap)
+        id: rc-key
+        run: node tooling/ci/store-key-secret.mjs --app ${{ matrix.app }} --rail apple-iap >> "$GITHUB_OUTPUT"
       - name: Build macos
         id: build_macos
         env:
           RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          REVENUECAT_PUBLIC_KEY_APPLE: ${{ secrets.REVENUECAT_PUBLIC_KEY_APPLE }}
+          REVENUECAT_PUBLIC_KEY: ${{ secrets[steps.rc-key.outputs.name] }}
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
         run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} macos macos-appstore
       - name: The macOS bundle is signed by the identity this lane intended
@@ -747,7 +759,7 @@ jobs:
           RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          REVENUECAT_PUBLIC_KEY_APPLE: ${{ secrets.REVENUECAT_PUBLIC_KEY_APPLE }}
+          REVENUECAT_PUBLIC_KEY: ${{ secrets[steps.rc-key.outputs.name] }}
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
         run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} ipa ios-appstore
       # why: the unsigned proof below makes no .ipa, so only the signed posture stamps one — docs/ci/build-platforms.md §channel-stamps.
@@ -767,7 +779,7 @@ jobs:
           RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          REVENUECAT_PUBLIC_KEY_APPLE: ${{ secrets.REVENUECAT_PUBLIC_KEY_APPLE }}
+          REVENUECAT_PUBLIC_KEY: ${{ secrets[steps.rc-key.outputs.name] }}
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
         run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} ios ios-appstore
       # ⏱ MOVED 2026-09-07 (fix pass) — THIS STEP USED TO BE THE LAST ONE IN THE

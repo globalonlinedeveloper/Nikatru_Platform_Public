@@ -1516,16 +1516,6 @@
         "name": "PADDLE_NOTIFICATION_SECRET",
         "kind": "service-credential",
         "why": "Paddle's per-destination notification secret that services/platform's paddleVerifier (services/platform/src/lib/mor/paddle.ts, `secretEnvVar`) uses to check the Paddle-Signature HMAC on POST /v1/money/paddle. Same classification as REVENUECAT_WEBHOOK_SIGNING_SECRET, for the same reason: it authenticates the VENDOR to our Worker, never enters an artifact and signs nothing. It is a Worker secret, set with `wrangler secret put`, and no workflow names it. It had no row until 2026-09-24 because nothing required one: tooling/ci/assert-money-config.mjs now requires a row here for every registered rail's destination secret (O-RAZORPAY-CHECKOUT-ADAPTER), and this rail's was the one missing. PADDLE_API_KEY is a checkout credential rather than a destination secret, and gets its row with the checkout creators."
-      },
-      {
-        "name": "REVENUECAT_PUBLIC_KEY_GOOGLE",
-        "kind": "build-config",
-        "why": "RevenueCat's PUBLIC SDK key for the Play Store app (appa553a1e2c6), compiled into the android-play builds as `--dart-define=REVENUECAT_KEY` so the app can configure the store bridge. Public by construction — it ships inside every Play binary — and held as a repository secret only to keep it out of the public tree, which is the definition of build-config. `purchaseRails.storeKeyDefine` maps the `play-billing` rail to this name and assert-channel-register limb 6b-iii holds every Play build segment to it. NOT the webhook signing secret above, which authenticates the vendor to our Worker."
-      },
-      {
-        "name": "REVENUECAT_PUBLIC_KEY_APPLE",
-        "kind": "build-config",
-        "why": "RevenueCat's PUBLIC SDK key for the App Store app (app805d73cd44), compiled into the ios-appstore AND macos-appstore builds as `--dart-define=REVENUECAT_KEY` — one App Store Connect record and one RevenueCat app serve both platforms. Public by construction, held as a repository secret only to keep it out of the public tree. `purchaseRails.storeKeyDefine` maps the `apple-iap` rail to this name and assert-channel-register limb 6b-iii holds every Apple build segment to it."
       }
     ]
   },
@@ -1606,26 +1596,32 @@
         "app from `define` at compile time. A store build without it compiles an empty key and sells",
         "nothing (the facade answers `iapBridgeMissing`, fail-closed); a NON-store build with it links",
         "a key for a store it cannot reach. assert-channel-register limb 6b-iii reads THIS map: every",
-        "release `flutter build` segment stamped with a row whose rail is a key of `secretByRail` must",
-        "pass `--dart-define=<define>=${{ secrets.<mapped name> }}` with exactly that name, and every",
+        "release `flutter build` segment stamped with a row whose rail is a key of `secretFieldByRail` must",
+        "pass `--dart-define=<define>=${{ secrets[steps.<id>.outputs.name] }}`, its job holding step <id> that",
+        "runs tooling/ci/store-key-secret.mjs with the build's own app expression and that rail; every",
         "other segment — another rail, or unstamped (exempt or not) — must not name `define` at all.",
         "⏱ 2026-09-23: an EXEMPT build stamped with a store-rail row carries that row's key like any other;",
         "6b-iii grades the stamp before `releaseBuildsNeverShipped` is read, so a discarded build is built",
         "exactly as the shipped one it proves (ci.yml `android-artifacts`).",
         "`define` must also be a surface of `vendors.revenuecat` in tooling/capability-register.json.",
         "",
-        "⚠️ KEYED BY RAIL, SO IT HOLDS ONE OPTED-IN APP. A RevenueCat public key belongs to ONE RevenueCat",
-        "app, so a second app that declares `billing.mobileIap` would build with the first app's key and",
-        "pass. Limb 6b-iii exits 1 while more than one app.yaml declares `billing.mobileIap` and this map",
-        "is keyed by rail alone; the fix it names is to key the secret names per app.",
+        "⏱ O-BRICK-SELLS-NOTHING-IN-A-STORE (12a): KEYED BY APP, NOT BY RAIL. A RevenueCat public key belongs",
+        "to ONE RevenueCat app, so the secret NAME is each app's own: apps/<id>/app.yaml",
+        "`billing.mobileIap.publicKeySecrets.<field>`, and `secretFieldByRail` says which field a rail reads.",
+        "The composer (tooling/ci/flutter-release-build.mjs) passes the define from `$<env>`, and each store",
+        "build step maps `<env>` from the resolver step's output. The rail-keyed map this replaced held one",
+        "opted-in app, and 6b-iii's \"more than one app\" refusal retired with it. The names are declared",
+        "by that rule, not by rows: every name in any app.yaml `publicKeySecrets` is a non-signing",
+        "build-config secret (assert-channel-register [9]R-3).",
         "",
         "macos-appstore takes the APPLE key: one App Store Connect record and one RevenueCat app",
         "(app805d73cd44) serve iOS and macOS (measured 2026-09-22, RevenueCat API v2 apps list)."
       ],
       "define": "REVENUECAT_KEY",
-      "secretByRail": {
-        "play-billing": "REVENUECAT_PUBLIC_KEY_GOOGLE",
-        "apple-iap": "REVENUECAT_PUBLIC_KEY_APPLE"
+      "env": "REVENUECAT_PUBLIC_KEY",
+      "secretFieldByRail": {
+        "play-billing": "android",
+        "apple-iap": "ios"
       }
     },
     "regionRailsRequiredOn": [

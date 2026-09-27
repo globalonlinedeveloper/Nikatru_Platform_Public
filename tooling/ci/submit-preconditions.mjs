@@ -37,6 +37,10 @@
  *  declared, together with that reader learning a second tree. */
 export const IAP_REVIEW_CHANNELS = ['ios-appstore'];
 
+/** ⏱ O-BRICK-SELLS-NOTHING-IN-A-STORE (12a) — the store-billing channels, where an app sells through
+ *  RevenueCat. assert-app-yaml --for-submission refuses a `billing.mobileIap` still `state: pending` on each. */
+export const IAP_STORE_CHANNELS = ['android-play', 'ios-appstore', 'macos-appstore'];
+
 /** A row a lane submits: it names the workflow that carries its submission. */
 export const submits = (row) => typeof row?.submission?.workflow === 'string' && row.submission.workflow.trim() !== '';
 
@@ -117,5 +121,14 @@ export const SUBMIT_PRECONDITIONS = [
     appliesTo: (row, register) =>
       submits(row) && (swornFilesOf(register, row.id).length > 0 || Object.hasOwn(DECLARATION_ONLY_CHANNELS, row.id)),
     realFlag: REAL_SUBMISSION_FLAG,
+  },
+  // ⏱ 12a — a paywall that cannot buy is an incomplete app in review: an app whose
+  // billing.mobileIap is still pending (no RevenueCat apps) builds, and is never submitted
+  // (O-BRICK-SELLS-NOTHING-IN-A-STORE). An app with no mobile IAP passes it.
+  {
+    guard: 'tooling/ci/assert-app-yaml.mjs',
+    arg: (row) => `--for-submission=${row.id}`,
+    channels: IAP_STORE_CHANNELS,
+    appliesTo: (row) => submits(row) && IAP_STORE_CHANNELS.includes(row.id),
   },
 ];

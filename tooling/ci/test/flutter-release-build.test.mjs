@@ -54,12 +54,12 @@ describe('the composition, one decision per case', () => {
       '--dart-define=API_BASE_URL=https://fixture-api.nikatru.com',
       '--dart-define=APP_VERSION=$RELEASE_LINE.$GITHUB_RUN_NUMBER+${GITHUB_SHA::7}',
       '--dart-define=RELEASE_CHANNEL=android-play',
-      '--dart-define=REVENUECAT_KEY=$REVENUECAT_PUBLIC_KEY_GOOGLE',
+      '--dart-define=REVENUECAT_KEY=$REVENUECAT_PUBLIC_KEY',
       '--dart-define=GLITCHTIP_DSN=$GLITCHTIP_DSN',
     ]);
     assert.equal(c.symbolsDir, 'build/symbols/android-aab');
     assert.deepEqual(c.env, [
-      'RELEASE_LINE', 'GITHUB_RUN_NUMBER', 'SUPABASE_URL', 'SUPABASE_ANON_KEY', 'GITHUB_SHA', 'REVENUECAT_PUBLIC_KEY_GOOGLE', 'GLITCHTIP_DSN',
+      'RELEASE_LINE', 'GITHUB_RUN_NUMBER', 'SUPABASE_URL', 'SUPABASE_ANON_KEY', 'GITHUB_SHA', 'REVENUECAT_PUBLIC_KEY', 'GLITCHTIP_DSN',
     ]);
   });
 
@@ -74,7 +74,7 @@ describe('the composition, one decision per case', () => {
       '--dart-define=API_BASE_URL=',
       '--dart-define=APP_VERSION=$RELEASE_LINE.$GITHUB_RUN_NUMBER+pr',
       '--dart-define=RELEASE_CHANNEL=android-play',
-      '--dart-define=REVENUECAT_KEY=$REVENUECAT_PUBLIC_KEY_GOOGLE',
+      '--dart-define=REVENUECAT_KEY=$REVENUECAT_PUBLIC_KEY',
       '--dart-define=GLITCHTIP_DSN=',
     ]);
     assert.ok(!c.env.includes('SUPABASE_URL'), 'a blanked define reads no env var');
@@ -94,7 +94,7 @@ describe('the composition, one decision per case', () => {
       'build', 'ipa', '--release', '--export-options-plist', '$APPLE_EXPORT_OPTIONS_PLIST',
       '--obfuscate', '--split-debug-info=build/symbols/ios',
     ]);
-    assert.ok(c.argv.includes('--dart-define=REVENUECAT_KEY=$REVENUECAT_PUBLIC_KEY_APPLE'));
+    assert.ok(c.argv.includes('--dart-define=REVENUECAT_KEY=$REVENUECAT_PUBLIC_KEY'));
     assert.ok(c.env.includes('APPLE_EXPORT_OPTIONS_PLIST'));
   });
 
@@ -231,7 +231,7 @@ describe('the CLI', () => {
     );
     const r = run(['fixture', 'appbundle', 'android-play'], env);
     assert.equal(r.status, 1);
-    assert.match(r.stderr, /^FAIL the environment does not set RELEASE_LINE, GITHUB_RUN_NUMBER, SUPABASE_URL, SUPABASE_ANON_KEY, GITHUB_SHA, REVENUECAT_PUBLIC_KEY_GOOGLE, GLITCHTIP_DSN;/);
+    assert.match(r.stderr, /^FAIL the environment does not set RELEASE_LINE, GITHUB_RUN_NUMBER, SUPABASE_URL, SUPABASE_ANON_KEY, GITHUB_SHA, REVENUECAT_PUBLIC_KEY, GLITCHTIP_DSN;/);
   });
 });
 
@@ -262,7 +262,7 @@ const STEP_ENV = [
   '          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}',
   '          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}',
   '          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}',
-  '          REVENUECAT_PUBLIC_KEY_GOOGLE: ${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}',
+  '          REVENUECAT_PUBLIC_KEY: ${{ secrets[steps.rc-key.outputs.name] }}',
   '          GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}',
 ];
 
@@ -289,7 +289,7 @@ const LITERAL =
   ' --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}' +
   ' --dart-define=API_BASE_URL=https://fixture-api.nikatru.com' +
   ' --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${GITHUB_SHA::7}' +
-  ' --dart-define=RELEASE_CHANNEL=android-play --dart-define=REVENUECAT_KEY=${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}' +
+  ' --dart-define=RELEASE_CHANNEL=android-play --dart-define=REVENUECAT_KEY=${{ secrets[steps.rc-key.outputs.name] }}' +
   ' --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}';
 const CALL = 'node tooling/ci/flutter-release-build.mjs fixture appbundle android-play';
 

@@ -155,9 +155,22 @@ billing:
   mobileIap:
     provider: revenuecat
     entitlementId: pro
+    # O-BRICK-SELLS-NOTHING-IN-A-STORE (12a): live — both RevenueCat apps exist, so their ids route events.
+    state: live
     revenuecatAppIds:
       android: appa553a1e2c6
       ios: app805d73cd44
+    # The NAMES of the repository secrets holding the RevenueCat PUBLIC SDK keys (never a value; never renamed).
+    publicKeySecrets:
+      android: REVENUECAT_PUBLIC_KEY_GOOGLE
+      ios: REVENUECAT_PUBLIC_KEY_APPLE
+    # The live subscription products, read back from App Store Connect, Play Console and RevenueCat
+    # on 2026-09-26 (owner step O-B4, answered by measurement). One id per plan on both stores.
+    storeProducts:
+      - plan: single-monthly
+        productId: pro_monthly
+      - plan: single-yearly
+        productId: pro_yearly
 
 # Keyed by tooling/channel-register.json's `storefrontKey`. `web` is derived
 # from hosts.web and is refused here. Every other key is absent until a store

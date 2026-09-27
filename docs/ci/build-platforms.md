@@ -1577,6 +1577,13 @@ in `ci-gate`'s `needs`. The overlay above gets its first build proof on a pull r
   `pull_request`, so a fork's pull request gets an empty value; its build is discarded like every
   other. The apps.gov.in `.apk` passes no key, as here. The register's `storeKeyDefine` rule text
   now says an exempt build stamped with a store-rail channel still carries its key.
+  ⏱ 2026-09-26 (O-BRICK-SELLS-NOTHING-IN-A-STORE, 12a): the key is each app's own. Every store-key
+  job first runs `tooling/ci/store-key-secret.mjs --app <the job's app> --rail <rail>` as step
+  `rc-key`, which prints the NAME of the app's secret (`app.yaml`
+  `billing.mobileIap.publicKeySecrets`), and each build step maps
+  `REVENUECAT_PUBLIC_KEY: ${{ secrets[steps.rc-key.outputs.name] }}`; the composer passes the define
+  from that variable. `android-artifacts` also runs one proof step that prints the name and
+  "non-empty" (RC-CI), skipped on a fork's pull request.
 - **What reads the artifacts, and what stays on main.**
 
   | guard | on the PR | why |

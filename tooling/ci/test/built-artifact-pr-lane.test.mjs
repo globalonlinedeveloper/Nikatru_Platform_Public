@@ -350,16 +350,18 @@ test('T4l: a Linux build changed in linux_web_android alone turns the PR lane re
 
 // ── T5 (R-KEY A) ─────────────────────────────────────────────────────────────
 // The allowed set is DERIVED from the register: a build whose stamp's channel
-// sells through a rail in purchaseRails.storeKeyDefine.secretByRail may pass that
-// rail's secret, and only as the storeKeyDefine define, on that build's own line.
-// Any other secret on any line of any PR-lane job is a finding. The web and Linux
-// channels sell through no store rail, so their jobs may reference no secret.
+// sells through a rail in purchaseRails.storeKeyDefine.secretFieldByRail maps the
+// register's `env` from the resolver's output, `${{ secrets[steps.rc-key.outputs.name] }}`,
+// on that build's own step (⏱ 12a, O-BRICK-SELLS-NOTHING-IN-A-STORE: the key is each
+// app's own); the RC-CI proof step in android-artifacts reads the same expression once.
+// Any other secret read on any line of any PR-lane job, literal or indexed, is a finding.
+// The web and Linux channels sell through no store rail, so their jobs may read no secret.
 test('the PR lane references only the secret the register maps for its store-rail stamps', () => {
   const register = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
   const storeKey = register?.purchaseRails?.storeKeyDefine;
   assert.ok(
-    typeof storeKey?.define === 'string' && storeKey?.secretByRail && typeof storeKey.secretByRail === 'object',
-    'tooling/channel-register.json purchaseRails.storeKeyDefine has no `define` and `secretByRail` to derive the allowed secret from',
+    typeof storeKey?.define === 'string' && typeof storeKey?.env === 'string' && storeKey?.secretFieldByRail && typeof storeKey.secretFieldByRail === 'object',
+    'tooling/channel-register.json purchaseRails.storeKeyDefine has no `define`, `env` and `secretFieldByRail` to derive the allowed read from',
   );
   const channels = Array.isArray(register.channels) ? register.channels : [];
   const railOf = (stamp) => channels.find((c) => c?.id === stamp)?.purchaseRail?.rail ?? null;
@@ -370,20 +372,26 @@ test('the PR lane references only the secret the register maps for its store-rai
     const steps = workflowSteps(job);
     const allowed = new Map();
     for (const b of buildsOf(PR_WORKFLOW, name, null)) {
-      const secret = storeKey.secretByRail[railOf(b.stamp)];
-      if (typeof secret !== 'string') continue;
+      if (!Object.hasOwn(storeKey.secretFieldByRail, railOf(b.stamp) ?? '')) continue;
       const step = steps.find((s) => s.run?.n === b.runLine);
       assert.ok(step, `${PR_WORKFLOW}:${b.runLine} — no step holds this build's run line`);
       // A typed build names the secret on its define line; a composer call names it
       // once, in its step's env, and the composer passes it as that define
       // (⏱ 2026-09-26, O-FLUTTER-BUILD-TYPED-PER-LINE part 3 of 3).
-      const tokens = [`--dart-define=${storeKey.define}=\${{ secrets.${secret} }}`, `${secret}: \${{ secrets.${secret} }}`];
+      const tokens = [`${storeKey.env}: \${{ secrets[steps.rc-key.outputs.name] }}`];
       for (const l of job.lines) {
         if (l.n >= step.first && l.n <= step.last && tokens.includes(l.text.trim())) allowed.set(l.n, l.text.trim());
       }
     }
+    if (name === PR_JOB) {
+      const proof = steps.find((s) => s.name === "The app's store SDK key resolves by name (prints the name only)");
+      assert.ok(proof, `${PR_WORKFLOW} job ${PR_JOB} has no RC-CI proof step`);
+      for (const l of job.lines) {
+        if (l.n >= proof.first && l.n <= proof.last && l.text.trim() === 'RC_KEY: ${{ secrets[steps.rc-key.outputs.name] }}') allowed.set(l.n, l.text.trim());
+      }
+    }
     for (const l of job.lines) {
-      if (!/\$\{\{\s*secrets\./.test(l.text)) continue;
+      if (!/\$\{\{\s*secrets\s*[.[]/.test(l.text)) continue;
       if (allowed.get(l.n) === l.text.trim()) continue;
       findings.push(`${PR_WORKFLOW}:${l.n} (${name}) ${l.text.trim()}`);
     }

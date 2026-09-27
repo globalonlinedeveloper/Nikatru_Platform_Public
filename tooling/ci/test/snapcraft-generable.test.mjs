@@ -200,7 +200,7 @@ function tree({
     ],
   };
   if (buildsLinux === 'composer') {
-    register.purchaseRails = { storeKeyDefine: { define: 'STORE_KEY', secretByRail: {} } };
+    register.purchaseRails = { storeKeyDefine: { define: 'STORE_KEY', secretFieldByRail: {} } };
     write('apps/subscriptiontracker/app.yaml', 'id: subscriptiontracker\n');
   }
   if (mutateRegister) mutateRegister(register);

@@ -2323,6 +2323,11 @@
       "firstSeen": "2026-09-24",
       "evidence": []
     },
+    "tooling/ci/store-key-secret.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-27",
+      "evidence": []
+    },
     "tooling/ci/submit-preconditions.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-25",

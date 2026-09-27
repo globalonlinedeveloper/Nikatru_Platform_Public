@@ -178,7 +178,7 @@
       "items": { "type": "string", "minLength": 2 }
     },
     "billing": {
-      "description": "OPTIONAL. Present only for an app that sells through a STORE billing rail on mobile — [ADR 067] decision 7, [ADR 039] D2/D3/D5. Absent means the app sells through the merchant-of-record hosted checkout on the channels that permit it and sells nothing on Play or the App Store, which is [ADR 059] shape A and is true of every app today. Declaring it is an OPT-IN with consequences a guard holds: tooling/ci/assert-app-yaml.mjs limb 6 requires the app's pubspec to depend on nikatru_billing_revenuecat, its store/android-play/data-safety.json to swear Purchase history, and its store/ios-appstore/privacy-manifest.json to carry the SDK's rows — and requires the reverse, so the dependency cannot arrive without the declaration either.",
+      "description": "OPTIONAL. Present only for an app that sells through a STORE billing rail on mobile — [ADR 067] decision 7, [ADR 039] D2/D3/D5. Absent means the app sells through the merchant-of-record hosted checkout on the channels that permit it and sells nothing on Play or the App Store, which is [ADR 059] shape A. ⏱ O-BRICK-SELLS-NOTHING-IN-A-STORE (12a): the declaration can be `state: pending` before the owner creates the app's RevenueCat apps, so an app can opt in before it can sell. Declaring it is an OPT-IN with consequences a guard holds: tooling/ci/assert-app-yaml.mjs limb 6 requires the app's pubspec to depend on nikatru_billing_revenuecat, its store/android-play/data-safety.json to swear Purchase history, and its store/ios-appstore/privacy-manifest.json to carry the SDK's rows — and requires the reverse, so the dependency cannot arrive without the declaration either.",
       "type": "object",
       "additionalProperties": false,
       "required": ["mobileIap"],
@@ -187,7 +187,7 @@
           "description": "The store IAP configuration. Holds NO SECRET: the RevenueCat app ids below are public identifiers, and the SDK's public key is supplied at runtime by the app rather than written here — a key in a declaration is a key in git.",
           "type": "object",
           "additionalProperties": false,
-          "required": ["provider", "entitlementId", "revenuecatAppIds"],
+          "required": ["provider", "entitlementId", "state", "publicKeySecrets", "storeProducts"],
           "properties": {
             "provider": {
               "description": "The IAP provider. One value today, and an enum rather than a free string so a second provider is a schema change somebody reviews rather than a typo that reads as adoption.",
@@ -210,8 +210,49 @@
                 "android": { "type": "string", "minLength": 4, "maxLength": 64 },
                 "ios": { "type": "string", "minLength": 4, "maxLength": 64 }
               }
+            },
+            "state": {
+              "description": "O-BRICK-SELLS-NOTHING-IN-A-STORE (12a). `live`: the owner created the app's two RevenueCat apps, so `revenuecatAppIds` is REQUIRED and routes its events (render.mjs renders them into revenuecat-app-ids.ts). `pending`: nothing is created yet, so `revenuecatAppIds` must be ABSENT — never a placeholder, because a fake id would render into that routing map. A pending app builds keyless and fail-closed, and is never submitted to a store (assert-app-yaml --for-submission).",
+              "type": "string",
+              "enum": ["pending", "live"]
+            },
+            "publicKeySecrets": {
+              "description": "The NAMES of the two repository secrets that hold this app's RevenueCat PUBLIC SDK keys, one per store. A name, never a value (this block holds no secret). Store builds resolve the name for the job's app through tooling/ci/store-key-secret.mjs, and channel-register `purchaseRails.storeKeyDefine.secretFieldByRail` says which field a rail reads. A name is one app's: render.mjs refuses one name in two apps, because a RevenueCat key belongs to ONE RevenueCat app.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["android", "ios"],
+              "properties": {
+                "android": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$", "maxLength": 100 },
+                "ios": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$", "maxLength": 100 }
+              }
+            },
+            "storeProducts": {
+              "description": "The store subscription products this app sells in-app: one per plan, and the SAME developer-chosen product id on Play and the App Store ([ADR 093] §2). `plan` has no lifetime: [ADR 093] §2 never sells it in-app. render.mjs refuses a plan listed twice and, at `live`, a plan missing.",
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["plan", "productId"],
+                "properties": {
+                  "plan": { "type": "string", "enum": ["single-monthly", "single-yearly"] },
+                  "productId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.]*$", "maxLength": 100 }
+                }
+              }
             }
-          }
+          },
+          "anyOf": [
+            {
+              "description": "live: the RevenueCat apps exist, so their ids are declared.",
+              "properties": { "state": { "const": "live" } },
+              "required": ["revenuecatAppIds"]
+            },
+            {
+              "description": "pending: nothing is issued yet, so no RevenueCat app id is declared.",
+              "properties": { "state": { "const": "pending" }, "provider": {}, "entitlementId": {}, "publicKeySecrets": {}, "storeProducts": {} },
+              "additionalProperties": false
+            }
+          ]
         }
       }
     },

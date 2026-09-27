@@ -570,7 +570,8 @@ function tree({
       },
       storeKeyDefine: {
         define: 'REVENUECAT_KEY',
-        secretByRail: { 'play-billing': 'REVENUECAT_PUBLIC_KEY_GOOGLE', 'apple-iap': 'REVENUECAT_PUBLIC_KEY_APPLE' },
+        env: 'REVENUECAT_PUBLIC_KEY',
+        secretFieldByRail: { 'play-billing': 'android', 'apple-iap': 'ios' },
       },
     },
     disqualified: [
@@ -1915,16 +1916,22 @@ describe('assert-channel-register — every release build declares its channel (
 // is an `appbundle` in the `windows` job on purpose, so a guard keyed on the job
 // or the target instead of the stamp cannot pass these cases.
 // ─────────────────────────────────────────────────────────────────────────────
-describe('assert-channel-register — a store-rail build carries its store SDK key, nothing else does (6b-iii)', () => {
+describe('assert-channel-register — a store-rail build carries its OWN app\'s store SDK key, nothing else does (6b-iii)', () => {
   const GOOGLE = 'REVENUECAT_PUBLIC_KEY_GOOGLE';
   const APPLE = 'REVENUECAT_PUBLIC_KEY_APPLE';
   const CI = '.github/workflows/ci.yml';
   const keyDefine = (secret) => '--dart-define=REVENUECAT_KEY=${{ secrets.' + secret + ' }}';
+  // ⏱ 12a (O-BRICK-SELLS-NOTHING-IN-A-STORE): the key is read by index from the resolver step's output.
+  const INDEXED = (id = 'rc-key') => '--dart-define=REVENUECAT_KEY=${{ secrets[steps.' + id + '.outputs.name] }}';
   const playBuild = (extra = '') =>
     `flutter build appbundle --release --dart-define=RELEASE_CHANNEL=android-play${extra ? ` ${extra}` : ''}`;
+  /** The windows job's steps: the resolver (id rc-key), then the Play build in apps/one. The fixture's
+   *  build is a typed line, so its app expression is its working-directory, `one`. */
+  const resolved = ({ app = 'one', rail = 'play-billing', id = 'rc-key', define = INDEXED(), resolver = 'node tooling/ci/store-key-secret.mjs' } = {}) =>
+    `${resolver} --app ${app} --rail ${rail} >> "$GITHUB_OUTPUT"\n        id: ${id}\n      - working-directory: apps/one\n        run: ${playBuild(define)}`;
   const rail = (id) => ({ rail: id, why: 'fixture rail', forbids: [], forbidsWhy: 'fixture', source: 'fixture' });
   /** Rails on every row, plus the two key names declared non-signing so section
-   *  8 has nothing to say — a red result here can only be 6b-iii. */
+   *  8 has nothing to say about a literal read — a red result here can only be 6b-iii. */
   const withRails =
     (extra = () => {}) =>
     (r) => {
@@ -1944,12 +1951,10 @@ describe('assert-channel-register — a store-rail build carries its store SDK k
   const storeTree = (opts = {}, extra) => tree({ withAndroid: true, mutate: withRails(extra), ...opts });
   const iapYaml = ['billing:', '  mobileIap:', '    provider: revenuecat', ''].join(NL);
 
-  test('POSITIVE CONTROL — the Play build carries the mapped key, the web build carries none, one app opts in', () => {
-    const { code, out } = run(
-      storeTree({ windowsRun: playBuild(keyDefine(GOOGLE)), extraFiles: { 'apps/one/app.yaml': iapYaml } }),
-    );
+  test('POSITIVE CONTROL — the Play build carries its app\'s resolved key, the web build carries none', () => {
+    const { code, out } = run(storeTree({ windowsRun: resolved(), extraFiles: { 'apps/one/app.yaml': iapYaml } }));
     assert.equal(code, 0, out);
-    assert.match(out, /6b-iii store SDK key — 1 store-rail release segment\(s\) pass --dart-define=REVENUECAT_KEY from the mapped secret \(play-billing: 1, apple-iap: 0\); 1 other release segment\(s\) name it nowhere; 1 app\(s\) declare billing\.mobileIap/);
+    assert.match(out, /6b-iii store SDK key — 1 store-rail release segment\(s\) pass --dart-define=REVENUECAT_KEY from their own app's resolved secret, each through a tooling\/ci\/store-key-secret\.mjs step with the build's app and rail \(play-billing: 1, apple-iap: 0\); 1 other release segment\(s\) name it nowhere; 1 app\(s\) declare billing\.mobileIap/);
   });
 
   test('(1) FAILS a play-billing-stamped build WITHOUT the define, naming file, job, line, channel, rail and the expected text', () => {
@@ -1957,28 +1962,48 @@ describe('assert-channel-register — a store-rail build carries its store SDK k
     assert.equal(code, 1, out);
     assert.match(
       out,
-      // ⏱ 2026-09-23 (re-cut onto the census): the location is 6b-ii's `buildAt` —
-      // `file:line (job "…", \`flutter build <target>\`)` — so both limbs name a build the same way.
-      /build-platforms\.yml:\d+ \(job "windows", `flutter build appbundle`\) for channel "android-play" \(rail "play-billing"\) passes no REVENUECAT_KEY\. Expected: --dart-define=REVENUECAT_KEY=\$\{\{ secrets\.REVENUECAT_PUBLIC_KEY_GOOGLE \}\}/,
+      /build-platforms\.yml:\d+ \(job "windows", `flutter build appbundle`\) for channel "android-play" \(rail "play-billing"\) passes no REVENUECAT_KEY\. Expected: --dart-define=REVENUECAT_KEY=\$\{\{ secrets\[steps\.<id>\.outputs\.name\] \}\}/,
     );
+  });
+
+  test('🔴 RC2 · FAILS a store build that passes the key from a LITERAL secret — one app\'s key for every app', () => {
+    const { code, out } = run(storeTree({ windowsRun: playBuild(keyDefine(GOOGLE)) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /for channel "android-play" \(rail "play-billing"\) passes REVENUECAT_KEY from the literal secret REVENUECAT_PUBLIC_KEY_GOOGLE\. The key is each app's own/);
+  });
+
+  test('🔴 RC3 · FAILS when the resolver step resolves ANOTHER app than the build\'s', () => {
+    const { code, out } = run(storeTree({ windowsRun: resolved({ app: 'two' }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /step "rc-key" resolves --app two, and this build is of one\. The key would be another app's/);
+  });
+
+  test('FAILS when the resolver step resolves the OTHER store\'s rail', () => {
+    const { code, out } = run(storeTree({ windowsRun: resolved({ rail: 'apple-iap' }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /step "rc-key" resolves --rail apple-iap, and this build is stamped rail "play-billing"/);
+  });
+
+  test('FAILS when the define reads a step id the job does not have', () => {
+    const { code, out } = run(storeTree({ windowsRun: resolved({ define: INDEXED('rc-other') }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /reads secrets\[steps\.rc-other\.outputs\.name\], and job "windows" has no step with id "rc-other"/);
+  });
+
+  test('FAILS when the step it names is not the resolver — and [9]R-3 refuses the computed name there', () => {
+    const { code, out } = run(storeTree({ windowsRun: resolved({ resolver: 'node tooling/ci/some-other.mjs' }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /step "rc-key" does not run tooling\/ci\/store-key-secret\.mjs/);
+    assert.match(out, /names a secret by EXPRESSION \(`secrets\[steps\.rc-key\.outputs\.name\]`\)/);
   });
 
   test('(2) FAILS a paddle (web) build that carries the define', () => {
     const { code, out } = run(
-      storeTree({ windowsRun: playBuild(keyDefine(GOOGLE)), laneBuilds: `flutter build web --release ${keyDefine(GOOGLE)}` }),
+      storeTree({ windowsRun: resolved(), laneBuilds: `flutter build web --release ${keyDefine(GOOGLE)}` }),
     );
     assert.equal(code, 1, out);
     assert.match(out, /deploy-web\.yml:\d+ \(job "deploy-web", `flutter build web`\) is stamped "web", whose rail is "paddle"[^\n]*names REVENUECAT_KEY/);
     assert.match(out, /Expected: no REVENUECAT_KEY at all in this segment/);
-  });
-
-  test('(2b) FAILS a play-billing build compiled with the APPLE key', () => {
-    const { code, out } = run(storeTree({ windowsRun: playBuild(keyDefine(APPLE)) }));
-    assert.equal(code, 1, out);
-    assert.match(
-      out,
-      /\(job "windows", `flutter build appbundle`\) for channel "android-play" \(rail "play-billing"\) names REVENUECAT_KEY 1 time\(s\) from secret\(s\) REVENUECAT_PUBLIC_KEY_APPLE\. Expected exactly: --dart-define=REVENUECAT_KEY=\$\{\{ secrets\.REVENUECAT_PUBLIC_KEY_GOOGLE \}\}/,
-    );
   });
 
   test('FAILS a key on a build whose STAMP resolves to rail `none` — the artifact type decides nothing', () => {
@@ -1994,41 +2019,45 @@ describe('assert-channel-register — a store-rail build carries its store SDK k
 
   test('FAILS a key on a declared-EXEMPT (unstamped) build', () => {
     const ci = ['name: CI', 'on:', '  push:', 'jobs:', '  app-brick:', '    runs-on: ubuntu-24.04', '    steps:', `      - run: flutter build web ${keyDefine(GOOGLE)}`, ''].join(NL);
-    const { code, out } = run(storeTree({ windowsRun: playBuild(keyDefine(GOOGLE)), extraFiles: { [CI]: ci } }));
+    const { code, out } = run(storeTree({ windowsRun: resolved(), extraFiles: { [CI]: ci } }));
     assert.equal(code, 1, out);
     assert.match(out, /ci\.yml:\d+ \(job "app-brick", `flutter build web`\) is a declared `releaseBuildsNeverShipped` build[^\n]*names REVENUECAT_KEY/);
   });
 
-  test('(two-apps) FAILS while TWO app.yaml files declare billing.mobileIap and the map is keyed by rail', () => {
+  test('(two-apps) PASSES now: the key is keyed by app, so the "more than one app" refusal retired with the rail map', () => {
     const { code, out } = run(
       storeTree({
-        windowsRun: playBuild(keyDefine(GOOGLE)),
+        windowsRun: resolved(),
         extraFiles: { 'apps/one/app.yaml': iapYaml, 'apps/two/app.yaml': iapYaml },
       }),
     );
-    assert.equal(code, 1, out);
-    assert.match(out, /2 apps declare `billing\.mobileIap` \(apps\/one\/app\.yaml, apps\/two\/app\.yaml\)/);
-    assert.match(out, /key the secret names per app/);
+    assert.equal(code, 0, out);
+    assert.match(out, /2 app\(s\) declare billing\.mobileIap/);
+    assert.doesNotMatch(out, /key the secret names per app/);
   });
 
   test('FAILS when the define is not a RevenueCat surface in the capability register', () => {
-    const { code, out } = run(storeTree({ windowsRun: playBuild(keyDefine(GOOGLE)), revenuecatSurfaces: ['SOMETHING_ELSE'] }));
+    const { code, out } = run(storeTree({ windowsRun: resolved(), revenuecatSurfaces: ['SOMETHING_ELSE'] }));
     assert.equal(code, 1, out);
     assert.match(out, /`vendors\.revenuecat\.surfaces` does not list it/);
   });
 
-  test('COVERAGE LOST (exit 2) when storeKeyDefine is missing, or keys a rail the dictionary does not declare', () => {
-    const gone = run(storeTree({ windowsRun: playBuild(keyDefine(GOOGLE)) }, (r) => { delete r.purchaseRails.storeKeyDefine; }));
+  test('COVERAGE LOST (exit 2) when storeKeyDefine is missing, keys a rail the dictionary does not declare, or names no env', () => {
+    const gone = run(storeTree({ windowsRun: resolved() }, (r) => { delete r.purchaseRails.storeKeyDefine; }));
     assert.equal(gone.code, 2, gone.out);
     assert.match(gone.out, /FAIL COVERAGE LOST — tooling\/channel-register\.json `purchaseRails\.storeKeyDefine` is missing or malformed/);
 
     const typo = run(
-      storeTree({ windowsRun: playBuild(keyDefine(GOOGLE)) }, (r) => {
-        r.purchaseRails.storeKeyDefine.secretByRail = { 'play-biling': GOOGLE };
+      storeTree({ windowsRun: resolved() }, (r) => {
+        r.purchaseRails.storeKeyDefine.secretFieldByRail = { 'play-biling': 'android' };
       }),
     );
     assert.equal(typo.code, 2, typo.out);
     assert.match(typo.out, /keys rail "play-biling", which `purchaseRails\.rails` does not declare/);
+
+    const noEnv = run(storeTree({ windowsRun: resolved() }, (r) => { delete r.purchaseRails.storeKeyDefine.env; }));
+    assert.equal(noEnv.code, 2, noEnv.out);
+    assert.match(noEnv.out, /`purchaseRails\.storeKeyDefine\.env` is undefined, not an environment variable name/);
   });
 });
 

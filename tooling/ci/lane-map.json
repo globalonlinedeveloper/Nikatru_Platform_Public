@@ -155,6 +155,7 @@
       "tooling/ci/channel-arming.mjs",
       "tooling/ci/apple-signing.mjs",
       "tooling/ci/gen-ci-map.mjs",
+      "tooling/ci/store-key-secret.mjs",
       "tooling/ci/bounded-spawn.mjs",
       "tooling/ci/apple-provisioning.mjs",
       "tooling/ci/signing-seam.mjs",
@@ -216,6 +217,7 @@
       "tooling/ci/apple-provisioning.mjs",
       "tooling/ci/read-identity.mjs",
       "tooling/store/store-record.mjs",
+      "tooling/ci/store-key-secret.mjs",
       "tooling/wrangler/**",
       ".github/workflows/deploy-web.yml"
     ],

@@ -15,7 +15,9 @@
 // workflow reader) and nothing else:
 //
 //   docs/ci/README.md                  lane-map   ci.yml's jobs and ci-gate's needs (§3)
-//                                      secrets    every `secrets.NAME` a workflow reads (§6)
+//                                      secrets    every `secrets.NAME` a workflow reads (§6),
+//                                                 and every store SDK key name it reads by
+//                                                 index through store-key-secret.mjs (12a)
 //                                      actions    every action a workflow or a composite
 //                                                 action under .github/actions uses (§7)
 //                                      workflows  one row per workflow, with its page (§9)
@@ -73,7 +75,9 @@ import {
   workflowEvents,
   releaseTrigger,
   resolveLocalCalls,
+  workflowSteps,
 } from './workflow-scan.mjs';
+import { storeKeySecretName } from './store-key-secret.mjs';
 
 export const TOOL = 'gen-ci-map';
 export const COMMAND = 'node tooling/ci/gen-ci-map.mjs';
@@ -158,7 +162,58 @@ export function readTree(root) {
   const ci = workflows.find((w) => w.rel === CI_REL) ?? null;
   if (workflows.length > 0 && ci === null) lost.push(`${CI_REL} does not exist, so the lane map has no source`);
   if (ci !== null && !ci.jobs.has(AGGREGATE_JOB)) lost.push(`${CI_REL} has no \`${AGGREGATE_JOB}\` job, so no job can be said to be in its needs`);
-  return { lost, workflows, actions: parseAllActions(root), ci };
+  const storeKeys = storeKeyReads(root, workflows);
+  lost.push(...storeKeys.lost);
+  return { lost, workflows, actions: parseAllActions(root), ci, storeKeys };
+}
+
+/** ⏱ O-BRICK-SELLS-NOTHING-IN-A-STORE (12a, NP12A-F2). A store build reads its RevenueCat key
+ *  by INDEX, `secrets[steps.<id>.outputs.name]`, where step <id> of the SAME job runs
+ *  tooling/ci/store-key-secret.mjs --rail <rail>. The names that index can take are each app's
+ *  app.yaml `billing.mobileIap.publicKeySecrets.<the field the register keys for that rail>`,
+ *  resolved by store-key-secret.mjs's own storeKeySecretName and never read again here. So the
+ *  workflow reads each of them, and the `secrets` block lists it there: a table that dropped
+ *  them would tell the owner a live key secret is read by nothing.
+ *  → { byName: Map NAME → Set<workflow file>, lost: [why] }. An app whose declaration cannot be
+ *  resolved on a rail a workflow reads is COVERAGE LOST, never a shorter table; an app with no
+ *  `billing.mobileIap` has no key on any rail, and is not a read. */
+const RESOLVER_RUN = /(?:^|\s)node\s+(?:\S*\/)?tooling\/ci\/store-key-secret\.mjs(?=\s|$)(.*)$/;
+const INDEXED_READ = /secrets\[\s*steps\.([A-Za-z_][A-Za-z0-9_-]*)\.outputs\.name\s*\]/g;
+export function storeKeyReads(root, workflows) {
+  const readsByRail = new Map();
+  for (const wf of workflows) {
+    for (const job of wf.jobs?.values() ?? []) {
+      const railById = new Map();
+      for (const s of workflowSteps(job)) {
+        const call = s.id ? RESOLVER_RUN.exec(String(s.run?.text ?? '')) : null;
+        const rail = call ? /--rail\s+([A-Za-z0-9_-]+)/.exec(call[1])?.[1] : undefined;
+        if (rail) railById.set(s.id, rail);
+      }
+      for (const l of job.lines) {
+        for (const m of l.text.matchAll(INDEXED_READ)) {
+          const rail = railById.get(m[1]);
+          if (!rail) continue;
+          if (!readsByRail.has(rail)) readsByRail.set(rail, new Set());
+          readsByRail.get(rail).add(fileOf(wf.rel));
+        }
+      }
+    }
+  }
+  const byName = new Map();
+  const lost = [];
+  if (readsByRail.size === 0) return { byName, lost };
+  const appsDir = join(root, 'apps');
+  const apps = existsSync(appsDir) ? listDir(appsDir).filter((a) => existsSync(join(appsDir, a, 'app.yaml'))).sort() : [];
+  for (const [rail, files] of readsByRail) {
+    for (const app of apps) {
+      const r = storeKeySecretName(root, app, rail);
+      if (r.lost) lost.push(`the store key ${[...files].sort().join(', ')} read(s) by index on rail "${rail}" cannot be named for app "${app}": ${r.lost}`);
+      if (!r.name) continue;
+      if (!byName.has(r.name)) byName.set(r.name, new Set());
+      for (const f of files) byName.get(r.name).add(f);
+    }
+  }
+  return { byName, lost };
 }
 
 // ── The five blocks ──────────────────────────────────────────────────────────
@@ -187,7 +242,8 @@ export function renderLaneMap(tree) {
   return out;
 }
 
-/** README §6: every secret name a workflow reads, and the workflows that read it. */
+/** README §6: every secret name a workflow reads, and the workflows that read it — by name, or by
+ *  index through the store key resolver (storeKeyReads). */
 export function renderSecrets(tree) {
   const by = new Map();
   for (const wf of [...tree.workflows, ...tree.actions]) {
@@ -196,6 +252,10 @@ export function renderSecrets(tree) {
       if (!by.has(s.name)) by.set(s.name, new Set());
       by.get(s.name).add(fileOf(wf.rel) === 'action.yml' || fileOf(wf.rel) === 'action.yaml' ? wf.rel : fileOf(wf.rel));
     }
+  }
+  for (const [name, files] of tree.storeKeys?.byName ?? []) {
+    if (!by.has(name)) by.set(name, new Set());
+    for (const f of files) by.get(name).add(f);
   }
   const names = [...by.keys()].sort();
   const out = [
