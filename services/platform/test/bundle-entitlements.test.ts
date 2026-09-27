@@ -125,6 +125,8 @@ function seedGrant(
     graceUntil?: string | null;
     revokedAt?: string | null;
     revocationReason?: string | null;
+    /** The GRANT's own term (0018). Absent = NULL = the source's term. */
+    term?: 'subscription' | 'one_time' | null;
   },
 ) {
   db.db
@@ -134,9 +136,9 @@ function seedGrant(
          provider, provider_environment, provider_subscription_id, provider_transaction_id,
          provider_status, last_event_id, occurred_at, current_period_end, trial_end, expires_at,
          grace_until, revoked_at, revocation_reason, credit_days_applied, superseded_by,
-         created_at, updated_at)
+         created_at, updated_at, term)
        VALUES (?,?,?,?,?, 'paddle',?,?,NULL, 'active','evt_1','2026-09-09T00:00:00.000Z',NULL,NULL,?,
-               ?,?,?,NULL,NULL, '2026-09-09T00:00:00.000Z','2026-09-09T00:00:00.000Z')`,
+               ?,?,?,NULL,NULL, '2026-09-09T00:00:00.000Z','2026-09-09T00:00:00.000Z',?)`,
     )
     .run(
       o.grantId ?? 'grant-1',
@@ -150,6 +152,7 @@ function seedGrant(
       o.graceUntil ?? null,
       o.revokedAt ?? null,
       o.revocationReason ?? null,
+      o.term ?? null,
     );
 }
 
@@ -344,6 +347,36 @@ describe('G10 — a grant covers EXACTLY the version it pinned', () => {
     expect(subj.bundles).toHaveLength(1);
     expect(subj.bundles[0].version).toBe(1);
     expect(subj.bundles[0].products).toEqual([EXT]);
+  });
+});
+
+describe('0018 — every seeded source carries its term, and the term is binary', () => {
+  it('the seeded (source → term) set, exactly', () => {
+    // A source added later without a thought about its term would take the
+    // column default; this list makes that a red line to write, not a silence.
+    // promo_code's term is `subscription`, ruled in ADR no.099 (0018's header
+    // quotes why).
+    const h = harness();
+    const rows = Object.fromEntries(
+      h.db.rows('SELECT source, term FROM bundle_sources ORDER BY source').map((r) => [r.source, r.term]),
+    );
+    expect(rows).toEqual({
+      apple_iap: 'subscription',
+      google_play_billing: 'subscription',
+      microsoft_store: 'subscription',
+      owner_comp: 'subscription',
+      paddle_subscription: 'subscription',
+      promo_code: 'subscription',
+      razorpay_subscription: 'subscription',
+    });
+  });
+
+  it('a third term is refused at insert, on the source and on the grant', () => {
+    const h = harness();
+    expect(() =>
+      h.db.db.prepare(`INSERT INTO bundle_sources (source, requires_receipt, description, term) VALUES ('x', 1, 'x', 'lifetime')`).run(),
+    ).toThrow(/CHECK constraint failed/);
+    expect(() => seedGrant(h.db, { userId: 'u1', term: 'lifetime' as 'one_time' })).toThrow(/CHECK constraint failed/);
   });
 });
 
