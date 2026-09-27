@@ -344,8 +344,21 @@ jobs:
       # from the icon and accents it is derived from with every lane green. --check
       # re-renders each tool's assets and compares DECODED PIXELS; it exited 0 over
       # fullshot's three assets on the tree it was added on.
+      # 🔴 --single-threaded + a 2-minute step bound: O-EXTENSIONS-CATALOGUE-HUNG-PAST-ITS-CAP.
+      # Its first run on main (run 36273003792 attempt 1) printed `3 passed` 0.17 s in and
+      # never exited; the job's 10 minutes cancelled it and the runner killed an orphan
+      # `(MainThread)`. The script is synchronous and ends process.exit(r.finish()), so no
+      # handle of ours held it: this is nodejs/node#54918, V8 background compiles
+      # deadlocking the exit (tooling/ci/single-threaded-relaunch.mjs has the mechanism).
+      # Reproduced on Linux 2026-09-26: under --stress-concurrent-allocation 3 of 24 runs
+      # printed `3 passed` and hung, every live thread in futex_do_wait, no children;
+      # with --single-threaded added, 0 of 24. The flag removes the deadlock's second
+      # party; the bound makes a hang the flag misses fail THIS step, by name, in 2 min.
+      # Every zlib step in this file is held to the same shape, derived, by
+      # tooling/ci/test/single-threaded-relaunch.test.mjs E1/E2.
       - name: The listing graphics are what the renderer derives from each tool
-        run: node scripts/render-extension-graphics.mjs --all --check
+        timeout-minutes: 2
+        run: node --single-threaded scripts/render-extension-graphics.mjs --all --check
       # why: O-NEW-TOOL-HAS-NO-FIREFOX-IDENTITY. tooling/house-identity.json holds the
       # owner domain every Firefox add-on id is built from, and AMO fixes that id at
       # first signing; every tool's publish/identity.json must equal it. Runs from the
@@ -427,16 +440,21 @@ jobs:
       # call has never been the one that hung, but it is the same gate on the same
       # runner image, and a ceiling that only covers the leg that has already failed
       # is a ceiling that will be absent from wherever it fails next.
+      # The inner node runs --single-threaded (nodejs/node#54918, see the catalogue job);
+      # the step bound of 8 sits above the wrapper's own ~6.5-minute worst case, so the
+      # wrapper, not the runner, is what kills a hang and collects its report.
       - name: The BUILT store packages carry the right add-on identity
+        timeout-minutes: 8
         run: >-
           node scripts/lib/hang-guard.mjs --seconds 180 --retries 1 --report-dir diag
-          -- node scripts/check-store-packages.mjs ${{ matrix.tool }} --allow-none
+          -- node --single-threaded scripts/check-store-packages.mjs ${{ matrix.tool }} --allow-none
       - name: One listing per store, and the store axis has not drifted
         run: node scripts/check-store-metadata.mjs ${{ matrix.tool }}
       # why: the store states the pixels; scripts/store-graphics.json records each number
       # with the URL it was read from, and this grades the committed pictures against it.
       - name: Listing pictures are the size, format and count the stores state
-        run: node scripts/check-listing-assets.mjs ${{ matrix.tool }}
+        timeout-minutes: 2
+        run: node --single-threaded scripts/check-listing-assets.mjs ${{ matrix.tool }}
       # why: a tool's own store gates are declared in its tool.json `gates`, and this
       # step runs the ones at stage `gates` — FullShot's AMO source grader today. A
       # tool that declares none prints so and passes. (⏱ 2026-09-25,
@@ -499,20 +517,26 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with: { node-version: '${{ env.NODE_VERSION }}' }
 
+      # why: every step below whose script reaches node:zlib runs --single-threaded under
+      # its own bound (nodejs/node#54918 — see the catalogue job's render step).
       - name: Build package
-        run: node scripts/pack.mjs ${{ matrix.tool }} --target ${{ matrix.target }} --out dist
+        timeout-minutes: 2
+        run: node --single-threaded scripts/pack.mjs ${{ matrix.tool }} --target ${{ matrix.target }} --out dist
 
       - name: Reference integrity (inside the zip)
-        run: node scripts/verify-refs.mjs --zip dist/${{ matrix.tool }}-${{ matrix.target }}.zip --strict
+        timeout-minutes: 2
+        run: node --single-threaded scripts/verify-refs.mjs --zip dist/${{ matrix.tool }}-${{ matrix.target }}.zip --strict
 
       - name: Leak check (no test/, docs, node_modules, zips, secrets)
-        run: node scripts/verify-refs.mjs --zip dist/${{ matrix.tool }}-${{ matrix.target }}.zip --leaks
+        timeout-minutes: 2
+        run: node --single-threaded scripts/verify-refs.mjs --zip dist/${{ matrix.tool }}-${{ matrix.target }}.zip --leaks
 
       - name: Determinism check (zip is byte-reproducible)
+        timeout-minutes: 2
         shell: bash
         run: |
           set -euo pipefail
-          node scripts/pack.mjs ${{ matrix.tool }} --target ${{ matrix.target }} --out dist2
+          node --single-threaded scripts/pack.mjs ${{ matrix.tool }} --target ${{ matrix.target }} --out dist2
           a=$(node scripts/sha256.mjs dist/${{ matrix.tool }}-${{ matrix.target }}.zip)
           b=$(node scripts/sha256.mjs dist2/${{ matrix.tool }}-${{ matrix.target }}.zip)
           echo "$a"; echo "$b"
@@ -534,10 +558,15 @@ jobs:
       # is the one artefact a blind re-run destroys. 124 here is a real failure and is
       # meant to be — a red job in minutes with evidence attached beats an amber one
       # for GitHub's six-hour default with none. Never widen --seconds to make it green.
+      # ⏱ 2026-09-26: the inner node now runs --single-threaded — the cause this wrapper
+      # did not pretend to know is nodejs/node#54918 (the catalogue job's render step has
+      # the reproduction). The wrapper stays as the evidence collector; the step bound of
+      # 8 sits above its ~6.5-minute worst case so the wrapper fires first.
       - name: The built package carries the right store identity
+        timeout-minutes: 8
         run: >-
           node scripts/lib/hang-guard.mjs --seconds 180 --retries 1 --report-dir diag
-          -- node scripts/check-store-packages.mjs ${{ matrix.tool }} --dir dist
+          -- node --single-threaded scripts/check-store-packages.mjs ${{ matrix.tool }} --dir dist
 
       # why: 🔴 `always()`, NOT `failure()`, AND THE FIRST RUN OF THIS BRANCH IS WHY.
       # This step was written `if: failure()` on the reasoning that a green run leaves an
