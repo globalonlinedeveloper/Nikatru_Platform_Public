@@ -43,7 +43,7 @@ Applied here, per register:
 |---|---|---|
 | `provider-register.json` | the provider's name, role, the route or page that names it, whether it is disclosed | the seller account itself: merchant IDs, KYC state, bank/payout details, contract terms |
 | `data-inventory.json` | which stores exist, what CATEGORY of data each holds, its declared retention, which code writes it | the data itself, and any per-subject record. No row names a person, an address, or a key |
-| `asset-register.json` | every bundled asset, its licence, and the SOURCE URL + date for the licence claim | nothing — a licence claim with no public source is not a licence claim |
+| `asset-register.json` | every bundled asset, its licence, and the SOURCE URL + date for the licence claim; for a file a pub package ships into one app (`appScopedAssets`), the package whose own LICENSE the guard reads | nothing — a licence claim with no public source is not a licence claim |
 | `duty-matrix.json` | the duty, its status, its trigger condition, and a primary-source URL | the owner's filings and identifiers that discharge a duty (GST, Udyam, PAN) |
 | `policy-claims.json` | the published claim and what in the tree asserts it | nothing — every row quotes a page anyone can already read |
 

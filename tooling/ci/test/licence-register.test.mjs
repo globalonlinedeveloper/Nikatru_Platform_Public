@@ -49,7 +49,7 @@ import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 // The seam module itself. Imported rather than re-described: the boundary
 // sentence is guarded in the real register, so a hand copy of it here would be a
 // second store for one string and would drift in the direction that still passes.
@@ -173,6 +173,8 @@ function fixture({
   contentFamilies,
   contentReadme = ['A fixture stand-in for [7]P-5, carrying only the fields the seam reads.', BOUNDARY_SENTENCE],
   withContentRegister = true,
+  // Absent unless a case names it, as it is absent from a register that predates it.
+  appScopedAssets,
 } = {}) {
   const root = join(TMP, `f${seq++}`);
   mkdirSync(root, { recursive: true });
@@ -187,6 +189,7 @@ function fixture({
         licenceSurfaceCalls: { patterns },
         licenceSurfaceGaps: gaps,
         assets: assets ?? structuredClone(DEFAULT_ASSETS),
+        ...(appScopedAssets === undefined ? {} : { appScopedAssets }),
       },
       null,
       2,
@@ -643,6 +646,273 @@ describe('coverage self-checks', () => {
     const r = run(root, '--bundle', bundle);
     assert.equal(r.status, 1);
     assert.match(out(r), /has NO row in tooling\/legal\/asset-register\.json/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// APP-SCOPED ROWS — `--bundle <dir> --app <id>` (lead ruling PRL-R1, 2026-09-26).
+//
+// The first PR-lane web build of app #1 (CI run 36233164494) shipped five files
+// that pub packages put into its bundle, and no register row could say "this app
+// ships that". Each case below builds app `one` with a resolved package `pkg_a`
+// (a LICENSE, a package_config.json, a bundle holding packages/pkg_a/… and a
+// NOTICES carrying the licence) and changes ONE thing, so a red case is red for
+// its own named reason. The mutation run on the real tree is in the PR body.
+// ─────────────────────────────────────────────────────────────────────────────
+const MIT_TEXT = [
+  'MIT License',
+  '',
+  'Copyright (c) 2026 Fixture Authors',
+  '',
+  'Permission is hereby granted, free of charge, to any person obtaining a copy',
+  'of this software and associated documentation files (the "Software"), to deal',
+  'in the Software without restriction.',
+  '',
+  'The above copyright notice and this permission notice shall be included in all',
+  'copies or substantial portions of the Software.',
+  '',
+].join('\n');
+
+const BSD3_TEXT = [
+  'Copyright 2014 The Fixture Authors. All rights reserved.',
+  '',
+  'Redistribution and use in source and binary forms, with or without modification,',
+  'are permitted provided that the following conditions are met:',
+  '',
+  '    * Neither the name of the copyright holder nor the names of its',
+  '      contributors may be used to endorse or promote products derived',
+  '      from this software without specific prior written permission.',
+  '',
+].join('\n');
+
+const appRow = (over = {}) => ({
+  id: 'one-pkg-a-script',
+  scope: 'app:one',
+  bundlePath: 'packages/pkg_a/assets/a.js',
+  package: 'pkg_a',
+  contentFamily: null,
+  contentFamilyWhy: 'a script a package ships into the app; nothing in the content pipeline reads or produces it',
+  name: 'a.js',
+  origin: 'third-party',
+  licence: 'MIT',
+  attributionRequired: true,
+  attributedIn: 'bundle:NOTICES',
+  source: { note: 'the pkg_a package LICENSE, read by the guard' },
+  ...over,
+});
+
+/** A fixture tree whose app `one` resolved `pkg_a` (and, with `sdkLicence`, the
+ *  Flutter SDK), plus a built bundle. `via`: 'own' writes
+ *  apps/one/.dart_tool/package_config.json with an absolute rootUri;
+ *  'workspace' writes the pub-workspace shape measured on the real tree (a root
+ *  package_config reached through workspace_ref.json) with a RELATIVE rootUri;
+ *  'none' writes neither — `pub get` never ran. */
+function appFixture({
+  rows = [appRow()],
+  via = 'own',
+  licence = MIT_TEXT,
+  notices = `pkg_a\n\n${MIT_TEXT}\n${'-'.repeat(80)}\n`,
+  bundleFiles = ['logo.png', 'icon.png', 'MaterialIcons-Regular.otf', 'NOTICES', 'packages/pkg_a/assets/a.js'],
+  sdkLicence = null,
+  secondApp = false,
+  assets,
+} = {}) {
+  const root = fixture({ appScopedAssets: rows, assets });
+  const pkgDir = join(root, 'pubcache', 'pkg_a-1.0.0');
+  write(root, join('pubcache', 'pkg_a-1.0.0', 'LICENSE'), licence);
+  const config = { configVersion: 2, packages: [] };
+  if (sdkLicence !== null) {
+    write(root, join('sdk', 'LICENSE'), sdkLicence);
+    config.flutterRoot = pathToFileURL(join(root, 'sdk')).href;
+  }
+  if (via === 'own') {
+    config.packages.push({ name: 'pkg_a', rootUri: pathToFileURL(pkgDir).href, packageUri: 'lib/' });
+    write(root, join('apps', 'one', '.dart_tool', 'package_config.json'), JSON.stringify(config));
+  } else if (via === 'workspace') {
+    config.packages.push({ name: 'pkg_a', rootUri: '../pubcache/pkg_a-1.0.0/', packageUri: 'lib/' });
+    write(root, join('.dart_tool', 'package_config.json'), JSON.stringify(config));
+    write(root, join('apps', 'one', '.dart_tool', 'pub', 'workspace_ref.json'), JSON.stringify({ workspaceRoot: '../../../..' }));
+  }
+  if (secondApp) {
+    write(root, join('apps', 'two', 'pubspec.yaml'), 'name: two\nflutter:\n  uses-material-design: true\n');
+    write(root, join('apps', 'two', 'lib', 'main.dart'), "Widget b() => AboutListTile(applicationName: 'two');\n");
+  }
+  const bundle = join(TMP, `b${seq++}`);
+  mkdirSync(bundle, { recursive: true });
+  for (const f of bundleFiles) write(bundle, f, f === 'NOTICES' ? notices : 'x');
+  return { root, bundle };
+}
+const runApp = (fx, app = 'one') => run(fx.root, '--bundle', fx.bundle, '--app', app);
+
+describe('app-scoped rows — every bundle file resolves to one row, and the licence is READ from its package', () => {
+  test('AS1 · a package file resolves to its app row, and the licence is READ from the package', () => {
+    const r = runApp(appFixture());
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /app:one · packages\/pkg_a\/assets\/a\.js — the pkg_a LICENSE reads MIT; NOTICES carries it/);
+  });
+
+  test('AS2 · the pub-workspace shape resolves too: workspace_ref.json to the root package_config, relative rootUri', () => {
+    const r = runApp(appFixture({ via: 'workspace' }));
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /the pkg_a LICENSE reads MIT/);
+  });
+
+  test('AS3 · 🔴 a package file with NO row FAILS, naming it and the row its own bundle derives', () => {
+    const r = runApp(appFixture({ rows: [] }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /packages\/pkg_a\/assets\/a\.js ships .*shipped by the hosted package pkg_a/);
+    assert.match(
+      out(r),
+      /"scope":"app:one","bundlePath":"packages\/pkg_a\/assets\/a\.js","package":"pkg_a","origin":"third-party","licence":"MIT"/,
+    );
+  });
+
+  test("AS4 · 🔴 a row whose licence differs from the package's LICENSE FAILS — the package is the source", () => {
+    const r = runApp(appFixture({ rows: [appRow({ licence: 'Apache-2.0' })] }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /declares licence "Apache-2\.0", and the pkg_a package's own LICENSE \(.*\) reads MIT/);
+  });
+
+  test('AS5 · 🔴 an app:<other> row never satisfies this app', () => {
+    const r = runApp(appFixture({ rows: [appRow({ scope: 'app:two' })], secondApp: true }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /no row in scope shared or app:one claims it/);
+    assert.match(out(r), /A row scoped app:two names this path/);
+  });
+
+  test('AS6 · the same two-app tree with the row scoped to THIS app passes — AS5 is red for the scope alone', () => {
+    const r = runApp(appFixture({ secondApp: true }));
+    assert.equal(r.status, 0, out(r));
+  });
+
+  test('AS7 · no package_config — `pub get` never ran — is COVERAGE LOST, never a pass', () => {
+    const r = runApp(appFixture({ via: 'none' }));
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /COVERAGE LOST/);
+    assert.match(out(r), /has no resolved packages/);
+  });
+
+  test('AS8 · --app without --bundle is COVERAGE LOST', () => {
+    const r = run(appFixture().root, '--app', 'one');
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /no --bundle was given/);
+  });
+
+  test('AS9 · --app naming no app is COVERAGE LOST', () => {
+    const r = runApp(appFixture(), 'ghost');
+    assert.equal(r.status, 2, out(r));
+    assert.match(out(r), /--app ghost names no app/);
+  });
+
+  test("AS10 · 🔴 a row the build did not emit FAILS — the app's bundle witnesses every row scoped to it", () => {
+    const r = runApp(appFixture({ bundleFiles: ['logo.png', 'icon.png', 'MaterialIcons-Regular.otf', 'NOTICES'] }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /claims packages\/pkg_a\/assets\/a\.js for app:one, and the build did NOT emit it/);
+  });
+
+  test("AS11 · 🔴 a NOTICES that does not carry the package's LICENSE FAILS — the attribution is unmet", () => {
+    const r = runApp(appFixture({ notices: 'some_other_package\n\nsome other text\n' }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /does not carry the name pkg_a or the text of/);
+  });
+
+  test('AS12 · 🔴 a LICENSE that reads as no known licence FAILS — the row could not be read', () => {
+    const r = runApp(appFixture({ licence: 'All rights reserved. Ask us first.\n' }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /reads as no licence this guard can name/);
+  });
+
+  test('AS13 · 🔴 a shared row never claims a file a hosted package ships, by basename', () => {
+    const assets = structuredClone(DEFAULT_ASSETS);
+    assets.push({
+      id: 'decoy',
+      contentFamily: null,
+      contentFamilyWhy: 'a shared row that happens to share the package file basename',
+      path: 'somewhere/a.js',
+      name: 'a.js',
+      origin: 'own-work',
+      owner: 'The Proprietor',
+      licence: 'proprietary-all-rights-reserved',
+      attributionRequired: false,
+      attributedIn: null,
+      source: { note: 'our own' },
+    });
+    const r = runApp(appFixture({ rows: [], assets }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /shipped by the hosted package pkg_a, and no row in scope shared or app:one claims it/);
+  });
+
+  test('AS14 · 🔴 one file, one row: a file a shared row AND an app row both claim FAILS', () => {
+    const sdkRow = appRow({
+      id: 'one-sdk-icons',
+      bundlePath: 'MaterialIcons-Regular.otf',
+      package: 'sdk:flutter',
+      licence: 'BSD-3-Clause',
+      attributionRequired: false,
+      attributedIn: null,
+    });
+    const r = runApp(appFixture({ rows: [appRow(), sdkRow], sdkLicence: BSD3_TEXT }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /MaterialIcons-Regular\.otf ships .* resolves to 2 rows \("icon-font", "one-sdk-icons"\)/);
+    assert.ok(!out(r).includes('the build did NOT emit it'), out(r));
+  });
+
+  test("AS15 · an sdk:flutter row reads the Flutter SDK's LICENSE through flutterRoot", () => {
+    const sdkRow = appRow({
+      id: 'one-sdk-shader',
+      bundlePath: 'shaders/x.frag',
+      package: 'sdk:flutter',
+      licence: 'BSD-3-Clause',
+      attributionRequired: false,
+      attributedIn: null,
+    });
+    const r = runApp(
+      appFixture({
+        rows: [appRow(), sdkRow],
+        sdkLicence: BSD3_TEXT,
+        bundleFiles: ['logo.png', 'icon.png', 'MaterialIcons-Regular.otf', 'NOTICES', 'packages/pkg_a/assets/a.js', 'shaders/x.frag'],
+      }),
+    );
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /app:one · shaders\/x\.frag — the sdk:flutter LICENSE reads BSD-3-Clause/);
+  });
+
+  test("AS16 · the row shape is graded in DECLARED mode too: a scope that is not app:<id> FAILS", () => {
+    const r = run(fixture({ appScopedAssets: [appRow({ scope: 'one' })] }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /An app-scoped row's scope is `app:<app_id>`/);
+  });
+
+  test('AS17 · a row naming the wrong package for its path FAILS — the wrong package is the wrong LICENSE', () => {
+    const r = run(fixture({ appScopedAssets: [appRow({ package: 'pkg_b' })] }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /names package pkg_b for packages\/pkg_a\/assets\/a\.js, and that path is shipped by package pkg_a/);
+  });
+
+  test('AS18 · UNVERIFIED is not an app-scoped licence — the package is there to be read', () => {
+    const r = run(fixture({ appScopedAssets: [appRow({ licence: 'UNVERIFIED' })] }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /there is no unread state to record/);
+  });
+
+  test('AS19 · a row scoped to an app that does not exist FAILS', () => {
+    const r = run(fixture({ appScopedAssets: [appRow({ scope: 'app:ghost' })] }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /no app ghost exists under apps/);
+  });
+
+  test('AS20 · the P-5 seam reads app-scoped rows too: one with no contentFamily FAILS', () => {
+    const row = appRow();
+    delete row.contentFamily;
+    const r = run(fixture({ appScopedAssets: [row] }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /row "one-pkg-a-script" declares no `contentFamily`/);
+  });
+
+  test("AS21 · DECLARED mode shape-checks the rows and says their licence is read only by the --app walk", () => {
+    const r = run(fixture({ appScopedAssets: [appRow()] }));
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /1 app-scoped row\(s\) shape-checked; each one's licence is read from its package only by a --bundle <dir> --app <id> walk/);
   });
 });
 
