@@ -17,6 +17,7 @@ import '../../data/api/persisted_api_client.dart';
 import '../../data/api/seed_api_client.dart';
 import '../../data/local/subscription_store.dart';
 import '../../data/subscriptions/subscription_repository.dart';
+import '../settings_controller.dart' show currencyCodeProvider;
 import 'auth.dart';
 import 'config.dart';
 import 'persistence.dart';
@@ -86,7 +87,14 @@ final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((ref) {
     define: AppConfig.apiBaseUrl,
   );
   return cachedApiClientOver(
-    DioApiClient(baseUrl: baseUrl, tokenProvider: ref.watch(authTokenProvider)),
+    DioApiClient(
+      baseUrl: baseUrl,
+      tokenProvider: ref.watch(authTokenProvider),
+      // ST-C1: a currency-less row is read in the user's currency, asked at
+      // decode time. `read` inside the closure, not `watch` here: a currency
+      // change must not rebuild the client and drop its cache.
+      currencyCode: () => ref.read(currencyCodeProvider),
+    ),
     store,
   );
 });

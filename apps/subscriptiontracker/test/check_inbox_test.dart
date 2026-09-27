@@ -36,6 +36,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/core/router.dart';
+import 'package:subscriptiontracker/features/auth/check_inbox_actions.dart';
 import 'package:subscriptiontracker/features/auth/check_inbox_screen.dart';
 import 'package:subscriptiontracker/features/auth/legal_consent_fields.dart';
 import 'package:subscriptiontracker/features/auth/sign_up_screen.dart';
@@ -78,6 +79,13 @@ class _OnboardingSeen extends OnboardingSeenController {
 /// different things on this path.
 class _ConfirmationRequiredAuth extends core.AuthRepository {
   final List<String> signUps = <String>[];
+  final List<String> resends = <String>[];
+
+  @override
+  Future<void> resendSignUpConfirmation(
+    String email, {
+    String? captchaToken,
+  }) async => resends.add(email);
 
   @override
   core.AuthUser? get currentUser => null;
@@ -308,7 +316,7 @@ void main() {
       );
     });
 
-    testWidgets('and the LoginScreen door still reaches /scan with a session', (
+    testWidgets('and the LoginScreen door reaches /home with a session', (
       WidgetTester tester,
     ) async {
       final ProviderContainer c = _container(_ImmediateSessionAuth());
@@ -316,13 +324,14 @@ void main() {
       await _pumpApp(tester, c);
       await _signUpViaLoginScreen(tester, en);
 
+      // ⏱ 2026-09-27 · ST-A4 (audit A-4, B45): a session lands on the banked
+      // `?next=` or /home — no longer on the /scan loader.
       expect(
         _where(c),
-        '/scan',
+        '/home',
         reason:
-            'the existing destination is untouched for the state it was always '
-            'right for — this increment narrows that navigation, it does not '
-            'move it',
+            'with a session the sign-up door lands where sign-in does; only '
+            'the no-session case goes to /check-inbox',
       );
     });
   });
@@ -390,6 +399,48 @@ void main() {
             .toString(),
         isNot(contains('@')),
       );
+    });
+  });
+
+  // 🔴 ST-A5 (audit A-6): "check your inbox" had one move, "Back to sign in".
+  // MUTATION PROOF: unmount CheckInboxActions from check_inbox_screen.dart and
+  // both cases go red.
+  group('/check-inbox can resend, and can fix a wrong address', () {
+    Future<(_ConfirmationRequiredAuth, ProviderContainer)> reachInbox(
+      WidgetTester tester,
+    ) async {
+      final _ConfirmationRequiredAuth auth = _ConfirmationRequiredAuth();
+      final ProviderContainer c = _container(auth);
+      addTearDown(c.dispose);
+      await _pumpApp(tester, c);
+      c.read(routerProvider).go('/sign-up');
+      await tester.pumpAndSettle();
+      await _signUpViaSignUpScreen(tester);
+      expect(_where(c), '/check-inbox');
+      return (auth, c);
+    }
+
+    testWidgets('Send the email again resends to the address it names', (
+      WidgetTester tester,
+    ) async {
+      final (_ConfirmationRequiredAuth auth, _) = await reachInbox(tester);
+      await tester.ensureVisible(find.byKey(CheckInboxActions.resendButton));
+      await tester.tap(find.byKey(CheckInboxActions.resendButton));
+      await tester.pumpAndSettle();
+      expect(auth.resends, <String>[_address]);
+      expect(find.byKey(CheckInboxActions.noticeLine), findsOneWidget);
+    });
+
+    testWidgets('a wrong address has a way back to the sign-up door', (
+      WidgetTester tester,
+    ) async {
+      final (_, ProviderContainer c) = await reachInbox(tester);
+      await tester.ensureVisible(
+        find.byKey(CheckInboxActions.changeEmailButton),
+      );
+      await tester.tap(find.byKey(CheckInboxActions.changeEmailButton));
+      await tester.pumpAndSettle();
+      expect(_where(c), '/sign-in');
     });
   });
 }

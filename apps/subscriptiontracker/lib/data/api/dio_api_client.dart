@@ -1,6 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:nikatru_api_client/nikatru_api_client.dart';
-import 'package:nikatru_core/nikatru_core.dart' show Entitlements;
+import 'package:nikatru_core/nikatru_core.dart' show Entitlements, Money;
 
 import '../models/budget_info.dart';
 import '../models/payment_record.dart';
@@ -18,7 +18,9 @@ class DioApiClient implements ApiClient {
     required Future<String?> Function() tokenProvider,
     Future<void> Function()? onUnauthorized,
     Dio? httpClient,
-  }) : _rest = RestClient(
+    String Function()? currencyCode,
+  }) : _currencyCode = currencyCode ?? _noCurrency,
+       _rest = RestClient(
          baseUrl: baseUrl,
          tokenProvider: tokenProvider,
          onUnauthorized: onUnauthorized,
@@ -27,13 +29,33 @@ class DioApiClient implements ApiClient {
 
   final RestClient _rest;
 
+  /// 🔴 THE UNIT A ROW WITH NO `currency` OF ITS OWN IS READ IN — THE USER'S
+  /// CHOICE, ASKED AT DECODE TIME (ST-C1, audit B21/D5/D18).
+  ///
+  /// The Worker stores `price` as a bare REAL with no currency column, so every
+  /// row it returns is currency-less. Decoded with the model's default, a ₹649
+  /// row the user typed under the rupee chip came back as "$649.00" — on the
+  /// POST response, on every reload, and into the offline cache. The digits
+  /// were typed in the user's currency, so that is the only honest reading
+  /// until the additive `currency` column lands (ST-T3); a row that DOES carry
+  /// a currency still wins (`Subscription.readPrice`). A function, not a
+  /// string: the user can change it while this client lives.
+  final String Function() _currencyCode;
+
+  static String _noCurrency() => Money.fallbackCurrencyCode;
+
   @override
   Future<List<Subscription>> getSubscriptions() async {
     final Object? data = await _rest.get('/subscriptions');
     return _rest.decode(
       data,
       (Object? b) => (b! as List<dynamic>)
-          .map((dynamic e) => Subscription.fromJson(e as Map<String, dynamic>))
+          .map(
+            (dynamic e) => Subscription.fromJson(
+              e as Map<String, dynamic>,
+              fallbackCurrencyCode: _currencyCode(),
+            ),
+          )
           .toList(),
     );
   }
@@ -46,7 +68,10 @@ class DioApiClient implements ApiClient {
     );
     return _rest.decode(
       data,
-      (Object? b) => Subscription.fromJson(b! as Map<String, dynamic>),
+      (Object? b) => Subscription.fromJson(
+        b! as Map<String, dynamic>,
+        fallbackCurrencyCode: _currencyCode(),
+      ),
     );
   }
 
@@ -58,7 +83,7 @@ class DioApiClient implements ApiClient {
       final Map<String, dynamic> sub = m.containsKey('subscription')
           ? m['subscription'] as Map<String, dynamic>
           : m;
-      return Subscription.fromJson(sub);
+      return Subscription.fromJson(sub, fallbackCurrencyCode: _currencyCode());
     });
   }
 
@@ -70,7 +95,10 @@ class DioApiClient implements ApiClient {
     final Object? data = await _rest.patch('/subscriptions/$id', body: changes);
     return _rest.decode(
       data,
-      (Object? b) => Subscription.fromJson(b! as Map<String, dynamic>),
+      (Object? b) => Subscription.fromJson(
+        b! as Map<String, dynamic>,
+        fallbackCurrencyCode: _currencyCode(),
+      ),
     );
   }
 
@@ -86,7 +114,12 @@ class DioApiClient implements ApiClient {
       final List<dynamic> hist =
           (m['payment_history'] as List<dynamic>?) ?? <dynamic>[];
       return hist
-          .map((dynamic e) => PaymentRecord.fromJson(e as Map<String, dynamic>))
+          .map(
+            (dynamic e) => PaymentRecord.fromJson(
+              e as Map<String, dynamic>,
+              fallbackCurrencyCode: _currencyCode(),
+            ),
+          )
           .toList();
     });
   }
@@ -96,7 +129,10 @@ class DioApiClient implements ApiClient {
     final Object? data = await _rest.get('/budget');
     return _rest.decode(
       data,
-      (Object? b) => BudgetInfo.fromJson(b! as Map<String, dynamic>),
+      (Object? b) => BudgetInfo.fromJson(
+        b! as Map<String, dynamic>,
+        currencyCode: _currencyCode(),
+      ),
     );
   }
 
@@ -105,7 +141,10 @@ class DioApiClient implements ApiClient {
     final Object? data = await _rest.put('/budget', body: budget.toJson());
     return _rest.decode(
       data,
-      (Object? b) => BudgetInfo.fromJson(b! as Map<String, dynamic>),
+      (Object? b) => BudgetInfo.fromJson(
+        b! as Map<String, dynamic>,
+        currencyCode: _currencyCode(),
+      ),
     );
   }
 

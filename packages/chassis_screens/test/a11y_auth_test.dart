@@ -6,6 +6,7 @@ import 'package:nikatru_chassis_screens/auth/reaccept_terms_screen.dart';
 import 'package:nikatru_chassis_screens/auth/reset_password_screen.dart';
 import 'package:nikatru_chassis_screens/auth/sign_in_screen.dart';
 import 'package:nikatru_chassis_screens/auth/sign_up_screen.dart';
+import 'package:nikatru_chassis_screens/auth/turnstile_gate.dart';
 import 'package:nikatru_chassis_screens/auth/verify_email_screen.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
@@ -723,6 +724,68 @@ void main() {
         await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       } finally {
+        handle.dispose();
+      }
+    }, variant: kTapTargetPlatforms);
+  });
+
+  // ── TurnstileGate (ST-A1, audit D29) ──────────────────────────────────────
+  // Swept where it lives: in the sign-in view's captcha slot, with a challenge
+  // that has not answered yet — the state in which Sign in and Forgot password
+  // are disabled. The vendor iframe is not renderable here, so the renderer is
+  // a labelled stand-in of the vendor's size (flexible: >= 300 x 65); what is
+  // measured is the gate's host layout and the disabled controls around it.
+  group('a11y: turnstile-gate', () {
+    testWidgets('light, kPhone — mounted, not answered yet', (
+      WidgetTester tester,
+    ) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      final CaptchaTokenController c = CaptchaTokenController(
+        posture: CaptchaPosture.challenge,
+        siteKey: 'k',
+      );
+      try {
+        await pumpForA11y(
+          tester,
+          kPhone,
+          SignInView(
+            onSignIn: (String _, String _) async {},
+            onForgotPassword: (String _) async {},
+            onNeedAccount: () {},
+            showAppleButton: true,
+            onSignInWithApple: () async {},
+            appleTermsOwed: false,
+            consentFields: ({
+              required bool termsAccepted,
+              required bool marketingAccepted,
+              required bool enabled,
+              required ValueChanged<bool> onTermsChanged,
+              required ValueChanged<bool> onMarketingChanged,
+            }) =>
+                const SizedBox.shrink(),
+            onAcceptTerms: ({required bool marketingEmail}) async {},
+            captcha: TurnstileGate(
+              controller: c,
+              render: (BuildContext _, TurnstileChallenge _) => Semantics(
+                label: 'Verification challenge',
+                child: const SizedBox(width: 300, height: 65),
+              ),
+            ),
+            captchaReady: c.ready,
+          ),
+        );
+        expect(find.bySemanticsLabel('Verification challenge'), findsOneWidget);
+        expectSweepHadSubjects(
+          tester,
+          'turnstile-gate',
+          tappable: 3,
+          labelled: 7,
+        );
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      } finally {
+        c.dispose();
         handle.dispose();
       }
     }, variant: kTapTargetPlatforms);

@@ -236,6 +236,17 @@ class InMemoryAuthRepository implements core.AuthRepository {
     verificationResends++;
   }
 
+  /// ST-A5: recorded like [resendVerificationEmail]; there is no mail here.
+  @override
+  Future<void> resendSignUpConfirmation(
+    String email, {
+    String? captchaToken,
+  }) async {
+    if (email.isEmpty) throw core.AuthFailure('Email is required');
+    lastCaptchaToken = captchaToken;
+    verificationResends++;
+  }
+
   /// Nothing changes off-device here, so a reload returns what is already held.
   /// It does NOT flip [core.AuthUser.emailVerified] to true: a demo identity
   /// that "confirms" itself the moment somebody presses the button would make

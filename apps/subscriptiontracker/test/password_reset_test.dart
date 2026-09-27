@@ -53,6 +53,7 @@ import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show ChassisLocalizations;
+import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/core/router.dart';
 import 'package:subscriptiontracker/features/auth/login_screen.dart';
 import 'package:subscriptiontracker/features/auth/reset_password_screen.dart';
@@ -580,6 +581,97 @@ void main() {
       await _pump(tester, c),
       isNot('/reset-password'),
       reason: 'this arrival has nothing to do with a password reset',
+    );
+  });
+
+  // 🔴 ST-A2 (audit BUG-2): THE STREAM ERROR IS CLASSIFIED BY THE LAUNCH URL'S
+  // FLOW. Every failed link exchange arrives as the same stream error, and it
+  // was typed a RESET failure whatever the flow — so an expired or
+  // other-browser sign-up confirmation, and a cancelled Apple or Google return,
+  // all landed on "This reset link cannot be used here." MUTATION PROOF: drop
+  // the `failedArrivalFlowOf` branch in PasswordResetArrivalController and both
+  // cases below settle on /reset-password.
+  testWidgets('a failed SIGN-UP confirmation lands on sign-in, and says why', (
+    WidgetTester tester,
+  ) async {
+    final ProviderContainer c = _container(
+      auth,
+      launchUrl:
+          'https://nikatru.com/subscriptiontracker/?nk_auth=confirm&code=abc123',
+    );
+    addTearDown(c.dispose);
+    await _pump(tester, c);
+
+    auth.failRecoveryArrival(
+      'Code verifier could not be found in local storage.',
+    );
+    await tester.pumpAndSettle();
+
+    expect(_where(c), '/sign-in');
+    expect(find.byKey(ResetPasswordScreen.linkDeadLine), findsNothing);
+    expect(
+      find.text(
+        'That link has expired or was opened in a different browser. '
+        'Sign in, or ask for a new link.',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a cancelled OAuth return lands on sign-in, not on reset', (
+    WidgetTester tester,
+  ) async {
+    final ProviderContainer c = _container(
+      auth,
+      launchUrl:
+          'https://nikatru.com/subscriptiontracker/?nk_auth=oauth#error=access_denied',
+    );
+    addTearDown(c.dispose);
+    await _pump(tester, c);
+
+    auth.failRecoveryArrival('access_denied');
+    await tester.pumpAndSettle();
+
+    expect(_where(c), '/sign-in');
+    expect(find.byKey(const Key('authArrivalNotice')), findsOneWidget);
+    expect(
+      find.textContaining('did not finish, so nothing changed'),
+      findsOneWidget,
+    );
+  });
+
+  // 🔴 ST-A4 (audit A-4, B45; O-SIGN-IN-DROPS-THE-NEXT-ROUTE): a successful
+  // sign-in goes to the banked `?next=` through the gate allowlist, else home —
+  // never to the /scan loader. MUTATION PROOF: make afterSignInDestination
+  // return '/scan' and all three cases go red; drop the nextOr call and the
+  // first one does.
+  Future<String> signInFrom(WidgetTester tester, String at) async {
+    final ProviderContainer c = _container(auth);
+    addTearDown(c.dispose);
+    await _pump(tester, c, at);
+    await tester.enterText(find.byKey(E2EKeys.loginEmail), 'alex@example.com');
+    await tester.enterText(find.byKey(E2EKeys.loginPassword), 'hunter22');
+    await tester.tap(find.byKey(E2EKeys.loginSubmit));
+    await tester.pumpAndSettle();
+    return _where(c);
+  }
+
+  testWidgets('sign-in returns to the banked ?next=', (WidgetTester t) async {
+    expect(await signInFrom(t, '/sign-in?next=%2Fcalendar'), '/calendar');
+  });
+
+  testWidgets('with no ?next= it lands on /home, not /scan', (
+    WidgetTester t,
+  ) async {
+    expect(await signInFrom(t, '/sign-in'), '/home');
+  });
+
+  testWidgets('an off-site ?next= is refused and lands on /home', (
+    WidgetTester t,
+  ) async {
+    expect(
+      await signInFrom(t, '/sign-in?next=https%3A%2F%2Fevil.test'),
+      '/home',
     );
   });
 }

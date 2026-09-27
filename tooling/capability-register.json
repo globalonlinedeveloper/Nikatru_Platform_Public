@@ -138,8 +138,9 @@
       ],
       "openProtocol": "NO — the widget script, the token format and the siteverify endpoint are all proprietary to Cloudflare. That sounds worse than it is: hCaptcha and reCAPTCHA expose the SAME shape (embed a script keyed by a public site key, receive an opaque token, POST it to the vendor's verify endpoint), so the interface is de-facto uniform across the alternatives even though no standard names it.",
       "seam": {
-        "file": "apps/subscriptiontracker/lib/features/auth/turnstile_gate.dart",
-        "symbol": "TurnstileGate"
+        "file": "packages/chassis_screens/lib/auth/turnstile_gate.dart",
+        "symbol": "TurnstileGate",
+        "note": "⏱ 2026-09-27 · ST-A1 (audit D29): the gate moved to the chassis so the brick gets it too. The vendor call is each app's renderer (apps/subscriptiontracker/lib/features/auth/turnstile_gate.dart `renderTurnstile`), handed in as a TurnstileRenderer — the chassis package may not import the plugin."
       },
       "configKeyed": {
         "kind": "compile-time",

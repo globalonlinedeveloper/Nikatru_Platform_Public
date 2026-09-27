@@ -25,13 +25,13 @@
 // dropping `ContentPane` re-creates the no-width-decision defect PR #210 fixed;
 // `test/responsive_width_test.dart` (an apply-clean file) measures it at 1920.
 // ─────────────────────────────────────────────────────────────────────────────
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
-import 'package:nikatru_notifications/nikatru_notifications.dart';
+import 'package:nikatru_notifications/nikatru_notifications.dart'
+    show NotificationCapabilities;
 // For `PurchaseRail` — the Upgrade row asks it whether a checkout is possible
 // before it offers one. Same package `home_screen.dart` imports for the promo
 // card's `offerings`, so this adds no dependency.
@@ -130,10 +130,10 @@ class SettingsScreen extends ConsumerWidget {
     // Whether this platform can deliver a SCHEDULED reminder at all — the
     // app service's own reading of the chassis matrix, so the two reminder
     // preference rows below and the chassis tile further down agree.
-    final bool remindersDeliverable = ref
+    final NotificationCapabilities caps = ref
         .watch(subscriptiontrackerNotificationServiceProvider)
-        .capabilities
-        .canSchedule;
+        .capabilities;
+    final bool remindersDeliverable = caps.canSchedule;
     final List<List<String>> toggles = <List<String>>[
       <String>['alerts', l10n.prefRenewalAlerts, l10n.prefRenewalAlertsDesc],
       <String>['unused', l10n.prefUnusedPlans, l10n.prefUnusedPlansDesc],
@@ -383,13 +383,9 @@ class SettingsScreen extends ConsumerWidget {
 
             // ── CURRENCY (live-only) ─────────────────────────────────────────
             _sectionLabel(context, l10n.currency),
-            // 🔴 ONE CHIP PER ROW OF THE MONEY TABLE (`core.Money.symbols`), and
-            // the stored value is the CODE. This was a literal list of four
-            // glyphs stored as a glyph: nobody in yen, Australian or Canadian
-            // dollars could choose their currency, and `$` names three of them.
-            // A `Wrap` of fixed-width chips rather than a `Row` of `Expanded`
-            // ones, because the table's length is data — a row of N expanding
-            // chips at 375 px is a layout that breaks the day the table grows.
+            // 🔴 ONE CHIP PER ROW OF THE MONEY TABLE, storing the CODE (four
+            // literal glyphs could not say yen, A$ or C$), in a `Wrap` because the
+            // table's length is data. ST-C1 (D10): the line under it.
             Wrap(
               runSpacing: 8,
               children: core.Money.symbols.entries.map((
@@ -529,6 +525,10 @@ class SettingsScreen extends ConsumerWidget {
                 );
               }).toList(),
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(2, 8, 2, 0),
+              child: Text(l10n.currencyHint, style: AppText.of(context).muted),
+            ),
 
             // ── PREFERENCES (live-only) ──────────────────────────────────────
             _sectionLabel(context, l10n.preferences),
@@ -603,51 +603,7 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
 
-            // ── NOTIFICATIONS (chassis) ──────────────────────────────────────
-            // [pipeline C-7 earning its keep in real UI] The platform matrix is
-            // consulted BEFORE a control is offered. On Linux the plugin shows
-            // but cannot schedule; on Windows (pinned 17.x) it does neither. A
-            // toggle that silently does nothing on those platforms is worse than
-            // an honest sentence, because the user believes reminders are on.
-            //
-            // ⚠️ THIS IS THE OS-LEVEL REMINDER SWITCH AND IT IS NOT THE SAME
-            // THING AS "Renewal alerts" ABOVE. The pref above says WHETHER Subly
-            // wants to remind you about a renewal; this says whether this
-            // platform can deliver a scheduled notification at all. Merging them
-            // would be the toggle-with-no-feature shape on every platform where
-            // `canSchedule` is false.
-            _sectionLabel(context, l10n.notifications),
-            Container(
-              decoration: cardDecoration(context),
-              clipBehavior: Clip.antiAlias,
-              child: Material(
-                color: Colors.transparent,
-                child: Builder(
-                  builder: (BuildContext context) {
-                    final NotificationCapabilities caps =
-                        NotificationCapabilities.forPlatform(
-                          defaultTargetPlatform,
-                          isWeb: kIsWeb,
-                        );
-                    if (!caps.canSchedule) {
-                      return ListTile(
-                        leading: const Icon(Icons.notifications_off_outlined),
-                        title: Text(l10n.remindersUnavailable),
-                        enabled: false,
-                      );
-                    }
-                    return SwitchListTile(
-                      secondary: const Icon(Icons.notifications_outlined),
-                      title: Text(l10n.remindersEnabled),
-                      value: ref.watch(remindersEnabledProvider),
-                      onChanged: (bool on) =>
-                          _setReminders(context, ref, l10n, on: on),
-                    );
-                  },
-                ),
-              ),
-            ),
-
+            // ST-U1 (C22/D4): the chassis DAILY "streak" reminder left this app.
             // ── PRIVACY — THE DPDP §6(3) WITHDRAWAL PATH (live-only) ─────────
             //
             // 🔴 THE ROW A WHOLESALE APPLY DELETES WITH NOTHING GOING RED.
@@ -761,8 +717,11 @@ class SettingsScreen extends ConsumerWidget {
             //
             // Gated on a session because both terminate in a call keyed to an
             // account.
-            if (ref.watch(authRepositoryProvider).currentUser !=
-                null) ...<Widget>[
+            // ST-U2 (C44/D17): only while selling, or for a Pro user (ROSCA).
+            if (ref.watch(authRepositoryProvider).currentUser != null &&
+                (ref.watch(sellingEnabledProvider) ||
+                    (ref.watch(entitlementsProvider).valueOrNull?.isPro ??
+                        false))) ...<Widget>[
               _sectionLabel(context, l10n.plan),
               Container(
                 decoration: cardDecoration(context),
@@ -772,17 +731,10 @@ class SettingsScreen extends ConsumerWidget {
                     // 🔴 THE UPGRADE ROW IS GATED ON THE SAME ANSWER THE
                     // PAYWALL ITSELF READS — added 2026-08-21.
                     //
-                    // `paywall_screen.dart:228` refuses its choosing phase on
-                    // `!rail.canStartCheckout || rail.offerings.isEmpty` and
-                    // draws `l10n.paywallUnavailable` instead. Today that is
-                    // the ONLY thing `/paywall` can render on any platform:
-                    // `canStartCheckout` is `_capabilities.canStartCheckout &&
-                    // _config.canCheckout`, the config half is false while
-                    // OWNER_QUEUE A-1 (the merchant-of-record seller account)
-                    // is pending, and the capability half is false on Android
-                    // because the hosted rail is not Play Billing. So the row
-                    // took a paying-intent tap and answered "Purchases are not
-                    // available here."
+                    // The paywall refuses its choosing phase on the same
+                    // expression and says "Purchases are not available here";
+                    // the row took a paying-intent tap and answered that.
+                    // ST-U2 (audit C35): and on `paywall.enabled` too.
                     //
                     // Asking the RAIL rather than re-deriving the answer is the
                     // point: a second expression that happens to agree today is
@@ -810,7 +762,9 @@ class SettingsScreen extends ConsumerWidget {
                     ListenableBuilder(
                       listenable: offeringsChangesOf(rail),
                       builder: (BuildContext context, Widget? _) =>
-                          rail.canStartCheckout && rail.offerings.isNotEmpty
+                          ref.watch(sellingEnabledProvider) &&
+                              rail.canStartCheckout &&
+                              rail.offerings.isNotEmpty
                           ? _LinkRow(
                               icon: '★',
                               label: l10n.paywallUpgrade,
@@ -1093,67 +1047,6 @@ class SettingsScreen extends ConsumerWidget {
     child: Text(text.toUpperCase(), style: AppText.of(context).label),
   );
 
-  /// PERMISSION PRIMING — explain, THEN ask the OS.
-  ///
-  /// 🔴 The OS prompt can be shown ONCE on most platforms. A user who declines
-  /// it has effectively declined permanently, and the only route back is the
-  /// system settings app. So the cost of asking at a bad moment is not a
-  /// dismissed dialog — it is the feature, forever. Priming first means the one
-  /// prompt is spent on someone who has already said yes in principle.
-  ///
-  /// 🔴 AND THEN IT MUST ACTUALLY SCHEDULE. This used to end at
-  /// `requestPermission()` — the prompt was spent, the switch read ON, and no
-  /// notification was ever scheduled in any app this factory stamps. The
-  /// scheduling lives in `RemindersEnabledController.applyReminderChoice` so it
-  /// is reachable from a property test without a widget, and so the intent and
-  /// the OS state can never be written apart.
-  Future<void> _setReminders(
-    BuildContext context,
-    WidgetRef ref,
-    AppLocalizations l10n, {
-    required bool on,
-  }) async {
-    if (!on) {
-      await ref
-          .read(remindersEnabledProvider.notifier)
-          .applyReminderChoice(
-            on: false,
-            title: l10n.reminderTitle,
-            body: l10n.reminderBody,
-          );
-      return;
-    }
-    final bool proceed =
-        await showDialog<bool>(
-          context: context,
-          builder: (BuildContext c) => AlertDialog(
-            title: Text(l10n.permissionPrimingTitle),
-            content: Text(l10n.permissionPrimingBody),
-            actions: <Widget>[
-              TextButton(
-                onPressed: () => Navigator.pop(c, false),
-                child: Text(l10n.notNow),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(c, true),
-                child: Text(l10n.continueLabel),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-    // Declining the PRIMING must not spend the OS prompt — that is the whole
-    // point of asking twice.
-    if (!proceed) return;
-    await ref
-        .read(remindersEnabledProvider.notifier)
-        .applyReminderChoice(
-          on: true,
-          title: l10n.reminderTitle,
-          body: l10n.reminderBody,
-        );
-  }
-
   /// 🔴 AWAITED, AND ITS FAILURE IS SAID OUT LOUD. This was
   /// `onPressed: () => ref.read(authRepositoryProvider).signOut()` — not awaited
   /// and not caught — while `SecureSessionStorage.removePersistedSession` throws
@@ -1337,7 +1230,9 @@ class SettingsScreen extends ConsumerWidget {
     // anchor — the one that exists because this button once called
     // `Navigator.pop` and nothing else. Disposed by the dialog, the last reader,
     // exactly as the controller is.
-    final ValueNotifier<String?> captchaToken = ValueNotifier<String?>(null);
+    // ST-A1 (BUG-1): `consume()` spends the token and re-challenges, so a retry
+    // after a wrong password never re-sends a redeemed one.
+    final CaptchaTokenController captcha = newCaptchaController();
     // ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH — read once, before the dialog: which
     // kind of proof this account can give.
     final AuthUser? current = ref.read(authRepositoryProvider).currentUser;
@@ -1355,8 +1250,8 @@ class SettingsScreen extends ConsumerWidget {
         l10n: l10n,
         passwordless: passwordless,
         password: password,
-        captchaToken: captchaToken,
-        onConfirm: () => _deleteAccount(ref, password.text, captchaToken.value),
+        captcha: captcha,
+        onConfirm: () => _deleteAccount(ref, password.text, captcha.consume()),
       ),
     );
   }
@@ -1674,7 +1569,7 @@ class _DeleteAccountDialog extends StatefulWidget {
     required this.l10n,
     required this.passwordless,
     required this.password,
-    required this.captchaToken,
+    required this.captcha,
     required this.onConfirm,
   });
 
@@ -1692,7 +1587,7 @@ class _DeleteAccountDialog extends StatefulWidget {
   /// The captcha answer, owned by the caller for exactly the same reason as
   /// [password] — see the note at `_confirmDelete`. Written by the
   /// [TurnstileGate] below, read by the caller's closure at confirm time.
-  final ValueNotifier<String?> captchaToken;
+  final CaptchaTokenController captcha;
 
   /// Runs the real deletion and reports what happened.
   final Future<core.AccountDeletionOutcome> Function() onConfirm;
@@ -1708,7 +1603,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
   @override
   void dispose() {
     widget.password.dispose();
-    widget.captchaToken.dispose();
+    widget.captcha.dispose();
     super.dispose();
   }
 
@@ -1825,9 +1720,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
             // password field alone still guards the destructive action, and
             // refusing to enable the button when `TurnstileGate.isConfigured` is
             // false would disable deletion in every build that ships now.
-            TurnstileGate(
-              onToken: (String? t) => widget.captchaToken.value = t,
-            ),
+            TurnstileGate(controller: widget.captcha, render: renderTurnstile),
           ],
         ],
       ),

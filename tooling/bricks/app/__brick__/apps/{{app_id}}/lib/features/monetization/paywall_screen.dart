@@ -239,6 +239,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         final List<Offering> offerings = rail.offerings;
         return PaywallView(
           phase: _phase,
+          onBack: () => context.canPop() ? context.pop() : context.go('/'),
           canStartCheckout: rail.canStartCheckout,
           checkoutStyle: _checkoutStyleOf(rail.railKind),
           refusalView: _refusalView,

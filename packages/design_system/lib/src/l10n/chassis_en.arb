@@ -255,6 +255,14 @@
     "description": "Consumed by package:nikatru_chassis_screens/auth/auth_error_text.dart when the auth request never reached the server."
   },
   "authUnknownError": "Something went wrong. Please try again.",
+  "authLinkFailedSignIn": "That link has expired or was opened in a different browser. Sign in, or ask for a new link.",
+  "@authLinkFailedSignIn": {
+    "description": "ST-A2 (audit BUG-2). Above the sign-in form when a sign-up confirmation or email-change link could not be used — expired, already used, or opened in a different browser than the one that asked for it. It used to land on the RESET screen and say the reset link was unusable."
+  },
+  "authProviderSignInCancelled": "Sign-in with that account did not finish, so nothing changed. Try again, or sign in with your email.",
+  "@authProviderSignInCancelled": {
+    "description": "ST-A2 (audit BUG-2). Above the sign-in form when the user came back from Sign in with Apple or Google without finishing (cancelled, or the provider refused). It used to land on the RESET screen."
+  },
   "@authUnknownError": {
     "description": "Consumed by package:nikatru_chassis_screens/auth/auth_error_text.dart. The fallback for any auth failure the mapper does not model. Never shows the raw exception."
   },

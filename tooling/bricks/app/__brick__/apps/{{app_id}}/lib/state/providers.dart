@@ -1201,6 +1201,12 @@ passwordRecoveryProvider = NotifierProvider<PasswordRecoveryController, bool>(
 /// fail-closed-and-untested limb [pipeline C-6] is about.
 final Provider<Uri> launchUriProvider = Provider<Uri>((ref) => Uri.base);
 
+/// ST-A2 (audit BUG-2): the NON-reset flow whose arrival failed — a sign-up
+/// confirmation that expired or was opened in another browser, or a cancelled
+/// Apple/Google return. The sign-in door says why; dismissing it clears this.
+final StateProvider<AuthFlow?> failedAuthArrivalProvider =
+    StateProvider<AuthFlow?>((ref) => null);
+
 /// What a password-reset link left in the URL, and what became of it.
 ///
 /// 🔴 THIS EXISTS BECAUSE THE DEAD-LINK STATE WAS UNREACHABLE FROM THE FAILURE
@@ -1258,6 +1264,16 @@ class PasswordResetArrivalController
       core.AuthEvent event,
     ) {
       if (event.recoveryLinkIsUnusable) {
+        // ST-A2 (audit BUG-2): the stream types EVERY failed link this way;
+        // only a reset arrival belongs on the reset screen. A confirmation or
+        // an OAuth return lands on sign-in with a sentence for its flow.
+        final AuthFlow? other = failedArrivalFlowOf(
+          ref.read(launchUriProvider),
+        );
+        if (other != null) {
+          ref.read(failedAuthArrivalProvider.notifier).state = other;
+          return;
+        }
         state = core.PasswordResetArrivalReport(
           core.PasswordResetArrival.unusable,
           problem: event.problem ?? core.AuthLinkProblem.unknown,

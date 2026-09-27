@@ -2577,6 +2577,7 @@ void main() {
           tester,
           ProviderScope(
             overrides: <Override>[
+              sellingEnabledProvider.overrideWithValue(true),
               purchaseRailProvider.overrideWithValue(
                 HostedCheckoutRail(
                   config: const RailConfig(
@@ -2676,6 +2677,7 @@ void main() {
           tester,
           ProviderScope(
             overrides: <Override>[
+              sellingEnabledProvider.overrideWithValue(true),
               purchaseRailProvider.overrideWithValue(
                 HostedCheckoutRail(
                   config: const RailConfig(
@@ -3630,6 +3632,7 @@ void main() {
           tester,
           ProviderScope(
             overrides: <Override>[
+              sellingEnabledProvider.overrideWithValue(true),
               purchaseRailProvider.overrideWithValue(
                 HostedCheckoutRail(
                   config: const RailConfig(
@@ -3836,7 +3839,7 @@ void main() {
       });
     });
 
-    testWidgets('check-inbox hands the tap-target guideline NOTHING — pinned', (
+    testWidgets('check-inbox hands the tap-target guideline TWO — pinned', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
@@ -3856,9 +3859,16 @@ void main() {
         // whole reason this family uses the framework's guideline is that
         // re-deriving its skip rules by hand is how a sweep starts disagreeing
         // with the thing it claims to be.
+        // ⏱ 2026-09-27 · ST-A5 (audit A-6): the two it now measures are
+        // CheckInboxActions' resend and "wrong address?" buttons, which sit
+        // inside the scrollable's bounds; the primary button is still stepped
+        // around, for the reason above. Pinned as a COUNT, not swept with
+        // `meetsGuideline`: a second family on CheckInboxScreen would void
+        // M1/M2/M2b in tooling/ci/test/a11y-coverage.test.mjs, whose subject
+        // must stay single-family.
         expect(
           await tapTargetSubjects(tester),
-          0,
+          2,
           reason:
               'check-inbox now offers the tap-target guideline something to '
               'measure — the framework traversal changed, or the screen no '
@@ -4714,6 +4724,7 @@ void main() {
           tester,
           ProviderScope(
             overrides: <Override>[
+              sellingEnabledProvider.overrideWithValue(true),
               purchaseRailProvider.overrideWithValue(
                 HostedCheckoutRail(
                   config: const RailConfig(
@@ -5025,6 +5036,7 @@ void main() {
           tester,
           ProviderScope(
             overrides: <Override>[
+              sellingEnabledProvider.overrideWithValue(true),
               purchaseRailProvider.overrideWithValue(
                 HostedCheckoutRail(
                   config: const RailConfig(

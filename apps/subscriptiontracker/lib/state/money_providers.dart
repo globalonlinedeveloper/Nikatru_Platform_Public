@@ -35,9 +35,17 @@ import 'providers.dart';
 /// named after.
 final Provider<RailConfig> railConfigProvider = Provider<RailConfig>((ref) {
   final core.AppConfig? cfg = ref.watch(appConfigProvider).valueOrNull;
-  if (cfg == null) return RailConfig.empty;
+  // ST-U2 (audit C35): `paywall.enabled` is the outer switch for SELLING too.
+  if (cfg == null || !cfg.paywall.enabled) return RailConfig.empty;
   return RailConfig.fromPaywallExtra(cfg.paywall.extra);
 });
+
+/// ST-U2 (audit C35): whether this build SELLS. `paywall.enabled` false used
+/// to hide the lock and nothing else — the Upgrade row, the promo card and the
+/// paywall still offered a store offering, so a user could pay for nothing.
+final Provider<bool> sellingEnabledProvider = Provider<bool>(
+  (ref) => ref.watch(appConfigProvider).valueOrNull?.paywall.enabled ?? false,
+);
 
 /// The authenticated entitlement read against the SHARED platform host.
 ///

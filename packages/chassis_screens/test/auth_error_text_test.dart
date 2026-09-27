@@ -120,6 +120,35 @@ void main() {
         en.authCaptchaFailed,
       );
     });
+    // 🔴 ST-A3 (audit BUG-3): offline on web read "Something went wrong".
+    // MUTATION PROOF: drop the network arm, or the fetch spellings from the
+    // fallback, and the matching case goes red.
+    test('the adapter''s network code → authNetworkError', () {
+      expect(
+        authErrorText(en, coded(core.AuthFailure.network)),
+        en.authNetworkError,
+      );
+    });
+    test('Chrome''s and Safari''s fetch failures → authNetworkError', () {
+      expect(
+        authErrorText(
+          en,
+          fail(
+            'ClientException: Failed to fetch, '
+            'uri=https://auth-api.nikatru.com/auth/v1/token',
+          ),
+        ),
+        en.authNetworkError,
+      );
+      expect(
+        authErrorText(en, fail('ClientException: Load failed')),
+        en.authNetworkError,
+      );
+      expect(
+        authErrorText(en, fail('XMLHttpRequest error.')),
+        en.authNetworkError,
+      );
+    });
     test('invalid_credentials → authIncorrect, whatever the words', () {
       expect(
         authErrorText(en, coded('invalid_credentials', message: 'nope')),

@@ -259,6 +259,10 @@
     "description": "Toggle for scheduled reminders."
   },
   "remindersUnavailable": "Reminders are not available on this platform.",
+  "notificationsNoRemindersHere": "This device can't send renewal reminders yet, so check this list for what's due soon.",
+  "@notificationsNoRemindersHere": {
+    "description": "ST-U1 (audit C20). Under the Notifications title on a target that cannot schedule a notification (web, Windows, Linux): the list is derived, and it is the only reminder there is."
+  },
   "@remindersUnavailable": {
     "description": "Shown INSTEAD of the toggle where the platform cannot schedule — a switch that silently does nothing is worse than an honest sentence."
   },
@@ -541,6 +545,10 @@
   "currency": "Currency",
   "@currency": {
     "description": "Section heading above the currency-symbol selector. Rendered upper-cased by the screen; store it in title case."
+  },
+  "currencyHint": "New subscriptions are entered in this currency. Changing it does not convert amounts you have already entered.",
+  "@currencyHint": {
+    "description": "One line under the currency chooser: which rows the choice applies to, and that it is not a conversion (ST-C1, audit D10)."
   },
   "preferences": "Preferences",
   "@preferences": {
@@ -1580,6 +1588,10 @@
     "description": "Consumed by features/auth/check_inbox_screen.dart. States the SECOND step: confirming happens in a mail client, often on another device, so the app cannot carry the user through it and must say what to do afterwards."
   },
   "checkInboxBackToSignIn": "Back to sign in",
+  "checkInboxChangeEmail": "Wrong address? Sign up with a different email",
+  "@checkInboxChangeEmail": {
+    "description": "ST-A5 (audit A-6). On the check-your-inbox screen: the way to fix a mistyped address — it returns to the sign-in door, whose sign-up toggle takes a new address."
+  },
   "@checkInboxBackToSignIn": {
     "description": "Consumed by features/auth/check_inbox_screen.dart. The primary action, because signing in is the next thing this app can do for them. Without it the screen is a dead end, which is the defect it exists to remove."
   },

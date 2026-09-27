@@ -644,8 +644,10 @@ void main() {
         // chooser is one chip per `core.Money.symbols` row (it was four
         // literal glyphs), so the count moves with the table. 23 = every
         // other control on the screen, measured when this was 27 with 4 chips.
-        controls: 23 + core.Money.symbols.length,
-        reachable: 21 + core.Money.symbols.length,
+        // ⏱ 2026-09-27 · ST-U1: 23 -> 22 and 21 -> 20 — the chassis daily
+        // "Reminders" switch left this screen.
+        controls: 22 + core.Money.symbols.length,
+        reachable: 20 + core.Money.symbols.length,
       );
       expect(
         s.dead.length,

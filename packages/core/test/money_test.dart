@@ -253,4 +253,28 @@ void main() {
       expect(Money.fromWholeUnits(41, 'USD').minorUnits % 100, 0);
     });
   });
+
+  group('defaultCodeForRegion — the first-run currency (ST-C1, audit C31)', () {
+    test('a region whose currency is in the table defaults to it', () {
+      expect(Money.defaultCodeForRegion('IN'), 'INR');
+      expect(Money.defaultCodeForRegion('in'), 'INR');
+      expect(Money.defaultCodeForRegion('GB'), 'GBP');
+      expect(Money.defaultCodeForRegion('JP'), 'JPY');
+      expect(Money.defaultCodeForRegion('DE'), 'EUR');
+      expect(Money.defaultCodeForRegion('US'), 'USD');
+    });
+
+    test('an unknown, absent or out-of-table region is the fallback', () {
+      expect(Money.defaultCodeForRegion(null), Money.fallbackCurrencyCode);
+      expect(Money.defaultCodeForRegion(''), Money.fallbackCurrencyCode);
+      // Sri Lanka writes LKR, which the chooser cannot show selected.
+      expect(Money.defaultCodeForRegion('LK'), Money.fallbackCurrencyCode);
+    });
+
+    test('every answer is a row of the money table', () {
+      for (final String r in <String>['IN', 'FR', 'CA', 'AU', 'BR', '']) {
+        expect(Money.symbols.containsKey(Money.defaultCodeForRegion(r)), isTrue);
+      }
+    });
+  });
 }

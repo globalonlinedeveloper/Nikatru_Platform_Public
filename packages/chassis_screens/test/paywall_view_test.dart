@@ -37,6 +37,7 @@ void main() {
     VoidCallback? onCheckAgain,
     VoidCallback? onGoHome,
     VoidCallback? onRetry,
+    VoidCallback? onBack,
   }) => PaywallView(
     phase: phase,
     offers: plans,
@@ -47,6 +48,7 @@ void main() {
     onCheckAgain: onCheckAgain ?? () {},
     onGoHome: onGoHome ?? () {},
     onRetry: onRetry ?? () {},
+    onBack: onBack,
   );
 
   ChassisLocalizations l10nOf(WidgetTester tester) =>
@@ -261,5 +263,27 @@ void main() {
     expect(find.text(r'$7.19'), findsOneWidget);
     expect(find.textContaining('1-month free trial'), findsOneWidget);
     expect(find.textContaining('-day free trial'), findsNothing);
+  });
+
+  // 🔴 ST-U2 (audit C34): every entry to the paywall is a `go` onto a root
+  // route, so a bare AppBar drew no arrow and a rail that sells nothing left the
+  // user trapped. MUTATION PROOF: drop `leading:` from PaywallView's AppBar
+  // and the first case goes red.
+  group('the paywall has a way off', () {
+    testWidgets('onBack draws a back button, and it fires', (
+      WidgetTester tester,
+    ) async {
+      bool backed = false;
+      await pumpChassis(tester, kPhone, view(onBack: () => backed = true));
+      await tester.tap(find.byType(BackButton));
+      expect(backed, isTrue);
+    });
+
+    testWidgets('no onBack, no button — the adapter decides', (
+      WidgetTester tester,
+    ) async {
+      await pumpChassis(tester, kPhone, view());
+      expect(find.byType(BackButton), findsNothing);
+    });
   });
 }

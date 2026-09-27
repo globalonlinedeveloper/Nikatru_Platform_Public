@@ -31,6 +31,7 @@
       "_planCorrected2026-09-20": "⏱ [ADR 086] · THE `plan` ABOVE IS LEFT EXACTLY AS WRITTEN; THIS SUPERSEDES THREE OF ITS FIGURES, MEASURED. (1) reaccept_terms landed at 179 -> 103, not 179 -> 57: the residue is larger than the BRICK adapter the plan's target was read off, because it carries this app's own dated reasoning and re-raises a non-AuthFailure sign-out as `core.AuthFailure(authUnknownError)` so the chassis view renders the sentence this app rendered before. The delta is still comfortably negative and is recorded in `adopted`. (2) 🔴 check_inbox WAS BUILT, MEASURED AT 88 -> 35 (callSiteDelta -53), AND THEN DEFERRED — NOT BECAUSE IT DOES NOT WORK. `CheckInboxScreen` is the mutation SUBJECT of M1/M2/M2b in `tooling/ci/test/a11y-coverage.test.mjs`, chosen because it is the only surface in this app swept by exactly ONE family, so deleting its one sweep call is enough to unsweep it. Once it delegates, `assert-a11y-coverage` correctly reports the surface as swept in `packages/chassis_screens` instead of owed, and all three cases stop measuring what they claim. That guard's own PRECONDITION names the two repairs — re-point at another single-family surface, or delete EVERY sweep of the subject — and there is no other single-family surface in this root, while deleting the chassis-side sweeps trips that root's 18-surface and 54-case floors and turns the expected EXIT 1 into a COVERAGE LOST 2. So adopting check_inbox is blocked on re-designing that mutation group, which is a decision about a compliance guard and its own increment. (3) 🔴 `verify_email (182 -> 47)` IS NOT REACHABLE AS STATED AND MUST NOT BE ATTEMPTED AS A RENAME. `apps/subscriptiontracker/lib/features/auth/verify_email_screen.dart` MOUNTS `TurnstileGate` between its resend and continue controls and passes the token to `resendVerificationEmail(captchaToken:)` — `resend` is one of the six Box A captcha-gated endpoints — and maps `core.AuthFailure` through `authErrorText(AppLocalizations.of(context), e)`. `packages/chassis_screens/lib/auth/verify_email_screen.dart` has NEITHER a captcha slot NOR an error mapper: it renders `e.message` and has nowhere to mount the gate. Adopting it as it stands would silently send a null captcha token and downgrade the localized error text, which is a behaviour REGRESSION the call-site line count would have hidden. The same coupling holds for sign_up (TurnstileGate + authErrorText) and, for the error mapper alone, reset_password. Those three need an ADDITIVE optional parameter on the chassis view first — optional, so the brick adapters are untouched — and that package change is its own increment.",
       "files": [
         "app.dart",
+        "features/auth/captcha.dart",
         "features/auth/check_inbox_screen.dart",
         "features/auth/legal_consent_fields.dart",
         "features/auth/reaccept_terms_screen.dart",
@@ -55,7 +56,7 @@
         {
           "file": "apps/subscriptiontracker/lib/features/auth/verify_email_screen.dart",
           "linesAtSince": 182,
-          "ceiling": 177,
+          "ceiling": 172,
           "template": 47
         },
         {
@@ -79,7 +80,7 @@
         {
           "file": "apps/subscriptiontracker/lib/features/auth/sign_up_screen.dart",
           "linesAtSince": 211,
-          "ceiling": 225,
+          "ceiling": 223,
           "template": 94
         },
         {
@@ -109,7 +110,7 @@
         {
           "file": "apps/subscriptiontracker/lib/features/settings/settings_screen.dart",
           "linesAtSince": 1969,
-          "ceiling": 2116,
+          "ceiling": 2009,
           "template": 616
         }
       ],
@@ -135,6 +136,13 @@
           "on": "2026-09-24",
           "callSiteDelta": -113,
           "measured": "THE PIECE IS A FUNCTION, NOT A SCREEN. The app's private mapper `apps/subscriptiontracker/lib/features/auth/auth_error_text.dart` (139 lines at 7dd09500) moved with `git mv` to `packages/chassis_screens/lib/auth/auth_error_text.dart`, where every chassis auth view now calls it too; what the app keeps is `features/auth/auth_error_sentence.dart`, 26 lines, a call-through that binds it to `context.chassisL10n` and decides nothing — so the delta is 26 - 139, measured with `wc -l`, the app `dart format --set-exit-if-changed` clean (Flutter 3.47.5). The four screens that call it moved by login 794 -> 789, sign_up 222 -> 225 (+3: the local length refusal now carries GoTrue's code and reason), reset_password 314 -> 312, verify_email 182 -> 177 — net -9 — and none of them imports the package: `chassis-delegation.mjs` reads a routed screen importing one chassis path as a screen emptied into it, which made all four COVERAGE LOST under `assert-a11y-coverage` when they imported the mapper directly. The strings it returns are chassis keys now; the seven it needed (authIncorrect, authAlreadyRegistered, authConfirmEmail, authRateLimited, authCaptchaFailed, authNetworkError, authUnknownError) were added to `chassis_en.arb`/`chassis_ta.arb` byte-identical to the app's own values in both shipped locales."
+        },
+        {
+          "file": "features/auth/turnstile_gate.dart",
+          "piece": "TurnstileGate",
+          "on": "2026-09-27",
+          "callSiteDelta": -74,
+          "measured": "apps/subscriptiontracker/lib/features/auth/turnstile_gate.dart 219 -> 145 lines (wc -l, after dart format, Flutter 3.47.5). ST-A1 (audit BUG-1, D29): the gate widget, CaptchaPosture and the single-use token lifecycle (CaptchaTokenController: consume + re-challenge after every gated call, submit disabled until a token exists) moved to packages/chassis_screens/lib/auth/turnstile_gate.dart; the app file keeps only its adapter — the CloudflareTurnstile renderer the package may not import, the posture read off AppConfig, the CaptchaHost mixin and the cutover assertion."
         }
       ],
       "_adoptedWhy": "⏱ 2026-09-15 · [ADR 086] ONE PIECE AT A TIME: the app now imports the package in the files listed here; tooling/ci/assert-chassis-parity.mjs holds that list equal to the scan and every callSiteDelta negative ([ADR 066]). The row is deleted when the last template file is adopted.",

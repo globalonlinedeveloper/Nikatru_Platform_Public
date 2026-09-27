@@ -416,3 +416,25 @@ core.PasswordResetArrivalReport passwordResetArrivalOf(Uri url) {
       ),
   };
 }
+
+/// 🔴 ST-A2 (audit BUG-2) — WHETHER AN AUTH-STREAM ERROR IS A DEAD *RESET* LINK.
+///
+/// The SDK re-emits every failed link exchange as a stream ERROR, whatever the
+/// flow, and the seam types every one of them `recoveryLinkFailed`. An expired
+/// sign-up confirmation, a confirmation opened in another browser (`?code=`
+/// with no PKCE verifier) and a cancelled Apple or Google sign-in therefore all
+/// landed on "This reset link cannot be used here." The launch URL already
+/// knows the flow — every redirect carries `nk_auth=<marker>` — and this reads
+/// it: only [AuthFlow.reset] is a reset failure. A URL with NO marker keeps
+/// today's answer (a native deep link arrives after launch, so its launch URL
+/// carries none), and every other flow is [failedArrivalFlowOf]'s to report.
+bool isResetLinkFailure(Uri launchUri) {
+  final AuthFlow? flow = authArrivalOf(launchUri).flow;
+  return flow == null || flow == AuthFlow.reset;
+}
+
+/// The NON-reset flow an auth-stream error belongs to, or null when it is a
+/// reset failure (see [isResetLinkFailure]). A caller shows the sign-in door
+/// with a sentence for this flow instead of the reset screen.
+AuthFlow? failedArrivalFlowOf(Uri launchUri) =>
+    isResetLinkFailure(launchUri) ? null : authArrivalOf(launchUri).flow;

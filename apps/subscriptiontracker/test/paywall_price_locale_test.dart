@@ -126,6 +126,7 @@ Future<void> _pump(
   WidgetTester tester,
   Locale locale, {
   PurchaseRail? rail,
+  bool selling = true,
 }) async {
   await tester.binding.setSurfaceSize(const Size(800, 1600));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -133,6 +134,7 @@ Future<void> _pump(
     overrides: <Override>[
       ...defaultWidthOverrides(),
       secureStoreProvider.overrideWithValue(_MemSecureStore()),
+      sellingEnabledProvider.overrideWithValue(selling),
       purchaseRailProvider.overrideWithValue(rail ?? _InrRail()),
     ],
   );
@@ -194,4 +196,23 @@ void main() {
       expect(find.textContaining('-day free trial'), findsNothing);
     },
   );
+
+  // 🔴 ST-U2 (audit C34, C35) — MONEY SAFETY. With `paywall.enabled` false the
+  // paywall still listed a selling rail's plans: a user could pay for a Pro
+  // that unlocks nothing. And every entry is a `go` onto a root route, so the
+  // screen drew no back arrow. MUTATION PROOF: drop the sellingEnabledProvider
+  // arm from the choosing phase, or the AppBar's `leading:`, and the matching
+  // case goes red.
+  testWidgets('paywall.enabled off: the paywall sells NOTHING', (
+    WidgetTester tester,
+  ) async {
+    await _pump(tester, const Locale('en'), selling: false);
+    expect(find.text('Purchases are not available here.'), findsOneWidget);
+    expect(find.textContaining('1,250,000'), findsNothing);
+  });
+
+  testWidgets('the paywall has a way off', (WidgetTester tester) async {
+    await _pump(tester, const Locale('en'));
+    expect(find.byTooltip('Back'), findsOneWidget);
+  });
 }

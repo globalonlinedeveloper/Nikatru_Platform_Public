@@ -138,6 +138,7 @@ class _OfferingRail implements PurchaseRail {
 /// The money seams this screen needs on top of the harness's two.
 List<Override> _moneyOverrides() => <Override>[
   secureStoreProvider.overrideWithValue(_MemSecureStore()),
+  sellingEnabledProvider.overrideWithValue(true),
   purchaseRailProvider.overrideWithValue(_OfferingRail()),
 ];
 

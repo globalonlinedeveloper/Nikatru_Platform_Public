@@ -114,6 +114,41 @@ class Money implements Comparable<Money> {
   /// is worse than a plain one.
   static String? symbolFor(String code) => symbols[code];
 
+  /// The euro area, by ISO 3166-1 alpha-2 region. Only [defaultCodeForRegion]
+  /// reads it.
+  static const Set<String> _euroRegions = <String>{
+    'AT', 'BE', 'CY', 'DE', 'EE', 'ES', 'FI', 'FR', 'GR', 'HR', 'IE', //
+    'IT', 'LT', 'LU', 'LV', 'MT', 'NL', 'PT', 'SI', 'SK',
+  };
+
+  /// The regions whose own currency is a row of [symbols], other than the
+  /// euro area.
+  static const Map<String, String> _codeByRegion = <String, String>{
+    'US': 'USD',
+    'GB': 'GBP',
+    'IN': 'INR',
+    'JP': 'JPY',
+    'AU': 'AUD',
+    'CA': 'CAD',
+  };
+
+  /// The currency a user in [region] most likely types amounts in, for a FIRST
+  /// run that has no stored choice — always a row of [symbols], so the chooser
+  /// can show it selected.
+  ///
+  /// 🔴 A DEFAULT, NEVER AN OVERRIDE (ST-C1, audit C31). Before this every
+  /// install started in [fallbackCurrencyCode]: an Indian user's first ₹649
+  /// was entered, stored and totalled as dollars unless they found the chip
+  /// first. [region] is the device locale's country (`en-IN` → `IN`); an
+  /// unknown or absent one, or one whose currency is not in the table, is
+  /// [fallbackCurrencyCode] — a guess outside the table would be a code no
+  /// formatter here can print.
+  static String defaultCodeForRegion(String? region) {
+    final String r = (region ?? '').toUpperCase();
+    if (_euroRegions.contains(r)) return 'EUR';
+    return _codeByRegion[r] ?? fallbackCurrencyCode;
+  }
+
   int get minorUnitDigits => minorUnitDigitsFor(currencyCode);
 
   bool get isZero => minorUnits == 0;

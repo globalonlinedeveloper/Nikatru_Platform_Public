@@ -4,6 +4,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart'
     show ContentPane;
 
 import '../../l10n/app_localizations.dart';
+import 'check_inbox_actions.dart';
 
 /// "Check your inbox" for a sign-up that produced NO SESSION.
 ///
@@ -24,10 +25,7 @@ import '../../l10n/app_localizations.dart';
 /// receipt-scanner; through `/sign-up` the screen simply re-enabled its button
 /// and stayed put.
 ///
-/// ⚠️ NO RESEND BUTTON, and its absence is a property of the state rather than
-/// an omission. `resendVerificationEmail()` takes no address on purpose — it
-/// aims at the CURRENT session, and there is none here. A button that could
-/// only throw is worse than no button.
+/// ST-A5 (audit A-6): `resendSignUpConfirmation()` lives in [CheckInboxActions].
 ///
 /// [email] is not optional and the route will not build this screen without one:
 /// naming the address is the whole job, because a mistyped one is visible here
@@ -79,6 +77,8 @@ class CheckInboxScreen extends StatelessWidget {
                 onPressed: () => context.go('/sign-in'),
                 child: Text(l10n.checkInboxBackToSignIn),
               ),
+              const SizedBox(height: 12),
+              CheckInboxActions(email: email),
             ],
           ),
         ),

@@ -114,7 +114,8 @@ describe('the real tree', () => {
       (r) => {
         assert.equal(r.status, 0, r.stderr);
         assert.match(r.stdout, /ok {3}apps\/subscriptiontracker\/lib — adopted TurnstileGate/);
-        assert.match(r.stdout, /TurnstileGate not adopted in this tree/);
+        // ⏱ 2026-09-27 · ST-A1 (audit D29): the brick adopted the chassis gate.
+        assert.match(r.stdout, /ok {3}tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}\/lib — adopted TurnstileGate; all 5 captcha-gated call site\(s\)/);
       },
     );
   });
@@ -132,11 +133,11 @@ describe('the real tree', () => {
   });
 
   test('a doc comment naming a gated method is NOT a call site', () => {
-    // check_inbox_screen.dart mentions `resendVerificationEmail()` in prose and
-    // calls nothing. A grep-shaped guard reports a violation here; this one must
+    // check_inbox_screen.dart mentions `resendSignUpConfirmation()` in prose and
+    // calls nothing (⏱ 2026-09-27 · ST-A5: the call lives in check_inbox_actions.dart). A grep-shaped guard reports a violation here; this one must
     // not, and the assertion is on the REAL file so it cannot rot.
     const src = readFileSync(join(REPO, SUBLY_CHECK_INBOX), 'utf8');
-    assert.ok(src.includes('resendVerificationEmail()'), 'the prose mention must really still be there');
+    assert.ok(src.includes('resendSignUpConfirmation()'), 'the prose mention must really still be there');
     withTree(
       () => {},
       (r) => {
@@ -206,7 +207,8 @@ describe('an adopted tree must pass a token at EVERY gated call site', () => {
     // A guard that only catches the file it was written for is a hardcoded
     // assertion wearing a scanner's clothes. Drive it at login_screen instead.
     withTree(
-      (root) => edit(root, SUBLY_LOGIN, (s) => s.split('captchaToken: _captchaToken,').join('')),
+      // ⏱ 2026-09-27 · ST-A1: the token is SPENT per call now (`captcha.consume()`).
+      (root) => edit(root, SUBLY_LOGIN, (s) => s.split('captchaToken: captcha.consume(),').join('')),
       (r) => {
         assert.equal(r.status, 1, `expected a failure; stdout was:\n${r.stdout}`);
         assert.match(r.stderr, /login_screen\.dart/);
@@ -235,38 +237,32 @@ describe('an adopted tree must pass a token at EVERY gated call site', () => {
   });
 });
 
-describe('the un-adopted tree is REPORTED and arms itself', () => {
-  test('the brick prints rather than failing, and names its five call sites', () => {
+// ⏱ 2026-09-27 · ST-A1 (audit D29): THE BRICK ADOPTED THE GATE, so the
+// "un-adopted tree is REPORTED and arms itself" limb has no real instance any
+// more — it did exactly what it promised: the day the widget landed in the
+// brick, its five call sites became governed with no edit to the guard. What is
+// left to prove on the real tree is that they PASS, and that one that stops
+// passing a token is red.
+describe('the brick has adopted the gate, and is governed like the app', () => {
+  test('all five brick call sites pass a token from a file that mounts it', () => {
     withTree(
       () => {},
       (r) => {
         assert.equal(r.status, 0, r.stderr);
-        assert.match(r.stdout, /👤 OWNER .*5 captcha-gated call site\(s\) and mounts TurnstileGate ZERO times/);
-        assert.match(r.stdout, /PRINTED, NOT FAILED/);
+        assert.doesNotMatch(r.stdout, /PRINTED, NOT FAILED/, 'the brick is governed now, not merely reported');
       },
     );
   });
 
-  test('🔴 AND THE EXEMPTION EXPIRES BY ITSELF: give the brick the widget and it starts failing', () => {
-    // This is the case that makes the print defensible rather than a permanent
-    // hole. Nothing in the guard is edited; the tree gains a mention of the
-    // widget and every one of the brick's five call sites becomes governed.
-    //
-    // 🔴 THE MENTION MUST BE CODE, AND THE FIRST DRAFT PROVED IT THE HARD WAY.
-    // Appending `// TurnstileGate` as a COMMENT left the guard green — correctly,
-    // because it strips comments before looking. The test was wrong and the
-    // guard was right, which is the one direction of disagreement worth having.
+  test('🔴 a brick call site that drops its token turns it red', () => {
     withTree(
       (root) =>
-        edit(
-          root,
-          `${BRICK}/lib/features/auth/sign_in_screen.dart`,
-          (s) => `${s}\nWidget _armsTheGuard() => const TurnstileGate();\n`,
+        edit(root, `${BRICK}/lib/features/auth/sign_in_screen.dart`, (s) =>
+          s.replace('captchaToken: captcha.consume(),\n', ''),
         ),
       (r) => {
         assert.equal(r.status, 1, `expected a failure; stdout was:\n${r.stdout}`);
-        assert.match(r.stderr, new RegExp('sign_in_screen\\.dart:\\d+ calls signInWithEmail\\('));
-        assert.doesNotMatch(r.stdout, /PRINTED, NOT FAILED/, 'the brick must no longer be merely reported');
+        assert.match(r.stderr, /sign_in_screen\.dart:\d+ calls signInWithEmail\(/);
       },
     );
   });

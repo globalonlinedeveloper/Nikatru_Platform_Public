@@ -843,6 +843,29 @@ void main() {
   // wrap is put back to `rethrow`.
   // ══════════════════════════════════════════════════════════════════════════
   group('sign-in, reset and resend wrap sb.AuthException', () {
+    // 🔴 ST-A3 (audit BUG-3): an offline WEB sign-in. gotrue wraps the
+    // browser's "Failed to fetch" as AuthRetryableFetchException with NO
+    // code, and no sentence arm matched it. MUTATION PROOF: return `e.code`
+    // unconditionally in `_failureOf` and this goes red.
+    test('signInWithEmail: a fetch that never left is coded network',
+        () async {
+      final _FakeGoTrue g = _FakeGoTrue(
+        session: null,
+        signInError: sb.AuthRetryableFetchException(
+          message: 'ClientException: Failed to fetch, '
+              'uri=https://auth-api.nikatru.com/auth/v1/token',
+        ),
+      );
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
+
+      final Object? thrown = await auth
+          .signInWithEmail(email: 'a@b.com', password: 'hunter22')
+          .then<Object?>((_) => null, onError: (Object e) => e);
+
+      expect(thrown, isA<core.AuthFailure>());
+      expect((thrown! as core.AuthFailure).code, core.AuthFailure.network);
+    });
+
     test('signInWithEmail: a wrong password arrives as OUR type, coded',
         () async {
       final _FakeGoTrue g = _FakeGoTrue(

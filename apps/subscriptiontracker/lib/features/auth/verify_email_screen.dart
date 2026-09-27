@@ -40,13 +40,10 @@ class VerifyEmailScreen extends ConsumerStatefulWidget {
   ConsumerState<VerifyEmailScreen> createState() => _VerifyEmailScreenState();
 }
 
-class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
+class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen>
+    with CaptchaHost<VerifyEmailScreen> {
   bool _busy = false;
   String? _notice;
-
-  /// See `login_screen.dart` for the full note. Null today; required after the
-  /// cutover, because `resend` is one of the six captcha-gated endpoints.
-  String? _captchaToken;
 
   /// Runs [action] with the busy flag held and the outcome shown inline.
   ///
@@ -131,16 +128,14 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
               const SizedBox(height: 12),
               // The resend endpoint is captcha-gated too, so the button needs
               // a token like every other door. Renders nothing without a key.
-              TurnstileGate(
-                onToken: (String? t) => setState(() => _captchaToken = t),
-              ),
+              TurnstileGate(controller: captcha, render: renderTurnstile),
               OutlinedButton(
                 key: VerifyEmailScreen.resendButton,
-                onPressed: _busy
+                onPressed: (_busy || !captcha.ready)
                     ? null
                     : () => _run(() async {
                         await auth.resendVerificationEmail(
-                          captchaToken: _captchaToken,
+                          captchaToken: captcha.consume(),
                         );
                         return l10n.verifyEmailResent;
                       }),

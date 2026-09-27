@@ -178,10 +178,13 @@ Widget _host(
   // the card itself hosts a selling rail, and the two that are about the real
   // rail's refusal say so.
   bool realRail = false,
+  bool selling = true,
 }) => ProviderScope(
   overrides: <Override>[
     keyValueStoreProvider.overrideWith((_) async => store),
     appConfigProvider.overrideWith((_) async => cfg),
+    // ST-U2 (audit C35): selling is on for these cases — `paywall.enabled`.
+    sellingEnabledProvider.overrideWithValue(selling),
     if (!realRail)
       purchaseRailProvider.overrideWithValue(rail ?? _SellingRail()),
     if (entitled)
@@ -815,5 +818,19 @@ void main() {
       expect(find.text('Variant A headline'), findsOneWidget);
       expect(find.text('Variant B headline'), findsNothing);
     });
+  });
+
+  // 🔴 ST-U2 (audit C35): `paywall.enabled` false is the outer switch for
+  // SELLING, so the card that quotes a price and a buy button is not drawn —
+  // even with a selling rail and the flag served true. MUTATION PROOF: drop
+  // the sellingEnabledProvider arm from `hasContent` and this goes red.
+  testWidgets('paywall.enabled off: no promo card, whatever the rail offers', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(_MemStore(), _config(promoEnabled: true), selling: false),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(PromoCard), findsNothing);
   });
 }

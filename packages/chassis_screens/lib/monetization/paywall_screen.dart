@@ -122,6 +122,7 @@ class PaywallView extends StatelessWidget {
     required this.onCheckAgain,
     required this.onGoHome,
     required this.onRetry,
+    this.onBack,
     super.key,
   });
 
@@ -162,13 +163,21 @@ class PaywallView extends StatelessWidget {
   /// Leaves a refusal for the plans, so a purchase can be started again.
   final VoidCallback onRetry;
 
+  /// ST-U2 (audit C34): the way OFF the paywall. Every entry is a `go` onto a
+  /// root route, so there is nothing to pop and a bare AppBar draws no arrow —
+  /// a user whose rail sells nothing was trapped. Null draws none.
+  final VoidCallback? onBack;
+
   @override
   Widget build(BuildContext context) {
     final ChassisLocalizations l10n = context.chassisL10n;
     final ThemeData theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.paywallTitle)),
+      appBar: AppBar(
+        leading: onBack == null ? null : BackButton(onPressed: onBack),
+        title: Text(l10n.paywallTitle),
+      ),
       // 🔴 THE `Center` IS GONE, AND THIS IS THE SCREEN THAT NAMES THE BUG.
       // `_body` returns a DIFFERENT NUMBER OF WIDGETS per [PaywallPhase] —
       // choosing, opening, pending, unlocked, refused — so the ListView's

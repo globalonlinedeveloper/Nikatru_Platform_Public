@@ -619,9 +619,12 @@ const REQUIRED_COVERAGE = [
     // (`test/support/raw_vendor_error.dart`) the auth view suites share. R14b
     // caught the slack — deleting a width suite left 22 and cleared 21. Read
     // off the per-root line, `— 23 file(s)`.
-    surfaces: 20,
-    widthTestFiles: 23,
-    coveredSurfaces: 20,
+    // ⏱ RAISED 2026-09-27 (ST-A1): surfaces 20 → 21 and coveredSurfaces 20 → 21
+    // for the chassis `TurnstileGate`, and `widthTestFiles` 23 → 24 for its
+    // suite (`test/turnstile_gate_test.dart`, kPhone/kTablet/kDesktop).
+    surfaces: 21,
+    widthTestFiles: 24,
+    coveredSurfaces: 21,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
       'app inherits, each measured at all three window classes',

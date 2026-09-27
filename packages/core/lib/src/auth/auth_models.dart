@@ -279,6 +279,11 @@ class AuthFailure implements Exception {
   /// GoTrue's code for a password it will not accept.
   static const String weakPassword = 'weak_password';
 
+  /// OUR code for a request that never reached the server (ST-A3, audit
+  /// BUG-3). GoTrue sends none for it — the browser's fetch failed — so the
+  /// adapter stamps this one, and the screen says "check your connection".
+  static const String network = 'network';
+
   /// The [weakPassword] reasons GoTrue sends (`internal/api/password.go`).
   static const String reasonLength = 'length';
   static const String reasonCharacters = 'characters';

@@ -254,9 +254,16 @@ class SupabaseAuthRepository implements core.AuthRepository {
   /// `error_code`, and — for `AuthWeakPasswordException` — the `reasons` list.
   /// The reset screen could therefore never say "this password is in a data
   /// breach": `pwned` arrived here and was dropped on this line.
+  ///
+  /// ⏱ 2026-09-27 · ST-A3 (audit BUG-3): a fetch that never reached the server
+  /// arrives as `AuthRetryableFetchException` with NO code (on web its message
+  /// is "ClientException: Failed to fetch", which no sentence arm matched), so
+  /// it is stamped [core.AuthFailure.network] here.
   static core.AuthFailure _failureOf(sb.AuthException e) => core.AuthFailure(
         e.message,
-        code: e.code,
+        code: e is sb.AuthRetryableFetchException
+            ? core.AuthFailure.network
+            : e.code,
         reasons:
             e is sb.AuthWeakPasswordException ? e.reasons : const <String>[],
       );
@@ -508,6 +515,27 @@ class SupabaseAuthRepository implements core.AuthRepository {
   ///
   /// ⏱ 2026-09-25 — a refusal (the captcha, a rate limit) leaves as
   /// [core.AuthFailure] with its code, never as the SDK's own type.
+  /// ST-A5 (audit A-6): the NO-SESSION resend, for "check your inbox" — see
+  /// [core.AuthRepository.resendSignUpConfirmation] for why an address is
+  /// taken here and nowhere else. Same mail, same destination as the first.
+  @override
+  Future<void> resendSignUpConfirmation(
+    String email, {
+    String? captchaToken,
+  }) async {
+    if (email.isEmpty) throw core.AuthFailure('Email is required');
+    try {
+      await _auth.resend(
+        type: sb.OtpType.signup,
+        email: email,
+        captchaToken: captchaToken,
+        emailRedirectTo: redirects(AuthFlow.signUpConfirm),
+      );
+    } on sb.AuthException catch (e) {
+      throw _failureOf(e);
+    }
+  }
+
   @override
   Future<void> resendVerificationEmail({String? captchaToken}) async {
     final String? email = _auth.currentUser?.email;

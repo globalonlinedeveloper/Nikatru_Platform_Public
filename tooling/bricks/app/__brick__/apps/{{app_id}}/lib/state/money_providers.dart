@@ -32,7 +32,8 @@ import 'providers.dart';
 /// named after.
 final Provider<RailConfig> railConfigProvider = Provider<RailConfig>((ref) {
   final core.AppConfig? cfg = ref.watch(appConfigProvider).valueOrNull;
-  if (cfg == null) return RailConfig.empty;
+  // ST-U2 (audit C35): `paywall.enabled` is the outer switch for SELLING too.
+  if (cfg == null || !cfg.paywall.enabled) return RailConfig.empty;
   return RailConfig.fromPaywallExtra(cfg.paywall.extra);
 });
 

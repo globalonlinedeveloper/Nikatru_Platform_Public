@@ -28,6 +28,8 @@ class VerifyEmailView extends StatefulWidget {
     required this.onCheckConfirmed,
     required this.onResend,
     required this.onSignOut,
+    this.captcha,
+    this.captchaReady = true,
     super.key,
   });
 
@@ -50,6 +52,14 @@ class VerifyEmailView extends StatefulWidget {
   /// The only way OUT of the gate. Goes through the SPINE in the adapter, not
   /// through a bare `signOut()` — see there for why.
   final Future<void> Function() onSignOut;
+
+  /// ST-A1: the adapter's `TurnstileGate`, rendered above Resend. The adapter
+  /// owns it because it owns the token the gated callback spends.
+  final Widget? captcha;
+
+  /// ST-A1 (BUG-1): false while a rendered challenge has not answered; the
+  /// captcha-gated action stays disabled until it has.
+  final bool captchaReady;
 
   @override
   State<VerifyEmailView> createState() => _VerifyEmailViewState();
@@ -136,9 +146,10 @@ class _VerifyEmailViewState extends State<VerifyEmailView> {
                 child: Text(l10n.verifyEmailContinue),
               ),
               const SizedBox(height: 12),
+              ?widget.captcha,
               OutlinedButton(
                 key: VerifyEmailView.resendButton,
-                onPressed: _busy
+                onPressed: (_busy || !widget.captchaReady)
                     ? null
                     : () => _run(() async {
                           await widget.onResend();

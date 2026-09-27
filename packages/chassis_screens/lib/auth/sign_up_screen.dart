@@ -29,6 +29,8 @@ class SignUpView extends StatefulWidget {
     required this.onHaveAccount,
     required this.consentFields,
     this.ageSignals,
+    this.captcha,
+    this.captchaReady = true,
     super.key,
   });
 
@@ -55,6 +57,14 @@ class SignUpView extends StatefulWidget {
   /// ⏱ 2026-09-15 · [ADR 082] §5. The store age signal read before the account
   /// is created. Null reads [defaultAgeSignalSource] for the running host.
   final core.AgeSignalSource? ageSignals;
+
+  /// ST-A1: the adapter's `TurnstileGate`, rendered above Sign up. The adapter
+  /// owns it because it owns the token the gated callback spends.
+  final Widget? captcha;
+
+  /// ST-A1 (BUG-1): false while a rendered challenge has not answered; the
+  /// captcha-gated action stays disabled until it has.
+  final bool captchaReady;
 
   @override
   State<SignUpView> createState() => _SignUpViewState();
@@ -85,7 +95,7 @@ class _SignUpViewState extends State<SignUpView> {
     // rule; this is the one that holds when the button is not the only way in —
     // `onSubmitted:` on the password field reaches here from the keyboard, and
     // an enter key that bypasses a legal gate is still a bypass.
-    if (_busy || !_acceptedTerms) return;
+    if (_busy || !_acceptedTerms || !widget.captchaReady) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -182,10 +192,12 @@ class _SignUpViewState extends State<SignUpView> {
               // marketing box is. An optional consent that gates the service is
               // GDPR Art 7(4) conditionality, which research/43 declined as
               // legally unavailable rather than as a preference.
+              ?widget.captcha,
               FilledButton(
                 key: SignUpView.submitButton,
-                onPressed:
-                    (_busy || !_acceptedTerms) ? null : () => _signUp(l10n),
+                onPressed: (_busy || !_acceptedTerms || !widget.captchaReady)
+                    ? null
+                    : () => _signUp(l10n),
                 child: Text(l10n.signUp),
               ),
               const SizedBox(height: 16),

@@ -131,4 +131,57 @@ void main() {
       );
     });
   });
+
+  group('🔴 ST-C1 — the first run takes the device region currency', () {
+    // Audit C31: every install started in USD, so an Indian user's first ₹649
+    // was stored and totalled as dollars. MUTATION PROOF: make
+    // `SettingsController.build` return `const SettingsState()` again and the
+    // first two cases go red.
+    ProviderContainer containerFor(MemStore store, String? region) {
+      final ProviderContainer c = ProviderContainer(
+        overrides: <Override>[
+          keyValueStoreProvider.overrideWith((_) async => store),
+          deviceRegionProvider.overrideWithValue(region),
+        ],
+      );
+      addTearDown(c.dispose);
+      return c;
+    }
+
+    test('an empty store in India starts in INR, and writes it once', () async {
+      final MemStore store = MemStore();
+      final ProviderContainer c = containerFor(store, 'IN');
+      await c.read(settingsControllerProvider.notifier).hydration;
+      expect(c.read(settingsControllerProvider).currencyCode, 'INR');
+      final Object? saved = jsonDecode(store.data[kSettingsKey]!);
+      expect((saved! as Map<String, Object?>)['currencyCode'], 'INR');
+    });
+
+    test('a legacy store with no currency reads the region too', () async {
+      final MemStore store = MemStore()
+        ..data[kSettingsKey] = jsonEncode(<String, Object?>{
+          'prefs': <String, bool>{'alerts': true},
+        });
+      final ProviderContainer c = containerFor(store, 'GB');
+      await c.read(settingsControllerProvider.notifier).hydration;
+      expect(c.read(settingsControllerProvider).currencyCode, 'GBP');
+    });
+
+    test('a stored choice always wins over the region', () async {
+      final MemStore store = MemStore()
+        ..data[kSettingsKey] = jsonEncode(<String, Object?>{
+          'currencyCode': 'USD',
+        });
+      final ProviderContainer c = containerFor(store, 'IN');
+      await c.read(settingsControllerProvider.notifier).hydration;
+      expect(c.read(settingsControllerProvider).currencyCode, 'USD');
+    });
+
+    testWidgets('the chooser says it converts nothing (audit D10)', (
+      WidgetTester tester,
+    ) async {
+      await pumpAt(tester, const Size(800, 3000), const SettingsScreen());
+      expect(find.textContaining('does not convert'), findsOneWidget);
+    });
+  });
 }

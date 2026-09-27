@@ -769,9 +769,11 @@ const REQUIRED_COVERAGE = [
     // DARK its two lines measured 1.02:1 and 3.75:1; it now reads `AppText.of`.
     // Both keys joined `SWEPT_FLOOR_BY_ROOT` in the same change. Read off the
     // per-root line: `20 of 20 … from 4 a11y test file(s) across 58 case(s)`.
-    surfaces: 20,
+    // ⏱ 2026-09-27 · ST-A1: 20 -> 21 surfaces and 58 -> 59 cases — the chassis
+    // TurnstileGate, swept in a11y_auth_test.dart's `a11y: turnstile-gate`.
+    surfaces: 21,
     a11yFiles: 4,
-    cases: 58,
+    cases: 59,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens plus the ' +
       'money/settings bodies and the app shell, mounted by every stamped app, all seventeen swept',
@@ -968,6 +970,8 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         'auth/reset_password_screen.dart#ResetPasswordView',
         'auth/sign_in_screen.dart#SignInView',
         'auth/sign_up_screen.dart#SignUpView',
+        // 2026-09-27 (ST-A1): the captcha gate, swept in its sign-in slot.
+        'auth/turnstile_gate.dart#TurnstileGate',
         'auth/verify_email_screen.dart#VerifyEmailView',
         'firstrun/onboarding_screen.dart#OnboardingView',
         // 2026-09-23: the two home bodies, swept in a11y_home_test.dart.

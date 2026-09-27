@@ -218,6 +218,21 @@ abstract class AuthRepository {
     );
   }
 
+  /// ST-A5 (audit A-6): send the sign-up confirmation again to [email], for
+  /// the one caller that has no session to read an address from — the
+  /// "check your inbox" screen, which names the address the user JUST signed
+  /// up with. The server sends only to an existing, UNCONFIRMED account, and
+  /// the call is captcha-gated and rate-limited, which is what bounds the
+  /// "mail cannon" [resendVerificationEmail] refuses to be.
+  Future<void> resendSignUpConfirmation(
+    String email, {
+    String? captchaToken,
+  }) async {
+    throw AuthFailure(
+      'Resending the confirmation email is not available here.',
+    );
+  }
+
   /// Re-read the user from the provider and return the fresh copy.
   ///
   /// This is what makes "I've confirmed my email" work. Confirmation happens in
