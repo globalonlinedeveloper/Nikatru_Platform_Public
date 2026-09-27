@@ -28,6 +28,11 @@
 //                                             channel … declares a graphicAssets"
 //   M11 screenshots/ deleted              -> FAIL "does not exist. The slot
 //                                             itself is part of the contract"
+//   M12 (2026-09-26) the Play graphics    -> FAIL "job \"capture\" captures the
+//       check step deleted from               Play listing at :191 and no step
+//       store-screenshots.yml                 before it runs … --check"; the
+//                                             guard before THE GRAPHICS STEP
+//                                             limb: exit 0 over the same tree
 //
 // 🔴 M2 AND M3 CAUGHT THE WRONG LIMB, AND THAT IS WHY M2b/M3b EXIST. Copying one
 // asset over the other changes the SIZE and the ALPHA at once, and both were
@@ -1513,5 +1518,128 @@ describe('assert-listing-assets.mjs — non-Play rule kinds (store-screenshots l
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /holds 1 screenshot\(s\) and Play requires at least 2\. Source: https:\/\/support\.google\.com/);
     assert.doesNotMatch(r.out, /ios-appstore[^\n]*Play/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE GRAPHICS STEP (O-SCREENSHOT-DRIVER-IS-ONE-APPS, 2026-09-26).
+//
+// The guard's header sends one question to the lane with a browser: is each
+// committed Play graphic still what render-play-graphics.mjs renders. The limb
+// reads store-screenshots.yml and refuses a Play capture job that does not run
+// that check, with --check, on the app it captures, before it captures. M12 was
+// measured on the real tree first (header); these are the fixture halves, one
+// lane per case, each written out.
+// ─────────────────────────────────────────────────────────────────────────────
+const LANE_FILE = '.github/workflows/store-screenshots.yml';
+const LANE_HEAD = [
+  'name: Store screenshots',
+  'on:',
+  '  workflow_dispatch:',
+  'jobs:',
+  '  capture:',
+  '    runs-on: ubuntu-24.04',
+  '    env:',
+  '      APP: demo',
+  '    steps:',
+  '      - uses: actions/checkout@v4',
+];
+const GRAPHICS_STEP = [
+  '      - name: The committed Play graphics are what their generator renders',
+  '        run: node tooling/store/render-play-graphics.mjs --app "$APP" --check',
+];
+const PLAY_CAPTURE = [
+  '      - name: Capture the set',
+  '        run: |',
+  '          set -euo pipefail',
+  '          node tooling/store/capture-play-screenshots.mjs --app "$APP"',
+];
+const SNAP_JOB = [
+  '  capture-linux:',
+  '    runs-on: ubuntu-24.04',
+  '    steps:',
+  '      - name: Capture the set',
+  '        run: node tooling/store/capture-play-screenshots.mjs --app "$APP" --channel linux-snap',
+];
+const withLane = (lines) => (s) => {
+  s.files[LANE_FILE] = Buffer.from(`${lines.join('\n')}\n`);
+};
+
+describe('assert-listing-assets.mjs — THE GRAPHICS STEP', () => {
+  test('G0 · GREEN CONTROL — the check before the Play capture passes, and the Snap job owes none', () => {
+    const r = run(build(withLane([...LANE_HEAD, ...GRAPHICS_STEP, ...PLAY_CAPTURE, ...SNAP_JOB])));
+    assert.equal(r.code, 0, r.out);
+    assert.match(
+      r.out,
+      /ok {3}THE GRAPHICS STEP — \.github\/workflows\/store-screenshots\.yml job "capture" runs render-play-graphics\.mjs --check at :11, before its Play capture at :13, on the app it captures\./,
+    );
+  });
+
+  test('G1 · RC3 — the check deleted: FAILS naming the job and the capture line', () => {
+    const r = run(build(withLane([...LANE_HEAD, ...PLAY_CAPTURE, ...SNAP_JOB])));
+    assert.equal(r.code, 1, r.out);
+    assert.match(
+      r.out,
+      /FAIL \.github\/workflows\/store-screenshots\.yml job "capture" captures the Play listing at :11 and no step before it runs `node tooling\/store\/render-play-graphics\.mjs --app \$APP --check`/,
+    );
+  });
+
+  test('G2 · the check AFTER the capture FAILS: a drifted graphic would ride a twenty-minute drive', () => {
+    const r = run(build(withLane([...LANE_HEAD, ...PLAY_CAPTURE, ...GRAPHICS_STEP, ...SNAP_JOB])));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /job "capture" captures the Play listing at :11 and no step before it runs/);
+  });
+
+  test('G3 · the renderer run WITHOUT --check FAILS: that overwrites the graphics instead of comparing them', () => {
+    const noCheck = ['      - name: Render the Play graphics', '        run: node tooling/store/render-play-graphics.mjs --app "$APP"'];
+    const r = run(build(withLane([...LANE_HEAD, ...noCheck, ...PLAY_CAPTURE])));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /job "capture" captures the Play listing at :13 and no step before it runs `node tooling\/store\/render-play-graphics\.mjs --app \$APP --check`/);
+  });
+
+  test('G4 · a check of ANOTHER app FAILS: it must be the app the job captures', () => {
+    const other = ['      - name: Check', '        run: node tooling/store/render-play-graphics.mjs --app subscriptiontracker --check'];
+    const r = run(build(withLane([...LANE_HEAD, ...other, ...PLAY_CAPTURE])));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /job "capture" captures the Play listing at :13 and no step before it runs/);
+  });
+
+  test('G5 · a check with an `if:` of its own FAILS: the capture can run without it', () => {
+    const gated = [GRAPHICS_STEP[0], "        if: ${{ github.event_name == 'push' }}", GRAPHICS_STEP[1]];
+    const r = run(build(withLane([...LANE_HEAD, ...gated, ...PLAY_CAPTURE])));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /the Play graphics check at :11 carries its own `if: \$\{\{ github\.event_name == 'push' \}\}`/);
+  });
+
+  test('G6 · a check that is continue-on-error FAILS: its red would leave the job green', () => {
+    const soft = [...GRAPHICS_STEP, '        continue-on-error: true'];
+    const r = run(build(withLane([...LANE_HEAD, ...soft, ...PLAY_CAPTURE])));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /the Play graphics check at :11 is `continue-on-error: true`/);
+  });
+
+  test('G7 · a fixture root with no workflow PRINTS that the limb was not judged', () => {
+    const r = run(build());
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /GRAPHICS STEP: no workflow in this tree captures the Play listing \(a fixture root\)/);
+    assert.doesNotMatch(r.out, /ok {3}THE GRAPHICS STEP/);
+  });
+
+  test('G8 · a fixture lane that captures only the Snap listing PRINTS the same: no Play capture, nothing judged', () => {
+    const r = run(build(withLane([...LANE_HEAD.slice(0, 4), ...SNAP_JOB])));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /GRAPHICS STEP: no workflow in this tree captures the Play listing \(a fixture root\)/);
+  });
+
+  test('G9 · the jobs are found by what they run: a Play capture in ANOTHER workflow owes the check too', () => {
+    const other = ['name: Another lane', 'on:', '  workflow_dispatch:', 'jobs:', '  shots:', '    runs-on: ubuntu-24.04', '    steps:', ...PLAY_CAPTURE];
+    const r = run(build((s) => {
+      withLane([...LANE_HEAD, ...GRAPHICS_STEP, ...PLAY_CAPTURE])(s);
+      s.files['.github/workflows/another-lane.yml'] = Buffer.from(`${other.join('\n')}\n`);
+    }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /FAIL \.github\/workflows\/another-lane\.yml job "shots" captures the Play listing at :8 and no step before it runs/);
+    // …and only that job: the store-screenshots one carries its check.
+    assert.doesNotMatch(r.out, /store-screenshots\.yml job "capture" captures the Play listing/);
   });
 });

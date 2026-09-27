@@ -157,7 +157,7 @@ import { randomBytes } from 'node:crypto';
 import { pngHeader, flattenToOpaque, RasterUnavailable } from './chrome-raster.mjs';
 import { decodeRgba, PngUnreadable } from './png-codec.mjs';
 import { foldsOf, foldFor, foldLineProblems, selfTestFoldLineDetector, FOLD_ROWS, FOLD_TOLERANCE } from './capture-row-edge.mjs';
-import { scanCaptureSuite, selfTestAccountAddressDetector, storeViewDefineArgs } from './capture-suite-scan.mjs';
+import { scanCaptureSuite, selfTestAccountAddressDetector, storeViewDefineArgs, SUITE_FILE, DRIVER_FILE } from './capture-suite-scan.mjs';
 import { stageFallbackFonts, unstageFallbackFonts } from './capture-fallback-fonts.mjs';
 import { boardFileFor, boardOf, boardParityProblems, boardProvenance } from './capture-board-parity.mjs';
 import { appVersionDefine, StampRefused } from '../e2e/app-version-stamp.mjs';
@@ -444,9 +444,9 @@ function chromedriverPath() {
 
 // ── run the drive ───────────────────────────────────────────────────────────
 const appDir = join(ROOT, 'apps', app);
-if (!existsSync(join(appDir, 'integration_test', 'store_screenshots_test.dart'))) {
+if (!existsSync(join(appDir, SUITE_FILE))) {
   fail([
-    `apps/${app} carries no integration_test/store_screenshots_test.dart.`,
+    `apps/${app} carries no ${SUITE_FILE}.`,
     'That suite IS the capture. Without it this script would start a browser, drive nothing and report a',
     'clean run over zero screenshots — a scan over nothing printing ok, which is this repo\'s single most',
     'repeated failure.',
@@ -926,16 +926,16 @@ try {
     const args = NATIVE
       ? [
           'drive',
-          '--driver=test_driver/store_screenshots.dart',
-          '--target=integration_test/store_screenshots_test.dart',
+          `--driver=${DRIVER_FILE}`,
+          `--target=${SUITE_FILE}`,
           '-d', cap.flutterDevice,
           ...defines,
           ...storeViewDefineArgs(cap),
         ]
       : [
           'drive',
-          '--driver=test_driver/store_screenshots.dart',
-          '--target=integration_test/store_screenshots_test.dart',
+          `--driver=${DRIVER_FILE}`,
+          `--target=${SUITE_FILE}`,
           '-d', 'web-server',
           '--browser-name=chrome',
           // THE DIMENSION LEVER. `flutter drive --help`: "The dimension of the browser

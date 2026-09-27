@@ -1,6 +1,6 @@
 name: Store screenshots
 
-run-name: "Store screenshots — ${{ inputs.app }} — ${{ inputs.channel }} by @${{ github.actor }}"
+run-name: "Store screenshots — ${{ inputs.app }} — ${{ inputs.channel }} — ${{ inputs.dry_run && 'dry run' || 'pull request' }} by @${{ github.actor }}"
 
 # The measurements, retractions and traps behind this file are in
 # docs/ci/store-screenshots.md. Only `# why:` lines live here, and
@@ -35,6 +35,18 @@ on:
           - windows-store
           - macos-appstore
           - ios-appstore
+      # why: THE WHOLE CAPTURE WITH NO PULL REQUEST AT THE END (O-SCREENSHOT-DRIVER-IS-ONE-APPS).
+      # A new app's first capture proves its lane end to end (the precheck, the build, the
+      # drive, both listing guards) and proposes nothing to its listing: the set comes back
+      # as a run artifact named dry-run-<channel>-<app>. Every step that pushes a branch or
+      # opens a pull request carries `if: ${{ !inputs.dry_run }}`, and
+      # tooling/ci/test/store-screenshots-lane.test.mjs reads those `if:` lines. Default
+      # false, so a dispatch that says nothing does what this lane did before the input.
+      dry_run:
+        description: 'Capture and check the set, upload it as the run artifact dry-run-<channel>-<app>, and open no pull request.'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -85,6 +97,14 @@ jobs:
         with:
           persist-credentials: false
 
+      # why: THE APP IS A DISPATCH INPUT, so it can name an app of the workspace with no
+      # capture suite (O-SCREENSHOT-DRIVER-IS-ONE-APPS). This refuses that here, naming the
+      # missing file, rather than at the first `flutter drive` twenty minutes and one
+      # provisioned user later. First after checkout in each of the four jobs; the lane test
+      # holds the position and the channel.
+      - name: Precheck — this app has the suite, the driver and the listing directory the capture needs
+        run: node tooling/store/capture-precheck.mjs --app "$APP" --channel android-play
+
       # why: FAILS CLOSED on a missing secret rather than skipping. Without all three the
       # app builds in DEMO posture -- every screen carries a "Demo data" banner and the
       # board is twelve third-party trademarks, which is a store filing nobody can ship.
@@ -121,6 +141,15 @@ jobs:
           echo "TURNSTILE_SITE_KEY is set — the gated screens will render a real widget, as they do in production."
 
       - uses: ./.github/actions/setup-node
+
+      # why: THE CLAIM assert-listing-assets.mjs USED TO MAKE WITH NOTHING BEHIND IT. That guard
+      # reads PNG headers and cannot tell whether the committed feature graphic and store icon
+      # are still what render-play-graphics.mjs renders from the brand SVGs: that needs a
+      # browser, and this is the job with Chrome (O-SCREENSHOT-DRIVER-IS-ONE-APPS). Before the
+      # capture, so a drifted graphic fails in seconds and never behind a twenty-minute drive.
+      # The listing guard's GRAPHICS STEP limb refuses this file without this step.
+      - name: The committed Play graphics are what their generator renders
+        run: node tooling/store/render-play-graphics.mjs --app "$APP" --check
 
       # why: a capture against an undeployed sandbox otherwise dies twenty minutes
       # later as a network error. The hosts are computed from the wrangler configs.
@@ -236,9 +265,23 @@ jobs:
         run: node --single-threaded tooling/store/measure-frame-ink.mjs "apps/${APP}/store/android-play/screenshots" "apps/${APP}/store/android-play/screenshots-tablet"
 
       - name: Upload the screenshot set
+        if: ${{ !inputs.dry_run }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: play-screenshots-${{ needs.gate.outputs.app }}
+          path: |
+            apps/${{ needs.gate.outputs.app }}/store/android-play/screenshots/
+            apps/${{ needs.gate.outputs.app }}/store/android-play/screenshots-tablet/
+          if-no-files-found: error
+
+      # why: A DRY RUN'S SET UNDER ITS OWN NAME, so nothing that looks for
+      # play-screenshots-<app> can receive a set nobody proposed. The same paths as the
+      # upload above, line for line; the lane test compares the two.
+      - name: Upload the DRY-RUN screenshot set
+        if: ${{ inputs.dry_run }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dry-run-android-play-${{ needs.gate.outputs.app }}
           path: |
             apps/${{ needs.gate.outputs.app }}/store/android-play/screenshots/
             apps/${{ needs.gate.outputs.app }}/store/android-play/screenshots-tablet/
@@ -248,7 +291,9 @@ jobs:
       # capture them and must not commit them to a protected branch unreviewed. If
       # gh pr create is refused the branch is still pushed and the pixels are still
       # uploaded as an artifact -- docs/ci/store-screenshots.md carries that path.
+      # Not in a dry run (O-SCREENSHOT-DRIVER-IS-ONE-APPS): no branch, no pull request.
       - name: Propose the set for human review (pull request)
+        if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -364,6 +409,10 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+
+      # why: the Play job's precheck, for this job's channel.
+      - name: Precheck — this app has the suite, the driver and the listing directory the capture needs
+        run: node tooling/store/capture-precheck.mjs --app "$APP" --channel linux-snap
 
       # why: the same three, failing closed for the same reason as the Play job —
       # without them the app builds in DEMO posture and the frames are a "Demo
@@ -519,16 +568,27 @@ jobs:
         run: node --single-threaded tooling/store/measure-frame-ink.mjs "$FRAMES_DIR"
 
       - name: Upload the screenshot set
+        if: ${{ !inputs.dry_run }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: snap-screenshots-${{ needs.gate.outputs.app }}
           path: ${{ steps.reg.outputs.dir }}/
           if-no-files-found: error
 
+      # why: the Play job's reason — a dry run's set under its own name, from the same path.
+      - name: Upload the DRY-RUN screenshot set
+        if: ${{ inputs.dry_run }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dry-run-linux-snap-${{ needs.gate.outputs.app }}
+          path: ${{ steps.reg.outputs.dir }}/
+          if-no-files-found: error
+
       # why: PROPOSED, never pushed — the Play job's reason, unchanged. A store
       # listing is a sworn filing; a machine may capture it and must not commit
-      # it to a protected branch unreviewed.
+      # it to a protected branch unreviewed. Not in a dry run.
       - name: Propose the set for human review (pull request)
+        if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ github.token }}
           SHOTS: ${{ steps.reg.outputs.dir }}
@@ -641,6 +701,10 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+
+      # why: the Play job's precheck, for the channel this dispatch names.
+      - name: Precheck — this app has the suite, the driver and the listing directory the capture needs
+        run: node tooling/store/capture-precheck.mjs --app "$APP" --channel "$STORE_CHANNEL"
 
       # why: the same three secrets and the same closed failure as the other two
       # jobs — without them the app builds in DEMO posture and every frame is a
@@ -796,16 +860,27 @@ jobs:
         run: node --single-threaded tooling/store/measure-frame-ink.mjs "$FRAMES_DIR"
 
       - name: Upload the screenshot set
+        if: ${{ !inputs.dry_run }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ inputs.channel }}-screenshots-${{ needs.gate.outputs.app }}
           path: ${{ steps.reg.outputs.dir }}/
           if-no-files-found: error
 
+      # why: the Play job's reason — a dry run's set under its own name, from the same path.
+      - name: Upload the DRY-RUN screenshot set
+        if: ${{ inputs.dry_run }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dry-run-${{ inputs.channel }}-${{ needs.gate.outputs.app }}
+          path: ${{ steps.reg.outputs.dir }}/
+          if-no-files-found: error
+
       # why: PROPOSED, never pushed — a store listing is a sworn filing; a
       # machine may photograph it and must not commit it to a protected branch
-      # unreviewed.
+      # unreviewed. Not in a dry run.
       - name: Propose the set for human review (pull request)
+        if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ github.token }}
           SHOTS: ${{ steps.reg.outputs.dir }}
@@ -905,6 +980,10 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+
+      # why: the Play job's precheck, for this job's channel.
+      - name: Precheck — this app has the suite, the driver and the listing directory the capture needs
+        run: node tooling/store/capture-precheck.mjs --app "$APP" --channel ios-appstore
 
       # why: the same three, failing closed for the same reason as every other
       # capture job — without them the app builds in DEMO posture and the frames
@@ -1071,6 +1150,7 @@ jobs:
         run: node --single-threaded tooling/store/measure-frame-ink.mjs "apps/${APP}/store/ios-appstore/screenshots" "apps/${APP}/store/ios-appstore/screenshots-ipad"
 
       - name: Upload the screenshot sets
+        if: ${{ !inputs.dry_run }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ios-screenshots-${{ needs.gate.outputs.app }}
@@ -1079,10 +1159,22 @@ jobs:
             apps/${{ needs.gate.outputs.app }}/store/ios-appstore/screenshots-ipad/
           if-no-files-found: error
 
+      # why: the Play job's reason — a dry run's sets under their own name, from the same paths.
+      - name: Upload the DRY-RUN screenshot sets
+        if: ${{ inputs.dry_run }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dry-run-ios-appstore-${{ needs.gate.outputs.app }}
+          path: |
+            apps/${{ needs.gate.outputs.app }}/store/ios-appstore/screenshots/
+            apps/${{ needs.gate.outputs.app }}/store/ios-appstore/screenshots-ipad/
+          if-no-files-found: error
+
       # why: PROPOSED, never pushed — a store listing is a sworn filing; a
       # machine may photograph it and must not commit it to a protected branch
-      # unreviewed.
+      # unreviewed. Not in a dry run.
       - name: Propose the sets for human review (pull request)
+        if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ github.token }}
           SHOTS: ${{ steps.reg.outputs.dirs }}
