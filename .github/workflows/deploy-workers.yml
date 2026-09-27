@@ -118,11 +118,17 @@ jobs:
       # Worker deployed with an empty GLITCHTIP_DSN reports its crashes nowhere while
       # its smoke stays green. So an empty one stops the leg here, before the
       # irreversible migrations.
+      # why: zizmor's overprovisioned-secrets, IGNORED HERE AND ON THE DEPLOY'S
+      # `secrets[...]` BELOW. An indexed read hands the runner every secret the
+      # workflow can see, and in this callee that is ONLY the names declared under
+      # `on.workflow_call.secrets` and passed by name: assert-worker-error-sink limb 5
+      # fails a `secrets: inherit` call (lead ruling Q1). One secret per register row
+      # needs the index; a literal name per app is the per-app edit E-a2 removes.
       - name: The crash-sink secret this Worker's row names reached this job
         if: steps.plan.outputs.deploy == 'true'
         env:
           DSN_SECRET: ${{ matrix.worker.dsnSecret }}
-          DSN: ${{ secrets[matrix.worker.dsnSecret] }}
+          DSN: ${{ secrets[matrix.worker.dsnSecret] }}  # zizmor: ignore[overprovisioned-secrets]
         run: |
           if [ -z "$DSN" ]; then
             echo "::error::the secret ${DSN_SECRET} (tooling/platform-register.json dsnSecret) is empty in this job: it is unset, or ci.yml's deploy-workers call does not deliver it. Nothing was deployed."
@@ -173,7 +179,7 @@ jobs:
           wranglerVersion: '4.135.0'   # why: package.json says ^4.0.0, which floats. [F-2]
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: ${{ matrix.worker.dir }}
-          command: deploy --var GLITCHTIP_DSN:${{ secrets[matrix.worker.dsnSecret] }} --var RELEASE:${{ github.sha }}
+          command: deploy --var GLITCHTIP_DSN:${{ secrets[matrix.worker.dsnSecret] }} --var RELEASE:${{ github.sha }}  # zizmor: ignore[overprovisioned-secrets]
       # why: `build` is a separate field from `version` on /v1/health — `version`
       # is the literal "v1" and a smoke joined to it would pass forever.
       # `--require-ok` is a separate conjunct: deployed-and-unwell is not good.
