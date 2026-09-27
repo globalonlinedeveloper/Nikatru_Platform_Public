@@ -254,9 +254,16 @@ class SupabaseAuthRepository implements core.AuthRepository {
   /// `error_code`, and — for `AuthWeakPasswordException` — the `reasons` list.
   /// The reset screen could therefore never say "this password is in a data
   /// breach": `pwned` arrived here and was dropped on this line.
+  ///
+  /// ⏱ 2026-09-27 · ST-A3 (audit BUG-3): a fetch that never reached the server
+  /// arrives as `AuthRetryableFetchException` with NO code (on web its message
+  /// is "ClientException: Failed to fetch", which no sentence arm matched), so
+  /// it is stamped [core.AuthFailure.network] here.
   static core.AuthFailure _failureOf(sb.AuthException e) => core.AuthFailure(
         e.message,
-        code: e.code,
+        code: e is sb.AuthRetryableFetchException
+            ? core.AuthFailure.network
+            : e.code,
         reasons:
             e is sb.AuthWeakPasswordException ? e.reasons : const <String>[],
       );

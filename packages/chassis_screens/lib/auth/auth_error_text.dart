@@ -101,10 +101,18 @@ String authErrorText(ChassisLocalizations l10n, Object e) {
   if (raw.contains('captcha')) {
     return l10n.authCaptchaFailed;
   }
+  // ⏱ 2026-09-27 · ST-A3 (audit BUG-3): the WEB spellings of "never reached
+  // the server" — Chrome and Edge say "Failed to fetch", Safari "Load failed",
+  // package:http wraps both as a ClientException — were none of these, so an
+  // offline sign-in on web read "Something went wrong".
   if (raw.contains('socketexception') ||
       raw.contains('failed host lookup') ||
       raw.contains('connection') ||
-      raw.contains('network')) {
+      raw.contains('network') ||
+      raw.contains('failed to fetch') ||
+      raw.contains('load failed') ||
+      raw.contains('xmlhttprequest error') ||
+      raw.contains('clientexception')) {
     return l10n.authNetworkError;
   }
   // ⚠️ The fallback DELIBERATELY discards the server's text rather than showing
@@ -130,6 +138,7 @@ String? _codeText(ChassisLocalizations l10n, core.AuthFailure e) =>
     switch (e.code) {
       core.AuthFailure.weakPassword => _weakPasswordByReason(l10n, e.reasons),
       'captcha_failed' => l10n.authCaptchaFailed,
+      core.AuthFailure.network => l10n.authNetworkError,
       'invalid_credentials' => l10n.authIncorrect,
       'user_already_exists' || 'email_exists' => l10n.authAlreadyRegistered,
       'email_not_confirmed' => l10n.authConfirmEmail,
