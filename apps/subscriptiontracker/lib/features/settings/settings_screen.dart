@@ -30,6 +30,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
+import 'package:nikatru_notifications/nikatru_notifications.dart'
+    show NotificationCapabilities;
 // For `PurchaseRail` — the Upgrade row asks it whether a checkout is possible
 // before it offers one. Same package `home_screen.dart` imports for the promo
 // card's `offerings`, so this adds no dependency.
@@ -128,10 +130,10 @@ class SettingsScreen extends ConsumerWidget {
     // Whether this platform can deliver a SCHEDULED reminder at all — the
     // app service's own reading of the chassis matrix, so the two reminder
     // preference rows below and the chassis tile further down agree.
-    final bool remindersDeliverable = ref
+    final NotificationCapabilities caps = ref
         .watch(subscriptiontrackerNotificationServiceProvider)
-        .capabilities
-        .canSchedule;
+        .capabilities;
+    final bool remindersDeliverable = caps.canSchedule;
     final List<List<String>> toggles = <List<String>>[
       <String>['alerts', l10n.prefRenewalAlerts, l10n.prefRenewalAlertsDesc],
       <String>['unused', l10n.prefUnusedPlans, l10n.prefUnusedPlansDesc],
@@ -601,10 +603,7 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
 
-            // ST-U1 (audit C22/D4): the chassis DAILY reminder ("A minute now keeps
-            // your streak going") left this app — one reminders control, the
-            // renewal ones above.
-
+            // ST-U1 (C22/D4): the chassis DAILY "streak" reminder left this app.
             // ── PRIVACY — THE DPDP §6(3) WITHDRAWAL PATH (live-only) ─────────
             //
             // 🔴 THE ROW A WHOLESALE APPLY DELETES WITH NOTHING GOING RED.

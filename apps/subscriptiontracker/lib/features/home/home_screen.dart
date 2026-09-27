@@ -1695,9 +1695,9 @@ class _UpgradePromoCardState extends ConsumerState<UpgradePromoCard> {
             // gated on the rail (ROSCA).
             // ST-U2 (audit C35): and nothing while `paywall.enabled` is false.
             hasContent:
-                ref.watch(sellingEnabledProvider) &&
                 offerings.isNotEmpty &&
-                rail.canStartCheckout,
+                rail.canStartCheckout &&
+                ref.watch(sellingEnabledProvider),
           );
       if (!decision.show) return const SizedBox.shrink();
       _showing = true;
