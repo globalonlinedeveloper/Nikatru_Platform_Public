@@ -302,7 +302,7 @@
     {
       "path": "tooling/ops/check-pages-deployments.mjs",
       "property": "workflow-scan",
-      "reads": "the environment deploy-web.yml hands plan-deploy.mjs (its lane-map.json deploy unit) and each job's timeout-minutes, to derive a direct-upload Pages project's expected commit and deploy-lane window"
+      "reads": "the environment deploy-web.yml hands plan-deploy.mjs (its lane-map.json deploy unit), each job's timeout-minutes and a site job's --project-name, to derive a direct-upload Pages project, its expected commit and its deploy-lane window"
     },
     {
       "path": "tooling/ops/check-prod-provenance.mjs",
