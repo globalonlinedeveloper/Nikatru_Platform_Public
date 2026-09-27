@@ -1986,6 +1986,7 @@
     "claims": [
       "ADR 067",
       "D-2b",
+      "D-5",
       "R-1"
     ],
     "invokedBy": [
@@ -1994,6 +1995,7 @@
       ".github/workflows/ci.yml#prepare",
       ".github/workflows/deploy-web.yml#prepare",
       ".github/workflows/e2e.yml#prepare",
+      ".github/workflows/store-screenshots.yml#gate",
       ".github/workflows/submit-appstore.yml#gate",
       ".github/workflows/submit-play.yml#gate",
       ".github/workflows/submit-snap.yml#gate",
@@ -3207,7 +3209,11 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/e2e.yml#e2e"
+      ".github/workflows/e2e.yml#e2e",
+      ".github/workflows/store-screenshots.yml#capture",
+      ".github/workflows/store-screenshots.yml#capture-desktop-native",
+      ".github/workflows/store-screenshots.yml#capture-ios",
+      ".github/workflows/store-screenshots.yml#capture-linux"
     ],
     "kind": "script",
     "ref": "tooling/e2e/backend.mjs",

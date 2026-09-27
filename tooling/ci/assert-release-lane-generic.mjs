@@ -403,6 +403,11 @@ const GRADED_LANES = new Map([
   ['submit-appstore.yml', { owner: 'O-STORE-LANES-HARD-WIRE-ONE-APP', deployPath: false, dispatch: 'per-app' }],
   ['submit-windows-store.yml', { owner: 'O-STORE-LANES-HARD-WIRE-ONE-APP', deployPath: false, dispatch: 'per-app' }],
   ['submit-snap.yml', { owner: 'O-STORE-LANES-HARD-WIRE-ONE-APP', deployPath: false, dispatch: 'per-app' }],
+  // [10]D-5's listing capture: no release artifact, but it builds and drives one
+  // app per dispatch, and it named that app on 38 lines and its sandbox databases
+  // by id. Graded as per-app since 2026-09-26; before that it sat in
+  // CLASSIFIED_ELSEWHERE, printed and never failed.
+  ['store-screenshots.yml', { owner: 'O-STORE-LANES-HARD-WIRE-ONE-APP', deployPath: false, dispatch: 'per-app' }],
 ]);
 const GRADED = [...GRADED_LANES.keys()];
 const DEPLOY_PATH_LANES = [...GRADED_LANES].filter(([, v]) => v.deployPath).map(([k]) => k);
@@ -583,16 +588,6 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'renovate.yml. The owning stage is stage 14 ops, through the duty row ' +
       '`duty.workflow.apple-expiry-write.yml` in tooling/ops/register.json. What holds its behaviour correct ' +
       'is tooling/ci/test/apple-signing-expiry.test.mjs. Classified 2026-09-24, the round the workflow landed.',
-  ],
-  [
-    'store-screenshots.yml',
-    '[10]D-5 owns the store LISTING, and this workflow produces a listing asset rather than a release ' +
-      'artifact: it builds no shippable binary, publishes nothing and uploads pictures. R-1 quantifies ' +
-      'over the workspace APP set to prove a lane is generic; a lane that ships no app has nothing for ' +
-      'this guard to compare and would sit in the denominator as a permanent empty-set pass. It is ' +
-      'already `--app`-parameterised (`node tooling/store/capture-play-screenshots.mjs --app subscriptiontracker`), so ' +
-      'the genericity R-1 cares about is in the script, and what holds its OUTPUT generic is ' +
-      'assert-listing-assets.mjs, whose expected set is { channels declaring graphicAssets } x { apps }.',
   ],
   [
     'symbolication-proof.yml',

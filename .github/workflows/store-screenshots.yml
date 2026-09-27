@@ -1,6 +1,6 @@
 name: Store screenshots
 
-run-name: "Store screenshots by @${{ github.actor }}"
+run-name: "Store screenshots — ${{ inputs.app }} — ${{ inputs.channel }} by @${{ github.actor }}"
 
 # The measurements, retractions and traps behind this file are in
 # docs/ci/store-screenshots.md. Only `# why:` lines live here, and
@@ -17,6 +17,13 @@ run-name: "Store screenshots by @${{ github.actor }}"
 on:
   workflow_dispatch:
     inputs:
+      # why: required with NO default and NO choice list (O-STORE-LANES-HARD-WIRE-ONE-APP):
+      # either one is an app id written into this file. The gate job checks it against the
+      # workspace set; every capture job reads the gate's output, never this input.
+      app:
+        description: 'The app whose listing to capture: one id of the workspace app set (tooling/ci/assert-release-lane-generic.mjs --emit-apps). The gate job refuses any other value.'
+        required: true
+        type: string
       channel:
         description: "Which store listing to capture"
         required: false
@@ -33,14 +40,46 @@ permissions:
   contents: read
 
 jobs:
+  # why: the app is a dispatch input, so ONE job checks it and every capture job reads the
+  # checked output (O-STORE-LANES-HARD-WIRE-ONE-APP). Its only check is the app: this lane
+  # has never required ci-gate, and adding that would change its trigger contract (parent
+  # decision 3; a follow-up row if screenshots should wait on ci-gate).
+  gate:
+    name: The app input names one app of the workspace
+    runs-on: ubuntu-24.04
+    # why: 10 — one checkout and one node call that reads the root pubspec.
+    timeout-minutes: 10
+    outputs:
+      app: ${{ steps.app.outputs.app }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      # why: the ONE reader of inputs.app, and only through env: (an input interpolated into
+      # run: is a shell injection). --emit-apps --app refuses a value off ^[a-z][a-z0-9-]*$
+      # before it reads the set, and one outside the set naming the set; only then is it an output.
+      - name: The app input names one app of the workspace
+        id: app
+        env:
+          APP_INPUT: ${{ inputs.app }}
+        run: |
+          set -euo pipefail
+          node tooling/ci/assert-release-lane-generic.mjs --emit-apps --app "$APP_INPUT"
+          echo "app=${APP_INPUT}" >> "$GITHUB_OUTPUT"
+
   capture:
     name: Capture the Play phone and tablet screenshot sets (live)
     if: ${{ inputs.channel == '' || inputs.channel == 'android-play' }}
+    needs: gate
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: write
       pull-requests: write
+    # why: the gate's checked output, never inputs.app. run: reads $APP; the fields no
+    # shell expands (paths, artifact names, working-directory) read the expression itself.
+    env:
+      APP: ${{ needs.gate.outputs.app }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -87,7 +126,7 @@ jobs:
       # later as a network error. The hosts are computed from the wrangler configs.
       - name: Preflight — both sandbox Workers answer healthy
         run: |
-          for w in platform subscriptiontracker-api; do
+          for w in platform "${APP}-api"; do
             host="$(node tooling/store/capture-backend.mjs --print-host "$w")"
             body="$(curl --max-time 10 -fsS "$host/v1/health")" || body=""
             case "$body" in
@@ -96,13 +135,23 @@ jobs:
             esac
           done
 
+      # why: THE DATABASES COME FROM THE APP ID, AND THIS FILE NAMES NEITHER
+      # (O-STORE-LANES-HARD-WIRE-ONE-APP). tooling/e2e/backend.mjs reads the env.sandbox block
+      # of services/<app>-api/wrangler.jsonc and hands the platform database on as a step output,
+      # the purge step's PLATFORM_D1_DATABASE_ID; purge.mjs resolves the app database itself from
+      # E2E_APP_ID (sandbox, since the ledger is set). Before the user is provisioned, so a
+      # refusal here has written nothing.
+      - name: Resolve this app's sandbox databases from its Worker's wrangler file
+        id: backend
+        run: node tooling/e2e/backend.mjs --app "$APP" --env sandbox --emit-output
+
       - uses: ./.github/actions/setup-flutter
 
       - name: Set up ChromeDriver
         uses: nanasess/setup-chromedriver@e913548694400f275b4070efcd90f47dbbc8914c # v3.0.0
 
       - name: flutter pub get
-        working-directory: apps/subscriptiontracker
+        working-directory: apps/${{ needs.gate.outputs.app }}
         run: flutter pub get --enforce-lockfile
 
       - name: Provision throwaway confirmed user
@@ -129,7 +178,7 @@ jobs:
           set -euo pipefail
           export CHROME_EXECUTABLE="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser)"
           echo "Chrome: $CHROME_EXECUTABLE"
-          node tooling/store/capture-play-screenshots.mjs --app subscriptiontracker
+          node tooling/store/capture-play-screenshots.mjs --app "$APP"
 
       # 🔴 --single-threaded, like the other six steps that start a relaunching
       # guard (#648: ci.yml ×3, build-platforms.yml, submit-play.yml ×2). The
@@ -156,7 +205,7 @@ jobs:
       # `always()`. These bytes did NOT pass the listing-asset guard and must
       # never be mistaken for the set: the name says so, and the success upload
       # below keeps its own name so nothing downstream that looks for
-      # `play-screenshots-subscriptiontracker` can ever receive these.
+      # `play-screenshots-<app>` can ever receive these.
       # if-no-files-found: ignore, because a run that failed BEFORE the drive
       # (a missing secret, no chromedriver) has no frames and must still report
       # its real failure rather than a second one about an empty upload.
@@ -167,8 +216,8 @@ jobs:
           name: FAILED-not-a-listing-set-${{ github.run_id }}
           if-no-files-found: ignore
           path: |
-            apps/subscriptiontracker/store/android-play/screenshots/
-            apps/subscriptiontracker/store/android-play/screenshots-tablet/
+            apps/${{ needs.gate.outputs.app }}/store/android-play/screenshots/
+            apps/${{ needs.gate.outputs.app }}/store/android-play/screenshots-tablet/
 
       # why: a guard failure names the class and its run median; diagnosing it
       # needs every frame's reading and the class's calibration medians, floor
@@ -184,15 +233,15 @@ jobs:
       # misleading.
       - name: Print the ink reading of a FAILED run, for diagnosis only
         if: failure() && steps.listing.outcome == 'failure'
-        run: node --single-threaded tooling/store/measure-frame-ink.mjs apps/subscriptiontracker/store/android-play/screenshots apps/subscriptiontracker/store/android-play/screenshots-tablet
+        run: node --single-threaded tooling/store/measure-frame-ink.mjs "apps/${APP}/store/android-play/screenshots" "apps/${APP}/store/android-play/screenshots-tablet"
 
       - name: Upload the screenshot set
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: play-screenshots-subscriptiontracker
+          name: play-screenshots-${{ needs.gate.outputs.app }}
           path: |
-            apps/subscriptiontracker/store/android-play/screenshots/
-            apps/subscriptiontracker/store/android-play/screenshots-tablet/
+            apps/${{ needs.gate.outputs.app }}/store/android-play/screenshots/
+            apps/${{ needs.gate.outputs.app }}/store/android-play/screenshots-tablet/
           if-no-files-found: error
 
       # why: PROPOSED, never pushed. Screenshots are a sworn store filing; a machine may
@@ -208,7 +257,7 @@ jobs:
           # produces two device types and a PR proposing one is a PR that leaves
           # the listing one type short — which is exactly the state
           # assert-play-device-coverage.mjs fails the submission lane for.
-          SHOTS="apps/subscriptiontracker/store/android-play/screenshots apps/subscriptiontracker/store/android-play/screenshots-tablet"
+          SHOTS="apps/${APP}/store/android-play/screenshots apps/${APP}/store/android-play/screenshots-tablet"
           BRANCH="chore/play-screenshots-${{ github.run_id }}"
 
           git config user.name  "github-actions[bot]"
@@ -270,7 +319,7 @@ jobs:
               REMEDY='REMEDY: read the gh output above.'
             fi
 
-            echo "::error title=The screenshot set was captured but the pull request could not be opened::${CAUSE} THE CAPTURE IS NOT LOST — branch ${BRANCH} is pushed and the same pixels are already uploaded as this run's play-screenshots-subscriptiontracker artifact; open the pull request by hand from ${BRANCH} into ${GITHUB_REF_NAME}. ${REMEDY}"
+            echo "::error title=The screenshot set was captured but the pull request could not be opened::${CAUSE} THE CAPTURE IS NOT LOST — branch ${BRANCH} is pushed and the same pixels are already uploaded as this run's play-screenshots-${APP} artifact; open the pull request by hand from ${BRANCH} into ${GITHUB_REF_NAME}. ${REMEDY}"
             exit 1
           fi
 
@@ -282,14 +331,13 @@ jobs:
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 4e7c7730-3dc7-4004-9895-403b17702b91
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           # why: this capture's consent rows in platform_db_sandbox. purge.mjs deletes by the
           # install ids in the runner's ledger and by its cap-* APP_VERSION stamp.
-          E2E_APP_ID: subscriptiontracker
+          E2E_APP_ID: ${{ needs.gate.outputs.app }}
           E2E_CONSENT_LEDGER: ${{ runner.temp }}/store-capture-consent.json
-          PLATFORM_D1_DATABASE_ID: ead92001-03e1-4f71-9b92-c64963a24925
+          PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}
         run: node tooling/e2e/purge.mjs
 
   # ── THE SNAP STORE SET ──────────────────────────────────────────────────────
@@ -302,11 +350,16 @@ jobs:
   capture-linux:
     name: Capture the Snap Store desktop screenshot set (live)
     if: ${{ inputs.channel == 'linux-snap' }}
+    needs: gate
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: write
       pull-requests: write
+    # why: the gate's checked output, never inputs.app. run: reads $APP; the fields no
+    # shell expands (paths, artifact names, working-directory) read the expression itself.
+    env:
+      APP: ${{ needs.gate.outputs.app }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -341,7 +394,7 @@ jobs:
       # later as a network error. The hosts are computed from the wrangler configs.
       - name: Preflight — both sandbox Workers answer healthy
         run: |
-          for w in platform subscriptiontracker-api; do
+          for w in platform "${APP}-api"; do
             host="$(node tooling/store/capture-backend.mjs --print-host "$w")"
             body="$(curl --max-time 10 -fsS "$host/v1/health")" || body=""
             case "$body" in
@@ -349,6 +402,16 @@ jobs:
               *) echo "::error title=Capture cannot run::the sandbox is not deployed: dispatch deploy-sandbox.yml. $w at $host/v1/health answered: ${body:-nothing}"; exit 1 ;;
             esac
           done
+
+      # why: THE DATABASES COME FROM THE APP ID, AND THIS FILE NAMES NEITHER
+      # (O-STORE-LANES-HARD-WIRE-ONE-APP). tooling/e2e/backend.mjs reads the env.sandbox block
+      # of services/<app>-api/wrangler.jsonc and hands the platform database on as a step output,
+      # the purge step's PLATFORM_D1_DATABASE_ID; purge.mjs resolves the app database itself from
+      # E2E_APP_ID (sandbox, since the ledger is set). Before the user is provisioned, so a
+      # refusal here has written nothing.
+      - name: Resolve this app's sandbox databases from its Worker's wrangler file
+        id: backend
+        run: node tooling/e2e/backend.mjs --app "$APP" --env sandbox --emit-output
 
       - uses: ./.github/actions/setup-flutter
 
@@ -368,7 +431,7 @@ jobs:
         run: flutter config --enable-linux-desktop
 
       - name: flutter pub get
-        working-directory: apps/subscriptiontracker
+        working-directory: apps/${{ needs.gate.outputs.app }}
         run: flutter pub get --enforce-lockfile
 
       # 🔴 ONE SOURCE FOR THE DIRECTORY, AND A REFUSAL IF THE REGISTER GROWS A
@@ -391,7 +454,7 @@ jobs:
               console.error("::error title=This job captures one directory::the register declares " + dirs.length + " distinct set director(ies) for linux-snap (" + dirs.join(", ") + "). The upload and the pull request below are written for one. Extend them in the same change that declares the second set.");
               process.exit(1);
             }
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, "dir=apps/subscriptiontracker/store/linux-snap/" + dirs[0] + "\n");
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, "dir=apps/" + process.env.APP + "/store/linux-snap/" + dirs[0] + "\n");
           '
 
       - name: Provision throwaway confirmed user
@@ -426,7 +489,7 @@ jobs:
         run: |
           set -euo pipefail
           xvfb-run -a -s "-screen 0 2560x1600x24" \
-            node tooling/store/capture-play-screenshots.mjs --app subscriptiontracker --channel linux-snap
+            node tooling/store/capture-play-screenshots.mjs --app "$APP" --channel linux-snap
 
       - name: The captured set satisfies the listing-asset guard
         id: listing
@@ -458,7 +521,7 @@ jobs:
       - name: Upload the screenshot set
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: snap-screenshots-subscriptiontracker
+          name: snap-screenshots-${{ needs.gate.outputs.app }}
           path: ${{ steps.reg.outputs.dir }}/
           if-no-files-found: error
 
@@ -524,7 +587,7 @@ jobs:
               CAUSE="gh pr create exited ${PR_RC} for a reason this step does not recognise."
               REMEDY='REMEDY: read the gh output above.'
             fi
-            echo "::error title=The screenshot set was captured but the pull request could not be opened::${CAUSE} THE CAPTURE IS NOT LOST — branch ${BRANCH} is pushed and the same pixels are already uploaded as this run's snap-screenshots-subscriptiontracker artifact; open the pull request by hand from ${BRANCH} into ${GITHUB_REF_NAME}. ${REMEDY}"
+            echo "::error title=The screenshot set was captured but the pull request could not be opened::${CAUSE} THE CAPTURE IS NOT LOST — branch ${BRANCH} is pushed and the same pixels are already uploaded as this run's snap-screenshots-${APP} artifact; open the pull request by hand from ${BRANCH} into ${GITHUB_REF_NAME}. ${REMEDY}"
             exit 1
           fi
 
@@ -534,14 +597,13 @@ jobs:
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 4e7c7730-3dc7-4004-9895-403b17702b91
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           # why: this capture's consent rows in platform_db_sandbox. purge.mjs deletes by the
           # install ids in the runner's ledger and by its cap-* APP_VERSION stamp.
-          E2E_APP_ID: subscriptiontracker
+          E2E_APP_ID: ${{ needs.gate.outputs.app }}
           E2E_CONSENT_LEDGER: ${{ runner.temp }}/store-capture-consent.json
-          PLATFORM_D1_DATABASE_ID: ead92001-03e1-4f71-9b92-c64963a24925
+          PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}
         run: node tooling/e2e/purge.mjs
 
   # 🔴 ONE JOB FOR BOTH NATIVE DESKTOP STORES, not two copies of the Linux job.
@@ -556,6 +618,7 @@ jobs:
   capture-desktop-native:
     name: Capture the native desktop screenshot set (live)
     if: ${{ inputs.channel == 'windows-store' || inputs.channel == 'macos-appstore' }}
+    needs: gate
     runs-on: ${{ inputs.channel == 'windows-store' && 'windows-2025' || 'macos-26' }}
     timeout-minutes: 45
     permissions:
@@ -572,6 +635,8 @@ jobs:
     # tooling/ci/test/setup-flutter-env.test.mjs.
     env:
       STORE_CHANNEL: ${{ inputs.channel }}
+      # why: the gate's checked output, never inputs.app (O-STORE-LANES-HARD-WIRE-ONE-APP).
+      APP: ${{ needs.gate.outputs.app }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -605,7 +670,7 @@ jobs:
       # later as a network error. The hosts are computed from the wrangler configs.
       - name: Preflight — both sandbox Workers answer healthy
         run: |
-          for w in platform subscriptiontracker-api; do
+          for w in platform "${APP}-api"; do
             host="$(node tooling/store/capture-backend.mjs --print-host "$w")"
             body="$(curl --max-time 10 -fsS "$host/v1/health")" || body=""
             case "$body" in
@@ -613,6 +678,16 @@ jobs:
               *) echo "::error title=Capture cannot run::the sandbox is not deployed: dispatch deploy-sandbox.yml. $w at $host/v1/health answered: ${body:-nothing}"; exit 1 ;;
             esac
           done
+
+      # why: THE DATABASES COME FROM THE APP ID, AND THIS FILE NAMES NEITHER
+      # (O-STORE-LANES-HARD-WIRE-ONE-APP). tooling/e2e/backend.mjs reads the env.sandbox block
+      # of services/<app>-api/wrangler.jsonc and hands the platform database on as a step output,
+      # the purge step's PLATFORM_D1_DATABASE_ID; purge.mjs resolves the app database itself from
+      # E2E_APP_ID (sandbox, since the ledger is set). Before the user is provisioned, so a
+      # refusal here has written nothing.
+      - name: Resolve this app's sandbox databases from its Worker's wrangler file
+        id: backend
+        run: node tooling/e2e/backend.mjs --app "$APP" --env sandbox --emit-output
 
       - uses: ./.github/actions/setup-flutter
 
@@ -654,7 +729,7 @@ jobs:
               process.exit(1);
             }
             const out = [
-              "dir=apps/subscriptiontracker/store/" + channel + "/" + dirs[0],
+              "dir=apps/" + process.env.APP + "/store/" + channel + "/" + dirs[0],
               "device=" + c.flutterDevice,
             ];
             fs.appendFileSync(process.env.GITHUB_OUTPUT, out.join("\n") + "\n");
@@ -671,7 +746,7 @@ jobs:
         run: flutter config --enable-${{ steps.reg.outputs.device }}-desktop
 
       - name: flutter pub get
-        working-directory: apps/subscriptiontracker
+        working-directory: apps/${{ needs.gate.outputs.app }}
         run: flutter pub get --enforce-lockfile
 
       - name: Provision throwaway confirmed user
@@ -695,7 +770,7 @@ jobs:
           # why: the runner records each drive's consent answer and install id here;
           # the purge step below reads the same path (tooling/e2e/purge.mjs).
           E2E_CONSENT_LEDGER: ${{ runner.temp }}/store-capture-consent.json
-        run: node tooling/store/capture-play-screenshots.mjs --app subscriptiontracker --channel "$STORE_CHANNEL"
+        run: node tooling/store/capture-play-screenshots.mjs --app "$APP" --channel "$STORE_CHANNEL"
 
       - name: The captured set satisfies the listing-asset guard
         id: listing
@@ -723,7 +798,7 @@ jobs:
       - name: Upload the screenshot set
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: ${{ inputs.channel }}-screenshots-subscriptiontracker
+          name: ${{ inputs.channel }}-screenshots-${{ needs.gate.outputs.app }}
           path: ${{ steps.reg.outputs.dir }}/
           if-no-files-found: error
 
@@ -788,7 +863,7 @@ jobs:
               CAUSE="gh pr create exited ${PR_RC} for a reason this step does not recognise."
               REMEDY='REMEDY: read the gh output above.'
             fi
-            echo "::error title=The screenshot set was captured but the pull request could not be opened::${CAUSE} THE CAPTURE IS NOT LOST — branch ${BRANCH} is pushed and the same pixels are already uploaded as this run's ${STORE_CHANNEL}-screenshots-subscriptiontracker artifact; open the pull request by hand from ${BRANCH} into ${GITHUB_REF_NAME}. ${REMEDY}"
+            echo "::error title=The screenshot set was captured but the pull request could not be opened::${CAUSE} THE CAPTURE IS NOT LOST — branch ${BRANCH} is pushed and the same pixels are already uploaded as this run's ${STORE_CHANNEL}-screenshots-${APP} artifact; open the pull request by hand from ${BRANCH} into ${GITHUB_REF_NAME}. ${REMEDY}"
             exit 1
           fi
 
@@ -798,14 +873,13 @@ jobs:
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 4e7c7730-3dc7-4004-9895-403b17702b91
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           # why: this capture's consent rows in platform_db_sandbox. purge.mjs deletes by the
           # install ids in the runner's ledger and by its cap-* APP_VERSION stamp.
-          E2E_APP_ID: subscriptiontracker
+          E2E_APP_ID: ${{ needs.gate.outputs.app }}
           E2E_CONSENT_LEDGER: ${{ runner.temp }}/store-capture-consent.json
-          PLATFORM_D1_DATABASE_ID: ead92001-03e1-4f71-9b92-c64963a24925
+          PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}
         run: node tooling/e2e/purge.mjs
 
   # 🔴 ONE JOB, TWO SETS, ONE PULL REQUEST. iOS is the first channel in this
@@ -817,11 +891,16 @@ jobs:
   capture-ios:
     name: Capture the iOS screenshot sets — iPhone and iPad (live)
     if: ${{ inputs.channel == 'ios-appstore' }}
+    needs: gate
     runs-on: macos-26
     timeout-minutes: 60
     permissions:
       contents: write
       pull-requests: write
+    # why: the gate's checked output, never inputs.app. run: reads $APP; the fields no
+    # shell expands (paths, artifact names, working-directory) read the expression itself.
+    env:
+      APP: ${{ needs.gate.outputs.app }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -855,7 +934,7 @@ jobs:
       # later as a network error. The hosts are computed from the wrangler configs.
       - name: Preflight — both sandbox Workers answer healthy
         run: |
-          for w in platform subscriptiontracker-api; do
+          for w in platform "${APP}-api"; do
             host="$(node tooling/store/capture-backend.mjs --print-host "$w")"
             body="$(curl --max-time 10 -fsS "$host/v1/health")" || body=""
             case "$body" in
@@ -864,10 +943,20 @@ jobs:
             esac
           done
 
+      # why: THE DATABASES COME FROM THE APP ID, AND THIS FILE NAMES NEITHER
+      # (O-STORE-LANES-HARD-WIRE-ONE-APP). tooling/e2e/backend.mjs reads the env.sandbox block
+      # of services/<app>-api/wrangler.jsonc and hands the platform database on as a step output,
+      # the purge step's PLATFORM_D1_DATABASE_ID; purge.mjs resolves the app database itself from
+      # E2E_APP_ID (sandbox, since the ledger is set). Before the user is provisioned, so a
+      # refusal here has written nothing.
+      - name: Resolve this app's sandbox databases from its Worker's wrangler file
+        id: backend
+        run: node tooling/e2e/backend.mjs --app "$APP" --env sandbox --emit-output
+
       - uses: ./.github/actions/setup-flutter
 
       - name: flutter pub get
-        working-directory: apps/subscriptiontracker
+        working-directory: apps/${{ needs.gate.outputs.app }}
         run: flutter pub get --enforce-lockfile
 
       # 🔴 THE REGISTER NAMES THE SIMULATORS AND THE DIRECTORIES, and this step
@@ -896,7 +985,7 @@ jobs:
               console.error("::error title=The runner and the register disagree::set(s) " + wrong.map(([k]) => k).join(", ") + " name a runner other than `macos-26`, and this job is pinned to macos-26. `runs-on` cannot be read from a file — GitHub resolves it before any step runs — so the two have to be changed together.");
               process.exit(1);
             }
-            const dirs = sets.map(([, v]) => "apps/subscriptiontracker/store/ios-appstore/" + v.dir);
+            const dirs = sets.map(([, v]) => "apps/" + process.env.APP + "/store/ios-appstore/" + v.dir);
             const devices = [...new Set(sets.map(([, v]) => v.capture.flutterDevice))];
             // why `;` and not a newline: a step output is one KEY=VALUE line
             // unless it is written with a heredoc delimiter, and a simulator
@@ -954,7 +1043,7 @@ jobs:
           # why: the runner records each drive's consent answer and install id here;
           # the purge step below reads the same path (tooling/e2e/purge.mjs).
           E2E_CONSENT_LEDGER: ${{ runner.temp }}/store-capture-consent.json
-        run: node tooling/store/capture-play-screenshots.mjs --app subscriptiontracker --channel ios-appstore
+        run: node tooling/store/capture-play-screenshots.mjs --app "$APP" --channel ios-appstore
 
       - name: The captured sets satisfy the listing-asset guard
         id: listing
@@ -973,21 +1062,21 @@ jobs:
         with:
           name: FAILED-not-a-listing-set-${{ github.run_id }}
           if-no-files-found: ignore
-          path: apps/subscriptiontracker/store/ios-appstore/
+          path: apps/${{ needs.gate.outputs.app }}/store/ios-appstore/
 
       # why: the Play job's reason — the ink reading of every frame, from
       # the run's own log.
       - name: Print the ink reading of a FAILED run, for diagnosis only
         if: failure() && steps.listing.outcome == 'failure'
-        run: node --single-threaded tooling/store/measure-frame-ink.mjs apps/subscriptiontracker/store/ios-appstore/screenshots apps/subscriptiontracker/store/ios-appstore/screenshots-ipad
+        run: node --single-threaded tooling/store/measure-frame-ink.mjs "apps/${APP}/store/ios-appstore/screenshots" "apps/${APP}/store/ios-appstore/screenshots-ipad"
 
       - name: Upload the screenshot sets
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: ios-screenshots-subscriptiontracker
+          name: ios-screenshots-${{ needs.gate.outputs.app }}
           path: |
-            apps/subscriptiontracker/store/ios-appstore/screenshots/
-            apps/subscriptiontracker/store/ios-appstore/screenshots-ipad/
+            apps/${{ needs.gate.outputs.app }}/store/ios-appstore/screenshots/
+            apps/${{ needs.gate.outputs.app }}/store/ios-appstore/screenshots-ipad/
           if-no-files-found: error
 
       # why: PROPOSED, never pushed — a store listing is a sworn filing; a
@@ -1054,7 +1143,7 @@ jobs:
               CAUSE="gh pr create exited ${PR_RC} for a reason this step does not recognise."
               REMEDY='REMEDY: read the gh output above.'
             fi
-            echo "::error title=The screenshot sets were captured but the pull request could not be opened::${CAUSE} THE CAPTURE IS NOT LOST — branch ${BRANCH} is pushed and the same pixels are already uploaded as this run's ios-screenshots-subscriptiontracker artifact; open the pull request by hand from ${BRANCH} into ${GITHUB_REF_NAME}. ${REMEDY}"
+            echo "::error title=The screenshot sets were captured but the pull request could not be opened::${CAUSE} THE CAPTURE IS NOT LOST — branch ${BRANCH} is pushed and the same pixels are already uploaded as this run's ios-screenshots-${APP} artifact; open the pull request by hand from ${BRANCH} into ${GITHUB_REF_NAME}. ${REMEDY}"
             exit 1
           fi
 
@@ -1064,12 +1153,11 @@ jobs:
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 4e7c7730-3dc7-4004-9895-403b17702b91
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           # why: this capture's consent rows in platform_db_sandbox. purge.mjs deletes by the
           # install ids in the runner's ledger and by its cap-* APP_VERSION stamp.
-          E2E_APP_ID: subscriptiontracker
+          E2E_APP_ID: ${{ needs.gate.outputs.app }}
           E2E_CONSENT_LEDGER: ${{ runner.temp }}/store-capture-consent.json
-          PLATFORM_D1_DATABASE_ID: ead92001-03e1-4f71-9b92-c64963a24925
+          PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}
         run: node tooling/e2e/purge.mjs

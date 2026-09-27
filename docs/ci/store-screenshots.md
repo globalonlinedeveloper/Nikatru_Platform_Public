@@ -140,10 +140,32 @@ extracted from this file verbatim (not retyped) and executed under
     2026-08-22 record did not take, added because "the loop does not abort on
     the first secret that IS set" is only half-shown by a run where three are.
 
+### above `app:`
+
+⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP). This lane named app #1 on 38 lines and
+its sandbox databases by id. The app is now a dispatch input, `required: true`, with NO
+`default:` and no `type: choice` (either is an app id written into this file). A
+dispatch names it: `gh workflow run store-screenshots.yml -f app=<id> -f channel=<channel>`,
+where `<id>` is one of `node tooling/ci/assert-release-lane-generic.mjs --emit-apps`. Only
+the `gate` job reads the raw input, through `env:`; every capture job `needs: gate` and
+reads its checked `app` output (`$APP` in `run:`, the expression in paths and artifact
+names). assert-release-lane-generic.mjs grades the lane as `per-app` (limb I and D-all).
+
 ### above `permissions:`
 
 Least privilege, and the DEFAULT for every job that does not override it.
 [pipeline F-11]
+
+## job `gate`
+
+### above `gate:`
+
+⏱ 2026-09-26. The one reader of `inputs.app`: `assert-release-lane-generic.mjs --emit-apps
+--app "$APP_INPUT"` refuses a value off `^[a-z][a-z0-9-]*$` before it reads anything else,
+then an id the workspace does not declare, naming the set; only then is the id written to
+`$GITHUB_OUTPUT`. Unlike the submit lanes' gate jobs it does NOT run assert-gate-passed:
+this lane has never required ci-gate, and adding that would change its trigger contract
+(the parent's decision; a follow-up row if screenshots should wait on ci-gate).
 
 ## job `capture`
 
@@ -403,7 +425,7 @@ to propose, and that is reported rather than skipped.
 live D1, and a throwaway user that outlives its run is exactly the kind of
 residue the nightly was built to avoid.
 
-### in step **Purge the throwaway user**, above `SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 4e7c7730-3dc7-4004-9895-403b17702b91`
+### in step **Purge the throwaway user**, above `PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}`
 
 The same literal e2e.yml passes. It is a database ID, not a
 credential — the CLOUDFLARE_API_TOKEN above is what authorises
@@ -422,6 +444,18 @@ checks hold the ids: assert-live-writer-provenance.mjs L6(b) requires each
 purge to carry the `env.sandbox` id and neither top-level one, and purge.mjs
 itself refuses a production id whenever an E2E_CONSENT_LEDGER is set, before
 its first request.
+
+⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP) — no database id is in this file any
+more. Each capture job's step **Resolve this app's sandbox databases from its Worker's
+wrangler file** runs `tooling/e2e/backend.mjs --app "$APP" --env sandbox --emit-output`
+before the user is provisioned, and the purge takes `PLATFORM_D1_DATABASE_ID` from its
+`platform_db` output. The app database is no env key at all: purge.mjs resolves it from
+`E2E_APP_ID` (the gate's checked app) in `env.sandbox`, because the ledger is set — the
+same resolver e2e.yml uses. assert-live-writer-provenance.mjs L6(b) accepts the resolver
+form only from an earlier `--env sandbox --emit-output` step, holds the resolved sandbox
+ids to the capture Workers' `env.sandbox` ids and to no production id, and still refuses
+a production id under any key of a sandbox purge. assert-release-lane-generic.mjs limb
+D-all refuses a UUID literal anywhere in this lane now that it is graded.
 
 ## The backend a capture runs against
 
