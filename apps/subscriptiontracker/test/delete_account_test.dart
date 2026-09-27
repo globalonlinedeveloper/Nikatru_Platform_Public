@@ -195,6 +195,47 @@ class _AppleOnlyAuth extends _FakeAuth {
   }
 }
 
+/// ⏱ 2026-09-26 · O-REAUTH-COPY-NAMES-APPLE-ONLY — an account created with
+/// Sign in with Google: no password identity and no Apple identity, so
+/// `reauthProviderOf` sends its re-proof to Google. [signInWithGoogle] never
+/// lands a fresh sign-in here: the person closed the sheet.
+class _GoogleOnlyAuth extends _FakeAuth {
+  _GoogleOnlyAuth({this.lastSignInAt});
+
+  final DateTime? lastSignInAt;
+  int googleCalls = 0;
+  int appleCalls = 0;
+
+  @override
+  core.AuthUser? get currentUser => signedIn
+      ? core.AuthUser(
+          id: 'u1',
+          email: 'a@b.test',
+          emailVerified: true,
+          hasPasswordIdentity: false,
+          oauthProviders: const <String>['google'],
+          lastSignInAt: lastSignInAt,
+        )
+      : null;
+
+  @override
+  Future<core.AuthUser> signInWithEmail({
+    required String email,
+    required String password,
+    String? captchaToken,
+  }) async => throw core.AuthFailure('this account has no password');
+
+  @override
+  Future<void> signInWithGoogle() async {
+    googleCalls++;
+  }
+
+  @override
+  Future<void> signInWithApple() async {
+    appleCalls++;
+  }
+}
+
 Future<void> _pumpSettings(WidgetTester tester, _FakeAuth auth) async {
   // A TALL SURFACE, deliberately. Settings is a ListView, so an off-screen row
   // has no element and `findsNothing` would pass for a control that exists and
@@ -662,7 +703,10 @@ void main() {
     // The re-auth is `signInWithEmail`, so an account created with "Continue
     // with Apple" has no password here. The message must say so rather than
     // insisting the password was wrong, and the email route must be on screen.
-    expect(_resultText(tester), contains('Apple'));
+    // ⏱ 2026-09-26 · O-REAUTH-COPY-NAMES-APPLE-ONLY — it says so without naming
+    // a provider now; this pin read `Apple` until the sentence went
+    // provider-free.
+    expect(_resultText(tester), contains('finish signing in'));
     // The full fallback SENTENCE, not the bare address (P2.6b): the merged
     // settings screen also shows support@nikatru.com in its Contact-support
     // row's subtitle, so the address alone now legitimately appears twice.
@@ -807,7 +851,9 @@ void main() {
           findsNothing,
           reason: 'there is no password to type on this account',
         );
-        expect(find.textContaining('sign in with Apple again'), findsOneWidget);
+        // ⏱ 2026-09-26 · O-REAUTH-COPY-NAMES-APPLE-ONLY — the hint is
+        // provider-free now; the sheet it leads to is still Apple's (next case).
+        expect(find.textContaining("you'll sign in again"), findsOneWidget);
         expect(
           tester
               .widget<FilledButton>(
@@ -859,7 +905,9 @@ void main() {
         );
         expect(auth.signedIn, isTrue);
         expect(_resultText(tester), contains("couldn't confirm it was you"));
-        expect(_resultText(tester), contains('signing in with Apple'));
+        // ⏱ 2026-09-26 · O-REAUTH-COPY-NAMES-APPLE-ONLY — read `signing in with
+        // Apple` until the sentence went provider-free.
+        expect(_resultText(tester), contains('finish signing in'));
       },
     );
 
@@ -899,6 +947,84 @@ void main() {
         );
         expect(auth.signedIn, isTrue);
         expect(_resultText(tester), contains("couldn't confirm it was you"));
+      },
+    );
+  });
+
+  // ⏱ 2026-09-26 · O-REAUTH-COPY-NAMES-APPLE-ONLY. Google sign-in goes live in
+  // the same change, so a Google-only account (no password, no Apple identity)
+  // can now reach this dialog. Settings picks the `...Apple` keys for EVERY
+  // password-less account, so what it shows must name no provider, and the
+  // re-auth failure it can end in must not send the user to Apple either.
+  group('a Sign in with Google account (no password)', () {
+    final DateTime stale = DateTime.now().toUtc().subtract(
+      const Duration(hours: 3),
+    );
+
+    testWidgets('the dialog body and hint name no Apple', (
+      WidgetTester tester,
+    ) async {
+      final AppLocalizations en = await AppLocalizations.delegate.load(
+        const Locale('en'),
+      );
+      final _GoogleOnlyAuth auth = _GoogleOnlyAuth(lastSignInAt: stale);
+      await _pumpSettings(tester, auth);
+      await tester.tap(find.text('Delete account'));
+      await tester.pumpAndSettle();
+
+      // The password-less branch, not the password one: these two keys and no
+      // password field.
+      expect(find.byKey(const Key('deleteAccountPassword')), findsNothing);
+      expect(find.text(en.deleteAccountConfirmBodyApple), findsOneWidget);
+      expect(find.text(en.deleteAccountReauthHintApple), findsOneWidget);
+      final List<String> said = tester
+          .widgetList<Text>(
+            find.descendant(
+              of: find.byType(AlertDialog),
+              matching: find.byType(Text),
+            ),
+          )
+          .map((Text t) => t.data ?? '')
+          .toList();
+      expect(said, contains(en.deleteAccountConfirmBodyApple));
+      for (final String line in said) {
+        expect(
+          line,
+          isNot(contains('Apple')),
+          reason: 'a Google-only account has no Apple sign-in to go back to',
+        );
+      }
+      expect(auth.deleteCalls, 0);
+    });
+
+    testWidgets(
+      '🔴 the Google sheet closed without signing in: the failure names no Apple',
+      (WidgetTester tester) async {
+        final _GoogleOnlyAuth auth = _GoogleOnlyAuth(lastSignInAt: stale);
+        await _pumpSettings(tester, auth);
+        await tester.tap(find.text('Delete account'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('deleteAccountConfirm')));
+        await tester.pump();
+        // The wait for the provider is bounded; run the clock past it.
+        await tester.pump(
+          core.kProviderReauthTimeout + const Duration(seconds: 1),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          auth.googleCalls,
+          1,
+          reason: 'a Google-only account re-proves at Google',
+        );
+        expect(auth.appleCalls, 0);
+        expect(
+          auth.deleteCalls,
+          0,
+          reason: 'no confirmation — nothing may be sent',
+        );
+        expect(auth.signedIn, isTrue);
+        expect(_resultText(tester), contains("couldn't confirm it was you"));
+        expect(_resultText(tester), isNot(contains('Apple')));
       },
     );
   });
