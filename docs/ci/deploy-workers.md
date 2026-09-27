@@ -479,3 +479,34 @@ describes the template step by step.
   ci.yml's `deploy-workers:` call; `tooling/scripts/provision-backend.mjs` step [6] prints both.
   `secrets: inherit` would reverse #947's named-secrets choice. `assert-channel-register.mjs` holds
   every name the expression can take to `ciSecretRegister`.
+
+## The `edge-shield` job (2026-09-26, LEAD RULING SHIELD-R1)
+
+Row O-BOXES-UNSHIELDED-FROM-SPIKES. `services/edge-shield` is the Cloudflare edge in front of
+Box C's auth (`auth-api.nikatru.com/auth/v1/*`) and Box B's GlitchTip (`glitchtip.nikatru.com/api/*`):
+a pass-through that counts four request classes per client and globally and refuses one over its
+limit. It is bound by **zone routes**, never a custom domain — both hosts are Cloudflare Tunnel
+CNAMEs, and a Custom Domain would take the hostname's DNS record off its tunnel
+(tooling/ci/assert-platform-register.mjs limb 7 holds that).
+
+What differs from the two app Workers, each on purpose:
+
+- **No migrations, no `--var`, no secret.** The Worker reads none; nothing rides the deploy.
+- **The smoke is `tooling/ops/check-edge-shield.mjs --settle`, not `post-deploy-smoke.mjs`.** The
+  shield owns no body and must not grow a health route on either box's host; what it adds to every
+  answer is `x-nikatru-shield: 1`, and the probe reads it on both routes. `--settle` re-asks an
+  answer without the header for about two minutes (a route bound seconds ago may not have reached
+  every edge) and then judges it RED, never "could not look". ops-watch runs the same probe daily
+  as its own `edge-shield` job (duty.edge-shield-in-path).
+- **`rollback.yml` does not fit it yet.** tooling/ops/rollback.mjs smokes every service unit at
+  `/v1/health`, which the shield does not have. Until that smoke is per unit, the fast way to take
+  the shield out of path is to delete its two routes on the nikatru.com zone (the origin answers
+  directly again, exactly as before the shield); `wrangler rollback` re-promotes a version.
+
+**The seam with the W40 matrix (npea2).** npea2 turns the app Worker job into an `app-worker`
+matrix over `worker-set.mjs --for-deploy --json --app-workers`, which selects `appWorkers` rows of
+tooling/platform-register.json. The shield is an `edgeWorkers` row, so it stays a hand-written
+sibling job like `platform`, and needs no `needs:` on either. What the fit must carry: the
+`--for-deploy` cross-check ("the whole set is held to row, committed lockfile and `dsnSecret`")
+must accept an `edgeWorkers` row with no `dsnSecret`, or refuse it with a named reason — the
+shield reads no DSN.

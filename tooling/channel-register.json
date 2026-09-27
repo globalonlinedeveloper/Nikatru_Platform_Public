@@ -4078,6 +4078,15 @@
       "url": "https://platform.nikatru.com",
       "source": "services/platform",
       "notes": "NOT app-scoped — one instance serves every app (config, analytics, consent, entitlements, money webhook, cron). Deployed by .github/workflows/deploy-workers.yml."
+    },
+    {
+      "id": "edge-shield",
+      "deploymentEnvironment": "edge-shield",
+      "kind": "service",
+      "name": "Edge shield Worker (in front of Box B and Box C)",
+      "url": "https://auth-api.nikatru.com",
+      "source": "services/edge-shield",
+      "notes": "NOT app-scoped and mounts no route: bound by zone routes on auth-api.nikatru.com/auth/v1/* and glitchtip.nikatru.com/api/* (LEAD RULING SHIELD-R1). `url` is the first host it fronts. It has no /v1/health: its deploy smoke is tooling/ops/check-edge-shield.mjs --settle, so rollback.mjs's service smoke does not fit it (a follow-up in the draft report). Deployed by .github/workflows/deploy-workers.yml."
     }
   ],
   "_siteEnvironmentsWhy": [

@@ -1,0 +1,139 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// WHICH REQUESTS THE SHIELD COUNTS, AND AGAINST WHICH LIMITERS.
+//
+// LEAD RULING SHIELD-R1, row O-BOXES-UNSHIELDED-FROM-SPIKES. Two hosts reach
+// this Worker, each through ONE zone route in ../wrangler.jsonc:
+//   · auth-api.nikatru.com/auth/v1/*  — Box C's self-hosted GoTrue
+//   · glitchtip.nikatru.com/api/*     — Box B's GlitchTip (crash intake + API)
+//
+// A class is a set of paths with ONE cost profile on the box behind it, and each
+// class has ONE limiter, keyed `global:<class>`, so a distributed spike is shed
+// here before it reaches the box. The numbers live in ../wrangler.jsonc beside
+// each binding, with the documented default or labelled estimate each one is
+// anchored on; `period` below must equal the binding's own, which
+// test/wrangler-config.test.ts holds, because it is what Retry-After promises.
+//
+// 🔴 NO PER-CLIENT LIMITER, AND NO CLIENT ADDRESS READ AT ALL (LEAD RULING
+// SHIELD-R3, 2026-09-26). The posture of ADR no.011 / ADR no.020 is that no
+// Worker reads a client-IP header, and tooling/ci/assert-glitchtip-no-ip.mjs
+// holds it for this Worker too. The per-IP limit on the CREDENTIAL paths is the
+// nikatru.com zone's own rate-limiting rule instead, declared as code in
+// tooling/edge-ratelimit-rule.json and applied by deploy-workers.yml.
+//
+// ⚠️ NOT EVERY PATH IS COUNTED, AND THE ONES THAT ARE NOT ARE NAMED:
+//   · OPTIONS, always — a refused CORS preflight turns the real request into an
+//     opaque network error, which a browser client retries instead of backing off;
+//   · GET /auth/v1/.well-known/jwks.json — served from the edge cache instead
+//     (src/index.ts), so a flood of it never reaches Box C at all;
+//   · glitchtip /api/* other than the intake — the GlitchTip web UI and this
+//     repo's own CI (release creation, source-map upload, monitor reads) use it
+//     with a token, in bursts a crash-intake limit would refuse.
+// Everything else under /auth/v1/ falls into `auth-other`, a wide backstop, so
+// an unlisted GoTrue path is bounded rather than free.
+// ─────────────────────────────────────────────────────────────────────────────
+import type { Env, RateLimiterBinding } from './types';
+
+export const AUTH_HOST = 'auth-api.nikatru.com';
+export const INTAKE_HOST = 'glitchtip.nikatru.com';
+export const JWKS_PATH = '/auth/v1/.well-known/jwks.json';
+
+export type ShieldClass = 'auth-credential' | 'auth-refresh' | 'auth-other' | 'intake';
+
+export interface ClassSpec {
+  /** Seconds in the binding's window; the refusal's Retry-After. */
+  period: 10 | 60;
+  /** The status a refused request gets. 429 everywhere except the refresh grant; see below. */
+  refusal: 429 | 503;
+  global: (env: Env) => RateLimiterBinding | undefined;
+}
+
+/**
+ * The class table. Each binding is named once, as `env.<NAME>`, so
+ * tooling/ci/assert-platform-register.mjs limb 3 finds its reader here.
+ *
+ * 🔴 THE REFRESH GRANT IS REFUSED 503, NOT 429 — a deliberate departure from
+ * SHIELD-R1 §2, whose premise was that the clients back off on a 429. For the
+ * refresh grant they do not: gotrue-dart 2.26.0 (the SDK every app ships) treats
+ * any 4xx on `grant_type=refresh_token` as final, REMOVES THE SESSION and emits
+ * signedOut, and supabase_flutter deletes the stored session
+ * (gotrue_client.dart `_doRefresh`, `error is! AuthRetryableFetchException`,
+ * read in the pub cache 2026-09-26). A 429 here would sign out every user whose
+ * refresh landed in an over-limit minute. A 5xx is the retryable class: the
+ * session is kept, the access token (valid for its hour) keeps working against
+ * the Workers, and the SDK asks again on its next tick. Every other class is
+ * refused 429 as ruled — a password sign-in's 429 reaches the form as "Too many
+ * attempts", and the crash SDKs stop sending for Retry-After.
+ */
+export const CLASSES: Record<ShieldClass, ClassSpec> = {
+  'auth-credential': {
+    period: 60,
+    refusal: 429,
+    global: (env) => env.AUTH_CREDENTIAL_GLOBAL_LIMITER,
+  },
+  'auth-refresh': {
+    period: 60,
+    refusal: 503,
+    global: (env) => env.AUTH_REFRESH_GLOBAL_LIMITER,
+  },
+  'auth-other': {
+    period: 60,
+    refusal: 429,
+    global: (env) => env.AUTH_OTHER_GLOBAL_LIMITER,
+  },
+  intake: {
+    period: 60,
+    refusal: 429,
+    global: (env) => env.INTAKE_GLOBAL_LIMITER,
+  },
+};
+
+/**
+ * GoTrue paths (below /auth/v1) that PROVE or MINT a credential, or send mail:
+ * a guess, a sign-up or a send per request. `/token` is here too, for every
+ * grant EXCEPT refresh_token (see classify()).
+ */
+const CREDENTIAL_PATHS = new Set(['/otp', '/signup', '/recover', '/resend', '/verify', '/magiclink', '/reauthenticate']);
+/** MFA: `/factors/<id>/verify` guesses a code, `/factors/<id>/challenge` sends one. */
+const FACTOR_CREDENTIAL = /^\/factors\/[^/]+\/(?:verify|challenge)$/;
+/** GlitchTip's Sentry-protocol intake: `/api/<project id>/envelope/` and `/store/`. */
+const INTAKE_PATH = /^\/api\/[^/]+\/(?:envelope|store)$/;
+
+/**
+ * The path as the classifier reads it: repeated slashes collapsed, a trailing
+ * slash dropped, lower-cased. Only the CLASSIFIER sees this — the request goes
+ * to the origin byte for byte. Normalising can only move a variant INTO a
+ * counted class (`//TOKEN/` is counted as `/token`), never out of one.
+ */
+export function normalisePath(pathname: string): string {
+  let p = pathname.replace(/\/{2,}/g, '/').toLowerCase();
+  if (p.length > 1 && p.endsWith('/')) p = p.slice(0, -1);
+  return p;
+}
+
+export type Route = { kind: 'jwks' } | { kind: 'limit'; cls: ShieldClass } | { kind: 'pass' };
+
+/** What the shield does with a request. Pure: host, path, query and method only. */
+export function classify(url: URL, method: string): Route {
+  const m = method.toUpperCase();
+  if (m === 'OPTIONS') return { kind: 'pass' };
+  const host = url.hostname.toLowerCase();
+  const path = normalisePath(url.pathname);
+
+  if (host === AUTH_HOST && (path === '/auth/v1' || path.startsWith('/auth/v1/'))) {
+    if (m === 'GET' && path === JWKS_PATH) return { kind: 'jwks' };
+    const rest = path.slice('/auth/v1'.length);
+    if (rest === '/token') {
+      // Any grant but a refresh is a credential proof (password, pkce, id_token,
+      // an unknown one); a missing or repeated grant_type counts as a credential.
+      const grants = url.searchParams.getAll('grant_type');
+      const refresh = grants.length === 1 && grants[0] === 'refresh_token';
+      return { kind: 'limit', cls: refresh ? 'auth-refresh' : 'auth-credential' };
+    }
+    if (CREDENTIAL_PATHS.has(rest) || FACTOR_CREDENTIAL.test(rest)) return { kind: 'limit', cls: 'auth-credential' };
+    return { kind: 'limit', cls: 'auth-other' };
+  }
+
+  if (host === INTAKE_HOST && INTAKE_PATH.test(path)) return { kind: 'limit', cls: 'intake' };
+  return { kind: 'pass' };
+}
+

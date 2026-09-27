@@ -41,8 +41,9 @@ const ownTriggers = (text) => [
 describe('deployUnits is the one reading of what a deploy publishes', () => {
   // ⏱ 2026-09-25, D3a: `nikatru-site` joins, the apex site's ledger environment
   // (row O-APEX-SITE-DEPLOYS-OUTSIDE-THE-PIPELINE).
-  test('the units are exactly the four ledger environments', () => {
-    assert.deepEqual(Object.keys(UNITS).sort(), ['<app>-web', 'nikatru-site', 'platform', 'subscriptiontracker-api']);
+  // ⏱ 2026-09-26 · SHIELD-R1: the fifth, `edge-shield` (services/edge-shield).
+  test('the units are exactly the five ledger environments', () => {
+    assert.deepEqual(Object.keys(UNITS).sort(), ['<app>-web', 'edge-shield', 'nikatru-site', 'platform', 'subscriptiontracker-api']);
   });
 
   test('neither deploy workflow carries a push path list or a dorny filter of its own', () => {

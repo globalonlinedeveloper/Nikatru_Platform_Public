@@ -1732,3 +1732,177 @@ export default account;
     assert.doesNotMatch(out, /brick route clients|route-clients\.json/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LIMB 7 · EDGE WORKERS (⏱ 2026-09-26, LEAD RULING SHIELD-R1, row
+// O-BOXES-UNSHIELDED-FROM-SPIKES). services/edge-shield mounts no route and is
+// bound by ZONE routes, so limbs 1, 2, 4 and the [B-15] host limb skip what
+// `edgeWorkers` names — and each case below is a way that exemption could stop
+// being TRUE while the guard stayed green. Every case names what it caught.
+// ─────────────────────────────────────────────────────────────────────────────
+const EDGE_CFG = `{
+  // An edge pass-through: zone routes, never a custom domain.
+  "name": "edge-shield",
+  "main": "src/index.ts",
+  "routes": [
+    { "pattern": "auth-api.example.com/auth/v1/*", "zone_name": "example.com" },
+    { "pattern": "gt.example.com/api/*", "zone_name": "example.com" },
+  ],
+  "ratelimits": [{ "name": "EDGE_LIMITER", "namespace_id": "1101", "simple": { "limit": 5, "period": 60 } }],
+}`;
+const EDGE_TS = `// A header comment naming new Hono() must not count: comments are stripped.
+export default {
+  async fetch(request, env, ctx) {
+    ctx.passThroughOnException();
+    const ok = await env.EDGE_LIMITER.limit({ key: 'k' });
+    if (!ok.success) return new Response('slow down', { status: 429 });
+    return fetch(request);
+  },
+};
+`;
+const edgeRegister = (edit = () => {}) => {
+  const reg = baseRegister();
+  reg.bindingSources.configs.push('services/edge-shield/wrangler.jsonc');
+  for (const v of reg.sharedValues.values) {
+    v.absentFrom = [{ config: 'services/edge-shield/wrangler.jsonc', why: 'An edge pass-through carries no app value.' }];
+  }
+  reg.bindings.push({
+    binding: 'EDGE_LIMITER',
+    kind: 'ratelimits',
+    purpose: 'The edge limiter.',
+    readers: ['services/edge-shield/src/index.ts'],
+  });
+  reg.edgeWorkers = [
+    {
+      _why: ['A pass-through in front of two tunnel hosts; it mounts no route.'],
+      name: 'edge-shield',
+      entrypoint: 'services/edge-shield/src/index.ts',
+      config: 'services/edge-shield/wrangler.jsonc',
+      zoneRoutes: [
+        { pattern: 'auth-api.example.com/auth/v1/*', zone_name: 'example.com' },
+        { pattern: 'gt.example.com/api/*', zone_name: 'example.com' },
+      ],
+    },
+  ];
+  edit(reg);
+  return reg;
+};
+const edgeTree = ({ register = edgeRegister(), files = {} } = {}) =>
+  tree({
+    register,
+    files: { 'services/edge-shield/wrangler.jsonc': EDGE_CFG, 'services/edge-shield/src/index.ts': EDGE_TS, ...files },
+  });
+
+describe('assert-platform-register — limb 7, edge Workers', () => {
+  test('passes with an edge Worker on zone routes, and SAYS it held one to limb 7', () => {
+    const { code, out } = run(edgeTree());
+    assert.equal(code, 0, out);
+    assert.match(out, /1 edge Worker\(s\) held to limb 7/);
+    assert.match(out, /5 binding\(s\) across 2 wrangler config\(s\)/);
+  });
+
+  test('🔴 an UNDECLARED pass-through is still an undeclared Worker (the set equality holds)', () => {
+    const { code, out } = run(edgeTree({ register: edgeRegister((reg) => delete reg.edgeWorkers) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /services\/edge-shield\/wrangler\.jsonc — declares `main`, so it is a Worker that answers requests/);
+  });
+
+  test('FAILS on a custom_domain — it would take the tunnel host’s DNS record  [7c]', () => {
+    const cfg = EDGE_CFG.replace('"zone_name": "example.com" },\n    { "pattern": "gt', '"custom_domain": true },\n    { "pattern": "gt');
+    const { code, out } = run(edgeTree({ files: { 'services/edge-shield/wrangler.jsonc': cfg } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /binds `auth-api\.example\.com\/auth\/v1\/\*` as a custom_domain\. \(\[6c\]\)/);
+  });
+
+  test('FAILS when the config routes a pattern zoneRoutes does not name, and the other way round  [7c]', () => {
+    const cfg = EDGE_CFG.replace('gt.example.com/api/*', 'gt.example.com/*');
+    const { code, out } = run(edgeTree({ files: { 'services/edge-shield/wrangler.jsonc': cfg } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /routes `gt\.example\.com\/\* @ example\.com`, which `zoneRoutes` does not name/);
+    assert.match(out, /`zoneRoutes` names `gt\.example\.com\/api\/\* @ example\.com`, which .* does not route/);
+  });
+
+  test('FAILS on an edge Worker with NO route — it is in front of nothing  [7c]', () => {
+    const cfg = EDGE_CFG.replace(/"routes": \[[\s\S]*?\],\n/, '"routes": [],\n');
+    const { code, out } = run(edgeTree({ files: { 'services/edge-shield/wrangler.jsonc': cfg } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /declares 0 route\(s\) and the entry 2 `zoneRoutes`/);
+  });
+
+  test('🔴 FAILS when the "edge" Worker creates a Hono app — routes cannot hide from limbs 1, 2, 4  [7d]', () => {
+    const ts = `import { Hono } from 'hono';\nconst app = new Hono();\napp.get('/v1/secret', (c) => c.text('x'));\n${EDGE_TS}`;
+    const { code, out } = run(edgeTree({ files: { 'services/edge-shield/src/index.ts': ts } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /creates a Hono app\. \(\[6d\]\)/);
+  });
+
+  test('a Hono app named only in a COMMENT does not count', () => {
+    // EDGE_TS's own header comment says `new Hono()`; the passing case above is the proof.
+    const { code, out } = run(edgeTree());
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /creates a Hono app/);
+  });
+
+  test('🔴 FAILS without passThroughOnException — the shield would become the reason the box is down  [7d]', () => {
+    const ts = EDGE_TS.replace('    ctx.passThroughOnException();\n', '    // ctx.passThroughOnException();\n');
+    const { code, out } = run(edgeTree({ files: { 'services/edge-shield/src/index.ts': ts } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /does not call `passThroughOnException\(`\. \(\[6d\]\)/);
+  });
+
+  test('FAILS when the entrypoint never forwards with fetch(request)  [7d]', () => {
+    const ts = EDGE_TS.replace('return fetch(request);', "return new Response('mine');");
+    const { code, out } = run(edgeTree({ files: { 'services/edge-shield/src/index.ts': ts } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never forwards with `fetch\(request\)`/);
+  });
+
+  test('FAILS on an edgeWorkers entry naming a config the tree does not deploy  [7a]', () => {
+    const reg = edgeRegister((r) => r.edgeWorkers.push({ ...r.edgeWorkers[0], config: 'services/ghost/wrangler.jsonc' }));
+    const { code, out } = run(edgeTree({ register: reg }));
+    assert.equal(code, 1, out);
+    assert.match(out, /edgeWorkers\[1\] names `services\/ghost\/wrangler\.jsonc`, which is not a `services\/\*` wrangler config/);
+  });
+
+  test('FAILS when the entry and the config disagree about the name or the entrypoint  [7a]', () => {
+    const reg = edgeRegister((r) => {
+      r.edgeWorkers[0].name = 'shield-old';
+      r.edgeWorkers[0].entrypoint = 'services/edge-shield/src/old.ts';
+    });
+    const { code, out } = run(edgeTree({ register: reg }));
+    assert.equal(code, 1, out);
+    assert.match(out, /calls this Worker `shield-old`; `services\/edge-shield\/wrangler\.jsonc` deploys it as `edge-shield`/);
+    assert.match(out, /declares entrypoint `services\/edge-shield\/src\/old\.ts`/);
+  });
+
+  test('FAILS when a Worker is BOTH an edge Worker and an app Worker  [7b]', () => {
+    const reg = edgeRegister((r) => {
+      r.appWorkers = [{ name: 'edge-shield', entrypoint: 'services/edge-shield/src/index.ts', config: 'services/edge-shield/wrangler.jsonc', routes: [] }];
+    });
+    const { code, out } = run(edgeTree({ register: reg }));
+    // Refused either way: limb 1 reaches the app entry first and finds nothing
+    // mounted (exit 2); a tree where it did mount something meets [7b] and [7d].
+    assert.notEqual(code, 0, out);
+    assert.match(out, /is ALSO a servingWorker\/appWorkers entry\. \(\[6b\]\)|found ZERO mounted routes/);
+  });
+
+  test('FAILS on an edge entry with no _why', () => {
+    const { code, out } = run(edgeTree({ register: edgeRegister((r) => delete r.edgeWorkers[0]._why) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /edgeWorkers\[0\] — no `_why`/);
+  });
+
+  test('an edge Worker’s limiter is STILL limb 3’s subject: unregistered, it fails', () => {
+    const reg = edgeRegister((r) => (r.bindings = r.bindings.filter((b) => b.binding !== 'EDGE_LIMITER')));
+    const { code, out } = run(edgeTree({ register: reg }));
+    assert.equal(code, 1, out);
+    assert.match(out, /EDGE_LIMITER — declared as a `ratelimits` binding in services\/edge-shield\/wrangler\.jsonc and absent from the register/);
+  });
+
+  test('an edge Worker is still limb 5’s subject: an absentFrom row that turned false fails', () => {
+    const cfg = EDGE_CFG.replace('"main": "src/index.ts",', '"main": "src/index.ts",\n  "vars": { "API_VERSION": "v1" },');
+    const { code, out } = run(edgeTree({ files: { 'services/edge-shield/wrangler.jsonc': cfg } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /services\/edge-shield\/wrangler\.jsonc — `vars\.API_VERSION` is declared here, but the register's `absentFrom` says it is not/);
+  });
+});

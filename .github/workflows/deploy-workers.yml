@@ -319,3 +319,69 @@ jobs:
           # why: the Worker version — see the app-worker job.
           DEPLOY_OUTPUT: ${{ steps.deploy.outputs.command-output }}
         run: node tooling/ci/record-deployment.mjs platform https://platform.nikatru.com --wrangler-output-env DEPLOY_OUTPUT
+
+  edge-shield:
+    # why: LEAD RULING SHIELD-R1, row O-BOXES-UNSHIELDED-FROM-SPIKES. The edge in
+    # front of Box C's auth and Box B's crash intake (services/edge-shield). It
+    # binds two ZONE routes on deploy, so a deploy is what puts it in path, and the
+    # smoke below is what proves it got there. No migrations, no vars, no secret:
+    # the Worker reads none. docs/ci/deploy-workers.md has the section.
+    name: Deploy edge-shield
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # why: see the subscriptiontracker-api job — alone, this line fails open.
+    environment: production
+    # why: job-level — see the subscriptiontracker-api job.
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          # why: see the subscriptiontracker-api job — the plan needs full history.
+          fetch-depth: 0
+      # why: the ref check, FIRST, exactly as in the subscriptiontracker-api job.
+      - name: Refuse any ref but main
+        run: node tooling/ci/assert-deploy-ref.mjs --allow main
+      # why: the plan, exactly as in the subscriptiontracker-api job, for this Worker's
+      # own ledger environment and deployUnits globs.
+      - name: Plan from the Deployment ledger
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node tooling/ci/plan-deploy.mjs edge-shield
+      - uses: ./.github/actions/setup-node
+        if: steps.plan.outputs.deploy == 'true'
+      - run: npm ci
+        if: steps.plan.outputs.deploy == 'true'
+        working-directory: services/edge-shield
+      # why: ONE deploy, the action's command stated rather than defaulted — see the
+      # platform job for what a second, unqualified deploy once cost. Nothing rides
+      # it: the Worker has no var and no secret.
+      - uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
+        if: steps.plan.outputs.deploy == 'true'
+        id: deploy
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          wranglerVersion: '4.135.0'   # why: package.json says ^4.0.0, which floats. [F-2]
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: services/edge-shield
+          command: deploy
+      # why: THE SMOKE IS "IS IT IN PATH", because the shield has no health route of
+      # its own and must not grow one on either box's host. The same probe
+      # ops-watch runs daily: both routes answer with x-nikatru-shield: 1, or
+      # this job is red. Exit 2 (a probe never answered) is red too.
+      - name: Smoke — the shield is in path on both routes
+        if: steps.plan.outputs.deploy == 'true'
+        run: node tooling/ops/check-edge-shield.mjs --settle
+
+      # why: conditioned on the DEPLOY, not on the smoke — see the subscriptiontracker-api
+      # job.
+      - name: Record the deployed SHA
+        if: always() && steps.deploy.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # why: the Worker version — see the subscriptiontracker-api job.
+          DEPLOY_OUTPUT: ${{ steps.deploy.outputs.command-output }}
+        run: node tooling/ci/record-deployment.mjs edge-shield https://auth-api.nikatru.com --wrangler-output-env DEPLOY_OUTPUT

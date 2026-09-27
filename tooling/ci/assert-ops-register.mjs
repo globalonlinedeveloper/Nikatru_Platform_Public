@@ -5546,7 +5546,11 @@ async function main() {
       // ⏱ 2026-09-25 · D3a: tooling/sites/smoke-site-deploy.mjs is the apex site's probe
       // (deploy-web.yml's `site` job). It joins on version.json's `sha` through
       // post-deploy-smoke.mjs's own `judge`, so it counts as a probe of what shipped.
-      const smokes = (text.match(/post-deploy-smoke\.mjs|smoke-site-deploy\.mjs/g) ?? []).length;
+      // ⏱ 2026-09-26 · SHIELD-R1: tooling/ops/check-edge-shield.mjs is the edge shield's
+      // (deploy-workers.yml's `edge-shield` job). The shield owns no body and no health
+      // route, so there is no field to join on; what it adds to every answer is one
+      // header, and the probe reads it on both routes it binds and exits 1 without it.
+      const smokes = (text.match(/post-deploy-smoke\.mjs|smoke-site-deploy\.mjs|check-edge-shield\.mjs/g) ?? []).length;
       for (const environment of new Set(envs)) {
         deployJobs.push({ workflow: wf.rel ?? wf.file ?? '?', job: jobName, environment, smokes });
       }
