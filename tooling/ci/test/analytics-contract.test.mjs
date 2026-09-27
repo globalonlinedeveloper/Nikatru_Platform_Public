@@ -219,6 +219,11 @@ const LIMB5_FILES = [
   'services/platform/src/index.ts',
   'services/subscriptiontracker-api/src/index.ts',
   '.github/workflows/deploy-workers.yml',
+  // ⏱ 2026-09-26 (O-SERVICE-KIT-UNBUILT, E-a2): deploy-workers.yml smokes every app Worker
+  // as `--url ${{ matrix.worker.smokeUrl }}`, and the guard reads the legs the way the
+  // matrix does (tooling/ci/worker-set.mjs: the register rows AND the Worker directories).
+  'services/platform/wrangler.jsonc',
+  'services/subscriptiontracker-api/wrangler.jsonc',
   'services/platform/test/config.test.ts',
   'apps/subscriptiontracker/test/config_default_test.dart',
   // The config route's client half, in the BRICK's test tree — [4]B-14's last
@@ -914,8 +919,11 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
   test('COVERAGE LOST when the workflow stops smoking /v1/health at all', () => {
     const r = run(makeRepo((f) => ({
       ...f,
-      '.github/workflows/deploy-workers.yml':
-        f['.github/workflows/deploy-workers.yml'].replaceAll('/v1/health', '/v1/ping'),
+      // ⏱ 2026-09-26: the app Worker leg's URL comes from the register (`smokeUrl`), so
+      // the matrix smoke is pointed away from the route too, not only the literal one.
+      '.github/workflows/deploy-workers.yml': f['.github/workflows/deploy-workers.yml']
+        .replaceAll('/v1/health', '/v1/ping')
+        .replace('--url ${{ matrix.worker.smokeUrl }}', '--url https://leg.example.test/v1/ping'),
     })));
     assert.equal(r.code, 2, r.out);
     // The guard now scans EVERY workflow rather than naming deploy-workers.yml

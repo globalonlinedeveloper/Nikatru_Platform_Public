@@ -72,6 +72,7 @@ import { fileURLToPath } from 'node:url';
 import { stripSourceComments } from './text-reductions.mjs';
 import { listDir } from './tree-walk.mjs';
 import { workerModuleSource } from './worker-shared-modules.mjs';
+import { appWorkerMatrix } from './worker-set.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
@@ -169,6 +170,113 @@ if (deployText === null) {
   );
 }
 
+// ── 5, THE MATRIX HALF · ⏱ 2026-09-26 (O-SERVICE-KIT-UNBUILT, E-a2) ──────────
+// Every app Worker deploys from ONE matrix job (`app-worker`), one leg per
+// tooling/platform-register.json `appWorkers` row (tooling/ci/worker-set.mjs), and
+// only the serving Worker keeps a job named after it. So an app Worker's job is
+// the job that PLANS a matrix leg (`plan-deploy.mjs ${{ matrix.<dim>.worker }}`),
+// and limb 5 asks that job for the vars. Two more questions belong to the matrix:
+//   · the DSN is the Worker's OWN secret: `--var GLITCHTIP_DSN:` reads
+//     `secrets[matrix.<dim>.dsnSecret]`, the row's `dsnSecret`, never one shared
+//     literal (a shared DSN files app #2's crashes under app #1's project);
+//   · that secret REACHES the called workflow. A callee reads only what its call
+//     delivers, and an undelivered name reads as EMPTY — the Worker deploys with no
+//     sink and its smoke stays green. Delivered means declared under
+//     `on.workflow_call.secrets` here (and passed by name by the call). A call
+//     passing `secrets: inherit` is a finding (lead ruling Q1, 2026-09-26: named,
+//     never inherited — inherit would reverse #947's named-secrets choice).
+const MATRIX_PLAN = /plan-deploy\.mjs\s+\$\{\{\s*matrix\.([A-Za-z_][A-Za-z0-9_-]*)\.worker\s*\}\}/;
+const codeOf = (text) => text.split('\n').filter((l) => !/^\s*#/.test(l)).map((l) => l.replace(/\s#.*$/, '')).join('\n');
+/** The job ids under `jobs:`, in file order. */
+function jobIds(yaml) {
+  const lines = yaml.split('\n');
+  const at = lines.findIndex((l) => /^jobs:\s*(#.*)?$/.test(l));
+  if (at === -1) return [];
+  const ids = [];
+  for (const l of lines.slice(at + 1)) {
+    if (/^\S/.test(l)) break;
+    const m = l.match(/^ {2}([A-Za-z_][A-Za-z0-9_-]*)\s*:/);
+    if (m) ids.push(m[1]);
+  }
+  return ids;
+}
+/** The names `on.workflow_call.secrets` declares. */
+function declaredCallSecrets(yaml) {
+  const lines = yaml.split('\n');
+  const names = new Set();
+  let inCall = -1;
+  let inSecrets = -1;
+  for (const l of lines) {
+    if (l.trim() === '' || /^\s*#/.test(l)) continue;
+    const ind = l.length - l.trimStart().length;
+    if (/^\S/.test(l) && !/^on:\s*(#.*)?$/.test(l)) { inCall = -1; inSecrets = -1; continue; }
+    if (/^\s+workflow_call:\s*(#.*)?$/.test(l)) { inCall = ind; inSecrets = -1; continue; }
+    if (inCall >= 0 && ind <= inCall) { inCall = -1; inSecrets = -1; }
+    if (inCall >= 0 && /^\s+secrets:\s*(#.*)?$/.test(l)) { inSecrets = ind; continue; }
+    if (inSecrets >= 0) {
+      if (ind <= inSecrets) { inSecrets = -1; continue; }
+      const m = l.match(/^\s+([A-Za-z_][A-Za-z0-9_]*):\s*(#.*)?$/);
+      if (m && ind === inSecrets + 2) names.add(m[1]);
+    }
+  }
+  return names;
+}
+/** Does any workflow CALL this one with `secrets: inherit`? */
+function inheritedByACaller() {
+  const dir = rel('.github/workflows');
+  const self = DEPLOY_WORKFLOW.split('/').pop();
+  for (const f of listDir(dir).filter((x) => /\.ya?ml$/.test(x))) {
+    const text = codeOf(read(`.github/workflows/${f}`));
+    for (const id of jobIds(text)) {
+      const body = jobBody(text, id) ?? '';
+      if (new RegExp(`^\\s+uses:\\s*\\./\\.github/workflows/${self.replace('.', '\\.')}\\s*$`, 'm').test(body) && /^\s+secrets:\s*inherit\s*$/m.test(body)) {
+        return `.github/workflows/${f} job \`${id}\``;
+      }
+    }
+  }
+  return null;
+}
+const deployCode = codeOf(deployText);
+const matrixJobId = jobIds(deployCode).find((id) => MATRIX_PLAN.test(jobBody(deployCode, id) ?? '')) ?? null;
+const matrixDim = matrixJobId === null ? null : jobBody(deployCode, matrixJobId).match(MATRIX_PLAN)[1];
+const appMatrix = appWorkerMatrix(ROOT);
+const appWorkerNames = new Set(appMatrix.entries.map((e) => e.worker));
+let matrixDelivery = null; // checked once, on the first app Worker limb 5 reaches
+function matrixDeliveryProblems() {
+  if (matrixDelivery !== null) return matrixDelivery;
+  matrixDelivery = [];
+  const job = jobBody(deployCode, matrixJobId);
+  const perWorker = new RegExp(`--var GLITCHTIP_DSN:\\$\\{\\{\\s*secrets\\[\\s*matrix\\.${matrixDim}\\.dsnSecret\\s*\\]\\s*\\}\\}`);
+  if (!perWorker.test(job)) {
+    matrixDelivery.push(
+      `${DEPLOY_WORKFLOW} job \`${matrixJobId}\` deploys every app Worker and does not pass ` +
+        `\`--var GLITCHTIP_DSN:\${{ secrets[matrix.${matrixDim}.dsnSecret] }}\`. Each Worker's crash sink is the secret its ` +
+        'register row names (`dsnSecret`); one shared literal files every app\'s crashes under one project, where nobody ' +
+        'triaging the other apps looks.',
+    );
+  }
+  const declared = declaredCallSecrets(deployCode);
+  const inherit = inheritedByACaller();
+  if (inherit !== null) {
+    matrixDelivery.push(
+      `${inherit} calls ${DEPLOY_WORKFLOW} with \`secrets: inherit\`. Its secrets are NAMED, never inherited (lead ruling ` +
+        'Q1, 2026-09-26): inherit hands every repository secret to a deploy job and reverses #947\'s named-secrets choice. ' +
+        "Declare each app Worker's `dsnSecret` under `on.workflow_call.secrets` and pass it by name from the call.",
+    );
+  }
+  for (const e of appMatrix.entries) {
+    if (declared.has(e.dsnSecret)) continue;
+    matrixDelivery.push(
+      `${DEPLOY_WORKFLOW} deploys ${e.worker} with \`secrets[matrix.${matrixDim}.dsnSecret]\` = ${e.dsnSecret} ` +
+        `(tooling/platform-register.json), and nothing delivers ${e.dsnSecret} to this called workflow: it is not declared ` +
+        'under `on.workflow_call.secrets`. A secret a call does not deliver reads as EMPTY, so the Worker would deploy with ' +
+        'no crash sink and a green smoke. Declare it here and pass it by name from ci.yml\'s `deploy-workers:` call — the two ' +
+        'lines tooling/scripts/provision-backend.mjs step [6] prints, written at the owner step that creates the secret (O-E1).',
+    );
+  }
+  return matrixDelivery;
+}
+
 let wired = 0;
 /** How many carriers were judged at the shared home rather than in place. A
  *  count, printed, so "every Worker delegates" and "no Worker delegates" are
@@ -251,8 +359,23 @@ for (const name of workers) {
   }
 
   // ── 5 · the deploy supplies the vars, in THIS Worker's job ────────────────
-  const job = jobBody(deployText, name);
-  if (job === null) {
+  // An app Worker's job is the matrix job (the matrix half, above); a Worker with a
+  // job named after it (the serving Worker) is read in that job, as before.
+  const viaMatrix = jobBody(deployText, name) === null && matrixJobId !== null && appWorkerNames.has(name);
+  const job = viaMatrix ? jobBody(deployText, matrixJobId) : jobBody(deployText, name);
+  if (viaMatrix) {
+    for (const p of matrixDeliveryProblems()) {
+      fail(p);
+      problems++;
+    }
+  }
+  if (job === null && matrixJobId !== null && appMatrix.lost !== null) {
+    fail(
+      `COVERAGE LOST — ${DEPLOY_WORKFLOW} has no job named \`${name}\`, and its app Worker matrix job \`${matrixJobId}\` ` +
+        `resolves over rows that could not be read (${appMatrix.lost}), so whether ${name} is one of its legs is unknown.`,
+    );
+    problems++;
+  } else if (job === null) {
     fail(
       `COVERAGE LOST — ${DEPLOY_WORKFLOW} has no job named \`${name}\`, so this scan cannot tell whether that ` +
         "Worker's deploy supplies the sink's vars. A renamed job silently removes the only end-to-end half of this check.",
@@ -266,7 +389,7 @@ for (const name of workers) {
       // assert-seams-wired.mjs, learned the same way.
       if (!new RegExp(`^[^#\\n]*--var ${v}:`, 'm').test(job)) {
         fail(
-          `${DEPLOY_WORKFLOW} job \`${name}\` does not pass \`--var ${v}:\`. The Worker reads a variable no deploy ` +
+          `${DEPLOY_WORKFLOW} job \`${viaMatrix ? `${matrixJobId}\` (the ${name} leg` : `${name}\``}${viaMatrix ? ')' : ''} does not pass \`--var ${v}:\`. The Worker reads a variable no deploy ` +
             'sets, so the sink is fail-closed with no proven open path — a dead feature that reports healthy, which ' +
             'is exactly the shape [pipeline C-6] exists to reject.',
         );

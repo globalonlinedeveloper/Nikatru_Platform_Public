@@ -40,6 +40,14 @@
 // register this cannot read, or a tree that is not a git checkout (so "is the
 // lockfile tracked" has no answer), is COVERAGE LOST (exit 2).
 //
+// ⏱ 2026-09-26 — `--app-workers` IS THE DEPLOY MATRIX (O-SERVICE-KIT-UNBUILT, E-a2).
+// deploy-workers.yml deploys every app Worker from one matrix and the serving
+// Worker (the platform) as its own job after it, so its matrix is the `appWorkers`
+// rows only: split by the ROW each member matched, never by a Worker's name, so the
+// serving Worker cannot be dropped or doubled by a rename. Each entry also carries
+// `origin` (`https://<first host>`), the URL the record step writes and rollback.yml
+// appends its smoke path to.
+//
 // Two refusals, because a matrix built from a quiet reader is a lane that tests
 // nothing and reports green:
 //   · a directory under services/ that is neither `_shared` nor holds a
@@ -50,13 +58,16 @@
 //     fails a job whose matrix is `[]`, but a reader that printed `[]` would
 //     have said "no Workers" about a tree it never reached.
 //
-// Usage:  node tooling/ci/worker-set.mjs [--for-deploy] [--emit | --json] [repoRoot]
+// Usage:  node tooling/ci/worker-set.mjs [--for-deploy] [--emit | --json [--app-workers]] [repoRoot]
 //   --emit        prints the set as ONE JSON array (`["platform","subscriptiontracker-api"]`),
 //                 the value lane-workers.yml's `detect` writes to `workers=`;
 //   --for-deploy  holds each member to the register, its lockfile and its `dsnSecret`
 //                 first (above), and prints nothing unless all of it holds;
-//   --json        with --for-deploy only: `[{worker, dir, migrations, smokeUrl, dsnSecret}]`;
-//   with none of the three, one directory name per line.
+//   --json        with --for-deploy only: `[{worker, dir, migrations, smokeUrl, origin, dsnSecret}]`;
+//   --app-workers with --json only: the members that matched an `appWorkers` row, the
+//                 value deploy-workers.yml's `workers` job writes to `workers=`. The
+//                 whole set is still checked first;
+//   with none of these, one directory name per line.
 // Exit 0 = the set is non-empty, every directory under services/ is placed, and
 //          (--for-deploy) every member holds.
 // Exit 1 = a directory under services/ is neither `_shared` nor a Worker, or
@@ -123,24 +134,27 @@ const readJson = (p) => {
 };
 
 /**
- * `--for-deploy`: `{ entries, problems, lost }` for the tree at `root`. `entries`
- * is `[{ worker, dir, migrations, smokeUrl, dsnSecret }]`, one per member of the
- * set, in the set's order; `problems` are findings (exit 1); `lost` is non-empty
- * when the register or the git index could not be read (exit 2). `set` is
- * workerSet(root), passed in so the CLI reads the tree once.
+ * `--for-deploy`: `{ entries, appWorkers, problems, lost }` for the tree at `root`.
+ * `entries` is `[{ worker, dir, migrations, smokeUrl, origin, dsnSecret }]`, one per
+ * member of the set, in the set's order; `appWorkers` names the entries whose
+ * member matched an `appWorkers` row (the rest matched `servingWorker`); `problems`
+ * are findings (exit 1); `lost` is non-empty when the register or the git index
+ * could not be read (exit 2). `set` is workerSet(root), passed in so the CLI reads
+ * the tree once.
  */
-export function deploySet(root, set = workerSet(root)) {
+export function deploySet(root, set = workerSet(root), { lockfiles = true } = {}) {
   const problems = [];
   const lost = [];
+  const appWorkers = [];
   if (set === null) {
     lost.push(`${join(root, SERVICES_DIR)} does not exist, so no Worker directory was read.`);
-    return { entries: [], problems, lost };
+    return { entries: [], appWorkers, problems, lost };
   }
   const register = existsSync(join(root, REGISTER)) ? readJson(join(root, REGISTER)) : null;
   const rows = register === null ? [] : registerRows(register);
   if (rows.length === 0) {
     lost.push(`${REGISTER} is missing, is not JSON, or declares no servingWorker and no appWorkers row.`);
-    return { entries: [], problems, lost };
+    return { entries: [], appWorkers, problems, lost };
   }
 
   // Both ways: every directory has a row, and every row names a directory.
@@ -182,10 +196,14 @@ export function deploySet(root, set = workerSet(root)) {
   for (const dir of set.workers) {
     const rel = `${SERVICES_DIR}/${dir}`;
 
-    // The HARD rule: a tracked lockfile, and it is this package's.
-    const pkg = readJson(join(root, rel, 'package.json'));
-    if (pkg === null) problems.push(`${rel} has no readable package.json, so nothing says which lockfile is its own.`);
-    if (!existsSync(join(root, rel, 'package-lock.json'))) {
+    // The HARD rule: a tracked lockfile, and it is this package's. Not asked by
+    // appWorkerMatrix() (`lockfiles: false`): a guard reading what the matrix carries,
+    // while the workflow's own `worker-set.mjs --for-deploy` holds each Worker to it.
+    const pkg = lockfiles ? readJson(join(root, rel, 'package.json')) : null;
+    if (lockfiles && pkg === null) problems.push(`${rel} has no readable package.json, so nothing says which lockfile is its own.`);
+    if (!lockfiles) {
+      // skipped: see above
+    } else if (!existsSync(join(root, rel, 'package-lock.json'))) {
       problems.push(
         `${rel} has no package-lock.json. \`npm ci\` refuses without one and OSV-Scanner reads lockfiles, so this ` +
           'Worker would install a dependency tree nobody reviewed and nothing scanned. Commit its lockfile.',
@@ -248,15 +266,60 @@ export function deploySet(root, set = workerSet(root)) {
           'A deploy that cannot probe what it published cannot tell a live Worker from a dead one.',
       );
     }
+    const worker = String(r.row?.name ?? dir);
+    if (r.field !== 'servingWorker') appWorkers.push(worker);
     entries.push({
-      worker: String(r.row?.name ?? dir),
+      worker,
       dir: rel,
       migrations,
       smokeUrl: host !== null && health ? `https://${host}${health.path}` : null,
+      origin: host !== null ? `https://${host}` : null,
       dsnSecret,
     });
   }
-  return { entries, problems, lost };
+  return { entries, appWorkers, problems, lost };
+}
+
+/** The deploy matrix: the `--for-deploy` entries of the app Workers, in the set's
+ *  order. deploy-workers.yml's `app-worker` job runs one leg per entry, and
+ *  assert-deploy-triggers-deploy.mjs grades each leg from this same answer. */
+export function appWorkerEntries(d) {
+  return d.entries.filter((e) => d.appWorkers.includes(e.worker));
+}
+
+/**
+ * The deploy matrix as a GUARD reads it: `{ entries, lost }` for the tree at `root`,
+ * where `entries` is what deploy-workers.yml's `app-worker` matrix carries on this
+ * tree. The register rules hold (a row per directory, a `dsnSecret`, a smoke URL);
+ * the lockfile rule is not asked, because the workflow's own
+ * `worker-set.mjs --for-deploy` refuses a Worker without a committed lockfile before
+ * any leg exists, and a guard should not need a git index to read a YAML field.
+ * `lost` is why the matrix could not be read (no services/, no register, a register
+ * finding, or no app Worker at all); each caller turns it into its own refusal.
+ */
+export function appWorkerMatrix(root) {
+  const set = workerSet(root);
+  const d = deploySet(root, set, { lockfiles: false });
+  const why = d.lost[0] ?? d.problems[0] ?? null;
+  if (why !== null) return { entries: [], lost: why };
+  const entries = appWorkerEntries(d);
+  if (entries.length === 0) {
+    return { entries, lost: `${REGISTER} names no appWorkers row with a ${SERVICES_DIR}/ directory, so the app Worker matrix is empty.` };
+  }
+  return { entries, lost: null };
+}
+
+/** `${{ matrix.<dimension>.<field> }}` naming a field of an appWorkerMatrix() entry —
+ *  the one shape a workflow reads a deploy-matrix leg in. Group 1 is the dimension,
+ *  group 2 the field. Global: callers use `matchAll` or reset `lastIndex`. */
+export const WORKER_MATRIX_REF = /\$\{\{\s*matrix\.([A-Za-z_][A-Za-z0-9_-]*)\.(worker|dir|migrations|smokeUrl|origin|dsnSecret)\s*\}\}/g;
+
+/** `text` with every WORKER_MATRIX_REF expanded over `entries`: one string per entry
+ *  (in the matrix's order) when the text reads a leg, else `[text]` unchanged. */
+export function expandWorkerMatrix(text, entries) {
+  WORKER_MATRIX_REF.lastIndex = 0;
+  if (!WORKER_MATRIX_REF.test(text)) return [text];
+  return entries.map((e) => text.replace(WORKER_MATRIX_REF, (_, _dim, field) => String(e[field] ?? '')));
 }
 
 function coverageLost(lines) {
@@ -273,14 +336,19 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const emit = args.includes('--emit');
   const forDeploy = args.includes('--for-deploy');
   const json = args.includes('--json');
-  const USAGE = 'Usage: node tooling/ci/worker-set.mjs [--for-deploy] [--emit | --json] [repoRoot]';
-  const unknown = args.filter((a) => a.startsWith('--') && !['--emit', '--for-deploy', '--json'].includes(a));
+  const appOnly = args.includes('--app-workers');
+  const USAGE = 'Usage: node tooling/ci/worker-set.mjs [--for-deploy] [--emit | --json [--app-workers]] [repoRoot]';
+  const unknown = args.filter((a) => a.startsWith('--') && !['--emit', '--for-deploy', '--json', '--app-workers'].includes(a));
   if (unknown.length) {
     console.error(`FAIL worker-set: unknown flag ${unknown.join(', ')}. ${USAGE}`);
     process.exit(1);
   }
   if (json && !forDeploy) {
     console.error(`FAIL worker-set: --json prints what --for-deploy checked, and --for-deploy was not given. ${USAGE}`);
+    process.exit(1);
+  }
+  if (appOnly && !json) {
+    console.error(`FAIL worker-set: --app-workers narrows what --for-deploy --json prints, and --json was not given. ${USAGE}`);
     process.exit(1);
   }
   if (json && emit) {
@@ -328,7 +396,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       console.error('\nworker-set: FAILED');
       process.exit(1);
     }
-    if (json) console.log(JSON.stringify(d.entries));
+    if (json) console.log(JSON.stringify(appOnly ? appWorkerEntries(d) : d.entries));
     else if (emit) console.log(JSON.stringify(set.workers));
     else for (const e of d.entries) console.log(`${e.worker}  ${e.dir}  ${e.migrations ?? '-'}  ${e.smokeUrl}  ${e.dsnSecret}`);
     process.exit(0);

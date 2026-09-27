@@ -237,11 +237,11 @@ import { listDir } from './tree-walk.mjs';
 import { parseAllWorkflows, workflowEvents, shellSegments, RECORD_CALL, expandMatrixEnvironment, POST_GATE_IF, postGateJobs, bindEveryApp } from './workflow-scan.mjs';
 // The ONE comment tokenizer, for the same reason as the workflow parser above.
 import { stripSourceComments } from './text-reductions.mjs';
+import { appWorkerMatrix } from './worker-set.mjs';
 // The ONE calendar-date check. The copy that stood here read `Date.parse(s)`
 // alone, and V8 parses `2026-02-31` as 3 March, so an impossible date passed
 // (the PR 913 review, L2, 2026-09-24).
 import { isIsoDate } from '../app-yaml/schema-validate.mjs';
-
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/ops/register.json';
 const WORKFLOW_DIR_REL = '.github/workflows';
@@ -5462,8 +5462,26 @@ async function main() {
       if (Array.isArray(cat)) appSlugs = cat.map((a) => a?.slug).filter((s) => typeof s === 'string');
     } catch { /* falls into the floor below */ }
   }
+  // ⏱ 2026-09-26 (O-SERVICE-KIT-UNBUILT, E-a2): deploy-workers.yml records every app
+  // Worker from one matrix step, `${{ matrix.<dim>.worker }}`, which expands over the
+  // app Worker names tooling/ci/worker-set.mjs reads, not over the app slugs.
+  let workerLegs = null;
+  const legNames = (raw) => {
+    if (!/^\$\{\{\s*matrix\.[A-Za-z_][A-Za-z0-9_-]*\.worker\s*\}\}$/.test(raw)) return [];
+    if (workerLegs === null) {
+      const m = appWorkerMatrix(ROOT);
+      if (m.lost !== null) {
+        coverageLost([
+          `a deploy job records \`${raw}\`, a leg of the app Worker matrix, and its rows could not be read: ${m.lost}`,
+          'Unexpanded, [14]O-7 would attribute the deploy to the literal text and never to a Worker environment.',
+        ]);
+      }
+      workerLegs = m.entries.map((e) => e.worker);
+    }
+    return workerLegs;
+  };
   const expandEnv = (raw) => {
-    const expanded = expandMatrixEnvironment(raw, appSlugs);
+    const expanded = expandMatrixEnvironment(raw, appSlugs, legNames(raw));
     if (expanded.length === 0) {
       coverageLost([
         `a deploy job records \`${raw}\` and the app catalogue at catalog/apps.json yielded no slug.`,

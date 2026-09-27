@@ -163,6 +163,7 @@ import { fileURLToPath } from 'node:url';
 // parseAllWorkflows: it is the deliberately different reader.
 import { parseAllWorkflows, parseResolvedWorkflows, lineAt, placeOf, refusalText, shellSegments, RECORD_CALL, expandMatrixEnvironment, storePublishSteps, laneRunHost, laneRefusalText } from './workflow-scan.mjs';
 import { resolveEnvironment, STATES, SUBMIT_TIME_STATES, STATE_MEANING, MODES } from './deployment-record.mjs';
+import { appWorkerMatrix } from './worker-set.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/channel-register.json';
@@ -341,6 +342,26 @@ function stepContext(job, lineNumber) {
   return { step: steps[i], index: i, total: steps.length, priorIds: new Set(steps.slice(0, i).map((s) => s.id).filter(Boolean)) };
 }
 
+/** The Worker names a `${{ matrix.<dim>.worker }}` record call expands over (⏱ 2026-09-26,
+ *  O-SERVICE-KIT-UNBUILT E-a2: deploy-workers.yml's app Worker matrix), read once, and only
+ *  when a call needs them. Rows that cannot be read are COVERAGE LOST: an unexpanded leg
+ *  would be recorded under the literal text `${{ … }}`. */
+let WORKER_LEGS = null;
+function workerLegNames(raw) {
+  if (!/^\$\{\{\s*matrix\.[A-Za-z_][A-Za-z0-9_-]*\.worker\s*\}\}$/.test(raw)) return [];
+  if (WORKER_LEGS === null) {
+    const m = appWorkerMatrix(ROOT);
+    if (m.lost !== null) {
+      coverageLost([
+        `a deploy job records \`${raw}\`, a leg of the app Worker matrix, and its rows could not be read: ${m.lost}`,
+        'Unexpanded, the record would be attributed to the literal text and never to a Worker environment.',
+      ]);
+    }
+    WORKER_LEGS = m.entries.map((e) => e.worker);
+  }
+  return WORKER_LEGS;
+}
+
 /** Every `record-deployment.mjs <env> …` call in one job, one per shell segment.
  *  Segment-wise because `a ; node record-deployment.mjs x` and a `run: |` block
  *  are the same text to a line matcher and different commands to a shell.
@@ -360,7 +381,7 @@ function recordCalls(job, appSlugs = APP_SLUGS) {
       // absent (`modeRaw` null) or written as something no reader can resolve.
       const modeRaw = (seg.match(/--mode\s+(\S+)/) ?? [])[1] ?? null;
       const modeLiteral = modeRaw === null ? null : modeRaw.replace(/^(['"])(.*)\1$/, '$2');
-      for (const environment of expandMatrixEnvironment(m[1], appSlugs)) {
+      for (const environment of expandMatrixEnvironment(m[1], appSlugs, workerLegNames(m[1]))) {
         out.push({
           n: line.n,
           environment,

@@ -66,7 +66,7 @@ import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { api, githubApiBase, RateLimitExhausted, limitName, SECONDARY_MIN_WAIT_MS } from './record-deployment.mjs';
-import { globClaims } from './assert-deploy-triggers-deploy.mjs';
+import { globClaims } from './deploy-globs.mjs';
 
 const ROOT = resolve(join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 export const UNITS_REL = 'tooling/ci/lane-map.json';

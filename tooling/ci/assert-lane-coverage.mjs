@@ -37,7 +37,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, posix } from 'node:path';
 import { listDir } from './tree-walk.mjs';
-
+import { workerSet } from './worker-set.mjs';
 const repoRoot = process.argv[2] ?? process.cwd();
 
 /** Below this, the scan itself is broken rather than the tree being empty. */
@@ -221,6 +221,21 @@ if (existsSync(extCatalog)) {
   }
 }
 
+// ⏱ 2026-09-26 (O-SERVICE-KIT-UNBUILT, E-a2) — A WORKER IS CLAIMED THE SAME WAY, BY A
+// PAIR OF FACTS IN ONE FILE. Until today every Worker was named by path in some
+// workflow, and app #1's Worker was named only by deploy-workers.yml's own job — a
+// DEPLOY lane, not a CI one. deploy-workers.yml now reads every app Worker from a
+// matrix, and lane-workers.yml, the Workers' CI lane, never named one: its `worker`
+// job runs one leg per directory tooling/ci/worker-set.mjs reads. So a Worker unit
+// is also claimed when the workflow that runs worker-set.mjs is the one that works
+// in `services/${{ matrix.<k> }}` (whole line, as for the extension lane), and the
+// unit's directory is in the set worker-set.mjs reads. Delete that step, or point
+// the lane elsewhere, and every Worker named nowhere else goes unclaimed.
+const hasWorkerLane = workflowTexts.some(
+  (t) => t.includes('tooling/ci/worker-set.mjs') && /^[ \t]*working-directory:[ \t]*services\/\$\{\{\s*matrix\.[A-Za-z_][A-Za-z0-9_-]*\s*\}\}[ \t]*$/m.test(t),
+);
+const workerDirs = new Set((workerSet(repoRoot)?.workers ?? []).map((w) => `services/${w}`));
+
 /** The tool id, which is what discover.mjs emits and the catalogue keys on. */
 function toolId(unitPath) {
   const f = join(repoRoot, unitPath, 'tool.json');
@@ -242,6 +257,7 @@ function isClaimed(unit) {
     const id = toolId(unit.path);
     return id !== null && catalogSlugs.has(id) && hasExtensionLane;
   }
+  if (unit.type === 'worker' && hasWorkerLane && workerDirs.has(unit.path)) return true;
   return workflowText.includes(unit.path);
 }
 

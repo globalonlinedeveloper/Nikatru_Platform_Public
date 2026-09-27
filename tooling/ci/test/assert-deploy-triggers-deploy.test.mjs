@@ -27,7 +27,15 @@ import {
   WORKFLOW_DIR,
   MIN_UNITS,
   MIN_PLANNING_WORKFLOWS,
+  expandPlans,
+  judgeLegUnits,
+  judgeWorkerMatrix,
+  relativeSpecifiersOf,
+  resolveSpecifier,
 } from '../assert-deploy-triggers-deploy.mjs';
+import { globClaims as movedGlobClaims, claimedTree as movedClaimedTree } from '../deploy-globs.mjs';
+import { parseAllWorkflows } from '../workflow-scan.mjs';
+import { appWorkerMatrix } from '../worker-set.mjs';
 
 // Built, not imported: the guard deliberately exports no workflow filename, and
 // a test that imported one would reintroduce the lane binding that
@@ -136,9 +144,21 @@ describe('assert-deploy-triggers-deploy — against the REAL tree', () => {
   });
 
   test('every real unit is planned, and claims the workflow that deploys it', () => {
-    const { problems, owners } = judgeUnits(units, plans);
+    // ⏱ 2026-09-26: the app Worker matrix's plan argument is read as its legs' Workers (limb 4).
+    const m = appWorkerMatrix(REPO_ROOT);
+    assert.equal(m.lost, null, `the real app Worker matrix could not be read: ${m.lost}`);
+    const { problems, owners } = judgeUnits(units, expandPlans(plans, m.entries.map((e) => e.worker)));
     assert.deepEqual(problems, []);
     for (const [key, by] of owners) assert.ok(by.length > 0, `${key} planned by nothing`);
+  });
+
+  test('limb 4 on the real tree: at least one app Worker leg, one matrix job, and every leg in the safety order', () => {
+    const m = appWorkerMatrix(REPO_ROOT);
+    assert.ok(m.entries.length >= 1, 'no app Worker leg read — limb 4 would grade nothing');
+    const wm = judgeWorkerMatrix(parseAllWorkflows(REPO_ROOT), m.entries);
+    assert.deepEqual(wm.problems, []);
+    assert.deepEqual(wm.jobs, ['.github/workflows/deploy-workers.yml:app-worker']);
+    assert.deepEqual(judgeLegUnits(units, m.entries), []);
   });
 });
 
@@ -153,10 +173,28 @@ import { join as joinPath, dirname as dirOf } from 'node:path';
 import { fileURLToPath as toPath } from 'node:url';
 
 const CI_SRC = resolve(dirOf(toPath(import.meta.url)), '..');
+/** The guard and every module it imports, transitively — read off the files with the
+ *  guard's own specifier reader, so a new import is copied without an edit here. */
+const guardClosure = () => {
+  const seen = new Set();
+  const walk = (rel) => {
+    if (seen.has(rel)) return;
+    seen.add(rel);
+    for (const spec of relativeSpecifiersOf(readFileSync(resolve(REPO_ROOT, rel), 'utf8'))) {
+      const target = resolveSpecifier(REPO_ROOT, rel, spec);
+      if (target !== null) walk(target);
+    }
+  };
+  walk('tooling/ci/assert-deploy-triggers-deploy.mjs');
+  return [...seen];
+};
 const spawnIn = (workflows, units) => {
   const root = mkdtempSync(joinPath(tmpdir(), 'dtd-exit-'));
   mkdirSync(joinPath(root, 'tooling', 'ci'), { recursive: true });
-  for (const f of ['assert-deploy-triggers-deploy.mjs', 'tree-walk.mjs']) cpSync(joinPath(CI_SRC, f), joinPath(root, 'tooling', 'ci', f));
+  for (const rel of guardClosure()) {
+    mkdirSync(dirOf(joinPath(root, ...rel.split('/'))), { recursive: true });
+    cpSync(joinPath(REPO_ROOT, ...rel.split('/')), joinPath(root, ...rel.split('/')));
+  }
   if (units !== undefined) writeFixture(joinPath(root, 'tooling', 'ci', 'lane-map.json'), JSON.stringify({ deployUnits: units }));
   mkdirSync(joinPath(root, '.github', 'workflows'), { recursive: true });
   for (const [name, text] of Object.entries(workflows)) writeFixture(joinPath(root, '.github', 'workflows', name), text);
@@ -255,5 +293,123 @@ describe('assert-deploy-triggers-deploy — limb 3 (judgeImports) on a planted t
     const r = judgeImports(root, { alpha: ['svc/alpha/**', 'svc/sha?ed/*.ts'], beta: ['svc/beta/**'] });
     assert.ok(r.problems.length >= 1);
     assert.ok(r.problems.every((p) => p.startsWith('COVERAGE LOST')), r.problems.join('\n'));
+  });
+});
+
+// ── LIMB 4 · the app Worker matrix, graded leg by leg (⏱ 2026-09-26, O-SERVICE-KIT-UNBUILT E-a2) ──
+// Each case writes the REAL deploy-workers.yml, mutated by one replace, into a tmpdir root
+// ([ADR 072]) and grades it against legs made here. RC4 is the design's control (RC5 left with R-3).
+const REAL_DEPLOY = readFileSync(resolve(WORKFLOW_DIR, 'deploy-workers.yml'), 'utf8');
+const LEG = { worker: 'zz-api', dir: 'services/zz-api', migrations: 'APP_DB', smokeUrl: 'https://zz-api.example.test/v1/health', origin: 'https://zz-api.example.test', dsnSecret: 'GLITCHTIP_DSN_ZZ' };
+const LEG_NO_DB = { ...LEG, worker: 'yy-api', dir: 'services/yy-api', migrations: null };
+const gradeDeploy = (text, entries = [LEG]) => {
+  const root = plantTree({ '.github/workflows/deploy-workers.yml': text });
+  return judgeWorkerMatrix(parseAllWorkflows(root), entries);
+};
+const swap = (text, from, to) => {
+  assert.ok(text.includes(from), `fixture anchor absent: ${from.slice(0, 60)}`);
+  return text.replace(from, to);
+};
+const MIGRATE_STEP = REAL_DEPLOY.slice(
+  REAL_DEPLOY.indexOf('      # why: MIGRATIONS BEFORE DEPLOY. The schema standard'),
+  REAL_DEPLOY.indexOf('      # why: [pipeline K-7] a statement'),
+);
+const DEPLOY_ANCHOR = '      # why: `id: deploy` is the only step';
+const SMOKE_ANCHOR = '      # why: `build` is a separate field';
+
+describe('assert-deploy-triggers-deploy — limb 4 (judgeWorkerMatrix) on the real workflow, mutated', () => {
+  test('the real deploy-workers.yml grades clean for a leg with a D1 and a leg without one', () => {
+    assert.ok(MIGRATE_STEP.includes('d1 migrations apply') && REAL_DEPLOY.includes(DEPLOY_ANCHOR), 'fixture slices lost their steps');
+    const r = gradeDeploy(REAL_DEPLOY, [LEG, LEG_NO_DB]);
+    assert.deepEqual(r.problems, []);
+    assert.deepEqual(r.jobs, ['.github/workflows/deploy-workers.yml:app-worker']);
+  });
+
+  test('🔴 RC4 · the migrations step removed from the matrix template fails, naming the leg whose Worker migrates a D1', () => {
+    const r = gradeDeploy(swap(REAL_DEPLOY, MIGRATE_STEP, ''), [LEG, LEG_NO_DB]);
+    assert.equal(r.problems.length, 1, r.problems.join('\n'));
+    assert.match(r.problems[0], /the zz-api leg: its Worker migrates APP_DB .* no step runs `d1 migrations apply/);
+  });
+
+  test('🔴 a second deploy BEFORE `id: deploy` fails — a leg deploys its Worker exactly ONCE (R-3 dropped, #981)', () => {
+    const r = gradeDeploy(swap(REAL_DEPLOY, DEPLOY_ANCHOR, `      - run: npx wrangler deploy\n${DEPLOY_ANCHOR}`));
+    assert.equal(r.problems.length, 1, r.problems.join('\n'));
+    assert.match(r.problems[0], /the zz-api leg: 1 step\(s\) deploy before `id: deploy`/);
+  });
+
+  test('🔴 a plain wrangler-action deploy planted before the vars deploy fails — the #155 shape moved first', () => {
+    const planted =
+      '      - uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3\n' +
+      '        with:\n' +
+      '          workingDirectory: ${{ matrix.worker.dir }}\n';
+    const r = gradeDeploy(swap(REAL_DEPLOY, DEPLOY_ANCHOR, `${planted}${DEPLOY_ANCHOR}`));
+    assert.ok(r.problems.some((p) => /the zz-api leg: 1 step\(s\) deploy before `id: deploy`/.test(p)), r.problems.join('\n'));
+  });
+
+  test('🔴 a second unqualified deploy after `id: deploy` fails — the vars deploy is the LAST one (#155)', () => {
+    const r = gradeDeploy(swap(REAL_DEPLOY, SMOKE_ANCHOR, `      - run: npx wrangler deploy\n${SMOKE_ANCHOR}`));
+    assert.equal(r.problems.length, 1, r.problems.join('\n'));
+    assert.match(r.problems[0], /1 step\(s\) deploy after `id: deploy`/);
+  });
+
+  test('🔴 the record conditioned on the smoke, not the deploy, fails', () => {
+    const recordIf = "        if: always() && steps.deploy.outcome == 'success'\n        env:\n          GH_TOKEN: ${{ github.token }}\n          # why: the deploy's own output";
+    const r = gradeDeploy(swap(REAL_DEPLOY, recordIf, recordIf.replace("always() && steps.deploy.outcome == 'success'", 'success()')));
+    assert.equal(r.problems.length, 1, r.problems.join('\n'));
+    assert.match(r.problems[0], /the record step is conditioned `success\(\)`/);
+  });
+
+  test('🔴 a matrix written into the workflow, not read from worker-set.mjs, fails', () => {
+    const r = gradeDeploy(swap(REAL_DEPLOY, 'worker: ${{ fromJSON(needs.workers.outputs.workers) }}', 'worker: [{"worker": "zz-api"}]'));
+    assert.equal(r.problems.length, 1, r.problems.join('\n'));
+    assert.match(r.problems[0], /its `strategy\.matrix\.worker` is not/);
+  });
+
+  test('🔴 a matrix read from a job that does not run worker-set.mjs --app-workers fails', () => {
+    const r = gradeDeploy(swap(REAL_DEPLOY, 'node tooling/ci/worker-set.mjs --for-deploy --json --app-workers', 'node tooling/ci/worker-set.mjs --for-deploy --json'));
+    assert.equal(r.problems.length, 1, r.problems.join('\n'));
+    assert.match(r.problems[0], /job `workers` does not write that output from `node tooling\/ci\/worker-set\.mjs --for-deploy --json --app-workers`/);
+  });
+
+  test('a leg whose Worker migrates nothing is not asked for a migrations step', () => {
+    const r = gradeDeploy(swap(REAL_DEPLOY, MIGRATE_STEP, ''), [LEG_NO_DB]);
+    assert.deepEqual(r.problems, []);
+  });
+
+  test('🔴 app Workers and no job planning a matrix leg fails: a job written for one Worker is what app #2 is missing from', () => {
+    const r = gradeDeploy('name: x\non:\n  workflow_call:\njobs:\n  api:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: node tooling/ci/plan-deploy.mjs zz-api\n');
+    assert.equal(r.problems.length, 1, r.problems.join('\n'));
+    assert.match(r.problems[0], /worker-set\.mjs names 1 app Worker\(s\) \(zz-api\) and no workflow job plans a leg/);
+  });
+});
+
+describe('assert-deploy-triggers-deploy — limb 1 reads each matrix leg as its Worker (limb 1b: its unit claims its tree)', () => {
+  test('expandPlans: a leg argument becomes the legs; unreadable legs leave it as written for limb 1 to name', () => {
+    const plans = [{ workflow: WF, environments: ['${{ matrix.worker.worker }}', 'platform'] }];
+    assert.deepEqual(expandPlans(plans, ['a-api', 'b-api'])[0].environments, ['a-api', 'b-api', 'platform']);
+    assert.deepEqual(expandPlans(plans, null)[0].environments, ['${{ matrix.worker.worker }}', 'platform']);
+    const { problems } = judgeUnits({ platform: ['services/platform/**', SELF] }, expandPlans(plans, null));
+    assert.ok(problems.some((p) => p.includes('plan-deploy.mjs ${{ matrix.worker.worker }}')), problems.join('\n'));
+  });
+
+  test("🔴 a leg with no unit of its own is limb 1's finding — app #2 needs its deployUnits entry", () => {
+    const plans = expandPlans([{ workflow: WF, environments: ['${{ matrix.worker.worker }}'] }], ['zz-api']);
+    const { problems } = judgeUnits({ other: ['services/other/**', SELF] }, plans);
+    assert.ok(problems.some((p) => p.includes('`plan-deploy.mjs zz-api`, and tooling/ci/lane-map.json deployUnits names no unit')), problems.join('\n'));
+  });
+
+  test("🔴 RC7′ · a leg's unit that does not claim the Worker's own tree fails (limb 1b); claiming it passes", () => {
+    const bad = judgeLegUnits({ 'zz-api': ['services/_shared/**', SELF] }, [LEG]);
+    assert.equal(bad.length, 1);
+    assert.match(bad[0], /deployUnits\["zz-api"\] is the unit of the app Worker zz-api, and no glob of it claims `services\/zz-api\/\*\*`/);
+    assert.deepEqual(judgeLegUnits({ 'zz-api': ['services/zz-api/**', SELF] }, [LEG]), []);
+  });
+
+  test('globClaims and claimedTree moved to deploy-globs.mjs and are re-exported unchanged', () => {
+    assert.equal(movedGlobClaims('services/zz-api/**', 'services/zz-api/src/index.ts'), true);
+    assert.equal(movedGlobClaims('services/zz-api/**', 'services/zz-apix/src/index.ts'), false);
+    assert.equal(movedClaimedTree('services/zz-api/**'), 'services/zz-api');
+    assert.equal(movedGlobClaims('a/*.js', 'a/b.js'), true);
+    assert.equal(movedGlobClaims('a/b?c', 'a/bxc'), null);
   });
 });

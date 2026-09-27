@@ -22,8 +22,9 @@
     "deployUnits: for each production deploy unit, the repo paths whose change makes a new publish of that unit worth doing. Keyed by the ledger environment tooling/ci/record-deployment.mjs writes the unit's Deployment under; the key \"<app>-web\" stands for every app in deploy-web.yml's matrix (subscriptiontracker-web, and each app after it).",
     "Read by tooling/ci/plan-deploy.mjs before every publish: it diffs the unit's latest SUCCESSFUL Deployment against the target commit and publishes only when a changed path matches one of these globs (row O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 3).",
     "Since ADR 095 §4 (2026-09-25) the deploy workflows carry no push paths and no dorny filters: they run only as ci.yml's deploy-web and deploy-workers call jobs, after ci-gate, and these globs alone decide what publishes. The copies went with the triggers, and so did tooling/ci/test/deploy-units.test.mjs's equality checks; that test now holds the units' own shape, and fails when either deploy workflow grows a trigger back.",
-    "Glob shapes: `X/**` (a tree), `X/*.ext` or `X/*` (files directly in X), or a literal path. plan-deploy.mjs refuses any other shape rather than guessing, through globClaims in assert-deploy-triggers-deploy.mjs.",
-    "\"nikatru-site\" (2026-09-25, row O-APEX-SITE-DEPLOYS-OUTSIDE-THE-PIPELINE, D3a) is the apex site sites/nikatru, published by deploy-web.yml's `site` job to the Direct Upload Pages project nikatru-apex: the site, the generator and registry it rebuilds the discovery surface from, the import closure of every script that job runs, and the workflow itself."
+    "Glob shapes: `X/**` (a tree), `X/*.ext` or `X/*` (files directly in X), or a literal path. plan-deploy.mjs refuses any other shape rather than guessing, through globClaims in tooling/ci/deploy-globs.mjs (moved there from assert-deploy-triggers-deploy.mjs on 2026-09-26, so the plan imports no guard).",
+    "\"nikatru-site\" (2026-09-25, row O-APEX-SITE-DEPLOYS-OUTSIDE-THE-PIPELINE, D3a) is the apex site sites/nikatru, published by deploy-web.yml's `site` job to the Direct Upload Pages project nikatru-apex: the site, the generator and registry it rebuilds the discovery surface from, the import closure of every script that job runs, and the workflow itself.",
+    "\"nikatru-site\" claims tooling/ci/deploy-globs.mjs, not assert-deploy-triggers-deploy.mjs (2026-09-26, E-a2), exactly as \"<app>-web\" does: plan-deploy.mjs takes globClaims from there, and that guard now imports tooling/ci/worker-set.mjs and the platform register, which would otherwise join this unit's import closure and republish the apex site on every register edit."
   ],
   "lanes": {
     "workers": {
@@ -151,7 +152,7 @@
       "tooling/bundle-availability.mjs",
       "tooling/channel-register.json",
       "tooling/ci/app-set.mjs",
-      "tooling/ci/assert-deploy-triggers-deploy.mjs",
+      "tooling/ci/deploy-globs.mjs",
       "tooling/ci/channel-arming.mjs",
       "tooling/ci/apple-signing.mjs",
       "tooling/ci/gen-ci-map.mjs",
@@ -209,7 +210,7 @@
       "tooling/ci/deployment-record.mjs",
       "tooling/ci/plan-deploy.mjs",
       "tooling/ci/assert-deploy-ref.mjs",
-      "tooling/ci/assert-deploy-triggers-deploy.mjs",
+      "tooling/ci/deploy-globs.mjs",
       "tooling/ci/lane-map.json",
       "tooling/channel-register.json",
       "tooling/wrangler/**",
