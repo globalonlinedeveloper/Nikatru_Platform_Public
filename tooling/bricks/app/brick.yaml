@@ -72,24 +72,32 @@ vars:
       rules over apps/*/app.yaml, so the stamp cannot produce an app the gate
       then refuses.
     prompt: Icon label (<= 15 chars, sharing a word with the display name)
-  subdomain:
+  pages_origin:
     type: string
     description: >-
-      Web subdomain, e.g. lingo.nikatru.com. LEAVE IT BLANK and it is derived as
-      `<app_id>.nikatru.com` — that is the normal input, and pre_gen refuses any
-      value that disagrees with the convention. Derivation happens in
-      hooks/pre_gen.dart, which writes the resolved value back into the vars
-      mason then hands to the templates; blank used to reach them untouched and
-      stamp `"ALLOWED_ORIGINS": "https://"` into the app's own Worker.
-    prompt: Web subdomain (blank = derive <app_id>.nikatru.com)
-    default: ""
+      REQUIRED. The app's own Cloudflare Pages host, e.g.
+      subscriptiontracker-7qg.pages.dev — the origin the apex router fetches the
+      app's bytes from. It is ISSUED BY CLOUDFLARE when the Pages project is
+      created (a suffix is appended when the bare name is taken, which is why
+      `<app_id>.pages.dev` is never a safe guess), so it cannot be derived:
+      create the project first with
+      `node tooling/web/pages-origin.mjs --apply <app_id>` and pass the host it
+      prints. post_gen writes it into app.yaml as both `hosts.web` and
+      `hosts.pagesOrigin`, and tooling/app-yaml/render.mjs composes the
+      catalogue `origin` from it with no fallback. hooks/pre_gen.dart refuses a
+      blank value, a *.nikatru.com host (the pre-[ADR 075] `<app_id>.nikatru.com`
+      derivation, which has served nothing since [ADR 080] deleted the wildcard),
+      and any host outside *.pages.dev. This var REPLACES `subdomain`
+      (O-PRODUCT-RECORD-UNBUILT, 2026-09-27): a spec that still passes
+      `subdomain` is refused with "subdomain was renamed to pages_origin".
+    prompt: Pages origin (the *.pages.dev host pages-origin.mjs --apply printed)
   api_domain:
     type: string
     description: >-
       API host (single-label standard), e.g. lingo-api.nikatru.com. ONLY used
       when needs_backend=true — a client-only app calls the shared platform
       Worker and never has a host of its own, so this value is ignored. Blank is
-      the normal input and derives `<app_id>-api.nikatru.com` (see `subdomain`).
+      the normal input and derives `<app_id>-api.nikatru.com` in hooks/pre_gen.dart.
       The app id comes FIRST: [ADR 080] section 3 retired [ADR 006]'s
       `api-<app_id>` prefix form on 2026-09-11 so that every host an app owns
       sorts together under its own name.

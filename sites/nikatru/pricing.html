@@ -159,14 +159,17 @@
   what it costs you each month and each year. It is available on the web at
   <a href="https://nikatru.com/subscriptiontracker">nikatru.com/subscriptiontracker</a>.</p>
 
-  <h2>Plans</h2>
-
   <!-- ── THE NUMBERS BELOW ARE GENERATED. DO NOT TYPE A PRICE INTO THIS PAGE. ──
        Everything between each PRICING: sentinel pair is spliced in by
        tooling/sites/generate-discovery.mjs (`applyPricing`) out of
        services/platform/src/app-config-data.json, which is the ONE place a price
        exists in this repository. tooling/ci/assert-discovery-surface.mjs re-runs
        the splice in CI and byte-compares, so a hand-edit inside a pair goes red.
+
+       ONE SECTION PER PRICED PRODUCT (2026-09-27): every live app whose rail
+       config declares offerings, then every `sellable` bundle in
+       catalog/bundles.json, each headed by its catalogue name. The same guard
+       requires each of them exactly once, carrying its own prices.
 
        🔴 IT WAS NOT ALWAYS SO, AND THAT WAS A REAL DEFECT. Until 2026-09-09 these
        four numbers were typed here, copied out of the rail config by hand — the
@@ -180,27 +183,24 @@
        ⚠️ THE PROSE OUTSIDE THE PAIRS IS STILL HAND-WRITTEN AND STILL YOURS: the
        refund, tax and renewal paragraphs below are argument, not data. Just do
        not put a number in them. -->
+  <!-- PRICING:products -->
+  <section class="product" data-product="subscriptiontracker">
+  <h2>Nikatru Subscription Tracker</h2>
+  <h2>Plans</h2>
+
   <div class="plans">
-    <!-- PRICING:plans -->
     <div class="plan">
       <h3>Free</h3>
       <div class="price">$0</div>
       <div class="sub">No card required</div>
-      <ul>
-        <li>Track your subscriptions</li>
-        <li>See monthly and yearly totals</li>
-        <li>Renewal dates at a glance</li>
-        <li>Sign in on any device</li>
-      </ul>
     </div>
     <div class="plan">
       <h3>Monthly</h3>
       <div class="price">$5.99 <small>/ month</small></div>
       <div class="sub">Renews every month until you cancel.</div>
       <ul>
-        <li>Everything in Free</li>
-        <li>Renewal reminders before you are charged</li>
-        <li>Budgets across all your subscriptions</li>
+        <li>Renewal reminders</li>
+        <li>Budgets</li>
         <li>Export your data</li>
       </ul>
     </div>
@@ -209,9 +209,8 @@
       <div class="price">$34.99 <small>/ year</small></div>
       <div class="sub">Renews every year until you cancel.</div>
       <ul>
-        <li>Everything in Free</li>
-        <li>Renewal reminders before you are charged</li>
-        <li>Budgets across all your subscriptions</li>
+        <li>Renewal reminders</li>
+        <li>Budgets</li>
         <li>Export your data</li>
       </ul>
     </div>
@@ -220,25 +219,23 @@
       <div class="price">$89.00 <small>once</small></div>
       <div class="sub">A single payment. Nothing renews.</div>
       <ul>
-        <li>Everything in Free</li>
-        <li>Renewal reminders before you are charged</li>
-        <li>Budgets across all your subscriptions</li>
+        <li>Renewal reminders</li>
+        <li>Budgets</li>
         <li>Export your data</li>
       </ul>
     </div>
-<!-- /PRICING:plans -->
   </div>
 
   <h2>Plan details</h2>
   <table>
-    <!-- PRICING:table -->
     <tr><th>Plan</th><th>Price</th><th>Billing</th><th>Free trial</th></tr>
     <tr><td>Free</td><td>$0</td><td>&mdash;</td><td>&mdash;</td></tr>
     <tr><td>Pro Monthly</td><td>$5.99</td><td>Every month</td><td>&mdash;</td></tr>
     <tr><td>Pro Yearly</td><td>$34.99</td><td>Every year</td><td>&mdash;</td></tr>
     <tr><td>Pro One-time</td><td>$89.00</td><td>One-time payment</td><td>&mdash;</td></tr>
-<!-- /PRICING:table -->
   </table>
+  </section>
+<!-- /PRICING:products -->
 
   <h2>What you should know before you buy</h2>
   <ul>

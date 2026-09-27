@@ -62,7 +62,7 @@ const PRE = `${BRICK}/hooks/pre_gen.dart`;
 const POST = `${BRICK}/hooks/post_gen.dart`;
 
 /** Eight vars, matching the real brick — a thinner one fails for the wrong reason. */
-const VARS = ['app_id', 'needs_backend', 'display_name', 'subdomain',
+const VARS = ['app_id', 'needs_backend', 'display_name', 'pages_origin',
               'api_domain', 'seed_hex', 'category', 'description'];
 
 const goodYaml = (vars = VARS) =>

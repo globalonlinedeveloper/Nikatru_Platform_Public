@@ -442,15 +442,18 @@ describe('assert-monitor-coverage — the app ORIGIN the apex router fetches fro
     assert.match(r.out, /for slug "demo" and apps\/demo\/app\.yaml does not exist/);
   });
 
-  test('`hosts.web` corroborates when `hosts.pagesOrigin` is absent', () => {
-    // The same fallback tooling/app-yaml/render.mjs uses to COMPOSE the field.
-    // Absent pagesOrigin is a legal declaration, not a stale one.
+  test('FAILS when `hosts.pagesOrigin` is absent, even though `hosts.web` names the catalogue origin', () => {
+    // ⏱ 2026-09-27 (O-PRODUCT-RECORD-UNBUILT, G-a). This case used to PASS: the
+    // guard read `pagesOrigin || web`, the fallback render.mjs used to compose
+    // the field. Both readers dropped it together, so `web` alone corroborates
+    // nothing — render.mjs would refuse this declaration outright.
     const r = run(makeRepo((f) => ({
       ...withCatalogue((rows) => { rows[0].origin = 'https://demo.example.test'; })(f),
       'apps/demo/app.yaml': APP_YAML('hosts:\n  web: demo.example.test\n  api: api.example.test'),
     })));
-    assert.equal(r.code, 0, r.out);
-    assert.doesNotMatch(r.out, /STALE/);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /apps\/demo\/app\.yaml declares no `hosts\.pagesOrigin`/);
+    assert.match(r.out, /`hosts\.web` is not a substitute/);
   });
 
   test('FAILS when the declaration names neither `pagesOrigin` nor `web`', () => {
@@ -459,7 +462,7 @@ describe('assert-monitor-coverage — the app ORIGIN the apex router fetches fro
       'apps/demo/app.yaml': APP_YAML('hosts:\n  api: api.example.test'),
     })));
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /declares neither `hosts\.pagesOrigin` nor `hosts\.web`/);
+    assert.match(r.out, /apps\/demo\/app\.yaml declares no `hosts\.pagesOrigin`/);
   });
 
   test('a register row for the CURRENT origin host is NOT a dead row', () => {

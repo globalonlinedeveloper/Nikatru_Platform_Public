@@ -613,11 +613,20 @@ export function plan(root) {
 
     /* WHERE THE BYTES COME FROM, as distinct from where they are addressed.
      * The apex router (sites/nikatru/functions/_middleware.js) reads this to
-     * know what to fetch. Prefer `pagesOrigin` — it is outside the nikatru.com
+     * know what to fetch: `pagesOrigin`, which is outside the nikatru.com
      * zone, so the Redirect Rule retiring the subdomain cannot catch the
-     * router's own subrequest. Falling back to `hosts.web` keeps a
-     * freshly-stamped app routable before its Pages project has been named. */
-    const origin = `https://${doc.hosts.pagesOrigin || doc.hosts.web}`;
+     * router's own subrequest.
+     *
+     * ⏱ 2026-09-27 (O-PRODUCT-RECORD-UNBUILT, G-a): THERE IS NO FALLBACK. This
+     * used to read `pagesOrigin || web`, "to keep a freshly-stamped app
+     * routable before its Pages project has been named", and the brick derived
+     * `web` as `<id>.nikatru.com`, a host that has served nothing since the
+     * wildcard was deleted: the fallback routed app #2 to NXDOMAIN. The schema
+     * now REQUIRES `pagesOrigin` (validated just above, so a declaration
+     * without it is exit 1 naming the file and the field), and the value comes
+     * from Cloudflare at project creation: `tooling/web/pages-origin.mjs
+     * --apply <id>` prints it, and the brick's `pages_origin` input writes it. */
+    const origin = `https://${doc.hosts.pagesOrigin}`;
     const declared = doc.listings ?? {};
     const listings = {};
     for (const c of storefronts) {

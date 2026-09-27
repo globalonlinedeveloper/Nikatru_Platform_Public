@@ -492,6 +492,8 @@ import {
   pricingMeta,
   pricingPlans,
   pricingTable,
+  pricingSection,
+  pricingProducts,
   applyAppsBlock,
   supportAppsBlock,
   aboutAppsBlock,
@@ -630,20 +632,26 @@ function tree(entries, opts = {}) {
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'long-description.txt'), text);
   }
-  // 🔴 THE PRICE LIST CARRIES ITS THREE SENTINEL PAIRS, exactly as the real page
-  // does since 2026-09-09, and for the same reason the homepage fixture above
+  // 🔴 THE PRICE LIST CARRIES ITS SENTINEL PAIRS, exactly as the real page does
+  // (three since 2026-09-09, two since 2026-09-27: `meta`, and `products` with
+  // one section per priced product), and for the same reason the homepage fixture above
   // carries `<!-- APPS-GRID -->`: `applyPricing` REFUSES a pricing page without
   // the pair rather than skipping it, because a splice that quietly does nothing
   // would leave a PRICE on a served page while every count still included the
   // file. A fixture without the markers is not a lighter fixture — it is a page
   // this generator is right to reject.
+  // The bundle register, when a case prices a bundle. Absent is a tree with no
+  // bundles, which is what every other fixture here is.
+  if (opts.bundles !== undefined) {
+    mkdirSync(join(root, 'catalog'), { recursive: true });
+    writeFileSync(join(root, 'catalog', 'bundles.json'), `${JSON.stringify(opts.bundles, null, 2)}\n`);
+  }
   if (opts.pricingPage) {
     writeFileSync(
       join(root, 'sites', 'nikatru', 'pricing.html'),
       chromed(
         '<!-- PRICING:meta -->\n<!-- /PRICING:meta -->\n<h1>Pricing</h1>\n' +
-          '<!-- PRICING:plans -->\n<!-- /PRICING:plans -->\n' +
-          '<!-- PRICING:table -->\n<!-- /PRICING:table -->',
+          '<!-- PRICING:products -->\n<!-- /PRICING:products -->',
       ),
     );
   }
@@ -2992,18 +3000,17 @@ describe('the page-quality contract reaches the mirror deploy root', () => {
 // here rather than described in a comment.
 // -----------------------------------------------------------------------------
 describe('applyPricing - the price list derives its numbers and REFUSES to skip', () => {
-  const app = (offerings, paywallEnabled = false) => ({ slug: 'x', offerings, paywallEnabled });
+  const app = (offerings, paywallEnabled = false) => ({ slug: 'x', name: 'X App', kind: 'app', offerings, paywallEnabled });
   const YEARLY = { id: 'pro_yearly', amount: '$34.99', code: 'USD', trialDays: 30, term: { unit: 'year', heading: 'Yearly', renews: 'Renews every year until you cancel.' } };
   const ONCE = { id: 'pro_lifetime', amount: '$89.00', code: 'USD', trialDays: 0, term: { unit: null, heading: 'One-time', renews: 'A single payment. Nothing renews.' } };
   const PAGE = [
     '<!-- PRICING:meta -->', '<!-- /PRICING:meta -->',
-    '<div class="plans"><!-- PRICING:plans -->', '<!-- /PRICING:plans --></div>',
-    '<table><!-- PRICING:table -->', '<!-- /PRICING:table --></table>',
+    '<!-- PRICING:products -->', '<!-- /PRICING:products -->',
     '<p>hand-written argument that must survive byte for byte</p>',
   ].join('\n');
 
   test('the rendered spans carry the amounts the offerings declare, and nothing else does', () => {
-    const out = applyPricing(PAGE, app([YEARLY, ONCE]));
+    const out = applyPricing(PAGE, [app([YEARLY, ONCE])]);
     assert.match(out, /\$34\.99/);
     assert.match(out, /\$89\.00/);
     // The hand-written prose outside the pairs is untouched.
@@ -3017,13 +3024,13 @@ describe('applyPricing - the price list derives its numbers and REFUSES to skip'
     // price list was not, so /pricing promised a 30-day trial on every plan while
     // checkout was closed. Measured red control: un-gating `pricingPlans` alone
     // turns the SHUT half of this case red.
-    const shut = applyPricing(PAGE, app([YEARLY, ONCE]));
+    const shut = applyPricing(PAGE, [app([YEARLY, ONCE])]);
     assert.doesNotMatch(shut, /-DAY TRIAL/, 'a plan card offers a trial over a shut checkout');
     assert.doesNotMatch(shut, /day free trial/, 'the meta description offers a trial over a shut checkout');
     assert.doesNotMatch(pricingTable(app([YEARLY, ONCE])), /\d+ days/, 'the table offers a trial over a shut checkout');
     // POSITIVE CONTROL: the same offerings with the paywall open DO offer it, so
     // the shut half is a gate and not a trial that can never render.
-    const open = applyPricing(PAGE, app([YEARLY, ONCE], true));
+    const open = applyPricing(PAGE, [app([YEARLY, ONCE], true)]);
     assert.match(open, /30-DAY TRIAL/);
     assert.match(open, /with a 30-day free trial/);
     assert.match(pricingTable(app([YEARLY, ONCE], true)), /<td>30 days<\/td>/);
@@ -3046,29 +3053,91 @@ describe('applyPricing - the price list derives its numbers and REFUSES to skip'
   });
 
   test('🔴 a MISSING sentinel pair THROWS - it may never be a silent skip', () => {
-    const stripped = PAGE.replace('<!-- /PRICING:table -->', '');
+    const stripped = PAGE.replace('<!-- /PRICING:products -->', '');
     assert.throws(
-      () => applyPricing(stripped, app([YEARLY])),
-      /expected exactly one .*PRICING:table.* pair/,
-      'a price list with no closing table sentinel must refuse, not quietly keep the price it last had',
+      () => applyPricing(stripped, [app([YEARLY])]),
+      /expected exactly one .*PRICING:products.* pair/,
+      'a price list with no closing products sentinel must refuse, not quietly keep the price it last had',
     );
   });
 
   test('🔴 a DUPLICATED pair THROWS - the second copy would be left stale and served', () => {
-    const doubled = PAGE + '\n<!-- PRICING:plans -->\n<!-- /PRICING:plans -->';
-    assert.throws(() => applyPricing(doubled, app([YEARLY])), /found 2 opening/);
+    const doubled = PAGE + '\n<!-- PRICING:products -->\n<!-- /PRICING:products -->';
+    assert.throws(() => applyPricing(doubled, [app([YEARLY])]), /found 2 opening/);
+  });
+
+  test('🔴 a RETIRED pair (PRICING:plans or PRICING:table) THROWS - nothing writes it any more', () => {
+    const stale = PAGE + '\n<div class="plans"><!-- PRICING:plans -->\n$5.99\n<!-- /PRICING:plans --></div>';
+    assert.throws(() => applyPricing(stale, [app([YEARLY])]), /retired PRICING:plans/);
+    const staleTable = PAGE + '\n<table><!-- PRICING:table --><!-- /PRICING:table --></table>';
+    assert.throws(() => applyPricing(staleTable, [app([YEARLY])]), /retired PRICING:table/);
   });
 
   test('no app with offerings means no price is claimed anywhere', () => {
     assert.match(pricingMeta(null), /Nothing is sold from this website today/);
+    assert.match(pricingMeta([]), /Nothing is sold from this website today/);
     assert.match(pricingPlans(null), /No plan is on sale/);
+    assert.match(pricingProducts([]), /No plan is on sale/);
     assert.doesNotMatch(pricingPlans(null), /[$₹]\d/);
     assert.doesNotMatch(pricingMeta(null), /[$₹]\d/);
   });
 
+  test('🔴 TWO products render TWO sections, each headed by its own name and carrying only its own prices', () => {
+    const MONTHLY = { id: 'b_monthly', amount: '$7.99', code: 'USD', trialDays: 0, term: { unit: 'month', heading: 'Monthly', renews: 'Renews every month until you cancel.' } };
+    const two = [app([YEARLY, ONCE]), { slug: 'y', name: 'Y App', kind: 'app', offerings: [MONTHLY], paywallEnabled: false }];
+    const out = applyPricing(PAGE, two);
+    assert.equal(out.split('data-product="x"').length - 1, 1);
+    assert.equal(out.split('data-product="y"').length - 1, 1);
+    const x = out.slice(out.indexOf('data-product="x"'), out.indexOf('data-product="y"'));
+    const y = out.slice(out.indexOf('data-product="y"'));
+    assert.match(x, /<h2>X App<\/h2>/);
+    assert.match(x, /\$34\.99/);
+    assert.doesNotMatch(x, /\$7\.99/);
+    assert.match(y, /<h2>Y App<\/h2>/);
+    assert.match(y, /\$7\.99/);
+    assert.doesNotMatch(y, /\$34\.99|\$89\.00/);
+    // The meta names both, so neither app's buyer reads the other's price as theirs.
+    assert.match(out, /X App: Free plan, and Pro at \$34\.99\/year or \$89\.00 once; Y App: Free plan, and Pro at \$7\.99\/month/);
+  });
+
+  test('ONE app reads as the page read before sections: the cards and the table sit inside a section wrapper', () => {
+    const one = pricingSection(app([YEARLY, ONCE]));
+    assert.ok(one.startsWith('  <section class="product" data-product="x">\n  <h2>X App</h2>\n  <h2>Plans</h2>\n\n  <div class="plans">\n'));
+    assert.ok(one.includes(`\n${pricingPlans(app([YEARLY, ONCE]))}\n  </div>\n\n  <h2>Plan details</h2>\n  <table>\n`));
+    assert.ok(one.endsWith(`${pricingTable(app([YEARLY, ONCE]))}\n  </table>\n  </section>`));
+    assert.match(pricingMeta([app([YEARLY, ONCE])]), /content="Pricing for Nikatru apps\. Free plan, and Pro at \$34\.99\/year or \$89\.00 once\."/);
+  });
+
+  test('🔴 NP-DD-R1: a card lists only its OWN product’s register titles, and a product with none lists none', () => {
+    const features = [
+      { flag: 'renewals', title: 'Renewal reminders', blurb: 'x' },
+      { flag: 'budgets', title: 'Budgets', blurb: 'y' },
+    ];
+    const withOwn = pricingPlans({ ...app([YEARLY]), features });
+    assert.match(withOwn, /<li>Renewal reminders<\/li>\n        <li>Budgets<\/li>/);
+    // The Free card carries no bullet: no record says what the free tier holds.
+    const freeCard = withOwn.slice(withOwn.indexOf('<h3>Free</h3>'), withOwn.indexOf('<h3>Yearly</h3>'));
+    assert.match(freeCard, /No card required/);
+    assert.doesNotMatch(freeCard, /<li>/);
+    // App #1's hand-written copy is gone from the generator, for every product.
+    assert.doesNotMatch(withOwn, /Track your subscriptions|Budgets across all your subscriptions|Everything in Free/);
+    const none = pricingPlans(app([YEARLY]));
+    assert.doesNotMatch(none, /<li>|<ul>/, 'a product whose register gives no bullet must show none, never another product’s');
+    assert.match(none, /\$34\.99/);
+  });
+
+  test('a BUNDLE section has no Free card and no Free row; its card names what the bundle is', () => {
+    const bundle = { slug: 'nikatru_all', name: 'Nikatru bundle', kind: 'bundle', tagline: 'Every Nikatru product, one subscription', offerings: [YEARLY], paywallEnabled: false };
+    const plans = pricingPlans(bundle);
+    assert.doesNotMatch(plans, /<h3>Free<\/h3>|Track your subscriptions/);
+    assert.match(plans, /<li>Every Nikatru product, one subscription<\/li>/);
+    assert.doesNotMatch(pricingTable(bundle), /<td>Free<\/td>/);
+    assert.match(pricingMeta([bundle]), /Nikatru bundle at \$34\.99\/year/);
+  });
+
   test('🔴 THE REAL PAGE carries the pairs, and every price on it came from the rail config', () => {
     const page = readFileSync(join(REPO, 'sites', 'nikatru', 'pricing.html'), 'utf8');
-    for (const region of ['meta', 'plans', 'table']) {
+    for (const region of ['meta', 'products']) {
       assert.ok(page.includes(`<!-- PRICING:${region} -->`), `the real price list lost its PRICING:${region} sentinel`);
       assert.ok(page.includes(`<!-- /PRICING:${region} -->`), `the real price list lost its /PRICING:${region} sentinel`);
     }
@@ -3076,7 +3145,7 @@ describe('applyPricing - the price list derives its numbers and REFUSES to skip'
     // Outside them the page is prose, and prose with a price in it is the second
     // home this splice was made to end.
     let outside = page;
-    for (const region of ['meta', 'plans', 'table']) {
+    for (const region of ['meta', 'products']) {
       const open = `<!-- PRICING:${region} -->`;
       const close = `<!-- /PRICING:${region} -->`;
       const a = outside.indexOf(open);
@@ -3086,6 +3155,160 @@ describe('applyPricing - the price list derives its numbers and REFUSES to skip'
     }
     const stray = outside.match(/[$€£¥₹]\s?\d[\d,]*(?:\.\d{1,2})?/g) ?? [];
     assert.deepEqual(stray, [], `hand-written price literal(s) outside the generated spans: ${stray.join(', ')}`);
+  });
+});
+
+
+// -----------------------------------------------------------------------------
+// ONE SECTION PER PRICED PRODUCT - the generator and assert-discovery-surface
+// limb P over a fixture tree (O-PRICING-PAGE-REFUSES-A-SECOND-APP)
+//
+// 🔴 TWO PRICED PRODUCTS IS THE INPUT CLASS THAT MATTERS. Until 2026-09-27 the
+// generator REFUSED a second live app with offerings (`pricedApp`'s `> 1`), so
+// every one-app fixture passed while app #2 could never be priced at all.
+// -----------------------------------------------------------------------------
+describe('the price list renders every priced product, and limb P requires each exactly once', () => {
+  const LINGO = {
+    ...SUBLY,
+    slug: 'lingo',
+    name: 'Lingo',
+    tagline: 'Learn a phrase a day',
+    url: 'https://nikatru.com/lingo',
+    origin: 'https://lingo-4hk.pages.dev',
+    listings: { web: 'https://nikatru.com/lingo', play: null },
+  };
+  const LINGO_OFFERINGS = [{ product_id: 'lingo_yearly', amount_minor: 2999, currency_code: 'USD', term: 'year', trial_days: 0 }];
+  const twoApps = () => rail({
+    subscriptiontracker: { features: {}, paywall: { enabled: false, offerings: SUBLY_OFFERINGS } },
+    lingo: { features: {}, paywall: { enabled: false, offerings: LINGO_OFFERINGS } },
+  });
+  const BUNDLE = { featureSet: 'nikatru_all', version: 1, status: 'sellable', name: 'Nikatru bundle', tagline: 'Every Nikatru product, one subscription', members: [] };
+  const pricing = (root) => readFileSync(p(root, 'pricing.html'), 'utf8');
+
+  test('🔴 RC15: two priced apps render two sections and the guard is green; one section’s price removed is exit 1', () => {
+    const root = tree([SUBLY, LINGO], { rail: twoApps(), pricingPage: true });
+    const gen = generate(root);
+    assert.equal(gen.code, 0, gen.out);
+    const html = pricing(root);
+    assert.equal(html.split('data-product="subscriptiontracker"').length - 1, 1);
+    assert.equal(html.split('data-product="lingo"').length - 1, 1);
+    assert.match(html, /<h2>Subly<\/h2>/);
+    assert.match(html, /<h2>Lingo<\/h2>/);
+    const ok = guard(root);
+    assert.equal(ok.code, 0, ok.out);
+    assert.match(ok.out, /2 priced product\(s\) each have exactly one section/);
+    // The mutation: Lingo's only price leaves the page (its card, its table row
+    // and the meta line all carry it, so every copy goes).
+    writeFileSync(p(root, 'pricing.html'), html.split('$29.99').join('$0.00'));
+    const red = guard(root);
+    assert.equal(red.code, 1, red.out);
+    assert.match(red.out, /the data-product="lingo" section does not carry the amount 29\.99/);
+  });
+
+  test('🔴 a priced app with NO section is exit 1, naming it (the generator-stopped-rendering shape limb A cannot see)', () => {
+    const root = tree([SUBLY, LINGO], { rail: twoApps(), pricingPage: true });
+    assert.equal(generate(root).code, 0);
+    const html = pricing(root);
+    const start = html.indexOf('  <section class="product" data-product="lingo">');
+    const end = html.indexOf('</section>', start) + '</section>'.length;
+    writeFileSync(p(root, 'pricing.html'), html.slice(0, start) + html.slice(end));
+    const r = guard(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /carries data-product="lingo" 0 time\(s\)/);
+  });
+
+  test('a SELLABLE bundle gets its own section after the apps; a DRAFT one gets none', () => {
+    const withBundle = rail({
+      subscriptiontracker: { features: {}, paywall: { enabled: false, offerings: SUBLY_OFFERINGS } },
+      nikatru_all: { features: {}, paywall: { enabled: false, offerings: [{ product_id: 'bundle_yearly', amount_minor: 4999, currency_code: 'USD', term: 'year', trial_days: 0 }] } },
+    });
+    const sellable = tree([SUBLY], { rail: withBundle, pricingPage: true, bundles: [BUNDLE] });
+    assert.equal(generate(sellable).code, 0);
+    const html = pricing(sellable);
+    assert.ok(html.indexOf('data-product="subscriptiontracker"') < html.indexOf('data-product="nikatru_all"'));
+    assert.match(html, /<h2>Nikatru bundle<\/h2>/);
+    assert.match(html, /\$49\.99/);
+    assert.equal(guard(sellable).code, 0);
+
+    const draft = tree([SUBLY], { rail: withBundle, pricingPage: true, bundles: [{ ...BUNDLE, status: 'draft' }] });
+    assert.equal(generate(draft).code, 0);
+    assert.doesNotMatch(pricing(draft), /data-product="nikatru_all"|\$49\.99/);
+    assert.equal(guard(draft).code, 0);
+  });
+
+  test('🔴 a sellable bundle with no web offering REFUSES to generate, naming it', () => {
+    const root = tree([SUBLY], {
+      rail: rail({ subscriptiontracker: { features: {}, paywall: { enabled: false, offerings: SUBLY_OFFERINGS } } }),
+      pricingPage: true,
+      bundles: [BUNDLE],
+    });
+    const r = generate(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /bundle "nikatru_all" is `sellable`/);
+  });
+
+  test('🔴 NP-DD-R1: app #1’s bullets never reach app #2’s section, and limb P fails a borrowed bullet', () => {
+    const root = tree([SUBLY, LINGO], {
+      rail: rail({
+        subscriptiontracker: { features: { renewals: true, budgets: true }, paywall: { enabled: false, offerings: SUBLY_OFFERINGS } },
+        lingo: { features: {}, paywall: { enabled: false, offerings: LINGO_OFFERINGS } },
+      }),
+      pricingPage: true,
+    });
+    assert.equal(generate(root).code, 0);
+    const html = pricing(root);
+    const lingoAt = html.indexOf('data-product="lingo"');
+    const subly = html.slice(html.indexOf('data-product="subscriptiontracker"'), html.indexOf('</section>'));
+    const lingo = html.slice(lingoAt, html.indexOf('</section>', lingoAt));
+    assert.match(subly, /<li>Renewal reminders<\/li>/);
+    assert.match(subly, /<li>Budgets<\/li>/);
+    assert.doesNotMatch(lingo, /<li>/, 'Lingo’s register enables no feature, so its cards carry no bullet');
+    const ok = guard(root);
+    assert.equal(ok.code, 0, ok.out);
+    // The mutation: Subly's bullet lands on Lingo's card.
+    const borrowed = html.slice(0, lingoAt) + html.slice(lingoAt).replace('<div class="sub">', '<ul><li>Budgets</li></ul><div class="sub">');
+    writeFileSync(p(root, 'pricing.html'), borrowed);
+    const red = guard(root);
+    assert.equal(red.code, 1, red.out);
+    assert.match(red.out, /the data-product="lingo" section carries the plan-card bullet "Budgets", which is not lingo's own register text/);
+  });
+
+  test('🔴 an amount is found on number boundaries: a dropped $4.99 is not hidden by a $34.99 in the same section', () => {
+    const root = tree([SUBLY, LINGO], {
+      rail: rail({
+        subscriptiontracker: { features: {}, paywall: { enabled: false, offerings: SUBLY_OFFERINGS } },
+        lingo: {
+          features: {},
+          paywall: {
+            enabled: false,
+            offerings: [
+              { product_id: 'lingo_monthly', amount_minor: 499, currency_code: 'USD', term: 'month', trial_days: 0 },
+              { product_id: 'lingo_yearly', amount_minor: 3499, currency_code: 'USD', term: 'year', trial_days: 0 },
+            ],
+          },
+        },
+      }),
+      pricingPage: true,
+    });
+    assert.equal(generate(root).code, 0);
+    // '$4.99' is not a substring of '$34.99', so this drops only the monthly price.
+    writeFileSync(p(root, 'pricing.html'), pricing(root).split('$4.99').join('$0.00'));
+    const red = guard(root);
+    assert.equal(red.code, 1, red.out);
+    assert.match(red.out, /the data-product="lingo" section does not carry the amount 4\.99/);
+  });
+
+  test('🔴 a section for a product no record prices is exit 1 (a bundle taken back to draft, page not regenerated)', () => {
+    const withBundle = rail({
+      subscriptiontracker: { features: {}, paywall: { enabled: false, offerings: SUBLY_OFFERINGS } },
+      nikatru_all: { features: {}, paywall: { enabled: false, offerings: [{ product_id: 'bundle_yearly', amount_minor: 4999, currency_code: 'USD', term: 'year', trial_days: 0 }] } },
+    });
+    const root = tree([SUBLY], { rail: withBundle, pricingPage: true, bundles: [BUNDLE] });
+    assert.equal(generate(root).code, 0);
+    writeFileSync(join(root, 'catalog', 'bundles.json'), `${JSON.stringify([{ ...BUNDLE, status: 'draft' }], null, 2)}\n`);
+    const r = guard(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /carries a section for "nikatru_all", which no record prices/);
   });
 });
 
