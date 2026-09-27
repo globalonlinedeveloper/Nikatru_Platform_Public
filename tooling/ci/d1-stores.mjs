@@ -116,6 +116,9 @@ export function ownedD1(root, rel, cfg, lost) {
       config: rel,
       binding: db.binding,
       databaseName: db.database_name,
+      // ⏱ 2026-09-26 (O-BACKUP-AND-FANOUT-SETS-HAND-LISTED, E-c): the id the platform
+      // Worker binds the database by (render-platform-app-block.mjs). Additive.
+      databaseId: db.database_id ?? null,
       migrationsDir: posix.normalize(posix.join(posix.dirname(rel), db.migrations_dir)),
       migrationsDirDeclared: db.migrations_dir,
       files,
