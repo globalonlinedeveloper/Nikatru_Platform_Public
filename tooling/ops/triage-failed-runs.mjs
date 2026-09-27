@@ -506,11 +506,23 @@ export const failingStep = (job) => (job?.steps ?? []).find((s) => NON_GREEN.has
  * jobs failed, the first in job order carries the row and the others are
  * listed in `alsoFailed`, so a matrix failing five ways is one run in the
  * count, as it is one run in the owner's list.
+ *
+ * ⏱ 2026-09-27 (FF-1) — THE PRIMARY IS THE JOB THAT RENDERED A VERDICT. A gate
+ * job that goes red now cancels the rest of its own run (.github/actions/
+ * cancel-run-on-red), so a red run arrives as conclusion `cancelled` with ONE
+ * job whose failing step concluded `failure` and every sibling `cancelled`
+ * mid-step. Taking the first failing job in job order would file that run under
+ * a sibling's `The operation was canceled` — `cancelled:by-hand-or-unknown` —
+ * and the real cause would never reach the ledger. So the primary is the first
+ * job whose FAILING STEP did not conclude `cancelled`, and the cancellation
+ * override reads that step's conclusion, not the job's: the red job itself can
+ * lose the race and conclude `cancelled` after its step already failed.
  */
 export function classifyRun(run, jobs, logFor, { newerRunExists = false, signatures = SIGNATURES } = {}) {
   const failing = failingJobs(jobs);
   const nonGate = failing.filter((j) => !GATE_STEP.test(failingStep(j)?.name ?? ''));
-  const primary = nonGate[0] ?? failing[0] ?? null;
+  const rendered = (j) => (failingStep(j)?.conclusion ?? j.conclusion) !== 'cancelled';
+  const primary = nonGate.find(rendered) ?? nonGate[0] ?? failing[0] ?? null;
   const base = {
     id: run.id,
     workflow: String(run.path ?? '').replace(/^\.github\/workflows\//, ''),
@@ -536,8 +548,9 @@ export function classifyRun(run, jobs, logFor, { newerRunExists = false, signatu
   if (nonGate.length === 0) {
     signature = 'gate-only';
   } else {
-    signature = signatureOf({ step: step?.name, block: eb.block, conclusion: primary.conclusion }, signatures);
-    if (signature === 'cancelled' || (primary.conclusion === 'cancelled' && run.conclusion === 'cancelled')) {
+    const verdict = step?.conclusion ?? primary.conclusion;
+    signature = signatureOf({ step: step?.name, block: eb.block, conclusion: verdict }, signatures);
+    if (signature === 'cancelled' || (verdict === 'cancelled' && run.conclusion === 'cancelled')) {
       signature = newerRunExists ? 'cancelled:superseded-in-group' : 'cancelled:by-hand-or-unknown';
     }
   }
@@ -547,7 +560,10 @@ export function classifyRun(run, jobs, logFor, { newerRunExists = false, signatu
     step: step?.name ?? '(job-level)',
     error: eb.line,
     signature,
-    alsoFailed: nonGate.slice(1).map((j) => `${j.name} › ${failingStep(j)?.name ?? '(job-level)'}`),
+    // Siblings a red job cancelled rendered no verdict: not "also failed".
+    alsoFailed: nonGate
+      .filter((j) => j !== primary && (rendered(j) || !rendered(primary)))
+      .map((j) => `${j.name} › ${failingStep(j)?.name ?? '(job-level)'}`),
   };
 }
 

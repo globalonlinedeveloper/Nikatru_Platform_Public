@@ -45,6 +45,51 @@ caught by `safe-rerun`'s own suite; an **expression** mutant is not — the pars
 collapses any `${{ … }}` to "cancelling". That gap is recorded, not closed: put
 a bare `true` back and nothing in the tree goes red.
 
+### 2.1 A red job cancels its own run (FF-1)
+
+A gate run with one red job is already a red run: `ci-gate` needs every job and
+reads `cancelled` as red, and `deploy-web` / `deploy-workers` need `ci-gate`. So
+the last step of every gate job is
+
+```yaml
+- name: A red job cancels the rest of this run (FF-1)
+  if: failure()
+  uses: ./.github/actions/cancel-run-on-red
+```
+
+That is one `gh run cancel` for the job's own run, made only on failure, and
+never a polling watcher: the `GITHUB_TOKEN` API limit is per repository and the
+guards already spend it. Because the step is **last**, the job's own report (every
+`!cancelled()` guard, every failure upload) is written before the cancel. After
+the cancel `ci-gate` still runs (`always()`) and goes red, and the deploys skip.
+The cancel fires on `main` too. By the time any deploy starts, every gate job
+has finished, so the step can no longer fire.
+
+- **In scope:** `ci.yml` and its callees `lane-workers.yml` and
+  `extensions-ci.yml`, on every event. `build-platforms.yml` and `extensions.yml`
+  publish on push, tag and dispatch, so there the condition is
+  `failure() && github.event_name == 'pull_request'`. `build-platforms.yml` has no
+  `pull_request` trigger today, so none of its jobs carry the step.
+- **Never:** any job that deploys, publishes, releases, submits, migrates or
+  uploads (derived from its id, its callee, its `environment:` or its steps), any
+  aggregator (`ci-gate`, `ci-required`, `lane-verdict`,
+  `extensions-lane-accounting`), and every workflow outside that list (ops-watch,
+  e2e, deploy-\*, submit-\*, redeploy-stranded, renovate among them).
+  `codeql.yml` is a **sole-job** exception: its one job has no sibling to cancel.
+- **Permissions:** each carrying job grants `actions: write` at job level. A call
+  job grants it too, because a callee job cannot hold more than its caller
+  grants, and GitHub refuses the whole run at startup when one asks. ⚠️
+  `actions: write` also authorises `workflow_dispatch`, so every carrying job now
+  holds a token that can dispatch a workflow.
+- **Not covered:** a job that hits `timeout-minutes` is marked cancelled, so
+  `failure()` is false and it cancels nothing (`ci-gate` still reads it red). The
+  job that went red may itself end `cancelled` if the cancel lands before it
+  finishes. Its failed step keeps `failure`, and the action's `::notice` names it.
+  `tooling/ops/triage-failed-runs.mjs` files such a run under that job, not under
+  a sibling it cancelled.
+
+`tooling/ci/assert-failfast-coverage.mjs` grades all of it.
+
 ## 3. The lane map
 
 <!-- BEGIN GENERATED: gen-ci-map lane-map -->
@@ -207,6 +252,10 @@ Each is enforced by a guard that will fail the build, named so you can read it:
   job carries `timeout-minutes`** — `tooling/ci/assert-workflow-hardening.mjs`.
   GitHub's `allowed_actions: selected` backs the allowlist half natively; its
   `sha_pinning_required` half **cannot be turned on here** and §7.1 says why.
+- **Every gate job ends with the FF-1 cancel step, and no deploy-type job
+  carries it** (§2.1) — `tooling/ci/assert-failfast-coverage.mjs`. A new job in
+  `ci.yml`, `lane-workers.yml` or `extensions-ci.yml` fails the build until it
+  ends with the step and grants `actions: write`.
 - **Every workflow file has a `duty` row in `tooling/ops/register.json`** and an
   owner in `tooling/ci/assert-release-lane-generic.mjs` — a new workflow file
   fails the build until both exist. Adding a *job* to an existing workflow does

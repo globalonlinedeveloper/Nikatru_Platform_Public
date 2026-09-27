@@ -969,6 +969,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-failfast-coverage.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "E-12"
     ],

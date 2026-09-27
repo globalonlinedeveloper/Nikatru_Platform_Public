@@ -109,15 +109,20 @@ jobs:
   ci:
     if: github.event_name == 'workflow_dispatch' && inputs.lane == 'ci' && !startsWith(github.ref, 'refs/tags/')
     uses: ./.github/workflows/extensions-ci.yml
+    # why: `actions: write` is the ceiling the callee's jobs run under, and each of them ends
+    # with the FF-1 step (.github/actions/cancel-run-on-red), which needs it to cancel this run.
     permissions:
       contents: read
-      actions: read
+      actions: write
 
   e2e-discover:
     name: Discover e2e suites
     if: (!startsWith(github.ref, 'refs/tags/') && (github.event_name == 'schedule' || (github.event_name == 'pull_request' && github.event.label.name == 'run-e2e') || (github.event_name == 'workflow_dispatch' && inputs.lane == 'e2e'))) && (github.event_name != 'pull_request' || github.event.label.name == 'run-e2e')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
     outputs:
       suites: ${{ steps.set.outputs.suites }}
       count: ${{ steps.set.outputs.count }}
@@ -151,6 +156,9 @@ jobs:
         run: |
           echo "::error::no <Category>/<Tool>/test/e2e/package.json found — this workflow would have run nothing and reported success."
           exit 1
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure() && github.event_name == 'pull_request'
+        uses: ./.github/actions/cancel-run-on-red
 
   e2e-suite:
     name: e2e · ${{ matrix.suite.dir }}
@@ -158,6 +166,9 @@ jobs:
     if: (!startsWith(github.ref, 'refs/tags/') && (github.event_name == 'schedule' || (github.event_name == 'pull_request' && github.event.label.name == 'run-e2e') || (github.event_name == 'workflow_dispatch' && inputs.lane == 'e2e'))) && (needs.e2e-discover.result == 'success' && needs.e2e-discover.outputs.count != '0')
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: write
     strategy:
       fail-fast: false
       matrix:
@@ -944,6 +955,9 @@ jobs:
           path: extensions/${{ matrix.suite.dir }}/test/e2e/out/**
           retention-days: 7
           if-no-files-found: ignore
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure() && github.event_name == 'pull_request'
+        uses: ./.github/actions/cancel-run-on-red
 
   release:
     if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.lane == 'release')

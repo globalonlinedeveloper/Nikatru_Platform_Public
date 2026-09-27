@@ -35,8 +35,11 @@ jobs:
   lane-workers:
     name: lane-workers
     uses: ./.github/workflows/lane-workers.yml
+    # why: `actions: write` is the ceiling the callee's jobs run under, and each of them ends
+    # with the FF-1 step (.github/actions/cancel-run-on-red), which needs it to cancel this run.
     permissions:
       contents: read
+      actions: write
 
   guard-meta:
     # why: the guards' own mutation suite measured 199s of the old job's 263s —
@@ -50,7 +53,7 @@ jobs:
     timeout-minutes: 25
     permissions:
       contents: read
-      actions: read
+      actions: write
       issues: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -138,6 +141,9 @@ jobs:
         run: node tooling/ci/gen-ci-map.mjs --check
       - name: The release runbook's arming lines match the register (channel-arming --check)
         run: node tooling/ci/channel-arming.mjs --check
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   guards-platform:
     name: Guards — platform, data and ops
@@ -145,7 +151,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      actions: read
+      actions: write
       issues: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -300,6 +306,9 @@ jobs:
       - name: Every job is bounded once, at a number somebody chose
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-workflow-timeouts.mjs
+      - name: A red gate job cancels its run, and no deploy job ever does (FF-1)
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-failfast-coverage.mjs
       - name: A green tick means the work ran
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-green-means-ran.mjs
@@ -361,11 +370,17 @@ jobs:
       - name: START-HERE.md is what the tree generates
         timeout-minutes: 2
         run: node --single-threaded tooling/scripts/gen-start-here.mjs --check
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   guards-legal:
     name: Guards — privacy, legal and money
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -467,11 +482,17 @@ jobs:
       - name: A legal document published twice says the same thing in both places
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-legal-text-parity.mjs
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   guards-store:
     name: Guards — store, release and versioning
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -626,11 +647,17 @@ jobs:
       - name: The app id has one rule, and the Worker, the callers and the schemas agree with it
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-app-id-contract.mjs
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   guards-chassis:
     name: Guards — chassis, app surface and packages
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -712,6 +739,9 @@ jobs:
       - name: Every mutation proof still addresses the code it was run against
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-mutation-proofs.mjs
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   security-scan:
     # why: split out so a leaked credential is not reported as "the platform
@@ -721,6 +751,9 @@ jobs:
     name: Security — secret and workflow scanners
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -840,6 +873,9 @@ jobs:
         run: |
           set -euo pipefail
           "${RUNNER_TEMP}/trivy" fs --scanners vuln,misconfig --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress .
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   site-tokens:
     # why: the job id stays `site-tokens` even though the lane now covers three
@@ -850,6 +886,9 @@ jobs:
     name: Design tokens (build + drift, all three outputs)
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
     defaults:
       run:
         working-directory: packages/tokens
@@ -902,11 +941,17 @@ jobs:
           git diff --exit-code -- ../../sites/_shared/assets/tokens.css
           git diff --exit-code -- ../design_system/lib/src/tokens/brand_tokens.dart
           git diff --exit-code -- ../../extensions/core/tokens.json
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   site-shared:
     name: Shared site build
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
     defaults:
       run:
         working-directory: sites/_shared
@@ -917,12 +962,18 @@ jobs:
       - uses: ./.github/actions/setup-node
       - run: npm ci
       - run: npm run build && test -s _site/index.html  # eleventy exits 0 on "Wrote 0 files"
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
 
   content-gate:
     name: Content pipeline (recipe -> pack -> sign -> gate)
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -948,11 +999,17 @@ jobs:
         run: node tooling/ci/assert-review-gate.mjs
       - name: Publish is a gate, and an undrilled signing key cannot sign
         run: node tooling/ci/assert-publish-gate.mjs
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   app-brick:
     name: App brick (stamp both variants + analyze + validate the clone contract)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -1158,11 +1215,17 @@ jobs:
           npm install
           npx tsc --noEmit
           npx wrangler deploy --dry-run
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   sites:
     name: Static sites (functions parse + required files)
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -1206,11 +1269,17 @@ jobs:
         run: node tooling/ci/assert-palette-consistent.mjs
       - name: No page claims a store channel the catalogue has not published to
         run: node tooling/ci/assert-availability.mjs
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   workspace-gate:
     name: Workspace gate (melos analyze + test)
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -1323,6 +1392,9 @@ jobs:
           export CHROME_EXECUTABLE="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser)"
           echo "Chrome: $CHROME_EXECUTABLE"
           dart test -p chrome
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   prepare:
     # why: the ONE app-set emitter in this file. android-artifacts and app-dryrun both
@@ -1330,6 +1402,9 @@ jobs:
     name: Derive the app set from the pub workspace
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
     outputs:
       apps: ${{ steps.workspace.outputs.apps }}
     steps:
@@ -1344,6 +1419,9 @@ jobs:
           set -euo pipefail
           apps="$(node tooling/ci/assert-release-lane-generic.mjs --emit-apps)"
           echo "apps=${apps}" >> "$GITHUB_OUTPUT"
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   app-dryrun:
     # why: the five store submission dry runs, one leg per app. They ran in
@@ -1356,6 +1434,9 @@ jobs:
     needs: prepare
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
     strategy:
       fail-fast: false
       matrix:
@@ -1376,12 +1457,18 @@ jobs:
         run: node tooling/release/submit-snap.mjs --dry-run --app ${{ matrix.app }} --allow-missing-artifact
       - name: The Google Play submission path still walks (dry run)
         run: node tooling/release/submit-play.mjs --dry-run --app ${{ matrix.app }} --allow-missing-artifact
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   android-artifacts:
     name: Android artifacts (built, inspected, discarded)
     runs-on: ubuntu-24.04
     # why 30: the same three builds measured 11.5–11.7 min inside build-platforms.yml linux_web_android — docs/ci/build-platforms.md §PR lane.
     timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: write
     needs: prepare
     strategy:
       fail-fast: false
@@ -1498,6 +1585,9 @@ jobs:
           --apk ${{ steps.agi_apk.outputs.apk }}
           --app ${{ matrix.app }}
           --posture debug
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
       # why: nothing here leaves the runner — no upload-artifact, no symbols, no GlitchTip.
       # A debug-signed PR build is discarded, and release-provenance gives a gate
       # constituent no credit for publishing (assert-release-provenance.mjs:769-805).
@@ -1634,9 +1724,11 @@ jobs:
   extensions:
     name: extensions
     uses: ./.github/workflows/extensions-ci.yml
+    # why: `actions: write` is the ceiling the callee's jobs run under, and each of them ends
+    # with the FF-1 step (.github/actions/cancel-run-on-red), which needs it to cancel this run.
     permissions:
       contents: read
-      actions: read
+      actions: write
 
 
   ci-gate:
