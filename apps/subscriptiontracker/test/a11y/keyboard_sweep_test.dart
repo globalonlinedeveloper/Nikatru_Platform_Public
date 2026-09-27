@@ -459,7 +459,8 @@ kExpected = <String, ({int controls, int reachable})>{
   // and `More options` are the app bar; `_iconButton` now builds on
   // `FocusableTap`.
   '/sub/:id': (controls: 4, reachable: 4),
-  '/paywall': (controls: 0, reachable: 0),
+  // ⏱ 2026-09-27 · ST-U2 (audit C34): the paywall's back button.
+  '/paywall': (controls: 1, reachable: 1),
   // 2 -> 3 on 2026-08-26, and NO WIDGET CHANGED. The third control was
   // always built; this file was sweeping the state that does not build it.
   // See [kSweptAs]: the cancel row is `if (isPro)`, so `2 of 2` was a full

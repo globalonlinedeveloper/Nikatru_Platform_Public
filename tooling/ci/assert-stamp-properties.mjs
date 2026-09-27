@@ -1662,7 +1662,8 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // (O-BRICK-ERASURE-DESTROYS-THE-IDENTITY: account deletion and the Apple token now
 // enter at the shared platform Worker). An ADMITTED gap in UNASSERTED, with its
 // reason; same commit as the provider.
-const MIN_DOMAIN = 63;
+// 63 -> 64 on 2026-09-27: `failedAuthArrivalProvider` (ST-A2) joined the domain.
+const MIN_DOMAIN = 64;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.

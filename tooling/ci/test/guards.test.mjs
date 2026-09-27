@@ -5372,6 +5372,9 @@ final Provider<void> _appleKeeper = core.keepAppleRefreshToken(auth: X(), send: 
 // O-BRICK-ERASURE-DESTROYS-THE-IDENTITY, 2026-09-24 — the platform client deletion
 // and the Apple token ride. Here for the same both-directions classification reason.
 final Provider<RestClient> platformRestClientProvider = X();
+// ST-A2 (audit BUG-2), 2026-09-27 — the flow of a failed NON-reset arrival.
+// Here for the same both-directions classification reason as the rows above.
+final StateProvider<AuthFlow?> failedAuthArrivalProvider = X();
 final Provider<core.ConsentStatus> analyticsConsentProvider = X();
 final Provider<bool> consentDecidedProvider = X();
 // The legal gate's anchors, and all three are load-bearing for the
@@ -8011,7 +8014,8 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // gap count below moves too (10 → 11).
       // 63 since 2026-09-24: `platformRestClientProvider`, an ADMITTED gap, so the gap
       // count below moves too (11 → 12).
-      assert.match(out, /tracked domain: 63 chassis behaviour\(s\)/);
+      // 64 since 2026-09-27: `failedAuthArrivalProvider` (ST-A2), an ADMITTED gap.
+      assert.match(out, /tracked domain: 64 chassis behaviour\(s\)/);
       // The admitted gaps must PRINT. An inventory nobody sees is a list that
       // quietly grows; this is the same reasoning as the owner-gated residual.
       // 9, not 10: [pipeline C-13] moved notificationServiceProvider out of the
@@ -8047,7 +8051,10 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // 12 since 2026-09-24: `platformRestClientProvider`, admitted with its reason —
       // limb 7 of assert-deletion-control holds its host and a brick Dart test its
       // cycle, but no CHASSIS property drives it.
-      assert.match(out, /12 chassis behaviour\(s\) a stamped app does NOT prove/);
+      // 13 since 2026-09-27: `failedAuthArrivalProvider` (ST-A2), admitted with its
+      // reason — the routing is driven in the app's password_reset_test; no
+      // CHASSIS property drives it yet.
+      assert.match(out, /13 chassis behaviour\(s\) a stamped app does NOT prove/);
       // A gap that is STILL a gap, named — so this assertion cannot be
       // satisfied by the list going empty.
       assert.match(out, /featureFlagsProvider/);
@@ -8104,7 +8111,8 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // 2026-09-16: 59 → 60 for `appleTokenKeeperProvider`; MIN_DOMAIN went 60 → 61.
       // 2026-09-18: 60 → 61 for `contentReportTransportProvider`; MIN_DOMAIN went 61 → 62.
       // 2026-09-24: 61 → 62 for `platformRestClientProvider`; MIN_DOMAIN went 62 → 63.
-      assert.match(out, /COVERAGE LOST — the domain parse found 62/);
+      // 2026-09-27: 62 → 63 for `failedAuthArrivalProvider` (ST-A2); MIN_DOMAIN went 63 → 64.
+      assert.match(out, /COVERAGE LOST — the domain parse found 63/);
     });
 
     // The scanner-stopped-scanning case, which is how this repo has been bitten
