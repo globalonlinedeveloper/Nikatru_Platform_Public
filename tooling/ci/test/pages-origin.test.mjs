@@ -45,7 +45,7 @@ function tree(id, hostsLines) {
 function io() {
   const out = [];
   const err = [];
-  return { out, err, log: (s) => out.push(s), err: (s) => err.push(s), text: () => [...out, ...err].join('\n') };
+  return { out, log: (s) => out.push(s), err: (s) => err.push(s), text: () => [...out, ...err].join('\n') };
 }
 
 /** A fetch stub that answers one Cloudflare project GET and records the URL it was asked. */
