@@ -1601,6 +1601,9 @@ jobs:
     runs-on: ubuntu-24.04
     # why 20: under GATING_CAP 30; deploy-web.yml's build-to-smoke span is its measure.
     timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: write
     needs: prepare
     strategy:
       fail-fast: false
@@ -1654,6 +1657,9 @@ jobs:
         run: >
           node tooling/ci/assert-artifact-shape.mjs
           --app ${{ matrix.app }} --platform web-artifacts
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
       # why: nothing here leaves the runner — no upload, no source maps sent, no
       # GlitchTip release, no deploy. The bundle and its .map files are discarded with
       # the runner, so no `.map` delete step is owed (deploy-web.yml's exists so maps
@@ -1667,6 +1673,9 @@ jobs:
     runs-on: ubuntu-24.04
     # why 20: under GATING_CAP 30; one Linux build plus the recipe emit and its check.
     timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: write
     needs: prepare
     strategy:
       fail-fast: false
@@ -1713,6 +1722,9 @@ jobs:
         run: >
           node tooling/ci/assert-artifact-shape.mjs
           --app ${{ matrix.app }} --platform linux-artifacts
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
       # why: nothing here leaves the runner — no AppImage signing key, no symbols upload,
       # no upload-artifact. The bundle and its symbols are discarded with the runner.
 
