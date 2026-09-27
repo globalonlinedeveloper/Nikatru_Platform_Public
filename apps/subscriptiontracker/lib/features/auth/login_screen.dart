@@ -20,6 +20,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart'
 
 import '../../core/app_config.dart';
 import '../../core/e2e_keys.dart';
+import '../../core/router/gates.dart' show afterSignInDestination;
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../l10n/app_localizations.dart';
@@ -178,7 +179,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           captchaToken: captcha.consume(),
         );
       }
-      if (mounted) context.go('/scan');
+      if (mounted)
+        context.go(afterSignInDestination(GoRouterState.of(context)));
     } catch (e) {
       _snack(e);
     } finally {
@@ -240,7 +242,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       } else {
         await auth.signInWithApple();
       }
-      if (mounted && auth.currentUser != null) context.go('/scan');
+      if (mounted && auth.currentUser != null) {
+        context.go(afterSignInDestination(GoRouterState.of(context)));
+      }
     } catch (e) {
       _snack(e);
     } finally {

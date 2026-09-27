@@ -53,6 +53,7 @@ import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show ChassisLocalizations;
+import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/core/router.dart';
 import 'package:subscriptiontracker/features/auth/login_screen.dart';
 import 'package:subscriptiontracker/features/auth/reset_password_screen.dart';
@@ -636,6 +637,41 @@ void main() {
     expect(
       find.textContaining('did not finish, so nothing changed'),
       findsOneWidget,
+    );
+  });
+
+  // 🔴 ST-A4 (audit A-4, B45; O-SIGN-IN-DROPS-THE-NEXT-ROUTE): a successful
+  // sign-in goes to the banked `?next=` through the gate allowlist, else home —
+  // never to the /scan loader. MUTATION PROOF: make afterSignInDestination
+  // return '/scan' and all three cases go red; drop the nextOr call and the
+  // first one does.
+  Future<String> signInFrom(WidgetTester tester, String at) async {
+    final ProviderContainer c = _container(auth);
+    addTearDown(c.dispose);
+    await _pump(tester, c, at);
+    await tester.enterText(find.byKey(E2EKeys.loginEmail), 'alex@example.com');
+    await tester.enterText(find.byKey(E2EKeys.loginPassword), 'hunter22');
+    await tester.tap(find.byKey(E2EKeys.loginSubmit));
+    await tester.pumpAndSettle();
+    return _where(c);
+  }
+
+  testWidgets('sign-in returns to the banked ?next=', (WidgetTester t) async {
+    expect(await signInFrom(t, '/sign-in?next=%2Fcalendar'), '/calendar');
+  });
+
+  testWidgets('with no ?next= it lands on /home, not /scan', (
+    WidgetTester t,
+  ) async {
+    expect(await signInFrom(t, '/sign-in'), '/home');
+  });
+
+  testWidgets('an off-site ?next= is refused and lands on /home', (
+    WidgetTester t,
+  ) async {
+    expect(
+      await signInFrom(t, '/sign-in?next=https%3A%2F%2Fevil.test'),
+      '/home',
     );
   });
 }

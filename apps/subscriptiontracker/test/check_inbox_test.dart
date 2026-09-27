@@ -308,7 +308,7 @@ void main() {
       );
     });
 
-    testWidgets('and the LoginScreen door still reaches /scan with a session', (
+    testWidgets('and the LoginScreen door reaches /home with a session', (
       WidgetTester tester,
     ) async {
       final ProviderContainer c = _container(_ImmediateSessionAuth());
@@ -316,13 +316,14 @@ void main() {
       await _pumpApp(tester, c);
       await _signUpViaLoginScreen(tester, en);
 
+      // ⏱ 2026-09-27 · ST-A4 (audit A-4, B45): a session lands on the banked
+      // `?next=` or /home — no longer on the /scan loader.
       expect(
         _where(c),
-        '/scan',
+        '/home',
         reason:
-            'the existing destination is untouched for the state it was always '
-            'right for — this increment narrows that navigation, it does not '
-            'move it',
+            'with a session the sign-up door lands where sign-in does; only '
+            'the no-session case goes to /check-inbox',
       );
     });
   });

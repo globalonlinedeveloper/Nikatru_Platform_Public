@@ -315,7 +315,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
 
       // Signed in and still on an auth screen → home. Without this, a user who
       // signs in stays looking at the form they just completed.
-      if (signedIn && onAuthScreen) return '/';
+      if (signedIn && onAuthScreen) return _nextOr(state, '/');
       return null;
     },
     // [pipeline C-13] A route that does not resolve must land somewhere the user

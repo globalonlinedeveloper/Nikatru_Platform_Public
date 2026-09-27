@@ -80,6 +80,13 @@ String _gateWithNext(String gate, GoRouterState state) => core.gateWithNext(
 String _nextOr(GoRouterState state, String fallback) =>
     core.nextOr(state.uri, fallback, neverADestination: _neverADestination);
 
+/// ST-A4 (audit A-4, B45; O-SIGN-IN-DROPS-THE-NEXT-ROUTE): where a successful
+/// sign-in goes — the banked `?next=` through the same allowlist every gate
+/// uses, else `/home`. It went to `/scan`, a timed "Setting up your board"
+/// loader every returning user sat through, and `next` was never read, so a
+/// buyer sent to sign in from the paywall did not come back to it.
+String afterSignInDestination(GoRouterState state) => _nextOr(state, '/home');
+
 /// One gate's answer — and the reason this is a wrapper rather than a `String?`.
 ///
 /// 🔴 A GATE HAS THREE ANSWERS, NOT TWO, AND CONFLATING TWO OF THEM IS EXACTLY
@@ -391,7 +398,8 @@ GateVerdict? legalReacceptanceGate(GateContext ctx) {
 GateVerdict? signedInOnAuthScreenGate(GateContext ctx) {
   final String loc = ctx.loc;
   if (ctx.loggedIn && (loc == '/sign-in' || loc == '/sign-up')) {
-    return const GateVerdict('/home');
+    // ST-A4: the banked destination, not a hard-coded home.
+    return GateVerdict(afterSignInDestination(ctx.state));
   }
   return null;
 }
