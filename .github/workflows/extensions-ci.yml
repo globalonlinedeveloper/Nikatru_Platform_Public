@@ -19,10 +19,6 @@ defaults:
   run:
     working-directory: extensions
 
-# why: restated, not inherited -- a caller's workflow-level env does not reach a callee.
-env:
-  NODE_VERSION: '24'
-
 jobs:
 
   # why: ADR 067 decision 1 -- the extensions subtree ships build-free, so what AMO
@@ -43,10 +39,9 @@ jobs:
       run:
         working-directory: .
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with: { node-version: '24' }
+      - uses: ./.github/actions/setup-node
       - name: No package manager, no bundler, no transpiler under extensions/
         run: node tooling/ci/assert-extensions-build-free.mjs .
       - name: And the guard can still fail
@@ -80,10 +75,9 @@ jobs:
       run:
         working-directory: .
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with: { node-version: '24' }
+      - uses: ./.github/actions/setup-node
       - name: contract.json is what contract.js derives
         run: node contracts/entitlement/generate.mjs --check
       # why: this is the ONLY thing that re-derives the [ADR 070] premise that the
@@ -107,7 +101,7 @@ jobs:
       contents: read
       actions: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
       - name: Every gate script these workflows call must exist
         shell: bash
@@ -230,8 +224,7 @@ jobs:
       # (⏱ 2026-09-25, O-EXTENSION-GATES-NAME-ONE-TOOL. The inventory above greps
       # workflow text, so publish/verify-firefox-package.node.js left its list when
       # the FullShot steps left the workflows; declared scripts are checked here now.)
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with: { node-version: '${{ env.NODE_VERSION }}' }
+      - uses: ./.github/actions/setup-node
       - name: No workflow step names a tool; every declared store gate has a runner
         run: node scripts/discover.mjs --assert-generic
       - name: A red job cancels the rest of this run (FF-1)
@@ -249,10 +242,9 @@ jobs:
       tools: ${{ steps.set.outputs.tools }}
       count: ${{ steps.set.outputs.count }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { fetch-depth: 0, persist-credentials: false }
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with: { node-version: '${{ env.NODE_VERSION }}' }
+      - uses: ./.github/actions/setup-node
 
       - name: Cross-check discovery against the filesystem
         shell: bash
@@ -336,10 +328,9 @@ jobs:
       contents: read
       actions: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with: { node-version: '${{ env.NODE_VERSION }}' }
+      - uses: ./.github/actions/setup-node
       - run: node scripts/secret-scan.mjs .
       - name: A red job cancels the rest of this run (FF-1)
         if: failure()
@@ -353,10 +344,9 @@ jobs:
       contents: read
       actions: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with: { node-version: '${{ env.NODE_VERSION }}' }
+      - uses: ./.github/actions/setup-node
       - name: Delete the catalogue so the publisher has to produce it
         run: rm -f catalog/extensions.json
       - run: node scripts/publish-catalog.mjs
@@ -411,10 +401,9 @@ jobs:
       contents: read
       actions: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with: { node-version: '${{ env.NODE_VERSION }}' }
+      - uses: ./.github/actions/setup-node
 
       - name: Lint + run core sims
         shell: bash
@@ -469,10 +458,9 @@ jobs:
       matrix:
         tool: ${{ fromJSON(needs.discover.outputs.tools) }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with: { node-version: '${{ env.NODE_VERSION }}' }
+      - uses: ./.github/actions/setup-node
       - name: Syntax check every shipped script
         run: node scripts/lint.mjs ${{ matrix.tool }}
       - name: Privacy / permission / store-limit policy
@@ -526,17 +514,18 @@ jobs:
       contents: read
       actions: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with: { node-version: '${{ matrix.node }}' }
+      - uses: ./.github/actions/setup-node
+        with:
+          node-version: '${{ matrix.node }}'
 
       - name: Run tool sims
         run: node scripts/run-tests.mjs ${{ matrix.tool }}
 
       - name: Upload pixel-sim output on failure
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: pixels-${{ matrix.tool }}-node${{ matrix.node }}
           path: |
@@ -569,10 +558,9 @@ jobs:
       contents: read
       actions: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with: { node-version: '${{ env.NODE_VERSION }}' }
+      - uses: ./.github/actions/setup-node
 
       # why: every step below whose script reaches node:zlib runs --single-threaded under
       # its own bound (nodejs/node#54918 — see the catalogue job's render step).
@@ -643,7 +631,7 @@ jobs:
       # nothing, so `always()` costs an empty check and buys the evidence.
       - name: The hang guard's diagnostic report, if the ceiling fired
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: hang-report-${{ matrix.tool }}-${{ matrix.target }}-${{ matrix.os }}
           path: extensions/diag/**
@@ -674,7 +662,7 @@ jobs:
           npm ci --ignore-scripts --prefix ../tooling/web-ext
           ../tooling/web-ext/node_modules/.bin/web-ext lint --source-dir dist/unpacked-firefox --warnings-as-errors
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: matrix.os == 'ubuntu-24.04'
         with:
           name: ${{ matrix.tool }}-${{ matrix.target }}
@@ -693,10 +681,9 @@ jobs:
       contents: read
       actions: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with: { node-version: '${{ env.NODE_VERSION }}' }
+      - uses: ./.github/actions/setup-node
       - name: Every gate must be proven to fail on a real mutation
         run: node scripts/test/selftest.node.js
 
@@ -728,10 +715,9 @@ jobs:
       contents: read
       actions: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with: { node-version: '${{ env.NODE_VERSION }}' }
+      - uses: ./.github/actions/setup-node
       - name: Every script under templates/ must parse
         shell: bash
         run: |
@@ -958,7 +944,7 @@ jobs:
       R_TEMPLATES: ${{ needs.templates.result }}
       R_E2E_PROOF_FRESH: ${{ needs.e2e-proof-fresh.result }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
       - name: Every job in this workflow is accounted for, and every outcome is graded
         shell: bash
@@ -1143,10 +1129,9 @@ jobs:
       contents: read
       actions: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with: { node-version: '${{ env.NODE_VERSION }}' }
+      - uses: ./.github/actions/setup-node
       - name: The weekly e2e proof must be RECENT, SCHEDULED and GREEN
         env:
           GH_TOKEN: ${{ github.token }}

@@ -98,9 +98,6 @@ defaults:
   run:
     working-directory: extensions
 
-env:
-  NODE_VERSION: '24'
-
 jobs:
 
   # why: a dispatch with lane=ci still runs the CI lane on demand. This call job is not
@@ -127,7 +124,7 @@ jobs:
       suites: ${{ steps.set.outputs.suites }}
       count: ${{ steps.set.outputs.count }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
 
       - id: set
@@ -174,7 +171,7 @@ jobs:
       matrix:
         suite: ${{ fromJSON(needs.e2e-discover.outputs.suites) }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
       # why: THE `extensions/` PREFIX IS NOT OPTIONAL HERE, AND ITS ABSENCE COST THE
       # WHOLE LANE. `defaults.run.working-directory: extensions` governs `run:` steps
@@ -189,10 +186,8 @@ jobs:
       # value the same way the three `working-directory:` lines below derive theirs,
       # so a second <Category>/<Tool> suite is cached correctly the day it appears --
       # nothing here names a tool.
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: ./.github/actions/setup-node
         with:
-          node-version: '24'
-          cache: 'npm'
           cache-dependency-path: extensions/${{ matrix.suite.dir }}/test/e2e/package-lock.json
 
       - name: Install e2e dependencies
@@ -948,7 +943,7 @@ jobs:
             console.log(`${suites.length} e2e suite(s) ran, all green${mine.length ? ` — and ${mine.length} quarantined suite(s) were re-run but NOT graded: ${audited.stands.length} still red as recorded, ${audited.unverified.length} unverified` : ` — the quarantine list for ${here} is empty, which is the goal`}`);
           '
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: e2e-out-${{ matrix.suite.slug }}
@@ -996,10 +991,9 @@ jobs:
           esac
           echo "owner word ${CONFIRM} on ${GITHUB_REF_NAME}: this run may publish to that one store and to no other."
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { fetch-depth: 0, persist-credentials: false }
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with: { node-version: '24' }
+      - uses: ./.github/actions/setup-node
 
       - name: The gate passed for this exact commit
         working-directory: .
@@ -1545,7 +1539,7 @@ jobs:
       run:
         working-directory: .
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
       # why: ONLY A RELEASE TAG PUBLISHES, CHECKED BEFORE ANYTHING ELSE RUNS (row
       # O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 2). The job's `if:` is skipped, not refused,
@@ -1555,8 +1549,7 @@ jobs:
       # until it is added. Held FIRST by assert-workflow-hardening limb 10.
       - name: Refuse any ref but a release tag
         run: node tooling/ci/assert-deploy-ref.mjs --allow 'tag:fullshot-v[0-9]+.[0-9]+.[0-9]+' --allow 'tag:fullshot-v[0-9]+.[0-9]+.[0-9]+.[0-9]+'
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with: { node-version: '24' }
+      - uses: ./.github/actions/setup-node
 
       - name: The tag this run publishes (fullshot-v1.10.1 → id + version)
         id: tag
@@ -1907,10 +1900,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with: { node-version: '24' }
+      - uses: ./.github/actions/setup-node
       # why: the emptiness test is what a reader (and assert-green-means-ran) can see in the
       # workflow itself; the VERDICT is the register's, read through channel-arming.mjs, so
       # an unarmed channel prints the owner step instead of reddening a scheduled lane on
@@ -1940,10 +1932,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with: { node-version: '24' }
+      - uses: ./.github/actions/setup-node
       - name: Probe the AMO and Edge keys, or print the owner step
         env:
           AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}

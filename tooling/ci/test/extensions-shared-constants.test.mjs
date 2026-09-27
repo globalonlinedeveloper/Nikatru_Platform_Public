@@ -211,6 +211,16 @@ describe('the zip timestamp is ONE constant', () => {
     // ...and the matrix is what gets installed, or the majors above are decoration.
     assert.ok(lines.some((t) => /node-version:\s*'\$\{\{\s*matrix\.node\s*\}\}'/.test(t)),
       'the sims job no longer installs `${{ matrix.node }}`, so its matrix is not the node the sims run on');
+    // ⏱ 2026-09-27 (P-C7 + M1): the sims job hands that major to .github/actions/setup-node
+    // as an INPUT, so the line above proves only that it is passed. The composite must be
+    // what installs it: input -> the pin step -> actions/setup-node. A composite that
+    // dropped the input would run both matrix legs on versions.json's major, and every
+    // other check here would stay green.
+    const composite = readFileSync(join(REPO, '.github/actions/setup-node/action.yml'), 'utf8');
+    assert.match(composite, /^ {2}node-version:\s*$/m, 'the setup-node composite declares no `node-version` input, so the sims matrix major reaches nothing');
+    assert.match(composite, /NODE_MAJOR:\s*\$\{\{\s*inputs\.node-version\s*\}\}/, 'the composite pin step no longer reads its `node-version` input');
+    assert.match(composite, /v="\$\{NODE_MAJOR:-/, 'the composite pin step no longer takes its `node-version` input ahead of tooling/versions.json');
+    assert.match(composite, /node-version:\s*\$\{\{\s*steps\.pin\.outputs\.node\s*\}\}/, 'actions/setup-node in the composite no longer installs the pin step\'s major');
   });
 });
 

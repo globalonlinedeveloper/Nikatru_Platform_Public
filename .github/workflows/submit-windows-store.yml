@@ -42,7 +42,7 @@ jobs:
     outputs:
       app: ${{ steps.app.outputs.app }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Require ci-gate to have passed for this commit
@@ -81,7 +81,7 @@ jobs:
     env:
       APP: ${{ needs.gate.outputs.app }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-flutter
@@ -128,7 +128,7 @@ jobs:
       # 7 days matches the dry-run package beside it, and the sink upload below is
       # the copy that lasts. ⏱ 2026-09-25: the submit job now ships this package
       # and re-keeps THIS directory for 90 days as symbols-<app>-windows-store.
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: symbols-${{ needs.gate.outputs.app }}-windows-store-dry-run
           path: apps/${{ needs.gate.outputs.app }}/build/symbols/windows
@@ -196,7 +196,7 @@ jobs:
           echo "artifact=${APP}-windows-store-msix" >> "$GITHUB_OUTPUT"
           echo "sha256=${sum}" >> "$GITHUB_OUTPUT"
           echo "${sum}  ${MSIX}"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ steps.bytes.outputs.artifact }}
           path: apps/${{ needs.gate.outputs.app }}/build/windows/msix/${{ needs.gate.outputs.app }}.msix
@@ -233,7 +233,7 @@ jobs:
     env:
       APP: ${{ needs.gate.outputs.app }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # why: ONLY main SUBMITS, CHECKED BEFORE ANYTHING ELSE RUNS (row
@@ -306,7 +306,7 @@ jobs:
       # identity back straight after packaging it, and the sha256 below proves these are those
       # bytes. Retention is 7 days and there is no fallback: an older approval fails here.
       - name: Take the dry-run job's package
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: ${{ needs.dry-run.outputs.artifact }}
           path: apps/${{ needs.gate.outputs.app }}/build/windows/msix
@@ -328,11 +328,11 @@ jobs:
       # the crash sink from that job. Kept again here for 90 days, not 7, because this
       # package ships; BEFORE the submission, so a failed submission cannot skip it.
       - name: Take the dry-run job's symbols for this package
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: symbols-${{ needs.gate.outputs.app }}-windows-store-dry-run
           path: apps/${{ needs.gate.outputs.app }}/build/symbols/windows
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: symbols-${{ needs.gate.outputs.app }}-windows-store
           path: apps/${{ needs.gate.outputs.app }}/build/symbols/windows

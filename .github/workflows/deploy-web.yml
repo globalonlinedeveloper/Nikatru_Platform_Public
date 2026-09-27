@@ -44,7 +44,7 @@ jobs:
     outputs:
       apps: ${{ steps.workspace.outputs.apps }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # why: DERIVED, NOT LISTED. A hand-written app list here is a second copy of the
@@ -87,7 +87,7 @@ jobs:
       run:
         working-directory: apps/${{ matrix.app }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           # why: the plan below reads ancestry and a diff against the live SHA, which a
@@ -358,7 +358,7 @@ jobs:
       - name: Deploy to Cloudflare Pages
         if: steps.plan.outputs.deploy == 'true'
         id: deploy
-        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           wranglerVersion: '4.141.0'
@@ -404,7 +404,7 @@ jobs:
       # why: false on main, as the app job's (assert-workflow-hardening limb 7).
       cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           # why: the plan reads ancestry, and lastmod.mjs dates every page from git history.
@@ -493,7 +493,7 @@ jobs:
       - name: Deploy the apex site to nikatru-apex
         if: steps.plan.outputs.deploy == 'true'
         id: deploy
-        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           wranglerVersion: '4.141.0'
