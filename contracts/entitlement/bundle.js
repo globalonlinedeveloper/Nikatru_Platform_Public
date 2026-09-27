@@ -48,6 +48,12 @@ export const BUNDLE_SOURCES = [
   { source: 'apple_iap', requiresReceipt: true },
   { source: 'google_play_billing', requiresReceipt: true },
   { source: 'microsoft_store', requiresReceipt: true },
+  // ⏱ 2026-09-27 · a Paddle one-time purchase (migration 0019, term `one_time`),
+  // granted through services/platform/src/lib/mor/grant.ts.
+  { source: 'paddle_one_time', requiresReceipt: true },
+  // ⏱ 2026-09-27 · a store bundle bought through RevenueCat ([ADR 092] §4.7,
+  // migration 0019, term `subscription`), never recorded as a store rail.
+  { source: 'revenuecat', requiresReceipt: true },
   // The two operator acts. Nobody paid, so no receipt exists — and the exemption
   // is WRITTEN DOWN rather than absent, because an exemption that is recorded can
   // be audited and one that is not is indistinguishable from the bug.

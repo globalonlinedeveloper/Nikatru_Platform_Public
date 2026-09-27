@@ -182,7 +182,7 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments } from './text-reductions.mjs';
-import { parseSeededRows } from './sql-seed.mjs';
+import { parseAllSeededRows, parseSeededRows } from './sql-seed.mjs';
 import { validate as validateSchema, SchemaError } from '../app-yaml/schema-validate.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
@@ -1638,7 +1638,10 @@ let rcSwept = 0;
 let bundleSourcesSeeded = new Map(); // source -> requiresReceipt(boolean)
 let bundleCopiesCompared = 0;
 {
-  const read = parseSeededRows(codeWithStrings, 'bundle_sources');
+  // ⏱ 2026-09-27 · EVERY seed, not the first: migration 0019 seeds `paddle_one_time`
+  // in a second statement, and a first-statement read never saw it (sql-seed.mjs
+  // parseAllSeededRows says why).
+  const read = parseAllSeededRows(codeWithStrings, 'bundle_sources');
   if (!read.ok) {
     fail(
       'no `INSERT INTO bundle_sources (…) VALUES …` seed found. [ADR 057] §3: the source set is decided in the ' +

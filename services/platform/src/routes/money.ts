@@ -51,9 +51,31 @@ import { withinEdgeCeiling } from '../lib/edge-ceiling';
 import { isMoneyEnvironment, type MoneyEnvironment } from '../lib/mor/contract';
 import { verifierFor } from '../lib/mor/registry';
 import { isAttributableProduct } from '../config';
-import { deriveAndApply, derivationStateOf, isUnconcluded, persistNotification } from '../lib/mor/store';
+import { derivationStateOf, isUnconcluded, persistNotification } from '../lib/mor/store';
+import { type GrantDeps, grantFromVerifiedEvent } from '../lib/mor/grant';
+import { oneTimeOfferingFor } from './checkout';
+import { mintFeatureSetFromRegister } from './receipts';
 
 const money = new Hono<AppEnv>();
+
+/**
+ * ⏱ 2026-09-27 · What src/lib/mor/grant.ts is handed, built ONCE for both of its
+ * callers — this route and scheduled.ts `moneyRederive` — so the door and the
+ * nightly re-derivation decide a stored notification with the same maps.
+ * `isKnownProduct` is the ATTRIBUTABLE set (every known product but a bundle;
+ * config.ts says why); the one-time price map is the checkout's; the mint is the
+ * receipt route's.
+ */
+export function grantDepsFor(db: D1Database, environment: MoneyEnvironment, nowMs: number): GrantDeps {
+  return {
+    db,
+    environment,
+    nowMs,
+    isKnownProduct: isAttributableProduct,
+    oneTimeOffering: oneTimeOfferingFor,
+    mintFeatureSet: (featureSet, version) => mintFeatureSetFromRegister(db, featureSet, version),
+  };
+}
 
 /**
  * A notification is a handful of fields and one entity. 64 KiB is generous for
@@ -141,7 +163,8 @@ money.post('/:provider', async (c) => {
   // MoneyStoreDeps for the measured reason (the dry-run loads the store under
   // bare node, where config.ts's JSON imports cannot resolve). It is the
   // ATTRIBUTABLE set — every known product but a bundle (config.ts says why).
-  const deps = { db: c.env.PLATFORM_DB, environment, nowMs: Date.now(), isKnownProduct: isAttributableProduct };
+  // ⏱ 2026-09-27 · the grant maps travel with it (`grantDepsFor` above).
+  const deps = grantDepsFor(c.env.PLATFORM_DB, environment, Date.now());
   let fresh: boolean;
   try {
     ({ fresh } = await persistNotification(deps, notification, read.text));
@@ -168,7 +191,10 @@ money.post('/:provider', async (c) => {
 
   let outcome: string;
   try {
-    outcome = (await deriveAndApply(deps, notification)).outcome;
+    // ⏱ 2026-09-27 · through the ONE entry from a verified event to a grant
+    // (O-ONE-TIME-GRANT-UNBUILT). Every subject it does not route elsewhere reaches
+    // store.ts `deriveAndApply` exactly as before; test/grant.test.ts holds that.
+    outcome = (await grantFromVerifiedEvent(deps, notification)).outcome;
   } catch (err) {
     // The notification IS recorded, so nothing is lost — and NOTHING IS
     // CONCLUDED either, so this is not a 200. 503: Paddle re-delivers, the

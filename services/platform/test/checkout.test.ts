@@ -515,14 +515,19 @@ describe('the refusals that happen BEFORE any transaction is created', () => {
   });
 
   it('an offering SERVED but not priced on the rail is 503 — our fault, not theirs', async () => {
-    // The drift this branch exists for, constructed: the config offers a third
-    // SKU and PADDLE_PRICE_IDS has no price for it.
+    // The drift this branch exists for, constructed: the config offers a SKU and
+    // PADDLE_PRICE_IDS has no price for it.
+    // ⚠️ THE EXAMPLE MOVED ON 2026-09-27. It was `pro_lifetime`, unpriced until its
+    // one-time grant path landed and its price was read back into
+    // PADDLE_PRICE_IDS; it is priced now and would answer 200. `pro_weekly`, the
+    // never-served id of the case above, is offered by THIS test's own config, so
+    // it is served and unpriced by construction.
     const h = harness({
       kv: JSON.stringify({
-        paywall: { enabled: true, offerings: [{ product_id: 'pro_lifetime' }] },
+        paywall: { enabled: true, offerings: [{ product_id: 'pro_weekly' }] },
       }),
     });
-    const res = await h.post({ ...BUY, offering_id: 'pro_lifetime' }, `Bearer ${await token(USER)}`);
+    const res = await h.post({ ...BUY, offering_id: 'pro_weekly' }, `Bearer ${await token(USER)}`);
     expect(res.status).toBe(503);
     expect(await res.json()).toEqual({ error: 'offering_not_available' });
     noCall();

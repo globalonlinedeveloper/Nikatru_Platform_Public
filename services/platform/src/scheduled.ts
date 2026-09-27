@@ -18,9 +18,10 @@ import type { AppTarget, Env } from './types';
 import { recomputeRenewals } from './renewals';
 import { runBackup } from './backup';
 import { isMoneyEnvironment } from './lib/mor/contract';
-import { isAttributableProduct } from './config';
 import { verifierFor } from './lib/mor/registry';
-import { deriveAndApply, unconcludedNotifications } from './lib/mor/store';
+import { unconcludedNotifications } from './lib/mor/store';
+import { grantFromVerifiedEvent } from './lib/mor/grant';
+import { grantDepsFor } from './routes/money';
 import {
   SIGNUP_PURGE_STEP,
   closeSubject,
@@ -864,9 +865,10 @@ export async function renewalsFanOut(env: Env): Promise<void> {
 // PRINTED in the heartbeat row so a row that stays refused is visible rather
 // than quietly re-tried for ever.
 //
-// It is NOT a second writer: it calls `deriveAndApply` in src/lib/mor/store.ts,
-// the one writer, with the same stored payload the route parsed, re-parsed by
-// the same adapter. It takes decisions against NOW, which is what a delayed
+// It is NOT a second writer: it calls `grantFromVerifiedEvent` in
+// src/lib/mor/grant.ts — the one entry from a verified event to a grant, which
+// routes/money.ts calls too — with the same stored payload the route parsed,
+// re-parsed by the same adapter. It takes decisions against NOW, which is what a delayed
 // derivation should do — a cancel whose period end has since passed lapses.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -922,10 +924,11 @@ export async function moneyRederive(env: Env, nowMs: number = Date.now()): Promi
   try {
     const rows = await unconcludedNotifications(env.PLATFORM_DB, since, MAX_REDERIVE_PER_RUN);
     candidates = rows.length;
-    // The store's attribution rule, injected exactly as routes/money.ts injects it
-    // (MoneyStoreDeps.isKnownProduct says why it is not imported by the store),
-    // and the same ATTRIBUTABLE set: every known product but a bundle.
-    const deps = { db: env.PLATFORM_DB, environment, nowMs, isKnownProduct: isAttributableProduct };
+    // The store's attribution rule and the grant maps, built by the SAME function
+    // routes/money.ts builds them with (MoneyStoreDeps.isKnownProduct says why they
+    // are injected rather than imported by the store): the ATTRIBUTABLE set, every
+    // known product but a bundle; the checkout's one-time price map; the mint.
+    const deps = grantDepsFor(env.PLATFORM_DB, environment, nowMs);
     for (const row of rows) {
       const verifier = verifierFor(row.provider);
       if (verifier === null) { bump('unknown_provider'); failed++; continue; }
@@ -934,7 +937,7 @@ export async function moneyRederive(env: Env, nowMs: number = Date.now()): Promi
       const parsed = verifier.parse(row.payload, row.provider_event_id);
       if (!parsed.ok) { bump('unparseable'); failed++; continue; }
       try {
-        bump((await deriveAndApply(deps, parsed.notification)).outcome);
+        bump((await grantFromVerifiedEvent(deps, parsed.notification)).outcome);
       } catch (err) {
         bump('error');
         failed++;

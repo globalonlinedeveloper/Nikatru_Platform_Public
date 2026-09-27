@@ -1,0 +1,19 @@
+{
+  "name": "edge-shield",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "dry-run": "wrangler deploy --dry-run",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260918.1",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.11",
+    "wrangler": "^4.0.0"
+  },
+  "overrides": {
+    "sharp": ">=0.35.4"
+  }
+}

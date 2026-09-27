@@ -48,6 +48,18 @@
 // `origin` (`https://<first host>`), the URL the record step writes and rollback.yml
 // appends its smoke path to.
 //
+// ⏱ 2026-09-27 — AN EDGE WORKER IS A ROW TOO, AND NEVER AN APP WORKER (LEAD RULINGS
+// SHIELD-R1..R3, rv-c21 SHIELD-F4, row O-BOXES-UNSHIELDED-FROM-SPIKES).
+// services/edge-shield is a Worker directory with a wrangler.jsonc, so it is in the
+// set, and its register row is `edgeWorkers[i]` (tooling/ci/assert-platform-register.mjs
+// limb 7 holds that row). An edge Worker mounts no route and reads no DSN: it owes no
+// `dsnSecret`, no smoke URL and no migrations (its smoke is
+// tooling/ops/check-edge-shield.mjs), and it still owes the committed lockfile like
+// every member. `--emit` keeps it, so the Workers lane still typechecks, tests and
+// dry-runs it. `--app-workers` selects the rows whose field IS `appWorkers[i]` —
+// never "every row but servingWorker", which would put an edge Worker into the app
+// deploy matrix (DSN var, migrations, /v1/health smoke) and break every app deploy.
+//
 // Two refusals, because a matrix built from a quiet reader is a lane that tests
 // nothing and reports green:
 //   · a directory under services/ that is neither `_shared` nor holds a
@@ -122,6 +134,10 @@ export function registerRows(register) {
   (Array.isArray(register?.appWorkers) ? register.appWorkers : []).forEach((w, i) =>
     rows.push({ field: `appWorkers[${i}]`, row: w, routes: w?.routes ?? [] }),
   );
+  // ⏱ 2026-09-27 (SHIELD-F4): an EDGE Worker mounts no route, so it brings none.
+  (Array.isArray(register?.edgeWorkers) ? register.edgeWorkers : []).forEach((e, i) =>
+    rows.push({ field: `edgeWorkers[${i}]`, row: e, routes: [] }),
+  );
   return rows;
 }
 
@@ -153,7 +169,7 @@ export function deploySet(root, set = workerSet(root), { lockfiles = true } = {}
   const register = existsSync(join(root, REGISTER)) ? readJson(join(root, REGISTER)) : null;
   const rows = register === null ? [] : registerRows(register);
   if (rows.length === 0) {
-    lost.push(`${REGISTER} is missing, is not JSON, or declares no servingWorker and no appWorkers row.`);
+    lost.push(`${REGISTER} is missing, is not JSON, or declares no servingWorker, appWorkers or edgeWorkers row.`);
     return { entries: [], appWorkers, problems, lost };
   }
 
@@ -178,7 +194,7 @@ export function deploySet(root, set = workerSet(root), { lockfiles = true } = {}
   for (const dir of set.workers) {
     if (!byDir.has(dir)) {
       problems.push(
-        `${SERVICES_DIR}/${dir} holds a ${WORKER_CONFIG} and ${REGISTER} has no row for it (servingWorker or appWorkers[]). ` +
+        `${SERVICES_DIR}/${dir} holds a ${WORKER_CONFIG} and ${REGISTER} has no row for it (servingWorker, appWorkers[] or edgeWorkers[]). ` +
           'A Worker the register does not name has no host, no smoke URL and no crash-sink secret for a lane to read.',
       );
     }
@@ -233,6 +249,13 @@ export function deploySet(root, set = workerSet(root), { lockfiles = true } = {}
     const r = byDir.get(dir);
     if (!r) continue;
 
+    // An EDGE Worker (above) owes the lockfile and nothing below: no DSN, no smoke
+    // URL, no migrations. Its entry says so with nulls, and it is never an app Worker.
+    if (r.field.startsWith('edgeWorkers')) {
+      entries.push({ worker: String(r.row?.name ?? dir), dir: rel, migrations: null, smokeUrl: null, origin: null, dsnSecret: null });
+      continue;
+    }
+
     const dsnSecret = typeof r.row?.dsnSecret === 'string' && r.row.dsnSecret !== '' ? r.row.dsnSecret : null;
     if (dsnSecret === null) {
       problems.push(
@@ -267,7 +290,9 @@ export function deploySet(root, set = workerSet(root), { lockfiles = true } = {}
       );
     }
     const worker = String(r.row?.name ?? dir);
-    if (r.field !== 'servingWorker') appWorkers.push(worker);
+    // `startsWith('appWorkers')`, NEVER `!== 'servingWorker'` (SHIELD-F4): a third kind of row must not
+    // fall into the app deploy matrix by being "not the serving Worker".
+    if (r.field.startsWith('appWorkers')) appWorkers.push(worker);
     entries.push({
       worker,
       dir: rel,

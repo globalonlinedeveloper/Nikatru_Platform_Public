@@ -169,7 +169,14 @@ describe('the real tree: every database the register\'s Workers own, and only th
   test('the monitor prints one line per database, then the total, and every exempt table as exempt', () => {
     const r = monitor(REPO, noExtra);
     assert.equal(r.status, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /MONITOR · \[pipeline B-17\] · platform_db: 22 table\(s\) enumerated from services\/platform\/migrations \(18 migration file\(s\)\), 0 row\(s\)\n/);
+    // ⏱ 2026-09-27 · the file count is READ from the directory the monitor walks
+    // (NPDA-F3's form): a literal went stale with every migration — 17, then
+    // 0018, then 0019 — while the table count below stays the property.
+    const platformMigrations = readdirSync(join(REPO, 'services/platform/migrations')).filter((f) => f.endsWith('.sql')).length;
+    assert.match(
+      r.stdout,
+      new RegExp(`MONITOR · \\[pipeline B-17\\] · platform_db: 22 table\\(s\\) enumerated from services/platform/migrations \\(${platformMigrations} migration file\\(s\\)\\), 0 row\\(s\\)\\n`),
+    );
     assert.match(
       r.stdout,
       /MONITOR · \[pipeline B-17\] · subscriptiontracker_db: 4 table\(s\) enumerated from services\/subscriptiontracker-api\/migrations \(2 migration file\(s\)\), 0 row\(s\) · 4 exempt table\(s\), not queried/,

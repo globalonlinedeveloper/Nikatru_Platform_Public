@@ -26,6 +26,7 @@ import {
   type MoneyEnvironment,
   type NormalizedNotification,
   type SubjectAdjustment,
+  type SubjectOneTime,
   type SubjectSubscription,
   type SubjectTransfer,
   decideAdjustment,
@@ -502,6 +503,21 @@ export async function deriveAndApply(
   n: NormalizedNotification,
 ): Promise<ApplyResult> {
   const result = await derive(deps, n);
+  await concludeDerivation(deps, n, result);
+  return result;
+}
+
+/**
+ * Stamp the stored notification with what a derivation concluded. ONE form for
+ * every entry: `deriveAndApply` above and src/lib/mor/grant.ts (the one entry
+ * from a verified event to a grant) both end here, so "unconcluded" means the
+ * same thing whichever of them derived the row.
+ */
+export async function concludeDerivation(
+  deps: MoneyStoreDeps,
+  n: NormalizedNotification,
+  result: ApplyResult,
+): Promise<void> {
   await markDerived(
     deps,
     n,
@@ -510,12 +526,21 @@ export async function deriveAndApply(
       : `${result.outcome}: ${'detail' in result ? result.detail : ''}`,
     'userId' in result ? (result.userId ?? null) : null,
   );
-  return result;
 }
 
 async function derive(deps: MoneyStoreDeps, n: NormalizedNotification): Promise<ApplyResult> {
   if (n.subject.kind === 'unknown') {
     return { outcome: 'ignored', detail: n.subject.detail };
+  }
+  // ⏱ 2026-09-27 · a one-time purchase is decided by src/lib/mor/grant.ts, which
+  // maps its price to OUR offering. This module cannot (it may not import the
+  // Worker's config — see MoneyStoreDeps), so a one-time subject that reaches it
+  // directly is REFUSED by name, never granted and never acked.
+  if (n.subject.kind === 'one_time') {
+    return {
+      outcome: 'refused',
+      detail: 'one_time_outside_grant_path: a one-time purchase is granted through src/lib/mor/grant.ts, which maps its price to an offering',
+    };
   }
   // ⏱ 2026-09-15 · [ADR 085]: an attribution the adapter refused. Nothing is
   // written; the route answers 503 and the nightly re-derivation counts it.
@@ -637,6 +662,18 @@ async function applySubscription(
   }
   const decision = decideSubscription(s, deps.nowMs);
   if (!decision.ok) return { outcome: 'refused', detail: decision.reason };
+  // ⏱ 2026-09-27 · A LIFETIME IS NOT OVERWRITTEN BY A SUBSCRIPTION. The row is
+  // keyed (user, app, entitlement), so a later event of a subscription the same
+  // person also held — its cancellation, its lapse — would otherwise replace a
+  // paid one-time grant and end it at the subscription's period end.
+  const held = await liveOneTimeRow(deps, account);
+  if (held !== null) {
+    return {
+      outcome: 'ignored',
+      detail: `a one-time purchase (${held.provider} ${held.provider_transaction_id ?? '-'}) holds ${account.appId} for this account with no end date; this ${n.provider} subscription event changes no access to it`,
+      userId: account.userId,
+    };
+  }
   const written = await upsertEntitlement(deps, n, account, decision, {
     subscriptionId: s.subscriptionId,
     transactionId: s.transactionId,
@@ -658,7 +695,10 @@ async function applyAdjustment(
     // not the same as failing to decide.
     return { outcome: 'ignored', detail: `adjustment action '${a.actionVerbatim}' changes no entitlement` };
   }
-  const account = await resolveAccount(deps, n, a.subscriptionId, { userId: null, appId: null });
+  // ⏱ 2026-09-27 · A refund of a ONE-TIME purchase names its transaction and no
+  // subscription, and the one-time path links the account by that transaction
+  // (`applyOneTime`), so the transaction is the handle when no subscription is.
+  const account = await resolveAccount(deps, n, a.subscriptionId ?? a.transactionId, { userId: null, appId: null });
   // No metadata is offered, so no link is attempted and none can be refused; the check keeps the type honest.
   if (account !== null && 'refused' in account) return { outcome: 'refused', detail: account.refused };
   if (account === null) {
@@ -694,6 +734,18 @@ async function applyAdjustment(
       detail: 'an adjustment arrived for an account with no entitlement row — the grant it reverses has not been applied yet',
     };
   }
+  // ⏱ 2026-09-27 · A refund of ANOTHER purchase does not end a lifetime: the row
+  // is keyed (user, app, entitlement), so without this a refunded subscription
+  // would revoke a one-time grant bought separately. The one-time purchase's own
+  // refund names its own transaction and passes.
+  const held = await liveOneTimeRow(deps, account);
+  if (held !== null && held.provider_transaction_id !== a.transactionId) {
+    return {
+      outcome: 'ignored',
+      detail: `adjustment '${a.actionVerbatim}' reverses ${a.transactionId ?? '(no transaction)'}, and ${account.appId} is held by the one-time purchase ${held.provider_transaction_id ?? '-'}, which it does not reverse`,
+      userId: account.userId,
+    };
+  }
   const decision = decideAdjustment(
     a,
     {
@@ -710,5 +762,133 @@ async function applyAdjustment(
   });
   return written
     ? { outcome: 'applied', ...account, isActive: decision.decision.isActive }
+    : { outcome: 'stale', ...account };
+}
+
+/**
+ * ⏱ 2026-09-27 · The rails whose one-time purchases this module writes: a row
+ * from one of them with NO subscription, NO end date, active and unrevoked is a
+ * lifetime grant. Only `applyOneTime` writes such a row — a subscription row
+ * always carries its subscription id. The Razorpay one-time limb (D-b2) adds its
+ * rail here.
+ */
+const ONE_TIME_PROVIDERS: readonly string[] = ['paddle'];
+
+/** The live one-time (lifetime) grant this account holds on this app, or null. */
+async function liveOneTimeRow(
+  deps: MoneyStoreDeps,
+  account: { userId: string; appId: string },
+): Promise<{ provider: string; provider_transaction_id: string | null } | null> {
+  const row = await deps.db
+    .prepare(
+      `SELECT provider, provider_transaction_id FROM entitlements
+        WHERE user_id = ? AND app_id = ? AND entitlement = ?
+          AND provider IN (SELECT value FROM json_each(?))
+          AND provider_subscription_id IS NULL
+          AND expires_at IS NULL AND is_active = 1 AND revoked_at IS NULL`,
+    )
+    .bind(account.userId, account.appId, MONEY_ENTITLEMENT, JSON.stringify(ONE_TIME_PROVIDERS))
+    .first<{ provider: string; provider_transaction_id: string | null }>();
+  return row ?? null;
+}
+
+/**
+ * ⏱ 2026-09-27 · O-ONE-TIME-GRANT-UNBUILT — a ONE-TIME purchase of a single-app
+ * product, written to `entitlements` with NO END DATE.
+ *
+ * Reached ONLY from src/lib/mor/grant.ts, which has already mapped the purchase's
+ * price to OUR offering and passes that offering's app as `appId`; `derive`
+ * above refuses a one-time subject that arrives without it.
+ *
+ *   · The account resolves as a subscription's does, with the TRANSACTION as the
+ *     purchase handle: the checkout's metadata links it on first sight, and a
+ *     later refund (which names the transaction and no subscription) resolves
+ *     through that link. No account ⇒ `unclaimed`, recorded [5]M-7.
+ *   · The purchase must be attributed to the app the price sells. A price for one
+ *     product carrying another product's metadata is REFUSED, never granted to
+ *     either.
+ *   · `expires_at` is NULL — "Null means NO END DATE" (contract.ts
+ *     EntitlementDecision) — and the row carries no subscription id, which is
+ *     what `liveOneTimeRow` recognises. The ordering clause is the shared one.
+ */
+export async function applyOneTime(
+  deps: MoneyStoreDeps,
+  n: NormalizedNotification,
+  s: SubjectOneTime,
+  appId: string,
+): Promise<ApplyResult> {
+  // Checked BEFORE any link is written: the first link wins forever on this rail,
+  // so metadata naming another product must not become the purchase's owner record.
+  if (s.accountAppId !== null && s.accountAppId !== appId) {
+    return {
+      outcome: 'refused',
+      detail: `one_time_app_mismatch: the price on ${n.provider} purchase ${s.transactionId} sells ${appId}, and its metadata names ${s.accountAppId}`,
+    };
+  }
+  const account = await resolveAccount(deps, n, s.transactionId, {
+    userId: s.accountUserId,
+    appId: s.accountAppId,
+  });
+  if (account !== null && 'refused' in account) return { outcome: 'refused', detail: account.refused };
+  if (account === null) {
+    await recordUnclaimed(deps, n, {
+      subscriptionId: null,
+      transactionId: s.transactionId,
+      customerId: s.customerId,
+      customerEmail: s.customerEmail,
+      appId: deps.isKnownProduct(appId) ? appId : null,
+    });
+    return {
+      outcome: 'unclaimed',
+      detail: `no account is linked to ${n.provider} one-time purchase ${s.transactionId}, and the notification carried no usable metadata`,
+    };
+  }
+  if (account.appId !== appId) {
+    return {
+      outcome: 'refused',
+      detail: `one_time_app_mismatch: the price on ${n.provider} purchase ${s.transactionId} sells ${appId}, and the purchase is attributed to ${account.appId}`,
+    };
+  }
+  // ⏱ 2026-09-27 · THE ROW IS ORDERED ACROSS PURCHASES. The upsert's clause
+  // compares occurred_at on the (user, app, entitlement) row, whichever purchase
+  // wrote it, so a lifetime delivered AFTER a newer event of ANOTHER purchase —
+  // the subscription it replaces, cancelled a minute after the lifetime was
+  // bought — would conclude `stale` and grant nothing, paid for and silent.
+  // Refused by name instead: stored, re-delivered, counted nightly, and left for
+  // an operator's make-good. The same purchase's own older event passes to the
+  // upsert and is `stale` there, as every re-delivery is.
+  const ahead = await deps.db
+    .prepare(
+      `SELECT provider, provider_transaction_id, occurred_at FROM entitlements
+        WHERE user_id = ? AND app_id = ? AND entitlement = ?
+          AND occurred_at IS NOT NULL AND NOT (? > occurred_at)
+          AND (provider_transaction_id IS NULL OR provider_transaction_id <> ?)`,
+    )
+    .bind(account.userId, account.appId, MONEY_ENTITLEMENT, n.occurredAt, s.transactionId)
+    .first<{ provider: string; provider_transaction_id: string | null; occurred_at: string }>();
+  if (ahead !== null && ahead !== undefined) {
+    return {
+      outcome: 'refused',
+      detail: `one_time_behind_newer_event: ${n.provider} one-time purchase ${s.transactionId} (${n.occurredAt}) reached a row another purchase wrote at ${ahead.occurred_at} (${ahead.provider} ${ahead.provider_transaction_id ?? '-'}); the ordering clause would drop it, so it is refused for an operator rather than concluded stale`,
+    };
+  }
+  const decision: DecisionOutcome & { ok: true } = {
+    ok: true,
+    decision: {
+      isActive: 1,
+      expiresAt: null,
+      currentPeriodEnd: null,
+      trialEnd: null,
+      providerStatus: s.statusVerbatim,
+      revokedAt: null,
+      revocationReason: null,
+    },
+  };
+  const written = await upsertEntitlement(deps, n, account, decision, {
+    subscriptionId: null,
+    transactionId: s.transactionId,
+  });
+  return written
+    ? { outcome: 'applied', ...account, isActive: 1 }
     : { outcome: 'stale', ...account };
 }

@@ -945,7 +945,8 @@
         "The page names it ahead of the switch on purpose: the disclosure is in place before the button is.",
         "subscriptiontracker/privacy.html is NOT in `namedIn`: while the flag is off no text may claim that",
         "Subscription Tracker offers Google sign-in, so its Name row names Settings and Sign in with Apple only.",
-        "Add the page back in the change that turns Google on."
+        "Add the page back in the change that turns Google on.",
+        "⏱ 2026-09-26: ON. `AuthProviders.configured` says google: true, flipped with the live project in one window."
       ]
     },
     {

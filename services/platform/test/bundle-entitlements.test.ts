@@ -457,9 +457,13 @@ describe('0018 — every seeded source carries its term, and the term is binary'
       google_play_billing: 'subscription',
       microsoft_store: 'subscription',
       owner_comp: 'subscription',
+      // ⏱ 2026-09-27 · migration 0019 states its term in its own INSERT.
+      paddle_one_time: 'one_time',
       paddle_subscription: 'subscription',
       promo_code: 'subscription',
       razorpay_subscription: 'subscription',
+      // ⏱ 2026-09-27 · migration 0019, [ADR 092] §4.7: a bundle bought through RevenueCat.
+      revenuecat: 'subscription',
     });
   });
 

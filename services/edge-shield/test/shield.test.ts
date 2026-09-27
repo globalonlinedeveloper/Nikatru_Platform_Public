@@ -1,0 +1,505 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// The edge shield, driven through its REAL fetch handler with a stub origin and
+// stub Rate Limiting bindings. LEAD RULING SHIELD-R1, row
+// O-BOXES-UNSHIELDED-FROM-SPIKES. What each block holds:
+//   · pass-through fidelity — the origin receives the incoming request itself
+//     (method, URL, headers incl. the client address Cloudflare set, body
+//     stream), and the client receives the origin's status, headers and body
+//     plus `x-nikatru-shield: 1`;
+//   · a refusal with Retry-After per class (429; 503 for the refresh grant) from
+//     ONE global cap each (LEAD RULING SHIELD-R3), in the shape the client
+//     behind each host understands — and the Worker reads no client address and
+//     no Origin to get there;
+//   · fail OPEN — an absent, throwing or rejecting limiter admits and is counted;
+//   · the JWKS edge cache — one origin read per TTL whatever the query string;
+//   · classification — what is counted, what is not, and why.
+// No test reaches the network: ../_shared/test/no-network.ts rejects any fetch
+// a test did not stub.
+// ─────────────────────────────────────────────────────────────────────────────
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import worker, { JWKS_TTL_SECONDS } from '../src/index';
+import { CLASSES, classify, normalisePath, type ShieldClass } from '../src/classify';
+import { failOpenSeen } from '../src/limit';
+import type { Env, RateLimiterBinding } from '../src/types';
+
+const AUTH = 'https://auth-api.nikatru.com';
+const GT = 'https://glitchtip.nikatru.com';
+
+type Counting = RateLimiterBinding & { calls: string[] };
+/** Every binding of Env, present, each recording the keys it was asked about. */
+type TestEnv = { [K in keyof Env]-?: Counting };
+
+/** A limiter that admits the first `limit` calls per key, then refuses. */
+function counting(limit: number): Counting {
+  const seen = new Map<string, number>();
+  const calls: string[] = [];
+  return {
+    calls,
+    async limit({ key }) {
+      calls.push(key);
+      const n = (seen.get(key) ?? 0) + 1;
+      seen.set(key, n);
+      return { success: n <= limit };
+    },
+  };
+}
+
+function fullEnv(globalLimit = 1000): TestEnv {
+  return {
+    AUTH_CREDENTIAL_GLOBAL_LIMITER: counting(globalLimit),
+    AUTH_REFRESH_GLOBAL_LIMITER: counting(globalLimit),
+    AUTH_OTHER_GLOBAL_LIMITER: counting(globalLimit),
+    INTAKE_GLOBAL_LIMITER: counting(globalLimit),
+  };
+}
+
+/** The ExecutionContext the runtime hands the handler; records what it was asked. */
+function ctx(): ExecutionContext & { waits: Promise<unknown>[]; passedThrough: number } {
+  const c = {
+    waits: [] as Promise<unknown>[],
+    passedThrough: 0,
+    waitUntil(p: Promise<unknown>) {
+      c.waits.push(p);
+    },
+    passThroughOnException() {
+      c.passedThrough++;
+    },
+    props: {},
+  };
+  return c as unknown as ExecutionContext & { waits: Promise<unknown>[]; passedThrough: number };
+}
+
+/** The stub origin: records every request it receives and answers with `reply`. */
+let originCalls: Request[] = [];
+let reply: (req: Request) => Response | Promise<Response> = () => new Response('origin', { status: 200 });
+beforeEach(() => {
+  originCalls = [];
+  reply = () => new Response('origin', { status: 200 });
+  vi.stubGlobal('fetch', async (input: Request | string, init?: RequestInit) => {
+    const req = input instanceof Request && init === undefined ? input : new Request(input, init);
+    originCalls.push(req);
+    return reply(req);
+  });
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+/** A Cache API stand-in, installed per test as `caches.default`. */
+function stubCache() {
+  const store = new Map<string, Response>();
+  const cache = {
+    store,
+    async match(req: Request) {
+      const hit = store.get(req.url);
+      return hit ? hit.clone() : undefined;
+    },
+    async put(req: Request, res: Response) {
+      store.set(req.url, res);
+    },
+  };
+  vi.stubGlobal('caches', { default: cache });
+  return cache;
+}
+
+/** A request as Cloudflare hands it to the Worker: the edge sets the client's
+ *  address header itself, so every test request carries one — which is what
+ *  lets the tests below prove the Worker never READS it. */
+function req(url: string, init: RequestInit & { ip?: string | null } = {}): Request {
+  const { ip = '203.0.113.7', ...rest } = init;
+  const headers = new Headers(rest.headers);
+  if (ip !== null) headers.set('CF-Connecting-IP', ip);
+  return new Request(url, { ...rest, headers });
+}
+
+const password = () =>
+  req(`${AUTH}/auth/v1/token?grant_type=password`, {
+    method: 'POST',
+    body: JSON.stringify({ email: 'a@example.com', password: 'x' }),
+    headers: { 'content-type': 'application/json', apikey: 'anon' },
+  });
+
+describe('pass-through fidelity', () => {
+  it('forwards the incoming request itself — method, URL, headers, client address and body', async () => {
+    const r = req(`${AUTH}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      body: '{"email":"a@example.com","password":"x"}',
+      headers: { 'content-type': 'application/json', apikey: 'anon-key', authorization: 'Bearer t', 'x-real-ip': '203.0.113.7' },
+    });
+    await worker.fetch(r, fullEnv(), ctx());
+    expect(originCalls).toHaveLength(1);
+    const got = originCalls[0];
+    expect(got).toBe(r); // the SAME object: nothing was rebuilt, re-read or re-encoded
+    expect(got.method).toBe('POST');
+    expect(got.url).toBe(`${AUTH}/auth/v1/token?grant_type=password`);
+    expect(got.headers.get('apikey')).toBe('anon-key');
+    expect(got.headers.get('authorization')).toBe('Bearer t');
+    expect(got.headers.get('CF-Connecting-IP')).toBe('203.0.113.7');
+    expect(got.headers.get('x-real-ip')).toBe('203.0.113.7');
+    expect(got.bodyUsed).toBe(false); // the shield never read the body; the origin gets the stream
+    expect(await got.text()).toBe('{"email":"a@example.com","password":"x"}');
+  });
+
+  it('returns the origin status, headers and body, adding only x-nikatru-shield', async () => {
+    reply = () =>
+      new Response('{"error":"invalid_grant"}', {
+        status: 400,
+        statusText: 'Bad Request',
+        headers: { 'content-type': 'application/json', 'x-sb-error-code': 'invalid_credentials', 'set-cookie': 'a=1' },
+      });
+    const res = await worker.fetch(password(), fullEnv(), ctx());
+    expect(res.status).toBe(400);
+    expect(res.statusText).toBe('Bad Request');
+    expect(res.headers.get('content-type')).toBe('application/json');
+    expect(res.headers.get('x-sb-error-code')).toBe('invalid_credentials');
+    expect(res.headers.get('set-cookie')).toBe('a=1');
+    expect(res.headers.get('x-nikatru-shield')).toBe('1');
+    expect(await res.text()).toBe('{"error":"invalid_grant"}');
+  });
+
+  it('streams the origin body through without buffering it', async () => {
+    const enc = new TextEncoder();
+    let pulled = 0;
+    reply = () =>
+      new Response(
+        new ReadableStream({
+          pull(c) {
+            pulled++;
+            if (pulled > 3) c.close();
+            else c.enqueue(enc.encode(`chunk${pulled};`));
+          },
+        }),
+        { status: 200 },
+      );
+    const res = await worker.fetch(req(`${GT}/api/0/organizations/`), fullEnv(), ctx());
+    expect(res.body).toBeInstanceOf(ReadableStream);
+    expect(await res.text()).toBe('chunk1;chunk2;chunk3;');
+  });
+
+  it('passes a redirect through as a redirect (GoTrue /authorize answers 302)', async () => {
+    reply = () => new Response(null, { status: 302, headers: { location: 'https://accounts.example/o' } });
+    const res = await worker.fetch(req(`${AUTH}/auth/v1/authorize?provider=google`), fullEnv(), ctx());
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('https://accounts.example/o');
+    expect(res.headers.get('x-nikatru-shield')).toBe('1');
+  });
+
+  it('carries the shield header on a response the origin refused (the probe relies on it)', async () => {
+    reply = () => new Response('forbidden', { status: 403 });
+    const res = await worker.fetch(req(`${GT}/api/1/envelope/`, { method: 'POST', body: '' }), fullEnv(), ctx());
+    expect(res.status).toBe(403);
+    expect(res.headers.get('x-nikatru-shield')).toBe('1');
+  });
+
+  it('asks the runtime to pass through on an exception, before doing anything else', async () => {
+    const c = ctx();
+    await worker.fetch(password(), fullEnv(), c);
+    expect(c.passedThrough).toBe(1);
+  });
+});
+
+describe('refused with Retry-After, per class', () => {
+  const cases: Array<[ShieldClass, () => Request]> = [
+    ['auth-credential', password],
+    ['auth-refresh', () => req(`${AUTH}/auth/v1/token?grant_type=refresh_token`, { method: 'POST', body: '{}' })],
+    ['auth-other', () => req(`${AUTH}/auth/v1/user`)],
+    ['intake', () => req(`${GT}/api/1/envelope/`, { method: 'POST', body: 'x' })],
+  ];
+
+  for (const [cls, make] of cases) {
+    it(`${cls}: the global cap refuses across DIFFERENT clients, keyed global:${cls}, with Retry-After = the period, and the origin never sees it`, async () => {
+      const env = fullEnv(2);
+      const statuses: number[] = [];
+      for (const ip of ['198.51.100.1', '198.51.100.2', '198.51.100.3']) {
+        const r = make();
+        const moved = new Request(r, { headers: new Headers(r.headers) });
+        moved.headers.set('CF-Connecting-IP', ip);
+        statuses.push((await worker.fetch(moved, env, ctx())).status);
+      }
+      expect(statuses).toEqual([200, 200, CLASSES[cls].refusal]);
+      expect(originCalls).toHaveLength(2);
+      const used = (Object.keys(env) as Array<keyof TestEnv>).filter((k) => env[k].calls.length > 0);
+      expect(used).toHaveLength(1);
+      expect(new Set(env[used[0]].calls)).toEqual(new Set([`global:${cls}`]));
+      const res = await worker.fetch(make(), env, ctx());
+      expect(res.status).toBe(CLASSES[cls].refusal);
+      expect(res.headers.get('Retry-After')).toBe(String(CLASSES[cls].period));
+      expect(res.headers.get('x-nikatru-shield')).toBe('1');
+      expect(res.headers.get('Cache-Control')).toBe('no-store');
+    });
+  }
+
+  it('🔴 reads NO client-address header and NO Origin, admitted or refused (LEAD RULING SHIELD-R3, rv-c21 SHIELD-F2)', async () => {
+    // ADR no.011 / ADR no.020: no Worker reads a client-IP header. The request
+    // still CARRIES one to the origin (the pass-through test holds that); the
+    // Worker itself never asks for it, nor for the Origin.
+    const asked: string[] = [];
+    const get = Headers.prototype.get;
+    vi.spyOn(Headers.prototype, 'get').mockImplementation(function (this: Headers, name: string) {
+      asked.push(String(name).toLowerCase());
+      return get.call(this, name);
+    });
+    for (const limit of [1000, 0]) {
+      for (const [, make] of cases) {
+        const r = make();
+        const withOrigin = new Request(r, { headers: new Headers(r.headers) });
+        withOrigin.headers.set('Origin', 'https://nikatru.com');
+        withOrigin.headers.set('X-Forwarded-For', '198.51.100.9');
+        asked.length = 0;
+        await worker.fetch(withOrigin, fullEnv(limit), ctx());
+        for (const h of ['cf-connecting-ip', 'x-forwarded-for', 'x-real-ip', 'true-client-ip', 'origin', 'referer']) {
+          expect(asked, `the Worker read ${h}`).not.toContain(h);
+        }
+      }
+    }
+  });
+
+  it('every class but the refresh grant is refused 429; the refresh grant 503', () => {
+    const by = Object.fromEntries(Object.entries(CLASSES).map(([k, v]) => [k, v.refusal]));
+    expect(by).toEqual({ 'auth-credential': 429, 'auth-refresh': 503, 'auth-other': 429, intake: 429 });
+  });
+
+  it('auth: the refusal is GoTrue’s versioned over-limit shape, so the app shows "Too many attempts"', async () => {
+    // gotrue-dart reads `code` when x-supabase-api-version is echoed and `error_code`
+    // otherwise; packages/chassis_screens/lib/auth/auth_error_text.dart maps
+    // over_request_rate_limit, or a message containing "rate limit", to authRateLimited.
+    const env = fullEnv(0);
+    const res = await worker.fetch(password(), env, ctx());
+    expect(res.status).toBe(429);
+    expect(res.headers.get('x-sb-error-code')).toBe('over_request_rate_limit');
+    expect(res.headers.get('x-supabase-api-version')).toBe('2024-01-01');
+    expect(res.headers.get('Content-Type')).toBe('application/json');
+    const body = (await res.json()) as { message: string };
+    expect(body).toEqual({
+      code: 'over_request_rate_limit',
+      error_code: 'over_request_rate_limit',
+      msg: 'Request rate limit reached',
+      message: 'Request rate limit reached',
+    });
+    expect(body.message.toLowerCase()).toContain('rate limit');
+  });
+
+  it('🔴 the refresh grant is refused 503, never 429: gotrue-dart signs the user out on a refresh 4xx', async () => {
+    // gotrue-dart 2.26.0 _doRefresh: `error is! AuthRetryableFetchException` removes the
+    // session and emits signedOut; only a 5xx or a network error is retryable. A 429
+    // here would sign out every user whose hourly refresh landed in an over-limit minute.
+    const env = fullEnv(0);
+    const res = await worker.fetch(req(`${AUTH}/auth/v1/token?grant_type=refresh_token`, { method: 'POST', body: '{}' }), env, ctx());
+    expect(res.status).toBe(503);
+    expect(res.status >= 500).toBe(true);
+    expect(res.headers.get('Retry-After')).toBe(String(CLASSES['auth-refresh'].period));
+    expect(((await res.json()) as { error_code: string }).error_code).toBe('over_request_rate_limit');
+  });
+
+  it('intake: the 429 carries X-Sentry-Rate-Limits, the Sentry protocol’s all-categories back-off', async () => {
+    const env = fullEnv(0);
+    const res = await worker.fetch(req(`${GT}/api/1/store/`, { method: 'POST', body: '{}' }), env, ctx());
+    expect(res.status).toBe(429);
+    expect(res.headers.get('X-Sentry-Rate-Limits')).toBe(`${CLASSES.intake.period}::organization`);
+    expect(res.headers.get('Retry-After')).toBe(String(CLASSES.intake.period));
+    // an integer >= 1: a `0` is 0 s to sentry-dart and 60 s to sentry-cocoa
+    expect(Number(res.headers.get('Retry-After'))).toBeGreaterThanOrEqual(1);
+  });
+
+  it('a browser can READ the refusal: `Access-Control-Allow-Origin: *`, never an echoed Origin, and Retry-After exposed', async () => {
+    const env = fullEnv(0);
+    const r = password();
+    const withOrigin = new Request(r, { headers: new Headers(r.headers) });
+    withOrigin.headers.set('Origin', 'https://nikatru.com');
+    const res = await worker.fetch(withOrigin, env, ctx());
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    expect(res.headers.get('Access-Control-Allow-Credentials')).toBeNull();
+    expect(res.headers.get('Vary')).toBeNull();
+    expect(res.headers.get('Access-Control-Expose-Headers')).toContain('Retry-After');
+  });
+
+  it('a PASSED-THROUGH answer keeps the origin’s own CORS headers, untouched', async () => {
+    reply = () =>
+      new Response('{}', {
+        status: 200,
+        headers: { 'Access-Control-Allow-Origin': 'https://nikatru.com', 'Access-Control-Allow-Credentials': 'true', Vary: 'Origin' },
+      });
+    const res = await worker.fetch(req(`${AUTH}/auth/v1/user`), fullEnv(), ctx());
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://nikatru.com');
+    expect(res.headers.get('Access-Control-Allow-Credentials')).toBe('true');
+    expect(res.headers.get('Vary')).toBe('Origin');
+  });
+});
+
+describe('fail OPEN — the shield is never the reason auth is down', () => {
+  it('a limiter that THROWS admits the request, logs shield_fail_open and counts it', async () => {
+    const env = fullEnv();
+    env.AUTH_CREDENTIAL_GLOBAL_LIMITER = {
+      calls: [],
+      async limit() {
+        throw new Error('rate limiting service unavailable');
+      },
+    } as unknown as Counting;
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const before = failOpenSeen();
+    const res = await worker.fetch(password(), env, ctx());
+    expect(res.status).toBe(200);
+    expect(originCalls).toHaveLength(1);
+    expect(failOpenSeen()).toBe(before + 1);
+    const line = JSON.parse(String(log.mock.calls.at(-1)?.[0]));
+    expect(line).toMatchObject({ event: 'shield_fail_open', class: 'auth-credential', isolateCount: before + 1 });
+    expect(line.reason).toContain('rate limiting service unavailable');
+    // the line carries the class, the reason and the count — nothing about the client
+    expect(Object.keys(line).sort()).toEqual(['class', 'event', 'isolateCount', 'reason']);
+  });
+
+  it('a limiter that REJECTS its promise admits the request and is counted', async () => {
+    const env = fullEnv();
+    env.INTAKE_GLOBAL_LIMITER = {
+      calls: [],
+      limit: () => Promise.reject(new TypeError('network')),
+    } as unknown as Counting;
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const before = failOpenSeen();
+    const res = await worker.fetch(req(`${GT}/api/1/envelope/`, { method: 'POST', body: 'x' }), env, ctx());
+    expect(res.status).toBe(200);
+    expect(failOpenSeen()).toBe(before + 1);
+  });
+
+  it('an ABSENT binding admits the request and is counted', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const before = failOpenSeen();
+    const res = await worker.fetch(password(), {}, ctx());
+    expect(res.status).toBe(200);
+    expect(failOpenSeen()).toBe(before + 1); // the one global limiter of the class
+  });
+
+  it('a limiter answering without a boolean admits and is counted', async () => {
+    const env = fullEnv();
+    env.AUTH_REFRESH_GLOBAL_LIMITER = { calls: [], limit: async () => ({}) } as unknown as Counting;
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const before = failOpenSeen();
+    const res = await worker.fetch(req(`${AUTH}/auth/v1/token?grant_type=refresh_token`, { method: 'POST' }), env, ctx());
+    expect(res.status).toBe(200);
+    expect(failOpenSeen()).toBe(before + 1);
+  });
+
+});
+
+describe('JWKS at the edge', () => {
+  const jwks = '{"keys":[{"kty":"EC","kid":"k1"}]}';
+
+  it('reads the origin once per TTL and serves the rest from the cache, whatever the query string', async () => {
+    const cache = stubCache();
+    reply = () => new Response(jwks, { status: 200, headers: { 'content-type': 'application/json', 'set-cookie': 's=1' } });
+    const c1 = ctx();
+    const first = await worker.fetch(req(`${AUTH}/auth/v1/.well-known/jwks.json`), fullEnv(), c1);
+    await Promise.all(c1.waits);
+    const second = await worker.fetch(req(`${AUTH}/auth/v1/.well-known/jwks.json?cb=123`), fullEnv(), ctx());
+    expect(originCalls).toHaveLength(1);
+    expect(first.headers.get('x-nikatru-shield-cache')).toBe('MISS');
+    expect(second.headers.get('x-nikatru-shield-cache')).toBe('HIT');
+    expect(await second.text()).toBe(jwks);
+    expect(second.headers.get('x-nikatru-shield')).toBe('1');
+    const stored = [...cache.store.values()][0];
+    expect(stored.headers.get('Cache-Control')).toBe(`public, max-age=${JWKS_TTL_SECONDS}`);
+    expect(stored.headers.get('set-cookie')).toBeNull();
+    expect([...cache.store.keys()]).toEqual([`${AUTH}/auth/v1/.well-known/jwks.json`]);
+  });
+
+  it('caches for exactly 300 s (the ruling’s bound)', () => {
+    expect(JWKS_TTL_SECONDS).toBe(300);
+  });
+
+  it('never caches a non-200 answer', async () => {
+    const cache = stubCache();
+    reply = () => new Response('bad gateway', { status: 502 });
+    const c = ctx();
+    const res = await worker.fetch(req(`${AUTH}/auth/v1/.well-known/jwks.json`), fullEnv(), c);
+    await Promise.all(c.waits);
+    expect(res.status).toBe(502);
+    expect(cache.store.size).toBe(0);
+  });
+
+  it('a cache fault is a miss, never an outage', async () => {
+    vi.stubGlobal('caches', {
+      default: {
+        match: () => Promise.reject(new Error('cache down')),
+        put: () => Promise.reject(new Error('cache down')),
+      },
+    });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    reply = () => new Response(jwks, { status: 200 });
+    const res = await worker.fetch(req(`${AUTH}/auth/v1/.well-known/jwks.json`), fullEnv(), ctx());
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe(jwks);
+  });
+
+  it('is not rate limited: a cached JWKS costs no limiter call', async () => {
+    stubCache();
+    reply = () => new Response(jwks, { status: 200 });
+    const env = fullEnv(0);
+    const res = await worker.fetch(req(`${AUTH}/auth/v1/.well-known/jwks.json`), env, ctx());
+    expect(res.status).toBe(200);
+    for (const b of Object.values(env)) expect(b.calls).toHaveLength(0);
+  });
+});
+
+describe('classification', () => {
+  const at = (u: string, m = 'POST') => classify(new URL(u), m);
+
+  it('credential: every non-refresh grant, and each path that proves, mints or mails a credential', () => {
+    for (const u of [
+      `${AUTH}/auth/v1/token?grant_type=password`,
+      `${AUTH}/auth/v1/token?grant_type=pkce`,
+      `${AUTH}/auth/v1/token?grant_type=id_token`,
+      `${AUTH}/auth/v1/token`,
+      `${AUTH}/auth/v1/token?grant_type=refresh_token&grant_type=password`,
+      `${AUTH}/auth/v1/otp`,
+      `${AUTH}/auth/v1/signup`,
+      `${AUTH}/auth/v1/recover`,
+      `${AUTH}/auth/v1/resend`,
+      `${AUTH}/auth/v1/verify?token=x&type=signup`,
+      `${AUTH}/auth/v1/magiclink`,
+      `${AUTH}/auth/v1/reauthenticate`,
+      `${AUTH}/auth/v1/factors/abc/verify`,
+      `${AUTH}/auth/v1/factors/abc/challenge`,
+      `${AUTH}//auth/v1//TOKEN/?grant_type=password`,
+    ]) {
+      expect(at(u), u).toEqual({ kind: 'limit', cls: 'auth-credential' });
+    }
+    expect(at(`${AUTH}/auth/v1/verify?token=x`, 'GET')).toEqual({ kind: 'limit', cls: 'auth-credential' });
+  });
+
+  it('refresh: exactly one grant_type, and it is refresh_token', () => {
+    expect(at(`${AUTH}/auth/v1/token?grant_type=refresh_token`)).toEqual({ kind: 'limit', cls: 'auth-refresh' });
+  });
+
+  it('other: every remaining /auth/v1 path is bounded by the wide backstop', () => {
+    for (const u of [`${AUTH}/auth/v1/user`, `${AUTH}/auth/v1/logout`, `${AUTH}/auth/v1/settings`, `${AUTH}/auth/v1/admin/users`, `${AUTH}/auth/v1/health`]) {
+      expect(at(u, 'GET'), u).toEqual({ kind: 'limit', cls: 'auth-other' });
+    }
+    expect(at(`${AUTH}/auth/v1/.well-known/jwks.json`, 'HEAD')).toEqual({ kind: 'limit', cls: 'auth-other' });
+  });
+
+  it('intake: envelope and store, any project id, with or without the trailing slash', () => {
+    for (const u of [`${GT}/api/1/envelope/`, `${GT}/api/1/store/`, `${GT}/api/42/envelope`, `${GT}//api/7/STORE/`]) {
+      expect(at(u), u).toEqual({ kind: 'limit', cls: 'intake' });
+    }
+  });
+
+  it('pass: CORS preflights, the GlitchTip API, and anything off the two routes', () => {
+    expect(at(`${AUTH}/auth/v1/token?grant_type=password`, 'OPTIONS')).toEqual({ kind: 'pass' });
+    expect(at(`${GT}/api/1/envelope/`, 'OPTIONS')).toEqual({ kind: 'pass' });
+    expect(at(`${GT}/api/0/organizations/nikatru/releases/`)).toEqual({ kind: 'pass' });
+    expect(at(`${GT}/api/0/projects/nikatru/app/files/dsyms/`)).toEqual({ kind: 'pass' });
+    expect(at(`${AUTH}/rest/v1/x`, 'GET')).toEqual({ kind: 'pass' });
+    expect(at('https://example.com/auth/v1/token?grant_type=password')).toEqual({ kind: 'pass' });
+  });
+
+  it('JWKS: only a GET of the exact path is served from the cache', () => {
+    expect(at(`${AUTH}/auth/v1/.well-known/jwks.json`, 'GET')).toEqual({ kind: 'jwks' });
+    expect(at(`${AUTH}/auth/v1/.well-known/jwks.json?x=1`, 'get')).toEqual({ kind: 'jwks' });
+  });
+
+  it('normalisePath only ever moves a variant INTO a class', () => {
+    expect(normalisePath('//Auth//v1///Token/')).toBe('/auth/v1/token');
+    expect(normalisePath('/')).toBe('/');
+  });
+});

@@ -22,6 +22,14 @@
       "requiresReceipt": true
     },
     {
+      "source": "paddle_one_time",
+      "requiresReceipt": true
+    },
+    {
+      "source": "revenuecat",
+      "requiresReceipt": true
+    },
+    {
       "source": "promo_code",
       "requiresReceipt": false
     },

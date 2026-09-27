@@ -32,6 +32,7 @@
       "globs": [
         "services/subscriptiontracker-api/**",
         "services/platform/**",
+        "services/edge-shield/**",
         "services/_shared/**",
         "catalog/apps.json",
         "catalog/bundles.json",
@@ -231,6 +232,15 @@
       "catalog/bundles.json",
       "extensions/catalog/extensions.json",
       "tooling/channel-register.json",
+      ".github/workflows/deploy-workers.yml"
+    ],
+    "edge-shield": [
+      "services/edge-shield/**",
+      "tooling/edge-ratelimit-rule.json",
+      "tooling/ops/edge-ratelimit-rule.mjs",
+      "tooling/ops/check-edge-shield.mjs",
+      "tooling/ops/bounded-retry.mjs",
+      "tooling/ci/text-reductions.mjs",
       ".github/workflows/deploy-workers.yml"
     ]
   }

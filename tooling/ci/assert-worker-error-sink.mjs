@@ -110,6 +110,51 @@ const workers = listDir(rel(SERVICES), { withFileTypes: true })
   .filter((name) => existsSync(rel(`${SERVICES}/${name}/src/index.ts`)))
   .sort();
 
+// ⏱ 2026-09-26 · EDGE WORKERS (LEAD RULING SHIELD-R1, row O-BOXES-UNSHIELDED-FROM-SPIKES).
+// services/edge-shield has no Hono app and no `app.onError`: it is a pass-through
+// on zone routes in front of Box B and Box C, and its answer to an exception is
+// `passThroughOnException()` — the request goes to the origin as if no Worker were
+// bound, so there is no 500 of its own to report. Reporting from it would also mean
+// the shield in front of GlitchTip's intake POSTing into GlitchTip on every fault.
+// So a Worker the platform register names in `edgeWorkers` (limb 7 of
+// assert-platform-register.mjs) leaves limbs 2-5 here, and THIS block holds that
+// exemption TRUE: its entrypoint, comment-stripped, must call
+// `passThroughOnException(` and must declare no `app.onError(`. It stays in the
+// derived set and in the MIN_WORKERS floor; it is judged, only differently.
+const PLATFORM_REGISTER = 'tooling/platform-register.json';
+let edgeNames = new Set();
+if (existsSync(rel(PLATFORM_REGISTER))) {
+  let reg = null;
+  try {
+    reg = JSON.parse(read(PLATFORM_REGISTER));
+  } catch (err) {
+    coverageLost(`${PLATFORM_REGISTER} could not be parsed (${err.message}), so which Workers are edge pass-throughs cannot be said.`);
+  }
+  const list = Array.isArray(reg?.edgeWorkers) ? reg.edgeWorkers : [];
+  edgeNames = new Set(
+    list
+      .map((e) => /^services\/([^/]+)\/wrangler\.jsonc?$/.exec(String(e?.config ?? ''))?.[1])
+      .filter((n) => typeof n === 'string' && workers.includes(n)),
+  );
+}
+let edgeJudged = 0;
+for (const name of edgeNames) {
+  const entryPath = `${SERVICES}/${name}/src/index.ts`;
+  const entry = stripSourceComments(read(entryPath), '.ts');
+  if (!/\.passThroughOnException\s*\(/.test(entry)) {
+    fail(
+      `${entryPath} is an edge Worker (tooling/platform-register.json edgeWorkers) and does not call ` +
+        '`passThroughOnException(`. Its exemption from the crash sink rests on an exception handing the request to ' +
+        'the origin; without that call an exception is a Cloudflare error page that nothing reports.',
+    );
+  } else if (entry.includes('app.onError(')) {
+    fail(`${entryPath} is an edge Worker and declares \`app.onError(\`: it has an app after all, so it owes limbs 2-5.`);
+  } else {
+    ok(`${name} — edge pass-through: an exception hands the request to the origin (passThroughOnException); no app of its own to report from`);
+    edgeJudged++;
+  }
+}
+
 if (workers.length < MIN_WORKERS) {
   coverageLost(
     `${workers.length} Worker entrypoint(s) found under ${SERVICES}/*/src/index.ts, fewer than the ${MIN_WORKERS} that exist today. ` +
@@ -283,6 +328,7 @@ let wired = 0;
  *  distinguishable in the log rather than both reading as ok. */
 let delegated = 0;
 for (const name of workers) {
+  if (edgeNames.has(name)) continue;
   const entryPath = `${SERVICES}/${name}/src/index.ts`;
   const entry = stripSourceComments(read(entryPath), '.ts');
   let problems = 0;
@@ -405,7 +451,8 @@ for (const name of workers) {
 }
 
 const summary =
-  `worker error sink — ${wired}/${workers.length} Worker(s) report unhandled errors to a declared sink ` +
+  `worker error sink — ${wired}/${workers.length - edgeNames.size} Worker(s) report unhandled errors to a declared sink ` +
+  `and ${edgeJudged}/${edgeNames.size} edge pass-through(s) hand an exception to their origin ` +
   `(${workers.join(', ')}); ${delegated} of them judged at services/_shared/src/error-sink.ts, the one home ` +
   `their src/lib/error-sink.ts re-exports ([ADR 067] decision 2); behaviour is asserted by ` +
   'services/*/test/error-sink.test.ts';

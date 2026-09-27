@@ -645,6 +645,9 @@ describe('assert-app-yaml — the declaration and its renderings', () => {
         'tooling/app-yaml/schema/app.schema.json',
         'tooling/sites/apex.mjs',
         'contracts/store/vocabulary.js',
+        // ⏱ 2026-09-27 · render.mjs reads the bundle register through the one
+        // Node catalogue reader (the store SKU map, NP-Db).
+        'tooling/catalog/read.mjs',
       ]) {
         mkdirSync(join(root, dirname(rel)), { recursive: true });
         cpSync(join(REPO, rel), join(root, rel));
@@ -2010,6 +2013,7 @@ describe('every live vendor that receives personal data is named in each app not
 // app id; the Worker cannot read YAML, so render.mjs writes the table into
 // services/platform/src/lib/mor/revenuecat-app-ids.ts. Each case is declared on
 // its own (assert-no-loop-cases).
+const SKU_MODULE = 'services/platform/src/lib/mor/store-skus.ts';
 describe('ADR 085 A — the RevenueCat app-id map is rendered from the declarations', () => {
   const MODULE = 'services/platform/src/lib/mor/revenuecat-app-ids.ts';
   const IAP =
@@ -2021,6 +2025,10 @@ describe('ADR 085 A — the RevenueCat app-id map is rendered from the declarati
     const root = tree();
     mkdirSync(join(root, dirname(MODULE)), { recursive: true });
     cpSync(join(REPO, MODULE), join(root, MODULE));
+    // ⏱ 2026-09-27 · render.mjs renders the store SKU map into the same directory
+    // (O-IAP-BUNDLE-SALE-UNLOCKS-ONE-APP), so a fixture with the directory carries
+    // that module too, or `--check` names it stale on every case below.
+    cpSync(join(REPO, SKU_MODULE), join(root, SKU_MODULE));
     return root;
   };
 
@@ -2082,6 +2090,93 @@ describe('ADR 085 A — the RevenueCat app-id map is rendered from the declarati
       const { code, out } = spawn(RENDER, [root, '--check']);
       assert.notEqual(code, 0, out);
       assert.match(out, /revenuecatAppIds\.android is "rc_fixture_android", which apps\/subscriptiontracker\/app\.yaml\s+also declares/);
+    } finally { kill(root); }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-27 · O-IAP-BUNDLE-SALE-UNLOCKS-ONE-APP (NP-Db) — the store SKU map is
+// RENDERED: 12a's storeProducts (kind `app`) and catalog/bundles.json
+// storeProducts (kind `bundle`) into services/platform/src/lib/mor/store-skus.ts,
+// where the RevenueCat route tells a bundle SKU from a single-app one. Each case
+// is declared on its own (assert-no-loop-cases).
+describe('NP-Db — the store SKU map is rendered from storeProducts and the bundle register', () => {
+  const BUNDLES = 'catalog/bundles.json';
+  const withSkus = () => {
+    const root = tree();
+    mkdirSync(join(root, dirname(SKU_MODULE)), { recursive: true });
+    cpSync(join(REPO, 'services/platform/src/lib/mor/revenuecat-app-ids.ts'), join(root, 'services/platform/src/lib/mor/revenuecat-app-ids.ts'));
+    cpSync(join(REPO, SKU_MODULE), join(root, SKU_MODULE));
+    cpSync(join(REPO, BUNDLES), join(root, BUNDLES));
+    return root;
+  };
+  const bundleSku = (sku) => (text) => text.replace('"storeProducts": []', `"storeProducts": [${JSON.stringify(sku)}]`);
+
+  test('SK1 · the committed module matches: app #1\'s two SKUs as `app`, and no bundle SKU until O-D3', () => {
+    const root = withSkus();
+    try {
+      const { code, out } = spawn(RENDER, [root, '--check']);
+      assert.equal(code, 0, out);
+      const text = get(root, SKU_MODULE);
+      assert.match(text, /\{ app: "subscriptiontracker", productId: "pro_monthly", kind: "app", plan: "single-monthly", term: "subscription", store: null/);
+      assert.match(text, /\{ app: "subscriptiontracker", productId: "pro_yearly", kind: "app", plan: "single-yearly", term: "subscription", store: null/);
+      assert.doesNotMatch(text, /kind: "bundle"/);
+    } finally { kill(root); }
+  });
+
+  test('SK2 · a bundle store product renders as kind `bundle`, with its feature set, rail and term', () => {
+    const root = withSkus();
+    try {
+      put(root, BUNDLES, bundleSku({ app: 'subscriptiontracker', store: 'apple-iap', plan: 'bundle-monthly', productId: 'nikatru_all_monthly', term: 'subscription' })(get(root, BUNDLES)));
+      const stale = spawn(RENDER, [root, '--check']);
+      assert.equal(stale.code, 1, stale.out);
+      assert.match(stale.out, /store-skus\.ts/);
+      const wrote = spawn(RENDER, [root]);
+      assert.equal(wrote.code, 0, wrote.out);
+      assert.match(
+        get(root, SKU_MODULE),
+        /\{ app: "subscriptiontracker", productId: "nikatru_all_monthly", kind: "bundle", plan: "bundle-monthly", term: "subscription", store: "apple-iap", featureSet: "nikatru_all", version: 1 \}/,
+      );
+    } finally { kill(root); }
+  });
+
+  test('SK3 (RC10) · a HAND EDIT to the SKU map is refused by --check', () => {
+    const root = withSkus();
+    try {
+      put(root, SKU_MODULE, get(root, SKU_MODULE).replace('productId: "pro_monthly", kind: "app"', 'productId: "pro_monthly", kind: "bundle"'));
+      const { code, out } = spawn(RENDER, [root, '--check']);
+      assert.equal(code, 1, out);
+      assert.match(out, /store-skus\.ts/);
+    } finally { kill(root); }
+  });
+
+  test('SK4 (R-6) · a lifetime bundle plan is a problem — a lifetime is never sold in-app', () => {
+    const root = withSkus();
+    try {
+      put(root, BUNDLES, bundleSku({ app: 'subscriptiontracker', store: 'apple-iap', plan: 'bundle-lifetime', productId: 'nikatru_all_life', term: 'one_time' })(get(root, BUNDLES)));
+      const { code, out } = spawn(RENDER, [root, '--check']);
+      assert.equal(code, 1, out);
+      assert.match(out, /storeProducts\[0\]: `plan` is not one of bundle-monthly, bundle-yearly \(a lifetime is never sold in-app\)/);
+    } finally { kill(root); }
+  });
+
+  test('SK4b (R-6, ADR 099 §3) · a `one_time` term on an in-app bundle plan is a problem — a store subscriber rolls', () => {
+    const root = withSkus();
+    try {
+      put(root, BUNDLES, bundleSku({ app: 'subscriptiontracker', store: 'apple-iap', plan: 'bundle-yearly', productId: 'nikatru_all_yearly', term: 'one_time' })(get(root, BUNDLES)));
+      const { code, out } = spawn(RENDER, [root, '--check']);
+      assert.equal(code, 1, out);
+      assert.match(out, /storeProducts\[0\]: `term` is not subscription \(every in-app plan is a subscription/);
+    } finally { kill(root); }
+  });
+
+  test('SK5 · one store product claimed by an app AND a bundle is a problem, never last-writer-wins', () => {
+    const root = withSkus();
+    try {
+      put(root, BUNDLES, bundleSku({ app: 'subscriptiontracker', store: 'play-billing', plan: 'bundle-yearly', productId: 'pro_monthly', term: 'subscription' })(get(root, BUNDLES)));
+      const { code, out } = spawn(RENDER, [root, '--check']);
+      assert.equal(code, 1, out);
+      assert.match(out, /lists store product "pro_monthly" for app subscriptiontracker, which apps\/subscriptiontracker\/app\.yaml billing\.mobileIap\.storeProducts also lists/);
     } finally { kill(root); }
   });
 });

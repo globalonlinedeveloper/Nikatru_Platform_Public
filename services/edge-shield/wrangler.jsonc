@@ -1,0 +1,97 @@
+{
+  // ───────────────────────────────────────────────────────────────────────────
+  // Cloudflare Worker — edge-shield. Wrangler v4 / jsonc. LEAD RULINGS SHIELD-R1,
+  // R2 and R3 (2026-09-26), row O-BOXES-UNSHIELDED-FROM-SPIKES. A pass-through in
+  // front of Box C's auth and Box B's crash intake that counts four request
+  // classes against one GLOBAL cap each and answers 429 over a cap, or 503 for
+  // the refresh grant (SHIELD-R2); src/index.ts says what it does and does not do.
+  //
+  // No vars, no secrets, no D1, no KV: nothing here reaches either box except
+  // the request being passed through. Deployed by
+  // .github/workflows/deploy-workers.yml's `edge-shield` job.
+  // ───────────────────────────────────────────────────────────────────────────
+  "name": "edge-shield",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-01",
+  // why: fail-open events are `shield_fail_open` log lines (src/limit.ts), and
+  // Workers Logs is where they are counted. Workers Paid keeps a searchable
+  // history; a `wrangler tail` stream would not.
+  "observability": { "enabled": true },
+  // why: the shield answers on the two routes below and nowhere else. A
+  // *.workers.dev name would be a second door that `fetch(request)` cannot pass
+  // anywhere useful.
+  "workers_dev": false,
+  "preview_urls": false,
+  // why: ZONE ROUTES, NEVER custom_domain (LEAD RULING SHIELD-R1 §1). Both hosts
+  // are proxied Cloudflare Tunnel CNAMEs; a Custom Domain would try to own the
+  // hostname's DNS record and take the host off its tunnel. A zone route runs
+  // this Worker in front of the existing record and leaves DNS alone.
+  // tooling/ci/assert-platform-register.mjs limb 7 holds that shape.
+  "routes": [
+    { "pattern": "auth-api.nikatru.com/auth/v1/*", "zone_name": "nikatru.com" },
+    { "pattern": "glitchtip.nikatru.com/api/*", "zone_name": "nikatru.com" }
+  ],
+  // why: namespace_ids 1102/1104/1106/1108 are this Worker's own. A namespace_id
+  // is account-wide, and services/platform holds 1001-1012
+  // (test/wrangler-config.test.ts refuses a collision). The odd ids 1101-1107
+  // were the per-client limiters LEAD RULING SHIELD-R3 removed before any
+  // deploy; they stay unused rather than renumbered.
+  //
+  // ONE limiter per class, keyed `global:<class>`, and NO per-client one: this
+  // Worker never reads the client's address (SHIELD-R3, the ADR no.011 / ADR
+  // no.020 posture). The per-IP limit on the credential paths is the zone's own
+  // rate-limiting rule, tooling/edge-ratelimit-rule.json.
+  //
+  // Every period is 60 s, and the Retry-After a refusal carries is that period
+  // (src/classify.ts CLASSES, held equal by test/wrangler-config.test.ts). The
+  // binding offers 10 s or 60 s only; 60 s is the nearer to GoTrue's own 5-minute
+  // windows and cannot be spent six times a minute in bursts.
+  //
+  // ⚠️ NO CAPACITY OF EITHER BOX HAS EVER BEEN MEASURED — no load test has run on
+  // Box B or Box C, and Box C has no CPU/RAM reading since it took the auth stack.
+  // So no cap below is "sized from headroom". Each is anchored on a DOCUMENTED
+  // default or on the corpus's own labelled ESTIMATE (box-capacity report §8).
+  // A GLOBAL key is global to ONE Cloudflare location: Workers Rate Limiting
+  // counts per colo. 🔴 TWO CAPS SIT BELOW THE CORPUS'S OWN PLANNING PEAKS if
+  // traffic concentrates in one colo — AUTH_REFRESH (20/s vs ~28/s at 1M MAU)
+  // and INTAKE (10/s vs 20-50/s for 200 apps). That is right pre-launch (6
+  // users) and wrong at scale: measure the boxes and re-anchor every cap BEFORE
+  // scale, not "later" (rv-c21 SHIELD-F8).
+  "ratelimits": [
+    {
+      // why: 300/min (5/s) per colo. Each of these is a bcrypt check or a
+      // mail/sign-up; the corpus's ESTIMATE is ~57 password checks/s at half of
+      // Box C's 8 vCPU (70 ms bcrypt, assumed), so ten colos at the cap stay
+      // under it. Measured demand is ~0: 6 users, pre-launch.
+      "name": "AUTH_CREDENTIAL_GLOBAL_LIMITER",
+      "namespace_id": "1102",
+      "simple": { "limit": 300, "period": 60 }
+    },
+    {
+      // why: 1200/min (20/s) per colo, a tenth of the corpus's paper ceiling of
+      // 200 refreshes/s (an ESTIMATE) — each refresh rotates a token row in the
+      // 2-CPU database. 🔴 BELOW the ~28/s 1M-MAU planning peak (above). Refused
+      // 503, not 429 (src/classify.ts says why), and gotrue-dart re-asks a 503
+      // up to 6 times per 10 s tick, so a tripped cap sees up to x6 retry load.
+      "name": "AUTH_REFRESH_GLOBAL_LIMITER",
+      "namespace_id": "1104",
+      "simple": { "limit": 1200, "period": 60 }
+    },
+    {
+      // why: 1800/min (30/s) per colo, the wide backstop for every other
+      // /auth/v1 path (user, logout, settings, admin): a token check and one row
+      // read each, over GOTRUE_DB_MAX_POOL_SIZE 20.
+      "name": "AUTH_OTHER_GLOBAL_LIMITER",
+      "namespace_id": "1106",
+      "simple": { "limit": 1800, "period": 60 }
+    },
+    {
+      // why: 600/min (10/s) per colo. Measured intake is ~1 event per project
+      // per day; 🔴 the corpus's planning ESTIMATE for 200 apps is 20-50/s at
+      // peak (above), into one Granian worker and a 12-wide ingest lane.
+      "name": "INTAKE_GLOBAL_LIMITER",
+      "namespace_id": "1108",
+      "simple": { "limit": 600, "period": 60 }
+    }
+  ]
+}

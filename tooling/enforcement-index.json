@@ -28,7 +28,10 @@
     "claims": [
       "ADR 037",
       "ADR 075",
+      "ADR 078",
       "ADR 085",
+      "ADR 093",
+      "ADR 099",
       "D-5"
     ],
     "invokedBy": [
@@ -803,6 +806,7 @@
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/deploy-web.yml#site",
       ".github/workflows/deploy-workers.yml#app-worker",
+      ".github/workflows/deploy-workers.yml#edge-shield",
       ".github/workflows/deploy-workers.yml#platform",
       ".github/workflows/extensions.yml#store-publish",
       ".github/workflows/rollback.yml#rollback",
@@ -2945,6 +2949,7 @@
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/deploy-web.yml#site",
       ".github/workflows/deploy-workers.yml#app-worker",
+      ".github/workflows/deploy-workers.yml#edge-shield",
       ".github/workflows/deploy-workers.yml#platform"
     ],
     "kind": "guard",
@@ -2997,6 +3002,7 @@
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/deploy-web.yml#site",
       ".github/workflows/deploy-workers.yml#app-worker",
+      ".github/workflows/deploy-workers.yml#edge-shield",
       ".github/workflows/deploy-workers.yml#platform",
       ".github/workflows/extensions.yml#release",
       ".github/workflows/extensions.yml#store-publish",
@@ -3433,6 +3439,17 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/deploy-workers.yml#edge-shield",
+      ".github/workflows/ops-watch.yml#edge-shield"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-edge-shield.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "B-11",
       "O-4"
@@ -3539,6 +3556,17 @@
     ],
     "kind": "script",
     "ref": "tooling/ops/create-glitchtip-release.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/deploy-workers.yml#edge-shield",
+      ".github/workflows/ops-watch.yml#edge-shield"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/edge-ratelimit-rule.mjs",
     "references": [],
     "state": "WIRED"
   },

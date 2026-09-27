@@ -13,7 +13,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -167,7 +167,13 @@ describe('worker-set.mjs --for-deploy — the register, the committed lockfile a
     const e = cli('--emit', REPO);
     const entries = JSON.parse(j.stdout);
     assert.deepEqual(entries.map((x) => x.dir), JSON.parse(e.stdout).map((w) => `${SERVICES_DIR}/${w}`));
+    // ⏱ 2026-09-27 (SHIELD-F4): an EDGE Worker owes no smoke URL, DSN or migrations.
+    const edge = new Set((JSON.parse(readFileSync(join(REPO, 'tooling', 'platform-register.json'), 'utf8')).edgeWorkers ?? []).map((w) => w.name));
     for (const x of entries) {
+      if (edge.has(x.worker)) {
+        assert.deepEqual([x.smokeUrl, x.origin, x.dsnSecret, x.migrations], [null, null, null, null], `${x.dir} is an edge Worker`);
+        continue;
+      }
       assert.match(x.smokeUrl, /^https:\/\/[a-z0-9.-]+\/(?:[^\s]*\/)?health$/, `${x.dir} smokeUrl`);
       assert.ok(typeof x.dsnSecret === 'string' && x.dsnSecret !== '', `${x.dir} dsnSecret`);
     }
@@ -306,5 +312,80 @@ describe('worker-set.mjs --for-deploy — the register, the committed lockfile a
     const calls = wf.jobs.get('detect').logical.filter((l) => /tooling\/ci\/worker-set\.mjs/.test(l.text));
     assert.equal(calls.length, 1, `detect runs worker-set.mjs ${calls.length} time(s)`);
     assert.match(calls[0].text, /worker-set\.mjs --for-deploy --emit\b/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-27 · AN EDGE WORKER IS A ROW, AND NEVER AN APP WORKER (LEAD RULINGS
+// SHIELD-R1..R3, rv-c21 SHIELD-F4, row O-BOXES-UNSHIELDED-FROM-SPIKES).
+// services/edge-shield has a wrangler.jsonc and an `edgeWorkers` register row
+// with no dsnSecret, no host and no health route. Each case is a way the Workers
+// lane or the app deploy matrix could go wrong around it.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('worker-set.mjs --for-deploy — edge Workers (SHIELD-F4)', () => {
+  const HEALTH = [{ method: 'GET', path: '/v1/health' }];
+  const row = (dir) => ({ name: dir, config: `services/${dir}/wrangler.jsonc`, hosts: [`${dir}.example.test`], dsnSecret: 'GLITCHTIP_DSN', routes: HEALTH });
+  const edgeRow = { name: 'edge-shield', config: 'services/edge-shield/wrangler.jsonc', zoneRoutes: [{ pattern: 'auth.example.test/auth/v1/*', zone_name: 'example.test' }] };
+  const reg = (extra = {}) => ({ servingWorker: { ...row('platform'), routes: undefined }, routes: HEALTH, appWorkers: [row('zzz-api')], edgeWorkers: [edgeRow], ...extra });
+  function tree({ register = reg(), edgeLock = true } = {}) {
+    const r = root({});
+    for (const dir of ['platform', 'zzz-api', 'edge-shield']) {
+      const d = join(r, SERVICES_DIR, dir);
+      mkdirSync(d, { recursive: true });
+      writeFileSync(join(d, WORKER_CONFIG), '{ "name": "w", "main": "src/index.ts" }\n');
+      writeFileSync(join(d, 'package.json'), JSON.stringify({ name: dir, private: true }));
+      if (dir === 'edge-shield' && !edgeLock) continue;
+      writeFileSync(join(d, 'package-lock.json'), JSON.stringify({ name: dir, lockfileVersion: 3, packages: { '': { name: dir } } }));
+    }
+    mkdirSync(join(r, 'tooling'), { recursive: true });
+    writeFileSync(join(r, 'tooling', 'platform-register.json'), JSON.stringify(register, null, 2));
+    assert.equal(spawnSync('git', ['-C', r, 'init', '-q'], { encoding: 'utf8' }).status, 0, 'git init failed');
+    assert.equal(spawnSync('git', ['-C', r, 'add', '-A'], { encoding: 'utf8' }).status, 0, 'git add failed');
+    return r;
+  }
+
+  test('(a) an edgeWorkers row is a register row, so "every directory has a row" holds for the edge Worker', () => {
+    const j = cli('--for-deploy', '--json', tree());
+    assert.equal(j.code, 0, j.out);
+    assert.deepEqual(JSON.parse(j.stdout).map((x) => x.worker), ['edge-shield', 'platform', 'zzz-api']);
+  });
+
+  test('(a) without its edgeWorkers row the edge directory is refused by name, as any unregistered Worker is', () => {
+    const j = cli('--for-deploy', '--emit', tree({ register: reg({ edgeWorkers: [] }) }));
+    assert.equal(j.code, 1, j.out);
+    assert.match(j.out, /services\/edge-shield holds a wrangler\.jsonc and .* has no row for it \(servingWorker, appWorkers\[\] or edgeWorkers\[\]\)/);
+  });
+
+  test('(b) an edge row owes NO dsnSecret, smoke URL or migrations: its entry carries nulls, and nothing fails', () => {
+    const j = cli('--for-deploy', '--json', tree());
+    assert.equal(j.code, 0, j.out);
+    assert.deepEqual(JSON.parse(j.stdout)[0], { worker: 'edge-shield', dir: 'services/edge-shield', migrations: null, smokeUrl: null, origin: null, dsnSecret: null });
+  });
+
+  test('(b) 🔴 an edge Worker still owes its COMMITTED lockfile: without one it fails (exit 1), naming it', () => {
+    const j = cli('--for-deploy', '--emit', tree({ edgeLock: false }));
+    assert.equal(j.code, 1, j.out);
+    assert.match(j.out, /services\/edge-shield has no package-lock\.json/);
+    assert.equal(j.stdout, '');
+  });
+
+  test('(c) --emit keeps the edge Worker, so the Workers lane still typechecks, tests and dry-runs it', () => {
+    const j = cli('--for-deploy', '--emit', tree());
+    assert.equal(j.code, 0, j.out);
+    assert.deepEqual(JSON.parse(j.stdout), ['edge-shield', 'platform', 'zzz-api']);
+  });
+
+  test('(d) 🔴 --app-workers NEVER lists an edge Worker: the app deploy matrix is the appWorkers rows only', () => {
+    const j = cli('--for-deploy', '--json', '--app-workers', tree());
+    assert.equal(j.code, 0, j.out);
+    assert.deepEqual(JSON.parse(j.stdout).map((x) => x.worker), ['zzz-api']);
+  });
+
+  test('(d) the real tree: the app deploy matrix holds no edgeWorkers name', () => {
+    const j = cli('--for-deploy', '--json', '--app-workers', REPO);
+    assert.equal(j.code, 0, j.out);
+    const edge = (JSON.parse(readFileSync(join(REPO, 'tooling', 'platform-register.json'), 'utf8')).edgeWorkers ?? []).map((w) => w.name);
+    assert.ok(edge.length > 0, 'the real register declares no edge Worker, so this case tests nothing');
+    for (const x of JSON.parse(j.stdout)) assert.ok(!edge.includes(x.worker), `${x.worker} is an edge Worker in the app matrix`);
   });
 });

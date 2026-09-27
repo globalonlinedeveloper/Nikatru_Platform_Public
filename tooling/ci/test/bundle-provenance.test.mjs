@@ -33,6 +33,8 @@ const GUARD = join(CI_DIR, 'assert-bundle-provenance.mjs');
 
 const ROUTE = 'services/platform/src/routes/receipts.ts';
 const WRITER = 'services/platform/src/lib/mor/bundle-store.ts';
+/** ⏱ 2026-09-27 · the one entry from a verified money event to a grant: a second caller of the writer. */
+const RELAY = 'services/platform/src/lib/mor/grant.ts';
 const CONTRACT = 'contracts/entitlement/bundle.js';
 
 /**
@@ -146,9 +148,13 @@ describe('assert-bundle-provenance.mjs — no entitlement without a verified rec
   });
 
   test('BP4 — a writer with NO caller is COVERAGE LOST, not a pass over nothing', () => {
+    // ⏱ 2026-09-27 · the writer has TWO callers now — the receipt route and the
+    // grant relay (src/lib/mor/grant.ts) — so both go, or the case grades the one
+    // left and stops testing "no caller".
     const r = run(
       tree(DIRS, (d) => {
         rmSync(join(d, ROUTE));
+        rmSync(join(d, RELAY));
       }),
     );
     assert.equal(r.code, 2, r.out);
@@ -163,6 +169,35 @@ describe('assert-bundle-provenance.mjs — no entitlement without a verified rec
     );
     assert.equal(r.code, 2, r.out);
     assert.match(r.out, /parsed to ZERO bundle sources/);
+  });
+
+  test('BP7 — the grant RELAY passes because both of its callers verify, and the guard names them', () => {
+    // ⏱ 2026-09-27 · limb 3b. src/lib/mor/grant.ts writes bundle grants for events
+    // its callers verified; it has no seam of its own and limb 3 alone refused it.
+    const r = run(tree(DIRS));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /grant\.ts calls upsertBundleGrant\(\) as a RELAY \(limb 3b\)/);
+    assert.match(r.out, /services\/platform\/src\/routes\/money\.ts/);
+    assert.match(r.out, /services\/platform\/src\/scheduled\.ts/);
+  });
+
+  test('BP8 — ONE caller of the relay that does not verify first turns it RED', () => {
+    const r = run(
+      tree(DIRS, (d) =>
+        writeFileSync(
+          join(d, 'services/platform/src/unverified-door.ts'),
+          [
+            "import { grantFromVerifiedEvent } from './lib/mor/grant';",
+            'export async function unverifiedDoor(deps: never, n: never) {',
+            '  return grantFromVerifiedEvent(deps, n);',
+            '}',
+            '',
+          ].join('\n'),
+        ),
+      ),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /unverified-door\.ts calls grantFromVerifiedEvent\(\) at offset \d+ with no verification seam above it/);
   });
 
   test('BP6 — the one writer is still the one this guard found, by name', () => {
