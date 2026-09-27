@@ -385,6 +385,10 @@ describe('the FOURTH declaration — the Apple privacy manifest audit [G-49]', (
     // 30 → 32 on 2026-09-23 when `purchases_flutter` (the RevenueCat SDK behind
     // the IAP bridge, O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP) was linked on both
     // Apple targets: 32 × 7 = 224.
+    // 32 → 40 on 2026-09-26 when the bundles bp run 36229543907 shipped named
+    // four embedded SDKs no row answered for — Sentry.framework, RevenueCat,
+    // OrderedSet.framework and objective_c.framework — on both Apple targets
+    // (O-APPLE-PROVER-SKIPS-THE-PKG, `--built`): 40 × 7 = 280.
     // Widening the regex to `\d+` would buy quiet and lose exactly the signal.
     withTree(
       (root) =>
@@ -393,7 +397,7 @@ describe('the FOURTH declaration — the Apple privacy manifest audit [G-49]', (
         }),
       (r) => {
         assert.equal(r.status, 1);
-        assert.match(r.stderr, /carries 224 character\(s\) of `basis` across 32 row\(s\); the floor is 2000/);
+        assert.match(r.stderr, /carries 280 character\(s\) of `basis` across 40 row\(s\); the floor is 2000/);
       },
     );
   });

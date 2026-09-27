@@ -19,7 +19,7 @@
   "app-versioning.test.mjs": 104,
   "app-yaml.test.mjs": 152,
   "appimage-signing.test.mjs": 77,
-  "apple-privacy-manifest.test.mjs": 44,
+  "apple-privacy-manifest.test.mjs": 59,
   "apple-provisioning.test.mjs": 77,
   "apple-signing-2026-09-09.test.mjs": 22,
   "apple-signing-app-filter.test.mjs": 14,

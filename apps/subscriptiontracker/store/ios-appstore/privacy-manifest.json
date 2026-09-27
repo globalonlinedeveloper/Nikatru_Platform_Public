@@ -96,7 +96,7 @@
       "kind": "local",
       "path": "<PUB_CACHE>/hosted/pub.dev/<package>-<version>/**/PrivacyInfo.xcprivacy",
       "read": "2026-08-31",
-      "note": "Every row of `binaryInventory` whose `manifest` is `ships-own` was opened and its NSPrivacyAccessedAPITypes read. The two rows that say `none` were searched for `*.xcprivacy` and none exists. ⏱ 2026-09-22 (O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP): a FOURTH value now appears — `unread`, on the two purchases_flutter rows. It means exactly what it says: that binary's manifest has NOT been opened, so its `accessedApis` is empty by DEFAULT and not by measurement. It exists so the gap is visible in the inventory rather than hidden behind a `ships-own` this audit did not earn; the row's basis names the file to open and what to do with it. No `unread` row may reach an App Store upload."
+      "note": "Every row of `binaryInventory` whose `manifest` is `ships-own` was opened and its NSPrivacyAccessedAPITypes read. The two rows that say `none` were searched for `*.xcprivacy` and none exists. ⏱ 2026-09-22 (O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP): a FOURTH value now appears — `unread`, on the two purchases_flutter rows. It means exactly what it says: that binary's manifest has NOT been opened, so its `accessedApis` is empty by DEFAULT and not by measurement. It exists so the gap is visible in the inventory rather than hidden behind a `ships-own` this audit did not earn; the row's basis names the file to open and what to do with it. No `unread` row may reach an App Store upload. ⏱ 2026-09-26 (O-APPLE-PROVER-SKIPS-THE-PKG, apps-review B4b): no `unread` row remains, and a FIFTH value appears — `read`: the manifest was read OUT OF THE BUILT BUNDLE of build-platforms.yml run 36229543907 (the .ipa and the .pkg of that run), and the row pins it with `readFrom` (its path inside the .app) and `sha256`. `assert-apple-privacy-manifest.mjs --built` re-reads it on every bp run and fails when the bytes differ, and fails on any row still `unread`. The two purchases_flutter rows were measured to carry NO manifest of their own (none in the pub cache, none in either bundle), so they are `none`; the manifest that reaches Apple for the purchase SDK is RevenueCat's, which has its own row."
     },
     "sdkList": {
       "kind": "remote",
@@ -193,8 +193,16 @@
       "of somebody else's code, which is both wrong and un-maintainable.",
       "",
       "`manifest` is one of: `ships-own` (a PrivacyInfo.xcprivacy exists inside the package and was",
-      "read), `none` (searched, absent), `this-file` (the artefact this audit generates), or",
-      "`not-shipped` (dev-only, never in a release bundle)."
+      "read), `none` (searched, absent), `this-file` (the artefact this audit generates),",
+      "`not-shipped` (dev-only, never in a release bundle), or `read` (read out of the BUILT bundle and",
+      "pinned by `readFrom` and `sha256`; see sources.pluginManifests).",
+      "",
+      "⏱ 2026-09-26: A ROW ALSO ANSWERS FOR WHAT THE BUNDLE EMBEDS. The first word of `binary`, less",
+      "`.framework`, is the name `--built` matches against the .app: `<key>.framework` (a CocoaPods",
+      "plugin or a vendored SDK) or `<key>_<target>.bundle` (the resource bundle a Swift Package Manager",
+      "plugin leaves; its code is linked into the app binary). Four rows were added that day because the",
+      "bundles of bp run 36229543907 embed four SDKs no row named: Sentry.framework, OrderedSet.framework,",
+      "objective_c.framework and RevenueCat_RevenueCat.bundle."
     ],
     "ios": [
       {
@@ -307,9 +315,45 @@
       },
       {
         "binary": "purchases_flutter 10.13.1",
-        "manifest": "unread",
+        "manifest": "none",
         "accessedApis": [],
-        "basis": "⏱ ADDED 2026-09-22 (O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP). The RevenueCat Flutter SDK, linked into the build because apps/subscriptiontracker depends on the first-party bridge package nikatru_billing_revenuecat, which depends on purchases_flutter ^10.13.1 (packages/billing_revenuecat/pubspec.yaml). On this platform it drives StoreKit, and it is what makes an in-app purchase possible at all on the ios-appstore and macos-appstore channels. ⚠️ ITS OWN PrivacyInfo.xcprivacy WAS NOT READ, AND THAT IS WHY `accessedApis` IS THE EMPTY LIST BY DEFAULT RATHER THAN BY MEASUREMENT — the one thing this file exists to refuse. The pub cache was out of scope for the change that added this row (a draft lane with no `pub get`), so the reading is owed: open <pub cache>/purchases_flutter-<resolved version>/ios/Resources/PrivacyInfo.xcprivacy (and the macos twin), copy its NSPrivacyAccessedAPITypes reasons into `accessedApis` in the vocabulary spelling, pin the resolved version from pubspec.lock in `binary`, and re-run the generator. RevenueCat also publishes a privacy manifest and a signature for the native SDK it vendors; that claim is theirs, and it has not been verified here either."
+        "basis": "⏱ ADDED 2026-09-22 (O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP) as `unread`; ⏱ MEASURED 2026-09-26 (O-APPLE-PROVER-SKIPS-THE-PKG). The RevenueCat Flutter SDK, linked because apps/subscriptiontracker depends on the first-party bridge nikatru_billing_revenuecat, which depends on purchases_flutter ^10.13.1 (packages/billing_revenuecat/pubspec.yaml); on this platform it drives StoreKit. The reading that was owed found NO manifest of its own, twice. The pub cache's purchases_flutter-10.13.1 contains no *.xcprivacy at all, so the path the old basis named (ios/Resources/PrivacyInfo.xcprivacy) does not exist. And the .ipa of bp run 36229543907 embeds no purchases_flutter framework and no purchases_flutter_*.bundle. Its ios/purchases_flutter/Package.swift declares one Swift target with no resources, depending on PurchasesHybridCommon (exact 19.2.0), so Swift Package Manager links the plugin, PurchasesHybridCommon and RevenueCat into the app binary (all three names are strings in Runner). Its one native source, Sources/purchases_flutter/PurchasesFlutterPlugin.m, was grepped for the Required Reason symbols of all five categories and is clean. The manifest that reaches Apple for this SDK chain is RevenueCat's own: see the RevenueCat row. PurchasesHybridCommon leaves no resource bundle, so it ships no manifest and nothing in the .app names it; its code was not read here."
+      },
+      {
+        "binary": "Sentry.framework (Sentry-Cocoa 8.58.4, linked by sentry_flutter 9.26.0)",
+        "manifest": "read",
+        "readFrom": "Frameworks/Sentry.framework/PrivacyInfo.xcprivacy",
+        "sha256": "118b16e0e97ffe8b6f1f01b7e04f68e5da764474a4d39d2933b0eeaef3cdc0ca",
+        "accessedApis": [
+          "NSPrivacyAccessedAPICategoryUserDefaults: CA92.1",
+          "NSPrivacyAccessedAPICategorySystemBootTime: 35F9.1",
+          "NSPrivacyAccessedAPICategoryFileTimestamp: C617.1"
+        ],
+        "basis": "⏱ ADDED 2026-09-26 (O-APPLE-PROVER-SKIPS-THE-PKG). The native crash SDK sentry_flutter links. Until today it was named only inside the sentry_flutter row and in `cannotSee` as never read. Read out of the .ipa of bp run 36229543907: Sentry.framework, 8.58.4 (the pin the sentry_flutter row cites), carries its own PrivacyInfo.xcprivacy. It declares UserDefaults CA92.1, SystemBootTime 35F9.1 and FileTimestamp C617.1 as accessed APIs, and CrashData, PerformanceData and OtherDiagnosticData as collected — not linked, not tracking, AppFunctionality: the three crash-reporting rows this audit's collectedDataTypes already declares. It carries neither NSPrivacyTracking nor NSPrivacyTrackingDomains. SystemBootTime here is Sentry-Cocoa's declaration for its own binary and does not settle U-1, which is about App.framework. The framework's SIGNATURE was not verified here."
+      },
+      {
+        "binary": "RevenueCat (purchases-ios, linked through purchases_flutter 10.13.1)",
+        "manifest": "read",
+        "readFrom": "RevenueCat_RevenueCat.bundle/PrivacyInfo.xcprivacy",
+        "sha256": "76c876c73bf37d63b2944d0491e4d9a43d420de78b66512fcca27a484ae92e79",
+        "accessedApis": [
+          "NSPrivacyAccessedAPICategoryUserDefaults: CA92.1"
+        ],
+        "basis": "⏱ ADDED 2026-09-26 (O-APPLE-PROVER-SKIPS-THE-PKG). RevenueCat's native SDK, which purchases_flutter reaches through PurchasesHybridCommon 19.2.0. Swift Package Manager links its code into the app binary and ships its resources as RevenueCat_RevenueCat.bundle, which is where its manifest reaches Apple. Read out of the .ipa of bp run 36229543907: it declares UserDefaults CA92.1 as an accessed API and NSPrivacyTracking false (no NSPrivacyTrackingDomains key), and collects PurchaseHistory — not linked, not tracking, AppFunctionality. This audit's own PurchaseHistory row is `linked: true` because the app keys entitlement to the account; the SDK's declaration is about its own collection, and Apple aggregates the two. The purchases-ios version is not in the bundle's name and was not read; the digest is the pin. The SIGNATURE was not verified here."
+      },
+      {
+        "binary": "OrderedSet.framework (OrderedSet 6.0.3, a CocoaPods dependency of flutter_inappwebview_ios 1.1.2)",
+        "manifest": "read",
+        "readFrom": "Frameworks/OrderedSet.framework/OrderedSet_privacy.bundle/PrivacyInfo.xcprivacy",
+        "sha256": "5a9b8fc0cddb10201bb47cc2804b3f004c7251476622d25bfc4eb54ed46e1084",
+        "accessedApis": [],
+        "basis": "⏱ ADDED 2026-09-26 (O-APPLE-PROVER-SKIPS-THE-PKG). flutter_inappwebview_ios 1.1.2's podspec declares `s.dependency 'OrderedSet', '~>6.0.3'`, and CocoaPods embeds it as a framework of its own (org.cocoapods.OrderedSet). Read out of the .ipa of bp run 36229543907: its manifest, in OrderedSet_privacy.bundle, has all four keys present and EMPTY — NSPrivacyTracking false, NSPrivacyTrackingDomains [], NSPrivacyAccessedAPITypes [], NSPrivacyCollectedDataTypes []. The SIGNATURE was not verified here."
+      },
+      {
+        "binary": "objective_c.framework (the native asset of objective_c 9.4.1)",
+        "manifest": "none",
+        "accessedApis": [],
+        "basis": "⏱ ADDED 2026-09-26 (O-APPLE-PROVER-SKIPS-THE-PKG). The native half of package:objective_c, which path_provider_foundation 2.6.0 depends on (objective_c ^9.2.1; pubspec.lock resolves 9.4.1) for its direct FFI calls to Foundation. Flutter's native-assets build compiles it from the package's own src/ (CFBundleIdentifier io.flutter.flutter.native-assets.objective-c), outside CocoaPods and Swift Package Manager, which is why no plugin row named it. Measured in the .ipa of bp run 36229543907: the framework carries no PrivacyInfo.xcprivacy. Its native source in the pub cache (objective_c-9.4.1/src, the .m and .c files) was grepped for the Required Reason symbols of all five categories and is clean. What Dart SENDS through it by objc_msgSend is `ffiFindings` and `unresolved.U-1`, not this binary's own code."
       }
     ],
     "macos": [
@@ -403,9 +447,45 @@
       },
       {
         "binary": "purchases_flutter 10.13.1",
-        "manifest": "unread",
+        "manifest": "none",
         "accessedApis": [],
-        "basis": "⏱ ADDED 2026-09-22 (O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP). The RevenueCat Flutter SDK, linked into the build because apps/subscriptiontracker depends on the first-party bridge package nikatru_billing_revenuecat, which depends on purchases_flutter ^10.13.1 (packages/billing_revenuecat/pubspec.yaml). On this platform it drives StoreKit, and it is what makes an in-app purchase possible at all on the ios-appstore and macos-appstore channels. ⚠️ ITS OWN PrivacyInfo.xcprivacy WAS NOT READ, AND THAT IS WHY `accessedApis` IS THE EMPTY LIST BY DEFAULT RATHER THAN BY MEASUREMENT — the one thing this file exists to refuse. The pub cache was out of scope for the change that added this row (a draft lane with no `pub get`), so the reading is owed: open <pub cache>/purchases_flutter-<resolved version>/ios/Resources/PrivacyInfo.xcprivacy (and the macos twin), copy its NSPrivacyAccessedAPITypes reasons into `accessedApis` in the vocabulary spelling, pin the resolved version from pubspec.lock in `binary`, and re-run the generator. RevenueCat also publishes a privacy manifest and a signature for the native SDK it vendors; that claim is theirs, and it has not been verified here either."
+        "basis": "As iOS, measured on the .pkg of bp run 36229543907 (Subscriptions.app): no purchases_flutter framework and no purchases_flutter_*.bundle. macos/purchases_flutter/Package.swift is the same one resource-less target on PurchasesHybridCommon (exact 19.2.0), all three names are strings in the Subscriptions binary, and macos/purchases_flutter/Sources/purchases_flutter/PurchasesFlutterPlugin.m is clean on the same grep. RevenueCat's manifest is the RevenueCat row."
+      },
+      {
+        "binary": "Sentry.framework (Sentry-Cocoa 8.58.4, linked by sentry_flutter 9.26.0)",
+        "manifest": "read",
+        "readFrom": "Contents/Frameworks/Sentry.framework/Versions/A/Resources/PrivacyInfo.xcprivacy",
+        "sha256": "118b16e0e97ffe8b6f1f01b7e04f68e5da764474a4d39d2933b0eeaef3cdc0ca",
+        "accessedApis": [
+          "NSPrivacyAccessedAPICategoryUserDefaults: CA92.1",
+          "NSPrivacyAccessedAPICategorySystemBootTime: 35F9.1",
+          "NSPrivacyAccessedAPICategoryFileTimestamp: C617.1"
+        ],
+        "basis": "As iOS, read out of the .pkg of bp run 36229543907 (Subscriptions.app, CFBundleShortVersionString 8.58.4): the same bytes and the same digest as the iOS copy."
+      },
+      {
+        "binary": "RevenueCat (purchases-ios, linked through purchases_flutter 10.13.1)",
+        "manifest": "read",
+        "readFrom": "Contents/Resources/RevenueCat_RevenueCat.bundle/Contents/Resources/PrivacyInfo.xcprivacy",
+        "sha256": "76c876c73bf37d63b2944d0491e4d9a43d420de78b66512fcca27a484ae92e79",
+        "accessedApis": [
+          "NSPrivacyAccessedAPICategoryUserDefaults: CA92.1"
+        ],
+        "basis": "As iOS, read out of the .pkg of bp run 36229543907 (Subscriptions.app): the same bytes and the same digest as the iOS copy."
+      },
+      {
+        "binary": "OrderedSet.framework (OrderedSet 6.0.3, a CocoaPods dependency of flutter_inappwebview_macos 1.1.2)",
+        "manifest": "read",
+        "readFrom": "Contents/Frameworks/OrderedSet.framework/Versions/A/Resources/OrderedSet_privacy.bundle/Contents/Resources/PrivacyInfo.xcprivacy",
+        "sha256": "5a9b8fc0cddb10201bb47cc2804b3f004c7251476622d25bfc4eb54ed46e1084",
+        "accessedApis": [],
+        "basis": "As iOS (flutter_inappwebview_macos 1.1.2's podspec carries the same `~>6.0.3`), read out of the .pkg of bp run 36229543907: CFBundleShortVersionString 6.0.3, the same bytes and the same digest as the iOS copy."
+      },
+      {
+        "binary": "objective_c.framework (the native asset of objective_c 9.4.1)",
+        "manifest": "none",
+        "accessedApis": [],
+        "basis": "As iOS, measured in the .pkg of bp run 36229543907: the framework carries no PrivacyInfo.xcprivacy."
       }
     ]
   },
@@ -655,7 +735,7 @@
       {
         "sdk": "sentry",
         "onList": true,
-        "status": "BELIEVED satisfied by Sentry-Cocoa 8.58.4, NOT VERIFIED HERE — see cannotSee"
+        "status": "MANIFEST READ, SIGNATURE NOT VERIFIED HERE. ⏱ 2026-09-26: Sentry-Cocoa 8.58.4's PrivacyInfo.xcprivacy was read out of the built bundles of bp run 36229543907 and is pinned in binaryInventory (Sentry.framework); its signature has not been verified by anything in this repository — see cannotSee"
       }
     ]
   },
@@ -664,8 +744,8 @@
       "Stated out loud so a green guard is never mistaken for a complete audit."
     ],
     "items": [
-      "THE COCOAPODS CLOSURE. This audit ran on Windows. `Sentry/HybridSDK 8.58.4` — the only vendored native SDK in the bundle — was never fetched, so its PrivacyInfo.xcprivacy and its signature were NOT read. Sentry-Cocoa is believed to ship both; belief is not a reading. The macOS/iOS lane of .github/workflows/build-platforms.yml runs on a macOS runner and IS the place that could settle it from a real Pods/ checkout.",
-      "THE BUILT BUNDLE. Nothing here inspects a compiled .app. The aggregate privacy report Apple assembles at upload is a function of what is actually embedded, and that has never been read for this app on any platform.",
+      "THE COCOAPODS CLOSURE'S SIGNATURES. This audit ran on Windows. ⏱ 2026-09-26: the manifests of the native SDKs vendored into the bundle — `Sentry/HybridSDK 8.58.4` (Sentry.framework), RevenueCat and OrderedSet — were read out of the built bundles of bp run 36229543907 and are pinned in binaryInventory by sha256. Their SIGNATURES were not verified by anything in this repository.",
+      "THE BUILT BUNDLE, ON A PULL REQUEST. This run inspects no compiled .app. The aggregate privacy report Apple assembles at upload is a function of what is actually embedded; `--built` reads it in build-platforms.yml's PROVE step, on the .ipa's payload and the .pkg's wrapped .app. bp does not run on a pull request, so a dependency change is graded on the next bp run on main, not on its PR. A statically linked SDK that ships no resources leaves no directory in the bundle and is visible only through its row here.",
       "WHETHER APPLE'S SCANNER ATTRIBUTES A DYNAMIC objc_msgSend. `unresolved.U-1` turns on this and it is not knowable from outside App Store Connect."
     ]
   },

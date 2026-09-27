@@ -341,6 +341,7 @@
       "G-49"
     ],
     "invokedBy": [
+      ".github/workflows/build-platforms.yml#apple",
       ".github/workflows/ci.yml#workspace-gate"
     ],
     "kind": "guard",

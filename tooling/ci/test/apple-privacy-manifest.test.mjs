@@ -30,6 +30,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, cpSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { spiedRun, racyOn, pathKey } from './fixtures/fs-spy-run.mjs';
 import {
@@ -43,7 +44,7 @@ import {
   renderAll,
   renderManifest,
 } from '../../store/render-apple-privacy-manifest.mjs';
-import { parsePlist, parsePbxproj } from '../assert-apple-privacy-manifest.mjs';
+import { parsePlist, parsePbxproj, BUILT_LAYOUT } from '../assert-apple-privacy-manifest.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
@@ -748,6 +749,204 @@ describe('the limbs must bite', () => {
     assert.equal(code, 2, `COVERAGE LOST must exit 2, not ${code}:\n${out}`);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /enumerates no vocabulary\.purposes\.values/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// --built — THE BUNDLE THAT SHIPS (limb 8, O-APPLE-PROVER-SKIPS-THE-PKG)
+//
+// 🔴 THE BUNDLES BELOW ARE REBUILT FROM A CAPTURE, NOT IMAGINED.
+// fixtures/apple-run-36229543907/bundles.json is what readBuiltBundle() read out
+// of the .ipa and the .pkg that bp run 36229543907 shipped: every framework,
+// every SDK resource bundle and every PrivacyInfo.xcprivacy path with its digest.
+// The manifests the audit pins are committed byte for byte, the app's own is the
+// committed file (measured identical in both bundles), and the rest get a
+// placeholder because no row pins them. Each case then breaks ONE thing, against
+// a copy of the REAL audit.
+// ─────────────────────────────────────────────────────────────────────────────
+const RUN_DIR = join(CI_DIR, 'test', 'fixtures', 'apple-run-36229543907');
+const CAPTURED = JSON.parse(readFileSync(join(RUN_DIR, 'bundles.json'), 'utf8'));
+const PLACEHOLDER_PLIST = '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">\n<dict/>\n</plist>\n';
+
+/** The captured bundle for `platform`, rebuilt under TMP. `root` is the subject
+ *  tree whose committed app manifest the bundle carries; `mutate(app)` breaks
+ *  one thing in the bundle. */
+function builtApp(platform, root, mutate) {
+  const cap = CAPTURED[platform];
+  const layout = BUILT_LAYOUT[platform];
+  const app = join(TMP, `app${seq++}`, cap.app);
+  mkdirSync(join(app, layout.frameworks), { recursive: true });
+  writeFileSync(join(app, platform === 'ios' ? 'Info.plist' : join('Contents', 'Info.plist')), PLACEHOLDER_PLIST);
+  for (const fw of cap.frameworks) mkdirSync(join(app, layout.frameworks, fw), { recursive: true });
+  for (const b of cap.bundles) mkdirSync(join(app, layout.resources, b), { recursive: true });
+  for (const m of cap.manifests) {
+    const dst = join(app, m.rel);
+    mkdirSync(dirname(dst), { recursive: true });
+    if (m.captured === 'self') cpSync(join(root, 'apps', APP, MANIFEST_REL[platform]), dst);
+    else if (m.captured) cpSync(join(RUN_DIR, m.captured), dst);
+    else writeFileSync(dst, PLACEHOLDER_PLIST);
+  }
+  if (mutate) mutate(app);
+  return app;
+}
+
+/** `--built` on one bundle, against the subject tree `root`. */
+const runBuilt = (app, root, ...more) => {
+  const r = spawnSync(process.execPath, [GUARD, '--app', APP, '--built', app, ...more, root], { encoding: 'utf8' });
+  return { code: r.status, out: `${r.stdout}${r.stderr}` };
+};
+
+/** The audit row whose `binary` begins with `prefix`, on one platform. */
+const rowOf = (audit, platform, prefix) => {
+  const row = audit.binaryInventory[platform].find((r) => r.binary.startsWith(prefix));
+  assert.ok(row, `the real audit carries a ${platform} row beginning ${prefix}`);
+  return row;
+};
+
+describe('assert-apple-privacy-manifest.mjs --built — the bundle that ships', () => {
+  test('the capture is what it says: every committed manifest hashes to the digest recorded for it', () => {
+    let committed = 0;
+    for (const platform of PLATFORMS) {
+      for (const m of CAPTURED[platform].manifests) {
+        if (!m.captured || m.captured === 'self') continue;
+        const bytes = readFileSync(join(RUN_DIR, m.captured));
+        assert.equal(createHash('sha256').update(bytes).digest('hex'), m.sha256, `${m.captured} is not the ${m.rel} of run ${CAPTURED.run}`);
+        committed++;
+      }
+    }
+    assert.equal(committed, 6, 'three pinned manifests, captured on each of the two platforms');
+  });
+
+  test('the REAL audit passes against the iOS bundle bp run 36229543907 shipped, and prints what it embeds', () => {
+    const root = tree(null);
+    const { code, out } = runBuilt(builtApp('ios', root), root);
+    assert.equal(code, 0, out);
+    assert.match(out, /--built: OK — Runner\.app \(ios, apps\/subscriptiontracker\): 8 framework\(s\), 7 SDK resource bundle\(s\), 14 PrivacyInfo\.xcprivacy/);
+    assert.match(out, /RevenueCat_RevenueCat\.bundle ← RevenueCat \(purchases-ios/);
+    assert.match(out, /118b16e0e97ffe8b6f1f01b7e04f68e5da764474a4d39d2933b0eeaef3cdc0ca {2}Frameworks\/Sentry\.framework\/PrivacyInfo\.xcprivacy/);
+    assert.match(out, /CANNOT SEE — a statically linked SDK/);
+  });
+
+  test('the REAL audit passes against the macOS bundle the same run shipped inside the .pkg', () => {
+    const root = tree(null);
+    const { code, out } = runBuilt(builtApp('macos', root), root);
+    assert.equal(code, 0, out);
+    assert.match(out, /--built: OK — Subscriptions\.app \(macos, apps\/subscriptiontracker\): 8 framework\(s\), 7 SDK resource bundle\(s\), 14 PrivacyInfo\.xcprivacy/);
+    assert.match(out, /Contents\/Frameworks\/objective_c\.framework ← objective_c\.framework/);
+  });
+
+  // RC5 in the design's table. At BASE the flag did not exist: `--built x.app`
+  // read x.app as the repo root and exited 2 over `x.app/apps`.
+  test('RC5 — an extra Frameworks/Foo.framework that no row answers for exits 1', () => {
+    const root = tree(null);
+    const app = builtApp('ios', root, (a) => mkdirSync(join(a, 'Frameworks', 'Foo.framework')));
+    const { code, out } = runBuilt(app, root);
+    assert.equal(code, 1, out);
+    assert.match(out, /built-sdk · ios: Frameworks\/Foo\.framework is embedded in the bundle and no row of binaryInventory\.ios answers for it/);
+  });
+
+  test('RC5 — a Swift Package resource bundle that no row answers for exits 1 (the shape RevenueCat ships in)', () => {
+    const root = tree(null);
+    const app = builtApp('macos', root, (a) => mkdirSync(join(a, 'Contents', 'Resources', 'Foo_Foo.bundle')));
+    const { code, out } = runBuilt(app, root);
+    assert.equal(code, 1, out);
+    assert.match(out, /built-sdk · macos: Contents\/Resources\/Foo_Foo\.bundle is embedded in the bundle/);
+  });
+
+  test('RC6 — a real row set back to `manifest: unread` exits 1', () => {
+    const root = tree((r) =>
+      editAuditAndRegenerate(r, (a) => {
+        rowOf(a, 'ios', 'RevenueCat ').manifest = 'unread';
+      }),
+    );
+    const { code, out } = runBuilt(builtApp('ios', root), root);
+    assert.equal(code, 1, out);
+    assert.match(out, /built-unread · ios: `RevenueCat \(purchases-ios, linked through purchases_flutter 10\.13\.1\)` is still `manifest: unread`/);
+  });
+
+  test('built-hash — a pinned SDK manifest whose bytes changed exits 1 and names both digests', () => {
+    const root = tree(null);
+    const app = builtApp('ios', root, (a) => {
+      const rel = join(a, 'RevenueCat_RevenueCat.bundle', 'PrivacyInfo.xcprivacy');
+      writeFileSync(rel, mutated(readFileSync(rel, 'utf8'), '</plist>', '<!-- a newer SDK -->\n</plist>', 'edit the RevenueCat manifest'));
+    });
+    const { code, out } = runBuilt(app, root);
+    assert.equal(code, 1, out);
+    assert.match(out, /built-hash · ios: RevenueCat_RevenueCat\.bundle\/PrivacyInfo\.xcprivacy is sha256 [0-9a-f]{64} in the bundle, and `RevenueCat .*` pins 76c876c73bf3/);
+  });
+
+  test('built-hash — a pinned manifest that is no longer in the bundle exits 1', () => {
+    const root = tree(null);
+    const app = builtApp('macos', root, (a) =>
+      rmSync(join(a, 'Contents', 'Frameworks', 'OrderedSet.framework'), { recursive: true }),
+    );
+    const { code, out } = runBuilt(app, root);
+    assert.equal(code, 1, out);
+    assert.match(out, /was read from Contents\/Frameworks\/OrderedSet\.framework\/Versions\/A\/Resources\/OrderedSet_privacy\.bundle\/Contents\/Resources\/PrivacyInfo\.xcprivacy, and the bundle carries no file there/);
+  });
+
+  test('built-hash — a `read` row that carries no sha256 exits 1', () => {
+    const root = tree((r) =>
+      editAuditAndRegenerate(r, (a) => {
+        delete rowOf(a, 'ios', 'Sentry.framework ').sha256;
+      }),
+    );
+    const { code, out } = runBuilt(builtApp('ios', root), root);
+    assert.equal(code, 1, out);
+    assert.match(out, /built-hash · ios: `Sentry\.framework .*` is `manifest: read` and does not carry both `readFrom`/);
+  });
+
+  test('built-self — the app\'s own manifest missing from the bundle is the SILENT HALF, exit 1', () => {
+    const root = tree(null);
+    const app = builtApp('ios', root, (a) => rmSync(join(a, 'PrivacyInfo.xcprivacy')));
+    const { code, out } = runBuilt(app, root);
+    assert.equal(code, 1, out);
+    assert.match(out, /built-self · ios: the bundle carries no PrivacyInfo\.xcprivacy/);
+    assert.match(out, /SILENT HALF/);
+  });
+
+  test('built-self — an app manifest in the bundle that is not the committed one exits 1', () => {
+    const root = tree(null);
+    const app = builtApp('macos', root, (a) => {
+      const rel = join(a, 'Contents', 'Resources', 'PrivacyInfo.xcprivacy');
+      writeFileSync(rel, mutated(readFileSync(rel, 'utf8'), '<false/>', '<true/>', 'flip a boolean in the bundled app manifest'));
+    });
+    const { code, out } = runBuilt(app, root);
+    assert.equal(code, 1, out);
+    assert.match(out, /built-self · macos: the bundle's Contents\/Resources\/PrivacyInfo\.xcprivacy \(sha256 [0-9a-f]{64}\) is not the committed manifest/);
+  });
+
+  test('COVERAGE LOST — zero frameworks enumerated exits 2, not a pass over an empty list', () => {
+    const root = tree(null);
+    const app = builtApp('ios', root, (a) => {
+      rmSync(join(a, 'Frameworks'), { recursive: true });
+      mkdirSync(join(a, 'Frameworks'));
+    });
+    const { code, out } = runBuilt(app, root);
+    assert.equal(code, 2, `COVERAGE LOST must exit 2, not ${code}:\n${out}`);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /has no Frameworks\/\*\.framework/);
+  });
+
+  test('COVERAGE LOST — an unmatched glob arrives as its own text and exits 2', () => {
+    const root = tree(null);
+    const { code, out } = runBuilt(join(TMP, 'runner-temp', 'ipa-check-*', 'Payload', '*.app'), root);
+    assert.equal(code, 2, `COVERAGE LOST must exit 2, not ${code}:\n${out}`);
+    assert.match(out, /is not a directory, so no built bundle was read/);
+  });
+
+  test('COVERAGE LOST — a glob that matched two bundles exits 2 rather than reading one of them', () => {
+    const root = tree(null);
+    const { code, out } = runBuilt(builtApp('ios', root), root, builtApp('ios', root));
+    assert.equal(code, 2, `COVERAGE LOST must exit 2, not ${code}:\n${out}`);
+    assert.match(out, /--built takes ONE bundle and 2 were given/);
+  });
+
+  test('COVERAGE LOST — --built without --app exits 2 rather than guessing the audit', () => {
+    const root = tree(null);
+    const r = spawnSync(process.execPath, [GUARD, '--built', builtApp('ios', root), root], { encoding: 'utf8' });
+    assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+    assert.match(`${r.stdout}${r.stderr}`, /--built needs --app <slug>/);
   });
 });
 
