@@ -35,6 +35,7 @@ const WORKFLOW = '.github/workflows/e2e.yml';
  *  route relays to it. That server relation now lives in
  *  tooling/ci/assert-erasure-reach.mjs, with its own mutation tests. */
 const E2E_HARNESS = 'tooling/e2e';
+const WORKSPACE = 'pubspec.yaml';
 
 /** A real-tree copy carrying exactly what the guard reads. */
 function realTree() {
@@ -47,7 +48,18 @@ function realTree() {
   cpSync(join(REPO, APP_LIB), join(root, APP_LIB), { recursive: true });
   cpSync(join(REPO, WORKFLOW), join(root, WORKFLOW));
   cpSync(join(REPO, E2E_HARNESS), join(root, E2E_HARNESS), { recursive: true });
+  // 10b: the guard requires every app of the workspace set to carry its suite,
+  // and reads the set from the root pubspec (tooling/ci/app-set.mjs).
+  cpSync(join(REPO, WORKSPACE), join(root, WORKSPACE));
   return root;
+}
+
+/** Adds `apps/<id>` to the copied workspace, with or without its suite. */
+function addWorkspaceApp(root, id, { suite }) {
+  const p = join(root, WORKSPACE);
+  writeFileSync(p, readFileSync(p, 'utf8').replace(/^workspace:\n/m, () => `workspace:\n  - apps/${id}\n`));
+  mkdirSync(join(root, 'apps', id, 'integration_test'), { recursive: true });
+  if (suite) writeFileSync(join(root, 'apps', id, 'integration_test', 'app_test.dart'), 'void main() {}\n');
 }
 
 const readReg = (root) => JSON.parse(readFileSync(join(root, REGISTER), 'utf8'));
@@ -513,6 +525,37 @@ describe('coverage self-checks', () => {
       (r) => {
         assert.equal(r.status, 2);
         assert.match(r.stderr, /no Dart source was read/);
+      },
+    );
+  });
+
+  // ── 10b: every app of the workspace set carries integration_test/app_test.dart ──
+  test('GREEN — a second workspace app WITH its suite passes, and the ok line says apps=2', () => {
+    withTree(
+      (root) => addWorkspaceApp(root, 'second', { suite: true }),
+      (r) => {
+        assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+        assert.match(r.stdout, /every app of the workspace set carries integration_test\/app_test\.dart \(apps=2\)/);
+      },
+    );
+  });
+
+  test('RC6 — a second workspace app WITHOUT app_test.dart is exit 1, naming the file', () => {
+    withTree(
+      (root) => addWorkspaceApp(root, 'second', { suite: false }),
+      (r) => {
+        assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+        assert.match(r.stderr, /apps\/second\/integration_test\/app_test\.dart is missing/);
+      },
+    );
+  });
+
+  test('an empty workspace app set is COVERAGE LOST (2)', () => {
+    withTree(
+      (root) => writeFileSync(join(root, WORKSPACE), 'name: fixture_workspace\nworkspace:\n  - packages/core\n'),
+      (r) => {
+        assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+        assert.match(r.stderr, /assert-e2e-legs: .*declares no `workspace:` entry under apps\//);
       },
     );
   });
