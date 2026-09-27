@@ -97,24 +97,19 @@ export const LINK_KEYS = ['companyUrl', 'updateUrl', 'privacyUrl', 'termsUrl', '
  * entry is deleted.
  *
  * `rollback`: kept after the configuration moved away, so a rollback of a
- * secret is not blocked by the app's own policy. None today. The Phase 5 switch
- * PR — the one that moves SUPABASE_URL to the self-hosted host — deletes the
- * auth-api `prestage` entry below and adds the hosted Supabase origin here as a
- * `rollback`; it stays until Phase 6 retires the hosted project, as the comment
- * above the Content-Security-Policy line in apps/subscriptiontracker/web/_headers
- * says. A `rollback` origin that D derives again is not a finding: that is the
- * rollback in effect. Until that PR lands, a deploy after the secret moves is
- * red here, before anything is built.
+ * secret is not blocked by the app's own policy. None today. A `rollback`
+ * origin that D derives again is not a finding: that is the rollback in effect.
+ *
+ * ⏱ 2026-09-26 — the Phase 5 switch PR (#982, SUPABASE_URL moves to the
+ * self-hosted host) deleted the auth-api `prestage` entry #920 put here, because
+ * SUPABASE_URL now derives it. It adds NO hosted `rollback`: the switch drops
+ * the hosted Supabase origin from connect-src, and the rollback re-serves the
+ * pre-switch Pages deployment, whose _headers still names it, or reverts the
+ * switch — this entry included (the comment above the Content-Security-Policy
+ * line in apps/subscriptiontracker/web/_headers). So a deploy on the switched
+ * tree with SUPABASE_URL still hosted is red here, before anything is built.
  */
-export const DECLARED = [
-  {
-    origin: 'https://auth-api.nikatru.com',
-    kind: 'prestage',
-    reason:
-      '#920 auth cutover prep: SUPABASE_URL moves here at Phase 5; a host missing from connect-src blocks every web sign-in with a CSP violation no server log shows',
-    retire: 'when D derives it',
-  },
-];
+export const DECLARED = [];
 
 const DECLARED_KINDS = ['prestage', 'rollback'];
 

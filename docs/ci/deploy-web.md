@@ -246,10 +246,10 @@ build calls and requires it to EQUAL `connect-src` minus `'self'`:
   (`platformBaseUrl`, `configBaseUrl`). A key the file no longer declares is
   COVERAGE LOST (exit 2).
 - **`DECLARED`**: origins `connect-src` carries ahead of the configuration.
-  Today there is one `prestage` entry, `https://auth-api.nikatru.com` (#920).
-  Once a define derives it, the step is red until the entry is deleted. The
-  Phase 5 switch PR deletes it and adds the hosted Supabase origin as a
-  `rollback` entry, which stays until Phase 6.
+  Today there are none. A `prestage` entry that a define now derives is red
+  until the entry is deleted: the Phase 5 switch (#982) deleted the
+  `https://auth-api.nikatru.com` entry #920 put there, because `SUPABASE_URL`
+  now derives it, and added no hosted `rollback` entry.
 
 Either direction fails the step: a derived origin `connect-src` does not name
 (the browser would refuse it), or a listed origin nothing derives. So does an
