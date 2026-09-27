@@ -212,6 +212,10 @@
       "tooling/ci/assert-deploy-triggers-deploy.mjs",
       "tooling/ci/lane-map.json",
       "tooling/channel-register.json",
+      "tooling/apple-provisioning.json",
+      "tooling/ci/apple-provisioning.mjs",
+      "tooling/ci/read-identity.mjs",
+      "tooling/store/store-record.mjs",
       "tooling/wrangler/**",
       ".github/workflows/deploy-web.yml"
     ],

@@ -50,6 +50,29 @@ export const swornFilesOf = (register, channelId) =>
     (f) => typeof f === 'string' && f.endsWith('.json'),
   );
 
+/** ⏱ O-REAL-SUBMISSION-FLAG-UNGUARDED (absent from open.json on 2026-09-27; 9b, rv-c22) — the flag that tells a declaration gate
+ *  it runs inside a REAL submission (LEAD RULING O-A2-R1 (absent from open.json: a ruling, not a row): `declaredOn: null` refuses a real
+ *  submission only). An entry carrying `realFlag` has it checked by limb 3 of
+ *  assert-publish-steps-guarded.mjs: REQUIRED in a job that holds a store publish step,
+ *  REFUSED in one that does not, since a dry run never refuses on a declaration date. */
+export const REAL_SUBMISSION_FLAG = '--real-submission';
+
+/** ⏱ LEAD RULING 2026-09-26 22:00Z (9b, rv-c22) — channels whose store takes a console
+ *  declaration that has NO sworn file in this repository, so the declaration DATE alone
+ *  (apps/<id>/app.yaml stores.<channel>.declaredOn) gates a real submission. Each names
+ *  the console form, which the refusal tells the owner to submit. */
+export const DECLARATION_ONLY_CHANNELS = Object.freeze({
+  'windows-store': "Partner Center's Properties (the privacy answers) and its age ratings questionnaire",
+});
+
+/** Submitting app channels that owe NO declaration gate, each with its ruling. Limb 3 fails a
+ *  submitting app row that is neither gated nor listed here, so a new store lane cannot skip
+ *  the declaration gate by omission. */
+export const DECLARATION_EXEMPT = Object.freeze({
+  'linux-snap': 'the Snap Store has no privacy-declaration form to swear (LEAD RULING 2026-09-26 22:00Z)',
+  'macos-appstore': "one App Store Connect record covers iOS and macOS, so its App Privacy answers are ios-appstore's, gated in the same job",
+});
+
 /**
  * One entry per gate:
  *   guard       the repo-relative guard a lane step runs as `node <guard> <arg>`;
@@ -57,7 +80,9 @@ export const swornFilesOf = (register, channelId) =>
  *   channels    the channel ids the entry names outright (each must be a
  *               register row), or null when it applies by a row property;
  *   appliesTo   true when a lane submitting `row` owes this gate; its second
- *               argument is the parsed channel register the row came from.
+ *               argument is the parsed channel register the row came from;
+ *   realFlag    (declaration gates only) the flag its step carries in a job that
+ *               publishes, and never in one that does not.
  */
 export const SUBMIT_PRECONDITIONS = [
   {
@@ -87,6 +112,10 @@ export const SUBMIT_PRECONDITIONS = [
     guard: 'tooling/ci/assert-sworn-store-files.mjs',
     arg: (row) => `--for-submission=${row.id}`,
     channels: null,
-    appliesTo: (row, register) => submits(row) && swornFilesOf(register, row.id).length > 0,
+    // ⏱ 9b (rv-c22): and every channel whose declaration lives only in its console
+    // (DECLARATION_ONLY_CHANNELS: windows-store), where the date alone is graded.
+    appliesTo: (row, register) =>
+      submits(row) && (swornFilesOf(register, row.id).length > 0 || Object.hasOwn(DECLARATION_ONLY_CHANNELS, row.id)),
+    realFlag: REAL_SUBMISSION_FLAG,
   },
 ];

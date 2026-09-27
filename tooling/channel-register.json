@@ -1393,25 +1393,11 @@
         "repositoryWhy": "An identifier read beside APP_STORE_CONNECT_PRIVATE_KEY by the same env-less jobs: submit-appstore.yml `dry-run`, apple-expiry-write.yml `write` and ops-watch.yml `glitchtip`."
       },
       {
-        "name": "APP_STORE_CONNECT_IOS_APP_ID",
-        "kind": "publishing-credential",
-        "why": "Which App Store record an iOS upload targets. An identifier.",
-        "environment": null,
-        "repositoryWhy": "An identifier read by submit-appstore.yml `dry-run`, which has no environment: the rehearsal validates the iOS App Store record it would submit to."
-      },
-      {
-        "name": "APP_STORE_CONNECT_MACOS_APP_ID",
-        "kind": "publishing-credential",
-        "why": "Which App Store record a macOS upload targets. An identifier.",
-        "environment": null,
-        "repositoryWhy": "An identifier read by submit-appstore.yml `dry-run`, which has no environment: the rehearsal validates the macOS App Store record it would submit to."
-      },
-      {
         "name": "MS_STORE_CLIENT_ID",
         "kind": "publishing-credential",
         "why": "Partner Center Azure AD application id used to submit the .msix. The windows-store row's keyKind is `none` because the Store re-signs the package, so nothing in this path is key material of ours.",
         "environment": null,
-        "repositoryWhy": "An identifier the env-less submit-windows-store.yml `dry-run` job still receives: the rehearsal presence-checks the four ids, and without the client secret beside it the id authenticates nothing."
+        "repositoryWhy": "An identifier the env-less submit-windows-store.yml `dry-run` job still receives: the rehearsal presence-checks the three ids, and without the client secret beside it the id authenticates nothing."
       },
       {
         "name": "MS_STORE_CLIENT_SECRET",
@@ -1424,21 +1410,14 @@
         "kind": "publishing-credential",
         "why": "Azure AD tenant the Partner Center application lives in. An identifier.",
         "environment": null,
-        "repositoryWhy": "An identifier the env-less submit-windows-store.yml `dry-run` job still receives: the rehearsal presence-checks the four ids, and the tenant id authenticates nothing on its own."
-      },
-      {
-        "name": "MS_STORE_PRODUCT_ID",
-        "kind": "publishing-credential",
-        "why": "Which Partner Center product a submission targets. An identifier.",
-        "environment": null,
-        "repositoryWhy": "An identifier the env-less submit-windows-store.yml `dry-run` job still receives: the rehearsal presence-checks the four ids, and a product id authenticates nothing on its own."
+        "repositoryWhy": "An identifier the env-less submit-windows-store.yml `dry-run` job still receives: the rehearsal presence-checks the three ids, and the tenant id authenticates nothing on its own."
       },
       {
         "name": "MS_STORE_SELLER_ID",
         "kind": "publishing-credential",
         "why": "The Partner Center SELLER id — which ACCOUNT `msstore reconfigure` configures against, passed as `--sellerId`. An identifier, not key material: the windows-store row's keyKind stays `none` because the Store re-signs the package. Added 2026-09-09, when the lane stopped passing only three of Microsoft's four account parameters. ⚠️ This account has carried TWO seller ids differing by three digits; the retired one authenticates against nothing and looks entirely plausible in a log, so the live value is read from Private/runbooks/store-submission-windows.md and never from memory.",
         "environment": null,
-        "repositoryWhy": "An identifier the env-less submit-windows-store.yml `dry-run` job still receives: the rehearsal presence-checks the four ids, and a seller id authenticates nothing on its own."
+        "repositoryWhy": "An identifier the env-less submit-windows-store.yml `dry-run` job still receives: the rehearsal presence-checks the three ids, and a seller id authenticates nothing on its own."
       },
       {
         "name": "SNAPCRAFT_STORE_CREDENTIALS",
@@ -2497,32 +2476,18 @@
         "openedBy": "A-4",
         "note": "Membership ACTIVE. Individual enrolment paid 2026-08-31; an authenticated App Store Connect call on 2026-09-05 and again on 2026-09-08 answered HTTP 200 with an ACCOUNT_HOLDER record. OWNER_QUEUE A-4 CLOSED 2026-08-31. The account holds ZERO apps, ZERO bundle ids, ZERO certificates and ZERO profiles: what blocks this channel is a distribution certificate nobody has issued and a packaging step nothing runs, both of which an agent can close through the ASC API. It is NOT blocked by the account."
       },
-      "bundleIdentifier": {
-        "_why": [
-          "🔴 THE APPLE ANALOGUE OF windows-store's `packageIdentity`, AND UNLIKE THAT ONE IT IS",
-          "ALREADY REAL. Partner Center ASSIGNS the MSIX identity, so that row carries a sentinel; a",
-          "bundle identifier is OURS TO CHOOSE and is already in the Xcode project, so it is a value",
-          "and not a placeholder — and therefore checkable today, with no Apple account.",
-          "",
-          "It is declared here because two copies of an identity is how the wrong one ships",
-          "([pipeline F-2]). tooling/release/submit-appstore.mjs compares this to what the Xcode",
-          "project actually builds. A bundle id that disagrees with App Store Connect's record cannot",
-          "be uploaded at all, and one that is changed AFTER a release is a different app to Apple.",
-          "",
-          "⚠️ iOS and macOS declare it in DIFFERENT FILES — the pbxproj for iOS, an xcconfig for",
-          "macOS — which is exactly why the value is written down once here rather than read from",
-          "'wherever it lives'."
-        ],
-        "value": "com.nikatru.subscriptiontracker",
-        "declaredIn": "apps/{app}/ios/Runner.xcodeproj/project.pbxproj"
-      },
       "identity": {
         "_why": [
-          "[10]D-3's uniform view of the SAME declaration `bundleIdentifier` above already carries. The",
-          "two are deliberately not merged: `bundleIdentifier.value` is the VALUE this factory chose and",
-          "submit-appstore.mjs compares the project to it, while this block is the (kind, file) pair the",
-          "cross-platform identity guard needs so that iOS is checked by the same relationship as Android,",
-          "Linux and Windows rather than by one script somebody has to remember to run."
+          "[10]D-3's (kind, file) pair: WHERE Xcode declares the iOS bundle id. The VALUE is not here.",
+          "⏱ O-STORE-RECORDS-ARE-ONE-PER-CHANNEL (9b): this row used to carry the bundle id VALUE beside",
+          "this block, ONE app's id for a channel every app shares. The id is per app and ours to choose,",
+          "so it lives once, in tooling/apple-provisioning.json `apps.<id>.bundleId`, and every reader goes",
+          "through apple-provisioning.mjs bundleIdOf: assert-store-identity grades this file against it for",
+          "every app, and submit-appstore.mjs compares the project to it before a submission.",
+          "assert-store-identity refuses the retired per-channel value key on any row.",
+          "",
+          "⚠️ iOS and macOS declare it in DIFFERENT FILES: the pbxproj for iOS, an xcconfig for macOS.",
+          "The pbxproj also carries the RunnerTests bundle, which the shared reader drops explicitly."
         ],
         "kind": "apple-bundle-id",
         "declaredIn": "apps/{app}/ios/Runner.xcodeproj/project.pbxproj"
@@ -2662,17 +2627,6 @@
         "asOf": "2026-09-08",
         "openedBy": "A-4",
         "note": "Membership ACTIVE. Individual enrolment paid 2026-08-31; an authenticated App Store Connect call on 2026-09-05 and again on 2026-09-08 answered HTTP 200 with an ACCOUNT_HOLDER record. OWNER_QUEUE A-4 CLOSED 2026-08-31. The account holds ZERO apps, ZERO bundle ids, ZERO certificates and ZERO profiles: what blocks this channel is a distribution certificate nobody has issued and a packaging step nothing runs, both of which an agent can close through the ASC API. It is NOT blocked by the account. The SAME single membership as ios-appstore: one account, two App Store Connect records, so this row's status can never legitimately differ from the iOS row's."
-      },
-      "bundleIdentifier": {
-        "_why": [
-          "Same identifier as ios-appstore — one app, one bundle id across Apple platforms — but",
-          "declared in a DIFFERENT FILE: Flutter's macOS template puts it in an xcconfig, not in the",
-          "pbxproj. The pbxproj here carries only the RunnerTests id, so a reader that looked for",
-          "PRODUCT_BUNDLE_IDENTIFIER in the same place as iOS would find the TEST bundle's id and",
-          "compare against it happily. `declaredIn` exists so that cannot happen."
-        ],
-        "value": "com.nikatru.subscriptiontracker",
-        "declaredIn": "apps/{app}/macos/Runner/Configs/AppInfo.xcconfig"
       },
       "identity": {
         "_why": [

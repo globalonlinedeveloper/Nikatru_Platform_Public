@@ -39,6 +39,16 @@
     "carry it. Left a plain string, the key would now be demanded on macOS too — which is why that row",
     "moved to the object form in the same change as this paragraph."
   ],
+  "_teamId_why": [
+    "O-STORE-RECORDS-ARE-ONE-PER-CHANNEL (9b). The Apple team id of the ONE developer account every app ships",
+    "under: the prefix of every app's AASA appID (`<teamId>.<bundle id>`), which tooling/sites/generate-well-known.mjs",
+    "reads through apple-provisioning.mjs teamIdOf. It is PUBLIC: it ships in every signed binary's",
+    "TeamIdentifier and in every association file, and it was already in this public tree (the application-identifier",
+    "comment in tooling/ci/apple-signing.mjs). It is the developer portal's value (bundle id seedId), never read from",
+    "the APPLE_TEAM_ID secret, which stays for signing. A team id is not an App Store Connect resource id, so",
+    "appleResourceIds does not count it."
+  ],
+  "teamId": "Q2B2BY33B6",
   "anchor": {
     "identifier": "com.nikatru.platform",
     "resourceId": "D4GCNS78PP",

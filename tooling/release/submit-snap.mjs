@@ -193,7 +193,7 @@ const RECIPE_GUARD = 'assert-snapcraft-generable.mjs';
 const PACK_VERB = 'snapcraft pack';
 
 // ── arguments, and the two stops (submit-common.mjs: COVERAGE LOST exits 2) ──
-const { flag, opt, root: ROOT, ok, step, abs, read, coverageLost, die } = submitCli('submit-snap');
+const { flag, opt, root: ROOT, ok, step, abs, read, coverageLost, die, appOf } = submitCli('submit-snap');
 
 const DRY_RUN = flag('dry-run');
 const SUBMIT = flag('submit');
@@ -505,11 +505,8 @@ try {
 }
 if (!Array.isArray(apps) || apps.length === 0) coverageLost([`${APPS} carries no app entries.`]);
 
-const appId = opt('app') ?? apps[0]?.slug;
-const app = apps.find((a) => a.slug === appId);
-if (!app) {
-  die([`FAIL no app "${appId}" in ${APPS}.`, `     Known: ${apps.map((a) => a.slug).join(', ')}`]);
-}
+// `--app` is required (submit-common appOf); there is no first-app default.
+const app = appOf(apps, APPS);
 
 console.log(`── Snap Store submission path · app "${app.slug}" · channel "${CHANNEL_ID}" ──`);
 console.log(`   mode: ${DRY_RUN ? 'DRY RUN (nothing leaves this machine, and `snapcraft` is not invoked)' : 'SUBMIT (a real `snapcraft upload`)'}`);

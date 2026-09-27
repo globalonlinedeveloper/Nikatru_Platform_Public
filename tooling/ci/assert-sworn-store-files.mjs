@@ -248,6 +248,7 @@ import { join, resolve } from 'node:path';
 
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
 import { storeRecordOf, declaredOnRefusal } from '../store/store-record.mjs';
+import { DECLARATION_ONLY_CHANNELS } from './submit-preconditions.mjs';
 
 const ARGV = process.argv.slice(2);
 /** `--app` takes its value as the next word; that word is not the repo root. */
@@ -1616,7 +1617,10 @@ if (copiesChecked === 0 && previewCopies > 0) {
 let submissionLine = '';
 if (forSubmission !== null) {
   const wanted = swornWanted.filter((s) => s.channel === forSubmission);
-  if (wanted.length === 0) {
+  // ⏱ 9b (rv-c22, LEAD RULING 2026-09-26 22:00Z): a channel whose declaration lives only in
+  // its console (windows-store) has no file to read; its date alone is graded below.
+  const consoleForm = Object.hasOwn(DECLARATION_ONLY_CHANNELS, forSubmission) ? DECLARATION_ONLY_CHANNELS[forSubmission] : null;
+  if (wanted.length === 0 && consoleForm === null) {
     coverageLost([
       `--for-submission=${forSubmission} names a channel with no sworn declaration in ${REGISTER_REL}.`,
       `The channels that carry one: ${[...new Set(swornWanted.map((s) => s.channel))].join(', ')}. A precondition over a`,
@@ -1668,6 +1672,7 @@ if (forSubmission !== null) {
     appId,
     channelId: forSubmission,
     files: wanted.map(({ file }) => `apps/${appId}/store/${forSubmission}/${file}`),
+    form: consoleForm,
   });
   if (refusal !== null && submitReal) {
     fail(`🔴 UNDECLARED — ${refusal} A real submission (--real-submission) is refused until then.`);

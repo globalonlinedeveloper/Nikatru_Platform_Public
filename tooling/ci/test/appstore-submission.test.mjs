@@ -88,14 +88,29 @@ const appleRow = (id, over = {}) => ({
   artifactFormats: [id === 'ios-appstore' ? '.ipa' : '.pkg'],
   storeMetadataDir: `apps/{app}/store/${id}`,
   ownerQueue: 'A-4',
-  bundleIdentifier: {
-    value: BUNDLE,
+  // ⏱ O-STORE-RECORDS-ARE-ONE-PER-CHANNEL (9b): the row names WHERE Xcode declares the bundle id;
+  // the value is tooling/apple-provisioning.json's (bundleIdOf) and the row no longer carries one.
+  identity: {
+    kind: 'apple-bundle-id',
     declaredIn: id === 'ios-appstore' ? 'apps/{app}/ios/Runner.xcodeproj/project.pbxproj' : 'apps/{app}/macos/Runner/Configs/AppInfo.xcconfig',
   },
   submission: { runbook: 'Private/runbooks/store-submission-apple.md' },
   signing: { seam: { artifactGlob: id === 'ios-appstore' ? 'apps/*/build/ios/ipa/*.ipa' : 'apps/*/build/macos/pkg/*.pkg' } },
   ...over,
 });
+
+/** The App Store Connect record ids these fixtures issue. Fixture values, never app #1's real one. */
+const RECORD_ID = '1234567890';
+const ISSUED = { 'ios-appstore': { state: 'issued', recordId: RECORD_ID }, 'macos-appstore': { state: 'issued', recordId: RECORD_ID } };
+
+/** apps/<id>/app.yaml carrying only the `stores` records (the reader reads nothing else). */
+const storesYaml = (records) =>
+  ['stores:', ...Object.entries(records).flatMap(([id, r]) => [
+    `  ${id}:`,
+    `    state: ${r.state}`,
+    `    declaredOn: ${r.declaredOn ?? 'null'}`,
+    ...(r.recordId === undefined ? [] : [`    recordId: "${r.recordId}"`]),
+  ]), ''].join('\n');
 
 const perChannelLimits = () => ({
   additionalFiles: ['subtitle.txt', 'keywords.txt', 'promotional-text.txt'],
@@ -120,6 +135,8 @@ function tree({
   apps = [{ slug: 'subscriptiontracker', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'], status: 'live' }],
   mutateApple = null,
   omitApple = false,
+  records = ISSUED,
+  omitAppYaml = false,
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   const write = (rel, body) => {
@@ -148,6 +165,8 @@ function tree({
     if (mutateApple) mutateApple(apple);
     write('tooling/apple-provisioning.json', JSON.stringify(apple, null, 2));
   }
+
+  if (!omitAppYaml) write('apps/subscriptiontracker/app.yaml', storesYaml(records));
 
   if (!omitProject) {
     // The iOS shape: a pbxproj carrying the app bundle AND the test bundles, so
@@ -190,7 +209,6 @@ function run(root, args, env = {}) {
       APP_STORE_CONNECT_ISSUER_ID: '',
       APP_STORE_CONNECT_KEY_ID: '',
       APP_STORE_CONNECT_PRIVATE_KEY: '',
-      APP_STORE_CONNECT_APP_ID: '',
       ...env,
     },
   });
@@ -338,14 +356,14 @@ describe('submit-appstore — both Apple channels are walkable, and --submit ref
   });
 
   // ── the bundle identifier: one declaration, two readers ───────────────────
-  test('FAILS when the iOS project builds a different bundle id from the register', () => {
+  test('FAILS when the iOS project builds a different bundle id from tooling/apple-provisioning.json', () => {
     const { code, out } = ios(tree({ withArtifact: true, iosBundle: 'com.someoneelse.subscriptiontracker' }));
     assert.equal(code, 1, out);
     assertComplained(out);
     assert.match(out, /bundle identifier DISAGREES/);
   });
 
-  test('FAILS when the macOS xcconfig builds a different bundle id from the register', () => {
+  test('FAILS when the macOS xcconfig builds a different bundle id from tooling/apple-provisioning.json', () => {
     const { code, out } = macos(tree({ withArtifact: true, macosBundle: 'com.someoneelse.subscriptiontracker' }));
     assert.equal(code, 1, out);
     assertComplained(out);
@@ -381,17 +399,18 @@ describe('submit-appstore — both Apple channels are walkable, and --submit ref
     assert.match(out, /COVERAGE LOST — .*contains ZERO `PRODUCT_BUNDLE_IDENTIFIER` assignments/);
   });
 
-  test('COVERAGE LOST when the register declares no bundleIdentifier', () => {
-    const { code, out } = ios(tree({ withArtifact: true, mutateRegister: (r) => delete r.channels.find((c) => c.id === 'ios-appstore').bundleIdentifier }));
+  test('COVERAGE LOST when the row declares no identity.declaredIn — no file to compare', () => {
+    const { code, out } = ios(tree({ withArtifact: true, mutateRegister: (r) => delete r.channels.find((c) => c.id === 'ios-appstore').identity }));
     assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
-    assert.match(out, /COVERAGE LOST — .*declares no `bundleIdentifier`/);
+    assert.match(out, /COVERAGE LOST — .*declares no `identity\.declaredIn`/);
   });
 
-  test('FAILS when bundleIdentifier.value is emptied', () => {
-    const { code, out } = ios(tree({ withArtifact: true, mutateRegister: (r) => (r.channels.find((c) => c.id === 'ios-appstore').bundleIdentifier.value = '') }));
-    assert.equal(code, 1, out);
-    assertComplained(out);
-    assert.match(out, /bundleIdentifier is incomplete/);
+  test('a bundleIdentifier left on the row is NOT read: the value is bundleIdOf\'s (9b)', () => {
+    // assert-store-identity refuses the key on the register; this path must not fall back to it.
+    const { code, out } = ios(tree({ withArtifact: true, mutateRegister: (r) => (r.channels.find((c) => c.id === 'ios-appstore').bundleIdentifier = { value: 'com.someoneelse.app' }) }));
+    assert.equal(code, 0, out);
+    assert.match(out, /bundle identifier com\.nikatru\.subscriptiontracker — tooling\/apple-provisioning\.json and /);
+    assert.doesNotMatch(out, /someoneelse/);
   });
 
   // ── the artifact ──────────────────────────────────────────────────────────
@@ -460,20 +479,20 @@ describe('submit-appstore — both Apple channels are walkable, and --submit ref
   test('PRINTS which credentials are absent and never their values', () => {
     const { code, out } = ios(tree({ withArtifact: true }));
     assert.equal(code, 0, out);
-    assert.match(out, /CREDENTIALS NOT CONFIGURED — 4 of 4 absent/);
+    assert.match(out, /CREDENTIALS NOT CONFIGURED — 3 of 3 absent/);
+    assert.doesNotMatch(out, /APP_STORE_CONNECT_APP_ID/, 'the record id is the app\'s own, never a secret (9b)');
     assert.match(out, /APP_STORE_CONNECT_PRIVATE_KEY/);
   });
 
   test('reports credentials as present without printing them', () => {
     const secret = 'THIS-MUST-NEVER-BE-PRINTED';
-    const { code, out } = run(tree({ withArtifact: true }), ['--dry-run', '--channel', 'ios-appstore'], {
+    const { code, out } = run(tree({ withArtifact: true }), ['--dry-run', '--channel', 'ios-appstore', '--app', 'subscriptiontracker'], {
       APP_STORE_CONNECT_ISSUER_ID: 'i',
       APP_STORE_CONNECT_KEY_ID: 'k',
       APP_STORE_CONNECT_PRIVATE_KEY: secret,
-      APP_STORE_CONNECT_APP_ID: '1',
     });
     assert.equal(code, 0, out);
-    assert.match(out, /credentials — all 4 environment variable\(s\) present/);
+    assert.match(out, /credentials — all 3 environment variable\(s\) present/);
     assert.doesNotMatch(out, new RegExp(secret));
   });
 
@@ -508,64 +527,85 @@ describe('submit-appstore — both Apple channels are walkable, and --submit ref
     assert.match(out, /COVERAGE LOST — .*requiredFiles/);
   });
 
-  // ── the wrong app (O-STORE-LANES-HARD-WIRE-ONE-APP, RC6) ─────────────────
-  // The lane takes its app at dispatch, and the channel row is ONE App Store record. An app
-  // whose signing bundle id is not the row's must be refused BEFORE its listing is read, or it
-  // dry-runs green against the first app's record.
+  // ── the app's own record (O-STORE-RECORDS-ARE-ONE-PER-CHANNEL, 9b; RC6) ─────
+  // `--app` is required, and every Apple fact this path reads is the app's: the bundle id from
+  // tooling/apple-provisioning.json (bundleIdOf) and the App Store Connect record from its own
+  // apps/<id>/app.yaml `stores`. The channel row carries neither, so a second app is graded
+  // against its own record and never against the first app's.
+  const FIRST = { slug: 'subscriptiontracker', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'], status: 'live' };
   const SECOND = { slug: 'secondapp', name: 'Second', tagline: 'A second app', platforms: ['web'], status: 'live' };
   const withSecond = (apple) => {
     apple.apps.secondapp = { bundleId: 'com.nikatru.secondapp', capabilities: ['IN_APP_PURCHASE'] };
   };
-
-  test('RC6 · an app whose bundle id differs from the channel row\'s exits 1, naming BOTH ids', () => {
-    const root = tree({ withArtifact: true, apps: [{ slug: 'subscriptiontracker', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'], status: 'live' }, SECOND], mutateApple: withSecond });
-    const { code, out } = run(root, ['--dry-run', '--channel', 'ios-appstore', '--app', 'secondapp']);
-    assert.equal(code, 1, out);
-    assertComplained(out);
-    assert.match(out, /app "secondapp" signs as com\.nikatru\.secondapp \(tooling\/apple-provisioning\.json\), and channel "ios-appstore" in tooling\/channel-register\.json is the App Store record of com\.nikatru\.subscriptiontracker/);
-    assert.doesNotMatch(out, /metadata tree/, 'the refusal comes before the listing is read');
-  });
-
-  test('…the same app on macOS is refused the same way', () => {
-    const root = tree({ withArtifact: true, apps: [{ slug: 'subscriptiontracker', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'], status: 'live' }, SECOND], mutateApple: withSecond });
-    const { code, out } = run(root, ['--dry-run', '--channel', 'macos-appstore', '--app', 'secondapp']);
-    assert.equal(code, 1, out);
-    assert.match(out, /channel "macos-appstore" .* is the App Store record of com\.nikatru\.subscriptiontracker/);
-  });
-
-  test('RC6 · …even when the second app\'s Xcode project and listing are copies of the first\'s, which the project comparison alone passes', () => {
-    // A stamped app whose project still carries app #1's bundle id: the Xcode comparison
-    // agrees with the row, so without the signing register the dry run validates app #2's
-    // listing against app #1's record and exits 0.
-    const root = tree({ withArtifact: true, apps: [{ slug: 'subscriptiontracker', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'], status: 'live' }, SECOND], mutateApple: withSecond });
-    const copy = (rel, body) => {
+  /** A second app, complete: its own Xcode project, listing, artifact and record. */
+  const secondApp = ({ pbxBundle = 'com.nikatru.secondapp', recordId = '2222222222' } = {}) => {
+    const root = tree({ withArtifact: true, apps: [FIRST, SECOND], mutateApple: withSecond });
+    const put = (rel, body) => {
       mkdirSync(dirname(join(root, rel)), { recursive: true });
       writeFileSync(join(root, rel), body);
     };
-    copy('apps/secondapp/ios/Runner.xcodeproj/project.pbxproj', `\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = ${BUNDLE};\n`);
-    for (const [rel, body] of Object.entries(FILES)) copy(`apps/secondapp/store/ios-appstore/${rel}`, body);
-    copy('apps/secondapp/build/ios/ipa/secondapp.ipa', 'x'.repeat(1024));
-    const { code, out } = run(root, ['--dry-run', '--channel', 'ios-appstore', '--app', 'secondapp']);
-    assert.equal(code, 1, out);
-    assert.match(out, /app "secondapp" signs as com\.nikatru\.secondapp/);
+    put('apps/secondapp/ios/Runner.xcodeproj/project.pbxproj', `\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = ${pbxBundle};\n`);
+    for (const [rel, body] of Object.entries(FILES)) put(`apps/secondapp/store/ios-appstore/${rel}`, body);
+    put('apps/secondapp/build/ios/ipa/secondapp.ipa', 'x'.repeat(1024));
+    put('apps/secondapp/app.yaml', storesYaml({ 'ios-appstore': { state: 'issued', recordId }, 'macos-appstore': { state: 'issued', recordId } }));
+    return root;
+  };
+
+  test('RC6 · --app is REQUIRED: a run without it is COVERAGE LOST (2), never the first app', () => {
+    const { code, out } = run(tree({ withArtifact: true }), ['--dry-run', '--channel', 'ios-appstore']);
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — --app is required/);
+    assert.doesNotMatch(out, /metadata tree/, 'nothing is graded for an app nobody named');
   });
 
-  test('the app the row belongs to passes the same refusal — the green control', () => {
-    const root = tree({ withArtifact: true, apps: [{ slug: 'subscriptiontracker', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'], status: 'live' }, SECOND], mutateApple: withSecond });
-    const { code, out } = ios(root);
+  test('the App Store Connect record is read from the app\'s own app.yaml, never a secret', () => {
+    const { code, out } = ios(tree({ withArtifact: true }));
     assert.equal(code, 0, out);
-    assert.doesNotMatch(out, /signs as/);
+    assert.match(out, /App Store Connect record 1234567890 — apps\/subscriptiontracker\/app\.yaml stores\.ios-appstore \(issued/);
+  });
+
+  test('a second app is graded against ITS OWN bundle id and record, and passes', () => {
+    const { code, out } = run(secondApp(), ['--dry-run', '--channel', 'ios-appstore', '--app', 'secondapp']);
+    assert.equal(code, 0, out);
+    assert.match(out, /bundle identifier com\.nikatru\.secondapp — tooling\/apple-provisioning\.json and apps\/secondapp\/ios/);
+    assert.match(out, /App Store Connect record 2222222222 — apps\/secondapp\/app\.yaml/);
+    assert.doesNotMatch(out, /1234567890/, 'the first app\'s record is not this app\'s');
+  });
+
+  test('a second app whose Xcode project still carries app #1\'s bundle id FAILS', () => {
+    const { code, out } = run(secondApp({ pbxBundle: BUNDLE }), ['--dry-run', '--channel', 'ios-appstore', '--app', 'secondapp']);
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /bundle identifier DISAGREES for app "secondapp"/);
+  });
+
+  test('a pending record PRINTS the owner step on a dry run and exits 0', () => {
+    const { code, out } = ios(tree({ withArtifact: true, records: { 'ios-appstore': { state: 'pending' }, 'macos-appstore': { state: 'pending' } } }));
+    assert.equal(code, 0, out);
+    assert.match(out, /APP STORE RECORD PENDING — apps\/subscriptiontracker\/app\.yaml stores\.ios-appstore is state: pending/);
+  });
+
+  test('an issued record with no recordId FAILS, naming the field', () => {
+    const { code, out } = ios(tree({ withArtifact: true, records: { 'ios-appstore': { state: 'issued' }, 'macos-appstore': ISSUED['macos-appstore'] } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /stores\.ios-appstore is state: issued and lacks recordId/);
+  });
+
+  test('an app with no declaration FAILS: it has no record to submit to', () => {
+    const { code, out } = ios(tree({ withArtifact: true, omitAppYaml: true }));
+    assert.equal(code, 1, out);
+    assert.match(out, /apps\/subscriptiontracker\/app\.yaml does not exist, so app "subscriptiontracker" has no ios-appstore record/);
   });
 
   test('an app the Apple register does not declare is refused, naming the app', () => {
-    const root = tree({ withArtifact: true, apps: [{ slug: 'subscriptiontracker', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'], status: 'live' }, SECOND] });
+    const root = tree({ withArtifact: true, apps: [FIRST, SECOND] });
     const { code, out } = run(root, ['--dry-run', '--channel', 'ios-appstore', '--app', 'secondapp']);
     assert.equal(code, 1, out);
     assertComplained(out);
     assert.match(out, /declares no app "secondapp"/);
   });
 
-  test('COVERAGE LOST when tooling/apple-provisioning.json is absent — no way to tell whose record this is', () => {
+  test('COVERAGE LOST when tooling/apple-provisioning.json is absent — no bundle id to compare the project to', () => {
     const { code, out } = ios(tree({ withArtifact: true, omitApple: true }));
     assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
     assert.match(out, /COVERAGE LOST — tooling\/apple-provisioning\.json does not exist/);

@@ -169,12 +169,13 @@ jobs:
               --dir "apps/${APP}/build/symbols/${lane}" \
               --org "$gt_org" --project "$gt_project"
           done
+      # why: no App Store Connect app id secret. The record is the app's own, apps/<app>/app.yaml
+      # stores.ios-appstore.recordId, read by the script (O-STORE-RECORDS-ARE-ONE-PER-CHANNEL).
       - name: Dry-run the App Store submission (iOS)
         env:
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
-          APP_STORE_CONNECT_APP_ID: ${{ secrets.APP_STORE_CONNECT_IOS_APP_ID }}
         # why: --allow-missing-artifact here and NOT on the Windows lane. The builds above are
         # unsigned by choice until the signing seam lands in this lane, and --submit refuses,
         # so there is no signed .ipa to validate; the Windows dry run builds and packages a real
@@ -185,7 +186,6 @@ jobs:
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
-          APP_STORE_CONNECT_APP_ID: ${{ secrets.APP_STORE_CONNECT_MACOS_APP_ID }}
         run: node tooling/release/submit-appstore.mjs --dry-run --channel macos-appstore --app "$APP" --allow-missing-artifact
       # why: this lane RECORDS, and is never declared dry-run-only (O-APPLE-SUBMISSION-UNRECORDED; parent
       # decision): every run is recorded, and a rehearsal AS one — one record per channel it rehearsed,

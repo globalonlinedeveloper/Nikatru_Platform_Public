@@ -263,6 +263,13 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
     assert.match(out, /exactly one of --dry-run and --submit is required/);
   });
 
+  // ⏱ O-STORE-RECORDS-ARE-ONE-PER-CHANNEL (9b): --app is required; there is no first-app default.
+  test('--app is REQUIRED: a dry run without it is COVERAGE LOST (2), never the first app', () => {
+    const { code, out } = run(tree({ withArtifact: true }), ['--dry-run']);
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — --app is required: submit-snap submits ONE app/);
+  });
+
   test('FAILS when both --dry-run and --submit are given', () => {
     const { code, out } = run(tree(), ['--dry-run', '--submit']);
     assert.equal(code, 1, out);
@@ -469,7 +476,7 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
 
   test('reports the credential as present without printing it, once its expiry is declared', () => {
     const secret = 'THIS-MUST-NEVER-BE-PRINTED';
-    const { code, out } = run(tree({ withArtifact: true }), ['--dry-run'], {
+    const { code, out } = run(tree({ withArtifact: true }), ['--dry-run', '--app', 'subscriptiontracker'], {
       SNAPCRAFT_STORE_CREDENTIALS: secret,
       SNAPCRAFT_STORE_CREDENTIALS_EXPIRES: inDays(120),
     });
@@ -488,7 +495,7 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
   // case is the GREEN CONTROL, without which every red below would be consistent
   // with a limb that refuses everything.
   test('GREEN CONTROL: an expiry 31 days out passes and prints the date and the margin', () => {
-    const { code, out } = run(tree({ withArtifact: true }), ['--dry-run'], {
+    const { code, out } = run(tree({ withArtifact: true }), ['--dry-run', '--app', 'subscriptiontracker'], {
       SNAPCRAFT_STORE_CREDENTIALS: 'x',
       SNAPCRAFT_STORE_CREDENTIALS_EXPIRES: inDays(31),
     });
@@ -497,7 +504,7 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
   });
 
   test('an expiry 29 days out FAILS, and prints the exact export-login owner step', () => {
-    const { code, out } = run(tree({ withArtifact: true }), ['--dry-run'], {
+    const { code, out } = run(tree({ withArtifact: true }), ['--dry-run', '--app', 'subscriptiontracker'], {
       SNAPCRAFT_STORE_CREDENTIALS: 'x',
       SNAPCRAFT_STORE_CREDENTIALS_EXPIRES: inDays(29),
     });
@@ -507,7 +514,7 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
   });
 
   test('an expiry already in the past FAILS', () => {
-    const { code, out } = run(tree({ withArtifact: true }), ['--dry-run'], {
+    const { code, out } = run(tree({ withArtifact: true }), ['--dry-run', '--app', 'subscriptiontracker'], {
       SNAPCRAFT_STORE_CREDENTIALS: 'x',
       SNAPCRAFT_STORE_CREDENTIALS_EXPIRES: inDays(-1),
     });
@@ -516,14 +523,14 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
   });
 
   test('a credential present with NO declared expiry FAILS — unknown is not fine', () => {
-    const { code, out } = run(tree({ withArtifact: true }), ['--dry-run'], { SNAPCRAFT_STORE_CREDENTIALS: 'x' });
+    const { code, out } = run(tree({ withArtifact: true }), ['--dry-run', '--app', 'subscriptiontracker'], { SNAPCRAFT_STORE_CREDENTIALS: 'x' });
     assert.equal(code, 1, out);
     assert.match(out, /SNAPCRAFT_STORE_CREDENTIALS_EXPIRES is ABSENT/);
     assert.match(out, /snapcraft export-login/);
   });
 
   test('a MALFORMED expiry FAILS — an unreadable expiry is not a long one', () => {
-    const { code, out } = run(tree({ withArtifact: true }), ['--dry-run'], {
+    const { code, out } = run(tree({ withArtifact: true }), ['--dry-run', '--app', 'subscriptiontracker'], {
       SNAPCRAFT_STORE_CREDENTIALS: 'x',
       SNAPCRAFT_STORE_CREDENTIALS_EXPIRES: 'next tuesday',
     });
@@ -558,7 +565,7 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
   };
 
   test('scoped credential: the dry run prints NO credential gap, says where it IS checked, and grades the date', () => {
-    const { code, out } = run(tree({ withArtifact: true, mutateRegister: SCOPED }), ['--dry-run'], {
+    const { code, out } = run(tree({ withArtifact: true, mutateRegister: SCOPED }), ['--dry-run', '--app', 'subscriptiontracker'], {
       SNAPCRAFT_STORE_CREDENTIALS_EXPIRES: inDays(120),
     });
     assert.equal(code, 0, out);
@@ -568,7 +575,7 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
   });
 
   test('scoped credential: an expiry 29 days out still FAILS the dry run — the date alone is enough to act on', () => {
-    const { code, out } = run(tree({ withArtifact: true, mutateRegister: SCOPED }), ['--dry-run'], {
+    const { code, out } = run(tree({ withArtifact: true, mutateRegister: SCOPED }), ['--dry-run', '--app', 'subscriptiontracker'], {
       SNAPCRAFT_STORE_CREDENTIALS_EXPIRES: inDays(29),
     });
     assert.equal(code, 1, out);
@@ -576,7 +583,7 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
   });
 
   test('scoped credential: an absent expiry PRINTS, naming where a missing date fails', () => {
-    const { code, out } = run(tree({ withArtifact: true, mutateRegister: SCOPED }), ['--dry-run']);
+    const { code, out } = run(tree({ withArtifact: true, mutateRegister: SCOPED }), ['--dry-run', '--app', 'subscriptiontracker']);
     assert.equal(code, 0, out);
     assert.match(out, /credential expiry: unknown to this dry run — SNAPCRAFT_STORE_CREDENTIALS_EXPIRES is absent/);
     assert.doesNotMatch(out, /SNAPCRAFT_STORE_CREDENTIALS_EXPIRES is ABSENT/);
@@ -584,7 +591,7 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
 
   test('scoped credential: a value exported into the dry run is not read, so it cannot be reported present', () => {
     const secret = 'THIS-MUST-NEVER-BE-PRINTED';
-    const { code, out } = run(tree({ withArtifact: true, mutateRegister: SCOPED }), ['--dry-run'], {
+    const { code, out } = run(tree({ withArtifact: true, mutateRegister: SCOPED }), ['--dry-run', '--app', 'subscriptiontracker'], {
       SNAPCRAFT_STORE_CREDENTIALS: secret,
       SNAPCRAFT_STORE_CREDENTIALS_EXPIRES: inDays(120),
     });

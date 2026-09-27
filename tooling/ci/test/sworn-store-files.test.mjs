@@ -1521,13 +1521,15 @@ describe('⏱ 2026-09-26 — --for-submission: a preview declaration cannot be s
     );
   });
 
+  // ⏱ 9b (rv-c22): linux-snap, not windows-store. windows-store is a declaration-only channel now
+  // (submit-preconditions.mjs DECLARATION_ONLY_CHANNELS): its date is graded with no file.
   test('a channel with no sworn declaration is exit 2, not a pass over nothing', () => {
     withTreeArgs(
       () => {},
-      ['--for-submission=windows-store'],
+      ['--for-submission=linux-snap'],
       (r) => {
         assert.equal(r.status, 2, r.stdout);
-        assert.match(r.stderr, /--for-submission=windows-store names a channel with no sworn declaration/);
+        assert.match(r.stderr, /--for-submission=linux-snap names a channel with no sworn declaration/);
       },
     );
   });
@@ -1624,6 +1626,67 @@ describe('⏱ 2026-09-26 — --for-submission --real-submission: declaredOn gate
       (r) => {
         assert.equal(r.status, 2, r.stdout);
         assert.match(r.stderr, /--real-submission is only meaningful with --for-submission=<channel>/);
+      },
+    );
+  });
+});
+
+// ── ⏱ 9b (rv-c22) · LEAD RULING 2026-09-26 22:00Z: Windows real submissions are gated on declaredOn ──
+// windows-store has no sworn file in this repository; Partner Center's Properties and age
+// ratings live in its console. So the date alone is graded (DECLARATION_ONLY_CHANNELS), with
+// the same two outcomes as a sworn channel. linux-snap is exempt by ruling: nothing to swear.
+describe('⏱ 9b — --for-submission=windows-store: the declaration date alone gates a REAL submission', () => {
+  const YAML = 'apps/subscriptiontracker/app.yaml';
+  const winDated = (root) =>
+    editText(root, YAML, (s) => {
+      const m = s.match(/^ {2}windows-store:\n(?: {4}.*\n)*? {4}declaredOn: null\n/m);
+      assert.ok(m !== null, 'app #1 declares windows-store undeclared');
+      return s.replace(m[0], m[0].replace('declaredOn: null', 'declaredOn: 2026-09-27'));
+    });
+
+  test('🔴 a REAL Windows submission with declaredOn null is refused (exit 1), naming the Partner Center form', () => {
+    withTreeArgs(
+      () => {},
+      ['--for-submission=windows-store', '--app', 'subscriptiontracker', '--real-submission'],
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /UNDECLARED — apps\/subscriptiontracker\/app\.yaml stores\.windows-store\.declaredOn is null/);
+        assert.match(r.stderr, /Submit that console form \(Partner Center's Properties/);
+      },
+    );
+  });
+
+  test('a Windows DRY RUN with declaredOn null proceeds (exit 0) and prints the gap', () => {
+    withTreeArgs(
+      () => {},
+      ['--for-submission=windows-store', '--app', 'subscriptiontracker'],
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /NOT YET DECLARED \(a dry run/);
+        assert.match(r.stdout, /--for-submission=windows-store --app subscriptiontracker: 0 declaration\(s\) read/);
+      },
+    );
+  });
+
+  test('a REAL Windows submission with a declaredOn date passes the gate (exit 0)', () => {
+    withTreeArgs(
+      (root) => winDated(root),
+      ['--for-submission=windows-store', '--app', 'subscriptiontracker', '--real-submission'],
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.doesNotMatch(`${r.stdout}${r.stderr}`, /UNDECLARED|NOT YET DECLARED/);
+        assert.match(r.stdout, /declaredOn 2026-09-27 \(a real submission: it must be a date\)/);
+      },
+    );
+  });
+
+  test('linux-snap is exempt by ruling: --for-submission=linux-snap grades nothing and is exit 2', () => {
+    withTreeArgs(
+      () => {},
+      ['--for-submission=linux-snap', '--app', 'subscriptiontracker', '--real-submission'],
+      (r) => {
+        assert.equal(r.status, 2, r.stdout);
+        assert.match(r.stderr, /--for-submission=linux-snap names a channel with no sworn declaration/);
       },
     );
   });

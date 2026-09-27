@@ -44,7 +44,8 @@
 //                PG-1   `--confirm <phrase>`, TYPED, never a default
 //                PG-1b  GITHUB_ACTIONS=true and GITHUB_REPOSITORY set — the lane
 //                PG-2   every remote fact still carries its primary-source URL
-//                PG-3   all five MS_STORE_* secrets non-empty, fail CLOSED
+//                PG-3   all four MS_STORE_* secrets non-empty, fail CLOSED; the product id
+//                       is the app's own record (stores.windows-store.productId), never a secret
 //                PG-6   the publish environment EXISTS and carries a REQUIRED
 //                       REVIEWER, read back from the GitHub API at run time
 //
@@ -93,13 +94,14 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { submitCli, requirePublishEnvironment, PUBLISH_ENVIRONMENT } from './submit-common.mjs';
 import { windowsIdentityOf } from '../ci/read-identity.mjs';
+import { storeRecordOf } from '../store/store-record.mjs';
 
 const CHANNEL_ID = 'windows-store';
 const REGISTER = 'tooling/channel-register.json';
 const APPS = 'catalog/apps.json';
 
 // ── arguments, and the two stops (submit-common.mjs: COVERAGE LOST exits 2) ──
-const { flag, opt, root: ROOT, ok, abs, read, coverageLost, die } = submitCli('submit-windows-store');
+const { flag, opt, root: ROOT, ok, abs, read, coverageLost, die, appOf } = submitCli('submit-windows-store');
 
 const DRY_RUN = flag('dry-run');
 const SUBMIT = flag('submit');
@@ -254,14 +256,8 @@ try {
 }
 if (!Array.isArray(apps) || apps.length === 0) coverageLost([`${APPS} carries no app entries.`]);
 
-const appId = opt('app') ?? apps[0]?.slug;
-const app = apps.find((a) => a.slug === appId);
-if (!app) {
-  die([
-    `FAIL no app "${appId}" in ${APPS}.`,
-    `     Known: ${apps.map((a) => a.slug).join(', ')}`,
-  ]);
-}
+// `--app` is required (submit-common appOf); there is no first-app default.
+const app = appOf(apps, APPS);
 
 console.log(`── Microsoft Store submission path · app "${app.slug}" · channel "${CHANNEL_ID}" ──`);
 console.log(`   mode: ${DRY_RUN ? 'DRY RUN (nothing leaves this machine)' : 'SUBMIT'}`);
@@ -537,13 +533,12 @@ if (existsSync(abs(msixRel))) {
 // it is passed; see Private/runbooks/store-submission-windows.md for which of the two
 // seller ids on this account is the live one — they differ by three digits and the
 // wrong one authenticates against nothing. The VALUES live in that runbook and in the
-// GitHub secrets (the four ids at repository level, the client secret in the
+// GitHub secrets (the three ids at repository level, the client secret in the
 // store-publish environment); none is written into this public tree.
 const CREDENTIAL_ENV = [
   ['MS_STORE_TENANT_ID', 'the Entra tenant the Partner Center account is associated with'],
   ['MS_STORE_CLIENT_ID', 'the Entra application (client) id authorised in Partner Center'],
   ['MS_STORE_CLIENT_SECRET', 'that application\'s client secret'],
-  ['MS_STORE_PRODUCT_ID', 'the Partner Center product this app record is'],
   ['MS_STORE_SELLER_ID', 'the Partner Center SELLER id — the account `msstore reconfigure` configures against'],
 ];
 // ⏱ 2026-09-25 — O-STORE-SECRETS-REACH-THE-DRY-RUN. A credential whose
@@ -551,7 +546,7 @@ const CREDENTIAL_ENV = [
 // only in a job bound to that environment, and the dry-run job has none. So the
 // dry run does not look for it — an absence it cannot see is not a gap it can
 // report — and says instead where it IS checked: the submit job's first step, and
-// this script's --submit path below, which still requires all five. The scope is
+// this script's --submit path below, which still requires all four. The scope is
 // read from the register row assert-channel-register §8c grades the workflows
 // against; a register with no such row (a test fixture) leaves every name checked.
 const scopedTo = new Map(
@@ -588,7 +583,7 @@ if (missingCreds.length === 0) {
         `${k} is a "${scopedTo.get(k)}" ENVIRONMENT secret, readable only in a job bound to that environment. OWNER STEP: GitHub → Settings → Environments → ${scopedTo.get(k)} → Environment secrets → add ${k}.`,
       );
     }
-    // 🔴 THE SELLER ID GETS ITS OWN SENTENCE, because it is the newest of the five and
+    // 🔴 THE SELLER ID GETS ITS OWN SENTENCE, because it is the newest of the credentials and
     // the only one whose absence used to be INVISIBLE. Before 2026-09-09 this script
     // passed tenant/client/secret and no seller id at all, so a missing one produced
     // no message here and no message from the CLI either — there was nothing to miss.
@@ -600,6 +595,37 @@ if (missingCreds.length === 0) {
         'MS_STORE_SELLER_ID specifically: it is the Partner Center SELLER id, which `msstore reconfigure` takes as --sellerId, and it is NOT the product id. This account has carried TWO seller ids that differ by three digits; the retired one authenticates against nothing while looking entirely plausible in a log, so read the live one from Private/runbooks/store-submission-windows.md rather than from memory or from an old workflow run.',
       );
     }
+  }
+}
+
+// ── 4b. the Partner Center product — the app's own record, never a secret ────
+// ⏱ O-STORE-RECORDS-ARE-ONE-PER-CHANNEL (9b). The Store ID was MS_STORE_PRODUCT_ID,
+// ONE repository secret for every app, so a second app would have been published
+// into the first app's product. It is apps/<id>/app.yaml stores.windows-store.productId
+// now, read through tooling/store/store-record.mjs. Without it a dry run PRINTS the
+// owner's step (reserve the product in Partner Center, then write its Store ID into
+// the record); --submit FAILS, because `msstore publish --appId` needs a target.
+let winRecord = null;
+try {
+  winRecord = storeRecordOf(ROOT, app.slug, CHANNEL_ID);
+} catch (e) {
+  problems.push(`${e.message}. The Partner Center product this app submits to is its own record; without one there is no target.`);
+}
+const productIdOf = (rec) => (rec && typeof rec.productId === 'string' && rec.productId.trim() !== '' ? rec.productId.trim() : null);
+if (winRecord !== null) {
+  const pid = productIdOf(winRecord);
+  if (pid !== null) {
+    ok(`Partner Center product ${pid} — ${winRecord.rel} stores.${CHANNEL_ID}.productId (the app's own record, not a secret)`);
+  } else if (SUBMIT) {
+    problems.push(
+      `${winRecord.rel} stores.${CHANNEL_ID} carries no productId (state: ${winRecord.state}). --submit passes it to \`msstore publish --appId\`, ` +
+        'and with none there is no product to publish into. Write the Store ID from Partner Center (Product identity) into the record first.',
+    );
+  } else {
+    prints.push(
+      `PARTNER CENTER PRODUCT PENDING — ${winRecord.rel} stores.${CHANNEL_ID} carries no productId (state: ${winRecord.state}). ` +
+        'A real submission refuses until the Store ID from Partner Center (Product identity) is written into the record.',
+    );
   }
 }
 
@@ -754,7 +780,7 @@ async function submitPath() {
   }
   ok(`transport — \`${CLI}\` present: ${String(cliCheck.stdout ?? '').trim().split('\n')[0]}`);
 
-  const productId = process.env.MS_STORE_PRODUCT_ID;
+  const productId = productIdOf(winRecord);
   let broke = false;
   const runCli = (args, label) => {
     if (broke) return;
@@ -771,7 +797,7 @@ async function submitPath() {
     }
   };
 
-  // 1. configure the CLI non-interactively from the five secrets.
+  // 1. configure the CLI non-interactively from the four secrets.
   //
   // 🔴 THE SELLER ID IS NOT RE-CHECKED HERE, and the reason is worth a line so it is
   // not "helpfully" re-added. A guard was written at exactly this point — refuse if
