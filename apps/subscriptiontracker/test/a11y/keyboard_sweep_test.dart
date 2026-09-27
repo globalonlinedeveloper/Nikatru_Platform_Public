@@ -447,7 +447,8 @@ kExpected = <String, ({int controls, int reachable})>{
   // control count did NOT move — `FocusableTap` still builds a
   // `GestureDetector` with an `onTap`, so the rig counts the same nine.
   '/sign-up': (controls: 9, reachable: 7),
-  '/check-inbox': (controls: 1, reachable: 1),
+  // ⏱ 2026-09-27 · ST-A5 (audit A-6): + resend and "wrong address?".
+  '/check-inbox': (controls: 3, reachable: 3),
   '/verify-email': (controls: 3, reachable: 3),
   // 2 -> 4, and it is the SAME TWO LINKS: this screen renders
   // `LegalConsentFields` too, so one widget fix moved two routes.

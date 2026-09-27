@@ -515,6 +515,27 @@ class SupabaseAuthRepository implements core.AuthRepository {
   ///
   /// ⏱ 2026-09-25 — a refusal (the captcha, a rate limit) leaves as
   /// [core.AuthFailure] with its code, never as the SDK's own type.
+  /// ST-A5 (audit A-6): the NO-SESSION resend, for "check your inbox" — see
+  /// [core.AuthRepository.resendSignUpConfirmation] for why an address is
+  /// taken here and nowhere else. Same mail, same destination as the first.
+  @override
+  Future<void> resendSignUpConfirmation(
+    String email, {
+    String? captchaToken,
+  }) async {
+    if (email.isEmpty) throw core.AuthFailure('Email is required');
+    try {
+      await _auth.resend(
+        type: sb.OtpType.signup,
+        email: email,
+        captchaToken: captchaToken,
+        emailRedirectTo: redirects(AuthFlow.signUpConfirm),
+      );
+    } on sb.AuthException catch (e) {
+      throw _failureOf(e);
+    }
+  }
+
   @override
   Future<void> resendVerificationEmail({String? captchaToken}) async {
     final String? email = _auth.currentUser?.email;

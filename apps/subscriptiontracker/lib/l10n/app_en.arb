@@ -1584,6 +1584,10 @@
     "description": "Consumed by features/auth/check_inbox_screen.dart. States the SECOND step: confirming happens in a mail client, often on another device, so the app cannot carry the user through it and must say what to do afterwards."
   },
   "checkInboxBackToSignIn": "Back to sign in",
+  "checkInboxChangeEmail": "Wrong address? Sign up with a different email",
+  "@checkInboxChangeEmail": {
+    "description": "ST-A5 (audit A-6). On the check-your-inbox screen: the way to fix a mistyped address — it returns to the sign-in door, whose sign-up toggle takes a new address."
+  },
   "@checkInboxBackToSignIn": {
     "description": "Consumed by features/auth/check_inbox_screen.dart. The primary action, because signing in is the next thing this app can do for them. Without it the screen is a dead end, which is the defect it exists to remove."
   },
