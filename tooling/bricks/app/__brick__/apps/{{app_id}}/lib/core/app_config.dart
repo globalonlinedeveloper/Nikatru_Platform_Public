@@ -203,6 +203,11 @@ class AppConfig {
   static bool get isBackendLive =>
       supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
 
+  /// ST-U1 (audit C22/D4): does this app offer the chassis DAILY reminder?
+  /// Declared per app — a habit app keeps it; an app whose reminders are its
+  /// own (the flagship's renewals) sets false and Settings drops the row.
+  static const bool offersDailyReminder = true;
+
   // Whether the launch-time CFG-1 fetch may run. DELIBERATELY SEPARATE from
   // [isBackendLive]: the config service is not the identity service, and
   // overloading one flag for both is how a test run acquires a network call.

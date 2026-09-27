@@ -26,6 +26,7 @@ void main() {
     bool hasSession = true,
     bool remindersAvailable = true,
     bool remindersEnabled = false,
+    bool offersDailyReminder = true,
     bool analyticsGranted = false,
     bool promoObjected = false,
     bool promoObjectionKnown = true,
@@ -54,6 +55,7 @@ void main() {
     remindersAvailable: remindersAvailable,
     remindersEnabled: remindersEnabled,
     onRemindersChanged: onRemindersChanged ?? (bool _) {},
+    offersDailyReminder: offersDailyReminder,
     analyticsGranted: analyticsGranted,
     onAnalyticsConsentChanged: onAnalyticsConsentChanged ?? (bool _) {},
     promoObjected: promoObjected,
@@ -483,6 +485,25 @@ void main() {
         EditProfileDialog(name: name, onSave: () {}),
       );
       expect(find.byType(AlertDialog), findsOneWidget);
+    });
+  });
+
+  // 🔴 ST-U1 (audit C22/D4): the chassis DAILY reminder is a per-app offer. An
+  // app that declines it gets no NOTIFICATIONS section at all. MUTATION PROOF:
+  // ignore offersDailyReminder in SettingsView and the first case goes red.
+  group('the daily reminder is offered per app', () {
+    testWidgets('declined: no Reminders switch and no heading', (
+      WidgetTester tester,
+    ) async {
+      await pumpChassis(tester, kPhone, view(offersDailyReminder: false));
+      expect(find.text('Reminders'), findsNothing);
+    });
+
+    testWidgets('offered (the brick default): the switch is there', (
+      WidgetTester tester,
+    ) async {
+      await pumpChassis(tester, kPhone, view());
+      expect(find.text('Reminders'), findsOneWidget);
     });
   });
 }

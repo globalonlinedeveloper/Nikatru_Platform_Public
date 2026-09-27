@@ -102,6 +102,7 @@ class SettingsView extends StatelessWidget {
     required this.remindersAvailable,
     required this.remindersEnabled,
     required this.onRemindersChanged,
+    this.offersDailyReminder = true,
     required this.analyticsGranted,
     required this.onAnalyticsConsentChanged,
     required this.promoObjected,
@@ -189,6 +190,12 @@ class SettingsView extends StatelessWidget {
   final bool remindersAvailable;
   final bool remindersEnabled;
   final ValueChanged<bool> onRemindersChanged;
+
+  /// ST-U1 (audit C22/D4): whether THIS app offers the chassis daily reminder
+  /// ("Time for today" — a habit app's nudge). An app with no daily habit
+  /// declares false and the section is not drawn: a daily "keeps your streak
+  /// going" beside a tracker's own reminders was a second, meaningless control.
+  final bool offersDailyReminder;
 
   /// 🔴 THE DPDP §6(3) WITHDRAWAL PATH, AND THE CHASSIS SHIPPED WITHOUT IT.
   /// Until [ADR 037 P2.7] the only caller of `recordAnalyticsConsent` in a
@@ -357,8 +364,10 @@ class SettingsView extends StatelessWidget {
             const Divider(),
 
             // ── NOTIFICATIONS ────────────────────────────────────────────────
-            heading(l10n.notifications),
-            if (!remindersAvailable)
+            if (offersDailyReminder) heading(l10n.notifications),
+            if (!offersDailyReminder)
+              const SizedBox.shrink()
+            else if (!remindersAvailable)
               ListTile(
                 leading: const Icon(Icons.notifications_off_outlined),
                 title: Text(l10n.remindersUnavailable),
@@ -371,7 +380,7 @@ class SettingsView extends StatelessWidget {
                 value: remindersEnabled,
                 onChanged: onRemindersChanged,
               ),
-            const Divider(),
+            if (offersDailyReminder) const Divider(),
 
             // ── PRIVACY ──────────────────────────────────────────────────────
             heading(l10n.privacy),

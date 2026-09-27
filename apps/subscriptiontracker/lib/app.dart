@@ -350,10 +350,10 @@ class _AnalyticsGateState extends ConsumerState<AnalyticsGate>
       // builds a SECOND adapter here, in a post-frame callback that runs after
       // main(), and silently re-points every future tap away from the [13]T-9
       // observer's stream. No error, no red test, taps go nowhere.
-      final AppLocalizations l10n = AppLocalizations.of(context);
-      await ref
-          .read(remindersEnabledProvider.notifier)
-          .resyncOnStart(title: l10n.reminderTitle, body: l10n.reminderBody);
+      // ST-U1 (audit C22/D4): the chassis DAILY "keeps your streak" reminder
+      // is not this app's — it tracks renewals. Launch re-asserts it OFF,
+      // which also cancels one an earlier build scheduled.
+      await ref.read(remindersEnabledProvider.notifier).set(false);
     });
   }
 

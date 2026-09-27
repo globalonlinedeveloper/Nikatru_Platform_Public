@@ -96,6 +96,7 @@ class SettingsScreen extends ConsumerWidget {
       remindersEnabled: ref.watch(remindersEnabledProvider),
       onRemindersChanged: (bool on) =>
           _setReminders(context, ref, context.chassisL10n, on: on),
+      offersDailyReminder: AppConfig.offersDailyReminder,
       analyticsGranted:
           ref.watch(analyticsConsentProvider) == core.ConsentStatus.granted,
       // Not awaited, for the same reason app.dart's `_answer` is not: the

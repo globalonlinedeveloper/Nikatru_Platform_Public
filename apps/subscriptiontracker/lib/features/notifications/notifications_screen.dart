@@ -8,6 +8,8 @@ import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
+import '../../state/providers.dart'
+    show subscriptiontrackerNotificationServiceProvider;
 import '../shared/async_gate.dart';
 
 class NotificationsScreen extends ConsumerWidget {
@@ -180,6 +182,26 @@ class NotificationsScreen extends ConsumerWidget {
                   ],
                 ),
               ),
+              // ST-U1 (audit C20): this list is DERIVED, not an inbox, and on a
+              // target that cannot schedule (web — the live one — Windows and
+              // Linux) it is the only reminder there is. Said once, here.
+              if (!ref
+                  .watch(subscriptiontrackerNotificationServiceProvider)
+                  .capabilities
+                  .canSchedule)
+                Padding(
+                  key: const Key('notificationsNoRemindersHere'),
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.gutterCompact,
+                    0,
+                    AppSpacing.gutterCompact,
+                    12,
+                  ),
+                  child: Text(
+                    l10n.notificationsNoRemindersHere,
+                    style: text.muted,
+                  ),
+                ),
               Divider(
                 height: 1,
                 color: isLight ? AppColors.line : scheme.outlineVariant,

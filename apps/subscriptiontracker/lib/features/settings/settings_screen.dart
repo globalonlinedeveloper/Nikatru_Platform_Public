@@ -25,13 +25,11 @@
 // dropping `ContentPane` re-creates the no-width-decision defect PR #210 fixed;
 // `test/responsive_width_test.dart` (an apply-clean file) measures it at 1920.
 // ─────────────────────────────────────────────────────────────────────────────
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
-import 'package:nikatru_notifications/nikatru_notifications.dart';
 // For `PurchaseRail` — the Upgrade row asks it whether a checkout is possible
 // before it offers one. Same package `home_screen.dart` imports for the promo
 // card's `offerings`, so this adds no dependency.
@@ -603,50 +601,9 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
 
-            // ── NOTIFICATIONS (chassis) ──────────────────────────────────────
-            // [pipeline C-7 earning its keep in real UI] The platform matrix is
-            // consulted BEFORE a control is offered. On Linux the plugin shows
-            // but cannot schedule; on Windows (pinned 17.x) it does neither. A
-            // toggle that silently does nothing on those platforms is worse than
-            // an honest sentence, because the user believes reminders are on.
-            //
-            // ⚠️ THIS IS THE OS-LEVEL REMINDER SWITCH AND IT IS NOT THE SAME
-            // THING AS "Renewal alerts" ABOVE. The pref above says WHETHER Subly
-            // wants to remind you about a renewal; this says whether this
-            // platform can deliver a scheduled notification at all. Merging them
-            // would be the toggle-with-no-feature shape on every platform where
-            // `canSchedule` is false.
-            _sectionLabel(context, l10n.notifications),
-            Container(
-              decoration: cardDecoration(context),
-              clipBehavior: Clip.antiAlias,
-              child: Material(
-                color: Colors.transparent,
-                child: Builder(
-                  builder: (BuildContext context) {
-                    final NotificationCapabilities caps =
-                        NotificationCapabilities.forPlatform(
-                          defaultTargetPlatform,
-                          isWeb: kIsWeb,
-                        );
-                    if (!caps.canSchedule) {
-                      return ListTile(
-                        leading: const Icon(Icons.notifications_off_outlined),
-                        title: Text(l10n.remindersUnavailable),
-                        enabled: false,
-                      );
-                    }
-                    return SwitchListTile(
-                      secondary: const Icon(Icons.notifications_outlined),
-                      title: Text(l10n.remindersEnabled),
-                      value: ref.watch(remindersEnabledProvider),
-                      onChanged: (bool on) =>
-                          _setReminders(context, ref, l10n, on: on),
-                    );
-                  },
-                ),
-              ),
-            ),
+            // ST-U1 (audit C22/D4): the chassis DAILY reminder ("A minute now keeps
+            // your streak going") left this app — one reminders control, the
+            // renewal ones above.
 
             // ── PRIVACY — THE DPDP §6(3) WITHDRAWAL PATH (live-only) ─────────
             //
@@ -1092,67 +1049,6 @@ class SettingsScreen extends ConsumerWidget {
     padding: const EdgeInsets.fromLTRB(2, 22, 2, 8),
     child: Text(text.toUpperCase(), style: AppText.of(context).label),
   );
-
-  /// PERMISSION PRIMING — explain, THEN ask the OS.
-  ///
-  /// 🔴 The OS prompt can be shown ONCE on most platforms. A user who declines
-  /// it has effectively declined permanently, and the only route back is the
-  /// system settings app. So the cost of asking at a bad moment is not a
-  /// dismissed dialog — it is the feature, forever. Priming first means the one
-  /// prompt is spent on someone who has already said yes in principle.
-  ///
-  /// 🔴 AND THEN IT MUST ACTUALLY SCHEDULE. This used to end at
-  /// `requestPermission()` — the prompt was spent, the switch read ON, and no
-  /// notification was ever scheduled in any app this factory stamps. The
-  /// scheduling lives in `RemindersEnabledController.applyReminderChoice` so it
-  /// is reachable from a property test without a widget, and so the intent and
-  /// the OS state can never be written apart.
-  Future<void> _setReminders(
-    BuildContext context,
-    WidgetRef ref,
-    AppLocalizations l10n, {
-    required bool on,
-  }) async {
-    if (!on) {
-      await ref
-          .read(remindersEnabledProvider.notifier)
-          .applyReminderChoice(
-            on: false,
-            title: l10n.reminderTitle,
-            body: l10n.reminderBody,
-          );
-      return;
-    }
-    final bool proceed =
-        await showDialog<bool>(
-          context: context,
-          builder: (BuildContext c) => AlertDialog(
-            title: Text(l10n.permissionPrimingTitle),
-            content: Text(l10n.permissionPrimingBody),
-            actions: <Widget>[
-              TextButton(
-                onPressed: () => Navigator.pop(c, false),
-                child: Text(l10n.notNow),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(c, true),
-                child: Text(l10n.continueLabel),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-    // Declining the PRIMING must not spend the OS prompt — that is the whole
-    // point of asking twice.
-    if (!proceed) return;
-    await ref
-        .read(remindersEnabledProvider.notifier)
-        .applyReminderChoice(
-          on: true,
-          title: l10n.reminderTitle,
-          body: l10n.reminderBody,
-        );
-  }
 
   /// 🔴 AWAITED, AND ITS FAILURE IS SAID OUT LOUD. This was
   /// `onPressed: () => ref.read(authRepositoryProvider).signOut()` — not awaited

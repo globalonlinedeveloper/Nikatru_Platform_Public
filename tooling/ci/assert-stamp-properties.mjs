@@ -292,12 +292,13 @@ const EXEMPT_APPS = new Map([
       // (StatefulNavigationShellState, under `_FabBand`) during the route walk —
       // a lib/ defect in this app's shell, outside that row. The theme fix
       // reaches this app regardless: its a11y sweep runs all five platforms.
-      floor: 11,
-      floorAsOf: '2026-09-25',
+      floor: 13,
+      floorAsOf: '2026-09-27',
       floorNote:
         'The prose above records 9 with the anchors read RAW and 10 with them COMMENT-STRIPPED (2026-08-21); ' +
         'the strip is on, so that is the read this number comes from. Getting the RAW number back means the stripping was undone. ' +
-        '2026-09-25: 11 — ui-invariants-inherited gained a PROP_TEST anchor on LIMB 2\'s five-platform variant, and this app\'s own LIMB 2 stays on android (its shell throws a duplicate GlobalKey on iOS and macOS).',
+        '2026-09-25: 11 — ui-invariants-inherited gained a PROP_TEST anchor on LIMB 2\'s five-platform variant, and this app\'s own LIMB 2 stays on android (its shell throws a duplicate GlobalKey on iOS and macOS). ' +
+        '2026-09-27: 13 — ST-U1 (audit C22/D4) took the chassis DAILY reminder out of this app on purpose (it tracks renewals; "keeps your streak going" was a habit app\'s nudge), so reminder-intent-persisted (the Settings toggle) and reminders-resync-on-start (app.dart now re-asserts it OFF) lose their implementations here. The brick keeps both, behind AppConfig.offersDailyReminder.',
     },
   ],
 ]);
