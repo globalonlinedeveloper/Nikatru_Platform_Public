@@ -31,6 +31,19 @@
 // it as waiting. If every revision read still lists it, the age is only a LOWER
 // bound; a lower bound under the ceiling proves nothing, so it is exit 2.
 //
+// -- AN OPEN RENOVATE PR IS STILL THE QUEUE (2026-09-27, train WD1) --------------
+// The markers above are updates Renovate has found and NOT opened. The moment it
+// opens one, the entry leaves them for the dashboard's "Open" list - so a red
+// major PR that nobody merges used to make this reader QUIETER: one fewer waiting,
+// and its age gone with it. So the same read also takes the repository's OPEN pull
+// requests, and every one whose head branch carries renovate.json's branchPrefix
+// (BRANCH_PREFIX, held equal to it by the test) is counted into the queue, once
+// per branch. Its age is measured from the oldest revision of the unbroken run
+// that names its branch under ANY marker (waiting, then open), so the days it
+// waited before Monday opened it are kept; the PR's own createdAt is the floor
+// when the dashboard never named it. A PR list that did not come back, or came
+// back truncated, is COULD NOT LOOK: zero open PRs would be a false clean.
+//
 // -- FAIL-CLOSED, AND WHAT EACH EXIT MEANS ---------------------------------------
 //   0 - the dashboard was read; the waiting count and the oldest age are both at
 //       or under their ceilings. Both numbers are printed.
@@ -46,7 +59,8 @@
 // lane notes - and is NOT decided here.
 //
 // Usage:  node tooling/ops/check-renovate-backlog.mjs [--json]
-// Env:    GH_TOKEN or GITHUB_TOKEN (issues: read on the Public repository)
+// Env:    GH_TOKEN or GITHUB_TOKEN (issues: read AND pull-requests: read on the
+//         Public repository; a workflow that runs this must grant both)
 //
 // `process.exit()` IS BANNED IN THIS FILE, the same rule its neighbours in
 // tooling/ops carry: set `process.exitCode`.
@@ -70,6 +84,12 @@ export const WAITING_KINDS = Object.freeze(['unschedule-branch', 'unlimit-branch
 /** Headings Renovate has used for a waiting section. Printed, and used only to
  *  notice that a waiting section exists while no marker parses. */
 export const WAITING_HEADINGS = Object.freeze(['Awaiting Schedule', 'Rate-Limited', 'Pending Approval']);
+/** renovate.json `branchPrefix`. An open PR whose head branch starts with it is
+ *  Renovate's, and is still the queue until it merges. */
+export const BRANCH_PREFIX = 'chore/renovate-';
+/** Open pull requests read per run. The repository carries a handful at a time;
+ *  a list longer than this is COULD NOT LOOK, never a partial count. */
+export const PRS_READ = 100;
 
 const ENTRY = /^\s*-\s+\[[ xX]\]\s+<!--\s*([a-z-]+)=(\S+?)\s*-->(.*)$/;
 const HEADING = /^##\s+(.+?)\s*$/;
@@ -101,11 +121,23 @@ export function showsWaitingSection(body) {
   });
 }
 
+/** PURE. Every branch the body names under ANY `<!-- kind=branch -->` marker -
+ *  waiting, open or closed. Ages an open PR's branch across the day it opened. */
+export function namedBranches(body) {
+  const out = new Set();
+  for (const line of String(body ?? '').split(/\r?\n/)) {
+    const e = ENTRY.exec(line);
+    if (e) out.add(e[2]);
+  }
+  return out;
+}
+
 /** PURE. When each waiting branch joined the queue, from revisions newest first.
+ *  `names` says which branches a revision lists (default: its waiting markers).
  *  Returns Map branch -> { since: ISO, lowerBound: boolean }. */
-export function firstSeen(branches, revisions, { complete }) {
+export function firstSeen(branches, revisions, { complete, names = (b) => new Set(waitingEntries(b).map((e) => e.branch)) }) {
   const seen = new Map();
-  const sets = revisions.map((r) => ({ at: r.editedAt, set: new Set(waitingEntries(r.diff).map((e) => e.branch)) }));
+  const sets = revisions.map((r) => ({ at: r.editedAt, set: names(r.diff) }));
   for (const b of branches) {
     let since = null;
     let broke = false;
@@ -167,32 +199,64 @@ export function judge({ issue, floor, now }) {
   if (entries.length > 0 && (!revisions || revisions.length === 0)) {
     return { code: 2, lines: ['x COULD NOT LOOK - the dashboard lists waiting entries but its edit history came back empty, so no age can be measured.'] };
   }
+  const pulls = issue?.openPullRequests;
+  if (!Array.isArray(pulls?.nodes)) {
+    return {
+      code: 2,
+      lines: ['x COULD NOT LOOK - the repository\'s open pull requests did not come back, so an OPEN Renovate PR (which leaves the waiting list) could not be counted.'],
+    };
+  }
+  if (Number.isInteger(pulls.totalCount) && pulls.totalCount > pulls.nodes.length) {
+    return {
+      code: 2,
+      lines: [`x COULD NOT LOOK - ${pulls.totalCount} open pull requests exist and ${pulls.nodes.length} were read, so the open Renovate PRs among them cannot all be counted.`],
+    };
+  }
+  const waitingBranches = new Set(entries.map((e) => e.branch));
+  // Once per branch: a dashboard written before the PR opened still lists it as waiting.
+  const opened = pulls.nodes.filter((p) => String(p?.headRefName ?? '').startsWith(BRANCH_PREFIX) && !waitingBranches.has(p.headRefName));
+  const undated = opened.filter((p) => !Number.isFinite(Date.parse(String(p?.createdAt ?? ''))));
+  if (undated.length > 0) {
+    return { code: 2, lines: [`x COULD NOT LOOK - open Renovate PR #${undated[0].number} (${undated[0].headRefName}) came back with no createdAt, so its age is unknown.`] };
+  }
   const complete = revisions ? revisions.length >= (edits.totalCount ?? Infinity) : false;
   const ages = entries.length > 0 ? firstSeen(entries.map((e) => e.branch), revisions, { complete }) : new Map();
+  const listed = opened.length > 0 && revisions ? firstSeen(opened.map((p) => p.headRefName), revisions, { complete, names: namedBranches }) : new Map();
   const updatedAt = String(issue.updatedAt ?? '');
   const aged = entries.map((e) => {
     const s = ages.get(e.branch);
     const since = s?.since ?? updatedAt;
     return { ...e, since, lowerBound: s?.lowerBound === true, days: (now - Date.parse(since)) / DAY_MS };
   });
+  for (const p of opened) {
+    const s = listed.get(p.headRefName);
+    const since = s?.since && Date.parse(s.since) < Date.parse(p.createdAt) ? s.since : p.createdAt;
+    aged.push({ kind: 'open-pr', branch: p.headRefName, title: String(p.title ?? ''), heading: null, pr: p.number, since, lowerBound: s?.lowerBound === true, days: (now - Date.parse(since)) / DAY_MS });
+  }
   aged.sort((a, b) => b.days - a.days);
   const oldest = aged[0];
   const headings = [...new Set(entries.map((e) => e.heading ?? '(none)'))];
+  const queue = entries.length + opened.length;
   const measured = {
     asOf: updatedAt,
     waiting: entries.length,
+    open: opened.length,
+    queue,
     oldestDays: oldest ? Number(oldest.days.toFixed(1)) : 0,
     oldestBranch: oldest?.branch ?? null,
     headings,
   };
   const findings = [];
-  if (entries.length > floor.maxWaiting) {
-    findings.push(`x THE RENOVATE QUEUE IS ${entries.length} UPDATES, past its ceiling of ${floor.maxWaiting} (renovate-backlog-floor.json).`);
+  if (queue > floor.maxWaiting) {
+    findings.push(
+      `x THE RENOVATE QUEUE IS ${queue} UPDATES, past its ceiling of ${floor.maxWaiting} (renovate-backlog-floor.json): ` +
+        `${entries.length} waiting on the dashboard + ${opened.length} open Renovate PR(s).`,
+    );
   }
   const tooOld = aged.filter((a) => a.days > floor.maxOldestDays);
   if (tooOld.length > 0) {
     findings.push(`x ${tooOld.length} UPDATE(S) HAVE WAITED LONGER THAN ${floor.maxOldestDays} DAYS (renovate-backlog-floor.json):`);
-    for (const a of tooOld.slice(0, 10)) findings.push(`    ${a.days.toFixed(1)}d${a.lowerBound ? '+' : ''}  ${a.branch}  since ${a.since}`);
+    for (const a of tooOld.slice(0, 10)) findings.push(`    ${a.days.toFixed(1)}d${a.lowerBound ? '+' : ''}  ${a.branch}  since ${a.since}${a.pr ? `  (open PR #${a.pr})` : ''}`);
   }
   if (findings.length > 0) {
     return {
@@ -203,6 +267,7 @@ export function judge({ issue, floor, now }) {
         `    read from #417 at ${updatedAt}, heading(s): ${headings.join(' / ')}.`,
         '    The queue drains only by Renovate opening PRs and someone merging them. Read renovate.json',
         '    prHourlyLimit / prConcurrentLimit against the arrival rate, and look for majors waiting on a hand merge.',
+        '    An open Renovate PR stays in the count, with the days it waited before it opened, until it merges.',
         '    NEVER tick "create all" on the dashboard: every PR at once runs full CI and exhausts the GitHub API.',
       ],
     };
@@ -222,17 +287,21 @@ export function judge({ issue, floor, now }) {
     code: 0,
     measured,
     lines: [
-      `ok  renovate queue ${entries.length} <= ${floor.maxWaiting}, oldest ${measured.oldestDays}d <= ${floor.maxOldestDays}d` +
+      `ok  renovate queue ${queue} <= ${floor.maxWaiting}, oldest ${measured.oldestDays}d <= ${floor.maxOldestDays}d` +
+        ` (${entries.length} waiting + ${opened.length} open Renovate PR(s))` +
         ` - #417 at ${updatedAt}, ${revisions ? revisions.length : 0} revision(s) read, heading(s): ${headings.join(' / ') || '(none waiting)'}`,
     ],
   };
 }
 
-const QUERY = `query($owner:String!,$name:String!,$number:Int!,$edits:Int!){
+const QUERY = `query($owner:String!,$name:String!,$number:Int!,$edits:Int!,$prs:Int!){
   repository(owner:$owner,name:$name){
     issue(number:$number){
       title state body updatedAt
       userContentEdits(first:$edits){ totalCount nodes { editedAt diff } }
+    }
+    pullRequests(states:OPEN,first:$prs,orderBy:{field:CREATED_AT,direction:ASC}){
+      totalCount nodes { number title headRefName createdAt }
     }
   }
 }`;
@@ -259,7 +328,7 @@ export async function readDashboard({ owner, name, number, token, sleep, note, d
         res = await doFetch(GITHUB_GRAPHQL, {
           method: 'POST',
           headers: { authorization: `Bearer ${token}`, accept: 'application/json', 'content-type': 'application/json' },
-          body: JSON.stringify({ query: QUERY, variables: { owner, name, number, edits: EDITS_READ } }),
+          body: JSON.stringify({ query: QUERY, variables: { owner, name, number, edits: EDITS_READ, prs: PRS_READ } }),
           signal,
         });
       } catch (e) {
@@ -284,9 +353,12 @@ export async function readDashboard({ owner, name, number, token, sleep, note, d
       if (Array.isArray(body?.errors) && body.errors.length > 0) {
         throw new CouldNotLook(`the GraphQL read returned errors: ${JSON.stringify(body.errors).slice(0, 300)}`);
       }
-      const issue = body?.data?.repository?.issue;
+      const repository = body?.data?.repository;
+      const issue = repository?.issue;
       if (!issue) throw new CouldNotLook(`issue #${number} did not come back from the GraphQL read`);
-      return issue;
+      // Not an issue field: the repository's open PRs, from the same read. judge()
+      // refuses a missing list rather than counting it as none.
+      return { ...issue, openPullRequests: repository.pullRequests ?? null };
     },
     { sleep, note },
   );

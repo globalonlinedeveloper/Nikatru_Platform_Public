@@ -35,10 +35,28 @@
 // make shipped content verifiable and cannot be removed without removing the
 // fail-closed verifier. An asset under either is a build failure.
 //
-// Usage:  node tooling/ci/assert-licence-register.mjs [repoRoot] [--bundle DIR]
+// ── APP-SCOPED ROWS: `--bundle DIR --app ID` (lead ruling PRL-R1, 2026-09-26) ──
+// A pub package an app depends on ships its own assets into that app's bundle
+// (`packages/<pkg>/…`), and no workspace manifest declares them. The register's
+// `assets` rows describe the whole workspace, so they could not say "this app
+// ships that file"; the first PR-lane web build of app #1 failed on five such
+// files (O-PR-LANE-BUILDS-ONLY-ANDROID-ARTIFACTS, run 36233164494). The register's
+// `appScopedAssets` rows each name a scope `app:<id>`, the path as it appears in
+// that app's bundle, the PACKAGE that ships it, and a licence id. With `--app`,
+// every file in the bundle must resolve to EXACTLY ONE row — a shared row, or an
+// `app:<id>` row for THIS app; an `app:<other>` row never satisfies it. A file a
+// hosted (non-workspace) package ships is claimed only by a row naming that
+// package, never by a shared row's basename. The row's licence id is not taken
+// on trust: this guard reads the package's own LICENSE through the app's
+// resolved `.dart_tool/package_config.json` (or the pub workspace's, via
+// `.dart_tool/pub/workspace_ref.json`) and exits 1 when the two differ. No
+// package_config means `pub get` never ran: COVERAGE LOST (exit 2), never a pass.
+//
+// Usage:  node tooling/ci/assert-licence-register.mjs [repoRoot] [--bundle DIR [--app ID]]
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { join, resolve, relative, sep } from 'node:path';
+import { dirname, join, resolve, relative, sep } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { stripSourceComments } from './text-reductions.mjs';
 import { listDir } from './tree-walk.mjs';
 // The seam against [7]P-5's content-licence register. Imported by BOTH guards on
@@ -71,7 +89,12 @@ import { delegationOf } from './chassis-delegation.mjs';
 const argv = process.argv.slice(2);
 const bundleAt = argv.indexOf('--bundle');
 const bundleDir = bundleAt === -1 ? null : argv[bundleAt + 1];
-const positional = argv.filter((a, i) => !a.startsWith('--') && !(bundleAt !== -1 && i === bundleAt + 1));
+const appAt = argv.indexOf('--app');
+const appId = appAt === -1 ? null : argv[appAt + 1];
+// The same trap as above, for two flags: only a flag that IS present owns the
+// argument after it.
+const flagValues = new Set([bundleAt, appAt].filter((i) => i !== -1).map((i) => i + 1));
+const positional = argv.filter((a, i) => !a.startsWith('--') && !flagValues.has(i));
 const repoRoot = resolve(positional[0] ?? process.cwd());
 const REGISTER = join(repoRoot, 'tooling', 'legal', 'asset-register.json');
 
@@ -103,6 +126,73 @@ try {
 }
 const D = register.derivation ?? {};
 
+// ── `--app`: whose bundle this is, and the packages it resolved ─────────────
+// Checked before anything is walked: a caller error here would otherwise grade
+// the bundle against the shared rows alone and print a finding about the wrong
+// question.
+let appDirAbs = null;
+let packageConfig = null;
+if (appAt !== -1) {
+  if (!appId || appId.startsWith('--')) {
+    coverageLost('--app was given no app id.', 'Name the app whose bundle --bundle points at: --app <id>.');
+  }
+  if (bundleDir === null) {
+    coverageLost(
+      `--app ${appId} names the app a BUNDLE belongs to, and no --bundle was given.`,
+      'App-scoped rows are witnessed by that app\'s built bundle and by nothing else.',
+    );
+  }
+  appDirAbs =
+    (D.appRoots ?? []).map((r) => join(repoRoot, ...r.split('/'), appId)).find((d) => existsSync(join(d, 'pubspec.yaml'))) ??
+    null;
+  if (appDirAbs === null) {
+    coverageLost(
+      `--app ${appId} names no app: no ${(D.appRoots ?? []).map((r) => `${r}/${appId}/pubspec.yaml`).join(' or ') || 'derivation.appRoots'} exists.`,
+      'The scope `app:<id>` rows are graded against is the directory the build came from.',
+    );
+  }
+  packageConfig = packageConfigOf(appDirAbs);
+  if (packageConfig === null) {
+    coverageLost(
+      `${rel(appDirAbs)} has no resolved packages: neither .dart_tool/package_config.json nor a ` +
+        '.dart_tool/pub/workspace_ref.json that leads to one.',
+      'An app-scoped row\'s licence is READ from the LICENSE of the package that ships it, and the package is',
+      'found through package_config.json, which `flutter pub get` writes. Run it before this step: with no',
+      'resolved packages nothing was read, and a licence nobody read is not evidence.',
+    );
+  }
+}
+
+/** The package_config.json an app resolves through: its own, or — in a pub
+ *  workspace, measured on this tree 2026-09-26 — the workspace root's, which
+ *  `.dart_tool/pub/workspace_ref.json` names relative to its own directory. */
+function packageConfigOf(appDir) {
+  const own = join(appDir, '.dart_tool', 'package_config.json');
+  if (existsSync(own)) return readPackageConfig(own);
+  const ref = join(appDir, '.dart_tool', 'pub', 'workspace_ref.json');
+  if (!existsSync(ref)) return null;
+  let root;
+  try {
+    root = JSON.parse(readFileSync(ref, 'utf8')).workspaceRoot;
+  } catch {
+    return null;
+  }
+  if (typeof root !== 'string' || root.trim() === '') return null;
+  const cfg = join(resolve(dirname(ref), ...root.split(/[\\/]+/)), '.dart_tool', 'package_config.json');
+  return existsSync(cfg) ? readPackageConfig(cfg) : null;
+}
+
+function readPackageConfig(path) {
+  let doc;
+  try {
+    doc = JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(doc.packages)) return null;
+  return { path, doc, byName: new Map(doc.packages.map((p) => [p.name, p])) };
+}
+
 const walk = (dir, out = []) => {
   let entries;
   try {
@@ -132,6 +222,14 @@ if (pubspecs.length < Number(D.minPubspecs ?? 0)) {
     'an asset register that enumerates nothing reports every asset accounted for.',
   );
 }
+
+/** The workspace's own package names. A bundle file under `packages/<name>/`
+ *  whose <name> is NOT one of these was shipped by a hosted pub package. */
+const workspacePackages = new Set(
+  pubspecs
+    .map((f) => stripSourceComments(readFileSync(f, 'utf8'), '.yaml').match(/^name:\s*(\S+)\s*$/m)?.[1])
+    .filter(Boolean),
+);
 
 /** Which pubspecs turn the icon font on. A relationship to a flag in the tree,
  *  so a bundle path that stops finding assets fails instead of reporting clean. */
@@ -278,17 +376,106 @@ for (const a of assets) {
 // honest comparison: the register describes the artefact, and the bundle
 // rearranges where it sits. In declared mode the keys are repo paths and match
 // exactly, which is the stronger comparison — said plainly rather than glossed.
-const matchKey = (shippedId, shippedName) => {
-  if (byKey.has(shippedId)) return byKey.get(shippedId);
-  if (bundleDir !== null) {
-    for (const a of assets) {
-      const base = (a.path ?? '').split('/').pop();
-      if (base && base === shippedName) return a;
-      if (a.fromFlag && /^MaterialIcons/i.test(shippedName)) return a;
-    }
-  }
-  return null;
+// Every shared row a file matches is returned, so a file two rows claim is
+// reported rather than handed to whichever row came first.
+const sharedMatches = (shippedId, shippedName) => {
+  if (byKey.has(shippedId)) return [byKey.get(shippedId)];
+  if (bundleDir === null) return [];
+  return assets.filter((a) => {
+    const base = (a.path ?? '').split('/').pop();
+    return (base && base === shippedName) || (a.fromFlag && /^MaterialIcons/i.test(shippedName));
+  });
 };
+
+// ── app-scoped rows: the shape (PRL-R1) ─────────────────────────────────────
+// A separate array, not a `scope` field on `assets`: every shared row keeps its
+// shape byte for byte, and a guard that predates this array reads the register
+// exactly as it did (its declared mode would call an app row orphaned, and its
+// probe walk would call it a bundleOnly row the build stopped emitting).
+const APP_SCOPE = /^app:([a-z][a-z0-9_]*)$/;
+const SDK_PACKAGE = 'sdk:flutter';
+const PUB_NAME = /^[a-z_][a-z0-9_]*$/;
+let appRows = [];
+if (register.appScopedAssets !== undefined) {
+  if (Array.isArray(register.appScopedAssets)) appRows = register.appScopedAssets;
+  else problems.push('the asset register\'s `appScopedAssets` is not an array, so no app-scoped row was read.');
+}
+const appKey = (a) => `${a.scope}#${a.bundlePath}`;
+const scopeOfApp = appId === null ? null : `app:${appId}`;
+const appInScope = scopeOfApp === null ? [] : appRows.filter((a) => a.scope === scopeOfApp);
+const scopedByPath = new Map(appInScope.map((a) => [a.bundlePath, a]));
+/** The hosted pub package a BUNDLE path was shipped by, or null. Bundle mode
+ *  only: in declared mode `packages/<dir>/` is a repo directory, not a package. */
+const hostedPackageOf = (shippedId) => {
+  if (bundleDir === null) return null;
+  const m = /^packages\/([^/]+)\//.exec(shippedId);
+  return m && !workspacePackages.has(m[1]) ? m[1] : null;
+};
+const shown = (p) => {
+  const r = relative(repoRoot, p);
+  return (r.startsWith('..') ? p : r).split(sep).join('/');
+};
+
+// ── the primary licence source: the LICENSE of the package that ships it ────
+// Recognised by the operative sentences of each text, whitespace and case
+// ignored. A LICENSE that reads as none of these, or as more than one, is a
+// finding: the row's licence could not be read from its source.
+const LICENCE_TEXTS = [
+  {
+    id: 'Apache-2.0',
+    all: ['apache license', 'version 2.0, january 2004', 'terms and conditions for use, reproduction, and distribution'],
+  },
+  {
+    id: 'MIT',
+    all: [
+      'permission is hereby granted, free of charge, to any person obtaining a copy',
+      'the above copyright notice and this permission notice shall be included in all copies or substantial portions of the software',
+    ],
+  },
+  {
+    id: 'BSD-3-Clause',
+    all: [
+      'redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met',
+      'neither the name of',
+    ],
+  },
+  {
+    id: 'BSD-2-Clause',
+    all: [
+      'redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met',
+    ],
+    none: ['neither the name of'],
+  },
+];
+const flat = (t) => t.replace(/\s+/g, ' ').trim().toLowerCase();
+const classifyLicence = (text) => {
+  const t = flat(text);
+  return LICENCE_TEXTS.filter((l) => l.all.every((p) => t.includes(p)) && !(l.none ?? []).some((p) => t.includes(p))).map(
+    (l) => l.id,
+  );
+};
+const LICENCE_FILES = ['LICENSE', 'LICENSE.md', 'LICENSE.txt', 'LICENCE'];
+/** { file, text, ids } for a package this app resolved, or { error }. */
+function packageLicence(pkg) {
+  let root;
+  if (pkg === SDK_PACKAGE) {
+    const fr = packageConfig.doc.flutterRoot;
+    if (typeof fr !== 'string' || fr.trim() === '') {
+      return { error: `${shown(packageConfig.path)} carries no flutterRoot, so the Flutter SDK's LICENSE cannot be found` };
+    }
+    root = fileURLToPath(new URL(fr.endsWith('/') ? fr : `${fr}/`, pathToFileURL(packageConfig.path)));
+  } else {
+    const p = packageConfig.byName.get(pkg);
+    if (!p || typeof p.rootUri !== 'string') {
+      return { error: `package ${pkg} is not in ${shown(packageConfig.path)}, so this app does not resolve it` };
+    }
+    root = fileURLToPath(new URL(p.rootUri.endsWith('/') ? p.rootUri : `${p.rootUri}/`, pathToFileURL(packageConfig.path)));
+  }
+  const file = LICENCE_FILES.map((n) => join(root, n)).find((f) => existsSync(f));
+  if (!file) return { error: `${pkg} carries no LICENSE file at ${shown(root)}` };
+  const text = readFileSync(file, 'utf8');
+  return { file, text, ids: classifyLicence(text) };
+}
 
 /** Files the BUILD emits to describe or license the bundle. Named individually
  *  in the register — never a suffix rule, so a new one still fails until
@@ -305,14 +492,37 @@ if (bundleDir !== null && generated.size === 0) {
 }
 
 const matched = new Set();
+const matchedApp = new Set();
 let generatedSeen = 0;
 for (const [id, s] of shipped) {
   if (generated.has(s.name)) {
     generatedSeen++;
     continue;
   }
-  const row = matchKey(id, s.name);
-  if (!row) {
+  // EXACTLY ONE ROW: a shared row, or an `app:<id>` row for THIS bundle's app. A
+  // file a hosted package ships is never claimed by a shared row's basename — a
+  // shared row names no package, so it cannot say whose LICENSE the file is under.
+  const hosted = hostedPackageOf(id);
+  const shared = hosted === null ? sharedMatches(id, s.name) : [];
+  const scoped = scopedByPath.has(id) ? [scopedByPath.get(id)] : [];
+  const rows = [...shared, ...scoped];
+  if (rows.length === 1) {
+    if (scoped.length === 1) matchedApp.add(appKey(scoped[0]));
+    else matched.add(keyOf(shared[0]));
+    continue;
+  }
+  if (rows.length > 1) {
+    // Every claimant WAS emitted, so none of them is also reported as stale.
+    for (const r of scoped) matchedApp.add(appKey(r));
+    for (const r of shared) matched.add(keyOf(r));
+    problems.push(
+      `${id} ships (${[...new Set(s.where)].join(', ')}) and resolves to ${rows.length} rows ` +
+        `(${rows.map((r) => JSON.stringify(r.id)).join(', ')}). One file, one row: two rows are two licence ` +
+        'answers for one artefact, and the register cannot say which one a store is given.',
+    );
+    continue;
+  }
+  if (hosted === null) {
     problems.push(
       `${s.name} ships (${[...new Set(s.where)].join(', ')}) and has NO row in tooling/legal/asset-register.json. ` +
         'A store can ask for evidence of rights to it, and the answer would be a search rather than a file. Add the ' +
@@ -321,7 +531,27 @@ for (const [id, s] of shipped) {
     );
     continue;
   }
-  matched.add(keyOf(row));
+  const elsewhere = appRows.filter((a) => a.bundlePath === id && a.scope !== scopeOfApp).map((a) => a.scope);
+  let derived = '';
+  if (appId !== null) {
+    const lic = packageLicence(hosted);
+    const read = lic.error ? `UNREAD — ${lic.error}` : lic.ids.length === 1 ? lic.ids[0] : `UNREAD — ${shown(lic.file)} names ${lic.ids.length} licences`;
+    derived =
+      ' The row this bundle and the package\'s own LICENSE derive (write its `name` and `contentFamilyWhy` ' +
+      `yourself): ${JSON.stringify({ id: `${appId}-${hosted}-${s.name}`, scope: scopeOfApp, bundlePath: id, package: hosted, origin: 'third-party', licence: read, attributionRequired: true, attributedIn: 'bundle:NOTICES', contentFamily: null, source: { note: `the ${hosted} package's own LICENSE, read by assert-licence-register.mjs --bundle --app on every run` } })}`;
+  }
+  problems.push(
+    `${id} ships (${[...new Set(s.where)].join(', ')}), shipped by the hosted package ${hosted}, and no row ` +
+      (appId === null
+        ? 'claims it. This walk was given no --app, so only shared rows were eligible, and a shared row never claims ' +
+          'a file a package ships. Pass --app <id>, and add an `app:<id>` row to `appScopedAssets`.'
+        : `in scope shared or ${scopeOfApp} claims it. Add an \`appScopedAssets\` row for ${scopeOfApp}.`) +
+      (elsewhere.length
+        ? ` A row scoped ${[...new Set(elsewhere)].join(', ')} names this path; an app-scoped row belongs to ONE app, ` +
+          'and every other app needs its own, read from its own bundle.'
+        : '') +
+      derived,
+  );
 }
 
 // ── the reverse direction, and WHICH MODE MAY ASSERT IT ─────────────────────
@@ -448,6 +678,155 @@ for (const a of assets) {
 // carries no source" with "no row produced a claim" and send the fix elsewhere.
 if (sourced === 0 && problems.length === 0) {
   coverageLost('NOT ONE asset row produced a checkable licence claim, so the source rule ran over nothing.');
+}
+
+// ── app-scoped rows: per-row obligations, in every mode ─────────────────────
+const appExists = (id) => (D.appRoots ?? []).some((r) => existsSync(join(repoRoot, ...r.split('/'), id, 'pubspec.yaml')));
+const idsSeen = new Set(assets.map((a) => a.id));
+const appKeysSeen = new Set();
+const validApp = new Set();
+for (const a of appRows) {
+  const where = `app-scoped row ${JSON.stringify(a?.id ?? null)}`;
+  if (typeof a?.id !== 'string' || a.id.trim() === '') {
+    problems.push('an `appScopedAssets` row carries no `id`. Every row is named, so a reader can cite it.');
+    continue;
+  }
+  if (idsSeen.has(a.id)) problems.push(`${where}: another row already carries that id. One id, one row.`);
+  idsSeen.add(a.id);
+  const sm = APP_SCOPE.exec(String(a.scope ?? ''));
+  if (!sm) {
+    problems.push(`${where} declares scope ${JSON.stringify(a.scope ?? null)}. An app-scoped row's scope is \`app:<app_id>\`.`);
+    continue;
+  }
+  if (!appExists(sm[1])) {
+    problems.push(
+      `${where} is scoped to ${a.scope}, and no app ${sm[1]} exists under ${(D.appRoots ?? []).join(', ')}. A row for an ` +
+        'app nobody builds is a row nobody checks: retire it.',
+    );
+  }
+  const bp = a.bundlePath;
+  if (
+    typeof bp !== 'string' ||
+    bp === '' ||
+    bp.includes('\\') ||
+    bp.split('/').some((seg) => seg === '' || seg === '.' || seg === '..')
+  ) {
+    problems.push(
+      `${where} declares bundlePath ${JSON.stringify(bp ?? null)}. It is the file's path inside the app's built ` +
+        'assets directory, as that directory lists it: forward slashes, relative, no `.` or `..` segment.',
+    );
+    continue;
+  }
+  if (appKeysSeen.has(appKey(a))) problems.push(`${where}: another row already claims ${bp} for ${a.scope}. One file, one row.`);
+  appKeysSeen.add(appKey(a));
+  const pkg = a.package;
+  if (pkg !== SDK_PACKAGE && !(typeof pkg === 'string' && PUB_NAME.test(pkg))) {
+    problems.push(
+      `${where} names package ${JSON.stringify(pkg ?? null)}. A row names the pub package that ships the file, or ` +
+        `"${SDK_PACKAGE}" for an engine or web asset of the Flutter SDK: the package is where its licence is read.`,
+    );
+    continue;
+  }
+  const pathPkg = /^packages\/([^/]+)\//.exec(bp)?.[1] ?? null;
+  if (pkg === SDK_PACKAGE ? pathPkg !== null : pathPkg !== pkg) {
+    problems.push(
+      `${where} names package ${pkg} for ${bp}, and ` +
+        (pathPkg === null ? 'a pub package ships its assets under packages/<name>/.' : `that path is shipped by package ${pathPkg}.`) +
+        ' The wrong package would be the wrong LICENSE.',
+    );
+    continue;
+  }
+  const licence = String(a.licence ?? '').trim();
+  if (licence === '' || licence === 'UNVERIFIED') {
+    problems.push(
+      `${where} declares licence ${JSON.stringify(a.licence ?? null)}. An app-scoped row's licence is READ from the ` +
+        'package that ships it, so there is no unread state to record: write the id its LICENSE reads, and the ' +
+        '--bundle --app walk checks it against that file.',
+    );
+    continue;
+  }
+  if (bad.some((p) => licence.toUpperCase().startsWith(p))) {
+    problems.push(`${where} declares licence ${JSON.stringify(licence)}, which cannot ship here (see incompatibleLicences).`);
+  }
+  if (a.origin !== 'third-party') {
+    problems.push(`${where} declares origin ${JSON.stringify(a.origin ?? null)}; a file a package ships is "third-party" material.`);
+  }
+  if (typeof a.source?.note !== 'string' || a.source.note.trim() === '') {
+    problems.push(`${where} carries no \`source.note\` saying where its licence is read from.`);
+  }
+  if (typeof a.attributionRequired !== 'boolean') {
+    problems.push(
+      `${where} leaves attributionRequired at ${JSON.stringify(a.attributionRequired ?? null)}. Its licence is read, so ` +
+        'its duty is known: true or false, never a blank nobody re-opens.',
+    );
+  } else if (a.attributionRequired) {
+    const t = a.attributedIn;
+    const ok = t === 'bundle:NOTICES' || (typeof t === 'string' && t.trim() !== '' && existsSync(join(repoRoot, ...t.split('/'))));
+    if (!ok) {
+      problems.push(
+        `${where} carries an attribution obligation and names neither "bundle:NOTICES" (the notices file the build ` +
+          'assembles from each package\'s LICENSE) nor an existing file that discharges it.',
+      );
+    }
+  }
+  validApp.add(appKey(a));
+}
+
+// ── `--bundle --app`: both directions for THIS app, and the licence READ ────
+// An app's bundle witnesses every row scoped to that app, so the reverse
+// direction is fully assertable here: a row the build did not emit is stale.
+const readLines = [];
+if (appId !== null) {
+  for (const a of appInScope) {
+    if (matchedApp.has(appKey(a))) continue;
+    problems.push(
+      `app-scoped row ${JSON.stringify(a.id)} claims ${a.bundlePath} for ${scopeOfApp}, and the build did NOT emit it. ` +
+        'Retire the row, or find out what stopped shipping the file.',
+    );
+  }
+  const noticesPath = join(resolve(bundleDir), 'NOTICES');
+  const noticesRaw = existsSync(noticesPath) ? readFileSync(noticesPath, 'utf8') : null;
+  const noticesFlat = noticesRaw === null ? null : flat(noticesRaw);
+  const noticesNames = noticesRaw === null ? new Set() : new Set(noticesRaw.split(/\r?\n/).map((l) => l.trim()));
+  for (const a of appInScope) {
+    if (!validApp.has(appKey(a))) continue; // its shape fault is already reported above
+    const where = `app-scoped row ${JSON.stringify(a.id)}`;
+    const lic = packageLicence(a.package);
+    if (lic.error) {
+      problems.push(`${where}: ${lic.error}. Its licence was not read, so it is not evidence.`);
+      continue;
+    }
+    if (lic.ids.length !== 1) {
+      problems.push(
+        `${where}: ${shown(lic.file)} reads as ${lic.ids.length === 0 ? 'no licence this guard can name' : lic.ids.join(' AND ')}. ` +
+          'A row\'s licence is read from the package that ships the file, and this one could not be read to one answer.',
+      );
+      continue;
+    }
+    if (String(a.licence).trim().toLowerCase() !== lic.ids[0].toLowerCase()) {
+      problems.push(
+        `${where} declares licence ${JSON.stringify(a.licence)}, and the ${a.package} package's own LICENSE ` +
+          `(${shown(lic.file)}) reads ${lic.ids[0]}. The package is the primary source; the row follows it.`,
+      );
+      continue;
+    }
+    let discharged = '';
+    if (a.attributionRequired && a.attributedIn === 'bundle:NOTICES') {
+      const named = a.package === SDK_PACKAGE || noticesNames.has(a.package);
+      if (noticesFlat === null || !named || !noticesFlat.includes(flat(lic.text))) {
+        problems.push(
+          `${where} says the bundle's NOTICES discharges its attribution, and ` +
+            (noticesFlat === null
+              ? `${shown(noticesPath)} does not exist.`
+              : `${shown(noticesPath)} does not carry ${named ? '' : `the name ${a.package} or `}the text of ${shown(lic.file)}.`) +
+            ' An attribution condition unmet is a licence that does not apply.',
+        );
+        continue;
+      }
+      discharged = '; NOTICES carries it';
+    }
+    readLines.push(`${scopeOfApp} · ${a.bundlePath} — the ${a.package} LICENSE reads ${lic.ids[0]}${discharged}`);
+  }
 }
 
 // ── K-11 · every app shows the licences of what it ships ────────────────────
@@ -586,6 +965,18 @@ console.log(
   `    ${appsWithSurface}/${appDirs.length} app(s) construct a real licences surface; ` +
     `${materialDesignPubspecs.length} pubspec(s) still bundle the icon font`,
 );
+if (appId !== null) {
+  console.log(
+    `    ${scopeOfApp}: ${appInScope.length} app-scoped row(s), each licence read from the package that ships it ` +
+      `(${shown(packageConfig.path)})`,
+  );
+  for (const l of readLines) console.log(`      ${l}`);
+} else if (appRows.length > 0) {
+  console.log(
+    `    ${appRows.length} app-scoped row(s) shape-checked; each one's licence is read from its package only by a ` +
+      '--bundle <dir> --app <id> walk of that app\'s build',
+  );
+}
 if (bundleDir === null) {
   console.log(
     '    ⚠️ DECLARED mode reads what the manifests INTEND to ship. The app_brick lane runs this again with',

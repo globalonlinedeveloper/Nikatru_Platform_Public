@@ -162,7 +162,9 @@
         "Matched on `matchDatasources` because those two ids are declared in THIS file, on the",
         "customManagers below, so the binding is checkable by reading one screen -- a manager",
         "id or a glob would be a guess. MAJORS ARE NOT SUPPRESSED: 17 -> 21 is precisely the",
-        "change a human must land across all eight sites in one commit."
+        "change a human must land across all eight sites in one commit.",
+        "⏱ 2026-09-27: for java that sentence is SUSPENDED until a review on 2026-10-26 by the dated",
+        "java-majors rule near the end of packageRules; for node it stands."
       ],
       "matchDatasources": [
         "java-version",
@@ -278,6 +280,76 @@
         "dev.flutter.flutter-plugin-loader"
       ],
       "enabled": false
+    },
+    {
+      "description": [
+        "EVERY MAJOR WAITS FOR APPROVAL ON THE DEPENDENCY DASHBOARD (2026-09-27, O-RENOVATE-BACKLOG-OUTRUNS-ITS-LIMITS;",
+        "the Renovate drain triage of 2026-09-26). A major is a migration: a lane lands it by hand, or a person ticks",
+        "its ONE approve box on #417. Never 'create all'.",
+        "WHY NOW. With prHourlyLimit 6 and prConcurrentLimit 12, and the non-majors drained by the hand trains, the",
+        "Monday window of 2026-09-28 would spend its slots on the ten majors on #417, and at least six of them are red",
+        "BY CONSTRUCTION on main: java (Renovate reaches 1 of its 8 call sites), package_info_plus 10 (pub cannot solve",
+        "its win32 ^6 beside flutter_secure_storage_windows 3.x), flutter_riverpod 3, go_router 18, jose 6 (KeyLike in",
+        "the tests) and flutter_secure_storage 11 (compileSdk 37). A wall of red Renovate runs reads as failed deploys,",
+        "and each open PR holds a concurrency slot the next patch needs.",
+        "WHY THIS HIDES NOTHING. An update behind approval is listed on #417 with an `approve-branch` marker, which",
+        "tooling/ops/check-renovate-backlog.mjs COUNTS (WAITING_KINDS), and its age follows the branch name across the",
+        "move from Awaiting Schedule, so the backlog alarm keeps its whole memory. Security fixes are not held:",
+        "Renovate documents that vulnerability remediation PRs are still created without approval",
+        "(docs.renovatebot.com/key-concepts/dashboard, read 2026-09-27). Patch, pin, digest and minor updates are",
+        "untouched by this rule."
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": [
+        "java MAJORS ARE DISABLED: POSTPONED 2026-09-27, REVIEW ON 2026-10-26, or sooner when `java` is split into a",
+        "runner JDK and a bytecode target (the drain triage of 2026-09-26, item M9). This SUSPENDS, for java only, the",
+        "'MAJORS ARE NOT SUPPRESSED' sentence of the java/node rule above; node majors are still surfaced.",
+        "WHY. The `java` customManager rewrites tooling/versions.json and nothing else, while",
+        "assert-version-consistency.mjs holds eight call sites to it and five of them cannot take a bot's edit (the",
+        "enum constants and the apt and JVM directory names named in the rule above). So chore/renovate-java-25.x is",
+        "red by construction for ever: no Monday can drain it, and while it is listed the backlog alarm's age limb",
+        "cannot turn green (24.1 days waited on 2026-09-27). On merit the Android bytecode target stays 17 (the",
+        "triage read developer.android.com/build/jdks: its Android-to-Java table tops out at API 34 / Java 17); what",
+        "can move is the JDK that runs Gradle and CI, once one key no longer drives both. Temurin 17 is supported at",
+        "least until Oct 2027 (adoptium.net/support), so nothing is at risk before the review date.",
+        "🔴 java IS NOW GENUINELY UNADVANCED, AND ONE GUARD CANNOT SEE IT. tooling/ci/assert-update-coverage.mjs reads",
+        "the customManagers and never packageRules, so it still reports `java` as covered by the manager below. That",
+        "green is not coverage until the review date: the rule above disables java's patch and minor proposals and",
+        "this one its majors, so nothing proposes any java version at all."
+      ],
+      "matchDatasources": [
+        "java-version"
+      ],
+      "matchDepNames": [
+        "java"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false
+    },
+    {
+      "description": [
+        "flutter_secure_storage IS HELD BELOW 11 (2026-09-27) until the 10.x migration has SHIPPED in a release and",
+        "compileSdk 37 has landed (the drain triage of 2026-09-26, items M7 and M7b). Upstream's 11.0.0 changelog",
+        "(pub.dev, read 2026-09-27, paraphrased): what was saved with the algorithms v10 deprecated is unusable after",
+        "the upgrade, so an app on a version before 10 must ship 10 first for the data to migrate; and 11.0.0 raised",
+        "compileSdk to 37, while apps/subscriptiontracker/android/app/build.gradle.kts pins compileSdk 36 on purpose.",
+        "So 9 -> 11 in one step is the one proposal that can lose what a signed-in user has stored.",
+        "WHY THIS HIDES NOTHING. allowedVersions narrows the proposal to 10.x, which is still a MAJOR: it waits for",
+        "approval under the rule above and check-renovate-backlog.mjs counts it like any other. Its branch becomes",
+        "chore/renovate-flutter_secure_storage-10.x, so its age restarts at the first dashboard that lists it; the",
+        "11.x entry's age is not carried over."
+      ],
+      "matchPackageNames": [
+        "flutter_secure_storage"
+      ],
+      "allowedVersions": "<11"
     }
   ],
   "customManagers": [

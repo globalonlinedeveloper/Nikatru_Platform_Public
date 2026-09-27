@@ -290,6 +290,8 @@
       ".github/workflows/build-platforms.yml#windows",
       ".github/workflows/ci.yml#android-artifacts",
       ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/ci.yml#linux-artifacts",
+      ".github/workflows/ci.yml#web-artifacts",
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/submit-appstore.yml#dry-run",
       ".github/workflows/submit-play.yml#dry-run",
@@ -378,7 +380,9 @@
       ".github/workflows/build-platforms.yml#apple",
       ".github/workflows/build-platforms.yml#linux_web_android",
       ".github/workflows/build-platforms.yml#windows",
-      ".github/workflows/ci.yml#android-artifacts"
+      ".github/workflows/ci.yml#android-artifacts",
+      ".github/workflows/ci.yml#linux-artifacts",
+      ".github/workflows/ci.yml#web-artifacts"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-artifact-shape.mjs",
@@ -548,6 +552,7 @@
     "invokedBy": [
       ".github/workflows/build-platforms.yml#linux_web_android",
       ".github/workflows/ci.yml#sites",
+      ".github/workflows/ci.yml#web-artifacts",
       ".github/workflows/deploy-web.yml#deploy-web"
     ],
     "kind": "guard",
@@ -1209,7 +1214,8 @@
     ],
     "invokedBy": [
       ".github/workflows/ci.yml#app-brick",
-      ".github/workflows/ci.yml#guards-legal"
+      ".github/workflows/ci.yml#guards-legal",
+      ".github/workflows/ci.yml#web-artifacts"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-licence-register.mjs",
@@ -2243,6 +2249,7 @@
     "invokedBy": [
       ".github/workflows/build-platforms.yml#linux_web_android",
       ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/ci.yml#linux-artifacts",
       ".github/workflows/submit-snap.yml#dry-run",
       ".github/workflows/submit-snap.yml#submit"
     ],
@@ -2783,6 +2790,8 @@
       ".github/workflows/build-platforms.yml#linux_web_android",
       ".github/workflows/build-platforms.yml#windows",
       ".github/workflows/ci.yml#android-artifacts",
+      ".github/workflows/ci.yml#linux-artifacts",
+      ".github/workflows/ci.yml#web-artifacts",
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/e2e.yml#e2e",
       ".github/workflows/submit-appstore.yml#dry-run",
@@ -3684,6 +3693,7 @@
     ],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#linux_web_android",
+      ".github/workflows/ci.yml#linux-artifacts",
       ".github/workflows/submit-snap.yml#dry-run",
       ".github/workflows/submit-snap.yml#submit"
     ],
@@ -3930,6 +3940,7 @@
       "R-13"
     ],
     "invokedBy": [
+      ".github/workflows/ci.yml#web-artifacts",
       ".github/workflows/deploy-web.yml#deploy-web"
     ],
     "kind": "script",
@@ -4038,6 +4049,7 @@
     "claims": [],
     "invokedBy": [
       ".github/workflows/ci.yml#app-brick",
+      ".github/workflows/ci.yml#web-artifacts",
       ".github/workflows/deploy-web.yml#deploy-web"
     ],
     "kind": "script",

@@ -123,6 +123,20 @@
 //   `record-deployment.mjs` / check-prod-provenance.mjs (pipeline B-17) remain
 //   the second, independent commit witness.
 //
+//   🔴 2026-09-27 (FPI-1): NOT CARRYING THE COMMIT IS NOT SERVING OTHER BYTES.
+//   #996 (51a4e9ad) touched subscriptiontracker, its main CI went red, so
+//   deploy-web never published it; revert #1002 (e9b256b8) restored the files
+//   byte for byte, and deploy-web's planner then read `decision=unchanged`
+//   (`"matched":[]`, main CI 36293604395) against the live 646e00c1 — correct,
+//   those ARE its bytes. Ops watch run 36297578437 still went RED: 646e00c does
+//   not carry e9b256b, past the ceiling. The two readers asked two questions,
+//   and any touch-then-untouch kept this one red until an unrelated web change
+//   happened to deploy. So a direct row that does not carry the expected commit
+//   now asks the PLANNER's own `decide()` (plan-deploy.mjs) first, with target =
+//   expected and live = served: `unchanged` is ok and says so; `changed` is the
+//   old verdict; anything it cannot answer (shallow, a missing object) is the
+//   old verdict too — never a pass (unitUnchangedBetween).
+//
 //   ⏱ 2026-09-25 [ADR 095 §4]: deploy-web.yml has no `on.push.paths` now —
 //   ci.yml calls it after ci-gate on every push to main, and its plan step
 //   publishes only for a commit its unit claims. So the source set is that
@@ -160,7 +174,8 @@
 // ── THREE-VALUED, AND 2 IS NOT A PASS ───────────────────────────────────────
 //   0  every derived project's newest production deployment succeeded, and every
 //      one carrying a commit_hash is at the commit `main` says it should be (a
-//      direct upload may also be ⏳ inside the deploy-lane ceiling).
+//      direct upload may also be ⏳ inside the deploy-lane ceiling, or serve a
+//      commit whose unit files deploy-web's planner reads as `unchanged`).
 //      A newest build still IN FLIGHT and younger than the ceiling is also 0,
 //      printed ⏳, when the completed deployment behind it passes (or, for the
 //      commit limb only, when the building one carries the commit `main` names).
@@ -239,6 +254,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { readUnits, plannedEnvironments, unitKeyFor, UNITS_REL } from '../ci/assert-deploy-triggers-deploy.mjs';
 import { parseWorkflow } from '../ci/workflow-scan.mjs';
+import { decide, gitAt, PlanRefusal } from '../ci/plan-deploy.mjs';
 import {
   CouldNotLook,
   transientLook,
@@ -537,7 +553,7 @@ export function deployLaneInputs(root, { unit } = {}) {
   const problems = [];
   const parsed = parseWorkflow(root, DEPLOY_WEB_REL);
   if (parsed === null) {
-    return { pathspecs: [], ceilingMs: null, problems: [`${DEPLOY_WEB_REL} does not exist`] };
+    return { pathspecs: [], globs: [], ceilingMs: null, problems: [`${DEPLOY_WEB_REL} does not exist`] };
   }
 
   // The unit is resolved the way assert-deploy-triggers-deploy.mjs limb 1 and
@@ -589,7 +605,8 @@ export function deployLaneInputs(root, { unit } = {}) {
   const total = laneJobs.reduce((s, j) => s + (Number.isInteger(t.minutes[j.name]) ? t.minutes[j.name] : 0), 0);
   const ceilingMs = t.problems.length === 0 ? DEPLOY_LANE_RUNS * total * 60 * 1000 : null;
 
-  return { pathspecs, ceilingMs, problems };
+  // `globs` is the unit as the planner reads it, for unitUnchangedBetween.
+  return { pathspecs, globs: Array.isArray(globs) ? globs : [], ceilingMs, problems };
 }
 
 /** PURE. ONE project's answer turned into a verdict, so every branch is
@@ -615,6 +632,13 @@ export function deployLaneInputs(root, { unit } = {}) {
  *  that does not carry `expectedCommit` is ⏳ while the deploy lane may still
  *  be publishing it, and red past that. Either unreadable is exit 2 there.
  *
+ *  `treeUnchanged(served, expected)` (⏱ 2026-09-27, FPI-1) is asked for a
+ *  DIRECT-UPLOAD row only, and only once that row is known NOT to carry
+ *  `expectedCommit`: true means deploy-web's planner reads the pair as
+ *  `unchanged` and will never publish it, so the served build IS current;
+ *  false or null (unreadable) leaves the verdict exactly as it was without it.
+ *  Injected like `isAncestor`; the real one is unitUnchangedBetween.
+ *
  *  Returns `{ code, line }`, plus `ungraded: true` on a row whose commit limb
  *  was not graded. `code` is 0, 1 or 2 with the file-level meaning. */
 export function judgeProject({
@@ -624,6 +648,7 @@ export function judgeProject({
   deployments,
   expectedCommit,
   isAncestor = null,
+  treeUnchanged = null,
   now = Date.now(),
   ceilingMs = IN_FLIGHT_CEILING_MS,
   expectedAt = null,
@@ -661,7 +686,7 @@ export function judgeProject({
   const stage = newest?.latest_stage;
   const cls = classifyStage(stage);
   const id = newest?.id ?? '(no id)';
-  const ctx = { at, kind, sourceDir, expectedCommit, isAncestor, now, expectedAt, laneCeilingMs };
+  const ctx = { at, kind, sourceDir, expectedCommit, isAncestor, treeUnchanged, now, expectedAt, laneCeilingMs };
 
   if (cls === 'unreadable') {
     return {
@@ -860,7 +885,7 @@ function judgeInFlight(deployments, ctx, { now, ceilingMs }) {
 /** One deployment already known to be DONE (`deploy` / `success`), graded on
  *  its commit limb. `behind: true` marks the one red an in-flight build can
  *  legitimately explain; `served` is carried out for that caller's line. */
-function gradeCompleted(dep, { at, kind, sourceDir, expectedCommit, isAncestor, now, expectedAt, laneCeilingMs }) {
+function gradeCompleted(dep, { at, kind, sourceDir, expectedCommit, isAncestor, treeUnchanged, now, expectedAt, laneCeilingMs }) {
   const id = dep.id ?? '(no id)';
   const trigger = dep.deployment_trigger ?? {};
   const served = trigger?.metadata?.commit_hash ?? null;
@@ -930,7 +955,21 @@ function gradeCompleted(dep, { at, kind, sourceDir, expectedCommit, isAncestor, 
       };
     }
 
-    if (carries === false && kind === 'direct') return gradeDirectBehind({ at, id, served, sourceDir, expectedCommit, now, expectedAt, laneCeilingMs });
+    if (carries === false && kind === 'direct') {
+      // FPI-1: the planner's question before this reader's verdict. Only `true`
+      // changes anything; false and null (unreadable) fall through unchanged.
+      const same = typeof treeUnchanged === 'function' ? treeUnchanged(served, expectedCommit) : null;
+      if (same === true) {
+        return {
+          code: 0,
+          line:
+            `ok  ${at} — deployment ${id} succeeded at stage \`deploy\`, serving ${short(served)}, which does not ` +
+            `contain ${short(expectedCommit)}, but the unit's files are identical between them (deploy-web planned ` +
+            `"unchanged") — current.`,
+        };
+      }
+      return gradeDirectBehind({ at, id, served, sourceDir, expectedCommit, now, expectedAt, laneCeilingMs });
+    }
 
     if (carries === false) {
       return {
@@ -1017,6 +1056,30 @@ export function isAncestorOf(root, ancestor, descendant, run = spawnSync) {
   if (r.error) return null;
   if (r.status === 0) return true;
   if (r.status === 1) return false;
+  return null;
+}
+
+/** The `treeUnchanged` question, answered by deploy-web's PLANNER and not by a
+ *  second copy of it (⏱ 2026-09-27, FPI-1): `decide()` from plan-deploy.mjs,
+ *  with target = `expected` and live = `served`, over the unit's own `globs` —
+ *  the call that printed `decision=unchanged … "matched":[]` for 646e00c1 →
+ *  e9b256b8. true for `unchanged`, false for `changed`, and null for every
+ *  other answer and every PlanRefusal (a shallow clone, a commit this checkout
+ *  lacks, a failed diff): an unanswerable read is never a pass. `git` is the
+ *  planner's own `gitAt(root)` shape, injected so a test needs no repository. */
+export function unitUnchangedBetween(served, expected, globs, git) {
+  const sha = /^[0-9a-f]{7,40}$/i;
+  if (typeof served !== 'string' || typeof expected !== 'string' || !sha.test(served) || !sha.test(expected)) return null;
+  if (!Array.isArray(globs) || globs.length === 0) return null;
+  let verdict;
+  try {
+    verdict = decide({ target: expected, lastSuccess: served, globs, git });
+  } catch (e) {
+    if (e instanceof PlanRefusal) return null;
+    throw e;
+  }
+  if (verdict.decision === 'unchanged') return true;
+  if (verdict.decision === 'changed') return false;
   return null;
 }
 
@@ -1228,6 +1291,7 @@ async function main() {
 
   const results = [];
   const appLane = projects.some((p) => p.kind === 'direct' && p.unit === undefined) ? deployLaneInputs(ROOT) : null;
+  const planGit = gitAt(ROOT);
 
   for (const p of projects) {
     let expectedCommit = null;
@@ -1269,6 +1333,7 @@ async function main() {
           deployments,
           expectedCommit,
           isAncestor: (a, b) => isAncestorOf(ROOT, a, b, spawnSync),
+          treeUnchanged: p.kind === 'direct' ? (a, b) => unitUnchangedBetween(a, b, lane.globs, planGit) : null,
           expectedAt,
           laneCeilingMs: lane?.ceilingMs ?? null,
         }),
@@ -1303,7 +1368,8 @@ async function main() {
   if (verdict.code === 0) {
     console.log(
       verdict.inflight === 0
-        ? `ok  every derived Pages project's newest PRODUCTION deployment succeeded and is at the commit main names.`
+        ? `ok  every derived Pages project's newest PRODUCTION deployment succeeded and is at the commit main names, ` +
+            `or at one whose unit files are identical to it.`
         : `ok  every derived Pages project's served PRODUCTION deployment passed; ${verdict.inflight} newer build(s) still ` +
             `IN FLIGHT inside the ceiling, each named ⏳ above, which the next slot grades.`,
     );

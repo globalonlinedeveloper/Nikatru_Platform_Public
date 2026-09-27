@@ -1150,8 +1150,11 @@ jobs:
       # cannot be turned red by a font CDN having a bad minute.
       - name: A fresh stamp satisfies the deploy's self-hosted fallback fonts step
         run: node tooling/web/self-host-fallback-fonts.mjs --check apps/probe/build/web
+      # why --app probe: a fresh stamp is graded in its OWN scope. An `app:<id>` row of
+      # another app never satisfies it, so a package asset the template starts shipping
+      # fails here with the row derived from this bundle, not one copied from app #1.
       - name: Every asset the build actually shipped has a licence row
-        run: node tooling/ci/assert-licence-register.mjs . --bundle apps/probe/build/web/assets
+        run: node tooling/ci/assert-licence-register.mjs . --bundle apps/probe/build/web/assets --app probe
 
       - name: Backend stamp has a Worker + APP_DB but still no per-app R2
         run: node tooling/ci/assert-clone-contract.mjs --client probe --backend probeapi
@@ -1243,7 +1246,7 @@ jobs:
         run: node tooling/ci/assert-workspace-coverage.mjs
       - uses: ./.github/actions/setup-flutter
       - name: Activate melos
-        run: dart pub global activate melos 8.7.0
+        run: dart pub global activate melos 8.9.0
       - name: Resolve the workspace
         run: flutter pub get --enforce-lockfile
       # why: the chassis strings are gen-l10n output over
@@ -1526,6 +1529,130 @@ jobs:
       # A debug-signed PR build is discarded, and release-provenance gives a gate
       # constituent no credit for publishing (assert-release-provenance.mjs:769-805).
 
+  # why: the web bundle users LOAD, built on every PR. Its twin is deploy-web.yml
+  # `deploy-web`'s build, not build-platforms.yml's discarded web build, which lacks
+  # --source-maps, --no-web-resources-cdn and --base-href (apps triage D-07).
+  # Row O-PR-LANE-BUILDS-ONLY-ANDROID-ARTIFACTS; docs/ci/build-platforms.md §PR lane.
+  web-artifacts:
+    name: Web artifacts (built, booted, discarded)
+    runs-on: ubuntu-24.04
+    # why 20: under GATING_CAP 30; deploy-web.yml's build-to-smoke span is its measure.
+    timeout-minutes: 20
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.prepare.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-flutter
+      - name: Resolve the workspace
+        run: flutter pub get --enforce-lockfile
+      - name: Derive the release line from pubspec
+        id: ver
+        run: node tooling/ci/assert-app-versioning.mjs --emit apps/${{ matrix.app }} >> "$GITHUB_OUTPUT"
+      # why: the base href comes from the catalogue row the deploy reads (ADR 075),
+      # through the same emitter deploy-web.yml runs; it reads the catalogue only.
+      - name: Resolve this app's base href from the catalogue
+        id: base
+        run: node tooling/ci/assert-catalog-reachable.mjs --emit-base-href ${{ matrix.app }} >> "$GITHUB_OUTPUT"
+      # why: deploy-web.yml's build, composed by the same flutter-release-build.mjs call with
+      # `--lane pr` (assert-channel-register 6b-v refuses a hand-typed release build);
+      # built-artifact-pr-lane.test.mjs holds the two equal. `--lane pr` blanks the backend
+      # and crash-sink defines, as in android-artifacts, and ends APP_VERSION in +pr, which is
+      # legal ONLY because tooling/channel-register.json lists this job in
+      # releaseBuildsNeverShipped. TURNSTILE_SITE_KEY is a public repository variable.
+      - name: Build web (release, no service worker)
+        env:
+          BASE_HREF: ${{ steps.base.outputs.base_href }}
+          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+          TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
+        run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} web web --lane pr
+      - uses: ./.github/actions/setup-node
+      # why: `--check` is the deploy's fonts grading with the network half removed (the
+      # app-brick probe's precedent above), so this lane cannot be turned red by a font
+      # CDN having a bad minute. The fetching mode stays in deploy-web.yml.
+      - name: The bundle satisfies the deploy's self-hosted fallback fonts step
+        run: node tooling/web/self-host-fallback-fonts.mjs --check apps/${{ matrix.app }}/build/web
+      # why --app: a pub package ships its own assets into this app's bundle, so every
+      # file resolves to a shared row or an `app:<id>` row for THIS app, and each
+      # app-scoped row's licence is read from its package's LICENSE through the
+      # package_config.json "Resolve the workspace" wrote (lead ruling PRL-R1).
+      - name: Every asset the build actually shipped has a licence row
+        run: node tooling/ci/assert-licence-register.mjs . --bundle apps/${{ matrix.app }}/build/web/assets --app ${{ matrix.app }}
+      # why: the bundle boots under its own _headers CSP and must reach flutter-first-frame.
+      # No --connect origin is passed: the build's URL-valued defines are empty here, so
+      # there is no origin to probe; deploy-web.yml probes each one with its real value.
+      - name: Launch the built bundle once
+        run: node tooling/smoke/smoke-web-artifact.mjs apps/${{ matrix.app }}/build/web
+      - name: Every artifact this lane claims exists, and is not empty
+        run: >
+          node tooling/ci/assert-artifact-shape.mjs
+          --app ${{ matrix.app }} --platform web-artifacts
+      # why: nothing here leaves the runner — no upload, no source maps sent, no
+      # GlitchTip release, no deploy. The bundle and its .map files are discarded with
+      # the runner, so no `.map` delete step is owed (deploy-web.yml's exists so maps
+      # are never SERVED, and nothing is served here).
+
+  # why: the Linux desktop bundle the linux-appimage row ships from, built on every PR.
+  # Its twin is build-platforms.yml `linux_web_android`'s Build linux step, --obfuscate
+  # included. Row O-PR-LANE-BUILDS-ONLY-ANDROID-ARTIFACTS; docs/ci/build-platforms.md §PR lane.
+  linux-artifacts:
+    name: Linux artifacts (built, inspected, discarded)
+    runs-on: ubuntu-24.04
+    # why 20: under GATING_CAP 30; one Linux build plus the recipe emit and its check.
+    timeout-minutes: 20
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.prepare.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-flutter
+      - name: Linux build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
+            libsecret-1-dev libjsoncpp-dev libcurl4-openssl-dev
+      - name: Resolve the workspace
+        run: flutter pub get --enforce-lockfile
+      - name: Derive the release line from pubspec
+        id: ver
+        run: node tooling/ci/assert-app-versioning.mjs --emit apps/${{ matrix.app }} >> "$GITHUB_OUTPUT"
+      # why: build-platforms.yml linux_web_android's Build linux, composed by the same
+      # flutter-release-build.mjs call with `--lane pr`; built-artifact-pr-lane.test.mjs holds
+      # the two equal. The symbols --split-debug-info writes are discarded with the runner,
+      # which is what the releaseBuildsNeverShipped entry for this job says; APP_VERSION ends
+      # in +pr and the secret defines are blanked, as in android-artifacts.
+      - name: Build linux
+        env:
+          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+        run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} linux linux-appimage --lane pr
+      - name: Generate the snapcraft recipe
+        run: >
+          node tooling/release/generate-snapcraft.mjs
+          --app ${{ matrix.app }}
+          --bundle apps/${{ matrix.app }}/build/linux/x64/release/bundle
+          --out "$RUNNER_TEMP/snapcraft-${{ matrix.app }}"
+          --version ${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+      - name: The generated recipe is complete and still derived from the tree
+        run: >
+          node tooling/ci/assert-snapcraft-generable.mjs
+          --emitted "$RUNNER_TEMP/snapcraft-${{ matrix.app }}/snap/snapcraft.yaml"
+          --app ${{ matrix.app }}
+      - name: Every artifact this lane claims exists, and is not empty
+        run: >
+          node tooling/ci/assert-artifact-shape.mjs
+          --app ${{ matrix.app }} --platform linux-artifacts
+      # why: nothing here leaves the runner — no AppImage signing key, no symbols upload,
+      # no upload-artifact. The bundle and its symbols are discarded with the runner.
+
   # why: the extensions CI lane, as ONE constituent of ci-gate. extensions-ci.yml runs
   # only as a call, and its jobs report inside this run; this job's result is red when
   # any of them is. No `if:` (green-means-ran A6), and no `timeout-minutes` — GitHub
@@ -1564,6 +1691,8 @@ jobs:
       - prepare
       - app-dryrun
       - android-artifacts
+      - web-artifacts
+      - linux-artifacts
       - extensions
     if: always()
     steps:
@@ -1585,6 +1714,8 @@ jobs:
           echo "prepare=${{ needs.prepare.result }}"
           echo "app-dryrun=${{ needs.app-dryrun.result }}"
           echo "android-artifacts=${{ needs.android-artifacts.result }}"
+          echo "web-artifacts=${{ needs.web-artifacts.result }}"
+          echo "linux-artifacts=${{ needs.linux-artifacts.result }}"
           echo "extensions=${{ needs.extensions.result }}"
           if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ] || [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ] || [ "${{ contains(needs.*.result, 'skipped') }}" = "true" ]; then
             echo "::error::One or more CI lanes failed, was cancelled, or never ran — see the verdicts above"; exit 1

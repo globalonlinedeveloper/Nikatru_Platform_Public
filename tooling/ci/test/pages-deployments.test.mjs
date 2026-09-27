@@ -36,6 +36,11 @@
 //     transient failure followed by a success reads as ok, and a failure that
 //     outlives the plan is still exit 2. Both directions below, with `sleep`
 //     injected so the bound is proved without being waited.
+//   · NOT CARRYING THE COMMIT IS NOT SERVING OTHER BYTES (2026-09-27, FPI-1).
+//     A revert pair left 646e00c1 serving the same unit files as e9b256b8, the
+//     planner said `unchanged`, and this reader said RED forever. A direct row
+//     that does not carry main's commit now asks the planner's own decide();
+//     `unchanged` passes, `changed` and an unreadable answer do not.
 //
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
@@ -45,6 +50,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'nod
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 import {
   derivePagesProjects,
@@ -76,8 +82,10 @@ import {
   judgeRollbackOnly,
   readProject,
   ROLLBACK_ONLY_REL,
+  unitUnchangedBetween,
 } from '../../ops/check-pages-deployments.mjs';
 import { readUnits, UNITS_REL } from '../assert-deploy-triggers-deploy.mjs';
+import { gitAt, PlanRefusal } from '../plan-deploy.mjs';
 import { parseWorkflow } from '../workflow-scan.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -579,6 +587,173 @@ describe('judgeProject — a direct upload carrying a commit_hash is graded on i
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// FPI-1 (2026-09-27). #996 (51a4e9ad) never deployed, revert #1002 (e9b256b8)
+// put its files back, and deploy-web's planner read `decision=unchanged` against
+// the live 646e00c1 (main CI 36293604395). Ops watch run 36297578437 then called
+// subscriptiontracker RED: 646e00c does not carry e9b256b. The reader now asks
+// the planner's own decide() first — through unitUnchangedBetween — so the two
+// cannot disagree; only `unchanged` changes a verdict.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('judgeProject — a served build whose unit files are identical to main\'s is current (FPI-1)', () => {
+  const NOW = Date.parse('2026-09-27T05:34:00Z');
+  const CEILING = 80 * 60 * 1000;
+  const GLOBS = ['apps/**', 'packages/**', 'pubspec.lock'];
+  const base = {
+    project: 'subscriptiontracker',
+    kind: 'direct',
+    sourceDir: 'the deploy unit',
+    expectedCommit: SHA_NEW,
+    now: NOW,
+    laneCeilingMs: CEILING,
+    expectedAt: NOW - 3 * 60 * 60 * 1000,
+    isAncestor: () => false,
+  };
+  const adHoc = (sha) => deployment({ deployment_trigger: { type: 'ad_hoc', metadata: { branch: 'main', commit_hash: sha, commit_dirty: true } } });
+  /** The planner's git reads, faked: a full clone holding both commits, whose diff is `changed`. */
+  const planGit = (changed, over = {}) => ({
+    isShallow: () => false,
+    hasCommit: () => true,
+    isAncestor: () => false,
+    changedFiles: () => changed,
+    ...over,
+  });
+  const planned = (git) => (a, b) => unitUnchangedBetween(a, b, GLOBS, git);
+
+  test('(a) 🔴 THE MEASURED FALSE RED — served does not carry main, its unit files are identical: exit 0, and the line says so', () => {
+    const seen = [];
+    const git = planGit([], { changedFiles: (a, b) => (seen.push([a, b]), ['docs/x.md', 'tooling/ops/check-pages-deployments.mjs']) });
+    const v = judgeProject({ ...base, deployments: [adHoc(SHA_OLD)], treeUnchanged: planned(git) });
+    assert.equal(v.code, 0, 'deploy-web will never publish a pair its planner reads as unchanged, so RED here is red forever');
+    assert.match(
+      v.line,
+      /^ok {2}subscriptiontracker \(direct\) — deployment dep-1 succeeded at stage `deploy`, serving aaaaaaa, which does not contain bbbbbbb, but the unit's files are identical between them \(deploy-web planned "unchanged"\) — current\.$/,
+    );
+    assert.notEqual(v.inflight, true, 'identical bytes are landed, not pending');
+    assert.notEqual(v.ungraded, true, 'the commit limb WAS graded');
+    assert.deepEqual(seen, [[SHA_OLD, SHA_NEW]], 'the planner diffs live (served) → target (expected)');
+  });
+
+  test('(a) identical bytes pass inside the deploy-lane window too — no ⏳ for a publish that will never come', () => {
+    const v = judgeProject({ ...base, expectedAt: NOW - 9 * 60 * 1000, deployments: [adHoc(SHA_OLD)], treeUnchanged: planned(planGit([])) });
+    assert.equal(v.code, 0);
+    assert.match(v.line, /^ok .*identical between them/);
+    assert.notEqual(v.inflight, true);
+  });
+
+  test('(b) 🔴 RED CONTROL — the unit\'s files DIFFER: exit 1, the verdict it had before FPI-1', () => {
+    const v = judgeProject({ ...base, deployments: [adHoc(SHA_OLD)], treeUnchanged: planned(planGit(['apps/subscriptiontracker/lib/main.dart'])) });
+    assert.equal(v.code, 1, 'a served build missing a unit change must stay red');
+    assert.match(v.line, /serving commit aaaaaaa, which does NOT carry bbbbbbb/);
+    assert.match(v.line, /landed 180 min ago, past the 80-minute deploy-lane ceiling/);
+    const young = judgeProject({ ...base, expectedAt: NOW - 9 * 60 * 1000, deployments: [adHoc(SHA_OLD)], treeUnchanged: planned(planGit(['pubspec.lock'])) });
+    assert.equal(young.code, 0);
+    assert.match(young.line, /^⏳ .*inside the 80-minute deploy-lane ceiling/, 'inside the window a real change is still ⏳, as before');
+  });
+
+  test('(c) 🔴 an UNREADABLE answer is the old verdict, never a pass', () => {
+    const unreadable = [
+      ['a stub answering null', () => null],
+      ['a shallow clone', planned(planGit([], { isShallow: () => true }))],
+      ['a served commit this checkout lacks', planned(planGit([], { hasCommit: (s) => s !== SHA_OLD }))],
+      ['an expected commit this checkout lacks', planned(planGit([], { hasCommit: (s) => s !== SHA_NEW }))],
+      ['a diff git refused', planned(planGit([], { changedFiles: () => { throw new PlanRefusal('git diff failed: bad object'); } }))],
+      ['a glob shape the planner cannot decide', (a, b) => unitUnchangedBetween(a, b, ['apps/**/lib/*.dart'], planGit(['apps/x/lib/y.dart']))],
+    ];
+    for (const [why, treeUnchanged] of unreadable) {
+      const past = judgeProject({ ...base, deployments: [adHoc(SHA_OLD)], treeUnchanged });
+      assert.equal(past.code, 1, `${why}: past the ceiling it is RED, exactly as before`);
+      assert.match(past.line, /which does NOT carry bbbbbbb/);
+      const young = judgeProject({ ...base, expectedAt: NOW - 9 * 60 * 1000, deployments: [adHoc(SHA_OLD)], treeUnchanged });
+      assert.match(young.line, /^⏳ /, `${why}: inside the window it is ⏳, exactly as before`);
+    }
+  });
+
+  test('it is asked ONLY for a direct row that does not carry main — never to rescue anything else', () => {
+    let asked = 0;
+    const yes = () => ((asked += 1), true);
+    assert.equal(judgeProject({ ...base, deployments: [adHoc(SHA_NEW)], treeUnchanged: yes }).code, 0, 'equal: already answered');
+    assert.equal(judgeProject({ ...base, deployments: [adHoc(SHA_OLD)], isAncestor: () => true, treeUnchanged: yes }).code, 0, 'ahead: already answered');
+    assert.equal(asked, 0);
+    const blind = judgeProject({ ...base, deployments: [adHoc(SHA_OLD)], isAncestor: () => null, treeUnchanged: yes });
+    assert.equal(blind.code, 2, 'an unreadable ANCESTRY stays exit 2; identical bytes do not excuse a question nobody answered');
+    const git = judgeProject({ ...base, kind: 'git', deployments: [deployment({ deployment_trigger: { type: 'github:push', metadata: { commit_hash: SHA_OLD } } })], treeUnchanged: yes });
+    assert.equal(git.code, 1, 'a git-connected project has no planner; Cloudflare builds every push, so behind is behind');
+    assert.equal(asked, 0);
+  });
+});
+
+describe('unitUnchangedBetween — the planner\'s decide(), not a second copy of it', () => {
+  const GLOBS = ['apps/**'];
+  const fake = (over = {}) => ({ isShallow: () => false, hasCommit: () => true, isAncestor: () => false, changedFiles: () => [], ...over });
+
+  test('`unchanged` is true, `changed` is false', () => {
+    assert.equal(unitUnchangedBetween(SHA_OLD, SHA_NEW, GLOBS, fake({ changedFiles: () => ['docs/a.md'] })), true);
+    assert.equal(unitUnchangedBetween(SHA_OLD, SHA_NEW, GLOBS, fake({ changedFiles: () => ['apps/a/x.dart'] })), false);
+  });
+
+  test('every decision that is not `unchanged`/`changed` is null — superseded, already-live, live-not-in-history', () => {
+    assert.equal(unitUnchangedBetween(SHA_OLD, SHA_NEW, GLOBS, fake({ isAncestor: () => true })), null);
+    assert.equal(unitUnchangedBetween(SHA_NEW, SHA_NEW, GLOBS, fake()), null);
+    assert.equal(unitUnchangedBetween(SHA_OLD, SHA_NEW, GLOBS, fake({ hasCommit: (s) => s === SHA_NEW })), null);
+  });
+
+  test('a non-sha argument or no unit is null, and git is never asked', () => {
+    let called = 0;
+    const counting = fake({ isShallow: () => ((called += 1), false) });
+    for (const [s, e, g] of [['--output=x', SHA_NEW, GLOBS], [SHA_OLD, null, GLOBS], [SHA_OLD, SHA_NEW, []], [SHA_OLD, SHA_NEW, null]]) {
+      assert.equal(unitUnchangedBetween(s, e, g, counting), null);
+    }
+    assert.equal(called, 0);
+  });
+
+  test('a bug is not an unreadable answer — a non-PlanRefusal error escapes', () => {
+    assert.throws(() => unitUnchangedBetween(SHA_OLD, SHA_NEW, GLOBS, fake({ changedFiles: () => { throw new TypeError('boom'); } })), TypeError);
+  });
+
+  test('🔴 THE REAL GIT — a revert pair is unchanged, the change it reverted is not, and a shallow clone is null', () => {
+    const repo = join(TMP, 'fpi-repo');
+    mkdirSync(repo);
+    const env = { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@test.invalid', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@test.invalid', GIT_CONFIG_NOSYSTEM: '1' };
+    const git = (cwd, ...args) => {
+      const r = spawnSync('git', ['-c', 'commit.gpgsign=false', '-c', 'init.defaultBranch=main', ...args], { cwd, env, encoding: 'utf8' });
+      assert.equal(r.status, 0, `git ${args.join(' ')}: ${r.stderr}`);
+      return r.stdout.trim();
+    };
+    const commit = (rel, body, msg) => {
+      mkdirSync(dirname(join(repo, rel)), { recursive: true });
+      writeFileSync(join(repo, rel), body);
+      git(repo, 'add', '-A');
+      git(repo, 'commit', '-q', '-m', msg);
+      return git(repo, 'rev-parse', 'HEAD');
+    };
+    git(repo, 'init', '-q');
+    const served = commit('apps/st/lib/a.dart', 'v1\n', 'live (646e00c1)');
+    const change = commit('apps/st/lib/a.dart', 'v2\n', 'the change that never deployed (51a4e9ad)');
+    commit('docs/x.md', 'x\n', 'outside the unit');
+    const revert = commit('apps/st/lib/a.dart', 'v1\n', 'its revert (e9b256b8)');
+    const real = gitAt(repo);
+    assert.equal(unitUnchangedBetween(served, revert, GLOBS, real), true);
+    assert.equal(unitUnchangedBetween(served, change, GLOBS, real), false);
+    const v = judgeProject({
+      project: 'st',
+      kind: 'direct',
+      sourceDir: 'the deploy unit',
+      deployments: [deployment({ deployment_trigger: { type: 'ad_hoc', metadata: { commit_hash: served } } })],
+      expectedCommit: revert,
+      isAncestor: (a, b) => isAncestorOf(repo, a, b),
+      treeUnchanged: (a, b) => unitUnchangedBetween(a, b, GLOBS, real),
+      now: Date.now(),
+      expectedAt: Date.now() - 3 * 60 * 60 * 1000,
+      laneCeilingMs: 80 * 60 * 1000,
+    });
+    assert.equal(v.code, 0, v.line);
+    const shallow = join(TMP, 'fpi-shallow');
+    git(TMP, 'clone', '-q', '--depth', '1', `file://${repo}`, shallow);
+    assert.equal(unitUnchangedBetween(served, revert, GLOBS, gitAt(shallow)), null, 'a shallow clone has not answered this');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 describe('deployLaneInputs — the expected commit and the window come FROM deploy-web.yml', () => {
   test('toPathspec — the three exact shapes translate, everything else is null', () => {
     assert.equal(toPathspec('apps/**'), ':(literal)apps');
@@ -630,6 +805,7 @@ describe('deployLaneInputs — the expected commit and the window come FROM depl
     const globs = readUnits(REPO)['<app>-web'];
     assert.ok(globs.length > 0);
     assert.deepEqual(lane.pathspecs, globs.map(toPathspec), 'one pathspec per unit entry, none dropped');
+    assert.deepEqual(lane.globs, globs, 'FPI-1: the planner is asked about the SAME unit the expected commit is read from');
     for (const need of [':(literal)apps', ':(literal)packages', ':(literal)pubspec.lock', `:(literal)${DEPLOY_WEB_REL}`]) {
       assert.ok(lane.pathspecs.includes(need), `${need} — a web build input the lane redeploys on`);
     }
@@ -1161,6 +1337,7 @@ describe('a site published by a deploy-web job is that job\'s DIRECT project, no
     const lane = deployLaneInputs(REPO, { unit: 'nikatru-site' });
     assert.deepEqual(lane.problems, []);
     assert.deepEqual(lane.pathspecs, readUnits(REPO)['nikatru-site'].map(toPathspec));
+    assert.deepEqual(lane.globs, readUnits(REPO)['nikatru-site'], 'FPI-1: the site\'s planner question is asked about its own unit');
     assert.equal(lane.ceilingMs, DEPLOY_LANE_RUNS * jobTimeouts(parseWorkflow(REPO, DEPLOY_WEB_REL)).minutes.site * 60 * 1000);
   });
 });

@@ -96,7 +96,20 @@
     "and it is imported by BOTH guards, so a disagreement turns both red rather than leaving one quotable.",
     "",
     "Enforced by tooling/ci/assert-licence-register.mjs. See tooling/legal/README.md for the public/private",
-    "split — nothing here is private: a licence claim with no public source is not a licence claim."
+    "split — nothing here is private: a licence claim with no public source is not a licence claim.",
+    "",
+    "🔴 `appScopedAssets` (2026-09-26, lead ruling PRL-R1): WHAT ONE APP SHIPS BECAUSE ONE OF ITS PACKAGES DOES.",
+    "A pub package an app depends on puts its own assets into that app's bundle under packages/<pkg>/, and no",
+    "workspace manifest declares them, so the `assets` rows above (the workspace's own material and the",
+    "toolchain's) cannot say 'this app ships that file'. Each app-scoped row names its scope `app:<app_id>`, the",
+    "path inside that app's built assets directory, the PACKAGE that ships it (a pub package, or `sdk:flutter`",
+    "for an engine or web asset of the SDK) and the licence id. The licence is not taken on trust: the",
+    "`--bundle <dir> --app <id>` walk reads the package's own LICENSE through the app's resolved",
+    "package_config.json and fails when the two differ, and it fails with COVERAGE LOST when no `pub get` ran.",
+    "That walk resolves every file in the bundle to exactly one row — a row above, or one scoped to THIS app —",
+    "so an `app:<other>` row never satisfies an app, and a new app's rows come from its own bundle. The rows",
+    "live in their own array so that every row above keeps its shape, and a guard that predates the array",
+    "reads this file exactly as it did."
   ],
   "derivation": {
     "_why": [
@@ -309,6 +322,94 @@
         "note": "Our own brand mark; see brand-nikatru-logo."
       },
       "shippedIn": "apps/subscriptiontracker (declared under flutter: assets: assets/brand/)"
+    }
+  ],
+  "appScopedAssets": [
+    {
+      "id": "subscriptiontracker-cupertino-icons-font",
+      "scope": "app:subscriptiontracker",
+      "bundlePath": "packages/cupertino_icons/assets/CupertinoIcons.ttf",
+      "package": "cupertino_icons",
+      "contentFamily": null,
+      "contentFamilyWhy": "An icon font a pub package ships into the app binary. The content pipeline neither generates with it nor ships it inside a pack, so it is a K-10 artefact only.",
+      "name": "CupertinoIcons.ttf — the iOS-style icon font the cupertino_icons package ships",
+      "origin": "third-party",
+      "licence": "MIT",
+      "attributionRequired": true,
+      "attributedIn": "bundle:NOTICES",
+      "source": {
+        "note": "The cupertino_icons package's own LICENSE, read through the app's resolved package_config.json by assert-licence-register.mjs --bundle --app on every web-artifacts run; the row's licence is checked against it there. Read 2026-09-26 at 1.0.9 (pubspec.lock): 'The MIT License (MIT)', Copyright (c) 2016 Vladimir Kharlampidi. The bundle's NOTICES carries that text under the name cupertino_icons."
+      },
+      "shippedIn": "apps/subscriptiontracker's web bundle; a direct dependency (apps/subscriptiontracker/pubspec.yaml: cupertino_icons ^1.0.8). Listed by the PR-lane build of CI run 36233164494 (Flutter 3.47.5) and by a local build on 2026-09-26, both of which tree-shake it from 257,628 to 1,472 bytes. MIT permits that modification; its one condition, the notice in copies, is met by NOTICES."
+    },
+    {
+      "id": "subscriptiontracker-inappwebview-t-rex-css",
+      "scope": "app:subscriptiontracker",
+      "bundlePath": "packages/flutter_inappwebview/assets/t_rex_runner/t-rex.css",
+      "package": "flutter_inappwebview",
+      "contentFamily": null,
+      "contentFamilyWhy": "A stylesheet a pub package ships for its offline page. Nothing in the content pipeline reads or produces it.",
+      "name": "t-rex.css — the offline-page stylesheet the flutter_inappwebview package ships",
+      "origin": "third-party",
+      "licence": "Apache-2.0",
+      "attributionRequired": true,
+      "attributedIn": "bundle:NOTICES",
+      "source": {
+        "note": "The flutter_inappwebview package's own LICENSE, read through the app's resolved package_config.json by assert-licence-register.mjs --bundle --app on every web-artifacts run; the row's licence is checked against it there. Read 2026-09-26 at 6.1.5 (pubspec.lock): 'Apache License / Version 2.0, January 2004'. The bundle's NOTICES carries that text under the name flutter_inappwebview."
+      },
+      "shippedIn": "apps/subscriptiontracker's web bundle, through cloudflare_turnstile ^3.8.1 → flutter_inappwebview 6.1.5 (transitive), whose pubspec declares it. Listed by CI run 36233164494 and by a local build on 2026-09-26."
+    },
+    {
+      "id": "subscriptiontracker-inappwebview-t-rex-html",
+      "scope": "app:subscriptiontracker",
+      "bundlePath": "packages/flutter_inappwebview/assets/t_rex_runner/t-rex.html",
+      "package": "flutter_inappwebview",
+      "contentFamily": null,
+      "contentFamilyWhy": "An offline page a pub package ships. Nothing in the content pipeline reads or produces it.",
+      "name": "t-rex.html — the offline page (T-Rex runner game) the flutter_inappwebview package ships",
+      "origin": "third-party",
+      "licence": "Apache-2.0",
+      "attributionRequired": true,
+      "attributedIn": "bundle:NOTICES",
+      "source": {
+        "note": "The flutter_inappwebview package's own LICENSE, read through the app's resolved package_config.json by assert-licence-register.mjs --bundle --app on every web-artifacts run; the row's licence is checked against it there. Read 2026-09-26 at 6.1.5 (pubspec.lock): 'Apache License / Version 2.0, January 2004'. The file itself carries no copyright or licence line (searched 2026-09-26: 0 hits for 'copyright' and 'license')."
+      },
+      "shippedIn": "apps/subscriptiontracker's web bundle, through cloudflare_turnstile ^3.8.1 → flutter_inappwebview 6.1.5 (transitive). Listed by CI run 36233164494 and by a local build on 2026-09-26.",
+      "note": "The page is a copy of Chromium's offline T-Rex runner. The package ships it under the package's LICENSE, which is the source this register reads (lead ruling PRL-R1). Whether a separate Chromium notice is also owed is a question that LICENSE does not answer; it is carried as an open item in the PR that added this row, not answered here."
+    },
+    {
+      "id": "subscriptiontracker-inappwebview-web-support-js",
+      "scope": "app:subscriptiontracker",
+      "bundlePath": "packages/flutter_inappwebview_web/assets/web/web_support.js",
+      "package": "flutter_inappwebview_web",
+      "contentFamily": null,
+      "contentFamilyWhy": "A script a pub package ships for its web implementation. Nothing in the content pipeline reads or produces it.",
+      "name": "web_support.js — the web glue script the flutter_inappwebview_web package ships",
+      "origin": "third-party",
+      "licence": "Apache-2.0",
+      "attributionRequired": true,
+      "attributedIn": "bundle:NOTICES",
+      "source": {
+        "note": "The flutter_inappwebview_web package's own LICENSE, read through the app's resolved package_config.json by assert-licence-register.mjs --bundle --app on every web-artifacts run; the row's licence is checked against it there. Read 2026-09-26 at 1.1.2 (pubspec.lock): 'Apache License / Version 2.0, January 2004'. The bundle's NOTICES carries that text under the name flutter_inappwebview_web."
+      },
+      "shippedIn": "apps/subscriptiontracker's web bundle, through flutter_inappwebview 6.1.5, whose web implementation is this package (transitive). Listed by CI run 36233164494 and by a local build on 2026-09-26."
+    },
+    {
+      "id": "subscriptiontracker-purchases-js-hybrid-mappings",
+      "scope": "app:subscriptiontracker",
+      "bundlePath": "packages/purchases_flutter/assets/web/purchases_js_hybrid_mappings.js",
+      "package": "purchases_flutter",
+      "contentFamily": null,
+      "contentFamilyWhy": "A script the store SDK package ships for its web implementation. Nothing in the content pipeline reads or produces it.",
+      "name": "purchases_js_hybrid_mappings.js — the web script the purchases_flutter package ships",
+      "origin": "third-party",
+      "licence": "MIT",
+      "attributionRequired": true,
+      "attributedIn": "bundle:NOTICES",
+      "source": {
+        "note": "The purchases_flutter package's own LICENSE, read through the app's resolved package_config.json by assert-licence-register.mjs --bundle --app on every web-artifacts run; the row's licence is checked against it there. Read 2026-09-26 at 10.13.1 (pubspec.lock): 'MIT License', Copyright (c) 2019 RevenueCat. The bundle's NOTICES carries that text under the name purchases_flutter."
+      },
+      "shippedIn": "apps/subscriptiontracker's web bundle, through packages/billing_revenuecat → purchases_flutter ^10.13.1 (transitive), whose pubspec declares assets/web/ for the web platform only. Listed by CI run 36233164494 and by a local build on 2026-09-26."
     }
   ]
 }
