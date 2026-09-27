@@ -131,6 +131,32 @@
 //   sums deploy-web.yml's own jobs; the ci.yml lanes that run before the call
 //   are not in it.
 //
+// ── A SITE MOVES TO DIRECT UPLOAD; ITS OLD PROJECT IS ROLLBACK-ONLY ─────────
+// 🔴 THIS READER JUDGED A PROJECT NOTHING WILL EVER BUILD AGAIN. At 16:27Z on
+// 2026-09-26 (D3-1, [ADR 098]) nikatru.com moved from the Git-connected project
+// `nikatru` to the Direct Upload project `nikatru-apex`, which only
+// deploy-web.yml's `site` job publishes, and at 16:31:47Z every deployment of
+// `nikatru` was switched off; it is kept for rollback. ops-watch run
+// 36277702128 then read `✗ nikatru (git)`: 7f3475d6 serves e154dc6, which does
+// not carry cff2c81 — a guaranteed red, while `nikatru-apex`, the project
+// actually serving the apex, was not among the 3 projects derived at all.
+//
+// So a `sites/<name>` directory is DIRECT when a deploy-web.yml job plans a
+// deployUnits entry claiming `sites/<name>/**` and names ONE `--project-name`
+// (siteLanes): that project is graded like a catalogue app, against that
+// unit's paths, inside a ceiling summed from that job and its `needs`, on the
+// commit_hash its row carries (wrangler reads the Actions checkout HEAD, which
+// the job also stamps into version.json). A site no job claims stays
+// git-connected, as before.
+//
+// A project nothing builds any more is DECLARED rollback-only in
+// tooling/ops/pages-rollback-only.json, never inferred from the account. It is
+// read once per sweep (GET /pages/projects/{name}) and is `rollback-only
+// (paused)` only while its Git source has deployments, production deployments
+// and previews all off and it holds no domain outside `*.pages.dev`. Either one
+// coming back with the declaration unchanged is RED, and so is a declared
+// project that a site directory or the catalogue still derives as serving.
+//
 // ── THREE-VALUED, AND 2 IS NOT A PASS ───────────────────────────────────────
 //   0  every derived project's newest production deployment succeeded, and every
 //      one carrying a commit_hash is at the commit `main` says it should be (a
@@ -270,17 +296,23 @@ const SITES_SHARED = '_shared';
  *      witness anywhere else. `sites/<name>` is both the project name and the
  *      configured root directory (sites/nikatru/README.md), so ONE reading gives
  *      the project to query AND the path whose git history it must match.
+ *      ⏱ 2026-09-26 [ADR 098]: EXCEPT a site a deploy-web.yml job publishes
+ *      (siteLanes) — that directory is the DIRECT project the job names, carrying
+ *      its deploy `unit`, and the git project of the same name is no longer
+ *      derived; if it is kept, it is declared in ROLLBACK_ONLY_REL instead.
  *
  *    DIRECT-UPLOAD — one per `catalog/apps.json` slug. `deploy-web.yml` creates
  *      and uploads `--project-name=<slug>`, so a new app adds itself here by
  *      existing rather than by anyone remembering this file.
  *
- *  Returns `{ projects, problems }`. A `problem` is a READING failure (a missing
- *  or unparseable source), which the caller turns into exit 2 — not into a
- *  shorter list. */
+ *  Returns `{ projects, rollbackOnly, problems }`. A `problem` is a READING
+ *  failure (a missing or unparseable source), which the caller turns into exit 2
+ *  — not into a shorter list. */
 export function derivePagesProjects(root) {
   const projects = [];
   const problems = [];
+  const sites = siteLanes(root);
+  problems.push(...sites.problems);
 
   const sitesDir = join(root, 'sites');
   if (!existsSync(sitesDir)) {
@@ -293,7 +325,11 @@ export function derivePagesProjects(root) {
     if (names.length === 0) {
       problems.push(`sites/ holds no site directory other than ${SITES_SHARED}/. The shape changed underneath this reader.`);
     }
-    for (const name of names) projects.push({ project: name, kind: 'git', sourceDir: `sites/${name}` });
+    for (const name of names) {
+      const lane = sites.bySite.get(name);
+      if (lane) projects.push({ project: lane.project, kind: 'direct', unit: lane.unit, sourceDir: siteUnitLabel(lane) });
+      else projects.push({ project: name, kind: 'git', sourceDir: `sites/${name}` });
+    }
   }
 
   const cataloguePath = join(root, 'catalog', 'apps.json');
@@ -323,8 +359,110 @@ export function derivePagesProjects(root) {
     }
   }
 
+  const declared = readRollbackOnly(root);
+  problems.push(...declared.problems);
+
+  return { projects, rollbackOnly: declared.projects, problems };
+}
+
+/** The register that DECLARES a Pages project rollback-only. Named once. */
+export const ROLLBACK_ONLY_REL = 'tooling/ops/pages-rollback-only.json';
+
+/** Every field a rollback-only entry must carry, as a non-empty string. */
+const ROLLBACK_FIELDS = ['pausedAt', 'servedBy', 'decision', 'why'];
+
+/** The projects ROLLBACK_ONLY_REL declares, as `{ projects, problems }`. A missing
+ *  or unparseable register is a problem (exit 2), never "nothing is paused": the
+ *  file being gone would otherwise drop a paused project out of the sweep with
+ *  nothing said, and nobody would see it regain a domain. */
+export function readRollbackOnly(root) {
+  const abs = join(root, ...ROLLBACK_ONLY_REL.split('/'));
+  if (!existsSync(abs)) {
+    return { projects: [], problems: [`${ROLLBACK_ONLY_REL} does not exist, so which Pages projects are kept for rollback only is unknown.`] };
+  }
+  let doc;
+  try {
+    doc = JSON.parse(readFileSync(abs, 'utf8'));
+  } catch (e) {
+    return { projects: [], problems: [`${ROLLBACK_ONLY_REL} did not parse: ${e.message}`] };
+  }
+  const rows = doc?.projects;
+  if (!rows || typeof rows !== 'object' || Array.isArray(rows)) {
+    return { projects: [], problems: [`${ROLLBACK_ONLY_REL} holds no \`projects\` object. The shape changed underneath this reader.`] };
+  }
+  const projects = [];
+  const problems = [];
+  for (const [project, r] of Object.entries(rows)) {
+    const missing = ROLLBACK_FIELDS.filter((k) => typeof r?.[k] !== 'string' || r[k].trim() === '');
+    if (missing.length > 0) {
+      problems.push(`${ROLLBACK_ONLY_REL} entry "${project}" lacks ${missing.join(', ')}, so its declaration cannot be checked.`);
+    } else if (!Number.isFinite(Date.parse(r.pausedAt))) {
+      problems.push(`${ROLLBACK_ONLY_REL} entry "${project}" has a pausedAt ${JSON.stringify(r.pausedAt)} that does not parse.`);
+    } else {
+      projects.push({ project, pausedAt: r.pausedAt, servedBy: r.servedBy, decision: r.decision });
+    }
+  }
   return { projects, problems };
 }
+
+/** `--project-name` values a job's code names literally. `${{ matrix.app }}` is
+ *  not a name, so the app matrix job answers none. */
+const projectNamesIn = (text) => [...new Set([...text.matchAll(/--project-name[= ]([A-Za-z0-9][A-Za-z0-9-]*)/g)].map((m) => m[1]))];
+
+/** One tree glob `sites/<name>/**` as `<name>`, else null. */
+const siteOfGlob = (g) => /^sites\/([^/*?[\]!+]+)\/\*\*$/.exec(g)?.[1] ?? null;
+
+const jobText = (job) => job.lines.map((l) => l.text).join('\n');
+
+/** Which `sites/<name>` directories a deploy-web.yml job publishes by Direct
+ *  Upload, as `{ bySite: Map<name, { unit, job, project }>, problems }`. A job
+ *  qualifies when it plans a LITERAL environment whose deployUnits entry claims
+ *  `sites/<name>/**`; the project is the ONE `--project-name` that job's code
+ *  names. Two names, none, or two jobs claiming one site is a problem, never a
+ *  guess. No workflow or no unit file maps nothing, and every site stays
+ *  git-connected — which the rollback-only declaration then turns red for a
+ *  site whose git project is paused, so that fallback is never silent. */
+export function siteLanes(root) {
+  const bySite = new Map();
+  const problems = [];
+  const parsed = parseWorkflow(root, DEPLOY_WEB_REL);
+  const units = readUnits(root);
+  if (parsed === null || units === null || !(parsed.jobs instanceof Map)) return { bySite, problems };
+  for (const job of parsed.jobs.values()) {
+    const text = jobText(job);
+    const keys = [
+      ...new Set(
+        plannedEnvironments(text)
+          .filter((e) => !e.includes('${{'))
+          .map((e) => unitKeyFor(units, e))
+          .filter((k) => k !== null),
+      ),
+    ];
+    for (const unit of keys) {
+      const claimed = units[unit].map(siteOfGlob).filter((n) => n !== null && n !== SITES_SHARED);
+      if (claimed.length === 0) continue;
+      const names = projectNamesIn(text);
+      if (names.length !== 1) {
+        problems.push(
+          `${DEPLOY_WEB_REL} job \`${job.name}\` plans deployUnits["${unit}"], which claims ` +
+            `${claimed.map((n) => `sites/${n}/**`).join(', ')}, but its code names ${JSON.stringify(names)} as ` +
+            '`--project-name`, so the Pages project serving that site is unknown.',
+        );
+        continue;
+      }
+      for (const site of claimed) {
+        if (bySite.has(site)) {
+          problems.push(`sites/${site} is published by two ${DEPLOY_WEB_REL} jobs (\`${bySite.get(site).job}\`, \`${job.name}\`), so which project serves it is unknown.`);
+          continue;
+        }
+        bySite.set(site, { unit, job: job.name, project: names[0] });
+      }
+    }
+  }
+  return { bySite, problems };
+}
+
+const siteUnitLabel = ({ unit, job }) => `the deploy unit ${DEPLOY_WEB_REL} job \`${job}\` plans (${UNITS_REL} deployUnits["${unit}"])`;
 
 /** The workflow that direct-uploads every catalogue app. Named once: the
  *  deploy unit it plans IS the source set of a direct-upload project, and its
@@ -391,8 +529,11 @@ export function jobTimeouts(parsed) {
  *  never a fallback to `apps/<slug>`, which is narrower than what the lane
  *  deploys for and would grade against an OLDER commit. The workflow is read
  *  ONCE, through workflow-scan.mjs (O-LOCAL-SCRIPTS-PARSE-MOVED-WORKFLOWS), and
- *  every "cannot see it" case REFUSES out loud. */
-export function deployLaneInputs(root) {
+ *  every "cannot see it" case REFUSES out loud.
+ *
+ *  `unit` (⏱ 2026-09-26 [ADR 098]) names a site's deploy unit — `nikatru-site` —
+ *  and selects the job(s) planning exactly that unit instead of the app matrix. */
+export function deployLaneInputs(root, { unit } = {}) {
   const problems = [];
   const parsed = parseWorkflow(root, DEPLOY_WEB_REL);
   if (parsed === null) {
@@ -406,18 +547,24 @@ export function deployLaneInputs(root) {
   // The projects graded here are the apps', which the MATRIX job publishes, so the lane is the
   // job(s) planning a per-app environment (`${{ matrix.… }}`) plus every job they `needs`, and
   // the ceiling sums those. A workflow with no such job is read whole, as before.
+  // ⏱ 2026-09-26: with `unit`, the lane is the job(s) planning THAT unit plus their `needs`,
+  // and none is a problem — a site lane is never "the whole workflow".
   const units = readUnits(root);
-  const jobText = (job) => job.lines.map((l) => l.text).join('\n');
   const lane = new Set();
   const addWithNeeds = (name) => {
     if (lane.has(name) || !parsed.jobs.has(name)) return;
     lane.add(name);
     for (const n of parsed.jobs.get(name).needs ?? []) addWithNeeds(n);
   };
+  const inLane =
+    unit === undefined
+      ? (envs) => envs.some((e) => /\$\{\{\s*matrix\./.test(e))
+      : (envs) => units !== null && envs.some((e) => !e.includes('${{') && unitKeyFor(units, e) === unit);
   for (const job of parsed.jobs.values()) {
-    if (plannedEnvironments(jobText(job)).some((e) => /\$\{\{\s*matrix\./.test(e))) addWithNeeds(job.name);
+    if (inLane(plannedEnvironments(jobText(job)))) addWithNeeds(job.name);
   }
-  const laneJobs = lane.size > 0 ? [...parsed.jobs.values()].filter((j) => lane.has(j.name)) : [...parsed.jobs.values()];
+  if (unit !== undefined && lane.size === 0) problems.push(`${DEPLOY_WEB_REL} has no job planning deployUnits["${unit}"]`);
+  const laneJobs = lane.size > 0 || unit !== undefined ? [...parsed.jobs.values()].filter((j) => lane.has(j.name)) : [...parsed.jobs.values()];
   const keys =
     units === null
       ? []
@@ -886,6 +1033,91 @@ export function foldVerdicts(results, { projectsSwept, ungraded }) {
   return { code, lines, reds, unknowns, inflight, projectsSwept, ungraded };
 }
 
+/** PURE. One DECLARED rollback-only project against its live project record
+ *  (GET /pages/projects/{name}), plus the derived set it must not be part of.
+ *
+ *  RED (1) when the declaration and the repository disagree — the project is
+ *  still DERIVED as serving a site or an app, or its `servedBy` is not derived at
+ *  all — and when the account disagrees with it: a domain outside `*.pages.dev`,
+ *  or any of Git deployments, production deployments or previews back ON.
+ *  NOT JUDGED (2) when the record does not carry those fields in the shapes read:
+ *  a Direct Upload project has no switch to be off, so "paused" cannot be read.
+ *  Otherwise 0, once, as `rollback-only (paused)` — its freshness is not judged. */
+export function judgeRollbackOnly({ project, pausedAt, servedBy, decision, answer, derived = [] }) {
+  const serving = derived.find((p) => p.project === project);
+  if (serving) {
+    return {
+      code: 1,
+      line:
+        `✗   ${project} — DECLARED rollback-only in ${ROLLBACK_ONLY_REL} (${decision}), yet ${serving.sourceDir} still ` +
+        `derives it as the ${serving.kind} project SERVING it. The declaration and the deploy topology disagree: either ` +
+        `the site moved back and the entry must go, or the job that publishes it elsewhere is gone.`,
+    };
+  }
+  if (!derived.some((p) => p.project === servedBy)) {
+    return {
+      code: 1,
+      line:
+        `✗   ${project} — DECLARED rollback-only in ${ROLLBACK_ONLY_REL}, served by \`${servedBy}\`, but no site ` +
+        `directory or catalogue slug derives \`${servedBy}\`, so nothing this sweep grades serves what ${project} used to.`,
+    };
+  }
+  if (!answer || typeof answer !== 'object' || answer.name !== project) {
+    return { code: 2, line: `?   ${project} — the project record did not come back as project "${project}", so NOTHING was judged.` };
+  }
+  if (!Array.isArray(answer.domains) || !answer.domains.every((d) => typeof d === 'string')) {
+    return { code: 2, line: `?   ${project} — the project record's \`domains\` is ${JSON.stringify(answer.domains ?? null)}, not a list of names, so whether it holds a custom domain is unknown. NOTHING was judged.` };
+  }
+  const config = answer.source?.config;
+  const kind = typeof answer.source?.type === 'string' ? 'git' : 'direct';
+  const at = `${project} (${kind})`;
+  const custom = answer.domains.filter((d) => !d.endsWith('.pages.dev'));
+  if (custom.length > 0) {
+    return {
+      code: 1,
+      line:
+        `✗   ${at} — DECLARED rollback-only (paused since ${pausedAt}) but it holds custom domain(s) ${custom.join(', ')}. ` +
+        `A paused project serves the build it was paused on and nothing refreshes it: move the domain back to ` +
+        `${servedBy}, or remove the entry from ${ROLLBACK_ONLY_REL} so this project is graded again.`,
+    };
+  }
+  if (
+    !config ||
+    typeof config.deployments_enabled !== 'boolean' ||
+    typeof config.production_deployments_enabled !== 'boolean' ||
+    typeof config.preview_deployment_setting !== 'string'
+  ) {
+    return {
+      code: 2,
+      line:
+        `?   ${at} — DECLARED rollback-only, but the record carries no Git source with \`deployments_enabled\`, ` +
+        `\`production_deployments_enabled\` and \`preview_deployment_setting\` (source ${JSON.stringify(answer.source?.type ?? null)}), ` +
+        `so whether its deployments are OFF cannot be read. NOTHING was judged.`,
+    };
+  }
+  const on = [];
+  if (config.deployments_enabled !== false) on.push('deployments_enabled=true');
+  if (config.production_deployments_enabled !== false) on.push('production_deployments_enabled=true');
+  if (config.preview_deployment_setting !== 'none') on.push(`preview_deployment_setting=${JSON.stringify(config.preview_deployment_setting)}`);
+  if (on.length > 0) {
+    return {
+      code: 1,
+      line:
+        `✗   ${at} — DECLARED rollback-only (paused since ${pausedAt}) but its deployments are back ON: ${on.join(', ')}. ` +
+        `Cloudflare builds it again on the next push, outside every gate; switch them off, or remove the entry from ` +
+        `${ROLLBACK_ONLY_REL} so this project is graded again.`,
+    };
+  }
+  return {
+    code: 0,
+    rollbackOnly: true,
+    line:
+      `ok  ${at} — rollback-only (paused): Git deployments, production deployments and previews all OFF, no custom ` +
+      `domain (${answer.domains.join(', ') || 'none'}); declared in ${ROLLBACK_ONLY_REL} (${decision}, paused ${pausedAt}), ` +
+      `so its freshness is NOT judged — ${servedBy} serves what it used to.`,
+  };
+}
+
 /** The newest commit on `main` that touched a path. `null` when the history is
  *  unreadable — which the caller must turn into exit 2, never into a pass.
  *
@@ -935,13 +1167,25 @@ const RETRYABLE_STATUS = (status) => status === 429 || (status >= 500 && status 
 /** ONE read of one project's production deployments. `fetchImpl` and `env` are
  *  injected so every branch — including the transport failing, which is the one
  *  that went red in production — is reachable from a test with NO network. */
-export async function readDeployments(project, { fetchImpl = fetch, env = process.env, signal } = {}) {
+export async function readDeployments(project, opts = {}) {
+  return readPagesApi(project, `/deployments?env=production&per_page=${DEPLOYMENTS_PER_PAGE}`, '/deployments', opts);
+}
+
+/** ONE read of one project's own record — its `domains` and its Git source's
+ *  deployment switches — for a project declared rollback-only. The same
+ *  transport, the same retry shapes, the same exit-2 answers as readDeployments. */
+export async function readProject(project, opts = {}) {
+  return readPagesApi(project, '', '', opts);
+}
+
+async function readPagesApi(project, query, label, { fetchImpl = fetch, env = process.env, signal } = {}) {
   const token = env.CLOUDFLARE_API_TOKEN;
   const account = env.CLOUDFLARE_ACCOUNT_ID;
   if (!token || !account) {
     throw new CouldNotLook('CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID are not both in the environment');
   }
-  const url = `${CF_API}/accounts/${account}/pages/projects/${encodeURIComponent(project)}/deployments?env=production&per_page=${DEPLOYMENTS_PER_PAGE}`;
+  const url = `${CF_API}/accounts/${account}/pages/projects/${encodeURIComponent(project)}${query}`;
+  const what = `GET pages/projects/${project}${label}`;
 
   // 🔴 THE THROW THAT FROZE THE MERGE QUEUE. `fetch` rejects — `TypeError: fetch
   // failed` — when the connection never completed, which says NOTHING about
@@ -952,20 +1196,18 @@ export async function readDeployments(project, { fetchImpl = fetch, env = proces
     res = await fetchImpl(url, { headers: { authorization: `Bearer ${token}` }, signal });
     text = await res.text();
   } catch (e) {
-    throw transientLook(
-      `GET pages/projects/${project}/deployments did not complete at all — ${e?.name ?? 'Error'}: ${e?.message ?? String(e)}`,
-    );
+    throw transientLook(`${what} did not complete at all — ${e?.name ?? 'Error'}: ${e?.message ?? String(e)}`);
   }
 
   if (!res.ok) {
-    const line = `GET pages/projects/${project}/deployments answered HTTP ${res.status}: ${text.slice(0, 400)}`;
+    const line = `${what} answered HTTP ${res.status}: ${text.slice(0, 400)}`;
     throw RETRYABLE_STATUS(res.status) ? transientLook(line) : new CouldNotLook(line);
   }
   let body;
   try {
     body = JSON.parse(text);
   } catch {
-    throw new CouldNotLook(`GET pages/projects/${project}/deployments answered unparseable JSON: ${text.slice(0, 200)}`);
+    throw new CouldNotLook(`${what} answered unparseable JSON: ${text.slice(0, 200)}`);
   }
   if (body?.success !== true) {
     throw new CouldNotLook(`Cloudflare reported success=false for ${project}: ${JSON.stringify(body?.errors ?? null).slice(0, 400)}`);
@@ -974,7 +1216,7 @@ export async function readDeployments(project, { fetchImpl = fetch, env = proces
 }
 
 async function main() {
-  const { projects, problems } = derivePagesProjects(ROOT);
+  const { projects, rollbackOnly, problems } = derivePagesProjects(ROOT);
 
   if (problems.length > 0 || projects.length === 0) {
     console.error('✗ COULD NOT LOOK — the Pages project set did not derive, so NOTHING was swept:');
@@ -985,11 +1227,13 @@ async function main() {
   }
 
   const results = [];
-  const lane = projects.some((p) => p.kind === 'direct') ? deployLaneInputs(ROOT) : null;
+  const appLane = projects.some((p) => p.kind === 'direct' && p.unit === undefined) ? deployLaneInputs(ROOT) : null;
 
   for (const p of projects) {
     let expectedCommit = null;
     let expectedAt = null;
+    // A site published by a deploy-web job is graded against ITS unit and ITS job's window.
+    const lane = p.unit === undefined ? appLane : deployLaneInputs(ROOT, { unit: p.unit });
     if (p.kind === 'git') {
       expectedCommit = newestCommitTouching(ROOT, p.sourceDir, spawnSync);
     } else {
@@ -1034,12 +1278,25 @@ async function main() {
     }
   }
 
+  // Each DECLARED rollback-only project, once: never graded for freshness, always read.
+  for (const r of rollbackOnly) {
+    try {
+      const answer = await readWithBoundedRetry((_attempt, { signal }) => readProject(r.project, { signal }), {
+        note: (m) => console.log(`    ⟳   ${r.project} (rollback-only) — ${m}`),
+      });
+      results.push(judgeRollbackOnly({ ...r, answer, derived: projects }));
+    } catch (e) {
+      results.push(readFailureResult(r.project, 'rollback-only', e));
+    }
+  }
+
   const ungraded = results.filter((r) => r.ungraded === true).length;
   const verdict = foldVerdicts(results, { projectsSwept: projects.length, ungraded });
 
   console.log(
     `⬜  MONITOR · Cloudflare Pages production deployments · ${verdict.projectsSwept} project(s) DERIVED ` +
-      `(${verdict.ungraded} with the commit limb UNGRADED because the served row carries no commit_hash)`,
+      `(${verdict.ungraded} with the commit limb UNGRADED because the served row carries no commit_hash), ` +
+      `${rollbackOnly.length} declared ROLLBACK-ONLY in ${ROLLBACK_ONLY_REL}`,
   );
   for (const line of verdict.lines) console.log(`    ${line}`);
 
