@@ -24,8 +24,7 @@
     "VIOLATIONS ARE DECLARED, DATED AND PRINTED ON EVERY RUN. A known gap that nobody sees becomes",
     "permanent. Each names why it is not yet fixed and what would unblock it."
   ],
-  "consumerRoots": [
-    "apps/subscriptiontracker",
+  "nonAppConsumerRoots": [
     "tooling/bricks/app/__brick__/apps/{{app_id}}",
     "packages/purchases"
   ],
@@ -356,6 +355,7 @@
       "judgement call."
     ],
     "API_BASE_URL": "our own subscriptiontracker-api Worker",
+    "E2E_APP_ID": "OUR OWN test-harness fact, and no external system is behind it: the workspace app id the e2e lane drives (e2e.yml's `matrix.app`, the value its steps already export as the E2E_APP_ID environment variable to tooling/e2e/backend.mjs). The brick's stamped integration_test/app_test.dart (10b, O-BRICK-STAMPS-NO-E2E-SUITE) reads it as a compile-time define and refuses a binary whose AppConfig.appId differs, so a lane that drives the wrong app, or passes none, fails at the suite's first expect; there is no default. It reaches only the `flutter drive` DEBUG build on the runner: no store lane, no `deploy-web.yml` build and no release build passes it. Measured at main 80cffc6c: e2e.yml's `flutter drive` does not pass `--dart-define=E2E_APP_ID` yet, so the row's two-leg e2e confirm needs that line first.",
     "E2E_EXPECT_CAPTCHA_GATE": "OUR OWN test-harness fact, and no external system is behind it: the literal string `yes` or `no`, saying whether the auth stack the live E2E run signs in against — the hosted Supabase project (`no`) or the self-hosted GoTrue on Box C (`yes`) — refuses a password sign-in at the captcha first. Both stacks are ours; the only third party either involves is Cloudflare Turnstile, which has its own vendor row above. It is derived by `.github/workflows/e2e.yml` (tooling/e2e/derive_expectation.mjs) from the run's SUPABASE_URL, reaches only the `flutter drive` DEBUG build served to a headless Chrome on the runner, and selects which wrong-password copy `apps/subscriptiontracker/integration_test/app_test.dart` expects. It reaches no shipping binary: no store lane, no `deploy-web.yml` build and no release build passes it, and with the define absent every test fails at its start — there is no default. It replaced E2E_AUTH_TARGET on 2026-09-25.",
     "E2E_EXPECT_WORKERS_TRUST": "OUR OWN test-harness fact, and no external system is behind it: the literal string `yes` or `no`, saying whether the deployed Workers — ours — trust the issuer the live E2E run signs in against, i.e. whether its SUPABASE_URL is tooling/platform-register.json vars.SUPABASE_URL. It is derived by `.github/workflows/e2e.yml` (tooling/e2e/derive_expectation.mjs), reaches only the `flutter drive` DEBUG build on the runner, and selects whether `apps/subscriptiontracker/integration_test/app_test.dart` walks the app or asserts the one-issuer refusal (401), because the Workers trust exactly one issuer. It reaches no shipping binary, and with the define absent every test fails at its start — there is no default. It replaced E2E_AUTH_TARGET on 2026-09-25.",
     "ERASURE_SUBSCRIPTIONTRACKER": "OUR OWN app Worker, reached over a Cloudflare Service Binding: services/platform/wrangler.jsonc binds `subscriptiontracker-api`'s named entrypoint `ErasureEntrypoint` so the nightly erasure retry can finish an erasure DELETE /v1/account accepted (202 erasure_pending) but could not finish. No external system and no credential is behind it — a binding is callable only by the Worker that declares it, inside the account. One binding per app in APP_ERASURE_ENDPOINTS, named ERASURE_<APP_ID>; tooling/ci/assert-erasure-reach.mjs holds the relation. Added 2026-09-15 ([ADR 081]).",
@@ -523,8 +523,9 @@
       "tooling/ci/assert-capability-register.mjs, beside the guard the choice has to serve. In short: a",
       "brick var is consumed at STAMP time and leaves nothing on disk to quantify over, and apps/subscriptiontracker",
       "was never stamped by this brick at all -- so a brick-var domain would exclude the only shipped",
-      "app. `consumerRoots` at the top of this file is already the machine-readable set of apps, each",
-      "verified against a real pubspec.",
+      "app. The consumer roots are already the machine-readable set of apps, each verified against a",
+      "real pubspec: the workspace app set (tooling/ci/app-set.mjs) plus `nonAppConsumerRoots` at the top of",
+      "this file (O-GUARDS-READ-A-HAND-LISTED-APP-SET, 8b).",
       "",
       "FIELDS.",
       "  id           the module's name. THE PRINTED LINE IS DERIVED FROM IT (`no consumer declares the",

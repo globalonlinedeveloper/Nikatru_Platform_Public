@@ -2475,6 +2475,18 @@ let releaseCensus = { workflows: [], domain: null };
         'directory it checks before the Play capture builds anything; nothing is compiled with it. The capture ' +
         'drives the web build with the runner default android-play, and android-play ships from submit-play.yml.',
     },
+    // ⏱ 2026-09-27 (O-SCREENSHOT-DRIVER-IS-ONE-APPS, 10b) — the stamp probe's red control.
+    // Its `--channel android-play` is an argument to capture-precheck.mjs, run with the
+    // probe's store_screenshots_test.dart moved away and then restored; it builds nothing.
+    {
+      workflow: '.github/workflows/ci.yml',
+      job: 'app-brick',
+      channel: 'android-play',
+      why:
+        'the red control asks tooling/store/capture-precheck.mjs --app probe --channel android-play whether the ' +
+        'stamped probe carries its capture boards, with store_screenshots_test.dart moved away and then restored. ' +
+        'Nothing is compiled with the channel or shipped; android-play ships from submit-play.yml, its lane.',
+    },
   ];
   const CHANNEL_ARG = /--channel(?:=|\s+)(\S+)/g;
   const unquote = (v) => v.replace(/^['"]|['"]$/g, '');

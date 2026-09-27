@@ -101,7 +101,9 @@ function tree({ symbol = 'NotificationService', methods = ['init'], seamSrc = nu
   if (mutate) mutate(capabilities, files, root);
 
   files[join(root, 'tooling', 'capability-register.json')] =
-    JSON.stringify({ consumerRoots: ['apps/app1'], capabilities }, null, 2);
+    JSON.stringify({ nonAppConsumerRoots: [], capabilities }, null, 2);
+  // 8b: the app roots are the workspace set.
+  files[join(root, 'pubspec.yaml')] = 'name: fixture_workspace\nworkspace:\n  - apps/app1\n';
 
   for (const [p, body] of Object.entries(files)) {
     mkdirSync(dirname(p), { recursive: true });

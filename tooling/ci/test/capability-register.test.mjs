@@ -60,8 +60,9 @@ function tree({ mutate = null, registerRaw = null, omitRegister = false } = {}) 
     consumers: ['apps/app1'],
   }));
 
+  // 8b: the app roots are the workspace set (the root pubspec below); the register lists only non-app roots.
   const register = {
-    consumerRoots: ['apps/app1'],
+    nonAppConsumerRoots: [],
     capabilities,
   };
 
@@ -75,6 +76,7 @@ function tree({ mutate = null, registerRaw = null, omitRegister = false } = {}) 
 
   const deps = BASE.map((id) => `  nikatru_${id}:\n    path: ../../packages/${id}`).join('\n');
   files[join(root, 'apps', 'app1', 'pubspec.yaml')] = `name: app1\ndependencies:\n${deps}\n`;
+  files[join(root, 'pubspec.yaml')] = 'name: fixture_workspace\nworkspace:\n  - apps/app1\n';
 
   if (mutate) mutate(register, files, root);
 
@@ -130,13 +132,11 @@ describe('[C-1] register ↔ disk', () => {
     const root = tree({
       mutate: (reg) => {
         reg.capabilities = reg.capabilities.filter((c) => c.id !== 'telemetry');
-        reg.consumerRoots = []; // avoid direction-(b) noise drowning the signal
       },
     });
     const { code, out } = run(root);
     assert.equal(code, 1, out);
-    // consumerRoots emptied above trips its own check first, so re-run the
-    // narrower case: keep the root but drop the dep too.
+    // Re-run the narrower case: keep the root but drop the dep too.
     const root2 = tree({
       mutate: (reg, files, r) => {
         reg.capabilities = reg.capabilities.filter((c) => c.id !== 'telemetry');
@@ -214,18 +214,39 @@ describe('[C-1] consumers are verified in both directions', () => {
     assert.match(out, /but no capability entry lists that consumer/);
   });
 
-  test('fails when a consumerRoot has no pubspec at all', () => {
-    const root = tree({ mutate: (reg) => { reg.consumerRoots = ['apps/app1', 'apps/missing']; } });
+  test('fails when a consumer root has no pubspec at all', () => {
+    const root = tree({ mutate: (reg) => { reg.nonAppConsumerRoots = ['apps/missing']; } });
     const { code, out } = run(root);
     assert.equal(code, 1);
     assert.match(out, /consumerRoots names `apps\/missing`, which has no pubspec\.yaml/);
   });
 
-  test('fails when consumerRoots is empty — direction (b) could never fire', () => {
-    const root = tree({ mutate: (reg) => { reg.consumerRoots = []; } });
+  // RC8 (8b) — the hand-listed app set cannot come back.
+  test('RC8 · a `consumerRoots` key restored by hand FAILS — the app roots are the workspace set', () => {
+    const root = tree({ mutate: (reg) => { reg.consumerRoots = ['apps/app1']; } });
     const { code, out } = run(root);
-    assert.equal(code, 1);
-    assert.match(out, /declares no `consumerRoots`/);
+    assert.equal(code, 1, out);
+    assert.match(out, /carries `consumerRoots` — the hand-listed app set is back/);
+  });
+
+  test('an empty workspace app set is COVERAGE LOST (2), never a pass', () => {
+    const root = tree({ mutate: (reg, files, r) => { files[join(r, 'pubspec.yaml')] = 'name: fixture_workspace\nworkspace:\n  - packages/core\n'; } });
+    const { code, out } = run(root);
+    assert.equal(code, 2, out);
+    assert.match(out, /assert-capability-register: .*declares no `workspace:` entry under apps\//);
+  });
+
+  test('a second workspace app is read as a consumer root with no register edit', () => {
+    const root = tree({
+      mutate: (reg, files, r) => {
+        files[join(r, 'pubspec.yaml')] = 'name: fixture_workspace\nworkspace:\n  - apps/app1\n  - apps/app2\n';
+        files[join(r, 'apps', 'app2', 'pubspec.yaml')] = 'name: app2\ndependencies:\n  nikatru_core:\n    path: x\n';
+      },
+    });
+    const { code, out } = run(root);
+    // app2 depends on nikatru_core and no row lists it (nor a brick): the unlisted-consumer finding, naming it.
+    assert.equal(code, 1, out);
+    assert.match(out, /nikatru_core — `apps\/app2` depends on it, but no capability entry lists that consumer/);
   });
 });
 
@@ -286,7 +307,7 @@ describe('the guard knows when it is not looking', () => {
   });
 
   test('fails when the register has no capabilities array', () => {
-    const { code, out } = run(tree({ registerRaw: '{"consumerRoots":["apps/app1"]}' }));
+    const { code, out } = run(tree({ registerRaw: '{"nonAppConsumerRoots":[]}' }));
     assert.equal(code, 1);
     assert.match(out, /no `capabilities` array/);
   });
@@ -523,10 +544,10 @@ describe('[13]T-12 — the demand gate', () => {
 const BRICK_ROOT = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
 const DELEGATE_REL = 'tooling/ci/assert-no-seam-forks.mjs';
 
-/** Add `root` to consumerRoots with a pubspec that declares every base package,
+/** Add `root` to nonAppConsumerRoots with a pubspec that declares every base package,
  *  so check 4 is satisfied and the only thing under test is check 5's domain. */
 function addConsumerRoot(reg, files, r, root, { deps = true } = {}) {
-  reg.consumerRoots.push(root);
+  reg.nonAppConsumerRoots.push(root);
   const body = deps
     ? `name: extra\ndependencies:\n${BASE.map((id) => `  nikatru_${id}:\n    path: x`).join('\n')}\n`
     : 'name: extra\n';

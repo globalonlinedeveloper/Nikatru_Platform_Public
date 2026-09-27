@@ -62,6 +62,9 @@ const REGISTER = () => ({
 function fixture({ files = FILES(), register = REGISTER(), patch } = {}) {
   const root = join(TMP, `r${seq++}`);
   if (patch) patch({ files, register });
+  // 8b: the ok line carries the workspace set's size, so every fixture is a workspace of one app
+  // (a top-level text file the sweep reads, counted below as `(top level) 1`).
+  if (!Object.hasOwn(files, 'pubspec.yaml')) files['pubspec.yaml'] = 'name: fixture_workspace\nworkspace:\n  - apps/app1\n';
   for (const [rel, body] of Object.entries(files)) {
     if (body === null) continue;
     mkdirSync(dirname(join(root, rel)), { recursive: true });
@@ -87,7 +90,7 @@ describe('assert-mechanism-claims — the happy path', () => {
     const { code, out } = run(fixture());
     assert.equal(code, 0, out);
     assert.match(out, /ok {2}mechanism claims/);
-    assert.match(out, /swept 4 text file\(s\) by top-level root: docs 2, tooling 2/);
+    assert.match(out, /swept 5 text file\(s\) by top-level root: docs 2, tooling 2, \(top level\) 1/);
     assert.match(out, /2 candidate site\(s\) in 2 file\(s\): 1 proven, 0 demoted, 1 unjudged in 1 file\(s\)/);
   });
 
@@ -262,7 +265,7 @@ describe('assert-mechanism-claims — the git manifest', () => {
     git(root, 'add', '.');
     const { code, out } = run(root);
     assert.equal(code, 2, out);
-    assert.match(out, /COVERAGE LOST — git tracks 6 text file\(s\) and this walk opened 5; it never saw 1:[\s\S]*build\/tracked\.md/);
+    assert.match(out, /COVERAGE LOST — git tracks 7 text file\(s\) and this walk opened 6; it never saw 1:[\s\S]*build\/tracked\.md/);
   });
 });
 
@@ -403,6 +406,20 @@ describe('assert-mechanism-claims — M6 with the extensions harness', () => {
     const wrongLabel = run(fixture({ files: { ...files }, register: register(own.map((c) => ({ ...c, case: `${c.case}.` }))) }));
     assert.equal(wrongLabel.code, 1, wrongLabel.out);
     assert.match(wrongLabel.out, /M6 [^\n]*makes no `check\(\.\.\.\)` call labelled exactly that/);
+  });
+});
+
+describe('assert-mechanism-claims — the workspace app set (8b)', () => {
+  test('the ok line carries apps=N, the workspace set size', () => {
+    const r = run(fixture());
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /ok {2}mechanism claims — .*; apps=1$/m);
+  });
+
+  test('an empty workspace app set is COVERAGE LOST (2), never an ok line', () => {
+    const r = run(fixture({ patch: ({ files }) => { files['pubspec.yaml'] = 'name: fixture_workspace\nworkspace:\n  - packages/core\n'; } }));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /assert-mechanism-claims: .*declares no `workspace:` entry under apps\//);
   });
 });
 

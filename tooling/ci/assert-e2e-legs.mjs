@@ -63,6 +63,7 @@ import { fileURLToPath } from 'node:url';
 
 import { stripSourceComments } from './text-reductions.mjs';
 import { listDir } from './tree-walk.mjs';
+import { requireAppSet } from './app-set.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/e2e-leg-register.json';
@@ -377,6 +378,24 @@ for (const leg of legs) {
   }
 }
 
+// ── every app in the workspace set carries the suite (10b) ──────────────────
+// ⏱ 2026-09-27 (O-BRICK-STAMPS-NO-E2E-SUITE, 10b). The legs above are one app's,
+// graded against the register's one `apps.<id>` entry. The SUITE is every app's:
+// the brick stamps `integration_test/app_test.dart`, and the e2e lane drives each
+// app of tooling/ci/app-set.mjs's set by `E2E_APP_ID`. An app of the set without
+// it is a leg nobody can run for that app — exit 1, naming the file. An empty or
+// unreadable set is COVERAGE LOST.
+const APP_SET = requireAppSet(ROOT, 'assert-e2e-legs');
+for (const { dir } of APP_SET) {
+  const rel = `${dir}/integration_test/app_test.dart`;
+  if (!existsSync(join(ROOT, rel))) {
+    problems.push(
+      `${rel} is missing. ${dir} is in the workspace app set, and the e2e lane drives every app of the set ` +
+        'with its own suite: without it this app has no e2e leg at all. The brick stamps one; restore it.',
+    );
+  }
+}
+
 // THE EQUALITY, STATED. It follows from the per-leg checks above, and it is
 // computed and printed anyway: the two numbers are what N-6 actually asks for,
 // and a relationship nobody prints is one nobody can audit from a log.
@@ -411,5 +430,6 @@ for (const n of notes) console.log(n);
 
 console.log(
   `ok  e2e legs — ${asserted.length} of ${REQUIRED_LEGS.length} golden-path leg(s) claimed asserted and ` +
-    `${proven} proven by ${testRel} (equality holds); ${blocked.length} blocked with a live blocker`,
+    `${proven} proven by ${testRel} (equality holds); ${blocked.length} blocked with a live blocker; ` +
+    `every app of the workspace set carries integration_test/app_test.dart (apps=${APP_SET.length})`,
 );

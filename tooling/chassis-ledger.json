@@ -19,8 +19,8 @@
   ],
   "_rootsNote": "TWO roots since 2026-09-07 ([ADR 067] phase 2, unit app-shell). The Worker half of the template - 13 files, 917 lines every stamped backend app inherits - was outside this ledger entirely while `root` was one string, and `git ls-files -- <that one root>` could not see it to complain. assert-chassis-ledger.mjs is the authority on this list and cross-checks it; a row's `root` is optional and defaults to roots[0], which is why the 96 rows written against the single root are unchanged. ⏱ THE FIGURES IN THIS NOTE MOVED ON 2026-09-08 AND ARE CORRECTED RATHER THAN REWRITTEN: the Worker half is now 14 files and 1,021 lines, because the template gained src/lib/error-sink.ts — a stamped backend had NO crash sink at all and failed tooling/ci/assert-worker-error-sink.mjs on limbs 2, 3 and 5 at its first CI run. The guard PRINTS both figures per root on every run, which is the number to read; this sentence is prose and prose rots.",
   "totals": {
-    "files": 140,
-    "lines": 22241,
+    "files": 146,
+    "lines": 22946,
     "unclassified": 0,
     "unclassifiedLines": 0
   },
@@ -697,6 +697,42 @@
       "lines": 43,
       "verdict": "STAYS",
       "why": "MEASURED: pinned by NOTHING but this ledger. Stays on value: home renders inside the design-system AppShell/AppScaffold."
+    },
+    {
+      "path": "integration_test/app_test.dart",
+      "lines": 83,
+      "verdict": "STAYS",
+      "why": "⏱ 2026-09-27 (O-BRICK-STAMPS-NO-E2E-SUITE, 10b): per-app by construction — the [3]S-2 e2e suite of THIS app: E2E_APP_ID must equal its AppConfig.appId, and it drives this app's own screens. assert-e2e-legs requires integration_test/app_test.dart for every app of the workspace set (exit 1 naming it), and the app-brick probe's red control proves it on a stamp."
+    },
+    {
+      "path": "integration_test/store_capture_guard.dart",
+      "lines": 69,
+      "verdict": "STAYS",
+      "why": "⏱ 2026-09-27 (O-SCREENSHOT-DRIVER-IS-ONE-APPS, 10b): the capture boards' frame guard (it refuses a frame that shows the signed-in account), imported by integration_test/store_screenshots_test.dart and stamped beside it; a test-only file under integration_test/, never in lib/."
+    },
+    {
+      "path": "integration_test/store_frame_shutter.dart",
+      "lines": 262,
+      "verdict": "STAYS",
+      "why": "⏱ 2026-09-27 (O-SCREENSHOT-DRIVER-IS-ONE-APPS, 10b): the capture boards' one shutter, imported by integration_test/store_screenshots_test.dart and stamped beside it. App #1's, except that the layer shutter photographs the outermost RepaintBoundary and refuses it unless it spans the imposed view, because the brick's lib/ has no storeFrame key (rv-c23 A-1, unverified until a desktop capture)."
+    },
+    {
+      "path": "integration_test/store_screenshots_test.dart",
+      "lines": 116,
+      "verdict": "STAYS",
+      "why": "⏱ 2026-09-27 (O-SCREENSHOT-DRIVER-IS-ONE-APPS, 10b): per-app by construction — the capture boards photograph THIS app's screens from its own router. capture-precheck.mjs requires the file for the app it grades (exit 1 naming it), and the app-brick probe's red control proves it on a stamp."
+    },
+    {
+      "path": "test_driver/integration_test.dart",
+      "lines": 62,
+      "verdict": "STAYS",
+      "why": "⏱ 2026-09-27 (10b): apps/subscriptiontracker/test_driver/integration_test.dart byte for byte below a stamp header — a driver names no app, and flutter drive needs it inside the app it drives. tooling/ci/test/brick-drivers.test.mjs fails the moment the copy and its source differ."
+    },
+    {
+      "path": "test_driver/store_screenshots.dart",
+      "lines": 113,
+      "verdict": "STAYS",
+      "why": "⏱ 2026-09-27 (10b): apps/subscriptiontracker/test_driver/store_screenshots.dart byte for byte below a stamp header — the capture driver names no app, and flutter drive needs it inside the app it drives. tooling/ci/test/brick-drivers.test.mjs fails the moment the copy and its source differ."
     },
     {
       "path": "web/_headers",

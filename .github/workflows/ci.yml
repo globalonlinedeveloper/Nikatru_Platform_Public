@@ -1109,6 +1109,44 @@ jobs:
           if [ "$code" -ne 1 ]; then echo "::error::assert-sworn-store-files exited $code with the probe's data-safety.json sworn but unanswered; the red control requires exactly 1"; exit 1; fi
           if ! grep -qF 'FLOOR — apps/probe/store/android-play/data-safety.json' "$RUNNER_TEMP/sworn-red.log"; then echo "::error::assert-sworn-store-files exited 1 without the FLOOR finding on apps/probe/store/android-play/data-safety.json"; exit 1; fi
           node tooling/ci/assert-sworn-store-files.mjs
+      # why: O-GUARDS-READ-A-HAND-LISTED-APP-SET (8b). Here the workspace holds exactly app #1 and the probe (the
+      # backend stamp below makes it 3), so each of the seven app-set guards must exit 0 with apps=2 in its log.
+      # The check is a .mjs under $RUNNER_TEMP that counts the apps=2 lines itself, never a grep -c.
+      - name: The seven app-set guards grade the stamped probe (apps=2)
+        run: |
+          echo "import { spawnSync } from 'node:child_process'; const guards = ['assert-seams-wired', 'assert-signup-consent-shape', 'assert-package-boundaries', 'assert-analytics-contract', 'assert-capability-register', 'assert-discovery-surface', 'assert-mechanism-claims']; let bad = 0; for (const g of guards) { const r = spawnSync(process.execPath, ['tooling/ci/' + g + '.mjs'], { encoding: 'utf8' }); const out = (r.stdout || '') + (r.stderr || ''); const hits = out.split(String.fromCharCode(10)).filter((l) => /apps=2(?![0-9])/.test(l)); console.log(g + ': exit ' + r.status + ', ' + hits.length + ' apps=2 line(s)'); for (const l of hits) console.log('  ' + l.trim().slice(0, 300)); if (r.status !== 0 || hits.length === 0) { bad += 1; console.log(out); } } if (bad > 0) { console.log('::error::' + bad + ' of ' + guards.length + ' app-set guard(s) did not exit 0 with apps=2'); process.exit(1); } console.log('all ' + guards.length + ' app-set guards exit 0 with apps=2');" > "$RUNNER_TEMP/app-set-probe.mjs"
+          node "$RUNNER_TEMP/app-set-probe.mjs"
+      # why: the row's red control, every run. With the probe's review seam removed (its ReviewPromptController
+      # declaration and its one .requestReview( call renamed away; a copy under $RUNNER_TEMP), assert-seams-wired
+      # must exit exactly 2 naming apps/probe; restored, it passes. The edit is a .mjs under $RUNNER_TEMP.
+      - name: RED CONTROL — the probe without its review seam is COVERAGE LOST, naming apps/probe
+        run: |
+          cp apps/probe/lib/state/providers.dart "$RUNNER_TEMP/probe-providers.dart"
+          echo "import { readFileSync, writeFileSync } from 'node:fs'; const p = process.argv[2]; const t = readFileSync(p, 'utf8'); const n = t.replace('class ReviewPromptController ', 'class ReviewSeamRemovedForTheRedControl ').replace('.requestReview(', '.reviewSeamRemovedForTheRedControl('); if (n === t || n.includes('class ReviewPromptController ') || n.includes('.requestReview(')) { console.error('the review seam (its declaration and its one call) was not found once in ' + p); process.exit(3); } writeFileSync(p, n);" > "$RUNNER_TEMP/remove-review-seam.mjs"
+          node "$RUNNER_TEMP/remove-review-seam.mjs" apps/probe/lib/state/providers.dart
+          set +e
+          node tooling/ci/assert-seams-wired.mjs > "$RUNNER_TEMP/seams-red.log" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/seams-red.log"
+          echo "assert-seams-wired exit: $code"
+          cp "$RUNNER_TEMP/probe-providers.dart" apps/probe/lib/state/providers.dart
+          if [ "$code" -ne 2 ]; then echo "::error::assert-seams-wired exited $code with the probe's review seam removed; the red control requires exactly 2"; exit 1; fi
+          if ! grep -qF 'apps/probe' "$RUNNER_TEMP/seams-red.log"; then echo "::error::assert-seams-wired exited 2 without naming apps/probe"; exit 1; fi
+          node tooling/ci/assert-seams-wired.mjs
+      # why: O-SCREENSHOT-DRIVER-IS-ONE-APPS (10b), the row's red control, every run. The brick stamps its capture
+      # boards; without apps/probe/integration_test/store_screenshots_test.dart the capture precheck must exit exactly 1
+      # naming it, and restored, 0. A .mjs under $RUNNER_TEMP moves the file out and back.
+      - name: RED CONTROL — the probe without its capture boards fails the capture precheck, naming the file
+        run: |
+          echo "import { copyFileSync, rmSync } from 'node:fs'; import { spawnSync } from 'node:child_process'; const [file, backup, ...cmd] = process.argv.slice(2); copyFileSync(file, backup); rmSync(file); const red = spawnSync(process.execPath, cmd, { encoding: 'utf8' }); const out = (red.stdout || '') + (red.stderr || ''); console.log(out); console.log('exit with ' + file + ' removed: ' + red.status); copyFileSync(backup, file); if (red.status !== 1) { console.log('::error::' + cmd[0] + ' exited ' + red.status + ' with ' + file + ' removed; the red control requires exactly 1'); process.exit(1); } if (!out.includes(file)) { console.log('::error::' + cmd[0] + ' exited 1 without naming ' + file); process.exit(1); } const green = spawnSync(process.execPath, cmd, { encoding: 'utf8' }); console.log('exit restored: ' + green.status); if (green.status !== 0) { console.log((green.stdout || '') + (green.stderr || '')); console.log('::error::restored, ' + cmd[0] + ' exited ' + green.status); process.exit(1); }" > "$RUNNER_TEMP/remove-and-restore.mjs"
+          node "$RUNNER_TEMP/remove-and-restore.mjs" apps/probe/integration_test/store_screenshots_test.dart "$RUNNER_TEMP/probe-boards.dart" tooling/store/capture-precheck.mjs --app probe --channel android-play
+      # why: O-BRICK-STAMPS-NO-E2E-SUITE (10b), the row's red control, every run. The brick stamps the e2e suite;
+      # without apps/probe/integration_test/app_test.dart the leg guard must exit exactly 1 naming it, and restored, 0.
+      - name: RED CONTROL — the probe without its e2e suite fails the leg guard, naming the file
+        run: |
+          echo "import { copyFileSync, rmSync } from 'node:fs'; import { spawnSync } from 'node:child_process'; const [file, backup, ...cmd] = process.argv.slice(2); copyFileSync(file, backup); rmSync(file); const red = spawnSync(process.execPath, cmd, { encoding: 'utf8' }); const out = (red.stdout || '') + (red.stderr || ''); console.log(out); console.log('exit with ' + file + ' removed: ' + red.status); copyFileSync(backup, file); if (red.status !== 1) { console.log('::error::' + cmd[0] + ' exited ' + red.status + ' with ' + file + ' removed; the red control requires exactly 1'); process.exit(1); } if (!out.includes(file)) { console.log('::error::' + cmd[0] + ' exited 1 without naming ' + file); process.exit(1); } const green = spawnSync(process.execPath, cmd, { encoding: 'utf8' }); console.log('exit restored: ' + green.status); if (green.status !== 0) { console.log((green.stdout || '') + (green.stderr || '')); console.log('::error::restored, ' + cmd[0] + ' exited ' + green.status); process.exit(1); }" > "$RUNNER_TEMP/remove-and-restore.mjs"
+          node "$RUNNER_TEMP/remove-and-restore.mjs" apps/probe/integration_test/app_test.dart "$RUNNER_TEMP/probe-app-test.dart" tooling/ci/assert-e2e-legs.mjs
       - name: SHOW-1 — probe is in the catalogue, and a RE-STAMP changes nothing
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"

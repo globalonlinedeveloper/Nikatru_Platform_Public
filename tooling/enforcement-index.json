@@ -891,6 +891,7 @@
       "N-6"
     ],
     "invokedBy": [
+      ".github/workflows/ci.yml#app-brick",
       ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
@@ -2214,6 +2215,7 @@
       "W-7b"
     ],
     "invokedBy": [
+      ".github/workflows/ci.yml#app-brick",
       ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
@@ -4077,6 +4079,7 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/ci.yml#app-brick",
       ".github/workflows/store-screenshots.yml#capture",
       ".github/workflows/store-screenshots.yml#capture-desktop-native",
       ".github/workflows/store-screenshots.yml#capture-ios",

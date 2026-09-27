@@ -152,7 +152,7 @@ function tree({
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   write(root, 'tooling/capability-register.json',
-    JSON.stringify({ consumerRoots, capabilities: caps }, null, 2));
+    JSON.stringify({ nonAppConsumerRoots: consumerRoots, capabilities: caps }, null, 2));
   write(root, `${BRICK}/lib/providers.dart`, lib);
   write(root, `${BRICK}/pubspec.yaml`, pubspec);
   write(root, `${BRICK}/analysis_options.yaml`, opts);
@@ -260,7 +260,7 @@ describe('assert-stamp-wiring', () => {
   test('COVERAGE LOST when no consumerRoot names the brick at all', () => {
     const { code, out } = run(tree({ consumerRoots: ['apps/subscriptiontracker'] }));
     assert.equal(code, 2, out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
-    assert.match(out, /expected exactly ONE consumerRoot/);
+    assert.match(out, /expected exactly ONE nonAppConsumerRoot/);
   });
 
   // The original S-2 defect in its purest form: quantifying over an empty set.
