@@ -64,7 +64,7 @@ jobs:
     outputs:
       app: ${{ steps.app.outputs.app }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # why: the ONE reader of inputs.app, and only through env: (an input interpolated into
@@ -93,7 +93,7 @@ jobs:
     env:
       APP: ${{ needs.gate.outputs.app }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -240,7 +240,7 @@ jobs:
       # its real failure rather than a second one about an empty upload.
       - name: Keep the frames of a FAILED run, for diagnosis only
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: FAILED-not-a-listing-set-${{ github.run_id }}
           if-no-files-found: ignore
@@ -266,7 +266,7 @@ jobs:
 
       - name: Upload the screenshot set
         if: ${{ !inputs.dry_run }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: play-screenshots-${{ needs.gate.outputs.app }}
           path: |
@@ -279,7 +279,7 @@ jobs:
       # upload above, line for line; the lane test compares the two.
       - name: Upload the DRY-RUN screenshot set
         if: ${{ inputs.dry_run }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dry-run-android-play-${{ needs.gate.outputs.app }}
           path: |
@@ -406,7 +406,7 @@ jobs:
     env:
       APP: ${{ needs.gate.outputs.app }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -553,7 +553,7 @@ jobs:
       # NOT pass the guard can never be mistaken for the set.
       - name: Keep the frames of a FAILED run, for diagnosis only
         if: failure() && steps.reg.outputs.dir != ''
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: FAILED-not-a-listing-set-${{ github.run_id }}
           if-no-files-found: ignore
@@ -569,7 +569,7 @@ jobs:
 
       - name: Upload the screenshot set
         if: ${{ !inputs.dry_run }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: snap-screenshots-${{ needs.gate.outputs.app }}
           path: ${{ steps.reg.outputs.dir }}/
@@ -578,7 +578,7 @@ jobs:
       # why: the Play job's reason — a dry run's set under its own name, from the same path.
       - name: Upload the DRY-RUN screenshot set
         if: ${{ inputs.dry_run }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dry-run-linux-snap-${{ needs.gate.outputs.app }}
           path: ${{ steps.reg.outputs.dir }}/
@@ -698,7 +698,7 @@ jobs:
       # why: the gate's checked output, never inputs.app (O-STORE-LANES-HARD-WIRE-ONE-APP).
       APP: ${{ needs.gate.outputs.app }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -845,7 +845,7 @@ jobs:
 
       - name: Keep the frames of a FAILED run, for diagnosis only
         if: failure() && steps.reg.outputs.dir != ''
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: FAILED-not-a-listing-set-${{ github.run_id }}
           if-no-files-found: ignore
@@ -861,7 +861,7 @@ jobs:
 
       - name: Upload the screenshot set
         if: ${{ !inputs.dry_run }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ inputs.channel }}-screenshots-${{ needs.gate.outputs.app }}
           path: ${{ steps.reg.outputs.dir }}/
@@ -870,7 +870,7 @@ jobs:
       # why: the Play job's reason — a dry run's set under its own name, from the same path.
       - name: Upload the DRY-RUN screenshot set
         if: ${{ inputs.dry_run }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dry-run-${{ inputs.channel }}-${{ needs.gate.outputs.app }}
           path: ${{ steps.reg.outputs.dir }}/
@@ -977,7 +977,7 @@ jobs:
     env:
       APP: ${{ needs.gate.outputs.app }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -1137,7 +1137,7 @@ jobs:
 
       - name: Keep the frames of a FAILED run, for diagnosis only
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: FAILED-not-a-listing-set-${{ github.run_id }}
           if-no-files-found: ignore
@@ -1151,7 +1151,7 @@ jobs:
 
       - name: Upload the screenshot sets
         if: ${{ !inputs.dry_run }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ios-screenshots-${{ needs.gate.outputs.app }}
           path: |
@@ -1162,7 +1162,7 @@ jobs:
       # why: the Play job's reason — a dry run's sets under their own name, from the same paths.
       - name: Upload the DRY-RUN screenshot sets
         if: ${{ inputs.dry_run }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dry-run-ios-appstore-${{ needs.gate.outputs.app }}
           path: |

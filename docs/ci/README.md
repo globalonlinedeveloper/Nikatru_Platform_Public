@@ -288,6 +288,14 @@ These replaced **18 copies of the setup-node block and 14 of the
 flutter-action block**, and five separate `FLUTTER_VERSION: '3.47.2'` env
 declarations.
 
+⏱ 2026-09-27: they are the only route. The extension workflows carried 18
+direct `actions/setup-node` steps of their own, at a different major from
+the composite, until the change that moved every action to its current
+major. `assert-workflow-hardening.mjs` limb 14 now refuses `actions/setup-node`
+or `subosito/flutter-action` in any workflow, and any action repository
+pinned at two SHAs. A matrix that tests several Node majors passes one as
+the composite's `node-version` input.
+
 ### 5.1 Moving a version: one command, and one thing it does not do
 
 Renovate's `customManager` moves the value in `tooling/versions.json` and
@@ -497,7 +505,7 @@ The tree uses **5** third-party actions and **8** GitHub-owned ones, read from e
 | `actions/checkout` | GitHub | `apple-expiry-write.yml`, `build-platforms.yml`, `ci.yml`, `codeql.yml`, `deploy-sandbox.yml`, `deploy-web.yml`, `deploy-workers.yml`, `e2e.yml`, `extensions-ci.yml`, `extensions.yml`, `lane-workers.yml`, `name-clearance.yml`, `ops-watch.yml`, `redeploy-stranded.yml`, `rollback.yml`, `store-screenshots.yml`, `submit-appstore.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml`, `symbolication-proof.yml`, `trufflehog.yml` |
 | `actions/download-artifact` | GitHub | `build-platforms.yml`, `submit-play.yml`, `submit-windows-store.yml` |
 | `actions/setup-java` | GitHub | `build-platforms.yml`, `ci.yml`, `submit-play.yml` |
-| `actions/setup-node` | GitHub | `.github/actions/setup-node/action.yml`, `extensions-ci.yml`, `extensions.yml` |
+| `actions/setup-node` | GitHub | `.github/actions/setup-node/action.yml` |
 | `actions/upload-artifact` | GitHub | `build-platforms.yml`, `ci.yml`, `e2e.yml`, `extensions-ci.yml`, `extensions.yml`, `name-clearance.yml`, `store-screenshots.yml`, `submit-appstore.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml`, `symbolication-proof.yml` |
 | `github/codeql-action/analyze` | GitHub | `codeql.yml` |
 | `github/codeql-action/init` | GitHub | `codeql.yml` |

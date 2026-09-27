@@ -10,10 +10,16 @@ inputs:
     description: Lockfile whose hash keys the npm cache. Empty disables caching.
     required: false
     default: ''
+  node-version:
+    description: A Node major to install instead of the pin. Only for a matrix that tests several majors on purpose.
+    required: false
+    # why: extensions-ci.yml's sims job runs on node 22 AND 24, so it names its
+    # major; every other caller leaves this empty and takes versions.json's.
+    default: ''
 
 outputs:
   node-version:
-    description: The Node major this action installed, as read from tooling/versions.json.
+    description: The Node major this action installed - the node-version input, or else tooling/versions.json's pin.
     value: ${{ steps.pin.outputs.node }}
 
 runs:
@@ -23,13 +29,19 @@ runs:
       shell: bash
       # why: node is preinstalled on every GitHub-hosted runner, so this resolves
       # before setup-node replaces it.
+      env:
+        NODE_MAJOR: ${{ inputs.node-version }}
       run: |
         set -euo pipefail
-        v="$(node -p "require(process.env.GITHUB_WORKSPACE + '/tooling/versions.json').node")"
+        v="${NODE_MAJOR:-$(node -p "require(process.env.GITHUB_WORKSPACE + '/tooling/versions.json').node")}"
         test -n "$v"
         echo "node=$v" >> "$GITHUB_OUTPUT"
-    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
         node-version: ${{ steps.pin.outputs.node }}
         cache: ${{ inputs.cache-dependency-path != '' && 'npm' || '' }}
         cache-dependency-path: ${{ inputs.cache-dependency-path }}
+        # why: from v5 setup-node caches on its own when package.json's
+        # packageManager names npm. The root names pnpm today, so this changes
+        # nothing now; it keeps "empty disables caching" true if that field moves.
+        package-manager-cache: false

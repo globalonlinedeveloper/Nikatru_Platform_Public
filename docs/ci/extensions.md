@@ -651,7 +651,7 @@ only when a tag fires has never been observed to work at the moment it
 first matters, and a tag cannot be re-run — so the same logic runs on
 every PR here, where being wrong is free.
 
-### in step **web-ext lint (Firefox only)**, above `- uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7`
+### in step **web-ext lint (Firefox only)**, above `- uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1`
 
 ⚠️ THE PATH CARRIES `extensions/` BECAUSE `defaults.run.working-directory`
 DOES NOT REACH A `uses:` STEP. It applies to `run:` only, so every gate
@@ -850,7 +850,14 @@ packages the workspace ships the token inside the artifact. The platform's
 tooling/ci/scan-workflows.mjs blocks `artipacked` by name for exactly that
 reason; it is a rule this tree cleaned up once and does not regress.
 
-### above `- uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7`
+### above `- uses: ./.github/actions/setup-node`
+
+⏱ 2026-09-27: this step calls the composite now, like every other Node
+setup in the tree, and the pin below lives once, in
+`.github/actions/setup-node/action.yml`. What keeps it single is
+assert-workflow-hardening limb 14: a direct `actions/setup-node` in any
+workflow is a finding, and so is a second SHA for any action repository.
+The note below is the history that made that limb worth having.
 
 ⚠️ THIS LINE READ `@v4` UNTIL 2026-08-25, AND IT WAS THE LAST ONE THAT
 DID. 584ba1a ("ci: bump actions/setup-node from 4 to 7 (#1)") converted

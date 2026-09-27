@@ -2237,6 +2237,82 @@ describe('assert-workflow-hardening', () => {
     });
   });
 
+  // ── limb 14 · ⏱ 2026-09-27 · O-SETUP-ACTIONS-ARE-OPTIONAL · TOOLCHAINS ONLY THROUGH THE COMPOSITES ──
+  // (a) a direct actions/setup-node or subosito/flutter-action in a workflow is a
+  // finding; (b) an action repository at two refs is a finding; (c) on the real tree a
+  // confined action no composite pins is COVERAGE LOST. a.yml calls the Node composite,
+  // b.yml holds every other limb green, and c.yml carries each case's change, so each
+  // verdict below is limb 14's. The cases marked RC1 and RC2 are the P-C7 red controls
+  // in fixture form; both are also run against the real tree (the PR body has the logs).
+  describe('limb 14 — setup actions only through the composites, and one ref per action repository', () => {
+    const composite = (ref) => `name: A\nruns:\n  using: composite\n  steps:\n    - uses: ${ref}\n`;
+    const refs = Array.from({ length: 4 }, (_, i) => `actions/act${i}@${SHA}`);
+    const tree = (name, c = refs) =>
+      fixture(name, {
+        '.github/workflows/a.yml': wf([...refs.slice(0, 3), './.github/actions/setup-node']),
+        '.github/workflows/b.yml': wf(refs),
+        '.github/workflows/c.yml': wf(c),
+        '.github/actions/setup-node/action.yml': composite(`actions/setup-node@${SHA}`),
+        '.github/actions/setup-flutter/action.yml': composite(`subosito/flutter-action@${SHA}`),
+      });
+
+    test('PASSES with both setup actions inside the composites and every repository at one ref, and says what it judged', () => {
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [tree('wh-l14-ok')] });
+      assert.equal(code, 0, out);
+      assert.match(out, /limb 14 — 13 pinned `uses:` across 6 action repositor\(ies\), each at ONE ref; actions\/setup-node and subosito\/flutter-action used only inside the composites/);
+    });
+
+    test('🔴 RC1 — FAILS on a direct actions/setup-node in a workflow, naming the line and the composite to call', () => {
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [tree('wh-l14-node', [...refs.slice(0, 3), `actions/setup-node@${SHA}`])] });
+      assert.equal(code, 1, out);
+      assert.match(out, /\.github\/workflows\/c\.yml:13 `uses: actions\/setup-node@a{40}` installs a toolchain directly\. Call `uses: \.\/\.github\/actions\/setup-node` instead/);
+    });
+
+    test('FAILS on a direct subosito/flutter-action in a workflow, naming the Flutter composite', () => {
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [tree('wh-l14-flutter', [...refs.slice(0, 3), `subosito/flutter-action@${SHA}`])] });
+      assert.equal(code, 1, out);
+      assert.match(out, /\.github\/workflows\/c\.yml:13 `uses: subosito\/flutter-action@a{40}` installs a toolchain directly\. Call `uses: \.\/\.github\/actions\/setup-flutter` instead/);
+    });
+
+    test('🔴 RC2 — FAILS on one action repository at two SHAs, naming both and where each first appears', () => {
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [tree('wh-l14-two', [`actions/act0@${'b'.repeat(40)}`, ...refs.slice(1)])] });
+      assert.equal(code, 1, out);
+      assert.match(out, /actions\/act0 is used at 2 refs: a{40} ×2 \(first at \.github\/workflows\/a\.yml:10\); b{40} ×1 \(first at \.github\/workflows\/c\.yml:10\)/);
+    });
+
+    test('grades the REPOSITORY, not the action path: codeql-action/init and /analyze at two SHAs FAIL', () => {
+      const c = [`github/codeql-action/init@${SHA}`, `github/codeql-action/analyze@${'b'.repeat(40)}`, ...refs.slice(2)];
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [tree('wh-l14-subpath', c)] });
+      assert.equal(code, 1, out);
+      assert.match(out, /github\/codeql-action is used at 2 refs/);
+    });
+
+    test('COVERAGE LOST when a confined action is in no composite, on the real tree only', () => {
+      // (c) is armed on the real tree, so a COPY with the arming cut out runs over a
+      // fixture with no composite at all; the unmutated copy runs first and must pass.
+      const dir = build('wh-l14-cov-root');
+      const src = readFileSync(join(CI_DIR, 'assert-workflow-hardening.mjs'), 'utf8');
+      const SUBJECT = 'scanningRealRepo && unhomed.length';
+      const code = stripSourceComments(src, '.mjs');
+      assert.equal(code.split(SUBJECT).length - 1, 1, 'the arming of limb 14 (c) must appear exactly once outside comments');
+      const at = code.indexOf(SUBJECT);
+      const modules = {};
+      for (const m of ['tree-walk.mjs', 'workflow-scan.mjs', 'flutter-release-build.mjs', 'app-set.mjs']) modules[m] = readFileSync(join(CI_DIR, m), 'utf8');
+      modules['../app-yaml/yaml.mjs'] = readFileSync(join(CI_DIR, '..', 'app-yaml', 'yaml.mjs'), 'utf8');
+      const copy = (name, body) => join(fixture(name, { ...modules, 'g.mjs': body }), 'g.mjs');
+      const exec = (script) => {
+        const r = spawnSync(process.execPath, [script, dir], { cwd: ROOT, encoding: 'utf8' });
+        return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+      };
+      const control = exec(copy('wh-l14-cov-control', src));
+      assert.equal(control.code, 0, control.out);
+      assert.match(control.out, /limb 14 — 12 pinned `uses:` across 4 action repositor\(ies\), each at ONE ref; no workflow uses actions\/setup-node or subosito\/flutter-action directly; not armed: actions\/setup-node and subosito\/flutter-action in no composite of this tree/);
+      const armed = exec(copy('wh-l14-cov-armed', `${src.slice(0, at)}unhomed.length${src.slice(at + SUBJECT.length)}`));
+      assert.equal(armed.code, 2, armed.out);
+      assert.match(armed.out, /COVERAGE LOST — limb 14 found actions\/setup-node and subosito\/flutter-action in none of the 0 composite action\(s\) limb 9 read/);
+    });
+  });
+
   // ── limb 10 · ⏱ 2026-09-25 · pd2c · A PUBLISHING JOB DECLARES environment: AND CHECKS ITS REF FIRST ──
   // O-DEPLOY-IS-NOT-ONE-GATED-LANE limb 2. a.yml and b.yml hold every other limb
   // green; c.yml (and, where a case says so, a callee or a named workflow) carries
