@@ -2577,6 +2577,7 @@ void main() {
           tester,
           ProviderScope(
             overrides: <Override>[
+              sellingEnabledProvider.overrideWithValue(true),
               purchaseRailProvider.overrideWithValue(
                 HostedCheckoutRail(
                   config: const RailConfig(
@@ -2676,6 +2677,7 @@ void main() {
           tester,
           ProviderScope(
             overrides: <Override>[
+              sellingEnabledProvider.overrideWithValue(true),
               purchaseRailProvider.overrideWithValue(
                 HostedCheckoutRail(
                   config: const RailConfig(
@@ -3630,6 +3632,7 @@ void main() {
           tester,
           ProviderScope(
             overrides: <Override>[
+              sellingEnabledProvider.overrideWithValue(true),
               purchaseRailProvider.overrideWithValue(
                 HostedCheckoutRail(
                   config: const RailConfig(
@@ -4721,6 +4724,7 @@ void main() {
           tester,
           ProviderScope(
             overrides: <Override>[
+              sellingEnabledProvider.overrideWithValue(true),
               purchaseRailProvider.overrideWithValue(
                 HostedCheckoutRail(
                   config: const RailConfig(
@@ -5032,6 +5036,7 @@ void main() {
           tester,
           ProviderScope(
             overrides: <Override>[
+              sellingEnabledProvider.overrideWithValue(true),
               purchaseRailProvider.overrideWithValue(
                 HostedCheckoutRail(
                   config: const RailConfig(

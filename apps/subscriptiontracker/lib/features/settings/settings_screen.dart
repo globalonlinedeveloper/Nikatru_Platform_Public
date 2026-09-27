@@ -718,8 +718,11 @@ class SettingsScreen extends ConsumerWidget {
             //
             // Gated on a session because both terminate in a call keyed to an
             // account.
-            if (ref.watch(authRepositoryProvider).currentUser !=
-                null) ...<Widget>[
+            // ST-U2 (C44/D17): only while selling, or for a Pro user (ROSCA).
+            if (ref.watch(authRepositoryProvider).currentUser != null &&
+                (ref.watch(sellingEnabledProvider) ||
+                    (ref.watch(entitlementsProvider).valueOrNull?.isPro ??
+                        false))) ...<Widget>[
               _sectionLabel(context, l10n.plan),
               Container(
                 decoration: cardDecoration(context),
@@ -729,17 +732,10 @@ class SettingsScreen extends ConsumerWidget {
                     // 🔴 THE UPGRADE ROW IS GATED ON THE SAME ANSWER THE
                     // PAYWALL ITSELF READS — added 2026-08-21.
                     //
-                    // `paywall_screen.dart:228` refuses its choosing phase on
-                    // `!rail.canStartCheckout || rail.offerings.isEmpty` and
-                    // draws `l10n.paywallUnavailable` instead. Today that is
-                    // the ONLY thing `/paywall` can render on any platform:
-                    // `canStartCheckout` is `_capabilities.canStartCheckout &&
-                    // _config.canCheckout`, the config half is false while
-                    // OWNER_QUEUE A-1 (the merchant-of-record seller account)
-                    // is pending, and the capability half is false on Android
-                    // because the hosted rail is not Play Billing. So the row
-                    // took a paying-intent tap and answered "Purchases are not
-                    // available here."
+                    // The paywall refuses its choosing phase on the same
+                    // expression and says "Purchases are not available here";
+                    // the row took a paying-intent tap and answered that.
+                    // ST-U2 (audit C35): and on `paywall.enabled` too.
                     //
                     // Asking the RAIL rather than re-deriving the answer is the
                     // point: a second expression that happens to agree today is
@@ -767,7 +763,9 @@ class SettingsScreen extends ConsumerWidget {
                     ListenableBuilder(
                       listenable: offeringsChangesOf(rail),
                       builder: (BuildContext context, Widget? _) =>
-                          rail.canStartCheckout && rail.offerings.isNotEmpty
+                          ref.watch(sellingEnabledProvider) &&
+                              rail.canStartCheckout &&
+                              rail.offerings.isNotEmpty
                           ? _LinkRow(
                               icon: '★',
                               label: l10n.paywallUpgrade,

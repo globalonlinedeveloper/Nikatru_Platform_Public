@@ -48,15 +48,14 @@ enum _RefusedView {
 /// that. So between the two there is a real window in which the user HAS paid
 /// and the server does NOT know.
 ///
-///   · **opening**  — we handed the purchase to the rail: a hosted page to the
-///                    browser, or the store's own sheet.
-///   · **pending**  — they came back, we asked the server, it does not see it
-///                    yet. This is NOT a failure and must never be worded as
-///                    one: it is somebody's money in flight.
+///   · **opening**  — handed to the rail: a hosted page, or the store's sheet.
+///   · **pending**  — back, and the server does not see it yet: NOT a failure,
+///                    it is somebody's money in flight.
 ///   · **unlocked** — the server confirmed. Only this state grants anything.
 ///
-/// The screen never grants access on its own, and it never spins: the poller is
-/// bounded ([kCheckoutConvergenceDelays]) and lands in a stated terminal state.
+/// It never grants on its own and never spins: the poller is bounded
+/// ([kCheckoutConvergenceDelays]) and ends in a stated state. ST-U2 (audit
+/// C34, C35): a back button, and nothing sold while `paywall.enabled` is off.
 ///
 /// ⚠️ [pipeline C-13] THE WORDING of the pending state is a `human` decision. A
 /// green lane here proves the mechanism, not the copy.
@@ -105,12 +104,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     // `StateError` [userStateDrops] records — and `_buy` has no `catch`, so it
     // became an unhandled async error with `_phase` stuck at pending.
     //
-    // SAFE TO HOLD: `authRepositoryProvider` (`providers/auth.dart:97`) is a
-    // root-scope `Provider` with no `ref.watch` in its body, so it is never
-    // recomputed and its instance lives as long as the container —
-    // `routerProvider` holds the same one for the life of the app
-    // (`router/router_provider.dart:19-22`; the P1b split moved it out of the
-    // barrel, and `router.dart:173` had never been that line anyway).
+    // SAFE TO HOLD: a root-scope `Provider` with no `ref.watch` — one instance.
     final Future<String?> Function() accessToken = ref
         .read(authRepositoryProvider)
         .currentAccessToken;
@@ -180,13 +174,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       // does not reach past: a user who leaves during that emit disposes this
       // widget and the invalidate throws.
       //
-      // `Future.wait` RATHER THAN A HOISTED VARIABLE, and the difference is not
-      // stylistic. A future that errors before its `await` is reached is
-      // reported as an UNHANDLED exception — measured on this toolchain:
-      // `Future<int>.error(...)`, a 50 ms delay, then `try { await f } catch`
-      // prints `Unhandled exception` and never reaches the `catch`.
-      // `Future.wait` attaches to both synchronously and still rethrows, so the
-      // sequential form's error behaviour is preserved and both events run.
+      // `Future.wait`, not a hoisted variable: a future that errors before its
+      // `await` is reached is an UNHANDLED exception (measured), and
+      // `Future.wait` attaches to both at once and still rethrows.
       //
       // · onPurchaseSuccess — emitted only after the SERVER confirmed, never on
       //   the checkout's return, or abandoned checkouts and declined cards count
@@ -220,7 +210,15 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     final ThemeData theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.paywallTitle)),
+      appBar: AppBar(
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, semanticLabel: l10n.back),
+          tooltip: l10n.back,
+          onPressed: () =>
+              context.canPop() ? context.pop() : context.go('/home'),
+        ),
+        title: Text(l10n.paywallTitle),
+      ),
       // 🔴 THE `Center` IS GONE, AND THIS IS THE SCREEN THAT NAMES THE BUG.
       // `_body` returns a DIFFERENT NUMBER OF WIDGETS per `_PaywallPhase` —
       // choosing, opening, pending, unlocked, refused — so the ListView's
@@ -333,7 +331,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           ),
         ];
       case _PaywallPhase.choosing:
-        if (!rail.canStartCheckout || rail.offerings.isEmpty) {
+        if (!ref.watch(sellingEnabledProvider) ||
+            !rail.canStartCheckout ||
+            rail.offerings.isEmpty) {
           return <Widget>[
             Text(l10n.paywallUnavailable, textAlign: TextAlign.center),
           ];

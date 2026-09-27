@@ -1693,7 +1693,11 @@ class _UpgradePromoCardState extends ConsumerState<UpgradePromoCard> {
             // honest absence — never a price with the button taken off.
             // Cancelling stays reachable: Settings' Manage-plan row is not
             // gated on the rail (ROSCA).
-            hasContent: offerings.isNotEmpty && rail.canStartCheckout,
+            // ST-U2 (audit C35): and nothing while `paywall.enabled` is false.
+            hasContent:
+                ref.watch(sellingEnabledProvider) &&
+                offerings.isNotEmpty &&
+                rail.canStartCheckout,
           );
       if (!decision.show) return const SizedBox.shrink();
       _showing = true;

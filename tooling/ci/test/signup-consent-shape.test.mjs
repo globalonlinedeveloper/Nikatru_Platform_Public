@@ -261,8 +261,10 @@ describe('limb 2 — the terms tick blocks in BOTH positions', () => {
       (root) =>
         edit(root, SUBLY_LOGIN, (s) =>
           s.replace(
-            /onPressed: \(_loading \|\| \(_signUp && !_acceptedTerms\)\)\s*\n\s*\? null\s*\n\s*: _submit,/,
-            'onPressed: _loading ? null : _submit,',
+            // ⏱ 2026-09-27 · ST-A1: the captcha's readiness sits beside the
+            // terms tick in the same expression; the tick is what is deleted.
+            /onPressed:\s*\(_loading \|\|\s*\(_signUp && !_acceptedTerms\) \|\|\s*!captcha\.ready\)\s*\? null\s*: _submit,/,
+            'onPressed: (_loading || !captcha.ready) ? null : _submit,',
           ),
         ),
       (r) => {
@@ -278,7 +280,7 @@ describe('limb 2 — the terms tick blocks in BOTH positions', () => {
     withTree(
       (root) =>
         edit(root, SUBLY_SIGNUP, (s) =>
-          s.replace('if (_busy || !_acceptedTerms) return;', 'if (_busy) return;'),
+          s.replace('if (_busy || !_acceptedTerms || !captcha.ready) return;', 'if (_busy || !captcha.ready) return;'),
         ),
       (r) => {
         assert.equal(r.status, 1);
@@ -293,7 +295,10 @@ describe('limb 3 — the optional box may not gate the service', () => {
     withTree(
       (root) =>
         edit(root, SUBLY_SIGNUP, (s) =>
-          s.replace('if (_busy || !_acceptedTerms) return;', 'if (_busy || !_acceptedTerms || !_marketingEmail) return;'),
+          s.replace(
+            'if (_busy || !_acceptedTerms || !captcha.ready) return;',
+            'if (_busy || !_acceptedTerms || !_marketingEmail || !captcha.ready) return;',
+          ),
         ),
       (r) => {
         assert.equal(r.status, 1);

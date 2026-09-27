@@ -179,4 +179,31 @@ void main() {
       );
     });
   });
+
+  // assert-responsive-coverage: the gate is a chassis surface, measured at each
+  // window class inside the form pane it is mounted in.
+  group('TurnstileGate fits the form pane at every window class', () {
+    Future<void> pumpAt(WidgetTester tester, Size size) async {
+      final CaptchaTokenController c = CaptchaTokenController(
+        posture: CaptchaPosture.challenge,
+        siteKey: 'k',
+      );
+      addTearDown(c.dispose);
+      await pumpChassis(
+        tester,
+        size,
+        TurnstileGate(
+          controller: c,
+          render: (BuildContext _, TurnstileChallenge _) =>
+              const SizedBox(key: Key('challenge'), height: 65),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const Key('challenge')), findsOneWidget);
+    }
+
+    testWidgets('kPhone', (WidgetTester t) => pumpAt(t, kPhone));
+    testWidgets('kTablet', (WidgetTester t) => pumpAt(t, kTablet));
+    testWidgets('kDesktop', (WidgetTester t) => pumpAt(t, kDesktop));
+  });
 }
