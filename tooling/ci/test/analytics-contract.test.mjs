@@ -224,6 +224,10 @@ const LIMB5_FILES = [
   // matrix does (tooling/ci/worker-set.mjs: the register rows AND the Worker directories).
   'services/platform/wrangler.jsonc',
   'services/subscriptiontracker-api/wrangler.jsonc',
+  // ⏱ 2026-09-27 (LEAD RULING W45-R1, row O-BOXES-UNSHIELDED-FROM-SPIKES): the register's
+  // `edgeWorkers` row is a row worker-set.mjs reads, so the edge Worker's config is copied
+  // like the others — without it the legs read as COVERAGE LOST, never as a pass.
+  'services/edge-shield/wrangler.jsonc',
   'services/platform/test/config.test.ts',
   'apps/subscriptiontracker/test/config_default_test.dart',
   // The config route's client half, in the BRICK's test tree — [4]B-14's last

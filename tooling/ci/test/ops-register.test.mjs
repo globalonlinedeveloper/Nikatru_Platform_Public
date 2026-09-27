@@ -6131,7 +6131,7 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
         assert.equal(r.printed.some((p) => p.line.startsWith(`${id} —`)), false, `${name}: ${id} is still printed as failing`);
         assert.match(r.out, new RegExp(`\\[14\\]O-3 — ${reEscape(id)} — queried: newest success 2\\.7h ago, inside \\[1d x 1\\.5 = 36\\.0h\\]\\. run 34533663312 \\(schedule on main\\)`), `${name}: ${id} must be judged by run 34533663312's unit`);
       }
-      assert.match(r.out, /\[INV3\] ops-watch\.yml — 5 duty rows, each judged by its OWN unit/);
+      assert.match(r.out, /\[INV3\] ops-watch\.yml — 6 duty rows, each judged by its OWN unit/);
     }
   });
 
@@ -6312,14 +6312,14 @@ describe('INV3 · a duty is judged by the unit that performs it — the pure hal
     assert.match(errs(row('a', { jobs: 'status' })), /is not "run", \{ "jobs"/);
     assert.match(errs(row('a', { jobs: ['status'] }), row('b', { jobs: ['status'] })), /job status of ops-watch\.yml is already the unit of a/);
     assert.match(errs(row('a', { jobs: ['heartbeats'] }), row('b', { job: 'heartbeats', step: "Judge whether the analytics rail's silence is a FAULT" })), /the units overlap/);
-    assert.match(errs(row('a', { jobs: ['status'] }), row('b', { jobs: ['pages-deployments'] })), /job\(s\) supabase-drift · prod-provenance · runner-budget · glitchtip · failure-ledger · alert · digest are the unit of none/);
+    assert.match(errs(row('a', { jobs: ['status'] }), row('b', { jobs: ['pages-deployments'] })), /job\(s\) supabase-drift · prod-provenance · runner-budget · glitchtip · edge-shield · failure-ledger · alert · digest are the unit of none/);
     const real = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
     const out = checkRunUnits(real, files, topo);
     assert.deepEqual(out.errors, []);
     const runRows = real.rows.filter((r) => r?.mechanism?.recordQuery?.reader === 'github-run-history');
     assert.ok(runRows.length >= 12, `expected every workflow row and the three ops-watch duties; found ${runRows.length}`);
     for (const r of runRows) assert.ok(unitOf(r.mechanism.recordQuery).declared, `${r.id} names no unit`);
-    assert.ok(out.prints.some((p) => /\[INV3\] ops-watch\.yml — 5 duty rows/.test(p)), 'the shared workflow and its units must print on every run');
+    assert.ok(out.prints.some((p) => /\[INV3\] ops-watch\.yml — 6 duty rows/.test(p)), 'the shared workflow and its units must print on every run');
   });
 
   test('jobSteps reads the committed heartbeats job the way the API names its steps', () => {

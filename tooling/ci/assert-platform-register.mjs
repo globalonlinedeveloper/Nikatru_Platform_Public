@@ -238,7 +238,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     }
     return out;
   }
-  const derivedWorkers = deployableWorkers();
+  const derivedWorkers = deployableWorkers().filter((w) => !edgeConfigRels(register).has(w.config)); // limb 7
   const derivedByConfig = new Map(derivedWorkers.map((w) => [w.config, w]));
 
   const appWorkers = Array.isArray(register.appWorkers) ? register.appWorkers : [];
@@ -702,7 +702,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   let hostBearing = 0;
   for (const cfgRel of onDiskConfigs) {
     const cfg = parseJsonc(readFileSync(join(ROOT, cfgRel), 'utf8'), cfgRel);
-    if (typeof cfg.main !== 'string' || cfg.main === '') continue;
+    // An EDGE Worker answers on zone routes by design and is held to that by limb 7 below.
+    if (typeof cfg.main !== 'string' || cfg.main === '' || edgeConfigRels(register).has(cfgRel)) continue;
     hostBearing++;
     const routes = Array.isArray(cfg.routes) ? cfg.routes : [];
     const custom = routes.filter((r) => r?.custom_domain === true && typeof r?.pattern === 'string' && r.pattern);
@@ -984,6 +985,111 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     ]);
   }
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // ── LIMB 7 · an EDGE Worker is a PASS-THROUGH, bound by ZONE ROUTES ─────────
+  //
+  // ⏱ 2026-09-26 · LEAD RULING SHIELD-R1, row O-BOXES-UNSHIELDED-FROM-SPIKES.
+  // services/edge-shield mounts no route of its own: it sits on two ZONE routes in
+  // front of Box C's auth and Box B's crash intake and passes every request to the
+  // origin. Limbs 1, 2 and 4 are about routes a Worker MOUNTS, and would read it
+  // as a parser that found nothing (COVERAGE LOST); the [B-15] host limb requires
+  // a custom domain, which on a Cloudflare Tunnel host would take over the
+  // hostname's DNS record and pull the box off its tunnel. So the register names
+  // such a Worker in `edgeWorkers`, the two limbs skip it (the filter on
+  // `derivedWorkers` and the `continue` in the host limb), and THIS limb holds
+  // the exemption TRUE rather than trusting it:
+  //   a · the config is a `services/*` wrangler config declaring `main`, whose
+  //       `name` and `main` match the entry — a stale entry is a Worker the tree
+  //       does not deploy;
+  //   b · it is not ALSO a route-mounting Worker (servingWorker / appWorkers);
+  //   c · its `routes` are ZONE routes (`pattern` + `zone_name`), none a
+  //       `custom_domain`, and they EQUAL the entry's `zoneRoutes` in both
+  //       directions — never empty;
+  //   d · its entrypoint, comment-stripped, is a pass-through: it creates no Hono
+  //       app (a Worker that mounts routes cannot hide here from limbs 1, 2 and
+  //       4), it forwards with `fetch(request)`, and it calls
+  //       `passThroughOnException(` so an exception hands the request to the
+  //       origin instead of failing it.
+  // Its bindings stay fully in limb 3's subject: every limiter it declares needs a
+  // register row and a real reader like any other.
+  // ─────────────────────────────────────────────────────────────────────────────
+  const edgeList = register.edgeWorkers;
+  if (edgeList !== undefined && !Array.isArray(edgeList)) {
+    problems.push('`edgeWorkers` is not an array, so no edge Worker can be held to limb 7.');
+  }
+  const allDeployable = deployableWorkers();
+  let edgeChecked = 0;
+  for (const [i, e] of (Array.isArray(edgeList) ? edgeList : []).entries()) {
+    const field = `edgeWorkers[${i}]`;
+    const cfgRel = rel(String(e?.config ?? ''));
+    if (!String((Array.isArray(e?._why) ? e._why.join(' ') : e?._why) ?? '').trim()) {
+      problems.push(`${field} — no \`_why\`. An exemption from limbs 1, 2 and 4 must say why the Worker mounts nothing.`);
+    }
+    const onDisk = allDeployable.find((d) => d.config === cfgRel);
+    if (!onDisk) {
+      problems.push(
+        `${field} names \`${cfgRel}\`, which is not a \`services/*\` wrangler config declaring \`main\`. ([7a]) ` +
+          'The register would exempt a Worker the tree does not deploy.',
+      );
+      continue;
+    }
+    if (onDisk.name !== String(e?.name ?? '')) {
+      problems.push(`${field} — calls this Worker \`${e?.name}\`; \`${cfgRel}\` deploys it as \`${onDisk.name}\`. ([7a])`);
+    }
+    if (onDisk.entrypoint !== rel(String(e?.entrypoint ?? ''))) {
+      problems.push(
+        `${field} — declares entrypoint \`${e?.entrypoint}\`, but \`${cfgRel}\`'s \`main\` resolves to \`${onDisk.entrypoint}\`. ([7a])`,
+      );
+    }
+    if (declaredConfigSet.has(cfgRel)) {
+      problems.push(
+        `${field} — \`${cfgRel}\` is ALSO a servingWorker/appWorkers entry. ([7b]) A Worker is either a route-mounting ` +
+          'backend held to limbs 1, 2 and 4, or an edge pass-through held to this limb; never both.',
+      );
+    }
+    const cfg = parseJsonc(readFileSync(join(ROOT, cfgRel), 'utf8'), cfgRel);
+    const onRoutes = Array.isArray(cfg.routes) ? cfg.routes : [];
+    const declared = Array.isArray(e?.zoneRoutes) ? e.zoneRoutes : [];
+    const rk = (r) => `${r?.pattern ?? ''} @ ${r?.zone_name ?? ''}`;
+    if (onRoutes.length === 0 || declared.length === 0) {
+      problems.push(
+        `${field} — \`${cfgRel}\` declares ${onRoutes.length} route(s) and the entry ${declared.length} \`zoneRoutes\`. ([7c]) ` +
+          'An edge Worker with no route is in front of nothing, and every request it exists to shield reaches the box.',
+      );
+    }
+    for (const r of onRoutes) {
+      if (r?.custom_domain === true) {
+        problems.push(
+          `${field} — \`${cfgRel}\` binds \`${r?.pattern}\` as a custom_domain. ([7c]) A Custom Domain takes the ` +
+            "hostname's DNS record; on a Cloudflare Tunnel host that pulls the box off its tunnel. Use a zone route.",
+        );
+      } else if (typeof r?.pattern !== 'string' || !r.pattern || typeof r?.zone_name !== 'string' || !r.zone_name) {
+        problems.push(`${field} — \`${cfgRel}\` has a route that is not \`{ pattern, zone_name }\`: ${JSON.stringify(r)}. ([7c])`);
+      }
+    }
+    const onSet = new Set(onRoutes.map(rk));
+    const declaredSet = new Set(declared.map(rk));
+    for (const k of onSet) if (!declaredSet.has(k)) problems.push(`${field} — \`${cfgRel}\` routes \`${k}\`, which \`zoneRoutes\` does not name. ([7c])`);
+    for (const k of declaredSet) if (!onSet.has(k)) problems.push(`${field} — \`zoneRoutes\` names \`${k}\`, which \`${cfgRel}\` does not route. ([7c])`);
+    const entry = stripComments(readFileSync(join(ROOT, onDisk.entrypoint), 'utf8'));
+    if (/\bnew\s+Hono\s*[(<]/.test(entry)) {
+      problems.push(
+        `${field} — \`${onDisk.entrypoint}\` creates a Hono app. ([7d]) A Worker that mounts routes is held to limbs 1, 2 ` +
+          'and 4 as an appWorkers entry; declaring it an edge Worker would hide every route it mounts.',
+      );
+    }
+    if (!/\bfetch\s*\(\s*request\s*\)/.test(entry)) {
+      problems.push(`${field} — \`${onDisk.entrypoint}\` never forwards with \`fetch(request)\`, so it is not a pass-through. ([7d])`);
+    }
+    if (!/\.passThroughOnException\s*\(/.test(entry)) {
+      problems.push(
+        `${field} — \`${onDisk.entrypoint}\` does not call \`passThroughOnException(\`. ([7d]) Without it an exception in the ` +
+          'shield fails the request instead of handing it to the origin, and the shield becomes the reason the box is down.',
+      );
+    }
+    edgeChecked++;
+  }
+
   if (problems.length) {
     console.error(`✗ platform register — ${problems.length} problem(s):`);
     for (const p of problems) console.error(`    ${p}`);
@@ -1007,7 +1113,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
         : '') +
       `; ${declaredBindings.size} binding(s) across ${onDiskConfigs.length} wrangler config(s), ` +
       `each with a resolved reader; ${sharedValues.length} shared value(s) compared ${sharedComparisons} ` +
-      `time(s) across those configs, all agreeing; ${printed.length} declared gap(s) printed above`,
+      `time(s) across those configs, all agreeing; ${edgeChecked} edge Worker(s) held to limb 7; ` +
+      `${printed.length} declared gap(s) printed above`,
   );
   if (brickRow) {
     console.log(
@@ -1038,4 +1145,12 @@ function readsGeneratedBinding(code, name) {
   const moduleAbs = join(ROOT, 'services', 'platform', 'src', 'generated', 'app-targets.ts');
   if (!existsSync(moduleAbs)) return false;
   return new RegExp(`dbBinding:\\s*'${name}'`).test(readFileSync(moduleAbs, 'utf8'));
+}
+
+/** The configs the register declares as EDGE Workers (limb 7), which limbs 1, 2
+ *  and 4 and the [B-15] host limb do not apply to. Declared LAST (hoisted), like
+ *  coverageLost above, so no citation into this file moves. */
+function edgeConfigRels(register) {
+  const list = Array.isArray(register?.edgeWorkers) ? register.edgeWorkers : [];
+  return new Set(list.map((e) => rel(String(e?.config ?? ''))).filter((c) => c !== '.' && c !== ''));
 }

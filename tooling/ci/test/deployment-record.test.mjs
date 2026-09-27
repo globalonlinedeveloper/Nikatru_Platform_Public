@@ -1462,11 +1462,12 @@ describe('the deploy workflows hand the recorder the id their deploy step publis
     const steps = recorderSteps('deploy-workers.yml');
     // ⏱ 2026-09-26 (O-SERVICE-KIT-UNBUILT, E-a2): every app Worker records from the ONE
     // `app-worker` matrix job; the serving Worker keeps its own job.
-    assert.deepEqual(steps.map((s) => s.job), ['app-worker', 'platform']);
-    assert.equal(steps[0].step.env.get('DEPLOY_OUTPUT')?.value, '${{ steps.deploy.outputs.command-output }}');
-    assert.match(steps[0].step.run.text, /--wrangler-output-env DEPLOY_OUTPUT(\s|$)/);
-    assert.equal(steps[1].step.env.get('DEPLOY_OUTPUT')?.value, '${{ steps.deploy.outputs.command-output }}');
-    assert.match(steps[1].step.run.text, /--wrangler-output-env DEPLOY_OUTPUT(\s|$)/);
+    // ⏱ 2026-09-27 · SHIELD-R1: the edge-shield job records its Worker version the same way.
+    assert.deepEqual(steps.map((s) => s.job), ['app-worker', 'platform', 'edge-shield']);
+    for (const s of steps) {
+      assert.equal(s.step.env.get('DEPLOY_OUTPUT')?.value, '${{ steps.deploy.outputs.command-output }}', s.job);
+      assert.match(s.step.run.text, /--wrangler-output-env DEPLOY_OUTPUT(s|$)/, s.job);
+    }
   });
 });
 

@@ -195,12 +195,18 @@ for (const [i, h] of monitorHosts.entries()) {
 
 // ── 5 · the platform register ────────────────────────────────────────────────
 const platform = readJson('tooling/platform-register.json');
-const workers = [platform?.servingWorker, ...(Array.isArray(platform?.appWorkers) ? platform.appWorkers : [])].filter(Boolean);
+// ⏱ 2026-09-26 · edgeWorkers too (SHIELD-R1): an edge Worker is deployed under its own name and binds hosts by zone route.
+const workers = [
+  platform?.servingWorker,
+  ...(Array.isArray(platform?.appWorkers) ? platform.appWorkers : []),
+  ...(Array.isArray(platform?.edgeWorkers) ? platform.edgeWorkers : []),
+].filter(Boolean);
 if (workers.length === 0) coverageLost(['tooling/platform-register.json names no Worker (`servingWorker`, `appWorkers`).']);
 for (const w of workers) {
   const where = `tooling/platform-register.json Worker ${JSON.stringify(w.config ?? w.name ?? '?')}`;
   check('platform', where, 'name', w.name);
   for (const h of Array.isArray(w.hosts) ? w.hosts : []) check('platform', where, 'hosts[]', h);
+  for (const r of Array.isArray(w.zoneRoutes) ? w.zoneRoutes : []) check('platform', where, 'zoneRoutes[].pattern', r?.pattern);
 }
 for (const [i, b] of (Array.isArray(platform?.bindings) ? platform.bindings : []).entries()) {
   check('platform', `tooling/platform-register.json bindings[${i}]`, 'binding', b?.binding);

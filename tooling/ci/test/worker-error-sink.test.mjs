@@ -417,3 +417,50 @@ describe('assert-worker-error-sink — coverage self-checks', () => {
     assert.match(r.out, /COVERAGE LOST — .*has no job named `platform`/s);
   });
 });
+
+// ⏱ 2026-09-26 · EDGE WORKERS (LEAD RULING SHIELD-R1). A Worker the platform
+// register names in `edgeWorkers` has no app and so no onError: its answer to an
+// exception is passThroughOnException(). The exemption is held TRUE, both ways.
+describe('assert-worker-error-sink — edge pass-throughs', () => {
+  const EDGE_TS = `// passThroughOnException() named in a comment does not count.
+export default { async fetch(request, env, ctx) { ctx.passThroughOnException(); return fetch(request); } };
+`;
+  const REGISTER = JSON.stringify({ edgeWorkers: [{ name: 'edge-shield', config: 'services/edge-shield/wrangler.jsonc' }] });
+  const withEdge = (over = {}) =>
+    makeRepo((f) => ({
+      ...f,
+      'services/edge-shield/src/index.ts': EDGE_TS,
+      'tooling/platform-register.json': REGISTER,
+      ...over,
+    }));
+
+  test('PASSES: a declared edge Worker that passes through on exception, judged and counted apart', () => {
+    const r = run(withEdge());
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /edge-shield — edge pass-through: an exception hands the request to the origin/);
+    assert.match(r.out, /2\/2 Worker\(s\) report unhandled errors to a declared sink and 1\/1 edge pass-through/);
+  });
+
+  test('🔴 an UNDECLARED pass-through owes the sink like any Worker', () => {
+    const r = run(withEdge({ 'tooling/platform-register.json': JSON.stringify({ edgeWorkers: [] }) }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /services\/edge-shield\/src\/index\.ts declares no `app\.onError\(`/);
+  });
+
+  test('🔴 FAILS when the declared edge Worker stops passing through on exception', () => {
+    const r = run(withEdge({ 'services/edge-shield/src/index.ts': EDGE_TS.replace('ctx.passThroughOnException(); ', '') }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /is an edge Worker .* does not call `passThroughOnException\(`/);
+  });
+
+  test('FAILS when the "edge" Worker has an app with an onError after all', () => {
+    const r = run(withEdge({ 'services/edge-shield/src/index.ts': `${EDGE_TS}app.onError((e, c) => c.text('x', 500));\n` }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /is an edge Worker and declares `app\.onError\(`/);
+  });
+
+  test('COVERAGE LOST when the platform register cannot be parsed', () => {
+    const r = run(withEdge({ 'tooling/platform-register.json': '{ not json' }));
+    assert.equal(r.code, 2, r.out);
+  });
+});

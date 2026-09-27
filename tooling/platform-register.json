@@ -285,7 +285,7 @@
     ],
     "configs": [
       "services/platform/wrangler.jsonc",
-      "services/subscriptiontracker-api/wrangler.jsonc",
+      "services/subscriptiontracker-api/wrangler.jsonc", "services/edge-shield/wrangler.jsonc",
       "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/wrangler.jsonc"
     ]
   },
@@ -358,31 +358,31 @@
         "at": "vars.SUPABASE_URL",
         "value": "https://auth-api.nikatru.com",
         "why": "ONE identity stack, the self-hosted GoTrue on Box C (issuer https://auth-api.nikatru.com/auth/v1), for the whole portfolio, so one issuer, one JWKS document and one user row per human across every app. A Worker pointed at a second project verifies tokens nobody in this portfolio can mint — every authenticated route 401s while the Worker itself is perfectly well, which is the failure services/subscriptiontracker-api's health probe `supabase_jwks` exists to make visible and which no static check could see.",
-        "absentFrom": []
+        "absentFrom": [{ "config": "services/edge-shield/wrangler.jsonc", "why": "services/edge-shield is an EDGE pass-through (edgeWorkers, limb 7): it verifies no token and calls no Supabase project; the requests it forwards already name the host they are for." }]
       },
       {
         "at": "vars.API_VERSION",
         "value": "v1",
         "why": "The API-contract version every Worker serves under `/v1` and reports in its health body. tooling/capability-register.json records that it is the literal \"v1\" in both Workers and has never changed — which is precisely why assert-worker-error-sink.mjs FAILS a crash sink that uses it as a release id. Two Workers disagreeing about it would mean one of them mounts routes the clients do not call and reports a version its deploy smoke does not expect.",
-        "absentFrom": []
+        "absentFrom": [{ "config": "services/edge-shield/wrangler.jsonc", "why": "services/edge-shield is an EDGE pass-through (edgeWorkers, limb 7): it serves no API of its own, so there is no contract version for it to carry." }]
       },
       {
         "at": "d1_databases[PLATFORM_DB].database_id",
         "value": "9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351",
         "why": "The ONE entitlements database for the portfolio ([ADR 057]'s union lives inside it). services/platform is the sole migrations applier; every other Worker binds it read/write with no migrations_dir. A Worker bound to a different id deploys, runs, and reads and writes the WRONG database silently — the exact shape assert-d1-bindings.mjs was written for between the two live configs, extended here to the template that every future backend is stamped from.",
-        "absentFrom": []
+        "absentFrom": [{ "config": "services/edge-shield/wrangler.jsonc", "why": "services/edge-shield is an EDGE pass-through (edgeWorkers, limb 7): it binds no database; its only state is the Rate Limiting counters and the edge cache." }]
       },
       {
         "at": "kv_namespaces[JWKS_CACHE].id",
         "value": "bcfcb1618d1a4bfd8d02f87d3d21010d",
         "why": "One identity project means one public JWKS document, so a second namespace would be a second copy of one public file — doubling the KV writes that cache costs against the budget tooling/ceilings.json records as kv.writesPerDay. tooling/legal/data-inventory.json also pins this id, which is why a mutation here is the one of the four an existing guard already caught; that guard answers a legal question about a store of data, not the portfolio-agreement question this entry answers.",
-        "absentFrom": []
+        "absentFrom": [{ "config": "services/edge-shield/wrangler.jsonc", "why": "services/edge-shield is an EDGE pass-through (edgeWorkers, limb 7): it verifies no token, so it reads no JWKS from KV. It CACHES the JWKS response at the edge (Cache API, 300 s) for the clients that fetch it." }]
       },
       {
         "at": "kv_namespaces[SESSION_REVOKED].id",
         "value": "aa46ad5002874231931cc5dc5b6e2904",
         "why": "⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. One identity project means ONE revocation list: services/platform writes `rev:<sub>` when a person signs a session out, and every Worker's auth middleware reads it. A Worker bound to a DIFFERENT namespace would read an empty list forever and keep admitting every signed-out session's token for the rest of its hour — silently, because an empty list is indistinguishable from nobody having signed out. tooling/ci/assert-session-revocation.mjs holds that every token-verifying Worker binds SESSION_REVOKED at all; this entry holds that they all bind the SAME one. tooling/legal/data-inventory.json keys its row on the same id.",
-        "absentFrom": []
+        "absentFrom": [{ "config": "services/edge-shield/wrangler.jsonc", "why": "services/edge-shield is an EDGE pass-through (edgeWorkers, limb 7): it authorises nothing, so it has no revocation list to read." }]
       }
     ]
   },
@@ -746,6 +746,78 @@
       "purpose": "⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. The per-account bucket for the four /v1/sessions routes, keyed `sessions:<sub>` — the VERIFIED subject, never a client-chosen value. `simple: { limit: 5, period: 60 }`: a person signs a session out a handful of times, not dozens. It bounds the one KV write per revoke (kv.writesPerDay) and the service-role RPC behind every route. Its OWN namespace (1011) so it cannot spend any other route's budget.",
       "readers": [
         "services/platform/src/routes/sessions.ts"
+      ]
+    },
+    {
+      "binding": "AUTH_CREDENTIAL_GLOBAL_LIMITER",
+      "kind": "ratelimits",
+      "scope": "edge",
+      "purpose": "⏱ 2026-09-26 · LEAD RULING SHIELD-R1, row O-BOXES-UNSHIELDED-FROM-SPIKES. ⏱ 2026-09-27 · SHIELD-R3. services/edge-shield's auth-credential limiter, keyed global:auth-credential, all clients together: GoTrue calls that prove, mint or mail a credential on Box C (password/pkce/id_token grants, otp, signup, recover, resend, verify, magiclink, reauthenticate, MFA verify/challenge). Over the limit the shield answers 429 with Retry-After; any fault of this binding FAILS OPEN and is logged as shield_fail_open (src/limit.ts). The limit and what it is sized from are beside the binding in services/edge-shield/wrangler.jsonc. It is the ONLY limiter of its class: the Worker reads no client address (LEAD RULING SHIELD-R3, the ADR no.011 / ADR no.020 posture), and the per-IP limit on the credential paths is the nikatru.com zone's own rate-limiting rule (tooling/edge-ratelimit-rule.json).",
+      "readers": [
+        "services/edge-shield/src/classify.ts"
+      ]
+    },
+    {
+      "binding": "AUTH_REFRESH_GLOBAL_LIMITER",
+      "kind": "ratelimits",
+      "scope": "edge",
+      "purpose": "⏱ 2026-09-26 · LEAD RULING SHIELD-R1, row O-BOXES-UNSHIELDED-FROM-SPIKES. ⏱ 2026-09-27 · SHIELD-R3. services/edge-shield's auth-refresh limiter, keyed global:auth-refresh, all clients together: GoTrue refresh-token grants on Box C. Over the limit the shield answers 503 with Retry-After, never 429 (LEAD RULING SHIELD-R2: gotrue-dart signs the user out on a refresh 4xx and keeps the session on a 5xx); any fault of this binding FAILS OPEN and is logged as shield_fail_open (src/limit.ts). The limit and what it is sized from are beside the binding in services/edge-shield/wrangler.jsonc. It is the ONLY limiter of its class: the Worker reads no client address (LEAD RULING SHIELD-R3, the ADR no.011 / ADR no.020 posture), and the per-IP limit on the credential paths is the nikatru.com zone's own rate-limiting rule (tooling/edge-ratelimit-rule.json).",
+      "readers": [
+        "services/edge-shield/src/classify.ts"
+      ]
+    },
+    {
+      "binding": "AUTH_OTHER_GLOBAL_LIMITER",
+      "kind": "ratelimits",
+      "scope": "edge",
+      "purpose": "⏱ 2026-09-26 · LEAD RULING SHIELD-R1, row O-BOXES-UNSHIELDED-FROM-SPIKES. ⏱ 2026-09-27 · SHIELD-R3. services/edge-shield's auth-other limiter, keyed global:auth-other, all clients together: every other /auth/v1 path on Box C (user, logout, settings, admin, …) — the wide backstop. Over the limit the shield answers 429 with Retry-After; any fault of this binding FAILS OPEN and is logged as shield_fail_open (src/limit.ts). The limit and what it is sized from are beside the binding in services/edge-shield/wrangler.jsonc. It is the ONLY limiter of its class: the Worker reads no client address (LEAD RULING SHIELD-R3, the ADR no.011 / ADR no.020 posture), and the per-IP limit on the credential paths is the nikatru.com zone's own rate-limiting rule (tooling/edge-ratelimit-rule.json).",
+      "readers": [
+        "services/edge-shield/src/classify.ts"
+      ]
+    },
+    {
+      "binding": "INTAKE_GLOBAL_LIMITER",
+      "kind": "ratelimits",
+      "scope": "edge",
+      "purpose": "⏱ 2026-09-26 · LEAD RULING SHIELD-R1, row O-BOXES-UNSHIELDED-FROM-SPIKES. ⏱ 2026-09-27 · SHIELD-R3. services/edge-shield's intake limiter, keyed global:intake, all clients together: GlitchTip's crash intake on Box B (/api/<id>/envelope/ and /store/). Over the limit the shield answers 429 with Retry-After; any fault of this binding FAILS OPEN and is logged as shield_fail_open (src/limit.ts). The limit and what it is sized from are beside the binding in services/edge-shield/wrangler.jsonc. It is the ONLY limiter of its class: the Worker reads no client address (LEAD RULING SHIELD-R3, the ADR no.011 / ADR no.020 posture), and the per-IP limit on the credential paths is the nikatru.com zone's own rate-limiting rule (tooling/edge-ratelimit-rule.json).",
+      "readers": [
+        "services/edge-shield/src/classify.ts"
+      ]
+    }
+  ],
+  "_edgeWorkersWhy": [
+    "EDGE WORKERS (⏱ 2026-09-26, LEAD RULING SHIELD-R1, row O-BOXES-UNSHIELDED-FROM-SPIKES). A Worker that MOUNTS no",
+    "route: it is bound by ZONE routes in front of an origin it does not own and passes every request through",
+    "to it. Limbs 1, 2 and 4 of tooling/ci/assert-platform-register.mjs are about the routes a Worker mounts and",
+    "the [B-15] host limb about the custom domain it answers on, so neither applies; limb 7 holds each entry",
+    "here instead: a real `services/*` config declaring `main`, not also a route-mounting Worker, routed by",
+    "zone routes that equal `zoneRoutes` (never a custom_domain, which would take a Cloudflare Tunnel host's DNS",
+    "record), and an entrypoint that forwards with `fetch(request)`, calls `passThroughOnException(` and creates",
+    "no Hono app. Its bindings stay in limb 3 like every other Worker's."
+  ],
+  "edgeWorkers": [
+    {
+      "_why": [
+        "services/edge-shield — the Cloudflare edge in front of Box C (self-hosted GoTrue, auth-api.nikatru.com) and",
+        "Box B (GlitchTip, glitchtip.nikatru.com). It counts four request classes against one GLOBAL cap each and",
+        "answers 429 with Retry-After over a cap, or 503 for the refresh grant (LEAD RULING SHIELD-R2); it reads no",
+        "client address (SHIELD-R3), and the per-IP limit on the credential paths is the zone's own rate-limiting",
+        "rule, tooling/edge-ratelimit-rule.json. It serves the GoTrue JWKS from the edge cache for 300 s, and passes",
+        "everything else to the tunnel origin unchanged with one added response header, `x-nikatru-shield: 1`,",
+        "which tooling/ops/check-edge-shield.mjs reads from ops-watch to prove it is still in path."
+      ],
+      "name": "edge-shield",
+      "entrypoint": "services/edge-shield/src/index.ts",
+      "config": "services/edge-shield/wrangler.jsonc",
+      "zoneRoutes": [
+        {
+          "pattern": "auth-api.nikatru.com/auth/v1/*",
+          "zone_name": "nikatru.com"
+        },
+        {
+          "pattern": "glitchtip.nikatru.com/api/*",
+          "zone_name": "nikatru.com"
+        }
       ]
     }
   ]
