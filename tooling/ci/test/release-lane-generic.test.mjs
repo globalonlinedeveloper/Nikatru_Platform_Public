@@ -145,6 +145,37 @@ jobs:
           command: pages deploy build/web --project-name=\${{ matrix.app }}
 `;
 
+/** The Workers deploy lane in the shape the real one has since 2026-09-26
+ *  (O-SERVICE-KIT-UNBUILT, E-a2): a job reads the app Worker set, and ONE matrix
+ *  job deploys each leg by `matrix.worker.<field>`. A DEFAULT every fixture
+ *  carries, like DEPLOY_WEB, because GRADED_LANES names it. */
+const DEPLOY_WORKERS = `name: Deploy workers
+on:
+  workflow_call:
+jobs:
+  workers:
+    runs-on: ubuntu-24.04
+    outputs:
+      workers: \${{ steps.set.outputs.workers }}
+    steps:
+      - id: set
+        run: echo "workers=$(node tooling/ci/worker-set.mjs --for-deploy --json --app-workers)" >> "$GITHUB_OUTPUT"
+  app-worker:
+    needs: workers
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        worker: \${{ fromJSON(needs.workers.outputs.workers) }}
+    steps:
+      - run: node tooling/ci/plan-deploy.mjs \${{ matrix.worker.worker }}
+      - run: npm ci
+        working-directory: \${{ matrix.worker.dir }}
+      - uses: cloudflare/wrangler-action@0000000000000000000000000000000000000000
+        with:
+          workingDirectory: \${{ matrix.worker.dir }}
+          command: deploy --var RELEASE:\${{ github.sha }}
+`;
+
 /** The two lanes R-1 owns, plus whatever else a case needs. Every fixture root
  *  carries a `tooling/ci` so limb B has a corpus, and the real modules the guard
  *  imports are NOT copied — the guard is run from its own location, so its
@@ -158,7 +189,7 @@ function fixture({ workspace = [APP_PATH], workflows = {}, guards = {} } = {}) {
     join(root, 'pubspec.yaml'),
     `name: ws\nworkspace:\n${workspace.map((w) => `  - ${w}\n`).join('')}\ndev_dependencies:\n  melos: ^8.2.2\n`,
   );
-  const all = { 'ci.yml': CI_YML, 'deploy-web.yml': DEPLOY_WEB, ...workflows };
+  const all = { 'ci.yml': CI_YML, 'deploy-web.yml': DEPLOY_WEB, 'deploy-workers.yml': DEPLOY_WORKERS, ...workflows };
   for (const [name, body] of Object.entries(all)) writeFileSync(join(root, '.github', 'workflows', name), body);
   writeFileSync(join(root, 'tooling', 'ci', 'assert-gate-passed.mjs'), GATE_STUB);
   for (const [name, body] of Object.entries(guards)) writeFileSync(join(root, 'tooling', 'ci', name), body);
@@ -652,7 +683,9 @@ ${extra}        run: node tooling/e2e/verify_purged.mjs
     assert.match(r.out, /build-platforms\.yml \(\[pipeline 9\]R-1\) — limb D-all: \d+ env\/output key\(s\) name no app and \d+ run\/with\/env value\(s\) carry no UUID literal/);
     assert.match(r.out, /e2e\.yml \(\[pipeline 9\]R-1\) — limb D-all: /);
     assert.match(r.out, /deploy-web\.yml \(\[pipeline 10\]D-2b\) — limb D-all: /);
-    assert.match(r.out, /limb D-all read \d+ key\(s\) and \d+ value\(s\) across 3 lane\(s\)/);
+    // ⏱ 2026-09-26: deploy-workers.yml is the fourth graded lane (O-SERVICE-KIT-UNBUILT).
+    assert.match(r.out, /deploy-workers\.yml \(O-SERVICE-KIT-UNBUILT\) — limb D-all: /);
+    assert.match(r.out, /limb D-all read \d+ key\(s\) and \d+ value\(s\) across 4 lane\(s\)/);
   });
 
   test('RC1 · THE CLOSES\' CONTROL — the app-named key with a UUID, back in e2e.yml, fails naming both hits', () => {
@@ -884,8 +917,9 @@ jobs:
     steps:
       - run: npm test
 ${extra}`;
-  /** The post-gate Workers deploy: it names app #1's Worker directory, the service-kit row's literal. */
-  const DEPLOY_WORKERS = `name: Deploy Workers
+  /** A Workers deploy written for ONE Worker: app #1's directory as a literal — the shape
+   *  deploy-workers.yml had until 2026-09-26 (O-SERVICE-KIT-UNBUILT). */
+  const DEPLOY_WORKERS_LITERAL = `name: Deploy Workers
 on:
   workflow_call:
 jobs:
@@ -963,10 +997,35 @@ jobs:
 
   test('THE POST-GATE LINE IS A CLASS, NOT A FILENAME — the same deploy call as a gate constituent is read, and fails', () => {
     const ci = gate({ deployIf: '', deployNeededByGate: true });
-    const r = run(gateTree({ ci }));
+    const r = run(gateTree({ ci, deploy: DEPLOY_WORKERS_LITERAL }));
     assert.equal(r.code, 1, r.out);
-    const n = lineOf(DEPLOY_WORKERS, `services/${APP}-api`);
+    const n = lineOf(DEPLOY_WORKERS_LITERAL, `services/${APP}-api`);
     assert.match(r.out, new RegExp(`the gate · ${rx(WF)}/deploy-workers\\.yml:${n} names the app id "${rx(APP)}" literally in \`working-directory\``));
+  });
+
+  // ⏱ 2026-09-26 — O-SERVICE-KIT-UNBUILT (E-a2): the Workers deploy lane is GRADED, not classified.
+  test('RC6 · `--app <id>` planted in the Worker matrix job fails limb D, naming deploy-workers.yml and the line', () => {
+    const deploy = DEPLOY_WORKERS.replace('      - run: npm ci\n', `      - run: npm ci --app ${APP}\n`);
+    const r = run(gateTree({ deploy }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, new RegExp(`O-SERVICE-KIT-UNBUILT · deploy-workers\\.yml:${lineOf(deploy, `--app ${APP}`)} names the app id "${rx(APP)}" literally in \`run\``));
+  });
+
+  test("…and app #1's Worker directory written into it fails too — it is not the gate's any more, it is its own lane", () => {
+    const r = run(gateTree({ deploy: DEPLOY_WORKERS_LITERAL }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, new RegExp(`O-SERVICE-KIT-UNBUILT · deploy-workers\\.yml:${lineOf(DEPLOY_WORKERS_LITERAL, `services/${APP}-api`)} names the app id "${rx(APP)}" literally in \`working-directory\``));
+  });
+
+  test('a matrix key the Worker matrix job never declared fails limb A′ per job, and limb A is not asked of a Workers lane', () => {
+    const deploy = DEPLOY_WORKERS.replace('command: deploy --var', 'command: deploy --name ${{ matrix.wrker.worker }} --var');
+    const r = run(gateTree({ deploy }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, new RegExp(`deploy-workers\\.yml:${lineOf(deploy, 'matrix.wrker')} — job "app-worker" reads \`matrix\\.wrker\` and its strategy\\.matrix declares worker`));
+    const green = run(gateTree());
+    assert.equal(green.code, 0, green.out);
+    assert.match(green.out, /deploy-workers\.yml \(O-SERVICE-KIT-UNBUILT\) — graded over its own set, not the app set/);
+    assert.doesNotMatch(green.out, /deploy-workers\.yml covers \{/);
   });
 
   test('limb D-all over the gate — an app-named env key in ci.yml and a UUID in the callee both fail, and no id is printed', () => {

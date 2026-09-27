@@ -669,9 +669,9 @@ export const isShellVariableEnvironment = (raw) => /\$(?!\{\{)/.test(String(raw 
  * assert-release-lane-generic.mjs fails the build on exactly that for every
  * graded lane, on every run. This is the shared READER; that is the check.
  */
-export function expandMatrixEnvironment(raw, appSlugs) {
+export function expandMatrixEnvironment(raw, appSlugs, workerNames = []) {
   const m = raw.match(/^\$\{\{\s*matrix\.[A-Za-z_][A-Za-z0-9_-]*\s*\}\}(.*)$/);
-  if (!m) return [raw];
+  if (!m) return WORKER_LEG_ENVIRONMENT.test(raw) ? [...workerNames] : [raw];
   return (appSlugs ?? []).map((s) => `${s}${m[1]}`);
 }
 
@@ -2184,3 +2184,13 @@ export const laneRefusalText = (r) =>
     : r.kind === 'orphan-callee'
       ? `${r.path} is \`workflow_call\`-only and no call job runs it (orphan-callee), so the lane it names never runs.`
       : `${r.path} is not a workflow in this tree (missing).`;
+
+// ⏱ 2026-09-26 (O-SERVICE-KIT-UNBUILT, E-a2) — expandMatrixEnvironment's THIRD ARGUMENT, A
+// WORKER MATRIX LEG. deploy-workers.yml records `${{ matrix.<dim>.worker }}`: the Worker name
+// field of a tooling/ci/worker-set.mjs entry, which IS its ledger environment. That expands
+// over `workerNames` (each caller reads them with worker-set.mjs appWorkerMatrix), never over
+// the app slugs, which would name `subscriptiontracker` where the ledger says
+// `subscriptiontracker-api`. Read as a literal it matched nothing and came back unchanged, so
+// a limb attributed the deploy to the text `${{ … }}`. Declared down here, not beside the
+// function, so no `workflow-scan.mjs:NNN` citation of the lines below it moved.
+export const WORKER_LEG_ENVIRONMENT = /^\$\{\{\s*matrix\.[A-Za-z_][A-Za-z0-9_-]*\.worker\s*\}\}$/;

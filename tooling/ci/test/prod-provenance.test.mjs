@@ -385,7 +385,8 @@ describe('assert-prod-provenance — the gate limb', () => {
   // rollback.yml re-promotes; the case still moves the WHOLE step.
   const PLATFORM_RECORD =
     "      - name: Record the deployed SHA\n        if: always() && steps.deploy.outcome == 'success'\n        env:\n          GH_TOKEN: ${{ github.token }}\n" +
-    '          # why: the Worker version — see the subscriptiontracker-api job.\n' +
+    // ⏱ 2026-09-26 (O-SERVICE-KIT-UNBUILT, E-a2): the comment names the app-worker matrix job now.
+    '          # why: the Worker version — see the app-worker job.\n' +
     '          DEPLOY_OUTPUT: ${{ steps.deploy.outputs.command-output }}\n' +
     '        run: node tooling/ci/record-deployment.mjs platform https://platform.nikatru.com --wrangler-output-env DEPLOY_OUTPUT\n';
 

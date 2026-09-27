@@ -142,7 +142,7 @@ import { parseYaml } from '../app-yaml/yaml.mjs';
 import { windowsIdentityOf, WINDOWS_STORE, WINDOWS_RECORD_FIELDS } from './read-identity.mjs';
 import { lanesOfSurface } from './tag-owner.mjs';
 import { ARTIFACT_FORMATS } from '../../contracts/store/vocabulary.js';
-
+import { appWorkerMatrix } from './worker-set.mjs';
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 /** No argument means CI's own invocation against the real repository, where the
  *  Android row MUST exist. A fixture root is a weaker situation and says so
@@ -3366,7 +3366,26 @@ for (const rel of workflowFiles) {
   if (raw === null) continue;
   const stripped = raw.replace(/^\s*#.*$/gm, '').replace(/\s#.*$/gm, '');
   for (const expr of stripped.matchAll(/\$\{\{([\s\S]*?)\}\}/g)) {
-    if (/\bsecrets\s*\[/.test(expr[1])) {
+    // ⏱ 2026-09-26 — ONE INDIRECTION IS READ, NOT REFUSED (O-SERVICE-KIT-UNBUILT, E-a2).
+    // deploy-workers.yml's app Worker matrix passes `secrets[matrix.<dim>.dsnSecret]`: the
+    // name is each Worker's `dsnSecret` in tooling/platform-register.json, which is where
+    // the matrix itself comes from (worker-set.mjs). So it is resolved HERE over the same
+    // rows, and every name it can take is held to the register below like a literal one.
+    // Any other computed name is still refused, and so is this one when the rows cannot
+    // be read.
+    const legSecret = /^\s*secrets\s*\[\s*matrix\.[A-Za-z_][A-Za-z0-9_-]*\.dsnSecret\s*\]\s*$/.test(expr[1]);
+    if (legSecret) {
+      const m = appWorkerMatrix(ROOT);
+      if (m.lost !== null) {
+        problems.push(
+          `${rel} names a secret by the deploy matrix's \`dsnSecret\` field, and the app Worker rows it resolves over could not be read: ${m.lost} [9]R-3 limb 2 cannot compare a name it cannot resolve.`,
+        );
+      }
+      for (const e of m.entries) {
+        if (!observedSecrets.has(e.dsnSecret)) observedSecrets.set(e.dsnSecret, new Set());
+        observedSecrets.get(e.dsnSecret).add(rel);
+      }
+    } else if (/\bsecrets\s*\[/.test(expr[1])) {
       problems.push(
         `${rel} names a secret by EXPRESSION (\`secrets[…]\`). A name computed at run time cannot be compared to the register, so [9]R-3 limb 2 cannot be enforced on it — the whole check would be one indirection away from vacuous. Name the secret literally.`,
       );

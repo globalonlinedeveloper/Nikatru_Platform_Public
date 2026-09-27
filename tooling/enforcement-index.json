@@ -782,8 +782,8 @@
       ".github/workflows/deploy-sandbox.yml#subscriptiontracker-api",
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/deploy-web.yml#site",
+      ".github/workflows/deploy-workers.yml#app-worker",
       ".github/workflows/deploy-workers.yml#platform",
-      ".github/workflows/deploy-workers.yml#subscriptiontracker-api",
       ".github/workflows/extensions.yml#store-publish",
       ".github/workflows/rollback.yml#rollback",
       ".github/workflows/submit-play.yml#submit",
@@ -2739,6 +2739,14 @@
     "state": "LIBRARY"
   },
   {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/deploy-globs.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
     "claims": [
       "ADR 067",
       "D-10",
@@ -2885,8 +2893,8 @@
     "invokedBy": [
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/deploy-web.yml#site",
-      ".github/workflows/deploy-workers.yml#platform",
-      ".github/workflows/deploy-workers.yml#subscriptiontracker-api"
+      ".github/workflows/deploy-workers.yml#app-worker",
+      ".github/workflows/deploy-workers.yml#platform"
     ],
     "kind": "guard",
     "ref": "tooling/ci/plan-deploy.mjs",
@@ -2937,8 +2945,8 @@
       ".github/workflows/build-platforms.yml#release",
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/deploy-web.yml#site",
+      ".github/workflows/deploy-workers.yml#app-worker",
       ".github/workflows/deploy-workers.yml#platform",
-      ".github/workflows/deploy-workers.yml#subscriptiontracker-api",
       ".github/workflows/extensions.yml#release",
       ".github/workflows/extensions.yml#store-publish",
       ".github/workflows/rollback.yml#rollback",
@@ -3116,6 +3124,7 @@
       "ADR 095"
     ],
     "invokedBy": [
+      ".github/workflows/deploy-workers.yml#workers",
       ".github/workflows/lane-workers.yml#detect"
     ],
     "kind": "guard",
@@ -3341,8 +3350,8 @@
       "K-7"
     ],
     "invokedBy": [
+      ".github/workflows/deploy-workers.yml#app-worker",
       ".github/workflows/deploy-workers.yml#platform",
-      ".github/workflows/deploy-workers.yml#subscriptiontracker-api",
       ".github/workflows/ops-watch.yml#heartbeats"
     ],
     "kind": "script",
@@ -3494,8 +3503,8 @@
       ".github/workflows/deploy-sandbox.yml#platform",
       ".github/workflows/deploy-sandbox.yml#subscriptiontracker-api",
       ".github/workflows/deploy-web.yml#deploy-web",
+      ".github/workflows/deploy-workers.yml#app-worker",
       ".github/workflows/deploy-workers.yml#platform",
-      ".github/workflows/deploy-workers.yml#subscriptiontracker-api",
       ".github/workflows/extensions.yml#release",
       ".github/workflows/extensions.yml#store-publish",
       ".github/workflows/rollback.yml#rollback",
