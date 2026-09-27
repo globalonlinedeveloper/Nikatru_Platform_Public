@@ -2994,6 +2994,26 @@ describe('assert-ops-register — HOSTNAMES ARE DELEGATED, and the delegation ca
     assert.match(r.out, /✗ tooling\/ops\/register\.json — 1 problem\(s\):/, 'the unbound name must be the ONLY problem');
   });
 
+  // ⏱ 2026-09-26 · O-SUBMISSION-LANE-WITHOUT-RECORDER — a submit lane records its DRY
+  // runs too. A `--mode dry-run` record claims nothing is live, so O-7's domain is the
+  // production records only: the rehearsal job is READ and left out, never unread.
+  test('[14]O-7 — a planted job whose only record is `--mode dry-run` is a rehearsal: read, and left out of the domain', () => {
+    const r = runRoot(fixtureRoot((s, root) => {
+      plantDeploy(s, root, DEPLOY_WF('zz-planted-env --mode dry-run', { smoke: false }));
+    }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /\[14\]O-7 — 0 deploy job\(s\) derived from record-deployment calls/);
+    assert.doesNotMatch(r.out, /this scan could not read the environment it records/, 'the rehearsal was READ, not lost');
+  });
+
+  test('🔴 [14]O-7 — the same job recording `--mode production` and never probing is FOUND', () => {
+    const r = runRoot(fixtureRoot((s, root) => {
+      plantDeploy(s, root, DEPLOY_WF('zz-planted-env --mode production', { smoke: false }));
+    }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /zz-deploy\.yml:ship records a deployment for `zz-planted-env` and never probes it/);
+  });
+
   // ── ⏱ 2026-09-11 · THE LIVE READS ARE NOT MADE WHERE THEIR VERDICT CANNOT BLOCK ──
   // Measured the same day: 56 GitHub requests per run of this guard, in every CI
   // run, on a token allowed 1,000 an hour. On a pull_request host every live

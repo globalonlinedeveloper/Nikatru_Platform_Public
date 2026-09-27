@@ -156,3 +156,25 @@ two App Store Connect records with independent review outcomes. Running
 them as one step would make one failure look like two channels broken,
 and one pass look like two channels validated.
 
+
+---
+
+## ⏱ 2026-09-26 — this lane records every run (O-APPLE-SUBMISSION-UNRECORDED, O-SUBMISSION-LANE-WITHOUT-RECORDER)
+
+**Appended, not rewritten.** Until this date this lane wrote no [10]D-9 record at all. It is never
+declared dry-run-only (parent decision): every run records itself, with its mode
+(`tooling/ci/record-deployment.mjs --mode`).
+
+* The `dry-run` job now carries job-level `permissions: { contents: read, deployments: write }`, and
+  ends with two steps, one per channel it rehearsed: **Record the iOS dry run in the [10]D-9 ledger
+  (mode dry-run)** and **Record the macOS dry run …**, each running
+  `record-deployment.mjs "${APP}-<channel>" --mode dry-run`. They write
+  `subscriptiontracker-ios-appstore-dry-run` and `subscriptiontracker-macos-appstore-dry-run`, with
+  `production_environment: false` and `payload.mode: "dry-run"`. No reader of the production ledger
+  opens either environment, and check-prod-provenance also refuses a record whose payload says `dry-run`.
+* The PRODUCTION record of an App Store upload comes with the upload job, the day it exists:
+  assert-publish-records.mjs rules 2 and 3b make that job record `--mode production`. The per-app
+  `recordId` belongs to O-STORE-RECORDS-ARE-ONE-PER-CHANNEL, not to this change.
+
+GitHub creates the two `-dry-run` environments the first time a Deployment names them, with no
+protection rules. UNVERIFIED on this repository until the first dry run after the merge.

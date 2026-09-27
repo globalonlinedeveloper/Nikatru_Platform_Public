@@ -122,6 +122,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - run: node tooling/release/submit-play.mjs --dry-run --app subscriptiontracker
+      - run: node tooling/ci/record-deployment.mjs subscriptiontracker-android-play --mode dry-run
 `;
 
 const submitWorkflow = (steps) => `name: play
@@ -246,7 +247,9 @@ ${condition === null ? '' : `        if: ${condition}\n`}        run: node tooli
   test('rule 6 says out loud how many record steps it graded — 0 would be a dead rule', () => {
     const { code, out } = run(served({ 'deploy-web.yml': laneWith(null) }));
     assert.equal(code, 0, out);
-    assert.match(out, /RULE 6 .* graded 1 record step\(s\)/);
+    // ⏱ 2026-09-26 — 2, not 1: the lane's step AND the healthy rehearsal's dry-run record,
+    // which rule 3a grades for skippability too (O-SUBMISSION-LANE-WITHOUT-RECORDER).
+    assert.match(out, /RULE 6 .* graded 2 record step\(s\)/);
   });
 
   test("the widening `always() && steps.deploy.outcome == 'success'` is ACCEPTED and printed", () => {
@@ -385,8 +388,9 @@ jobs:
     assert.match(out, /workers\.yml/);
     assert.match(out, /NO EARLIER step in job "subscriptiontracker-api" declares/);
     assert.match(out, /earlier ids: `deployy`/);
-    // …and rule 6 was green on the same tree: it graded only the lane's step.
-    assert.match(out, /RULE 6 .* graded 1 record step\(s\)/);
+    // …and rule 6 was green on the same tree: it graded only the lane's step, and
+    // (⏱ 2026-09-26, rule 3a) the rehearsal's dry-run record — never the Worker's.
+    assert.match(out, /RULE 6 .* graded 2 record step\(s\)/);
   });
 
   test('a `conclusion` reference is checked too — the same null resolves either way', () => {
@@ -414,7 +418,27 @@ jobs:
 describe('assert-publish-records — a real submission must write a record', () => {
   const REAL_SUBMIT = submitWorkflow('      - run: node tooling/release/submit-play.mjs --submit --app subscriptiontracker');
 
-  test('a rehearsal (`--dry-run`) needs no record and passes', () => {
+  // ⏱ 2026-09-26 (O-SUBMISSION-LANE-WITHOUT-RECORDER, rule 3a): this case read "a
+  // rehearsal (`--dry-run`) needs no record and passes". Every run is recorded now.
+  test('a rehearsal (`--dry-run`) recorded with `--mode dry-run` passes', () => {
+    const { code, out } = run(
+      fixture({
+        channels: [WEB_ROW, storeRow()],
+        workflows: {
+          'deploy-web.yml': DEPLOY_WEB_OK,
+          'submit-play.yml': submitWorkflow(
+            '      - run: node tooling/release/submit-play.mjs --dry-run --app subscriptiontracker\n' +
+              '      - run: node tooling/ci/record-deployment.mjs subscriptiontracker-android-play --mode dry-run',
+          ),
+        },
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /0 of 1 submission invocation\(s\) can perform a REAL submission/);
+    assert.match(out, /RULE 3a \(every rehearsal is recorded, as a dry run\) graded 1 rehearsal invocation\(s\); 1 are followed/);
+  });
+
+  test('RULE 3a: a rehearsal that does not record fails, naming the job and the command to add', () => {
     const { code, out } = run(
       fixture({
         channels: [WEB_ROW, storeRow()],
@@ -424,8 +448,29 @@ describe('assert-publish-records — a real submission must write a record', () 
         },
       }),
     );
-    assert.equal(code, 0, out);
-    assert.match(out, /0 of 1 submission invocation\(s\) can perform a REAL submission/);
+    assert.equal(code, 1, out);
+    assert.match(out, /rule 3a · \.github\/workflows\/submit-play\.yml:7 — job "dry-run" rehearses the "android-play" submission/);
+    assert.match(out, /run: node tooling\/ci\/record-deployment\.mjs <app>-android-play --mode dry-run/);
+  });
+
+  test('RULE 3a: a dry-run record written BEFORE the rehearsal does not count', () => {
+    const wf = submitWorkflow(
+      '      - run: node tooling/ci/record-deployment.mjs subscriptiontracker-android-play --mode dry-run\n' +
+        '      - run: node tooling/release/submit-play.mjs --dry-run --app subscriptiontracker',
+    );
+    const { code, out } = run(fixture({ channels: [WEB_ROW, storeRow()], workflows: { 'deploy-web.yml': DEPLOY_WEB_OK, 'submit-play.yml': wf } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /no later step records the run with `--mode dry-run`/);
+  });
+
+  test('RULE 3a: a dry-run record carrying --listing-url fails — the recorder refuses it', () => {
+    const wf = submitWorkflow(
+      '      - run: node tooling/release/submit-play.mjs --dry-run --app subscriptiontracker\n' +
+        '      - run: node tooling/ci/record-deployment.mjs subscriptiontracker-android-play --mode dry-run --listing-url https://play.google.com/x',
+    );
+    const { code, out } = run(fixture({ channels: [WEB_ROW, storeRow()], workflows: { 'deploy-web.yml': DEPLOY_WEB_OK, 'submit-play.yml': wf } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /records a rehearsal \(`--mode dry-run`\) with `--listing-url`/);
   });
 
   test('a REAL submission with no record step fails', () => {
@@ -452,7 +497,7 @@ describe('assert-publish-records — a real submission must write a record', () 
     const wf = submitWorkflow(
       '      - run: node tooling/release/submit-play.mjs --submit --app subscriptiontracker\n' +
         '      - name: Record the submission\n' +
-        '        run: node tooling/ci/record-deployment.mjs subscriptiontracker-android-play --state in_review --listing-url https://play.google.com/store/apps/details?id=com.nikatru.subscriptiontracker',
+        '        run: node tooling/ci/record-deployment.mjs subscriptiontracker-android-play --state in_review --listing-url https://play.google.com/store/apps/details?id=com.nikatru.subscriptiontracker --mode production',
     );
     const { code, out } = run(
       fixture({ channels: [WEB_ROW, storeRow()], workflows: { 'deploy-web.yml': DEPLOY_WEB_OK, 'submit-play.yml': wf } }),
@@ -474,16 +519,59 @@ describe('assert-publish-records — a real submission must write a record', () 
     assert.match(out, /no later step records it/);
   });
 
-  test('a rehearsal job that writes a record anyway fails — a fiction in the ledger', () => {
+  // ⏱ 2026-09-26 (rule 3a): this case read "a rehearsal job that writes a record anyway
+  // fails — a fiction in the ledger". The fiction is now a PRODUCTION record of a rehearsal.
+  test('a rehearsal job that records in PRODUCTION mode fails — a fiction in the ledger', () => {
     const wf = submitWorkflow(
       '      - run: node tooling/release/submit-play.mjs --dry-run --app subscriptiontracker\n' +
-        '      - run: node tooling/ci/record-deployment.mjs subscriptiontracker-android-play --state in_review --listing-url https://play.google.com/x',
+        '      - run: node tooling/ci/record-deployment.mjs subscriptiontracker-android-play --state in_review --listing-url https://play.google.com/x --mode production',
     );
     const { code, out } = run(
       fixture({ channels: [WEB_ROW, storeRow()], workflows: { 'deploy-web.yml': DEPLOY_WEB_OK, 'submit-play.yml': wf } }),
     );
     assert.equal(code, 1, out);
     assert.match(out, /a fiction is not/);
+  });
+});
+
+describe('assert-publish-records — rules 3b and 3c: the mode is stated, literally, and matches the run', () => {
+  test('RULE 3b: a REAL submission recorded only `--mode dry-run` fails — it would land where no reader looks', () => {
+    const wf = submitWorkflow(
+      '      - run: node tooling/release/submit-play.mjs --submit --app subscriptiontracker\n' +
+        '      - run: node tooling/ci/record-deployment.mjs subscriptiontracker-android-play --mode dry-run',
+    );
+    const { code, out } = run(fixture({ channels: [WEB_ROW, storeRow()], workflows: { 'deploy-web.yml': DEPLOY_WEB_OK, 'submit-play.yml': wf } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /rule 3b · .* records it only with `--mode dry-run`/);
+  });
+
+  test('RULE 3c: a submission record with NO --mode fails — the recorder would exit 2', () => {
+    const wf = submitWorkflow(
+      '      - run: node tooling/release/submit-play.mjs --submit --app subscriptiontracker\n' +
+        '      - run: node tooling/ci/record-deployment.mjs subscriptiontracker-android-play --state in_review --listing-url https://play.google.com/x',
+    );
+    const { code, out } = run(fixture({ channels: [WEB_ROW, storeRow()], workflows: { 'deploy-web.yml': DEPLOY_WEB_OK, 'submit-play.yml': wf } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /rule 3c · \.github\/workflows\/submit-play\.yml:8 records "subscriptiontracker-android-play" with no `--mode`/);
+  });
+
+  test('RULE 3c: a mode assembled from an expression fails — nobody can read it before the run', () => {
+    const wf = submitWorkflow(
+      '      - run: node tooling/release/submit-play.mjs --submit --app subscriptiontracker\n' +
+        '      - run: node tooling/ci/record-deployment.mjs subscriptiontracker-android-play --state in_review --listing-url https://play.google.com/x --mode ${{ inputs.mode }}',
+    );
+    const { code, out } = run(fixture({ channels: [WEB_ROW, storeRow()], workflows: { 'deploy-web.yml': DEPLOY_WEB_OK, 'submit-play.yml': wf } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /rule 3c · .* with `--mode \$\{\{`, which is not a literal production or dry-run/);
+  });
+
+  test('CONTROL: the same submission record with a literal `--mode production` passes', () => {
+    const wf = submitWorkflow(
+      '      - run: node tooling/release/submit-play.mjs --submit --app subscriptiontracker\n' +
+        '      - run: node tooling/ci/record-deployment.mjs subscriptiontracker-android-play --state in_review --listing-url https://play.google.com/x --mode "production"',
+    );
+    const { code, out } = run(fixture({ channels: [WEB_ROW, storeRow()], workflows: { 'deploy-web.yml': DEPLOY_WEB_OK, 'submit-play.yml': wf } }));
+    assert.equal(code, 0, out);
   });
 });
 
@@ -543,7 +631,7 @@ jobs:
 ${publishIf === null ? '' : `        if: ${publishIf}\n`}        run: node tooling/release/submit-play.mjs --submit --app subscriptiontracker
       - name: Record the submission
         if: always() && steps.upload.outcome == 'success'
-        run: node tooling/ci/record-deployment.mjs subscriptiontracker-android-play --state in_review --listing-url https://play.google.com/x
+        run: node tooling/ci/record-deployment.mjs subscriptiontracker-android-play --state in_review --listing-url https://play.google.com/x --mode production
       - name: Record what shipped as the origin
 ${originIf === null ? '' : `        if: ${originIf}\n`}        run: node tooling/ci/record-deployment.mjs subscriptiontracker-android-play --state pending_manual_publish --listing-url https://play.google.com/x
 `;
@@ -680,6 +768,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - run: node tooling/release/submit-play.mjs --dry-run --app subscriptiontracker
+      - run: node tooling/ci/record-deployment.mjs subscriptiontracker-android-play --mode dry-run
   submit:
     runs-on: ubuntu-24.04
     environment: store-publish
@@ -704,7 +793,7 @@ ${submitSteps}
         '        run: node tooling/release/submit-play.mjs --submit --app subscriptiontracker\n' +
         '      - name: Record the submission\n' +
         "        if: always() && steps.upload.outcome == 'success'\n" +
-        '        run: node tooling/ci/record-deployment.mjs subscriptiontracker-android-play --state in_review --listing-url https://play.google.com/x',
+        '        run: node tooling/ci/record-deployment.mjs subscriptiontracker-android-play --state in_review --listing-url https://play.google.com/x --mode production',
     );
     const { code, out } = run(
       fixture({ channels: [WEB_ROW, storeRow()], workflows: { 'deploy-web.yml': DEPLOY_WEB_OK, 'submit-play.yml': wf } }),
@@ -719,7 +808,7 @@ ${submitSteps}
       '      - name: Upload\n' +
         '        id: upload\n' +
         '        run: node tooling/release/submit-play.mjs --submit --app subscriptiontracker\n' +
-        '      - run: node tooling/ci/record-deployment.mjs subscriptiontracker-android-play --state in_review --listing-url https://play.google.com/x',
+        '      - run: node tooling/ci/record-deployment.mjs subscriptiontracker-android-play --state in_review --listing-url https://play.google.com/x --mode production',
     );
     const { code, out } = run(
       fixture({ channels: [WEB_ROW, storeRow()], workflows: { 'deploy-web.yml': DEPLOY_WEB_OK, 'submit-play.yml': wf } }),

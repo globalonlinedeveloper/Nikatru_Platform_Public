@@ -667,3 +667,26 @@ Held by `tooling/ci/test/submit-lanes-take-dry-run-bytes.test.mjs` (a rebuild st
 unresolved sha256 hand-off, or a check after `--submit` fails it) and by
 `assert-app-versioning.mjs` limb (b), which bounds this upload through the hand-off. The proof is
 static: the owner's next real dispatch is the first live run.
+
+---
+
+## ⏱ 2026-09-26 — every run is recorded, with its mode (O-SUBMISSION-LANE-WITHOUT-RECORDER)
+
+**Appended, not rewritten.** Until this date only a confirmed submission wrote a [10]D-9 record,
+so a dry run left no trace in the ledger. Now every run of this lane records itself, and the
+record says which kind of run wrote it (`tooling/ci/record-deployment.mjs --mode`):
+
+* the `dry-run` job's last step, **Record the dry run in the [10]D-9 ledger (mode dry-run)**, runs
+  `record-deployment.mjs "${APP}-android-play" --mode dry-run`. The recorder writes it to
+  `subscriptiontracker-android-play-dry-run` with `production_environment: false`, `transient_environment: true` and
+  `payload.mode: "dry-run"`, and a description starting `dry-run`. No reader of the production
+  ledger (check-prod-provenance, readSubmissions, the served ledger, read-ledger-version-code) opens that
+  environment, and check-prod-provenance also refuses any record whose payload says `dry-run`;
+* the `submit` job's record gains `--mode production`; nothing else about it changes. The dry run
+  consumes no versionCode, so its record carries none.
+* the recorder REFUSES a record of this channel with no `--mode` (exit 2): a default would be a
+  quiet production claim. assert-publish-records.mjs rules 3a-3c hold the same thing statically, and
+  `tooling/ci/test/submit-lanes-record.test.mjs` holds it over the lanes the provenance reader derives.
+
+GitHub creates the `subscriptiontracker-android-play-dry-run` environment the first time a Deployment names it, with no
+protection rules. UNVERIFIED on this repository until the first dry run after the merge.

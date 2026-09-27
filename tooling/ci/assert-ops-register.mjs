@@ -249,6 +249,8 @@ const WORKFLOW_DIR_REL = '.github/workflows';
  *  apart from `RECORD_CALL`'s reading of its ARGUMENT so the two can disagree —
  *  which is the whole of the coverage floor at the deploy-job loop below. */
 const RECORD_SCRIPT = 'record-deployment.mjs';
+/** ⏱ 2026-09-26 — the literal a rehearsal's record carries (record-deployment.mjs --mode). */
+const DRY_RUN_RECORD = /(^|\s)--mode\s+(['"]?)dry-run\2(\s|$)/;
 
 /** Any repo-relative path a row NAMES, in the fields that make a claim about a
  *  mechanism: the detector, the record, and the thing that reads it. `Private/`
@@ -5492,7 +5494,13 @@ async function main() {
     for (const [jobName, job] of wf.jobs) {
       const text = (job.lines ?? []).map((l) => l.text ?? String(l)).join('\n');
       RECORD_CALL.lastIndex = 0;
-      const envs = [...text.matchAll(RECORD_CALL)].flatMap((m) => expandEnv(m[1]));
+      // ⏱ 2026-09-26 — a `--mode dry-run` record is a REHEARSAL's
+      // (O-SUBMISSION-LANE-WITHOUT-RECORDER): it writes `<env>-dry-run` and claims
+      // nothing is live, so it puts no job in this domain. Read from the rest of the
+      // call's own line; a call written any other way stays in the domain.
+      const calls = [...text.matchAll(RECORD_CALL)];
+      const rehearsals = calls.filter((m) => DRY_RUN_RECORD.test(text.slice(m.index + m[0].length).split('\n')[0]));
+      const envs = calls.filter((m) => !rehearsals.includes(m)).flatMap((m) => expandEnv(m[1]));
       // 🔴 THE FLOOR THAT WAS MISSING, AND ITS ABSENCE DROPPED A JOB TWICE.
       // The line below used to be a bare `continue`, and a bare `continue` cannot
       // tell "this job records nothing" from "this job records something I could
@@ -5506,7 +5514,8 @@ async function main() {
       // one branch up already reaches — so the third unparseable argument shape
       // stops the build instead of shrinking the domain.
       if (envs.length === 0) {
-        if (text.includes(RECORD_SCRIPT)) {
+        // A rehearsal-only job was READ (its calls parsed) and left out on purpose.
+        if (text.includes(RECORD_SCRIPT) && calls.length === 0) {
           coverageLost([
             `${wf.rel ?? wf.file ?? '?'}:${jobName} runs \`${RECORD_SCRIPT}\` and this scan could not read the environment it records.`,
             'That job would leave [14]O-7\'s domain silently and the census below would print the smaller number as a',

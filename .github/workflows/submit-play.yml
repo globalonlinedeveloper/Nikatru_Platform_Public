@@ -78,9 +78,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs: gate
+    # why: write, not read: the last step records this run (O-SUBMISSION-LANE-WITHOUT-RECORDER);
+    # the versionCode step reads the ledger through the same grant.
     permissions:
       contents: read
-      deployments: read
+      deployments: write
     # why: the submit job ships THIS job's bundle, not a rebuild of it, and checks it against
     # this sha256 (O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT; docs/ci/submit-play.md).
     outputs:
@@ -221,6 +223,14 @@ jobs:
           path: apps/${{ needs.gate.outputs.app }}/build/app/outputs/bundle/release/app-release.aab
           retention-days: 7
           if-no-files-found: error
+      # why: every run of this lane is recorded, and a rehearsal AS one (O-SUBMISSION-LANE-WITHOUT-RECORDER,
+      # assert-publish-records rule 3a): --mode dry-run writes "<app>-android-play-dry-run", which no
+      # reader of the production ledger opens, and carries no state, listing or versionCode.
+      - name: Record the dry run in the [10]D-9 ledger (mode dry-run)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node tooling/ci/record-deployment.mjs "${APP}-android-play" --mode dry-run
 
   submit:
     name: Upload to Google Play (owner-approved)
@@ -412,4 +422,4 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           LISTING_URL: ${{ inputs.listing_url }}
           RUN_NUMBER: ${{ github.run_number }}
-        run: node tooling/ci/record-deployment.mjs "${APP}-android-play" --state in_review --listing-url "$LISTING_URL" --version-code "$RUN_NUMBER"
+        run: node tooling/ci/record-deployment.mjs "${APP}-android-play" --state in_review --listing-url "$LISTING_URL" --version-code "$RUN_NUMBER" --mode production

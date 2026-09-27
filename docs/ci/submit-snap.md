@@ -616,3 +616,25 @@ any upload, and its error names the owner step. The owner's two steps:
 2. After the merge, delete the repository-level copy of the credential.
    Verified by listing secret NAMES only (`gh secret list`,
    `gh secret list --env store-publish`).
+
+---
+
+## ⏱ 2026-09-26 — every run is recorded, with its mode (O-SUBMISSION-LANE-WITHOUT-RECORDER)
+
+**Appended, not rewritten.** Until this date only a confirmed submission wrote a [10]D-9 record,
+so a dry run left no trace in the ledger. Now every run of this lane records itself, and the
+record says which kind of run wrote it (`tooling/ci/record-deployment.mjs --mode`):
+
+* the `dry-run` job's last step, **Record the dry run in the [10]D-9 ledger (mode dry-run)**, runs
+  `record-deployment.mjs "${APP}-linux-snap" --mode dry-run`. The recorder writes it to
+  `subscriptiontracker-linux-snap-dry-run` with `production_environment: false`, `transient_environment: true` and
+  `payload.mode: "dry-run"`, and a description starting `dry-run`. No reader of the production
+  ledger (check-prod-provenance, readSubmissions, the served ledger) opens that
+  environment, and check-prod-provenance also refuses any record whose payload says `dry-run`;
+* the `submit` job's record gains `--mode production`; nothing else about it changes.
+* the recorder REFUSES a record of this channel with no `--mode` (exit 2): a default would be a
+  quiet production claim. assert-publish-records.mjs rules 3a-3c hold the same thing statically, and
+  `tooling/ci/test/submit-lanes-record.test.mjs` holds it over the lanes the provenance reader derives.
+
+GitHub creates the `subscriptiontracker-linux-snap-dry-run` environment the first time a Deployment names it, with no
+protection rules. UNVERIFIED on this repository until the first dry run after the merge.

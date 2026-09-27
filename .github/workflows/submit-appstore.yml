@@ -57,6 +57,11 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 30
     needs: gate
+    # why: the job-level write scope the two record steps at the end need
+    # (O-APPLE-SUBMISSION-UNRECORDED); it replaces the workflow's grant for this job.
+    permissions:
+      contents: read
+      deployments: write
     # why: the gate's checked output, never inputs.app. run: reads $APP; the fields no
     # shell expands (artifact name and path) read the expression itself.
     env:
@@ -182,3 +187,17 @@ jobs:
           APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
           APP_STORE_CONNECT_APP_ID: ${{ secrets.APP_STORE_CONNECT_MACOS_APP_ID }}
         run: node tooling/release/submit-appstore.mjs --dry-run --channel macos-appstore --app "$APP" --allow-missing-artifact
+      # why: this lane RECORDS, and is never declared dry-run-only (O-APPLE-SUBMISSION-UNRECORDED; parent
+      # decision): every run is recorded, and a rehearsal AS one — one record per channel it rehearsed,
+      # into "<app>-ios-appstore-dry-run" and "<app>-macos-appstore-dry-run", which no reader of the
+      # production ledger opens. The upload job, the day it exists, records --mode production (rules 2, 3b).
+      - name: Record the iOS dry run in the [10]D-9 ledger (mode dry-run)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node tooling/ci/record-deployment.mjs "${APP}-ios-appstore" --mode dry-run
+      - name: Record the macOS dry run in the [10]D-9 ledger (mode dry-run)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node tooling/ci/record-deployment.mjs "${APP}-macos-appstore" --mode dry-run

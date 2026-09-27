@@ -1275,7 +1275,7 @@ describe('check-prod-provenance — a SUBMISSION lane build', () => {
   // deploy-web.yml has its own run 5 (436 completed runs, measured 2026-09-23).
   const WEB5 = { run_number: 5, head_sha: 'aa11bb22cc33dd44ee55ff6600112233445566ff', conclusion: 'success' };
   const ROW5 = { consent_artifacts: [{ marker: '1.0.5+0390db6', n: 1 }] };
-  const REFUSED = 'a dry run writes none, and a hand-written recovery Deployment must carry the run payload';
+  const REFUSED = 'a dry run records only into a -dry-run environment, which witnesses nothing, and a hand-written recovery Deployment must carry the run payload';
 
   /** The payload record-deployment.mjs writes, for a fixture run of submit-play.yml. */
   const payloadOf = (r) => ({ workflow: 'submit-play.yml', run_id: r.id, run_attempt: r.run_attempt, run_number: r.run_number });
@@ -1312,7 +1312,7 @@ describe('check-prod-provenance — a SUBMISSION lane build', () => {
   test('S-3 THE REAL DRY RUN: run 4 at 22fd29b succeeded, uploaded nothing and recorded nothing — it stays unattributable', () => {
     const r = run({ consent_artifacts: [{ marker: '1.0.4+22fd29b', n: 1 }] }, [WEB101, RUN4, RUN5], [DEP5]);
     assert.equal(r.status, 1, r.stdout + r.stderr);
-    assert.match(r.stderr, /submit-play\.yml run 4 concluded `success` but no Deployment on subscriptiontracker-android-play names run 35786771434; a dry run writes none, and a hand-written recovery Deployment must carry the run payload/);
+    assert.match(r.stderr, /submit-play\.yml run 4 concluded `success` but no Deployment on subscriptiontracker-android-play names run 35786771434; a dry run records only into a -dry-run environment, which witnesses nothing, and a hand-written recovery Deployment must carry the run payload/);
   });
 
   test('S-4 a later DRY RUN AT THE SAME SHA as the upload cannot borrow the upload\'s Deployment', () => {
@@ -1372,7 +1372,7 @@ describe('check-prod-provenance — a SUBMISSION lane build', () => {
   test('S-10 the same collision with no Deployment is refused, and BOTH candidates say why', () => {
     const r = run(ROW6, [WEB101, RUN6P, WEB6], []);
     assert.equal(r.status, 1, r.stdout + r.stderr);
-    assert.match(r.stderr, /submit-play\.yml run 6 concluded `success` but no Deployment on subscriptiontracker-android-play names run 35900000106; a dry run writes none, and a hand-written recovery Deployment must carry the run payload · run 6 shipped 9f9e9d9, not 6a6b6c6/);
+    assert.match(r.stderr, /submit-play\.yml run 6 concluded `success` but no Deployment on subscriptiontracker-android-play names run 35900000106; a dry run records only into a -dry-run environment, which witnesses nothing, and a hand-written recovery Deployment must carry the run payload · run 6 shipped 9f9e9d9, not 6a6b6c6/);
   });
 
   test('S-11 `dev` stays refused with an upload and its Deployment right there', () => {
@@ -1472,6 +1472,27 @@ describe('check-prod-provenance — a SUBMISSION lane build', () => {
     const r = run(ROW6, [WEB101, RUN6P], [{ ...DEP6P, payload: JSON.stringify(payloadOf(RUN6P)) }]);
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.match(r.stdout, /whose payload names run 35900000106/);
+  });
+
+  // ⏱ 2026-09-26 · O-SUBMISSION-LANE-WITHOUT-RECORDER — a lane now records its DRY runs
+  // too, into `<env>-dry-run`, which this reader never fetches. The mode is the second
+  // gate: a record that says `mode: "dry-run"` is no witness wherever it sits.
+  test('S-36 RC5 a Deployment naming this run with payload.mode "dry-run" is REFUSED — a rehearsal is never production', () => {
+    const r = run(ROW6, [WEB101, RUN6P], [{ ...DEP6P, payload: { ...payloadOf(RUN6P), mode: 'dry-run' } }]);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /the only Deployment naming run 35900000106 on subscriptiontracker-android-play \(7000000001\) says `mode: "dry-run"`: a rehearsal submitted nothing/);
+  });
+
+  test('S-37 CONTROL: the same Deployment with payload.mode "production" binds', () => {
+    const r = run(ROW6, [WEB101, RUN6P], [{ ...DEP6P, payload: { ...payloadOf(RUN6P), mode: 'production' } }]);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /whose payload names run 35900000106/);
+  });
+
+  test('S-38 a dry-run record in the -dry-run environment is not on the lane at all, and witnesses nothing', () => {
+    const r = run(ROW6, [WEB101, RUN6P], [{ ...DEP6P, environment: 'subscriptiontracker-android-play-dry-run', payload: { ...payloadOf(RUN6P), mode: 'dry-run' } }]);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /submit-play\.yml run 6 concluded `success` but no Deployment on subscriptiontracker-android-play names run 35900000106/);
   });
 });
 
@@ -1884,6 +1905,16 @@ describe('check-prod-provenance — a row both served and submittable is judged 
     const r = monitor([], { '--rows-file': ROW7, '--runs-file': [WEB101, DRY], '--deployments-file': [] });
     assert.equal(r.status, 1, r.stdout + r.stderr);
     assert.match(r.stderr, /submit-snap\.yml run 7 concluded `success` but no Deployment on subscriptiontracker-linux-snap names run 35900000207/);
+  });
+
+  // ⏱ 2026-09-26 — RC6. The emit printed the UNFILTERED served set until today, so a
+  // served-and-submittable row's environment reached it while main() never read it.
+  test('S-39 RC6 --emit-served-environments prints the set main() reads: a served row a submission lane owns is left out', () => {
+    const r = monitor(['--emit-served-environments']);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const lines = r.stdout.trim().split('\n');
+    assert.ok(lines.includes('subscriptiontracker-web'), r.stdout);
+    assert.ok(!lines.includes('subscriptiontracker-linux-snap'), `the snap row is a submission lane's, so footing (b) never reads it: ${r.stdout}`);
   });
 
   test('S-35 a FAILED deploy-web run cannot borrow a snap upload\'s Deployment when the snap row is also served', () => {

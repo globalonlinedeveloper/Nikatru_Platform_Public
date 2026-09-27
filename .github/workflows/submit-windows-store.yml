@@ -67,6 +67,10 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 20
     needs: gate
+    # why: the last step records this run (O-SUBMISSION-LANE-WITHOUT-RECORDER).
+    permissions:
+      contents: read
+      deployments: write
     # why: the submit job ships THIS job's .msix, not a repackaging of a rebuild, and checks
     # it against this sha256 (O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT; docs/ci/submit-windows-store.md).
     outputs:
@@ -198,6 +202,15 @@ jobs:
           path: apps/${{ needs.gate.outputs.app }}/build/windows/msix/${{ needs.gate.outputs.app }}.msix
           retention-days: 7
           if-no-files-found: error
+      # why: every run of this lane is recorded, and a rehearsal AS one (O-SUBMISSION-LANE-WITHOUT-RECORDER,
+      # assert-publish-records rule 3a): --mode dry-run writes "<app>-windows-store-dry-run", which no
+      # reader of the production ledger opens. bash: the recorder's arguments are bash (pwsh is the default).
+      - name: Record the dry run in the [10]D-9 ledger (mode dry-run)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node tooling/ci/record-deployment.mjs "${APP}-windows-store" --mode dry-run
 
   submit:
     name: Submit to the Microsoft Store (owner-approved)
@@ -382,4 +395,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           LISTING_URL: ${{ inputs.listing_url }}
-        run: node tooling/ci/record-deployment.mjs "${APP}-windows-store" --state in_review --listing-url "$LISTING_URL"
+        run: node tooling/ci/record-deployment.mjs "${APP}-windows-store" --state in_review --listing-url "$LISTING_URL" --mode production

@@ -67,6 +67,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs: gate
+    # why: the last step records this run (O-SUBMISSION-LANE-WITHOUT-RECORDER).
+    permissions:
+      contents: read
+      deployments: write
     # why: the gate's checked output, never inputs.app. run: reads $APP; the fields no
     # shell expands (artifact name and path) read the expression itself.
     env:
@@ -193,6 +197,14 @@ jobs:
           path: apps/${{ needs.gate.outputs.app }}/build/linux/snap/${{ needs.gate.outputs.app }}.snap
           retention-days: 7
           if-no-files-found: error
+      # why: every run of this lane is recorded, and a rehearsal AS one (O-SUBMISSION-LANE-WITHOUT-RECORDER,
+      # assert-publish-records rule 3a): --mode dry-run writes "<app>-linux-snap-dry-run", which no
+      # reader of the production ledger opens, and carries no state or listing.
+      - name: Record the dry run in the [10]D-9 ledger (mode dry-run)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node tooling/ci/record-deployment.mjs "${APP}-linux-snap" --mode dry-run
 
   submit:
     name: Upload to the Snap Store (owner-approved)
@@ -384,4 +396,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           LISTING_URL: ${{ inputs.listing_url }}
-        run: node tooling/ci/record-deployment.mjs "${APP}-linux-snap" --state in_review --listing-url "$LISTING_URL"
+        run: node tooling/ci/record-deployment.mjs "${APP}-linux-snap" --state in_review --listing-url "$LISTING_URL" --mode production
