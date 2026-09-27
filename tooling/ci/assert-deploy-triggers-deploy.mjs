@@ -511,7 +511,6 @@ export function judgeLegUnits(units, entries) {
 }
 
 const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
-const stepText = (s) => `${s.run?.text ?? ''} ${[...s.with.values()].map((v) => v.value).join(' ')}`;
 const isWranglerAction = (s) => /^cloudflare\/wrangler-action@/.test(s.uses ?? '');
 /** Does this step put a Worker live? A wrangler-action whose command is (or
  *  defaults to) `deploy`, or a `wrangler deploy` that is not a dry run. */

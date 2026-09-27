@@ -499,7 +499,7 @@ function jobsPerLeg(wf) {
         .filter((l) => !notRun.has(stepStart(l.n)))
         .map((l) => {
           if (/^\s*if:/.test(l.text)) return { ...l, text: l.text.replace(onlyWithMigrations, '').replace(WORKER_MATRIX_REF, at) };
-          if (/^\s*workingDirectory:|record-deployment\.mjs\s/.test(l.text)) return { ...l, text: l.text.replace(WORKER_MATRIX_REF, at) };
+          if (/^\s*workingDirectory:/.test(l.text) || /record-deployment\.mjs\s/.test(l.text)) return { ...l, text: l.text.replace(WORKER_MATRIX_REF, at) };
           return l;
         });
       out.push({ ...j, lines, leg: e.worker });
