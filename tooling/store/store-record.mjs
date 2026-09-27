@@ -124,9 +124,9 @@ export function missingIdsOf(channelId, record, { sentinel = null } = {}) {
  * `files` names the repo files the owner copies into the console (the sworn
  * set of the channel), so the message points at the exact source of the form.
  */
-export function declaredOnRefusal(record, { appId, channelId, files = [] }) {
+export function declaredOnRefusal(record, { appId, channelId, files = [], form = null }) {
   if (record?.declaredOn !== null) return null;
-  const from = files.length > 0 ? `from ${files.join(', ')}` : "from this app's store files";
+  const from = files.length > 0 ? `from ${files.join(', ')}` : form ? `(${form})` : "from this app's store files";
   return (
     `${record.rel} stores.${channelId}.declaredOn is null: the owner has not sworn app "${appId}"'s ` +
     `${channelId} declarations in the store console. Submit that console form ${from} first, then record ` +

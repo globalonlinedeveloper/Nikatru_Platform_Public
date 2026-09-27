@@ -94,11 +94,26 @@ jobs:
       # template. The ios-appstore audit also answers for macOS, so this step covers both submissions here.
       - name: The app's App Store declarations are sworn, not preview (--for-submission)
         run: node tooling/ci/assert-sworn-store-files.mjs --for-submission=ios-appstore --app "$APP"
+      # why: a pending mobile IAP declaration (no RevenueCat apps yet) builds keyless and is never submitted:
+      # its paywall cannot buy (O-BRICK-SELLS-NOTHING-IN-A-STORE; tooling/ci/submit-preconditions.mjs).
+      - name: A pending in-app purchase declaration is not submitted (ios-appstore)
+        run: node tooling/ci/assert-app-yaml.mjs --for-submission=ios-appstore --app "$APP"
+      # why: a pending mobile IAP declaration (no RevenueCat apps yet) builds keyless and is never submitted:
+      # its paywall cannot buy (O-BRICK-SELLS-NOTHING-IN-A-STORE; tooling/ci/submit-preconditions.mjs).
+      - name: A pending in-app purchase declaration is not submitted (macos-appstore)
+        run: node tooling/ci/assert-app-yaml.mjs --for-submission=macos-appstore --app "$APP"
       - name: Toolchain under test
         run: |
           sw_vers
           xcodebuild -version
           uname -m
+      # why: the refusal path (O-BRICK-SELLS-NOTHING-IN-A-STORE): an app with no billing.mobileIap stops here,
+      # exit 1. The builds below read the key from the STATIC named secret this rail's apps declare (app.yaml
+      # billing.mobileIap.publicKeySecrets), never a `secrets[...]` index, which would hand this job every
+      # repository secret (LEAD RULING W46-R1). assert-channel-register 6b-iii holds the name and --app.
+      - name: Resolve the app's store SDK key secret (apple-iap)
+        id: rc-key
+        run: node tooling/ci/store-key-secret.mjs --app "$APP" --rail apple-iap >> "$GITHUB_OUTPUT"
       # ⏱ RENAMED 2026-09-09. This step was called "unsigned — no distribution
       # certificate exists", and that reason stopped being true today: a
       # DISTRIBUTION certificate and an IOS_APP_STORE profile were issued through
@@ -113,7 +128,7 @@ jobs:
           RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          REVENUECAT_PUBLIC_KEY_APPLE: ${{ secrets.REVENUECAT_PUBLIC_KEY_APPLE }}
+          REVENUECAT_PUBLIC_KEY: ${{ secrets.REVENUECAT_PUBLIC_KEY_APPLE }}
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
         run: node tooling/ci/flutter-release-build.mjs "$APP" ios ios-appstore
       # Same correction as the iOS step above: unsigned BY CHOICE, not for want
@@ -123,7 +138,7 @@ jobs:
           RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          REVENUECAT_PUBLIC_KEY_APPLE: ${{ secrets.REVENUECAT_PUBLIC_KEY_APPLE }}
+          REVENUECAT_PUBLIC_KEY: ${{ secrets.REVENUECAT_PUBLIC_KEY_APPLE }}
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
         run: node tooling/ci/flutter-release-build.mjs "$APP" macos macos-appstore
       # ⏱ CORRECTED 2026-09-07 (unit `symbols-everywhere`) — this comment used to
@@ -169,12 +184,13 @@ jobs:
               --dir "apps/${APP}/build/symbols/${lane}" \
               --org "$gt_org" --project "$gt_project"
           done
+      # why: no App Store Connect app id secret. The record is the app's own, apps/<app>/app.yaml
+      # stores.ios-appstore.recordId, read by the script (O-STORE-RECORDS-ARE-ONE-PER-CHANNEL).
       - name: Dry-run the App Store submission (iOS)
         env:
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
-          APP_STORE_CONNECT_APP_ID: ${{ secrets.APP_STORE_CONNECT_IOS_APP_ID }}
         # why: --allow-missing-artifact here and NOT on the Windows lane. The builds above are
         # unsigned by choice until the signing seam lands in this lane, and --submit refuses,
         # so there is no signed .ipa to validate; the Windows dry run builds and packages a real
@@ -185,7 +201,6 @@ jobs:
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
-          APP_STORE_CONNECT_APP_ID: ${{ secrets.APP_STORE_CONNECT_MACOS_APP_ID }}
         run: node tooling/release/submit-appstore.mjs --dry-run --channel macos-appstore --app "$APP" --allow-missing-artifact
       # why: this lane RECORDS, and is never declared dry-run-only (O-APPLE-SUBMISSION-UNRECORDED; parent
       # decision): every run is recorded, and a rehearsal AS one — one record per channel it rehearsed,

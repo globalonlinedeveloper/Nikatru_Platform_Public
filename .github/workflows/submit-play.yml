@@ -121,6 +121,10 @@ jobs:
       # template: submitting it swears to answers nobody gave. Limb 3 of assert-publish-steps-guarded.mjs.
       - name: The app's Play declarations are sworn, not preview (--for-submission)
         run: node tooling/ci/assert-sworn-store-files.mjs --for-submission=android-play --app "$APP"
+      # why: a pending mobile IAP declaration (no RevenueCat apps yet) builds keyless and is never submitted:
+      # its paywall cannot buy (O-BRICK-SELLS-NOTHING-IN-A-STORE; tooling/ci/submit-preconditions.mjs).
+      - name: A pending in-app purchase declaration is not submitted (android-play)
+        run: node tooling/ci/assert-app-yaml.mjs --for-submission=android-play --app "$APP"
       # why: docs/ci/submit-play.md — before step "The versionCode lies above what Play consumed".
       - name: The versionCode lies above what Play consumed
         env:
@@ -131,6 +135,13 @@ jobs:
           set -euo pipefail
           RECORDED="$(node tooling/ci/read-ledger-version-code.mjs "${APP}-android-play")"
           node tooling/ci/assert-app-versioning.mjs --play-floor "$RUN_NUMBER" --app "$APP" --recorded-upload "$RECORDED"
+      # why: the refusal path (O-BRICK-SELLS-NOTHING-IN-A-STORE): an app with no billing.mobileIap stops here,
+      # exit 1. The builds below read the key from the STATIC named secret this rail's apps declare (app.yaml
+      # billing.mobileIap.publicKeySecrets), never a `secrets[...]` index, which would hand this job every
+      # repository secret (LEAD RULING W46-R1). assert-channel-register 6b-iii holds the name and --app.
+      - name: Resolve the app's store SDK key secret (play-billing)
+        id: rc-key
+        run: node tooling/ci/store-key-secret.mjs --app "$APP" --rail play-billing >> "$GITHUB_OUTPUT"
       # why: the three version flags. This is the ONE build of the dispatch: the submit job
       # ships these bytes. Without them
       # AppConfig.appVersion is 'dev' and the versionCode is pubspec's `+1`, which Play has
@@ -141,7 +152,7 @@ jobs:
           RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          REVENUECAT_PUBLIC_KEY_GOOGLE: ${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
+          REVENUECAT_PUBLIC_KEY: ${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
         run: node tooling/ci/flutter-release-build.mjs "$APP" appbundle android-play
       # ⏱ MOVED 2026-09-07 (unit `symbols-everywhere`) — THIS STEP USED TO BE THE
@@ -315,6 +326,10 @@ jobs:
       # declaredOn must be a date; the dry-run job's same step omits it and only prints the gap.
       - name: The app's Play declarations are sworn, not preview (--for-submission)
         run: node tooling/ci/assert-sworn-store-files.mjs --for-submission=android-play --app "$APP" --real-submission
+      # why: a pending mobile IAP declaration (no RevenueCat apps yet) builds keyless and is never submitted:
+      # its paywall cannot buy (O-BRICK-SELLS-NOTHING-IN-A-STORE; tooling/ci/submit-preconditions.mjs).
+      - name: A pending in-app purchase declaration is not submitted (android-play)
+        run: node tooling/ci/assert-app-yaml.mjs --for-submission=android-play --app "$APP"
       # why: docs/ci/submit-play.md — before step "The versionCode lies above what Play consumed".
       - name: The versionCode lies above what Play consumed
         env:

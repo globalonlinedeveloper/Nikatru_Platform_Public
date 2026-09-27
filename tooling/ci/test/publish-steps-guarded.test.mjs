@@ -231,3 +231,76 @@ function iapCopy(edit) {
   writeFileSync(join(root, 'tooling', 'ci', 'submit-preconditions.mjs'), edit(table));
   return root;
 }
+
+// ── ⏱ 9b (rv-c22) · O-REAL-SUBMISSION-FLAG-UNGUARDED (absent from open.json on 2026-09-27): the declaration gate knows which job is REAL ──
+// LEAD RULING O-A2-R1 (absent from open.json: a ruling, not a row): `declaredOn: null` refuses a REAL submission only, and the gate
+// learns it is inside one from ONE hand-typed flag. Measured on the landing base before
+// this limb: dropping it from submit-play.yml's submit job left eight guards at 0.
+describe('⏱ 9b — limb 3: --real-submission where the job publishes, never where it does not', () => {
+  const PLAY = '.github/workflows/submit-play.yml';
+  const WIN = '.github/workflows/submit-windows-store.yml';
+  const REAL = ' --real-submission\n';
+
+  test('GREEN CONTROL: the real tree carries the declaration gate in both Windows jobs, marked real only in "submit"', () => {
+    const { code, out } = runGuard(['--limb', 'preconditions']);
+    assert.equal(code, 0, out);
+    assert.match(out, /PRECONDITION {2}\S+submit-windows-store[.]yml:\d+ job "dry-run" channel windows-store\n {14}node tooling\/ci\/assert-sworn-store-files[.]mjs --for-submission=windows-store/, out);
+    assert.match(out, /PRECONDITION {2}\S+submit-windows-store[.]yml:\d+ job "submit" channel windows-store\n {14}node tooling\/ci\/assert-sworn-store-files[.]mjs --for-submission=windows-store/, out);
+    assert.doesNotMatch(out, /UNDECLARED CHANNEL|STALE EXEMPTION|REAL SUBMISSION UNMARKED|DRY RUN MARKED REAL/, out);
+  });
+
+  test('🔴 RC-F1a: the Play submit job without --real-submission is a finding (exit 1)', () => {
+    const root = realCopy((r) => mutateFile(r, PLAY, `--app "$APP"${REAL}`, '--app "$APP"\n'));
+    const { code, out } = preconditions(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /MASKED PRECONDITION {2}\S+submit-play[.]yml:\d+ job "submit" channel android-play[\s\S]*REAL SUBMISSION UNMARKED/, out);
+  });
+
+  test('🔴 RC-F1b: the Windows submit job without --real-submission is a finding (exit 1)', () => {
+    const root = realCopy((r) => mutateFile(r, WIN, `--app "$APP"${REAL}`, '--app "$APP"\n'));
+    const { code, out } = preconditions(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /MASKED PRECONDITION {2}\S+submit-windows-store[.]yml:\d+ job "submit" channel windows-store[\s\S]*REAL SUBMISSION UNMARKED/, out);
+  });
+
+  test('🔴 RC-F1c: a dry-run job whose declaration gate says --real-submission is a finding (exit 1)', () => {
+    const dry = 'run: node tooling/ci/assert-sworn-store-files.mjs --for-submission=android-play --app "$APP"\n';
+    const root = realCopy((r) => mutateFile(r, PLAY, dry, dry.replace('"$APP"\n', `"$APP"${REAL}`)));
+    const { code, out } = preconditions(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /MASKED PRECONDITION {2}\S+submit-play[.]yml:\d+ job "dry-run" channel android-play[\s\S]*DRY RUN MARKED REAL/, out);
+  });
+
+  test('🔴 RC-F2a: the Windows submit job without its declaration step is a finding (exit 1)', () => {
+    const step = '        run: node tooling/ci/assert-sworn-store-files.mjs --for-submission=windows-store --app "$APP" --real-submission\n';
+    const root = realCopy((r) => mutateFile(r, WIN, step, ''));
+    const { code, out } = preconditions(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /MISSING PRECONDITION {2}\S+submit-windows-store[.]yml job "submit" channel windows-store/, out);
+  });
+
+  test('🔴 a submitting app row that no declaration gate covers and no exemption names is a finding (exit 1)', () => {
+    const root = realCopy((r) =>
+      mutateRegister(r, (reg) => {
+        const snap = reg.channels.find((c) => c.id === 'linux-snap');
+        reg.channels.push({ ...structuredClone(snap), id: 'zz-new-store' });
+      }),
+    );
+    const { code, out } = preconditions(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /UNDECLARED CHANNEL {2}zz-new-store \([.]github\/workflows\/submit-snap[.]yml\)/, out);
+    assert.doesNotMatch(out, /UNDECLARED CHANNEL {2}linux-snap/, out);
+  });
+
+  test('🔴 an exempt channel that a declaration gate now covers is a finding: the exemption is stale (exit 1)', () => {
+    const root = realCopy((r) =>
+      mutateRegister(r, (reg) => {
+        const per = reg.storeMetadataContract.perChannel['linux-snap'];
+        per.additionalFiles = [...(per.additionalFiles ?? []), 'zz-sworn-declaration.json'];
+      }),
+    );
+    const { code, out } = preconditions(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /STALE EXEMPTION {2}linux-snap/, out);
+  });
+});

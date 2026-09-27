@@ -117,7 +117,7 @@ import {
   storePublishSteps,
   publishBasenamesOf,
 } from './workflow-scan.mjs';
-import { SUBMIT_PRECONDITIONS, submits } from './submit-preconditions.mjs';
+import { SUBMIT_PRECONDITIONS, submits, DECLARATION_EXEMPT } from './submit-preconditions.mjs';
 
 const argv = process.argv.slice(2);
 const opt = (name, fallback) => {
@@ -792,7 +792,7 @@ function gateInvocation(run, guard, arg) {
     for (let j = i + 2; j < parts.length; j += 2) {
       if (ENDS_GREEN.test(parts[j].trim())) masks.push(`a later \`${parts[j].trim()}\` segment ends the step green whatever the gate said`);
     }
-    return { masks };
+    return { masks, words: words.slice(at + 1) };
   }
   return null;
 }
@@ -857,7 +857,7 @@ function preconditionsLimb(problems, summaries) {
         for (let i = 0; i < steps.length && found === null; i++) {
           const step = stepModel(steps[i]);
           const inv = gateInvocation(step.run, e.guard, arg);
-          if (inv !== null) found = { i, raw: steps[i], step, masks: inv.masks };
+          if (inv !== null) found = { i, raw: steps[i], step, masks: inv.masks, words: inv.words };
         }
         if (found === null) {
           mine.push(
@@ -876,12 +876,45 @@ function preconditionsLimb(problems, summaries) {
           masks.push(`it runs after the job's first store publish step (${placeOf(wf, steps[firstPublish].n)}), so it grades a submission already made`);
         }
         const label = `${placeOf(wf, found.raw.n)} job "${name}" channel ${row.id}`;
+        // ⏱ O-REAL-SUBMISSION-FLAG-UNGUARDED and LEAD RULING O-A2-R1 (absent from open.json on 2026-09-27; 9b, rv-c22).
+        // The ruling's refusal of an undeclared channel rests on this one flag: without it the
+        // gate grades a REAL submission as a dry run and never refuses. With it in a dry-run job,
+        // every dry run of an undeclared app turns red, which the ruling forbids.
+        if (e.realFlag) {
+          const carries = found.words.includes(e.realFlag);
+          if (firstPublish !== -1 && !carries) {
+            masks.push(
+              `REAL SUBMISSION UNMARKED: this job publishes to the store and the step does not pass ${e.realFlag}, so its declaredOn ` +
+                'gate grades the real submission as a dry run and never refuses (O-REAL-SUBMISSION-FLAG-UNGUARDED)', // (absent from open.json on 2026-09-27)
+            );
+          } else if (firstPublish === -1 && carries) {
+            masks.push(
+              `DRY RUN MARKED REAL: this job publishes nothing, and ${e.realFlag} makes an undeclared app's dry run ` +
+                'refuse; a dry run grades the bytes and never refuses on a declaration date (LEAD RULING O-A2-R1)', // (absent from open.json: a ruling, not a row)
+            );
+          }
+        }
         if (masks.length) mine.push(`MASKED PRECONDITION  ${label}\n    ${cmd}\n    ${masks.join('\n    ')}`);
         else graded.push({ wf: W, job: `${W}#${name}`, channel: row.id, label, cmd });
       }
     }
   }
 
+  // ⏱ 9b (rv-c22): a submitting app row owes a declaration gate (an entry with realFlag) or
+  // carries a written exemption (DECLARATION_EXEMPT). Neither is a finding: a new store lane
+  // would otherwise submit with no declaration date ever asked for.
+  for (const row of submitting.filter((r) => r.surface === 'app')) {
+    const gated = SUBMIT_PRECONDITIONS.some((e) => e.realFlag && e.appliesTo(row, register));
+    const exempt = Object.hasOwn(DECLARATION_EXEMPT, row.id);
+    if (!gated && !exempt) {
+      mine.push(
+        `UNDECLARED CHANNEL  ${row.id} (${row.submission.workflow})\n    no declaration gate applies to this submitting app row, and submit-preconditions.mjs ` +
+          'DECLARATION_EXEMPT carries no ruling for it: its real submission would never be asked for a console declaration date',
+      );
+    } else if (gated && exempt) {
+      mine.push(`STALE EXEMPTION  ${row.id}\n    DECLARATION_EXEMPT exempts a channel that a declaration gate applies to; one of the two is wrong`);
+    }
+  }
   for (const u of ungraded) console.log(`NOT GRADED  ${u.line} — no entry of submit-preconditions.mjs applies to this row.`);
   for (const g of graded) console.log(`PRECONDITION  ${g.label}\n              ${g.cmd}`);
   if (graded.length === 0 && mine.length === 0 && coverage.length === 0) {

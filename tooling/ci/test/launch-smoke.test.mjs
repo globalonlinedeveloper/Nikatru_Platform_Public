@@ -144,7 +144,7 @@ describe('assert-launch-smoke.mjs — (a) the build-failing half', () => {
       join(root, 'tooling', 'channel-register.json'),
       JSON.stringify({
         channels: [webRow({ purchaseRail: { rail: 'paddle' } })],
-        purchaseRails: { storeKeyDefine: { define: 'STORE_KEY', secretByRail: {} } },
+        purchaseRails: { storeKeyDefine: { define: 'STORE_KEY', secretFieldByRail: {} } },
       }),
     );
     mkdirSync(join(root, 'apps', 'fixture'), { recursive: true });

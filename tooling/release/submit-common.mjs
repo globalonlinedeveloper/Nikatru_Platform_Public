@@ -15,6 +15,8 @@
 // Exit convention of the two stops:
 //   coverageLost(lines) → 2  the script could not look, so "clean" would be a lie
 //   die(lines)          → 1  a finding, or a refused invocation
+// `appOf(apps, rel)` is the one reading of `--app`, which every submit script
+// requires (O-STORE-RECORDS-ARE-ONE-PER-CHANNEL, 9b).
 //
 // ⏱ C4b, 2026-09-25: THE ENVIRONMENT READ LIVES HERE TOO. `requirePublishEnvironment`
 // is the one run-time read of the `store-publish` environment's protection rules.
@@ -81,7 +83,30 @@ export function submitCli(name) {
     process.exit(1);
   }
 
-  return { argv, flag, opt, root, ok, step, abs, read, coverageLost, die };
+  /**
+   * The app this run submits: `--app`, REQUIRED, and one of `apps` (the parsed
+   * catalog). ⏱ O-STORE-RECORDS-ARE-ONE-PER-CHANNEL (9b): every store id is per
+   * app now (apps/<id>/app.yaml `stores`), so a run with no `--app` has no record
+   * to read. The fallback to the catalog's first entry is gone: it answered "which
+   * app" by position, and a second app dispatched without the flag would have been
+   * graded, and submitted, as the first. No `--app` is COVERAGE LOST (2); an app
+   * the catalog does not list is a refused invocation (1).
+   */
+  function appOf(apps, appsRel) {
+    const appId = opt('app');
+    if (appId === null || appId.startsWith('--')) {
+      coverageLost([
+        `--app is required: ${name} submits ONE app, and there is no default.`,
+        `Known: ${apps.map((a) => a.slug).join(', ')}. Each app's store record lives in apps/<id>/app.yaml \`stores\`,`,
+        'so a run that does not say which app has no record to read.',
+      ]);
+    }
+    const app = apps.find((a) => a.slug === appId);
+    if (!app) die([`FAIL no app "${appId}" in ${appsRel}.`, `     Known: ${apps.map((a) => a.slug).join(', ')}`]);
+    return app;
+  }
+
+  return { argv, flag, opt, root, ok, step, abs, read, coverageLost, die, appOf };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

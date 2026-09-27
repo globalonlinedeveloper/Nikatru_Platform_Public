@@ -231,7 +231,7 @@ jobs:
       join(root, 'tooling', 'channel-register.json'),
       JSON.stringify({
         channels: [{ id: 'linux-snap', platforms: ['linux'], purchaseRail: { rail: 'paddle' } }],
-        purchaseRails: { storeKeyDefine: { define: 'STORE_KEY', secretByRail: {} } },
+        purchaseRails: { storeKeyDefine: { define: 'STORE_KEY', secretFieldByRail: {} } },
       }),
     );
     mkdirSync(join(root, 'apps', 'fixture'), { recursive: true });

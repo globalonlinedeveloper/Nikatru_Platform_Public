@@ -1214,8 +1214,10 @@ describe('limb 6 — the mobile-IAP opt-in and the bridge dependency travel toge
   // rail, and either one alone is a defect — in opposite directions and with
   // very different costs. Every case below mutates the REAL declaration tree.
   const IAP_BLOCK =
-    '\nbilling:\n  mobileIap:\n    provider: revenuecat\n    entitlementId: pro\n' +
-    '    revenuecatAppIds:\n      android: fixture_android_app\n      ios: fixture_ios_app\n';
+    '\nbilling:\n  mobileIap:\n    provider: revenuecat\n    entitlementId: pro\n    state: live\n' +
+    '    revenuecatAppIds:\n      android: fixture_android_app\n      ios: fixture_ios_app\n' +
+    '    publicKeySecrets:\n      android: REVENUECAT_PUBLIC_KEY_GOOGLE\n      ios: REVENUECAT_PUBLIC_KEY_APPLE\n' +
+    '    storeProducts:\n      - plan: single-monthly\n        productId: pro_monthly\n      - plan: single-yearly\n        productId: pro_yearly\n';
 
   /** apps/subscriptiontracker has a pubspec; the fixture tree does not copy it, so cases that
    *  are ABOUT the dependency have to supply one. Written rather than copied so
@@ -1445,7 +1447,9 @@ describe('limb 6 — the mobile-IAP opt-in and the bridge dependency travel toge
         APP_YAML,
         withoutBilling(get(root, APP_YAML)) +
           '\nbilling:\n  mobileIap:\n    provider: revenuecat\n' +
-          '    entitlementId: pro\n    revenuecatAppIds:\n      android: only_android\n',
+          '    entitlementId: pro\n    state: live\n    revenuecatAppIds:\n      android: only_android\n' +
+    '    publicKeySecrets:\n      android: REVENUECAT_PUBLIC_KEY_GOOGLE\n      ios: REVENUECAT_PUBLIC_KEY_APPLE\n' +
+    '    storeProducts:\n      - plan: single-monthly\n        productId: pro_monthly\n      - plan: single-yearly\n        productId: pro_yearly\n',
       );
       const { code, out } = spawn(GUARD, [root]);
       assert.equal(code, 1, `expected a finding, got ${code}:\n${out}`);
@@ -2009,8 +2013,10 @@ describe('every live vendor that receives personal data is named in each app not
 describe('ADR 085 A — the RevenueCat app-id map is rendered from the declarations', () => {
   const MODULE = 'services/platform/src/lib/mor/revenuecat-app-ids.ts';
   const IAP =
-    '\nbilling:\n  mobileIap:\n    provider: revenuecat\n    entitlementId: pro\n' +
-    '    revenuecatAppIds:\n      android: rc_fixture_android\n      ios: rc_fixture_ios\n';
+    '\nbilling:\n  mobileIap:\n    provider: revenuecat\n    entitlementId: pro\n    state: live\n' +
+    '    revenuecatAppIds:\n      android: rc_fixture_android\n      ios: rc_fixture_ios\n' +
+    '    publicKeySecrets:\n      android: REVENUECAT_PUBLIC_KEY_GOOGLE\n      ios: REVENUECAT_PUBLIC_KEY_APPLE\n' +
+    '    storeProducts:\n      - plan: single-monthly\n        productId: pro_monthly\n      - plan: single-yearly\n        productId: pro_yearly\n';
   const withModule = () => {
     const root = tree();
     mkdirSync(join(root, dirname(MODULE)), { recursive: true });
@@ -2081,6 +2087,126 @@ describe('ADR 085 A — the RevenueCat app-id map is rendered from the declarati
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ O-BRICK-SELLS-NOTHING-IN-A-STORE (12a) — the IAP configuration is per app: a pending state, the
+// store SDK key secret NAMES and the store products. Every case mutates the REAL declaration tree.
+describe('12a — billing.mobileIap has a state, per-app key names and store products', () => {
+  const RC = '    revenuecatAppIds:\n      android: appa553a1e2c6\n      ios: app805d73cd44\n';
+  const iap = ({ state = 'live', ids = true, android = 'REVENUECAT_PUBLIC_KEY_GOOGLE', products = ['single-monthly', 'single-yearly'] } = {}) =>
+    '\nbilling:\n  mobileIap:\n    provider: revenuecat\n    entitlementId: pro\n' +
+    `    state: ${state}\n` +
+    (ids ? RC : '') +
+    `    publicKeySecrets:\n      android: ${android}\n      ios: REVENUECAT_PUBLIC_KEY_APPLE\n` +
+    `    storeProducts:\n${products.map((p) => `      - plan: ${p}\n        productId: pro_${p.split('-')[1]}\n`).join('')}`;
+  const withIap = (opts) => {
+    const root = tree();
+    put(root, APP_YAML, withoutBilling(get(root, APP_YAML)) + iap(opts));
+    return root;
+  };
+
+  test('app #1 as shipped is live with its ids, both key names and both plans (green control)', () => {
+    const root = withIap();
+    try {
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 0, out);
+    } finally { kill(root); }
+  });
+
+  test('RC4 · state: live with no revenuecatAppIds FAILS the schema', () => {
+    const root = withIap({ ids: false });
+    try {
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /mobileIap/);
+    } finally { kill(root); }
+  });
+
+  test('RC5 · state: pending WITH revenuecatAppIds FAILS the schema — a pending app declares no id', () => {
+    const root = withIap({ state: 'pending' });
+    try {
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /mobileIap/);
+    } finally { kill(root); }
+  });
+
+  test('state: pending with no id and one plan passes the schema', () => {
+    const root = withIap({ state: 'pending', ids: false, products: ['single-monthly'] });
+    try {
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 0, out);
+    } finally { kill(root); }
+  });
+
+  test('a live app missing a plan FAILS, naming it', () => {
+    const root = withIap({ products: ['single-monthly'] });
+    try {
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /state: live and storeProducts has no "single-yearly"/);
+    } finally { kill(root); }
+  });
+
+  test('a plan listed twice FAILS', () => {
+    const root = withIap({ products: ['single-monthly', 'single-yearly', 'single-yearly'] });
+    try {
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /storeProducts lists plan "single-yearly" twice/);
+    } finally { kill(root); }
+  });
+
+  test('a lifetime plan is not a plan — ADR 093 §2 never sells it in-app', () => {
+    const root = withIap({ products: ['single-monthly', 'single-yearly', 'single-lifetime'] });
+    try {
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /single-lifetime/);
+    } finally { kill(root); }
+  });
+
+  test('RC1 · a second app naming app #1\'s key secret FAILS, naming both apps', () => {
+    const root = withIap();
+    try {
+      mkdirSync(join(root, 'apps/twin'), { recursive: true });
+      const twin = get(root, APP_YAML)
+        .replace(/^id: subscriptiontracker$/m, 'id: twin')
+        .replace(/^shortName:.*\n/m, '')
+        .replace(RC, '').replace('state: live', 'state: pending');
+      put(root, 'apps/twin/app.yaml', twin);
+      const { code, out } = spawn(RENDER, [root, '--check']);
+      assert.equal(code, 1, out);
+      assert.match(out, /apps\/twin\/app\.yaml billing\.mobileIap\.publicKeySecrets\.android is "REVENUECAT_PUBLIC_KEY_GOOGLE", which apps\/subscriptiontracker\/app\.yaml\s+also declares/);
+    } finally { kill(root); }
+  });
+
+  test('RC6 · --for-submission refuses a pending app on a store-billing channel (exit 1)', () => {
+    const root = withIap({ state: 'pending', ids: false });
+    try {
+      const { code, out } = spawn(GUARD, [root, '--for-submission=android-play', '--app', 'subscriptiontracker']);
+      assert.equal(code, 1, out);
+      assert.match(out, /billing\.mobileIap\.state is "pending", not "live"/);
+    } finally { kill(root); }
+  });
+
+  test('--for-submission passes a live app, and an app with no mobile IAP (exit 0)', () => {
+    const live = spawn(GUARD, ['--for-submission=ios-appstore', '--app', 'subscriptiontracker']);
+    assert.equal(live.code, 0, live.out);
+    const root = tree();
+    try {
+      put(root, APP_YAML, withoutBilling(get(root, APP_YAML)));
+      const none = spawn(GUARD, [root, '--for-submission=macos-appstore', '--app', 'subscriptiontracker']);
+      assert.equal(none.code, 0, none.out);
+      assert.match(none.out, /declares no billing\.mobileIap/);
+    } finally { kill(root); }
+  });
+
+  test('--for-submission is COVERAGE LOST (2) off a store-billing channel, or without --app', () => {
+    assert.equal(spawn(GUARD, ['--for-submission=web', '--app', 'subscriptiontracker']).code, 2);
+    assert.equal(spawn(GUARD, ['--for-submission=android-play']).code, 2);
+  });
+});
+
 describe('limb 7 — AI content is declared, and its consequences hold, both ways', () => {
   // O-PLAY-AI-CONTENT-REPORTING. Every case mutates the REAL declaration tree.
   const CR = 'apps/subscriptiontracker/store/android-play/content-rating.json';
