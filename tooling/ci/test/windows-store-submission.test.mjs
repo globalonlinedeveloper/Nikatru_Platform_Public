@@ -65,8 +65,11 @@ const CONFIGURED_IDENTITY = {
 // ⏱ 2026-09-25 — O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1). The identity NAME is
 // the --app's own record (apps/<id>/app.yaml stores.windows-store); the row keeps
 // the account's publisher and display name. CONFIGURED sets both halves.
-const CONFIGURED_RECORD = { identityName: CONFIGURED_IDENTITY.identityName, packageFamilyName: `${CONFIGURED_IDENTITY.identityName}_aaaaaaaaaaaaa` };
-const PENDING_RECORD = { identityName: SENTINEL, packageFamilyName: SENTINEL };
+// ⏱ O-STORE-RECORDS-ARE-ONE-PER-CHANNEL (9b): the record also carries its state and, once issued, the
+// Partner Center Store ID (`productId`), which replaced the MS_STORE_PRODUCT_ID secret. A fixture value.
+const PRODUCT_ID = '9NFIXTURE0001';
+const CONFIGURED_RECORD = { state: 'issued', identityName: CONFIGURED_IDENTITY.identityName, packageFamilyName: `${CONFIGURED_IDENTITY.identityName}_aaaaaaaaaaaaa`, productId: PRODUCT_ID };
+const PENDING_RECORD = { state: 'pending', identityName: SENTINEL, packageFamilyName: SENTINEL };
 const CONFIGURED = {
   mutateRegister: (reg) =>
     Object.assign(reg.channels[0].packageIdentity, {
@@ -143,7 +146,7 @@ function tree({
   write('catalog/apps.json', JSON.stringify([{ slug: 'subscriptiontracker', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'], status: 'live' }]));
   write(
     'apps/subscriptiontracker/app.yaml',
-    `id: subscriptiontracker\n${record ? `stores:\n  windows-store:\n    identityName: ${record.identityName}\n    packageFamilyName: ${record.packageFamilyName}\n` : ''}`,
+    `id: subscriptiontracker\n${record ? `stores:\n  windows-store:\n    state: ${record.state}\n    declaredOn: null\n    identityName: ${record.identityName}\n    packageFamilyName: ${record.packageFamilyName}\n${record.productId ? `    productId: ${record.productId}\n` : ''}` : ''}`,
   );
 
   const cfg = {
@@ -182,7 +185,7 @@ function run(root, args, env = {}) {
     encoding: 'utf8',
     env: {
       ...process.env,
-      MS_STORE_TENANT_ID: '', MS_STORE_CLIENT_ID: '', MS_STORE_CLIENT_SECRET: '', MS_STORE_PRODUCT_ID: '', MS_STORE_SELLER_ID: '',
+      MS_STORE_TENANT_ID: '', MS_STORE_CLIENT_ID: '', MS_STORE_CLIENT_SECRET: '', MS_STORE_SELLER_ID: '',
       GITHUB_ACTIONS: 'true', GITHUB_REPOSITORY: 'globalonlinedeveloper/Nikatru_Platform_Public',
       ...env,
     },
@@ -221,7 +224,7 @@ describe('submit-windows-store — the submission path is walkable, and --submit
   test('--submit FAILS CLOSED with no credentials, NAMING the empty secrets', () => {
     const { code, out } = run(tree({ withArtifact: true }), ['--submit', '--app', 'subscriptiontracker', '--confirm', 'SUBMIT-TO-MICROSOFT-STORE']);
     assert.equal(code, 1, out);
-    assert.match(out, /5 of 5 Microsoft Store credential\(s\) are EMPTY: MS_STORE_TENANT_ID, MS_STORE_CLIENT_ID, MS_STORE_CLIENT_SECRET, MS_STORE_PRODUCT_ID, MS_STORE_SELLER_ID/);
+    assert.match(out, /4 of 4 Microsoft Store credential\(s\) are EMPTY: MS_STORE_TENANT_ID, MS_STORE_CLIENT_ID, MS_STORE_CLIENT_SECRET, MS_STORE_SELLER_ID\./);
     assert.match(out, /green tick over a store that received nothing/);
   });
 
@@ -246,6 +249,39 @@ describe('submit-windows-store — the submission path is walkable, and --submit
     assert.match(out, /PLACEHOLDER PACKAGE IDENTITY — --submit REFUSED: identity_name is still PARTNER-CENTER-PENDING in both apps\/subscriptiontracker\/app\.yaml and apps\/subscriptiontracker\/pubspec\.yaml/);
     assert.doesNotMatch(out, /HALF configured/);
     assert.doesNotMatch(out, /primary sources — \d+ citation\(s\) present/, 'the placeholder walked past the problems block toward the upload');
+  });
+
+  // ── the app's own Partner Center product (O-STORE-RECORDS-ARE-ONE-PER-CHANNEL, 9b) ──
+  test('--app is REQUIRED: a run without it is COVERAGE LOST (2), never the first app', () => {
+    const { code, out } = run(tree({ withArtifact: true }), ['--dry-run']);
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — --app is required/);
+  });
+
+  test('the Partner Center product id is the --app\'s record, never MS_STORE_PRODUCT_ID', () => {
+    const { code, out } = run(tree({ withArtifact: true, ...CONFIGURED }), ['--dry-run', '--app', 'subscriptiontracker'], { MS_STORE_PRODUCT_ID: 'SECRET-PRODUCT-MUST-NOT-BE-READ' });
+    assert.equal(code, 0, out);
+    assert.match(out, /Partner Center product 9NFIXTURE0001 — apps\/subscriptiontracker\/app\.yaml stores\.windows-store\.productId/);
+    assert.doesNotMatch(out, /SECRET-PRODUCT-MUST-NOT-BE-READ|MS_STORE_PRODUCT_ID/);
+  });
+
+  test('a record with no productId PRINTS the owner step on a dry run and exits 0', () => {
+    const { code, out } = run(tree({ withArtifact: true }), ['--dry-run', '--app', 'subscriptiontracker']);
+    assert.equal(code, 0, out);
+    assert.match(out, /PARTNER CENTER PRODUCT PENDING — apps\/subscriptiontracker\/app\.yaml stores\.windows-store carries no productId \(state: pending\)/);
+  });
+
+  test('--submit REFUSES a record with no productId, even with the identity issued and every credential set', () => {
+    const { productId, ...noProduct } = CONFIGURED_RECORD;
+    assert.equal(productId, PRODUCT_ID);
+    const { code, out } = run(
+      tree({ withArtifact: true, ...CONFIGURED, record: noProduct }),
+      ['--submit', '--app', 'subscriptiontracker', '--confirm', 'SUBMIT-TO-MICROSOFT-STORE'],
+      CREDS,
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /stores\.windows-store carries no productId \(state: issued\)\. --submit passes it to `msstore publish --appId`/);
+    assert.doesNotMatch(out, /primary sources — \d+ citation\(s\) present/, 'a record with no product walked past the problems block toward the upload');
   });
 
   test('--dry-run FAILS when the app declares no stores.windows-store record', () => {
@@ -351,6 +387,12 @@ describe('submit-windows-store — the submission path is walkable, and --submit
     // tooling/ci/read-identity.mjs, which imports the one YAML reader.
     mkdirSync(join(root, 'tooling', 'app-yaml'), { recursive: true });
     cpSync(join(REPO, 'tooling', 'app-yaml', 'yaml.mjs'), join(root, 'tooling', 'app-yaml', 'yaml.mjs'));
+    // ⏱ 9b — and the store record through tooling/store/store-record.mjs, which reads the schema
+    // beside render.mjs; both travel with the copy or it dies on LOAD (shell-16).
+    mkdirSync(join(root, 'tooling', 'store'), { recursive: true });
+    cpSync(join(REPO, 'tooling', 'store', 'store-record.mjs'), join(root, 'tooling', 'store', 'store-record.mjs'));
+    mkdirSync(join(root, 'tooling', 'app-yaml', 'schema'), { recursive: true });
+    cpSync(join(REPO, 'tooling', 'app-yaml', 'schema', 'app.schema.json'), join(root, 'tooling', 'app-yaml', 'schema', 'app.schema.json'));
     const mutated = join(root, 'tooling', 'release', 'submit-windows-store.mjs');
     mkdirSync(dirname(mutated), { recursive: true });
     // Its shared preamble travels with it, or the copy dies on LOAD (the same shell-16 red).
@@ -503,83 +545,82 @@ describe('submit-windows-store — the submission path is walkable, and --submit
   });
 
   test('FAILS when a listing field is missing', () => {
-    const { code, out } = run(tree({ withArtifact: true, omitFiles: ['title.txt'] }), ['--dry-run']);
+    const { code, out } = run(tree({ withArtifact: true, omitFiles: ['title.txt'] }), ['--dry-run', '--app', 'subscriptiontracker']);
     assert.equal(code, 1, out);
     assert.match(out, /title\.txt is missing/);
   });
 
   test('FAILS when a listing field is emptied', () => {
-    const { code, out } = run(tree({ withArtifact: true, fields: { 'category.txt': '  \n' } }), ['--dry-run']);
+    const { code, out } = run(tree({ withArtifact: true, fields: { 'category.txt': '  \n' } }), ['--dry-run', '--app', 'subscriptiontracker']);
     assert.equal(code, 1, out);
     assert.match(out, /category\.txt is EMPTY/);
   });
 
   test('FAILS on more than 7 search terms, citing the policy', () => {
-    const { code, out } = run(tree({ withArtifact: true, fields: { 'search-terms.txt': 'a\nb\nc\nd\ne\nf\ng\nh\n' } }), ['--dry-run']);
+    const { code, out } = run(tree({ withArtifact: true, fields: { 'search-terms.txt': 'a\nb\nc\nd\ne\nf\ng\nh\n' } }), ['--dry-run', '--app', 'subscriptiontracker']);
     assert.equal(code, 1, out);
     assert.match(out, /has 8 entries; the limit is 7/);
     assert.match(out, /10\.1\.3/);
   });
 
   test('FAILS when the .msix is absent and --allow-missing-artifact was NOT passed', () => {
-    const { code, out } = run(tree(), ['--dry-run']);
+    const { code, out } = run(tree(), ['--dry-run', '--app', 'subscriptiontracker']);
     assert.equal(code, 1, out);
     assert.match(out, /subscriptiontracker\.msix does not exist/);
   });
 
   test('PASSES with --allow-missing-artifact, and SAYS the package was not validated', () => {
-    const { code, out } = run(tree(), ['--dry-run', '--allow-missing-artifact']);
+    const { code, out } = run(tree(), ['--dry-run', '--app', 'subscriptiontracker', '--allow-missing-artifact']);
     assert.equal(code, 0, out);
     assert.match(out, /NO PACKAGED ARTIFACT/);
     assert.match(out, /the package was not/);
   });
 
   test('FAILS on a zero-byte .msix', () => {
-    const { code, out } = run(tree({ withArtifact: true, artifactBytes: 0 }), ['--dry-run']);
+    const { code, out } = run(tree({ withArtifact: true, artifactBytes: 0 }), ['--dry-run', '--app', 'subscriptiontracker']);
     assert.equal(code, 1, out);
     assert.match(out, /ZERO bytes/);
   });
 
   test('FAILS when the register and the pubspec disagree about the package identity', () => {
-    const { code, out } = run(tree({ withArtifact: true, pubspecOver: { identity_name: 'Nikatru.Subly' } }), ['--dry-run']);
+    const { code, out } = run(tree({ withArtifact: true, pubspecOver: { identity_name: 'Nikatru.Subly' } }), ['--dry-run', '--app', 'subscriptiontracker']);
     assert.equal(code, 1, out);
     assert.match(out, /package identity DISAGREES/);
   });
 
   test('FAILS when msix_config.store is not true — the Store re-signs, we hold no key', () => {
-    const { code, out } = run(tree({ withArtifact: true, pubspecOver: { store: 'false' } }), ['--dry-run']);
+    const { code, out } = run(tree({ withArtifact: true, pubspecOver: { store: 'false' } }), ['--dry-run', '--app', 'subscriptiontracker']);
     assert.equal(code, 1, out);
     assert.match(out, /msix_config\.store is "false", not true/);
   });
 
   test('FAILS when the pubspec has no msix_config block at all', () => {
-    const { code, out } = run(tree({ withArtifact: true, noMsixConfig: true }), ['--dry-run']);
+    const { code, out } = run(tree({ withArtifact: true, noMsixConfig: true }), ['--dry-run', '--app', 'subscriptiontracker']);
     assert.equal(code, 1, out);
     assert.match(out, /declares no `msix_config:` block/);
   });
 
   test('PRINTS the identity gap while every field is the sentinel, and still exits 0', () => {
-    const { code, out } = run(tree({ withArtifact: true }), ['--dry-run']);
+    const { code, out } = run(tree({ withArtifact: true }), ['--dry-run', '--app', 'subscriptiontracker']);
     assert.equal(code, 0, out);
     assert.match(out, /PACKAGE IDENTITY NOT YET CONFIGURED/);
   });
 
   test('PRINTS which credentials are absent and never their values', () => {
-    const { code, out } = run(tree({ withArtifact: true }), ['--dry-run']);
+    const { code, out } = run(tree({ withArtifact: true }), ['--dry-run', '--app', 'subscriptiontracker']);
     assert.equal(code, 0, out);
-    assert.match(out, /CREDENTIALS NOT CONFIGURED — 5 of 5 absent/);
+    assert.match(out, /CREDENTIALS NOT CONFIGURED — 4 of 4 absent/);
   });
 
   test('reports credentials as present without printing them', () => {
-    const { code, out } = run(tree({ withArtifact: true }), ['--dry-run'], {
+    const { code, out } = run(tree({ withArtifact: true }), ['--dry-run', '--app', 'subscriptiontracker'], {
       MS_STORE_TENANT_ID: 'tenant-secret-value',
       MS_STORE_CLIENT_ID: 'client-secret-value',
       MS_STORE_CLIENT_SECRET: 'the-actual-secret',
-      MS_STORE_PRODUCT_ID: 'product-secret-value',
       MS_STORE_SELLER_ID: 'seller-secret-value',
     });
     assert.equal(code, 0, out);
-    assert.match(out, /credentials — all 5 environment variable\(s\) present/);
+    assert.match(out, /credentials — all 4 environment variable\(s\) present/);
     assert.doesNotMatch(out, /the-actual-secret/);
   });
 
@@ -598,22 +639,21 @@ describe('submit-windows-store — the submission path is walkable, and --submit
   const IDS = {
     MS_STORE_TENANT_ID: 'tenant-fixture',
     MS_STORE_CLIENT_ID: 'client-fixture',
-    MS_STORE_PRODUCT_ID: 'product-fixture',
     MS_STORE_SELLER_ID: 'seller-fixture',
   };
 
-  test('scoped secret, the four ids set: the dry run prints NO gap for it, and says where it IS checked', () => {
-    const { code, out } = run(tree({ withArtifact: true, mutateRegister: SCOPED }), ['--dry-run'], IDS);
+  test('scoped secret, the three ids set: the dry run prints NO gap for it, and says where it IS checked', () => {
+    const { code, out } = run(tree({ withArtifact: true, mutateRegister: SCOPED }), ['--dry-run', '--app', 'subscriptiontracker'], IDS);
     assert.equal(code, 0, out);
     assert.match(out, /client secret: checked in the environment-bound submit job — MS_STORE_CLIENT_SECRET lives in the "store-publish" environment/);
-    assert.match(out, /credentials — all 4 environment variable\(s\) present/);
+    assert.match(out, /credentials — all 3 environment variable\(s\) present/);
     assert.doesNotMatch(out, /CREDENTIALS NOT CONFIGURED/);
   });
 
-  test('scoped secret, nothing set: the printed gap names the four ids and never the secret', () => {
-    const { code, out } = run(tree({ withArtifact: true, mutateRegister: SCOPED }), ['--dry-run']);
+  test('scoped secret, nothing set: the printed gap names the three ids and never the secret', () => {
+    const { code, out } = run(tree({ withArtifact: true, mutateRegister: SCOPED }), ['--dry-run', '--app', 'subscriptiontracker']);
     assert.equal(code, 0, out);
-    assert.match(out, /CREDENTIALS NOT CONFIGURED — 4 of 4 absent: MS_STORE_TENANT_ID, MS_STORE_CLIENT_ID, MS_STORE_PRODUCT_ID, MS_STORE_SELLER_ID\./);
+    assert.match(out, /CREDENTIALS NOT CONFIGURED — 3 of 3 absent: MS_STORE_TENANT_ID, MS_STORE_CLIENT_ID, MS_STORE_SELLER_ID\./);
   });
 
   test('scoped secret: --submit still requires it, and names the environment owner step', () => {
@@ -623,7 +663,7 @@ describe('submit-windows-store — the submission path is walkable, and --submit
       IDS,
     );
     assert.equal(code, 1, out);
-    assert.match(out, /1 of 5 Microsoft Store credential\(s\) are EMPTY: MS_STORE_CLIENT_SECRET\./);
+    assert.match(out, /1 of 4 Microsoft Store credential\(s\) are EMPTY: MS_STORE_CLIENT_SECRET\./);
     assert.match(out, /MS_STORE_CLIENT_SECRET is a "store-publish" ENVIRONMENT secret, readable only in a job bound to that environment\. OWNER STEP: GitHub → Settings → Environments → store-publish/);
   });
 
@@ -631,7 +671,7 @@ describe('submit-windows-store — the submission path is walkable, and --submit
     const wf = parseWorkflow(REPO, '.github/workflows/submit-windows-store.yml');
     const dryRun = workflowSteps(wf.jobs.get('dry-run')).find((s) => s.name === 'Dry-run the Microsoft Store submission');
     assert.ok(dryRun, 'the dry-run step is gone or renamed');
-    assert.deepEqual([...dryRun.env.keys()], ['MS_STORE_TENANT_ID', 'MS_STORE_CLIENT_ID', 'MS_STORE_PRODUCT_ID', 'MS_STORE_SELLER_ID']);
+    assert.deepEqual([...dryRun.env.keys()], ['MS_STORE_TENANT_ID', 'MS_STORE_CLIENT_ID', 'MS_STORE_SELLER_ID']);
     const submit = wf.jobs.get('submit');
     assert.equal(jobEnvironment(submit)?.name, 'store-publish');
     const steps = workflowSteps(submit);
@@ -646,25 +686,25 @@ describe('submit-windows-store — the submission path is walkable, and --submit
   });
 
   test('COVERAGE LOST when storeMetadataContract.requiredFiles is emptied', () => {
-    const { code, out } = run(tree({ withArtifact: true, mutateRegister: (r) => (r.storeMetadataContract.requiredFiles = []) }), ['--dry-run']);
+    const { code, out } = run(tree({ withArtifact: true, mutateRegister: (r) => (r.storeMetadataContract.requiredFiles = []) }), ['--dry-run', '--app', 'subscriptiontracker']);
     assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
     assert.match(out, /COVERAGE LOST/);
   });
 
   test('COVERAGE LOST when the register declares no windows-store row', () => {
-    const { code, out } = run(tree({ withArtifact: true, mutateRegister: (r) => (r.channels = []) }), ['--dry-run']);
+    const { code, out } = run(tree({ withArtifact: true, mutateRegister: (r) => (r.channels = []) }), ['--dry-run', '--app', 'subscriptiontracker']);
     assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
     assert.match(out, /COVERAGE LOST — .*declares no "windows-store" channel/);
   });
 
   test('FAILS when the channel stops being submittable', () => {
-    const { code, out } = run(tree({ withArtifact: true, mutateRegister: (r) => (r.channels[0].submittable = false) }), ['--dry-run']);
+    const { code, out } = run(tree({ withArtifact: true, mutateRegister: (r) => (r.channels[0].submittable = false) }), ['--dry-run', '--app', 'subscriptiontracker']);
     assert.equal(code, 1, out);
     assert.match(out, /is not marked `submittable`/);
   });
 
   test('FAILS when the packaging output format is not one the channel accepts', () => {
-    const { code, out } = run(tree({ withArtifact: true, mutateRegister: (r) => (r.channels[0].artifactFormats = ['.appx']) }), ['--dry-run']);
+    const { code, out } = run(tree({ withArtifact: true, mutateRegister: (r) => (r.channels[0].artifactFormats = ['.appx']) }), ['--dry-run', '--app', 'subscriptiontracker']);
     assert.equal(code, 1, out);
     assert.match(out, /matches none of the formats channel "windows-store" accepts/);
   });

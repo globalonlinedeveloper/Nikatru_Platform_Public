@@ -1515,6 +1515,32 @@ jobs:
       - name: Derive the release line from pubspec
         id: ver
         run: node tooling/ci/assert-app-versioning.mjs --emit apps/${{ matrix.app }} >> "$GITHUB_OUTPUT"
+      # why: the refusal path (O-BRICK-SELLS-NOTHING-IN-A-STORE): an app with no billing.mobileIap stops here,
+      # exit 1. The builds below read the key from the STATIC named secret this rail's apps declare (app.yaml
+      # billing.mobileIap.publicKeySecrets), never a `secrets[...]` index, which would hand this job every
+      # repository secret (LEAD RULING W46-R1). assert-channel-register 6b-iii holds the name and --app.
+      - name: Resolve the app's store SDK key secret (play-billing)
+        id: rc-key
+        run: node tooling/ci/store-key-secret.mjs --app ${{ matrix.app }} --rail play-billing >> "$GITHUB_OUTPUT"
+      # why: RC-CI (O-BRICK-SELLS-NOTHING-IN-A-STORE) — the one line that OBSERVES the store key on a PR run: the
+      # name the app declares (the resolver's output) is the static secret the builds below read, and it is set.
+      # It prints the NAME and "non-empty", never the value. A fork PR has no secrets and is exempt, as the
+      # builds below already are.
+      - name: The app's store SDK key resolves by name (prints the name only)
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          RC_KEY: ${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
+          RC_KEY_NAME: ${{ steps.rc-key.outputs.name }}
+        run: |
+          if [ "$RC_KEY_NAME" != REVENUECAT_PUBLIC_KEY_GOOGLE ]; then
+            echo "::error::the app declares $RC_KEY_NAME for play-billing, and this lane reads secrets.REVENUECAT_PUBLIC_KEY_GOOGLE"
+            exit 1
+          fi
+          if [ -z "$RC_KEY" ]; then
+            echo "::error::the repository secret REVENUECAT_PUBLIC_KEY_GOOGLE is unset or empty"
+            exit 1
+          fi
+          echo "$RC_KEY_NAME non-empty"
       # why: build-platforms.yml linux_web_android's three Android builds, flag for flag;
       # built-artifact-pr-lane.test.mjs holds the copies equal. APP_VERSION ends in +pr,
       # not the commit, and that is legal ONLY because tooling/channel-register.json lists
@@ -1524,12 +1550,12 @@ jobs:
       - name: Build android (apk — sideloadable build proof)
         env:
           RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
-          REVENUECAT_PUBLIC_KEY_GOOGLE: ${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
+          REVENUECAT_PUBLIC_KEY: ${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
         run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} apk android-play --lane pr
       - name: Build android (aab — the Google Play artifact)
         env:
           RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
-          REVENUECAT_PUBLIC_KEY_GOOGLE: ${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
+          REVENUECAT_PUBLIC_KEY: ${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
         run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} appbundle android-play --lane pr
       # why: Flutter writes every .apk to one path, so the Play .apk is set aside and put back — §apps-gov-in.
       - name: Set the Play .apk aside (Flutter writes every .apk to one path)

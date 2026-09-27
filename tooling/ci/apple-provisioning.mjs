@@ -213,6 +213,21 @@ export function bundleIdOf(reg, slug) {
   return row.bundleId;
 }
 
+/** O-STORE-RECORDS-ARE-ONE-PER-CHANNEL (9b) — the account's Apple team id, the
+ *  prefix of every app's AASA appID. Public (every signed binary and association
+ *  file carries it) and account-wide, so it is one register field, never a
+ *  per-app copy and never the APPLE_TEAM_ID secret. Throws; never a default. */
+export function teamIdOf(reg) {
+  const id = reg?.teamId;
+  if (typeof id !== 'string' || !/^[A-Z0-9]{10}$/.test(id)) {
+    throw new Error(
+      `${REGISTER} declares no usable teamId (${JSON.stringify(id ?? null)}; Apple issues ten upper-case letters or digits, ` +
+        "read from the developer portal's membership page, never from the APPLE_TEAM_ID secret)",
+    );
+  }
+  return id;
+}
+
 /** An App Store Connect resource id: ten upper-case letters and digits. */
 const RESOURCE_ID = /^[A-Z0-9]{10}$/;
 const RETIRED_KINDS = Object.freeze(['bundleId', 'profile', 'certificate']);

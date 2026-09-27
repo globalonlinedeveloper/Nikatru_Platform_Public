@@ -56,32 +56,31 @@
 // already uses for its `/*.css` rule — "a class declared before its first file
 // arrives" — applied to a file rather than to a header.
 //
-// ── QUALIFYING: PRESENCE **AND** IDENTITY, AND A MISMATCH IS A FINDING ───────
+// ── QUALIFYING: PRESENCE **AND** IDENTITY, AND A MISSING HALF IS A FINDING ───
 // An app qualifies for an AASA entry when BOTH halves are true:
 //   PRESENCE  `platforms` contains `ios`, or `listings.appstore` is a non-null
 //             URL — the app is actually published on that mobile channel;
-//   IDENTITY  `apps/<id>/app.yaml` declares `mobile.ios.appleTeamId` and
-//             `mobile.ios.bundleId` — the two halves of the `appID` AASA needs.
+//   IDENTITY  the two halves of the `appID` AASA needs, from the records that
+//             hold them: the account's `teamId` in tooling/apple-provisioning.json
+//             (apple-provisioning.mjs teamIdOf) and the app's bundle id there
+//             (bundleIdOf).
 // Android is the same shape: `platforms` contains `android` / `listings.play`
-// non-null, plus `mobile.android.packageName` and a non-empty
-// `mobile.android.sha256CertFingerprints`.
+// non-null, plus the package name `com.nikatru.<id>` (derived, architecture §24)
+// and the app's `stores.android-play.appSigningSha256` in apps/<id>/app.yaml
+// (tooling/store/store-record.mjs).
+//
+// ⏱ O-STORE-RECORDS-ARE-ONE-PER-CHANNEL (9b): the identity used to be a `mobile:`
+// block in app.yaml, which the schema never allowed, so nothing could qualify. It
+// is read per app from the two records above now, and the `mobile:` read is gone.
 //
 // 🔴 NEITHER HALF IS INVENTED AND HALF AN APP IS A FINDING, NOT A SKIP. A team id
-// is issued by Apple and a signing fingerprint is a property of a keystore; there
-// is no derivation from anything in this repository, so an app with the presence
-// and no identity is REFUSED (the run writes nothing and exits 1) rather than
-// silently dropped — a silently dropped app is a universal link that fails for
-// one product while every check stays green. An identity with no presence is
-// refused for the mirror reason: it publishes deep-link authority for an app that
-// is not shipped.
-//
-// ⚠️ `mobile:` IS NOT IN `tooling/app-yaml/schema/app.schema.json` TODAY, and the
-// schema sets `additionalProperties: false`. That is not an oversight to route
-// around here: the day an app really has a mobile identity, the schema gains the
-// block (that file belongs to the app-yaml unit, not to this one) and this
-// generator starts emitting without another edit. Until then the "no app
-// qualifies" measurement above is true by construction as well as by count, which
-// is the strongest form the claim can take.
+// is issued by Apple and a signing fingerprint is a property of a keystore, so an
+// app with the presence and no usable identity is REFUSED (the run writes nothing
+// and exits 1) rather than silently dropped — a silently dropped app is a
+// universal link that fails for one product while every check stays green. An
+// identity with no presence publishes nothing and is not a finding: the Apple
+// half now exists for every app the Apple register declares, and only a
+// presence claim puts an app in a file.
 //
 // ── THE APPLE SIDE: PATH-SCOPED, AND THE EXCLUSION COMES FIRST ───────────────
 // Each app gets ONE `details` entry scoping it to its own path — the component
@@ -169,7 +168,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from '../ci/tree-walk.mjs';
-import { parseYaml } from '../app-yaml/yaml.mjs';
+import { bundleIdOf, teamIdOf, REGISTER as APPLE_REGISTER } from '../ci/apple-provisioning.mjs';
+import { storeRecordOf } from '../store/store-record.mjs';
 import { APEX_HOST, appBaseHref, publicAppUrl } from './apex.mjs';
 
 /** The published catalogue — the set of apps that HAVE a path on the apex. The
@@ -222,31 +222,67 @@ export function mobilePresence(row, surface) {
   return reasons;
 }
 
-/** The identity halves, read from the declaration and NEVER derived. Returns
- *  `{ok, value, missing}` so the caller can tell "absent" from "half-written" —
- *  they are different findings with different fixes. */
-export function mobileIdentity(decl, surfaceId) {
-  const block = decl?.mobile?.[surfaceId];
-  if (surfaceId === 'ios') {
-    const teamId = block?.appleTeamId;
-    const bundleId = block?.bundleId;
-    const missing = [];
-    if (typeof teamId !== 'string' || !/^[A-Z0-9]{10}$/.test(teamId)) missing.push('mobile.ios.appleTeamId (Apple issues a 10-character team id)');
-    if (typeof bundleId !== 'string' || !/^[A-Za-z0-9.-]+$/.test(bundleId) || !bundleId.includes('.')) missing.push('mobile.ios.bundleId (the reverse-DNS bundle identifier)');
-    return { ok: missing.length === 0, missing, value: { appID: `${teamId}.${bundleId}` } };
+/** The Android package name: derived, `com.nikatru.<id>` (architecture §24), never stored. */
+export const androidPackageOf = (slug) => `com.nikatru.${slug}`;
+
+/** The signing fingerprint shape: 32 colon-separated upper-case hex octets. */
+const FINGERPRINT = /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/;
+
+/** The parsed tooling/apple-provisioning.json of `repoRoot`, or `{lost}` naming why not. */
+export function readAppleRegister(repoRoot) {
+  const abs = join(repoRoot, ...APPLE_REGISTER.split('/'));
+  if (!existsSync(abs)) return { lost: `${APPLE_REGISTER} does not exist, so no app's Apple identity can be read` };
+  try {
+    return { reg: JSON.parse(readFileSync(abs, 'utf8')) };
+  } catch (e) {
+    return { lost: `${APPLE_REGISTER} is not valid JSON — ${e.message}` };
   }
-  const packageName = block?.packageName;
-  const fingerprints = block?.sha256CertFingerprints;
+}
+
+/** One app's identity for one surface, from the records that hold it and NEVER
+ *  invented (O-STORE-RECORDS-ARE-ONE-PER-CHANNEL, 9b):
+ *    ios      teamIdOf(the Apple register) + "." + bundleIdOf(the Apple register, slug)
+ *    android  com.nikatru.<slug> + apps/<slug>/app.yaml stores.android-play.appSigningSha256
+ *  Returns `{ok, value, missing}` so the caller can name what is absent. */
+export function appIdentity(repoRoot, slug, surfaceId, apple = readAppleRegister(repoRoot)) {
   const missing = [];
-  if (typeof packageName !== 'string' || !packageName.includes('.')) missing.push('mobile.android.packageName (the applicationId)');
-  if (!Array.isArray(fingerprints) || fingerprints.length === 0) {
-    missing.push('mobile.android.sha256CertFingerprints (the APP SIGNING certificate, not the upload one — see this file\'s header)');
-  } else {
-    for (const fp of fingerprints) {
-      if (typeof fp !== 'string' || !/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(fp)) {
-        missing.push(`mobile.android.sha256CertFingerprints: ${JSON.stringify(fp)} is not 32 colon-separated uppercase hex octets`);
+  if (surfaceId === 'ios') {
+    let teamId = null;
+    let bundleId = null;
+    if (apple.lost) {
+      missing.push(apple.lost);
+    } else {
+      try {
+        teamId = teamIdOf(apple.reg);
+      } catch (e) {
+        missing.push(e.message);
+      }
+      try {
+        bundleId = bundleIdOf(apple.reg, slug);
+      } catch (e) {
+        missing.push(e.message);
       }
     }
+    return { ok: missing.length === 0, missing, value: { appID: `${teamId}.${bundleId}` } };
+  }
+  const packageName = androidPackageOf(slug);
+  let fingerprints = null;
+  try {
+    const rec = storeRecordOf(repoRoot, slug, 'android-play');
+    fingerprints = rec.appSigningSha256;
+    if (!Array.isArray(fingerprints) || fingerprints.length === 0) {
+      missing.push(
+        `${rec.rel} stores.android-play.appSigningSha256 (state: ${rec.state}) — the APP SIGNING certificate, not the upload one; see this file's header`,
+      );
+    } else {
+      for (const fp of fingerprints) {
+        if (typeof fp !== 'string' || !FINGERPRINT.test(fp)) {
+          missing.push(`${rec.rel} stores.android-play.appSigningSha256: ${JSON.stringify(fp)} is not 32 colon-separated uppercase hex octets`);
+        }
+      }
+    }
+  } catch (e) {
+    missing.push(e.message);
   }
   return { ok: missing.length === 0, missing, value: { packageName, fingerprints } };
 }
@@ -317,6 +353,7 @@ export function planWellKnown(repoRoot) {
       problems: [`${CATALOG} carries no entries, so "no app qualifies" would be true of an empty world rather than of this one.`] };
   }
 
+  const apple = readAppleRegister(repoRoot); // read once; each app's Apple identity comes from it
   for (const row of catalog) {
     const slug = typeof row?.slug === 'string' ? row.slug : '';
     if (!SLUG_RE.test(slug)) {
@@ -324,47 +361,21 @@ export function planWellKnown(repoRoot) {
       continue;
     }
 
-    const declRel = `${APPS_DIR}/${slug}/app.yaml`;
-    const declPath = join(repoRoot, ...declRel.split('/'));
-    let decl = null;
-    let declError = null;
-    if (existsSync(declPath)) {
-      try { decl = parseYaml(readFileSync(declPath, 'utf8')); }
-      catch (e) { declError = String(e.message).split('\n')[0]; }
-    }
-
     for (const surface of SURFACES) {
       comparisons++;
       const reasons = mobilePresence(row, surface);
-      const identity = decl ? mobileIdentity(decl, surface.id) : { ok: false, missing: ['the declaration could not be read'], value: null };
-      const hasIdentity = Boolean(decl) && identity.ok;
-
-      if (reasons.length > 0) presence.push({ slug, surface: surface.id, reasons });
-
-      if (reasons.length > 0 && !decl) {
+      if (reasons.length === 0) continue; // no presence claimed: nothing is published, and nothing is owed
+      presence.push({ slug, surface: surface.id, reasons });
+      const identity = appIdentity(repoRoot, slug, surface.id, apple);
+      if (!identity.ok) {
         problems.push(
-          `${slug} claims a ${surface.id} presence (${reasons.join('; ')}) but ${declRel} ` +
-            `${declError ? `did not parse (${declError})` : 'does not exist'} — the identity it needs cannot be read, and this file must not guess one.`,
-        );
-        continue;
-      }
-      if (reasons.length > 0 && !identity.ok) {
-        problems.push(
-          `${slug} claims a ${surface.id} presence (${reasons.join('; ')}) but ${declRel} does not declare a usable identity: ` +
+          `${slug} claims a ${surface.id} presence (${reasons.join('; ')}) but the app does not declare a usable identity: ` +
             `${identity.missing.join(', ')}. A shipped app silently missing from a portfolio-wide association file is a ` +
             'universal link that fails for one product while every check stays green — so this run writes nothing instead.',
         );
         continue;
       }
-      if (reasons.length === 0 && hasIdentity) {
-        problems.push(
-          `${slug} declares a ${surface.id} identity in ${declRel} but claims no ${surface.id} presence in ${CATALOG} ` +
-            `(no "${surface.platform}" in platforms, listings.${surface.listing} is null). Publishing it would hand deep-link ` +
-            'authority on this origin to an app nobody ships. Declare both or neither.',
-        );
-        continue;
-      }
-      if (reasons.length > 0 && hasIdentity) qualifying.push({ slug, surface: surface.id, identity: identity.value });
+      qualifying.push({ slug, surface: surface.id, identity: identity.value });
     }
   }
 

@@ -164,14 +164,66 @@ import {
 import { PLATFORMS as APPLE_PLATFORMS } from '../store/render-apple-privacy-manifest.mjs';
 import { listDir } from './tree-walk.mjs';
 import { transmits } from '../../contracts/legal/pro-gate.mjs';
+import { IAP_STORE_CHANNELS } from './submit-preconditions.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const ROOT = resolve(process.argv[2] ?? join(HERE, '..', '..'));
+// ⏱ 12a: the root is the first argument that is not a flag, so `--for-submission=<channel> --app <id>`
+// (below) can sit beside it. Every existing caller passes the root alone, or nothing.
+const ARGS = process.argv.slice(2);
+const ROOT = resolve(ARGS.find((a, i) => !a.startsWith('--') && ARGS[i - 1] !== '--app') ?? join(HERE, '..', '..'));
 const PRIVACY_SCHEMA = join(HERE, '..', 'app-yaml', 'schema', 'privacy.schema.json');
 const PROVIDERS = 'tooling/legal/provider-register.json';
 
 const problems = [];
 const ok = (m) => console.log(`ok   ${m}`);
+
+// ── --for-submission=<channel> --app <id> · a pending IAP app is never submitted ──
+// ⏱ O-BRICK-SELLS-NOTHING-IN-A-STORE (12a). The submit lanes' precondition row in
+// tooling/ci/submit-preconditions.mjs. An app whose `billing.mobileIap.state` is
+// `pending` has no RevenueCat apps yet: it builds keyless and fail-closed, and its
+// paywall cannot buy — an incomplete app in store review. So on the store-billing
+// channels a pending declaration is refused (exit 1). An app that declares no
+// mobile IAP sells nothing in the store and is not this gate's subject (exit 0);
+// that it may still be submitted is the other preconditions' question.
+const FOR_SUBMISSION = ARGS.find((a) => a.startsWith('--for-submission='))?.slice('--for-submission='.length) ?? null;
+const IAP_SUBMISSION_CHANNELS = IAP_STORE_CHANNELS;
+if (FOR_SUBMISSION !== null) {
+  const appAt = ARGS.indexOf('--app');
+  const app = appAt === -1 ? null : ARGS[appAt + 1] ?? null;
+  const lost = (why) => {
+    console.error(`FAIL COVERAGE LOST — ${why}`);
+    console.error('\nassert-app-yaml --for-submission: COVERAGE LOST');
+    process.exit(2);
+  };
+  if (!IAP_SUBMISSION_CHANNELS.includes(FOR_SUBMISSION)) {
+    lost(`--for-submission=${FOR_SUBMISSION} is not a store-billing channel (${IAP_SUBMISSION_CHANNELS.join(', ')}); this gate grades those only.`);
+  }
+  if (app === null || !/^[a-z][a-z0-9-]*$/.test(app)) lost('--for-submission needs --app <id>: the gate grades ONE app\'s declaration.');
+  const rel = `${APPS_DIR}/${app}/app.yaml`;
+  if (!existsSync(join(ROOT, rel))) lost(`${rel} does not exist: "${app}" is not an app of this workspace.`);
+  let doc;
+  try {
+    doc = parseYaml(readFileSync(join(ROOT, rel), 'utf8'));
+  } catch (e) {
+    lost(`${rel} does not parse (${String(e.message).split('\n')[0]}).`);
+  }
+  const iap = doc?.billing?.mobileIap;
+  if (!iap || typeof iap !== 'object') {
+    ok(`--for-submission=${FOR_SUBMISSION} — ${rel} declares no billing.mobileIap, so it sells nothing in this store and there is no IAP state to gate`);
+    process.exit(0);
+  }
+  if (iap.state !== 'live') {
+    console.error(
+      `FAIL ${rel} billing.mobileIap.state is ${JSON.stringify(iap.state ?? null)}, not "live": app "${app}" has no RevenueCat apps yet, so its ` +
+        `${FOR_SUBMISSION} build is keyless and its paywall cannot buy — an incomplete app in store review. Create the app's two RevenueCat ` +
+        'apps (owner step O-B1), write their ids into revenuecatAppIds and set state: live, then submit.',
+    );
+    console.error('\nassert-app-yaml --for-submission: FAILED');
+    process.exit(1);
+  }
+  ok(`--for-submission=${FOR_SUBMISSION} — ${rel} billing.mobileIap is state: live (RevenueCat apps ${Object.values(iap.revenuecatAppIds ?? {}).join(', ')})`);
+  process.exit(0);
+}
 
 /** Fatal on the spot. Every limb below quantifies over the missing thing, so
  *  continuing would report "clean" over nothing. */

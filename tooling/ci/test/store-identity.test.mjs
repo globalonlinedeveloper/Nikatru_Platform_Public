@@ -524,6 +524,12 @@ function windowsFixture({
   // which parses app.yaml with the one YAML reader; without it the copy dies on load.
   mkdirSync(join(root, 'tooling', 'app-yaml'), { recursive: true });
   cpSync(join(REPO, 'tooling', 'app-yaml', 'yaml.mjs'), join(root, 'tooling', 'app-yaml', 'yaml.mjs'));
+  // ⏱ 9b — and its Partner Center product through tooling/store/store-record.mjs, which reads
+  // the schema beside render.mjs: both travel with the copy, or it dies on load the same way.
+  mkdirSync(join(root, 'tooling', 'store'), { recursive: true });
+  cpSync(join(REPO, 'tooling', 'store', 'store-record.mjs'), join(root, 'tooling', 'store', 'store-record.mjs'));
+  mkdirSync(join(root, 'tooling', 'app-yaml', 'schema'), { recursive: true });
+  cpSync(join(REPO, 'tooling', 'app-yaml', 'schema', 'app.schema.json'), join(root, 'tooling', 'app-yaml', 'schema', 'app.schema.json'));
   const script = join(root, 'tooling', 'release', 'submit-windows-store.mjs');
   mkdirSync(dirname(script), { recursive: true });
   let source = submitter ?? readFileSync(join(REPO, 'tooling', 'release', 'submit-windows-store.mjs'), 'utf8');
@@ -661,6 +667,54 @@ describe('the app brick stamps the snap name this guard derives', () => {
 
 // ── ⏱ 2026-09-26 · ONE STORE RECORD PER (app, channel) ─────────────────────
 // O-STORE-RECORDS-ARE-ONE-PER-CHANNEL limb (4). Every id below is synthetic.
+// ⏱ O-STORE-RECORDS-ARE-ONE-PER-CHANNEL (9b): the Apple bundle id is per app. The register row names
+// only WHERE Xcode declares it; the value is tooling/apple-provisioning.json's, through bundleIdOf,
+// and a row carrying the retired per-channel value FAILS by name (RC7).
+describe('assert-store-identity — the Apple bundle id is graded against bundleIdOf, and the row carries none', () => {
+  const IOS_ROW = {
+    id: 'ios-appstore',
+    kind: 'store',
+    platforms: ['ios'],
+    identity: { kind: 'apple-bundle-id', declaredIn: 'apps/{app}/ios/Runner.xcodeproj/project.pbxproj' },
+  };
+  // The REAL tooling/apple-provisioning.json, read at run time and never copied into this file (it names
+  // App Store Connect resource ids, which no .mjs under tooling/ci may spell).
+  const APPLE = () => readFileSync(join(REPO, 'tooling', 'apple-provisioning.json'), 'utf8');
+  const pbx = (id) => `\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = ${id};\n\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = ${id}.RunnerTests;\n`;
+  const appleFixture = ({ row = IOS_ROW, bundle = 'com.nikatru.subscriptiontracker', apple = APPLE() } = {}) => {
+    const register = REGISTER();
+    register.channels.push(row);
+    return fixture({
+      register,
+      files: { 'apps/subscriptiontracker/ios/Runner.xcodeproj/project.pbxproj': pbx(bundle), 'tooling/apple-provisioning.json': apple },
+    });
+  };
+
+  test('PASSES when the pbxproj builds the app\'s bundleIdOf id, and SAYS how many it compared', () => {
+    const { code, out } = run(appleFixture());
+    assert.equal(code, 0, out);
+    assert.match(out, /ok {2}apple bundle id — 1 \(app × Apple platform\) identity file\(s\) compared to tooling\/apple-provisioning\.json through bundleIdOf/);
+  });
+
+  test('FAILS a pbxproj that builds another id, naming apple-provisioning as the expected side', () => {
+    const { code, out } = run(appleFixture({ bundle: 'com.nikatru.otherthing' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /declares "com\.nikatru\.otherthing" and tooling\/apple-provisioning\.json apps\.subscriptiontracker\.bundleId \(bundleIdOf\) is "com\.nikatru\.subscriptiontracker"/);
+  });
+
+  test('COVERAGE LOST when tooling/apple-provisioning.json is absent — never a fall-back to the canonical form', () => {
+    const { code, out } = run(appleFixture({ apple: null }));
+    assert.equal(code, 2, out);
+    assert.match(out, /tooling\/apple-provisioning\.json does not exist, so no Apple bundle id can be compared/);
+  });
+
+  test('🔴 RC7 — a row that carries bundleIdentifier again FAILS, naming the channel', () => {
+    const { code, out } = run(appleFixture({ row: { ...IOS_ROW, bundleIdentifier: { value: 'com.nikatru.subscriptiontracker', declaredIn: IOS_ROW.identity.declaredIn } } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /channel "ios-appstore" carries `bundleIdentifier` in tooling\/channel-register\.json\. The Apple bundle id is per app/);
+  });
+});
+
 describe('assert-store-identity — one store record per (app, channel), shared by no other app', () => {
   const twoApps = (secondStores, firstStores = storesBlock()) =>
     fixture({

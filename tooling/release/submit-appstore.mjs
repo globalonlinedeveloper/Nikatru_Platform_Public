@@ -81,13 +81,14 @@ import { readAppleBundleId } from '../ci/read-identity.mjs';
 import { appleArtifactPath } from '../ci/apple-signing.mjs';
 import { submitCli } from './submit-common.mjs';
 import { bundleIdOf, REGISTER as APPLE_REGISTER } from '../ci/apple-provisioning.mjs';
+import { storeRecordOf, missingIdsOf } from '../store/store-record.mjs';
 
 const CHANNELS = ['ios-appstore', 'macos-appstore'];
 const REGISTER = 'tooling/channel-register.json';
 const APPS = 'catalog/apps.json';
 
 // ── arguments, and the two stops (submit-common.mjs: COVERAGE LOST exits 2) ──
-const { flag, opt, root: ROOT, ok, abs, read, coverageLost, die } = submitCli('submit-appstore');
+const { flag, opt, root: ROOT, ok, abs, read, coverageLost, die, appOf } = submitCli('submit-appstore');
 
 const DRY_RUN = flag('dry-run');
 const SUBMIT = flag('submit');
@@ -211,47 +212,41 @@ try {
 }
 if (!Array.isArray(apps) || apps.length === 0) coverageLost([`${APPS} carries no app entries.`]);
 
-const appId = opt('app') ?? apps[0]?.slug;
-const app = apps.find((a) => a.slug === appId);
-if (!app) {
-  die([`FAIL no app "${appId}" in ${APPS}.`, `     Known: ${apps.map((a) => a.slug).join(', ')}`]);
-}
+// `--app` is required (submit-common appOf); there is no first-app default.
+const app = appOf(apps, APPS);
 
-// ── the app IS the one this channel's App Store record belongs to ────────────
-// ⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP). submit-appstore.yml now takes
-// its app at dispatch, and this channel row carries ONE bundleIdentifier and the
-// lane ONE App Store Connect app id (a secret). A second app dispatched here
-// would validate its listing against the FIRST app's App Store record and pass.
-// So the bundle id the app signs with — read off tooling/apple-provisioning.json
-// by apple-provisioning.mjs's bundleIdOf, never derived again here — must be the
-// row's, or this refuses before anything else is read. Per-app App Store records
-// are O-STORE-RECORDS-ARE-ONE-PER-CHANNEL's; until then this holds the line.
-// An unreadable register is COVERAGE LOST (exit 2, submit-common.mjs); a mismatch is a finding (exit 1).
-{
-  const declared = typeof channel.bundleIdentifier?.value === 'string' ? channel.bundleIdentifier.value.trim() : '';
-  if (declared !== '') {
-    const appleRaw = read(APPLE_REGISTER);
-    if (appleRaw === null) {
-      coverageLost([
-        `${APPLE_REGISTER} does not exist, so the bundle id app "${app.slug}" signs with cannot be read.`,
-        `Without it this path cannot tell whether "${CHANNEL_ID}"'s App Store record is this app's or another's.`,
-      ]);
-    }
-    let appBundle;
-    try {
-      appBundle = bundleIdOf(JSON.parse(appleRaw), app.slug);
-    } catch (e) {
-      die([`FAIL ${e.message}.`, `     "${CHANNEL_ID}"'s App Store record cannot be matched to app "${app.slug}" without it.`]);
-    }
-    if (appBundle !== declared) {
-      die([
-        `FAIL app "${app.slug}" signs as ${appBundle} (${APPLE_REGISTER}), and channel "${CHANNEL_ID}" in ${REGISTER} is the App Store record of ${declared}.`,
-        '     This lane holds ONE App Store Connect app id, the first app\'s, so a dry run for this app would be',
-        '     validated against another app\'s record and pass. Per-app App Store records are',
-        '     O-STORE-RECORDS-ARE-ONE-PER-CHANNEL\'s; until one exists for this app, it is not submittable here.',
-      ]);
-    }
-  }
+// ── the app's own Apple identity and App Store record ───────────────────────
+// ⏱ O-STORE-RECORDS-ARE-ONE-PER-CHANNEL (9b). Both are per app, and the channel
+// row carries neither:
+//   · the bundle id the app signs with is tooling/apple-provisioning.json's, read
+//     by apple-provisioning.mjs's bundleIdOf and never derived again here;
+//   · the App Store Connect record this channel submits to is the app's own
+//     apps/<id>/app.yaml `stores.<channel>`, read by tooling/store/store-record.mjs.
+// Until 9b the row carried ONE bundleIdentifier and the lane ONE App Store Connect
+// app id (the APP_STORE_CONNECT_{IOS,MACOS}_APP_ID secrets), so this block refused
+// any app but the first (O-STORE-LANES-HARD-WIRE-ONE-APP). With the record per app
+// there is no first app to protect, and the refusal retired with its subject.
+const appleRaw = read(APPLE_REGISTER);
+if (appleRaw === null) {
+  coverageLost([
+    `${APPLE_REGISTER} does not exist, so the bundle id app "${app.slug}" signs with cannot be read.`,
+    'It is the one declaration of that id; without it the Xcode project below has nothing to be compared to.',
+  ]);
+}
+let appBundle;
+try {
+  appBundle = bundleIdOf(JSON.parse(appleRaw), app.slug);
+} catch (e) {
+  die([`FAIL ${e.message}.`, `     App "${app.slug}" has no Apple identity, so it has no App Store record to submit to.`]);
+}
+let ascRecord;
+try {
+  ascRecord = storeRecordOf(ROOT, app.slug, CHANNEL_ID);
+} catch (e) {
+  die([
+    `FAIL ${e.message}.`,
+    `     The App Store Connect record "${CHANNEL_ID}" submits to is app "${app.slug}"'s own; without one this run has no target.`,
+  ]);
 }
 
 console.log(`── Apple App Store submission path · app "${app.slug}" · channel "${CHANNEL_ID}" ──`);
@@ -356,21 +351,21 @@ if (!problems.length) ok(`metadata tree ${metaDir} — ${filesChecked} field(s) 
 // The macOS pbxproj carries only `com.nikatru.subscriptiontracker.RunnerTests`, so a reader
 // that assumed one location would compare against the TEST bundle's id and
 // agree with itself.
-const bundle = channel.bundleIdentifier ?? null;
-if (bundle === null) {
+// ⏱ O-STORE-RECORDS-ARE-ONE-PER-CHANNEL (9b): the VALUE is bundleIdOf's (above), and
+// the FILE Xcode declares it in is the row's `identity.declaredIn` — the same (kind,
+// file) pair tooling/ci/assert-store-identity.mjs grades against bundleIdOf. The row
+// no longer carries a `bundleIdentifier` value of its own: a second copy of an
+// identity is how the wrong one ships.
+const declaredBundle = appBundle;
+const declaredInTemplate = typeof channel.identity?.declaredIn === 'string' ? channel.identity.declaredIn.trim() : '';
+if (declaredInTemplate === '') {
   coverageLost([
-    `channel "${CHANNEL_ID}" declares no \`bundleIdentifier\`.`,
-    'It is the single declaration this script compares the Xcode project against. Absent, the',
-    'comparison below has no left-hand side and would report agreement between two unknowns.',
+    `channel "${CHANNEL_ID}" declares no \`identity.declaredIn\`.`,
+    'It names the file Xcode declares the bundle id in (the pbxproj for iOS, an xcconfig for macOS). Absent,',
+    'the comparison below has no file to read and would report agreement between two unknowns.',
   ]);
 }
-const declaredBundle = typeof bundle.value === 'string' ? bundle.value.trim() : '';
-const declaredInTemplate = typeof bundle.declaredIn === 'string' ? bundle.declaredIn : '';
-if (declaredBundle === '' || declaredInTemplate === '') {
-  problems.push(
-    `channel "${CHANNEL_ID}" bundleIdentifier is incomplete in ${REGISTER} (value=${JSON.stringify(bundle.value ?? null)}, declaredIn=${JSON.stringify(bundle.declaredIn ?? null)}). An absent field is a hole, not a placeholder.`,
-  );
-} else {
+{
   const declaredInRel = declaredInTemplate.replace('{app}', app.slug);
   const projectText = read(declaredInRel);
   if (projectText === null) {
@@ -395,10 +390,10 @@ if (declaredBundle === '' || declaredInTemplate === '') {
       problems.push(bundleRead.missing);
     } else if (appBundles[0] !== declaredBundle) {
       problems.push(
-        `bundle identifier DISAGREES for app "${app.slug}" on channel "${CHANNEL_ID}": ${REGISTER} says ${JSON.stringify(declaredBundle)}, ${declaredInRel} builds ${JSON.stringify(appBundles[0])}. App Store Connect binds a record to ONE bundle id — an upload under the other is rejected, and changing it after a release makes a different app.`,
+        `bundle identifier DISAGREES for app "${app.slug}" on channel "${CHANNEL_ID}": ${APPLE_REGISTER} says ${JSON.stringify(declaredBundle)}, ${declaredInRel} builds ${JSON.stringify(appBundles[0])}. App Store Connect binds a record to ONE bundle id — an upload under the other is rejected, and changing it after a release makes a different app.`,
       );
     } else {
-      ok(`bundle identifier ${declaredBundle} — register and ${declaredInRel} agree`);
+      ok(`bundle identifier ${declaredBundle} — ${APPLE_REGISTER} and ${declaredInRel} agree`);
     }
   }
 }
@@ -461,7 +456,6 @@ const CREDENTIAL_ENV = [
   ['APP_STORE_CONNECT_ISSUER_ID', 'the App Store Connect API issuer id (per-team, from Users and Access -> Integrations)'],
   ['APP_STORE_CONNECT_KEY_ID', 'the id of the .p8 API key'],
   ['APP_STORE_CONNECT_PRIVATE_KEY', 'the .p8 private key contents — never read by this script, only checked for presence'],
-  ['APP_STORE_CONNECT_APP_ID', "the App Store Connect record's numeric app id for this channel"],
 ];
 const missingCreds = CREDENTIAL_ENV.filter(([k]) => !process.env[k] || process.env[k].trim() === '');
 if (missingCreds.length === 0) {
@@ -469,6 +463,25 @@ if (missingCreds.length === 0) {
 } else {
   prints.push(
     `CREDENTIALS NOT CONFIGURED — ${missingCreds.length} of ${CREDENTIAL_ENV.length} absent: ${missingCreds.map(([k]) => k).join(', ')}. The ASC API key among them DOES exist as a repository secret; the certificate ones have never been issued, so this is a printed gap and not a failure. (${missingCreds.map(([k, why]) => `${k} = ${why}`).join(' · ')})`,
+  );
+}
+
+// ── 4b. the App Store Connect record — the app's own, never a secret ─────────
+// ⏱ O-STORE-RECORDS-ARE-ONE-PER-CHANNEL (9b): it was APP_STORE_CONNECT_APP_ID,
+// fed from one repository secret per channel — one app's record for every app.
+// A pending record is the owner's step (create the record), printed like the
+// other owner-gated gaps; an issued one with a hole is a finding.
+if (ascRecord.state === 'issued') {
+  const holes = missingIdsOf(CHANNEL_ID, ascRecord);
+  if (holes.length > 0) {
+    problems.push(`${ascRecord.rel} stores.${CHANNEL_ID} is state: issued and lacks ${holes.join(', ')}. An issued record names the App Store Connect record it is.`);
+  } else {
+    ok(`App Store Connect record ${ascRecord.recordId} — ${ascRecord.rel} stores.${CHANNEL_ID} (issued; the app's own record, not a secret)`);
+  }
+} else {
+  prints.push(
+    `APP STORE RECORD PENDING — ${ascRecord.rel} stores.${CHANNEL_ID} is state: pending, so app "${app.slug}" has no App Store Connect record yet. ` +
+      'Creating it is an owner step; its Apple ID is then written into the record as recordId, state: issued.',
   );
 }
 

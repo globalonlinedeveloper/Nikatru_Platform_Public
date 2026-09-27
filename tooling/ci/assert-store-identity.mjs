@@ -80,6 +80,15 @@
 // read-identity.mjs windowsIdentityOf. The sentinel and the placeholder stay the
 // row's, because they define the placeholder for every app.
 //
+// ⏱ O-STORE-RECORDS-ARE-ONE-PER-CHANNEL (9b) — THE APPLE BUNDLE ID IS DERIVED, AND THE
+// REGISTER NO LONGER CARRIES ONE. The ios-appstore and macos-appstore rows held a
+// per-channel `bundleIdentifier` value, one app's id for a channel every app shares. It is
+// gone; each app's id is tooling/apple-provisioning.json `apps.<id>.bundleId`, and a row
+// whose identity kind is `apple-bundle-id` now grades its declaredIn file against
+// apple-provisioning.mjs's bundleIdOf for the app being graded (an absent register is
+// COVERAGE LOST; an app it does not declare is a finding). A row that carries the retired
+// key again FAILS by name: a second copy of the id is how the wrong one ships.
+//
 // Usage:  node tooling/ci/assert-store-identity.mjs [repoRoot]
 // Exit 0 = every app × declared platform resolves to the one canonical id.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -91,6 +100,7 @@ import { resolveIdentity, windowsIdentityOf, WINDOWS_STORE } from './read-identi
 import { appIdProblems } from '../../contracts/app-id/app-id.js';
 import { storeRecordOf, missingIdsOf, STORE_CHANNELS } from '../store/store-record.mjs';
 import { armingOf } from './channel-arming.mjs';
+import { bundleIdOf, REGISTER as APPLE_REGISTER_REL } from './apple-provisioning.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/channel-register.json';
@@ -118,12 +128,44 @@ const prints = [];
  *  to THE APP BEING GRADED, from its own declaration. */
 const APP_RECORD_FIELD = `apps/{app}/app.yaml stores.${WINDOWS_STORE}.identityName`;
 
+/** The identity kind whose value is the app's Apple bundle id (the pbxproj / xcconfig). */
+const APPLE_KIND = 'apple-bundle-id';
+let appleRegister; // read once, on the first Apple row
+let appleDerived = 0;
+
+/** An Apple row's expected value: tooling/apple-provisioning.json's id for THIS app,
+ *  through bundleIdOf (R-5 of O-STORE-RECORDS-ARE-ONE-PER-CHANNEL). Never the register's,
+ *  and never a fall-back to the canonical form when the register cannot be read. */
+function appleExpectation(slug) {
+  if (appleRegister === undefined) {
+    const abs = join(ROOT, APPLE_REGISTER_REL);
+    if (!existsSync(abs)) {
+      appleRegister = { lost: `${APPLE_REGISTER_REL} does not exist, so no Apple bundle id can be compared: it is the one declaration of each app's id.` };
+    } else {
+      try {
+        appleRegister = { reg: JSON.parse(readFileSync(abs, 'utf8')) };
+      } catch (e) {
+        appleRegister = { lost: `${APPLE_REGISTER_REL} could not be parsed (${e.message}).` };
+      }
+    }
+  }
+  if (appleRegister.lost) return { lost: appleRegister.lost };
+  try {
+    const want = bundleIdOf(appleRegister.reg, slug);
+    appleDerived++;
+    return { want, label: `${APPLE_REGISTER_REL} apps.${slug}.bundleId (bundleIdOf)` };
+  } catch (e) {
+    return { problem: `${e.message}. An app built for an Apple platform is declared in ${APPLE_REGISTER_REL}.` };
+  }
+}
+
 /** What a row's identity must equal. The default is the canonical form; a row
  *  whose identity is ASSIGNED by the store (MSIX) names the per-app record that
  *  holds it instead. An `expectedFrom` this guard cannot read is COVERAGE LOST,
  *  never a silent fall-back to the canonical form. */
 function expectationFor(row, slug) {
   const from = row.identity.expectedFrom;
+  if (row.identity.kind === APPLE_KIND && from === undefined) return appleExpectation(slug);
   if (from === undefined) return { want: canonical(slug), label: "architecture §24's canonical form" };
   if (from !== APP_RECORD_FIELD) {
     return { lost: `channel "${row.id}" identity.expectedFrom is ${JSON.stringify(from)}; the only field this guard knows how to read is "${APP_RECORD_FIELD}".` };
@@ -244,6 +286,21 @@ for (const r of rows) {
       'never compares the identity it would submit under — and says nothing about not comparing it. That is the exact shape ' +
       'windows-store was in until 2026-09-11. Declare the block (kind + declaredIn, and expectedFrom when the store assigns the value).',
   );
+}
+
+// ⏱ O-STORE-RECORDS-ARE-ONE-PER-CHANNEL (9b; RC7). The per-channel Apple bundle id is
+// retired: each app's id is tooling/apple-provisioning.json's, graded above through
+// bundleIdOf. A row carrying the key again is a second copy of an identity, one app's,
+// on a channel every app shares, and nothing would say which copy wins.
+const RETIRED_ROW_KEY = 'bundleIdentifier';
+for (const r of rows) {
+  if (r && typeof r === 'object' && Object.hasOwn(r, RETIRED_ROW_KEY)) {
+    problems.push(
+      `channel "${r.id}" carries \`${RETIRED_ROW_KEY}\` in ${REGISTER_REL}. The Apple bundle id is per app: it is ` +
+        `${APPLE_REGISTER_REL} apps.<id>.bundleId, read through bundleIdOf, and the row names only WHERE Xcode declares it ` +
+        '(identity.declaredIn). Delete the key; a second copy of the id is how the wrong one ships.',
+    );
+  }
 }
 
 /** The token list is the register's; a guard-side copy would be a second list to forget. */
@@ -372,7 +429,7 @@ for (const app of apps) {
       }
       if (r.value !== want) {
         problems.push(
-          `${at}: ${r.rel} declares "${r.value}" and architecture §24's canonical form is "${want}". ` +
+          `${at}: ${r.rel} declares "${r.value}" and ${exp.label} is "${want}". ` +
             'Every store binds its record to this string PERMANENTLY at first submission — Play at the ' +
             'first upload, App Store Connect at the first record, the Snap Store at `snapcraft register`. ' +
             'Two platforms disagreeing is two apps, with separate reviews, separate install counts and no ' +
@@ -612,6 +669,10 @@ console.log(
   `ok  store identity — ${checked} (app × platform) identity(ies) compared to com.nikatru.<slug> (or the app's own store-issued record) across ` +
     `${apps.length} app(s) and ${withIdentity.length} identity-declaring channel(s); ${skippedNoFolder} pair(s) ` +
     'skipped for having no platform folder (a web-only app is not missing an Android package name)',
+);
+console.log(
+  `ok  apple bundle id — ${appleDerived} (app × Apple platform) identity file(s) compared to ${APPLE_REGISTER_REL} through bundleIdOf; ` +
+    `no channel row carries a per-channel \`${RETIRED_ROW_KEY}\``,
 );
 console.log(
   `ok  snap name — ${snapChecked} snap name(s) equal ${SNAP_DERIVATION}; retired token(s) ${retiredTokens.map((t) => JSON.stringify(t)).join(', ')} ` +

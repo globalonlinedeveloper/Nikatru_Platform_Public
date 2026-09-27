@@ -963,7 +963,7 @@ jobs:
       join(root, 'tooling', 'channel-register.json'),
       JSON.stringify({
         channels: [{ id: 'play', platforms: ['android'], purchaseRail: { rail: 'google-play-billing' } }],
-        purchaseRails: { storeKeyDefine: { define: 'STORE_KEY', secretByRail: {} } },
+        purchaseRails: { storeKeyDefine: { define: 'STORE_KEY', secretFieldByRail: {} } },
       }),
     );
     writeFileSync(join(root, 'apps', 'fixture', 'app.yaml'), 'id: fixture\nhosts:\n  api: fixture-api.nikatru.com\n');

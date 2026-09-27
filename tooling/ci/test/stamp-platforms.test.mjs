@@ -385,7 +385,7 @@ jobs:
   const withComposer = (root, app) => {
     writeFileSync(join(root, 'tooling', 'channel-register.json'), JSON.stringify({
       channels: [{ id: 'web', platforms: ['web'], purchaseRail: { rail: 'paddle' } }],
-      purchaseRails: { storeKeyDefine: { define: 'STORE_KEY', secretByRail: {} } },
+      purchaseRails: { storeKeyDefine: { define: 'STORE_KEY', secretFieldByRail: {} } },
     }));
     mkdirSync(join(root, 'apps', app), { recursive: true });
     writeFileSync(join(root, 'apps', app, 'app.yaml'), `id: ${app}\nhosts:\n  api: ${app}-api.nikatru.com\n`);

@@ -383,7 +383,7 @@ ${sinkStep}`;
   /** The two register fields the composer reads, and the app it builds. */
   const COMPOSER_REGISTER = {
     channels: [{ id: 'linux-snap', platforms: ['linux'], purchaseRail: { rail: 'paddle' } }],
-    purchaseRails: { storeKeyDefine: { define: 'STORE_KEY', secretByRail: {} } },
+    purchaseRails: { storeKeyDefine: { define: 'STORE_KEY', secretFieldByRail: {} } },
   };
   const withComposerApp = (root) => {
     mkdirSync(join(root, 'apps', 'fixture'), { recursive: true });
