@@ -56,6 +56,8 @@ const {
   headersFor,
   headerValue,
   probeOrigin,
+  deferredFallbackFont,
+  readFallbackLockFiles,
 } = await import(`file://${SMOKE.replaceAll('\\', '/')}`);
 
 const FIXTURE = join(ROOT, 'tooling', 'ci', 'test', 'fixtures', 'smoke-web-csp');
@@ -220,6 +222,51 @@ describe('smoke-web-artifact.mjs — the static server it serves the artifact fr
       const escape = await fetch(`${base}/..%2foutside.txt`);
       assert.equal(escape.status, 200);
       assert.equal(await escape.text(), 'INSIDE', 'a `..` in the request escaped the bundle directory');
+    } finally {
+      server.close();
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 A LOCK-HELD FALLBACK FONT IN A PRE-FONTS BUNDLE IS DEFERRED, NOT MISSING (2026-09-27).
+// ci.yml's web-artifacts lane smokes the bundle before any fallback font exists (its fonts step is
+// `--check`), so the engine's lazy font fetch 404'd and failed main f24ca068 (run 36309384414) and
+// PR #1008 (run 36310186938): `404 …/fallback-fonts/notosanssymbols2/v24/…woff2`. deploy-web.yml
+// places the fonts first, and there every 404 still fails.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('smoke-web-artifact.mjs — a fallback font the deploy places is deferred, never excused elsewhere', () => {
+  const MEASURED = 'notosanssymbols2/v24/I_uyMoGduATTei9eI8daxVHDyfisHr71-vrgfE71.woff2';
+  const LOCK = { [MEASURED]: { sha256: 'x', bytes: 1 } };
+
+  test('the measured path is in the committed lock, so the real case is the one deferred', () => {
+    assert.ok(Object.hasOwn(readFallbackLockFiles(), MEASURED), 'the lock no longer pins the measured font');
+  });
+
+  test('deferred only when the bundle has no fallback-fonts/, the path is under it, and the lock holds it', () => {
+    const pre = bundle({ 'index.html': '<html></html>' });
+    assert.equal(deferredFallbackFont(pre, `/fallback-fonts/${MEASURED}`, LOCK), true);
+    // RED CONTROLS, each one condition false.
+    const placed = bundle({ 'index.html': '<html></html>', 'fallback-fonts/other/v1/a.woff2': 'x' });
+    assert.equal(deferredFallbackFont(placed, `/fallback-fonts/${MEASURED}`, LOCK), false, 'after the fonts step a 404 is a real miss');
+    assert.equal(deferredFallbackFont(pre, '/fallback-fonts/notinlock/v1/b.woff2', LOCK), false, 'a path the lock does not hold is a finding');
+    assert.equal(deferredFallbackFont(pre, `/assets/${MEASURED}`, LOCK), false, 'only fallback-fonts/ is ever deferred');
+    assert.equal(deferredFallbackFont(pre, `/fallback-fonts/${MEASURED}`, {}), false, 'an unreadable lock defers nothing');
+  });
+
+  test('the server still answers 404, and marks ONLY the lock-held font as deferred, under the base path', async () => {
+    const dir = bundle({ 'index.html': '<html><head><base href="/subscriptiontracker/"></head></html>' });
+    const seen = [];
+    const server = serveBundle(dir, (r) => seen.push(r), [], LOCK);
+    await new Promise((r) => server.listen(0, '127.0.0.1', r));
+    const base = `http://127.0.0.1:${server.address().port}/subscriptiontracker`;
+    try {
+      assert.equal((await fetch(`${base}/fallback-fonts/${MEASURED}`)).status, 404);
+      assert.equal((await fetch(`${base}/fallback-fonts/notinlock/v1/b.woff2`)).status, 404);
+      assert.equal((await fetch(`${base}/missing.png`)).status, 404);
+      const deferred = seen.filter((r) => r.deferred).map((r) => r.path);
+      assert.deepEqual(deferred, [`/subscriptiontracker/fallback-fonts/${MEASURED}`], JSON.stringify(seen));
+      assert.equal(seen.filter((r) => r.status === 404 && !r.deferred).length, 2, JSON.stringify(seen));
     } finally {
       server.close();
     }

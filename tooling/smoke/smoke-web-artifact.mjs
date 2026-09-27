@@ -78,6 +78,7 @@ import { readFileSync, existsSync, statSync, mkdtempSync, rmSync } from 'node:fs
 import { join, extname, normalize, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
+import { FALLBACK_DIR, DEFAULT_LOCK } from '../web/self-host-fallback-fonts.mjs';
 
 /**
  * THE DEFINED READY SIGNAL. Exported so tooling/ci/assert-launch-smoke.mjs can
@@ -195,6 +196,40 @@ export function stripBasePrefix(path, prefix) {
   return `/${path.slice(prefix.length)}`;
 }
 
+// 🔴 A FALLBACK FONT THE DEPLOY SUPPLIES IS NOT AN ASSET THE BUNDLE LOST (2026-09-27).
+// The engine fetches a text fallback font lazily, from `fallback-fonts/<engine path>`, when a frame
+// draws a glyph its bundled fonts lack. deploy-web.yml places every such font, checked against
+// tooling/web/fallback-fonts.lock.json, BEFORE it runs this smoke, so a 404 there is a real miss and
+// still fails. ci.yml's web-artifacts lane runs that step as `--check`, with no network, and so
+// smokes a bundle with no fallback-fonts/ directory at all. Whether it failed then depended on
+// whether the engine asked for a font during the boot. Main f24ca068 (run 36309384414) and PR #1008
+// (run 36310186938) both failed on `404 …/fallback-fonts/notosanssymbols2/v24/…woff2`, and main
+// dcbfcd33 (run 36309462120) passed.
+// A request is DEFERRED to the fonts step only when all three hold:
+//   · the bundle has no fallback-fonts/ directory, so the step has not run;
+//   · the path is under that directory;
+//   · the committed lock holds that exact path.
+// A path the lock does not hold is still a 404 finding, because the fonts step would refuse it too.
+
+/** The engine paths the committed fallback-font lock pins, or an empty object when the lock cannot
+ *  be read. An empty object defers nothing, so every font 404 is reported. */
+export function readFallbackLockFiles(lockPath = DEFAULT_LOCK) {
+  try {
+    return JSON.parse(readFileSync(lockPath, 'utf8')).files ?? {};
+  } catch {
+    return {};
+  }
+}
+
+/** True when `rel` (a bundle-relative request path, `/fallback-fonts/<engine path>`) is a font the
+ *  deploy's fonts step will place and has not placed yet. */
+export function deferredFallbackFont(dir, rel, lockFiles) {
+  const head = `/${FALLBACK_DIR}/`;
+  if (!rel.startsWith(head)) return false;
+  if (existsSync(join(dir, FALLBACK_DIR))) return false;
+  return Object.hasOwn(lockFiles ?? {}, rel.slice(head.length));
+}
+
 /** A Cloudflare Pages `_headers` path pattern as a RegExp: one greedy `*` splat
  *  and `:name` placeholders, each matching one path segment. */
 const pagesPattern = (pattern) =>
@@ -276,7 +311,7 @@ export const headerValue = (headers, name) =>
  *  `_headers` gives its path, matched against the path RELATIVE TO THE BUNDLE —
  *  the Pages project serves the bundle at its root and the apex router adds the
  *  `/<id>` prefix, so `/*` and `/index.html` mean what they mean at the edge. */
-export function serveBundle(dir, onRequest = () => {}, rules = readBundleHeaders(dir) ?? []) {
+export function serveBundle(dir, onRequest = () => {}, rules = readBundleHeaders(dir) ?? [], fontLock = readFallbackLockFiles()) {
   const server = createServer((req, res) => {
     const requested = decodeURIComponent(new URL(req.url, 'http://127.0.0.1').pathname);
     let p = requested;
@@ -329,7 +364,7 @@ export function serveBundle(dir, onRequest = () => {}, rules = readBundleHeaders
       body = readFileSync(abs);
     } catch (e) {
       if (e?.code !== 'ENOENT' && e?.code !== 'ENOTDIR' && e?.code !== 'EISDIR') throw e;
-      onRequest({ path: p, status: 404 });
+      onRequest({ path: p, status: 404, ...(deferredFallbackFont(dir, stripped, fontLock) ? { deferred: true } : {}) });
       res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
       res.end('not found');
       return;
@@ -444,8 +479,11 @@ async function run(rules, origins, csp) {
    *  three failures R-13 names, and it does NOT always stop the first frame —
    *  so it is asserted separately rather than folded into the ready signal. */
   const notFound = [];
-  const server = serveBundle(BUNDLE, ({ path, status }) => {
-    if (status === 404 || status === 403) notFound.push(`${status} ${path}`);
+  /** Fallback fonts the deploy's fonts step places and this pre-step bundle cannot hold yet. */
+  const deferredFonts = [];
+  const server = serveBundle(BUNDLE, ({ path, status, deferred }) => {
+    if (deferred) deferredFonts.push(path);
+    else if (status === 404 || status === 403) notFound.push(`${status} ${path}`);
   }, rules);
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   // The page is opened AT THE BUNDLE'S OWN BASE PATH, for the same reason the
@@ -697,6 +735,9 @@ async function run(rules, origins, csp) {
 
   console.log(`ok   ${READY_SIGNAL.id} reached in ${elapsed} ms — the artifact starts`);
   console.log(`ok   no 404 from the bundle, no unhandled page exception`);
+  if (deferredFonts.length) {
+    console.log(`--   ${deferredFonts.length} fallback font(s) requested before the deploy's fonts step placed them (this bundle has no ${FALLBACK_DIR}/; each path is in the lock): ${deferredFonts.join(', ')}`);
+  }
   console.log("ok   no Content-Security-Policy violation, under the bundle's own _headers");
   for (const o of origins) {
     console.log(`ok   connect-src allows ${o} — fetched from the page, paused and answered here with a 204; it never reached the host`);
