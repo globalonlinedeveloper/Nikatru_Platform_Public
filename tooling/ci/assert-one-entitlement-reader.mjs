@@ -91,8 +91,11 @@ const DECLARED = [
   {
     file: READER,
     role: 'reader',
-    counts: { entitlements: 2, bundle_grants: 2 },
-    why: 'THE reader: the per-product union read and the subject read, one statement each per table.',
+    counts: { entitlements: 2, bundle_grants: 1 },
+    why:
+      'THE reader: the per-product union read and the subject read, one statement each for `entitlements`; ' +
+      'ONE statement for `bundle_grants` serves both (since 2026-09-26, `bundleGrantsServed`), so the two routes ' +
+      'resolve a bundle grant by one membership rule.',
   },
   {
     file: 'services/platform/src/lib/mor/store.ts',

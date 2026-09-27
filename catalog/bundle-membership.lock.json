@@ -1,0 +1,14 @@
+{
+  "_why": [
+    "THE MINTED-MEMBERSHIP LOCK. One entry per feature-set VERSION, featureSet@version → its member slugs, sorted.",
+    "catalog/bundles.json carries one row per feature set at its CURRENT version; this file keeps every version ever",
+    "written. tooling/ci/assert-bundle-availability.mjs limb H (O-BUNDLE-MEMBER-INSERT-UNLOCKED) fails when a row's",
+    "members differ from its version's entry (adding a product means bumping the version), when an entry is edited or",
+    "removed (the lock only grows; compared against origin/main's copy), and when a NEW entry names a member that is not",
+    "`live` in its register at the commit that adds it.",
+    "nikatru_all@1 is written AS IT STANDS: it is `draft`, and fullshot is `preview` in extensions/catalog/extensions.json.",
+    "A draft version was never sold, so it is not re-graded; it can never become `sellable` while a member is not live.",
+    "Selling the bundle is a v2 whose members are all live."
+  ],
+  "nikatru_all@1": ["fullshot", "subscriptiontracker"]
+}

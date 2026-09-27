@@ -25,6 +25,9 @@ jobs:
     name: detect (workers)
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
     outputs:
       affected: ${{ steps.detect.outputs.affected }}
       reason: ${{ steps.detect.outputs.reason }}
@@ -49,6 +52,9 @@ jobs:
           set -euo pipefail
           workers="$(node tooling/ci/worker-set.mjs --for-deploy --emit)"
           echo "workers=${workers}" >> "$GITHUB_OUTPUT"
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   worker:
     # why: one leg per Worker directory (the detect job's `workers` output), so a
@@ -59,6 +65,9 @@ jobs:
     if: needs.detect.outputs.affected == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
     strategy:
       fail-fast: false
       matrix:
@@ -78,6 +87,9 @@ jobs:
       # why: env.sandbox is deployed only by the manual deploy-sandbox.yml, so
       # this is the one place a broken sandbox block fails before a dispatch.
       - run: npx wrangler deploy --env sandbox --dry-run
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   lane-verdict:
     # why: the callee's conclusion is what ci-gate sees, and a callee whose work jobs

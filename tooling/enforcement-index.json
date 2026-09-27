@@ -735,6 +735,16 @@
       ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
+    "ref": "tooling/ci/assert-d1-fanout.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-platform"
+    ],
+    "kind": "guard",
     "ref": "tooling/ci/assert-d1-location-hint.mjs",
     "references": [],
     "state": "WIRED"
@@ -965,6 +975,16 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-extensions-build-free.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-failfast-coverage.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -3807,6 +3827,16 @@
     ],
     "kind": "script",
     "ref": "tooling/scripts/provision-backend.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-platform"
+    ],
+    "kind": "script",
+    "ref": "tooling/scripts/render-platform-app-block.mjs",
     "references": [],
     "state": "WIRED"
   },

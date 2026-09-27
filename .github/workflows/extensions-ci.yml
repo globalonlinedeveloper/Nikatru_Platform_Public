@@ -36,6 +36,9 @@ jobs:
     name: The extensions are still build-free
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
     defaults:
       run:
         working-directory: .
@@ -60,6 +63,9 @@ jobs:
           fi
           node tooling/ci/assert-extensions-build-free.mjs . > /dev/null
           echo "planted a bundler config: exit 1. removed it: exit 0."
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   # why: contracts/ is read by Dart, the Workers and the extensions (ADR 067
   # decision 1), so a copy that drifts is three consumers disagreeing in silence.
@@ -67,6 +73,9 @@ jobs:
     name: The shared contract has not drifted
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
     defaults:
       run:
         working-directory: .
@@ -86,11 +95,17 @@ jobs:
       # grant whose provenance one runtime believes and the other does not.
       - name: bundle.json is what bundle.js derives
         run: node contracts/entitlement/generate-bundle.mjs --check
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   gate-inventory:
     name: Gate inventory (which gates exist)
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with: { persist-credentials: false }
@@ -219,11 +234,17 @@ jobs:
         with: { node-version: '${{ env.NODE_VERSION }}' }
       - name: No workflow step names a tool; every declared store gate has a runner
         run: node scripts/discover.mjs --assert-generic
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   discover:
     name: Discover affected tools
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
     outputs:
       tools: ${{ steps.set.outputs.tools }}
       count: ${{ steps.set.outputs.count }}
@@ -304,21 +325,33 @@ jobs:
           if [ "$COUNT" = "0" ]; then
             echo "::notice::no tool was affected by this change — the per-tool jobs below are skipped on purpose, not by accident."
           fi
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   secrets-scan:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with: { persist-credentials: false }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with: { node-version: '${{ env.NODE_VERSION }}' }
       - run: node scripts/secret-scan.mjs .
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   catalogue:
     name: catalogue
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with: { persist-credentials: false }
@@ -366,11 +399,17 @@ jobs:
       - name: Every tool carries the house identity
         working-directory: .
         run: node tooling/ci/assert-house-identity.mjs .
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   core:
     name: core sims
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with: { persist-credentials: false }
@@ -412,6 +451,9 @@ jobs:
         run: node --import ../tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test scripts/test/contracts-sync.test.mjs
       - name: The listing-asset guard can still fail
         run: node --import ../tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test scripts/test/listing-assets.test.mjs
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   gates:
     name: gates · ${{ matrix.tool }}
@@ -419,6 +461,9 @@ jobs:
     if: needs.discover.outputs.count != '0'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
     strategy:
       fail-fast: false
       matrix:
@@ -462,6 +507,9 @@ jobs:
       # ran; `discover.mjs --assert-generic` in gate-inventory refuses that shape.)
       - name: The tool's own declared store gates (tool.json gates, stage gates)
         run: node scripts/discover.mjs --run-gates --tool ${{ matrix.tool }} --stage gates
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   sims:
     name: sims · ${{ matrix.tool }} · node ${{ matrix.node }}
@@ -474,6 +522,9 @@ jobs:
         node: ['22', '24']
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with: { persist-credentials: false }
@@ -492,6 +543,9 @@ jobs:
             extensions/**/test/pixel-sim/out/**
           retention-days: 7
           if-no-files-found: ignore
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   package:
     name: package · ${{ matrix.tool }} · ${{ matrix.target }} · ${{ matrix.os }}
@@ -511,6 +565,9 @@ jobs:
     # does not wrap — and at 15 it costs a wasted runner a quarter of an hour instead of
     # the six hours GitHub's default would have.
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with: { persist-credentials: false }
@@ -624,11 +681,17 @@ jobs:
           path: extensions/dist/*.zip
           retention-days: 14
           if-no-files-found: error
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   selftest:
     name: Gate self-test (do the gates bite?)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with: { persist-credentials: false }
@@ -653,11 +716,17 @@ jobs:
       # (⏱ 2026-09-25, O-EXTENSION-GATES-NAME-ONE-TOOL.)
       - name: The AMO zip gates must be proven to fail
         run: node --import ../tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test scripts/test/amo-gate-zip.test.mjs
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   templates:
     name: templates parse (the tree every future tool is stamped from)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with: { persist-credentials: false }
@@ -859,6 +928,9 @@ jobs:
             exit 1
           fi
           exit "$code"
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   # why: the single aggregate for this workflow. It carries always(), needs every
   # job above, and treats skipped as not-green. It is not a required check of its
@@ -1069,7 +1141,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      actions: read
+      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with: { persist-credentials: false }
@@ -1080,3 +1152,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: node scripts/assert-e2e-proof-fresh.mjs
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red

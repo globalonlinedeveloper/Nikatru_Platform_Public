@@ -249,8 +249,9 @@ import { CouldNotLook, classifyThrown, transientLook, isTransientStatus, retryAf
 import { CAPTURE_WORKFLOW, E2E_RUN_SHAPE, STORE_CAPTURE_SHAPE } from '../e2e/app-version-stamp.mjs';
 // The product kinds a bundle may span, imported rather than retyped: the same
 // file tooling/bundle-availability.mjs and the Worker twin read, so `script`
-// becoming real is one edit and not three.
-import { PRODUCT_KINDS } from '../../contracts/entitlement/bundle.js';
+// becoming real is one edit and not three. MEMBER_KINDS is every kind but the
+// bundle itself: a bundle is a product, and it is never a member of one.
+import { MEMBER_KINDS } from '../../contracts/entitlement/bundle.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REGISTER_REL = 'tooling/prod-provenance.json';
@@ -2276,7 +2277,7 @@ async function main() {
         ? null
         : `product kind \`${v}\` is not one of the kinds contracts/entitlement/bundle.js declares (${[...set].join(', ')})`)(
       (() => {
-        const s = new Set(PRODUCT_KINDS);
+        const s = new Set(MEMBER_KINDS);
         // An empty set marks every row unattributable, which reads as a finding
         // about the data when it is really a finding about the reader — the same
         // failure `app-catalogue` guards against one entry up.

@@ -1636,7 +1636,7 @@ pull request, one matrix leg per app from `prepare`, and discard the result. Bot
 
   | step | on the PR | why |
   |---|---|---|
-  | `self-host-fallback-fonts.mjs` | yes, `--check` | the deploy step's grading limbs against the built bundle and the committed lock, without its fetch from `fonts.gstatic.com`, which stays in `deploy-web.yml` |
+  | `self-host-fallback-fonts.mjs` | yes, the deploy's own step, then `--check` | the same call as `deploy-web.yml`: it fetches every fallback font from `fonts.gstatic.com` (public, no secret), matches each to the committed lock and places it under `build/web/fallback-fonts/`, so the smoke boots the tree that ships. `--check` then grades the bundle. With `--check` alone nothing was placed, and main run 36308023692 failed the smoke on a 404 for a font `nikatru.com` serves (lead ruling FWA-1, 2026-09-27) |
   | `assert-licence-register.mjs --bundle --app` | yes | every file the web build shipped resolves to exactly one licence row: a shared row, or an `appScopedAssets` row scoped to this app. A file a pub package ships (`packages/<pkg>/…`) needs a row naming that package, and the row's licence must equal what the package's own LICENSE reads, found through the `package_config.json` that "Resolve the workspace" wrote (lead ruling PRL-R1) |
   | `smoke-web-artifact.mjs` | yes, no `--connect` | the bundle boots under its own `_headers` CSP to its first frame. Main probes each `--connect` origin with its real value; here those defines are empty, so there is no origin to probe |
   | `assert-artifact-shape.mjs` | yes, `--platform web-artifacts` and `--platform linux-artifacts` | each lane key's `LANE_OUTPUTS` entry: `build/web` and `build/linux/x64/release/bundle` |
@@ -1648,7 +1648,8 @@ pull request, one matrix leg per app from `prepare`, and discard the result. Bot
   goes red on a target, a flag or a define name that differs from either side; a secret, an upload,
   a source-map step or a signing script in any PR-lane job; a main guard over `build/web` or the
   Linux bundle that is in neither the PR job nor `MAIN_ONLY`; a missing `ci-gate` need; a job-level
-  `if:`; or a lane key `assert-artifact-shape.mjs` does not know.
+  `if:`; a lane key `assert-artifact-shape.mjs` does not know; or a `web-artifacts` fonts step that is not
+  `deploy-web`'s own, placed after the build and before the smoke (T14w, FWA-1).
 - **macOS and Windows stay off the PR lane**, on this workflow's tag, schedule and dispatch.
   Measured per app on `7f5d0bfd`: macOS 12.3-22.0 min, Windows 11.9-12.0 min.
 

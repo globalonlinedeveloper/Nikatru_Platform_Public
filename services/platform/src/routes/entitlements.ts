@@ -35,8 +35,12 @@
 //      limb the whole shared-table design rests on.
 //
 // ── WHAT THIS FILE INJECTS INTO THE READER, AND WHY ──────────────────────────
-//   · `isKnownProduct` from ../config — the union of every product register,
-//     read through catalog JSON that esbuild inlines. The reader cannot import
+//   · `isKnownProduct` = `isAttributableProduct` from ../config — every product
+//     register but the bundle one, read through catalog JSON that esbuild
+//     inlines. A bundle id stays 404 here: a bundle is read through the subject
+//     route's `bundles[]`, and a per-product row for it would unlock nothing, so
+//     answering 200 `is_pro:false` would be a false NO to a bundle owner. The
+//     subject route never consults this set. The reader cannot import
 //     it (services/_shared may carry no `..` import, and nothing a guard loads
 //     under bare Node may import config.ts — ERR_IMPORT_ATTRIBUTE_MISSING).
 //   · `isMoneyEnvironment` from ../lib/mor/contract — contracts/entitlement's
@@ -61,7 +65,7 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 import { allRows } from '../lib/d1';
-import { isKnownProduct } from '../config';
+import { isAttributableProduct } from '../config';
 import { isMoneyEnvironment } from '../lib/mor/contract';
 import {
   type EntitlementReadDeps,
@@ -76,7 +80,7 @@ const readerDeps = (db: D1Database): EntitlementReadDeps => ({
   db,
   allRows,
   isMoneyEnvironment,
-  isKnownProduct,
+  isKnownProduct: isAttributableProduct,
   warn: (m) => console.warn(m),
   error: (m) => console.error(m),
 });
