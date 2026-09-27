@@ -78,18 +78,12 @@ jobs:
       # DEMO build -- mock sign-in, seeded data, no crash sink. Graded by
       # tooling/ci/assert-store-build-config.mjs.
       - name: Build windows
-        working-directory: apps/subscriptiontracker
-        run: >
-          flutter build windows --release
-          --obfuscate --split-debug-info=build/symbols/windows
-          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
-          --build-number=${{ github.run_number }}
-          --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-          --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
-          --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
-          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${{ steps.ver.outputs.GITHUB_SHA_SHORT }}
-          --dart-define=RELEASE_CHANNEL=windows-store
-          --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
+        env:
+          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
+        run: node tooling/ci/flutter-release-build.mjs subscriptiontracker windows windows-store
       # ⏱ MOVED AND CORRECTED 2026-09-07 (unit `symbols-everywhere`) — THIS STEP
       # USED TO BE THE LAST ONE IN THE JOB, behind `dart run msix:create` and the
       # store dry run, and its comment said the symbols were retained rather than

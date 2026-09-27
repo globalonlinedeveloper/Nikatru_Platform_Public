@@ -75,13 +75,21 @@
 // from-file form is included because it is the same act with the file one level
 // of indirection away: whatever is in that file is compiled in exactly as hard.
 //
+// ⏱ 2026-09-26 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 3 of 3) — THE CENSUS FOLLOWS THE
+// CALL HERE TOO. A release lane now asks tooling/ci/flutter-release-build.mjs for its
+// build, and the defines that build compiles in are in no workflow line: the web
+// build's APP_ENV is in the composer alone. So the parsed set also holds every
+// define of every build workflow-scan's census composes (flutterBuilds), at the
+// line of the call. The flat self-check below still reads workflow text only, so
+// it still proves the line scan reached every define a workflow types.
+//
 // Usage:  node tooling/ci/assert-no-secret-defines.mjs [repoRoot]
 // Exit 0 = every compiled-in input is declared, and every declaration is live.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseAllWorkflows } from './workflow-scan.mjs';
+import { parseAllWorkflows, flutterBuilds, definesIn } from './workflow-scan.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/publishable-inputs.json';
@@ -165,6 +173,16 @@ for (const wf of workflows) {
         fromFiles.push(`${wf.rel}:${l.n} → ${m[1]}`);
       }
     }
+  }
+}
+// A composed build's defines, at its call's line (header, 2026-09-26). A literal
+// build's own line already put each of its names at that site, so a site is
+// added once.
+for (const b of flutterBuilds(ROOT, workflows)) {
+  const site = `${b.workflow}:${b.runLine}`;
+  for (const name of definesIn(b.segment)) {
+    if (!passed.has(name)) passed.set(name, []);
+    if (!passed.get(name).includes(site)) passed.get(name).push(site);
   }
 }
 

@@ -40,9 +40,31 @@ import {
   PROOF_INPUT_PATHS,
 } from '../assert-platform-proof-fresh.mjs';
 import { parseWorkflow } from '../workflow-scan.mjs';
+import { workspaceApps } from '../app-set.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
+
+/**
+ * ⏱ 2026-09-26 (O-FLUTTER-BUILD-TYPED-PER-LINE, lead ruling W37-R2): every build
+ * in build-platforms.yml is a `node tooling/ci/flutter-release-build.mjs
+ * ${{ matrix.app }} <target> <channel>` call, and the census composes it from the
+ * root pubspec.yaml's `workspace:` apps and each app's app.yaml (the register is
+ * written by each fixture). A fixture root without them composes NO build, and
+ * the guard now says so (COVERAGE LOST, `unreadable`). So every fixture below
+ * that copies the real workflow copies those inputs too, unless a case asks for
+ * the root without them.
+ */
+function seedComposerInputs(root) {
+  writeFileSync(join(root, 'pubspec.yaml'), readFileSync(join(REPO, 'pubspec.yaml')));
+  for (const app of workspaceApps(REPO) ?? []) {
+    mkdirSync(join(root, app), { recursive: true });
+    writeFileSync(join(root, app, 'app.yaml'), readFileSync(join(REPO, app, 'app.yaml')));
+  }
+}
+
+/** One composer call's `${{ matrix.app }} <target>` prefix, for re-pointing a mutation at the composed shape. */
+const CALL = String.raw`node tooling/ci/flutter-release-build\.mjs \$\{\{ matrix\.app \}\}`;
 const GUARD = join(CI_DIR, 'assert-platform-proof-fresh.mjs');
 const NOW = '2026-07-27T12:00:00Z';
 const NOW_MS = Date.parse(NOW);
@@ -602,11 +624,12 @@ describe('coverage self-check — against a MUTATED REAL workflow, not a fixture
   // cases that legitimately want the real file verbatim. This is the standing
   // rule of this repository applied to its own fixtures: derive it, derive it
   // AFTER the mutation, and keep the new limb negative-testable.
-  const mutate = (transform, { register = 'real', identity = false } = {}) => {
+  const mutate = (transform, { register = 'real', identity = false, composerInputs = true } = {}) => {
     const root = mkdtempSync(join(tmpdir(), 'nikatru-f4-wf-'));
     const dir = join(root, '.github', 'workflows');
     mkdirSync(dir, { recursive: true });
     mkdirSync(join(root, 'tooling'), { recursive: true });
+    if (composerInputs) seedComposerInputs(root);
     const real = readFileSync(join(REPO, '.github/workflows/build-platforms.yml'), 'utf8');
     const after = transform(real);
     if (!identity && after === real) {
@@ -694,10 +717,13 @@ describe('coverage self-check — against a MUTATED REAL workflow, not a fixture
     // still legitimately proven and this test failed for a CORRECT reason. The
     // disguise has to cover every command that proves the platform, or it is
     // testing the guard's blind spot rather than its classifier.
+    // ⏱ RE-POINTED 2026-09-26 (W37-R2): both commands are composer calls now, so
+    // the disguise quotes the CALL; `echo "node …"` puts no command word in
+    // front of the composer, and the census composes nothing from it.
     const root = mutate((s) =>
       s.replace(
-        /^([ \t]*)(run:[ \t]*)?flutter build (ios|ipa)\b([^\n]*)$/gm,
-        (_m, pad, run, tgt, rest) => `${pad}${run ?? ''}echo "flutter build ${tgt}${rest} is disabled"`,
+        new RegExp(`^([ \\t]*)(run:[ \\t]*)(${CALL} (?:ios|ipa)\\b[^\\n]*)$`, 'gm'),
+        (_m, pad, run, call) => `${pad}${run}echo "${call} is disabled"`,
       ),
     );
     const problem = assertWatchedWorkflowIntact(root);
@@ -717,7 +743,9 @@ describe('coverage self-check — against a MUTATED REAL workflow, not a fixture
     // ⏱ `ipa` ADDED 2026-09-09 — deleting "the entire Apple half" has to delete
     // the signed iOS build too, or the mutation leaves one behind and this test
     // measures a tree that is not the one it names.
-    const root = mutate((s) => s.split('\n').filter((l) => !/^\s*(?:run:\s*)?flutter build (macos|ios|ipa)\b/.test(l)).join('\n'));
+    // ⏱ RE-POINTED 2026-09-26 (W37-R2): the three Apple builds are composer calls.
+    const apple = new RegExp(`^\\s*(?:run:\\s*)?${CALL} (?:macos|ios|ipa)\\b`);
+    const root = mutate((s) => s.split('\n').filter((l) => !apple.test(l)).join('\n'));
     const problem = assertWatchedWorkflowIntact(root);
     assert.match(problem, /COVERAGE LOST/);
     assert.match(problem, /ios/);
@@ -726,7 +754,10 @@ describe('coverage self-check — against a MUTATED REAL workflow, not a fixture
   });
 
   test('EVERY build disguised as an echo is caught as a classifier failure, not a clean tree', () => {
-    const root = mutate((s) => s.replace(/flutter build (web|linux|apk|appbundle|windows|macos|ios|ipa)/g, (m) => `echo "${m} disabled"`));
+    // ⏱ RE-POINTED 2026-09-26 (W37-R2): every build is a composer call; each is quoted into an echo.
+    const root = mutate((s) =>
+      s.replace(new RegExp(`${CALL} (?:web|linux|apk|appbundle|windows|macos|ios|ipa)\\b[^\\n]*`, 'g'), (m) => `echo "${m} disabled"`),
+    );
     const problem = assertWatchedWorkflowIntact(root);
     assert.match(problem, /COVERAGE LOST/);
     assert.match(problem, /NONE of them is a `flutter build` command/);
@@ -737,8 +768,34 @@ describe('coverage self-check — against a MUTATED REAL workflow, not a fixture
     // The register claims the PLATFORM; which artifact its lane emits is
     // assert-channel-register.mjs's question. This guard must not go red for a
     // lane that still compiles Android through the other target.
-    const root = mutate((s) => s.replace('flutter build apk --release', 'flutter build appbundle --release'));
+    // ⏱ RE-POINTED 2026-09-26 (W37-R2): every apk is a composer call; each becomes
+    // an appbundle of the same channel, so NO apk is left, not only the first.
+    const root = mutate((s) => s.replace(new RegExp(`(${CALL}) apk `, 'g'), '$1 appbundle '));
     assert.equal(assertWatchedWorkflowIntact(root), null);
+    const { found } = flutterBuildTargets(parseWorkflow(root, '.github/workflows/build-platforms.yml'), root);
+    assert.ok(!found.has('apk') && found.has('appbundle'), `the mutation must leave no apk and an appbundle: ${[...found.keys()].join(' ')}`);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  // ── 🔴 A COMPOSED BUILD THAT CANNOT BE READ (W37-R2) ───────────────────────
+  // The fixture this file built until 2026-09-26 — the real workflow and the
+  // register, no workspace — composed NO build from any of the nine composer
+  // calls, and the guard blamed "the command classifier" (CI run 36261752429).
+  test('a composer call that composes NO build is COVERAGE LOST (unreadable, exit 2), never a missing platform', () => {
+    const root = mutate((s) => s, { identity: true, composerInputs: false });
+    const r = platformProofCoverage(root);
+    assert.equal(r.unreadable, true, r.problem);
+    assert.match(r.problem, /^COVERAGE LOST — the composer call\(s\) at \.github\/workflows\/build-platforms\.yml:\d+ \(job "linux_web_android"\)/);
+    assert.match(r.problem, /composed no build/);
+    assert.doesNotMatch(r.problem, /no longer builds|NONE of them/, 'an unreadable composition must not be graded as a missing build');
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test('a composer call the composer REFUSES is COVERAGE LOST (unreadable, exit 2), naming its refusal', () => {
+    const root = mutate((s) => s.replace(new RegExp(`(${CALL} web) web\\n`), '$1 no-such-channel\n'));
+    const r = platformProofCoverage(root);
+    assert.equal(r.unreadable, true, r.problem);
+    assert.match(r.problem, /^COVERAGE LOST — the census could not compose build-platforms\.yml's builds: .*"no-such-channel" is not a channel row/);
     rmSync(root, { recursive: true, force: true });
   });
 
@@ -782,6 +839,7 @@ describe('coverage self-check — the DERIVED platform set can itself go missing
     const root = mkdtempSync(join(tmpdir(), 'nikatru-f4-reg-'));
     mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
     mkdirSync(join(root, 'tooling'), { recursive: true });
+    seedComposerInputs(root);
     const real = readFileSync(join(REPO, '.github/workflows/build-platforms.yml'), 'utf8');
     writeFileSync(join(root, '.github', 'workflows', 'build-platforms.yml'), transform(real));
     if (register !== null) {
@@ -1000,6 +1058,7 @@ describe('the declared cadence must be able to reach MAX_AGE_DAYS', () => {
     const root = mkdtempSync(join(tmpdir(), 'nikatru-f4-cron-'));
     mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
     mkdirSync(join(root, 'tooling'), { recursive: true });
+    seedComposerInputs(root);
     const real = readFileSync(join(REPO, '.github/workflows/build-platforms.yml'), 'utf8');
     // 🔴 BOTH patterns must still match, checked BEFORE the replace. A transform
     // that silently stopped transforming is what makes a negative test grade a

@@ -141,7 +141,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseWorkflow, flutterBuilds, WORKFLOW_DIR } from './workflow-scan.mjs';
+import { parseWorkflow, flutterBuilds, composerCallArgs, shellSegments, WORKFLOW_DIR } from './workflow-scan.mjs';
 import { cronExpressions } from './assert-e2e-proof-fresh.mjs';
 import { flutterAppChannel, undeclaredSurfaceLine } from './channel-surface.mjs';
 import { anchoredRunRead, gradeUnion, describeRead } from './anchored-run-read.mjs';
@@ -348,14 +348,53 @@ export function blankStringLiterals(text) {
  * as the segment `flutter build ios"`: a target holding a quote is the tail of a
  * quoted string, and does not count. `root` is where a composer call's register
  * and app.yaml are read.
+ *
+ * ⏱ 2026-09-26 (lead ruling W37-R2): A COMPOSED BUILD THAT COULD NOT BE READ IS
+ * `unreadable`, NEVER A MISSING TARGET. Every composer build call on a `run:`
+ * line (workflow-scan's composerCallArgs, the census's own parse) must compose
+ * at least one build. A call the composer refuses throws in the census, and a
+ * `${{ matrix.app }}` call under a root whose pubspec `workspace:` names no app
+ * composes none. Either way `unreadable` names the call, and the caller reports
+ * COVERAGE LOST (exit 2) instead of "no longer builds <platform>".
  */
 export function flutterBuildTargets(wf, root = ROOT) {
   const found = new Map();
   const runLines = new Set();
+  const calls = [];
   for (const job of wf.jobs.values()) {
-    for (const line of job.logical) if (/^\s*(?:-\s+)?run:\s*\S/.test(line.text)) runLines.add(`${job.name}\0${line.n}`);
+    for (const line of job.logical) {
+      if (!/^\s*(?:-\s+)?run:\s*\S/.test(line.text)) continue;
+      runLines.add(`${job.name}\0${line.n}`);
+      for (const seg of shellSegments(line.text)) {
+        let call;
+        try {
+          call = composerCallArgs(seg, `${wf.rel}:${line.n}`);
+        } catch {
+          call = {};
+        }
+        if (call !== null) calls.push({ job: job.name, n: line.n });
+      }
+    }
   }
-  for (const b of flutterBuilds(root, [wf])) {
+  let builds;
+  try {
+    builds = flutterBuilds(root, [wf]);
+  } catch (e) {
+    return { found, runBlocks: runLines.size, unreadable: `the census could not compose ${WORKFLOW}'s builds: ${e.message}` };
+  }
+  const composedAt = new Set(builds.map((b) => `${b.job}\0${b.runLine}`));
+  const blind = calls.filter((c) => !composedAt.has(`${c.job}\0${c.n}`));
+  if (blind.length) {
+    const at = blind.map((c) => `${wf.rel}:${c.n} (job "${c.job}")`).join(', ');
+    return {
+      found,
+      runBlocks: runLines.size,
+      unreadable:
+        `the composer call(s) at ${at} composed no build. A \`\${{ matrix.app }}\` call composes one build per app the root ` +
+        "pubspec.yaml's `workspace:` names under apps/, and none resolved",
+    };
+  }
+  for (const b of builds) {
     if (!runLines.has(`${b.job}\0${b.runLine}`)) continue;
     const seg = blankStringLiterals(b.segment.replace(/^\s*(?:-\s+)?run:\s*/, ''));
     const tokens = seg.trim().split(/\s+/).filter(Boolean);
@@ -604,12 +643,21 @@ export function platformProofCoverage(root = ROOT) {
   // only place anything compiles for macOS, iOS, Windows or Linux (main CI runs
   // analyze/test, which compile no native target), so two of six could vanish
   // from the factory's only compile proof with ci-gate green throughout.
-  const { found, runBlocks } = flutterBuildTargets(wf, root);
+  const { found, runBlocks, unreadable } = flutterBuildTargets(wf, root);
   if (runBlocks === 0) {
     return lost(
       `COVERAGE LOST — the run-block parse found ZERO \`run:\` commands in ${WORKFLOW}'s ${wf.jobs.size} job(s). ` +
         'The structural scan has stopped reaching the file, and every build clause below would be answered over nothing.',
     );
+  }
+  if (unreadable) {
+    return {
+      problem:
+        `COVERAGE LOST — ${unreadable}. The composed build is what this workflow compiles, so no platform can be graded ` +
+        'from a composition that could not be read (lead ruling W37-R2).',
+      summary: null,
+      unreadable: true,
+    };
   }
   if (found.size === 0) {
     return lost(
@@ -915,7 +963,8 @@ export function gradeRunHistory(read, nowMs) {
 async function main() {
   const coverage = platformProofCoverage();
   if (coverage.problem) {
-    fail(coverage.problem);
+    // A composition that could not be read judged nothing: exit 2, not 1 (W37-R2).
+    (coverage.unreadable ? lost : fail)(coverage.problem);
     return;
   }
   console.log(`ok  ${coverage.summary}`);

@@ -75,35 +75,23 @@ jobs:
       # upload. The build stays unsigned because this lane must not submit — not
       # because nothing here could sign.
       - name: Build iOS (unsigned on purpose — this lane must never submit)
-        working-directory: apps/subscriptiontracker
-        run: >
-          flutter build ios --release --no-codesign
-          --obfuscate --split-debug-info=build/symbols/ios
-          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
-          --build-number=${{ github.run_number }}
-          --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-          --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
-          --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
-          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${GITHUB_SHA::7}
-          --dart-define=RELEASE_CHANNEL=ios-appstore
-          --dart-define=REVENUECAT_KEY=${{ secrets.REVENUECAT_PUBLIC_KEY_APPLE }}
-          --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
+        env:
+          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          REVENUECAT_PUBLIC_KEY_APPLE: ${{ secrets.REVENUECAT_PUBLIC_KEY_APPLE }}
+          GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
+        run: node tooling/ci/flutter-release-build.mjs subscriptiontracker ios ios-appstore
       # Same correction as the iOS step above: unsigned BY CHOICE, not for want
       # of a certificate. A Mac Installer Distribution certificate exists too.
       - name: Build macOS (unsigned on purpose — this lane must never submit)
-        working-directory: apps/subscriptiontracker
-        run: >
-          flutter build macos --release
-          --obfuscate --split-debug-info=build/symbols/macos
-          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
-          --build-number=${{ github.run_number }}
-          --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-          --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
-          --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
-          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${GITHUB_SHA::7}
-          --dart-define=RELEASE_CHANNEL=macos-appstore
-          --dart-define=REVENUECAT_KEY=${{ secrets.REVENUECAT_PUBLIC_KEY_APPLE }}
-          --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
+        env:
+          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          REVENUECAT_PUBLIC_KEY_APPLE: ${{ secrets.REVENUECAT_PUBLIC_KEY_APPLE }}
+          GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
+        run: node tooling/ci/flutter-release-build.mjs subscriptiontracker macos macos-appstore
       # ⏱ CORRECTED 2026-09-07 (unit `symbols-everywhere`) — this comment used to
       # end "Retained rather than sent to the crash sink because
       # tooling/versions.json pins ONE glitchtip-cli binary and it is

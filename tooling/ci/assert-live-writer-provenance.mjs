@@ -48,9 +48,9 @@
 //
 // ⚠️ A SCRIPT-LAUNCHED `flutter build` is refused, not graded: nothing here can
 // yet say which lane such a build writes under. Extend this guard first.
-// ⏱ 2026-09-26 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 1 of 3) — EXTENDED FOR ONE
+// ⏱ 2026-09-26 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 3 of 3) — EXTENDED FOR ONE
 // SCRIPT, the release composer tooling/ci/flutter-release-build.mjs, which the
-// release lanes call in place of their literal `flutter build` lines (part 3). Its
+// release lanes now call in place of their literal `flutter build` lines. Its
 // answer to the two questions: it writes under NO lane, because it runs
 // `flutter build` and never `flutter drive`, so it launches nothing that could
 // write a row; and there is nothing to purge. A binary it makes writes rows only
