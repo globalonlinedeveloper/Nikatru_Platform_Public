@@ -526,6 +526,11 @@
       "firstSeen": "2026-07-29",
       "evidence": []
     },
+    "tooling/ci/assert-d1-fanout.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-27",
+      "evidence": []
+    },
     "tooling/ci/assert-d1-location-hint.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-14",
@@ -787,6 +792,11 @@
     "tooling/ci/assert-extensions-build-free.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-05",
+      "evidence": []
+    },
+    "tooling/ci/assert-failfast-coverage.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-27",
       "evidence": []
     },
     "tooling/ci/assert-flag-exposure.mjs": {
@@ -2641,6 +2651,11 @@
       "firstSeen": "2026-07-29",
       "evidence": []
     },
+    "tooling/scripts/render-platform-app-block.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-27",
+      "evidence": []
+    },
     "tooling/scripts/spawn-ceiling.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-25",
@@ -2701,6 +2716,11 @@
       "firstSeen": "2026-08-04",
       "evidence": []
     },
+    "tooling/store/capture-precheck.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-27",
+      "evidence": []
+    },
     "tooling/store/measure-frame-ink.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-22",
@@ -2709,6 +2729,11 @@
     "tooling/store/msix-visual-name.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-26",
+      "evidence": []
+    },
+    "tooling/store/render-play-graphics.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-27",
       "evidence": []
     },
     "tooling/web/connect-origins.mjs": {

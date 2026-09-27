@@ -176,6 +176,58 @@ jobs:
           command: deploy --var RELEASE:\${{ github.sha }}
 `;
 
+/** A store lane in the per-app shape limb I grades (O-STORE-LANES-HARD-WIRE-ONE-APP): a
+ *  required `app` input with no default, a `gate` job that alone reads it (through
+ *  `env:`), checks it with `--emit-apps --app` and emits it, and a job that needs the
+ *  gate and reads its output. A DEFAULT every fixture carries under each graded store
+ *  lane's name, like `deploy-web.yml`, because GRADED_LANES names them; limb I cases
+ *  override one. Each knob replaces one part of the lane as written. */
+const perAppLane = ({
+  title = 'Store submit',
+  runName = `"${'Store submit'} — \${{ inputs.app }} by @\${{ github.actor }}"`,
+  input = '        required: true\n        type: string\n',
+  gateEnv = '          APP_INPUT: ${{ inputs.app }}\n',
+  gateCheck = '          node tooling/ci/assert-release-lane-generic.mjs --emit-apps --app "$APP_INPUT"\n',
+  gateOutput = '    outputs:\n      app: ${{ steps.app.outputs.app }}\n',
+  dryNeeds = '    needs: gate\n',
+  dryEnv = '      APP: ${{ needs.gate.outputs.app }}\n',
+  dryRun = 'node tooling/release/submit-play.mjs --dry-run --app "$APP"',
+  extraJob = '',
+} = {}) => `name: ${title}
+run-name: ${runName}
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+${input}jobs:
+  gate:
+    runs-on: ubuntu-24.04
+${gateOutput}    steps:
+      - name: The app input names one app of the workspace
+        id: app
+        env:
+${gateEnv}        run: |
+          set -euo pipefail
+${gateCheck}          echo "app=\${APP_INPUT}" >> "$GITHUB_OUTPUT"
+  dry-run:
+${dryNeeds}    runs-on: ubuntu-24.04
+    env:
+${dryEnv}    steps:
+      - name: Dry-run the submission
+        run: ${dryRun}
+      - uses: actions/upload-artifact@0000000000000000000000000000000000000000
+        with:
+          name: symbols-\${{ needs.gate.outputs.app }}-dry-run
+          path: apps/\${{ needs.gate.outputs.app }}/build/symbols
+${extraJob}`;
+const PER_APP_LANES = {
+  'submit-play.yml': perAppLane(),
+  'submit-appstore.yml': perAppLane(),
+  'submit-windows-store.yml': perAppLane(),
+  'submit-snap.yml': perAppLane(),
+  'store-screenshots.yml': perAppLane(),
+};
+
 /** The two lanes R-1 owns, plus whatever else a case needs. Every fixture root
  *  carries a `tooling/ci` so limb B has a corpus, and the real modules the guard
  *  imports are NOT copied — the guard is run from its own location, so its
@@ -189,7 +241,7 @@ function fixture({ workspace = [APP_PATH], workflows = {}, guards = {} } = {}) {
     join(root, 'pubspec.yaml'),
     `name: ws\nworkspace:\n${workspace.map((w) => `  - ${w}\n`).join('')}\ndev_dependencies:\n  melos: ^8.2.2\n`,
   );
-  const all = { 'ci.yml': CI_YML, 'deploy-web.yml': DEPLOY_WEB, 'deploy-workers.yml': DEPLOY_WORKERS, ...workflows };
+  const all = { 'ci.yml': CI_YML, 'deploy-web.yml': DEPLOY_WEB, 'deploy-workers.yml': DEPLOY_WORKERS, ...PER_APP_LANES, ...workflows };
   for (const [name, body] of Object.entries(all)) writeFileSync(join(root, '.github', 'workflows', name), body);
   writeFileSync(join(root, 'tooling', 'ci', 'assert-gate-passed.mjs'), GATE_STUB);
   for (const [name, body] of Object.entries(guards)) writeFileSync(join(root, 'tooling', 'ci', name), body);
@@ -543,6 +595,79 @@ describe('assert-release-lane-generic.mjs — `--emit-apps --tag` (a tag builds 
   });
 });
 
+// ⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP) — `--emit-apps --app <id>` is a per-app
+// store lane's gate step: the dispatch input's shape first, then the workspace set.
+describe('assert-release-lane-generic.mjs — `--emit-apps --app` (a per-app lane\'s gate step)', () => {
+  const emitWith = (...args) => {
+    const r = spawnSync(process.execPath, [GUARD, ...args], { encoding: 'utf8' });
+    return { code: r.status, out: `${r.stdout}${r.stderr}`, stdout: r.stdout.trim() };
+  };
+  const twoApps = () => fixture({ workspace: ['packages/core', APP_PATH, 'apps/second'] });
+
+  test('an app of the workspace emits that app alone and exits 0', () => {
+    const r = emitWith('--emit-apps', twoApps(), '--app', 'second');
+    assert.equal(r.code, 0, r.out);
+    assert.deepEqual(JSON.parse(r.stdout), ['second']);
+  });
+
+  test('RC4 · an app the workspace does not declare exits 1 and names the set', () => {
+    const r = emitWith('--emit-apps', twoApps(), '--app', 'zz');
+    assert.equal(r.code, 1, r.out);
+    assert.equal(r.stdout, '', 'a refused app prints no matrix');
+    assert.match(r.out, new RegExp(`--emit-apps --app: the dispatch names app "zz", and the workspace declares ${rx(APP)}, second`));
+  });
+
+  test('RC5 · `a;b` exits 1 on the SHAPE, before the set is read — a root with no pubspec proves the order', () => {
+    const bare = join(TMP, `bare${seq++}`);
+    mkdirSync(bare, { recursive: true });
+    const r = emitWith('--emit-apps', bare, '--app', 'a;b');
+    assert.equal(r.code, 1, r.out);
+    assert.equal(r.stdout, '', 'a refused app prints no matrix');
+    assert.match(r.out, /--emit-apps --app: "a;b" is not an app id \(\^\[a-z\]\[a-z0-9-\]\*\$\)/);
+    assert.doesNotMatch(r.out, /pubspec|workspace:/, 'the set was read before the shape was checked');
+  });
+
+  test('…an upper-case id and `$(…)` are off the shape too', () => {
+    const upper = emitWith('--emit-apps', twoApps(), '--app', APP.toUpperCase());
+    assert.equal(upper.code, 1, upper.out);
+    assert.match(upper.out, /is not an app id/);
+    const subst = emitWith('--emit-apps', twoApps(), '--app', '$(id)');
+    assert.equal(subst.code, 1, subst.out);
+    assert.match(subst.out, /"\$\(id\)" is not an app id/);
+  });
+
+  test('--app with no value is refused, never read as "the whole set"', () => {
+    const r = emitWith('--emit-apps', twoApps(), '--app');
+    assert.equal(r.code, 1, r.out);
+    assert.equal(r.stdout, '', 'a refused app prints no matrix');
+    assert.match(r.out, /--emit-apps --app: "" is not an app id/);
+  });
+
+  test('--app before the root parses the same as after it', () => {
+    const r = emitWith('--emit-apps', '--app', APP, twoApps());
+    assert.equal(r.code, 0, r.out);
+    assert.deepEqual(JSON.parse(r.stdout), [APP]);
+  });
+
+  test('--app without --emit-apps is refused, never dropped while the grader runs', () => {
+    const r = emitWith('--app', APP, twoApps());
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /--app narrows --emit-apps and nothing else/);
+  });
+
+  test('--app and --tag together are refused: two answers to "which app" are none', () => {
+    const r = emitWith('--emit-apps', twoApps(), '--app', APP, '--tag', `${APP}-v1.0.0`);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /--emit-apps takes --tag or --app, not both/);
+  });
+
+  test('an app still meets the whole-set refusal: an empty workspace emits nothing', () => {
+    const r = emitWith('--emit-apps', fixture({ workspace: ['packages/core'] }), '--app', APP);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /declares no `workspace:` entry under apps\//);
+  });
+});
+
 describe('assert-release-lane-generic.mjs — limb D (no literal app id on the deploy path)', () => {
   const R1 = { 'build-platforms.yml': platforms(literalLane(APP_PATH)), 'e2e.yml': E2E };
   const deployWeb = (field) => DEPLOY_WEB.replace('- run: flutter build web --release', field);
@@ -683,9 +808,10 @@ ${extra}        run: node tooling/e2e/verify_purged.mjs
     assert.match(r.out, /build-platforms\.yml \(\[pipeline 9\]R-1\) — limb D-all: \d+ env\/output key\(s\) name no app and \d+ run\/with\/env value\(s\) carry no UUID literal/);
     assert.match(r.out, /e2e\.yml \(\[pipeline 9\]R-1\) — limb D-all: /);
     assert.match(r.out, /deploy-web\.yml \(\[pipeline 10\]D-2b\) — limb D-all: /);
-    // ⏱ 2026-09-26: deploy-workers.yml is the fourth graded lane (O-SERVICE-KIT-UNBUILT).
+    // ⏱ 2026-09-26: deploy-workers.yml is graded (O-SERVICE-KIT-UNBUILT), and the four submit lanes and
+    // store-screenshots are graded as per-app (O-STORE-LANES-HARD-WIRE-ONE-APP): 3 → 9.
     assert.match(r.out, /deploy-workers\.yml \(O-SERVICE-KIT-UNBUILT\) — limb D-all: /);
-    assert.match(r.out, /limb D-all read \d+ key\(s\) and \d+ value\(s\) across 4 lane\(s\)/);
+    assert.match(r.out, /limb D-all read \d+ key\(s\) and \d+ value\(s\) across 9 lane\(s\)/);
   });
 
   test('RC1 · THE CLOSES\' CONTROL — the app-named key with a UUID, back in e2e.yml, fails naming both hits', () => {
@@ -847,6 +973,159 @@ jobs:
 // ⏱ 2026-09-26 — O-CI-AND-WORKER-LANES-NAME-ONE-APP (the ci.yml half). The gate is
 // graded under limbs D, D-all and A′, read with the callees its constituents run.
 // RC1-RC3 are the closes' controls; the real-tree mutations are in the PR text.
+// ⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP) — limb I over the store lanes graded as
+// `dispatch: 'per-app'`. Every fixture carries both store lanes in the generic shape
+// (PER_APP_LANES); each case overrides submit-play.yml.
+describe("assert-release-lane-generic.mjs — limb I (a per-app lane takes its app at dispatch and names none)", () => {
+  const R1 = { 'build-platforms.yml': platforms(literalLane(APP_PATH)), 'e2e.yml': E2E };
+  /** 1-based line of the first line of `body` holding `needle`; fails the case when absent. */
+  const lineOf = (body, needle) => {
+    const n = body.split('\n').findIndex((l) => l.includes(needle)) + 1;
+    assert.ok(n > 0, `fixture anchor absent: ${needle}`);
+    return n;
+  };
+  const OWNER = 'O-STORE-LANES-HARD-WIRE-ONE-APP';
+  const limbI = (what, n = null) =>
+    new RegExp(`${rx(OWNER)} · submit-play\\.yml${n === null ? '' : `:${n}`} — limb I: ${what}`);
+  const withPlay = (body) => fixture({ workflows: { ...R1, 'submit-play.yml': body } });
+
+  test('the per-app lane in its generic shape passes, and the report says what limb I read', () => {
+    const r = run(fixture({ workflows: R1 }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /submit-play\.yml \(O-STORE-LANES-HARD-WIRE-ONE-APP\) — limb I: a required `app` input with no default, read by the gate alone through `env:` and checked there by --emit-apps --app; 1 other job\(s\) need the gate; \d+ line\(s\) name no app id/);
+    assert.match(r.out, /submit-appstore\.yml \(O-STORE-LANES-HARD-WIRE-ONE-APP\) — limb I: /);
+    assert.match(r.out, /submit-windows-store\.yml \(O-STORE-LANES-HARD-WIRE-ONE-APP\) — limb I: /);
+    assert.match(r.out, /submit-snap\.yml \(O-STORE-LANES-HARD-WIRE-ONE-APP\) — limb I: /);
+    assert.match(r.out, /store-screenshots\.yml \(O-STORE-LANES-HARD-WIRE-ONE-APP\) — limb I: /);
+    assert.match(r.out, /limb I read \d+ line\(s\) across 5 per-app lane\(s\)/);
+  });
+
+  test("RC1 · THE CLOSES' CONTROL — `--app <id>` planted in the dry run fails, naming submit-play.yml and the line", () => {
+    const body = perAppLane({ dryRun: `node tooling/release/submit-play.mjs --dry-run --app ${APP}` });
+    const r = run(withPlay(body));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, limbI(`names the app id "${rx(APP)}" literally`, lineOf(body, `--app ${APP}`)));
+  });
+
+  test('RC2 · a job other than `gate` reading `${{ inputs.app }}` fails — it skips the check', () => {
+    const body = perAppLane({ dryEnv: '      APP: ${{ inputs.app }}\n' });
+    const r = run(withPlay(body));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, limbI('job "dry-run" reads `inputs\\.app`; only the gate job reads the raw input', lineOf(body, 'APP: ${{ inputs.app }}')));
+  });
+
+  test('…the `github.event.inputs.app` spelling is the same read, and fails the same way', () => {
+    const body = perAppLane({ dryEnv: '      APP: ${{ github.event.inputs.app }}\n' });
+    const r = run(withPlay(body));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, limbI('job "dry-run" reads `inputs\\.app`', lineOf(body, 'github.event.inputs.app')));
+  });
+
+  test('…and the GATE reading the input inside `run:` fails: an input interpolated into a shell is an injection', () => {
+    const body = perAppLane({
+      gateCheck: '          node tooling/ci/assert-release-lane-generic.mjs --emit-apps --app "${{ inputs.app }}"\n',
+    });
+    const r = run(withPlay(body));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, limbI('the gate job reads `inputs\\.app` outside an `env:` value', lineOf(body, '--app "${{ inputs.app }}"')));
+  });
+
+  test('RC3 · the `app` input given `default: x` fails — a default is an app id under another name', () => {
+    const body = perAppLane({ input: '        required: true\n        default: x\n        type: string\n' });
+    const r = run(withPlay(body));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, limbI('its `app` input carries a `default:`', lineOf(body, 'default: x')));
+  });
+
+  test('…a `type: choice` list fails, naming the type and the options', () => {
+    const body = perAppLane({ input: `        required: true\n        type: choice\n        options: [${APP}]\n` });
+    const r = run(withPlay(body));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, limbI('its `app` input is `type: choice`', lineOf(body, 'type: choice')));
+    assert.match(r.out, limbI('its `app` input lists `options:`', lineOf(body, 'options:')));
+  });
+
+  test('…an input that is not `required: true` fails', () => {
+    const body = perAppLane({ input: '        required: false\n        type: string\n' });
+    const r = run(withPlay(body));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, limbI('its `app` input is not `required: true`', lineOf(body, '      app:')));
+  });
+
+  test('…a lane with no `app` input at all fails', () => {
+    const body = perAppLane().replace('      app:\n        required: true\n        type: string\n', '      confirm:\n        required: true\n        type: string\n');
+    const r = run(withPlay(body));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, limbI('declares no `workflow_dispatch` input `app`'));
+  });
+
+  test('a job that does not `needs: gate` fails — it can run before the input is checked', () => {
+    const r = run(withPlay(perAppLane({ dryNeeds: '' })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, limbI('job "dry-run" does not `needs: gate`'));
+  });
+
+  test('a gate that never checks the input with `--emit-apps --app` fails', () => {
+    const r = run(withPlay(perAppLane({ gateCheck: '          node tooling/ci/assert-release-lane-generic.mjs --emit-apps\n' })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, limbI('its gate job never runs `assert-release-lane-generic\\.mjs --emit-apps --app "\\$APP_INPUT"`'));
+  });
+
+  test('…and one that checks some OTHER variable than the one holding the input fails the same way', () => {
+    const r = run(withPlay(perAppLane({ gateCheck: '          node tooling/ci/assert-release-lane-generic.mjs --emit-apps --app "$OTHER"\n' })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, limbI('its gate job never runs `assert-release-lane-generic\\.mjs --emit-apps --app'));
+  });
+
+  test('a gate with no `app` output fails: no job could read the checked id', () => {
+    const r = run(withPlay(perAppLane({ gateOutput: '' })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, limbI('its gate job declares no `app` output'));
+  });
+
+  test('the `env:` hoist does not launder a literal: `APP: <id>` in a job fails where it sits', () => {
+    const body = perAppLane({ dryEnv: `      APP: ${APP}\n` });
+    const r = run(withPlay(body));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, limbI(`names the app id "${rx(APP)}" literally`, lineOf(body, `APP: ${APP}`)));
+  });
+
+  test('EVERY line counts, header included: a literal in `run-name` fails', () => {
+    const body = perAppLane({ runName: `"Store submit — ${APP}"` });
+    const r = run(withPlay(body));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, limbI(`names the app id "${rx(APP)}" literally`, lineOf(body, 'run-name:')));
+  });
+
+  test('limb D-all reads the per-app lanes too: an app-named env key fails there', () => {
+    const key = `${APP.toUpperCase()}_TOKEN`;
+    const body = perAppLane({ dryEnv: `      APP: \${{ needs.gate.outputs.app }}\n      ${key}: x\n` });
+    const r = run(withPlay(body));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, new RegExp(`submit-play\\.yml:${lineOf(body, key)} — limb D-all: the env key \`${rx(key)}\` names the app "${rx(APP)}"`));
+  });
+
+  test('limbs A and A′ do NOT apply: a per-app lane naming no app path is not MISSING an app', () => {
+    const body = perAppLane().replace(/      - uses: actions\/upload-artifact[\s\S]*$/, '');
+    const r = run(fixture({ workspace: [APP_PATH, 'apps/second'], workflows: { 'build-platforms.yml': platforms(`${literalLane(APP_PATH)}${literalLane('apps/second')}`), 'e2e.yml': platforms(`${literalLane(APP_PATH)}${literalLane('apps/second')}`), 'submit-play.yml': body } }));
+    assert.equal(r.code, 0, r.out);
+    assert.doesNotMatch(r.out, /submit-play\.yml covers/);
+  });
+
+  test('NO FALSE RED — a comment naming the app, `$APP_INPUT`, and a longer word holding the id all pass', () => {
+    const body = perAppLane({ dryRun: `node tooling/release/submit-play.mjs --dry-run --app "$APP" --note re${APP}x # was --app ${APP}` });
+    const r = run(withPlay(body));
+    assert.equal(r.code, 0, r.out);
+  });
+
+  test('COVERAGE LOST — a per-app lane with no job reads as nothing, never as clean', () => {
+    const body = 'name: Store submit\non:\n  workflow_dispatch:\n    inputs:\n      app:\n        required: true\n        type: string\njobs:\n';
+    const r = run(withPlay(body));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST/);
+  });
+});
+
 describe('assert-release-lane-generic.mjs — the gate (limbs D, D-all and A′ over ci.yml and its callees)', () => {
   const SYN_UUID = '00000000-0000-4000-8000-0000000000c3';
   const R1 = { 'build-platforms.yml': platforms(literalLane(APP_PATH)), 'e2e.yml': E2E };

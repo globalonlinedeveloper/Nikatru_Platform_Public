@@ -626,7 +626,7 @@
       "binding": "SUBSCRIPTIONTRACKER_DB",
       "kind": "d1_databases",
       "scope": "per-app",
-      "purpose": "Subly's own database, bound into `platform` READ/WRITE for the nightly renewals fan-out only. ⚠️ This binding is the thing that does NOT scale: a 50-app portfolio cannot carry 50 hand-added D1 bindings on one Worker. Recorded here so the next app's stamp meets the ceiling as a known cost rather than as a surprise ([4]B-11 derives the job set; the fan-out target list is still `appTargets()`'s hardcoded array).",
+      "purpose": "Subly's own database, bound into `platform` READ/WRITE for the nightly renewals fan-out only. ⚠️ This binding is the thing that does NOT scale: a 50-app portfolio cannot carry 50 hand-added D1 bindings on one Worker. Recorded here so the next app's stamp meets the ceiling as a known cost rather than as a surprise ([4]B-11 derives the job set; the fan-out target list is still `appTargets()`'s hardcoded array). ⏱ 2026-09-26 (O-BACKUP-AND-FANOUT-SETS-HAND-LISTED): no longer hardcoded — this binding, `appTargets()` and the nightly backup's app databases are GENERATED from appWorkers by tooling/scripts/render-platform-app-block.mjs (services/platform/src/generated/app-targets.ts), and scheduled.ts reads it through `APP_TARGETS`.",
       "readers": [
         "services/platform/src/scheduled.ts"
       ]

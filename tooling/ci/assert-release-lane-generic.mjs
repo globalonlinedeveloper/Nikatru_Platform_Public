@@ -133,6 +133,34 @@
 //   (exit 2), as for every other limb in this file. Comments are blanked by the
 //   shared parser before either check, so prose that names an id is not a hit.
 //
+// LIMB I — A PER-APP LANE TAKES ITS APP AT DISPATCH AND NAMES NONE, added
+//   2026-09-26 with O-STORE-LANES-HARD-WIRE-ONE-APP. A store lane submits ONE
+//   app per dispatch, so limb A's set equality does not describe it: the
+//   question is not "does it cover every app" but "can it be given any app".
+//   Every store lane answered no. submit-play.yml named app #1 on 30 lines, so a
+//   dispatch meant for app #2 would have signed, built, uploaded and recorded
+//   app #1, green. A lane of the class `dispatch: 'per-app'` in GRADED_LANES:
+//
+//     · declares a `workflow_dispatch` input `app` that is `required: true`,
+//       with NO `default:` and no `type: choice` / `options:`. Either one is an
+//       app id written into the file: the literal again, under another name;
+//     · reads `inputs.app` in exactly ONE job, `gate`, and there only as an
+//       `env:` value. An input interpolated into `run:` is a shell injection,
+//       and a second job reading the raw input skips the check below;
+//     · has that gate run `assert-release-lane-generic.mjs --emit-apps --app`
+//       on the env variable holding the input (the id's shape, then the
+//       workspace set), write `app=` to $GITHUB_OUTPUT and declare the `app`
+//       job output;
+//     · has every other job `needs: gate`, so each reads the CHECKED id
+//       (`${{ needs.gate.outputs.app }}`, or `$APP` bound to it in `env:`);
+//     · names no workspace app id as a whole token on ANY line — `run-name:`,
+//       the inputs, step names and every job field — after `${{ env.X }}`
+//       expansion. Comments are exempt: the shared parser blanks them first.
+//
+//   Limbs A and A′ do not apply to this class: a dispatch covers one app by
+//   design, and which one is the input. Limb D-all does, as on every graded
+//   lane. A per-app lane with no job is COVERAGE LOST (exit 2).
+//
 // THE GATE — graded under limbs D, D-all and A′, never under limbs A or B,
 //   added 2026-09-26 with O-CI-AND-WORKER-LANES-NAME-ONE-APP (the ci.yml half).
 //   The gate is not a release lane (the gate block below says why limbs A and B
@@ -176,6 +204,9 @@
 // second guard.
 //
 // Per-channel refactors of the store lanes stay with their channel owners.
+// ⏱ 2026-09-26 — except the one refactor every store lane shares: taking its app
+// at dispatch. The lanes that have taken it are graded here as `per-app` (limb I);
+// what each channel submits, and how, stays its owner's.
 // Every OTHER workflow is still resolved and its app set PRINTED every run, so
 // a divergence is visible without this guard failing a build over another
 // stage's work.
@@ -189,11 +220,14 @@
 //
 // Usage:  node tooling/ci/assert-release-lane-generic.mjs [repoRoot]
 //         node tooling/ci/assert-release-lane-generic.mjs --emit-apps [repoRoot] [--tag <app>-v<version>]
+//         node tooling/ci/assert-release-lane-generic.mjs --emit-apps [repoRoot] --app <id>
 // Exit 0 = every R-1 lane covers the whole workspace, no guard hides a lane,
-//          no graded lane carries an app-named key or a UUID literal, and the
+//          no graded lane carries an app-named key or a UUID literal, every
+//          per-app lane takes its app at dispatch and names none, and the
 //          gate, read with its callees, names no app.
-// Exit 1 = a finding (or `--emit-apps` refusing an empty or nested matrix, or a
-//          `--tag` that names no app of the workspace). 2 = COVERAGE LOST.
+// Exit 1 = a finding (or `--emit-apps` refusing an empty or nested matrix, a
+//          `--tag` that names no app of the workspace, or an `--app` that is
+//          not an app id or not in the workspace). 2 = COVERAGE LOST.
 //
 // `--emit-apps` prints the workspace app IDS as a JSON array (`["subscriptiontracker"]`) and
 // exits. THIS IS NOT A CONVENIENCE. `build-platforms.yml` and `e2e.yml` build
@@ -210,6 +244,13 @@
 // releaseTagOf; a tag with no `-v<version>` and an id the workspace does not hold
 // both exit 1. Limb A still grades the whole set: every run that is not a tag
 // push, and every other lane, iterates all of it.
+//
+// ⏱ 2026-09-26 — `--emit-apps --app <id>` is a per-app lane's gate step
+// (O-STORE-LANES-HARD-WIRE-ONE-APP, limb I). It refuses an id off
+// ^[a-z][a-z0-9-]*$ BEFORE the set is read (the value is a dispatch input, so
+// its shape is checked before anything else touches it), then judges the whole
+// set as above and refuses an id outside it, naming the set; else it prints
+// `["<id>"]`. The gate writes the id to $GITHUB_OUTPUT only after this exits 0.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -217,6 +258,8 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import {
+  dispatchInputs,
+  jobOutputs,
   parseAllWorkflows,
   parseResolvedWorkflows,
   postGateJobs,
@@ -235,7 +278,11 @@ const EMIT_APPS = argv[0] === '--emit-apps';
 // root. Until today the first form read `--tag` itself as the root and exited 1.
 const TAG_AT = argv.indexOf('--tag');
 const EMIT_TAG = TAG_AT === -1 ? null : argv[TAG_AT + 1] ?? '';
-const REST = TAG_AT === -1 ? argv : argv.filter((_a, i) => i !== TAG_AT && i !== TAG_AT + 1);
+// ⏱ 2026-09-26 — `--app` and its value leave argv the same way (limb I's gate step).
+const APP_AT = argv.indexOf('--app');
+const EMIT_APP = APP_AT === -1 ? null : argv[APP_AT + 1] ?? '';
+const taken = new Set([TAG_AT, APP_AT].filter((i) => i !== -1).flatMap((i) => [i, i + 1]));
+const REST = argv.filter((_a, i) => !taken.has(i));
 const ROOT_ARG = EMIT_APPS ? REST[1] : REST[0];
 const ROOT = resolve(ROOT_ARG ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const CI_DIR = join(ROOT, 'tooling', 'ci');
@@ -263,6 +310,24 @@ if (EMIT_TAG !== null && !EMIT_APPS) {
 if (EMIT_TAG !== null && (EMIT_TAG === '' || EMIT_TAG.startsWith('--'))) {
   console.error('FAIL --emit-apps --tag was passed with no value. Refusing to fall back on the whole set.');
   process.exit(1);
+}
+if (EMIT_APP !== null && !EMIT_APPS) {
+  console.error('FAIL --app narrows --emit-apps and nothing else; the grader takes no app. Refusing to drop it and grade.');
+  process.exit(1);
+}
+if (EMIT_APP !== null && EMIT_TAG !== null) {
+  console.error('FAIL --emit-apps takes --tag or --app, not both: each names the one app to emit, and two answers are none.');
+  process.exit(1);
+}
+if (EMIT_APPS && EMIT_APP !== null) {
+  // The shape FIRST, before the set is read: the value is a dispatch input, and
+  // `a;b` or `$(…)` is refused as a string here, never reaching anything else.
+  if (!/^[a-z][a-z0-9-]*$/.test(EMIT_APP)) {
+    console.error(`FAIL --emit-apps --app: ${JSON.stringify(EMIT_APP)} is not an app id (^[a-z][a-z0-9-]*$).`);
+    console.error('     A per-app lane takes its app as a dispatch input; a value off that shape names no app, and the lane stops here.');
+    process.exit(1);
+  }
+  process.exit(emitApps(ROOT, { only: EMIT_APP, via: '--app' }));
 }
 if (EMIT_APPS) {
   if (EMIT_TAG === null) process.exit(emitApps(ROOT));
@@ -319,6 +384,10 @@ function coverageLost(lines) {
 // ⏱ 2026-09-25 — limb D-all reads EVERY lane here and ignores `deployPath`. It
 // refuses app-named keys and UUID literals, not an app path in a value, so it
 // leaves limb A's literal-equality criterion for R-1's lanes as decided.
+//
+// ⏱ 2026-09-26 — `dispatch: 'per-app'` is the store lanes' class
+// (O-STORE-LANES-HARD-WIRE-ONE-APP): one app per dispatch, taken as an input the
+// gate job checks. Limb I grades it and limbs A/A′ skip it (the header's LIMB I).
 const GRADED_LANES = new Map([
   ['build-platforms.yml', { owner: '[pipeline 9]R-1', deployPath: false }],
   ['e2e.yml', { owner: '[pipeline 9]R-1', deployPath: false }],
@@ -333,6 +402,18 @@ const GRADED_LANES = new Map([
   // The lane loop's `!appSet` branch says why, and records what the classification
   // said.
   ['deploy-workers.yml', { owner: 'O-SERVICE-KIT-UNBUILT', deployPath: true, appSet: false }],
+  // O-STORE-LANES-HARD-WIRE-ONE-APP — each store lane takes `app` at dispatch,
+  // checked in its gate job. Graded here since 2026-09-26; before that each sat
+  // in CLASSIFIED_ELSEWHERE naming one app, printed and never failed.
+  ['submit-play.yml', { owner: 'O-STORE-LANES-HARD-WIRE-ONE-APP', deployPath: false, dispatch: 'per-app' }],
+  ['submit-appstore.yml', { owner: 'O-STORE-LANES-HARD-WIRE-ONE-APP', deployPath: false, dispatch: 'per-app' }],
+  ['submit-windows-store.yml', { owner: 'O-STORE-LANES-HARD-WIRE-ONE-APP', deployPath: false, dispatch: 'per-app' }],
+  ['submit-snap.yml', { owner: 'O-STORE-LANES-HARD-WIRE-ONE-APP', deployPath: false, dispatch: 'per-app' }],
+  // [10]D-5's listing capture: no release artifact, but it builds and drives one
+  // app per dispatch, and it named that app on 38 lines and its sandbox databases
+  // by id. Graded as per-app since 2026-09-26; before that it sat in
+  // CLASSIFIED_ELSEWHERE, printed and never failed.
+  ['store-screenshots.yml', { owner: 'O-STORE-LANES-HARD-WIRE-ONE-APP', deployPath: false, dispatch: 'per-app' }],
 ]);
 const GRADED = [...GRADED_LANES.keys()];
 const DEPLOY_PATH_LANES = [...GRADED_LANES].filter(([, v]) => v.deployPath).map(([k]) => k);
@@ -358,6 +439,7 @@ const CLASSIFIED_ELSEWHERE = new Map([
     // conditions this lane inherited are a KNOWN, PRE-EXISTING gap, recorded in
     // report 04 §9 item 2, and moving this row to GRADED_LANES would not find them
     // because it is looking at a different set.
+    // ⏱ 2026-09-27 — discover.mjs --assert-generic exists since #986 (B7).
     'builds BROWSER EXTENSIONS from extensions/Extension/<Tool>/tool.json, not apps from the pubspec ' +
       'workspace. R-1 quantifies over the app set, so this lane has nothing for this guard to compare and ' +
       'would report a permanent empty-set pass if it were graded. Its own genericity is discover.mjs\'s ' +
@@ -507,25 +589,6 @@ const CLASSIFIED_ELSEWHERE = new Map([
       '`duty.workflow.apple-expiry-write.yml` in tooling/ops/register.json. What holds its behaviour correct ' +
       'is tooling/ci/test/apple-signing-expiry.test.mjs. Classified 2026-09-24, the round the workflow landed.',
   ],
-  [
-    'submit-appstore.yml',
-    "[10]D-10 owns the store submission paths. The script it runs is already `--app`-parameterised; the " +
-      'workflow that calls it is the half that still names one app, and pulling that into R-1 would claim ' +
-      "another stage's refactor while its channel is still `served: false`.",
-  ],
-  ['submit-play.yml', 'same as submit-appstore.yml — [10]D-10 owns it, `served: false`, script already `--app`-parameterised.'],
-  [
-    'store-screenshots.yml',
-    '[10]D-5 owns the store LISTING, and this workflow produces a listing asset rather than a release ' +
-      'artifact: it builds no shippable binary, publishes nothing and uploads pictures. R-1 quantifies ' +
-      'over the workspace APP set to prove a lane is generic; a lane that ships no app has nothing for ' +
-      'this guard to compare and would sit in the denominator as a permanent empty-set pass. It is ' +
-      'already `--app`-parameterised (`node tooling/store/capture-play-screenshots.mjs --app subscriptiontracker`), so ' +
-      'the genericity R-1 cares about is in the script, and what holds its OUTPUT generic is ' +
-      'assert-listing-assets.mjs, whose expected set is { channels declaring graphicAssets } x { apps }.',
-  ],
-  ['submit-snap.yml', 'same as submit-appstore.yml — [10]D-10 owns it, `served: false`, script already `--app`-parameterised.'],
-  ['submit-windows-store.yml', 'same as submit-appstore.yml — [10]D-10 owns it, `served: false`, script already `--app`-parameterised.'],
   [
     'symbolication-proof.yml',
     'a dispatch-only PROOF, not a release lane: it builds a crash probe (live_probe/, never lib/main.dart), ' +
@@ -1172,6 +1235,125 @@ export function allLaneFindings(wf, env, matrix, appIds) {
   return { keyHits, uuidHits, keysRead: keys.length, valuesRead: values.length };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// LIMB I — a PER-APP lane takes its app at dispatch, checks it in ONE job, and
+// names none. O-STORE-LANES-HARD-WIRE-ONE-APP. The header's LIMB I says why.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** `inputs.app` (the `github.event.inputs.app` spelling too), and not `inputs.app_x`. */
+const INPUT_APP = /\binputs\.app(?![A-Za-z0-9_-])/;
+/** An `env:` value that is exactly the raw input. */
+const INPUT_APP_VALUE = /^\$\{\{\s*(?:github\.event\.)?inputs\.app\s*\}\}$/;
+
+/** `on.workflow_dispatch.inputs.<name>` as `{ n, keys }` (keys: Map KEY → { n, text }),
+ *  or null when the lane declares no such input. */
+export function dispatchInput(wf, name) {
+  const at = dispatchInputs(wf);
+  if (at === null) return null;
+  const lines = wf.lines;
+  const i = lines.findIndex((l) => l.n === at);
+  const indent = lines[i].text.match(/^ */)[0].length;
+  let childIndent = null;
+  for (let j = i + 1; j < lines.length; j++) {
+    const t = lines[j].text;
+    if (t.trim() === '') continue;
+    const ind = t.match(/^ */)[0].length;
+    if (ind <= indent) break;
+    childIndent ??= ind;
+    if (ind !== childIndent) continue;
+    const m = t.match(/^\s*([A-Za-z_][A-Za-z0-9_-]*):\s*$/);
+    if (m && m[1] === name) {
+      return { n: lines[j].n, keys: new Map(blockEntries(lines, j, ind).map((e) => [e.key, { n: e.n, text: e.text }])) };
+    }
+  }
+  return null;
+}
+
+/** Limb I over one per-app lane: `{ problems, jobsRead, linesRead }`, each problem
+ *  `{ n, what }` (`n` null when the finding is about an absence). `appIds` are the
+ *  workspace ids; `env`/`matrix` expand `${{ env.X }}` / `${{ matrix.X }}` first. */
+export function perAppFindings(wf, env, matrix, appIds) {
+  const out = [];
+  const at = (n, what) => out.push({ n, what });
+
+  // 1. the input: required, no default, not a choice list.
+  const input = dispatchInput(wf, 'app');
+  if (input === null) {
+    at(null, 'declares no `workflow_dispatch` input `app`, so a dispatch cannot say which app it submits');
+  } else {
+    const k = input.keys;
+    if (k.get('required')?.text !== 'true') {
+      at(input.n, 'its `app` input is not `required: true`: a dispatch without it would run with the empty string for an app');
+    }
+    if (k.has('default')) {
+      at(k.get('default').n, 'its `app` input carries a `default:`, which is an app id written into the file under another name');
+    }
+    if (k.has('type') && k.get('type').text !== 'string') {
+      at(k.get('type').n, `its \`app\` input is \`type: ${k.get('type').text}\`; a choice list is a static set of app ids in the YAML, which --emit-apps cannot feed. Use \`type: string\``);
+    }
+    if (k.has('options')) at(k.get('options').n, 'its `app` input lists `options:`, a static set of app ids in the YAML');
+  }
+
+  // 2. exactly one job reads inputs.app — `gate` — and only through `env:`.
+  const gate = wf.jobs.get('gate') ?? null;
+  if (gate === null) at(null, 'has no `gate` job, so nothing checks the `app` input before a job uses it');
+  const bound = new Set();
+  for (const [id, job] of wf.jobs) {
+    const envAt = new Map(envEntries(job.lines).map((e) => [e.n, e]));
+    for (const l of job.lines) {
+      if (!INPUT_APP.test(l.text)) continue;
+      const e = envAt.get(l.n);
+      if (id !== 'gate') {
+        at(l.n, `job "${id}" reads \`inputs.app\`; only the gate job reads the raw input, and every other job reads \`needs.gate.outputs.app\``);
+      } else if (e === undefined || !INPUT_APP_VALUE.test(e.text)) {
+        at(l.n, 'the gate job reads `inputs.app` outside an `env:` value; an input interpolated into `run:` (or any other field) is a shell injection');
+      } else {
+        bound.add(e.key);
+      }
+    }
+  }
+
+  // 3. the gate checks the input (shape, then the set), and emits it.
+  if (gate !== null) {
+    if (bound.size === 0) {
+      at(null, 'its gate job never binds `${{ inputs.app }}` to an `env:` key, so its check has no input to read');
+    } else {
+      const vars = [...bound].map((k) => k.replace(RE_ESCAPE, '\\$&')).join('|');
+      const check = new RegExp(`assert-release-lane-generic\\.mjs\\s+--emit-apps\\s+--app\\s+["']?\\$(?:\\{(?:${vars})\\}|(?:${vars})(?![A-Za-z0-9_]))`);
+      if (!gate.logical.some((l) => /^\s*-?\s*run:/.test(l.text) && check.test(l.text))) {
+        at(null, `its gate job never runs \`assert-release-lane-generic.mjs --emit-apps --app "$${[...bound][0]}"\`, so the input is used unchecked`);
+      }
+    }
+    if (!jobOutputs(gate).has('app')) at(null, 'its gate job declares no `app` output, so no job can read the checked id');
+    if (!outputNames(gate.lines).some((o) => o.field === '$GITHUB_OUTPUT' && o.key === 'app')) {
+      at(null, 'its gate job never writes `app=` to $GITHUB_OUTPUT, so its `app` output is empty');
+    }
+  }
+
+  // 4. every other job needs the gate.
+  for (const [id, job] of wf.jobs) {
+    if (id !== 'gate' && !job.needs.includes('gate')) {
+      at(null, `job "${id}" does not \`needs: gate\`, so it can run before the input is checked and read no checked id`);
+    }
+  }
+
+  // 5. no app id on any line, header included, after expansion.
+  const seen = new Set();
+  let linesRead = 0;
+  for (const l of wf.lines) {
+    if (l.text.trim() === '') continue;
+    linesRead++;
+    for (const variant of expandExpressions(l.text, env, matrix)) {
+      for (const id of appIds) {
+        if (!idToken(id).test(variant) || seen.has(`${l.n} ${id}`)) continue;
+        seen.add(`${l.n} ${id}`);
+        at(l.n, `names the app id "${id}" literally. A per-app lane takes its app from the dispatch; read \`$APP\` (bound to \`needs.gate.outputs.app\` in the job's \`env:\`) or the expression itself`);
+      }
+    }
+  }
+  return { problems: out, jobsRead: wf.jobs.size, linesRead };
+}
+
 const expected = [...APPS].sort().join(', ');
 const APP_IDS = [...APPS].map((a) => a.slice('apps/'.length)).filter(Boolean);
 let gradedLanes = 0;
@@ -1179,6 +1361,8 @@ let deployFieldsRead = 0;
 let allLanesRead = 0;
 let allKeysRead = 0;
 let allValuesRead = 0;
+let perAppLanes = 0;
+let perAppLinesRead = 0;
 for (const wf of parsed) {
   const file = wf.rel.split('/').pop();
   const env = collectEnv(wf.lines);
@@ -1197,7 +1381,7 @@ for (const wf of parsed) {
     continue;
   }
   gradedLanes++;
-  const { owner, deployPath, appSet = true } = GRADED_LANES.get(file);
+  const { owner, deployPath, appSet = true, dispatch } = GRADED_LANES.get(file);
 
   // ── LIMB D, for the DEPLOY-PATH lanes only ────────────────────────────────
   let fields = [];
@@ -1301,6 +1485,30 @@ for (const wf of parsed) {
       ok(
         `${file} (${owner}) — graded over its own set, not the app set: ${fields.length} deploy-path field(s) name no app ` +
           `id, and every matrix key its ${jobs} job(s) read is declared by that job (limb A′, per job; limb A does not apply)`,
+      );
+    }
+    continue;
+  }
+
+  // ── LIMB I, for the PER-APP lanes; limbs A and A′ do not apply to them ─────
+  if (dispatch === 'per-app') {
+    perAppLanes++;
+    if (wf.jobs.size === 0) {
+      coverageLost([
+        `${file} is graded as a per-app lane, and limb I read ZERO jobs from it.`,
+        'A lane with no job has no gate to check its input and no step to name an app, so every half of limb I',
+        'would pass over nothing.',
+      ]);
+    }
+    const found = perAppFindings(wf, env, matrix, APP_IDS);
+    perAppLinesRead += found.linesRead;
+    for (const p of found.problems) {
+      fail(`${owner} · ${file}${p.n === null ? '' : `:${p.n}`} — limb I: ${p.what}.`);
+    }
+    if (!found.problems.length) {
+      ok(
+        `${file} (${owner}) — limb I: a required \`app\` input with no default, read by the gate alone through \`env:\` ` +
+          `and checked there by --emit-apps --app; ${found.jobsRead - 1} other job(s) need the gate; ${found.linesRead} line(s) name no app id`,
       );
     }
     continue;
@@ -1617,7 +1825,8 @@ if (problems.length > bindingProblems) {
 console.log(
   `\nscanned ${seen.length} workflow(s) and ${guardFiles.length} guard(s); graded ${gradedLanes} lane(s) ` +
     `(${GRADED.join(', ')}) over ${deployFieldsRead} deploy-path field(s); limb D-all read ${allKeysRead} key(s) ` +
-    `and ${allValuesRead} value(s) across ${allLanesRead} lane(s); the gate: ${gateJobsRead} job(s) with ` +
+    `and ${allValuesRead} value(s) across ${allLanesRead} lane(s); limb I read ${perAppLinesRead} line(s) across ` +
+    `${perAppLanes} per-app lane(s); the gate: ${gateJobsRead} job(s) with ` +
     `${gateCalleeJobs} from its callee(s); workspace apps: {${expected}}`,
 );
 

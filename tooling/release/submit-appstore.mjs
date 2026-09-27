@@ -59,6 +59,9 @@
 // this script wires NONE of them. A dry run over an artifact that cannot yet be
 // signed is still worth having: it is what makes enrolment day minutes rather
 // than archaeology, which is the whole of D-10.
+// ⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP): the certificate and the profile
+// exist since 2026-09-09, and build-platforms.yml signs with them. submit-appstore.yml
+// builds unsigned by choice until the signing seam lands in that lane; `--submit` refuses.
 //
 // Usage:
 //   node tooling/release/submit-appstore.mjs --dry-run --channel ios-appstore
@@ -77,6 +80,7 @@ import { spawnSync } from 'node:child_process';
 import { readAppleBundleId } from '../ci/read-identity.mjs';
 import { appleArtifactPath } from '../ci/apple-signing.mjs';
 import { submitCli } from './submit-common.mjs';
+import { bundleIdOf, REGISTER as APPLE_REGISTER } from '../ci/apple-provisioning.mjs';
 
 const CHANNELS = ['ios-appstore', 'macos-appstore'];
 const REGISTER = 'tooling/channel-register.json';
@@ -122,11 +126,12 @@ if (!CHANNELS.includes(CHANNEL_ID)) {
 // "NEVER invent a limit; an invented limit fires on correct input" — applies at
 // least as hard to an endpoint.
 //
-// Two further facts make stopping the correct engineering answer rather than a
-// cop-out: there is no Apple Developer account to authenticate against
-// (the account is ACTIVE; OWNER_QUEUE A-4 closed 2026-08-31), and no distribution certificate has been issued into it — so even a
-// perfectly correct implementation could not be RUN, let alone tested, and
-// CLAUDE.md forbids shipping a seam whose open path has never been proven.
+// One further fact makes stopping the correct engineering answer rather than a
+// cop-out: the lane that runs this script builds unsigned by choice until the
+// signing seam lands in it, so there is no signed artifact a submission could
+// carry — even a perfectly correct implementation could not be RUN, let alone
+// tested, and CLAUDE.md forbids shipping a seam whose open path has never been
+// proven. (The account is ACTIVE since 2026-08-31, OWNER_QUEUE A-4.)
 const UNVERIFIED = [
   'the App Store Connect API base URL and version segment',
   'the endpoint and payload that reserve an app version, and how a localisation is attached to it',
@@ -210,6 +215,43 @@ const appId = opt('app') ?? apps[0]?.slug;
 const app = apps.find((a) => a.slug === appId);
 if (!app) {
   die([`FAIL no app "${appId}" in ${APPS}.`, `     Known: ${apps.map((a) => a.slug).join(', ')}`]);
+}
+
+// ── the app IS the one this channel's App Store record belongs to ────────────
+// ⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP). submit-appstore.yml now takes
+// its app at dispatch, and this channel row carries ONE bundleIdentifier and the
+// lane ONE App Store Connect app id (a secret). A second app dispatched here
+// would validate its listing against the FIRST app's App Store record and pass.
+// So the bundle id the app signs with — read off tooling/apple-provisioning.json
+// by apple-provisioning.mjs's bundleIdOf, never derived again here — must be the
+// row's, or this refuses before anything else is read. Per-app App Store records
+// are O-STORE-RECORDS-ARE-ONE-PER-CHANNEL's; until then this holds the line.
+// An unreadable register is COVERAGE LOST (exit 2, submit-common.mjs); a mismatch is a finding (exit 1).
+{
+  const declared = typeof channel.bundleIdentifier?.value === 'string' ? channel.bundleIdentifier.value.trim() : '';
+  if (declared !== '') {
+    const appleRaw = read(APPLE_REGISTER);
+    if (appleRaw === null) {
+      coverageLost([
+        `${APPLE_REGISTER} does not exist, so the bundle id app "${app.slug}" signs with cannot be read.`,
+        `Without it this path cannot tell whether "${CHANNEL_ID}"'s App Store record is this app's or another's.`,
+      ]);
+    }
+    let appBundle;
+    try {
+      appBundle = bundleIdOf(JSON.parse(appleRaw), app.slug);
+    } catch (e) {
+      die([`FAIL ${e.message}.`, `     "${CHANNEL_ID}"'s App Store record cannot be matched to app "${app.slug}" without it.`]);
+    }
+    if (appBundle !== declared) {
+      die([
+        `FAIL app "${app.slug}" signs as ${appBundle} (${APPLE_REGISTER}), and channel "${CHANNEL_ID}" in ${REGISTER} is the App Store record of ${declared}.`,
+        '     This lane holds ONE App Store Connect app id, the first app\'s, so a dry run for this app would be',
+        '     validated against another app\'s record and pass. Per-app App Store records are',
+        '     O-STORE-RECORDS-ARE-ONE-PER-CHANNEL\'s; until one exists for this app, it is not submittable here.',
+      ]);
+    }
+  }
 }
 
 console.log(`── Apple App Store submission path · app "${app.slug}" · channel "${CHANNEL_ID}" ──`);
@@ -364,8 +406,8 @@ if (declaredBundle === '' || declaredInTemplate === '') {
 // ── 3. the artifact ──────────────────────────────────────────────────────────
 // ⚠️ THESE PATHS ARE OURS, NOT AN APPLE CONTRACT. `flutter build ipa` writes to
 // build/ios/ipa/; a Mac App Store .pkg is produced by `productbuild` from a
-// signed .app, which needs a distribution certificate nothing has issued,
-// so its location is a convention this repo chooses. Nothing here is claimed as
+// signed .app, which submit-appstore.yml does not make (unsigned by choice until
+// the signing seam lands there), so its location is a convention this repo chooses. Nothing here is claimed as
 // sourced, and the register's artifactFormats is what decides whether the file
 // is even the right KIND.
 // ⏱ 2026-09-25 (O-APPLE-PROVER-SKIPS-THE-PKG): the path is the row's own
@@ -398,11 +440,11 @@ if (existsSync(abs(artifactRel))) {
 } else if (ALLOW_MISSING_ARTIFACT) {
   prints.push(
     `NO SIGNED ARTIFACT — ${artifactRel} is not on disk and --allow-missing-artifact was passed, so the listing and the bundle identifier were validated and the package was not. ` +
-      `Producing one needs a distribution certificate and a provisioning profile: GET /v1/certificates returned an EMPTY set on 2026-09-08, and no signing is wired anywhere in this repo. The ACCOUNT is active (OWNER_QUEUE A-4 closed 2026-08-31), so both are issuable through the ASC API.`,
+      'The lane that runs this dry run builds unsigned by choice until the signing seam lands in it, and --submit refuses, so there is no signed package to read here.',
   );
 } else {
   problems.push(
-    `${artifactRel} does not exist. It cannot be produced without a distribution certificate, and none has been issued into the (active) account, so pass --allow-missing-artifact to validate the listing and identity alone (and say so in the output, which is what that flag does).`,
+    `${artifactRel} does not exist. The lane that runs this dry run builds unsigned by choice until the signing seam lands in it, and --submit refuses, so pass --allow-missing-artifact to validate the listing and identity alone (and say so in the output, which is what that flag does).`,
   );
 }
 

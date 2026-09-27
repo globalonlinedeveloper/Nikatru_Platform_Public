@@ -20,7 +20,7 @@
   "_rootsNote": "TWO roots since 2026-09-07 ([ADR 067] phase 2, unit app-shell). The Worker half of the template - 13 files, 917 lines every stamped backend app inherits - was outside this ledger entirely while `root` was one string, and `git ls-files -- <that one root>` could not see it to complain. assert-chassis-ledger.mjs is the authority on this list and cross-checks it; a row's `root` is optional and defaults to roots[0], which is why the 96 rows written against the single root are unchanged. ⏱ THE FIGURES IN THIS NOTE MOVED ON 2026-09-08 AND ARE CORRECTED RATHER THAN REWRITTEN: the Worker half is now 14 files and 1,021 lines, because the template gained src/lib/error-sink.ts — a stamped backend had NO crash sink at all and failed tooling/ci/assert-worker-error-sink.mjs on limbs 2, 3 and 5 at its first CI run. The guard PRINTS both figures per root on every run, which is the number to read; this sentence is prose and prose rots.",
   "totals": {
     "files": 140,
-    "lines": 22236,
+    "lines": 22241,
     "unclassified": 0,
     "unclassifiedLines": 0
   },
@@ -268,7 +268,7 @@
     },
     {
       "path": "store/android-play/ads-declaration.json",
-      "lines": 64,
+      "lines": 65,
       "verdict": "STAYS",
       "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
     },
@@ -280,13 +280,13 @@
     },
     {
       "path": "store/android-play/content-rating.json",
-      "lines": 53,
+      "lines": 54,
       "verdict": "STAYS",
       "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
     },
     {
       "path": "store/android-play/data-safety.json",
-      "lines": 59,
+      "lines": 60,
       "verdict": "STAYS",
       "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
     },
@@ -340,7 +340,7 @@
     },
     {
       "path": "store/ios-appstore/age-rating.json",
-      "lines": 61,
+      "lines": 62,
       "verdict": "STAYS",
       "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
     },
@@ -364,7 +364,7 @@
     },
     {
       "path": "store/ios-appstore/privacy-manifest.json",
-      "lines": 112,
+      "lines": 113,
       "verdict": "STAYS",
       "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
     },

@@ -130,6 +130,9 @@ function realTree() {
   };
   put('pubspec.yaml');
   put(REGISTER);
+  // ⏱ 2026-09-26 (9a): --for-submission reads the app's store record for
+  // `declaredOn` (O-APP1-CONSOLE-DECLARATIONS-UNSUBMITTED), so the declaration rides along.
+  put('apps/subscriptiontracker/app.yaml');
   put(SUBLY_STORE);
   put(BRICK_STORE);
   put(SUBLY_IOS);
@@ -385,6 +388,10 @@ describe('the FOURTH declaration — the Apple privacy manifest audit [G-49]', (
     // 30 → 32 on 2026-09-23 when `purchases_flutter` (the RevenueCat SDK behind
     // the IAP bridge, O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP) was linked on both
     // Apple targets: 32 × 7 = 224.
+    // 32 → 40 on 2026-09-26 when the bundles bp run 36229543907 shipped named
+    // four embedded SDKs no row answered for — Sentry.framework, RevenueCat,
+    // OrderedSet.framework and objective_c.framework — on both Apple targets
+    // (O-APPLE-PROVER-SKIPS-THE-PKG, `--built`): 40 × 7 = 280.
     // Widening the regex to `\d+` would buy quiet and lose exactly the signal.
     withTree(
       (root) =>
@@ -393,7 +400,7 @@ describe('the FOURTH declaration — the Apple privacy manifest audit [G-49]', (
         }),
       (r) => {
         assert.equal(r.status, 1);
-        assert.match(r.stderr, /carries 224 character\(s\) of `basis` across 32 row\(s\); the floor is 2000/);
+        assert.match(r.stderr, /carries 280 character\(s\) of `basis` across 40 row\(s\); the floor is 2000/);
       },
     );
   });
@@ -1245,6 +1252,378 @@ describe('REQUIRED_COVERAGE — the scan must know when it has stopped scanning'
       (r) => {
         assert.equal(r.status, 2);
         assert.match(r.stderr, /no readable `workspace:` block/);
+      },
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-26 — THE DECLARED STATE (O-BRICK-SWORN-FILES-HAVE-NO-PREVIEW-STATE).
+// Every sworn file carries `"sworn"`. The preview app below is the brick's own
+// store templates, stamped the way mason renders them (`{{app_id}}` and the
+// two display tokens are the only mustache in those files), beside the real
+// app #1 — the workspace the app-brick probe grades in CI.
+// ─────────────────────────────────────────────────────────────────────────────
+const PROBE = 'apps/probe';
+const PROBE_DS = `${PROBE}/store/android-play/data-safety.json`;
+
+/** Stamps the brick's android-play and ios-appstore store trees as `apps/probe`
+ *  and adds it to the workspace. Seeds the paths the TEMPLATES cite, which the
+ *  answered declarations may not: limb 5 still resolves a preview's citations. */
+function stampProbe(root) {
+  const render = (s) =>
+    s.replaceAll('{{app_id}}', 'probe').replaceAll('{{{short_name}}}', 'Probe').replaceAll('{{category}}', 'productivity');
+  for (const [from, channel] of [
+    [BRICK_STORE, 'android-play'],
+    [BRICK_IOS, 'ios-appstore'],
+  ]) {
+    mkdirSync(join(root, PROBE, 'store', channel), { recursive: true });
+    for (const f of ['data-safety.json', 'content-rating.json', 'ads-declaration.json', 'privacy-manifest.json', 'age-rating.json', 'README.md']) {
+      const src = join(REPO, from, f);
+      if (!existsSync(src)) continue;
+      const text = render(readFileSync(src, 'utf8'));
+      writeFileSync(join(root, PROBE, 'store', channel, f), text);
+      for (const m of text.matchAll(CITED_RE)) {
+        const rel = m[0];
+        if (existsSync(join(REPO, rel)) && !existsSync(join(root, rel))) {
+          mkdirSync(dirname(join(root, rel)), { recursive: true });
+          cpSync(join(REPO, rel), join(root, rel));
+        }
+      }
+    }
+  }
+  editText(root, 'pubspec.yaml', (s) => s.replace(/^workspace:\n/m, 'workspace:\n  - apps/probe\n'));
+  // The records the brick stamps (post_gen's _writeStoreRecords): nothing issued, nothing declared.
+  writeFileSync(
+    join(root, PROBE, 'app.yaml'),
+    'id: probe\nstores:\n' +
+      ['windows-store', 'ios-appstore', 'macos-appstore', 'android-play', 'linux-snap']
+        .map((c) => `  ${c}:\n${c === 'windows-store' ? '    identityName: PARTNER-CENTER-PENDING\n    packageFamilyName: PARTNER-CENTER-PENDING\n' : ''}    state: pending\n    declaredOn: null\n`)
+        .join(''),
+  );
+}
+
+function withTreeArgs(mutate, args, fn) {
+  const root = realTree();
+  try {
+    mutate(root);
+    fn(spawnSync(process.execPath, [GUARD, ...args, root], { cwd: REPO, encoding: 'utf8' }));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+describe('⏱ 2026-09-26 — the declared state: "sworn" true, false, or a finding', () => {
+  test('the real files carry the key: app #1 sworn, the brick templates false', () => {
+    for (const rel of [DS, CR, ADS, PM, AR]) assert.equal(readDoc(REPO, rel).sworn, true, rel);
+    for (const rel of [`${BRICK_STORE}/data-safety.json`, `${BRICK_STORE}/content-rating.json`, `${BRICK_STORE}/ads-declaration.json`, PM_TMPL, AR_TMPL]) {
+      assert.equal(readDoc(REPO, rel).sworn, false, rel);
+    }
+  });
+
+  test('the baseline OK line counts the state: 5 sworn, 0 preview', () => {
+    withTree(
+      () => {},
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, new RegExp(`\\(${swornCount()} sworn, 0 preview\\)`));
+      },
+    );
+  });
+
+  test('🔴 RC5 — app #1\'s age-rating.json with `sworn` deleted is exit 1, naming the file', () => {
+    withTree(
+      (root) => editDoc(root, AR, (j) => delete j.sworn),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /age-rating\.json carries no boolean "sworn" \(found null\)/);
+      },
+    );
+  });
+
+  test('🔴 a non-boolean `sworn` ("yes") is exit 1 too — a state nobody can read is not a preview', () => {
+    withTree(
+      (root) => editDoc(root, CR, (j) => { j.sworn = 'yes'; }),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /content-rating\.json carries no boolean "sworn" \(found "yes"\)/);
+      },
+    );
+  });
+
+  test('🔴 MIXED — ONE answered Play file flipped to false is refused, and still graded as sworn', () => {
+    withTree(
+      (root) => editDoc(root, DS, (j) => { j.sworn = false; }),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /MIXED — apps\/subscriptiontracker\/store\/android-play: data-safety\.json say "sworn": false and content-rating\.json, ads-declaration\.json do not/);
+        // graded as sworn: the answered file clears every floor, so MIXED is the only finding
+        assert.doesNotMatch(r.stderr, /FLOOR/);
+      },
+    );
+  });
+
+  test('🔴 THE WHOLESALE REGRESSION STILL FAILS ON THE FLOOR: the template (now "sworn": false) over one answered file', () => {
+    withTree(
+      (root) => cpSync(join(REPO, BRICK_STORE, 'data-safety.json'), join(root, DS)),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /MIXED — apps\/subscriptiontracker\/store\/android-play/);
+        assert.match(r.stderr, /FLOOR — apps\/subscriptiontracker\/store\/android-play\/data-safety\.json is \d+ lines/);
+      },
+    );
+  });
+
+  test('🔴 limb 7 — a template that says "sworn": true is refused: app #2 would be born swearing', () => {
+    withTree(
+      (root) => editText(root, `${BRICK_STORE}/content-rating.json`, (s) => s.replace('"sworn": false', '"sworn": true')),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /content-rating\.json carries "sworn": true, not false/);
+      },
+    );
+  });
+
+  test('a stamped preview app beside app #1 passes, and the OK line names it', () => {
+    withTree(
+      (root) => stampProbe(root),
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, new RegExp(`across 2 app\\(s\\) \\(${swornCount()} sworn, ${swornCount()} preview: probe\\)`));
+      },
+    );
+  });
+
+  test('🔴 RC4 — the probe\'s data-safety flipped to "sworn": true, unanswered, is exit 1 on the FLOOR', () => {
+    withTree(
+      (root) => {
+        stampProbe(root);
+        editText(root, PROBE_DS, (s) => s.replace('"sworn": false', '"sworn": true'));
+      },
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /FLOOR — apps\/probe\/store\/android-play\/data-safety\.json is \d+ lines/);
+        assert.match(r.stderr, /MIXED — apps\/probe\/store\/android-play/);
+      },
+    );
+  });
+
+  test('🔴 the whole probe channel flipped to "sworn": true is exit 1 on the FLOOR — no MIXED to hide behind', () => {
+    withTree(
+      (root) => {
+        stampProbe(root);
+        for (const f of ['data-safety.json', 'content-rating.json', 'ads-declaration.json']) {
+          editText(root, `${PROBE}/store/android-play/${f}`, (s) => s.replace('"sworn": false', '"sworn": true'));
+        }
+      },
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.doesNotMatch(r.stderr, /MIXED/);
+        assert.match(r.stderr, /FLOOR — apps\/probe\/store\/android-play\/content-rating\.json is \d+ lines/);
+      },
+    );
+  });
+
+  test('🔴 a preview whose keys are not the template\'s is exit 1: half-answered is not preview', () => {
+    withTree(
+      (root) => {
+        stampProbe(root);
+        editDoc(root, PROBE_DS, (j) => { j.answers = []; });
+      },
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /apps\/probe\/store\/android-play\/data-safety\.json is a PREVIEW declaration \("sworn": false\) and its keys are not the brick template's .*extra answers/);
+      },
+    );
+  });
+
+  test('🔴 limb 5 still runs on a preview: a template citation that no longer resolves is exit 1', () => {
+    withTree(
+      (root) => {
+        stampProbe(root);
+        editDoc(root, `${PROBE}/store/android-play/ads-declaration.json`, (j) => { j._readme.push('see tooling/ci/assert-gone-for-good.mjs'); });
+      },
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /ads-declaration\.json `_readme\[\d+\]` cites tooling\/ci\/assert-gone-for-good\.mjs, which does not exist/);
+      },
+    );
+  });
+
+  test('🔴 RC8 — every workspace app at "sworn": false is COVERAGE LOST (exit 2): the floors graded nothing', () => {
+    withTree(
+      (root) => {
+        stampProbe(root);
+        for (const rel of [DS, CR, ADS, PM, AR]) editDoc(root, rel, (j) => { j.sworn = false; });
+      },
+      (r) => {
+        assert.equal(r.status, 2, r.stdout);
+        assert.match(r.stderr, /every sworn declaration read is a preview \("sworn": false\): 10 across (probe, subscriptiontracker|subscriptiontracker, probe)./);
+      },
+    );
+  });
+});
+
+describe('⏱ 2026-09-26 — --for-submission: a preview declaration cannot be submitted', () => {
+  test('🔴 RC7 — --for-submission=android-play --app probe is exit 1, naming each preview file', () => {
+    withTreeArgs(
+      (root) => stampProbe(root),
+      ['--for-submission=android-play', '--app', 'probe'],
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /PREVIEW — apps\/probe\/store\/android-play\/data-safety\.json says "sworn": false\. A preview declaration cannot be submitted/);
+        assert.match(r.stderr, /PREVIEW — apps\/probe\/store\/android-play\/ads-declaration\.json says "sworn": false/);
+      },
+    );
+  });
+
+  test('the same workspace, --app subscriptiontracker, is exit 0 and says what it read', () => {
+    withTreeArgs(
+      (root) => stampProbe(root),
+      ['--for-submission=ios-appstore', '--app', 'subscriptiontracker'],
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /--for-submission=ios-appstore --app subscriptiontracker: 2 declaration\(s\) read, each must say "sworn": true/);
+      },
+    );
+  });
+
+  test('one workspace app and no --app resolves that app', () => {
+    withTreeArgs(
+      () => {},
+      ['--for-submission=android-play'],
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /--for-submission=android-play --app subscriptiontracker: 3 declaration\(s\) read/);
+      },
+    );
+  });
+
+  test('two workspace apps and no --app is exit 2: which app is this lane submitting?', () => {
+    withTreeArgs(
+      (root) => stampProbe(root),
+      ['--for-submission=android-play'],
+      (r) => {
+        assert.equal(r.status, 2, r.stdout);
+        assert.match(r.stderr, /with no --app, and the workspace holds 2 apps/);
+      },
+    );
+  });
+
+  test('a bare --for-submission is exit 2 (the assert-play-device-coverage precedent)', () => {
+    withTreeArgs(
+      () => {},
+      ['--for-submission'],
+      (r) => {
+        assert.equal(r.status, 2, r.stdout);
+        assert.match(r.stderr, /--for-submission names no channel/);
+      },
+    );
+  });
+
+  test('a channel with no sworn declaration is exit 2, not a pass over nothing', () => {
+    withTreeArgs(
+      () => {},
+      ['--for-submission=windows-store'],
+      (r) => {
+        assert.equal(r.status, 2, r.stdout);
+        assert.match(r.stderr, /--for-submission=windows-store names a channel with no sworn declaration/);
+      },
+    );
+  });
+
+  test('an --app the workspace does not hold is exit 2', () => {
+    withTreeArgs(
+      () => {},
+      ['--for-submission=android-play', '--app', 'nope'],
+      (r) => {
+        assert.equal(r.status, 2, r.stdout);
+        assert.match(r.stderr, /--app nope is not a workspace app/);
+      },
+    );
+  });
+
+  test('a misspelt flag is exit 2, never an ordinary green run inside a submit lane', () => {
+    withTreeArgs(
+      () => {},
+      ['--for-submision=android-play'],
+      (r) => {
+        assert.equal(r.status, 2, r.stdout);
+        assert.match(r.stderr, /--for-submision=android-play is not a flag this guard knows/);
+      },
+    );
+  });
+});
+
+// ── ⏱ 2026-09-26 · O-APP1-CONSOLE-DECLARATIONS-UNSUBMITTED: declaredOn gates a REAL submission ──
+// Two facts, never merged: a file's "sworn" key says whether its CONTENT is
+// final (graded above, at full strength for app #1 whatever its record says);
+// apps/<id>/app.yaml stores.<channel>.declaredOn is the date the owner swore it
+// in the console. It refuses a real submission (--real-submission) and nothing else.
+describe('⏱ 2026-09-26 — --for-submission --real-submission: declaredOn gates a REAL submission only', () => {
+  const YAML = 'apps/subscriptiontracker/app.yaml';
+  const dated = (root) =>
+    editText(root, YAML, (s) => {
+      const a = '  android-play:\n    state: pending\n    declaredOn: null\n';
+      assert.ok(s.includes(a), 'app #1 declares android-play pending and undeclared');
+      return s.replace(a, '  android-play:\n    state: pending\n    declaredOn: 2026-09-26\n');
+    });
+
+  test('🔴 a REAL submission of a channel whose declaredOn is null is refused (exit 1), naming the files and the field', () => {
+    withTreeArgs(
+      () => {},
+      ['--for-submission=android-play', '--app', 'subscriptiontracker', '--real-submission'],
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /UNDECLARED — apps\/subscriptiontracker\/app\.yaml stores\.android-play\.declaredOn is null/);
+        assert.match(r.stderr, /Submit that console form from apps\/subscriptiontracker\/store\/android-play\/[a-z-]+\.json/);
+        assert.match(r.stderr, /A real submission \(--real-submission\) is refused until then/);
+      },
+    );
+  });
+
+  test('a DRY RUN of the same channel proceeds (exit 0): the bytes are graded and the gap is printed', () => {
+    withTreeArgs(
+      () => {},
+      ['--for-submission=android-play', '--app', 'subscriptiontracker'],
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /NOT YET DECLARED \(a dry run: the bytes are graded, the submission is not refused here\)/);
+        assert.match(r.stdout, /declaredOn null \(a dry run: a real submission also needs a date\)/);
+      },
+    );
+  });
+
+  test('a REAL submission with a declaredOn date passes the gate (exit 0)', () => {
+    withTreeArgs(
+      (root) => dated(root),
+      ['--for-submission=android-play', '--app', 'subscriptiontracker', '--real-submission'],
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.doesNotMatch(`${r.stdout}${r.stderr}`, /UNDECLARED|NOT YET DECLARED/);
+        assert.match(r.stdout, /--real-submission: 3 declaration\(s\) read, each must say "sworn": true; declaredOn 2026-09-26/);
+      },
+    );
+  });
+
+  test('declaredOn null does not make app #1 a preview: the plain run grades it sworn', () => {
+    withTreeArgs(
+      () => {},
+      [],
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /\(5 sworn, 0 preview\)/);
+      },
+    );
+  });
+
+  test('--real-submission without --for-submission is exit 2', () => {
+    withTreeArgs(
+      () => {},
+      ['--real-submission'],
+      (r) => {
+        assert.equal(r.status, 2, r.stdout);
+        assert.match(r.stderr, /--real-submission is only meaningful with --for-submission=<channel>/);
       },
     );
   });

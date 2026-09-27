@@ -804,19 +804,57 @@ describe('assert-live-writer-provenance L6: a sandbox lane reaches only the sand
     says(r, `must name ${PLATFORM_CFG} env.sandbox PLATFORM_DB (${SBX_PLATFORM_DB})`);
   });
 
-  test('🔴 L6e: a capture purge on the PRODUCTION app database is a finding', () => {
+  // ⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP): purge.mjs resolves the app database from
+  // E2E_APP_ID, in env.sandbox because the ledger is set, so the app key is read by nothing and
+  // L6 no longer asks for it. A PRODUCTION id under it, or under any other key, is still refused.
+  test('🔴 L6e: a capture purge naming the PRODUCTION app database, under any key, is a finding', () => {
     const r = run(tree({ [SHOTS]: capturePurgeId('SUBSCRIPTIONTRACKER_D1_DATABASE_ID', PROD_APP_DB) }));
     expectExit(r, 1);
     says(r, `${SHOTS_PURGE_AT} — SUBSCRIPTIONTRACKER_D1_DATABASE_ID=${PROD_APP_DB} is a PRODUCTION database id`);
-    says(r, `must name ${API_CFG} env.sandbox APP_DB (${SBX_APP_DB})`);
+    says(r, 'its purge names no production database under any key');
   });
 
-  test('🔴 a capture purge with no SUBSCRIPTIONTRACKER_D1_DATABASE_ID is a finding', () => {
+  test('L6e′: a capture purge with no app database key is green — purge.mjs resolves it from E2E_APP_ID in env.sandbox', () => {
     const edit = swap(`          SUBSCRIPTIONTRACKER_D1_DATABASE_ID: ${SBX_APP_DB}
 `, '');
     const r = run(tree({ [SHOTS]: edit }));
+    expectExit(r, 0);
+    says(r, 'sandboxJobs=1');
+  });
+
+  /** The store lane's shape since B4b-2: a resolver step before the user is provisioned,
+   *  and the purge reads its platform_db output. */
+  const resolverForm = (resolverRun) =>
+    chain(
+      swap('      - name: Provision a throwaway user\n', `      - name: Resolve this app's sandbox databases\n        id: backend\n        run: ${resolverRun}\n      - name: Provision a throwaway user\n`),
+      swap(`          PLATFORM_D1_DATABASE_ID: ${SBX_PLATFORM_DB}\n          SUBSCRIPTIONTRACKER_D1_DATABASE_ID: ${SBX_APP_DB}\n`, '          PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}\n'),
+    );
+  const WORKSPACE_PUBSPEC = 'name: ws\nworkspace:\n  - apps/subscriptiontracker\n';
+
+  test('L6h: the platform database from an earlier `backend.mjs --env sandbox --emit-output` step is green, and held over the tree', () => {
+    const r = run(tree({ 'pubspec.yaml': WORKSPACE_PUBSPEC, [SHOTS]: resolverForm('node tooling/e2e/backend.mjs --app "$APP" --env sandbox --emit-output') }));
+    expectExit(r, 0);
+    says(r, 'resolverPurges=1');
+  });
+
+  test('🔴 L6i: the same resolver step with no `--env sandbox` resolves PRODUCTION, and is a finding', () => {
+    const t = resolverForm('node tooling/e2e/backend.mjs --app "$APP" --emit-output')(SHOTS_GREEN);
+    const r = run(tree({ 'pubspec.yaml': WORKSPACE_PUBSPEC, [SHOTS]: t }));
     expectExit(r, 1);
-    says(r, `${shotsPurgeAt(edit(SHOTS_GREEN))} — the purge in the sandbox lane \`store-capture\` carries no SUBSCRIPTIONTRACKER_D1_DATABASE_ID`);
+    says(r, `${shotsPurgeAt(t)} — PLATFORM_D1_DATABASE_ID=\${{ steps.backend.outputs.platform_db }}, and no earlier step \`backend\` in this job runs tooling/e2e/backend.mjs --env sandbox --emit-output`);
+  });
+
+  test('🔴 L6j: an output of a step that is not in the job is a finding', () => {
+    const t = swap(`          PLATFORM_D1_DATABASE_ID: ${SBX_PLATFORM_DB}\n`, '          PLATFORM_D1_DATABASE_ID: ${{ steps.nothing.outputs.platform_db }}\n')(SHOTS_GREEN);
+    const r = run(tree({ 'pubspec.yaml': WORKSPACE_PUBSPEC, [SHOTS]: t }));
+    expectExit(r, 1);
+    says(r, 'no earlier step `nothing` in this job runs tooling/e2e/backend.mjs --env sandbox --emit-output');
+  });
+
+  test('🔴 L6k: the resolver form over a workspace app whose sandbox the resolver refuses is a finding', () => {
+    const r = run(tree({ 'pubspec.yaml': `${WORKSPACE_PUBSPEC}  - apps/second\n`, [SHOTS]: resolverForm('node tooling/e2e/backend.mjs --app "$APP" --env sandbox --emit-output') }));
+    expectExit(r, 1);
+    says(r, 'L6: tooling/e2e/backend.mjs refuses app second');
   });
 
   test('🔴 L6f: the API config without env.sandbox is COVERAGE LOST, exit 2', () => {

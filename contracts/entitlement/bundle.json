@@ -33,7 +33,10 @@
   "productKinds": [
     "app",
     "extension",
-    "script"
+    "script",
+    "bundle",
+    "service",
+    "site"
   ],
   "productRegisters": [
     {
@@ -46,6 +49,19 @@
     },
     {
       "kind": "script",
+      "register": null
+    },
+    {
+      "kind": "bundle",
+      "register": "catalog/bundles.json",
+      "slugField": "featureSet"
+    },
+    {
+      "kind": "service",
+      "register": null
+    },
+    {
+      "kind": "site",
       "register": null
     }
   ],

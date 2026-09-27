@@ -66,6 +66,8 @@ import {
 import { receiptVerifierFor } from '../lib/receipts/verifiers';
 import { type ProductMap, featureSetForProduct } from '../lib/receipts/products';
 import { nowIso } from '../lib/d1';
+import { BUNDLES_REGISTER, type BundleRegisterRow, bundleVersionStatus } from '../lib/catalog';
+import { BUNDLE_KIND } from '../../../../contracts/entitlement/bundle.js';
 import { isValidAppId, productKindOf } from '../config';
 
 const receipts = new Hono<AppEnv>();
@@ -139,7 +141,23 @@ async function pinFeatureSet(
   name: string,
   version: number,
   products: readonly string[],
+  register: readonly BundleRegisterRow[] | undefined,
 ): Promise<void> {
+  // 🔴 ONLY A `sellable` VERSION IS MINTED — O-BUNDLE-MEMBER-INSERT-UNLOCKED
+  // limb (2). Until 2026-09-26 the INSERT below bound the LITERAL 'sellable', so
+  // a receipt for a version the register still called `draft` minted it as
+  // sellable and froze a membership nobody had offered. The status is READ from
+  // the register (src/lib/catalog.ts, the Worker's catalogue reader) and bound;
+  // anything but `sellable` — `draft`, `retired`, or no row at all — is an ERROR
+  // before the first INSERT, and the route's onError answers 500 with nothing
+  // written, the same fail-closed path an unknown member takes below.
+  const status = bundleVersionStatus(name, version, register);
+  if (status !== 'sellable') {
+    throw new Error(
+      `feature set ${name}@${version} is ${status === null ? 'not in the bundle register' : `\`${status}\` in the bundle register`}; ` +
+        'only a `sellable` version may be minted',
+    );
+  }
   // 🔴 EVERY KIND IS RESOLVED FROM THE REGISTER BEFORE ANYTHING IS WRITTEN.
   // `product_kind` is recorded as a fact at sale (migration 0009), and until
   // 2026-09-10 this bound the literal 'app' for every member — so the pinned
@@ -158,15 +176,19 @@ async function pinFeatureSet(
     if (kind === null) {
       throw new Error(`feature set ${name}@${version} names member ${JSON.stringify(slug)}, which no product register carries`);
     }
+    // A bundle is a product since 2026-09-26, and a bundle is never a member of one.
+    if (kind === BUNDLE_KIND) {
+      throw new Error(`feature set ${name}@${version} names member ${JSON.stringify(slug)}, which is itself a bundle`);
+    }
     kinds.set(slug, kind);
   }
   const now = nowIso();
   await db
     .prepare(
       `INSERT INTO feature_sets (name, version, minted_at, minted_from, status)
-       VALUES (?,?,?,?,'sellable') ON CONFLICT (name, version) DO NOTHING`,
+       VALUES (?,?,?,?,?) ON CONFLICT (name, version) DO NOTHING`,
     )
-    .bind(name, version, now, 'catalog/bundles.json')
+    .bind(name, version, now, BUNDLES_REGISTER, status)
     .run();
   for (const [slug, kind] of kinds) {
     await db
@@ -376,7 +398,7 @@ receipts.post('/receipts/:store', async (c) => {
   }
 
   // ── 8 · PIN, CREDIT, WRITE ────────────────────────────────────────────────
-  await pinFeatureSet(c.env.PLATFORM_DB, fs.name, fs.version, fs.products);
+  await pinFeatureSet(c.env.PLATFORM_DB, fs.name, fs.version, fs.products, bundleRegisterFor(c.env));
 
   const perAppEnd = await supersededPerAppPeriodEnd(
     c.env.PLATFORM_DB,
@@ -480,7 +502,7 @@ function oldest(rows: readonly BundleGrantRow[]): BundleGrantRow {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// The two seams, both resolved from `env` so the route body never names a global.
+// The seams, each resolved from `env` so the route body never names a global.
 //
 // `RECEIPT_FETCH` / `RECEIPT_PRODUCT_MAP` are absent in every deploy and are
 // absent from the Env type on purpose: they exist so the suite can run the REAL
@@ -496,6 +518,18 @@ function receiptFetch(env: AppEnv['Bindings']): typeof fetch {
 
 function productMapFor(env: AppEnv['Bindings']): ProductMap | undefined {
   return (env as unknown as { RECEIPT_PRODUCT_MAP?: ProductMap }).RECEIPT_PRODUCT_MAP;
+}
+
+/**
+ * The third seam, `RECEIPT_BUNDLE_REGISTER`: the bundle register rows the mint
+ * reads a version's status from. Absent in every deploy, like the two above —
+ * `undefined` makes `bundleVersionStatus` read the committed register — and it
+ * exists because the committed register's only version is `draft`, so the
+ * grant path could otherwise be exercised only by marking an unsold version
+ * sellable in a committed file.
+ */
+function bundleRegisterFor(env: AppEnv['Bindings']): readonly BundleRegisterRow[] | undefined {
+  return (env as unknown as { RECEIPT_BUNDLE_REGISTER?: readonly BundleRegisterRow[] }).RECEIPT_BUNDLE_REGISTER;
 }
 
 export default receipts;

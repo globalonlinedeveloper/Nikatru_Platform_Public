@@ -18,7 +18,7 @@ import type { AppTarget, Env } from './types';
 import { recomputeRenewals } from './renewals';
 import { runBackup } from './backup';
 import { isMoneyEnvironment } from './lib/mor/contract';
-import { isKnownProduct } from './config';
+import { isAttributableProduct } from './config';
 import { verifierFor } from './lib/mor/registry';
 import { deriveAndApply, unconcludedNotifications } from './lib/mor/store';
 import {
@@ -89,12 +89,12 @@ export const RENEWALS_JOB = 'renewals';
  */
 export const ANALYTICS_LIVENESS_WINDOW_HOURS = 24;
 
-/**
- * Apps the scheduler fans out to. Static today (subscriptiontracker only); as more apps ship,
- * add their APP_DB binding here (or drive it from a platform_db registry).
- */
+import { APP_TARGETS } from './generated/app-targets';
+/** Apps the scheduler fans out to: GENERATED from the register (tooling/scripts/render-platform-app-block.mjs, 2026-09-26).
+ *  A binding the module names and `env` lacks comes back `db: undefined`: the fan-out records it as a failed row, never a skip.
+ *  `env` is read by the binding's NAME, so it is indexed as a record. */
 export function appTargets(env: Env): AppTarget[] {
-  return [{ appId: 'subscriptiontracker', db: env.SUBSCRIPTIONTRACKER_DB }];
+  return APP_TARGETS.map((t) => ({ appId: t.appId, db: (env as unknown as Record<string, D1Database | undefined>)[t.dbBinding] as D1Database }));
 }
 
 /**
@@ -923,8 +923,9 @@ export async function moneyRederive(env: Env, nowMs: number = Date.now()): Promi
     const rows = await unconcludedNotifications(env.PLATFORM_DB, since, MAX_REDERIVE_PER_RUN);
     candidates = rows.length;
     // The store's attribution rule, injected exactly as routes/money.ts injects it
-    // (MoneyStoreDeps.isKnownProduct says why it is not imported by the store).
-    const deps = { db: env.PLATFORM_DB, environment, nowMs, isKnownProduct };
+    // (MoneyStoreDeps.isKnownProduct says why it is not imported by the store),
+    // and the same ATTRIBUTABLE set: every known product but a bundle.
+    const deps = { db: env.PLATFORM_DB, environment, nowMs, isKnownProduct: isAttributableProduct };
     for (const row of rows) {
       const verifier = verifierFor(row.provider);
       if (verifier === null) { bump('unknown_provider'); failed++; continue; }

@@ -1,6 +1,6 @@
 name: "Store submit: Google Play"
 
-run-name: "Store submit: Google Play by @${{ github.actor }}"
+run-name: "Store submit: Google Play — ${{ inputs.app }} — ${{ inputs.confirm == 'SUBMIT-TO-PLAY' && 'SUBMIT' || 'dry run' }} by @${{ github.actor }}"
 
 # The measurements, retractions and traps behind this file are in
 # docs/ci/submit-play.md. Only `# why:` lines live here, and
@@ -9,6 +9,13 @@ run-name: "Store submit: Google Play by @${{ github.actor }}"
 on:
   workflow_dispatch:
     inputs:
+      # why: required with NO default and NO choice list (O-STORE-LANES-HARD-WIRE-ONE-APP):
+      # either one is an app id written into this file. The gate job checks it against the
+      # workspace set; every other job reads the gate's output, never this input.
+      app:
+        description: 'The app to submit: one id of the workspace app set (tooling/ci/assert-release-lane-generic.mjs --emit-apps). The gate job refuses any other value.'
+        required: true
+        type: string
       confirm:
         description: 'Type SUBMIT-TO-PLAY to authorise a real upload. Anything else runs the dry run only.'
         required: true
@@ -43,6 +50,8 @@ jobs:
     # so any bound at or under 20 kills it mid-poll and replaces "timed out waiting
     # for ci-gate" with an opaque cancellation. Byte-identical in all five gate jobs.
     timeout-minutes: 25
+    outputs:
+      app: ${{ steps.app.outputs.app }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -52,20 +61,37 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: node tooling/ci/assert-gate-passed.mjs ${{ github.sha }}
+      # why: the ONE reader of inputs.app, and only through env: (an input interpolated into
+      # run: is a shell injection). --emit-apps --app refuses a value off ^[a-z][a-z0-9-]*$
+      # before it reads the set, and one outside the set naming the set; only then is it an output.
+      - name: The app input names one app of the workspace
+        id: app
+        env:
+          APP_INPUT: ${{ inputs.app }}
+        run: |
+          set -euo pipefail
+          node tooling/ci/assert-release-lane-generic.mjs --emit-apps --app "$APP_INPUT"
+          echo "app=${APP_INPUT}" >> "$GITHUB_OUTPUT"
 
   dry-run:
     name: Validate the submission path
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs: gate
+    # why: write, not read: the last step records this run (O-SUBMISSION-LANE-WITHOUT-RECORDER);
+    # the versionCode step reads the ledger through the same grant.
     permissions:
       contents: read
-      deployments: read
+      deployments: write
     # why: the submit job ships THIS job's bundle, not a rebuild of it, and checks it against
     # this sha256 (O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT; docs/ci/submit-play.md).
     outputs:
       artifact: ${{ steps.bytes.outputs.artifact }}
       sha256: ${{ steps.bytes.outputs.sha256 }}
+    # why: the gate's checked output, never inputs.app. run: reads $APP; the fields no
+    # shell expands (artifact name and path) read the expression itself.
+    env:
+      APP: ${{ needs.gate.outputs.app }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -83,14 +109,18 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: node tooling/ci/android-signing.mjs --app subscriptiontracker --channel android-play
+        run: node tooling/ci/android-signing.mjs --app "$APP" --channel android-play
       - name: Derive the release line from pubspec
         id: ver
-        run: node tooling/ci/assert-app-versioning.mjs --emit apps/subscriptiontracker >> "$GITHUB_OUTPUT"
+        run: node tooling/ci/assert-app-versioning.mjs --emit "apps/${APP}" >> "$GITHUB_OUTPUT"
       # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. A lane green over a name the owner has not HELD
       # or proven free submits one nobody ruled on; limb 3 of assert-publish-steps-guarded.mjs.
       - name: Name clearance holds for android-play (owner HELD or PROVEN-FREE)
         run: node tooling/ci/assert-name-clearance.mjs --for-submission=android-play
+      # why: O-BRICK-SWORN-FILES-HAVE-NO-PREVIEW-STATE. A declaration still at "sworn": false is the stamped
+      # template: submitting it swears to answers nobody gave. Limb 3 of assert-publish-steps-guarded.mjs.
+      - name: The app's Play declarations are sworn, not preview (--for-submission)
+        run: node tooling/ci/assert-sworn-store-files.mjs --for-submission=android-play --app "$APP"
       # why: docs/ci/submit-play.md — before step "The versionCode lies above what Play consumed".
       - name: The versionCode lies above what Play consumed
         env:
@@ -99,8 +129,8 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          RECORDED="$(node tooling/ci/read-ledger-version-code.mjs subscriptiontracker-android-play)"
-          node tooling/ci/assert-app-versioning.mjs --play-floor "$RUN_NUMBER" --app subscriptiontracker --recorded-upload "$RECORDED"
+          RECORDED="$(node tooling/ci/read-ledger-version-code.mjs "${APP}-android-play")"
+          node tooling/ci/assert-app-versioning.mjs --play-floor "$RUN_NUMBER" --app "$APP" --recorded-upload "$RECORDED"
       # why: the three version flags. This is the ONE build of the dispatch: the submit job
       # ships these bytes. Without them
       # AppConfig.appVersion is 'dev' and the versionCode is pubspec's `+1`, which Play has
@@ -113,7 +143,7 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           REVENUECAT_PUBLIC_KEY_GOOGLE: ${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
-        run: node tooling/ci/flutter-release-build.mjs subscriptiontracker appbundle android-play
+        run: node tooling/ci/flutter-release-build.mjs "$APP" appbundle android-play
       # ⏱ MOVED 2026-09-07 (unit `symbols-everywhere`) — THIS STEP USED TO BE THE
       # LAST ONE IN THE JOB, behind the Play dry run. That is the ordering
       # post-audit-obfuscation-and-symbols.md §9.3 reproduced on a real runner:
@@ -130,8 +160,8 @@ jobs:
       # tooling/ci/assert-obfuscation-coupled.mjs refuses the build without it.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: symbols-subscriptiontracker-android-play-dry-run
-          path: apps/subscriptiontracker/build/symbols/android-aab
+          name: symbols-${{ needs.gate.outputs.app }}-android-play-dry-run
+          path: apps/${{ needs.gate.outputs.app }}/build/symbols/android-aab
           retention-days: 7
           if-no-files-found: error
       # why: ONE code path on every lane (O-GLITCHTIP-CLI-INSTALLED-BY-HAND): the digest tooling/versions.json
@@ -143,30 +173,36 @@ jobs:
       # itself is how a release ships unreadable. Placed AFTER the retention step
       # above and BEFORE every network step below, so a GlitchTip outage cannot
       # take the mapping with it: the artifact is already written when this runs.
+      # why: the GlitchTip project is the ONE declaration, tooling/ops/glitchtip-project.json,
+      # never the app (assert-glitchtip-project.mjs refuses an app-derived one); read as
+      # build-platforms.yml reads it.
       - name: Upload the native debug symbols to GlitchTip
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
-        run: >
-          node tooling/ops/upload-native-symbols.mjs
-          --cli "${RUNNER_TEMP}/glitchtip-cli"
-          --dir apps/subscriptiontracker/build/symbols/android-aab
-          --org nikatru --project subscriptiontracker
+        run: |
+          set -euo pipefail
+          gt_org="$(node -p "require('./tooling/ops/glitchtip-project.json').org")"
+          gt_project="$(node -p "require('./tooling/ops/glitchtip-project.json').project")"
+          node tooling/ops/upload-native-symbols.mjs \
+            --cli "${RUNNER_TEMP}/glitchtip-cli" \
+            --dir "apps/${APP}/build/symbols/android-aab" \
+            --org "$gt_org" --project "$gt_project"
       - name: The .aab must be signed by the upload key, not the debug key
         run: >
           node tooling/ci/assert-artifact-signed.mjs
-          apps/subscriptiontracker/build/app/outputs/bundle/release/app-release.aab
+          "apps/${APP}/build/app/outputs/bundle/release/app-release.aab"
       - name: The Play screenshot set spans enough device types
         run: node tooling/ci/assert-play-device-coverage.mjs --for-submission=android-play
       - name: Every native library is aligned for a 16 KB memory page
         run: >
           node --single-threaded tooling/ci/assert-elf-page-alignment.mjs
-          apps/subscriptiontracker/build/app/outputs/bundle/release/app-release.aab
+          "apps/${APP}/build/app/outputs/bundle/release/app-release.aab"
       - name: Dry-run the Google Play submission
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           PLAY_TRACK: ${{ vars.PLAY_TRACK }}
-        run: node tooling/release/submit-play.mjs --dry-run --app subscriptiontracker
+        run: node tooling/release/submit-play.mjs --dry-run --app "$APP"
       # why: the hand-off the submit job verifies. The name carries the posture
       # android-signing.mjs exported, which the submit job cannot recompute, so it
       # travels as an output; the upload below reads the same output, so the name
@@ -174,19 +210,27 @@ jobs:
       - name: Hand the submit job this bundle's name and sha256
         id: bytes
         env:
-          AAB: apps/subscriptiontracker/build/app/outputs/bundle/release/app-release.aab
+          AAB: apps/${{ needs.gate.outputs.app }}/build/app/outputs/bundle/release/app-release.aab
         run: |
           set -euo pipefail
           sum="$(sha256sum "$AAB" | cut -d ' ' -f 1)"
-          echo "artifact=subscriptiontracker-android-play-aab-${ANDROID_SIGNING_POSTURE:?android-signing.mjs exported no posture}" >> "$GITHUB_OUTPUT"
+          echo "artifact=${APP}-android-play-aab-${ANDROID_SIGNING_POSTURE:?android-signing.mjs exported no posture}" >> "$GITHUB_OUTPUT"
           echo "sha256=${sum}" >> "$GITHUB_OUTPUT"
           echo "${sum}  ${AAB}"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ steps.bytes.outputs.artifact }}
-          path: apps/subscriptiontracker/build/app/outputs/bundle/release/app-release.aab
+          path: apps/${{ needs.gate.outputs.app }}/build/app/outputs/bundle/release/app-release.aab
           retention-days: 7
           if-no-files-found: error
+      # why: every run of this lane is recorded, and a rehearsal AS one (O-SUBMISSION-LANE-WITHOUT-RECORDER,
+      # assert-publish-records rule 3a): --mode dry-run writes "<app>-android-play-dry-run", which no
+      # reader of the production ledger opens, and carries no state, listing or versionCode.
+      - name: Record the dry run in the [10]D-9 ledger (mode dry-run)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node tooling/ci/record-deployment.mjs "${APP}-android-play" --mode dry-run
 
   submit:
     name: Upload to Google Play (owner-approved)
@@ -206,6 +250,9 @@ jobs:
       contents: read
       checks: read
       deployments: write
+    # why: the same checked output the dry-run job read, so both jobs name one app.
+    env:
+      APP: ${{ needs.gate.outputs.app }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -257,11 +304,17 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: node tooling/ci/android-signing.mjs --app subscriptiontracker
+        run: node tooling/ci/android-signing.mjs --app "$APP"
       # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. A lane green over a name the owner has not HELD
       # or proven free submits one nobody ruled on; limb 3 of assert-publish-steps-guarded.mjs.
       - name: Name clearance holds for android-play (owner HELD or PROVEN-FREE)
         run: node tooling/ci/assert-name-clearance.mjs --for-submission=android-play
+      # why: O-BRICK-SWORN-FILES-HAVE-NO-PREVIEW-STATE. A declaration still at "sworn": false is the stamped
+      # template: submitting it swears to answers nobody gave. Limb 3 of assert-publish-steps-guarded.mjs.
+      # --real-submission (O-APP1-CONSOLE-DECLARATIONS-UNSUBMITTED): this job is the REAL submission, so the app's stores.android-play
+      # declaredOn must be a date; the dry-run job's same step omits it and only prints the gap.
+      - name: The app's Play declarations are sworn, not preview (--for-submission)
+        run: node tooling/ci/assert-sworn-store-files.mjs --for-submission=android-play --app "$APP" --real-submission
       # why: docs/ci/submit-play.md — before step "The versionCode lies above what Play consumed".
       - name: The versionCode lies above what Play consumed
         env:
@@ -270,8 +323,8 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          RECORDED="$(node tooling/ci/read-ledger-version-code.mjs subscriptiontracker-android-play)"
-          node tooling/ci/assert-app-versioning.mjs --play-floor "$RUN_NUMBER" --app subscriptiontracker --recorded-upload "$RECORDED"
+          RECORDED="$(node tooling/ci/read-ledger-version-code.mjs "${APP}-android-play")"
+          node tooling/ci/assert-app-versioning.mjs --play-floor "$RUN_NUMBER" --app "$APP" --recorded-upload "$RECORDED"
       # why: THE DRY RUN'S BYTES, NOT A REBUILD (O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT):
       # one compile per dispatch. The versionCode is the dry-run job's --build-number,
       # github.run_number, which this job shares. Retention is 7 days and there is no
@@ -280,12 +333,12 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ${{ needs.dry-run.outputs.artifact }}
-          path: apps/subscriptiontracker/build/app/outputs/bundle/release
+          path: apps/${{ needs.gate.outputs.app }}/build/app/outputs/bundle/release
       # why: the value arrives through env:, never interpolated into run: (zizmor).
       - name: The bundle is the one the dry-run job hashed (sha256)
         env:
           EXPECTED_SHA256: ${{ needs.dry-run.outputs.sha256 }}
-          AAB: apps/subscriptiontracker/build/app/outputs/bundle/release/app-release.aab
+          AAB: apps/${{ needs.gate.outputs.app }}/build/app/outputs/bundle/release/app-release.aab
         run: |
           set -euo pipefail
           if ! printf '%s' "$EXPECTED_SHA256" | grep -Eqx '[0-9a-f]{64}'; then
@@ -296,13 +349,13 @@ jobs:
       - name: The .aab must be signed by the upload key, not the debug key
         run: >
           node tooling/ci/assert-artifact-signed.mjs
-          apps/subscriptiontracker/build/app/outputs/bundle/release/app-release.aab
+          "apps/${APP}/build/app/outputs/bundle/release/app-release.aab"
       - name: The Play screenshot set spans enough device types
         run: node tooling/ci/assert-play-device-coverage.mjs --for-submission=android-play
       - name: Every native library is aligned for a 16 KB memory page
         run: >
           node --single-threaded tooling/ci/assert-elf-page-alignment.mjs
-          apps/subscriptiontracker/build/app/outputs/bundle/release/app-release.aab
+          "apps/${APP}/build/app/outputs/bundle/release/app-release.aab"
       # why: the mapping of the bundle above is the dry-run job's (same build), already in
       # the crash sink from that job. BEFORE the upload, not after: kept again here for
       # 90 days, not 7, because this bundle ships, and a step after a store upload does
@@ -310,12 +363,12 @@ jobs:
       - name: Take the dry-run job's symbols for this bundle
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: symbols-subscriptiontracker-android-play-dry-run
-          path: apps/subscriptiontracker/build/symbols/android-aab
+          name: symbols-${{ needs.gate.outputs.app }}-android-play-dry-run
+          path: apps/${{ needs.gate.outputs.app }}/build/symbols/android-aab
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: symbols-subscriptiontracker-android-play
-          path: apps/subscriptiontracker/build/symbols/android-aab
+          name: symbols-${{ needs.gate.outputs.app }}-android-play
+          path: apps/${{ needs.gate.outputs.app }}/build/symbols/android-aab
           retention-days: 90
           if-no-files-found: error
       - name: Upload to Google Play
@@ -327,7 +380,7 @@ jobs:
           CONFIRM: ${{ inputs.confirm }}
           GITHUB_TOKEN: ${{ github.token }}
         run: >
-          node tooling/release/submit-play.mjs --submit --app subscriptiontracker
+          node tooling/release/submit-play.mjs --submit --app "$APP"
           --confirm "$CONFIRM" --status "$RELEASE_STATUS"
       # why: read-after-upload on the versionCode, which androidpublisher returns per
       # track and which the upload itself produced. The snap lane deliberately has no
@@ -356,14 +409,14 @@ jobs:
           APPLICATION_ID="$(node --input-type=module -e '
           import { readFileSync } from "node:fs";
           import { readGradleApplicationId } from "./tooling/ci/read-identity.mjs";
-          const rel = "apps/subscriptiontracker/android/app/build.gradle.kts";
+          const rel = "apps/" + process.env.APP + "/android/app/build.gradle.kts";
           const id = readGradleApplicationId(readFileSync(rel, "utf8"), rel);
           if (!id.value) { console.error(id.missing ?? id.lost); process.exit(1); }
           process.stdout.write(id.value);
           ')"
           echo "⬜ [14]O-7 reading the Play track state for ${APPLICATION_ID}, expecting versionCode ${VERSION_CODE}"
           node tooling/ops/post-deploy-smoke.mjs --play-package "${APPLICATION_ID}" --expect "${VERSION_CODE}"
-          echo "::notice title=Play versionCode high-water::versionCode ${VERSION_CODE} is consumed. Record it in tooling/channel-register.json android-play.versionCodeHighWater.consumed.subscriptiontracker, and the ledger now holds it: the next dispatch stops until consumed is raised to it"
+          echo "::notice title=Play versionCode high-water::versionCode ${VERSION_CODE} is consumed. Record it in tooling/channel-register.json android-play.versionCodeHighWater.consumed.${APP}, and the ledger now holds it: the next dispatch stops until consumed is raised to it"
       - name: Record the submission in the [10]D-9 ledger
         if: always() && steps.upload.outcome == 'success'
         env:
@@ -371,4 +424,4 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           LISTING_URL: ${{ inputs.listing_url }}
           RUN_NUMBER: ${{ github.run_number }}
-        run: node tooling/ci/record-deployment.mjs subscriptiontracker-android-play --state in_review --listing-url "$LISTING_URL" --version-code "$RUN_NUMBER"
+        run: node tooling/ci/record-deployment.mjs "${APP}-android-play" --state in_review --listing-url "$LISTING_URL" --version-code "$RUN_NUMBER" --mode production

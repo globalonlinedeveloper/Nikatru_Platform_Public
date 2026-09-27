@@ -53,7 +53,7 @@
 import type { AppConfig, StoredAppConfig } from './types';
 import catalogueJson from '../../../catalog/apps.json';
 import configDataJson from './app-config-data.json';
-import { isProductKind } from '../../../contracts/entitlement/bundle.js';
+import { BUNDLE_KIND, isProductKind } from '../../../contracts/entitlement/bundle.js';
 import { type RegisterProduct, channelIdsFromRegister, productsFromRegisters } from './lib/bundle/availability';
 
 /**
@@ -309,7 +309,7 @@ export const KNOWN_PRODUCTS: ReadonlyMap<string, string> = buildKnownProducts(
 );
 
 /**
- * Is `id` a product in ANY register — app, extension, or script?
+ * Is `id` a product in ANY register — app, extension, script or bundle?
  *
  * A `Map` lookup: no prototype to read through, so `__proto__` and friends are
  * simply absent, the same honest false `isKnownApp` reaches by `hasOwnProperty`.
@@ -321,6 +321,30 @@ export function isKnownProduct(id: unknown): id is string {
 /** The register kind of a known product, or null for an unknown id. */
 export function productKindOf(id: unknown): string | null {
   return isKnownProduct(id) ? (KNOWN_PRODUCTS.get(id) ?? null) : null;
+}
+
+/**
+ * Is `id` a product a PER-PRODUCT row can belong to — a known product that is
+ * not a bundle? Two callers ask it: the money path, attributing a notification,
+ * and the per-product read `GET /v1/entitlements?app_id=`.
+ *
+ * 🔴 WHY NOT `isKnownProduct`. Since 2026-09-26 the bundle register is a product
+ * register (O-BUNDLE-AVAILABILITY-TAKES-THE-FIRST), so `isKnownProduct` names
+ * `nikatru_all`.
+ *   · THE MONEY PATH attributes a notification by a client-settable
+ *     `nikatru_app_id` and writes a PER-APP `entitlements` row for it; a bundle
+ *     id there would write a per-app row for a bundle, which unlocks no member
+ *     and is a row belonging to no single product ([4]B-4a). A bundle purchase
+ *     is a `bundle_grants` row written by lib/mor/bundle-store.ts, never this
+ *     path.
+ *   · THE PER-PRODUCT READ would answer a bundle id 200 `is_pro:false`, since no
+ *     per-app row can exist for it: a false NO to a bundle owner. A bundle is
+ *     read through the subject route's `bundles[]`.
+ * So both refuse a bundle id exactly as they refused it before the bundle was a
+ * product: attribution drops it, and the read stays 404.
+ */
+export function isAttributableProduct(id: unknown): id is string {
+  return isKnownProduct(id) && KNOWN_PRODUCTS.get(id) !== BUNDLE_KIND;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

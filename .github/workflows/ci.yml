@@ -35,8 +35,11 @@ jobs:
   lane-workers:
     name: lane-workers
     uses: ./.github/workflows/lane-workers.yml
+    # why: `actions: write` is the ceiling the callee's jobs run under, and each of them ends
+    # with the FF-1 step (.github/actions/cancel-run-on-red), which needs it to cancel this run.
     permissions:
       contents: read
+      actions: write
 
   guard-meta:
     # why: the guards' own mutation suite measured 199s of the old job's 263s —
@@ -50,7 +53,7 @@ jobs:
     timeout-minutes: 25
     permissions:
       contents: read
-      actions: read
+      actions: write
       issues: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -138,6 +141,9 @@ jobs:
         run: node tooling/ci/gen-ci-map.mjs --check
       - name: The release runbook's arming lines match the register (channel-arming --check)
         run: node tooling/ci/channel-arming.mjs --check
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   guards-platform:
     name: Guards — platform, data and ops
@@ -145,7 +151,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      actions: read
+      actions: write
       issues: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -280,9 +286,9 @@ jobs:
       - name: Every pinned input is reached by a live update manager
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-update-coverage.mjs
-      - name: Every store the portfolio holds has a declared retention rule
+      - name: Every store the portfolio holds has a declared retention rule, and every owned D1 is backed up, fanned out to and bound
         if: ${{ !cancelled() }}
-        run: node tooling/ci/assert-retention-coverage.mjs
+        run: rc=0; node tooling/ci/assert-retention-coverage.mjs || rc=1; node tooling/ci/assert-d1-fanout.mjs || rc=1; node tooling/scripts/render-platform-app-block.mjs --check || rc=1; exit $rc
       - name: The events rollup stays lossless and the sweep stays fail-closed
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-rollup-lossless.mjs
@@ -300,6 +306,9 @@ jobs:
       - name: Every job is bounded once, at a number somebody chose
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-workflow-timeouts.mjs
+      - name: A red gate job cancels its run, and no deploy job ever does (FF-1)
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-failfast-coverage.mjs
       - name: A green tick means the work ran
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-green-means-ran.mjs
@@ -361,11 +370,17 @@ jobs:
       - name: START-HERE.md is what the tree generates
         timeout-minutes: 2
         run: node --single-threaded tooling/scripts/gen-start-here.mjs --check
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   guards-legal:
     name: Guards — privacy, legal and money
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -467,11 +482,17 @@ jobs:
       - name: A legal document published twice says the same thing in both places
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-legal-text-parity.mjs
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   guards-store:
     name: Guards — store, release and versioning
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -626,11 +647,17 @@ jobs:
       - name: The app id has one rule, and the Worker, the callers and the schemas agree with it
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-app-id-contract.mjs
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   guards-chassis:
     name: Guards — chassis, app surface and packages
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -712,6 +739,9 @@ jobs:
       - name: Every mutation proof still addresses the code it was run against
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-mutation-proofs.mjs
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   security-scan:
     # why: split out so a leaked credential is not reported as "the platform
@@ -721,6 +751,9 @@ jobs:
     name: Security — secret and workflow scanners
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -840,6 +873,9 @@ jobs:
         run: |
           set -euo pipefail
           "${RUNNER_TEMP}/trivy" fs --scanners vuln,misconfig --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress .
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   site-tokens:
     # why: the job id stays `site-tokens` even though the lane now covers three
@@ -850,6 +886,9 @@ jobs:
     name: Design tokens (build + drift, all three outputs)
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
     defaults:
       run:
         working-directory: packages/tokens
@@ -902,11 +941,17 @@ jobs:
           git diff --exit-code -- ../../sites/_shared/assets/tokens.css
           git diff --exit-code -- ../design_system/lib/src/tokens/brand_tokens.dart
           git diff --exit-code -- ../../extensions/core/tokens.json
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   site-shared:
     name: Shared site build
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
     defaults:
       run:
         working-directory: sites/_shared
@@ -917,12 +962,18 @@ jobs:
       - uses: ./.github/actions/setup-node
       - run: npm ci
       - run: npm run build && test -s _site/index.html  # eleventy exits 0 on "Wrote 0 files"
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
 
   content-gate:
     name: Content pipeline (recipe -> pack -> sign -> gate)
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -948,11 +999,17 @@ jobs:
         run: node tooling/ci/assert-review-gate.mjs
       - name: Publish is a gate, and an undrilled signing key cannot sign
         run: node tooling/ci/assert-publish-gate.mjs
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   app-brick:
     name: App brick (stamp both variants + analyze + validate the clone contract)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -1030,6 +1087,28 @@ jobs:
           if [ "$code" -ne 1 ]; then echo "::error::assert-app-yaml exited $code with apps/probe/privacy.yaml deleted; the red control requires exactly 1"; exit 1; fi
           if ! grep -qF 'apps/probe/privacy.yaml does not exist' "$RUNNER_TEMP/privacy-red.log"; then echo "::error::assert-app-yaml exited 1 without naming apps/probe/privacy.yaml"; exit 1; fi
           node tooling/ci/assert-app-yaml.mjs
+      # why: O-BRICK-SWORN-FILES-HAVE-NO-PREVIEW-STATE. The brick stamps its five sworn files at
+      # "sworn": false; the log must count app #1 sworn and the probe preview ("5 sworn, 5 preview: probe").
+      - name: The stamped probe's sworn declarations are graded as preview, app #1's as sworn
+        run: node tooling/ci/assert-sworn-store-files.mjs
+      # why: the row's red control, every run. The probe's data-safety.json flipped to "sworn": true with
+      # nothing answered must be refused on the floor (exit exactly 1, FLOOR in the log); restored, it passes.
+      # The flip is a .mjs under $RUNNER_TEMP, so no regex rides in a shell string.
+      - name: RED CONTROL — the probe's data-safety.json sworn but unanswered is refused on the floor
+        run: |
+          cp apps/probe/store/android-play/data-safety.json "$RUNNER_TEMP/probe-data-safety.json"
+          echo "import { readFileSync, writeFileSync } from 'node:fs'; const p = process.argv[2]; const j = JSON.parse(readFileSync(p, 'utf8')); j.sworn = true; writeFileSync(p, JSON.stringify(j, null, 2) + '\n');" > "$RUNNER_TEMP/flip-sworn.mjs"
+          node "$RUNNER_TEMP/flip-sworn.mjs" apps/probe/store/android-play/data-safety.json
+          set +e
+          node tooling/ci/assert-sworn-store-files.mjs > "$RUNNER_TEMP/sworn-red.log" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/sworn-red.log"
+          echo "assert-sworn-store-files exit: $code"
+          cp "$RUNNER_TEMP/probe-data-safety.json" apps/probe/store/android-play/data-safety.json
+          if [ "$code" -ne 1 ]; then echo "::error::assert-sworn-store-files exited $code with the probe's data-safety.json sworn but unanswered; the red control requires exactly 1"; exit 1; fi
+          if ! grep -qF 'FLOOR — apps/probe/store/android-play/data-safety.json' "$RUNNER_TEMP/sworn-red.log"; then echo "::error::assert-sworn-store-files exited 1 without the FLOOR finding on apps/probe/store/android-play/data-safety.json"; exit 1; fi
+          node tooling/ci/assert-sworn-store-files.mjs
       - name: SHOW-1 — probe is in the catalogue, and a RE-STAMP changes nothing
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"
@@ -1128,8 +1207,11 @@ jobs:
       # cannot be turned red by a font CDN having a bad minute.
       - name: A fresh stamp satisfies the deploy's self-hosted fallback fonts step
         run: node tooling/web/self-host-fallback-fonts.mjs --check apps/probe/build/web
+      # why --app probe: a fresh stamp is graded in its OWN scope. An `app:<id>` row of
+      # another app never satisfies it, so a package asset the template starts shipping
+      # fails here with the row derived from this bundle, not one copied from app #1.
       - name: Every asset the build actually shipped has a licence row
-        run: node tooling/ci/assert-licence-register.mjs . --bundle apps/probe/build/web/assets
+        run: node tooling/ci/assert-licence-register.mjs . --bundle apps/probe/build/web/assets --app probe
 
       - name: Backend stamp has a Worker + APP_DB but still no per-app R2
         run: node tooling/ci/assert-clone-contract.mjs --client probe --backend probeapi
@@ -1147,6 +1229,11 @@ jobs:
           flutter test
       - name: The WHOLE workspace still resolves from the root with stamped apps on it
         run: flutter pub get
+      # why: O-BRICK-SWORN-FILES-HAVE-NO-PREVIEW-STATE. Here, not beside the sworn step above: limb 4
+      # reads app #1's .flutter-plugins-dependencies, which only the resolve just above writes. The log
+      # must count app #1 sworn and both web-only probes preview, each owing no Apple-native manifest.
+      - name: The stamped probes' Apple audits are graded as preview, app #1's as sworn
+        run: node tooling/ci/assert-apple-privacy-manifest.mjs
       - name: Revert the root pubspec + lockfile — both probes are throwaway
         run: git checkout -- pubspec.yaml pubspec.lock
       - name: Typecheck + dry-run the stamped service
@@ -1155,11 +1242,17 @@ jobs:
           npm install
           npx tsc --noEmit
           npx wrangler deploy --dry-run
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   sites:
     name: Static sites (functions parse + required files)
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -1203,11 +1296,17 @@ jobs:
         run: node tooling/ci/assert-palette-consistent.mjs
       - name: No page claims a store channel the catalogue has not published to
         run: node tooling/ci/assert-availability.mjs
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   workspace-gate:
     name: Workspace gate (melos analyze + test)
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -1216,7 +1315,7 @@ jobs:
         run: node tooling/ci/assert-workspace-coverage.mjs
       - uses: ./.github/actions/setup-flutter
       - name: Activate melos
-        run: dart pub global activate melos 8.7.0
+        run: dart pub global activate melos 8.9.0
       - name: Resolve the workspace
         run: flutter pub get --enforce-lockfile
       # why: the chassis strings are gen-l10n output over
@@ -1320,6 +1419,9 @@ jobs:
           export CHROME_EXECUTABLE="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser)"
           echo "Chrome: $CHROME_EXECUTABLE"
           dart test -p chrome
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   prepare:
     # why: the ONE app-set emitter in this file. android-artifacts and app-dryrun both
@@ -1327,6 +1429,9 @@ jobs:
     name: Derive the app set from the pub workspace
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
     outputs:
       apps: ${{ steps.workspace.outputs.apps }}
     steps:
@@ -1341,6 +1446,9 @@ jobs:
           set -euo pipefail
           apps="$(node tooling/ci/assert-release-lane-generic.mjs --emit-apps)"
           echo "apps=${apps}" >> "$GITHUB_OUTPUT"
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   app-dryrun:
     # why: the five store submission dry runs, one leg per app. They ran in
@@ -1353,6 +1461,9 @@ jobs:
     needs: prepare
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
     strategy:
       fail-fast: false
       matrix:
@@ -1373,12 +1484,18 @@ jobs:
         run: node tooling/release/submit-snap.mjs --dry-run --app ${{ matrix.app }} --allow-missing-artifact
       - name: The Google Play submission path still walks (dry run)
         run: node tooling/release/submit-play.mjs --dry-run --app ${{ matrix.app }} --allow-missing-artifact
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
 
   android-artifacts:
     name: Android artifacts (built, inspected, discarded)
     runs-on: ubuntu-24.04
     # why 30: the same three builds measured 11.5–11.7 min inside build-platforms.yml linux_web_android — docs/ci/build-platforms.md §PR lane.
     timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: write
     needs: prepare
     strategy:
       fail-fast: false
@@ -1495,9 +1612,158 @@ jobs:
           --apk ${{ steps.agi_apk.outputs.apk }}
           --app ${{ matrix.app }}
           --posture debug
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
       # why: nothing here leaves the runner — no upload-artifact, no symbols, no GlitchTip.
       # A debug-signed PR build is discarded, and release-provenance gives a gate
       # constituent no credit for publishing (assert-release-provenance.mjs:769-805).
+
+  # why: the web bundle users LOAD, built on every PR. Its twin is deploy-web.yml
+  # `deploy-web`'s build, not build-platforms.yml's discarded web build, which lacks
+  # --source-maps, --no-web-resources-cdn and --base-href (apps triage D-07).
+  # Row O-PR-LANE-BUILDS-ONLY-ANDROID-ARTIFACTS; docs/ci/build-platforms.md §PR lane.
+  # why the fonts are FETCHED (lead ruling FWA-1, 2026-09-27): the smoke must boot the bundle
+  # that ships, and that bundle holds build/web/fallback-fonts/. With only `--check`, which
+  # places nothing, main run 36308023692 on a074a7bd failed the smoke on a 404 for
+  # /subscriptiontracker/fallback-fonts/notosanssymbols2/v24/I_uyMoGduATTei9eI8daxVHDyfisHr71-vrgfE71.woff2,
+  # which nikatru.com serves 200 (382716 bytes). #1004's own PR run passed: whether a first
+  # frame asks for a fallback font depends on timing and content, so that gap was flaky.
+  web-artifacts:
+    name: Web artifacts (built, booted, discarded)
+    runs-on: ubuntu-24.04
+    # why 20: under GATING_CAP 30; deploy-web.yml's build-to-smoke span is its measure.
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: write
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.prepare.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-flutter
+      - name: Resolve the workspace
+        run: flutter pub get --enforce-lockfile
+      - name: Derive the release line from pubspec
+        id: ver
+        run: node tooling/ci/assert-app-versioning.mjs --emit apps/${{ matrix.app }} >> "$GITHUB_OUTPUT"
+      # why: the base href comes from the catalogue row the deploy reads (ADR 075),
+      # through the same emitter deploy-web.yml runs; it reads the catalogue only.
+      - name: Resolve this app's base href from the catalogue
+        id: base
+        run: node tooling/ci/assert-catalog-reachable.mjs --emit-base-href ${{ matrix.app }} >> "$GITHUB_OUTPUT"
+      # why: deploy-web.yml's build, composed by the same flutter-release-build.mjs call with
+      # `--lane pr` (assert-channel-register 6b-v refuses a hand-typed release build);
+      # built-artifact-pr-lane.test.mjs holds the two equal. `--lane pr` blanks the backend
+      # and crash-sink defines, as in android-artifacts, and ends APP_VERSION in +pr, which is
+      # legal ONLY because tooling/channel-register.json lists this job in
+      # releaseBuildsNeverShipped. TURNSTILE_SITE_KEY is a public repository variable.
+      - name: Build web (release, no service worker)
+        env:
+          BASE_HREF: ${{ steps.base.outputs.base_href }}
+          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+          TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
+        run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} web web --lane pr
+      - uses: ./.github/actions/setup-node
+      # why: deploy-web.yml's own step, the same script with the same arguments, so the
+      # smoke below boots the fallback-fonts/ tree the deploy serves (FWA-1). It reaches only
+      # the public fonts.gstatic.com, through the script's bounded retry, and needs no secret;
+      # built-artifact-pr-lane.test.mjs holds the two steps equal.
+      - name: Self-host the engine's fallback fonts, pinned by sha256
+        run: node tooling/web/self-host-fallback-fonts.mjs apps/${{ matrix.app }}/build/web
+      # why: `--check` stays after it as the grading, the app-brick probe's precedent above.
+      - name: The bundle satisfies the deploy's self-hosted fallback fonts step
+        run: node tooling/web/self-host-fallback-fonts.mjs --check apps/${{ matrix.app }}/build/web
+      # why --app: a pub package ships its own assets into this app's bundle, so every
+      # file resolves to a shared row or an `app:<id>` row for THIS app, and each
+      # app-scoped row's licence is read from its package's LICENSE through the
+      # package_config.json "Resolve the workspace" wrote (lead ruling PRL-R1).
+      - name: Every asset the build actually shipped has a licence row
+        run: node tooling/ci/assert-licence-register.mjs . --bundle apps/${{ matrix.app }}/build/web/assets --app ${{ matrix.app }}
+      # why: the bundle boots under its own _headers CSP and must reach flutter-first-frame.
+      # No --connect origin is passed: the build's URL-valued defines are empty here, so
+      # there is no origin to probe; deploy-web.yml probes each one with its real value.
+      - name: Launch the built bundle once
+        run: node tooling/smoke/smoke-web-artifact.mjs apps/${{ matrix.app }}/build/web
+      - name: Every artifact this lane claims exists, and is not empty
+        run: >
+          node tooling/ci/assert-artifact-shape.mjs
+          --app ${{ matrix.app }} --platform web-artifacts
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
+      # why: nothing here leaves the runner — no upload, no source maps sent, no
+      # GlitchTip release, no deploy. The bundle and its .map files are discarded with
+      # the runner, so no `.map` delete step is owed (deploy-web.yml's exists so maps
+      # are never SERVED, and nothing is served here).
+
+  # why: the Linux desktop bundle the linux-appimage row ships from, built on every PR.
+  # Its twin is build-platforms.yml `linux_web_android`'s Build linux step, --obfuscate
+  # included. Row O-PR-LANE-BUILDS-ONLY-ANDROID-ARTIFACTS; docs/ci/build-platforms.md §PR lane.
+  linux-artifacts:
+    name: Linux artifacts (built, inspected, discarded)
+    runs-on: ubuntu-24.04
+    # why 20: under GATING_CAP 30; one Linux build plus the recipe emit and its check.
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: write
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.prepare.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-flutter
+      - name: Linux build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
+            libsecret-1-dev libjsoncpp-dev libcurl4-openssl-dev
+      - name: Resolve the workspace
+        run: flutter pub get --enforce-lockfile
+      - name: Derive the release line from pubspec
+        id: ver
+        run: node tooling/ci/assert-app-versioning.mjs --emit apps/${{ matrix.app }} >> "$GITHUB_OUTPUT"
+      # why: build-platforms.yml linux_web_android's Build linux, composed by the same
+      # flutter-release-build.mjs call with `--lane pr`; built-artifact-pr-lane.test.mjs holds
+      # the two equal. The symbols --split-debug-info writes are discarded with the runner,
+      # which is what the releaseBuildsNeverShipped entry for this job says; APP_VERSION ends
+      # in +pr and the secret defines are blanked, as in android-artifacts.
+      - name: Build linux
+        env:
+          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+        run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} linux linux-appimage --lane pr
+      - name: Generate the snapcraft recipe
+        run: >
+          node tooling/release/generate-snapcraft.mjs
+          --app ${{ matrix.app }}
+          --bundle apps/${{ matrix.app }}/build/linux/x64/release/bundle
+          --out "$RUNNER_TEMP/snapcraft-${{ matrix.app }}"
+          --version ${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+      - name: The generated recipe is complete and still derived from the tree
+        run: >
+          node tooling/ci/assert-snapcraft-generable.mjs
+          --emitted "$RUNNER_TEMP/snapcraft-${{ matrix.app }}/snap/snapcraft.yaml"
+          --app ${{ matrix.app }}
+      - name: Every artifact this lane claims exists, and is not empty
+        run: >
+          node tooling/ci/assert-artifact-shape.mjs
+          --app ${{ matrix.app }} --platform linux-artifacts
+      - name: A red job cancels the rest of this run (FF-1)
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-red
+      # why: nothing here leaves the runner — no AppImage signing key, no symbols upload,
+      # no upload-artifact. The bundle and its symbols are discarded with the runner.
 
   # why: the extensions CI lane, as ONE constituent of ci-gate. extensions-ci.yml runs
   # only as a call, and its jobs report inside this run; this job's result is red when
@@ -1507,9 +1773,11 @@ jobs:
   extensions:
     name: extensions
     uses: ./.github/workflows/extensions-ci.yml
+    # why: `actions: write` is the ceiling the callee's jobs run under, and each of them ends
+    # with the FF-1 step (.github/actions/cancel-run-on-red), which needs it to cancel this run.
     permissions:
       contents: read
-      actions: read
+      actions: write
 
 
   ci-gate:
@@ -1537,6 +1805,8 @@ jobs:
       - prepare
       - app-dryrun
       - android-artifacts
+      - web-artifacts
+      - linux-artifacts
       - extensions
     if: always()
     steps:
@@ -1558,6 +1828,8 @@ jobs:
           echo "prepare=${{ needs.prepare.result }}"
           echo "app-dryrun=${{ needs.app-dryrun.result }}"
           echo "android-artifacts=${{ needs.android-artifacts.result }}"
+          echo "web-artifacts=${{ needs.web-artifacts.result }}"
+          echo "linux-artifacts=${{ needs.linux-artifacts.result }}"
           echo "extensions=${{ needs.extensions.result }}"
           if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ] || [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ] || [ "${{ contains(needs.*.result, 'skipped') }}" = "true" ]; then
             echo "::error::One or more CI lanes failed, was cancelled, or never ran — see the verdicts above"; exit 1

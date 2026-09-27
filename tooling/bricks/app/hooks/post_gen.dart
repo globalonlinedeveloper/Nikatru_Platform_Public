@@ -687,6 +687,31 @@ List<({String channel, Map account})>? _identityChannels(HookContext context) {
   }
 }
 
+/// The store channels that carry a per-app record, read from the app.yaml
+/// schema's `stores` properties (tooling/app-yaml/schema/app.schema.json), never
+/// typed here: a channel added to the schema is stamped with no edit to this file.
+List<String>? _storeRecordChannels(HookContext context) {
+  final schema = File('tooling/app-yaml/schema/app.schema.json');
+  if (!schema.existsSync()) {
+    context.logger.warn(
+      'store records: tooling/app-yaml/schema/app.schema.json not found; no '
+      'stores block written. CI will say so.',
+    );
+    return null;
+  }
+  try {
+    final decoded = jsonDecode(schema.readAsStringSync()) as Map;
+    final stores = ((decoded['properties'] as Map)['stores'] as Map)['properties'] as Map;
+    return <String>[for (final k in stores.keys) k.toString()];
+  } catch (e) {
+    context.logger.warn(
+      'store records: the app.yaml schema did not read ($e); no stores block '
+      'written, and CI will say so.',
+    );
+    return null;
+  }
+}
+
 /// O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1) — the app's own `stores` record.
 ///
 /// Partner Center issues the MSIX identity per PRODUCT, and nothing about it
@@ -695,33 +720,46 @@ List<({String channel, Map account})>? _identityChannels(HookContext context) {
 /// owner replaces them with what Partner Center issues when this app's own name
 /// is reserved there. tooling/ci/assert-store-metadata.mjs fails two apps that
 /// declare the same issued identityName, and prints this one until it is issued.
+///
+/// ⏱ 2026-09-26 (O-STORE-RECORDS-ARE-ONE-PER-CHANNEL, 9a): EVERY store channel
+/// gets its record, `state: pending` and `declaredOn: null` — nothing issued,
+/// nothing sworn in any console. tooling/ci/assert-store-identity.mjs reads one
+/// record per (app, channel) and fails an app that lacks one.
 void _writeStoreRecords(HookContext context, StringBuffer buffer) {
-  final channels = _identityChannels(context);
+  final channels = _storeRecordChannels(context);
   if (channels == null || channels.isEmpty) return;
-  final records = <({String channel, String sentinel})>[];
-  for (final c in channels) {
+  final sentinels = <String, String>{};
+  for (final c in _identityChannels(context) ?? const <({String channel, Map account})>[]) {
     final sentinel = c.account['notYetConfiguredSentinel'];
     if (sentinel is! String || sentinel.isEmpty) {
       context.logger.warn(
         'store identity: channel "${c.channel}" declares no '
-        'notYetConfiguredSentinel, so this app gets no stores.${c.channel} '
-        'record. CI will say so.',
+        "notYetConfiguredSentinel, so this app's stores.${c.channel} record "
+        'carries no identity. CI will say so.',
       );
       continue;
     }
-    records.add((channel: c.channel, sentinel: sentinel));
+    sentinels[c.channel] = sentinel;
   }
-  if (records.isEmpty) return;
   buffer
-    ..writeln('# The identity a store console issues to THIS app. Not yet issued:')
-    ..writeln("# reserve this app's own name in Partner Center, then replace both")
+    ..writeln('# What each store console issued to THIS app: nothing yet. Every channel is')
+    ..writeln('# `state: pending` until its ids are read from the signed-in console, and')
+    ..writeln("# `declaredOn` is null until the owner swears this app's declarations there")
+    ..writeln('# (then the date they did): a REAL submission is refused while it is null.')
+    ..writeln("# Reserve this app's own name in Partner Center, then replace both identity")
     ..writeln('# values with the issued Package/Identity/Name and Package Family Name.')
     ..writeln('stores:');
-  for (final r in records) {
+  for (final channel in channels) {
+    buffer.writeln('  $channel:');
+    final sentinel = sentinels[channel];
+    if (sentinel != null) {
+      buffer
+        ..writeln('    identityName: $sentinel')
+        ..writeln('    packageFamilyName: $sentinel');
+    }
     buffer
-      ..writeln('  ${r.channel}:')
-      ..writeln('    identityName: ${r.sentinel}')
-      ..writeln('    packageFamilyName: ${r.sentinel}');
+      ..writeln('    state: pending')
+      ..writeln('    declaredOn: null');
   }
   buffer.writeln();
 }

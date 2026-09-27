@@ -39,7 +39,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -117,6 +117,9 @@ function tree({
   macosBundle = BUNDLE,
   omitProject = false,
   extraPbxproj = '',
+  apps = [{ slug: 'subscriptiontracker', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'], status: 'live' }],
+  mutateApple = null,
+  omitApple = false,
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   const write = (rel, body) => {
@@ -136,7 +139,15 @@ function tree({
   if (mutateRegister) mutateRegister(register);
 
   write('tooling/channel-register.json', JSON.stringify(register, null, 2));
-  write('catalog/apps.json', JSON.stringify([{ slug: 'subscriptiontracker', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'], status: 'live' }]));
+  write('catalog/apps.json', JSON.stringify(apps));
+  // ⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP): the app's signing bundle id comes from the
+  // REAL tooling/apple-provisioning.json, read at run time and never copied into this file (it names
+  // App Store Connect resource ids, which no .mjs under tooling/ci may spell).
+  if (!omitApple) {
+    const apple = JSON.parse(readFileSync(join(REPO, 'tooling', 'apple-provisioning.json'), 'utf8'));
+    if (mutateApple) mutateApple(apple);
+    write('tooling/apple-provisioning.json', JSON.stringify(apple, null, 2));
+  }
 
   if (!omitProject) {
     // The iOS shape: a pbxproj carrying the app bundle AND the test bundles, so
@@ -395,11 +406,19 @@ describe('submit-appstore — both Apple channels are walkable, and --submit ref
     const { code, out } = ios(tree(), ['--allow-missing-artifact']);
     assert.equal(code, 0, out);
     assert.match(out, /NO SIGNED ARTIFACT/);
-    // RE-PINNED 2026-09-08: the certificate is still missing, but A-4 does not
-    // gate it - the account is active and GET /v1/certificates returned empty.
-    assert.match(out, /needs a distribution certificate and a provisioning profile/);
-    assert.match(out, /GET \/v1\/certificates returned an EMPTY set on 2026-09-08/);
+    // RE-PINNED 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP): the certificate was issued on
+    // 2026-09-09, so "no distribution certificate" was the stale reason. The measured one:
+    // unsigned by choice until the signing seam lands in the lane, and --submit refuses.
+    assert.match(out, /builds unsigned by choice until the signing seam lands in it, and --submit refuses/);
+    assert.doesNotMatch(out, /needs a distribution certificate|returned an EMPTY set/, 'the stale reason is gone');
     assert.doesNotMatch(out, /OWNER_QUEUE A-4 gates/, 'A-4 closed 2026-08-31');
+  });
+
+  test('the absent-artifact refusal gives the measured reason, not the stale one', () => {
+    const { code, out } = ios(tree());
+    assert.equal(code, 1, out);
+    assert.match(out, /builds unsigned by choice until the signing seam lands in it, and --submit refuses, so pass --allow-missing-artifact/);
+    assert.doesNotMatch(out, /cannot be produced without a distribution certificate/);
   });
 
   test('FAILS on a zero-byte artifact', () => {
@@ -487,6 +506,69 @@ describe('submit-appstore — both Apple channels are walkable, and --submit ref
     const { code, out } = ios(tree({ withArtifact: true, mutateRegister: (r) => (r.storeMetadataContract.requiredFiles = []) }));
     assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
     assert.match(out, /COVERAGE LOST — .*requiredFiles/);
+  });
+
+  // ── the wrong app (O-STORE-LANES-HARD-WIRE-ONE-APP, RC6) ─────────────────
+  // The lane takes its app at dispatch, and the channel row is ONE App Store record. An app
+  // whose signing bundle id is not the row's must be refused BEFORE its listing is read, or it
+  // dry-runs green against the first app's record.
+  const SECOND = { slug: 'secondapp', name: 'Second', tagline: 'A second app', platforms: ['web'], status: 'live' };
+  const withSecond = (apple) => {
+    apple.apps.secondapp = { bundleId: 'com.nikatru.secondapp', capabilities: ['IN_APP_PURCHASE'] };
+  };
+
+  test('RC6 · an app whose bundle id differs from the channel row\'s exits 1, naming BOTH ids', () => {
+    const root = tree({ withArtifact: true, apps: [{ slug: 'subscriptiontracker', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'], status: 'live' }, SECOND], mutateApple: withSecond });
+    const { code, out } = run(root, ['--dry-run', '--channel', 'ios-appstore', '--app', 'secondapp']);
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /app "secondapp" signs as com\.nikatru\.secondapp \(tooling\/apple-provisioning\.json\), and channel "ios-appstore" in tooling\/channel-register\.json is the App Store record of com\.nikatru\.subscriptiontracker/);
+    assert.doesNotMatch(out, /metadata tree/, 'the refusal comes before the listing is read');
+  });
+
+  test('…the same app on macOS is refused the same way', () => {
+    const root = tree({ withArtifact: true, apps: [{ slug: 'subscriptiontracker', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'], status: 'live' }, SECOND], mutateApple: withSecond });
+    const { code, out } = run(root, ['--dry-run', '--channel', 'macos-appstore', '--app', 'secondapp']);
+    assert.equal(code, 1, out);
+    assert.match(out, /channel "macos-appstore" .* is the App Store record of com\.nikatru\.subscriptiontracker/);
+  });
+
+  test('RC6 · …even when the second app\'s Xcode project and listing are copies of the first\'s, which the project comparison alone passes', () => {
+    // A stamped app whose project still carries app #1's bundle id: the Xcode comparison
+    // agrees with the row, so without the signing register the dry run validates app #2's
+    // listing against app #1's record and exits 0.
+    const root = tree({ withArtifact: true, apps: [{ slug: 'subscriptiontracker', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'], status: 'live' }, SECOND], mutateApple: withSecond });
+    const copy = (rel, body) => {
+      mkdirSync(dirname(join(root, rel)), { recursive: true });
+      writeFileSync(join(root, rel), body);
+    };
+    copy('apps/secondapp/ios/Runner.xcodeproj/project.pbxproj', `\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = ${BUNDLE};\n`);
+    for (const [rel, body] of Object.entries(FILES)) copy(`apps/secondapp/store/ios-appstore/${rel}`, body);
+    copy('apps/secondapp/build/ios/ipa/secondapp.ipa', 'x'.repeat(1024));
+    const { code, out } = run(root, ['--dry-run', '--channel', 'ios-appstore', '--app', 'secondapp']);
+    assert.equal(code, 1, out);
+    assert.match(out, /app "secondapp" signs as com\.nikatru\.secondapp/);
+  });
+
+  test('the app the row belongs to passes the same refusal — the green control', () => {
+    const root = tree({ withArtifact: true, apps: [{ slug: 'subscriptiontracker', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'], status: 'live' }, SECOND], mutateApple: withSecond });
+    const { code, out } = ios(root);
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /signs as/);
+  });
+
+  test('an app the Apple register does not declare is refused, naming the app', () => {
+    const root = tree({ withArtifact: true, apps: [{ slug: 'subscriptiontracker', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'], status: 'live' }, SECOND] });
+    const { code, out } = run(root, ['--dry-run', '--channel', 'ios-appstore', '--app', 'secondapp']);
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /declares no app "secondapp"/);
+  });
+
+  test('COVERAGE LOST when tooling/apple-provisioning.json is absent — no way to tell whose record this is', () => {
+    const { code, out } = ios(tree({ withArtifact: true, omitApple: true }));
+    assert.equal(code, 2, out); // COVERAGE LOST exits 2 since submit-common.mjs (2026-09-25); 1 is a finding
+    assert.match(out, /COVERAGE LOST — tooling\/apple-provisioning\.json does not exist/);
   });
 
   test('FAILS when the channel stops being submittable', () => {

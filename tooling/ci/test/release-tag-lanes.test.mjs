@@ -34,7 +34,9 @@ function run(args) {
 }
 
 // A copy of exactly what the derivation reads, so a fixture can break one thing.
-const COPIED = ['catalog/apps.json', 'extensions/catalog/extensions.json', 'tooling/channel-register.json'];
+// catalog/bundles.json since 2026-09-26: the bundle register is a product register
+// (PRODUCT_REGISTERS), so readProducts reads it and a tree without it is COVERAGE LOST.
+const COPIED = ['catalog/apps.json', 'extensions/catalog/extensions.json', 'catalog/bundles.json', 'tooling/channel-register.json'];
 let scratch;
 let seq = 0;
 function fixture(edits = []) {
@@ -105,9 +107,15 @@ describe('the real tree', () => {
     const actual = tagTriggeredWorkflows(REPO);
     let fed = 0;
     for (const p of d.products) {
+      const want = d.kindLane.get(p.kind);
+      if (!want) {
+        // A kind no tag releases — the bundle, a product since 2026-09-26 — has no tag
+        // shape and no lane, and its product is fed no tag.
+        assert.equal(TAG_SHAPES[p.kind], undefined, `kind ${p.kind} has a tag shape and no lane`);
+        continue;
+      }
       for (const v of TAG_SHAPES[p.kind].samples) {
         const tag = `${p.slug}-v${v}`;
-        const want = d.kindLane.get(p.kind);
         assert.deepEqual(actualOwners(actual, tag), [want], `trigger owners of ${tag}`);
         const passed = lanes.filter((lane) => run(['--root', REPO, '--lane', lane, '--tag', tag]).code === 0);
         assert.deepEqual(passed, [want], `job gates that pass ${tag}`);

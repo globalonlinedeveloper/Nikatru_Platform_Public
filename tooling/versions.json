@@ -147,7 +147,7 @@
   "flutter": "3.47.5",
   "node": "24",
   "java": "17",
-  "melos": "8.7.0",
+  "melos": "8.9.0",
   "mason_cli": "0.1.4",
   "$dart_language_comment": [
     "THE DART LANGUAGE FLOOR, written into every pubspec as `environment: sdk: ^<this value>`: the",
@@ -295,9 +295,19 @@
     "produces the ERESOLVE. The stamped service is unaffected — its",
     "`@cloudflare/workers-types: ^5.20260714.1` already admits the peer, verified above.",
     "assert-version-consistency.mjs does not read either lockfile, so nothing would have",
-    "told you: `npm ci` in services/*/ is the check, and it exits 0 on both."
+    "told you: `npm ci` in services/*/ is the check, and it exits 0 on both.",
+    "",
+    "4.135.0 -> 4.141.0 on 2026-09-27 (train WD1). Re-run, not inherited: a from-scratch",
+    "`npm install --package-lock-only` of the brick's exact declaration set resolves wrangler",
+    "4.141.0 + miniflare 5.20260925.0-alpha + workerd 1.20260925.1 and exits 0, and `npm ci",
+    "--ignore-scripts` exits 0 on the brick's committed lockfile, tooling/wrangler and both Workers.",
+    "The Workers' lockfiles had stayed on 4.129.0 through the whole 4.135.0 pin (in range for",
+    "^4.0.0, so no guard saw it); `npm update wrangler --package-lock-only` now moves them to the",
+    "pin. 4.141.0 declares `peerOptional @cloudflare/workers-types@^5.20260925.1`, which their",
+    "5.20260921.1 does not satisfy, so npm moved workers-types with it (to 5.20260927.1), the",
+    "same line the 4.129.0 bump above had to make."
   ],
-  "wrangler": "4.135.0",
+  "wrangler": "4.141.0",
 
   "$glitchtip_cli_comment": [
     "ADDED 2026-09-03. THE TOOL THAT MAKES A WEB CRASH READABLE, and until this key existed there was",
@@ -451,10 +461,10 @@
   ],
   "gitleaks": "8.30.1",
   "gitleaks_sha256": "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb",
-  "zizmor": "1.28.0",
-  "zizmor_sha256": "e87b67160194884e375a46a12c57ccc904f762b53845f254fab7f17d98809c09",
-  "osv_scanner": "2.5.1",
-  "osv_scanner_sha256": "f9f25499a2c8cc367b3af45df2ea7eeca7fbccceab9c35079968f4b3652194be",
+  "zizmor": "1.30.1",
+  "zizmor_sha256": "e65324f4430c2717591937edcec90ccbefaf14c174f8ec9415e03ca875b46e1a",
+  "osv_scanner": "2.6.0",
+  "osv_scanner_sha256": "ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108",
   "trivy": "0.74.0",
   "trivy_sha256": "2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a",
 
@@ -490,7 +500,7 @@
     "would see it move. Closing that needs the action to accept a digest, or this lane to stop using",
     "the wrapper and run the container itself."
   ],
-  "trufflehog": "3.97.4",
+  "trufflehog": "3.97.9",
 
   "$store_publishing_comment": [
     "THE TWO STORE-SUBMISSION TOOLCHAINS, ADDED 2026-09-07 ([ADR 067] decision 8, phase 3 unit store-lanes).",
@@ -515,7 +525,7 @@
     "           a leading `v` (checked 2026-09-07: the latest release tag is `v0.4.2`, name `Microsoft Store CLI",
     "           v0.4.2`), so its customManager strips that prefix and this value never carries one."
   ],
-  "msstore_cli": "0.4.2",
+  "msstore_cli": "0.4.3",
 
   "runner_ubuntu": "ubuntu-24.04",
   "runner_windows": "windows-2025",

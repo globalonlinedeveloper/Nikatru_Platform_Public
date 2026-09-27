@@ -48,6 +48,24 @@ outside GitHub Actions (PG-1b), with any of the five `MS_STORE_*` secrets empty
 back from the GitHub API (PG-6). The placeholder-identity refusal no longer
 fires for subscriptiontracker, whose identity is now real.
 
+### above `app:`
+
+⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP). This lane named app #1 on 20
+lines. The app is now a dispatch input, `required: true`, with NO `default:`
+and no `type: choice`: either one is an app id written into this file under
+another name. A dispatch names it: `gh workflow run submit-windows-store.yml -f app=<id>`
+(plus `-f confirm=SUBMIT-TO-MICROSOFT-STORE` for a real submission), where `<id>` is one of
+`node tooling/ci/assert-release-lane-generic.mjs --emit-apps`. Only the `gate`
+job reads the raw input, and only through `env:`; every other job reads the
+gate's checked `app` output. `run-name` shows the app and the mode (`SUBMIT`
+when `confirm` is `SUBMIT-TO-MICROSOFT-STORE`, else `dry run`); it is not a shell, so the
+input is safe there. assert-release-lane-generic.mjs limb I grades this shape
+and refuses an app id written on any line of the file. The ledger name `"${APP}-windows-store"` is `subscriptiontracker-windows-store`
+for app #1. A pwsh step (this runner's default) reads the app as `${env:APP}`, a
+bash step as `$APP`, both bound in the job's `env:` to `needs.gate.outputs.app`;
+the GlitchTip project is read from tooling/ops/glitchtip-project.json, as
+build-platforms.yml's windows leg reads it.
+
 ## job `gate`
 
 ### above `gate:`
@@ -64,6 +82,16 @@ assert-gate-passed.mjs POLLS for up to its own 1200 s default (this call
 leaves `--timeout-seconds` unset), so any bound at or under 20 kills it
 mid-poll and replaces "timed out waiting for ci-gate" with an opaque
 cancellation. Kept byte-identical in all five `gate:` jobs. [pipeline F-5b]
+
+### before step **The app input names one app of the workspace**
+
+⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP). The one reader of
+`inputs.app`, through `env: APP_INPUT`, never as `${{ inputs.app }}` inside
+`run:` (an input interpolated into a shell is an injection).
+`assert-release-lane-generic.mjs --emit-apps --app "$APP_INPUT"` refuses a
+value off `^[a-z][a-z0-9-]*$` before it reads anything else, then refuses an
+id the workspace does not declare, naming the set. Only after it exits 0 is
+the id written to `$GITHUB_OUTPUT` as the job's `app` output (submit-windows-store.yml).
 
 ## job `dry-run`
 
@@ -231,3 +259,26 @@ build or any upload, and its error names the owner step. The owner's two steps:
    `MS_STORE_CLIENT_SECRET` with the current value (either side of the merge).
 2. After the merge, delete the repository-level copy. Verified by listing
    secret NAMES only (`gh secret list`, `gh secret list --env store-publish`).
+
+---
+
+## ⏱ 2026-09-26 — every run is recorded, with its mode (O-SUBMISSION-LANE-WITHOUT-RECORDER)
+
+**Appended, not rewritten.** Until this date only a confirmed submission wrote a [10]D-9 record,
+so a dry run left no trace in the ledger. Now every run of this lane records itself, and the
+record says which kind of run wrote it (`tooling/ci/record-deployment.mjs --mode`):
+
+* the `dry-run` job's last step, **Record the dry run in the [10]D-9 ledger (mode dry-run)**, runs
+  `record-deployment.mjs "${APP}-windows-store" --mode dry-run`. The recorder writes it to
+  `subscriptiontracker-windows-store-dry-run` with `production_environment: false`, `transient_environment: true` and
+  `payload.mode: "dry-run"`, and a description starting `dry-run`. No reader of the production
+  ledger (check-prod-provenance, readSubmissions, the served ledger) opens that
+  environment, and check-prod-provenance also refuses any record whose payload says `dry-run`;
+* the `submit` job's record gains `--mode production`; nothing else about it changes. The dry-run
+  record step declares `shell: bash`: its arguments are bash, and this runner's default is pwsh.
+* the recorder REFUSES a record of this channel with no `--mode` (exit 2): a default would be a
+  quiet production claim. assert-publish-records.mjs rules 3a-3c hold the same thing statically, and
+  `tooling/ci/test/submit-lanes-record.test.mjs` holds it over the lanes the provenance reader derives.
+
+GitHub creates the `subscriptiontracker-windows-store-dry-run` environment the first time a Deployment names it, with no
+protection rules. UNVERIFIED on this repository until the first dry run after the merge.

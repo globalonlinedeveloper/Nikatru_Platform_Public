@@ -395,6 +395,26 @@ describe('rows', () => {
     assert.equal(classifyRun(run, [job], () => [], { newerRunExists: false }).signature, 'cancelled:by-hand-or-unknown');
   });
 
+  test('FF-1: a run a red job cancelled is filed under the red job, not a sibling it cancelled', () => {
+    // The shape .github/actions/cancel-run-on-red leaves: run `cancelled`, one job whose
+    // failing step concluded `failure`, siblings cancelled mid-step, ci-gate red.
+    const run = { id: 1, path: CI, head_branch: 'main', head_sha: 'x', conclusion: 'cancelled', created_at: T('10:00:00'), updated_at: T('10:05:00') };
+    const sibling = { id: 2, name: 'guard-meta', conclusion: 'cancelled', steps: [step('Guard tests', 'cancelled', '10:00:30', '10:02:00')] };
+    const gate = { id: 4, name: 'ci-gate', conclusion: 'failure', steps: [step('Require all lanes green', 'failure', '10:04:00', '10:04:10')] };
+    const logs = (j) => (j.id === 3 ? [line('10:01:05.0000000', 'gen-start-here — x')] : [line('10:02:00.0000000', '##[error]The operation was canceled.')]);
+    for (const redJob of ['failure', 'cancelled']) {
+      // `cancelled`: the red job lost the race — its step had already failed when the cancel landed.
+      const red = { id: 3, name: 'guards-platform', conclusion: redJob, steps: [step('START-HERE.md is what the tree generates', 'failure', '10:01:00', '10:01:30')] };
+      const row = classifyRun(run, [sibling, red, gate], logs, { newerRunExists: false });
+      assert.equal(row.job, 'guards-platform', `red job concluded ${redJob}`);
+      assert.equal(row.signature, 'start-here:drift', `red job concluded ${redJob}`);
+      assert.deepEqual(row.alsoFailed, [], 'a sibling the red job cancelled rendered no verdict');
+    }
+    // A run cancelled with NO red step anywhere is still a cancellation, exactly as before.
+    const quiet = classifyRun(run, [sibling, gate], logs, { newerRunExists: false });
+    assert.equal(quiet.signature, 'cancelled:by-hand-or-unknown');
+  });
+
   test('a run with no failing job at all is `startup:<conclusion>` or a cancellation', () => {
     const run = { id: 1, path: CI, head_branch: 'b', head_sha: 'x', conclusion: 'startup_failure', created_at: T('10:00:00'), updated_at: T('10:00:01') };
     assert.equal(classifyRun(run, [], () => []).signature, 'startup:startup_failure');

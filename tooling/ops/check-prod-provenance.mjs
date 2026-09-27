@@ -249,8 +249,9 @@ import { CouldNotLook, classifyThrown, transientLook, isTransientStatus, retryAf
 import { CAPTURE_WORKFLOW, E2E_RUN_SHAPE, STORE_CAPTURE_SHAPE } from '../e2e/app-version-stamp.mjs';
 // The product kinds a bundle may span, imported rather than retyped: the same
 // file tooling/bundle-availability.mjs and the Worker twin read, so `script`
-// becoming real is one edit and not three.
-import { PRODUCT_KINDS } from '../../contracts/entitlement/bundle.js';
+// becoming real is one edit and not three. MEMBER_KINDS is every kind but the
+// bundle itself: a bundle is a product, and it is never a member of one.
+import { MEMBER_KINDS } from '../../contracts/entitlement/bundle.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REGISTER_REL = 'tooling/prod-provenance.json';
@@ -344,6 +345,17 @@ function releaseLines() {
  *  `--emit-release-lanes`, the live walk, the fixture placement, the resolver
  *  and the census. */
 function releaseLanes({ lenientWhenUnread = false } = {}) {
+  const out = registerLanes();
+  if (!out.some((l) => l.kind === 'served')) throw new CouldNotLook(`no served lane in ${CHANNELS_REL}, so the released-build set has no footing`);
+  // The register is judged first, so a malformed row is named before any
+  // workflow file is read.
+  return withRunHosts(out, { lenientWhenUnread });
+}
+
+/** ⏱ 2026-09-26 — releaseLanes' register half, read without a workflow file: each
+ *  lane's kind, workflow and environments. --emit-served-environments filters
+ *  through it on a root that holds only the register (see servedWitness). */
+function registerLanes() {
   const reg = readJson(CHANNELS_REL);
   const slugs = appSlugs();
   const expand = (tpl) => (tpl.includes('{app}') ? slugs.map((s) => tpl.replace('{app}', s)) : [tpl]);
@@ -369,14 +381,22 @@ function releaseLanes({ lenientWhenUnread = false } = {}) {
     }
     add('submission', c.submission.workflow, c);
   }
-  const out = [
+  return [
     ...[...byKind.served.values()].filter((l) => !byKind.submission.has(l.workflow)),
     ...byKind.submission.values(),
   ].map((l) => ({ ...l, environments: [...l.environments] }));
-  if (!out.some((l) => l.kind === 'served')) throw new CouldNotLook(`no served lane in ${CHANNELS_REL}, so the released-build set has no footing`);
-  // The register is judged first, so a malformed row is named before any
-  // workflow file is read.
-  return withRunHosts(out, { lenientWhenUnread });
+}
+
+/** ⏱ 2026-09-26 · THE SERVED ENVIRONMENTS FOOTING (b) ACTUALLY READS — `envs`
+ *  less every environment a submission lane owns. Strictest wins (releaseLanes): a
+ *  row that is served AND submittable is judged as a submission, so its Deployments
+ *  never witness a served build. ONE function for main()'s ledger and for
+ *  --emit-served-environments, which printed the UNFILTERED set until this date
+ *  (O-SUBMISSION-LANE-WITHOUT-RECORDER) — so a test bound to the emit graded a
+ *  set main() never read. */
+function servedWitness(envs, lanes) {
+  const submission = new Set(lanes.filter((l) => l.kind === 'submission').flatMap((l) => l.environments));
+  return envs.filter((e) => !submission.has(e));
 }
 
 /** The listing filter on a CALLER's runs: a lane called from ci.yml runs only
@@ -1311,7 +1331,14 @@ function makeReleasedBuildResolver(
     const onLane = (deployments ?? []).filter(
       (d) => d.environment !== null && lane.environments.includes(d.environment) && d.sha === head,
     );
-    const bound = onLane.find((d) => d.payload !== null && String(d.payload.run_id) === runId && bindsTo.includes(d.payload.workflow));
+    // ⏱ 2026-09-26 — O-SUBMISSION-LANE-WITHOUT-RECORDER: a lane now records its DRY
+    // runs too. They go to `<env>-dry-run`, which this reader never fetches; this is
+    // the second gate, for a record that says `mode: "dry-run"` wherever it sits. A
+    // rehearsal that names this run is still no witness that the build was submitted.
+    const rehearsed = onLane.find((d) => d.payload !== null && d.payload.mode === 'dry-run' && String(d.payload.run_id) === runId);
+    const bound = onLane.find(
+      (d) => d.payload !== null && d.payload.mode !== 'dry-run' && String(d.payload.run_id) === runId && bindsTo.includes(d.payload.workflow),
+    );
     if (bound) {
       onWitness({
         footing: 'submission',
@@ -1340,9 +1367,16 @@ function makeReleasedBuildResolver(
       });
       return null;
     }
+    if (rehearsed) {
+      return (
+        `${runWf} run ${n} concluded \`${run.conclusion}\` and the only Deployment naming run ${runId} on ` +
+        `${rehearsed.environment} (${rehearsed.id ?? '?'}) says \`mode: "dry-run"\`: a rehearsal submitted nothing, so it is never a production witness`
+      );
+    }
     return (
       `${runWf} run ${n} concluded \`${run.conclusion}\` but no Deployment on ${lane.environments.join(', ')} ` +
-      `names run ${runId}; a dry run writes none, and a hand-written recovery Deployment must carry the run payload`
+      `names run ${runId}; a dry run records only into a -dry-run environment, which witnesses nothing, and a ` +
+      'hand-written recovery Deployment must carry the run payload'
     );
   };
 
@@ -1895,7 +1929,8 @@ async function main() {
   // dependency on the schema, and a `--root` fixture written to exercise this
   // expansion should not first have to carry a valid migrations directory.
   if (args.includes('--emit-served-environments')) {
-    for (const e of servedEnvironments()) console.log(e);
+    // ⏱ 2026-09-26 — filtered as main() filters it (servedWitness).
+    for (const e of servedWitness(servedEnvironments(), registerLanes())) console.log(e);
     process.exitCode = 0;
     return;
   }
@@ -2074,7 +2109,7 @@ async function main() {
   // `served: true` — otherwise a failed deploy-web run could borrow a store
   // upload's Deployment at the same commit.
   const allSubmissionEnvs = new Set(lanes.filter((l) => l.kind === 'submission').flatMap((l) => l.environments));
-  const ledger = new Set(ledgerEnvironments().filter((e) => !allSubmissionEnvs.has(e)));
+  const ledger = new Set(servedWitness(ledgerEnvironments(), lanes));
   const submissionEnvs = [...allSubmissionEnvs];
   const fixtureDeployments = (arr) => {
     if (!Array.isArray(arr)) throw new CouldNotLook(`${deploymentsFile} is not an array of deployments`);
@@ -2276,7 +2311,7 @@ async function main() {
         ? null
         : `product kind \`${v}\` is not one of the kinds contracts/entitlement/bundle.js declares (${[...set].join(', ')})`)(
       (() => {
-        const s = new Set(PRODUCT_KINDS);
+        const s = new Set(MEMBER_KINDS);
         // An empty set marks every row unattributable, which reads as a finding
         // about the data when it is really a finding about the reader — the same
         // failure `app-catalogue` guards against one entry up.

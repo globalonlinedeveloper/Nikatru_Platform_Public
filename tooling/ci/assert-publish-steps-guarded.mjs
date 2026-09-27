@@ -826,7 +826,9 @@ function preconditionsLimb(problems, summaries) {
   const graded = [];
   const ungraded = [];
   for (const row of submitting) {
-    const entries = SUBMIT_PRECONDITIONS.filter((e) => e.appliesTo(row));
+    // The register rides along: an entry may apply by what the register says of
+    // the row's channel (⏱ 2026-09-26, the sworn-declaration gate), not only by the row.
+    const entries = SUBMIT_PRECONDITIONS.filter((e) => e.appliesTo(row, register));
     const W = row.submission.workflow;
     if (entries.length === 0) {
       ungraded.push({ id: row.id, line: `${row.id} (surface ${row.surface ?? 'undeclared'}; ${W} job "${row.submission.job}")` });

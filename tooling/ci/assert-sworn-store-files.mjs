@@ -191,6 +191,43 @@
 //     in the tree that tells a person which source each listing field comes
 //     from. Nothing else reads those strings, so nothing else can notice.
 //
+// ── ⏱ 2026-09-26 · THE DECLARED STATE (O-BRICK-SWORN-FILES-HAVE-NO-PREVIEW-STATE)
+// Every sworn file carries a REQUIRED top-level boolean `"sworn"`, read before
+// any floor. It is never inferred from prose, line counts or absence: the
+// brick's `_readme` said "STAMPED UNANSWERED" in prose only, so a stamped app #2
+// put this guard red on every floor with no way to say "not yet declared".
+//  0. THE KEY. Missing or not a boolean is a finding (exit 1), naming the file,
+//     and the file is then held to every limb: a state nobody can read is not
+//     a preview.
+//     PREVIEW IS PER (APP, CHANNEL), NOT PER FILE. A channel whose every sworn
+//     file says `false` is preview: its copies must parse and carry exactly the
+//     brick template's key set, limb 5 still resolves what they cite, and limbs
+//     1-4, 6 and 8 do not apply. A `false` file BESIDE a `true` one in the same
+//     channel is MIXED: a finding, and that file is graded as sworn. Per file,
+//     the stamp written over ONE answered declaration — this guard's founding
+//     case, "the wholesale regression" in its test suite — would have turned
+//     that file into a preview and passed. One Play submission and one App
+//     Store submission each declare a channel as a whole, which is the same
+//     unit the per-app store record keys on.
+//     The template itself must carry `false` (limb 7). An all-preview workspace
+//     is COVERAGE LOST (exit 2): every floor then graded nothing.
+//  --for-submission=<channel> [--app <id>]: the precondition a submit lane
+//     runs (tooling/ci/submit-preconditions.mjs). On top of the whole run, every
+//     sworn file of that app and channel must exist and say `true`; a preview
+//     declaration cannot be submitted (exit 1). No `--app` resolves the single
+//     workspace app, and two or more is exit 2, as is a bare `--for-submission`
+//     or a channel with no sworn file.
+//  --for-submission=<channel> --app <id> --real-submission: the same, inside a REAL
+//     submission (the lane's submit job). ⏱ 2026-09-26, O-APP1-CONSOLE-DECLARATIONS-UNSUBMITTED:
+//     the app's store record (apps/<id>/app.yaml stores.<channel>, read through
+//     tooling/store/store-record.mjs) carries `declaredOn`, the date the owner
+//     swore these declarations in the store's console. It is a SECOND fact and
+//     never a preview switch: preview stays each file's own "sworn" key, above.
+//     `declaredOn: null` refuses a REAL submission (exit 1, telling the owner to
+//     submit the console form from the repo files first and then record the
+//     date); a dry run (no --real-submission) grades the bytes, prints the same sentence
+//     and proceeds, so no dry-run lane turns red on it.
+//
 // ── REQUIRED_COVERAGE ───────────────────────────────────────────────────────
 // The sworn set is DERIVED from tooling/channel-register.json, never listed
 // here: every `.json` in any channel's storeMetadataContract additionalFiles is
@@ -201,14 +238,21 @@
 // guard that owns them.
 //
 // Usage:  node tooling/ci/assert-sworn-store-files.mjs [repoRoot]
-// Exit 0 = every shipping declaration is still answered; 1 = one has regressed.
+//         node tooling/ci/assert-sworn-store-files.mjs --for-submission=<channel> [--app <id>] [--real-submission] [repoRoot]
+// Exit 0 = every shipping declaration is still answered; 1 = one has regressed
+// (or, under --for-submission, is a preview; or, with --real-submission, is undeclared);
+// 2 = COVERAGE LOST.
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
+import { storeRecordOf, declaredOnRefusal } from '../store/store-record.mjs';
 
-const ROOT = resolve(process.argv[2] ?? process.cwd());
+const ARGV = process.argv.slice(2);
+/** `--app` takes its value as the next word; that word is not the repo root. */
+const VALUED_FLAGS = new Set(['--app']);
+const ROOT = resolve(ARGV.find((a, i) => !a.startsWith('--') && !VALUED_FLAGS.has(ARGV[i - 1])) ?? process.cwd());
 const REGISTER_REL = 'tooling/channel-register.json';
 const BRICK_APP = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
 
@@ -243,6 +287,44 @@ const readJson = (rel) => {
     return { error: e.message, text, json: null };
   }
 };
+
+// ── the arguments: --for-submission=<channel> [--app <id>] ──────────────────
+// A bare `--for-submission` is exit 2, as in assert-play-device-coverage.mjs: a
+// lane that asks "may this be submitted?" without naming the store has asked
+// nothing. An unknown flag is exit 2 too, so a misspelt `--for-submision` can
+// never fall through to an ordinary green run inside a submit lane.
+let forSubmission = null;
+let appArg = null;
+let submitReal = false;
+for (let i = 0; i < ARGV.length; i++) {
+  const a = ARGV[i];
+  if (!a.startsWith('--')) continue;
+  if (a === '--for-submission' || a === '--for-submission=') {
+    coverageLost([
+      '--for-submission names no channel.',
+      'Pass the store the lane submits to, --for-submission=<channel>: the refusal is per (app, channel), and a',
+      'precondition that names no channel would grade nothing while its step went green.',
+    ]);
+  } else if (a.startsWith('--for-submission=')) {
+    forSubmission = a.slice('--for-submission='.length);
+  } else if (a === '--app' || a.startsWith('--app=')) {
+    appArg = a === '--app' ? ARGV[i + 1] : a.slice('--app='.length);
+    if (typeof appArg !== 'string' || appArg === '' || appArg.startsWith('--')) {
+      coverageLost(['--app names no app.', 'Pass the workspace app the lane submits: --app <id>.']);
+    }
+    if (a === '--app') i++;
+  } else if (a === '--real-submission') {
+    submitReal = true;
+  } else {
+    coverageLost([`${a} is not a flag this guard knows.`, 'Known: --for-submission=<channel>, --app <id>, --real-submission.']);
+  }
+}
+if (submitReal && forSubmission === null) {
+  coverageLost(['--real-submission is only meaningful with --for-submission=<channel>.', 'It marks the precondition of a REAL submission; the ordinary run submits nothing.']);
+}
+if (appArg !== null && forSubmission === null) {
+  coverageLost(['--app is only meaningful with --for-submission=<channel>.', 'The ordinary run grades every workspace app.']);
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // THE SPECS. One per sworn declaration. Numbers carry their measurement, so a
@@ -961,6 +1043,8 @@ for (const { channel, file, key } of swornWanted) {
     readme: Array.isArray(t.json._readme) ? t.json._readme.length : 0,
     nullKeys: Object.entries(t.json).filter(([, v]) => v === null).map(([k]) => k),
     hasCitedArray: Array.isArray(t.json.sources?.cited),
+    /** A preview copy's key set must equal this one (limb 0). */
+    keys: Object.keys(t.json).sort(),
     json: t.json,
   });
 }
@@ -1002,6 +1086,15 @@ for (const [, tmpl] of templates) {
   }
   if (tmpl.readme === 0) {
     fail(`the brick template ${tmpl.rel} has no \`_readme\`. It is the instructions the stamped app is meant to follow.`);
+  }
+  // ⏱ 2026-09-26 — the template's STATE is the stamped app's: `false`, or app #2
+  // is born swearing to answers nobody gave (O-BRICK-SWORN-FILES-HAVE-NO-PREVIEW-STATE).
+  if (tmpl.json.sworn !== false) {
+    fail(
+      `🔴 the brick template ${tmpl.rel} carries "sworn": ${JSON.stringify(tmpl.json.sworn ?? null)}, not false. ` +
+        'Every stamped app starts from this file, so its state is the new app\'s state: anything but false ' +
+        'stamps a declaration nobody has made.',
+    );
   }
 }
 
@@ -1064,22 +1157,113 @@ const linesMoved = [];
 let readmesChecked = 0;
 let readmePathsChecked = 0;
 const specsExercised = new Set();
+/** Copies graded as preview (limb 0), and the apps they belong to. */
+let previewCopies = 0;
+const previewApps = new Set();
 
 for (const app of apps) {
   const appId = app.replace(/^apps\//, '');
-  for (const { channel, file, key } of swornWanted) {
+
+  // ── limb 0 · the declared state, per (app, channel), before any floor ─────
+  const docs = new Map();
+  /** channel -> 'sworn' | 'preview' | 'mixed' */
+  const stateOf = new Map();
+  for (const { channel, file } of swornWanted) {
     const rel = `${app}/store/${channel}/${file}`;
     if (!existsSync(abs(rel))) continue; // presence is assert-store-metadata.mjs's contract
+    const doc = readJson(rel);
+    docs.set(rel, doc);
+    if (!doc.json) continue; // reported with the limbs below
+    const sworn = doc.json.sworn;
+    if (typeof sworn !== 'boolean') {
+      fail(
+        `🔴 ${rel} carries no boolean "sworn" (found ${JSON.stringify(sworn ?? null)}). The key says whether this ` +
+          'declaration has been made or is still the stamped template; nothing else may be read as that answer. ' +
+          'It is graded as sworn meanwhile.',
+      );
+    }
+    const mine = sworn === false ? 'preview' : 'sworn';
+    const had = stateOf.get(channel);
+    stateOf.set(channel, had === undefined || had === mine ? mine : 'mixed');
+  }
+  for (const [channel, state] of stateOf) {
+    if (state !== 'mixed') continue;
+    const read = swornWanted.filter((s) => s.channel === channel && docs.get(`${app}/store/${channel}/${s.file}`)?.json);
+    const unsworn = read.filter((s) => docs.get(`${app}/store/${channel}/${s.file}`).json.sworn === false).map((s) => s.file);
+    const others = read.map((s) => s.file).filter((f) => !unsworn.includes(f));
+    fail(
+      `🔴 MIXED — ${app}/store/${channel}: ${unsworn.join(', ')} say "sworn": false and ${others.join(', ')} do not. ` +
+        'A channel is declared as a whole, so a false file beside a sworn one is the shape of a stamp written ' +
+        'over one answered declaration; every file of this channel is graded as sworn.',
+    );
+  }
+
+  for (const { channel, file, key } of swornWanted) {
+    const rel = `${app}/store/${channel}/${file}`;
+    if (!docs.has(rel)) continue; // presence is assert-store-metadata.mjs's contract
     const spec = SWORN_SPECS.get(key);
     const tmpl = templates.get(key);
-    const doc = readJson(rel);
+    const doc = docs.get(rel);
     if (!doc.json) {
       fail(`${rel} is not valid JSON (${doc.error}). A sworn declaration nothing can parse is a declaration nothing can check.`);
       continue;
     }
+    const j = doc.json;
+
+    // ── limb 5 · every cited path still exists ──────────────────────────────
+    // ⏱ 2026-09-26 — run FIRST, for a preview copy too: a stamped template
+    // cites code as much as an answered file does, and no other limb reads it.
+    const seen = new Set();
+    for (const [pointer, value] of strings(j)) {
+      for (const m of value.matchAll(PATH_RE)) {
+        const cited = m[0];
+        if (seen.has(cited)) continue;
+        seen.add(cited);
+        // A citation may name the file IN THIS APP (`apps/{app}/…`, a template
+        // placeholder standing for the app being checked) or the file IN THE
+        // BRICK (`tooling/bricks/app/__brick__/apps/{{app_id}}/…`, where the
+        // braces are a LITERAL DIRECTORY NAME on disk). Both are real citations
+        // and either resolution is enough.
+        //
+        // 🔴 SUBSTITUTION ALONE WAS WRONG, and it only became visible with the
+        // third sworn declaration (2026-08-09). ads-declaration.json's format
+        // scan anchors on a widget in the BRICK — which is where a promo surface
+        // arrives for all fifty apps at once — and substituting `{{app_id}}` →
+        // `subscriptiontracker` turned a citation of a file that exists into
+        // `…/__brick__/apps/subscriptiontracker/…`, which never will. The repair accepts
+        // either reading rather than guessing which one was meant; both name a
+        // file that is really there, which is all this limb claims.
+        const candidates = [cited.replace('{{app_id}}', appId).replace('{app}', appId), cited];
+        pathsChecked++;
+        if (!candidates.some((c) => existsSync(abs(c)))) {
+          fail(
+            `${rel} \`${pointer}\` cites ${cited}, which does not exist (tried ${candidates.join(' and ')}). A sworn ` +
+              'sentence resting on a file that was renamed is a false record, and these strings are read by nothing ' +
+              'else in the tree.',
+          );
+        }
+      }
+    }
+
+    // ── limb 0, preview · structure only ────────────────────────────────────
+    if (stateOf.get(channel) === 'preview') {
+      previewCopies++;
+      previewApps.add(appId);
+      const have = Object.keys(j).sort();
+      const missing = tmpl.keys.filter((k) => !have.includes(k));
+      const extra = have.filter((k) => !tmpl.keys.includes(k));
+      if (missing.length || extra.length) {
+        fail(
+          `${rel} is a PREVIEW declaration ("sworn": false) and its keys are not the brick template's ` +
+            `(${tmpl.rel}): ${missing.length ? `missing ${missing.join(', ')}` : ''}${missing.length && extra.length ? '; ' : ''}` +
+            `${extra.length ? `extra ${extra.join(', ')}` : ''}. A preview is the stamped template, unanswered; a ` +
+            'half-answered file is a declaration in progress and is sworn or it is not.',
+        );
+      }
+      continue;
+    }
     copiesChecked++;
     specsExercised.add(key);
-    const j = doc.json;
 
     // ── limb 1 · the floor, absolute AND relative to the template ───────────
     const lines = doc.text.split('\n').length;
@@ -1089,7 +1273,7 @@ for (const app of apps) {
     const floor = Math.max(MIN_LINES, tmpl.lines * 2);
     if (lines < floor) {
       fail(
-        `🔴 ${rel} is ${lines} lines; the floor is ${floor} (absolute ${MIN_LINES}, or twice the ${tmpl.lines}-line ` +
+        `🔴 FLOOR — ${rel} is ${lines} lines; the floor is ${floor} (absolute ${MIN_LINES}, or twice the ${tmpl.lines}-line ` +
           `brick template at ${tmpl.rel}, whichever is larger). A sworn declaration does not shrink by two thirds ` +
           'in the ordinary course of business — this is the shape of a stamp overwriting an answered file.',
       );
@@ -1240,39 +1424,6 @@ for (const app of apps) {
             'this: the evidence for the whole inventory is the SUM, and gutting every row at once is exactly the ' +
             'regression a per-row floor of 7 lets through.',
         );
-      }
-    }
-
-    // ── limb 5 · every cited path still exists ──────────────────────────────
-    const seen = new Set();
-    for (const [pointer, value] of strings(j)) {
-      for (const m of value.matchAll(PATH_RE)) {
-        const cited = m[0];
-        if (seen.has(cited)) continue;
-        seen.add(cited);
-        // A citation may name the file IN THIS APP (`apps/{app}/…`, a template
-        // placeholder standing for the app being checked) or the file IN THE
-        // BRICK (`tooling/bricks/app/__brick__/apps/{{app_id}}/…`, where the
-        // braces are a LITERAL DIRECTORY NAME on disk). Both are real citations
-        // and either resolution is enough.
-        //
-        // 🔴 SUBSTITUTION ALONE WAS WRONG, and it only became visible with the
-        // third sworn declaration (2026-08-09). ads-declaration.json's format
-        // scan anchors on a widget in the BRICK — which is where a promo surface
-        // arrives for all fifty apps at once — and substituting `{{app_id}}` →
-        // `subscriptiontracker` turned a citation of a file that exists into
-        // `…/__brick__/apps/subscriptiontracker/…`, which never will. The repair accepts
-        // either reading rather than guessing which one was meant; both name a
-        // file that is really there, which is all this limb claims.
-        const candidates = [cited.replace('{{app_id}}', appId).replace('{app}', appId), cited];
-        pathsChecked++;
-        if (!candidates.some((c) => existsSync(abs(c)))) {
-          fail(
-            `${rel} \`${pointer}\` cites ${cited}, which does not exist (tried ${candidates.join(' and ')}). A sworn ` +
-              'sentence resting on a file that was renamed is a false record, and these strings are read by nothing ' +
-              'else in the tree.',
-          );
-        }
       }
     }
 
@@ -1450,6 +1601,84 @@ for (const app of apps) {
   }
 }
 
+// ── limb 0 · an all-preview workspace graded nothing ────────────────────────
+// Checked first: with every copy in preview the "never exercised" line below
+// would fire too, and blame the scan for what is really the state.
+if (copiesChecked === 0 && previewCopies > 0) {
+  coverageLost([
+    `every sworn declaration read is a preview ("sworn": false): ${previewCopies} across ${[...previewApps].join(', ')}.`,
+    'Preview skips the floors, so this run graded structure only. Zero sworn copies is a clean pass over an',
+    'empty set, not evidence that any declaration is still answered.',
+  ]);
+}
+
+// ── --for-submission · a preview declaration cannot be submitted ────────────
+let submissionLine = '';
+if (forSubmission !== null) {
+  const wanted = swornWanted.filter((s) => s.channel === forSubmission);
+  if (wanted.length === 0) {
+    coverageLost([
+      `--for-submission=${forSubmission} names a channel with no sworn declaration in ${REGISTER_REL}.`,
+      `The channels that carry one: ${[...new Set(swornWanted.map((s) => s.channel))].join(', ')}. A precondition over a`,
+      'channel with nothing to refuse grades nothing; tooling/ci/submit-preconditions.mjs applies it to those only.',
+    ]);
+  }
+  let appId = appArg;
+  if (appId === null) {
+    if (apps.length !== 1) {
+      coverageLost([
+        `--for-submission=${forSubmission} with no --app, and the workspace holds ${apps.length} apps (${apps.join(', ')}).`,
+        'Which app is this lane submitting? Pass --app <id>: guessing one would refuse or clear the wrong app.',
+      ]);
+    }
+    appId = apps[0].replace(/^apps\//, '');
+  } else if (!apps.includes(`apps/${appId}`)) {
+    coverageLost([
+      `--app ${appId} is not a workspace app (${apps.join(', ')}).`,
+      'The refusal is read off that app\'s own store tree; an app the workspace does not hold has none to read.',
+    ]);
+  }
+  for (const { file } of wanted) {
+    const rel = `apps/${appId}/store/${forSubmission}/${file}`;
+    const doc = readJson(rel);
+    if (!doc.json) {
+      fail(`🔴 SUBMISSION — ${rel} is ${doc.error === 'unreadable' ? 'missing' : 'not valid JSON'}. A channel cannot be submitted without its sworn declaration.`);
+    } else if (doc.json.sworn !== true) {
+      fail(
+        `🔴 PREVIEW — ${rel} says "sworn": ${JSON.stringify(doc.json.sworn ?? null)}. A preview declaration cannot ` +
+          `be submitted: ${forSubmission} would receive answers nobody has given. Answer it, set "sworn": true, and ` +
+          'the floors above then grade it.',
+      );
+    }
+  }
+  // ⏱ 2026-09-26 — O-APP1-CONSOLE-DECLARATIONS-UNSUBMITTED. The date the owner swore these
+  // declarations in the console gates a REAL submission only. It is read from
+  // the app's store record, never from the files: a file's "sworn" key (above)
+  // says whether its CONTENT is final, and the two are never merged.
+  let record;
+  try {
+    record = storeRecordOf(ROOT, appId, forSubmission);
+  } catch (e) {
+    coverageLost([
+      `--for-submission=${forSubmission} --app ${appId}: ${e.message}.`,
+      'The declaration date lives in that record; a submission whose record cannot be read cannot be cleared.',
+    ]);
+  }
+  const refusal = declaredOnRefusal(record, {
+    appId,
+    channelId: forSubmission,
+    files: wanted.map(({ file }) => `apps/${appId}/store/${forSubmission}/${file}`),
+  });
+  if (refusal !== null && submitReal) {
+    fail(`🔴 UNDECLARED — ${refusal} A real submission (--real-submission) is refused until then.`);
+  } else if (refusal !== null) {
+    notes.push(`⬜  NOT YET DECLARED (a dry run: the bytes are graded, the submission is not refused here) — ${refusal}`);
+  }
+  submissionLine =
+    `; --for-submission=${forSubmission} --app ${appId}${submitReal ? ' --real-submission' : ''}: ${wanted.length} declaration(s) read, each must say "sworn": true; ` +
+    `declaredOn ${record.declaredOn ?? 'null'}${submitReal ? ' (a real submission: it must be a date)' : ' (a dry run: a real submission also needs a date)'}`;
+}
+
 // ── REQUIRED_COVERAGE, final direction: did every spec actually get used? ───
 const unexercised = [...SWORN_SPECS.keys()].filter((k) => !specsExercised.has(k));
 if (unexercised.length) {
@@ -1543,11 +1772,12 @@ if (problems.length) {
   process.exitCode = 1;
 } else {
   console.log(
-    `\nok   ${copiesChecked} sworn declaration(s) still answered across ${apps.length} app(s); ` +
+    `\nok   ${copiesChecked} sworn declaration(s) still answered across ${apps.length} app(s) ` +
+      `(${copiesChecked} sworn, ${previewCopies} preview${previewApps.size ? `: ${[...previewApps].join(', ')}` : ''}); ` +
       `${pathsChecked} cited path(s) resolve; ${anchorsChecked} UI anchor(s) hold; ` +
       `${lineCitesChecked} of ${LINE_ANCHORS.length} sworn line citation(s) re-measured by anchor text (${linesMoved.length} cited number(s) moved, printed above); ` +
       `${readmePathsChecked} path(s) in ${readmesChecked} channel README(s) resolve; ` +
-      `${templates.size} brick template(s) still blank`,
+      `${templates.size} brick template(s) still blank${submissionLine}`,
   );
   console.log('\nassert-sworn-store-files: ok');
 }

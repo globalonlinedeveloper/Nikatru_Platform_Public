@@ -38,7 +38,9 @@
 //   BUNDLE PROJECTION — `bundleRowToGrantable`:
 //     G8      `revoked_at` set                         → is_active 0 for EVERY member
 //     rule 4' unparseable OR contradictory `grace_until` → undecidable → deny
-//     G10     membership joins on the PINNED (name, version), never the register
+//     G10     membership joins the tables, never the register: a `one_time` grant
+//             its PINNED (name, version), a `subscription` grant the latest
+//             `sellable` version (ADR no.099, bundle membership by term; 0018)
 //     G11     rule 2 applies to the bundle branch unchanged
 //   READ-LEVEL REFUSALS — `readProductEntitlement` / `readSubjectEntitlements`:
 //     [5]M-4  unknown product                          → `unknown_product` (carrier answers 404)
@@ -193,6 +195,8 @@ export interface BundleGrantRow {
   grace_until: string | null;
   revoked_at: string | null;
   superseded_by: string | null;
+  /** The version whose members this grant is SERVED — `bundleGrantsServed` says which, by term. */
+  served_version: number | null;
 }
 
 /** A sentinel that can never parse, so an undecidable date DENIES rather than defaults. */
@@ -245,31 +249,77 @@ export function bundleRowToGrantable(r: BundleGrantRow): GrantableRow {
 }
 
 /**
- * Every bundle grant this user holds whose PINNED feature set contains
- * `productSlug`. The membership join is on `(name, version)` — the pin — which
- * is what makes G10 a property of the SQL rather than of a reader's care.
+ * THE MEMBERSHIP RULE, IN ONE STATEMENT. ADR no.099, bundle membership by term,
+ * amending [ADR 057] §4: a grant's members are a function of its TERM,
+ * `COALESCE(g.term, s.term)` — the grant's own term where its source sells both
+ * (a store rail), else its source's (migration 0018).
+ *
+ *   · `one_time`     → the version the grant PINNED (`g.feature_set_version`)
+ *                      — the ELSE branch. A lifetime buyer owns exactly what
+ *                      was sold: G10.
+ *   · `subscription` → the LATEST `sellable` version of the feature set, so a
+ *                      product that joins the bundle reaches every current
+ *                      subscriber and no grant row is ever rewritten. With no
+ *                      sellable version at all (every one retired), the pinned
+ *                      version — a paying subscriber never resolves to nothing.
+ *
+ * `served_version` is that version. The pin is still recorded and still
+ * returned (`feature_set_version`): it is the audit of what was sold, not what
+ * is served. A grant whose term cannot be read — its source is not a
+ * `bundle_sources` row and it carries no term of its own — resolves by the
+ * pre-0018 rule, its pin: never MORE than it was sold, and no grant that
+ * resolved before this migration resolves to less. Which sources exist is
+ * assert-bundle-provenance.mjs's and assert-entitlement-contract.mjs limb 9's
+ * to grade, not this read's.
+ *
+ * `productSlug` null returns every grant (the subject read); a slug returns the
+ * grants whose SERVED version contains it (the per-product read). One statement
+ * for both, so the two routes cannot disagree about a rolled grant.
+ */
+async function bundleGrantsServed(
+  deps: Pick<EntitlementReadDeps, 'db' | 'allRows'>,
+  userId: string,
+  productSlug: string | null,
+): Promise<BundleGrantRow[]> {
+  return deps.allRows<BundleGrantRow>(
+    deps.db
+      .prepare(
+        `SELECT x.* FROM (
+           SELECT g.grant_id, g.feature_set_name, g.feature_set_version, g.source,
+                  g.provider, g.provider_environment, g.provider_status,
+                  g.expires_at, g.grace_until, g.revoked_at, g.superseded_by,
+                  CASE COALESCE(g.term, s.term)
+                    WHEN 'subscription' THEN COALESCE(
+                      (SELECT MAX(f.version) FROM feature_sets f
+                        WHERE f.name = g.feature_set_name AND f.status = 'sellable'),
+                      g.feature_set_version)
+                    ELSE g.feature_set_version
+                  END AS served_version
+             FROM bundle_grants g
+             LEFT JOIN bundle_sources s ON s.source = g.source
+            WHERE g.user_id = ?) x
+          WHERE ? IS NULL
+             OR EXISTS (
+                  SELECT 1 FROM feature_set_members m
+                   WHERE m.name = x.feature_set_name
+                     AND m.version = x.served_version
+                     AND m.product_slug = ?)`,
+      )
+      .bind(userId, productSlug, productSlug),
+  );
+}
+
+/**
+ * Every bundle grant this user holds whose SERVED version contains
+ * `productSlug` — the membership join is on `(name, served_version)`, so the
+ * term rule above is a property of the SQL rather than of a reader's care.
  */
 export async function bundleGrantsForProduct(
   deps: Pick<EntitlementReadDeps, 'db' | 'allRows'>,
   userId: string,
   productSlug: string,
 ): Promise<BundleGrantRow[]> {
-  return deps.allRows<BundleGrantRow>(
-    deps.db
-      .prepare(
-        `SELECT g.grant_id, g.feature_set_name, g.feature_set_version, g.source,
-                g.provider, g.provider_environment, g.provider_status,
-                g.expires_at, g.grace_until, g.revoked_at, g.superseded_by
-           FROM bundle_grants g
-          WHERE g.user_id = ?
-            AND EXISTS (
-                  SELECT 1 FROM feature_set_members m
-                   WHERE m.name = g.feature_set_name
-                     AND m.version = g.feature_set_version
-                     AND m.product_slug = ?)`,
-      )
-      .bind(userId, productSlug),
-  );
+  return bundleGrantsServed(deps, userId, productSlug);
 }
 
 /** Every bundle grant this user holds, member-filtered by nothing — the subject read. */
@@ -277,17 +327,7 @@ export async function bundleGrantsForUser(
   deps: Pick<EntitlementReadDeps, 'db' | 'allRows'>,
   userId: string,
 ): Promise<BundleGrantRow[]> {
-  return deps.allRows<BundleGrantRow>(
-    deps.db
-      .prepare(
-        `SELECT grant_id, feature_set_name, feature_set_version, source,
-                provider, provider_environment, provider_status,
-                expires_at, grace_until, revoked_at, superseded_by
-           FROM bundle_grants
-          WHERE user_id = ?`,
-      )
-      .bind(userId),
-  );
+  return bundleGrantsServed(deps, userId, null);
 }
 
 /**
@@ -312,6 +352,18 @@ export async function membersOfPinnedVersion(
       .bind(name, version),
   );
   return rows.map((r) => r.product_slug);
+}
+
+/**
+ * The members a grant is SERVED: its `served_version`'s members. A grant with
+ * no served version (none the rule can resolve) is served nothing — the
+ * fail-closed direction, and unreachable while 0018's CHECKs hold.
+ */
+async function servedMembers(
+  deps: Pick<EntitlementReadDeps, 'db' | 'allRows'>,
+  g: BundleGrantRow,
+): Promise<string[]> {
+  return g.served_version === null ? [] : membersOfPinnedVersion(deps, g.feature_set_name, g.served_version);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -439,10 +491,13 @@ export async function readProductEntitlement(
   );
 
   // ── THE BUNDLE BRANCH ──────────────────────────────────────────────────────
-  // The membership join is on the PINNED (name, version), so a product added to
-  // a later feature-set version does not reach an older grant — G10. The SAME
+  // The membership join is on the SERVED (name, version): a one-time grant's
+  // pinned version (G10), a subscription grant's latest sellable one
+  // (`bundleGrantsServed`). The SAME
   // `grantsAccess` decides it, so the environment rule, the lifetime rule and
   // the unparseable-date rule are not re-implemented here and cannot drift.
+  // `version` on the wire stays the minted version; `products` is what the
+  // grant is served.
   const bundleRows = await bundleGrantsForProduct(deps, userId, productId);
   const liveBundle = bundleRows.find((g) => grantsAccess(bundleRowToGrantable(g), environment, nowMs, warn));
   const bundlePro = liveBundle !== undefined;
@@ -453,7 +508,7 @@ export async function readProductEntitlement(
       : {
           feature_set: liveBundle.feature_set_name,
           version: liveBundle.feature_set_version,
-          products: await membersOfPinnedVersion(deps, liveBundle.feature_set_name, liveBundle.feature_set_version),
+          products: await servedMembers(deps, liveBundle),
           expires_at: liveBundle.expires_at,
           source: liveBundle.source,
         };
@@ -567,7 +622,7 @@ export async function readSubjectEntitlements(
   const bundles: WireBundleBlock[] = [];
   for (const g of grantRows) {
     if (!grantsAccess(bundleRowToGrantable(g), environment, nowMs, warn)) continue;
-    const products = await membersOfPinnedVersion(deps, g.feature_set_name, g.feature_set_version);
+    const products = await servedMembers(deps, g);
     bundles.push({
       feature_set: g.feature_set_name,
       version: g.feature_set_version,

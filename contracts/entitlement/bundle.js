@@ -81,19 +81,38 @@ export function requiresReceipt(source) {
 }
 
 /**
- * @typedef {'app' | 'extension' | 'script'} ProductKind
+ * @typedef {'app' | 'extension' | 'script' | 'bundle' | 'service' | 'site'} ProductKind
  *
- * 🔴 A PRODUCT IS AN app | extension | script, AND THE BUNDLE SPANS ALL THREE.
- * This is the single fact that keeps a new category a DATA change rather than a
- * schema change: `feature_set_members.product_kind` records which register a
- * slug came from, so adding "script" to the bundle is a row, not a migration.
- * The registers each kind is read from are named in PRODUCT_REGISTERS below —
- * as data, so that tooling/bundle-availability.mjs and the Worker's twin derive
- * the live-product set from the same list rather than from two hand-written ones.
+ * 🔴 A PRODUCT IS AN app | extension | script | bundle | service | site. This is
+ * the single fact that keeps a new category a DATA change rather than a schema
+ * change: `feature_set_members.product_kind` records which register a slug came
+ * from, so adding "script" to the bundle is a row, not a migration. The
+ * registers each kind is read from are named in PRODUCT_REGISTERS below — as
+ * data, so that tooling/bundle-availability.mjs and the Worker's twin derive the
+ * live-product set from the same list rather than from two hand-written ones.
+ *
+ * ⏱ 2026-09-26 · O-BUNDLE-AVAILABILITY-TAKES-THE-FIRST. `bundle`, `service` and
+ * `site` joined the list so `isKnownProduct` can name a bundle. The code's word
+ * is `kind`; the standing decision's word is `category`. The live API
+ * (`productKindOf`, `feature_set_members.product_kind`) says `kind`, so `kind`
+ * stays and nothing live is renamed.
  */
 
 /** @type {readonly ProductKind[]} */
-export const PRODUCT_KINDS = /** @type {const} */ (['app', 'extension', 'script']);
+export const PRODUCT_KINDS = /** @type {const} */ (['app', 'extension', 'script', 'bundle', 'service', 'site']);
+
+/**
+ * 🔴 THE KIND THAT IS NEVER COUNTED LIVE AND IS NEVER A MEMBER. A bundle is a
+ * product (it can be named, priced and sold), but it is made OF products: it
+ * must never count toward the `MIN_LIVE_PRODUCTS_FOR_BUNDLE` floor that decides
+ * whether it may be sold, or a bundle would count toward itself. Both
+ * availability twins exclude it from the live count BY THIS NAME rather than by
+ * the accident that a bundle's status spells `draft | sellable` and not `live`.
+ */
+export const BUNDLE_KIND = 'bundle';
+
+/** The kinds a feature-set member may have: every kind but the bundle itself. */
+export const MEMBER_KINDS = /** @type {readonly ProductKind[]} */ (PRODUCT_KINDS.filter((k) => k !== BUNDLE_KIND));
 
 /**
  * @param {unknown} v
@@ -104,12 +123,17 @@ export function isProductKind(v) {
 }
 
 /**
- * @typedef {{ readonly kind: ProductKind, readonly register: string | null }} ProductRegister
+ * @typedef {{ readonly kind: ProductKind, readonly register: string | null, readonly slugField?: string }} ProductRegister
  *
  * Where each kind's slugs are published. `register: null` means the category is
  * DECLARED and has no register yet — which is a different fact from a category
  * nobody has thought about, and the difference is what stops a `script` product
  * from being invented in some third place later.
+ *
+ * `slugField` names the row field that IS the product's slug, and is absent when
+ * that field is `slug`. The bundle register's rows are `{ featureSet, version,
+ * status: draft | sellable }`, so its slug is its `featureSet`. Both readers map
+ * the field by this name, so the mapping is data in one list.
  */
 
 /** @type {readonly ProductRegister[]} */
@@ -120,6 +144,11 @@ export const PRODUCT_REGISTERS = [
   // (`slug` + `status`) and this row gains its path — and the derivation below
   // picks it up with no code change, which is the whole point of the list.
   { kind: 'script', register: null },
+  { kind: 'bundle', register: 'catalog/bundles.json', slugField: 'featureSet' },
+  // A service gains its register with the service kit (worker-set.mjs), and a
+  // site gains one when a site register exists. Each is a one-line edit here.
+  { kind: 'service', register: null },
+  { kind: 'site', register: null },
 ];
 
 /**
@@ -127,7 +156,9 @@ export const PRODUCT_REGISTERS = [
  *
  * The two values `tooling/ci/assert-catalog-contract.mjs` permits, restated here
  * because the bundle's purchasable gate is a predicate over them. A third
- * spelling is not a new state, it is a row no guard grades.
+ * spelling is not a new state, it is a row no guard grades. A bundle row's
+ * `draft | sellable` is its register's own vocabulary and is not one of these:
+ * a bundle is never counted live (BUNDLE_KIND above).
  */
 
 /** @type {readonly ProductStatus[]} */

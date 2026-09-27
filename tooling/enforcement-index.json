@@ -290,6 +290,8 @@
       ".github/workflows/build-platforms.yml#windows",
       ".github/workflows/ci.yml#android-artifacts",
       ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/ci.yml#linux-artifacts",
+      ".github/workflows/ci.yml#web-artifacts",
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/submit-appstore.yml#dry-run",
       ".github/workflows/submit-play.yml#dry-run",
@@ -341,6 +343,8 @@
       "G-49"
     ],
     "invokedBy": [
+      ".github/workflows/build-platforms.yml#apple",
+      ".github/workflows/ci.yml#app-brick",
       ".github/workflows/ci.yml#workspace-gate"
     ],
     "kind": "guard",
@@ -376,7 +380,9 @@
       ".github/workflows/build-platforms.yml#apple",
       ".github/workflows/build-platforms.yml#linux_web_android",
       ".github/workflows/build-platforms.yml#windows",
-      ".github/workflows/ci.yml#android-artifacts"
+      ".github/workflows/ci.yml#android-artifacts",
+      ".github/workflows/ci.yml#linux-artifacts",
+      ".github/workflows/ci.yml#web-artifacts"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-artifact-shape.mjs",
@@ -546,6 +552,7 @@
     "invokedBy": [
       ".github/workflows/build-platforms.yml#linux_web_android",
       ".github/workflows/ci.yml#sites",
+      ".github/workflows/ci.yml#web-artifacts",
       ".github/workflows/deploy-web.yml#deploy-web"
     ],
     "kind": "guard",
@@ -721,6 +728,16 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-d1-bindings.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-d1-fanout.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -960,6 +977,16 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-extensions-build-free.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-failfast-coverage.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -1207,7 +1234,8 @@
     ],
     "invokedBy": [
       ".github/workflows/ci.yml#app-brick",
-      ".github/workflows/ci.yml#guards-legal"
+      ".github/workflows/ci.yml#guards-legal",
+      ".github/workflows/ci.yml#web-artifacts"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-licence-register.mjs",
@@ -1986,6 +2014,7 @@
     "claims": [
       "ADR 067",
       "D-2b",
+      "D-5",
       "R-1"
     ],
     "invokedBy": [
@@ -1993,7 +2022,12 @@
       ".github/workflows/ci.yml#guards-store",
       ".github/workflows/ci.yml#prepare",
       ".github/workflows/deploy-web.yml#prepare",
-      ".github/workflows/e2e.yml#prepare"
+      ".github/workflows/e2e.yml#prepare",
+      ".github/workflows/store-screenshots.yml#gate",
+      ".github/workflows/submit-appstore.yml#gate",
+      ".github/workflows/submit-play.yml#gate",
+      ".github/workflows/submit-snap.yml#gate",
+      ".github/workflows/submit-windows-store.yml#gate"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-release-lane-generic.mjs",
@@ -2235,6 +2269,7 @@
     "invokedBy": [
       ".github/workflows/build-platforms.yml#linux_web_android",
       ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/ci.yml#linux-artifacts",
       ".github/workflows/submit-snap.yml#dry-run",
       ".github/workflows/submit-snap.yml#submit"
     ],
@@ -2371,6 +2406,7 @@
   },
   {
     "claims": [
+      "C-6",
       "D-3"
     ],
     "invokedBy": [
@@ -2449,7 +2485,11 @@
       "K-8"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#guards-store"
+      ".github/workflows/ci.yml#app-brick",
+      ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/submit-appstore.yml#dry-run",
+      ".github/workflows/submit-play.yml#dry-run",
+      ".github/workflows/submit-play.yml#submit"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-sworn-store-files.mjs",
@@ -2778,6 +2818,8 @@
       ".github/workflows/build-platforms.yml#linux_web_android",
       ".github/workflows/build-platforms.yml#windows",
       ".github/workflows/ci.yml#android-artifacts",
+      ".github/workflows/ci.yml#linux-artifacts",
+      ".github/workflows/ci.yml#web-artifacts",
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/e2e.yml#e2e",
       ".github/workflows/submit-appstore.yml#dry-run",
@@ -2950,8 +2992,12 @@
       ".github/workflows/extensions.yml#release",
       ".github/workflows/extensions.yml#store-publish",
       ".github/workflows/rollback.yml#rollback",
+      ".github/workflows/submit-appstore.yml#dry-run",
+      ".github/workflows/submit-play.yml#dry-run",
       ".github/workflows/submit-play.yml#submit",
+      ".github/workflows/submit-snap.yml#dry-run",
       ".github/workflows/submit-snap.yml#submit",
+      ".github/workflows/submit-windows-store.yml#dry-run",
       ".github/workflows/submit-windows-store.yml#submit"
     ],
     "kind": "guard",
@@ -3212,7 +3258,11 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/e2e.yml#e2e"
+      ".github/workflows/e2e.yml#e2e",
+      ".github/workflows/store-screenshots.yml#capture",
+      ".github/workflows/store-screenshots.yml#capture-desktop-native",
+      ".github/workflows/store-screenshots.yml#capture-ios",
+      ".github/workflows/store-screenshots.yml#capture-linux"
     ],
     "kind": "script",
     "ref": "tooling/e2e/backend.mjs",
@@ -3672,6 +3722,7 @@
     ],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#linux_web_android",
+      ".github/workflows/ci.yml#linux-artifacts",
       ".github/workflows/submit-snap.yml#dry-run",
       ".github/workflows/submit-snap.yml#submit"
     ],
@@ -3812,6 +3863,16 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/ci.yml#guards-platform"
+    ],
+    "kind": "script",
+    "ref": "tooling/scripts/render-platform-app-block.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
       ".github/workflows/ci.yml#content-gate",
       ".github/workflows/ci.yml#guard-meta",
       ".github/workflows/extensions-ci.yml#core",
@@ -3918,6 +3979,7 @@
       "R-13"
     ],
     "invokedBy": [
+      ".github/workflows/ci.yml#web-artifacts",
       ".github/workflows/deploy-web.yml#deploy-web"
     ],
     "kind": "script",
@@ -3972,6 +4034,19 @@
       ".github/workflows/store-screenshots.yml#capture-linux"
     ],
     "kind": "script",
+    "ref": "tooling/store/capture-precheck.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/store-screenshots.yml#capture",
+      ".github/workflows/store-screenshots.yml#capture-desktop-native",
+      ".github/workflows/store-screenshots.yml#capture-ios",
+      ".github/workflows/store-screenshots.yml#capture-linux"
+    ],
+    "kind": "script",
     "ref": "tooling/store/measure-frame-ink.mjs",
     "references": [],
     "state": "WIRED"
@@ -3984,6 +4059,18 @@
     ],
     "kind": "script",
     "ref": "tooling/store/msix-visual-name.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "D-5"
+    ],
+    "invokedBy": [
+      ".github/workflows/store-screenshots.yml#capture"
+    ],
+    "kind": "script",
+    "ref": "tooling/store/render-play-graphics.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -4001,6 +4088,7 @@
     "claims": [],
     "invokedBy": [
       ".github/workflows/ci.yml#app-brick",
+      ".github/workflows/ci.yml#web-artifacts",
       ".github/workflows/deploy-web.yml#deploy-web"
     ],
     "kind": "script",

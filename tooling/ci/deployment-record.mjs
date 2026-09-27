@@ -111,6 +111,60 @@ export const STATE_MEANING = Object.freeze({
     'the release is the ORIGIN of the artifact destined for this channel and nothing was submitted: the channel is `submittable: false`, so the publish is a manual act somebody still owes. NOT a submission — [10]D-6\'s cadence does not count it.',
 });
 
+/** ⏱ 2026-09-26 · THE RUN'S MODE — O-SUBMISSION-LANE-WITHOUT-RECORDER.
+ *
+ *  Every run of a submit lane is recorded, and each record says which kind of
+ *  run wrote it. `production` is a real submission, recorded where it always was:
+ *  `<app>-<channel>`. `dry-run` is a rehearsal, recorded under the SAME channel's
+ *  environment with DRY_RUN_SUFFIX appended — `<app>-android-play-dry-run` — so
+ *  every reader that selects records by environment name (check-prod-provenance,
+ *  readSubmissions below, the versionCode reader, the served ledger) never opens
+ *  one, whether or not it has learned about modes. A flag inside the production
+ *  environment would be invisible only to the readers that check it.
+ *
+ *  record-deployment.mjs REQUIRES `--mode` on every channel a lane submits
+ *  through (`submittable: true`): a default would be a quiet production claim. */
+export const MODES = Object.freeze(['production', 'dry-run']);
+export const DRY_RUN_SUFFIX = '-dry-run';
+
+/** The environment a rehearsal of `environment`'s channel records into. Derived
+ *  from the channel's own `deploymentEnvironment` expansion, never a register row
+ *  of its own. */
+export const dryRunEnvironment = (environment) => `${environment}${DRY_RUN_SUFFIX}`;
+
+/** A dry run's description. Deliberately NOT an `nk1` record: it starts with
+ *  `dry-run`, so decodeDescription reports it UNPARSEABLE rather than as a review
+ *  state — a rehearsal submitted nothing and has no state a store could hold. */
+export function encodeDryRunDescription({ sha }) {
+  const short = String(sha ?? '').slice(0, 8);
+  if (!/^[0-9a-f]{8}$/.test(short)) {
+    throw new Error(`sha "${sha}" is not a hex commit sha — the record must name the commit that was rehearsed`);
+  }
+  return `dry-run sha=${short} — a rehearsal; nothing was submitted`;
+}
+
+/** ⏱ 2026-09-26 · PURE. Is this ledger entry a REHEARSAL? Either gate is enough:
+ *  its environment is a submittable channel's `-dry-run` environment, or its
+ *  payload says `mode: "dry-run"`. A payload posted as a string is parsed, the way
+ *  maxVersionCode reads it; an entry with no payload and a production environment
+ *  is production — every record before this date came from a confirmed submit job. */
+export function isDryRunRecord(entry, register) {
+  const env = String(entry?.environment ?? '');
+  if (env.endsWith(DRY_RUN_SUFFIX) && resolveEnvironment(register, env) === null) {
+    const base = resolveEnvironment(register, env.slice(0, -DRY_RUN_SUFFIX.length));
+    if (base !== null && base.channel?.submittable === true) return true;
+  }
+  let p = entry?.payload;
+  if (typeof p === 'string') {
+    try {
+      p = JSON.parse(p);
+    } catch {
+      return false;
+    }
+  }
+  return p !== null && typeof p === 'object' && !Array.isArray(p) && p.mode === 'dry-run';
+}
+
 /** GitHub truncates a Deployment Status description past this. A record that
  *  is silently cut is a record that no longer round-trips, and the truncation
  *  lands on the LAST field — the listing URL, i.e. the one thing only the store
@@ -263,6 +317,9 @@ export function readSubmissions(entries, register) {
   const unreadable = [];
   for (const e of entries ?? []) {
     const env = String(e?.environment ?? '');
+    // ⏱ 2026-09-26 — a rehearsal is not a submission, and it is not unreadable either:
+    // it says exactly what it is. Skipped, like a web deploy (below).
+    if (isDryRunRecord(e, register)) continue;
     const resolved = resolveEnvironment(register, env);
     if (resolved === null) {
       unreadable.push({ environment: env, reason: 'no register row has a deploymentEnvironment template that matches' });

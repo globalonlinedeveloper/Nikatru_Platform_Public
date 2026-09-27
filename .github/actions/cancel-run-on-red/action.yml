@@ -1,0 +1,33 @@
+name: Cancel the run on a red job
+description: A red job cancels the rest of its own workflow run (FF-1). One API call, made only on failure; it never fails the job.
+
+# why: FF-1 (owner 2026-09-27: "you always cancel it if it's going to fail … it
+# will waste of time for failing deployments"). A gate run with one red job is
+# already a red run: ci-gate needs every job and treats cancelled as red, and the
+# deploys need ci-gate. So every job still running after the first red one is
+# spending runner minutes on a verdict that cannot change. The calling step is
+# the LAST step of its job with `if: failure()`, so the job's own report (every
+# `!cancelled()` guard step, every failure upload) is written before this runs.
+#
+# ONE API call, and only on failure: never a polling watcher, because the
+# GITHUB_TOKEN rate limit is per repository and the guards already spend it.
+# The caller's job grants `actions: write` for this call, and only that job.
+#
+# `|| true`: a cancel that fails (the run is already cancelling because another
+# red job got there first, a transient API error) must not turn a finding into a
+# different, louder failure. The job is red already; this only saves minutes.
+#
+# NEVER on a job that deploys, publishes, releases, submits, migrates or uploads
+# — a half-finished deploy is worse than a red one. The workflows that carry this
+# step, and the jobs that must not, are graded by
+# tooling/ci/assert-failfast-coverage.mjs; docs/ci/README.md §2.1 says why.
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        echo "::notice title=FF-1 fail-fast::job '${GITHUB_JOB}' is red, so it cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}). The red verdict is this job's own; every other job reads cancelled."
+        gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true

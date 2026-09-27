@@ -40,9 +40,21 @@
 //    Fail-closed: a mode assembled from `${{ … }}` is NOT statically a rehearsal
 //    and is graded as publishing. That is the whole mechanism by which this
 //    guard stops being vacuous the instant a real submission becomes possible.
-// 3. A REHEARSAL job that writes a record anyway. A `--dry-run` contacts nobody;
-//    a ledger row for it is a fiction, and a fiction in this ledger is worse
-//    than a gap, because a gap is visible.
+// 3. ⏱ INVERTED 2026-09-26 (O-SUBMISSION-LANE-WITHOUT-RECORDER). It read: "A
+//    REHEARSAL job that writes a record anyway. A `--dry-run` contacts nobody; a
+//    ledger row for it is a fiction, and a fiction in this ledger is worse than a
+//    gap, because a gap is visible." The fiction was a rehearsal filed where a
+//    submission is, and that is still refused; what changed is that every run of
+//    a submit lane is now recorded, with its mode (record-deployment.mjs --mode):
+//    3a. a job whose only invocations are rehearsals records each one, after it,
+//        with a literal `--mode dry-run` — which writes `<env>-dry-run`, where no
+//        reader of the production ledger looks — and records nothing in
+//        `--mode production`;
+//    3b. a publishing invocation's record (rule 2) is `--mode production`, never
+//        `--mode dry-run`;
+//    3c. every record of a submittable channel in a submission workflow names its
+//        mode as a literal: never absent (the recorder exits 2) and never a
+//        `${{ … }}` or shell expression nobody can read before the run.
 // 4. A record step whose `--state` is not one a SUBMITTING RUN may assert.
 //    `SUBMIT_TIME_STATES` lives in deployment-record.mjs and is `['in_review']`:
 //    an upload finishing means *we submitted*, never *the store approved*. See
@@ -150,7 +162,7 @@ import { fileURLToPath } from 'node:url';
 // workflow is graded where it lives. The flat self-check below stays on
 // parseAllWorkflows: it is the deliberately different reader.
 import { parseAllWorkflows, parseResolvedWorkflows, lineAt, placeOf, refusalText, shellSegments, RECORD_CALL, expandMatrixEnvironment, storePublishSteps, laneRunHost, laneRefusalText } from './workflow-scan.mjs';
-import { resolveEnvironment, STATES, SUBMIT_TIME_STATES, STATE_MEANING } from './deployment-record.mjs';
+import { resolveEnvironment, STATES, SUBMIT_TIME_STATES, STATE_MEANING, MODES } from './deployment-record.mjs';
 import { appWorkerMatrix } from './worker-set.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
@@ -365,6 +377,10 @@ function recordCalls(job, appSlugs = APP_SLUGS) {
       RECORD_CALL.lastIndex = 0;
       const m = RECORD_CALL.exec(seg);
       if (!m) continue;
+      // ⏱ 2026-09-26 — rule 3's mode. `mode` is the literal, or null when the flag is
+      // absent (`modeRaw` null) or written as something no reader can resolve.
+      const modeRaw = (seg.match(/--mode\s+(\S+)/) ?? [])[1] ?? null;
+      const modeLiteral = modeRaw === null ? null : modeRaw.replace(/^(['"])(.*)\1$/, '$2');
       for (const environment of expandMatrixEnvironment(m[1], appSlugs, workerLegNames(m[1]))) {
         out.push({
           n: line.n,
@@ -372,6 +388,8 @@ function recordCalls(job, appSlugs = APP_SLUGS) {
           written: m[1],
           state: (seg.match(/--state\s+(\S+)/) ?? [])[1] ?? null,
           listingUrl: (seg.match(/--listing-url\s+(\S+)/) ?? [])[1] ?? null,
+          modeRaw,
+          mode: MODES.includes(modeLiteral) ? modeLiteral : null,
           ctx: stepContext(job, line.n),
         });
       }
@@ -638,6 +656,8 @@ for (const row of servedRows) {
 // that the declaration is now a FLOOR under the census rather than its ceiling.
 let rehearsals = 0;
 let publishing = 0;
+/** ⏱ 2026-09-26 — rule 3a's instances: rehearsals found recorded as dry runs. */
+let dryRunRecords = 0;
 const censusByRow = [];
 /** Which (workflow, job) pairs the census actually ranged over — LISTED, never
  *  counted. A matching count is not a matching set, and the defect above was
@@ -727,30 +747,48 @@ for (const row of submittableRows) {
     const calls = recordCalls(job);
     markRecordLinesSeen(wf, job, calls);
 
+    /** A later record of THIS row's channel in this job, in the given mode test. */
+    const laterRecord = (inv, modeOk) =>
+      calls.find((c) => {
+        const r = resolveEnvironment(register, c.environment);
+        return r !== null && r.channel?.id === row.id && c.n > inv.n && modeOk(c.mode);
+      });
     for (const inv of invocations) {
       if (!inv.canPublish) {
         rehearsals++;
-        const after = calls.filter((c) => c.n !== null);
-        if (after.length > 0 && !invocations.some((i) => i.canPublish)) {
+        // ── ⏱ 2026-09-26 · RULE 3a — A REHEARSAL IS RECORDED, AS A REHEARSAL ────
+        // A job that also publishes records its submission (rule 2); a job that
+        // only rehearses records each rehearsal with a literal `--mode dry-run`.
+        if (invocations.some((i) => i.canPublish)) continue;
+        const rehearsed = laterRecord(inv, (m) => m === 'dry-run');
+        if (!rehearsed) {
           problems.push(
-            `[10]D-9 · ${placeOf(wf, after[0].n)} — job "${job.name}" writes a deployment record, and its only ` +
-              `invocation(s) of ${scriptName} are rehearsals (\`--dry-run\`, which contacts nobody). A ledger row ` +
-              'for a submission that never happened is worse than a missing one: a gap is visible, a fiction is not.',
+            `[10]D-9 · rule 3a · ${placeOf(wf, inv.n)} — job "${job.name}" rehearses the "${row.id}" submission ` +
+              '(`--dry-run`) and no later step records the run with `--mode dry-run`. Every run of a submit lane is ' +
+              'recorded, and a rehearsal AS one: into the channel\'s `-dry-run` environment, which no reader of the ' +
+              'production ledger opens. Add, after it:\n' +
+              `      run: node tooling/ci/${RECORDER} ${String(rowEnvTemplate).replace('{app}', '<app>')} --mode dry-run`,
           );
+          continue;
         }
+        dryRunRecords++;
+        gradeSkippability(wf, job.name, rehearsed, `the dry-run record step for a "${row.id}" rehearsal`, `the "${row.id}" rehearsal`);
         continue;
       }
       publishing++;
-      const record = calls.find((c) => {
-        const r = resolveEnvironment(register, c.environment);
-        return r !== null && r.channel?.id === row.id && c.n > inv.n;
-      });
+      const record = laterRecord(inv, (m) => m !== 'dry-run');
       if (!record) {
+        const asDryRun = laterRecord(inv, (m) => m === 'dry-run');
         problems.push(
-          `[10]D-9 · ${placeOf(wf, inv.n)} — job "${job.name}" can perform a REAL submission on the "${row.id}" ` +
-            `channel (${inv.interpolated ? 'its mode is assembled from a `${{ … }}` expression, so it is not statically a rehearsal' : 'no `--dry-run` on this command'}) ` +
-            `and no later step records it. Add, as the last step of the job:\n` +
-            `      run: node tooling/ci/${RECORDER} ${String(rowEnvTemplate).replace('{app}', '<app>')} --state ${SUBMIT_TIME_STATES[0]} --listing-url <url>`,
+          asDryRun
+            ? `[10]D-9 · rule 3b · ${placeOf(wf, asDryRun.n)} — job "${job.name}" can perform a REAL submission on the ` +
+                `"${row.id}" channel (${placeOf(wf, inv.n)}) and records it only with \`--mode dry-run\`. A submission is ` +
+                'recorded `--mode production`: a dry-run record lands in `-dry-run`, where no production reader looks, so ' +
+                'the submission would be unrecorded.'
+            : `[10]D-9 · ${placeOf(wf, inv.n)} — job "${job.name}" can perform a REAL submission on the "${row.id}" ` +
+                `channel (${inv.interpolated ? 'its mode is assembled from a `${{ … }}` expression, so it is not statically a rehearsal' : 'no `--dry-run` on this command'}) ` +
+                `and no later step records it. Add, as the last step of the job:\n` +
+                `      run: node tooling/ci/${RECORDER} ${String(rowEnvTemplate).replace('{app}', '<app>')} --state ${SUBMIT_TIME_STATES[0]} --listing-url <url> --mode production`,
         );
         continue;
       }
@@ -769,6 +807,7 @@ for (const row of submittableRows) {
     const publishEvents = invocations
       .filter((i) => i.canPublish)
       .map((i) => pinnedEvent(stepContext(job, i.n)?.step.stepIf ?? null));
+    const rehearsalOnly = invocations.length > 0 && invocations.every((i) => !i.canPublish);
     for (const c of calls) {
       const key = placeOf(wf, c.n);
       if (gradedRecordLines.has(key)) continue;
@@ -785,6 +824,37 @@ for (const row of submittableRows) {
             `${[...new Set(publishEvents)].map((e) => `\`${e}\``).join(', ')}, so no submitting run reaches it.`,
         );
         continue;
+      }
+      // ── ⏱ 2026-09-26 · RULE 3c — the mode is a literal, on every record of a
+      // channel a lane submits through. Absent, the recorder exits 2 at run time;
+      // an expression is a mode nobody can read before the run.
+      if (resolveEnvironment(register, c.environment)?.channel?.submittable === true && c.mode === null) {
+        problems.push(
+          `[10]D-9 · rule 3c · ${placeOf(wf, c.n)} records "${c.environment}" ` +
+            `${c.modeRaw === null ? 'with no `--mode`' : `with \`--mode ${c.modeRaw}\`, which is not a literal ${MODES.join(' or ')}`}. ` +
+            'Every run of a submit lane states its mode as a literal: `--mode production` after a submission, ' +
+            '`--mode dry-run` after a rehearsal. record-deployment.mjs refuses the record with no mode (exit 2).',
+        );
+      }
+      // Rules 4 and 5 describe a SUBMISSION's record. A rehearsal's has neither a
+      // review state nor a listing, and the recorder refuses one that carries them.
+      if (c.mode === 'dry-run') {
+        if (c.state !== null || c.listingUrl !== null) {
+          problems.push(
+            `[10]D-9 · rule 3a · ${placeOf(wf, c.n)} records a rehearsal (\`--mode dry-run\`) with ` +
+              `${[c.state !== null ? '`--state`' : null, c.listingUrl !== null ? '`--listing-url`' : null].filter(Boolean).join(' and ')}. ` +
+              'A rehearsal submitted nothing; record-deployment.mjs refuses the record.',
+          );
+        }
+        continue;
+      }
+      if (rehearsalOnly && c.mode === 'production') {
+        problems.push(
+          `[10]D-9 · rule 3a · ${placeOf(wf, c.n)} — job "${job.name}" records "${c.environment}" with \`--mode production\`, ` +
+            `and its only invocation(s) of ${scriptName} are rehearsals (\`--dry-run\`, which contacts nobody). A ` +
+            'production row for a submission that never happened is worse than a missing one: a gap is visible, a ' +
+            'fiction is not. Record the rehearsal with `--mode dry-run`.',
+        );
       }
       if (c.state !== null && !SUBMIT_TIME_STATES.includes(c.state) && !/\$\{\{/.test(c.state)) {
         problems.push(
@@ -1043,6 +1113,10 @@ console.log(
 console.log(
   `⬜ SUBMISSION-RECORD LIMB: ${publishing} of ${rehearsals + publishing} submission invocation(s) can perform a REAL ` +
     `submission. Per channel — ${censusByRow.join(' · ')}.`,
+);
+console.log(
+  `⬜ RULE 3a (every rehearsal is recorded, as a dry run) graded ${rehearsals} rehearsal invocation(s); ` +
+    `${dryRunRecords} are followed in a rehearsal-only job by a \`--mode dry-run\` record of their own channel.`,
 );
 if (publishing === 0) {
   // 🔴 NOT AN `ok`. A branch with zero instances is a rule that CANNOT FAIL, and

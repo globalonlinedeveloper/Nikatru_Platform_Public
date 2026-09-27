@@ -128,12 +128,12 @@
     // app's own DELETE /v1/account (services/subscriptiontracker-api/src/routes/account.ts),
     // AFTER the service-role precondition and BEFORE the identity is deleted.
     //
-    // ⚠️ EVERY NEW APP WITH ITS OWN DATABASE MUST BE ADDED HERE. Binding an app's
-    // D1 to this Worker without an entry fails the build
-    // (tooling/ci/assert-erasure-reach.mjs) rather than silently orphaning that
-    // app's rows on every deletion. `https://` is required: the relay forwards a
-    // live session token.
+    // (HISTORY, until 2026-09-26: "EVERY NEW APP WITH ITS OWN DATABASE MUST BE ADDED HERE".) Binding an app's D1 to
+    // this Worker without an entry still fails the build (tooling/ci/assert-erasure-reach.mjs), and `https://` is
+    // required: the relay forwards a live session token. Rendered from the register since 2026-09-26:
+    // ── GENERATED BEGIN app-erasure-endpoints — tooling/scripts/render-platform-app-block.mjs from tooling/platform-register.json appWorkers; edit the register and re-render, never these lines ──
     "APP_ERASURE_ENDPOINTS": "subscriptiontracker=https://subscriptiontracker-api.nikatru.com"
+    // ── GENERATED END app-erasure-endpoints ──
   },
   // ── ⏱ 2026-09-15 · THE ERASURE RETRY, OVER A SERVICE BINDING ([ADR 081]) ──
   //
@@ -144,17 +144,17 @@
   // inside the account: no public route, no bearer token, no shared secret. Proven
   // on this account with two throwaway Workers on 2026-09-15 (both deleted).
   //
-  // ⚠️ ONE BINDING PER APP IN APP_ERASURE_ENDPOINTS, named `ERASURE_<APP_ID>` in
-  // upper case (src/lib/erasure-ledger.ts `erasureBindingName`), entrypoint
-  // `ErasureEntrypoint`. tooling/ci/assert-erasure-reach.mjs refuses an app in the
-  // list above with no matching binding: without it an unreachable app is a 502
-  // again, because an order nobody can retry is not recorded.
+  // ONE BINDING PER APP IN APP_ERASURE_ENDPOINTS, named `ERASURE_<APP_ID>` in upper case (src/lib/erasure-ledger.ts
+  // `erasureBindingName`), entrypoint `ErasureEntrypoint`; assert-erasure-reach.mjs refuses an app with none (an order
+  // nobody can retry is not recorded). Hand-added until 2026-09-26; rendered from the register since:
   "services": [
+    // ── GENERATED BEGIN app-erasure-bindings — tooling/scripts/render-platform-app-block.mjs from tooling/platform-register.json appWorkers; edit the register and re-render, never these lines ──
     {
       "binding": "ERASURE_SUBSCRIPTIONTRACKER",
       "service": "subscriptiontracker-api",
       "entrypoint": "ErasureEntrypoint"
     }
+    // ── GENERATED END app-erasure-bindings ──
   ],
   "d1_databases": [
     {
@@ -164,13 +164,13 @@
       "database_id": "9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351",
       "migrations_dir": "migrations"
     },
+    // ── GENERATED BEGIN app-databases — tooling/scripts/render-platform-app-block.mjs from tooling/platform-register.json appWorkers; edit the register and re-render, never these lines ──
     {
-      // The app's per-app DB — bound for the nightly renewals fan-out only.
-      // (subscriptiontracker-api owns subscriptiontracker_db's migrations; NO migrations_dir here.)
       "binding": "SUBSCRIPTIONTRACKER_DB",
       "database_name": "subscriptiontracker_db",
       "database_id": "0a36d6a0-c909-40aa-853e-970de3482321"
     }
+    // ── GENERATED END app-databases ──
   ],
   "kv_namespaces": [
     // Edge-cached per-app config overrides (key: `config:<app>`).
