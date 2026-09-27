@@ -1811,7 +1811,7 @@ describe('assert-platform-register — limb 7, edge Workers', () => {
     const cfg = EDGE_CFG.replace('"zone_name": "example.com" },\n    { "pattern": "gt', '"custom_domain": true },\n    { "pattern": "gt');
     const { code, out } = run(edgeTree({ files: { 'services/edge-shield/wrangler.jsonc': cfg } }));
     assert.equal(code, 1, out);
-    assert.match(out, /binds `auth-api\.example\.com\/auth\/v1\/\*` as a custom_domain\. \(\[6c\]\)/);
+    assert.match(out, /binds `auth-api\.example\.com\/auth\/v1\/\*` as a custom_domain\. \(\[7c\]\)/);
   });
 
   test('FAILS when the config routes a pattern zoneRoutes does not name, and the other way round  [7c]', () => {
@@ -1833,7 +1833,7 @@ describe('assert-platform-register — limb 7, edge Workers', () => {
     const ts = `import { Hono } from 'hono';\nconst app = new Hono();\napp.get('/v1/secret', (c) => c.text('x'));\n${EDGE_TS}`;
     const { code, out } = run(edgeTree({ files: { 'services/edge-shield/src/index.ts': ts } }));
     assert.equal(code, 1, out);
-    assert.match(out, /creates a Hono app\. \(\[6d\]\)/);
+    assert.match(out, /creates a Hono app\. \(\[7d\]\)/);
   });
 
   test('a Hono app named only in a COMMENT does not count', () => {
@@ -1847,7 +1847,7 @@ describe('assert-platform-register — limb 7, edge Workers', () => {
     const ts = EDGE_TS.replace('    ctx.passThroughOnException();\n', '    // ctx.passThroughOnException();\n');
     const { code, out } = run(edgeTree({ files: { 'services/edge-shield/src/index.ts': ts } }));
     assert.equal(code, 1, out);
-    assert.match(out, /does not call `passThroughOnException\(`\. \(\[6d\]\)/);
+    assert.match(out, /does not call `passThroughOnException\(`\. \(\[7d\]\)/);
   });
 
   test('FAILS when the entrypoint never forwards with fetch(request)  [7d]', () => {
@@ -1883,7 +1883,7 @@ describe('assert-platform-register — limb 7, edge Workers', () => {
     // Refused either way: limb 1 reaches the app entry first and finds nothing
     // mounted (exit 2); a tree where it did mount something meets [7b] and [7d].
     assert.notEqual(code, 0, out);
-    assert.match(out, /is ALSO a servingWorker\/appWorkers entry\. \(\[6b\]\)|found ZERO mounted routes/);
+    assert.match(out, /is ALSO a servingWorker\/appWorkers entry\. \(\[7b\]\)|found ZERO mounted routes/);
   });
 
   test('FAILS on an edge entry with no _why', () => {

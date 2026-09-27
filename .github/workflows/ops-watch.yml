@@ -588,7 +588,16 @@ jobs:
     # that whole job, and assert-ops-register refuses overlapping units [INV3].
     # timeout-minutes covers the probe's second look (the Box B tunnel's US-edge
     # stalls, row O-OPS-PROBE-US-EDGE-STALL).
+    #
+    # why: THE MONDAY SLOT, LIKE failure-ledger, and a dispatch on demand. ⏱ 2026-09-27
+    # (train W45), MEASURED: on every slot this job cost assert-ops-register's replay
+    # 42 GitHub requests against its ceiling of 30 (27 without it, 27 on Mondays) —
+    # a job with no success yet makes the unit scan read one job list per run back
+    # through the whole page, and the replay is the frozen worst case. The weekly
+    # cadence is the price; every deploy of the shield also runs the same probe as
+    # its smoke, and `workflow_dispatch` runs it at any time.
     name: The edge shield is still in front of Box B and Box C
+    if: github.event.schedule == '45 7 * * 1' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:
@@ -608,6 +617,28 @@ jobs:
             echo "::error title=The edge shield is UNKNOWN - a probe never answered, or the probes do not cover its routes::Nothing about whether services/edge-shield is in front of Box B and Box C is known from this run, and that is never a pass. The step log names the probe or the route."
           elif [ "$code" -eq 1 ]; then
             echo "::error title=Shield not in path - Box B or Box C is taking traffic with no edge limit::A probe answered without x-nikatru-shield: 1. Check the Worker routes on the nikatru.com zone (auth-api.nikatru.com/auth/v1/* and glitchtip.nikatru.com/api/*) and the edge-shield Worker's logs for exceptions; redeploy it from main. The step log names the probe."
+          fi
+          exit "$code"
+
+      # why: LEAD RULING SHIELD-R3 — the other half of the shield is the zone's
+      # per-IP credential rule, declared in tooling/edge-ratelimit-rule.json and
+      # written only by deploy-workers.yml's edge-shield job. A dashboard edit, or the
+      # rule deleted, leaves every box answering as before; comparing the live phase
+      # with the file is the only way to see it. A READ: no --apply here, ever.
+      # always(): the rule is compared even on a week the probe above is red.
+      - name: The zone's per-IP credential rule is the declared one
+        if: always()
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set +e
+          node tooling/ops/edge-ratelimit-rule.mjs
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            echo "::error title=The zone's per-IP credential rule is UNKNOWN::The nikatru.com http_ratelimit phase could not be read, so nothing is known about the per-IP limit on the credential endpoints from this run, and that is never a pass. The step log names the reason."
+          elif [ "$code" -eq 1 ]; then
+            echo "::error title=The zone's per-IP credential rule differs from tooling/edge-ratelimit-rule.json::The live rate-limiting rule on nikatru.com is not the declared one (the step log names each field). Redeploy edge-shield from main to restore it, or change the file in a PR if the live rule is right."
           fi
           exit "$code"
 

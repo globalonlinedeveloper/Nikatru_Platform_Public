@@ -480,33 +480,45 @@ describes the template step by step.
   `secrets: inherit` would reverse #947's named-secrets choice. `assert-channel-register.mjs` holds
   every name the expression can take to `ciSecretRegister`.
 
-## The `edge-shield` job (2026-09-26, LEAD RULING SHIELD-R1)
+## The `edge-shield` job (2026-09-27, LEAD RULINGS SHIELD-R1..R3)
 
 Row O-BOXES-UNSHIELDED-FROM-SPIKES. `services/edge-shield` is the Cloudflare edge in front of
 Box C's auth (`auth-api.nikatru.com/auth/v1/*`) and Box B's GlitchTip (`glitchtip.nikatru.com/api/*`):
-a pass-through that counts four request classes per client and globally and refuses one over its
-limit. It is bound by **zone routes**, never a custom domain — both hosts are Cloudflare Tunnel
-CNAMEs, and a Custom Domain would take the hostname's DNS record off its tunnel
+a pass-through that counts four request classes against ONE global cap each and refuses one over
+its cap (429, or 503 for the refresh grant — SHIELD-R2). It reads no client address and no
+`Origin` (SHIELD-R3). It is bound by **zone routes**, never a custom domain — both hosts are
+Cloudflare Tunnel CNAMEs, and a Custom Domain would take the hostname's DNS record off its tunnel
 (tooling/ci/assert-platform-register.mjs limb 7 holds that).
 
-What differs from the two app Workers, each on purpose:
+What differs from the app Workers and the platform, each on purpose:
 
 - **No migrations, no `--var`, no secret.** The Worker reads none; nothing rides the deploy.
 - **The smoke is `tooling/ops/check-edge-shield.mjs --settle`, not `post-deploy-smoke.mjs`.** The
   shield owns no body and must not grow a health route on either box's host; what it adds to every
   answer is `x-nikatru-shield: 1`, and the probe reads it on both routes. `--settle` re-asks an
   answer without the header for about two minutes (a route bound seconds ago may not have reached
-  every edge) and then judges it RED, never "could not look". ops-watch runs the same probe daily
-  as its own `edge-shield` job (duty.edge-shield-in-path).
+  every edge) and then judges it RED, never "could not look". ops-watch runs the same probe weekly
+  (the Monday slot, like failure-ledger, and on any dispatch) as its own `edge-shield` job
+  (duty.edge-shield-in-path): on every slot it cost assert-ops-register's replay 42 GitHub requests
+  against its ceiling of 30.
+- **Then the zone's per-IP credential rule is applied** (SHIELD-R3): `tooling/edge-ratelimit-rule.mjs
+  --apply` PUTs `tooling/edge-ratelimit-rule.json` as the nikatru.com `http_ratelimit` phase (all or
+  nothing) and re-reads it; the job is red unless the zone then equals the file. The same ops-watch
+  job compares the live rule with the file weekly (no `--apply`). The Free plan's rule reads the PATH
+  only, so `/auth/v1/token` is deliberately NOT in it: by path it would 429 the refresh grant too,
+  which signs the user out — the file says why and what closes it. The deploy token needs
+  Zone → Zone WAF → Edit on nikatru.com for the PUT; without it the step answers 2, red where it
+  happened, and the live rule is left as it was.
 - **`rollback.yml` does not fit it yet.** tooling/ops/rollback.mjs smokes every service unit at
   `/v1/health`, which the shield does not have. Until that smoke is per unit, the fast way to take
   the shield out of path is to delete its two routes on the nikatru.com zone (the origin answers
   directly again, exactly as before the shield); `wrangler rollback` re-promotes a version.
 
-**The seam with the W40 matrix (npea2).** npea2 turns the app Worker job into an `app-worker`
-matrix over `worker-set.mjs --for-deploy --json --app-workers`, which selects `appWorkers` rows of
-tooling/platform-register.json. The shield is an `edgeWorkers` row, so it stays a hand-written
-sibling job like `platform`, and needs no `needs:` on either. What the fit must carry: the
-`--for-deploy` cross-check ("the whole set is held to row, committed lockfile and `dsnSecret`")
-must accept an `edgeWorkers` row with no `dsnSecret`, or refuse it with a named reason — the
-shield reads no DSN.
+**The seam with the W40 matrix (npea2), closed.** The `app-worker` matrix is
+`worker-set.mjs --for-deploy --json --app-workers`. The shield is an `edgeWorkers` row of
+tooling/platform-register.json, so it stays a hand-written sibling job like `platform`, with no
+`needs:` either way. worker-set.mjs now reads `edgeWorkers` rows (so "every Worker directory has a
+row" holds for it), holds an edge row to its committed lockfile and to nothing else (no
+`dsnSecret`, smoke URL or migrations), keeps it in `--emit` (the Workers lane still typechecks,
+tests and dry-runs it), and selects the app matrix by `appWorkers` rows only — never "every row but
+the serving Worker", which would have put the shield into the app matrix.

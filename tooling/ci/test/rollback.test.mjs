@@ -364,7 +364,9 @@ describe('rollback.mjs — THE REAL TREE', () => {
     const services = REGISTER.serviceEnvironments;
     assert.deepEqual(
       services.map((s) => s.deploymentEnvironment),
-      ['subscriptiontracker-api', 'platform'],
+      // ⏱ 2026-09-27 (SHIELD-F6): the edge shield is a service unit too. It has no /v1/health, so
+      // rollback.yml's smoke does not fit it — tooling/channel-register.json's row names the bypass.
+      ['subscriptiontracker-api', 'platform', 'edge-shield'],
     );
     for (const s of services) {
       const target = resolveUnit(REGISTER, s.deploymentEnvironment);

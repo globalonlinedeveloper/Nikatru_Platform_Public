@@ -447,3 +447,72 @@ describe('assert-cors-allowlist', () => {
     assert.match(out, /row "urlless" has no `url`/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-27 · THE EDGE PASS-THROUGH POLICY (LEAD RULINGS SHIELD-R1..R3, rv-c21
+// SHIELD-F2, row O-BOXES-UNSHIELDED-FROM-SPIKES). An `edgeWorkers` entry of
+// tooling/platform-register.json is held to "answers its own refusals `*`, never
+// credentials, no allowlist of its own" — and each case below is a way that could
+// stop being true while the guard stayed green.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-cors-allowlist — edge pass-through Workers (SHIELD-F2)', () => {
+  const GOOD = `// A refusal a browser can read.
+export function refusal(): Response {
+  const headers = new Headers({ 'Retry-After': '60', 'Access-Control-Allow-Origin': '*' });
+  headers.set('Access-Control-Allow-Origin', '*');
+  return new Response('{}', { status: 429, headers });
+}
+`;
+  /** The live tree plus services/edge-x: a config, a source file and (unless `row: false`) its edgeWorkers entry. */
+  function edgeTree({ src = GOOD, allowed = null, row = true } = {}) {
+    const root = tree();
+    const dir = join(root, 'services', 'edge-x');
+    mkdirSync(join(dir, 'src'), { recursive: true });
+    const vars = allowed === null ? '' : `  "vars": { "ALLOWED_ORIGINS": ${JSON.stringify(allowed)} },\n`;
+    writeFileSync(join(dir, 'wrangler.jsonc'), `{\n  // an edge pass-through\n  "name": "edge-x",\n  "main": "src/index.ts",\n${vars}}\n`);
+    writeFileSync(join(dir, 'src', 'index.ts'), src);
+    mkdirSync(join(root, 'tooling'), { recursive: true });
+    const edgeWorkers = row ? [{ name: 'edge-x', entrypoint: 'services/edge-x/src/index.ts', config: 'services/edge-x/wrangler.jsonc' }] : [];
+    writeFileSync(join(root, 'tooling', 'platform-register.json'), JSON.stringify({ edgeWorkers }, null, 2));
+    return root;
+  }
+
+  test('passes an edge Worker that answers `*`, sets no credentials and declares no allowlist — and SAYS so', () => {
+    const { code, out } = run(edgeTree());
+    assert.equal(code, 0, out);
+    assert.match(out, /services\/edge-x\/wrangler\.jsonc — edge pass-through/);
+    assert.match(out, /1 edge pass-through Worker\(s\) answer `\*` and never credentials/);
+  });
+
+  test('🔴 FAILS an edge Worker that ECHOES the request’s Origin', () => {
+    const src = GOOD.replace("headers.set('Access-Control-Allow-Origin', '*');", "headers.set('Access-Control-Allow-Origin', request.headers.get('Origin') ?? '');");
+    const { code, out } = run(edgeTree({ src }));
+    assert.equal(code, 1, out);
+    assert.match(out, /services\/edge-x\/index\.ts — sets Access-Control-Allow-Origin to something other than the literal '\*' \(1 of 2\)/);
+  });
+
+  test('🔴 FAILS an edge Worker that sets Access-Control-Allow-Credentials', () => {
+    const src = GOOD.replace("return new Response", "headers.set('Access-Control-Allow-Credentials', 'true');\n  return new Response");
+    const { code, out } = run(edgeTree({ src }));
+    assert.equal(code, 1, out);
+    assert.match(out, /an EDGE pass-through sets Access-Control-Allow-Credentials/);
+  });
+
+  test('FAILS an edge Worker that declares an allowlist nothing in it enforces', () => {
+    const { code, out } = run(edgeTree({ allowed: APEX }));
+    assert.equal(code, 1, out);
+    assert.match(out, /an EDGE pass-through declares vars\.ALLOWED_ORIGINS/);
+  });
+
+  test('reads the source COMMENT-STRIPPED: a comment naming both headers is not a finding', () => {
+    const src = `// Never Access-Control-Allow-Credentials; never an echoed Access-Control-Allow-Origin.\n${GOOD}`;
+    const { code, out } = run(edgeTree({ src }));
+    assert.equal(code, 0, out);
+  });
+
+  test('the SAME Worker with no edgeWorkers row is untaught scope, and FAILS as one', () => {
+    const { code, out } = run(edgeTree({ row: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never been taught about services\/edge-x/);
+  });
+});

@@ -256,8 +256,15 @@ let checked = 0;
 let originsSeen = 0; // catalogue-DERIVED requirements
 let extrasSeen = 0; // hand-declared EXTRAS, counted separately and printed
 let perAppWorkers = 0;
+// ⏱ 2026-09-27 (LEAD RULING SHIELD-R3, rv-c21 SHIELD-F2): the EDGE pass-through policy — edgePassThrough() below.
+const EDGE = edgeServices(ROOT);
+let edgeChecked = 0;
 
 for (const { service, path, where } of configs) {
+  if (EDGE.has(service)) {
+    edgeChecked += edgePassThrough(service, path, where, problems);
+    continue;
+  }
   const declared = SERVICE_POLICY[service];
   // The `<slug>-api` derivation: app `subscriptiontracker` owns `services/subscriptiontracker-api`.
   const owner = apps.find((a) => `${a.slug}-api` === service);
@@ -440,7 +447,8 @@ if (problems.length > 0) {
 console.log(
   `assert-cors-allowlist: ${checked} Worker config(s) checked against ${catalogueOrigins.length} ` +
     `catalogue origin(s) from ${apps.length} app(s); ${originsSeen} derived requirement(s) ` +
-    `+ ${extrasSeen} declared EXTRAS all present, no unjustified origins.`,
+    `+ ${extrasSeen} declared EXTRAS all present, no unjustified origins` +
+    (edgeChecked > 0 ? `; ${edgeChecked} edge pass-through Worker(s) answer \`*\` and never credentials.` : '.'),
 );
 
 /** The one COVERAGE LOST stop: each could-not-look branch above prints its own reason and ends
@@ -449,4 +457,107 @@ console.log(
  *  citation above keeps pointing at the line it names. */
 function coverageLost() {
   process.exit(2);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-27 · THE EDGE PASS-THROUGH POLICY (LEAD RULINGS SHIELD-R1..R3, rv-c21
+// SHIELD-F2, row O-BOXES-UNSHIELDED-FROM-SPIKES). Declared LAST (hoisted), like
+// coverageLost above, so no `assert-cors-allowlist.mjs:NNN` citation moves; the
+// import below is hoisted too, for the same reason.
+//
+// services/edge-shield is not an allowlisting Worker and must not be taught as one.
+// It sits on zone routes in front of Box C's GoTrue and Box B's GlitchTip and passes
+// every answer through untouched, so the ORIGIN's own CORS governs every answer a
+// browser reads — except the shield's own refusal (429, or 503 for the refresh
+// grant), which it builds itself. `exemptReason` would be FALSE here (the auth and
+// intake clients ARE browsers), so it is held TRUE to a narrower policy instead:
+//   · it is an `edgeWorkers` entry of tooling/platform-register.json (limb 7 of
+//     assert-platform-register.mjs holds the entry to the config);
+//   · its config declares no `vars.ALLOWED_ORIGINS` — a pass-through reads none, so
+//     one would be an allowlist nothing enforces;
+//   · its source sets `Access-Control-Allow-Origin` to the literal `'*'` and to
+//     nothing else — never an echoed `Origin` (assert-no-origin-authz.mjs refuses
+//     the read itself);
+//   · it never sets `Access-Control-Allow-Credentials` — `*` with credentials is
+//     the one CORS answer a browser refuses, and a refusal carries no secret.
+// Source is read COMMENT-STRIPPED: the refusal's own doc comment explains the
+// policy and names both headers.
+// ─────────────────────────────────────────────────────────────────────────────
+import { stripSourceComments } from './text-reductions.mjs';
+
+/** service directory -> edgeWorkers entry, from tooling/platform-register.json. An
+ *  unreadable register is no edge Worker at all, so every Worker falls back to the
+ *  derivation above and an untaught one still fails there. */
+function edgeServices(root) {
+  let reg;
+  try {
+    reg = JSON.parse(readFileSync(join(root, 'tooling', 'platform-register.json'), 'utf8'));
+  } catch {
+    return new Map();
+  }
+  const out = new Map();
+  for (const e of Array.isArray(reg?.edgeWorkers) ? reg.edgeWorkers : []) {
+    const m = String(e?.config ?? '').replace(/\\/g, '/').match(/^services\/([^/]+)\/wrangler\.jsonc?$/);
+    if (m) out.set(m[1], e);
+  }
+  return out;
+}
+
+/** 1 when services/<service> holds the pass-through policy, else 0 with the findings pushed. */
+function edgePassThrough(service, path, where, problems) {
+  const before = problems.length;
+  const srcDir = join(SERVICES, service, 'src');
+  const files = [];
+  const walk = (abs) => {
+    for (const e of listDir(abs, { withFileTypes: true })) {
+      if (e.isDirectory()) walk(join(abs, e.name));
+      else if (/\.(ts|js|mjs)$/.test(e.name)) files.push(join(abs, e.name));
+    }
+  };
+  if (existsSync(srcDir)) walk(srcDir);
+  if (files.length === 0) {
+    problems.push(
+      `✗ COVERAGE LOST — ${where} is an edge Worker (tooling/platform-register.json edgeWorkers), and ` +
+        `services/${service}/src holds no source, so the CORS headers it sets could not be read.`,
+    );
+    return 0;
+  }
+  let cfg = null;
+  try {
+    cfg = parseJsonc(path);
+  } catch (e) {
+    problems.push(`✗ ${where} is not parseable JSONC: ${e.message}`);
+  }
+  if (cfg?.vars?.ALLOWED_ORIGINS !== undefined) {
+    problems.push(
+      `✗ ${where} — an EDGE pass-through declares vars.ALLOWED_ORIGINS.\n` +
+        '    It passes every answer through with the origin\'s own CORS and reads no allowlist, so this\n' +
+        '    one is a list nothing enforces. Remove it, or make the Worker an allowlisting one.',
+    );
+  }
+  for (const abs of files) {
+    const rel = `services/${service}/${abs.slice(srcDir.length + 1).split(/[\\/]/).join('/')}`;
+    const code = stripSourceComments(readFileSync(abs, 'utf8'), '.ts');
+    if (/access-control-allow-credentials/i.test(code)) {
+      problems.push(
+        `✗ ${rel} — an EDGE pass-through sets Access-Control-Allow-Credentials.\n` +
+          '    Its own answers are refusals that carry no secret, and every other answer is the origin\'s,\n' +
+          '    untouched. Credentials beside `*` is the one CORS answer a browser refuses.',
+      );
+    }
+    const all = [...code.matchAll(/access-control-allow-origin/gi)].length;
+    const star = [...code.matchAll(/['"`]access-control-allow-origin['"`]\s*[:,]\s*(['"`])\*\1/gi)].length;
+    if (all !== star) {
+      problems.push(
+        `✗ ${rel} — sets Access-Control-Allow-Origin to something other than the literal '*' (${all - star} of ${all}).\n` +
+          '    An EDGE pass-through answers its own refusals `*` and never echoes the request\'s Origin:\n' +
+          '    the origin behind it owns every other CORS decision (rv-c21 SHIELD-F2).',
+      );
+    }
+  }
+  if (problems.length === before) {
+    console.log(`  – ${where} — edge pass-through (tooling/platform-register.json edgeWorkers): answers its own refusals \`*\`, never credentials, no allowlist of its own; the origin's CORS governs everything it passes through`);
+    return 1;
+  }
+  return 0;
 }

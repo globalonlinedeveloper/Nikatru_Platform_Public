@@ -33,7 +33,7 @@
 // after the bounded retry. No credential is needed or read.
 //
 // Usage:  node tooling/ops/check-edge-shield.mjs [--settle] [--root <repoRoot>]
-// Run by .github/workflows/ops-watch.yml (live job, daily), and with --settle
+// Run by .github/workflows/ops-watch.yml (its own edge-shield job, weekly on the Monday slot), and with --settle
 // as the post-deploy smoke of deploy-workers.yml's edge-shield job, where an
 // answer without the header is asked again for about two minutes (a route bound
 // seconds ago may not have reached every edge) before it is judged RED.
