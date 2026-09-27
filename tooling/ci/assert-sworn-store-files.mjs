@@ -217,6 +217,16 @@
 //     declaration cannot be submitted (exit 1). No `--app` resolves the single
 //     workspace app, and two or more is exit 2, as is a bare `--for-submission`
 //     or a channel with no sworn file.
+//  --for-submission=<channel> --app <id> --real-submission: the same, inside a REAL
+//     submission (the lane's submit job). ⏱ 2026-09-26, O-APP1-CONSOLE-DECLARATIONS-UNSUBMITTED:
+//     the app's store record (apps/<id>/app.yaml stores.<channel>, read through
+//     tooling/store/store-record.mjs) carries `declaredOn`, the date the owner
+//     swore these declarations in the store's console. It is a SECOND fact and
+//     never a preview switch: preview stays each file's own "sworn" key, above.
+//     `declaredOn: null` refuses a REAL submission (exit 1, telling the owner to
+//     submit the console form from the repo files first and then record the
+//     date); a dry run (no --real-submission) grades the bytes, prints the same sentence
+//     and proceeds, so no dry-run lane turns red on it.
 //
 // ── REQUIRED_COVERAGE ───────────────────────────────────────────────────────
 // The sworn set is DERIVED from tooling/channel-register.json, never listed
@@ -228,14 +238,16 @@
 // guard that owns them.
 //
 // Usage:  node tooling/ci/assert-sworn-store-files.mjs [repoRoot]
-//         node tooling/ci/assert-sworn-store-files.mjs --for-submission=<channel> [--app <id>] [repoRoot]
+//         node tooling/ci/assert-sworn-store-files.mjs --for-submission=<channel> [--app <id>] [--real-submission] [repoRoot]
 // Exit 0 = every shipping declaration is still answered; 1 = one has regressed
-// (or, under --for-submission, is a preview); 2 = COVERAGE LOST.
+// (or, under --for-submission, is a preview; or, with --real-submission, is undeclared);
+// 2 = COVERAGE LOST.
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
+import { storeRecordOf, declaredOnRefusal } from '../store/store-record.mjs';
 
 const ARGV = process.argv.slice(2);
 /** `--app` takes its value as the next word; that word is not the repo root. */
@@ -283,6 +295,7 @@ const readJson = (rel) => {
 // never fall through to an ordinary green run inside a submit lane.
 let forSubmission = null;
 let appArg = null;
+let submitReal = false;
 for (let i = 0; i < ARGV.length; i++) {
   const a = ARGV[i];
   if (!a.startsWith('--')) continue;
@@ -300,9 +313,14 @@ for (let i = 0; i < ARGV.length; i++) {
       coverageLost(['--app names no app.', 'Pass the workspace app the lane submits: --app <id>.']);
     }
     if (a === '--app') i++;
+  } else if (a === '--real-submission') {
+    submitReal = true;
   } else {
-    coverageLost([`${a} is not a flag this guard knows.`, 'Known: --for-submission=<channel>, --app <id>.']);
+    coverageLost([`${a} is not a flag this guard knows.`, 'Known: --for-submission=<channel>, --app <id>, --real-submission.']);
   }
+}
+if (submitReal && forSubmission === null) {
+  coverageLost(['--real-submission is only meaningful with --for-submission=<channel>.', 'It marks the precondition of a REAL submission; the ordinary run submits nothing.']);
 }
 if (appArg !== null && forSubmission === null) {
   coverageLost(['--app is only meaningful with --for-submission=<channel>.', 'The ordinary run grades every workspace app.']);
@@ -1633,7 +1651,32 @@ if (forSubmission !== null) {
       );
     }
   }
-  submissionLine = `; --for-submission=${forSubmission} --app ${appId}: ${wanted.length} declaration(s) read, each must say "sworn": true`;
+  // ⏱ 2026-09-26 — O-APP1-CONSOLE-DECLARATIONS-UNSUBMITTED. The date the owner swore these
+  // declarations in the console gates a REAL submission only. It is read from
+  // the app's store record, never from the files: a file's "sworn" key (above)
+  // says whether its CONTENT is final, and the two are never merged.
+  let record;
+  try {
+    record = storeRecordOf(ROOT, appId, forSubmission);
+  } catch (e) {
+    coverageLost([
+      `--for-submission=${forSubmission} --app ${appId}: ${e.message}.`,
+      'The declaration date lives in that record; a submission whose record cannot be read cannot be cleared.',
+    ]);
+  }
+  const refusal = declaredOnRefusal(record, {
+    appId,
+    channelId: forSubmission,
+    files: wanted.map(({ file }) => `apps/${appId}/store/${forSubmission}/${file}`),
+  });
+  if (refusal !== null && submitReal) {
+    fail(`🔴 UNDECLARED — ${refusal} A real submission (--real-submission) is refused until then.`);
+  } else if (refusal !== null) {
+    notes.push(`⬜  NOT YET DECLARED (a dry run: the bytes are graded, the submission is not refused here) — ${refusal}`);
+  }
+  submissionLine =
+    `; --for-submission=${forSubmission} --app ${appId}${submitReal ? ' --real-submission' : ''}: ${wanted.length} declaration(s) read, each must say "sworn": true; ` +
+    `declaredOn ${record.declaredOn ?? 'null'}${submitReal ? ' (a real submission: it must be a date)' : ' (a dry run: a real submission also needs a date)'}`;
 }
 
 // ── REQUIRED_COVERAGE, final direction: did every spec actually get used? ───

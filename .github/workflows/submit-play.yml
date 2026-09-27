@@ -311,8 +311,10 @@ jobs:
         run: node tooling/ci/assert-name-clearance.mjs --for-submission=android-play
       # why: O-BRICK-SWORN-FILES-HAVE-NO-PREVIEW-STATE. A declaration still at "sworn": false is the stamped
       # template: submitting it swears to answers nobody gave. Limb 3 of assert-publish-steps-guarded.mjs.
+      # --real-submission (O-APP1-CONSOLE-DECLARATIONS-UNSUBMITTED): this job is the REAL submission, so the app's stores.android-play
+      # declaredOn must be a date; the dry-run job's same step omits it and only prints the gap.
       - name: The app's Play declarations are sworn, not preview (--for-submission)
-        run: node tooling/ci/assert-sworn-store-files.mjs --for-submission=android-play --app "$APP"
+        run: node tooling/ci/assert-sworn-store-files.mjs --for-submission=android-play --app "$APP" --real-submission
       # why: docs/ci/submit-play.md — before step "The versionCode lies above what Play consumed".
       - name: The versionCode lies above what Play consumed
         env:

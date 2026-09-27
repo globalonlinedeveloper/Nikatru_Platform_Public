@@ -1759,7 +1759,9 @@ describe('msix_config.identity_name is rendered from the app\'s own stores.windo
     const root = tree();
     try {
       const yaml = get(root, APP_YAML);
-      const next = yaml.replace(/^stores:\n {2}windows-store:\n {4}identityName: .*\n {4}packageFamilyName: .*\n/m, '');
+      // ⏱ 2026-09-26 (9a): the block carries every store channel's record now, so
+      // the whole block goes: every line indented under `stores:`.
+      const next = yaml.replace(/^stores:\n(?: {2,}.*\n)+/m, '');
       assert.notEqual(next, yaml, 'the fixture declaration must carry a stores block');
       put(root, APP_YAML, next);
       const before = get(root, PUBSPEC);

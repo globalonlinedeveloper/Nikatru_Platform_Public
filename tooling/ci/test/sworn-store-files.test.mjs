@@ -130,6 +130,9 @@ function realTree() {
   };
   put('pubspec.yaml');
   put(REGISTER);
+  // ⏱ 2026-09-26 (9a): --for-submission reads the app's store record for
+  // `declaredOn` (O-APP1-CONSOLE-DECLARATIONS-UNSUBMITTED), so the declaration rides along.
+  put('apps/subscriptiontracker/app.yaml');
   put(SUBLY_STORE);
   put(BRICK_STORE);
   put(SUBLY_IOS);
@@ -1290,6 +1293,14 @@ function stampProbe(root) {
     }
   }
   editText(root, 'pubspec.yaml', (s) => s.replace(/^workspace:\n/m, 'workspace:\n  - apps/probe\n'));
+  // The records the brick stamps (post_gen's _writeStoreRecords): nothing issued, nothing declared.
+  writeFileSync(
+    join(root, PROBE, 'app.yaml'),
+    'id: probe\nstores:\n' +
+      ['windows-store', 'ios-appstore', 'macos-appstore', 'android-play', 'linux-snap']
+        .map((c) => `  ${c}:\n${c === 'windows-store' ? '    identityName: PARTNER-CENTER-PENDING\n    packageFamilyName: PARTNER-CENTER-PENDING\n' : ''}    state: pending\n    declaredOn: null\n`)
+        .join(''),
+  );
 }
 
 function withTreeArgs(mutate, args, fn) {
@@ -1539,6 +1550,80 @@ describe('⏱ 2026-09-26 — --for-submission: a preview declaration cannot be s
       (r) => {
         assert.equal(r.status, 2, r.stdout);
         assert.match(r.stderr, /--for-submision=android-play is not a flag this guard knows/);
+      },
+    );
+  });
+});
+
+// ── ⏱ 2026-09-26 · O-APP1-CONSOLE-DECLARATIONS-UNSUBMITTED: declaredOn gates a REAL submission ──
+// Two facts, never merged: a file's "sworn" key says whether its CONTENT is
+// final (graded above, at full strength for app #1 whatever its record says);
+// apps/<id>/app.yaml stores.<channel>.declaredOn is the date the owner swore it
+// in the console. It refuses a real submission (--real-submission) and nothing else.
+describe('⏱ 2026-09-26 — --for-submission --real-submission: declaredOn gates a REAL submission only', () => {
+  const YAML = 'apps/subscriptiontracker/app.yaml';
+  const dated = (root) =>
+    editText(root, YAML, (s) => {
+      const a = '  android-play:\n    state: pending\n    declaredOn: null\n';
+      assert.ok(s.includes(a), 'app #1 declares android-play pending and undeclared');
+      return s.replace(a, '  android-play:\n    state: pending\n    declaredOn: 2026-09-26\n');
+    });
+
+  test('🔴 a REAL submission of a channel whose declaredOn is null is refused (exit 1), naming the files and the field', () => {
+    withTreeArgs(
+      () => {},
+      ['--for-submission=android-play', '--app', 'subscriptiontracker', '--real-submission'],
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /UNDECLARED — apps\/subscriptiontracker\/app\.yaml stores\.android-play\.declaredOn is null/);
+        assert.match(r.stderr, /Submit that console form from apps\/subscriptiontracker\/store\/android-play\/[a-z-]+\.json/);
+        assert.match(r.stderr, /A real submission \(--real-submission\) is refused until then/);
+      },
+    );
+  });
+
+  test('a DRY RUN of the same channel proceeds (exit 0): the bytes are graded and the gap is printed', () => {
+    withTreeArgs(
+      () => {},
+      ['--for-submission=android-play', '--app', 'subscriptiontracker'],
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /NOT YET DECLARED \(a dry run: the bytes are graded, the submission is not refused here\)/);
+        assert.match(r.stdout, /declaredOn null \(a dry run: a real submission also needs a date\)/);
+      },
+    );
+  });
+
+  test('a REAL submission with a declaredOn date passes the gate (exit 0)', () => {
+    withTreeArgs(
+      (root) => dated(root),
+      ['--for-submission=android-play', '--app', 'subscriptiontracker', '--real-submission'],
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.doesNotMatch(`${r.stdout}${r.stderr}`, /UNDECLARED|NOT YET DECLARED/);
+        assert.match(r.stdout, /--real-submission: 3 declaration\(s\) read, each must say "sworn": true; declaredOn 2026-09-26/);
+      },
+    );
+  });
+
+  test('declaredOn null does not make app #1 a preview: the plain run grades it sworn', () => {
+    withTreeArgs(
+      () => {},
+      [],
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /\(5 sworn, 0 preview\)/);
+      },
+    );
+  });
+
+  test('--real-submission without --for-submission is exit 2', () => {
+    withTreeArgs(
+      () => {},
+      ['--real-submission'],
+      (r) => {
+        assert.equal(r.status, 2, r.stdout);
+        assert.match(r.stderr, /--real-submission is only meaningful with --for-submission=<channel>/);
       },
     );
   });

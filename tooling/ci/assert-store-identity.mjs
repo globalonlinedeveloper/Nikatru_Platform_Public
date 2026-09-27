@@ -89,6 +89,8 @@ import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveIdentity, windowsIdentityOf, WINDOWS_STORE } from './read-identity.mjs';
 import { appIdProblems } from '../../contracts/app-id/app-id.js';
+import { storeRecordOf, missingIdsOf, STORE_CHANNELS } from '../store/store-record.mjs';
+import { armingOf } from './channel-arming.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/channel-register.json';
@@ -482,6 +484,116 @@ if (snapRows.length > 0 && snapEligible > 0 && snapChecked === 0 && problems.len
   coverageLost([`${snapEligible} app × snap-channel pair(s) were eligible and ZERO snap names were compared.`]);
 }
 
+// ── ⏱ 2026-09-26 · ONE STORE RECORD PER (app, channel) ──────────────────────
+// O-STORE-RECORDS-ARE-ONE-PER-CHANNEL limb (4). Every id a store console issues
+// is per app, in apps/<id>/app.yaml `stores.<channel>`, read through
+// tooling/store/store-record.mjs storeRecordOf. The comparisons above ask "does
+// each platform package the identity the app declares"; nothing asked whether
+// two apps declare the SAME store record, and two apps sharing one App Store
+// Connect record, one Partner Center product or one MSIX identity PASSED. So,
+// per (app, channel):
+//   · a line with the record's state and declaredOn, printed on every run;
+//   · two apps sharing a recordId or a productId FAIL, naming both apps. (Two
+//     apps sharing a real windows identityName are assert-store-metadata.mjs's
+//     finding since B4a-2, with the channel's sentinel excepted there; the
+//     Package Family Name is that name plus the ONE account's publisher id.)
+//   · ios-appstore.recordId ≠ macos-appstore.recordId within one app FAILS: one
+//     App Store Connect record covers both (the register's macos-appstore row);
+//   · an `issued` record with a missing id FAILS;
+//   · a `pending` record on an ARMED pair FAILS when the row is `served: true`,
+//     and is an OWNER-GATED print while the row is armed and unserved — the rule
+//     this file already applies to a placeholder identity (`row.served === true`
+//     above), and [pipeline C-6]: an owner-gated on-switch is printed, not failed;
+//   · zero (app, channel) pairs read is COVERAGE LOST.
+// `declaredOn` is printed and never graded here: it gates a REAL submission only
+// (O-APP1-CONSOLE-DECLARATIONS-UNSUBMITTED), in assert-sworn-store-files.mjs --for-submission --real-submission.
+const SHARED_ID_FIELDS = Object.freeze(['recordId', 'productId']);
+const rowById = new Map(rows.filter((r) => typeof r?.id === 'string').map((r) => [r.id, r]));
+const recordLines = [];
+const holders = new Map(); // `${field}=${value}` → [{ slug, channelId }]
+let recordPairs = 0;
+const problemsBeforeRecords = problems.length;
+for (const app of apps) {
+  const slug = typeof app?.slug === 'string' ? app.slug : null;
+  if (!slug || appIdProblems(slug).length > 0) continue; // named above
+  if (!existsSync(join(ROOT, 'apps', slug))) continue; // printed above, not judged
+  const byChannel = {};
+  for (const channelId of STORE_CHANNELS) {
+    let rec;
+    try {
+      rec = storeRecordOf(ROOT, slug, channelId);
+    } catch (e) {
+      problems.push(`app "${slug}" × ${channelId}: ${e.message}.`);
+      continue;
+    }
+    recordPairs++;
+    byChannel[channelId] = rec;
+    // A channel the register does not declare arms nothing; the schema, not the
+    // register, is what closes the set of record keys.
+    const row = rowById.get(channelId) ?? null;
+    const sentinel = row?.packageIdentity?.notYetConfiguredSentinel ?? null;
+    const missingIds = missingIdsOf(channelId, rec, { sentinel });
+    if (missingIds.length > 0) {
+      problems.push(
+        `${rec.rel} stores.${channelId} says state: issued and lacks ${missingIds.join(', ')}. An issued record carries every id ` +
+          'its console issued; one that says issued without them is the wrong answer to "may this app ship here".',
+      );
+    }
+    const arming = row ? armingOf(row) : { armed: false, reasons: [] };
+    if (rec.state === 'pending' && arming.armed) {
+      if (row.served === true) {
+        problems.push(
+          `${rec.rel} stores.${channelId} is pending and channel "${channelId}" says served: true. A served channel is handing ` +
+            `app "${slug}" to users under a record nobody has read from the console; read the issued ids into the record.`,
+        );
+      } else {
+        prints.push(
+          `OWNER-GATED · app "${slug}" × ${channelId}: the channel is armed (${arming.reasons.join('; ')}) and the record is ` +
+            'pending. The owner reads the issued ids in the signed-in console and they are written into ' +
+            `${rec.rel} stores.${channelId}; until then nothing it lacks is invented.`,
+        );
+      }
+    }
+    for (const f of SHARED_ID_FIELDS) {
+      const v = rec[f];
+      if (typeof v !== 'string' || v.trim() === '' || (sentinel !== null && v.includes(sentinel))) continue;
+      const key = `${f}=${v}`;
+      holders.set(key, [...(holders.get(key) ?? []), { slug, channelId }]);
+    }
+    const ids = Object.entries(rec)
+      .filter(([k]) => !['rel', 'state', 'declaredOn'].includes(k))
+      .map(([k, v]) => `${k} ${Array.isArray(v) ? `[${v.length}]` : v}`);
+    recordLines.push(`${slug} × ${channelId}: ${rec.state}${ids.length ? ` (${ids.join(', ')})` : ''}; declaredOn ${rec.declaredOn ?? 'null'}`);
+  }
+  const ios = byChannel['ios-appstore'];
+  const mac = byChannel['macos-appstore'];
+  if (ios && mac && (ios.recordId !== undefined || mac.recordId !== undefined) && ios.recordId !== mac.recordId) {
+    problems.push(
+      `${ios.rel} stores.ios-appstore.recordId is ${JSON.stringify(ios.recordId ?? null)} and stores.macos-appstore.recordId is ` +
+        `${JSON.stringify(mac.recordId ?? null)}. ONE App Store Connect record covers iOS and macOS (${REGISTER_REL} ` +
+        '"macos-appstore"), so the two are one Apple ID written twice, and two answers means one is wrong.',
+    );
+  }
+}
+for (const [key, list] of holders) {
+  const slugs = [...new Set(list.map((h) => h.slug))];
+  if (slugs.length < 2) continue;
+  const [field, ...rest] = key.split('=');
+  problems.push(
+    `apps ${slugs.map((s) => `"${s}"`).join(' and ')} declare the same ${field} ${JSON.stringify(rest.join('='))} ` +
+      `(${list.map((h) => `${h.slug} × ${h.channelId}`).join(', ')}). A store record belongs to ONE app; two apps sharing it ` +
+      'submit into one listing, and the second submission replaces the first.',
+  );
+}
+// Only when nothing more specific was said: an app whose records are all missing
+// is already a named problem per channel, as the snap limb above does.
+if (recordPairs === 0 && problems.length === problemsBeforeRecords) {
+  coverageLost([
+    `${apps.length} app(s) × ${STORE_CHANNELS.length} store channel(s) produced ZERO store records.`,
+    'Every store channel carries one record per app; a run that read none says nothing about any of them.',
+  ]);
+}
+
 if (problems.length) {
   console.error(`✗ store identity — ${problems.length} problem(s):`);
   for (const p of problems) console.error(`    ${p}`);
@@ -505,3 +617,8 @@ console.log(
   `ok  snap name — ${snapChecked} snap name(s) equal ${SNAP_DERIVATION}; retired token(s) ${retiredTokens.map((t) => JSON.stringify(t)).join(', ')} ` +
     `refused across ${retiredChecked} store identity(ies) and ${snapChecked} snap name(s)`,
 );
+console.log(
+  `ok  store records — ${recordPairs} (app, channel) record(s) across ${apps.length} app(s) and ${STORE_CHANNELS.length} store channel(s); ` +
+    'no record id shared between apps, one App Store Connect record per app for iOS and macOS, and no issued record missing an id',
+);
+for (const l of recordLines) console.log(`    ${l}`);

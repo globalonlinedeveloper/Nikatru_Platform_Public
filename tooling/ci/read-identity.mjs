@@ -37,6 +37,11 @@
 // THE-FIRST limb (1)). It answers a different question from the four above:
 // not "what does this app PACKAGE" but "what did Partner Center ISSUE to this
 // app", which each app now declares in its own app.yaml `stores.windows-store`.
+// ⏱ 2026-09-26 (O-STORE-RECORDS-ARE-ONE-PER-CHANNEL, 9a): the parse of that
+// declaration is `readAppStores` below, the ONE parse every per-app store record
+// shares: tooling/store/store-record.mjs storeRecordOf reads through it too. It
+// lives here, not there, because the submit scripts' test harnesses copy
+// tooling/ci into a fixture root; its structured answers below are unchanged.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -176,19 +181,38 @@ export const WINDOWS_RECORD_FIELDS = Object.freeze(['identityName', 'packageFami
  *   { absent: rel }     — there is no apps/<appId>/app.yaml at all.
  * Every answer carries `rel`, the declaration's path.
  */
-export function windowsIdentityOf(root, appId) {
+/**
+ * The parsed `stores` mapping of apps/<appId>/app.yaml — the one parse every
+ * per-app store record shares (windowsIdentityOf here, storeRecordOf in
+ * tooling/store/store-record.mjs).
+ * → { rel, absent: true } when there is no declaration;
+ *   { rel, parseError } when it does not parse;
+ *   { rel, stores } otherwise (`stores` undefined: no record at all).
+ */
+export function readAppStores(root, appId) {
   const rel = `apps/${appId}/app.yaml`;
-  const none = { value: null, missing: null, lost: null, rel };
   const abs = join(root, rel);
-  if (!existsSync(abs)) return { ...none, absent: rel };
+  if (!existsSync(abs)) return { rel, absent: true };
   let doc;
   try {
     doc = parseYaml(readFileSync(abs, 'utf8'));
   } catch (e) {
-    return { ...missing(`${rel} does not parse (${e.message}), so app "${appId}"'s Windows identity cannot be read.`), rel };
+    return { rel, parseError: e.message };
   }
   const stores = doc !== null && typeof doc === 'object' ? doc.stores : undefined;
-  const rec = stores !== null && typeof stores === 'object' ? stores[WINDOWS_STORE] : undefined;
+  return { rel, stores: stores === null ? undefined : stores };
+}
+
+export function windowsIdentityOf(root, appId) {
+  const read = readAppStores(root, appId);
+  const rel = read.rel;
+  const none = { value: null, missing: null, lost: null, rel };
+  if (read.absent) return { ...none, absent: rel };
+  if (read.parseError) {
+    return { ...missing(`${rel} does not parse (${read.parseError}), so app "${appId}"'s Windows identity cannot be read.`), rel };
+  }
+  const stores = read.stores;
+  const rec = stores !== undefined && typeof stores === 'object' ? stores[WINDOWS_STORE] : undefined;
   if (rec === undefined || rec === null) return { ...none, undeclared: rel };
   if (typeof rec !== 'object' || Array.isArray(rec)) {
     return { ...missing(`${rel} stores.${WINDOWS_STORE} is ${JSON.stringify(rec)}, not a record of ${WINDOWS_RECORD_FIELDS.join(' and ')}.`), rel };
