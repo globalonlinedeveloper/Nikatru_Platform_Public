@@ -55,7 +55,9 @@
 //      `wrangler`/`migrationsDir` is not its owner's, is a finding. Until this
 //      limb both halves read services/platform alone, and a table added to
 //      subscriptiontracker_db was seen by neither. An `exempt` rule (no marker
-//      any resolver reads) declares no marker and names every column.
+//      any resolver reads) declares no marker and names every column. Each
+//      database's applier job is found in deploy-workers.yml; the app Workers'
+//      matrix job is read once per worker-set.mjs leg (E-a2, 2026-09-26).
 //
 // Every limb has a recorded failing case in tooling/ci/test/prod-provenance
 // .test.mjs or tooling/ci/test/prod-provenance-databases.test.mjs, and limb 2
@@ -90,6 +92,7 @@ import { join, resolve } from 'node:path';
 import { enumerateMigrationTables, registeredD1Databases, databaseLock, exemptionProblem, EXEMPT, PLATFORM_REGISTER_REL } from './migration-tables.mjs';
 import { stripSourceComments } from './text-reductions.mjs';
 import { parseWorkflow } from './workflow-scan.mjs';
+import { appWorkerEntries, deploySet, workerSet, WORKER_MATRIX_REF } from './worker-set.mjs';
 
 const ROOT = resolve(process.argv[2] ?? process.cwd());
 const REGISTER_REL = 'tooling/prod-provenance.json';
@@ -450,6 +453,61 @@ if (opsWatch !== null) {
 const DEPLOY_WORKERS_REL = '.github/workflows/deploy-workers.yml';
 const CHANNELS_REL = 'tooling/channel-register.json';
 const deployWorkers = parseWorkflow(ROOT, DEPLOY_WORKERS_REL);
+// ⏱ 2026-09-26 · E-a2 (O-SERVICE-KIT-UNBUILT) — THE APP WORKERS DEPLOY FROM ONE
+// MATRIX JOB, so a job whose `strategy.matrix.<dim>` is `${{ fromJSON(needs.<job>
+// .outputs.<name>) }}` of a job running `worker-set.mjs --for-deploy --json
+// --app-workers` is read once PER LEG. The legs are worker-set.mjs's own entries
+// (deploySet → appWorkerEntries, what that command prints and what
+// assert-deploy-triggers-deploy.mjs limb 4 grades), never a list written here. A
+// register finding about ANOTHER row (a missing `dsnSecret`, a directory with no
+// row) does not blind this limb: the workers job and limb 4 refuse those, and
+// here each row still yields its leg. In each leg, `${{ matrix.<dim>.<field> }}` on a
+// `workingDirectory:`, `record-deployment.mjs` or `if:` line reads as that leg's
+// value, so the record environment is the leg's `worker`. A trailing
+// `&& matrix.<dim>.migrations` on an `if:` holds exactly when the leg's
+// `migrations` is non-empty: there it is dropped and PD2B-3's byte-equality
+// compares the rest; on a leg with none, that step does not run.
+const MATRIX_FROM = /^\s+([A-Za-z_][A-Za-z0-9_-]*):\s*\$\{\{\s*fromJSON\(\s*needs\.([A-Za-z_][A-Za-z0-9_-]*)\.outputs\.([A-Za-z_][A-Za-z0-9_-]*)\s*\)\s*\}\}\s*$/;
+function jobsPerLeg(wf) {
+  const out = [];
+  for (const j of wf.jobs.values()) {
+    const src = j.lines.map((l) => l.text.match(MATRIX_FROM)).find(Boolean);
+    const feeder = src ? wf.jobs.get(src[2]) : undefined;
+    const fed = feeder?.lines.some((l) => /tooling\/ci\/worker-set\.mjs\s+--for-deploy\s+--json\s+--app-workers\b/.test(l.text) && l.text.includes(`${src[3]}=`));
+    if (!fed) {
+      out.push(j);
+      continue;
+    }
+    const dim = src[1];
+    const d = deploySet(ROOT, workerSet(ROOT), { lockfiles: false });
+    if (d.lost.length) {
+      coverageLost([
+        `${DEPLOY_WORKERS_REL} job \`${j.name}\` deploys the app Worker matrix, and its legs could not be read: ${d.lost[0]}`,
+        'Without them no app database can be matched to the job that applies its migrations.',
+      ]);
+    }
+    const legs = { entries: appWorkerEntries(d) };
+    const onlyWithMigrations = new RegExp(`\\s*&&\\s*matrix\\.${dim}\\.migrations\\s*$`);
+    const starts = j.lines.filter((l) => /^ {6}- /.test(l.text)).map((l) => l.n);
+    const stepStart = (n) => Math.max(-1, ...starts.filter((s) => s <= n));
+    for (const e of legs.entries) {
+      const at = (m, d, field) => (d === dim ? String(e[field] ?? '') : m);
+      const notRun = new Set(
+        j.lines.filter((l) => /^\s*if:/.test(l.text) && onlyWithMigrations.test(l.text) && !e.migrations).map((l) => stepStart(l.n)),
+      );
+      const lines = j.lines
+        .filter((l) => !notRun.has(stepStart(l.n)))
+        .map((l) => {
+          if (/^\s*if:/.test(l.text)) return { ...l, text: l.text.replace(onlyWithMigrations, '').replace(WORKER_MATRIX_REF, at) };
+          if (/^\s*workingDirectory:/.test(l.text) || /record-deployment\.mjs\s/.test(l.text)) return { ...l, text: l.text.replace(WORKER_MATRIX_REF, at) };
+          return l;
+        });
+      out.push({ ...j, lines, leg: e.worker });
+    }
+  }
+  return out;
+}
+const deployJobs = deployWorkers === null ? [] : jobsPerLeg(deployWorkers);
 // ⏱ 2026-09-26 — once per walked database: its owner's applier job, in the
 // directory of the wrangler file that owns it (limb 10).
 for (const db of derived.databases) {
@@ -462,7 +520,7 @@ for (const db of derived.databases) {
     flag(`${DEPLOY_WORKERS_REL} does not exist, so nothing applies ${db.migrationsDir} — and a pending migration would wait for an applier that is not there.`);
   } else {
     const esc = workerDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const appliers = [...deployWorkers.jobs.values()].filter(
+    const appliers = deployJobs.filter(
       (j) => j.lines.some((l) => /\bd1 migrations apply\b.*--remote\b/.test(l.text)) && j.lines.some((l) => new RegExp(`^\\s*workingDirectory:\\s*${esc}\\s*$`).test(l.text)),
     );
     if (appliers.length !== 1) {
@@ -482,7 +540,7 @@ for (const db of derived.databases) {
         const to = Math.min(...starts.filter((n) => n > line.n), Infinity);
         return j.lines.filter((l) => l.n >= from && l.n < to);
       };
-      const where = `${DEPLOY_WORKERS_REL} job \`${j.name}\``;
+      const where = `${DEPLOY_WORKERS_REL} job \`${j.name}\`${j.leg ? ` (the ${j.leg} leg)` : ''}`;
       if (!deploy || !record) {
         flag(`${where} applies the migrations but has ${!deploy ? 'no `id: deploy` step' : 'no `record-deployment.mjs` step'}, so a ${db.worker} Deployment no longer proves the applier ran.`);
       } else if (!(apply.n < deploy.n && deploy.n < record.n)) {

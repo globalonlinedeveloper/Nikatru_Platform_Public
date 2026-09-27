@@ -172,13 +172,13 @@ only `platform` builds from it, so only `platform` claims it.
 
 Manual dispatch has no diff to filter on → deploy both. Push → per-path.
 
-## job `subscriptiontracker-api`
+## job `app-worker`
 
 ### above `permissions:`
 
 Job-level, so `detect` does not inherit write access it never uses.
 
-### above `Apply APP_DB migrations (before deploy)`
+### above `Apply the Worker's D1 migrations (before deploy)`
 
 MIGRATIONS BEFORE DEPLOY — the order is the whole point.
 
@@ -287,13 +287,13 @@ still fails the job.
 
 ### above `Apply PLATFORM_DB migrations (before deploy)`
 
-MIGRATIONS BEFORE DEPLOY — see the note in the subscriptiontracker-api job.
+MIGRATIONS BEFORE DEPLOY — see the note in the app-worker job.
 platform is the SOLE applier of platform_db migrations, so this is the
 only place the shared entitlements/events/consent schema advances.
 
 ### above `The deployed SQL is SQL live D1 will run`
 
-── [pipeline K-7] see the identical step in the subscriptiontracker-api job above ─────
+── [pipeline K-7] see the identical step in the app-worker job above ─────
 This Worker is the portfolio's erasure ENTRY POINT: its DELETE
 /v1/account sweeps platform_db, relays to every app's own route and
 deletes the identity last. It is the route the rejected join broke first.
@@ -403,7 +403,7 @@ on it; see the block there.
 
 ### inside the `id: deploy` step, above `command:`
 
-[pipeline 11]E-8 — see the identical pair in the subscriptiontracker-api job above
+[pipeline 11]E-8 — see the identical pair in the app-worker job above
 for why the DSN is a `--var` and why the release is the SHA rather
 than API_VERSION.
 
@@ -415,7 +415,7 @@ exists only for as long as the deploy step runs.
 
 ### above `Smoke — the live Worker answers at THIS commit`
 
-── [pipeline 14]O-7 · see the identical step in the subscriptiontracker-api job ───────
+── [pipeline 14]O-7 · see the identical step in the app-worker job ───────
 This is the Worker every future app depends on for config, analytics,
 consent and the single cron, and until this line nothing ever asked it
 whether it had actually come up.
@@ -423,9 +423,59 @@ whether it had actually come up.
 ### above `Record the deployed SHA`
 
 ── 🔴 CONDITIONED ON THE DEPLOY, NOT ON THE SMOKE (2026-08-09) ──────────
-See the identical step in the subscriptiontracker-api job above, and the long block in
+See the identical step in the app-worker job above, and the long block in
 deploy-web.yml for the run-144 failure this comes from. This Worker is
 the one every app depends on for config, analytics, consent,
 entitlements and the money webhook — "which sha is live on platform" is
 the first question of every incident, and losing the answer because the
 health probe was red is losing it exactly when it is needed.
+
+## ⏱ 2026-09-26 — every app Worker from one matrix (O-SERVICE-KIT-UNBUILT, E-a2)
+
+The job `subscriptiontracker-api` is gone. Its steps are now the template of ONE matrix job,
+`app-worker`, with one leg per app Worker; `platform` stays its own job and runs after it. The
+section headed job `app-worker` above was written for that one Worker's job, and still
+describes the template step by step.
+
+- **Where the legs come from.** Job `workers` runs
+  `node tooling/ci/worker-set.mjs --for-deploy --json --app-workers`. worker-set.mjs first holds
+  every Worker under `services/` to its `tooling/platform-register.json` row, its committed
+  `package-lock.json` and its `dsnSecret` (a Worker failing any of them fails the job, and nothing
+  deploys), then prints the `appWorkers` rows as `{worker, dir, migrations, smokeUrl, origin,
+  dsnSecret}`. The serving Worker is split off by its register row, not its name. The matrix
+  dimension is `worker`, and every step reads `matrix.worker.<field>`.
+- **The order, per leg:** the ref refusal → the plan (`plan-deploy.mjs <worker>`, the Worker's own
+  ledger environment and `deployUnits` entry) → the crash-sink secret check → npm ci → the D1
+  migrations (only when the Worker's own config migrates one) → the live-SQL check → **the ONE
+  deploy**, which carries the vars → the smoke → the record
+  (`if: always() && steps.deploy.outcome == 'success'`).
+  `assert-deploy-triggers-deploy.mjs` limb 4 grades that order for every leg worker-set.mjs prints,
+  and limb 1 needs each leg's Worker to have a `deployUnits` entry that claims its own directory.
+- **Exactly ONE deploy per leg, and no first-deploy step.** The service-kit design asked for a
+  plain first deploy before a new Worker's first secret, because the action's `secrets:` input
+  edited secrets BEFORE its command. #981 removed that input (the section above: the secret rides
+  the version as `--secrets-file`, and assert-workflow-hardening limb 13 refuses the input in every
+  workflow), so the premise is gone: a Worker that does not exist yet is created by the one deploy
+  that carries its vars, and a secret it later needs rides that same version. A second deploy step
+  would be a second, unqualified path to the live Worker — #155's shape, only moved first. Limb 4
+  fails a leg with any deploy before or after `id: deploy`. The live proof (a new Worker created by
+  its one deploy) is app #2's first run.
+- **`platform` after every leg.** The platform Worker holds a service binding to each app's
+  `ERASURE_<APP>` Worker, and a binding to a Worker that does not exist fails its deploy, so an
+  app's first deploy comes first. `needs: [workers, app-worker]` also stops it when any leg failed:
+  it never deploys over a half-done set. There is **no job-level `if:`**: this is a post-gate
+  callee, and assert-green-means-ran A9 refuses a conditional job there, because a skipped job does
+  not fail a workflow and the call would read green over a deploy that never ran. (The design's
+  `if: always() && …` predates that rule; plain `needs:` gives the same order.)
+- **The crash sink is per Worker.** The deploy passes `--var GLITCHTIP_DSN:${{
+  secrets[matrix.worker.dsnSecret] }}`, the secret the Worker's register row names. A called
+  workflow reads only the secrets its call delivers, and an undelivered one reads as EMPTY, so the
+  step "The crash-sink secret this Worker's row names reached this job" stops the leg before the
+  migrations when it is empty. `assert-worker-error-sink.mjs` limb 5 requires, before merge, that
+  every leg's `dsnSecret` is declared under `on.workflow_call.secrets` here (and passed by ci.yml's
+  call), and fails a call that passes `secrets: inherit`. App #1's row names `GLITCHTIP_DSN`, which
+  is declared. **App #2's secret is declared BY NAME** (lead ruling Q1, 2026-09-26): two lines at
+  the owner step that creates it (O-E1), one under `on.workflow_call.secrets` here and one in
+  ci.yml's `deploy-workers:` call; `tooling/scripts/provision-backend.mjs` step [6] prints both.
+  `secrets: inherit` would reverse #947's named-secrets choice. `assert-channel-register.mjs` holds
+  every name the expression can take to `ciSecretRegister`.

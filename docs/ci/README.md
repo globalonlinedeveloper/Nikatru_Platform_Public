@@ -744,7 +744,7 @@ naming the job it belonged to and the line it sat above.
 | none | `.github/workflows/codeql.yml` | CodeQL | `pull_request`, `push`, `schedule`, `workflow_dispatch` | 1 |
 | none | `.github/workflows/deploy-sandbox.yml` | Deploy sandbox | `workflow_dispatch` | 2 |
 | [`deploy-web.md`](deploy-web.md) | `.github/workflows/deploy-web.yml` | Deploy web | `workflow_call` | 3 |
-| [`deploy-workers.md`](deploy-workers.md) | `.github/workflows/deploy-workers.yml` | Deploy workers | `workflow_call` | 2 |
+| [`deploy-workers.md`](deploy-workers.md) | `.github/workflows/deploy-workers.yml` | Deploy workers | `workflow_call` | 3 |
 | [`e2e.md`](e2e.md) | `.github/workflows/e2e.yml` | E2E live | `workflow_dispatch`, `schedule` | 3 |
 | [`extensions-ci.md`](extensions-ci.md) | `.github/workflows/extensions-ci.yml` | Extensions CI | `workflow_call` | 14 |
 | [`extensions.md`](extensions.md) | `.github/workflows/extensions.yml` | Extensions | `push`, `pull_request`, `schedule`, `workflow_dispatch` | 8 |

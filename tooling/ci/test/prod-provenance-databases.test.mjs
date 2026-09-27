@@ -21,6 +21,8 @@
 //   R5  an `exempt` rule with a 5-character reason: a finding.
 //   ENV `env.<name>.d1_databases` (the capture sandbox) is NOT walked — the lead
 //       ruling of 2026-09-25. Held on the real tree and on a fixture.
+//   E-a2 limb 10 finds the app database's applier in the `app-worker` matrix job,
+//       read once per worker-set.mjs leg (2026-09-26, O-SERVICE-KIT-UNBUILT).
 //
 // Every case runs the REAL gate and the REAL monitor over a COPY of the real
 // tree (nothing under services/ is ever edited in place), the monitor in its
@@ -371,10 +373,13 @@ describe('ENV · an environment block is never walked (lead ruling 2026-09-25)',
       const m = monitor(root, noExtra);
       assert.equal(m.status, 0, m.stdout + m.stderr);
       assert.doesNotMatch(m.stdout + m.stderr, /probe_db_sandbox/);
-      // The gate is red here for a reason of its own — nothing in deploy-workers.yml
-      // applies probe_db's migrations (limb 9) — and still never names the sandbox.
+      // The gate is red here for a reason of its own — the matrix's probe-api leg applies
+      // probe_db's migrations (limb 10, E-a2), and tooling/channel-register.json gives
+      // services/probe-api no Deployment environment to record into — and still never
+      // names the sandbox.
       const g = gate(root);
-      assert.match(g.stderr, /probe_db: .*deploy-workers\.yml has 0 job\(s\) that run `d1 migrations apply … --remote` in services\/probe-api/);
+      assert.equal(g.status, 1, g.stdout + g.stderr);
+      assert.match(g.stderr, /probe_db: .*job `app-worker` \(the probe-api leg\) records its Deployment into `probe-api`, and tooling\/channel-register\.json gives services\/probe-api 0 environment\(s\)/);
       assert.doesNotMatch(g.stdout + g.stderr, /probe_db_sandbox/);
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -465,5 +470,95 @@ describe('registeredD1Databases, databaseLock and exemptionProblem', () => {
     assert.match(exemptionProblem('t', { resolver: EXEMPT, reason: 'x'.repeat(MIN_EXEMPTION_REASON - 1) }, cols), /reason of 19 character\(s\)/);
     assert.match(exemptionProblem('t', { resolver: EXEMPT, reason: 'only `user_id` is named in this reason' }, cols), /never names `id`/);
     assert.equal(exemptionProblem('t', { resolver: EXEMPT, reason: 'names `id` and `user_id`, both of them' }, cols), null);
+  });
+});
+
+// ── E-a2 · limb 10 reads the app Worker matrix, one leg at a time (⏱ 2026-09-26) ──
+// O-SERVICE-KIT-UNBUILT (NPEA2-R1): deploy-workers.yml deploys every app Worker from ONE
+// `app-worker` matrix job, so no job carries a literal `workingDirectory:
+// services/subscriptiontracker-api` any more. Limb 10 expands that job per
+// worker-set.mjs leg; before it did, the real tree was exit 1 here ("0 job(s) that run
+// d1 migrations apply … in services/subscriptiontracker-api"). Each case mutates a COPY of
+// the real deploy-workers.yml by text.
+describe('limb 10 reads the app Worker matrix per leg (E-a2, O-SERVICE-KIT-UNBUILT)', () => {
+  const DW = '.github/workflows/deploy-workers.yml';
+  const mutate = (root, edit) => {
+    const p = join(root, DW);
+    const before = readFileSync(p, 'utf8');
+    const after = edit(before);
+    assert.notEqual(after, before, 'the mutation changed nothing: its anchor is gone');
+    writeFileSync(p, after);
+  };
+  const only = (text, anchor) => {
+    assert.equal(text.split(anchor).length - 1, 1, `anchor not exactly once: ${anchor.slice(0, 70)}`);
+    return text.indexOf(anchor);
+  };
+
+  test('the real deploy-workers.yml names subscriptiontracker-api only through the matrix, and the gate is green', () => {
+    const text = readFileSync(join(REPO, DW), 'utf8');
+    assert.doesNotMatch(text, /^\s*workingDirectory:\s*services\/subscriptiontracker-api\s*$/m, 'a literal app job is back');
+    assert.match(text, /^\s*workingDirectory:\s*\$\{\{\s*matrix\.worker\.dir\s*\}\}\s*$/m);
+    const root = realCopy();
+    try {
+      const g = gate(root);
+      assert.equal(g.status, 0, g.stdout + g.stderr);
+      assert.match(g.stdout, /2 database\(s\), the set tooling\/platform-register\.json's Workers own: platform_db, subscriptiontracker_db/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('🔴 the matrix job\'s migration step removed: exit 1 naming subscriptiontracker_db', () => {
+    const root = realCopy();
+    try {
+      mutate(root, (t) => {
+        const from = only(t, '      # why: MIGRATIONS BEFORE DEPLOY. The schema standard');
+        const to = only(t, '      # why: [pipeline K-7] a statement');
+        return t.slice(0, from) + t.slice(to);
+      });
+      const g = gate(root);
+      assert.equal(g.status, 1, g.stdout + g.stderr);
+      assert.match(g.stderr, /subscriptiontracker_db: \.github\/workflows\/deploy-workers\.yml has 0 job\(s\) that run `d1 migrations apply … --remote` in services\/subscriptiontracker-api/);
+      assert.doesNotMatch(g.stderr, /platform_db:/, 'the platform job was not touched');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('🔴 the matrix job\'s record step unconditioned: exit 1 naming the leg', () => {
+    const root = realCopy();
+    try {
+      mutate(root, (t) => {
+        const run = only(t, '        run: node tooling/ci/record-deployment.mjs ${{ matrix.worker.worker }}');
+        const cond = "        if: always() && steps.deploy.outcome == 'success'\n";
+        const at = t.lastIndexOf(cond, run);
+        assert.ok(at !== -1 && t.lastIndexOf('      - name: Record the deployed SHA', run) < at, 'the record step lost its condition line');
+        return t.slice(0, at) + t.slice(at + cond.length);
+      });
+      const g = gate(root);
+      assert.equal(g.status, 1, g.stdout + g.stderr);
+      assert.match(
+        g.stderr,
+        /subscriptiontracker_db: \.github\/workflows\/deploy-workers\.yml job `app-worker` \(the subscriptiontracker-api leg\): the Deployment record \(line \d+\) is not conditioned on `steps\.deploy\.outcome == 'success'`/,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('🔴 a matrix NOT read from worker-set.mjs --app-workers is not expanded: exit 1 naming subscriptiontracker_db', () => {
+    const root = realCopy();
+    try {
+      mutate(root, (t) => {
+        const a = 'worker-set.mjs --for-deploy --json --app-workers)"';
+        only(t, a);
+        return t.replace(a, 'worker-set.mjs --for-deploy --json)"');
+      });
+      const g = gate(root);
+      assert.equal(g.status, 1, g.stdout + g.stderr);
+      assert.match(g.stderr, /subscriptiontracker_db: .* has 0 job\(s\) that run `d1 migrations apply … --remote` in services\/subscriptiontracker-api/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

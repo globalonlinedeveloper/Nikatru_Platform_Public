@@ -33,8 +33,41 @@ permissions:
   contents: read
 
 jobs:
-  subscriptiontracker-api:
-    name: Deploy subscriptiontracker-api
+  # why: THE MATRIX IS READ, NEVER WRITTEN HERE (row O-SERVICE-KIT-UNBUILT). One leg per
+  # `appWorkers` row of tooling/platform-register.json whose services/<dir> exists,
+  # printed by tooling/ci/worker-set.mjs after it has held EVERY Worker to its row, its
+  # committed lockfile and its `dsnSecret`. The serving Worker (platform) is split off
+  # by its register row, not by its name, and deploys in its own job below.
+  workers:
+    name: The app Worker set comes from the register
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      workers: ${{ steps.set.outputs.workers }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: The matrix comes from worker-set.mjs, never from this file
+        id: set
+        run: |
+          set -euo pipefail
+          workers="$(node tooling/ci/worker-set.mjs --for-deploy --json --app-workers)"
+          if [ "$workers" = "[]" ]; then
+            echo "::error::worker-set.mjs names no app Worker, and a matrix over none fails: the register holds no appWorkers row with a services/ directory."
+            exit 1
+          fi
+          echo "workers=${workers}" >> "$GITHUB_OUTPUT"
+
+  # why: EVERY APP WORKER, ONE LEG EACH, IN THE SAFETY ORDER (row O-SERVICE-KIT-UNBUILT):
+  # plan → npm ci → migrations (only when the row's Worker migrates a D1) → the live-SQL
+  # check → the ONE deploy, which carries the vars (a new Worker is created by it) →
+  # smoke → record. assert-deploy-triggers-deploy.mjs grades that order
+  # for every entry worker-set.mjs prints. fail-fast off: one Worker's red leaves every
+  # other leg's deploy, and fails this job, so the platform job below does not start.
+  app-worker:
+    name: Deploy ${{ matrix.worker.worker }}
+    needs: workers
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     # why: THE ENVIRONMENT, AND WHY IT IS NOT THE REFUSAL (row O-DEPLOY-IS-NOT-ONE-GATED-LANE,
@@ -47,6 +80,14 @@ jobs:
     permissions:
       contents: read
       deployments: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # why: ONE dimension whose values are worker-set.mjs's entries ({worker, dir,
+        # migrations, smokeUrl, origin, dsnSecret}), so every key a step reads is
+        # `matrix.worker.<field>` of a dimension declared right here (limb A′ of
+        # assert-release-lane-generic.mjs reads the declaration).
+        worker: ${{ fromJSON(needs.workers.outputs.workers) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -63,31 +104,54 @@ jobs:
         run: node tooling/ci/assert-deploy-ref.mjs --allow main
       # why: a superseded SHA never publishes (row O-DEPLOY-IS-NOT-ONE-GATED-LANE,
       # limb 3), and a commit that touches none of this Worker's deployUnits globs
-      # does not publish it. Runs BEFORE the irreversible migrations: every later
-      # step runs only on deploy == 'true'. An unreadable ledger exits 1 and
-      # nothing publishes.
+      # does not publish it. The unit is the Worker's own ledger environment, its
+      # name. Runs BEFORE the irreversible migrations: every later step runs only on
+      # deploy == 'true'. An unreadable ledger exits 1 and nothing publishes.
       - name: Plan from the Deployment ledger
         id: plan
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node tooling/ci/plan-deploy.mjs subscriptiontracker-api
+        run: node tooling/ci/plan-deploy.mjs ${{ matrix.worker.worker }}
+      # why: THE CRASH SINK IS PER WORKER. The deploy below passes the secret this
+      # Worker's register row names (`dsnSecret`), and a called workflow reads only the
+      # secrets its call delivers: one this job was not handed reads as EMPTY, and a
+      # Worker deployed with an empty GLITCHTIP_DSN reports its crashes nowhere while
+      # its smoke stays green. So an empty one stops the leg here, before the
+      # irreversible migrations.
+      # why: zizmor's overprovisioned-secrets, IGNORED HERE AND ON THE DEPLOY'S
+      # `secrets[...]` BELOW. An indexed read hands the runner every secret the
+      # workflow can see, and in this callee that is ONLY the names declared under
+      # `on.workflow_call.secrets` and passed by name: assert-worker-error-sink limb 5
+      # fails a `secrets: inherit` call (lead ruling Q1). One secret per register row
+      # needs the index; a literal name per app is the per-app edit E-a2 removes.
+      - name: The crash-sink secret this Worker's row names reached this job
+        if: steps.plan.outputs.deploy == 'true'
+        env:
+          DSN_SECRET: ${{ matrix.worker.dsnSecret }}
+          DSN: ${{ secrets[matrix.worker.dsnSecret] }}  # zizmor: ignore[overprovisioned-secrets]
+        run: |
+          if [ -z "$DSN" ]; then
+            echo "::error::the secret ${DSN_SECRET} (tooling/platform-register.json dsnSecret) is empty in this job: it is unset, or ci.yml's deploy-workers call does not deliver it. Nothing was deployed."
+            exit 1
+          fi
       - uses: ./.github/actions/setup-node
         if: steps.plan.outputs.deploy == 'true'
       - run: npm ci
         if: steps.plan.outputs.deploy == 'true'
-        working-directory: services/subscriptiontracker-api
+        working-directory: ${{ matrix.worker.dir }}
       # why: MIGRATIONS BEFORE DEPLOY. The schema standard is additive-only, so
       # new columns are harmless to code that predates them; deploying code that
-      # reads a column the database lacks is an outage. Expand, then deploy.
-      - name: Apply APP_DB migrations (before deploy)
-        if: steps.plan.outputs.deploy == 'true'
+      # reads a column the database lacks is an outage. Expand, then deploy. Only
+      # when the Worker's own config migrates a D1 (worker-set.mjs `migrations`).
+      - name: Apply the Worker's D1 migrations (before deploy)
+        if: steps.plan.outputs.deploy == 'true' && matrix.worker.migrations
         uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           wranglerVersion: '4.141.0'   # why: package.json says ^4.0.0, which floats. [F-2]
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: services/subscriptiontracker-api
-          command: d1 migrations apply APP_DB --remote
+          workingDirectory: ${{ matrix.worker.dir }}
+          command: d1 migrations apply ${{ matrix.worker.migrations }} --remote
       # why: [pipeline K-7] a statement's legality is a property of the ENGINE.
       # D1's authorizer refused the erasure routes' `pragma_table_info` join at
       # runtime while every static check stayed green. Blocking, and exit 2
@@ -98,10 +162,15 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node tooling/ops/check-d1-accepts-live-sql.mjs
-      # why: `id: deploy` is the only step whose success means "this is what
-      # subscriptiontracker-api.nikatru.com is running"; the record step below is conditioned on it.
+      # why: `id: deploy` is the only step whose success means "this is what the
+      # Worker is running"; the record step below is conditioned on it.
       # why: the two `--var`s are supplied at DEPLOY time — GLITCHTIP_DSN is a
       # write-only ingest key, and RELEASE is the SHA, not API_VERSION.
+      # why: THIS IS THE LEG'S ONE DEPLOY. A second, unqualified deploy wiped both
+      # --vars off the live platform Worker for two days (#155, run 30891499182).
+      # A Worker that does not exist yet is created by this deploy itself, and a
+      # secret it needs rides this same version as `--secrets-file` (#981; the
+      # action's `secrets:` input is refused by assert-workflow-hardening limb 13).
       - uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
         if: steps.plan.outputs.deploy == 'true'
         id: deploy
@@ -109,8 +178,8 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           wranglerVersion: '4.141.0'   # why: package.json says ^4.0.0, which floats. [F-2]
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: services/subscriptiontracker-api
-          command: deploy --var GLITCHTIP_DSN:${{ secrets.GLITCHTIP_DSN }} --var RELEASE:${{ github.sha }}
+          workingDirectory: ${{ matrix.worker.dir }}
+          command: deploy --var GLITCHTIP_DSN:${{ secrets[matrix.worker.dsnSecret] }} --var RELEASE:${{ github.sha }}  # zizmor: ignore[overprovisioned-secrets]
       # why: `build` is a separate field from `version` on /v1/health — `version`
       # is the literal "v1" and a smoke joined to it would pass forever.
       # `--require-ok` is a separate conjunct: deployed-and-unwell is not good.
@@ -118,7 +187,7 @@ jobs:
         if: steps.plan.outputs.deploy == 'true'
         run: >
           node tooling/ops/post-deploy-smoke.mjs
-          --url https://subscriptiontracker-api.nikatru.com/v1/health
+          --url ${{ matrix.worker.smokeUrl }}
           --field build --expect ${{ github.sha }} --require-ok
 
       # why: conditioned on the DEPLOY, not on the smoke. A provenance record
@@ -132,15 +201,22 @@ jobs:
           # re-promotes (row O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 4). The recorder reads
           # one line of it and prints none of it: wrangler lists the Worker's vars.
           DEPLOY_OUTPUT: ${{ steps.deploy.outputs.command-output }}
-        run: node tooling/ci/record-deployment.mjs subscriptiontracker-api https://subscriptiontracker-api.nikatru.com --wrangler-output-env DEPLOY_OUTPUT
+        run: node tooling/ci/record-deployment.mjs ${{ matrix.worker.worker }} ${{ matrix.worker.origin }} --wrangler-output-env DEPLOY_OUTPUT
 
+  # why: THE PLATFORM DEPLOYS AFTER EVERY APP LEG (row O-SERVICE-KIT-UNBUILT). It holds a
+  # service binding to each app's `ERASURE_<APP>` Worker, and a service binding to a
+  # Worker that does not exist fails the platform deploy, so an app's first deploy
+  # must come first. `needs: app-worker` also means a failed app leg stops it: it never
+  # deploys over a half-done set. No job-level `if:` — this is a post-gate callee, and
+  # a skipped job there would read as green (assert-green-means-ran A9).
   platform:
     name: Deploy platform
+    needs: [workers, app-worker]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    # why: see the subscriptiontracker-api job — alone, this line fails open.
+    # why: see the app-worker job — alone, this line fails open.
     environment: production
-    # why: job-level — see the subscriptiontracker-api job.
+    # why: job-level — see the app-worker job.
     permissions:
       contents: read
       deployments: write
@@ -148,12 +224,12 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-          # why: see the subscriptiontracker-api job — the plan needs full history.
+          # why: see the app-worker job — the plan needs full history.
           fetch-depth: 0
-      # why: the ref check, FIRST, exactly as in the subscriptiontracker-api job.
+      # why: the ref check, FIRST, exactly as in the app-worker job.
       - name: Refuse any ref but main
         run: node tooling/ci/assert-deploy-ref.mjs --allow main
-      # why: the plan, exactly as in the subscriptiontracker-api job, for this Worker's
+      # why: the plan, exactly as in the app-worker job, for this Worker's
       # own ledger environment and deployUnits globs.
       - name: Plan from the Deployment ledger
         id: plan
@@ -165,7 +241,7 @@ jobs:
       - run: npm ci
         if: steps.plan.outputs.deploy == 'true'
         working-directory: services/platform
-      # why: MIGRATIONS BEFORE DEPLOY — see the subscriptiontracker-api job. platform is the
+      # why: MIGRATIONS BEFORE DEPLOY — see the app-worker job. platform is the
       # SOLE applier of platform_db migrations.
       - name: Apply PLATFORM_DB migrations (before deploy)
         if: steps.plan.outputs.deploy == 'true'
@@ -176,9 +252,9 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: services/platform
           command: d1 migrations apply PLATFORM_DB --remote
-      # why: [pipeline K-7] see the subscriptiontracker-api job. This Worker binds subscriptiontracker_db as
-      # well as platform_db, so the check executes against both — a route reads
-      # the databases it reads, not the ones its Worker binds.
+      # why: [pipeline K-7] see the app-worker job. This Worker binds each app's
+      # database as well as platform_db, so the check executes against every one — a
+      # route reads the databases it reads, not the ones its Worker binds.
       - name: The deployed SQL is SQL live D1 will run
         if: steps.plan.outputs.deploy == 'true'
         env:
@@ -224,7 +300,7 @@ jobs:
         if: always()
         run: rm -f "$RUNNER_TEMP/platform-secrets.json"
 
-      # why: see the identical step in the subscriptiontracker-api job. Until this line
+      # why: see the identical step in the app-worker job. Until this line
       # nothing ever asked this Worker whether it had actually come up.
       - name: Smoke — the live Worker answers at THIS commit
         if: steps.plan.outputs.deploy == 'true'
@@ -233,13 +309,13 @@ jobs:
           --url https://platform.nikatru.com/v1/health
           --field build --expect ${{ github.sha }} --require-ok
 
-      # why: conditioned on the DEPLOY, not on the smoke — see the subscriptiontracker-api
+      # why: conditioned on the DEPLOY, not on the smoke — see the app-worker
       # job. "Which sha is live on platform" is the first question of every
       # incident, and it must not be lost because a health probe was red.
       - name: Record the deployed SHA
         if: always() && steps.deploy.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
-          # why: the Worker version — see the subscriptiontracker-api job.
+          # why: the Worker version — see the app-worker job.
           DEPLOY_OUTPUT: ${{ steps.deploy.outputs.command-output }}
         run: node tooling/ci/record-deployment.mjs platform https://platform.nikatru.com --wrangler-output-env DEPLOY_OUTPUT

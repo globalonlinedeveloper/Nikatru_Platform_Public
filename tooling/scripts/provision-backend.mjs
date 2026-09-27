@@ -52,7 +52,7 @@
 //     from tooling/bricks/app/route-clients.json. A mounted route the map does not
 //     name stops the step with exit 1 naming it; it never writes an
 //     `unconsumedReason`. A row already there is left as it is. Step [6] writes files
-//     only: it deploys nothing.
+//     only: it deploys nothing (it prints the two lines that deliver `dsnSecret`, Q1).
 //   · 🔴 THE FIRST DEPLOY IS NOT HERE, by design (service-kit design §4.1 item 4).
 //     This script runs before the new app's PR merges, and a deploy from here would
 //     ship unmerged code past ci-gate and past record-deployment. The Worker's first
@@ -735,6 +735,16 @@ if (existing) {
   console.log(`    appWorkers[${register.appWorkers.length - 1}] ${row.name} → ${row.hosts.join(', ')}, dsnSecret ${row.dsnSecret}`);
   console.log(`    routes: ${row.routes.map((r) => `${r.method} ${r.path}`).join(' · ')}`);
   console.log(`    ${cfgRel} is named in bindingSources.configs.`);
+}
+// The crash-sink secret reaches deploy-workers.yml BY NAME, never `secrets: inherit`
+// (lead ruling Q1, 2026-09-26; assert-worker-error-sink.mjs limb 5 fails either
+// omission before merge). Printed, not written: the secret is the owner's to create
+// (O-E1), and both lines land in the same change that creates it.
+{
+  const dsn = (existing ?? register.appWorkers[register.appWorkers.length - 1]).dsnSecret;
+  console.log(`    O-E1 (owner): create the GitHub secret ${dsn}, then deliver it BY NAME, never \`secrets: inherit\`:`);
+  console.log(`      .github/workflows/deploy-workers.yml, under on.workflow_call.secrets:   ${dsn}:  (with required: true)`);
+  console.log(`      .github/workflows/ci.yml, in the deploy-workers: call's secrets:        ${dsn}: \${{ secrets.${dsn} }}`);
 }
 
 // ── 7. the inventory row and the monitor host row — files only (see the header) ──

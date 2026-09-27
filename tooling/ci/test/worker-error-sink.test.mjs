@@ -294,6 +294,96 @@ describe('assert-worker-error-sink — the deploy end of the pipe', () => {
   });
 });
 
+// ⏱ 2026-09-26 — O-SERVICE-KIT-UNBUILT (E-a2): every app Worker deploys from ONE matrix job,
+// one leg per `appWorkers` row (tooling/ci/worker-set.mjs), so limb 5 reads that job for an
+// app Worker, requires the Worker's OWN DSN secret, and requires that secret to reach the
+// called workflow (declared under on.workflow_call.secrets; a call that inherits fails).
+describe('assert-worker-error-sink — the app Worker matrix (limb 5, the matrix half)', () => {
+  const HEALTH = [{ method: 'GET', path: '/v1/health' }];
+  const register = (dsnSecret) =>
+    JSON.stringify({
+      servingWorker: { name: 'platform', config: 'services/platform/wrangler.jsonc', hosts: ['platform.example.test'], dsnSecret: 'GLITCHTIP_DSN' },
+      routes: HEALTH,
+      appWorkers: [
+        { name: 'subscriptiontracker-api', config: 'services/subscriptiontracker-api/wrangler.jsonc', hosts: ['st-api.example.test'], routes: HEALTH, dsnSecret },
+      ],
+    });
+  const MATRIX_DEPLOY = (dsnExpr = 'secrets[matrix.worker.dsnSecret]', declared = ['GLITCHTIP_DSN'], release = ' --var RELEASE:${{ github.sha }}') => `name: Deploy Workers
+on:
+  workflow_call:
+    secrets:
+${declared.map((s) => `      ${s}:\n        required: true\n`).join('')}jobs:
+  workers:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: node tooling/ci/worker-set.mjs --for-deploy --json --app-workers
+  app-worker:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        worker: \${{ fromJSON(needs.workers.outputs.workers) }}
+    steps:
+      - run: node tooling/ci/plan-deploy.mjs \${{ matrix.worker.worker }}
+      - uses: cloudflare/wrangler-action@abc # v3
+        with:
+          workingDirectory: \${{ matrix.worker.dir }}
+          command: deploy --var GLITCHTIP_DSN:\${{ ${dsnExpr} }}${release}
+${DEPLOY_JOB('platform')}`;
+  const matrixRepo = ({ dsnSecret = 'GLITCHTIP_DSN', deploy = MATRIX_DEPLOY(), caller = null } = {}) =>
+    makeRepo((f) => ({
+      ...f,
+      'services/platform/wrangler.jsonc': '{ "name": "platform", "main": "src/index.ts" }\n',
+      'services/subscriptiontracker-api/wrangler.jsonc': '{ "name": "subscriptiontracker-api", "main": "src/index.ts" }\n',
+      'tooling/platform-register.json': register(dsnSecret),
+      '.github/workflows/deploy-workers.yml': deploy,
+      ...(caller === null ? {} : { '.github/workflows/ci.yml': caller }),
+    }));
+  const INHERIT = 'name: CI\non: [push]\njobs:\n  deploy-workers:\n    uses: ./.github/workflows/deploy-workers.yml\n    secrets: inherit\n';
+
+  test('PASSES when the matrix job deploys each app Worker with its own declared DSN secret', () => {
+    const r = run(matrixRepo());
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /ok {3}subscriptiontracker-api — onError calls reportWorkerError/);
+  });
+
+  test('FAILS when the matrix job passes one shared DSN literal instead of the row\'s `dsnSecret`', () => {
+    const r = run(matrixRepo({ deploy: MATRIX_DEPLOY('secrets.GLITCHTIP_DSN') }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /job `app-worker` deploys every app Worker and does not pass `--var GLITCHTIP_DSN:\$\{\{ secrets\[matrix\.worker\.dsnSecret\] \}\}`/);
+  });
+
+  test("FAILS when the row's secret reaches the called workflow by no route — it would read as EMPTY", () => {
+    const r = run(matrixRepo({ dsnSecret: 'GLITCHTIP_DSN_ST' }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /nothing delivers GLITCHTIP_DSN_ST to this called workflow/);
+  });
+
+  test('PASSES when that secret is declared under on.workflow_call.secrets', () => {
+    const r = run(matrixRepo({ dsnSecret: 'GLITCHTIP_DSN_ST', deploy: MATRIX_DEPLOY(undefined, ['GLITCHTIP_DSN', 'GLITCHTIP_DSN_ST']) }));
+    assert.equal(r.code, 0, r.out);
+  });
+
+  test('FAILS when the call passes `secrets: inherit` — named, never inherited (lead ruling Q1), and inherit delivers nothing by name', () => {
+    const r = run(matrixRepo({ dsnSecret: 'GLITCHTIP_DSN_ST', caller: INHERIT }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /\.github\/workflows\/ci\.yml job `deploy-workers` calls \.github\/workflows\/deploy-workers\.yml with `secrets: inherit`/);
+    assert.match(r.out, /nothing delivers GLITCHTIP_DSN_ST to this called workflow/);
+  });
+
+  test('FAILS on `secrets: inherit` even when every name is also declared — the inherit is the finding', () => {
+    const r = run(matrixRepo({ dsnSecret: 'GLITCHTIP_DSN_ST', deploy: MATRIX_DEPLOY(undefined, ['GLITCHTIP_DSN', 'GLITCHTIP_DSN_ST']), caller: INHERIT }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /with `secrets: inherit`\. Its secrets are NAMED, never inherited/);
+    assert.doesNotMatch(r.out, /nothing delivers/);
+  });
+
+  test('FAILS when the matrix job stops supplying the release', () => {
+    const r = run(matrixRepo({ deploy: MATRIX_DEPLOY(undefined, undefined, '') }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /job `app-worker` \(the subscriptiontracker-api leg\) does not pass `--var RELEASE:`/);
+  });
+});
+
 describe('assert-worker-error-sink — coverage self-checks', () => {
   test('COVERAGE LOST when fewer Workers are found than exist today', () => {
     const r = run(makeRepo((f) => ({ ...f, 'services/subscriptiontracker-api/src/index.ts': null })));

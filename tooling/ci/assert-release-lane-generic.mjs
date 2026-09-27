@@ -184,9 +184,9 @@
 //   ITS SUBJECT IS WHAT THE GATE JUDGES: every job of the gate workflow except
 //   its post-gate call jobs (workflow-scan's postGateJobs: they need the gate,
 //   run after it on a push to main, and the gate never reads their result) and
-//   the callee jobs those run. Today those are deploy-web.yml, graded above as
-//   its own lane, and deploy-workers.yml, classified below; that lane's literals
-//   are the service-kit row's (O-SERVICE-KIT-UNBUILT). A gate this cannot
+//   the callee jobs those run. Today those are deploy-web.yml and deploy-workers.yml,
+//   each graded below as its own lane (the latter since 2026-09-26, O-SERVICE-KIT-
+//   UNBUILT: limbs D, D-all and A′ per job, never limb A). A gate this cannot
 //   resolve, whose gate job it cannot find, or from which it reads no value is
 //   COVERAGE LOST (exit 2).
 //
@@ -396,6 +396,12 @@ const GRADED_LANES = new Map([
   // 2026-08-07; before that this row sat in CLASSIFIED_ELSEWHERE and the lane
   // resolved to exactly one app on every run, PRINTED and never failed.
   ['deploy-web.yml', { owner: '[pipeline 10]D-2b', deployPath: true }],
+  // ⏱ 2026-09-26 — O-SERVICE-KIT-UNBUILT (E-a2). Classified (graded by nothing) until its
+  // app Workers moved into ONE matrix over tooling/ci/worker-set.mjs. Graded under limbs
+  // D and D-all, and limb A′ PER JOB; `appSet: false` keeps limb A off.
+  // The lane loop's `!appSet` branch says why, and records what the classification
+  // said.
+  ['deploy-workers.yml', { owner: 'O-SERVICE-KIT-UNBUILT', deployPath: true, appSet: false }],
   // O-STORE-LANES-HARD-WIRE-ONE-APP — each store lane takes `app` at dispatch,
   // checked in its gate job. Graded here since 2026-09-26; before that each sat
   // in CLASSIFIED_ELSEWHERE naming one app, printed and never failed.
@@ -415,7 +421,7 @@ const DEPLOY_PATH_LANES = [...GRADED_LANES].filter(([, v]) => v.deployPath).map(
 const CLASSIFIED_ELSEWHERE = new Map([
   [
     'extensions.yml',
-    // 🔴 CLASSIFIED, NOT GRADED, AND THE REASON IS THE SAME ONE deploy-workers.yml
+    // 🔴 CLASSIFIED, NOT GRADED, AND THE REASON IS THE SAME ONE lane-workers.yml
     // CARRIES. R-1 quantifies over the workspace APP set — the Flutter apps in the
     // root pubspec `workspace:` list. This lane builds BROWSER EXTENSIONS, which are
     // not apps and are in no workspace: it resolves its matrix from
@@ -474,20 +480,14 @@ const CLASSIFIED_ELSEWHERE = new Map([
   ],
 
   [
-    'deploy-workers.yml',
-    'deploys services/*, which are Workers and not apps. R-1 quantifies over the workspace APP set, so a ' +
-      'lane that never builds an app has nothing for this guard to compare and would report a permanent ' +
-      'empty-set pass if it were graded.',
-  ],
-  [
     // Classified 2026-09-25 (capsand-b), the round the workflow landed.
     'deploy-sandbox.yml',
     'deploys the `env.sandbox` block of services/platform and services/subscriptiontracker-api, which are ' +
       'Workers and not apps, by dispatch only, to the workers.dev hosts the store capture writes to. It ' +
       'builds no app and ships nothing a user reaches. R-1 quantifies over the workspace APP set, so this ' +
       'lane has nothing for this guard to compare and would report a permanent empty-set pass if it were ' +
-      'graded — the reason deploy-workers.yml gives just above, restated because this map is read one ' +
-      'entry at a time. Its deploys are held by assert-release-provenance.mjs limb 2b (gated, and excused ' +
+      'graded. (deploy-workers.yml, the production Workers lane, is graded since E-a2, appSet: false.) ' +
+      'Its deploys are held by assert-release-provenance.mjs limb 2b (gated, and excused ' +
       'from the ledger only as proven-sandbox `--env` deploys) and by assert-money-config.mjs limb 1c. The ' +
       'owning stage is stage 14 ops, through the duty row `duty.workflow.deploy-sandbox.yml` in ' +
       'tooling/ops/register.json.',
@@ -520,7 +520,7 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'It builds no app, produces no release artefact and names no app id — its subject is a LANGUAGE, ' +
       'resolved by walking the checkout. R-1 quantifies over the workspace APP set, so this lane has ' +
       'nothing for this guard to compare and would sit in the denominator as a permanent empty-set pass, ' +
-      'the same reason already written out for deploy-workers.yml, ops-watch.yml and renovate.yml. ' +
+      'the same reason already written out for ops-watch.yml and renovate.yml. ' +
       'Owned by stage 14 ops through `duty.workflow.codeql.yml` in ' +
       'tooling/ops/register.json. [ADR 067] decision 4.',
   ],
@@ -542,7 +542,7 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'builds no app, produces no release artifact and names no app id. R-1 quantifies over the ' +
       'workspace APP set to prove a lane is generic, so a lane that ships no app has nothing for this ' +
       'guard to compare and would sit in the denominator as a permanent empty-set pass — the same ' +
-      'reason already written out for deploy-workers.yml and ops-watch.yml. ' +
+      'reason already written out for ops-watch.yml. ' +
       'The owning stage is stage 14 ops, through the duty row `duty.workflow.renovate.yml` in ' +
       'tooling/ops/register.json, and that ownership is not prose: assert-ops-register.mjs holds ' +
       '`watched workflows === .github/workflows/*.yml` in BOTH directions, so this lane cannot be in ' +
@@ -573,9 +573,9 @@ const CLASSIFIED_ELSEWHERE = new Map([
     're-enters a deploy lane whose newest run on main failed only on its ci-gate step, once ci-gate at ' +
       "main's head is green. It builds no app, produces no release artifact and names no app id: the lanes " +
       'it re-enters are DERIVED from the workflow files by tooling/ops/redeploy-stranded.mjs, and those lanes ' +
-      '(build-platforms.yml, deploy-web.yml, deploy-workers.yml) are classified on their own rows. R-1 would carry it in the ' +
-      'denominator as a permanent empty-set pass, the reason already written out for deploy-workers.yml ' +
-      'and ops-watch.yml. The owning stage is stage 14 ops, through the duty row ' +
+      '(build-platforms.yml, deploy-web.yml, deploy-workers.yml) are each owned on their own rows. R-1 would carry it in the ' +
+      'denominator as a permanent empty-set pass, the reason already written out for ' +
+      'ops-watch.yml. The owning stage is stage 14 ops, through the duty row ' +
       '`duty.workflow.redeploy-stranded.yml` in tooling/ops/register.json. What holds its behaviour correct ' +
       'is tooling/ci/test/redeploy-stranded.test.mjs. Classified 2026-09-23, the round the workflow landed.',
   ],
@@ -1381,7 +1381,7 @@ for (const wf of parsed) {
     continue;
   }
   gradedLanes++;
-  const { owner, deployPath, dispatch } = GRADED_LANES.get(file);
+  const { owner, deployPath, appSet = true, dispatch } = GRADED_LANES.get(file);
 
   // ── LIMB D, for the DEPLOY-PATH lanes only ────────────────────────────────
   let fields = [];
@@ -1443,6 +1443,51 @@ for (const wf of parsed) {
           'run/with/env value(s) carry no UUID literal',
       );
     }
+  }
+
+  // ── A LANE OVER A SET THAT IS NOT THE APP SET (`appSet: false`) ───────────
+  // ⏱ 2026-09-26 — O-SERVICE-KIT-UNBUILT (E-a2). deploy-workers.yml sat in
+  // CLASSIFIED_ELSEWHERE ("deploys services/*, which are Workers and not apps") while
+  // it carried one hand-written job per Worker with app #1's directory, host and
+  // ledger name in it: classified, it was graded by nothing, and a Worker literal
+  // there was invisible. Its app Workers now deploy from ONE matrix over
+  // tooling/ci/worker-set.mjs, so it is graded — under limbs D and D-all like every
+  // deploy path, and under limb A′ PER JOB (every `matrix.<k>` a job reads is a key
+  // its own strategy.matrix declares), as the gate is. NOT under limb A: limb A
+  // compares a lane's resolved `apps/<id>` paths with the pubspec workspace, and a
+  // Workers lane builds no app, so it would compare against an empty set forever.
+  // The Worker set's own equality (every register row deployed, every directory
+  // registered) is worker-set.mjs --for-deploy's, and the order of each leg is
+  // assert-deploy-triggers-deploy.mjs limb 4's.
+  if (!appSet) {
+    const before = problems.length;
+    let jobs = 0;
+    for (const [id, job] of wf.jobs) {
+      jobs++;
+      const refs = matrixRefs(job.lines);
+      if (refs.length === 0) continue;
+      const keys = jobMatrixKeys(job.lines);
+      if (keys === null) {
+        coverageLost([
+          `${file}'s job "${id}" reads \`matrix.${refs[0].key}\` (:${refs[0].n}), and its matrix is ONE expression, so which`,
+          'keys it declares is a run-time fact limb A′ cannot read. Declare each key under `matrix:`.',
+        ]);
+      }
+      for (const r of refs.filter((x) => !keys.has(x.key))) {
+        fail(
+          `${owner} · ${file}:${r.n} — job "${id}" reads \`matrix.${r.key}\` and its strategy.matrix declares ` +
+            `${keys.size ? [...keys].join(', ') : 'no key'}. GitHub expands an undeclared matrix key to the EMPTY STRING ` +
+            'rather than erroring, so this step runs with nothing where the Worker should be and reads as generic.',
+        );
+      }
+    }
+    if (problems.length === before) {
+      ok(
+        `${file} (${owner}) — graded over its own set, not the app set: ${fields.length} deploy-path field(s) name no app ` +
+          `id, and every matrix key its ${jobs} job(s) read is declared by that job (limb A′, per job; limb A does not apply)`,
+      );
+    }
+    continue;
   }
 
   // ── LIMB I, for the PER-APP lanes; limbs A and A′ do not apply to them ─────

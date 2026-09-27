@@ -51,6 +51,7 @@ import {
   stepShell,
   workflowSteps,
 } from '../workflow-scan.mjs';
+import { appWorkerMatrix } from '../worker-set.mjs';
 import {
   isRetryable,
   retryDelayMs,
@@ -415,6 +416,12 @@ describe('deployment-record — the environment resolves against the register', 
       .map((a) => a?.slug)
       .filter(Boolean);
     assert.ok(slugs.length > 0, 'the app catalogue yielded no slug — a matrix leg would expand to nothing');
+    // ⏱ 2026-09-26 (O-SERVICE-KIT-UNBUILT, E-a2): deploy-workers.yml records every app Worker
+    // as `${{ matrix.worker.worker }}`, which expands over the app Worker names, not the
+    // slugs. Without them that call expands to NOTHING and leaves this test's domain in
+    // silence, so an empty expansion is an unreadable invocation below.
+    const workerLegs = appWorkerMatrix(ROOT).entries.map((e) => e.worker);
+    assert.ok(workerLegs.length > 0, 'the app Worker matrix yielded no Worker — a Worker leg would expand to nothing');
     const callSites = [];
     // 🔴 LINE BY LINE, SO AN INVOCATION THE READER CANNOT PARSE HAS AN ADDRESS.
     // Joining the file first made `found nothing here` and `there is nothing
@@ -434,7 +441,9 @@ describe('deployment-record — the environment resolves against the register', 
           continue;
         }
         for (const m of found) {
-          for (const environment of expandMatrixEnvironment(m[1], slugs)) {
+          const envs = expandMatrixEnvironment(m[1], slugs, workerLegs);
+          if (envs.length === 0) unreadableInvocations.push(`${file}:${i + 1}`);
+          for (const environment of envs) {
             callSites.push({ file, line: i + 1, written: m[1], environment });
           }
         }
@@ -1451,7 +1460,9 @@ describe('the deploy workflows hand the recorder the id their deploy step publis
 
   test('THE REAL TREE: each deploy-workers.yml job passes its deploy output, through env:', () => {
     const steps = recorderSteps('deploy-workers.yml');
-    assert.deepEqual(steps.map((s) => s.job), ['subscriptiontracker-api', 'platform']);
+    // ⏱ 2026-09-26 (O-SERVICE-KIT-UNBUILT, E-a2): every app Worker records from the ONE
+    // `app-worker` matrix job; the serving Worker keeps its own job.
+    assert.deepEqual(steps.map((s) => s.job), ['app-worker', 'platform']);
     assert.equal(steps[0].step.env.get('DEPLOY_OUTPUT')?.value, '${{ steps.deploy.outputs.command-output }}');
     assert.match(steps[0].step.run.text, /--wrangler-output-env DEPLOY_OUTPUT(\s|$)/);
     assert.equal(steps[1].step.env.get('DEPLOY_OUTPUT')?.value, '${{ steps.deploy.outputs.command-output }}');
