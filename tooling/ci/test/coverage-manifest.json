@@ -234,7 +234,7 @@
   "release-provenance.test.mjs": 156,
   "release-tag-lanes.test.mjs": 22,
   "render-payload.test.mjs": 56,
-  "renovate-backlog.test.mjs": 32,
+  "renovate-backlog.test.mjs": 43,
   "renovate-reach.test.mjs": 25,
   "repo-posture.test.mjs": 19,
   "required-providers.test.mjs": 27,
