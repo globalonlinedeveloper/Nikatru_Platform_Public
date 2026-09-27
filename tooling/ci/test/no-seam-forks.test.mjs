@@ -92,6 +92,52 @@ const LANDED_CANCEL = 'Future<void> _cancelSchedules() async {\n  await svc.canc
 const LANDED_PROVIDERS_CHASSIS = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart';
 const LANDED_PROVIDERS_FORK = 'apps/subscriptiontracker/lib/state/providers/notifications.dart';
 
+// The TWINS limb's subject (2026-09-27, O-CHASSIS-PHASE-2B · full-review apps.md
+// F2-03): state classes declared in BOTH the brick's lib/state and the app's.
+/** Ten twins every fixture keeps identical. With the four declared ones below
+ *  that is 14, the guard's MIN_TWINS, measured on the real tree. They live INSIDE
+ *  the two landed-behaviour files above, so no fixture gains a FILE and every
+ *  per-root count the coverage cases assert stays what it was. */
+const IDENTICAL_TWINS = [
+  'NetworkReachabilityController',
+  'ThemeModeController',
+  'AuthRefreshNotifier',
+  'RemindersEnabledController',
+  'CatchUpNudgeController',
+  'LocaleController',
+  'ReviewPromptController',
+  'PromoCardStateController',
+  'OnboardingSeenController',
+  '_Bump',
+];
+/** The guard's TWIN_DIVERGENCE table, MIRRORED. Each entry's twin is given
+ *  exactly its declared gap, because an entry over a gap that is not there is
+ *  stale and fails. A number changed in the guard is changed here with it. */
+const DECLARED_TWINS = {
+  NotificationTapObserver: 15,
+  PasswordRecoveryController: 2,
+  PasswordResetArrivalController: 2,
+  LegalAcceptanceController: 3,
+};
+const twinClass = (name, inside = '') =>
+  `class ${name} extends Notifier<bool> {\n  @override\n  bool build() => false;\n${inside}}\n`;
+/** `n` lines the app copy holds and the brick copy does not: a gap of `n`. */
+const gap = (n) => Array.from({ length: n }, (_, i) => `  final int _gap${i} = ${i};\n`).join('');
+/** The brick's copy of every twin. `inside` adds lines to named classes. */
+function twinsBrick({ inside = {}, omit = [], add = [] } = {}) {
+  return [...IDENTICAL_TWINS, ...Object.keys(DECLARED_TWINS), ...add]
+    .filter((n) => !omit.includes(n))
+    .map((n) => twinClass(n, inside[n] ?? ''))
+    .join('');
+}
+/** The app's copy: identical twins as the brick has them, declared ones with their gap. */
+function twinsApp({ inside = {}, omit = [], add = [], gaps = {} } = {}) {
+  return [...IDENTICAL_TWINS, ...Object.keys(DECLARED_TWINS), ...add]
+    .filter((n) => !omit.includes(n))
+    .map((n) => twinClass(n, gap(gaps[n] ?? DECLARED_TWINS[n] ?? 0) + (inside[n] ?? '')))
+    .join('');
+}
+
 function tree({ extra = {}, violations = null, omit = [] } = {}) {
   const root = join(TMP, `r${seq++}`);
   const files = {};
@@ -118,8 +164,9 @@ function tree({ extra = {}, violations = null, omit = [] } = {}) {
   files[join(root, HOME_CHASSIS)] = schedGate('HomeScreen') + LANDED_HOME;
   files[join(root, HOME_FORK)] = schedGate('HomeScreen') + LANDED_HOME;
   // The landed-behaviour limb's other pair: reminders-off cancels its own id.
-  files[join(root, LANDED_PROVIDERS_CHASSIS)] = LANDED_CANCEL;
-  files[join(root, LANDED_PROVIDERS_FORK)] = LANDED_CANCEL;
+  // The same two files carry the TWINS limb's fourteen twins (see twinsBrick).
+  files[join(root, LANDED_PROVIDERS_CHASSIS)] = LANDED_CANCEL + twinsBrick();
+  files[join(root, LANDED_PROVIDERS_FORK)] = LANDED_CANCEL + twinsApp();
 
   // The watched pairs: present, and gating on NOTHING — which is exactly the
   // condition the watch limb asserts still holds.
@@ -1148,6 +1195,178 @@ describe('the landed-behaviour limb', () => {
     const r = run(tree({ omit: [LANDED_PROVIDERS_FORK] }));
     assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — the landed-behaviour limb/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE TWINS LIMB (2026-09-27 · O-CHASSIS-PHASE-2B · full-review apps.md F2-03 ·
+// [ADR 072] D1.4). Thirteen state controllers were kept in the brick's
+// lib/state/providers.dart AND in the app's lib/state/providers/, with nothing
+// comparing the copies. These fixtures are the SECOND line of evidence: the
+// real-tree mutations are in the commit that added the limb. Every name here
+// starts `twins ·` so the block can be run alone with --test-name-pattern.
+// ─────────────────────────────────────────────────────────────────────────────
+/** A tree whose two landed-behaviour files carry the given twin copies. */
+const twinTree = ({ brick = {}, app = {}, extra = {} } = {}) =>
+  tree({
+    extra: {
+      [LANDED_PROVIDERS_CHASSIS]: LANDED_CANCEL + twinsBrick(brick),
+      [LANDED_PROVIDERS_FORK]: LANDED_CANCEL + twinsApp(app),
+      ...extra,
+    },
+  });
+
+describe('the TWINS limb — a state class kept in the brick AND an app is compared line by line', () => {
+  test('twins · a clean tree passes, and prints the summary and every declared divergence', () => {
+    const r = run(tree());
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /twins — classes=14 identical=10 declared-divergent=4/);
+    assert.match(r.out, /twin subscriptiontracker\/LegalAcceptanceController — 3 line\(s\) differ, declared: /);
+  });
+
+  test('twins · 🔴 one line added to the APP copy of an identical twin → EXIT 1, naming the class, both places and the fix', () => {
+    const r = run(twinTree({ app: { inside: { ReviewPromptController: '  final int _drift = 0;\n' } } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(
+      r.out,
+      /ReviewPromptController — tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}\/lib\/state\/providers\.dart:\d+ ↔ apps\/subscriptiontracker\/lib\/state\/providers\/notifications\.dart:\d+: measured 1 differing line\(s\), declared 0/,
+    );
+    assert.match(r.out, /app only: {3}final int _drift = 0;/);
+    assert.match(r.out, /change the entry in the same commit/);
+  });
+
+  test('twins · 🔴 the same line added to the BRICK copy instead → EXIT 1 too', () => {
+    const r = run(twinTree({ brick: { inside: { ReviewPromptController: '  final int _drift = 0;\n' } } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /ReviewPromptController — .*: measured 1 differing line\(s\), declared 0/);
+    assert.match(r.out, /brick only: final int _drift = 0;/);
+  });
+
+  test('twins · 🔴 a declared gap that NARROWS → EXIT 1: the entry is lowered in the same commit', () => {
+    const r = run(twinTree({ app: { gaps: { PasswordRecoveryController: 1 } } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /PasswordRecoveryController — .*: measured 1 differing line\(s\), declared 2\./);
+  });
+
+  test('twins · 🔴 a declared gap that WIDENS → EXIT 1', () => {
+    const r = run(twinTree({ app: { gaps: { PasswordRecoveryController: 3 } } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /PasswordRecoveryController — .*: measured 3 differing line\(s\), declared 2\./);
+  });
+
+  test('twins · 🔴 an entry over a twin that became identical is stale → EXIT 1', () => {
+    const r = run(twinTree({ app: { gaps: { LegalAcceptanceController: 0 } } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /subscriptiontracker\/LegalAcceptanceController — the copies are identical now/);
+  });
+
+  test('twins · 🔴 an entry naming no twin at all is stale → EXIT 1, with the floor still met by a spare twin', () => {
+    const r = run(
+      twinTree({
+        brick: { add: ['SpareController'] },
+        app: { omit: ['LegalAcceptanceController'], add: ['SpareController'] },
+      }),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /TWIN_DIVERGENCE entry subscriptiontracker\/LegalAcceptanceController names no twin/);
+  });
+
+  test('twins · 🔴 the universe emptied → EXIT 2 COVERAGE LOST, and the first line names the limb', () => {
+    const r = run(
+      tree({ extra: { [LANDED_PROVIDERS_CHASSIS]: LANDED_CANCEL, [LANDED_PROVIDERS_FORK]: LANDED_CANCEL } }),
+    );
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out.split('\n')[0], /COVERAGE LOST — the TWINS limb/);
+    assert.match(r.out, /0 brick\/app state class twin\(s\) found, below the floor of 14/);
+  });
+
+  test('twins · 🔴 the floor is exact: 13 twins is COVERAGE LOST', () => {
+    const r = run(twinTree({ brick: { omit: ['_Bump'] }, app: { omit: ['_Bump'] } }));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /13 brick\/app state class twin\(s\) found, below the floor of 14/);
+  });
+
+  test("twins · a `${` inside a string literal does not move a body's end", () => {
+    // Counted on raw text, the `{` below opens a brace that never closes, and
+    // ThemeModeController's body runs into the next class: COVERAGE LOST.
+    const line = "  static const String open = '\\${';\n";
+    const r = run(
+      twinTree({ brick: { inside: { ThemeModeController: line } }, app: { inside: { ThemeModeController: line } } }),
+    );
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /twins — classes=14 identical=10 declared-divergent=4/);
+  });
+
+  test('twins · a string literal is COMPARED, not blanked — a changed storage key is drift', () => {
+    const r = run(
+      twinTree({
+        brick: { inside: { ThemeModeController: "  static const String key = 'theme_v1';\n" } },
+        app: { inside: { ThemeModeController: "  static const String key = 'theme_v2';\n" } },
+      }),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /ThemeModeController — .*: measured 2 differing line\(s\), declared 0/);
+  });
+
+  test('twins · a difference in COMMENTS only is not drift', () => {
+    const r = run(twinTree({ app: { inside: { ThemeModeController: '  // this copy narrates itself differently\n' } } }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /twins — classes=14 identical=10/);
+  });
+
+  test('twins · 🔴 the same lines in a different ORDER are drift — a multiset would call them identical', () => {
+    const r = run(
+      twinTree({
+        brick: { inside: { ThemeModeController: '  final int a = 1;\n  final int b = 2;\n' } },
+        app: { inside: { ThemeModeController: '  final int b = 2;\n  final int a = 1;\n' } },
+      }),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /ThemeModeController — .*: measured 2 differing line\(s\), declared 0/);
+    assert.match(r.out, /the same lines, in a different order/);
+  });
+
+  test("twins · a mustache token in the brick copy is the app's own value when its app.yaml gives one", () => {
+    const r = run(
+      twinTree({
+        brick: { inside: { ThemeModeController: "  static const String key = '{{app_id}}.theme';\n" } },
+        app: { inside: { ThemeModeController: "  static const String key = 'subscriptiontracker.theme';\n" } },
+        extra: { 'apps/subscriptiontracker/app.yaml': '# the declaration\nid: subscriptiontracker\n' },
+      }),
+    );
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /twins — classes=14 identical=10/);
+  });
+
+  test('twins · 🔴 a mustache token counts as a difference when the app.yaml gives no value', () => {
+    const r = run(
+      twinTree({
+        brick: { inside: { ThemeModeController: "  static const String key = '{{app_id}}.theme';\n" } },
+        app: { inside: { ThemeModeController: "  static const String key = 'subscriptiontracker.theme';\n" } },
+      }),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /ThemeModeController — .*: measured 2 differing line\(s\), declared 0/);
+  });
+
+  test('twins · a twin declared twice on one side is COVERAGE LOST, not a guess', () => {
+    const r = run(
+      twinTree({ extra: { 'apps/subscriptiontracker/lib/state/providers/dup.dart': twinClass('ThemeModeController') } }),
+    );
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /class ThemeModeController is declared more than once on one side/);
+  });
+
+  test('twins · a class body that never closes is COVERAGE LOST, naming the file and line', () => {
+    const r = run(
+      tree({
+        extra: {
+          [LANDED_PROVIDERS_FORK]: LANDED_CANCEL + twinsApp() + 'class Broken {\n  void f() {\n',
+        },
+      }),
+    );
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /providers\/notifications\.dart:\d+ — class Broken never reaches its matching close brace/);
   });
 });
 

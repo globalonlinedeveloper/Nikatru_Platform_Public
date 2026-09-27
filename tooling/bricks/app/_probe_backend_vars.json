@@ -2,7 +2,7 @@
   "app_id": "probeapi",
   "display_name": "ProbeApi's Co-op & Co — Backend Smoke",
   "icon_label": "Co-op & Smoke",
-  "subdomain": "",
+  "pages_origin": "probeapi-fixture.pages.dev",
   "api_domain": "",
   "seed_hex": "0E7C6B",
   "category": "productivity",

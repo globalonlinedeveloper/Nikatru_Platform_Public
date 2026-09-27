@@ -128,6 +128,7 @@ import { createHash } from 'node:crypto';
 import { join, dirname, resolve, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from '../ci/tree-walk.mjs';
+import { BUNDLES_REGISTER, readBundles } from '../catalog/read.mjs';
 import {
   isChromePage,
   applyChrome,
@@ -251,8 +252,11 @@ const PLATFORM_NAMES = new Map([
  *
  *  The wording is deliberately APP-NEUTRAL ("Set a budget", not "across all your
  *  subscriptions"): one template serves every app in the factory, and copy that
- *  reads well for Subly is copy that lies about app #2. */
-const FEATURE_NAMES = new Map([
+ *  reads well for Subly is copy that lies about app #2.
+ *
+ *  Exported for assert-discovery-surface.mjs limb P: a /pricing section's
+ *  bullets must be these titles for its OWN product's flags (NP-DD-R1). */
+export const FEATURE_NAMES = new Map([
   ['renewals', ['Renewal reminders', 'You are told what renews, and when, before you are charged.']],
   ['budgets', ['Budgets', 'Set a budget and see where you stand against it.']],
   ['exports', ['Export your data', 'Take what you entered with you, whenever you want.']],
@@ -1423,42 +1427,98 @@ export function applyHomeGrid(html, liveApps, channels = []) {
 // price.
 // -----------------------------------------------------------------------------
 
-/** The three spliced spans on `pricing.html`. Same sentinel discipline as
- *  `HOME_GRID_OPEN`: exactly one pair each, and a missing pair REFUSES. */
-export const PRICING_REGIONS = ['meta', 'plans', 'table'];
+/** The two spliced spans on `pricing.html`: the meta description, and the
+ *  product sections. Same sentinel discipline as `HOME_GRID_OPEN`: exactly one
+ *  pair each, and a missing pair REFUSES.
+ *
+ *  ⏱ 2026-09-27 (O-PRICING-PAGE-REFUSES-A-SECOND-APP): the page had THREE spans
+ *  (`meta`, `plans`, `table`), one SKU set wide. The plan cards and the table
+ *  now sit inside one section per product, so both moved inside `products`.
+ *  A page still carrying a retired pair REFUSES (`applyPricing`): a span nothing
+ *  writes any more would keep serving whatever price it last had. */
+export const PRICING_REGIONS = ['meta', 'products'];
+export const RETIRED_PRICING_REGIONS = ['plans', 'table'];
 export const pricingOpen = (region) => `<!-- PRICING:${region} -->`;
 export const pricingClose = (region) => `<!-- /PRICING:${region} -->`;
 
 /**
- * The offerings the price list is FOR.
+ * The products the price list is FOR, one section each, in catalogue order:
+ * every live app whose rail config declares offerings, then every `sellable`
+ * bundle.
  *
- * 🔴 ONE PAGE, ONE PRICED APP, AND IT IS ASSERTED RATHER THAN ASSUMED.
- * `/pricing` is a single site-wide URL - the one a merchant of record verifies,
- * and the one every generated landing links to with `?app=<slug>` attached. It
- * can render exactly one SKU set. Today `subscriptiontracker` is the only app
- * whose paywall declares offerings, so the question does not arise; the moment a
- * second one does, this REFUSES rather than silently rendering whichever came
- * first out of the catalogue. The fix then is a per-app price list, and that is
- * a decision - not something this function may take on a reader's behalf.
+ * ⏱ 2026-09-27 (O-PRICING-PAGE-REFUSES-A-SECOND-APP): this was `pricedApp()`,
+ * which REFUSED the moment a second live app declared offerings, because the
+ * page could carry one SKU set. The page now carries one section per product,
+ * so the refusal is gone and `/pricing` stays the ONE site-wide URL a merchant
+ * of record verifies. Each section is headed by the product's catalogue name.
  *
- * @returns {{slug: string, offerings: object[], paywallEnabled: boolean}|null}
+ * WHAT A SECTION PRICES: the web offerings in `RAIL_CONFIG`, through
+ * `commerceFor`, and nothing else. The store price is never on this page, and a
+ * one-time offering (lifetime) is shown here because the web is the one place
+ * it is sold (ADR no.093 §2).
+ *
+ * A BUNDLE is a product (catalog/bundles.json, `status: draft | sellable`); its
+ * slug is its `featureSet`, which is also its key under `RAIL_CONFIG`'s `apps`.
+ * Only `sellable` rows are priced. A sellable bundle with NO web offering is a
+ * PROBLEM, not a skipped section: the register says it can be bought, and the
+ * page would say nothing about what it costs.
+ *
+ * @param {{rail: object|null}} ctx
+ * @param {{slug: string, name: string, tagline?: string}[]} liveApps the registry's `live` entries, in registry order
+ * @param {object[]} bundles the bundle register's rows, in register order
+ * @param {string[]} problems
+ * @returns {{slug: string, name: string, kind: 'app'|'bundle', tagline: string,
+ *            features?: {flag: string, title: string, blurb: string}[],
+ *            offerings: object[], paywallEnabled: boolean}[]}
  */
-export function pricedApp(ctx, liveApps, problems) {
+export function pricedProducts(ctx, liveApps, bundles, problems) {
   const priced = [];
   for (const app of liveApps) {
-    const { offerings, paywallEnabled } = commerceFor(ctx.rail, app.slug, problems);
-    if (offerings.length > 0) priced.push({ slug: app.slug, offerings, paywallEnabled });
+    const { features, offerings, paywallEnabled } = commerceFor(ctx.rail, app.slug, problems);
+    if (offerings.length > 0) {
+      priced.push({ slug: app.slug, name: app.name, kind: 'app', tagline: app.tagline ?? '', features, offerings, paywallEnabled });
+    }
   }
-  if (priced.length > 1) {
-    problems.push(
-      `${PRICING_PAGE} is ONE page and ${priced.length} live apps declare offerings ` +
-        `(${priced.map((p) => p.slug).join(', ')}). A single price list cannot carry two SKU sets, and ` +
-        'picking one would show the other app\u2019s buyers a price that is not theirs. Split the price ' +
-        'list per app, or leave the second app with no offerings until it has its own page.',
-    );
-    return null;
+  const sellable = new Map();
+  for (const row of bundles) {
+    if (row?.status !== 'sellable' || typeof row.featureSet !== 'string' || row.featureSet === '') continue;
+    // One product per feature set: its CURRENT (highest) sellable version names it.
+    const held = sellable.get(row.featureSet);
+    if (held === undefined || (Number(row.version) || 0) > (Number(held.version) || 0)) sellable.set(row.featureSet, row);
   }
-  return priced[0] ?? null;
+  for (const [featureSet, row] of sellable) {
+    const { offerings, paywallEnabled } = commerceFor(ctx.rail, featureSet, problems);
+    if (offerings.length === 0) {
+      problems.push(
+        `${BUNDLES_REGISTER}: bundle "${featureSet}" is \`sellable\`, and ${RAIL_CONFIG} declares no web offering ` +
+          `for it under apps.${featureSet}.paywall.offerings. ${PRICING_PAGE} renders every priced product; a ` +
+          'bundle the register sells with no price on the page is an offer nobody can read. Declare its web ' +
+          'offering, or keep the row `draft`.',
+      );
+      continue;
+    }
+    const name = typeof row.name === 'string' && row.name.trim() !== '' ? row.name : featureSet;
+    priced.push({ slug: featureSet, name, kind: 'bundle', tagline: row.tagline ?? '', offerings, paywallEnabled });
+  }
+  return priced;
+}
+
+/**
+ * The bundle register's rows for the price list, read through the one Node
+ * catalogue reader (tooling/catalog/read.mjs).
+ *
+ * An ABSENT register is a tree with no bundles (every fixture tree in
+ * discovery-surface.test.mjs is one) and yields no rows. A register that EXISTS
+ * and cannot be read is a problem: the page would silently drop a product the
+ * register may be selling.
+ */
+function readBundleRows(repoRoot, problems) {
+  const r = readBundles(repoRoot);
+  if (r.ok) return r.rows;
+  if (existsSync(join(repoRoot, ...BUNDLES_REGISTER.split('/')))) {
+    problems.push(`${r.why}. ${PRICING_PAGE} prices every sellable bundle, so an unreadable register is a price list that may be missing one.`);
+  }
+  return [];
 }
 
 /**
@@ -1481,32 +1541,50 @@ export function offeredTrial(app, o) {
 }
 
 /** `<meta name="description">`, carrying the headline prices and, while checkout is open, the trial. */
-export function pricingMeta(app) {
-  if (app === null || app.offerings.length === 0) {
+export function pricingMeta(products) {
+  const list = Array.isArray(products) ? products.filter((p) => p && p.offerings.length > 0) : [];
+  if (list.length === 0) {
     return '<meta name="description" content="Pricing for Nikatru apps. Nothing is sold from this website today.">';
   }
-  const trial = Math.max(...app.offerings.map((o) => offeredTrial(app, o)));
-  const parts = app.offerings.map((o) => (o.term.unit ? `${o.amount}/${o.term.unit}` : `${o.amount} once`));
+  const trial = Math.max(...list.flatMap((p) => p.offerings.map((o) => offeredTrial(p, o))));
+  const prices = (p) => p.offerings.map((o) => (o.term.unit ? `${o.amount}/${o.term.unit}` : `${o.amount} once`)).join(' or ');
   const trialWords = trial > 0 ? ` with a ${trial}-day free trial` : '';
-  return `<meta name="description" content="Pricing for Nikatru apps. Free plan, and Pro at ${esc(parts.join(' or '))}${trialWords}.">`;
+  // One app reads exactly as the page read before it had sections.
+  if (list.length === 1 && list[0].kind !== 'bundle') {
+    return `<meta name="description" content="Pricing for Nikatru apps. Free plan, and Pro at ${esc(prices(list[0]))}${trialWords}.">`;
+  }
+  const each = list.map((p) => (p.kind === 'bundle' ? `${p.name} at ${prices(p)}` : `${p.name}: Free plan, and Pro at ${prices(p)}`));
+  return `<meta name="description" content="Pricing for Nikatru apps. ${esc(each.join('; '))}${trialWords}.">`;
 }
 
-/** The plan cards: one Free card, then one card per offering. */
+/**
+ * The plan cards of ONE product: a Free card (apps only; a bundle has no free
+ * tier), then one card per offering.
+ *
+ * 🔴 EVERY BULLET IS THE PRODUCT'S OWN REGISTER TEXT, AND A PRODUCT WITH NONE
+ * SHOWS NONE (NP-DD-R1, 2026-09-27). An app's paid cards list the titles of the
+ * features ITS OWN rail config entry enables (`apps.<slug>.features`, named by
+ * FEATURE_NAMES, the words its landing page already uses); a bundle's card
+ * names what the bundle is (its register `tagline`). The Free card lists
+ * nothing: no record says which features the free tier carries. Until this
+ * rule the cards carried app #1's hand-written copy ("Budgets across all your
+ * subscriptions"), which a second priced product would have printed as its own.
+ * assert-discovery-surface.mjs limb P fails a section carrying any other line.
+ */
 export function pricingPlans(app) {
   if (app === null || app.offerings.length === 0) {
     return '    <p>No plan is on sale from this website today.</p>';
   }
+  const bundle = app.kind === 'bundle';
+  const perks = (bundle ? [app.tagline] : (app.features ?? []).map((f) => f?.title)).filter(
+    (t) => typeof t === 'string' && t.trim() !== '',
+  );
+  const perkList = perks.length ? `\n      <ul>\n${perks.map((l) => `        <li>${esc(l)}</li>`).join('\n')}\n      </ul>` : '';
   const code = app.offerings[0].code;
   const free = `    <div class="plan">
       <h3>Free</h3>
       <div class="price">${esc(zero(code))}</div>
       <div class="sub">No card required</div>
-      <ul>
-        <li>Track your subscriptions</li>
-        <li>See monthly and yearly totals</li>
-        <li>Renewal dates at a glance</li>
-        <li>Sign in on any device</li>
-      </ul>
     </div>`;
   const cards = app.offerings.map((o) => {
     const days = offeredTrial(app, o);
@@ -1520,24 +1598,18 @@ export function pricingPlans(app) {
     return `    <div class="plan${hi}">
       <h3>${esc(o.term.heading)}${trial}</h3>
       <div class="price">${esc(o.amount)}${per}</div>
-      <div class="sub">${esc(o.term.renews)}</div>
-      <ul>
-        <li>Everything in Free</li>
-        <li>Renewal reminders before you are charged</li>
-        <li>Budgets across all your subscriptions</li>
-        <li>Export your data</li>
-      </ul>
+      <div class="sub">${esc(o.term.renews)}</div>${perkList}
     </div>`;
   });
-  return [free, ...cards].join('\n');
+  return (bundle ? cards : [free, ...cards]).join('\n');
 }
 
-/** The plan-details table. */
+/** The plan-details table of ONE product (a bundle has no Free row). */
 export function pricingTable(app) {
   const head = '    <tr><th>Plan</th><th>Price</th><th>Billing</th><th>Free trial</th></tr>';
   if (app === null || app.offerings.length === 0) return head;
   const code = app.offerings[0].code;
-  const rows = [`    <tr><td>Free</td><td>${esc(zero(code))}</td><td>&mdash;</td><td>&mdash;</td></tr>`];
+  const rows = app.kind === 'bundle' ? [] : [`    <tr><td>Free</td><td>${esc(zero(code))}</td><td>&mdash;</td><td>&mdash;</td></tr>`];
   for (const o of app.offerings) {
     const billing = o.term.unit ? `Every ${esc(o.term.unit)}` : 'One-time payment';
     const days = offeredTrial(app, o);
@@ -1549,24 +1621,69 @@ export function pricingTable(app) {
   return [head, ...rows].join('\n');
 }
 
+/** The marker a product's section carries, read by assert-discovery-surface.mjs
+ *  (which requires each priced product exactly once). */
+export const productMarker = (slug) => `data-product="${esc(slug)}"`;
+
 /**
- * Splice all three regions into the price list.
+ * ONE product's section: its catalogue name, its plan cards and its table.
+ *
+ * The cards and the table are the bytes the page carried before it had
+ * sections; the `<section>` element and the name heading are the wrapper.
+ */
+export function pricingSection(p) {
+  return [
+    `  <section class="product" ${productMarker(p.slug)}>`,
+    `  <h2>${esc(p.name)}</h2>`,
+    '  <h2>Plans</h2>',
+    '',
+    '  <div class="plans">',
+    pricingPlans(p),
+    '  </div>',
+    '',
+    '  <h2>Plan details</h2>',
+    '  <table>',
+    pricingTable(p),
+    '  </table>',
+    '  </section>',
+  ].join('\n');
+}
+
+/** The `products` span: one section per priced product, in the order given. */
+export function pricingProducts(products) {
+  const list = Array.isArray(products) ? products.filter((p) => p && p.offerings.length > 0) : [];
+  if (list.length === 0) return '  <p>No plan is on sale from this website today.</p>';
+  return list.map(pricingSection).join('\n\n');
+}
+
+/**
+ * Splice both regions into the price list.
  *
  * 🔴 REFUSES on a missing or duplicated sentinel pair, exactly as `applyHomeGrid`
  * and `spliceRegion` do, and for the same reason: a splice that quietly does
  * nothing leaves a PRICE on a served page while every count still includes the
  * file. Deleting a marker must not become the way back to hand-maintaining a
- * number.
+ * number. A RETIRED pair (`plans`, `table`) refuses too: nothing writes it any
+ * more, so whatever price sits inside it would be served unread.
  *
  * @param {string} html `pricing.html` as it is on disk
- * @param {{slug: string, offerings: object[]}|null} app
+ * @param {object[]|null} products `pricedProducts()`'s list; null or empty sells nothing
  * @returns {string}
  */
-export function applyPricing(html, app) {
+export function applyPricing(html, products) {
+  for (const region of RETIRED_PRICING_REGIONS) {
+    if (html.includes(pricingOpen(region)) || html.includes(pricingClose(region))) {
+      throw new Error(
+        `${PRICING_PAGE}: carries the retired PRICING:${region} sentinel(s). Since 2026-09-27 the plan cards ` +
+          'and the table are generated inside one section per product, between the PRICING:products pair; ' +
+          'nothing writes a PRICING:' + region + ' span any more, so a price inside it would be served unread. ' +
+          'Delete the pair.',
+      );
+    }
+  }
   const bodies = new Map([
-    ['meta', pricingMeta(app)],
-    ['plans', pricingPlans(app)],
-    ['table', pricingTable(app)],
+    ['meta', pricingMeta(products)],
+    ['products', pricingProducts(products)],
   ]);
   let out = html;
   for (const region of PRICING_REGIONS) {
@@ -1844,6 +1961,8 @@ export function planDiscovery(repoRoot) {
     rail: readRailConfig(repoRoot, problems),
     pricingPage: existsSync(join(repoRoot, ...PRICING_PAGE.split('/'))),
     channels: readChannelRegister(repoRoot, problems),
+    // The bundle register, for the price list's `sellable` bundles.
+    bundles: readBundleRows(repoRoot, problems),
   };
 
   const live = usable.filter((a) => a.status === 'live');
@@ -1926,11 +2045,12 @@ export function planDiscovery(repoRoot) {
       // The homepage takes ONE more spliced region than the rest: its app grid,
       // which used to be built in the browser. See `applyHomeGrid` above.
       if (rel === HOME_PAGE) out = applyHomeGrid(out, live, ctx.channels);
-      // ... and the price list takes THREE more, for the prices themselves. See
-      // `applyPricing` above for why a hand-written page is spliced rather than
-      // generated, and why leaving those four numbers hand-maintained was a
-      // defect no guard in this repository could see.
-      if (rel === PRICING_PAGE) out = applyPricing(out, pricedApp(ctx, live, problems));
+      // ... and the price list takes TWO more, for the prices themselves: its
+      // meta description and one section per priced product. See `applyPricing`
+      // above for why a hand-written page is spliced rather than generated, and
+      // why leaving those numbers hand-maintained was a defect no guard in this
+      // repository could see.
+      if (rel === PRICING_PAGE) out = applyPricing(out, pricedProducts(ctx, live, ctx.bundles, problems));
       // ... and the support and about pages take one each, for the apps they
       // name. See `supportAppsBlock` above for why the list is `live`.
       if (rel === SUPPORT_PAGE) {

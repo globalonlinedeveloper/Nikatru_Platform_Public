@@ -159,21 +159,57 @@ void run(HookContext context) {
     );
   }
 
-  // ── subdomain ─────────────────────────────────────────────────────────────
-  // [pipeline S-8] Empty means DERIVE. A value disagreeing with the convention
-  // is refused rather than honoured: `lingo` hosted at `phrasebook.nikatru.com`
-  // is a divergence the identifiers never re-converge from.
-  // Only meaningful once app_id itself is valid: suggesting
-  // "Bad-App.nikatru.com" to someone whose app_id was just rejected sends them
-  // to fix the wrong line. The app_id error is the actionable one — and it is
-  // the ONLY one that may silence these two, which is why the condition reads
-  // `appIdValid` rather than "no problem has been recorded yet".
-  final String subdomain = v('subdomain');
-  if (appIdValid && subdomain.isNotEmpty && subdomain != '$appId.nikatru.com') {
+  // ── pages_origin ──────────────────────────────────────────────────────────
+  // O-PRODUCT-RECORD-UNBUILT (G-a, 2026-09-27). The app's own Cloudflare Pages
+  // host — the origin the apex router fetches — is an INPUT, never a derivation.
+  // Cloudflare issues it when the project is created and appends a suffix when
+  // the bare name is taken (app #1 is `subscriptiontracker-7qg.pages.dev`; the
+  // bare `subscriptiontracker.pages.dev` is a third party's), so no rule here
+  // can compute it. `node tooling/web/pages-origin.mjs --apply <app_id>` creates
+  // the project and prints it.
+  //
+  // It REPLACES `subdomain`, whose blank derived `<app_id>.nikatru.com`: a host
+  // that has served nothing since [ADR 080] deleted the wildcard, and that
+  // render.mjs used to fall back to for the catalogue `origin`, routing a new
+  // app to NXDOMAIN. Refused: blank, any *.nikatru.com host (that derivation),
+  // and anything that is not one label under pages.dev. Independent of
+  // `appIdValid`: nothing here is computed from app_id.
+  final String pagesOrigin = v('pages_origin');
+  if (pagesOrigin.isEmpty) {
     problems.add(
-      'subdomain must be "$appId.nikatru.com" or empty to derive — got '
-      '"$subdomain". The catalogue entry, the CORS origin and the analytics key '
-      'all follow app_id, so a divergence here never re-converges.',
+      'pages_origin is required and has no derivation. Create the Pages '
+      'project first — node tooling/web/pages-origin.mjs --apply <app_id> — and '
+      'pass the *.pages.dev host it prints (Cloudflare issues it, and appends a '
+      'suffix when the bare name is taken).',
+    );
+  } else if (pagesOrigin == 'nikatru.com' ||
+      pagesOrigin.endsWith('.nikatru.com')) {
+    problems.add(
+      'pages_origin "$pagesOrigin" is a nikatru.com host. The app is published '
+      'at a PATH on the apex ([ADR 075]) and its origin is its Pages project\'s '
+      '*.pages.dev host; <app_id>.nikatru.com has served nothing since [ADR 080] '
+      'deleted the wildcard.',
+    );
+  } else if (!RegExp(r'^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.pages\.dev$')
+      .hasMatch(pagesOrigin)) {
+    problems.add(
+      'pages_origin must be one lowercase label under pages.dev, with no scheme '
+      'or path (e.g. myapp-1ab.pages.dev) — got "$pagesOrigin".',
+    );
+  }
+
+  // ── subdomain: RETIRED ────────────────────────────────────────────────────
+  // Not declared in brick.yaml any more, so mason never prompts for it — but a
+  // vars file still carrying it reaches this hook (mason_cli 0.1.3 hands every
+  // key of `-c <file>` to the hooks). Honouring it would re-derive the dead
+  // host; ignoring it would stamp an app from a spec whose author believes it
+  // says something it does not. So its mere presence is a refusal.
+  if (vars.containsKey('subdomain')) {
+    problems.add(
+      'subdomain was renamed to pages_origin (O-PRODUCT-RECORD-UNBUILT): pass '
+      'the Pages project\'s *.pages.dev host as pages_origin and delete '
+      '`subdomain` from the spec. It used to derive <app_id>.nikatru.com, which '
+      'serves nothing.',
     );
   }
 
@@ -473,8 +509,9 @@ void run(HookContext context) {
 
   // ── NORMALISE, so the templates are dumb ──────────────────────────────────
   // 🔴 THE "EMPTY MEANS DERIVE" CONTRACT IS IMPLEMENTED HERE, AND ONLY HERE.
-  // The rules above bless a blank `subdomain`/`api_domain` — "or empty to
-  // derive" — and `brick.yaml` defaults both to "". But nothing derived them
+  // The rules above bless a blank `api_domain` — "or empty to derive" — and
+  // `brick.yaml` defaults it to "". (`subdomain` was the second such var until
+  // `pages_origin` replaced it; that one has no derivation at all.) But nothing derived them
   // for the STAMP: `post_gen` derived only for the apps.json row and the
   // printed checklist, while every template interpolated the raw var. The
   // documented-normal input therefore stamped `"ALLOWED_ORIGINS": "https://"`
@@ -488,7 +525,9 @@ void run(HookContext context) {
   // disagree with post_gen. mason feeds `updatedVars ?? vars` to BOTH
   // generation and post_gen (mason_cli 0.1.3, make.dart:194/211), so a write
   // here reaches every consumer.
-  vars['subdomain'] = subdomain.isEmpty ? '$appId.nikatru.com' : subdomain;
+  // The Pages origin is written back TRIMMED and nothing else: it is the
+  // value Cloudflare issued, and post_gen writes it into app.yaml verbatim.
+  vars['pages_origin'] = pagesOrigin;
   // A client-only app has NO API host of its own, so this stays empty on
   // purpose — deriving `<id>-api.nikatru.com` would stamp a hostname that will
   // never resolve. `api_base_url` below is what such an app actually calls.

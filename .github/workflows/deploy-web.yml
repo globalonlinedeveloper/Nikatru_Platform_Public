@@ -349,6 +349,17 @@ jobs:
           echo "::error title=Pages project::could not ensure the Direct Upload Pages project \"$APP\" exists (wrangler exit ${code})."
           exit 1
 
+      # why: app.yaml's hosts.pagesOrigin is PROVEN against the subdomain Cloudflare issued, before
+      # anything publishes; a mismatch exits 1 naming both (row O-PRODUCT-RECORD-UNBUILT, G-b).
+      - name: Prove app.yaml's pagesOrigin is the Pages project's own subdomain
+        if: steps.plan.outputs.deploy == 'true'
+        working-directory: .
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          APP: ${{ matrix.app }}
+        run: node tooling/web/pages-origin.mjs --verify "$APP"
+
       - name: Resolve this app's published origin from the catalogue
         if: steps.plan.outputs.deploy == 'true'
         id: target

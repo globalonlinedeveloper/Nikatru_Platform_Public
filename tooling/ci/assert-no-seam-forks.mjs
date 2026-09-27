@@ -37,8 +37,14 @@
 //      chassis twin's capability gates must all still exist in it ([ADR 042])
 //   4. THE WATCH — every OTHER chassis/fork screen pair, undecidable today (its
 //      chassis gates on nothing), must STAY so or be PROMOTED into check 3
+//   5. TWINS — a class declared in BOTH the brick's lib/state and an app's
+//      lib/state must have the same body, or a TWIN_DIVERGENCE entry whose line
+//      count equals the measured gap (O-CHASSIS-PHASE-2B, apps.md F2-03,
+//      [ADR 072] D1.4)
 // Usage:  node tooling/ci/assert-no-seam-forks.mjs [repoRoot]
-// Exit 0 = no forks. 1 = a fork, a lagging accepted fork, or an unpromoted pair.
+// Exit 0 = no forks. 1 = a fork, a lagging accepted fork, an unpromoted pair, or
+// a state twin whose copies differ from what TWIN_DIVERGENCE declares.
+// 2 = COVERAGE LOST.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname, posix } from 'node:path';
@@ -1152,6 +1158,355 @@ if (landedGaps.length) {
   fail(lines);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TWINS — A STATE CLASS DECLARED IN THE BRICK AND IN AN APP IS ONE CLASS, KEPT
+// TWICE, AND THE TWO COPIES ARE COMPARED LINE BY LINE
+// (O-CHASSIS-PHASE-2B, leg 2 · full-review apps.md F2-03 · [ADR 072] D1.4)
+//
+// 🔴 EVERY LIMB ABOVE COMPARES A GATE OR A NAMED SHAPE; NONE OF THEM READS A
+// CLASS BODY. The review measured thirteen generic state controllers — theme,
+// locale, onboarding, review prompt, promo card, legal acceptance, reminders,
+// catch-up nudge, password recovery, password-reset arrival, auth refresh,
+// network reachability and `_Bump` — declared BOTH in the brick's
+// lib/state/providers.dart and in apps/subscriptiontracker/lib/state/providers/.
+// A fix made in one copy never reached the other, and no guard said so: the
+// Notifier classes are not registered contracts, so the fork limb above cannot
+// see them, and assert-stamp-properties.mjs exempts that app by name.
+// [ADR 072] keeps Riverpod at the composition root and lib/state where it is,
+// so the two copies stay two files until its D1.4 helper lands. This limb holds
+// them together until then, and is what later proves both shrank the same way.
+//
+// THE RULE. The universe is every `class` declared in a .dart file under the
+// brick's lib/state/** and under apps/<app>/lib/state/** (EXEMPT_DIR applies).
+// A name declared on both sides is a TWIN. Its body runs from the line of its
+// declaration to the line of its matching close brace, and the braces are
+// counted on text with comments AND string literals blanked, so a `${` or a
+// lone `}` inside a string cannot move the end. The COMPARED text keeps the
+// string literals — a storage key or an event name is behaviour — and drops only
+// the comments, which narrate each tree in its own words. Each line is trimmed,
+// its whitespace collapsed, and blank lines dropped. In the brick body a plain
+// mustache token (`{{app_id}}`) becomes that app's own value when its app.yaml
+// gives one (BRICK_VAR_IN_APP_YAML); any other token is left as written, so its
+// line counts as a difference.
+//
+// THE MEASUREMENT is the number of lines outside a longest common subsequence
+// of the two line lists, both sides summed. A multiset difference was the first
+// draft and was rejected on the tree itself: LegalAcceptanceController carries
+// the comment "the re-ask marker is cleared AFTER the artifact", an ORDER rule,
+// and moving the marker clearing above the artifact write in one copy changes
+// no line's count. Measured 2026-09-27 on the app copy: a multiset still read
+// the declared 3; the subsequence read 11, the four moved lines counted on both
+// sides.
+//
+//   measured 0, no entry              → identical
+//   measured N, an entry saying N     → a declared divergence, printed every run
+//   measured N, no entry, or entry ≠ N → EXIT 1: a new drift, or an entry that
+//                                       stopped describing the gap. A fix that
+//                                       narrows it lowers the entry in the same
+//                                       commit.
+//   measured 0 with an entry, or an
+//   entry that names no twin at all   → EXIT 1: a stale entry
+//   fewer than MIN_TWINS twins        → EXIT 2 COVERAGE LOST
+//   a body this scan cannot bound, or
+//   a twin's name declared twice on
+//   one side                          → EXIT 2 COVERAGE LOST
+//
+// 🔬 MEASURED ON THE TREE 2026-09-27 (origin/main ffc75ca0): 14 twins, 10 of
+// them identical and the 4 in TWIN_DIVERGENCE below. The fourteenth is
+// NotificationTapObserver (lib/state/notification_tap_observer.dart on both
+// sides), which the review's scratch count did not reach because it read the
+// providers files only. The same scratch count put PromoCardStateController at
+// 179 differing lines. That was its brace matcher, which counted raw text: the
+// brick's doc comment at providers.dart:2253 quotes a JSON example opening with
+// `{` and never closing it, so the count ran past the class. Measured: with
+// that one brace removed from a scratch copy the gap fell to 0 brick-only
+// lines, and on blanked text the class is identical. Two mutations of THIS
+// limb on the tree the same day: counting braces with comments kept is EXIT 2
+// (the prose "class takes …" in a doc comment reads as a declaration and its
+// body runs into the next); counting them with string literals kept is EXIT 0,
+// because no string in these files unbalances a brace today — the fixture case
+// with a `'\${'` literal is what shows that blanking bites.
+//
+// ⚠️ WHAT IT DOES NOT SEE, said here so its silence is not read as coverage:
+// a controller present on ONE side only — renamed, moved out of lib/state, or
+// deleted — is not a twin, so only the floor notices it going; and the scan
+// knows `'…'` and `"…"` literals on one line, so a brace inside a multi-line
+// `'''` string could mis-bound a body. That case is loud rather than silent:
+// a body that never closes, or one that runs into the next class declaration,
+// is COVERAGE LOST naming the file and line.
+//
+// ⚠️ IT RUNS AFTER THE LANDED-BEHAVIOUR LIMB, ON PURPOSE. The brick's
+// lib/state/providers.dart and the app's providers/notifications.dart are that
+// limb's files too, so a moved or deleted providers file is named BY PATH there
+// before this limb would report it as a twin count under its floor. A precise
+// diagnosis beats a count; the cost is that emptying either lib/state root
+// reaches the landed limb's COVERAGE LOST first, not this one's. Measured
+// 2026-09-27 by the mutations in the commit that added this limb.
+// ─────────────────────────────────────────────────────────────────────────────
+const BRICK_STATE = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state';
+
+/** 14: the twins on the tree the day this limb landed. Raise it with the tree;
+ *  a lowered floor is a deleted check. */
+const MIN_TWINS = 14;
+
+/** A brick mustache variable, and the app.yaml key that holds the same value
+ *  for an app. Only a mapping known to be the same identifier is listed: app.yaml
+ *  says its `id` is the repo directory, the Worker name and the analytics app_id,
+ *  which is what the brick's `{{app_id}}` is stamped with. */
+const BRICK_VAR_IN_APP_YAML = { app_id: 'id' };
+
+/** Declared divergences between the brick's copy and one app's copy of a twin.
+ *  `lines` is the measurement above, and must EQUAL it: the entry is a record of
+ *  a gap somebody read, not an allowance. */
+const TWIN_DIVERGENCE = [
+  {
+    app: 'subscriptiontracker',
+    className: 'NotificationTapObserver',
+    lines: 15,
+    why:
+      'designed, not drift: the app records a tap through its own AnalyticsFunnel.onNotificationOpened; ' +
+      'the brick has no funnel and logs `notification_opened` straight through core.Analytics, because ' +
+      'an event name kept in an app becomes one copy per stamped app (the brick class comment says so)',
+  },
+  {
+    app: 'subscriptiontracker',
+    className: 'PasswordRecoveryController',
+    lines: 2,
+    why:
+      'one line each side, same type: the app spells the seam `AuthRepository` through its ' +
+      'lib/data/auth/auth_repository.dart re-export of nikatru_core, the brick spells it `core.AuthRepository`',
+  },
+  {
+    app: 'subscriptiontracker',
+    className: 'PasswordResetArrivalController',
+    lines: 2,
+    why:
+      'one line each side, same type: the app spells the seam `AuthRepository` through its ' +
+      'lib/data/auth/auth_repository.dart re-export of nikatru_core, the brick spells it `core.AuthRepository`',
+  },
+  {
+    app: 'subscriptiontracker',
+    className: 'LegalAcceptanceController',
+    lines: 3,
+    why:
+      'in accept(), the app reads installIdProvider into a local `anonId` one statement before ' +
+      'applyLegalAcceptance and passes the local; the brick awaits the same read inline as the argument',
+  },
+];
+
+/** Every `class` keyword in code. Dart reserves the word, so on text with
+ *  comments and strings blanked each match is a declaration (modifiers such as
+ *  `final`, `abstract`, `sealed`, `base`, `mixin` sit before it on the same line,
+ *  which the body slice below keeps). */
+const CLASS_DECL = /\bclass\s+([A-Za-z_$][A-Za-z0-9_$]*)/g;
+
+/** Top-level `key: value` scalars of an app's app.yaml, comments blanked first. */
+function appYamlScalars(app) {
+  const abs = join(ROOT, 'apps', app, 'app.yaml');
+  const out = new Map();
+  if (!existsSync(abs)) return out;
+  const text = stripSourceComments(readFileSync(abs, 'utf8'), '.yaml');
+  for (const m of text.matchAll(/^([A-Za-z_][A-Za-z0-9_]*):[ \t]*(\S[^\n]*?)[ \t]*$/gm)) {
+    out.set(m[1], m[2].replace(/^(['"])(.*)\1$/, '$2'));
+  }
+  return out;
+}
+
+/** The classes declared under one lib/state root: name → every declaration of
+ *  it, each with its normalised body lines. `lost` collects what could not be
+ *  bounded; it is never read as "no class here". */
+function stateClasses(relRoot, lost) {
+  const files = [];
+  dartFiles(join(ROOT, ...relRoot.split('/')), relRoot, files);
+  const byName = new Map();
+  for (const rel of files.filter((f) => !EXEMPT_DIR.test(f)).sort()) {
+    const prose = stripComments(readFileSync(join(ROOT, rel), 'utf8')); // comments blanked, strings kept
+    const code = stripStringLiterals(prose); // strings blanked too: where the braces are counted
+    const decls = [...code.matchAll(CLASS_DECL)];
+    decls.forEach((m, k) => {
+      const line = code.slice(0, m.index).split('\n').length;
+      let i = m.index + m[0].length;
+      while (i < code.length && code[i] !== '{' && code[i] !== ';') i++;
+      let end = -1;
+      if (code[i] === ';') {
+        end = i; // `class A = B with C;` has no body of its own
+      } else {
+        let depth = 0;
+        for (; i < code.length; i++) {
+          if (code[i] === '{') depth++;
+          else if (code[i] === '}' && --depth === 0) {
+            end = i;
+            break;
+          }
+        }
+      }
+      const next = decls[k + 1];
+      if (end === -1) {
+        lost.push(`${rel}:${line} — class ${m[1]} never reaches its matching close brace.`);
+        return;
+      }
+      if (next && next.index < end) {
+        lost.push(
+          `${rel}:${line} — the body of class ${m[1]} runs into the declaration of class ${next[1]}; ` +
+            'its braces did not balance on the blanked text.',
+        );
+        return;
+      }
+      const from = code.lastIndexOf('\n', m.index) + 1;
+      const nl = code.indexOf('\n', end);
+      const body = prose
+        .slice(from, nl === -1 ? code.length : nl)
+        .split('\n')
+        .map((l) => l.trim().replace(/\s+/g, ' '))
+        .filter((l) => l.length > 0);
+      if (!byName.has(m[1])) byName.set(m[1], []);
+      byName.get(m[1]).push({ file: rel, line, body });
+    });
+  }
+  return byName;
+}
+
+/** Lines outside a longest common subsequence of `a` and `b`, both sides summed. */
+function differingLines(a, b) {
+  let prev = new Array(b.length + 1).fill(0);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = new Array(b.length + 1).fill(0);
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = a[i - 1] === b[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], cur[j - 1]);
+    }
+    prev = cur;
+  }
+  return a.length + b.length - 2 * prev[b.length];
+}
+
+/** Up to `max` lines that `a` holds and `b` does not, counted as multisets — so a
+ *  pure reordering shows none here while `differingLines` still counts it. For
+ *  the failure text only. */
+function sampleOnlyIn(a, b, max) {
+  const left = new Map();
+  for (const l of b) left.set(l, (left.get(l) ?? 0) + 1);
+  const out = [];
+  for (const l of a) {
+    if ((left.get(l) ?? 0) > 0) left.set(l, left.get(l) - 1);
+    else if (out.length < max) out.push(l);
+  }
+  return out;
+}
+
+const twinLost = [];
+const brickClasses = stateClasses(BRICK_STATE, twinLost);
+const twins = [];
+const appsAbs = join(ROOT, 'apps');
+const appNames = existsSync(appsAbs)
+  ? listDir(appsAbs, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+      .map((e) => e.name)
+      .sort()
+  : [];
+for (const app of appNames) {
+  const appClasses = stateClasses(`apps/${app}/lib/state`, twinLost);
+  const yaml = appYamlScalars(app);
+  for (const [className, appDecls] of appClasses) {
+    const brickDecls = brickClasses.get(className);
+    if (!brickDecls) continue;
+    if (brickDecls.length > 1 || appDecls.length > 1) {
+      twinLost.push(
+        `class ${className} is declared more than once on one side — ` +
+          [...brickDecls, ...appDecls].map((d) => `${d.file}:${d.line}`).join(', ') +
+          '; which copy is the twin is not decidable.',
+      );
+      continue;
+    }
+    const [b] = brickDecls;
+    const [a] = appDecls;
+    const brickBody = b.body.map((l) =>
+      l.replace(/\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g, (token, name) => {
+        const key = BRICK_VAR_IN_APP_YAML[name];
+        return key && yaml.has(key) ? yaml.get(key) : token;
+      }),
+    );
+    twins.push({
+      app,
+      className,
+      brick: b,
+      appDecl: a,
+      measured: differingLines(brickBody, a.body),
+      onlyBrick: sampleOnlyIn(brickBody, a.body, 3),
+      onlyApp: sampleOnlyIn(a.body, brickBody, 3),
+    });
+  }
+}
+
+if (twins.length < MIN_TWINS) {
+  twinLost.unshift(
+    `${twins.length} brick/app state class twin(s) found, below the floor of ${MIN_TWINS} — ` +
+      `${BRICK_STATE} and apps/*/lib/state no longer meet on the classes this limb was written for.`,
+  );
+}
+if (twinLost.length) {
+  refuse([
+    `✗ COVERAGE LOST — the TWINS limb (brick vs app lib/state classes) could not compare ${twinLost.length} thing(s):`,
+    ...twinLost.map((l) => `    · ${l}`),
+    '',
+    '  A twin this scan cannot find or bound is not an identical twin. Restore the state files, or, if a',
+    '  class really left one side, record that in the same change that lowers MIN_TWINS.',
+  ]);
+}
+
+/** The failure text for one twin: where both copies are, and what differs. */
+function twinReport(t, declared) {
+  const lines = [
+    `    ${t.className} — ${t.brick.file}:${t.brick.line} ↔ ${t.appDecl.file}:${t.appDecl.line}: measured ` +
+      `${t.measured} differing line(s), declared ${declared}.`,
+  ];
+  for (const l of t.onlyBrick) lines.push(`        brick only: ${l}`);
+  for (const l of t.onlyApp) lines.push(`        app only:   ${l}`);
+  if (!t.onlyBrick.length && !t.onlyApp.length) lines.push('        the same lines, in a different order');
+  return lines.join('\n');
+}
+
+const twinDrift = [];
+const twinDeclared = [];
+const twinByKey = new Map(twins.map((t) => [`${t.app}/${t.className}`, t]));
+const entryKeys = new Set();
+for (const e of TWIN_DIVERGENCE) {
+  const key = `${e.app}/${e.className}`;
+  entryKeys.add(key);
+  const t = twinByKey.get(key);
+  if (typeof e.why !== 'string' || e.why.trim().length === 0) {
+    twinDrift.push(`    TWIN_DIVERGENCE entry ${key} has no \`why\` — an entry records a gap somebody read.`);
+  }
+  if (!t) {
+    twinDrift.push(
+      `    TWIN_DIVERGENCE entry ${key} names no twin — no class of that name is declared in both ` +
+        `${BRICK_STATE} and apps/${e.app}/lib/state. Delete the entry.`,
+    );
+  } else if (t.measured === 0) {
+    twinDrift.push(
+      `    ${key} — the copies are identical now, so the entry declaring ${e.lines} differing line(s) ` +
+        'is stale. Delete it.',
+    );
+  } else if (t.measured !== e.lines) {
+    twinDrift.push(twinReport(t, e.lines));
+  } else {
+    twinDeclared.push({ t, e });
+  }
+}
+for (const t of twins) {
+  if (t.measured === 0 || entryKeys.has(`${t.app}/${t.className}`)) continue;
+  twinDrift.push(twinReport(t, '0 (no TWIN_DIVERGENCE entry)'));
+}
+if (twinDrift.length) {
+  fail([
+    `✗ ${twinDrift.length} brick/app state twin(s) differ from what TWIN_DIVERGENCE declares:`,
+    ...twinDrift,
+    '',
+    '  A state class kept in the brick AND in an app is one class written twice; a fix to one copy is a',
+    '  defect the other still ships ([ADR 072] D1.4, full-review apps.md F2-03). Make the copies',
+    '  identical, or change the entry in the same commit — its `lines` must equal the measurement.',
+  ]);
+}
+
 for (const h of homeless) {
   console.log(
     `⚠  ${h.file} — class ${h.className} implements \`${h.contract}\`, and packages/ provides NO ` +
@@ -1164,6 +1519,15 @@ for (const w of waived) {
 for (const r of landedOk) {
   console.log(`✓  landed parity — ${r.id}: the stamp and the app agree`);
 }
+// Printed every run: a declared divergence is a known gap, and a known gap that
+// nobody sees reads exactly like none.
+for (const { t, e } of twinDeclared) {
+  console.log(`⚠  twin ${t.app}/${t.className} — ${e.lines} line(s) differ, declared: ${e.why}`);
+}
+console.log(
+  `✓  twins — classes=${twins.length} identical=${twins.filter((t) => t.measured === 0).length} ` +
+    `declared-divergent=${twinDeclared.length}`,
+);
 for (const p of parityOk) {
   console.log(
     `✓  [${p.pair.adr}] parity — ${p.pair.fork} follows all ${p.chassisReads.size} chassis ` +

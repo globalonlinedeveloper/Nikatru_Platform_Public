@@ -258,6 +258,25 @@ describe('assert-app-yaml — the declaration and its renderings', () => {
     } finally { kill(root); }
   });
 
+  test('MUTATION: removing `hosts.pagesOrigin` makes render.mjs exit 1 naming the file and the field — no fallback to `web`', () => {
+    // O-PRODUCT-RECORD-UNBUILT's red control (RC-G1). Until 2026-09-27 the
+    // renderer composed the catalogue `origin` as `pagesOrigin || web`, and the
+    // brick derived `web` as `<id>.nikatru.com`, which has served nothing since
+    // [ADR 080]: this same input exited 0 and published that origin.
+    const root = tree();
+    try {
+      const before = get(root, CATALOGUE);
+      const text = get(root, APP_YAML);
+      const without = text.split('\n').filter((l) => !/^\s+pagesOrigin:/.test(l)).join('\n');
+      assert.notEqual(without, text, 'the real declaration must carry a `pagesOrigin:` line for this mutation to remove');
+      put(root, APP_YAML, without);
+      const { code, out } = spawn(RENDER, [root]);
+      assert.equal(code, 1, `expected a finding, got ${code}:\n${out}`);
+      assert.match(out, /apps\/subscriptiontracker\/app\.yaml\/hosts: required property "pagesOrigin" is absent/);
+      assert.equal(get(root, CATALOGUE), before, 'a refused render must write nothing');
+    } finally { kill(root); }
+  });
+
   test('MUTATION: editing the tagline without re-rendering fails, and NAMES every stale file', () => {
     const root = tree();
     try {
@@ -1067,7 +1086,11 @@ function addPendingApp(root) {
     'status: preview',
     '',
     'hosts:',
-    `  web: ${PENDING_APP}.nikatru.com`,
+    // What post_gen writes since O-PRODUCT-RECORD-UNBUILT (G-a): the spec's
+    // `pages_origin`, as both fields. The schema requires `pagesOrigin`, and
+    // render.mjs composes the catalogue `origin` from it with no fallback.
+    `  web: ${PENDING_APP}-fixture.pages.dev`,
+    `  pagesOrigin: ${PENDING_APP}-fixture.pages.dev`,
     '',
     'platforms:',
     '  - web',
