@@ -4899,17 +4899,37 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
   // onto the platform Worker cron (duty.platform-ops-watchdog-beat, GlitchTip monitor
   // 40); the owner chose that what stays on the laptop (backup-task poll, Drive-bundle
   // tags, dirty local trees, corpus live-assert) pages and does not block deploys.
-  // The set is pinned EXACTLY, so a fourth scoped row, or one of these losing its
+  // The set is pinned EXACTLY, so a fifth scoped row, or one of these losing its
   // scope, is a deliberate edit here and never a silent drift.
-  const LAPTOP_PAGE_ONLY = ['duty.laptop.nikatru-ops-check', 'duty.laptop.nikatru-watchdog', DRIVER];
-  test('PAGE-ONLY - the committed register scopes exactly the three laptop routines, and it holds', () => {
+  // ⏱ 2026-09-27 — LEAD RULING FBP-1: the laptop BACKUP joins the set. Main runs
+  // 36290400205 and 36293604395 both failed ci-gate on its late heartbeat alone (a
+  // 602.9 s Drive listing on a busy laptop) and skipped both deploy lanes.
+  const BACKUP = 'duty.laptop.nikatru-daily-backup';
+  const LAPTOP_PAGE_ONLY = [BACKUP, 'duty.laptop.nikatru-ops-check', 'duty.laptop.nikatru-watchdog', DRIVER];
+  test('PAGE-ONLY - the committed register scopes exactly the four laptop duties, and it holds', () => {
     const reg = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
     const scoped = reg.rows.filter((r) => r.liveVerdictScope !== undefined).map((r) => r.id);
     assert.deepEqual(scoped, LAPTOP_PAGE_ONLY);
     assert.deepEqual(checkLiveVerdictScopes(reg, OWN_TOPO()).errors, []);
     const byId = new Map(reg.rows.map((r) => [r.id, r]));
     for (const id of LAPTOP_PAGE_ONLY) assert.equal(byId.get(id).liveVerdictScope.page, 'ops-watch.yml', `${id} pages in ops-watch.yml`);
-    for (const id of LAPTOP_PAGE_ONLY.slice(0, 2)) assert.match(byId.get(id).liveVerdictScope.why, /#802/, `${id} must say its portable half moved to the Worker`);
+    for (const id of ['duty.laptop.nikatru-ops-check', 'duty.laptop.nikatru-watchdog']) assert.match(byId.get(id).liveVerdictScope.why, /#802/, `${id} must say its portable half moved to the Worker`);
+    assert.match(byId.get(BACKUP).liveVerdictScope.why, /FBP-1/, 'the backup must name the ruling that scoped it');
+  });
+
+  // Read off the COMMITTED register, not a fixture row: deleting the scope from
+  // tooling/ops/register.json reds this test (the mutation control, run 2026-09-27).
+  test('FBP-1 - a late BACKUP heartbeat PRINTS on main\'s ci.yml push, and still BLOCKS in the page (ops-watch)', () => {
+    const reg = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
+    const RED_BACKUP = () => [{ id: BACKUP, line: `${BACKUP} — newest SUCCESSFUL run is 13.2h old, outside its own window [8h x 1.5 = 12.0h]`, code: 1 }];
+    const push = routeLiveVerdicts(RED_BACKUP(), policyIn('ci.yml', 'push'), OWN_TOPO(), reg, parsedRepo().byFile);
+    assert.deepEqual(push.blocking, [], 'a late laptop backup must not freeze main\'s ci-gate and every deploy lane that polls it');
+    assert.equal(push.printed.length, 1, 'and it is PRINTED, never dropped');
+    assert.match(push.printed[0].why, /PAGE-ONLY/);
+    assert.match(push.printed[0].why, /blocks only in ops-watch\.yml/);
+    const page = routeLiveVerdicts(RED_BACKUP(), policyIn('ops-watch.yml', 'schedule'), OWN_TOPO(), reg, parsedRepo().byFile);
+    assert.equal(page.blocking.length, 1, 'the page still goes red - a backup miss is never hidden');
+    assert.deepEqual(page.printed, []);
   });
 
   // ⏱ 2026-09-18 — the Worker half of the watchdog is its OWN watched duty, shaped
@@ -6120,6 +6140,25 @@ describe('INV3 · a duty is judged by the unit that performs it — the pure hal
     assert.equal(unitConclusion(q(OPS_UNIT), RUN, JOBS({ status: 'skipped' }), OPS_WF()).verdict, 'neutral', 'status has no if:, so a skip means something ahead of it failed or was cancelled — no verdict');
     assert.equal(unitConclusion(q(OPS_UNIT), RUN, JOBS({ status: 'cancelled' }), OPS_WF()).verdict, 'neutral', 'a cancelled job renders no verdict');
     assert.equal(unitConclusion(q({ jobs: ['pages-deployments'] }), RUN, JOBS({ pages: 'timed_out' }), OPS_WF()).verdict, 'failure');
+  });
+
+  // ⏱ 2026-09-27 · FBP-1, THE SECOND HOP. A page-only verdict still reds the
+  // `heartbeats` job of ops-watch — that red IS the page. It must not come back to
+  // ci.yml as duty.workflow.ops-watch.yml RED SINCE, and it does not: that row is
+  // judged by its COMMITTED unit, which holds no job that runs this guard (INV4,
+  // checkRunUnits), and the `alert` job that runs on the red concludes success.
+  test('FBP-1 · the second hop — a run red ONLY in the register step leaves duty.workflow.ops-watch.yml green, read off the COMMITTED unit', () => {
+    const real = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
+    const row = real.rows.find((r) => r.id === 'duty.workflow.ops-watch.yml');
+    const c = unitConclusion(row.mechanism.recordQuery, RUN, JOBS(), OPS_WF());
+    assert.equal(c.verdict, 'success', c.detail);
+    assert.equal(unitNeedsGuard(OPS_WF(), unitOf(row.mechanism.recordQuery), gateTopology(REPO)), null, 'no job of the committed unit carries the guard verdict');
+    // RED CONTROL: the same answer read through a unit that DID hold `heartbeats`
+    // fails, and the register refuses that unit structurally, in every host.
+    const widened = { ...row.mechanism.recordQuery, unit: { jobs: [...row.mechanism.recordQuery.unit.jobs, 'heartbeats'] } };
+    assert.equal(unitConclusion(widened, RUN, JOBS(), OPS_WF()).verdict, 'failure');
+    const refused = checkRunUnits({ rows: [{ ...row, mechanism: { ...row.mechanism, recordQuery: widened } }] }, byFile(), gateTopology(REPO));
+    assert.match(refused.errors.join('\n'), /its unit contains this guard's own verdict: job heartbeats runs tooling\/ci\/assert-ops-register\.mjs/);
   });
 
   test('a step or job the run never reported renders no verdict — absent is never success', () => {

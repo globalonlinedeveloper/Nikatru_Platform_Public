@@ -270,9 +270,13 @@ export function crossAssertLicenceRegisters(repoRoot, { side } = {}) {
   }
 
   // ── every asset row answers the seam question ─────────────────────────────
+  // The app-scoped rows (2026-09-26, lead ruling PRL-R1) answer it too: a file a
+  // package ships into one app's bundle is as much a built-bundle artefact as a
+  // toolchain one, and a family could land in a binary either way.
+  const appScoped = Array.isArray(a.doc.appScopedAssets) ? a.doc.appScopedAssets : [];
   const byFamily = new Map(families.map((f) => [f.family, f]));
   const links = [];
-  for (const row of assets) {
+  for (const row of [...assets, ...appScoped]) {
     const at = `${ASSET_REGISTER_REL} row ${JSON.stringify(row.id)}`;
     if (!('contentFamily' in row)) {
       problems.push(
@@ -335,7 +339,7 @@ export function crossAssertLicenceRegisters(repoRoot, { side } = {}) {
       .map((f) => f.family)
       .join(', ');
     prints.push(
-      `SEAM [7]P-5 ↔ [8]K-10 — ${assets.length} asset row(s) all answered \`contentFamily\`, and ZERO link to a ` +
+      `SEAM [7]P-5 ↔ [8]K-10 — ${assets.length + appScoped.length} asset row(s) all answered \`contentFamily\`, and ZERO link to a ` +
         `content family, so the agreement limb compared NOTHING. That is the true state, not a clean bill: ` +
         `${families.length} content families exist and none is in a shipped bundle yet. Seam candidates the day one ` +
         `is (a font, a voice or a model landing in a binary): ${candidates}.`,
