@@ -740,15 +740,15 @@ void main() {
 
     // ── 🔴 A LIVE BUILD SIGNS IN WITH THE ONE-TIME TOKEN, NEVER THE FORM ─────
     //
-    // Since 2026-09-28. The form's password grant is
-    // Turnstile-gated on the production auth box and a headless driver has no
-    // captcha token: the Play capture of run 36315636919 typed the password
-    // here and was refused `captcha_failed`, the refusal the nightly e2e met
-    // until it switched. So a live build spends E2E_TOKEN_HASH through the ONE
-    // helper both suites import, exactly as app_test.dart signs in, and this
-    // file reads no password define at all — a live build has no password to
-    // type. tooling/ci/test/store-screenshots-lane.test.mjs reds the day either
-    // comes back.
+    // Since 2026-09-28. The form's password grant is Turnstile-gated on the
+    // production auth box and a headless driver has no captcha token: the Play
+    // capture of run 36315636919 typed the password here and was refused
+    // `captcha_failed`, the refusal the nightly e2e met until it switched. So a
+    // live build spends E2E_TOKEN_HASH through the ONE helper both suites
+    // import, exactly as app_test.dart signs in, and this file reads no
+    // password define at all — a live build has no password to type.
+    // tooling/ci/test/store-screenshots-lane.test.mjs reds the day either comes
+    // back.
     //
     // The form is left to a DEMO build (`--proof`), whose in-memory auth
     // accepts any credentials and whose captcha gate is inert by design.

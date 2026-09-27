@@ -173,6 +173,11 @@ import { backendDefinesForRun, assertCaptureDefines, CaptureBackendRefused } fro
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(join(HERE, '..', '..'));
 
+// Read once and dropped from the env before this script can start any child.
+// See "ONE SINGLE-USE SIGN-IN TOKEN PER DRIVE" for why it is here at all.
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+
 const argv = process.argv.slice(2);
 const PROOF = argv.includes('--proof');
 const arg = (name, dflt) => {
@@ -759,14 +764,12 @@ try {
 // same request provision_user.mjs makes — after the drive before it has run.
 // GoTrue keeps one live token per user, so they cannot be minted up front.
 //
-// ⚠️ THE SERVICE-ROLE KEY NEVER REACHES A CHILD. It is read once and deleted
-// from this process's env, so neither chromedriver nor `flutter` (nor any build
-// hook flutter runs) inherits it; CAPTURE_DEFINE_ALLOWLIST already refuses it as
+// ⚠️ THE SERVICE-ROLE KEY NEVER REACHES A CHILD. It is read once, at the top of
+// this script, and deleted from this process's env, so neither chromedriver nor
+// `flutter` (nor any build hook flutter runs) inherits it; CAPTURE_DEFINE_ALLOWLIST already refuses it as
 // a define by name. It is required only when a later drive exists to mint for,
 // and that is refused HERE, among the checks that read only the tree, rather
 // than one full drive later.
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
-delete process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!PROOF && CAPTURES.length > 1 && !SERVICE_ROLE_KEY) {
   fail([
     `a live capture of ${CAPTURES.length} viewports needs SUPABASE_SERVICE_ROLE_KEY and it is not set.`,
