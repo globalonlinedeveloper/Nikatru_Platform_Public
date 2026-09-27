@@ -45,7 +45,7 @@ jobs:
     outputs:
       workers: ${{ steps.set.outputs.workers }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: The matrix comes from worker-set.mjs, never from this file
@@ -89,7 +89,7 @@ jobs:
         # assert-release-lane-generic.mjs reads the declaration).
         worker: ${{ fromJSON(needs.workers.outputs.workers) }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           # why: the plan reads ancestry and a diff against the live SHA, which a
@@ -145,7 +145,7 @@ jobs:
       # when the Worker's own config migrates a D1 (worker-set.mjs `migrations`).
       - name: Apply the Worker's D1 migrations (before deploy)
         if: steps.plan.outputs.deploy == 'true' && matrix.worker.migrations
-        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           wranglerVersion: '4.141.0'   # why: package.json says ^4.0.0, which floats. [F-2]
@@ -171,7 +171,7 @@ jobs:
       # A Worker that does not exist yet is created by this deploy itself, and a
       # secret it needs rides this same version as `--secrets-file` (#981; the
       # action's `secrets:` input is refused by assert-workflow-hardening limb 13).
-      - uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
+      - uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         if: steps.plan.outputs.deploy == 'true'
         id: deploy
         with:
@@ -221,7 +221,7 @@ jobs:
       contents: read
       deployments: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           # why: see the app-worker job — the plan needs full history.
@@ -245,7 +245,7 @@ jobs:
       # SOLE applier of platform_db migrations.
       - name: Apply PLATFORM_DB migrations (before deploy)
         if: steps.plan.outputs.deploy == 'true'
-        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           wranglerVersion: '4.141.0'   # why: package.json says ^4.0.0, which floats. [F-2]
@@ -286,7 +286,7 @@ jobs:
       # secrets BEFORE the command, and Cloudflare refuses that edit while the
       # newest version is not the deployed one, i.e. after every rollback: main
       # run 36224483330. Held by assert-workflow-hardening limb 13.
-      - uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
+      - uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         if: steps.plan.outputs.deploy == 'true'
         id: deploy
         with:

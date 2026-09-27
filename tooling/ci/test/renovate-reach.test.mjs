@@ -229,13 +229,19 @@ test('T12 a needs-manual-check rule for melos with no HAND_ONLY entry: exit 1, t
   assert.match(r.err, /labels melos needs-manual-check, but HAND_ONLY \(tooling\/scripts\/propagate-versions\.mjs\) does not name it/);
 });
 
-test('T13 the java/node floor rule deleted: exit 1 naming the node and java copies', () => {
+test('T13 the java/node floor rule deleted: exit 1 naming the java copies, and no node copy is left to name', () => {
   const root = scratch();
   dropRule(root, (r) => r.enabled === false && Array.isArray(r.matchUpdateTypes) && (r.matchDatasources ?? []).includes('node-version'));
   const r = reach(root);
   assert.equal(r.code, 1, r.out + r.err);
-  assert.match(r.err, /^ {4}\.github\/workflows\/extensions\.yml:\d+ node — /m);
   assert.match(r.err, /^ {4}tooling\/wsl-setup\.sh:\d+ java — /m);
+  // why: the node copies this case used to name were extensions.yml's hand-written
+  // `NODE_VERSION: '24'` and `node-version: '24'` lines. W50 (P-C7 + M1) moved every one
+  // onto ./.github/actions/setup-node, which reads tooling/versions.json at run time, and
+  // assert-workflow-hardening limb 14 keeps setup-node there. So a deleted floor strands
+  // no node copy now. A hand-written one coming back is named here, in the line format
+  // the java assertion above proves is live.
+  assert.doesNotMatch(r.err, /^ {4}\S+:\d+ node — /m);
 });
 
 test('T14 a floor that also disables majors is no floor: exit 1', () => {

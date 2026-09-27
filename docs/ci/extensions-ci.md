@@ -50,7 +50,10 @@ call; every job here bounds itself).
   name). A skip is licensed only for gates, sims and package under a zero matrix (case 11).
 - **`gate-inventory`** greps both this file and extensions.yml, so a script named only by the
   release job must still exist.
-- **Workflow-level `env: NODE_VERSION`** is restated here: a caller's env does not reach a callee.
+- **No workflow-level `env: NODE_VERSION`** (⏱ 2026-09-27). Every job installs Node through
+  `.github/actions/setup-node`, which reads the major from `tooling/versions.json`; `sims`
+  passes `${{ matrix.node }}` as its `node-version` input. assert-workflow-hardening limb 14
+  refuses a direct `actions/setup-node` in any workflow.
 - **No `concurrency:` key.** The caller's group governs.
 
 ## The guards that learned about call jobs
