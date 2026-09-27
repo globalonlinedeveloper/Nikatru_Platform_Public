@@ -25,15 +25,12 @@ class SignUpScreen extends ConsumerStatefulWidget {
   ConsumerState<SignUpScreen> createState() => _SignUpScreenState();
 }
 
-class _SignUpScreenState extends ConsumerState<SignUpScreen> {
+class _SignUpScreenState extends ConsumerState<SignUpScreen>
+    with CaptchaHost<SignUpScreen> {
   final TextEditingController _email = TextEditingController();
   final TextEditingController _password = TextEditingController();
   bool _busy = false;
   String? _error;
-
-  /// See the note on the same field in `login_screen.dart`: null is today's
-  /// normal state, and it becomes load-bearing only after the cutover.
-  String? _captchaToken;
 
   /// 🔴 BOTH FALSE, ALWAYS. `assert-signup-consent-shape.mjs` fails the build if
   /// either initialiser ever says `true` — a pre-ticked consent is a dark
@@ -54,7 +51,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     // rule; this is the one that holds when the button is not the only way in —
     // `onSubmitted:` on the password field reaches here from the keyboard, and
     // an enter key that bypasses a legal gate is still a bypass.
-    if (_busy || !_acceptedTerms) return;
+    if (_busy || !_acceptedTerms || !captcha.ready) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -87,7 +84,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       await auth.signUpWithEmail(
         email: _email.text.trim(),
         password: _password.text,
-        captchaToken: _captchaToken,
+        captchaToken: captcha.consume(),
       );
       // 🔴 AFTER THE ACCOUNT EXISTS, AND THE ORDER WAS THE OTHER WAY ROUND FOR
       // A DAY. Recording first was justified as "a user through the door with
@@ -201,12 +198,13 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
               // legally unavailable rather than as a preference.
               // Immediately above the button — see the note in login_screen.
               TurnstileGate(
-                onToken: (String? t) => setState(() => _captchaToken = t),
+                controller: captcha,
+                render: renderTurnstile,
                 onError: (String m) => setState(() => _error = m),
               ),
               FilledButton(
                 key: SignUpScreen.submitButton,
-                onPressed: (_busy || !_acceptedTerms)
+                onPressed: (_busy || !_acceptedTerms || !captcha.ready)
                     ? null
                     : () => _signUp(auth, l10n),
                 child: Text(l10n.signUp),

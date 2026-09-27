@@ -5,6 +5,7 @@ import 'package:nikatru_chassis_screens/auth/sign_up_screen.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
 import '../../state/providers.dart';
+import 'captcha.dart';
 import 'legal_consent_fields.dart';
 
 /// Sign-up — the ADAPTER half.
@@ -20,13 +21,23 @@ class SignUpScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final core.AuthRepository auth = ref.watch(authRepositoryProvider);
+    // ST-A1: the chassis captcha gate; every gated call spends its token.
+    final CaptchaTokenController captcha = ref.watch(
+      captchaControllerProvider('sign-up'),
+    );
     return SignUpView(
+      captcha: TurnstileGate(controller: captcha, render: renderTurnstile),
+      captchaReady: captcha.ready,
       // ⏱ 2026-09-15 · [ADR 082] §5 — the store age signal read before the account is
       // created. Sign-up age gate ONLY: never stored, logged or sent
       // (`ageSignalSourceProvider`).
       ageSignals: ref.watch(ageSignalSourceProvider),
       onSignUp: ({required String email, required String password, required bool marketingEmail}) async {
-        await auth.signUpWithEmail(email: email, password: password);
+        await auth.signUpWithEmail(
+          email: email,
+          password: password,
+          captchaToken: captcha.consume(),
+        );
         // 🔴 AFTER THE ACCOUNT EXISTS, and the order was the other way round
         // for a day. Recording first was justified as "a user through the door
         // with no record of what they agreed to is the outcome to avoid" —

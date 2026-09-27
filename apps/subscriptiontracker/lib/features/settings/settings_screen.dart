@@ -1337,7 +1337,9 @@ class SettingsScreen extends ConsumerWidget {
     // anchor — the one that exists because this button once called
     // `Navigator.pop` and nothing else. Disposed by the dialog, the last reader,
     // exactly as the controller is.
-    final ValueNotifier<String?> captchaToken = ValueNotifier<String?>(null);
+    // ST-A1 (BUG-1): `consume()` spends the token and re-challenges, so a retry
+    // after a wrong password never re-sends a redeemed one.
+    final CaptchaTokenController captcha = newCaptchaController();
     // ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH — read once, before the dialog: which
     // kind of proof this account can give.
     final AuthUser? current = ref.read(authRepositoryProvider).currentUser;
@@ -1355,8 +1357,8 @@ class SettingsScreen extends ConsumerWidget {
         l10n: l10n,
         passwordless: passwordless,
         password: password,
-        captchaToken: captchaToken,
-        onConfirm: () => _deleteAccount(ref, password.text, captchaToken.value),
+        captcha: captcha,
+        onConfirm: () => _deleteAccount(ref, password.text, captcha.consume()),
       ),
     );
   }
@@ -1674,7 +1676,7 @@ class _DeleteAccountDialog extends StatefulWidget {
     required this.l10n,
     required this.passwordless,
     required this.password,
-    required this.captchaToken,
+    required this.captcha,
     required this.onConfirm,
   });
 
@@ -1692,7 +1694,7 @@ class _DeleteAccountDialog extends StatefulWidget {
   /// The captcha answer, owned by the caller for exactly the same reason as
   /// [password] — see the note at `_confirmDelete`. Written by the
   /// [TurnstileGate] below, read by the caller's closure at confirm time.
-  final ValueNotifier<String?> captchaToken;
+  final CaptchaTokenController captcha;
 
   /// Runs the real deletion and reports what happened.
   final Future<core.AccountDeletionOutcome> Function() onConfirm;
@@ -1708,7 +1710,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
   @override
   void dispose() {
     widget.password.dispose();
-    widget.captchaToken.dispose();
+    widget.captcha.dispose();
     super.dispose();
   }
 
@@ -1825,9 +1827,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
             // password field alone still guards the destructive action, and
             // refusing to enable the button when `TurnstileGate.isConfigured` is
             // false would disable deletion in every build that ships now.
-            TurnstileGate(
-              onToken: (String? t) => widget.captchaToken.value = t,
-            ),
+            TurnstileGate(controller: widget.captcha, render: renderTurnstile),
           ],
         ],
       ),

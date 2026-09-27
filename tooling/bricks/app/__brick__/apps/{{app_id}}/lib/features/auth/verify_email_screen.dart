@@ -4,6 +4,7 @@ import 'package:nikatru_chassis_screens/auth/verify_email_screen.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
 import '../../state/providers.dart';
+import 'captcha.dart';
 
 /// The gate an UNVERIFIED session sits behind — the ADAPTER half.
 ///
@@ -27,7 +28,13 @@ class VerifyEmailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final core.AuthRepository auth = ref.watch(authRepositoryProvider);
+    // ST-A1: the chassis captcha gate; every gated call spends its token.
+    final CaptchaTokenController captcha = ref.watch(
+      captchaControllerProvider('verify-email'),
+    );
     return VerifyEmailView(
+      captcha: TurnstileGate(controller: captcha, render: renderTurnstile),
+      captchaReady: captcha.ready,
       email: auth.currentUser?.email ?? '',
       // Still unverified is a real answer, not an error.
       onCheckConfirmed: () async {
@@ -40,7 +47,8 @@ class VerifyEmailScreen extends ConsumerWidget {
       // passed as a tear-off is a gated seam call the scan cannot see at all —
       // the silent-blind shape, in a guard whose whole job is to notice a call
       // site that cannot answer a challenge.
-      onResend: () => auth.resendVerificationEmail(),
+      onResend: () =>
+          auth.resendVerificationEmail(captchaToken: captcha.consume()),
       onSignOut: () => signOutAndForgetUser(ref),
     );
   }

@@ -103,6 +103,7 @@ class DestructiveConfirmDialog extends StatefulWidget {
     this.confirmKey,
     this.resultKey,
     this.resultTitleKey,
+    this.challenge,
   });
 
   /// The question, e.g. "Delete account?".
@@ -168,6 +169,11 @@ class DestructiveConfirmDialog extends StatefulWidget {
   final Key? resultKey;
   final Key? resultTitleKey;
 
+  /// ST-A1: a captcha challenge under the secret field — the re-authentication
+  /// is a captcha-gated sign-in. The caller owns it, because the caller's
+  /// [onConfirm] is what spends the token.
+  final Widget? challenge;
+
   @override
   State<DestructiveConfirmDialog> createState() =>
       _DestructiveConfirmDialogState();
@@ -224,6 +230,10 @@ class _DestructiveConfirmDialogState extends State<DestructiveConfirmDialog> {
               enabled: !_busy,
               decoration: InputDecoration(labelText: widget.secretLabel),
             ),
+            if (widget.challenge != null) ...<Widget>[
+              const SizedBox(height: 12),
+              widget.challenge!,
+            ],
           ],
         ],
       ),

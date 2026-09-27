@@ -10,6 +10,7 @@ import 'package:nikatru_notifications/nikatru_notifications.dart';
 import '../../core/app_config.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
+import '../auth/captcha.dart';
 
 /// Settings — the ADAPTER half. Carries the chassis-mandated support contact
 /// (E1) and the in-app account-deletion entry (G2). This app is client-only, so
@@ -332,6 +333,8 @@ class SettingsScreen extends ConsumerWidget {
     // readable from OUT HERE for that closure to have anything to pass — a
     // controller created inside the dialog could not be.
     final TextEditingController password = TextEditingController();
+    // ST-A1: the reauth is a captcha-gated sign-in; owned as [password] is.
+    final CaptchaTokenController captcha = newCaptchaController();
     // ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH — read once, before the dialog: which
     // kind of proof this account can give.
     final core.AuthUser? current = ref.read(authRepositoryProvider).currentUser;
@@ -353,7 +356,8 @@ class SettingsScreen extends ConsumerWidget {
         l10n: l10n,
         passwordless: passwordless,
         password: password,
-        onConfirm: () => _deleteAccount(ref, password.text),
+        captcha: captcha,
+        onConfirm: () => _deleteAccount(ref, password.text, captcha.consume()),
       ),
     );
   }
@@ -396,6 +400,7 @@ class SettingsScreen extends ConsumerWidget {
   Future<core.AccountDeletionOutcome> _deleteAccount(
     WidgetRef ref,
     String password,
+    String? captchaToken,
   ) async {
     final core.AuthRepository auth = ref.read(authRepositoryProvider);
     final core.AuthUser? user = auth.currentUser;
@@ -430,7 +435,11 @@ class SettingsScreen extends ConsumerWidget {
       // Delete a second time). `DELETE /v1/account` re-checks the token's own
       // authentication time and refuses a stale one with `reauth_required`.
       if (user.hasPasswordIdentity) {
-        await auth.signInWithEmail(email: user.email, password: password);
+        await auth.signInWithEmail(
+          email: user.email,
+          password: password,
+          captchaToken: captchaToken,
+        );
       } else {
         await core.confirmIdentityWithProvider(auth: auth, user: user);
       }
@@ -586,6 +595,7 @@ class _DeleteAccountDialog extends StatefulWidget {
     required this.l10n,
     required this.passwordless,
     required this.password,
+    required this.captcha,
     required this.onConfirm,
   });
 
@@ -599,6 +609,9 @@ class _DeleteAccountDialog extends StatefulWidget {
   /// stamp-properties anchor names; disposed here, the last reader.
   final TextEditingController password;
 
+  /// The reauth's captcha (ST-A1), owned and disposed as [password] is.
+  final CaptchaTokenController captcha;
+
   /// Runs the real deletion and reports what happened.
   final Future<core.AccountDeletionOutcome> Function() onConfirm;
 
@@ -610,6 +623,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
   @override
   void dispose() {
     widget.password.dispose();
+    widget.captcha.dispose();
     super.dispose();
   }
 
@@ -656,6 +670,10 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
       secretRequired: !widget.passwordless,
       secretLabel: l10n.deleteAccountPassword,
       secret: widget.password,
+      challenge: TurnstileGate(
+        controller: widget.captcha,
+        render: renderTurnstile,
+      ),
       cancelLabel: l10n.cancel,
       confirmLabel: l10n.delete,
       // ⚠️ BORROWED KEY, NAMED SO IT IS NOT MISTAKEN FOR A CHOICE. "Got it" is

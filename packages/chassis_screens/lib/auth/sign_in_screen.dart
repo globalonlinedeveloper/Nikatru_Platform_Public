@@ -53,6 +53,8 @@ class SignInView extends StatefulWidget {
     this.deletion,
     this.deletionDetail,
     this.onDismissDeletionNotice,
+    this.captcha,
+    this.captchaReady = true,
     super.key,
   });
 
@@ -130,6 +132,14 @@ class SignInView extends StatefulWidget {
   final core.AccountDeletionOutcome? deletion;
   final String? deletionDetail;
   final VoidCallback? onDismissDeletionNotice;
+
+  /// ST-A1: the adapter's `TurnstileGate`, rendered above Sign in. The adapter
+  /// owns it because it owns the token: every gated callback above spends one.
+  final Widget? captcha;
+
+  /// ST-A1 (BUG-1): false while a rendered challenge has not answered. Sign in
+  /// and Forgot password — both captcha-gated — stay disabled until it has.
+  final bool captchaReady;
 
   @override
   State<SignInView> createState() => _SignInViewState();
@@ -359,7 +369,9 @@ class _SignInViewState extends State<SignInView> {
                 // The same door as the button, busy latch included — `_signIn`
                 // routes through `_run`, so a second Enter cannot fire a second
                 // request.
-                onSubmitted: _busy ? null : () => _signIn(l10n),
+                onSubmitted: (_busy || !widget.captchaReady)
+                    ? null
+                    : () => _signIn(l10n),
               ),
               if (_error != null) ...<Widget>[
                 const SizedBox(height: 12),
@@ -369,15 +381,20 @@ class _SignInViewState extends State<SignInView> {
                 ),
               ],
               const SizedBox(height: 20),
+              ?widget.captcha,
               FilledButton(
                 key: SignInView.submitButton,
-                onPressed: _busy ? null : () => _signIn(l10n),
+                onPressed: (_busy || !widget.captchaReady)
+                    ? null
+                    : () => _signIn(l10n),
                 child: Text(l10n.signIn),
               ),
               const SizedBox(height: 8),
               TextButton(
                 key: SignInView.forgotButton,
-                onPressed: _busy ? null : () => _forgot(l10n),
+                onPressed: (_busy || !widget.captchaReady)
+                    ? null
+                    : () => _forgot(l10n),
                 child: Text(l10n.forgotPassword),
               ),
               if (widget.showAppleButton || widget.showGoogleButton) ...<Widget>[

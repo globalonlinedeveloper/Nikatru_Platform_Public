@@ -1,4 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-27 · ST-A1: the gate is the CHASSIS widget now; this app supplies
+// the renderer and the posture (`appCaptchaPosture`). The token lifecycle is
+// pinned in packages/chassis_screens/test/turnstile_gate_test.dart.
+//
 // TurnstileGate — the OFF state, which is the only state any current build has.
 //
 // 🔴 WHY THIS SUITE IS ABOUT "OFF" RATHER THAN ABOUT THE CHALLENGE.
@@ -32,8 +36,8 @@ void main() {
       // ordinary builds — at which point every widget test below is asserting
       // something different from what it claims, and the ON path has quietly
       // become the default without anyone deciding that.
-      expect(TurnstileGate.siteKey, isEmpty);
-      expect(TurnstileGate.isConfigured, isFalse);
+      expect(AppConfig.turnstileSiteKey, isEmpty);
+      expect(appCaptchaPosture == CaptchaPosture.challenge, isFalse);
     });
 
     testWidgets('renders NOTHING, and takes up no space', (tester) async {
@@ -43,7 +47,10 @@ void main() {
             body: Column(
               children: <Widget>[
                 const Text('above'),
-                TurnstileGate(onToken: (String? _) {}),
+                TurnstileGate(
+                  controller: newCaptchaController(),
+                  render: renderTurnstile,
+                ),
                 const Text('below'),
               ],
             ),
@@ -62,13 +69,20 @@ void main() {
     testWidgets('never calls back, so callers keep a null token', (
       tester,
     ) async {
+      final CaptchaTokenController c = newCaptchaController();
+      addTearDown(c.dispose);
       final List<String?> seen = <String?>[];
+      c.addListener(() => seen.add(c.token));
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(body: TurnstileGate(onToken: seen.add)),
+          home: Scaffold(
+            body: TurnstileGate(controller: c, render: renderTurnstile),
+          ),
         ),
       );
       await tester.pump(const Duration(seconds: 1));
+      // ...and a screen is never blocked by a challenge that does not render.
+      expect(c.ready, isTrue);
 
       // NOT "seen is all nulls" — no callback at all. A gate that reported null
       // would be indistinguishable from one whose challenge had just expired,
@@ -78,14 +92,14 @@ void main() {
   });
 
   group('the cutover assertion refuses an unconfigured build', () {
-    test('assertConfiguredForCutover throws while no key is set', () {
+    test('assertTurnstileConfiguredForCutover throws while no key is set', () {
       // The safety valve for the one moment the OFF state stops being harmless.
       // After SUPABASE_URL moves to Box A, a build with no key cannot
       // authenticate anyone — six endpoints refuse without a token — so the
       // checklist needs something that fails loudly rather than a discovery
       // made by users.
       expect(
-        TurnstileGate.assertConfiguredForCutover,
+        assertTurnstileConfiguredForCutover,
         throwsA(
           isA<StateError>().having(
             (StateError e) => e.message,
@@ -102,7 +116,7 @@ void main() {
 
     test('the cutover assertion reads the CHASSIS key, not a private copy', () {
       // [ADR 084]: the read has one home. Both views agree in this build.
-      expect(AppConfig.turnstileSiteKey, TurnstileGate.siteKey);
+      expect(newCaptchaController().siteKey, AppConfig.turnstileSiteKey);
       expect(AppConfig.isTurnstileConfigured, isFalse);
     });
 
@@ -110,7 +124,13 @@ void main() {
       // Pinning the decision, not just the code: every build today correctly
       // has no key, so wiring this into main() would take the app down.
       // Building the gate must stay harmless.
-      expect(() => TurnstileGate(onToken: (String? _) {}), returnsNormally);
+      expect(
+        () => TurnstileGate(
+          controller: newCaptchaController(),
+          render: renderTurnstile,
+        ),
+        returnsNormally,
+      );
     });
   });
 
@@ -145,7 +165,7 @@ void main() {
     test('THIS build (a VM test, no key) is not misconfigured', () {
       // A widget test is not a web build, so it must never trip the report —
       // FlutterError.reportError would fail every auth-screen test.
-      expect(TurnstileGate.posture, CaptchaPosture.notOnThisChannel);
+      expect(appCaptchaPosture, CaptchaPosture.notOnThisChannel);
     });
   });
 }
@@ -155,5 +175,5 @@ CaptchaPosture _posture({
   required String key,
   bool live = true,
 }) {
-  return TurnstileGate.postureFor(isWeb: web, siteKey: key, backendLive: live);
+  return captchaPostureFor(isWeb: web, siteKey: key, backendLive: live);
 }

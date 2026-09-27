@@ -36,7 +36,8 @@ class LoginScreen extends ConsumerStatefulWidget {
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends ConsumerState<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen>
+    with CaptchaHost<LoginScreen> {
   final TextEditingController _email = TextEditingController();
   final TextEditingController _password = TextEditingController();
   bool _loading = false;
@@ -66,16 +67,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   /// the node the email field asked to focus would already have been discarded.
   final FocusNode _passwordFocus = FocusNode();
 
-  /// The current Turnstile token, or null when there is not a usable one.
-  ///
-  /// Null is the normal state today: with no `TURNSTILE_SITE_KEY` compiled in
-  /// the gate renders nothing and never calls back, so every request goes out
-  /// exactly as it did before. It becomes load-bearing the day SUPABASE_URL
-  /// points at the self-hosted auth server — Box C,
-  /// `https://auth-api.nikatru.com` — where six auth endpoints refuse a request
-  /// without one.
-  String? _captchaToken;
-
+  // ⏱ 2026-09-27 · ST-A1 (BUG-1): the Turnstile token lives in [captcha]
+  // ([CaptchaHost]) and is SPENT through `consume()` on every gated call, which
+  // forgets it and re-challenges. Re-sending the token a failed sign-in had
+  // already redeemed is what read "Verification expired" until a reload.
   @override
   void dispose() {
     _email.dispose();
@@ -144,7 +139,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         await auth.signUpWithEmail(
           email: _email.text.trim(),
           password: _password.text,
-          captchaToken: _captchaToken,
+          captchaToken: captcha.consume(),
         );
         // 🔴 AFTER THE ACCOUNT EXISTS — same ordering and same reason as
         // `sign_up_screen.dart`, which carries the full note. The short version:
@@ -173,7 +168,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         await auth.signInWithEmail(
           email: _email.text.trim(),
           password: _password.text,
-          captchaToken: _captchaToken,
+          captchaToken: captcha.consume(),
         );
       }
       if (mounted) context.go('/scan');
@@ -303,7 +298,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       await ref
           .read(authRepositoryProvider)
-          .sendPasswordReset(email, captchaToken: _captchaToken);
+          .sendPasswordReset(email, captchaToken: captcha.consume());
       // 🔴 THE "(demo)" LEAK IS GONE. This said "Password reset sent (demo)." —
       // a build-mode detail shown to a user, and a claim the app cannot make:
       // it does not know whether that address has an account, and saying so
@@ -485,7 +480,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   // stopped it. Only `_loading` is re-stated here, because that
                   // is the one the button expresses by going dead and a second
                   // Enter would otherwise fire a second sign-in request.
-                  onSubmitted: _loading ? null : _submit,
+                  onSubmitted: (_loading || !captcha.ready) ? null : _submit,
                 ),
                 if (!_signUp)
                   Align(
@@ -496,7 +491,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       // `_forgot` is the half that actually holds, because a
                       // second tap in the same frame reaches a button that has
                       // not been rebuilt yet. Neither is redundant.
-                      onPressed: _loading ? null : _forgot,
+                      onPressed: (_loading || !captcha.ready) ? null : _forgot,
                       child: Text(
                         l10n.forgotPasswordShort,
                         style: AppText.body.copyWith(
@@ -529,7 +524,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 // they are still typing. Renders NOTHING when no site key is
                 // compiled in, which is every build today.
                 TurnstileGate(
-                  onToken: (String? t) => setState(() => _captchaToken = t),
+                  controller: captcha,
+                  render: renderTurnstile,
                   onError: _snack,
                 ),
                 GradientButton(
@@ -541,7 +537,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   // is untouched. `_signUp &&` is load-bearing: without it the
                   // sign-IN button would be dead for every returning user,
                   // which is a gate on the wrong door.
-                  onPressed: (_loading || (_signUp && !_acceptedTerms))
+                  // ST-A1: and while a rendered challenge has not answered —
+                  // a submit with no token is refused as "Verification
+                  // expired" before the password is even read.
+                  onPressed:
+                      (_loading ||
+                          (_signUp && !_acceptedTerms) ||
+                          !captcha.ready)
                       ? null
                       : _submit,
                 ),

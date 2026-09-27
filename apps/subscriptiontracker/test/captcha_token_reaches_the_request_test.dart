@@ -36,6 +36,7 @@
 // calls back. No dart-define, no new CI lane, no network, milliseconds.
 // ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/features/auth/login_screen.dart';
@@ -60,7 +61,9 @@ void deliverToken(WidgetTester tester, String? token) {
         'can ever be produced on this screen after the cutover — which is the '
         'defect this file exists to catch, arriving one layer earlier.',
   );
-  tester.widget<TurnstileGate>(gate).onToken(token);
+  // ⏱ 2026-09-27 · ST-A1: the gate's controller is the seam the renderer
+  // calls back into (`TurnstileChallenge.onToken` is its `setToken`).
+  tester.widget<TurnstileGate>(gate).controller.setToken(token);
 }
 
 /// Fills the form and submits.
@@ -102,8 +105,11 @@ void expectSignInWasReached(MockAuthRepository auth) {
   );
 }
 
-Future<MockAuthRepository> pumpLogin(WidgetTester tester) async {
-  final MockAuthRepository auth = MockAuthRepository();
+Future<MockAuthRepository> pumpLogin(
+  WidgetTester tester, {
+  MockAuthRepository? repository,
+}) async {
+  final MockAuthRepository auth = repository ?? MockAuthRepository();
   await pumpAt(
     tester,
     kPhone,
@@ -200,4 +206,61 @@ void main() {
 
     expect(auth.lastCaptchaToken, 'tok-refreshed');
   });
+
+  // 🔴 ST-A1 (audit BUG-1) — A FAILED SIGN-IN SPENDS ITS TOKEN. The identity
+  // server redeems a Turnstile token on the first call even when the password
+  // is wrong, and the screen used to re-send the same one: every retry read
+  // "Verification expired" until a reload. MUTATION PROOF: pass
+  // `captchaToken: _captcha.token` instead of `_captcha.consume()` in
+  // login_screen.dart and this goes red on the second call.
+  testWidgets('a retry after a failed sign-in never re-sends the spent token', (
+    WidgetTester tester,
+  ) async {
+    final _RedeemsThenRefuses auth = _RedeemsThenRefuses();
+    await pumpLogin(tester, repository: auth);
+
+    deliverToken(tester, 'tok-1');
+    await tester.pump();
+    await submitLogin(tester, email: 'alex@example.com', password: 'wrong-pw1');
+    await submitLogin(tester, email: 'alex@example.com', password: 'hunter22');
+
+    expect(auth.tokens, hasLength(2), reason: 'both attempts must be sent');
+    expect(auth.tokens.first, 'tok-1');
+    expect(
+      auth.tokens.last,
+      isNot('tok-1'),
+      reason: 'the first call redeemed tok-1; sending it again is BUG-1',
+    );
+
+    // And the re-challenge's answer is what the next call carries.
+    deliverToken(tester, 'tok-2');
+    await tester.pump();
+    await submitLogin(tester, email: 'alex@example.com', password: 'hunter22');
+    expect(auth.tokens.last, 'tok-2');
+  });
+}
+
+/// Refuses the FIRST sign-in the way Box C does after redeeming its token.
+class _RedeemsThenRefuses extends MockAuthRepository {
+  final List<String?> tokens = <String?>[];
+
+  @override
+  Future<core.AuthUser> signInWithEmail({
+    required String email,
+    required String password,
+    String? captchaToken,
+  }) {
+    tokens.add(captchaToken);
+    if (tokens.length == 1) {
+      throw core.AuthFailure(
+        'Invalid login credentials',
+        code: 'invalid_credentials',
+      );
+    }
+    return super.signInWithEmail(
+      email: email,
+      password: password,
+      captchaToken: captchaToken,
+    );
+  }
 }
