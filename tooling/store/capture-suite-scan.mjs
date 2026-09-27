@@ -56,6 +56,11 @@ import { stripSourceComments, stripStringLiterals } from '../ci/text-reductions.
 
 /** The capture suite, relative to an app directory. */
 export const SUITE_FILE = 'integration_test/store_screenshots_test.dart';
+/** The capture driver, relative to an app directory. With SUITE_FILE it is the
+ *  pair `flutter drive` names (`--driver`, `--target`) in the capture runner, and
+ *  the pair tooling/store/capture-precheck.mjs requires before a lane builds
+ *  anything (⏱ 2026-09-26, O-SCREENSHOT-DRIVER-IS-ONE-APPS). */
+export const DRIVER_FILE = 'test_driver/store_screenshots.dart';
 /** The refusal the suite must route every frame through. */
 export const GUARD_FILE = 'integration_test/store_capture_guard.dart';
 /** The shutter the suite binds once and hands to every frame. */

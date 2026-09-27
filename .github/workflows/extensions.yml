@@ -1714,6 +1714,8 @@ jobs:
       # why: [10]D-9 -- a submitting run records what it did in the SAME job, as `in_review`
       # against the listing read back above. `always() && steps.amo.outcome == 'success'` is the
       # one accepted widening (assert-publish-records.mjs rule 6): the record follows the ACT.
+      # --mode production: amo is a channel a lane submits through, and the recorder takes no
+      # record of one without its mode (O-SUBMISSION-LANE-WITHOUT-RECORDER; rule 3c).
       - name: Record the AMO submission in the [10]D-9 ledger
         if: always() && steps.amo.outcome == 'success'
         shell: bash
@@ -1721,7 +1723,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TOOL: ${{ steps.tag.outputs.id }}
           LISTING_URL: ${{ steps.amo.outputs.listing_url }}
-        run: node tooling/ci/record-deployment.mjs "$TOOL-amo" --state in_review --listing-url "$LISTING_URL"
+        run: node tooling/ci/record-deployment.mjs "$TOOL-amo" --state in_review --listing-url "$LISTING_URL" --mode production
 
       # why: in this job and only for this store's word (EXT-3): the verdict is the register's, read
       # before the publish step so an unarmed or uncredentialled lane says which, by name.

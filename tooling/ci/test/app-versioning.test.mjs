@@ -598,6 +598,33 @@ describe('assert-app-versioning — every release build in every workflow is sta
     assert.match(out, /submit-play\.yml:\d+.*a fixture reason/);
   });
 
+  // ⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP) — a store lane that takes its app at
+  // dispatch reads it as `$APP`, bound in the job's `env:` to its gate's checked output. This
+  // guard reads such a lane once per workspace app (workflow-scan bindEveryApp), and the
+  // quote the shell wants around `"apps/${APP}"` is the shell's, not part of the path. Before
+  // both, the `--emit` step matched nothing and the build read a release_line "no step derives".
+  const perAppWf = (build) =>
+    'name: Submit Play\npermissions:\n  contents: read\non:\n  workflow_dispatch:\n    inputs:\n      app:\n        required: true\n        type: string\njobs:\n' +
+    '  gate:\n    runs-on: ubuntu-24.04\n    outputs:\n      app: ${{ steps.app.outputs.app }}\n    steps:\n      - id: app\n        run: echo "app=x" >> "$GITHUB_OUTPUT"\n' +
+    '  submit:\n    needs: gate\n    runs-on: ubuntu-24.04\n    env:\n      APP: ${{ needs.gate.outputs.app }}\n    steps:\n' +
+    '      - id: ver\n        run: node tooling/ci/assert-app-versioning.mjs --emit "apps/${APP}" >> "$GITHUB_OUTPUT"\n' +
+    `      - name: Build\n        working-directory: apps/\${{ needs.gate.outputs.app }}\n        run: ${build}\n`;
+  const withWorkspace = (name, text) =>
+    lane(name, { extra: { '.github/workflows/submit-play.yml': text, 'pubspec.yaml': 'name: ws\nworkspace:\n  - apps/subscriptiontracker\n' } });
+
+  test('PASSES a per-app lane: `--emit "apps/${APP}"` is read once bound, and the build it stamps is counted', () => {
+    const { code, out } = run({ args: [withWorkspace('all-perapp', perAppWf(`flutter build appbundle --release ${STAMP}`))] });
+    assert.equal(code, 0, out);
+    assert.match(out, /plus 1 more stamp-checked/);
+  });
+
+  test('…and still FAILS its build when that build reads a step id the job never derives', () => {
+    const wrongId = STAMP.replaceAll('steps.ver.', 'steps.version.');
+    const { code, out } = run({ args: [withWorkspace('all-perapp-wrongid', perAppWf(`flutter build appbundle --release ${wrongId}`))] });
+    assert.equal(code, 1, out);
+    assert.match(out, /submit-play\.yml:\d+ \(job "submit", `flutter build appbundle`\) .*reads a release_line no step in its job derives/);
+  });
+
   // A job the census cannot parse must not read as "no builds here, ok".
   test('COVERAGE LOST when a workflow starts a `flutter build` the census never reached', () => {
     const offGrid =

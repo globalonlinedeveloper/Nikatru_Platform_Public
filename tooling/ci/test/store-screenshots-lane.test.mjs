@@ -20,7 +20,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -39,6 +39,7 @@ import {
 import { storeViewDefineArgs } from '../../store/capture-suite-scan.mjs';
 import { sandboxBackend, productionD1Ids } from '../../store/capture-backend.mjs';
 import { backendOf } from '../../e2e/backend.mjs';
+import { parseWorkflow, workflowSteps, jobEnv, shellSegments } from '../workflow-scan.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, '..', '..', '..');
@@ -252,13 +253,16 @@ describe('store-screenshots.yml captures through the runner', () => {
 const CAPTURE_INVOCATION = /\bnode tooling\/store\/capture-play-screenshots\.mjs\b/;
 const PURGE_INVOCATION = /\bnode tooling\/e2e\/purge\.mjs\b/;
 
-/** jobs → steps, each step with its first line, its env map and its env lines. */
+/** jobs → steps, each step with its first line, its env map and its env lines.
+ *  ⏱ 2026-09-26: each job also carries its own `env:` (keys at 4, entries at 6), because
+ *  a per-app lane binds `APP` there (O-STORE-LANES-HARD-WIRE-ONE-APP). */
 function workflowJobs(text) {
   const jobs = [];
   let inJobs = false;
   let job = null;
   let step = null;
   let inEnv = false;
+  let inJobEnv = false;
   text.split(/\r?\n/).forEach((raw, i) => {
     if (/^\s*#/.test(raw)) return;
     if (/^jobs:\s*$/.test(raw)) {
@@ -268,13 +272,21 @@ function workflowJobs(text) {
     if (!inJobs) return;
     const jm = /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(raw);
     if (jm) {
-      job = { name: jm[1], line: i + 1, steps: [] };
+      job = { name: jm[1], line: i + 1, steps: [], env: {} };
       jobs.push(job);
       step = null;
       inEnv = false;
+      inJobEnv = false;
       return;
     }
     if (!job) return;
+    const jk = /^ {4}([A-Za-z_-]+):/.exec(raw);
+    if (jk) inJobEnv = jk[1] === 'env';
+    const je = inJobEnv ? /^ {6}([A-Z][A-Z0-9_]*):\s*(.*?)\s*$/.exec(raw) : null;
+    if (je) {
+      job.env[je[1]] = je[2];
+      return;
+    }
     if (/^ {6}- /.test(raw)) {
       step = { line: i + 1, env: {}, envLine: {}, text: '' };
       job.steps.push(step);
@@ -300,7 +312,14 @@ function workflowJobs(text) {
   return jobs;
 }
 
-/** The capture/purge contract, per job that runs the capture. Pure. */
+/** A step output a purge may take its platform database from (⏱ 2026-09-26). */
+const STEP_PLATFORM_DB = /^\$\{\{\s*steps\.([A-Za-z0-9_-]+)\.outputs\.platform_db\s*\}\}$/;
+
+/** The capture/purge contract, per job that runs the capture. Pure.
+ *  ⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP): the lane takes its app at dispatch. A
+ *  `--app "$APP"` is the job env's APP (the gate's checked output), and the purge's
+ *  PLATFORM_D1_DATABASE_ID may be `${{ steps.<id>.outputs.platform_db }}` of an EARLIER step
+ *  that runs tooling/e2e/backend.mjs --env sandbox --emit-output: the sandbox id, resolved. */
 function checkCaptureConsentWiring(text, platformDbId) {
   const findings = [];
   const spawners = [];
@@ -308,7 +327,11 @@ function checkCaptureConsentWiring(text, platformDbId) {
     const capture = job.steps.find((s) => CAPTURE_INVOCATION.test(s.text));
     if (!capture) continue;
     spawners.push(job.name);
-    const app = /--app\s+(\S+)/.exec(capture.text)?.[1] ?? null;
+    const bound = (v) => {
+      const u = String(v ?? '').replace(/^(['"])(.*)\1$/, '$2');
+      return /^\$\{?APP\}?$/.test(u) ? (job.env.APP ?? u) : u;
+    };
+    const app = bound(/--app\s+(\S+)/.exec(capture.text)?.[1] ?? null) || null;
     const ledger = capture.env.E2E_CONSENT_LEDGER ?? null;
     if (!ledger) {
       findings.push({ rule: 'capture-ledger', job: job.name, line: capture.line, msg: `job ${job.name}: the capture step at :${capture.line} carries no E2E_CONSENT_LEDGER` });
@@ -321,7 +344,18 @@ function checkCaptureConsentWiring(text, platformDbId) {
     if (!/^ {8}if: always\(\)\s*$/m.test(purge.text)) {
       findings.push({ rule: 'purge-always', job: job.name, line: purge.line, msg: `job ${job.name}: the purge step at :${purge.line} is not \`if: always()\`` });
     }
-    if (purge.env.PLATFORM_D1_DATABASE_ID !== platformDbId) {
+    const out = STEP_PLATFORM_DB.exec(purge.env.PLATFORM_D1_DATABASE_ID ?? '');
+    const resolver = out
+      ? job.steps.find(
+          (s) =>
+            s.line < purge.line &&
+            new RegExp(`^ {8}id: ${out[1]}\\s*$`, 'm').test(s.text) &&
+            /\bnode tooling\/e2e\/backend\.mjs\b/.test(s.text) &&
+            /\s--env sandbox(?=\s|$)/.test(s.text) &&
+            /\s--emit-output(?=\s|$)/.test(s.text),
+        )
+      : null;
+    if (purge.env.PLATFORM_D1_DATABASE_ID !== platformDbId && !resolver) {
       findings.push({
         rule: 'purge-platform-db',
         job: job.name,
@@ -329,7 +363,7 @@ function checkCaptureConsentWiring(text, platformDbId) {
         msg: `job ${job.name}: the purge step at :${purge.line} carries PLATFORM_D1_DATABASE_ID=${purge.env.PLATFORM_D1_DATABASE_ID ?? '(unset)'}, not the sandbox platform database's ${platformDbId}`,
       });
     }
-    if (!app || purge.env.E2E_APP_ID !== app) {
+    if (!app || bound(purge.env.E2E_APP_ID) !== app) {
       findings.push({ rule: 'purge-app-id', job: job.name, line: purge.line, msg: `job ${job.name}: the purge step at :${purge.line} carries E2E_APP_ID=${purge.env.E2E_APP_ID ?? '(unset)'}, not the captured --app ${app ?? '(none)'}` });
     }
     if (!ledger || purge.env.E2E_CONSENT_LEDGER !== ledger) {
@@ -362,7 +396,8 @@ describe('store-screenshots.yml purges the consent rows its capture writes', () 
 
   test('…and E2E_APP_ID names the app the capture drives', () => {
     assert.deepEqual(of('purge-app-id'), []);
-    assert.match(yml, /^ {10}E2E_APP_ID: subscriptiontracker$/m);
+    // ⏱ 2026-09-26: the gate's checked app, in all four purges; no app id in the file.
+    assert.equal((yml.match(/^ {10}E2E_APP_ID: \$\{\{ needs\.gate\.outputs\.app \}\}$/gm) ?? []).length, 4);
   });
 
   test('…and the purge reads the E2E_CONSENT_LEDGER its capture step writes', () => {
@@ -392,13 +427,30 @@ describe('store-screenshots.yml purges the consent rows its capture writes', () 
     const purge = linux.steps.find((s) => PURGE_INVOCATION.test(s.text));
     const at = purge.envLine.PLATFORM_D1_DATABASE_ID;
     const lines = yml.split(/\r?\n/);
-    lines[at - 1] = lines[at - 1].replace(PLATFORM_DB_ID, production);
+    // ⏱ 2026-09-26: the value is the resolver's output now, so the mutation writes the id in its place.
+    lines[at - 1] = lines[at - 1].replace(/PLATFORM_D1_DATABASE_ID: .*$/, `PLATFORM_D1_DATABASE_ID: ${production}`);
     const { findings } = checkCaptureConsentWiring(lines.join('\n'), PLATFORM_DB_ID);
     assert.deepEqual(
       findings.map((f) => `${f.rule} ${f.job} :${f.line}`),
       [`purge-platform-db capture-linux :${purge.line}`],
     );
     assert.ok(findings[0].msg.includes(`PLATFORM_D1_DATABASE_ID=${production}`), findings[0].msg);
+  });
+
+  test('🔴 a purge whose platform_db comes from a resolver that is not the SANDBOX\'s is named', () => {
+    // ⏱ 2026-09-26: `--env sandbox` dropped from capture-linux's resolver step, so it resolves production.
+    const linux = workflowJobs(yml).find((j) => j.name === 'capture-linux');
+    const resolverStep = linux.steps.find((s) => /\bnode tooling\/e2e\/backend\.mjs\b/.test(s.text));
+    assert.ok(resolverStep, 'capture-linux runs no tooling/e2e/backend.mjs step to mutate');
+    const purge = linux.steps.find((s) => PURGE_INVOCATION.test(s.text));
+    const lines = yml.split(/\r?\n/);
+    const at = lines.findIndex((l, i) => i >= resolverStep.line - 1 && /tooling\/e2e\/backend\.mjs/.test(l));
+    lines[at] = lines[at].replace(' --env sandbox', '');
+    const { findings } = checkCaptureConsentWiring(lines.join('\n'), PLATFORM_DB_ID);
+    assert.deepEqual(
+      findings.map((f) => `${f.rule} ${f.job} :${f.line}`),
+      [`purge-platform-db capture-linux :${purge.line}`],
+    );
   });
 
   test('🔴 a capture step without E2E_CONSENT_LEDGER is named, and so is its purge', () => {
@@ -857,7 +909,8 @@ describe('a failed capture keeps its frames for diagnosis', () => {
     assert.match(steps, /name: FAILED-not-a-listing-set-/);
     // The success artifact keeps its own name, so nothing downstream that
     // looks for the real set can ever be handed unvetted bytes.
-    assert.match(steps, /name: play-screenshots-subscriptiontracker/);
+    // ⏱ 2026-09-26: the set is named for the gate's checked app (O-STORE-LANES-HARD-WIRE-ONE-APP).
+    assert.match(steps, /name: play-screenshots-\$\{\{ needs\.gate\.outputs\.app \}\}/);
   });
 
   test('the diagnostic upload never masks an earlier failure with its own', () => {
@@ -953,5 +1006,208 @@ describe('the capture binary is pinned to the host it was given (F1)', () => {
     );
     const dart = stripSourceComments(readFileSync(SUITE, 'utf8'), '.dart');
     assert.match(dart, /AppConfig\.pinnedBackend\s*\|\|\s*!AppConfig\.isApiConfigured/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A DRY RUN OPENS NO PULL REQUEST, AND EVERY CAPTURE JOB PRECHECKS ITS APP FIRST
+// (O-SCREENSHOT-DRIVER-IS-ONE-APPS, 2026-09-26).
+//
+// "A dry run opens no pull request" is a property of the `if:` lines, and nothing
+// short of a dispatch can observe it; a dispatch is the parent's act, never a
+// test's. So this reads those lines: every step that pushes a branch or opens a
+// pull request is `if: ${{ !inputs.dry_run }}`; the success upload is gated the
+// same way, and one sibling upload gated `${{ inputs.dry_run }}` carries the set as
+// dry-run-<channel>-<app> from the same paths. And each capture job's first step
+// after checkout runs capture-precheck.mjs on the app and the channel that job
+// captures, with no `if:` of its own.
+//
+// Read through workflow-scan.mjs, the one workflow parse (comments blanked, `run: |`
+// joined), because the lane's prose names every command this looks for. Each
+// mutation is written to a temporary root and parsed from there.
+// ─────────────────────────────────────────────────────────────────────────────
+const LANE_REL = '.github/workflows/store-screenshots.yml';
+const NOT_DRY = '${{ !inputs.dry_run }}';
+const DRY = '${{ inputs.dry_run }}';
+const PR_WRITE = /(?:^|\s)(?:gh\s+pr\s+create|git\s+push)(?=\s|$)/;
+const PRECHECK_CALL = /(?:^|\s)node\s+tooling\/store\/capture-precheck\.mjs(?=\s|$)/;
+const UPLOAD_ACTION = /^actions\/upload-artifact@/;
+const NON_SUCCESS_IF = /(?:failure|always|cancelled)\s*\(\s*\)/;
+const flagOf = (seg, name) => {
+  const m = seg.match(new RegExp(`(?:^|\\s)${name}(?:=|\\s+)(\\S+)`));
+  return m ? m[1].replace(/^(['"])(.*)\1$/, '$2') : null;
+};
+const condOf = (s) => (s.cond === null ? null : s.cond.replace(/\s+/g, ' ').trim());
+
+/** The dry-run and precheck contract over a parsed lane. Pure. */
+function checkDryRunLane(wf) {
+  const findings = [];
+  const census = { prSteps: [], uploadPairs: [], prechecks: [] };
+  const find = (rule, job, line, msg) => findings.push({ rule, job, line, msg });
+
+  const head = wf.lines.slice(0, wf.jobsAt ?? wf.lines.length);
+  const at = head.findIndex((l) => /^ {6}dry_run:\s*$/.test(l.text));
+  if (at === -1) {
+    find('dry-run-input', null, null, 'on.workflow_dispatch.inputs declares no dry_run');
+  } else {
+    const body = [];
+    for (let i = at + 1; i < head.length && (head[i].text.trim() === '' || /^ {8}\S/.test(head[i].text)); i++) body.push(head[i].text.trim());
+    for (const want of ['type: boolean', 'default: false', 'required: false']) {
+      if (!body.includes(want)) find('dry-run-input', null, head[at].n, `the dry_run input at :${head[at].n} does not say \`${want}\``);
+    }
+  }
+
+  for (const job of wf.jobs.values()) {
+    const steps = workflowSteps(job);
+    const capture = steps.find((s) => s.run && CAPTURE_INVOCATION.test(s.run.text));
+    if (!capture) continue;
+    const env = jobEnv(job);
+    const bound = (v) => (v !== null && /^\$\{?STORE_CHANNEL\}?$/.test(v) ? (env.get('STORE_CHANNEL')?.value ?? v) : v);
+    const captureSeg = shellSegments(capture.run.text).find((x) => CAPTURE_INVOCATION.test(x));
+    const channel = bound(flagOf(captureSeg, '--channel')) ?? 'android-play';
+
+    for (const s of steps) {
+      if (!s.run || !shellSegments(s.run.text).some((x) => PR_WRITE.test(x))) continue;
+      census.prSteps.push(job.name);
+      if (condOf(s) !== NOT_DRY) {
+        find('pr-step-ungated', job.name, s.first, `job ${job.name}: the step at :${s.first} pushes a branch or opens a pull request under \`if: ${s.cond ?? '(none)'}\`, not \`if: ${NOT_DRY}\``);
+      }
+    }
+
+    const uploads = steps.filter((s) => s.uses && UPLOAD_ACTION.test(s.uses) && !NON_SUCCESS_IF.test(s.cond ?? ''));
+    const real = uploads.filter((s) => condOf(s) === NOT_DRY);
+    const dry = uploads.filter((s) => condOf(s) === DRY);
+    for (const s of uploads.filter((u) => !real.includes(u) && !dry.includes(u))) {
+      find('upload-ungated', job.name, s.first, `job ${job.name}: the set upload at :${s.first} is \`if: ${s.cond ?? '(none)'}\`, neither ${NOT_DRY} nor ${DRY}`);
+    }
+    if (real.length !== 1 || dry.length !== 1) {
+      find('upload-pair', job.name, capture.first, `job ${job.name}: ${real.length} set upload(s) under ${NOT_DRY} and ${dry.length} under ${DRY}, where the lane needs one of each`);
+    } else {
+      census.uploadPairs.push(job.name);
+      const want = `dry-run-${channel}-\${{ needs.gate.outputs.app }}`;
+      const name = dry[0].with.get('name')?.value ?? null;
+      if (name !== want) find('dry-run-name', job.name, dry[0].first, `job ${job.name}: the dry-run upload at :${dry[0].first} is named ${name ?? '(none)'}, not ${want}`);
+      const a = real[0].with.get('path')?.value ?? null;
+      const b = dry[0].with.get('path')?.value ?? null;
+      if (a === null || a !== b) find('dry-run-paths', job.name, dry[0].first, `job ${job.name}: the dry-run upload at :${dry[0].first} uploads ${JSON.stringify(b)}, and the set upload at :${real[0].first} uploads ${JSON.stringify(a)}`);
+    }
+
+    const checkoutAt = steps.findIndex((s) => s.uses && /^actions\/checkout@/.test(s.uses));
+    const next = checkoutAt === 0 ? (steps[1] ?? null) : null;
+    const seg = next?.run ? shellSegments(next.run.text).find((x) => PRECHECK_CALL.test(x)) : undefined;
+    if (seg === undefined) {
+      find('precheck-first', job.name, next?.first ?? capture.first, `job ${job.name}: the step after checkout does not run tooling/store/capture-precheck.mjs`);
+      continue;
+    }
+    census.prechecks.push(job.name);
+    if (next.cond !== null) find('precheck-if', job.name, next.first, `job ${job.name}: the precheck at :${next.first} carries \`if: ${next.cond}\``);
+    if (flagOf(seg, '--app') !== flagOf(captureSeg, '--app')) {
+      find('precheck-app', job.name, next.first, `job ${job.name}: the precheck at :${next.first} checks --app ${flagOf(seg, '--app')}, and the capture at :${capture.first} drives --app ${flagOf(captureSeg, '--app')}`);
+    }
+    if (bound(flagOf(seg, '--channel')) !== channel) {
+      find('precheck-channel', job.name, next.first, `job ${job.name}: the precheck at :${next.first} checks --channel ${flagOf(seg, '--channel')}, and the job captures ${channel}`);
+    }
+  }
+  return { census, findings };
+}
+
+/** The lane text, parsed from a temporary root (ADR 072). */
+function parseLaneText(text) {
+  const root = mkdtempSync(join(tmpdir(), 'nk-lane-dry-run-'));
+  try {
+    mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
+    writeFileSync(join(root, LANE_REL), text);
+    return parseWorkflow(root, LANE_REL);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+describe('store-screenshots.yml: a dry run opens no pull request, and each job prechecks its app first', () => {
+  const yml = readFileSync(join(REPO, LANE_REL), 'utf8');
+  const lane = parseWorkflow(REPO, LANE_REL);
+  const real = checkDryRunLane(lane);
+  const JOBS = ['capture', 'capture-linux', 'capture-desktop-native', 'capture-ios'];
+  /** The file line (1-based) of the first line at or after `from` matching `re`. */
+  const lineOf = (re, from = 1) => yml.split('\n').findIndex((l, i) => i >= from - 1 && re.test(l)) + 1;
+  const job = (name) => lane.jobs.get(name);
+  const stepNamed = (jobName, re) => workflowSteps(job(jobName)).find((s) => re.test(s.name ?? ''));
+
+  test('the lane holds the contract, in all four capture jobs', () => {
+    assert.deepEqual(real.findings.map((f) => f.msg), []);
+    // Pinned by NAME: a job that stopped matching would shrink the census and pass every rule over less.
+    assert.deepEqual(real.census.prSteps, JOBS);
+    assert.deepEqual(real.census.uploadPairs, JOBS);
+    assert.deepEqual(real.census.prechecks, JOBS);
+  });
+
+  test('🔴 the Snap pull-request step without its dry-run gate is named, with its line', () => {
+    const propose = stepNamed('capture-linux', /^Propose the set/);
+    const gate = lineOf(/^ {8}if: \$\{\{ !inputs\.dry_run \}\}$/, propose.first);
+    assert.ok(gate > propose.first && gate <= propose.last, `capture-linux's propose step at :${propose.first} carries no dry-run gate to remove`);
+    const lines = yml.split('\n');
+    lines.splice(gate - 1, 1);
+    const { findings } = checkDryRunLane(parseLaneText(lines.join('\n')));
+    assert.deepEqual(findings.map((f) => `${f.rule} ${f.job} :${f.line}`), [`pr-step-ungated capture-linux :${propose.first}`]);
+  });
+
+  test('🔴 a Play set upload with its dry-run gate removed is named twice: ungated, and the pair broken', () => {
+    const upload = stepNamed('capture', /^Upload the screenshot set$/);
+    const gate = lineOf(/^ {8}if: \$\{\{ !inputs\.dry_run \}\}$/, upload.first);
+    assert.ok(gate > upload.first && gate <= upload.last, 'the Play set upload carries no dry-run gate to remove');
+    const lines = yml.split('\n');
+    lines.splice(gate - 1, 1);
+    const { findings } = checkDryRunLane(parseLaneText(lines.join('\n')));
+    assert.deepEqual(findings.map((f) => `${f.rule} ${f.job}`), ['upload-ungated capture', 'upload-pair capture']);
+  });
+
+  test('🔴 a Play dry-run upload one directory short is named', () => {
+    const dry = stepNamed('capture', /^Upload the DRY-RUN screenshot set$/);
+    const tablet = lineOf(/^ {12}apps\/\$\{\{ needs\.gate\.outputs\.app \}\}\/store\/android-play\/screenshots-tablet\/$/, dry.first);
+    assert.ok(tablet > dry.first && tablet <= dry.last, 'the Play dry-run upload names no tablet directory to remove');
+    const lines = yml.split('\n');
+    lines.splice(tablet - 1, 1);
+    const { findings } = checkDryRunLane(parseLaneText(lines.join('\n')));
+    assert.deepEqual(findings.map((f) => `${f.rule} ${f.job} :${f.line}`), [`dry-run-paths capture :${dry.first}`]);
+  });
+
+  test('🔴 a desktop dry-run artifact named for one store instead of the dispatched channel is named', () => {
+    const dry = stepNamed('capture-desktop-native', /^Upload the DRY-RUN screenshot set$/);
+    const at = lineOf(/^ {10}name: dry-run-\$\{\{ inputs\.channel \}\}-/, dry.first);
+    assert.ok(at > dry.first && at <= dry.last, 'the desktop dry-run upload has no channel-named artifact to mutate');
+    const lines = yml.split('\n');
+    lines[at - 1] = lines[at - 1].replace('dry-run-${{ inputs.channel }}-', 'dry-run-windows-store-');
+    const { findings } = checkDryRunLane(parseLaneText(lines.join('\n')));
+    assert.deepEqual(findings.map((f) => `${f.rule} ${f.job} :${f.line}`), [`dry-run-name capture-desktop-native :${dry.first}`]);
+  });
+
+  test('🔴 an iOS job whose precheck is gone is named', () => {
+    const pre = stepNamed('capture-ios', /^Precheck/);
+    assert.ok(pre, 'capture-ios has no precheck step to remove');
+    const lines = yml.split('\n');
+    lines.splice(pre.first - 1, pre.last - pre.first + 1);
+    const { findings } = checkDryRunLane(parseLaneText(lines.join('\n')));
+    assert.deepEqual(findings.map((f) => `${f.rule} ${f.job}`), ['precheck-first capture-ios']);
+  });
+
+  test('🔴 a Snap precheck of the wrong channel is named', () => {
+    const pre = stepNamed('capture-linux', /^Precheck/);
+    const lines = yml.split('\n');
+    const at = lineOf(/--channel linux-snap$/, pre.first);
+    assert.ok(at >= pre.first && at <= pre.last, 'capture-linux\'s precheck names no --channel linux-snap to mutate');
+    lines[at - 1] = lines[at - 1].replace('--channel linux-snap', '--channel android-play');
+    const { findings } = checkDryRunLane(parseLaneText(lines.join('\n')));
+    assert.deepEqual(findings.map((f) => `${f.rule} ${f.job} :${f.line}`), [`precheck-channel capture-linux :${pre.first}`]);
+  });
+
+  test('🔴 a dry_run input that defaults to true is named', () => {
+    const at = lineOf(/^ {6}dry_run:\s*$/);
+    const def = lineOf(/^ {8}default: false$/, at);
+    assert.ok(at > 0 && def > at, 'the lane declares no dry_run default to mutate');
+    const lines = yml.split('\n');
+    lines[def - 1] = lines[def - 1].replace('default: false', 'default: true');
+    const { findings } = checkDryRunLane(parseLaneText(lines.join('\n')));
+    assert.deepEqual(findings.map((f) => f.rule), ['dry-run-input']);
+    assert.match(findings[0].msg, /does not say `default: false`/);
   });
 });

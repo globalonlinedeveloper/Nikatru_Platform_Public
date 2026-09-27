@@ -86,6 +86,23 @@ revision does not fail cleanly — it lands on real machines. Hence the typed
 `confirm`, the `store-publish` environment with its required reviewer, and a
 job that rebuilds and re-gates the artifact it is about to send.
 
+### above `app:`
+
+⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP). This lane named app #1 on 31
+lines. The app is now a dispatch input, `required: true`, with NO `default:`
+and no `type: choice`: either one is an app id written into this file under
+another name. A dispatch names it: `gh workflow run submit-snap.yml -f app=<id>`
+(plus `-f confirm=SUBMIT-TO-SNAP-STORE` for a real submission), where `<id>` is one of
+`node tooling/ci/assert-release-lane-generic.mjs --emit-apps`. Only the `gate`
+job reads the raw input, and only through `env:`; every other job reads the
+gate's checked `app` output. `run-name` shows the app and the mode (`SUBMIT`
+when `confirm` is `SUBMIT-TO-SNAP-STORE`, else `dry run`); it is not a shell, so the
+input is safe there. assert-release-lane-generic.mjs limb I grades this shape
+and refuses an app id written on any line of the file. The ledger name `"${APP}-linux-snap"` is `subscriptiontracker-linux-snap` for
+app #1, and the recipe directory is `$RUNNER_TEMP/snapcraft-${APP}`. The GlitchTip
+project is read from tooling/ops/glitchtip-project.json, as build-platforms.yml
+reads it.
+
 ### above `listing_url:`
 
 ── 🔴 [10]D-9 · THE ADDRESS THE LEDGER ROW WILL CARRY ──────────────────
@@ -127,6 +144,16 @@ assert-gate-passed.mjs POLLS for up to its own 1200 s default (this call
 leaves `--timeout-seconds` unset), so any bound at or under 20 kills it
 mid-poll and replaces "timed out waiting for ci-gate" with an opaque
 cancellation. Kept byte-identical in all five `gate:` jobs. [pipeline F-5b]
+
+### before step **The app input names one app of the workspace**
+
+⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP). The one reader of
+`inputs.app`, through `env: APP_INPUT`, never as `${{ inputs.app }}` inside
+`run:` (an input interpolated into a shell is an injection).
+`assert-release-lane-generic.mjs --emit-apps --app "$APP_INPUT"` refuses a
+value off `^[a-z][a-z0-9-]*$` before it reads anything else, then refuses an
+id the workspace does not declare, naming the set. Only after it exits 0 is
+the id written to `$GITHUB_OUTPUT` as the job's `app` output (submit-snap.yml).
 
 ## job `dry-run`
 
@@ -481,7 +508,7 @@ records, plus the runs cancelled or failed AFTER Canonical accepted the
 snap. An upload cannot be un-sent, so a leg that ends after it must still
 say what it sent. deploy-web run 144 (2026-08-08) is the recorded case.
 
-### in step **Record the submission in the [10]D-9 ledger**, above `run: node tooling/ci/record-deployment.mjs subscriptiontracker-linux-snap --state in_review --listing…`
+### in step **Record the submission in the [10]D-9 ledger**, above `run: node tooling/ci/record-deployment.mjs "${APP}-linux-snap" --state in_review --listing…`
 
 ONE LINE, NOT A `run: >` FOLD, AND THAT IS NOT STYLE. The flat half of
 assert-publish-records.mjs's accounting identity matches PHYSICAL lines;
@@ -589,3 +616,25 @@ any upload, and its error names the owner step. The owner's two steps:
 2. After the merge, delete the repository-level copy of the credential.
    Verified by listing secret NAMES only (`gh secret list`,
    `gh secret list --env store-publish`).
+
+---
+
+## ⏱ 2026-09-26 — every run is recorded, with its mode (O-SUBMISSION-LANE-WITHOUT-RECORDER)
+
+**Appended, not rewritten.** Until this date only a confirmed submission wrote a [10]D-9 record,
+so a dry run left no trace in the ledger. Now every run of this lane records itself, and the
+record says which kind of run wrote it (`tooling/ci/record-deployment.mjs --mode`):
+
+* the `dry-run` job's last step, **Record the dry run in the [10]D-9 ledger (mode dry-run)**, runs
+  `record-deployment.mjs "${APP}-linux-snap" --mode dry-run`. The recorder writes it to
+  `subscriptiontracker-linux-snap-dry-run` with `production_environment: false`, `transient_environment: true` and
+  `payload.mode: "dry-run"`, and a description starting `dry-run`. No reader of the production
+  ledger (check-prod-provenance, readSubmissions, the served ledger) opens that
+  environment, and check-prod-provenance also refuses any record whose payload says `dry-run`;
+* the `submit` job's record gains `--mode production`; nothing else about it changes.
+* the recorder REFUSES a record of this channel with no `--mode` (exit 2): a default would be a
+  quiet production claim. assert-publish-records.mjs rules 3a-3c hold the same thing statically, and
+  `tooling/ci/test/submit-lanes-record.test.mjs` holds it over the lanes the provenance reader derives.
+
+GitHub creates the `subscriptiontracker-linux-snap-dry-run` environment the first time a Deployment names it, with no
+protection rules. UNVERIFIED on this repository until the first dry run after the merge.

@@ -234,7 +234,7 @@ import { listDir } from './tree-walk.mjs';
 // The ONE workflow parser. Four copies of it drift in the way that reports
 // "clean" — which lines they can see — so [14]O-7's deploy-job derivation goes
 // through the same one assert-release-provenance and assert-no-secret-defines use.
-import { parseAllWorkflows, workflowEvents, shellSegments, RECORD_CALL, expandMatrixEnvironment, POST_GATE_IF, postGateJobs } from './workflow-scan.mjs';
+import { parseAllWorkflows, workflowEvents, shellSegments, RECORD_CALL, expandMatrixEnvironment, POST_GATE_IF, postGateJobs, bindEveryApp } from './workflow-scan.mjs';
 // The ONE comment tokenizer, for the same reason as the workflow parser above.
 import { stripSourceComments } from './text-reductions.mjs';
 // The ONE calendar-date check. The copy that stood here read `Date.parse(s)`
@@ -249,6 +249,8 @@ const WORKFLOW_DIR_REL = '.github/workflows';
  *  apart from `RECORD_CALL`'s reading of its ARGUMENT so the two can disagree —
  *  which is the whole of the coverage floor at the deploy-job loop below. */
 const RECORD_SCRIPT = 'record-deployment.mjs';
+/** ⏱ 2026-09-26 — the literal a rehearsal's record carries (record-deployment.mjs --mode). */
+const DRY_RUN_RECORD = /(^|\s)--mode\s+(['"]?)dry-run\2(\s|$)/;
 
 /** Any repo-relative path a row NAMES, in the fields that make a claim about a
  *  mechanism: the detector, the record, and the thing that reads it. `Private/`
@@ -2048,6 +2050,18 @@ export function evaluate(reg, tree, nowMs) {
   // deploy-workers.yml ships two independent Workers and a single smoke
   // anywhere in the file would certify both while touching one.
   for (const d of tree.deployJobs ?? []) {
+    // ⏱ 2026-09-27 · W36-R1: the derivation binds a per-app lane's `$APP` to each
+    // workspace app. A name that still carries it was recorded in a job whose `APP`
+    // is not the gate's app, so it names no app: no exemption and no register row
+    // can match it, and a probe in the same job cannot say which app it probed.
+    if (/\$\{APP\}|\$APP(?![A-Za-z0-9_])/.test(d.environment)) {
+      bad(
+        `${d.workflow}:${d.job} records a deployment for \`${d.environment}\`, and \`APP\` in that job is not the gate's app ` +
+          '(`env: APP: ${{ needs.gate.outputs.app }}`), so the name cannot be expanded over the workspace apps. Bind the ' +
+          "job's `APP` to the gate's output, as every job of a per-app lane does.",
+      );
+      continue;
+    }
     if (d.smokes > 0) continue;
     const exemption = reg._deploySmokeExemptions?.[d.environment];
     if (nonEmpty(exemption)) {
@@ -5459,11 +5473,34 @@ async function main() {
     }
     return expanded;
   };
-  for (const wf of parseAllWorkflows(ROOT)) {
+  // ⏱ 2026-09-27 · W36-R1 (O-STORE-LANES-HARD-WIRE-ONE-APP): a per-app store lane
+  // records `"${APP}-<channel>"`, APP being the app its gate job checked. Read as
+  // written, that name is no app's: it matched no `_deploySmokeExemptions` key, which
+  // are literal ledger names, so the snap and Windows submit jobs read as recorded and
+  // never probed. So the lane is read once per app the workspace declares, bound the
+  // way every other reader of it is (workflow-scan.mjs bindEveryApp), and each name is
+  // that app's, so a second app's submit record is judged as its own name. A name
+  // still carrying `$APP` after the binding is [14]O-7's finding, below.
+  let boundWorkflows;
+  try {
+    boundWorkflows = bindEveryApp(ROOT, parseAllWorkflows(ROOT));
+  } catch (e) {
+    coverageLost([
+      `${e.message}`,
+      "A per-app lane's record-deployment names cannot be expanded to an app, so [14]O-7 could not attribute them.",
+    ]);
+  }
+  for (const wf of boundWorkflows) {
     for (const [jobName, job] of wf.jobs) {
       const text = (job.lines ?? []).map((l) => l.text ?? String(l)).join('\n');
       RECORD_CALL.lastIndex = 0;
-      const envs = [...text.matchAll(RECORD_CALL)].flatMap((m) => expandEnv(m[1]));
+      // ⏱ 2026-09-26 — a `--mode dry-run` record is a REHEARSAL's
+      // (O-SUBMISSION-LANE-WITHOUT-RECORDER): it writes `<env>-dry-run` and claims
+      // nothing is live, so it puts no job in this domain. Read from the rest of the
+      // call's own line; a call written any other way stays in the domain.
+      const calls = [...text.matchAll(RECORD_CALL)];
+      const rehearsals = calls.filter((m) => DRY_RUN_RECORD.test(text.slice(m.index + m[0].length).split('\n')[0]));
+      const envs = calls.filter((m) => !rehearsals.includes(m)).flatMap((m) => expandEnv(m[1]));
       // 🔴 THE FLOOR THAT WAS MISSING, AND ITS ABSENCE DROPPED A JOB TWICE.
       // The line below used to be a bare `continue`, and a bare `continue` cannot
       // tell "this job records nothing" from "this job records something I could
@@ -5477,7 +5514,8 @@ async function main() {
       // one branch up already reaches — so the third unparseable argument shape
       // stops the build instead of shrinking the domain.
       if (envs.length === 0) {
-        if (text.includes(RECORD_SCRIPT)) {
+        // A rehearsal-only job was READ (its calls parsed) and left out on purpose.
+        if (text.includes(RECORD_SCRIPT) && calls.length === 0) {
           coverageLost([
             `${wf.rel ?? wf.file ?? '?'}:${jobName} runs \`${RECORD_SCRIPT}\` and this scan could not read the environment it records.`,
             'That job would leave [14]O-7\'s domain silently and the census below would print the smaller number as a',

@@ -163,9 +163,16 @@
 //     widget tree. Both answer "does a frame leak the signed-in account". A
 //     textless set leaks nothing, so both pass it — as they did, for six weeks.
 //   · WHETHER THE COMMITTED GRAPHIC IS STILL WHAT ITS GENERATOR RENDERS. That
-//     needs Chrome, so it is a separate step —
-//     `node tooling/store/render-play-graphics.mjs --check` — which runs in the
-//     lane that has a browser rather than beside the static guards.
+//     needs Chrome, so it is a separate step: store-screenshots.yml's Play job
+//     (`capture`) runs `node tooling/store/render-play-graphics.mjs --app "$APP"
+//     --check` in its step "The committed Play graphics are what their generator
+//     renders", before it captures.
+//     ⏱ 2026-09-26 (O-SCREENSHOT-DRIVER-IS-ONE-APPS): from #154 until this date
+//     the sentence here said only "in the lane that has a browser", and no
+//     workflow ran the command (0 hits in .github/ at 80ef8e39). A redirection
+//     to a step nobody wrote is an exemption in prose, so THE GRAPHICS STEP limb
+//     near the end of this file now reads the lane and refuses it without that
+//     step. It proves the step is WIRED; whether it passed is in the run's log.
 //
 // Usage:  node tooling/ci/assert-listing-assets.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
@@ -173,6 +180,10 @@ import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
+// THE GRAPHICS STEP limb reads the workflows through the one workflow parse
+// (comments blanked, `run: |` joined), never by grepping the YAML, whose prose
+// names the very command the limb looks for.
+import { parseAllWorkflows, workflowSteps, shellSegments } from './workflow-scan.mjs';
 // The ONE reading of "this app root was emptied into the chassis package" - see
 // that module's header for why it is a module and not eleven copies.
 import { delegationOf as resolveChassisDelegation } from './chassis-delegation.mjs';
@@ -1512,6 +1523,88 @@ const inkReadings = [];
   }
 }
 
+// ── 🔴 THE GRAPHICS STEP: THE ONE CHECK ABOVE THAT NEEDS A BROWSER ─────────
+// ⏱ 2026-09-26 (O-SCREENSHOT-DRIVER-IS-ONE-APPS). This file's header sends one
+// question to another place: "is each committed Play graphic still what
+// render-play-graphics.mjs renders" needs Chrome, so it belongs in the lane that
+// has one. From #154 to this limb no workflow ran that command, and the sentence
+// stood anyway. It is now a fact read off the workflows: every job, in any
+// workflow, that captures the Play listing (a capture-play-screenshots.mjs call
+// with no `--channel`, or `--channel android-play`) runs
+// `node tooling/store/render-play-graphics.mjs --app <the app it captures> --check`
+// in a step BEFORE that capture, with no `if:` and no `continue-on-error` of its
+// own, so the step runs whenever the capture does and its red is the job's red.
+// The jobs are found by what they RUN, never by a workflow's name: today the one
+// such job is store-screenshots.yml's `capture`, and a second Play capture lane
+// is graded by the same rule the day it exists.
+//
+// ⚠️ WHAT IT CANNOT SEE: whether the step PASSED on a runner. That is a run's log.
+// A capture whose `--channel` is a shell variable is not read as Play: the one
+// such job, store-screenshots.yml's capture-desktop-native, runs only for the two
+// native desktop stores.
+const RENDER_CALL = /(?:^|\s)node\s+tooling\/store\/render-play-graphics\.mjs(?=\s|$)/;
+const CAPTURE_CALL = /(?:^|\s)node\s+tooling\/store\/capture-play-screenshots\.mjs(?=\s|$)/;
+const flagValue = (seg, flag) => {
+  const m = seg.match(new RegExp(`(?:^|\\s)${flag}(?:=|\\s+)(\\S+)`));
+  return m ? m[1].replace(/^(['"])(.*)\1$/, '$2') : null;
+};
+/** `{ workflow, job, check, capture }` per Play capture job whose check step is wired. */
+const graphicsSteps = [];
+let playCaptureJobs = 0;
+for (const wf of parseAllWorkflows(ROOT)) {
+  for (const job of wf.jobs.values()) {
+    const steps = workflowSteps(job);
+    let capture = null;
+    let captureSeg = null;
+    for (const s of steps) {
+      const seg = s.run ? shellSegments(s.run.text).find((x) => CAPTURE_CALL.test(x)) : undefined;
+      if (seg === undefined) continue;
+      const channel = flagValue(seg, '--channel');
+      if (channel === null || channel === 'android-play') {
+        capture = s;
+        captureSeg = seg;
+        break;
+      }
+    }
+    if (capture === null) continue;
+    playCaptureJobs++;
+    const app = flagValue(captureSeg, '--app');
+    const at = `${wf.rel} job "${job.name}"`;
+    const check = steps.slice(0, capture.index).find(
+      (s) => s.run && shellSegments(s.run.text).some((x) => RENDER_CALL.test(x) && /\s--check(?=\s|$)/.test(x) && flagValue(x, '--app') === app),
+    );
+    if (!check) {
+      problems.push(
+        `${at} captures the Play listing at :${capture.first} and no step before it runs ` +
+          `\`node tooling/store/render-play-graphics.mjs --app ${app ?? '<the captured app>'} --check\`. This guard cannot see whether the ` +
+          'committed feature graphic and store icon are still what their generator renders, and its header says the lane with a ' +
+          'browser checks that; without the step the sentence is held by nothing (O-SCREENSHOT-DRIVER-IS-ONE-APPS).',
+      );
+      continue;
+    }
+    const own = job.lines.filter((l) => l.n >= check.first && l.n <= check.last);
+    if (check.cond !== null) {
+      problems.push(`${at}: the Play graphics check at :${check.first} carries its own \`if: ${check.cond}\`, so a run can skip it and still capture. It runs whenever the capture does.`);
+      continue;
+    }
+    if (own.some((l) => /^\s*continue-on-error:\s*true\b/.test(l.text))) {
+      problems.push(`${at}: the Play graphics check at :${check.first} is \`continue-on-error: true\`, so a drifted graphic leaves the job green.`);
+      continue;
+    }
+    graphicsSteps.push({ workflow: wf.rel, job: job.name, check: check.first, capture: capture.first });
+  }
+}
+if (playCaptureJobs === 0) {
+  if (scanningRealRepo) {
+    coverageLost([
+      'no job under .github/workflows captures the Play listing (capture-play-screenshots.mjs with no --channel, or --channel android-play).',
+      'This file\'s header says the lane with a browser runs the Play graphics check; THE GRAPHICS STEP limb holds',
+      'that job to it, and with no such job it judged nothing.',
+    ]);
+  }
+  prints.push('GRAPHICS STEP: no workflow in this tree captures the Play listing (a fixture root), so whether one runs render-play-graphics.mjs --check was not judged.');
+}
+
 // ── the scan must still be reaching the tree ────────────────────────────────
 if (treesSeen === 0) {
   coverageLost([
@@ -1623,8 +1716,15 @@ if (problems.length) {
   console.log('   ⚠️ CANNOT SEE: WHAT THE WORDS SAY. The ink limb measures how much of a frame stands in local');
   console.log('      contrast — it never reads a glyph, a font or a script. A frame whose labels are present and');
   console.log('      WRONG, truncated, or in the wrong language measures exactly like a correct one.');
+  for (const g of graphicsSteps) {
+    console.log(
+      `ok   THE GRAPHICS STEP — ${g.workflow} job "${g.job}" runs render-play-graphics.mjs --check at :${g.check}, ` +
+        `before its Play capture at :${g.capture}, on the app it captures.`,
+    );
+  }
   console.log('   ⚠️ CANNOT SEE: whether a committed graphic is still what its generator renders. That needs');
-  console.log('      a browser: `node tooling/store/render-play-graphics.mjs --check`, in the lane that has one.');
+  console.log('      a browser: the Play capture job runs `render-play-graphics.mjs --check` before it captures,');
+  console.log('      and THE GRAPHICS STEP holds every such job to that step; whether it passed is in the run.');
   // Read from this process's own start-up flags: remove the relaunch above and
   // this says ON, and listing-assets.test.mjs fails.
   console.log(`   ${backgroundTasksNote()}`);

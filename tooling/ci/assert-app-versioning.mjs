@@ -59,7 +59,7 @@ import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
 import {
-  parseWorkflow, parseAllWorkflows, flutterReleaseBuilds, flutterBuilds, gradeDomain, buildAt, shellSegments, workflowEvents, sha256HandOffs,
+  parseWorkflow, parseAllWorkflows, bindEveryApp, flutterReleaseBuilds, flutterBuilds, gradeDomain, buildAt, shellSegments, workflowEvents, sha256HandOffs,
 } from './workflow-scan.mjs';
 import { UNTAGGED_REF, releaseTagOf } from './tag-owner.mjs';
 
@@ -486,7 +486,10 @@ const wfFiles = listDir(wfDir).filter((f) => f.endsWith('.yml') || f.endsWith('.
 // tooling/ci/flutter-release-build.mjs to compose was no build to any of them.
 // They read workflow-scan.mjs flutterBuilds instead: one record per shell
 // segment, every mode, a composer call composed.
-const allParsed = parseAllWorkflows(repoRoot);
+// ⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP): a store lane that takes its app from
+// its gate job is read once per app of the workspace set (workflow-scan bindEveryApp), so
+// its `--emit`, its build and its `--app` are graded for each app a dispatch can name.
+const allParsed = bindEveryApp(repoRoot, parseAllWorkflows(repoRoot));
 const everyBuild = flutterBuilds(repoRoot, allParsed);
 
 // The census keeps `${{ x }}` as written; the version flags are read as whitespace-free
@@ -818,7 +821,8 @@ for (const wf of allParsed) {
   for (const job of wf.jobs.values()) {
     const ids = new Set();
     job.logical.forEach((l, i) => {
-      const em = /assert-app-versioning\.mjs\s+--emit\s+(apps[/\\]\S+)/.exec(l.text);
+      // An opening quote is the shell's: `--emit "apps/${APP}"`, bound, is `--emit "apps/<id>"`.
+      const em = /assert-app-versioning\.mjs\s+--emit\s+["']?(apps[/\\]\S+)/.exec(l.text);
       if (!em) return;
       if (!emitAppOf.has(`${wf.rel}#${job.name}`)) emitAppOf.set(`${wf.rel}#${job.name}`, em[1].replace(/["']/g, ''));
       for (let k = i; k >= 0 && k > i - 12; k--) {

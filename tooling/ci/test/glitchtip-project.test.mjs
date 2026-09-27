@@ -118,9 +118,12 @@ describe('an app-derived project name is refused', () => {
   });
 
   test('R1b — a `${{ matrix.app }}` expression is refused the same way', () => {
+    // ⏱ 2026-09-26: submit-play.yml reads the declaration now (O-STORE-LANES-HARD-WIRE-ONE-APP),
+    // so the mutation replaces that variable; the step still reads the file, and the
+    // expression is refused anyway — app-derived is refused before the step's read is weighed.
     const dir = stage('matrix-expr', (f, body) =>
       f === 'submit-play.yml'
-        ? body.replace(`--project ${DECLARED}`, '--project ${{ matrix.app }}')
+        ? body.replace('--project "$gt_project"', '--project ${{ matrix.app }}')
         : body,
     );
     const r = run(dir);
@@ -140,8 +143,11 @@ describe('an app-derived project name is refused', () => {
 
 describe('a literal that is not the declaration is refused', () => {
   test('R3 — one lane spelling a different project: exit 1, and it is named', () => {
+    // ⏱ 2026-09-26: submit-snap.yml reads the declaration now (O-STORE-LANES-HARD-WIRE-ONE-APP)
+    // and no lane spells the literal any more, so the drift is planted as the literal a lane
+    // could carry again, in place of the variable.
     const dir = stage('drift', (f, body) =>
-      f === 'submit-snap.yml' ? body.replaceAll(`--project ${DECLARED}`, `--project ${OTHER}`) : body,
+      f === 'submit-snap.yml' ? body.replaceAll('--project "$gt_project"', `--project ${OTHER}`) : body,
     );
     const r = run(dir);
     assert.equal(r.code, 1, r.out);

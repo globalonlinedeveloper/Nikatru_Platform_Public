@@ -755,7 +755,7 @@ naming the job it belonged to and the line it sat above.
 | [`redeploy-stranded.md`](redeploy-stranded.md) | `.github/workflows/redeploy-stranded.yml` | Redeploy stranded lanes | `workflow_run`, `workflow_dispatch` | 1 |
 | [`renovate.md`](renovate.md) | `.github/workflows/renovate.yml` | Renovate | `workflow_dispatch`, `schedule` | 1 |
 | [`rollback.md`](rollback.md) | `.github/workflows/rollback.yml` | Rollback | `workflow_dispatch` | 1 |
-| [`store-screenshots.md`](store-screenshots.md) | `.github/workflows/store-screenshots.yml` | Store screenshots | `workflow_dispatch` | 4 |
+| [`store-screenshots.md`](store-screenshots.md) | `.github/workflows/store-screenshots.yml` | Store screenshots | `workflow_dispatch` | 5 |
 | [`submit-appstore.md`](submit-appstore.md) | `.github/workflows/submit-appstore.yml` | Store submit: Apple App Store | `workflow_dispatch` | 2 |
 | [`submit-play.md`](submit-play.md) | `.github/workflows/submit-play.yml` | Store submit: Google Play | `workflow_dispatch` | 3 |
 | [`submit-snap.md`](submit-snap.md) | `.github/workflows/submit-snap.yml` | Store submit: Snap Store | `workflow_dispatch` | 3 |

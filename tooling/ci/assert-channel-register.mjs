@@ -2367,6 +2367,19 @@ let releaseCensus = { workflows: [], domain: null };
         '$RUNNER_TEMP ("SKIPPED: not a release run"). Nothing is built, stamped into an artifact or shipped; amo ' +
         'ships from extensions.yml#store-publish, its lane.',
     },
+    // ⏱ 2026-09-26 (O-SCREENSHOT-DRIVER-IS-ONE-APPS) — the Play capture job's precheck.
+    // Its capture call carries no --channel (the runner's default is android-play), so
+    // until the precheck this job had no site; the Snap and iOS rows above already
+    // cover their jobs' precheck arguments, which name the same channel as their capture.
+    {
+      workflow: '.github/workflows/store-screenshots.yml',
+      job: 'capture',
+      channel: 'android-play',
+      why:
+        'tooling/store/capture-precheck.mjs --channel android-play names the listing whose suite, driver and ' +
+        'directory it checks before the Play capture builds anything; nothing is compiled with it. The capture ' +
+        'drives the web build with the runner default android-play, and android-play ships from submit-play.yml.',
+    },
   ];
   const CHANNEL_ARG = /--channel(?:=|\s+)(\S+)/g;
   const unquote = (v) => v.replace(/^['"]|['"]$/g, '');

@@ -859,6 +859,21 @@ jobs:
           node tooling/ci/assert-artifact-signed-apple.mjs
           apps/${{ matrix.app }}/build/ios/ipa/*.ipa
           apps/${{ matrix.app }}/build/macos/pkg/*.pkg
+      # ⏱ ADDED 2026-09-26 (O-APPLE-PROVER-SKIPS-THE-PKG, apps-review B4b). Apple's
+      # privacy report is built from what the bundle EMBEDS; ci.yml's privacy step
+      # reads the repository, and this step reads the two .app bundles that ship.
+      # The prover above leaves each archive expanded under $RUNNER_TEMP, as its
+      # openArchive() names it: ipa-check-*/Payload/<App>.app, and
+      # pkg-check-*/expanded/<component>.pkg/Payload/<App>.app (the layout run
+      # 36229543907's .pkg has). An unmatched glob reaches the guard as its own
+      # text and is COVERAGE LOST. Both run, so one red does not hide the other.
+      - name: PROVE the shipped bundles embed no SDK the privacy audit does not answer for
+        if: env.APPLE_SIGNING_POSTURE == 'release-signed'
+        run: |
+          status=0
+          node tooling/ci/assert-apple-privacy-manifest.mjs --app ${{ matrix.app }} --built "$RUNNER_TEMP"/ipa-check-*/Payload/*.app || status=$?
+          node tooling/ci/assert-apple-privacy-manifest.mjs --app ${{ matrix.app }} --built "$RUNNER_TEMP"/pkg-check-*/expanded/*.pkg/Payload/*.app || status=$?
+          exit "$status"
       - name: The iOS bundle is signed by the identity this lane intended
         if: env.APPLE_SIGNING_POSTURE != 'release-signed'
         run: >

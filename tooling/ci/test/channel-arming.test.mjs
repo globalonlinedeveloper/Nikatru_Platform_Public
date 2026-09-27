@@ -24,6 +24,7 @@ import {
   REGISTER,
   armedFatalLines,
   armingOf,
+  armingOfApp,
   laneShaped,
   releaseGapVerdict,
   unarmedGapLines,
@@ -386,5 +387,49 @@ describe('channel-arming · the CLI that writes the runbook\'s arming lines', ()
     const imported = spawnSync(process.execPath, ['--input-type=module', '-e', `const m = await import(${JSON.stringify(url)}); if (typeof m.armingOf !== 'function') process.exitCode = 3;`, root], { encoding: 'utf8', timeout: 60_000 });
     assert.equal(imported.status, 0, imported.stderr);
     assert.equal(imported.stdout + imported.stderr, '', 'importing channel-arming.mjs must read and print nothing');
+  });
+});
+
+// ── ⏱ 2026-09-26 · arming, per app (O-STORE-RECORDS-ARE-ONE-PER-CHANNEL limb 5) ─
+// An (app, channel) pair is armed only when the channel is armed, the app's
+// record is issued, AND the owner swore its declarations (declaredOn is a date).
+describe('channel-arming · armingOfApp', () => {
+  const armed = { id: 'android-play', served: false, submittable: true, lane: LANE };
+  const unarmed = { id: 'android-play', served: false, submittable: false, lane: null };
+  const issuedDeclared = { state: 'issued', declaredOn: '2026-09-26' };
+
+  test('armed channel, issued record, a declaredOn date: armed for the app', () => {
+    const a = armingOfApp(armed, { appId: 'zzone', record: issuedDeclared });
+    assert.equal(a.armedForApp, true);
+    assert.equal(a.armed, true);
+    assert.match(a.reasons.join(' '), /sworn in the console on 2026-09-26/);
+  });
+
+  // RC4: armingOfApp that ignored declaredOn would arm this pair.
+  test('🔴 RC4 — an issued record with declaredOn null is NOT armed for the app', () => {
+    const a = armingOfApp(armed, { appId: 'zzone', record: { state: 'issued', declaredOn: null } });
+    assert.equal(a.armedForApp, false);
+    assert.match(a.blockers.join(' '), /stores.android-play.declaredOn is null/);
+  });
+
+  test('a pending record is not armed for the app, whatever its date', () => {
+    const a = armingOfApp(armed, { appId: 'zzone', record: { state: 'pending', declaredOn: '2026-09-26' } });
+    assert.equal(a.armedForApp, false);
+    assert.match(a.blockers.join(' '), /record is "pending"/);
+  });
+
+  test('no record is not armed for the app, and says so', () => {
+    const a = armingOfApp(armed, { appId: 'zzone', record: null });
+    assert.equal(a.armedForApp, false);
+    assert.match(a.blockers.join(' '), /declares no stores.android-play record/);
+  });
+
+  test('an unarmed channel is not armed for any app, however complete its record', () => {
+    assert.equal(armingOfApp(unarmed, { appId: 'zzone', record: issuedDeclared }).armedForApp, false);
+  });
+
+  test('the channel-level answer is untouched: armingOf still arms the channel', () => {
+    assert.equal(armingOf(armed).armed, true);
+    assert.equal(armingOfApp(armed, { appId: 'zzone', record: null }).armed, true);
   });
 });

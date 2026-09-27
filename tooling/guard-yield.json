@@ -2711,6 +2711,11 @@
       "firstSeen": "2026-08-04",
       "evidence": []
     },
+    "tooling/store/capture-precheck.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-27",
+      "evidence": []
+    },
     "tooling/store/measure-frame-ink.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-22",
@@ -2719,6 +2724,11 @@
     "tooling/store/msix-visual-name.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-26",
+      "evidence": []
+    },
+    "tooling/store/render-play-graphics.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-27",
       "evidence": []
     },
     "tooling/web/connect-origins.mjs": {

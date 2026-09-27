@@ -1,0 +1,190 @@
+{
+  "_readme": [
+    "CAPTURED, not hand-written: the privacy surface of the two bundles build-platforms.yml run 36229543907",
+    "shipped (main b1fc8bd1, 2026-09-26), read by readBuiltBundle() out of that run's own artifacts. See README.md."
+  ],
+  "run": "36229543907",
+  "headSha": "b1fc8bd1db8c1b44bbf4d87a4d934ecfa934606f",
+  "archives": {
+    "ios": {
+      "artifact": "store-subscriptiontracker-ios-release-signed",
+      "file": "subscriptiontracker.ipa",
+      "sha256": "c7e65716dc3229ad77e8fa1a382e1d434bc7441f9db83a1c8ab7c7ce3efabeb2",
+      "wraps": "Payload/Runner.app"
+    },
+    "macos": {
+      "artifact": "store-subscriptiontracker-macos-pkg",
+      "file": "subscriptiontracker.pkg",
+      "sha256": "525318b67893c82fa6fe051c62d20df0472672095e7dada275815ff505af2e7d",
+      "wraps": "com.nikatru.subscriptiontracker.pkg/Payload/Subscriptions.app"
+    }
+  },
+  "ios": {
+    "app": "Runner.app",
+    "frameworks": [
+      "App.framework",
+      "Flutter.framework",
+      "OrderedSet.framework",
+      "Sentry.framework",
+      "flutter_inappwebview_ios.framework",
+      "flutter_local_notifications.framework",
+      "flutter_secure_storage.framework",
+      "objective_c.framework"
+    ],
+    "bundles": [
+      "RevenueCat_RevenueCat.bundle",
+      "app_links_app_links.bundle",
+      "flutter_timezone_flutter_timezone.bundle",
+      "in_app_review_in_app_review.bundle",
+      "package_info_plus_package_info_plus.bundle",
+      "shared_preferences_foundation_shared_preferences_foundation.bundle",
+      "url_launcher_ios_url_launcher_ios.bundle"
+    ],
+    "manifests": [
+      {
+        "rel": "Frameworks/Flutter.framework/PrivacyInfo.xcprivacy",
+        "sha256": "9f95d7e7862a4b56b66ed926bd6d622d2a6545a827d19847278b438d571d4212"
+      },
+      {
+        "rel": "Frameworks/OrderedSet.framework/OrderedSet_privacy.bundle/PrivacyInfo.xcprivacy",
+        "sha256": "5a9b8fc0cddb10201bb47cc2804b3f004c7251476622d25bfc4eb54ed46e1084",
+        "captured": "OrderedSet.xcprivacy"
+      },
+      {
+        "rel": "Frameworks/Sentry.framework/PrivacyInfo.xcprivacy",
+        "sha256": "118b16e0e97ffe8b6f1f01b7e04f68e5da764474a4d39d2933b0eeaef3cdc0ca",
+        "captured": "Sentry.xcprivacy"
+      },
+      {
+        "rel": "Frameworks/flutter_inappwebview_ios.framework/flutter_inappwebview_ios_privacy.bundle/PrivacyInfo.xcprivacy",
+        "sha256": "47226a29608df206ad0a110e6afeb5a77ff575ac1df9c76bfdb2d6dfb3fafed1"
+      },
+      {
+        "rel": "Frameworks/flutter_local_notifications.framework/flutter_local_notifications_privacy.bundle/PrivacyInfo.xcprivacy",
+        "sha256": "8f4cbf3a6f18b7deaabc8646bd255df453f0d100def074ec05e44463437be9d5"
+      },
+      {
+        "rel": "Frameworks/flutter_secure_storage.framework/flutter_secure_storage.bundle/PrivacyInfo.xcprivacy",
+        "sha256": "47226a29608df206ad0a110e6afeb5a77ff575ac1df9c76bfdb2d6dfb3fafed1"
+      },
+      {
+        "rel": "PrivacyInfo.xcprivacy",
+        "sha256": "a57872b7d73853825eb217b54987402bf2ee006dc23105ac154ff9bf8a844eac",
+        "captured": "self"
+      },
+      {
+        "rel": "RevenueCat_RevenueCat.bundle/PrivacyInfo.xcprivacy",
+        "sha256": "76c876c73bf37d63b2944d0491e4d9a43d420de78b66512fcca27a484ae92e79",
+        "captured": "RevenueCat.xcprivacy"
+      },
+      {
+        "rel": "app_links_app_links.bundle/PrivacyInfo.xcprivacy",
+        "sha256": "df01bf8f311b7b350d01d55afe5059ead9ba2b0069c5421e69d9b405f7cabea2"
+      },
+      {
+        "rel": "flutter_timezone_flutter_timezone.bundle/PrivacyInfo.xcprivacy",
+        "sha256": "47226a29608df206ad0a110e6afeb5a77ff575ac1df9c76bfdb2d6dfb3fafed1"
+      },
+      {
+        "rel": "in_app_review_in_app_review.bundle/PrivacyInfo.xcprivacy",
+        "sha256": "6d2da0d8d930227d428c1d9363b0ad6e3a12e2c9b68c5ce297158a7412fc8c31"
+      },
+      {
+        "rel": "package_info_plus_package_info_plus.bundle/PrivacyInfo.xcprivacy",
+        "sha256": "6d2da0d8d930227d428c1d9363b0ad6e3a12e2c9b68c5ce297158a7412fc8c31"
+      },
+      {
+        "rel": "shared_preferences_foundation_shared_preferences_foundation.bundle/PrivacyInfo.xcprivacy",
+        "sha256": "056428b938bd57018a60019d15c3c1ee2fa727f23687598bbbd934848b180b1a"
+      },
+      {
+        "rel": "url_launcher_ios_url_launcher_ios.bundle/PrivacyInfo.xcprivacy",
+        "sha256": "6d2da0d8d930227d428c1d9363b0ad6e3a12e2c9b68c5ce297158a7412fc8c31"
+      }
+    ]
+  },
+  "macos": {
+    "app": "Subscriptions.app",
+    "frameworks": [
+      "App.framework",
+      "FlutterMacOS.framework",
+      "OrderedSet.framework",
+      "Sentry.framework",
+      "flutter_inappwebview_macos.framework",
+      "flutter_local_notifications.framework",
+      "flutter_secure_storage_macos.framework",
+      "objective_c.framework"
+    ],
+    "bundles": [
+      "RevenueCat_RevenueCat.bundle",
+      "app_links_app_links.bundle",
+      "flutter_timezone_flutter_timezone.bundle",
+      "in_app_review_in_app_review.bundle",
+      "package_info_plus_package_info_plus.bundle",
+      "shared_preferences_foundation_shared_preferences_foundation.bundle",
+      "url_launcher_macos_url_launcher_macos.bundle"
+    ],
+    "manifests": [
+      {
+        "rel": "Contents/Frameworks/FlutterMacOS.framework/Versions/A/Resources/PrivacyInfo.xcprivacy",
+        "sha256": "42542470043a0a3af3ab452ae4355bf764b916b7a442d3c814f362241a794454"
+      },
+      {
+        "rel": "Contents/Frameworks/OrderedSet.framework/Versions/A/Resources/OrderedSet_privacy.bundle/Contents/Resources/PrivacyInfo.xcprivacy",
+        "sha256": "5a9b8fc0cddb10201bb47cc2804b3f004c7251476622d25bfc4eb54ed46e1084",
+        "captured": "OrderedSet.xcprivacy"
+      },
+      {
+        "rel": "Contents/Frameworks/Sentry.framework/Versions/A/Resources/PrivacyInfo.xcprivacy",
+        "sha256": "118b16e0e97ffe8b6f1f01b7e04f68e5da764474a4d39d2933b0eeaef3cdc0ca",
+        "captured": "Sentry.xcprivacy"
+      },
+      {
+        "rel": "Contents/Frameworks/flutter_inappwebview_macos.framework/Versions/A/Resources/flutter_inappwebview_macos_privacy.bundle/Contents/Resources/PrivacyInfo.xcprivacy",
+        "sha256": "47226a29608df206ad0a110e6afeb5a77ff575ac1df9c76bfdb2d6dfb3fafed1"
+      },
+      {
+        "rel": "Contents/Frameworks/flutter_local_notifications.framework/Versions/A/Resources/flutter_local_notifications_privacy.bundle/Contents/Resources/PrivacyInfo.xcprivacy",
+        "sha256": "1d821a83fb0a7583b0b03075050761341e367f37167f8398a631a30376cd6369"
+      },
+      {
+        "rel": "Contents/Frameworks/flutter_secure_storage_macos.framework/Versions/A/Resources/flutter_secure_storage_macos.bundle/Contents/Resources/PrivacyInfo.xcprivacy",
+        "sha256": "47226a29608df206ad0a110e6afeb5a77ff575ac1df9c76bfdb2d6dfb3fafed1"
+      },
+      {
+        "rel": "Contents/Resources/PrivacyInfo.xcprivacy",
+        "sha256": "763b823aa6467071a98ae404adbf97e47626cb615165bebd09241b390cb872ad",
+        "captured": "self"
+      },
+      {
+        "rel": "Contents/Resources/RevenueCat_RevenueCat.bundle/Contents/Resources/PrivacyInfo.xcprivacy",
+        "sha256": "76c876c73bf37d63b2944d0491e4d9a43d420de78b66512fcca27a484ae92e79",
+        "captured": "RevenueCat.xcprivacy"
+      },
+      {
+        "rel": "Contents/Resources/app_links_app_links.bundle/Contents/Resources/PrivacyInfo.xcprivacy",
+        "sha256": "df01bf8f311b7b350d01d55afe5059ead9ba2b0069c5421e69d9b405f7cabea2"
+      },
+      {
+        "rel": "Contents/Resources/flutter_timezone_flutter_timezone.bundle/Contents/Resources/PrivacyInfo.xcprivacy",
+        "sha256": "47226a29608df206ad0a110e6afeb5a77ff575ac1df9c76bfdb2d6dfb3fafed1"
+      },
+      {
+        "rel": "Contents/Resources/in_app_review_in_app_review.bundle/Contents/Resources/PrivacyInfo.xcprivacy",
+        "sha256": "204d035a88eab2281b3d914f46c796766ae78e3cb82537711928dca9e28dbbb8"
+      },
+      {
+        "rel": "Contents/Resources/package_info_plus_package_info_plus.bundle/Contents/Resources/PrivacyInfo.xcprivacy",
+        "sha256": "204d035a88eab2281b3d914f46c796766ae78e3cb82537711928dca9e28dbbb8"
+      },
+      {
+        "rel": "Contents/Resources/shared_preferences_foundation_shared_preferences_foundation.bundle/Contents/Resources/PrivacyInfo.xcprivacy",
+        "sha256": "056428b938bd57018a60019d15c3c1ee2fa727f23687598bbbd934848b180b1a"
+      },
+      {
+        "rel": "Contents/Resources/url_launcher_macos_url_launcher_macos.bundle/Contents/Resources/PrivacyInfo.xcprivacy",
+        "sha256": "204d035a88eab2281b3d914f46c796766ae78e3cb82537711928dca9e28dbbb8"
+      }
+    ]
+  }
+}

@@ -36,6 +36,11 @@ import {
   SUBMIT_TIME_STATES,
   SUBMISSION_STATES,
   STATE_MEANING,
+  MODES,
+  DRY_RUN_SUFFIX,
+  isDryRunRecord,
+  dryRunEnvironment,
+  encodeDryRunDescription,
 } from '../deployment-record.mjs';
 import {
   RECORD_CALL,
@@ -56,6 +61,8 @@ import {
   workerVersionIdFrom,
   PUBLISHED_ID_KEYS,
   rollbackRecord,
+  recoveryCommand,
+  WORKFLOW_REF_FORM,
 } from '../record-deployment.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -571,6 +578,45 @@ describe('deployment-record — readSubmissions separates read from unreadable',
     assert.match(unreadable[0].reason, /no register row/);
   });
 
+  // ⏱ 2026-09-26 · O-SUBMISSION-LANE-WITHOUT-RECORDER — a lane records its DRY runs
+  // too. A rehearsal is no submission and is not unreadable either: it is skipped.
+  test('a dry-run record in a submittable channel\'s -dry-run environment is skipped, not read and not unreadable', () => {
+    const { records, unreadable } = readSubmissions(
+      [{ environment: 'subscriptiontracker-android-play-dry-run', createdAt: '2026-09-26T10:00:00Z', description: 'dry-run sha=abc12345 — a rehearsal; nothing was submitted' }],
+      REAL_REGISTER,
+    );
+    assert.deepEqual(records, []);
+    assert.deepEqual(unreadable, []);
+  });
+
+  test('a record whose payload says mode "dry-run" is skipped even in the production environment', () => {
+    const { records, unreadable } = readSubmissions(
+      [{ environment: 'subscriptiontracker-android-play', description: 'nk1 state=in_review sha=abc12345 listing=https://play.google.com/x', payload: { mode: 'dry-run' } }],
+      REAL_REGISTER,
+    );
+    assert.deepEqual(records, []);
+    assert.deepEqual(unreadable, []);
+  });
+
+  test('a production-mode record, and a legacy one with no payload, are still read', () => {
+    const { records } = readSubmissions(
+      [
+        { environment: 'subscriptiontracker-android-play', description: 'nk1 state=in_review sha=abc12345 listing=https://play.google.com/x', payload: '{"mode":"production"}' },
+        { environment: 'subscriptiontracker-android-play', description: 'nk1 state=in_review sha=def67890 listing=https://play.google.com/x' },
+      ],
+      REAL_REGISTER,
+    );
+    assert.deepEqual(records.map((r) => r.sha), ['abc12345', 'def67890']);
+  });
+
+  test('isDryRunRecord: a -dry-run name on a row no lane rehearses is NOT a rehearsal, so it stays unreadable', () => {
+    assert.equal(isDryRunRecord({ environment: 'subscriptiontracker-web-dry-run' }, REAL_REGISTER), false);
+    assert.equal(isDryRunRecord({ environment: 'subscriptiontracker-linux-snap-dry-run' }, REAL_REGISTER), true);
+    assert.equal(isDryRunRecord({ environment: 'subscriptiontracker-linux-snap', payload: 'not json' }, REAL_REGISTER), false);
+    const { unreadable } = readSubmissions([{ environment: 'subscriptiontracker-web-dry-run', description: 'dry-run sha=abc12345' }], REAL_REGISTER);
+    assert.equal(unreadable.length, 1);
+  });
+
   test('calendarMonth buckets in UTC and refuses a non-date', () => {
     assert.equal(calendarMonth('2026-08-03T10:00:00Z'), '2026-08');
     assert.equal(calendarMonth('not a date'), null);
@@ -579,7 +625,7 @@ describe('deployment-record — readSubmissions separates read from unreadable',
 
 describe('record-deployment — the store rule is enforced BEFORE anything is written', () => {
   test('REFUSES a store environment with no --listing-url', () => {
-    const { code, out } = record(['subscriptiontracker-windows-store']);
+    const { code, out } = record(['subscriptiontracker-windows-store', '--mode', 'production']);
     assert.equal(code, 1);
     assert.match(out, /kind: store\) and no --listing-url was given/);
     assert.match(out, /gives no way to look at it/);
@@ -626,6 +672,7 @@ describe('record-deployment — the store rule is enforced BEFORE anything is wr
   test('a STORE environment WITH a listing URL gets past the shape checks', () => {
     const { code, out } = record([
       'subscriptiontracker-windows-store',
+      '--mode', 'production',
       '--state', 'in_review',
       '--listing-url', 'https://apps.microsoft.com/detail/X',
     ]);
@@ -646,7 +693,7 @@ describe('record-deployment — the store rule is enforced BEFORE anything is wr
   // and the store decides hours-to-weeks later, possibly never. A forgotten flag
   // must not be what separates "we submitted it" from "the store approved it".
   test('a STORE environment REFUSES to inherit the `live` default', () => {
-    const { code, out } = record(['subscriptiontracker-windows-store', '--listing-url', 'https://apps.microsoft.com/detail/X']);
+    const { code, out } = record(['subscriptiontracker-windows-store', '--mode', 'production', '--listing-url', 'https://apps.microsoft.com/detail/X']);
     assert.equal(code, 1);
     assert.match(out, /no --state was given/);
     assert.match(out, /NOT live when the upload succeeds/);
@@ -707,7 +754,7 @@ describe('record-deployment — the store rule is enforced BEFORE anything is wr
   });
 
   test('a SUBMITTABLE store row REFUSES the origin state — it is not the easy way past naming a submission', () => {
-    const { code, out } = record(['subscriptiontracker-android-play', '--state', 'pending_manual_publish']);
+    const { code, out } = record(['subscriptiontracker-android-play', '--mode', 'production', '--state', 'pending_manual_publish']);
     assert.equal(code, 1);
     assert.match(out, /this factory CAN submit through it/);
     assert.doesNotMatch(out, /could not record the deployment/);
@@ -790,7 +837,7 @@ describe('record-deployment — the DEPLOYMENT and its STATUS carry the same sha
 
   test('a store record carries its review state and listing URL into BOTH bodies', () => {
     const { code, requests } = record(
-      ['subscriptiontracker-android-play', '--state', 'in_review', '--listing-url', 'https://play.google.com/store/apps/details?id=x', '--version-code', '5'],
+      ['subscriptiontracker-android-play', '--mode', 'production', '--state', 'in_review', '--listing-url', 'https://play.google.com/store/apps/details?id=x', '--version-code', '5'],
       { RECORD_REPLAY_STATUS: '201' },
     );
     assert.equal(code, 0);
@@ -961,12 +1008,12 @@ describe('record-deployment — every Deployment names the run that wrote it', (
 
   test('the recorder WRITES the run payload into the Deployment it creates', () => {
     const { code, out, requests } = record(
-      ['subscriptiontracker-android-play', '--state', 'in_review', '--listing-url', 'https://play.google.com/store/apps/details?id=x', '--version-code', '5'],
+      ['subscriptiontracker-android-play', '--mode', 'production', '--state', 'in_review', '--listing-url', 'https://play.google.com/store/apps/details?id=x', '--version-code', '5'],
       { RECORD_REPLAY_STATUS: '201' },
     );
     assert.equal(code, 0, out);
     assert.equal(requests[0].pathname, '/repos/x/y/deployments');
-    assert.deepEqual(requests[0].body.payload, { ...PLAY_IDENTITY, version_code: 5, ...NO_IDS });
+    assert.deepEqual(requests[0].body.payload, { ...PLAY_IDENTITY, mode: 'production', version_code: 5, ...NO_IDS });
   });
 
   test('a WEB record carries the run payload too — every Deployment names the run that wrote it', () => {
@@ -983,7 +1030,7 @@ describe('record-deployment — every Deployment names the run that wrote it', (
 
   test('a SUBMITTABLE channel with no run identity is REFUSED, exit 2, before anything is written', () => {
     const { code, out, requests } = record(
-      ['subscriptiontracker-android-play', '--state', 'in_review', '--listing-url', 'https://play.google.com/store/apps/details?id=x', '--version-code', '5'],
+      ['subscriptiontracker-android-play', '--mode', 'production', '--state', 'in_review', '--listing-url', 'https://play.google.com/store/apps/details?id=x', '--version-code', '5'],
       { RECORD_REPLAY_STATUS: '201', ...NO_IDENTITY },
     );
     assert.equal(code, 2, out);
@@ -1088,7 +1135,7 @@ jobs:
 // Whether a row requires the flag is read from the register (`versionCodeHighWater`),
 // never from the environment's name.
 // ─────────────────────────────────────────────────────────────────────────────
-const PLAY_ARGS = ['subscriptiontracker-android-play', '--state', 'in_review', '--listing-url', 'https://play.google.com/store/apps/details?id=x'];
+const PLAY_ARGS = ['subscriptiontracker-android-play', '--mode', 'production', '--state', 'in_review', '--listing-url', 'https://play.google.com/store/apps/details?id=x'];
 
 describe('record-deployment — a Play upload writes its versionCode into the ledger', () => {
   test('the Deployment payload carries version_code beside the run identity (L1)', () => {
@@ -1477,5 +1524,143 @@ describe('record-deployment — a re-promotion is recorded at the commit it put 
   test('rollbackRecord: an abbreviated --ref is refused; neither flag is an ordinary record', () => {
     assert.match(rollbackRecord('web', '9001', 'abc12345').refusal, /is not a full 40-character commit SHA/);
     assert.deepEqual(rollbackRecord('web', null, null), { sha: null, payload: {}, refusal: null });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-26 · EVERY RUN OF A SUBMIT LANE IS RECORDED, AND STATES ITS MODE
+// (O-SUBMISSION-LANE-WITHOUT-RECORDER). A rehearsal records into its channel's
+// environment plus `-dry-run`, which no reader of the production ledger opens; a
+// channel a lane submits through takes no record without `--mode`, because a
+// default would be a quiet production claim. And every failure path ends with
+// one recovery line that carries the run identity.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('record-deployment — every run of a submit lane states its mode', () => {
+  test('the two modes, and the dry-run environment is the channel environment plus -dry-run', () => {
+    assert.deepEqual([...MODES], ['production', 'dry-run']);
+    assert.equal(DRY_RUN_SUFFIX, '-dry-run');
+    assert.equal(dryRunEnvironment('subscriptiontracker-android-play'), 'subscriptiontracker-android-play-dry-run');
+  });
+
+  test('a dry run description starts with dry-run and decodes as UNPARSEABLE, never as a review state', () => {
+    const text = encodeDryRunDescription({ sha: 'abc12345deadbeef' });
+    assert.match(text, /^dry-run sha=abc12345 /);
+    assert.equal(decodeDescription(text).ok, false);
+    assert.throws(() => encodeDryRunDescription({ sha: 'not-a-sha' }), /is not a hex commit sha/);
+  });
+
+  test('a SUBMITTABLE channel with no --mode is REFUSED, exit 2, before anything is written', () => {
+    const { code, out, requests } = record(
+      ['subscriptiontracker-android-play', '--state', 'in_review', '--listing-url', 'https://play.google.com/store/apps/details?id=x', '--version-code', '5'],
+      { RECORD_REPLAY_STATUS: '201' },
+    );
+    assert.equal(code, 2, out);
+    assert.match(out, /a lane here SUBMITS through, and no --mode was given/);
+    assert.match(out, /written to "subscriptiontracker-android-play-dry-run"/);
+    assert.match(out, /There is no default: it would be a quiet production claim/);
+    assert.deepEqual(requests, [], 'a record that does not say which kind of run wrote it is not written');
+  });
+
+  test('--mode dry-run writes the -dry-run environment, not production, transient, with payload.mode', () => {
+    const { code, out, requests } = record(['subscriptiontracker-android-play', '--mode', 'dry-run'], { RECORD_REPLAY_STATUS: '201' });
+    assert.equal(code, 0, out);
+    assert.equal(requests.length, 2);
+    assert.equal(requests[0].body.environment, 'subscriptiontracker-android-play-dry-run');
+    assert.equal(requests[0].body.production_environment, false);
+    assert.equal(requests[0].body.transient_environment, true);
+    assert.deepEqual(requests[0].body.payload, { ...PLAY_IDENTITY, mode: 'dry-run', ...NO_IDS });
+    assert.match(requests[0].body.description, /^dry-run sha=abc12345 /);
+    assert.equal(requests[1].body.description, requests[0].body.description, 'the status carries the same description');
+    assert.match(out, /ok {2}recorded subscriptiontracker-android-play-dry-run dry-run at abc12345/);
+  });
+
+  test('--mode production keeps the channel environment and production_environment: true', () => {
+    const { code, out, requests } = record(
+      ['subscriptiontracker-android-play', '--mode', 'production', '--state', 'in_review', '--listing-url', 'https://play.google.com/store/apps/details?id=x', '--version-code', '5'],
+      { RECORD_REPLAY_STATUS: '201' },
+    );
+    assert.equal(code, 0, out);
+    assert.equal(requests[0].body.environment, 'subscriptiontracker-android-play');
+    assert.equal(requests[0].body.production_environment, true);
+    assert.equal(requests[0].body.transient_environment, false);
+    assert.equal(requests[0].body.payload.mode, 'production');
+  });
+
+  test('--mode dry-run REFUSES --state: a rehearsal has no review state', () => {
+    const { code, out, requests } = record(['subscriptiontracker-android-play', '--mode', 'dry-run', '--state', 'in_review'], { RECORD_REPLAY_STATUS: '201' });
+    assert.equal(code, 1, out);
+    assert.match(out, /--mode dry-run was given with --state\. A rehearsal submitted nothing/);
+    assert.deepEqual(requests, []);
+  });
+
+  test('--mode dry-run REFUSES --listing-url and --version-code together, naming both', () => {
+    const { code, out, requests } = record(
+      ['subscriptiontracker-android-play', '--mode', 'dry-run', '--listing-url', 'https://play.google.com/x', '--version-code', '5'],
+      { RECORD_REPLAY_STATUS: '201' },
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /--mode dry-run was given with --listing-url, --version-code\./);
+    assert.deepEqual(requests, []);
+  });
+
+  test('--mode dry-run on a row no lane rehearses (web) is REFUSED', () => {
+    const { code, out, requests } = record(['subscriptiontracker-web', 'https://nikatru.com/subscriptiontracker/', '--mode', 'dry-run'], {
+      RECORD_REPLAY_STATUS: '201',
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /the web row is not `submittable: true`: no lane here rehearses a submission through it/);
+    assert.deepEqual(requests, []);
+  });
+
+  test('an unknown --mode is REFUSED', () => {
+    const { code, out, requests } = record(['subscriptiontracker-android-play', '--mode', 'staging'], { RECORD_REPLAY_STATUS: '201' });
+    assert.equal(code, 1, out);
+    assert.match(out, /--mode "staging" is not one of production, dry-run/);
+    assert.deepEqual(requests, []);
+  });
+
+  test('a WEB record may state --mode production, and gains payload.mode', () => {
+    const { code, out, requests } = record(['subscriptiontracker-web', 'https://nikatru.com/subscriptiontracker/', '--mode', 'production'], {
+      RECORD_REPLAY_STATUS: '201',
+    });
+    assert.equal(code, 0, out);
+    assert.equal(requests[0].body.environment, 'subscriptiontracker-web');
+    assert.equal(requests[0].body.payload.mode, 'production');
+  });
+
+  test('RC7 · the GENERIC failure path prints the recovery line, carrying the run identity', () => {
+    // The replay answers 401 by default: a real answer, exit 1, after the shape gate.
+    const { code, out } = record(['subscriptiontracker-android-play', '--mode', 'dry-run']);
+    assert.equal(code, 1, out);
+    assert.match(out, /could not record the deployment/);
+    assert.match(
+      out,
+      /Recovery, once the cause above is fixed .* Pass this run's identity too, exactly: GITHUB_SHA=abc12345deadbeef GITHUB_WORKFLOW_REF=x\/y\/\.github\/workflows\/submit-play\.yml@refs\/heads\/main GITHUB_RUN_ID=35787897094 GITHUB_RUN_ATTEMPT=1 GITHUB_RUN_NUMBER=5 node tooling\/ci\/record-deployment\.mjs subscriptiontracker-android-play --mode dry-run/,
+    );
+  });
+
+  test('a shape refusal prints the recovery line too — every failure path ends with it', () => {
+    const { code, out } = record(['subscriptiontracker-android-play', '--mode', 'staging']);
+    assert.equal(code, 1, out);
+    assert.match(out, /Recovery, once the cause above is fixed/);
+  });
+
+  test('the missing-identity refusal names the FULL GITHUB_WORKFLOW_REF form, and the recovery asks for each value', () => {
+    const { code, out, requests } = record(['subscriptiontracker-android-play', '--mode', 'dry-run'], { RECORD_REPLAY_STATUS: '201', ...NO_IDENTITY });
+    assert.equal(code, 2, out);
+    assert.ok(out.includes(`GITHUB_WORKFLOW_REF is read in its full form, ${WORKFLOW_REF_FORM}`), out);
+    assert.match(out, /GITHUB_WORKFLOW_REF=<from that run> GITHUB_RUN_ID=<from that run> GITHUB_RUN_ATTEMPT=<from that run> GITHUB_RUN_NUMBER=<from that run> node tooling\/ci\/record-deployment\.mjs/);
+    assert.deepEqual(requests, []);
+  });
+
+  test('recoveryCommand quotes a word the shell would split or expand, and nothing else', () => {
+    const line = recoveryCommand(['x-android-play', '--mode', 'production', '--listing-url', 'https://play.google.com/store/apps/details?id=a&b=c'], {
+      GITHUB_SHA: 'abc12345deadbeef',
+      GITHUB_WORKFLOW_REF: 'o/r/.github/workflows/submit-play.yml@refs/heads/main',
+      GITHUB_RUN_ID: '9',
+      GITHUB_RUN_ATTEMPT: '1',
+      GITHUB_RUN_NUMBER: '3',
+    });
+    assert.ok(line.endsWith("node tooling/ci/record-deployment.mjs x-android-play --mode production --listing-url 'https://play.google.com/store/apps/details?id=a&b=c'"), line);
   });
 });
