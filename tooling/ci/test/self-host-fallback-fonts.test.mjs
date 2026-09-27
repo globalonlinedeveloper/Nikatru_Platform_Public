@@ -16,8 +16,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { flutterReleaseBuilds, parseWorkflow, workflowSteps } from '../workflow-scan.mjs';
 
-const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+const REPO =resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SCRIPT = join(REPO, 'tooling', 'web', 'self-host-fallback-fonts.mjs');
 const { extractFallbackPaths, inspectBootstrap, carriesCanvasKitCdnDefault, FONT_PATH, FONT_FALLBACK_BASE_URL } = await import(
   new URL(`file:///${SCRIPT.replace(/\\/g, '/')}`).href
@@ -262,14 +263,20 @@ describe('the tree — the Google CDN is off the web app\'s runtime path', () =>
   });
 
   test('deploy-web.yml builds with --no-web-resources-cdn and places the fonts after the build and before the smoke', () => {
-    const wf = readFileSync(join(REPO, '.github', 'workflows', 'deploy-web.yml'), 'utf8');
-    const lines = wf.split(/\r?\n/).filter((l) => !/^\s*#/.test(l)).join('\n');
-    const build = lines.indexOf('flutter build web --release');
-    const flag = lines.indexOf('--no-web-resources-cdn');
-    const fonts = lines.indexOf('node tooling/web/self-host-fallback-fonts.mjs apps/${{ matrix.app }}/build/web');
-    const smoke = lines.indexOf('node tooling/smoke/smoke-web-artifact.mjs');
+    // ⏱ 2026-09-26 (O-FLUTTER-BUILD-TYPED-PER-LINE): the build step calls tooling/ci/flutter-release-build.mjs
+    // and types no `flutter build web` line, so the command is read through the census (the composed line) and
+    // the order through the job's steps.
+    const rel = '.github/workflows/deploy-web.yml';
+    const builds = flutterReleaseBuilds(REPO).filter((b) => b.workflow === rel && b.job === 'deploy-web' && b.target === 'web');
+    assert.equal(builds.length, 1, `the census sees ${builds.length} web build(s) in ${rel}#deploy-web, not one`);
+    const seg = builds[0].segment;
+    const flag = seg.indexOf('--no-web-resources-cdn');
+    assert.ok(flag > seg.indexOf('flutter build web --release') && flag < seg.indexOf('--dart-define'), '--no-web-resources-cdn is not on the release build line');
+    const steps = workflowSteps(parseWorkflow(REPO, rel).jobs.get('deploy-web'));
+    const build = steps.findIndex((s) => s.first <= builds[0].runLine && builds[0].runLine <= s.last);
+    const fonts = steps.findIndex((s) => s.run?.text.includes('node tooling/web/self-host-fallback-fonts.mjs apps/${{ matrix.app }}/build/web'));
+    const smoke = steps.findIndex((s) => s.run?.text.includes('node tooling/smoke/smoke-web-artifact.mjs'));
     assert.ok(build >= 0 && smoke >= 0, 'build or smoke step not found');
-    assert.ok(flag > build && flag < lines.indexOf('--dart-define', build), '--no-web-resources-cdn is not on the release build line');
     assert.ok(fonts > build && fonts < smoke, 'the fonts step must run after the build and before the pre-publication smoke');
     // deploy-web.yml is workflow_call only (D2b-2): what publishes the web unit is lane-map.json deployUnits.
     const webUnit = JSON.parse(readFileSync(join(REPO, 'tooling', 'ci', 'lane-map.json'), 'utf8')).deployUnits['<app>-web'];

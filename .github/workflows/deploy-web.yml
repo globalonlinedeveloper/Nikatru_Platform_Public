@@ -20,8 +20,6 @@ on:
         required: true
       SUPABASE_ANON_KEY:
         required: true
-      API_BASE_URL:
-        required: true
       GLITCHTIP_DSN:
         required: true
       GLITCHTIP_TOKEN:
@@ -118,12 +116,13 @@ jobs:
 
       # why: the origins the build calls (its URL-valued defines, app_config.dart's CONNECT_KEYS, the module's DECLARED
       # list) must equal _headers' connect-src both ways, before anything is built; it prints origins, never a value.
+      # why: it reads the defines through the composer's --print for the build step's own call; API_BASE_URL is the
+      # composed rule value, so only the two defines composed as $NAME are mapped here (O-FLUTTER-BUILD-TYPED-PER-LINE).
       - name: The build's connect origins must equal the app's connect-src, before it is built
         id: connect
         working-directory: .
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          API_BASE_URL: ${{ secrets.API_BASE_URL }}
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
         run: node tooling/web/connect-origins.mjs --app ${{ matrix.app }} --check --emit-connect >> "$GITHUB_OUTPUT"
 
@@ -201,21 +200,24 @@ jobs:
         working-directory: .
         run: node tooling/ci/assert-catalog-reachable.mjs --emit-base-href ${{ matrix.app }} >> "$GITHUB_OUTPUT"
 
+      # why: API_BASE_URL is the composer's rule value, never a secret (O-FLUTTER-BUILD-TYPED-PER-LINE), and it is in the
+      # job's environment BEFORE the build, from the same rule the build composes; the same gate, so a skipped deploy skips it.
+      - name: The API base the build composes, into the job's environment before the build
+        if: steps.plan.outputs.deploy == 'true'
+        working-directory: .
+        run: node tooling/ci/flutter-release-build.mjs --emit-env API_BASE_URL ${{ matrix.app }} >> "$GITHUB_ENV"
+
       - name: Build web (release, no service worker)
         if: steps.plan.outputs.deploy == 'true'
-        run: >
-          flutter build web --release --pwa-strategy=none --source-maps --no-web-resources-cdn
-          --base-href ${{ steps.base.outputs.base_href }}
-          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
-          --build-number=${{ github.run_number }}
-          --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-          --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
-          --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
-          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${GITHUB_SHA::7}
-          --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
-          --dart-define=TURNSTILE_SITE_KEY=${{ vars.TURNSTILE_SITE_KEY }}
-          --dart-define=APP_ENV=production
-          --dart-define=RELEASE_CHANNEL=web
+        working-directory: .
+        env:
+          BASE_HREF: ${{ steps.base.outputs.base_href }}
+          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
+          TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
+        run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} web web
 
       - uses: ./.github/actions/setup-node
         if: steps.plan.outputs.deploy == 'true'

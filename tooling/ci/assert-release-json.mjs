@@ -69,7 +69,7 @@ import {
   RELEASE_SCHEMA_REL as SCHEMA_REL,
 } from './release-manifest.mjs';
 import { validate, SchemaError } from '../app-yaml/schema-validate.mjs';
-import { parseAllWorkflows, workflowSteps, RELEASE_CHANNEL_STAMP } from './workflow-scan.mjs';
+import { parseAllWorkflows, workflowSteps, RELEASE_CHANNEL_STAMP, composerCallArgs } from './workflow-scan.mjs';
 import { uploadableArtifactName } from './assert-apps-gov-in-apk.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -437,7 +437,18 @@ export function gradeStampWiring({ root, register }) {
           add(`${where} names --build-step ${call.buildStep}, and no earlier step of job "${job.name}" has that id.`);
           continue;
         }
-        const define = RELEASE_CHANNEL_STAMP.exec(build.run?.text ?? '');
+        // ⏱ 2026-09-26 (O-FLUTTER-BUILD-TYPED-PER-LINE, part 3 of 3): a build step that
+        // calls tooling/ci/flutter-release-build.mjs types no define; the composer stamps
+        // RELEASE_CHANNEL=<its channel argument>, read through workflow-scan's one parse
+        // of the call. Any other step is read as before.
+        let composed = null;
+        try {
+          composed = composerCallArgs(build.run?.text ?? '', `${wf.rel}:${build.first}`);
+        } catch (e) {
+          add(`${where} names --build-step ${call.buildStep}, and that step's composer call cannot be read: ${e.message}`);
+          continue;
+        }
+        const define = composed === null ? RELEASE_CHANNEL_STAMP.exec(build.run?.text ?? '') : [null, composed.channel];
         if (define === null) {
           add(`${where} names --build-step ${call.buildStep}, and that step passes no --dart-define=RELEASE_CHANNEL.`);
           continue;
