@@ -317,6 +317,11 @@ after(() => {
 const INK_GUARD_FILES = [
   'tooling/ci/assert-listing-assets.mjs',
   'tooling/ci/tree-walk.mjs',
+  // workflow-scan.mjs and its imports: the graphics-step limb (NP-10a) reads the workflows through it.
+  'tooling/ci/workflow-scan.mjs',
+  'tooling/ci/flutter-release-build.mjs',
+  'tooling/ci/app-set.mjs',
+  'tooling/app-yaml/yaml.mjs',
   'tooling/ci/chassis-delegation.mjs',
   'tooling/ci/text-reductions.mjs',
   'tooling/ci/single-threaded-relaunch.mjs',

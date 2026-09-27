@@ -808,6 +808,47 @@ export function plan(root) {
     files.set(REVENUECAT_APP_IDS_MODULE, renderRevenueCatAppIds(routes));
   }
 
+  // ── O-BRICK-SELLS-NOTHING-IN-A-STORE (12a) · the store SDK key NAME and the plans, per app ──
+  // `publicKeySecrets` names the repository secrets a store build of THIS app
+  // compiles in. A RevenueCat public key belongs to ONE RevenueCat app, so one
+  // name in two apps is the first app's key built into the second: its purchases
+  // land in the first app's RevenueCat app and the webhook grants the wrong
+  // product — the defect the id map above refuses, one step earlier. Checked in
+  // every root, Worker or not, because the build lanes read it, not the Worker.
+  // `storeProducts` lists each plan once; at `live` every plan is sold.
+  const keyOwners = new Map();
+  const PLANS = schema?.properties?.billing?.properties?.mobileIap?.properties?.storeProducts?.items?.properties?.plan?.enum ?? [];
+  for (const { id, doc } of declarations) {
+    const iap = doc?.billing?.mobileIap;
+    if (!iap || typeof iap !== 'object') continue;
+    const names = iap.publicKeySecrets && typeof iap.publicKeySecrets === 'object' ? iap.publicKeySecrets : {};
+    for (const field of Object.keys(names).sort()) {
+      const name = names[field];
+      if (typeof name !== 'string') continue;
+      if (keyOwners.has(name) && keyOwners.get(name).id !== id) {
+        problems.push(
+          `${APPS_DIR}/${id}/app.yaml billing.mobileIap.publicKeySecrets.${field} is "${name}", which ${APPS_DIR}/${keyOwners.get(name).id}/app.yaml ` +
+            `also declares (publicKeySecrets.${keyOwners.get(name).field}). A RevenueCat public key belongs to ONE RevenueCat app, so a store build ` +
+            'of the second app would compile in the first app\'s key and its purchases would be granted to the first app. Name a secret of its own.',
+        );
+        continue;
+      }
+      if (!keyOwners.has(name)) keyOwners.set(name, { id, field });
+    }
+    const plans = Array.isArray(iap.storeProducts) ? iap.storeProducts.map((p) => p?.plan).filter((p) => typeof p === 'string') : [];
+    for (const plan of [...new Set(plans)].filter((p) => plans.indexOf(p) !== plans.lastIndexOf(p))) {
+      problems.push(`${APPS_DIR}/${id}/app.yaml billing.mobileIap.storeProducts lists plan "${plan}" twice. One plan is one store product.`);
+    }
+    if (iap.state === 'live') {
+      for (const plan of PLANS.filter((p) => !plans.includes(p))) {
+        problems.push(
+          `${APPS_DIR}/${id}/app.yaml billing.mobileIap is state: live and storeProducts has no "${plan}". A live app sells every plan in-app ` +
+            '([ADR 093] §2); the product id is read from the store console, never guessed.',
+        );
+      }
+    }
+  }
+
   return { declarations, files, problems, lost };
 }
 

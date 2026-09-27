@@ -155,9 +155,22 @@ billing:
   mobileIap:
     provider: revenuecat
     entitlementId: pro
+    # O-BRICK-SELLS-NOTHING-IN-A-STORE (12a): live — both RevenueCat apps exist, so their ids route events.
+    state: live
     revenuecatAppIds:
       android: appa553a1e2c6
       ios: app805d73cd44
+    # The NAMES of the repository secrets holding the RevenueCat PUBLIC SDK keys (never a value; never renamed).
+    publicKeySecrets:
+      android: REVENUECAT_PUBLIC_KEY_GOOGLE
+      ios: REVENUECAT_PUBLIC_KEY_APPLE
+    # The live subscription products, read back from App Store Connect, Play Console and RevenueCat
+    # on 2026-09-26 (owner step O-B4, answered by measurement). One id per plan on both stores.
+    storeProducts:
+      - plan: single-monthly
+        productId: pro_monthly
+      - plan: single-yearly
+        productId: pro_yearly
 
 # Keyed by tooling/channel-register.json's `storefrontKey`. `web` is derived
 # from hosts.web and is refused here. Every other key is absent until a store
@@ -177,10 +190,37 @@ listings:
 # that held this record equal to it. This record is the ONE declaration of this
 # app's Windows identity: tooling/app-yaml/render.mjs writes pubspec.yaml's
 # msix_config.identity_name from it, so change the name here and re-render.
+# ⏱ 2026-09-26 (O-STORE-RECORDS-ARE-ONE-PER-CHANNEL, 9a): every store channel
+# has its record, read through tooling/store/store-record.mjs. `state: pending`
+# means the console has not been read for every id yet, and nothing it lacks is
+# invented: the Play app-signing SHA-256 (Play App Signing has no key before the
+# first upload), the Partner Center Store ID and the snap-name registration are
+# pending (O-APP1-CONSOLE-DECLARATIONS-UNSUBMITTED). The App Store Connect Apple ID is the one
+# record iOS and macOS share (LEAD RULINGS 3 item 2).
+# `declaredOn` is the date the owner swore THIS app's declarations in that
+# console. It is null on every channel: the owner, 2026-09-26, "not yet". It
+# never makes these store files a preview (each file's own "sworn" key does);
+# it gates a REAL submission only, which is refused while it is null.
 stores:
   windows-store:
     identityName: 60210NIKATRU.NikatruSubscriptionTracker
     packageFamilyName: 60210NIKATRU.NikatruSubscriptionTracker_ab30hnb4490ma
+    state: pending
+    declaredOn: null
+  ios-appstore:
+    state: issued
+    recordId: "6814737675"
+    declaredOn: null
+  macos-appstore:
+    state: issued
+    recordId: "6814737675"
+    declaredOn: null
+  android-play:
+    state: pending
+    declaredOn: null
+  linux-snap:
+    state: pending
+    declaredOn: null
 
 legal:
   privacyPolicyUrl: https://nikatru.com/privacy

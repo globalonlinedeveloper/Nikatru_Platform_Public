@@ -137,7 +137,7 @@ import { fileURLToPath } from 'node:url';
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
 import { listDir } from './tree-walk.mjs';
 import { requireAppSet } from './app-set.mjs';
-
+import { appWorkerMatrix, expandWorkerMatrix, WORKER_MATRIX_REF } from './worker-set.mjs';
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
 /** The apps this guard grades: the `apps/<id>` members of the root pubspec's
@@ -1874,7 +1874,23 @@ for (const contract of WIRE_CONTRACTS) {
         if (at === -1) break;
         // To the next step boundary, so one step's flags cannot be read as another's.
         const nextStep = wf.indexOf('\n      - name:', at);
-        invocations.push({ file, text: wf.slice(at, nextStep === -1 ? wf.length : nextStep) });
+        const text = wf.slice(at, nextStep === -1 ? wf.length : nextStep);
+        // ⏱ 2026-09-26 (O-SERVICE-KIT-UNBUILT, E-a2) — A MATRIX LEG IS READ PER LEG.
+        // deploy-workers.yml smokes every app Worker from one step,
+        // `--url ${{ matrix.worker.smokeUrl }}`, so that step is one invocation per
+        // leg the matrix carries (tooling/ci/worker-set.mjs, the matrix's own source).
+        // Read as written it names no /v1/health, and this limb would lose every app
+        // Worker's smoke while printing the smaller count.
+        let legs = [text];
+        WORKER_MATRIX_REF.lastIndex = 0;
+        if (WORKER_MATRIX_REF.test(text)) {
+          const m = appWorkerMatrix(ROOT);
+          if (m.lost !== null) {
+            coverageLost(`${contract.id}: ${file} smokes a deploy-matrix leg, and the legs could not be read: ${m.lost}`);
+          }
+          legs = expandWorkerMatrix(text, m.entries);
+        }
+        for (const leg of legs) invocations.push({ file, text: leg });
         from = at + contract.consumer.script.length;
       }
     }

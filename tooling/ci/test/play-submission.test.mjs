@@ -460,6 +460,13 @@ async function submit(treeOpts = { withArtifact: true }, { apiOpts = {}, args = 
 
 // ═════════════════════════════════════════════════════════════════════════════
 describe('submit-play — the submission path is walkable', () => {
+  // ⏱ O-STORE-RECORDS-ARE-ONE-PER-CHANNEL (9b): --app is required; there is no first-app default.
+  test('--app is REQUIRED: a dry run without it is COVERAGE LOST (2), never the first app', () => {
+    const r = spawnSync(process.execPath, [SCRIPT, '--dry-run', '--repo-root', REPO], { encoding: 'utf8' });
+    const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
+    assert.equal(r.status, 2, out);
+    assert.match(out, /COVERAGE LOST — --app is required: submit-play submits ONE app/);
+  });
   test('DRY RUN passes on a complete tree and says nothing was sent', () => {
     const { code, out } = run(tree());
     assert.equal(code, 0, out);

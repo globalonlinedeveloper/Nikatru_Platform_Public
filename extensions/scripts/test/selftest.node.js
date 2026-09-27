@@ -52,18 +52,44 @@ const FAILURES = [];
 function ok(label, extra) { PASS++; console.log('  PASS  ' + label + (extra ? '  — ' + extra : '')); }
 function bad(label, why) { FAILURES.push({ label, why }); console.log('  FAIL  ' + label + '\n        ' + String(why).split('\n').join('\n        ')); }
 
+/* 🔴 EVERY NODE CHILD THIS FILE STARTS RUNS --single-threaded, AND EVERY SYNCHRONOUS
+   ONE UNDER CHILD_BOUND_MS (FXH-2). ⏱ 2026-09-27, main run 36316375328 attempt 1:
+   the case "the committed listing graphics are the renderer's own output" spawned
+   render-extension-graphics.mjs, which printed its three `pixel-identical` PASS lines
+   and its whole NO WORDMARK note and then never exited; the bound killed it and the
+   case read `expected exit 0, got null` over a gate that had passed. It is the hang
+   #1001 fixed for the same program as a workflow STEP (run 36273003792):
+   nodejs/node#54918, V8 background compiles deadlocking the exit
+   (tooling/ci/single-threaded-relaunch.mjs has the mechanism). The children here are
+   not steps, so that fix never reached them. The flag removes the deadlock's second
+   party; the bound makes a hang the flag misses FAIL its own case by name (exit null)
+   instead of hanging this suite. tooling/ci/test/single-threaded-relaunch.test.mjs
+   S1/S2 hold every spawn in this file to both. */
+const SINGLE_THREADED = '--single-threaded';
+const CHILD_BOUND_MS = 120000;
+
+/* A child with no exit status delivered no verdict of its own; say what stopped it, so
+   "got null" names the bound or the signal instead of leaving it to be guessed. */
+function noStatus(res) {
+  if (res.status !== null) return '';
+  const why = res.error && res.error.code === 'ETIMEDOUT'
+    ? 'still running at the ' + CHILD_BOUND_MS / 1000 + ' s bound, killed with ' + res.signal
+    : 'ended by ' + (res.signal || (res.error && res.error.message) || 'an unknown cause');
+  return '\n[selftest] no exit status: ' + why + '. If a verdict is printed above, the child hung AFTER delivering it (nodejs/node#54918).';
+}
+
 /* `env` is for a gate whose offline affordance is an environment variable
    rather than a flag; as a function it is handed the root, so a case can point
    it at a file inside its own fixture tree. */
 function run(script, argv, root, env) {
   const extra = typeof env === 'function' ? env(root) : env;
-  const res = spawnSync(process.execPath, [path.join(SCRIPTS, script), ...argv, '--repo-root', root], {
+  const res = spawnSync(process.execPath, [SINGLE_THREADED, path.join(SCRIPTS, script), ...argv, '--repo-root', root], {
     encoding: 'utf8', cwd: REPO, env: extra ? { ...process.env, ...extra } : process.env,
     /* A gate that hangs must FAIL here (exit null), not hang the self-test: the
        bounded-time policy-check case below depends on it. */
-    timeout: 120000
+    timeout: CHILD_BOUND_MS
   });
-  return { code: res.status, out: (res.stdout || '') + (res.stderr || '') };
+  return { code: res.status, out: (res.stdout || '') + (res.stderr || '') + noStatus(res) };
 }
 
 /* `expect` is the whole point: a case states the code it wants AND a fragment
@@ -91,11 +117,11 @@ function spied(script, argv, root, { repoRoot = true, env = null } = {}) {
   const dir = fs.mkdtempSync(path.join(TMP, 'spy-'));
   const out = path.join(dir, 'verdict.json');
   const res = spawnSync(process.execPath,
-    ['--import', require('url').pathToFileURL(SPY).href, path.join(SCRIPTS, script), ...argv, ...(repoRoot ? ['--repo-root', root] : [])],
-    { encoding: 'utf8', cwd: REPO, timeout: 120000, env: { ...process.env, ...(env || {}), FS_SPY_OUT: out, FS_SPY_UNDER: root } });
+    [SINGLE_THREADED, '--import', require('url').pathToFileURL(SPY).href, path.join(SCRIPTS, script), ...argv, ...(repoRoot ? ['--repo-root', root] : [])],
+    { encoding: 'utf8', cwd: REPO, timeout: CHILD_BOUND_MS, env: { ...process.env, ...(env || {}), FS_SPY_OUT: out, FS_SPY_UNDER: root } });
   let verdict = null;
   try { verdict = JSON.parse(fs.readFileSync(out, 'utf8')); } catch (_) { /* reported by readOnce */ }
-  return { code: res.status, out: (res.stdout || '') + (res.stderr || ''), verdict };
+  return { code: res.status, out: (res.stdout || '') + (res.stderr || '') + noStatus(res), verdict };
 }
 /* The spy records paths with forward slashes, lower-cased on Windows ONLY. */
 const spyKey = s => (process.platform === 'win32' ? s.toLowerCase() : s);
@@ -858,8 +884,8 @@ expect('style-src \'unsafe-inline\' fails the posture, naming style-src', {
       'CSP_POSTURE is no longer a bracketed array literal; this case is not testing what it claims to.');
   } else {
     fs.writeFileSync(target, src.slice(0, open) + 'const CSP_POSTURE = [' + src.slice(close), 'utf8');
-    const res = spawnSync(process.execPath, [target, 'goodtool', '--repo-root', fixture()], { encoding: 'utf8', cwd: REPO });
-    const out = (res.stdout || '') + (res.stderr || '');
+    const res = spawnSync(process.execPath, [SINGLE_THREADED, target, 'goodtool', '--repo-root', fixture()], { encoding: 'utf8', cwd: REPO, timeout: CHILD_BOUND_MS });
+    const out = (res.stdout || '') + (res.stderr || '') + noStatus(res);
     if (res.status === 2 && out.includes('CSP_POSTURE is empty')) {
       ok('an EMPTY CSP_POSTURE makes the gate REFUSE TO RUN rather than pass over nothing', 'exit 2');
     } else {
@@ -887,8 +913,8 @@ expect('style-src \'unsafe-inline\' fails the posture, naming style-src', {
   } else {
     fs.writeFileSync(target, src.replace(anchor,
       "  { name: 'connect-src', intent: [\"'none'\"], fallback: ['default-src'], why: 'a rival declaration' },\n" + anchor), 'utf8');
-    const res = spawnSync(process.execPath, [target, 'goodtool', '--repo-root', fixture()], { encoding: 'utf8', cwd: REPO });
-    const out = (res.stdout || '') + (res.stderr || '');
+    const res = spawnSync(process.execPath, [SINGLE_THREADED, target, 'goodtool', '--repo-root', fixture()], { encoding: 'utf8', cwd: REPO, timeout: CHILD_BOUND_MS });
+    const out = (res.stdout || '') + (res.stderr || '') + noStatus(res);
     if (res.status === 2 && out.includes('CSP_POSTURE declares "connect-src"')) {
       ok('declaring connect-src in CSP_POSTURE too makes the gate REFUSE TO RUN', 'exit 2');
     } else {
@@ -3559,7 +3585,7 @@ setTimeout(() => process.exit(0), 150000).unref();
 s.listen(0, '127.0.0.1', () => fs.writeFileSync(process.argv[1], String(s.address().port)));
 `;
 const keyStubPortFile = path.join(TMP, 'key-stub.port');
-const keyStub = require('child_process').spawn(process.execPath, ['-e', KEY_STUB_SRC, keyStubPortFile], { stdio: 'ignore' });
+const keyStub = require('child_process').spawn(process.execPath, [SINGLE_THREADED, '-e', KEY_STUB_SRC, keyStubPortFile], { stdio: 'ignore' });
 let keyStubPort = '';
 {
   const tick = new Int32Array(new SharedArrayBuffer(4));

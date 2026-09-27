@@ -91,6 +91,10 @@
 //  13. no `cloudflare/wrangler-action` step carries a `secrets:` input: the action
 //      edits secrets before its command, and Cloudflare refuses that edit after a
 //      rollback (⏱ 2026-09-26, main run 36224483330). See "limb 13".
+//  14. `actions/setup-node` and `subosito/flutter-action` are used only inside
+//      .github/actions/*, and every action repository resolves to ONE ref across
+//      the workflows and those composites (⏱ 2026-09-27, O-SETUP-ACTIONS-ARE-OPTIONAL).
+//      See "limb 14".
 //
 // ⚠️ TRADE-OFF ON RECORD: a pinned action stops receiving updates, including
 // security fixes. That is the deliberate exchange — "silently gets new code"
@@ -114,7 +118,8 @@
 // over-broad permissions block, an unbounded job, a single-brace expression, a
 // cancel that reaches main, a failure-path input that can resolve to empty, a
 // publishing job with no `environment:` or no first-step ref check, a
-// wrangler-action `secrets:` input).
+// wrangler-action `secrets:` input, a setup action used outside the composites,
+// an action repository at two refs).
 // 2 = COVERAGE LOST or REFUSED — the repo-wide convention (AGENTS.md; the
 // markerInCode self-check in assert-guard-coverage.mjs holds it). COVERAGE LOST:
 // a lost coverage relationship, including a workflow GitHub holds that this
@@ -289,6 +294,9 @@ let usesCount = 0;
 let notPinnable = 0;
 let unparsedUses = 0;
 let looseSeen = 0;
+/** Every strict USES match limb 1 (workflows) and limb 9 (our composites) account for,
+ *  as `{ action, ref, at, composite }` — limb 14's whole subject. */
+const pins = [];
 
 /** The workflow-level `permissions:` block: either `permissions: <value>` inline
  *  or a mapping of `scope: level` lines under it. Parsed, never grepped — a
@@ -364,6 +372,7 @@ for (const f of files) {
     }
     usesCount++;
     const [, action, ref] = m;
+    pins.push({ action, ref, at: `.github/workflows/${f}:${i + 1}`, composite: false });
     if (!/^[0-9a-f]{40}$/.test(ref)) {
       problems.push(`${f}:${i + 1} \`${action}@${ref}\` is a movable reference — pin it to a 40-char commit SHA`);
     }
@@ -2152,6 +2161,7 @@ for (const rel of actionFiles) {
     }
     actionUses++;
     const [, action, ref] = m;
+    pins.push({ action, ref, at: `${rel}:${i + 1}`, composite: true });
     if (!/^[0-9a-f]{40}$/.test(ref)) {
       problems.push(`${rel}:${i + 1} \`${action}@${ref}\` is a movable reference — pin it to a 40-char commit SHA`);
     }
@@ -2294,6 +2304,63 @@ if (publishFloorArmed && publishGraded.length === 0) {
   ]);
 }
 
+// ── limb 14: toolchains only through our composites; one SHA per action repo ──
+// ⏱ 2026-09-27 — row O-SETUP-ACTIONS-ARE-OPTIONAL (P-C7), landed with the M1 move
+// of every action to its current major. Measured at 646e00c1: 18 direct
+// `actions/setup-node` steps in extensions-ci.yml and extensions.yml ran v7 while
+// the composite every other workflow calls ran v4, and actions/checkout sat at two
+// SHAs (65 × v4, 20 × v7), upload-artifact at two (39 × v4, 4 × v7). Limb 1 graded
+// every one of them pinned, which they were: the defect is two answers, not a
+// movable one. So, over the same strict matches limb 1 and limb 9 account for:
+//   (a) `actions/setup-node` and `subosito/flutter-action` appear only inside
+//       .github/actions/*: a workflow installs Node through ./.github/actions/setup-node
+//       and Flutter through ./.github/actions/setup-flutter, which read the version
+//       from tooling/versions.json. A direct use in a workflow is a finding;
+//   (b) every action REPOSITORY (owner/name, so codeql-action/init and /analyze are
+//       one) resolves to ONE ref across the workflows and the composites. A second
+//       SHA is a partial bump, and the leftover is the one no updater revisits;
+//   (c) on the real tree each of the two confined actions is pinned in a composite
+//       limb 9 read. One that no composite uses means Node or Flutter is installed
+//       by something this limb does not name, and (a) holds of nothing: exit 2.
+// Not caught: a toolchain installed by a `run:` step (curl, nvm, apt), and a
+// third-party composite's own nested pins (ADR 067 A3, as in limb 9).
+const SETUP_HOMES = new Map([
+  ['actions/setup-node', './.github/actions/setup-node'],
+  ['subosito/flutter-action', './.github/actions/setup-flutter'],
+]);
+const repoOf = (action) => action.split('/').slice(0, 2).join('/');
+for (const p of pins) {
+  const home = SETUP_HOMES.get(repoOf(p.action));
+  if (home === undefined || p.composite) continue;
+  problems.push(
+    `${p.at} \`uses: ${p.action}@${p.ref}\` installs a toolchain directly. Call \`uses: ${home}\` instead: it reads the ` +
+      'version from tooling/versions.json and carries the one pin of that action, so this step installs what every other one does.',
+  );
+}
+const refsByRepo = new Map();
+for (const p of pins) {
+  const r = repoOf(p.action);
+  if (!refsByRepo.has(r)) refsByRepo.set(r, new Map());
+  const refs = refsByRepo.get(r);
+  if (!refs.has(p.ref)) refs.set(p.ref, []);
+  refs.get(p.ref).push(p.at);
+}
+for (const [r, refs] of refsByRepo) {
+  if (refs.size < 2) continue;
+  problems.push(
+    `${r} is used at ${refs.size} refs: ${[...refs].map(([ref, at]) => `${ref} ×${at.length} (first at ${at[0]})`).join('; ')}. ` +
+      'One action repository is one SHA: move every use to the newest, written as Renovate writes it (`@<sha> # vX.Y.Z`).',
+  );
+}
+const unhomed = [...SETUP_HOMES.keys()].filter((a) => !pins.some((p) => p.composite && repoOf(p.action) === a));
+if (scanningRealRepo && unhomed.length) {
+  coverageLost([
+    `limb 14 found ${unhomed.join(' and ')} in none of the ${actionFiles.length} composite action(s) limb 9 read.`,
+    'The limb keeps those actions inside the composites; one that no composite uses means the toolchain is installed by',
+    'something this limb does not name, and "no workflow installs it directly" would be true of nothing.',
+  ]);
+}
+
 if (problems.length) {
   console.error(`✗ ${problems.length} workflow hardening problem(s):`);
   for (const p of problems) console.error(`    ${p}`);
@@ -2356,4 +2423,10 @@ console.log(`    limb 12 — ${forLoops} \`for … in\` loop(s) across every \`r
 console.log(
   `    limb 13 — ${wranglerSteps} cloudflare/wrangler-action step(s), none with a \`secrets:\` input (a raw read of their lines ` +
     `agrees, ${secretsInputsRaw}): every Worker secret rides the version it deploys with`,
+);
+console.log(
+  `    limb 14 — ${pins.length} pinned \`uses:\` across ${refsByRepo.size} action repositor(ies), each at ONE ref; ` +
+    (unhomed.length === 0
+      ? `${[...SETUP_HOMES.keys()].join(' and ')} used only inside the composites`
+      : `no workflow uses ${[...SETUP_HOMES.keys()].join(' or ')} directly; not armed: ${unhomed.join(' and ')} in no composite of this tree`),
 );

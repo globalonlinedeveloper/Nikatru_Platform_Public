@@ -36,6 +36,7 @@ import {
   POST_GATE_IF, postGateClass, postGateJobs, laneRunHost, laneRefusalText,
   EMIT_RELEASE_JSON_MODE, emitOutputDir, emitInvocations,
   flutterBuilds, flutterReleaseBuilds, buildMode, RELEASE_MODES,
+  bindApp, bindEveryApp, isPerAppLane,
 } from '../workflow-scan.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -1321,5 +1322,134 @@ describe('workflow-scan jobEnvironment', () => {
   test('a job with no `environment:` is null — a step input of that name is not the job\'s key', () => {
     const wf = parseWorkflow(envRoot(), '.github/workflows/e.yml');
     assert.equal(jobEnvironment(wf.jobs.get('none')), null);
+  });
+});
+
+// ⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP) — a store lane takes its app at dispatch,
+// checks it in its gate job, and every other job reads the gate's `app` output (`$APP` in
+// `run:` through the job's `env:`). A reader that took a composer call or a path off the
+// literal would meet an expression it cannot resolve; bindApp is the lane with that app
+// bound to one id, and bindEveryApp is the lane once per app of the workspace set.
+describe('workflow-scan bindApp / bindEveryApp (a per-app lane, bound)', () => {
+  const PER_APP = `name: Store submit
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        required: true
+        type: string
+jobs:
+  gate:
+    runs-on: ubuntu-24.04
+    outputs:
+      app: \${{ steps.app.outputs.app }}
+    steps:
+      - id: app
+        env:
+          APP_INPUT: \${{ inputs.app }}
+        run: |
+          node tooling/ci/assert-release-lane-generic.mjs --emit-apps --app "$APP_INPUT"
+          echo "app=\${APP_INPUT}" >> "$GITHUB_OUTPUT"
+  dry-run:
+    needs: gate
+    runs-on: ubuntu-24.04
+    env:
+      APP: \${{ needs.gate.outputs.app }}
+    steps:
+      - run: node tooling/ci/flutter-release-build.mjs "$APP" appbundle android-play
+      - run: |
+          node tooling/ci/read-ledger-version-code.mjs "\${APP}-android-play"
+          node tooling/ci/assert-app-versioning.mjs --emit "apps/\${APP}"
+      - uses: actions/upload-artifact@0000000000000000000000000000000000000000
+        with:
+          path: apps/\${{ needs.gate.outputs.app }}/build/symbols
+  other:
+    needs: gate
+    runs-on: ubuntu-24.04
+    env:
+      APP: something-else
+    steps:
+      - run: echo "$APP" "\${{ needs.gate.outputs.app }}"
+`;
+  const workspace = (root, apps) =>
+    writeFileSync(join(root, 'pubspec.yaml'), `name: ws\nworkspace:\n${apps.map((a) => `  - apps/${a}\n`).join('')}`);
+  const lineWith = (wf, needle) => wf.lines.find((l) => l.text.includes(needle));
+
+  test('$APP, ${APP} and ${{ needs.gate.outputs.app }} are all bound, and $APP_INPUT is another variable', () => {
+    const wf = parseWorkflow(fixture({ 's.yml': PER_APP }), '.github/workflows/s.yml');
+    assert.equal(isPerAppLane(wf), true);
+    const b = bindApp(wf, 'alpha');
+    assert.equal(b.boundApp, 'alpha');
+    const dry = textOf(b.jobs.get('dry-run'));
+    assert.match(dry, /flutter-release-build\.mjs "alpha" appbundle android-play/);
+    assert.match(dry, /read-ledger-version-code\.mjs "alpha-android-play" ; node tooling\/ci\/assert-app-versioning\.mjs --emit "apps\/alpha"/);
+    assert.match(dry, /path: apps\/alpha\/build\/symbols/);
+    assert.match(dry, /APP: alpha/);
+    assert.doesNotMatch(dry, /\$APP|\$\{APP\}|needs\.gate\.outputs\.app/);
+    assert.match(textOf(b.jobs.get('gate')), /--emit-apps --app "\$APP_INPUT"/);
+    assert.match(textOf(b.jobs.get('gate')), /echo "app=\$\{APP_INPUT\}"/);
+  });
+
+  test('…and pwsh\'s `${env:APP}` and `$env:APP` are the same variable, bound the same way', () => {
+    const pwsh = PER_APP.replace(
+      '      - run: node tooling/ci/flutter-release-build.mjs "$APP" appbundle android-play\n',
+      '      - shell: pwsh\n        run: node tooling/ci/flutter-release-build.mjs "${env:APP}" windows windows-store\n      - shell: pwsh\n        run: node tooling/release/submit-windows-store.mjs --dry-run --app "$env:APP" --x "$env:APPX"\n',
+    );
+    assert.notEqual(pwsh, PER_APP, 'fixture anchor absent');
+    const dry = textOf(bindApp(parseWorkflow(fixture({ 'w.yml': pwsh }), '.github/workflows/w.yml'), 'alpha').jobs.get('dry-run'));
+    assert.match(dry, /flutter-release-build\.mjs "alpha" windows windows-store/);
+    assert.match(dry, /--dry-run --app "alpha" --x "\$env:APPX"/);
+  });
+
+  test('the whole-file lines follow the jobs, at the SAME line numbers', () => {
+    const wf = parseWorkflow(fixture({ 's.yml': PER_APP }), '.github/workflows/s.yml');
+    const b = bindApp(wf, 'alpha');
+    const before = lineWith(wf, 'flutter-release-build.mjs');
+    const after = b.lines.find((l) => l.n === before.n);
+    assert.match(after.text, /flutter-release-build\.mjs "alpha" appbundle/);
+    assert.equal(b.lines.length, wf.lines.length);
+    assert.equal(b.jobs.get('dry-run').lines[0].n, wf.jobs.get('dry-run').lines[0].n);
+  });
+
+  test('a job whose env binds APP to something else keeps its $APP; the gate expression is still bound there', () => {
+    const wf = parseWorkflow(fixture({ 's.yml': PER_APP }), '.github/workflows/s.yml');
+    const other = textOf(bindApp(wf, 'alpha').jobs.get('other'));
+    assert.match(other, /echo "\$APP" "alpha"/);
+    assert.match(other, /APP: something-else/);
+  });
+
+  test('a workflow that reads no gate app comes back as it went in', () => {
+    const plain = `name: Plain\non:\n  push:\njobs:\n  build:\n    runs-on: ubuntu-24.04\n    env:\n      APP: x\n    steps:\n      - run: echo "$APP"\n`;
+    const wf = parseWorkflow(fixture({ 'p.yml': plain }), '.github/workflows/p.yml');
+    assert.equal(isPerAppLane(wf), false);
+    assert.equal(bindApp(wf, 'alpha'), wf);
+  });
+
+  test('an id off ^[a-z][a-z0-9-]*$ is refused: bindApp never writes `a;b` into a lane', () => {
+    const wf = parseWorkflow(fixture({ 's.yml': PER_APP }), '.github/workflows/s.yml');
+    assert.throws(() => bindApp(wf, 'a;b'), /"a;b" is not an app id/);
+    assert.throws(() => bindApp(wf, ''), /is not an app id/);
+  });
+
+  test('bindEveryApp: one bound copy per workspace app, in set order; every other workflow passes through', () => {
+    const plain = `name: Plain\non:\n  push:\njobs:\n  build:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: echo hi\n`;
+    const root = fixture({ 'p.yml': plain, 's.yml': PER_APP });
+    workspace(root, ['alpha', 'beta']);
+    const all = bindEveryApp(root, parseAllWorkflows(root));
+    assert.deepEqual(all.map((w) => [w.rel.split('/').pop(), w.boundApp ?? null]), [['p.yml', null], ['s.yml', 'alpha'], ['s.yml', 'beta']]);
+    assert.match(textOf(all[2].jobs.get('dry-run')), /flutter-release-build\.mjs "beta" appbundle/);
+  });
+
+  test('bindEveryApp THROWS when a per-app lane meets a workspace with no app — never drops the lane', () => {
+    const root = fixture({ 's.yml': PER_APP });
+    workspace(root, []);
+    assert.throws(() => bindEveryApp(root, parseAllWorkflows(root)), /s\.yml takes its app from its gate job, and the workspace .* declares no app/);
+  });
+
+  test('the census walks a per-app lane once per app: an unbound `"$APP"` composer call would throw here', () => {
+    const root = fixture({ 's.yml': PER_APP });
+    workspace(root, []);
+    // No app to bind, so the walk refuses rather than reading `$APP` as an app or skipping the call.
+    assert.throws(() => flutterBuilds(root), /takes its app from its gate job/);
   });
 });

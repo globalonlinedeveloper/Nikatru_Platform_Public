@@ -1,6 +1,6 @@
 name: "Store submit: Apple App Store"
 
-run-name: "Store submit: Apple App Store (dry run) by @${{ github.actor }}"
+run-name: "Store submit: Apple App Store — ${{ inputs.app }} (dry run) by @${{ github.actor }}"
 
 # The measurements, retractions and traps behind this file are in
 # docs/ci/submit-appstore.md. Only `# why:` lines live here, and
@@ -8,6 +8,14 @@ run-name: "Store submit: Apple App Store (dry run) by @${{ github.actor }}"
 
 on:
   workflow_dispatch:
+    inputs:
+      # why: required with NO default and NO choice list (O-STORE-LANES-HARD-WIRE-ONE-APP):
+      # either one is an app id written into this file. The gate job checks it against the
+      # workspace set; every other job reads the gate's output, never this input.
+      app:
+        description: 'The app to dry-run: one id of the workspace app set (tooling/ci/assert-release-lane-generic.mjs --emit-apps). The gate job refuses any other value.'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -21,8 +29,10 @@ jobs:
     # so any bound at or under 20 kills it mid-poll and replaces "timed out waiting
     # for ci-gate" with an opaque cancellation. Byte-identical in all five gate jobs.
     timeout-minutes: 25
+    outputs:
+      app: ${{ steps.app.outputs.app }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Require ci-gate to have passed for this commit
@@ -30,14 +40,34 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: node tooling/ci/assert-gate-passed.mjs ${{ github.sha }}
+      # why: the ONE reader of inputs.app, and only through env: (an input interpolated into
+      # run: is a shell injection). --emit-apps --app refuses a value off ^[a-z][a-z0-9-]*$
+      # before it reads the set, and one outside the set naming the set; only then is it an output.
+      - name: The app input names one app of the workspace
+        id: app
+        env:
+          APP_INPUT: ${{ inputs.app }}
+        run: |
+          set -euo pipefail
+          node tooling/ci/assert-release-lane-generic.mjs --emit-apps --app "$APP_INPUT"
+          echo "app=${APP_INPUT}" >> "$GITHUB_OUTPUT"
 
   dry-run:
     name: Validate the submission path
     runs-on: macos-26
     timeout-minutes: 30
     needs: gate
+    # why: the job-level write scope the two record steps at the end need
+    # (O-APPLE-SUBMISSION-UNRECORDED); it replaces the workflow's grant for this job.
+    permissions:
+      contents: read
+      deployments: write
+    # why: the gate's checked output, never inputs.app. run: reads $APP; the fields no
+    # shell expands (artifact name and path) read the expression itself.
+    env:
+      APP: ${{ needs.gate.outputs.app }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-flutter
@@ -48,7 +78,7 @@ jobs:
       # assert-app-versioning.mjs holds every release build in every workflow to it.
       - name: Derive the release line from pubspec
         id: ver
-        run: node tooling/ci/assert-app-versioning.mjs --emit apps/subscriptiontracker >> "$GITHUB_OUTPUT"
+        run: node tooling/ci/assert-app-versioning.mjs --emit "apps/${APP}" >> "$GITHUB_OUTPUT"
       # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. A dry run green over a name the owner has not HELD
       # or proven free rehearses a submission nobody ruled on; limb 3 of assert-publish-steps-guarded.mjs.
       - name: Name clearance holds for ios-appstore (owner HELD or PROVEN-FREE)
@@ -60,11 +90,30 @@ jobs:
       # review screenshot; under --for-submission a deferred product is a finding, not a note.
       - name: Every auto-renewable has its review screenshot (--for-submission)
         run: node tooling/ci/assert-iap-review-screenshots.mjs --for-submission
+      # why: O-BRICK-SWORN-FILES-HAVE-NO-PREVIEW-STATE. A declaration still at "sworn": false is the stamped
+      # template. The ios-appstore audit also answers for macOS, so this step covers both submissions here.
+      - name: The app's App Store declarations are sworn, not preview (--for-submission)
+        run: node tooling/ci/assert-sworn-store-files.mjs --for-submission=ios-appstore --app "$APP"
+      # why: a pending mobile IAP declaration (no RevenueCat apps yet) builds keyless and is never submitted:
+      # its paywall cannot buy (O-BRICK-SELLS-NOTHING-IN-A-STORE; tooling/ci/submit-preconditions.mjs).
+      - name: A pending in-app purchase declaration is not submitted (ios-appstore)
+        run: node tooling/ci/assert-app-yaml.mjs --for-submission=ios-appstore --app "$APP"
+      # why: a pending mobile IAP declaration (no RevenueCat apps yet) builds keyless and is never submitted:
+      # its paywall cannot buy (O-BRICK-SELLS-NOTHING-IN-A-STORE; tooling/ci/submit-preconditions.mjs).
+      - name: A pending in-app purchase declaration is not submitted (macos-appstore)
+        run: node tooling/ci/assert-app-yaml.mjs --for-submission=macos-appstore --app "$APP"
       - name: Toolchain under test
         run: |
           sw_vers
           xcodebuild -version
           uname -m
+      # why: the refusal path (O-BRICK-SELLS-NOTHING-IN-A-STORE): an app with no billing.mobileIap stops here,
+      # exit 1. The builds below read the key from the STATIC named secret this rail's apps declare (app.yaml
+      # billing.mobileIap.publicKeySecrets), never a `secrets[...]` index, which would hand this job every
+      # repository secret (LEAD RULING W46-R1). assert-channel-register 6b-iii holds the name and --app.
+      - name: Resolve the app's store SDK key secret (apple-iap)
+        id: rc-key
+        run: node tooling/ci/store-key-secret.mjs --app "$APP" --rail apple-iap >> "$GITHUB_OUTPUT"
       # ⏱ RENAMED 2026-09-09. This step was called "unsigned — no distribution
       # certificate exists", and that reason stopped being true today: a
       # DISTRIBUTION certificate and an IOS_APP_STORE profile were issued through
@@ -79,9 +128,9 @@ jobs:
           RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          REVENUECAT_PUBLIC_KEY_APPLE: ${{ secrets.REVENUECAT_PUBLIC_KEY_APPLE }}
+          REVENUECAT_PUBLIC_KEY: ${{ secrets.REVENUECAT_PUBLIC_KEY_APPLE }}
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
-        run: node tooling/ci/flutter-release-build.mjs subscriptiontracker ios ios-appstore
+        run: node tooling/ci/flutter-release-build.mjs "$APP" ios ios-appstore
       # Same correction as the iOS step above: unsigned BY CHOICE, not for want
       # of a certificate. A Mac Installer Distribution certificate exists too.
       - name: Build macOS (unsigned on purpose — this lane must never submit)
@@ -89,9 +138,9 @@ jobs:
           RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          REVENUECAT_PUBLIC_KEY_APPLE: ${{ secrets.REVENUECAT_PUBLIC_KEY_APPLE }}
+          REVENUECAT_PUBLIC_KEY: ${{ secrets.REVENUECAT_PUBLIC_KEY_APPLE }}
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
-        run: node tooling/ci/flutter-release-build.mjs subscriptiontracker macos macos-appstore
+        run: node tooling/ci/flutter-release-build.mjs "$APP" macos macos-appstore
       # ⏱ CORRECTED 2026-09-07 (unit `symbols-everywhere`) — this comment used to
       # end "Retained rather than sent to the crash sink because
       # tooling/versions.json pins ONE glitchtip-cli binary and it is
@@ -102,12 +151,12 @@ jobs:
       # unreadable without these directories, and a rebuild produces DIFFERENT
       # ones. The artifact stays, and stays FIRST: it is what survives the sink
       # losing them.
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: symbols-subscriptiontracker-appstore
+          name: symbols-${{ needs.gate.outputs.app }}-appstore
           path: |
-            apps/subscriptiontracker/build/symbols/ios
-            apps/subscriptiontracker/build/symbols/macos
+            apps/${{ needs.gate.outputs.app }}/build/symbols/ios
+            apps/${{ needs.gate.outputs.app }}/build/symbols/macos
           retention-days: 90
           if-no-files-found: error
       # why: ONE code path on every lane (O-GLITCHTIP-CLI-INSTALLED-BY-HAND): the digest tooling/versions.json
@@ -118,33 +167,52 @@ jobs:
       # compilations and nothing guarantees they share a mapping. FAILS CLOSED on
       # a missing GLITCHTIP_TOKEN, never skips. Placed AFTER the retention step
       # above and BEFORE the two App Store dry runs below, so neither a GlitchTip
-      # outage nor an App Store Connect failure can take the mapping with it.
+      # outage nor an App Store Connect failure can take the mapping with it. The project is
+      # the ONE declaration, tooling/ops/glitchtip-project.json, never the app
+      # (assert-glitchtip-project.mjs refuses an app-derived one).
       - name: Upload the native debug symbols to GlitchTip
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
         run: |
           set -euo pipefail
+          gt_org="$(node -p "require('./tooling/ops/glitchtip-project.json').org")"
+          gt_project="$(node -p "require('./tooling/ops/glitchtip-project.json').project")"
           for lane in ios macos; do
             node tooling/ops/upload-native-symbols.mjs \
               --cli "${RUNNER_TEMP}/glitchtip-cli" \
-              --dir "apps/subscriptiontracker/build/symbols/${lane}" \
-              --org nikatru --project subscriptiontracker
+              --dir "apps/${APP}/build/symbols/${lane}" \
+              --org "$gt_org" --project "$gt_project"
           done
+      # why: no App Store Connect app id secret. The record is the app's own, apps/<app>/app.yaml
+      # stores.ios-appstore.recordId, read by the script (O-STORE-RECORDS-ARE-ONE-PER-CHANNEL).
       - name: Dry-run the App Store submission (iOS)
         env:
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
-          APP_STORE_CONNECT_APP_ID: ${{ secrets.APP_STORE_CONNECT_IOS_APP_ID }}
-        # why: --allow-missing-artifact here and NOT on the Windows lane. No distribution
-        # certificate exists, so there is no signed .ipa to validate; the Windows dry run
-        # builds and packages a real .msix first and must not be given this flag.
-        run: node tooling/release/submit-appstore.mjs --dry-run --channel ios-appstore --app subscriptiontracker --allow-missing-artifact
+        # why: --allow-missing-artifact here and NOT on the Windows lane. The builds above are
+        # unsigned by choice until the signing seam lands in this lane, and --submit refuses,
+        # so there is no signed .ipa to validate; the Windows dry run builds and packages a real
+        # .msix first and must not be given this flag.
+        run: node tooling/release/submit-appstore.mjs --dry-run --channel ios-appstore --app "$APP" --allow-missing-artifact
       - name: Dry-run the App Store submission (macOS)
         env:
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
-          APP_STORE_CONNECT_APP_ID: ${{ secrets.APP_STORE_CONNECT_MACOS_APP_ID }}
-        run: node tooling/release/submit-appstore.mjs --dry-run --channel macos-appstore --app subscriptiontracker --allow-missing-artifact
+        run: node tooling/release/submit-appstore.mjs --dry-run --channel macos-appstore --app "$APP" --allow-missing-artifact
+      # why: this lane RECORDS, and is never declared dry-run-only (O-APPLE-SUBMISSION-UNRECORDED; parent
+      # decision): every run is recorded, and a rehearsal AS one — one record per channel it rehearsed,
+      # into "<app>-ios-appstore-dry-run" and "<app>-macos-appstore-dry-run", which no reader of the
+      # production ledger opens. The upload job, the day it exists, records --mode production (rules 2, 3b).
+      - name: Record the iOS dry run in the [10]D-9 ledger (mode dry-run)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node tooling/ci/record-deployment.mjs "${APP}-ios-appstore" --mode dry-run
+      - name: Record the macOS dry run in the [10]D-9 ledger (mode dry-run)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node tooling/ci/record-deployment.mjs "${APP}-macos-appstore" --mode dry-run

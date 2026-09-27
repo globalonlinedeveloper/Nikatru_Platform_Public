@@ -66,29 +66,61 @@
 //      collected rows, no app directory, or zero manifests actually compared is
 //      COVERAGE LOST, not a pass. A scan over nothing prints ok — this
 //      repository's single most repeated defect.
+//   8. THE BUILT BUNDLE (`--built`, ⏱ 2026-09-26, O-APPLE-PROVER-SKIPS-THE-PKG,
+//      apps-review B4b). Limbs 1-7 read the repository; Apple reads the .app.
+//      build-platforms.yml's PROVE step runs this mode on the .ipa's payload
+//      and the .pkg's wrapped .app, which assert-artifact-signed-apple.mjs has
+//      just expanded under $RUNNER_TEMP. It reads the frameworks, the SwiftPM
+//      resource bundles and every PrivacyInfo.xcprivacy in the bundle — no
+//      codesign, no Mac-only tool, so the tests run it anywhere — and asks:
+//        · built-sdk     every embedded framework and SDK resource bundle has a
+//                        binaryInventory row of that platform;
+//        · built-unread  no row of that platform is still `manifest: unread`;
+//        · built-hash    every `manifest: read` row's `readFrom` is in the
+//                        bundle with the row's `sha256`;
+//        · built-self    the app target's manifest is in the bundle, byte for
+//                        byte the committed one (limb 2's silent half, on the
+//                        artefact instead of the project file).
+//      Zero frameworks enumerated is COVERAGE LOST: every Flutter .app embeds
+//      App.framework and the engine, so an empty list is a wrong path. Limb 4
+//      keeps its source-level compare; this mode is the one that sees what
+//      shipped, and it prints every framework, bundle and manifest hash so the
+//      bp log carries them.
+//   ⏱ 2026-09-26 — PREVIEW (O-BRICK-SWORN-FILES-HAVE-NO-PREVIEW-STATE). The
+//      audit carries a required `"sworn"` boolean, read before anything else.
+//      `false` is the stamped template: limbs 1 and 7(a) are waived with every
+//      limb that reads an answered audit, and what remains is app.yaml
+//      `platforms` — for ios or macos, that platform's manifest must exist and
+//      sit in the Runner Resources phase. A missing key is a finding. A
+//      workspace whose every audit is preview is COVERAGE LOST.
 //
 // ── ⚠️ WHAT THIS GUARD CANNOT SEE, PRINTED ON EVERY RUN ─────────────────────
 // Not buried in this header, because a header is read once and a green line is
 // read every day. The wording comes from the audit's own `cannotSee` and
 // `unresolved` blocks rather than being restated here, so the two cannot drift:
-// the CocoaPods closure (Sentry-Cocoa 8.58.4's own manifest and signature were
-// never fetched — the audit ran on Windows), the built `.app` bundle (Apple
-// assembles its aggregate report from what is EMBEDDED, and no compiled bundle
-// has been inspected on any platform), and U-1 (whether Apple's upload scan
-// attributes a dynamic `objc_msgSend` to App.framework, which is not knowable
-// outside App Store Connect).
+// the vendored SDKs' signatures (Sentry-Cocoa 8.58.4's manifest was read out of
+// the built bundle on 2026-09-26; no signature is verified here), the built
+// `.app` bundle on a pull request (bp does not run on one, so `--built` grades
+// the next bp run on main), and U-1 (whether Apple's upload scan attributes a
+// dynamic `objc_msgSend` to App.framework, which is not knowable outside App
+// Store Connect).
 //
 // Usage:  node tooling/ci/assert-apple-privacy-manifest.mjs [repoRoot]
+//         node tooling/ci/assert-apple-privacy-manifest.mjs --app <slug> --built <path/to/X.app> [repoRoot]
 // Exit:   0 = both manifests re-derive, are in the bundle, and agree with Play
+//             (--built: the bundle embeds nothing the audit does not answer for)
 //         1 = drift or contradiction · 2 = COVERAGE LOST (an untrusted scan)
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, readFileSync } from 'node:fs';
-import { join, resolve, basename } from 'node:path';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { join, resolve, basename, relative } from 'node:path';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 // NOT `readdirSync` — a raw listing descends into a nested checkout (a git
 // worktree, a submodule, a stray clone) and reads another repository's files as
 // this tree's. THE one directory listing.
 import { listDir } from './tree-walk.mjs';
+// app.yaml `platforms` decides what a PREVIEW audit still owes (see PREVIEW above).
+import { parseYaml } from '../app-yaml/yaml.mjs';
 // The generator, imported rather than reimplemented. A guard with its own idea
 // of what the file should contain certifies its own misunderstanding — and this
 // repository has already paid for a fixture that encoded the same mistake as the
@@ -106,7 +138,17 @@ import {
   renderAll,
 } from '../store/render-apple-privacy-manifest.mjs';
 
-const repoRoot = resolve(process.argv.slice(2).find((a) => !a.startsWith('--')) ?? process.cwd());
+const ARGV = process.argv.slice(2);
+/** The flags that take a value. Their values are not positionals: until
+ *  2026-09-26 the first non-flag argument was the repo root, so `--built x.app`
+ *  read `x.app` as the root and refused over `x.app/apps`. */
+const VALUED_FLAGS = new Set(['--built', '--app']);
+const flagValue = (name) => {
+  const i = ARGV.indexOf(name);
+  return i !== -1 && i + 1 < ARGV.length && !ARGV[i + 1].startsWith('--') ? ARGV[i + 1] : null;
+};
+const POSITIONALS = ARGV.filter((a, i) => !a.startsWith('--') && !VALUED_FLAGS.has(ARGV[i - 1]));
+const repoRoot = resolve(POSITIONALS.find((a) => !/\.app\/?$/i.test(a)) ?? process.cwd());
 const APPS = join(repoRoot, 'apps');
 
 const problems = [];
@@ -427,10 +469,76 @@ let bundleMembershipsChecked = 0;
 let vocabularyConstantsChecked = 0;
 let pluginRowsChecked = 0;
 let playRowsCompared = 0;
+/** Apps whose audit says `"sworn": false`, and the Apple-native files a preview still owes. */
+const previewAudits = [];
+let previewFilesChecked = 0;
+
+/** A PREVIEW audit waives limb 7(a) (the inventory) and limb 1's content
+ *  comparison: there is nothing answered to render. What it still owes is
+ *  decided by app.yaml `platforms`. For ios or macos there, that platform's
+ *  PrivacyInfo.xcprivacy must exist AND sit in the Runner target's Resources
+ *  phase (limb 2's question), because Apple reads the bundle whatever the
+ *  audit's state. Otherwise nothing Apple-native is expected. Writing those
+ *  files is the native overlay's work, never this guard's. */
+function previewProblems(app, appDir, rel) {
+  let platforms;
+  try {
+    platforms = parseYaml(readFileSync(join(appDir, 'app.yaml'), 'utf8'))?.platforms;
+  } catch (e) {
+    problems.push(`${rel(AUDIT_REL)} is a preview and ${rel('app.yaml')} cannot be read (${e.message}), so which Apple platforms it owes a manifest for is unknown.`);
+    return;
+  }
+  if (!Array.isArray(platforms)) {
+    problems.push(`${rel(AUDIT_REL)} is a preview and ${rel('app.yaml')} declares no \`platforms\` list, so which Apple platforms it owes a manifest for is unknown.`);
+    return;
+  }
+  for (const platform of PLATFORMS.filter((p) => platforms.includes(p))) {
+    previewFilesChecked++;
+    if (!existsSync(join(appDir, MANIFEST_REL[platform]))) {
+      problems.push(
+        `${rel(MANIFEST_REL[platform])} does not exist. ${rel('app.yaml')} builds this app for ${platform}, and ` +
+          'Apple refuses the upload of a bundle whose privacy manifest is missing, preview audit or not.',
+      );
+      continue;
+    }
+    const pbxPath = join(appDir, PBXPROJ_REL[platform]);
+    const parsed = existsSync(pbxPath) ? readRunnerTarget(readFileSync(pbxPath, 'utf8')) : { error: 'it does not exist' };
+    if (parsed.error) {
+      problems.push(`${rel(PBXPROJ_REL[platform])}: ${parsed.error}, so nothing proves ${basename(MANIFEST_REL[platform])} reaches the ${platform} bundle.`);
+    } else if (!parsed.resourceFiles.includes(basename(MANIFEST_REL[platform]))) {
+      problems.push(
+        `${basename(MANIFEST_REL[platform])} is not in the ${APP_TARGET_NAME} target's PBXResourcesBuildPhase of ` +
+          `${rel(PBXPROJ_REL[platform])}. On disk and not in the bundle, Apple receives nothing.`,
+      );
+    }
+  }
+}
 
 for (const app of subjects) {
   const appDir = join(APPS, app);
   const rel = (p) => `apps/${app}/${p}`.replace(/\\/g, '/');
+
+  // ── ⏱ 2026-09-26 · the audit's declared state (O-BRICK-SWORN-FILES-HAVE-NO-PREVIEW-STATE)
+  // Read raw, before readAudit: the stamped template is exactly the audit
+  // readAudit refuses (no collected rows, a null inventory), and refusing it is
+  // what put a freshly stamped app #2 at exit 2 here.
+  let declared = null;
+  try {
+    declared = JSON.parse(readFileSync(join(appDir, AUDIT_REL), 'utf8')).sworn;
+  } catch {
+    /* readAudit below reports an unreadable audit, as it always has */
+  }
+  if (declared === false) {
+    previewAudits.push(app);
+    previewProblems(app, appDir, rel);
+    continue;
+  }
+  if (declared !== true) {
+    problems.push(
+      `${rel(AUDIT_REL)} carries no boolean "sworn" (found ${JSON.stringify(declared ?? null)}). The key says ` +
+        'whether this audit has been made or is still the stamped template; it is graded as made meanwhile.',
+    );
+  }
 
   // ── the audit ─────────────────────────────────────────────────────────────
   let audit;
@@ -883,6 +991,17 @@ function readPubspecLockVersions(root) {
   return out.size ? out : null;
 }
 
+// ── a workspace of preview audits graded nothing ────────────────────────────
+// Checked before 7(b), whose "zero manifests compared" would otherwise blame the
+// scan for what is really the state.
+if (previewAudits.length === subjects.length) {
+  coverageLost([
+    `every audit is a preview ("sworn": false): ${previewAudits.join(', ')}.`,
+    'A preview waives the re-derivation, the inventory and every cross-check, so this run compared nothing.',
+    'That is not evidence that any Apple privacy manifest is correct.',
+  ]);
+}
+
 // ── limb 7 (b): the scan must have ranged over something ────────────────────
 if (manifestsCompared === 0) {
   coverageLost([
@@ -909,6 +1028,11 @@ if (vocabularyConstantsChecked === 0) {
 prints.push(
   `${subjects.length} app(s) · ${manifestsCompared} .xcprivacy file(s) RE-DERIVED from ${AUDIT_REL} and ` +
     'compared byte for byte · never a checksum stored beside the data',
+);
+prints.push(
+  `${subjects.length - previewAudits.length} sworn, ${previewAudits.length} preview` +
+    (previewAudits.length ? ` (${previewAudits.join(', ')})` : '') +
+    ` · a preview waives limbs 1 and 7(a); ${previewFilesChecked} manifest(s) its app.yaml platforms still owe were checked`,
 );
 prints.push(
   `${bundleMembershipsChecked} Runner.xcodeproj(s) parsed structurally — the manifest is resolved THROUGH the ` +
@@ -948,6 +1072,260 @@ console.log('assert-apple-privacy-manifest: OK');
 for (const p of prints) console.log(`  · ${p}`);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// --built — THE BUNDLE THAT SHIPS (limb 8; see the header)
+//
+// 🔴 A FLUTTER APPLE BUNDLE EMBEDS SDKs IN TWO SHAPES, AND BOTH ARE READ.
+// Measured on bp run 36229543907 (the .ipa and the .pkg of 2026-09-26): a
+// CocoaPods plugin is a `Frameworks/<pod>.framework`, and a Swift Package
+// Manager plugin is linked statically into the app binary and leaves only its
+// resource bundle, `<package>_<target>.bundle`, beside the app's own resources.
+// Reading frameworks alone would have missed RevenueCat, whose manifest reaches
+// Apple from `RevenueCat_RevenueCat.bundle`.
+//
+// ⚠️ WHAT IT CANNOT SEE: a statically linked SDK that ships no resources leaves
+// no directory in the .app at all (measured: purchases_flutter,
+// PurchasesHybridCommon). It carries no manifest either, so Apple's report
+// holds nothing for it that this mode could compare; the audit's row for it is
+// the only record, and it is printed as such on every run.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const MANIFEST_NAME = 'PrivacyInfo.xcprivacy';
+
+/** Where a built .app keeps what `--built` reads, relative to the .app. An iOS
+ *  bundle is flat; a macOS bundle nests everything under `Contents/`. */
+export const BUILT_LAYOUT = {
+  ios: { frameworks: 'Frameworks', resources: '', self: MANIFEST_NAME },
+  macos: { frameworks: 'Contents/Frameworks', resources: 'Contents/Resources', self: `Contents/Resources/${MANIFEST_NAME}` },
+};
+
+/** The platform a built .app was compiled for, read from its shape, or null. */
+export function builtPlatform(appAbs) {
+  if (existsSync(join(appAbs, 'Contents', 'Info.plist'))) return 'macos';
+  if (existsSync(join(appAbs, 'Info.plist'))) return 'ios';
+  return null;
+}
+
+/** What the bundle embeds: its frameworks and top-level SDK resource bundles by
+ *  name, and every PrivacyInfo.xcprivacy with its path inside the .app, its
+ *  sha256 and its bytes. Symbolic links are not followed: a macOS framework's
+ *  `Resources` and `Versions/Current` link to `Versions/A`, and following them
+ *  would read one manifest three times. */
+export function readBuiltBundle(appAbs, platform) {
+  const layout = BUILT_LAYOUT[platform];
+  const namesIn = (rel, suffix) => {
+    const dir = join(appAbs, rel);
+    return existsSync(dir)
+      ? listDir(dir, { withFileTypes: true })
+          .filter((e) => e.isDirectory() && e.name.endsWith(suffix))
+          .map((e) => e.name)
+          .sort()
+      : [];
+  };
+  const manifests = [];
+  const walk = (dir) => {
+    for (const e of listDir(dir, { withFileTypes: true })) {
+      const abs = join(dir, e.name);
+      if (e.isDirectory()) walk(abs);
+      else if (e.isFile() && e.name === MANIFEST_NAME) {
+        const bytes = readFileSync(abs);
+        manifests.push({
+          rel: relative(appAbs, abs).replace(/\\/g, '/'),
+          sha256: createHash('sha256').update(bytes).digest('hex'),
+          bytes,
+        });
+      }
+    }
+  };
+  walk(appAbs);
+  manifests.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
+  return { frameworks: namesIn(layout.frameworks, '.framework'), bundles: namesIn(layout.resources, '.bundle'), manifests };
+}
+
+/** The name a binaryInventory row answers for in a built bundle: the first
+ *  word of `binary`, less a `.framework` suffix. `app_links 7.2.1` → app_links,
+ *  `Flutter.framework (engine …)` → Flutter, `RevenueCat (…)` → RevenueCat. */
+export const rowKey = (binary) => String(binary ?? '').split(/\s/)[0].replace(/\.framework$/, '');
+
+/** The row answering for one embedded name, or null: a framework
+ *  `<key>.framework`, or a SwiftPM resource bundle `<key>_<target>.bundle`. */
+export function claimOf(rows, kind, name) {
+  const base = kind === 'framework' ? name.replace(/\.framework$/, '') : name.replace(/\.bundle$/, '');
+  return (
+    rows.find((r) => {
+      const key = rowKey(r?.binary);
+      return key !== '' && (base === key || (kind === 'bundle' && base.startsWith(`${key}_`)));
+    }) ?? null
+  );
+}
+
+const SHA256 = /^[0-9a-f]{64}$/;
+
+/**
+ * The four --built limbs, pure. `rows` is `binaryInventory[platform]`, `bundle`
+ * is readBuiltBundle's result and `selfCommitted` the committed app manifest's
+ * bytes. Returns `{ problems, prints }`; prints list everything the bundle
+ * embeds, so the bp log is the record a later reading starts from.
+ */
+export function builtProblems({ platform, rows, bundle, selfCommitted }) {
+  const problems = [];
+  const prints = [];
+  const layout = BUILT_LAYOUT[platform];
+  const at = (rel, name) => (rel ? `${rel}/${name}` : name);
+
+  // ── built-sdk ────────────────────────────────────────────────────────────
+  for (const [kind, rel, names] of [
+    ['framework', layout.frameworks, bundle.frameworks],
+    ['bundle', layout.resources, bundle.bundles],
+  ]) {
+    for (const name of names) {
+      const row = claimOf(rows, kind, name);
+      if (row === null) {
+        problems.push(
+          `built-sdk · ${platform}: ${at(rel, name)} is embedded in the bundle and no row of binaryInventory.${platform} ` +
+            `answers for it (a row answers for <key>.framework and <key>_<target>.bundle, its key being the first word ` +
+            'of `binary`). Apple aggregates its privacy report from every binary it receives; an SDK nobody audited ' +
+            'is one whose required-reason use nobody declared.',
+        );
+      } else {
+        prints.push(`${at(rel, name)} ← ${row.binary} [manifest: ${row.manifest}]`);
+      }
+    }
+  }
+
+  // ── built-unread and built-hash ──────────────────────────────────────────
+  for (const row of rows) {
+    if (row?.manifest === 'unread') {
+      problems.push(
+        `built-unread · ${platform}: \`${row.binary}\` is still \`manifest: unread\`. Its accessedApis is empty by ` +
+          'DEFAULT, not by measurement, and the bundle that ships has now been read: record what it carries — ' +
+          '`read` with `readFrom` and `sha256` from the list below, or `none` if no manifest of its own is in it.',
+      );
+    }
+    if (row?.manifest !== 'read') continue;
+    if (typeof row.readFrom !== 'string' || row.readFrom === '' || !SHA256.test(String(row.sha256 ?? ''))) {
+      problems.push(
+        `built-hash · ${platform}: \`${row.binary}\` is \`manifest: read\` and does not carry both \`readFrom\` (its ` +
+          'path inside the .app) and a 64-hex `sha256`. A reading this limb cannot re-check is a claim, not a reading.',
+      );
+      continue;
+    }
+    const hit = bundle.manifests.find((m) => m.rel === row.readFrom);
+    if (hit === undefined) {
+      problems.push(
+        `built-hash · ${platform}: \`${row.binary}\` was read from ${row.readFrom}, and the bundle carries no file there. ` +
+          'The SDK left the build or moved inside it; either way the row describes a manifest that no longer ships.',
+      );
+    } else if (hit.sha256 !== row.sha256) {
+      problems.push(
+        `built-hash · ${platform}: ${row.readFrom} is sha256 ${hit.sha256} in the bundle, and \`${row.binary}\` pins ` +
+          `${row.sha256}. The SDK's manifest changed after it was read, so its accessedApis may no longer be what it ` +
+          'declares: re-read it from this bundle and record the new digest.',
+      );
+    }
+  }
+
+  // ── built-self ───────────────────────────────────────────────────────────
+  const self = bundle.manifests.find((m) => m.rel === layout.self);
+  if (self === undefined) {
+    problems.push(
+      `built-self · ${platform}: the bundle carries no ${layout.self}. This is the SILENT HALF of limb 2 on the ` +
+        'artefact itself: the repository can look completely correct while Apple receives no app manifest at all.',
+    );
+  } else if (!Buffer.from(self.bytes).equals(Buffer.from(selfCommitted))) {
+    problems.push(
+      `built-self · ${platform}: the bundle's ${layout.self} (sha256 ${self.sha256}) is not the committed manifest ` +
+        `(sha256 ${createHash('sha256').update(selfCommitted).digest('hex')}). Something between the repository and ` +
+        'the archive rewrote the app\'s sworn declaration.',
+    );
+  }
+
+  for (const m of bundle.manifests) prints.push(`${m.sha256}  ${m.rel}`);
+  return { problems, prints };
+}
+
+function builtMain() {
+  const appArg = flagValue('--built');
+  const slug = flagValue('--app');
+  if (appArg === null) {
+    coverageLost(['--built names no bundle, so no built .app was read.', 'Pass the .app the archive wraps: --built <path/to/X.app>.']);
+  }
+  if (slug === null) {
+    coverageLost([
+      '--built needs --app <slug>: the audit a bundle is held to is apps/<slug>/store/ios-appstore/privacy-manifest.json,',
+      'and guessing the app from the bundle name would hold it to whichever audit matched the guess.',
+    ]);
+  }
+  const extra = POSITIONALS.filter((a) => /\.app\/?$/i.test(a));
+  if (extra.length) {
+    coverageLost([
+      `--built takes ONE bundle and ${extra.length + 1} were given (${[appArg, ...extra].join(', ')}).`,
+      'A shell glob that matched more than one .app is an expansion this limb cannot attribute; name one bundle per run.',
+    ]);
+  }
+  const appAbs = resolve(appArg);
+  if (!existsSync(appAbs) || !statSync(appAbs).isDirectory()) {
+    coverageLost([
+      `${appArg} is not a directory, so no built bundle was read.`,
+      'In bp this is the path assert-artifact-signed-apple.mjs expands an archive into; an unmatched glob arrives here',
+      'as its own literal text. "The bundle was not where I looked" must never read as "the bundle is fine".',
+    ]);
+  }
+  const platform = builtPlatform(appAbs);
+  if (platform === null) {
+    coverageLost([`${appArg} carries neither Info.plist nor Contents/Info.plist, so it is not an iOS or macOS .app bundle.`]);
+  }
+
+  const appDir = join(APPS, slug);
+  let audit;
+  try {
+    ({ audit } = readAudit(appDir));
+  } catch (e) {
+    if (!(e instanceof AppleManifestUnavailable)) throw e;
+    coverageLost(e.lines);
+  }
+  const rows = audit.binaryInventory?.[platform];
+  if (!Array.isArray(rows) || rows.length === 0) {
+    coverageLost([`apps/${slug}/${AUDIT_REL} declares no binaryInventory.${platform}, so the bundle has nothing to be held to.`]);
+  }
+  const committedRel = `apps/${slug}/${MANIFEST_REL[platform]}`;
+  if (!existsSync(join(repoRoot, committedRel))) {
+    coverageLost([`${committedRel} does not exist, so the app manifest in the bundle has nothing to be compared with.`]);
+  }
+
+  const bundle = readBuiltBundle(appAbs, platform);
+  if (bundle.frameworks.length === 0) {
+    coverageLost([
+      `${appArg} (${platform}) has no ${BUILT_LAYOUT[platform].frameworks}/*.framework.`,
+      'Every Flutter Apple build embeds App.framework and the engine framework, so zero is a wrong path or a',
+      'truncated bundle, not an app with no SDKs.',
+    ]);
+  }
+
+  const { problems, prints } = builtProblems({
+    platform,
+    rows,
+    bundle,
+    selfCommitted: readFileSync(join(repoRoot, committedRel)),
+  });
+  prints.push(
+    'CANNOT SEE — a statically linked SDK that ships no resources leaves no directory in the .app (measured: ' +
+      'purchases_flutter, PurchasesHybridCommon); only its audit row answers for it.',
+  );
+  const head =
+    `${basename(appAbs)} (${platform}, apps/${slug}): ${bundle.frameworks.length} framework(s), ` +
+    `${bundle.bundles.length} SDK resource bundle(s), ${bundle.manifests.length} ${MANIFEST_NAME}`;
+  if (problems.length) {
+    console.error(`assert-apple-privacy-manifest --built: FAIL — ${head}`);
+    for (const p of problems) console.error(`  ✗ ${p}`);
+    for (const p of prints) console.error(`  · ${p}`);
+    process.exit(1);
+  }
+  console.log(`assert-apple-privacy-manifest --built: OK — ${head}`);
+  for (const p of prints) console.log(`  · ${p}`);
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
-  main();
+  if (ARGV.includes('--built')) builtMain();
+  else main();
 }

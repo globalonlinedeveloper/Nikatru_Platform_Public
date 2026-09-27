@@ -378,6 +378,10 @@ describe('E-a1 step [6] — the appWorkers row, derived from the stamped mounts'
     const calls = wranglerCalls(root, 'probeapi');
     assert.ok(calls.length > 0, 'the fake wrangler was never called — the case would test nothing');
     assert.ok(!calls.some((c) => /^(deploy|versions|secret)\b/.test(c)), `step [6] must deploy nothing: ${calls.join(' | ')}`);
+    // Lead ruling Q1: the DSN secret is delivered BY NAME; step [6] prints both lines.
+    assert.match(out, /deploy-workers\.yml, under on\.workflow_call\.secrets: +GLITCHTIP_DSN_PROBEAPI: +\(with required: true\)/);
+    assert.match(out, /ci\.yml, in the deploy-workers: call's secrets: +GLITCHTIP_DSN_PROBEAPI: \$\{\{ secrets\.GLITCHTIP_DSN_PROBEAPI \}\}/);
+    assert.match(out, /never `secrets: inherit`/);
   });
 
   test('P2 a second run leaves an existing row exactly as it is', () => {
@@ -390,6 +394,7 @@ describe('E-a1 step [6] — the appWorkers row, derived from the stamped mounts'
     assert.equal(code, 0, out);
     assert.match(out, /services\/probeapi-api\/wrangler\.jsonc already has a row \(probeapi-api\); left unchanged/);
     assert.equal(readFileSync(join(root, 'tooling', 'platform-register.json'), 'utf8'), before);
+    assert.match(out, /ci\.yml, in the deploy-workers: call's secrets: +GLITCHTIP_DSN_PROBEAPI: /, 'the existing row\'s secret lines are printed too');
     // E-b2: step [7] is idempotent too.
     assert.match(out, /already has d1:probeapi_db; left unchanged/);
     assert.match(out, /already has probeapi-api\.nikatru\.com; left unchanged/);

@@ -34,7 +34,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { aasaDetail, mobileIdentity, mobilePresence, planWellKnown, SURFACES, AASA_REL, ASSETLINKS_REL, CHECKOUT_RETURN_PATH } from '../../sites/generate-well-known.mjs';
+import { aasaDetail, appIdentity, mobilePresence, planWellKnown, SURFACES, AASA_REL, ASSETLINKS_REL, CHECKOUT_RETURN_PATH } from '../../sites/generate-well-known.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CI_DIR = resolve(HERE, '..');
@@ -84,17 +84,30 @@ const DECL = ({ slug = 'demo', mobile = null } = {}) =>
     '',
   ].join('\n');
 
-/** A full mobile identity, as `app.yaml` lines. Both halves of both surfaces. */
+/** ⏱ O-STORE-RECORDS-ARE-ONE-PER-CHANNEL (9b): the identity is read from the records that hold it.
+ *  The Android half is the app's own `stores.android-play` record, as app.yaml lines; the package name
+ *  is derived (com.nikatru.<id>). The iOS half is the Apple register below: its `teamId` and the
+ *  app's bundle id. A fixture team id, never the account's. */
 const MOBILE = [
-  'mobile:',
-  '  ios:',
-  '    appleTeamId: ABCDE12345',
-  '    bundleId: com.nikatru.demo',
-  '  android:',
-  '    packageName: com.nikatru.demo',
-  '    sha256CertFingerprints:',
+  'stores:',
+  '  android-play:',
+  '    state: issued',
+  '    declaredOn: null',
+  '    appSigningSha256:',
   '      - "11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00"',
 ];
+
+const FIXTURE_TEAM_ID = 'ABCDE12345';
+/** The REAL tooling/apple-provisioning.json (read at run time, never copied into this file: it names App
+ *  Store Connect resource ids), with the fixture app `demo` declared and a fixture team id. `mutate` edits it;
+ *  null writes none. */
+const appleRegister = (mutate = null) => {
+  const reg = JSON.parse(readFileSync(join(REPO, 'tooling', 'apple-provisioning.json'), 'utf8'));
+  reg.apps.demo = { bundleId: 'com.nikatru.demo', capabilities: ['IN_APP_PURCHASE'] };
+  reg.teamId = FIXTURE_TEAM_ID;
+  if (mutate) mutate(reg);
+  return `${JSON.stringify(reg, null, 2)}\n`;
+};
 
 /** The `_headers` line limb H requires once an AASA exists. */
 const AASA_HEADER = '/.well-known/apple-app-site-association\n  Content-Type: application/json\n';
@@ -104,7 +117,7 @@ const AASA_HEADER = '/.well-known/apple-app-site-association\n  Content-Type: ap
  * and `_headers`. Everything else is absent on purpose — a fixture that copies
  * the repository grades the repository.
  */
-function tree({ rows = [ROW()], decls = [DECL()], headers = '', catalog = undefined } = {}) {
+function tree({ rows = [ROW()], decls = [DECL()], headers = '', catalog = undefined, apple = appleRegister() } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'well-known-'));
   mkdirSync(join(root, 'catalog'), { recursive: true });
   writeFileSync(join(root, ...CATALOG_REL.split('/')), catalog === undefined ? `${JSON.stringify(rows, null, 2)}\n` : catalog);
@@ -115,6 +128,10 @@ function tree({ rows = [ROW()], decls = [DECL()], headers = '', catalog = undefi
   }
   mkdirSync(join(root, 'sites', 'nikatru'), { recursive: true });
   writeFileSync(join(root, ...HEADERS_REL.split('/')), headers);
+  if (apple !== null) {
+    mkdirSync(join(root, 'tooling'), { recursive: true });
+    writeFileSync(join(root, 'tooling', 'apple-provisioning.json'), apple);
+  }
   return root;
 }
 
@@ -240,12 +257,37 @@ describe('limb A — the measured pair', () => {
     kill(root);
   });
 
-  test('an identity with no presence is refused too — the mirror mistake', () => {
+  // ⏱ 9b: the Apple half now exists for every app the Apple register declares, so an identity with no
+  // presence is the normal state of an unshipped app. It publishes nothing and is not a finding.
+  test('an identity with no presence publishes nothing, and is not a finding', () => {
     const root = tree({ decls: [DECL({ mobile: MOBILE })] });
     const { code, out } = run(root);
+    assert.equal(code, 0, out);
+    const gen = generate(root);
+    assert.equal(gen.code, 0, gen.out);
+    assert.match(gen.out, /0 qualifying \(ios\+android\), 0 file\(s\) planned/);
+    kill(root);
+  });
+
+  test('🔴 RC8 — the Apple half reads teamId from tooling/apple-provisioning.json: without it an iOS presence is a finding', () => {
+    const root = tree({
+      rows: [ROW({ platforms: ['web', 'ios'], listings: { appstore: 'https://apps.apple.com/app/id123456789' } })],
+      apple: appleRegister((reg) => delete reg.teamId),
+    });
+    const { code, out } = run(root);
     assert.equal(code, 1, out);
-    assert.match(out, /claims no ios presence/);
-    assert.match(out, /Declare both or neither/);
+    assert.match(out, /claims a ios presence .* does not declare a usable identity: tooling\/apple-provisioning\.json declares no usable teamId/);
+    kill(root);
+  });
+
+  test('an iOS presence for an app the Apple register does not declare is a finding naming the app', () => {
+    const root = tree({
+      rows: [ROW({ platforms: ['web', 'ios'], listings: { appstore: 'https://apps.apple.com/app/id123456789' } })],
+      apple: appleRegister((reg) => delete reg.apps.demo),
+    });
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /declares no app "demo"/);
     kill(root);
   });
 });
@@ -401,10 +443,24 @@ describe('the plan itself', () => {
     assert.equal(mobilePresence(ROW({ listings: { appstore: 'https://apps.apple.com/app/id1' } }), ios).length, 1);
   });
 
-  test('identity is never half-accepted', () => {
-    assert.equal(mobileIdentity({ mobile: { ios: { appleTeamId: 'ABCDE12345' } } }, 'ios').ok, false);
-    assert.equal(mobileIdentity({ mobile: { ios: { appleTeamId: 'ABCDE12345', bundleId: 'com.nikatru.demo' } } }, 'ios').ok, true);
-    assert.equal(mobileIdentity({ mobile: { android: { packageName: 'com.nikatru.demo', sha256CertFingerprints: [] } } }, 'android').ok, false);
+  test('identity is read from the records, and never half-accepted', () => {
+    const withRecord = tree({ decls: [DECL({ mobile: MOBILE })] });
+    const ios = appIdentity(withRecord, 'demo', 'ios');
+    assert.equal(ios.ok, true, ios.missing.join('; '));
+    assert.equal(ios.value.appID, `${FIXTURE_TEAM_ID}.com.nikatru.demo`, 'the appID is the register\'s teamId and bundleIdOf, joined');
+    const android = appIdentity(withRecord, 'demo', 'android');
+    assert.equal(android.ok, true, android.missing.join('; '));
+    assert.equal(android.value.packageName, 'com.nikatru.demo');
+    kill(withRecord);
+    const noTeam = tree({ apple: appleRegister((reg) => delete reg.teamId) });
+    assert.equal(appIdentity(noTeam, 'demo', 'ios').ok, false);
+    kill(noTeam);
+    const noRecord = tree();
+    assert.equal(appIdentity(noRecord, 'demo', 'android').ok, false);
+    kill(noRecord);
+    const emptyPrint = tree({ decls: [DECL({ mobile: ['stores:', '  android-play:', '    state: issued', '    declaredOn: null', '    appSigningSha256: []'] })] });
+    assert.equal(appIdentity(emptyPrint, 'demo', 'android').ok, false);
+    kill(emptyPrint);
   });
 
   test('a plan over this repository writes no file and reports the pair', () => {

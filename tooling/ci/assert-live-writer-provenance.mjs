@@ -41,6 +41,17 @@
 //       env.sandbox APP_DB id, as tooling/store/capture-backend.mjs
 //       sandboxBackend() reads them, never a top-level id; (c) a sandbox lane with
 //       no writer job, or configs sandboxBackend() refuses, is COVERAGE LOST.
+//       ⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP): store-screenshots.yml takes
+//       its app at dispatch and names no database id. (b) now also accepts
+//       PLATFORM_D1_DATABASE_ID = `${{ steps.<id>.outputs.platform_db }}` of an
+//       EARLIER step in the job that runs tooling/e2e/backend.mjs --env sandbox
+//       --emit-output, and it no longer asks for the app key: purge.mjs has resolved
+//       the app database from E2E_APP_ID since O-E2E-LANE-WIRED-TO-ONE-APP, from
+//       env.sandbox whenever the ledger is set (L4 requires both). What the literal
+//       used to prove is then proved once over the tree: for every workspace app,
+//       backend.mjs's env.sandbox PLATFORM_DB is platform's env.sandbox PLATFORM_DB,
+//       its APP_DB is its capture Worker's env.sandbox APP_DB, and neither is a
+//       production id.
 //
 // ⚠️ WHAT IT CANNOT SEE: a row in production. Whether a purge DID delete what it
 // was handed is answerable only by the monitor (ops-watch.yml, daily). This is a
@@ -82,6 +93,8 @@ import {
 } from './workflow-scan.mjs';
 import { STAMP_LANES, StampRefused, appVersionDefine, laneByResolver, laneForWorkflow, stampShape } from '../e2e/app-version-stamp.mjs';
 import { CAPTURE_WORKERS, SUPPLIED_HOST_KEYS, productionD1Ids, sandboxBackend } from '../store/capture-backend.mjs';
+import { BackendRefused, backendOf } from '../e2e/backend.mjs';
+import { workspaceApps } from './app-set.mjs';
 
 const ROOT = resolve(process.argv[2] ?? process.cwd());
 const REGISTER_REL = 'tooling/prod-provenance.json';
@@ -513,12 +526,21 @@ for (const { path, rule: t } of tableRules) {
 }
 
 // ── L6: a sandbox lane reaches the sandbox, and purges the sandbox ──────────
+// ⏱ 2026-09-26: the platform database only. The app database is purge.mjs's own
+// resolution from E2E_APP_ID (the header's L6 dated line), held once below.
 const SANDBOX_PURGE_IDS = [
   { key: 'PLATFORM_D1_DATABASE_ID', worker: 'platform', binding: 'd1:PLATFORM_DB' },
-  { key: 'SUBSCRIPTIONTRACKER_D1_DATABASE_ID', worker: 'subscriptiontracker-api', binding: 'd1:APP_DB' },
 ];
+/** `node tooling/e2e/backend.mjs … --env sandbox … --emit-output`: the resolver step a
+ *  purge's `${{ steps.<id>.outputs.platform_db }}` may come from. */
+const resolvesSandbox = (text) =>
+  /(?:^|\s)node\s+(?:\S*\/)?tooling\/e2e\/backend\.mjs(?=\s)/.test(text ?? '') &&
+  /\s--env\s+["']?sandbox["']?(?=\s|$)/.test(text ?? '') &&
+  /\s--emit-output(?=\s|$)/.test(text ?? '');
+const STEP_PLATFORM_DB = /^\$\{\{\s*steps\.([A-Za-z0-9_-]+)\.outputs\.platform_db\s*\}\}$/;
 const sandboxLanes = STAMP_LANES.filter((l) => l.backend === 'sandbox');
 let sandboxJobs = 0;
+let resolverPurges = 0;
 if (sandboxLanes.length) {
   let backend = null;
   try {
@@ -562,10 +584,33 @@ if (sandboxLanes.length) {
       if (wanted.length === 0 || undeclared.length) continue;
       for (const p of purges.filter((q) => jobKey(q) === key)) {
         const where = at(p.wf.rel, p.step.run.n, p.job.name);
+        // ⏱ 2026-09-26: a PRODUCTION id under ANY other key of a sandbox purge is refused,
+        // read by purge.mjs or not; PLATFORM_D1_DATABASE_ID is held below with its own message.
+        for (const [k, v] of p.step.env) {
+          if (wanted.some((w) => w.key === k)) continue;
+          const got = unquotePath(v.value);
+          if (prodIds.has(got)) {
+            problems.push(`${where} — ${k}=${got} is a PRODUCTION database id; the sandbox lane \`${lane.resolver}\` writes the sandbox, and its purge names no production database under any key.`);
+          }
+        }
         for (const w of wanted) {
           const raw = envOf(p, w.key);
           const got = raw === null ? null : unquotePath(raw);
           if (got === w.id) continue;
+          // ⏱ 2026-09-26: the resolver's output, from an earlier step of this job.
+          const out = got === null ? null : got.match(STEP_PLATFORM_DB);
+          if (out) {
+            const r = jobSteps.find((s) => s.step.id === out[1] && s.step.index < p.step.index);
+            if (r && resolvesSandbox(r.step.run?.text)) {
+              resolverPurges++;
+              continue;
+            }
+            problems.push(
+              `${where} — ${w.key}=${got}, and no earlier step \`${out[1]}\` in this job runs tooling/e2e/backend.mjs --env sandbox --emit-output: ` +
+                `the purge in the sandbox lane \`${lane.resolver}\` would be handed a database nothing resolved from env.sandbox.`,
+            );
+            continue;
+          }
           const want = `${CAPTURE_WORKERS[w.worker]} env.sandbox ${w.binding.slice(3)} (${w.id})`;
           problems.push(
             got === null
@@ -575,6 +620,36 @@ if (sandboxLanes.length) {
                 : `${where} — ${w.key}=${got} is not ${want}, the database the sandbox lane \`${lane.resolver}\` writes.`,
           );
         }
+      }
+    }
+  }
+  // ⏱ 2026-09-26 — what a purge handed the resolver's output is handed, held once over the
+  // tree for every app a dispatch can name (the header's L6 dated line). Only when some
+  // sandbox purge takes that form: a lane that still names the literal is held above.
+  if (resolverPurges > 0 && backend && undeclared.length === 0) {
+    const platformSandbox = wanted.find((w) => w.key === 'PLATFORM_D1_DATABASE_ID')?.id ?? null;
+    const apps = (workspaceApps(ROOT) ?? []).map((d) => d.slice('apps/'.length));
+    if (apps.length === 0) {
+      problems.push('COVERAGE LOST — L6: a sandbox purge takes its platform database from tooling/e2e/backend.mjs, and the workspace declares no app to resolve it for.');
+    }
+    for (const app of apps) {
+      let b;
+      try {
+        b = backendOf(app, { env: 'sandbox', root: ROOT });
+      } catch (e) {
+        if (!(e instanceof BackendRefused)) throw e;
+        problems.push(`L6: tooling/e2e/backend.mjs refuses app ${app}'s env.sandbox (${e.message}), so a store capture of ${app} has no sandbox database its purge could be handed.`);
+        continue;
+      }
+      if (b.platformDb !== platformSandbox) {
+        problems.push(`L6: tooling/e2e/backend.mjs resolves app ${app}'s env.sandbox PLATFORM_DB to a database that is not ${CAPTURE_WORKERS.platform} env.sandbox PLATFORM_DB: its purge would delete consent rows where the capture never wrote them.`);
+      }
+      if (prodIds.has(b.platformDb) || prodIds.has(b.appDb)) {
+        problems.push(`L6: tooling/e2e/backend.mjs resolves app ${app}'s env.sandbox to a PRODUCTION database; a store capture writes the sandbox, so its purge has no business there.`);
+      }
+      const api = backend[`${app}-api`];
+      if (api && b.appDb !== api.sandboxIds?.['d1:APP_DB']) {
+        problems.push(`L6: tooling/e2e/backend.mjs resolves app ${app}'s env.sandbox APP_DB to a database that is not ${CAPTURE_WORKERS[`${app}-api`]} env.sandbox APP_DB, the one the capture writes.`);
       }
     }
   }
@@ -591,7 +666,8 @@ if (problems.length) {
 }
 console.log(
   `ok  live writer provenance — drives=${drives.length} spawners=${spawnerFiles.length} spawnerSteps=${spawnerSteps.length} ` +
-    `provisioningJobs=${provisioningJobs.size} purges=${purges.length} lanes=${STAMP_LANES.length} sandboxJobs=${sandboxJobs}`,
+    `provisioningJobs=${provisioningJobs.size} purges=${purges.length} lanes=${STAMP_LANES.length} sandboxJobs=${sandboxJobs} ` +
+    `resolverPurges=${resolverPurges}`,
 );
 for (const d of drives) console.log(`    drive   ${at(d.workflow, d.runLine, d.job)} APP_VERSION=${d.appVersionExpr}`);
 for (const s of spawnerSteps) console.log(`    spawner ${at(s.wf.rel, s.step.run.n, s.job.name)} ${s.spawner}`);

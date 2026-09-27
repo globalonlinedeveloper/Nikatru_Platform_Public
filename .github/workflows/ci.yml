@@ -56,7 +56,7 @@ jobs:
       actions: write
       issues: read
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -73,7 +73,7 @@ jobs:
       # main run to raise tooling/ci/test/executed-floor.json; nothing local writes it.
       - name: Keep the executed counts for the executed-floor refresh
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: guard-tests-junit
           path: ${{ runner.temp }}/guard-tests.junit.xml
@@ -154,7 +154,7 @@ jobs:
       actions: write
       issues: read
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -382,7 +382,7 @@ jobs:
       contents: read
       actions: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -494,7 +494,7 @@ jobs:
       contents: read
       actions: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -659,7 +659,7 @@ jobs:
       contents: read
       actions: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -755,7 +755,7 @@ jobs:
       contents: read
       actions: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -779,7 +779,7 @@ jobs:
       # left main in (wget exit 4, gitleaks never installed, ci-gate not green,
       # deploy-web refused). The key carries the digest of versions.json, so
       # advancing any pin is a different cache.
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/pinned-tool-cache
           key: pinned-tools-${{ runner.os }}-${{ hashFiles('tooling/versions.json') }}
@@ -893,7 +893,7 @@ jobs:
       run:
         working-directory: packages/tokens
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node
@@ -956,7 +956,7 @@ jobs:
       run:
         working-directory: sites/_shared
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node
@@ -975,7 +975,7 @@ jobs:
       contents: read
       actions: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node
@@ -1011,7 +1011,7 @@ jobs:
       contents: read
       actions: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -1087,6 +1087,28 @@ jobs:
           if [ "$code" -ne 1 ]; then echo "::error::assert-app-yaml exited $code with apps/probe/privacy.yaml deleted; the red control requires exactly 1"; exit 1; fi
           if ! grep -qF 'apps/probe/privacy.yaml does not exist' "$RUNNER_TEMP/privacy-red.log"; then echo "::error::assert-app-yaml exited 1 without naming apps/probe/privacy.yaml"; exit 1; fi
           node tooling/ci/assert-app-yaml.mjs
+      # why: O-BRICK-SWORN-FILES-HAVE-NO-PREVIEW-STATE. The brick stamps its five sworn files at
+      # "sworn": false; the log must count app #1 sworn and the probe preview ("5 sworn, 5 preview: probe").
+      - name: The stamped probe's sworn declarations are graded as preview, app #1's as sworn
+        run: node tooling/ci/assert-sworn-store-files.mjs
+      # why: the row's red control, every run. The probe's data-safety.json flipped to "sworn": true with
+      # nothing answered must be refused on the floor (exit exactly 1, FLOOR in the log); restored, it passes.
+      # The flip is a .mjs under $RUNNER_TEMP, so no regex rides in a shell string.
+      - name: RED CONTROL — the probe's data-safety.json sworn but unanswered is refused on the floor
+        run: |
+          cp apps/probe/store/android-play/data-safety.json "$RUNNER_TEMP/probe-data-safety.json"
+          echo "import { readFileSync, writeFileSync } from 'node:fs'; const p = process.argv[2]; const j = JSON.parse(readFileSync(p, 'utf8')); j.sworn = true; writeFileSync(p, JSON.stringify(j, null, 2) + '\n');" > "$RUNNER_TEMP/flip-sworn.mjs"
+          node "$RUNNER_TEMP/flip-sworn.mjs" apps/probe/store/android-play/data-safety.json
+          set +e
+          node tooling/ci/assert-sworn-store-files.mjs > "$RUNNER_TEMP/sworn-red.log" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/sworn-red.log"
+          echo "assert-sworn-store-files exit: $code"
+          cp "$RUNNER_TEMP/probe-data-safety.json" apps/probe/store/android-play/data-safety.json
+          if [ "$code" -ne 1 ]; then echo "::error::assert-sworn-store-files exited $code with the probe's data-safety.json sworn but unanswered; the red control requires exactly 1"; exit 1; fi
+          if ! grep -qF 'FLOOR — apps/probe/store/android-play/data-safety.json' "$RUNNER_TEMP/sworn-red.log"; then echo "::error::assert-sworn-store-files exited 1 without the FLOOR finding on apps/probe/store/android-play/data-safety.json"; exit 1; fi
+          node tooling/ci/assert-sworn-store-files.mjs
       - name: SHOW-1 — probe is in the catalogue, and a RE-STAMP changes nothing
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"
@@ -1207,6 +1229,11 @@ jobs:
           flutter test
       - name: The WHOLE workspace still resolves from the root with stamped apps on it
         run: flutter pub get
+      # why: O-BRICK-SWORN-FILES-HAVE-NO-PREVIEW-STATE. Here, not beside the sworn step above: limb 4
+      # reads app #1's .flutter-plugins-dependencies, which only the resolve just above writes. The log
+      # must count app #1 sworn and both web-only probes preview, each owing no Apple-native manifest.
+      - name: The stamped probes' Apple audits are graded as preview, app #1's as sworn
+        run: node tooling/ci/assert-apple-privacy-manifest.mjs
       - name: Revert the root pubspec + lockfile — both probes are throwaway
         run: git checkout -- pubspec.yaml pubspec.lock
       - name: Typecheck + dry-run the stamped service
@@ -1227,7 +1254,7 @@ jobs:
       contents: read
       actions: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -1281,7 +1308,7 @@ jobs:
       contents: read
       actions: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Assert workspace coverage
@@ -1408,7 +1435,7 @@ jobs:
     outputs:
       apps: ${{ steps.workspace.outputs.apps }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # why: the app set comes from the emitter build-platforms.yml `prepare` runs, so
@@ -1442,7 +1469,7 @@ jobs:
       matrix:
         app: ${{ fromJSON(needs.prepare.outputs.apps) }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -1475,10 +1502,10 @@ jobs:
       matrix:
         app: ${{ fromJSON(needs.prepare.outputs.apps) }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: '17'
@@ -1488,6 +1515,32 @@ jobs:
       - name: Derive the release line from pubspec
         id: ver
         run: node tooling/ci/assert-app-versioning.mjs --emit apps/${{ matrix.app }} >> "$GITHUB_OUTPUT"
+      # why: the refusal path (O-BRICK-SELLS-NOTHING-IN-A-STORE): an app with no billing.mobileIap stops here,
+      # exit 1. The builds below read the key from the STATIC named secret this rail's apps declare (app.yaml
+      # billing.mobileIap.publicKeySecrets), never a `secrets[...]` index, which would hand this job every
+      # repository secret (LEAD RULING W46-R1). assert-channel-register 6b-iii holds the name and --app.
+      - name: Resolve the app's store SDK key secret (play-billing)
+        id: rc-key
+        run: node tooling/ci/store-key-secret.mjs --app ${{ matrix.app }} --rail play-billing >> "$GITHUB_OUTPUT"
+      # why: RC-CI (O-BRICK-SELLS-NOTHING-IN-A-STORE) — the one line that OBSERVES the store key on a PR run: the
+      # name the app declares (the resolver's output) is the static secret the builds below read, and it is set.
+      # It prints the NAME and "non-empty", never the value. A fork PR has no secrets and is exempt, as the
+      # builds below already are.
+      - name: The app's store SDK key resolves by name (prints the name only)
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          RC_KEY: ${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
+          RC_KEY_NAME: ${{ steps.rc-key.outputs.name }}
+        run: |
+          if [ "$RC_KEY_NAME" != REVENUECAT_PUBLIC_KEY_GOOGLE ]; then
+            echo "::error::the app declares $RC_KEY_NAME for play-billing, and this lane reads secrets.REVENUECAT_PUBLIC_KEY_GOOGLE"
+            exit 1
+          fi
+          if [ -z "$RC_KEY" ]; then
+            echo "::error::the repository secret REVENUECAT_PUBLIC_KEY_GOOGLE is unset or empty"
+            exit 1
+          fi
+          echo "$RC_KEY_NAME non-empty"
       # why: build-platforms.yml linux_web_android's three Android builds, flag for flag;
       # built-artifact-pr-lane.test.mjs holds the copies equal. APP_VERSION ends in +pr,
       # not the commit, and that is legal ONLY because tooling/channel-register.json lists
@@ -1497,12 +1550,12 @@ jobs:
       - name: Build android (apk — sideloadable build proof)
         env:
           RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
-          REVENUECAT_PUBLIC_KEY_GOOGLE: ${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
+          REVENUECAT_PUBLIC_KEY: ${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
         run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} apk android-play --lane pr
       - name: Build android (aab — the Google Play artifact)
         env:
           RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
-          REVENUECAT_PUBLIC_KEY_GOOGLE: ${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
+          REVENUECAT_PUBLIC_KEY: ${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
         run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} appbundle android-play --lane pr
       # why: Flutter writes every .apk to one path, so the Play .apk is set aside and put back — §apps-gov-in.
       - name: Set the Play .apk aside (Flutter writes every .apk to one path)
@@ -1616,7 +1669,7 @@ jobs:
       matrix:
         app: ${{ fromJSON(needs.prepare.outputs.apps) }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-flutter
@@ -1692,7 +1745,7 @@ jobs:
       matrix:
         app: ${{ fromJSON(needs.prepare.outputs.apps) }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-flutter

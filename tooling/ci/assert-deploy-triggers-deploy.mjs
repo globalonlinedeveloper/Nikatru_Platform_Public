@@ -90,6 +90,30 @@
 //   `usesPathsFilter` stay exported: tooling/ci/test/deploy-units.test.mjs
 //   fails a deploy workflow that grows either trigger back.
 //
+//   4. 🔴 EVERY APP WORKER DEPLOYS FROM ONE MATRIX, IN THE SAFETY ORDER, and every
+//      leg is graded. Added 2026-09-26 with O-SERVICE-KIT-UNBUILT (E-a2), when
+//      deploy-workers.yml's one hand-written app job became the `app-worker`
+//      matrix. The legs are READ, never listed here: tooling/ci/worker-set.mjs
+//      appWorkerMatrix() is what the matrix carries on this tree (the
+//      `appWorkers` rows of tooling/platform-register.json with a services/
+//      directory), and:
+//        · limb 1 expands a plan argument `${{ matrix.<dim>.worker }}` into
+//          each leg's Worker name, so every leg needs its own unit, and (1b)
+//          that unit claims the Worker's own tree — a leg whose unit did not
+//          would plan nothing on a change to it and publish nothing;
+//        · the job's `strategy.matrix.<dim>` is `${{ fromJSON(needs.<job>.outputs.<name>) }}`
+//          of a job that runs `worker-set.mjs --for-deploy --json --app-workers`:
+//          a literal list is a finding;
+//        · for EVERY leg, the order a Worker must be deployed in: npm ci → its
+//          D1 migrations (required when its config migrates one) → the live-SQL
+//          check → the deploy that carries the vars, which is the leg's ONE
+//          deploy (#155: a second, unqualified one wiped the vars; a Worker that
+//          does not exist yet is created by this one, #981) → the smoke → the
+//          record, conditioned `always() && steps.deploy.outcome == 'success'`.
+//      No app Worker at all is COVERAGE LOST: limb 4 would grade nothing.
+//      (The literal paths in THE MEASURED FAILURE above are the file as it
+//      stood on 2026-08-04: history, not today's shape.)
+//
 // ── HOW IT READS THE FILE ───────────────────────────────────────────────────
 // By indentation-scoped structure, never by grepping for a string. A `grep` for
 // `deploy-workers.yml` would have matched the `on.push.paths` entry, the header
@@ -113,6 +137,9 @@ import { readFileSync, existsSync, statSync } from 'node:fs';
 import { resolve, dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
+import { claimedTree, globClaims } from './deploy-globs.mjs';
+import { parseAllWorkflows, workflowSteps } from './workflow-scan.mjs';
+import { appWorkerMatrix } from './worker-set.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(HERE, '..', '..');
@@ -339,36 +366,10 @@ export const NOT_BUNDLED_DIRS = new Set([
  *  catalogue became a build input of the platform Worker. */
 export const SOURCE_EXTENSIONS = ['.ts', '.tsx', '.mts', '.js', '.mjs', '.cjs', '.json'];
 
-/** `services/platform/**` claims the TREE `services/platform`. Anything else
- *  claims files, not a tree, and has nothing to walk. */
-export function claimedTree(glob) {
-  const m = /^([^*?[\]]+)\/\*\*$/.exec(glob);
-  return m ? m[1] : null;
-}
-
-/**
- * Does `glob` claim the repo-relative path `p`?
- *
- * Three shapes exist in this repository and each is answered exactly:
- * `X/**` (the tree), `X/*.ext` and `X/*` (files directly in X), and a literal
- * path. A glob of any OTHER shape returns `null` — "this reader cannot decide"
- * — and the caller turns that into COVERAGE LOST rather than into a pass. A
- * matcher that silently answers `false` for a shape it does not understand is
- * how a filter that really does claim a path gets reported as not claiming it,
- * and the fix somebody reaches for is deleting the limb.
- */
-export function globClaims(glob, p) {
-  const tree = claimedTree(glob);
-  if (tree !== null) return p === tree || p.startsWith(`${tree}/`);
-  const star = /^([^*?[\]]+)\/\*(\.[A-Za-z0-9.]+)?$/.exec(glob);
-  if (star) {
-    const [, dir, ext] = star;
-    if (posix.dirname(p) !== dir) return false;
-    return ext === undefined || p.endsWith(ext);
-  }
-  if (!/[*?[\]]/.test(glob)) return p === glob;
-  return null;
-}
+// `claimedTree` and `globClaims` live in ./deploy-globs.mjs since 2026-09-26: plan-deploy.mjs
+// imports them there, so a deploy's inputs do not include this guard. Re-exported, so
+// every importer of this path reads the same two functions.
+export { claimedTree, globClaims };
 
 /** Every source file under `relDir`, repo-relative, skipping what a deploy
  *  never ships. Walks through `listDir` like every other walk in tooling/ci. */
@@ -477,6 +478,150 @@ export function judgeImports(root, units) {
   return { problems, scanned, external };
 }
 
+// ── LIMB 4 · the app Worker matrix, graded leg by leg ───────────────────────
+
+/** A plan argument naming a leg of the app Worker matrix: `${{ matrix.<dim>.worker }}`. */
+export const WORKER_LEG = /^\$\{\{\s*matrix\.([A-Za-z_][A-Za-z0-9_-]*)\.worker\s*\}\}$/;
+
+/** Limb 1's input with every Worker-leg argument expanded into the legs' Worker
+ *  names. `legs` null (the matrix could not be read) leaves the argument as
+ *  written, so limb 1 names it rather than dropping it. */
+export function expandPlans(plans, legs) {
+  return plans.map((p) => ({
+    ...p,
+    environments: p.environments.flatMap((e) => (WORKER_LEG.test(e) && legs !== null ? legs : [e])),
+  }));
+}
+
+/** Limb 1b: each leg's unit claims the Worker's own tree (`<dir>/**`). */
+export function judgeLegUnits(units, entries) {
+  const problems = [];
+  for (const e of entries) {
+    const key = unitKeyFor(units, e.worker);
+    if (key === null) continue; // limb 1 names it
+    if (!units[key].some((g) => claimedTree(g) === e.dir)) {
+      problems.push(
+        `deployUnits["${key}"] is the unit of the app Worker ${e.worker}, and no glob of it claims \`${e.dir}/**\`, the ` +
+          "Worker's own tree. A push changing only that Worker would match nothing in its unit, so its leg would plan " +
+          `"unchanged" and publish nothing while the run reports success — #155 in the matrix. Add \`${e.dir}/**\` to it.`,
+      );
+    }
+  }
+  return problems;
+}
+
+const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+const isWranglerAction = (s) => /^cloudflare\/wrangler-action@/.test(s.uses ?? '');
+/** Does this step put a Worker live? A wrangler-action whose command is (or
+ *  defaults to) `deploy`, or a `wrangler deploy` that is not a dry run. */
+const deploysAWorker = (s) =>
+  (isWranglerAction(s) && /^deploy\b/.test(norm(s.with.get('command')?.value ?? 'deploy')) && !/--dry-run/.test(s.with.get('command')?.value ?? '')) ||
+  /\bwrangler\s+deploy\b(?![^;&|]*--dry-run)/.test(s.run?.text ?? '');
+
+/**
+ * Limb 4, pure over parsed workflows (workflow-scan.mjs `parseAllWorkflows`) and
+ * the legs (`appWorkerMatrix(root).entries`). Returns `{ problems, jobs }`, where
+ * `jobs` names each matrix deploy job found, `<workflow>:<job>`.
+ */
+export function judgeWorkerMatrix(workflows, entries) {
+  const problems = [];
+  const jobs = [];
+  for (const wf of workflows) {
+    for (const [id, job] of wf.jobs) {
+      const steps = workflowSteps(job);
+      const plan = steps.findIndex((s) => /plan-deploy\.mjs\s+\$\{\{\s*matrix\.[A-Za-z_][A-Za-z0-9_-]*\.worker\s*\}\}/.test(s.run?.text ?? ''));
+      if (plan === -1) continue;
+      const dim = steps[plan].run.text.match(/plan-deploy\.mjs\s+\$\{\{\s*matrix\.([A-Za-z_][A-Za-z0-9_-]*)\.worker/)[1];
+      const where = `${wf.rel}:${id}`;
+      jobs.push(where);
+      const leg = (f) => `\\$\\{\\{\\s*matrix\\.${dim}\\.${f}\\s*\\}\\}`;
+
+      // The matrix is read from worker-set.mjs, never written here.
+      const src = job.lines
+        .map((l) => l.text.match(new RegExp(`^\\s+${dim}:\\s*\\$\\{\\{\\s*fromJSON\\(\\s*needs\\.([A-Za-z_][A-Za-z0-9_-]*)\\.outputs\\.([A-Za-z_][A-Za-z0-9_-]*)\\s*\\)\\s*\\}\\}\\s*$`)))
+        .find(Boolean);
+      if (!src) {
+        problems.push(
+          `${where} deploys the app Worker matrix and its \`strategy.matrix.${dim}\` is not ` +
+            '`${{ fromJSON(needs.<job>.outputs.<name>) }}` of a job that runs worker-set.mjs. A matrix written into the ' +
+            'workflow is a second list of Workers, and the one a new Worker is missing from.',
+        );
+      } else {
+        const feeder = wf.jobs.get(src[1]);
+        const feeds = feeder
+          ? workflowSteps(feeder).some(
+              (s) => /tooling\/ci\/worker-set\.mjs\s+--for-deploy\s+--json\s+--app-workers\b/.test(s.run?.text ?? '') && (s.run?.text ?? '').includes(`${src[2]}=`),
+            ) && feeder.lines.some((l) => new RegExp(`^\\s+${src[2]}:\\s*\\$\\{\\{`).test(l.text))
+          : false;
+        if (!feeds) {
+          problems.push(
+            `${where} reads its matrix from \`needs.${src[1]}.outputs.${src[2]}\`, and job \`${src[1]}\` does not write that ` +
+              'output from `node tooling/ci/worker-set.mjs --for-deploy --json --app-workers`. The legs must be the ones ' +
+              'worker-set.mjs holds to the register, the lockfile rule and `dsnSecret`.',
+          );
+        }
+      }
+
+      // The safety order.
+      const at = (pred) => steps.findIndex(pred);
+      const npmCi = at((s) => /^npm ci\b/.test(norm(s.run?.text)));
+      const migrate = at((s) => isWranglerAction(s) && new RegExp(`^d1 migrations apply ${leg('migrations')} --remote$`).test(norm(s.with.get('command')?.value)));
+      const liveSql = at((s) => /tooling\/ops\/check-d1-accepts-live-sql\.mjs/.test(s.run?.text ?? ''));
+      const deploy = at((s) => s.id === 'deploy' && isWranglerAction(s) && /^deploy\b/.test(norm(s.with.get('command')?.value)));
+      const smoke = at((s) => /tooling\/ops\/post-deploy-smoke\.mjs/.test(s.run?.text ?? '') && new RegExp(`--url\\s+${leg('smokeUrl')}`).test(s.run?.text ?? ''));
+      const record = at((s) => new RegExp(`tooling/ci/record-deployment\\.mjs\\s+${leg('worker')}`).test(s.run?.text ?? ''));
+      const laterDeploys = deploy === -1 ? [] : steps.slice(deploy + 1).filter(deploysAWorker);
+      const earlierDeploys = deploy === -1 ? [] : steps.slice(0, deploy).filter(deploysAWorker);
+
+      for (const e of entries) {
+        const w = `${where} · the ${e.worker} leg`;
+        const need = (cond, msg) => { if (!cond) problems.push(`${w}: ${msg}`); };
+        need(npmCi !== -1 && npmCi > plan, 'no `npm ci` after the plan step, so nothing installs the locked dependency tree it deploys.');
+        if (e.migrations !== null) {
+          need(
+            migrate !== -1,
+            `its Worker migrates ${e.migrations} (worker-set.mjs \`migrations\`), and no step runs \`d1 migrations apply \${{ matrix.${dim}.migrations }} --remote\`. ` +
+              'Code that reads a column its database lacks is an outage: the schema expands BEFORE the deploy.',
+          );
+          need(migrate === -1 || migrate > npmCi, 'its migrations run before `npm ci`.');
+          need(migrate === -1 || deploy === -1 || migrate < deploy, 'its migrations run AFTER the deploy: the Worker would go live on a database without its schema.');
+        }
+        need(liveSql !== -1, 'no live-SQL check (tooling/ops/check-d1-accepts-live-sql.mjs) runs before it deploys.');
+        need(liveSql === -1 || migrate === -1 || e.migrations === null || liveSql > migrate, 'the live-SQL check runs before the migrations it must see.');
+        need(liveSql === -1 || deploy === -1 || liveSql < deploy, 'the live-SQL check runs after the deploy.');
+        need(deploy !== -1, 'no step `id: deploy` running a wrangler-action `deploy` — the step whose success the record is conditioned on.');
+        need(
+          earlierDeploys.length === 0,
+          `${earlierDeploys.length} step(s) deploy before \`id: deploy\` (from line ${earlierDeploys[0]?.first}). A leg deploys its Worker ` +
+            'exactly ONCE: a Worker that does not exist yet is created by the deploy that carries its vars, and a secret it needs ' +
+            'rides that same version (`--secrets-file`, #981; assert-workflow-hardening limb 13). A second deploy is a second, ' +
+            'unqualified path to the live Worker (#155).',
+        );
+        need(
+          laterDeploys.length === 0,
+          `${laterDeploys.length} step(s) deploy after \`id: deploy\` (from line ${laterDeploys[0]?.first}). The vars-carrying deploy must be the ` +
+            "LAST deploy of the job: a later unqualified one wipes --var GLITCHTIP_DSN and --var RELEASE off the live Worker (#155).",
+        );
+        need(smoke !== -1 && smoke > deploy, `no smoke of \`\${{ matrix.${dim}.smokeUrl }}\` after the deploy, so nothing asks the live Worker whether it came up.`);
+        need(record !== -1 && record > deploy, `no \`record-deployment.mjs \${{ matrix.${dim}.worker }}\` after the deploy, so the ledger never learns what is live.`);
+        need(
+          record === -1 || norm(steps[record].cond) === "always() && steps.deploy.outcome == 'success'",
+          `the record step is conditioned \`${steps[record]?.cond ?? '(nothing)'}\`, not \`always() && steps.deploy.outcome == 'success'\`: a ` +
+            'record must follow the act it describes, never a later verdict about it.',
+        );
+      }
+    }
+  }
+  if (entries.length > 0 && jobs.length === 0) {
+    problems.push(
+      `worker-set.mjs names ${entries.length} app Worker(s) (${entries.map((e) => e.worker).join(', ')}) and no workflow job plans a ` +
+        'leg of the app Worker matrix (`plan-deploy.mjs ${{ matrix.<dim>.worker }}`). Each app Worker deploys from that one ' +
+        'matrix; a job written for one Worker is the shape app #2 is missing from.',
+    );
+  }
+  return { problems, jobs };
+}
+
 function main() {
   const files = workflowFiles();
   if (files.length === 0) {
@@ -509,9 +654,22 @@ function main() {
     coverageLost();
   }
 
-  // Limbs 1-2.
-  const { problems: unitProblems, owners } = judgeUnits(units, plans);
+  // Limbs 1-2, with each app Worker matrix leg read as its Worker (limb 4's legs).
+  const matrix = appWorkerMatrix(REPO_ROOT);
+  const legs = matrix.lost === null ? matrix.entries.map((e) => e.worker) : null;
+  if (legs === null) {
+    problems.push(
+      `COVERAGE LOST: the app Worker matrix could not be read (${matrix.lost}), so limb 1 cannot expand a ` +
+        '`${{ matrix.<dim>.worker }}` plan into its Workers and limb 4 has no leg to grade.',
+    );
+  }
+  const { problems: unitProblems, owners } = judgeUnits(units, expandPlans(plans, legs));
   problems.push(...unitProblems);
+  problems.push(...judgeLegUnits(units, matrix.entries));
+
+  // Limb 4.
+  const wm = judgeWorkerMatrix(parseAllWorkflows(REPO_ROOT), matrix.entries);
+  problems.push(...wm.problems);
 
   // Limb 3.
   const imports = judgeImports(REPO_ROOT, units);
@@ -551,6 +709,11 @@ function main() {
   for (const e of imports.external) {
     console.log(`      ${e.name}: ${e.from} → ${e.target}`);
   }
+  console.log(
+    `ok  limb 4 — ${matrix.entries.length} app Worker leg(s) (${matrix.entries.map((e) => e.worker).join(', ')}), read from ` +
+      `worker-set.mjs, each graded in ${wm.jobs.join(', ')}: its unit claims its tree, and npm ci → migrations (where its ` +
+      'Worker migrates a D1) → live-SQL check → the vars deploy, the leg\'s only one → smoke → record.',
+  );
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {

@@ -140,12 +140,84 @@ extracted from this file verbatim (not retyped) and executed under
     2026-08-22 record did not take, added because "the loop does not abort on
     the first secret that IS set" is only half-shown by a run where three are.
 
+### above `app:`
+
+⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP). This lane named app #1 on 38 lines and
+its sandbox databases by id. The app is now a dispatch input, `required: true`, with NO
+`default:` and no `type: choice` (either is an app id written into this file). A
+dispatch names it: `gh workflow run store-screenshots.yml -f app=<id> -f channel=<channel>`,
+where `<id>` is one of `node tooling/ci/assert-release-lane-generic.mjs --emit-apps`. Only
+the `gate` job reads the raw input, through `env:`; every capture job `needs: gate` and
+reads its checked `app` output (`$APP` in `run:`, the expression in paths and artifact
+names). assert-release-lane-generic.mjs grades the lane as `per-app` (limb I and D-all).
+
+### above `dry_run:`
+
+⏱ 2026-09-26 (O-SCREENSHOT-DRIVER-IS-ONE-APPS). A boolean, default `false`. A dry run is
+the whole capture (the precheck, the build, the drive, both listing guards) with no
+pull request at the end: every step that pushes a branch or opens a pull request carries
+`if: ${{ !inputs.dry_run }}`, the set upload is gated the same way, and a sibling upload
+under `if: ${{ inputs.dry_run }}` hands the set back as the run artifact
+`dry-run-<channel>-<app>`, from the same paths. The run name ends in `dry run` or
+`pull request`, so a run list says which one ran.
+
+Why it exists: the row's confirm is "one green store-screenshots run for a new app in
+dry-run mode", and a new app's first capture should prove its lane without proposing
+anything to its listing. `tooling/ci/test/store-screenshots-lane.test.mjs` reads the
+`if:` lines, the artifact names and the paths; nothing short of a dispatch can observe a
+dry run, and a dispatch is the parent's act.
+
+A dry run is still a LIVE capture: it provisions and purges a throwaway user, and the
+drive writes consent rows to the sandbox, exactly as a proposing run does.
+
 ### above `permissions:`
 
 Least privilege, and the DEFAULT for every job that does not override it.
 [pipeline F-11]
 
+## job `gate`
+
+### above `gate:`
+
+⏱ 2026-09-26. The one reader of `inputs.app`: `assert-release-lane-generic.mjs --emit-apps
+--app "$APP_INPUT"` refuses a value off `^[a-z][a-z0-9-]*$` before it reads anything else,
+then an id the workspace does not declare, naming the set; only then is the id written to
+`$GITHUB_OUTPUT`. Unlike the submit lanes' gate jobs it does NOT run assert-gate-passed:
+this lane has never required ci-gate, and adding that would change its trigger contract
+(the parent's decision; a follow-up row if screenshots should wait on ci-gate).
+
 ## job `capture`
+
+### before step **Precheck — this app has the suite, the driver and the listing directory the capture needs** (all four capture jobs)
+
+⏱ 2026-09-26 (O-SCREENSHOT-DRIVER-IS-ONE-APPS). The first step after checkout in each
+capture job: `node tooling/store/capture-precheck.mjs --app "$APP" --channel <the job's
+channel>`. The app is a dispatch input, so it can name an app of the workspace with no
+capture suite; without this step that app's job installs Flutter, boots a device and
+provisions a user before `flutter drive` finds no target. The precheck requires the app to
+be in the workspace set, `apps/<app>/integration_test/store_screenshots_test.dart` and
+`apps/<app>/test_driver/store_screenshots.dart` (the drive's `--target` and `--driver`,
+declared once in `tooling/store/capture-suite-scan.mjs`), and the register row's listing
+directory. It exits 1 naming each missing file, and 2 when there is nothing to check
+against (an empty app set, no register). It runs before `setup-node`, on the runner's own
+node, the same way ci.yml, e2e.yml, deploy-web.yml and build-platforms.yml's Windows and
+Apple jobs already run repository tooling before theirs.
+
+### before step **The committed Play graphics are what their generator renders**
+
+⏱ 2026-09-26 (O-SCREENSHOT-DRIVER-IS-ONE-APPS). `assert-listing-assets.mjs` said since #154
+that `render-play-graphics.mjs --check` runs "in the lane that has a browser", and no
+workflow ran it. This is that step, in the one job with Chrome, before the capture. It
+renders the feature graphic and the store icon from the brand SVGs into a temp directory
+and compares BYTES with the committed files. The guard's THE GRAPHICS STEP limb refuses a
+Play capture job without it.
+
+⚠️ UNVERIFIED ON A RUNNER until the first dispatch: no runner has ever run `--check`. The
+committed graphics date from #154 (2026-08-04; last touched by #567), and `--check` passes
+on a Windows machine with a current Chrome (2026-09-26, the drafter's local run: both files
+byte-equal). Whether the ubuntu-24.04 runner's Chrome renders the same bytes is not known.
+If it does not, this step reds every Play capture, loudly and in seconds, and the fix is
+to re-render the graphics where the check runs, never to drop the step.
 
 ### above `name: Capture the Play phone and tablet screenshot sets (live)`
 
@@ -397,13 +469,26 @@ skipped is a capability that can go dark under a green tick. If the set
 is byte-identical to what is already committed there is genuinely nothing
 to propose, and that is reported rather than skipped.
 
+⏱ 2026-09-26 (O-SCREENSHOT-DRIVER-IS-ONE-APPS): the step now carries ONE gate,
+`if: ${{ !inputs.dry_run }}`. The paragraph above still holds for every run that
+is not a dry run: nothing inside the step is skipped, and a byte-identical set is
+still reported. A dry run is declared by its dispatcher, named in the run's title,
+and uploads its set as `dry-run-<channel>-<app>`; skipping the proposal is what it
+was dispatched for, not a capability going dark.
+
+### before step **Upload the DRY-RUN screenshot set** (all four capture jobs)
+
+⏱ 2026-09-26. The dry run's set under its own name, so nothing that looks for
+`play-screenshots-<app>` (or the other three names) receives a set nobody proposed.
+Its `path:` is the set upload's, line for line; the lane test compares them.
+
 ### before step **Purge the throwaway user**
 
 `always()` — a capture that failed halfway may still have created rows in
 live D1, and a throwaway user that outlives its run is exactly the kind of
 residue the nightly was built to avoid.
 
-### in step **Purge the throwaway user**, above `SUBSCRIPTIONTRACKER_D1_DATABASE_ID: 4e7c7730-3dc7-4004-9895-403b17702b91`
+### in step **Purge the throwaway user**, above `PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}`
 
 The same literal e2e.yml passes. It is a database ID, not a
 credential — the CLOUDFLARE_API_TOKEN above is what authorises
@@ -422,6 +507,18 @@ checks hold the ids: assert-live-writer-provenance.mjs L6(b) requires each
 purge to carry the `env.sandbox` id and neither top-level one, and purge.mjs
 itself refuses a production id whenever an E2E_CONSENT_LEDGER is set, before
 its first request.
+
+⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP) — no database id is in this file any
+more. Each capture job's step **Resolve this app's sandbox databases from its Worker's
+wrangler file** runs `tooling/e2e/backend.mjs --app "$APP" --env sandbox --emit-output`
+before the user is provisioned, and the purge takes `PLATFORM_D1_DATABASE_ID` from its
+`platform_db` output. The app database is no env key at all: purge.mjs resolves it from
+`E2E_APP_ID` (the gate's checked app) in `env.sandbox`, because the ledger is set — the
+same resolver e2e.yml uses. assert-live-writer-provenance.mjs L6(b) accepts the resolver
+form only from an earlier `--env sandbox --emit-output` step, holds the resolved sandbox
+ids to the capture Workers' `env.sandbox` ids and to no production id, and still refuses
+a production id under any key of a sandbox purge. assert-release-lane-generic.mjs limb
+D-all refuses a UUID literal anywhere in this lane now that it is graded.
 
 ## The backend a capture runs against
 

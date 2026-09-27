@@ -646,7 +646,7 @@ The VAPT report the store returns is not in this repository yet; when it
 arrives it is transcribed into the runbook as the checklist this guard
 tracks, and any item it raises that is statically decidable joins the guard.
 
-### in step **Every native library is aligned for a 16 KB memory page**, above `- uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4`
+### in step **Every native library is aligned for a 16 KB memory page**, above `- uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1`
 
 🔴 THE POSTURE IS IN THE ARTIFACT NAME, and that is the "labelled, not
 indistinguishable" half of the fix. A downloaded `subscriptiontracker-linux-web-android`
@@ -1039,7 +1039,7 @@ now retains that bundle for 90 days, so there IS something to look at.
 What is missing is the assertion, and that is the next change. The gap
 closes when somebody writes it — not when somebody edits the line away.
 
-### in step **Every artifact this lane claims exists, and is not empty**, above `- uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4`
+### in step **Every artifact this lane claims exists, and is not empty**, above `- uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1`
 
 ── THE iOS BUNDLE, RETAINED — the artifact this lane has never had ─────
 `flutter build ios --release --no-codesign` above writes
@@ -1184,11 +1184,21 @@ key as an environment name and fail with `environment: 'actions'`. Found
 2026-08-06 by running that suite; recorded here because the trap is
 invisible at the call site and the failure names a key nobody wrote.
 
-### above `- uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0`
+### above `- uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1`
 
 This run's own artifacts, by the per-app names the build jobs uploaded
 under. `pattern` keeps a matrix leg to its own app: with two apps in the
 workspace, leg #1 must not publish app #2's binaries under app #1's tag.
+
+⏱ 2026-09-27, download-artifact v4.3.0 → v8.0.1. From v5 a `pattern:`
+that matches exactly ONE artifact is extracted straight into `path:`, not
+into `path/<name>/` (its README: "This change also applies to patterns
+that only match a single artifact"). `<app>-*` always matches at least
+two: `<app>-linux-web-android-<posture>` and `<app>-macos` are uploaded
+unconditionally with `if-no-files-found: error` by jobs this one needs,
+so every artifact keeps its own directory and the archive loop below
+still makes one .tar.gz per artifact. The apps.gov.in download matches
+zero or one, so it names its own directory as its `path:`.
 
 ### before step **Stage the installers and archive the rest**
 
@@ -1577,6 +1587,17 @@ in `ci-gate`'s `needs`. The overlay above gets its first build proof on a pull r
   `pull_request`, so a fork's pull request gets an empty value; its build is discarded like every
   other. The apps.gov.in `.apk` passes no key, as here. The register's `storeKeyDefine` rule text
   now says an exempt build stamped with a store-rail channel still carries its key.
+  ⏱ 2026-09-26 (O-BRICK-SELLS-NOTHING-IN-A-STORE, 12a): the key is each app's own. Every store-key
+  job first runs `tooling/ci/store-key-secret.mjs --app <the job's app> --rail <rail>` as step
+  `rc-key`, which prints the NAME of the app's secret (`app.yaml`
+  `billing.mobileIap.publicKeySecrets`) and stops an app that declares none. Each build step maps
+  `REVENUECAT_PUBLIC_KEY` from the STATIC named secret for its rail
+  (`secrets.REVENUECAT_PUBLIC_KEY_GOOGLE` or `secrets.REVENUECAT_PUBLIC_KEY_APPLE`), and the composer passes
+  the define from that variable. ⏱ 2026-09-27 (LEAD RULING W46-R1): never a `secrets[...]` index,
+  which hands the job every repository secret (zizmor overprovisioned-secrets). assert-channel-register
+  6b-iii holds the name to every opted-in app.yaml; per-app named secrets are stamped by the brick when a
+  second app exists. `android-artifacts` also runs one proof step (RC-CI) that checks the resolved name
+  is the static one and prints it with "non-empty", skipped on a fork's pull request.
 - **What reads the artifacts, and what stays on main.**
 
   | guard | on the PR | why |

@@ -178,12 +178,41 @@ describe('worker-set.mjs --for-deploy — the register, the committed lockfile a
     const j = cli('--for-deploy', '--json', r);
     assert.equal(j.code, 0, j.out);
     assert.deepEqual(JSON.parse(j.stdout), [
-      { worker: 'platform', dir: 'services/platform', migrations: 'PLATFORM_DB', smokeUrl: 'https://platform.example.test/v1/health', dsnSecret: 'GLITCHTIP_DSN' },
-      { worker: 'zzz-api', dir: 'services/zzz-api', migrations: 'APP_DB', smokeUrl: 'https://zzz-api.example.test/v1/health', dsnSecret: 'GLITCHTIP_DSN' },
+      { worker: 'platform', dir: 'services/platform', migrations: 'PLATFORM_DB', smokeUrl: 'https://platform.example.test/v1/health', origin: 'https://platform.example.test', dsnSecret: 'GLITCHTIP_DSN' },
+      { worker: 'zzz-api', dir: 'services/zzz-api', migrations: 'APP_DB', smokeUrl: 'https://zzz-api.example.test/v1/health', origin: 'https://zzz-api.example.test', dsnSecret: 'GLITCHTIP_DSN' },
     ]);
     const e = cli('--for-deploy', '--emit', r);
     assert.equal(e.code, 0, e.out);
     assert.deepEqual(JSON.parse(e.stdout), ['platform', 'zzz-api']);
+  });
+
+  // ⏱ 2026-09-26 — O-SERVICE-KIT-UNBUILT (E-a2): the deploy matrix is the appWorkers rows.
+  test('--app-workers prints the app Worker entries only, split by the register row and never by name', () => {
+    const r = deployTree();
+    const j = cli('--for-deploy', '--json', '--app-workers', r);
+    assert.equal(j.code, 0, j.out);
+    assert.deepEqual(JSON.parse(j.stdout).map((x) => x.worker), ['zzz-api']);
+    // The serving Worker renamed to something app-shaped is still not a matrix leg.
+    const renamed = deployTree({
+      workers: { 'aaa-api': { migrated: ['PLATFORM_DB'] }, 'zzz-api': { migrated: ['APP_DB'] } },
+      reg: register((g) => ({ ...g, servingWorker: { ...row('aaa-api'), routes: undefined } })),
+    });
+    const k = cli('--for-deploy', '--json', '--app-workers', renamed);
+    assert.equal(k.code, 0, k.out);
+    assert.deepEqual(JSON.parse(k.stdout).map((x) => x.worker), ['zzz-api']);
+  });
+
+  test('--app-workers still holds the WHOLE set first: a failing serving Worker fails the matrix read', () => {
+    const r = deployTree({ workers: { platform: { migrated: ['PLATFORM_DB'], lock: false }, 'zzz-api': { migrated: ['APP_DB'] } } });
+    const j = cli('--for-deploy', '--json', '--app-workers', r);
+    assert.equal(j.code, 1, j.out);
+    assert.match(j.out, /services\/platform has no package-lock\.json/);
+  });
+
+  test('--app-workers without --json is refused', () => {
+    const a = cli('--for-deploy', '--app-workers', REPO);
+    assert.equal(a.code, 1, a.out);
+    assert.match(a.out, /--app-workers narrows what --for-deploy --json prints, and --json was not given/);
   });
 
   test('a Worker whose config migrates nothing deploys with `migrations: null`, never a guessed binding', () => {

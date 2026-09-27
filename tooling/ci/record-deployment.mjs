@@ -76,6 +76,17 @@
 //       newest successful Deployment as what is live, and main's HEAD is not. The payload
 //       gains `rollback: true` and `rollback_of`. Web and service units only; --ref without
 //       --rollback-of, and --rollback-of without --ref, are REFUSED.
+//   node tooling/ci/record-deployment.mjs <app>-<channel> … --mode <production|dry-run>
+//     → ⏱ 2026-09-26 · THE RUN'S MODE (O-SUBMISSION-LANE-WITHOUT-RECORDER). REQUIRED on a
+//       channel a lane submits through (`submittable: true`), and a call without it exits 2:
+//       a default would be a quiet production claim. `production` records as before, with
+//       `payload.mode`. `dry-run` records a rehearsal into `<app>-<channel>-dry-run` with
+//       `production_environment: false`, `transient_environment: true` and a description
+//       starting `dry-run`, and takes no --state, --listing-url or --version-code: it
+//       submitted nothing. Refused on every other row, which no lane rehearses; there the
+//       flag is optional, and `--mode production` only adds `payload.mode`.
+//   On EVERY failure path the recorder prints one recovery command: this invocation again,
+//   prefixed with the run identity below, for a hand re-run once the cause is fixed.
 //   env:  GH_TOKEN (or GITHUB_TOKEN), GITHUB_REPOSITORY, GITHUB_SHA
 //         GITHUB_API_URL — the real origin or loopback only (a test seam; see githubApiBase)
 //         ⏱ 2026-09-23 · GITHUB_WORKFLOW_REF, GITHUB_RUN_ID, GITHUB_RUN_ATTEMPT,
@@ -94,7 +105,8 @@
 //      2 = the DEPLOY SUCCEEDED and the record was NOT written: GitHub's rate
 //          limit outlasted the bound (THE BOUND, below), or ⏱ 2026-09-23 the
 //          environment is a submittable channel and the run identity above is
-//          missing, so the record would bind to no run. Red on purpose.
+//          missing, so the record would bind to no run. Red on purpose. ⏱ 2026-09-26: or
+//          the channel is one a lane submits through and no --mode names the run.
 // ─────────────────────────────────────────────────────────────────────────────
 import { appendFileSync, readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
@@ -106,6 +118,9 @@ import {
   STATE_MEANING,
   SUBMIT_TIME_STATES,
   NOT_SUBMITTED_STATES,
+  MODES,
+  dryRunEnvironment,
+  encodeDryRunDescription,
 } from './deployment-record.mjs';
 
 const ROOT = resolve(join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
@@ -480,6 +495,38 @@ export function runIdentity(env = process.env) {
   return { payload: { workflow: wf[1], run_id, run_attempt, run_number }, missing };
 }
 
+/** ⏱ 2026-09-26 — the one form GITHUB_WORKFLOW_REF is read in, as a refusal names it.
+ *  runIdentity takes the workflow FILE out of it; a bare file name or a bare ref names none. */
+export const WORKFLOW_REF_FORM =
+  '`<owner>/<repo>/.github/workflows/<file>.yml@<ref>`, e.g. `owner/repo/.github/workflows/submit-play.yml@refs/heads/main`';
+
+/** A shell word, quoted only when it has to be. */
+const shellWord = (w) => (/^[A-Za-z0-9_./:=@%+,-]+$/.test(w) ? w : `'${String(w).replace(/'/g, `'\\''`)}'`);
+
+/** ⏱ 2026-09-26 · PURE. THE ONE RECOVERY LINE, printed on EVERY failure path (row
+ *  O-SUBMISSION-LANE-WITHOUT-RECORDER): this invocation again, prefixed with the run
+ *  identity the record must carry — the rate-limit branch printed it and the generic
+ *  failure printed none. The values are the runner's own and none is a secret; one
+ *  that is missing is named as the value of the run being recorded. */
+export function recoveryCommand(argv, env = process.env) {
+  const { payload, missing } = runIdentity(env);
+  const sha = String(env.GITHUB_SHA ?? '').trim() || '<the commit that shipped>';
+  const call = ['node', 'tooling/ci/record-deployment.mjs', ...argv].map(shellWord).join(' ');
+  if (payload) {
+    return (
+      `Recovery, once the cause above is fixed — run ONLY this step's recorder again (a whole-job re-run repeats the ` +
+      `publish). Pass this run's identity too, exactly: GITHUB_SHA=${sha} GITHUB_WORKFLOW_REF=${env.GITHUB_WORKFLOW_REF} ` +
+      `GITHUB_RUN_ID=${payload.run_id} GITHUB_RUN_ATTEMPT=${payload.run_attempt} GITHUB_RUN_NUMBER=${payload.run_number} ${call}`
+    );
+  }
+  return (
+    `Recovery, once the cause above is fixed — run ONLY this step's recorder again. This run carried no readable ` +
+    `identity (${missing.join(', ')}), so the recovery record will carry no run payload unless the values of the run ` +
+    `being recorded are passed: GITHUB_SHA=${sha} ${RUN_IDENTITY_ENV.map((k) => `${k}=${missing.includes(k) ? '<from that run>' : env[k]}`).join(' ')} ${call} ` +
+    `(GITHUB_WORKFLOW_REF in its full form, ${WORKFLOW_REF_FORM}).`
+  );
+}
+
 // ── ⏱ 2026-09-25 · THE UNIT OF REVERT — row O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 4 ──
 // A SHA says what was built; it does not say which Cloudflare object serves it.
 // Re-promoting a known-good release (tooling/ops/rollback.mjs, run by
@@ -643,10 +690,18 @@ async function main() {
   let kind = null;
   let idFlags = {};
   let rollback = null;
+  let mode = null;
+  let rehearsal = false;
+  let ledgerEnvironment = environment;
   try {
     state = flagValue(argv, 'state');
     listingUrl = flagValue(argv, 'listing-url');
     versionCodeRaw = flagValue(argv, 'version-code');
+    mode = flagValue(argv, 'mode');
+    if (mode !== null && !MODES.includes(mode)) {
+      return fail(`--mode "${mode}" is not one of ${MODES.join(', ')}. A run is a real submission or a rehearsal, and the record says which.`);
+    }
+    rehearsal = mode === 'dry-run';
     idFlags = Object.fromEntries(ALL_ID_FLAGS.map((f) => [f, flagValue(argv, f)]));
     const rollbackOf = flagValue(argv, 'rollback-of');
     const ref = flagValue(argv, 'ref');
@@ -692,6 +747,38 @@ async function main() {
     if (rollback.sha) sha = rollback.sha;
     const cannotSubmit = isStore && resolved.channel.submittable === false;
     submittable = resolved.channel.submittable === true;
+    // ── ⏱ 2026-09-26 · WHICH KIND OF RUN WROTE THIS — O-SUBMISSION-LANE-WITHOUT-RECORDER ──
+    // A lane that submits through this channel records EVERY run: the rehearsal as well
+    // as the submission. So the mode is required there and never defaulted — a record
+    // with no mode would be read as production by every reader that predates modes —
+    // and exits 2 like the missing run identity below: the run happened, its record did not.
+    if (submittable && mode === null) {
+      console.error(
+        `✗ "${environment}" is the ${resolved.channel.id} channel, which a lane here SUBMITS through, and no --mode was given. ` +
+          'Every run of a submit lane is recorded with its mode: `--mode production` after a real submission, `--mode dry-run` ' +
+          `after a rehearsal (written to "${dryRunEnvironment(environment)}", which no reader of the production ledger opens). ` +
+          'There is no default: it would be a quiet production claim. The record is NOT written.',
+      );
+      process.exitCode = 2;
+      return;
+    }
+    if (rehearsal && !submittable) {
+      return fail(
+        `--mode dry-run was given for "${environment}", and the ${resolved.channel.id} row is not \`submittable: true\`: no lane ` +
+          'here rehearses a submission through it, so no run can be a dry run of one. Record what the run did instead.',
+      );
+    }
+    if (rehearsal) {
+      const given = ['state', 'listing-url', 'version-code'].filter((f) => flagValue(argv, f) !== null);
+      if (given.length) {
+        return fail(
+          `--mode dry-run was given with ${given.map((f) => `--${f}`).join(', ')}. A rehearsal submitted nothing: it has no ` +
+            'review state, no listing and consumed no versionCode, so a record carrying one would be a fiction the ledger ' +
+            'could not tell from a submission. Drop the flag(s).',
+        );
+      }
+      ledgerEnvironment = dryRunEnvironment(environment);
+    }
     // ⏱ 2026-09-24 — does this row record the versionCode each upload consumes? Read from the
     // register's `versionCodeHighWater` block, never from the environment's name.
     const hw = resolved.channel.versionCodeHighWater;
@@ -707,7 +794,7 @@ async function main() {
           'file a manual publish that is owed for a channel that has a lane. Pass the state that is true instead.',
       );
     }
-    if (isStore && !cannotSubmit && !listingUrl) {
+    if (isStore && !cannotSubmit && !rehearsal && !listingUrl) {
       return fail(
         `"${environment}" is the ${resolved.channel.id} channel (kind: store) and no --listing-url was given. ` +
           'A store record whose listing nobody can open says something shipped and gives no way to look at ' +
@@ -735,7 +822,7 @@ async function main() {
     // possibly never. A forgotten flag must not be the difference between "we
     // submitted it" and "the store approved it", so a store record has to say
     // which one it means, out loud, at the call site.
-    if (isStore && state === null) {
+    if (isStore && !rehearsal && state === null) {
       return fail(
         `"${environment}" is the ${resolved.channel.id} channel (kind: store) and no --state was given. ` +
           `A store submission is NOT live when the upload succeeds — it is "${SUBMIT_TIME_STATES[0]}" until the ` +
@@ -744,8 +831,8 @@ async function main() {
           `${cannotSubmit ? STATE_MEANING[NOT_SUBMITTED] : STATE_MEANING.in_review}`,
       );
     }
-    if (state === null) state = 'live'; // web / service: the upload IS the go-live
-    description = encodeDescription({ state, sha, listingUrl });
+    if (state === null && !rehearsal) state = 'live'; // web / service: the upload IS the go-live
+    description = rehearsal ? encodeDryRunDescription({ sha }) : encodeDescription({ state, sha, listingUrl });
   } catch (err) {
     return fail(`could not build the deployment record: ${err.message}`);
   }
@@ -761,12 +848,11 @@ async function main() {
       `✗ "${environment}" is a channel this factory SUBMITS to, and the run identity is missing or unreadable: ` +
         `${identity.missing.join(', ')}. The record is NOT written: tooling/ops/check-prod-provenance.mjs binds a ` +
         "submitted build to its run ONLY through the Deployment payload these variables name, so a record without " +
-        'them would witness no run at all.',
+        `them would witness no run at all. GITHUB_WORKFLOW_REF is read in its full form, ${WORKFLOW_REF_FORM}.`,
     );
     console.error(
       '  Every GitHub Actions step has them from the runner — a step that lost them was wrapped in something that ' +
-        'cleared its environment. For a recovery written by hand, pass the values of the run being recorded: ' +
-        `GITHUB_SHA=${sha} ${RUN_IDENTITY_ENV.map((k) => `${k}=<from that run>`).join(' ')}.`,
+        'cleared its environment. The recovery line below names each one to pass.',
     );
     process.exitCode = 2;
     return;
@@ -781,7 +867,7 @@ async function main() {
   // a code on a row that bounds nothing is a claim no reader checks. Both exit 1, after the
   // run-identity refusal (exit 2) above.
   let versionCode = null;
-  if (recordsVersionCode) {
+  if (recordsVersionCode && !rehearsal) {
     if (versionCodeRaw === null || !/^[1-9]\d*$/.test(versionCodeRaw) || !Number.isSafeInteger(Number(versionCodeRaw))) {
       return fail(
         `"${environment}" is a row whose ${REGISTER_REL} entry carries \`versionCodeHighWater\`, and ` +
@@ -810,6 +896,9 @@ async function main() {
   }
   const payload = {
     ...(identity.payload ?? {}),
+    // ⏱ 2026-09-26 — written in both modes, whenever --mode was given. A record with no
+    // mode is one of the rows no lane rehearses, or predates this date: production.
+    ...(mode !== null ? { mode } : {}),
     ...(versionCode !== null ? { version_code: versionCode } : {}),
     ...published.ids,
     ...rollback.payload,
@@ -830,7 +919,8 @@ async function main() {
     // a successful deploy into a red job for no real reason.
     const deployment = await api('deployments', token, repo, {
       ref: sha,
-      environment,
+      // ⏱ 2026-09-26 — `<environment>-dry-run` for a rehearsal (dryRunEnvironment).
+      environment: ledgerEnvironment,
       // 🔴 THE SAME ENCODING AS THE STATUS BELOW — ONE SHAPE, NOT TWO.
       // This field read `${environment} deploy` until 2026-08-06, so the ledger
       // carried the nk1 record on the deployment STATUS and free prose on the
@@ -854,8 +944,9 @@ async function main() {
       payload,
       auto_merge: false,
       required_contexts: [],
-      transient_environment: false,
-      production_environment: true,
+      // ⏱ 2026-09-26 — a rehearsal is neither production nor lasting.
+      transient_environment: rehearsal,
+      production_environment: !rehearsal,
     }, ctx);
     ctx.deploymentId = deployment.id;
 
@@ -870,7 +961,7 @@ async function main() {
     }, ctx);
 
     console.log(
-      `ok  recorded ${environment} ${state} at ${sha.slice(0, 8)}` +
+      `ok  recorded ${ledgerEnvironment} ${rehearsal ? 'dry-run' : state} at ${sha.slice(0, 8)}` +
         `${versionCode !== null ? ` · versionCode ${versionCode}` : ''}` +
         `${payload.pages_deployment_id ? ` · Pages deployment ${payload.pages_deployment_id}` : ''}` +
         `${payload.worker_version_id ? ` · Worker version ${payload.worker_version_id}` : ''}` +
@@ -881,7 +972,7 @@ async function main() {
     if (process.env.GITHUB_STEP_SUMMARY) {
       appendFileSync(
         process.env.GITHUB_STEP_SUMMARY,
-        `**${environment} ${state} sha:** \`${sha}\`${listingUrl ? ` · [listing](${listingUrl})` : ''}` +
+        `**${ledgerEnvironment} ${rehearsal ? 'dry-run' : state} sha:** \`${sha}\`${listingUrl ? ` · [listing](${listingUrl})` : ''}` +
           `${environmentUrl ? ` → ${environmentUrl}` : ''}\n`,
       );
     }
@@ -908,15 +999,8 @@ async function main() {
           'A whole-job re-run re-deploys to get a second chance at a write.',
       );
       // ⏱ 2026-09-23 — and with THIS run's identity, or the recovery record
-      // names no run and a submitted build stays unattributable. Printed as the
-      // exact assignments to pass; none of them is a secret.
-      console.error(
-        identity.payload
-          ? `  Pass this run's identity too, exactly: GITHUB_SHA=${sha} ` +
-              `GITHUB_WORKFLOW_REF=${process.env.GITHUB_WORKFLOW_REF} GITHUB_RUN_ID=${identity.payload.run_id} ` +
-              `GITHUB_RUN_ATTEMPT=${identity.payload.run_attempt} GITHUB_RUN_NUMBER=${identity.payload.run_number}`
-          : `  This run carried no readable identity (${identity.missing.join(', ')}), so the recovery record will carry no run payload.`,
-      );
+      // names no run and a submitted build stays unattributable. ⏱ 2026-09-26 —
+      // printed by recoveryCommand(), the one line every failure path ends with.
       // ⏱ 2026-09-25 — and the id it published, as the flag a hand recovery takes:
       // the variable --wrangler-output-env named is gone once this job ends.
       if (payload.pages_deployment_id) console.error(`  Keep its id: --pages-deployment-id ${payload.pages_deployment_id}`);
@@ -939,4 +1023,11 @@ async function main() {
 // `node tooling/ci/record-deployment.mjs …` this is true and nothing changes;
 // the top-level await is kept so the process still waits for the write.
 const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
-if (isMain) await main();
+if (isMain) {
+  await main();
+  // ⏱ 2026-09-26 — EVERY failure path ends with the one recovery line; a call that
+  // named no environment has nothing to recover.
+  if ((process.exitCode ?? 0) !== 0 && process.argv.slice(2).some((a) => !a.startsWith('--'))) {
+    console.error(`  ${recoveryCommand(process.argv.slice(2), process.env)}`);
+  }
+}

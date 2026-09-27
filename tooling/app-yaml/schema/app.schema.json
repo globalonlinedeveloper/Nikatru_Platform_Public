@@ -80,16 +80,18 @@
       "properties": {}
     },
     "stores": {
-      "description": "OPTIONAL. The identities a store CONSOLE issues to this app, one record per store, keyed by the tooling/channel-register.json channel id. O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1): the Windows identity was one value on the windows-store channel row, and tooling/bricks/app/hooks/post_gen.dart copies that row into every app it stamps, so a second app would package and submit as the first. It is a top-level key and not `listings.windows-store.identity` because `listings` types every value as an https URL. The account-wide facts (`publisher`, `publisherDisplayName`) stay on the channel row. tooling/ci/assert-store-metadata.mjs fails two apps that declare the same non-sentinel identityName, and, while the channel row still carried its own copy, a record that disagreed with it. ⏱ 2026-09-25 (B4a-2): the channel row's copy is gone and this record is the one declaration of the app's Windows identity. tooling/app-yaml/render.mjs renders msix_config.identity_name from it, every Windows identity reader reads it through tooling/ci/read-identity.mjs windowsIdentityOf, and tooling/ci/assert-channel-register.mjs §6e recomputes its packageFamilyName from the row's publisher.",
+      "description": "OPTIONAL. What each store CONSOLE issued to this app, one closed record per store channel, keyed by the tooling/channel-register.json channel id and read through tooling/store/store-record.mjs storeRecordOf (the one reader; it never returns a default). O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1): the Windows identity was one value on the windows-store channel row, and tooling/bricks/app/hooks/post_gen.dart copied that row into every app it stamped, so a second app would package and submit as the first. It is a top-level key and not `listings.windows-store.identity` because `listings` types every value as an https URL. The account-wide facts (`publisher`, `publisherDisplayName`) stay on the channel row. ⏱ 2026-09-25 (B4a-2): the channel row's copy is gone and this record is the one declaration of the app's Windows identity. tooling/app-yaml/render.mjs renders msix_config.identity_name from it, every Windows identity reader reads it through tooling/ci/read-identity.mjs windowsIdentityOf, and tooling/ci/assert-channel-register.mjs §6e recomputes its packageFamilyName from the row's publisher. ⏱ 2026-09-26 (O-STORE-RECORDS-ARE-ONE-PER-CHANNEL, 9a): every store channel has its record. Each carries `state` (pending: the console has not been read for every id; issued: it has) and `declaredOn` (null, or the date the owner swore THIS app's declarations in that console). TWO FACTS, NEVER MERGED (O-APP1-CONSOLE-DECLARATIONS-UNSUBMITTED): whether the store FILES are final or the brick's preview is each sworn file's own `sworn` key, graded by tooling/ci/assert-sworn-store-files.mjs; `declaredOn` gates a REAL submission only (that guard's --for-submission --real-submission). The bundle id and the Android package name are derived (tooling/apple-provisioning.json bundleIdOf; com.nikatru.<id>) and never stored. tooling/ci/assert-store-identity.mjs fails two apps sharing a record id, an iOS record id that is not the macOS one, and an issued record with a missing id.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "windows-store": {
-          "description": "The MSIX Package/Identity/Name and the Package Family Name Partner Center issued to THIS app (Product → Product identity). Neither can be derived from the app id. An app with no Partner Center product yet writes the channel row's `packageIdentity.notYetConfiguredSentinel`, PARTNER-CENTER-PENDING, in both fields: an invented value would package and submit under an identity nobody owns.",
+          "description": "The MSIX Package/Identity/Name and the Package Family Name Partner Center issued to THIS app (Product → Product identity), and its Store ID. None can be derived from the app id. An app with no Partner Center product yet writes the channel row's `packageIdentity.notYetConfiguredSentinel`, PARTNER-CENTER-PENDING, in both identity fields: an invented value would package and submit under an identity nobody owns. `issued` needs all three, real.",
           "type": "object",
           "additionalProperties": false,
-          "required": ["identityName", "packageFamilyName"],
+          "required": ["state", "declaredOn", "identityName", "packageFamilyName"],
           "properties": {
+            "state": { "type": "string", "enum": ["pending", "issued"] },
+            "declaredOn": { "description": "null, or the date the owner swore this app's Partner Center declarations. Written only from the owner's word.", "type": ["string", "null"], "format": "date" },
             "identityName": {
               "description": "Letters, digits, `.` and `-`: the characters the one issued identity and the sentinel both use. The pattern refuses a space or an underscore typed into the field; it cannot tell a wrong name from a right one, which is what the equality checks are for.",
               "type": "string",
@@ -99,7 +101,60 @@
               "description": "`<identityName>_<publisher id>`, where the publisher id is 13 lower-case Crockford base32 characters (tooling/ci/assert-channel-register.mjs §6e derives it from the publisher), or the sentinel.",
               "type": "string",
               "pattern": "^(PARTNER-CENTER-PENDING|[A-Za-z0-9.-]+_[0-9a-hjkmnp-tv-z]{13})$"
+            },
+            "productId": {
+              "description": "The Partner Center Store ID (Product → Product identity → Store ID), twelve upper-case letters and digits. It replaces the MS_STORE_PRODUCT_ID secret read (9b). Absent while `pending`.",
+              "type": "string",
+              "pattern": "^[0-9A-Z]{12}$"
             }
+          }
+        },
+        "ios-appstore": {
+          "description": "The App Store Connect record (its Apple ID, digits). ONE record covers iOS and macOS (the register's macos-appstore row), so tooling/ci/assert-store-identity.mjs requires this recordId to equal stores.macos-appstore.recordId. Absent while `pending`.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "declaredOn"],
+          "properties": {
+            "state": { "type": "string", "enum": ["pending", "issued"] },
+            "declaredOn": { "description": "null, or the date the owner swore this app's App Store Connect App Privacy and age-rating answers.", "type": ["string", "null"], "format": "date" },
+            "recordId": { "description": "The App Store Connect Apple ID, quoted so YAML reads it as text.", "type": "string", "pattern": "^[0-9]+$" }
+          }
+        },
+        "macos-appstore": {
+          "description": "The same App Store Connect record as ios-appstore, written twice so a per-channel reader needs no cross-channel rule; tooling/ci/assert-store-identity.mjs fails the two disagreeing.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "declaredOn"],
+          "properties": {
+            "state": { "type": "string", "enum": ["pending", "issued"] },
+            "declaredOn": { "type": ["string", "null"], "format": "date" },
+            "recordId": { "type": "string", "pattern": "^[0-9]+$" }
+          }
+        },
+        "android-play": {
+          "description": "The Play APP SIGNING certificate's SHA-256 fingerprint(s) (Play Console → Setup → App signing), not the upload key: the one an assetlinks.json must name. Play App Signing has no key before the first upload, so a new app is `pending` with none. The package name is com.nikatru.<id>, derived and never stored.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "declaredOn"],
+          "properties": {
+            "state": { "type": "string", "enum": ["pending", "issued"] },
+            "declaredOn": { "description": "null, or the date the owner swore this app's Play Data safety, content-rating and ads declarations.", "type": ["string", "null"], "format": "date" },
+            "appSigningSha256": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "type": "string", "pattern": "^([0-9A-F]{2}:){31}[0-9A-F]{2}$" }
+            }
+          }
+        },
+        "linux-snap": {
+          "description": "The Snap Store record. The snap name is derived (apps/<id>/store/linux-snap/snap-name.txt, graded by assert-store-identity), so the record is its state alone: issued once `snapcraft register` has reserved the name for this app.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "declaredOn"],
+          "properties": {
+            "state": { "type": "string", "enum": ["pending", "issued"] },
+            "declaredOn": { "type": ["string", "null"], "format": "date" }
           }
         }
       }
@@ -123,7 +178,7 @@
       "items": { "type": "string", "minLength": 2 }
     },
     "billing": {
-      "description": "OPTIONAL. Present only for an app that sells through a STORE billing rail on mobile — [ADR 067] decision 7, [ADR 039] D2/D3/D5. Absent means the app sells through the merchant-of-record hosted checkout on the channels that permit it and sells nothing on Play or the App Store, which is [ADR 059] shape A and is true of every app today. Declaring it is an OPT-IN with consequences a guard holds: tooling/ci/assert-app-yaml.mjs limb 6 requires the app's pubspec to depend on nikatru_billing_revenuecat, its store/android-play/data-safety.json to swear Purchase history, and its store/ios-appstore/privacy-manifest.json to carry the SDK's rows — and requires the reverse, so the dependency cannot arrive without the declaration either.",
+      "description": "OPTIONAL. Present only for an app that sells through a STORE billing rail on mobile — [ADR 067] decision 7, [ADR 039] D2/D3/D5. Absent means the app sells through the merchant-of-record hosted checkout on the channels that permit it and sells nothing on Play or the App Store, which is [ADR 059] shape A. ⏱ O-BRICK-SELLS-NOTHING-IN-A-STORE (12a): the declaration can be `state: pending` before the owner creates the app's RevenueCat apps, so an app can opt in before it can sell. Declaring it is an OPT-IN with consequences a guard holds: tooling/ci/assert-app-yaml.mjs limb 6 requires the app's pubspec to depend on nikatru_billing_revenuecat, its store/android-play/data-safety.json to swear Purchase history, and its store/ios-appstore/privacy-manifest.json to carry the SDK's rows — and requires the reverse, so the dependency cannot arrive without the declaration either.",
       "type": "object",
       "additionalProperties": false,
       "required": ["mobileIap"],
@@ -132,7 +187,7 @@
           "description": "The store IAP configuration. Holds NO SECRET: the RevenueCat app ids below are public identifiers, and the SDK's public key is supplied at runtime by the app rather than written here — a key in a declaration is a key in git.",
           "type": "object",
           "additionalProperties": false,
-          "required": ["provider", "entitlementId", "revenuecatAppIds"],
+          "required": ["provider", "entitlementId", "state", "publicKeySecrets", "storeProducts"],
           "properties": {
             "provider": {
               "description": "The IAP provider. One value today, and an enum rather than a free string so a second provider is a schema change somebody reviews rather than a typo that reads as adoption.",
@@ -155,8 +210,49 @@
                 "android": { "type": "string", "minLength": 4, "maxLength": 64 },
                 "ios": { "type": "string", "minLength": 4, "maxLength": 64 }
               }
+            },
+            "state": {
+              "description": "O-BRICK-SELLS-NOTHING-IN-A-STORE (12a). `live`: the owner created the app's two RevenueCat apps, so `revenuecatAppIds` is REQUIRED and routes its events (render.mjs renders them into revenuecat-app-ids.ts). `pending`: nothing is created yet, so `revenuecatAppIds` must be ABSENT — never a placeholder, because a fake id would render into that routing map. A pending app builds keyless and fail-closed, and is never submitted to a store (assert-app-yaml --for-submission).",
+              "type": "string",
+              "enum": ["pending", "live"]
+            },
+            "publicKeySecrets": {
+              "description": "The NAMES of the two repository secrets that hold this app's RevenueCat PUBLIC SDK keys, one per store. A name, never a value (this block holds no secret). Store builds resolve the name for the job's app through tooling/ci/store-key-secret.mjs, and channel-register `purchaseRails.storeKeyDefine.secretFieldByRail` says which field a rail reads. A name is one app's: render.mjs refuses one name in two apps, because a RevenueCat key belongs to ONE RevenueCat app.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["android", "ios"],
+              "properties": {
+                "android": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$", "maxLength": 100 },
+                "ios": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$", "maxLength": 100 }
+              }
+            },
+            "storeProducts": {
+              "description": "The store subscription products this app sells in-app: one per plan, and the SAME developer-chosen product id on Play and the App Store ([ADR 093] §2). `plan` has no lifetime: [ADR 093] §2 never sells it in-app. render.mjs refuses a plan listed twice and, at `live`, a plan missing.",
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["plan", "productId"],
+                "properties": {
+                  "plan": { "type": "string", "enum": ["single-monthly", "single-yearly"] },
+                  "productId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.]*$", "maxLength": 100 }
+                }
+              }
             }
-          }
+          },
+          "anyOf": [
+            {
+              "description": "live: the RevenueCat apps exist, so their ids are declared.",
+              "properties": { "state": { "const": "live" } },
+              "required": ["revenuecatAppIds"]
+            },
+            {
+              "description": "pending: nothing is issued yet, so no RevenueCat app id is declared.",
+              "properties": { "state": { "const": "pending" }, "provider": {}, "entitlementId": {}, "publicKeySecrets": {}, "storeProducts": {} },
+              "additionalProperties": false
+            }
+          ]
         }
       }
     },

@@ -36,6 +36,25 @@ this app, and then runs the dry run with `--allow-missing-artifact`, which
 makes the script SAY it validated the listing and the bundle identifier and
 NOT the package. A job that claimed to validate an artifact it cannot produce
 would be the more dangerous shape.
+⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP): the reason above stopped being
+true on 2026-09-09, when a distribution certificate and an App Store profile
+were issued and build-platforms.yml began signing with them. The measured
+reason: this lane builds unsigned by choice until the signing seam lands here,
+and `--submit` refuses. `--allow-missing-artifact` stays until
+submit-appstore.mjs resolves the artifact the way build-platforms.yml does.
+
+### above `app:`
+
+⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP). The app is a dispatch input,
+`required: true`, with NO `default:` and no `type: choice`: either one is an
+app id written into this file, and this lane used to carry that id on ten
+lines. A dispatch now names it: `gh workflow run submit-appstore.yml -f
+app=<id>`, where `<id>` is one of
+`node tooling/ci/assert-release-lane-generic.mjs --emit-apps`. Only the `gate`
+job reads the raw input, and only through `env:`; every other job reads the
+gate's checked `app` output. `run-name` shows the input, which is safe there:
+it is not a shell. assert-release-lane-generic.mjs limb I grades this shape,
+and refuses an app id written on any line of the file.
 
 The script's `--submit` mode refuses with UNVERIFIED rather than guessing at
 App Store Connect's endpoints.
@@ -64,7 +83,23 @@ leaves `--timeout-seconds` unset), so any bound at or under 20 kills it
 mid-poll and replaces "timed out waiting for ci-gate" with an opaque
 cancellation. Kept byte-identical in all five `gate:` jobs. [pipeline F-5b]
 
+### before step **The app input names one app of the workspace**
+
+⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP). The one reader of
+`inputs.app`, through `env: APP_INPUT`, never as `${{ inputs.app }}` inside
+`run:` (an input interpolated into a shell is an injection).
+`assert-release-lane-generic.mjs --emit-apps --app "$APP_INPUT"` refuses a
+value off `^[a-z][a-z0-9-]*$` before it reads anything else, then refuses an
+id the workspace does not declare, naming the set. Only after it exits 0 is
+the id written to `$GITHUB_OUTPUT` as the job's `app` output.
+
 ## job `dry-run`
+
+### above `env:`
+
+`APP` is the gate's checked output. Every `run:` reads `$APP`; the fields no
+shell expands (the symbols artifact's `name:` and `path:`) read
+`${{ needs.gate.outputs.app }}` itself.
 
 ### above `timeout-minutes: 30`
 
@@ -77,9 +112,10 @@ steps green — iOS build 5m07s, macOS build 4m47s, no other step over 90s.
 When an Apple build breaks the first question is "what toolchain was
 this?" — unrecoverable after the fact without this.
 
-### before step **Build iOS (unsigned — no distribution certificate exists)**
+### before step **Build iOS (unsigned on purpose — this lane must never submit)**
 
-UNSIGNED on purpose — see the header. This proves the app still compiles
+UNSIGNED on purpose: this lane builds unsigned by choice until the signing seam
+lands here, and `--submit` refuses (see the header). This proves the app still compiles
 for both Apple platforms; it does not produce a submittable artifact and
 nothing here pretends it does.
 🔴 UNSIGNED IS NOT THE SAME AS UNCONFIGURED, and until 2026-08-04 both
@@ -104,6 +140,14 @@ script reports their ABSENCE as a printed gap rather than a failure.
 `secrets` are empty strings when unset, which is what the script's
 presence check reads. The .p8 key is never read by the script, only
 tested for presence.
+⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP): the certificate was issued on
+2026-09-09 (the header's dated line), and the job still builds unsigned by
+choice. The script now also refuses, before anything else, an app whose bundle
+id (`tooling/apple-provisioning.json`, read by apple-provisioning.mjs
+`bundleIdOf`) is not the channel row's `bundleIdentifier`: the
+`APP_STORE_CONNECT_*_APP_ID` secret is ONE record, the first app's, and a
+second app's dry run would otherwise validate against it and pass. Per-app App
+Store records are O-STORE-RECORDS-ARE-ONE-PER-CHANNEL's.
 
 ### before step **Dry-run the App Store submission (macOS)**
 
@@ -112,3 +156,25 @@ two App Store Connect records with independent review outcomes. Running
 them as one step would make one failure look like two channels broken,
 and one pass look like two channels validated.
 
+
+---
+
+## ⏱ 2026-09-26 — this lane records every run (O-APPLE-SUBMISSION-UNRECORDED, O-SUBMISSION-LANE-WITHOUT-RECORDER)
+
+**Appended, not rewritten.** Until this date this lane wrote no [10]D-9 record at all. It is never
+declared dry-run-only (parent decision): every run records itself, with its mode
+(`tooling/ci/record-deployment.mjs --mode`).
+
+* The `dry-run` job now carries job-level `permissions: { contents: read, deployments: write }`, and
+  ends with two steps, one per channel it rehearsed: **Record the iOS dry run in the [10]D-9 ledger
+  (mode dry-run)** and **Record the macOS dry run …**, each running
+  `record-deployment.mjs "${APP}-<channel>" --mode dry-run`. They write
+  `subscriptiontracker-ios-appstore-dry-run` and `subscriptiontracker-macos-appstore-dry-run`, with
+  `production_environment: false` and `payload.mode: "dry-run"`. No reader of the production ledger
+  opens either environment, and check-prod-provenance also refuses a record whose payload says `dry-run`.
+* The PRODUCTION record of an App Store upload comes with the upload job, the day it exists:
+  assert-publish-records.mjs rules 2 and 3b make that job record `--mode production`. The per-app
+  `recordId` belongs to O-STORE-RECORDS-ARE-ONE-PER-CHANNEL, not to this change.
+
+GitHub creates the two `-dry-run` environments the first time a Deployment names them, with no
+protection rules. UNVERIFIED on this repository until the first dry run after the merge.

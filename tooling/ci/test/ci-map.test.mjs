@@ -14,6 +14,8 @@
 //   M6  limb (b): a `## job` heading naming a key that is not a job
 //   M7  limb (c): a tracked file outside docs/ citing a doc line by number
 //   M8  a name carrying `\|` stays one table cell (the backslash escaped first)
+//   M9  a store key read by index (store-key-secret.mjs) is listed per app, and an
+//       app whose key cannot be named on that rail is exit 2
 //
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
@@ -322,5 +324,39 @@ describe('gen-ci-map', () => {
     const cells = row.slice(1, -1).match(/(?:\\[\s\S]|[^|\\])+/g).map((c) => c.trim());
     assert.equal(cells.length, 5, `the row splits into ${cells.length} cells: ${JSON.stringify(cells)}`);
     assert.equal(run('--check', root).status, 0);
+  });
+
+  // ⏱ 2026-09-27 (NP12A-F2, O-BRICK-SELLS-NOTHING-IN-A-STORE). A store build reads its RevenueCat
+  // key by INDEX, through a step running tooling/ci/store-key-secret.mjs, so no `secrets.NAME` in
+  // the workflow names it. The block must list each app's declared name, for the rail the step
+  // resolves, under the workflow that reads it: a table without them tells the owner a live key
+  // secret is read by nothing.
+  test('M9 · a store key read by index through store-key-secret.mjs is listed per app under its workflow; an unnameable one is COVERAGE LOST', () => {
+    const KEYED = LANE_YML.replace(
+      '    steps:\n      - name: Build it\n',
+      '    steps:\n      - id: rc-key\n        run: node tooling/ci/store-key-secret.mjs --app one --rail play-billing >> "$GITHUB_OUTPUT"\n      - name: Build it\n',
+    ).replace('          KEY: ${{ secrets.BUILD_KEY }}\n', '          KEY: ${{ secrets.BUILD_KEY }}\n          RC_KEY: ${{ secrets[steps.rc-key.outputs.name] }}\n');
+    assert.ok(KEYED.includes('secrets[steps.rc-key.outputs.name]') && KEYED.includes('id: rc-key'), 'the fixture edit must land');
+    const register = JSON.stringify({ purchaseRails: { storeKeyDefine: { secretFieldByRail: { 'play-billing': 'android', 'apple-iap': 'ios' } } } });
+    const iap = (android, ios) => `name: x\nbilling:\n  mobileIap:\n    publicKeySecrets:\n      android: ${android}\n      ios: ${ios}\n`;
+    const files = {
+      '.github/workflows/lane.yml': KEYED,
+      'tooling/channel-register.json': register,
+      'apps/one/app.yaml': iap('ONE_PLAY_KEY', 'ONE_APPLE_KEY'),
+      'apps/two/app.yaml': iap('TWO_PLAY_KEY', 'TWO_APPLE_KEY'),
+      'apps/three/app.yaml': 'name: three\n',
+    };
+    const root = written(files);
+    const readme = readFileSync(join(root, 'docs/ci/README.md'), 'utf8');
+    assert.match(readme, /\| `ONE_PLAY_KEY` \| `lane\.yml` \|/);
+    assert.match(readme, /\| `TWO_PLAY_KEY` \| `lane\.yml` \|/);
+    assert.doesNotMatch(readme, /_APPLE_KEY/, 'the step resolves play-billing only; the apple-iap names are read by nothing');
+    assert.match(readme, /The workflows read \*\*4\*\* secret names/);
+    assert.equal(run('--check', root).status, 0);
+
+    const bad = seed({ ...files, 'apps/two/app.yaml': iap('not-a-name', 'TWO_APPLE_KEY') });
+    const r = run('--check', bad);
+    assert.equal(r.status, 2, r.stderr);
+    assert.match(r.stderr, /^COVERAGE LOST — gen-ci-map: the store key lane\.yml read\(s\) by index on rail "play-billing" cannot be named for app "two"/m);
   });
 });

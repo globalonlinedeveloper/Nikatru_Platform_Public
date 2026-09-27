@@ -251,7 +251,7 @@ describe('assert-release-provenance — a release build must be gated first', ()
           { id: 'web', served: true, lane: { workflow: '.github/workflows/deploy.yml', job: 'deploy' } },
           { id: 'linux-snap', platforms: ['linux'], purchaseRail: { rail: 'paddle' } },
         ],
-        purchaseRails: { storeKeyDefine: { define: 'STORE_KEY', secretByRail: {} } },
+        purchaseRails: { storeKeyDefine: { define: 'STORE_KEY', secretFieldByRail: {} } },
       }),
     );
     mkdirSync(join(root, 'apps', 'fixture'), { recursive: true });

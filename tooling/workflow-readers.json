@@ -143,6 +143,10 @@
       "property": "workflow-scan"
     },
     {
+      "path": "tooling/ci/assert-listing-assets.mjs",
+      "property": "workflow-scan"
+    },
+    {
       "path": "tooling/ci/assert-live-writer-provenance.mjs",
       "property": "workflow-scan"
     },

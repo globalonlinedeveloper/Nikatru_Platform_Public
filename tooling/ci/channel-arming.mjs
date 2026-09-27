@@ -221,6 +221,51 @@ export function armingOfTool(row, { toolId = null, identityField = 'listingId', 
 }
 
 /**
+ * ARMING, PER APP — the same rule with the axis the register row does not have.
+ *
+ * ⏱ 2026-09-26 — O-STORE-RECORDS-ARE-ONE-PER-CHANNEL limb (5). A register row
+ * answers "can this CHANNEL reach a user"; every store id is now per app
+ * (apps/<id>/app.yaml `stores.<channel>`, read through
+ * tooling/store/store-record.mjs storeRecordOf), so "can THIS APP reach a user
+ * on this channel" is a second question, as `armingOfTool` is for a tool. The
+ * pair (app, channel) is armed only when all three hold:
+ *   · the channel is armed (`armingOf`);
+ *   · the app's record is `state: issued` — the console issued its ids;
+ *   · the app's record has a `declaredOn` date — the owner swore this app's
+ *     declarations in that console (O-APP1-CONSOLE-DECLARATIONS-UNSUBMITTED: `declaredOn` gates a
+ *     real submission, and an armed pair is one a real submission may use).
+ * `armingOf` stays as it is, for the channel-level readers.
+ *
+ * Pure, like everything else here: the caller reads the row and the app's
+ * record and hands both over.
+ *
+ * @param {object} row            the channel-register row
+ * @param {object} o
+ * @param {string} o.appId        the app whose record this is
+ * @param {object|null} o.record  storeRecordOf(root, appId, row.id), or null
+ * @returns {object} `armingOf(row)` plus `{ appId, state, declaredOn,
+ *          armedForApp }`, with `reasons`/`blockers` extended by the app limbs.
+ */
+export function armingOfApp(row, { appId = null, record = null } = {}) {
+  const base = armingOf(row);
+  const app = typeof appId === 'string' && appId.trim() !== '' ? appId.trim() : '(unnamed app)';
+  const state = record?.state ?? null;
+  const declaredOn = typeof record?.declaredOn === 'string' && record.declaredOn !== '' ? record.declaredOn : null;
+  const issued = state === 'issued';
+  const reasons = [...base.reasons];
+  const blockers = [...base.blockers];
+  if (record === null || record === undefined) {
+    blockers.push(`app "${app}" declares no stores.${base.id} record, so nothing says what the store issued it`);
+  } else {
+    if (issued) reasons.push(`app "${app}"'s stores.${base.id} record is issued`);
+    else blockers.push(`app "${app}"'s stores.${base.id} record is ${JSON.stringify(state)}: the console has not issued this app its ids`);
+    if (declaredOn !== null) reasons.push(`app "${app}"'s ${base.id} declarations were sworn in the console on ${declaredOn}`);
+    else blockers.push(`app "${app}"'s stores.${base.id}.declaredOn is null: the owner has not sworn its console declarations`);
+  }
+  return { ...base, appId: app, state, declaredOn, armedForApp: base.armed && issued && declaredOn !== null, reasons, blockers };
+}
+
+/**
  * THE RULE, applied to the set of rows one signing seam serves.
  *
  * `fatal` is true when AT LEAST ONE of them is armed: a seam serving two rows

@@ -74,6 +74,18 @@ const REGISTER = () => ({
   ],
 });
 
+/** ⏱ 2026-09-26 (O-STORE-RECORDS-ARE-ONE-PER-CHANNEL, 9a): every app declares a
+ *  record per store channel. The default is what the brick stamps — nothing
+ *  issued, nothing declared. `over` replaces a channel's lines; null drops it. */
+const STORE_CHANNEL_IDS = ['windows-store', 'ios-appstore', 'macos-appstore', 'android-play', 'linux-snap'];
+const PENDING_LINES = '    state: pending\n    declaredOn: null\n';
+const storesBlock = (over = {}) =>
+  'stores:\n' +
+  STORE_CHANNEL_IDS.filter((c) => over[c] !== null)
+    .map((c) => `  ${c}:\n${over[c] ?? (c === 'windows-store' ? `    identityName: PARTNER-CENTER-PENDING\n    packageFamilyName: PARTNER-CENTER-PENDING\n${PENDING_LINES}` : PENDING_LINES)}`)
+    .join('');
+const issuedApple = (recordId) => `    state: issued\n    recordId: "${recordId}"\n    declaredOn: null\n`;
+
 function fixture({ register = REGISTER(), apps = [{ slug: 'subscriptiontracker', platforms: ['web'] }], files = {} } = {}) {
   const root = join(TMP, `f${seq++}`);
   const write = (rel, body) => {
@@ -86,7 +98,7 @@ function fixture({ register = REGISTER(), apps = [{ slug: 'subscriptiontracker',
   const defaults = {
     'apps/subscriptiontracker/android/app/build.gradle.kts': 'android {\n    namespace = "com.nikatru.subscriptiontracker"\n    defaultConfig {\n        applicationId = "com.nikatru.subscriptiontracker"\n    }\n}\n',
     'apps/subscriptiontracker/linux/CMakeLists.txt': 'cmake_minimum_required(VERSION 3.13)\nset(APPLICATION_ID "com.nikatru.subscriptiontracker")\n',
-    'apps/subscriptiontracker/app.yaml': 'id: subscriptiontracker\nname: Nikatru Subscription Tracker # the store title\n',
+    'apps/subscriptiontracker/app.yaml': `id: subscriptiontracker\nname: Nikatru Subscription Tracker # the store title\n${storesBlock()}`,
     'apps/subscriptiontracker/store/linux-snap/snap-name.txt': 'nikatru-subscription-tracker\n',
   };
   for (const [rel, body] of Object.entries({ ...defaults, ...files })) {
@@ -352,7 +364,7 @@ describe('assert-store-identity', () => {
     const { code, out } = run(
       fixture({
         apps: [{ slug: 'subscriptiontracker', platforms: ['web'] }, { slug: 'probe2', platforms: ['web'] }],
-        files: { 'apps/probe2/pubspec.yaml': 'name: probe2\n' },
+        files: { 'apps/probe2/pubspec.yaml': 'name: probe2\n', 'apps/probe2/app.yaml': `id: probe2\n${storesBlock()}` },
       }),
     );
     assert.equal(code, 0, out);
@@ -499,7 +511,7 @@ function windowsFixture({
     'apps/subscriptiontracker/windows/runner/main.cpp': 'int main(){}\n',
     'apps/subscriptiontracker/app.yaml':
       'id: subscriptiontracker\nname: Nikatru Subscription Tracker # the store title\n' +
-      (record ? `stores:\n  windows-store:\n    identityName: ${identity}\n    packageFamilyName: ${pfn}\n` : ''),
+      storesBlock({ 'windows-store': record ? `    identityName: ${identity}\n    packageFamilyName: ${pfn}\n${PENDING_LINES}` : null }),
   };
   for (const [k, v] of Object.entries(listing)) files[`apps/subscriptiontracker/store/windows-store/${k}`] = v;
   const root = fixture({
@@ -512,6 +524,12 @@ function windowsFixture({
   // which parses app.yaml with the one YAML reader; without it the copy dies on load.
   mkdirSync(join(root, 'tooling', 'app-yaml'), { recursive: true });
   cpSync(join(REPO, 'tooling', 'app-yaml', 'yaml.mjs'), join(root, 'tooling', 'app-yaml', 'yaml.mjs'));
+  // ⏱ 9b — and its Partner Center product through tooling/store/store-record.mjs, which reads
+  // the schema beside render.mjs: both travel with the copy, or it dies on load the same way.
+  mkdirSync(join(root, 'tooling', 'store'), { recursive: true });
+  cpSync(join(REPO, 'tooling', 'store', 'store-record.mjs'), join(root, 'tooling', 'store', 'store-record.mjs'));
+  mkdirSync(join(root, 'tooling', 'app-yaml', 'schema'), { recursive: true });
+  cpSync(join(REPO, 'tooling', 'app-yaml', 'schema', 'app.schema.json'), join(root, 'tooling', 'app-yaml', 'schema', 'app.schema.json'));
   const script = join(root, 'tooling', 'release', 'submit-windows-store.mjs');
   mkdirSync(dirname(script), { recursive: true });
   let source = submitter ?? readFileSync(join(REPO, 'tooling', 'release', 'submit-windows-store.mjs'), 'utf8');
@@ -644,5 +662,142 @@ describe('the app brick stamps the snap name this guard derives', () => {
     assert.ok(pre.includes('if (rune > 0x7f) return null;'), 'a non-ASCII title is refused, not approximated');
     assert.ok(pre.includes('return out.isEmpty ? null : out.toString();'), 'a title with no letter or digit is refused');
     assert.ok(pre.includes('the snap name cannot be derived from the store title'), 'the refusal names the problem');
+  });
+});
+
+// ── ⏱ 2026-09-26 · ONE STORE RECORD PER (app, channel) ─────────────────────
+// O-STORE-RECORDS-ARE-ONE-PER-CHANNEL limb (4). Every id below is synthetic.
+// ⏱ O-STORE-RECORDS-ARE-ONE-PER-CHANNEL (9b): the Apple bundle id is per app. The register row names
+// only WHERE Xcode declares it; the value is tooling/apple-provisioning.json's, through bundleIdOf,
+// and a row carrying the retired per-channel value FAILS by name (RC7).
+describe('assert-store-identity — the Apple bundle id is graded against bundleIdOf, and the row carries none', () => {
+  const IOS_ROW = {
+    id: 'ios-appstore',
+    kind: 'store',
+    platforms: ['ios'],
+    identity: { kind: 'apple-bundle-id', declaredIn: 'apps/{app}/ios/Runner.xcodeproj/project.pbxproj' },
+  };
+  // The REAL tooling/apple-provisioning.json, read at run time and never copied into this file (it names
+  // App Store Connect resource ids, which no .mjs under tooling/ci may spell).
+  const APPLE = () => readFileSync(join(REPO, 'tooling', 'apple-provisioning.json'), 'utf8');
+  const pbx = (id) => `\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = ${id};\n\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = ${id}.RunnerTests;\n`;
+  const appleFixture = ({ row = IOS_ROW, bundle = 'com.nikatru.subscriptiontracker', apple = APPLE() } = {}) => {
+    const register = REGISTER();
+    register.channels.push(row);
+    return fixture({
+      register,
+      files: { 'apps/subscriptiontracker/ios/Runner.xcodeproj/project.pbxproj': pbx(bundle), 'tooling/apple-provisioning.json': apple },
+    });
+  };
+
+  test('PASSES when the pbxproj builds the app\'s bundleIdOf id, and SAYS how many it compared', () => {
+    const { code, out } = run(appleFixture());
+    assert.equal(code, 0, out);
+    assert.match(out, /ok {2}apple bundle id — 1 \(app × Apple platform\) identity file\(s\) compared to tooling\/apple-provisioning\.json through bundleIdOf/);
+  });
+
+  test('FAILS a pbxproj that builds another id, naming apple-provisioning as the expected side', () => {
+    const { code, out } = run(appleFixture({ bundle: 'com.nikatru.otherthing' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /declares "com\.nikatru\.otherthing" and tooling\/apple-provisioning\.json apps\.subscriptiontracker\.bundleId \(bundleIdOf\) is "com\.nikatru\.subscriptiontracker"/);
+  });
+
+  test('COVERAGE LOST when tooling/apple-provisioning.json is absent — never a fall-back to the canonical form', () => {
+    const { code, out } = run(appleFixture({ apple: null }));
+    assert.equal(code, 2, out);
+    assert.match(out, /tooling\/apple-provisioning\.json does not exist, so no Apple bundle id can be compared/);
+  });
+
+  test('🔴 RC7 — a row that carries bundleIdentifier again FAILS, naming the channel', () => {
+    const { code, out } = run(appleFixture({ row: { ...IOS_ROW, bundleIdentifier: { value: 'com.nikatru.subscriptiontracker', declaredIn: IOS_ROW.identity.declaredIn } } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /channel "ios-appstore" carries `bundleIdentifier` in tooling\/channel-register\.json\. The Apple bundle id is per app/);
+  });
+});
+
+describe('assert-store-identity — one store record per (app, channel), shared by no other app', () => {
+  const twoApps = (secondStores, firstStores = storesBlock()) =>
+    fixture({
+      apps: [{ slug: 'subscriptiontracker', platforms: ['web'] }, { slug: 'zzscratch', platforms: ['web'] }],
+      files: {
+        'apps/subscriptiontracker/app.yaml': `id: subscriptiontracker\nname: Nikatru Subscription Tracker # the store title\n${firstStores}`,
+        'apps/zzscratch/app.yaml': `id: zzscratch\n${secondStores}`,
+      },
+    });
+  const withStores = (stores) =>
+    fixture({ files: { 'apps/subscriptiontracker/app.yaml': `id: subscriptiontracker\nname: Nikatru Subscription Tracker # the store title\n${stores}` } });
+
+  test('PASSES and prints one line per (app, channel) with its state and declaredOn', () => {
+    const { code, out } = run(fixture());
+    assert.equal(code, 0, out);
+    assert.match(out, /ok {2}store records — 5 \(app, channel\) record\(s\) across 1 app\(s\) and 5 store channel\(s\)/);
+    assert.match(out, /subscriptiontracker × android-play: pending; declaredOn null/);
+  });
+
+  // RC1 — the row's red control.
+  test("🔴 RC1 — a second app whose ios-appstore recordId equals the first app's FAILS, naming both apps", () => {
+    const shared = storesBlock({ 'ios-appstore': issuedApple('6814737675'), 'macos-appstore': issuedApple('6814737675') });
+    const { code, out } = run(twoApps(shared, shared));
+    assert.equal(code, 1, out);
+    assert.match(out, /apps "subscriptiontracker" and "zzscratch" declare the same recordId "6814737675"/);
+  });
+
+  test('RC1 control — two apps with their OWN App Store Connect records pass', () => {
+    const { code, out } = run(
+      twoApps(
+        storesBlock({ 'ios-appstore': issuedApple('1111111111'), 'macos-appstore': issuedApple('1111111111') }),
+        storesBlock({ 'ios-appstore': issuedApple('6814737675'), 'macos-appstore': issuedApple('6814737675') }),
+      ),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /10 \(app, channel\) record\(s\) across 2 app\(s\)/);
+  });
+
+  test('two apps sharing a Partner Center Store ID FAIL; two brick-stamped apps (nothing issued) do not', () => {
+    const win = '    identityName: PARTNER-CENTER-PENDING\n    packageFamilyName: PARTNER-CENTER-PENDING\n    productId: 9ZZTESTZZTES\n    state: pending\n    declaredOn: null\n';
+    const { code, out } = run(twoApps(storesBlock({ 'windows-store': win }), storesBlock({ 'windows-store': win })));
+    assert.equal(code, 1, out);
+    assert.match(out, /declare the same productId "9ZZTESTZZTES"/);
+    assert.equal(run(twoApps(storesBlock())).code, 0);
+  });
+
+  // RC2
+  test('🔴 RC2 — an iOS recordId that is not the macOS one FAILS', () => {
+    const { code, out } = run(withStores(storesBlock({ 'ios-appstore': issuedApple('6814737675'), 'macos-appstore': issuedApple('6814737676') })));
+    assert.equal(code, 1, out);
+    assert.match(out, /stores\.ios-appstore\.recordId is "6814737675" and stores\.macos-appstore\.recordId is "6814737676"\. ONE App Store Connect record covers iOS and macOS/);
+  });
+
+  test('an issued record with no id FAILS, naming the id', () => {
+    const { code, out } = run(withStores(storesBlock({ 'android-play': '    state: issued\n    declaredOn: null\n' })));
+    assert.equal(code, 1, out);
+    assert.match(out, /stores\.android-play says state: issued and lacks appSigningSha256/);
+  });
+
+  test('an app with no record for a store channel FAILS, naming the channel', () => {
+    const { code, out } = run(withStores(storesBlock({ 'linux-snap': null })));
+    assert.equal(code, 1, out);
+    assert.match(out, /app "subscriptiontracker" × linux-snap: apps\/subscriptiontracker\/app\.yaml declares no stores\.linux-snap record/);
+  });
+
+  // RC3 — pending on an ARMED pair: FAILS on a served row, PRINTED on an armed, unserved one.
+  test('🔴 RC3 — a pending record on a SERVED (armed) channel FAILS', () => {
+    const register = REGISTER();
+    Object.assign(register.channels.find((c) => c.id === 'android-play'), { served: true });
+    const { code, out } = run(fixture({ register }));
+    assert.equal(code, 1, out);
+    assert.match(out, /stores\.android-play is pending and channel "android-play" says served: true/);
+  });
+
+  test('RC3 control — a pending record on an armed, UNSERVED channel is an OWNER-GATED print', () => {
+    const register = REGISTER();
+    Object.assign(register.channels.find((c) => c.id === 'android-play'), {
+      served: false,
+      submittable: true,
+      lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' },
+    });
+    const { code, out } = run(fixture({ register }));
+    assert.equal(code, 0, out);
+    assert.match(out, /OWNER-GATED · app "subscriptiontracker" × android-play: the channel is armed/);
   });
 });

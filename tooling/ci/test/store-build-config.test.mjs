@@ -446,7 +446,7 @@ describe('assert-store-build-config — [ADR 084] the captcha key is WEB-ONLY', 
     );
     const regPath = join(root, 'tooling', 'channel-register.json');
     const reg = JSON.parse(readFileSync(regPath, 'utf8'));
-    reg.purchaseRails = { storeKeyDefine: { define: 'STORE_KEY', secretByRail: {} } };
+    reg.purchaseRails = { storeKeyDefine: { define: 'STORE_KEY', secretFieldByRail: {} } };
     writeFileSync(regPath, JSON.stringify(reg));
     writeFileSync(join(root, 'apps', 'subscriptiontracker', 'app.yaml'), 'id: subscriptiontracker\nhosts:\n  api: subscriptiontracker-api.nikatru.com\n');
     const r = run(root);
