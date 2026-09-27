@@ -17,27 +17,46 @@
 // now exits 1 instead, so the origin has to exist BEFORE the stamp, which is
 // what `--apply` is for.
 //
+// ── G-b: THE RECORD IS PROVEN ON EVERY DEPLOY, NEVER WRITTEN BY ONE ──────────
+// The row's closes asked for "deploy-web records the Pages name into app.yaml".
+// ADAPTED (P-G-1): a CI deploy cannot commit to main, and the stamp needs the
+// value BEFORE the app's first merge, so no deploy could ever be its writer.
+// Instead deploy-web.yml runs `--verify <app>` right after its idempotent
+// project create and BEFORE `wrangler pages deploy`: it reads the subdomain
+// back from Cloudflare and exits 1 when app.yaml declares another, naming both
+// and the lines to write. A mismatch therefore publishes nothing.
+//
 // Usage:
 //   node tooling/web/pages-origin.mjs --check <app>   offline: exit 0 when app.yaml declares a
 //                                                     *.pages.dev pagesOrigin equal to hosts.web
 //   node tooling/web/pages-origin.mjs --apply <app>   create the Pages project (idempotent), GET it,
 //                                                     print `pagesOrigin=<host>`; writes nothing
 //   node tooling/web/pages-origin.mjs --read <app>    GET the project only, print `pagesOrigin=<host>`
+//   node tooling/web/pages-origin.mjs --verify <app>  --check, then GET the project and exit 1 unless
+//                                                     its subdomain IS the declared pagesOrigin
 //
-// `--apply` and `--read` call Cloudflare with CLOUDFLARE_API_TOKEN and
-// CLOUDFLARE_ACCOUNT_ID. Both go through an injectable fetch and an injectable
-// wrangler runner (`main(argv, deps)`), so the test stubs them and never calls
-// out. The parent runs `--apply` at app #2 only after the owner's go (O-G1).
+// `--apply`, `--read` and `--verify` call Cloudflare with CLOUDFLARE_API_TOKEN
+// and CLOUDFLARE_ACCOUNT_ID. They go through an injectable fetch and an
+// injectable wrangler runner (`main(argv, deps)`), so the test stubs them and
+// never calls out. The parent runs `--apply` at app #2 only after the owner's
+// go (O-G1), with the locked tooling/wrangler island installed (`npm ci
+// --ignore-scripts --prefix tooling/wrangler`); without it `--apply` is
+// COVERAGE LOST, never an `npx` registry fetch. The GET is re-asked through
+// tooling/ops/bounded-retry.mjs: a dropped wire, a 429 or a 5xx is asked
+// again, and one that outlives the plan is COULD NOT LOOK (exit 2), never a
+// pass and never a mismatch.
 //
 // Exit: 0 ok · 1 a finding (a missing, non-pages.dev or disagreeing origin; a
-// refused API answer) · 2 COVERAGE LOST (no app named, app.yaml unreadable,
-// credentials absent, the tooling/wrangler island not installed).
+// refused API answer; a declared origin the project does not answer) ·
+// 2 COVERAGE LOST (no app named, app.yaml unreadable, credentials absent,
+// Cloudflare unreachable after the bounded retry).
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseYaml } from '../app-yaml/yaml.mjs';
+import { CouldNotLook, fetchWithBoundedRetry } from '../ops/bounded-retry.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const APP_ID = /^[a-z][a-z0-9]*$/;
@@ -66,45 +85,81 @@ export function originFindings(doc, where) {
   return out;
 }
 
-/** The project's subdomain from Cloudflare's GET answer, or a refusal. */
-export async function readSubdomain({ app, accountId, token, fetchImpl }) {
-  const res = await fetchImpl(`${API}/accounts/${accountId}/pages/projects/${app}`, {
-    headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(30_000),
-  });
-  let body = null;
+/**
+ * The project's subdomain from Cloudflare's GET answer, or a refusal. `lost` is
+ * set when nothing answered after the bounded retry: COULD NOT LOOK, which the
+ * caller reports as exit 2, never as a finding about the record.
+ */
+export async function readSubdomain({ app, accountId, token, fetchImpl, sleep }) {
+  let res;
   try {
-    body = await res.json();
-  } catch {
-    body = null;
+    res = await fetchWithBoundedRetry(
+      async ({ signal }) => {
+        const r = await fetchImpl(`${API}/accounts/${accountId}/pages/projects/${app}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal,
+        });
+        // The body is read INSIDE the attempt, so a wire that drops mid-body is
+        // re-asked rather than read as a garbled answer.
+        let body = null;
+        try {
+          body = await r.json();
+        } catch {
+          body = null;
+        }
+        return { ok: r.ok, status: r.status, headers: r.headers, body };
+      },
+      { describe: (what) => `GET pages/projects/${app}: ${what}`, ...(sleep ? { sleep } : {}) },
+    );
+  } catch (e) {
+    if (!(e instanceof CouldNotLook)) throw e;
+    return { ok: false, lost: true, why: e.message };
   }
-  const sub = body?.result?.subdomain;
-  if (!res.ok || body?.success !== true || typeof sub !== 'string') {
+  const sub = res.body?.result?.subdomain;
+  if (!res.ok || res.body?.success !== true || typeof sub !== 'string') {
     return { ok: false, why: `GET pages/projects/${app} answered HTTP ${res.status} with no result.subdomain` };
   }
   if (!PAGES_HOST.test(sub)) return { ok: false, why: `pages/projects/${app} answered subdomain "${sub}", not a *.pages.dev host` };
   return { ok: true, subdomain: sub };
 }
 
-/** The locked island deploy-web.yml installs (`npm ci --ignore-scripts --prefix tooling/wrangler`). */
-export const WRANGLER_ENTRY_REL = 'tooling/wrangler/node_modules/wrangler/bin/wrangler.js';
+/**
+ * PURE. G-b's comparison: the declared origin against the subdomain Cloudflare
+ * answered for the project. [] when they are the same host; otherwise the lines
+ * a deploy log needs — both hosts, and the two lines to write into app.yaml
+ * (`web` and `pagesOrigin` are one host, which `--check` holds).
+ */
+export function verifyFindings(declared, answered, app) {
+  if (declared === answered) return [];
+  const rel = `apps/${app}/app.yaml`;
+  return [
+    `::error title=Pages origin::${rel} declares hosts.pagesOrigin "${declared}", but the Pages project ` +
+      `"${app}" answers subdomain "${answered}". Nothing was deployed.`,
+    `Write these two lines under \`hosts:\` in ${rel}, then push:`,
+    `  web: ${answered}`,
+    `  pagesOrigin: ${answered}`,
+  ];
+}
 
-/** The real wrangler runner: `wrangler pages project create`, the flags deploy-web.yml uses. The island's
- *  JS entry through node, as provision-backend.mjs runs it: no registry fetch, no `.cmd` shim, no shell.
- *  Absent, it is refused (`refused: true`), never fetched. */
-export function runWrangler(args, root = ROOT) {
-  const entry = join(root, WRANGLER_ENTRY_REL);
-  if (!existsSync(entry)) {
-    return { code: 2, refused: true, out: `the wrangler island is not installed (${WRANGLER_ENTRY_REL}): run \`npm ci --ignore-scripts --prefix tooling/wrangler\` first` };
-  }
-  const r = spawnSync(process.execPath, [entry, ...args], { encoding: 'utf8' });
+/** The locked wrangler island's binary: the one deploy-web.yml and rollback.mjs run. */
+export const WRANGLER_REL = 'tooling/wrangler/node_modules/.bin/wrangler';
+
+/**
+ * The real wrangler runner: `wrangler pages project create`, the flags deploy-web.yml
+ * uses, from the locked tooling/wrangler island and never an `npx` registry fetch
+ * (assert-lockfile-discipline limb 3). `missing` when the island is not installed.
+ */
+function runWrangler(args, root) {
+  const bin = join(root, WRANGLER_REL);
+  if (!existsSync(bin)) return { missing: true, code: null, out: '' };
+  const r = spawnSync(bin, args, { encoding: 'utf8', shell: process.platform === 'win32' });
   return { code: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
 
 /**
  * @param {string[]} argv
  * @param {{ root?: string, env?: object, fetchImpl?: Function, wrangler?: Function,
- *           log?: Function, err?: Function }} deps
+ *           sleep?: Function, log?: Function, err?: Function }} deps
  * @returns {Promise<number>} the exit code
  */
 export async function main(argv, deps = {}) {
@@ -113,11 +168,12 @@ export async function main(argv, deps = {}) {
   const log = deps.log ?? ((s) => console.log(s));
   const err = deps.err ?? ((s) => console.error(s));
   const [mode, app] = argv;
-  if (!['--check', '--apply', '--read'].includes(mode) || typeof app !== 'string' || !APP_ID.test(app)) {
-    err('✗ COVERAGE LOST — usage: pages-origin.mjs --check|--apply|--read <app-id>');
+  if (!['--check', '--apply', '--read', '--verify'].includes(mode) || typeof app !== 'string' || !APP_ID.test(app)) {
+    err('✗ COVERAGE LOST — usage: pages-origin.mjs --check|--apply|--read|--verify <app-id>');
     return 2;
   }
-  if (mode === '--check') {
+  let declared = null;
+  if (mode === '--check' || mode === '--verify') {
     const rel = `apps/${app}/app.yaml`;
     const p = join(root, 'apps', app, 'app.yaml');
     if (!existsSync(p)) {
@@ -136,8 +192,11 @@ export async function main(argv, deps = {}) {
       for (const f of findings) err(`✗ ${f}`);
       return 1;
     }
-    log(`ok  pages origin — ${rel} declares pagesOrigin ${doc.hosts.pagesOrigin} (= hosts.web), a *.pages.dev host`);
-    return 0;
+    declared = doc.hosts.pagesOrigin;
+    if (mode === '--check') {
+      log(`ok  pages origin — ${rel} declares pagesOrigin ${declared} (= hosts.web), a *.pages.dev host`);
+      return 0;
+    }
   }
   const token = env.CLOUDFLARE_API_TOKEN;
   const accountId = env.CLOUDFLARE_ACCOUNT_ID;
@@ -146,10 +205,10 @@ export async function main(argv, deps = {}) {
     return 2;
   }
   if (mode === '--apply') {
-    const wrangler = deps.wrangler ?? runWrangler;
-    const made = wrangler(['pages', 'project', 'create', app, '--production-branch=main'], root);
-    if (made.refused) {
-      err(`✗ COVERAGE LOST — ${made.out}`);
+    const wrangler = deps.wrangler ?? ((args) => runWrangler(args, root));
+    const made = wrangler(['pages', 'project', 'create', app, '--production-branch=main']);
+    if (made.missing) {
+      err(`✗ COVERAGE LOST — the wrangler island is not installed (${WRANGLER_REL}): run \`npm ci --ignore-scripts --prefix tooling/wrangler\` first. Nothing was created.`);
       return 2;
     }
     if (made.code !== 0 && !/already exists|8000002/i.test(made.out)) {
@@ -157,10 +216,19 @@ export async function main(argv, deps = {}) {
       return 1;
     }
   }
-  const read = await readSubdomain({ app, accountId, token, fetchImpl: deps.fetchImpl ?? fetch });
+  const read = await readSubdomain({ app, accountId, token, fetchImpl: deps.fetchImpl ?? fetch, sleep: deps.sleep });
   if (!read.ok) {
-    err(`✗ ${read.why}`);
-    return 1;
+    err(read.lost ? `✗ COVERAGE LOST — ${read.why}` : `✗ ${read.why}`);
+    return read.lost ? 2 : 1;
+  }
+  if (mode === '--verify') {
+    const findings = verifyFindings(declared, read.subdomain, app);
+    if (findings.length) {
+      for (const f of findings) err(f);
+      return 1;
+    }
+    log(`pagesOrigin ${declared} = the project's subdomain`);
+    return 0;
   }
   log(`pagesOrigin=${read.subdomain}`);
   return 0;

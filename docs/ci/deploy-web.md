@@ -799,6 +799,43 @@ assert-version-consistency.mjs only polices `wranglerVersion:` inputs —
 an `npx wrangler@<literal>` would sit outside its rules entirely, which
 is how production ended up on 3.90.0 while the repo declared 4.114.0.
 
+### before step **Prove app.yaml's pagesOrigin is the Pages project's own subdomain**
+
+── ⏱ 2026-09-27 · G-b of row O-PRODUCT-RECORD-UNBUILT · THE RECORD IS PROVEN, NOT WRITTEN ──
+The row's closes said "deploy-web records the Pages name into app.yaml
+hosts.pagesOrigin". That is ADAPTED (P-G-1), because no deploy can be the
+record's writer: this job runs after the merge, on main, and cannot commit
+to main; and the stamp needs the value BEFORE the app's first merge, since
+render.mjs now exits 1 without it (G-a). So the value is read back from
+Cloudflare when the project is created (`pages-origin.mjs --apply`, before
+the stamp) and this step PROVES it on every deploy.
+
+`node tooling/web/pages-origin.mjs --verify <app>`:
+- runs `--check` first, offline: app.yaml must declare a `*.pages.dev`
+  `pagesOrigin` equal to `web`, or it exits 1 before any Cloudflare call;
+- GETs `accounts/<account>/pages/projects/<app>` with the token the step
+  above already uses (no new secret) and reads `result.subdomain`;
+- exits 1 when the two differ, printing `::error title=Pages origin::` with
+  both hosts and the two lines to write under `hosts:`. It runs AFTER the
+  idempotent create (so the project exists) and BEFORE the deploy, so a
+  mismatch publishes nothing;
+- prints `pagesOrigin <host> = the project's subdomain` on a match. That
+  line in the first run after the merge is RC-G5b, the row's evidence: a
+  PR's CI cannot show it, because only this job holds the credentials.
+
+The GET goes through tooling/ops/bounded-retry.mjs: a dropped wire, a 429
+or a 5xx is asked again, and one that outlives the plan is COULD NOT LOOK
+(exit 2). That still fails the step, so nothing publishes, but it is never
+reported as a wrong record. The comparison lives in the script, not in
+bash, so tooling/ci/test/pages-origin.test.mjs covers it (RC-G5, a stubbed
+read-back of `subscriptiontracker-xyz.pages.dev` against app #1's real
+app.yaml), and the same test holds this step's place: after the create,
+before the deploy, under the same plan gate.
+
+It is a step of its own rather than lines appended to the create step's
+script: that script exits 0 from two branches, and a one-command `run:`
+keeps the exit code this step reports the script's own (TRAPS shell-01).
+
 ### before step **Resolve this app's published origin from the catalogue**
 
 ── the published origin, RESOLVED from the catalogue ────────────────────
