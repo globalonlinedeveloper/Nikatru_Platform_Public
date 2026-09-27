@@ -20,6 +20,10 @@ import 'shell.dart';
 /// refreshed on auth changes.
 final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
   final auth = ref.watch(authRepositoryProvider);
+  // ST-T1b (audit A-7): watched for its EFFECT, and here because the router
+  // lives as long as the app — lib/app.dart is a chassis fork held at its
+  // ceiling (assert-chassis-parity). Marks the device once a session is seen.
+  ref.watch(signedInBeforeKeeperProvider);
 
   return GoRouter(
     navigatorKey: rootNavigatorKey,

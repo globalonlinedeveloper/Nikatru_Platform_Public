@@ -4416,7 +4416,7 @@ void main() {
         await expectContrastHadSubjects(
           tester,
           'sign-in',
-          covers: const <String>['Welcome back', 'Sign in'],
+          covers: const <String>['Welcome', 'Sign in'],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });

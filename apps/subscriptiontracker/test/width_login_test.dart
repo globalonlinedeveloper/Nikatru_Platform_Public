@@ -96,8 +96,8 @@ Color? _fieldFill(WidgetTester tester) => tester
     .decoration!
     .fillColor;
 
-Color? _headingColor(WidgetTester tester, String heading) =>
-    tester.widget<Text>(find.text(heading)).style!.color;
+Color? _headingColor(WidgetTester tester) =>
+    tester.widget<Text>(find.byKey(E2EKeys.loginHeading)).style!.color;
 
 void main() {
   final ColorScheme dark = buildAppTheme(
@@ -159,9 +159,6 @@ void main() {
     testWidgets('LIGHT is pixel-identical to the pre-dark screen', (
       WidgetTester tester,
     ) async {
-      final AppLocalizations en = await AppLocalizations.delegate.load(
-        const Locale('en'),
-      );
       await pumpLogin(tester, kPhone, ThemeMode.light);
 
       expect(
@@ -178,7 +175,7 @@ void main() {
         reason: 'The light field fill stays the literal AppColors.surface.',
       );
       expect(
-        _headingColor(tester, en.welcomeBack),
+        _headingColor(tester),
         AppColors.ink,
         reason:
             'The light heading colour is the value AppText.title already '
@@ -218,9 +215,6 @@ void main() {
     testWidgets('DARK also fixes the TEXT, not only the surfaces', (
       WidgetTester tester,
     ) async {
-      final AppLocalizations en = await AppLocalizations.delegate.load(
-        const Locale('en'),
-      );
       await pumpLogin(tester, kPhone, ThemeMode.dark);
 
       // 🔴 THE HALF A SURFACE-ONLY SWEEP LEAVES BEHIND. AppText.title bakes
@@ -229,14 +223,14 @@ void main() {
       // "Welcome back" on a near-black scaffold — legible to no one, and green
       // in every test that looks at surfaces alone.
       expect(
-        _headingColor(tester, en.welcomeBack),
+        _headingColor(tester),
         isNot(AppColors.ink),
         reason:
             'the heading is still painting the light-mode ink token onto a '
             'dark scaffold',
       );
       expect(
-        _headingColor(tester, en.welcomeBack),
+        _headingColor(tester),
         dark.onSurface,
         reason: "the heading takes the scheme's own on-surface slot",
       );

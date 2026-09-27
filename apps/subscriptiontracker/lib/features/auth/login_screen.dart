@@ -364,6 +364,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       acceptedStamp: ref.watch(legalAcceptanceProvider),
       current: kLegalVersions,
     );
+    // Null (not read yet) is a first visit — see [SignedInBeforeController].
+    final bool returning = ref.watch(signedInBeforeProvider) ?? false;
     return Scaffold(
       backgroundColor: t.bg,
       body: SafeArea(
@@ -419,8 +421,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 // works) was the one message nobody ever saw. [ADR 027]
                 const _AccountDeletionNotice(),
                 const _AuthArrivalNotice(),
+                // ST-T1b (audit A-7): "Welcome back" only where a session has
+                // been seen on this device. The key is the anchor every suite
+                // reads — never the words.
                 Text(
-                  _signUp ? l10n.signUpTitle : l10n.welcomeBack,
+                  _signUp
+                      ? l10n.signUpTitle
+                      : (returning ? l10n.welcomeBack : l10n.welcomeFirstVisit),
+                  key: E2EKeys.loginHeading,
                   style: AppText.title.copyWith(fontSize: 34, color: t.ink),
                 ),
                 const SizedBox(height: 6),

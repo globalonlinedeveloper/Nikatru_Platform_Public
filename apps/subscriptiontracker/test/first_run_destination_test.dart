@@ -48,6 +48,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
 import 'package:subscriptiontracker/app.dart';
+import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/features/auth/login_screen.dart';
 import 'package:subscriptiontracker/features/onboarding/onboarding_screen.dart';
 import 'package:subscriptiontracker/state/providers.dart';
@@ -137,7 +138,9 @@ Future<void> _launch(WidgetTester tester, ProviderContainer c) async {
 final Finder _decline = find.text('No thanks');
 final Finder _allow = find.text('Allow');
 final Finder _skip = find.text('Skip');
-final Finder _welcomeBack = find.text('Welcome back');
+// ST-T1b (audit A-7): the login landmark is the heading's KEY. A fresh install
+// is a first visit and reads "Welcome"; the capture keys on the same Key.
+final Finder _loginHeading = find.byKey(E2EKeys.loginHeading);
 
 void main() {
   /// THE VIEWPORT THAT FAILED. 1080x1920 physical at dpr 3 is 360x640 logical —
@@ -239,7 +242,7 @@ void main() {
         await _settle(tester);
 
         expect(
-          _welcomeBack,
+          _loginHeading,
           findsNothing,
           reason:
               'run 32947223120, reproduced: Found 0 widgets with text '
@@ -295,7 +298,7 @@ void main() {
               'signed-out visitor standing (authFlow)',
         );
         expect(
-          _welcomeBack,
+          _loginHeading,
           findsOneWidget,
           reason:
               'the landmark the Play capture keys on. It must be the SETTLED '

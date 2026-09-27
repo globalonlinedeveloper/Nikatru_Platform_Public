@@ -1303,7 +1303,11 @@
   },
   "welcomeBack": "Welcome back",
   "@welcomeBack": {
-    "description": "Consumed by auth/login_screen.dart:151. Pinned by test/sign_out_destination_test.dart:31, integration_test/app_test.dart:203, integration_test/store_screenshots_test.dart:191 — the value must not change without moving those."
+    "description": "Consumed by auth/login_screen.dart. The sign-in heading on a device where a session has been seen (signedInBeforeProvider). Since ST-T1b nothing pins the words: the e2e, the store capture and the unit suites find the heading by E2EKeys.loginHeading."
+  },
+  "welcomeFirstVisit": "Welcome",
+  "@welcomeFirstVisit": {
+    "description": "Consumed by auth/login_screen.dart. ST-T1b (audit A-7): the sign-in heading on a device where nobody has signed in yet. Login is mandatory, so this is the first screen a new visitor sees — they are not 'back'."
   },
   "signUpSubtitle": "Start tracking every subscription in one place.",
   "@signUpSubtitle": {

@@ -656,7 +656,7 @@ void main() {
   /// 🔴 CONDITIONAL SINCE 2026-08-08, AND THE THING THAT CHANGED IS THE APP, NOT
   /// THIS SUITE'S TASTE. Three tests each call `app.main()` and every one of
   /// them used to land on the carousel, so all three tapped Skip unconditionally
-  /// and `router/router_provider.dart:26` still records that assumption in a
+  /// and `router/router_provider.dart:30` still records that assumption in a
   /// comment. That worked for one reason only: **onboarding-seen was not
   /// persisted anywhere.**
   /// Measured against the last green nightly (`efabfb54`, 2026-08-08 04:30 UTC):
@@ -799,7 +799,7 @@ void main() {
         await tester.tap(strandedSignOut);
         await pumpFor(tester, const Duration(seconds: 2));
         expect(
-          await waitFor(tester, find.text('Welcome back')),
+          await waitFor(tester, find.byKey(E2EKeys.loginHeading)),
           isTrue,
           reason:
               'A session survived into this test on the re-acceptance '
@@ -842,7 +842,7 @@ void main() {
       scrollable: scrollableWithin(settings).first,
     );
     expect(
-      await waitFor(tester, find.text('Welcome back')),
+      await waitFor(tester, find.byKey(E2EKeys.loginHeading)),
       isTrue,
       reason:
           'Signing out an inherited session did not return to the login '
@@ -921,13 +921,13 @@ void main() {
   /// fixed pump it replaces: nothing is accepted that was not accepted before.
   Future<void> expectLandedOnLogin(WidgetTester tester, String after) async {
     expect(
-      await waitFor(tester, find.text('Welcome back')),
+      await waitFor(tester, find.byKey(E2EKeys.loginHeading)),
       isTrue,
       reason:
           'The app did not reach the login screen after $after. On screen: '
           '${onScreen(tester)}',
     );
-    expect(find.text('Welcome back'), findsOneWidget);
+    expect(find.byKey(E2EKeys.loginHeading), findsOneWidget);
   }
 
   /// The `E2E_EXPECT_WORKERS_TRUST=no` half of every Worker-dependent leg — a
@@ -1078,7 +1078,7 @@ void main() {
           'E2E_EXPECT_CAPTCHA_GATE=$expectCaptchaGate, so the expected copy is '
           '"$expectedRefusal". On screen: ${onScreen(tester)}',
     );
-    expect(find.text('Welcome back'), findsOneWidget);
+    expect(find.byKey(E2EKeys.loginHeading), findsOneWidget);
     await shot('00c-invalid-credentials');
     restoreGlobals();
   });
@@ -1430,7 +1430,7 @@ void main() {
     // signed-out user is only left on /onboarding|/sign-in|/scan; /login is a
     // redirect onto /sign-in since 2026-08-10). Poll for it.
     expect(
-      await waitFor(tester, find.text('Welcome back')),
+      await waitFor(tester, find.byKey(E2EKeys.loginHeading)),
       isTrue,
       reason:
           'Sign-out did not return to the login screen. On screen instead: '
@@ -1455,7 +1455,7 @@ void main() {
     // test/sign_out_destination_test.dart. This keeps the live suite honest too.
     await pumpFor(tester, const Duration(seconds: 3));
     expect(
-      find.text('Welcome back'),
+      find.byKey(E2EKeys.loginHeading),
       findsOneWidget,
       reason:
           'Sign-out reached the login screen but did not STAY there — something '
@@ -1844,10 +1844,10 @@ void main() {
     // …and the user really is signed out, on the login screen, and STAYS there.
     // Same second-look as leg 2's sign-out: waitFor returns on the first
     // matching frame, which a transit frame satisfies.
-    expect(find.text('Welcome back'), findsOneWidget);
+    expect(find.byKey(E2EKeys.loginHeading), findsOneWidget);
     await pumpFor(tester, const Duration(seconds: 3));
     expect(
-      find.text('Welcome back'),
+      find.byKey(E2EKeys.loginHeading),
       findsOneWidget,
       reason:
           'The deletion reached the login screen but did not STAY there — '
