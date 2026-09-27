@@ -5,6 +5,7 @@ import {
   baseConfig,
   buildKnownProducts,
   buildRegistry,
+  isAttributableProduct,
   isKnownApp,
   isKnownProduct,
   isValidAppId,
@@ -15,7 +16,7 @@ import {
 import catalogue from '../../../catalog/apps.json';
 import extensions from '../../../extensions/catalog/extensions.json';
 import configData from '../src/app-config-data.json';
-import { productsFromRegisters } from '../src/lib/bundle/availability';
+import { availabilityFor, bundleAvailability, liveSlugs, productsFromRegisters } from '../src/lib/bundle/availability';
 import {
   DEFAULT_CHANNEL,
   RELEASE_CHANNELS,
@@ -52,6 +53,50 @@ describe('the known-PRODUCT set spans every register', () => {
     expect([...KNOWN_PRODUCTS.keys()].sort()).toEqual(fromRegisters);
     // Not vacuous: at least one row of each shipping kind.
     expect(fromRegisters.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('a bundle is a known product of kind bundle, named by its featureSet — and never attributable', () => {
+    // O-BUNDLE-AVAILABILITY-TAKES-THE-FIRST: "isKnownProduct can name a bundle".
+    expect(isKnownProduct('nikatru_all')).toBe(true);
+    expect(productKindOf('nikatru_all')).toBe('bundle');
+    // The money path attributes a client-settable app id to a PER-APP row; a
+    // bundle id there would write a per-app row for a bundle. MUTATION PROOF:
+    // make isAttributableProduct return isKnownProduct(id) — RED here.
+    expect(isAttributableProduct('nikatru_all')).toBe(false);
+    expect(isAttributableProduct('subscriptiontracker')).toBe(true);
+    expect(isAttributableProduct('fullshot')).toBe(true);
+    expect(isAttributableProduct('not_a_product')).toBe(false);
+  });
+
+  it('HARD — the Worker twin never counts a bundle live', () => {
+    const products = productsFromRegisters();
+    expect(products.find((p) => p.slug === 'nikatru_all')?.kind).toBe('bundle');
+    // A bundle row spelling `live` is the edit that would let it count toward
+    // itself. MUTATION PROOF: drop `&& p.kind !== BUNDLE_KIND` from liveSlugs — RED here.
+    const asIfLive = products.map((p) => (p.kind === 'bundle' ? { ...p, status: 'live' } : p));
+    expect(liveSlugs(asIfLive)).not.toContain('nikatru_all');
+    expect(bundleAvailability().get('nikatru_all')?.liveProducts).not.toContain('nikatru_all');
+  });
+
+  it('RC1 — the Worker twin returns EVERY bundle row of a two-bundle register, each with its own verdict', () => {
+    // O-BUNDLE-AVAILABILITY-TAKES-THE-FIRST. MUTATION PROOF: iterate
+    // `rows.slice(0, 1)` in availabilityFor — RED here (and in the node guard's limb E).
+    const rows = [
+      { featureSet: 'nikatru_all', version: 1, status: 'draft', members: [{ slug: 'subscriptiontracker' }, { slug: 'fullshot' }] },
+      {
+        featureSet: 'second_bundle',
+        version: 1,
+        status: 'draft',
+        members: [{ slug: 'subscriptiontracker' }],
+        priceIds: { paddle: { monthly: 'pri_fixture_second' } },
+      },
+    ];
+    const all = availabilityFor(rows, productsFromRegisters(), 'web');
+    expect([...all.keys()]).toEqual(['nikatru_all', 'second_bundle']);
+    expect(all.get('second_bundle')?.members).toEqual(['subscriptiontracker']);
+    expect(all.get('nikatru_all')?.members).toEqual(['subscriptiontracker', 'fullshot']);
+    // The committed register has one row today, and the map is keyed by it.
+    expect([...bundleAvailability().keys()]).toEqual(['nikatru_all']);
   });
 
   it('an inherited member of Object.prototype is not a product either', () => {

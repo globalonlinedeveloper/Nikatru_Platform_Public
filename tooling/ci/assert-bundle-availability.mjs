@@ -12,7 +12,7 @@
 // slip, and the edit that causes it looks like a one-word diff.
 //
 // So the answer is DERIVED from registers that already exist and are already
-// graded by other guards, and this file asserts SIX things about that:
+// graded by other guards, and this file asserts EIGHT things about that:
 //
 //   A · NO LITERAL. `purchasable` (and its siblings) never appear as a boolean
 //       literal in the register, in either derivation, or in anything that
@@ -50,6 +50,19 @@
 //       exclusion naming no catalogue product is refused. A missing `excluded`
 //       reads as []. Reading zero catalogue slugs is COVERAGE LOST.
 //
+//   G · THE DIRECT catalog/*.json READERS STAY AT OR BELOW A FLOOR THAT ONLY
+//       FALLS. O-BUNDLE-AVAILABILITY-TAKES-THE-FIRST. New code reads the
+//       catalogue through tooling/catalog/read.mjs or
+//       services/platform/src/lib/catalog.ts; every other source file naming a
+//       catalog/*.json path is counted against tooling/catalog/reader-floor.json,
+//       and a floor above the base branch's is refused. The count prints on
+//       every run, so CI's log carries it.
+//
+//   H · A VERSION'S MEMBERSHIP IS LOCKED. O-BUNDLE-MEMBER-INSERT-UNLOCKED.
+//       Every bundle row's members equal its featureSet@version entry in
+//       catalog/bundle-membership.lock.json; an entry the base branch carries is
+//       never edited or removed; a new entry names only live members.
+//
 // Limb C prints every conjunct of `purchasable` with its value, so the reason
 // the gate is shut is read off the log rather than inferred.
 //
@@ -62,11 +75,24 @@
 // Exit 0 = the gate is derived and moves in both directions, 1 = it is not.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync, cpSync } from 'node:fs';
-import { join, resolve, dirname } from 'node:path';
+import { join, resolve, dirname, relative, sep } from 'node:path';
 import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { listDir } from './tree-walk.mjs';
+import { BUNDLE_LOCK, bundleKey, lockEntriesOf, memberSlugsOf, readBundleLock, readBundles } from '../catalog/read.mjs';
 
-const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
+// argv: an optional repo root, plus flags.
+//   --list-readers        print every direct catalog/*.json reader limb G counts
+//   --base-root=<dir>     read the BASE copies limbs G and H compare against from
+//                         <dir> instead of `git show refs/remotes/origin/main:<path>`
+//                         (a test seam: a fixture tree has no git history)
+const ARGS = process.argv.slice(2);
+const FLAGS = new Set(ARGS.filter((a) => a.startsWith('--') && !a.includes('=')));
+const OPTS = Object.fromEntries(
+  ARGS.filter((a) => a.startsWith('--') && a.includes('=')).map((a) => [a.slice(2, a.indexOf('=')), a.slice(a.indexOf('=') + 1)]),
+);
+const ROOT = resolve(ARGS.find((a) => !a.startsWith('--')) ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
 const DERIVATION = 'tooling/bundle-availability.mjs';
 const TWIN = 'services/platform/src/lib/bundle/availability.ts';
@@ -74,6 +100,11 @@ const BUNDLES = 'catalog/bundles.json';
 const CONTRACT = 'contracts/entitlement/bundle.js';
 const APPS = 'catalog/apps.json';
 const EXTENSIONS = 'extensions/catalog/extensions.json';
+/** The two catalogue readers new code imports (R-3). Limb G does not count them. */
+const NODE_READER = 'tooling/catalog/read.mjs';
+const WORKER_READER = 'services/platform/src/lib/catalog.ts';
+/** The committed floor limb G counts the direct readers against. */
+const READER_FLOOR = 'tooling/catalog/reader-floor.json';
 
 /**
  * Everything that must exist for a single limb below to be a MEASUREMENT rather
@@ -88,6 +119,10 @@ const REQUIRED_COVERAGE = [
   { file: CONTRACT, why: 'the shared constants — absent, both copies would have to retype the floor' },
   { file: APPS, why: 'the app register — absent, the live-product count is not a measurement' },
   { file: EXTENSIONS, why: 'the extension register — absent, an extension can never be counted live and the gate can never open' },
+  { file: NODE_READER, why: 'the Node catalogue reader — absent, limb G counts readers of a reader that does not exist' },
+  { file: WORKER_READER, why: 'the Worker catalogue reader — absent, the Worker twin reads the bundle register from nowhere' },
+  { file: READER_FLOOR, why: 'the committed reader floor — absent, limb G has nothing to hold the count against' },
+  { file: BUNDLE_LOCK, why: 'the minted-membership lock — absent, a member can be added to a minted version with nothing red' },
 ];
 
 /**
@@ -201,10 +236,12 @@ function stripComments(src) {
   if (problems.length === 0) ok('both copies import the floor and the register list rather than retyping them');
 }
 
-// ── the derivation, imported once and used by limbs C and D ──────────────────
+// ── the derivation, imported once and used by limbs C, D and H ───────────────
 let bundleAvailability = null;
+let readProducts = null;
+let liveSlugs = null;
 try {
-  ({ bundleAvailability } = await import(pathToFileURL(join(ROOT, DERIVATION)).href));
+  ({ bundleAvailability, readProducts, liveSlugs } = await import(pathToFileURL(join(ROOT, DERIVATION)).href));
 } catch (e) {
   coverageLost(`${DERIVATION} could not be imported (${e.message}), so neither direction of the gate was measured.`);
   done();
@@ -219,7 +256,7 @@ const conjunctsOf = (why) =>
   `enoughLive=${why.enoughLive} (${why.liveProductCount} live, floor ${why.minLiveProducts}), ` +
   `missingMembers=[${why.missingMembers.join(', ')}], membersAllLive=${why.membersAllLive}, priced=${why.priced}`;
 
-// ── C · TODAY'S REGISTERS YIELD false, FOR THE RIGHT REASON ──────────────────
+// ── C · TODAY'S REGISTERS YIELD false, FOR THE RIGHT REASON — EVERY BUNDLE ───
 {
   const today = bundleAvailability(ROOT);
   if (today.problems.length > 0) {
@@ -230,25 +267,31 @@ const conjunctsOf = (why) =>
     );
     done();
   }
-  if (today.purchasable !== false) {
-    fail(
-      `the real registers derive \`purchasable: ${today.purchasable}\`. As of this commit ${APPS} carries ` +
-        `${today.why.liveProducts.length} live product(s) (${today.why.liveProducts.join(', ') || 'none'}) and the ` +
-        `floor is ${today.why.minLiveProducts}. If a second product really did go live, this line is the review ` +
-        `that says so — it is not a line to edit past. Conjuncts: ${conjunctsOf(today.why)}.`,
-    );
-  } else if (today.why.enoughLive !== false) {
-    fail(
-      'the gate is closed but NOT because there are too few live products — the evidence says the floor is met. ' +
-        'That means something else is holding it shut and the "one more live product opens it" story is false. ' +
-        `Conjuncts: ${conjunctsOf(today.why)}.`,
-    );
-  } else {
-    ok(
-      `today's registers derive purchasable=false because ${today.why.liveProductCount} live product(s) < ` +
-        `${today.why.minLiveProducts} (live: ${today.why.liveProducts.join(', ') || 'none'})`,
-    );
-    ok(`limb C conjuncts: ${conjunctsOf(today.why)}`);
+  if (today.byFeatureSet.size === 0) {
+    coverageLost(`the derivation returned ZERO bundles from ${BUNDLES}, so no verdict was graded.`);
+    done();
+  }
+  for (const [featureSet, v] of today.byFeatureSet) {
+    if (v.purchasable !== false) {
+      fail(
+        `[${featureSet}] the real registers derive \`purchasable: ${v.purchasable}\`. As of this commit ${APPS} carries ` +
+          `${v.why.liveProducts.length} live product(s) (${v.why.liveProducts.join(', ') || 'none'}) and the ` +
+          `floor is ${v.why.minLiveProducts}. If a second product really did go live, this line is the review ` +
+          `that says so — it is not a line to edit past. Conjuncts: ${conjunctsOf(v.why)}.`,
+      );
+    } else if (v.why.enoughLive !== false) {
+      fail(
+        `[${featureSet}] the gate is closed but NOT because there are too few live products — the evidence says the ` +
+          'floor is met. That means something else is holding it shut and the "one more live product opens it" story ' +
+          `is false. Conjuncts: ${conjunctsOf(v.why)}.`,
+      );
+    } else {
+      ok(
+        `today's registers derive purchasable=false because ${v.why.liveProductCount} live product(s) < ` +
+          `${v.why.minLiveProducts} (live: ${v.why.liveProducts.join(', ') || 'none'}) [${featureSet}]`,
+      );
+      ok(`limb C conjuncts: ${conjunctsOf(v.why)} [${featureSet}]`);
+    }
   }
 }
 
@@ -280,28 +323,58 @@ const conjunctsOf = (why) =>
       ...b,
       priceIds: { paddle: { monthly: 'pri_fixture_monthly', yearly: 'pri_fixture_yearly' } },
     }));
-    writeFileSync(join(tmp, BUNDLES), JSON.stringify(priced, null, 2));
+    // 🔴 THE TWO-BUNDLE FIXTURE (O-BUNDLE-AVAILABILITY-TAKES-THE-FIRST). A second
+    // row whose answer DIFFERS from the first — the same members, no price — so a
+    // derivation that reads only the first row loses it, and one that mixes the
+    // two rows up answers it wrong. Neither can pass this limb.
+    const SECOND = 'fixture_second_bundle';
+    const second = { ...bundles[0], featureSet: SECOND, version: 1, priceIds: {} };
+    writeFileSync(join(tmp, BUNDLES), JSON.stringify([...priced, second], null, 2));
 
     const after = bundleAvailability(tmp);
+    const opened = [...after.byFeatureSet].filter(([fs]) => fs !== SECOND);
+    const two = after.byFeatureSet.get(SECOND);
     if (after.problems.length > 0) {
       coverageLost(
         `the fixture tree could not be read (${after.problems.join(' · ')}), so the OPENING direction of the ` +
           'gate was never measured — and a derivation that always returns false passes every other limb.',
       );
-    } else if (after.purchasable !== true) {
+    } else if (opened.length !== priced.length) {
       fail(
-        'A SECOND LIVE PRODUCT DID NOT OPEN THE GATE. With every register flipped to the state the enable ' +
-          `trigger describes, the derivation still answers \`purchasable: ${after.purchasable}\` ` +
-          `(live: ${after.why.liveProducts.join(', ')}, members: ${after.why.members.join(', ')}, ` +
-          `missing: ${after.why.missingMembers.join(', ') || 'none'}, priced: ${after.why.priced}). ` +
-          'A gate that only ever closes is a constant, and on the day the owner promotes the second product ' +
-          'nothing would happen and nothing would be red.',
+        `the derivation returned ${opened.length} of the fixture's ${priced.length} committed bundle row(s) ` +
+          `(${[...after.byFeatureSet.keys()].join(', ') || 'none'}). Every row is a bundle, and a row the derivation ` +
+          'does not return is a bundle nothing can show or sell.',
+      );
+    } else if (two === undefined) {
+      fail(
+        `EVERY BUNDLE IS SEEN, AND THE SECOND ONE WAS NOT. The fixture's second bundle row \`${SECOND}\` is absent ` +
+          `from the derivation's answer (${[...after.byFeatureSet.keys()].join(', ')}): it reads only the first row. ` +
+          'A second bundle, or a bundle that includes app #2, would then be invisible and unsellable with every guard green.',
+      );
+    } else if (two.purchasable !== false || two.why.priced !== false) {
+      fail(
+        `the fixture's second bundle \`${SECOND}\` has no price and derives purchasable=${two.purchasable} ` +
+          `(priced=${two.why.priced}). Its verdict was computed from another row.`,
       );
     } else {
-      ok(
-        'a fixture with a second live product and a resolvable price derives purchasable=true — the gate moves ' +
-          'in BOTH directions',
-      );
+      for (const [featureSet, v] of opened) {
+        if (v.purchasable !== true) {
+          fail(
+            `[${featureSet}] A SECOND LIVE PRODUCT DID NOT OPEN THE GATE. With every register flipped to the state the ` +
+              `enable trigger describes, the derivation still answers \`purchasable: ${v.purchasable}\` ` +
+              `(live: ${v.why.liveProducts.join(', ')}, members: ${v.why.members.join(', ')}, ` +
+              `missing: ${v.why.missingMembers.join(', ') || 'none'}, priced: ${v.why.priced}). ` +
+              'A gate that only ever closes is a constant, and on the day the owner promotes the second product ' +
+              'nothing would happen and nothing would be red.',
+          );
+        } else {
+          ok(
+            'a fixture with a second live product and a resolvable price derives purchasable=true — the gate moves ' +
+              `in BOTH directions [${featureSet}]`,
+          );
+        }
+      }
+      ok(`the two-bundle fixture returns every row, each with its own verdict (${SECOND}: priced=false, purchasable=false)`);
     }
   } finally {
     rmSync(tmp, { recursive: true, force: true });
@@ -339,11 +412,41 @@ const conjunctsOf = (why) =>
   } else if (disagreed === 0) {
     ok(`both derivations decide the same ${compared} conjuncts`);
   }
+  // 🔴 NEITHER COPY READS ONE ROW. Limb D runs the node derivation over a
+  // two-bundle fixture; the Worker twin cannot be run from node (it imports JSON
+  // as modules), so its half is this read of the source plus its own vitest
+  // (services/platform/test/config.test.ts, `availabilityFor`). A first-element
+  // read — `[0]`, `.at(0)`, `.slice(0, 1)`, `const [x] = …` — anywhere in either
+  // derivation is the O-BUNDLE-AVAILABILITY-TAKES-THE-FIRST defect. The two
+  // catalogue readers are scanned too: the Worker twin and the mint take their
+  // rows from catalog.ts's BUNDLE_ROWS, so a first-element read THERE starves
+  // both with every derivation above still iterating what it was handed.
+  const FIRST_ONLY = /\[\s*0\s*\]|\.at\(\s*0\s*\)|\.slice\(\s*0\s*,\s*1\s*\)|\b(?:const|let|var)\s*\[\s*\w+\s*\]\s*=/;
+  let firstOnly = 0;
+  for (const [file, label] of [
+    [DERIVATION, 'the node derivation'],
+    [TWIN, 'the Worker twin'],
+    [WORKER_READER, 'the Worker catalogue reader'],
+    [NODE_READER, 'the Node catalogue reader'],
+  ]) {
+    const m = FIRST_ONLY.exec(stripComments(sources.get(file)));
+    if (m !== null) {
+      firstOnly += 1;
+      fail(
+        `${file} (${label}) reads a first element (\`${m[0].trim()}\`). Both derivations answer for EVERY bundle ` +
+          'row, keyed by featureSet; a first-element read is how a second bundle went unseen with this guard green.',
+      );
+    }
+  }
+  if (firstOnly === 0) {
+    ok('neither derivation nor catalogue reader reads a first element: both answer for every bundle row');
+  }
 }
 
 // ── F · EVERY CATALOGUE PRODUCT IS A MEMBER OR IS EXCLUDED, BY NAME ───────────
-// O-BUNDLE-MEMBERSHIP-UNGRADED. The row graded is bundles[0], the one the
-// derivation reads.
+// O-BUNDLE-MEMBERSHIP-UNGRADED. EVERY bundle row is graded: until 2026-09-26
+// only the first was, the same first-row read the derivations had
+// (O-BUNDLE-AVAILABILITY-TAKES-THE-FIRST).
 {
   const before = problems.length;
   const catalog = new Set();
@@ -359,57 +462,270 @@ const conjunctsOf = (why) =>
       if (typeof r?.slug === 'string' && r.slug) catalog.add(r.slug);
     }
   }
-  let bundle = null;
+  let rows = [];
   try {
     const bundles = JSON.parse(sources.get(BUNDLES));
-    bundle = Array.isArray(bundles) && bundles.length > 0 ? bundles[0] : null;
+    rows = Array.isArray(bundles) ? bundles.filter((b) => b !== null && typeof b === 'object') : [];
   } catch (e) {
     coverageLost(`limb F could not parse ${BUNDLES} (${e.message}).`);
   }
   if (catalog.size === 0) {
     coverageLost(`limb F read ZERO product slugs from ${APPS} and ${EXTENSIONS}, so membership was asserted over nothing.`);
-  } else if (bundle === null) {
+  } else if (rows.length === 0) {
     coverageLost(`limb F found no bundle row in ${BUNDLES} to hold the ${catalog.size} catalogue product(s) against.`);
-  } else {
+  }
+  for (const bundle of catalog.size === 0 ? [] : rows) {
+    const tag = `[${typeof bundle.featureSet === 'string' ? bundle.featureSet : '?'}] `;
+    const beforeRow = problems.length;
     const members = (Array.isArray(bundle.members) ? bundle.members : []).map((m) => m?.slug);
     const excludedRaw = bundle.excluded ?? [];
     const excluded = [];
     if (!Array.isArray(excludedRaw)) {
-      fail(`${BUNDLES} \`excluded\` is not an array of { slug, why }.`);
+      fail(`${tag}${BUNDLES} \`excluded\` is not an array of { slug, why }.`);
     } else {
       for (const [i, x] of excludedRaw.entries()) {
         if (typeof x?.slug !== 'string' || !x.slug) {
-          fail(`${BUNDLES} excluded[${i}] names no \`slug\`.`);
+          fail(`${tag}${BUNDLES} excluded[${i}] names no \`slug\`.`);
           continue;
         }
         if (typeof x.why !== 'string' || x.why.trim() === '') {
-          fail(`${BUNDLES} excludes \`${x.slug}\` with no \`why\`. An exclusion from "every product" is a decision, and a decision states its reason.`);
+          fail(`${tag}${BUNDLES} excludes \`${x.slug}\` with no \`why\`. An exclusion from "every product" is a decision, and a decision states its reason.`);
         }
         excluded.push(x.slug);
       }
     }
     for (const s of members) {
       if (typeof s !== 'string' || !catalog.has(s)) {
-        fail(`${BUNDLES} lists member \`${s}\`, which neither ${APPS} nor ${EXTENSIONS} carries — an unknown member can never be live.`);
+        fail(`${tag}${BUNDLES} lists member \`${s}\`, which neither ${APPS} nor ${EXTENSIONS} carries — an unknown member can never be live.`);
       }
-      if (excluded.includes(s)) fail(`${BUNDLES} lists \`${s}\` as a member AND excludes it.`);
+      if (excluded.includes(s)) fail(`${tag}${BUNDLES} lists \`${s}\` as a member AND excludes it.`);
     }
     for (const s of excluded) {
-      if (!catalog.has(s)) fail(`${BUNDLES} excludes \`${s}\`, which neither ${APPS} nor ${EXTENSIONS} carries.`);
+      if (!catalog.has(s)) fail(`${tag}${BUNDLES} excludes \`${s}\`, which neither ${APPS} nor ${EXTENSIONS} carries.`);
     }
     for (const s of catalog) {
       if (!members.includes(s) && !excluded.includes(s)) {
         fail(
-          `\`${s}\` is a catalogue product and ${BUNDLES} neither lists it in \`members\` nor names it in \`excluded\` ` +
-            'with a `why`. The bundle is sold as every Nikatru product; add it to one of the two.',
+          `${tag}\`${s}\` is a catalogue product and ${BUNDLES} neither lists it in \`members\` nor names it in \`excluded\` ` +
+            'with a `why`. A bundle states, for every Nikatru product, whether it is in or out; add it to one of the two.',
         );
       }
     }
-    if (problems.length === before) {
+    if (problems.length === beforeRow) {
       ok(
         `the ${catalog.size} catalogue product(s) equal members ∪ excluded ` +
-          `(members: ${members.join(', ') || 'none'}; excluded: ${excluded.join(', ') || 'none'})`,
+          `(members: ${members.join(', ') || 'none'}; excluded: ${excluded.join(', ') || 'none'}) ${tag.trim()}`,
       );
+    }
+  }
+  if (problems.length === before && rows.length > 0) ok(`limb F graded all ${rows.length} bundle row(s)`);
+}
+
+// ── the BASE copy of a file, for the two limbs that only let a file move one way ──
+/**
+ * `refs/remotes/origin/main:<rel>` — or `<--base-root>/<rel>` under the test seam.
+ * `{ ok: false }` when there is no base to read (no git, no origin/main, or the
+ * file does not exist at the base); the caller then compares the file against
+ * itself and SAYS so, which is the brief's rule for a file this PR creates.
+ */
+function baseCopy(rel) {
+  if (OPTS['base-root'] !== undefined) {
+    const p = join(resolve(OPTS['base-root']), rel);
+    return existsSync(p) ? { ok: true, text: readFileSync(p, 'utf8'), from: `--base-root ${rel}` } : { ok: false, why: `--base-root carries no ${rel}` };
+  }
+  const r = spawnSync('git', ['-C', ROOT, 'show', `refs/remotes/origin/main:${rel}`], { encoding: 'utf8', timeout: 30_000 });
+  if (r.status === 0) return { ok: true, text: r.stdout, from: `origin/main:${rel}` };
+  return { ok: false, why: `git show refs/remotes/origin/main:${rel} exited ${r.status ?? r.signal ?? 'with no status'}` };
+}
+
+// ── G · THE DIRECT catalog/*.json READERS, AGAINST A FLOOR THAT ONLY FALLS ────
+// O-BUNDLE-AVAILABILITY-TAKES-THE-FIRST (R-3). New code reads the catalogue
+// through tooling/catalog/read.mjs (Node) or services/platform/src/lib/catalog.ts
+// (the Worker). Every OTHER source file that names a catalog/*.json path is a
+// direct reader, and the count of them may not rise above
+// tooling/catalog/reader-floor.json. The floor was measured at e154dc60 and is
+// not the target: migrating a reader to the reader lowers the count, and this
+// limb then says how far the floor can fall. The floor itself only falls — a
+// value above the base branch's floor is refused.
+//
+// A reader is a code file (.mjs .cjs .js .ts .dart .sh .py) whose CODE — comments
+// stripped — names `catalog/<file>.json` as a root-relative or `../`-relative
+// path, or joins a `'catalog'` segment to a `'<file>.json'` segment, for a
+// `<file>` that exists under catalog/. `extensions/catalog/…` is another
+// directory and is not counted. A file counts once, however many it names.
+{
+  const before = problems.length;
+  const SKIP_DIRS = new Set(['node_modules', '.git', '.dart_tool', 'build', '.wrangler', 'dist', 'coverage']);
+  const CODE = /\.(mjs|cjs|js|ts|dart|sh|py)$/;
+  const SANCTIONED = new Set([NODE_READER, WORKER_READER]);
+  let names = [];
+  try {
+    names = listDir(join(ROOT, 'catalog')).filter((n) => n.endsWith('.json')).map((n) => n.slice(0, -'.json'.length));
+  } catch (e) {
+    coverageLost(`limb G could not list catalog/ (${e.message}), so no reader could be recognised.`);
+  }
+  let floor = null;
+  try {
+    const doc = JSON.parse(sources.get(READER_FLOOR));
+    if (Number.isInteger(doc?.floor) && doc.floor >= 0) floor = doc.floor;
+    else coverageLost(`${READER_FLOOR} carries no non-negative integer \`floor\`, so the count was held against nothing.`);
+  } catch (e) {
+    coverageLost(`limb G could not parse ${READER_FLOOR} (${e.message}).`);
+  }
+  if (names.length === 0 && problems.length === before) {
+    coverageLost('limb G found no catalog/*.json file, so "a direct reader of the catalogue" names nothing.');
+  }
+  if (problems.length === before) {
+    const alt = names.map((n) => n.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&')).join('|');
+    const pathRe = new RegExp(`(?<![A-Za-z0-9_.-])(?<![A-Za-z0-9_-]/)catalog/(${alt})\\.json`);
+    const joinRe = new RegExp(`['"\`]catalog['"\`]\\s*,\\s*['"\`](${alt})\\.json['"\`]`);
+    // A block comment opens only where a comment can: at a line start or after
+    // whitespace or punctuation. The glob spelling `catalog/*.json`, which
+    // files about the catalogue write in prose and in messages, is then not a
+    // comment opener that swallows the file up to the next `*/`.
+    const strip = (file, src) =>
+      /\.(sh|py)$/.test(file)
+        ? src.replace(/^\s*#[^\n]*/gm, '')
+        : src.replace(/(^|[\s;,(){}[\]])\/\*[\s\S]*?\*\//g, '$1').replace(/(^|\s)\/\/[^\n]*/g, '$1');
+    const readers = [];
+    let scanned = 0;
+    const walk = (dir) => {
+      for (const e of listDir(dir, { withFileTypes: true })) {
+        const abs = join(dir, e.name);
+        if (e.isDirectory()) {
+          if (!SKIP_DIRS.has(e.name)) walk(abs);
+          continue;
+        }
+        if (!CODE.test(e.name)) continue;
+        scanned += 1;
+        const rel = relative(ROOT, abs).split(sep).join('/');
+        if (SANCTIONED.has(rel)) continue;
+        const code = strip(e.name, readFileSync(abs, 'utf8'));
+        if (pathRe.test(code) || joinRe.test(code)) readers.push(rel);
+      }
+    };
+    walk(ROOT);
+    readers.sort();
+    if (FLAGS.has('--list-readers')) for (const r of readers) console.log(`  reader  ${r}`);
+    let baseFloor = null;
+    const base = baseCopy(READER_FLOOR);
+    if (base.ok) {
+      try {
+        const n = JSON.parse(base.text)?.floor;
+        if (Number.isInteger(n)) baseFloor = n;
+      } catch {
+        // An unparseable base copy is no base: the floor is held against itself below.
+      }
+    }
+    if (scanned === 0) {
+      coverageLost('limb G scanned ZERO code files, so the reader count is a count of nothing.');
+    } else if (readers.length > floor) {
+      fail(
+        `${readers.length} source file(s) read catalog/*.json directly, above the floor of ${floor} in ${READER_FLOOR}. ` +
+          `New code reads the catalogue through ${NODE_READER} (Node) or ${WORKER_READER} (the Worker). ` +
+          'Run with --list-readers for the list.',
+      );
+    } else if (baseFloor !== null && floor > baseFloor) {
+      fail(`${READER_FLOOR} raises the floor from ${baseFloor} (${base.from}) to ${floor}. The floor only falls.`);
+    } else {
+      ok(
+        `limb G: ${readers.length} direct catalog/*.json reader(s) across ${scanned} code file(s), floor ${floor}` +
+          (baseFloor === null ? ` (no base floor: ${base.why}; held against itself)` : ` (base ${baseFloor})`) +
+          (readers.length < floor ? ` — the floor can fall to ${readers.length}` : ''),
+      );
+    }
+  }
+}
+
+// ── H · A VERSION'S MEMBERSHIP IS LOCKED, AND THE LOCK ONLY GROWS ────────────
+// O-BUNDLE-MEMBER-INSERT-UNLOCKED limb (1). Adding app #2 to `members` without a
+// version bump would insert it into an already-minted version and change what
+// existing buyers own ([ADR 057] §4). catalog/bundle-membership.lock.json keeps
+// every version's members, and this limb holds three things:
+//   1 · every bundle row's members EQUAL its featureSet@version entry;
+//   2 · no entry the base branch's lock carries is edited or removed;
+//   3 · a NEW entry (absent from the base) names only members that are `live`
+//       in their register at this commit. Past entries are not re-graded:
+//       nikatru_all@1 is a draft that was never sold, written as it stands.
+// With no base copy (this PR creates the lock, or no git), the lock is compared
+// against itself, and the line below says so.
+{
+  const before = problems.length;
+  const lock = readBundleLock(ROOT);
+  const register = readBundles(ROOT);
+  if (!lock.ok) coverageLost(`limb H could not read the lock: ${lock.why}.`);
+  if (!register.ok) coverageLost(`limb H could not read the bundle register: ${register.why}.`);
+  if (lock.ok && register.ok && register.rows.length === 0) {
+    coverageLost(`limb H found no bundle row in ${BUNDLES}, so no version was held against the lock.`);
+  }
+  if (problems.length === before) {
+    const sorted = (xs) => [...xs].sort();
+    const same = (a, b) => JSON.stringify(sorted(a)) === JSON.stringify(sorted(b));
+    // 1 · the register against the lock
+    for (const row of register.rows) {
+      const key = bundleKey(row.featureSet, row.version);
+      const members = memberSlugsOf(row);
+      const entry = lock.entries[key];
+      if (entry === undefined) {
+        fail(
+          `${BUNDLES} carries ${key} and ${BUNDLE_LOCK} has no entry for it. A version's membership is locked when the ` +
+            `version is written: add "${key}": ${JSON.stringify(sorted(members))} to the lock in the same commit.`,
+        );
+      } else if (!same(members, entry)) {
+        fail(
+          `the members of ${key} in ${BUNDLES} (${sorted(members).join(', ') || 'none'}) differ from its lock entry ` +
+            `(${sorted(entry).join(', ') || 'none'}). A minted version's membership never changes: bump the version and ` +
+            'add a lock entry for the new one ([ADR 057] §4).',
+        );
+      }
+    }
+    // 2 · the lock against its base
+    const baseRaw = baseCopy(BUNDLE_LOCK);
+    let base = null;
+    if (baseRaw.ok) {
+      try {
+        const parsed = lockEntriesOf(JSON.parse(baseRaw.text), baseRaw.from);
+        if (parsed.ok) base = parsed.entries;
+        else fail(`the base copy of the lock is unreadable (${parsed.why}), so an edit to it could not be seen.`);
+      } catch (e) {
+        fail(`the base copy of the lock (${baseRaw.from}) is not valid JSON (${e.message}).`);
+      }
+    }
+    const against = base ?? lock.entries;
+    for (const [key, members] of Object.entries(against)) {
+      const now = lock.entries[key];
+      if (now === undefined) {
+        fail(`${BUNDLE_LOCK} no longer carries ${key}. The lock only grows: a minted version's members are a record, never removed.`);
+      } else if (!same(now, members)) {
+        fail(
+          `${BUNDLE_LOCK} edits ${key} from (${sorted(members).join(', ')}) to (${sorted(now).join(', ')}). The lock only ` +
+            'grows: a new membership is a new version, never an edit to a minted one.',
+        );
+      }
+    }
+    // 3 · a new entry names only live members
+    const { products, problems: productProblems } = readProducts(ROOT);
+    if (productProblems.length > 0) {
+      coverageLost(`limb H could not read the product registers (${productProblems.join(' · ')}), so liveness was not measured.`);
+    } else {
+      const live = new Set(liveSlugs(products));
+      const fresh = Object.keys(lock.entries).filter((k) => !(k in against));
+      for (const key of fresh) {
+        const notLive = lock.entries[key].filter((s) => !live.has(s));
+        if (notLive.length > 0) {
+          fail(
+            `the NEW lock entry ${key} names ${notLive.join(', ')}, which ${notLive.length === 1 ? 'is' : 'are'} not \`live\` ` +
+              'in its register at this commit. A product joins a bundle only after it is live.',
+          );
+        }
+      }
+      if (problems.length === before) {
+        ok(
+          `limb H: ${register.rows.length} bundle row(s) equal their lock entries; ${Object.keys(lock.entries).length} lock ` +
+            `entr${Object.keys(lock.entries).length === 1 ? 'y' : 'ies'}, ${fresh.length} new, every new one all-live` +
+            (base === null ? ` (no base lock: ${baseRaw.why}; held against itself)` : ` (base: ${baseRaw.from})`),
+        );
+      }
     }
   }
 }

@@ -18,7 +18,7 @@ import type { AppTarget, Env } from './types';
 import { recomputeRenewals } from './renewals';
 import { runBackup } from './backup';
 import { isMoneyEnvironment } from './lib/mor/contract';
-import { isKnownProduct } from './config';
+import { isAttributableProduct } from './config';
 import { verifierFor } from './lib/mor/registry';
 import { deriveAndApply, unconcludedNotifications } from './lib/mor/store';
 import {
@@ -923,8 +923,9 @@ export async function moneyRederive(env: Env, nowMs: number = Date.now()): Promi
     const rows = await unconcludedNotifications(env.PLATFORM_DB, since, MAX_REDERIVE_PER_RUN);
     candidates = rows.length;
     // The store's attribution rule, injected exactly as routes/money.ts injects it
-    // (MoneyStoreDeps.isKnownProduct says why it is not imported by the store).
-    const deps = { db: env.PLATFORM_DB, environment, nowMs, isKnownProduct };
+    // (MoneyStoreDeps.isKnownProduct says why it is not imported by the store),
+    // and the same ATTRIBUTABLE set: every known product but a bundle.
+    const deps = { db: env.PLATFORM_DB, environment, nowMs, isKnownProduct: isAttributableProduct };
     for (const row of rows) {
       const verifier = verifierFor(row.provider);
       if (verifier === null) { bump('unknown_provider'); failed++; continue; }

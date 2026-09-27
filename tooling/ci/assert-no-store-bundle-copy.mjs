@@ -94,21 +94,32 @@ if (!existsSync(join(ROOT, DERIVATION))) {
   );
   done();
 }
+let everyBundle = null;
 try {
   const mod = await import(pathToFileURL(join(ROOT, DERIVATION)).href);
-  availability = mod.bundleAvailability(ROOT);
+  everyBundle = mod.bundleAvailability(ROOT);
 } catch (e) {
   coverageLost(`${DERIVATION} could not be imported (${e.message}), so the ban's condition is unknown.`);
   done();
 }
-if (availability.problems.length > 0) {
+if (everyBundle.problems.length > 0) {
   coverageLost(
-    `the availability derivation could not read its own registers (${availability.problems.join(' · ')}). ` +
+    `the availability derivation could not read its own registers (${everyBundle.problems.join(' · ')}). ` +
       'An unreadable register makes `purchasable` false, which LOOKS like the conservative answer and is in ' +
       'fact this guard grading a state nobody is in.',
   );
   done();
 }
+// The derivation answers for EVERY bundle, keyed by featureSet
+// (O-BUNDLE-AVAILABILITY-TAKES-THE-FIRST). The ban is on promising a bundle that
+// cannot be bought, and the scan below does not tell one bundle's copy from
+// another's, so it stands down only when EVERY bundle can be bought.
+const verdicts = [...everyBundle.byFeatureSet.values()];
+if (verdicts.length === 0) {
+  coverageLost('the availability derivation returned ZERO bundles, so there is no gate for this ban to be conditional on.');
+  done();
+}
+availability = verdicts.find((v) => v.purchasable !== true) ?? verdicts[verdicts.length - 1];
 
 if (availability.purchasable === true) {
   // 🔴 THE GUARD STANDS DOWN BY DERIVATION, NOT BY DELETION. The day the gate

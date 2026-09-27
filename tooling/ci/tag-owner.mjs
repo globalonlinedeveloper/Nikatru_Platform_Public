@@ -174,13 +174,17 @@ export function derive(root) {
     lanes.get(tagged[0]).kinds.push(kind);
   }
   for (const p of products) {
-    if (!SLUG.test(p.slug)) {
-      problems.push(`${p.register} holds slug "${p.slug}", which is not [a-z0-9-] — it cannot be written into a tag filter as a literal`);
-      continue;
-    }
+    // The lane first: the slug rule below exists only because a slug is written
+    // into a tag filter, so a product of a kind with no tag lane (a bundle,
+    // `nikatru_all`, since the bundle register became a product register) is
+    // never held to it.
     const lane = kindLane.get(p.kind);
     if (!lane) {
       notes.push(`product "${p.slug}" (${p.kind}) has no tag lane, so no tag can start a release for it`);
+      continue;
+    }
+    if (!SLUG.test(p.slug)) {
+      problems.push(`${p.register} holds slug "${p.slug}", which is not [a-z0-9-] — it cannot be written into a tag filter as a literal`);
       continue;
     }
     lanes.get(lane).products.push({ slug: p.slug, kind: p.kind });

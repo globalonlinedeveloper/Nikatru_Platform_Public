@@ -24,12 +24,18 @@ export function isBundleSource(v: unknown): boolean;
 export function requiresReceipt(source: string): boolean;
 
 /**
- * A product is an app, an extension or a script. The bundle spans all three,
- * which is what keeps a new category a DATA change rather than a schema change.
+ * A product is an app, an extension, a script, a bundle, a service or a site.
+ * A new category is a DATA change rather than a schema change.
  */
-export type ProductKind = 'app' | 'extension' | 'script';
+export type ProductKind = 'app' | 'extension' | 'script' | 'bundle' | 'service' | 'site';
 
 export const PRODUCT_KINDS: readonly ProductKind[];
+
+/** The kind never counted live and never a member of a feature set. */
+export const BUNDLE_KIND: 'bundle';
+
+/** Every kind but the bundle itself: what a feature-set member may be. */
+export const MEMBER_KINDS: readonly ProductKind[];
 
 export function isProductKind(v: unknown): v is ProductKind;
 
@@ -37,6 +43,8 @@ export interface ProductRegister {
   readonly kind: ProductKind;
   /** `null` = the category is DECLARED and has no register yet. */
   readonly register: string | null;
+  /** The row field that is the product's slug; absent means `slug`. */
+  readonly slugField?: string;
 }
 
 export const PRODUCT_REGISTERS: readonly ProductRegister[];
