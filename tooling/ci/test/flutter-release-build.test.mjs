@@ -262,7 +262,7 @@ const STEP_ENV = [
   '          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}',
   '          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}',
   '          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}',
-  '          REVENUECAT_PUBLIC_KEY: ${{ secrets[steps.rc-key.outputs.name] }}',
+  '          REVENUECAT_PUBLIC_KEY: ${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}',
   '          GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}',
 ];
 
@@ -289,7 +289,7 @@ const LITERAL =
   ' --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}' +
   ' --dart-define=API_BASE_URL=https://fixture-api.nikatru.com' +
   ' --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${GITHUB_SHA::7}' +
-  ' --dart-define=RELEASE_CHANNEL=android-play --dart-define=REVENUECAT_KEY=${{ secrets[steps.rc-key.outputs.name] }}' +
+  ' --dart-define=RELEASE_CHANNEL=android-play --dart-define=REVENUECAT_KEY=${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}' +
   ' --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}';
 const CALL = 'node tooling/ci/flutter-release-build.mjs fixture appbundle android-play';
 

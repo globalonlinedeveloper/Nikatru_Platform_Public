@@ -16,8 +16,9 @@
 //
 //   docs/ci/README.md                  lane-map   ci.yml's jobs and ci-gate's needs (§3)
 //                                      secrets    every `secrets.NAME` a workflow reads (§6),
-//                                                 and every store SDK key name it reads by
-//                                                 index through store-key-secret.mjs (12a)
+//                                                 and, should one appear, every store SDK key
+//                                                 name an index through store-key-secret.mjs
+//                                                 can take (12a; the guards refuse the index)
 //                                      actions    every action a workflow or a composite
 //                                                 action under .github/actions uses (§7)
 //                                      workflows  one row per workflow, with its page (§9)
@@ -167,9 +168,12 @@ export function readTree(root) {
   return { lost, workflows, actions: parseAllActions(root), ci, storeKeys };
 }
 
-/** ⏱ O-BRICK-SELLS-NOTHING-IN-A-STORE (12a, NP12A-F2). A store build reads its RevenueCat key
- *  by INDEX, `secrets[steps.<id>.outputs.name]`, where step <id> of the SAME job runs
- *  tooling/ci/store-key-secret.mjs --rail <rail>. The names that index can take are each app's
+/** ⏱ O-BRICK-SELLS-NOTHING-IN-A-STORE (12a, NP12A-F2). A store build reads its RevenueCat key from a
+ *  STATIC named secret, which `secrets.NAME` above already lists; ⏱ LEAD RULING W46-R1 made the
+ *  index 12a first drafted a finding (assert-channel-register 6b-iii and [9]R-3: it hands the job
+ *  every repository secret). Should an index `secrets[steps.<id>.outputs.name]` appear anyway,
+ *  where step <id> of the SAME job runs tooling/ci/store-key-secret.mjs --rail <rail>, this block
+ *  still names what it reads rather than a shorter table. The names that index can take are each app's
  *  app.yaml `billing.mobileIap.publicKeySecrets.<the field the register keys for that rail>`,
  *  resolved by store-key-secret.mjs's own storeKeySecretName and never read again here. So the
  *  workflow reads each of them, and the `secrets` block lists it there: a table that dropped

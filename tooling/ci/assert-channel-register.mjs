@@ -51,10 +51,12 @@
 //      stamp whose row's `platforms` lacks the build's target also fails here.
 //   6b-iii. and the rail carries its KEY: a release build stamped with a row
 //      whose rail is a key of `purchaseRails.storeKeyDefine.secretFieldByRail`
-//      passes `--dart-define=<define>=${{ secrets[steps.<id>.outputs.name] }}`,
-//      its job holding step <id> that runs tooling/ci/store-key-secret.mjs with
-//      the build's own app expression and that rail (12a: the key is each app's
-//      own, O-BRICK-SELLS-NOTHING-IN-A-STORE); a literal `secrets.<NAME>` fails.
+//      passes `--dart-define=<define>=${{ secrets.<NAME> }}`, NAME being the one
+//      every opted-in app.yaml declares for that rail, behind a step running
+//      tooling/ci/store-key-secret.mjs with the build's own app and that rail
+//      (the refusal path). A dynamic `secrets[...]` index fails: it hands the job
+//      every repository secret (LEAD RULING W46-R1); per-app named secrets are
+//      stamped by the brick when a second app exists (O-BRICK-SELLS-NOTHING-IN-A-STORE).
 //      Every other release build — another rail, unstamped, exempt — names the
 //      define nowhere. The define must be a `vendors.revenuecat` surface in the
 //      capability register. Resolved by STAMP, never by
@@ -2195,11 +2197,13 @@ let releaseCensus = { workflows: [], domain: null };
       );
     }
 
-    // (6) ⏱ O-BRICK-SELLS-NOTHING-IN-A-STORE (12a): the key is keyed by APP, so any number of apps may
-    //     declare `billing.mobileIap`. The "more than one app" refusal that stood here retired in the same
-    //     commit as its only subject, the rail-keyed secret map. The count stays, for the OK line.
+    // (6) ⏱ O-BRICK-SELLS-NOTHING-IN-A-STORE (12a): any number of apps may declare `billing.mobileIap`;
+    //     the "more than one app" refusal retired with the rail-keyed secret map. ⏱ LEAD RULING W46-R1: a
+    //     store build reads its key from a STATIC named secret, so the name each app declares per rail is
+    //     collected here, and every store-rail segment below is held to it.
     const appsAbs = abs('apps');
     const iapApps = [];
+    const declaredByRail = new Map([...fieldByRail.keys()].map((r) => [r, new Map()]));
     let appYamlsRead = 0;
     if (existsSync(appsAbs)) {
       for (const id of listDir(appsAbs).filter((x) => existsSync(join(appsAbs, x, 'app.yaml'))).sort()) {
@@ -2211,7 +2215,16 @@ let releaseCensus = { workflows: [], domain: null };
           // assert-app-yaml owns the parse failure and names the repair.
           continue;
         }
-        if (doc?.billing?.mobileIap) iapApps.push(id);
+        if (!doc?.billing?.mobileIap) continue;
+        iapApps.push(id);
+        const names = doc.billing.mobileIap.publicKeySecrets;
+        for (const [r, field] of fieldByRail) {
+          const n = names !== null && typeof names === 'object' ? names[field] : undefined;
+          if (typeof n !== 'string' || !NAME.test(n)) continue;
+          const byName = declaredByRail.get(r);
+          if (!byName.has(n)) byName.set(n, []);
+          byName.get(n).push(id);
+        }
       }
     }
     if (scanningRealRepo && appYamlsRead === 0) {
@@ -2240,36 +2253,36 @@ let releaseCensus = { workflows: [], domain: null };
       const m = rest.match(new RegExp(`--${flag}\\s+(\\$\\{\\{[^}]*\\}\\}|"[^"]*"|'[^']*'|[^\\s>]+)`));
       return m ? normApp(m[1]) : null;
     };
-    /** null when step <id> of the build's job resolves THIS build's app on THIS rail, before it;
-     *  otherwise the sentence saying what is wrong. */
-    const resolverProblem = (b, id, rail) => {
+    /** THE REFUSAL PATH. null when a step of the build's job runs the resolver for THIS build's app on
+     *  THIS rail, before the build: an app that declares no billing.mobileIap stops there (exit 1)
+     *  instead of building keyless. Otherwise the sentence saying what is wrong. */
+    const resolverProblem = (b, rail) => {
       const job = workflows.find((w) => w.rel === b.workflow)?.jobs?.get(b.job);
-      if (!job) return `its job "${b.job}" could not be read back from ${b.workflow}, so the step that names its key cannot be checked.`;
+      if (!job) return `its job "${b.job}" could not be read back from ${b.workflow}, so its resolver step cannot be checked.`;
       const steps = workflowSteps(job);
       const build = steps.find((s) => s.run?.n === b.runLine);
-      const resolver = steps.find((s) => s.id === id);
-      const expected = `a step \`id: ${id}\` before the build running: node ${RESOLVER} --app <this build's app> --rail ${rail} >> "$GITHUB_OUTPUT"`;
-      if (!resolver) return `reads secrets[steps.${id}.outputs.name], and job "${b.job}" has no step with id "${id}". Expected ${expected}.`;
-      const call = RESOLVER_CALL.exec(String(resolver.run?.text ?? '').split('#')[0]);
-      if (call === null) return `reads secrets[steps.${id}.outputs.name], and step "${id}" does not run ${RESOLVER}. Expected ${expected}.`;
-      const rApp = ARG(call[1], 'app');
-      const rRail = ARG(call[1], 'rail');
-      if (rRail !== rail) return `step "${id}" resolves --rail ${rRail ?? '(none)'}, and this build is stamped rail "${rail}". The key would be the other store's.`;
+      const expected = `a step before the build running: node ${RESOLVER} --app <this build's app> --rail ${rail}`;
+      const calls = steps
+        .map((s) => ({ s, call: RESOLVER_CALL.exec(String(s.run?.text ?? '').split('#')[0]) }))
+        .filter((x) => x.call !== null);
+      if (calls.length === 0) return `its job "${b.job}" has no step running ${RESOLVER}, so an app with no billing.mobileIap would build keyless instead of stopping. Expected ${expected}.`;
+      const onRail = calls.filter((x) => ARG(x.call[1], 'rail') === rail);
+      const label = (x) => `step "${x.s.id ?? x.s.name ?? x.s.index}"`;
+      if (onRail.length === 0) return `${label(calls[0])} resolves --rail ${ARG(calls[0].call[1], 'rail') ?? '(none)'}, and this build is stamped rail "${rail}". Expected ${expected}.`;
       const app = build ? buildAppOf(job, build) : null;
-      if (app === null) return `the build's own app expression cannot be read (no composer <app> argument, no working-directory: apps/<app>), so step "${id}" cannot be held to it.`;
-      if (rApp !== app) return `step "${id}" resolves --app ${rApp ?? '(none)'}, and this build is of ${app}. The key would be another app's: its purchases would be granted to that app.`;
-      if (resolver.index > build.index) return `step "${id}" runs after the build, so the build reads an output nobody wrote yet.`;
+      if (app === null) return `the build's own app expression cannot be read (no composer <app> argument, no working-directory: apps/<app>), so ${label(onRail[0])} cannot be held to it.`;
+      const mine = onRail.find((x) => ARG(x.call[1], 'app') === app);
+      if (!mine) return `${label(onRail[0])} resolves --app ${ARG(onRail[0].call[1], 'app') ?? '(none)'}, and this build is of ${app}. Its refusal would be another app's.`;
+      if (mine.s.index > build.index) return `${label(mine)} runs after the build, so its refusal comes after the build it guards.`;
       return null;
     };
     // (3)+(4) every release segment, graded by the rail its STAMP resolves to.
     const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const MENTION = new RegExp(`(?<![A-Za-z0-9_])${esc(DEFINE)}(?![A-Za-z0-9_])`, 'g');
-    // ⏱ 12a: the key is read by INDEX, `secrets[steps.<id>.outputs.name]`, the resolver step naming
-    // the app's own secret. A literal `secrets.<NAME>` is one app's key for every app of the matrix.
-    const INDEXED = new RegExp(
-      `--dart-define(?:=|\\s+)${esc(DEFINE)}=\\$\\{\\{\\s*secrets\\[\\s*steps\\.([A-Za-z_][A-Za-z0-9_-]*)\\.outputs\\.name\\s*\\]\\s*\\}\\}`,
-      'g',
-    );
+    // ⏱ LEAD RULING W46-R1 (security): the key is read from a STATIC named secret,
+    // `${{ secrets.<NAME> }}`. A dynamic index, `${{ secrets[...] }}`, makes GitHub hand the job
+    // EVERY repository secret (zizmor overprovisioned-secrets), so it is a finding here.
+    const INDEXED = new RegExp(`--dart-define(?:=|\\s+)${esc(DEFINE)}=\\$\\{\\{\\s*secrets\\s*\\[`, 'g');
     const LITERAL = new RegExp(
       `--dart-define(?:=|\\s+)${esc(DEFINE)}=\\$\\{\\{\\s*secrets\\.([A-Za-z_][A-Za-z0-9_]*)\\s*\\}\\}`,
       'g',
@@ -2287,24 +2300,40 @@ let releaseCensus = { workflows: [], domain: null };
       const rail = typeof row?.purchaseRail?.rail === 'string' ? row.purchaseRail.rail : null;
       if (rail !== null && fieldByRail.has(rail)) {
         storeSegments++;
-        const want = `--dart-define=${DEFINE}=\${{ secrets[steps.<id>.outputs.name] }} (step env ${KEY_ENV}: \${{ secrets[steps.<id>.outputs.name] }}), with a step <id> running ${RESOLVER} --app <this build's app> --rail ${rail}`;
+        const field = fieldByRail.get(rail);
+        const declared = declaredByRail.get(rail);
+        const names = [...declared.keys()];
+        const want =
+          `--dart-define=${DEFINE}=\${{ secrets.${names.length === 1 ? names[0] : `<the name app.yaml billing.mobileIap.publicKeySecrets.${field} declares>`} }} ` +
+          `(step env ${KEY_ENV}), behind a step running ${RESOLVER} --app <this build's app> --rail ${rail}`;
         const literal = [...live.matchAll(LITERAL)].map((x) => x[1]);
-        const indexed = [...live.matchAll(INDEXED)].map((x) => x[1]);
+        const indexed = (live.match(INDEXED) ?? []).length;
+        const where = `${at} for channel "${b.stamp}" (rail "${rail}")`;
         if (mentions === 0) {
           problems.push(
-            `${at} for channel "${b.stamp}" (rail "${rail}") passes no ${DEFINE}. Expected: ${want}. Without it the store build compiles an empty RevenueCat key, the facade answers \`iapBridgeMissing\`, and the ${b.stamp} artifact ships with a paywall that sells nothing. The map is ${REGISTER} \`${SKD}\`.`,
+            `${where} passes no ${DEFINE}. Expected: ${want}. Without it the store build compiles an empty RevenueCat key, the facade answers \`iapBridgeMissing\`, and the ${b.stamp} artifact ships with a paywall that sells nothing. The map is ${REGISTER} \`${SKD}\`.`,
           );
-        } else if (literal.length > 0) {
+        } else if (indexed > 0) {
           problems.push(
-            `${at} for channel "${b.stamp}" (rail "${rail}") passes ${DEFINE} from the literal secret ${literal.join(', ')}. The key is each app's own (app.yaml billing.mobileIap.publicKeySecrets), so a literal name is one app's key compiled into every app of the matrix. Expected: ${want}.`,
+            `${where} reads ${DEFINE} through a dynamic \`secrets[...]\` index. GitHub hands a job that indexes secrets EVERY repository secret (zizmor overprovisioned-secrets; LEAD RULING W46-R1). Expected: ${want}.`,
           );
-        } else if (indexed.length !== 1 || mentions !== 1) {
+        } else if (literal.length !== 1 || mentions !== 1) {
+          problems.push(`${where} names ${DEFINE} ${mentions} time(s), ${literal.length} of them from a named secret. Expected exactly: ${want}.`);
+        } else if (names.length === 0) {
           problems.push(
-            `${at} for channel "${b.stamp}" (rail "${rail}") names ${DEFINE} ${mentions} time(s)${indexed.length ? ` from step output(s) ${indexed.join(', ')}` : ', none of them as the resolved `${{ secrets[steps.<id>.outputs.name] }}`'}. Expected exactly: ${want}.`,
+            `${where} passes ${DEFINE} from secrets.${literal[0]}, and no app.yaml declares billing.mobileIap.publicKeySecrets.${field}, so the name is held to no app's declaration. Declare it in the app that sells through this rail.`,
+          );
+        } else if (names.length > 1) {
+          problems.push(
+            `${where} passes ${DEFINE} from secrets.${literal[0]}, and the apps declare ${names.length} different names for rail "${rail}" (${[...declared].map(([n, ids]) => `${n}: ${ids.join(', ')}`).join('; ')}). One static secret compiles one app's key into every app of the matrix; per-app named secrets are stamped by the brick when a second app exists.`,
+          );
+        } else if (literal[0] !== names[0]) {
+          problems.push(
+            `${where} passes ${DEFINE} from secrets.${literal[0]}, and every app declares ${names[0]} for rail "${rail}" (app.yaml billing.mobileIap.publicKeySecrets.${field}). The build would compile another store's or another app's key, and its purchases would reach a RevenueCat app this store's never do. Expected: ${want}.`,
           );
         } else {
-          const why = resolverProblem(b, indexed[0], rail);
-          if (why !== null) problems.push(`${at} for channel "${b.stamp}" (rail "${rail}") ${why}`);
+          const why = resolverProblem(b, rail);
+          if (why !== null) problems.push(`${where} ${why}`);
           else carried.set(rail, carried.get(rail) + 1);
         }
         continue;
@@ -2336,7 +2365,7 @@ let releaseCensus = { workflows: [], domain: null };
     }
     if (problems.length === problemsBefore6biii) {
       ok(
-        `6b-iii store SDK key — ${storeSegments} store-rail release segment(s) pass --dart-define=${DEFINE} from their own app's resolved secret, each through a ${RESOLVER} step with the build's app and rail (${[...carried].map(([r, v]) => `${r}: ${v}`).join(', ')}); ${forbiddenClean} other release segment(s) name it nowhere; ${iapApps.length} app(s) declare billing.mobileIap; \`${DEFINE}\` is a declared RevenueCat surface`,
+        `6b-iii store SDK key — ${storeSegments} store-rail release segment(s) pass --dart-define=${DEFINE} from the static named secret every opted-in app declares for the rail (${[...fieldByRail.keys()].map((r) => `${r}: ${[...declaredByRail.get(r).keys()].join(', ') || 'none declared'}`).join('; ')}), each behind a ${RESOLVER} step with the build's app and rail (${[...carried].map(([r, v]) => `${r}: ${v}`).join(', ')}); ${forbiddenClean} other release segment(s) name it nowhere; ${iapApps.length} app(s) declare billing.mobileIap; \`${DEFINE}\` is a declared RevenueCat surface`,
       );
     }
   }
@@ -3439,27 +3468,6 @@ if (existsSync(abs(WORKFLOW_DIR))) {
     if (/\.ya?ml$/.test(entry)) workflowFiles.push(`${WORKFLOW_DIR}/${entry}`);
   }
 }
-/** The step ids, in one workflow, whose run is the store SDK key resolver. */
-const resolverIdCache = new Map();
-function storeKeyResolverIds(rel) {
-  if (!resolverIdCache.has(rel)) {
-    const ids = new Set();
-    let parsed = null;
-    try {
-      parsed = parseWorkflow(ROOT, rel);
-    } catch {
-      parsed = null;
-    }
-    for (const job of parsed?.jobs?.values() ?? []) {
-      for (const s of workflowSteps(job)) {
-        if (s.id && /(?:^|\s)node\s+(?:\S*\/)?tooling\/ci\/store-key-secret\.mjs(?=\s|$)/.test(String(s.run?.text ?? '').split('#')[0])) ids.add(s.id);
-      }
-    }
-    resolverIdCache.set(rel, ids);
-  }
-  return resolverIdCache.get(rel);
-}
-let resolvedKeyReads = 0;
 
 /** ⏱ 12a — THE DERIVED RULE for the store SDK key names: every name in any app.yaml
  *  `billing.mobileIap.publicKeySecrets` is a non-signing build-config secret (a RevenueCat PUBLIC
@@ -3504,19 +3512,11 @@ for (const rel of workflowFiles) {
         observedSecrets.get(e.dsnSecret).add(rel);
       }
     } else if (/\bsecrets\s*\[/.test(expr[1])) {
-      // ⏱ O-BRICK-SELLS-NOTHING-IN-A-STORE (12a): one more expression is admitted, the store SDK
-      // key resolver's: `secrets[steps.<id>.outputs.name]` where step <id> of that workflow runs
-      // tooling/ci/store-key-secret.mjs. The names it can produce are exactly the app.yaml
-      // `publicKeySecrets` values, each declared below by the derived rule, so [9]R-3 still ranges
-      // over every name a lane can read. Any other computed name is refused as before.
-      const indexed = expr[1].trim().match(/^secrets\[\s*steps\.([A-Za-z_][A-Za-z0-9_-]*)\.outputs\.name\s*\]$/);
-      if (indexed === null || !storeKeyResolverIds(rel).has(indexed[1])) {
-        problems.push(
-          `${rel} names a secret by EXPRESSION (\`${expr[1].trim()}\`). A name computed at run time cannot be compared to the register, so [9]R-3 limb 2 cannot be enforced on it — the whole check would be one indirection away from vacuous. Name the secret literally. The two admitted expressions are deploy-workers' \`secrets[matrix.<dim>.dsnSecret]\`, resolved over tooling/platform-register.json, and \`secrets[steps.<id>.outputs.name]\` where step <id> runs tooling/ci/store-key-secret.mjs, whose names are the app.yaml publicKeySecrets values.`,
-        );
-      } else {
-        resolvedKeyReads++;
-      }
+      // ⏱ LEAD RULING W46-R1: the store SDK key is a STATIC named secret, so no other computed name is
+      // admitted. A dynamic index hands the job every repository secret (zizmor overprovisioned-secrets).
+      problems.push(
+        `${rel} names a secret by EXPRESSION (\`${expr[1].trim()}\`). A name computed at run time cannot be compared to the register, so [9]R-3 limb 2 cannot be enforced on it — the whole check would be one indirection away from vacuous — and GitHub hands a job that indexes secrets EVERY repository secret. Name the secret literally. The one admitted expression is deploy-workers' \`secrets[matrix.<dim>.dsnSecret]\`, resolved over tooling/platform-register.json.`,
+      );
     }
     for (const m of expr[1].matchAll(/\bsecrets\.([A-Za-z_][A-Za-z0-9_]*)/g)) {
       if (!observedSecrets.has(m[1])) observedSecrets.set(m[1], new Set());

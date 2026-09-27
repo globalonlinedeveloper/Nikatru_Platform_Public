@@ -35,12 +35,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, copyFileSync, rmSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, rmSync, readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { parseWorkflow, flutterReleaseBuilds, shellSegments, definesIn, workflowSteps } from '../workflow-scan.mjs';
 import { PR_BLANKED } from '../flutter-release-build.mjs';
+import { storeKeySecretName } from '../store-key-secret.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
@@ -351,9 +352,10 @@ test('T4l: a Linux build changed in linux_web_android alone turns the PR lane re
 // ── T5 (R-KEY A) ─────────────────────────────────────────────────────────────
 // The allowed set is DERIVED from the register: a build whose stamp's channel
 // sells through a rail in purchaseRails.storeKeyDefine.secretFieldByRail maps the
-// register's `env` from the resolver's output, `${{ secrets[steps.rc-key.outputs.name] }}`,
-// on that build's own step (⏱ 12a, O-BRICK-SELLS-NOTHING-IN-A-STORE: the key is each
-// app's own); the RC-CI proof step in android-artifacts reads the same expression once.
+// register's `env` from the STATIC named secret its apps declare for that rail,
+// `${{ secrets.<NAME> }}` (store-key-secret.mjs names it; ⏱ LEAD RULING W46-R1: never a
+// `secrets[...]` index), on that build's own step; the RC-CI proof step in android-artifacts
+// reads the same secret once.
 // Any other secret read on any line of any PR-lane job, literal or indexed, is a finding.
 // The web and Linux channels sell through no store rail, so their jobs may read no secret.
 test('the PR lane references only the secret the register maps for its store-rail stamps', () => {
@@ -365,6 +367,10 @@ test('the PR lane references only the secret the register maps for its store-rai
   );
   const channels = Array.isArray(register.channels) ? register.channels : [];
   const railOf = (stamp) => channels.find((c) => c?.id === stamp)?.purchaseRail?.rail ?? null;
+  // The names the workspace's apps declare for a rail, read by the resolver's own reader.
+  const apps = readdirSync(join(REPO, 'apps')).filter((a) => existsSync(join(REPO, 'apps', a, 'app.yaml')));
+  const namesFor = (rail) => [...new Set(apps.map((a) => storeKeySecretName(REPO, a, rail).name).filter(Boolean))];
+  assert.deepEqual(namesFor('play-billing'), ['REVENUECAT_PUBLIC_KEY_GOOGLE'], 'the Play key name the workspace declares');
 
   const findings = [];
   for (const name of PR_LANE_JOBS) {
@@ -378,7 +384,7 @@ test('the PR lane references only the secret the register maps for its store-rai
       // A typed build names the secret on its define line; a composer call names it
       // once, in its step's env, and the composer passes it as that define
       // (⏱ 2026-09-26, O-FLUTTER-BUILD-TYPED-PER-LINE part 3 of 3).
-      const tokens = [`${storeKey.env}: \${{ secrets[steps.rc-key.outputs.name] }}`];
+      const tokens = namesFor(railOf(b.stamp)).map((n) => `${storeKey.env}: \${{ secrets.${n} }}`);
       for (const l of job.lines) {
         if (l.n >= step.first && l.n <= step.last && tokens.includes(l.text.trim())) allowed.set(l.n, l.text.trim());
       }
@@ -387,7 +393,8 @@ test('the PR lane references only the secret the register maps for its store-rai
       const proof = steps.find((s) => s.name === "The app's store SDK key resolves by name (prints the name only)");
       assert.ok(proof, `${PR_WORKFLOW} job ${PR_JOB} has no RC-CI proof step`);
       for (const l of job.lines) {
-        if (l.n >= proof.first && l.n <= proof.last && l.text.trim() === 'RC_KEY: ${{ secrets[steps.rc-key.outputs.name] }}') allowed.set(l.n, l.text.trim());
+        const proofTokens = namesFor('play-billing').map((n) => `RC_KEY: \${{ secrets.${n} }}`);
+        if (l.n >= proof.first && l.n <= proof.last && proofTokens.includes(l.text.trim())) allowed.set(l.n, l.text.trim());
       }
     }
     for (const l of job.lines) {

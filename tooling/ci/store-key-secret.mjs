@@ -11,10 +11,12 @@
 // a rail reads is tooling/channel-register.json
 // `purchaseRails.storeKeyDefine.secretFieldByRail.<rail>`.
 //
-// A store-build job runs this as a step with an `id:`, and each build step's env
-// maps the key from `${{ secrets[steps.<id>.outputs.name] }}`.
-// assert-channel-register limb 6b-iii holds every store-rail build to exactly
-// that shape, with this step's `--app` the build's own app expression.
+// A store-build job runs this as a step before its builds: the refusal path, since
+// an app with no billing.mobileIap stops here. Each build step maps the key from the
+// STATIC named secret, `${{ secrets.<NAME> }}` (a `secrets[...]` index would hand the
+// job every repository secret: LEAD RULING W46-R1). assert-channel-register limb
+// 6b-iii holds NAME to what every opted-in app.yaml declares for the rail, and this
+// step's `--app` to the build's own app expression.
 //
 // 🔴 IT NEVER READS A SECRET. It reads two declarations and prints one NAME.
 //

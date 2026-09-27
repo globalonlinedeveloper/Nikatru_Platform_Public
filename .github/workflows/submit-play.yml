@@ -135,9 +135,10 @@ jobs:
           set -euo pipefail
           RECORDED="$(node tooling/ci/read-ledger-version-code.mjs "${APP}-android-play")"
           node tooling/ci/assert-app-versioning.mjs --play-floor "$RUN_NUMBER" --app "$APP" --recorded-upload "$RECORDED"
-      # why: the store SDK key is each app's own (O-BRICK-SELLS-NOTHING-IN-A-STORE): this prints the NAME of
-      # the app's secret (app.yaml billing.mobileIap.publicKeySecrets), never a value, and every build step
-      # below maps the key from it. assert-channel-register 6b-iii holds --app to the build's own app.
+      # why: the refusal path (O-BRICK-SELLS-NOTHING-IN-A-STORE): an app with no billing.mobileIap stops here,
+      # exit 1. The builds below read the key from the STATIC named secret this rail's apps declare (app.yaml
+      # billing.mobileIap.publicKeySecrets), never a `secrets[...]` index, which would hand this job every
+      # repository secret (LEAD RULING W46-R1). assert-channel-register 6b-iii holds the name and --app.
       - name: Resolve the app's store SDK key secret (play-billing)
         id: rc-key
         run: node tooling/ci/store-key-secret.mjs --app "$APP" --rail play-billing >> "$GITHUB_OUTPUT"
@@ -151,7 +152,7 @@ jobs:
           RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          REVENUECAT_PUBLIC_KEY: ${{ secrets[steps.rc-key.outputs.name] }}
+          REVENUECAT_PUBLIC_KEY: ${{ secrets.REVENUECAT_PUBLIC_KEY_GOOGLE }}
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
         run: node tooling/ci/flutter-release-build.mjs "$APP" appbundle android-play
       # ⏱ MOVED 2026-09-07 (unit `symbols-everywhere`) — THIS STEP USED TO BE THE

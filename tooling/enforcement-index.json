@@ -2847,7 +2847,9 @@
     "state": "LIBRARY"
   },
   {
-    "claims": [],
+    "claims": [
+      "R-3"
+    ],
     "invokedBy": [
       ".github/workflows/ci.yml#guard-meta"
     ],
