@@ -491,3 +491,27 @@ test('T13w: the web-artifacts lane key exists in artifact-shape', () => {
 test('T13l: the linux-artifacts lane key exists in artifact-shape', () => {
   assertLaneKeyExists(LINUX_PR_JOB);
 });
+
+// ── T14w (FWA-1) ─────────────────────────────────────────────────────────────
+// T8w compares guards by SCRIPT NAME, so `--check` alone satisfied it while the
+// PR bundle held no fallback-fonts/ tree: main run 36308023692 (a074a7bd) then
+// failed the smoke on a 404 for a font the deploy serves. Only the fetching step
+// PLACES the fonts, so it is held to deploy-web's argument for argument, after
+// the build and before the smoke.
+test('T14w: web-artifacts places the fallback fonts with deploy-web\'s own step, after the build and before the smoke', () => {
+  const placing = (g) => g.script === 'self-host-fallback-fonts.mjs' && !/(?:^|\s)--check(?:\s|$)/.test(g.args);
+  const main = guardInvocations(jobOf(webWorkflow, WEB_MAIN_WORKFLOW, WEB_MAIN_JOB)).filter(placing);
+  assert.equal(main.length, 1, `${WEB_MAIN_WORKFLOW} "${WEB_MAIN_JOB}" must place the fonts exactly once; found ${main.length}`);
+  const pr = guardInvocations(jobOf(ciWorkflow, PR_WORKFLOW, WEB_PR_JOB));
+  const fonts = pr.filter(placing);
+  assert.deepEqual(
+    fonts.map((g) => g.args.trim()),
+    [main[0].args.trim()],
+    `${PR_WORKFLOW} "${WEB_PR_JOB}" must run self-host-fallback-fonts.mjs once with ${WEB_MAIN_WORKFLOW}:${main[0].n}'s arguments; --check places nothing`,
+  );
+  const smoke = pr.filter((g) => g.script === 'smoke-web-artifact.mjs');
+  assert.equal(smoke.length, 1, `${PR_WORKFLOW} "${WEB_PR_JOB}" must run smoke-web-artifact.mjs exactly once; found ${smoke.length}`);
+  const late = prBuilds(TWINS.web).filter((b) => b.runLine > fonts[0].n);
+  assert.deepEqual(late.map((b) => b.runLine), [], `${PR_WORKFLOW}:${fonts[0].n} places the fonts before the build it places them into`);
+  assert.ok(fonts[0].n < smoke[0].n, `${PR_WORKFLOW}:${fonts[0].n} places the fonts after the smoke at :${smoke[0].n}, so the smoke boots a bundle without them`);
+});

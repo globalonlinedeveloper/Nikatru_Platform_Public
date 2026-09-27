@@ -41,7 +41,7 @@
   "await-pr-checks.test.mjs": 46,
   "backup-headroom.test.mjs": 19,
   "bounded-spawn.test.mjs": 9,
-  "built-artifact-pr-lane.test.mjs": 25,
+  "built-artifact-pr-lane.test.mjs": 26,
   "built-info-plist.test.mjs": 15,
   "bundle-availability.test.mjs": 15,
   "bundle-contract-limbs.test.mjs": 16,

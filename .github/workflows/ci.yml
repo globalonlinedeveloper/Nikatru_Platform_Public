@@ -1506,6 +1506,12 @@ jobs:
   # `deploy-web`'s build, not build-platforms.yml's discarded web build, which lacks
   # --source-maps, --no-web-resources-cdn and --base-href (apps triage D-07).
   # Row O-PR-LANE-BUILDS-ONLY-ANDROID-ARTIFACTS; docs/ci/build-platforms.md §PR lane.
+  # why the fonts are FETCHED (lead ruling FWA-1, 2026-09-27): the smoke must boot the bundle
+  # that ships, and that bundle holds build/web/fallback-fonts/. With only `--check`, which
+  # places nothing, main run 36308023692 on a074a7bd failed the smoke on a 404 for
+  # /subscriptiontracker/fallback-fonts/notosanssymbols2/v24/I_uyMoGduATTei9eI8daxVHDyfisHr71-vrgfE71.woff2,
+  # which nikatru.com serves 200 (382716 bytes). #1004's own PR run passed: whether a first
+  # frame asks for a fallback font depends on timing and content, so that gap was flaky.
   web-artifacts:
     name: Web artifacts (built, booted, discarded)
     runs-on: ubuntu-24.04
@@ -1544,9 +1550,13 @@ jobs:
           TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
         run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} web web --lane pr
       - uses: ./.github/actions/setup-node
-      # why: `--check` is the deploy's fonts grading with the network half removed (the
-      # app-brick probe's precedent above), so this lane cannot be turned red by a font
-      # CDN having a bad minute. The fetching mode stays in deploy-web.yml.
+      # why: deploy-web.yml's own step, the same script with the same arguments, so the
+      # smoke below boots the fallback-fonts/ tree the deploy serves (FWA-1). It reaches only
+      # the public fonts.gstatic.com, through the script's bounded retry, and needs no secret;
+      # built-artifact-pr-lane.test.mjs holds the two steps equal.
+      - name: Self-host the engine's fallback fonts, pinned by sha256
+        run: node tooling/web/self-host-fallback-fonts.mjs apps/${{ matrix.app }}/build/web
+      # why: `--check` stays after it as the grading, the app-brick probe's precedent above.
       - name: The bundle satisfies the deploy's self-hosted fallback fonts step
         run: node tooling/web/self-host-fallback-fonts.mjs --check apps/${{ matrix.app }}/build/web
       # why --app: a pub package ships its own assets into this app's bundle, so every
