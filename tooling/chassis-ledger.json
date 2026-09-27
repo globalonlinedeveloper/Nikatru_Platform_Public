@@ -20,7 +20,7 @@
   "_rootsNote": "TWO roots since 2026-09-07 ([ADR 067] phase 2, unit app-shell). The Worker half of the template - 13 files, 917 lines every stamped backend app inherits - was outside this ledger entirely while `root` was one string, and `git ls-files -- <that one root>` could not see it to complain. assert-chassis-ledger.mjs is the authority on this list and cross-checks it; a row's `root` is optional and defaults to roots[0], which is why the 96 rows written against the single root are unchanged. ⏱ THE FIGURES IN THIS NOTE MOVED ON 2026-09-08 AND ARE CORRECTED RATHER THAN REWRITTEN: the Worker half is now 14 files and 1,021 lines, because the template gained src/lib/error-sink.ts — a stamped backend had NO crash sink at all and failed tooling/ci/assert-worker-error-sink.mjs on limbs 2, 3 and 5 at its first CI run. The guard PRINTS both figures per root on every run, which is the number to read; this sentence is prose and prose rots.",
   "totals": {
     "files": 146,
-    "lines": 22947,
+    "lines": 22946,
     "unclassified": 0,
     "unclassifiedLines": 0
   },
@@ -718,7 +718,7 @@
     },
     {
       "path": "integration_test/store_screenshots_test.dart",
-      "lines": 117,
+      "lines": 116,
       "verdict": "STAYS",
       "why": "⏱ 2026-09-27 (O-SCREENSHOT-DRIVER-IS-ONE-APPS, 10b): per-app by construction — the capture boards photograph THIS app's screens from its own router. capture-precheck.mjs requires the file for the app it grades (exit 1 naming it), and the app-brick probe's red control proves it on a stamp."
     },

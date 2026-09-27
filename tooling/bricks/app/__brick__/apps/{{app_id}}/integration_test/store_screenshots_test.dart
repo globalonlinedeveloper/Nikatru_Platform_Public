@@ -103,9 +103,8 @@ void main() {
       forbidden: forbidden,
     );
 
-    GoRouter.of(
-      tester.element(find.byType(ExploreScreen).first),
-    ).go('/paywall');
+    GoRouter.of(tester.element(find.byType(ExploreScreen).first))
+        .go('/paywall');
     await pumpFor(tester, const Duration(seconds: 3));
     expect(find.byType(PaywallScreen), findsWidgets);
     await captureFrame(
