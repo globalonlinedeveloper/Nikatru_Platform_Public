@@ -90,7 +90,7 @@
   "deploy-units.test.mjs": 7,
   "deployment-record.test.mjs": 125,
   "desktop-runner-identity.test.mjs": 16,
-  "discovery-surface.test.mjs": 151,
+  "discovery-surface.test.mjs": 163,
   "dod-sync.test.mjs": 20,
   "dump-aab-permissions.test.mjs": 19,
   "e2e-auth-target.test.mjs": 48,

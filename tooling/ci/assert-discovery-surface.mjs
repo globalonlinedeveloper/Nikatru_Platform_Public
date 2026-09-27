@@ -71,12 +71,15 @@ import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { requireAppSet } from './app-set.mjs';
 import { stripInert } from './text-reductions.mjs';
+import { BUNDLES_REGISTER, readBundles } from '../catalog/read.mjs';
 import {
   planDiscovery,
   APPS_DIR,
   CANONICAL_HUB_URL,
   DEPLOY_ROOT,
+  FEATURE_NAMES,
   NOT_GENERATED,
+  PRICING_PAGE,
   RAIL_CONFIG,
   REGISTRY,
 } from '../sites/generate-discovery.mjs';
@@ -639,6 +642,8 @@ for (const [rel, expected] of served) {
 // PATH is imported, for CANONICAL_HUB_URL's reason: a file that moves must take
 // its readers with it in one edit.
 let offeringsCompared = 0;
+/** The price canary's derived list, kept for limb P (the price list). */
+let pricedLandingSlugs = null;
 {
   const railPath = abs(RAIL_CONFIG);
   let rail = null;
@@ -704,6 +709,7 @@ let offeringsCompared = 0;
 
   if (SCANNING_OWN_REPO) {
     const REQUIRED_PRICED_LANDINGS = requiredPricedLandings();
+    pricedLandingSlugs = REQUIRED_PRICED_LANDINGS;
     const unpriced = REQUIRED_PRICED_LANDINGS.filter((slug) => !landingsCompared.has(slug));
     if (unpriced.length) {
       coverageLost([
@@ -714,6 +720,145 @@ let offeringsCompared = 0;
         `is no longer \`live\`. The list is ${CATALOG_DIR}/apps.json \`status: live\` ∩ the workspace app set, so taking an`,
         'app off `live` in its app.yaml (and re-rendering) is how a deliberately unpriced landing leaves it.',
       ]);
+    }
+  }
+}
+
+// ── P · THE PRICE LIST NAMES EVERY PRICED PRODUCT EXACTLY ONCE ──────────────
+// ⏱ 2026-09-27 (O-PRICING-PAGE-REFUSES-A-SECOND-APP). `/pricing` is one page
+// with one section per priced product (`data-product="<slug>"`). Limb A already
+// fails a page whose bytes differ from a fresh run; what it cannot see is a
+// GENERATOR that stopped rendering a product, because the page and the run would
+// then agree. So the priced set is read HERE, from the records, never from the
+// page and never through the generator:
+//   · in this repository, the price canary's list above (catalog/apps.json
+//     `status: live` ∩ the workspace app set, each of which must carry an
+//     offering), and in a fixture tree (no app set) the registry's live entries
+//     whose rail config declares an offering;
+//   · plus every `sellable` row of the bundle register, by `featureSet`.
+// Each must appear on the page EXACTLY ONCE, and its section must carry every
+// amount the rail config declares for it, by the arithmetic limb G writes here
+// for the same reason (two artefacts sharing a formatter are one artefact). A
+// section for a product outside the set is a finding too: the page would be
+// selling something the records do not. In this repository an EMPTY set is
+// COVERAGE LOST: a price list graded against no product proves nothing.
+//
+// An amount is found on NUMBER BOUNDARIES, never as a substring: `4.99` is
+// inside `$34.99`, so a substring search passes a section whose $4.99 plan was
+// dropped while its $34.99 plan stayed.
+//
+// 🔴 EVERY BULLET IN A SECTION IS ITS OWN PRODUCT'S REGISTER TEXT (NP-DD-R1):
+// an app's `<li>` lines are the FEATURE_NAMES titles of the flags ITS rail
+// config entry enables, a bundle's is its register `tagline`, and a product
+// with neither carries no bullet. Any other line is a finding: it is how app
+// #1's copy ("Budgets across all your subscriptions") would reach app #2's
+// cards, and neither limb A (page ≡ a fresh run) nor a price check can see it.
+let pricedSections = 0;
+{
+  const pagePath = abs(PRICING_PAGE);
+  const page = existsSync(pagePath) ? readFileSync(pagePath, 'utf8') : null;
+  let rail = null;
+  try {
+    rail = JSON.parse(readFileSync(abs(RAIL_CONFIG), 'utf8'));
+  } catch {
+    rail = null; // absent or unparseable: planDiscovery's complaint, pushed above
+  }
+  const declared = (slug) => {
+    const list = rail?.apps?.[slug]?.paywall?.offerings;
+    return (Array.isArray(list) ? list : []).filter(
+      (o) => typeof o?.product_id === 'string' && o.product_id !== '' && Number.isInteger(o.amount_minor),
+    );
+  };
+  const expected = new Set(
+    pricedLandingSlugs ??
+      registry.filter((e) => e && e.status === 'live' && typeof e.slug === 'string' && declared(e.slug).length > 0).map((e) => e.slug),
+  );
+  const bundles = readBundles(ROOT);
+  if (!bundles.ok && existsSync(abs(BUNDLES_REGISTER))) {
+    problems.push(`limb P cannot read the bundle register (${bundles.why}), so a sellable bundle's section could not be required.`);
+  }
+  /** featureSet → the tagline of its highest sellable version (the generator's rule). */
+  const sellableTagline = new Map();
+  const sellableVersion = new Map();
+  for (const row of bundles.rows) {
+    if (row.status === 'sellable' && typeof row.featureSet === 'string' && row.featureSet !== '') {
+      expected.add(row.featureSet);
+      const v = Number(row.version) || 0;
+      if (!sellableVersion.has(row.featureSet) || v > sellableVersion.get(row.featureSet)) {
+        sellableVersion.set(row.featureSet, v);
+        sellableTagline.set(row.featureSet, typeof row.tagline === 'string' ? row.tagline.trim() : '');
+      }
+    }
+  }
+  /** The bullet lines a product's own register gives it; nothing else may sit in its section. */
+  const ownBullets = (slug) => {
+    if (sellableTagline.has(slug)) return new Set([sellableTagline.get(slug)].filter((t) => t !== ''));
+    const flags = rail?.apps?.[slug]?.features ?? rail?.defaults?.features ?? {};
+    const own = new Set();
+    for (const [flag, on] of Object.entries(flags)) {
+      if (on === true && FEATURE_NAMES.has(flag)) own.add(FEATURE_NAMES.get(flag)[0]);
+    }
+    return own;
+  };
+  const unescapeHtml = (s) =>
+    s.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  if (SCANNING_OWN_REPO && page === null) {
+    coverageLost([`limb P found no ${PRICING_PAGE}, so no priced product could be required on it.`]);
+  }
+  if (SCANNING_OWN_REPO && expected.size === 0) {
+    coverageLost([
+      `limb P derived NO priced product: no live app with an offering and no \`sellable\` row in ${BUNDLES_REGISTER}.`,
+      'A price list graded against no product reports what a correct one reports.',
+    ]);
+  }
+  if (page !== null) {
+    const digits = (minor) => (minor / 100).toFixed(2);
+    for (const slug of expected) {
+      const marker = `data-product="${slug}"`;
+      const at = page.split(marker).length - 1;
+      if (at !== 1) {
+        problems.push(
+          `${PRICING_PAGE} carries ${marker} ${at} time(s); every priced product appears EXACTLY ONCE. ` +
+            (at === 0
+              ? 'The records price it (a live app with an offering, or a sellable bundle), and the one page a buyer and a merchant of record read says nothing about it.'
+              : 'Two sections for one product are two prices a reader has to choose between.'),
+        );
+        continue;
+      }
+      pricedSections++;
+      const start = page.indexOf(marker);
+      const end = page.indexOf('</section>', start);
+      const section = end === -1 ? page.slice(start) : page.slice(start, end);
+      for (const o of declared(slug)) {
+        const amount = new RegExp(`(?<![0-9.])${digits(o.amount_minor).replace('.', '\\.')}(?![0-9])`);
+        if (!amount.test(section)) {
+          problems.push(
+            `${PRICING_PAGE}: the ${marker} section does not carry the amount ${digits(o.amount_minor)} that ` +
+              `${RAIL_CONFIG} declares for ${slug}'s ${o.product_id} (amount_minor ${o.amount_minor}). A section that ` +
+              'drops a price quotes a plan list the rail does not sell.',
+          );
+        }
+      }
+      const own = ownBullets(slug);
+      for (const li of section.matchAll(/<li>([\s\S]*?)<\/li>/g)) {
+        const line = unescapeHtml(li[1].trim());
+        if (!own.has(line)) {
+          problems.push(
+            `${PRICING_PAGE}: the ${marker} section carries the plan-card bullet "${line}", which is not ${slug}'s own ` +
+              `register text (${own.size ? [...own].map((l) => `"${l}"`).join(', ') : 'it has none, so its cards carry none'}). ` +
+              `An app's bullets are the FEATURE_NAMES titles of the flags ${RAIL_CONFIG} enables under apps.${slug}.features; ` +
+              `a bundle's is its ${BUNDLES_REGISTER} tagline. A line from anywhere else is another product's copy on this one's card (NP-DD-R1).`,
+          );
+        }
+      }
+    }
+    for (const m of page.matchAll(/data-product="([^"]*)"/g)) {
+      if (!expected.has(m[1])) {
+        problems.push(
+          `${PRICING_PAGE} carries a section for "${m[1]}", which no record prices (not a live app with an offering, ` +
+            `not a \`sellable\` row of ${BUNDLES_REGISTER}). The page would sell what the records do not.`,
+        );
+      }
     }
   }
 }
@@ -1671,6 +1816,7 @@ console.log(
     `${onDisk.size} landing/hub page(s) under ${APPS_DIR} ≡ the registry, plus ${NOT_GENERATED} (not generated, noindex, served); ` +
     `${slotsScanned} page(s) slot-scanned with the canary intact; ${ldChecked} JSON-LD block(s) carry no fabricated rating; ` +
     `${offeringsCompared} rendered price(s) equal what ${RAIL_CONFIG} declares; ` +
+    `${pricedSections} priced product(s) each have exactly one section on ${PRICING_PAGE}, carrying its own prices; ` +
     `${chromePagesChecked} page(s) carry shared chrome from tooling/sites/chrome.mjs ` +
     `(${CHROME_EXCLUDED.size} excluded by name, ${snapshotsChecked} dated snapshot(s) asserted inert); ` +
     `${a11yChecked} page(s) across ${PAGE_QUALITY_ROOTS.join(' + ')} carry lang + one <main> + a skip link that ` +
