@@ -69,6 +69,7 @@ import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
+import { requireAppSet } from './app-set.mjs';
 import { stripInert } from './text-reductions.mjs';
 import {
   planDiscovery,
@@ -80,6 +81,7 @@ import {
   REGISTRY,
 } from '../sites/generate-discovery.mjs';
 import { isChromePage, CHROME_EXCLUDED, REGIONS, openMarker, closeMarker, isCssRegion } from '../sites/chrome.mjs';
+import { CATALOG_DIR, readCatalogFile } from '../catalog/read.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const selfDir = dirname(fileURLToPath(import.meta.url));
@@ -146,11 +148,37 @@ const REQUIRED_PACK_IDS = ['lingo'];
  *  nothing and reports the same `ok` line as an app whose prices match. That is
  *  the state every landing was in before this existed, and it looked clean.
  *
- *  NAMED, not counted, and not derived from what the guard currently finds. If a
- *  landing here was deliberately unpriced — the app taken off `live`, its
- *  offerings removed from the rail config — say so by editing this list in the
- *  same commit, naming what remains. */
-const REQUIRED_PRICED_LANDINGS = ['subscriptiontracker'];
+ *  ⏱ 2026-09-27 (O-GUARDS-READ-A-HAND-LISTED-APP-SET, 8b): DERIVED FROM AN
+ *  INDEPENDENT SOURCE, and still never from what this guard finds. The list is
+ *  catalog/apps.json's `status: live` entries (rendered from each app's app.yaml)
+ *  intersected with the workspace app set (tooling/ci/app-set.mjs). Its reason is
+ *  unchanged: a landing with no price compares nothing, so the landings that MUST
+ *  carry one are stated by a record the generator does not write. An app taken
+ *  off `live` leaves the list in the commit that changes its declaration, and an
+ *  app that goes live joins it with no edit here. An empty result is COVERAGE
+ *  LOST: a canary over no landing is no canary. */
+/** The workspace set's size once the canary has read it (the ok line's apps=N). */
+let appSetSize = null;
+function requiredPricedLandings() {
+  // Read through tooling/catalog/read.mjs, the one Node reader of catalog/*.json
+  // (assert-bundle-availability limb G holds the direct readers to a floor).
+  const rel = `${CATALOG_DIR}/apps.json`;
+  const read = readCatalogFile(ROOT, rel);
+  if (!read.ok) {
+    coverageLost([`the price canary cannot read ${rel} (${read.why}); the landings that must carry a price come from it.`]);
+  }
+  const catalog = read.value;
+  const ids = new Set(requireAppSet(ROOT, 'assert-discovery-surface').map((a) => a.id));
+  appSetSize = ids.size;
+  const live = (Array.isArray(catalog) ? catalog : []).filter((e) => e?.status === 'live' && ids.has(e.slug)).map((e) => e.slug);
+  if (live.length === 0) {
+    coverageLost([
+      `the price canary derived NO landing: no ${rel} entry with \`status: live\` is in the workspace app set (${[...ids].join(', ')}).`,
+      'A canary over no landing compares nothing and reports what a correct one reports.',
+    ]);
+  }
+  return live;
+}
 
 /** ── THE PAGE-QUALITY ROOTS ──────────────────────────────────────────────────
  *  WIDENED 2026-08-25, and this is the enforcement half of that day's change.
@@ -675,6 +703,7 @@ let offeringsCompared = 0;
   }
 
   if (SCANNING_OWN_REPO) {
+    const REQUIRED_PRICED_LANDINGS = requiredPricedLandings();
     const unpriced = REQUIRED_PRICED_LANDINGS.filter((slug) => !landingsCompared.has(slug));
     if (unpriced.length) {
       coverageLost([
@@ -682,8 +711,8 @@ let offeringsCompared = 0;
         'This limb compares prices, so a landing with NO price compares nothing and reports exactly what a',
         'correct one reports — the state every generated landing was in before it existed. Either the',
         `generator stopped emitting the pricing block, or the app's offerings left ${RAIL_CONFIG}, or the entry`,
-        'is no longer `live`. If one of those was deliberate, update REQUIRED_PRICED_LANDINGS in this file in',
-        'the same commit, naming the landings that remain priced.',
+        `is no longer \`live\`. The list is ${CATALOG_DIR}/apps.json \`status: live\` ∩ the workspace app set, so taking an`,
+        'app off `live` in its app.yaml (and re-rendering) is how a deliberately unpriced landing leaves it.',
       ]);
     }
   }
@@ -1636,6 +1665,8 @@ if (problems.length) {
 
 console.log(
   `ok  discovery surface — ${registry.length} registry entr(ies), ${live.length} live; ` +
+    // apps=N is the workspace set the price canary intersected (8b), never the landings found.
+    `apps=${appSetSize ?? 'n/a (not this repository)'}; ` +
     `${compared} generated file(s) match a fresh run of tooling/sites/generate-discovery.mjs; ` +
     `${onDisk.size} landing/hub page(s) under ${APPS_DIR} ≡ the registry, plus ${NOT_GENERATED} (not generated, noindex, served); ` +
     `${slotsScanned} page(s) slot-scanned with the canary intact; ${ldChecked} JSON-LD block(s) carry no fabricated rating; ` +

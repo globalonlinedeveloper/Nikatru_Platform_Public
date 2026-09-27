@@ -64,6 +64,7 @@ import { spawnSync } from 'node:child_process';
 import { extname, join, resolve, sep } from 'node:path';
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments } from './text-reductions.mjs';
+import { requireAppSet } from './app-set.mjs';
 
 const args = process.argv.slice(2);
 const MEASURE = args.includes('--measure');
@@ -392,5 +393,9 @@ if (problems.length) {
   for (const n of notes) console.error(`  · ${n}`);
   process.exit(1);
 }
-console.log('ok  mechanism claims — every candidate site is judged or inside a backlog that only shrinks');
+// ⏱ 2026-09-27 (O-GUARDS-READ-A-HAND-LISTED-APP-SET, 8b): no app literal is read here — the sweep
+// is the whole tree — but the ok line carries the workspace set's size, so the stamp probe can read
+// apps=N from all seven app-set guards alike. An empty or unreadable set is COVERAGE LOST.
+const APP_SET = requireAppSet(ROOT, 'assert-mechanism-claims');
+console.log(`ok  mechanism claims — every candidate site is judged or inside a backlog that only shrinks; apps=${APP_SET.length}`);
 for (const n of notes) console.log(`  · ${n}`);

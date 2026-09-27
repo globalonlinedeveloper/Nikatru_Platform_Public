@@ -24,8 +24,7 @@
     "VIOLATIONS ARE DECLARED, DATED AND PRINTED ON EVERY RUN. A known gap that nobody sees becomes",
     "permanent. Each names why it is not yet fixed and what would unblock it."
   ],
-  "consumerRoots": [
-    "apps/subscriptiontracker",
+  "nonAppConsumerRoots": [
     "tooling/bricks/app/__brick__/apps/{{app_id}}",
     "packages/purchases"
   ],
@@ -523,8 +522,9 @@
       "tooling/ci/assert-capability-register.mjs, beside the guard the choice has to serve. In short: a",
       "brick var is consumed at STAMP time and leaves nothing on disk to quantify over, and apps/subscriptiontracker",
       "was never stamped by this brick at all -- so a brick-var domain would exclude the only shipped",
-      "app. `consumerRoots` at the top of this file is already the machine-readable set of apps, each",
-      "verified against a real pubspec.",
+      "app. The consumer roots are already the machine-readable set of apps, each verified against a",
+      "real pubspec: the workspace app set (tooling/ci/app-set.mjs) plus `nonAppConsumerRoots` at the top of",
+      "this file (O-GUARDS-READ-A-HAND-LISTED-APP-SET, 8b).",
       "",
       "FIELDS.",
       "  id           the module's name. THE PRINTED LINE IS DERIVED FROM IT (`no consumer declares the",

@@ -234,14 +234,15 @@ try {
   fail([`✗ capability register is not valid JSON: ${err.message}`]);
 }
 const capabilities = Array.isArray(register.capabilities) ? register.capabilities : [];
-const consumerRoots = Array.isArray(register.consumerRoots) ? register.consumerRoots : [];
+// 8b (O-GUARDS-READ-A-HAND-LISTED-APP-SET): the register lists only its NON-app roots; the brick is one.
+const consumerRoots = Array.isArray(register.nonAppConsumerRoots) ? register.nonAppConsumerRoots : [];
 
 // ── 1. locate the brick, derived rather than hardcoded ───────────────────────
 const brickRoots = consumerRoots.filter((r) => r.includes('__brick__'));
 if (brickRoots.length !== 1) {
   coverageLost([
-    `✗ COVERAGE LOST — expected exactly ONE consumerRoot under \`__brick__\`, found ${brickRoots.length}.`,
-    `  consumerRoots: ${JSON.stringify(consumerRoots)}`,
+    `✗ COVERAGE LOST — expected exactly ONE nonAppConsumerRoot under \`__brick__\`, found ${brickRoots.length}.`,
+    `  nonAppConsumerRoots: ${JSON.stringify(consumerRoots)}`,
     '  Without the brick root this guard would range over an empty set and pass while wiring nothing —',
     '  which is the exact defect [pipeline S-2] was rewritten to avoid.',
   ]);

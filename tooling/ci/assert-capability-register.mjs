@@ -52,6 +52,7 @@ import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, dirname, posix, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
+import { requireAppSet } from './app-set.mjs';
 
 /**
  * Blank Dart comments and string literals, preserving offsets and newlines.
@@ -171,10 +172,27 @@ try {
 }
 const capabilities = Array.isArray(register.capabilities) ? register.capabilities : null;
 if (!capabilities) fail(['✗ capability register has no `capabilities` array — nothing to enforce.']);
-const consumerRoots = Array.isArray(register.consumerRoots) ? register.consumerRoots : [];
-if (consumerRoots.length === 0) {
-  fail(['✗ capability register declares no `consumerRoots` — direction (b) could never fail.']);
+// ⏱ 2026-09-27 (O-GUARDS-READ-A-HAND-LISTED-APP-SET, 8b): THE APP ROOTS ARE THE
+// WORKSPACE SET, NOT A LIST HERE. `consumerRoots` named app #1 by hand, so a
+// stamped app's pubspec was never read by direction (b). The register now holds
+// only the roots that are NOT apps (`nonAppConsumerRoots`: the brick, and
+// packages/purchases), and every app in tooling/ci/app-set.mjs's set is added at
+// run time. A `consumerRoots` key is the hand list coming back, and is refused.
+if (Object.hasOwn(register, 'consumerRoots')) {
+  fail([
+    '✗ capability register carries `consumerRoots` — the hand-listed app set is back. The app roots are the',
+    '  workspace set (tooling/ci/app-set.mjs); list only non-app roots, under `nonAppConsumerRoots`.',
+  ]);
 }
+const APP_SET = requireAppSet(ROOT, 'assert-capability-register');
+const APP_DIRS = APP_SET.map((a) => a.dir);
+const nonAppConsumerRoots = Array.isArray(register.nonAppConsumerRoots) ? register.nonAppConsumerRoots : [];
+// Never empty: the set is at least one app (requireAppSet exits 2 on none), so
+// direction (b) always has a root to read. assert-stamp-wiring requires the brick
+// among the non-app roots.
+const consumerRoots = [...APP_DIRS, ...nonAppConsumerRoots];
+/** The brick root: a stamped app inherits its dependencies (direction (b)). */
+const BRICK_ROOT = nonAppConsumerRoots.find((r) => r.includes('__brick__/apps/')) ?? null;
 
 // ── 1. packages on disk ──────────────────────────────────────────────────────
 let onDisk = [];
@@ -289,7 +307,9 @@ const WIRED_SURFACES_THAT_MAY_NOT_REGRESS = [
     seamMethod: 'notificationTaps',
     adapter: 'packages/notifications/lib/src/local_notification_service_io.dart',
     adapterPattern: /onDidReceiveNotificationResponse|onDidReceiveBackgroundNotificationResponse/,
-    emitter: { file: 'apps/subscriptiontracker/lib/state/analytics_funnel.dart', call: 'onNotificationOpened(' },
+    // A LOCATOR, not a path (8b): the files under any workspace app's lib/ that
+    // DECLARE the emitter method. Zero across the set is COVERAGE LOST.
+    emitter: { symbol: 'onNotificationOpened', call: 'onNotificationOpened(' },
     why:
       'a scheduled reminder that opens nothing when tapped is a dead feature that reports healthy, and ' +
       'the `notification_opened` event goes back to zero emitters with no test red anywhere.',
@@ -595,12 +615,20 @@ for (const w of SCANNING_OWN_REPO ? WIRED_SURFACES_THAT_MAY_NOT_REGRESS : []) {
   // link 3 — the far end still has a caller. `allDartFiles()` includes tests on
   // purpose (see its doc), so this asks "does a route exist", not "does
   // production use it"; assert-seams-wired.mjs owns the stricter question.
-  const declaring = posix.normalize(w.emitter.file.replace(/\\/g, '/'));
-  if (!existsSync(join(ROOT, declaring))) {
-    problems.push(`COVERAGE LOST — ${w.label}: emitter file \`${w.emitter.file}\` does not exist.`);
+  const declares = new RegExp(`\\b(?:Future<void>|void)\\s+${w.emitter.symbol}\\s*\\(`);
+  const declaringFiles = allDartFiles().filter(
+    (rel) =>
+      APP_DIRS.some((dir) => rel.startsWith(`${dir}/lib/`)) &&
+      declares.test(stripDart(readFileSync(join(ROOT, rel), 'utf8'))),
+  );
+  if (declaringFiles.length === 0) {
+    problems.push(
+      `COVERAGE LOST — ${w.label}: no file under the lib/ of any of the ${APP_DIRS.length} workspace app(s) ` +
+        `declares \`${w.emitter.symbol}\`, so the emitter's callers cannot be looked for.`,
+    );
   } else {
     const callers = allDartFiles().filter(
-      (rel) => rel !== declaring && stripDart(readFileSync(join(ROOT, rel), 'utf8')).includes(w.emitter.call),
+      (rel) => !declaringFiles.includes(rel) && stripDart(readFileSync(join(ROOT, rel), 'utf8')).includes(w.emitter.call),
     );
     if (callers.length === 0) {
       problems.push(
@@ -675,7 +703,13 @@ for (const [consumer, deps] of consumerDeps) {
       );
       continue;
     }
-    if (!caps.some((c) => (c.consumers ?? []).includes(consumer))) {
+    // A STAMPED APP INHERITS THE BRICK'S WIRING (8b). An app in the workspace set
+    // that no row names is graded against the brick's rows: its dependency is
+    // registered when a row lists the app OR the brick it was stamped from. A
+    // dependency the brick does not carry still needs a row naming the app.
+    const inheritsBrick =
+      APP_DIRS.includes(consumer) && BRICK_ROOT !== null && caps.some((c) => (c.consumers ?? []).includes(BRICK_ROOT));
+    if (!inheritsBrick && !caps.some((c) => (c.consumers ?? []).includes(consumer))) {
       problems.push(
         `${dep} — \`${consumer}\` depends on it, but no capability entry lists that consumer. ` +
           'The register has fallen behind the tree.',
@@ -1332,7 +1366,9 @@ const forkSplit = FORK_SCAN_ROOTS.map((r) => {
 console.log(
   `ok  capability register — ${capabilities.length} capability(ies) over ${onDisk.length} package dir(s); ` +
     `${seamCount} seam symbol(s) verified in place, ${appFiles.length} app file(s) scanned for forks ` +
-    `[${forkSplit}], ${declaredViolations.size} declared violation(s), ${waived.length} unconsumed with a reason`,
+    `[${forkSplit}], ${declaredViolations.size} declared violation(s), ${waived.length} unconsumed with a reason; ` +
+    // apps=N is the workspace set's length (8b), never the number of roots found.
+    `consumer roots = the app set + ${nonAppConsumerRoots.length} non-app root(s), apps=${APP_SET.length}`,
 );
 // THE PATH-CONSUMER LIMB'S OWN COUNT, printed for the same reason the waivers
 // are: its correct state is "nothing wrong", which is what a limb that reached
