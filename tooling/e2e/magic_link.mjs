@@ -20,6 +20,10 @@
 // The caller masks and redacts the token; this module prints nothing.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** The shape GoTrue issues a `hashed_token` in: lowercase hex (a SHA-224 digest
+ *  today, 56 characters; the range leaves room for another digest). */
+export const TOKEN_HASH_SHAPE = /^[0-9a-f]{40,128}$/;
+
 /** Thrown for every way the mint can fail, with the message a caller prints. */
 export class MagicLinkRefused extends Error {
   constructor(message) {
@@ -34,6 +38,13 @@ export class MagicLinkRefused extends Error {
  * Throws MagicLinkRefused on a non-2xx answer or an answer with no token: an
  * empty token would send the driver back to the password form, where a gated
  * stack refuses it with a `captcha_failed` that says nothing about a token.
+ *
+ * 🔴 AND ONE OF ANY OTHER SHAPE. provision_user.mjs writes the token into
+ * $GITHUB_OUTPUT as `token_hash=<value>`, one output per line, so a value
+ * carrying a newline would write outputs of its own — a `user_id=` the purge
+ * then deletes by. Held to TOKEN_HASH_SHAPE, no text from the response but a
+ * hex digest can reach that file (CodeQL js/http-to-file-access, answered in
+ * code, as tooling/e2e/backend.mjs answers #467).
  */
 export async function mintMagicLinkTokenHash({ url, serviceKey, email, fetchImpl = fetch }) {
   for (const [name, v] of [['url', url], ['serviceKey', serviceKey], ['email', email]]) {
@@ -55,6 +66,11 @@ export async function mintMagicLinkTokenHash({ url, serviceKey, email, fetchImpl
   const tokenHash = link?.hashed_token;
   if (typeof tokenHash !== 'string' || tokenHash === '') {
     throw new MagicLinkRefused(`No hashed_token in generate_link response (keys: ${Object.keys(link ?? {}).sort().join(', ')})`);
+  }
+  if (!TOKEN_HASH_SHAPE.test(tokenHash)) {
+    throw new MagicLinkRefused(
+      `generate_link returned a hashed_token that is not a hex digest (${tokenHash.length} characters), so it is never written to a step output`,
+    );
   }
   return tokenHash;
 }

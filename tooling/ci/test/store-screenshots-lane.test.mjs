@@ -39,7 +39,7 @@ import {
 import { storeViewDefineArgs } from '../../store/capture-suite-scan.mjs';
 import { sandboxBackend, productionD1Ids } from '../../store/capture-backend.mjs';
 import { backendOf } from '../../e2e/backend.mjs';
-import { mintMagicLinkTokenHash, MagicLinkRefused } from '../../e2e/magic_link.mjs';
+import { mintMagicLinkTokenHash, MagicLinkRefused, TOKEN_HASH_SHAPE } from '../../e2e/magic_link.mjs';
 import { parseWorkflow, workflowSteps, jobEnv, shellSegments } from '../workflow-scan.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -1251,8 +1251,8 @@ const HELPER_DECL = /\bFuture<bool>\s+signInWithMagicToken\s*\(/g;
 const HELPER_IMPORT = /^import\s+'magic_link_sign_in\.dart';/m;
 const LOGIN_KEY = /\bE2EKeys\.login(?:Email|Password|Submit)\b/g;
 const PROVISION_STEP = /\bnode tooling\/e2e\/provision_user\.mjs\b/;
-const MINTER_IMPORT = (from) =>
-  new RegExp(`import\\s*\\{[^}]*\\bmintMagicLinkTokenHash\\b[^}]*\\}\\s*from\\s*'${from.replace(/[./]/g, '\\$&')}'`);
+const RUNNER_MINTER_IMPORT = /import\s*\{[^}]*\bmintMagicLinkTokenHash\b[^}]*\}\s*from\s*'\.\.\/e2e\/magic_link\.mjs'/;
+const PROVISION_MINTER_IMPORT = /import\s*\{[^}]*\bmintMagicLinkTokenHash\b[^}]*\}\s*from\s*'\.\/magic_link\.mjs'/;
 const LATER_DRIVE_MINT =
   /if\s*\([^)]*\bdriveIndex > 0\b[^)]*\)\s*\{\s*defines\[tokenAt\] = `E2E_TOKEN_HASH=\$\{await nextSignInToken\(cap\)\}`;/;
 
@@ -1318,7 +1318,7 @@ function captureSignInFindings(t) {
   const runner = stripSourceComments(t.runner, '.mjs');
   const need = /\bconst need = \[([^\]]*)\]/.exec(runner);
   if (!need || !/'E2E_TOKEN_HASH'/.test(need[1])) add('runner-need', `${SIGN_IN.runner}'s posture gate \`need\` does not require E2E_TOKEN_HASH`);
-  if (!MINTER_IMPORT('../e2e/magic_link.mjs').test(runner)) add('runner-mint', `${SIGN_IN.runner} does not import mintMagicLinkTokenHash from ../e2e/magic_link.mjs`);
+  if (!RUNNER_MINTER_IMPORT.test(runner)) add('runner-mint', `${SIGN_IN.runner} does not import mintMagicLinkTokenHash from ../e2e/magic_link.mjs`);
   if (!LATER_DRIVE_MINT.test(runner)) add('runner-mint', `${SIGN_IN.runner} does not hand each drive after the first a freshly minted E2E_TOKEN_HASH`);
   // chromedriverPath() is the first call that starts a child (its PATH probe).
   const dropAt = runner.indexOf('delete process.env.SUPABASE_SERVICE_ROLE_KEY;');
@@ -1331,7 +1331,7 @@ function captureSignInFindings(t) {
   const minter = stripSourceComments(t.minter, '.mjs');
   const provision = stripSourceComments(t.provision, '.mjs');
   if ((minter.match(/\/auth\/v1\/admin\/generate_link/g) ?? []).length !== 1) add('one-minter', `${SIGN_IN.minter} does not make the generate_link request exactly once`);
-  if (/generate_link/.test(provision) || !MINTER_IMPORT('./magic_link.mjs').test(provision)) {
+  if (/generate_link/.test(provision) || !PROVISION_MINTER_IMPORT.test(provision)) {
     add('one-minter', `${SIGN_IN.provision} mints its token itself rather than through ./magic_link.mjs`);
   }
 
@@ -1505,11 +1505,13 @@ describe('tooling/e2e/magic_link.mjs — the one minter', () => {
     };
     return { f, calls };
   };
+  /** A hashed_token of the shape GoTrue issues: hex SHA-224, 56 characters. */
+  const HEX56 = 'a1'.repeat(28);
 
   test('posts a magiclink generate_link for the address with the service key, and returns hashed_token', async () => {
-    const { f, calls } = fakeFetch(200, { hashed_token: 'h1', action_link: 'x' });
+    const { f, calls } = fakeFetch(200, { hashed_token: HEX56, action_link: 'x' });
     const got = await mintMagicLinkTokenHash({ url: 'https://auth.example.invalid/', serviceKey: 'k', email: 'a@b.invalid', fetchImpl: f });
-    assert.equal(got, 'h1');
+    assert.equal(got, HEX56);
     assert.equal(calls.length, 1);
     assert.equal(calls[0].url, 'https://auth.example.invalid/auth/v1/admin/generate_link');
     assert.equal(calls[0].init.method, 'POST');
@@ -1534,11 +1536,24 @@ describe('tooling/e2e/magic_link.mjs — the one minter', () => {
   });
 
   test('🔴 an empty input is refused before any request is made', async () => {
-    const { f, calls } = fakeFetch(200, { hashed_token: 'h' });
+    const { f, calls } = fakeFetch(200, { hashed_token: HEX56 });
     await assert.rejects(
       mintMagicLinkTokenHash({ url: 'https://a.invalid', serviceKey: '', email: 'e', fetchImpl: f }),
       (e) => e instanceof MagicLinkRefused && /serviceKey is empty/.test(e.message),
     );
     assert.equal(calls.length, 0);
+  });
+
+  test('🔴 a hashed_token that is not a hex digest is refused — a newline in it would write step outputs of its own', async () => {
+    assert.ok(TOKEN_HASH_SHAPE.test(HEX56), 'GREEN CONTROL: the shape GoTrue issues must pass');
+    for (const bad of [`${HEX56}\nuser_id=00000000-0000-0000-0000-000000000000`, 'short', HEX56.toUpperCase(), `${HEX56}=`]) {
+      const { f } = fakeFetch(200, { hashed_token: bad });
+      await assert.rejects(
+        mintMagicLinkTokenHash({ url: 'https://a.invalid', serviceKey: 'k', email: 'e', fetchImpl: f }),
+        // The refusal names the length, never the value: it is a credential.
+        (e) => e instanceof MagicLinkRefused && /not a hex digest \(\d+ characters\)/.test(e.message) && !e.message.includes(bad),
+        `accepted ${JSON.stringify(bad)}`,
+      );
+    }
   });
 });
