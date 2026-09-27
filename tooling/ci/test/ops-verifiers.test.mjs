@@ -42,6 +42,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { compareProviders, declared } from '../../ops/verify-auth-providers.mjs';
+import { expectedMonitors } from '../../ops/monitor-register.mjs';
 import { KILL_MS, serveSilence, runBounded } from './fixtures/silent-server.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -335,7 +336,12 @@ describe('verify-monitors / verify-alarm-chains — the GlitchTip pair', () => {
     const observed = Object.entries(ledger.chainsObserved ?? {}).filter(([, o]) => o?.date && o?.evidence).map(([slug]) => slug);
     assert.ok(observed.length > 0, 'the ledger records no observed chain, so this fixture cannot be built');
     const slug = observed[0];
-    const monitors = ledger.expectedMonitors.map((row) => ({ id: row.id, name: row.name, projectID: 1 }));
+    // ⏱ 2026-09-26 (E-b2): the canary expects the host rows' monitor ids too, so the
+    // fixture serves the same union it reads (tooling/ops/monitor-register.mjs).
+    const register = JSON.parse(readFileSync(join(REPO, 'tooling', 'monitor-register.json'), 'utf8'));
+    const union = expectedMonitors(register, ledger);
+    assert.deepEqual(union.problems, [], 'the real register and ledger do not form a clean canary list, so this fixture cannot be built');
+    const monitors = union.expected.map((row) => ({ id: Number(row.id), name: row.name, projectID: 1 }));
     const answerWith = (extra) => (url) => {
       if (url.startsWith('/api/0/organizations/' + org + '/monitors/')) return [200, [...monitors, ...extra.monitors]];
       if (url.startsWith('/api/0/organizations/' + org + '/projects/')) return [200, [{ id: 1, slug, name: slug }, ...extra.projects]];

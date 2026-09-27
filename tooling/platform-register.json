@@ -75,7 +75,9 @@
     "hosts": [
       "platform.nikatru.com",
       "config.nikatru.com"
-    ]
+    ],
+    "dsnSecret": "GLITCHTIP_DSN",
+    "_dsnSecretWhy": "The GitHub secret that holds THIS Worker's crash-sink DSN, read by tooling/ci/worker-set.mjs --for-deploy, which refuses a row without one. The platform Worker's deploy passes GLITCHTIP_DSN today (deploy-workers.yml). Added 2026-09-26, O-SERVICE-KIT-UNBUILT (E-a1)."
   },
   "appWorkers": [
     {
@@ -114,6 +116,8 @@
       "hosts": [
         "subscriptiontracker-api.nikatru.com"
       ],
+      "dsnSecret": "GLITCHTIP_DSN",
+      "_dsnSecretWhy": "The GitHub secret that holds THIS Worker's crash-sink DSN, read by tooling/ci/worker-set.mjs --for-deploy, which refuses a row without one. App #1 keeps the one it deploys with today, GLITCHTIP_DSN; a second app's row names its own secret, so its crashes are filed under its own GlitchTip project. Added 2026-09-26, O-SERVICE-KIT-UNBUILT (E-a1).",
       "clientBasePath": "/v1",
       "_clientBasePathWhy": [
         "Subly's Dart seam is constructed with `baseUrl: '${AppConfig.apiBaseUrl}/v1'`",

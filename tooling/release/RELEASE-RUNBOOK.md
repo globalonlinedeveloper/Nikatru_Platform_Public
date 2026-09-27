@@ -17,6 +17,20 @@ this file to release from it.
 > derivation were all run end to end against a fixture download tree on 2026-08-09, and
 > the measured output is reproduced below. The publish step itself is unproven until
 > somebody publishes. That is stated rather than implied.
+>
+> ⏱ CORRECTED 2026-09-25 against 19b252af: the status above is a read of GitHub taken on
+> 2026-08-09, and nothing in this tree re-takes it: a pushed tag and a Release exist only on
+> the remote. Read both fresh before the first tag: `git ls-remote --tags origin` lists every
+> pushed tag, and `gh release list` every Release. What the lane does has moved on since that
+> date. At 19b252af `build-platforms.yml` declares two weekly `schedule:` slots and
+> `workflow_dispatch` beside the tag trigger, and its `release` job holds only its last three
+> steps to a tag: the publish, its read-back and the deployment record. So every scheduled or
+> dispatched run that reaches that job goes through staging, `release.json` (§3e), the
+> checksum manifest, `--verify` and the record's grade on real build output, under an
+> `<app>-untagged-<short sha>` tag. This lists those runs:
+> `gh run list --workflow build-platforms.yml --event schedule`. Since 61e11ab5 (#955) such a
+> run also keeps its `release.json` and `SHA256SUMS` for 90 days, as the artifact
+> `release-record-<app>`.
 
 ---
 
@@ -50,6 +64,11 @@ gate in `prepare`, so a dispatch on another product's tag stops there too.
 > `gate`, runs `assert-gate-passed.mjs <sha>`, which POLLS the check-runs API for a
 > **passed `ci-gate` on that exact SHA** and **fails closed** on absent/unknown/timed-out.
 > Tag a commit that never ran through `main` and the whole lane stops at job one.
+>
+> ⏱ CORRECTED 2026-09-25 against 19b252af: `ci.yml`'s `on:` is `push: branches: [main]`
+> plus `pull_request:`, not the branch list above. It still has no `tags:` key, so a tag
+> still never produces its own `ci-gate` run, and the rule in bold stands. Read it with
+> `sed -n '/^on:/,/^concurrency:/p' .github/workflows/ci.yml`.
 
 ---
 
@@ -153,6 +172,14 @@ ok  3 installable artifact(s) staged
 | `<tag>-app-release.apk` | `linux_web_android` | none — the only sideloadable Android build, kept on purpose |
 | `<tag>-subscriptiontracker.msix` | `windows` | `windows-store` / `windows-direct` |
 
+> ⏱ CORRECTED 2026-09-26 against 95d028f7 (#993): the table above is the 2026-08-09 staging,
+> and no Release carries any of its three files now. Since f692bdea (#917) the Play `.apk` is
+> uploaded as `ci-proof-android-play-apk-<app>`, and since #958 the `.aab`, `.msix`, `.ipa`
+> and `.pkg` are uploaded as `store-<app>-…`: all of them outside the release job's `<app>-*`
+> download, and `--stage` refuses any store-only format it still finds there. So the one
+> installer a Release can carry is the apps.gov.in `.apk`, and its channel is the one its
+> build stamped, `apps-gov-in` (§3e).
+
 ### 3b. Everything else, archived whole
 
 Whatever remains in each downloaded artifact directory is tarred, one `.tar.gz` per
@@ -168,6 +195,13 @@ artifact **set** and not just the installers:
 The Android artifact name carries the **signing posture** (e.g.
 `…-debug-signed-build-proof`), so an unsigned build cannot be mistaken for a release by
 its filename alone.
+
+> ⏱ CORRECTED 2026-09-26 against 95d028f7 (#993): the Windows `Release/` directory is now
+> uploaded as `store-<app>-windows`, outside the release job's `<app>-*` download, so no
+> Release carries `<tag>-<app>-windows.tar.gz`. The Linux archive holds
+> `build/linux/x64/release/bundle` only; no web build is uploaded with it. An Apple build that
+> is not release-signed is archived too, as `<tag>-<app>-ios-<posture>.tar.gz`
+> (`build/ios/iphoneos`).
 
 > ⏱ **Until 2026-09-09 there was no `.ipa` and no `.pkg`.** `build-platforms.yml` ran only
 > `flutter build ios --release --no-codesign`, which produces no `.ipa`, and nothing
@@ -213,6 +247,91 @@ Measured 2026-08-09, `--emit-environments` over the fixture `dist/`:
 subscriptiontracker-windows-direct
 ```
 
+### 3e. `release.json` — what each file is, and where it may go
+
+> ⏱ ADDED 2026-09-25 against 19b252af, where the lane already wrote this file (since
+> c345c66f, #886) and this runbook never named it. The channels below are as of f692bdea
+> (#917), read from each build's stamp; the files are as of 7d037113 (#958), which keeps every
+> store-only file out of a Release.
+
+`SHA256SUMS` (§3c) answers "are these the bytes that were staged". `release.json`, published
+in the same Release, answers what each of those files is: its version, its build number, its
+size, its hash and the channels it may be submitted to. The release job writes it with
+`release-manifest.mjs --emit-release-json` in the step "Describe the release, versioned per
+artefact", **before** "Write the checksum manifest", so `SHA256SUMS` lists `release.json` too
+and the record is itself checkable. Like the manifest, it is written on every run, tag or not.
+
+**What it holds.** The shape is `contracts/release.schema.json` (`"schema": "nikatru.release/1"`):
+
+| Field | What |
+| --- | --- |
+| `unit`, `surface` | the app slug, and `app` (`extensions.yml` writes the same record on the `extension` surface) |
+| `tag` | the pushed tag, or `<app>-untagged-<short sha>` on a scheduled or dispatched run |
+| `commit`, `runUrl` | the gated commit, and the run that built it |
+| `releasedAt` | the **commit's** timestamp, not the run's, so a re-run writes identical bytes |
+| `minSupported` | the served floor the platform Worker enforces force-update from, read from `services/platform/src/app-config-data.json` at that commit |
+| `notesUrl` | the Release page |
+| `artefacts[]` | one row per published file: `name`, `format`, `version`, `build`, `sha256`, `size`, `channels` |
+
+There is no top-level version. Each file carries its own: the build jobs build with
+`--build-name=<release line>.<run number>`, so under the tag `subscriptiontracker-v1.0.0` a
+file says `1.0.<run>`, and `build` is the run number.
+
+**Where `channels` comes from.** Each installer's build job writes a stamp beside it,
+`<file>.channel.json`, with `tooling/ci/stamp-channel.mjs --channel <id>`. The release job
+reads each file's channel from its stamp, and the register only judges it: the row must be
+on the app surface and take the file's format. An installer with no stamp stops the step as
+COVERAGE LOST; nothing falls back to guessing from the file extension. The stamps go to
+`stamps/`, never into the Release. An archive (`.tar.gz`) lists `[]`, because no store takes
+one. `grep -n "stamp-channel.mjs --channel" .github/workflows/build-platforms.yml` lists
+every stamp: `.aab` → `android-play`, the apps.gov.in `.apk` → `apps-gov-in`, `.msix` →
+`windows-store`, `.ipa` → `ios-appstore` (signed builds only), `.pkg` → `macos-appstore`.
+Of those five, only the apps.gov.in `.apk` and its stamp reach the release job: the other four
+travel in `store-<app>-…` uploads that its `<app>-*` download never matches (§3a), so a
+Release's `release.json` names `apps-gov-in` or no channel at all.
+
+**apps.gov.in.** The one `.apk` a Release can carry is the apps.gov.in build signed by the
+pinned `apps-gov-in` key. The release job downloads it only under the uploadable artifact
+name `apps-gov-in-<app>-apk` (`tooling/ci/assert-apps-gov-in-apk.mjs`), so a
+`NOT-FOR-UPLOAD` build never reaches a Release. While the `apps-gov-in` row's
+`signing.signingCertificate.sha256` in `tooling/channel-register.json` is `null`, no run
+uploads that name: the step "The uploadable apps.gov.in .apk, or one line naming the null
+pin" prints one line, and the Release carries no `.apk` at all. That is expected, not a
+failure.
+
+**The grade.** The step "Grade the release record against the bytes beside it" runs
+`node tooling/ci/assert-release-json.mjs --dir dist` on every run, after the manifest is
+re-verified and before anything is published. It exits 1 when:
+
+* the record is not the schema's shape (limb 1);
+* the record and the release directory do not name the same files, both ways (2);
+* a size or a `sha256` is not true of the bytes, or a size is 0 (3, 4);
+* `SHA256SUMS` does not list `release.json`, or disagrees with it about any file (5);
+* a channel is not a register row on the record's surface (6);
+* a file's major.minor differs from the tag's, or `minSupported` is newer than the tag
+  (7; skipped, and the log says so, on an untagged run);
+* the manifest's header and the record name a different tag, commit or app (8).
+
+Exit 2 is COVERAGE LOST: the schema, the manifest or the register could not be read. Two
+more limbs grade the workflow rather than a directory (`--static`, run inside the
+`--self-test` that `ci.yml` calls): every stamp's `--channel` is the `RELEASE_CHANNEL` its
+build compiled in (9), and the apps.gov.in `.apk` is downloaded only under the uploadable
+name (10). Read the steps with
+`sed -n '/name: Describe the release/,/name: Publish the GitHub Release/p' .github/workflows/build-platforms.yml`.
+
+**Verifying a download.** Three lines, with `sha256sum` and `jq`. Set `TAG`, `FILE` (the
+file's `name`) and `CHANNEL` (the channel you are serving it to) first:
+
+```bash
+gh release download "$TAG" --pattern SHA256SUMS --pattern release.json --pattern "$FILE"
+sha256sum -c --ignore-missing SHA256SUMS    # release.json and $FILE must both print OK
+jq -e --arg f "$FILE" --arg c "$CHANNEL" --arg h "$(sha256sum "$FILE" | cut -d' ' -f1)" '.artefacts[] | select(.name == $f and .sha256 == $h and (.channels | index($c)))' release.json
+```
+
+The last line prints the file's row and exits 0 only when the record names this file, with
+these bytes, for this channel. Otherwise it prints nothing and exits non-zero: do not serve
+the file.
+
 ---
 
 ## 4. The required-reviewer environment note
@@ -228,6 +347,16 @@ No job in `build-platforms.yml` declares a GitHub **Environment**, so nothing pa
 approval. (The three `submit-*` store lanes do declare one, `store-publish`; none of
 them runs on a tag.) **The only human gate on a release is the act of pushing the tag.** Treat the
 `git push` in §5 as the approval step, because it is.
+
+> ⏱ CORRECTED 2026-09-25 against 19b252af: before this section was scoped to
+> `build-platforms.yml`, its check was `grep -rn "^\s*environment:" .github/workflows/`
+> with `# → no matches`, and the sentence under it said no job in any workflow declares an
+> Environment. At 19b252af that wider grep prints three lines, `submit-play.yml:192`,
+> `submit-snap.yml:200` and `submit-windows-store.yml:175`, each `environment: store-publish`,
+> and it prints more as lanes gain one, so run it rather than trust a count. None of them is
+> in `build-platforms.yml`, which still declares none, so the tag is still the only human gate
+> on a Release. A job that does declare one waits for that Environment's required reviewers,
+> if it has any, before it starts.
 
 Two things that are easy to confuse with a gate and are not:
 

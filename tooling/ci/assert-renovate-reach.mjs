@@ -46,10 +46,23 @@
 // A grouped BUILTIN row that matches no site is COVERAGE LOST: the model has
 // gone blind to the copy it claims the built-in manager writes.
 //
+// ⏱ 2026-09-26 — THE BRICK LOCKFILE (O-SERVICE-KIT-UNBUILT, E-a1). The brick's
+// backend variant now carries the package-lock.json its package.json resolves
+// to, so a stamped Worker's first install is `npm ci` of a tree OSV-Scanner has
+// already read in this repository, not a fresh resolve on the day. The npm
+// manager above writes that package.json; a bump that moved a range there and
+// not in the lockfile leaves a lockfile `npm ci` refuses. So this guard also
+// holds the lockfile's root, `packages[""]`, to the package: the same `name`
+// (`{{app_id}}-api`, which mason renders into both), and the same range for
+// every dependency field, in both directions. Structural, no install: the
+// packages under the root are npm's business, and OSV reads them.
+//
 // Usage:  node tooling/ci/assert-renovate-reach.mjs [repoRoot]
 // Exit 0 = every managed key's bump leaves the version guard green, or is a
-//          declared FLOOR / HAND decision;
-//      1 = a site no bump reaches, or HAND_ONLY and renovate.json disagree;
+//          declared FLOOR / HAND decision, and the brick lockfile's root matches
+//          its package.json;
+//      1 = a site no bump reaches, HAND_ONLY and renovate.json disagree, or the
+//          brick lockfile is missing or its root disagrees with its package.json;
 //      2 = COVERAGE LOST — it could not look (a missing input, a guard that is
 //          not green before any mutation, a key that is neither managed nor
 //          exempted, a grouped BUILTIN row that matched nothing, a run the
@@ -71,6 +84,7 @@ const SENTINEL_SEMVER = '99.98.97';
 const SENTINEL_MAJOR = '99';
 const HAND_LABEL = 'needs-manual-check';
 const BRICK_PKG = 'tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/package.json';
+export const BRICK_LOCK = BRICK_PKG.replace(/package\.json$/, 'package-lock.json');
 const WRANGLER_ISLAND_PKG = 'tooling/wrangler/package.json';
 // One version-guard run is about a second; the bound only has to catch a hang.
 const GUARD_TIMEOUT_MS = timeoutFromEnv('RENOVATE_REACH_TIMEOUT_MS', 60_000);
@@ -94,6 +108,33 @@ export function spliceAll(text, reSrc, value) {
   let out = text;
   for (const [s, e] of spans.sort((a, b) => b[0] - a[0])) out = out.slice(0, s) + value + out.slice(e);
   return { out, n: spans.length };
+}
+
+/** The dependency fields npm records on a lockfile's root entry. */
+const DEP_FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
+
+/** Every way the lockfile `lock` fails to be the lockfile of `pkg`: its root
+ *  `name` twice (the file's and `packages[""]`'s), then each dependency range,
+ *  both ways. [] when it is that package's lockfile. */
+export function brickLockProblems(pkg, lock) {
+  const root = lock?.packages?.[''];
+  if (!root || typeof root !== 'object') return ['it has no `packages[""]` entry, so it records no root package at all.'];
+  const out = [];
+  for (const [where, name] of [['name', lock.name], ['packages[""].name', root.name]]) {
+    if (name !== pkg.name) out.push(`its ${where} is ${JSON.stringify(name)}; the package.json beside it is ${JSON.stringify(pkg.name)}.`);
+  }
+  for (const field of DEP_FIELDS) {
+    const want = pkg[field] ?? {};
+    const got = root[field] ?? {};
+    for (const [dep, range] of Object.entries(want)) {
+      if (!Object.hasOwn(got, dep)) out.push(`${field}.${dep}: package.json asks for ${JSON.stringify(range)} and packages[""] does not list it.`);
+      else if (got[dep] !== range) out.push(`${field}.${dep}: package.json asks for ${JSON.stringify(range)}; packages[""] records ${JSON.stringify(got[dep])}.`);
+    }
+    for (const dep of Object.keys(got)) {
+      if (!Object.hasOwn(want, dep)) out.push(`${field}.${dep}: packages[""] records ${JSON.stringify(got[dep])} and package.json does not ask for it.`);
+    }
+  }
+  return out;
 }
 
 const matchersOf = (r) => Object.keys(r).filter((k) => k.startsWith('match'));
@@ -213,6 +254,24 @@ function main() {
       `${VERSIONS_REL} declares ${orphans.map((k) => `"${k}"`).join(', ')} with no customManager and no $updateExemptions entry.`,
       'No bump moves it and nothing says why, so its copies cannot be judged either way.',
     ]);
+  }
+
+  // ── the brick lockfile's root is its package.json's (see the header) ─────────
+  let brickPkg;
+  try {
+    brickPkg = JSON.parse(readFileSync(join(root, BRICK_PKG), 'utf8'));
+  } catch (e) {
+    coverageLost([`${BRICK_PKG} is missing or does not parse (${e.message}), so there is no package for the brick lockfile to match.`]);
+  }
+  let lockProblems;
+  if (!existsSync(join(root, BRICK_LOCK))) {
+    lockProblems = ['it is missing. Without it a stamped Worker resolves its ranges on the day it is provisioned, a tree nobody reviewed and OSV never scanned.'];
+  } else {
+    try {
+      lockProblems = brickLockProblems(brickPkg, JSON.parse(readFileSync(join(root, BRICK_LOCK), 'utf8')));
+    } catch (e) {
+      lockProblems = [`it is not JSON (${e.message}), and \`npm ci\` refuses it.`];
+    }
   }
 
   // ── the copy set, and a baseline the mutations can be attributed against ──────
@@ -367,13 +426,21 @@ function main() {
     console.error(`✗ ${disagreements.length} hand decision(s) declared in one place and not the other:`);
     for (const d of disagreements) console.error(`    ${d}`);
   }
+  if (lockProblems.length) {
+    console.error(`✗ ${BRICK_LOCK} is not the lockfile of the package.json beside it (${lockProblems.length} finding(s)):`);
+    for (const p of lockProblems) console.error(`    ${p}`);
+    console.error('  `npm ci` refuses a lockfile out of step with its package.json, so provisioning would stop at step [1] for every new backend.');
+    console.error('  Fix: `npm install --package-lock-only --ignore-scripts` in that directory, and commit both files together.');
+  }
   if (couldNotJudge.length) {
     coverageLost([
       `${couldNotJudge.length} managed key(s) could not be judged, so "0 unreached" would be a claim about keys this guard never saw:`,
       ...couldNotJudge,
     ]);
   }
-  if (unreached.length || disagreements.length) process.exit(1);
+  if (unreached.length || disagreements.length || lockProblems.length) process.exit(1);
+  const rangeCount = DEP_FIELDS.reduce((n, f) => n + Object.keys(brickPkg[f] ?? {}).length, 0);
+  console.log(`ok  brick lockfile — packages[""] carries the package's name and all ${rangeCount} of its dependency range(s)`);
   console.log(`ok  renovate reach — ${managedKeys.length} managed key(s), 0 unreached`);
 }
 

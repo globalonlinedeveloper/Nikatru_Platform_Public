@@ -143,6 +143,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 import { tablesIn, enumerateStores, parseJsonc } from '../assert-retention-coverage.mjs';
+import { ownedD1Stores } from '../d1-stores.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
@@ -785,5 +786,38 @@ ${r.stderr}`);
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /PERIOD UNDECLARED/);
     assert.match(r.out, /the owner has not chosen a number/);
+  });
+});
+
+// ⏱ 2026-09-26 (E-b2): the walk this guard used to hold is tooling/ci/d1-stores.mjs. It never
+// exits: each shortfall goes to the caller's `lost`. These pin that hand-off directly, so a
+// walk that skipped a shortfall instead of reporting it is red here as well as in the guard.
+describe('d1-stores.mjs — the D1 walk hands every shortfall to its caller', () => {
+  const stop = (seen) => (lines) => { seen.push(lines.join(' ')); throw new Error('lost'); };
+
+  test('green: the owning config, its database and its tables, and lost is never called', () => {
+    const root = makeRepo();
+    const seen = [];
+    const r = ownedD1Stores(root, stop(seen));
+    assert.deepEqual(seen, []);
+    assert.deepEqual(r.owned.map((o) => [o.config, o.databaseName, o.migrationsDir]), [['services/svc/wrangler.jsonc', 'demo_db', 'services/svc/migrations']]);
+    assert.deepEqual(r.owned[0].files.flatMap((f) => f.tables).sort(), ['real_table', 'swept_table']);
+  });
+
+  test('a migrations directory that does not exist goes to lost, naming the database', () => {
+    const root = makeRepo();
+    rmSync(join(root, 'services/svc/migrations'), { recursive: true, force: true });
+    const seen = [];
+    assert.throws(() => ownedD1Stores(root, stop(seen)), /lost/);
+    assert.equal(seen.length, 1);
+    assert.match(seen[0], /demo_db and that directory does not exist/);
+  });
+
+  test('a config that does not parse goes to lost, never a skip', () => {
+    const root = makeRepo();
+    writeFileSync(join(root, 'services/svc/wrangler.jsonc'), '{ not json');
+    const seen = [];
+    assert.throws(() => ownedD1Stores(root, stop(seen)), /lost/);
+    assert.match(seen[0], /services\/svc\/wrangler\.jsonc could not be parsed/);
   });
 });

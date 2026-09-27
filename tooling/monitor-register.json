@@ -293,7 +293,24 @@
     "`Laptop routine: CI watchdog` (Heartbeats, created 2026-09-06) are in NEITHER this file (correctly",
     "— a Heartbeat has no hostname) NOR alarm-chains.json → expectedMonitors (which is the gap: nothing",
     "would notice either being deleted). Named here rather than fixed because they are the routines",
-    "unit's rows, not this one's."
+    "unit's rows, not this one's.",
+    "",
+    "⏱ 2026-09-26 (O-SERVICE-KIT-UNBUILT, E-b2) — A HOST ROW'S MONITOR ID IS NOW READ FROM HERE BY THE CANARY.",
+    "tooling/ops/verify-alarm-chains.mjs expects every host row's `monitor.id` below, plus",
+    "tooling/ops/alarm-chains.json → expectedMonitors, which from this date holds ONLY the monitors that are",
+    "not a host row. The twelve host ids left that list in the same change (ids 38 and 39 above: 39 is a",
+    "host monitor and is now read from the beszel and logs rows; 38 stays in expectedMonitors), and an id in",
+    "both places is exit 1 there. The two sentences above that place ids 38 and 39 in expectedMonitors were",
+    "true when written and are superseded here, not rewritten.",
+    "  · A NEW APP WORKER'S ROW IS WRITTEN BY tooling/scripts/provision-backend.mjs STEP [7], with",
+    "    `monitor: null` and a `gap` whose `create` block names what to watch (type, path, expected status",
+    "    and body, interval, and the GlitchTip project slug). assert-monitor-coverage.mjs prints it as a gap.",
+    "  · tooling/ops/ensure-monitors.mjs turns that block into the monitor: a dry run prints the POST; with",
+    "    --apply it creates the monitor, re-reads it, and writes `monitor` (with its id and verifiedOn) over",
+    "    the gap only when every field reads back as sent. Its --apply is a vendor write and a parent step.",
+    "  · Both writers edit ONE row of this file as text and prove the result by parsing it",
+    "    (tooling/ops/monitor-register.mjs): the file is hand-formatted, and re-serialising it would rewrite",
+    "    every row to change one."
   ],
 
   "hosts": [

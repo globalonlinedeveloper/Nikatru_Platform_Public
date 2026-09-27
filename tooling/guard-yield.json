@@ -2162,6 +2162,11 @@
       "firstSeen": "2026-08-09",
       "evidence": []
     },
+    "tooling/ci/d1-stores.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-26",
+      "evidence": []
+    },
     "tooling/ci/dart-source.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-09",
@@ -2331,6 +2336,11 @@
     "tooling/ci/tree-walk.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-02",
+      "evidence": []
+    },
+    "tooling/ci/worker-routes.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-26",
       "evidence": []
     },
     "tooling/ci/worker-set.mjs": {

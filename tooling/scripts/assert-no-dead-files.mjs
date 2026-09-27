@@ -307,7 +307,7 @@ const EXEMPTIONS = [
       '--apply against the live instance. [ADR 043] records what that API does unattended: nine monitors ' +
       'silently detached from their projects. 🔴 WHO OPENS IT AND WHEN, which is the part a waiver owes: ' +
       'the operator, EVERY TIME A NEW UPTIME MONITOR IS CREATED — not once at provisioning. Its POLICY ' +
-      '(set-monitor-thresholds.mjs:124) is `{ GET: 2 }`, a rule over a monitor TYPE rather than a list of ' +
+      '(glitchtip-monitor-api.mjs:126 since 2026-09-26, imported from there) is `{ GET: 2 }`, a rule over a monitor TYPE rather than a list of ' +
       'ids, and GlitchTip creates every monitor at `confirmationThreshold: 1` (its default, the header\'s ' +
       'measured cause of the 122-alert flap that consumed the shared Resend quota and blocked signup ' +
       'confirmation mail for a day). So each new GET monitor arrives non-compliant and this is what makes ' +
