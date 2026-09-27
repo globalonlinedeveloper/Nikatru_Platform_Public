@@ -136,3 +136,36 @@ export function parseSeededRows(sqlWithStrings, table) {
 
   return { ok: true, columns, rows };
 }
+
+/**
+ * EVERY seed a migration set writes into `table`, in file order: the rows of
+ * each `INSERT INTO <table> (…) VALUES …` statement, concatenated.
+ *
+ * ⏱ 2026-09-27 · O-ONE-TIME-GRANT-UNBUILT. `parseSeededRows` reads the FIRST
+ * statement only, which was the whole set while 0009 was the only migration to
+ * seed `bundle_sources`. Migration 0019 seeds `paddle_one_time` in a second
+ * statement, and a reader of the first one would never see it: the runtime copy
+ * that names it would read as an invented source, and a copy that left it out
+ * would read as complete. `columns` is the union, in first-seen order; a row
+ * carries only the columns its own statement names.
+ *
+ * @param {string} sqlWithStrings the migration text WITH string literals intact
+ * @param {string} table the table whose seeds to read
+ * @returns {{ ok: true, columns: string[], rows: Record<string,string>[], statements: number }
+ *          | { ok: false, why: string }}
+ */
+export function parseAllSeededRows(sqlWithStrings, table) {
+  const startRe = new RegExp(`INSERT\\s+INTO\\s+${table}\\s*\\(`, 'gi');
+  const columns = [];
+  const rows = [];
+  let statements = 0;
+  for (const m of sqlWithStrings.matchAll(startRe)) {
+    const one = parseSeededRows(sqlWithStrings.slice(m.index), table);
+    if (!one.ok) continue;
+    statements += 1;
+    for (const c of one.columns) if (!columns.includes(c)) columns.push(c);
+    rows.push(...one.rows);
+  }
+  if (statements === 0) return { ok: false, why: `no \`INSERT INTO ${table} (…) VALUES …\` seed was found` };
+  return { ok: true, columns, rows, statements };
+}

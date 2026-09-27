@@ -93,6 +93,14 @@ export interface VerifiedGrant {
   readonly revocationReason: string | null;
   /** §3.5's entitlement-side proration answer, RECORDED not recomputed. */
   readonly creditDaysApplied: number | null;
+  /**
+   * ⏱ 2026-09-27 · The term ONE grant was sold on, when its source sells both
+   * (migration 0018 `bundle_grants.term`): a store SKU's own term, from the
+   * rendered SKU map (src/lib/mor/store-skus.ts). Absent or null ⇒ the source's
+   * term applies (the read is `COALESCE(g.term, s.term)`), which is every
+   * receipt-route grant today.
+   */
+  readonly term?: 'subscription' | 'one_time' | null;
 }
 
 export interface BundleStoreDeps {
@@ -156,8 +164,8 @@ export async function upsertBundleGrant(
          provider, provider_environment, provider_subscription_id, provider_transaction_id,
          provider_status, last_event_id, occurred_at, current_period_end, trial_end,
          expires_at, grace_until, revoked_at, revocation_reason, credit_days_applied,
-         superseded_by, created_at, updated_at
-       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?)
+         superseded_by, created_at, updated_at, term
+       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?)
        ON CONFLICT (provider, provider_subscription_id)
          WHERE provider IS NOT NULL AND provider_subscription_id IS NOT NULL
        DO UPDATE SET
@@ -176,7 +184,8 @@ export async function upsertBundleGrant(
          revoked_at              = excluded.revoked_at,
          revocation_reason       = excluded.revocation_reason,
          credit_days_applied     = excluded.credit_days_applied,
-         updated_at              = excluded.updated_at
+         updated_at              = excluded.updated_at,
+         term                    = excluded.term
        WHERE bundle_grants.occurred_at IS NULL OR excluded.occurred_at > bundle_grants.occurred_at`,
     )
     .bind(
@@ -201,6 +210,7 @@ export async function upsertBundleGrant(
       grant.creditDaysApplied,
       now,
       now,
+      grant.term ?? null,
     )
     .run();
   return (res.meta?.changes ?? 0) > 0

@@ -290,6 +290,41 @@ if (writerFns.size === 0) {
 ok(`the write is reached through ${[...writerFns].join(', ')}`);
 
 // ── LIMBS 3-5 · EVERY CALL SITE ─────────────────────────────────────────────
+
+/**
+ * ⏱ 2026-09-27 · LIMB 3b · A RELAY. services/platform/src/lib/mor/grant.ts is the
+ * ONE entry from a verified money event to a grant (O-ONE-TIME-GRANT-UNBUILT): it
+ * is handed an event its CALLERS verified — the money route checks the signature,
+ * the nightly re-derivation re-parses a row the route verified — so it holds no
+ * seam of its own, and limb 3 alone would refuse it. It passes only when EVERY
+ * file that calls one of its exported functions reaches a verification seam above
+ * that call: limb 3's own test, one hop up. A relay nobody calls is not excused
+ * (limb 3 refuses it as before), and one caller that does not verify refuses it.
+ * A caller under a `test/` directory is not a production path and is not counted.
+ * Only a module under `src/lib/` is graded as a relay; a route stays a door.
+ */
+function relayVerdict(f) {
+  const entries = [...f.code.matchAll(/export\s+(?:async\s+)?function\s+([A-Za-z0-9_]+)/g)].map((m) => m[1]);
+  const callers = new Set();
+  const unverified = [];
+  for (const g of sources) {
+    if (g.abs === f.abs || /[\\/]test[\\/]/.test(g.abs)) continue;
+    for (const entry of entries) {
+      for (const m of g.code.matchAll(new RegExp(`\\b${entry}\\s*\\(`, 'g'))) {
+        const lineStart = g.code.lastIndexOf('\n', m.index) + 1;
+        const line = g.code.slice(lineStart, g.code.indexOf('\n', m.index));
+        if (/^\s*import\b/.test(line) || /\bfunction\s+$/.test(g.code.slice(lineStart, m.index))) continue;
+        callers.add(g.rel);
+        const verifyAt = g.code.search(VERIFY_CALL);
+        if (!VERIFY_IMPORT.test(g.code) || verifyAt < 0 || verifyAt > m.index) {
+          unverified.push(`${g.rel} calls ${entry}() at offset ${m.index} with no verification seam above it`);
+        }
+      }
+    }
+  }
+  return { callers: [...callers], unverified };
+}
+
 let callSites = 0;
 for (const f of sources) {
   if (writerFiles.some((w) => w.abs === f.abs)) continue; // the writer itself
@@ -306,7 +341,22 @@ for (const f of sources) {
       // LIMB 3 · verification stands ABOVE the write, in this file.
       const importsSeam = VERIFY_IMPORT.test(f.code);
       const verifyAt = f.code.search(VERIFY_CALL);
-      if (!importsSeam || verifyAt < 0) {
+      // Only a LIBRARY module (under a `src/lib/` directory) may relay. A route or
+      // a job is a door: it receives what it writes from outside, so it verifies
+      // for itself or limb 3 refuses it, whatever else calls its exports.
+      const relay = (!importsSeam || verifyAt < 0) && /[\\/]src[\\/]lib[\\/]/.test(f.abs) ? relayVerdict(f) : null;
+      if (relay !== null && relay.callers.length > 0 && relay.unverified.length === 0) {
+        ok(
+          `${f.rel} calls ${fn}() as a RELAY (limb 3b): its ${relay.callers.length} caller(s) — ` +
+            `${relay.callers.join(', ')} — each reach a verification seam above their call`,
+        );
+      } else if (relay !== null && relay.callers.length > 0) {
+        fail(
+          `${f.rel} calls ${fn}() with no verification seam of its own, and a caller of its exported entry reaches it ` +
+            `WITHOUT verifying first: ${relay.unverified.join('; ')}. A relay is only as verified as its least-verified ` +
+            'caller (limb 3b).',
+        );
+      } else if (!importsSeam || verifyAt < 0) {
         fail(
           `${f.rel} calls ${fn}() but never reaches a verification seam (imports=${importsSeam}, ` +
             `verify-call=${verifyAt >= 0}). A grant may only be written on a statement the SERVER obtained ` +

@@ -218,6 +218,16 @@ const OFFERING_ID_PATTERN = /^[a-z][a-z0-9_]{0,63}$/;
  * "Nikatru Subscription Tracker Pro" — the catalogue carries the product name a
  * buyer sees on the receipt, so it is renamed with everything else.
  *
+ * ⏱ 2026-09-27 · `pro_lifetime` → `pri_01m346p14yzeqjjwj153thx8p2`, READ BACK by
+ * `GET /prices/pri_01m346p14yzeqjjwj153thx8p2` at 2026-09-26T23:43:12Z (one
+ * read-only call with the live API key): `status` active, `unit_price` 8900 USD,
+ * `billing_cycle` null (one-time), `trial_period` null, product
+ * `pro_01kzew6de0nhqncmgxj1qtfg0q`, `custom_data { app_id: "subscriptiontracker",
+ * offering_id: "pro_lifetime", adr093: "pro_lifetime" }`. It left
+ * RAIL_PRICE_PENDING in the change that built its grant path: a completed
+ * one-time transaction for it is granted through src/lib/mor/grant.ts with no end
+ * date (O-ONE-TIME-GRANT-UNBUILT).
+ *
  * 🔄 THESE TWO IDS REPLACED A PAIR MEASURED 2026-08-11 ([ADR 044] §7:
  * `pri_01kzew6dqmtv3jg33dy9m23g31` at 499/month and `pri_01kzew6e0yec2rfvk561hmzbbz`
  * at 1999/year). A Paddle price is IMMUTABLE in its amount: moving a price means
@@ -256,6 +266,7 @@ export const PADDLE_PRICE_IDS: Readonly<Record<string, Readonly<Record<string, s
   subscriptiontracker: {
     pro_monthly: 'pri_01m346p0fjtaffk6waj5x5vz1c',
     pro_yearly: 'pri_01m346p0v8103kqy1zb8zmmj7y',
+    pro_lifetime: 'pri_01m346p14yzeqjjwj153thx8p2',
   },
 };
 
@@ -284,6 +295,8 @@ export const RAIL_PRICE_AMOUNTS_MINOR: Readonly<Record<string, Readonly<Record<s
   subscriptiontracker: {
     pro_monthly: 599,
     pro_yearly: 3499,
+    // Read back 2026-09-26T23:43:12Z (see PADDLE_PRICE_IDS): 8900 USD, one-time.
+    pro_lifetime: 8900,
   },
 };
 
@@ -311,17 +324,41 @@ export const RAIL_PRICE_AMOUNTS_MINOR: Readonly<Record<string, Readonly<Record<s
  * number: that is the ADR's, and the owner's.
  */
 export const RAIL_PRICE_PENDING: Readonly<Record<string, Readonly<Record<string, string>>>> = {
-  subscriptiontracker: {
-    pro_lifetime:
-      'THE PRICE EXISTS AND THE PATH DOES NOT — Paddle price pri_01m346p14yzeqjjwj153thx8p2 carries ' +
-      'the decided one-time amount, so what is missing is no longer a catalogue row. This Worker ' +
-      'grants an entitlement off a SUBSCRIPTION: the Paddle adapter recognises a sub_ id and has no ' +
-      'branch for a one-time transaction, so mapping the price here would sell a purchase that ' +
-      'reaches no grant. Build the one-time grant path, then move this offering into the two maps ' +
-      'above. The monthly and yearly entries were cleared on 2026-09-22 when their prices were ' +
-      'measured live and recorded above.',
-  },
+  // ⏱ 2026-09-27 · EMPTY. `pro_lifetime` left when its one-time grant path landed
+  // (src/lib/mor/grant.ts) and its price was read back from Paddle at
+  // 2026-09-26T23:43:12Z into the two maps above. The monthly and yearly entries
+  // were cleared on 2026-09-22 when their prices were measured live.
+  subscriptiontracker: {},
 };
+
+/**
+ * ⏱ 2026-09-27 · The `one_time` offering a rail's price sells, or null — the map
+ * src/lib/mor/grant.ts is handed (it may not import this route or config.ts).
+ *
+ * A price sells an offering when PADDLE_PRICE_IDS maps that offering to it AND
+ * the committed served config declares the offering with `term: "one_time"`. A
+ * price that maps to a recurring offering, or to nothing, sells no one-time
+ * offering, so a completed transaction for it grants nothing. The committed
+ * config is read (no KV override): a webhook's meaning does not move with an
+ * operator's display override.
+ */
+export function oneTimeOfferingFor(
+  provider: string,
+  priceId: string,
+): { appId: string; offeringId: string } | null {
+  if (provider !== 'paddle') return null;
+  for (const [appId, prices] of Object.entries(PADDLE_PRICE_IDS)) {
+    for (const [offeringId, id] of Object.entries(prices)) {
+      if (id !== priceId) continue;
+      const offerings = resolveConfig(appId, null)?.paywall?.offerings;
+      const served = Array.isArray(offerings)
+        ? offerings.find((o) => isPlainObject(o) && o.product_id === offeringId)
+        : undefined;
+      return isPlainObject(served) && served.term === 'one_time' ? { appId, offeringId } : null;
+    }
+  }
+  return null;
+}
 
 /**
  * The statuses a CREATE is allowed to come back as.

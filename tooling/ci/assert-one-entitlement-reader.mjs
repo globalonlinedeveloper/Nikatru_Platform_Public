@@ -100,12 +100,16 @@ const DECLARED = [
   {
     file: 'services/platform/src/lib/mor/store.ts',
     role: 'writer-lookup',
-    counts: { entitlements: 3 },
+    counts: { entitlements: 5 },
     why:
       'the ONE writer, and every read decides a WRITE, never access: (1) it reads back the (user, app, entitlement) row a ' +
       'refund/chargeback lands on before it adjusts it; (2) ⏱ 2026-09-22 [ADR 092] §4.4 — the RevenueCat link upsert moves a ' +
       'purchase only when its CURRENT owner holds no live row on it (a NOT EXISTS inside the upsert); (3) [ADR 092] §4.3 — ' +
-      'the TRANSFER tripwire refuses the move while any source account still holds a live RevenueCat row for the app.',
+      'the TRANSFER tripwire refuses the move while any source account still holds a live RevenueCat row for the app; ' +
+      '(4) ⏱ 2026-09-27 O-ONE-TIME-GRANT-UNBUILT — `liveOneTimeRow`: a subscription event, or an adjustment of another ' +
+      'purchase, writes nothing over a live one-time (lifetime) grant on the same (user, app); (5) ⏱ 2026-09-27 ' +
+      '`applyOneTime`: a lifetime that another purchase\'s NEWER event already holds the row against is refused by name, ' +
+      'never concluded stale by the ordering clause.',
   },
   {
     file: 'services/platform/src/lib/mor/bundle-store.ts',

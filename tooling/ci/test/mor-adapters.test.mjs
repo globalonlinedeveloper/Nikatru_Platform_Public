@@ -135,14 +135,21 @@ export async function persistNotification(deps, n, raw) {
 export async function deriveAndApply(deps, n) { return { outcome: 'applied' }; }
 `;
 
+/** ⏱ 2026-09-27 · the ONE entry from a verified event to a grant; the derivation is called from HERE. */
+const GRANT_TS = `
+import { deriveAndApply } from './store';
+export async function grantFromVerifiedEvent(deps, n) { return deriveAndApply(deps, n); }
+`;
+
 const ROUTE_TS = `
 import { verifierFor } from '../lib/mor/registry';
-import { deriveAndApply, persistNotification } from '../lib/mor/store';
+import { persistNotification } from '../lib/mor/store';
+import { grantFromVerifiedEvent } from '../lib/mor/grant';
 export default {
   async handle(c) {
     const v = verifierFor('paddle');
     await persistNotification({}, {}, '');
-    await deriveAndApply({}, {});
+    await grantFromVerifiedEvent({}, {});
     return v;
   },
 };
@@ -287,6 +294,7 @@ function run(o = {}) {
   write(root, 'services/platform/src/lib/mor/paddle.ts', o.paddle ?? PADDLE_TS);
   write(root, 'services/platform/src/lib/mor/registry.ts', o.registry ?? REGISTRY_TS);
   write(root, 'services/platform/src/lib/mor/store.ts', o.store ?? STORE_TS);
+  write(root, 'services/platform/src/lib/mor/grant.ts', o.grant ?? GRANT_TS);
   write(root, 'services/platform/src/routes/money.ts', o.route ?? ROUTE_TS);
   write(root, 'services/platform/src/index.ts', o.index ?? INDEX_TS);
   if (o.entitlementsRoute !== null) {
@@ -473,9 +481,19 @@ export const entitlementsAuth = async (c, next) => {
   });
 
   test('FAILS when the derivation is present but uncalled', () => {
-    const r = run({ route: ROUTE_TS.replace('await deriveAndApply({}, {});', '') });
+    // ⏱ 2026-09-27 · its caller is grant.ts now, not the route.
+    const r = run({ grant: GRANT_TS.replace('return deriveAndApply(deps, n);', "return { outcome: 'applied' };") });
     assert.equal(r.code, 1);
     assert.match(r.out, /`deriveAndApply` is declared in .* and CALLED BY NOTHING outside it/);
+  });
+
+  test('FAILS when the grant entry is present but uncalled — the derivation it calls still reads as called', () => {
+    // ⏱ 2026-09-27 · the moved-code gap: with the door's call gone, grant.ts still
+    // calls deriveAndApply, so the piece above stays green. Measured on the npdb
+    // tree before this piece existed: every caller removed, assert-mor-adapters 0.
+    const r = run({ route: ROUTE_TS.replace('await grantFromVerifiedEvent({}, {});', '') });
+    assert.equal(r.code, 1);
+    assert.match(r.out, /`grantFromVerifiedEvent` is declared in .* and CALLED BY NOTHING outside it/);
   });
 
   test('a caller inside the DECLARING file does not count', () => {

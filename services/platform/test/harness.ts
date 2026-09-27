@@ -52,6 +52,7 @@ import revenuecatOwnership0015 from '../migrations/0015_revenuecat_ownership.sql
 import providerTokens0016 from '../migrations/0016_provider_tokens.sql?raw';
 import extDevices0017 from '../migrations/0017_ext_devices.sql?raw';
 import bundleSourceTerm0018 from '../migrations/0018_bundle_source_term.sql?raw';
+import oneTimeSource0019 from '../migrations/0019_one_time_source.sql?raw';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
 
@@ -100,6 +101,11 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   // its source and on the grant. ADD COLUMN, so ledger-protected and NOT in
   // REPLAY_SAFE_MIGRATIONS below.
   bundleSourceTerm0018,
+  // ⏱ 2026-09-27 · O-ONE-TIME-GRANT-UNBUILT — the `paddle_one_time` source,
+  // term `one_time`. One INSERT … ON CONFLICT DO NOTHING, but it names 0018's
+  // ADD COLUMN, so it is NOT in REPLAY_SAFE_MIGRATIONS below (that subset
+  // replays without 0018).
+  oneTimeSource0019,
 ];
 
 /**
