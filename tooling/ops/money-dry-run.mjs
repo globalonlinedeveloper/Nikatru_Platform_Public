@@ -92,6 +92,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readProducts } from '../bundle-availability.mjs';
+import { BUNDLE_KIND } from '../../contracts/entitlement/bundle.js';
 
 /**
  * The repository root, derived from THIS FILE rather than from cwd — a guard or
@@ -661,7 +662,9 @@ async function main() {
       ...registers.problems,
     ]);
   }
-  const knownProducts = new Set(registers.products.map((p) => p.slug));
+  // Every register's product but a bundle — the Worker's config.ts
+  // `isAttributableProduct`, which says why a bundle id is never attributed.
+  const knownProducts = new Set(registers.products.filter((p) => p.kind !== BUNDLE_KIND).map((p) => p.slug));
   const isKnownProduct = (id) => typeof id === 'string' && knownProducts.has(id);
   const shared = {
     makeDb,

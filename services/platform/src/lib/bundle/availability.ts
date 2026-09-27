@@ -22,26 +22,19 @@
 // The gate is derived or it is not a gate. The guard greps for exactly that.
 // ─────────────────────────────────────────────────────────────────────────────
 import {
+  BUNDLE_KIND,
   MIN_LIVE_PRODUCTS_FOR_BUNDLE,
   PRODUCT_REGISTERS,
 } from '../../../../../contracts/entitlement/bundle.js';
 import appsJson from '../../../../../catalog/apps.json';
 import extensionsJson from '../../../../../extensions/catalog/extensions.json';
-import bundlesJson from '../../../../../catalog/bundles.json';
 import channelRegisterJson from '../../../../../tooling/channel-register.json';
+import { BUNDLES_REGISTER, BUNDLE_ROWS, type BundleRegisterRow } from '../catalog';
 
 /** A register row, declared as the MINIMUM this module reads. */
-interface ProductRow {
-  slug?: unknown;
-  status?: unknown;
-}
+type ProductRow = Record<string, unknown>;
 
-interface BundleRow {
-  featureSet?: unknown;
-  version?: unknown;
-  members?: unknown;
-  priceIds?: unknown;
-}
+type BundleRow = BundleRegisterRow;
 
 export interface BundleAvailability {
   readonly channel: string;
@@ -63,6 +56,9 @@ export interface BundleAvailability {
 const REGISTER_MODULES: Record<string, unknown> = {
   'catalog/apps.json': appsJson,
   'extensions/catalog/extensions.json': extensionsJson,
+  // The bundle register is read through src/lib/catalog.ts, the Worker's one
+  // catalogue reader, rather than a second import of the same file here.
+  [BUNDLES_REGISTER]: BUNDLE_ROWS,
 };
 
 /** One register row, as every product register spells it. */
@@ -87,13 +83,27 @@ export function productsFromRegisters(): RegisterProduct[] {
     if (entry.register === null) continue;
     const mod = REGISTER_MODULES[entry.register];
     if (!Array.isArray(mod)) continue;
+    // The bundle register's slug is its `featureSet`: PRODUCT_REGISTERS names
+    // the field, exactly as tooling/bundle-availability.mjs reads it.
+    const field = entry.slugField ?? 'slug';
     for (const row of mod as ProductRow[]) {
       if (row === null || typeof row !== 'object') continue;
-      if (typeof row.slug !== 'string' || typeof row.status !== 'string') continue;
-      out.push({ slug: row.slug, kind: entry.kind, status: row.status });
+      const slug = row[field];
+      if (typeof slug !== 'string' || typeof row.status !== 'string') continue;
+      out.push({ slug, kind: entry.kind, status: row.status });
     }
   }
   return out;
+}
+
+/**
+ * The slugs that are actually LIVE — the twin of tooling/bundle-availability.mjs
+ * `liveSlugs`. 🔴 A BUNDLE IS NEVER COUNTED, BY KIND: the floor this count feeds
+ * decides whether a bundle may be sold, so a bundle that counted would count
+ * toward itself.
+ */
+export function liveSlugs(products: readonly RegisterProduct[]): string[] {
+  return products.filter((p) => p.status === 'live' && p.kind !== BUNDLE_KIND).map((p) => p.slug);
 }
 
 function railForChannel(channelId: string): { rail: string | null } | null {
@@ -107,20 +117,46 @@ function railForChannel(channelId: string): { rail: string | null } | null {
 }
 
 /**
- * Derive the three booleans for one channel. Defaults to `web`, the only channel
- * that is `served: true` today.
+ * Derive the three booleans for one channel, for EVERY bundle in the register,
+ * keyed by `featureSet`. Defaults to `web`, the only channel that is
+ * `served: true` today.
+ *
+ * 🔴 EVERY ROW. Until 2026-09-26 this read `bundles[0]` and a second bundle row
+ * was silently ignored (O-BUNDLE-AVAILABILITY-TAKES-THE-FIRST). Each verdict
+ * keeps the shape the single verdict had; a caller reads it by `featureSet`.
  *
  * Every branch that cannot read a register answers `false` for `purchasable` —
  * which is the fail-closed direction on a gate whose wrong answer is advertising
  * a subscription that cannot be delivered.
  */
-export function bundleAvailability(channel = 'web'): BundleAvailability {
-  const products = productsFromRegisters();
-  const liveProducts = products.filter((p) => p.status === 'live').map((p) => p.slug);
+export function bundleAvailability(channel = 'web'): Map<string, BundleAvailability> {
+  return availabilityFor(BUNDLE_ROWS, productsFromRegisters(), channel);
+}
 
-  const bundles = Array.isArray(bundlesJson) ? (bundlesJson as BundleRow[]) : [];
-  const bundle = bundles.length > 0 ? bundles[0] : null;
+/**
+ * The derivation over explicit rows — what `bundleAvailability` runs over the
+ * committed registers, and what a test runs over a two-bundle fixture. A row
+ * with no featureSet cannot be named or sold and is skipped; a featureSet seen
+ * twice keeps its first row (tooling/bundle-availability.mjs reports the second
+ * as a problem, and CI refuses the register).
+ */
+export function availabilityFor(
+  rows: readonly BundleRow[],
+  products: readonly RegisterProduct[],
+  channel = 'web',
+): Map<string, BundleAvailability> {
+  const liveProducts = liveSlugs(products);
+  const out = new Map<string, BundleAvailability>();
+  for (const bundle of rows) {
+    const verdict = verdictFor(bundle, liveProducts, channel);
+    if (verdict.featureSet === null || out.has(verdict.featureSet)) continue;
+    out.set(verdict.featureSet, verdict);
+  }
+  return out;
+}
 
+/** One bundle's verdict: the shape `bundleAvailability` returned before it returned every bundle. */
+function verdictFor(bundle: BundleRow, liveProducts: string[], channel: string): BundleAvailability {
   const featureSet = typeof bundle?.featureSet === 'string' && bundle.featureSet.length > 0 ? bundle.featureSet : null;
   const version = typeof bundle?.version === 'number' ? bundle.version : null;
   const members = Array.isArray(bundle?.members)
@@ -170,10 +206,11 @@ export function bundleAvailability(channel = 'web'): BundleAvailability {
  * `feature_set_members` rows in platform_db — never from this file — so editing
  * catalog/bundles.json can never silently change who owns what. This helper
  * exists for the FORWARD question only: "what would a grant minted today
- * contain", which is what checkout and the site need.
+ * contain", which is what checkout and the site need. Read by `featureSet`:
+ * an unknown feature set has no members.
  */
-export function draftMembers(): readonly string[] {
-  return bundleAvailability().members;
+export function draftMembers(featureSet: string): readonly string[] {
+  return bundleAvailability().get(featureSet)?.members ?? [];
 }
 
 /**

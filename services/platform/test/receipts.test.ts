@@ -23,6 +23,7 @@ import { platformAuth } from '../src/middleware/auth';
 import receipts, { creditDays, extendExpiry } from '../src/routes/receipts';
 import { mintGrantId } from '../src/lib/mor/bundle-store';
 import type { FeatureSetRef, ProductMap } from '../src/lib/receipts/products';
+import { BUNDLES_REGISTER, type BundleRegisterRow } from '../src/lib/catalog';
 import type { AppEnv } from '../src/types';
 import { realPlatformDb, type RealDb } from './harness';
 
@@ -35,6 +36,21 @@ const NIKATRU_ALL: FeatureSetRef = {
   version: 1,
   products: ['subscriptiontracker', 'fullshot'],
 };
+
+/**
+ * The third seam's register: nikatru_all@1 as `sellable`. The committed register
+ * carries it as `draft` (it has never been sold), and since 2026-09-26 the mint
+ * refuses anything but a `sellable` version — so the grant path runs over this
+ * row, and the refusal is proven against the committed register (RC5 below).
+ */
+const SELLABLE_V1: readonly BundleRegisterRow[] = [
+  {
+    featureSet: 'nikatru_all',
+    version: 1,
+    status: 'sellable',
+    members: [{ slug: 'subscriptiontracker' }, { slug: 'fullshot' }],
+  },
+];
 
 /** The two seams' fixture map. Keyed exactly as products.ts keys it. */
 function productMap(entries: Array<[string, string]>): ProductMap {
@@ -139,6 +155,9 @@ function harness({
   fetchImpl = undefined as typeof fetch | undefined,
   map = productMap([]) as ProductMap | undefined,
   credentials = {} as Record<string, string>,
+  // `null` = no seam: the mint reads the COMMITTED register, as every deploy does.
+  // (Not `undefined`, which a destructuring default would silently replace.)
+  register = SELLABLE_V1 as readonly BundleRegisterRow[] | null,
 } = {}) {
   const app = new Hono<AppEnv>();
   app.use('*', async (c, next) => {
@@ -157,6 +176,7 @@ function harness({
     MONEY_ENVIRONMENT: environment ?? undefined,
     RECEIPT_FETCH: fetchImpl,
     RECEIPT_PRODUCT_MAP: map,
+    RECEIPT_BUNDLE_REGISTER: register ?? undefined,
     ...credentials,
   } as unknown as AppEnv['Bindings'];
 
@@ -401,6 +421,53 @@ describe('a verified receipt writes exactly one grant, and a REPLAY writes no se
     expect(h.db.count('feature_sets')).toBe(0);
     expect(h.db.count('feature_set_members')).toBe(0);
     expect(h.db.count('bundle_grants')).toBe(0);
+  });
+
+  it('RC5 — a version the COMMITTED register calls `draft` is refused: nothing pinned, nothing granted', async () => {
+    // O-BUNDLE-MEMBER-INSERT-UNLOCKED limb (2). `register: null` is every
+    // deploy: the mint reads catalog/bundles.json, where nikatru_all@1 is draft.
+    // MUTATION PROOF: bind the literal 'sellable' again and drop the status check
+    // in pinFeatureSet — this goes 200 with a grant, RED here.
+    const store = stubStore([{ status: 200, body: PLAY_ACTIVE('nikatru_all_yearly', '2027-09-09T00:00:00.000Z') }]);
+    const h = harness({
+      credentials: PLAY_CREDS,
+      fetchImpl: store.impl,
+      map: productMap([['google_play', 'nikatru_all_yearly']]),
+      register: null,
+    });
+    const res = await h.post('google_play', { token: 'tok-draft' }, `Bearer ${await token()}`);
+    expect(res.status).toBe(500);
+    expect(h.db.count('feature_sets')).toBe(0);
+    expect(h.db.count('feature_set_members')).toBe(0);
+    expect(h.db.count('bundle_grants')).toBe(0);
+  });
+
+  it('a version the register does not carry at all is refused the same way', async () => {
+    const store = stubStore([{ status: 200, body: PLAY_ACTIVE('nikatru_all_yearly', '2027-09-09T00:00:00.000Z') }]);
+    const h = harness({
+      credentials: PLAY_CREDS,
+      fetchImpl: store.impl,
+      map: productMap([['google_play', 'nikatru_all_yearly']]),
+      register: [{ ...SELLABLE_V1[0], version: 2 }],
+    });
+    const res = await h.post('google_play', { token: 'tok-absent' }, `Bearer ${await token()}`);
+    expect(res.status).toBe(500);
+    expect(h.db.count('feature_sets')).toBe(0);
+    expect(h.db.count('bundle_grants')).toBe(0);
+  });
+
+  it('the minted row records the status READ from the register, and the register it was read from', async () => {
+    const store = stubStore([{ status: 200, body: PLAY_ACTIVE('nikatru_all_yearly', '2027-09-09T00:00:00.000Z') }]);
+    const h = harness({
+      credentials: PLAY_CREDS,
+      fetchImpl: store.impl,
+      map: productMap([['google_play', 'nikatru_all_yearly']]),
+    });
+    const res = await h.post('google_play', { token: 'tok-minted' }, `Bearer ${await token()}`);
+    expect(res.status).toBe(200);
+    expect(h.db.rows('SELECT status, minted_from FROM feature_sets WHERE name = ?', 'nikatru_all')).toEqual([
+      { status: 'sellable', minted_from: BUNDLES_REGISTER },
+    ]);
   });
 
   it('a REPLAYED token upserts onto the same row instead of appending a second grant', async () => {

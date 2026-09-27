@@ -43,7 +43,7 @@
   "bounded-spawn.test.mjs": 9,
   "built-artifact-pr-lane.test.mjs": 25,
   "built-info-plist.test.mjs": 15,
-  "bundle-availability.test.mjs": 15,
+  "bundle-availability.test.mjs": 35,
   "bundle-contract-limbs.test.mjs": 16,
   "bundle-provenance-guards.test.mjs": 13,
   "bundle-provenance.test.mjs": 8,

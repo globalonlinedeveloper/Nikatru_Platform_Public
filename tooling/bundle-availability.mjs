@@ -45,7 +45,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { MIN_LIVE_PRODUCTS_FOR_BUNDLE, PRODUCT_REGISTERS } from '../contracts/entitlement/bundle.js';
+import { BUNDLE_KIND, MIN_LIVE_PRODUCTS_FOR_BUNDLE, PRODUCT_REGISTERS } from '../contracts/entitlement/bundle.js';
 
 export const BUNDLES_REGISTER = 'catalog/bundles.json';
 export const CHANNEL_REGISTER = 'tooling/channel-register.json';
@@ -79,7 +79,7 @@ export function readProducts(root) {
   const products = [];
   const problems = [];
   let registersRead = 0;
-  for (const { kind, register } of PRODUCT_REGISTERS) {
+  for (const { kind, register, slugField } of PRODUCT_REGISTERS) {
     // A declared category with no register yet is not a failure — it is the
     // recorded fact that nothing of that kind ships. `script` is that today.
     if (register === null) continue;
@@ -93,13 +93,16 @@ export function readProducts(root) {
       continue;
     }
     registersRead += 1;
+    // The bundle register's slug is its `featureSet`: PRODUCT_REGISTERS names
+    // the field, so the mapping is data in the contract and not a branch here.
+    const field = slugField ?? 'slug';
     for (const row of r.value) {
       if (row === null || typeof row !== 'object') continue;
-      if (typeof row.slug !== 'string' || typeof row.status !== 'string') {
-        problems.push(`${register} carries a row with no slug/status pair; a product with no status cannot be counted either way.`);
+      if (typeof row[field] !== 'string' || typeof row.status !== 'string') {
+        problems.push(`${register} carries a row with no ${field}/status pair; a product with no status cannot be counted either way.`);
         continue;
       }
-      products.push({ slug: row.slug, kind, status: row.status, register });
+      products.push({ slug: row[field], kind, status: row.status, register });
     }
   }
   if (registersRead === 0) {
@@ -108,9 +111,16 @@ export function readProducts(root) {
   return { products, problems };
 }
 
-/** The slugs that are actually LIVE. `preview` is not live; a third spelling is not live either. */
+/**
+ * The slugs that are actually LIVE. `preview` is not live; a third spelling is not live either.
+ *
+ * 🔴 A BUNDLE IS NEVER COUNTED, BY KIND. A bundle is a product made of products,
+ * and the floor this count feeds decides whether a bundle may be sold, so a
+ * bundle that counted would count toward itself. Excluded by BUNDLE_KIND, not by
+ * the accident that its register spells `draft | sellable` and never `live`.
+ */
 export function liveSlugs(products) {
-  return products.filter((p) => p.status === 'live').map((p) => p.slug);
+  return products.filter((p) => p.status === 'live' && p.kind !== BUNDLE_KIND).map((p) => p.slug);
 }
 
 /**
@@ -129,11 +139,20 @@ export function railForChannel(register, channelId) {
 }
 
 /**
- * Derive the three booleans for one channel.
+ * Derive the three booleans for one channel, for EVERY bundle in the register.
+ *
+ * 🔴 EVERY ROW, KEYED BY ITS featureSet. Until 2026-09-26 this read
+ * `bundles.length > 0 ? bundles[0] : null`, so a second bundle row was silently
+ * ignored and the twin-equality guard stayed green over it
+ * (O-BUNDLE-AVAILABILITY-TAKES-THE-FIRST). Each verdict keeps the shape the
+ * single verdict had; a caller reads the one it means by `featureSet`.
  *
  * @param {string} root repo root
  * @param {{ channel?: string }} [opts] the channel to answer for; defaults to `web`,
  *   the only channel that is `served: true` today.
+ * @returns {{ byFeatureSet: Map<string, ReturnType<typeof verdictFor>>, problems: string[] }}
+ *   `problems` non-empty = the derivation could not read something it needed.
+ *   Every verdict carries the SAME `problems` array.
  */
 export function bundleAvailability(root, opts = {}) {
   const channel = opts.channel ?? 'web';
@@ -157,8 +176,33 @@ export function bundleAvailability(root, opts = {}) {
     problems.push(`${CHANNEL_REGISTER} declares no channel '${channel}', so its rail is unknown — and an unknown rail is refused, never defaulted.`);
   }
 
-  const bundle = bundles.length > 0 ? bundles[0] : null;
+  const byFeatureSet = new Map();
+  for (const [i, bundle] of bundles.entries()) {
+    const featureSet =
+      bundle !== null && typeof bundle === 'object' && typeof bundle.featureSet === 'string' && bundle.featureSet.length > 0
+        ? bundle.featureSet
+        : null;
+    if (featureSet === null) {
+      problems.push(`${BUNDLES_REGISTER} row ${i} declares no featureSet, so it can be neither shown nor sold.`);
+      continue;
+    }
+    if (byFeatureSet.has(featureSet)) {
+      problems.push(
+        `${BUNDLES_REGISTER} carries featureSet \`${featureSet}\` twice. One row per feature set: a version is bumped in ` +
+          'place, and the lock keeps every minted version.',
+      );
+      continue;
+    }
+    byFeatureSet.set(featureSet, verdictFor(bundle, { channel, live, railRow, problems }));
+  }
+  return { byFeatureSet, problems };
+}
 
+/**
+ * The per-bundle verdict — the shape `bundleAvailability` returned for its one
+ * bundle before it returned every bundle.
+ */
+function verdictFor(bundle, { channel, live, railRow, problems }) {
   // ── visible ────────────────────────────────────────────────────────────────
   // A declared feature set is a thing we can name on a page. It is deliberately
   // NOT conditional on being sellable: "Coming soon" with no price and no

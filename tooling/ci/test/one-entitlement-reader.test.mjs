@@ -124,7 +124,9 @@ export default app;`,
       ),
     );
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /entitlement-read\.ts carries 1 read\(s\) of `bundle_grants`; DECLARED says 2/);
+    // Since 2026-09-26 ONE statement (`bundleGrantsServed`) reads bundle_grants for both routes,
+    // so dropping it leaves none of the one declared.
+    assert.match(r.out, /entitlement-read\.ts carries 0 read\(s\) of `bundle_grants`; DECLARED says 1/);
   });
 
   test('a reader whose union is no longer `appPro || bundlePro` is refused', () => {

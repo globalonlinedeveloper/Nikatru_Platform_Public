@@ -1,0 +1,12 @@
+{
+  "_why": [
+    "The ceiling on source files that read catalog/*.json directly. tooling/ci/assert-bundle-availability.mjs limb G",
+    "counts them (comments stripped; tooling/catalog/read.mjs and services/platform/src/lib/catalog.ts, the two readers",
+    "new code imports, are not counted) and fails above this number. The value only falls: limb G refuses a floor",
+    "above the base branch's. O-BUNDLE-AVAILABILITY-TAKES-THE-FIRST. Born at the tree's own count, so no free slot:",
+    "125 at e154dc60 (origin/main, 2026-09-26); 124 on the draft 3a23598d, where services/platform/src/routes/receipts.ts",
+    "stopped naming the path (it reads BUNDLES_REGISTER); 126 at this file's first commit, over ffc75ca0 (2026-09-27),",
+    "because #993 made tooling/ci/channel-arming.mjs and tooling/ci/test/channel-arming.test.mjs name catalog/apps.json."
+  ],
+  "floor": 126
+}

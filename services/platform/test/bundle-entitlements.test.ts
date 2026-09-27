@@ -305,17 +305,21 @@ describe('G8 — a revocation propagates to EVERY member product', () => {
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
-describe('G10 — a grant covers EXACTLY the version it pinned', () => {
-  it('a product added in v2 does not reach a grant that pinned v1', async () => {
+// ADR no.099, bundle membership by term, amending [ADR 057] §4 (migration 0018):
+// a ONE-TIME grant covers exactly the version it pinned (G10); a SUBSCRIPTION
+// grant is served the latest sellable version. Every case below proves the
+// rolling rule by the ROUTE's answer, never by reasoning about the SQL.
+describe('G10 — a ONE-TIME grant covers EXACTLY the version it pinned', () => {
+  it('a product added in v2 does not reach a one-time grant that pinned v1', async () => {
     const h = harness();
     mintFeatureSet(h.db, 'nikatru_all', 1, [[EXT, 'extension']]);
     // v2 adds the app. Editing the bundle definition is FORWARD-ONLY: it mints a
-    // new version and leaves every existing grant exactly as it was sold.
+    // new version and leaves every existing grant row exactly as it was sold.
     mintFeatureSet(h.db, 'nikatru_all', 2, [
       [EXT, 'extension'],
       [APP, 'app'],
     ]);
-    seedGrant(h.db, { userId: 'u1', version: 1 });
+    seedGrant(h.db, { userId: 'u1', version: 1, term: 'one_time' });
     const authz = `Bearer ${await token('u1')}`;
 
     const v1 = (await (await h.get(`/v1/entitlements?app_id=${APP}`, authz)).json()) as Record<string, unknown>;
@@ -325,7 +329,7 @@ describe('G10 — a grant covers EXACTLY the version it pinned', () => {
     // 🔴 BOTH DIRECTIONS. Without the second half, a read that resolved NOTHING
     // would pass the first — and "the pin is honoured" would be indistinguishable
     // from "membership never resolves at all".
-    seedGrant(h.db, { userId: 'u2', grantId: 'grant-2', version: 2 });
+    seedGrant(h.db, { userId: 'u2', grantId: 'grant-2', version: 2, term: 'one_time' });
     const v2 = (await (
       await h.get(`/v1/entitlements?app_id=${APP}`, `Bearer ${await token('u2')}`)
     ).json()) as Record<string, unknown>;
@@ -333,20 +337,108 @@ describe('G10 — a grant covers EXACTLY the version it pinned', () => {
     expect(v2.granted_via).toBe('bundle');
   });
 
-  it('the rendered products come from the PIN, not from the newest version', async () => {
+  it('a one-time grant renders the products of its PIN, not of the newest version', async () => {
     const h = harness();
     mintFeatureSet(h.db, 'nikatru_all', 1, [[EXT, 'extension']]);
     mintFeatureSet(h.db, 'nikatru_all', 2, [
       [EXT, 'extension'],
       [APP, 'app'],
     ]);
-    seedGrant(h.db, { userId: 'u1', version: 1 });
+    seedGrant(h.db, { userId: 'u1', version: 1, term: 'one_time' });
     const subj = (await (
       await h.get('/v1/entitlements/subject', `Bearer ${await token('u1')}`)
     ).json()) as { bundles: { version: number; products: string[] }[] };
     expect(subj.bundles).toHaveLength(1);
     expect(subj.bundles[0].version).toBe(1);
     expect(subj.bundles[0].products).toEqual([EXT]);
+  });
+});
+
+describe('RC6 — a SUBSCRIPTION grant rolls to the latest sellable version', () => {
+  it('a subscription grant on v1 is entitled to the member v2 adds; a one-time grant on v1 is not', async () => {
+    // The design's RC6, by the route's answer. MUTATION PROOF: match
+    // `m.version = x.feature_set_version` again in bundleGrantsServed (the
+    // pre-0018 pin for every term) — u-sub goes is_pro:false, RED here.
+    const h = harness();
+    mintFeatureSet(h.db, 'nikatru_all', 1, [[EXT, 'extension']]);
+    mintFeatureSet(h.db, 'nikatru_all', 2, [
+      [EXT, 'extension'],
+      [APP, 'app'],
+    ]);
+    // paddle_subscription carries term=subscription (0018's default backfill).
+    seedGrant(h.db, { userId: 'u-sub', grantId: 'grant-sub', version: 1 });
+    seedGrant(h.db, { userId: 'u-once', grantId: 'grant-once', version: 1, term: 'one_time' });
+
+    const sub = (await (
+      await h.get(`/v1/entitlements?app_id=${APP}`, `Bearer ${await token('u-sub')}`)
+    ).json()) as { is_pro: boolean; granted_via: string; bundle: { version: number; products: string[] } };
+    expect(sub.is_pro).toBe(true);
+    expect(sub.granted_via).toBe('bundle');
+    // The wire keeps the MINTED version, and lists what the grant is SERVED.
+    expect(sub.bundle.version).toBe(1);
+    expect(sub.bundle.products).toEqual([EXT, APP]); // ordered by slug
+
+    const once = (await (
+      await h.get(`/v1/entitlements?app_id=${APP}`, `Bearer ${await token('u-once')}`)
+    ).json()) as { is_pro: boolean };
+    expect(once.is_pro).toBe(false);
+  });
+
+  it('the subject route agrees: the rolled subscription owns the new member, the one-time grant does not', async () => {
+    const h = harness();
+    mintFeatureSet(h.db, 'nikatru_all', 1, [[EXT, 'extension']]);
+    mintFeatureSet(h.db, 'nikatru_all', 2, [
+      [EXT, 'extension'],
+      [APP, 'app'],
+    ]);
+    seedGrant(h.db, { userId: 'u-sub', grantId: 'grant-sub', version: 1 });
+    seedGrant(h.db, { userId: 'u-once', grantId: 'grant-once', version: 1, term: 'one_time' });
+    const owned = async (sub: string) =>
+      ((await (await h.get('/v1/entitlements/subject', `Bearer ${await token(sub)}`)).json()) as {
+        products: { product: string }[];
+      }).products.map((p) => p.product);
+    expect(await owned('u-sub')).toEqual([EXT, APP]); // ordered by slug
+    expect(await owned('u-once')).toEqual([EXT]);
+  });
+
+  it('a version that is not sellable is not rolled to — a draft v2 reaches no subscriber', async () => {
+    const h = harness();
+    mintFeatureSet(h.db, 'nikatru_all', 1, [[EXT, 'extension']]);
+    mintFeatureSet(h.db, 'nikatru_all', 2, [
+      [EXT, 'extension'],
+      [APP, 'app'],
+    ]);
+    h.db.db.prepare(`UPDATE feature_sets SET status = 'draft' WHERE name = 'nikatru_all' AND version = 2`).run();
+    seedGrant(h.db, { userId: 'u-sub', version: 1 });
+    const sub = (await (
+      await h.get(`/v1/entitlements?app_id=${APP}`, `Bearer ${await token('u-sub')}`)
+    ).json()) as { is_pro: boolean };
+    expect(sub.is_pro).toBe(false);
+  });
+
+  it('with every version retired, a subscription grant keeps its pin rather than resolving to nothing', async () => {
+    const h = harness();
+    mintFeatureSet(h.db, 'nikatru_all', 1, [[EXT, 'extension']]);
+    h.db.db.prepare(`UPDATE feature_sets SET status = 'retired' WHERE name = 'nikatru_all'`).run();
+    seedGrant(h.db, { userId: 'u-sub', version: 1 });
+    const sub = (await (
+      await h.get(`/v1/entitlements?app_id=${EXT}`, `Bearer ${await token('u-sub')}`)
+    ).json()) as { is_pro: boolean };
+    expect(sub.is_pro).toBe(true);
+  });
+
+  it("a store grant's own term overrides its source's: a one-time SKU on apple_iap stays pinned", async () => {
+    const h = harness();
+    mintFeatureSet(h.db, 'nikatru_all', 1, [[EXT, 'extension']]);
+    mintFeatureSet(h.db, 'nikatru_all', 2, [
+      [EXT, 'extension'],
+      [APP, 'app'],
+    ]);
+    seedGrant(h.db, { userId: 'u-store', version: 1, source: 'apple_iap', term: 'one_time' });
+    const got = (await (
+      await h.get(`/v1/entitlements?app_id=${APP}`, `Bearer ${await token('u-store')}`)
+    ).json()) as { is_pro: boolean };
+    expect(got.is_pro).toBe(false);
   });
 });
 
@@ -496,6 +588,24 @@ describe('the client contract does not change — [ADR 057] §6', () => {
     const h = harness();
     const res = await h.get('/v1/entitlements?app_id=no-such-app', `Bearer ${await token('u1')}`);
     expect(res.status).toBe(404);
+  });
+
+  it("a bundle id is 404 on the per-product route — a bundle is read through the subject route's `bundles[]`", async () => {
+    // The bundle register is a product register now, so `isKnownProduct` names
+    // `nikatru_all`. The route passes `isAttributableProduct` instead; with
+    // `isKnownProduct` back, this is 200 `is_pro:false` to a bundle OWNER, RED.
+    const h = harness();
+    mintFeatureSet(h.db, 'nikatru_all', 1, [[APP, 'app']]);
+    seedGrant(h.db, { userId: 'u1' });
+    const authz = `Bearer ${await token('u1')}`;
+    const res = await h.get('/v1/entitlements?app_id=nikatru_all', authz);
+    expect(res.status).toBe(404);
+
+    const subj = (await (await h.get('/v1/entitlements/subject', authz)).json()) as {
+      bundles: { version: number; products: string[] }[];
+    };
+    expect(subj.bundles).toHaveLength(1);
+    expect(subj.bundles[0].products).toEqual([APP]);
   });
 });
 

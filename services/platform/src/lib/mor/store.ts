@@ -46,9 +46,10 @@ export interface MoneyStoreDeps {
   environment: MoneyEnvironment;
   nowMs: number;
   /**
-   * Is this id a product in ANY register (app, extension, script)? Resolved by
-   * the CALLER from the product registers — `isKnownProduct` in src/config.ts
-   * for the Worker, the tooling register reader for the dry-run.
+   * Is this id a product a notification may be attributed to — any register's
+   * product but a bundle? Resolved by the CALLER from the product registers —
+   * `isAttributableProduct` in src/config.ts for the Worker, the tooling
+   * register reader (bundle kind excluded) for the dry-run.
    *
    * 🔴 INJECTED, NOT IMPORTED, AND THE REASON IS MEASURED: this module is loaded
    * under bare `node` by tooling/ops/money-dry-run.mjs (CI job "A stored
