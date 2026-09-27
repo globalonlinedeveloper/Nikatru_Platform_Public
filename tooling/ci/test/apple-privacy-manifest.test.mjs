@@ -978,3 +978,86 @@ test('the committed fixture still matches the real generated file', (t) => {
     );
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-26 — THE AUDIT'S DECLARED STATE (O-BRICK-SWORN-FILES-HAVE-NO-PREVIEW-STATE).
+// The preview app is the brick's own audit template, rendered as mason renders
+// it, beside the real app #1: what the app-brick probe job grades in CI.
+// ─────────────────────────────────────────────────────────────────────────────
+const BRICK_AUDIT = join(REPO, 'tooling', 'bricks', 'app', '__brick__', 'apps', '{{app_id}}', AUDIT_REL);
+
+/** `apps/probe` carrying the brick's audit (`"sworn": false`) and an app.yaml
+ *  building it for `platforms`. */
+function stampProbe(root, platforms) {
+  const audit = readFileSync(BRICK_AUDIT, 'utf8').replaceAll('{{app_id}}', 'probe').replaceAll('{{{short_name}}}', 'Probe');
+  mkdirSync(join(root, 'apps', 'probe', dirname(AUDIT_REL)), { recursive: true });
+  write(root, `apps/probe/${AUDIT_REL}`, audit);
+  write(root, 'apps/probe/app.yaml', `id: probe\nplatforms:\n${platforms.map((p) => `  - ${p}\n`).join('')}`);
+}
+
+describe('⏱ 2026-09-26 — the audit\'s declared state', () => {
+  test('the real audit says "sworn": true and the brick template says false', () => {
+    assert.equal(JSON.parse(readFileSync(join(REPO, 'apps', APP, AUDIT_REL), 'utf8')).sworn, true);
+    assert.equal(JSON.parse(readFileSync(BRICK_AUDIT, 'utf8')).sworn, false);
+  });
+
+  test('a stamped web-only preview app beside app #1 passes, and the log counts it', () => {
+    const { code, out } = run(tree((root) => stampProbe(root, ['web'])));
+    assert.equal(code, 0, out);
+    assert.match(out, /1 sworn, 1 preview \(probe\) · a preview waives limbs 1 and 7\(a\); 0 manifest\(s\)/);
+  });
+
+  test('🔴 RC6 — a preview built for ios with no ios/ is exit 1, naming the manifest it owes', () => {
+    const { code, out } = run(tree((root) => stampProbe(root, ['web', 'ios'])));
+    assert.equal(code, 1, out);
+    assert.match(out, /apps\/probe\/ios\/Runner\/PrivacyInfo\.xcprivacy does not exist/);
+  });
+
+  test('a preview built for ios whose manifest is in the Runner Resources phase passes', () => {
+    const { code, out } = run(
+      tree((root) => {
+        stampProbe(root, ['web', 'ios']);
+        for (const rel of [MANIFEST_REL.ios, PBXPROJ_REL.ios]) {
+          mkdirSync(dirname(join(root, 'apps', 'probe', rel)), { recursive: true });
+          cpSync(join(REPO, 'apps', APP, rel), join(root, 'apps', 'probe', rel));
+        }
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /1 sworn, 1 preview \(probe\) · a preview waives limbs 1 and 7\(a\); 1 manifest\(s\)/);
+  });
+
+  test('🔴 a preview built for macos with the manifest on disk and no project to carry it is exit 1', () => {
+    const { code, out } = run(
+      tree((root) => {
+        stampProbe(root, ['web', 'macos']);
+        mkdirSync(dirname(join(root, 'apps', 'probe', MANIFEST_REL.macos)), { recursive: true });
+        cpSync(join(REPO, 'apps', APP, MANIFEST_REL.macos), join(root, 'apps', 'probe', MANIFEST_REL.macos));
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /apps\/probe\/macos\/Runner\.xcodeproj\/project\.pbxproj: it does not exist/);
+  });
+
+  test('🔴 app #1\'s audit with "sworn" deleted is exit 1, naming the file', () => {
+    const { code, out } = run(
+      tree((root) => {
+        const rel = `apps/${APP}/${AUDIT_REL}`;
+        write(root, rel, mutated(read(root, rel), '  "sworn": true,\n', '', 'drop the sworn key'));
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /privacy-manifest\.json carries no boolean "sworn" \(found null\)/);
+  });
+
+  test('🔴 every audit in preview is COVERAGE LOST (exit 2): nothing was compared', () => {
+    const { code, out } = run(
+      tree((root) => {
+        const rel = `apps/${APP}/${AUDIT_REL}`;
+        write(root, rel, mutated(read(root, rel), '  "sworn": true,\n', '  "sworn": false,\n', 'app #1 to preview'));
+      }),
+    );
+    assert.equal(code, 2, out);
+    assert.match(out, /every audit is a preview \("sworn": false\): subscriptiontracker/);
+  });
+});

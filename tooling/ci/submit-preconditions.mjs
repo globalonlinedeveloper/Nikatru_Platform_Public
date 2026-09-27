@@ -40,13 +40,24 @@ export const IAP_REVIEW_CHANNELS = ['ios-appstore'];
 /** A row a lane submits: it names the workflow that carries its submission. */
 export const submits = (row) => typeof row?.submission?.workflow === 'string' && row.submission.workflow.trim() !== '';
 
+/** ⏱ 2026-09-26 — the sworn declarations of a channel: every `.json` in its
+ *  storeMetadataContract additionalFiles, the set assert-sworn-store-files.mjs
+ *  grades (O-BRICK-SWORN-FILES-HAVE-NO-PREVIEW-STATE). Read off the register the
+ *  caller passes, so a channel that gains a sworn file owes the gate with no
+ *  edit here. */
+export const swornFilesOf = (register, channelId) =>
+  (register?.storeMetadataContract?.perChannel?.[channelId]?.additionalFiles ?? []).filter(
+    (f) => typeof f === 'string' && f.endsWith('.json'),
+  );
+
 /**
  * One entry per gate:
  *   guard       the repo-relative guard a lane step runs as `node <guard> <arg>`;
  *   arg(row)    the argument that step passes, formed from the channel row;
  *   channels    the channel ids the entry names outright (each must be a
  *               register row), or null when it applies by a row property;
- *   appliesTo   true when a lane submitting `row` owes this gate.
+ *   appliesTo   true when a lane submitting `row` owes this gate; its second
+ *               argument is the parsed channel register the row came from.
  */
 export const SUBMIT_PRECONDITIONS = [
   {
@@ -66,5 +77,16 @@ export const SUBMIT_PRECONDITIONS = [
     arg: (row) => `--for-submission=${row.id}`,
     channels: ['android-play'],
     appliesTo: (row) => submits(row) && row.id === 'android-play',
+  },
+  // ⏱ 2026-09-26 — a preview declaration ("sworn": false) cannot be submitted
+  // (O-BRICK-SWORN-FILES-HAVE-NO-PREVIEW-STATE). Applies to every submitting row
+  // whose channel carries a sworn file: android-play and ios-appstore today.
+  // macos-appstore carries none of its own; the audit it shares is ios-appstore's,
+  // and submit-appstore.yml runs this ios-appstore step in the job that submits both.
+  {
+    guard: 'tooling/ci/assert-sworn-store-files.mjs',
+    arg: (row) => `--for-submission=${row.id}`,
+    channels: null,
+    appliesTo: (row, register) => submits(row) && swornFilesOf(register, row.id).length > 0,
   },
 ];

@@ -85,6 +85,10 @@ jobs:
       # review screenshot; under --for-submission a deferred product is a finding, not a note.
       - name: Every auto-renewable has its review screenshot (--for-submission)
         run: node tooling/ci/assert-iap-review-screenshots.mjs --for-submission
+      # why: O-BRICK-SWORN-FILES-HAVE-NO-PREVIEW-STATE. A declaration still at "sworn": false is the stamped
+      # template. The ios-appstore audit also answers for macOS, so this step covers both submissions here.
+      - name: The app's App Store declarations are sworn, not preview (--for-submission)
+        run: node tooling/ci/assert-sworn-store-files.mjs --for-submission=ios-appstore --app "$APP"
       - name: Toolchain under test
         run: |
           sw_vers

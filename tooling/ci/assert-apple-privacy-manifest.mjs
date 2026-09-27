@@ -86,6 +86,13 @@
 //      keeps its source-level compare; this mode is the one that sees what
 //      shipped, and it prints every framework, bundle and manifest hash so the
 //      bp log carries them.
+//   ⏱ 2026-09-26 — PREVIEW (O-BRICK-SWORN-FILES-HAVE-NO-PREVIEW-STATE). The
+//      audit carries a required `"sworn"` boolean, read before anything else.
+//      `false` is the stamped template: limbs 1 and 7(a) are waived with every
+//      limb that reads an answered audit, and what remains is app.yaml
+//      `platforms` — for ios or macos, that platform's manifest must exist and
+//      sit in the Runner Resources phase. A missing key is a finding. A
+//      workspace whose every audit is preview is COVERAGE LOST.
 //
 // ── ⚠️ WHAT THIS GUARD CANNOT SEE, PRINTED ON EVERY RUN ─────────────────────
 // Not buried in this header, because a header is read once and a green line is
@@ -112,6 +119,8 @@ import { fileURLToPath } from 'node:url';
 // worktree, a submodule, a stray clone) and reads another repository's files as
 // this tree's. THE one directory listing.
 import { listDir } from './tree-walk.mjs';
+// app.yaml `platforms` decides what a PREVIEW audit still owes (see PREVIEW above).
+import { parseYaml } from '../app-yaml/yaml.mjs';
 // The generator, imported rather than reimplemented. A guard with its own idea
 // of what the file should contain certifies its own misunderstanding — and this
 // repository has already paid for a fixture that encoded the same mistake as the
@@ -460,10 +469,76 @@ let bundleMembershipsChecked = 0;
 let vocabularyConstantsChecked = 0;
 let pluginRowsChecked = 0;
 let playRowsCompared = 0;
+/** Apps whose audit says `"sworn": false`, and the Apple-native files a preview still owes. */
+const previewAudits = [];
+let previewFilesChecked = 0;
+
+/** A PREVIEW audit waives limb 7(a) (the inventory) and limb 1's content
+ *  comparison: there is nothing answered to render. What it still owes is
+ *  decided by app.yaml `platforms`. For ios or macos there, that platform's
+ *  PrivacyInfo.xcprivacy must exist AND sit in the Runner target's Resources
+ *  phase (limb 2's question), because Apple reads the bundle whatever the
+ *  audit's state. Otherwise nothing Apple-native is expected. Writing those
+ *  files is the native overlay's work, never this guard's. */
+function previewProblems(app, appDir, rel) {
+  let platforms;
+  try {
+    platforms = parseYaml(readFileSync(join(appDir, 'app.yaml'), 'utf8'))?.platforms;
+  } catch (e) {
+    problems.push(`${rel(AUDIT_REL)} is a preview and ${rel('app.yaml')} cannot be read (${e.message}), so which Apple platforms it owes a manifest for is unknown.`);
+    return;
+  }
+  if (!Array.isArray(platforms)) {
+    problems.push(`${rel(AUDIT_REL)} is a preview and ${rel('app.yaml')} declares no \`platforms\` list, so which Apple platforms it owes a manifest for is unknown.`);
+    return;
+  }
+  for (const platform of PLATFORMS.filter((p) => platforms.includes(p))) {
+    previewFilesChecked++;
+    if (!existsSync(join(appDir, MANIFEST_REL[platform]))) {
+      problems.push(
+        `${rel(MANIFEST_REL[platform])} does not exist. ${rel('app.yaml')} builds this app for ${platform}, and ` +
+          'Apple refuses the upload of a bundle whose privacy manifest is missing, preview audit or not.',
+      );
+      continue;
+    }
+    const pbxPath = join(appDir, PBXPROJ_REL[platform]);
+    const parsed = existsSync(pbxPath) ? readRunnerTarget(readFileSync(pbxPath, 'utf8')) : { error: 'it does not exist' };
+    if (parsed.error) {
+      problems.push(`${rel(PBXPROJ_REL[platform])}: ${parsed.error}, so nothing proves ${basename(MANIFEST_REL[platform])} reaches the ${platform} bundle.`);
+    } else if (!parsed.resourceFiles.includes(basename(MANIFEST_REL[platform]))) {
+      problems.push(
+        `${basename(MANIFEST_REL[platform])} is not in the ${APP_TARGET_NAME} target's PBXResourcesBuildPhase of ` +
+          `${rel(PBXPROJ_REL[platform])}. On disk and not in the bundle, Apple receives nothing.`,
+      );
+    }
+  }
+}
 
 for (const app of subjects) {
   const appDir = join(APPS, app);
   const rel = (p) => `apps/${app}/${p}`.replace(/\\/g, '/');
+
+  // ── ⏱ 2026-09-26 · the audit's declared state (O-BRICK-SWORN-FILES-HAVE-NO-PREVIEW-STATE)
+  // Read raw, before readAudit: the stamped template is exactly the audit
+  // readAudit refuses (no collected rows, a null inventory), and refusing it is
+  // what put a freshly stamped app #2 at exit 2 here.
+  let declared = null;
+  try {
+    declared = JSON.parse(readFileSync(join(appDir, AUDIT_REL), 'utf8')).sworn;
+  } catch {
+    /* readAudit below reports an unreadable audit, as it always has */
+  }
+  if (declared === false) {
+    previewAudits.push(app);
+    previewProblems(app, appDir, rel);
+    continue;
+  }
+  if (declared !== true) {
+    problems.push(
+      `${rel(AUDIT_REL)} carries no boolean "sworn" (found ${JSON.stringify(declared ?? null)}). The key says ` +
+        'whether this audit has been made or is still the stamped template; it is graded as made meanwhile.',
+    );
+  }
 
   // ── the audit ─────────────────────────────────────────────────────────────
   let audit;
@@ -916,6 +991,17 @@ function readPubspecLockVersions(root) {
   return out.size ? out : null;
 }
 
+// ── a workspace of preview audits graded nothing ────────────────────────────
+// Checked before 7(b), whose "zero manifests compared" would otherwise blame the
+// scan for what is really the state.
+if (previewAudits.length === subjects.length) {
+  coverageLost([
+    `every audit is a preview ("sworn": false): ${previewAudits.join(', ')}.`,
+    'A preview waives the re-derivation, the inventory and every cross-check, so this run compared nothing.',
+    'That is not evidence that any Apple privacy manifest is correct.',
+  ]);
+}
+
 // ── limb 7 (b): the scan must have ranged over something ────────────────────
 if (manifestsCompared === 0) {
   coverageLost([
@@ -942,6 +1028,11 @@ if (vocabularyConstantsChecked === 0) {
 prints.push(
   `${subjects.length} app(s) · ${manifestsCompared} .xcprivacy file(s) RE-DERIVED from ${AUDIT_REL} and ` +
     'compared byte for byte · never a checksum stored beside the data',
+);
+prints.push(
+  `${subjects.length - previewAudits.length} sworn, ${previewAudits.length} preview` +
+    (previewAudits.length ? ` (${previewAudits.join(', ')})` : '') +
+    ` · a preview waives limbs 1 and 7(a); ${previewFilesChecked} manifest(s) its app.yaml platforms still owe were checked`,
 );
 prints.push(
   `${bundleMembershipsChecked} Runner.xcodeproj(s) parsed structurally — the manifest is resolved THROUGH the ` +

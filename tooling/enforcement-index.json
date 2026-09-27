@@ -342,6 +342,7 @@
     ],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#apple",
+      ".github/workflows/ci.yml#app-brick",
       ".github/workflows/ci.yml#workspace-gate"
     ],
     "kind": "guard",
@@ -2456,7 +2457,11 @@
       "K-8"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#guards-store"
+      ".github/workflows/ci.yml#app-brick",
+      ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/submit-appstore.yml#dry-run",
+      ".github/workflows/submit-play.yml#dry-run",
+      ".github/workflows/submit-play.yml#submit"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-sworn-store-files.mjs",
