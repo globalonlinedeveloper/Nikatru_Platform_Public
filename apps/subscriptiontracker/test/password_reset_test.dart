@@ -582,4 +582,60 @@ void main() {
       reason: 'this arrival has nothing to do with a password reset',
     );
   });
+
+  // 🔴 ST-A2 (audit BUG-2): THE STREAM ERROR IS CLASSIFIED BY THE LAUNCH URL'S
+  // FLOW. Every failed link exchange arrives as the same stream error, and it
+  // was typed a RESET failure whatever the flow — so an expired or
+  // other-browser sign-up confirmation, and a cancelled Apple or Google return,
+  // all landed on "This reset link cannot be used here." MUTATION PROOF: drop
+  // the `failedArrivalFlowOf` branch in PasswordResetArrivalController and both
+  // cases below settle on /reset-password.
+  testWidgets('a failed SIGN-UP confirmation lands on sign-in, and says why', (
+    WidgetTester tester,
+  ) async {
+    final ProviderContainer c = _container(
+      auth,
+      launchUrl:
+          'https://nikatru.com/subscriptiontracker/?nk_auth=confirm&code=abc123',
+    );
+    addTearDown(c.dispose);
+    await _pump(tester, c);
+
+    auth.failRecoveryArrival(
+      'Code verifier could not be found in local storage.',
+    );
+    await tester.pumpAndSettle();
+
+    expect(_where(c), '/sign-in');
+    expect(find.byKey(ResetPasswordScreen.linkDeadLine), findsNothing);
+    expect(
+      find.text(
+        'That link has expired or was opened in a different browser. '
+        'Sign in, or ask for a new link.',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a cancelled OAuth return lands on sign-in, not on reset', (
+    WidgetTester tester,
+  ) async {
+    final ProviderContainer c = _container(
+      auth,
+      launchUrl:
+          'https://nikatru.com/subscriptiontracker/?nk_auth=oauth#error=access_denied',
+    );
+    addTearDown(c.dispose);
+    await _pump(tester, c);
+
+    auth.failRecoveryArrival('access_denied');
+    await tester.pumpAndSettle();
+
+    expect(_where(c), '/sign-in');
+    expect(find.byKey(const Key('authArrivalNotice')), findsOneWidget);
+    expect(
+      find.textContaining('did not finish, so nothing changed'),
+      findsOneWidget,
+    );
+  });
 }

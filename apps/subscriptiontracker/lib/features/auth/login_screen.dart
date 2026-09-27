@@ -6,10 +6,17 @@ import 'turnstile_gate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
-    show AuthCapabilities, AuthProviders;
+    show AuthCapabilities, AuthFlow, AuthProviders;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show AuthField, ContentPane, FocusableTap, FormTones, formTones;
+    show
+        AuthField,
+        ChassisL10nX,
+        ChassisLocalizations,
+        ContentPane,
+        FocusableTap,
+        FormTones,
+        formTones;
 
 import '../../core/app_config.dart';
 import '../../core/e2e_keys.dart';
@@ -407,6 +414,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 // matters most (502: your data is gone and your login still
                 // works) was the one message nobody ever saw. [ADR 027]
                 const _AccountDeletionNotice(),
+                const _AuthArrivalNotice(),
                 Text(
                   _signUp ? l10n.signUpTitle : l10n.welcomeBack,
                   style: AppText.title.copyWith(fontSize: 34, color: t.ink),
@@ -715,6 +723,55 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// ST-A2 (audit BUG-2): why a link or a provider return brought the user to
+/// the sign-in door. A failed sign-up confirmation or a cancelled Apple/Google
+/// return used to land on the RESET screen ("This reset link cannot be used
+/// here"); the router now leaves it here, and this says what happened.
+class _AuthArrivalNotice extends ConsumerWidget {
+  const _AuthArrivalNotice();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AuthFlow? flow = ref.watch(failedAuthArrivalProvider);
+    if (flow == null) return const SizedBox.shrink();
+    final ChassisLocalizations l10n = context.chassisL10n;
+    final FormTones t = formTones(context);
+    final bool provider =
+        flow == AuthFlow.oauth || flow == AuthFlow.linkIdentity;
+    return Container(
+      key: const Key('authArrivalNotice'),
+      margin: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.fromLTRB(16, 8, 4, 8),
+      decoration: BoxDecoration(
+        color: t.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: t.line),
+      ),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Semantics(
+              liveRegion: true,
+              child: Text(
+                provider
+                    ? l10n.authProviderSignInCancelled
+                    : l10n.authLinkFailedSignIn,
+                style: AppText.muted.copyWith(fontSize: 13, color: t.ink),
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: l10n.catchUpDismiss,
+            icon: const Icon(Icons.close),
+            onPressed: () =>
+                ref.read(failedAuthArrivalProvider.notifier).state = null,
+          ),
+        ],
       ),
     );
   }

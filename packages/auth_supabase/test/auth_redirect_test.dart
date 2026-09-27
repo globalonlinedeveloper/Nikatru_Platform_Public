@@ -629,4 +629,42 @@ void main() {
       );
     });
   });
+
+  // 🔴 ST-A2 (audit BUG-2): a failed arrival is a RESET failure only when its
+  // launch URL says so. MUTATION PROOF: make isResetLinkFailure return true and
+  // the confirm and oauth cases go red — which is the shipped defect, every
+  // failed link landing on "This reset link cannot be used here."
+  group('isResetLinkFailure — the flow decides, not the error', () {
+    test('an expired sign-up confirmation is NOT a reset failure', () {
+      final Uri u = Uri.parse(
+        'https://nikatru.com/subscriptiontracker/?nk_auth=confirm'
+        '#error=access_denied&error_code=otp_expired',
+      );
+      expect(isResetLinkFailure(u), isFalse);
+      expect(failedArrivalFlowOf(u), AuthFlow.signUpConfirm);
+    });
+
+    test('a confirmation opened in another browser is NOT one either', () {
+      final Uri u = Uri.parse('https://h/app/?nk_auth=confirm&code=abc');
+      expect(isResetLinkFailure(u), isFalse);
+      expect(failedArrivalFlowOf(u), AuthFlow.signUpConfirm);
+    });
+
+    test('a cancelled OAuth return is NOT one', () {
+      final Uri u = Uri.parse(
+        'https://h/app/?nk_auth=oauth#error=access_denied',
+      );
+      expect(isResetLinkFailure(u), isFalse);
+      expect(failedArrivalFlowOf(u), AuthFlow.oauth);
+    });
+
+    test('a reset link IS, and so is a launch URL with no marker', () {
+      final Uri reset = Uri.parse(
+        'https://h/app/?nk_auth=reset#error=access_denied&error_code=otp_expired',
+      );
+      expect(isResetLinkFailure(reset), isTrue);
+      expect(failedArrivalFlowOf(reset), isNull);
+      expect(isResetLinkFailure(Uri.parse('https://h/app/')), isTrue);
+    });
+  });
 }

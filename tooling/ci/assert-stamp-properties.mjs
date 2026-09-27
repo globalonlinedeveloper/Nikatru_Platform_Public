@@ -1917,6 +1917,7 @@ const COVERED_BY = {
 // it stays uncomfortable. Per the C-16 lock, new properties arrive WITH their
 // features; nothing here is to be invented to empty the list.
 const UNASSERTED = {
+  failedAuthArrivalProvider: '2026-09-27 · ST-A2 (audit BUG-2). The flow of a failed NON-reset arrival — a sign-up confirmation or an OAuth return — which keeps it off /reset-password. The rule is packages/auth_supabase isResetLinkFailure, driven in auth_redirect_test.dart; the routing is driven end to end in apps/subscriptiontracker/test/password_reset_test.dart. No CHASSIS property drives it on a stamp: that needs chassis_properties_test.dart to pump a launch URL with a failed confirm arrival, which this hotfix lane does not edit',
   platformRestClientProvider: '2026-09-24 · O-BRICK-ERASURE-DESTROYS-THE-IDENTITY. The client account deletion and the Apple refresh token ride to the SHARED platform Worker. Its host is held statically by tooling/ci/assert-deletion-control.mjs limb 7 (built on kPlatformBaseUrl, never apiBaseUrl), and the brick\'s test/platform_client_test.dart drives the erasure closure\'s read of it (no provider cycle, #258). No CHASSIS property drives it: that needs chassis_properties_test.dart, which this lane does not edit',
   // The money rail's remaining gaps. Each is exercised in packages/purchases'
   // own suite; what is missing is a STAMPED-APP assertion, which is a different
