@@ -364,7 +364,9 @@ describe('assert-no-tls-pinning refuses a subject that emptied under it', () => 
   });
 
   test('the brick thinned below ITS floor — the constant is floored too', () => {
-    provesRefusal(G, () => thinDart('tooling/bricks', 1), [
+    // 10b (2026-09-27): the brick's integration_test/ sorts before lib/ and is all test
+    // doubles here, so it goes first: the one file kept is SHIPPED and only the count falls.
+    provesRefusal(G, () => { rm(`${BRICK_APP}/integration_test`); thinDart('tooling/bricks', 1); }, [
       /`tooling\/bricks` yielded only \d+ shipped \.dart file\(s\), below its floor of \d+/,
     ], 2);
   });

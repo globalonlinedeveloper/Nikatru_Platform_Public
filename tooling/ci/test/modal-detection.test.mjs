@@ -545,8 +545,12 @@ describe('assert-modal-detection · the second root cannot leave in silence', ()
   test('a derived root that is present but EMPTY cannot be quietly skipped', () => {
     withTree(
       (root) => {
-        rmSync(join(root, BRICK, 'test'), { recursive: true, force: true });
-        mkdirSync(join(root, BRICK, 'test'), { recursive: true });
+        // 10b (2026-09-27): the brick stamps integration_test/ too, and this guard reads
+        // both suite dirs, so EMPTY means both.
+        for (const dir of ['test', 'integration_test']) {
+          rmSync(join(root, BRICK, dir), { recursive: true, force: true });
+          mkdirSync(join(root, BRICK, dir), { recursive: true });
+        }
       },
       (r) => {
         assert.equal(r.status, 2, r.out);
