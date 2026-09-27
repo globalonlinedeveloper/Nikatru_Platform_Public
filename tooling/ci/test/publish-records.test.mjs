@@ -43,6 +43,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { parseWorkflow, bindApp } from '../workflow-scan.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT = resolve(CI_DIR, '../..');
@@ -839,13 +840,19 @@ describe('assert-publish-records — against the REAL repository', () => {
         cwd: ROOT,
         encoding: 'utf8',
       }).stdout;
+    // ⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP): a store lane that takes its app at
+    // dispatch writes `"${APP}-android-play"`. The ledger name must still come out as
+    // exactly the one below, so the lane is read BOUND to app #1 (workflow-scan bindApp,
+    // the identity on a lane that names its app), and the shell's quotes are allowed.
+    const boundText = (rel) => bindApp(parseWorkflow(ROOT, rel), 'subscriptiontracker').lines.map((l) => l.text).join('\n');
     for (const [rel, environment] of [
       ['.github/workflows/submit-play.yml', 'subscriptiontracker-android-play'],
       ['.github/workflows/submit-snap.yml', 'subscriptiontracker-linux-snap'],
     ]) {
       const body = read(rel);
-      assert.ok(
-        body.includes(`node tooling/ci/record-deployment.mjs ${environment} --state in_review --listing-url`),
+      assert.match(
+        boundText(rel),
+        new RegExp(`node tooling/ci/record-deployment\\.mjs "?${environment}"? --state in_review --listing-url`),
         `${rel} no longer records ${environment} at submit time`,
       );
       assert.ok(body.includes('deployments: write'), `${rel}'s submit job cannot write a Deployment`);

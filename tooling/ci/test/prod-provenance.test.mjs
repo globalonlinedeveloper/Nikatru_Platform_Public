@@ -1533,13 +1533,17 @@ describe('check-prod-provenance — the release lanes', () => {
     let calls = 0;
     for (const lane of parse(r.stdout).filter((l) => l.kind === 'submission')) {
       // The same two normalisations the deploy-web binding above earned.
+      // ⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP): plus the per-app lane's two forms of
+      // its gate's checked app — `${{ needs.gate.outputs.app }}` and `$APP`/`${APP}` bound to
+      // it in the job's env — and the shell's quotes around the environment argument.
       const text = readFileSync(join(REPO, '.github', 'workflows', lane.workflow), 'utf8')
         .split('\n')
         .filter((l) => !/^\s*#/.test(l))
         .join('\n')
-        .replace(/\$\{\{\s*matrix\.app\s*\}\}/g, '{app}')
+        .replace(/\$\{\{\s*(?:matrix\.app|needs\.gate\.outputs\.app)\s*\}\}/g, '{app}')
+        .replace(/\$\{APP\}|\$APP(?![A-Za-z0-9_])/g, '{app}')
         .replace(/\$\{\{[^}]*\}\}/g, 'EXPR');
-      for (const m of text.matchAll(/record-deployment\.mjs\s+(\S+)/g)) {
+      for (const m of text.matchAll(/record-deployment\.mjs\s+"?([^\s"]+)"?/g)) {
         calls += 1;
         const envs = m[1].includes('{app}') ? slugs.map((s) => m[1].replace('{app}', s)) : [m[1]];
         for (const env of envs) {

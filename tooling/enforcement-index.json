@@ -1993,7 +1993,9 @@
       ".github/workflows/ci.yml#guards-store",
       ".github/workflows/ci.yml#prepare",
       ".github/workflows/deploy-web.yml#prepare",
-      ".github/workflows/e2e.yml#prepare"
+      ".github/workflows/e2e.yml#prepare",
+      ".github/workflows/submit-appstore.yml#gate",
+      ".github/workflows/submit-play.yml#gate"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-release-lane-generic.mjs",

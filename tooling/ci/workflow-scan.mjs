@@ -506,6 +506,78 @@ export function workflowSecrets(wf) {
   return out;
 }
 
+// ── THE PER-APP LANE, BOUND ─ ⏱ ADDED 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP)
+// A store lane takes its app as a `workflow_dispatch` input that ONE job, `gate`,
+// checks against the workspace set and emits as its `app` output. Every other job
+// reads `${{ needs.gate.outputs.app }}`, and a `run:` reads it as `$APP` through
+// the job's own `env: APP: ${{ needs.gate.outputs.app }}`. So a reader that took a
+// path, a composer call or a ledger name off the literal the lane used to carry now
+// meets an expression it cannot resolve, and either throws or prints ok over
+// nothing: moved code silences guards. bindApp is the lane with that app bound to
+// ONE id; a reader asks for it once per app of the workspace set (bindEveryApp), so
+// it grades every app a dispatch can name, instead of none.
+
+/** The expression every job of a per-app lane reads its app from. */
+export const GATE_APP = /\$\{\{\s*needs\.gate\.outputs\.app\s*\}\}/g;
+
+/** Does `wf` take its app from its gate job's checked output? */
+export const isPerAppLane = (wf) => (wf?.lines ?? []).some((l) => /\$\{\{\s*needs\.gate\.outputs\.app\s*\}\}/.test(l.text));
+
+/** `$APP` and `${APP}` as a shell reads them: `$APP_INPUT` is another variable. */
+const SHELL_APP = /\$\{APP\}|\$APP(?![A-Za-z0-9_])/g;
+
+/**
+ * `wf` with the gate's app bound to `appId`: every `${{ needs.gate.outputs.app }}`
+ * becomes `appId`, and so does every `$APP` and `${APP}` in a job whose own `env:`
+ * maps `APP` to that output (a job that binds `APP` to anything else keeps its
+ * `$APP`). Line numbers and every other field are kept, the jobs' logical lines are
+ * recomputed, and `boundApp` names the id. A workflow that reads no gate app comes
+ * back as it went in. THROWS on an `appId` that is not an app id.
+ */
+export function bindApp(wf, appId) {
+  if (!/^[a-z][a-z0-9-]*$/.test(String(appId))) throw new Error(`bindApp: "${appId}" is not an app id (^[a-z][a-z0-9-]*$)`);
+  if (!isPerAppLane(wf)) return wf;
+  const gate = (l) => ({ ...l, text: l.text.replace(GATE_APP, appId) });
+  const shell = new Map();
+  const jobs = new Map();
+  for (const [id, job] of wf.jobs) {
+    let lines = job.lines.map(gate);
+    if (jobEnv({ lines }).get('APP')?.value === appId) {
+      lines = lines.map((l) => ({ ...l, text: l.text.replace(SHELL_APP, appId) }));
+      for (const l of lines) shell.set(l.n, l.text);
+    }
+    const bound = rebuildJob(job, lines);
+    const cond = job.jobIf === null ? null : { ...job.jobIf, cond: job.jobIf.cond.replace(GATE_APP, appId) };
+    jobs.set(id, { ...bound, jobIf: cond });
+  }
+  const lines = wf.lines.map((l) => (shell.has(l.n) ? { ...l, text: shell.get(l.n) } : gate(l)));
+  return { ...wf, jobs, lines, boundApp: appId };
+}
+
+/**
+ * `workflows`, each per-app lane replaced by one bindApp copy per app of the
+ * workspace set, in set order; every other workflow as it is. THROWS when a
+ * per-app lane is present and the workspace declares no app: a lane bound to
+ * nothing would drop out of every reader that asks, which is the silence this
+ * exists to prevent.
+ */
+export function bindEveryApp(root, workflows) {
+  let ids = null;
+  const out = [];
+  for (const wf of workflows) {
+    if (!isPerAppLane(wf)) {
+      out.push(wf);
+      continue;
+    }
+    ids ??= (workspaceApps(root) ?? []).map((d) => d.slice('apps/'.length));
+    if (ids.length === 0) {
+      throw new Error(`${wf.rel} takes its app from its gate job, and the workspace under ${root} declares no app to bind it to.`);
+    }
+    for (const id of ids) out.push(bindApp(wf, id));
+  }
+  return out;
+}
+
 /**
  * THE SHELL A STEP'S `run:` ACTUALLY RUNS UNDER, for the step holding line
  * `lineNo` of a parsed workflow. GitHub's order: the step's own `shell:`, else
@@ -852,9 +924,12 @@ export function flutterBuildsByOrigin(root, parsed = null) {
 }
 
 /** The one walk of every workflow's `flutter build` segments. `sink(origin, records)`
- *  receives each segment's records in file order, `origin` 'typed' or 'composed'. */
+ *  receives each segment's records in file order, `origin` 'typed' or 'composed'.
+ *  ⏱ 2026-09-26: a per-app lane is walked once per app of the workspace set
+ *  (bindEveryApp), so its composer call `"$APP" <target> <channel>` is composed for
+ *  each app a dispatch can name, and each record is the one its literal line gave. */
 function walkBuilds(root, parsed, sink) {
-  const workflows = parsed ?? parseAllWorkflows(root);
+  const workflows = bindEveryApp(root, parsed ?? parseAllWorkflows(root));
   for (const wf of workflows) {
     for (const job of wf.jobs.values()) {
       for (const l of job.logical) {

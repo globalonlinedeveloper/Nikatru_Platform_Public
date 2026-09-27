@@ -79,8 +79,11 @@ export function appSet(root) {
  *  from; the four lanes read them.
  *  ⏱ 2026-09-25 — `only` (O-TAG-BUILDS-EVERY-APP): the id a release tag names.
  *  The whole set is judged first, then narrowed to `[only]`; an id the set does
- *  not hold is refused, naming the set. The caller reads the id off the tag. */
-export function emitApps(root, { only = null } = {}) {
+ *  not hold is refused, naming the set. The caller reads the id off the tag.
+ *  ⏱ 2026-09-26 — `via` ('--tag' or '--app') words that refusal for the flag
+ *  that supplied `only`; `--app` is a per-app store lane's dispatch input,
+ *  shape-checked by the caller before it gets here. */
+export function emitApps(root, { only = null, via = '--tag' } = {}) {
   const found = workspaceApps(root);
   if (found === null || found.length === 0) {
     console.error(`FAIL --emit-apps: ${join(root, 'pubspec.yaml')} declares no \`workspace:\` entry under apps/.`);
@@ -96,6 +99,13 @@ export function emitApps(root, { only = null } = {}) {
   }
   if (only !== null) {
     if (!ids.includes(only)) {
+      // ⏱ 2026-09-26 — `via: '--app'` is a per-app store lane's gate step
+      // (O-STORE-LANES-HARD-WIRE-ONE-APP): the same refusal, worded for a dispatch.
+      if (via === '--app') {
+        console.error(`FAIL --emit-apps --app: the dispatch names app "${only}", and the workspace declares ${ids.join(', ')}.`);
+        console.error('     A store lane submits one app of the workspace per dispatch, and this workspace holds no app of that id.');
+        return 1;
+      }
       console.error(`FAIL --emit-apps --tag: the tag names app "${only}", and the workspace declares ${ids.join(', ')}.`);
       console.error('     A tag builds and stages only its own app, and this workspace holds no app of that id.');
       return 1;

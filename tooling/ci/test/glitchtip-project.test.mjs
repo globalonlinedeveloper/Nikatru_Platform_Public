@@ -118,9 +118,12 @@ describe('an app-derived project name is refused', () => {
   });
 
   test('R1b — a `${{ matrix.app }}` expression is refused the same way', () => {
+    // ⏱ 2026-09-26: submit-play.yml reads the declaration now (O-STORE-LANES-HARD-WIRE-ONE-APP),
+    // so the mutation replaces that variable; the step still reads the file, and the
+    // expression is refused anyway — app-derived is refused before the step's read is weighed.
     const dir = stage('matrix-expr', (f, body) =>
       f === 'submit-play.yml'
-        ? body.replace(`--project ${DECLARED}`, '--project ${{ matrix.app }}')
+        ? body.replace('--project "$gt_project"', '--project ${{ matrix.app }}')
         : body,
     );
     const r = run(dir);

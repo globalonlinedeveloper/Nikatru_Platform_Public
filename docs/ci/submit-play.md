@@ -149,6 +149,24 @@ hole this channel spent months in. `--submit` refuses that flag outright.
 The `dry-run` job contacts nothing. Only the `submit` job has a network path to
 Google, and only when a human typed the confirmation AND a reviewer approved.
 
+### above `app:`
+
+⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP). This lane named app #1 on 30
+lines, so a dispatch meant for app #2 would have signed, built, uploaded and
+recorded app #1. The app is now a dispatch input, `required: true`, with NO
+`default:` and no `type: choice`: either one is an app id written into this
+file under another name. A dispatch names it:
+`gh workflow run submit-play.yml -f app=<id>` (plus `-f confirm=…` for a real
+upload), where `<id>` is one of
+`node tooling/ci/assert-release-lane-generic.mjs --emit-apps`. Only the `gate`
+job reads the raw input, and only through `env:`; every other job reads the
+gate's checked `app` output. `run-name` shows the app and the mode
+(`SUBMIT` when `confirm` is `SUBMIT-TO-PLAY`, else `dry run`); it is not a
+shell, so the input is safe there. assert-release-lane-generic.mjs limb I
+grades this shape and refuses an app id written on any line of the file.
+The ledger name does not change: `"${APP}-android-play"` is
+`subscriptiontracker-android-play` for app #1.
+
 ### above `listing_url:`
 
 ── 🔴 [10]D-9 · THE ADDRESS THE LEDGER ROW WILL CARRY ──────────────────
@@ -186,7 +204,23 @@ leaves `--timeout-seconds` unset), so any bound at or under 20 kills it
 mid-poll and replaces "timed out waiting for ci-gate" with an opaque
 cancellation. Kept byte-identical in all five `gate:` jobs. [pipeline F-5b]
 
+### before step **The app input names one app of the workspace**
+
+⏱ 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP). The one reader of
+`inputs.app`, through `env: APP_INPUT`, never as `${{ inputs.app }}` inside
+`run:` (an input interpolated into a shell is an injection).
+`assert-release-lane-generic.mjs --emit-apps --app "$APP_INPUT"` refuses a
+value off `^[a-z][a-z0-9-]*$` before it reads anything else, then refuses an
+id the workspace does not declare, naming the set. Only after it exits 0 is
+the id written to `$GITHUB_OUTPUT` as the job's `app` output.
+
 ## job `dry-run`
+
+### above `env:`
+
+`APP` is the gate's checked output, the same one the `submit` job binds. Every
+`run:` reads `$APP`; the fields no shell expands (artifact `name:` and `path:`,
+the hand-off's `AAB:`) read `${{ needs.gate.outputs.app }}` itself.
 
 ### before step **Prepare the Android upload key**
 
@@ -587,7 +621,7 @@ it must still say what. This is deploy-web run 144's lesson (2026-08-08),
 applied to a channel where the act is irreversible rather than merely
 published.
 
-### in step **Record the submission in the [10]D-9 ledger**, above `run: node tooling/ci/record-deployment.mjs subscriptiontracker-android-play --state in_review --listi…`
+### in step **Record the submission in the [10]D-9 ledger**, above `run: node tooling/ci/record-deployment.mjs "${APP}-android-play" --state in_review --listi…`
 
 ONE LINE, NOT A `run: >` FOLD, AND THAT IS NOT STYLE. The flat half of
 assert-publish-records.mjs's accounting identity matches PHYSICAL lines;
