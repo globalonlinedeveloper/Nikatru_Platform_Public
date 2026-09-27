@@ -352,8 +352,8 @@
     "values": [
       {
         "at": "vars.SUPABASE_URL",
-        "value": "https://lcrkiurkvzhkonjwhpiv.supabase.co",
-        "why": "ONE Supabase identity project (Cross_Platform_Auth, ap-south-1) for the whole portfolio, so one issuer, one JWKS document and one user row per human across every app. A Worker pointed at a second project verifies tokens nobody in this portfolio can mint — every authenticated route 401s while the Worker itself is perfectly well, which is the failure services/subscriptiontracker-api's health probe `supabase_jwks` exists to make visible and which no static check could see.",
+        "value": "https://auth-api.nikatru.com",
+        "why": "ONE identity stack, the self-hosted GoTrue on Box C (issuer https://auth-api.nikatru.com/auth/v1), for the whole portfolio, so one issuer, one JWKS document and one user row per human across every app. A Worker pointed at a second project verifies tokens nobody in this portfolio can mint — every authenticated route 401s while the Worker itself is perfectly well, which is the failure services/subscriptiontracker-api's health probe `supabase_jwks` exists to make visible and which no static check could see.",
         "absentFrom": []
       },
       {
