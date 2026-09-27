@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:ui' show Locale;
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart'
+    show PlatformDispatcher, visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
@@ -80,15 +82,21 @@ class SettingsState {
     'prefs': prefs,
   };
 
+  /// [fallbackCurrencyCode] is the currency when the store holds no choice —
+  /// the device region's, supplied by [SettingsController] (ST-C1).
+  ///
   /// Merges the persisted values OVER the compiled-in defaults, so a pref key
   /// added in a later release still gets its default on old installs — the
   /// same "a missing key can never silently flip a user's notifications"
   /// rule ReminderPlan.from enforces. Non-bool junk is dropped, not trusted.
-  factory SettingsState.fromJson(Map<String, Object?> json) {
+  factory SettingsState.fromJson(
+    Map<String, Object?> json, {
+    String fallbackCurrencyCode = core.Money.fallbackCurrencyCode,
+  }) {
     const SettingsState defaults = SettingsState();
     final Object? prefs = json['prefs'];
     return SettingsState(
-      currencyCode: _currencyFrom(json, fallback: defaults.currencyCode),
+      currencyCode: _currencyFrom(json, fallback: fallbackCurrencyCode),
       prefs: <String, bool>{
         ...defaults.prefs,
         if (prefs is Map<String, Object?>)
@@ -117,11 +125,20 @@ class SettingsController extends Notifier<SettingsState> {
 
   late Future<void> _hydration;
 
+  /// The currency a store with no choice in it starts in: the device region's
+  /// (ST-C1, audit C31). Every install used to start in USD, so an Indian
+  /// user's first ₹649 was typed, stored and totalled as dollars unless they
+  /// found the chip first.
+  late String _firstRunCurrency;
+
   @override
   SettingsState build() {
     _touched = false;
+    _firstRunCurrency = core.Money.defaultCodeForRegion(
+      ref.read(deviceRegionProvider),
+    );
     _hydration = _hydrate();
-    return const SettingsState();
+    return SettingsState(currencyCode: _firstRunCurrency);
   }
 
   /// Completes when the persisted state (if any) has been applied. Tests await
@@ -136,10 +153,21 @@ class SettingsController extends Notifier<SettingsState> {
         keyValueStoreProvider.future,
       );
       final String? raw = await kv.read(kSettingsKey);
-      if (raw == null || _touched) return;
+      if (_touched) return;
+      if (raw == null) {
+        // 🔴 THE FIRST RUN'S DEFAULT IS WRITTEN ONCE, SO IT IS A CHOICE FROM
+        // HERE ON. A live row carries no currency and is read in this one
+        // (`DioApiClient`), so a default that moved with the device locale
+        // would re-label every stored amount the day the locale changed.
+        await _persist();
+        return;
+      }
       final Object? decoded = jsonDecode(raw);
       if (decoded is Map<String, Object?> && !_touched) {
-        state = SettingsState.fromJson(decoded);
+        state = SettingsState.fromJson(
+          decoded,
+          fallbackCurrencyCode: _firstRunCurrency,
+        );
       }
     } catch (_) {
       // Unreadable or corrupt store — keep the compiled-in defaults. Settings
@@ -209,6 +237,17 @@ class SettingsController extends Notifier<SettingsState> {
 final NotifierProvider<SettingsController, SettingsState>
 settingsControllerProvider =
     NotifierProvider<SettingsController, SettingsState>(SettingsController.new);
+
+/// The device's region (ISO 3166-1 alpha-2, e.g. `IN` from `en-IN`), or null
+/// when no locale names one — the first preferred locale that has a country.
+/// A provider so a test can pin it; the settings default reads it once.
+final Provider<String?> deviceRegionProvider = Provider<String?>((ref) {
+  for (final Locale l in PlatformDispatcher.instance.locales) {
+    final String? c = l.countryCode;
+    if (c != null && c.isNotEmpty) return c;
+  }
+  return null;
+});
 
 /// The user's chosen currency, as an ISO 4217 code.
 ///

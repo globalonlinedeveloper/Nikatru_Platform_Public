@@ -542,6 +542,10 @@
   "@currency": {
     "description": "Section heading above the currency-symbol selector. Rendered upper-cased by the screen; store it in title case."
   },
+  "currencyHint": "New subscriptions are entered in this currency. Changing it does not convert amounts you have already entered.",
+  "@currencyHint": {
+    "description": "One line under the currency chooser: which rows the choice applies to, and that it is not a conversion (ST-C1, audit D10)."
+  },
   "preferences": "Preferences",
   "@preferences": {
     "description": "Section heading above the three notification/behaviour preference toggles."

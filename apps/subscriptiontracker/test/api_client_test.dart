@@ -138,4 +138,64 @@ void main() {
     expect(body['price_minor'], 49900);
     expect(body['currency'], 'INR');
   });
+
+  group('🔴 ST-C1 — a currency-less row reads back in the user currency', () {
+    // Audit B21/D5/D18: the Worker stores `price` with no currency, and the
+    // client decoded with the USD default — so ₹649 came back "$649.00".
+    // MUTATION PROOF: drop `fallbackCurrencyCode: _currencyCode()` from any
+    // decode in dio_api_client.dart and the matching case goes red.
+    Map<String, dynamic> row(String id) => <String, dynamic>{
+      'id': id,
+      'name': 'Hotstar',
+      'category': 'Streaming',
+      'price': 649,
+      'cycle': 'monthly',
+      'next_renewal': '2026-10-01',
+    };
+
+    DioApiClient over(Object body) => DioApiClient(
+      baseUrl: 'https://example.test/v1',
+      tokenProvider: () async => 'tok',
+      httpClient: Dio()..httpClientAdapter = _FakeAdapter(jsonEncode(body)),
+      currencyCode: () => 'INR',
+    );
+
+    test('the list', () async {
+      final List<Subscription> subs = await over(<dynamic>[
+        row('1'),
+      ]).getSubscriptions();
+      expect(subs.single.price, const Money(64900, 'INR'));
+    });
+
+    test('the POST response the add sheet renders at once', () async {
+      final Subscription s = await over(row('2')).createSubscription(
+        Subscription.fromJson(row('2'), fallbackCurrencyCode: 'INR'),
+      );
+      expect(s.price, const Money(64900, 'INR'));
+    });
+
+    test('one row, and its payment history', () async {
+      final Map<String, dynamic> body = <String, dynamic>{
+        'subscription': row('3'),
+        'payment_history': <dynamic>[
+          <String, dynamic>{'paid_at': '2026-09-01', 'amount': 649},
+        ],
+      };
+      expect(
+        (await over(body).getSubscription('3')).price,
+        const Money(64900, 'INR'),
+      );
+      expect(
+        (await over(body).getPaymentHistory('3')).single.amount,
+        const Money(64900, 'INR'),
+      );
+    });
+
+    test('a row that names its OWN currency keeps it', () async {
+      final List<Subscription> subs = await over(<dynamic>[
+        <String, dynamic>{...row('4'), 'currency': 'USD', 'price_minor': 999},
+      ]).getSubscriptions();
+      expect(subs.single.price, const Money(999, 'USD'));
+    });
+  });
 }

@@ -383,13 +383,9 @@ class SettingsScreen extends ConsumerWidget {
 
             // ── CURRENCY (live-only) ─────────────────────────────────────────
             _sectionLabel(context, l10n.currency),
-            // 🔴 ONE CHIP PER ROW OF THE MONEY TABLE (`core.Money.symbols`), and
-            // the stored value is the CODE. This was a literal list of four
-            // glyphs stored as a glyph: nobody in yen, Australian or Canadian
-            // dollars could choose their currency, and `$` names three of them.
-            // A `Wrap` of fixed-width chips rather than a `Row` of `Expanded`
-            // ones, because the table's length is data — a row of N expanding
-            // chips at 375 px is a layout that breaks the day the table grows.
+            // 🔴 ONE CHIP PER ROW OF THE MONEY TABLE, storing the CODE (four
+            // literal glyphs could not say yen, A$ or C$), in a `Wrap` because the
+            // table's length is data. ST-C1 (D10): the line under it.
             Wrap(
               runSpacing: 8,
               children: core.Money.symbols.entries.map((
@@ -528,6 +524,10 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                 );
               }).toList(),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(2, 8, 2, 0),
+              child: Text(l10n.currencyHint, style: AppText.of(context).muted),
             ),
 
             // ── PREFERENCES (live-only) ──────────────────────────────────────
