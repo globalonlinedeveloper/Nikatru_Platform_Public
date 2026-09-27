@@ -20,7 +20,16 @@
       "⚠️ THIS IS THE DRAFT DEFINITION, NOT A MINTED VERSION. `feature_sets` /",
       "`feature_set_members` in platform_db are the PINNED record a grant points at ([ADR 057] §4),",
       "and minting a version into them is a dated, reviewed act. Editing this file changes what a",
-      "FUTURE grant would be sold under; it can never change what an existing grant already owns."
+      "FUTURE grant would be sold under; it can never change what an existing grant already owns.",
+      "",
+      "⚠️ `storeProducts` IS EMPTY UNTIL OWNER STEP O-D3 CREATES THE STORE SKUs. Each entry is",
+      "{app, store, plan, productId, term}: the app whose store listing sells the bundle (an Apple",
+      "product id belongs to one app), the rail (apple-iap | play-billing), the plan (bundle-monthly |",
+      "bundle-yearly — a lifetime is never sold in-app), the id read back from the store console, and",
+      "the term (`subscription`: every in-app plan is one, so the grant rolls to the current sellable",
+      "version; render refuses `one_time`). tooling/app-yaml/render.mjs renders them into services/platform/src/lib/mor/store-skus.ts,",
+      "where the RevenueCat route tells a bundle SKU from a single-app one. An id typed here before the",
+      "store holds it would route a purchase of nothing."
     ],
     "featureSet": "nikatru_all",
     "version": 1,
@@ -37,6 +46,7 @@
         "monthly": null,
         "yearly": null
       }
-    }
+    },
+    "storeProducts": []
   }
 ]

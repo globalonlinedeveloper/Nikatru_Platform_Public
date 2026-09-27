@@ -66,7 +66,7 @@ import {
 import { receiptVerifierFor } from '../lib/receipts/verifiers';
 import { type ProductMap, featureSetForProduct } from '../lib/receipts/products';
 import { nowIso } from '../lib/d1';
-import { BUNDLES_REGISTER, type BundleRegisterRow, bundleVersionStatus } from '../lib/catalog';
+import { BUNDLE_ROWS, BUNDLES_REGISTER, type BundleRegisterRow, bundleVersionStatus } from '../lib/catalog';
 import { BUNDLE_KIND } from '../../../../contracts/entitlement/bundle.js';
 import { isValidAppId, productKindOf } from '../config';
 
@@ -199,6 +199,29 @@ async function pinFeatureSet(
       .bind(name, version, slug, kind)
       .run();
   }
+}
+
+/**
+ * ⏱ 2026-09-27 · Mint a feature-set version from the bundle register — the
+ * members its row names — through `pinFeatureSet` above, so a bundle grant from
+ * a RevenueCat event (src/lib/mor/grant.ts) is pinned by the same code, with the
+ * same `sellable` refusal, as one from a receipt. It throws when the register
+ * has no such row; the caller answers 503 with nothing written.
+ */
+export async function mintFeatureSetFromRegister(
+  db: D1Database,
+  featureSet: string,
+  version: number,
+  register: readonly BundleRegisterRow[] = BUNDLE_ROWS,
+): Promise<void> {
+  const row = register.find((r) => r.featureSet === featureSet && r.version === version);
+  if (row === undefined) {
+    throw new Error(`feature set ${featureSet}@${version} is not in the bundle register; nothing is minted`);
+  }
+  const members = (Array.isArray(row.members) ? row.members : [])
+    .map((m) => (m !== null && typeof m === 'object' ? (m as { slug?: unknown }).slug : null))
+    .filter((s): s is string => typeof s === 'string' && s !== '');
+  await pinFeatureSet(db, featureSet, version, members, register);
 }
 
 /**

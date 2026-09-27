@@ -79,6 +79,8 @@ const REQUIRED_COVERAGE = [
 const REGISTRY = 'services/platform/src/lib/mor/registry.ts';
 const CONTRACT = 'services/platform/src/lib/mor/contract.ts';
 const STORE = 'services/platform/src/lib/mor/store.ts';
+/** ⏱ 2026-09-27 · the ONE entry from a verified money event to a grant; it calls `deriveAndApply`. */
+const GRANT = 'services/platform/src/lib/mor/grant.ts';
 const TEST_DIR = 'services/platform/test';
 const WRANGLER = 'services/platform/wrangler.jsonc';
 
@@ -555,6 +557,14 @@ const PIECES = [
     symbol: 'deriveAndApply',
     declaredIn: STORE,
     what: '[5]M-2/M-3, the entitlement derivation. Present-but-uncalled means a payment is filed and never honoured',
+  },
+  {
+    // ⏱ 2026-09-27 · the derivation MOVED behind grant.ts, which calls it — so the
+    // piece above now reads as called even when nothing calls grant.ts. This piece
+    // holds the door → grant path the piece above used to hold on its own.
+    symbol: 'grantFromVerifiedEvent',
+    declaredIn: GRANT,
+    what: 'the ONE entry from a verified money event to a grant (O-ONE-TIME-GRANT-UNBUILT), which calls `deriveAndApply`. Present-but-uncalled means a payment is filed and never honoured while the derivation still reads as called',
   },
 ];
 for (const piece of PIECES) {

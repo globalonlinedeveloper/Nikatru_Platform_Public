@@ -28,7 +28,10 @@
     "claims": [
       "ADR 037",
       "ADR 075",
+      "ADR 078",
       "ADR 085",
+      "ADR 093",
+      "ADR 099",
       "D-5"
     ],
     "invokedBy": [

@@ -107,7 +107,7 @@ export { MONEY_ENVIRONMENTS, REVOCATION_REASONS, isMoneyEnvironment, isRevocatio
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** The entity kinds any rail's notification can carry, in our vocabulary. */
-export type MoneySubjectKind = 'subscription' | 'adjustment' | 'transfer' | 'unknown';
+export type MoneySubjectKind = 'subscription' | 'adjustment' | 'transfer' | 'one_time' | 'unknown';
 
 /** A subscription's access-relevant state, translated out of the rail's own. */
 export interface SubjectSubscription {
@@ -196,6 +196,29 @@ export interface SubjectAdjustment {
   effective: boolean;
 }
 
+/**
+ * ⏱ 2026-09-27 · O-ONE-TIME-GRANT-UNBUILT — a COMPLETED purchase that is not a
+ * subscription: the rail says the money was taken, no subscription stands behind
+ * it, and every price on it is non-recurring. What it sells is NOT decided here:
+ * `priceIds` are the rail's own handles, and `lib/mor/grant.ts` maps them to OUR
+ * offering (a price that sells no `one_time` offering grants nothing). A grant
+ * from it has no end date.
+ */
+export interface SubjectOneTime {
+  kind: 'one_time';
+  /** The rail's purchase handle — the link and the dedup key, as a subscription id is. */
+  transactionId: string;
+  /** The rail's own status string, VERBATIM. */
+  statusVerbatim: string;
+  /** Every price on the purchase, in body order. */
+  priceIds: readonly string[];
+  /** Our own account id, when the rail echoed the metadata we set at checkout. */
+  accountUserId: string | null;
+  accountAppId: string | null;
+  customerId: string | null;
+  customerEmail: string | null;
+}
+
 export interface SubjectUnknown {
   kind: 'unknown';
   /** Why nothing was derived. Recorded on the stored row, never swallowed. */
@@ -219,7 +242,13 @@ export interface SubjectRefused {
   detail: string;
 }
 
-export type MoneySubject = SubjectSubscription | SubjectAdjustment | SubjectTransfer | SubjectUnknown | SubjectRefused;
+export type MoneySubject =
+  | SubjectSubscription
+  | SubjectAdjustment
+  | SubjectTransfer
+  | SubjectOneTime
+  | SubjectUnknown
+  | SubjectRefused;
 
 /**
  * One notification, normalised. Every field here is REQUIRED to have been read

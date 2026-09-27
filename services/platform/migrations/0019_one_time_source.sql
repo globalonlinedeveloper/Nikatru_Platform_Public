@@ -1,0 +1,44 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 0019_one_time_source.sql — A PADDLE ONE-TIME PURCHASE IS A BUNDLE SOURCE OF ITS
+-- OWN, AND ITS TERM IS `one_time` (O-ONE-TIME-GRANT-UNBUILT).
+--
+-- Applies to the SHARED platform_db (services/platform is the sole applier):
+--   wrangler d1 migrations apply PLATFORM_DB --local    (or --remote)
+--
+-- 🔴 WHAT THIS IS. One seeded row. A completed Paddle transaction for a price
+-- that sells a `one_time` offering is granted through src/lib/mor/grant.ts, the
+-- one entry from a verified event to a grant. A single-app product is written to
+-- `entitlements` with no end date; a bundle feature set would be written to
+-- `bundle_grants` under THIS source, and 0009 section B's rule holds for it: a
+-- source that is not seeded on the day its first customer pays is unclassifiable
+-- forever. No one-time bundle offering exists yet (owner step O-D1 decides its
+-- price), so the row is seeded before anything writes it — which is the order
+-- 0009 seeded the store rails in.
+--
+--   · requires_receipt = 1: the grant stands on a signed Paddle notification the
+--     money route verified, exactly as `paddle_subscription`'s does.
+--   · term = 'one_time' (0018's column): its membership is the version it
+--     PINNED at mint and never rolls — a lifetime buyer owns what was sold.
+--
+-- 🔴 AND `revenuecat` ([ADR 092] §4.7-4.8; [ADR 099] §3). An App Store or Play
+-- bundle bought through the RevenueCat SDK is written to `bundle_grants` under
+-- its OWN source, never `apple_iap` or `google_play_billing`: RevenueCat
+-- validated the store receipt, so recording a store rail would claim a check
+-- that never ran here. ADR 092 placed it "before any bundle sale exists", which
+-- is still true (catalog/bundles.json storeProducts is empty until O-D3), so this
+-- is the one clean moment. term = 'subscription': every in-app plan is a
+-- subscription ([ADR 078] §11.1); a SKU's own term rides on the grant row.
+--
+-- The Razorpay one-time source is NOT seeded here. It lands with the Razorpay
+-- one-time limb (D-b2), after Razorpay PR B sources that rail's payment shapes.
+--
+-- ⚠️ ORDER. It names 0018's `term` column, so 0018 must be applied first; D1's
+-- ledger applies files in name order. It is an INSERT … ON CONFLICT DO NOTHING
+-- and changes no existing row. It is in test/harness.ts PLATFORM_MIGRATIONS and,
+-- because it reads a column 0018 adds by ALTER, NOT in REPLAY_SAFE_MIGRATIONS
+-- (that subset replays without 0018).
+-- ─────────────────────────────────────────────────────────────────────────────
+INSERT INTO bundle_sources (source, requires_receipt, description, term) VALUES
+  ('paddle_one_time', 1, 'A Paddle one-time purchase: a completed transaction (txn_) for a non-recurring price that sells a one_time offering. The notification is HMAC-SHA256-signed over the raw bytes, as paddle_subscription''s is, and GET /transactions/{id} is the independent server-side pull. Its membership is the version pinned at mint and never rolls.', 'one_time'),
+  ('revenuecat', 1, 'An App Store or Google Play purchase made through the RevenueCat SDK (ADR 092 §4.7): the one door for both stores. The webhook is verified by its Authorization secret and RevenueCat validated the store receipt, so the store''s own check did not run here and the grant is never recorded as apple_iap or google_play_billing. Every in-app plan is a subscription (ADR 078 §11.1), so its membership rolls; a SKU''s own term rides on the grant.', 'subscription')
+ON CONFLICT(source) DO NOTHING;

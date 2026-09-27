@@ -66,6 +66,20 @@
 //                       `txn_[26 alphanumeric]` for a transaction, as typed on
 //                       the adjustment reference's own fields.
 //                       developer.paddle.com/api-reference/adjustments/create-adjustment
+// V13 TRANSACTION       ⏱ read 2026-09-26 (23:5xZ) from the vendor's own page
+//     ENTITY            and its example payload, quoted:
+//                       developer.paddle.com/webhooks/transactions/transaction-completed
+//                       `id` "Unique Paddle ID for this transaction entity,
+//                       prefixed with `txn_`"; `status` `completed` "Transaction
+//                       is fully paid and processed"; `subscription_id` "Paddle
+//                       ID of the subscription that this transaction is for,
+//                       prefixed with `sub_`"; `items[].price.id` "prefixed with
+//                       `pri_`"; `items[].price.billing_cycle` "`null` if price
+//                       is non-recurring"; `custom_data` "Your own structured
+//                       key-value data"; `customer_id` "prefixed with `ctm_`".
+//                       A transaction with no subscription whose every price is
+//                       non-recurring is a ONE-TIME purchase. Nothing here keys
+//                       on the event name (U4): the entity shape decides.
 //
 // ═════════════════════════════════════════════════════════════════════════════
 // 🔴 UNVERIFIED — NOT ENCODED ANYWHERE BELOW. Each of these was reachable only
@@ -101,6 +115,7 @@ import {
   type NormalizedNotification,
   type ParseOutcome,
   type SubjectAdjustment,
+  type SubjectOneTime,
   type SubjectSubscription,
   type MoneySubject,
   type VerifyOutcome,
@@ -143,6 +158,12 @@ const SUBSCRIPTION_STATUSES = new Set(['active', 'canceled', 'past_due', 'paused
  * `ctm_` and `pro_`.
  */
 const SUBSCRIPTION_ID_PREFIX = /^sub_[A-Za-z0-9]+$/;
+
+/** V12 + V13 — the transaction entity's id, `txn_`, recognised by prefix as a subscription is. */
+const TRANSACTION_ID_PREFIX = /^txn_[A-Za-z0-9]+$/;
+
+/** V13 — "Transaction is fully paid and processed." The one status that has taken the money. */
+const TRANSACTION_COMPLETED = 'completed';
 
 /** V10 — the documented adjustment action set, complete. */
 const ADJUSTMENT_ACTIONS = new Set([
@@ -403,6 +424,53 @@ function parseAdjustment(data: Record<string, unknown>): ParseOutcome | SubjectA
 }
 
 /**
+ * V13 — a ONE-TIME purchase, or null when the transaction is not one.
+ *
+ * Null (the caller answers `unknown`, as for every transaction before
+ * 2026-09-27) for a transaction that has not taken the money, or that a
+ * subscription stands behind — a subscription's transactions reach access
+ * through the subscription entity, never through this path — or that carries a
+ * recurring price. A completed, subscription-less transaction whose items cannot
+ * be read is REFUSED: it is a purchase, and a purchase is never shrugged off.
+ *
+ * WHAT THE PRICE SELLS IS NOT DECIDED HERE. The adapter knows Paddle; the
+ * offering a `pri_` id sells is OUR fact, and src/lib/mor/grant.ts maps it.
+ */
+function parseOneTime(data: Record<string, unknown>): ParseOutcome | SubjectOneTime | null {
+  if (data.status !== TRANSACTION_COMPLETED) return null;
+  if (data.subscription_id !== null && data.subscription_id !== undefined) return null;
+  const transactionId = idOrNull(data.id);
+  if (transactionId === null) return { ok: false, reason: 'data.id is missing or not a usable transaction id' };
+  const items = data.items;
+  if (!Array.isArray(items) || items.length === 0) {
+    return { ok: false, reason: 'a completed transaction with no subscription carries no data.items' };
+  }
+  const priceIds: string[] = [];
+  for (const item of items) {
+    const price = isPlainObject(item) ? item.price : null;
+    if (!isPlainObject(price)) return { ok: false, reason: 'a data.items[] entry carries no price object' };
+    const priceId = idOrNull(price.id);
+    if (priceId === null) return { ok: false, reason: 'a data.items[].price carries no usable id' };
+    // V13: `billing_cycle` is "`null` if price is non-recurring". Absent is not
+    // null — a body that does not say is not read as one-time.
+    if (price.billing_cycle !== null) return null;
+    priceIds.push(priceId);
+  }
+  const custom = isPlainObject(data.custom_data) ? data.custom_data : {};
+  const customer = isPlainObject(data.customer) ? data.customer : {};
+  return {
+    kind: 'one_time',
+    transactionId,
+    statusVerbatim: TRANSACTION_COMPLETED,
+    priceIds,
+    accountUserId: idOrNull(custom[PADDLE_CUSTOM_DATA_USER_ID]),
+    accountAppId: idOrNull(custom[PADDLE_CUSTOM_DATA_APP_ID]),
+    customerId: idOrNull(data.customer_id) ?? idOrNull(customer.id),
+    customerEmail: idOrNull(customer.email, MAX_EMAIL_LEN),
+  };
+}
+
+/**
  * Which entity is in `data`. U4: recognised from the ENTITY SHAPE, never from
  * the event name — the complete `event_type` list is not established from a
  * primary source, and a name-keyed adapter is wrong for every event whose name
@@ -422,6 +490,13 @@ function subjectOf(data: Record<string, unknown>, eventType: string): ParseOutco
   // documented set is a 400 and a retry, never a shrug.
   if (SUBSCRIPTION_ID_PREFIX.test(String(data.id ?? ''))) {
     return parseSubscription(data);
+  }
+  // ⏱ 2026-09-27 · V13 — a transaction, recognised by its `txn_` id. Only a
+  // completed ONE-TIME purchase is a subject; every other transaction falls
+  // through to `unknown` below, exactly as all of them did before this date.
+  if (TRANSACTION_ID_PREFIX.test(String(data.id ?? ''))) {
+    const oneTime = parseOneTime(data);
+    if (oneTime !== null) return oneTime;
   }
   // Neither shape. This is NOT a failure: Paddle sends event types this rail does
   // not consume (products, prices, customers, reports), and 400ing one of those

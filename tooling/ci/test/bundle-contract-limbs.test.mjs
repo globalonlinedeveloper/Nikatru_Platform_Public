@@ -56,6 +56,8 @@ const REPO = resolve(CI_DIR, '..', '..');
 const GUARD = join(CI_DIR, 'assert-entitlement-contract.mjs');
 
 const MIGRATION = 'services/platform/migrations/0009_bundle_grants.sql';
+/** ⏱ 2026-09-27 · the second statement that seeds `bundle_sources` (`paddle_one_time`). */
+const ONE_TIME_MIGRATION = 'services/platform/migrations/0019_one_time_source.sql';
 const BUNDLE_JS = 'contracts/entitlement/bundle.js';
 const BUNDLE_JSON = 'contracts/entitlement/bundle.json';
 const WRITER = 'services/platform/src/lib/mor/__probe_bundle_writer.ts';
@@ -220,9 +222,31 @@ describe('limb 9 — the bundle source enum equals its runtime copies, BOTH ways
     assert.match(r.out, /THIS IS THE FIELD THAT MATTERS/);
   });
 
-  test('BC5 — retargeting the seed INSERT at another table is COVERAGE LOST, not a pass', () => {
+  test('BC3c — a source seeded by a LATER migration and missing from the runtime copy is refused', () => {
+    // ⏱ 2026-09-27 · migration 0019 seeds `paddle_one_time` in a SECOND
+    // statement. Until this date the limb read the first statement only, so a
+    // copy that left the later source out read as complete — the OLD guard exits
+    // 0 on exactly this tree (lane draft-npdb-r2, red control RC-L9).
     const r = run(
-      tree((d) => editText(d, MIGRATION, (s) => s.replace(/INSERT INTO bundle_sources/, 'INSERT INTO bundle_sources_x'))),
+      tree((d) => {
+        editText(d, BUNDLE_JS, (s) => s.replace("  { source: 'paddle_one_time', requiresReceipt: true },\n", ''));
+        editText(d, BUNDLE_JSON, (s) =>
+          s.replace('    {\n      "source": "paddle_one_time",\n      "requiresReceipt": true\n    },\n', ''),
+        );
+      }),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /'paddle_one_time' is seeded in SQL but missing from contracts\/entitlement\/bundle\.js/);
+  });
+
+  test('BC5 — retargeting EVERY seed INSERT at another table is COVERAGE LOST, not a pass', () => {
+    // Both statements: 0009's seed and 0019's. Retargeting only the first now
+    // leaves a real seed for the limb to read, which is the point of BC3c.
+    const r = run(
+      tree((d) => {
+        editText(d, MIGRATION, (s) => s.replace(/INSERT INTO bundle_sources/, 'INSERT INTO bundle_sources_x'));
+        editText(d, ONE_TIME_MIGRATION, (s) => s.replace(/INSERT INTO bundle_sources/, 'INSERT INTO bundle_sources_x'));
+      }),
     );
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /no `INSERT INTO bundle_sources/);
@@ -348,5 +372,23 @@ describe('the shared seed parser survives the three traps it was extracted with'
     const r = parseSeededRows('CREATE TABLE t (a TEXT);', 't');
     assert.equal(r.ok, false);
     assert.match(r.why, /no `INSERT INTO t/);
+  });
+
+  test('parseAllSeededRows reads EVERY seeding statement, a later one with an extra column included', async () => {
+    const { parseAllSeededRows, parseSeededRows } = await import('../sql-seed.mjs');
+    const sql = [
+      "INSERT INTO t (a, b) VALUES ('one', 'x (y, z)'), ('two', 'plain') ON CONFLICT(a) DO NOTHING;",
+      'ALTER TABLE t ADD COLUMN c TEXT;',
+      "INSERT INTO t (a, b, c) VALUES ('three', 'later', 'one_time') ON CONFLICT(a) DO NOTHING;",
+    ].join('\n');
+    const all = parseAllSeededRows(sql, 't');
+    assert.equal(all.ok, true);
+    assert.equal(all.statements, 2);
+    assert.deepEqual(all.rows.map((x) => x.a), ['one', 'two', 'three']);
+    assert.deepEqual(all.columns, ['a', 'b', 'c']);
+    assert.equal(all.rows[2].c, 'one_time');
+    // The first-statement reader, on the same text, never sees the third row.
+    assert.deepEqual(parseSeededRows(sql, 't').rows.map((x) => x.a), ['one', 'two']);
+    assert.equal(parseAllSeededRows('CREATE TABLE t (a TEXT);', 't').ok, false);
   });
 });
