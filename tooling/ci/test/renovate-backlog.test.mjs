@@ -15,6 +15,9 @@
 //      an age that is only a lower bound, a refused or dropped read, no token
 //   F1 the committed floor file is valid, and RED on the measured 2026-09-22 state
 //   A1 the reader joins the ops-bounded-retry adoption sweep (vacuous-10)
+//   O1-O7 (2026-09-27, train WD1) an OPEN Renovate PR stays in the queue: it
+//      counts once, keeps the days it waited before it opened, and a PR list
+//      that did not come back is exit 2 - a red major left open is LOUDER
 //   G5 (in an enforcing host a backlog verdict prints and does not block) is NOT
 //      here: it depends on the wiring decision recorded in the lane notes.
 //
@@ -33,6 +36,7 @@ import {
   waitingEntries,
   CouldNotLook,
   DAY_MS,
+  BRANCH_PREFIX,
 } from '../../ops/check-renovate-backlog.mjs';
 import { READ_ATTEMPTS } from '../../ops/bounded-retry.mjs';
 
@@ -59,7 +63,12 @@ function body(branches, { heading = 'Awaiting Schedule', kind = 'unschedule-bran
   ].join('\n');
 }
 
-/** An issue whose history shows each branch joining `daysAgo` before NOW. */
+/** An open pull request, as the GraphQL read returns it. */
+const pr = (headRefName, daysAgo, number) => ({ number, title: `update ${headRefName}`, headRefName, createdAt: iso(daysAgo) });
+const pulls = (nodes) => ({ totalCount: nodes.length, nodes });
+
+/** An issue whose history shows each branch joining `daysAgo` before NOW.
+ *  `opts.prs` are the repository's open pull requests (none by default). */
 function issueWith(joined, opts = {}) {
   const branches = Object.keys(joined);
   const times = [...new Set(Object.values(joined))].sort((a, b) => a - b); // youngest first
@@ -73,6 +82,7 @@ function issueWith(joined, opts = {}) {
     body: body(branches, opts),
     updatedAt: iso(Math.min(...times, 0)),
     userContentEdits: { totalCount: revisions.length, nodes: revisions },
+    openPullRequests: pulls(opts.prs ?? []),
   };
 }
 
@@ -85,7 +95,7 @@ describe('R0 green control', () => {
     assert.match(v.lines[0], /^ok {2}renovate queue 2 <= 15, oldest 3d <= 14d/);
   });
   test('an empty queue with no waiting section is exit 0, not a lookup failure', () => {
-    const issue = { title: 'Dependency Dashboard', state: 'OPEN', body: '## Detected Dependencies\n', updatedAt: iso(0), userContentEdits: { totalCount: 0, nodes: [] } };
+    const issue = { title: 'Dependency Dashboard', state: 'OPEN', body: '## Detected Dependencies\n', updatedAt: iso(0), userContentEdits: { totalCount: 0, nodes: [] }, openPullRequests: pulls([]) };
     assert.equal(judge({ issue, floor: FLOOR, now: NOW }).code, 0);
   });
 });
@@ -247,4 +257,104 @@ describe('A1 - the reader is inside the adoption sweep (vacuous-10)', () => {
     const code = src.split(/\r?\n/).filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
     assert.equal(/process\.exit\(/.test(code), false);
   });
+});
+
+describe('O - an OPEN Renovate PR stays in the queue (a red major left open is louder, not quieter)', () => {
+  /** A dashboard that lists `branches` under "Open" and waits on nothing. */
+  const openBody = (branches) =>
+    [
+      '## Open',
+      '',
+      'The following updates have all been created.',
+      '',
+      ...branches.map((b) => ` - [ ] <!-- rebase-branch=${b} -->[update ${b}](../pull/1)`),
+      '',
+      '## Detected Dependencies',
+      '',
+    ].join('\n');
+
+  test('O1 fifteen waiting plus ONE open Renovate PR is sixteen: exit 1, and the line says how it splits', () => {
+    const v = judge({ issue: issueWith(many(15, 2), { prs: [pr('chore/renovate-opened', 1, 101)] }), floor: FLOOR, now: NOW });
+    assert.equal(v.code, 1, v.lines.join('\n'));
+    const text = v.lines.join('\n');
+    assert.match(text, /THE RENOVATE QUEUE IS 16 UPDATES, past its ceiling of 15/);
+    assert.match(text, /15 waiting on the dashboard \+ 1 open Renovate PR/);
+    assert.equal(v.measured.open, 1);
+    assert.equal(v.measured.queue, 16);
+  });
+  test('O1 control: the same fifteen beside an open PR on a NON-Renovate branch stay green', () => {
+    const v = judge({ issue: issueWith(many(15, 2), { prs: [pr('batch/train-wd1-2026-09-26', 1, 102)] }), floor: FLOOR, now: NOW });
+    assert.equal(v.code, 0, v.lines.join('\n'));
+    assert.equal(v.measured.open, 0);
+    assert.match(v.lines[0], /\(15 waiting \+ 0 open Renovate PR\(s\)\)/);
+  });
+  test('O2 an open Renovate PR 20 days old is exit 1 with nothing waiting, and names the PR', () => {
+    const issue = { title: 'Dependency Dashboard', state: 'OPEN', body: openBody(['chore/renovate-java-25.x']), updatedAt: iso(0), userContentEdits: { totalCount: 0, nodes: [] }, openPullRequests: pulls([pr('chore/renovate-java-25.x', 20, 900)]) };
+    const v = judge({ issue, floor: FLOOR, now: NOW });
+    assert.equal(v.code, 1, v.lines.join('\n'));
+    assert.match(v.lines.join('\n'), /20\.0d {2}chore\/renovate-java-25\.x {2}since \S+ {2}\(open PR #900\)/);
+  });
+  test('O3 a branch that waited 13 days and then OPENED 2 days ago is aged from its first sighting (15d), not from the PR', () => {
+    const b = 'chore/renovate-go_router-18.x';
+    const nodes = [
+      { editedAt: iso(0.5), diff: openBody([b]) },
+      { editedAt: iso(2), diff: openBody([b]) },
+      { editedAt: iso(9), diff: body([b]) },
+      { editedAt: iso(15), diff: body([b]) },
+      { editedAt: iso(16), diff: body([], { createAll: false }) },
+    ];
+    const issue = { title: 'Dependency Dashboard', state: 'OPEN', body: openBody([b]), updatedAt: iso(0.5), userContentEdits: { totalCount: nodes.length, nodes }, openPullRequests: pulls([pr(b, 2, 950)]) };
+    const v = judge({ issue, floor: FLOOR, now: NOW });
+    assert.equal(v.code, 1, v.lines.join('\n'));
+    assert.match(v.lines.join('\n'), /15\.0d {2}chore\/renovate-go_router-18\.x .*\(open PR #950\)/);
+    assert.equal(v.measured.waiting, 0);
+    assert.equal(v.measured.open, 1);
+  });
+  test('O4 a PR that a stale dashboard still lists as waiting is counted ONCE', () => {
+    const v = judge({ issue: issueWith({ 'chore/renovate-a': 1, 'chore/renovate-b': 2 }, { prs: [pr('chore/renovate-a', 0.5, 7)] }), floor: FLOOR, now: NOW });
+    assert.equal(v.code, 0, v.lines.join('\n'));
+    assert.equal(v.measured.queue, 2);
+    assert.equal(v.measured.open, 0);
+  });
+  test('O5 the open pull requests did not come back: exit 2, never zero', () => {
+    const issue = { ...issueWith({ 'chore/renovate-a': 1 }), openPullRequests: null };
+    const v = judge({ issue, floor: FLOOR, now: NOW });
+    assert.equal(v.code, 2);
+    assert.match(v.lines[0], /open pull requests did not come back/);
+  });
+  test('O5 a truncated open-PR list is exit 2: the Renovate PRs past the page are unknown', () => {
+    const issue = { ...issueWith({ 'chore/renovate-a': 1 }), openPullRequests: { totalCount: 101, nodes: [pr('chore/renovate-x', 1, 1)] } };
+    const v = judge({ issue, floor: FLOOR, now: NOW });
+    assert.equal(v.code, 2);
+    assert.match(v.lines[0], /101 open pull requests exist and 1 were read/);
+  });
+  test('O5 an open Renovate PR with no createdAt is exit 2: its age is unknown', () => {
+    const issue = issueWith({ 'chore/renovate-a': 1 }, { prs: [{ number: 5, title: 't', headRefName: 'chore/renovate-x', createdAt: null }] });
+    assert.equal(judge({ issue, floor: FLOOR, now: NOW }).code, 2);
+  });
+  test('O6 BRANCH_PREFIX is renovate.json branchPrefix: a renamed prefix would count no PR at all', () => {
+    const cfg = JSON.parse(readFileSync(resolve(HERE, '..', '..', '..', 'renovate.json'), 'utf8'));
+    assert.equal(BRANCH_PREFIX, cfg.branchPrefix);
+  });
+  test('O7 the ONE read asks for the open pull requests and hands them to judge', async () => {
+    let sent = '';
+    const payload = JSON.stringify({ data: { repository: { issue: good(), pullRequests: pulls([pr('chore/renovate-a', 1, 3)]) } } });
+    const doFetch = async (_url, init) => {
+      sent = init.body;
+      return new Response(payload, { status: 200 });
+    };
+    const issue = await readDashboard({ owner: 'o', name: 'r', number: 417, token: 't', doFetch, sleep: async () => {} });
+    assert.match(JSON.parse(sent).query, /pullRequests\(states:OPEN,[^)]*\)\{\s*totalCount nodes \{ number title headRefName createdAt \}/);
+    assert.equal(issue.openPullRequests.nodes[0].headRefName, 'chore/renovate-a');
+  });
+  test('O7 an answer with no pullRequests reaches judge as exit 2, not as zero open', async () => {
+    const payload = JSON.stringify({ data: { repository: { issue: good() } } });
+    const doFetch = async () => new Response(payload, { status: 200 });
+    const issue = await readDashboard({ owner: 'o', name: 'r', number: 417, token: 't', doFetch, sleep: async () => {} });
+    assert.equal(judge({ issue, floor: FLOOR, now: NOW }).code, 2);
+  });
+  function good() {
+    const { openPullRequests: _drop, ...issue } = issueWith({ 'chore/renovate-a': 1 });
+    return issue;
+  }
 });

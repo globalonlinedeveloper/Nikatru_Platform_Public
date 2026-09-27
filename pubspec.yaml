@@ -62,7 +62,7 @@ workspace:
 # whole, so a range operator coming back is unequal to the pin and fails.
 # ─────────────────────────────────────────────────────────────────────────────
 dev_dependencies:
-  melos: 8.7.0
+  melos: 8.9.0
 
 # ─────────────────────────────────────────────────────────────────────────────
 # THE ONE OVERRIDE, AND WHY IT IS NOT A SHRUG

@@ -68,7 +68,7 @@ There are two workspaces, deliberately separate — Dart resolves through pub wo
 JavaScript through pnpm.
 
 ```bash
-dart pub global activate melos 8.7.0
+dart pub global activate melos 8.9.0
 flutter pub get
 melos run gate
 ```
