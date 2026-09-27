@@ -266,7 +266,7 @@
   "site-bindings.test.mjs": 32,
   "site-integrity.test.mjs": 109,
   "smoke-site-deploy.test.mjs": 14,
-  "smoke-web-artifact.test.mjs": 33,
+  "smoke-web-artifact.test.mjs": 30,
   "snap-submission.test.mjs": 47,
   "snapcraft-generable.test.mjs": 92,
   "spawn-ceiling.test.mjs": 7,
