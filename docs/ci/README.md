@@ -745,13 +745,13 @@ naming the job it belonged to and the line it sat above.
 | none | `.github/workflows/codeql.yml` | CodeQL | `pull_request`, `push`, `schedule`, `workflow_dispatch` | 1 |
 | none | `.github/workflows/deploy-sandbox.yml` | Deploy sandbox | `workflow_dispatch` | 2 |
 | [`deploy-web.md`](deploy-web.md) | `.github/workflows/deploy-web.yml` | Deploy web | `workflow_call` | 3 |
-| [`deploy-workers.md`](deploy-workers.md) | `.github/workflows/deploy-workers.yml` | Deploy workers | `workflow_call` | 3 |
+| [`deploy-workers.md`](deploy-workers.md) | `.github/workflows/deploy-workers.yml` | Deploy workers | `workflow_call` | 4 |
 | [`e2e.md`](e2e.md) | `.github/workflows/e2e.yml` | E2E live | `workflow_dispatch`, `schedule` | 3 |
 | [`extensions-ci.md`](extensions-ci.md) | `.github/workflows/extensions-ci.yml` | Extensions CI | `workflow_call` | 14 |
 | [`extensions.md`](extensions.md) | `.github/workflows/extensions.yml` | Extensions | `push`, `pull_request`, `schedule`, `workflow_dispatch` | 8 |
 | none | `.github/workflows/lane-workers.yml` | Lane — workers | `workflow_call` | 3 |
 | none | `.github/workflows/name-clearance.yml` | Name clearance | `workflow_dispatch`, `schedule` | 1 |
-| [`ops-watch.md`](ops-watch.md) | `.github/workflows/ops-watch.yml` | Ops watch | `workflow_dispatch`, `schedule` | 10 |
+| [`ops-watch.md`](ops-watch.md) | `.github/workflows/ops-watch.yml` | Ops watch | `workflow_dispatch`, `schedule` | 11 |
 | [`redeploy-stranded.md`](redeploy-stranded.md) | `.github/workflows/redeploy-stranded.yml` | Redeploy stranded lanes | `workflow_run`, `workflow_dispatch` | 1 |
 | [`renovate.md`](renovate.md) | `.github/workflows/renovate.yml` | Renovate | `workflow_dispatch`, `schedule` | 1 |
 | [`rollback.md`](rollback.md) | `.github/workflows/rollback.yml` | Rollback | `workflow_dispatch` | 1 |
