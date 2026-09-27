@@ -28,17 +28,20 @@ void run(HookContext context) {
   final v = context.vars;
   final id = (v['app_id'] ?? '').toString();
   final displayName = (v['display_name'] ?? id).toString();
-  final subdomain = (v['subdomain'] ?? '').toString();
+  final pagesOrigin = (v['pages_origin'] ?? '').toString();
   final apiDomain = (v['api_domain'] ?? '').toString();
   final tagline = (v['description'] ?? '').toString();
   final needsBackend = v['needs_backend'] == true;
 
-  // [pipeline S-8] DERIVE, do not blank. `subdomain` is now normally EMPTY —
-  // pre_gen refuses a value that disagrees with the convention, so leaving it
-  // blank is the expected input. Publishing '' here would put an entry with no
-  // url into the public catalogue; `webHost` below already derived correctly,
-  // and these two disagreeing is precisely the divergence S-8 exists to stop.
-  final webHost = subdomain.isEmpty ? '$id.nikatru.com' : subdomain;
+  // O-PRODUCT-RECORD-UNBUILT (G-a, 2026-09-27): THE ORIGIN IS THE SPEC'S, NOT
+  // DERIVED. This was `subdomain`, blank by default and derived here as
+  // `<id>.nikatru.com` — a host that has served nothing since [ADR 080] deleted
+  // the wildcard, and that render.mjs fell back to for the catalogue `origin`.
+  // pre_gen now refuses a blank, a *.nikatru.com or a non-*.pages.dev
+  // `pages_origin`, so the value reaching this line is the host Cloudflare
+  // issued, and it is written as BOTH `hosts.web` and `hosts.pagesOrigin`
+  // (tooling/web/pages-origin.mjs --check holds the two equal).
+  final webHost = pagesOrigin;
 
   // 🔴 THE PLATFORM CLAIM STAYS A DART LITERAL IN THIS FILE. It is written into
   // the app's declaration now rather than straight into the catalogue row, but
@@ -247,8 +250,9 @@ void run(HookContext context) {
       ..info(
         '  3. NO DNS RECORD TO CREATE BY HAND — ATTACHMENT is the step. '
         'Deploying this Worker binds $apiHost itself (custom_domain writes the '
-        'record and the certificate); the web deployment binds $webHost. Until '
-        'each is attached the name is NXDOMAIN — [ADR 080] deleted the wildcard '
+        'record and the certificate); the web origin $webHost is the Pages '
+        'project\'s own host, bound when the project was created. Until the API '
+        'host is attached it is NXDOMAIN — [ADR 080] deleted the wildcard '
         '*.nikatru.com that used to make every name answer 522.',
       )
       ..info(
@@ -377,11 +381,12 @@ void run(HookContext context) {
       // a NON-step either way; the real one is attachment, and saying "add DNS"
       // hid it.
       ..info(
-        '  2. NO DNS RECORD TO CREATE BY HAND — ATTACH $webHost to the '
-        'deployment and the attachment writes the record. Until then the name is '
-        'NXDOMAIN ([ADR 080] deleted the wildcard *.nikatru.com that used to make '
-        'every name answer 522). No API host and no D1 database are needed — '
-        'this app uses the shared platform Worker.',
+        '  2. NO DNS RECORD TO CREATE BY HAND — the web origin $webHost is the '
+        'Pages project\'s own host, issued by Cloudflare when '
+        'tooling/web/pages-origin.mjs --apply $id created the project, and '
+        'the first deploy-web run fills it. ([ADR 080] deleted the wildcard '
+        '*.nikatru.com, so no <id>.nikatru.com name answers.) No API host and '
+        'no D1 database are needed — this app uses the shared platform Worker.',
       )
       ..info(
         '  3. THE APEX IS ALREADY ALLOWED, so there is usually NOTHING to do here. '
@@ -510,7 +515,11 @@ bool _writeAppDeclaration(
     ..writeln('status: preview')
     ..writeln()
     ..writeln('hosts:')
-    ..writeln('  web: $webHost');
+    ..writeln('  web: $webHost')
+    // O-PRODUCT-RECORD-UNBUILT (G-a): the field render.mjs composes the
+    // catalogue `origin` from, with no fallback to `web`. The schema requires
+    // it, so a declaration written without it fails the render this hook runs.
+    ..writeln('  pagesOrigin: $webHost');
   if (apiHost.isNotEmpty) buffer.writeln('  api: $apiHost');
   buffer
     ..writeln()

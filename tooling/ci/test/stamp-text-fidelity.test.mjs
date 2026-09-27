@@ -129,7 +129,7 @@ function tree({
         app_id: app,
         display_name: name,
         icon_label: icon,
-        subdomain: backend ? '' : `${app}.nikatru.com`,
+        pages_origin: `${app}-fixture.pages.dev`,
         api_domain: '',
         seed_hex: '6459F5',
         category: 'productivity',
@@ -601,17 +601,20 @@ describe('assert-stamp-text-fidelity', () => {
     assert.match(r.out, /description/);
   });
 
-  test('COVERAGE LOST when the probe passes BOTH hosts explicitly — the derive path is never stamped', () => {
+  test('COVERAGE LOST when the probe passes api_domain explicitly — the derive path is never stamped', () => {
+    // `api_domain` is the one derivable host since `pages_origin` replaced
+    // `subdomain` (O-PRODUCT-RECORD-UNBUILT): an explicit one leaves nothing
+    // for the derive limb to grade.
     const r = run(
       tree({
         app: 'probeapi',
         backend: true,
-        vars: { subdomain: 'probeapi.nikatru.com', api_domain: 'probeapi-api.nikatru.com' },
+        vars: { api_domain: 'probeapi-api.nikatru.com' },
       }),
     );
     assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
-    assert.match(r.out, /both subdomain and api_domain/i);
+    assert.match(r.out, /explicit api_domain/i);
   });
 
   test('COVERAGE LOST when the stamped tree is too small to have been scanned', () => {

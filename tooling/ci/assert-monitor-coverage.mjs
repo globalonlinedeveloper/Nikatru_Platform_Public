@@ -97,9 +97,9 @@
 // header draws above rather than a new one:
 //   FAIL  · a catalogue `origin` the tree does not corroborate — the STALE case
 //           (limb 5). The corroborating source is the app's OWN declaration,
-//           apps/<slug>/app.yaml `hosts.pagesOrigin` (or `hosts.web` when it is
-//           absent, which is the same fallback tooling/app-yaml/render.mjs:367
-//           uses to COMPOSE the catalogue field). Rename the Pages project in
+//           apps/<slug>/app.yaml `hosts.pagesOrigin`, the field
+//           tooling/app-yaml/render.mjs COMPOSES the catalogue field from (no
+//           `hosts.web` fallback since 2026-09-27). Rename the Pages project in
 //           one file and not the other and the router fetches a host that is
 //           gone, with every other guard in this repository green.
 //   FAIL  · a register ROW for an origin host that has gone stale. This needs no
@@ -309,7 +309,7 @@ if (catalogueRows.length > 0 && originHosts.size === 0) {
   coverageLost(
     `${CATALOGUE} carries ${catalogueRows.length} row(s) and not one of them yields an \`origin\` hostname. ` +
       'Every app row has carried one since [ADR 075] — tooling/app-yaml/render.mjs composes it from ' +
-      '`hosts.pagesOrigin` (or `hosts.web`) and assert-app-address-shape.mjs fails a row without it — so a ' +
+      '`hosts.pagesOrigin` and assert-app-address-shape.mjs fails a row without it — so a ' +
       'catalogue that yields none means the field was renamed or dropped and limb 5 below would report ' +
       'judgement over an empty set while printing ok. That is this repository\'s single most repeated failure.',
   );
@@ -497,11 +497,15 @@ for (const app of catalogueRows) {
     fail(`${declaredIn} could not be parsed, so \`origin\` ${h} is uncorroborated: ${err.message}`);
     continue;
   }
-  const declared = doc?.hosts?.pagesOrigin || doc?.hosts?.web;
+  // ⏱ 2026-09-27 (O-PRODUCT-RECORD-UNBUILT, G-a): `pagesOrigin` ONLY. This read
+  // `pagesOrigin || web`, the same fallback render.mjs had; both are gone, and the
+  // schema requires the field, so a declaration without it is a finding here too.
+  const declared = doc?.hosts?.pagesOrigin;
   if (typeof declared !== 'string' || declared.trim() === '') {
     fail(
-      `${declaredIn} declares neither \`hosts.pagesOrigin\` nor \`hosts.web\`, so the \`origin\` ${h} in ` +
-        `${CATALOGUE} is a hostname nothing else in this tree names.`,
+      `${declaredIn} declares no \`hosts.pagesOrigin\`, so the \`origin\` ${h} in ${CATALOGUE} is a hostname ` +
+        'nothing else in this tree names. `hosts.web` is not a substitute: render.mjs composes `origin` from ' +
+        '`pagesOrigin` alone.',
     );
     continue;
   }

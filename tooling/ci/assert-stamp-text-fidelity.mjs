@@ -173,14 +173,14 @@ if (!ESCAPABLE.test(iconLabel)) {
   );
 }
 // The derive path is the one `pre_gen` steers users onto, and it is the one that
-// had never been stamped. A probe that passes explicit values for BOTH optional
-// hosts exercises only the path that already worked.
-const blankSub = String(vars.subdomain ?? '') === '';
+// had never been stamped. A probe that passes an explicit `api_domain` exercises
+// only the path that already worked. ⏱ 2026-09-27: `api_domain` is the ONLY derivable
+// host since `pages_origin` (an input, never derived) replaced `subdomain`.
 const blankApi = String(vars.api_domain ?? '') === '';
-if (!blankSub && !blankApi) {
+if (!blankApi) {
   lost(
-    `${varsPath} passes explicit values for BOTH subdomain and api_domain, so the "empty means ` +
-      'derive" path — the documented-normal input — is never stamped and this check cannot fail.',
+    `${varsPath} passes an explicit api_domain, so the "empty means derive" path — the ` +
+      'documented-normal input — is never stamped and this check cannot fail.',
   );
 }
 // ── the catalogue split: the separator is WHITESPACE-DELIMITED ───────────────
@@ -198,7 +198,7 @@ if (!/\S-\S/.test(leadingSegment)) {
       'separator from a hyphen, which is exactly how "E-Book Reader" reached the public catalogue as "E".',
   );
 }
-ok(`probe spec can trigger every check (escape set present; ${blankSub ? 'subdomain' : 'api_domain'} left blank to derive; "${leadingSegment}" holds an intra-word hyphen; icon_label "${iconLabel}" differs from the display name)`);
+ok(`probe spec can trigger every check (escape set present; api_domain left blank to derive; "${leadingSegment}" holds an intra-word hyphen; icon_label "${iconLabel}" differs from the display name)`);
 
 const appDir = join(ROOT, 'apps', appId);
 if (!existsSync(appDir)) lost(`apps/${appId} was not stamped, so there is no output to check.`);

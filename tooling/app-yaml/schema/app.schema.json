@@ -47,7 +47,7 @@
       "description": "The app's own hosts, WITHOUT a scheme — the scheme is added by the renderer so that a catalogue row cannot carry http:// by a typo. A host here needs no HAND-MADE DNS record: a Worker route with custom_domain, or the web deployment, writes it. [ADR 006]'s proxied wildcard *.nikatru.com was the old reason and [ADR 080] section 4 deleted it on 2026-09-12.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["web"],
+      "required": ["web", "pagesOrigin"],
       "properties": {
         "web": {
           "description": "The app's OWN ORIGIN host, e.g. subscriptiontracker-7qg.pages.dev. This is NOT the address the app is published at. Since [ADR 075] the published address is a PATH on the apex (https://nikatru.com/<id>), because a subdomain costs a payment-provider submission per app and a path costs nothing on either provider; this host survives as the origin the apex router proxies to, and as the source of the permanent 301. It needs no hand-made DNS record \u2014 the deployment binds it. ([ADR 006]'s proxied wildcard, which used to cover it, was deleted by [ADR 080] section 4 on 2026-09-12.)",
@@ -55,8 +55,8 @@
           "format": "hostname"
         },
         "pagesOrigin": {
-          "description": "The Cloudflare Pages PRODUCTION ALIAS of the app's own Direct Upload project, e.g. subscriptiontracker-7qg.pages.dev -- the host the apex router actually fetches. OPTIONAL; absent means `web`. It is declared rather than derived because it is NOT DERIVABLE: Cloudflare appended a suffix when the project name was taken, so guessing <id>.pages.dev is wrong for exactly the app this repository has. It is PREFERRED over `web` because *.pages.dev is OUTSIDE the nikatru.com zone, so the zone Redirect Rule that 301s the retired subdomain cannot match the router's own proxy subrequest -- a loop there takes the whole apex dark, marketing and the frozen legal archive with it. assert-app-address-shape.mjs checks the declaration against the deployed project.",
-          "type": ["string", "null"],
+          "description": "The Cloudflare Pages PRODUCTION ALIAS of the app's own Direct Upload project, e.g. subscriptiontracker-7qg.pages.dev -- the host the apex router actually fetches. REQUIRED since 2026-09-27 (O-PRODUCT-RECORD-UNBUILT): tooling/app-yaml/render.mjs no longer falls back to `web`. It is declared rather than derived because it is NOT DERIVABLE: Cloudflare issues it when the project is created and appends a suffix when the name is taken, so guessing <id>.pages.dev is wrong for exactly the app this repository has. `node tooling/web/pages-origin.mjs --apply <id>` creates the project and prints it, the brick's `pages_origin` input writes it here, and `--check <id>` verifies it offline. It is PREFERRED over `web` because *.pages.dev is OUTSIDE the nikatru.com zone, so the zone Redirect Rule that 301s the retired subdomain cannot match the router's own proxy subrequest -- a loop there takes the whole apex dark, marketing and the frozen legal archive with it.",
+          "type": "string",
           "format": "hostname"
         },
         "api": {
