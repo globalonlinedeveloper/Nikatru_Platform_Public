@@ -118,13 +118,13 @@
   "@deleteAccountReauthHint": {
     "description": "Explains why a password is required to delete the account."
   },
-  "deleteAccountConfirmBodyApple": "This cannot be undone. Deleting removes your sign-in, so Sign in with Apple will no longer open this account.",
+  "deleteAccountConfirmBodyApple": "This cannot be undone. Deleting removes your sign-in, so you will no longer be able to sign in to this account.",
   "@deleteAccountConfirmBodyApple": {
-    "description": "O-OAUTH-DELETE-REAUTH, owner-approved 2026-09-16. The delete confirmation body for a PASSWORD-LESS account (Sign in with Apple). Replaces deleteAccountConfirmBody, which names an email and password this account does not have."
+    "description": "O-OAUTH-DELETE-REAUTH, owner-approved 2026-09-16. The delete confirmation body for a PASSWORD-LESS account (Sign in with Apple). Replaces deleteAccountConfirmBody, which names an email and password this account does not have. ⏱ 2026-09-26: owner-approved provider-free wording, O-REAUTH-COPY-NAMES-APPLE-ONLY (the lead's ruling PRE-1 of 2026-09-26 15:56Z, made under the owner's delegation of wording)."
   },
-  "deleteAccountReauthHintApple": "To confirm it's you, you'll sign in with Apple again when you tap Delete account. On the web, if you land back here, tap Delete account once more.",
+  "deleteAccountReauthHintApple": "To confirm it's you, you'll sign in again when you tap Delete account. On the web, if you land back here, tap Delete account once more.",
   "@deleteAccountReauthHintApple": {
-    "description": "O-OAUTH-DELETE-REAUTH, owner-approved 2026-09-16. Shown instead of the password field for a password-less account: deletion is confirmed by signing in with Apple again. The second sentence covers web, where Apple's full-page redirect reloads the app before the deletion can run."
+    "description": "O-OAUTH-DELETE-REAUTH, owner-approved 2026-09-16. Shown instead of the password field for a password-less account: deletion is confirmed by signing in with Apple again. The second sentence covers web, where Apple's full-page redirect reloads the app before the deletion can run. ⏱ 2026-09-26: owner-approved provider-free wording, O-REAUTH-COPY-NAMES-APPLE-ONLY (the lead's ruling PRE-1 of 2026-09-26 15:56Z, made under the owner's delegation of wording)."
   },
   "deleteAccountFailed": "Could not delete your account. Your account has NOT been deleted.",
   "@deleteAccountFailed": {

@@ -444,6 +444,11 @@ void main() {
       // `AuthProviders.configured`, so its string is forced on here for the
       // same reason Apple's was: a hidden widget proves nothing about
       // translation.
+      // ⏱ 2026-09-26, later — `configured` is now `google: true`, so a plain
+      // pump WOULD render the button and this override is no longer
+      // load-bearing. It is kept deliberately, as Apple's was on 2026-09-16:
+      // proving the string exists in both locales must not depend on which
+      // providers happen to be switched on at the identity server this week.
       testWidgets('[$code] the Google door, forced on', (
         WidgetTester tester,
       ) async {
