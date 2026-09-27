@@ -71,6 +71,11 @@ import {
   READ_ATTEMPTS,
   RETRY_BASE_MS,
   RETRY_CEILING_MS,
+  siteLanes,
+  readRollbackOnly,
+  judgeRollbackOnly,
+  readProject,
+  ROLLBACK_ONLY_REL,
 } from '../../ops/check-pages-deployments.mjs';
 import { readUnits, UNITS_REL } from '../assert-deploy-triggers-deploy.mjs';
 import { parseWorkflow } from '../workflow-scan.mjs';
@@ -88,12 +93,17 @@ after(() => {
   rmSync(TMP, { recursive: true, force: true });
 });
 
-/** A tree with the two sources this reader derives from. */
-function tree(name, { sites = ['nikatru', 'rajasekarselvam', '_shared'], catalogue = [{ slug: 'subscriptiontracker' }] } = {}) {
+/** A tree with the sources this reader derives from. `rollback` is the
+ *  rollback-only register (null writes none). */
+function tree(name, { sites = ['nikatru', 'rajasekarselvam', '_shared'], catalogue = [{ slug: 'subscriptiontracker' }], rollback = { projects: {} } } = {}) {
   const root = join(TMP, name);
   for (const s of sites) mkdirSync(join(root, 'sites', s), { recursive: true });
   mkdirSync(join(root, 'catalog'), { recursive: true });
   if (catalogue !== null) writeFileSync(join(root, 'catalog', 'apps.json'), JSON.stringify(catalogue));
+  if (rollback !== null) {
+    mkdirSync(join(root, ...dirname(ROLLBACK_ONLY_REL).split('/')), { recursive: true });
+    writeFileSync(join(root, ...ROLLBACK_ONLY_REL.split('/')), JSON.stringify(rollback));
+  }
   return root;
 }
 
@@ -1043,5 +1053,192 @@ describe('readDeployments — the transport failing is transient, an ANSWER is f
     assert.ok(e instanceof CouldNotLook);
     assert.equal(isTransientLook(e), false, 'a missing token is not going to appear on the second attempt');
     assert.equal(calls, 0, 'the credential is checked BEFORE the network, so a blank environment costs no request');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-26 [ADR 098] — ops-watch run 36277702128 read `✗ nikatru (git)`: the
+// Git-connected project `nikatru` serves e154dc6, which does not carry cff2c81.
+// Nothing builds that project any more: nikatru.com moved to the Direct Upload
+// project `nikatru-apex` (deploy-web.yml's `site` job) and every deployment of
+// `nikatru` was switched off, kept for rollback. The reader now derives the site's
+// project FROM the job that publishes it, and reads the paused one as DECLARED.
+
+/** A tree whose deploy-web.yml has an app matrix job and a `site` job publishing
+ *  sites/nikatru to `project` under the unit `nikatru-site`. */
+function siteTree(name, { project = 'nikatru-apex', siteJob = null, rollback = { projects: {} } } = {}) {
+  const root = tree(name, { rollback });
+  mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
+  mkdirSync(join(root, ...dirname(UNITS_REL).split('/')), { recursive: true });
+  const site =
+    siteJob ??
+    '  site:\n    timeout-minutes: 20\n    steps:\n      - run: node tooling/ci/plan-deploy.mjs nikatru-site\n' +
+      `      - run: echo stage # --project-name=commented-out\n      - with:\n          command: pages deploy . --project-name=${project} --branch=main\n`;
+  writeFileSync(
+    join(root, ...DEPLOY_WEB_REL.split('/')),
+    'on:\n  workflow_call:\njobs:\n  prepare:\n    timeout-minutes: 5\n    steps:\n      - run: echo apps\n' +
+      '  apps:\n    timeout-minutes: 35\n    needs: prepare\n    steps:\n      - run: node tooling/ci/plan-deploy.mjs ${{ matrix.app }}-web\n' +
+      '      - with:\n          command: pages deploy build/web --project-name=${{ matrix.app }} --branch=main\n' +
+      site,
+  );
+  writeFileSync(
+    join(root, ...UNITS_REL.split('/')),
+    JSON.stringify({ deployUnits: { '<app>-web': ['apps/**'], 'nikatru-site': ['sites/nikatru/**', 'sites/_shared/**', 'tooling/sites/**'] } }),
+  );
+  return root;
+}
+
+const SITE_JOB_NO_NAME = '  site:\n    timeout-minutes: 20\n    steps:\n      - run: node tooling/ci/plan-deploy.mjs nikatru-site\n';
+
+const PAUSED = {
+  name: 'nikatru',
+  subdomain: 'project-nek.pages.dev',
+  domains: ['project-nek.pages.dev'],
+  source: {
+    type: 'github',
+    config: { deployments_enabled: false, production_deployments_enabled: false, preview_deployment_setting: 'none' },
+  },
+};
+const DECLARED = { project: 'nikatru', pausedAt: '2026-09-26T16:31:47Z', servedBy: 'nikatru-apex', decision: 'ADR 098' };
+const DERIVED = [
+  { project: 'nikatru-apex', kind: 'direct', unit: 'nikatru-site', sourceDir: 'the nikatru-site unit' },
+  { project: 'rajasekarselvam', kind: 'git', sourceDir: 'sites/rajasekarselvam' },
+];
+
+describe('a site published by a deploy-web job is that job\'s DIRECT project, not a git one', () => {
+  test('GREEN CONTROL — sites/nikatru derives to the project the site job names, with its unit', () => {
+    const { projects, problems } = derivePagesProjects(siteTree('site-ok'));
+    assert.deepEqual(problems, []);
+    assert.deepEqual(
+      projects.map((p) => `${p.project}:${p.kind}:${p.unit ?? '-'}`),
+      ['nikatru-apex:direct:nikatru-site', 'rajasekarselvam:git:-', 'subscriptiontracker:direct:-'],
+      'the paused git project `nikatru` must not be derived, and the site project must carry its unit',
+    );
+  });
+
+  test('siteLanes — a commented `--project-name` names nothing; the matrix job names no literal project', () => {
+    const { bySite, problems } = siteLanes(siteTree('site-lanes'));
+    assert.deepEqual(problems, []);
+    assert.deepEqual([...bySite.entries()], [['nikatru', { unit: 'nikatru-site', job: 'site', project: 'nikatru-apex' }]]);
+  });
+
+  test('RED CONTROL — a site job naming no project, or two, is a problem, never a guess', () => {
+    const none = siteLanes(siteTree('site-noname', { siteJob: SITE_JOB_NO_NAME }));
+    assert.equal(none.bySite.size, 0);
+    assert.match(none.problems[0], /job `site` plans deployUnits\["nikatru-site"\].*names \[\] as `--project-name`/);
+    const two = siteLanes(
+      siteTree('site-twonames', {
+        siteJob:
+          SITE_JOB_NO_NAME +
+          '      - run: wrangler pages deploy . --project-name=nikatru-apex\n      - run: wrangler pages deploy . --project-name=nikatru\n',
+      }),
+    );
+    assert.match(two.problems[0], /names \["nikatru-apex","nikatru"\] as `--project-name`/);
+    assert.ok(derivePagesProjects(siteTree('site-noname-derive', { siteJob: SITE_JOB_NO_NAME })).problems.length > 0);
+  });
+
+  test('deployLaneInputs({ unit }) — the site\'s own paths, and a ceiling summed from ITS job only', () => {
+    const lane = deployLaneInputs(siteTree('site-lane'), { unit: 'nikatru-site' });
+    assert.deepEqual(lane.problems, []);
+    assert.deepEqual(lane.pathspecs, [':(literal)sites/nikatru', ':(literal)sites/_shared', ':(literal)tooling/sites']);
+    assert.equal(lane.ceilingMs, DEPLOY_LANE_RUNS * 20 * 60 * 1000);
+    const app = deployLaneInputs(siteTree('site-lane-app'));
+    assert.deepEqual(app.pathspecs, [':(literal)apps'], 'the app lane is unchanged by a site unit beside it');
+    assert.equal(app.ceilingMs, DEPLOY_LANE_RUNS * (5 + 35) * 60 * 1000);
+    assert.match(deployLaneInputs(siteTree('site-lane-none'), { unit: 'no-such-unit' }).problems[0], /has no job planning deployUnits\["no-such-unit"\]/);
+  });
+
+  test('🔴 THE REAL TREE — nikatru-apex is derived on the nikatru-site unit; the paused `nikatru` is declared, not derived', () => {
+    const { projects, rollbackOnly, problems } = derivePagesProjects(REPO);
+    assert.deepEqual(problems, []);
+    const apex = projects.find((p) => p.project === 'nikatru-apex');
+    assert.ok(apex, 'the project serving nikatru.com is not in the sweep — the defect of ops-watch run 36277702128');
+    assert.equal(apex.kind, 'direct');
+    assert.equal(apex.unit, 'nikatru-site');
+    assert.equal(projects.find((p) => p.project === 'nikatru'), undefined, 'the paused project is judged for freshness again');
+    assert.deepEqual(rollbackOnly.map((r) => r.project), ['nikatru']);
+    assert.equal(rollbackOnly[0].servedBy, 'nikatru-apex');
+    const lane = deployLaneInputs(REPO, { unit: 'nikatru-site' });
+    assert.deepEqual(lane.problems, []);
+    assert.deepEqual(lane.pathspecs, readUnits(REPO)['nikatru-site'].map(toPathspec));
+    assert.equal(lane.ceilingMs, DEPLOY_LANE_RUNS * jobTimeouts(parseWorkflow(REPO, DEPLOY_WEB_REL)).minutes.site * 60 * 1000);
+  });
+});
+
+describe('readRollbackOnly — the paused state is DECLARED, and a missing declaration is exit 2', () => {
+  test('RED CONTROL — no register is a problem, not "nothing is paused"', () => {
+    const { problems } = derivePagesProjects(tree('rb-missing', { rollback: null }));
+    assert.ok(problems.some((p) => p.includes(`${ROLLBACK_ONLY_REL} does not exist`)));
+  });
+
+  test('RED CONTROL — an entry lacking a field, or with an unparseable pausedAt, is a problem', () => {
+    const lacking = readRollbackOnly(tree('rb-lacking', { rollback: { projects: { nikatru: { pausedAt: '2026-09-26T16:31:47Z', servedBy: 'nikatru-apex' } } } }));
+    assert.deepEqual(lacking.projects, []);
+    assert.match(lacking.problems[0], /entry "nikatru" lacks decision, why/);
+    const bad = readRollbackOnly(tree('rb-baddate', { rollback: { projects: { nikatru: { ...DECLARED, why: 'x', pausedAt: 'yesterday' } } } }));
+    assert.match(bad.problems[0], /pausedAt "yesterday" that does not parse/);
+    assert.match(readRollbackOnly(tree('rb-shape', { rollback: { projects: [] } })).problems[0], /holds no `projects` object/);
+  });
+
+  test('the real register declares `nikatru`, served by nikatru-apex', () => {
+    const { projects, problems } = readRollbackOnly(REPO);
+    assert.deepEqual(problems, []);
+    assert.deepEqual(projects, [DECLARED]);
+  });
+});
+
+describe('judgeRollbackOnly — `rollback-only (paused)` only while the account and the repo both agree', () => {
+  test('GREEN CONTROL — paused, no custom domain, served by a derived project', () => {
+    const r = judgeRollbackOnly({ ...DECLARED, answer: PAUSED, derived: DERIVED });
+    assert.equal(r.code, 0);
+    assert.equal(r.rollbackOnly, true);
+    assert.match(r.line, /^ok {2}nikatru \(git\) — rollback-only \(paused\)/);
+  });
+
+  test('🔴 RED CONTROL — a paused project that regains a custom domain', () => {
+    const r = judgeRollbackOnly({ ...DECLARED, answer: { ...PAUSED, domains: ['project-nek.pages.dev', 'nikatru.com'] }, derived: DERIVED });
+    assert.equal(r.code, 1);
+    assert.match(r.line, /holds custom domain\(s\) nikatru\.com/);
+  });
+
+  test('🔴 RED CONTROL — each deployment switch coming back on, alone', () => {
+    for (const [k, v] of [['deployments_enabled', true], ['production_deployments_enabled', true], ['preview_deployment_setting', 'all']]) {
+      const answer = { ...PAUSED, source: { ...PAUSED.source, config: { ...PAUSED.source.config, [k]: v } } };
+      const r = judgeRollbackOnly({ ...DECLARED, answer, derived: DERIVED });
+      assert.equal(r.code, 1, `${k}=${v} must be red`);
+      assert.match(r.line, new RegExp(`deployments are back ON: ${k}=`));
+    }
+  });
+
+  test('🔴 RED CONTROL — a declared project a site still derives as serving (the old mapping restored)', () => {
+    const r = judgeRollbackOnly({ ...DECLARED, answer: PAUSED, derived: [...DERIVED, { project: 'nikatru', kind: 'git', sourceDir: 'sites/nikatru' }] });
+    assert.equal(r.code, 1);
+    assert.match(r.line, /yet sites\/nikatru still derives it as the git project SERVING it/);
+  });
+
+  test('RED CONTROL — servedBy that nothing derives', () => {
+    const r = judgeRollbackOnly({ ...DECLARED, answer: PAUSED, derived: DERIVED.filter((p) => p.project !== 'nikatru-apex') });
+    assert.equal(r.code, 1);
+    assert.match(r.line, /no site directory or catalogue slug derives `nikatru-apex`/);
+  });
+
+  test('NOT JUDGED — no Git source (a Direct Upload project has no switch), unreadable domains, or another project', () => {
+    assert.equal(judgeRollbackOnly({ ...DECLARED, answer: { ...PAUSED, source: null }, derived: DERIVED }).code, 2);
+    assert.equal(judgeRollbackOnly({ ...DECLARED, answer: { ...PAUSED, source: { type: 'github', config: {} } }, derived: DERIVED }).code, 2);
+    assert.equal(judgeRollbackOnly({ ...DECLARED, answer: { ...PAUSED, domains: null }, derived: DERIVED }).code, 2);
+    assert.equal(judgeRollbackOnly({ ...DECLARED, answer: { ...PAUSED, name: 'other' }, derived: DERIVED }).code, 2);
+  });
+
+  test('readProject asks for the project RECORD, not its deployments', async () => {
+    let url = null;
+    const got = await readProject('nikatru', {
+      env: { CLOUDFLARE_API_TOKEN: 'stub-value-not-a-credential', CLOUDFLARE_ACCOUNT_ID: 'stub-account' },
+      fetchImpl: async (u) => {
+        url = u;
+        return { ok: true, status: 200, text: async () => JSON.stringify({ success: true, result: PAUSED }) };
+      },
+    });
+    assert.equal(got.name, 'nikatru');
+    assert.match(url, /\/accounts\/stub-account\/pages\/projects\/nikatru$/);
   });
 });
