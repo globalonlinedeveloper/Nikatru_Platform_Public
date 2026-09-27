@@ -258,7 +258,7 @@
   "signing-seam.test.mjs": 40,
   "signup-consent-shape.test.mjs": 33,
   "signup-retention.test.mjs": 12,
-  "single-threaded-relaunch.test.mjs": 11,
+  "single-threaded-relaunch.test.mjs": 13,
   "sink-disclosure.test.mjs": 49,
   "site-bindings.test.mjs": 32,
   "site-integrity.test.mjs": 109,

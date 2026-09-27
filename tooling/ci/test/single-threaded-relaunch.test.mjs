@@ -29,7 +29,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -315,6 +315,109 @@ describe('a guards-platform step that spawns git runs single-threaded and bounde
       if (!/(^|\s)--single-threaded(\s|$)/.test(g.flags)) bad.push(`${g.at} runs ${g.script} with V8 background tasks ON (nodejs/node#54918)`);
       if (g.bound === null) bad.push(`${g.at} ${g.script} has no step-level timeout-minutes, so a hang eats the job's ${jobBound}`);
       else if (!/^[0-9]+$/.test(g.bound) || Number(g.bound) < 2 || Number(g.bound) >= jobBound) bad.push(`${g.at} ${g.script} is bounded at ${g.bound}: a step bound is a whole number of minutes, at least 2 and under the job's ${jobBound}`);
+    }
+    assert.deepEqual(bad, [], bad.join('\n'));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-26 · THE HANG CROSSED INTO extensions-ci.yml (O-EXTENSIONS-CATALOGUE-HUNG-PAST-ITS-CAP).
+// extensions/scripts/render-extension-graphics.mjs printed `3 passed` 0.17 s into its
+// first run on main (run 36273003792 attempt 1) and never exited; the catalogue job's
+// 10 minutes cancelled it and the runner killed an orphan `(MainThread)`. It is
+// synchronous, spawns nothing and ends process.exit(r.finish()). Reproduced on Linux
+// (node 22.22.1, 8 cores): under --stress-concurrent-allocation 3 of 24 runs printed
+// the verdict and hung, the live process's every thread in futex_do_wait with no
+// children; with --single-threaded added, 0 of 24. check-store-packages.mjs hung the
+// same way twice on 2026-09-06 and was wrapped in hang-guard.mjs without the flag.
+//
+// The shared trait is a program whose own import graph reaches node:zlib — PNG and
+// zip codecs, the hot loops background compiles exist for. So every extensions-ci.yml
+// step that runs such a program runs it as `node --single-threaded` and carries a
+// step-level timeout-minutes below its job's, and a step wrapped in hang-guard.mjs is
+// bounded ABOVE that wrapper's own worst case, or the runner kills the wrapper before
+// it collects the report it exists for. The set is DERIVED from each step's script
+// and that script's relative imports, never listed.
+//
+// Declared limits, not claims: a program spawned by another (discover.mjs --run-gates,
+// the `node --test` suites) is not a step's own script and is not graded here, and
+// extensions.yml, the release lane, is not read by this block.
+//
+//   E1 the derivation finds the step that hung, and enough others to mean anything
+//   E2 every such step runs --single-threaded and is bounded on its own, under the job
+//
+// Mutations run against extensions-ci.yml (2026-09-26, predictions written first):
+//   · `--single-threaded` dropped from the render step                → E2 RED
+//   · its `timeout-minutes: 2` dropped                                → E2 RED
+//   · its `timeout-minutes` raised to the catalogue job's 10          → E2 RED
+//   · a hang-guard step's bound lowered from 8 to 5                   → E2 RED
+//   · `--single-threaded` dropped from a hang-guard step's inner node → E2 RED
+//   · the render step removed entirely                                → E1 RED
+// ─────────────────────────────────────────────────────────────────────────────
+describe('an extensions-ci step that runs a zlib program runs single-threaded and bounded', () => {
+  const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
+  const WF = '.github/workflows/extensions-ci.yml';
+  const RUN = /\bnode((?:\s+--[\w-]+(?:=\S+)?)*)\s+(?:\.\/)?((?:scripts|tooling)\/[\w/.-]+\.mjs)\b/g;
+  const ZLIB = /^import\b[^\n]*\bfrom\s+['"](?:node:)?zlib['"]/m;
+  const LOCAL_IMPORT = /^import\b[^\n]*?\bfrom\s+['"](\.{1,2}\/[^'"]+)['"]/gm;
+  const HANG_GUARD = /hang-guard\.mjs\b[^\n]*?--seconds\s+(\d+)(?:[^\n]*?--retries\s+(\d+))?/;
+  const STEP_TIMEOUT = /^ {8}timeout-minutes:\s*(\S+)\s*$/;
+  const STEP_WD = /^ {8}working-directory:\s*(\S+)\s*$/;
+  const JOB_TIMEOUT = /^ {4}timeout-minutes:\s*(\d+)\s*$/;
+  const DEFAULT_WD = /^ {4}working-directory:\s*(\S+)\s*$/;
+
+  /** True when `abs` or any file it imports by a relative path imports zlib. */
+  function reachesZlib(abs, seen = new Set()) {
+    if (seen.has(abs) || !existsSync(abs)) return false;
+    seen.add(abs);
+    const src = readFileSync(abs, 'utf8');
+    if (ZLIB.test(src)) return true;
+    for (const m of src.matchAll(LOCAL_IMPORT)) if (reachesZlib(join(dirname(abs), m[1]), seen)) return true;
+    return false;
+  }
+
+  const wf = parseWorkflow(REPO_ROOT, WF);
+  // `defaults.run.working-directory` sits above `jobs:`, which only `wf.lines` holds.
+  const defaultWd = (wf?.lines ?? []).slice(0, (wf?.jobsAt ?? 1) - 1).map((l) => l.text.match(DEFAULT_WD)?.[1]).find(Boolean) ?? '.';
+  const zlibSteps = [];
+  for (const [jobName, job] of wf?.jobs ?? []) {
+    const jobBound = Number(job.lines.map((l) => l.text.match(JOB_TIMEOUT)?.[1]).find(Boolean));
+    for (const s of workflowSteps(job)) {
+      if (!s.run) continue;
+      const range = job.lines.filter((l) => l.n >= s.first && l.n <= s.last);
+      const wd = range.map((l) => l.text.match(STEP_WD)?.[1]).find(Boolean) ?? defaultWd;
+      const bound = range.map((l) => l.text.match(STEP_TIMEOUT)?.[1]).find(Boolean) ?? null;
+      const guard = s.run.text.match(HANG_GUARD);
+      for (const m of s.run.text.matchAll(RUN)) {
+        const script = wd === '.' ? m[2] : `${wd}/${m[2]}`;
+        if (!reachesZlib(join(REPO_ROOT, script))) continue;
+        zlibSteps.push({
+          at: `extensions-ci.yml:${s.first}`, job: jobName, jobBound, script, flags: m[1], bound,
+          // Each hang-guard attempt is its --seconds plus up to ~30 s of report grace and tree kill.
+          guardWorst: guard ? (Number(guard[2] ?? 0) + 1) * (Number(guard[1]) + 30) : 0,
+        });
+      }
+    }
+  }
+
+  test('E1 the derivation finds the step that hung, and enough others to mean anything', () => {
+    assert.ok(wf, `${WF} did not parse, so nothing below is graded`);
+    assert.ok(zlibSteps.some((z) => z.job === 'catalogue' && z.script === 'extensions/scripts/render-extension-graphics.mjs'),
+      `the derivation no longer finds the catalogue job's render step, the step that hung:\n${zlibSteps.map((z) => `${z.at} ${z.script}`).join('\n')}`);
+    assert.ok(zlibSteps.length >= 8, `expected the eight zlib steps of 2026-09-26 (render, listing assets, pack x2, verify-refs x2, store packages x2), found ${zlibSteps.length}:\n${zlibSteps.map((z) => `${z.at} ${z.script}`).join('\n')}`);
+    for (const z of zlibSteps) assert.ok(Number.isInteger(z.jobBound) && z.jobBound > 0, `${z.at}: job ${z.job} declares no job-level timeout-minutes to compare a step bound with`);
+  });
+
+  test('E2 every such step runs --single-threaded and is bounded on its own, under the job', () => {
+    const bad = [];
+    for (const z of zlibSteps) {
+      if (!/(^|\s)--single-threaded(\s|$)/.test(z.flags)) bad.push(`${z.at} runs ${z.script} with V8 background tasks ON (nodejs/node#54918)`);
+      if (z.bound === null) { bad.push(`${z.at} ${z.script} has no step-level timeout-minutes, so a hang eats the ${z.job} job's ${z.jobBound}`); continue; }
+      const minutes = /^[0-9]+$/.test(z.bound) ? Number(z.bound) : NaN;
+      if (!(minutes >= 2 && minutes < z.jobBound)) bad.push(`${z.at} ${z.script} is bounded at ${z.bound}: a step bound is a whole number of minutes, at least 2 and under the ${z.job} job's ${z.jobBound}`);
+      else if (minutes * 60 < z.guardWorst) {
+        bad.push(`${z.at} ${z.script} is bounded at ${minutes} min, under its hang-guard's own worst case of ${z.guardWorst} s: the runner would kill the wrapper before it collects its report`);
+      }
     }
     assert.deepEqual(bad, [], bad.join('\n'));
   });
