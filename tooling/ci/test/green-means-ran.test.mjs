@@ -138,7 +138,7 @@ describe('§A — an aggregating job cannot go green over a lane that did not ru
   // through the job that calls it.
   test('deleting the call job fails A7 — the called-only workflow is then called by no gate constituent', () => {
     const root = mutant([
-      ['ci.yml', /\n {2}extensions:\n {4}name: extensions\n {4}uses: \.\/\.github\/workflows\/extensions-ci\.yml\n {4}permissions:\n {6}contents: read\n {6}actions: read\n/, '\n'],
+      ['ci.yml', /\n {2}extensions:\n {4}name: extensions\n {4}uses: \.\/\.github\/workflows\/extensions-ci\.yml\n(?: {4}#[^\n]*\n)* {4}permissions:\n {6}contents: read\n {6}actions: write\n/, '\n'],
       ['ci.yml', '      - extensions\n    if: always()', '    if: always()'],
       ['ci.yml', '          echo "extensions=${{ needs.extensions.result }}"\n', ''],
     ]);
@@ -270,10 +270,12 @@ describe('§B — a job cannot green-skip its own body when a secret is absent',
     // `mutant` helper correctly refused to pass over an edit that did not apply,
     // so the failure was loud rather than silent; this keeps that property while
     // removing the coupling to the job's exact key list.
+    // ⏱ 2026-09-27 (FF-1) — and through a key's NESTED lines too: `sites` gained a
+    // job-level `permissions:` block, whose six-space children the old `\S` refused.
     const root = mutant([
       [
         'ci.yml',
-        /( {2}sites:\n(?: {4}(?!steps:)\S[^\n]*\n)* {4}steps:\n)/,
+        /( {2}sites:\n(?: {4}(?!steps:)[^\n]*\n)* {4}steps:\n)/,
         '$1      - name: preflight\n        id: sitespre\n        env:\n          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}\n' +
           '        run: |\n          if [ -z "$TOKEN" ]; then\n            echo "run=false" >> "$GITHUB_OUTPUT"\n          fi\n',
       ],
@@ -321,7 +323,7 @@ describe('§B — a job cannot green-skip its own body when a secret is absent',
     // The step bullet anchor is the one §B already uses: the `sites:` job's keys,
     // whatever they are, followed by `steps:`. See the case above for why it is
     // written this way and not as a verbatim block.
-    const SITES_STEPS = /( {2}sites:\n(?: {4}(?!steps:)\S[^\n]*\n)* {4}steps:\n)/;
+    const SITES_STEPS = /( {2}sites:\n(?: {4}(?!steps:)[^\n]*\n)* {4}steps:\n)/;
 
     // MUTATION 1 — reads a secret, tests NOTHING. The detector must not see it.
     const silent = run(

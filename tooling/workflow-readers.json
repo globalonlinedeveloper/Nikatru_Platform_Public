@@ -102,6 +102,10 @@
       "property": "workflow-scan"
     },
     {
+      "path": "tooling/ci/assert-failfast-coverage.mjs",
+      "property": "workflow-scan"
+    },
+    {
       "path": "tooling/ci/assert-glitchtip-project.mjs",
       "property": "refuses-blind",
       "evidence": "found ZERO GlitchTip --project call sites in .github/workflows.",
