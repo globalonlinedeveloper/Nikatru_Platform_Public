@@ -83,6 +83,7 @@ import 'package:subscriptiontracker/state/providers.dart';
 import 'package:subscriptiontracker/state/subscriptions_controller.dart';
 
 import 'consent.dart';
+import 'magic_link_sign_in.dart';
 import 'store_board_census.dart';
 import 'store_capture_guard.dart';
 import 'store_frame_fold.dart';
@@ -421,7 +422,10 @@ void main() {
   }
 
   const String email = String.fromEnvironment('E2E_EMAIL');
-  const String password = String.fromEnvironment('E2E_PASSWORD');
+  // The one-time sign-in token this drive spends: a live build signs in with
+  // it and with nothing else. There is deliberately no E2E_PASSWORD read here —
+  // see "A LIVE BUILD SIGNS IN WITH THE ONE-TIME TOKEN" below.
+  const String tokenHash = String.fromEnvironment('E2E_TOKEN_HASH');
 
   /// The mechanism-proof escape hatch. Absent (the default) a demo build is a
   /// hard failure — which is what stops a demo capture ever becoming a listing
@@ -730,53 +734,79 @@ void main() {
           'is mounted — so the app is somewhere else. On screen: '
           '${onScreen(tester)}',
     );
-    // Hoisted out of the `enterText` call because the capture guard needs the
-    // SAME string: what this suite types is, by definition, the address the
-    // frames below would carry.
+    // The address the capture guard refuses on every frame below: the account
+    // this drive signs in as, or the demo one a `--proof` build types.
     final String signInEmail = email.isEmpty ? 'demo@nikatru.com' : email;
-    await tester.enterText(find.byKey(E2EKeys.loginEmail), signInEmail);
-    await tester.enterText(
-      find.byKey(E2EKeys.loginPassword),
-      password.isEmpty ? 'demo-password' : password,
-    );
-    await pumpFor(tester, const Duration(milliseconds: 500));
 
-    // ── the submit button moves 81px down the moment a site key exists ───────
+    // ── 🔴 A LIVE BUILD SIGNS IN WITH THE ONE-TIME TOKEN, NEVER THE FORM ─────
     //
-    // 🔴 THE TURNSTILE GATE IS INVISIBLE UNTIL IT IS CONFIGURED, and this lane
-    // is the only one small enough to notice. `TurnstileGate` renders
-    // `SizedBox.shrink()` with no `TURNSTILE_SITE_KEY` and a
-    // `CloudflareTurnstile` at `flexible` (height 65) inside
-    // `Padding(bottom: 16)` with one — 81px inserted directly above this
-    // button. At 360x640 that lands `e2e_login_submit` at y 644, four pixels
-    // below the bottom of the viewport:
+    // Since 2026-09-28. The form's password grant is
+    // Turnstile-gated on the production auth box and a headless driver has no
+    // captcha token: the Play capture of run 36315636919 typed the password
+    // here and was refused `captcha_failed`, the refusal the nightly e2e met
+    // until it switched. So a live build spends E2E_TOKEN_HASH through the ONE
+    // helper both suites import, exactly as app_test.dart signs in, and this
+    // file reads no password define at all — a live build has no password to
+    // type. tooling/ci/test/store-screenshots-lane.test.mjs reds the day either
+    // comes back.
     //
-    //     tap() … derived an Offset (Offset(180.0, 644.0)) … outside the
-    //     bounds of the root of the render tree, Size(360.0, 640.0).
-    //
-    // 644 − 81 = 563, which is where it sat on every run before the key was
-    // supplied — so the capture's three CI failures and the two local
-    // rehearsals of 2026-09-20 are the SAME geometry, not a flake. The form is
-    // already inside a `SingleChildScrollView` (login_screen.dart:360, with
-    // the gate at :527 immediately above the button at :532), so
-    // `ensureVisible` is the whole fix; the assertion after it is the guard,
-    // written the way the add-sheet one below is, for the same reason — a
-    // re-layout must red HERE, naming the geometry, not eleven lines later as
-    // "sign-in failed".
-    await tester.ensureVisible(find.byKey(E2EKeys.loginSubmit));
-    await pumpFor(tester, const Duration(milliseconds: 400));
-    expect(
-      find.byKey(E2EKeys.loginSubmit).hitTestable(),
-      findsOneWidget,
-      reason:
-          'The login submit button is in the tree but a finger could not reach '
-          'it, so the capture would stop at the login form and produce no '
-          'frames at all — which is exactly what runs 35488534460 and the two '
-          'local rehearsals did. The Turnstile widget above it is 81px tall '
-          'once TURNSTILE_SITE_KEY is set. On screen: ${onScreen(tester)}',
-    );
-    await tester.tap(find.byKey(E2EKeys.loginSubmit));
-    await pumpFor(tester, const Duration(seconds: 10));
+    // The form is left to a DEMO build (`--proof`), whose in-memory auth
+    // accepts any credentials and whose captcha gate is inert by design.
+    if (AppConfig.isBackendLive) {
+      expect(
+        tokenHash,
+        isNotEmpty,
+        reason:
+            'E2E_TOKEN_HASH is not defined, and a live build signs in with '
+            'nothing else: the login form is captcha-gated on the production '
+            'auth box. The capture runner passes one per drive.',
+      );
+      await signInWithMagicToken(tester, tokenHash, pumpFor: pumpFor);
+    } else {
+      await tester.enterText(find.byKey(E2EKeys.loginEmail), signInEmail);
+      await tester.enterText(
+        find.byKey(E2EKeys.loginPassword),
+        'demo-password',
+      );
+      await pumpFor(tester, const Duration(milliseconds: 500));
+
+      // ── the submit button moves 81px down the moment a site key exists ───────
+      //
+      // 🔴 THE TURNSTILE GATE IS INVISIBLE UNTIL IT IS CONFIGURED, and this lane
+      // is the only one small enough to notice. `TurnstileGate` renders
+      // `SizedBox.shrink()` with no `TURNSTILE_SITE_KEY` and a
+      // `CloudflareTurnstile` at `flexible` (height 65) inside
+      // `Padding(bottom: 16)` with one — 81px inserted directly above this
+      // button. At 360x640 that lands `e2e_login_submit` at y 644, four pixels
+      // below the bottom of the viewport:
+      //
+      //     tap() … derived an Offset (Offset(180.0, 644.0)) … outside the
+      //     bounds of the root of the render tree, Size(360.0, 640.0).
+      //
+      // 644 − 81 = 563, which is where it sat on every run before the key was
+      // supplied — so the capture's three CI failures and the two local
+      // rehearsals of 2026-09-20 are the SAME geometry, not a flake. The form is
+      // already inside a `SingleChildScrollView` (login_screen.dart:360, with
+      // the gate at :527 immediately above the button at :532), so
+      // `ensureVisible` is the whole fix; the assertion after it is the guard,
+      // written the way the add-sheet one below is, for the same reason — a
+      // re-layout must red HERE, naming the geometry, not eleven lines later as
+      // "sign-in failed".
+      await tester.ensureVisible(find.byKey(E2EKeys.loginSubmit));
+      await pumpFor(tester, const Duration(milliseconds: 400));
+      expect(
+        find.byKey(E2EKeys.loginSubmit).hitTestable(),
+        findsOneWidget,
+        reason:
+            'The login submit button is in the tree but a finger could not reach '
+            'it, so the capture would stop at the login form and produce no '
+            'frames at all — which is exactly what runs 35488534460 and the two '
+            'local rehearsals did. The Turnstile widget above it is 81px tall '
+            'once TURNSTILE_SITE_KEY is set. On screen: ${onScreen(tester)}',
+      );
+      await tester.tap(find.byKey(E2EKeys.loginSubmit));
+      await pumpFor(tester, const Duration(seconds: 10));
+    }
 
     // ── the re-acceptance interstitial, walked through, NEVER photographed ───
     //

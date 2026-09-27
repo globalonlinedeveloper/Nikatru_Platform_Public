@@ -567,14 +567,19 @@ try {
       .filter(Boolean)
       .map((m) => [m[1], m[2]]),
   );
-  provisioned = { email: outputs.get('email'), password: outputs.get('password'), userId: outputs.get('user_id') };
+  provisioned = {
+    email: outputs.get('email'),
+    password: outputs.get('password'),
+    userId: outputs.get('user_id'),
+    tokenHash: outputs.get('token_hash'),
+  };
   // 🔴 THROWN, NOT `refuse()`d. `refuse` calls process.exit, and process.exit
   // does not run a `finally` — so exiting here would skip the purge below with
   // a user already created in PRODUCTION Supabase. Anything after the account
   // exists has to leave by the path that cleans up.
-  if (!provisioned.email || !provisioned.password || !provisioned.userId) {
+  if (!provisioned.email || !provisioned.password || !provisioned.userId || !provisioned.tokenHash) {
     throw new Error(
-      'the provisioner exited 0 but did not write email, password and user_id. ' +
+      'the provisioner exited 0 but did not write email, password, user_id and token_hash. ' +
         `keys written: ${[...outputs.keys()].join(', ') || '(none)'}`,
     );
   }
@@ -592,6 +597,9 @@ try {
       ...baseEnv,
       E2E_EMAIL: provisioned.email,
       E2E_PASSWORD: provisioned.password,
+      // The first drive's sign-in token; the runner mints each later drive's with
+      // baseEnv's SUPABASE_SERVICE_ROLE_KEY (docs/ci/store-screenshots.md, 2026-09-28).
+      E2E_TOKEN_HASH: provisioned.tokenHash,
       STORE_CAPTURE_APP_VERSION: rehearsalStamp,
       E2E_CONSENT_LEDGER: consentLedger,
     },

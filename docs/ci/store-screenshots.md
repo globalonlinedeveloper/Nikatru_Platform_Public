@@ -332,6 +332,31 @@ retry/backoff and the `qs` DoS fix.
 The same throwaway, pre-confirmed user the nightly e2e provisions, and
 purged again below whatever happens. Prod is left as it was found.
 
+### before step **Capture the set** — how a drive signs in (2026-09-28)
+
+**With the one-time magic-link token, never the login form.** The form's password grant is
+Turnstile-gated on the production auth box, and a headless driver has no captcha
+token: the Play capture of run `36315636919` typed the password and was refused
+`captcha_failed`, as the nightly e2e had been until it switched to the token. The
+provision step already minted that token (`token_hash`); the capture never spent it.
+
+- A live build signs in through `integration_test/magic_link_sign_in.dart`, the ONE
+  helper `app_test.dart` also imports. `store_screenshots_test.dart` reads no
+  `E2E_PASSWORD`, and the login form is reachable only in the `--proof` demo branch.
+- The token is **single use** and the runner drives once per viewport (Play: phone
+  and tablet; iOS: iPhone and iPad). Drive 1 spends the provision step's token; the
+  runner mints each later drive's through `tooling/e2e/magic_link.mjs`, the same
+  request `provision_user.mjs` makes. GoTrue keeps one live token per user, so they
+  cannot be minted up front.
+- That mint needs `SUPABASE_SERVICE_ROLE_KEY` in the capture step. The runner reads
+  it once and deletes it from its env before chromedriver or `flutter` starts, and a
+  live multi-viewport run without it is refused before anything is touched.
+- `tooling/ci/test/store-screenshots-lane.test.mjs` reds if the capture goes back to
+  the form, reads the password, forks the helper, or a job stops passing the token.
+- NOT covered: the brick's stamped suites (`tooling/bricks/app/__brick__/…/
+  integration_test/`) still sign in through the form. No stamped app is in the
+  workspace yet, and that suite has never been driven.
+
 ## 🔴 THE CAPTURED APP WAS TELLING USERS IT WAS OFFLINE — found 2026-09-20
 
 Every frame this lane had produced up to 2026-09-20 carries a full-width

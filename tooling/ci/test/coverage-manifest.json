@@ -296,7 +296,7 @@
   "store-key-secret.test.mjs": 8,
   "store-metadata.test.mjs": 162,
   "store-record.test.mjs": 19,
-  "store-screenshots-lane.test.mjs": 66,
+  "store-screenshots-lane.test.mjs": 85,
   "store-vocabulary.test.mjs": 28,
   "submission-safety.test.mjs": 22,
   "submit-common.test.mjs": 21,
