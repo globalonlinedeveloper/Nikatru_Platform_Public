@@ -280,9 +280,9 @@ jobs:
       - name: Every pinned input is reached by a live update manager
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-update-coverage.mjs
-      - name: Every store the portfolio holds has a declared retention rule
+      - name: Every store the portfolio holds has a declared retention rule, and every owned D1 is backed up, fanned out to and bound
         if: ${{ !cancelled() }}
-        run: node tooling/ci/assert-retention-coverage.mjs
+        run: rc=0; node tooling/ci/assert-retention-coverage.mjs || rc=1; node tooling/ci/assert-d1-fanout.mjs || rc=1; node tooling/scripts/render-platform-app-block.mjs --check || rc=1; exit $rc
       - name: The events rollup stays lossless and the sweep stays fail-closed
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-rollup-lossless.mjs

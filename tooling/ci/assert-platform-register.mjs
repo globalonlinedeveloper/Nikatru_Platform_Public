@@ -792,7 +792,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
         continue;
       }
       const code = stripComments(readFileSync(join(ROOT, r), 'utf8'), { alsoStrings: true });
-      if (!new RegExp(`\\benv\\s*\\.\\s*${name}\\b`).test(code)) {
+      if (!new RegExp(`\\benv\\s*\\.\\s*${name}\\b`).test(code) && !readsGeneratedBinding(code, name)) {
         problems.push(
           `${name} — claimed reader \`${r}\` contains no \`env.${name}\` once comments and string literals ` +
             'are stripped. The register is describing a use that no longer exists.',
@@ -1024,4 +1024,18 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
 function coverageLost(lines) {
   for (const l of lines) console.error(l);
   process.exit(2);
+}
+
+/** ⏱ 2026-09-26 (O-BACKUP-AND-FANOUT-SETS-HAND-LISTED, service kit E-c) — THE READER LIMB, THROUGH THE
+ *  GENERATED PER-APP BLOCK. The platform Worker reads each app database by the binding name
+ *  services/platform/src/generated/app-targets.ts carries (`dbBinding`), rendered from the register by
+ *  tooling/scripts/render-platform-app-block.mjs: `bound[t.dbBinding]` over `APP_TARGETS`, never
+ *  `env.<APP>_DB`. So a claimed reader that reads `APP_TARGETS` (in code, comments and strings stripped)
+ *  reads every binding that module names. The module is read raw: the names ARE its string literals. A
+ *  missing module answers no. Declared here, after every limb, so no citation above moved. */
+function readsGeneratedBinding(code, name) {
+  if (!/\bAPP_TARGETS\b/.test(code)) return false;
+  const moduleAbs = join(ROOT, 'services', 'platform', 'src', 'generated', 'app-targets.ts');
+  if (!existsSync(moduleAbs)) return false;
+  return new RegExp(`dbBinding:\\s*'${name}'`).test(readFileSync(moduleAbs, 'utf8'));
 }
