@@ -43,6 +43,22 @@
     "state": "WIRED"
   },
   {
+    "claims": [
+      "ADR 044",
+      "ADR 093",
+      "ADR 094",
+      "B-2",
+      "M-11"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-legal"
+    ],
+    "kind": "script",
+    "ref": "tooling/catalog/render-rail-prices.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [],
     "invokedBy": [],
     "kind": "guard",
