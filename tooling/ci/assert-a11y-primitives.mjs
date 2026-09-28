@@ -163,13 +163,6 @@ const BASELINE = [
     owner: 'B23 — ST-T3b (ST-E2) converts it',
   },
   {
-    limb: 'ST-Y2',
-    file: 'apps/subscriptiontracker/lib/features/notifications/notifications_screen.dart',
-    anchor: 'onTap: () => _close(context)',
-    what: 'the Close button',
-    owner: 'C17 — ST-T4b (ST-R6) converts it',
-  },
-  {
     limb: 'ST-Y3',
     file: 'apps/subscriptiontracker/lib/features/settings/settings_screen.dart',
     anchor: 'key: E2EKeys.deleteAccountPassword',

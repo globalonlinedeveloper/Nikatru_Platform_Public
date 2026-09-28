@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -8,8 +9,8 @@ import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
-import '../../state/providers.dart'
-    show subscriptiontrackerNotificationServiceProvider;
+import '../../state/providers.dart' show renewalRemindersProvider;
+import '../../state/subscriptions_controller.dart' show monthDayFormat;
 import '../shared/async_gate.dart';
 
 class NotificationsScreen extends ConsumerWidget {
@@ -80,7 +81,11 @@ class NotificationsScreen extends ConsumerWidget {
     // data itself is loaded by `GlobalMaterialLocalizations`, which is in
     // `AppLocalizations.localizationsDelegates` — so any host that can build
     // this screen at all has already initialised the formatter's data.
-    final DateFormat renewalDate = DateFormat.yMd(
+    //
+    // ⏱ ST-R6 (audit C18): and not `yMd` either — "9/29/2026" reads two ways
+    // between US and Indian readers. It is the OS reminder's own month-day
+    // formatter now, so the two surfaces say the same date the same way.
+    final DateFormat renewalDate = monthDayFormat(
       Localizations.localeOf(context).toString(),
     );
 
@@ -90,253 +95,291 @@ class NotificationsScreen extends ConsumerWidget {
       // `scaffoldBackgroundColor` — so this screen stops being a pale sheet in
       // front of a dark app.
       backgroundColor: isLight ? AppColors.bg : scheme.surface,
-      body: SafeArea(
-        // ── THE CONTENT PANE ──────────────────────────────────────────────────
-        // Same defect and same fix as home and PR #210's three screens: this is
-        // a pushed full-screen route, so NOTHING capped it. On a 1920px desktop
-        // the header put the title at one edge and the close button at the
-        // other, ~1850px apart, and every notification card became a 1900px
-        // band with a 40px glyph at the left and two lines of text beside it.
-        //
-        // 🔴 CORRECTED 2026-08-21 — THE CAP CHOSEN HERE NEVER BOUND. This read
-        // "the DEFAULT cap (`AppBreakpoints.kMaxBodyWidth`) rather than
-        // `.reading`: these are cards in a list, the same shape home caps, not
-        // continuous prose." Two things were wrong with it. First, 1280 is not
-        // reachable on the desktops people actually use: `AppScaffold` hands the
-        // body `min(W - 361, 1280)` — a 360 px drawer plus a 1 px divider —
-        // so a 1440 px window offers 1079 and the cap is a no-op everywhere
-        // between 839 and 1280. (This screen is pushed OVER the shell on its own
-        // `Scaffold`, so it does see the raw window; the point is that the
-        // number was picked to match a sibling cap that itself does not bind.)
-        // Second, the card CONTENT is prose: `notifRenewsInDays` and
-        // `notifCancellingSaves` are whole sentences, and the Tamil arms are
-        // longer than the English. A 1280 px band puts a 40 px glyph at one edge
-        // and a sentence that stops a third of the way across.
-        //
-        // ⏱ 2026-09-16 · [ADR 083]: the 361 px above was the 360 px drawer and
-        // its divider, and no window class uses the drawer now. From 1200 px up
-        // the body is `min(W - R - 1, 1280)`, where R is the slim rail's
-        // rendered width (116 px for a "Settings" label on Flutter 3.47.2). So
-        // a 1440 px window gives 1439 - R (1323 px for a 116 px rail), not
-        // 1079. The 720 cap chosen here still binds there.
-        //
-        // `.reading` (720) is the design system's own number for exactly that —
-        // 45–75 characters before the eye loses the line return — and it is the
-        // narrower of the two candidates the audit offered (840–960 suits a
-        // DENSE row list; this is a two-line card stack with one glyph, so it
-        // reaches its natural width sooner). At 720 a card is 720 less two 18 px
-        // gutters = 684, of which the glyph and its gap take 52, leaving 632 for
-        // the sentence — about 70 characters at 13–14 pt, which is the top of
-        // that range rather than past it.
-        //
-        // The pane still wraps the WHOLE column — header, rule and list together
-        // — because capping only the list would leave the title and the close
-        // button hanging off the edges of a centred list, which is worse than
-        // not capping at all. `test/width_notifications_test.dart` pins both
-        // halves.
-        child: ContentPane.reading(
-          child: Column(
-            children: <Widget>[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.gutterCompact,
-                  8,
-                  AppSpacing.gutterCompact,
-                  14,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: <Widget>[
-                    Text(
-                      l10n.notifications,
-                      style: text.title.copyWith(fontSize: 22),
+      // ST-R6 (audit C17): Esc closes, as the Close button does. Autofocused
+      // so the key reaches it without a first click on web and desktop.
+      body: CallbackShortcuts(
+        bindings: <ShortcutActivator, VoidCallback>{
+          const SingleActivator(LogicalKeyboardKey.escape): () =>
+              _close(context),
+        },
+        child: Focus(
+          autofocus: true,
+          // Holds focus for the shortcut without being a Tab stop itself.
+          skipTraversal: true,
+          child: SafeArea(
+            // ── THE CONTENT PANE ──────────────────────────────────────────────────
+            // Same defect and same fix as home and PR #210's three screens: this is
+            // a pushed full-screen route, so NOTHING capped it. On a 1920px desktop
+            // the header put the title at one edge and the close button at the
+            // other, ~1850px apart, and every notification card became a 1900px
+            // band with a 40px glyph at the left and two lines of text beside it.
+            //
+            // 🔴 CORRECTED 2026-08-21 — THE CAP CHOSEN HERE NEVER BOUND. This read
+            // "the DEFAULT cap (`AppBreakpoints.kMaxBodyWidth`) rather than
+            // `.reading`: these are cards in a list, the same shape home caps, not
+            // continuous prose." Two things were wrong with it. First, 1280 is not
+            // reachable on the desktops people actually use: `AppScaffold` hands the
+            // body `min(W - 361, 1280)` — a 360 px drawer plus a 1 px divider —
+            // so a 1440 px window offers 1079 and the cap is a no-op everywhere
+            // between 839 and 1280. (This screen is pushed OVER the shell on its own
+            // `Scaffold`, so it does see the raw window; the point is that the
+            // number was picked to match a sibling cap that itself does not bind.)
+            // Second, the card CONTENT is prose: `notifRenewsInDays` and
+            // `notifCancellingSaves` are whole sentences, and the Tamil arms are
+            // longer than the English. A 1280 px band puts a 40 px glyph at one edge
+            // and a sentence that stops a third of the way across.
+            //
+            // ⏱ 2026-09-16 · [ADR 083]: the 361 px above was the 360 px drawer and
+            // its divider, and no window class uses the drawer now. From 1200 px up
+            // the body is `min(W - R - 1, 1280)`, where R is the slim rail's
+            // rendered width (116 px for a "Settings" label on Flutter 3.47.2). So
+            // a 1440 px window gives 1439 - R (1323 px for a 116 px rail), not
+            // 1079. The 720 cap chosen here still binds there.
+            //
+            // `.reading` (720) is the design system's own number for exactly that —
+            // 45–75 characters before the eye loses the line return — and it is the
+            // narrower of the two candidates the audit offered (840–960 suits a
+            // DENSE row list; this is a two-line card stack with one glyph, so it
+            // reaches its natural width sooner). At 720 a card is 720 less two 18 px
+            // gutters = 684, of which the glyph and its gap take 52, leaving 632 for
+            // the sentence — about 70 characters at 13–14 pt, which is the top of
+            // that range rather than past it.
+            //
+            // The pane still wraps the WHOLE column — header, rule and list together
+            // — because capping only the list would leave the title and the close
+            // button hanging off the edges of a centred list, which is worse than
+            // not capping at all. `test/width_notifications_test.dart` pins both
+            // halves.
+            child: ContentPane.reading(
+              child: Column(
+                children: <Widget>[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.gutterCompact,
+                      8,
+                      AppSpacing.gutterCompact,
+                      14,
                     ),
-                    Semantics(
-                      button: true,
-                      label: l10n.close,
-                      child: GestureDetector(
-                        onTap: () => _close(context),
-                        child: Container(
-                          width: 48,
-                          height: 48,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: isLight
-                                ? AppColors.surface
-                                : scheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: <Widget>[
+                        Text(
+                          l10n.notifications,
+                          style: text.title.copyWith(fontSize: 22),
+                        ),
+                        // ST-R6 (audit C17): a FocusableTap, so Tab reaches it and
+                        // Enter/Space press it (it was a GestureDetector).
+                        FocusableTap(
+                          label: l10n.close,
+                          onTap: () => _close(context),
+                          borderRadius: BorderRadius.circular(14),
+                          child: Container(
+                            width: 48,
+                            height: 48,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
                               color: isLight
-                                  ? AppColors.line
-                                  : scheme.outlineVariant,
-                            ),
-                          ),
-                          child: Icon(
-                            Icons.close,
-                            size: 18,
-                            color: isLight ? AppColors.ink : scheme.onSurface,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // ST-U1 (audit C20): this list is DERIVED, not an inbox, and on a
-              // target that cannot schedule (web — the live one — Windows and
-              // Linux) it is the only reminder there is. Said once, here.
-              if (!ref
-                  .watch(subscriptiontrackerNotificationServiceProvider)
-                  .capabilities
-                  .canSchedule)
-                Padding(
-                  key: const Key('notificationsNoRemindersHere'),
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.gutterCompact,
-                    0,
-                    AppSpacing.gutterCompact,
-                    12,
-                  ),
-                  child: Text(
-                    l10n.notificationsNoRemindersHere,
-                    style: text.muted,
-                  ),
-                ),
-              Divider(
-                height: 1,
-                color: isLight ? AppColors.line : scheme.outlineVariant,
-              ),
-              Expanded(
-                // 🔴 THE GATE IS INSIDE THE CHROME, NOT AROUND IT, AND THAT
-                // PLACEMENT IS THE WHOLE POINT ON THIS SCREEN. The title row
-                // above carries the ONLY close control, and `_close` is the only
-                // way back to /home from a URL a user can reload directly (see
-                // its own note on GoError). Wrapping the `Scaffold` instead would
-                // take that control away for the entire duration of a failed
-                // fetch — a dead end reached precisely when the user most needs
-                // out. Header, rule and close button therefore survive all three
-                // states; only the list region below changes.
-                child: subscriptionsGate(
-                  ref,
-                  l10n: l10n,
-                  emptyTitle: l10n.dataEmptyTitle,
-                  emptyBody: l10n.dataEmptyBody,
-                  builder: (List<Subscription> subs) {
-                    final MoneyBag savings = SubMath.savings(subs);
-                    // 2026-07-27 - this list was FIVE HARDCODED entries naming real brands and
-                    // inventing facts about the user's own accounts: "Adobe CC and Disney+
-                    // haven't been opened in weeks", "Netflix price increased from 13.99 to
-                    // 15.49", renewals for plans the user may not even track. It rendered
-                    // identically for everyone, because none of it came from their data.
-                    //
-                    // The app has no usage tracking and no price history, so neither claim could
-                    // ever have been derived. Every row below is now computed from the
-                    // subscriptions actually held, and anything that cannot be computed is not
-                    // shown at all.
-                    final DateTime now = DateTime.now();
-
-                    final List<Subscription> dueSoon =
-                        subs.where((Subscription x) {
-                          final int d = x.daysUntil(now);
-                          return d >= 0 && d <= 7;
-                        }).toList()..sort(
-                          (Subscription a, Subscription b) =>
-                              a.daysUntil(now).compareTo(b.daysUntil(now)),
-                        );
-
-                    final List<Subscription> flaggedUnused = subs
-                        .where((Subscription x) => x.unused)
-                        .toList();
-
-                    // 🔴 THE PLURAL ARMS CARRY WHOLE CLAUSES, NOT A NOUN.
-                    //
-                    // What was here glued fragments together with inline ternaries:
-                    //   '${n} ${n == 1 ? "plan is" : "plans are"} marked unused'
-                    //   'Cancelling ${n == 1 ? "it" : "them"} would save …'
-                    // Both are English grammar written as Dart. The first agrees a VERB with a
-                    // count, the second swaps a PRONOUN — and neither agreement is a property of
-                    // the number, it is a property of the language. Tamil inflects the noun in a
-                    // different position and does not have the pronoun split at all, so a
-                    // translator handed the fragments "plan is" / "plans are" has been handed a
-                    // puzzle rather than a sentence.
-                    //
-                    // So each arm of `notifUnusedCount` and `notifCancellingSaves` is a complete
-                    // clause. The count still selects the arm; the arm is what a translator
-                    // rewrites freely.
-                    final List<_Notif> items = <_Notif>[
-                      for (final Subscription x in dueSoon)
-                        _Notif(
-                          Icons.notifications_none,
-                          AppColors.accent,
-                          const Color.fromRGBO(100, 89, 245, 0.12),
-                          subId: x.id,
-                          x.daysUntil(now) == 0
-                              ? l10n.notifRenewsToday(x.name)
-                              // (name, count) — gen-l10n orders the parameters by the arb's
-                              // placeholder map, and the plural SELECTOR is the second one here.
-                              : l10n.notifRenewsInDays(
-                                  x.name,
-                                  x.daysUntil(now),
-                                ),
-                          l10n.notifChargeOn(
-                            money.format(x.price),
-                            renewalDate.format(x.nextRenewal),
-                          ),
-                        ),
-                      if (flaggedUnused.isNotEmpty)
-                        _Notif(
-                          Icons.priority_high,
-                          AppColors.warn,
-                          const Color.fromRGBO(245, 158, 11, 0.13),
-                          l10n.notifUnusedCount(flaggedUnused.length),
-                          l10n.notifCancellingSaves(
-                            flaggedUnused.length,
-                            money.formatBag(savings),
-                          ),
-                        ),
-                    ];
-                    return items.isEmpty
-                        ? Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(32),
-                              child: Text(
-                                l10n.notifNothingDue,
-                                textAlign: TextAlign.center,
-                                // ⚠️ THIS ONE CARRIED A `color:` AND WAS STILL THE
-                                // SAME BUG. `AppColors.muted` is a light-mode
-                                // literal, so the empty state was mid-grey on a dark
-                                // sheet whichever way the theme went. `body` +
-                                // `AppColors.muted` and `muted` are the SAME
-                                // TextStyle by value — Manrope, w500, muted — so
-                                // naming the muted style instead of re-colouring the
-                                // body one changes no pixel in light and picks up
-                                // `scheme.onSurfaceVariant` in dark.
-                                style: text.muted,
+                                  ? AppColors.surface
+                                  : scheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: isLight
+                                    ? AppColors.line
+                                    : scheme.outlineVariant,
                               ),
                             ),
-                          )
-                        : ListView.separated(
-                            // Rebased onto the chassis gutter, matching home: the
-                            // horizontal 18 was already `AppSpacing.gutterCompact`
-                            // by value and is now so by name, and the bottom grows
-                            // to `AppSpacing.xl` so the last card is not flush
-                            // against the safe-area edge.
-                            padding: const EdgeInsets.fromLTRB(
-                              AppSpacing.gutterCompact,
-                              AppSpacing.gutterCompact,
-                              AppSpacing.gutterCompact,
-                              AppSpacing.xl,
+                            child: Icon(
+                              Icons.close,
+                              size: 18,
+                              color: isLight ? AppColors.ink : scheme.onSurface,
                             ),
-                            itemCount: items.length,
-                            separatorBuilder: (_, _) =>
-                                const SizedBox(height: 10),
-                            itemBuilder: (BuildContext context, int i) =>
-                                _card(context, items[i]),
-                          );
-                  },
-                ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // ST-U1 (audit C20): this list is DERIVED, not an inbox, and on a
+                  // target that cannot schedule (web — the live one — Windows and
+                  // Linux) it is the only reminder there is. Said once, here.
+                  if (!ref
+                      .watch(renewalRemindersProvider)
+                      .capabilities
+                      .canSchedule)
+                    Padding(
+                      key: const Key('notificationsNoRemindersHere'),
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.gutterCompact,
+                        0,
+                        AppSpacing.gutterCompact,
+                        12,
+                      ),
+                      child: Text(
+                        l10n.notificationsNoRemindersHere,
+                        style: text.muted,
+                      ),
+                    ),
+                  Divider(
+                    height: 1,
+                    color: isLight ? AppColors.line : scheme.outlineVariant,
+                  ),
+                  Expanded(
+                    // 🔴 THE GATE IS INSIDE THE CHROME, NOT AROUND IT, AND THAT
+                    // PLACEMENT IS THE WHOLE POINT ON THIS SCREEN. The title row
+                    // above carries the ONLY close control, and `_close` is the only
+                    // way back to /home from a URL a user can reload directly (see
+                    // its own note on GoError). Wrapping the `Scaffold` instead would
+                    // take that control away for the entire duration of a failed
+                    // fetch — a dead end reached precisely when the user most needs
+                    // out. Header, rule and close button therefore survive all three
+                    // states; only the list region below changes.
+                    child: subscriptionsGate(
+                      ref,
+                      l10n: l10n,
+                      emptyTitle: l10n.dataEmptyTitle,
+                      emptyBody: l10n.dataEmptyBody,
+                      builder: (List<Subscription> subs) {
+                        final MoneyBag savings = SubMath.savings(subs);
+                        // 2026-07-27 - this list was FIVE HARDCODED entries naming real brands and
+                        // inventing facts about the user's own accounts: "Adobe CC and Disney+
+                        // haven't been opened in weeks", "Netflix price increased from 13.99 to
+                        // 15.49", renewals for plans the user may not even track. It rendered
+                        // identically for everyone, because none of it came from their data.
+                        //
+                        // The app has no usage tracking and no price history, so neither claim could
+                        // ever have been derived. Every row below is now computed from the
+                        // subscriptions actually held, and anything that cannot be computed is not
+                        // shown at all.
+                        final DateTime now = DateTime.now();
+
+                        final List<Subscription> dueSoon =
+                            subs.where((Subscription x) {
+                              final int d = x.daysUntil(now);
+                              return d >= 0 && d <= 7;
+                            }).toList()..sort(
+                              (Subscription a, Subscription b) =>
+                                  a.daysUntil(now).compareTo(b.daysUntil(now)),
+                            );
+
+                        // ST-R6 (audit C19): a renewal whose date has PASSED and
+                        // the server has not rolled forward yet was silently
+                        // omitted. It is shown, and it asks the question — for
+                        // the week the list covers, mirroring the 7 days ahead;
+                        // older than that is a stale row, not a recent charge.
+                        final List<Subscription> renewed =
+                            subs.where((Subscription x) {
+                              final int d = x.daysUntil(now);
+                              return d < 0 && d >= -7;
+                            }).toList()..sort(
+                              (Subscription a, Subscription b) =>
+                                  a.nextRenewal.compareTo(b.nextRenewal),
+                            );
+
+                        final List<Subscription> flaggedUnused = subs
+                            .where((Subscription x) => x.unused)
+                            .toList();
+
+                        // 🔴 THE PLURAL ARMS CARRY WHOLE CLAUSES, NOT A NOUN.
+                        //
+                        // What was here glued fragments together with inline ternaries:
+                        //   '${n} ${n == 1 ? "plan is" : "plans are"} marked unused'
+                        //   'Cancelling ${n == 1 ? "it" : "them"} would save …'
+                        // Both are English grammar written as Dart. The first agrees a VERB with a
+                        // count, the second swaps a PRONOUN — and neither agreement is a property of
+                        // the number, it is a property of the language. Tamil inflects the noun in a
+                        // different position and does not have the pronoun split at all, so a
+                        // translator handed the fragments "plan is" / "plans are" has been handed a
+                        // puzzle rather than a sentence.
+                        //
+                        // So each arm of `notifUnusedCount` and `notifCancellingSaves` is a complete
+                        // clause. The count still selects the arm; the arm is what a translator
+                        // rewrites freely.
+                        final List<_Notif> items = <_Notif>[
+                          for (final Subscription x in dueSoon)
+                            _Notif(
+                              Icons.notifications_none,
+                              AppColors.accent,
+                              const Color.fromRGBO(100, 89, 245, 0.12),
+                              subId: x.id,
+                              x.daysUntil(now) == 0
+                                  ? l10n.notifRenewsToday(x.name)
+                                  // (name, count) — gen-l10n orders the parameters by the arb's
+                                  // placeholder map, and the plural SELECTOR is the second one here.
+                                  : l10n.notifRenewsInDays(
+                                      x.name,
+                                      x.daysUntil(now),
+                                    ),
+                              l10n.notifChargeOn(
+                                money.format(x.price),
+                                renewalDate.format(x.nextRenewal),
+                              ),
+                            ),
+                          for (final Subscription x in renewed)
+                            _Notif(
+                              Icons.history,
+                              AppColors.accent,
+                              const Color.fromRGBO(100, 89, 245, 0.12),
+                              subId: x.id,
+                              x.name,
+                              l10n.notificationsRenewedOn(
+                                renewalDate.format(x.nextRenewal),
+                              ),
+                            ),
+                          if (flaggedUnused.isNotEmpty)
+                            _Notif(
+                              Icons.priority_high,
+                              AppColors.warn,
+                              const Color.fromRGBO(245, 158, 11, 0.13),
+                              l10n.notifUnusedCount(flaggedUnused.length),
+                              l10n.notifCancellingSaves(
+                                flaggedUnused.length,
+                                money.formatBag(savings),
+                              ),
+                            ),
+                        ];
+                        return items.isEmpty
+                            ? Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(32),
+                                  child: Text(
+                                    l10n.notifNothingDue,
+                                    textAlign: TextAlign.center,
+                                    // ⚠️ THIS ONE CARRIED A `color:` AND WAS STILL THE
+                                    // SAME BUG. `AppColors.muted` is a light-mode
+                                    // literal, so the empty state was mid-grey on a dark
+                                    // sheet whichever way the theme went. `body` +
+                                    // `AppColors.muted` and `muted` are the SAME
+                                    // TextStyle by value — Manrope, w500, muted — so
+                                    // naming the muted style instead of re-colouring the
+                                    // body one changes no pixel in light and picks up
+                                    // `scheme.onSurfaceVariant` in dark.
+                                    style: text.muted,
+                                  ),
+                                ),
+                              )
+                            : ListView.separated(
+                                // Rebased onto the chassis gutter, matching home: the
+                                // horizontal 18 was already `AppSpacing.gutterCompact`
+                                // by value and is now so by name, and the bottom grows
+                                // to `AppSpacing.xl` so the last card is not flush
+                                // against the safe-area edge.
+                                padding: const EdgeInsets.fromLTRB(
+                                  AppSpacing.gutterCompact,
+                                  AppSpacing.gutterCompact,
+                                  AppSpacing.gutterCompact,
+                                  AppSpacing.xl,
+                                ),
+                                itemCount: items.length,
+                                separatorBuilder: (_, _) =>
+                                    const SizedBox(height: 10),
+                                itemBuilder: (BuildContext context, int i) =>
+                                    _card(context, items[i]),
+                              );
+                      },
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
