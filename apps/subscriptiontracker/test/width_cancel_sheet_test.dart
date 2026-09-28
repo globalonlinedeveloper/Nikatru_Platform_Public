@@ -135,7 +135,7 @@ Finder _sheetSurface() {
       .first;
 }
 
-/// The step-0 button row ('Keep it' · 'Confirm cancel').
+/// The step-0 button row ('Keep it' · 'Yes, remove').
 ///
 /// Anchored on [SoftButton] rather than on `find.byType(Row)`, which matches
 /// the rows the buttons build INSIDE themselves. There is exactly one `Row`
@@ -172,7 +172,7 @@ void main() {
     // the one width at which they do.
     expect(tester.getSize(_modalLayer()).width, 375);
     expect(tester.getSize(_sheetSurface()).width, 375);
-    expect(find.text('Confirm cancel'), findsOneWidget);
+    expect(find.text('Yes, remove'), findsOneWidget);
     // The wrap risk: `'You’ll save $X/mo · $Y/yr. Access continues until
     // September 12.'` is the longest line in the app that has to survive the
     // narrowest surface. An overflow here is a thrown exception, not a red
@@ -180,10 +180,10 @@ void main() {
     expect(tester.takeException(), isNull);
 
     // Step 1 — reached by confirming against the resolving seed chain.
-    await tester.tap(find.text('Confirm cancel'));
+    await tester.tap(find.text('Yes, remove'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Cancelled'), findsOneWidget);
+    expect(find.text('Removed from your tracker'), findsOneWidget);
     expect(tester.getSize(_sheetSurface()).width, 375);
     expect(tester.takeException(), isNull);
   });
@@ -262,9 +262,9 @@ void main() {
     await setSurface(tester, kPhone);
     await _open(tester, _nestedNavHost(nestedNavKey));
 
-    await tester.tap(find.text('Confirm cancel'));
+    await tester.tap(find.text('Yes, remove'));
     await tester.pumpAndSettle();
-    expect(find.text('Cancelled'), findsOneWidget);
+    expect(find.text('Removed from your tracker'), findsOneWidget);
 
     // Step 1's pop is a SECOND exit path on the same route, and it is the one
     // that runs after the destructive call has already happened — a sheet that

@@ -1311,27 +1311,27 @@ void main() {
     // ── 13 Cancel/delete A (exercises DELETE /v1/subscriptions/:id) ───────────
     await scrollUntilFound(
       tester,
-      target: find.text('Cancel plan'),
+      target: find.text('Remove'),
       scrollable: find.byType(Scrollable),
-      what: 'the "Cancel plan" button on the subscription detail sheet',
+      what: 'the "Remove" button on the subscription detail sheet',
       maxScrolls: 20,
       delta: 200,
     );
-    await tester.tap(find.text('Cancel plan'));
+    await tester.tap(find.text('Remove'));
     await pumpFor(tester, const Duration(seconds: 2));
-    expect(find.text('Confirm cancel'), findsOneWidget);
-    await tester.tap(find.text('Confirm cancel'));
+    expect(find.text('Yes, remove'), findsOneWidget);
+    await tester.tap(find.text('Yes, remove'));
     await pumpFor(tester, const Duration(seconds: 8)); // DELETE round-trip
     expect(
-      find.text('Cancelled'),
+      find.text('Removed from your tracker'),
       findsWidgets,
       // Says what was LOOKED FOR and what was THERE INSTEAD, and asserts nothing
       // about DELETE: a missing widget cannot tell a failed round-trip from a
       // renamed string, a slow rebuild or a screen that never opened, and naming
       // the wrong cause sends the next reader to the wrong system.
       reason:
-          'expected a "Cancelled" text widget after confirming the cancel; '
-          'find.text("Cancelled") matched nothing 8s after tapping "Confirm cancel"',
+          'expected a "Removed from your tracker" text widget after confirming the '
+          'removal; it matched nothing 8s after tapping "Yes, remove"',
     );
     await tester.tap(find.text('Done'));
     await pumpFor(

@@ -41,12 +41,10 @@ import '../shared/widgets.dart';
 /// that ships — kept verbatim because the honesty argument is the durable part
 /// and a dated record that gets renumbered stops being evidence.
 ///
-/// ⬜ ONE CLAIM SURVIVES AND IT IS NOT IN THIS FILE'S GIFT: the busy CTA reads
-/// `scanningEllipsis` = "Scanning…" (`app_en.arb:911`), which is the last
-/// string on the surface that asserts a scan. Fixing it is an arb edit plus
-/// `test/dark_group_detail_test.dart:620`, which asserts that exact key renders
-/// in the busy phase — neither file is owned here, so it is reported rather
-/// than half-done.
+/// ✅ ST-U3 (B44 copy): the busy CTA `scanningEllipsis` now reads "Loading…"
+/// and the ring's label `a11yScanRing` "Setting up, {percent}." — the last two
+/// strings on this surface that asserted a scan. The key names stay; their
+/// values no longer claim one.
 ///
 /// 🔴 THE BRIGHTNESS RULE FOR THIS FILE is the one stated in full on
 /// [SubscriptionDetailScreen]: LIGHT keeps the literal token, byte-identical to
@@ -336,7 +334,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
             height: 158,
             // 🔴 A `CustomPaint` AGAIN, AND THIS ONE GATES THE APP. First run
             // parks the user on this screen for the length of the scan with the
-            // CTA disabled ("Scanning…", `onPressed: null`), so the ring is the
+            // CTA disabled ("Loading…", `onPressed: null`), so the ring is the
             // only thing on the page that changes and the only evidence that
             // anything is happening. Its arc says nothing to a screen reader,
             // and the bare "45%" in the middle says a number with no noun.

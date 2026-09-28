@@ -522,11 +522,9 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                               ),
                             ),
                             // `cancelPlanButton`, NOT the chassis `cancelPlan`
-                            // ("Cancel subscription") — work order §8 decision
-                            // 1. Its VALUE is byte-identical to the literal it
-                            // replaces, which is what keeps
-                            // `integration_test/app_test.dart:476/:481`
-                            // (`find.text('Cancel plan')`) green with no edit.
+                            // ("Cancel subscription"). ST-U3 (B32): its value is
+                            // "Remove" — the sheet it opens deletes the row from
+                            // this tracker and cancels nothing at the provider.
                             child: Text(
                               l10n.cancelPlanButton,
                               style: const TextStyle(

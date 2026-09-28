@@ -750,13 +750,13 @@
   "@addingEllipsis": {
     "description": "Consumed by add_subscription_sheet.dart:251. The submit button while the add is in flight. Horizontal ellipsis U+2026, not three dots. Pinned by test/sheet_failure_surface_test.dart:18 — the value must not change without moving those."
   },
-  "cancelSubscriptionFailed": "Could not cancel just now — check your connection and try again.",
+  "cancelSubscriptionFailed": "Could not remove it just now — check your connection and try again.",
   "@cancelSubscriptionFailed": {
-    "description": "Consumed by cancel_sheet.dart:89. Must never advance the sheet: step 1 congratulates the user on savings from a cancellation that did not happen."
+    "description": "Consumed by cancel_sheet.dart. The remove sheet's failure snackbar. Must never advance the sheet: step 1 says the entry is gone."
   },
-  "cancelSubscriptionTitle": "Cancel {name}?",
+  "cancelSubscriptionTitle": "Remove {name} from your tracker?",
   "@cancelSubscriptionTitle": {
-    "description": "Consumed by cancel_sheet.dart:128.",
+    "description": "Consumed by cancel_sheet.dart. ST-U3 (B32): the sheet's only effect is deleting the row from THIS app's list, so it says remove, never cancel — a user who reads 'Cancel Netflix?' can believe the provider stopped charging them.",
     "placeholders": {
       "name": {
         "type": "String",
@@ -764,49 +764,29 @@
       }
     }
   },
-  "cancelledHeading": "Cancelled",
+  "cancelledHeading": "Removed from your tracker",
   "@cancelledHeading": {
-    "description": "Consumed by cancel_sheet.dart:206. The step-2 heading in Subly's own cancel sheet. Deliberately NOT the chassis `cancelExecuted` (\"Your subscription has been cancelled.\"), which is the money rail's merchant-confirmed sentence and says something this screen has no evidence for. Pinned by test/sheet_failure_surface_test.dart:168, test/width_cancel_sheet_test.dart:186, integration_test/app_test.dart:487 — the value must not change without moving those."
+    "description": "Consumed by cancel_sheet.dart. The step-2 heading of the remove sheet. States what happened here and nothing about the provider. Pinned by test/sheet_failure_surface_test.dart, test/width_cancel_sheet_test.dart, integration_test/app_test.dart — the value must not change without moving those."
   },
   "done": "Done",
   "@done": {
     "description": "Consumed by cancel_sheet.dart:229. Pinned by test/width_cancel_sheet_test.dart:258, integration_test/app_test.dart:491 — the value must not change without moving those."
   },
-  "cancelStep1Body": "You’ll save {monthly}/mo · {yearly}/yr. Access continues until {date}.",
-  "@cancelStep1Body": {
-    "description": "Consumed by cancel_sheet.dart:137-147. ONE key, not the three TextSpans the live sheet concatenates: Tamil puts the date clause in a different position, and a sentence assembled from fragments cannot be reordered by a translator. {date} is formatted by DateFormat.MMMMd, never typed.",
-    "placeholders": {
-      "monthly": {
-        "type": "String",
-        "example": "₹499"
-      },
-      "yearly": {
-        "type": "String",
-        "example": "₹5,988"
-      },
-      "date": {
-        "type": "String",
-        "example": "12 August"
-      }
-    }
+  "removeStep1Body": "This removes it from your list in this app only. It does not cancel your plan with the provider — to stop the charges, cancel with them directly.",
+  "@removeStep1Body": {
+    "description": "Consumed by cancel_sheet.dart, step 0. ST-U3 (B32 interim): no savings figure and no 'access continues until' — the app deletes a row, it does not know the provider's terms. Replaces cancelStep1Body."
   },
-  "cancelStep2Body": "You’re now saving {monthly}/mo. Nicely done.",
-  "@cancelStep2Body": {
-    "description": "Consumed by cancel_sheet.dart:212-220. See cancelStep1Body on why this is one key.",
-    "placeholders": {
-      "monthly": {
-        "type": "String",
-        "example": "₹499"
-      }
-    }
+  "removeStep2Body": "If you still pay for it, remember to cancel it with the provider too.",
+  "@removeStep2Body": {
+    "description": "Consumed by cancel_sheet.dart, step 1. Replaces cancelStep2Body ('You're now saving …'), which congratulated a user on savings from a row deletion."
   },
-  "cancellingEllipsis": "Cancelling…",
+  "cancellingEllipsis": "Removing…",
   "@cancellingEllipsis": {
-    "description": "Consumed by cancel_sheet.dart:175. Pinned by test/sheet_failure_surface_test.dart:18 — the value must not change without moving those."
+    "description": "Consumed by cancel_sheet.dart. The remove button while the delete is in flight. Pinned by test/sheet_failure_surface_test.dart — the value must not change without moving those."
   },
-  "confirmCancel": "Confirm cancel",
+  "confirmCancel": "Yes, remove",
   "@confirmCancel": {
-    "description": "Consumed by cancel_sheet.dart:175. Pinned by test/sheet_failure_surface_test.dart:160, test/width_cancel_sheet_test.dart:138, integration_test/app_test.dart:483 — the value must not change without moving those."
+    "description": "Consumed by cancel_sheet.dart. The remove sheet's confirm button. Short because the button is half the sheet wide; the title carries 'from your tracker'. Deliberately NOT the detail screen's 'Remove' (cancelPlanButton): the sheet opens over that screen, and two identical labels make every finder — and a screen reader's list of buttons — ambiguous. Pinned by test/sheet_failure_surface_test.dart, test/width_cancel_sheet_test.dart, integration_test/app_test.dart — the value must not change without moving those."
   },
   "budgetTitle": "Budget & goals",
   "@budgetTitle": {
@@ -894,9 +874,9 @@
   "@paymentHistory": {
     "description": "Consumed by subscription_detail_screen.dart:237."
   },
-  "cancelPlanButton": "Cancel plan",
+  "cancelPlanButton": "Remove",
   "@cancelPlanButton": {
-    "description": "Consumed by subscription_detail_screen.dart:272. MINTED rather than reusing the chassis `cancelPlan` (\"Cancel subscription\"), which is the money rail's label: reusing it would change shipped copy on this screen. De-duplicating the two is Phase-5 polish, recorded in the P4 work order §8 decision 1. Pinned by integration_test/app_test.dart:476 — the value must not change without moving those."
+    "description": "Consumed by subscription_detail_screen.dart. Opens the remove sheet. ST-U3 (B32): it was 'Cancel plan', but nothing here cancels anything at the provider. Pinned by integration_test/app_test.dart — the value must not change without moving those."
   },
   "noPaymentsYet": "No payments yet.",
   "@noPaymentsYet": {
@@ -1031,9 +1011,9 @@
   "@goToDashboard": {
     "description": "Consumed by scan_screen.dart:139. Pinned by integration_test/app_test.dart:370, integration_test/store_screenshots_test.dart:206 — the value must not change without moving those."
   },
-  "scanningEllipsis": "Scanning…",
+  "scanningEllipsis": "Loading…",
   "@scanningEllipsis": {
-    "description": "Consumed by scan_screen.dart:139."
+    "description": "Consumed by scan_screen.dart. The busy CTA while the first list loads. ST-U3 (B44): it read 'Scanning…', and nothing is scanned."
   },
   "demoDataBanner": "Demo data - sample subscriptions, not your account",
   "@demoDataBanner": {
@@ -1353,13 +1333,17 @@
   "@subscriptiontrackerOnboarding2Body": {
     "description": "Consumed by onboarding/onboarding_screen.dart:29. See subscriptiontrackerOnboarding1Title."
   },
+  "subscriptiontrackerOnboarding2BodyNoReminders": "Every due date sits on one calendar, so you can see each renewal coming.",
+  "@subscriptiontrackerOnboarding2BodyNoReminders": {
+    "description": "Consumed by onboarding/onboarding_screen.dart. ST-U3 (C30): slide 2 on a platform that cannot schedule a reminder (NotificationCapabilities.canSchedule false — web, Windows, Linux). It promises only the calendar, which every platform has."
+  },
   "subscriptiontrackerOnboarding3Title": "Cut what you don’t use",
   "@subscriptiontrackerOnboarding3Title": {
     "description": "Consumed by onboarding/onboarding_screen.dart:32. See subscriptiontrackerOnboarding1Title. Typographic apostrophe (U+2019), matching the live literal."
   },
-  "subscriptiontrackerOnboarding3Body": "Mark a plan unused and Subscriptions totals up what cancelling would save.",
+  "subscriptiontrackerOnboarding3Body": "See what each plan costs a month and a year, and decide what is worth keeping.",
   "@subscriptiontrackerOnboarding3Body": {
-    "description": "Consumed by onboarding/onboarding_screen.dart:33. See subscriptiontrackerOnboarding1Title."
+    "description": "Consumed by onboarding/onboarding_screen.dart. See subscriptiontrackerOnboarding1Title. ST-U3 (C30): it promised 'Mark a plan unused and Subscriptions totals up what cancelling would save', and no control anywhere marks a plan unused."
   },
   "renewalChannelName": "Renewal reminders",
   "@renewalChannelName": {
@@ -1469,9 +1453,9 @@
       }
     }
   },
-  "a11yScanRing": "Scan progress {percent}.",
+  "a11yScanRing": "Setting up, {percent}.",
   "@a11yScanRing": {
-    "description": "Consumed by scan_screen.dart. The Semantics label of the scan progress ring (a CustomPaint). The visible centre figure is an interpolated '45%' — pixels either way — so this is the only thing a screen reader can hear while the scan runs.",
+    "description": "Consumed by scan_screen.dart. The Semantics label of the setup ring (a CustomPaint). ST-U3 (B44): it read 'Scan progress', and nothing is scanned.",
     "placeholders": {
       "percent": {
         "type": "String",

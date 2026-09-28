@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
-import '../../core/format/monthly_share.dart';
-import '../../core/format/money_format.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/subscription.dart';
@@ -11,55 +8,16 @@ import '../../l10n/app_localizations.dart';
 import '../../state/subscriptions_controller.dart';
 import '../shared/widgets.dart';
 
-/// U+FFFC OBJECT REPLACEMENT CHARACTER — Unicode's own "an object goes here".
-///
-/// 🔴 THIS IS WHAT LETS ONE SENTENCE BE ONE KEY AND STILL CARRY EMPHASIS. The
-/// two bodies on this sheet are single arb messages (`cancelStep1Body`,
-/// `cancelStep2Body`), never fragments — Tamil moves the verb to the END of the
-/// sentence and the date clause to the FRONT, an order no concatenation of
-/// styled pieces can produce in any language. But the saved amount is bold and
-/// green in the design, and gen-l10n hands back a finished `String` with no
-/// seam in it.
-///
-/// So the message is asked for ONCE with this character standing in for the
-/// amount, and the finished sentence is split at the character. The split point
-/// is wherever the TRANSLATOR put the placeholder, and it is exact regardless of
-/// what the amount is made of — searching the sentence for the formatted amount
-/// itself would be a substring hunt that a currency like `₹1` inside `₹12`
-/// could get wrong.
-///
-/// Written as an escape rather than as the character itself: it is invisible in
-/// an editor, and a control character no reviewer can see is not a thing to
-/// paste around.
-const String _amountSlot = '\u{FFFC}';
-
-/// [sentence] — already localized, with [_amountSlot] marking where the money
-/// goes — rendered as spans with [amount] emphasised.
-///
-/// The concatenation happens to the OUTPUT of one translated message, not to the
-/// input of several. `sentence.substring(0, at) + amount + sentence.substring(…)`
-/// is byte-identical to calling the same message with [amount] directly, which
-/// is exactly what `dark_group_sheets_test.dart` asserts: the finished Text.rich
-/// reports one plain-text sentence equal to `l10n.cancelStep1Body(monthly, …)`.
-///
-/// If a translation drops the placeholder the sentence still renders WHOLE and
-/// only the emphasis is lost — the copy degrades last, never first.
-List<InlineSpan> _emphasiseAmount(String sentence, String amount) {
-  final int at = sentence.indexOf(_amountSlot);
-  if (at < 0) return <InlineSpan>[TextSpan(text: sentence)];
-  return <InlineSpan>[
-    TextSpan(text: sentence.substring(0, at)),
-    TextSpan(
-      text: amount,
-      style: const TextStyle(
-        fontWeight: FontWeight.w800,
-        color: AppColors.positive,
-      ),
-    ),
-    TextSpan(text: sentence.substring(at + _amountSlot.length)),
-  ];
-}
-
+/// ST-U3 (B32 interim) — THIS SHEET REMOVES A ROW FROM THE TRACKER, AND SAYS
+/// ONLY THAT. It used to read "Cancel {name}?", "You'll save {monthly}/mo ·
+/// {yearly}/yr. Access continues until {date}." and "You're now saving … Nicely
+/// done." — while its only effect was deleting the row from this app's list. A
+/// user could believe the provider had stopped charging them; the savings were
+/// invented; "access continues until" is a provider policy this app cannot
+/// know. It was also the ONLY delete path, so removing a mistyped entry
+/// congratulated the user on savings. Until ST-E3 splits "Mark as cancelled"
+/// from "Delete", the copy names the one thing that happens and points at the
+/// provider for the thing that does not. No money figure appears on this sheet.
 /// The cancel sheet's palette. The sibling of `add_subscription_sheet.dart`'s
 /// `_SheetPalette` — read that one's doc comment for the slot choices and for
 /// why the ink moves with the fill rather than after it. This sheet needs three
@@ -172,12 +130,6 @@ class _CancelSheetState extends ConsumerState<_CancelSheet> {
   int _step = 0;
   bool _busy = false;
 
-  // The English month table that used to live here is gone. `DateFormat.MMMMd`
-  // reads the same names out of the intl locale data the l10n delegates already
-  // load — so the date follows the language instead of pinning the sheet to
-  // twelve English words, and it follows the ORDER too: 'September 12' in en,
-  // and whatever the locale's own MMMMd pattern says elsewhere.
-
   Future<void> _confirm() async {
     setState(() => _busy = true);
     // Resolved BEFORE the await — see the note in add_subscription_sheet.dart.
@@ -197,8 +149,7 @@ class _CancelSheetState extends ConsumerState<_CancelSheet> {
       // in the add sheet: the awaited call reaches the network, so offline it
       // threw out of an unawaited future and the button stayed disabled on
       // 'Cancelling…' forever. Advancing to step 1 regardless would have been
-      // worse still — that screen congratulates the user on savings from a
-      // cancellation that never happened.
+      // worse still — that screen says the entry is gone when it is not.
       if (!mounted) return;
       setState(() => _busy = false);
       messenger.showSnackBar(
@@ -211,20 +162,7 @@ class _CancelSheetState extends ConsumerState<_CancelSheet> {
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final _SheetPalette p = _SheetPalette.of(context);
-    final MoneyFormatter money = MoneyFormatter(l10n.localeName);
     final Subscription s = widget.sub;
-    // `monthly` is the share, printed bare ONLY because both sentences it
-    // enters ("{monthly}/mo") carry the unit. `yearly` is the plan's own
-    // yearly charge, never twelve rounded twelfths of it.
-    final String monthly = money.formatShareFigure(s.monthlyShare);
-    final String yearly = money.formatRounded(s.yearlyCharge);
-    // `l10n.localeName` rather than the ambient default: `DateFormat` with no
-    // locale uses whatever `Intl.defaultLocale` happens to be, which is a
-    // process-wide global nothing on this screen sets. Passing the locale the
-    // sentence around the date was translated in is the only way the two agree.
-    final String until = DateFormat.MMMMd(
-      l10n.localeName,
-    ).format(s.nextRenewal);
 
     return Container(
       decoration: BoxDecoration(
@@ -283,24 +221,12 @@ class _CancelSheetState extends ConsumerState<_CancelSheet> {
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 8),
-                        Text.rich(
-                          TextSpan(
-                            style: AppText.muted.copyWith(
-                              fontSize: 14,
-                              height: 1.55,
-                              color: p.muted,
-                            ),
-                            // ONE message, three placeholders — not the three fragments
-                            // this used to concatenate. The Tamil value reads
-                            // "நீங்கள் மாதம் {monthly} · ஆண்டுக்கு {yearly}
-                            // சேமிப்பீர்கள். {date} வரை அணுகல் தொடரும்.": the verb
-                            // lands at the END of the first clause and the "/mo" the
-                            // English glues to the amount is a WORD BEFORE it. Neither
-                            // is reachable by translating a fragment.
-                            children: _emphasiseAmount(
-                              l10n.cancelStep1Body(_amountSlot, yearly, until),
-                              monthly,
-                            ),
+                        Text(
+                          l10n.removeStep1Body,
+                          style: AppText.muted.copyWith(
+                            fontSize: 14,
+                            height: 1.55,
+                            color: p.muted,
                           ),
                           textAlign: TextAlign.center,
                         ),
@@ -387,19 +313,15 @@ class _CancelSheetState extends ConsumerState<_CancelSheet> {
                             fontSize: 23,
                             color: p.ink,
                           ),
+                          textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 8),
-                        Text.rich(
-                          TextSpan(
-                            style: AppText.muted.copyWith(
-                              fontSize: 14,
-                              height: 1.55,
-                              color: p.muted,
-                            ),
-                            children: _emphasiseAmount(
-                              l10n.cancelStep2Body(_amountSlot),
-                              monthly,
-                            ),
+                        Text(
+                          l10n.removeStep2Body,
+                          style: AppText.muted.copyWith(
+                            fontSize: 14,
+                            height: 1.55,
+                            color: p.muted,
                           ),
                           textAlign: TextAlign.center,
                         ),
