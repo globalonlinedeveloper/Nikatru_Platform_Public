@@ -36,7 +36,7 @@ import { allRows, firstRow } from './d1';
 import { readAccount } from './platform-erasure';
 import { sendResendMail } from './report-notify';
 import { sha256Hex } from '../middleware/ext-device-auth';
-import catalogueJson from '../../../../catalog/apps.json';
+import { catalogueApp } from './catalog';
 
 /**
  * [ADR 029] §2 — everything a machine sends leaves Resend from mail.nikatru.com,
@@ -143,21 +143,14 @@ export const MAX_PRUNE_PER_RUN = 1000;
 export const USER_CHUNK = 50;
 
 // ── the app's name and page, from the catalogue the Worker already bundles ────
-interface CatalogueApp {
-  slug: string;
-  name?: string;
-  url?: string;
-}
-const CATALOGUE = ((catalogueJson as { apps?: CatalogueApp[] }).apps ?? []) as CatalogueApp[];
-
 /** The app's public name ("Nikatru Subscription Tracker"), or its id. */
 export function appName(appId: string): string {
-  return CATALOGUE.find((a) => a.slug === appId)?.name ?? appId;
+  return catalogueApp(appId)?.name ?? appId;
 }
 
 /** The app's public page, where the reminder settings live. */
 export function appUrl(appId: string): string {
-  return CATALOGUE.find((a) => a.slug === appId)?.url ?? 'https://nikatru.com';
+  return catalogueApp(appId)?.url ?? 'https://nikatru.com';
 }
 
 // ── dates ───────────────────────────────────────────────────────────────────

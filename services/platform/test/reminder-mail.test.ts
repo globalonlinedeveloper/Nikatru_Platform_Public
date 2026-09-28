@@ -22,6 +22,8 @@ import {
   REMINDER_FROM,
   REMINDER_SENT_RETENTION_DAYS,
   addDays,
+  appName,
+  appUrl,
   runReminderMail,
   ymdOf,
 } from '../src/lib/reminders';
@@ -102,6 +104,18 @@ function envOf(platform: RealDb, app: RealDb | undefined, over: Partial<Record<s
 }
 
 const target = (db: RealDb | undefined) => [{ appId: APP, db: db as unknown as D1Database }];
+
+describe('R1 — the mail names the app from the catalogue', () => {
+  // 🔴 The app catalogue is a top-level ARRAY. A reader that looked for an
+  // `apps` key found nothing, and every digest fell back to the bare id and
+  // the portfolio home page.
+  it('reads the app its name and page from the catalogue, through lib/catalog.ts', () => {
+    expect(appName('subscriptiontracker')).toBe('Nikatru Subscription Tracker');
+    expect(appUrl('subscriptiontracker')).toBe('https://nikatru.com/subscriptiontracker');
+    expect(appName('no-such-app')).toBe('no-such-app');
+    expect(appUrl('no-such-app')).toBe('https://nikatru.com');
+  });
+});
 
 describe('R1 — who gets a digest', () => {
   it('🔴 an opted-in person with a CONFIRMED address and a renewal inside the lead days gets EXACTLY ONE mail; the opted-out, the unconfirmed and the already-sent get none', async () => {
