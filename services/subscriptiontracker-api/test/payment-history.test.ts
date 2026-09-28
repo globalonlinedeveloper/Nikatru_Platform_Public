@@ -112,10 +112,13 @@ describe('GET /v1/subscriptions/:id serves a DECLARED payment row', () => {
     for (const row of body.payment_history) {
       // The SELECT names its columns, so this key set is a decision made in
       // routes/subscriptions.ts rather than whatever the migrations left behind.
+      // `currency` and `source` are 0003's, named in that SELECT on purpose.
       expect(Object.keys(row).sort()).toEqual([
         'amount',
+        'currency',
         'id',
         'paid_at',
+        'source',
         'subscription_id',
         'updated_at',
         'user_id',
