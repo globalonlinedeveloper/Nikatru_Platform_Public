@@ -96,7 +96,7 @@
   "e2e-auth-target.test.mjs": 48,
   "e2e-backend.test.mjs": 26,
   "e2e-delete-headless.test.mjs": 27,
-  "e2e-legs.test.mjs": 31,
+  "e2e-legs.test.mjs": 34,
   "e2e-proof-fresh.test.mjs": 61,
   "e2e-run-resolver.test.mjs": 17,
   "e2e-verify-target.test.mjs": 48,
