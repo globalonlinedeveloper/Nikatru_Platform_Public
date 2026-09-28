@@ -1,0 +1,19 @@
+{
+  "_readme": [
+    "[pipeline 7]P-5's gate artifact for the service catalogue, bound to ONE pack by content_hash. The pack",
+    "consumes one family, hand-authored-content, which tooling/legal/content-licence-register.json clears as",
+    "first-party work. Rendered by make-recipe.mjs, so a rebuilt pack cannot leave this naming a stale hash."
+  ],
+  "content_hash": "74068490eca5bd8fddc8d47d0a4c50a24426f7d2e37c44bdb0486a03a0ceb478",
+  "pack_id": "subscriptiontracker",
+  "version": "1.0.0",
+  "families": [
+    {
+      "family": "hand-authored-content",
+      "cleared": true,
+      "cleared_by": "in-tree, first-party — no third-party term to interpret",
+      "cleared_on": "2026-09-28"
+    }
+  ],
+  "checkedOn": "2026-09-28"
+}

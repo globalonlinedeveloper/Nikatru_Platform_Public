@@ -28,6 +28,7 @@ export 'src/content/content_pack_loader.dart';
 export 'src/content/content_pack_source.dart';
 export 'src/content/ed25519_pack_verifier.dart';
 export 'src/content/pack_verifier.dart';
+export 'src/content/service_catalogue.dart';
 export 'src/cancellation_transport.dart';
 export 'src/content_report_transport.dart';
 export 'src/entitlement_cache.dart';

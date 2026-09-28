@@ -242,6 +242,16 @@ const ALLOWLIST = [
       'drive them in BOTH lanes without annotation.',
   },
   {
+    file: 'packages/core/test/service_catalogue_test.dart',
+    rule: '@TestOn(',
+    date: '2026-09-28',
+    reason:
+      'ST-X5 — the same shape as content_pack_fixture_test.dart above, and it REMOVES NO COVERAGE: the VM ' +
+      'lane runs every case. It loads the PRODUCED pack (apps/subscriptiontracker/assets/content_pack/) off ' +
+      'disk with `dart:io` so the real loader reads the real bytes, which is a COMPILE FAILURE under ' +
+      '`dart test -p chrome`.',
+  },
+  {
     file: 'packages/core/test/privacy_signal_browser_test.dart',
     rule: '@TestOn(',
     date: '2026-09-05',

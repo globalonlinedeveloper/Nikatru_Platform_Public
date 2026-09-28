@@ -1,0 +1,14 @@
+{
+  "pack_id": "subscriptiontracker",
+  "version": "1.0.0",
+  "key_id": "test-k1",
+  "content_hash": "74068490eca5bd8fddc8d47d0a4c50a24426f7d2e37c44bdb0486a03a0ceb478",
+  "assets": [],
+  "generators": [
+    "none/hand-authored"
+  ],
+  "locales": [
+    "en",
+    "ta"
+  ]
+}

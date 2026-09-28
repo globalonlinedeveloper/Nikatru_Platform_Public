@@ -1800,6 +1800,9 @@ const COVERED_BY = {
   // .date` is the half that is a FIELD rather than a sentence — re-readable
   // even though no guard fails on it — so it is the half named.
   packVerifierProvider: 'content-pack-consumed',
+  // ⏱ 2026-09-28 · ST-X5: DRIVEN — the property overrides it with an in-memory
+  // pack and asserts a NULL pointer still serves it, and refuses another app's.
+  bundledContentPackSourceProvider: 'content-pack-consumed',
   remindersEnabledProvider: 'reminder-intent-persisted',
   notificationServiceProvider: 'reminder-intent-persisted',
   // Driven, not constructed: the property taps the banner's dismiss action and
