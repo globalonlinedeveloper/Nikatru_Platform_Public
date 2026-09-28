@@ -6654,8 +6654,9 @@ describe('post-gate call jobs of the gate workflow — read, graded, admitted (A
     assert.equal(out.stats.unread, 1);
     assert.equal(out.stats.green, 0);
     assert.ok(out.prints.some((p) => p.includes('1 in which NO run read reached a verdict on the unit (UNREAD, COVERAGE LOST)')), out.prints.join('\n'));
-    const empty = decideUnitRedSince(q(['deploy-web']), [], false);
-    assert.equal(classifyRedSince(r, empty).verdict, 'unread', 'an empty window is not a green one either');
+    // An EMPTY history is the bootstrap state, graded by the sibling [14]O-3 limb, and is unchanged here.
+    const empty = classifyRedSince(r, decideUnitRedSince(q(['deploy-web']), [], false));
+    assert.deepEqual([empty.verdict, /no FAILED run in its history at all.$/.test(empty.line)], ['green', true], empty.line);
   });
 
   test('collectRunJobs walks every page to total_count, and a list that does not add up THROWS', async () => {

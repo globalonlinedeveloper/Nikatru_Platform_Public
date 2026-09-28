@@ -3158,16 +3158,18 @@ export function decideUnitRedSince(q, entries, pageFull) {
     if (e.c?.verdict === 'failure' && !failure) failure = { id: e.run.id, at: e.run.updated_at, detail: e.c.detail };
   }
   const oldest = entries?.length ? entries[entries.length - 1].run : null;
-  // ⏱ 2026-09-28 · OPS-WATCH 36445522260 (INV6). No run read concluded the unit
-  // at all — every one neutral (superseded, skipped, absent) — so "no FAILED run"
-  // would be a pass read off silence. UNREAD, exit 2 wherever the row blocks.
-  if (!failure) {
+  // ⏱ 2026-09-28 · OPS-WATCH 36445522260 (INV6). Runs WERE read and not one
+  // concluded the unit — every one neutral (superseded, skipped, absent) — so
+  // "no FAILED run" would be a pass read off silence. UNREAD, exit 2 wherever the
+  // row blocks. An EMPTY history is not this case: it is the bootstrap state the
+  // sibling [14]O-3 limb grades (see evaluateRedSince), and stays as it was.
+  if (!failure && entries?.length) {
     return {
       unread: {
         why:
-          `NO run read reached a verdict on ${describeUnit(q)}: all ${entries?.length ?? 0} completed run(s)` +
-          `${oldest ? ` back to run ${oldest.id} at ${oldest.updated_at}` : ''} were neutral` +
-          `${entries?.length ? ` (newest: ${entries[0].c?.detail ?? entries[0].run?.id})` : ''}.`,
+          `NO run read reached a verdict on ${describeUnit(q)}: all ${entries.length} completed run(s)` +
+          `${oldest ? ` back to run ${oldest.id} at ${oldest.updated_at}` : ''} were neutral ` +
+          `(newest: ${entries[0].c?.detail ?? entries[0].run?.id}).`,
       },
     };
   }
