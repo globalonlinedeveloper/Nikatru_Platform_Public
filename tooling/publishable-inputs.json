@@ -106,6 +106,10 @@
     "E2E_DELETE_TOKEN_HASH": {
       "reason": "The same, for the second throwaway user the delete-account leg drives. Separate define because the token is single use: one exchange per user, and the two legs sign in independently.",
       "residual": "Identical to E2E_TOKEN_HASH's. Recorded separately rather than cross-referenced because a shared note is a note that gets edited for one entry and read for two."
+    },
+    "E2E_APP_ID": {
+      "reason": "The id of the app the e2e leg drives — `matrix.app`, a directory name that is public in this repository. It reaches only `e2e.yml`'s `flutter drive` build, a DEBUG web build served to a headless Chrome on the runner and destroyed with it; a stamped suite asserts it names its own binary (LEAD RULING 34).",
+      "residual": "None beyond the id itself, which every build of the app already carries as AppConfig.appId."
     }
   }
 }

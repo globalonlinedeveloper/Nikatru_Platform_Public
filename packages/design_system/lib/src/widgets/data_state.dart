@@ -82,6 +82,15 @@ enum _DataState { loading, empty, failed }
 /// exception into, so a caller migrating to this widget cannot carry the leak
 /// across. [body] is a SENTENCE, not a stack-adjacent string, and the call
 /// sites pass a localised one.
+///
+/// ── ✅ EMPTY MAY OFFER A WAY FORWARD — AND IT IS NOT A RETRY ───────────────
+/// ST-U6 (the Subscription Tracker audit's B3/B42/C3, and its §8 finding that
+/// no stamped app could offer "Add your first X"): an empty screen with nothing
+/// to tap is a dead end on a first run. [DataStateView.empty] therefore takes
+/// an optional [actionLabel] + [onAction] — both or neither — drawn as a
+/// FILLED button under its own [emptyActionKey]. It is the opposite of a retry:
+/// it says "this is the start, here is the first step", never "this failed".
+/// [failed] cannot carry it, and [empty] still cannot carry a retry.
 class DataStateView extends StatelessWidget {
   /// A fetch is in flight and there is nothing truthful to draw yet.
   ///
@@ -95,19 +104,32 @@ class DataStateView extends StatelessWidget {
       body = null,
       icon = null,
       retryLabel = null,
-      onRetry = null;
+      onRetry = null,
+      actionLabel = null,
+      onAction = null;
 
   /// The fetch SUCCEEDED and the answer is genuinely nothing.
   ///
   /// 🔴 THERE IS NO `onRetry` PARAMETER AND THERE MUST NEVER BE ONE. Offering
   /// a retry here tells the user their empty account is a malfunction, and it
   /// is the single edit that would make this state look like [failed].
+  ///
+  /// [actionLabel] and [onAction] are the FIRST STEP out of an empty state
+  /// ("Add subscription"), both or neither — a label with nowhere to go is the
+  /// dead control this parameter exists to remove, and a callback with no
+  /// label is a button nobody can name.
   const DataStateView.empty({
     required String this.title,
     this.body,
     this.icon,
+    this.actionLabel,
+    this.onAction,
     super.key,
-  }) : _state = _DataState.empty,
+  }) : assert(
+         (actionLabel == null) == (onAction == null),
+         'DataStateView.empty takes actionLabel and onAction together, or neither',
+       ),
+       _state = _DataState.empty,
        label = null,
        retryLabel = null,
        onRetry = null;
@@ -125,7 +147,9 @@ class DataStateView extends StatelessWidget {
     super.key,
   }) : _state = _DataState.failed,
        label = null,
-       icon = null;
+       icon = null,
+       actionLabel = null,
+       onAction = null;
 
   final _DataState _state;
 
@@ -146,6 +170,12 @@ class DataStateView extends StatelessWidget {
   final String? retryLabel;
   final VoidCallback? onRetry;
 
+  /// [empty] only: the label of the first step out of the empty state.
+  final String? actionLabel;
+
+  /// [empty] only: what [actionLabel] does.
+  final VoidCallback? onAction;
+
   /// Stable handles for the three states, so a test can assert WHICH ONE is on
   /// screen rather than inferring it from copy that translation will change.
   ///
@@ -158,6 +188,7 @@ class DataStateView extends StatelessWidget {
   static const Key emptyKey = Key('data-state-empty');
   static const Key failedKey = Key('data-state-failed');
   static const Key retryKey = Key('data-state-retry');
+  static const Key emptyActionKey = Key('data-state-empty-action');
 
   @override
   Widget build(BuildContext context) {
@@ -181,6 +212,13 @@ class DataStateView extends StatelessWidget {
         glyph: icon ?? Icons.inbox_outlined,
         tone: muted,
         titleColor: scheme.onSurface,
+        trailing: onAction == null
+            ? null
+            : FilledButton(
+                key: emptyActionKey,
+                onPressed: onAction,
+                child: Text(actionLabel!),
+              ),
       ),
       _DataState.failed => _message(
         theme,

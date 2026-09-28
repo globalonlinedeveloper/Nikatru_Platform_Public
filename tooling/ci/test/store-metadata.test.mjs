@@ -197,6 +197,25 @@ const capabilityRegister = () => ({
   ],
 });
 
+/** tooling/listing-claims.json, the LISTING CLAIMS limb's register (ST-U4).
+ *  Answers TRUE for every fixture app, the brick and every platform, so a
+ *  case written before the limb never meets it; a case narrows one answer. */
+const listingClaimsRegister = (apps) => ({
+  claims: {
+    trial: {
+      pattern: '\\btrials?\\b',
+      rule: 'a listing may promise anything about a free trial only for an app whose data model records one',
+      apps: Object.fromEntries(apps.map((a) => [a.slug, true])),
+      brick: true,
+    },
+    'offline-on-device': {
+      pattern: '\\boffline\\b|stored on (?:your|the) device|runs on your device',
+      rule: 'a listing may promise that the list works offline and stays on the device only on a channel whose every platform keeps it there',
+      platforms: { android: true, ios: true, macos: true, windows: true, linux: true, web: true },
+    },
+  },
+});
+
 /** The first seven lines of the windows-store and linux-snap long-description
  *  as they stood at f46a6aa6 — line 7 is the reminder claim the row removes. */
 const BASE_LEDE_WITH_CLAIM_AT_7 = [
@@ -286,6 +305,11 @@ function tree({
   mutateRegister = null,
   omitRegister = false,
   mutateCapabilities = null,
+  // tooling/listing-claims.json (the LISTING CLAIMS limb). The default answers
+  // true for every fixture app and platform, so no case written before the limb
+  // meets it; `mutateListingClaims` narrows one answer.
+  mutateListingClaims = null,
+  omitListingClaims = false,
   fields = {},
   omitFiles = [],
   extraDirs = [],
@@ -356,6 +380,9 @@ function tree({
   write('catalog/apps.json', JSON.stringify(apps, null, 2));
   if (!omitRegister) write('tooling/channel-register.json', JSON.stringify(register, null, 2));
   write('tooling/capability-register.json', JSON.stringify(capabilities, null, 2));
+  const listingClaims = listingClaimsRegister(apps);
+  if (mutateListingClaims) mutateListingClaims(listingClaims);
+  if (!omitListingClaims) write('tooling/listing-claims.json', JSON.stringify(listingClaims, null, 2));
 
   for (const app of apps) {
     write(`apps/${app.slug}/lib/core/config/app_config.dart`, appConfig());
@@ -1101,6 +1128,7 @@ function appleTree({ mutateRegister = null, fields = {} } = {}) {
   write('catalog/apps.json', JSON.stringify(apps, null, 2));
   write('tooling/channel-register.json', JSON.stringify(register, null, 2));
   write('tooling/capability-register.json', JSON.stringify(capabilityRegister(), null, 2));
+  write('tooling/listing-claims.json', JSON.stringify(listingClaimsRegister(apps), null, 2));
   write('apps/subscriptiontracker/lib/core/config/app_config.dart', appConfig());
   write('apps/subscriptiontracker/pubspec.yaml', 'name: subscriptiontracker\nversion: 1.0.0+1\n');
 
@@ -2267,5 +2295,104 @@ describe('assert-store-metadata — REMINDER CLAIMS follow canSchedule', () => {
     }));
     assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — 1 channel\(s\) cannot schedule a reminder \(windows-store\), and their 2 tree\(s\) yielded ZERO \.txt files/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LISTING CLAIMS — ST-U4. A listing may promise a free trial only for an app
+// whose model records one (per app, and `brick` for the template trees), and
+// offline, on-device storage only on a channel whose every platform keeps the
+// list there (per platform). Both answers are tooling/listing-claims.json.
+//
+// Proven on the REAL tree first (2026-09-28, e0beeb14 + this change): with the
+// register landed and the listing copy NOT yet fixed → 13 TRIAL CLAIMs, exit 1
+// (android-play :7 :13 :25, apps-gov-in the same three, ios/macos :7 :13 and
+// keywords, windows-store search-terms :6); copy fixed → 0, exit 0;
+// `platforms.linux` flipped to false → 3 OFFLINE CLAIMs (the app's linux-snap
+// :12 and the brick's :3 :7), exit 1; restored → 0.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-store-metadata — LISTING CLAIMS follow the declared capability', () => {
+  test('L1 · FAILS a trial claim for an app whose model records no trial', () => {
+    const { code, out } = run(tree({
+      withPlay: true,
+      playFields: { 'long-description.txt': 'Reminders before a renewal or the end of a free trial.\n' },
+      mutateListingClaims: (r) => (r.claims.trial.apps.subscriptiontracker = false),
+    }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /TRIAL CLAIM — apps\/subscriptiontracker\/store\/android-play\/long-description\.txt:1 reads "Reminders before a renewal or the end of a free trial\." \(matched "trial"\)/);
+    assert.match(out, /a listing may promise anything about a free trial only for an app whose data model records one/);
+    // android-play CAN schedule, so the reminder half is not a finding: only the trial half is.
+    assert.equal(onlyFails(out).length, 1, out);
+  });
+
+  test('L2 · FAILS a trial claim in the brick template when `brick` is false', () => {
+    const { code, out } = run(tree({
+      brickFields: { 'windows-store/search-terms.txt': '{{{short_name}}}\nfree trial tracker\n' },
+      mutateListingClaims: (r) => (r.claims.trial.brick = false),
+    }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /TRIAL CLAIM — tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}\/store\/windows-store\/search-terms\.txt:2 reads "free trial tracker"/);
+    assert.equal(onlyFails(out).length, 1, out);
+  });
+
+  test('L3 · FAILS an offline claim on a channel whose platform does not keep the list', () => {
+    const { code, out } = run(tree({
+      withLinux: true,
+      linuxFields: { 'long-description.txt': '- Works offline. Your list is stored on your device.\n' },
+      mutateListingClaims: (r) => (r.claims['offline-on-device'].platforms.linux = false),
+    }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /OFFLINE CLAIM — apps\/subscriptiontracker\/store\/linux-snap\/long-description\.txt:1 reads "- Works offline\./);
+    assert.match(out, /Channel "linux-snap" runs on linux, where tooling\/listing-claims\.json says the list does not stay on the device/);
+    assert.equal(onlyFails(out).length, 1, out);
+  });
+
+  test('an app whose model DOES record a trial keeps its trial copy and PASSES', () => {
+    const { code, out } = run(tree({ withPlay: true, playFields: { 'long-description.txt': 'Reminders before the end of a free trial.\n' } }));
+    assert.equal(code, 0, out);
+    assert.match(out, /ok {3}LISTING CLAIMS — trial per app \(1 app\(s\) \+ the brick\), offline per platform: .* 0 claims/);
+  });
+
+  test('COVERAGE LOST when tooling/listing-claims.json is absent', () => {
+    const { code, out } = run(tree({ omitListingClaims: true }));
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — tooling\/listing-claims\.json does not exist/);
+  });
+
+  // ONE PIPELINE: an app the register does not name is a stamped app, graded
+  // by the brick's (strict) answer — so app #2 and CI's `probe` need no edit.
+  test('an app the register does not name is graded by `brick`', () => {
+    const { code, out } = run(tree({
+      withPlay: true,
+      playFields: { 'long-description.txt': 'Reminders before the end of a free trial.\n' },
+      mutateListingClaims: (r) => {
+        delete r.claims.trial.apps.subscriptiontracker;
+        r.claims.trial.brick = false;
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /TRIAL CLAIM — apps\/subscriptiontracker\/store\/android-play\/long-description\.txt:1 .* app "subscriptiontracker" \(not named, so graded by `brick`\)/);
+    assert.equal(onlyFails(out).length, 1, out);
+  });
+
+  test('COVERAGE LOST when an app answer is not a boolean', () => {
+    const { code, out } = run(tree({ mutateListingClaims: (r) => (r.claims.trial.apps.subscriptiontracker = 'yes') }));
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — app "subscriptiontracker" has a non-boolean tooling\/listing-claims\.json claims\["trial"\]\.apps\["subscriptiontracker"\]/);
+  });
+
+  test('COVERAGE LOST when a store row runs on a platform the offline map does not answer', () => {
+    const { code, out } = run(tree({ mutateListingClaims: (r) => delete r.claims['offline-on-device'].platforms.windows }));
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — channel "windows-store" runs on platform "windows", and tooling\/listing-claims\.json claims\["offline-on-device"\]\.platforms has no boolean "windows"/);
+  });
+
+  test('COVERAGE LOST when a claim loses its pattern', () => {
+    const { code, out } = run(tree({ mutateListingClaims: (r) => delete r.claims.trial.pattern }));
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — tooling\/listing-claims\.json claims\["trial"\] is missing, or has no `pattern` and `rule` strings/);
   });
 });

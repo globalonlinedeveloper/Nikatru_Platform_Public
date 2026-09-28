@@ -446,7 +446,10 @@ final Map<String, List<Override>> kSweptAs = <String, List<Override>>{
 /// this file quietly measuring a shrinking share of a growing app.
 const Map<String, ({int controls, int reachable})>
 kExpected = <String, ({int controls, int reachable})>{
-  '/scan': (controls: 1, reachable: 1),
+  // ⏱ 2026-09-28 · ST-U8 (B49): 1 -> 13. The swept results phase lists the
+  // seed's 12 rows, and each now opens its detail (an InkWell, on the Tab
+  // orbit) beside the one CTA.
+  '/scan': (controls: 13, reachable: 13),
   // 5 -> 7 on 2026-08-26: the two `_LegalLink`s joined the orbit. The
   // control count did NOT move — `FocusableTap` still builds a
   // `GestureDetector` with an `onTap`, so the rig counts the same nine.
@@ -464,9 +467,10 @@ kExpected = <String, ({int controls, int reachable})>{
   '/reset-password': (controls: 1, reachable: 1),
   '/notifications': (controls: 1, reachable: 1),
   // 2 -> 4, i.e. NOTHING on this route is off the orbit any more. `Back`
-  // and `More options` are the app bar; `_iconButton` now builds on
-  // `FocusableTap`.
-  '/sub/:id': (controls: 4, reachable: 4),
+  // and `More options` were the app bar; `_iconButton` now builds on
+  // `FocusableTap`. ⏱ 2026-09-28 · ST-U5 (B14): 4 -> 3, because "More
+  // options" opened nothing and was removed rather than kept reachable.
+  '/sub/:id': (controls: 3, reachable: 3),
   // ⏱ 2026-09-27 · ST-U2 (audit C34): the paywall's back button.
   '/paywall': (controls: 1, reachable: 1),
   // 2 -> 3 on 2026-08-26, and NO WIDGET CHANGED. The third control was
@@ -1414,21 +1418,23 @@ void main() {
       final List<Element> heroControls = s.controls
           .where((Element e) => _isUnder(e, hero))
           .toList();
+      // ⏱ 2026-09-28 · ST-U5 (B14): ONE control, "Back". "More options" was
+      // the second and opened nothing, so it was removed.
       expect(
         heroControls,
-        hasLength(2),
+        hasLength(1),
         reason:
-            'the detail hero is expected to carry exactly two controls — '
-            '"Back" and "More options". It carries ${heroControls.length}. If '
-            'it carries none, the exits were DELETED rather than fixed, which '
-            'the empty dead set above would happily report as success',
+            'the detail hero is expected to carry exactly one control — '
+            '"Back". It carries ${heroControls.length}. If it carries none, the '
+            'exit was DELETED rather than fixed, which the empty dead set above '
+            'would happily report as success',
       );
       final List<FocusNode> heroStops = <FocusNode>[
         for (final Element e in heroControls) ...stopsFor(s, e),
       ];
       expect(
         heroStops,
-        hasLength(2),
+        hasLength(1),
         reason:
             'the detail app bar owns ${heroStops.length} stops on the Tab '
             'orbit, not one each. THAT is the SC 2.1.1 failure this case was '
@@ -1443,14 +1449,11 @@ void main() {
       // walk the whole body to leave. SC 2.4.3 asks focus order to preserve
       // meaning, and the meaning of an app bar is that it comes first.
       expect(
-        <bool>[
-          identical(s.orbit[0], heroStops[0]),
-          identical(s.orbit[1], heroStops[1]),
-        ],
+        <bool>[identical(s.orbit[0], heroStops[0])],
         everyElement(isTrue),
         reason:
-            'the detail screen\'s first two Tab stops are not "Back" then '
-            '"More options". The app bar is the first thing on the screen and '
+            'the detail screen\'s first Tab stop is not "Back". The app bar '
+            'is the first thing on the screen and '
             'the only way off it, so it has to be the first thing the keyboard '
             'reaches; a Tab order that puts the exits after the body is '
             'reachable-but-buried. Orbit: '

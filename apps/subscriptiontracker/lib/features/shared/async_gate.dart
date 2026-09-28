@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
+import '../../data/api/api_client.dart' show ApiException;
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/subscriptions_controller.dart';
@@ -71,12 +72,22 @@ import '../../state/subscriptions_controller.dart';
 /// ── RETURNS NULL WHEN THE CALLER SHOULD DRAW ITS OWN BODY ──────────────────
 /// Null is "the list is here and it is not empty" — the ONLY case in which the
 /// screen's real content is a true statement about the user's data.
+///
+/// ── ✅ ST-U6: EMPTY HAS A WAY FORWARD, FAILED SAYS WHAT FAILED ─────────────
+/// [emptyActionLabel] + [onEmptyAction] (both or neither) put the first step
+/// on the empty state — "Add subscription" — through [DataStateView.empty]'s
+/// action slot, so a first-run user is never handed a message with nothing to
+/// tap (audit B3, B42, C3). The failed body is [dataFailedBodyFor]'s sentence
+/// for the error that actually happened, not "check your connection" for all
+/// of them (D21).
 Widget? subscriptionsState(
   WidgetRef ref, {
   required AppLocalizations l10n,
   required String emptyTitle,
   String? emptyBody,
   IconData? emptyIcon,
+  String? emptyActionLabel,
+  VoidCallback? onEmptyAction,
 }) {
   final AsyncValue<List<Subscription>> subs = ref.watch(
     subscriptionsControllerProvider,
@@ -94,7 +105,7 @@ Widget? subscriptionsState(
     if (subs.hasError) {
       return DataStateView.failed(
         title: l10n.dataFailedTitle,
-        body: l10n.dataFailedBody,
+        body: dataFailedBodyFor(l10n, subs.error),
         retryLabel: l10n.retry,
         // `invalidate`, not a method on the controller: `build()` IS the fetch
         // (`subscriptions_controller.dart:139-168`), so invalidating re-runs it
@@ -112,6 +123,8 @@ Widget? subscriptionsState(
       title: emptyTitle,
       body: emptyBody,
       icon: emptyIcon,
+      actionLabel: emptyActionLabel,
+      onAction: onEmptyAction,
     );
   }
 
@@ -136,6 +149,8 @@ Widget subscriptionsGate(
   String? emptyBody,
   required Widget Function(List<Subscription> subs) builder,
   IconData? emptyIcon,
+  String? emptyActionLabel,
+  VoidCallback? onEmptyAction,
 }) {
   final Widget? state = subscriptionsState(
     ref,
@@ -143,7 +158,29 @@ Widget subscriptionsGate(
     emptyTitle: emptyTitle,
     emptyBody: emptyBody,
     emptyIcon: emptyIcon,
+    emptyActionLabel: emptyActionLabel,
+    onEmptyAction: onEmptyAction,
   );
   if (state != null) return state;
   return builder(ref.watch(subscriptionsControllerProvider).requireValue);
+}
+
+/// The sentence a failed list load shows, chosen by WHAT failed (ST-U6, D21).
+///
+/// `dataFailedBody` ("Check your connection and try again.") was shown for
+/// every failure — a 5xx with no cache, a 4xx, a malformed body, a 401. Telling
+/// a user whose session ended to check their Wi-Fi sends them to fix the one
+/// thing that is not broken. [ApiException.statusCode] is the transport's own
+/// answer: 0 is "no response at all" (`RestClient`), 401 is a session the
+/// server no longer accepts, 5xx is our service. Anything else — including an
+/// error that is not an [ApiException] — gets a sentence that claims no cause.
+/// NEVER the error's own text: that is engineering output, often English, and
+/// can carry a URL or a token.
+String dataFailedBodyFor(AppLocalizations l10n, Object? error) {
+  if (error is! ApiException) return l10n.dataFailedGeneric;
+  final int code = error.statusCode;
+  if (code == 0) return l10n.dataFailedBody;
+  if (code == 401) return l10n.dataFailedSignedOut;
+  if (code >= 500) return l10n.dataFailedServer;
+  return l10n.dataFailedGeneric;
 }

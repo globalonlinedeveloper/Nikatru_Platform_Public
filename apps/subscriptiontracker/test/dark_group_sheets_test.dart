@@ -23,15 +23,8 @@
 // because both sides of the comparison move together. Written against
 // `AppColors.bg` it cannot.
 //
-// 🔴 THE CANCEL BODIES ARE ASSERTED IN TAMIL, AND ENGLISH ALONE WOULD PROVE
-// NOTHING. `cancelStep1Body` is ONE arb message with three placeholders, where
-// the sheet used to concatenate three styled fragments. In English the two
-// arrangements produce the same characters, so an [en]-only assertion passes
-// against the code this increment replaced. Tamil is where they diverge: the
-// value reads "நீங்கள் மாதம் {monthly} · ஆண்டுக்கு {yearly} சேமிப்பீர்கள்.
-// {date} வரை அணுகல் தொடரும்." — the verb moves to the END of the clause and the
-// English "/mo" becomes a WORD BEFORE the amount. No concatenation of
-// pre-translated pieces reaches that string in any order.
+// 🔴 THE REMOVE SHEET IS ASSERTED IN BOTH SHIPPED LOCALES (ST-U3). It prints no
+// money figure and no date in either, and no English sentence in Tamil.
 //
 // ⚠️ The surface is pinned with [setSurface] for layout determinism only.
 // Nothing here measures a width; the phone is chosen because it is the
@@ -417,9 +410,15 @@ void main() {
   });
 
   // ───────────────────────────────────────────────────────────────────────────
-  group('cancel sheet · the bodies are ONE message, not three fragments', () {
+  group('remove sheet · says REMOVE and prints no money (ST-U3, B32)', () {
+    // 🔴 THE RED CONTROL FOR ST-U3's SHEET. The shipped sheet said "Cancel
+    // Netflix?", "You'll save {monthly}/mo · {yearly}/yr. Access continues
+    // until {date}." and "You're now saving {monthly}/mo. Nicely done." — while
+    // its only effect was deleting the row from this app's list. Restoring any
+    // of the three money figures, the date, or the congratulation turns a case
+    // below red, in both shipped locales.
     for (final String code in <String>['en', 'ta']) {
-      testWidgets('[$code] step 0 renders the whole sentence as one node', (
+      testWidgets('[$code] step 0 names the removal and no figure', (
         WidgetTester tester,
       ) async {
         await _openSheet(
@@ -428,77 +427,62 @@ void main() {
           locale: Locale(code),
           open: (BuildContext c) => showCancelSheet(c, _sub()),
         );
-
         final AppLocalizations l10n = await AppLocalizations.delegate.load(
           Locale(code),
         );
         final Subscription s = _sub();
-        final String monthly = kMoney.formatShareFigure(s.monthlyShare);
-        final String yearly = kMoney.formatRounded(s.yearlyCharge);
-        // Computed AFTER the pump: the l10n delegates are what call
-        // `initializeDateFormatting`, so a DateFormat built for 'ta' before the
-        // tree mounts has no symbols to read.
-        final String until = DateFormat.MMMMd(code).format(s.nextRenewal);
-        final String sentence = l10n.cancelStep1Body(monthly, yearly, until);
 
-        // 🔴 ONE TEXT NODE CARRYING THE WHOLE SENTENCE. `find.text` compares
-        // against `textSpan.toPlainText()` for a Text.rich, so this passes only
-        // if the spans concatenate to exactly the message gen-l10n produces —
-        // i.e. the sentence was translated whole and then split for emphasis,
-        // never assembled from separately translated pieces.
+        expect(find.text(l10n.cancelSubscriptionTitle(s.name)), findsOneWidget);
+        expect(find.text(l10n.removeStep1Body), findsOneWidget);
+        // No share, no yearly charge, no renewal date: the app deletes a row
+        // and knows none of the provider's terms.
         expect(
-          find.text(sentence),
-          findsOneWidget,
-          reason:
-              '[$code] the step-0 body is not the single arb message. Expected: '
-              '$sentence',
+          find.textContaining(kMoney.formatShareFigure(s.monthlyShare)),
+          findsNothing,
+        );
+        expect(
+          find.textContaining(kMoney.formatRounded(s.yearlyCharge)),
+          findsNothing,
+        );
+        // Computed AFTER the pump: the l10n delegates are what call
+        // `initializeDateFormatting`.
+        expect(
+          find.textContaining(DateFormat.MMMMd(code).format(s.nextRenewal)),
+          findsNothing,
+        );
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('[$code] step 1 says removed, and points at the provider', (
+        WidgetTester tester,
+      ) async {
+        await _openSheet(
+          tester,
+          mode: ThemeMode.light,
+          locale: Locale(code),
+          open: (BuildContext c) => showCancelSheet(c, _sub()),
+        );
+        final AppLocalizations l10n = await AppLocalizations.delegate.load(
+          Locale(code),
         );
 
-        // …and the emphasis survived the move to one key. Three spans: the text
-        // before the amount, the amount, the text after.
-        final TextSpan root =
-            tester.widget<Text>(find.text(sentence)).textSpan! as TextSpan;
-        expect(root.children, hasLength(3));
-        final TextSpan amount = root.children![1] as TextSpan;
-        expect(amount.text, monthly);
-        expect(amount.style!.color, AppColors.positive);
-        expect(amount.style!.fontWeight, FontWeight.w800);
+        // Step 1 is reached by confirming against the unoverridden seed chain —
+        // see `defaultWidthOverrides`, which leaves the repository resolving.
+        await tester.tap(find.text(l10n.confirmCancel));
+        await tester.pumpAndSettle();
 
+        expect(find.text(l10n.cancelledHeading), findsOneWidget);
+        expect(find.text(l10n.removeStep2Body), findsOneWidget);
+        expect(find.text(l10n.done), findsOneWidget);
+        expect(
+          find.textContaining(kMoney.formatShareFigure(_sub().monthlyShare)),
+          findsNothing,
+        );
         expect(tester.takeException(), isNull);
       });
     }
 
-    testWidgets('both locales KEEP the placeholders the split needs', (
-      WidgetTester tester,
-    ) async {
-      // `_emphasiseAmount` splits the finished sentence at the slot the arb
-      // message put the amount in. If a translation drops `{monthly}` there is
-      // nothing to split at, and the sheet degrades to the plain sentence rather
-      // than throwing a RangeError mid-build — a branch NO test in this file can
-      // construct, because reaching it needs a malformed arb.
-      //
-      // So this is the assertion that keeps the honest books on it: the branch
-      // stays unreachable in the locales we ship, and it is asserted here rather
-      // than assumed. Deleting `{monthly}` from `app_ta.arb` turns this red and
-      // names the key — which the l10n parity test cannot, because parity
-      // compares key SETS and a key with a mangled value is still present.
-      for (final String code in <String>['en', 'ta']) {
-        final AppLocalizations l10n = await AppLocalizations.delegate.load(
-          Locale(code),
-        );
-        final String step1 = l10n.cancelStep1Body('«M»', '«Y»', '«D»');
-        expect(step1, contains('«M»'), reason: '[$code] step 0 lost {monthly}');
-        expect(step1, contains('«Y»'), reason: '[$code] step 0 lost {yearly}');
-        expect(step1, contains('«D»'), reason: '[$code] step 0 lost {date}');
-        expect(
-          l10n.cancelStep2Body('«M»'),
-          contains('«M»'),
-          reason: '[$code] step 1 lost {monthly}',
-        );
-      }
-    });
-
-    testWidgets('[ta] the pre-l10n English sentence is GONE', (
+    testWidgets('[ta] no English sentence survives into the Tamil sheet', (
       WidgetTester tester,
     ) async {
       await _openSheet(
@@ -507,76 +491,10 @@ void main() {
         locale: const Locale('ta'),
         open: (BuildContext c) => showCancelSheet(c, _sub()),
       );
-
-      final Subscription s = _sub();
-      final String monthly = kMoney.formatShareFigure(s.monthlyShare);
-      final String yearly = kMoney.formatRounded(s.yearlyCharge);
-
-      // THE FALSIFIER. This is the exact string the shipped sheet composed from
-      // its three fragments and its English `_months` table.
-      expect(
-        find.text(
-          'You’ll save $monthly/mo · $yearly/yr. '
-          'Access continues until September 12.',
-        ),
-        findsNothing,
-      );
-      // ⚠️ …and the line above ALONE is weaker than it looks, which is why the
-      // two below exist. Measured under the fragment mutation (2026-08-09): a
-      // sheet that concatenates ENGLISH connectives around localized values
-      // still formats the date in Tamil, so the fully-English sentence never
-      // appears and that assertion stays green while the bug is on screen. The
-      // connectives are the part that cannot be there, so they are what is
-      // asserted — `textContaining`, because the surrounding values differ.
-      expect(
-        find.textContaining('save'),
-        findsNothing,
-        reason:
-            'An English connective survived into the Tamil sheet — the body is '
-            'being assembled from fragments rather than translated whole.',
-      );
+      expect(find.textContaining('save'), findsNothing);
       expect(find.textContaining('Access continues'), findsNothing);
-      expect(find.text('Cancel Netflix?'), findsNothing);
-      expect(find.text('Confirm cancel'), findsNothing);
+      expect(find.textContaining('Remove'), findsNothing);
       expect(find.text('Keep it'), findsNothing);
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('[ta] step 1 is one message too, and the date localizes', (
-      WidgetTester tester,
-    ) async {
-      await _openSheet(
-        tester,
-        mode: ThemeMode.light,
-        locale: const Locale('ta'),
-        open: (BuildContext c) => showCancelSheet(c, _sub()),
-      );
-
-      final AppLocalizations ta = await AppLocalizations.delegate.load(
-        const Locale('ta'),
-      );
-      final String monthly = kMoney.formatShareFigure(_sub().monthlyShare);
-
-      // Step 1 is reached by confirming against the unoverridden seed chain —
-      // see `defaultWidthOverrides`, which leaves the repository resolving.
-      await tester.tap(find.text(ta.confirmCancel));
-      await tester.pumpAndSettle();
-
-      expect(find.text(ta.cancelledHeading), findsOneWidget);
-      expect(find.text('Cancelled'), findsNothing);
-      expect(find.text(ta.cancelStep2Body(monthly)), findsOneWidget);
-      expect(find.text(ta.done), findsOneWidget);
-
-      // The month name came out of the intl locale data rather than out of the
-      // twelve English words this sheet used to carry. Asserted on the [en]
-      // value NOT appearing so the case cannot be satisfied by a fallback.
-      expect(
-        DateFormat.MMMMd('ta').format(_sub().nextRenewal),
-        isNot(DateFormat.MMMMd('en').format(_sub().nextRenewal)),
-        reason:
-            'Tamil MMMMd is indistinguishable from English here, so no date '
-            'assertion in this file can fail — re-point it or delete it.',
-      );
       expect(tester.takeException(), isNull);
     });
   });

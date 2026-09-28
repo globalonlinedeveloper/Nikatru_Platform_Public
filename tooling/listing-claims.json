@@ -1,0 +1,27 @@
+{
+  "_readme": "What a store listing may promise, per claim, and the capability each promise needs. Read by ONE guard: tooling/ci/assert-store-metadata.mjs, its LISTING CLAIMS limb (ST-U4). Reminder claims are NOT here: they are graded against tooling/capability-register.json's notifications platformMatrix (canSchedule) by the same guard's REMINDER CLAIMS limb, because that table is held to the Dart by assert-adapter-capabilities.mjs limb 8. A pattern is matched per line, case-insensitively, against every *.txt of every store tree of every app and of the brick. An app or platform with no boolean answer here is COVERAGE LOST, never a pass.",
+  "claims": {
+    "trial": {
+      "pattern": "\\btrials?\\b",
+      "rule": "a listing may promise anything about a free trial only for an app whose data model records one",
+      "apps": {
+        "subscriptiontracker": false
+      },
+      "brick": false,
+      "_why": "subscriptiontracker: the Subscription model (apps/subscriptiontracker/lib/data/models/subscription.dart) has no trial field, so no reminder, total or list can be about a trial. ST-T3 (ADR 077 §5, owner-approved 2026-09-11) adds trials; flip this to true in the change that ships them, and the copy may return. brick: a stamped app starts with no domain model at all."
+    },
+    "offline-on-device": {
+      "pattern": "\\boffline\\b|stored on (?:your|the) device|runs on your device",
+      "rule": "a listing may promise that the list works offline and stays on the device only on a channel whose every platform keeps it there",
+      "platforms": {
+        "android": true,
+        "ios": true,
+        "macos": true,
+        "windows": true,
+        "linux": true,
+        "web": false
+      },
+      "_why": "Native builds read the list through CachedApiClient over LocalSubscriptionStore (apps/subscriptiontracker/lib/data/api/cached_api_client.dart, data/local/subscription_store.dart), persisted by the keyValueStoreProvider seam (packages/platform_storage) on every native platform. web is false: it has no store listing today, and a browser's storage can be cleared by the browser — a promise this app cannot keep there."
+    }
+  }
+}

@@ -43,7 +43,9 @@ extension type const MonthlyShare._(Money _amount) {
 /// The ONLY route from a [MonthlyShare] to a string.
 extension MonthlySharePrinting on MoneyFormatter {
   /// The bare figure, ONLY as the argument of a message whose own text carries
-  /// the per-month unit (`cancelStep1Body` and `cancelStep2Body`, both
-  /// "{monthly}/mo"). `test/monthly_share_display_test.dart` pins its callers.
+  /// the per-month unit. Since ST-U3 no message does — the remove sheet's
+  /// "savings" sentences were the last — so nothing in lib/ calls this;
+  /// `test/monthly_share_display_test.dart` pins that, and uses it to prove the
+  /// share never appears on screen.
   String formatShareFigure(MonthlyShare share) => format(share._amount);
 }

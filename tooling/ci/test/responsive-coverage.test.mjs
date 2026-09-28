@@ -215,7 +215,7 @@ describe('the guard says YES on the tree as it is', () => {
     // staying at reachable == measured is the property, and "17 reachable, 12
     // measured" would print as a cheerful report-mode line if it ever slipped.
     // ⏱ 2026-09-23 (O-CHASSIS-PHASE-2B, unit chassis-home): WelcomeView + CatchUpBannerView joined packages/chassis_screens with home_view_test.dart, so the root reads 20/20. Read off the guard's own per-root line.
-    assert.match(out, /packages\/chassis_screens: 21 surface\(s\) reachable, 21 measured — the two sets are EQUAL/);
+    assert.match(out, /packages\/chassis_screens: 25 surface\(s\) reachable, 25 measured — the two sets are EQUAL/);
 
     assert.match(out, /apps\/subscriptiontracker: 18 surface\(s\) reachable, 18 measured — the two sets are EQUAL/);
     assert.match(
@@ -254,7 +254,7 @@ describe('the guard says YES on the tree as it is', () => {
     assert.match(out, /PARTIAL TREE: the declared-root-must-exist clause is SKIPPED/);
     assert.match(out, /apps\/subscriptiontracker: 18 surface\(s\) reachable, 18 measured — the two sets are EQUAL/);
     // ⏱ 2026-09-23 (O-CHASSIS-PHASE-2B, unit chassis-home): WelcomeView + CatchUpBannerView joined packages/chassis_screens with home_view_test.dart, so the root reads 20/20. Read off the guard's own per-root line.
-    assert.match(out, /packages\/chassis_screens: 21 surface\(s\) reachable, 21 measured — the two sets are EQUAL/);
+    assert.match(out, /packages\/chassis_screens: 25 surface\(s\) reachable, 25 measured — the two sets are EQUAL/);
     // ⏱ 2026-09-22 · 36 → 37 TEST FILES, SURFACES UNCHANGED. The app gained
     // `width_shell_fab_test.dart`, which pumps the five shell branches at all
     // three widths to prove the FAB clears each list's last row. It measures
@@ -269,7 +269,7 @@ describe('the guard says YES on the tree as it is', () => {
       // ⏱ 2026-09-24 · 39 → 41 TEST FILES, SURFACES UNCHANGED: the auth error
       // mapper's suite and `support/raw_vendor_error.dart` joined the chassis
       // corpus. Both per-root equalities above are untouched.
-      /39 reachable surface\(s\), 39 measured by 42 test file\(s\); 0 measured where they delegate to/ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate), +1 width file */,
+      /43 reachable surface\(s\), 43 measured by 43 test file\(s\); 0 measured where they delegate to/ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +1 width file */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate), +1 width file */,
     );
     assert.equal(fails(out).length, 0, out);
   });
@@ -758,7 +758,7 @@ describe('the chassis_screens floors are floors, not report lines', () => {
   test('R14-control · GREEN CONTROL — the same fixture, unmutated, is 21/21 and passes', () => {
     const { code, out } = run(treeWithNewRoots());
     assert.equal(code, 0, out);
-    assert.match(out, /packages\/chassis_screens: 21 surface\(s\) reachable, 21 measured/); // ⏱ 2026-09-23: 18 → 20 (chassis home)
+    assert.match(out, /packages\/chassis_screens: 25 surface\(s\) reachable, 25 measured/); // ⏱ 2026-09-23: 18 → 20 (chassis home)
   });
 
   // ── R14a · A SURFACE LEAVES ────────────────────────────────────────────────
@@ -787,13 +787,13 @@ describe('the chassis_screens floors are floors, not report lines', () => {
     // and its measurement left together and the two sets stayed equal.
     assert.match(
       out,
-      /COVERAGE LOST — `packages\/chassis_screens` has only 20 responsive surface\(s\).*floor is 21/s, // ⏱ 2026-09-23: 18 → 20
+      /COVERAGE LOST — `packages\/chassis_screens` has only 24 responsive surface\(s\).*floor is 25/s, // ⏱ 2026-09-23: 18 → 20
     );
     // AND the ratchet on what was measured, which fires in the same run. Both
     // numbers moved 7 → 17 in the landing and both are load-bearing.
     assert.match(
       out,
-      /COVERAGE LOST — `packages\/chassis_screens` has 20 measured surface\(s\) and its measured floor is 21/s, // ⏱ 2026-09-23: 18 → 20
+      /COVERAGE LOST — `packages\/chassis_screens` has 24 measured surface\(s\) and its measured floor is 25/s, // ⏱ 2026-09-23: 18 → 20
     );
   });
 
@@ -831,7 +831,7 @@ describe('the chassis_screens floors are floors, not report lines', () => {
       // ⏱ 22/23 ON 2026-09-24: the auth error mapper's suite and a shared test
       // helper joined the corpus, and THIS case caught the floor left at 21. The
       // floor was raised to the measured 23; the assertion was NOT loosened.
-      /COVERAGE LOST — `packages\/chassis_screens` yielded only 23 width test file\(s\).*checked-in floor is 24/s,
+      /COVERAGE LOST — `packages\/chassis_screens` yielded only 24 width test file\(s\).*checked-in floor is 25/s,
     );
     // This root ENFORCES, so the surface the deleted file measured is a FAIL and
     // not a print — the half R12 pins for apps/subscriptiontracker, here for the new root.
