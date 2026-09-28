@@ -294,7 +294,7 @@
   "store-capture-resolver.test.mjs": 17,
   "store-identity.test.mjs": 70,
   "store-key-secret.test.mjs": 8,
-  "store-metadata.test.mjs": 162,
+  "store-metadata.test.mjs": 171,
   "store-record.test.mjs": 19,
   "store-screenshots-lane.test.mjs": 86,
   "store-vocabulary.test.mjs": 28,

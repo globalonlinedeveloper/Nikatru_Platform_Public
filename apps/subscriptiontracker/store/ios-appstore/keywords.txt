@@ -1,1 +1,1 @@
-subscription,tracker,recurring,renewal,reminder,bills,spending,budget,trial
+subscription,tracker,recurring,renewal,reminder,bills,spending,budget

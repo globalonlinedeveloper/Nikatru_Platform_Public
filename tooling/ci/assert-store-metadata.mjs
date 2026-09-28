@@ -1628,6 +1628,150 @@ function reminderClaims() {
 }
 const reminder = reminderClaims();
 
+// ── LISTING CLAIMS: trial and offline copy only where the capability holds ───
+// ─────────────────────────────────────────────────────────────────────────────
+// ST-U4 (Private/research/session-2026-09-23/full-review-r2/product-audit-st.md
+// §6), extending O-RENEWAL-REMINDERS-OFF-ON-DESKTOP past reminders. MEASURED at
+// e0beeb14: four Subscription Tracker listings said "reminds you before a free
+// trial turns into a charge" and "Reminders before a renewal or the end of a
+// free trial", two keyword fields carried "trial" and the Windows search terms
+// "free trial tracker" — and the app's Subscription model has no trial field at
+// all (ST-T3 / ADR 077 §5 adds one). The REMINDER CLAIMS limb above was green
+// over every one of those lines, because on android/ios/macos a reminder CAN be
+// scheduled; what could not be kept was the TRIAL half of the sentence.
+//
+// The capability each claim needs is declared in ONE register,
+// tooling/listing-claims.json, which only this limb reads:
+//   · `trial` — PER APP (`apps.<slug>`, and `brick` for the template trees):
+//     does the app's data model record a trial? A property of the product,
+//     identical on every channel. An app the register does not name is graded
+//     by `brick` — it IS a stamped app until it says otherwise (ONE PIPELINE:
+//     app #2 and the CI stamp `probe` need no edit here), and `brick` is the
+//     strict answer.
+//   · `offline-on-device` — PER PLATFORM (`platforms.<platform>`): does the
+//     list stay on the device, readable with no connection? A channel may
+//     promise it only when EVERY platform it runs on says true.
+// A claim with no answer is COVERAGE LOST, never a pass: an app or platform
+// the register does not name cannot be graded, and grading none is how the
+// trial copy shipped.
+//
+// ⚠️ STATED LIMIT, as for reminders: a word match per line. It reads the
+// promise, not a paraphrase of it.
+const LISTING_CLAIMS = 'tooling/listing-claims.json';
+const PER_APP = 'trial';
+const PER_PLATFORM = 'offline-on-device';
+
+function listingClaims() {
+  const raw = read(LISTING_CLAIMS);
+  if (raw === null) {
+    coverageLost([
+      `${LISTING_CLAIMS} does not exist.`,
+      'The LISTING CLAIMS limb reads which apps record a trial and which platforms keep the list on the',
+      'device from it. Without it every listing would be free to promise both.',
+    ]);
+  }
+  let reg;
+  try {
+    reg = JSON.parse(raw);
+  } catch (e) {
+    coverageLost([`${LISTING_CLAIMS} is not valid JSON — ${e.message}`]);
+  }
+  const claims = reg?.claims;
+  const compiled = {};
+  for (const id of [PER_APP, PER_PLATFORM]) {
+    const c = claims?.[id];
+    if (c === null || typeof c !== 'object' || typeof c.pattern !== 'string' || typeof c.rule !== 'string' || c.rule.trim() === '') {
+      coverageLost([
+        `${LISTING_CLAIMS} claims["${id}"] is missing, or has no \`pattern\` and \`rule\` strings.`,
+        'Without the pattern this limb matches no line, and without the rule no finding says what was broken.',
+      ]);
+    }
+    try {
+      compiled[id] = new RegExp(c.pattern, 'i');
+    } catch (e) {
+      coverageLost([`${LISTING_CLAIMS} claims["${id}"].pattern does not compile — ${e.message}`]);
+    }
+  }
+  const byApp = claims[PER_APP].apps;
+  const brickAnswer = claims[PER_APP].brick;
+  const byPlatform = claims[PER_PLATFORM].platforms;
+  if (byApp === null || typeof byApp !== 'object' || Array.isArray(byApp) || typeof brickAnswer !== 'boolean') {
+    coverageLost([
+      `${LISTING_CLAIMS} claims["${PER_APP}"] needs an \`apps\` object of <slug>: boolean and a boolean \`brick\`.`,
+      'Those are the only answers to "does this app record a trial"; without them no tree can be graded.',
+    ]);
+  }
+  if (byPlatform === null || typeof byPlatform !== 'object' || Array.isArray(byPlatform)) {
+    coverageLost([`${LISTING_CLAIMS} claims["${PER_PLATFORM}"] needs a \`platforms\` object of <platform>: boolean.`]);
+  }
+
+  const slugs = apps.filter((a) => typeof a.slug === 'string' && a.slug !== '').map((a) => a.slug);
+  for (const slug of slugs) {
+    if (slug in byApp && typeof byApp[slug] !== 'boolean') {
+      coverageLost([
+        `app "${slug}" has a non-boolean ${LISTING_CLAIMS} claims["${PER_APP}"].apps["${slug}"].`,
+        'The LISTING CLAIMS limb cannot decide whether its listings may promise to track a trial. Declare',
+        "true or false, or remove the key so the app is graded by the brick's answer.",
+      ]);
+    }
+  }
+  const trialOf = (slug) => (typeof byApp[slug] === 'boolean' ? byApp[slug] : brickAnswer);
+  const whoOf = (slug) => (slug in byApp ? `app "${slug}"` : `app "${slug}" (not named, so graded by \`brick\`)`);
+
+  let trees = 0;
+  let files = 0;
+  let found = 0;
+  let graded = 0;
+  const flag = (id, rel, i, line, m, why) => {
+    found++;
+    problems.push(
+      `${id === PER_APP ? 'TRIAL' : 'OFFLINE'} CLAIM — ${rel}:${i + 1} reads ${JSON.stringify(line.trim())} (matched "${m[0]}"). ${why} The rule: ${claims[id].rule}.`,
+    );
+  };
+  for (const row of storeRows) {
+    const template = row.storeMetadataDir;
+    if (typeof template !== 'string' || !template.includes('{app}')) continue; // a problem above already
+    const platforms = Array.isArray(row.platforms) ? row.platforms : [];
+    for (const p of platforms) {
+      if (typeof byPlatform[p] !== 'boolean') {
+        coverageLost([
+          `channel "${row.id}" runs on platform "${p}", and ${LISTING_CLAIMS} claims["${PER_PLATFORM}"].platforms has no boolean "${p}".`,
+          'The LISTING CLAIMS limb cannot decide whether this channel may promise offline, on-device storage.',
+        ]);
+      }
+    }
+    const offlineHolds = platforms.length > 0 && platforms.every((p) => byPlatform[p] === true);
+    const cannotOffline = platforms.filter((p) => byPlatform[p] !== true).join(', ');
+    const dirs = [
+      ...slugs.map((slug) => ({ dir: template.replace('{app}', slug), trial: trialOf(slug), who: whoOf(slug) })),
+      { dir: brickPath(template), trial: brickAnswer, who: 'the brick (every stamped app)' },
+    ].filter((d) => isDir(d.dir));
+    for (const d of dirs) {
+      trees++;
+      for (const rel of txtFilesUnder(d.dir)) {
+        files++;
+        const lines = read(rel).split('\n');
+        for (let i = 0; i < lines.length; i++) {
+          graded++;
+          const t = d.trial ? null : compiled[PER_APP].exec(lines[i]);
+          if (t) flag(PER_APP, rel, i, lines[i], t, `${d.who} is \`false\` in ${LISTING_CLAIMS}: its data model records no trial, so no reminder or total can be about one.`);
+          const o = offlineHolds ? null : compiled[PER_PLATFORM].exec(lines[i]);
+          if (o) flag(PER_PLATFORM, rel, i, lines[i], o, `Channel "${row.id}" runs on ${cannotOffline}, where ${LISTING_CLAIMS} says the list does not stay on the device.`);
+        }
+      }
+    }
+  }
+  if (trees > 0 && files === 0) {
+    coverageLost([
+      `${trees} listing tree(s) exist and yielded ZERO .txt files.`,
+      'The LISTING CLAIMS limb then read no listing text, and would report no claim over copy it never saw.',
+    ]);
+  }
+  return { apps: slugs.length, trees, files, lines: graded, claims: found };
+}
+const listing = listingClaims();
+
+
 // ── report ───────────────────────────────────────────────────────────────────
 if (prints.length) {
   console.log('');
@@ -1658,6 +1802,10 @@ if (problems.length) {
   ok(
     `REMINDER CLAIMS — ${reminder.rows} store row(s), ${reminder.notDeliverable.length} not deliverable (${reminder.notDeliverable.join(', ') || 'none'}), ` +
       `${reminder.trees} tree(s), ${reminder.files} file(s) scanned, ${reminder.claims} claims`,
+  );
+  ok(
+    `LISTING CLAIMS — trial per app (${listing.apps} app(s) + the brick), offline per platform: ` +
+      `${listing.trees} tree(s), ${listing.files} file(s), ${listing.lines} line(s) graded, ${listing.claims} claims`,
   );
   console.log('\nassert-store-metadata: ok');
 }
