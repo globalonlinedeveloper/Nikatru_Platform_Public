@@ -235,6 +235,21 @@
           "marker": "product",
           "resolver": "extension-catalogue",
           "reason": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. NO app_version COLUMN AND NO app_id: rows are written by POST /v1/ext/token from a code whose `product` was already checked at mint, so the marker is `product`, resolved against the extension catalogue exactly as ext_codes is. The credential is stored only as a SHA-256 and is never read by a monitor."
+        },
+        "reminder_prefs": {
+          "marker": "app_id",
+          "resolver": "app-catalogue",
+          "reason": "⏱ 2026-09-28 · ST-R1. NO app_version COLUMN: rows are written by PUT /v1/reminders/prefs from an authenticated app, and `app_id` is validated before the write (isReminderApp: a catalogue app with an app database) — so the marker is app_id, resolved against the catalogue exactly as content_reports is."
+        },
+        "reminder_sent": {
+          "marker": "app_id",
+          "resolver": "app-catalogue",
+          "reason": "⏱ 2026-09-28 · ST-R1. NO app_version COLUMN: rows are written only by the nightly `reminder_mail` job, which fans out over the generated app targets, so `app_id` is always a catalogue app with an app database. The marker is app_id, resolved against the catalogue."
+        },
+        "reminder_feed": {
+          "marker": "app_id",
+          "resolver": "app-catalogue",
+          "reason": "⏱ 2026-09-28 · ST-R2. NO app_version COLUMN: rows are written by POST /v1/calendar/feed from an authenticated app, and `app_id` is validated before the write (isReminderApp). The marker is app_id, resolved against the catalogue. The feed token is stored only as a SHA-256 and is never read by a monitor."
         }
       }
     },
@@ -244,7 +259,7 @@
       "tables": {
         "subscriptions": {
           "resolver": "exempt",
-          "reason": "⏱ 2026-09-26 · O-PROVENANCE-WALKS-ONE-DATABASE. NO app_version COLUMN AND NO OTHER MARKER: 0001_init.sql gives this table `id`, `user_id`, `name`, `category`, `price`, `cycle`, `next_renewal`, `plan`, `glyph`, `used_pct`, `usage_note`, `unused`, `created_at` and `updated_at`, and not one of them names a build, an app, a money world or a closed set a resolver could check. Rows are written by POST and PATCH /v1/subscriptions (services/subscriptiontracker-api/src/routes/subscriptions.ts) from the authenticated session, and `next_renewal` is advanced by the platform Worker's nightly renewals fan-out (services/platform/src/renewals.ts). `user_id` is a Supabase subject this database cannot resolve, and `name`/`category`/`plan` are the user's own free text. So it is exempt; a marker column added later (above all `app_version`, which the gate's limb 5 then holds to `released-build`) re-opens this rule."
+          "reason": "⏱ 2026-09-26 · O-PROVENANCE-WALKS-ONE-DATABASE. NO app_version COLUMN AND NO OTHER MARKER: 0001_init.sql gives this table `id`, `user_id`, `name`, `category`, `price`, `cycle`, `next_renewal`, `plan`, `glyph`, `used_pct`, `usage_note`, `unused`, `created_at` and `updated_at`, and not one of them names a build, an app, a money world or a closed set a resolver could check. Rows are written by POST and PATCH /v1/subscriptions (services/subscriptiontracker-api/src/routes/subscriptions.ts) from the authenticated session, and `next_renewal` is advanced by the platform Worker's nightly renewals fan-out (services/platform/src/renewals.ts). `user_id` is a Supabase subject this database cannot resolve, and `name`/`category`/`plan` are the user's own free text. So it is exempt; a marker column added later (above all `app_version`, which the gate's limb 5 then holds to `released-build`) re-opens this rule. ⏱ 2026-09-28 · 0003_subscription_model.sql ([ADR 077] §5) adds `currency`, `price_minor`, `cycle_every`, `cycle_unit`, `first_charge_on`, `status`, `trial_ends_on`, `cancelled_on`, `deleted_at`, `notes`, `service_id`, `cancel_url`, `rail`, `rail_holder`, `reminder_days`, `shared_with`, `share_numerator` and `share_denominator`, written by the same two routes. Still no marker: `status`, `rail` and `cycle_unit` are closed sets, but they describe the user's subscription, not which build, app or money world wrote the row — `rail` is how the user's charge reaches them ([ADR 077] §7), never a money-rail environment — and the rest are the user's own dates, amounts, labels and free text. The exemption stands; the gate's limb 4 holds it to naming every column."
         },
         "budgets": {
           "resolver": "exempt",
@@ -256,7 +271,7 @@
         },
         "payment_history": {
           "resolver": "exempt",
-          "reason": "⏱ 2026-09-26 · O-PROVENANCE-WALKS-ONE-DATABASE. NO app_version COLUMN AND NO OTHER MARKER: 0001_init.sql gives this table `id`, `subscription_id`, `user_id`, `amount` and `paid_at`, and 0002_schema_debt.sql adds `updated_at`. Rows are the history of a subscription the USER tracks, not a money-rail row: the platform Worker's nightly renewals fan-out (services/platform/src/renewals.ts) inserts one when a tracked subscription's `next_renewal` passes, and no merchant-of-record or store receipt is involved, so there is no environment stamp to read. None of the six names a build, an app, a money world or a closed set a resolver could check. So it is exempt; a marker column added later re-opens this rule."
+          "reason": "⏱ 2026-09-26 · O-PROVENANCE-WALKS-ONE-DATABASE. NO app_version COLUMN AND NO OTHER MARKER: 0001_init.sql gives this table `id`, `subscription_id`, `user_id`, `amount` and `paid_at`, and 0002_schema_debt.sql adds `updated_at`. Rows are the history of a subscription the USER tracks, not a money-rail row: the platform Worker's nightly renewals fan-out (services/platform/src/renewals.ts) inserts one when a tracked subscription's `next_renewal` passes, and no merchant-of-record or store receipt is involved, so there is no environment stamp to read. None of the six names a build, an app, a money world or a closed set a resolver could check. So it is exempt; a marker column added later re-opens this rule. ⏱ 2026-09-28 · 0003_subscription_model.sql adds `currency` (the unit of `amount`) and `source` (who recorded the payment, e.g. the renewal fan-out or the user). `source` is a closed set, but it says which WRITER recorded a real payment the user tracks, not whether the row is test residue, so it is not a provenance marker either; both are NULL until a writer sets them. The exemption stands."
         }
       }
     }

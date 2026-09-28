@@ -763,6 +763,10 @@ describe('DELETE /v1/account — three limbs, executed against a real engine', (
     // ⚠️ AND A SIXTH TIME, 2026-09-24, with `ext_codes.user_id` and
     // `ext_devices.user_id` — the browser extension's one-time code and linked
     // device (O-EXTENSION-ACCOUNT-CHECK-UNBUILT). Red first, by its 200, as above.
+    //
+    // ⚠️ AND A SEVENTH TIME, 2026-09-28, with 0020's `reminder_prefs`,
+    // `reminder_sent` and `reminder_feed` — renewal reminders (ST-R1/ST-R2).
+    // Red first, by its 200, as above.
     const db = realPlatformDb();
     db.db.exec('DROP TABLE entitlements;');
     db.db.exec('DROP TABLE provider_accounts;');
@@ -772,6 +776,9 @@ describe('DELETE /v1/account — three limbs, executed against a real engine', (
     db.db.exec('DROP TABLE content_reports;');
     db.db.exec('DROP TABLE ext_codes;');
     db.db.exec('DROP TABLE ext_devices;');
+    db.db.exec('DROP TABLE reminder_prefs;');
+    db.db.exec('DROP TABLE reminder_sent;');
+    db.db.exec('DROP TABLE reminder_feed;');
     const res = await harness({ db }).del('/v1/account', `Bearer ${await token({ sub: 'user-a' })}`);
     expect(res.status).toBe(503);
     expect(identityCalls).toHaveLength(0);

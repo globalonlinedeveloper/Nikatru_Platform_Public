@@ -70,7 +70,6 @@ import 'package:nikatru_purchases/nikatru_purchases.dart';
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/core/format/money_format.dart';
-import 'package:subscriptiontracker/core/format/monthly_share.dart';
 import 'package:subscriptiontracker/core/format/sub_math.dart';
 import 'package:subscriptiontracker/core/router.dart';
 import 'package:subscriptiontracker/data/models/budget_info.dart';
@@ -1679,7 +1678,7 @@ void main() {
 
   // ═══ TIER 1 · DETAIL ═══════════════════════════════════════════════════════
   group('detail · the icon-only hero controls', () {
-    testWidgets('[en] back and more-options announce their arb values', (
+    testWidgets('[en] back announces its arb value; no dead "More options"', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
@@ -1689,7 +1688,8 @@ void main() {
         final AppLocalizations l10n = await _load('en');
         final List<String> labels = announced(tester);
         expect(labels, contains(l10n.back));
-        expect(labels, contains(l10n.moreOptions));
+        // ST-U5 (B14): the no-op "More options" button was removed.
+        expect(labels, isNot(contains('More options')));
       });
     });
 
@@ -3138,40 +3138,21 @@ void main() {
             reason:
                 'a live control announcing disabled sends somebody tapping at '
                 'nothing — and on THIS sheet the disabled branch is real, it '
-                'is what `Cancelling…` renders as',
+                'is what `Removing…` renders as',
           );
         }
 
         await tester.tap(find.text(l10n.confirmCancel));
         await tester.pumpAndSettle();
 
-        // 🔴 STEP 1, AND THE ASSERTION IS ABOUT THE U+FFFC SPLICE. The saved
-        // amount is emphasised by asking for ONE translated message with an
-        // OBJECT REPLACEMENT CHARACTER standing in for the money, then cutting
-        // the finished string at that character and re-joining it as three
-        // spans. `Text.rich` flattens to a single semantics label, so a splice
-        // that mis-cut — or one that left the control character in — is
-        // audible as garbage in the one sentence that tells a user what they
-        // just saved. Composed from the SAME provider the sheet read, so the
-        // expectation cannot drift from the currency the sheet formatted.
-        final MoneyFormatter money = MoneyFormatter(l10n.localeName);
+        // STEP 1 (ST-U3): a reader hears that the entry was REMOVED and that
+        // the provider is where a plan is cancelled — never a savings figure,
+        // which the sheet cannot know.
         expect(announced(tester), contains(l10n.cancelledHeading));
         expect(
           announced(tester),
-          contains(
-            l10n.cancelStep2Body(money.formatShareFigure(sub.monthlyShare)),
-          ),
-          reason:
-              'the emphasised amount is spliced into a translated sentence at '
-              'U+FFFC; a reader must hear the sentence, not the seam. '
-              'Found: ${announced(tester)}',
-        );
-        expect(
-          announced(tester).join(' '),
-          isNot(contains('\u{FFFC}')),
-          reason:
-              'the OBJECT REPLACEMENT CHARACTER survived into the audio '
-              'channel — the placeholder was never cut out',
+          contains(l10n.removeStep2Body),
+          reason: 'Found: ${announced(tester)}',
         );
         expect(
           named(l10n.done).every((SemanticsData d) => d.announcesButton),
@@ -4323,7 +4304,7 @@ void main() {
         await expectContrastHadSubjects(
           tester,
           'detail',
-          covers: const <String>['Netflix', 'Payment history', 'Cancel plan'],
+          covers: const <String>['Netflix', 'Payment history', 'Remove'],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
         // 20 strings, against the sweep above's 5 — a 4× widening on the screen
@@ -4898,7 +4879,10 @@ void main() {
         await expectContrastHadSubjects(
           tester,
           'the cancel sheet (step 0)',
-          covers: const <String>['Cancel Netflix?', 'Confirm cancel'],
+          covers: const <String>[
+            'Remove Netflix from your tracker?',
+            'Yes, remove',
+          ],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
 
@@ -4917,7 +4901,7 @@ void main() {
         await expectContrastHadSubjects(
           tester,
           'the cancel sheet (step 1)',
-          covers: const <String>['Cancelled', 'Done'],
+          covers: const <String>['Removed from your tracker', 'Done'],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });

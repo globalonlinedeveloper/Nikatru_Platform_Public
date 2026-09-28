@@ -218,8 +218,9 @@ const RUN_TIMEOUT_MS = 120_000;
 /** The one spawn. `argv` is what the guard is given and `cwd` where it is given
  *  it — the two things the app-id defect turned on, so neither is hidden inside
  *  a helper that only ever passes an app directory. */
-const spawnGuard = (argv, { sdkRoot, cwd, env = {} }) => {
+const spawnGuard = (argv, { sdkRoot, cwd, env = {}, spawnOptions = {} }) => {
   const r = spawnSync(process.execPath, [GUARD, ...argv], {
+    ...spawnOptions,
     cwd,
     encoding: 'utf8',
     env: { ...process.env, ...fixtureTemp(), FLUTTER_ROOT: sdkRoot, ...env },
@@ -262,7 +263,10 @@ describe('assert-stamp-brand-assets', () => {
   // 2026-09-11 on real-size brick icons: worker threads burned CPU in 7 of 8 runs
   // by default, 0 of 8 with the flag. Delete the relaunch and this line says ON.
   test('the working guard runs with V8 background tasks OFF, so its exit cannot deadlock', () => {
-    const { code, out } = run(world());
+    // singleThreaded: false — spawned WITHOUT the flag the spawn-ceiling preload adds,
+    // so the relaunch is what makes it single-threaded (tooling/scripts/spawn-ceiling.mjs).
+    const w = world();
+    const { code, out } = spawnGuard([w.appDir, '--seed', '6459F5'], { sdkRoot: w.sdkRoot, spawnOptions: { singleThreaded: false } });
     assert.equal(code, 0, out);
     assert.match(out, /V8 background tasks: OFF \(--single-threaded\)/);
   });

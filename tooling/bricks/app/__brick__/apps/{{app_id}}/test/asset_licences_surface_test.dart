@@ -145,8 +145,9 @@ void main() {
         );
       }
       source = _stripComments(
-        _bootPathFile(_stripComments(main.readAsStringSync()))
-            .readAsStringSync(),
+        _bootPathFile(
+          _stripComments(main.readAsStringSync()),
+        ).readAsStringSync(),
       );
     });
 

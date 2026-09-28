@@ -48,8 +48,11 @@ const tail = (r) => `${r.stdout ?? ''}${r.stderr ?? ''}`.trimEnd().split('\n').s
 // in the same file: an exit deadlock (nodejs/node#54918), fixed in the guard by
 // the single-threaded relaunch. The message now carries status, signal and what
 // the guard had printed, so the next timeout says WHICH of the two it was.
+// singleThreaded: false — every case here asserts V8_OFF from a guard spawned WITHOUT the
+// flag the spawn-ceiling preload adds, so the relaunch is what makes it single-threaded
+// (tooling/scripts/spawn-ceiling.mjs).
 const run = (...args) => {
-  const r = spawnSync(process.execPath, [GUARD, ...args], { cwd: ROOT, encoding: 'utf8', timeout: 120_000 });
+  const r = spawnSync(process.execPath, [GUARD, ...args], { cwd: ROOT, encoding: 'utf8', timeout: 120_000, singleThreaded: false });
   assert.equal(
     r.error,
     undefined,

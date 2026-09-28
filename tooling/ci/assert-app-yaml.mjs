@@ -66,6 +66,10 @@
 //       a `purchases_flutter <version>` row in each Apple `binaryInventory` (rows,
 //       never prose); the dependency or a store row WITHOUT the declaration fails,
 //       the direction in which a sworn declaration goes false by a one-line edit.
+//       (e) a declared app's money provider wires the bridge through
+//       `StoreBridgeWiring.forChannel` and passes no literal null; (f) its
+//       `AppConfig.proEntitlementId` equals `entitlementId`. A `"sworn": false`
+//       (preview) store file's leg is counted as preview, graded when sworn.
 //
 //   7 · AI content is declared, and its consequences hold, both ways — an
 //       app.yaml `ai.generatesContent: true` requires
@@ -165,6 +169,8 @@ import { PLATFORMS as APPLE_PLATFORMS } from '../store/render-apple-privacy-mani
 import { listDir } from './tree-walk.mjs';
 import { transmits } from '../../contracts/legal/pro-gate.mjs';
 import { IAP_STORE_CHANNELS } from './submit-preconditions.mjs';
+import { MONEY_PROVIDERS, NULL_BRIDGE, STORE_WIRING_CALL } from './money-wiring.mjs';
+import { stripDartComments } from './dart-source.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // ⏱ 12a: the root is the first argument that is not a flag, so `--for-submission=<channel> --app <id>`
@@ -815,6 +821,31 @@ if (privacyPlan.problems.length) {
 //
 // The reverse direction reads the SAME fields: an app with no declaration
 // carries neither a `purchases_flutter` inventory row nor the Play entry.
+//
+// ⏱ 2026-09-27 (O-BRICK-SELLS-NOTHING-IN-A-STORE, 12b) — two more legs for a
+// declared app, and the preview waiver:
+//
+//   · (e) THE WIRING. Declared and depended on is still green when the money
+//     provider hands the facade a literal `iapBridge: null`: the app then sells
+//     nothing in the store while every file above says it does. So a declared
+//     app's `lib/state/money_providers.dart` (money-wiring.mjs's MONEY_PROVIDERS,
+//     the path assert-stamp-properties reads too) must call
+//     `StoreBridgeWiring.forChannel(` — packages/billing_revenuecat's one
+//     fail-closed rule — and no code line may match `iapBridge(Config)?: null`
+//     (comments stripped, so a sentence about the null is not the null). A
+//     provider that is not at that path is COVERAGE LOST, never a pass.
+//   · (f) THE ENTITLEMENT. The wiring passes `AppConfig.proEntitlementId`, and
+//     app.yaml `entitlementId` is the same fact written a second time. The
+//     literal in `lib/core/app_config.dart` must equal it.
+//   · PREVIEW. A store file that says `"sworn": false` is the stamped template,
+//     unanswered (assert-sworn-store-files limb 0), and a template CANNOT carry
+//     these rows: assert-play-declarations refuses an `answers` array in the
+//     brick's Data safety form, and the Apple audit is not made until a built
+//     binary exists. So a declared app's Play leg and Apple-inventory leg are
+//     waived while that file is a preview, and COUNTED as preview in the ok
+//     line. The waiver ships nothing: `assert-sworn-store-files
+//     --for-submission` refuses a preview channel, and the day the file is
+//     sworn both legs grade it in full.
 const IAP_PACKAGE = 'nikatru_billing_revenuecat';
 const IAP_PURCHASE_TYPE = 'Purchase history';
 const IAP_SDK_BINARY = 'purchases_flutter';
@@ -854,8 +885,17 @@ const playMapsIapPackage = (form) => {
   return Boolean(direct) && typeof direct === 'object' && !Array.isArray(direct) && Object.hasOwn(direct, IAP_PACKAGE);
 };
 
+/** An app's AppConfig (limb 6 (f) here, limb 7 below). */
+const CONFIG_REL = (id) => `${APPS_DIR}/${id}/lib/core/app_config.dart`;
+const MONEY_REL = (id) => `${APPS_DIR}/${id}/${MONEY_PROVIDERS}`;
+const ENTITLEMENT_CONST = /static\s+const\s+String\s+proEntitlementId\s*=\s*'([^']*)'\s*;/;
+
 let iapDeclared = 0;
 let iapChecked = 0;
+let iapLive = 0;
+let iapWired = 0;
+let playPreview = 0;
+let applePreview = 0;
 const problemsBeforeIap = problems.length;
 
 for (const { id, doc } of declarations) {
@@ -909,6 +949,53 @@ for (const { id, doc } of declarations) {
   }
 
   iapDeclared += 1;
+  if (mobileIap.state === 'live') iapLive += 1;
+
+  // (e) the wiring. Line numbers survive: stripDartComments is length-preserving.
+  const moneyRel = MONEY_REL(id);
+  const moneyAbs = join(ROOT, moneyRel);
+  if (!existsSync(moneyAbs)) {
+    coverageLost([
+      `limb 6 (e): ${APPS_DIR}/${id}/app.yaml declares \`billing.mobileIap\` and ${moneyRel} does not exist.`,
+      'The store-bridge wiring is read from that file (money-wiring.mjs MONEY_PROVIDERS). A provider that moved',
+      'is a wiring this limb cannot see, so it cannot say the app passes no null bridge.',
+    ]);
+  } else {
+    const code = stripDartComments(readFileSync(moneyAbs, 'utf8'));
+    const nullLines = code
+      .split('\n')
+      .map((line, i) => (NULL_BRIDGE.test(line) ? i + 1 : 0))
+      .filter((n) => n > 0);
+    for (const n of nullLines) {
+      problems.push(
+        `${moneyRel}:${n}: ${APPS_DIR}/${id}/app.yaml declares \`billing.mobileIap\` and this line passes the ` +
+          'facade a literal null store bridge. The app would sell nothing on Play or the App Store while its ' +
+          `declaration, its dependency and its store files all say it does. Pass what ${STORE_WIRING_CALL}…) returns.`,
+      );
+    }
+    if (!code.includes(STORE_WIRING_CALL)) {
+      problems.push(
+        `${moneyRel}: ${APPS_DIR}/${id}/app.yaml declares \`billing.mobileIap\` and this provider never calls ` +
+          `${STORE_WIRING_CALL}…). That is the one fail-closed rule (packages/billing_revenuecat) deciding whether ` +
+          'a build gets a store bridge; a provider that builds its own is a second copy of the rule nothing tests.',
+      );
+    } else if (nullLines.length === 0) {
+      iapWired += 1;
+    }
+  }
+
+  // (f) the entitlement id, written twice.
+  const cfgRel = CONFIG_REL(id);
+  const cfgText = existsSync(join(ROOT, cfgRel)) ? stripDartComments(readFileSync(join(ROOT, cfgRel), 'utf8')) : '';
+  const entitlement = cfgText.match(ENTITLEMENT_CONST)?.[1] ?? null;
+  if (entitlement !== mobileIap.entitlementId) {
+    problems.push(
+      `${cfgRel}: ${APPS_DIR}/${id}/app.yaml declares \`billing.mobileIap.entitlementId: ${mobileIap.entitlementId}\` ` +
+        `and ${entitlement === null ? 'this file declares no `static const String proEntitlementId = \'…\';`' : `\`AppConfig.proEntitlementId\` is '${entitlement}'`}. ` +
+        'The store bridge is configured with the AppConfig value, so a store purchase would unlock an entitlement ' +
+        'the declaration and the provider dashboard do not name.',
+    );
+  }
 
   if (!dependsOnIap) {
     problems.push(
@@ -927,6 +1014,8 @@ for (const { id, doc } of declarations) {
         `${play.missing ? 'does not exist' : `is not valid JSON (${play.broken})`}. An app that sells through ` +
         'Play Billing has a Data safety form to answer, and there is nothing here to answer it with.',
     );
+  } else if (play.json?.sworn === false) {
+    playPreview += 1;
   } else {
     const posture = play.json?.buildPosture?.current ?? null;
     const answers = Array.isArray(play.json?.answers) ? play.json.answers : [];
@@ -959,6 +1048,8 @@ for (const { id, doc } of declarations) {
         `${apple.missing ? 'does not exist' : `is not valid JSON (${apple.broken})`}. The IAP SDK is a binary ` +
         "inside the bundle and Apple's privacy report aggregates every binary in it.",
     );
+  } else if (apple.json?.sworn === false) {
+    applePreview += 1;
   } else {
     const rowed = new Set(appleSdkPlatforms(apple.json, true));
     for (const platform of appleShippedPlatforms(apple.json)) {
@@ -1000,10 +1091,13 @@ if (problems.length === problemsBeforeIap) {
     );
   } else {
     ok(
-      `limb 6 — ${iapDeclared} of ${iapChecked} app(s) declare mobile IAP, each depending on ${IAP_PACKAGE} ` +
-        `and swearing "${IAP_PURCHASE_TYPE}" on Play with a dependencySurface entry for it, and with a ` +
-        `"${IAP_SDK_BINARY} <version>" row in every Apple binary inventory shipped (structured rows only); the ` +
-        'other(s) carry neither the declaration, the dependency nor a store SDK row',
+      `limb 6 — ${iapDeclared} app(s) declare mobile IAP (${iapLive} live, ${iapDeclared - iapLive} pending), ` +
+        `each wired through StoreBridgeWiring (${iapWired} of ${iapDeclared}) with AppConfig.proEntitlementId = ` +
+        `entitlementId, and of ${iapChecked} app(s) checked each declared one depends on ${IAP_PACKAGE}, swears ` +
+        `"${IAP_PURCHASE_TYPE}" on Play with a dependencySurface entry for it, and carries a ` +
+        `"${IAP_SDK_BINARY} <version>" row in every Apple binary inventory shipped (structured rows only) — ` +
+        `preview, graded when sworn: Play ${playPreview}, Apple ${applePreview}; the other(s) carry neither the ` +
+        'declaration, the dependency nor a store SDK row',
     );
   }
 }
@@ -1042,7 +1136,6 @@ const AI_TELL_FLOOR = ['google_generative_ai', 'firebase_ai', 'firebase_vertexai
 const REPORT_TABLE = 'table:platform_db.content_reports';
 const REPORT_OPENERS = /\b(showReportContentDialog|ReportContentDialog)\s*\(/;
 const CR_REL = (id) => `${APPS_DIR}/${id}/store/android-play/content-rating.json`;
-const CONFIG_REL = (id) => `${APPS_DIR}/${id}/lib/core/app_config.dart`;
 const AI_CONST = /static\s+const\s+bool\s+generatesAiContent\s*=\s*(true|false)\s*;/;
 
 /** Every .dart file under `rel`, comments stripped — a wiring that exists only

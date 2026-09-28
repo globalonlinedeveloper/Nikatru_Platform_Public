@@ -165,9 +165,10 @@ const rowsOf = (db: SqliteD1) =>
 
 /**
  * A DB with the real set applied once, then seeded with a LEGACY-SHAPED row —
- * `budget_categories` with no `id`, `payment_history` with no `updated_at`. This
- * is what 0002's backfills exist for, and seeding it AFTER the migration is what
- * makes the replay assertions non-vacuous: against empty tables the backfills
+ * `budget_categories` with no `id`, `payment_history` with no `updated_at`,
+ * `subscriptions` with a `cycle` and no `cycle_every`/`cycle_unit`. This is
+ * what 0002's and 0003's backfills exist for, and seeding it AFTER the
+ * migration is what makes the replay assertions non-vacuous: against empty tables the backfills
  * match zero rows, so "replaying changed nothing" would be trivially true while
  * proving nothing about the backfill at all.
  */
@@ -179,6 +180,11 @@ function seededDb(): SqliteD1 {
   db.db.exec(
     "INSERT INTO payment_history (id, subscription_id, user_id, amount, paid_at) " +
       "VALUES ('p1', 's1', 'u1', 9.99, '2026-08-01T00:00:00Z')",
+  );
+  db.db.exec(
+    "INSERT INTO subscriptions (id, user_id, name, price, cycle, next_renewal) " +
+      "VALUES ('s1', 'u1', 'Netflix', 9.99, 'monthly', '2026-09-01'), " +
+      "('s2', 'u1', 'Domain', 12, 'yearly', '2027-01-15')",
   );
   return db;
 }
@@ -224,6 +230,14 @@ describe('subscriptiontracker_db migrations re-apply cleanly', () => {
     // backfill did nothing here, "unchanged by the second pass" would prove nothing.
     expect(assignedId, 'the id backfill did not fire — the replay assertion below would be vacuous').toBeTruthy();
     expect(assignedAt).toBe('2026-08-01T00:00:00Z');
+    // 0003's cadence backfill: each legacy `cycle` becomes the pair it means.
+    expect(
+      db.rows('SELECT id, cycle_every, cycle_unit FROM subscriptions ORDER BY id'),
+      'the cadence backfill did not fire — the replay assertion below would be vacuous',
+    ).toEqual([
+      { id: 's1', cycle_every: 1, cycle_unit: 'month' },
+      { id: 's2', cycle_every: 1, cycle_unit: 'year' },
+    ]);
 
     const schema = schemaOf(db);
     const rows = rowsOf(db);
@@ -256,7 +270,7 @@ describe('subscriptiontracker_db migrations re-apply cleanly', () => {
     // array is exactly what a broken `?raw` import produces. The floor is a
     // RELATIONSHIP, not a tuned number: one entry per .sql file the applier would
     // apply, and every entry non-empty DDL.
-    expect(SUBLY_MIGRATIONS.length).toBeGreaterThanOrEqual(2);
+    expect(SUBLY_MIGRATIONS.length).toBeGreaterThanOrEqual(3);
     for (const [i, sql] of SUBLY_MIGRATIONS.entries()) {
       expect(sql.length, `migration #${i} is empty — the ?raw import resolved to nothing`).toBeGreaterThan(100);
     }
@@ -275,5 +289,9 @@ describe('subscriptiontracker_db migrations re-apply cleanly', () => {
     const cols = (t: string) => db.rows(`PRAGMA table_info(${t})`).map((r) => String(r.name));
     expect(cols('budget_categories')).toContain('id');
     expect(cols('payment_history')).toContain('updated_at');
+    expect(cols('payment_history')).toEqual(expect.arrayContaining(['currency', 'source']));
+    expect(cols('subscriptions')).toEqual(
+      expect.arrayContaining(['currency', 'price_minor', 'cycle_every', 'cycle_unit', 'status', 'deleted_at']),
+    );
   });
 });

@@ -1099,6 +1099,9 @@
         ],
         "ops_stuck_runs": [
           "15 * * * *"
+        ],
+        "reminder_mail": [
+          "0 6 * * *"
         ]
       },
       "watchedJobsDeclaredAt": {
@@ -1115,7 +1118,8 @@
         "boxb_reachability": "2026-09-12T11:22:49Z",
         "boxa_reachability": "2026-09-18T11:22:08Z",
         "ops_watchdog": "2026-09-18T11:22:08Z",
-        "ops_stuck_runs": "2026-09-25T00:17:02Z"
+        "ops_stuck_runs": "2026-09-25T00:17:02Z",
+        "reminder_mail": "2026-09-28T03:25:45Z"
       },
       "_watchedJobsDeclaredAtWhy": [
         "⏱ 2026-09-11 — WHEN THE REGISTER BEGAN WATCHING EACH JOB, so a job with NO heartbeat row at all is NOT YET DUE until the",
@@ -4544,6 +4548,74 @@
         "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half); the deletion half is `deletingJob`"
       },
       "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. The `ext_devices` limb deletes rows whose `revoked_at` is older than EXT_DEVICES_RETENTION_DAYS and is an ISO-8601 date-time, at most 1000 per run (MAX_ROWS_PER_SWEEP). Held by services/platform/test/retention-sweep.test.ts, which keeps a never-revoked 400-day-old device and a device revoked 29 days ago through the sweep.",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.platform_db.reminder_prefs",
+      "kind": "retention",
+      "store": "d1:platform_db:reminder_prefs",
+      "what": "⏱ 2026-09-28 · ST-R1. One row per (account, app) renewal reminder preference: the Supabase `sub`, the app id, `email_opt_in`, `lead_days` and `updated_at`. Written only by PUT /v1/reminders/prefs (services/platform/src/routes/reminders.ts) and turned off by the one-click unsubscribe; read nightly by the `reminder_mail` job. No email address.",
+      "rule": "keep",
+      "keepWhy": "A LIVE SETTING, at most one row per account and app (PRIMARY KEY (user_id, app_id)), so the table cannot outgrow the account count. Deleting it by age would silently switch off reminders the person asked for. It carries `user_id`, so it leaves with the account through the derived erasure sweep rather than on a timer (tooling/legal/data-inventory.json `table:platform_db.reminder_prefs`, erasure `purge`).",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0020_reminders.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.platform_db.reminder_sent",
+      "kind": "retention",
+      "store": "d1:platform_db:reminder_sent",
+      "what": "⏱ 2026-09-28 · ST-R1. One row per renewal a reminder email was sent about: the Supabase `sub`, the app id, the subscription id, the renewal date (`due_on`), the kind, `sent_at` and SHA-256 of that email's one-click unsubscribe token. UNIQUE on (user_id, app_id, subscription_id, due_on, kind) — what stops a night mailing twice. Written only by the nightly `reminder_mail` job (services/platform/src/lib/reminders.ts).",
+      "rule": "period",
+      "periodDays": 400,
+      "declaredBy": "the platform's period for logs of processing ([ADR 045] §9: 400 clears the DPDP Rules 2025 Rule 8(3) one-year floor that 365 misses across a 29 February); the value lives in services/platform/src/lib/reminders.ts `REMINDER_SENT_RETENTION_DAYS`, and this row and that constant are cross-checked by services/platform/test/reminder-mail.test.ts",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a — the reminder job deletes a row 400 days after its `due_on`; the dedupe needs a row only until its date has passed, so nothing live is lost. Erasure: DELETE /v1/account empties the table for the account, because the column is spelled `user_id` (tooling/legal/data-inventory.json `table:platform_db.reminder_sent`, erasure `purge`).",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0020_reminders.sql",
+        "record": "the table itself",
+        "failingValue": "a row whose `due_on` is more than 400 days in the past",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half); the deletion half is `deletingJob`"
+      },
+      "deletingJob": "reminder_mail — the nightly Cloudflare cron limb `reminderMail` in services/platform/src/scheduled.ts (work in src/lib/reminders.ts `pruneLedger`), watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. It deletes rows whose `due_on` is older than REMINDER_SENT_RETENTION_DAYS, at most 1000 per run (MAX_PRUNE_PER_RUN), and prints the count as `pruned=` in every row it writes. Held by services/platform/test/reminder-mail.test.ts, which keeps a row one day inside the period.",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.platform_db.reminder_feed",
+      "kind": "retention",
+      "store": "d1:platform_db:reminder_feed",
+      "what": "⏱ 2026-09-28 · ST-R2. One row per (account, app) private calendar feed: the Supabase `sub`, the app id, SHA-256 of the feed token (never the token), `created_at` and `revoked_at`. Written by POST and DELETE /v1/calendar/feed; read by the public GET /v1/calendar/<token>.ics (services/platform/src/routes/calendar.ts).",
+      "rule": "keep",
+      "keepWhy": "At most one row per account and app (PRIMARY KEY (user_id, app_id)): a rotation replaces the hash in place and a revoke stamps `revoked_at`, so the table cannot outgrow the account count. A LIVE feed deleted by age would silently empty a calendar the person subscribed, and a revoked row already answers the same 404 an absent one does. It carries `user_id`, so it leaves with the account through the derived erasure sweep (tooling/legal/data-inventory.json `table:platform_db.reminder_feed`, erasure `purge`).",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0020_reminders.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
       "accessProviders": [
         "cloudflare"
       ],

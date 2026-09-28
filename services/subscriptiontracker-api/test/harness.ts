@@ -23,6 +23,7 @@ import type { DatabaseSync as DatabaseSyncCtor } from 'node:sqlite';
 import { Hono } from 'hono';
 import init0001 from '../migrations/0001_init.sql?raw';
 import init0002 from '../migrations/0002_schema_debt.sql?raw';
+import init0003 from '../migrations/0003_subscription_model.sql?raw';
 import type { AppEnv } from '../src/types';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
@@ -143,7 +144,7 @@ export class SqliteD1 {
  * thing to forget to extend when 0003 lands. Same reasoning, and the same shape,
  * as `PLATFORM_MIGRATIONS` in services/platform/test/harness.ts.
  */
-export const SUBLY_MIGRATIONS: readonly string[] = [init0001, init0002];
+export const SUBLY_MIGRATIONS: readonly string[] = [init0001, init0002, init0003];
 
 /** APP_DB with subscriptiontracker's real migrations applied, in order. `extraSchema` is for
  *  tests that need to force a DB-level failure the route cannot pre-empt (a

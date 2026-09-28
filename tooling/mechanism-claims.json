@@ -1004,12 +1004,6 @@
       "reason": "Describes the expectation's source in the lines directly below (c.read(analyticsConsentProvider)). A test's own construction; nothing grades it. judged 2026-09-18."
     },
     {
-      "file": "apps/subscriptiontracker/test/a11y_semantics_test.dart",
-      "anchor": "expectation cannot drift from the currency the sheet formatted.",
-      "status": "demoted",
-      "reason": "Describes the expectation's source in the lines directly below (MoneyFormatter over l10n.localeName). A test's own construction; nothing grades it. judged 2026-09-18."
-    },
-    {
       "file": "apps/subscriptiontracker/test/l10n_group_home_test.dart",
       "anchor": "and the surface it opens cannot drift into two words for one action.",
       "status": "proven",

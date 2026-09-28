@@ -13,6 +13,7 @@
 // bare node refuses config.ts's JSON imports), so this module imports only JSON.
 // ─────────────────────────────────────────────────────────────────────────────
 import bundlesJson from '../../../../catalog/bundles.json';
+import appsJson from '../../../../catalog/apps.json';
 
 /** The bundle register's path, as `feature_sets.minted_from` records it. */
 export const BUNDLES_REGISTER = 'catalog/bundles.json';
@@ -44,4 +45,22 @@ export function bundleVersionStatus(
 ): string | null {
   const row = rows.find((r) => r.featureSet === featureSet && r.version === version);
   return row !== undefined && typeof row.status === 'string' ? row.status : null;
+}
+
+/** An app row of catalog/apps.json, declared as the MINIMUM a reader reads. */
+export interface CatalogueAppRow {
+  readonly slug: string;
+  readonly name?: string;
+  readonly url?: string;
+}
+
+/** Every app row in the catalogue. A row without a string slug is dropped. */
+export const APP_ROWS: readonly CatalogueAppRow[] = (Array.isArray(appsJson) ? (appsJson as unknown[]) : []).filter(
+  (r): r is CatalogueAppRow =>
+    r !== null && typeof r === 'object' && typeof (r as { slug?: unknown }).slug === 'string',
+);
+
+/** The catalogue row for `slug`, or undefined when the catalogue has none. */
+export function catalogueApp(slug: string): CatalogueAppRow | undefined {
+  return APP_ROWS.find((a) => a.slug === slug);
 }

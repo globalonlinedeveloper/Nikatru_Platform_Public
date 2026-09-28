@@ -40,6 +40,7 @@ import { parseYaml, YamlError } from '../../app-yaml/yaml.mjs';
 import { validate, assertSchemaUnderstood, SchemaError } from '../../app-yaml/schema-validate.mjs';
 import { appleCategoryUti, MSIX_IDENTITY_TARGET } from '../../app-yaml/render.mjs';
 import { resolveRequiredProviders } from '../../legal/required-providers.mjs';
+import { MONEY_PROVIDERS } from '../money-wiring.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..', '..');
@@ -102,6 +103,12 @@ function tree() {
     // one app file, and the one exempt importer.
     'apps/subscriptiontracker/lib/main.dart',
     'packages/core/lib/src/content/ed25519_pack_verifier.dart',
+    // ── limb 6 (e) and (f) (12b) ──────────────────────────────────────────
+    // A declared app's money provider must wire its store bridge, and its
+    // AppConfig must carry the entitlement id: a missing provider is COVERAGE
+    // LOST, so a fixture without these two would exercise that refusal instead.
+    'apps/subscriptiontracker/lib/state/money_providers.dart',
+    'apps/subscriptiontracker/lib/core/app_config.dart',
   ]) {
     mkdirSync(join(root, dirname(rel)), { recursive: true });
     cpSync(join(REPO, rel), join(root, rel));
@@ -1030,6 +1037,12 @@ describe('limb 5 — the notice surfaces are what the declaration renders to', (
 // providers every app's configuration requires, and a notice page that says the
 // notice is not yet published. The second app below is that stamp's shape.
 const PENDING_APP = 'probe';
+/** The billing block post_gen stamps (O-BRICK-SELLS-NOTHING-IN-A-STORE, 12b): pending, the app's own key
+ *  secret names, and app #1's product pattern. */
+const STAMPED_PENDING_IAP =
+  '\nbilling:\n  mobileIap:\n    provider: revenuecat\n    entitlementId: pro\n    state: pending\n' +
+  '    publicKeySecrets:\n      android: REVENUECAT_PUBLIC_KEY_GOOGLE_PROBE\n      ios: REVENUECAT_PUBLIC_KEY_APPLE_PROBE\n' +
+  '    storeProducts:\n      - plan: single-monthly\n        productId: probe_pro_monthly\n      - plan: single-yearly\n        productId: probe_pro_yearly\n';
 const PENDING_YAML = `apps/${PENDING_APP}/privacy.yaml`;
 const PENDING_NOTICE = `sites/nikatru/${PENDING_APP}/privacy.html`;
 
@@ -1204,12 +1217,13 @@ describe('limb 3 — every app declares, pending or declared; limb 4 skips a pen
     // Limb 9 proves the required set is declared and no `never` provider is.
     // It does not refuse an EXTRA provider, so a hand-picked row added to the
     // brick would pass it; this equality is what keeps the stamp's list the
-    // resolver's list, for the app.yaml a stamp writes (no billing block).
+    // resolver's list, for the app.yaml a stamp writes: since 12b it carries the pending
+    // billing.mobileIap block post_gen writes, which triggers the three store-billing providers.
     const root = tree();
     try {
       addPendingApp(root);
-      const appYaml = parseYaml(get(root, `apps/${PENDING_APP}/app.yaml`));
-      assert.equal(appYaml.billing, undefined, 'the stamped declaration carries no billing block');
+      const appYaml = parseYaml(get(root, `apps/${PENDING_APP}/app.yaml`) + STAMPED_PENDING_IAP);
+      assert.equal(appYaml.billing.mobileIap.state, 'pending', 'the stamped declaration carries the pending billing block');
       const required = resolveRequiredProviders(PENDING_APP, {
         appYaml,
         channelRegister: readJson(root, 'tooling/channel-register.json'),
@@ -1309,7 +1323,7 @@ describe('limb 6 — the mobile-IAP opt-in and the bridge dependency travel toge
       optedIn(root, { ios: true, macos: true, play: true });
       const { code, out } = spawn(GUARD, [root]);
       assert.equal(code, 0, `expected a clean tree, got ${code}:\n${out}`);
-      assert.match(out, /limb 6 — 1 of 1 app\(s\) declare mobile IAP/);
+      assert.match(out, /limb 6 — 1 app\(s\) declare mobile IAP \(1 live, 0 pending\), each wired through StoreBridgeWiring \(1 of 1\)/);
     } finally { kill(root); }
   });
 
@@ -2325,12 +2339,157 @@ describe('12a — billing.mobileIap has a state, per-app key names and store pro
   });
 });
 
+// ⏱ O-BRICK-SELLS-NOTHING-IN-A-STORE (12b) — limb 6 (e) the wiring, (f) the entitlement id, and the
+// preview waiver. The second app is the brick's own stamp shape: its money provider and AppConfig are the
+// brick's files VERBATIM, its store files the brick's `"sworn": false` templates, and its declaration the
+// pending one post_gen writes. Every case mutates the REAL tree plus that app.
+describe('12b — a declared app wires its store bridge through StoreBridgeWiring and passes no null', () => {
+  const BRICK_APP = join(REPO, 'tooling', 'bricks', 'app', '__brick__', 'apps', '{{app_id}}');
+  // The provider path is money-wiring.mjs's, the one limb 6 (e) and assert-stamp-properties read.
+  const PROBE_MONEY = `apps/${PENDING_APP}/${MONEY_PROVIDERS}`;
+  const PROBE_CONFIG = `apps/${PENDING_APP}/lib/core/app_config.dart`;
+  const APP1_MONEY = `apps/subscriptiontracker/${MONEY_PROVIDERS}`;
+  const PENDING_IAP =
+    '\nbilling:\n  mobileIap:\n    provider: revenuecat\n    entitlementId: pro\n    state: pending\n' +
+    '    publicKeySecrets:\n      android: REVENUECAT_PUBLIC_KEY_GOOGLE_PROBE\n      ios: REVENUECAT_PUBLIC_KEY_APPLE_PROBE\n' +
+    '    storeProducts:\n      - plan: single-monthly\n        productId: probe_pro_monthly\n      - plan: single-yearly\n        productId: probe_pro_yearly\n';
+
+  /** The real tree plus a stamped-shape pending app that declares mobile IAP. */
+  const withPendingIapApp = () => {
+    const root = tree();
+    addPendingApp(root);
+    put(root, `apps/${PENDING_APP}/app.yaml`, get(root, `apps/${PENDING_APP}/app.yaml`) + PENDING_IAP);
+    put(
+      root,
+      `apps/${PENDING_APP}/pubspec.yaml`,
+      `name: ${PENDING_APP}\n\ndependencies:\n  flutter:\n    sdk: flutter\n  nikatru_billing_revenuecat:\n    path: ../../packages/billing_revenuecat\n`,
+    );
+    mkdirSync(join(root, dirname(PROBE_MONEY)), { recursive: true });
+    mkdirSync(join(root, dirname(PROBE_CONFIG)), { recursive: true });
+    put(root, PROBE_MONEY, readFileSync(join(BRICK_APP, 'lib', 'state', 'money_providers.dart'), 'utf8'));
+    put(root, PROBE_CONFIG, readFileSync(join(BRICK_APP, 'lib', 'core', 'app_config.dart'), 'utf8'));
+    const rendered = spawn(RENDER, [root]);
+    assert.equal(rendered.code, 0, rendered.out);
+    return root;
+  };
+
+  /** The two wiring lines back to the literal null — the row's red control (RC8). */
+  const nullWiring = (text) =>
+    text.replace('iapBridge: wiring.bridge,', 'iapBridge: null,').replace('iapBridgeConfig: wiring.config,', 'iapBridgeConfig: null,');
+
+  test('GREEN CONTROL — app #1 live and the stamped app pending, both wired: 2 declare (1 live, 1 pending)', () => {
+    const root = withPendingIapApp();
+    try {
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 0, out);
+      assert.match(out, /2 app\(s\) declare mobile IAP \(1 live, 1 pending\), each wired through StoreBridgeWiring \(2 of 2\)/);
+      assert.match(out, /preview, graded when sworn: Play 1, Apple 1/);
+    } finally { kill(root); }
+  });
+
+  test('RC8 · the stamped app\'s two wiring lines back to null FAIL, naming the file and the line', () => {
+    const root = withPendingIapApp();
+    try {
+      put(root, PROBE_MONEY, nullWiring(get(root, PROBE_MONEY)));
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /apps\/probe\/lib\/state\/money_providers\.dart:\d+: apps\/probe\/app\.yaml declares `billing\.mobileIap` and this line passes the facade a literal null store bridge/);
+      assert.equal((out.match(/apps\/probe\/lib\/state\/money_providers\.dart:\d+:/g) ?? []).length, 2, out);
+    } finally { kill(root); }
+  });
+
+  test('RC8 on app #1 · its wiring back to null FAILS the same way', () => {
+    const root = tree();
+    try {
+      put(root, APP1_MONEY, nullWiring(get(root, APP1_MONEY)));
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /apps\/subscriptiontracker\/lib\/state\/money_providers\.dart:\d+: .*literal null store bridge/);
+    } finally { kill(root); }
+  });
+
+  test('a provider that never calls StoreBridgeWiring.forChannel FAILS', () => {
+    const root = withPendingIapApp();
+    try {
+      put(root, PROBE_MONEY, get(root, PROBE_MONEY).replaceAll('StoreBridgeWiring.forChannel(', 'ownWiring('));
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /apps\/probe\/lib\/state\/money_providers\.dart: .* never calls StoreBridgeWiring\.forChannel\(/);
+    } finally { kill(root); }
+  });
+
+  test('a sentence about the null inside a comment is not the null (green)', () => {
+    const root = withPendingIapApp();
+    try {
+      put(root, PROBE_MONEY, `${get(root, PROBE_MONEY)}\n// A store build must never see iapBridge: null here.\n`);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 0, out);
+    } finally { kill(root); }
+  });
+
+  test('R-5 · a declared app whose provider moved is COVERAGE LOST (2), never a pass', () => {
+    const root = withPendingIapApp();
+    try {
+      rmSync(join(root, PROBE_MONEY));
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 2, out);
+      assert.match(out, /limb 6 \(e\): apps\/probe\/app\.yaml declares `billing\.mobileIap` and apps\/probe\/lib\/state\/money_providers\.dart does not exist/);
+    } finally { kill(root); }
+  });
+
+  test('RC9 · the stamped app\'s pubspec without the bridge dependency FAILS (the reverse leg, re-proved)', () => {
+    const root = withPendingIapApp();
+    try {
+      put(root, `apps/${PENDING_APP}/pubspec.yaml`, `name: ${PENDING_APP}\n\ndependencies:\n  flutter:\n    sdk: flutter\n`);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /apps\/probe\/app\.yaml declares `billing\.mobileIap` and apps\/probe\/pubspec\.yaml does not depend on nikatru_billing_revenuecat/);
+    } finally { kill(root); }
+  });
+
+  test('RC10 · AppConfig.proEntitlementId = \'plus\' against entitlementId: pro FAILS (limb 6 (f))', () => {
+    const root = withPendingIapApp();
+    try {
+      put(root, PROBE_CONFIG, get(root, PROBE_CONFIG).replace("proEntitlementId = 'pro';", "proEntitlementId = 'plus';"));
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /apps\/probe\/lib\/core\/app_config\.dart: .*`AppConfig\.proEntitlementId` is 'plus'/);
+    } finally { kill(root); }
+  });
+
+  test('R-6 · the waiver is for a PREVIEW only: the stamped Play form sworn with nothing answered is graded, and FAILS', () => {
+    const root = withPendingIapApp();
+    try {
+      const rel = `apps/${PENDING_APP}/store/android-play/data-safety.json`;
+      putJson(root, rel, { ...readJson(root, rel), sworn: true });
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /apps\/probe\/store\/android-play\/data-safety\.json: apps\/probe\/app\.yaml declares `billing\.mobileIap` and this form does not swear "Purchase history"/);
+    } finally { kill(root); }
+  });
+
+  test('R-6 · the stamped Apple audit sworn with no inventory is graded, and FAILS on the SDK row', () => {
+    const root = withPendingIapApp();
+    try {
+      const rel = `apps/${PENDING_APP}/store/ios-appstore/privacy-manifest.json`;
+      putJson(root, rel, { ...readJson(root, rel), sworn: true });
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /apps\/probe\/store\/ios-appstore\/privacy-manifest\.json: apps\/probe\/app\.yaml declares `billing\.mobileIap` and binaryInventory\.ios has no "purchases_flutter <version>" row/);
+    } finally { kill(root); }
+  });
+});
+
 describe('limb 7 — AI content is declared, and its consequences hold, both ways', () => {
   // O-PLAY-AI-CONTENT-REPORTING. Every case mutates the REAL declaration tree.
   const CR = 'apps/subscriptiontracker/store/android-play/content-rating.json';
   const DS = 'apps/subscriptiontracker/store/android-play/data-safety.json';
   const CFG = 'apps/subscriptiontracker/lib/core/app_config.dart';
   const TABLE = 'table:platform_db.content_reports';
+  // The AppConfig these cases write. It carries the entitlement id too: app #1 declares
+  // billing.mobileIap and limb 6 (f) holds AppConfig.proEntitlementId to it (12b), so a config
+  // without it would add a limb-6 finding to every case here.
+  const AI_CONFIG = "class AppConfig {\n  static const bool generatesAiContent = true;\n  static const String proEntitlementId = 'pro';\n}\n";
   const flipTrue = (root) =>
     put(root, APP_YAML, get(root, APP_YAML).replace('  generatesContent: false', '  generatesContent: true'));
   const writeLib = (root, rel, text) => {
@@ -2387,7 +2546,7 @@ describe('limb 7 — AI content is declared, and its consequences hold, both way
   test('false while the app constant says true fails', () => {
     const root = tree();
     try {
-      writeLib(root, CFG, 'class AppConfig {\n  static const bool generatesAiContent = true;\n}\n');
+      writeLib(root, CFG, AI_CONFIG);
       const { code, out } = spawn(GUARD, [root]);
       assert.equal(code, 1, out);
       assert.match(out, /says `generatesAiContent = true` and .* declares `ai\.generatesContent: false`/);
@@ -2410,7 +2569,7 @@ describe('limb 7 — AI content is declared, and its consequences hold, both way
     const root = tree();
     try {
       flipTrue(root);
-      writeLib(root, CFG, 'class AppConfig {\n  static const bool generatesAiContent = true;\n}\n');
+      writeLib(root, CFG, AI_CONFIG);
       writeLib(root, 'apps/subscriptiontracker/lib/x.dart', '// showReportContentDialog(context, ref)\n');
       const { code, out } = spawn(GUARD, [root]);
       assert.equal(code, 1, out);
@@ -2422,7 +2581,7 @@ describe('limb 7 — AI content is declared, and its consequences hold, both way
     const root = tree();
     try {
       flipTrue(root);
-      writeLib(root, CFG, 'class AppConfig {\n  static const bool generatesAiContent = true;\n}\n');
+      writeLib(root, CFG, AI_CONFIG);
       writeLib(root, 'apps/subscriptiontracker/lib/x.dart', 'void f() { showReportContentDialog(context, ref); }\n');
       const ds = JSON.parse(get(root, DS));
       assert.ok(TABLE in ds.inventory.notFromThisApp, 'fixture anchor');
@@ -2466,7 +2625,8 @@ describe('limb 8 — an export-compliance `false` holds to the code the app ship
       assert.match(get(root, VERIFIER), /^import 'package:cryptography\/cryptography\.dart';$/m, 'fixture anchor');
       const { code, out } = spawn(GUARD, [root]);
       assert.equal(code, 0, `expected a clean tree, got ${code}:\n${out}`);
-      assert.match(out, /limb 8 — 1 app\(s\) declare no non-exempt encryption; 2 shipped Dart file\(s\) carry no cipher class/);
+      // 4: main.dart, the recorded verifier, and the money provider and AppConfig limb 6 (e)/(f) read (12b).
+      assert.match(out, /limb 8 — 1 app\(s\) declare no non-exempt encryption; 4 shipped Dart file\(s\) carry no cipher class/);
     } finally { kill(root); }
   });
 
@@ -2565,6 +2725,8 @@ describe('limb 8 — an export-compliance `false` holds to the code the app ship
     const root = tree();
     try {
       rmSync(join(root, 'apps/subscriptiontracker/lib'), { recursive: true, force: true });
+      // Undeclared, so limb 6 (e) does not stop first on the provider this removes (12b).
+      put(root, APP_YAML, withoutBilling(get(root, APP_YAML)));
       const { code, out } = spawn(GUARD, [root]);
       assert.equal(code, 2, out);
       assert.ok(out.includes('limb 8 found no Dart file under apps/subscriptiontracker/lib.'), out);

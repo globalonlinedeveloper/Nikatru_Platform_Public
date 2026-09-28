@@ -44,6 +44,50 @@ export const MAX_REPORT_NOTICES_PER_DAY = 20;
 
 export const RESEND_EMAILS_URL = 'https://api.resend.com/emails';
 
+/**
+ * How long one Resend send may take. ⏱ 2026-09-28 · ST-R1: the nightly reminder
+ * job sends sequentially inside the one nightly firing, so a send that never
+ * answers must not hold every limb after it. Ten seconds, the bound every other
+ * outbound call from the scheduler already uses.
+ *
+ * @ceiling none — a per-call wait we chose, not a platform resource.
+ */
+export const RESEND_SEND_TIMEOUT_MS = 10_000;
+
+/** One message, in the shape Resend's `POST /emails` takes. `headers` carries
+ *  extra mail headers (List-Unsubscribe); `html` is optional. */
+export interface ResendMessage {
+  from: string;
+  to: string[];
+  subject: string;
+  text: string;
+  html?: string;
+  headers?: Record<string, string>;
+}
+
+/**
+ * ⏱ 2026-09-28 · ST-R1 — THE ONE RESEND CALL. Every Resend fact (the URL, the
+ * Bearer header, the body shape, the timeout) lives here, and both senders call
+ * it: `notifyReport` below and the reminder digest (lib/reminders.ts). A second
+ * copy would be a second place a key rotation or an API change has to be found.
+ *
+ * Returns the HTTP status rather than a boolean so a caller can print it; a
+ * transport failure or a timeout THROWS, and each caller contains it.
+ */
+export async function sendResendMail(
+  apiKey: string,
+  message: ResendMessage,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ ok: boolean; status: number }> {
+  const res = await fetchImpl(RESEND_EMAILS_URL, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(message),
+    signal: AbortSignal.timeout(RESEND_SEND_TIMEOUT_MS),
+  });
+  return { ok: res.status >= 200 && res.status < 300, status: res.status };
+}
+
 export type NoticeOutcome =
   | { sent: true }
   | { sent: false; why: 'not_configured' | 'daily_cap' | 'send_failed' };
@@ -79,10 +123,9 @@ export async function notifyReport(
     );
     if ((today?.n ?? 0) >= MAX_REPORT_NOTICES_PER_DAY) return { sent: false, why: 'daily_cap' };
 
-    const res = await fetchImpl(RESEND_EMAILS_URL, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    const res = await sendResendMail(
+      apiKey,
+      {
         from: REPORT_NOTICE_FROM,
         to: [REPORT_NOTICE_TO],
         subject: `Content report ${report.id} — ${report.appId}: ${report.reason}`,
@@ -91,8 +134,9 @@ export async function notifyReport(
           `Report: ${report.id}\nApp: ${report.appId}\nReason: ${report.reason}\nAt: ${report.createdAt}\n\n` +
           `The excerpt and the user's note are in platform_db.content_reports, row id ${report.id}. ` +
           `They are deliberately not in this email.`,
-      }),
-    });
+      },
+      fetchImpl,
+    );
     if (!res.ok) {
       console.error(`[report-notify] Resend answered ${res.status} for report ${report.id} — stored, not noticed`);
       return { sent: false, why: 'send_failed' };

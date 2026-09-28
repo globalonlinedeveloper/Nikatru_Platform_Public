@@ -226,19 +226,19 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
+                    // ST-U5 (B14): the `more_horiz` "More options" control that
+                    // stood at the other end of this row was a STUB — focusable,
+                    // announced as a button, and it opened nothing. A control a
+                    // user can reach and activate to no effect is removed, not
+                    // labelled; the actions this screen has are the buttons
+                    // below the history.
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: <Widget>[
                         _iconButton(
                           Icons.arrow_back,
                           l10n.back,
                           () => _dismiss(context),
                         ),
-                        // The `more_horiz` control is still a STUB — it opens
-                        // nothing. Its label is localized anyway because a
-                        // screen reader announces it today regardless of what
-                        // the tap does.
-                        _iconButton(Icons.more_horiz, l10n.moreOptions, () {}),
                       ],
                     ),
                     const SizedBox(height: 14),
@@ -505,7 +505,13 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                           height: 50,
                           child: FilledButton(
                             onPressed: () async {
-                              await showCancelSheet(context, s);
+                              // ST-U8 (B15): dismiss ONLY when the row was
+                              // removed. "Keep it" keeps the user here.
+                              final bool removed = await showCancelSheet(
+                                context,
+                                s,
+                              );
+                              if (!removed) return;
                               // `context.mounted` answers "is this element
                               // still in the tree", NEVER "can the router
                               // pop" — the two came apart in the pane case,
@@ -522,11 +528,9 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                               ),
                             ),
                             // `cancelPlanButton`, NOT the chassis `cancelPlan`
-                            // ("Cancel subscription") — work order §8 decision
-                            // 1. Its VALUE is byte-identical to the literal it
-                            // replaces, which is what keeps
-                            // `integration_test/app_test.dart:476/:481`
-                            // (`find.text('Cancel plan')`) green with no edit.
+                            // ("Cancel subscription"). ST-U3 (B32): its value is
+                            // "Remove" — the sheet it opens deletes the row from
+                            // this tracker and cancels nothing at the provider.
                             child: Text(
                               l10n.cancelPlanButton,
                               style: const TextStyle(
@@ -548,33 +552,59 @@ class SubscriptionDetailScreen extends ConsumerWidget {
     );
   }
 
-  /// 🔴 THE `FutureBuilder` STAYS, AND SO DOES `ref.read` INSIDE IT. It is
-  /// re-fired on every rebuild of the screen, which is a known cost recorded
-  /// against this file and deliberately NOT fixed here: converting it to a
-  /// provider is a state-layer change, and this increment is l10n + brightness.
-  /// Folding an unrelated refactor in would make a bisect over the P4 wave
-  /// ambiguous about which change moved what.
-  ///
-  /// It reads `l10n` and the theme off the BUILDER's context rather than taking
-  /// them as parameters: that context is a descendant of the screen's, so both
-  /// resolve, and the signature stays what every other increment expects.
+  /// ✅ ST-U7 (B16): THREE STATES, AND NO FETCH PER REBUILD. This was a
+  /// `FutureBuilder` over `ref.read(…).history(id)`, re-fired on every rebuild,
+  /// rendering `snap.data ?? const []` — so LOADING and FAILED both printed
+  /// "No payments yet.", a false claim about a record of real charges. It now
+  /// watches [paymentHistoryProvider]: a labelled loading row, a failed row
+  /// with a retry, and "No payments yet." only for a fetch that SUCCEEDED
+  /// empty. `hasValue` first, as the list gate does, so a retry keeps the
+  /// rows already on screen.
   Widget _history(WidgetRef ref, MoneyFormatter money, String subId) {
-    return FutureBuilder<List<PaymentRecord>>(
-      future: ref.read(subscriptionRepositoryProvider).history(subId),
-      builder: (BuildContext context, AsyncSnapshot<List<PaymentRecord>> snap) {
+    // Watched HERE, in the screen's own build, not inside the Builder below:
+    // a WidgetRef belongs to the element whose build is running.
+    final AsyncValue<List<PaymentRecord>> async = ref.watch(
+      paymentHistoryProvider(subId),
+    );
+    return Builder(
+      builder: (BuildContext context) {
         final AppLocalizations l10n = AppLocalizations.of(context);
         final ThemeData theme = Theme.of(context);
         final bool isLight = theme.brightness == Brightness.light;
         final ColorScheme scheme = theme.colorScheme;
-        final List<PaymentRecord> hist = snap.data ?? const <PaymentRecord>[];
-        if (hist.isEmpty) {
-          return Text(
-            l10n.noPaymentsYet,
-            style: AppText.muted.copyWith(
-              fontSize: 12,
-              color: isLight ? AppColors.muted : scheme.onSurfaceVariant,
-            ),
+        final TextStyle note = AppText.muted.copyWith(
+          fontSize: 12,
+          color: isLight ? AppColors.muted : scheme.onSurfaceVariant,
+        );
+        if (!async.hasValue) {
+          if (async.hasError) {
+            return Row(
+              key: const Key('payment-history-failed'),
+              children: <Widget>[
+                Expanded(child: Text(l10n.paymentHistoryFailed, style: note)),
+                TextButton(
+                  onPressed: () =>
+                      ref.invalidate(paymentHistoryProvider(subId)),
+                  child: Text(l10n.retry),
+                ),
+              ],
+            );
+          }
+          return Row(
+            key: const Key('payment-history-loading'),
+            children: <Widget>[
+              const SizedBox.square(
+                dimension: 14,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(width: 10),
+              Flexible(child: Text(l10n.paymentHistoryLoading, style: note)),
+            ],
           );
+        }
+        final List<PaymentRecord> hist = async.requireValue;
+        if (hist.isEmpty) {
+          return Text(l10n.noPaymentsYet, style: note);
         }
         // The row date was `'${_months[month - 1]} $day, $year'` off a
         // hardcoded English month table — "June 15, 2026". `yMMMd` is the
@@ -711,7 +741,8 @@ class SubscriptionDetailScreen extends ConsumerWidget {
   //
   // The white alpha fill and the white icon are ON THE HERO GRADIENT, which is
   // dark in both brightnesses — see the class doc. They do not fork.
-  /// The two hero app-bar controls — "Back" and "More options".
+  /// The hero app-bar control — "Back". ("More options" was the second, a
+  /// no-op, removed by ST-U5.)
   ///
   /// 🔴 `FocusableTap`, NOT `Semantics(button: true)` + `GestureDetector`.
   /// BOTH DOORS OFF THIS SCREEN WERE KEYBOARD-DEAD, WHICH IS THE WHOLE APP BAR.

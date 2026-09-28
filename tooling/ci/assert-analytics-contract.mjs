@@ -620,6 +620,61 @@ const WIRE_CONTRACTS = [
       'NO CLIENT YET: sign-out-other-devices ships in the web PR after this Worker deploys. No request body; success is a 204 with no body, and a refusal is a status with `{error}` (409 current_session_unknown, 429 rate_limited, 503 sessions_unavailable or revocation_unavailable).',
     absentFromDart: '/v1/sessions/revoke-others',
   },
+  // ⏱ 2026-09-28 · ST-T4a — renewal reminders (routes/reminders.ts and
+  // routes/calendar.ts). Gaps, one per route: the app half is ST-T4b, after this
+  // Worker deploys. `absentFromDart` keeps each claim checked — the day ST-T4b
+  // builds one of these paths, the gap turns false and this fails, which is
+  // exactly when its wire contract has to be pinned. The shapes are pinned by
+  // services/platform/test/reminder-mail.test.ts and calendar-feed.test.ts until then.
+  {
+    id: 'reminders-prefs-get',
+    kind: 'gap',
+    reason:
+      'NO CLIENT YET: the client ships in ST-T4b (the packages + app half), which launches after this Worker deploys: the server must be live first. There is no released client of ours to break. The answer is `{app_id, email_opt_in, lead_days}`.',
+    absentFromDart: '/v1/reminders/prefs',
+  },
+  {
+    id: 'reminders-prefs-put',
+    kind: 'gap',
+    reason:
+      'NO CLIENT YET: the client ships in ST-T4b (the packages + app half), which launches after this Worker deploys: the server must be live first. There is no released client of ours to break. The request is `{app_id, email_opt_in, lead_days?}` and the answer is the stored `{app_id, email_opt_in, lead_days}`.',
+    absentFromDart: '/v1/reminders/prefs',
+  },
+  {
+    id: 'reminders-unsubscribe-get',
+    kind: 'gap',
+    reason:
+      'NO APP CLIENT, BY CONSTRUCTION — the caller is a person clicking the link in a reminder EMAIL. It answers an HTML page whose one button POSTs to the same URL; it changes nothing by itself.',
+    absentFromDart: '/v1/reminders/unsubscribe',
+  },
+  {
+    id: 'reminders-unsubscribe-post',
+    kind: 'gap',
+    reason:
+      'NO APP CLIENT, BY CONSTRUCTION — the callers are mail clients honouring `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058) and the button on the GET page. It reads the status (200, or 404 for a token it does not know), not a body.',
+    absentFromDart: '/v1/reminders/unsubscribe',
+  },
+  {
+    id: 'calendar-feed-post',
+    kind: 'gap',
+    reason:
+      'NO CLIENT YET: the client ships in ST-T4b (the packages + app half), which launches after this Worker deploys: the server must be live first. There is no released client of ours to break. The request is `{app_id}` and the 201 answer is `{app_id, https_url, webcal_url, created_at}`.',
+    absentFromDart: '/v1/calendar/feed',
+  },
+  {
+    id: 'calendar-feed-delete',
+    kind: 'gap',
+    reason:
+      'NO CLIENT YET: the client ships in ST-T4b (the packages + app half), which launches after this Worker deploys: the server must be live first. There is no released client of ours to break. `?app_id=`; success is a 204 with no body, and 404 `no_feed` when there is no live feed.',
+    absentFromDart: '/v1/calendar/feed',
+  },
+  {
+    id: 'calendar-feed-ics',
+    kind: 'gap',
+    reason:
+      'NO APP CLIENT, BY CONSTRUCTION — the callers are calendar services (Google Calendar, Apple Calendar, Outlook) subscribing to the URL and browsers downloading it. The wire is RFC 5545 text/calendar, written by services/platform/src/lib/ics.ts and pinned by services/platform/test/calendar-feed.test.ts, not a JSON envelope.',
+    absentFromDart: '/v1/calendar/',
+  },
 ];
 
 /** Where limb 5's "no Dart client" claims are checked. Roots rather than the

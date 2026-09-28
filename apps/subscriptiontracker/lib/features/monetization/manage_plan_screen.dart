@@ -9,6 +9,7 @@ import '../../core/app_config.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/money_providers.dart';
 import '../../state/providers.dart';
+import '../shared/chassis_adapters.dart';
 
 /// Manage subscription — [pipeline 5]M-9 (ROSCA) and [pipeline 5]M-10 (restore).
 ///
@@ -166,7 +167,7 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final AsyncValue<core.Entitlements> ent = ref.watch(entitlementsProvider);
-    final bool isPro = ent.valueOrNull?.isProAt(DateTime.now()) ?? false;
+    final bool isPro = planStatusOf(ent) == PlanStatus.active;
 
     return Scaffold(
       // 🔴 THE `leading:` IS THE ONLY WAY OFF THIS SCREEN, AND UNTIL NOW THERE
@@ -240,11 +241,10 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: <Widget>[
-            ListTile(
-              leading: Icon(
-                isPro ? Icons.verified_outlined : Icons.lock_outline,
-              ),
-              title: Text(isPro ? l10n.planActive : l10n.planInactive),
+            PlanStatusTile(
+              status: planStatusOf(ent),
+              labels: planStatusLabels(l10n),
+              onRetry: () => ref.invalidate(entitlementsProvider),
             ),
             const Divider(),
             // [pipeline 5]M-10. The entitlement is a server row keyed

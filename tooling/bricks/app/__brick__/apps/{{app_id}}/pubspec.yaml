@@ -66,6 +66,15 @@ dependencies:
   # once: a capability that lives in one app and is hand-rebuilt for the second.
   nikatru_purchases:
     path: ../../packages/purchases
+  # O-BRICK-SELLS-NOTHING-IN-A-STORE (12b). The store billing bridge: every
+  # stamped app declares `billing.mobileIap` at `state: pending` (post_gen) and
+  # wires the bridge through StoreBridgeWiring.forChannel, so it sells in the
+  # store the day its RevenueCat apps, key secrets and products exist — with no
+  # code change. Keyless until then, a store build sells nothing and never falls
+  # back to the web rail. assert-app-yaml limb 6 holds this dependency and the
+  # declaration together, both ways.
+  nikatru_billing_revenuecat:
+    path: ../../packages/billing_revenuecat
   # O-LINK-LAUNCHER-SEAM-UNOWNED. The ONE external-link adapter: the legal
   # pages, the support mailto and the force-update destination, each checked
   # against core's LinkPolicy before url_launcher is touched. Built once in

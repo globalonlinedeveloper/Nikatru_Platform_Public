@@ -1,0 +1,606 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// reminders.ts — RENEWAL REMINDERS THAT REACH EVERY TARGET (ST-R1 email, ST-R2
+// calendar). The nightly digest job's work, and the one reading of "which
+// subscriptions are live and when do they next renew" that the calendar feed
+// (routes/calendar.ts) shares with it.
+//
+// 🔴 ONE DATE ENGINE. Every occurrence here comes from `rollForward` / `advance`
+// in src/renewals.ts, which CLAMP at month end (Jan 31 → Feb 28). The mail, the
+// calendar feed and the app all say the same date because they call the same
+// function; a second engine — or an RRULE handed to a calendar client — is how
+// the 31st would quietly become the 3rd of the next month in one of them.
+//
+// 🔴 NO EMAIL ADDRESS IS STORED. The address is read at send time from the
+// identity provider (`readAccount`, lib/platform-erasure.ts), CONFIRMED
+// addresses only, and handed to Resend for that one message. platform_db holds a
+// preference, a sent ledger and a feed hash — never a second copy of an address.
+//
+// 🔴 A NIGHT NEVER MAILS TWICE, AND THAT IS THE DATABASE'S PROPERTY. Every item
+// of a digest is CLAIMED in `reminder_sent` BEFORE the send, by one INSERT … ON
+// CONFLICT DO NOTHING against the UNIQUE (user, app, subscription, due date,
+// kind); only the items whose claim landed are mailed. A retried firing, an
+// overlapping run or a re-run the same day collides there. A send Resend
+// REFUSES releases its claims so the next night tries again; a send that timed
+// out may have been delivered, so it keeps them, and if a release itself fails
+// the item is NOT mailed rather than mailed twice — at most once is the safe
+// direction for mail.
+//
+// ⚠️ "NOTHING DUE" IS OK, AND SAYS SO. A night with no opted-in account, or none
+// with a renewal inside its lead days, writes ok=1 with its own detail; a missing
+// key, a missing binding or no targets at all is ok=0 with the reason — the
+// renewals fan-out's rule (src/scheduled.ts `renewalsFanOut`).
+// ─────────────────────────────────────────────────────────────────────────────
+import type { AppTarget, Env } from '../types';
+import { rollForward } from '../renewals';
+import { allRows, firstRow } from './d1';
+import { readAccount } from './platform-erasure';
+import { sendResendMail } from './report-notify';
+import { sha256Hex } from '../middleware/ext-device-auth';
+import { catalogueApp } from './catalog';
+
+/**
+ * [ADR 029] §2 — everything a machine sends leaves Resend from mail.nikatru.com,
+ * typed by local-part. Owner alerts are `alerts@`; a reminder to a USER is a
+ * different type of mail, so it has its own local-part and its own display name,
+ * and a recipient can filter or trust the two separately.
+ */
+export const REMINDER_FROM = 'Nikatru reminders <reminders@mail.nikatru.com>';
+
+/** The `kind` column of `reminder_sent`. A closed set, enforced here (0020 has no CHECK). */
+export const REMINDER_KIND_RENEWAL = 'renewal';
+
+/** Where the one-click unsubscribe link points. The mail is sent from the cron,
+ *  which has no request to read a host from; this is the portfolio API host
+ *  (wrangler.jsonc `routes`). */
+export const REMINDER_LINK_ORIGIN = 'https://platform.nikatru.com';
+
+/**
+ * Days ahead a renewal is mailed when the person has not chosen. Three: far enough
+ * ahead to cancel before a charge, near enough that the mail is not forgotten.
+ *
+ * @ceiling none — a reminder lead we chose, not a platform resource.
+ */
+export const DEFAULT_LEAD_DAYS = 3;
+
+/**
+ * The longest lead a person may choose (and the longest per-subscription
+ * `reminder_days` honoured). A month covers a monthly plan's whole cycle.
+ *
+ * @ceiling none — an input bound we chose, not a platform resource.
+ */
+export const MAX_LEAD_DAYS = 30;
+
+/**
+ * 🔴 THE HARD DAILY CAP, DERIVED — Resend's quota is SHARED.
+ *
+ * The auth+alerts Resend container is on the FREE tier: 100 sends per UTC day
+ * (lib/report-notify.ts records the same figure), and signup confirmations and
+ * PASSWORD RESETS go through that quota too. A reset that cannot be sent locks a
+ * person out; a reminder that waits a night is a day later. So reminders get a
+ * bounded share and never the rest:
+ *
+ *     100  the Free tier's daily sends
+ *   −  20  report notices at their own cap (MAX_REPORT_NOTICES_PER_DAY)
+ *   −  60  held back for auth mail — confirmations and resets
+ *   =  20  reminder digests per UTC day, the whole portfolio together
+ *
+ * Mails over the cap are NOT dropped: their items stay unclaimed and are mailed
+ * the next night, OLDEST FIRST (the digest whose earliest item entered its lead
+ * window first goes first), for as long as the renewal is still ahead.
+ * No plan change is made here or implied: the quota is the owner's money.
+ *
+ * @ceiling none — a share of a vendor send quota we chose; tooling/ceilings.json records no Resend limit to compare it with.
+ */
+export const MAX_REMINDER_MAILS_PER_DAY = 20;
+
+/**
+ * Identity reads per run. Each digest costs one read (and, if confirmed, one
+ * send), and a read that finds an unconfirmed address sends nothing, so reads
+ * are bounded separately from sends: 25 reads + 20 sends = 45 external
+ * subrequests from this limb at most, under workers.externalSubrequests' recorded
+ * Free figure (50) on its own. The firing as a whole runs on Workers Paid
+ * (tooling/ceilings.json `planOfRecord`), so the sum across limbs is not held to 50.
+ *
+ * @ceiling none — a per-run bound we chose for this one limb; the arithmetic is above.
+ */
+export const MAX_ADDRESS_READS_PER_RUN = 25;
+
+/**
+ * Renewals listed in one digest. A mail that lists more than this stops being
+ * read; a person with more renewals inside their lead days gets the rest the next
+ * night (they are left unclaimed, so nothing is lost while the date is ahead).
+ *
+ * @ceiling none — a digest length we chose for the reader, not a platform resource.
+ */
+export const MAX_DIGEST_ITEMS = 14;
+
+/**
+ * How long a `reminder_sent` row is kept after its `due_on`. The row is a LOG OF
+ * PROCESSING (this person was mailed about this renewal), and 400 days is the
+ * platform's period for such records — [ADR 045] §9: it clears the DPDP Rules
+ * 2025 Rule 8(3) one-year floor that 365 misses across a 29 February. The
+ * dedupe needs a row only until its date has passed, so nothing live is lost.
+ * Mirrored in tooling/legal/data-inventory.json and tooling/ops/register.json,
+ * cross-checked by test/reminder-mail.test.ts.
+ *
+ * @ceiling none — a retention period, not a platform resource.
+ */
+export const REMINDER_SENT_RETENTION_DAYS = 400;
+
+/**
+ * Ledger rows pruned per run, at most — the retention sweep's own per-run bound.
+ *
+ * @ceiling d1.rowsWrittenPerDay lte
+ */
+export const MAX_PRUNE_PER_RUN = 1000;
+
+/**
+ * Accounts per subscriptions read. The ids travel as ONE JSON parameter, so this
+ * binds no placeholders; it bounds the rows one statement returns.
+ *
+ * @ceiling none — a read size we chose, not a platform resource.
+ */
+export const USER_CHUNK = 50;
+
+// ── the app's name and page, from the catalogue the Worker already bundles ────
+/** The app's public name ("Nikatru Subscription Tracker"), or its id. */
+export function appName(appId: string): string {
+  return catalogueApp(appId)?.name ?? appId;
+}
+
+/** The app's public page, where the reminder settings live. */
+export function appUrl(appId: string): string {
+  return catalogueApp(appId)?.url ?? 'https://nikatru.com';
+}
+
+// ── dates ───────────────────────────────────────────────────────────────────
+/** 'YYYY-MM-DD' of the UTC day `ms` falls in. */
+export function ymdOf(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+/** `ymd` plus `days`, in UTC. */
+export function addDays(ymd: string, days: number): string {
+  const d = new Date(`${ymd}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** A lead in days, clamped to the range a person may choose; anything else is the default. */
+export function clampLead(v: unknown): number {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= MAX_LEAD_DAYS ? v : DEFAULT_LEAD_DAYS;
+}
+
+// ── the live subscriptions, read one way for the mail and the feed ──────────
+export interface LiveSubscription {
+  id: string;
+  user_id: string;
+  name: string | null;
+  price: number | null;
+  cycle: string | null;
+  next_renewal: string;
+  /** subscriptiontracker_db's own lead, where that column exists (ST-T3a). */
+  reminder_days: number | null;
+}
+
+/**
+ * 🔴 THE LATER COLUMNS ARE READ IF THEY ARE THERE, NEVER ASSUMED — renewals.ts's
+ * rule for an app database this Worker does not migrate. subscriptiontracker_db's
+ * `reminder_days`, `status` and `deleted_at` arrive with that app's own migration
+ * (ST-T3a). The read is `SELECT *`, so a row carries them the day they exist and
+ * lacks them until then, and the filter below keys on the row having the column:
+ * on today's schema every row with a renewal date is live; once `status` and
+ * `deleted_at` exist, only `status IN ('active', 'trialing') AND deleted_at IS
+ * NULL` is. One static statement, no probe, no identifier built into SQL.
+ */
+export function isLive(row: Record<string, unknown>): boolean {
+  if ('status' in row && row.status !== 'active' && row.status !== 'trialing') return false;
+  if ('deleted_at' in row && row.deleted_at !== null && row.deleted_at !== undefined) return false;
+  return true;
+}
+
+/** Every live subscription of `userIds`, read USER_CHUNK accounts at a time.
+ *  The ids travel as ONE JSON parameter, so a chunk's size binds no placeholders. */
+export async function readLiveSubscriptions(db: D1Database, userIds: readonly string[]): Promise<LiveSubscription[]> {
+  const out: LiveSubscription[] = [];
+  for (let i = 0; i < userIds.length; i += USER_CHUNK) {
+    const chunk = userIds.slice(i, i + USER_CHUNK);
+    const rows = await allRows<Record<string, unknown>>(
+      db
+        .prepare(
+          'SELECT * FROM subscriptions WHERE user_id IN (SELECT value FROM json_each(?)) AND next_renewal IS NOT NULL ORDER BY next_renewal, id',
+        )
+        .bind(JSON.stringify(chunk)),
+    );
+    for (const r of rows) {
+      if (!isLive(r)) continue;
+      out.push({
+        id: String(r.id),
+        user_id: String(r.user_id),
+        name: typeof r.name === 'string' ? r.name : null,
+        price: typeof r.price === 'number' ? r.price : null,
+        cycle: typeof r.cycle === 'string' ? r.cycle : null,
+        next_renewal: String(r.next_renewal),
+        reminder_days: typeof r.reminder_days === 'number' ? r.reminder_days : null,
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * The next date on or after `today` this subscription renews, by `rollForward`
+ * (renewals.ts) — so a stored Jan 31 read on Feb 10 is Feb 28, exactly what the
+ * nightly renewals pass will write. No cycle: the stored date if it is still
+ * ahead. A date the engine refuses is no occurrence, never a guess.
+ */
+export function nextOccurrence(sub: Pick<LiveSubscription, 'cycle' | 'next_renewal'>, today: string): string | null {
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(sub.next_renewal ?? ''));
+  if (!m) return null;
+  let next = m[1];
+  try {
+    if (sub.cycle === 'monthly' || sub.cycle === 'yearly') next = rollForward(m[1], sub.cycle, today).next;
+  } catch {
+    return null;
+  }
+  // `rollForward` stops at its 240-cycle guard, so a pathological backlog can
+  // still come back in the past; a past date is no occurrence.
+  return next >= today ? next : null;
+}
+
+/** The lead for one subscription: its own `reminder_days` where the column exists
+ *  and holds a valid lead, else the person's. */
+export function leadFor(sub: Pick<LiveSubscription, 'reminder_days'>, personLead: number): number {
+  const own = sub.reminder_days;
+  return typeof own === 'number' && Number.isInteger(own) && own >= 0 && own <= MAX_LEAD_DAYS ? own : personLead;
+}
+
+/** "649.00" for a number, nothing for anything else. The currency is not stored. */
+export function priceLabel(price: unknown): string | null {
+  return typeof price === 'number' && Number.isFinite(price) ? price.toFixed(2) : null;
+}
+
+// ── the digest ──────────────────────────────────────────────────────────────
+export interface DueItem {
+  subscriptionId: string;
+  name: string;
+  dueOn: string;
+  cycle: string | null;
+  price: number | null;
+  lead: number;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/** "Mon 5 Oct 2026" — unambiguous in every locale, which a numeric date is not. */
+export function dateLabel(ymd: string): string {
+  return new Date(`${ymd}T00:00:00Z`).toLocaleDateString('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
+/**
+ * The digest, as plain text plus MINIMAL SEMANTIC HTML: a paragraph, a list, a
+ * link. Behaviour, not design — no colours, no type, no images, nothing a mail
+ * client has to fetch. Every string a person typed is escaped for HTML.
+ */
+export function buildDigest(
+  appId: string,
+  items: readonly DueItem[],
+  unsubscribeUrl: string,
+): { subject: string; text: string; html: string } {
+  const name = appName(appId);
+  const first = items[0];
+  const subject =
+    items.length === 1
+      ? `${first.name} renews on ${dateLabel(first.dueOn)}`
+      : `${items.length} subscriptions renew by ${dateLabel(items[items.length - 1].dueOn)}`;
+  const line = (i: DueItem): string => {
+    const p = priceLabel(i.price);
+    return `${i.name} — ${dateLabel(i.dueOn)}${i.cycle ? ` (${i.cycle}${p ? `, ${p}` : ''})` : p ? ` (${p})` : ''}`;
+  };
+  const text =
+    `These subscriptions renew soon:\n\n` +
+    items.map((i) => `- ${line(i)}`).join('\n') +
+    `\n\nYou get this because you switched on renewal reminder emails in ${name}. ` +
+    `Change them in the app: ${appUrl(appId)}\n` +
+    `Stop these emails: ${unsubscribeUrl}\n`;
+  const html =
+    `<p>These subscriptions renew soon:</p>` +
+    `<ul>${items.map((i) => `<li>${escapeHtml(line(i))}</li>`).join('')}</ul>` +
+    `<p>You get this because you switched on renewal reminder emails in ${escapeHtml(name)}. ` +
+    `<a href="${escapeHtml(appUrl(appId))}">Change them in the app</a>.</p>` +
+    `<p><a href="${escapeHtml(unsubscribeUrl)}">Stop these emails</a></p>`;
+  return { subject, text, html };
+}
+
+/** A fresh 256-bit token, base64url, 43 characters — the unsubscribe and feed capability. */
+export function mintToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/** The shape `mintToken` produces. Anything else is refused before any read. */
+export const TOKEN_SHAPE = /^[A-Za-z0-9_-]{43}$/;
+
+// ── the nightly job ─────────────────────────────────────────────────────────
+export interface ReminderRow {
+  target: string;
+  ok: boolean;
+  detail: string;
+}
+
+interface RunState {
+  today: string;
+  sentAt: string;
+  sentToday: number;
+  readsLeft: number;
+  pruned: number;
+}
+
+/** A pending digest: one person, one app, the items not yet mailed. */
+interface Pending {
+  userId: string;
+  items: DueItem[];
+  /** The first day any item entered its lead window — "oldest" for the cap's queue. */
+  since: string;
+}
+
+/**
+ * The ledger prune: `reminder_sent` rows whose `due_on` is more than
+ * REMINDER_SENT_RETENTION_DAYS behind today, at most MAX_PRUNE_PER_RUN per run.
+ */
+async function pruneLedger(db: D1Database, today: string): Promise<number> {
+  const cutoff = addDays(today, -REMINDER_SENT_RETENTION_DAYS);
+  const res = await db
+    .prepare(
+      'DELETE FROM reminder_sent WHERE rowid IN (SELECT rowid FROM reminder_sent WHERE due_on < ? ORDER BY due_on LIMIT ?)',
+    )
+    .bind(cutoff, MAX_PRUNE_PER_RUN)
+    .run();
+  return Number(res.meta?.changes ?? 0);
+}
+
+/** Digests already sent today, portfolio-wide — one unsubscribe hash per digest. */
+async function digestsSentSince(db: D1Database, dayStart: string): Promise<number> {
+  const row = await firstRow<{ n: number }>(
+    db.prepare('SELECT COUNT(DISTINCT unsubscribe_hash) AS n FROM reminder_sent WHERE sent_at >= ?').bind(dayStart),
+  );
+  return Number(row?.n ?? 0);
+}
+
+/** Build every opted-in person's pending digest for one app. */
+async function pendingFor(env: Env, target: AppTarget, db: D1Database, today: string): Promise<{ optedIn: number; pending: Pending[] }> {
+  const prefs = await allRows<{ user_id: string; lead_days: number }>(
+    env.PLATFORM_DB.prepare(
+      'SELECT user_id, lead_days FROM reminder_prefs WHERE app_id = ? AND email_opt_in = 1 ORDER BY user_id',
+    ).bind(target.appId),
+  );
+  if (prefs.length === 0) return { optedIn: 0, pending: [] };
+  const personLead = new Map(prefs.map((p) => [p.user_id, clampLead(p.lead_days)]));
+  const subs = await readLiveSubscriptions(db, prefs.map((p) => p.user_id));
+  // What this app has already mailed for a renewal still ahead — the digest is
+  // built without them, and the claim below is the backstop if this read is stale.
+  const sent = await allRows<{ user_id: string; subscription_id: string; due_on: string }>(
+    env.PLATFORM_DB.prepare(
+      'SELECT user_id, subscription_id, due_on FROM reminder_sent WHERE app_id = ? AND kind = ? AND due_on >= ?',
+    ).bind(target.appId, REMINDER_KIND_RENEWAL, today),
+  );
+  const already = new Set(sent.map((s) => `${s.user_id}\u0000${s.subscription_id}\u0000${s.due_on}`));
+  const byUser = new Map<string, Pending>();
+  for (const sub of subs) {
+    const due = nextOccurrence(sub, today);
+    if (due === null) continue;
+    const lead = leadFor(sub, personLead.get(sub.user_id) ?? DEFAULT_LEAD_DAYS);
+    if (due > addDays(today, lead)) continue;
+    if (already.has(`${sub.user_id}\u0000${sub.id}\u0000${due}`)) continue;
+    const item: DueItem = {
+      subscriptionId: sub.id,
+      name: (sub.name ?? '').trim() || 'A subscription',
+      dueOn: due,
+      cycle: sub.cycle,
+      price: sub.price,
+      lead,
+    };
+    const since = addDays(due, -lead);
+    const p = byUser.get(sub.user_id) ?? { userId: sub.user_id, items: [], since };
+    p.items.push(item);
+    if (since < p.since) p.since = since;
+    byUser.set(sub.user_id, p);
+  }
+  const pending = [...byUser.values()];
+  for (const p of pending) p.items.sort((a, b) => (a.dueOn < b.dueOn ? -1 : a.dueOn > b.dueOn ? 1 : 0));
+  // OLDEST FIRST: the digest that has waited longest (its earliest item entered
+  // its window first) takes the cap's next slot; ties by the nearest renewal,
+  // then by account, so the order is total and a re-run picks the same people.
+  pending.sort(
+    (a, b) =>
+      (a.since < b.since ? -1 : a.since > b.since ? 1 : 0) ||
+      (a.items[0].dueOn < b.items[0].dueOn ? -1 : a.items[0].dueOn > b.items[0].dueOn ? 1 : 0) ||
+      (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0),
+  );
+  return { optedIn: prefs.length, pending };
+}
+
+/**
+ * Claim a digest's items; only the ones that land are mailed. ONE static
+ * statement whatever the digest's length: the items travel as one JSON parameter
+ * and `json_each` expands them, and `RETURNING` names exactly the rows this claim
+ * inserted — a row another run already holds is skipped by the UNIQUE constraint
+ * and is not returned. (`WHERE true` is SQLite's required disambiguation between
+ * an INSERT … SELECT and its upsert clause.)
+ */
+async function claim(
+  env: Env,
+  appId: string,
+  p: Pending,
+  items: readonly DueItem[],
+  sentAt: string,
+  unsubscribeHash: string,
+): Promise<DueItem[]> {
+  const landed = await allRows<{ subscription_id: string; due_on: string }>(
+    env.PLATFORM_DB.prepare(
+      `INSERT INTO reminder_sent (user_id, app_id, subscription_id, due_on, kind, sent_at, unsubscribe_hash)
+       SELECT ?1, ?2, json_extract(j.value, '$.s'), json_extract(j.value, '$.d'), ?3, ?4, ?5 FROM json_each(?6) AS j WHERE true
+       ON CONFLICT DO NOTHING RETURNING subscription_id, due_on`,
+    ).bind(
+      p.userId,
+      appId,
+      REMINDER_KIND_RENEWAL,
+      sentAt,
+      unsubscribeHash,
+      JSON.stringify(items.map((i) => ({ s: i.subscriptionId, d: i.dueOn }))),
+    ),
+  );
+  const keys = new Set(landed.map((r) => `${r.subscription_id}\u0000${r.due_on}`));
+  return items.filter((i) => keys.has(`${i.subscriptionId}\u0000${i.dueOn}`));
+}
+
+/** One app's pass. Never throws: the caller is a loop over every app. */
+async function remindApp(
+  env: Env,
+  target: AppTarget,
+  state: RunState,
+  apiKey: string,
+  serviceKey: string,
+  fetchImpl: typeof fetch,
+): Promise<ReminderRow> {
+  if (!target.db) return { target: target.appId, ok: false, detail: 'no database binding for this app' };
+  try {
+    const { optedIn, pending } = await pendingFor(env, target, target.db, state.today);
+    const tail = `pruned=${state.pruned}`;
+    if (pending.length === 0) {
+      return { target: target.appId, ok: true, detail: `nothing due: opted_in=${optedIn} due=0 ${tail}` };
+    }
+    let sent = 0;
+    let deferred = 0;
+    let unconfirmed = 0;
+    let errors = 0;
+    let firstError = '';
+    const fail = (why: string): void => {
+      errors++;
+      if (!firstError) firstError = why;
+    };
+    for (const p of pending) {
+      if (state.sentToday >= MAX_REMINDER_MAILS_PER_DAY || state.readsLeft <= 0) {
+        deferred++;
+        continue;
+      }
+      state.readsLeft--;
+      const account = await readAccount(env.SUPABASE_URL, serviceKey, p.userId, fetchImpl);
+      if (account.kind === 'transient' || account.kind === 'failed') {
+        fail(`address read: ${account.why}`);
+        continue;
+      }
+      // CONFIRMED addresses only: an unconfirmed one is an address anybody can
+      // type, and mailing it would send someone's renewals to a stranger.
+      if (account.kind !== 'found' || account.email === '' || account.email_confirmed_at === null) {
+        unconfirmed++;
+        continue;
+      }
+      const token = mintToken();
+      const hash = await sha256Hex(token);
+      const items = await claim(env, target.appId, p, p.items.slice(0, MAX_DIGEST_ITEMS), state.sentAt, hash);
+      if (items.length === 0) continue;
+      const unsubscribeUrl = `${REMINDER_LINK_ORIGIN}/v1/reminders/unsubscribe?t=${token}`;
+      const digest = buildDigest(target.appId, items, unsubscribeUrl);
+      let delivered = false;
+      let refused = false;
+      let why = '';
+      try {
+        const res = await sendResendMail(
+          apiKey,
+          {
+            from: REMINDER_FROM,
+            to: [account.email],
+            subject: digest.subject,
+            text: digest.text,
+            html: digest.html,
+            headers: {
+              'List-Unsubscribe': `<${unsubscribeUrl}>`,
+              'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+            },
+          },
+          fetchImpl,
+        );
+        delivered = res.ok;
+        refused = !res.ok;
+        if (!res.ok) why = `Resend answered ${res.status}`;
+      } catch (err) {
+        why = `Resend not reached: ${String(err).slice(0, 80)}`;
+      }
+      if (delivered) {
+        sent++;
+        state.sentToday++;
+        continue;
+      }
+      fail(why);
+      // A DEFINITE refusal (Resend answered, not 2xx) releases the claims so the
+      // next night tries again. A send that THREW — a timeout, a dropped
+      // connection — may still have been delivered, so its claims STAY: that
+      // renewal is not mailed again, and the row says so. If the release itself
+      // throws, the outer catch records it and the items stay claimed.
+      if (refused) await env.PLATFORM_DB.prepare('DELETE FROM reminder_sent WHERE unsubscribe_hash = ?').bind(hash).run();
+    }
+    const due = pending.reduce((n, p) => n + p.items.length, 0);
+    const counts =
+      `sent=${sent} deferred=${deferred} unconfirmed=${unconfirmed} errors=${errors} opted_in=${optedIn} due=${due} ` +
+      `sent_today=${state.sentToday}/${MAX_REMINDER_MAILS_PER_DAY} ${tail}`;
+    return { target: target.appId, ok: errors === 0, detail: errors === 0 ? counts : `${counts} — first error: ${firstError}` };
+  } catch (err) {
+    return { target: target.appId, ok: false, detail: `reminder pass failed: ${String(err)}` };
+  }
+}
+
+/**
+ * The nightly digest, fanned over every app target in order — one heartbeat row
+ * per app, or one `(none)` row when the target list is empty. Sequential for the
+ * renewals fan-out's reasons: one app's failure is contained, and the cap is a
+ * single running count across the portfolio.
+ */
+export async function runReminderMail(
+  env: Env,
+  targets: readonly AppTarget[],
+  nowMs: number = Date.now(),
+  fetchImpl: typeof fetch = fetch,
+): Promise<ReminderRow[]> {
+  if (targets.length === 0) return [{ target: '(none)', ok: false, detail: 'no app targets configured' }];
+  const missing = [
+    ...(env.RESEND_API_KEY ? [] : ['RESEND_API_KEY']),
+    ...(env.SUPABASE_SERVICE_ROLE_KEY ? [] : ['SUPABASE_SERVICE_ROLE_KEY']),
+  ];
+  if (missing.length > 0) {
+    return targets.map((t) => ({
+      target: t.appId,
+      ok: false,
+      detail: `not configured: ${missing.join(' and ')} not set on this Worker, so no reminder can be sent`,
+    }));
+  }
+  const today = ymdOf(nowMs);
+  const state: RunState = {
+    today,
+    sentAt: new Date(nowMs).toISOString(),
+    sentToday: 0,
+    readsLeft: MAX_ADDRESS_READS_PER_RUN,
+    pruned: 0,
+  };
+  try {
+    state.pruned = await pruneLedger(env.PLATFORM_DB, today);
+    state.sentToday = await digestsSentSince(env.PLATFORM_DB, `${today}T00:00:00.000Z`);
+  } catch (err) {
+    return targets.map((t) => ({ target: t.appId, ok: false, detail: `reminder ledger unreadable: ${String(err)}` }));
+  }
+  const rows: ReminderRow[] = [];
+  for (const t of targets) {
+    rows.push(await remindApp(env, t, state, env.RESEND_API_KEY as string, env.SUPABASE_SERVICE_ROLE_KEY as string, fetchImpl));
+  }
+  return rows;
+}

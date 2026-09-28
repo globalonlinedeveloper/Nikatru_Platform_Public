@@ -65,6 +65,27 @@ processors:
     source: tooling/legal/provider-register.json
     asOf: "2026-09-25"
 
+  # O-BRICK-SELLS-NOTHING-IN-A-STORE (12b): the stamped app.yaml declares
+  # `billing.mobileIap` (pending), and assert-app-yaml limb 9 requires the three
+  # store-billing processors that declaration triggers.
+  - id: revenuecat
+    role: iap_aggregator
+    purpose: Records which store purchase entitles the account to Pro, on our behalf; it is never the seller.
+    source: tooling/legal/provider-register.json
+    asOf: "2026-09-25"
+
+  - id: apple-app-store
+    role: store_billing
+    purpose: Bills and delivers in-app purchases made through that store, under its own terms.
+    source: tooling/legal/provider-register.json
+    asOf: "2026-09-25"
+
+  - id: google-play
+    role: store_billing
+    purpose: Bills and delivers in-app purchases made through that store, under its own terms.
+    source: tooling/legal/provider-register.json
+    asOf: "2026-09-25"
+
   - id: razorpay
     role: payment_gateway
     purpose: When you buy in India anywhere other than the Apple App Store or Google Play, Nikatru is the seller and Razorpay takes the payment as our payment gateway, processing your payment details on our behalf.

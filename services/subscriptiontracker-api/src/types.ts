@@ -127,6 +127,25 @@ export interface Subscription {
   unused: number; // 0 | 1 in DB
   created_at: string | null;
   updated_at: string | null;
+  // ── added by 0003_subscription_model.sql ([ADR 077] §5) ──
+  currency: string | null; // ISO 4217, upper case; NULL on rows written before 0003
+  price_minor: number | null;
+  cycle_every: number | null;
+  cycle_unit: string | null; // day | week | month | year
+  first_charge_on: string | null; // 'YYYY-MM-DD'
+  status: string; // NOT NULL DEFAULT 'active'
+  trial_ends_on: string | null; // 'YYYY-MM-DD'
+  cancelled_on: string | null; // 'YYYY-MM-DD'
+  deleted_at: string | null; // ISO-8601 instant
+  notes: string | null;
+  service_id: string | null;
+  cancel_url: string | null;
+  rail: string | null;
+  rail_holder: string | null;
+  reminder_days: string | null; // JSON text of a list of days
+  shared_with: string | null;
+  share_numerator: number; // NOT NULL DEFAULT 1
+  share_denominator: number; // NOT NULL DEFAULT 1
 }
 
 /** A payment_history row.
@@ -136,7 +155,8 @@ export interface Subscription {
  * that table" — and was missing from this interface until 2026-08-25 while
  * routes/subscriptions.ts served it anyway through a `SELECT *`. Declared here
  * because it IS on the wire; the same edit named the columns in that SELECT so
- * the two can no longer drift apart silently. */
+ * the two can no longer drift apart silently. `currency` and `source` were added
+ * by 0003_subscription_model.sql and named in that SELECT in the same change. */
 export interface Payment {
   id: string;
   subscription_id: string | null;
@@ -144,6 +164,8 @@ export interface Payment {
   amount: number | null;
   paid_at: string | null;
   updated_at: string | null;
+  currency: string | null;
+  source: string | null;
 }
 
 // `Entitlement` WAS HERE and was deleted 2026-08-09 with its last reader: both

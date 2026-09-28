@@ -52,11 +52,17 @@
 // `.dart_tool/pub/workspace_ref.json`) and exits 1 when the two differ. No
 // package_config means `pub get` never ran: COVERAGE LOST (exit 2), never a pass.
 //
+// ── WHO WRITES THOSE ROWS (LEAD RULING NP12B-R2, 2026-09-28) ─────────────────
+// The app's STAMP does: tooling/kit/stamp-app.mjs runs gen-app-licence-rows.mjs
+// --write after a root `pub get`, deriving one row per package file from the
+// resolved workspace. This guard stays the second witness — it grades a REAL
+// bundle — and the two share one LICENSE classifier (package-assets.mjs), so a
+// row the stamp writes is a row this walk reads back.
+//
 // Usage:  node tooling/ci/assert-licence-register.mjs [repoRoot] [--bundle DIR [--app ID]]
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, resolve, relative, sep } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { join, resolve, relative, sep } from 'node:path';
 import { stripSourceComments } from './text-reductions.mjs';
 import { listDir } from './tree-walk.mjs';
 // The seam against [7]P-5's content-licence register. Imported by BOTH guards on
@@ -78,6 +84,7 @@ import { crossAssertLicenceRegisters } from './licence-cross-assert.mjs';
 // ONE LEVEL, ONE IMPORT, EVERY REFUSAL LOUD. A delegation this resolver cannot
 // follow is COVERAGE LOST, never a quiet fall-back to reading the adapter alone.
 import { delegationOf } from './chassis-delegation.mjs';
+import { SDK_PACKAGE, flat, packageConfigOf, packageLicence as packageLicenceOf } from './package-assets.mjs';
 
 // ⚠️ ARGUMENT PARSING, AND IT ALREADY BIT ONCE. The first draft read
 // `argv.find((a, i) => !a.startsWith('--') && i !== bundleAt + 1)`; with no
@@ -161,36 +168,6 @@ if (appAt !== -1) {
       'resolved packages nothing was read, and a licence nobody read is not evidence.',
     );
   }
-}
-
-/** The package_config.json an app resolves through: its own, or — in a pub
- *  workspace, measured on this tree 2026-09-26 — the workspace root's, which
- *  `.dart_tool/pub/workspace_ref.json` names relative to its own directory. */
-function packageConfigOf(appDir) {
-  const own = join(appDir, '.dart_tool', 'package_config.json');
-  if (existsSync(own)) return readPackageConfig(own);
-  const ref = join(appDir, '.dart_tool', 'pub', 'workspace_ref.json');
-  if (!existsSync(ref)) return null;
-  let root;
-  try {
-    root = JSON.parse(readFileSync(ref, 'utf8')).workspaceRoot;
-  } catch {
-    return null;
-  }
-  if (typeof root !== 'string' || root.trim() === '') return null;
-  const cfg = join(resolve(dirname(ref), ...root.split(/[\\/]+/)), '.dart_tool', 'package_config.json');
-  return existsSync(cfg) ? readPackageConfig(cfg) : null;
-}
-
-function readPackageConfig(path) {
-  let doc;
-  try {
-    doc = JSON.parse(readFileSync(path, 'utf8'));
-  } catch {
-    return null;
-  }
-  if (!Array.isArray(doc.packages)) return null;
-  return { path, doc, byName: new Map(doc.packages.map((p) => [p.name, p])) };
 }
 
 const walk = (dir, out = []) => {
@@ -393,7 +370,6 @@ const sharedMatches = (shippedId, shippedName) => {
 // exactly as it did (its declared mode would call an app row orphaned, and its
 // probe walk would call it a bundleOnly row the build stopped emitting).
 const APP_SCOPE = /^app:([a-z][a-z0-9_]*)$/;
-const SDK_PACKAGE = 'sdk:flutter';
 const PUB_NAME = /^[a-z_][a-z0-9_]*$/;
 let appRows = [];
 if (register.appScopedAssets !== undefined) {
@@ -417,65 +393,10 @@ const shown = (p) => {
 };
 
 // ── the primary licence source: the LICENSE of the package that ships it ────
-// Recognised by the operative sentences of each text, whitespace and case
-// ignored. A LICENSE that reads as none of these, or as more than one, is a
-// finding: the row's licence could not be read from its source.
-const LICENCE_TEXTS = [
-  {
-    id: 'Apache-2.0',
-    all: ['apache license', 'version 2.0, january 2004', 'terms and conditions for use, reproduction, and distribution'],
-  },
-  {
-    id: 'MIT',
-    all: [
-      'permission is hereby granted, free of charge, to any person obtaining a copy',
-      'the above copyright notice and this permission notice shall be included in all copies or substantial portions of the software',
-    ],
-  },
-  {
-    id: 'BSD-3-Clause',
-    all: [
-      'redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met',
-      'neither the name of',
-    ],
-  },
-  {
-    id: 'BSD-2-Clause',
-    all: [
-      'redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met',
-    ],
-    none: ['neither the name of'],
-  },
-];
-const flat = (t) => t.replace(/\s+/g, ' ').trim().toLowerCase();
-const classifyLicence = (text) => {
-  const t = flat(text);
-  return LICENCE_TEXTS.filter((l) => l.all.every((p) => t.includes(p)) && !(l.none ?? []).some((p) => t.includes(p))).map(
-    (l) => l.id,
-  );
-};
-const LICENCE_FILES = ['LICENSE', 'LICENSE.md', 'LICENSE.txt', 'LICENCE'];
-/** { file, text, ids } for a package this app resolved, or { error }. */
-function packageLicence(pkg) {
-  let root;
-  if (pkg === SDK_PACKAGE) {
-    const fr = packageConfig.doc.flutterRoot;
-    if (typeof fr !== 'string' || fr.trim() === '') {
-      return { error: `${shown(packageConfig.path)} carries no flutterRoot, so the Flutter SDK's LICENSE cannot be found` };
-    }
-    root = fileURLToPath(new URL(fr.endsWith('/') ? fr : `${fr}/`, pathToFileURL(packageConfig.path)));
-  } else {
-    const p = packageConfig.byName.get(pkg);
-    if (!p || typeof p.rootUri !== 'string') {
-      return { error: `package ${pkg} is not in ${shown(packageConfig.path)}, so this app does not resolve it` };
-    }
-    root = fileURLToPath(new URL(p.rootUri.endsWith('/') ? p.rootUri : `${p.rootUri}/`, pathToFileURL(packageConfig.path)));
-  }
-  const file = LICENCE_FILES.map((n) => join(root, n)).find((f) => existsSync(f));
-  if (!file) return { error: `${pkg} carries no LICENSE file at ${shown(root)}` };
-  const text = readFileSync(file, 'utf8');
-  return { file, text, ids: classifyLicence(text) };
-}
+// The classifier and the LICENSE lookup live in package-assets.mjs since
+// 2026-09-28 (NP12B-R2), UNCHANGED: gen-app-licence-rows.mjs writes the rows this
+// guard grades, and one classifier means the two cannot read a LICENSE apart.
+const packageLicence = (pkg) => packageLicenceOf(packageConfig, pkg, shown);
 
 /** Files the BUILD emits to describe or license the bundle. Named individually
  *  in the register — never a suffix rule, so a new one still fails until

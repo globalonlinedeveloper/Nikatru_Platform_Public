@@ -268,7 +268,9 @@ describe('the CLI', () => {
       makeTree(root);
       const w = run(root, '--write', '--app', 'demo');
       assert.equal(w.status, 0, w.stderr);
-      const r = run(root);
+      // singleThreaded: false — spawned WITHOUT the flag the spawn-ceiling preload adds,
+      // so the relaunch is what makes it single-threaded (tooling/scripts/spawn-ceiling.mjs).
+      const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8', timeout: 60_000, singleThreaded: false });
       assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
       assert.match(r.stdout, /V8 background tasks: OFF \(--single-threaded\)/);
     } finally {
