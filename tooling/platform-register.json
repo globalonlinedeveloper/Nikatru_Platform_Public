@@ -606,6 +606,69 @@
       "owningFile": "services/platform/src/routes/sessions.ts",
       "purpose": "⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. Lists the caller's sessions and adds every one except the caller's own to the SESSION_REVOKED list. Deletes no auth.sessions row: the client's GoTrue signOut({scope:'others'}) does that. 409 when the token carries no session_id; 204 with no write when there are no other sessions; 503 when the RPC or the list write fails.",
       "unconsumedReason": "client half (requestSessionRevocation + the sessions list) ships in the web PR after this Worker deploys; the server must be live first"
+    },
+    {
+      "id": "reminders-prefs-get",
+      "method": "GET",
+      "path": "/v1/reminders/prefs",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/reminders.ts",
+      "purpose": "⏱ 2026-09-28 · ST-R1. The caller's renewal reminder EMAIL preference for one app (`?app_id=`): `{app_id, email_opt_in, lead_days}`, or the default (not opted in, 3 days) when no row exists. Mounted behind app.use('/v1/reminders/prefs', platformAuth); app_id must be a catalogue app with an app database (isReminderApp).",
+      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T4b (the packages + app half: the reminder toggle, the lead-days picker and the calendar-feed button), which launches after this Worker deploys; the server must be live first. Until then no account is opted in, so the nightly job runs live and mails no one."
+    },
+    {
+      "id": "reminders-prefs-put",
+      "method": "PUT",
+      "path": "/v1/reminders/prefs",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/reminders.ts",
+      "purpose": "⏱ 2026-09-28 · ST-R1. Stores `{app_id, email_opt_in, lead_days?}` (lead 0-30; absent keeps the stored one) for the verified JWT subject in platform_db.reminder_prefs (migration 0020). Body bounded at 1 KiB; the per-person burst breaker is EVENTS_LIMITER keyed `reminders:<sub>`, as POST /v1/report does. The nightly `reminder_mail` job reads it.",
+      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T4b (the packages + app half: the reminder toggle, the lead-days picker and the calendar-feed button), which launches after this Worker deploys; the server must be live first. Until then no account is opted in, so the nightly job runs live and mails no one."
+    },
+    {
+      "id": "reminders-unsubscribe-get",
+      "method": "GET",
+      "path": "/v1/reminders/unsubscribe",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/reminders.ts",
+      "purpose": "⏱ 2026-09-28 · ST-R1. The page a person reaches by clicking the unsubscribe link in a reminder email: one button that POSTs to the same URL. It CHANGES NOTHING by itself — mail scanners fetch every link. The `t` token is 256 random bits minted per digest; only its SHA-256 is stored, on that digest's reminder_sent rows. Behind REMINDERS_CEILING_LIMITER, keyed on the edge, never an IP.",
+      "unconsumedReason": "Consumed by EMAIL, not by an app: every reminder digest's body links here. No app code calls it."
+    },
+    {
+      "id": "reminders-unsubscribe-post",
+      "method": "POST",
+      "path": "/v1/reminders/unsubscribe",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/reminders.ts",
+      "purpose": "⏱ 2026-09-28 · ST-R1. RFC 8058 one-click unsubscribe: the URL every reminder digest carries in `List-Unsubscribe` (with `List-Unsubscribe-Post: List-Unsubscribe=One-Click`). The token names the (account, app) through the hash on reminder_sent and sets reminder_prefs.email_opt_in = 0; that is all it can do. An unknown or malformed token is 404. Behind REMINDERS_CEILING_LIMITER.",
+      "unconsumedReason": "Consumed by MAIL CLIENTS (Gmail, Outlook, Apple Mail) from the List-Unsubscribe header, and by the button on the GET page. No app code calls it."
+    },
+    {
+      "id": "calendar-feed-post",
+      "method": "POST",
+      "path": "/v1/calendar/feed",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/calendar.ts",
+      "purpose": "⏱ 2026-09-28 · ST-R2. Mints — or ROTATES — the caller's private calendar feed for one app (`{app_id}`) and answers its https and webcal URLs ONCE. The token is 256 random bits; only its SHA-256 is stored (platform_db.reminder_feed, one row per account and app), so the previous URL dies on rotation. Mounted behind app.use('/v1/calendar/feed', platformAuth).",
+      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T4b (the packages + app half: the reminder toggle, the lead-days picker and the calendar-feed button), which launches after this Worker deploys; the server must be live first. Until then no account is opted in, so the nightly job runs live and mails no one."
+    },
+    {
+      "id": "calendar-feed-delete",
+      "method": "DELETE",
+      "path": "/v1/calendar/feed",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/calendar.ts",
+      "purpose": "⏱ 2026-09-28 · ST-R2. Revokes the caller's live feed for `?app_id=` (stamps revoked_at); the feed URL then answers 404. 404 when there is no live feed.",
+      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T4b (the packages + app half: the reminder toggle, the lead-days picker and the calendar-feed button), which launches after this Worker deploys; the server must be live first. Until then no account is opted in, so the nightly job runs live and mails no one."
+    },
+    {
+      "id": "calendar-feed-ics",
+      "method": "GET",
+      "path": "/v1/calendar/:file",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/calendar.ts",
+      "purpose": "⏱ 2026-09-28 · ST-R2. The private calendar feed, `/v1/calendar/<token>.ics`: RFC 5545 (services/platform/src/lib/ics.ts — CRLF, 75-octet folding, escaping, stable UIDs, a VALARM at the lead days), one all-day VEVENT per live subscription on the date src/renewals.ts `rollForward` gives. `?download=1` adds an attachment disposition. PUBLIC because the token IS the capability — Google, Apple and Microsoft fetch it from their own servers with no session of ours. A malformed, unknown or revoked token is 404. Behind REMINDERS_CEILING_LIMITER, keyed on the edge.",
+      "unconsumedReason": "Consumed by CALENDAR SERVICES (Google Calendar, Apple Calendar, Outlook) subscribing to the URL, and by a browser downloading it; the URL is handed out by POST /v1/calendar/feed, whose client ships in ST-T4b."
     }
   ],
   "bindings": [
@@ -782,6 +845,16 @@
       "purpose": "⏱ 2026-09-26 · LEAD RULING SHIELD-R1, row O-BOXES-UNSHIELDED-FROM-SPIKES. ⏱ 2026-09-27 · SHIELD-R3. services/edge-shield's intake limiter, keyed global:intake, all clients together: GlitchTip's crash intake on Box B (/api/<id>/envelope/ and /store/). Over the limit the shield answers 429 with Retry-After; any fault of this binding FAILS OPEN and is logged as shield_fail_open (src/limit.ts). The limit and what it is sized from are beside the binding in services/edge-shield/wrangler.jsonc. It is the ONLY limiter of its class: the Worker reads no client address (LEAD RULING SHIELD-R3, the ADR no.011 / ADR no.020 posture), and the per-IP limit on the credential paths is the nikatru.com zone's own rate-limiting rule (tooling/edge-ratelimit-rule.json).",
       "readers": [
         "services/edge-shield/src/classify.ts"
+      ]
+    },
+    {
+      "binding": "REMINDERS_CEILING_LIMITER",
+      "kind": "ratelimits",
+      "scope": "shared",
+      "purpose": "⏱ 2026-09-28 · ST-R2. The server-derived ceiling for the two public reminder routes whose token is the credential — GET /v1/calendar/<token>.ics and /v1/reminders/unsubscribe — keyed `edge:<colo>:<asn>`, never an IP. `simple: { limit: 300, period: 60 }`: the key is a calendar PROVIDER's network rather than a person, and a provider refreshes a feed a few times a day, so 300 a minute is far above any real subscriber count while still ending a token-guessing flood. Its OWN namespace (1013; sandbox 1014).",
+      "readers": [
+        "services/platform/src/routes/calendar.ts",
+        "services/platform/src/routes/reminders.ts"
       ]
     }
   ],

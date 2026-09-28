@@ -629,3 +629,18 @@ class SettingsProfile {
   final String displayName;
   final String email;
 }
+
+/// A settings row's trailing chevron, drawn ONLY when the row goes somewhere —
+/// ST-U5 (D6, D2). An inert row that draws the one glyph that says "tap me"
+/// sends a user tapping at nothing.
+class RowChevron extends StatelessWidget {
+  const RowChevron({required this.actionable, this.color, super.key});
+
+  final bool actionable;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) => actionable
+      ? Icon(Icons.chevron_right, color: color, size: 18)
+      : const SizedBox.shrink();
+}

@@ -175,13 +175,16 @@ describe('the real tree: every database the register\'s Workers own, and only th
     const platformMigrations = readdirSync(join(REPO, 'services/platform/migrations')).filter((f) => f.endsWith('.sql')).length;
     assert.match(
       r.stdout,
-      new RegExp(`MONITOR · \\[pipeline B-17\\] · platform_db: 22 table\\(s\\) enumerated from services/platform/migrations \\(${platformMigrations} migration file\\(s\\)\\), 0 row\\(s\\)\\n`),
+      new RegExp(`MONITOR · \\[pipeline B-17\\] · platform_db: 25 table\\(s\\) enumerated from services/platform/migrations \\(${platformMigrations} migration file\\(s\\)\\), 0 row\\(s\\)\\n`),
     );
+    // ⏱ 2026-09-28 · the same for subscriptiontracker_db, whose literal `2` went
+    // stale with 0003_subscription_model.sql. The table count stays pinned.
+    const appMigrations = readdirSync(join(REPO, APP_MIGRATIONS)).filter((f) => f.endsWith('.sql')).length;
     assert.match(
       r.stdout,
-      /MONITOR · \[pipeline B-17\] · subscriptiontracker_db: 4 table\(s\) enumerated from services\/subscriptiontracker-api\/migrations \(2 migration file\(s\)\), 0 row\(s\) · 4 exempt table\(s\), not queried/,
+      new RegExp(`MONITOR · \\[pipeline B-17\\] · subscriptiontracker_db: 4 table\\(s\\) enumerated from services/subscriptiontracker-api/migrations \\(${appMigrations} migration file\\(s\\)\\), 0 row\\(s\\) · 4 exempt table\\(s\\), not queried`),
     );
-    assert.match(r.stdout, /MONITOR · \[pipeline B-17\] · 2 database\(s\) walked \(platform_db, subscriptiontracker_db\): 26 table\(s\), 0 row\(s\)/);
+    assert.match(r.stdout, /MONITOR · \[pipeline B-17\] · 2 database\(s\) walked \(platform_db, subscriptiontracker_db\): 29 table\(s\), 0 row\(s\)/); // ⏱ 2026-09-28: 26 -> 29 and platform_db 22 -> 25, 0020's three reminder tables (ST-T4a).
     assert.match(r.stdout, /subscriptiontracker_db migration ledger: NOT READ \(fixture mode, no --schema-file\)/);
     assert.match(r.stdout, /⬜ {2}payment_history {10}exempt — not queried {3}\[no marker · exempt\]/);
     assert.match(r.stdout, /4 exempt table\(s\) were not queried, and say so above/);
@@ -190,7 +193,8 @@ describe('the real tree: every database the register\'s Workers own, and only th
   test('the gate prints both databases', () => {
     const r = gate(REPO);
     assert.equal(r.status, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /ok {2}prod provenance — subscriptiontracker_db: 4 table\(s\) enumerated from services\/subscriptiontracker-api\/migrations \(2 migration file\(s\)\), 4 rule\(s\), 0 uncovered/);
+    const appMigrations = readdirSync(join(REPO, APP_MIGRATIONS)).filter((f) => f.endsWith('.sql')).length;
+    assert.match(r.stdout, new RegExp(`ok {2}prod provenance — subscriptiontracker_db: 4 table\\(s\\) enumerated from services/subscriptiontracker-api/migrations \\(${appMigrations} migration file\\(s\\)\\), 4 rule\\(s\\), 0 uncovered`));
     assert.match(r.stdout, /exempt: budget_categories, budgets, payment_history, subscriptions/);
     assert.match(r.stdout, /2 database\(s\), the set tooling\/platform-register\.json's Workers own: platform_db, subscriptiontracker_db/);
   });
@@ -414,17 +418,26 @@ describe('the schema reads run per database, against each one\'s own ledger', ()
   test('🔴 an app table missing though its migration is recorded names subscriptiontracker_db, exit 1', () => {
     const dir = mkdtempSync(join(tmpdir(), 'nikatru-prov-dbs-schema-'));
     try {
+      // ⏱ 2026-09-28 · EVERY migration in the tree is recorded, read from the
+      // directory: a hand list stopped at 0002, so 0003_subscription_model.sql
+      // read as PENDING and the monitor (rightly) refused a fixture with no
+      // --now — a different path from the one this test exists for.
+      const recorded = readdirSync(join(REPO, APP_MIGRATIONS)).filter((f) => f.endsWith('.sql')).sort();
+      assert.ok(recorded.includes('0001_init.sql'), 'the fixture records 0001, which is what makes `budgets` overdue');
       const schema = {
         subscriptiontracker_db: {
           tables: ['subscriptions', 'budget_categories', 'payment_history', 'd1_migrations', '_cf_KV'],
-          migrations: ['0001_init.sql', '0002_schema_debt.sql'],
+          migrations: recorded,
         },
       };
       writeFileSync(join(dir, 'schema.json'), JSON.stringify(schema));
       const r = monitor(REPO, () => ['--schema-file', join(dir, 'schema.json')]);
       assert.equal(r.status, 1, r.stdout + r.stderr);
       assert.match(r.stderr, /subscriptiontracker_db\.budgets: absent from production, yet 0001_init\.sql is recorded in `d1_migrations`/);
-      assert.match(r.stdout, /subscriptiontracker_db migration ledger: 2 migration\(s\) recorded in `d1_migrations` · 3 of 4 table\(s\) present/);
+      assert.match(
+        r.stdout,
+        new RegExp(`subscriptiontracker_db migration ledger: ${recorded.length} migration\\(s\\) recorded in \`d1_migrations\` · 3 of 4 table\\(s\\) present`),
+      );
       assert.match(r.stdout, /platform_db migration ledger: NOT READ \(fixture mode, the --schema-file names no schema for it\)/);
     } finally {
       rmSync(dir, { recursive: true, force: true });

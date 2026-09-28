@@ -560,6 +560,54 @@ describe('coverage self-checks', () => {
     );
   });
 
+  // ── every E2E_ define a suite reads, e2e.yml passes (ST-T2 rider, LEAD RULING 34)
+  // MEASURED on the real tree before the rider: exit 1, naming the brick's
+  // suite and E2E_APP_ID; with the define on the flutter drive line, exit 0.
+  describe('E2E_ defines the suites read are passed by the lane', () => {
+    const BRICK_SUITE = 'tooling/bricks/app/__brick__/apps/{{app_id}}/integration_test/app_test.dart';
+    const withBrickSuite = (root) => {
+      mkdirSync(join(root, dirname(BRICK_SUITE)), { recursive: true });
+      cpSync(join(REPO, BRICK_SUITE), join(root, BRICK_SUITE));
+    };
+
+    test('PASSES on the real workflow and the real brick suite', () => {
+      withTree(withBrickSuite, (r) => {
+        assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+        assert.match(r.stdout, /E2E_ define\(s\) the suites read, every one passed by \.github\/workflows\/e2e\.yml/);
+      });
+    });
+
+    test('FAILS when flutter drive stops passing E2E_APP_ID, and names the reader', () => {
+      withTree(
+        (root) => {
+          withBrickSuite(root);
+          const w = join(root, WORKFLOW);
+          const before = readFileSync(w, 'utf8');
+          const after = before.replace(/ \\\n\s*--dart-define=E2E_APP_ID="\$E2E_APP_ID"/, '');
+          assert.notEqual(after, before, 'the mutation must remove the define — a no-op mutation proves nothing');
+          writeFileSync(w, after);
+        },
+        (r) => {
+          assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+          assert.match(r.stderr, /integration_test\/app_test\.dart read\(s\) --dart-define E2E_APP_ID, and \.github\/workflows\/e2e\.yml never passes it/);
+        },
+      );
+    });
+
+    test('FAILS when the app suite starts reading an E2E_ define nobody passes', () => {
+      withTree(
+        (root) => {
+          const f = join(root, SUITE);
+          writeFileSync(f, `${readFileSync(f, 'utf8')}\nconst String _probe = String.fromEnvironment('E2E_NOBODY_PASSES');\n`);
+        },
+        (r) => {
+          assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+          assert.match(r.stderr, /read\(s\) --dart-define E2E_NOBODY_PASSES/);
+        },
+      );
+    });
+  });
+
   test('the tree copy the other tests mutate really is the real one', () => {
     // Guards the harness itself: if realTree() ever stopped copying the real
     // files, every mutation above would be mutating a stub and passing for the

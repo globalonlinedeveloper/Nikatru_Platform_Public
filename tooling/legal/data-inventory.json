@@ -366,6 +366,80 @@
       }
     },
     {
+      "id": "table:platform_db.reminder_prefs",
+      "kind": "d1-table",
+      "name": "reminder_prefs",
+      "personalData": true,
+      "holds": "⏱ 2026-09-28 · ST-R1. One row per (account, app) that has set a renewal reminder preference: the Supabase `sub`, the app id, whether the person opted in to the renewal reminder EMAIL (`email_opt_in`), how many days ahead (`lead_days`, 0-30) and `updated_at`. Written only by PUT /v1/reminders/prefs (behind platformAuth) and turned off by the one-click unsubscribe. It holds no email address: the nightly job reads a CONFIRMED address from the identity provider at send time and stores no copy. No row means not opted in.",
+      "retention": {
+        "kind": "keep",
+        "reason": "Kept WHILE THE ACCOUNT EXISTS: it is a live setting, at most one row per account and app (PRIMARY KEY (user_id, app_id)), and deleting it by age would silently switch off reminders the person asked for. It leaves with the account."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "A preference is a record of the account. The column is spelled `user_id` ON PURPOSE (0020_reminders.sql): the shared erasure walk DELETES the row. Verified rather than assumed — adding the table turned services/platform/test/auth.test.ts's empty-derivation fixture and erasure-derivation.test.ts's pinned set red."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0020_reminders.sql",
+        "services/platform/src/routes/reminders.ts"
+      ],
+      "disclosure": {
+        "page": "subscriptiontracker/privacy.html",
+        "quote": "the renewal reminder emails you choose to receive"
+      }
+    },
+    {
+      "id": "table:platform_db.reminder_sent",
+      "kind": "d1-table",
+      "name": "reminder_sent",
+      "personalData": true,
+      "holds": "⏱ 2026-09-28 · ST-R1. One row per renewal a reminder email was sent about: the Supabase `sub`, the app id, the subscription's id in that app's database, the renewal date (`due_on`), the kind (`renewal`), `sent_at`, and SHA-256 of the one-click unsubscribe token that email carried (never the token). UNIQUE on (user_id, app_id, subscription_id, due_on, kind), which is what stops a night mailing twice. It holds no email address, no subscription name and no amount — those are read from the app's own database and the identity provider when the mail is built, and go to Resend in that one message only.",
+      "retention": {
+        "kind": "swept",
+        "periodDays": 400,
+        "sweptBy": "services/platform/src/lib/reminders.ts",
+        "reason": "400 days after the renewal date (`due_on`), enforced by the platform Worker's nightly `reminder_mail` job itself (REMINDER_SENT_RETENTION_DAYS, at most 1000 rows per run). The row is a log of processing — this person was mailed about this renewal — and 400 is the platform's period for such records ([ADR 045] §9: it clears the DPDP Rules 2025 Rule 8(3) one-year floor that 365 misses across a 29 February). The dedupe itself needs a row only until its date has passed. `swept`, not `ttl`: D1 has no expiry."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "A sent-reminder record is a record about the person mailed. The column is spelled `user_id` ON PURPOSE (0020_reminders.sql): the shared erasure walk DELETES the row, and with it the only way an old email's unsubscribe link resolves to the account. Verified rather than assumed — adding the table turned services/platform/test/auth.test.ts's empty-derivation fixture and erasure-derivation.test.ts's pinned set red."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0020_reminders.sql",
+        "services/platform/src/lib/reminders.ts"
+      ],
+      "disclosure": {
+        "page": "subscriptiontracker/privacy.html",
+        "quote": "the renewal reminder emails you choose to receive"
+      }
+    },
+    {
+      "id": "table:platform_db.reminder_feed",
+      "kind": "d1-table",
+      "name": "reminder_feed",
+      "personalData": true,
+      "holds": "⏱ 2026-09-28 · ST-R2. One row per (account, app) private calendar feed: the Supabase `sub`, the app id, SHA-256 of the 256-bit feed token (the token is returned ONCE by POST /v1/calendar/feed and never stored), `created_at` and `revoked_at`. The token in the feed URL is the credential: GET /v1/calendar/<token>.ics renders the account's renewals from the app's own database on each fetch, and nothing rendered is stored here.",
+      "retention": {
+        "kind": "keep",
+        "reason": "Kept WHILE THE ACCOUNT EXISTS: at most one row per account and app (PRIMARY KEY (user_id, app_id)) — a rotation replaces the hash in place and a revoke stamps `revoked_at` — so the table cannot grow past one row per person per app. A live feed deleted by age would silently empty a calendar the person subscribed. It leaves with the account."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "A feed is a credential of the account. The column is spelled `user_id` ON PURPOSE (0020_reminders.sql): the shared erasure walk DELETES the row, and a deleted row answers the same 404 as a revoked or unknown token. Verified rather than assumed — adding the table turned services/platform/test/auth.test.ts's empty-derivation fixture and erasure-derivation.test.ts's pinned set red."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0020_reminders.sql",
+        "services/platform/src/routes/calendar.ts"
+      ],
+      "disclosure": {
+        "page": "subscriptiontracker/privacy.html",
+        "quote": "If you create a private calendar link"
+      }
+    },
+    {
       "id": "table:platform_db.pending_erasures",
       "kind": "d1-table",
       "name": "pending_erasures",
@@ -683,7 +757,7 @@
       "kind": "d1-table",
       "name": "subscriptions",
       "personalData": true,
-      "holds": "The subscriptions a Subly user tracks — service name, cost, renewal date. USER-ENTERED CONTENT about the person's own finances, keyed on their user id.",
+      "holds": "The subscriptions a Subly user tracks — service name, cost and its currency, cadence, renewal and first-charge dates, lifecycle status with trial-end and cancelled-on dates, a catalogue key, a cancel link, reminder days, and the user's own labels: notes, how the charge reaches them (`rail`, `rail_holder` — user-typed, e.g. \"Google Pay · HDFC ••4471\", never read from a bank and never a full card or account number) and who they share it with (`shared_with`, a label, not an account). USER-ENTERED CONTENT about the person's own finances, keyed on their user id. The columns after `updated_at` are 0003_subscription_model.sql's ([ADR 077] §5).",
       "retention": {
         "kind": "keep",
         "reason": "This is the user's own data and the entire point of the app; it exists until they delete it or delete their account. The in-app deletion control exists in BOTH trees and is asserted — the `account-deletion-works` coverage key on the brick, and tooling/ci/assert-deletion-control.mjs over apps/subscriptiontracker with no exemption ([ADR 027]) — and since 2026-08-04 that control REACHES THESE ROWS. See `erasure` below."
@@ -695,7 +769,8 @@
       },
       "writtenBy": [
         "services/subscriptiontracker-api/migrations/0001_init.sql",
-        "services/subscriptiontracker-api/src/routes/subscriptions.ts"
+        "services/subscriptiontracker-api/src/routes/subscriptions.ts",
+        "services/subscriptiontracker-api/migrations/0003_subscription_model.sql"
       ],
       "disclosure": {
         "page": "privacy.html",
@@ -755,7 +830,7 @@
       "kind": "d1-table",
       "name": "payment_history",
       "personalData": true,
-      "holds": "Dates and amounts a user recorded against their own subscriptions. ⚠️ A record OF payments, not a payment instrument: no card, bank or account number is stored, which is the claim tooling/legal/policy-claims.json asserts against every migration in the tree.",
+      "holds": "Dates, amounts and (from 0003_subscription_model.sql) the currency and the recording source of payments recorded against their own subscriptions. ⚠️ A record OF payments, not a payment instrument: no card, bank or account number is stored, which is the claim tooling/legal/policy-claims.json asserts against every migration in the tree.",
       "retention": {
         "kind": "keep",
         "reason": "The user's own history, kept until they delete it."
@@ -767,7 +842,8 @@
       },
       "writtenBy": [
         "services/subscriptiontracker-api/migrations/0001_init.sql",
-        "services/subscriptiontracker-api/src/routes/subscriptions.ts"
+        "services/subscriptiontracker-api/src/routes/subscriptions.ts",
+        "services/subscriptiontracker-api/migrations/0003_subscription_model.sql"
       ],
       "disclosure": {
         "page": "privacy.html",

@@ -21,6 +21,7 @@ import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
 import '../../state/subscriptions_controller.dart';
+import '../add/add_subscription_sheet.dart';
 import '../shared/due.dart';
 import '../shared/async_gate.dart';
 import '../shared/neutrals.dart';
@@ -147,6 +148,9 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       l10n: l10n,
       emptyTitle: l10n.dataEmptyTitle,
       emptyBody: l10n.dataEmptyBody,
+      // ST-U6 (B42): the first step, not a dead end.
+      emptyActionLabel: l10n.addSubscriptionTitle,
+      onEmptyAction: () => showAddSubscriptionSheet(context),
     );
     if (state != null) return state;
     final List<Subscription> subs = ref

@@ -63,6 +63,7 @@ import '../../state/money_providers.dart';
 import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
 import '../auth/turnstile_gate.dart';
+import '../shared/chassis_adapters.dart';
 import '../shared/widgets.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -1901,7 +1902,7 @@ class _LinkRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String? sub = subtitle;
+    final String? sub = inertRowSubtitle(context, onTap, subtitle);
     final ThemeData theme = Theme.of(context);
     return Container(
       // Every `_LinkRow` sits inside a `cardDecoration` card, so the hairline
@@ -1995,10 +1996,9 @@ class _LinkRow extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(
-                Icons.chevron_right,
+              RowChevron(
+                actionable: onTap != null,
                 color: AppText.of(context).muted.color,
-                size: 18,
               ),
             ],
           ),

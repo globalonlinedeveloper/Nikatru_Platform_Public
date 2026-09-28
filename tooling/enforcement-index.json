@@ -43,6 +43,22 @@
     "state": "WIRED"
   },
   {
+    "claims": [
+      "ADR 044",
+      "ADR 093",
+      "ADR 094",
+      "B-2",
+      "M-11"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-legal"
+    ],
+    "kind": "script",
+    "ref": "tooling/catalog/render-rail-prices.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [],
     "invokedBy": [],
     "kind": "guard",
@@ -843,6 +859,20 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-deploy-triggers.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/store-screenshots.yml#capture",
+      ".github/workflows/store-screenshots.yml#capture-desktop-native",
+      ".github/workflows/store-screenshots.yml#capture-ios",
+      ".github/workflows/store-screenshots.yml#capture-linux"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-derived-sets.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -2854,6 +2884,18 @@
   },
   {
     "claims": [
+      "K-10"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app-brick"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/gen-app-licence-rows.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
       "R-3"
     ],
     "invokedBy": [
@@ -2940,6 +2982,24 @@
     "invokedBy": [],
     "kind": "guard",
     "ref": "tooling/ci/migration-tables.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/money-wiring.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
+    "claims": [
+      "K-10"
+    ],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/package-assets.mjs",
     "references": [],
     "state": "LIBRARY"
   },
@@ -3395,6 +3455,16 @@
       ".github/workflows/ci.yml#app-brick"
     ],
     "kind": "script",
+    "ref": "tooling/kit/new-product.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app-brick"
+    ],
+    "kind": "script",
     "ref": "tooling/kit/stamp-app.mjs",
     "references": [],
     "state": "WIRED"
@@ -3455,6 +3525,7 @@
       "O-4"
     ],
     "invokedBy": [
+      ".github/workflows/ci.yml#guards-platform",
       ".github/workflows/ops-watch.yml#digest",
       ".github/workflows/ops-watch.yml#heartbeats"
     ],
@@ -4087,6 +4158,19 @@
     ],
     "kind": "script",
     "ref": "tooling/store/capture-precheck.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/store-screenshots.yml#capture",
+      ".github/workflows/store-screenshots.yml#capture-desktop-native",
+      ".github/workflows/store-screenshots.yml#capture-ios",
+      ".github/workflows/store-screenshots.yml#capture-linux"
+    ],
+    "kind": "script",
+    "ref": "tooling/store/finish-capture.mjs",
     "references": [],
     "state": "WIRED"
   },

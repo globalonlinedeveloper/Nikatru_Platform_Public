@@ -174,8 +174,8 @@
 <p>The first-party events rail, consented per purpose and append-only, so a grant for analytics is never evidence of a grant for anything else. Swept at four hundred days by the events retention job.</p>
 <p class="meta">Read from <code>services/platform/migrations/0007_events_rollup.sql</code> on 2026-09-05.</p>
 <h3>App activity — Other user-generated content</h3>
-<p>The names, amounts and renewal dates a person enters. This is the content the app exists to hold, so it lives as long as the account does and goes with it.</p>
-<p class="meta">Read from <code>apps/subscriptiontracker/store/android-play/data-safety.json</code> on 2026-09-05.</p>
+<p>The names, amounts and renewal dates a person enters. This is the content the app exists to hold, so it lives as long as the account does and goes with it. If you create a private calendar link, the same names, amounts and renewal dates are shown to whichever calendar you give that link to, until you turn the link off.</p>
+<p class="meta">Read from <code>apps/subscriptiontracker/store/android-play/data-safety.json</code> on 2026-09-28.</p>
 <h3>App info and performance — Crash logs</h3>
 <p>Crash reports reach the self-hosted GlitchTip in Mumbai, whose event retention is bounded rather than indefinite. The software is ours and no analytics company receives them; the machine it runs on is rented from Hostinger, which is listed below as infrastructure under the same rule that lists the vendor of the identity machine.</p>
 <p class="meta">Read from <code>tooling/legal/provider-register.json</code> on 2026-09-11.</p>
@@ -209,7 +209,7 @@
 <tr><td>Apple App Store</td><td>store billing</td><td>Bills and delivers in-app purchases made through that store, under its own terms.</td></tr>
 <tr><td>Google Play</td><td>store billing</td><td>Bills and delivers in-app purchases made through that store, under its own terms.</td></tr>
 <tr><td>Razorpay</td><td>payment gateway</td><td>When you buy in India anywhere other than the Apple App Store or Google Play, Nikatru is the seller and Razorpay takes the payment as our payment gateway, processing your payment details on our behalf.</td></tr>
-<tr><td>Resend</td><td>email delivery</td><td>Delivers the transactional email an account needs to exist.</td></tr>
+<tr><td>Resend</td><td>email delivery</td><td>Delivers the transactional email an account needs to exist, and the renewal reminder emails you choose to receive, which list the subscriptions about to renew.</td></tr>
 </table>
 
 <h2>5. What is never collected</h2>

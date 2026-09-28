@@ -306,3 +306,66 @@ class PaywallView extends StatelessWidget {
     }
   }
 }
+
+/// Asks for a paywall's plans once, and tells its [builder] whether the
+/// question is still open — ST-U7 (C38).
+///
+/// A store rail's plans are EMPTY until the store answers, and a paywall that
+/// reads that as "Purchases are not available here." says something false for
+/// the first second or more of every open. [load] is the adapter's refresh
+/// (for a web rail, whose plans are its config, it completes at once), asked
+/// for here so an open paywall shows today's price and this buyer's trial.
+/// [changes] repaints the paywall when a store rail's plans arrive or change;
+/// a web rail's never do.
+class PlansLoadGate extends StatefulWidget {
+  const PlansLoadGate({
+    required this.load,
+    required this.builder,
+    this.changes,
+    super.key,
+  });
+
+  final Future<void> Function() load;
+  final Listenable? changes;
+  final Widget Function(BuildContext context, bool loading) builder;
+
+  @override
+  State<PlansLoadGate> createState() => _PlansLoadGateState();
+}
+
+class _PlansLoadGateState extends State<PlansLoadGate> {
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.load().whenComplete(() {
+      if (mounted) setState(() => _loading = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.changes == null
+      ? widget.builder(context, _loading)
+      : ListenableBuilder(
+          listenable: widget.changes!,
+          builder: (BuildContext context, Widget? _) =>
+              widget.builder(context, _loading),
+        );
+}
+
+/// The paywall's "plans are still being asked for" state: a spinner whose
+/// [label] a screen reader announces.
+class PlansLoading extends StatelessWidget {
+  const PlansLoading({required this.label, super.key});
+
+  final String label;
+
+  static const Key loadingKey = Key('paywall-offerings-loading');
+
+  @override
+  Widget build(BuildContext context) => Center(
+    key: loadingKey,
+    child: CircularProgressIndicator(semanticsLabel: label),
+  );
+}

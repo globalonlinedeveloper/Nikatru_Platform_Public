@@ -269,6 +269,7 @@ class NotificationsScreen extends ConsumerWidget {
                           Icons.notifications_none,
                           AppColors.accent,
                           const Color.fromRGBO(100, 89, 245, 0.12),
+                          subId: x.id,
                           x.daysUntil(now) == 0
                               ? l10n.notifRenewsToday(x.name)
                               // (name, count) — gen-l10n orders the parameters by the arb's
@@ -342,7 +343,21 @@ class NotificationsScreen extends ConsumerWidget {
     );
   }
 
+  /// ✅ ST-U8 (C16): A CARD ABOUT ONE SUBSCRIPTION OPENS IT. "Netflix renews
+  /// in 2 days" was a dead end — the screen could inform and never act. A
+  /// card with a [_Notif.subId] is now one tap stop that pushes `/sub/:id`
+  /// (back returns here); the aggregate "unused" card names no single
+  /// subscription and stays inert.
   Widget _card(BuildContext context, _Notif n) {
+    final String? id = n.subId;
+    return FocusableTap(
+      onTap: id == null ? null : () => context.push('/sub/$id'),
+      borderRadius: BorderRadius.circular(18),
+      child: _cardBody(context, n),
+    );
+  }
+
+  Widget _cardBody(BuildContext context, _Notif n) {
     final ThemeData theme = Theme.of(context);
     final bool isLight = theme.brightness == Brightness.light;
     final ColorScheme scheme = theme.colorScheme;
@@ -424,7 +439,17 @@ class NotificationsScreen extends ConsumerWidget {
 }
 
 class _Notif {
-  const _Notif(this.icon, this.color, this.bg, this.title, this.body);
+  const _Notif(
+    this.icon,
+    this.color,
+    this.bg,
+    this.title,
+    this.body, {
+    this.subId,
+  });
+
+  /// The subscription this card is about, or null for an aggregate card.
+  final String? subId;
   final IconData icon;
   final Color color;
   final Color bg;

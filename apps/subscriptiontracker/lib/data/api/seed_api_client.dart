@@ -53,8 +53,12 @@ class SeedApiClient implements ApiClient {
       glyph: draft.glyph.isEmpty
           ? draft.name.padRight(3, 'X').substring(0, 3).toUpperCase()
           : draft.glyph,
-      usedPct: 50,
-      usageNote: 'Just added.',
+      // ST-U5 (B11): a new row has NO usage. This said `usedPct: 50` and
+      // `usageNote: 'Just added.'` — an English literal in data, and a
+      // fabricated "Occasional" band on home and an "Active 50 %" card on
+      // detail for a plan the user added a second ago.
+      usedPct: 0,
+      usageNote: '',
     );
     _subs.add(created);
     return created;

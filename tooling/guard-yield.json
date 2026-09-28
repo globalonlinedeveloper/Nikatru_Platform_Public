@@ -35,6 +35,11 @@
       "firstSeen": "2026-09-06",
       "evidence": []
     },
+    "tooling/catalog/render-rail-prices.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-28",
+      "evidence": []
+    },
     "tooling/ci/adapter-set.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-19",
@@ -592,6 +597,11 @@
     "tooling/ci/assert-deploy-triggers.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-01",
+      "evidence": []
+    },
+    "tooling/ci/assert-derived-sets.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-28",
       "evidence": []
     },
     "tooling/ci/assert-desktop-runner-identity.mjs": {
@@ -2207,6 +2217,11 @@
       "firstSeen": "2026-08-04",
       "evidence": []
     },
+    "tooling/ci/gen-app-licence-rows.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-28",
+      "evidence": []
+    },
     "tooling/ci/gen-ci-map.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-26",
@@ -2240,6 +2255,16 @@
     "tooling/ci/migration-tables.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-06",
+      "evidence": []
+    },
+    "tooling/ci/money-wiring.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-28",
+      "evidence": []
+    },
+    "tooling/ci/package-assets.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-28",
       "evidence": []
     },
     "tooling/ci/plan-deploy.mjs": {
@@ -2446,6 +2471,11 @@
     "tooling/e2e/verify_row.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-21",
+      "evidence": []
+    },
+    "tooling/kit/new-product.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-28",
       "evidence": []
     },
     "tooling/kit/stamp-app.mjs": {
@@ -2734,6 +2764,11 @@
     "tooling/store/capture-precheck.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-27",
+      "evidence": []
+    },
+    "tooling/store/finish-capture.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-28",
       "evidence": []
     },
     "tooling/store/measure-frame-ink.mjs": {

@@ -23,6 +23,32 @@
 //     caller's shell cannot turn a new stamp into a silent overwrite.
 //   · The app id is refused BEFORE mason, with the contract's own message
 //     (contracts/app-id/app-id.js appIdProblems); pre_gen refuses it too.
+//   · THE APP'S LICENCE ROWS (LEAD RULING NP12B-R2, 2026-09-27). Every file a
+//     pub package ships into the new app's web bundle needs an `app:<id>` row
+//     in tooling/legal/asset-register.json, and until this step nothing wrote
+//     one: the first web build of the stamp went red, and a row typed by hand
+//     for an app that exists only in CI was refused (train W47, #1020). So after
+//     mason, `flutter pub get` AT THE REPO ROOT resolves the workspace with the
+//     new app on it (never in the app directory: that rewrites the root lock
+//     from a subdirectory), and `gen-app-licence-rows.mjs --write --app <id>`
+//     writes the rows from that resolution. On Windows flutter is `flutter.bat`,
+//     reached through cmd.exe exactly as mason is.
+//   · THAT PUB GET LEAVES THE TRACKED TREE AS IT FOUND IT (lead ruling on
+//     NP12B-R2's draft, 2026-09-28; TRAPS.md "Dart / Flutter — worktrees and
+//     stray writes"). A root `flutter pub get` "upgrades" every workspace
+//     project's analysis_options.yaml to exclude build and platform
+//     directories — measured: 10 tracked files rewritten by one stamp. Flutter
+//     has no flag that turns the migration off, and a read-only file fails the
+//     resolution instead of skipping it, so the step cannot be run so that it
+//     cannot write. It RESTORES: every analysis_options.yaml git sees (tracked,
+//     or new and not ignored, as the one mason just stamped) is read into memory
+//     BEFORE pub get and written back byte for byte after it. Bytes in memory,
+//     never `git checkout`: a person's own uncommitted edit to one of those files
+//     is put back as they left it, not as HEAD has it. Then the tracked tree is
+//     ASSERTED: every tracked file pub get left different from how it found it,
+//     other than the root pubspec.lock (the new app's dependencies resolve into
+//     it), fails the stamp, named. So a future Flutter that writes some other
+//     file is a red stamp, not a quiet diff in someone's next commit.
 //
 // ── POST-CONDITIONS: WHERE post_gen WARNS, THIS FILE EXITS NON-ZERO ──────────
 // post_gen.dart runs the site chain and tag-owner --write, and on a failure it
@@ -30,14 +56,17 @@
 // long mason log is easy to miss, so after mason exits 0 this file requires:
 //   1. apps/<id>/pubspec.yaml exists — a stamp that wrote no app is not a stamp;
 //   2. `node tooling/sites/regen.mjs --check` exits 0;
-//   3. `node tooling/ci/tag-owner.mjs --check` exits 0.
+//   3. `node tooling/ci/tag-owner.mjs --check` exits 0;
+//   4. `node tooling/ci/gen-app-licence-rows.mjs --check --app <id>` exits 0.
 // Any one failing makes the exit 1, and the line names it.
 //
-// Exit 0 = stamped, and all three post-conditions hold (or --dry-run printed the plan).
-// Exit 1 = refused before mason, a mason step failed, or a post-condition failed.
+// Exit 0 = stamped, and all four post-conditions hold (or --dry-run printed the plan).
+// Exit 1 = refused before mason, a mason step failed, the root pub get left a
+//          tracked file changed, or a post-condition failed.
 // ─────────────────────────────────────────────────────────────────────────────
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { appIdProblems } from '../../contracts/app-id/app-id.js';
@@ -51,6 +80,7 @@ export const SAFE_ARG = /^[A-Za-z0-9._/\\:=-]+$/;
 
 export const REGEN = 'tooling/sites/regen.mjs';
 export const TAG_OWNER = 'tooling/ci/tag-owner.mjs';
+export const APP_LICENCE_ROWS = 'tooling/ci/gen-app-licence-rows.mjs';
 const OVERWRITE_ENV = 'NIKATRU_ALLOW_OVERWRITE';
 
 /**
@@ -115,9 +145,16 @@ export function planStamp({ argv = [], platform = process.platform, env = proces
       ? { label, command: 'cmd.exe', args: ['/d', '/s', '/c', 'mason.bat', ...args], cwd: root, env: childEnv }
       : { label, command: 'mason', args, cwd: root, env: childEnv };
   };
+  const flutter = (label, args) =>
+    platform === 'win32'
+      ? { label, command: 'cmd.exe', args: ['/d', '/s', '/c', 'flutter.bat', ...args], cwd: root, env: childEnv }
+      : { label, command: 'flutter', args, cwd: root, env: childEnv };
+  const licenceRows = join(root, ...APP_LICENCE_ROWS.split('/'));
   const steps = [
     mason('mason get', ['get']),
     mason('mason make', ['make', 'app', '-c', vars, '-o', '.', '--on-conflict', 'overwrite']),
+    { ...flutter('flutter pub get (repo root)', ['pub', 'get']), keepsTrackedTree: true },
+    { label: `node ${APP_LICENCE_ROWS} --write --app ${id}`, command: process.execPath, args: [licenceRows, '--write', '--app', id], cwd: root, env: childEnv },
   ];
   if (problems.length) return nothing(id, vars, overwrite);
 
@@ -125,9 +162,71 @@ export function planStamp({ argv = [], platform = process.platform, env = proces
     { label: `apps/${id}/pubspec.yaml exists`, kind: 'exists', path: join(root, 'apps', id, 'pubspec.yaml') },
     { label: `node ${REGEN} --check`, kind: 'spawn', command: process.execPath, args: [join(root, ...REGEN.split('/')), '--check'], cwd: root },
     { label: `node ${TAG_OWNER} --check`, kind: 'spawn', command: process.execPath, args: [join(root, ...TAG_OWNER.split('/')), '--check'], cwd: root },
+    { label: `node ${APP_LICENCE_ROWS} --check --app ${id}`, kind: 'spawn', command: process.execPath, args: [licenceRows, '--check', '--app', id], cwd: root },
   ];
   return { problems, id, vars, overwrite, steps, post };
 }
+
+/** The one tracked file the root pub get may change: the new app's dependencies resolve into it. */
+export const PUB_GET_OWNS = new Set(['pubspec.lock']);
+
+/** `git <args>` in `root`, NUL-separated output as a list. Throws naming the command. */
+function gitPaths(root, args) {
+  const r = spawnSync('git', args, { cwd: root, encoding: 'utf8', shell: false, maxBuffer: 64 * 1024 * 1024 });
+  if (r.status !== 0) {
+    throw new Error(`git ${args.join(' ')} exited ${r.status ?? r.error?.code} in ${root}: ${String(r.stderr ?? '').trim()}`);
+  }
+  return r.stdout.split('\0').filter(Boolean);
+}
+
+const bytesOf = (abs) => (existsSync(abs) ? readFileSync(abs) : null);
+const hashOf = (abs) => {
+  const b = bytesOf(abs);
+  return b === null ? 'absent' : createHash('sha256').update(b).digest('hex');
+};
+
+/** Every tracked file whose working copy differs from the index, with a hash of its bytes. */
+function dirtyTracked(root) {
+  const out = new Map();
+  for (const rel of gitPaths(root, ['diff', '--name-only', '-z', '--no-renames', '--no-ext-diff', '--no-textconv'])) {
+    out.set(rel, hashOf(join(root, ...rel.split('/'))));
+  }
+  return out;
+}
+
+/**
+ * The real tree keeper around the root pub get. `snapshot` runs before it:
+ * the bytes of every analysis_options.yaml git sees, and the tracked tree's
+ * dirty set. `settle` runs after it: those bytes written back where pub get
+ * changed them, then every tracked file left different from the snapshot,
+ * other than PUB_GET_OWNS, returned as `stray`.
+ */
+export const gitTree = {
+  snapshot(root) {
+    const keep = new Map();
+    const seen = gitPaths(root, ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', ':(glob)**/analysis_options.yaml']);
+    for (const rel of seen) {
+      const bytes = bytesOf(join(root, ...rel.split('/')));
+      if (bytes !== null) keep.set(rel, bytes);
+    }
+    return { root, keep, dirty: dirtyTracked(root) };
+  },
+  settle({ root, keep, dirty }) {
+    const restored = [];
+    for (const [rel, bytes] of keep) {
+      const abs = join(root, ...rel.split('/'));
+      const now = bytesOf(abs);
+      if (now !== null && now.equals(bytes)) continue;
+      writeFileSync(abs, bytes);
+      restored.push(rel);
+    }
+    const after = dirtyTracked(root);
+    const stray = new Set();
+    for (const [rel, h] of after) if (!PUB_GET_OWNS.has(rel) && dirty.get(rel) !== h) stray.add(rel);
+    for (const rel of dirty.keys()) if (!PUB_GET_OWNS.has(rel) && !after.has(rel)) stray.add(rel);
+    return { restored, stray: [...stray].sort() };
+  },
+};
 
 /** The real runner: output streams to the terminal, the exit code comes back. */
 function spawnStep(command, args, { cwd, env }) {
@@ -139,16 +238,44 @@ function spawnStep(command, args, { cwd, env }) {
  * Run a plan. `run` and `exists` are injectable so the suite drives every
  * branch without spawning mason. Returns the process exit code.
  */
-export function runStamp(plan, { run = spawnStep, exists = existsSync, log = console.log, error = console.error } = {}) {
+export function runStamp(plan, { run = spawnStep, exists = existsSync, tree = gitTree, log = console.log, error = console.error } = {}) {
   if (plan.problems.length) {
     for (const p of plan.problems) error(`✗ ${p}`);
     return 1;
   }
   for (const step of plan.steps) {
+    let snap = null;
+    if (step.keepsTrackedTree) {
+      try {
+        snap = tree.snapshot(step.cwd);
+      } catch (e) {
+        error(`✗ ${step.label}: the tracked tree could not be read before it (${e.message}); it was not run.`);
+        return 1;
+      }
+    }
     log(`▶ ${step.label}: ${step.command} ${step.args.join(' ')}`);
     const code = run(step.command, step.args, { cwd: step.cwd, env: step.env });
+    let settled = null;
+    if (snap) {
+      try {
+        settled = tree.settle(snap);
+      } catch (e) {
+        error(`✗ ${step.label}: the tracked tree could not be checked after it (${e.message}).`);
+        return 1;
+      }
+      if (settled.restored.length) {
+        log(`ok  ${step.label}: put back ${settled.restored.length} analysis_options.yaml it rewrote: ${settled.restored.join(', ')}`);
+      }
+    }
     if (code !== 0) {
       error(`✗ ${step.label} exited ${code}; the post-conditions were not checked.`);
+      return 1;
+    }
+    if (settled?.stray.length) {
+      error(
+        `✗ ${step.label} left ${settled.stray.length} tracked file(s) changed: ${settled.stray.join(', ')}. ` +
+          `Only ${[...PUB_GET_OWNS].join(', ')} is its to write; revert the rest before any commit. The post-conditions were not checked.`,
+      );
       return 1;
     }
   }
@@ -165,7 +292,7 @@ export function runStamp(plan, { run = spawnStep, exists = existsSync, log = con
     );
     return 1;
   }
-  log(`ok  stamp-app: "${plan.id}" stamped; the site chain and the release tag filter both check clean.`);
+  log(`ok  stamp-app: "${plan.id}" stamped; the site chain, the release tag filter and its licence rows all check clean.`);
   return 0;
 }
 

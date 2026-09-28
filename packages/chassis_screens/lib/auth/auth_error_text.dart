@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
+import 'turnstile_gate.dart' show CaptchaUnavailable;
+
 /// Maps raw auth/network errors onto short, human messages so users never see a
 /// stack-tracey exception (e.g. Supabase's `invalid_credentials`).
 ///
@@ -53,6 +55,10 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 /// sentence no user can act on, shown verbatim.
 String authErrorText(ChassisLocalizations l10n, Object e) {
   if (e is String) return e;
+  // 2026-09-28: a valid submit waited for the challenge and it never
+  // answered, so nothing was sent. Its own sentence, because it says what to
+  // DO; `authCaptchaFailed` is the SERVER's refusal of a token it was sent.
+  if (e is CaptchaUnavailable) return l10n.authCaptchaUnavailable;
   if (e is core.AuthFailure) {
     if (e.localized) return e.message;
     final String? byCode = _codeText(l10n, e);

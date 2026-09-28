@@ -459,3 +459,85 @@ describe('R3 — every gated surface the e2e suite drives names its headless rou
     );
   });
 });
+
+// ⏱ 2026-09-28 — R4. ST-T1 (#1022) disabled every auth button on
+// `captcha.ready`; a headless browser never gets a token, so an EMPTY sign-in
+// could not even say "Enter your email" (E2E live run 36379673890).
+describe('R4 — no action is disabled on captcha readiness', () => {
+  const CHASSIS_SIGN_IN = `${CHASSIS_LIB}/auth/sign_in_screen.dart`;
+
+  test('GREEN CONTROL · the real tree reads no readiness and awaits instead', () => {
+    withTree(
+      () => {},
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /ok {3}R4 — \d+ lib file\(s\) read, no action disabled on captcha readiness; \d+ gated action\(s\) await/);
+      },
+    );
+  });
+
+  test('🔴 the #1022 shape — Sign in disabled on `!captcha.ready` — is named', () => {
+    withTree(
+      (root) =>
+        edit(root, SUBLY_LOGIN, (s) =>
+          s.replace(
+            'onPressed: (_loading || (_signUp && !_acceptedTerms))',
+            'onPressed: (_loading || (_signUp && !_acceptedTerms) || !captcha.ready)',
+          ),
+        ),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /\[R4\] apps\/subscriptiontracker\/lib\/features\/auth\/login_screen\.dart:\d+ reads captcha readiness \(`captcha\.ready`\)/);
+      },
+    );
+  });
+
+  test('🔴 a `captchaReady` gate on a chassis view is named too', () => {
+    withTree(
+      (root) =>
+        edit(root, CHASSIS_SIGN_IN, (s) =>
+          s.replace('onPressed: _busy ? null : () => _signIn(l10n),', 'onPressed: (_busy || !widget.captchaReady) ? null : () => _signIn(l10n),'),
+        ),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /\[R4\] packages\/chassis_screens\/lib\/auth\/sign_in_screen\.dart:\d+ reads captcha readiness \(`captchaReady`\)/);
+      },
+    );
+  });
+
+  test('🔴 the null-aware spelling — `captchaController?.ready` — is named too', () => {
+    withTree(
+      (root) =>
+        edit(root, CHASSIS_SIGN_IN, (s) =>
+          s.replace('onPressed: _busy ? null : () => _signIn(l10n),', 'onPressed: (_busy || !(widget.captchaController?.ready ?? true)) ? null : () => _signIn(l10n),'),
+        ),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /\[R4\] packages\/chassis_screens\/lib\/auth\/sign_in_screen\.dart:\d+ reads captcha readiness \(`captchaController\?\.ready`\)/);
+      },
+    );
+  });
+
+  test('a readiness read in a DOC COMMENT is prose, not a gate', () => {
+    withTree(
+      (root) => edit(root, SUBLY_LOGIN, (s) => `// was: onPressed: !captcha.ready ? null : _submit\n${s}`),
+      (r) => assert.equal(r.status, 0, r.stderr),
+    );
+  });
+
+  test('a domain with no `untilReady(` call is COVERAGE LOST, not a clean tree', () => {
+    withTree(
+      (root) => {
+        for (const rel of execFileSync('git', ['ls-files', '*.dart'], { cwd: root, encoding: 'utf8' }).split('\n').filter(Boolean)) {
+          const p = join(root, rel);
+          const s = readFileSync(p, 'utf8');
+          if (s.includes('untilReady(')) writeFileSync(p, s.split('untilReady(').join('untilReadyX('));
+        }
+      },
+      (r) => {
+        assert.equal(r.status, 2, r.stdout);
+        assert.match(r.stderr, /COVERAGE LOST — R4 found no `untilReady\(` call/);
+      },
+    );
+  });
+});

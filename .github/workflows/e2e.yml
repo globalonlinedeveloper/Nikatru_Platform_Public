@@ -391,6 +391,10 @@ jobs:
           E2E_DELETE_PASSWORD: ${{ steps.delete_user.outputs.password }}
           E2E_TOKEN_HASH: ${{ steps.user.outputs.token_hash }}
           E2E_DELETE_TOKEN_HASH: ${{ steps.delete_user.outputs.token_hash }}
+          # why: the app this leg drives. A stamped suite's first assertion is that
+          # E2E_APP_ID names its own binary (LEAD RULING 34, the two-leg confirm);
+          # assert-e2e-legs fails a suite-read E2E_ define the drive never passes.
+          E2E_APP_ID: ${{ matrix.app }}
         run: |
           set -euo pipefail
           export CHROME_EXECUTABLE="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser)"
@@ -464,7 +468,8 @@ jobs:
             --dart-define=TURNSTILE_SITE_KEY="$TURNSTILE_SITE_KEY" \
             --dart-define=E2E_EXPECT_CAPTCHA_GATE="$E2E_EXPECT_CAPTCHA_GATE" \
             --dart-define=E2E_EXPECT_WORKERS_TRUST="$E2E_WORKERS_TRUST" \
-            --dart-define=E2E_DELETE_PASSWORD="$E2E_DELETE_PASSWORD" 2>&1 | tee "${RUNNER_TEMP}/drive.log"
+            --dart-define=E2E_DELETE_PASSWORD="$E2E_DELETE_PASSWORD" \
+            --dart-define=E2E_APP_ID="$E2E_APP_ID" 2>&1 | tee "${RUNNER_TEMP}/drive.log"
           kill "$CHROMEDRIVER_PID" || true
 
       - name: Surface the failing assertion

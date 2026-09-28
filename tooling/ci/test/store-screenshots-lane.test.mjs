@@ -1557,3 +1557,155 @@ describe('tooling/e2e/magic_link.mjs — the one minter', () => {
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EVERY CAPTURE JOB FINISHES ITS CAPTURE BEFORE IT PROPOSES IT
+// (O-CAPTURE-LEAVES-DERIVED-SETS-STALE, AR-D3b, 2026-09-27).
+//
+// A Play re-capture changes the source of the apps.gov.in set. The pull request
+// this lane opens is GITHUB_TOKEN's, so ci.yml never runs on it, and until this
+// date its `git add` named the capture directories only: the derived set stayed
+// stale and nothing said so. Each capture job now runs
+// tooling/store/finish-capture.mjs on the channel it captured (every set whose
+// register entry declares `derivedFrom` on that channel is re-derived, and each
+// written path is printed), then tooling/ci/assert-derived-sets.mjs, and the pull
+// request step adds `SHOTS`, which carries the finish step's printed paths.
+//
+// ORDER, per job: the capture, then every capture guard (listing assets, device
+// coverage), then the finish step, then assert-derived-sets, then the pull
+// request, and the throwaway-user purge stays the job's LAST step (`always()`).
+// Neither new step carries an `if:`: a dry run re-derives and checks too; it
+// uploads the capture directories only and proposes nothing.
+// ─────────────────────────────────────────────────────────────────────────────
+const FINISH_CALL = /(?:^|\s)node\s+(?:--single-threaded\s+)?tooling\/store\/finish-capture\.mjs(?=\s|$)/;
+const DERIVED_CALL = /(?:^|\s)node\s+tooling\/ci\/assert-derived-sets\.mjs(?=\s|$)/;
+const CAPTURE_GUARD_CALL = /(?:^|\s)node\s+(?:--single-threaded\s+)?tooling\/ci\/assert-(?:listing-assets|play-device-coverage)\.mjs(?=\s|$)/;
+const runs = (s, re) => Boolean(s.run) && shellSegments(s.run.text).some((x) => re.test(x));
+
+/** The finish-capture contract over a parsed lane. Pure. */
+function checkFinishLane(wf) {
+  const findings = [];
+  const census = [];
+  const find = (rule, job, line, msg) => findings.push({ rule, job, line, msg });
+  for (const job of wf.jobs.values()) {
+    const steps = workflowSteps(job);
+    const capture = steps.find((s) => s.run && CAPTURE_INVOCATION.test(s.run.text));
+    if (!capture) continue;
+    const env = jobEnv(job);
+    const bound = (v) => (v !== null && /^\$\{?STORE_CHANNEL\}?$/.test(v) ? (env.get('STORE_CHANNEL')?.value ?? v) : v);
+    const captureSeg = shellSegments(capture.run.text).find((x) => CAPTURE_INVOCATION.test(x));
+    const channel = bound(flagOf(captureSeg, '--channel')) ?? 'android-play';
+
+    const finishes = steps.filter((s) => runs(s, FINISH_CALL));
+    if (finishes.length !== 1) {
+      find('finish-missing', job.name, capture.first, `job ${job.name}: ${finishes.length} step(s) run tooling/store/finish-capture.mjs, where the job needs exactly one`);
+      continue;
+    }
+    const finish = finishes[0];
+    const seg = shellSegments(finish.run.text).find((x) => FINISH_CALL.test(x));
+    if (finish.id === null) find('finish-id', job.name, finish.first, `job ${job.name}: the finish step at :${finish.first} has no id, so its printed paths cannot reach the pull request`);
+    if (finish.cond !== null) find('finish-if', job.name, finish.first, `job ${job.name}: the finish step at :${finish.first} carries \`if: ${finish.cond}\``);
+    if (flagOf(seg, '--app') !== flagOf(captureSeg, '--app')) find('finish-app', job.name, finish.first, `job ${job.name}: the finish step at :${finish.first} finishes --app ${flagOf(seg, '--app')}, and the capture drives --app ${flagOf(captureSeg, '--app')}`);
+    if (bound(flagOf(seg, '--channel')) !== channel) find('finish-channel', job.name, finish.first, `job ${job.name}: the finish step at :${finish.first} finishes --channel ${flagOf(seg, '--channel')}, and the job captures ${channel}`);
+
+    const lastGuard = steps.filter((s) => runs(s, CAPTURE_GUARD_CALL)).map((s) => s.index).reduce((a, b) => Math.max(a, b), -1);
+    if (lastGuard === -1 || finish.index < lastGuard || finish.index < capture.index) {
+      find('finish-before-guards', job.name, finish.first, `job ${job.name}: the finish step at :${finish.first} does not follow the capture and every capture guard`);
+    }
+    const checks = steps.filter((s) => runs(s, DERIVED_CALL));
+    if (checks.length !== 1 || checks[0].index < finish.index || checks[0].cond !== null) {
+      find('derived-check', job.name, finish.first, `job ${job.name}: needs one ungated tooling/ci/assert-derived-sets.mjs step after the finish step at :${finish.first}; found ${checks.map((s) => `:${s.first}`).join(', ') || 'none'}`);
+    }
+    const prs = steps.filter((s) => s.run && shellSegments(s.run.text).some((x) => PR_WRITE.test(x)));
+    const pr = prs[0];
+    if (prs.length !== 1 || pr.index < finish.index || (checks[0] && pr.index < checks[0].index)) {
+      find('finish-after-pr', job.name, finish.first, `job ${job.name}: the finish step at :${finish.first} and its check must both come BEFORE the one pull-request step`);
+    }
+    if (pr) {
+      const shots = pr.env.get('SHOTS')?.value ?? '';
+      if (!finish.id || !shots.includes(`\${{ steps.${finish.id}.outputs.paths }}`)) {
+        find('shots-omit-derived', job.name, pr.first, `job ${job.name}: the pull request at :${pr.first} takes SHOTS=${JSON.stringify(shots)}, which omits the finish step's printed paths`);
+      }
+      if (!pr.run.text.includes('for d in $SHOTS') || !shellSegments(pr.run.text).some((x) => /(?:^|\s)git\s+add\s+-f\s+"\$d"\s*$/.test(x))) {
+        find('shots-not-added', job.name, pr.first, `job ${job.name}: the pull request at :${pr.first} does not \`git add -f\` every entry of SHOTS`);
+      }
+      if (/apps-gov-in/.test(`${pr.run.text} ${shots}`)) {
+        find('shots-hand-listed', job.name, pr.first, `job ${job.name}: the pull request at :${pr.first} names a derived channel by hand; the finish step's output is the one list`);
+      }
+    }
+    const purge = steps.find((s) => s.run && PURGE_INVOCATION.test(s.run.text));
+    if (!purge || purge.index !== steps.length - 1 || (pr && purge.index < pr.index)) {
+      find('purge-not-last', job.name, purge?.first ?? capture.first, `job ${job.name}: the throwaway-user purge is not the job's last step`);
+    }
+    if (!findings.some((f) => f.job === job.name)) census.push(job.name);
+  }
+  return { census, findings };
+}
+
+describe('store-screenshots.yml: every capture job finishes its capture before it proposes it', () => {
+  const yml = readFileSync(join(REPO, LANE_REL), 'utf8');
+  const real = checkFinishLane(parseWorkflow(REPO, LANE_REL));
+  const JOBS = ['capture', 'capture-linux', 'capture-desktop-native', 'capture-ios'];
+  const lane = parseWorkflow(REPO, LANE_REL);
+  const stepNamed = (jobName, re) => workflowSteps(lane.jobs.get(jobName)).find((s) => re.test(s.name ?? ''));
+  const lineOf = (re, from = 1) => yml.split('\n').findIndex((l, i) => i >= from - 1 && re.test(l)) + 1;
+
+  test('the lane holds the contract, in all four capture jobs', () => {
+    assert.deepEqual(real.findings.map((f) => f.msg), []);
+    // Pinned by NAME: a job that stopped matching would shrink the census and pass every rule over less.
+    assert.deepEqual(real.census, JOBS);
+  });
+
+  test('🔴 the Play pull request without the finish step\'s paths in SHOTS is named', () => {
+    const pr = stepNamed('capture', /^Propose the set/);
+    const at = lineOf(/^ {10}SHOTS: .*\$\{\{ steps\.finish\.outputs\.paths \}\}$/, pr.first);
+    assert.ok(at > pr.first && at <= pr.last, 'the Play pull request carries no SHOTS line with the finish output to remove');
+    const lines = yml.split('\n');
+    lines[at - 1] = lines[at - 1].replace(' ${{ steps.finish.outputs.paths }}', '');
+    const { findings } = checkFinishLane(parseLaneText(lines.join('\n')));
+    assert.deepEqual(findings.map((f) => `${f.rule} ${f.job} :${f.line}`), [`shots-omit-derived capture :${pr.first}`]);
+  });
+
+  test('🔴 a Play pull request that hand-lists the derived directory is named', () => {
+    const pr = stepNamed('capture', /^Propose the set/);
+    const at = lineOf(/^ {10}SHOTS: /, pr.first);
+    assert.ok(at > pr.first && at <= pr.last, 'the Play pull request carries no SHOTS line to extend');
+    const lines = yml.split('\n');
+    lines[at - 1] = `${lines[at - 1]} apps/\${{ needs.gate.outputs.app }}/store/apps-gov-in/screenshots`;
+    const { findings } = checkFinishLane(parseLaneText(lines.join('\n')));
+    assert.deepEqual(findings.map((f) => `${f.rule} ${f.job}`), ['shots-hand-listed capture']);
+  });
+
+  test('🔴 a Snap finish step moved after the pull request is named, and so is its check', () => {
+    const finish = stepNamed('capture-linux', /^Re-derive every set/);
+    const purge = stepNamed('capture-linux', /^Purge the throwaway user/);
+    assert.ok(finish && purge, 'capture-linux has no finish step or no purge step to reorder');
+    const lines = yml.split('\n');
+    const block = lines.slice(finish.first - 1, finish.last);
+    const moved = [...lines.slice(0, purge.first - 1), ...block, '', ...lines.slice(purge.first - 1)];
+    moved.splice(finish.first - 1, finish.last - finish.first + 1);
+    const { findings } = checkFinishLane(parseLaneText(moved.join('\n')));
+    assert.deepEqual(findings.map((f) => `${f.rule} ${f.job}`), ['derived-check capture-linux', 'finish-after-pr capture-linux']);
+  });
+
+  test('🔴 a desktop finish step gated to real runs only is named', () => {
+    const finish = stepNamed('capture-desktop-native', /^Re-derive every set/);
+    assert.ok(finish, 'capture-desktop-native has no finish step to gate');
+    const lines = yml.split('\n');
+    lines.splice(finish.first, 0, '        if: ${{ !inputs.dry_run }}');
+    const { findings } = checkFinishLane(parseLaneText(lines.join('\n')));
+    assert.deepEqual(findings.map((f) => `${f.rule} ${f.job}`), ['finish-if capture-desktop-native']);
+  });
+
+  test('🔴 an iOS purge that is no longer the last step is named', () => {
+    const pr = stepNamed('capture-ios', /^Propose the sets/);
+    const purge = stepNamed('capture-ios', /^Purge the throwaway user/);
+    assert.ok(pr && purge && purge.first > pr.last, 'capture-ios has no purge after its pull request to move');
+    const lines = yml.split('\n');
+    const block = lines.slice(purge.first - 1, purge.last);
+    const kept = lines.slice(0, purge.first - 1).concat(lines.slice(purge.last));
+    const moved = [...kept.slice(0, pr.first - 1), ...block, '', ...kept.slice(pr.first - 1)];
+    const { findings } = checkFinishLane(parseLaneText(moved.join('\n')));
+    assert.deepEqual(findings.map((f) => `${f.rule} ${f.job}`), ['purge-not-last capture-ios']);
+  });
+});

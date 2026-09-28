@@ -495,6 +495,9 @@ describe('the census is actually wired into the nightly cron', () => {
       // Added 2026-09-18 (O-LAPTOP-ROUTINES-DIE-OVERNIGHT): the ops watchdog, run
       // right after the dispatcher on every non-backup firing.
       'ops_watchdog',
+      // Added 2026-09-28 (ST-R1): the renewal reminder digest, right after the
+      // renewals pass. Red first here, by name, as the header promises.
+      'reminder_mail',
       'renewals',
       'retention_sweep',
       'supabase_keepalive',

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import 'auth_error_text.dart';
+import 'turnstile_gate.dart' show CaptchaTokenController;
 
 /// "Check your inbox" — the only screen an UNVERIFIED session can reach.
 ///
@@ -29,7 +30,7 @@ class VerifyEmailView extends StatefulWidget {
     required this.onResend,
     required this.onSignOut,
     this.captcha,
-    this.captchaReady = true,
+    this.captchaController,
     super.key,
   });
 
@@ -57,9 +58,16 @@ class VerifyEmailView extends StatefulWidget {
   /// owns it because it owns the token the gated callback spends.
   final Widget? captcha;
 
-  /// ST-A1 (BUG-1): false while a rendered challenge has not answered; the
-  /// captcha-gated action stays disabled until it has.
-  final bool captchaReady;
+  /// The adapter's token holder, which this view WAITS on — never gates on.
+  /// A gated action validates its fields first, then awaits
+  /// `untilReady()` (the gate shows its wait line), then calls the adapter's
+  /// callback, which spends the token with `consume()` in the same step.
+  /// Null where the adapter has no captcha.
+  ///
+  /// ⏱ 2026-09-28 — THIS WAS `captchaReady`, AND IT DISABLED THE BUTTONS: with
+  /// no token yet the action was dead, and an empty form could not even say
+  /// what was missing (E2E live run 36379673890, the #1022 regression).
+  final CaptchaTokenController? captchaController;
 
   @override
   State<VerifyEmailView> createState() => _VerifyEmailViewState();
@@ -137,24 +145,25 @@ class _VerifyEmailViewState extends State<VerifyEmailView> {
                 onPressed: _busy
                     ? null
                     : () => _run(() async {
-                          final bool stillUnverified =
-                              await widget.onCheckConfirmed();
-                          return stillUnverified
-                              ? l10n.verifyEmailStillUnverified
-                              : null;
-                        }),
+                        final bool stillUnverified = await widget
+                            .onCheckConfirmed();
+                        return stillUnverified
+                            ? l10n.verifyEmailStillUnverified
+                            : null;
+                      }),
                 child: Text(l10n.verifyEmailContinue),
               ),
               const SizedBox(height: 12),
               ?widget.captcha,
               OutlinedButton(
                 key: VerifyEmailView.resendButton,
-                onPressed: (_busy || !widget.captchaReady)
+                onPressed: _busy
                     ? null
                     : () => _run(() async {
-                          await widget.onResend();
-                          return l10n.verifyEmailResent;
-                        }),
+                        await widget.captchaController?.untilReady();
+                        await widget.onResend();
+                        return l10n.verifyEmailResent;
+                      }),
                 child: Text(l10n.verifyEmailResend),
               ),
               const SizedBox(height: 12),
@@ -166,9 +175,9 @@ class _VerifyEmailViewState extends State<VerifyEmailView> {
                 onPressed: _busy
                     ? null
                     : () => _run(() async {
-                          await widget.onSignOut();
-                          return null;
-                        }),
+                        await widget.onSignOut();
+                        return null;
+                      }),
                 child: Text(l10n.signOut),
               ),
             ],

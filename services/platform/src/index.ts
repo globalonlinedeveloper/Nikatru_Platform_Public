@@ -22,6 +22,11 @@
 //   DEVICE  POST   /v1/ext/revoke — a device credential revokes itself.
 //   DEVICE  GET    /v1/entitlements — the ONE read route that also accepts the
 //                                  device credential (ADR 059 D10); JWT otherwise.
+//   AUTHED  GET/PUT /v1/reminders/prefs — the renewal reminder email preference.
+//   PUBLIC  GET/POST /v1/reminders/unsubscribe — one-click unsubscribe; the token
+//                                  is the capability. Edge-ceilinged.
+//   AUTHED  POST/DELETE /v1/calendar/feed — mint/rotate or revoke a calendar feed.
+//   PUBLIC  GET    /v1/calendar/<token>.ics — the feed itself. Edge-ceilinged.
 //   CRON    0 6 * * *           — Supabase keep-alive + per-app renewals fan-out.
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
@@ -51,6 +56,8 @@ import checkout from './routes/checkout';
 import money from './routes/money';
 import receipts from './routes/receipts';
 import sessions from './routes/sessions';
+import reminders from './routes/reminders';
+import calendar from './routes/calendar';
 import { scheduled } from './scheduled';
 
 const app = new Hono<AppEnv>();
@@ -311,6 +318,18 @@ app.route('/v1', checkout);
 // matched as a merchant of record named "receipts".
 app.use('/v1/receipts/*', platformAuth);
 app.route('/v1', receipts);
+
+// ⏱ 2026-09-28 · ST-R1/ST-R2 — RENEWAL REMINDERS: the email preference and the
+// private calendar feed. AUTHENTICATED on EXACT paths only, and that is the whole
+// point of spelling them: `/v1/reminders/unsubscribe` and
+// `/v1/calendar/<token>.ics` are PUBLIC because their token is the capability (a
+// mail client and a calendar service hold no session of ours), so a `/*` here
+// would lock out exactly the two callers those routes exist for. Each file's
+// header says what its public route can and cannot do.
+app.use('/v1/reminders/prefs', platformAuth);
+app.route('/v1', reminders);
+app.use('/v1/calendar/feed', platformAuth);
+app.route('/v1', calendar);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
 // [pipeline 11]E-8 — an unhandled error REACHES A SINK, not just the log.

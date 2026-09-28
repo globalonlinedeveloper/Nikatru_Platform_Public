@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -811,5 +813,67 @@ void main() {
         handle.dispose();
       }
     }, variant: kTapTargetPlatforms);
+  });
+  // ── ST-T2 honest states: PlanStatusTile, PlansLoadGate/PlansLoading,
+  // RowChevron. The failed plan row carries the only control (Retry).
+  group('a11y: honest states (ST-T2)', () {
+    testWidgets('plan status (failed) and an actionable chevron, kPhone', (
+      WidgetTester tester,
+    ) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      try {
+        await pumpForA11y(
+          tester,
+          kPhone,
+          Scaffold(
+            body: Column(
+              children: <Widget>[
+                PlanStatusTile(
+                  status: PlanStatus.failed,
+                  labels: const PlanStatusLabels(
+                    active: 'Your plan is active',
+                    inactive: 'You have no plan',
+                    checking: 'Checking your plan',
+                    failed: 'Could not check your plan',
+                    retry: 'Retry',
+                  ),
+                  onRetry: () {},
+                ),
+                const RowChevron(actionable: true),
+              ],
+            ),
+          ),
+        );
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      } finally {
+        handle.dispose();
+      }
+    }, variant: kTapTargetPlatforms);
+
+    testWidgets('plans still loading announce what they wait for, kPhone', (
+      WidgetTester tester,
+    ) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      try {
+        await pumpForA11y(
+          tester,
+          kPhone,
+          Scaffold(
+            body: PlansLoadGate(
+              load: () => Completer<void>().future,
+              builder: (BuildContext context, bool loading) =>
+                  const PlansLoading(label: 'Loading plans'),
+            ),
+          ),
+          settle: false,
+        );
+        expect(find.bySemanticsLabel('Loading plans'), findsOneWidget);
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      } finally {
+        handle.dispose();
+      }
+    });
   });
 }

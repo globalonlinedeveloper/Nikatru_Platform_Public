@@ -121,8 +121,9 @@ final Provider<core.ConfigTransport> configTransportProvider =
       (ref) => core.ReportingConfigTransport(
         inner: DioConfigTransport(
           configBaseUrl: AppConfig.configBaseUrl,
-          releaseChannel: ChassisBilling.channelNamed(AppConfig.releaseChannel)
-              ?.registerId,
+          releaseChannel: ChassisBilling.channelNamed(
+            AppConfig.releaseChannel,
+          )?.registerId,
         ),
         report: (bool unreachable) => ref
             .read(networkUnreachableProvider.notifier)
