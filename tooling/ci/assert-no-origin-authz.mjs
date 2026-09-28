@@ -97,7 +97,10 @@ export const CORS_MODULES = new Map([
     'the SHARED Worker\'s CORS middleware. It reads Origin to reflect it into ' +
       '`Access-Control-Allow-Origin` when it is on the exact ALLOWED_ORIGINS list (owner decision ' +
       '2026-07-25) and to answer an OPTIONS preflight 204. It grants nothing: every /v1 data route ' +
-      'behind it is Bearer-gated, and [ADR 020] records the allowlist as hygiene.',
+      'behind it is Bearer-gated, and [ADR 020] records the allowlist as hygiene. ⏱ 2026-09-28 · ST-N1: ' +
+      'on NO_CORS_PATH_PREFIXES (POST /v1/auth/native/*) it reads Origin only to REFUSE — any request ' +
+      'carrying one is a 403 and no CORS header is set — so a browser cannot use the captcha-free ' +
+      'native sign-in; a refusal widens nothing.',
   ],
   [
     'services/subscriptiontracker-api/src/middleware/cors.ts',

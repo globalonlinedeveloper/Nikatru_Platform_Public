@@ -40,6 +40,26 @@ import type { AppEnv } from '../types';
 // keeps a write-capable host from advertising `Access-Control-Allow-Origin: *`.
 // Treat it as such, and do not let it stand in for auth on any future route.
 
+/**
+ * ⏱ 2026-09-28 · ST-N1 — PATHS THAT REFUSE EVERY BROWSER, whatever the origin.
+ *
+ * POST /v1/auth/native/<app>/<op> (routes/native-auth.ts) calls GoTrue with the
+ * service-role bearer, which skips the captcha web sign-in is held to. A browser
+ * page must not be able to use that door. So on these paths no
+ * `Access-Control-Allow-*` header is ever set, a preflight answers 403, and ANY
+ * request that carries `Origin` — which every browser sends on a cross-origin
+ * POST, listed origin or not — answers 403 in GoTrue's error shape before the
+ * route runs. A native HTTP stack sends no `Origin` and passes through untouched.
+ *
+ * The refusal lives HERE, not in the route, because this is the one module
+ * allowed to read `Origin` (tooling/ci/assert-no-origin-authz.mjs). It refuses;
+ * it never grants. test/cors.test.ts declares these endpoints as no-CORS and
+ * asserts the preflight is refused; test/native-auth.test.ts asserts the 403.
+ */
+export const NO_CORS_PATH_PREFIXES: readonly string[] = ['/v1/auth/native/'];
+
+const refusesBrowsers = (path: string) => NO_CORS_PATH_PREFIXES.some((p) => path.startsWith(p));
+
 /** Exact origins, parsed from the comma-separated `ALLOWED_ORIGINS` var. */
 function allowlist(env: AppEnv['Bindings']): string[] {
   return (env.ALLOWED_ORIGINS ?? '')
@@ -49,6 +69,14 @@ function allowlist(env: AppEnv['Bindings']): string[] {
 }
 
 export const corsMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
+  if (refusesBrowsers(c.req.path)) {
+    if (c.req.method === 'OPTIONS' || c.req.header('Origin') !== undefined) {
+      console.log(`[cors] rid=${c.get('requestId') ?? '-'} browser request refused on a no-CORS path status=403`);
+      return c.json({ code: 403, error_code: 'browser_origin_refused', msg: 'This route serves native apps only' }, 403);
+    }
+    await next();
+    return;
+  }
   const origin = c.req.header('Origin') ?? '';
   const allow = allowlist(c.env);
 

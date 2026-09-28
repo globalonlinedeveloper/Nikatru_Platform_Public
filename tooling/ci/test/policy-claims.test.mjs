@@ -396,6 +396,42 @@ describe('the route limb — a provider arriving in CODE', () => {
     assert.match(out(r), /The register is behind the code/);
   });
 
+  // ⏱ 2026-09-28 · ST-N1 — `/resend` is GoTrue's endpoint and also Resend's tell.
+  // `gatepay` stands in for it here: a provider row with reachableAt null.
+  const collide = "app.get('/v1/health', h);\napp.post('/payrail', h);\napp.post('/v1/gatepay', h);\n";
+  const withCollision = (decl) => {
+    const providers = structuredClone(DEFAULT_PROVIDERS);
+    providers.nonProviderRouteSegments = { ...providers.nonProviderRouteSegments, tellCollisions: decl };
+    return providers;
+  };
+
+  test('🔴 a segment that spells a provider\'s tell, undeclared, still FAILS as a provider reachable in code', () => {
+    const r = run(fixture({ routes: collide, providers: withCollision(undefined) }));
+    assert.equal(r.status, 1);
+    assert.match(out(r), /registers a route segment \/gatepay, which is provider gatepay .*The register is behind the code/s);
+  });
+
+  test('a declared collision against THAT provider, with a reason, passes and PRINTS', () => {
+    const r = run(fixture({ routes: collide, providers: withCollision({ gatepay: { provider: 'gatepay', why: 'our own endpoint name' } }) }));
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /ROUTE SEGMENT \/gatepay SPELLS Gatepay's tell and is declared OURS: our own endpoint name/i);
+  });
+
+  test('🔴 a collision naming ANOTHER provider, or giving no reason, FAILS', () => {
+    const other = run(fixture({ routes: collide, providers: withCollision({ gatepay: { provider: 'payrail', why: 'x' } }) }));
+    assert.equal(other.status, 1);
+    assert.match(out(other), /tellCollisions\.gatepay names provider "payrail" instead/);
+    const bare = run(fixture({ routes: collide, providers: withCollision({ gatepay: { provider: 'gatepay', why: ' ' } }) }));
+    assert.equal(bare.status, 1);
+    assert.match(out(bare), /tellCollisions\.gatepay gives no `why`/);
+  });
+
+  test('🔴 a collision declared for a segment no Worker registers FAILS as stale', () => {
+    const r = run(fixture({ providers: withCollision({ gatepay: { provider: 'gatepay', why: 'our own endpoint name' } }) }));
+    assert.equal(r.status, 1);
+    assert.match(out(r), /tellCollisions declares \/gatepay, and no Worker registers that segment/);
+  });
+
   test('an empty nonProviderRouteSegments list is COVERAGE LOST', () => {
     const providers = structuredClone(DEFAULT_PROVIDERS);
     providers.nonProviderRouteSegments = { segments: [] };

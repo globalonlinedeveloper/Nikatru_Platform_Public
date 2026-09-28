@@ -22,6 +22,11 @@
 //   DEVICE  POST   /v1/ext/revoke — a device credential revokes itself.
 //   DEVICE  GET    /v1/entitlements — the ONE read route that also accepts the
 //                                  device credential (ADR 059 D10); JWT otherwise.
+//   NATIVE  POST   /v1/auth/native/:app/{token,signup,recover,resend} — a native
+//                                  app's captcha-free credential calls, forwarded
+//                                  to GoTrue with the service-role bearer (ST-N1).
+//                                  No browser: an `Origin` is a 403. Fail-closed
+//                                  limits per account and per network.
 //   CRON    0 6 * * *           — Supabase keep-alive + per-app renewals fan-out.
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
@@ -51,6 +56,7 @@ import checkout from './routes/checkout';
 import money from './routes/money';
 import receipts from './routes/receipts';
 import sessions from './routes/sessions';
+import nativeAuth from './routes/native-auth';
 import { scheduled } from './scheduled';
 
 const app = new Hono<AppEnv>();
@@ -311,6 +317,13 @@ app.route('/v1', checkout);
 // matched as a merchant of record named "receipts".
 app.use('/v1/receipts/*', platformAuth);
 app.route('/v1', receipts);
+
+// NATIVE SIGN-IN, WITHOUT A CAPTCHA (⏱ 2026-09-28 · ST-N1, routes/native-auth.ts).
+// 🔴 NO `platformAuth` AND NO `app.use` HERE, DELIBERATELY: the caller has no
+// session yet — getting one is the point. The route carries its own gate (a
+// native app id from generated/app-targets.ts) and its own FAIL-CLOSED
+// limiters; middleware/cors.ts refuses `Origin` on its prefix and grants no CORS.
+app.route('/v1', nativeAuth);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
 // [pipeline 11]E-8 — an unhandled error REACHES A SINK, not just the log.
