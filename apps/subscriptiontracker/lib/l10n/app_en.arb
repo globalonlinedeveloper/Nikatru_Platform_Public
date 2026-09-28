@@ -766,6 +766,34 @@
   "@addingEllipsis": {
     "description": "Consumed by add_subscription_sheet.dart:251. The submit button while the add is in flight. Horizontal ellipsis U+2026, not three dots. Pinned by test/sheet_failure_surface_test.dart:18 — the value must not change without moving those."
   },
+  "editSubscriptionTitle": "Edit subscription",
+  "@editSubscriptionTitle": {
+    "description": "Consumed by add_subscription_sheet.dart (train ST-D6). The heading of the sheet when it edits an existing subscription, opened from the detail screen's Edit plan button."
+  },
+  "saveChanges": "Save changes",
+  "@saveChanges": {
+    "description": "Consumed by add_subscription_sheet.dart (train ST-D6). The primary button's idle label on the edit sheet."
+  },
+  "savingEllipsis": "Saving…",
+  "@savingEllipsis": {
+    "description": "Consumed by add_subscription_sheet.dart (train ST-D6). The edit sheet's primary button while the save is in flight. Horizontal ellipsis U+2026, not three dots."
+  },
+  "editSubscriptionFailed": "Could not save your changes — check your connection and try again.",
+  "@editSubscriptionFailed": {
+    "description": "Consumed by add_subscription_sheet.dart (train ST-D6). Shown when an edit fails to save. The sheet stays up so the edits survive, so this must read as a retryable failure rather than a dismissal."
+  },
+  "formNameRequired": "Enter the subscription's name.",
+  "@formNameRequired": {
+    "description": "Consumed by add_subscription_sheet.dart (train ST-D6). Inline error under the name field when the user submits it empty."
+  },
+  "formPriceInvalid": "Enter an amount, like 9.99.",
+  "@formPriceInvalid": {
+    "description": "Consumed by add_subscription_sheet.dart (train ST-D6). Inline error under the price field when it is empty, not a number, or below zero. The example number is not translated; its digits localize through the keyboard."
+  },
+  "formOfflineNotice": "You're offline. Your entries are kept — saving needs a connection.",
+  "@formOfflineNotice": {
+    "description": "Consumed by add_subscription_sheet.dart (train ST-D6). The warn banner at the top of the add/edit sheet while the app knows the network is unreachable. Must not claim the save will happen later: nothing queues it."
+  },
   "cancelSubscriptionFailed": "Could not remove it just now — check your connection and try again.",
   "@cancelSubscriptionFailed": {
     "description": "Consumed by cancel_sheet.dart. The remove sheet's failure snackbar. Must never advance the sheet: step 1 says the entry is gone."

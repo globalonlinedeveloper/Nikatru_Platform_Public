@@ -249,6 +249,41 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
     }
   }
 
+  /// Writes an EDIT of an existing row (train ST-D6) — the fields the edit
+  /// sheet owns, and nothing else.
+  ///
+  /// The patch names only name, category, amount, cycle and renewal date: a
+  /// PATCH is a partial update on the API (`routes/subscriptions.ts`), so a
+  /// field the sheet does not show — the plan, the usage figures — is never
+  /// overwritten by a stale copy the sheet happened to hold. The amount goes
+  /// as major units because that is the column the API stores; its currency
+  /// is the row's own and is not re-stated.
+  ///
+  /// The row is replaced in the OBSERVED list only. With no observed list
+  /// (loading, or a failed fetch) the server has the edit and the list is
+  /// re-fetched rather than invented — the rule [cancelSubscription] states.
+  Future<void> updateSubscription(Subscription edited) async {
+    final Subscription saved = await ref
+        .read(subscriptionRepositoryProvider)
+        .update(edited.id, <String, dynamic>{
+          'name': edited.name,
+          'category': edited.category,
+          'price': edited.price.toMajorUnits(),
+          'cycle': edited.cycle.name,
+          'next_renewal': Subscription.dateOnly(edited.nextRenewal),
+        });
+    final List<Subscription>? before = observedList;
+    if (before == null) {
+      ref.invalidateSelf();
+      return;
+    }
+    final List<Subscription> list = before
+        .map((Subscription s) => s.id == saved.id ? saved : s)
+        .toList();
+    state = AsyncData<List<Subscription>>(list);
+    await _syncReminders(list);
+  }
+
   /// The currency a NEW row is created in — the user's own choice.
   ///
   /// Read here rather than in the add sheet because this is what WRITES rows:

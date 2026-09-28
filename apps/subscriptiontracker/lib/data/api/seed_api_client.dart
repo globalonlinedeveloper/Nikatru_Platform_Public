@@ -75,9 +75,19 @@ class SeedApiClient implements ApiClient {
   ) async {
     final int i = _subs.indexWhere((Subscription s) => s.id == id);
     if (i < 0) throw ApiException(404, 'Not found');
+    // Every key the edit sheet sends (train ST-D6) is honoured, as the API's
+    // PATCH honours it: a demo edit that silently dropped the category, the
+    // cycle or the date would "save" and then show the old values.
+    final Object? cycle = changes['cycle'];
+    final Object? renewal = changes['next_renewal'];
     _subs[i] = _subs[i].copyWith(
       name: changes['name'] as String?,
+      category: changes['category'] as String?,
       price: (changes['price'] as num?)?.toDouble(),
+      cycle: cycle == null
+          ? null
+          : (cycle == 'yearly' ? BillingCycle.yearly : BillingCycle.monthly),
+      nextRenewal: renewal == null ? null : DateTime.parse(renewal as String),
       unused: changes['unused'] as bool?,
     );
     return _subs[i];

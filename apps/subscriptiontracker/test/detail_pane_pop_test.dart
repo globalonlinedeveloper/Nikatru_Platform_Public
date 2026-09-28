@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
+import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/core/router.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/features/detail/subscription_detail_screen.dart';
@@ -246,27 +247,46 @@ void main() {
     },
   );
 
-  testWidgets('🔴 THE TWO-PANE "Edit plan" BUTTON DOES NOT THROW EITHER', (
-    WidgetTester tester,
-  ) async {
-    final ProviderContainer container = await _selectFirstSubscription(tester);
+  // ⏱ train ST-D6: "Edit plan" USED TO DISMISS THE PANE — it was a second back
+  // arrow, and this case pinned that it did so without the GoError. It now
+  // OPENS THE EDIT SHEET on the row, so the case asserts that instead: no throw,
+  // the sheet up and prefilled with THIS row, and closing it leaves the pane
+  // exactly where it was (the route under it untouched).
+  testWidgets(
+    '🔴 THE TWO-PANE "Edit plan" BUTTON OPENS THE EDIT SHEET, NO THROW',
+    (WidgetTester tester) async {
+      final ProviderContainer container = await _selectFirstSubscription(
+        tester,
+      );
+      final Subscription first = container
+          .read(subscriptionsControllerProvider)
+          .requireValue
+          .first;
 
-    final AppLocalizations l10n = AppLocalizations.of(
-      tester.element(find.byType(SubscriptionDetailScreen)),
-    );
+      final AppLocalizations l10n = AppLocalizations.of(
+        tester.element(find.byType(SubscriptionDetailScreen)),
+      );
 
-    await tester.tap(find.text(l10n.editPlan));
-    await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(E2EKeys.detailEdit));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(E2EKeys.detailEdit));
+      await tester.pumpAndSettle();
 
-    expect(
-      tester.takeException(),
-      isNull,
-      reason:
-          'the inline detail pane popped a router stack that holds only /home '
-          '- same GoError as the back arrow, second call site',
-    );
-    expect(_location(container), '/home');
-  });
+      expect(tester.takeException(), isNull);
+      expect(find.text(l10n.editSubscriptionTitle), findsOneWidget);
+      expect(
+        tester.widget<TextField>(find.byKey(E2EKeys.addName)).controller!.text,
+        first.name,
+        reason: 'the edit sheet did not open on the row the pane shows',
+      );
+
+      await tester.tap(find.byKey(E2EKeys.addCancel));
+      await tester.pumpAndSettle();
+      expect(find.text(l10n.editSubscriptionTitle), findsNothing);
+      expect(find.byType(SubscriptionDetailScreen), findsOneWidget);
+      expect(_location(container), '/home');
+    },
+  );
 
   // ── THE ROUTE MODE, BOTH ARMS ───────────────────────────────────────────────
   // `_dismiss`'s `canPop()` is TWO conditions and each gets its own case, so

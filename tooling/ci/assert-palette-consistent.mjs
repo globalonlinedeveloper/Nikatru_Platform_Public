@@ -983,7 +983,6 @@ const DART_DECLARING_FILE = DART_OUT;
  *  screens the chassis work moves into packages — at which point the entries
  *  come out one by one and this object empties. */
 const BRAND_FONT_DEBT = {
-  'apps/subscriptiontracker/lib/features/add/add_subscription_sheet.dart': 2,
   'apps/subscriptiontracker/lib/features/calendar/calendar_screen.dart': 1,
   'apps/subscriptiontracker/lib/features/cancel/cancel_sheet.dart': 1,
   'apps/subscriptiontracker/lib/features/detail/subscription_detail_screen.dart': 6,

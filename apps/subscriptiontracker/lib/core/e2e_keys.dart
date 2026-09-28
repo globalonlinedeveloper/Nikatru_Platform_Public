@@ -30,6 +30,17 @@ class E2EKeys {
   /// the sheet's one-cycle default (2026-09-22).
   static const Key addRenewal = Key('e2e_add_renewal');
 
+  /// The category dropdown, the Cancel button and the state banner (offline,
+  /// a failed save) on the same sheet — which since train ST-D6 is the EDIT
+  /// sheet too, so every add-sheet key above anchors the edit form as well.
+  static const Key addCategory = Key('e2e_add_category');
+  static const Key addCancel = Key('e2e_add_cancel');
+  static const Key addBanner = Key('e2e_add_banner');
+
+  // Subscription detail. The button that opens the edit sheet (train ST-D6);
+  // its label is `l10n.editPlan`.
+  static const Key detailEdit = Key('e2e_detail_edit');
+
   // App shell.
   static const Key fabAdd = Key('e2e_fab_add');
 

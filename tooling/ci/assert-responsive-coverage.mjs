@@ -480,7 +480,13 @@ const REQUIRED_COVERAGE = [
     // surface genuinely left the app, as `SignInScreen` did on 2026-08-10.
     // `width_auth_test.dart` now measures what `/sign-up` opens; the file
     // count does not move.
-    surfaces: 18,
+    //
+    // ⏱ RAISED 18 → 19 (and coveredSurfaces with it) on 2026-09-28 by train
+    // ST-D6: `showEditSubscriptionSheet`, the edit entry point onto the add
+    // sheet, arrived measured by width_add_sheet_test.dart at kPhone, kTablet,
+    // kDesktop and kWide. Measured by this guard's own run: "19 surface(s)
+    // reachable, 19 measured — the two sets are EQUAL".
+    surfaces: 19,
     // 🔴 THIS FLOOR IS ONE UNDER ITS TREE AND IT IS BEING LEFT THERE ON
     // PURPOSE, WHICH IS WORTH MORE WORDS THAN RAISING IT WOULD HAVE BEEN.
     // MEASURED 2026-09-05: `ls apps/subscriptiontracker/test | grep -cE
@@ -498,7 +504,7 @@ const REQUIRED_COVERAGE = [
     // 📌 OWED, AND REPORTED TO THE OWNER RATHER THAN LEFT IN A COMMENT: raise
     // this to 17 in the same change that grows that fixture's `N`.
     widthTestFiles: 16, // 15 `width_*_test.dart` + `responsive_width_test.dart`
-    coveredSurfaces: 18,
+    coveredSurfaces: 19,
     label: 'the app this guard was written for — every surface measured, and it fails if one stops being',
   },
   {
@@ -680,10 +686,17 @@ const REQUIRED_COVERAGE = [
     // the run's own line: "17 of 25 surface(s) measured — 8 PRINTED".
     //   surfaces        20 → 25
     //   coveredSurfaces 12 → 17
+    //
+    // ⏱ RE-MEASURED 2026-09-28 · train ST-D6 — the form sheet components
+    // (form_sheet.dart), pumped at kPhone/kTablet/kDesktop by
+    // form_sheet_test.dart. Read off the run's own line: "20 of 28 surface(s)
+    // measured — 8 PRINTED".
+    //   surfaces        25 → 28
+    //   coveredSurfaces 17 → 20
     enforce: false,
-    surfaces: 25,
+    surfaces: 28,
     widthTestFiles: 19,
-    coveredSurfaces: 17,
+    coveredSurfaces: 20,
     label:
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, content_pane, two_pane and fifteen ' +
       'more, whose width decisions every stamped app inherits',

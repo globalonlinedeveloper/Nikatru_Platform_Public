@@ -674,10 +674,17 @@ const REQUIRED_COVERAGE = [
     // Measured by this guard's own run: 18 reachable, 18 swept. The three cases
     // that swept `SignUpScreen` now sweep the screen `/sign-up` opens, so
     // `cases` does not move.
-    surfaces: 18,
+    //
+    // ⏱ RAISED 18 → 19 on 2026-09-28 by train ST-D6: `showEditSubscriptionSheet`
+    // is a new entry point onto the add sheet (the EDIT form) and arrived swept
+    // by its own case in a11y_semantics_test.dart. Measured by this guard's own
+    // run: "19 of 19 reachable surface(s) carry an a11y sweep, from 1 a11y test
+    // file(s) across 111 case(s)". assert-responsive-coverage.mjs re-measured
+    // to 19 in the same change.
+    surfaces: 19,
     a11yFiles: 1,
-    cases: 110,
-    label: 'the app P5 wrote this guard for — 18 surfaces, all eighteen swept',
+    cases: 111,
+    label: 'the app P5 wrote this guard for — 19 surfaces, all nineteen swept',
   },
   {
     dir: BRICK,
@@ -829,9 +836,17 @@ const REQUIRED_COVERAGE = [
     //   surfaces  20 → 25
     //   a11yFiles  2 → 6
     //   cases      7 → 15
-    surfaces: 25,
-    a11yFiles: 6,
-    cases: 15,
+    //
+    // ⏱ RE-MEASURED 2026-09-28 · train ST-D6: the chassis FORM SHEET components
+    // (form_sheet.dart) arrived swept by a11y_form_sheet_test.dart. Read off
+    // this guard's own output on the branch: "10 of 28 reachable surface(s)
+    // carry an a11y sweep, from 7 a11y test file(s) across 16 case(s)".
+    //   surfaces  25 → 28
+    //   a11yFiles  6 → 7
+    //   cases     15 → 16
+    surfaces: 28,
+    a11yFiles: 7,
+    cases: 16,
     label:
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, auth_field, ' +
       'destructive_confirm_dialog, two_pane and fourteen more, mounted by every stamped app',
@@ -948,6 +963,9 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         'features/monetization/manage_plan_screen.dart#ManagePlanScreen',
         'features/onboarding/onboarding_screen.dart#OnboardingScreen',
         'features/add/add_subscription_sheet.dart#showAddSubscriptionSheet',
+        // ⏱ 2026-09-28 · train ST-D6: the edit entry point, swept in the same
+        // change.
+        'features/add/add_subscription_sheet.dart#showEditSubscriptionSheet',
         'features/cancel/cancel_sheet.dart#showCancelSheet',
       ].map((k) => `apps/subscriptiontracker/lib/${k}`),
     ),
@@ -1033,6 +1051,16 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
       'packages/design_system/lib/src/widgets/app_list_row.dart#AppListRow',
       'packages/design_system/lib/src/widgets/decision_strip.dart#DecisionStrip',
       'packages/design_system/lib/src/widgets/skeleton_list.dart#SkeletonList',
+      // ⏱ 2026-09-28 · train ST-D6: the form sheet components, in the same
+      // change as their sweep.
+      'packages/design_system/lib/src/widgets/form_sheet.dart#AppFormSheet',
+      'packages/design_system/lib/src/widgets/form_sheet.dart#AppFormField',
+      // ⚠️ `AppSegmentedChoice<T>` is swept by the same case but is NOT
+      // listed: it is GENERIC, and this guard's surface scan does not reach a
+      // `class Name<T> extends` declaration (measured: listing it reads as
+      // FLOOR OVER NOTHING). Its selected-state semantics are asserted by
+      // form_sheet_test.dart and, in the app, a11y_semantics_test.dart.
+      'packages/design_system/lib/src/widgets/form_sheet.dart#AppFormActions',
     ]),
   ],
 ]);

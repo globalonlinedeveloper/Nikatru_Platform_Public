@@ -4,12 +4,14 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
+import '../../core/e2e_keys.dart';
 import '../../core/format/money_format.dart';
 import '../../data/models/payment_record.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
 import '../../state/subscriptions_controller.dart';
+import '../add/add_subscription_sheet.dart';
 import '../cancel/cancel_sheet.dart';
 import '../shared/async_gate.dart';
 import '../shared/due.dart';
@@ -494,9 +496,16 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                   Row(
                     children: <Widget>[
                       Expanded(
+                        // ⏱ train ST-D6: this button DISMISSED the detail
+                        // until now — "Edit plan" was a second back arrow.
+                        // It opens the edit sheet on this row; the detail
+                        // stays up underneath and repaints from the list the
+                        // save replaces the row in.
                         child: SoftButton(
+                          key: E2EKeys.detailEdit,
                           label: l10n.editPlan,
-                          onPressed: () => _dismiss(context),
+                          onPressed: () =>
+                              showEditSubscriptionSheet(context, s),
                         ),
                       ),
                       const SizedBox(width: 10),

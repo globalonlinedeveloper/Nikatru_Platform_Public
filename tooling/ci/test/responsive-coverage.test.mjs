@@ -217,7 +217,7 @@ describe('the guard says YES on the tree as it is', () => {
     // ⏱ 2026-09-23 (O-CHASSIS-PHASE-2B, unit chassis-home): WelcomeView + CatchUpBannerView joined packages/chassis_screens with home_view_test.dart, so the root reads 20/20. Read off the guard's own per-root line.
     assert.match(out, /packages\/chassis_screens: 25 surface\(s\) reachable, 25 measured — the two sets are EQUAL/);
 
-    assert.match(out, /apps\/subscriptiontracker: 18 surface\(s\) reachable, 18 measured — the two sets are EQUAL/);
+    assert.match(out, /apps\/subscriptiontracker: 19 surface\(s\) reachable, 19 measured — the two sets are EQUAL/);
     assert.match(
       out,
       /apps\/subscriptiontracker: every measured surface is pumped at kPhone \(375\), kTablet \(768\), kDesktop \(1280\)/,
@@ -230,7 +230,7 @@ describe('the guard says YES on the tree as it is', () => {
     // ⏱ 2026-09-28 · train ST-D0: 12 of 20 → 17 of 25 — the foundation
     // components arrived measured; 8 PRINTED is unchanged. Read off the
     // guard's own per-root line.
-    assert.match(out, /packages\/design_system: 17 of 25 surface\(s\) measured — 8 PRINTED and not failed/);
+    assert.match(out, /packages\/design_system: 20 of 28 surface\(s\) measured — 8 PRINTED and not failed/);
   });
 
   test('the copied subject tree reproduces the subscriptiontracker reading exactly — and derives TWO roots', () => {
@@ -255,7 +255,7 @@ describe('the guard says YES on the tree as it is', () => {
       /2 root\(s\) DERIVED, never listed — packages\/chassis_screens \(workspace package member: declares flutter_test AND a public widget\) · apps\/subscriptiontracker \(workspace app member\)/,
     );
     assert.match(out, /PARTIAL TREE: the declared-root-must-exist clause is SKIPPED/);
-    assert.match(out, /apps\/subscriptiontracker: 18 surface\(s\) reachable, 18 measured — the two sets are EQUAL/);
+    assert.match(out, /apps\/subscriptiontracker: 19 surface\(s\) reachable, 19 measured — the two sets are EQUAL/);
     // ⏱ 2026-09-23 (O-CHASSIS-PHASE-2B, unit chassis-home): WelcomeView + CatchUpBannerView joined packages/chassis_screens with home_view_test.dart, so the root reads 20/20. Read off the guard's own per-root line.
     assert.match(out, /packages\/chassis_screens: 25 surface\(s\) reachable, 25 measured — the two sets are EQUAL/);
     // ⏱ 2026-09-22 · 36 → 37 TEST FILES, SURFACES UNCHANGED. The app gained
@@ -272,7 +272,7 @@ describe('the guard says YES on the tree as it is', () => {
       // ⏱ 2026-09-24 · 39 → 41 TEST FILES, SURFACES UNCHANGED: the auth error
       // mapper's suite and `support/raw_vendor_error.dart` joined the chassis
       // corpus. Both per-root equalities above are untouched.
-      /43 reachable surface\(s\), 43 measured by 44 test file\(s\); 0 measured where they delegate to/ /* ⏱ 2026-09-28 ST-T8a: +1 chassis test file (web_semantics_test.dart), surfaces unchanged */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +1 width file */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate), +1 width file */,
+      /44 reachable surface\(s\), 44 measured by 44 test file\(s\); 0 measured where they delegate to/ /* ⏱ 2026-09-29 ST-D6: +1 app surface (showEditSubscriptionSheet), measured in an existing width file */ /* ⏱ 2026-09-28 ST-T8a: +1 chassis test file (web_semantics_test.dart), surfaces unchanged */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +1 width file */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate), +1 width file */,
     );
     assert.equal(fails(out).length, 0, out);
   });
@@ -300,7 +300,7 @@ describe('set equality, both directions, in apps/subscriptiontracker', () => {
     // suppressed the whole equality section and the run reported "18 measured,
     // floor is 19" and NEVER NAMED THE SURFACE. This assertion is what pins
     // the fix: the specific finding must survive the general one.
-    assert.match(out, /FAIL COVERAGE LOST — `apps\/subscriptiontracker` has 17 measured surface\(s\).*floor is 18/s);
+    assert.match(out, /FAIL COVERAGE LOST — `apps\/subscriptiontracker` has 18 measured surface\(s\).*floor is 19/s);
     assert.equal(fails(out).length, 2, out);
   });
 
@@ -428,7 +428,7 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
     rmSync(join(root, `${TESTS}/width_notifications_test.dart`));
     const { code, out } = run(root);
     assert.equal(code, 2, out);
-    assert.match(out, /COVERAGE LOST — `apps\/subscriptiontracker` has only 17 responsive surface\(s\).*floor is 18/s);
+    assert.match(out, /COVERAGE LOST — `apps\/subscriptiontracker` has only 18 responsive surface\(s\).*floor is 19/s);
     // Proof the equality really did stay quiet — the thing this floor exists
     // for. If an UNCOVERED or DEAD line appears here the mutation stopped being
     // the silent one it is named for.
@@ -532,7 +532,7 @@ describe('a report-mode root can get better, never quietly worse', () => {
     assert.match(
       out,
       // ⏱ 2026-09-28 · train ST-D0: 10 of 12 → 15 of 17 (floor re-based to 17).
-      /COVERAGE LOST — `packages\/design_system` has 15 measured surface\(s\) and its measured floor is 17/s,
+      /COVERAGE LOST — `packages\/design_system` has 18 measured surface\(s\) and its measured floor is 20/s,
     );
   });
 
@@ -560,7 +560,7 @@ describe('a report-mode root can get better, never quietly worse', () => {
     const { code, out } = run(root);
     assert.equal(code, 2, out);
     // ⏱ 2026-09-28 · train ST-D0: 18 of 20 → 23 of 25 (floor re-based to 25).
-    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 23 responsive surface\(s\).*floor is 25/s);
+    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 26 responsive surface\(s\).*floor is 28/s);
   });
 
   test("R11c · a NEW unmeasured surface in EACH new root reaches that root's printed list", () => {
@@ -589,7 +589,7 @@ describe('a report-mode root can get better, never quietly worse', () => {
     // left; HomeScreen and ExploreScreen now count through delegation.
     assert.match(out, /\{\{app_id\}\}: 3 of 13 surface\(s\) measured — 1 PRINTED/);
     // ⏱ 2026-09-28 · train ST-D0: 12 of 21 → 17 of 26 (measured arrivals).
-    assert.match(out, /packages\/design_system: 17 of 26 surface\(s\) measured — 9 PRINTED/);
+    assert.match(out, /packages\/design_system: 20 of 29 surface\(s\) measured — 9 PRINTED/);
   });
 });
 

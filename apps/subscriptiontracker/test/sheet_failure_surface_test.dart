@@ -214,23 +214,34 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byKey(E2EKeys.addName), 'Hulu');
+    // ⏱ train ST-D6: an amount is typed because the sheet now VALIDATES one —
+    // an empty price was silently saved as 9.99 before. Without it this case
+    // would stop at the inline "Enter an amount" error and never reach the
+    // write whose failure it is about.
+    await tester.enterText(find.byKey(E2EKeys.addPrice), '7.99');
     await tester.pumpAndSettle();
 
     final Finder submit = find.byKey(E2EKeys.addSubmit);
     await tester.ensureVisible(submit);
     await tester.pumpAndSettle();
     await tester.tap(submit);
-    // `pump()` with no duration runs NO timers, and the SnackBar needs them.
     await tester.pumpAndSettle();
 
     // 1. The error did not escape as an unhandled async error.
     expect(tester.takeException(), isNull);
-    // 2. The user is told.
-    expect(find.byType(SnackBar), findsOneWidget);
+    // 2. The user is told — ON the sheet (train ST-D6). The SnackBar this was
+    //    lands on the scaffold under the modal barrier; the banner is the
+    //    sheet's own danger strip, so the message is where the user looks.
+    final Finder banner = find.byKey(E2EKeys.addBanner);
+    expect(banner, findsOneWidget);
     expect(
-      find.textContaining('Could not add that subscription'),
+      find.descendant(
+        of: banner,
+        matching: find.textContaining('Could not add that subscription'),
+      ),
       findsOneWidget,
     );
+    expect(find.byType(SnackBar), findsNothing);
     // 3. The button is usable again and the typed draft survived, so a retry is
     //    one tap rather than a re-entry.
     expect(find.text('Adding…'), findsNothing);

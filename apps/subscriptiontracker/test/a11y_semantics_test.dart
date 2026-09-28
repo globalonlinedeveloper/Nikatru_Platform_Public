@@ -4844,6 +4844,51 @@ void main() {
       });
     });
 
+    // ⏱ train ST-D6: the EDIT entry point onto the same sheet, swept in its
+    // own right — it is a distinct reachable surface (prefilled, no POPULAR
+    // block, "Save changes"), so the add sheet's sweep does not stand for it.
+    testWidgets('the EDIT sheet: every string AA, every tap target 48×48', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          Scaffold(
+            body: Builder(
+              builder: (BuildContext context) => Center(
+                child: TextButton(
+                  onPressed: () => showEditSubscriptionSheet(
+                    context,
+                    Subscription(
+                      id: 'sub-1',
+                      name: 'Netflix',
+                      category: 'Streaming',
+                      price: const Money(1500, 'USD'),
+                      cycle: BillingCycle.yearly,
+                      nextRenewal: DateTime(2030, 3, 14),
+                    ),
+                  ),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+          theme: appTheme(),
+        );
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+        await expectOpaqueGround(tester, 'the edit sheet');
+        await expectContrastHadSubjects(
+          tester,
+          'the edit sheet',
+          covers: const <String>['Edit subscription', 'Save changes'],
+        );
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        await expectGuidelineHadSubjects(tester, 'the edit sheet');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      });
+    });
+
     testWidgets('every string on the cancel sheet meets WCAG AA contrast — in '
         'EITHER step', (WidgetTester tester) async {
       await semantically(tester, () async {
