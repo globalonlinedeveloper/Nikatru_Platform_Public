@@ -333,6 +333,70 @@
         "note": "Our own brand mark; see brand-nikatru-logo."
       },
       "shippedIn": "apps/subscriptiontracker (declared under flutter: assets: assets/brand/)"
+    },
+    {
+      "id": "subscriptiontracker-content-pack-content",
+      "contentFamily": "hand-authored-content",
+      "contentFamilyWhy": "This IS content-pipeline output: the service catalogue pack (ST-X5) built by tooling/content_pipeline/cli.mjs from examples/service-catalogue/, whose only licence family is hand-authored-content. Service names, categories, cycles and account-page addresses are hand-authored facts; no logo bytes and no price ship.",
+      "path": "apps/subscriptiontracker/assets/content_pack/content.json",
+      "name": "Service catalogue content pack — content.json",
+      "origin": "own-work",
+      "owner": "Rajasekar Selvam (sole proprietor, trading as NIKATRU)",
+      "licence": "first-party",
+      "attributionRequired": false,
+      "attributedIn": null,
+      "source": {
+        "note": "Hand-authored in this repository: tooling/content_pipeline/examples/service-catalogue/make-recipe.mjs holds the table, and generation-log.json records every item as none/hand-authored. The licence id is the hand-authored-content family's in tooling/content_pipeline's content-licence-register, which licence-cross-assert.mjs compares against this row."
+      },
+      "shippedIn": "apps/subscriptiontracker (declared under flutter: assets: assets/content_pack/)"
+    },
+    {
+      "id": "subscriptiontracker-content-pack-manifest",
+      "contentFamily": "hand-authored-content",
+      "contentFamilyWhy": "The signed manifest of the same content-pipeline pack; emitted by pack.mjs, so it belongs to the pack's family.",
+      "path": "apps/subscriptiontracker/assets/content_pack/manifest.json",
+      "name": "Service catalogue content pack — manifest.json",
+      "origin": "own-work",
+      "owner": "Rajasekar Selvam (sole proprietor, trading as NIKATRU)",
+      "licence": "first-party",
+      "attributionRequired": false,
+      "attributedIn": null,
+      "source": {
+        "note": "Emitted by tooling/content_pipeline/src/pack.mjs from the hand-authored recipe; see subscriptiontracker-content-pack-content."
+      },
+      "shippedIn": "apps/subscriptiontracker (declared under flutter: assets: assets/content_pack/)"
+    },
+    {
+      "id": "subscriptiontracker-content-pack-signature",
+      "contentFamily": "hand-authored-content",
+      "contentFamilyWhy": "The Ed25519 signature over the same pack's manifest bytes (test key test-k1; the bundled tier is read with requireSignature:false). Produced by sign.mjs, so it belongs to the pack's family.",
+      "path": "apps/subscriptiontracker/assets/content_pack/manifest.sig",
+      "name": "Service catalogue content pack — manifest.sig",
+      "origin": "own-work",
+      "owner": "Rajasekar Selvam (sole proprietor, trading as NIKATRU)",
+      "licence": "first-party",
+      "attributionRequired": false,
+      "attributedIn": null,
+      "source": {
+        "note": "64 bytes produced by tooling/content_pipeline/src/sign.mjs with the derived test key; assert-pack-roundtrip.mjs reproduces it byte-for-byte."
+      },
+      "shippedIn": "apps/subscriptiontracker (declared under flutter: assets: assets/content_pack/)"
+    },
+    {
+      "id": "subscriptiontracker-content-pack-provenance",
+      "contentFamily": "hand-authored-content",
+      "contentFamilyWhy": "The same pack's PROVENANCE.json, rendered from its generation-log.json; every row is none/hand-authored.",
+      "path": "apps/subscriptiontracker/assets/content_pack/PROVENANCE.json",
+      "name": "Service catalogue content pack — PROVENANCE.json",
+      "origin": "own-work",
+      "owner": "Rajasekar Selvam (sole proprietor, trading as NIKATRU)",
+      "licence": "first-party",
+      "attributionRequired": false,
+      "attributedIn": null,
+      "source": {
+        "note": "Emitted by tooling/content_pipeline/src/pack.mjs from examples/service-catalogue/generation-log.json; see subscriptiontracker-content-pack-content."
+      },
+      "shippedIn": "apps/subscriptiontracker (declared under flutter: assets: assets/content_pack/)"
     }
   ],
   "appScopedAssets": [

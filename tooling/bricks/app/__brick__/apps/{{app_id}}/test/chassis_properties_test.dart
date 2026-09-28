@@ -2019,6 +2019,56 @@ void main() {
       ],
     );
 
+    // ⏱ 2026-09-28 · ST-X5 (audit B27) — THE BUNDLED TIER. `load(bundled:)`
+    // existed and nothing supplied it, so a null pointer always meant no pack.
+    // A stamp bundles none by default (its asset source reads null, which the
+    // cases below rely on); an app that bundles one must get it OFFLINE, with
+    // the remote tier never consulted.
+    test('with a NULL pointer the BUNDLED pack serves, and the remote tier '
+        'is never read', () async {
+      final ProviderContainer c = ProviderContainer(
+        overrides: <Override>[
+          keyValueStoreProvider.overrideWith((_) async => _MemStore()),
+          contentPackSourceProvider.overrideWith((ref) => null),
+          bundledContentPackSourceProvider.overrideWith(
+            (ref) => core.InMemoryContentPackSource(
+              packBytes(packId: AppConfig.appId, phrase: 'bundled'),
+            ),
+          ),
+        ],
+      );
+      addTearDown(c.dispose);
+      final core.ContentPack? pack = await c.read(contentPackProvider.future);
+      expect(
+        pack,
+        isNotNull,
+        reason:
+            'the bundled tier was never consulted — load(bundled:) has no '
+            'source again',
+      );
+      expect(pack!.manifest.packId, AppConfig.appId);
+      expect(pack.content['greeting'], 'bundled');
+    });
+
+    test(
+      'a bundled pack that is ANOTHER app\'s is refused on that tier too',
+      () async {
+        final ProviderContainer c = ProviderContainer(
+          overrides: <Override>[
+            keyValueStoreProvider.overrideWith((_) async => _MemStore()),
+            contentPackSourceProvider.overrideWith((ref) => null),
+            bundledContentPackSourceProvider.overrideWith(
+              (ref) => core.InMemoryContentPackSource(
+                packBytes(packId: 'some-other-app', phrase: 'theirs'),
+              ),
+            ),
+          ],
+        );
+        addTearDown(c.dispose);
+        expect(await c.read(contentPackProvider.future), isNull);
+      },
+    );
+
     test('a configured pointer really SERVES a pack', () async {
       final ProviderContainer c = packContainer(
         pointer: 'https://packs.example/${AppConfig.appId}/v1',

@@ -307,3 +307,78 @@ describe('the CLI, as an operator runs it', () => {
     assert.match(out.stderr, /B-18|NO PUBLISH TARGET|gate\(s\) unsatisfied/);
   });
 });
+
+// ── ST-X5: the service catalogue recipe — the app-bundled pack ───────────────
+describe('service-catalogue recipe (apps/subscriptiontracker bundled pack)', () => {
+  const SC = join(REPO, 'tooling', 'content_pipeline', 'examples', 'service-catalogue');
+  const SC_RECIPE = join(SC, 'recipe.json');
+  const REQUIRED_FACTS = ['id', 'category', 'cycle', 'cancel_url', 'manage_play', 'manage_appstore', 'notice_days', 'regions'];
+
+  it('the committed recipe, shards, log and gates are exactly a render of make-recipe.mjs\'s table', async () => {
+    const { drift } = await import('../examples/service-catalogue/make-recipe.mjs');
+    assert.deepEqual(drift(), [], 'a derived file was hand-edited or the table changed without a re-render');
+  });
+
+  it('validates, builds with the TEST key, and loads as the subscriptiontracker pack', async () => {
+    const { CATEGORIES } = await import('../examples/service-catalogue/make-recipe.mjs');
+    assert.equal(runCli('validate', '--recipe', SC_RECIPE).status, 0);
+    const d = mkdtempSync(join(tmpdir(), 'nikatru-sc-'));
+    try {
+      const out = runCli('build', '--recipe', SC_RECIPE, '--out', d, '--test-key');
+      assert.equal(out.status, 0, out.stderr);
+      const manifestBytes = readFileSync(join(d, 'manifest.json'));
+      const manifest = JSON.parse(manifestBytes.toString('utf8'));
+      assert.equal(manifest.pack_id, 'subscriptiontracker', 'the app loads it with expectPackId = its own app id');
+      assert.equal(manifest.key_id, TEST_KEY_ID);
+      assert.deepEqual(manifest.assets, [], 'no binary asset ships: a service glyph is its initials, rendered by the app');
+      const { publicKeyBase64 } = keyPairFromSeed(testSeed());
+      assert.ok(verifyWithPinnedKey(publicKeyBase64, manifestBytes, readFileSync(join(d, 'manifest.sig'))));
+
+      const contentBytes = readFileSync(join(d, 'content.json'));
+      assert.equal(sha256Hex(contentBytes), manifest.content_hash);
+      const content = JSON.parse(contentBytes.toString('utf8'));
+      assert.deepEqual(Object.keys(content), ['en', 'ta']);
+      // The two shard files, named so a reader of this test sees both inputs.
+      for (const l of ['en', 'ta']) {
+        assert.deepEqual(content[l], JSON.parse(readFileSync(join(SC, 'content', `${l}.json`), 'utf8')));
+      }
+      const ids = content.en['catalogue.services'].split(',');
+      assert.ok(ids.length > 0 && ids.length <= 40, `${ids.length} services — the scope is at most 40`);
+      assert.equal(new Set(ids).size, ids.length, 'duplicate id in the index');
+      assert.equal(content.ta['catalogue.services'], content.en['catalogue.services']);
+      for (const l of ['en', 'ta']) {
+        for (const id of ids) {
+          const name = content[l][`svc.${id}.name`];
+          assert.ok(typeof name === 'string' && name.trim(), `${l}/${id}: no name`);
+          const facts = JSON.parse(content[l][`svc.${id}.facts`]);
+          for (const f of REQUIRED_FACTS) assert.ok(f in facts, `${l}/${id}: facts lacks "${f}"`);
+          assert.equal(facts.id, id);
+          assert.ok(CATEGORIES.includes(facts.category), `${l}/${id}: category "${facts.category}"`);
+          assert.ok(['monthly', 'yearly'].includes(facts.cycle), `${l}/${id}: cycle "${facts.cycle}"`);
+          for (const u of ['cancel_url', 'manage_play', 'manage_appstore']) {
+            assert.equal(new URL(facts[u]).protocol, 'https:', `${l}/${id}: ${u} is not https`);
+          }
+          assert.ok(Number.isInteger(facts.notice_days) && facts.notice_days >= 0);
+          assert.ok(facts.regions.length > 0 && facts.regions.every((r) => r === '*' || /^[A-Z]{2}$/.test(r)));
+        }
+        // The Tamil names are transliterations, not copies of the English.
+        if (l === 'ta') for (const id of ids) assert.notEqual(content.ta[`svc.${id}.name`], content.en[`svc.${id}.name`], id);
+      }
+      // 🔴 NO PRICE IS AUTHORED: a price needs a public price page read during
+      // the run, with its URL and date, and this run read none.
+      const priceKeys = Object.values(content).flatMap((s) => Object.keys(s)).filter((k) => /\.price\./.test(k));
+      assert.deepEqual(priceKeys, []);
+      // Every key is an index, a name or a facts record — nothing else rides along.
+      for (const k of Object.keys(content.en)) {
+        assert.match(k, /^(catalogue\.services|svc\.[a-z0-9_-]+\.(name|facts))$/);
+      }
+      // …and the build is the committed bundled pack, byte for byte.
+      const bundled = join(REPO, 'apps', 'subscriptiontracker', 'assets', 'content_pack');
+      for (const m of ['manifest.json', 'manifest.sig', 'content.json', 'PROVENANCE.json']) {
+        assert.ok(readFileSync(join(d, m)).equals(readFileSync(join(bundled, m))), `${m} differs from the bundled pack`);
+      }
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+});

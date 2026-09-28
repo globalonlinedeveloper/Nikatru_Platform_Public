@@ -31,6 +31,10 @@ function tree() {
     'tooling/legal',
     'packages/core/test/fixtures',
     'packages/core/lib/src/content',
+    // ⏱ 2026-09-28 · ST-X5: the PRODUCED service-catalogue pack, which
+    // assert-pack-roundtrip rebuilds and assert-pack-inert walks (a pubspec that
+    // declares assets/content_pack/ with no pack there is COVERAGE LOST).
+    'apps/subscriptiontracker/assets/content_pack',
     '.github/workflows',
   ]) {
     cpSync(join(REPO, rel), join(dst, rel), { recursive: true });
@@ -138,6 +142,8 @@ describe('assert-recipe-contract — [pipeline 7]P-1 + P-8', () => {
   it('COVERAGE LOST (exit 2) when no committed recipe exists — every limb would range over nothing', () => {
     const t = tree();
     rmSync(join(t, RECIPE_DIR, 'recipe.json'));
+    // ST-X5 committed a second recipe; the set is empty only with both gone.
+    rmSync(join(t, 'tooling/content_pipeline/examples/service-catalogue/recipe.json'));
     assertCoverageLost(run(t, 'assert-recipe-contract.mjs'), /no recipe found under/, 'recipe set empty');
   });
 });
@@ -341,6 +347,8 @@ describe('assert-review-gate — [pipeline 7]P-4', () => {
   it('COVERAGE LOST (exit 2) when no (recipe, frozen pack, review.jsonl) triple is found', () => {
     const t = tree();
     rmSync(join(t, PACK, 'PROVENANCE.json'));
+    // ST-X5: the bundled service catalogue is the second triple; take it too.
+    rmSync(join(t, 'apps/subscriptiontracker/assets/content_pack/PROVENANCE.json'));
     assertCoverageLost(run(t, 'assert-review-gate.mjs'), /no \(recipe, frozen pack, review\.jsonl\) triple/, 'no subject');
   });
 });
@@ -385,6 +393,8 @@ describe('assert-publish-gate — [pipeline 7]P-13 + P-10', () => {
   it('COVERAGE LOST (exit 2) when no (recipe, gates dir, frozen pack) triple is found', () => {
     const t = tree();
     rmSync(join(t, RECIPE_DIR, 'gates'), { recursive: true, force: true });
+    // ST-X5: the service catalogue is the second triple; take its gates too.
+    rmSync(join(t, 'tooling/content_pipeline/examples/service-catalogue/gates'), { recursive: true, force: true });
     assertCoverageLost(run(t, 'assert-publish-gate.mjs'), /no \(recipe, gates dir, frozen pack\) triple/, 'no subject');
   });
 

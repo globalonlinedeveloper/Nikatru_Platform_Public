@@ -23,6 +23,33 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+/** THE PRODUCED PACKS — every (recipe -> committed produced pack) pair in the
+ *  tree, repo-relative. ONE list, read by assert-pack-roundtrip.mjs (which
+ *  rebuilds each byte for byte and refuses a recipe or an app-bundled pack with
+ *  no pair), assert-review-gate.mjs and assert-publish-gate.mjs (which judge each
+ *  recipe's gates against the pack it REALLY produces). Before ST-X5 there was
+ *  one recipe and the two gate guards derived its pack as fixtures/pack/v<major>;
+ *  with a second recipe at pack_version 1 that rule named the lingo pack for the
+ *  service catalogue, and every verdict read "a different pack". */
+export const PRODUCED_PACKS = Object.freeze([
+  Object.freeze({
+    recipe: 'tooling/content_pipeline/examples/lingo-phrases/recipe.json',
+    produced: 'packages/core/test/fixtures/pack/v1',
+    what: 'the frozen v1 format fixture',
+  }),
+  Object.freeze({
+    recipe: 'tooling/content_pipeline/examples/service-catalogue/recipe.json',
+    produced: 'apps/subscriptiontracker/assets/content_pack',
+    what: "the subscription tracker's bundled service catalogue",
+  }),
+]);
+
+/** The committed pack [recipeRel] produces (repo-relative), or null when the
+ *  recipe has no declared pair. */
+export function producedPackFor(recipeRel) {
+  return PRODUCED_PACKS.find((p) => p.recipe === recipeRel)?.produced ?? null;
+}
+
 /** THE REGISTRY. `requirement` is the REQUIRED_COVERAGE key — assert-publish-
  *  gate.mjs asserts this set still names P-3, P-4, P-5, P-7 and P-9, so deleting
  *  a gate is COVERAGE LOST rather than a shorter list that still passes. */
