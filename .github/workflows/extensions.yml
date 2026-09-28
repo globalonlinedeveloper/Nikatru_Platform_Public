@@ -106,8 +106,8 @@ jobs:
   ci:
     if: github.event_name == 'workflow_dispatch' && inputs.lane == 'ci' && !startsWith(github.ref, 'refs/tags/')
     uses: ./.github/workflows/extensions-ci.yml
-    # why: `actions: write` is the ceiling the callee's jobs run under, and each of them ends
-    # with the FF-1 step (.github/actions/cancel-run-on-red), which needs it to cancel this run.
+    # why: `actions: write` is the ceiling the callee's jobs run under, and each of its gate
+    # jobs has an FF-2 follow-up job (`ff-<job>`), which needs it to cancel this run.
     permissions:
       contents: read
       actions: write
@@ -119,7 +119,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      actions: write
     outputs:
       suites: ${{ steps.set.outputs.suites }}
       count: ${{ steps.set.outputs.count }}
@@ -153,9 +152,25 @@ jobs:
         run: |
           echo "::error::no <Category>/<Tool>/test/e2e/package.json found — this workflow would have run nothing and reported success."
           exit 1
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure() && github.event_name == 'pull_request'
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-e2e-discover:
+    # why: FF-2 — starts only once `e2e-discover` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · e2e-discover
+    needs: e2e-discover
+    if: failure() && needs.e2e-discover.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: e2e-discover is red, so the rest of this run is cancelled (FF-2)
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: e2e-discover
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   e2e-suite:
     name: e2e · ${{ matrix.suite.dir }}
@@ -165,9 +180,8 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
-      actions: write
     strategy:
-      fail-fast: false
+      fail-fast: ${{ github.event_name == 'pull_request' }}
       matrix:
         suite: ${{ fromJSON(needs.e2e-discover.outputs.suites) }}
     steps:
@@ -950,9 +964,25 @@ jobs:
           path: extensions/${{ matrix.suite.dir }}/test/e2e/out/**
           retention-days: 7
           if-no-files-found: ignore
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure() && github.event_name == 'pull_request'
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-e2e-suite:
+    # why: FF-2 — starts only once `e2e-suite` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · e2e-suite
+    needs: e2e-suite
+    if: failure() && needs.e2e-suite.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: e2e-suite is red, so the rest of this run is cancelled (FF-2)
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: e2e-suite
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   release:
     if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.lane == 'release')

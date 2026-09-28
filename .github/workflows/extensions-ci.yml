@@ -34,7 +34,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      actions: write
     defaults:
       run:
         working-directory: .
@@ -58,9 +57,25 @@ jobs:
           fi
           node tooling/ci/assert-extensions-build-free.mjs . > /dev/null
           echo "planted a bundler config: exit 1. removed it: exit 0."
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-build-free:
+    # why: FF-2 — starts only once `build-free` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · build-free
+    needs: build-free
+    if: failure() && needs.build-free.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: build-free is red, so the rest of this run is cancelled (FF-2)
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: build-free
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   # why: contracts/ is read by Dart, the Workers and the extensions (ADR 067
   # decision 1), so a copy that drifts is three consumers disagreeing in silence.
@@ -70,7 +85,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      actions: write
     defaults:
       run:
         working-directory: .
@@ -89,9 +103,25 @@ jobs:
       # grant whose provenance one runtime believes and the other does not.
       - name: bundle.json is what bundle.js derives
         run: node contracts/entitlement/generate-bundle.mjs --check
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-contracts:
+    # why: FF-2 — starts only once `contracts` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · contracts
+    needs: contracts
+    if: failure() && needs.contracts.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: contracts is red, so the rest of this run is cancelled (FF-2)
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: contracts
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   gate-inventory:
     name: Gate inventory (which gates exist)
@@ -99,7 +129,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
@@ -227,9 +256,25 @@ jobs:
       - uses: ./.github/actions/setup-node
       - name: No workflow step names a tool; every declared store gate has a runner
         run: node scripts/discover.mjs --assert-generic
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-gate-inventory:
+    # why: FF-2 — starts only once `gate-inventory` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · gate-inventory
+    needs: gate-inventory
+    if: failure() && needs.gate-inventory.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: gate-inventory is red, so the rest of this run is cancelled (FF-2)
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: gate-inventory
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   discover:
     name: Discover affected tools
@@ -237,7 +282,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      actions: write
     outputs:
       tools: ${{ steps.set.outputs.tools }}
       count: ${{ steps.set.outputs.count }}
@@ -317,24 +361,55 @@ jobs:
           if [ "$COUNT" = "0" ]; then
             echo "::notice::no tool was affected by this change — the per-tool jobs below are skipped on purpose, not by accident."
           fi
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-discover:
+    # why: FF-2 — starts only once `discover` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · discover
+    needs: discover
+    if: failure() && needs.discover.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: discover is red, so the rest of this run is cancelled (FF-2)
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: discover
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   secrets-scan:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
-      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
       - uses: ./.github/actions/setup-node
       - run: node scripts/secret-scan.mjs .
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-secrets-scan:
+    # why: FF-2 — starts only once `secrets-scan` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · secrets-scan
+    needs: secrets-scan
+    if: failure() && needs.secrets-scan.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: secrets-scan is red, so the rest of this run is cancelled (FF-2)
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: secrets-scan
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   catalogue:
     name: catalogue
@@ -342,7 +417,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
@@ -389,9 +463,25 @@ jobs:
       - name: Every tool carries the house identity
         working-directory: .
         run: node tooling/ci/assert-house-identity.mjs .
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-catalogue:
+    # why: FF-2 — starts only once `catalogue` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · catalogue
+    needs: catalogue
+    if: failure() && needs.catalogue.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: catalogue is red, so the rest of this run is cancelled (FF-2)
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: catalogue
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   core:
     name: core sims
@@ -399,7 +489,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
@@ -440,9 +529,25 @@ jobs:
         run: node --import ../tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test scripts/test/contracts-sync.test.mjs
       - name: The listing-asset guard can still fail
         run: node --import ../tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test scripts/test/listing-assets.test.mjs
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-core:
+    # why: FF-2 — starts only once `core` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · core
+    needs: core
+    if: failure() && needs.core.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: core is red, so the rest of this run is cancelled (FF-2)
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: core
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   gates:
     name: gates · ${{ matrix.tool }}
@@ -452,9 +557,8 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      actions: write
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         tool: ${{ fromJSON(needs.discover.outputs.tools) }}
     steps:
@@ -495,16 +599,32 @@ jobs:
       # ran; `discover.mjs --assert-generic` in gate-inventory refuses that shape.)
       - name: The tool's own declared store gates (tool.json gates, stage gates)
         run: node scripts/discover.mjs --run-gates --tool ${{ matrix.tool }} --stage gates
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-gates:
+    # why: FF-2 — starts only once `gates` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · gates
+    needs: gates
+    if: failure() && needs.gates.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: gates is red, so the rest of this run is cancelled (FF-2)
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: gates
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   sims:
     name: sims · ${{ matrix.tool }} · node ${{ matrix.node }}
     needs: [discover, gates]
     if: needs.discover.outputs.count != '0'
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         tool: ${{ fromJSON(needs.discover.outputs.tools) }}
         node: ['22', '24']
@@ -512,7 +632,6 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
@@ -532,16 +651,32 @@ jobs:
             extensions/**/test/pixel-sim/out/**
           retention-days: 7
           if-no-files-found: ignore
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-sims:
+    # why: FF-2 — starts only once `sims` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · sims
+    needs: sims
+    if: failure() && needs.sims.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: sims is red, so the rest of this run is cancelled (FF-2)
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: sims
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   package:
     name: package · ${{ matrix.tool }} · ${{ matrix.target }} · ${{ matrix.os }}
     needs: [discover, sims]
     if: needs.discover.outputs.count != '0'
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         tool: ${{ fromJSON(needs.discover.outputs.tools) }}
         target: [chromium, firefox]
@@ -556,7 +691,6 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
@@ -669,9 +803,25 @@ jobs:
           path: extensions/dist/*.zip
           retention-days: 14
           if-no-files-found: error
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-package:
+    # why: FF-2 — starts only once `package` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · package
+    needs: package
+    if: failure() && needs.package.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: package is red, so the rest of this run is cancelled (FF-2)
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: package
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   selftest:
     name: Gate self-test (do the gates bite?)
@@ -679,7 +829,6 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
@@ -713,9 +862,25 @@ jobs:
       # (⏱ 2026-09-25, O-EXTENSION-GATES-NAME-ONE-TOOL.)
       - name: The AMO zip gates must be proven to fail
         run: node --import ../tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test scripts/test/amo-gate-zip.test.mjs
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-selftest:
+    # why: FF-2 — starts only once `selftest` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · selftest
+    needs: selftest
+    if: failure() && needs.selftest.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: selftest is red, so the rest of this run is cancelled (FF-2)
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: selftest
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   templates:
     name: templates parse (the tree every future tool is stamped from)
@@ -723,7 +888,6 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
@@ -924,9 +1088,25 @@ jobs:
             exit 1
           fi
           exit "$code"
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-templates:
+    # why: FF-2 — starts only once `templates` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · templates
+    needs: templates
+    if: failure() && needs.templates.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: templates is red, so the rest of this run is cancelled (FF-2)
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: templates
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   # why: the single aggregate for this workflow. It carries always(), needs every
   # job above, and treats skipped as not-green. It is not a required check of its
@@ -1137,7 +1317,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
@@ -1147,6 +1326,22 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: node scripts/assert-e2e-proof-fresh.mjs
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-e2e-proof-fresh:
+    # why: FF-2 — starts only once `e2e-proof-fresh` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · e2e-proof-fresh
+    needs: e2e-proof-fresh
+    if: failure() && needs.e2e-proof-fresh.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: e2e-proof-fresh is red, so the rest of this run is cancelled (FF-2)
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: e2e-proof-fresh
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true

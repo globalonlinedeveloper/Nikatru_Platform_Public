@@ -508,15 +508,17 @@ export const failingStep = (job) => (job?.steps ?? []).find((s) => NON_GREEN.has
  * count, as it is one run in the owner's list.
  *
  * ⏱ 2026-09-27 (FF-1) — THE PRIMARY IS THE JOB THAT RENDERED A VERDICT. A gate
- * job that goes red now cancels the rest of its own run (.github/actions/
- * cancel-run-on-red), so a red run arrives as conclusion `cancelled` with ONE
- * job whose failing step concluded `failure` and every sibling `cancelled`
- * mid-step. Taking the first failing job in job order would file that run under
+ * job that goes red cancels the rest of its own run (FF-2 since 2026-09-28: its
+ * follow-up job `ff-<job>` sends the cancel, docs/ci/README.md §2.1), so a red
+ * run arrives as conclusion `cancelled` with ONE job whose failing step
+ * concluded `failure` and every sibling `cancelled` mid-step. Taking the first
+ * failing job in job order would file that run under
  * a sibling's `The operation was canceled` — `cancelled:by-hand-or-unknown` —
  * and the real cause would never reach the ledger. So the primary is the first
  * job whose FAILING STEP did not conclude `cancelled`, and the cancellation
- * override reads that step's conclusion, not the job's: the red job itself can
- * lose the race and conclude `cancelled` after its step already failed.
+ * override reads that step's conclusion, not the job's: under FF-1 the red job
+ * itself lost the race and concluded `cancelled` after its step already failed
+ * (FF-2 ends that, and the ledger still reads the runs from before it).
  */
 export function classifyRun(run, jobs, logFor, { newerRunExists = false, signatures = SIGNATURES } = {}) {
   const failing = failingJobs(jobs);

@@ -1,48 +1,75 @@
 #!/usr/bin/env node
 // ─────────────────────────────────────────────────────────────────────────────
-// assert-failfast-coverage.mjs — a gate run cancels ITSELF at its first red job
-// (FF-1), and a job that deploys, publishes, releases, submits or migrates never
-// carries the cancel.
+// assert-failfast-coverage.mjs — a gate run cancels ITSELF at its first red job,
+// the red job KEEPS ITS OWN `failure` (FF-2), and a job that deploys, publishes,
+// releases, submits or migrates never carries the cancel.
 //
 // Lead ruling FF-1, 2026-09-27, on the owner's words that day: "you always
 // cancel it if it's going to fail … it will waste of time for failing
-// deployments". Until then a laptop script polled every 90 s and cancelled
-// doomed runs: it ran only while the laptop was awake, and every poll spent the
-// per-repository API limit the guards also spend. The rule now lives in the
-// workflows. The LAST step of every gate job is
+// deployments". FF-1 (#1010) put the cancel in the LAST step of every gate job,
+// `if: failure()`. That step ran while its own job was still in progress, so
+// GitHub cancelled the red job along with the rest: measured 2026-09-28 on six
+// PR runs (36385207366, 36385190242, 36385455698, 36384843524, 36381560476,
+// 36383273759), every job read `cancelled` except the aggregators, the real red
+// jobs were found only by reading annotations, and `gh run view --log-failed`
+// returned nothing.
 //
-//     - name: A red job cancels the rest of this run (FF-1)
-//       if: failure()
-//       uses: ./.github/actions/cancel-run-on-red
+// FF-2 (lead ruling 2026-09-28) moves the cancel OUT of the red job. Every gate
+// job `<lane>` has a follow-up job right after it:
 //
-// — ONE API call, made only on failure, and no watcher job. It is safe on main
-// because ci.yml's ci-gate needs every job, runs `always()` and treats
-// `cancelled` as red, and deploy-web / deploy-workers need ci-gate: once any job
-// is red, no deploy can start in that run anyway. docs/ci/README.md §2.1.
+//     ff-<lane>:
+//       needs: <lane>
+//       if: failure() && needs.<lane>.result == 'failure'
+//       permissions: { actions: write }
+//       steps: one `run:` — the ::notice naming <lane>, then
+//              gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
+//
+// GitHub starts a job only after every job it `needs` has CONCLUDED, so the
+// lane's `failure` is recorded before the cancel is sent: the lane reads failure
+// and only the jobs still running read cancelled. The `needs.<lane>.result`
+// clause keeps a follow-up quiet when an ANCESTOR of its lane failed (`failure()`
+// alone is true then, and every follow-up downstream would cancel again, naming
+// a lane that only skipped). A matrix lane runs `fail-fast: true`: the follow-up
+// needs the WHOLE matrix, so without it the siblings of a red leg would run to
+// the end before anything cancels (FF-1 cancelled them at once; so does this).
+//
+// WHY NOT ONE fail-fast JOB OVER EVERY LANE: a job starts only after ALL of its
+// `needs` have concluded, so `needs: [every lane]` + `if: failure()` would start
+// when the slowest lane ends — exactly the minutes FF-1 exists to save. WHY NOT A
+// DETACHED CANCEL FROM THE RED JOB: the runner kills a job's orphan processes and
+// the hosted VM is discarded after the job, so a delayed cancel is a race with an
+// unmeasured deadline. docs/ci/README.md §2.1.
+//
+// It is safe on main because ci.yml's ci-gate needs every lane, runs `always()`
+// and treats `cancelled` as red, and deploy-web / deploy-workers need ci-gate.
 //
 // Asserts, over SCOPE below and over every other workflow in the tree:
-//   C1 every in-scope job ends with the cancel step, under its scope's exact
-//      condition — `failure()`, or `failure() && github.event_name ==
-//      'pull_request'` in a workflow that publishes on its other events — unless
-//      it is deploy-type, a call job, or a declared EXCEPTION. A job with a
-//      checkout uses the composite; a job without one runs the command inline.
-//   C2 a job carrying the step grants `actions: write` at JOB level and keeps
-//      every scope the workflow-level block grants. A job-level block REPLACES
-//      the workflow-level one, so a block that forgot `contents: read` would
-//      leave the checkout unable to read the repository.
-//   C3 a call job whose callee carries the step grants `actions: write`. A
+//   C1 every in-scope gate job has exactly one follow-up `ff-<lane>` in the
+//      FF-2 class (workflow-scan failFastLane), under its scope's exact `if:`,
+//      whose step exports GH_TOKEN from `github.token` and RED_JOB = the lane,
+//      prints the ::notice, and runs where a job with no checkout can.
+//   C2 a follow-up grants exactly `actions: write` at JOB level. It checks
+//      nothing out, so it needs no other scope.
+//   C3 a call job whose callee holds a follow-up grants `actions: write`. A
 //      callee job cannot hold more than its call job grants, and GitHub refuses
 //      the WHOLE run at startup when one asks: no job runs and no check reports.
-//   C4 no deploy-type job anywhere carries a cancel, and no workflow outside
-//      SCOPE carries one. A half-finished deploy is worse than a red one.
+//   C4 no cancel runs INSIDE a job that is not a follow-up — the FF-1 shape,
+//      which reports the red job cancelled — no deploy-type job anywhere carries
+//      a cancel, and no workflow outside SCOPE carries one.
 //   C5 every EXCEPTION names a real in-scope job, says why, and its kind still
 //      holds on the tree (an aggregator still runs `always()` over its needs, a
 //      sole job is still alone, a not-on-pull-request job still says so).
-//   C6 the composite still cancels: the command, `|| true`, GH_TOKEN from
-//      `github.token`, and the notice naming the job.
-//   C7 `actions: write` goes only where the step needs it: never at the
-//      workflow level of an in-scope file, never on an in-scope job that neither
-//      carries the step nor calls a callee that does.
+//   C6 every `ff-` job is in the FF-2 class and follows a lane C1 grades: a
+//      follow-up of a deploy job or an exception is a cancel nothing licensed.
+//   C7 `actions: write` goes only where the cancel needs it: never at the
+//      workflow level of an in-scope file, never on a lane, never on a job that
+//      is neither a follow-up nor a call into a callee that holds one.
+//   C8 a matrix lane runs `fail-fast` under its scope's condition (above).
+//   C9 THE RUN, SIMULATED: for every graded lane, simulateRedRun() plays the
+//      run in which that lane goes red, by GitHub's ordering (a job's own steps
+//      run before it concludes; a job that needs it starts after). The lane must
+//      conclude `failure`, a follow-up must send the cancel, and every other
+//      running job must read cancelled. The FF-1 shape concludes `cancelled`.
 //
 // DEPLOY-TYPE IS DERIVED, NEVER LISTED: a job whose ID matches DEPLOY_TYPE, a
 // call into a workflow whose file name matches it, a job that declares
@@ -51,16 +78,17 @@
 // name says "release" and it releases nothing.
 //
 // ⚠️ WHAT THIS DOES NOT COVER, stated rather than implied. A job that hits its
-// `timeout-minutes` is marked cancelled, so `failure()` is false and it cancels
-// nothing; ci-gate still reads it red. And the cancel itself is proved only by
-// the first real red run after this lands: the owner's rule is no deliberately
-// red pull request, so the tests below prove the WIRING, on a copy of the tree.
+// `timeout-minutes` is marked cancelled, so its follow-up's `if:` is false and it
+// cancels nothing; ci-gate still reads it red. And C9 simulates GitHub's
+// documented ordering on the committed tree; that GitHub keeps that ordering is
+// proved by a real red run, which the FF-2 pull request carries (docs/ci/README.md
+// §2.1 names it).
 //
 // Usage:  node tooling/ci/assert-failfast-coverage.mjs [repoRoot]
 // Exit 0 = covered. 1 = a finding. 2 = COVERAGE LOST: no workflow directory, a
-//      SCOPE workflow missing or jobless, the composite missing, a local call
-//      this scan cannot follow, or the step reader and an independent line count
-//      disagreeing about how many cancels the tree holds.
+//      SCOPE workflow missing or jobless, a local call this scan cannot follow,
+//      or the step reader and an independent line count disagreeing about how
+//      many cancels the tree holds.
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync } from 'node:fs';
 import { join, resolve, basename } from 'node:path';
@@ -68,29 +96,36 @@ import { pathToFileURL } from 'node:url';
 import {
   WORKFLOW_DIR,
   parseAllWorkflows,
-  parseWorkflow,
   resolveLocalCalls,
   workflowEvents,
   workflowSteps,
   jobEnvironment,
   classifyPublishes,
+  failFastLane,
+  FAILFAST_CANCEL,
+  FAILFAST_IF,
 } from './workflow-scan.mjs';
 
-export const ACTION_REF = './.github/actions/cancel-run-on-red';
-export const ACTION_REL = '.github/actions/cancel-run-on-red/action.yml';
-export const CANCEL_COMMAND = 'gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY"';
+export const CANCEL_COMMAND = FAILFAST_CANCEL;
 export const TOKEN_EXPR = '${{ github.token }}';
+export const FOLLOW_UP = (lane) => `ff-${lane}`;
+/** The follow-up's exact job-level `if:` for `lane` in a workflow of scope `runs`. */
 export const CONDITION = {
-  every: 'failure()',
-  pull_request: "failure() && github.event_name == 'pull_request'",
+  every: (lane) => FAILFAST_IF(lane),
+  pull_request: (lane) => `${FAILFAST_IF(lane)} && github.event_name == 'pull_request'`,
+};
+/** A matrix lane's exact `fail-fast:` value in a workflow of scope `runs`. */
+export const MATRIX_FAIL_FAST = {
+  every: 'true',
+  pull_request: "${{ github.event_name == 'pull_request' }}",
 };
 export const DEPLOY_TYPE = /deploy|publish|release|submit|migrat|upload/i;
 
-/** The workflows FF-1 covers, and on which runs. `every`: the step fires on any
- *  event the workflow (or, for a callee, its caller) runs on. `pull_request`: the
- *  workflow publishes on its other events, so the step fires on a pull_request
- *  run only. Everything else in .github/workflows is out of scope and must carry
- *  no cancel at all (C4) — ops-watch, e2e, every deploy-*, submit-*,
+/** The workflows FF-2 covers, and on which runs. `every`: the follow-ups fire on
+ *  any event the workflow (or, for a callee, its caller) runs on. `pull_request`:
+ *  the workflow publishes on its other events, so they fire on a pull_request run
+ *  only. Everything else in .github/workflows is out of scope and must carry no
+ *  cancel at all (C4) — ops-watch, e2e, every deploy-*, submit-*,
  *  redeploy-stranded and renovate among them. */
 export const SCOPE = [
   { rel: '.github/workflows/ci.yml', runs: 'every', why: 'the merge gate: ci-gate needs every job and reads cancelled as red, and the deploys need ci-gate' },
@@ -105,7 +140,7 @@ export const SCOPE = [
   { rel: '.github/workflows/extensions.yml', runs: 'pull_request', why: 'it releases and store-publishes on tag and dispatch; a pull_request run publishes nothing' },
 ];
 
-/** In-scope jobs that carry no step, each with the kind C5 re-checks on the tree. */
+/** In-scope jobs that have no follow-up, each with the kind C5 re-checks on the tree. */
 export const EXCEPTIONS = [
   { rel: '.github/workflows/ci.yml', job: 'ci-gate', kind: 'aggregator', why: 'the verdict: it starts after every constituent has finished, so nothing is left to cancel, and after a cancel it is the job that must still run and go red' },
   { rel: '.github/workflows/lane-workers.yml', job: 'lane-verdict', kind: 'aggregator', why: "the lane's verdict, read by ci-gate through the call job" },
@@ -117,11 +152,9 @@ export const EXCEPTIONS = [
     kind: 'sole-job',
     why: 'the only job in its run, with no matrix: a cancel from it reaches no other job, and would put actions: write beside security-events: write for no minute saved',
   },
-  { rel: '.github/workflows/extensions.yml', job: 'cws-token-keepalive', kind: 'not-on-pull-request', why: 'schedule only: it is never in the one kind of extensions.yml run FF-1 may cancel' },
-  { rel: '.github/workflows/extensions.yml', job: 'store-key-keepalive', kind: 'not-on-pull-request', why: 'schedule only: it is never in the one kind of extensions.yml run FF-1 may cancel' },
+  { rel: '.github/workflows/extensions.yml', job: 'cws-token-keepalive', kind: 'not-on-pull-request', why: 'schedule only: it is never in the one kind of extensions.yml run FF-2 may cancel' },
+  { rel: '.github/workflows/extensions.yml', job: 'store-key-keepalive', kind: 'not-on-pull-request', why: 'schedule only: it is never in the one kind of extensions.yml run FF-2 may cancel' },
 ];
-
-const LEVEL = { none: 0, read: 1, write: 2 };
 
 /** A `permissions:` key at `indent` spaces in `lines`, as `{ n, all, scopes }`
  *  (`all` is 'read' | 'write' for read-all / write-all, else null), or null when
@@ -158,12 +191,11 @@ export const levelOf = (p, scope) => (p === null ? null : (p.all ?? p.scopes.get
 const CANCEL_RUN = /(?:^|[\s;&|(])gh\s+run\s+cancel\b|\/actions\/runs\/\S*\/(?:force-)?cancel\b/;
 const unquote = (s) => String(s ?? '').replace(/^['"]|['"]$/g, '');
 
-/** What kind of cancel a step is: 'action' (the composite), 'inline' (a `run:`
- *  that cancels), 'foreign' (some other action named for cancelling), or null. */
+/** What kind of cancel a step is: 'inline' (a `run:` that cancels), 'foreign'
+ *  (an action named for cancelling — FF-1's retired composite among them), or null. */
 export function cancelKind(step) {
   const uses = unquote(step.uses);
-  if (uses === ACTION_REF) return 'action';
-  if (uses !== '' && /cancel/i.test(uses.split('@')[0])) return 'foreign';
+  if (uses !== '' && !uses.startsWith('./.github/workflows/') && /cancel/i.test(uses.split('@')[0])) return 'foreign';
   if (step.run !== null && CANCEL_RUN.test(step.run.text)) return 'inline';
   return null;
 }
@@ -175,7 +207,7 @@ export function rawCancelLine(text) {
   const m = text.match(/^\s*(?:-\s+)?uses:\s*(\S+)/);
   if (m) {
     const ref = unquote(m[1]);
-    return ref === ACTION_REF || (ref.startsWith('./.github/workflows/') ? false : /cancel/i.test(ref.split('@')[0]));
+    return ref.startsWith('./.github/workflows/') ? false : /cancel/i.test(ref.split('@')[0]);
   }
   return CANCEL_RUN.test(text);
 }
@@ -214,21 +246,60 @@ function exceptionBroken(e, wf, job, scope) {
   return `unknown kind "${e.kind}" (aggregator, sole-job, not-on-pull-request)`;
 }
 
-/** The composite's own lines, graded (C6). Returns `{ lost, problems }`. */
-export function gradeAction(root) {
-  const parsed = parseWorkflow(root, ACTION_REL);
-  if (parsed === null) return { lost: `${ACTION_REL} is not in the tree, so every step that names it cancels nothing.`, problems: [] };
-  const text = parsed.lines.map((l) => l.text);
-  const problems = [];
-  const want = (ok, what) => {
-    if (!ok) problems.push(`${ACTION_REL}: ${what}`);
-  };
-  want(text.some((t) => /^ {2}using:\s*['"]?composite['"]?\s*$/.test(t)), 'is no longer a composite action (`runs: using: composite`)');
-  const cmd = CANCEL_COMMAND.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  want(text.some((t) => new RegExp(`(?:^|\\s)${cmd}\\s*\\|\\|\\s*true\\s*$`).test(t)), `no longer runs \`${CANCEL_COMMAND} || true\` — a cancel that can fail the job, or no cancel at all`);
-  want(text.some((t) => /^\s+GH_TOKEN:\s*\$\{\{\s*github\.token\s*\}\}\s*$/.test(t)), `no longer maps \`GH_TOKEN: ${TOKEN_EXPR}\`, so gh has no credential and the cancel is a no-op`);
-  want(text.some((t) => /::notice[^\n]*GITHUB_JOB/.test(t)), 'no longer prints the ::notice naming the job that went red — after the cancel, that job is the only pointer to the culprit');
-  return { lost: null, problems };
+/** The `fail-fast:` value of a matrix job, `null` when it declares none (GitHub's
+ *  default is true), or undefined when the job has no `strategy:`. */
+export function matrixFailFast(job) {
+  const at = job.lines.findIndex((l) => /^ {4}strategy:\s*$/.test(l.text));
+  if (at === -1) return undefined;
+  for (const l of job.lines.slice(at + 1)) {
+    if (l.text.trim() === '') continue;
+    if (!/^ {6}/.test(l.text)) break;
+    const m = l.text.match(/^ {6}fail-fast:\s*(.*?)\s*$/);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+const runsOnFailure = (cond) => /\b(?:failure|always)\s*\(\s*\)/.test(cond ?? '');
+
+/**
+ * C9. The run in which job `lane` of `wf` goes red at its first step, played by
+ * GitHub's ordering, as `{ conclusion, canceller, others }`:
+ *   · the lane's remaining steps run while the lane is IN PROGRESS; one that
+ *     cancels the run (a failure()/always() step — the FF-1 shape) cancels the
+ *     lane with everything else, so the lane concludes `cancelled`;
+ *   · otherwise the lane concludes `failure`, and only THEN may a job that needs
+ *     it start: its follow-up (failFastLane) sends the cancel;
+ *   · once a cancel is sent, every other job reads `cancelled`, except an
+ *     aggregator (`always()`), which still runs and reads the red, and another
+ *     lane's follow-up, which is skipped.
+ * `canceller` is the job that sent the cancel, or null (the rest runs to the end).
+ */
+export function simulateRedRun(wf, lane) {
+  const job = wf.jobs.get(lane);
+  const selfCancels = workflowSteps(job)
+    .slice(1)
+    .some((s) => cancelKind(s) !== null && runsOnFailure(s.cond));
+  let canceller = selfCancels ? lane : null;
+  const conclusion = selfCancels ? 'cancelled' : 'failure';
+  if (canceller === null) {
+    for (const [id] of wf.jobs) {
+      if (failFastLane(wf, id) === lane) {
+        canceller = id;
+        break;
+      }
+    }
+  }
+  const others = new Map();
+  for (const [id, j] of wf.jobs) {
+    if (id === lane) continue;
+    if (canceller === null) others.set(id, 'unaffected');
+    else if (id === canceller) others.set(id, 'success');
+    else if (failFastLane(wf, id) !== null) others.set(id, 'skipped');
+    else if (/\balways\(\)/.test(j.jobIf?.cond ?? '')) others.set(id, 'failure');
+    else others.set(id, 'cancelled');
+  }
+  return { conclusion, canceller, others };
 }
 
 /**
@@ -238,7 +309,7 @@ export function gradeAction(root) {
 export function gradeFailfast(root, { scope = SCOPE, exceptions = EXCEPTIONS } = {}) {
   const findings = [];
   const lost = [];
-  const stats = { workflows: 0, graded: 0, carriers: 0, exceptions: 0, deployType: 0, calls: 0, inactive: 0 };
+  const stats = { workflows: 0, graded: 0, followUps: 0, cancels: 0, exceptions: 0, deployType: 0, calls: 0, inactive: 0, simulated: 0 };
   const out = { findings, lost, stats };
 
   if (!existsSync(join(root, WORKFLOW_DIR))) {
@@ -260,10 +331,6 @@ export function gradeFailfast(root, { scope = SCOPE, exceptions = EXCEPTIONS } =
     else if (wf.jobs.size === 0) lost.push(`${s.rel} parsed to 0 jobs; this scan is reading something other than the workflow it opened.`);
   }
 
-  const action = gradeAction(root);
-  if (action.lost) lost.push(action.lost);
-  findings.push(...action.problems);
-
   const callsOf = new Map();
   for (const wf of all) {
     const r = resolveLocalCalls(wf, all);
@@ -273,35 +340,34 @@ export function gradeFailfast(root, { scope = SCOPE, exceptions = EXCEPTIONS } =
   if (lost.length) return out;
 
   // ── the census: every cancel in the tree, read twice, independently ────────
-  const carried = new Map(); // `${rel}#${job}` -> [{ step, kind, index, count }]
+  const carried = new Map(); // `${rel}#${job}` -> [{ step, kind }]
   let structured = 0;
   let raw = 0;
   for (const wf of all) {
     raw += wf.lines.filter((l) => rawCancelLine(l.text)).length;
     for (const job of wf.jobs.values()) {
-      const steps = workflowSteps(job);
-      steps.forEach((step, index) => {
+      for (const step of workflowSteps(job)) {
         const kind = cancelKind(step);
-        if (kind === null) return;
+        if (kind === null) continue;
         structured += 1;
         const key = `${wf.rel}#${job.name}`;
         if (!carried.has(key)) carried.set(key, []);
-        carried.get(key).push({ step, kind, index, count: steps.length });
-      });
+        carried.get(key).push({ step, kind });
+      }
     }
   }
   if (raw !== structured) {
     lost.push(
       `the step reader found ${structured} cancel step(s) and a line count found ${raw}. They must agree: ` +
-        'a cancel the reader cannot see is a cancel C4 cannot refuse, in a deploy job or anywhere else.',
+        'a cancel the reader cannot see is a cancel C4 cannot refuse, in a deploy job, in a red job, or anywhere else.',
     );
     return out;
   }
-  stats.carriers = structured;
+  stats.cancels = structured;
 
   const callOf = (wf, job) => (callsOf.get(wf.rel) ?? []).find((c) => c.job === job.name) ?? null;
 
-  // ── C4: no cancel outside SCOPE, none in a deploy-type job anywhere ─────────
+  // ── C4: no cancel inside a red job, outside SCOPE, or in a deploy-type job ──
   for (const [key, list] of carried) {
     const [rel, jobName] = key.split('#');
     const wf = byRel.get(rel);
@@ -311,7 +377,12 @@ export function gradeFailfast(root, { scope = SCOPE, exceptions = EXCEPTIONS } =
       if (why !== null) {
         findings.push(`${rel}:${c.step.first} job \`${jobName}\` is deploy-type (${why}) and carries a cancel. A half-finished deploy is worse than a red one: remove the step.`);
       } else if (!scopeOf.has(rel)) {
-        findings.push(`${rel}:${c.step.first} job \`${jobName}\` carries a cancel, and ${rel} is not in FF-1's SCOPE. Remove it, or scope the workflow in this guard with a why.`);
+        findings.push(`${rel}:${c.step.first} job \`${jobName}\` carries a cancel, and ${rel} is not in FF-2's SCOPE. Remove it, or scope the workflow in this guard with a why.`);
+      } else if (failFastLane(wf, jobName) === null) {
+        findings.push(
+          `${rel}:${c.step.first} job \`${jobName}\` cancels the run from INSIDE itself — the FF-1 shape. The cancel lands while the job is still running, so GitHub reports ` +
+            `THIS job cancelled too and the run names no red job. Remove the step; the cancel belongs to its follow-up \`${FOLLOW_UP(jobName)}\` (FF-2).`,
+        );
       }
     }
   }
@@ -329,91 +400,127 @@ export function gradeFailfast(root, { scope = SCOPE, exceptions = EXCEPTIONS } =
     }
   }
 
-  // ── C1, C2, C3, C7 over the in-scope workflows ─────────────────────────────
+  // ── C1, C2, C3, C6, C7, C8, C9 over the in-scope workflows ─────────────────
   for (const s of scope) {
     const wf = byRel.get(s.rel);
     const header = wf.lines.slice(0, (wf.jobsAt ?? wf.lines.length + 1) - 1);
     const wfPerms = readPermissions(header, 0);
     if (levelOf(wfPerms, 'actions') === 'write') {
-      findings.push(`${s.rel}:${wfPerms.n} grants \`actions: write\` at the WORKFLOW level, so every job holds it. Grant it on the jobs that carry the step, and only there.`);
+      findings.push(`${s.rel}:${wfPerms.n} grants \`actions: write\` at the WORKFLOW level, so every job holds it. Grant it on the follow-up jobs, and only there.`);
     }
+    // A job with no checkout has an empty workspace: a workflow-level run
+    // directory other than `.` does not exist there, and the step would die on it.
+    const wfDir = (() => {
+      const at = header.findIndex((l) => /^defaults:\s*$/.test(l.text));
+      if (at === -1) return null;
+      const m = header.slice(at + 1).find((l) => /^ {4}working-directory:/.test(l.text));
+      return m ? unquote(m.text.replace(/^ {4}working-directory:\s*/, '').trim()) : null;
+    })();
     const inactive = s.runs === 'pull_request' && !workflowEvents(wf).has('pull_request');
+    const gradedLanes = new Set();
+
     for (const job of wf.jobs.values()) {
       // job.lines starts BELOW the job key, so the key's own line is one above it.
       const at = `${s.rel}:${(job.lines[0]?.n ?? wf.jobsAt + 1) - 1} job \`${job.name}\``;
       const call = callOf(wf, job);
-      const list = carried.get(`${s.rel}#${job.name}`) ?? [];
       const perms = readPermissions(job.lines, 4);
       const writes = levelOf(perms, 'actions') === 'write';
+      if (/^ff-/.test(job.name)) continue; // follow-ups are graded below, from their lane
       if (deployReason(job, call) !== null) {
         stats.deployType += 1;
-        continue; // C4 above has already refused a cancel here
+        continue; // C4 above has already refused a cancel here; C6 refuses a follow-up
       }
       if (call) {
         stats.calls += 1;
-        const calleeCarries = [...call.callee.jobs.values()].some((cj) => (carried.get(`${call.callee.rel}#${cj.name}`) ?? []).length > 0);
+        const calleeHolds = [...call.callee.jobs.keys()].some((id) => failFastLane(call.callee, id) !== null);
         if (!scopeOf.has(call.callee.rel)) {
-          findings.push(`${at} calls ${call.callee.rel}, whose jobs run inside this run and are not in FF-1's SCOPE. Scope it here, or say why it is out.`);
+          findings.push(`${at} calls ${call.callee.rel}, whose jobs run inside this run and are not in FF-2's SCOPE. Scope it here, or say why it is out.`);
         }
-        if (calleeCarries && !writes) {
+        if (calleeHolds && !writes) {
           findings.push(
-            `${at} calls ${call.callee.rel}, whose jobs carry the FF-1 step, and grants ${perms === null ? 'no job-level permissions' : `\`actions: ${levelOf(perms, 'actions')}\``}. ` +
+            `${at} calls ${call.callee.rel}, whose jobs have FF-2 follow-ups, and grants ${perms === null ? 'no job-level permissions' : `\`actions: ${levelOf(perms, 'actions')}\``}. ` +
               'A callee job cannot hold more than its call job grants, and GitHub refuses the whole run at startup when one asks.',
           );
         }
-        if (!calleeCarries && writes) findings.push(`${at} grants \`actions: write\` and its callee carries no FF-1 step — a write scope nothing uses.`);
+        if (!calleeHolds && writes) findings.push(`${at} grants \`actions: write\` and its callee holds no FF-2 follow-up — a write scope nothing uses.`);
         continue;
+      }
+      // C7 — a lane never cancels, so it never needs the scope.
+      if (writes) {
+        findings.push(`${s.rel}:${perms.n} job \`${job.name}\` grants \`actions: write\`. Under FF-2 no lane cancels anything; its follow-up does, and holds the scope. Remove it.`);
       }
       const exception = exceptions.find((e) => e.rel === s.rel && e.job === job.name);
       if (exception || inactive) {
         if (exception) stats.exceptions += 1;
         else stats.inactive += 1;
-        const what = exception ? `a declared exception (${exception.kind})` : `in ${s.rel}, which has no pull_request trigger — the only run FF-1 may cancel there`;
-        for (const c of list) findings.push(`${s.rel}:${c.step.first} job \`${job.name}\` is ${what} and still carries a cancel. Remove the step, or the exception.`);
-        if (writes && list.length === 0) findings.push(`${at} is ${what} and grants \`actions: write\` — a write scope nothing uses.`);
-        continue;
+        continue; // C6 below refuses a follow-up of this job
       }
 
       stats.graded += 1;
-      const want = CONDITION[s.runs];
-      const steps = workflowSteps(job);
-      const hasCheckout = steps.some((st) => /^actions\/checkout@/.test(unquote(st.uses)));
-      if (list.length === 0) {
+      gradedLanes.add(job.name);
+      // C8
+      const failFast = matrixFailFast(job);
+      if (failFast !== undefined && failFast !== null && failFast !== MATRIX_FAIL_FAST[s.runs]) {
         findings.push(
-          `${at} does not end with the FF-1 step. Append \`- if: ${want}\` + \`uses: ${ACTION_REF}\` as its LAST step` +
-            `${hasCheckout ? '' : ' (it has no checkout, so the inline `run:` form)'}, and grant \`actions: write\` on the job.`,
+          `${at} is a matrix with \`fail-fast: ${failFast}\`; in ${s.rel} it must be \`${MATRIX_FAIL_FAST[s.runs]}\`. Its follow-up needs the WHOLE matrix, so with fail-fast off ` +
+            'the siblings of a red leg run to the end before the cancel is sent — the minutes FF-1 exists to save.',
+        );
+      }
+      // C1 — exactly one follow-up
+      const ups = [...wf.jobs.keys()].filter((id) => failFastLane(wf, id) === job.name);
+      if (ups.length === 0) {
+        findings.push(
+          `${at} has no FF-2 follow-up. Add job \`${FOLLOW_UP(job.name)}\` after it: \`needs: ${job.name}\`, \`if: ${CONDITION[s.runs](job.name)}\`, ` +
+            `\`permissions: { actions: write }\`, and one \`run:\` step — the ::notice, then \`${CANCEL_COMMAND} || true\` with GH_TOKEN and RED_JOB in its env.`,
         );
         continue;
       }
-      if (list.length > 1) findings.push(`${at} carries ${list.length} cancel steps; one, the last, is the rule.`);
-      const c = list.at(-1);
-      if (c.index !== c.count - 1) {
-        findings.push(`${s.rel}:${c.step.first} job \`${job.name}\`: the FF-1 step is step ${c.index + 1} of ${c.count}, not the last. Every step after it (a failure upload, a !cancelled() guard) must finish before the run is cancelled.`);
+      if (ups.length > 1) findings.push(`${at} has ${ups.length} follow-ups (${ups.join(', ')}); one cancel per lane is the rule.`);
+      // C9 — the run in which this lane goes red
+      const sim = simulateRedRun(wf, job.name);
+      stats.simulated += 1;
+      const stillRunning = [...sim.others].filter(([, c]) => c === 'unaffected').map(([id]) => id);
+      if (sim.conclusion !== 'failure') {
+        findings.push(`${at}: a run in which it goes red reports it \`${sim.conclusion}\`, not \`failure\` — the run would name no red job (FF-2).`);
+      } else if (sim.canceller === null || stillRunning.length) {
+        findings.push(`${at}: a run in which it goes red is never cancelled, so ${stillRunning.length} job(s) run on to the end (FF-1's saving lost).`);
       }
-      if ((c.step.cond ?? '') !== want) {
-        findings.push(`${s.rel}:${c.step.first} job \`${job.name}\`: the FF-1 step's \`if:\` is \`${c.step.cond ?? '(none)'}\`; in ${s.rel} it must be exactly \`${want}\` (${s.why}).`);
-      }
-      if (c.kind === 'foreign') findings.push(`${s.rel}:${c.step.first} job \`${job.name}\` cancels through \`${c.step.uses}\`; the rule is ${ACTION_REF}, one reviewed command.`);
-      if (c.kind === 'action' && !hasCheckout) findings.push(`${s.rel}:${c.step.first} job \`${job.name}\` has no checkout, so \`${ACTION_REF}\` is not on disk when the step runs. Use the inline \`run:\` form.`);
-      if (c.kind === 'inline') {
-        if (hasCheckout) findings.push(`${s.rel}:${c.step.first} job \`${job.name}\` has a checkout and cancels inline; use \`${ACTION_REF}\`, so the command has one home.`);
-        const text = c.step.run.text;
-        const token = unquote(c.step.env.get('GH_TOKEN')?.value);
-        if (!text.includes(CANCEL_COMMAND) || !/\|\|\s*true\b/.test(text) || token.replace(/\s+/g, '') !== TOKEN_EXPR.replace(/\s+/g, '')) {
-          findings.push(`${s.rel}:${c.step.first} job \`${job.name}\`: the inline cancel must be \`${CANCEL_COMMAND} || true\` with \`GH_TOKEN: ${TOKEN_EXPR}\` in the step's env.`);
-        }
-      }
-      // C2
-      if (perms === null) {
-        findings.push(`${at} carries the FF-1 step and declares no job-level \`permissions:\`, so it cancels with the workflow's token, which cannot. Grant \`actions: write\` on the job.`);
+    }
+
+    // ── C1 form, C2, C6: every `ff-` job ──────────────────────────────────────
+    for (const job of wf.jobs.values()) {
+      if (!/^ff-/.test(job.name)) continue;
+      const at = `${s.rel}:${(job.lines[0]?.n ?? wf.jobsAt + 1) - 1} job \`${job.name}\``;
+      const lane = failFastLane(wf, job.name);
+      if (lane === null) {
+        findings.push(
+          `${at} is named as an FF-2 follow-up and is not one (workflow-scan failFastLane): it must need exactly \`${job.name.slice(3)}\`, ` +
+            `open its \`if:\` with \`${FAILFAST_IF(job.name.slice(3))}\`, and hold ONE \`run:\` step of the ::notice and the cancel — nothing a verdict could need.`,
+        );
         continue;
       }
-      if (!writes) findings.push(`${s.rel}:${perms.n} job \`${job.name}\` carries the FF-1 step and grants \`actions: ${levelOf(perms, 'actions')}\`; the cancel needs \`actions: write\`.`);
-      for (const [scopeName, level] of wfPerms?.scopes ?? []) {
-        const mine = levelOf(perms, scopeName);
-        if ((LEVEL[mine] ?? 0) < (LEVEL[level] ?? 0)) {
-          findings.push(`${s.rel}:${perms.n} job \`${job.name}\`: its job-level block drops \`${scopeName}: ${level}\`, which the workflow grants. A job-level block REPLACES the workflow's; restate it.`);
-        }
+      if (!gradedLanes.has(lane)) {
+        findings.push(`${at} follows \`${lane}\`, which FF-2 does not grade (deploy-type, a call, a declared exception, or a workflow with no pull_request trigger). A cancel nothing licensed: remove it.`);
+        continue;
+      }
+      stats.followUps += 1;
+      const want = CONDITION[s.runs](lane);
+      if (job.jobIf.cond !== want) findings.push(`${at}: its \`if:\` is \`${job.jobIf.cond}\`; in ${s.rel} it must be exactly \`${want}\` (${s.why}).`);
+      const [step] = workflowSteps(job);
+      const token = unquote(step.env.get('GH_TOKEN')?.value);
+      if (token.replace(/\s+/g, '') !== TOKEN_EXPR.replace(/\s+/g, '')) findings.push(`${at}: the step must map \`GH_TOKEN: ${TOKEN_EXPR}\`, or gh has no credential and the cancel is a no-op.`);
+      if (unquote(step.env.get('RED_JOB')?.value) !== lane) findings.push(`${at}: the step must map \`RED_JOB: ${lane}\` — the notice is the run's pointer to the red job.`);
+      if (!/::notice[^\n]*\$\{?RED_JOB\b/.test(step.run.text)) findings.push(`${at}: the step no longer prints the ::notice naming \$RED_JOB — after the cancel, it is the run summary's pointer to the red job.`);
+      const stepLines = wf.lines.filter((l) => l.n >= step.first && l.n <= step.last).map((l) => l.text);
+      const dir = stepLines.map((t) => t.match(/^ {8}working-directory:\s*(.*?)\s*$/)).find(Boolean)?.[1] ?? wfDir;
+      if (dir !== null && unquote(dir) !== '.') {
+        findings.push(`${at}: its step runs in \`${unquote(dir)}\`, which a job with no checkout does not have. Set \`working-directory: .\` on the step.`);
+      }
+      // C2
+      const perms = readPermissions(job.lines, 4);
+      const scopes = perms === null ? [] : perms.all ? [`${perms.all}-all`] : [...perms.scopes].map(([k, v]) => `${k}: ${v}`);
+      if (scopes.length !== 1 || scopes[0] !== 'actions: write') {
+        findings.push(`${at} grants ${scopes.length ? `\`${scopes.join(', ')}\`` : 'no job-level permissions'}; a follow-up grants exactly \`actions: write\` — it checks nothing out and cancels with the job's own token.`);
       }
     }
   }
@@ -438,15 +545,15 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     process.exit(2);
   }
   if (findings.length) {
-    console.error(`✗ fail-fast coverage (FF-1) — ${findings.length} problem(s):`);
+    console.error(`✗ fail-fast coverage (FF-2) — ${findings.length} problem(s):`);
     for (const f of findings) console.error(`  · ${f}`);
-    console.error(`  The rule: every gate job ends with \`- if: failure()\` + \`uses: ${ACTION_REF}\`; no deploy-type job carries it. docs/ci/README.md §2.1.`);
+    console.error('  The rule: every gate job `<lane>` has a follow-up `ff-<lane>` that needs it and cancels the run; no job cancels from inside itself, and no deploy-type job cancels at all. docs/ci/README.md §2.1.');
     process.exit(1);
   }
   console.log(
-    `ok  fail-fast coverage (FF-1) — ${stats.workflows} workflow(s), ${SCOPE.length} in scope; ${stats.graded} gate job(s) end with ` +
-      `the cancel step (${stats.carriers} in the tree); ${stats.calls} call job(s) grant their callee the scope; ` +
-      `${stats.deployType} deploy-type job(s), ${stats.exceptions} declared exception(s) and ${stats.inactive} job(s) of a ` +
-      'workflow with no pull_request trigger carry none',
+    `ok  fail-fast coverage (FF-2) — ${stats.workflows} workflow(s), ${SCOPE.length} in scope; ${stats.graded} gate job(s), each with one ` +
+      `follow-up (${stats.followUps}; ${stats.cancels} cancel(s) in the tree, none inside a red job); ${stats.simulated} red run(s) simulated, each ` +
+      `concluding its lane \`failure\` and cancelling the rest; ${stats.calls} call job(s) grant their callee the scope; ${stats.deployType} deploy-type ` +
+      `job(s), ${stats.exceptions} declared exception(s) and ${stats.inactive} job(s) of a workflow with no pull_request trigger carry none`,
   );
 }

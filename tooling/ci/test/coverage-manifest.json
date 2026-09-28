@@ -112,7 +112,7 @@
   "extension-tool-identity.test.mjs": 79,
   "extensions-build-free.test.mjs": 14,
   "extensions-shared-constants.test.mjs": 13,
-  "failfast-coverage.test.mjs": 26,
+  "failfast-coverage.test.mjs": 29,
   "failure-ledger-lane.test.mjs": 29,
   "flag-exposure.test.mjs": 30,
   "flutter-release-build.test.mjs": 33,
