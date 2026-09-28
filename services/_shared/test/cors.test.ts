@@ -34,13 +34,14 @@ const OWN_APP: CorsPolicy = {
 
 /** One request through the middleware: the headers it set, and whether it
  *  answered the request itself or passed it on. */
-async function answer(policy: CorsPolicy, method: string, origin: string | undefined, allowed = LISTED) {
+async function answer(policy: CorsPolicy, method: string, origin: string | undefined, allowed = LISTED, path = '/v1/health') {
   const headers = new Map<string, string>();
   let passedOn = false;
   const c: CorsContext = {
     req: {
       header: (name) => (name.toLowerCase() === 'origin' ? origin : undefined),
       method,
+      path,
     },
     env: { ALLOWED_ORIGINS: allowed },
     header: (name, value) => {
@@ -147,5 +148,42 @@ describe('the mechanism the lead ruled for all three (rv-c15 §3, 2026-09-26)', 
     expect(pre.passedOn).toBe(false);
     const get = await answer(EVERY_APP, 'GET', LISTED);
     expect(get.passedOn).toBe(true);
+  });
+});
+
+// ⏱ 2026-09-28 · ST-N1. The platform's captcha-free native sign-in must be
+// unusable from a browser, listed origin or not; a native caller sends no Origin.
+describe('refuseBrowsersOn: a path no browser may use, whatever the origin', () => {
+  const NATIVE: CorsPolicy = { ...EVERY_APP, refuseBrowsersOn: ['/v1/auth/native/'] };
+  const PATH = '/v1/auth/native/probe/token';
+
+  it('refuses a request carrying Origin with 403 and no CORS header — even a LISTED origin — and never runs the route', async () => {
+    for (const origin of [LISTED, 'https://evil.test']) {
+      const r = await answer(NATIVE, 'POST', origin, LISTED, PATH);
+      expect(r.status).toBe(403);
+      expect(r.passedOn).toBe(false);
+      expect([...r.headers.keys()].filter((k) => k.startsWith('Access-Control-'))).toEqual([]);
+    }
+  });
+
+  it('refuses a preflight with 403, not 204', async () => {
+    const r = await answer(NATIVE, 'OPTIONS', LISTED, LISTED, PATH);
+    expect(r.status).toBe(403);
+    expect(r.passedOn).toBe(false);
+  });
+
+  it('passes a native caller (no Origin) on untouched, and sets no CORS header', async () => {
+    const r = await answer(NATIVE, 'POST', undefined, LISTED, PATH);
+    expect(r.passedOn).toBe(true);
+    expect(r.headers.size).toBe(0);
+  });
+
+  it('leaves every other path, and a policy without it, exactly as before', async () => {
+    const other = await answer(NATIVE, 'POST', LISTED, LISTED, '/v1/events');
+    expect(other.passedOn).toBe(true);
+    expect(other.headers.get('Access-Control-Allow-Origin')).toBe(LISTED);
+    const plain = await answer(EVERY_APP, 'POST', LISTED, LISTED, PATH);
+    expect(plain.passedOn).toBe(true);
+    expect(plain.headers.get('Access-Control-Allow-Origin')).toBe(LISTED);
   });
 });

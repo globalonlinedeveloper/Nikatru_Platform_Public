@@ -31,6 +31,11 @@ const COPIED = [
   'services/platform/src/generated/app-targets.ts',
   'services/subscriptiontracker-api/wrangler.jsonc',
   'services/subscriptiontracker-api/migrations',
+  // ⏱ 2026-09-28 · ST-N1: NATIVE_AUTH_APPS is read off apps/ — the files
+  // assert-auth-callbacks.mjs's walk needs to call app #1 a native app.
+  'apps/subscriptiontracker/app.yaml',
+  'apps/subscriptiontracker/lib/state/providers/auth.dart',
+  'apps/subscriptiontracker/android/app/src/main/AndroidManifest.xml',
 ];
 
 let TMP;
@@ -178,6 +183,31 @@ describe('render-platform-app-block.mjs — the per-app block is rendered from t
     assert.match(mod, /\{ appId: 'x', dbBinding: 'X_DB', databaseName: 'x_db' \}/);
     // x-api's JWKS_CACHE IS the platform's namespace (the same id): deduplicated, not a second store.
     assert.match(mod, /export const APP_KV: readonly AppKv\[\] = \[\n\];/);
+  });
+
+  test('the copied tree renders exactly what is committed — the fixture reads every input the renderer reads', () => {
+    const c = run(RENDER, tree(), '--check');
+    assert.equal(c.code, 0, c.out);
+  });
+
+  test('🔴 ST-N1 · a second NATIVE app under apps/ joins NATIVE_AUTH_APPS; a web-only or non-Supabase app does not', () => {
+    const providers = "final r = SupabaseAuthRepository(client, redirects: AuthRedirects.current(appId: 'x'));\n";
+    const root = tree({
+      'apps/budgetbuddy/app.yaml': 'id: budgetbuddy\n',
+      'apps/budgetbuddy/lib/state/providers/auth.dart': providers,
+      'apps/budgetbuddy/ios/Runner/Info.plist': '<plist/>\n',
+      'apps/webonly/app.yaml': 'id: webonly\n',
+      'apps/webonly/lib/state/providers/auth.dart': providers,
+      'apps/nosupabase/app.yaml': 'id: nosupabase\n',
+      'apps/nosupabase/lib/state/providers/auth.dart': 'final r = InMemoryAuthRepository();\n',
+      'apps/nosupabase/android/app/src/main/AndroidManifest.xml': '<manifest/>\n',
+    });
+    const c = run(RENDER, root, '--check');
+    assert.equal(c.code, 1, c.out);
+    assert.match(c.out, /services\/platform\/src\/generated\/app-targets\.ts is not what tooling\/platform-register\.json renders/);
+    assert.equal(run(RENDER, root).code, 0);
+    const mod = readFileSync(join(root, 'services/platform/src/generated/app-targets.ts'), 'utf8');
+    assert.match(mod, /export const NATIVE_AUTH_APPS: readonly string\[\] = \[\n  'budgetbuddy',\n  'subscriptiontracker',\n\];/);
   });
 
   test('🔴 refusals: an APP_ID that is not the row\'s name, an app KV the platform does not bind, a marker gone', () => {
