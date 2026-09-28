@@ -28,9 +28,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_chassis_screens/auth/reaccept_terms_screen.dart';
 import 'package:nikatru_chassis_screens/auth/sign_in_screen.dart';
+import 'package:nikatru_chassis_screens/shell/web_semantics.dart'
+    show releaseWebSemantics;
+import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:{{app_id.snakeCase()}}/features/auth/reset_password_screen.dart';
 import 'package:{{app_id.snakeCase()}}/features/home/home_screen.dart';
 import 'package:{{app_id.snakeCase()}}/main.dart' as app;
@@ -138,6 +140,9 @@ void main() {
     } finally {
       debugPrint = original;
       ErrorWidget.builder = builderBeforeTest;
+      // main() holds a semantics handle on web; the harness must release it
+      // (web_semantics_test.dart). A no-op on the native targets this runs on.
+      releaseWebSemantics();
     }
   });
 }

@@ -28,6 +28,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:nikatru_chassis_screens/shell/web_semantics.dart'
+    show releaseWebSemantics;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/features/auth/reaccept_terms_screen.dart';
@@ -138,6 +140,9 @@ void main() {
     } finally {
       debugPrint = original;
       ErrorWidget.builder = builderBeforeTest;
+      // main() holds a semantics handle on web; the harness must release it
+      // (web_semantics_test.dart). A no-op on the native targets this runs on.
+      releaseWebSemantics();
     }
   });
 }
