@@ -606,6 +606,42 @@
       "owningFile": "services/platform/src/routes/sessions.ts",
       "purpose": "⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. Lists the caller's sessions and adds every one except the caller's own to the SESSION_REVOKED list. Deletes no auth.sessions row: the client's GoTrue signOut({scope:'others'}) does that. 409 when the token carries no session_id; 204 with no write when there are no other sessions; 503 when the RPC or the list write fails.",
       "unconsumedReason": "client half (requestSessionRevocation + the sessions list) ships in the web PR after this Worker deploys; the server must be live first"
+    },
+    {
+      "id": "native-auth-token",
+      "method": "POST",
+      "path": "/v1/auth/native/:app/token",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/native-auth.ts",
+      "purpose": "⏱ 2026-09-28 · ST-N1 (O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN). A native app's PASSWORD sign-in without a captcha: `?grant_type=password` only (any other grant is a 400 — refresh, PKCE and id_token are not captcha-gated and go straight to GoTrue), body `{email, password}` only, forwarded to GoTrue's /auth/v1/token with the service-role bearer, for which GoTrue skips its captcha (supabase/auth middleware.go verifyCaptcha). 🔐 CREDENTIALS IN TRANSIT, NEVER STORED: the email and password (or the PKCE challenge) pass through this Worker to GoTrue in the one request and are written nowhere — no D1 row, no KV key, and the one log line per call carries the route, the app, the status and the edge-shield marker, never the body. The per-account limiter key is `acct:<app>:<sha256(lowercased email)>`, held only by Cloudflare's rate-limit counter for its 60 s period. No `Origin` (403) — middleware/cors.ts grants the prefix no CORS; `:app` is a NATIVE_AUTH_APPS id (services/platform/src/generated/app-targets.ts, rendered from apps/ by tooling/scripts/render-platform-app-block.mjs), so a newly stamped native app is served with no Worker edit. Behind NATIVE_AUTH_EDGE_LIMITER (per network) and NATIVE_AUTH_ACCOUNT_LIMITER (per account), both FAIL CLOSED (503). GoTrue's status and JSON come back verbatim, Set-Cookie dropped.",
+      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T7b, which points a second gotrue-dart GoTrueClient at `/v1/auth/native/<app>` for the native builds, and lands only after this Worker deploys: the server must be live first. Until then no build of ours calls it, and every native sign-in still goes to GoTrue and is refused `captcha_failed`."
+    },
+    {
+      "id": "native-auth-signup",
+      "method": "POST",
+      "path": "/v1/auth/native/:app/signup",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/native-auth.ts",
+      "purpose": "⏱ 2026-09-28 · ST-N1. A native app's SIGN-UP without a captcha: body `{email, password, data, code_challenge, code_challenge_method}` only, and `redirect_to` kept only when it is the app's own `com.nikatru.<app>://auth-callback` (with or without `?nk_auth=<marker>`), else 400. Forwarded to GoTrue's /auth/v1/signup with the service-role bearer. 🔐 CREDENTIALS IN TRANSIT, NEVER STORED: the email and password (or the PKCE challenge) pass through this Worker to GoTrue in the one request and are written nowhere — no D1 row, no KV key, and the one log line per call carries the route, the app, the status and the edge-shield marker, never the body. The per-account limiter key is `acct:<app>:<sha256(lowercased email)>`, held only by Cloudflare's rate-limit counter for its 60 s period. No `Origin` (403) — middleware/cors.ts grants the prefix no CORS; `:app` is a NATIVE_AUTH_APPS id (services/platform/src/generated/app-targets.ts, rendered from apps/ by tooling/scripts/render-platform-app-block.mjs), so a newly stamped native app is served with no Worker edit. Behind NATIVE_AUTH_EDGE_LIMITER (per network) and NATIVE_AUTH_ACCOUNT_LIMITER (per account), both FAIL CLOSED (503). GoTrue's status and JSON come back verbatim, Set-Cookie dropped.",
+      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T7b, which points a second gotrue-dart GoTrueClient at `/v1/auth/native/<app>` for the native builds, and lands only after this Worker deploys: the server must be live first. Until then no build of ours calls it, and every native sign-in still goes to GoTrue and is refused `captcha_failed`."
+    },
+    {
+      "id": "native-auth-recover",
+      "method": "POST",
+      "path": "/v1/auth/native/:app/recover",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/native-auth.ts",
+      "purpose": "⏱ 2026-09-28 · ST-N1. A native app's PASSWORD-RESET request without a captcha: body `{email, code_challenge, code_challenge_method}` only, `redirect_to` pinned to the app's own callback as on signup. Forwarded to GoTrue's /auth/v1/recover with the service-role bearer. 🔐 CREDENTIALS IN TRANSIT, NEVER STORED: the email and password (or the PKCE challenge) pass through this Worker to GoTrue in the one request and are written nowhere — no D1 row, no KV key, and the one log line per call carries the route, the app, the status and the edge-shield marker, never the body. The per-account limiter key is `acct:<app>:<sha256(lowercased email)>`, held only by Cloudflare's rate-limit counter for its 60 s period. No `Origin` (403) — middleware/cors.ts grants the prefix no CORS; `:app` is a NATIVE_AUTH_APPS id (services/platform/src/generated/app-targets.ts, rendered from apps/ by tooling/scripts/render-platform-app-block.mjs), so a newly stamped native app is served with no Worker edit. Behind NATIVE_AUTH_EDGE_LIMITER (per network) and NATIVE_AUTH_ACCOUNT_LIMITER (per account), both FAIL CLOSED (503). GoTrue's status and JSON come back verbatim, Set-Cookie dropped.",
+      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T7b, which points a second gotrue-dart GoTrueClient at `/v1/auth/native/<app>` for the native builds, and lands only after this Worker deploys: the server must be live first. Until then no build of ours calls it, and every native sign-in still goes to GoTrue and is refused `captcha_failed`."
+    },
+    {
+      "id": "native-auth-resend",
+      "method": "POST",
+      "path": "/v1/auth/native/:app/resend",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/native-auth.ts",
+      "purpose": "⏱ 2026-09-28 · ST-N1. A native app's RE-SEND of a confirmation email without a captcha: body `{email, type}` only, `type` ∈ {signup, email_change} (the phone types are refused), `redirect_to` pinned to the app's own callback. Forwarded to GoTrue's /auth/v1/resend with the service-role bearer. 🔐 CREDENTIALS IN TRANSIT, NEVER STORED: the email and password (or the PKCE challenge) pass through this Worker to GoTrue in the one request and are written nowhere — no D1 row, no KV key, and the one log line per call carries the route, the app, the status and the edge-shield marker, never the body. The per-account limiter key is `acct:<app>:<sha256(lowercased email)>`, held only by Cloudflare's rate-limit counter for its 60 s period. No `Origin` (403) — middleware/cors.ts grants the prefix no CORS; `:app` is a NATIVE_AUTH_APPS id (services/platform/src/generated/app-targets.ts, rendered from apps/ by tooling/scripts/render-platform-app-block.mjs), so a newly stamped native app is served with no Worker edit. Behind NATIVE_AUTH_EDGE_LIMITER (per network) and NATIVE_AUTH_ACCOUNT_LIMITER (per account), both FAIL CLOSED (503). GoTrue's status and JSON come back verbatim, Set-Cookie dropped.",
+      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T7b, which points a second gotrue-dart GoTrueClient at `/v1/auth/native/<app>` for the native builds, and lands only after this Worker deploys: the server must be live first. Until then no build of ours calls it, and every native sign-in still goes to GoTrue and is refused `captcha_failed`."
     }
   ],
   "bindings": [
@@ -746,6 +782,24 @@
       "purpose": "⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. The per-account bucket for the four /v1/sessions routes, keyed `sessions:<sub>` — the VERIFIED subject, never a client-chosen value. `simple: { limit: 5, period: 60 }`: a person signs a session out a handful of times, not dozens. It bounds the one KV write per revoke (kv.writesPerDay) and the service-role RPC behind every route. Its OWN namespace (1011) so it cannot spend any other route's budget.",
       "readers": [
         "services/platform/src/routes/sessions.ts"
+      ]
+    },
+    {
+      "binding": "NATIVE_AUTH_ACCOUNT_LIMITER",
+      "kind": "ratelimits",
+      "scope": "shared",
+      "purpose": "⏱ 2026-09-28 · ST-N1. The per-ACCOUNT bucket on POST /v1/auth/native/:app/*, keyed `acct:<app>:<sha256(lowercased email)>` — never the address itself. `simple: { limit: 5, period: 60 }`. Those routes call GoTrue with the service-role bearer, which skips the captcha, so this and NATIVE_AUTH_EDGE_LIMITER stand where the captcha stands, and it FAILS CLOSED: an absent binding or a limiter fault is a 503, never an admit (strictRateLimit, services/platform/src/lib/edge-ceiling.ts). Its OWN namespace (1013; the sandbox's is 1015).",
+      "readers": [
+        "services/platform/src/routes/native-auth.ts"
+      ]
+    },
+    {
+      "binding": "NATIVE_AUTH_EDGE_LIMITER",
+      "kind": "ratelimits",
+      "scope": "shared",
+      "purpose": "⏱ 2026-09-28 · ST-N1. The per-NETWORK ceiling on POST /v1/auth/native/:app/*, keyed `edge:<colo>:<asn>` by services/platform/src/lib/edge-ceiling.ts — never a client address. `simple: { limit: 60, period: 60 }`. It bounds a flood that rotates accounts, which the account bucket cannot see, and FAILS CLOSED like it. Its OWN namespace (1014; the sandbox's is 1016).",
+      "readers": [
+        "services/platform/src/routes/native-auth.ts"
       ]
     },
     {
