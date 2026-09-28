@@ -131,9 +131,12 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen>
               TurnstileGate(controller: captcha, render: renderTurnstile),
               OutlinedButton(
                 key: VerifyEmailScreen.resendButton,
-                onPressed: (_busy || !captcha.ready)
+                onPressed: _busy
                     ? null
                     : () => _run(() async {
+                        // Waits for the challenge rather than disabling the
+                        // button on it (2026-09-28).
+                        await captcha.untilReady();
                         await auth.resendVerificationEmail(
                           captchaToken: captcha.consume(),
                         );
@@ -141,6 +144,7 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen>
                       }),
                 child: Text(l10n.verifyEmailResend),
               ),
+              CaptchaWaitStatus(waiting: captcha.waiting),
               const SizedBox(height: 12),
               // The only way OUT of the gate. A user who mistyped their address
               // has no other move — the account exists, they cannot reach the

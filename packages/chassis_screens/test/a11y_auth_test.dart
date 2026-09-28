@@ -771,7 +771,7 @@ void main() {
                 child: const SizedBox(width: 300, height: 65),
               ),
             ),
-            captchaReady: c.ready,
+            captchaWaiting: c.waiting,
           ),
         );
         expect(find.bySemanticsLabel('Verification challenge'), findsOneWidget);

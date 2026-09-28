@@ -21,18 +21,20 @@ class SignUpScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final core.AuthRepository auth = ref.watch(authRepositoryProvider);
-    // ST-A1: the chassis captcha gate; every gated call spends its token.
+    // ST-A1: the chassis captcha gate; every gated call spends its token,
+    // after AWAITING the challenge — never a button disabled on readiness.
     final CaptchaTokenController captcha = ref.watch(
       captchaControllerProvider('sign-up'),
     );
     return SignUpView(
       captcha: TurnstileGate(controller: captcha, render: renderTurnstile),
-      captchaReady: captcha.ready,
+      captchaWaiting: captcha.waiting,
       // ⏱ 2026-09-15 · [ADR 082] §5 — the store age signal read before the account is
       // created. Sign-up age gate ONLY: never stored, logged or sent
       // (`ageSignalSourceProvider`).
       ageSignals: ref.watch(ageSignalSourceProvider),
       onSignUp: ({required String email, required String password, required bool marketingEmail}) async {
+        await captcha.untilReady();
         await auth.signUpWithEmail(
           email: email,
           password: password,

@@ -42,6 +42,9 @@ class _CheckInboxActionsState extends ConsumerState<CheckInboxActions>
     });
     String notice;
     try {
+      // Waits for the challenge rather than disabling the button on it
+      // (2026-09-28); `CaptchaUnavailable` becomes the retry sentence below.
+      await captcha.untilReady();
       await ref
           .read(authRepositoryProvider)
           .resendSignUpConfirmation(
@@ -70,9 +73,10 @@ class _CheckInboxActionsState extends ConsumerState<CheckInboxActions>
         TurnstileGate(controller: captcha, render: renderTurnstile),
         OutlinedButton(
           key: CheckInboxActions.resendButton,
-          onPressed: (_busy || !captcha.ready) ? null : _resend,
+          onPressed: _busy ? null : _resend,
           child: Text(l10n.verifyEmailResend),
         ),
+        CaptchaWaitStatus(waiting: captcha.waiting),
         if (_notice != null) ...<Widget>[
           const SizedBox(height: 8),
           Semantics(

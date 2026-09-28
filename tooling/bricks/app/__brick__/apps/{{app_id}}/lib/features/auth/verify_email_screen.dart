@@ -28,13 +28,14 @@ class VerifyEmailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final core.AuthRepository auth = ref.watch(authRepositoryProvider);
-    // ST-A1: the chassis captcha gate; every gated call spends its token.
+    // ST-A1: the chassis captcha gate; every gated call spends its token,
+    // after AWAITING the challenge — never a button disabled on readiness.
     final CaptchaTokenController captcha = ref.watch(
       captchaControllerProvider('verify-email'),
     );
     return VerifyEmailView(
       captcha: TurnstileGate(controller: captcha, render: renderTurnstile),
-      captchaReady: captcha.ready,
+      captchaWaiting: captcha.waiting,
       email: auth.currentUser?.email ?? '',
       // Still unverified is a real answer, not an error.
       onCheckConfirmed: () async {
@@ -47,8 +48,10 @@ class VerifyEmailScreen extends ConsumerWidget {
       // passed as a tear-off is a gated seam call the scan cannot see at all —
       // the silent-blind shape, in a guard whose whole job is to notice a call
       // site that cannot answer a challenge.
-      onResend: () =>
-          auth.resendVerificationEmail(captchaToken: captcha.consume()),
+      onResend: () async {
+        await captcha.untilReady();
+        await auth.resendVerificationEmail(captchaToken: captcha.consume());
+      },
       onSignOut: () => signOutAndForgetUser(ref),
     );
   }

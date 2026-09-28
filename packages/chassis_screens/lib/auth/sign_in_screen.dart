@@ -5,6 +5,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'age_signal_host.dart';
 import 'auth_error_text.dart';
 import 'legal_consent_fields.dart';
+import 'turnstile_gate.dart' show CaptchaWaitStatus;
 
 /// Sign-in — [pipeline C-13], inherited by every stamped app.
 ///
@@ -54,7 +55,7 @@ class SignInView extends StatefulWidget {
     this.deletionDetail,
     this.onDismissDeletionNotice,
     this.captcha,
-    this.captchaReady = true,
+    this.captchaWaiting = false,
     super.key,
   });
 
@@ -137,9 +138,15 @@ class SignInView extends StatefulWidget {
   /// owns it because it owns the token: every gated callback above spends one.
   final Widget? captcha;
 
-  /// ST-A1 (BUG-1): false while a rendered challenge has not answered. Sign in
-  /// and Forgot password — both captcha-gated — stay disabled until it has.
-  final bool captchaReady;
+  /// True while a VALID gated action waits for the challenge to answer
+  /// (`CaptchaTokenController.waiting`): shown as [CaptchaWaitStatus].
+  ///
+  /// ⏱ 2026-09-28 — THIS WAS `captchaReady`, AND IT DISABLED THE BUTTONS. With
+  /// no token yet the action was dead, so an empty form could not even say
+  /// "Enter your email" (E2E live run 36379673890). Every action here is live
+  /// unless a request is in flight; it validates first, and the ADAPTER's gated
+  /// callback awaits `untilReady()` before it spends the token.
+  final bool captchaWaiting;
 
   @override
   State<SignInView> createState() => _SignInViewState();
@@ -369,9 +376,7 @@ class _SignInViewState extends State<SignInView> {
                 // The same door as the button, busy latch included — `_signIn`
                 // routes through `_run`, so a second Enter cannot fire a second
                 // request.
-                onSubmitted: (_busy || !widget.captchaReady)
-                    ? null
-                    : () => _signIn(l10n),
+                onSubmitted: _busy ? null : () => _signIn(l10n),
               ),
               if (_error != null) ...<Widget>[
                 const SizedBox(height: 12),
@@ -384,17 +389,14 @@ class _SignInViewState extends State<SignInView> {
               ?widget.captcha,
               FilledButton(
                 key: SignInView.submitButton,
-                onPressed: (_busy || !widget.captchaReady)
-                    ? null
-                    : () => _signIn(l10n),
+                onPressed: _busy ? null : () => _signIn(l10n),
                 child: Text(l10n.signIn),
               ),
+              CaptchaWaitStatus(waiting: widget.captchaWaiting),
               const SizedBox(height: 8),
               TextButton(
                 key: SignInView.forgotButton,
-                onPressed: (_busy || !widget.captchaReady)
-                    ? null
-                    : () => _forgot(l10n),
+                onPressed: _busy ? null : () => _forgot(l10n),
                 child: Text(l10n.forgotPassword),
               ),
               if (widget.showAppleButton || widget.showGoogleButton) ...<Widget>[

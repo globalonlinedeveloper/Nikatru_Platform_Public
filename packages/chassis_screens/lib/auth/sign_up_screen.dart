@@ -5,6 +5,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'age_signal_host.dart';
 import 'auth_error_text.dart';
 import 'legal_consent_fields.dart';
+import 'turnstile_gate.dart' show CaptchaWaitStatus;
 
 /// Sign-up — [pipeline C-13], inherited by every stamped app.
 ///
@@ -30,7 +31,7 @@ class SignUpView extends StatefulWidget {
     required this.consentFields,
     this.ageSignals,
     this.captcha,
-    this.captchaReady = true,
+    this.captchaWaiting = false,
     super.key,
   });
 
@@ -62,9 +63,15 @@ class SignUpView extends StatefulWidget {
   /// owns it because it owns the token the gated callback spends.
   final Widget? captcha;
 
-  /// ST-A1 (BUG-1): false while a rendered challenge has not answered; the
-  /// captcha-gated action stays disabled until it has.
-  final bool captchaReady;
+  /// True while a VALID gated action waits for the challenge to answer
+  /// (`CaptchaTokenController.waiting`): shown as [CaptchaWaitStatus].
+  ///
+  /// ⏱ 2026-09-28 — THIS WAS `captchaReady`, AND IT DISABLED THE BUTTONS. With
+  /// no token yet the action was dead, so an empty form could not even say
+  /// "Accept the terms" (E2E live run 36379673890). Every action here is live
+  /// unless a request is in flight; it validates first, and the ADAPTER's gated
+  /// callback awaits `untilReady()` before it spends the token.
+  final bool captchaWaiting;
 
   @override
   State<SignUpView> createState() => _SignUpViewState();
@@ -95,7 +102,7 @@ class _SignUpViewState extends State<SignUpView> {
     // rule; this is the one that holds when the button is not the only way in —
     // `onSubmitted:` on the password field reaches here from the keyboard, and
     // an enter key that bypasses a legal gate is still a bypass.
-    if (_busy || !_acceptedTerms || !widget.captchaReady) return;
+    if (_busy || !_acceptedTerms) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -195,11 +202,12 @@ class _SignUpViewState extends State<SignUpView> {
               ?widget.captcha,
               FilledButton(
                 key: SignUpView.submitButton,
-                onPressed: (_busy || !_acceptedTerms || !widget.captchaReady)
+                onPressed: (_busy || !_acceptedTerms)
                     ? null
                     : () => _signUp(l10n),
                 child: Text(l10n.signUp),
               ),
+              CaptchaWaitStatus(waiting: widget.captchaWaiting),
               const SizedBox(height: 16),
               TextButton(
                 key: SignUpView.haveAccountButton,

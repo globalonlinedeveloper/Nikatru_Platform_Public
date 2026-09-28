@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import 'auth_error_text.dart';
+import 'turnstile_gate.dart' show CaptchaWaitStatus;
 
 /// "Check your inbox" — the only screen an UNVERIFIED session can reach.
 ///
@@ -29,7 +30,7 @@ class VerifyEmailView extends StatefulWidget {
     required this.onResend,
     required this.onSignOut,
     this.captcha,
-    this.captchaReady = true,
+    this.captchaWaiting = false,
     super.key,
   });
 
@@ -57,9 +58,15 @@ class VerifyEmailView extends StatefulWidget {
   /// owns it because it owns the token the gated callback spends.
   final Widget? captcha;
 
-  /// ST-A1 (BUG-1): false while a rendered challenge has not answered; the
-  /// captcha-gated action stays disabled until it has.
-  final bool captchaReady;
+  /// True while a VALID gated action waits for the challenge to answer
+  /// (`CaptchaTokenController.waiting`): shown as [CaptchaWaitStatus].
+  ///
+  /// ⏱ 2026-09-28 — THIS WAS `captchaReady`, AND IT DISABLED THE BUTTONS. With
+  /// no token yet the action was dead, so Resend could not even be
+  /// tried (E2E live run 36379673890). Every action here is live
+  /// unless a request is in flight; it validates first, and the ADAPTER's gated
+  /// callback awaits `untilReady()` before it spends the token.
+  final bool captchaWaiting;
 
   @override
   State<VerifyEmailView> createState() => _VerifyEmailViewState();
@@ -149,7 +156,7 @@ class _VerifyEmailViewState extends State<VerifyEmailView> {
               ?widget.captcha,
               OutlinedButton(
                 key: VerifyEmailView.resendButton,
-                onPressed: (_busy || !widget.captchaReady)
+                onPressed: _busy
                     ? null
                     : () => _run(() async {
                           await widget.onResend();
@@ -157,6 +164,7 @@ class _VerifyEmailViewState extends State<VerifyEmailView> {
                         }),
                 child: Text(l10n.verifyEmailResend),
               ),
+              CaptchaWaitStatus(waiting: widget.captchaWaiting),
               const SizedBox(height: 12),
               // The only way OUT of the gate. A user who mistyped their address
               // has no other move — the account exists, they cannot reach the
