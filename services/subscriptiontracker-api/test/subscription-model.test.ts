@@ -308,14 +308,49 @@ describe('the write rules that span keys', () => {
       { share_numerator: 100, share_denominator: 100 },
       { reminder_days: [0, 365, 30, 7, 1] },
       { price: 1_000_000_000, price_minor: 10_000_000_000_000, currency: 'KWD' },
-      { deleted_at: '2026-09-28T10:00:00.123Z' },
+      { deleted_at: null },
       { cancel_url: 'http://example.com/cancel' },
-      { status: 'paused' },
-      { status: 'cancelled', cancelled_on: '2026-09-28' },
+      { status: 'active', cancelled_on: '2026-09-28' },
       { rail: 'unknown', service_id: 'x.y_z-1' },
     ]) {
       expect((await post(body)).status, JSON.stringify(body)).toBe(201);
     }
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('payment history is served in its subscription’s currency', () => {
+  /** An overdue monthly INR row, rolled by the REAL platform fan-out — the
+   *  only writer of payment_history, which does not write `currency`. */
+  async function rolled(body: Row): Promise<Row[]> {
+    const { id } = await create({ name: 'Hotstar', cycle: 'monthly', next_renewal: inDays(-40), ...body });
+    await recomputeRenewals(db as never, 'subscriptiontracker');
+    const history = (await getOne(id as string)).payment_history as Row[];
+    expect(history.length, 'the fan-out wrote no payment, so this proves nothing').toBeGreaterThan(0);
+    expect(db.rows('SELECT DISTINCT currency FROM payment_history'), 'the fan-out now writes currency').toEqual([
+      { currency: null },
+    ]);
+    return history;
+  }
+
+  it('🔴 a fan-out payment under an INR row reads INR, not the user’s currency', async () => {
+    const history = await rolled({ price: 649, price_minor: 64900, currency: 'INR' });
+    for (const p of history) expect(p).toMatchObject({ amount: 649, currency: 'INR', source: null });
+  });
+
+  it('a subscription with no currency leaves its payments NULL — the client fallback decides', async () => {
+    const history = await rolled({ price: 9.99 });
+    for (const p of history) expect(p.currency).toBeNull();
+  });
+
+  it('a payment that carries its own currency keeps it', async () => {
+    const { id } = await create({ name: 'X', price: 5, price_minor: 500, currency: 'EUR' });
+    db.db.exec(
+      "INSERT INTO payment_history (id, subscription_id, user_id, amount, paid_at, currency, source) " +
+        `VALUES ('p-own', '${String(id)}', '${U}', 4, '2026-08-01T00:00:00Z', 'GBP', 'manual')`,
+    );
+    const [p] = (await getOne(id as string)).payment_history as Row[];
+    expect(p).toMatchObject({ currency: 'GBP', source: 'manual' });
   });
 });
 
@@ -339,6 +374,9 @@ const RED: ReadonlyArray<readonly [string, Row, string]> = [
   // status
   ['status outside the set', { status: 'deleted' }, 'status'],
   ['status null (NOT NULL column)', { status: null }, 'status'],
+  // …and the two the model has but no reader skips yet (ST-E3)
+  ['status paused, before the readers skip it', { status: 'paused' }, 'status'],
+  ['status cancelled, before the readers skip it', { status: 'cancelled', cancelled_on: '2026-09-28' }, 'status'],
   // rail
   ['rail outside the set', { rail: 'visa' }, 'rail'],
   // service_id
@@ -350,11 +388,9 @@ const RED: ReadonlyArray<readonly [string, Row, string]> = [
   ['cancel_url with an ftp: scheme', { cancel_url: 'ftp://example.com/x' }, 'cancel_url'],
   ['cancel_url that is not a URL', { cancel_url: 'hotstar.com/cancel' }, 'cancel_url'],
   ['cancel_url over its width', { cancel_url: `https://example.com/${'a'.repeat(2048)}` }, 'cancel_url'],
-  // deleted_at
-  ['deleted_at as a date only', { deleted_at: '2026-09-28' }, 'deleted_at'],
-  ['deleted_at at hour 25', { deleted_at: '2026-09-28T25:00:00Z' }, 'deleted_at'],
-  ['deleted_at on an impossible day', { deleted_at: '2026-02-31T00:00:00Z' }, 'deleted_at'],
-  ['deleted_at with an offset', { deleted_at: '2026-09-28T10:00:00+05:30' }, 'deleted_at'],
+  // deleted_at — served, not writable until ST-E3 teaches the readers
+  ['deleted_at as a real instant', { deleted_at: '2026-09-28T10:00:00Z' }, 'deleted_at'],
+  ['deleted_at as free text', { deleted_at: 'yesterday' }, 'deleted_at'],
   // reminder_days
   ['reminder_days as a number', { reminder_days: 7 }, 'reminder_days'],
   ['reminder_days with a decimal', { reminder_days: [1.5] }, 'reminder_days'],

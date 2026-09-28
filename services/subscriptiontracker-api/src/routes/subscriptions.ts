@@ -171,6 +171,16 @@ const MAX_SHARE_DENOMINATOR = 100;
 /** The closed sets 0003 deliberately did NOT put in a CHECK (see its header):
  *  a new member here is a code change, where in SQL it would be a rebuild. */
 const STATUSES = ['active', 'trialing', 'paused', 'cancelled'] as const;
+/**
+ * ⏳ THE STATUSES A ROW MAY BE GIVEN TODAY — not yet `paused` or `cancelled`.
+ * Nothing that reads rows skips them yet: the platform fan-out
+ * (services/platform/src/renewals.ts) would keep rolling a cancelled row's
+ * `next_renewal` and writing payments for charges that never happen, and
+ * /v1/renewals would keep listing it as due. ST-E3 ("Mark cancelled / Pause
+ * keep the row") widens this in the same change that teaches those readers.
+ * `deleted_at` waits for the same readers — see `validate`.
+ */
+const STATUSES_ACCEPTED = ['active', 'trialing'] as const;
 const RAILS = [
   'upi_autopay',
   'card_emandate',
@@ -374,6 +384,11 @@ function validate(body: unknown): ValidatedSubscription {
     if (!isOneOf(status, STATUSES)) {
       return invalid(`status must be one of ${STATUSES.join(', ')}`);
     }
+    if (!isOneOf(status, STATUSES_ACCEPTED)) {
+      return invalid(
+        `status '${status}' is not accepted yet: the renewals readers would keep charging the row (ST-E3); use ${STATUSES_ACCEPTED.join(' or ')}`,
+      );
+    }
     fields.status = status;
   }
 
@@ -417,13 +432,15 @@ function validate(body: unknown): ValidatedSubscription {
 
   const deletedAt = body.deleted_at;
   if (deletedAt !== undefined) {
-    if (deletedAt === null) {
-      fields.deleted_at = null;
-    } else if (!isIsoInstant(deletedAt)) {
-      return invalid('deleted_at must be a UTC instant as YYYY-MM-DDTHH:MM:SS(.sss)Z');
-    } else {
-      fields.deleted_at = deletedAt;
+    // ⏳ SERVED, NOT YET WRITABLE. A soft-deleted row would still be listed by
+    // GET /, still be due in /v1/renewals and still be charged by the platform
+    // fan-out, so setting it today would hide nothing and keep charging. ST-E3
+    // (soft delete with Undo) makes it writable with those readers. `null` is
+    // accepted: it is what every row already holds.
+    if (deletedAt !== null) {
+      return invalid('deleted_at cannot be set yet: nothing that lists or charges rows skips a deleted one (ST-E3)');
     }
+    fields.deleted_at = null;
   }
 
   const reminders = body.reminder_days;
@@ -478,14 +495,6 @@ function isHttpUrl(v: unknown, max: number): v is string {
     return false;
   }
   return (url.protocol === 'https:' || url.protocol === 'http:') && url.hostname !== '';
-}
-
-/** 'YYYY-MM-DDTHH:MM:SS(.sss)Z' naming a real instant — the shape `nowIso()`
- *  writes, so `deleted_at` compares as a string exactly as `updated_at` does. */
-function isIsoInstant(v: unknown): v is string {
-  if (typeof v !== 'string') return false;
-  if (!/^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d{1,3})?Z$/.test(v)) return false;
-  return isCalendarDate(v.slice(0, 10));
 }
 
 /**
@@ -714,17 +723,23 @@ app.get('/:id', async (c) => {
   // declaration on one side and, until the same date, no writer on the other.
   // Naming the columns makes the wire shape a decision in this file: a column a
   // future migration adds does not reach a client until someone writes it here.
-  // `currency` and `source` are 0003's, written here on purpose; both are NULL
-  // until a writer sets them, and PaymentRecord.fromJson decodes a NULL
-  // currency with the user's own.
+  // `currency` and `source` are 0003's, written here on purpose.
+  //
+  // 🔴 A PAYMENT WITH NO CURRENCY OF ITS OWN IS SERVED IN ITS SUBSCRIPTION'S.
+  // The platform fan-out is the only writer, it copies the subscription's
+  // `price` into `amount` and it does not write `currency` yet — so the unit of
+  // that amount IS the subscription's. Served NULL, the client would decode it
+  // with the user's currency (PaymentRecord.fromJson) and put "$649.00" in the
+  // history under a subscription that reads "₹649.00". A payment that carries
+  // its own currency keeps it, and a subscription with none leaves it NULL.
   const payments = await allRows<Payment>(
     c.env.APP_DB.prepare(
       `SELECT id, subscription_id, user_id, amount, paid_at, updated_at,
-              currency, source
+              COALESCE(currency, ?) AS currency, source
          FROM payment_history
          WHERE subscription_id = ? AND user_id = ?
          ORDER BY paid_at DESC`,
-    ).bind(id, userId),
+    ).bind(row.currency, id, userId),
   );
 
   return c.json({
