@@ -321,7 +321,7 @@
       }
     },
     "resend": {
-      "surface": "⏱ 2026-09-18 · O-PLAY-AI-CONTENT-REPORTING. Transactional email from a Worker — ONE use today: the support notice that an in-app AI content report arrived. Resend already carries the portfolio's auth mail through Supabase SMTP ([ADR 029], tooling/mail-transport.json), but that path is configured in Supabase, not in this tree; this record is for the first code in services/ that calls Resend's API itself. The auth+alerts container ([ADR 041]), sender alerts@mail.nikatru.com.",
+      "surface": "⏱ 2026-09-18 · O-PLAY-AI-CONTENT-REPORTING. Transactional email from a Worker — TWO uses since 2026-09-28: the support notice that an in-app AI content report arrived (sender alerts@mail.nikatru.com), and the renewal reminder digest a user opts in to (ST-R1, sender reminders@mail.nikatru.com, capped at MAX_REMINDER_MAILS_PER_DAY in services/platform/src/lib/reminders.ts). Resend already carries the portfolio's auth mail through Supabase SMTP ([ADR 029], tooling/mail-transport.json), but that path is configured in Supabase, not in this tree; this record is for the code in services/ that calls Resend's API itself. The auth+alerts container ([ADR 041]).",
       "stickiness": "★ — the least sticky kind of vendor: one POST with a from, a to, a subject and a text body. No template, no audience, no stored record we read back.",
       "surfaces": [
         "RESEND_API_KEY"
@@ -329,14 +329,14 @@
       "openProtocol": "PARTIAL — the API is Resend's own, but what it sends is plain SMTP mail from our own DKIM-signed subdomain (mail.nikatru.com), and the same message could leave through Resend's SMTP relay or any other provider without the recipient seeing a difference.",
       "seam": {
         "file": "services/platform/src/lib/report-notify.ts",
-        "symbol": "notifyReport",
-        "note": "Every Resend fact — the URL, the Bearer header, the body shape — lives in this one function. The route calls notifyReport and knows nothing about who delivers the mail."
+        "symbol": "sendResendMail",
+        "note": "Every Resend fact — the URL, the Bearer header, the body shape, the timeout — lives in this one function (⏱ 2026-09-28: extracted from notifyReport when the reminder digest became the second sender). notifyReport and services/platform/src/lib/reminders.ts both call it and know nothing else about who delivers the mail."
       },
       "configKeyed": {
         "kind": "runtime-secret",
         "reason": "A Worker SECRET (`wrangler secret put RESEND_API_KEY`), never a committed var. It is the auth+alerts container's key — the same credential as the vault's SMTP_PASS — so it ROTATES TOGETHER with Supabase smtp_pass and Box A's EMAIL_URL. Absent, the notice is skipped and the report is still stored: nothing needs a release to repoint."
       },
-      "ownTheRecord": "YES — the report is ours, in platform_db.content_reports (migration 0013). Resend holds only its own log of the notice it delivered, which carries a report id, an app, a reason and a time — no user content. Losing Resend loses a notification, never a report.",
+      "ownTheRecord": "YES — the report is ours, in platform_db.content_reports (migration 0013). Resend holds only its own log of the notice it delivered, which carries a report id, an app, a reason and a time — no user content. Losing Resend loses a notification, never a report. ⏱ 2026-09-28: a reminder digest DOES carry user content — the recipient's confirmed address and the names, dates and amounts of the subscriptions about to renew — and Resend's log of it holds them; the per-app privacy notice says so (apps/subscriptiontracker/privacy.yaml, processor `resend`). What was sent is ours, in platform_db.reminder_sent (migration 0020), without the address or the names.",
       "exportPath": {
         "path": "services/platform/migrations/0013_content_reports.sql",
         "detail": "The record never leaves our database. `notified_at IS NULL` is the query that finds every report whose notice did not go out, from any provider."

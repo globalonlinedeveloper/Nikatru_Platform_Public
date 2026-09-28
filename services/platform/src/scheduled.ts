@@ -33,6 +33,7 @@ import {
   subjectsReadyForIdentity,
 } from './lib/erasure-ledger';
 import { deleteIdentity, erasePlatformRows, purgeVerifiedSignups } from './lib/platform-erasure';
+import { runReminderMail } from './lib/reminders';
 import { dropProviderTokens, providerOfRevokeStep, revokeProviderToken } from './lib/provider-revoke';
 import {
   runOpsWatchdogChecks,
@@ -593,6 +594,30 @@ export async function renewalsFanOut(env: Env): Promise<void> {
     rows.push({ target: t.appId, ok: outcome.ok, detail: outcome.detail });
   }
   await recordHeartbeat(env, rows, RENEWALS_JOB);
+}
+
+/**
+ * ⏱ 2026-09-28 · ST-R1 — THE RENEWAL REMINDER DIGEST. One email per person per
+ * app per day, listing the renewals due within their lead days, to a CONFIRMED
+ * address read at send time and never stored. The work is src/lib/reminders.ts;
+ * this is the limb, and the row.
+ *
+ * It runs RIGHT AFTER `renewalsFanOut`, on purpose: that pass has just rolled
+ * every past `next_renewal` forward, so the dates this job reads are the ones the
+ * app shows. It does not DEPEND on the order — it computes each occurrence with
+ * the same `rollForward`, so a renewals pass that failed tonight still mails the
+ * right date — but reading after the writer is the order that needs no argument.
+ *
+ * Fanned over `appTargets(env)` like the renewals pass: one row per app, a
+ * missing binding is a failed row, and an empty target list is one ok=0 `(none)`
+ * row. "Nothing due" is ok=1 with its own detail; a missing RESEND_API_KEY or
+ * SUPABASE_SERVICE_ROLE_KEY is ok=0 naming the key. Until an app ships the opt-in
+ * toggle nobody is opted in, so the job runs live and mails no one.
+ */
+export const REMINDER_MAIL_JOB = 'reminder_mail';
+
+export async function reminderMail(env: Env, nowMs: number = Date.now(), fetchImpl: typeof fetch = fetch): Promise<void> {
+  await recordHeartbeat(env, await runReminderMail(env, appTargets(env), nowMs, fetchImpl), REMINDER_MAIL_JOB);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2546,6 +2571,10 @@ async function runFiring(event: ScheduledController | undefined, env: Env): Prom
   await dispatchGithubWorkflows(env);
   await opsWatchdogJob(env);
   await renewalsFanOut(env);
+  // ST-R1 — right after the renewals pass, so it reads the dates that pass just
+  // wrote. Bounded: at most MAX_REMINDER_MAILS_PER_DAY sends and
+  // MAX_ADDRESS_READS_PER_RUN identity reads, each with a 10 s timeout.
+  await reminderMail(env);
   // Re-derives stored money notifications that never concluded. Its position
   // is not a safety property either: it writes through the one entitlement
   // writer and the retention sweep never deletes an unconcluded row, so

@@ -94,6 +94,12 @@ describe('the delete set is derived from the real platform schema', () => {
       'identity',
       'provider_accounts',
       'provider_notifications',
+      // ⏱ 2026-09-28 · 0020, renewal reminders. Spelt `user_id` ON PURPOSE:
+      // erasing the account deletes the email preference, the sent ledger and the
+      // calendar feed — a deleted feed row answers the same 404 as a revoked one.
+      'reminder_feed',
+      'reminder_prefs',
+      'reminder_sent',
     ]);
 
     // 🔑 AND THE OTHER SPELLING IS LIVE, NOT SPECULATIVE. `unclaimed_payments`

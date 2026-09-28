@@ -28,6 +28,10 @@ build when the two disagree, so this table cannot silently fall behind again.
 | GET | `/v1/entitlements` | Supabase JWT | The shared entitlement read ([5]M-4) |
 | POST | `/v1/plan/cancel` | Supabase JWT | The ROSCA cancel path ([5]M-9) |
 | POST | `/v1/checkout` | Supabase JWT | Paddle create-transaction ([ADR 044] rung 2) |
+| GET, PUT | `/v1/reminders/prefs` | Supabase JWT | The renewal reminder email preference (ST-R1) |
+| GET, POST | `/v1/reminders/unsubscribe` | **the token in `?t=`** | One-click unsubscribe from a reminder email (RFC 8058); GET changes nothing |
+| POST, DELETE | `/v1/calendar/feed` | Supabase JWT | Mint/rotate or revoke a private calendar feed (ST-R2) |
+| GET | `/v1/calendar/<token>.ics` | **the token is the capability** | The feed; `?download=1` for a download |
 
 Three properties of that table are load-bearing and are asserted, not assumed:
 
@@ -86,6 +90,11 @@ because a caller can get them wrong in ways the others do not offer.)
      `next_renewal` forward one cycle and records a `payment_history` row per
      crossed charge, over that app's bound `APP_DB`. Relocated here from
      subscriptiontracker-api's per-app cron. Add an app by binding its DB + a target entry.
+   - **reminder mail** (`reminder_mail`, ST-R1) — right after the renewals pass:
+     one digest per opted-in person per app per day, listing renewals inside
+     their lead days, to a CONFIRMED address read at send time and never stored
+     (`src/lib/reminders.ts`). Capped at `MAX_REMINDER_MAILS_PER_DAY` because
+     Resend's free quota is shared with password resets; over the cap waits a night.
 
 `GET /v1/health` is the deploy-verification endpoint (no auth).
 
@@ -113,7 +122,9 @@ because a caller can get them wrong in ways the others do not offer.)
   `0016_provider_tokens` (the Apple token table widened to one row per subject and
   provider, the Apple rows copied in; `apple_provider_tokens` stays until a later
   change drops it) and `0017_ext_devices` (the browser extension's one-time code
-  and per-device credential, O-EXTENSION-ACCOUNT-CHECK-UNBUILT). Additive-only, enforced
+  and per-device credential, O-EXTENSION-ACCOUNT-CHECK-UNBUILT), and
+  `0020_reminders` (the reminder preference, the sent ledger and the calendar
+  feed, ST-R1/ST-R2). Additive-only, enforced
   by `tooling/ci/check-migrations.mjs`. (This list had stopped at 0008 until
   2026-09-18; nothing guards it, so the directory is the authority.)
 - **`subscriptiontracker_db`** (binding `SUBSCRIPTIONTRACKER_DB`) — bound read/write for the renewals fan-out

@@ -123,7 +123,12 @@
       "revoke",
       "sessions",
       "revoke-all",
-      "revoke-others"
+      "revoke-others",
+      "reminders",
+      "prefs",
+      "unsubscribe",
+      "calendar",
+      "feed"
     ],
     "_subject": [
       "🟢 `subject` ADDED 2026-09-09, AND THIS LIMB CAUGHT IT AGAIN. GET /v1/entitlements/subject is the",
