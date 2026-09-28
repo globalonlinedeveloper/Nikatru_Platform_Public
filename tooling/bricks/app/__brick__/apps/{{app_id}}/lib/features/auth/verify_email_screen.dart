@@ -34,7 +34,7 @@ class VerifyEmailScreen extends ConsumerWidget {
     );
     return VerifyEmailView(
       captcha: TurnstileGate(controller: captcha, render: renderTurnstile),
-      captchaReady: captcha.ready,
+      captchaController: captcha,
       email: auth.currentUser?.email ?? '',
       // Still unverified is a real answer, not an error.
       onCheckConfirmed: () async {

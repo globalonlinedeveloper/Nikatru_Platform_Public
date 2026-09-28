@@ -599,6 +599,11 @@
       "firstSeen": "2026-08-01",
       "evidence": []
     },
+    "tooling/ci/assert-derived-sets.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-28",
+      "evidence": []
+    },
     "tooling/ci/assert-desktop-runner-identity.mjs": {
       "catches": 1,
       "firstSeen": "2026-08-04",
@@ -2754,6 +2759,11 @@
     "tooling/store/capture-precheck.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-27",
+      "evidence": []
+    },
+    "tooling/store/finish-capture.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-28",
       "evidence": []
     },
     "tooling/store/measure-frame-ink.mjs": {

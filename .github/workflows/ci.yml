@@ -653,6 +653,12 @@ jobs:
       - name: The app id has one rule, and the Worker, the callers and the schemas agree with it
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-app-id-contract.mjs
+      # why: O-CAPTURE-LEAVES-DERIVED-SETS-STALE. Every set declaring derivedFrom was derived from the
+      # source files in this tree; store-screenshots.yml runs the same guard before its pull request opens.
+      # Appended at the END of this job, like the two steps above, to shift the fewest ci.yml citations.
+      - name: Every derived listing set was derived from the files in this tree
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-derived-sets.mjs
       - name: A red job cancels the rest of this run (FF-1)
         if: failure()
         uses: ./.github/actions/cancel-run-on-red

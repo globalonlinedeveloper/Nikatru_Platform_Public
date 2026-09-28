@@ -5,6 +5,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'age_signal_host.dart';
 import 'auth_error_text.dart';
 import 'legal_consent_fields.dart';
+import 'turnstile_gate.dart' show CaptchaTokenController;
 
 /// Sign-in — [pipeline C-13], inherited by every stamped app.
 ///
@@ -54,7 +55,7 @@ class SignInView extends StatefulWidget {
     this.deletionDetail,
     this.onDismissDeletionNotice,
     this.captcha,
-    this.captchaReady = true,
+    this.captchaController,
     super.key,
   });
 
@@ -137,9 +138,16 @@ class SignInView extends StatefulWidget {
   /// owns it because it owns the token: every gated callback above spends one.
   final Widget? captcha;
 
-  /// ST-A1 (BUG-1): false while a rendered challenge has not answered. Sign in
-  /// and Forgot password — both captcha-gated — stay disabled until it has.
-  final bool captchaReady;
+  /// The adapter's token holder, which this view WAITS on — never gates on.
+  /// A gated action validates its fields first, then awaits
+  /// `untilReady()` (the gate shows its wait line), then calls the adapter's
+  /// callback, which spends the token with `consume()` in the same step.
+  /// Null where the adapter has no captcha.
+  ///
+  /// ⏱ 2026-09-28 — THIS WAS `captchaReady`, AND IT DISABLED THE BUTTONS: with
+  /// no token yet the action was dead, and an empty form could not even say
+  /// what was missing (E2E live run 36379673890, the #1022 regression).
+  final CaptchaTokenController? captchaController;
 
   @override
   State<SignInView> createState() => _SignInViewState();
@@ -266,6 +274,7 @@ class _SignInViewState extends State<SignInView> {
         core.CredentialsProblem.emailMissing => l10n.emailRequired,
       });
     }
+    await widget.captchaController?.untilReady();
     await widget.onSignIn(email, _password.text);
     // No navigation here: the router's redirect guard moves the user the moment
     // the session appears. Pushing from both places is how you get two routes
@@ -277,10 +286,12 @@ class _SignInViewState extends State<SignInView> {
     if (core.passwordResetProblem(email: email) != null) {
       throw core.AuthFailure.localized(l10n.emailRequired);
     }
+    await widget.captchaController?.untilReady();
     await widget.onForgotPassword(email);
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(l10n.resetSent)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(l10n.resetSent)));
   });
 
   @override
@@ -369,9 +380,7 @@ class _SignInViewState extends State<SignInView> {
                 // The same door as the button, busy latch included — `_signIn`
                 // routes through `_run`, so a second Enter cannot fire a second
                 // request.
-                onSubmitted: (_busy || !widget.captchaReady)
-                    ? null
-                    : () => _signIn(l10n),
+                onSubmitted: _busy ? null : () => _signIn(l10n),
               ),
               if (_error != null) ...<Widget>[
                 const SizedBox(height: 12),
@@ -384,20 +393,17 @@ class _SignInViewState extends State<SignInView> {
               ?widget.captcha,
               FilledButton(
                 key: SignInView.submitButton,
-                onPressed: (_busy || !widget.captchaReady)
-                    ? null
-                    : () => _signIn(l10n),
+                onPressed: _busy ? null : () => _signIn(l10n),
                 child: Text(l10n.signIn),
               ),
               const SizedBox(height: 8),
               TextButton(
                 key: SignInView.forgotButton,
-                onPressed: (_busy || !widget.captchaReady)
-                    ? null
-                    : () => _forgot(l10n),
+                onPressed: _busy ? null : () => _forgot(l10n),
                 child: Text(l10n.forgotPassword),
               ),
-              if (widget.showAppleButton || widget.showGoogleButton) ...<Widget>[
+              if (widget.showAppleButton ||
+                  widget.showGoogleButton) ...<Widget>[
                 const SizedBox(height: 8),
                 // The SAME tick boxes and wording as sign-up, directly above the
                 // provider buttons they gate, and only while this device owes

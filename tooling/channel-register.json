@@ -933,7 +933,17 @@
             "tooling/ci/assert-apps-gov-in-media.mjs. No `alpha` is declared: the portal's script checks the pixel",
             "size and the byte size and nothing else, and an unsourced colour-type rule would fire on correct input.",
             "No `screenshots` block either: the portal's screenshot rules (exactly 155x290) are not Play's, and",
-            "they live in contracts/store/vocabulary.js STORE_FORM_RULES, which assert-store-metadata.mjs applies."
+            "they live in contracts/store/vocabulary.js STORE_FORM_RULES, which assert-store-metadata.mjs applies.",
+            "",
+            "⏱ 2026-09-27 (O-CAPTURE-LEAVES-DERIVED-SETS-STALE, AR-D3b): BOTH SETS OF THIS CHANNEL DECLARE",
+            "`derivedFrom: { channel, set, deriver }` — the channel and the set (a path under that channel's",
+            "listing directory) they are made from, and the script that makes them. `generatedBy` stays for an",
+            "asset made from a non-capture master (render-play-graphics.mjs); a set carrying both is refused.",
+            "tooling/store/finish-capture.mjs --app <app> --channel <captured> runs every deriver whose",
+            "`derivedFrom.channel` is the captured one (transitively), and Store screenshots proposes the paths it",
+            "prints; tooling/ci/assert-derived-sets.mjs refuses a derived set whose recorded source hashes",
+            "(`derivation.sources` in its CAPTURE.json) no longer match the source files. The screenshot set is",
+            "declared in `derivedScreenshots` below, a block with a `dir` of its own like the App Store's `iapReview`."
           ],
           "assets": {
             "store-icon-512.png": {
@@ -942,8 +952,21 @@
               "height": 512,
               "format": "png",
               "maxBytes": 204799,
-              "generatedBy": "tooling/ci/assert-apps-gov-in-media.mjs",
+              "derivedFrom": {
+                "channel": "android-play",
+                "set": "store-icon-512.png",
+                "deriver": "tooling/ci/assert-apps-gov-in-media.mjs"
+              },
               "source": "apps.gov.in upload form, Step 2 app icon validator, verbatim from the form script /Developer/chunk-ZVEOEZCZ.js (read 2026-09-22): \"r.width!==512||r.height!==512\", and a size cap of under 200 KB (204,800 bytes, so at most 204,799). Private runbooks/store-submission-apps-gov-in.md 'Step 2'"
+            }
+          },
+          "derivedScreenshots": {
+            "_why": "The apps.gov.in screenshot set, DERIVED from the Play phone set by tooling/ci/assert-apps-gov-in-media.mjs (pad to the portal's aspect ratio, exact area average). Its rules are STORE_FORM_RULES['apps-gov-in'].screenshots in contracts/store/vocabulary.js; this block declares only where the set lives and what it is made from. A file set's sources are recorded in the CAPTURE.json of the directory set its deriver writes on the same channel, which is this one.",
+            "dir": "screenshots",
+            "derivedFrom": {
+              "channel": "android-play",
+              "set": "screenshots",
+              "deriver": "tooling/ci/assert-apps-gov-in-media.mjs"
             }
           }
         }

@@ -250,6 +250,14 @@
   "@authCaptchaFailed": {
     "description": "Consumed by package:nikatru_chassis_screens/auth/auth_error_text.dart. Shown when GoTrue refuses a request with captcha_failed. It deliberately does NOT say 'incorrect password': on a gated endpoint the captcha is checked BEFORE the credentials, and Turnstile tokens are single-use with a ~5 minute life, so an EXPIRED token is the dominant cause and the user's password is usually fine."
   },
+  "authCaptchaChecking": "Checking you're human…",
+  "@authCaptchaChecking": {
+    "description": "Consumed by package:nikatru_chassis_screens/auth/turnstile_gate.dart (CaptchaWaitStatus). A live-region status line under a captcha-gated button while a VALID submit waits for the Turnstile challenge to answer; the request is sent once it does."
+  },
+  "authCaptchaUnavailable": "We couldn't confirm you're human. Complete the check, or reload the page, then try again.",
+  "@authCaptchaUnavailable": {
+    "description": "Consumed by package:nikatru_chassis_screens/auth/auth_error_text.dart for CaptchaUnavailable: a valid submit waited for the Turnstile challenge and it timed out or failed, so NOTHING was sent. Says what to do; never a silent no-op."
+  },
   "authNetworkError": "Network error — check your connection and try again.",
   "@authNetworkError": {
     "description": "Consumed by package:nikatru_chassis_screens/auth/auth_error_text.dart when the auth request never reached the server."

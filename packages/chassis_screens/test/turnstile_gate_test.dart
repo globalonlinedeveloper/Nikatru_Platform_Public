@@ -6,14 +6,24 @@
 // token once and re-sent it, so every retry after one failed sign-in read
 // "Verification expired" until a reload. These cases pin the three halves of
 // the fix: a spend forgets the token, a spend re-mounts the challenge, and a
-// view refuses the gated action while a rendered challenge has not answered.
+// gated call WAITS for an unanswered challenge — never a dead button.
+//
+// ⏱ 2026-09-28 — the third half was "a view refuses the gated action while a
+// rendered challenge has not answered" (`captchaReady`). That was the #1022
+// regression: no token (slow, blocked, headless) meant a dead button that could
+// not even say "Enter your email" (E2E live run 36379673890). The view is now
+// live unless a request is in flight, validates first, and the adapter's
+// callback awaits `untilReady()`.
 //
 // MUTATION PROOF (run for the PR): make `consume()` return `_token` without
 // clearing it and bumping the generation, and the first two groups go red;
-// drop `|| !widget.captchaReady` from SignInView's submit and the third does.
+// make `untilReady` resolve without a token and the wait group does; disable
+// SignInView's submit while a token is missing and the view group does.
 // ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show ChassisL10nX, ContentPane;
 import 'package:nikatru_chassis_screens/auth/sign_in_screen.dart';
 import 'package:nikatru_chassis_screens/auth/turnstile_gate.dart';
 
@@ -123,9 +133,81 @@ void main() {
     });
   });
 
-  group('SignInView — submit waits for the challenge', () {
-    Widget view({required bool ready, Widget? captcha}) => SignInView(
-      onSignIn: (String _, String _) async {},
+  group('CaptchaTokenController.untilReady — a valid submit waits, once', () {
+    test('ready already: completes at once, nothing shown', () async {
+      final CaptchaTokenController c = CaptchaTokenController(
+        posture: CaptchaPosture.notOnThisChannel,
+      );
+      addTearDown(c.dispose);
+      await c.untilReady();
+      expect(c.waiting, isFalse);
+    });
+
+    test('no token yet: waits, and completes when the token lands', () async {
+      final CaptchaTokenController c = CaptchaTokenController(
+        posture: CaptchaPosture.challenge,
+        siteKey: 'k',
+      );
+      addTearDown(c.dispose);
+      bool done = false;
+      final Future<void> wait = c.untilReady().then((_) => done = true);
+      expect(c.waiting, isTrue);
+      await Future<void>.delayed(Duration.zero);
+      expect(done, isFalse, reason: 'no token, no go');
+      c.setToken('tok-1');
+      await wait;
+      expect(c.waiting, isFalse);
+      expect(c.consume(), 'tok-1');
+    });
+
+    test(
+      'a challenge error throws CaptchaUnavailable and re-challenges',
+      () async {
+        final CaptchaTokenController c = CaptchaTokenController(
+          posture: CaptchaPosture.challenge,
+          siteKey: 'k',
+        );
+        addTearDown(c.dispose);
+        final int before = c.generation;
+        final Future<void> wait = c.untilReady();
+        c.reportError('600010');
+        await expectLater(wait, throwsA(isA<CaptchaUnavailable>()));
+        expect(c.waiting, isFalse);
+        expect(c.token, isNull, reason: 'nothing to send after a failure');
+        expect(c.generation, greaterThan(before));
+      },
+    );
+
+    test('a challenge that never answers times out', () async {
+      final CaptchaTokenController c = CaptchaTokenController(
+        posture: CaptchaPosture.challenge,
+        siteKey: 'k',
+      );
+      addTearDown(c.dispose);
+      await expectLater(
+        c.untilReady(timeout: const Duration(milliseconds: 10)),
+        throwsA(
+          isA<CaptchaUnavailable>().having(
+            (CaptchaUnavailable e) => e.reason,
+            'reason',
+            'timeout',
+          ),
+        ),
+      );
+      expect(c.waiting, isFalse);
+    });
+  });
+
+  group('SignInView — live without a token; validates first', () {
+    CaptchaTokenController challenge() =>
+        CaptchaTokenController(posture: CaptchaPosture.challenge, siteKey: 'k');
+
+    Widget view({
+      CaptchaTokenController? controller,
+      Widget? captcha,
+      Future<void> Function(String, String)? onSignIn,
+    }) => SignInView(
+      onSignIn: onSignIn ?? (String _, String _) async {},
       onForgotPassword: (String _) async {},
       onNeedAccount: () {},
       showAppleButton: false,
@@ -141,42 +223,109 @@ void main() {
           }) => const SizedBox.shrink(),
       onAcceptTerms: ({required bool marketingEmail}) async {},
       captcha: captcha,
-      captchaReady: ready,
+      captchaController: controller,
     );
 
-    testWidgets('no token yet: Sign in and Forgot password are disabled', (
+    Future<void> fillValid(WidgetTester tester) async {
+      await tester.enterText(
+        find.byKey(SignInView.emailField),
+        'alex@example.com',
+      );
+      await tester.enterText(find.byKey(SignInView.passwordField), 'hunter22');
+    }
+
+    testWidgets('(a) no token yet: an EMPTY submit says what is missing', (
       WidgetTester tester,
     ) async {
+      final CaptchaTokenController c = challenge();
+      addTearDown(c.dispose);
+      int calls = 0;
       await pumpChassis(
         tester,
         kPhone,
-        view(ready: false, captcha: const SizedBox(key: Key('gate'))),
+        view(
+          controller: c,
+          captcha: const SizedBox(key: Key('gate')),
+          onSignIn: (String _, String _) async => calls++,
+        ),
       );
       expect(find.byKey(const Key('gate')), findsOneWidget);
-      final FilledButton submit = tester.widget<FilledButton>(
-        find.byKey(SignInView.submitButton),
-      );
-      expect(submit.onPressed, isNull);
-      final TextButton forgot = tester.widget<TextButton>(
-        find.byKey(SignInView.forgotButton),
-      );
-      expect(forgot.onPressed, isNull);
-    });
-
-    testWidgets('with a token: both are live', (WidgetTester tester) async {
-      await pumpChassis(tester, kPhone, view(ready: true));
-      expect(
-        tester
-            .widget<FilledButton>(find.byKey(SignInView.submitButton))
-            .onPressed,
-        isNotNull,
-      );
       expect(
         tester
             .widget<TextButton>(find.byKey(SignInView.forgotButton))
             .onPressed,
         isNotNull,
       );
+      await tester.tap(find.byKey(SignInView.submitButton));
+      await tester.pump();
+      final BuildContext ctx = tester.element(find.byType(SignInView));
+      expect(find.text(ctx.chassisL10n.authEnterBoth), findsOneWidget);
+      expect(calls, 0, reason: 'validation first — no request, no captcha');
+      expect(c.waiting, isFalse, reason: 'an invalid form never waits');
+    });
+
+    testWidgets('(b) a valid submit waits, announced, then calls ONCE when '
+        'the token lands', (WidgetTester tester) async {
+      final SemanticsHandle semantics = tester.ensureSemantics();
+      final CaptchaTokenController c = challenge();
+      addTearDown(c.dispose);
+      final List<String?> spent = <String?>[];
+      await pumpChassis(
+        tester,
+        kPhone,
+        view(
+          controller: c,
+          // The gate is what shows the wait now, so it is mounted, as the
+          // brick adapter mounts it.
+          captcha: TurnstileGate(
+            controller: c,
+            render: (BuildContext _, TurnstileChallenge _) =>
+                const SizedBox(height: 10),
+          ),
+          onSignIn: (String _, String _) async => spent.add(c.consume()),
+        ),
+      );
+      await fillValid(tester);
+      await tester.tap(find.byKey(SignInView.submitButton));
+      await tester.pump();
+      await tester.tap(
+        find.byKey(SignInView.submitButton),
+        warnIfMissed: false,
+      );
+      await tester.pump();
+
+      expect(spent, isEmpty, reason: 'no token, no call');
+      final Finder status = find.byKey(TurnstileGate.waitStatusLine);
+      expect(status, findsOneWidget);
+      expect(tester.getSemantics(status), isSemantics(isLiveRegion: true));
+
+      c.setToken('tok-1');
+      await tester.pump();
+      await tester.pump();
+      expect(spent, <String?>['tok-1'], reason: 'exactly one call, with it');
+      expect(find.byKey(TurnstileGate.waitStatusLine), findsNothing);
+      semantics.dispose();
+    });
+
+    testWidgets('(c) a captcha error while waiting reads as the retry '
+        'sentence, and nothing is called', (WidgetTester tester) async {
+      final CaptchaTokenController c = challenge();
+      addTearDown(c.dispose);
+      int calls = 0;
+      await pumpChassis(
+        tester,
+        kPhone,
+        view(controller: c, onSignIn: (String _, String _) async => calls++),
+      );
+      await fillValid(tester);
+      await tester.tap(find.byKey(SignInView.submitButton));
+      await tester.pump();
+      c.reportError('600010');
+      await tester.pump();
+      await tester.pump();
+      final BuildContext ctx = tester.element(find.byType(SignInView));
+      expect(find.text(ctx.chassisL10n.authCaptchaUnavailable), findsOneWidget);
+      expect(calls, 0);
     });
   });
 
@@ -203,6 +352,52 @@ void main() {
     }
 
     testWidgets('kPhone', (WidgetTester t) => pumpAt(t, kPhone));
+    testWidgets('kTablet', (WidgetTester t) => pumpAt(t, kTablet));
+    testWidgets('kDesktop', (WidgetTester t) => pumpAt(t, kDesktop));
+  });
+
+  // The gate's wait line is PRIVATE to the gate, so it is measured through the
+  // gate's public API: a WAITING controller, the gate inside the form pane, at
+  // every window class — no overflow, and the sentence stays on screen.
+  group('the gate\'s wait line fits the form pane at every window class', () {
+    Future<void> pumpAt(WidgetTester tester, Size size) async {
+      final CaptchaTokenController c = CaptchaTokenController(
+        posture: CaptchaPosture.challenge,
+        siteKey: 'k',
+      );
+      addTearDown(c.dispose);
+      final Future<void> wait = c.untilReady();
+      await pumpChassis(
+        tester,
+        size,
+        Scaffold(
+          body: ContentPane.form(
+            child: TurnstileGate(
+              controller: c,
+              render: (BuildContext _, TurnstileChallenge _) =>
+                  const SizedBox(height: 65),
+            ),
+          ),
+        ),
+        settle: false,
+      );
+      expect(tester.takeException(), isNull);
+      final Finder line = find.byKey(TurnstileGate.waitStatusLine);
+      expect(line, findsOneWidget);
+      expect(
+        tester.getRect(line).right,
+        lessThanOrEqualTo(size.width),
+        reason: 'the sentence stays on screen at ${size.width}',
+      );
+      // Answer the challenge, so no wait timer outlives the case.
+      c.setToken('tok');
+      await wait;
+      await tester.pump();
+      expect(line, findsNothing, reason: 'the line goes when the wait ends');
+    }
+
+    testWidgets('kPhone', (WidgetTester t) => pumpAt(t, kPhone));
+    testWidgets('400', (WidgetTester t) => pumpAt(t, const Size(400, 800)));
     testWidgets('kTablet', (WidgetTester t) => pumpAt(t, kTablet));
     testWidgets('kDesktop', (WidgetTester t) => pumpAt(t, kDesktop));
   });
