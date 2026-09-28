@@ -265,6 +265,12 @@
         "basis": "Manifest read."
       },
       {
+        "binary": "share_plus 13.3.0",
+        "manifest": "ships-own",
+        "accessedApis": [],
+        "basis": "⏱ ADDED 2026-09-28 (ST-X1, audit D2/D31) with the settings CSV export. Manifest read from the pub cache (share_plus-13.3.0/ios/share_plus/Sources/share_plus/PrivacyInfo.xcprivacy): tracking false, no accessed API types. It presents UIActivityViewController over a file the app wrote to its own temporary directory; that is not a Required Reason API."
+      },
+      {
         "binary": "package_info_plus 10.2.1",
         "manifest": "ships-own",
         "accessedApis": [],
@@ -407,6 +413,12 @@
         "manifest": "ships-own",
         "accessedApis": [],
         "basis": "Manifest read."
+      },
+      {
+        "binary": "share_plus 13.3.0",
+        "manifest": "ships-own",
+        "accessedApis": [],
+        "basis": "⏱ ADDED 2026-09-28 (ST-X1, audit D2/D31) with the settings CSV export. Manifest read from the pub cache (share_plus-13.3.0/macos/share_plus/Sources/share_plus/PrivacyInfo.xcprivacy): tracking false, no accessed API types. It presents NSSharingServicePicker over a file the app wrote to its own temporary directory; that is not a Required Reason API."
       },
       {
         "binary": "package_info_plus 10.2.1",

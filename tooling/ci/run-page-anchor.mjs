@@ -295,6 +295,13 @@ export function judgeRunPage(runs, { what = 'this run history', floor = null, he
 // A window is COMPLETE between its oldest row and its newest — a replica omits
 // runs after its snapshot, never between two it serves — which is what lets its
 // bottom edge (`floorId`) bound what it can vouch for.
+//
+// ⏱ 2026-09-28 · THE WORKER COPY. The platform Worker cannot import this module,
+// so services/platform/src/ops-watchdog.ts carries its own `judgeMainPage` (the
+// HEAD and CROSS-READ anchors) and `spliceCrossRead` (the splice above, for its
+// one window: the creation-date cross-read). A change to the rule here is a
+// change there: run-page-anchor.test.mjs "THE WORKER COPY" asks both copies
+// every case and reds when they answer differently.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** The prefix of a run's `path` FIELD in the API's answer, matched against —

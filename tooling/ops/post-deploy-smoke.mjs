@@ -163,6 +163,28 @@ const ATTEMPTS = 6;
 const GAP_MS = 10_000;
 const TIMEOUT_MS = 15_000;
 
+// ── THE COLD-HEALTH CEILING — judgement, like ATTEMPTS/GAP_MS above ──────────
+// Main CI 36445515397 (2026-09-28, build 0a7ab55d): subscriptiontracker-api
+// answered at THIS commit with `ok:false`, and the smoke exited on that first
+// read. Twenty minutes later the same build answered `ok:true` with app_db,
+// platform_db and supabase_jwks all ok. The first reads after a deploy land on
+// a COLD isolate, whose one external probe (the JWKS fetch) can miss its 2s
+// budget. So an `ok:false` at the right build gets bounded re-reads before it is
+// a failure. They spend the SAME poll budget as the build match — `ATTEMPTS`
+// reads (the first unwell read counts) `GAP_MS` apart — because it is the same
+// kind of loop: re-asking an answer that SUCCEEDED and is still settling, which
+// ops-bounded-retry.test.mjs exempts from the shared blip-retry plan by that one
+// constant. A second attempt count here would be a rival loop. `TIMEOUT_MS` is
+// the per-read ceiling; `HEALTH_DEADLINE_MS` is the total ceiling, so a string
+// of slow reads cannot stretch the wait past it.
+//
+// ⚠️ NOTHING HERE CAN TURN A REAL FAILURE GREEN. Only a read that is at THIS
+// build AND `ok:true` passes. A read at any OTHER build fails at once — the
+// build was already seen live, so a different one now is a rollback or a
+// racing deploy, not propagation. The last unwell read's checks are printed.
+export const HEALTH_DEADLINE_MS = 90_000;
+export { ATTEMPTS, GAP_MS };
+
 /** The catalogue this script resolves the deployed app from. Overridable with
  *  --catalogue so the suite can point the limb at a tree it built. */
 const DEFAULT_CATALOGUE = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'catalog', 'apps.json');
@@ -260,6 +282,89 @@ export function judgeOk(body) {
   } catch {
     return false;
   }
+}
+
+/** Each check of a `/v1/health` body as one printable line — `name=status
+ *  (reason, age Nms)` — so a failure names the check that was unwell. The shape
+ *  is services/_shared/src/health.ts's `ProbeReading`. */
+export function describeChecks(body) {
+  let checks;
+  try {
+    checks = JSON.parse(body)?.checks;
+  } catch {
+    return ['(the body is not JSON)'];
+  }
+  if (!Array.isArray(checks) || checks.length === 0) return ['(the body carries no `checks` array)'];
+  return checks.map((c) => {
+    const detail = [c?.reason ? String(c.reason) : null, Number.isFinite(c?.ageMs) ? `age ${c.ageMs}ms` : null]
+      .filter(Boolean)
+      .join(', ');
+    return `${c?.name ?? '(unnamed)'}=${c?.status ?? '(no status)'}${detail ? ` (${detail})` : ''}`;
+  });
+}
+
+/**
+ * Re-reads a Worker that answered at THIS build with `ok:false`, until it
+ * answers `ok:true` or a ceiling is reached. `first` is the unwell response
+ * already in hand (attempt 1). `read`, `sleep` and `now` are injected so every
+ * branch runs with no network and no clock.
+ *
+ * Returns `{ok: true, attempt}`, or `{ok: false, attempt, reason, checks}`.
+ * A read at a different build returns at once with `mismatch: true`.
+ */
+export async function awaitHealthy({
+  first,
+  read,
+  field,
+  expected,
+  attempts = ATTEMPTS,
+  gapMs = GAP_MS,
+  deadlineMs = HEALTH_DEADLINE_MS,
+  sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+  now = Date.now,
+  log = console.log,
+}) {
+  const start = now();
+  let lastBody = String(first?.body ?? '');
+  let reason = 'reports ok:false';
+  let attempt = 1;
+  for (; ; attempt += 1) {
+    if (attempt > 1) {
+      let res;
+      try {
+        res = await read();
+      } catch (e) {
+        res = { error: e.message };
+      }
+      if (res.error !== undefined || res.status === undefined) {
+        // Not a mismatch and not a pass: an unanswered read is one more unwell
+        // read, and the ceiling still bounds it.
+        reason = `request failed: ${res.error ?? 'no response'}`;
+      } else {
+        const body = String(res.body ?? '');
+        const verdict = judge({ status: res.status, body, field, expected });
+        if (verdict.ok) {
+          if (judgeOk(body)) return { ok: true, attempt };
+          lastBody = body;
+          reason = 'reports ok:false';
+        } else if (res.status === 200 && verdict.retry) {
+          // A 200 JSON body at another build (or none): THIS build was already
+          // live, so this is not propagation. Fail at once.
+          return { ok: false, mismatch: true, attempt, reason: verdict.reason, checks: describeChecks(body) };
+        } else {
+          reason = verdict.reason;
+        }
+      }
+    }
+    log(`..  health attempt ${attempt}/${attempts}: ${reason} — ${describeChecks(lastBody).join('; ')}`);
+    if (attempt >= attempts) break;
+    if (now() - start + gapMs > deadlineMs) {
+      reason = `${reason}; the ${deadlineMs / 1000}s total ceiling was reached`;
+      break;
+    }
+    await sleep(gapMs);
+  }
+  return { ok: false, attempt, reason, checks: describeChecks(lastBody) };
 }
 
 /** The web channel's stable-named entry points, named by the register row
@@ -1400,11 +1505,20 @@ async function main() {
     }
   }
 
+  // ONE read sequence, shared by the build loop and the health re-reads, so a
+  // fixture is consumed in order across both.
+  let reads = 0;
+  const nextRead = async () => {
+    const k = reads;
+    reads += 1;
+    return canned ? (canned[Math.min(k, canned.length - 1)] ?? {}) : fetchOnce(url);
+  };
+
   let last = 'no attempt was made';
   for (let i = 0; i < ATTEMPTS; i += 1) {
     let res;
     try {
-      res = canned ? (canned[Math.min(i, canned.length - 1)] ?? {}) : await fetchOnce(url);
+      res = await nextRead();
     } catch (e) {
       // A network error is retryable exactly once per attempt like any other —
       // but it is never a pass.
@@ -1414,11 +1528,31 @@ async function main() {
     }
     const verdict = judge({ status: res.status, body: String(res.body ?? ''), field, expected });
     if (verdict.ok) {
+      let healthNote = '';
       if (requireOk && !judgeOk(String(res.body ?? ''))) {
-        console.error(`✗ ${url} is serving build ${verdict.actual} and reports ok:false — it deployed, and it is unwell.`);
-        process.exit(1);
+        // A cold isolate can answer ok:false at the right build; re-read within
+        // the HEALTH_* ceiling before calling it unwell.
+        const health = await awaitHealthy({
+          first: res,
+          read: nextRead,
+          field,
+          expected,
+          sleep: canned ? async () => {} : undefined,
+        });
+        if (!health.ok) {
+          if (health.mismatch) {
+            console.error(`✗ ${url} served build ${verdict.actual}, then a different build on health attempt ${health.attempt}/${ATTEMPTS} — ${health.reason}. This build was already live, so this is not propagation.`);
+          } else {
+            console.error(`✗ ${url} is serving build ${verdict.actual} and reports ok:false — it deployed, and it is unwell. Still unwell after ${health.attempt}/${ATTEMPTS} health attempt(s): ${health.reason}.`);
+            console.error(`    Ceiling: ${ATTEMPTS} attempt(s) ${GAP_MS / 1000}s apart, ${HEALTH_DEADLINE_MS / 1000}s total, ${TIMEOUT_MS / 1000}s per read. Judgement, not a vendor SLA.`);
+          }
+          console.error('    Checks on the last unwell read:');
+          for (const line of health.checks) console.error(`      ${line}`);
+          process.exit(1);
+        }
+        healthNote = `, ok:true on health attempt ${health.attempt}/${ATTEMPTS}`;
       }
-      console.log(`ok  ${url} is live at ${field}=${verdict.actual} (attempt ${i + 1}/${ATTEMPTS})`);
+      console.log(`ok  ${url} is live at ${field}=${verdict.actual} (attempt ${i + 1}/${ATTEMPTS}${healthNote})`);
 
       // ── [14]O-8. Runs AFTER the build match, deliberately: asserting the
       // cache policy of a surface that is not yet serving this build would

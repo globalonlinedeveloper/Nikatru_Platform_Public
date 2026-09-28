@@ -442,6 +442,17 @@ if (allowed.size === 0) {
     'absent the limb cannot distinguish a resource of ours from a payment webhook. Neither is a pass.',
   );
 }
+// ⏱ 2026-09-28 · ST-N1 — A SEGMENT OF OURS THAT SPELLS A PROVIDER'S TELL. POST
+// /v1/auth/native/<app>/resend is GoTrue's own endpoint name (re-send a confirmation
+// email), and `resend` is also the tell of the Resend row. `segments` cannot claim it,
+// because a tell is checked FIRST — on purpose, so a vendor's webhook cannot be
+// waved through as "ours". So a collision is declared on its own, per segment, naming
+// the ONE provider it merely spells and why; a declaration naming another provider,
+// or one whose segment no Worker registers any more, FAILS, and each accepted one
+// PRINTS every run.
+const tellCollisions = new Map(
+  Object.entries(providerReg.nonProviderRouteSegments?.tellCollisions ?? {}).map(([seg, v]) => [String(seg).toLowerCase(), v]),
+);
 const tellSegments = new Map();
 for (const p of providers) {
   for (const t of p.tells ?? []) tellSegments.set(String(t).toLowerCase().replace(/[^a-z0-9]/g, ''), p);
@@ -465,6 +476,19 @@ for (const f of routeFiles) {
       if (seenSegments.has(key)) continue;
       seenSegments.add(key);
       const provider = tellSegments.get(key.replace(/[^a-z0-9]/g, ''));
+      const collision = tellCollisions.get(key);
+      if (provider && collision) {
+        if (collision.provider !== provider.id || !String(collision.why ?? '').trim()) {
+          problems.push(
+            `${rel(f)} registers a route segment /${seg}, which spells provider ${provider.id}'s tell, and ` +
+              `nonProviderRouteSegments.tellCollisions.${key} ${collision.provider !== provider.id ? `names provider ${JSON.stringify(collision.provider)} instead` : 'gives no `why`'}. ` +
+              'A collision is declared against the ONE provider it spells, with the reason it is ours.',
+          );
+        } else {
+          prints.push(`ROUTE SEGMENT /${seg} SPELLS ${provider.name}'s tell and is declared OURS: ${collision.why}`);
+        }
+        continue;
+      }
       if (provider) {
         if (provider.reachableAt === null || provider.reachableAt === undefined) {
           problems.push(
@@ -492,6 +516,15 @@ if (routeSegments === 0) {
     'The route-registration pattern stopped matching (a framework change, a rename), so the limb that catches an',
     'undeclared provider arriving in code ran over nothing while printing ok.',
   );
+}
+// A collision declared for a segment no Worker registers is stale, the same way.
+for (const seg of tellCollisions.keys()) {
+  if (!seenSegments.has(seg)) {
+    problems.push(
+      `nonProviderRouteSegments.tellCollisions declares /${seg}, and no Worker registers that segment. Retire the ` +
+        'declaration: a standing exemption for a route that is gone is one a vendor webhook could later arrive under.',
+    );
+  }
 }
 // A register row claiming a route that no longer exists is a stale row, and the
 // direction matters: it is how a retired integration keeps looking current.

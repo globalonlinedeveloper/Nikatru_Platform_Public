@@ -203,6 +203,158 @@ class Money implements Comparable<Money> {
     return fromMajorUnits(major, currencyCode);
   }
 
+  /// Reads an amount as a SPREADSHEET wrote it, or null if it is not one.
+  ///
+  /// Why this exists beside the strict [tryParseMajor]: an imported file
+  /// (ST-X2, and ST-E2 reuses it) was written by somebody else's software under
+  /// somebody else's locale. There is no field to constrain, so refusing
+  /// `12,99` would refuse every European export and refusing `₹649` every
+  /// Indian one. The guesses below are the ones a person makes reading the
+  /// cell, written down once so they are made the same way everywhere:
+  ///
+  /// * A leading or trailing symbol (`₹`, `$`, `€`, `Rs.`, …) or 3-letter code
+  ///   is stripped. A CODE, or a symbol only one currency writes (`€`, `₹`,
+  ///   `A$`, `C$`; `Rs` and `₨` for the rupee family INR/PKR/LKR/NPR), that
+  ///   names a currency other than [currencyCode] returns null — relabelling
+  ///   euros as rupees is worse than no answer.
+  ///   `$`, `£` and `¥` are written for several currencies, so they are
+  ///   stripped without that check.
+  /// * Both `,` and `.` present: the LAST one is the decimal separator.
+  /// * One kind present and followed by exactly three digits, in valid groups
+  ///   of three or the Indian 2-2-3 (`1,25,000`): a thousands separator. Any
+  ///   other single occurrence is the decimal separator (`12,99`).
+  ///
+  /// ⚠️ `1.500` therefore reads as one thousand five hundred, which is the
+  /// right call for the two-digit currencies imports carry and the wrong one for
+  /// a three-digit dinar written with a single dot; a file of those must be
+  /// read with an explicit parser, not guessed at. Rounding to the currency's
+  /// precision is [fromMajorUnits]'s.
+  static Money? parseLocalized(String text, String currencyCode) {
+    final String code = currencyCode.toUpperCase();
+    // Markers only these currencies write; a mismatch against [code] is
+    // refused. `Rs` and `₨` are the rupee FAMILY — India, Pakistan, Sri Lanka
+    // and Nepal all write them — so they admit any of the four.
+    const Set<String> rupees = <String>{'INR', 'PKR', 'LKR', 'NPR'};
+    const Map<String, Set<String>> ownedMarkers = <String, Set<String>>{
+      'rs.': rupees,
+      'rs': rupees,
+      '₨': rupees,
+      '₹': <String>{'INR'},
+      '€': <String>{'EUR'},
+      r'a$': <String>{'AUD'},
+      r'c$': <String>{'CAD'},
+    };
+    // Longest first, so `A$` is not read as `A` then `$`.
+    const List<String> sharedMarkers = <String>[r'$', '£', '¥'];
+    final RegExp leadingCode = RegExp(r'^([A-Za-z]{3})(?![A-Za-z])');
+    final RegExp trailingCode = RegExp(r'(?<![A-Za-z])([A-Za-z]{3})$');
+
+    String s = text.trim();
+    bool stripped = true;
+    while (stripped && s.isNotEmpty) {
+      stripped = false;
+      final RegExpMatch? lead = leadingCode.firstMatch(s);
+      final RegExpMatch? trail = trailingCode.firstMatch(s);
+      if (lead != null || trail != null) {
+        final RegExpMatch m = (lead ?? trail)!;
+        if (m.group(1)!.toUpperCase() != code) return null;
+        s = (lead != null ? s.substring(m.end) : s.substring(0, m.start))
+            .trim();
+        stripped = true;
+        continue;
+      }
+      final String lower = s.toLowerCase();
+      for (final MapEntry<String, Set<String>> e in ownedMarkers.entries) {
+        if (lower.startsWith(e.key) || lower.endsWith(e.key)) {
+          if (!e.value.contains(code)) return null;
+          s = (lower.startsWith(e.key)
+                  ? s.substring(e.key.length)
+                  : s.substring(0, s.length - e.key.length))
+              .trim();
+          stripped = true;
+          break;
+        }
+      }
+      if (stripped) continue;
+      for (final String marker in sharedMarkers) {
+        if (s.startsWith(marker) || s.endsWith(marker)) {
+          s = (s.startsWith(marker)
+                  ? s.substring(marker.length)
+                  : s.substring(0, s.length - marker.length))
+              .trim();
+          stripped = true;
+          break;
+        }
+      }
+    }
+
+    bool negative = false;
+    if (s.startsWith('-')) {
+      negative = true;
+      s = s.substring(1).trim();
+    }
+    // A space-grouped figure (`1 299,50`, French and Nordic exports).
+    if (RegExp(r'^\d{1,3}([ \u00A0\u202F]\d{3})+([.,]\d+)?$').hasMatch(s)) {
+      s = s.replaceAll(RegExp(r'[ \u00A0\u202F]'), '');
+    }
+    if (!RegExp(r'^\d[\d.,]*$').hasMatch(s) || !RegExp(r'\d$').hasMatch(s)) {
+      return null;
+    }
+
+    // Western groups of three, or the Indian lakh grouping: 1-2 digits, then
+    // pairs, then a final three.
+    bool validGroups(List<String> groups) {
+      if (groups.length < 2 || groups.first.isEmpty) return false;
+      final bool western = groups.first.length <= 3 &&
+          groups.skip(1).every((String g) => g.length == 3);
+      final bool indian = groups.length >= 3 &&
+          groups.first.length <= 2 &&
+          groups.last.length == 3 &&
+          groups
+              .sublist(1, groups.length - 1)
+              .every((String g) => g.length == 2);
+      // A leading `0,` is never a thousands group (`0,500` is half of one).
+      return (western || indian) && groups.first != '0';
+    }
+
+    final int lastComma = s.lastIndexOf(',');
+    final int lastDot = s.lastIndexOf('.');
+    String whole;
+    String fraction = '';
+    if (lastComma >= 0 && lastDot >= 0) {
+      final String decimal = lastComma > lastDot ? ',' : '.';
+      final String grouping = decimal == ',' ? '.' : ',';
+      final int at = s.lastIndexOf(decimal);
+      final String head = s.substring(0, at);
+      fraction = s.substring(at + 1);
+      if (head.contains(decimal) || fraction.contains(grouping)) return null;
+      if (!validGroups(head.split(grouping))) return null;
+      whole = head.replaceAll(grouping, '');
+    } else if (lastComma >= 0 || lastDot >= 0) {
+      final String sep = lastComma >= 0 ? ',' : '.';
+      final List<String> parts = s.split(sep);
+      if (parts.length > 2 || parts.last.length == 3) {
+        if (!validGroups(parts)) {
+          if (parts.length > 2) return null;
+          whole = parts.first;
+          fraction = parts.last;
+        } else {
+          whole = parts.join();
+        }
+      } else {
+        whole = parts.first;
+        fraction = parts.last;
+      }
+    } else {
+      whole = s;
+    }
+    if (whole.isEmpty) return null;
+    final num? major =
+        num.tryParse(fraction.isEmpty ? whole : '$whole.$fraction');
+    if (major == null) return null;
+    return fromMajorUnits(negative ? -major : major, code);
+  }
+
   void _requireSame(Money other, String operation) {
     if (currencyCode != other.currencyCode) {
       throw CurrencyMismatchError(currencyCode, other.currencyCode, operation);

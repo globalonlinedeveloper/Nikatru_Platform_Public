@@ -2857,12 +2857,14 @@ export const isCallJob = (job) => (job?.lines ?? []).some((l) => /^ {4}uses:\s*\
  *  measured ends in. G1-G3 were measured on real runs; how GitHub lists a call
  *  job that is skipped AS A WHOLE was not, so a run that lists the call job in
  *  no shape at all is COVERAGE LOST (exit 2), never "absent, so neutral" —
- *  EXCEPT on the three neutral arms (PD2B2-4), checked in this order, where the
+ *  EXCEPT on the four neutral arms (PD2B2-4), checked in this order, where the
  *  run cannot have run the call: (a) the run's `referenced_workflows` is an
  *  array that names no `/<callee>@`, so the run predates the call; (b) the call
  *  job's `if:` is POST_GATE_IF and the run is not a push to main; (c) a job the
- *  call job `needs` is in the run with a conclusion other than success. A run
- *  object with no `referenced_workflows` array stays COVERAGE LOST. */
+ *  call job `needs` is in the run with a conclusion other than success; (d) the
+ *  run concluded `cancelled` and a NEWER run on its branch superseded it
+ *  (`supersededBy`). A run object with no `referenced_workflows` array stays
+ *  COVERAGE LOST. */
 export const G4_UNMEASURED = 'G4: whole-call-job skip shape unmeasured (cloud-drafts/pd2b/d2b2-ruling-verify.md)';
 
 /** PURE. Does an API job `name` belong to workflow job `jobId`? The API reports a
@@ -2895,11 +2897,46 @@ export function apiJobMatcher(jobId, job) {
   };
 }
 
+// ⏱ 2026-09-28 · OPS-WATCH 36445522260. A SUPERSEDED RUN NEVER STARTED ITS CALL.
+// ci.yml's concurrency on main holds one running run and one pending; a third
+// push CANCELS the pending one before a single job exists. Main CI run 4270
+// (36445259496, 15:39:35Z) was cancelled that way by run 4271 (36445515397): its
+// /jobs answer is total_count 0, while its referenced_workflows DO name
+// deploy-web.yml and deploy-workers.yml, so arms (a)–(c) cannot fire and both
+// deploy rows went COVERAGE LOST on a normal serial landing. Arm (d): a run that
+// concluded `cancelled` AND has a NEWER run (`created_at`) on the same branch
+// in the page read — any status, since the superseding run is typically still
+// pending — says nothing about the call, and the scan reads past it. Only the
+// ZERO-entry shape reaches this arm: a cancelled run whose call DID start is
+// graded on its children like any other, so a failure there is still RED. A
+// cancelled run with no newer run is not superseded and stays COVERAGE LOST, and
+// a window of nothing but neutral runs is still UNREAD (INV6), never a pass.
+
+/** PURE. The run in `runs` that superseded `run`, or null. Superseded means
+ *  `run` concluded `cancelled` and another run on the same branch was created
+ *  after it; the newest such run is returned. A run without a parseable
+ *  `created_at` is never superseded. */
+export function supersededBy(run, runs) {
+  if (run?.conclusion !== 'cancelled') return null;
+  const at = Date.parse(run?.created_at ?? '');
+  if (!Number.isFinite(at)) return null;
+  let best = null;
+  for (const r of runs ?? []) {
+    if (!r || r.id === run.id || r.head_branch !== run.head_branch) continue;
+    const t = Date.parse(r.created_at ?? '');
+    if (!Number.isFinite(t) || t <= at) continue;
+    if (!best || t > Date.parse(best.created_at)) best = r;
+  }
+  return best;
+}
+
 /** PURE. Why a call job with ZERO entries in `run` could not have run there, or
- *  null. The three neutral arms of G4_UNMEASURED (PD2B2-4), in order: (a) the
+ *  null. The four neutral arms of G4_UNMEASURED (PD2B2-4), in order: (a) the
  *  run predates the call; (b) its `if:` could not hold; (c) the gate it needs did
- *  not pass — that red belongs to the gate's own row. Null keeps it COVERAGE LOST. */
-export function zeroEntryNeutral(job, run, apiJobs, wf) {
+ *  not pass — that red belongs to the gate's own row; (d) the run was cancelled
+ *  and superseded by `newer` (`supersededBy`, computed by the caller from the
+ *  branch page). Null keeps it COVERAGE LOST. */
+export function zeroEntryNeutral(job, run, apiJobs, wf, newer = null) {
   const uses = (job?.lines ?? []).map((l) => String(l?.text ?? '').match(/^ {4}uses:\s*(['"]?)(\S+?)\1\s*$/)).find(Boolean);
   const callee = uses ? uses[2].replace(/^\.\//, '') : null;
   const refs = run?.referenced_workflows;
@@ -2913,6 +2950,9 @@ export function zeroEntryNeutral(job, run, apiJobs, wf) {
     const match = apiJobMatcher(need, wf?.jobs?.get?.(need));
     const red = (apiJobs ?? []).find((j) => match(j?.name) && j?.conclusion !== 'success');
     if (red) return `(c) the job it needs, ${need}, came back ${JSON.stringify(red?.conclusion ?? null)}: that red is the gate's own row`;
+  }
+  if (run?.conclusion === 'cancelled' && newer) {
+    return `(d) the run concluded "cancelled" and run ${newer.id} (created ${newer.created_at}) on ${JSON.stringify(run?.head_branch ?? null)} superseded it before the call started`;
   }
   return null;
 }
@@ -2990,8 +3030,9 @@ export function runOutsideScheduleDays(run, days) {
  *  'neutral' | 'lost', detail }`. `apiJobs` is that run's /jobs answer; `wf` the parsed
  *  workflow the unit's ids are declared in. Neutral is "this run says nothing
  *  about the unit" — never a pass. Lost is a call job in a shape nobody measured
- *  (`G4_UNMEASURED`) — COVERAGE LOST, never neutral. */
-export function unitConclusion(q, run, apiJobs, wf) {
+ *  (`G4_UNMEASURED`) — COVERAGE LOST, never neutral. `newer` is the run that
+ *  superseded `run` (`supersededBy`), or null. */
+export function unitConclusion(q, run, apiJobs, wf, newer = null) {
   const u = unitOf(q);
   if (u.kind === 'run') {
     const c = run?.conclusion ?? null;
@@ -3013,7 +3054,7 @@ export function unitConclusion(q, run, apiJobs, wf) {
       // ⏱ 2026-09-25 [ADR 095 §4] THREE SHAPES, and only two of them measured:
       // children present → grade the children; exactly one entry named just the
       // call job, `skipped` → the lane was skipped; zero entries on a run that
-      // could not have run the call (zeroEntryNeutral) → neutral; else → `lost`.
+      // could not have run the call (zeroEntryNeutral, arms a–d) → neutral; else → `lost`.
       const display = nonEmpty(job.displayName) ? job.displayName : String(id);
       const own = found.filter((j) => String(j?.name ?? '') === display);
       const children = found.filter((j) => String(j?.name ?? '') !== display);
@@ -3027,7 +3068,7 @@ export function unitConclusion(q, run, apiJobs, wf) {
         return;
       }
       if (own.length === 0) {
-        const neutral = zeroEntryNeutral(job, run, apiJobs, wf);
+        const neutral = zeroEntryNeutral(job, run, apiJobs, wf, newer);
         if (neutral) { parts.push({ what: `call job ${id}`, c: 'neutral', why: `has NO entry in run ${run?.id}, and ${neutral}` }); return; }
       }
       parts.push({
@@ -3117,6 +3158,21 @@ export function decideUnitRedSince(q, entries, pageFull) {
     if (e.c?.verdict === 'failure' && !failure) failure = { id: e.run.id, at: e.run.updated_at, detail: e.c.detail };
   }
   const oldest = entries?.length ? entries[entries.length - 1].run : null;
+  // ⏱ 2026-09-28 · OPS-WATCH 36445522260 (INV6). Runs WERE read and not one
+  // concluded the unit — every one neutral (superseded, skipped, absent) — so
+  // "no FAILED run" would be a pass read off silence. UNREAD, exit 2 wherever the
+  // row blocks. An EMPTY history is not this case: it is the bootstrap state the
+  // sibling [14]O-3 limb grades (see evaluateRedSince), and stays as it was.
+  if (!failure && entries?.length) {
+    return {
+      unread: {
+        why:
+          `NO run read reached a verdict on ${describeUnit(q)}: all ${entries.length} completed run(s)` +
+          `${oldest ? ` back to run ${oldest.id} at ${oldest.updated_at}` : ''} were neutral ` +
+          `(newest: ${entries[0].c?.detail ?? entries[0].run?.id}).`,
+      },
+    };
+  }
   if (failure && pageFull && oldest) return { success: { id: null, at: oldest.updated_at, beyondPage: entries.length }, failure };
   return { success: null, failure };
 }
@@ -3357,7 +3413,7 @@ async function unitRunsPage(q, repo, filters, what) {
     // of this identical history now buy none. The branch check moved into the
     // page, where the branch filter still is.
     const { runs, pageFull, gapBelow } = await branchPage(repo, q.workflow, branch, RUN_PAGES);
-    return { runs: selectRuns(runs, { event, status }), pageFull, gapBelow };
+    return { runs: selectRuns(runs, { event, status }), all: runs, pageFull, gapBelow };
   }
   const qs = filters.filter(Boolean).join('&');
   const path = (n) => `/repos/${repo}/actions/workflows/${encodeURIComponent(q.workflow)}/runs?${qs}&per_page=${n}`;
@@ -3409,7 +3465,7 @@ function jobsOfRun(repo, runId, cache) {
 async function scanUnit(q, repo, wf, cache, filters, what) {
   const u = unitOf(q);
   if (u.kind === 'invalid' || u.kind === 'run') throw new Error(`${q?.workflow}: a unit scan was asked for a ${u.kind} unit`);
-  const { runs, pageFull, gapBelow } = await unitRunsPage(q, repo, filters, what);
+  const { runs, all, pageFull, gapBelow } = await unitRunsPage(q, repo, filters, what);
   const days = unitScheduleWeekdays(q, wf);
   const entries = [];
   for (const run of runs) {
@@ -3417,7 +3473,7 @@ async function scanUnit(q, repo, wf, cache, filters, what) {
       entries.push({ run, c: { verdict: 'neutral', detail: `run ${run.id}: not read — a schedule run created on UTC weekday ${new Date(Date.parse(run.created_at)).getUTCDay()}, and the unit's own \`if:\` admits only weekday(s) ${[...days].sort().join(',')}` } });
       continue;
     }
-    const c = unitConclusion(q, run, await jobsOfRun(repo, run.id, cache), wf);
+    const c = unitConclusion(q, run, await jobsOfRun(repo, run.id, cache), wf, supersededBy(run, all ?? runs));
     entries.push({ run, c });
     if (c.verdict === 'success') break;
   }
@@ -4718,6 +4774,11 @@ export function classifyRedSince(row, probe) {
         'COVERAGE LOST for this row, neither a pass nor a RED.',
     };
   }
+  // ⏱ 2026-09-28 · OPS-WATCH 36445522260 (INV6). No run in the window reached a
+  // verdict on the unit: UNREAD, exit 2 wherever this row blocks, never a pass.
+  if (probe.unread) {
+    return { verdict: 'unread', line: `${id} — ${where}: ${probe.unread.why} UNREAD — COVERAGE LOST for this row, neither a pass nor a RED.` };
+  }
 
   const fail = probe.failure ?? null;
   const ok = probe.success ?? null;
@@ -4840,7 +4901,7 @@ export function evaluateRedSince(reg, probes, dispatchable = null, postGate = nu
     return { errors, prints, live: [], stats: { domain: domain.length, notRead: true } };
   }
 
-  const tally = { green: 0, red: 0, unreadable: 0, blind: 0, quota: 0, lost: 0 };
+  const tally = { green: 0, red: 0, unreadable: 0, blind: 0, quota: 0, lost: 0, unread: 0 };
   const darkLines = [];
   for (const r of domain) {
     const c = classifyRedSince(r, probes?.get?.(r.id));
@@ -4855,7 +4916,7 @@ export function evaluateRedSince(reg, probes, dispatchable = null, postGate = nu
         'enough. The duty is NOT unwatched — the sibling [14]O-3 limb still grades "no successful run at all" as FAILING.';
       errors.push(line);
       live.push({ id: r.id, line, code: 2, limb: '[14]O-3b' });
-    } else if (c.verdict === 'quota' || c.verdict === 'lost') {
+    } else if (c.verdict === 'quota' || c.verdict === 'lost' || c.verdict === 'unread') {
       errors.push(c.line);
       live.push({ id: r.id, line: c.line, code: 2, limb: '[14]O-3b' });
     } else if (c.verdict === 'unreadable') {
@@ -4875,14 +4936,15 @@ export function evaluateRedSince(reg, probes, dispatchable = null, postGate = nu
       `post-gate jobs of the gate workflow, so a red lane has an exit that is not a merge) · ${tally.green} whose newest run on their own ` +
       `branch is GREEN · ${tally.red} RED · ${tally.unreadable} unreadable on this runner · ` +
       `${tally.blind} with no success to compare against · ${tally.quota} whose newest failure died ONLY on the installation ` +
-      `rate limit (COVERAGE LOST) · ${tally.lost} whose newest run lists a call job in an unmeasured shape (COVERAGE LOST) ` +
+      `rate limit (COVERAGE LOST) · ${tally.lost} whose newest run lists a call job in an unmeasured shape (COVERAGE LOST) · ` +
+      `${tally.unread} in which NO run read reached a verdict on the unit (UNREAD, COVERAGE LOST) ` +
       '— whether each RED blocks THIS host is decided once, for ' +
       'every live verdict, under HOST POLICY below',
   );
   // 🔴 THE SHRINK, PRINTED — built above, before the answers were classified.
   prints.push(...censusLines);
   for (const l of darkLines) prints.push(`[14]O-3b — ${l}`);
-  if (tally.green === 0 && tally.red === 0 && tally.blind === 0 && tally.quota === 0 && tally.lost === 0) {
+  if (tally.green === 0 && tally.red === 0 && tally.blind === 0 && tally.quota === 0 && tally.lost === 0 && tally.unread === 0) {
     prints.push(
       '[14]O-3b — 🔴 THE RED-SINCE LIMB ORDERED ZERO PAIRS ON THIS RUN. Every watched workflow was unreadable here ' +
         '(no token, or the API could not be reached), so nothing above could have failed. This line exists so that ' +
