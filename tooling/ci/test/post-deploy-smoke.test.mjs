@@ -26,6 +26,11 @@ import { fileURLToPath } from 'node:url';
 import {
   judge,
   judgeOk,
+  awaitHealthy,
+  describeChecks,
+  HEALTH_ATTEMPTS,
+  HEALTH_GAP_MS,
+  HEALTH_DEADLINE_MS,
   flag,
   judgeCacheControl,
   isWebChannelSmoke,
@@ -251,6 +256,139 @@ describe('post-deploy-smoke — end to end, through the real script', () => {
   test('🔴 exit 2 on an unreadable fixture — never a silent pass', () => {
     const r = spawnSync(process.execPath, [SCRIPT, ...WEB, '--fixture', join(TMP, 'nope.json')], { encoding: 'utf8' });
     assert.equal(r.status, 2);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE COLD-HEALTH RE-READS — main CI 36445515397 (2026-09-28). The smoke exited
+// on the FIRST `ok:false` from subscriptiontracker-api at the right build; the
+// same build answered `ok:true` twenty minutes later. An `ok:false` now gets
+// bounded re-reads — and none of them may turn a real failure green.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A /v1/health body as services/_shared/src/health.ts writes it. */
+const health = (build, ok, jwks = ok ? 'ok' : 'unknown') =>
+  JSON.stringify({
+    ok,
+    status: ok ? 'ok' : jwks,
+    build,
+    checks: [
+      { name: 'app_db', status: 'ok', reason: null, ageMs: 0 },
+      { name: 'platform_db', status: 'ok', reason: null, ageMs: 0 },
+      { name: 'supabase_jwks', status: jwks, reason: jwks === 'ok' ? null : 'probe_timeout', ageMs: 0 },
+    ],
+  });
+const UNWELL = { status: 200, body: health('abc123', false) };
+const WELL = { status: 200, body: health('abc123', true) };
+
+/** Drives awaitHealthy with a canned read sequence and no real clock. */
+async function drive(rest, opts = {}) {
+  const queue = [...rest];
+  let reads = 0;
+  let slept = 0;
+  const v = await awaitHealthy({
+    first: UNWELL,
+    read: async () => {
+      reads += 1;
+      const r = queue.length > 1 ? queue.shift() : queue[0];
+      if (r instanceof Error) throw r;
+      return r;
+    },
+    field: 'build',
+    expected: 'abc123',
+    sleep: async (ms) => {
+      slept += ms;
+    },
+    log: () => {},
+    ...opts,
+  });
+  return { v, reads, slept };
+}
+
+describe('post-deploy-smoke — a cold /v1/health is re-read, never waved through', () => {
+  test('the ceiling is bounded: attempts, gap, and a total that covers them', () => {
+    assert.ok(HEALTH_ATTEMPTS >= 2 && HEALTH_ATTEMPTS <= 10, `HEALTH_ATTEMPTS=${HEALTH_ATTEMPTS}`);
+    assert.ok(HEALTH_GAP_MS > 0);
+    assert.ok(HEALTH_DEADLINE_MS >= (HEALTH_ATTEMPTS - 1) * HEALTH_GAP_MS, 'the total ceiling would cut the attempts short');
+    assert.ok(HEALTH_DEADLINE_MS <= 180_000, 'a total ceiling past 3 minutes waits out a real failure');
+  });
+
+  test('ok:false, ok:false, ok:true at THIS build is a PASS on attempt 3', async () => {
+    const { v, reads } = await drive([UNWELL, WELL]);
+    assert.equal(v.ok, true);
+    assert.equal(v.attempt, 3);
+    assert.equal(reads, 2);
+  });
+
+  test('🔴 ok:false to the ceiling FAILS and names the unwell check', async () => {
+    const { v, reads, slept } = await drive([UNWELL]);
+    assert.equal(v.ok, false);
+    assert.equal(v.mismatch, undefined);
+    assert.equal(reads, HEALTH_ATTEMPTS - 1);
+    assert.equal(slept, (HEALTH_ATTEMPTS - 1) * HEALTH_GAP_MS);
+    assert.ok(v.checks.includes('supabase_jwks=unknown (probe_timeout, age 0ms)'), v.checks.join('; '));
+  });
+
+  test('🔴 a DIFFERENT build during the re-reads fails AT ONCE — even one that says ok:true', async () => {
+    const { v, reads, slept } = await drive([{ status: 200, body: health('old999', true) }, WELL]);
+    assert.equal(v.ok, false);
+    assert.equal(v.mismatch, true);
+    assert.equal(reads, 1);
+    assert.equal(slept, HEALTH_GAP_MS);
+    assert.match(v.reason, /still serving a different build/);
+  });
+
+  test('🔴 an EMPTY build during the re-reads is a mismatch too', async () => {
+    const { v } = await drive([{ status: 200, body: health(null, true) }]);
+    assert.equal(v.ok, false);
+    assert.equal(v.mismatch, true);
+  });
+
+  test('🔴 a network error or a 5xx is one more unwell read, never a pass', async () => {
+    const { v } = await drive([new Error('ECONNRESET'), { status: 503, body: '' }]);
+    assert.equal(v.ok, false);
+    assert.equal(v.mismatch, undefined);
+    assert.match(v.reason, /HTTP 503/);
+  });
+
+  test('🔴 the TOTAL ceiling stops the re-reads even with attempts left', async () => {
+    let t = 0;
+    const { v, reads } = await drive([UNWELL], {
+      now: () => t,
+      read: async () => {
+        t += 40_000; // each read is slow
+        return UNWELL;
+      },
+    });
+    assert.equal(v.ok, false);
+    assert.ok(reads < HEALTH_ATTEMPTS - 1, `reads=${reads}`);
+    assert.match(v.reason, /total ceiling was reached/);
+  });
+
+  test('describeChecks survives a body with no checks', () => {
+    assert.deepEqual(describeChecks('{"ok":false}'), ['(the body carries no `checks` array)']);
+    assert.deepEqual(describeChecks('<html>'), ['(the body is not JSON)']);
+  });
+
+  test('END TO END: ok:false, ok:false, ok:true → exit 0', () => {
+    const r = run([UNWELL, UNWELL, WELL], API);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /ok:true on health attempt 3\//);
+  });
+
+  test('🔴 END TO END: ok:false on every read → exit 1, naming the check', () => {
+    const r = run([UNWELL], API);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /it deployed, and it is unwell/);
+    assert.match(r.out, new RegExp(`after ${HEALTH_ATTEMPTS}/${HEALTH_ATTEMPTS} health attempt`));
+    assert.ok(r.out.includes('supabase_jwks=unknown (probe_timeout, age 0ms)'), r.out);
+  });
+
+  test('🔴 END TO END: a build mismatch during the re-reads → exit 1 on that read', () => {
+    const r = run([UNWELL, { status: 200, body: health('old999', true) }, WELL], API);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /then a different build on health attempt 2\//);
+    assert.doesNotMatch(r.out, /health attempt 3\//);
   });
 });
 
