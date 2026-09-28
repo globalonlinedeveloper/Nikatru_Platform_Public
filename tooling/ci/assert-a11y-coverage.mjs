@@ -778,9 +778,12 @@ const REQUIRED_COVERAGE = [
     // per-root line: `20 of 20 … from 4 a11y test file(s) across 58 case(s)`.
     // ⏱ 2026-09-27 · ST-A1: 20 -> 21 surfaces and 58 -> 59 cases — the chassis
     // TurnstileGate, swept in a11y_auth_test.dart's `a11y: turnstile-gate`.
-    surfaces: 21,
+    // ⏱ 2026-09-28 · ST-T2 (U5/U7): 21 → 25 surfaces, 59 → 61 cases, RAISED IN
+    // THE CHANGE THAT EARNED THEM — the four honest states moved into the
+    // chassis arrived swept (a11y_firstrun_money_settings_test.dart).
+    surfaces: 25,
     a11yFiles: 4,
-    cases: 59,
+    cases: 61,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens plus the ' +
       'money/settings bodies and the app shell, mounted by every stamped app, all seventeen swept',

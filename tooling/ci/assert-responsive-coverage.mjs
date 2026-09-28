@@ -629,9 +629,13 @@ const REQUIRED_COVERAGE = [
     // ⏱ RAISED 2026-09-27 (ST-A1): surfaces 20 → 21 and coveredSurfaces 20 → 21
     // for the chassis `TurnstileGate`, and `widthTestFiles` 23 → 24 for its
     // suite (`test/turnstile_gate_test.dart`, kPhone/kTablet/kDesktop).
-    surfaces: 21,
-    widthTestFiles: 24,
-    coveredSurfaces: 21,
+    // ⏱ 2026-09-28 · ST-T2 (U5/U7): 21 → 25 surfaces, 24 → 25 width test
+    // files, RAISED IN THE CHANGE THAT EARNED THEM: PlanStatusTile,
+    // PlansLoadGate, PlansLoading and RowChevron moved into the chassis with
+    // test/honest_states_test.dart, which pumps each at all three classes.
+    surfaces: 25,
+    widthTestFiles: 25,
+    coveredSurfaces: 25,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
       'app inherits, each measured at all three window classes',
