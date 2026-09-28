@@ -3139,7 +3139,7 @@ void main() {
     // cancels a schedule an earlier build armed. The cases above still pin the
     // controller an opting-in app launches through. MUTATION PROOF: set the flag
     // true, or drop the `set(false)` arm from lib/app.dart, and this goes red.
-    testWidgets('the stamp declines it: no Settings switch, launch turns it OFF', (
+    testWidgets('the stamp declines it: no switch, and launch turns it OFF', (
       WidgetTester tester,
     ) async {
       final _MemStore store = _onboardedStore();
