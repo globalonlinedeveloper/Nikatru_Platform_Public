@@ -239,12 +239,12 @@
         "basis": "Manifest read: NSPrivacyAccessedAPITypes is an empty array."
       },
       {
-        "binary": "flutter_local_notifications 17.2.4",
+        "binary": "flutter_local_notifications 22.3.1",
         "manifest": "ships-own",
         "accessedApis": [
           "NSPrivacyAccessedAPICategoryUserDefaults: CA92.1"
         ],
-        "basis": "Manifest read."
+        "basis": "Manifest read. Re-read 2026-09-27 for 17.2.4 -> 22.3.1: the PrivacyInfo.xcprivacy moved under <platform>/flutter_local_notifications/Sources/flutter_local_notifications/ (the Swift Package Manager layout) and declares the same single category, UserDefaults CA92.1, with tracking false and no collected data types; a grep of the 22.3.1 ios/ and macos/ sources for file-timestamp, boot-time, disk-space and keyboard APIs finds only NSUserDefaults, as in 17.2.4."
       },
       {
         "binary": "flutter_timezone 5.1.0",
@@ -383,12 +383,12 @@
         "basis": "Manifest read."
       },
       {
-        "binary": "flutter_local_notifications 17.2.4",
+        "binary": "flutter_local_notifications 22.3.1",
         "manifest": "ships-own",
         "accessedApis": [
           "NSPrivacyAccessedAPICategoryUserDefaults: CA92.1"
         ],
-        "basis": "Manifest read (macos/Resources copy)."
+        "basis": "Manifest read (the macos/ copy). Re-read 2026-09-27 for 17.2.4 -> 22.3.1: the PrivacyInfo.xcprivacy moved under <platform>/flutter_local_notifications/Sources/flutter_local_notifications/ (the Swift Package Manager layout) and declares the same single category, UserDefaults CA92.1, with tracking false and no collected data types; a grep of the 22.3.1 ios/ and macos/ sources for file-timestamp, boot-time, disk-space and keyboard APIs finds only NSUserDefaults, as in 17.2.4."
       },
       {
         "binary": "flutter_timezone 5.1.0",

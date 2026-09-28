@@ -111,8 +111,8 @@ dependencies:
   supabase_flutter: ^2.5.0
 
   # On-device renewal reminders (iOS/Android/macOS/Windows/Linux)
-  flutter_local_notifications: ^17.2.0
-  timezone: ^0.9.4
+  flutter_local_notifications: ^22.0.0
+  timezone: ^0.11.0
 
   # 🔴 [pipeline S-4] THE UPPER BOUND HAD TO WIDEN, and the reason is a workspace
   # one rather than a Subly one. Every STAMPED app pulls `flutter_localizations`

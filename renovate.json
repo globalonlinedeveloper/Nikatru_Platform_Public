@@ -109,24 +109,6 @@
     },
     {
       "description": [
-        "flutter_local_notifications is pinned to 17.x on purpose -- the service header",
-        "says a major bump needs zonedSchedule, androidScheduleMode and the Windows",
-        "init settings re-checked by hand. Majors are still SURFACED, just not routine."
-      ],
-      "matchPackageNames": [
-        "flutter_local_notifications"
-      ],
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "labels": [
-        "dependencies",
-        "needs-manual-check"
-      ],
-      "prPriority": -1
-    },
-    {
-      "description": [
         "MAJOR PROPOSALS ONLY for the `java` and `node` toolchain floors. Both are declared",
         "in tooling/versions.json as a BARE MAJOR on purpose, and that file says so itself in",
         "$xcode_comment: 'THE VALUE IS A FLOOR, SO IT IS A MAJOR AND NOT A FULL VERSION ...",
@@ -185,7 +167,7 @@
         "only the first. Every proposal therefore arrives RED at deploy-web.yml checksum step until a human",
         "downloads the new binary and writes its digest. Labelling it says so on the PR instead of leaving",
         "the next reader to rediscover it from a failing job log.",
-        "Same shape as flutter_local_notifications above: surfaced, never routine."
+        "Surfaced, never routine."
       ],
       "matchPackageNames": [
         "glitchtip/glitchtip-cli"

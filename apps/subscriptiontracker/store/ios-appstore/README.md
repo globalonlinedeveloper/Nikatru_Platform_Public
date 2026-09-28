@@ -99,7 +99,7 @@ category this app genuinely depends on is declared by the binary that uses it:
 |---|---|---|
 | `NSPrivacyAccessedAPICategoryFileTimestamp` | `0A2A.1`, `C617.1` | the Flutter engine (`Flutter.framework`) — the Dart runtime lives there, so `File.lastModified()` from Dart is the engine's declared use |
 | `NSPrivacyAccessedAPICategorySystemBootTime` | `35F9.1` | the Flutter engine |
-| `NSPrivacyAccessedAPICategoryUserDefaults` | `CA92.1` | `flutter_local_notifications` 17.2.4 |
+| `NSPrivacyAccessedAPICategoryUserDefaults` | `CA92.1` | `flutter_local_notifications` 22.3.1 |
 | `NSPrivacyAccessedAPICategoryUserDefaults` | `1C8F.1` | `shared_preferences_foundation` 2.5.6 |
 
 Repeating any of those in the app manifest would be the app target swearing to code

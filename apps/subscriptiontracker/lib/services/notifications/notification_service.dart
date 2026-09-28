@@ -71,9 +71,9 @@ class ReminderCopy {
 /// service-worker Notification API there if needed).
 ///
 /// NOTE: `flutter_local_notifications` is the most version-sensitive dependency
-/// in this template. The calls below target the 17.x API. If `flutter pub get`
-/// resolves a newer major, re-check `zonedSchedule` (androidScheduleMode /
-/// uiLocalNotificationDateInterpretation) and the Windows init settings.
+/// in this template. The calls below target the 22.x API (named parameters since
+/// 20.0.0). If `flutter pub get` resolves a newer major, re-check
+/// `zonedSchedule` (androidScheduleMode) and the Windows init settings.
 class NotificationService {
   NotificationService._() : _platformOverride = null, _isWebOverride = null;
   static final NotificationService instance = NotificationService._();
@@ -108,12 +108,12 @@ class NotificationService {
   /// so on both desktop targets `_ready` went true and every list load ended
   /// in an uncaught async error, while the settings screen said reminders
   /// were unavailable. Parity is either the feature on all seven targets or
-  /// an honest per-target "not here, and why" — never a throw. Windows gains
-  /// a plugin only at flutter_local_notifications 19.0.0 ("[Windows] Added
-  /// support for Windows", CHANGELOG), outside the pinned ^17.2.0, and the
-  /// bump carries an Apple binary-inventory row and a `zonedSchedule`
-  /// signature change, so it is its own change; until then the matrix is
-  /// the truth and this service obeys it.
+  /// an honest per-target "not here, and why" — never a throw. Windows gained
+  /// a plugin at flutter_local_notifications 19.0.0 ("[Windows] Added
+  /// support for Windows", CHANGELOG) and the workspace is on 22.x, but that
+  /// plugin needs WindowsInitializationSettings (an AppUserModelID and a GUID)
+  /// which this service does not pass yet, so the matrix still says no and
+  /// this service obeys it (O-RENEWAL-REMINDERS-OFF-ON-DESKTOP).
   NotificationCapabilities get capabilities =>
       _caps ??= NotificationCapabilities.forPlatform(
         _platformOverride ?? defaultTargetPlatform,
@@ -140,7 +140,7 @@ class NotificationService {
   /// which reads the device's IANA zone through `flutter_timezone`.
   Future<void> init({LocalTimezoneResolver? localTimezone}) async {
     // 🔴 THE MATRIX FIRST. Where the platform cannot notify at all (web, and
-    // Windows on the pinned plugin) the plugin is never initialised and
+    // Windows until it has init settings) the plugin is never initialised and
     // `_ready` stays false, so every method below is the no-op it already is
     // for an uninitialised service. Where it can notify but not schedule
     // (Linux) the plugin IS initialised — an immediate `show` works there —
@@ -189,7 +189,7 @@ class NotificationService {
       // once you have an AppUserModelID; omitted here to stay version-safe.
     );
 
-    await _plugin.initialize(settings);
+    await _plugin.initialize(settings: settings);
     // 🔴 [pipeline 13]T-4 — `init()` DOES NOT ASK. It used to end with
     // `await _requestPermissions()`, and `init()` is called from `main()` before
     // `runApp`, so the OS permission dialog was the first thing a new user saw:
@@ -250,7 +250,7 @@ class NotificationService {
   // UNCONDITIONALLY, AND THE ANDROID MANIFEST DECLARES NO PERMISSION AT ALL.
   // Measured, not inferred: `apps/subscriptiontracker/android/app/src/main/
   // AndroidManifest.xml` carries zero `<uses-permission>` elements, and
-  // flutter_local_notifications 17.2.4's own plugin manifest contributes only
+  // flutter_local_notifications 22.3.1's own plugin manifest (like 17.2.4's) adds
   // VIBRATE and POST_NOTIFICATIONS. So SCHEDULE_EXACT_ALARM is not in the
   // merged manifest, `AlarmManager.canScheduleExactAlarms()` is false on every
   // Android 12+ device, and the plugin's Java side
@@ -384,14 +384,12 @@ class NotificationService {
     DateTimeComponents? matchDateTimeComponents,
   }) async {
     Future<void> post(AndroidScheduleMode m) => _plugin.zonedSchedule(
-      id,
-      title,
-      body,
-      when,
-      details,
+      id: id,
+      title: title,
+      body: body,
+      scheduledDate: when,
+      notificationDetails: details,
       androidScheduleMode: m,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: matchDateTimeComponents,
     );
     try {
@@ -474,7 +472,9 @@ class NotificationService {
   /// `defaultTargetPlatform` and its final `else` throws `UnimplementedError`
   /// (flutter_local_notifications 17.2.4,
   /// lib/src/flutter_local_notifications_plugin.dart:377), so Linux and Windows
-  /// reach no implementation at all. Recorded, not fixed here: this increment
+  /// reached no implementation at all. On 22.3.1 Windows has one (unused
+  /// here: no init settings) and Linux still falls through to the platform
+  /// default, which does not implement it. Recorded, not fixed here: this increment
   /// bounds the reminder set, and the desktop gap is a separate change.
   ///
   /// [mode] is the exact-vs-inexact decision, resolved ONCE by [syncAll] for a
@@ -519,7 +519,7 @@ class NotificationService {
     required String formattedTotal,
   }) async {
     if (!_ready || !capabilities.canSchedule) return;
-    await _plugin.cancel(_digestId);
+    await _plugin.cancel(id: _digestId);
     final tz.TZDateTime now = tz.TZDateTime.now(tz.local);
     tz.TZDateTime when = tz.TZDateTime(
       tz.local,
@@ -545,12 +545,12 @@ class NotificationService {
 
   Future<void> cancelWeeklyDigest() async {
     if (!_ready) return;
-    await _plugin.cancel(_digestId);
+    await _plugin.cancel(id: _digestId);
   }
 
   Future<void> cancelForSubscription(String id) async {
     if (!_ready) return;
-    await _plugin.cancel(_idFor(id));
+    await _plugin.cancel(id: _idFor(id));
   }
 
   /// EVERYTHING the plugin holds — the chassis daily reminder included.
@@ -588,7 +588,7 @@ class NotificationService {
       debugPrint('[reminders] could not read pending notifications: $e');
     }
     for (final int id in owned) {
-      await _plugin.cancel(id);
+      await _plugin.cancel(id: id);
     }
     _scheduledThisProcess.clear();
   }
@@ -755,8 +755,8 @@ class NotificationService {
 /// screen turns into a sentence. Only ever non-null where the capability
 /// matrix says so; the app never OFFERS what it cannot deliver.
 enum ReminderUnavailability {
-  /// No notification plugin at all on this target (web; Windows on the
-  /// pinned flutter_local_notifications 17.x).
+  /// No notification plugin at all on this target (web; Windows until an app
+  /// supplies the 22.x Windows plugin its init settings).
   noNotifications,
 
   /// Immediate notifications work but nothing can be scheduled (Linux).
