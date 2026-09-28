@@ -465,11 +465,35 @@ describe('assert-cors-allowlist', () => {
     2,
   );
 
+  /** ⏱ 2026-09-28 (NP-Eb1, O-SERVICE-KIT-UNBUILT): each Worker's CORS scope is its
+   *  row's `cors` in tooling/platform-register.json, and its src/middleware/cors.ts
+   *  binds services/_shared/src/cors.ts with that scope. Without the register the
+   *  guard stops COVERAGE LOST (2) before it reads an allowlist, so every tree here
+   *  carries the live register and both bindings (cors-allowlist.test.mjs owns the
+   *  register and binding limbs themselves). */
+  const REGISTER = JSON.stringify(
+    {
+      servingWorker: { name: 'platform', config: 'services/platform/wrangler.jsonc', cors: 'every-app' },
+      appWorkers: [{ name: 'subscriptiontracker-api', config: 'services/subscriptiontracker-api/wrangler.jsonc', cors: 'own-app' }],
+    },
+    null,
+    2,
+  );
+  const binding = (scope, appId) =>
+    "import { cors } from '../../../_shared/src/cors';\nexport * from '../../../_shared/src/cors';\n" +
+    `export const corsMiddleware = cors({ scope: '${scope}',${appId ? ` appId: '${appId}',` : ''} methods: ['GET', 'OPTIONS'] });\n`;
+  const BOUND = {
+    'tooling/platform-register.json': REGISTER,
+    'services/platform/src/middleware/cors.ts': binding('every-app'),
+    'services/subscriptiontracker-api/src/middleware/cors.ts': binding('own-app', 'subscriptiontracker'),
+  };
+
   /** Both Workers, each overridable. Anything less is not a valid tree — the
    *  guard is supposed to insist that every service it knows about is present. */
   const build = (name, { platform = config(PLATFORM), subscriptiontracker = config(SUBLY, { appId: 'subscriptiontracker' }), extra = {} } = {}) =>
     fixture(name, {
       'catalog/apps.json': CATALOGUE,
+      ...BOUND,
       'services/platform/wrangler.jsonc': platform,
       'services/subscriptiontracker-api/wrangler.jsonc': subscriptiontracker,
       ...extra,
@@ -554,7 +578,7 @@ describe('assert-cors-allowlist', () => {
     });
     const { code, out } = run('assert-cors-allowlist.mjs', { cwd: dir });
     assert.equal(code, 1);
-    assert.match(out, /never been taught about services\/newthing/);
+    assert.match(out, /no row in tooling\/platform-register\.json names services\/newthing/);
   });
 
   test('FAILS its own coverage check when a Worker POLICY names is not on disk', () => {
@@ -562,6 +586,8 @@ describe('assert-cors-allowlist', () => {
     // healthy tally over whatever is left.
     const dir = fixture('cors-renamed', {
       'catalog/apps.json': CATALOGUE,
+      'tooling/platform-register.json': REGISTER,
+      'services/platform/src/middleware/cors.ts': binding('every-app'),
       'services/platform/wrangler.jsonc': config(PLATFORM),
       'services/subscriptiontracker-backend/wrangler.jsonc': config(SUBLY),
     });
