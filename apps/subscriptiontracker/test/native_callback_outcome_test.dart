@@ -140,11 +140,9 @@ void main() {
       '/reset-password',
     );
     expect(find.byKey(ResetPasswordScreen.linkDeadLine), findsOneWidget);
-    expect(
-      log.where((String l) => l.startsWith('nk_auth_callback ')),
-      <String>['nk_auth_callback flow=reset outcome=failed'],
-      reason: 'ONE line per callback, however many providers listen',
-    );
+    expect(log.where((String l) => l.startsWith('nk_auth_callback ')), <String>[
+      'nk_auth_callback flow=reset outcome=failed',
+    ], reason: 'ONE line per callback, however many providers listen');
     expect(
       log.join('\n'),
       isNot(contains('st-n1-invalid')),
