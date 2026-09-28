@@ -768,11 +768,11 @@ class SignedInBeforeController extends Notifier<bool?> {
         keyValueStoreProvider.future,
       );
       final bool stored = (await kv.read(_signedInBeforeKey)) == 'true';
-      if (!_marked) state = stored;
+      if (!_marked && ref.mounted) state = stored;
     } catch (_) {
       // Unreadable store: a first visit, which is the greeting that is never
       // wrong.
-      if (!_marked) state = false;
+      if (!_marked && ref.mounted) state = false;
     }
   }
 
