@@ -240,12 +240,40 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: <Widget>[
-            ListTile(
-              leading: Icon(
-                isPro ? Icons.verified_outlined : Icons.lock_outline,
+            // ✅ ST-U7 (C42): THREE STATES, NOT ONE. This tile read
+            // `ent.valueOrNull?.isProAt(…) ?? false` and so said "You do not
+            // have an active subscription", lock icon and all, while the
+            // entitlement was still LOADING and when it could not be fetched —
+            // a paying user saw themselves as unpaid on every slow open. The
+            // answer shows only once there is one; a refresh keeps the last
+            // answer on screen (`hasValue` first, as the list gate does).
+            if (ent.hasValue)
+              ListTile(
+                key: const Key('manage-plan-status'),
+                leading: Icon(
+                  isPro ? Icons.verified_outlined : Icons.lock_outline,
+                ),
+                title: Text(isPro ? l10n.planActive : l10n.planInactive),
+              )
+            else if (ent.hasError)
+              ListTile(
+                key: const Key('manage-plan-status-failed'),
+                leading: const Icon(Icons.cloud_off),
+                title: Text(l10n.planCheckFailed),
+                trailing: TextButton(
+                  onPressed: () => ref.invalidate(entitlementsProvider),
+                  child: Text(l10n.retry),
+                ),
+              )
+            else
+              ListTile(
+                key: const Key('manage-plan-status-loading'),
+                leading: const SizedBox.square(
+                  dimension: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                title: Text(l10n.planChecking),
               ),
-              title: Text(isPro ? l10n.planActive : l10n.planInactive),
-            ),
             const Divider(),
             // [pipeline 5]M-10. The entitlement is a server row keyed
             // (user_id, app_id), so on the hosted rail a fresh install is

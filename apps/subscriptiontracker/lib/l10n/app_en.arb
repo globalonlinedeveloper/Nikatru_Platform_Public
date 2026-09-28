@@ -494,6 +494,18 @@
   "@planInactive": {
     "description": "See subscriptionActive."
   },
+  "planChecking": "Checking your plan…",
+  "@planChecking": {
+    "description": "Consumed by manage_plan_screen.dart. ST-U7 (C42): the plan row while the entitlement is loading. It used to say 'You do not have an active subscription' here."
+  },
+  "planCheckFailed": "Could not check your plan.",
+  "@planCheckFailed": {
+    "description": "Consumed by manage_plan_screen.dart. ST-U7 (C42): the plan row when the entitlement could not be fetched, beside a Retry. Never 'you do not have a plan' — that was never checked."
+  },
+  "paywallLoadingPlans": "Loading plans…",
+  "@paywallLoadingPlans": {
+    "description": "Consumed by paywall_screen.dart. ST-U7 (C38): the spinner's label while a store rail is still being asked for its plans. It used to read 'Purchases are not available here.'"
+  },
   "restorePurchases": "Restore purchases",
   "@restorePurchases": {
     "description": "On a store build, asks the store for past purchases and then re-reads the entitlement from the server; on the web, the server re-read alone, because there the entitlement is a server row keyed to the account. Apple guideline 3.1.1 makes an explicit Restore control mandatory in a build that sells through StoreKit, and its absence is a documented rejection cause."
@@ -897,6 +909,14 @@
   "noPaymentsYet": "No payments yet.",
   "@noPaymentsYet": {
     "description": "Consumed by subscription_detail_screen.dart:299."
+  },
+  "paymentHistoryLoading": "Loading payments…",
+  "@paymentHistoryLoading": {
+    "description": "Consumed by subscription_detail_screen.dart. ST-U7 (B16): the payment-history row while it loads. It used to read 'No payments yet.'"
+  },
+  "paymentHistoryFailed": "Could not load payments.",
+  "@paymentHistoryFailed": {
+    "description": "Consumed by subscription_detail_screen.dart. ST-U7 (B16): the payment-history row when the fetch failed, beside a Retry. It used to read 'No payments yet.' — a false statement about a record of real charges."
   },
   "editPlan": "Edit plan",
   "@editPlan": {

@@ -88,7 +88,24 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     // A store rail's plans are the STORE's answer, asked for here so an open
     // paywall shows today's price and this buyer's trial. A no-op on the web
     // rail, whose plans are the rail config.
-    unawaited(refreshOfferingsOf(ref.read(purchaseRailProvider)));
+    unawaited(_loadOfferings());
+  }
+
+  /// ST-U7 (C38): true while a store rail is being asked for its plans.
+  ///
+  /// A store rail's offerings are EMPTY until the store answers, and the
+  /// choosing arm used to read that as "Purchases are not available here." —
+  /// a false negative on Android and iOS for the first second or more of every
+  /// open. The web rail's plans are its config, so its refresh is a no-op and
+  /// this is true for one microtask at most.
+  bool _offeringsLoading = true;
+
+  Future<void> _loadOfferings() async {
+    // `refreshOfferingsOf` never throws (the package's contract): a store that
+    // cannot be asked leaves the list empty, which the unavailable sentence
+    // below then states truthfully.
+    await refreshOfferingsOf(ref.read(purchaseRailProvider));
+    if (mounted) setState(() => _offeringsLoading = false);
   }
 
   Future<void> _buy(Offering offering) async {
@@ -331,6 +348,20 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           ),
         ];
       case _PaywallPhase.choosing:
+        // NOT gated on `rail.canStartCheckout`: a store rail cannot start a
+        // checkout until its offerings arrive, which is exactly the wait.
+        if (ref.watch(sellingEnabledProvider) &&
+            rail.offerings.isEmpty &&
+            _offeringsLoading) {
+          return <Widget>[
+            Center(
+              key: const Key('paywall-offerings-loading'),
+              child: CircularProgressIndicator(
+                semanticsLabel: l10n.paywallLoadingPlans,
+              ),
+            ),
+          ];
+        }
         if (!ref.watch(sellingEnabledProvider) ||
             !rail.canStartCheckout ||
             rail.offerings.isEmpty) {

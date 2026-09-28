@@ -546,33 +546,59 @@ class SubscriptionDetailScreen extends ConsumerWidget {
     );
   }
 
-  /// 🔴 THE `FutureBuilder` STAYS, AND SO DOES `ref.read` INSIDE IT. It is
-  /// re-fired on every rebuild of the screen, which is a known cost recorded
-  /// against this file and deliberately NOT fixed here: converting it to a
-  /// provider is a state-layer change, and this increment is l10n + brightness.
-  /// Folding an unrelated refactor in would make a bisect over the P4 wave
-  /// ambiguous about which change moved what.
-  ///
-  /// It reads `l10n` and the theme off the BUILDER's context rather than taking
-  /// them as parameters: that context is a descendant of the screen's, so both
-  /// resolve, and the signature stays what every other increment expects.
+  /// ✅ ST-U7 (B16): THREE STATES, AND ONE FETCH PER OPEN. This was a
+  /// `FutureBuilder` over `ref.read(…).history(id)`, re-fired on every rebuild,
+  /// rendering `snap.data ?? const []` — so LOADING and FAILED both printed
+  /// "No payments yet.", a false claim about a record of real charges. It now
+  /// watches [paymentHistoryProvider]: a labelled loading row, a failed row
+  /// with a retry, and "No payments yet." only for a fetch that SUCCEEDED
+  /// empty. `hasValue` first, as the list gate does, so a retry keeps the
+  /// rows already on screen.
   Widget _history(WidgetRef ref, MoneyFormatter money, String subId) {
-    return FutureBuilder<List<PaymentRecord>>(
-      future: ref.read(subscriptionRepositoryProvider).history(subId),
-      builder: (BuildContext context, AsyncSnapshot<List<PaymentRecord>> snap) {
+    // Watched HERE, in the screen's own build, not inside the Builder below:
+    // a WidgetRef belongs to the element whose build is running.
+    final AsyncValue<List<PaymentRecord>> async = ref.watch(
+      paymentHistoryProvider(subId),
+    );
+    return Builder(
+      builder: (BuildContext context) {
         final AppLocalizations l10n = AppLocalizations.of(context);
         final ThemeData theme = Theme.of(context);
         final bool isLight = theme.brightness == Brightness.light;
         final ColorScheme scheme = theme.colorScheme;
-        final List<PaymentRecord> hist = snap.data ?? const <PaymentRecord>[];
-        if (hist.isEmpty) {
-          return Text(
-            l10n.noPaymentsYet,
-            style: AppText.muted.copyWith(
-              fontSize: 12,
-              color: isLight ? AppColors.muted : scheme.onSurfaceVariant,
-            ),
+        final TextStyle note = AppText.muted.copyWith(
+          fontSize: 12,
+          color: isLight ? AppColors.muted : scheme.onSurfaceVariant,
+        );
+        if (!async.hasValue) {
+          if (async.hasError) {
+            return Row(
+              key: const Key('payment-history-failed'),
+              children: <Widget>[
+                Expanded(child: Text(l10n.paymentHistoryFailed, style: note)),
+                TextButton(
+                  onPressed: () =>
+                      ref.invalidate(paymentHistoryProvider(subId)),
+                  child: Text(l10n.retry),
+                ),
+              ],
+            );
+          }
+          return Row(
+            key: const Key('payment-history-loading'),
+            children: <Widget>[
+              const SizedBox.square(
+                dimension: 14,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(width: 10),
+              Flexible(child: Text(l10n.paymentHistoryLoading, style: note)),
+            ],
           );
+        }
+        final List<PaymentRecord> hist = async.requireValue;
+        if (hist.isEmpty) {
+          return Text(l10n.noPaymentsYet, style: note);
         }
         // The row date was `'${_months[month - 1]} $day, $year'` off a
         // hardcoded English month table — "June 15, 2026". `yMMMd` is the
