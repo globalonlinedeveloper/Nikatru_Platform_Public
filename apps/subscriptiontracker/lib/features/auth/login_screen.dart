@@ -149,7 +149,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           return;
         }
         // ⏱ 2026-09-28 — the fields are valid, so NOW the challenge is waited
-        // for (shown as `CaptchaWaitStatus`); a timeout or a widget error
+        // for (shown by the gate's wait line); a timeout or a widget error
         // throws `CaptchaUnavailable`, which `_snack` says as a retry sentence.
         await captcha.untilReady();
         await auth.signUpWithEmail(

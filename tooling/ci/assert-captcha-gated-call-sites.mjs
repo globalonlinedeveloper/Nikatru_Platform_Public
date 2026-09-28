@@ -526,7 +526,7 @@ for (const f of R4_DOMAIN) {
         `[R4] ${f}:${lineOf(code, m.index)} reads captcha readiness (\`${m[0].replace(/\s+/g, '')}\`). An action ` +
           'gated on it goes DEAD while the challenge has not answered — no validation message, no reason ' +
           '(E2E live run 36379673890, the #1022 regression). Keep the button live, validate first, then ' +
-          '`await captcha.untilReady()` before the gated call and show `CaptchaWaitStatus`.',
+          '`await captcha.untilReady()` before the gated call; `TurnstileGate` shows the wait.',
       );
     }
   }

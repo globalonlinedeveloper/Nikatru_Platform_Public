@@ -31,7 +31,7 @@
 // now, for every gated action: the button is enabled unless a request is in
 // flight; the action VALIDATES ITS FIELDS FIRST, with no captcha needed; only a
 // valid submit then awaits [CaptchaTokenController.untilReady], which shows
-// [CaptchaWaitStatus] ("Checking you're human…", a live region), and sends ONCE
+// the gate's wait line ("Checking you're human…", a live region), and sends ONCE
 // when the token lands — or throws [CaptchaUnavailable], which the one error
 // mapper turns into a retry sentence. Never a silent no-op.
 // `assert-captcha-gated-call-sites.mjs` limb R4 fails the build if any action
@@ -113,7 +113,7 @@ class CaptchaTokenController extends ChangeNotifier {
   bool _disposed = false;
 
   /// True while a gated action is waiting for the challenge to answer — what
-  /// [CaptchaWaitStatus] shows.
+  /// the gate's wait line shows.
   bool get waiting => _wait != null;
 
   /// Completes once a gated call may be made: at once when [ready], else when
@@ -219,10 +219,12 @@ class CaptchaUnavailable implements Exception {
 /// The visible, ANNOUNCED half of a wait: "Checking you're human…" under the
 /// gated button while [waiting], nothing otherwise. A live region, so a screen
 /// reader hears why the button is busy (WCAG 4.1.3).
-class CaptchaWaitStatus extends StatelessWidget {
-  const CaptchaWaitStatus({required this.waiting, super.key});
-
-  static const Key statusLine = Key('captchaWaitStatus');
+///
+/// PRIVATE to the gate, which is the only thing that renders it: a public
+/// widget here would be one more chassis surface every coverage floor counts,
+/// for a line no screen places itself. Found through [TurnstileGate.waitStatusLine].
+class _CaptchaWaitStatus extends StatelessWidget {
+  const _CaptchaWaitStatus({required this.waiting});
 
   final bool waiting;
 
@@ -247,7 +249,7 @@ class CaptchaWaitStatus extends StatelessWidget {
             Flexible(
               child: Text(
                 context.chassisL10n.authCaptchaChecking,
-                key: statusLine,
+                key: TurnstileGate.waitStatusLine,
               ),
             ),
           ],
@@ -291,6 +293,10 @@ class TurnstileGate extends StatefulWidget {
 
   final CaptchaTokenController controller;
   final TurnstileRenderer render;
+
+  /// The "Checking you're human…" line the gate shows while a valid submit
+  /// waits for the challenge ([CaptchaTokenController.waiting]).
+  static const Key waitStatusLine = Key('captchaWaitStatus');
 
   /// Optional: surface a human message when the challenge itself fails.
   final void Function(String message)? onError;
@@ -355,7 +361,7 @@ class _TurnstileGateState extends State<TurnstileGate> {
             // ⏱ 2026-09-28 — the gate SAYS it is waiting, directly above the
             // button that is waiting on it, so no screen (and no fork, whose
             // size is ceilinged) carries a status line of its own.
-            CaptchaWaitStatus(waiting: c.waiting),
+            _CaptchaWaitStatus(waiting: c.waiting),
           ],
         ),
       ),

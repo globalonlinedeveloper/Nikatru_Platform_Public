@@ -123,7 +123,7 @@ void main() {
             '#1022 regression E2E run 36379673890 caught',
       );
       expect(auth.signIns, 0);
-      expect(find.byKey(CaptchaWaitStatus.statusLine), findsNothing);
+      expect(find.byKey(TurnstileGate.waitStatusLine), findsNothing);
     },
   );
 
@@ -157,7 +157,7 @@ void main() {
       await tester.pump();
 
       expect(auth.signIns, 0, reason: 'no request may go without a token');
-      final Finder status = find.byKey(CaptchaWaitStatus.statusLine);
+      final Finder status = find.byKey(TurnstileGate.waitStatusLine);
       expect(status, findsOneWidget);
       expect(find.text(_chassis(tester).authCaptchaChecking), findsOneWidget);
       expect(
@@ -177,7 +177,7 @@ void main() {
         isNull,
         reason: 'the token is spent by the call, never kept for a retry',
       );
-      expect(find.byKey(CaptchaWaitStatus.statusLine), findsNothing);
+      expect(find.byKey(TurnstileGate.waitStatusLine), findsNothing);
       semantics.dispose();
     },
   );
@@ -189,7 +189,7 @@ void main() {
       final _CountingAuth auth = await _pumpLogin(tester);
       await _fill(tester, 'alex@example.com', 'hunter22');
       await _tapSubmit(tester);
-      expect(find.byKey(CaptchaWaitStatus.statusLine), findsOneWidget);
+      expect(find.byKey(TurnstileGate.waitStatusLine), findsOneWidget);
       final int generation = _captcha(tester).generation;
 
       _captcha(tester).reportError('600010');
@@ -202,7 +202,7 @@ void main() {
         findsOneWidget,
         reason: 'a failed challenge must say so, never a silent no-op',
       );
-      expect(find.byKey(CaptchaWaitStatus.statusLine), findsNothing);
+      expect(find.byKey(TurnstileGate.waitStatusLine), findsNothing);
       expect(
         _captcha(tester).generation,
         greaterThan(generation),
@@ -246,7 +246,7 @@ void main() {
     await tester.tap(find.byKey(CheckInboxActions.resendButton));
     await tester.pump();
     expect(auth.resends, 0);
-    expect(find.byKey(CaptchaWaitStatus.statusLine), findsOneWidget);
+    expect(find.byKey(TurnstileGate.waitStatusLine), findsOneWidget);
 
     _captcha(tester).setToken('tok-r');
     await tester.pump();

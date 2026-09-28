@@ -295,7 +295,7 @@ void main() {
       await tester.pump();
 
       expect(spent, isEmpty, reason: 'no token, no call');
-      final Finder status = find.byKey(CaptchaWaitStatus.statusLine);
+      final Finder status = find.byKey(TurnstileGate.waitStatusLine);
       expect(status, findsOneWidget);
       expect(tester.getSemantics(status), isSemantics(isLiveRegion: true));
 
@@ -303,7 +303,7 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(spent, <String?>['tok-1'], reason: 'exactly one call, with it');
-      expect(find.byKey(CaptchaWaitStatus.statusLine), findsNothing);
+      expect(find.byKey(TurnstileGate.waitStatusLine), findsNothing);
       semantics.dispose();
     });
 
@@ -356,27 +356,44 @@ void main() {
     testWidgets('kDesktop', (WidgetTester t) => pumpAt(t, kDesktop));
   });
 
-  // assert-responsive-coverage: the wait line is a chassis surface too. It sits
-  // inside the form pane, one line of text beside a spinner; at every window
-  // class it must lay out without overflow and keep its sentence on screen.
-  group('CaptchaWaitStatus fits the form pane at every window class', () {
+  // The gate's wait line is PRIVATE to the gate, so it is measured through the
+  // gate's public API: a WAITING controller, the gate inside the form pane, at
+  // every window class — no overflow, and the sentence stays on screen.
+  group('the gate\'s wait line fits the form pane at every window class', () {
     Future<void> pumpAt(WidgetTester tester, Size size) async {
+      final CaptchaTokenController c = CaptchaTokenController(
+        posture: CaptchaPosture.challenge,
+        siteKey: 'k',
+      );
+      addTearDown(c.dispose);
+      final Future<void> wait = c.untilReady();
       await pumpChassis(
         tester,
         size,
-        const Scaffold(
-          body: ContentPane.form(child: CaptchaWaitStatus(waiting: true)),
+        Scaffold(
+          body: ContentPane.form(
+            child: TurnstileGate(
+              controller: c,
+              render: (BuildContext _, TurnstileChallenge _) =>
+                  const SizedBox(height: 65),
+            ),
+          ),
         ),
         settle: false,
       );
       expect(tester.takeException(), isNull);
-      final Finder line = find.byKey(CaptchaWaitStatus.statusLine);
+      final Finder line = find.byKey(TurnstileGate.waitStatusLine);
       expect(line, findsOneWidget);
       expect(
         tester.getRect(line).right,
         lessThanOrEqualTo(size.width),
         reason: 'the sentence stays on screen at ${size.width}',
       );
+      // Answer the challenge, so no wait timer outlives the case.
+      c.setToken('tok');
+      await wait;
+      await tester.pump();
+      expect(line, findsNothing, reason: 'the line goes when the wait ends');
     }
 
     testWidgets('kPhone', (WidgetTester t) => pumpAt(t, kPhone));

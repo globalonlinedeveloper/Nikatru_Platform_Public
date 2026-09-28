@@ -60,7 +60,7 @@ class VerifyEmailView extends StatefulWidget {
 
   /// The adapter's token holder, which this view WAITS on — never gates on.
   /// A gated action validates its fields first, then awaits
-  /// `untilReady()` (the gate shows `CaptchaWaitStatus`), then calls the adapter's
+  /// `untilReady()` (the gate shows its wait line), then calls the adapter's
   /// callback, which spends the token with `consume()` in the same step.
   /// Null where the adapter has no captcha.
   ///
