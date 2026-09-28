@@ -182,6 +182,9 @@ import {
   runOutsideScheduleDays,
   checkRunUnits,
   checkLiveVerdictScopes,
+  PAGE_ONLY_CLASSES,
+  pageOnlyEligible,
+  checkAlertNeeds,
   githubDarkness,
   LIVE_READS_NOT_MADE,
   localImportClosure,
@@ -4984,6 +4987,28 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
     assert.match(noWhy.errors[0] ?? '', /must say why/);
   });
 
+  // ⏱ 2026-09-27 · O-RENOVATE-BACKLOG-OUTRUNS-ITS-LIMITS — ONE predicate for both
+  // halves (PAGE_ONLY_CLASSES / pageOnlyEligible, ADR no.064).
+  test('PAGE-ONLY T1 - pageOnlyEligible admits a duty.laptop.* id and refuses duty.workflow.ci.yml', () => {
+    assert.equal(pageOnlyEligible('duty.laptop.x'), true);
+    assert.equal(pageOnlyEligible('duty.workflow.ci.yml'), false);
+  });
+
+  test('PAGE-ONLY T2 (drift control) - every class in PAGE_ONLY_CLASSES passes the structure AND prints in the router on main\'s ci.yml push', () => {
+    const keys = Object.keys(PAGE_ONLY_CLASSES);
+    assert.ok(keys.length > 0, 'PAGE_ONLY_CLASSES is empty, so this control would range over nothing');
+    const push = policyIn('ci.yml', 'push');
+    for (const prefix of keys) {
+      const id = `${prefix}t2-drift-control`;
+      const reg = regOf({ id, kind: 'duty', cadence: '1d', liveVerdictScope: PAGE_ONLY() });
+      assert.deepEqual(checkLiveVerdictScopes(reg, OWN_TOPO()).errors, [], `${prefix}: a well-formed scoped row of this class must pass the structure`);
+      const r = routeLiveVerdicts([{ id, line: `${id} — red`, code: 1 }], push, OWN_TOPO(), reg, parsedRepo().byFile);
+      assert.deepEqual(r.blocking, [], `${prefix}: the structure admits this class, so the router must not block it on the ci.yml push`);
+      assert.equal(r.printed.length, 1, `${prefix}: and it must PRINT`);
+      assert.ok(r.printed[0].why.includes(PAGE_ONLY_CLASSES[prefix]), `${prefix}: the printed reason carries the class's own stamp: ${r.printed[0].why}`);
+    }
+  });
+
   // ⏱ 2026-09-18 (later) — PIN MOVED DELIBERATELY from [DRIVER] to the three laptop
   // routines. #802 moved the PORTABLE half of nikatru-ops-check and nikatru-watchdog
   // onto the platform Worker cron (duty.platform-ops-watchdog-beat, GlitchTip monitor
@@ -4994,16 +5019,22 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
   // ⏱ 2026-09-27 — LEAD RULING FBP-1: the laptop BACKUP joins the set. Main runs
   // 36290400205 and 36293604395 both failed ci-gate on its late heartbeat alone (a
   // 602.9 s Drive listing on a busy laptop) and skipped both deploy lanes.
+  // ⏱ 2026-09-27 · EDITED DELIBERATELY, as the paragraph above demands: the set
+  // gains duty.freshness.renovate-backlog, the first row of the second page-only
+  // class (O-RENOVATE-BACKLOG-OUTRUNS-ITS-LIMITS; register order, so it comes first).
+  // The #802 assertion stays on the two laptop routines it is about.
   const BACKUP = 'duty.laptop.nikatru-daily-backup';
-  const LAPTOP_PAGE_ONLY = [BACKUP, 'duty.laptop.nikatru-ops-check', 'duty.laptop.nikatru-watchdog', DRIVER];
-  test('PAGE-ONLY - the committed register scopes exactly the four laptop duties, and it holds', () => {
+  const RENOVATE_BACKLOG = 'duty.freshness.renovate-backlog';
+  const LAPTOP_802 = ['duty.laptop.nikatru-ops-check', 'duty.laptop.nikatru-watchdog'];
+  const PAGE_ONLY_ROWS = [RENOVATE_BACKLOG, BACKUP, ...LAPTOP_802, DRIVER];
+  test('PAGE-ONLY - the committed register scopes exactly the four laptop duties and the Renovate backlog, and it holds', () => {
     const reg = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
     const scoped = reg.rows.filter((r) => r.liveVerdictScope !== undefined).map((r) => r.id);
-    assert.deepEqual(scoped, LAPTOP_PAGE_ONLY);
+    assert.deepEqual(scoped, PAGE_ONLY_ROWS);
     assert.deepEqual(checkLiveVerdictScopes(reg, OWN_TOPO()).errors, []);
     const byId = new Map(reg.rows.map((r) => [r.id, r]));
-    for (const id of LAPTOP_PAGE_ONLY) assert.equal(byId.get(id).liveVerdictScope.page, 'ops-watch.yml', `${id} pages in ops-watch.yml`);
-    for (const id of ['duty.laptop.nikatru-ops-check', 'duty.laptop.nikatru-watchdog']) assert.match(byId.get(id).liveVerdictScope.why, /#802/, `${id} must say its portable half moved to the Worker`);
+    for (const id of PAGE_ONLY_ROWS) assert.equal(byId.get(id).liveVerdictScope.page, 'ops-watch.yml', `${id} pages in ops-watch.yml`);
+    for (const id of LAPTOP_802) assert.match(byId.get(id).liveVerdictScope.why, /#802/, `${id} must say its portable half moved to the Worker`);
     assert.match(byId.get(BACKUP).liveVerdictScope.why, /FBP-1/, 'the backup must name the ruling that scoped it');
   });
 
@@ -5020,6 +5051,53 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
     const page = routeLiveVerdicts(RED_BACKUP(), policyIn('ops-watch.yml', 'schedule'), OWN_TOPO(), reg, parsedRepo().byFile);
     assert.equal(page.blocking.length, 1, 'the page still goes red - a backup miss is never hidden');
     assert.deepEqual(page.printed, []);
+  });
+
+  // ⏱ 2026-09-27 · the committed Renovate backlog row, routed (mirrors the laptop pair above).
+  const committedRenovateRow = () => {
+    const reg = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
+    return structuredClone(reg.rows.find((r) => r.id === RENOVATE_BACKLOG));
+  };
+  const RED_RENOVATE = () => [{ id: RENOVATE_BACKLOG, line: `${RENOVATE_BACKLOG} — its record IS reachable and the newest SUCCESSFUL run is 300.0h old`, code: 1 }];
+
+  test('PAGE-ONLY T3 - a red duty.freshness.renovate-backlog verdict PRINTS on main\'s ci.yml push, and still BLOCKS in the ops-watch schedule', () => {
+    const row = committedRenovateRow();
+    assert.ok(row, `${RENOVATE_BACKLOG} is not in the committed register`);
+    const reg = regOf(row);
+    const push = routeLiveVerdicts(RED_RENOVATE(), policyIn('ci.yml', 'push'), OWN_TOPO(), reg, parsedRepo().byFile);
+    assert.deepEqual(push.blocking, [], 'a queue that drains only by merges must not freeze the merge gate');
+    assert.equal(push.printed.length, 1, 'and it is PRINTED, never dropped');
+    assert.match(push.printed[0].why, /PAGE-ONLY \(owner 2026-09-26/);
+    const page = routeLiveVerdicts(RED_RENOVATE(), policyIn('ops-watch.yml', 'schedule'), OWN_TOPO(), reg, parsedRepo().byFile);
+    assert.equal(page.blocking.length, 1, 'the page still goes red - the backlog is not hidden');
+  });
+
+  test('PAGE-ONLY T4 (mutation control) - the SAME red Renovate backlog row WITHOUT the scope BLOCKS main\'s ci.yml push', () => {
+    const row = committedRenovateRow();
+    delete row.liveVerdictScope;
+    const push = routeLiveVerdicts(RED_RENOVATE(), policyIn('ci.yml', 'push'), OWN_TOPO(), regOf(row), parsedRepo().byFile);
+    assert.equal(push.blocking.length, 1);
+  });
+
+  // ⏱ 2026-09-27 · limb 3a — ops-watch.yml's alert chain is held (checkAlertNeeds).
+  test('ALERT NEEDS - a job missing from alert.needs is refused by name, with the row that grades it; the committed file holds', () => {
+    const committed = checkAlertNeeds(parseWorkflow(resolve(CI_DIR, '..', '..'), '.github/workflows/ops-watch.yml'), JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8')));
+    assert.deepEqual(committed.errors, [], 'the committed ops-watch.yml must hold every job but alert and digest in alert.needs');
+    assert.match(committed.prints[0] ?? '', /\[ALERT\] ops-watch\.yml — alert\.needs holds all \d+ job\(s\)/);
+    const root = join(TMP, `alert-needs-${seq++}`);
+    mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
+    const job = (id, extra = '') => `  ${id}:\n    runs-on: ubuntu-24.04\n${extra}    steps:\n      - run: echo ${id}\n`;
+    writeFileSync(
+      join(root, '.github', 'workflows', 'ops-watch.yml'),
+      'name: t\non: workflow_dispatch\njobs:\n' + job('a') + job('b') + job('alert', '    needs: [a, gone]\n') + job('digest', '    needs: [b]\n'),
+    );
+    const wf = parseWorkflow(root, '.github/workflows/ops-watch.yml');
+    const reg = { rows: [{ id: 'duty.fixture-b', mechanism: { recordQuery: { reader: 'github-run-history', workflow: 'ops-watch.yml', unit: { jobs: ['b'] } } } }] };
+    const r = checkAlertNeeds(wf, reg);
+    assert.equal(r.errors.length, 2, r.errors.join('\n'));
+    assert.match(r.errors[0], /job `b` \(graded by duty\.fixture-b\) is not in `alert\.needs`/);
+    assert.match(r.errors[1], /`alert\.needs` names `gone`, which is not a job of this file/);
+    assert.equal(r.errors.some((e) => /job `digest`/.test(e)), false, 'digest is exempt');
   });
 
   // ⏱ 2026-09-18 — the Worker half of the watchdog is its OWN watched duty, shaped
@@ -6133,7 +6211,8 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
         assert.equal(r.printed.some((p) => p.line.startsWith(`${id} —`)), false, `${name}: ${id} is still printed as failing`);
         assert.match(r.out, new RegExp(`\\[14\\]O-3 — ${reEscape(id)} — queried: newest success 2\\.7h ago, inside \\[1d x 1\\.5 = 36\\.0h\\]\\. run 34533663312 \\(schedule on main\\)`), `${name}: ${id} must be judged by run 34533663312's unit`);
       }
-      assert.match(r.out, /\[INV3\] ops-watch\.yml — 6 duty rows, each judged by its OWN unit/);
+      // ⏱ 2026-09-27 — 6 -> 7: duty.freshness.renovate-backlog reads ops-watch.yml's renovate-backlog job.
+      assert.match(r.out, /\[INV3\] ops-watch\.yml — 7 duty rows, each judged by its OWN unit/);
     }
   });
 
@@ -6314,14 +6393,16 @@ describe('INV3 · a duty is judged by the unit that performs it — the pure hal
     assert.match(errs(row('a', { jobs: 'status' })), /is not "run", \{ "jobs"/);
     assert.match(errs(row('a', { jobs: ['status'] }), row('b', { jobs: ['status'] })), /job status of ops-watch\.yml is already the unit of a/);
     assert.match(errs(row('a', { jobs: ['heartbeats'] }), row('b', { job: 'heartbeats', step: "Judge whether the analytics rail's silence is a FAULT" })), /the units overlap/);
-    assert.match(errs(row('a', { jobs: ['status'] }), row('b', { jobs: ['pages-deployments'] })), /job\(s\) supabase-drift · prod-provenance · runner-budget · glitchtip · edge-shield · failure-ledger · alert · digest are the unit of none/);
+    // ⏱ 2026-09-27 — ops-watch.yml gained the renovate-backlog job (duty.freshness.renovate-backlog).
+    assert.match(errs(row('a', { jobs: ['status'] }), row('b', { jobs: ['pages-deployments'] })), /job\(s\) supabase-drift · prod-provenance · runner-budget · glitchtip · edge-shield · failure-ledger · renovate-backlog · alert · digest are the unit of none/);
     const real = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
     const out = checkRunUnits(real, files, topo);
     assert.deepEqual(out.errors, []);
     const runRows = real.rows.filter((r) => r?.mechanism?.recordQuery?.reader === 'github-run-history');
     assert.ok(runRows.length >= 12, `expected every workflow row and the three ops-watch duties; found ${runRows.length}`);
     for (const r of runRows) assert.ok(unitOf(r.mechanism.recordQuery).declared, `${r.id} names no unit`);
-    assert.ok(out.prints.some((p) => /\[INV3\] ops-watch\.yml — 6 duty rows/.test(p)), 'the shared workflow and its units must print on every run');
+    // ⏱ 2026-09-27 — 6 -> 7: duty.freshness.renovate-backlog reads ops-watch.yml's renovate-backlog job.
+    assert.ok(out.prints.some((p) => /\[INV3\] ops-watch\.yml — 7 duty rows/.test(p)), 'the shared workflow and its units must print on every run');
   });
 
   test('jobSteps reads the committed heartbeats job the way the API names its steps', () => {
