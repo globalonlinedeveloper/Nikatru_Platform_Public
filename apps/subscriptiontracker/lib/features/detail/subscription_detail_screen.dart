@@ -552,7 +552,7 @@ class SubscriptionDetailScreen extends ConsumerWidget {
     );
   }
 
-  /// ✅ ST-U7 (B16): THREE STATES, AND ONE FETCH PER OPEN. This was a
+  /// ✅ ST-U7 (B16): THREE STATES, AND NO FETCH PER REBUILD. This was a
   /// `FutureBuilder` over `ref.read(…).history(id)`, re-fired on every rebuild,
   /// rendering `snap.data ?? const []` — so LOADING and FAILED both printed
   /// "No payments yet.", a false claim about a record of real charges. It now

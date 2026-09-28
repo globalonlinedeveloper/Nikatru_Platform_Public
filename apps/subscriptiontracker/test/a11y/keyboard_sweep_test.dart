@@ -446,7 +446,10 @@ final Map<String, List<Override>> kSweptAs = <String, List<Override>>{
 /// this file quietly measuring a shrinking share of a growing app.
 const Map<String, ({int controls, int reachable})>
 kExpected = <String, ({int controls, int reachable})>{
-  '/scan': (controls: 1, reachable: 1),
+  // ⏱ 2026-09-28 · ST-U8 (B49): 1 -> 13. The swept results phase lists the
+  // seed's 12 rows, and each now opens its detail (an InkWell, on the Tab
+  // orbit) beside the one CTA.
+  '/scan': (controls: 13, reachable: 13),
   // 5 -> 7 on 2026-08-26: the two `_LegalLink`s joined the orbit. The
   // control count did NOT move — `FocusableTap` still builds a
   // `GestureDetector` with an `onTap`, so the rig counts the same nine.

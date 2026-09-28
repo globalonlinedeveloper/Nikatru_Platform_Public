@@ -154,11 +154,14 @@ final Provider<SubscriptionRepository> subscriptionRepositoryProvider =
 /// rebuild, and rendered `snap.data ?? const []`: loading and failure both
 /// became "No payments yet." — a false statement about a record of real
 /// charges. A provider gives the screen the three states apart and one fetch
-/// per open, and `invalidate` is its retry. `autoDispose` so leaving the
-/// screen drops it and the next open asks again.
-final AutoDisposeFutureProviderFamily<List<PaymentRecord>, String>
-paymentHistoryProvider = FutureProvider.autoDispose
-    .family<List<PaymentRecord>, String>(
+/// per subscription, and `invalidate` is its retry.
+///
+/// ⚠️ NOT `autoDispose`, measured: disposing it when the detail screen leaves
+/// schedules riverpod's zero-length disposal timer, which is still pending when
+/// a widget test's tree is torn down (`!timersPending` in two
+/// dark_group_detail cases). A history is a handful of rows per subscription.
+final FutureProviderFamily<List<PaymentRecord>, String> paymentHistoryProvider =
+    FutureProvider.family<List<PaymentRecord>, String>(
       (ref, String id) => ref.watch(subscriptionRepositoryProvider).history(id),
     );
 
