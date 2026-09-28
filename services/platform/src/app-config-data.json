@@ -16,7 +16,8 @@
     "this factory exists to abolish. A deploy is still required for a catalogue change to reach the",
     "edge (the Worker bundles both files at build time); what is gone is the SOURCE EDIT.",
     "",
-    "ELEVEN READERS, named by file and SYMBOL (never by line: every line number here went stale) — all read STRUCTURE:",
+    "TWELVE READERS, named by file and SYMBOL (never by line: every line number here went stale) — all read STRUCTURE:",
+    "  · tooling/catalog/render-rail-prices.mjs `REGISTER` — `prices` → services/platform/src/routes/rail-price-ids.ts, the store column's rule, the owner's store sheet",
     "  · services/platform/src/config.ts, the `import` of this file — builds the served registry from catalogue x this file",
     "  · tooling/ci/assert-config-registry.mjs `DATA` — every key here names a catalogue app, and every served feature has a reader",
     "  · tooling/ci/assert-no-store-bundle-copy.mjs `SERVED_COPY` — served copy promises no bundle while none can be bought (G6)",
@@ -131,6 +132,81 @@
             "trial_days": 0
           }
         ]
+      }
+    }
+  },
+
+  "prices": {
+    "_readme": [
+      "THE PRICE BOOK: what each served offering costs on each STORE and what each RAIL sells it under (O-RAIL-PRICE-IDS-HAND-KEPT).",
+      "",
+      "NOT SERVED. services/platform/src/config.ts reads `sharedApiBaseUrl`, `defaults` and `apps` and nothing else, so no",
+      "client and no KV override ever sees this section. The web price a buyer is shown stays `amount_minor` in",
+      "`apps.<id>.paywall.offerings`; an entry here is keyed by that offering's `product_id` and adds only what the served",
+      "wire does not carry: the plan, the India web price, the store column and the rail handles.",
+      "",
+      "`apps.<id>.<product_id>`: `plan` (single-monthly | single-yearly | single-lifetime, the same enum as app.yaml",
+      "`billing.mobileIap.storeProducts[].plan`), `webInrMinor` (ADR 078's India web price, unchanged by ADR 093), `store`",
+      "(ADR 093 section 2's store column: `USD`, `INR` and `readBack`, absent on the lifetime plan, which no store sells) and",
+      "`rails` (`paddle`, `razorpay`: each either a READ-BACK `{priceId|planId, amountMinor, readAt}` or `{pending: <reason>}`).",
+      "`bundles.<plan>`: the same shape for a bundle plan (ADR 093 prices the bundle per plan), priced by its own web column; its rail handles",
+      "stay in catalog/bundles.json `priceIds`, their one home, and are not repeated here.",
+      "",
+      "RENDERED. tooling/catalog/render-rail-prices.mjs turns `rails` into services/platform/src/routes/rail-price-ids.ts,",
+      "which checkout.ts imports; its --check fails on a hand edit to that file. It also grades the store column by ADR 093",
+      "section 2's snapping rule (the store price is at least the web price x 1.20, and a store's read-back is never below",
+      "it) and prints the owner's store sheet: `render-rail-prices.mjs --store-sheet <app>`.",
+      "",
+      "A rail value is a VENDOR READ-BACK, never typed to match a price above: a rail id and its amount move only after a",
+      "read of the vendor's own catalogue, and `readAt` says when. Razorpay is `pending` on every plan until Razorpay PR B",
+      "(designed, not briefed) and the owner's plans exist; PR B then reads RAZORPAY_PLAN_IDS from the rendered file."
+    ],
+    "apps": {
+      "subscriptiontracker": {
+        "pro_monthly": {
+          "plan": "single-monthly",
+          "webInrMinor": 14900,
+          "store": { "USD": 719, "INR": 17900, "readBack": { "apple": null, "google": null } },
+          "rails": {
+            "paddle": { "priceId": "pri_01m346p0fjtaffk6waj5x5vz1c", "amountMinor": 599, "readAt": "2026-09-22T09:20:50Z" },
+            "razorpay": { "pending": "no Razorpay plan exists yet: the owner creates it (ADR 094), and Razorpay PR B reads it from here" }
+          }
+        },
+        "pro_yearly": {
+          "plan": "single-yearly",
+          "webInrMinor": 99900,
+          "store": { "USD": 4199, "INR": 119900, "readBack": { "apple": null, "google": null } },
+          "rails": {
+            "paddle": { "priceId": "pri_01m346p0v8103kqy1zb8zmmj7y", "amountMinor": 3499, "readAt": "2026-09-22T09:20:50Z" },
+            "razorpay": { "pending": "no Razorpay plan exists yet: the owner creates it (ADR 094), and Razorpay PR B reads it from here" }
+          }
+        },
+        "pro_lifetime": {
+          "plan": "single-lifetime",
+          "webInrMinor": 249900,
+          "rails": {
+            "paddle": { "priceId": "pri_01m346p14yzeqjjwj153thx8p2", "amountMinor": 8900, "readAt": "2026-09-26T23:43:12Z" },
+            "razorpay": { "pending": "no Razorpay one-time item exists yet: the owner creates it (ADR 094), and Razorpay PR B reads it from here" }
+          }
+        }
+      }
+    },
+    "bundles": {
+      "bundle-monthly": {
+        "plan": "bundle-monthly",
+        "amount_minor": 899,
+        "currency_code": "USD",
+        "term": "month",
+        "webInrMinor": 22900,
+        "store": { "USD": 1099, "INR": 27900, "readBack": { "apple": null, "google": null } }
+      },
+      "bundle-yearly": {
+        "plan": "bundle-yearly",
+        "amount_minor": 4999,
+        "currency_code": "USD",
+        "term": "year",
+        "webInrMinor": 149900,
+        "store": { "USD": 5999, "INR": 179900, "readBack": { "apple": null, "google": null } }
       }
     }
   }
