@@ -646,8 +646,10 @@ void main() {
         // other control on the screen, measured when this was 27 with 4 chips.
         // ⏱ 2026-09-27 · ST-U1: 23 -> 22 and 21 -> 20 — the chassis daily
         // "Reminders" switch left this screen.
-        controls: 22 + core.Money.symbols.length,
-        reachable: 20 + core.Money.symbols.length,
+        // ⏱ 2026-09-28 · ST-R3: 22 -> 24 and 20 -> 22 — the "Remind me" and
+        // "At" rows under Renewal alerts, both ListTiles in the Tab orbit.
+        controls: 24 + core.Money.symbols.length,
+        reachable: 22 + core.Money.symbols.length,
       );
       expect(
         s.dead.length,

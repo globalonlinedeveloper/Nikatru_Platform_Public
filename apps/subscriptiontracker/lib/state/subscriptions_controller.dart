@@ -39,7 +39,7 @@ import 'settings_controller.dart';
 /// red (four in activation_transition_test, three in settings_wiring_test), each
 /// with that exact `LocaleDataException`. Those suites drive this controller
 /// through a bare container on purpose, so the branch has a proven open path.
-DateFormat _monthDay(String localeName) {
+DateFormat monthDayFormat(String localeName) {
   try {
     return DateFormat.MMMd(localeName);
   } on Exception {
@@ -83,16 +83,20 @@ ReminderCopy reminderCopyFor(Locale? chosen) {
   final AppLocalizations l10n = lookupAppLocalizations(
     resolveAppLocale(chosen),
   );
-  final DateFormat monthDay = _monthDay(l10n.localeName);
+  final DateFormat monthDay = monthDayFormat(l10n.localeName);
   return ReminderCopy(
     channelName: l10n.renewalChannelName,
     reminderTitle: l10n.renewalReminderTitle,
     reminderBody: (String name, DateTime renewal) =>
         l10n.renewalReminderBody(name, monthDay.format(renewal)),
     digestTitle: l10n.weeklyDigestTitle,
-    // A tear-off, not a wrapper: `weeklyDigestBody` IS `(int, String) → String`,
-    // and it is the plural — `count` picks the arm inside the .arb.
-    digestBody: l10n.weeklyDigestBody,
+    // ST-R7 (audit C24): what renews THIS week and what it costs — a tear-off,
+    // and the plural: `count` picks the arm inside the .arb.
+    digestBody: l10n.weeklyDigestDueBody,
+    // ST-R8: the "Cancel by" reminder, in the same month-day format.
+    cancelByTitle: (DateTime d) => l10n.cancelByTitle(monthDay.format(d)),
+    cancelByBody: (String name, DateTime d) =>
+        l10n.cancelByBody(name, monthDay.format(d)),
   );
 }
 
@@ -242,9 +246,7 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
       if (ReminderPlan.from(
         ref.read(settingsControllerProvider).prefs,
       ).syncRenewals) {
-        await ref
-            .read(subscriptiontrackerNotificationServiceProvider)
-            .requestPermissions();
+        await ref.read(renewalRemindersProvider).requestPermissions();
       }
     }
   }
@@ -255,6 +257,31 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
   /// "what currency is this amount in" is a property of the row being created,
   /// and the sheet should not have to know which provider holds a preference.
   String get newRowCurrencyCode => ref.read(currencyCodeProvider);
+
+  /// Write a row's reminder fields (`reminder_days`, `notice_days`) and
+  /// re-arm its reminders — the detail screen's rows (ST-R3, ST-R8).
+  ///
+  /// The server's answer replaces the row, so what the list shows is what was
+  /// stored. Throws what the repository throws; the caller says so.
+  Future<void> updateReminderFields(
+    String id,
+    Map<String, dynamic> changes,
+  ) async {
+    final Subscription updated = await ref
+        .read(subscriptionRepositoryProvider)
+        .update(id, changes);
+    if (!ref.mounted) return;
+    final List<Subscription>? before = observedList;
+    if (before == null) {
+      ref.invalidateSelf();
+      return;
+    }
+    final List<Subscription> list = <Subscription>[
+      for (final Subscription s in before) s.id == id ? updated : s,
+    ];
+    state = AsyncData<List<Subscription>>(list);
+    await _syncReminders(list);
+  }
 
   Future<void> cancelSubscription(String id) async {
     await ref.read(subscriptionRepositoryProvider).cancel(id);
@@ -300,16 +327,14 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
 
   Future<void> _syncRemindersOrThrow(List<Subscription> subs) async {
     final SettingsState settings = ref.read(settingsControllerProvider);
-    final NotificationService notifier = ref.read(
-      subscriptiontrackerNotificationServiceProvider,
-    );
+    final RenewalReminders notifier = ref.read(renewalRemindersProvider);
     final ReminderPlan plan = ReminderPlan.from(settings.prefs);
     // Rendered here, once, for both scheduling branches — see reminderCopyFor
     // on why it is rebuilt each sync rather than cached in a provider.
     final Locale? chosenLocale = ref.read(localeProvider);
     final ReminderCopy copy = reminderCopyFor(chosenLocale);
 
-    // AWAITED (see [_syncReminders]); NotificationService is a no-op wherever
+    // AWAITED (see [_syncReminders]); RenewalReminders is a no-op wherever
     // the capability matrix says it cannot schedule (web, Windows, Linux).
     //
     // ORDER: renewals first, digest second. This ordering USED to be
@@ -318,7 +343,7 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
     // the renewal namespace, so a future widening of that namespace cannot
     // silently swallow the digest again.
     if (plan.syncRenewals) {
-      await notifier.syncAll(subs, copy: copy);
+      await notifier.syncAll(subs, copy: copy, rules: settings.reminderRules);
     } else {
       // 🔴 OWNED IDS ONLY. `cancelAll()` here wiped the chassis daily
       // reminder (id 1) every time "Renewal alerts" went off — the two
@@ -335,10 +360,17 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
         resolvedLocaleName(chosenLocale),
         emptyCurrencyCode: newRowCurrencyCode,
       );
+      // ST-R7: the week the digest OPENS on — counted from its own Sunday,
+      // not from today, because it is read then.
+      final DateTime sunday = RenewalReminders.digestDay(DateTime.now());
+      final int due = subs.where((Subscription s) {
+        final int d = s.daysUntil(sunday);
+        return d >= 0 && d <= 7;
+      }).length;
       await notifier.scheduleWeeklyDigest(
         copy: copy,
-        count: subs.length,
-        formattedTotal: money.formatBag(SubMath.totalMonthly(subs)),
+        count: due,
+        formattedTotal: money.formatBag(SubMath.dueWithin(subs, sunday, 7)),
       );
     } else {
       await notifier.cancelWeeklyDigest();

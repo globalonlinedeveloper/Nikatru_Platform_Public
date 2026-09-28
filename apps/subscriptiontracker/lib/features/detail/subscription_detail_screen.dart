@@ -15,6 +15,7 @@ import '../shared/async_gate.dart';
 import '../shared/due.dart';
 import '../shared/widgets.dart';
 import '../shell/app_shell.dart';
+import 'reminder_rows.dart';
 
 /// 🔴 THE BRIGHTNESS RULE FOR THIS FILE, stated once so the three sites below
 /// do not each have to argue it. `apps/subscriptiontracker` is the frozen legacy rail-prover
@@ -543,6 +544,9 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                       ),
                     ],
                   ),
+                  // ST-R3 / ST-R8: when this one reminds, and its notice.
+                  // Last, below the actions, so nothing above it moves.
+                  SubscriptionReminderRows(sub: s),
                 ],
               ),
             ),
