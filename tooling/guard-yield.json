@@ -85,6 +85,11 @@
       "firstSeen": "2026-08-12",
       "evidence": []
     },
+    "tooling/ci/assert-a11y-primitives.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-28",
+      "evidence": []
+    },
     "tooling/ci/assert-adapter-capabilities.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-29",

@@ -1,5 +1,6 @@
 {
   "a11y-coverage.test.mjs": 35,
+  "a11y-primitives.test.mjs": 28,
   "adapter-capabilities.test.mjs": 32,
   "adapter-set.test.mjs": 6,
   "ads-declarations.test.mjs": 62,
