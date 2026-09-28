@@ -11,6 +11,7 @@ Not hand-written. Read on 2026-09-26 out of that run's own artifacts (main `b1fc
 | `Sentry.xcprivacy` | `Sentry.framework`'s manifest (Sentry-Cocoa 8.58.4) | both bundles; the same bytes |
 | `RevenueCat.xcprivacy` | `RevenueCat_RevenueCat.bundle`'s manifest | both bundles; the same bytes |
 | `OrderedSet.xcprivacy` | `OrderedSet_privacy.bundle`'s manifest (OrderedSet 6.0.3) | both bundles; the same bytes |
+| `privacy-manifest.json` | the audit this capture is graded against in `apple-privacy-manifest.test.mjs`: `apps/subscriptiontracker/store/ios-appstore/privacy-manifest.json` as it stood at main `1cd269b7`, the last audit graded against these bundles (W36 wrote its SDK rows from them) | committed 2026-09-27 with the Flutter majors train, when M7 moved the live audit to `flutter_secure_storage_darwin`; re-capture from the first release-signed build-platforms run after it and retire this file |
 
 How the archives were opened: the `.ipa` with `unzip`; the `.pkg` with bsdtar, which reads its xar
 table of contents (a product archive with one component, `com.nikatru.subscriptiontracker.pkg`,

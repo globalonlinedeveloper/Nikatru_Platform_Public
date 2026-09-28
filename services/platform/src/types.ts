@@ -104,6 +104,14 @@ export interface Env {
   CONFIG_CEILING_LIMITER?: RateLimiterBinding;
 
   /**
+   * ST-I3 · The SAME server-derived ceiling for GET /v1/fx/latest, the public
+   * rate table. Its own namespace so a cache-busting flood on the rate table
+   * cannot spend the budget config resolution depends on, and the other way
+   * round. Optional, and absence fails OPEN, like the others.
+   */
+  FX_CEILING_LIMITER?: RateLimiterBinding;
+
+  /**
    * The SAME server-derived ceiling for POST /v1/money/:provider — the third
    * unauthenticated-in-the-Supabase-sense route on this Worker that does I/O.
    * Its own namespace so a flood of forged notifications cannot exhaust the

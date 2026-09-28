@@ -24,6 +24,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/services/notifications/notification_service.dart';
@@ -55,6 +56,10 @@ void main() {
     // platform; so the channel proves the capped platform and the planner
     // proves the uncapped one.
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    // flutter_local_notifications 18+ installs its platform implementation
+    // through registerWith(), which only the app's generated plugin registrant
+    // calls; 17.x did it in the plugin constructor. A test registers it itself.
+    IOSFlutterLocalNotificationsPlugin.registerWith();
   });
 
   tearDownAll(() {

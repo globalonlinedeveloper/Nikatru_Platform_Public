@@ -74,8 +74,9 @@ pair:
 - The macOS **engine** manifest (`FlutterMacOS.framework`) carries no
   `NSPrivacyAccessedAPITypes` key **at all**, where the iOS one declares
   `FileTimestamp` (`0A2A.1`, `C617.1`) and `SystemBootTime` (`35F9.1`).
-- The **plugin set is not the iOS one**: `flutter_secure_storage_macos` 3.1.3 and
-  `url_launcher_macos` 3.2.5 replace their iOS-named counterparts, and there is no
+- The **plugin set is not the iOS one**: `url_launcher_macos` 3.2.5 replaces its
+  iOS-named counterpart (the secure-storage plugin differed too until
+  flutter_secure_storage 10 merged both into `flutter_secure_storage_darwin`), and there is no
   `SceneDelegate` on macOS — so the app target's own source **file set** differs,
   which is why both were read in full instead of one standing for the pair.
 - What does **not** differ: the app target reaches no Required Reason API on either

@@ -225,7 +225,7 @@ class _FlutterLocalNotificationsAdapter implements NotificationPlugin {
       linux: LinuxInitializationSettings(defaultActionName: 'Open'),
     );
     await _fln.initialize(
-      settings,
+      settings: settings,
       // The ONLY place a `flutter_local_notifications` type touches a tap. The
       // plugin's `NotificationResponse` stops here and a pure-Dart
       // `NotificationTap` continues, so `packages/core` — and every consumer
@@ -271,7 +271,12 @@ class _FlutterLocalNotificationsAdapter implements NotificationPlugin {
 
   @override
   Future<void> showNow(int id, String title, String body) =>
-      _fln.show(id, title, body, _details);
+      _fln.show(
+        id: id,
+        title: title,
+        body: body,
+        notificationDetails: _details,
+      );
 
   @override
   Future<void> scheduleDaily(
@@ -281,23 +286,21 @@ class _FlutterLocalNotificationsAdapter implements NotificationPlugin {
     tz.TZDateTime when,
   ) =>
       _fln.zonedSchedule(
-        id,
-        title,
-        body,
-        when,
-        _details,
+        id: id,
+        title: title,
+        body: body,
+        scheduledDate: when,
+        notificationDetails: _details,
         // inexact = no SCHEDULE_EXACT_ALARM permission needed (a daily nudge
         // tolerates OS batching); matchDateTimeComponents.time repeats it daily at
-        // the same local time. uiLocalNotificationDateInterpretation is required by
-        // the flutter_local_notifications 17.x API.
+        // the same local time. flutter_local_notifications 19 removed
+        // uiLocalNotificationDateInterpretation (absolute time is the only mode).
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
         matchDateTimeComponents: DateTimeComponents.time,
       );
 
   @override
-  Future<void> cancel(int id) => _fln.cancel(id);
+  Future<void> cancel(int id) => _fln.cancel(id: id);
 
   @override
   Future<void> cancelAll() => _fln.cancelAll();

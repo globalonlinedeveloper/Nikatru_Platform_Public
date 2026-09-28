@@ -1,0 +1,60 @@
+{
+  "_readme": [
+    "ST-I3 · THE ONE VECTOR FOR THE HOME-CURRENCY RATE TABLE, read by BOTH ends of it:",
+    "  services/platform/test/fx.test.ts   parses a hand-built document in the ECB's own format and",
+    "                                      asserts the Worker stores and serves exactly `response`;",
+    "  packages/core/test/money/fx_rates_test.dart  reads `response` into FxTable and asserts every",
+    "                                      `conversions` row, to the minor unit.",
+    "So a change to the payload's shape, or to how either side reads it, reddens the other side's test",
+    "too. `response` is the body of GET /v1/fx/latest and what CONFIG_KV holds under `fx:ecb:latest`.",
+    "",
+    "⚠️ THE RATES ARE HAND-BUILT, NOT AN ECB PUBLICATION FOR THAT DATE. They are plausible magnitudes",
+    "and nothing else; no figure here is a claim about any real day's fix.",
+    "",
+    "`conversions` go THROUGH EUR (units per one euro), in Money's wire shape, rounded HALF TO EVEN",
+    "into the target's minor units. fx.test.ts re-derives each `expect` from `response.rates` with",
+    "exact decimal arithmetic, so an edited rate with an unedited expectation is red on both sides."
+  ],
+  "response": {
+    "source": "Euro foreign exchange reference rates, European Central Bank",
+    "sourceUrl": "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml",
+    "base": "EUR",
+    "asOf": "2026-09-25",
+    "fetchedAt": "2026-09-26T06:00:02.000Z",
+    "rates": {
+      "USD": 1.1732,
+      "JPY": 173.52,
+      "GBP": 0.8731,
+      "INR": 103.987,
+      "CHF": 0.9345,
+      "AUD": 1.7802,
+      "CAD": 1.6275
+    }
+  },
+  "conversions": [
+    {
+      "why": "The headline case: ₹649 shown in dollars. 64900 × 1.1732 ÷ 103.987 = 732.21… cents.",
+      "from": { "minor_units": 64900, "currency": "INR" },
+      "to": "USD",
+      "expect": { "minor_units": 732, "currency": "USD" }
+    },
+    {
+      "why": "The reverse cross: $10.00 in rupees. 1000 × 103.987 ÷ 1.1732 = 88635.36… paise.",
+      "from": { "minor_units": 1000, "currency": "USD" },
+      "to": "INR",
+      "expect": { "minor_units": 88635, "currency": "INR" }
+    },
+    {
+      "why": "Minor-unit digits differ: £10.00 in yen, which has none. 1000 × 173.52 ÷ 0.8731 ÷ 100 = 1987.40… yen.",
+      "from": { "minor_units": 1000, "currency": "GBP" },
+      "to": "JPY",
+      "expect": { "minor_units": 1987, "currency": "JPY" }
+    },
+    {
+      "why": "Into the base itself: ₹649 in euros. 64900 ÷ 103.987 = 624.11… cents.",
+      "from": { "minor_units": 64900, "currency": "INR" },
+      "to": "EUR",
+      "expect": { "minor_units": 624, "currency": "EUR" }
+    }
+  ]
+}

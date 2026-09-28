@@ -415,6 +415,15 @@
       }
     },
     {
+      "id": "fx-latest",
+      "method": "GET",
+      "path": "/v1/fx/latest",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/fx.ts",
+      "purpose": "⏱ 2026-09-28 · ST-I3 (home-currency conversion, platform half). The ECB euro reference rates the nightly cron caches in CONFIG_KV under `fx:ecb:latest` (services/platform/src/fx.ts): `{ source, sourceUrl, base: 'EUR', asOf, fetchedAt, rates }`, the shape of contracts/fx/latest.v1.example.json's `response`. Public because the table is the same for every caller and carries no user data; edge-cached 3600 s; 503 `fx_unavailable` with `no-store` while no valid table is kept, never an empty 200. Behind FX_CEILING_LIMITER, keyed on the edge, never an IP.",
+      "unconsumedReason": "NO CLIENT IN THIS PR, DELIBERATELY. packages/core's FxTable reads this payload and is tested against the same vector, but the transport (`FxRatesSource` in packages/api_client) and its provider land with the FIRST consumer — the converted totals of ST-I1 and the ST-D Home/Insights screens — so nothing ships uncalled. Until then the route is live, filled nightly, and read by nobody."
+    },
+    {
       "id": "events",
       "method": "POST",
       "path": "/v1/events",
@@ -716,7 +725,8 @@
       "scope": "shared",
       "purpose": "Per-app CFG-1 config overrides, keyed `config:<app>`, read on the launch path of every app and edge-cached for 300s.",
       "readers": [
-        "services/platform/src/routes/config.ts"
+        "services/platform/src/routes/config.ts",
+        "services/platform/src/routes/fx.ts"
       ]
     },
     {
@@ -786,6 +796,15 @@
       "purpose": "The same server-derived ceiling for GET /config/:app — the other unauthenticated route on this Worker that does I/O. Its own namespace so config traffic and analytics traffic cannot exhaust each other.",
       "readers": [
         "services/platform/src/routes/config.ts"
+      ]
+    },
+    {
+      "binding": "FX_CEILING_LIMITER",
+      "kind": "ratelimits",
+      "scope": "shared",
+      "purpose": "ST-I3 · The same server-derived ceiling for GET /v1/fx/latest, the public ECB rate table. Its own namespace so a cache-busting flood on the rate table cannot spend the budget config resolution depends on.",
+      "readers": [
+        "services/platform/src/routes/fx.ts"
       ]
     },
     {

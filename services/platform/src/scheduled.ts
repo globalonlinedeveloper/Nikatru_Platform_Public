@@ -34,6 +34,7 @@ import {
 } from './lib/erasure-ledger';
 import { deleteIdentity, erasePlatformRows, purgeVerifiedSignups } from './lib/platform-erasure';
 import { runReminderMail } from './lib/reminders';
+import { refreshFxRates } from './fx';
 import { dropProviderTokens, providerOfRevokeStep, revokeProviderToken } from './lib/provider-revoke';
 import {
   runOpsWatchdogChecks,
@@ -618,6 +619,23 @@ export const REMINDER_MAIL_JOB = 'reminder_mail';
 
 export async function reminderMail(env: Env, nowMs: number = Date.now(), fetchImpl: typeof fetch = fetch): Promise<void> {
   await recordHeartbeat(env, await runReminderMail(env, appTargets(env), nowMs, fetchImpl), REMINDER_MAIL_JOB);
+}
+
+/**
+ * ST-I3 · the home-currency rate table. One row per run, target `ecb`, written
+ * by `fxRates` below; the load-bearing `<NAME>_JOB` spelling, as for renewals.
+ */
+export const FX_RATES_JOB = 'fx_rates';
+
+/**
+ * Fetch the ECB's daily reference rates into CONFIG_KV (src/fx.ts), and record
+ * the outcome. NO CRON OF ITS OWN: the ECB publishes each TARGET day's fix at
+ * about 16:00 CET, so the 06:00 UTC firing reads the previous working day's.
+ * A failure is an ok=0 row and the last good table keeps being served; nothing
+ * here throws into the chain, so the limbs after it still run.
+ */
+export async function fxRates(env: Env): Promise<void> {
+  await recordHeartbeat(env, [await refreshFxRates(env)], FX_RATES_JOB);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2570,6 +2588,9 @@ async function runFiring(event: ScheduledController | undefined, env: Env): Prom
   // proving ground for the rail ops-watch will eventually move to.
   await dispatchGithubWorkflows(env);
   await opsWatchdogJob(env);
+  // Bounded (one GET, FX_FETCH_TIMEOUT_MS) and it writes one KV key only after
+  // the table validates, so it sits ahead of the per-app limbs.
+  await fxRates(env);
   await renewalsFanOut(env);
   // ST-R1 — right after the renewals pass, so it reads the dates that pass just
   // wrote. Bounded: at most MAX_REMINDER_MAILS_PER_DAY sends and

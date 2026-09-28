@@ -105,6 +105,7 @@ describe('capture-backend: the sandbox is computed from the wrangler configs', (
       'ratelimit:EVENTS_LIMITER': '1007',
       'ratelimit:EVENTS_CEILING_LIMITER': '1008',
       'ratelimit:CONFIG_CEILING_LIMITER': '1009',
+      'ratelimit:FX_CEILING_LIMITER': '1016', // ⏱ 2026-09-28 · ST-I3, the rate table's ceiling.
       'ratelimit:EXT_TOKEN_CEILING_LIMITER': '1010',
       'ratelimit:SESSIONS_LIMITER': '1012',
       'ratelimit:REMINDERS_CEILING_LIMITER': '1014', // ⏱ 2026-09-28 · ST-T4a, the public reminder routes' ceiling.

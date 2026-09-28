@@ -83,7 +83,7 @@ new `AuthRepository` implementation — nothing above `data/` changes.
 
 `NotificationService` schedules a one-off reminder per renewal via `zonedSchedule`
 (iOS/Android/macOS/Linux/Windows; web is a no-op). This is the **most version-sensitive
-file** — it targets the `flutter_local_notifications` 17.x API. If `pub get` resolves a newer
+file** — it targets the `flutter_local_notifications` 22.x API. If `pub get` resolves a newer
 major, re-check `zonedSchedule` params and add `WindowsInitializationSettings`. For exact
 local-time firing, add `flutter_timezone` (noted inline).
 

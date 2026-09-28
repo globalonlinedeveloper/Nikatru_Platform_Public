@@ -22,7 +22,10 @@ dependencies:
   shared_preferences: ^2.2.0
   # Secret persistence (auth tokens, entitlement cache): OS Keychain/Keystore/
   # DPAPI, libsecret on Linux, WebCrypto on web.
-  flutter_secure_storage: ^9.0.0
+  # 10.x ON PURPOSE, not 11: upstream says users on 9.x "must first upgrade to
+  # v10.x to migrate data to newer ciphers before proceeding to v11.x", and 11
+  # also needs compileSdk 37 (the app pins 36). 11 is its own change (M7b).
+  flutter_secure_storage: ^10.0.0
   # [pipeline C-13] Store-review prompt. Lands HERE rather than in a package of
   # its own: [pipeline C-4] adjudicated that share_plus, app_links and
   # in_app_review all belong in this existing adapter, because a capability name

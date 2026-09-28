@@ -22,12 +22,16 @@ dependencies:
     path: ../core
   # Local notifications (show + daily zonedSchedule) on Android/iOS/macOS/Linux.
   # No web support (callers fall back to NoOp) and no repeat-schedule on Windows.
-  # Pinned to 17.x to share ONE workspace resolution with apps/subscriptiontracker (its
-  # existing renewal-reminder service targets the 17.x API); the concrete
-  # zonedSchedule call below matches that major.
-  flutter_local_notifications: ^17.2.0
+  # ⏱ 2026-09-27 · THE 17.x PIN IS GONE, AND ITS REASON HAD EXPIRED. It read
+  # "pinned to 17.x to share ONE workspace resolution with apps/subscriptiontracker
+  # (its existing renewal-reminder service targets the 17.x API)": API fit, not a
+  # product reason. The product now needs the major: Windows has a plugin only from
+  # 19.0.0, and O-RENEWAL-REMINDERS-OFF-ON-DESKTOP sells reminders there. Both
+  # consumers move together, so the workspace still resolves ONE version.
+  flutter_local_notifications: ^22.0.0
   # Timezone-correct scheduling for zonedSchedule (pure Dart, all platforms).
-  timezone: ^0.9.4
+  # 0.11 is what flutter_local_notifications 22 requires (#534 was refused on it).
+  timezone: ^0.11.0
   # The device's IANA zone name on all seven targets (android/ios/macos/linux/
   # windows/web; apps.gov.in is the Android artefact). Without it `tz.local`
   # is UTC and every 09:00 reminder fires at 14:30 IST — see device_timezone.dart.

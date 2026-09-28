@@ -271,6 +271,15 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node --single-threaded tooling/ci/assert-ops-register.mjs
+      # ⏱ 2026-09-28 · ops watch 36416498456: `reminder_mail` was declared at a
+      # cloud draft's sandbox commit, which owed a slot hours before the job
+      # reached main. Offline (git only, no D1), and it needs this job's
+      # fetch-depth: 0 — a shallow clone is COVERAGE LOST, exit 2. 2 s on the
+      # first run (36418425091), so 2 minutes.
+      - name: Every watched-since instant owes no slot before its job reached main
+        if: ${{ !cancelled() }}
+        timeout-minutes: 2
+        run: node --single-threaded tooling/ops/check-heartbeats.mjs --declared-vs-main
       - name: Every alerting firing has a recorded disposition
         if: ${{ !cancelled() }}
         env:

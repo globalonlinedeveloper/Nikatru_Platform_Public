@@ -23,7 +23,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart'
-    show FlutterLocalNotificationsPlugin;
+    show FlutterLocalNotificationsPlugin, IOSFlutterLocalNotificationsPlugin;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_notifications/nikatru_notifications.dart'
     show NotificationCapabilities;
@@ -59,15 +59,17 @@ void main() {
 
   // 🔴 THE PLUGIN IS A PROCESS SINGLETON, AND IT PICKS ITS PLATFORM
   // IMPLEMENTATION ONCE, AT FIRST CONSTRUCTION, FROM `defaultTargetPlatform`.
-  // Built first under the Windows override it registers NOTHING (17.x has no
-  // Windows implementation), and every later case in this file then dies of a
-  // LateInitializationError that production can never reach. So it is built
-  // here, once, under iOS: that registers the method-channel implementation
-  // the mocked channel below observes. Linux in production is the D-Bus
+  // Built first under the Windows override it registered NOTHING (17.x had no
+  // Windows implementation), and every later case in this file then died of a
+  // LateInitializationError that production can never reach. Since 18.x the
+  // constructor registers nothing at all and registerWith() does, so the iOS
+  // method-channel implementation the mocked channel below observes is
+  // registered here, once. Linux in production is the D-Bus
   // implementation the Dart plugin registrant installs — never this channel —
   // so the Linux case asserts what the SERVICE refuses, not what D-Bus hears.
   setUpAll(() {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    IOSFlutterLocalNotificationsPlugin.registerWith();
     FlutterLocalNotificationsPlugin();
     debugDefaultTargetPlatformOverride = null;
   });
@@ -95,7 +97,7 @@ void main() {
 
   Iterable<String> methods() => outgoing.map((MethodCall c) => c.method);
 
-  group('🔴 a fake Windows: no plugin on the pinned 17.x', () {
+  group('🔴 a fake Windows: no plugin initialised (no init settings yet)', () {
     test(
       'init + syncAll COMPLETE with no throw, no schedule, no initialize',
       () async {

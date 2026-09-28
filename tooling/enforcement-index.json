@@ -3525,6 +3525,7 @@
       "O-4"
     ],
     "invokedBy": [
+      ".github/workflows/ci.yml#guards-platform",
       ".github/workflows/ops-watch.yml#digest",
       ".github/workflows/ops-watch.yml#heartbeats"
     ],

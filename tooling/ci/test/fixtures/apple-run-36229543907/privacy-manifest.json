@@ -239,12 +239,12 @@
         "basis": "Manifest read: NSPrivacyAccessedAPITypes is an empty array."
       },
       {
-        "binary": "flutter_local_notifications 22.3.1",
+        "binary": "flutter_local_notifications 17.2.4",
         "manifest": "ships-own",
         "accessedApis": [
           "NSPrivacyAccessedAPICategoryUserDefaults: CA92.1"
         ],
-        "basis": "Manifest read. Re-read 2026-09-27 for 17.2.4 -> 22.3.1: the PrivacyInfo.xcprivacy moved under <platform>/flutter_local_notifications/Sources/flutter_local_notifications/ (the Swift Package Manager layout) and declares the same single category, UserDefaults CA92.1, with tracking false and no collected data types; a grep of the 22.3.1 ios/ and macos/ sources for file-timestamp, boot-time, disk-space and keyboard APIs finds only NSUserDefaults, as in 17.2.4."
+        "basis": "Manifest read."
       },
       {
         "binary": "flutter_timezone 5.1.0",
@@ -253,10 +253,10 @@
         "basis": "Read from the plugin's OWN PrivacyInfo.xcprivacy in the pub cache (flutter_timezone-5.1.0/ios/flutter_timezone/Sources/flutter_timezone/PrivacyInfo.xcprivacy, bundled by the podspec's resource_bundles 'flutter_timezone_privacy' and by Package.swift's .process resource): all four keys present and EMPTY — NSPrivacyTracking false, NSPrivacyTrackingDomains [], NSPrivacyAccessedAPITypes [], NSPrivacyCollectedDataTypes []. Its whole native surface was read rather than assumed: FlutterTimezonePlugin.m:38-44 and :62-66 (NSTimeZone localTimeZone/name/knownTimeZoneNames/localizedName, NSLocale preferredLanguages/currentLocale). Not one is a Required Reason API. LINKED 2026-09-10 through nikatru_notifications (packages/notifications/lib/src/device_timezone.dart): it reads the device's IANA zone name so `tz.local` is the user's zone rather than UTC — the defect that fired every 09:00 renewal reminder at 14:30 IST. It transmits nothing and stores nothing."
       },
       {
-        "binary": "flutter_secure_storage_darwin 0.3.2",
+        "binary": "flutter_secure_storage 9.2.4",
         "manifest": "ships-own",
         "accessedApis": [],
-        "basis": "Manifest read 2026-09-27, when flutter_secure_storage 9.2.4 -> 10.3.4 moved the iOS AND macOS implementations into this one federated package: flutter_secure_storage_darwin-0.3.2/darwin/flutter_secure_storage_darwin/Sources/flutter_secure_storage_darwin/Resources/PrivacyInfo.xcprivacy — tracking false, no tracking domains, no accessed API types, no collected data types. Its Swift reads kSecAttrCreationDate/kSecAttrModificationDate, which are KEYCHAIN ITEM attributes, not the FileTimestamp API. Keychain is not a Required Reason API. The keychain service name is unchanged (flutter_secure_storage_service in both 9.2.4's options and 10.3.4's), so an item written by 9.2.4 is the item 10.3.4 queries."
+        "basis": "Manifest read: tracking false, no accessed API types. Keychain is not a Required Reason API."
       },
       {
         "binary": "in_app_review 2.0.12",
@@ -265,10 +265,10 @@
         "basis": "Manifest read."
       },
       {
-        "binary": "package_info_plus 10.2.1",
+        "binary": "package_info_plus 8.3.1",
         "manifest": "ships-own",
         "accessedApis": [],
-        "basis": "Manifest read. Re-read 2026-09-27 for 8.3.1 -> 10.2.1: `diff -r` of the ios/ and macos/ trees finds only Package.swift (minimum iOS 12.0 -> 13.0, macOS 10.14 -> 10.15, a FlutterFramework package dependency); FPPPackageInfoPlusPlugin.m and both PrivacyInfo.xcprivacy files are byte-identical to 8.3.1's."
+        "basis": "Manifest read."
       },
       {
         "binary": "nikatru_platform_storage",
@@ -383,12 +383,12 @@
         "basis": "Manifest read."
       },
       {
-        "binary": "flutter_local_notifications 22.3.1",
+        "binary": "flutter_local_notifications 17.2.4",
         "manifest": "ships-own",
         "accessedApis": [
           "NSPrivacyAccessedAPICategoryUserDefaults: CA92.1"
         ],
-        "basis": "Manifest read (the macos/ copy). Re-read 2026-09-27 for 17.2.4 -> 22.3.1: the PrivacyInfo.xcprivacy moved under <platform>/flutter_local_notifications/Sources/flutter_local_notifications/ (the Swift Package Manager layout) and declares the same single category, UserDefaults CA92.1, with tracking false and no collected data types; a grep of the 22.3.1 ios/ and macos/ sources for file-timestamp, boot-time, disk-space and keyboard APIs finds only NSUserDefaults, as in 17.2.4."
+        "basis": "Manifest read (macos/Resources copy)."
       },
       {
         "binary": "flutter_timezone 5.1.0",
@@ -397,10 +397,10 @@
         "basis": "Read from the plugin's OWN PrivacyInfo.xcprivacy in the pub cache (flutter_timezone-5.1.0/macos/flutter_timezone/Sources/flutter_timezone/PrivacyInfo.xcprivacy, bundled by the podspec's resource_bundles 'flutter_timezone_privacy' and by Package.swift's .process resource): all four keys present and EMPTY — NSPrivacyTracking false, NSPrivacyTrackingDomains [], NSPrivacyAccessedAPITypes [], NSPrivacyCollectedDataTypes []. Its whole native surface was read rather than assumed: FlutterTimezonePlugin.swift:52-57 and :75-77 (NSTimeZone.local.identifier/localizedName/knownTimeZoneNames, Locale.preferredLanguages/current). Not one is a Required Reason API. LINKED 2026-09-10 through nikatru_notifications (packages/notifications/lib/src/device_timezone.dart): it reads the device's IANA zone name so `tz.local` is the user's zone rather than UTC — the defect that fired every 09:00 renewal reminder at 14:30 IST. It transmits nothing and stores nothing."
       },
       {
-        "binary": "flutter_secure_storage_darwin 0.3.2",
+        "binary": "flutter_secure_storage_macos 3.1.3",
         "manifest": "ships-own",
         "accessedApis": [],
-        "basis": "Manifest read 2026-09-27: the SAME package and the same PrivacyInfo.xcprivacy as the iOS row — flutter_secure_storage 10 replaced flutter_secure_storage_macos 3.1.3 (and the iOS code inside flutter_secure_storage 9.2.4) with one darwin package, so the macOS and iOS plugin names agree again on this row."
+        "basis": "Manifest read. NOTE the package NAME differs from iOS's — the macOS plugin set is not the iOS one."
       },
       {
         "binary": "in_app_review 2.0.12",
@@ -409,10 +409,10 @@
         "basis": "Manifest read."
       },
       {
-        "binary": "package_info_plus 10.2.1",
+        "binary": "package_info_plus 8.3.1",
         "manifest": "ships-own",
         "accessedApis": [],
-        "basis": "Manifest read. Re-read 2026-09-27 for 8.3.1 -> 10.2.1: `diff -r` of the ios/ and macos/ trees finds only Package.swift (minimum iOS 12.0 -> 13.0, macOS 10.14 -> 10.15, a FlutterFramework package dependency); FPPPackageInfoPlusPlugin.m and both PrivacyInfo.xcprivacy files are byte-identical to 8.3.1's."
+        "basis": "Manifest read."
       },
       {
         "binary": "path_provider_foundation 2.6.0",

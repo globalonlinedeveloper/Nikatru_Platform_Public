@@ -76,6 +76,10 @@ void main() {
     // later does not re-pick it. One process, one platform — and this file's
     // whole subject is the Android one.
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    // flutter_local_notifications 18+ installs its platform implementation
+    // through registerWith(), which only the app's generated plugin registrant
+    // calls; 17.x did it in the plugin constructor. A test registers it itself.
+    AndroidFlutterLocalNotificationsPlugin.registerWith();
   });
 
   tearDownAll(() {

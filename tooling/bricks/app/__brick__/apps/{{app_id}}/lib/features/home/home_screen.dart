@@ -197,7 +197,7 @@ class HomeScreen extends StatelessWidget {
 /// by a TAB INDEX held in the home screen's State. It is now decided by the
 /// route being on screen at all, which is the same rule with nothing to
 /// disagree with it. `apps/subscriptiontracker` reached the identical shape from the other
-/// direction (`_GatedInsights`, `lib/core/router/shell.dart:78`).
+/// direction (`_GatedInsights`, `lib/core/router/shell.dart:98`).
 ///
 /// It shows [WelcomePanel] because the chassis ships exactly one content
 /// surface — which is what the tab showed before this change too. A stamped app

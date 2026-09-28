@@ -29,14 +29,15 @@ typedef DeviceUtcOffset = Duration Function();
 /// What a platform can do with local notifications — the portability seam that
 /// drives every runtime guard in the notification adapter.
 ///
-/// The matrix is tied to the **pinned `flutter_local_notifications` 17.x** (shared
+/// The matrix is tied to the **pinned `flutter_local_notifications` 22.x** (shared
 /// with apps/subscriptiontracker); re-review it on any version bump:
 /// - **Android / iOS / macOS** — immediate display + repeating daily schedule.
 /// - **Linux** — shows immediately, but `zonedSchedule` is unimplemented (the
-///   Linux backend can't schedule, in 17.x–19.x alike) → show yes, schedule no.
-/// - **Windows** — 17.x has **no Windows plugin** (support landed in 18.x), so it
-///   can neither show nor schedule → both no-op. Revisit if the workspace moves
-///   to 18.x+ and wires `WindowsInitializationSettings`.
+///   Linux backend can't schedule, in 17.x–22.x alike) → show yes, schedule no.
+/// - **Windows** — 22.x HAS a Windows plugin (since 19.0.0), but it needs
+///   `WindowsInitializationSettings` (app name, AppUserModelID, GUID) that no
+///   app supplies yet → both no-op until one does
+///   (O-RENEWAL-REMINDERS-OFF-ON-DESKTOP).
 /// - **Web / Fuchsia** — neither.
 ///
 /// Unsupported operations no-op and callers fall back to an in-app catch-up nudge.
@@ -77,15 +78,15 @@ class NotificationCapabilities {
       case TargetPlatform.linux:
         // flutter_local_notifications shows immediately on Linux but has NO
         // zonedSchedule implementation (throws UnimplementedError) — true in
-        // 17.x through 19.x. Show yes, repeat-schedule no.
+        // 17.x through 22.x. Show yes, repeat-schedule no.
         return const NotificationCapabilities(
           canNotify: true,
           canSchedule: false,
         );
       case TargetPlatform.windows:
-        // The pinned flutter_local_notifications 17.x has NO Windows plugin
-        // (Windows support arrived in 18.x); calling show/cancel there throws.
-        // Treat Windows as fully unsupported until the workspace bumps to 18.x+.
+        // flutter_local_notifications 22.x HAS a Windows plugin, but it needs
+        // WindowsInitializationSettings (AppUserModelID + GUID) that no app
+        // supplies yet. Fully unsupported until one does.
         return const NotificationCapabilities(
           canNotify: false,
           canSchedule: false,
