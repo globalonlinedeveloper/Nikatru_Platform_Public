@@ -1678,7 +1678,7 @@ void main() {
 
   // ═══ TIER 1 · DETAIL ═══════════════════════════════════════════════════════
   group('detail · the icon-only hero controls', () {
-    testWidgets('[en] back and more-options announce their arb values', (
+    testWidgets('[en] back announces its arb value; no dead "More options"', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
@@ -1688,7 +1688,8 @@ void main() {
         final AppLocalizations l10n = await _load('en');
         final List<String> labels = announced(tester);
         expect(labels, contains(l10n.back));
-        expect(labels, contains(l10n.moreOptions));
+        // ST-U5 (B14): the no-op "More options" button was removed.
+        expect(labels, isNot(contains('More options')));
       });
     });
 

@@ -626,6 +626,10 @@
   "@exportDataCsv": {
     "description": "Data-export row. data-safety.json declares that export exists; deleting this row makes that declaration false."
   },
+  "settingsNotAvailableYet": "Not available yet",
+  "@settingsNotAvailableYet": {
+    "description": "Consumed by settings_screen.dart (_LinkRow). ST-U5 (D2, D6): the subtitle of a settings row that is shown but not yet wired (Connected accounts, Export data). With it the row says what it is; without a tap it draws no chevron."
+  },
   "helpAndSupport": "Help & support",
   "@helpAndSupport": {
     "description": "Opens the published contact page in a browser. Distinct from contactSupport, which is the mailto route."
@@ -909,10 +913,6 @@
   "back": "Back",
   "@back": {
     "description": "Consumed by subscription_detail_screen.dart:97. The semanticLabel of the hero's icon-only back control. An icon-only button without one is unusable under a screen reader."
-  },
-  "moreOptions": "More options",
-  "@moreOptions": {
-    "description": "Consumed by subscription_detail_screen.dart:99. See back."
   },
   "insightsTitle": "Insights",
   "@insightsTitle": {

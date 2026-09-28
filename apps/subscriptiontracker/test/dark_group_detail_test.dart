@@ -327,9 +327,8 @@ void main() {
 
       // An icon-only button is UNUSABLE under a screen reader without one, so
       // an untranslated label is a Tamil user reaching a control that speaks
-      // English. `more_horiz` is still a stub; its label ships regardless.
+      // English. (`more_horiz` was a stub and is gone — ST-U5, B14.)
       expect(find.bySemanticsLabel(ta.back), findsOneWidget);
-      expect(find.bySemanticsLabel(ta.moreOptions), findsOneWidget);
       expect(find.bySemanticsLabel('Back'), findsNothing);
       expect(find.bySemanticsLabel('More options'), findsNothing);
       handle.dispose();

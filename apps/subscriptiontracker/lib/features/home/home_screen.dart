@@ -646,16 +646,14 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
         // [13]T-9's home entry point. `push`, not `go`: notifications is a
         // detail over the shell, and the user must come back to where they were.
         //
-        // ⬜ `dot: true` IS UNCONDITIONAL — it is a badge that is always on, so
-        // it carries no information. Pre-existing (it is live behaviour, carried
-        // verbatim) and deliberately NOT fixed here: an unread count needs a
-        // source, and inventing one inside a merge increment is how a merge
-        // stops being reviewable. Named in MANIFEST.md · OPEN QUESTION 4.
+        // ✅ ST-U5 (B6): NO DOT. This passed `dot: true` unconditionally — a
+        // badge that was always on, i.e. a permanent "something new" that
+        // carried no information. Nothing on this device knows what is unread,
+        // so the badge is off until a real unread count exists to drive it.
         _circleButton(
           context: context,
           icon: Icons.notifications_none_rounded,
           semanticLabel: l10n.notifications,
-          dot: true,
           onTap: () => context.push('/notifications'),
         ),
         const SizedBox(width: 9),
@@ -1337,7 +1335,6 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
     required BuildContext context,
     required IconData icon,
     required String semanticLabel,
-    bool dot = false,
     VoidCallback? onTap,
   }) {
     final ThemeData theme = Theme.of(context);
@@ -1359,40 +1356,23 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
     // the one to keep: they are every route OFF a screen whose rows all
     // traverse fine, so a keyboard-only user could read the list and leave by
     // no door on it. `mergeDescendants: false` because this control has no
-    // descendant text to merge — [semanticLabel] IS its name, and the dot is
-    // decoration.
+    // descendant text to merge — [semanticLabel] IS its name.
     return FocusableTap(
       label: semanticLabel,
       mergeDescendants: false,
       borderRadius: BorderRadius.circular(14),
       onTap: onTap,
-      child: Stack(
-        children: <Widget>[
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: fill,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: edge),
-            ),
-            child: Icon(icon, color: glyph, size: 20),
-          ),
-          if (dot)
-            Positioned(
-              top: 9,
-              right: 10,
-              child: Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: AppColors.warn,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: fill, width: 2),
-                ),
-              ),
-            ),
-        ],
+      // ST-U5 (B6): the always-on unread dot that sat over this icon is gone
+      // with its `dot:` parameter; see the call site.
+      child: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: fill,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: edge),
+        ),
+        child: Icon(icon, color: glyph, size: 20),
       ),
     );
   }

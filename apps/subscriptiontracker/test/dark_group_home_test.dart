@@ -317,30 +317,23 @@ void main() {
       );
     });
 
-    testWidgets('DARK: the unread dot punches out of the NEW fill', (
+    // ⏱ 2026-09-28 · ST-U5 (B6): this case pinned the RING of the bell's unread
+    // dot to the dark fill. The dot itself is gone — it was always on, a
+    // permanent "something new" that meant nothing — so the case now pins its
+    // absence in the brightness it used to measure.
+    testWidgets('DARK: the bell carries no always-on unread dot', (
       WidgetTester tester,
     ) async {
       await _pumpScreen(tester, ThemeMode.dark, const HomeScreen());
-      // The dot is the 8x8 warn circle; its ring exists to separate it from
-      // whatever it sits on, so a white ring on a dark button is the same bug
-      // one size down.
-      final Container dot = tester.widget<Container>(
-        find
-            .byWidgetPredicate(
-              (Widget w) =>
-                  w is Container &&
-                  w.decoration is BoxDecoration &&
-                  (w.decoration! as BoxDecoration).shape == BoxShape.circle &&
-                  (w.decoration! as BoxDecoration).color == AppColors.warn,
-            )
-            .first,
-      );
       expect(
-        ((dot.decoration! as BoxDecoration).border! as Border).top.color,
-        dark.surfaceContainerHighest,
-        reason:
-            'The ring follows the FILL. Left at AppColors.surface it is a '
-            'white halo around an amber dot on a dark control.',
+        find.byWidgetPredicate(
+          (Widget w) =>
+              w is Container &&
+              w.decoration is BoxDecoration &&
+              (w.decoration! as BoxDecoration).shape == BoxShape.circle &&
+              (w.decoration! as BoxDecoration).color == AppColors.warn,
+        ),
+        findsNothing,
       );
     });
   });

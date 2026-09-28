@@ -226,19 +226,19 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
+                    // ST-U5 (B14): the `more_horiz` "More options" control that
+                    // stood at the other end of this row was a STUB — focusable,
+                    // announced as a button, and it opened nothing. A control a
+                    // user can reach and activate to no effect is removed, not
+                    // labelled; the actions this screen has are the buttons
+                    // below the history.
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: <Widget>[
                         _iconButton(
                           Icons.arrow_back,
                           l10n.back,
                           () => _dismiss(context),
                         ),
-                        // The `more_horiz` control is still a STUB — it opens
-                        // nothing. Its label is localized anyway because a
-                        // screen reader announces it today regardless of what
-                        // the tap does.
-                        _iconButton(Icons.more_horiz, l10n.moreOptions, () {}),
                       ],
                     ),
                     const SizedBox(height: 14),
@@ -709,7 +709,8 @@ class SubscriptionDetailScreen extends ConsumerWidget {
   //
   // The white alpha fill and the white icon are ON THE HERO GRADIENT, which is
   // dark in both brightnesses — see the class doc. They do not fork.
-  /// The two hero app-bar controls — "Back" and "More options".
+  /// The hero app-bar control — "Back". ("More options" was the second, a
+  /// no-op, removed by ST-U5.)
   ///
   /// 🔴 `FocusableTap`, NOT `Semantics(button: true)` + `GestureDetector`.
   /// BOTH DOORS OFF THIS SCREEN WERE KEYBOARD-DEAD, WHICH IS THE WHOLE APP BAR.
