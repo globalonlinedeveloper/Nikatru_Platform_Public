@@ -17,6 +17,28 @@
       "pad to 155:290 by repeating edge rows (50 before, 51 after)",
       "area-average down to 155x290, rounded",
       "encode as 24-bit PNG, no alpha channel"
+    ],
+    "sources": [
+      {
+        "file": "apps/subscriptiontracker/store/android-play/screenshots/01-home.png",
+        "sha256": "964a8bba25049c47a3cdeeb45742955022d3f9f7b45c49b3f159809a0317edcb"
+      },
+      {
+        "file": "apps/subscriptiontracker/store/android-play/screenshots/02-calendar.png",
+        "sha256": "d4034001c70b01ea036efad89ec3ec61a6ed5da5aeb62088659e2f42a5872527"
+      },
+      {
+        "file": "apps/subscriptiontracker/store/android-play/screenshots/03-insights.png",
+        "sha256": "b87620942a048745b1ff2a0038e8bfb98f10869758b2901ccfc8653e082a2189"
+      },
+      {
+        "file": "apps/subscriptiontracker/store/android-play/screenshots/04-budget.png",
+        "sha256": "65dbb4e6cb6b1685c8297444cb853e9ded7247b97c0ca5cee1a35f3ffbc0c9ba"
+      },
+      {
+        "file": "apps/subscriptiontracker/store/android-play/store-icon-512.png",
+        "sha256": "e97a537fee076f39254c7892444d68b86807ad9a5ba5f97dca34fc4fc9e5dad1"
+      }
     ]
   },
   "deviceType": "phone",

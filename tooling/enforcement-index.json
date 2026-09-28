@@ -865,6 +865,20 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/store-screenshots.yml#capture",
+      ".github/workflows/store-screenshots.yml#capture-desktop-native",
+      ".github/workflows/store-screenshots.yml#capture-ios",
+      ".github/workflows/store-screenshots.yml#capture-linux"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-derived-sets.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
       ".github/workflows/ci.yml#guards-chassis"
     ],
     "kind": "guard",
@@ -4103,6 +4117,19 @@
     ],
     "kind": "script",
     "ref": "tooling/store/capture-precheck.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/store-screenshots.yml#capture",
+      ".github/workflows/store-screenshots.yml#capture-desktop-native",
+      ".github/workflows/store-screenshots.yml#capture-ios",
+      ".github/workflows/store-screenshots.yml#capture-linux"
+    ],
+    "kind": "script",
+    "ref": "tooling/store/finish-capture.mjs",
     "references": [],
     "state": "WIRED"
   },
