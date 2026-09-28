@@ -326,6 +326,35 @@
       "name": "SESSIONS_LIMITER",
       "namespace_id": "1011",
       "simple": { "limit": 5, "period": 60 }
+    },
+    {
+      // ⏱ 2026-09-28 · ST-N1. The per-ACCOUNT bucket on POST
+      // /v1/auth/native/:app/* (src/routes/native-auth.ts), keyed
+      // `acct:<app>:<sha256(lowercased email)>` — never the address itself.
+      // Those routes call GoTrue with the service-role bearer, which skips its
+      // captcha, so this and NATIVE_AUTH_EDGE_LIMITER stand where the captcha
+      // stands, and BOTH FAIL CLOSED: an absent binding is a 503 on every call,
+      // not an open door (src/lib/edge-ceiling.ts strictRateLimit).
+      //
+      // 5/min per account: a person types a password a few times, not dozens.
+      // `period` is 60, one of tooling/ceilings.json's allowed values. 1013:
+      // env.sandbox below holds 1006-1010 and 1012.
+      "name": "NATIVE_AUTH_ACCOUNT_LIMITER",
+      "namespace_id": "1013",
+      "simple": { "limit": 5, "period": 60 }
+    },
+    {
+      // ⏱ 2026-09-28 · ST-N1. The per-NETWORK ceiling on the same routes, keyed
+      // `edge:<colo>:<asn>` by src/lib/edge-ceiling.ts — never a client address
+      // (this Worker reads none). It bounds a flood that rotates accounts, which
+      // the account bucket cannot see. FAILS CLOSED, like the one above.
+      //
+      // 60/min per (colo, asn): room for a shared NAT signing in at once, far
+      // below a guessing run. Same honest caveat as the other ceilings: per-colo
+      // and eventually consistent, a BURST bound, not accounting.
+      "name": "NATIVE_AUTH_EDGE_LIMITER",
+      "namespace_id": "1014",
+      "simple": { "limit": 60, "period": 60 }
     }
   ],
   "triggers": {
@@ -413,8 +442,9 @@
   // among them — a second time. tooling/ci/assert-money-config.mjs limb 1c
   // refuses both, an inherited `workers_dev`, and a production database.
   //
-  // ⚠️ `ratelimits` ARE DECLARED WITH THEIR OWN namespace_ids (1006-1010), never
-  // the top level's 1001-1005 or 1011: a shared namespace would let a public
+  // ⚠️ `ratelimits` ARE DECLARED WITH THEIR OWN namespace_ids (1006-1010, 1012,
+  // 1015-1016), never the top level's 1001-1005, 1011 or 1013-1014: a shared
+  // namespace would let a public
   // sandbox URL spend the budget production's callers are counted against. Every limiter
   // binding is optional and fails OPEN (src/types.ts:63), so an absent one is a
   // sandbox with no breaker at all, not an error anyone would see.
@@ -436,7 +466,7 @@
         "APP_ID": "platform",
         // why: the SAME identity project as production (D1 identity option
         // (a)). ES256 verification reads its JWKS, and /v1/health probes it
-        // (src/index.ts:143).
+        // (src/index.ts:159).
         "SUPABASE_URL": "https://auth-api.nikatru.com",
         // why: src/types.ts:348.
         "API_VERSION": "v1",
@@ -450,7 +480,7 @@
       },
       "d1_databases": [
         {
-          // why: src/types.ts:13 and the /v1/health probe (src/index.ts:127).
+          // why: src/types.ts:13 and the /v1/health probe (src/index.ts:143).
           // `platform_db_sandbox`, created 2026-09-23 and EMPTY. This Worker is
           // its sole migration applier, as at the top level.
           "binding": "PLATFORM_DB",
@@ -461,7 +491,7 @@
       ],
       "kv_namespaces": [
         // why: REQUIRED — src/types.ts:18; src/routes/config.ts:52 reads it
-        // unguarded and /v1/health probes it (src/index.ts:138), so an absent
+        // unguarded and /v1/health probes it (src/index.ts:154), so an absent
         // binding 500s config and reports the Worker unhealthy.
         // `platform-config-sandbox`, created 2026-09-24.
         { "binding": "CONFIG_KV", "id": "7ba3a916f8a5429091dec4a39284bffb" }
@@ -508,6 +538,21 @@
           "name": "SESSIONS_LIMITER",
           "namespace_id": "1012",
           "simple": { "limit": 5, "period": 60 }
+        },
+        {
+          // why: src/routes/native-auth.ts (the account bucket). The top level's
+          // NATIVE_AUTH_ACCOUNT_LIMITER (1013), same limit. 🔴 It FAILS CLOSED,
+          // so without this entry every sandbox native sign-in answers 503.
+          "name": "NATIVE_AUTH_ACCOUNT_LIMITER",
+          "namespace_id": "1015",
+          "simple": { "limit": 5, "period": 60 }
+        },
+        {
+          // why: src/routes/native-auth.ts (the edge ceiling). The top level's
+          // NATIVE_AUTH_EDGE_LIMITER (1014), same limit, and it fails closed too.
+          "name": "NATIVE_AUTH_EDGE_LIMITER",
+          "namespace_id": "1016",
+          "simple": { "limit": 60, "period": 60 }
         }
       ]
     }

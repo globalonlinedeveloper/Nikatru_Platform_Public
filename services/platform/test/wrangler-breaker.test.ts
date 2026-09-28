@@ -69,6 +69,9 @@ interface RateLimitEntry {
 const cfg = parseJsonc(raw) as { ratelimits?: RateLimitEntry[] };
 const rl = cfg.ratelimits ?? [];
 const byName = new Map(rl.map((e) => [String(e.name), e]));
+/** env.sandbox's own `ratelimits` (wrangler inherits none of them). */
+const sandboxRl = () =>
+  ((parseJsonc(raw) as { env?: { sandbox?: { ratelimits?: RateLimitEntry[] } } }).env?.sandbox?.ratelimits ?? []);
 
 describe('wrangler.jsonc declares BOTH halves of the cost circuit breaker', () => {
   it('the parse itself reached the ratelimits block', () => {
@@ -129,6 +132,33 @@ describe('wrangler.jsonc declares BOTH halves of the cost circuit breaker', () =
     expect(String(e!.namespace_id)).toBe('1011');
     expect(e!.simple?.limit).toBe(5);
     expect(e!.simple?.period).toBe(60);
+  });
+
+  it('declares BOTH native sign-in limiters, at the top level AND in env.sandbox, each in its own namespace', () => {
+    // ⏱ 2026-09-28 · ST-N1. routes/native-auth.ts FAILS CLOSED without these
+    // (lib/edge-ceiling.ts strictRateLimit), so a deleted entry is not a silent
+    // open door the way it is for the limiters above — it is every native
+    // sign-in answering 503 in that deploy. Asserted here because the unit tests
+    // inject the bindings themselves and cannot see the deployed config.
+    const top = { NATIVE_AUTH_ACCOUNT_LIMITER: ['1013', 5], NATIVE_AUTH_EDGE_LIMITER: ['1014', 60] } as const;
+    const sandbox = { NATIVE_AUTH_ACCOUNT_LIMITER: ['1015', 5], NATIVE_AUTH_EDGE_LIMITER: ['1016', 60] } as const;
+    const sbRl = sandboxRl();
+    const sbByName = new Map(sbRl.map((e) => [String(e.name), e]));
+    for (const [where, map, want] of [
+      ['top level', byName, top],
+      ['env.sandbox', sbByName, sandbox],
+    ] as const) {
+      for (const [name, [id, limit]] of Object.entries(want)) {
+        const e = map.get(name);
+        expect(e, `${name} missing from ${where} — every native sign-in there answers 503`).toBeDefined();
+        expect(String(e!.namespace_id), `${where} ${name}`).toBe(id);
+        expect(e!.simple?.limit, `${where} ${name}`).toBe(limit);
+        expect(e!.simple?.period, `${where} ${name}`).toBe(60);
+      }
+    }
+    // A namespace id is ACCOUNT-WIDE: no sandbox id may be a top-level one.
+    const topIds = new Set(rl.map((e) => String(e.namespace_id)));
+    for (const e of sbRl) expect(topIds.has(String(e.namespace_id)), `env.sandbox ${String(e.name)} reuses ${String(e.namespace_id)}`).toBe(false);
   });
 
   it('the three limiters have DISTINCT namespace ids, so they do not share a budget', () => {
