@@ -815,6 +815,33 @@
       }
     },
     {
+      "id": "file-export",
+      "capability": "File export: hand a file the app made (the CSV of the user's list, a JSON backup) to the platform share sheet, a browser download or a save dialog.",
+      "owner": "packages/platform_storage",
+      "package": "nikatru_platform_storage",
+      "seams": [
+        {
+          "file": "packages/core/lib/src/storage/file_exporter.dart",
+          "symbol": "FileExporter"
+        }
+      ],
+      "implementsSeams": [
+        "FileExporter"
+      ],
+      "consumers": [
+        "apps/subscriptiontracker",
+        "tooling/bricks/app/__brick__/apps/{{app_id}}"
+      ],
+      "note": "ST-X1 (audit D2/D31), 2026-09-28. A THIRD capability on an existing package, not a new one: [2]C-4 adjudicated share_plus into platform_storage. The codecs are pure Dart in packages/core src/portability (CsvCodec, BackupEnvelope) and the import engine beside them; neither earns a package (assert-package-earned). The first caller is the Subscription Tracker settings row 'Export data (CSV)', which was inert until this row.",
+      "capabilityMatrix": {
+        "file": "packages/platform_storage/lib/src/export_capabilities.dart",
+        "symbol": "ExportCapabilities",
+        "test": "packages/platform_storage/test/export_capabilities_test.dart",
+        "pinnedTo": "share_plus 13.3.0 + file_selector_linux 0.9.4+1",
+        "degradesOn": "Linux: share_plus shares text only, so the user saves the file through a save dialog instead (file_selector_linux's GtkFileChooserNative, which the XDG desktop portal serves under the snap's strict confinement; a folder path would name the snap's own $HOME). Web: the Web Share API where the browser can share a file, a download where it cannot. Fuchsia: no route."
+      }
+    },
+    {
       "id": "telemetry",
       "capability": "Crash and error reporting sink.",
       "owner": "packages/telemetry",

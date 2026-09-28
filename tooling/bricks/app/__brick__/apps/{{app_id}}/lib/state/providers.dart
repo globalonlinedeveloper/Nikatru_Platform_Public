@@ -297,6 +297,12 @@ final FutureProvider<core.KeyValueStore> keyValueStoreProvider =
 final Provider<core.SecureStore> secureStoreProvider =
     Provider<core.SecureStore>((ref) => FlutterSecureStore());
 
+/// ST-X1 — hands an exported file (core `CsvCodec`, `BackupEnvelope`) to the
+/// share sheet, a browser download or the linux save dialog
+/// (`ExportCapabilities`). A seam, so a screen test can keep the bytes.
+final Provider<core.FileExporter> fileExporterProvider =
+    Provider<core.FileExporter>((ref) => ShareFileExporter());
+
 const String _installIdKey = 'nikatru.install_id';
 
 /// A stable, persisted per-install id for deterministic feature-flag bucketing.
