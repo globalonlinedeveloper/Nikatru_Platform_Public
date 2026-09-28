@@ -242,8 +242,12 @@ export function scopeToStep(lines, step) {
 const GENERIC_ERROR = /Process completed with exit code|The operation was canceled|The job was canceled/;
 /** `assert-x: FAILED` — the verdict line this repository's guards print LAST. */
 const VERDICT_LINE = /^\s*[\w./-]+: FAILED\s*$/;
+// `Unable to determine Flutter version` is subosito/flutter-action's only word
+// for its refusal, and it prints no FAILED; without it the next step's
+// `name: FAILED-not-a-listing-set-<run>` was read as the error (runs
+// 35818955799 and 35818957977, 2026-09-23).
 const FAILED_WORD =
-  /(?:^|\s)(?:FAILED|FAIL)\b|BUILD FAILED|Build process failed|error TS\d+|\bAssertionError\b|^\s*error:|^\s*fatal:|Failed to (?:update|resolve|load)/;
+  /(?:^|\s)(?:FAILED|FAIL)\b|BUILD FAILED|Build process failed|error TS\d+|\bAssertionError\b|^\s*error:|^\s*fatal:|Failed to (?:update|resolve|load)|Unable to determine Flutter version/;
 /** A printed-not-blocking note (⬜) or a printed warning (⚠). Never the error
  *  line, whatever word it carries — "it stays FAIL-CLOSED" is a ⚠ sentence
  *  from a guard that PASSED (measured on run 34429437969). */
@@ -336,8 +340,13 @@ export const SIGNATURES = [
   { id: 'pages-freshness:in-flight-read-as-failure', re: /stopped at stage `\w+` with status `(?:active|idle)`/ },
   { id: 'pages-freshness:read-dropped', re: /^\s*\?\s+[\w.-]+ \(\w+\) — TypeError: fetch failed/m },
   { id: 'pages-freshness:git-build-failed', re: /— the newest production deployment \S+ stopped at stage `(\w+)` with status `failure`/, key: 1 },
+  // Keyed on the PROJECT: a succeeded deployment serving an older commit has a
+  // different cause per project. Runs 36277702128 (nikatru) and 36441645933
+  // (subscriptiontracker).
+  { id: 'pages-freshness:serving-older-commit', re: /^\s*✗\s+([\w.-]+) \(\w+\) — deployment \S+ succeeded, but it is serving commit [0-9a-f]+, which does NOT carry/m, key: 1 },
   { id: 'pages-freshness:no-deployment', re: /Every Pages project's newest PRODUCTION deployment succeeded/ },
   { id: 'provenance:unresolved-rows', re: /group\(s\) of rows in production cannot be traced to a released build/ },
+  { id: 'provenance:absent-builds-past-lookup-cap', re: /COULD NOT LOOK — \d+ distinct build\(s\) in production are absent from the walked runs/ },
   { id: 'provenance:d1-api-unreadable', re: /COULD NOT LOOK — the D1 API returned (\d{3})/, key: 1 },
   { id: 'provenance:github-api-unreadable', re: /COULD NOT LOOK — the GitHub API returned (\d{3})/, key: 1 },
   { id: 'provenance:run-listing-capped', re: /COULD NOT LOOK — listing runs of [\w.-]+ \([^)\n]*\): all \d+ pages of \d+ came back full/ },
@@ -371,10 +380,16 @@ export const SIGNATURES = [
   // ── downstream refusals ───────────────────────────────────────────────────
   { id: 'ci-gate:refused-downstream', re: /ci-gate concluded "(?:failure|cancelled)" for|waiting for "ci-gate"/ },
   { id: 'smoke:stale-build', re: /POST-DEPLOY SMOKE FAILED/ },
+  // The right build answered and its own health said no. Keyed on the host.
+  // Run 36445515397 (2026-09-28).
+  { id: 'smoke:deployed-unwell', re: /✗ https:\/\/([\w.-]+)\/\S* is serving build [0-9a-f]+ and reports ok:false — it deployed, and it is unwell/, key: 1 },
   { id: 'web-smoke:first-frame-timeout', re: /never reached the ready signal `flutter-first-frame`/ },
   { id: 'bundle-launch:404', re: /^Launch the built bundle once/ },
   // ── builds and toolchains ─────────────────────────────────────────────────
   { id: 'windows:max-path', re: /Unable to generate build files|cannot write keep file|Filename too long/ },
+  // Keyed on the channel flutter-action was handed: a store id there means a
+  // job env named CHANNEL reached it. Runs 35818955799 and 35818957977.
+  { id: 'setup-flutter:version-unresolved', re: /Unable to determine Flutter version for channel: ([\w.-]+)/, key: 1 },
   { id: 'zizmor:install-failed', re: /^Install zizmor/ },
   { id: 'macos:build-failed', re: /^Build macos[\s\S]*BUILD FAILED/ },
   { id: 'apple:signing-failed', re: /apple-signing: FAILED|assert-artifact-signed-apple: FAILED|find: build\/ios\/ipa: No such file/ },
@@ -396,12 +411,18 @@ export const SIGNATURES = [
   { id: 'e2e:consent-artifact-mismatch', re: /the newest artifact says granted=\d, but the suite tapped/ },
   { id: 'e2e:frames-wrong-size', re: /screenshots\/[\w.-]+\.png is \d+x\d+; the floor in tooling\/e2e-leg-register\.json framesCarryText was measured on frames \d+ wide/ },
   { id: 'e2e:rehearsal-refused-on-main', re: /auth_target=\w+ is a REHEARSAL against a stack the deployed Workers deliberately refuse, and this dispatch is on main/ },
+  // The one-issuer step saw the deployed Worker accept a session its expectation
+  // said it must refuse. Run 36222497878 (2026-09-26, mid-cutover).
+  { id: 'e2e:unnamed-issuer-accepted', re: /the Worker answered 200, not 401, to a session minted by this run's \w+ issuer, which the register does not name/ },
   { id: 'e2e:leg-failed', re: /##\[error\]Failure in method: ([^\n]+)/, key: 1 },
   { id: 'e2e:preflight-variable-unset', re: /repository VARIABLE (\w+) is unset/, key: 1 },
   { id: 'e2e:preflight-secrets-missing', re: /auth_target=\w+ needs \w+/ },
   { id: 'e2e:integration-tests-failed', re: /^Run integration tests \(headless Chrome\)/ },
   // ── readers on main that answer for live systems ──────────────────────────
   { id: 'analytics:silence-judged-fault', re: /THE ANALYTICS RAIL IS SILENT WHILE/ },
+  // A job that has NEVER written its row is a different fault from one that
+  // stopped: keyed on the job. Runs 36416498456 .. 36421098402 (reminder_mail).
+  { id: 'heartbeat-table:never-written', re: /scheduled duty is not reporting healthy:\n(?:[^\n]*\n)*?\s+(\w+): NO heartbeat row has ever been written/, key: 1 },
   { id: 'heartbeat-table:unhealthy', re: /scheduled duty is not reporting healthy/ },
   { id: 'alarm-chains:monitor-missing', re: /expected monitor "[^"]*" is not in the live list/ },
   { id: 'actions-usage:over-ceiling', re: /net-billed Actions spend is over the declared ceiling/ },
@@ -419,6 +440,9 @@ export const SIGNATURES = [
   { id: 'msix:identity-guard', re: /assert-artifact-signed-msix|^The MSIX carries the identity the register declares/ },
   { id: 'play:device-coverage', re: /✗ play device coverage/ },
   { id: 'snap:pack-failed', re: /Cannot pack snap|^Pack the snap/ },
+  // A submit lane's name gate refusing an UNDETERMINED name. Keyed on the
+  // channel. Run 36156790281 (linux-snap, 2026-09-25).
+  { id: 'name-clearance:undetermined-for-submission', re: /--for-submission=([\w-]+): "[^"\n]+" is UNDETERMINED on/, key: 1 },
   { id: 'store-screenshots:simulator-aged-out', re: /The register names "[^"\n]+" and this runner image has no available simulator by that name/ },
   { id: 'store-screenshots:capture', re: /^(?:Capture the set|Propose the set for human review)/ },
   { id: 'site-drift-repair:pr-setting', re: /Allow GitHub Actions to create and approve pull requests/ },

@@ -132,6 +132,43 @@ describe('preflight allows every method a MOUNTED route answers — derived, not
   const env = { ALLOWED_ORIGINS: SHIPPED } as AppEnv['Bindings'];
   const through: RequestThroughApp = (path, init) => app.request(path, init, env);
 
+  // 🔴 MOUNTED ROUTES THAT MUST GRANT **NO** CORS, each with its reason. Every
+  // other mounted route is preflight-approved below; these are preflight-REFUSED,
+  // and both halves are asserted, so a no-CORS route cannot quietly become a
+  // CORS one and a CORS route cannot hide in this list.
+  const NO_CORS: ReadonlyArray<{ prefix: string; why: string }> = [
+    {
+      prefix: '/v1/auth/native/',
+      why:
+        'ST-N1 (routes/native-auth.ts): a native app signs in here WITHOUT a captcha, because the Worker calls ' +
+        'GoTrue with the service-role bearer. A web page must not be able to use that door: web sign-in keeps ' +
+        'Turnstile at GoTrue, and the route refuses any request carrying Origin.',
+    },
+  ];
+  const isNoCors = (path: string) => NO_CORS.some((n) => path.startsWith(n.prefix));
+  const noCorsEndpoints = endpoints.filter((e) => isNoCors(e.path));
+  const corsEndpoints = endpoints.filter((e) => !isNoCors(e.path));
+
+  it('each no-CORS entry carries a reason and covers a mounted route', () => {
+    // The middleware's own prefixes are its policy (src/middleware/cors.ts `refuseBrowsersOn`), held both ways
+    // below: each route here must be REFUSED at preflight, and every other one APPROVED.
+    for (const n of NO_CORS) {
+      expect(n.why.length, `${n.prefix} carries no reason`).toBeGreaterThan(40);
+      expect(endpoints.some((e) => e.path.startsWith(n.prefix)), `${n.prefix} covers no mounted route — stale`).toBe(true);
+    }
+    // The four native credential calls, by name: a no-CORS list that matched
+    // nothing would make the refusal test below pass over an empty set.
+    for (const op of ['token', 'signup', 'recover', 'resend']) {
+      expect(noCorsEndpoints).toContainEqual({ method: 'POST', path: `/v1/auth/native/:app/${op}` });
+    }
+  });
+
+  it('every no-CORS route is REFUSED at preflight, from a listed origin, with no allow-origin', async () => {
+    const refused = await refusedPreflights(through, noCorsEndpoints, origin);
+    expect(refused).toHaveLength(noCorsEndpoints.length);
+    for (const line of refused) expect(line).toContain('allow-origin=(none)');
+  });
+
   it('reads a real route table — including the route that was refused in production', () => {
     // Not a tautology: an empty or middleware-only table would make the next
     // test pass vacuously, and a table missing this route would mean the seam
@@ -144,7 +181,9 @@ describe('preflight allows every method a MOUNTED route answers — derived, not
   });
 
   it('every mounted route is preflight-approved for its own method, from a listed origin', async () => {
-    expect(await refusedPreflights(through, endpoints, origin)).toEqual([]);
+    // Every mounted route but the declared no-CORS ones above.
+    expect(corsEndpoints.length).toBe(endpoints.length - noCorsEndpoints.length);
+    expect(await refusedPreflights(through, corsEndpoints, origin)).toEqual([]);
   });
 
   it('offers no method that no mounted route answers — the list is what the routes need', async () => {

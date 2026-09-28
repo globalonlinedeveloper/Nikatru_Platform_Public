@@ -121,7 +121,12 @@ const MIN_SCANNED = 10;
 const REQUIRED_COVERAGE = [
   {
     key: 'packages',
-    floor: 60,
+    // ⏱ 2026-09-28 · ST-T6a: 60 -> 80. packages/core/lib alone grew 53 -> 61
+    // .dart (the portability engine and the catalogue reader), so ONE package
+    // cleared a floor meant to need several and vacuity-b's "packages/ thinned
+    // to core" case went green. 80 is above any single package (core 61) and
+    // below the tree less its largest-but-one (174 - design_system 27 = 147).
+    floor: 80,
     label: 'every packages/*/lib — the shared chassis the apps link, and the tree C-10 is actually about (103 .dart today)',
   },
   {
