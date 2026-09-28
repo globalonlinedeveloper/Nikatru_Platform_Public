@@ -638,6 +638,20 @@ export function storeSheet(root, data, app, book) {
   return { lost: [], problems, lines };
 }
 
+/**
+ * The rendered file's text, or null when it does not exist. Read without an existsSync first: a check and then a
+ * write of the same path is a race (CodeQL js/file-system-race). Anything but ENOENT is re-thrown, so an unreadable
+ * file is never mistaken for a missing one.
+ */
+function readRendered(abs) {
+  try {
+    return readFileSync(abs, 'utf8');
+  } catch (e) {
+    if (e && e.code === 'ENOENT') return null;
+    throw e;
+  }
+}
+
 /** One run. Returns the exit code and the lines to print; writes only in render mode with no finding. */
 export function run(root, { check = false, sheet = null } = {}) {
   const out = [];
@@ -676,7 +690,7 @@ export function run(root, { check = false, sheet = null } = {}) {
   }
   const want = renderRailPriceIds(p.book);
   const abs = join(root, RENDERED);
-  const have = existsSync(abs) ? readFileSync(abs, 'utf8') : null;
+  const have = readRendered(abs);
   const summary =
     `${p.counts.entries} offering(s) across ${p.book.length} app(s), ${p.counts.bundles} bundle plan(s); ` +
     `[ADR 093] store column holds; ${p.counts.sources} TypeScript file(s) swept for a second home`;
