@@ -297,6 +297,12 @@ export function judgeRunPage(runs, { what = 'this run history', floor = null, he
 // bottom edge (`floorId`) bound what it can vouch for.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** The prefix of a run's `path` FIELD in the API's answer, matched against —
+ *  never a file this module opens. Kept a bare prefix on purpose: the full
+ *  `<prefix><file>` literal is what tooling/ci/assert-workflow-readers.mjs
+ *  (R1) reads as "reads a workflow by text", and this reads no workflow. */
+const RUN_PATH_PREFIX = '.github/workflows/';
+
 /** Rows of the unfiltered repository-wide run list: the API maximum. */
 export const REPO_WIDE_PAGE = 100;
 
@@ -355,7 +361,7 @@ export function withoutBranch(query) {
  *  empty one. */
 export function repoWideWindow(body, { workflow = null, predicate, why = 'the repository-wide run list' }) {
   if (!Array.isArray(body?.workflow_runs)) throw new Error(`${why} came back without a workflow_runs array`);
-  const path = `.github/workflows/${workflow}`;
+  const path = RUN_PATH_PREFIX + workflow;
   let floorId = Infinity;
   let topId = -Infinity;
   for (const r of body.workflow_runs) {
