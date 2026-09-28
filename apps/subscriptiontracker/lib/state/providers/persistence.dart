@@ -50,7 +50,7 @@ final Provider<core.FileExporter> fileExporterProvider =
 /// like a user with no subscriptions. The exporter itself never throws.
 void Function()? exportDataTap(WidgetRef ref) {
   final core.AppConfig cfg =
-      ref.watch(appConfigProvider).valueOrNull ?? kAppDefaultConfig;
+      ref.watch(appConfigProvider).value ?? kAppDefaultConfig;
   if (!cfg.feature('exports')) return null;
   return () async {
     final core.FileExporter exporter = ref.read(fileExporterProvider);

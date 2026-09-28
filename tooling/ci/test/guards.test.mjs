@@ -5233,8 +5233,7 @@ void initState() {
 ref.watch(appleTokenKeeperProvider);
 
 final String updateUrl =
-    ref.watch(appConfigProvider).valueOrNull?.updateUrl ??
-    AppConfig.updateUrl;
+    ref.watch(appConfigProvider).value?.updateUrl ?? AppConfig.updateUrl;
 
 return MaterialApp.router(
   theme: buildAppTheme(seed: const Color(0xFF6459F5)),
@@ -6477,7 +6476,7 @@ onTap: () => _openUrl(AppConfig.refundUrl),
     const { code, out } = run('assert-stamp-properties.mjs', {
       cwd: build('sp-d8-compiled', {
         app: goodApp.replace(
-          'ref.watch(appConfigProvider).valueOrNull?.updateUrl ??\n    AppConfig.updateUrl',
+          'ref.watch(appConfigProvider).value?.updateUrl ?? AppConfig.updateUrl',
           'AppConfig.updateUrl',
         ),
       }),

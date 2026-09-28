@@ -35,6 +35,7 @@ class ThemeModeController extends Notifier<ThemeMode> {
         decode: _decode,
         encode: _encode,
         apply: (mode) => state = mode,
+        mounted: () => ref.mounted,
       );
 
   @override
@@ -83,6 +84,7 @@ class LocaleController extends Notifier<Locale?> {
         decode: _decode,
         encode: (locale) => locale?.languageCode ?? '',
         apply: (locale) => state = locale,
+        mounted: () => ref.mounted,
       );
 
   @override
@@ -118,6 +120,7 @@ class OnboardingSeenController extends Notifier<bool?> {
         decode: (raw) => raw == 'true',
         encode: (seen) => seen ? 'true' : 'false',
         apply: (seen) => state = seen,
+        mounted: () => ref.mounted,
         // Unreadable store ⇒ SHOW onboarding. Resolving to false rather than
         // staying null matters: null blocks the decision forever, and the cost
         // is asymmetric — showing it twice is an irritation, never showing it

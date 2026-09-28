@@ -21,6 +21,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart'
     show ChangeNotifier, FlutterError, FlutterErrorDetails, TargetPlatform;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+// StateProvider (and its StateController) moved to legacy.dart in Riverpod 3.0.
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:nikatru_api_client/nikatru_api_client.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
     show
@@ -766,11 +768,11 @@ class SignedInBeforeController extends Notifier<bool?> {
         keyValueStoreProvider.future,
       );
       final bool stored = (await kv.read(_signedInBeforeKey)) == 'true';
-      if (!_marked) state = stored;
+      if (!_marked && ref.mounted) state = stored;
     } catch (_) {
       // Unreadable store: a first visit, which is the greeting that is never
       // wrong.
-      if (!_marked) state = false;
+      if (!_marked && ref.mounted) state = false;
     }
   }
 
@@ -805,7 +807,7 @@ final Provider<void> signedInBeforeKeeperProvider = Provider<void>((ref) {
     AsyncValue<core.AuthUser?>? _,
     AsyncValue<core.AuthUser?> next,
   ) {
-    if (next.valueOrNull != null) {
+    if (next.value != null) {
       ref.read(signedInBeforeProvider.notifier).markSignedIn();
     }
   }, fireImmediately: true);

@@ -1,6 +1,7 @@
 import 'dart:io' show File;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subscriptiontracker/data/api/api_client.dart';
@@ -249,7 +250,13 @@ void main() {
     // and was gone at the next launch, with nothing said. Now the write fails
     // where the user can see it (the add sheet re-arms and says so) and the
     // seed is rolled back, so the list never shows a row the device refused.
-    final ProviderContainer c = ProviderContainer();
+    //
+    // As the app's root ProviderScope (main.dart): no automatic retry. Riverpod
+    // 3 retries a failing provider by default, which holds the store's future
+    // in loading for ~38 s of backoff instead of failing it.
+    final ProviderContainer c = ProviderContainer(
+      retry: (int retryCount, Object error) => null,
+    );
     addTearDown(c.dispose);
     final List<Subscription> subs = await c
         .read(subscriptionRepositoryProvider)

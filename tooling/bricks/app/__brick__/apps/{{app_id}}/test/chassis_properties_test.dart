@@ -42,6 +42,7 @@ import 'package:flutter/semantics.dart';
 // only place the URL the user is actually sent to can be observed.
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
@@ -482,6 +483,8 @@ ProviderContainer _moneyContainer({
   // card itself passes a selling rail; null keeps the real one.
   PurchaseRail? rail,
 }) => ProviderContainer(
+  // As the app's root ProviderScope (main.dart): no automatic retry (Riverpod 3).
+  retry: (int retryCount, Object error) => null,
   overrides: <Override>[
     keyValueStoreProvider.overrideWith((_) async => store),
     if (rail != null) purchaseRailProvider.overrideWithValue(rail),

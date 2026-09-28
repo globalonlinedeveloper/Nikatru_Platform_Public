@@ -105,6 +105,7 @@ class RemindersEnabledController extends Notifier<bool> {
         decode: (raw) => raw == 'true',
         encode: (on) => on ? 'true' : 'false',
         apply: (on) => state = on,
+        mounted: () => ref.mounted,
       );
 
   @override
@@ -144,6 +145,9 @@ class RemindersEnabledController extends Notifier<bool> {
   /// The app's renewal reminders have their own switch ("Renewal alerts")
   /// and their own owner; this one cancels the one id it schedules.
   Future<void> _cancelSchedules() async {
+    // Riverpod 3: a provider gone by now cannot reach the service; the stored
+    // OFF is what [resyncOnStart] cancels from at the next launch.
+    if (!ref.mounted) return;
     final core.NotificationService svc = ref.read(notificationServiceProvider);
     try {
       // `init()` first: cancel is undefined before the plugin is initialised.
@@ -296,6 +300,7 @@ class CatchUpNudgeController extends Notifier<DateTime?> {
         // reminder fire at 14:30 IST.
         encode: (at) => at!.toUtc().toIso8601String(),
         apply: (at) => state = at,
+        mounted: () => ref.mounted,
       );
 
   @override

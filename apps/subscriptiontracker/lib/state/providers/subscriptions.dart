@@ -7,6 +7,8 @@
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+// FutureProviderFamily moved to misc.dart in Riverpod 3.0.
+import 'package:flutter_riverpod/misc.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
 import '../../core/app_config.dart';
@@ -81,7 +83,7 @@ final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((ref) {
   if (!AppConfig.isApiConfigured) {
     return PersistedApiClient(SeedApiClient(), store);
   }
-  final core.AppConfig? cfg = ref.watch(appConfigProvider).valueOrNull;
+  final core.AppConfig? cfg = ref.watch(appConfigProvider).value;
   final String baseUrl = apiBaseFor(
     pinned: AppConfig.pinnedBackend,
     configured: cfg?.apiBaseUrl,

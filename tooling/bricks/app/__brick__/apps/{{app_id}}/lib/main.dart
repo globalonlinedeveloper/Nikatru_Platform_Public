@@ -3,6 +3,7 @@ import 'package:nikatru_chassis_screens/shell/bootstrap.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:nikatru_notifications/nikatru_notifications.dart';
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart';
 import 'package:nikatru_telemetry/nikatru_telemetry.dart';
@@ -70,6 +71,11 @@ Future<void> main() async {
     },
     run: () => runApp(
       ProviderScope(
+        // Riverpod 3.0 retries a failing provider by default (exponential backoff).
+        // Off, deliberately: every failure path in this app already has its own
+        // answer (a retry button, a fallback, a sign-in), and a silent retry would
+        // hold an error screen in "loading" and double every failing network call.
+        retry: (int retryCount, Object error) => null,
         overrides: <Override>[
           // THE INITIALISED INSTANCE, not a fresh one. The tap stream belongs
           // to the object that registered with the OS; overriding with

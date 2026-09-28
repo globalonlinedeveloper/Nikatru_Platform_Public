@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/widgets.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:nikatru_chassis_screens/auth/turnstile_gate.dart';
 
 import '../../core/app_config.dart';
@@ -35,7 +35,7 @@ Widget renderTurnstile(BuildContext context, TurnstileChallenge challenge) =>
 /// One controller per gated surface, disposed with it. A CHANGE-NOTIFIER
 /// provider so the adapter that `watch`es it rebuilds when the token arrives or
 /// is spent — `captchaReady` follows it with no wrapper widget.
-final AutoDisposeChangeNotifierProviderFamily<CaptchaTokenController, String>
+final ChangeNotifierProviderFamily<CaptchaTokenController, String>
 captchaControllerProvider = ChangeNotifierProvider.autoDispose
     .family<CaptchaTokenController, String>(
       (ref, String surface) => newCaptchaController(),

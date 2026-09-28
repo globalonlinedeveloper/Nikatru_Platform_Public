@@ -76,7 +76,7 @@ dependencies:
   # SELLS, limb B is the wall and it belongs in the app.
 
   # State management — see the block above before adding a third entry here.
-  flutter_riverpod: ^2.5.0
+  flutter_riverpod: ^3.0.0
 
   # Navigation (real URLs on web; deep links on all 6 platforms).
   go_router: ^18.0.0

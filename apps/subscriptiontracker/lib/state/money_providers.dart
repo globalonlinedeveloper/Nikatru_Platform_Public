@@ -34,7 +34,7 @@ import 'providers.dart';
 /// guessed price, because a guessed price is the defect this requirement is
 /// named after.
 final Provider<RailConfig> railConfigProvider = Provider<RailConfig>((ref) {
-  final core.AppConfig? cfg = ref.watch(appConfigProvider).valueOrNull;
+  final core.AppConfig? cfg = ref.watch(appConfigProvider).value;
   // ST-U2 (audit C35): `paywall.enabled` is the outer switch for SELLING too.
   if (cfg == null || !cfg.paywall.enabled) return RailConfig.empty;
   return RailConfig.fromPaywallExtra(cfg.paywall.extra);
@@ -44,7 +44,7 @@ final Provider<RailConfig> railConfigProvider = Provider<RailConfig>((ref) {
 /// to hide the lock and nothing else — the Upgrade row, the promo card and the
 /// paywall still offered a store offering, so a user could pay for nothing.
 final Provider<bool> sellingEnabledProvider = Provider<bool>(
-  (ref) => ref.watch(appConfigProvider).valueOrNull?.paywall.enabled ?? false,
+  (ref) => ref.watch(appConfigProvider).value?.paywall.enabled ?? false,
 );
 
 /// The authenticated entitlement read against the SHARED platform host.
@@ -119,7 +119,7 @@ final Provider<PurchaseRail> purchaseRailProvider = Provider<PurchaseRail>(
 /// behind it. Both parameters exist so a test can drive the real wiring with a
 /// key and a fake bridge; production passes neither.
 PurchaseRail purchaseRailFor(
-  Ref<PurchaseRail> ref,
+  Ref ref,
   String releaseChannel, {
   String revenueCatKey = AppConfig.revenueCatApiKey,
   IapBridge Function() newBridge = RevenueCatBridge.new,
@@ -162,7 +162,7 @@ PurchaseRail purchaseRailFor(
     void forward(Object? _, AsyncValue<core.AuthUser?> next) {
       // Loading is not a sign-out: only a settled answer moves the identity.
       if (!next.hasValue) return;
-      buyer.identifyBuyer(next.valueOrNull?.id).ignore();
+      buyer.identifyBuyer(next.value?.id).ignore();
     }
 
     ref.listen(authUserProvider, forward, fireImmediately: true);
@@ -258,9 +258,9 @@ final FutureProvider<core.Entitlements> entitlementsProvider =
 /// `paywall.enabled` is therefore the outer switch, and it is what makes being
 /// born with the gate free for an app that sells nothing.
 final Provider<bool> paywallLockedProvider = Provider<bool>((ref) {
-  final core.AppConfig? cfg = ref.watch(appConfigProvider).valueOrNull;
+  final core.AppConfig? cfg = ref.watch(appConfigProvider).value;
   if (cfg == null || !cfg.paywall.enabled) return false;
-  final core.Entitlements? ent = ref.watch(entitlementsProvider).valueOrNull;
+  final core.Entitlements? ent = ref.watch(entitlementsProvider).value;
   if (ent == null) return true;
   return !ent.isProAt(DateTime.now());
 });

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nikatru_chassis_screens/settings/settings_screen.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
@@ -53,7 +54,7 @@ class SettingsScreen extends ConsumerWidget {
     // WATCHED as a stream, not read off `currentUser`: the profile tile shows a
     // value the user can edit from this very screen, and a snapshot read would
     // go on showing the old name after a successful save. [pipeline C-13]
-    final core.AuthUser? user = ref.watch(authUserProvider).valueOrNull;
+    final core.AuthUser? user = ref.watch(authUserProvider).value;
     // The RUNNING version, not the compiled-in constant: `AppConfig.appVersion`
     // is a `String.fromEnvironment` default that a build which forgot
     // `--dart-define` would report as the truth. `packageVersionProvider` reads
@@ -61,7 +62,7 @@ class SettingsScreen extends ConsumerWidget {
     // plugin resolves (and on platforms where it cannot), exactly as the
     // force-update gate does with the same value.
     final String runningVersion =
-        ref.watch(packageVersionProvider).valueOrNull ?? AppConfig.appVersion;
+        ref.watch(packageVersionProvider).value ?? AppConfig.appVersion;
     // [pipeline C-7 earning its keep in real UI] The platform matrix is
     // consulted BEFORE a control is offered. On Linux the plugin shows but
     // cannot schedule; on Windows (pinned 17.x) it does neither. A toggle that

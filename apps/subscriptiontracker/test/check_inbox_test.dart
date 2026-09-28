@@ -32,6 +32,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subscriptiontracker/core/e2e_keys.dart';
@@ -149,6 +150,8 @@ class _RecordingTransport implements core.ConsentTransport {
 }
 
 ProviderContainer _container(core.AuthRepository auth) => ProviderContainer(
+  // As the app's root ProviderScope (main.dart): no automatic retry (Riverpod 3).
+  retry: (int retryCount, Object error) => null,
   overrides: <Override>[
     onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
     authRepositoryProvider.overrideWithValue(auth),
@@ -176,6 +179,12 @@ ProviderContainer _container(core.AuthRepository auth) => ProviderContainer(
 Future<void> _pumpApp(WidgetTester tester, ProviderContainer c) async {
   await tester.binding.setSurfaceSize(const Size(800, 1600));
   addTearDown(() => tester.binding.setSurfaceSize(null));
+  // HELD, not only read, as `app.dart` holds it (`ref.watch(routerProvider)`).
+  // Riverpod 3 does not recompute a provider nothing actively listens to, so
+  // with the router only READ the legal gate settling after a sign-up never
+  // reached its refresh signal: the redirect never re-ran, and the user stayed
+  // on the interstitial the app itself leaves.
+  c.listen(routerProvider, (_, _) {});
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: c,

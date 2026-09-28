@@ -30,6 +30,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
     show InMemoryAuthRepository;
@@ -884,14 +885,25 @@ void main() {
       final _RecordingTransport transport = _RecordingTransport();
       final _SwitchableAuth auth = _SwitchableAuth();
 
-      ProviderContainer coldStart() => ProviderContainer(
-        overrides: <Override>[
-          keyValueStoreProvider.overrideWith((ref) async => store),
-          consentTransportProvider.overrideWithValue(transport),
-          authRepositoryProvider.overrideWithValue(auth),
-          analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
-        ],
-      );
+      // A cold start of the APP, so the gate is HELD as the app holds it:
+      // `routerRefreshProvider` listens to `legalReacceptanceNeededProvider`
+      // for the app's whole life. Riverpod 3 pauses a provider nobody listens
+      // to — here the auth stream the gate hears a sign-out through — so a gate
+      // nobody holds never hears the session end.
+      ProviderContainer coldStart() {
+        final ProviderContainer c = ProviderContainer(
+          overrides: <Override>[
+            keyValueStoreProvider.overrideWith((ref) async => store),
+            consentTransportProvider.overrideWithValue(transport),
+            authRepositoryProvider.overrideWithValue(auth),
+            analyticsConsentProvider.overrideWithValue(
+              core.ConsentStatus.denied,
+            ),
+          ],
+        );
+        c.listen(legalReacceptanceNeededProvider, (_, _) {});
+        return c;
+      }
 
       // ── A accepts ──────────────────────────────────────────────────────────
       auth.userId = 'user-A';

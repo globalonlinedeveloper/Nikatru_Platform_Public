@@ -56,6 +56,7 @@
 import 'dart:ui' show CheckedState, Tristate;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -1156,8 +1157,7 @@ Future<AppLocalizations> _load(String code) =>
 /// read. See [pumpScreen].
 String expectedDonutLabel(ProviderContainer c, AppLocalizations l10n) {
   final List<Subscription> subs =
-      c.read(subscriptionsControllerProvider).valueOrNull ??
-      const <Subscription>[];
+      c.read(subscriptionsControllerProvider).value ?? const <Subscription>[];
   // The SAME two axes the screen formats under: the reader's locale, and each
   // amount's own currency.
   final MoneyFormatter money = MoneyFormatter(l10n.localeName);
@@ -1202,9 +1202,8 @@ String expectedDonutLabel(ProviderContainer c, AppLocalizations l10n) {
 /// reads.
 String expectedRingLabel(ProviderContainer c, AppLocalizations l10n) {
   final List<Subscription> subs =
-      c.read(subscriptionsControllerProvider).valueOrNull ??
-      const <Subscription>[];
-  final BudgetInfo? budget = c.read(budgetProvider).valueOrNull;
+      c.read(subscriptionsControllerProvider).value ?? const <Subscription>[];
+  final BudgetInfo? budget = c.read(budgetProvider).value;
   expect(
     budget,
     isNotNull,
@@ -5336,8 +5335,7 @@ double _ratio(Color a, Color b) {
 /// this test looks for is the glyph the screen was actually handed.
 Subscription _seedSub(ProviderContainer c) {
   final List<Subscription> subs =
-      c.read(subscriptionsControllerProvider).valueOrNull ??
-      const <Subscription>[];
+      c.read(subscriptionsControllerProvider).value ?? const <Subscription>[];
   expect(
     subs,
     isNotEmpty,

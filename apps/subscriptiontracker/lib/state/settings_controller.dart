@@ -153,7 +153,7 @@ class SettingsController extends Notifier<SettingsState> {
         keyValueStoreProvider.future,
       );
       final String? raw = await kv.read(kSettingsKey);
-      if (_touched) return;
+      if (_touched || !ref.mounted) return;
       if (raw == null) {
         // 🔴 THE FIRST RUN'S DEFAULT IS WRITTEN ONCE, SO IT IS A CHOICE FROM
         // HERE ON. A live row carries no currency and is read in this one
@@ -202,6 +202,7 @@ class SettingsController extends Notifier<SettingsState> {
     next[key] = on;
     state = state.copyWith(prefs: next);
     await _persist();
+    if (!ref.mounted) return; // Riverpod 3: the provider may be gone by now.
 
     // 🔴 [pipeline 13]T-4 — THE IN-CONTEXT ASK. This is one of the only two
     // places in the app allowed to reach `requestPermissions()`, and it is

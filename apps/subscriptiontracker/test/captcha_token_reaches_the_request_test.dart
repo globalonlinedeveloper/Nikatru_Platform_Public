@@ -35,7 +35,7 @@
 // callback directly, and the screen behaves exactly as it would when Cloudflare
 // calls back. No dart-define, no new CI lane, no network, milliseconds.
 // ─────────────────────────────────────────────────────────────────────────────
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:subscriptiontracker/core/e2e_keys.dart';

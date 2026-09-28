@@ -72,6 +72,7 @@ class ReviewPromptController extends Notifier<core.ReviewGateState> {
               ),
         encode: (next) => jsonEncode(next.toJson()),
         apply: (next) => state = next,
+        mounted: () => ref.mounted,
       );
 
   @override
@@ -82,7 +83,7 @@ class ReviewPromptController extends Notifier<core.ReviewGateState> {
 
   /// Count this launch, and stamp the install date the first time we see it.
   Future<void> recordLaunch({DateTime? now}) async {
-    await _stored.ensureHydrated();
+    if (!await _stored.ensureHydrated()) return;
     final DateTime at = now ?? DateTime.now().toUtc();
     await _stored.persist(
       state.copyWith(
@@ -94,7 +95,7 @@ class ReviewPromptController extends Notifier<core.ReviewGateState> {
 
   /// The user has asked not to be asked again. Never cleared by the chassis.
   Future<void> suppress() async {
-    await _stored.ensureHydrated();
+    if (!await _stored.ensureHydrated()) return;
     await _stored.persist(state.copyWith(suppressed: true));
   }
 
@@ -104,11 +105,12 @@ class ReviewPromptController extends Notifier<core.ReviewGateState> {
   /// platform cannot" from "not yet" — three outcomes that are identical from a
   /// bool and need completely different responses.
   Future<core.ReviewRequestOutcome> maybeAsk({DateTime? now}) async {
-    await _stored.ensureHydrated();
+    if (!await _stored.ensureHydrated()) return core.ReviewRequestOutcome.gated;
     final core.ReviewPrompter prompter = ref.read(reviewPrompterProvider);
     // The DEVICE half, asked before the calendar half: on Android this depends
     // on the Play Store being installed, which no build-time fact can tell us.
     final bool canAsk = await prompter.isAvailable();
+    if (!ref.mounted) return core.ReviewRequestOutcome.gated;
     final core.ReviewGateVerdict verdict = ref
         .read(reviewGateProvider)
         .decide(
