@@ -1,6 +1,7 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
+import 'package:flutter/foundation.dart'
+    show debugPrint, kIsWeb, visibleForTesting;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
@@ -24,7 +25,9 @@ class SupabaseAuthRepository implements core.AuthRepository {
     DateTime Function()? clock,
     this.redirects = AuthRedirects.none,
     this.refreshSkew = const Duration(seconds: 30),
+    Uri Function()? launchUri,
   })  : _injected = client,
+        _launchUri = launchUri ?? (() => Uri.base),
         _native = nativeCredentials,
         _requestServerDeletion = requestServerDeletion,
         _now = clock ?? (() => DateTime.now().toUtc());
@@ -178,8 +181,69 @@ class SupabaseAuthRepository implements core.AuthRepository {
   @override
   core.AuthUser? get currentUser => _map(_auth.currentUser);
 
+  /// The URL this process was launched with — the only place a WEB arrival's
+  /// `nk_auth` marker can be read. Injectable because `Uri.base` is a property
+  /// of the process.
+  final Uri Function() _launchUri;
+
+  /// ⏱ 2026-09-28 · ST-N1f (O-NATIVE-AUTH-CALLBACK-UNBUILT follow-up 3) — the
+  /// one subscription that says, in the device log, what became of an auth
+  /// callback. Started by the first [authEvents] or [authStateChanges] call,
+  /// which every app makes at launch, and never twice: each of those streams
+  /// is listened to by several providers, and a line per listener would count
+  /// one callback three times.
+  StreamSubscription<sb.AuthState>? _callbackLog;
+
+  /// Whether the launch URL's own arrival has been reported ok already.
+  bool _launchArrivalLogged = false;
+
+  /// Starts [_callbackLog]. Writes ONE line per outcome:
+  /// `nk_auth_callback flow=<marker> outcome=<ok|failed>` — never a code, a
+  /// token or an address, so a device log or a CI artefact can carry it.
+  ///
+  ///   · failed — the SDK re-emits every failed link exchange as a stream
+  ///     ERROR (see [authEvents]); the flow is the one the router shows it as
+  ///     ([failedArrivalFlowOf], else reset — ST-A2's rule).
+  ///   · ok — `passwordRecovery` is only ever a reset link's exchange; a web
+  ///     arrival's `signedIn` is the launch URL's marked flow, once.
+  ///
+  /// ⚠️ A NATIVE confirm / OAuth / link SUCCESS IS NOT LOGGED, and a native
+  /// failure is classed by that same rule, because off web the marked URL
+  /// reaches only `supabase_flutter`'s own `app_links` listener: Flutter's deep
+  /// linking is off on every target (the router must not see the callback),
+  /// and reading the URL here would add `app_links` as a dependency.
+  void _watchCallbacks() {
+    _callbackLog ??= _auth.onAuthStateChange.listen(
+      (sb.AuthState s) {
+        if (s.event == sb.AuthChangeEvent.passwordRecovery) {
+          _logCallback(AuthFlow.reset, ok: true);
+        } else if (s.event == sb.AuthChangeEvent.signedIn &&
+            !_launchArrivalLogged) {
+          final AuthFlow? flow = authArrivalOf(_launchUri()).flow;
+          if (flow != null && flow != AuthFlow.reset) {
+            _launchArrivalLogged = true;
+            _logCallback(flow, ok: true);
+          }
+        }
+      },
+      onError: (Object _) => _logCallback(
+        failedArrivalFlowOf(_launchUri()) ?? AuthFlow.reset,
+        ok: false,
+      ),
+    );
+  }
+
+  static void _logCallback(AuthFlow flow, {required bool ok}) => debugPrint(
+        'nk_auth_callback flow=${flow.marker} outcome=${ok ? 'ok' : 'failed'}',
+      );
+
   @override
-  Stream<core.AuthUser?> authStateChanges() => _auth.onAuthStateChange
+  Stream<core.AuthUser?> authStateChanges() {
+    _watchCallbacks();
+    return _authStateChanges();
+  }
+
+  Stream<core.AuthUser?> _authStateChanges() => _auth.onAuthStateChange
       .map((sb.AuthState s) => _map(s.session?.user))
       // 🔴 THE ERROR IS DROPPED HERE AND REPORTED ON [authEvents], WHICH IS NOT
       // A SHRUG. `onAuthStateChange` carries ERRORS as well as states, and this
@@ -221,7 +285,12 @@ class SupabaseAuthRepository implements core.AuthRepository {
   /// sentence. Nothing is swallowed — the failure is louder than it was, because
   /// before this it reached a crash reporter and never reached the user.
   @override
-  Stream<core.AuthEvent> authEvents() =>
+  Stream<core.AuthEvent> authEvents() {
+    _watchCallbacks();
+    return _authEvents();
+  }
+
+  Stream<core.AuthEvent> _authEvents() =>
       _auth.onAuthStateChange.map(_event).transform(
             StreamTransformer<core.AuthEvent, core.AuthEvent>.fromHandlers(
               handleData: (core.AuthEvent e, EventSink<core.AuthEvent> sink) =>
