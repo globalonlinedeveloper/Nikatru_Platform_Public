@@ -406,12 +406,12 @@ jobs:
           # `flutter drive -d web-server` otherwise serves the app on
           # http://localhost:<RANDOM port>, and every Worker call the suite makes
           # is therefore cross-origin. subscriptiontracker-api.nikatru.com tolerates that: its CORS
-          # middleware carries an explicit localhost-any-port exception
-          # (services/subscriptiontracker-api/src/middleware/cors.ts:38) added as the INC13 fix,
+          # binding is scope `own-app`, which carries an explicit localhost-any-port
+          # exception (services/_shared/src/cors.ts:102) added as the INC13 fix,
           # which is why legs 1-2 have always passed.
           #
-          # The SHARED platform Worker deliberately does NOT carry that exception
-          # — the same file says so in as many words: "It is a PER-APP trade: the
+          # The SHARED platform Worker (scope `every-app`) deliberately does NOT carry
+          # that exception — the shared module says so in as many words: "It is a PER-APP trade: the
           # shared platform Worker deliberately does not carry it." Its allowlist
           # is exact origins only (services/platform/wrangler.jsonc:48), and the
           # one localhost entry there is the FIXED port 3000.

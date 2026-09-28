@@ -20,7 +20,7 @@
   "_rootsNote": "TWO roots since 2026-09-07 ([ADR 067] phase 2, unit app-shell). The Worker half of the template - 13 files, 917 lines every stamped backend app inherits - was outside this ledger entirely while `root` was one string, and `git ls-files -- <that one root>` could not see it to complain. assert-chassis-ledger.mjs is the authority on this list and cross-checks it; a row's `root` is optional and defaults to roots[0], which is why the 96 rows written against the single root are unchanged. ⏱ THE FIGURES IN THIS NOTE MOVED ON 2026-09-08 AND ARE CORRECTED RATHER THAN REWRITTEN: the Worker half is now 14 files and 1,021 lines, because the template gained src/lib/error-sink.ts — a stamped backend had NO crash sink at all and failed tooling/ci/assert-worker-error-sink.mjs on limbs 2, 3 and 5 at its first CI run. The guard PRINTS both figures per root on every run, which is the number to read; this sentence is prose and prose rots.",
   "totals": {
     "files": 147,
-    "lines": 23127,
+    "lines": 23086,
     "unclassified": 0,
     "unclassifiedLines": 0
   },
@@ -841,9 +841,11 @@
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
       "path": "src/middleware/cors.ts",
-      "lines": 66,
-      "verdict": "STAYS",
-      "why": "Per-app CORS allowlist, derived from this app's own web origin at stamp time."
+      "lines": 25,
+      "verdict": "MOVES",
+      "why": "O-SERVICE-KIT-UNBUILT (E-b1), 2026-09-27 - MEASURED: 66 -> 25 lines, callSiteDelta -41. The middleware was the THIRD CORS implementation (the platform Worker and app #1 each carried another); it moved to services/_shared/src/cors.ts, the one every Worker binds. What stays is the binding: this app's policy (scope own-app, its app id, the methods its routes answer) passed to cors(). services/platform/test/twinned-worker-modules.test.ts holds every Worker's cors.ts to exactly that shape, and assert-cors-allowlist.mjs holds the scope to this Worker's register row.",
+      "target": "services/_shared/src/cors.ts",
+      "callSiteDelta": -41
     },
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",

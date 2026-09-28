@@ -24,8 +24,8 @@ import { describe, it, expect } from 'vitest';
 //
 //   · "NO MODULE BOUNDARY EXISTS BETWEEN THE TWO WORKERS." Still true as
 //     written — the Workers are separate npm packages with their own
-//     `package-lock.json` and their own `npm ci` (`ci.yml` jobs
-//     `worker-subscriptiontracker-api`, `worker-platform`), and `pnpm-workspace.yaml` lists
+//     `package-lock.json` and their own `npm ci` (each in its own leg of
+//     lane-workers.yml's `worker` job), and `pnpm-workspace.yaml` lists
 //     only `sites/_shared` and `tooling/content_pipeline`, so a `workspace:*`
 //     dependency would not resolve. But a bare RELATIVE import needs no package
 //     boundary at all: esbuild inlines it, which is exactly how
@@ -143,6 +143,18 @@ import { describe, it, expect } from 'vitest';
 // joins the SHARED-HOME group and is held to the stricter limb from day one.
 // The brick itself is NOT edited from here, and is not scanned by this file (it
 // lives under `tooling/`, not `services/`).
+//
+// ── ⏱ 2026-09-27 · CORS: ONE IMPLEMENTATION, AND EVERY WORKER ONLY BINDS IT ──
+// (O-SERVICE-KIT-UNBUILT, E-b1.) CORS was THREE implementations — the platform's
+// hand-written middleware, app #1's `hono/cors`, and the brick's third — which
+// agreed on the exact list and differed on five behaviours nobody had decided.
+// It now has one home, services/_shared/src/cors.ts. It was never in the twin set
+// above (that set is `src/lib`, and cors.ts is middleware), and it cannot join
+// the re-export limb as it stands: each Worker must pass its OWN policy — its
+// register scope and the methods its routes answer — so its copy is a re-export
+// PLUS one binding line, not a re-export alone. The last describe block below
+// holds every `services/*/src/**/cors.ts` outside `_shared` to exactly that
+// shape, so a local implementation put back in any Worker is red here.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // `process.getBuiltinModule` rather than `import 'node:fs'`, for the same reason
@@ -160,6 +172,7 @@ const nodeProcess = (
         existsSync(p: string): boolean;
         readFileSync(p: string, enc: 'utf8'): string;
         readdirSync(p: string): string[];
+        statSync(p: string): { isDirectory(): boolean };
       };
     };
   }
@@ -744,5 +757,78 @@ describe('the modules duplicated across services/* are held equal', () => {
           'lines differ, or delete the row',
       ).toBeGreaterThan(0);
     }
+  });
+});
+
+// ── CORS: one implementation, bound per Worker ───────────────────────────────
+
+/** The one CORS home, and the exact lines every Worker's binding opens with.
+ *  `services/<worker>/src/middleware/cors.ts` is three directories below
+ *  `services/`, and so is the brick's stamped copy. */
+const SHARED_CORS = `${SHARED_SRC}/cors.ts`;
+const CORS_BINDING_HEAD = [
+  "import { cors } from '../../../_shared/src/cors';",
+  "export * from '../../../_shared/src/cors';",
+];
+/** …and the ONE statement that follows: `corsMiddleware` is `cors({ … })`
+ *  called with an object literal holding no function, no nested object and no
+ *  call — a policy, which is data. Anything with behaviour in it is a fork. */
+const CORS_BINDING_CALL = /^export const corsMiddleware = cors\(\{[^{}()]*\}\);$/;
+/** Both Workers bind it today. A scan that finds fewer has stopped looking. */
+const MIN_CORS_BINDINGS = 2;
+
+/** Every file called `name` under `dir`, recursively. */
+function filesNamed(dir: string, name: string): string[] {
+  const out: string[] = [];
+  for (const entry of fs.readdirSync(dir).sort()) {
+    const path = `${dir}/${entry}`;
+    if (fs.statSync(path).isDirectory()) out.push(...filesNamed(path, name));
+    else if (entry === name) out.push(path);
+  }
+  return out;
+}
+
+/** Every `cors.ts` under a Worker's `src/`, the shared home excluded BY NAME. */
+const corsCarriers: string[] = fs
+  .readdirSync(SERVICES)
+  .filter((name) => !name.startsWith('.') && name !== '_shared')
+  .filter((name) => fs.existsSync(`${SERVICES}/${name}/src`))
+  .sort()
+  .flatMap((name) => filesNamed(`${SERVICES}/${name}/src`, 'cors.ts'));
+
+describe('CORS has ONE implementation, and every Worker only binds it', () => {
+  it('the shared home exists, declares cors(), and the scan finds a binding in every Worker', () => {
+    expect(fs.existsSync(SHARED_CORS), `${SHARED_CORS} is gone — every binding below re-exports nothing`).toBe(true);
+    expect(
+      declarations(fs.readFileSync(SHARED_CORS, 'utf8')).has('cors'),
+      'services/_shared/src/cors.ts declares no `cors` — the reader stopped reading, or the home was emptied',
+    ).toBe(true);
+    expect(
+      corsCarriers.length,
+      `only ${corsCarriers.length} cors.ts file(s) under ${SERVICES}/*/src — the scan is broken, not the tree`,
+    ).toBeGreaterThanOrEqual(MIN_CORS_BINDINGS);
+  });
+
+  it('every services/*/src/**/cors.ts is a binding of services/_shared/src/cors.ts, never an implementation', () => {
+    // RC8: put app #1's old `hono/cors` middleware back in its place and this
+    // is red, naming the file.
+    const forks: string[] = [];
+    for (const path of corsCarriers) {
+      const rel = path.slice(ROOT.length + 1);
+      const lines = normalise(stripComments(fs.readFileSync(path, 'utf8'))).split('\n');
+      const head = lines.slice(0, CORS_BINDING_HEAD.length);
+      const call = lines.slice(CORS_BINDING_HEAD.length).join(' ');
+      if (head.join('\n') === CORS_BINDING_HEAD.join('\n') && CORS_BINDING_CALL.test(call)) continue;
+      forks.push(
+        `${rel} is not a binding of services/_shared/src/cors.ts.\n` +
+          `    expected exactly: ${CORS_BINDING_HEAD.join(' ⏎ ')} ⏎ export const corsMiddleware = cors({ scope, appId?, methods });\n` +
+          `    found:            ${lines.join(' ⏎ ') || '(nothing)'}\n` +
+          '    CORS has ONE home since O-SERVICE-KIT-UNBUILT (E-b1). A Worker passes its policy — the `cors` ' +
+          'scope its tooling/platform-register.json row names, and the methods its mounted routes answer — and ' +
+          'implements nothing: three implementations were how five behaviours drifted apart with every test ' +
+          'green. Move the change into services/_shared/src/cors.ts.',
+      );
+    }
+    expect(forks, forks.join('\n\n')).toEqual([]);
   });
 });

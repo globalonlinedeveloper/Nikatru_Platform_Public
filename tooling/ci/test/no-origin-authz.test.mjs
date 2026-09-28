@@ -38,6 +38,14 @@
 //        `✗ COVERAGE LOST [ORIGIN-SIGHTING] — not one Origin read or hono/cors
 //         import was found in ANY declared CORS module.` Both reverted; hashes
 //        03757843… and d9a07cfa… before and after.
+//   ⏱ 2026-09-27 (O-SERVICE-KIT-UNBUILT, E-b1): CORS has ONE home,
+//   services/_shared/src/cors.ts, and CORS_MODULES names it alone; each Worker's
+//   src/middleware/cors.ts only binds it. Re-proven on the real tree:
+//   G′ unmodified tree -> EXIT 0, "1 Origin read(s)/CORS import(s), all 1 inside
+//      the 1 declared CORS module(s)".
+//   R3 app #1's old `hono/cors` middleware put back in its
+//      services/subscriptiontracker-api/src/middleware/cors.ts -> EXIT 1, naming
+//      that file's `hono/cors` import as outside the declared modules.
 //
 // The cases below are the FIXTURE half — the shapes that must not need a live
 // defect in the repository to be exercised, and the matcher's own edges. A
@@ -68,8 +76,9 @@ after(() => {
   rmSync(TMP, { recursive: true, force: true });
 });
 
-/** The shape of the two real CORS middlewares, reduced to the properties the
- *  guard actually asks about: it reads Origin, and it is recognisably CORS. */
+/** The shape of the one real CORS middleware (services/_shared/src/cors.ts),
+ *  reduced to the properties the guard actually asks about: it reads Origin,
+ *  and it is recognisably CORS. */
 const PLATFORM_CORS = `import type { MiddlewareHandler } from 'hono';
 export const corsMiddleware: MiddlewareHandler = async (c, next) => {
   const origin = c.req.header('Origin') ?? '';
@@ -82,9 +91,21 @@ export const corsMiddleware: MiddlewareHandler = async (c, next) => {
 };
 `;
 
+/** App #1's middleware as it was before E-b1: `hono/cors` in the Worker's own
+ *  file. Since that file only binds the shared module, this shape is the input
+ *  that must red — a Worker growing its own CORS policy again. */
 const SUBLY_CORS = `import { cors } from 'hono/cors';
 export const corsMiddleware = (c, next) => cors({ origin: (o) => o })(c, next);
 `;
+
+/** What each Worker's src/middleware/cors.ts is now: a binding, no Origin read. */
+const BINDING = `import { cors } from '../../../_shared/src/cors';
+export * from '../../../_shared/src/cors';
+export const corsMiddleware = cors({ scope: 'own-app', appId: 'x', methods: ['GET', 'OPTIONS'] });
+`;
+
+/** The Worker source trees the fixture carries, whichever modules are declared. */
+const WORKER_TREES = ['services/platform', 'services/subscriptiontracker-api'];
 
 /**
  * A throwaway repo carrying the two declared CORS modules and enough filler
@@ -103,15 +124,17 @@ function tree({ extra = {}, omit = [], corsBody = {} } = {}) {
   };
 
   const declared = [...CORS_MODULES.keys()];
-  const bodies = { [declared[0]]: PLATFORM_CORS, [declared[1]]: SUBLY_CORS, ...corsBody };
+  const bodies = { [declared[0]]: PLATFORM_CORS, ...corsBody };
   for (const rel of declared) {
     if (omit.includes(rel)) continue;
     write(rel, bodies[rel]);
   }
+  // Each Worker binds the shared module, as the real ones do.
+  for (const t of WORKER_TREES) write(`${t}/src/middleware/cors.ts`, BINDING);
 
-  // Filler across the two service trees the declared modules live in, so both
-  // floors (MIN_TS_FILES, MIN_SERVICES_WITH_SRC) are cleared honestly.
-  const trees = [...new Set(declared.map((r) => r.split('/').slice(0, 2).join('/')))];
+  // Filler across the Worker trees and the tree the declared module lives in,
+  // so both floors (MIN_TS_FILES, MIN_SERVICES_WITH_SRC) are cleared honestly.
+  const trees = [...new Set([...WORKER_TREES, ...declared.map((r) => r.split('/').slice(0, 2).join('/'))])];
   assert.ok(trees.length >= MIN_SERVICES_WITH_SRC, 'fixture must span both service trees');
   let n = 0;
   while (n < MIN_TS_FILES + 4) {
@@ -120,7 +143,7 @@ function tree({ extra = {}, omit = [], corsBody = {} } = {}) {
       n++;
     }
   }
-  for (const t of trees) write(`${t}/src/index.ts`, "export default { fetch: () => new Response('ok') };\n");
+  for (const t of WORKER_TREES) write(`${t}/src/index.ts`, "export default { fetch: () => new Response('ok') };\n");
 
   for (const [rel, body] of Object.entries(extra)) write(rel, body);
   return root;
@@ -173,7 +196,19 @@ describe('assert-no-origin-authz', () => {
   test('passes on the live shape: every read inside a declared CORS module', () => {
     const { code, out } = run(tree());
     assert.equal(code, 0, out);
-    assert.match(out, /all 2 inside the 2 declared CORS module\(s\), each still CORS-only; 0 elsewhere/);
+    assert.match(out, /all 1 inside the 1 declared CORS module\(s\), each still CORS-only; 0 elsewhere/);
+  });
+
+  // E-b1: a Worker's own cors.ts only BINDS the shared module. Putting a local
+  // `hono/cors` policy back in it is an Origin policy outside the one home.
+  test('FAILS when a Worker\'s own cors.ts grows its own CORS policy again', () => {
+    const root = tree({ extra: { 'services/subscriptiontracker-api/src/middleware/cors.ts': SUBLY_CORS } });
+    const { code, out } = run(root);
+    assert.equal(code, 1);
+    assert.match(
+      out,
+      /services\/subscriptiontracker-api\/src\/middleware\/cors\.ts:1 — imports `hono\/cors`, which is a per-module Origin policy/,
+    );
   });
 
   // 🔴 THE defect this guard exists for. One origin now serves every app.
@@ -301,18 +336,13 @@ describe('assert-no-origin-authz', () => {
     assert.match(out, /^✗ COVERAGE LOST \[CORS-TELL\]/);
   });
 
-  // If BOTH known-positive controls stop matching, every clean result over the
+  // If the known-positive control stops matching, every clean result over the
   // rest of the tree is an artefact of the scan rather than a fact about it.
   test('COVERAGE LOST [ORIGIN-SIGHTING] when no declared CORS module matches', () => {
-    const [platform, subscriptiontracker] = [...CORS_MODULES.keys()];
-    const { code, out } = run(
-      tree({
-        corsBody: {
-          [platform]: "export const m = (c) => c.header('Access-Control-Allow-Origin', '*');\n",
-          [subscriptiontracker]: "export const m = (c) => c.header('Access-Control-Allow-Origin', '*');\n",
-        },
-      }),
+    const corsBody = Object.fromEntries(
+      [...CORS_MODULES.keys()].map((rel) => [rel, "export const m = (c) => c.header('Access-Control-Allow-Origin', '*');\n"]),
     );
+    const { code, out } = run(tree({ corsBody }));
     assert.equal(code, 2);
     assert.match(out, /^✗ COVERAGE LOST \[ORIGIN-SIGHTING\]/);
     assert.match(out, /known-positive control/);

@@ -32,41 +32,51 @@
 // THE DERIVATION (there is no hand-maintained origin list left):
 //   • catalog/apps.json is the app catalogue. Each row's `url`
 //     contributes exactly one browser ORIGIN.
-//   • `platform` is the SHARED Worker (config.nikatru.com / platform.nikatru.com)
-//     that EVERY app's web build calls → it must list EVERY catalogue origin.
-//   • `services/<slug>-api` is app <slug>'s own Worker → it must list that one
-//     app's origin. The mapping is by DIRECTORY NAME, so a new app that brings
-//     its own Worker is covered without editing this file.
+//   • WHICH origins a Worker answers is its SCOPE, the `cors` field of its row in
+//     tooling/platform-register.json (`servingWorker`, `appWorkers[]`):
+//       – `every-app`: a SHARED Worker (the platform: config.nikatru.com /
+//         platform.nikatru.com) that EVERY app's web build calls → it must list
+//         EVERY catalogue origin;
+//       – `own-app`: `services/<slug>-api`, app <slug>'s own Worker → it must list
+//         that one app's origin. The app is found by DIRECTORY NAME, so a new app
+//         that brings its own Worker is covered without editing this file:
+//         provision-backend.mjs step [6] writes its row with `cors: "own-app"`.
 //   • Anything else listed in a config must appear in EXTRAS with a reason. An
 //     origin the catalogue does not justify and nobody wrote a reason for is a
 //     hand-addition, and that is the drift this guard exists to stop.
+//
+// ⏱ 2026-09-27 — THE SCOPE LEFT THIS FILE FOR THE REGISTER, AND THE CODE IS HELD
+// TO IT (O-SERVICE-KIT-UNBUILT, E-b1). It used to be a `SERVICE_POLICY` literal
+// here, naming `platform` by hand beside a derivation that covered everything
+// else. Every Worker now binds the ONE middleware, services/_shared/src/cors.ts,
+// in its own src/middleware/cors.ts with `cors({ scope, appId?, methods })`, and
+// this guard fails a Worker whose binding passes a scope its row does not name.
+// That limb is what makes the field mean anything: since [ADR 075] every
+// catalogue origin is the apex, so `every-app` and `own-app` require the SAME
+// origin set, and no origin limb can see a row flipped from one to the other.
+// Measured with this limb cut out, app #1's row set to `every-app`: exit 2, and
+// ONLY through the MIN_PER_APP_WORKERS floor, because the tree's one own-app
+// Worker vanished — a floor that a second own-app Worker satisfies. What the
+// scope still decides is in the code — the localhost trade an `own-app` Worker
+// carries and the shared Worker must not — so that is where the row is checked.
 //
 // Usage:  node tooling/ci/assert-cors-allowlist.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { listDir } from './tree-walk.mjs';
+import { stripSourceComments } from './text-reductions.mjs';
 import { APEX_ORIGIN } from '../sites/apex.mjs';
 
 const ROOT = resolve(process.argv[2] ?? '.');
 const SERVICES = join(ROOT, 'services');
 const CATALOGUE = join(ROOT, 'catalog', 'apps.json');
-
-/**
- * Workers whose audience is NOT derivable from a `<slug>-api` directory name.
- *
- * `scope: 'every-app'` — a shared Worker every app's web build calls.
- * `exemptReason`       — a claim that the Worker has NO browser callers at all.
- *                        Not a waiver: it must survive being read aloud, same
- *                        idiom as assert-guard-coverage.mjs's NOT_A_SCANNER.
- * A Worker that is in neither this map nor the `<slug>-api` derivation fails.
- */
-const SERVICE_POLICY = {
-  platform: {
-    scope: 'every-app',
-    why: 'config.nikatru.com + platform.nikatru.com — the shared config/analytics Worker that every app\'s web build fetches cross-origin',
-  },
-};
+/** Each Worker's CORS scope is its row's `cors` field here. */
+const REGISTER_REL = 'tooling/platform-register.json';
+const REGISTER = join(ROOT, ...REGISTER_REL.split('/'));
+const SCOPES = new Set(['every-app', 'own-app']);
+/** Where every Worker binds services/_shared/src/cors.ts with its policy. */
+const BINDING_REL = 'src/middleware/cors.ts';
 
 /**
  * The ONLY permitted non-catalogue origins, each with the reason it is there.
@@ -251,7 +261,74 @@ if (configs.length < MIN_SERVICES) {
   coverageLost();
 }
 
+// ── every Worker's scope, READ FROM THE REGISTER ────────────────────────────
+// A row is matched to its Worker by the `config` path it names, the key
+// provision-backend.mjs and assert-platform-register.mjs already use.
+if (!existsSync(REGISTER)) {
+  console.error(
+    `assert-cors-allowlist: COVERAGE LOST — no register at ${REGISTER_REL}.\n` +
+      '    Every Worker\'s scope is its row\'s `cors` field there. Without it this guard\n' +
+      '    cannot tell the shared Worker from an app\'s own, so it can require nothing.',
+  );
+  coverageLost();
+}
+let register;
+try {
+  register = JSON.parse(readFileSync(REGISTER, 'utf8'));
+} catch (e) {
+  console.error(`assert-cors-allowlist: COVERAGE LOST — ${REGISTER_REL} is not parseable JSON: ${e.message}`);
+  coverageLost();
+}
+const registerRows = [
+  ...(register?.servingWorker && typeof register.servingWorker === 'object'
+    ? [{ field: 'servingWorker', row: register.servingWorker }]
+    : []),
+  ...(Array.isArray(register?.appWorkers)
+    ? register.appWorkers.map((row, i) => ({ field: `appWorkers[${i}]`, row }))
+    : []),
+];
+if (registerRows.length < MIN_SERVICES) {
+  console.error(
+    `assert-cors-allowlist: COVERAGE LOST — ${REGISTER_REL} names ${registerRows.length} Worker row(s), ` +
+      `expected at least ${MIN_SERVICES} (\`servingWorker\` and \`appWorkers[]\`).\n` +
+      '    A register that lost its rows leaves every Worker with no scope, and each\n' +
+      '    would be reported as unregistered rather than checked.',
+  );
+  coverageLost();
+}
+
 const problems = [...badRows];
+/** Worker directory → its register row. */
+const rowByService = new Map();
+for (const entry of registerRows) {
+  const m = /^services\/([^/]+)\/wrangler\.jsonc?$/.exec(String(entry.row?.config ?? '').replace(/\\/g, '/'));
+  if (m) {
+    rowByService.set(m[1], entry);
+  } else {
+    problems.push(
+      `✗ ${REGISTER_REL} ${entry.field} names no \`services/<dir>/wrangler.jsonc\` in \`config\` ` +
+        `(${JSON.stringify(entry.row?.config ?? null)}), so no Worker can be matched to its \`cors\` scope.`,
+    );
+  }
+}
+
+/**
+ * What a Worker's src/middleware/cors.ts binds: every `scope:` and `appId:`
+ * string literal in its comment-stripped source. The binding is one
+ * `cors({ … })` call (services/platform/test/twinned-worker-modules.test.ts
+ * refuses anything more), so a reader of literals is enough — and it is not a
+ * grep over prose, because the comments are gone first.
+ */
+function bindingOf(service) {
+  const rel = `services/${service}/${BINDING_REL}`;
+  const abs = join(SERVICES, service, ...BINDING_REL.split('/'));
+  if (!existsSync(abs)) return { rel, missing: true, scopes: [], appIds: [] };
+  const code = stripSourceComments(readFileSync(abs, 'utf8'), '.ts');
+  const literals = (key) =>
+    [...code.matchAll(new RegExp(`\\b${key}\\s*:\\s*(['"\`])([^'"\`]*)\\1`, 'g'))].map((m) => m[2]);
+  return { rel, missing: false, scopes: literals('scope'), appIds: literals('appId') };
+}
+
 let checked = 0;
 let originsSeen = 0; // catalogue-DERIVED requirements
 let extrasSeen = 0; // hand-declared EXTRAS, counted separately and printed
@@ -259,21 +336,41 @@ let perAppWorkers = 0;
 // ⏱ 2026-09-27 (LEAD RULING SHIELD-R3, rv-c21 SHIELD-F2): the EDGE pass-through policy — edgePassThrough() below.
 const EDGE = edgeServices(ROOT);
 let edgeChecked = 0;
+let bindingsHeld = 0;
 
 for (const { service, path, where } of configs) {
   if (EDGE.has(service)) {
     edgeChecked += edgePassThrough(service, path, where, problems);
     continue;
   }
-  const declared = SERVICE_POLICY[service];
+  const entry = rowByService.get(service);
   // The `<slug>-api` derivation: app `subscriptiontracker` owns `services/subscriptiontracker-api`.
   const owner = apps.find((a) => `${a.slug}-api` === service);
 
-  let required;
-  if (declared?.exemptReason) {
-    console.log(`  – ${where} — exempt: ${declared.exemptReason}`);
+  if (entry === undefined) {
+    // A new Worker is not automatically out of scope — it is unregistered scope.
+    problems.push(
+      `✗ ${where} — no row in ${REGISTER_REL} names services/${service}, so nothing says which\n` +
+        '    browser origins it answers. Give it a row with a `cors` scope: `every-app` for a\n' +
+        '    Worker every app\'s web build calls, or `own-app` for services/<slug>-api, app\n' +
+        '    <slug>\'s own Worker (provision-backend.mjs step [6] writes that row). A Worker\n' +
+        '    with no row is a Worker whose allowlist nothing checks.',
+    );
     continue;
-  } else if (declared?.scope === 'every-app') {
+  }
+  const scope = entry.row?.cors;
+  if (!SCOPES.has(scope)) {
+    problems.push(
+      `✗ ${REGISTER_REL} ${entry.field} (services/${service}) — \`cors\` is ${JSON.stringify(scope ?? null)}; ` +
+        'it must be "every-app" or "own-app".\n' +
+        '    The scope decides which origins this Worker must list and whether it carries the\n' +
+        '    localhost trade, and a row without one leaves both undecided.',
+    );
+    continue;
+  }
+
+  let required;
+  if (scope === 'every-app') {
     required = apps.map((a) => ({
       origin: a.origin,
       why: `apps.json declares "${a.slug}" at ${a.origin}; ${service} is shared by every app`,
@@ -287,16 +384,48 @@ for (const { service, path, where } of configs) {
       },
     ];
   } else {
-    // A new Worker is not automatically out of scope — it is untaught scope.
     problems.push(
-      `✗ ${where} — this guard has never been taught about services/${service}.\n` +
-        `    Name it services/<slug>-api for a slug in apps.json (then its origin is\n` +
-        '    derived automatically), or add it to SERVICE_POLICY with scope\n' +
-        '    \'every-app\', or with an exemptReason saying why it has no browser\n' +
-        '    callers. A Worker that is none of those is a Worker whose allowlist\n' +
-        '    nothing checks.',
+      `✗ ${where} — ${REGISTER_REL} ${entry.field} says \`cors: "own-app"\`, and no app in\n` +
+        `    catalog/apps.json owns services/${service}. An own-app Worker is services/<slug>-api\n` +
+        '    for a catalogue slug; that is how its one required origin is derived.',
     );
     continue;
+  }
+
+  // ── the code binds the scope the register names ─────────────────────────
+  // 🔴 RC9. Flip app #1's row to `every-app` and no origin requirement changes:
+  // every catalogue origin is the apex, so both scopes require the same set. The row
+  // would then claim a Worker that allows no localhost while its binding keeps
+  // the trade — or, the dangerous direction, the SHARED Worker bound `own-app`
+  // would answer every localhost port behind a row still reading `every-app`.
+  const binding = bindingOf(service);
+  const bindingProblem = (what) =>
+    problems.push(
+      `✗ ${binding.rel} — ${what}\n` +
+        `    ${REGISTER_REL} ${entry.field} names \`cors: "${scope}"\`. Every Worker binds\n` +
+        '    services/_shared/src/cors.ts in that file with ONE `cors({ scope, appId?, methods })`\n' +
+        '    call, and the scope it passes is the one its row names.',
+    );
+  if (binding.missing) {
+    bindingProblem('there is no such file, so nothing binds this Worker\'s CORS.');
+  } else if (binding.scopes.length !== 1) {
+    bindingProblem(`it passes ${binding.scopes.length} \`scope\` literal(s) (${binding.scopes.join(', ') || 'none'}); it must pass exactly one.`);
+  } else if (binding.scopes[0] !== scope) {
+    bindingProblem(
+      `it binds \`scope: '${binding.scopes[0]}'\` and the register says "${scope}". ` +
+        (binding.scopes[0] === 'own-app'
+          ? 'That Worker answers every localhost port on top of its list, which the register says it does not.'
+          : 'That Worker refuses the localhost ports the register says it answers.'),
+    );
+  } else if (scope === 'own-app' && (binding.appIds.length !== 1 || binding.appIds[0] !== owner.slug)) {
+    bindingProblem(
+      `it names \`appId\` ${binding.appIds.map((a) => `'${a}'`).join(', ') || '(none)'}; an own-app Worker in ` +
+        `services/${service} belongs to app '${owner.slug}', and names it once.`,
+    );
+  } else if (scope === 'every-app' && binding.appIds.length > 0) {
+    bindingProblem(`it names \`appId\` ${binding.appIds.map((a) => `'${a}'`).join(', ')}; an every-app Worker belongs to no one app.`);
+  } else {
+    bindingsHeld++;
   }
 
   let cfg;
@@ -343,7 +472,7 @@ for (const { service, path, where } of configs) {
   // because the token+APP_ID pair is the only thing left that can tell one app's
   // caller from another's. A per-app Worker without it is authorising on nothing but
   // a shared string.
-  if (SERVICE_POLICY[service]?.scope !== 'every-app' && typeof cfg?.vars?.APP_ID !== 'string') {
+  if (scope !== 'every-app' && typeof cfg?.vars?.APP_ID !== 'string') {
     problems.push(
       `✗ ${where} — vars.APP_ID is missing on a PER-APP Worker.\n` +
         '    Every app is published on one shared origin (https://nikatru.com/<id>),\n' +
@@ -397,15 +526,15 @@ for (const { service, path, where } of configs) {
   }
 }
 
-// Every service SERVICE_POLICY names must actually have been reached. Otherwise a
+// Every Worker the register names must actually have been reached. Otherwise a
 // renamed directory turns a checked Worker into an unchecked one and the run
 // still prints a tally that looks healthy.
 const seen = new Set(configs.map((c) => c.service));
-for (const service of Object.keys(SERVICE_POLICY)) {
+for (const [service, entry] of rowByService) {
   if (!seen.has(service)) {
     problems.push(
-      `✗ COVERAGE LOST — SERVICE_POLICY names services/${service}, but no Worker config was found there.\n` +
-        '    Either the directory moved (fix SERVICE_POLICY in the same change) or\n' +
+      `✗ COVERAGE LOST — ${REGISTER_REL} ${entry.field} names services/${service}, but no Worker config was found there.\n` +
+        '    Either the directory moved (fix the row\'s `config` in the same change) or\n' +
         '    the Worker was deleted; until then its allowlist is checked by nothing.',
     );
   }
@@ -447,7 +576,8 @@ if (problems.length > 0) {
 console.log(
   `assert-cors-allowlist: ${checked} Worker config(s) checked against ${catalogueOrigins.length} ` +
     `catalogue origin(s) from ${apps.length} app(s); ${originsSeen} derived requirement(s) ` +
-    `+ ${extrasSeen} declared EXTRAS all present, no unjustified origins` +
+    `+ ${extrasSeen} declared EXTRAS all present, no unjustified origins; ` +
+    `${bindingsHeld} Worker(s) bind the \`cors\` scope their ${REGISTER_REL} row names` +
     (edgeChecked > 0 ? `; ${edgeChecked} edge pass-through Worker(s) answer \`*\` and never credentials.` : '.'),
 );
 
@@ -463,7 +593,7 @@ function coverageLost() {
 // ⏱ 2026-09-27 · THE EDGE PASS-THROUGH POLICY (LEAD RULINGS SHIELD-R1..R3, rv-c21
 // SHIELD-F2, row O-BOXES-UNSHIELDED-FROM-SPIKES). Declared LAST (hoisted), like
 // coverageLost above, so no `assert-cors-allowlist.mjs:NNN` citation moves; the
-// import below is hoisted too, for the same reason.
+// one import it needs is the top-of-file one since E-b1.
 //
 // services/edge-shield is not an allowlisting Worker and must not be taught as one.
 // It sits on zone routes in front of Box C's GoTrue and Box B's GlitchTip and passes
@@ -483,7 +613,7 @@ function coverageLost() {
 // Source is read COMMENT-STRIPPED: the refusal's own doc comment explains the
 // policy and names both headers.
 // ─────────────────────────────────────────────────────────────────────────────
-import { stripSourceComments } from './text-reductions.mjs';
+// stripSourceComments is imported at the top of this file (E-b1 imports it there for bindingOf).
 
 /** service directory -> edgeWorkers entry, from tooling/platform-register.json. An
  *  unreadable register is no edge Worker at all, so every Worker falls back to the
