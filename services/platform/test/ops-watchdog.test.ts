@@ -97,8 +97,10 @@ function apiDouble(opts: {
     if (url.endsWith('/commits/main')) return json({ sha: HEAD_SHA, commit: { message: 'm', committer: { date: minutesAgo(600) } } });
     if (url.includes('/actions/workflows/') && opts.stale) {
       // A page three days behind that never mentions HEAD, and a cross-read that knows a newer run.
+      // ⏱ 2026-09-28: that newer run is still IN PROGRESS, so the cross-read proves the page stale
+      // but cannot answer for it (no completed run, and a gap below it): every attempt is spent.
       const old = minutesAgo(3 * 24 * 60);
-      if (url.includes('created=')) return json({ workflow_runs: [{ id: 60, status: 'completed', conclusion: 'success', created_at: old, updated_at: old }] });
+      if (url.includes('created=')) return json({ workflow_runs: [{ id: 60, status: 'in_progress', conclusion: null, created_at: old, updated_at: old }] });
       return json({ workflow_runs: [{ id: 50, head_sha: 'f'.repeat(40), status: 'completed', conclusion: 'success', created_at: old, updated_at: old }] });
     }
     if (url.includes('/actions/workflows/')) return json({ workflow_runs: [{ id: 99, head_sha: HEAD_SHA, status: 'completed', conclusion: opts.conclusion ?? 'success', created_at: minutesAgo(30), updated_at: minutesAgo(30) }] });
@@ -505,8 +507,10 @@ describe('checkMainConclusions — a stale page is UNREADABLE, never a verdict',
     expect(rows[1].ok).toBe(true);
   });
 
-  it('🔴 THE MEASURED PAGE — ends at 35117703012, no run of HEAD 553e814a: ok=0 "unreadable: stale page", retried once', async () => {
-    const urls = measured([STALE_RUN], [FRESH_RUN]);
+  it('🔴 THE MEASURED PAGE — ends at 35117703012, no run of HEAD 553e814a, and a cross-read as stale as the page: ok=0 "unreadable: stale page", retried once', async () => {
+    // ⏱ 2026-09-28: the cross-read is served by the same stale replica (nothing newer than the page),
+    // so it proves nothing and answers nothing. A FRESH cross-read is the next case.
+    const urls = measured([STALE_RUN], [STALE_RUN]);
     const rows = await checkMainConclusions(env({ GITHUB_DISPATCH_TOKEN: TOKEN }).e, NOW);
     expect(rows[0].ok).toBe(false);
     expect(rows[0].detail).toMatch(/^unreadable: stale page: the page ends at run 35117703012 and holds no run of main HEAD 553e814a/);
@@ -519,18 +523,35 @@ describe('checkMainConclusions — a stale page is UNREADABLE, never a verdict',
     expect(rows[1].ok).toBe(true); // one stale workflow does not poison the other row
   });
 
+  it('🔴 THE MEASURED PAGE with a FRESH cross-read (it holds HEAD 553e814a\'s run): graded from the cross-read, no retry, no second path', async () => {
+    // ⏱ 2026-09-28 (the #1041 rule, Worker copy): a page the cross-read proves behind is REPLACED by it,
+    // and the fresh page still has to hold main HEAD's run.
+    const urls = measured([STALE_RUN], [FRESH_RUN]);
+    const rows = await checkMainConclusions(env({ GITHUB_DISPATCH_TOKEN: TOKEN }).e, NOW);
+    expect(rows[0]).toEqual({
+      target: 'main:ci.yml',
+      ok: true,
+      detail:
+        'ci.yml on main: success (run 35340873024, 2026-09-18T11:48:02Z) via the creation-date cross-read ' +
+        '(the branch=main list was a stale page ending at run 35117703012; the cross-read answered run 35340873024)',
+    });
+    const ci = urls.filter((u) => u.includes('/workflows/ci.yml/'));
+    expect(ci.filter((u) => !u.includes('created='))).toHaveLength(1); // no retry
+    expect(ci.filter((u) => u.includes('head_sha='))).toEqual([]); // no second path
+  });
+
   it('a stale first read and a current retry is believed — the retry is the recovery, not a second opinion', async () => {
     let n = 0;
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith('/commits/main')) return json({ sha: HEAD_553, commit: { message: 'm', committer: { date: '2026-09-18T11:41:23Z' } } });
-      if (url.includes('created=')) return json({ workflow_runs: [FRESH_RUN] });
+      if (url.includes('created=')) return json({ workflow_runs: [] }); // ⏱ 2026-09-28: a cross-read that answers would recover it first
       if (url.includes('/workflows/ci.yml/')) return json({ workflow_runs: n++ === 0 ? [STALE_RUN] : [FRESH_RUN] });
       return json({ workflow_runs: [OPS_WATCH_RUN] });
     }));
     const rows = await checkMainConclusions(env({ GITHUB_DISPATCH_TOKEN: TOKEN }).e, NOW);
     expect(rows[0].ok).toBe(true);
-    expect(rows[0].detail).toMatch(/run 35340873024/);
+    expect(rows[0].detail).toMatch(/run 35340873024.*via the branch=main list$/);
   });
 
   it('🔴 an unreadable main HEAD is an unreadable row, never a silently unanchored page', async () => {
@@ -547,8 +568,11 @@ describe('checkMainConclusions — a stale page is UNREADABLE, never a verdict',
   // ── THE SECOND PATH (O-OPS-WATCHDOG-STALE-PAGE-REDDENS-THE-RAIL, 2026-09-22) ──
   // The measured stale page and its cross-read refuse the branch=main list on
   // both attempts; `second` is what `runs?head_sha=<HEAD>` serves: a run list,
-  // an HTTP status, or a thrown error.
+  // an HTTP status, or a thrown error. ⏱ 2026-09-28: the cross-read proves the
+  // page stale with a newer run that is NOT main HEAD's, so the fresh page it
+  // becomes fails the HEAD anchor too, and the second path is still what answers.
   const HEAD_RUN = { ...FRESH_RUN, head_branch: 'main' };
+  const NOT_HEAD_RUN = { id: 35300000000, head_sha: 'c'.repeat(40), head_branch: 'main', status: 'completed', conclusion: 'success', created_at: '2026-09-18T02:00:00Z', updated_at: '2026-09-18T02:07:00Z' };
   const SECOND_URL = `https://api.github.com/repos/globalonlinedeveloper/Nikatru_Platform_Public/actions/workflows/ci.yml/runs?head_sha=${HEAD_553}&per_page=5`;
 
   function secondPath(second: unknown[] | number | Error) {
@@ -561,7 +585,7 @@ describe('checkMainConclusions — a stale page is UNREADABLE, never a verdict',
         if (second instanceof Error) throw second;
         return typeof second === 'number' ? new Response('', { status: second }) : json({ workflow_runs: second });
       }
-      if (url.includes('/workflows/ci.yml/') && url.includes('created=')) return json({ workflow_runs: [FRESH_RUN] });
+      if (url.includes('/workflows/ci.yml/') && url.includes('created=')) return json({ workflow_runs: [NOT_HEAD_RUN] });
       if (url.includes('/workflows/ci.yml/')) return json({ workflow_runs: [STALE_RUN] });
       if (url.includes('/workflows/ops-watch.yml/')) return json({ workflow_runs: [OPS_WATCH_RUN] });
       return new Response('', { status: 404 });
@@ -602,7 +626,9 @@ describe('checkMainConclusions — a stale page is UNREADABLE, never a verdict',
     secondPath(new Error('The operation was aborted due to timeout'));
     const rows = await checkMainConclusions(env({ GITHUB_DISPATCH_TOKEN: TOKEN }).e, NOW);
     expect(rows[0].ok).toBe(false);
-    expect(rows[0].detail).toMatch(/^unreadable: stale page: the page ends at run 35117703012 and holds no run of main HEAD 553e814a .*; the head_sha path was unreadable too: Error: The operation was aborted due to timeout/);
+    expect(rows[0].detail).toBe(
+      'unreadable: stale page: the page ends at run 35117703012 and holds no run of main HEAD 553e814a; its cross-read (run 35300000000) holds no run of HEAD either (after 2 reads); the head_sha path was unreadable too: Error: The operation was aborted due to timeout',
+    );
     expect(rows[0].detail).not.toMatch(/FINDING/);
   });
 
@@ -625,7 +651,7 @@ describe('checkMainConclusions — a stale page is UNREADABLE, never a verdict',
       const url = String(input);
       urls.push(url);
       if (url.endsWith('/commits/main')) return json({ sha: HEAD_553, commit: { message: 'm', committer: { date: '2026-09-18T11:41:23Z' } } });
-      if (url.includes('created=')) return json({ workflow_runs: [FRESH_RUN] });
+      if (url.includes('created=')) return json({ workflow_runs: [STALE_RUN] }); // as stale as the page: the retry recovers it
       if (url.includes('/workflows/ci.yml/')) return json({ workflow_runs: n++ === 0 ? [STALE_RUN] : [FRESH_RUN] });
       return json({ workflow_runs: [OPS_WATCH_RUN] });
     }));
@@ -669,5 +695,116 @@ describe('checkMainConclusions — a stale page is UNREADABLE, never a verdict',
     expect([...OPS_PUSH_TRIGGERED_ON_MAIN].sort()).toEqual(
       OPS_MAIN_WORKFLOWS.filter((w) => pushOnMain(onBlock(w === 'ci.yml' ? ciYml : opsWatchYml))).sort(),
     );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-28 · A STALE PAGE IS ANSWERED BY ITS FRESH CROSS-READ (the #1041
+// rule, Worker copy). MEASURED: Ops watch 36464466131 (18:20Z) went red on this
+// job's 18:00Z row "target main:ops-watch.yml: ok=0, detail: unreadable: stale
+// page: the page ends at run 35477612056 but a cross-read by creation date
+// answered run 36455387316 (after 2 reads)". The fixture is the real history,
+// read back from the API: the stale page's newest run, and the five newest
+// ops-watch.yml runs on main at 18:00Z (and at 16:30Z, when the newest had FAILED).
+// ops-watch.yml is schedule/dispatch-only: it has no HEAD anchor and no second
+// path, so before this change the cross-read's answer was thrown away.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('checkMainConclusions — a page PROVEN stale is graded from its fresh cross-read', () => {
+  const AT_1800 = Date.parse('2026-09-28T18:00:00Z');
+  const AT_1630 = Date.parse('2026-09-28T16:30:00Z');
+  const run = (id: number, conclusion: string, created_at: string, updated_at: string) =>
+    ({ id, head_branch: 'main', status: 'completed', conclusion, created_at, updated_at });
+  const PAGE_TOP = run(35477612056, 'success', '2026-09-20T00:00:31Z', '2026-09-20T00:02:29Z');
+  const R_1703 = run(36455387316, 'success', '2026-09-28T17:03:03Z', '2026-09-28T17:06:07Z');
+  const R_1559 = run(36447758185, 'failure', '2026-09-28T15:59:37Z', '2026-09-28T16:03:11Z');
+  const R_1554 = run(36447189383, 'success', '2026-09-28T15:54:57Z', '2026-09-28T15:57:14Z');
+  const R_1542 = run(36445569414, 'failure', '2026-09-28T15:42:05Z', '2026-09-28T15:46:57Z');
+  const R_1541 = run(36445522260, 'failure', '2026-09-28T15:41:42Z', '2026-09-28T15:44:28Z');
+  const R_1531 = run(36444287029, 'success', '2026-09-28T15:31:55Z', '2026-09-28T15:34:33Z');
+  /** The cross-read at the 18:00Z firing: `created>=2026-09-20T00:00:31Z`, per_page=5, newest first. */
+  const CROSS_1800 = [R_1703, R_1559, R_1554, R_1542, R_1541];
+  /** The same read at 16:30Z: the newest run on main had FAILED. */
+  const CROSS_1630 = [R_1559, R_1554, R_1542, R_1541, R_1531];
+  const VIA = 'via the creation-date cross-read (the branch=main list was a stale page ending at run 35477612056;';
+
+  /** ci.yml is current (its page holds main HEAD's run, 30 minutes old), so only ops-watch.yml's page is stale. */
+  function staleOpsWatch(nowMs: number, cross: unknown[] | number) {
+    const urls: string[] = [];
+    const ago = (m: number) => new Date(nowMs - m * 60_000).toISOString();
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      urls.push(url);
+      if (url.endsWith('/commits/main')) return json({ sha: HEAD_SHA, commit: { message: 'm', committer: { date: ago(31) } } });
+      if (url.includes('/workflows/ci.yml/')) return json({ workflow_runs: [{ id: 36456000000, head_sha: HEAD_SHA, head_branch: 'main', status: 'completed', conclusion: 'success', created_at: ago(30), updated_at: ago(20) }] });
+      if (url.includes('/workflows/ops-watch.yml/') && url.includes('created=')) {
+        return typeof cross === 'number' ? new Response('', { status: cross }) : json({ workflow_runs: cross });
+      }
+      if (url.includes('/workflows/ops-watch.yml/')) return json({ workflow_runs: [PAGE_TOP] });
+      return new Response('', { status: 404 });
+    }));
+    return urls;
+  }
+  const opsWatchRow = async (nowMs: number) => (await checkMainConclusions(env({ GITHUB_DISPATCH_TOKEN: TOKEN }).e, nowMs))[1];
+
+  it('🔴 W1 — THE MEASURED 18:00Z FIRING: graded from the cross-read — ok=1, success, run 36455387316 — in one attempt', async () => {
+    const urls = staleOpsWatch(AT_1800, CROSS_1800);
+    expect(await opsWatchRow(AT_1800)).toEqual({
+      target: 'main:ops-watch.yml',
+      ok: true,
+      detail: `ops-watch.yml on main: success (run 36455387316, 2026-09-28T17:06:07Z) ${VIA} the cross-read answered run 36455387316)`,
+    });
+    const reads = urls.filter((u) => u.includes('/workflows/ops-watch.yml/'));
+    expect(reads).toHaveLength(2); // the page and its cross-read: no retry, no extra request
+    expect(reads[1]).toContain(`created=${encodeURIComponent('>=2026-09-20T00:00:31Z')}&per_page=5`);
+  });
+
+  it('🔴 W2 — never hides a red: at 16:30Z the cross-read\'s newest run FAILED, so the row is FINDING: failure on it, not the stale page\'s success', async () => {
+    staleOpsWatch(AT_1630, CROSS_1630);
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const row = await opsWatchRow(AT_1630);
+    expect(row.ok).toBe(true); // a finding is ok=1: the check READ its subject
+    expect(row.detail).toBe(`FINDING: ops-watch.yml on main: failure (run 36447758185, 2026-09-28T16:03:11Z) ${VIA} the cross-read answered run 36447758185)`);
+  });
+
+  it('🔴 W3 — a cross-read that proves the page stale but holds NO completed run, with a gap below it: ok=0 "unreadable", never the stale page\'s success', async () => {
+    const urls = staleOpsWatch(AT_1800, [{ ...R_1703, status: 'in_progress', conclusion: null }]);
+    const row = await opsWatchRow(AT_1800);
+    expect(row).toEqual({
+      target: 'main:ops-watch.yml',
+      ok: false,
+      detail:
+        'unreadable: stale page: the page ends at run 35477612056 but a cross-read by creation date answered run 36455387316; ' +
+        'its cross-read (run 36455387316) holds no completed run and reaches back only to run 36455387316 (after 2 reads)',
+    });
+    expect(urls.filter((u) => u.includes('/workflows/ops-watch.yml/') && !u.includes('created='))).toHaveLength(2); // retried, as before
+  });
+
+  it('W4 — a cross-read that REACHES BACK to the page is one history with it: its newer run still in progress, the page\'s newest completed run answers', async () => {
+    staleOpsWatch(AT_1800, [{ ...R_1703, status: 'in_progress', conclusion: null }, PAGE_TOP]);
+    expect((await opsWatchRow(AT_1800)).detail).toBe(
+      `ops-watch.yml on main: success (run 35477612056, 2026-09-20T00:02:29Z) ${VIA} the cross-read answered run 36455387316)`,
+    );
+  });
+
+  it('🔴 W5 — an UNREADABLE cross-read leaves the row ok=0 "unreadable", exactly as before', async () => {
+    staleOpsWatch(AT_1800, 502);
+    const row = await opsWatchRow(AT_1800);
+    expect(row.ok).toBe(false);
+    expect(row.detail).toMatch(/^unreadable: .*HTTP 502/);
+    expect(row.detail).not.toMatch(/FINDING|success/);
+  });
+
+  it('🔴 W6 — ONE-WAY: a cross-read as stale as the page proves nothing, and the page is graded as it always was', async () => {
+    staleOpsWatch(AT_1800, [PAGE_TOP]);
+    expect((await opsWatchRow(AT_1800)).detail).toBe('ops-watch.yml on main: success (run 35477612056, 2026-09-20T00:02:29Z) via the branch=main list');
+  });
+
+  it('🔴 W7 — THE RACE WINDOW, unchanged: a newer run inside OPS_ANCHOR_RACE_MS proves nothing; one millisecond outside it does', async () => {
+    const edge = { ...R_1703, updated_at: new Date(AT_1800 - OPS_ANCHOR_RACE_MS).toISOString() };
+    staleOpsWatch(AT_1800, [edge]);
+    expect((await opsWatchRow(AT_1800)).detail).toMatch(/\(run 35477612056, .*\) via the branch=main list$/);
+    const over = { ...R_1703, updated_at: new Date(AT_1800 - OPS_ANCHOR_RACE_MS - 1).toISOString() };
+    staleOpsWatch(AT_1800, [over]);
+    expect((await opsWatchRow(AT_1800)).detail).toMatch(/^ops-watch\.yml on main: success \(run 36455387316, .* the cross-read answered run 36455387316\)$/);
   });
 });

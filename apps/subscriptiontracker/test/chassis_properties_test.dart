@@ -1822,7 +1822,36 @@ void main() {
             pinnedKeys: const <String, String>{'test-key': 'x'},
           ),
         ),
+        // ⏱ 2026-09-28 · ST-X5: the subject of these cases is the REMOTE tier,
+        // so the bundled catalogue is taken out of the way — otherwise a
+        // refused remote pack would fall back onto it, which is correct
+        // behaviour and not what these cases measure. The bundled tier has
+        // its own case below.
+        bundledContentPackSourceProvider.overrideWith((ref) => null),
       ],
+    );
+
+    test(
+      'ST-X5 · with a NULL pointer the BUNDLED pack serves, offline',
+      () async {
+        final ProviderContainer c = ProviderContainer(
+          overrides: <Override>[
+            keyValueStoreProvider.overrideWith((_) async => _MemStore()),
+            appConfigProvider.overrideWith((_) async => kAppDefaultConfig),
+            contentPackSourceProvider.overrideWith((ref) => null),
+            bundledContentPackSourceProvider.overrideWith(
+              (ref) => core.InMemoryContentPackSource(
+                packBytes(packId: AppConfig.appId, phrase: 'bundled'),
+              ),
+            ),
+          ],
+        );
+        addTearDown(c.dispose);
+        expect(kAppDefaultConfig.contentPack, isNull);
+        final core.ContentPack? pack = await c.read(contentPackProvider.future);
+        expect(pack, isNotNull, reason: 'the bundled tier was never consulted');
+        expect(pack!.manifest.packId, AppConfig.appId);
+      },
     );
 
     test('a configured pointer really SERVES a pack', () async {

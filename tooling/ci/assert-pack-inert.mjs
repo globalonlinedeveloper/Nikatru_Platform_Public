@@ -48,15 +48,44 @@ const coverageLost = (...lines) => {
 };
 
 // ── the domain ───────────────────────────────────────────────────────────────
-const packs = existsSync(FIXTURES)
+// Two kinds of committed pack, and both are enumerated:
+//   · the frozen fixtures, packages/core/test/fixtures/pack/*/ — sorted, so v1/
+//     (the lingo pack, the only one carrying binary assets) comes first;
+//   · every pack BUNDLED INTO AN APP, apps/*/assets/content_pack/ (ST-X5). It
+//     ships inside the binary, so it is exactly the thing P-7 is about.
+// A pubspec that declares `assets/content_pack/` while no pack is there is
+// COVERAGE LOST: the app says it ships a pack and this guard would have opened
+// none of it.
+const APPS = join(repoRoot, 'apps');
+const fixturePacks = existsSync(FIXTURES)
   ? listDir(FIXTURES, { withFileTypes: true })
       .filter((e) => e.isDirectory() && existsSync(join(FIXTURES, e.name, 'manifest.json')))
-      .map((e) => join(FIXTURES, e.name))
+      .map((e) => e.name)
+      .sort()
+      .map((n) => join(FIXTURES, n))
   : [];
-if (packs.length === 0) {
+const bundledPacks = [];
+for (const e of existsSync(APPS) ? listDir(APPS, { withFileTypes: true }).filter((d) => d.isDirectory()) : []) {
+  const dir = join(APPS, e.name, 'assets', 'content_pack');
+  const pubspec = join(APPS, e.name, 'pubspec.yaml');
+  const declares =
+    existsSync(pubspec) &&
+    readFileSync(pubspec, 'utf8')
+      .split(/\r?\n/)
+      .some((l) => /^\s*-\s*['"]?assets\/content_pack\/?['"]?\s*(#.*)?$/.test(l));
+  if (existsSync(join(dir, 'manifest.json'))) bundledPacks.push(dir);
+  else if (declares) {
+    coverageLost(
+      `${relative(repoRoot, pubspec)} declares assets/content_pack/ and ${relative(repoRoot, dir)}/manifest.json does not exist.`,
+      'The app says it bundles a pack; with none there this guard would report it inert having opened nothing.',
+    );
+  }
+}
+const packs = [...fixturePacks, ...bundledPacks];
+if (fixturePacks.length === 0) {
   coverageLost(
     `no pack under ${relative(repoRoot, FIXTURES)}/*/manifest.json.`,
-    'Every limb here enumerates a pack. With none, this guard reports every pack inert having opened none.',
+    'Every limb here enumerates a pack, and the planted cases below need the frozen v1 pack as their host.',
   );
 }
 if (FORMAT_ALLOWLIST.length === 0) coverageLost('the format allowlist is empty, so every asset would be refused and the guard would fail for the wrong reason.');
@@ -127,6 +156,17 @@ if (assetsChecked === 0) {
 // Not a fixture written beside the guard: a fixture you wrote encodes the same
 // misunderstanding as the guard you wrote. Each case is planted into a scratch
 // COPY of a real committed pack and must be caught.
+// The host is NAMED, not "whichever pack sorts first": the cases overwrite
+// assets/badge/streak.webp and assets/tone/confirm.mp3, which only the lingo v1
+// pack carries. A text-only bundled pack as host would make every asset case
+// fail for the wrong reason.
+const PLANT_HOST = join(FIXTURES, 'v1');
+if (packs[0] !== PLANT_HOST || !['badge/streak.webp', 'tone/confirm.mp3'].every((a) => existsSync(join(PLANT_HOST, 'assets', a)))) {
+  coverageLost(
+    `the planted-case host ${relative(repoRoot, PLANT_HOST)} is not the first pack found, or lacks the two binary assets the cases mutate.`,
+    'Every planted case below writes over one of those two files; with a different host they prove nothing.',
+  );
+}
 const tmp = mkdtempSync(join(tmpdir(), 'nikatru-inert-'));
 let caught = 0;
 try {
@@ -172,7 +212,7 @@ try {
   for (const [i, c] of cases.entries()) {
     const d = join(tmp, `case-${i}`);
     mkdirSync(d, { recursive: true });
-    cpSync(packs[0], d, { recursive: true });
+    cpSync(PLANT_HOST, d, { recursive: true });
     c.apply(d);
     const manifest = JSON.parse(readFileSync(join(d, 'manifest.json'), 'utf8'));
     const r = inspectPack(d, manifest);
@@ -201,7 +241,7 @@ if (problems.length) {
 }
 if (prints.length) for (const p of prints) console.log(`⬜ ${p}`);
 console.log(
-  `ok  pack inertness — ${packs.length} pack(s), ${membersChecked} member(s) whitelisted, ${assetsChecked} asset(s) classified by BYTES ` +
+  `ok  pack inertness — ${packs.length} pack(s) (${fixturePacks.length} frozen fixture(s), ${bundledPacks.length} app-bundled: ${bundledPacks.map((p) => relative(repoRoot, p).split('\\').join('/')).join(', ') || 'none'}), ${membersChecked} member(s) whitelisted, ${assetsChecked} asset(s) classified by BYTES ` +
     `against ${FORMAT_ALLOWLIST.length} locked format(s) (${FORMAT_ALLOWLIST.map((f) => f.format).join(', ')}); ` +
     `${caught}/6 planted cases caught, including ${KNOWN_REFUSED.length} named refusals; AVIF and video absent by cut`,
 );

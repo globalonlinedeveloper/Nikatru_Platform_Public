@@ -173,6 +173,8 @@ import {
   describeUnit,
   apiJobMatcher,
   unitConclusion,
+  supersededBy,
+  zeroEntryNeutral,
   decideUnitFreshness,
   decideUnitRedSince,
   scheduleWeekdays,
@@ -6559,6 +6561,102 @@ describe('post-gate call jobs of the gate workflow — read, graded, admitted (A
     assert.equal(c.verdict, 'neutral', c.detail);
     assert.match(c.detail, /\(c\) the job it needs, ci-gate, came back "failure"/);
     assert.equal(unitConclusion(q(['deploy-web']), { ...run, conclusion: 'success' }, RUN_3848_JOBS, CI()).verdict, 'lost', 'the same run with ci-gate success stays lost');
+  });
+
+  // ⏱ 2026-09-28 · OPS-WATCH 36445522260. Main CI run 4270 (36445259496) as the API gave
+  // it: cancelled at 15:41:40Z by the concurrency group when run 4271 (36445515397, still
+  // pending) was pushed; /jobs total_count 0; referenced_workflows naming both callees.
+  const REF_4270 = (file) => ({ path: `globalonlinedeveloper/Nikatru_Platform_Public/.github/workflows/${file}@6b8f28540ce3ce5babef3882619a9f9ffd5df4c2` });
+  const RUN_4270 = {
+    id: 36445259496, run_number: 4270, status: 'completed', conclusion: 'cancelled', event: 'push', head_branch: 'main',
+    created_at: '2026-09-28T15:39:35Z', updated_at: '2026-09-28T15:41:40Z',
+    referenced_workflows: ['extensions-ci.yml', 'deploy-web.yml', 'lane-workers.yml', 'deploy-workers.yml'].map(REF_4270),
+  };
+  const RUN_4271 = { id: 36445515397, run_number: 4271, status: 'pending', conclusion: null, event: 'push', head_branch: 'main', created_at: '2026-09-28T15:41:38Z', updated_at: '2026-09-28T15:41:40Z' };
+  const RUN_4266 = { id: 36440368713, run_number: 4266, status: 'completed', conclusion: 'success', event: 'push', head_branch: 'main', created_at: '2026-09-28T15:01:06Z', updated_at: '2026-09-28T15:31:04Z', referenced_workflows: RUN_4270.referenced_workflows };
+  const PAGE_4270 = [RUN_4271, RUN_4270, RUN_4266];
+
+  test('supersededBy: a cancelled run with a NEWER run on its branch (any status) is superseded; nothing else is', () => {
+    assert.equal(supersededBy(RUN_4270, PAGE_4270)?.id, RUN_4271.id, 'the pending run that cancelled it');
+    assert.equal(supersededBy(RUN_4270, [RUN_4270, RUN_4266]), null, 'no newer run: not superseded');
+    assert.equal(supersededBy({ ...RUN_4270, conclusion: 'failure' }, PAGE_4270), null, 'only a cancelled run');
+    assert.equal(supersededBy(RUN_4270, [{ ...RUN_4271, head_branch: 'feature' }]), null, 'a newer run on ANOTHER branch does not supersede');
+    assert.equal(supersededBy({ ...RUN_4270, created_at: undefined }, PAGE_4270), null, 'no created_at: fail closed');
+    assert.equal(supersededBy(RUN_4270, [{ ...RUN_4271, created_at: RUN_4270.created_at }]), null, 'created at the same instant is not newer');
+    const newest = { ...RUN_4271, id: 1, created_at: '2026-09-28T15:50:00Z' };
+    assert.equal(supersededBy(RUN_4270, [RUN_4271, newest])?.id, 1, 'the newest superseder is named');
+  });
+
+  test('RC-d (a) — run 4270, cancelled with NO entry for the unit and superseded: neutral, and the older green run grades the row GREEN', () => {
+    for (const id of ['deploy-web', 'deploy-workers']) {
+      // Red control: the SAME run with no superseder is the G4 shape, exactly as ops-watch 36445522260 printed it.
+      const lost = unitConclusion(q([id]), RUN_4270, [], CI());
+      assert.equal(lost.verdict, 'lost', lost.detail);
+      assert.ok(lost.detail.includes(`call job ${id} has NO entry in run 36445259496`), lost.detail);
+      const c = unitConclusion(q([id]), RUN_4270, [], CI(), supersededBy(RUN_4270, PAGE_4270));
+      assert.equal(c.verdict, 'neutral', c.detail);
+      assert.ok(c.detail.includes('(d) the run concluded "cancelled" and run 36445515397 (created 2026-09-28T15:41:38Z) on "main" superseded it'), c.detail);
+    }
+    assert.equal(zeroEntryNeutral(CI().jobs.get('deploy-web'), { ...RUN_4270, conclusion: 'success' }, [], CI(), RUN_4271), null, 'arm (d) is for a CANCELLED run only');
+
+    const r = row('duty.workflow.deploy-web.yml', ['deploy-web']);
+    const scan = (newer) => [RUN_4270, RUN_4266].map((run) => ({
+      run,
+      c: unitConclusion(q(['deploy-web']), run, run === RUN_4266 ? [GATE_OK, j('deploy-web / deploy-web', 'success')] : [], CI(), newer(run)),
+    }));
+    const green = decideUnitRedSince(q(['deploy-web']), scan((run) => supersededBy(run, PAGE_4270)), false);
+    assert.deepEqual([green.success?.id, green.failure, green.newestDecisive, green.lost], [RUN_4266.id, null, true, undefined]);
+    const cl = classifyRedSince(r, green);
+    assert.equal(cl.verdict, 'green', cl.line);
+    const out = evaluateRedSince({ rows: [r] }, new Map([[r.id, green]]), new Set(), postGateAdmission(files, topo));
+    assert.deepEqual([out.errors, out.live], [[], []]);
+    // Red control: without the superseder the same window is COVERAGE LOST, exit 2 — the ops-watch line.
+    const was = decideUnitRedSince(q(['deploy-web']), scan(() => null), false);
+    assert.equal(was.lost?.id, RUN_4270.id);
+    const wasOut = evaluateRedSince({ rows: [r] }, new Map([[r.id, was]]), new Set(), postGateAdmission(files, topo));
+    assert.deepEqual(wasOut.live.map((l) => [l.id, l.code]), [[r.id, 2]]);
+  });
+
+  test('RC-d (b) — a cancelled, superseded newest run whose call DID start and FAILED is still RED', () => {
+    const newer = supersededBy(RUN_4270, PAGE_4270);
+    assert.ok(newer, 'the fixture is superseded, so arm (d) was available and did not apply');
+    const jobs = [GATE_OK, j('deploy-web / deploy-web', 'failure')];
+    const c = unitConclusion(q(['deploy-web']), RUN_4270, jobs, CI(), newer);
+    assert.equal(c.verdict, 'failure', c.detail);
+    const r = row('duty.workflow.deploy-web.yml', ['deploy-web']);
+    const probe = decideUnitRedSince(q(['deploy-web']), [
+      { run: RUN_4270, c },
+      { run: RUN_4266, c: unitConclusion(q(['deploy-web']), RUN_4266, [GATE_OK, j('deploy-web / deploy-web', 'success')], CI()) },
+    ], false);
+    assert.deepEqual([probe.failure?.id, probe.success?.id], [RUN_4270.id, RUN_4266.id]);
+    assert.equal(classifyRedSince(r, probe).verdict, 'red');
+    const out = evaluateRedSince({ rows: [r] }, new Map([[r.id, probe]]), new Set(), postGateAdmission(files, topo));
+    assert.deepEqual(out.live.map((l) => [l.id, l.code]), [[r.id, 1]]);
+  });
+
+  test('RC-d (c) — NO run in the window reached a verdict on the unit: UNREAD, exit 2, never "no FAILED run" green (INV6)', () => {
+    const newer = supersededBy(RUN_4270, PAGE_4270);
+    const entries = [
+      { run: RUN_4270, c: unitConclusion(q(['deploy-web']), RUN_4270, [], CI(), newer) },
+      { run: RUN_3848, c: unitConclusion(q(['deploy-web']), RUN_3848, RUN_3848_JOBS, CI()) },
+    ];
+    assert.deepEqual(entries.map((e) => e.c.verdict), ['neutral', 'neutral']);
+    const probe = decideUnitRedSince(q(['deploy-web']), entries, false);
+    assert.equal(probe.success, undefined);
+    assert.ok(String(probe.unread?.why).includes('NO run read reached a verdict on '), JSON.stringify(probe));
+    assert.ok(String(probe.unread?.why).includes('all 2 completed run(s) back to run 36106900356'), probe.unread?.why);
+    const r = row('duty.workflow.deploy-web.yml', ['deploy-web']);
+    const cl = classifyRedSince(r, probe);
+    assert.equal(cl.verdict, 'unread', cl.line);
+    assert.match(cl.line, /UNREAD — COVERAGE LOST for this row, neither a pass nor a RED\.$/);
+    const out = evaluateRedSince({ rows: [r] }, new Map([[r.id, probe]]), new Set(), postGateAdmission(files, topo));
+    assert.deepEqual(out.live.map((l) => [l.id, l.code]), [[r.id, 2]], 'UNREAD is a live verdict at exit 2');
+    assert.equal(out.stats.unread, 1);
+    assert.equal(out.stats.green, 0);
+    assert.ok(out.prints.some((p) => p.includes('1 in which NO run read reached a verdict on the unit (UNREAD, COVERAGE LOST)')), out.prints.join('\n'));
+    // An EMPTY history is the bootstrap state, graded by the sibling [14]O-3 limb, and is unchanged here.
+    const empty = classifyRedSince(r, decideUnitRedSince(q(['deploy-web']), [], false));
+    assert.deepEqual([empty.verdict, /no FAILED run in its history at all.$/.test(empty.line)], ['green', true], empty.line);
   });
 
   test('collectRunJobs walks every page to total_count, and a list that does not add up THROWS', async () => {

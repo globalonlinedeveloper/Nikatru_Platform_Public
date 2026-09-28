@@ -1,0 +1,209 @@
+// 🔴 ST-X1 (audit D2, D31, F35) — THE EXPORT ROW SAVES A REAL FILE.
+//
+// `data-safety.json` has long declared that a user can export their data, and
+// the only surface that said so was a settings row with `onTap: null`: tapping
+// it did nothing, and no test anywhere referenced it. This pumps the REAL
+// SettingsScreen with a fake exporter that keeps the bytes, taps the row, and
+// parses the file the user would receive back into cells.
+//
+// RED ON main (e0beeb14): the row has no onTap, so the exporter is never
+// called and `exporter.files` is empty.
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/misc.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:subscriptiontracker/data/api/seed_api_client.dart';
+import 'package:subscriptiontracker/data/models/subscription.dart';
+import 'package:subscriptiontracker/data/portability/subscription_columns.dart';
+import 'package:subscriptiontracker/data/subscriptions/subscription_repository.dart';
+import 'package:subscriptiontracker/features/settings/settings_screen.dart';
+import 'package:subscriptiontracker/l10n/app_localizations.dart';
+import 'package:subscriptiontracker/state/providers.dart';
+
+import 'support/width_harness.dart';
+
+class _KeepingExporter implements core.FileExporter {
+  final List<core.ExportFile> files = <core.ExportFile>[];
+
+  @override
+  Future<core.ExportOutcome> export(core.ExportFile file) async {
+    files.add(file);
+    return core.ExportOutcome.exported;
+  }
+}
+
+class _FixedRepository extends SubscriptionRepository {
+  _FixedRepository(this._subs) : super(SeedApiClient());
+  final List<Subscription> _subs;
+
+  @override
+  Future<List<Subscription>> fetchAll() async => _subs;
+}
+
+/// A rupee row whose name carries a comma AND quotes — the two characters a
+/// naive writer breaks on — and a row whose name is a spreadsheet formula.
+final List<Subscription> _subs = <Subscription>[
+  Subscription(
+    id: 'sub-1',
+    name: 'Netflix, "Premium"',
+    category: 'Streaming',
+    price: const Money(64900, 'INR'),
+    cycle: BillingCycle.monthly,
+    nextRenewal: DateTime(2026, 10, 5),
+    plan: 'Premium',
+  ),
+  Subscription(
+    id: 'sub-2',
+    name: '=cmd',
+    category: 'Other',
+    price: const Money(999, 'USD'),
+    cycle: BillingCycle.yearly,
+    nextRenewal: DateTime(2027, 1, 31),
+    unused: true,
+  ),
+];
+
+Future<_KeepingExporter> _pumpAndTap(
+  WidgetTester tester, {
+  List<Override> overrides = const <Override>[],
+}) async {
+  final _KeepingExporter exporter = _KeepingExporter();
+  await pumpAt(
+    tester,
+    const Size(800, 3000),
+    const SettingsScreen(),
+    overrides: <Override>[
+      subscriptionRepositoryProvider.overrideWithValue(_FixedRepository(_subs)),
+      fileExporterProvider.overrideWithValue(exporter),
+      ...overrides,
+    ],
+  );
+  final AppLocalizations l10n = AppLocalizations.of(
+    tester.element(find.byType(SettingsScreen)),
+  );
+  final Finder row = find.text(l10n.exportDataCsv);
+  expect(row, findsOneWidget, reason: 'the export row must be on the screen');
+  await tester.ensureVisible(row);
+  await tester.tap(row);
+  for (int i = 0; i < 6; i++) {
+    await tester.pump();
+  }
+  return exporter;
+}
+
+void main() {
+  testWidgets('🔴 tapping "Export data (CSV)" hands a CSV of the loaded list '
+      'to the exporter, and it parses back', (WidgetTester tester) async {
+    final _KeepingExporter exporter = await _pumpAndTap(tester);
+
+    expect(
+      exporter.files,
+      hasLength(1),
+      reason: 'the row was tapped and nothing was exported — onTap is null',
+    );
+    final core.ExportFile file = exporter.files.single;
+    expect(file.fileName, 'subscriptions.csv');
+    expect(file.mimeType, 'text/csv');
+    expect(file.bytes.take(3).toList(), <int>[
+      0xEF,
+      0xBB,
+      0xBF,
+    ], reason: 'a UTF-8 BOM, or Excel reads ₹ and Tamil as mojibake');
+    final String text = utf8.decode(file.bytes);
+    expect(text, contains('\r\n'), reason: 'RFC 4180 records end in CRLF');
+
+    final core.CsvTable table = const core.CsvReader().read(text);
+    expect(table.header, kSubscriptionCsvHeader);
+    expect(table.rows, hasLength(2), reason: 'both rows, neither dropped');
+
+    final Map<String, String> netflix = Map<String, String>.fromIterables(
+      table.header,
+      table.rows[0],
+    );
+    expect(
+      netflix['name'],
+      'Netflix, "Premium"',
+      reason: 'the comma and the quotes survive as ONE cell',
+    );
+    expect(netflix['price'], '649.00', reason: 'decimal major units');
+    expect(netflix['currency'], 'INR', reason: 'an ISO-4217 code, not ₹');
+    expect(netflix['cycle'], 'monthly');
+    expect(netflix['next_renewal'], '2026-10-05');
+    expect(text, isNot(contains('₹')), reason: 'never a formatted symbol');
+
+    final Map<String, String> formula = Map<String, String>.fromIterables(
+      table.header,
+      table.rows[1],
+    );
+    expect(
+      formula['name'],
+      "'=cmd",
+      reason:
+          'a cell opening with = is a formula to a spreadsheet; the '
+          'leading apostrophe makes it text (CSV injection)',
+    );
+    expect(formula['price'], '9.99');
+    expect(formula['currency'], 'USD');
+    expect(formula['unused'], 'true');
+  });
+
+  testWidgets('with features.exports OFF the row stays and exports nothing', (
+    WidgetTester tester,
+  ) async {
+    final _KeepingExporter exporter = await _pumpAndTap(
+      tester,
+      overrides: <Override>[
+        appConfigProvider.overrideWith(
+          (_) async => kAppDefaultConfig.copyWith(
+            features: <String, bool>{
+              ...kAppDefaultConfig.features,
+              'exports': false,
+            },
+          ),
+        ),
+      ],
+    );
+    expect(exporter.files, isEmpty);
+  });
+
+  test('ST-X2 · this app\'s own export reads straight back in: every column '
+      'maps or is kept, and every row is a duplicate of the list it came '
+      'from', () {
+    final String text = utf8.decode(subscriptionsCsvFile(_subs).bytes);
+    final core.CsvTable table = const core.CsvReader().read(text);
+    final core.ColumnMapping mapping = core.ColumnMapping.infer(
+      table.header,
+      kSubscriptionImportFields,
+    );
+    expect(mapping.unknownHeaders, <String>[
+      'id',
+      'glyph',
+      'used_pct',
+      'usage_note',
+      'unused',
+    ], reason: 'kept and listed, never dropped');
+    final core.ImportPlan plan = core.ImportPlan.build(
+      table,
+      mapping,
+      fields: kSubscriptionImportFields,
+      keyOf: subscriptionImportKey,
+      existingKeys: _subs.map(subscriptionExistingKey),
+    );
+    expect(plan.questions, isEmpty, reason: 'ISO dates leave nothing to ask');
+    expect(plan.errors, isEmpty);
+    expect(plan.candidates, isEmpty, reason: 'nothing new in our own export');
+    expect(plan.duplicates, hasLength(2));
+    expect(plan.accountedFor, plan.rowCount);
+  });
+
+  test('the column map covers every field of Subscription', () {
+    // `price_minor` is the same amount as `price`; the file carries it once,
+    // as major units beside its currency code.
+    final Set<String> fields = _subs.first.toJson().keys.toSet()
+      ..remove('price_minor');
+    expect(kSubscriptionCsvHeader.toSet(), fields);
+    expect(kSubscriptionCsvHeader, hasLength(fields.length));
+  });
+}

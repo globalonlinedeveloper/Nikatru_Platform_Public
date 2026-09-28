@@ -27,6 +27,7 @@ import { fileURLToPath } from 'node:url';
 import {
   ANCHOR_RACE_MS,
   HEAD_RUN_GRACE_MS,
+  CROSS_READ_AFTER_MS,
   STALE_PAGE,
   judgeRunPage,
   selfRunFloor,
@@ -55,6 +56,9 @@ import {
 } from '../anchored-run-read.mjs';
 import { CouldNotLook, READ_ATTEMPTS } from '../../ops/bounded-retry.mjs';
 import { stripSourceComments } from '../text-reductions.mjs';
+// The platform Worker's copy of this rule — see "THE WORKER COPY" at the end.
+// Node 24 strips its types; the file's one other import is `import type`.
+import * as workerCopy from '../../../services/platform/src/ops-watchdog.ts';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const REPO = 'globalonlinedeveloper/Nikatru_Platform_Public';
@@ -474,7 +478,8 @@ describe('the anchor is WIRED into every reader, not merely available to them', 
     assert.match(c, /return anchoredNewest\(repo, workflow, qs, wide, reconcileRunReads\(/, 'ghNewestRun\'s fallback');
     assert.match(c, /return anchoredPage\(repo, q\.workflow, qs, runs, wide\.workflow_runs\.length >= UNIT_PAGE, what\);/, 'unitRunsPage\'s fallback');
     assert.match(c, /if \(hit \|\| !pageFull\) return hit; if \(gapBelow\) throw new StaleGap\(gapBelow\);/, 'ghNewestRun on the shared page');
-    assert.match(c, /return \{ runs: selectRuns\(runs, \{ event, status \}\), pageFull, gapBelow \};/, 'unitRunsPage passes the gap on');
+    assert.match(c, /return \{ runs: selectRuns\(runs, \{ event, status \}\), all: runs, pageFull, gapBelow \};/, 'unitRunsPage passes the gap on, and the UNFILTERED page for the superseded read');
+    assert.match(c, /const c = unitConclusion\(q, run, await jobsOfRun\(repo, run\.id, cache\), wf, supersededBy\(run, all \?\? runs\)\);/, 'scanUnit reads a superseder off the unfiltered page (ops-watch 36445522260)');
     assert.match(c, /return gapCheckedScan\(entries, pageFull, gapBelow\);/, 'scanUnit');
     assert.match(c, /return withQuotaCause\(await redSincePair\(newest\), repo, cache\);/, 'probeGithubRedSince');
     assert.match(c, /out\.push\(repoWideWindow\(await io\.repoRunsPage\(repo, null\), /, 'the unfiltered repository list is one of the windows');
@@ -823,5 +828,96 @@ describe('run-page-anchor — the 2026-09-28 pure edges', () => {
     assert.equal(spliceFreshWindows(page, [win(100, 400, [run(150, 'b')])]).gapBelow, null, 'a window whose floor IS the page top joins it');
     assert.deepEqual(spliceFreshWindows(page, [win(100, 400, [run(150, 'b')])]).runs.map((r) => r.id).sort(), [100, 150]);
     assert.throws(() => spliceFreshWindows(page, []), /^Error: stale page — .*no fresh window came back/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-28 · THE WORKER COPY — one rule, two copies, held to the same answers.
+//
+// services/platform/src/ops-watchdog.ts cannot import this module (a Worker has
+// no tooling/ at run time), so it keeps its own copy of the two anchors that
+// apply off-runner and of the splice: `judgeMainPage` is `judgeRunPage`'s HEAD
+// and CROSS-READ anchors (its refusal's `beyond` is the run this module's `why`
+// names), and `spliceCrossRead` is `spliceFreshWindows` for its one window, the
+// creation-date cross-read. MEASURED: Ops watch 36464466131 (18:20Z) went red on
+// the Worker's row "main:ops-watch.yml: ok=0, unreadable: stale page: the page
+// ends at run 35477612056 but a cross-read by creation date answered run
+// 36455387316" — the copy had the anchor but not the splice, so the answer the
+// cross-read held was thrown away. Every case below is asked of BOTH copies.
+// This suite is guard-meta's, which no path filter skips, so a change to either
+// copy alone meets it on its own pull request.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('THE WORKER COPY — services/platform/src/ops-watchdog.ts answers every case as this module does', () => {
+  const W_NOW = Date.parse('2026-09-28T18:00:00Z');
+  const at = (ms) => new Date(W_NOW - ms).toISOString();
+  const wr = (id, updated, extra = {}) => run(id, updated, updated, { status: 'completed', conclusion: 'success', ...extra });
+  const PAGE = [wr(35477612056, '2026-09-20T00:02:29Z'), wr(35400000000, '2026-09-19T00:00:00Z')];
+  const R_1703 = wr(36455387316, '2026-09-28T17:06:07Z');
+  const R_1559 = wr(36447758185, '2026-09-28T16:03:11Z', { conclusion: 'failure' });
+  const CASES = [
+    ['the measured 18:00Z cross-read: newer runs, a gap below them', PAGE, [R_1703, R_1559]],
+    ['two proving runs listed oldest first: the NEWEST is the one named', PAGE, [R_1559, R_1703]],
+    ['ONE-WAY: a cross-read staler than the page', PAGE, [PAGE[1]]],
+    ['a cross-read holding only the page\'s own newest run', PAGE, [PAGE[0]]],
+    ['an empty cross-read', PAGE, []],
+    ['RACE: a newer run exactly at the edge of the race window', PAGE, [wr(36455387316, at(ANCHOR_RACE_MS))]],
+    ['RACE: one millisecond past it', PAGE, [wr(36455387316, at(ANCHOR_RACE_MS + 1))]],
+    ['RACE: a racing newest run beside a proving older one — the racer does not prove, but it is in the window', PAGE, [wr(36455387316, at(1_000)), R_1559]],
+    ['an undated newer run proves the page behind', PAGE, [{ id: 36455387316 }]],
+    ['a window reaching back to the page top is ONE history with it', PAGE, [{ ...R_1703, status: 'in_progress', conclusion: null }, PAGE[0]]],
+    ['a window whose floor is below the page top joins it too', PAGE, [R_1703, wr(35450000000, '2026-09-19T12:00:00Z')]],
+    ['a run read twice keeps its later updated_at', PAGE, [{ ...R_1703, status: 'in_progress', updated_at: '2026-09-28T17:03:10Z' }, R_1703]],
+    ['rows with no usable id are ignored by both', PAGE, [{ id: 0 }, { id: 'x' }, { id: 1.5 }, R_1703]],
+    ['an empty page is behind any run', [], [R_1703]],
+  ];
+  const shape = (runs) => runs.map((r) => `${r.id}|${r.updated_at ?? ''}|${r.status ?? ''}`).sort();
+
+  test('the constants are the same numbers', () => {
+    assert.equal(workerCopy.OPS_ANCHOR_RACE_MS, ANCHOR_RACE_MS);
+    assert.equal(workerCopy.OPS_HEAD_RUN_GRACE_MS, HEAD_RUN_GRACE_MS);
+    assert.equal(workerCopy.OPS_CROSS_READ_AFTER_MS, CROSS_READ_AFTER_MS);
+  });
+
+  test('🔴 the CROSS-READ anchor: the same verdict, and the same proving run, on every case', () => {
+    for (const [name, page, cross] of CASES) {
+      const mine = judgeRunPage(page, { cross: { runs: cross }, nowMs: W_NOW });
+      const theirs = workerCopy.judgeMainPage(page, { cross, nowMs: W_NOW });
+      assert.equal(theirs.ok, mine.ok, name);
+      if (!mine.ok) assert.equal(theirs.beyond?.id, Number(/answered run (\d+)/.exec(mine.why)?.[1]), name);
+    }
+  });
+
+  test('🔴 the SPLICE: a page proven stale becomes the same fresh page, with the same gap, on every case', () => {
+    let spliced = 0;
+    for (const [name, page, cross] of CASES) {
+      if (judgeRunPage(page, { cross: { runs: cross }, nowMs: W_NOW }).ok) continue;
+      spliced++;
+      const mine = spliceFreshWindows(page, [repoWideWindow({ workflow_runs: cross }, { predicate: () => true })]);
+      const theirs = workerCopy.spliceCrossRead(page, cross);
+      assert.deepEqual(shape(theirs.runs), shape(mine.runs), name);
+      assert.equal(theirs.gapBelow, mine.gapBelow ? mine.gapBelow.floorId : null, name);
+    }
+    assert.equal(spliced, 10, 'anti-vacuity: ten of the fourteen cases are proven stale and spliced');
+  });
+
+  test('anti-vacuity — the table reaches every branch: fresh and stale verdicts, gapped and contiguous splices', () => {
+    const verdicts = CASES.map(([, page, cross]) => judgeRunPage(page, { cross: { runs: cross }, nowMs: W_NOW }).ok);
+    assert.ok(verdicts.includes(true) && verdicts.includes(false));
+    const gaps = CASES.filter(([, page, cross]) => !judgeRunPage(page, { cross: { runs: cross }, nowMs: W_NOW }).ok)
+      .map(([, page, cross]) => spliceFreshWindows(page, [repoWideWindow({ workflow_runs: cross }, { predicate: () => true })]).gapBelow);
+    assert.ok(gaps.some((g) => g === null) && gaps.some((g) => g !== null));
+  });
+
+  test('🔴 the BRANCH HEAD anchor: the same verdict on a page with, and without, main HEAD\'s run; the same headAnchor edges', () => {
+    const SHA = '553e814a395420fecf637c95816b751aafcff1d3';
+    for (const page of [[wr(1, at(0), { head_sha: SHA })], [wr(1, at(0), { head_sha: 'f'.repeat(40) })], []]) {
+      assert.equal(workerCopy.judgeMainPage(page, { headSha: SHA, nowMs: W_NOW }).ok, judgeRunPage(page, { head: { sha: SHA, why: 'HEAD' }, nowMs: W_NOW }).ok);
+    }
+    const body = (ms, message = 'm') => ({ sha: SHA, commit: { message, committer: { date: at(ms) } } });
+    for (const b of [body(HEAD_RUN_GRACE_MS), body(HEAD_RUN_GRACE_MS - 1), body(HEAD_RUN_GRACE_MS * 10, 'docs [skip ci]')]) {
+      assert.equal(workerCopy.mainHeadAnchor(b, W_NOW), headAnchor(b, W_NOW)?.sha ?? null);
+    }
+    assert.throws(() => workerCopy.mainHeadAnchor({ sha: 'nope', commit: {} }, W_NOW), /40-hex sha/);
+    assert.throws(() => headAnchor({ sha: 'nope', commit: {} }, W_NOW), /40-hex sha/);
   });
 });

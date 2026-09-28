@@ -208,6 +208,14 @@ final Provider<core.ContentPackSource?> contentPackSourceProvider =
       return DioContentPackSource(packBaseUrl: pointer);
     });
 
+/// ST-X5 — the pack shipped INSIDE the binary, as a Flutter asset. A stamped
+/// app bundles none until it declares `assets/content_pack/`, so this source
+/// reads null and the load falls through exactly as it did before it existed.
+final Provider<core.ContentPackSource?> bundledContentPackSourceProvider =
+    Provider<core.ContentPackSource?>(
+      (ref) => AssetContentPackSource('assets/content_pack'),
+    );
+
 /// The loader itself — CONSTRUCTED here, which is the thing that had never
 /// happened anywhere outside a test.
 final Provider<core.ContentPackLoader> contentPackLoaderProvider =
@@ -226,15 +234,22 @@ final Provider<core.ContentPackLoader> contentPackLoaderProvider =
 ///
 /// `expectPackId` is the app's own id: the loader refuses a pack that is
 /// perfectly valid and simply not ours.
+///
+/// ⏱ 2026-09-28 · ST-X5: "null when the pointer is null" above now reads
+/// "the BUNDLED pack when the pointer is null" — null only when neither tier
+/// verifies. A remote pack that fails still falls back, never serves.
 final FutureProvider<core.ContentPack?> contentPackProvider =
     FutureProvider<core.ContentPack?>((ref) async {
-      final core.ContentPackSource? source = ref.watch(
-        contentPackSourceProvider,
-      );
-      if (source == null) return null;
+      // ⏱ 2026-09-28 · ST-X5 (audit B27): the BUNDLED tier is passed too, so
+      // a null pointer no longer means no pack — the remote tier stays dormant
+      // and the pack shipped inside the binary serves, offline.
       final core.Result<core.ContentPack> r = await ref
           .watch(contentPackLoaderProvider)
-          .load(expectPackId: AppConfig.appId, remote: source);
+          .load(
+            expectPackId: AppConfig.appId,
+            remote: ref.watch(contentPackSourceProvider),
+            bundled: ref.watch(bundledContentPackSourceProvider),
+          );
       // A failed load is NOT an error the app shows. The pack is optional
       // content; the app must run without it. What must never happen is a
       // failed load being served as though it succeeded.
@@ -298,6 +313,12 @@ final FutureProvider<core.KeyValueStore> keyValueStoreProvider =
 /// Do not "fix" it by adding a prefix: that would be the regression.
 final Provider<core.SecureStore> secureStoreProvider =
     Provider<core.SecureStore>((ref) => FlutterSecureStore());
+
+/// ST-X1 — hands an exported file (core `CsvCodec`, `BackupEnvelope`) to the
+/// share sheet, a browser download or the linux save dialog
+/// (`ExportCapabilities`). A seam, so a screen test can keep the bytes.
+final Provider<core.FileExporter> fileExporterProvider =
+    Provider<core.FileExporter>((ref) => ShareFileExporter());
 
 const String _installIdKey = 'nikatru.install_id';
 
