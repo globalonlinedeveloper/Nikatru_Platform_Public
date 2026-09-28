@@ -232,6 +232,7 @@
   "publish-records.test.mjs": 68,
   "publish-steps-guarded.test.mjs": 21,
   "purchase-path.test.mjs": 133,
+  "rail-prices.test.mjs": 28,
   "redeploy-stranded.test.mjs": 50,
   "refresh-executed-floor.test.mjs": 11,
   "regen-chain.test.mjs": 6,
