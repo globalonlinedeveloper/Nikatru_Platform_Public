@@ -1534,15 +1534,6 @@
       }
     },
     {
-      "signature": "smoke:deployed-unwell:subscriptiontracker-api.nikatru.com",
-      "rootCause": "deploy-workers in main CI run 36445515397 (attempt 1, 0a7ab55d) deployed subscriptiontracker-api, and its /v1/health served that build with ok:false through every smoke attempt: one of its three dependency probes (app_db, platform_db, supabase_jwks) did not read ok. The step log does not say which.",
-      "fix": "live action: the job was re-run (attempt 2, 16:10Z) at the same build and its smoke read ok:true; /v1/health read ok:true on all three probes at 16:18Z. No commit.",
-      "fixedBy": {
-        "kind": "live-action",
-        "what": "re-ran deploy-workers at the same build; the health probes read ok"
-      }
-    },
-    {
       "signature": "e2e:unnamed-issuer-accepted",
       "rootCause": "The Phase 5 switch commit (PR #971, e97a111c) moved the register's SUPABASE_URL to the self-hosted GoTrue, so e2e run 36222497878 expected the Workers to refuse the hosted stack's session. The deployed Workers still trusted the hosted issuer and answered 200: the register and the live Workers disagreed mid-cutover. No Worker trusted two issuers.",
       "fix": "PR #977 50452ed0 (2026-09-26) reverted the switch; PR #982 646e00c1 (2026-09-27) re-applied it in the runbook order. e2e green on main in run 36409747279.",
@@ -1569,7 +1560,17 @@
     },
     {
       "signature": "setup-flutter:version-unresolved:windows-store",
-      "rootCause": "The store-screenshots desktop capture job set a job env named CHANNEL (the store channel id), and subosito/flutter-action's setup.sh reads CHANNEL too, so it asked for Flutter 3.47.5 on channel windows-store and could not resolve it (runs 35818955799 and 35818957977, 2026-09-23).",
+      "rootCause": "The store-screenshots desktop capture job set a job env named CHANNEL (the store channel id), and subosito/flutter-action's setup.sh reads CHANNEL too, so it asked for Flutter 3.47.5 on channel windows-store and could not resolve it (run 35818957977, 2026-09-23).",
+      "fix": "PR #892 7754edb2 (2026-09-23): the hijacked CHANNEL env is renamed.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "7754edb2",
+        "pr": 892
+      }
+    },
+    {
+      "signature": "setup-flutter:version-unresolved:macos-appstore",
+      "rootCause": "The store-screenshots desktop capture job set a job env named CHANNEL (the store channel id), and subosito/flutter-action's setup.sh reads CHANNEL too, so it asked for Flutter 3.47.5 on channel macos-appstore and could not resolve it (run 35818955799, 2026-09-23).",
       "fix": "PR #892 7754edb2 (2026-09-23): the hijacked CHANNEL env is renamed.",
       "fixedBy": {
         "kind": "merge",
