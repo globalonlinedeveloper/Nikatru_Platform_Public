@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../tokens/app_colors.dart';
+import '../tokens/status_tones.dart';
 
 /// Brand tokens that don't map cleanly onto [ColorScheme] — status colours,
 /// the muted/line neutrals, the brand + hero gradients and the category ramp.
@@ -43,15 +44,23 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
   /// Status colours (positive/warn/danger) deliberately do NOT derive: green
   /// means good and red means danger in every app, and re-hueing them from a
   /// brand seed would trade a universal signal for a decoration.
+  ///
+  /// ⏱ 2026-09-28 · train ST-D0 (absorbs ST-Y1): they do not derive from the
+  /// SEED and they now DO fork by SCHEME. They were `AppColors.positive`/`warn`/
+  /// `danger` in both brightnesses, which `app_colors.dart` measures under AA
+  /// as text on every light ground (2.54 / 2.15 / 3.54:1). They are the
+  /// [StatusTones] half for [brightness] — still seed-independent, which is
+  /// the half of the old rule that was right.
   factory AppThemeX.fromScheme(
     ColorScheme scheme, {
     Brightness brightness = Brightness.light,
   }) {
     final bool isLight = brightness == Brightness.light;
+    final StatusTones status = StatusTones.forBrightness(brightness);
     return AppThemeX(
-      positive: AppColors.positive,
-      warn: AppColors.warn,
-      danger: AppColors.danger,
+      positive: status.positive,
+      warn: status.warn,
+      danger: status.danger,
       muted: scheme.onSurfaceVariant,
       line: scheme.outlineVariant,
       brandGradient: LinearGradient(
