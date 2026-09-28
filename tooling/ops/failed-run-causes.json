@@ -46,8 +46,8 @@
     },
     {
       "signature": "ops-register:red-since:duty.workflow.ops-watch.yml",
-      "rootCause": "The [14]O-3 reader graded duty.workflow.ops-watch.yml FAILING because the newest ops-watch run on main was red (Pages freshness strict equality, the alert-disposition 403, the monitor-register drift after the subly rename), and that verdict then failed every CI run.",
-      "fix": "PR #593 846d90a0 (2026-09-09, self-gate removed) + PR #604 b7f268e5 (Pages freshness) + PR #607 bffae635 (alert disposition 403)",
+      "rootCause": "The [14]O-3 reader graded duty.workflow.ops-watch.yml FAILING because the newest ops-watch run on main was red (Pages freshness strict equality, the alert-disposition 403, the monitor-register drift after the subly rename), and that verdict then failed every CI run. On 2026-09-28 (ci.yml 36430039571, ops-watch 36440893650) ops-watch was red because GitHub's branch=main run listing was days stale, so the prod-provenance walker could not see the builds in production (COULD NOT LOOK), and then because the subscriptiontracker Pages deployment lagged W55.",
+      "fix": "PR #593 846d90a0 (2026-09-09, self-gate removed) + PR #604 b7f268e5 (Pages freshness) + PR #607 bffae635 (alert disposition 403); 2026-09-28: PR #1041 f8700bc5 and PR #1046 00687bec (the freshness readers and the provenance walker cross-check the stale listing)",
       "fixedBy": {
         "kind": "merge",
         "sha": "846d90a0",
@@ -60,18 +60,32 @@
           {
             "sha": "bffae635",
             "pr": 607
+          },
+          {
+            "sha": "f8700bc5",
+            "pr": 1041
+          },
+          {
+            "sha": "00687bec",
+            "pr": 1046
           }
         ]
       }
     },
     {
       "signature": "ops-register:red-since:duty.workflow.e2e.yml",
-      "rootCause": "The [14]O-3 reader graded duty.workflow.e2e.yml FAILING because the newest nightly e2e run on main was red, and that verdict then failed every CI run until a green e2e landed.",
-      "fix": "PR #593 846d90a0 (2026-09-09, self-gate removed); the e2e lane itself is cleared by its next green run on main",
+      "rootCause": "The [14]O-3 reader graded duty.workflow.e2e.yml FAILING because the newest nightly e2e run on main was red, and that verdict then failed every CI run until a green e2e landed. On 2026-09-28 (ops-watch runs 36382960478, 36384367573, 36399752579) the red e2e runs were the #1022 (ST-T1) regression: the auth buttons were dead until a Turnstile token existed.",
+      "fix": "PR #593 846d90a0 (2026-09-09, self-gate removed); the e2e lane itself is cleared by its next green run on main; 2026-09-28: PR #1039 0c29df69 (the auth buttons validate first and wait visibly for the captcha), e2e green on main in run 36409747279",
       "fixedBy": {
         "kind": "merge",
         "sha": "846d90a0",
-        "pr": 593
+        "pr": 593,
+        "also": [
+          {
+            "sha": "0c29df69",
+            "pr": 1039
+          }
+        ]
       }
     },
     {
@@ -96,8 +110,8 @@
     },
     {
       "signature": "ops-register:duty-stale:duty.laptop.nikatru-daily-backup",
-      "rootCause": "The laptop backup's newest SUCCESSFUL heartbeat fell outside its 12h window: the backup refused to sync because the subly rename deleted more paths than its --max-delete threshold allows.",
-      "fix": "not a defect in the tree: owner-authorised sync on 2026-09-09; heartbeat resumed 18:31:46Z (GlitchTip monitor 6)",
+      "rootCause": "The laptop backup's newest SUCCESSFUL heartbeat fell outside its 12h window: the backup refused to sync because the subly rename deleted more paths than its --max-delete threshold allows. On 2026-09-28 (ops-watch runs 36412378353, 36412660595, 36413994725) the newest successful beat again fell outside the 12h window; this duty pages, it does not change the tree.",
+      "fix": "not a defect in the tree: owner-authorised sync on 2026-09-09; heartbeat resumed 18:31:46Z (GlitchTip monitor 6); 2026-09-28: the backup was re-run at 10:58Z and succeeded, and its beat was read fresh on the next ops-watch",
       "fixedBy": {
         "kind": "not-a-defect",
         "reason": "an owner-authorised sync paused the beat; it resumed with no change to the tree"
@@ -1453,6 +1467,124 @@
             "pr": 873
           }
         ]
+      }
+    },
+    {
+      "signature": "e2e:leg-failed:login rejects empty + invalid credentials with clear messages",
+      "rootCause": "PR #1022 (ST-T1, 06856b1c) made the auth buttons inert until a Turnstile token existed, so the login leg's empty and invalid submissions produced no message at all. E2E runs 36379673890, 36380497188, 36384369738 and 36405933585 on 2026-09-28.",
+      "fix": "PR #1039 0c29df69 (2026-09-28): the auth buttons validate first and wait visibly for the captcha instead of going dead; e2e green on main in run 36409747279.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "0c29df69",
+        "pr": 1039
+      }
+    },
+    {
+      "signature": "heartbeat-table:never-written:reminder_mail",
+      "rootCause": "The register began watching reminder_mail from a cloud draft's sandbox date (03:25:45Z), before the commit that added the job reached main (11:33:25Z), so ops-watch demanded a heartbeat from a slot in which the job did not exist yet (ops-watch runs 36416498456, 36419051815, 36419453455, 36421098402 on 2026-09-28).",
+      "fix": "PR #1042 aad5d670 (2026-09-28): reminder_mail is watched from the commit that added it on main.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "aad5d670",
+        "pr": 1042
+      }
+    },
+    {
+      "signature": "provenance:absent-builds-past-lookup-cap",
+      "rootCause": "GitHub's branch=main workflow-run listing was days stale on 2026-09-28, so the prod-provenance walker did not see the ci.yml runs that built the rows in production: 29 builds were absent, more than the 10 it looks up one by one, and it exited COULD NOT LOOK (ops-watch run 36430302458).",
+      "fix": "PR #1041 f8700bc5 and PR #1046 00687bec (2026-09-28): the freshness readers, then the provenance walker, cross-check the stale listing before grading.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "00687bec",
+        "pr": 1046,
+        "also": [
+          {
+            "sha": "f8700bc5",
+            "pr": 1041
+          }
+        ]
+      }
+    },
+    {
+      "signature": "pages-freshness:serving-older-commit:subscriptiontracker",
+      "rootCause": "W55 (PR #1026, 1d2b9ad3) merged while main CI was red, so deploy-web never published it and the subscriptiontracker Pages project kept serving 0e396d2 (ops-watch run 36441645933, 2026-09-28).",
+      "fix": "live action: main CI run 36440368713 (at 00687bec, which carries W55) was re-run in full and its attempt 2 deployed it (success 15:31Z); the next ops-watch read the project fresh.",
+      "fixedBy": {
+        "kind": "live-action",
+        "what": "a full re-run of main CI run 36440368713 deployed the commit carrying W55"
+      }
+    },
+    {
+      "signature": "pages-freshness:serving-older-commit:nikatru",
+      "rootCause": "The nikatru Pages project had been paused as rollback-only (ADR 098, 2026-09-26), so its Git build never ran for cff2c81 and it kept serving e154dc6, but the Pages reader still judged it and never looked at nikatru-apex, which serves the apex (ops-watch runs 36277702128 and 36281224935).",
+      "fix": "PR #999 05104d2e (2026-09-27): the reader declares the paused project rollback-only (tooling/ops/pages-rollback-only.json) and judges nikatru-apex.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "05104d2e",
+        "pr": 999
+      }
+    },
+    {
+      "signature": "ops-register:problem:duty.workflow.deploy-web.yml — ci.yml on main (job(s) deploy-web of ci.yml): the newest run",
+      "rootCause": "The newest main ci.yml run, 36445259496, was cancelled by concurrency supersession before its deploy-web and deploy-workers call jobs were created, so the register reader found no entry for them and refused to grade the rows (COVERAGE LOST) (ops-watch runs 36445522260 and 36445569414, 2026-09-28).",
+      "fix": "not a defect: a superseded run deployed nothing, and the next completed main CI run graded both rows. The class fix that skips such a run is PR #1048 (open at the time of writing).",
+      "fixedBy": {
+        "kind": "not-a-defect",
+        "reason": "the reader refused to grade a main CI run superseded before its deploy jobs existed; nothing was deployed wrong"
+      }
+    },
+    {
+      "signature": "smoke:deployed-unwell:subscriptiontracker-api.nikatru.com",
+      "rootCause": "deploy-workers in main CI run 36445515397 (attempt 1, 0a7ab55d) deployed subscriptiontracker-api, and its /v1/health served that build with ok:false through every smoke attempt: one of its three dependency probes (app_db, platform_db, supabase_jwks) did not read ok. The step log does not say which.",
+      "fix": "live action: the job was re-run (attempt 2, 16:10Z) at the same build and its smoke read ok:true; /v1/health read ok:true on all three probes at 16:18Z. No commit.",
+      "fixedBy": {
+        "kind": "live-action",
+        "what": "re-ran deploy-workers at the same build; the health probes read ok"
+      }
+    },
+    {
+      "signature": "e2e:unnamed-issuer-accepted",
+      "rootCause": "The Phase 5 switch commit (PR #971, e97a111c) moved the register's SUPABASE_URL to the self-hosted GoTrue, so e2e run 36222497878 expected the Workers to refuse the hosted stack's session. The deployed Workers still trusted the hosted issuer and answered 200: the register and the live Workers disagreed mid-cutover. No Worker trusted two issuers.",
+      "fix": "PR #977 50452ed0 (2026-09-26) reverted the switch; PR #982 646e00c1 (2026-09-27) re-applied it in the runbook order. e2e green on main in run 36409747279.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "646e00c1",
+        "pr": 982,
+        "also": [
+          {
+            "sha": "50452ed0",
+            "pr": 977
+          }
+        ]
+      }
+    },
+    {
+      "signature": "name-clearance:undetermined-for-submission:linux-snap",
+      "rootCause": "submit-snap's name gate (added by PR #945) refused the dry run because \"Nikatru Subscription Tracker\" is UNDETERMINED on linux-snap: no hold with a store record id and no PROVEN-FREE check (run 36156790281, 2026-09-25).",
+      "fix": "not a defect: the gate refused as designed. It clears when the name is reserved in the Snap Store and the hold is recorded (owner step).",
+      "fixedBy": {
+        "kind": "not-a-defect",
+        "reason": "the submission name gate refused an UNDETERMINED name, as designed"
+      }
+    },
+    {
+      "signature": "setup-flutter:version-unresolved:windows-store",
+      "rootCause": "The store-screenshots desktop capture job set a job env named CHANNEL (the store channel id), and subosito/flutter-action's setup.sh reads CHANNEL too, so it asked for Flutter 3.47.5 on channel windows-store and could not resolve it (runs 35818955799 and 35818957977, 2026-09-23).",
+      "fix": "PR #892 7754edb2 (2026-09-23): the hijacked CHANNEL env is renamed.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "7754edb2",
+        "pr": 892
+      }
+    },
+    {
+      "signature": "guard-failed:assert-listing-assets",
+      "rootCause": "The Play tablet frame screenshots-tablet/04-budget.png measured 0.00526 ink, under the 0.00589 floor recorded for it, so assert-listing-assets refused the captured set (store-screenshots run 35819066562, 2026-09-23).",
+      "fix": "PR #892 7754edb2 (2026-09-23): a self-serve ink floor; store-screenshots green on main in run 36362493481.",
+      "fixedBy": {
+        "kind": "merge",
+        "sha": "7754edb2",
+        "pr": 892
       }
     }
   ]
