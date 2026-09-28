@@ -273,7 +273,9 @@ describe('limb 5 — the signup list is reached by confirmed email, before the i
     withTree(
       (root) =>
         edit(root, PLATFORM_ERASURE, (t) =>
-          t.replace("  if (typeof user.email_confirmed_at !== 'string' || user.email_confirmed_at === '') {\n    return { kind: 'skipped', why: 'unconfirmed' };\n  }\n", ''),
+          // ⏱ 2026-09-28 · ST-R1: the admin read moved into `readAccount`, and the
+          // confirmation check stayed HERE, in the purge — so this mutation removes it.
+          t.replace("  if (account.email_confirmed_at === null) return { kind: 'skipped', why: 'unconfirmed' };\n", ''),
         ),
       (r) => {
         assert.equal(r.status, 1, r.stderr);

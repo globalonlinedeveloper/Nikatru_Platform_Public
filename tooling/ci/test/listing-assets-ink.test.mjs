@@ -296,8 +296,8 @@ function result(label, r) {
   return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}${died}` };
 }
 
-function run(root) {
-  return result('guard', spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8', ...BOUND }));
+function run(root, spawnOptions = {}) {
+  return result('guard', spawnSync(process.execPath, [GUARD, root], { ...spawnOptions, encoding: 'utf8', ...BOUND }));
 }
 
 const roots = [];
@@ -594,10 +594,12 @@ describe('assert-listing-assets.mjs — THE INK, judged per device class against
   test('I21 · the working guard still runs with V8 background tasks OFF — this limb decodes MORE', () => {
     // The ink limb decodes every frame of every class AND its calibration set,
     // in a process that already needed the relaunch (nodejs/node#54918).
+    // singleThreaded: false — spawned WITHOUT the flag the spawn-ceiling preload adds,
+    // so the relaunch is what makes it single-threaded (tooling/scripts/spawn-ceiling.mjs).
     const r = run(build((s) => {
       twoShots(s);
       calibration(s);
-    }));
+    }), { singleThreaded: false });
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /V8 background tasks: OFF \(--single-threaded\)/);
   });

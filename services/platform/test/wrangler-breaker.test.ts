@@ -140,8 +140,8 @@ describe('wrangler.jsonc declares BOTH halves of the cost circuit breaker', () =
     // open door the way it is for the limiters above — it is every native
     // sign-in answering 503 in that deploy. Asserted here because the unit tests
     // inject the bindings themselves and cannot see the deployed config.
-    const top = { NATIVE_AUTH_ACCOUNT_LIMITER: ['1013', 5], NATIVE_AUTH_EDGE_LIMITER: ['1014', 60] } as const;
-    const sandbox = { NATIVE_AUTH_ACCOUNT_LIMITER: ['1015', 5], NATIVE_AUTH_EDGE_LIMITER: ['1016', 60] } as const;
+    const top = { NATIVE_AUTH_ACCOUNT_LIMITER: ['1015', 5], NATIVE_AUTH_EDGE_LIMITER: ['1016', 60] } as const;
+    const sandbox = { NATIVE_AUTH_ACCOUNT_LIMITER: ['1017', 5], NATIVE_AUTH_EDGE_LIMITER: ['1018', 60] } as const;
     const sbRl = sandboxRl();
     const sbByName = new Map(sbRl.map((e) => [String(e.name), e]));
     for (const [where, map, want] of [

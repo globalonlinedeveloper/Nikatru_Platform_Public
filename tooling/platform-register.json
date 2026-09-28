@@ -393,7 +393,7 @@
       "path": "/v1/health",
       "auth": "public",
       "owningFile": "services/platform/src/index.ts",
-      "purpose": "Deploy verification AND dependency health. Answers `{ ok, status, app, version, build, time, checks }` after probing PLATFORM_DB (`SELECT 1 FROM entitlements LIMIT 1`), CONFIG_KV (a `get` of a key that does not exist) and the Supabase JWKS, each through a per-isolate memoised reading (services/_shared/src/health.ts); HTTP 200 even when `ok` is false, by design, so the judgement stays with the reader. ⚠️ CORRECTED 2026-09-10 — this field described a vars-only answer that touched no dependency, for as long as the probes had existed (services/platform/src/index.ts:115-144).",
+      "purpose": "Deploy verification AND dependency health. Answers `{ ok, status, app, version, build, time, checks }` after probing PLATFORM_DB (`SELECT 1 FROM entitlements LIMIT 1`), CONFIG_KV (a `get` of a key that does not exist) and the Supabase JWKS, each through a per-isolate memoised reading (services/_shared/src/health.ts); HTTP 200 even when `ok` is false, by design, so the judgement stays with the reader. ⚠️ CORRECTED 2026-09-10 — this field described a vars-only answer that touched no dependency, for as long as the probes had existed (services/platform/src/index.ts:141-180).",
       "unconsumedReason": "🔄 CORRECTED 2026-08-06 — IT HAS A MACHINE CONSUMER AND HAS FOR SOME TIME. `tooling/ops/post-deploy-smoke.mjs` fetches this route from `deploy-workers.yml` (twice, both Workers) and joins the deploy to a build through the `build` field; `deploy-web.yml` smokes it too. The previous text — \"no programmatic client by design … the honest state is zero clients\" — was true when written and false at head, and it PRINTED GREEN every run because limb 2 only reports unconsumed reasons rather than checking them. [4]B-14 now pins the field set the smoke joins on.",
       "noLimiterReason": "It DOES I/O — one D1 read, one KV read and one JWKS subrequest — and what bounds it is not a limiter but the MEMO: every probe is a per-isolate reading with a TTL (services/_shared/src/health.ts, READING_TTL_MS = 5 s for D1 and KV, JWKS_READING_TTL_MS for the JWKS fetch), so an unauthenticated flood buys at most one dependency fan-out per TTL per isolate — a bound health.ts states as (isolates × 1 per TTL), deliberately not as a global one — and every other request costs the Worker invocation itself, which the account-wide request ceiling already bounds. A limiter here would spend a Rate Limiting namespace to protect a memoised read. ⚠️ CORRECTED 2026-09-10: from the day the probes landed this field claimed the handler touched neither D1, nor KV, nor the network, and limb 4 of assert-platform-register.mjs printed it green because it checked only that a reason was PRESENT; limb 4b now refuses that claim over a handler that probes. [4]B-13"
     },
@@ -608,6 +608,69 @@
       "unconsumedReason": "client half (requestSessionRevocation + the sessions list) ships in the web PR after this Worker deploys; the server must be live first"
     },
     {
+      "id": "reminders-prefs-get",
+      "method": "GET",
+      "path": "/v1/reminders/prefs",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/reminders.ts",
+      "purpose": "⏱ 2026-09-28 · ST-R1. The caller's renewal reminder EMAIL preference for one app (`?app_id=`): `{app_id, email_opt_in, lead_days}`, or the default (not opted in, 3 days) when no row exists. Mounted behind app.use('/v1/reminders/prefs', platformAuth); app_id must be a catalogue app with an app database (isReminderApp).",
+      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T4b (the packages + app half: the reminder toggle, the lead-days picker and the calendar-feed button), which launches after this Worker deploys; the server must be live first. Until then no account is opted in, so the nightly job runs live and mails no one."
+    },
+    {
+      "id": "reminders-prefs-put",
+      "method": "PUT",
+      "path": "/v1/reminders/prefs",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/reminders.ts",
+      "purpose": "⏱ 2026-09-28 · ST-R1. Stores `{app_id, email_opt_in, lead_days?}` (lead 0-30; absent keeps the stored one) for the verified JWT subject in platform_db.reminder_prefs (migration 0020). Body bounded at 1 KiB; the per-person burst breaker is EVENTS_LIMITER keyed `reminders:<sub>`, as POST /v1/report does. The nightly `reminder_mail` job reads it.",
+      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T4b (the packages + app half: the reminder toggle, the lead-days picker and the calendar-feed button), which launches after this Worker deploys; the server must be live first. Until then no account is opted in, so the nightly job runs live and mails no one."
+    },
+    {
+      "id": "reminders-unsubscribe-get",
+      "method": "GET",
+      "path": "/v1/reminders/unsubscribe",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/reminders.ts",
+      "purpose": "⏱ 2026-09-28 · ST-R1. The page a person reaches by clicking the unsubscribe link in a reminder email: one button that POSTs to the same URL. It CHANGES NOTHING by itself — mail scanners fetch every link. The `t` token is 256 random bits minted per digest; only its SHA-256 is stored, on that digest's reminder_sent rows. Behind REMINDERS_CEILING_LIMITER, keyed on the edge, never an IP.",
+      "unconsumedReason": "Consumed by EMAIL, not by an app: every reminder digest's body links here. No app code calls it."
+    },
+    {
+      "id": "reminders-unsubscribe-post",
+      "method": "POST",
+      "path": "/v1/reminders/unsubscribe",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/reminders.ts",
+      "purpose": "⏱ 2026-09-28 · ST-R1. RFC 8058 one-click unsubscribe: the URL every reminder digest carries in `List-Unsubscribe` (with `List-Unsubscribe-Post: List-Unsubscribe=One-Click`). The token names the (account, app) through the hash on reminder_sent and sets reminder_prefs.email_opt_in = 0; that is all it can do. An unknown or malformed token is 404. Behind REMINDERS_CEILING_LIMITER.",
+      "unconsumedReason": "Consumed by MAIL CLIENTS (Gmail, Outlook, Apple Mail) from the List-Unsubscribe header, and by the button on the GET page. No app code calls it."
+    },
+    {
+      "id": "calendar-feed-post",
+      "method": "POST",
+      "path": "/v1/calendar/feed",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/calendar.ts",
+      "purpose": "⏱ 2026-09-28 · ST-R2. Mints — or ROTATES — the caller's private calendar feed for one app (`{app_id}`) and answers its https and webcal URLs ONCE. The token is 256 random bits; only its SHA-256 is stored (platform_db.reminder_feed, one row per account and app), so the previous URL dies on rotation. Mounted behind app.use('/v1/calendar/feed', platformAuth).",
+      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T4b (the packages + app half: the reminder toggle, the lead-days picker and the calendar-feed button), which launches after this Worker deploys; the server must be live first. Until then no account is opted in, so the nightly job runs live and mails no one."
+    },
+    {
+      "id": "calendar-feed-delete",
+      "method": "DELETE",
+      "path": "/v1/calendar/feed",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/calendar.ts",
+      "purpose": "⏱ 2026-09-28 · ST-R2. Revokes the caller's live feed for `?app_id=` (stamps revoked_at); the feed URL then answers 404. 404 when there is no live feed.",
+      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T4b (the packages + app half: the reminder toggle, the lead-days picker and the calendar-feed button), which launches after this Worker deploys; the server must be live first. Until then no account is opted in, so the nightly job runs live and mails no one."
+    },
+    {
+      "id": "calendar-feed-ics",
+      "method": "GET",
+      "path": "/v1/calendar/:file",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/calendar.ts",
+      "purpose": "⏱ 2026-09-28 · ST-R2. The private calendar feed, `/v1/calendar/<token>.ics`: RFC 5545 (services/platform/src/lib/ics.ts — CRLF, 75-octet folding, escaping, stable UIDs, a VALARM at the lead days), one all-day VEVENT per live subscription on the date src/renewals.ts `rollForward` gives. `?download=1` adds an attachment disposition. PUBLIC because the token IS the capability — Google, Apple and Microsoft fetch it from their own servers with no session of ours. A malformed, unknown or revoked token is 404. Behind REMINDERS_CEILING_LIMITER, keyed on the edge.",
+      "unconsumedReason": "Consumed by CALENDAR SERVICES (Google Calendar, Apple Calendar, Outlook) subscribing to the URL, and by a browser downloading it; the URL is handed out by POST /v1/calendar/feed, whose client ships in ST-T4b."
+    },
+    {
       "id": "native-auth-token",
       "method": "POST",
       "path": "/v1/auth/native/:app/token",
@@ -640,7 +703,7 @@
       "path": "/v1/auth/native/:app/resend",
       "auth": "public",
       "owningFile": "services/platform/src/routes/native-auth.ts",
-      "purpose": "⏱ 2026-09-28 · ST-N1. A native app's RE-SEND of a confirmation email without a captcha: body `{email, type}` only, `type` ∈ {signup, email_change} (the phone types are refused), `redirect_to` pinned to the app's own callback. Forwarded to GoTrue's /auth/v1/resend with the service-role bearer. 🔐 CREDENTIALS IN TRANSIT, NEVER STORED: the email and password (or the PKCE challenge) pass through this Worker to GoTrue in the one request and are written nowhere — no D1 row, no KV key, and the one log line per call carries the route, the app, the status and the edge-shield marker, never the body. The per-account limiter key is `acct:<app>:<sha256(lowercased email)>`, held only by Cloudflare's rate-limit counter for its 60 s period. No `Origin` (403) — middleware/cors.ts grants the prefix no CORS; `:app` is a NATIVE_AUTH_APPS id (services/platform/src/generated/app-targets.ts, rendered from apps/ by tooling/scripts/render-platform-app-block.mjs), so a newly stamped native app is served with no Worker edit. Behind NATIVE_AUTH_EDGE_LIMITER (per network) and NATIVE_AUTH_ACCOUNT_LIMITER (per account), both FAIL CLOSED (503). GoTrue's status and JSON come back verbatim, Set-Cookie dropped.",
+      "purpose": "⏱ 2026-09-28 · ST-N1. A native app's RE-SEND of a confirmation email without a captcha: body `{email, type, code_challenge, code_challenge_method}` only (the PKCE pair gotrue-dart 2.26.0 sends on an email resend), `type` ∈ {signup, email_change} (the phone types are refused), `redirect_to` pinned to the app's own callback. Forwarded to GoTrue's /auth/v1/resend with the service-role bearer. 🔐 CREDENTIALS IN TRANSIT, NEVER STORED: the email and password (or the PKCE challenge) pass through this Worker to GoTrue in the one request and are written nowhere — no D1 row, no KV key, and the one log line per call carries the route, the app, the status and the edge-shield marker, never the body. The per-account limiter key is `acct:<app>:<sha256(lowercased email)>`, held only by Cloudflare's rate-limit counter for its 60 s period. No `Origin` (403) — middleware/cors.ts grants the prefix no CORS; `:app` is a NATIVE_AUTH_APPS id (services/platform/src/generated/app-targets.ts, rendered from apps/ by tooling/scripts/render-platform-app-block.mjs), so a newly stamped native app is served with no Worker edit. Behind NATIVE_AUTH_EDGE_LIMITER (per network) and NATIVE_AUTH_ACCOUNT_LIMITER (per account), both FAIL CLOSED (503). GoTrue's status and JSON come back verbatim, Set-Cookie dropped.",
       "unconsumedReason": "THE CLIENT ARRIVES IN ST-T7b, which points a second gotrue-dart GoTrueClient at `/v1/auth/native/<app>` for the native builds, and lands only after this Worker deploys: the server must be live first. Until then no build of ours calls it, and every native sign-in still goes to GoTrue and is refused `captcha_failed`."
     }
   ],
@@ -788,7 +851,7 @@
       "binding": "NATIVE_AUTH_ACCOUNT_LIMITER",
       "kind": "ratelimits",
       "scope": "shared",
-      "purpose": "⏱ 2026-09-28 · ST-N1. The per-ACCOUNT bucket on POST /v1/auth/native/:app/*, keyed `acct:<app>:<sha256(lowercased email)>` — never the address itself. `simple: { limit: 5, period: 60 }`. Those routes call GoTrue with the service-role bearer, which skips the captcha, so this and NATIVE_AUTH_EDGE_LIMITER stand where the captcha stands, and it FAILS CLOSED: an absent binding or a limiter fault is a 503, never an admit (strictRateLimit, services/platform/src/lib/edge-ceiling.ts). Its OWN namespace (1013; the sandbox's is 1015).",
+      "purpose": "⏱ 2026-09-28 · ST-N1. The per-ACCOUNT bucket on POST /v1/auth/native/:app/*, keyed `acct:<app>:<sha256(lowercased email)>` — never the address itself. `simple: { limit: 5, period: 60 }`. Those routes call GoTrue with the service-role bearer, which skips the captcha, so this and NATIVE_AUTH_EDGE_LIMITER stand where the captcha stands, and it FAILS CLOSED: an absent binding or a limiter fault is a 503, never an admit (strictRateLimit, services/platform/src/lib/edge-ceiling.ts). Its OWN namespace (1015; the sandbox's is 1017).",
       "readers": [
         "services/platform/src/routes/native-auth.ts"
       ]
@@ -797,7 +860,7 @@
       "binding": "NATIVE_AUTH_EDGE_LIMITER",
       "kind": "ratelimits",
       "scope": "shared",
-      "purpose": "⏱ 2026-09-28 · ST-N1. The per-NETWORK ceiling on POST /v1/auth/native/:app/*, keyed `edge:<colo>:<asn>` by services/platform/src/lib/edge-ceiling.ts — never a client address. `simple: { limit: 60, period: 60 }`. It bounds a flood that rotates accounts, which the account bucket cannot see, and FAILS CLOSED like it. Its OWN namespace (1014; the sandbox's is 1016).",
+      "purpose": "⏱ 2026-09-28 · ST-N1. The per-NETWORK ceiling on POST /v1/auth/native/:app/*, keyed `edge:<colo>:<asn>` by services/platform/src/lib/edge-ceiling.ts — never a client address. `simple: { limit: 60, period: 60 }`. It bounds a flood that rotates accounts, which the account bucket cannot see, and FAILS CLOSED like it. Its OWN namespace (1016; the sandbox's is 1018).",
       "readers": [
         "services/platform/src/routes/native-auth.ts"
       ]
@@ -836,6 +899,16 @@
       "purpose": "⏱ 2026-09-26 · LEAD RULING SHIELD-R1, row O-BOXES-UNSHIELDED-FROM-SPIKES. ⏱ 2026-09-27 · SHIELD-R3. services/edge-shield's intake limiter, keyed global:intake, all clients together: GlitchTip's crash intake on Box B (/api/<id>/envelope/ and /store/). Over the limit the shield answers 429 with Retry-After; any fault of this binding FAILS OPEN and is logged as shield_fail_open (src/limit.ts). The limit and what it is sized from are beside the binding in services/edge-shield/wrangler.jsonc. It is the ONLY limiter of its class: the Worker reads no client address (LEAD RULING SHIELD-R3, the ADR no.011 / ADR no.020 posture), and the per-IP limit on the credential paths is the nikatru.com zone's own rate-limiting rule (tooling/edge-ratelimit-rule.json).",
       "readers": [
         "services/edge-shield/src/classify.ts"
+      ]
+    },
+    {
+      "binding": "REMINDERS_CEILING_LIMITER",
+      "kind": "ratelimits",
+      "scope": "shared",
+      "purpose": "⏱ 2026-09-28 · ST-R2. The server-derived ceiling for the two public reminder routes whose token is the credential — GET /v1/calendar/<token>.ics and /v1/reminders/unsubscribe — keyed `edge:<colo>:<asn>`, never an IP. `simple: { limit: 300, period: 60 }`: the key is a calendar PROVIDER's network rather than a person, and a provider refreshes a feed a few times a day, so 300 a minute is far above any real subscriber count while still ending a token-guessing flood. Its OWN namespace (1013; sandbox 1014).",
+      "readers": [
+        "services/platform/src/routes/calendar.ts",
+        "services/platform/src/routes/reminders.ts"
       ]
     }
   ],

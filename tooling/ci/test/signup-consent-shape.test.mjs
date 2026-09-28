@@ -285,10 +285,10 @@ describe('limb 2 — the terms tick blocks in BOTH positions', () => {
       (root) =>
         edit(root, SUBLY_LOGIN, (s) =>
           s.replace(
-            // ⏱ 2026-09-27 · ST-A1: the captcha's readiness sits beside the
-            // terms tick in the same expression; the tick is what is deleted.
-            /onPressed:\s*\(_loading \|\|\s*\(_signUp && !_acceptedTerms\) \|\|\s*!captcha\.ready\)\s*\? null\s*: _submit,/,
-            'onPressed: (_loading || !captcha.ready) ? null : _submit,',
+            // ⏱ 2026-09-28: the captcha's readiness no longer sits here (a
+            // valid submit WAITS for it); the tick is what is deleted.
+            /onPressed:\s*\(_loading \|\|\s*\(_signUp && !_acceptedTerms\)\)\s*\? null\s*: _submit,/,
+            'onPressed: _loading ? null : _submit,',
           ),
         ),
       (r) => {
@@ -307,8 +307,8 @@ describe('limb 2 — the terms tick blocks in BOTH positions', () => {
       (root) =>
         edit(root, CHASSIS_SIGNUP, (s) =>
           s.replace(
-            'if (_busy || !_acceptedTerms || !widget.captchaReady) return;',
-            'if (_busy || !widget.captchaReady) return;',
+            'if (_busy || !_acceptedTerms) return;',
+            'if (_busy) return;',
           ),
         ),
       (r) => {
@@ -325,8 +325,8 @@ describe('limb 3 — the optional box may not gate the service', () => {
       (root) =>
         edit(root, CHASSIS_SIGNUP, (s) =>
           s.replace(
-            'if (_busy || !_acceptedTerms || !widget.captchaReady) return;',
-            'if (_busy || !_acceptedTerms || !_marketingEmail || !widget.captchaReady) return;',
+            'if (_busy || !_acceptedTerms) return;',
+            'if (_busy || !_acceptedTerms || !_marketingEmail) return;',
           ),
         ),
       (r) => {

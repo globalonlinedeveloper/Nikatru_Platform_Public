@@ -70,6 +70,20 @@
 // given `/verify`; the delete dialog, driven by the same suite, had nothing.
 // R3 is red on that tree (e97a111c), naming settings_screen.dart.
 //
+// ⏱ 2026-09-28 — R4, THE FOURTH LIMB, AND THE RUN THAT NEEDED IT.
+// R4  no action is DISABLED on captcha readiness: no code under apps/*/lib,
+//     packages/*/lib or the brick reads `.ready` off a captcha controller, and
+//     no `captchaReady` parameter exists. A gated action validates its fields
+//     first and then AWAITS `untilReady()` (chassis turnstile_gate.dart).
+// ST-T1 (#1022) put `!captcha.ready` into every auth button's `onPressed:`. A
+// Turnstile widget with no token — headless Chrome, a slow network, a blocked
+// script — left the button dead, so an EMPTY sign-in could not even say "Enter
+// your email": E2E live run 36379673890, and a real user on a slow captcha got
+// the same silent dead button (WCAG 3.3.1 / 4.1.3). R1-R3 were green over that
+// tree, correctly — every wire was there. R4 is red on it (06856b1c).
+// COVERAGE: R4's domain must contain at least one `untilReady(` call, or it is
+// not reading the gated surfaces at all.
+//
 // ⚠️ THE HONEST LIMIT, STATED SO IT IS NOT DISCOVERED LATER. `captchaToken:
 // _captchaToken` is accepted, and `_captchaToken` is a `String?` that IS null
 // until the widget calls back. This guard cannot prove a token was non-null at
@@ -491,6 +505,40 @@ for (const e of declaredSurfaces) {
   }
 }
 
+// ── R4 · no action is disabled on captcha readiness ─────────────────────────
+// See the header's R4 paragraph. Read over every tracked lib file that could
+// hold a gated surface, not only the roots above: a chassis screen nobody
+// delegates to yet is still a screen the next stamped app will mount.
+const R4_DOMAIN = tracked.filter(
+  (p) => /^(apps|packages)\/[^/]+\/lib\//.test(p) || p.startsWith(`${BRICK_LIB}/`),
+);
+// `captcha.ready`, `widget.captcha.ready`, `captchaController?.ready`, `c!.ready`
+// on a captcha-named receiver — the null-aware and null-assert spellings too.
+const READY_READ = /\b[A-Za-z_]*[Cc]aptcha[A-Za-z0-9_]*\s*[!?]?\s*\.\s*ready\b/g;
+const READY_PARAM = /\bcaptchaReady\b/g;
+let awaitsFound = 0;
+for (const f of R4_DOMAIN) {
+  const code = reduce(readFileSync(join(REPO, f), 'utf8'));
+  awaitsFound += (code.match(/\buntilReady\s*\(/g) || []).length;
+  for (const re of [READY_READ, READY_PARAM]) {
+    for (const m of code.matchAll(re)) {
+      problems.push(
+        `[R4] ${f}:${lineOf(code, m.index)} reads captcha readiness (\`${m[0].replace(/\s+/g, '')}\`). An action ` +
+          'gated on it goes DEAD while the challenge has not answered — no validation message, no reason ' +
+          '(E2E live run 36379673890, the #1022 regression). Keep the button live, validate first, then ' +
+          '`await captcha.untilReady()` before the gated call; `TurnstileGate` shows the wait.',
+      );
+    }
+  }
+}
+if (awaitsFound === 0) {
+  coverageLost(
+    `R4 found no \`untilReady(\` call across ${R4_DOMAIN.length} lib file(s)`,
+    'Every captcha-gated action awaits it, so zero means the domain stopped reaching the gated surfaces —',
+    'not that no action is gated.',
+  );
+}
+
 for (const p of ownerPrints) console.log(p);
 
 console.log(
@@ -525,6 +573,10 @@ if (problems.length) {
   console.log(
     `ok   R3 — ${driven.length} captcha-gated surface(s) the e2e suite drives, each naming its headless route: ` +
       driven.map((d) => `${d.file.slice(`${d.appDir}/lib/`.length)} → ${declaredSurfaces.find((e) => e.file === d.file).headlessRoute}`).join('; '),
+  );
+  console.log(
+    `ok   R4 — ${R4_DOMAIN.length} lib file(s) read, no action disabled on captcha readiness; ` +
+      `${awaitsFound} gated action(s) await \`untilReady()\` instead`,
   );
   console.log('\nassert-captcha-gated-call-sites: ok');
 }

@@ -328,6 +328,29 @@
       "simple": { "limit": 5, "period": 60 }
     },
     {
+      // ⏱ 2026-09-28 · ST-R2. The SAME server-derived ceiling, keyed
+      // `edge:<colo>:<asn>` by src/lib/edge-ceiling.ts, for the two public
+      // reminder routes whose token is the credential: GET
+      // /v1/calendar/<token>.ics and /v1/reminders/unsubscribe.
+      //
+      // 300/min per (colo, asn). ⚠️ THE KEY IS A PROVIDER, NOT A PERSON: Google,
+      // Apple and Microsoft fetch EVERY subscriber's feed from their own few
+      // networks, so this bounds a provider's whole fetch rate through one PoP.
+      // A calendar service refreshes a subscribed feed a few times a day, so
+      // 300 a minute is 432,000 fetches a day from one provider network — far
+      // above any subscriber count this portfolio has — while still ending a
+      // token-guessing flood. A 429 costs a calendar nothing: it keeps the
+      // copy it has and fetches again later. `period` is 60, one of
+      // tooling/ceilings.json's allowed values. Same honest caveat as the
+      // others: per-colo and eventually consistent, a BURST bound.
+      //
+      // 1013: a namespace_id is account-wide; env.sandbox below holds 1006-1010,
+      // 1012 and now 1014.
+      "name": "REMINDERS_CEILING_LIMITER",
+      "namespace_id": "1013",
+      "simple": { "limit": 300, "period": 60 }
+    },
+    {
       // ⏱ 2026-09-28 · ST-N1. The per-ACCOUNT bucket on POST
       // /v1/auth/native/:app/* (src/routes/native-auth.ts), keyed
       // `acct:<app>:<sha256(lowercased email)>` — never the address itself.
@@ -337,10 +360,11 @@
       // not an open door (src/lib/edge-ceiling.ts strictRateLimit).
       //
       // 5/min per account: a person types a password a few times, not dozens.
-      // `period` is 60, one of tooling/ceilings.json's allowed values. 1013:
-      // env.sandbox below holds 1006-1010 and 1012.
+      // `period` is 60, one of tooling/ceilings.json's allowed values. 1015:
+      // 1013 is REMINDERS_CEILING_LIMITER's; env.sandbox below holds 1006-1010,
+      // 1012, 1014 and 1017-1018.
       "name": "NATIVE_AUTH_ACCOUNT_LIMITER",
-      "namespace_id": "1013",
+      "namespace_id": "1015",
       "simple": { "limit": 5, "period": 60 }
     },
     {
@@ -353,7 +377,7 @@
       // below a guessing run. Same honest caveat as the other ceilings: per-colo
       // and eventually consistent, a BURST bound, not accounting.
       "name": "NATIVE_AUTH_EDGE_LIMITER",
-      "namespace_id": "1014",
+      "namespace_id": "1016",
       "simple": { "limit": 60, "period": 60 }
     }
   ],
@@ -442,8 +466,8 @@
   // among them — a second time. tooling/ci/assert-money-config.mjs limb 1c
   // refuses both, an inherited `workers_dev`, and a production database.
   //
-  // ⚠️ `ratelimits` ARE DECLARED WITH THEIR OWN namespace_ids (1006-1010, 1012,
-  // 1015-1016), never the top level's 1001-1005, 1011 or 1013-1014: a shared
+  // ⚠️ `ratelimits` ARE DECLARED WITH THEIR OWN namespace_ids (1006-1010, 1012, 1014,
+  // 1017-1018), never the top level's 1001-1005, 1011, 1013 or 1015-1016: a shared
   // namespace would let a public
   // sandbox URL spend the budget production's callers are counted against. Every limiter
   // binding is optional and fails OPEN (src/types.ts:63), so an absent one is a
@@ -466,7 +490,7 @@
         "APP_ID": "platform",
         // why: the SAME identity project as production (D1 identity option
         // (a)). ES256 verification reads its JWKS, and /v1/health probes it
-        // (src/index.ts:159).
+        // (src/index.ts:164).
         "SUPABASE_URL": "https://auth-api.nikatru.com",
         // why: src/types.ts:348.
         "API_VERSION": "v1",
@@ -480,7 +504,7 @@
       },
       "d1_databases": [
         {
-          // why: src/types.ts:13 and the /v1/health probe (src/index.ts:143).
+          // why: src/types.ts:13 and the /v1/health probe (src/index.ts:150).
           // `platform_db_sandbox`, created 2026-09-23 and EMPTY. This Worker is
           // its sole migration applier, as at the top level.
           "binding": "PLATFORM_DB",
@@ -491,7 +515,7 @@
       ],
       "kv_namespaces": [
         // why: REQUIRED — src/types.ts:18; src/routes/config.ts:52 reads it
-        // unguarded and /v1/health probes it (src/index.ts:154), so an absent
+        // unguarded and /v1/health probes it (src/index.ts:161), so an absent
         // binding 500s config and reports the Worker unhealthy.
         // `platform-config-sandbox`, created 2026-09-24.
         { "binding": "CONFIG_KV", "id": "7ba3a916f8a5429091dec4a39284bffb" }
@@ -540,18 +564,26 @@
           "simple": { "limit": 5, "period": 60 }
         },
         {
+          // why: src/routes/calendar.ts and src/routes/reminders.ts (the public
+          // feed and the one-click unsubscribe). The top level's
+          // REMINDERS_CEILING_LIMITER (1013), same limit.
+          "name": "REMINDERS_CEILING_LIMITER",
+          "namespace_id": "1014",
+          "simple": { "limit": 300, "period": 60 }
+        },
+        {
           // why: src/routes/native-auth.ts (the account bucket). The top level's
-          // NATIVE_AUTH_ACCOUNT_LIMITER (1013), same limit. 🔴 It FAILS CLOSED,
+          // NATIVE_AUTH_ACCOUNT_LIMITER (1015), same limit. 🔴 It FAILS CLOSED,
           // so without this entry every sandbox native sign-in answers 503.
           "name": "NATIVE_AUTH_ACCOUNT_LIMITER",
-          "namespace_id": "1015",
+          "namespace_id": "1017",
           "simple": { "limit": 5, "period": 60 }
         },
         {
           // why: src/routes/native-auth.ts (the edge ceiling). The top level's
-          // NATIVE_AUTH_EDGE_LIMITER (1014), same limit, and it fails closed too.
+          // NATIVE_AUTH_EDGE_LIMITER (1016), same limit, and it fails closed too.
           "name": "NATIVE_AUTH_EDGE_LIMITER",
-          "namespace_id": "1016",
+          "namespace_id": "1018",
           "simple": { "limit": 60, "period": 60 }
         }
       ]

@@ -27,7 +27,7 @@ class SignUpScreen extends ConsumerWidget {
     );
     return SignUpView(
       captcha: TurnstileGate(controller: captcha, render: renderTurnstile),
-      captchaReady: captcha.ready,
+      captchaController: captcha,
       // ⏱ 2026-09-15 · [ADR 082] §5 — the store age signal read before the account is
       // created. Sign-up age gate ONLY: never stored, logged or sent
       // (`ageSignalSourceProvider`).

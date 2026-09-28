@@ -57,7 +57,7 @@ export function stripComments(src, { alsoStrings = false } = {}) {
     //
     // This branch used to be gated entirely on `alsoStrings`, so with it false
     // the scanner walked straight THROUGH string literals — and
-    // `services/platform/src/index.ts:269` is:
+    // `services/platform/src/index.ts:276` is:
     //
     //     app.use('/v1/plan/*', platformAuth);
     //

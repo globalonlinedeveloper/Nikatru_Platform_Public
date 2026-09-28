@@ -11,6 +11,7 @@ import {
   OPS_WATCHDOG_JOB,
   OPS_HOURLY_CRON,
   OPS_STUCK_RUNS_JOB,
+  REMINDER_MAIL_JOB,
 } from '../src/scheduled';
 import { realPlatformDb } from './harness';
 import type { Env } from '../src/types';
@@ -187,6 +188,21 @@ describe('which limbs run is decided by which cron fired', () => {
         .filter((j) => j !== BACKUP_JOB && j !== OPS_STUCK_RUNS_JOB)
         .sort(),
     );
+  });
+
+  it('🔴 ST-R1 — the 06:00 firing runs reminder_mail, and the 00:00, 12:00 and 18:00 firings do not', async () => {
+    // LITERALS for the three margin crons, so this reads the same whatever the
+    // exports say: a digest sent on a margin firing would be a SECOND mail the
+    // same day, which the cap would allow and nobody would ever see as wrong.
+    expect(REMINDER_MAIL_JOB).toBe('reminder_mail');
+    expect(NIGHTLY_CRON).toBe('0 6 * * *');
+    expect(await runScheduled('0 6 * * *')).toContain('reminder_mail');
+    for (const c of ['0 0 * * *', '0 12 * * *', '0 18 * * *']) {
+      expect(CRONS, `${c} is no longer declared, so this case would test nothing`).toContain(c);
+      expect(await runScheduled(c), `cron ${c}`).not.toContain('reminder_mail');
+    }
+    // …and the register watches it on the nightly cron alone.
+    expect(WATCHED[REMINDER_MAIL_JOB]).toEqual(['0 6 * * *']);
   });
 
   it('⚠️ an UNRECOGNISED cron runs the DISPATCHER ONLY — and that inverted on 2026-09-03', async () => {

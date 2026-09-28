@@ -131,11 +131,11 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen>
               TurnstileGate(controller: captcha, render: renderTurnstile),
               OutlinedButton(
                 key: VerifyEmailScreen.resendButton,
-                onPressed: (_busy || !captcha.ready)
+                onPressed: _busy
                     ? null
                     : () => _run(() async {
                         await auth.resendVerificationEmail(
-                          captchaToken: captcha.consume(),
+                          captchaToken: await captcha.consumeWhenReady(),
                         );
                         return l10n.verifyEmailResent;
                       }),

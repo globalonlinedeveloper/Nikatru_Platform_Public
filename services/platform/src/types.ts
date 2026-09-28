@@ -137,6 +137,18 @@ export interface Env {
   SESSIONS_LIMITER?: RateLimiterBinding;
 
   /**
+   * ⏱ 2026-09-28 · ST-R2. The SAME server-derived ceiling (`edge:<colo>:<asn>`)
+   * for the two public reminder routes whose token is the credential: GET
+   * /v1/calendar/<token>.ics (routes/calendar.ts) and the one-click
+   * /v1/reminders/unsubscribe (routes/reminders.ts). Its own namespace so a
+   * token-guessing flood cannot spend another route's budget.
+   *
+   * Optional, and absence fails OPEN, like the other limiters. The routes'
+   * fail-CLOSED property is the 256-bit token, not the limiter.
+   */
+  REMINDERS_CEILING_LIMITER?: RateLimiterBinding;
+
+  /**
    * ⏱ 2026-09-28 · ST-N1. The per-ACCOUNT bucket on POST /v1/auth/native/<app>/<op>,
    * keyed `acct:<app>:<sha256(lowercased email)>` (routes/native-auth.ts). These
    * routes call GoTrue with the service-role bearer, which skips its captcha, so

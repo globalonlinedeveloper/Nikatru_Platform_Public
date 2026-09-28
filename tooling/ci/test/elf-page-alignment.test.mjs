@@ -186,8 +186,9 @@ function artifact(dir, name, files, opts) {
 // cancels it with no name at all. `status null` beside the complete output means
 // the guard was still alive when the bound fired: an exit hang, not a slow scan.
 const RUN_TIMEOUT_MS = 120_000;
-const run = (dir, args) => {
+const run = (dir, args, spawnOptions = {}) => {
   const r = spawnSync(process.execPath, [GUARD, ...args, '--repo-root', dir], {
+    ...spawnOptions,
     cwd: dir,
     encoding: 'utf8',
     timeout: RUN_TIMEOUT_MS,
@@ -226,7 +227,9 @@ describe('assert-elf-page-alignment', () => {
   test('the working guard runs with V8 background tasks OFF, so its exit cannot deadlock', () => {
     const dir = root();
     const a = artifact(dir, 'app-release.aab', [GOOD_64]);
-    const { code, out } = run(dir, [a]);
+    // singleThreaded: false — spawned WITHOUT the flag the spawn-ceiling preload adds,
+    // so the relaunch is what makes it single-threaded (tooling/scripts/spawn-ceiling.mjs).
+    const { code, out } = run(dir, [a], { singleThreaded: false });
     assert.equal(code, 0, out);
     assert.match(out, /V8 background tasks: OFF \(--single-threaded\)/);
   });
