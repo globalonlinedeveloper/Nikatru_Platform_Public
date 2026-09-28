@@ -1153,6 +1153,11 @@ jobs:
         run: |
           echo "import { copyFileSync, rmSync } from 'node:fs'; import { spawnSync } from 'node:child_process'; const [file, backup, ...cmd] = process.argv.slice(2); copyFileSync(file, backup); rmSync(file); const red = spawnSync(process.execPath, cmd, { encoding: 'utf8' }); const out = (red.stdout || '') + (red.stderr || ''); console.log(out); console.log('exit with ' + file + ' removed: ' + red.status); copyFileSync(backup, file); if (red.status !== 1) { console.log('::error::' + cmd[0] + ' exited ' + red.status + ' with ' + file + ' removed; the red control requires exactly 1'); process.exit(1); } if (!out.includes(file)) { console.log('::error::' + cmd[0] + ' exited 1 without naming ' + file); process.exit(1); } const green = spawnSync(process.execPath, cmd, { encoding: 'utf8' }); console.log('exit restored: ' + green.status); if (green.status !== 0) { console.log((green.stdout || '') + (green.stderr || '')); console.log('::error::restored, ' + cmd[0] + ' exited ' + green.status); process.exit(1); }" > "$RUNNER_TEMP/remove-and-restore.mjs"
           node "$RUNNER_TEMP/remove-and-restore.mjs" apps/probe/integration_test/app_test.dart "$RUNNER_TEMP/probe-app-test.dart" tooling/ci/assert-e2e-legs.mjs
+      # why: O-NEW-PRODUCT-HAS-NO-READOUT (15b). Read from the tree the stamp just wrote, every product step of the
+      # probe is DONE, OWNER or AFTER-LIVE except its name clearance, the one agent step a stamp cannot take (the
+      # probe dials the stores). --expect-next exits 1 on any other NEXT set, a missing one included.
+      - name: The new-product plan reads the stamped probe, and only its name clearance is the agent's
+        run: node tooling/kit/new-product.mjs plan probe --check --expect-next "name clearance"
       - name: SHOW-1 — probe is in the catalogue, and a RE-STAMP changes nothing
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"

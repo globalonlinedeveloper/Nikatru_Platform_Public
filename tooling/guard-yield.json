@@ -2453,6 +2453,11 @@
       "firstSeen": "2026-07-21",
       "evidence": []
     },
+    "tooling/kit/new-product.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-28",
+      "evidence": []
+    },
     "tooling/kit/stamp-app.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-26",

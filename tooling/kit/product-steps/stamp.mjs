@@ -29,7 +29,7 @@ export function read(root, id) {
   if (!existsSync(composer)) {
     return { state: 'DONE', detail: `stamped and catalogued; ${COMPOSER_REL} is absent, so the build-composes check is absent`, guard };
   }
-  const r = spawnSync(process.execPath, [composer, id, 'web', 'web', '--print', '--root', root], { encoding: 'utf8' });
+  const r = spawnSync(process.execPath, [composer, id, 'web', 'web', '--print', '--root', root], { encoding: 'utf8', timeout: 120_000 });
   if (r.status !== 0) {
     const first = `${r.stderr ?? ''}${r.stdout ?? ''}`.trim().split('\n')[0] || `exit ${r.status}`;
     return {
