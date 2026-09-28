@@ -5,6 +5,8 @@
 // the pre-T3b tree FAILS — measured by reverting the lib change it names.
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart' show Locale;
+import 'package:flutter_local_notifications/flutter_local_notifications.dart'
+    show AndroidFlutterLocalNotificationsPlugin;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
@@ -573,6 +575,11 @@ void main() {
     late List<MethodCall> outgoing;
     setUp(() {
       outgoing = <MethodCall>[];
+      // flutter_local_notifications 18+ installs its platform implementation
+      // through registerWith(), which only the app's generated plugin
+      // registrant calls (W55, #1026). The test host's default platform is
+      // Android, so that is the implementation registered here.
+      AndroidFlutterLocalNotificationsPlugin.registerWith();
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(_channel, (MethodCall call) async {
             outgoing.add(call);
