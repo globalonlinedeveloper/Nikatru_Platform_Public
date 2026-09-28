@@ -1107,6 +1107,15 @@ authRepositoryProvider = Provider<core.AuthRepository>((ref) {
     // `authCapabilitiesProvider` below keeps the OAuth door closed off web.
     // Stamping the native registrations is that row's work, not this line's.
     redirects: AuthRedirects.current(appId: AppConfig.appId),
+    // ⏱ 2026-09-28 · ST-N1 — off web, sign-in, sign-up, reset and resend go
+    // through the platform Worker's native route, which GoTrue does not
+    // captcha; null on web, which keeps Turnstile. The route serves any app
+    // with a native target in the generated app register, so a stamped app
+    // needs no Worker change.
+    nativeCredentials: nativeCredentialClient(
+      platformBaseUrl: kPlatformBaseUrl,
+      appId: AppConfig.appId,
+    ),
   );
 });
 
