@@ -197,9 +197,17 @@ class _AnalyticsGateState extends ConsumerState<AnalyticsGate> {
       // `chassis_properties_test.dart` asserts the count is zero across a full
       // boot so it cannot start to.
       final ChassisLocalizations l10n = context.chassisL10n;
-      await ref
-          .read(remindersEnabledProvider.notifier)
-          .resyncOnStart(title: l10n.reminderTitle, body: l10n.reminderBody);
+      final RemindersEnabledController reminders = ref.read(
+        remindersEnabledProvider.notifier,
+      );
+      // ⏱ 2026-09-28 · ST-T1b: an app that has not opted in
+      // ([AppConfig.offersDailyReminder]) offers no switch, so launch
+      // re-asserts OFF — which also cancels one an earlier build scheduled.
+      if (!AppConfig.offersDailyReminder) return reminders.set(false);
+      await reminders.resyncOnStart(
+        title: l10n.reminderTitle,
+        body: l10n.reminderBody,
+      );
     });
   }
 

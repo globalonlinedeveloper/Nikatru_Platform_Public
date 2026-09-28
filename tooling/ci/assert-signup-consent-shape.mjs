@@ -88,6 +88,13 @@ const SIGN_UP = {
   what: 'the sign-up screen',
   terms: '_acceptedTerms',
   marketing: '_marketingEmail',
+  // ⏱ 2026-09-28 · ST-T1b (audit A-5): ONE SIGN-UP SURFACE. A root with no
+  // `SignUpScreen` is still graded when its sign-in door is a `LoginScreen`
+  // that itself registers (`signUpWithEmail(`): that door's sign-up arm IS the
+  // root's sign-up surface, and SIGN_IN below grades it — both flags unticked,
+  // and the terms flag disabling the SUBMIT. A door that cannot register (the
+  // brick's `SignInScreen`) satisfies nothing here: COVERAGE LOST, as before.
+  orTheDoor: { symbol: /\bclass\s+LoginScreen\b/, registers: /\bsignUpWithEmail\(/ },
 };
 /** 🔴 THE SECOND DOOR, AND IT IS THE ONE MOST USERS TAKE. Subly's `LoginScreen`
  *  carries a sign-up TOGGLE, so `/sign-up` is not the only way to register — and
@@ -223,13 +230,25 @@ const read = (rel) => {
 };
 
 /** `{ root, file }` for every root, or a COVERAGE LOST / finding naming it. */
+/** Roots whose one sign-up surface is the sign-in door's arm — see SIGN_UP. */
+const DOOR_SIGNS_UP = new Set();
+
 function locate(loc) {
   const found = [];
   for (const root of LOCATOR_ROOTS) {
     const files = dartFilesUnder(`${root}/lib`)
       .filter((f) => loc.symbol.test(read(f)))
       .sort();
-    if (files.length === 0) {
+    const door =
+      files.length === 0 && loc.orTheDoor
+        ? dartFilesUnder(`${root}/lib`).find(
+            (f) => loc.orTheDoor.symbol.test(read(f)) && loc.orTheDoor.registers.test(read(f)),
+          )
+        : undefined;
+    if (door) {
+      DOOR_SIGNS_UP.add(root);
+      console.log(`⬜ ${root}: no \`SignUpScreen\` — its one sign-up surface is the sign-in door's sign-up arm (${door}), graded as the door.`);
+    } else if (files.length === 0) {
       coverageLost(
         `${root}: no file under ${root}/lib/ declares \`${loc.symbol.source}\` — ${loc.what}. Every surface is ` +
           'graded per app by the class it declares, so an app without it is an app this guard cannot grade.',
@@ -410,12 +429,15 @@ for (const { file: rel } of locate(WIDGET)) {
 let appleDoors = 0;
 const doorFiles = new Set();
 for (const d of doors) {
+  // A LOCATED door is a known door even when its delegation cannot be read: that
+  // is COVERAGE LOST, reported here once, not also an "unlisted" door below
+  // (⏱ 2026-09-28 · ST-T1b, where the app's door became its sign-up surface).
+  doorFiles.add(d.file);
   const scan = readWithDelegation(d.file);
   if (scan.lost) {
     coverageLost(`${d.file} ${scan.lost} Limb 4 reads the door PLUS what it delegates to.`);
     continue;
   }
-  doorFiles.add(d.file);
   for (const f of scan.files) doorFiles.add(f);
   const code = scan.code;
   const call = d.provider.exec(code);
@@ -498,9 +520,12 @@ for (const f of appleCallFiles) {
 }
 
 // ── coverage self-checks ─────────────────────────────────────────────────────
-if (scanned < MIN_SURFACES) {
+// A root whose sign-up surface IS its door has one file fewer to scan, and only
+// that root: the door that stands in for it was located and graded above.
+const minSurfaces = MIN_SURFACES - DOOR_SIGNS_UP.size;
+if (scanned < minSurfaces) {
   coverageLost(
-    `scanned ${scanned} sign-up surface(s), expected at least ${MIN_SURFACES}. ` +
+    `scanned ${scanned} sign-up surface(s), expected at least ${minSurfaces}. ` +
       'Every limb above is satisfied by an empty set, so a broken scan reports a compliant tree.',
   );
 }

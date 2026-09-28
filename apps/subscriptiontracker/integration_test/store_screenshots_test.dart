@@ -725,13 +725,15 @@ void main() {
     await waitGone(tester, find.text('Skip'));
     await pumpFor(tester, const Duration(seconds: 2));
 
+    // ST-T1b (audit A-7): found by its KEY — a fresh capture device is a first
+    // visit, greeted "Welcome", and the words are not the contract.
     expect(
-      find.text('Welcome back'),
+      find.byKey(E2EKeys.loginHeading),
       findsOneWidget,
       reason:
-          'Skip did not settle on the login form. The string is not missing — '
-          '`welcomeBack` renders at login_screen.dart:412 whenever LoginScreen '
-          'is mounted — so the app is somewhere else. On screen: '
+          'Skip did not settle on the login form. The heading is not missing — '
+          'E2EKeys.loginHeading is on it whenever LoginScreen is mounted — so '
+          'the app is somewhere else. On screen: '
           '${onScreen(tester)}',
     );
     // The address the capture guard refuses on every frame below: the account
@@ -786,8 +788,8 @@ void main() {
       // 644 − 81 = 563, which is where it sat on every run before the key was
       // supplied — so the capture's three CI failures and the two local
       // rehearsals of 2026-09-20 are the SAME geometry, not a flake. The form is
-      // already inside a `SingleChildScrollView` (login_screen.dart:360, with
-      // the gate at :527 immediately above the button at :532), so
+      // already inside a `SingleChildScrollView` (login_screen.dart:375, with
+      // the gate at :548 immediately above the button at :553), so
       // `ensureVisible` is the whole fix; the assertion after it is the guard,
       // written the way the add-sheet one below is, for the same reason — a
       // re-layout must red HERE, naming the geometry, not eleven lines later as

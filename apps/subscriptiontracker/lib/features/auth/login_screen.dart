@@ -38,7 +38,11 @@ import 'auth_error_sentence.dart';
 // copy of any of it, which is the reason the move was worth making.
 
 class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({super.key, this.startInSignUp = false});
+
+  /// Opens on the sign-up arm — what `/sign-up` renders. ⏱ 2026-09-28 ·
+  /// ST-T1b (audit A-5): this screen is the ONE sign-up surface.
+  final bool startInSignUp;
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
@@ -49,17 +53,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   final TextEditingController _email = TextEditingController();
   final TextEditingController _password = TextEditingController();
   bool _loading = false;
-  bool _signUp = false;
+  late bool _signUp = widget.startInSignUp;
 
-  /// 🔴 THIS SCREEN IS A SIGN-UP SURFACE TOO, AND THAT IS WHY THE CLICKWRAP IS
-  /// HERE AS WELL AS ON `SignUpScreen`.
+  /// 🔴 THIS SCREEN IS THE SIGN-UP SURFACE, AND THAT IS WHY THE CLICKWRAP IS
+  /// HERE.
   ///
-  /// `/sign-up` is not the only door: the toggle at the foot of this form flips
-  /// `_signUp` and `_submit` then calls `signUpWithEmail`. Putting the tick box
-  /// only on the dedicated screen would have left a fully working, completely
-  /// unblocked registration path one tap away — a consent gate with a second
-  /// entrance is not a gate, and this one is the entrance most users take,
-  /// because `/sign-in` is where the router sends every signed-out visitor.
+  /// The toggle at the foot of this form flips `_signUp` and `_submit` then
+  /// calls `signUpWithEmail`; `/sign-up` opens the same screen on that arm.
+  /// ⏱ 2026-09-28 · ST-T1b (audit A-5): the dedicated `SignUpScreen` that
+  /// once sat beside it — a second, divergent form — is gone, so there is one
+  /// entrance and one gate. It is the one most users took anyway, because
+  /// `/sign-in` is where the router sends every signed-out visitor.
   ///
   /// Both FALSE, always. `assert-signup-consent-shape.mjs` fails the build if
   /// either initialiser says otherwise.
@@ -120,8 +124,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       _snack(l10n.legalMustAcceptTerms);
       return;
     }
-    // Parity with `sign_up_screen.dart`, which has had this check since it was
-    // written. The server is the authority on password rules; this is the one
+    // The one password rule stated client-side (the retired sign-up screen
+    // carried it too). The server is the authority on password rules; this is the one
     // rule we can state exactly, and stating it here saves a round trip to be
     // told the same thing. Sign-IN is exempt: an existing account may predate
     // any rule we impose now, and refusing to even attempt the sign-in would
@@ -149,9 +153,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           password: _password.text,
           captchaToken: captcha.consume(),
         );
-        // 🔴 AFTER THE ACCOUNT EXISTS — same ordering and same reason as
-        // `sign_up_screen.dart`, which carries the full note. The short version:
-        // the consent trail is append-only and keyed by `anon_id`, so an
+        // 🔴 AFTER THE ACCOUNT EXISTS. The consent trail is append-only and
+        // keyed by `anon_id`, so an
         // acceptance banked for a sign-up that then throws can never be erased
         // by an account deletion — and because `accept()` sets the device stamp
         // synchronously, it also opened the re-acceptance gate for whatever
@@ -364,6 +367,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       acceptedStamp: ref.watch(legalAcceptanceProvider),
       current: kLegalVersions,
     );
+    // Null (not read yet) is a first visit — see [SignedInBeforeController].
+    final bool returning = ref.watch(signedInBeforeProvider) ?? false;
     return Scaffold(
       backgroundColor: t.bg,
       body: SafeArea(
@@ -372,12 +377,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           // 🔴 THE FORM CAP, and this is the screen the argument for it is
           // easiest to see on: an email field, a password field and a button,
           // stretched edge to edge across a 1280 px window. `ContentPane.form`
-          // (420) is the same idiom `features/auth/sign_up_screen.dart:70`
+          // (420) is the same idiom every other auth form here
           // already uses, and the same 420 that was hand-written six times
           // before the chassis owned it.
           //
           // ⚠️ THE PADDING STAYS ON THE SCROLL VIEW, OUTSIDE THE CAP — matching
-          // sign_up_screen, not the onboarding twin. So the cap engages at
+          // the other auth forms, not the onboarding twin. So the cap engages at
           // 420 + 56 = 476 px, well below a tablet, and the width measured
           // inside the pane is `min(surface - 56, 420)`.
           //
@@ -419,8 +424,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 // works) was the one message nobody ever saw. [ADR 027]
                 const _AccountDeletionNotice(),
                 const _AuthArrivalNotice(),
+                // ST-T1b (audit A-7): "Welcome back" only where a session has
+                // been seen on this device. The key is the anchor every suite
+                // reads — never the words.
                 Text(
-                  _signUp ? l10n.signUpTitle : l10n.welcomeBack,
+                  _signUp
+                      ? l10n.signUpTitle
+                      : (returning ? l10n.welcomeBack : l10n.welcomeFirstVisit),
+                  key: E2EKeys.loginHeading,
                   style: AppText.title.copyWith(fontSize: 34, color: t.ink),
                 ),
                 const SizedBox(height: 6),
@@ -482,8 +493,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   // chosen for the arm the user might toggle to would be the
                   // value the returning user's password manager sees first, and
                   // sign-in is the dominant path on this screen by a wide
-                  // margin. `sign_up_screen.dart` is the surface where
-                  // `newPassword` belongs.
+                  // margin.
                   autofillHints: const <String>[AutofillHints.password],
                   textInputAction: TextInputAction.done,
                   // Enter is the SAME DOOR as the button, lock included: it

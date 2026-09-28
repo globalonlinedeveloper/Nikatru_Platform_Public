@@ -38,6 +38,7 @@ import 'package:nikatru_platform_storage/age_signals.dart'
 
 import '../../core/app_config.dart';
 import '../../data/auth/auth_repository.dart';
+import '../analytics_providers.dart';
 import 'notifications.dart';
 import 'persistence.dart';
 
@@ -188,8 +189,8 @@ passwordRecoveryProvider = NotifierProvider<PasswordRecoveryController, bool>(
 /// fail-closed-and-untested limb [pipeline C-6] is about.
 final Provider<Uri> launchUriProvider = Provider<Uri>((ref) => Uri.base);
 
-/// ⏱ 2026-09-15 · [ADR 082] §5 — the store age signal both sign-up doors read
-/// before an account is created (`login_screen.dart`, `sign_up_screen.dart`).
+/// ⏱ 2026-09-15 · [ADR 082] §5 — the store age signal the sign-up door reads
+/// before an account is created (`login_screen.dart`, both of its arms).
 /// A provider so a test can inject a store answer; the shipped value is the
 /// source for the running host: Google Play Age Signals on android, Apple
 /// Declared Age Range on ios, no signal elsewhere (`nikatru_platform_storage`). The
@@ -738,6 +739,77 @@ final Provider<AuthRefreshNotifier> authRefreshProvider =
       ref.onDispose(notifier.dispose);
       return notifier;
     });
+
+const String _signedInBeforeKey = 'nikatru.signed_in_before';
+
+/// ⏱ 2026-09-28 · ST-T1b (audit A-7): has anybody signed in on THIS DEVICE?
+///
+/// Login is mandatory, so the sign-in door is the first screen a new visitor
+/// sees, and it greeted every one of them "Welcome back". The door reads this
+/// instead: "Welcome" until a session has been seen here, "Welcome back" after.
+///
+/// About the DEVICE, not the session — sign-out never clears it. NULL while the
+/// store is read, and the door reads null as a first visit: "Welcome" is true
+/// of a returning user too, where "Welcome back" is false of a new one.
+class SignedInBeforeController extends Notifier<bool?> {
+  bool _marked = false;
+
+  @override
+  bool? build() {
+    _hydrate();
+    return null;
+  }
+
+  Future<void> _hydrate() async {
+    try {
+      final core.KeyValueStore kv = await ref.read(
+        keyValueStoreProvider.future,
+      );
+      final bool stored = (await kv.read(_signedInBeforeKey)) == 'true';
+      if (!_marked) state = stored;
+    } catch (_) {
+      // Unreadable store: a first visit, which is the greeting that is never
+      // wrong.
+      if (!_marked) state = false;
+    }
+  }
+
+  /// A session was seen on this device. Idempotent; the write is best-effort.
+  Future<void> markSignedIn() async {
+    if (_marked) return;
+    _marked = true;
+    state = true;
+    try {
+      final core.KeyValueStore kv = await ref.read(
+        keyValueStoreProvider.future,
+      );
+      await kv.write(_signedInBeforeKey, 'true');
+    } catch (_) {
+      // A failed write only means the next visit is greeted "Welcome" again.
+    }
+  }
+}
+
+final NotifierProvider<SignedInBeforeController, bool?> signedInBeforeProvider =
+    NotifierProvider<SignedInBeforeController, bool?>(
+      SignedInBeforeController.new,
+    );
+
+/// Marks [signedInBeforeProvider] whenever a signed-in user is observed — a
+/// sign-in on the door, a confirmation link, a provider return, or a session
+/// restored at launch (so a device signed in before this shipped is marked on
+/// its next launch). Watched for its effect by `routerProvider`, which lives as
+/// long as the app: a provider nobody watches is never created.
+final Provider<void> signedInBeforeKeeperProvider = Provider<void>((ref) {
+  ref.listen<AsyncValue<core.AuthUser?>>(authUserProvider, (
+    AsyncValue<core.AuthUser?>? _,
+    AsyncValue<core.AuthUser?> next,
+  ) {
+    if (next.valueOrNull != null) {
+      ref.read(signedInBeforeProvider.notifier).markSignedIn();
+    }
+  }, fireImmediately: true);
+});
 
 // ═════════════════════════════════════════════════════════════════════════════
 // ACCOUNT-DELETION OUTCOME (stood under SECTION K · Subly's own product state)

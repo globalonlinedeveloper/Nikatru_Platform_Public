@@ -332,7 +332,7 @@ describe('assert-modal-detection · prose is not a call site', () => {
   });
 
   test('the defect quoted in a STRING LITERAL is not a call site either', () => {
-    // first_run_destination_test.dart:188 carries exactly this text inside an
+    // first_run_destination_test.dart:191 carries exactly this text inside an
     // `expect` reason, writing the rule down.
     withTree(
       (root) =>

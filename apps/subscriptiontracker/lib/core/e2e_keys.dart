@@ -14,6 +14,12 @@ class E2EKeys {
   static const Key loginPassword = Key('e2e_login_password');
   static const Key loginSubmit = Key('e2e_login_submit');
 
+  /// The sign-in door's heading, on both arms. ⏱ 2026-09-28 · ST-T1b (audit
+  /// A-7): the e2e, the store capture and the unit suites find the door by THIS,
+  /// never by its words — the words are "Welcome" on a first visit, "Welcome
+  /// back" after, and the sign-up title on the other arm.
+  static const Key loginHeading = Key('e2e_login_heading');
+
   // Add-subscription sheet.
   static const Key addName = Key('e2e_add_name');
   static const Key addPrice = Key('e2e_add_price');

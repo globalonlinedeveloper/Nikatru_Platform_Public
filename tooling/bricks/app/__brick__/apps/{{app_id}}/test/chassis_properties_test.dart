@@ -199,6 +199,7 @@ ProviderContainer _container(
   core.AuthRepository? auth,
   core.NotificationService? notifications,
   core.AgeSignalSource? ageSignals,
+  core.ReviewPrompter? prompter,
 }) => ProviderContainer(
   overrides: <Override>[
     keyValueStoreProvider.overrideWith((_) async => store),
@@ -217,6 +218,9 @@ ProviderContainer _container(
     // channel that does not exist in a widget test.
     if (notifications != null)
       notificationServiceProvider.overrideWithValue(notifications),
+    // A full boot runs the review prompt before the reminder resync, and the
+    // shipped prompter reaches a platform channel a widget test has not got.
+    if (prompter != null) reviewPrompterProvider.overrideWithValue(prompter),
     // ⏱ 2026-09-15 · [ADR 082] §5. Same reason again: the shipped source reads
     // the Play platform channel on this (android) test host, and it never
     // answers here, so a registration would wait on it for ever. No store
@@ -3126,6 +3130,56 @@ void main() {
             'budget is reached',
       );
       expect(notes.scheduled, hasLength(1));
+    });
+
+    // ⏱ 2026-09-28 · ST-T1b (audit C22/D4, finishing ST-U1): the chassis DAILY
+    // reminder is OPT-IN per app, and the stamp declines it
+    // (`AppConfig.offersDailyReminder`). So a fresh stamp offers no
+    // "Reminders" switch, and launch re-asserts the intent OFF — which also
+    // cancels a schedule an earlier build armed. The cases above still pin the
+    // controller an opting-in app launches through. MUTATION PROOF: set the flag
+    // true, or drop the `set(false)` arm from lib/app.dart, and this goes red.
+    testWidgets('the stamp declines it: no switch, and launch turns it OFF', (
+      WidgetTester tester,
+    ) async {
+      final _MemStore store = _onboardedStore();
+      store.data['nikatru.reminders_enabled'] = 'true';
+      final _FakeNotifications notes = _FakeNotifications();
+      final ProviderContainer c = _container(
+        store,
+        notifications: notes,
+        prompter: _RecordingPrompter(),
+      );
+      addTearDown(c.dispose);
+      await c
+          .read(authRepositoryProvider)
+          .signInWithEmail(email: 'a@b.com', password: 'pw');
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
+      );
+      await _turnsAndSettleRoute(tester);
+      // The launch chain runs after the review prompt's two awaits.
+      await _turns(tester, 20);
+
+      expect(
+        notes.scheduled,
+        isEmpty,
+        reason: 'a stamp that did not opt in re-armed the daily reminder',
+      );
+      expect(notes.cancelledIds, contains(kDailyReminderId));
+      expect(store.data['nikatru.reminders_enabled'], 'false');
+
+      c.read(routerProvider).go('/settings');
+      await _turnsAndSettleRoute(tester);
+      // The domain first: off the settings screen, "no switch" proves nothing.
+      expect(find.text('No name set'), findsOneWidget);
+      expect(
+        find.text(
+          lookupChassisLocalizations(const Locale('en')).remindersEnabled,
+        ),
+        findsNothing,
+      );
     });
   });
 

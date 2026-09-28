@@ -322,7 +322,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subscriptiontracker/core/app_config.dart';
+import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/core/router.dart';
+import 'package:subscriptiontracker/features/auth/legal_consent_fields.dart';
+import 'package:subscriptiontracker/features/shared/widgets.dart'
+    show GradientButton;
 import 'package:subscriptiontracker/state/money_providers.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 
@@ -446,7 +450,11 @@ kExpected = <String, ({int controls, int reachable})>{
   // 5 -> 7 on 2026-08-26: the two `_LegalLink`s joined the orbit. The
   // control count did NOT move — `FocusableTap` still builds a
   // `GestureDetector` with an `onTap`, so the rig counts the same nine.
-  '/sign-up': (controls: 9, reachable: 7),
+  // ⏱ 2026-09-28 · ST-T1b (audit A-5): 9 -> 12 and 7 -> 10, because
+  // `/sign-up` now opens `LoginScreen` on its sign-up arm — the one sign-up
+  // surface — which carries the footer's Privacy, Terms and Refund links. The
+  // two off-orbit controls are still the two consent SENTENCES.
+  '/sign-up': (controls: 12, reachable: 10),
   // ⏱ 2026-09-27 · ST-A5 (audit A-6): + resend and "wrong address?".
   '/check-inbox': (controls: 3, reachable: 3),
   '/verify-email': (controls: 3, reachable: 3),
@@ -1082,16 +1090,27 @@ void main() {
         )
         .toList();
 
-    /// Whether the single gated `FilledButton` on the current screen is live.
+    /// Whether the gated submit on the current screen is live. ⏱ 2026-09-28 ·
+    /// ST-T1b (audit A-5): `/sign-up` opens `LoginScreen`'s sign-up arm, whose
+    /// submit is the keyed `GradientButton`; `/reaccept-terms` keeps its
+    /// single `FilledButton`.
     ///
     /// Read off `onPressed`, not off a painted colour: `onPressed == null` is
     /// exactly what makes the clickwrap blocking, and it is also why the button
     /// is absent from the control inventory at rest — a null `onTap` never
     /// reaches `_sweepRoute`'s candidate list.
-    bool gatedButtonIsLive() =>
-        (find.byType(FilledButton).evaluate().single.widget as FilledButton)
-            .onPressed !=
-        null;
+    bool gatedButtonIsLive() {
+      final Iterable<Element> login = find
+          .byKey(E2EKeys.loginSubmit)
+          .evaluate();
+      if (login.isNotEmpty) {
+        return (login.single.widget as GradientButton).onPressed != null;
+      }
+      return (find.byType(FilledButton).evaluate().single.widget
+                  as FilledButton)
+              .onPressed !=
+          null;
+    }
 
     testWidgets('/sign-up · Tab reaches the consent box and Space ticks it', (
       WidgetTester tester,
@@ -1189,22 +1208,30 @@ void main() {
       );
       expect(
         s.controls.length - s.dead.length,
-        7,
+        10,
         reason:
             'sign-up reachable: the two text fields, the two consent boxes, the '
-            '"Already have an account?" button and — since 2026-08-26 — the '
-            'Terms and Privacy links. NOT the submit button: it is disabled at '
-            'rest, so it is not a control this rig counts at all. Reaching '
+            '"Have an account? Sign in" toggle, the Terms and Privacy links '
+            'beside the boxes (since 2026-08-26) and the footer\'s Privacy, '
+            'Terms and Refund links (since 2026-09-28, when /sign-up became '
+            'LoginScreen\'s sign-up arm). NOT the submit button: it is disabled '
+            'at rest, so it is not a control this rig counts at all. Reaching '
             '${s.controls.length - s.dead.length} instead means the split '
             'moved and the sentence above is stale',
       );
       // 🔴 AND THE LINKS ARE NAMED, NOT JUST COUNTED. `7 of 9` is equally
       // satisfied by two links that traverse and by two links that were
       // deleted, and a consent screen with no route to the documents is worse
-      // than one whose route is keyboard-dead. So: the screen carries exactly
+      // than one whose route is keyboard-dead. So: the CLICKWRAP carries exactly
       // two link-role controls, and each owns exactly one Tab stop.
+      // ⏱ 2026-09-28 · ST-T1b: scoped to `LegalConsentFields`, because the
+      // screen `/sign-up` opens also has the footer's three document links.
+      final Element clickwrap = find
+          .byType(LegalConsentFields)
+          .evaluate()
+          .single;
       final List<Element> links = s.controls
-          .where((Element e) => _declaresLink(e))
+          .where((Element e) => _declaresLink(e) && _isUnder(e, clickwrap))
           .toList();
       expect(
         links,

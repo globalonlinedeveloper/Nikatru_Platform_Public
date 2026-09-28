@@ -1255,15 +1255,15 @@
   },
   "forgotPasswordShort": "Forgot password?",
   "@forgotPasswordShort": {
-    "description": "Consumed by auth/login_screen.dart:189. Subly's shorter label. The chassis `forgotPassword` reads \"Forgot your password?\" — the values differ, so this is minted rather than reused."
+    "description": "Consumed by auth/login_screen.dart:192. Subly's shorter label. The chassis `forgotPassword` reads \"Forgot your password?\" — the values differ, so this is minted rather than reused."
   },
   "orDivider": "or",
   "@orDivider": {
-    "description": "Consumed by auth/login_screen.dart:211. The word between the email form and the OAuth button."
+    "description": "Consumed by auth/login_screen.dart:214. The word between the email form and the OAuth button."
   },
   "dismiss": "Dismiss",
   "@dismiss": {
-    "description": "Consumed by auth/login_screen.dart:349. Clears the account-deletion notice. Pinned by test/delete_account_test.dart:252 — the value must not change without moving those."
+    "description": "Consumed by auth/login_screen.dart:352. Clears the account-deletion notice. Pinned by test/delete_account_test.dart:252 — the value must not change without moving those."
   },
   "authEnterBoth": "Enter your email and password.",
   "@authEnterBoth": {
@@ -1275,23 +1275,23 @@
   },
   "authIncorrect": "Incorrect email or password.",
   "@authIncorrect": {
-    "description": "Consumed by auth/login_screen.dart:91. Says which of the two is wrong on purpose: it does not, because naming the wrong field lets anyone test which emails are registered."
+    "description": "Consumed by auth/login_screen.dart:95. Says which of the two is wrong on purpose: it does not, because naming the wrong field lets anyone test which emails are registered."
   },
   "authAlreadyRegistered": "That email is already registered — try signing in.",
   "@authAlreadyRegistered": {
-    "description": "Consumed by auth/login_screen.dart:96."
+    "description": "Consumed by auth/login_screen.dart:100."
   },
   "authConfirmEmail": "Please confirm your email, then sign in.",
   "@authConfirmEmail": {
-    "description": "Consumed by auth/login_screen.dart:102."
+    "description": "Consumed by auth/login_screen.dart:106."
   },
   "authRateLimited": "Too many attempts — please wait a moment and try again.",
   "@authRateLimited": {
-    "description": "Consumed by auth/login_screen.dart:105."
+    "description": "Consumed by auth/login_screen.dart:109."
   },
   "authNetworkError": "Network error — check your connection and try again.",
   "@authNetworkError": {
-    "description": "Consumed by auth/login_screen.dart:111."
+    "description": "Consumed by auth/login_screen.dart:115."
   },
   "authCaptchaFailed": "Verification expired. Please try again.",
   "@authCaptchaFailed": {
@@ -1299,39 +1299,43 @@
   },
   "authUnknownError": "Something went wrong. Please try again.",
   "@authUnknownError": {
-    "description": "Consumed by auth/login_screen.dart:113. The fallback for anything _friendlyMessage does not model. Never shows the raw exception."
+    "description": "Consumed by auth/login_screen.dart:117. The fallback for anything _friendlyMessage does not model. Never shows the raw exception."
   },
   "welcomeBack": "Welcome back",
   "@welcomeBack": {
-    "description": "Consumed by auth/login_screen.dart:151. Pinned by test/sign_out_destination_test.dart:31, integration_test/app_test.dart:203, integration_test/store_screenshots_test.dart:191 — the value must not change without moving those."
+    "description": "Consumed by auth/login_screen.dart. The sign-in heading on a device where a session has been seen (signedInBeforeProvider). Since ST-T1b nothing pins the words: the e2e, the store capture and the unit suites find the heading by E2EKeys.loginHeading."
+  },
+  "welcomeFirstVisit": "Welcome",
+  "@welcomeFirstVisit": {
+    "description": "Consumed by auth/login_screen.dart. ST-T1b (audit A-7): the sign-in heading on a device where nobody has signed in yet. Login is mandatory, so this is the first screen a new visitor sees — they are not 'back'."
   },
   "signUpSubtitle": "Start tracking every subscription in one place.",
   "@signUpSubtitle": {
-    "description": "Consumed by auth/login_screen.dart:157."
+    "description": "Consumed by auth/login_screen.dart:160."
   },
   "signInSubtitle": "Sign in to keep your money in check.",
   "@signInSubtitle": {
-    "description": "Consumed by auth/login_screen.dart:158."
+    "description": "Consumed by auth/login_screen.dart:161."
   },
   "emailHint": "you@email.com",
   "@emailHint": {
-    "description": "Consumed by auth/login_screen.dart:167. An example address, not prose — it stays identical in every locale."
+    "description": "Consumed by auth/login_screen.dart:170. An example address, not prose — it stays identical in every locale."
   },
   "passwordHint": "Your password",
   "@passwordHint": {
-    "description": "Consumed by auth/login_screen.dart:176."
+    "description": "Consumed by auth/login_screen.dart:179."
   },
   "pleaseWait": "Please wait…",
   "@pleaseWait": {
-    "description": "Consumed by auth/login_screen.dart:201."
+    "description": "Consumed by auth/login_screen.dart:204."
   },
   "haveAccountPrompt": "Have an account? Sign in",
   "@haveAccountPrompt": {
-    "description": "Consumed by auth/login_screen.dart:227-231. ONE full sentence, not the two TextSpans the live screen concatenates — the emphasised half is the second clause in English and need not be in Tamil."
+    "description": "Consumed by auth/login_screen.dart:230-231. ONE full sentence, not the two TextSpans the live screen concatenates — the emphasised half is the second clause in English and need not be in Tamil."
   },
   "newHerePrompt": "New here? Create account",
   "@newHerePrompt": {
-    "description": "Consumed by auth/login_screen.dart:227-231. See haveAccountPrompt."
+    "description": "Consumed by auth/login_screen.dart:230-231. See haveAccountPrompt."
   },
   "subscriptiontrackerOnboarding1Title": "Every subscription, one clean board",
   "@subscriptiontrackerOnboarding1Title": {

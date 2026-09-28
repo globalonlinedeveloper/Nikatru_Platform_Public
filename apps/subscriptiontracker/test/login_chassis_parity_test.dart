@@ -719,8 +719,7 @@ void main() {
             'newPassword asks the browser to offer a GENERATED secret and to '
             'suppress the stored one. This widget is the sign-IN box that '
             '_signUp re-labels in place, so that setting would break the '
-            'dominant path on the screen; sign_up_screen.dart is where the '
-            'newPassword hint belongs',
+            'dominant path on the screen',
       );
       expect(password.textInputAction, TextInputAction.done);
     });

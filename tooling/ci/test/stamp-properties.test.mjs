@@ -134,7 +134,7 @@ function run({ missingGroups = 0, protect = [], commentOutPackAnchor = false, wo
 
 // The floor the guard records for apps/subscriptiontracker. Named once here so a case that
 // moves off it says which direction it moved in.
-const FLOOR = 13; // ⏱ 2026-09-27 · ST-U1: 11 -> 13, the flagship dropped the chassis daily reminder by design
+const FLOOR = 14; // ⏱ 2026-09-27 · ST-U1: 11 -> 13, the flagship dropped the chassis daily reminder by design; ⏱ 2026-09-28 · ST-T1b: 13 -> 14, its SignUpScreen was retired (A-5)
 
 describe('assert-stamp-properties — EXEMPT_APPS is visible, existent and sized', () => {
   // ── LIMB (1) · VISIBLE ─────────────────────────────────────────────────────

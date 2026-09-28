@@ -53,7 +53,7 @@ import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/core/router.dart';
 import 'package:subscriptiontracker/features/auth/legal_consent_fields.dart';
-import 'package:subscriptiontracker/features/auth/sign_up_screen.dart';
+import 'package:subscriptiontracker/features/auth/login_screen.dart';
 import 'package:subscriptiontracker/features/onboarding/onboarding_screen.dart';
 import 'package:subscriptiontracker/features/home/home_screen.dart';
 // [pipeline 11]E-6. The paywall is the screen that emits the four money events,
@@ -4563,7 +4563,8 @@ void main() {
   // an empty store, which IS the fresh-install shape.
   // ── PROPERTY: store-age-gate-refuses ──────────────────────────────────────
   // ⏱ 2026-09-15 · [ADR 082] §5. A store age signal below adult creates NO
-  // account on this app's own `SignUpScreen`, through `ageSignalSourceProvider`.
+  // account on this app's one sign-up surface (`LoginScreen`'s sign-up arm,
+  // which `/sign-up` opens), through `ageSignalSourceProvider`.
   // The chassis views prove the decision when HANDED a source; this proves the
   // app hands over the provider's answer. Both directions: a gate that refuses
   // everyone passes the first case alone. (`age_gate_sign_up_test.dart` covers
@@ -4635,18 +4636,25 @@ void main() {
             ageSignalSourceProvider.overrideWithValue(_FixedAgeSignal(signal)),
           ],
           child: MaterialApp(
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            // The delegate list `SublyApp` composes: the sign-up arm reports
+            // through the shared error mapper, which reads the chassis strings.
+            localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+              ...AppLocalizations.localizationsDelegates,
+              ChassisLocalizations.delegate,
+            ],
             supportedLocales: AppLocalizations.supportedLocales,
-            home: const SignUpScreen(),
+            home: const LoginScreen(startInSignUp: true),
           ),
         ),
       );
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField).at(0), 'newcomer@b.test');
-      await tester.enterText(find.byType(TextField).at(1), 'password123');
+      await tester.enterText(find.byKey(E2EKeys.loginEmail), 'newcomer@b.test');
+      await tester.enterText(find.byKey(E2EKeys.loginPassword), 'password123');
+      await tester.ensureVisible(find.byKey(LegalConsentFields.termsCheckbox));
       await tester.tap(find.byKey(LegalConsentFields.termsCheckbox));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(SignUpScreen.submitButton));
+      await tester.ensureVisible(find.byKey(E2EKeys.loginSubmit));
+      await tester.tap(find.byKey(E2EKeys.loginSubmit));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       return auth;
@@ -4665,7 +4673,7 @@ void main() {
         reason: 'the store said this person is under 18',
       );
       final AppLocalizations l10n = AppLocalizations.of(
-        tester.element(find.byType(SignUpScreen)),
+        tester.element(find.byType(LoginScreen)),
       );
       expect(find.text(l10n.signUpAgeRefused), findsOneWidget);
     });

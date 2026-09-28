@@ -39,7 +39,6 @@ import 'package:subscriptiontracker/core/router.dart';
 import 'package:subscriptiontracker/features/auth/check_inbox_actions.dart';
 import 'package:subscriptiontracker/features/auth/check_inbox_screen.dart';
 import 'package:subscriptiontracker/features/auth/legal_consent_fields.dart';
-import 'package:subscriptiontracker/features/auth/sign_up_screen.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 
@@ -193,13 +192,16 @@ Future<void> _pumpApp(WidgetTester tester, ProviderContainer c) async {
 String _where(ProviderContainer c) =>
     c.read(routerProvider).routerDelegate.currentConfiguration.uri.path;
 
-/// Register through `/sign-up` — the dedicated door.
-Future<void> _signUpViaSignUpScreen(WidgetTester tester) async {
-  await tester.enterText(find.byType(TextField).at(0), _address);
-  await tester.enterText(find.byType(TextField).at(1), 'password123');
+/// Register through `/sign-up`, which opens `LoginScreen` on its sign-up
+/// arm — since ST-T1b (audit A-5) the one sign-up surface, not a second form.
+Future<void> _signUpViaSignUpRoute(WidgetTester tester) async {
+  await tester.enterText(find.byKey(E2EKeys.loginEmail), _address);
+  await tester.enterText(find.byKey(E2EKeys.loginPassword), 'password123');
+  await tester.ensureVisible(find.byKey(LegalConsentFields.termsCheckbox));
   await tester.tap(find.byKey(LegalConsentFields.termsCheckbox));
   await tester.pumpAndSettle();
-  await tester.tap(find.byKey(SignUpScreen.submitButton));
+  await tester.ensureVisible(find.byKey(E2EKeys.loginSubmit));
+  await tester.tap(find.byKey(E2EKeys.loginSubmit));
   await tester.pumpAndSettle();
 }
 
@@ -241,7 +243,7 @@ void main() {
 
       c.read(routerProvider).go('/sign-up');
       await tester.pumpAndSettle();
-      await _signUpViaSignUpScreen(tester);
+      await _signUpViaSignUpRoute(tester);
 
       // The premise, asserted rather than assumed: without a sign-up having
       // really happened the destination check below would be measuring a button
@@ -305,7 +307,7 @@ void main() {
 
       c.read(routerProvider).go('/sign-up');
       await tester.pumpAndSettle();
-      await _signUpViaSignUpScreen(tester);
+      await _signUpViaSignUpRoute(tester);
 
       expect(
         _where(c),
@@ -388,7 +390,7 @@ void main() {
 
       c.read(routerProvider).go('/sign-up');
       await tester.pumpAndSettle();
-      await _signUpViaSignUpScreen(tester);
+      await _signUpViaSignUpRoute(tester);
 
       expect(
         c
@@ -415,7 +417,7 @@ void main() {
       await _pumpApp(tester, c);
       c.read(routerProvider).go('/sign-up');
       await tester.pumpAndSettle();
-      await _signUpViaSignUpScreen(tester);
+      await _signUpViaSignUpRoute(tester);
       expect(_where(c), '/check-inbox');
       return (auth, c);
     }

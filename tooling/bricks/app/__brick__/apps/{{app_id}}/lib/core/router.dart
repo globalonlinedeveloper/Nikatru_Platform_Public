@@ -489,7 +489,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
           // NOT a gate — the only chrome-free route that is not. A purchase flow
           // with a navigation bar underneath it is a way out of a funnel
           // mid-transaction, which is apps/subscriptiontracker's reading too
-          // (`lib/core/router/routes.dart:154`). It is not a dead end: the
+          // (`lib/core/router/routes.dart:160`). It is not a dead end: the
           // screen carries its own way back (`paywall_screen.dart:251`).
           //
           // 🔴 THIS ROUTE AND `/manage-plan` ARE THE STEP-COUNT SOURCE.

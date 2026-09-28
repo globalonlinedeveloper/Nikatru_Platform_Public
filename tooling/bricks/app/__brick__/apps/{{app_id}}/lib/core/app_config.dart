@@ -206,7 +206,12 @@ class AppConfig {
   /// ST-U1 (audit C22/D4): does this app offer the chassis DAILY reminder?
   /// Declared per app — a habit app keeps it; an app whose reminders are its
   /// own (the flagship's renewals) sets false and Settings drops the row.
-  static const bool offersDailyReminder = true;
+  ///
+  /// ⏱ 2026-09-28 · ST-T1b: OPT-IN, so the stamp says false. The reminder's
+  /// copy is a habit app's ("A minute now keeps your streak going"), and a
+  /// stamp that inherits it unasked nags daily about a streak it does not
+  /// have. An app with a daily habit sets true; launch then re-arms it.
+  static const bool offersDailyReminder = false;
 
   // Whether the launch-time CFG-1 fetch may run. DELIBERATELY SEPARATE from
   // [isBackendLive]: the config service is not the identity service, and

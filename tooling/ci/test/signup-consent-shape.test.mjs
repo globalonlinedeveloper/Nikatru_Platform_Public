@@ -31,7 +31,6 @@ const GUARD = join(REPO, 'tooling', 'ci', 'assert-signup-consent-shape.mjs');
 
 const BRICK = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
 const SUBLY = 'apps/subscriptiontracker';
-const SUBLY_SIGNUP = `${SUBLY}/lib/features/auth/sign_up_screen.dart`;
 const SUBLY_LOGIN = `${SUBLY}/lib/features/auth/login_screen.dart`;
 const SUBLY_REACCEPT = `${SUBLY}/lib/features/auth/reaccept_terms_screen.dart`;
 const SUBLY_FIELDS = `${SUBLY}/lib/features/auth/legal_consent_fields.dart`;
@@ -107,7 +106,13 @@ describe('the real tree', () => {
       () => {},
       (r) => {
         assert.equal(r.status, 0, r.stderr);
-        assert.match(r.stdout, /signup consent shape apps=1 — 6 surface\(s\) scanned/);
+        // 6 -> 5 on 2026-09-28 (ST-T1b, audit A-5): the app's SignUpScreen was
+        // retired; its one sign-up surface is the door, graded once.
+        assert.match(r.stdout, /signup consent shape apps=1 — 5 surface\(s\) scanned/);
+        assert.match(
+          r.stdout,
+          /⬜ apps\/subscriptiontracker: no `SignUpScreen` — its one sign-up surface is the sign-in door's sign-up arm/,
+        );
         // ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP: limb 4 saw both Apple doors and every call site.
         assert.match(
           r.stdout,
@@ -127,7 +132,7 @@ describe('the real tree', () => {
     // went with the boxes they belong to, so the file that must carry them is
     // the package one. Subly is untouched — it is a frozen rail-prover, so its
     // two surfaces still declare their own.
-    for (const rel of [SUBLY_SIGNUP, SUBLY_LOGIN, CHASSIS_SIGNUP, `${CHASSIS_LIB}/auth/sign_in_screen.dart`]) {
+    for (const rel of [SUBLY_LOGIN, CHASSIS_SIGNUP, `${CHASSIS_LIB}/auth/sign_in_screen.dart`]) {
       const src = readFileSync(join(REPO, rel), 'utf8');
       assert.ok(src.includes('bool _acceptedTerms = false;'), `${rel} must carry the terms flag`);
       assert.ok(src.includes('bool _marketingEmail = false;'), `${rel} must carry the marketing flag`);
@@ -161,11 +166,30 @@ describe('the real tree', () => {
   });
 });
 
+// ⏱ 2026-09-28 · ST-T1b (audit A-5): a root with no `SignUpScreen` is graded
+// through its `LoginScreen` door — but only while that door registers. A door
+// that cannot is not a sign-up surface, and the root is COVERAGE LOST again.
+describe('one sign-up surface · the door stands in only while it registers', () => {
+  test('🔴 the door stops calling signUpWithEmail( → COVERAGE LOST, naming the app', () => {
+    withTree(
+      (root) =>
+        edit(root, SUBLY_LOGIN, (s) => s.replace('auth.signUpWithEmail(', 'auth.registerWithEmail(')),
+      (r) => {
+        assert.equal(r.status, 2, `${r.stdout}\n${r.stderr}`);
+        assert.match(
+          r.stderr,
+          /COVERAGE LOST — apps\/subscriptiontracker: no file under .* declares `\\bclass\\s\+SignUpScreen\\b`/,
+        );
+      },
+    );
+  });
+});
+
 describe('limb 1 — no box is born ticked', () => {
   test('🔴 a PRE-TICKED TERMS box fails, in the app', () => {
     withTree(
       (root) =>
-        edit(root, SUBLY_SIGNUP, (s) =>
+        edit(root, SUBLY_LOGIN, (s) =>
           s.replace('bool _acceptedTerms = false;', 'bool _acceptedTerms = true;'),
         ),
       (r) => {
@@ -246,7 +270,7 @@ describe('limb 1 — no box is born ticked', () => {
     // The silent-stop shape: rename the field and a guard keyed on the name
     // finds nothing to check and reports clean.
     withTree(
-      (root) => edit(root, SUBLY_SIGNUP, (s) => s.replaceAll('_acceptedTerms', '_tos')),
+      (root) => edit(root, SUBLY_LOGIN, (s) => s.replaceAll('_acceptedTerms', '_tos')),
       (r) => {
         assert.equal(r.status, 1);
         assert.match(r.stderr, /no `bool _acceptedTerms = …;` declaration found/);
@@ -277,10 +301,15 @@ describe('limb 2 — the terms tick blocks in BOTH positions', () => {
   test('🔴 deleting the EARLY-RETURN guard fails, even with the button disabled', () => {
     // The keyboard path: `onSubmitted:` reaches the handler without ever
     // touching the button, so a disabled button on its own is not the rule.
+    // ⏱ 2026-09-28 · ST-T1b: on the chassis sign-up view the brick delegates to
+    // — the app's retired SignUpScreen carried this subject until then.
     withTree(
       (root) =>
-        edit(root, SUBLY_SIGNUP, (s) =>
-          s.replace('if (_busy || !_acceptedTerms || !captcha.ready) return;', 'if (_busy || !captcha.ready) return;'),
+        edit(root, CHASSIS_SIGNUP, (s) =>
+          s.replace(
+            'if (_busy || !_acceptedTerms || !widget.captchaReady) return;',
+            'if (_busy || !widget.captchaReady) return;',
+          ),
         ),
       (r) => {
         assert.equal(r.status, 1);
@@ -294,10 +323,10 @@ describe('limb 3 — the optional box may not gate the service', () => {
   test('🔴 gating sign-up on the MARKETING opt-in fails as conditionality', () => {
     withTree(
       (root) =>
-        edit(root, SUBLY_SIGNUP, (s) =>
+        edit(root, CHASSIS_SIGNUP, (s) =>
           s.replace(
-            'if (_busy || !_acceptedTerms || !captcha.ready) return;',
-            'if (_busy || !_acceptedTerms || !_marketingEmail || !captcha.ready) return;',
+            'if (_busy || !_acceptedTerms || !widget.captchaReady) return;',
+            'if (_busy || !_acceptedTerms || !_marketingEmail || !widget.captchaReady) return;',
           ),
         ),
       (r) => {
@@ -389,11 +418,12 @@ describe('the shared widget cannot be asked to pre-tick', () => {
 const CHASSIS_PKG = 'nikatru_chassis_screens';
 const CHASSIS_FILE = 'packages/chassis_screens/lib/sign_up_body.dart';
 
-/** Empty the terms-flag DECLARATION out of Subly's sign-up screen and into a
+/** Empty the terms-flag DECLARATION out of Subly's sign-up surface (its sign-in
+ *  door, since ST-T1b) and into a
  *  chassis file, leaving an adapter that imports and uses it — chassis step 4,
  *  in miniature. `body` is what the package file ends up containing. */
 const delegateSignUp = (root, { body, writePackage = true, used = true } = {}) => {
-  edit(root, SUBLY_SIGNUP, (s) => {
+  edit(root, SUBLY_LOGIN, (s) => {
     const stripped = s.replace('bool _acceptedTerms = false;', '');
     const use = used ? '\nWidget _chassisBody() => const SignUpBody();\n' : '\n';
     return `import 'package:${CHASSIS_PKG}/sign_up_body.dart';\n${stripped}${use}`;
@@ -470,7 +500,7 @@ describe('the guard knows when it is not looking', () => {
     // contain that exact string. Unstripped, a correct tree fails.
     withTree(
       (root) =>
-        edit(root, SUBLY_SIGNUP, (s) =>
+        edit(root, SUBLY_LOGIN, (s) =>
           s.replace(
             'bool _acceptedTerms = false;',
             '// once upon a time somebody wrote bool _acceptedTerms = true; here\n  bool _acceptedTerms = false;',
@@ -621,8 +651,9 @@ describe('app set · a second app in the brick layout', () => {
       (root) => addScratch(root),
       (r) => {
         assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
-        assert.match(r.stdout, /signup consent shape apps=2 — 9 surface\(s\) scanned/);
-        assert.match(r.stdout, /9 terms tick\(s\) block in both positions/);
+        // 9 -> 8 on 2026-09-28 (ST-T1b): app #1 has no SignUpScreen of its own.
+        assert.match(r.stdout, /signup consent shape apps=2 — 8 surface\(s\) scanned/);
+        assert.match(r.stdout, /8 terms tick\(s\) block in both positions/);
         assert.match(r.stdout, /3 Sign in with Apple door\(s\) record the acceptance before the provider \(4 call-site file\(s\), all listed\)/);
         assert.match(r.stdout, /⬜ apps\/scratch\/lib\/features\/auth\/sign_in_screen\.dart also read 1 chassis file/);
       },

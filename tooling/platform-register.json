@@ -153,7 +153,7 @@
           "client": {
             "file": "services/platform/src/routes/account.ts",
             "expression": "`${origin}/v1/account`",
-            "note": "The relay. THE CALLER IS THE SHARED HOST, NOT THE APP: the Dart seam calls platform’s /v1/account once, and platform checks the service-role precondition, empties platform_db, relays to each app’s own DELETE /v1/account, and deletes the identity LAST. That ordering is the safety property, which is why the client must not own it (apps/subscriptiontracker/lib/state/providers/auth.dart:63-101 records the same thing from the other side)."
+            "note": "The relay. THE CALLER IS THE SHARED HOST, NOT THE APP: the Dart seam calls platform’s /v1/account once, and platform checks the service-role precondition, empties platform_db, relays to each app’s own DELETE /v1/account, and deletes the identity LAST. That ordering is the safety property, which is why the client must not own it (apps/subscriptiontracker/lib/state/providers/auth.dart:64-102 records the same thing from the other side)."
           }
         },
         {

@@ -428,7 +428,7 @@ void main() {
           ],
         );
 
-        expect(find.text(l10n.welcomeBack), findsOneWidget);
+        expect(find.text(l10n.welcomeFirstVisit), findsOneWidget);
         expect(find.text(l10n.signInSubtitle), findsOneWidget);
         expect(find.text(l10n.email.toUpperCase()), findsOneWidget);
         expect(find.text(l10n.password.toUpperCase()), findsOneWidget);
@@ -493,7 +493,7 @@ void main() {
         expect(find.text(l10n.signUpSubtitle), findsOneWidget);
         expect(find.text(l10n.haveAccountPrompt), findsOneWidget);
         expect(
-          find.text(l10n.welcomeBack),
+          find.text(l10n.welcomeFirstVisit),
           findsNothing,
           reason: 'the sign-in heading survived the toggle',
         );
@@ -567,11 +567,9 @@ void main() {
       expect(
         find.text('Welcome back'),
         findsNothing,
-        reason:
-            'integration_test/app_test.dart pins this string SIX times — in '
-            'English, which is the locale it runs in. It must not survive a '
-            'Tamil build.',
+        reason: 'the English heading must not survive a Tamil build.',
       );
+      expect(find.text('Welcome'), findsNothing);
       expect(find.text('Sign in to keep your money in check.'), findsNothing);
       expect(find.text('Forgot password?'), findsNothing);
       expect(find.text('or'), findsNothing);

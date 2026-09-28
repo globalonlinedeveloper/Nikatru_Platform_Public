@@ -1,6 +1,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // AUTH · WIDTH — sign-up, `ContentPane.form` (420).
 //
+// ⏱ 2026-09-28 · ST-T1b (audit A-5): the subject is what `/sign-up` opens —
+// `LoginScreen` on its sign-up arm, the one sign-up surface since the separate
+// `SignUpScreen` was retired. The sign-up arm is the TALLER one (both consent
+// boxes and their links), which is what this file measures that
+// `width_login_test.dart`'s sign-in arm does not. The gutters are now 28/28.
+//
 // The screen carried a private `ConstrainedBox(maxWidth: 420)` before
 // `AppBreakpoints.form` existed (`app_scaffold.dart:64-69` names it among the
 // six hand-copied 420s), and it now takes the number from the chassis. Nothing
@@ -24,14 +30,14 @@
 // `width_scan_test.dart` asserts `AppBreakpoints.reading - 48` because there the
 // 24/24 gutters are the pane's OWN `padding:`, applied INSIDE the cap. Here they
 // are not: the padding lives on the `SingleChildScrollView` that WRAPS the pane
-// (`sign_up_screen.dart:69`), so it comes out of the SURFACE before the cap is
+// (`login_screen.dart`, 28/28), so it comes out of the SURFACE before the cap is
 // ever consulted. Two consequences, and they pull in opposite directions:
 //
-//   · at 375 the surface binds  → the form is offered `375 - 48` = 327;
+//   · at 375 the surface binds  → the form is offered `375 - 56` = 319;
 //   · at 768 the CAP binds      → the form is offered `AppBreakpoints.form`
-//                                 FLAT — 420, not 372.
+//                                 FLAT — 420, not 364.
 //
-// Writing `AppBreakpoints.form - 48` in the 768 case would be the mirror image
+// Writing `AppBreakpoints.form - 56` in the 768 case would be the mirror image
 // of the mistake `responsive_width_test.dart:161-167` warns about, and it would
 // be a mistake that still LOOKS like the scan file. The number below was
 // measured, not derived by analogy.
@@ -61,7 +67,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
-import 'package:subscriptiontracker/features/auth/sign_up_screen.dart';
+import 'package:subscriptiontracker/features/auth/login_screen.dart';
 
 import 'support/width_harness.dart';
 
@@ -71,14 +77,14 @@ void main() {
     testWidgets('at 375 the cap is a no-op and nothing overflows', (
       WidgetTester tester,
     ) async {
-      await pumpAt(tester, kPhone, const SignUpScreen());
+      await pumpAt(tester, kPhone, const LoginScreen(startInSignUp: true));
       expect(
         offeredWidth(tester, inPane(Column)),
-        375 - 48,
+        375 - 56,
         reason:
             'below the cap a ConstrainedBox may only tighten within what it '
             'was handed, so a phone must render exactly as it did before the '
-            'pane existed — 375 less the 24/24 padding of the '
+            'pane existed — 375 less the 28/28 padding of the '
             'SingleChildScrollView that wraps the pane',
       );
       expect(
@@ -98,20 +104,20 @@ void main() {
     testWidgets('at 768 the form cap has ALREADY engaged', (
       WidgetTester tester,
     ) async {
-      await pumpAt(tester, kTablet, const SignUpScreen());
+      await pumpAt(tester, kTablet, const LoginScreen(startInSignUp: true));
       expect(
         offeredWidth(tester, inPane(Column)),
         AppBreakpoints.form,
         reason:
             'the falsifiable case for this screen: delete its ContentPane.form '
-            'and the Column is offered 768 - 48 = 720 here',
+            'and the Column is offered 768 - 56 = 712 here',
       );
     });
 
     testWidgets('at 1280 the form is still 420, not a desktop-wide row', (
       WidgetTester tester,
     ) async {
-      await pumpAt(tester, kDesktop, const SignUpScreen());
+      await pumpAt(tester, kDesktop, const LoginScreen(startInSignUp: true));
       expect(
         offeredWidth(tester, inPane(Column)),
         lessThanOrEqualTo(AppBreakpoints.form),

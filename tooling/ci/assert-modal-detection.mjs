@@ -118,7 +118,7 @@
 // honest code and get switched off inside a week — and it would redden, first of
 // all, the three CORRECT assertions this repository wrote while fixing this very
 // bug (`expect(find.byType(Dialog), findsNothing)` in app_test.dart:384 and
-// first_run_destination_test.dart:183, and the sheet-width measurements in
+// first_run_destination_test.dart:186, and the sheet-width measurements in
 // width_cancel_sheet_test.dart). A guard that fails the fix for the defect it
 // guards is not a guard.
 //
@@ -404,7 +404,7 @@ const coverageLost = (lines) => {
 // corpus. Comments, because the three files that FIXED this bug all quote
 // `find.byType(Dialog)` in their headers to explain what went wrong: reading
 // prose as a call site would make the fix fail the guard. String literals,
-// because first_run_destination_test.dart:188 carries the same text inside an
+// because first_run_destination_test.dart:191 carries the same text inside an
 // `expect` reason — *"Any suite that detects it with find.byType(Dialog) will
 // conclude the prompt is absent"* — which is the rule being written down, not a
 // site. This is the same class as the `grep '"r2_buckets"'` that matched the
@@ -1205,7 +1205,7 @@ if (problems.length) {
   lines.push('  waiver that excuses nothing, and the stale-exemption limb FAILS THE BUILD on it.');
   lines.push('  (Measured 2026-08-26: the advice that stood here named "a suite ASSERTING a dialog" as the');
   lines.push('  example to exempt. Following it literally, over the assertion in');
-  lines.push('  first_run_destination_test.dart:183, turned a green tree RED on the stale-exemption limb.');
+  lines.push('  first_run_destination_test.dart:186, turned a green tree RED on the stale-exemption limb.');
   lines.push('  The one example the advice named was the one case the advice was wrong for.)');
   lines.push('');
   lines.push('  For a flagged site that is genuinely right, write `// modal-detection: allow — <reason>`');

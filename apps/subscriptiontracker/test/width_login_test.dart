@@ -10,10 +10,10 @@
 //     and a button, stretched edge to edge across a 1280 px window. The
 //     arithmetic here is DIFFERENT from `width_onboarding_test.dart`'s and the
 //     difference is deliberate: this screen keeps its 28/28 padding on the
-//     SCROLL VIEW, outside the cap (matching `features/auth/sign_up_screen.dart`
-//     — the app's other auth surface, and the only other one since the stamped
-//     `sign_in_screen.dart` twin went with the 2026-08-10 route
-//     consolidation), so the width inside the pane is `min(surface - 56, 420)`
+//     SCROLL VIEW, outside the cap (since ST-T1b, 2026-09-28, the same screen
+//     is the sign-up surface too: `/sign-up` opens it on that arm, measured by
+//     `width_auth_test.dart`), so the width inside the pane is
+//     `min(surface - 56, 420)`
 //     rather than `min(surface, 420) - 56`.
 //
 //     🔴 THAT MAKES 768 THE FALSIFYING CASE, AND IT IS FALSIFIED EARLY: the cap
@@ -96,8 +96,8 @@ Color? _fieldFill(WidgetTester tester) => tester
     .decoration!
     .fillColor;
 
-Color? _headingColor(WidgetTester tester, String heading) =>
-    tester.widget<Text>(find.text(heading)).style!.color;
+Color? _headingColor(WidgetTester tester) =>
+    tester.widget<Text>(find.byKey(E2EKeys.loginHeading)).style!.color;
 
 void main() {
   final ColorScheme dark = buildAppTheme(
@@ -159,9 +159,6 @@ void main() {
     testWidgets('LIGHT is pixel-identical to the pre-dark screen', (
       WidgetTester tester,
     ) async {
-      final AppLocalizations en = await AppLocalizations.delegate.load(
-        const Locale('en'),
-      );
       await pumpLogin(tester, kPhone, ThemeMode.light);
 
       expect(
@@ -178,7 +175,7 @@ void main() {
         reason: 'The light field fill stays the literal AppColors.surface.',
       );
       expect(
-        _headingColor(tester, en.welcomeBack),
+        _headingColor(tester),
         AppColors.ink,
         reason:
             'The light heading colour is the value AppText.title already '
@@ -218,9 +215,6 @@ void main() {
     testWidgets('DARK also fixes the TEXT, not only the surfaces', (
       WidgetTester tester,
     ) async {
-      final AppLocalizations en = await AppLocalizations.delegate.load(
-        const Locale('en'),
-      );
       await pumpLogin(tester, kPhone, ThemeMode.dark);
 
       // 🔴 THE HALF A SURFACE-ONLY SWEEP LEAVES BEHIND. AppText.title bakes
@@ -229,14 +223,14 @@ void main() {
       // "Welcome back" on a near-black scaffold — legible to no one, and green
       // in every test that looks at surfaces alone.
       expect(
-        _headingColor(tester, en.welcomeBack),
+        _headingColor(tester),
         isNot(AppColors.ink),
         reason:
             'the heading is still painting the light-mode ink token onto a '
             'dark scaffold',
       );
       expect(
-        _headingColor(tester, en.welcomeBack),
+        _headingColor(tester),
         dark.onSurface,
         reason: "the heading takes the scheme's own on-surface slot",
       );
