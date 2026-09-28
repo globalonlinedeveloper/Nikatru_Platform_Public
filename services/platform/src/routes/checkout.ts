@@ -90,6 +90,7 @@ import { readBoundedBody } from '../lib/body';
 import { withinEdgeCeiling } from '../lib/edge-ceiling';
 import { isMoneyEnvironment, type MoneyEnvironment } from '../lib/mor/contract';
 import { PADDLE_CUSTOM_DATA_APP_ID, PADDLE_CUSTOM_DATA_USER_ID } from '../lib/mor/paddle';
+import { PADDLE_PRICE_IDS, RAIL_PRICE_AMOUNTS_MINOR, RAIL_PRICE_PENDING } from './rail-price-ids';
 
 const checkout = new Hono<AppEnv>();
 
@@ -209,127 +210,13 @@ const CHECKOUT_LIMITER_VAR = 'CHECKOUT_CEILING_LIMITER';
 /** Our own offering vocabulary. `[a-z][a-z0-9_]*`, same grammar as an app id. */
 const OFFERING_ID_PATTERN = /^[a-z][a-z0-9_]{0,63}$/;
 
-/**
- * OUR offering id → PADDLE's price id, per app. Measured live by API on
- * 2026-09-22 09:20:50Z, under the owner's standing delegation of 2026-09-15:
- *   `pri_01m346p0fjtaffk6waj5x5vz1c` — Pro Monthly, 599 minor units USD / month
- *   `pri_01m346p0v8103kqy1zb8zmmj7y` — Pro Yearly, 3499 minor units USD / year
- * both under product `pro_01kzew6de0nhqncmgxj1qtfg0q`, whose NAME now reads
- * "Nikatru Subscription Tracker Pro" — the catalogue carries the product name a
- * buyer sees on the receipt, so it is renamed with everything else.
- *
- * ⏱ 2026-09-27 · `pro_lifetime` → `pri_01m346p14yzeqjjwj153thx8p2`, READ BACK by
- * `GET /prices/pri_01m346p14yzeqjjwj153thx8p2` at 2026-09-26T23:43:12Z (one
- * read-only call with the live API key): `status` active, `unit_price` 8900 USD,
- * `billing_cycle` null (one-time), `trial_period` null, product
- * `pro_01kzew6de0nhqncmgxj1qtfg0q`, `custom_data { app_id: "subscriptiontracker",
- * offering_id: "pro_lifetime", adr093: "pro_lifetime" }`. It left
- * RAIL_PRICE_PENDING in the change that built its grant path: a completed
- * one-time transaction for it is granted through src/lib/mor/grant.ts with no end
- * date (O-ONE-TIME-GRANT-UNBUILT).
- *
- * 🔄 THESE TWO IDS REPLACED A PAIR MEASURED 2026-08-11 ([ADR 044] §7:
- * `pri_01kzew6dqmtv3jg33dy9m23g31` at 499/month and `pri_01kzew6e0yec2rfvk561hmzbbz`
- * at 1999/year). A Paddle price is IMMUTABLE in its amount: moving a price means
- * creating a new one and archiving the old, which is what happened — the two
- * 2026-08-11 prices were archived on 2026-09-22, so nothing can transact on them
- * and the old ids are dead rather than merely unused. They are written out here
- * because a dead id in a log line is otherwise unidentifiable.
- *
- * 🔴 THE JOIN IS `custom_data.offering_id` ON PADDLE'S OWN PRICE, not a
- * coincidence of naming: both live prices carry `custom_data { app_id: "subscriptiontracker",
- * offering_id: "pro_monthly" | "pro_yearly", adr093: ... }`, which is what makes
- * these two lines checkable against the rail rather than asserted. The archived
- * pair carried the retired product name in that same field, so the custom_data
- * is also what tells the two generations apart in a webhook.
- *
- * ⬜ WHAT IS NOT RECORDED HERE: the `trial_period` on the new prices. The
- * 2026-08-11 pair carried 30 days with `requires_payment_method: true`; this
- * file does not claim the same of the new pair, because that was not part of the
- * 2026-09-22 measurement and a trial is a term a buyer is owed. Read it from
- * Paddle and record it here before `paywall.enabled` goes true.
- *
- * ⚠️ A CALLER NEVER NAMES A PRICE. The body carries our offering id and the
- * server resolves it here, so no request can create a transaction for an
- * arbitrary price on the account — which is the difference between an endpoint
- * that sells two SKUs and one that sells whatever the client typed.
- *
- * ⬜ AND IT BELONGS IN `src/app-config-data.json`, BESIDE THE OFFERINGS IT MAPS.
- * It is here because that document is [pipeline 4]B-2's served-config data with
- * its own three readers and its own registry guard, and adding a vendor id to it
- * is a change to a shared file, not to this route. The cost of the split is that
- * two lists can disagree — so they are compared: `test/checkout.test.ts` asserts
- * this map covers EVERY offering the served config declares for every app it
- * names, and fails the moment a third SKU is added to one and not the other.
- */
-export const PADDLE_PRICE_IDS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
-  subscriptiontracker: {
-    pro_monthly: 'pri_01m346p0fjtaffk6waj5x5vz1c',
-    pro_yearly: 'pri_01m346p0v8103kqy1zb8zmmj7y',
-    pro_lifetime: 'pri_01m346p14yzeqjjwj153thx8p2',
-  },
-};
-
-/**
- * WHAT EACH MAPPED PRICE ACTUALLY COSTS **ON PADDLE**, in minor units of the
- * currency the Paddle price carries. Measured live by API on 2026-09-22
- * 09:20:50Z, in the same read that recorded the ids above; NOT re-derived from
- * `app-config-data.json`.
- *
- * 🔴 IT IS A SECOND COPY OF A PRICE ON PURPOSE, WHICH THIS REPOSITORY OTHERWISE
- * FORBIDS. The rule that a price lives in exactly one place
- * (`assert-no-price-literals.mjs`, [pipeline 5]M-11) is about OUR price. This is
- * not ours — it is a fact about a row in a vendor's catalogue that we cannot
- * read at build time and cannot change from this repository. The choice is
- * between recording it here where it can be compared, and not recording it at
- * all, in which case `app-config-data.json` can be moved to any number while
- * `POST /v1/checkout` goes on resolving a `pri_` that charges the old one. The
- * page would quote $34.99 and the transaction would bill $19.99, and NOTHING in
- * this repository could see it — the same shape as the defect M-11 is named
- * after, one layer further out.
- *
- * ⚠️ SO THE ONLY LEGITIMATE WAY TO EDIT THIS MAP IS TO READ PADDLE. Never edit
- * it to match `app-config-data.json`. The two disagreeing is the signal.
- */
-export const RAIL_PRICE_AMOUNTS_MINOR: Readonly<Record<string, Readonly<Record<string, number>>>> = {
-  subscriptiontracker: {
-    pro_monthly: 599,
-    pro_yearly: 3499,
-    // Read back 2026-09-26T23:43:12Z (see PADDLE_PRICE_IDS): 8900 USD, one-time.
-    pro_lifetime: 8900,
-  },
-};
-
-/**
- * OFFERINGS THE SERVED CONFIG DECLARES THAT THE RAIL CANNOT SELL AT THAT PRICE
- * TODAY, each with the reason and the owner action that clears it.
- *
- * 🔴 THIS IS NOT AN EXEMPTION LIST AND IT MUST NOT BECOME ONE. The invariant it
- * encodes is narrow and is the honest one: **a price may be DECIDED before the
- * rail carries it, but nothing may be SOLD at a price the rail does not carry.**
- * `test/checkout.test.ts` enforces both halves — an entry here is required to
- * carry a non-empty reason, and this map must be EMPTY for any app whose
- * `paywall.enabled` is true. Flipping that switch with an entry standing is the
- * failure, not the entry.
- *
- * The runtime already refuses safely either way: an offering with no `pri_` id
- * answers **503 `offering_not_available`** in the `PADDLE_PRICE_IDS` lookup
- * below and logs the drift by name. What this map adds is that the drift is
- * DECLARED rather than discovered.
- *
- * ⚠️ CLEARING AN ENTRY IS A CATALOGUE ACT, NOT AN EDIT TO THIS FILE. The
- * catalogue row has to exist first, and the two maps above then get the values
- * READ BACK from it. The write itself is the agent's, by API, under the owner's
- * standing delegation of 2026-09-15 — what is never the agent's is deciding the
- * number: that is the ADR's, and the owner's.
- */
-export const RAIL_PRICE_PENDING: Readonly<Record<string, Readonly<Record<string, string>>>> = {
-  // ⏱ 2026-09-27 · EMPTY. `pro_lifetime` left when its one-time grant path landed
-  // (src/lib/mor/grant.ts) and its price was read back from Paddle at
-  // 2026-09-26T23:43:12Z into the two maps above. The monthly and yearly entries
-  // were cleared on 2026-09-22 when their prices were measured live.
-  subscriptiontracker: {},
-};
+// PADDLE_PRICE_IDS, RAIL_PRICE_AMOUNTS_MINOR and RAIL_PRICE_PENDING are RENDERED into
+// ./rail-price-ids.ts from services/platform/src/app-config-data.json `prices` by
+// tooling/catalog/render-rail-prices.mjs, whose --check fails on a hand edit and whose limb E
+// refuses a rail id or one of those maps declared anywhere else under src/ (O-RAIL-PRICE-IDS-HAND-KEPT).
+// Why each map exists, and why its amounts are a second copy on purpose, moved into that
+// renderer's header verbatim. They are re-exported here for the tests and the grant path.
+export { PADDLE_PRICE_IDS, RAIL_PRICE_AMOUNTS_MINOR, RAIL_PRICE_PENDING };
 
 /**
  * ⏱ 2026-09-27 · The `one_time` offering a rail's price sells, or null — the map

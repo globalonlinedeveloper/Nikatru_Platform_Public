@@ -476,6 +476,12 @@ jobs:
       - name: No price is typed into app code
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-no-price-literals.mjs
+      # why: rail-price-ids.ts is rendered from app-config-data.json `prices`
+      # (O-RAIL-PRICE-IDS-HAND-KEPT). --check fails on a hand edit to it, on a rail id
+      # anywhere else under services/platform/src, and on a store price below [ADR 093]'s rule.
+      - name: The rail price ids render from the price register, and every store price keeps ADR 093's rule
+        if: ${{ !cancelled() }}
+        run: node tooling/catalog/render-rail-prices.mjs --check
       - name: The money funnel is wired, and the pseudonymity firewall holds
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-pseudonymity-firewall.mjs
