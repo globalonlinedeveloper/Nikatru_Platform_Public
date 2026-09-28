@@ -44,6 +44,17 @@
 // pixel by pixel — the hot code the four heavy image guards relaunch for
 // (nodejs/node#54918, see single-threaded-relaunch.mjs) — so it adopts the same
 // relaunch, and both workflow steps run it as `node --single-threaded`.
+//
+// ⏱ 2026-09-27 · THE CHANNELS COME FROM THE REGISTER, AND THIS FILE IS A DERIVER
+// (O-CAPTURE-LEAVES-DERIVED-SETS-STALE, AR-D3b). The apps-gov-in `derivedScreenshots`
+// block and its `store-icon-512.png` asset declare `derivedFrom`, naming this file
+// as their deriver; the two channel constants this file carried are read from
+// those declarations (tooling/store/derived-sets.mjs, the one reader). It exports
+// DERIVER { write, check }, which tooling/store/finish-capture.mjs calls after a
+// capture, and its record gains `derivation.sources` — every source file with its
+// sha256 — which tooling/ci/assert-derived-sets.mjs compares. A `--write` keeps a
+// committed image whose PIXELS already equal the derivation byte for byte, so a
+// second finish run changes nothing whichever zlib the machine carries.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, writeFileSync, existsSync, copyFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -51,17 +62,59 @@ import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decodeRgba, encodeRgba, PngUnreadable } from '../store/png-codec.mjs';
 import { STORE_FORM_RULES } from '../../contracts/store/vocabulary.js';
+import { derivedSets, storeDirOf, REGISTER_REL, TOOL_ROOT } from '../store/derived-sets.mjs';
 import { listDir } from './tree-walk.mjs';
 // The ONE relaunch with V8 background tasks off — see that module's header.
 import { backgroundTasksNote, relaunchSingleThreaded } from './single-threaded-relaunch.mjs';
 
 const NAME = 'assert-apps-gov-in-media';
-const CHANNEL = 'apps-gov-in';
-const PLAY = 'android-play';
+const SELF = 'tooling/ci/assert-apps-gov-in-media.mjs';
 export const METHOD = 'pad-to-aspect-then-area-average';
 const SHOT = /^\d\d-[a-z0-9-]+\.png$/;
 
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
+
+let repoRegister = null;
+/** This repository's register, read once. The derivation's channels are CODE's
+ *  configuration, like STORE_FORM_RULES, so a fixture tree needs no copy of it. */
+function defaultRegister() {
+  repoRegister ??= JSON.parse(readFileSync(join(TOOL_ROOT, REGISTER_REL), 'utf8'));
+  return repoRegister;
+}
+
+/** This deriver's two declarations: the directory set and the file set it
+ *  writes, on one channel, each with the source it is derived from. Throws a
+ *  RangeError naming what the register declares instead. */
+export function linksOf(register = defaultRegister()) {
+  const mine = derivedSets(register).filter((e) => e.derivedFrom?.deriver === SELF);
+  const dirs = mine.filter((e) => e.kind === 'dir');
+  const files = mine.filter((e) => e.kind === 'file');
+  if (dirs.length !== 1 || files.length !== 1 || dirs[0].channel !== files[0].channel) {
+    throw new RangeError(`${REGISTER_REL} must declare exactly one directory set and one file set with derivedFrom.deriver "${SELF}", on one channel; it declares ${dirs.length} and ${files.length}.`);
+  }
+  const at = (ch, app) => {
+    const d = storeDirOf(register, ch, app);
+    if (d === null) throw new RangeError(`${REGISTER_REL} channels[] row "${ch}" has no storeMetadataDir template.`);
+    return d;
+  };
+  return {
+    channel: dirs[0].channel,
+    shots: { set: dirs[0].set, from: dirs[0].derivedFrom },
+    icon: { set: files[0].set, from: files[0].derivedFrom },
+    dir: (app) => at(dirs[0].channel, app),
+    sourceDir: (ch, app) => at(ch, app),
+  };
+}
+
+/** The links and the channel's form rules, which must agree on the set's names. */
+function resolved({ register, rules } = {}) {
+  const L = linksOf(register ?? defaultRegister());
+  const r = rules ?? STORE_FORM_RULES[L.channel];
+  if (!r?.screenshots || !r?.icon) throw new RangeError(`contracts/store/vocabulary.js STORE_FORM_RULES has no "${L.channel}" screenshots/icon rules.`);
+  if (r.screenshots.dir !== L.shots.set) throw new RangeError(`STORE_FORM_RULES["${L.channel}"].screenshots.dir is "${r.screenshots.dir}" and the register's derived directory set is "${L.shots.set}".`);
+  if (r.icon.file !== L.icon.set) throw new RangeError(`STORE_FORM_RULES["${L.channel}"].icon.file is "${r.icon.file}" and the register's derived file set is "${L.icon.set}".`);
+  return { L, rules: r };
+}
 
 /** Pad to the target aspect ratio by repeating the edge rows (or columns).
  *  Returns the input unchanged when the ratio already matches to the pixel. */
@@ -164,15 +217,15 @@ export function samePixels(a, b) {
   return true;
 }
 
-const storeDir = (root, app, channel) => join(root, 'apps', app, 'store', channel);
 const rel = (root, p) => p.slice(root.length + 1).replace(/\\/g, '/');
 
 /** Check one app's apps-gov-in tree. Returns { problems, notes, checked }. */
-export function checkApp(root, app, rules = STORE_FORM_RULES[CHANNEL]) {
+export function checkApp(root, app, opts = {}) {
+  const { L, rules } = resolved(opts);
   const problems = [];
   const notes = [];
   let checked = 0;
-  const agi = storeDir(root, app, CHANNEL);
+  const agi = join(root, L.dir(app));
   const shotsDir = join(agi, rules.screenshots.dir);
   const record = join(shotsDir, 'CAPTURE.json');
   const redo = `node tooling/ci/assert-apps-gov-in-media.mjs --write --app ${app}`;
@@ -233,7 +286,7 @@ export function checkApp(root, app, rules = STORE_FORM_RULES[CHANNEL]) {
   }
   const iconName = rules.icon.file;
   const icon = join(agi, iconName);
-  const playIcon = join(storeDir(root, app, PLAY), iconName);
+  const playIcon = join(root, L.sourceDir(L.icon.from.channel, app), L.icon.from.set);
   if (!existsSync(icon)) problems.push(`${rel(root, icon)} is missing. Run \`${redo}\`.`);
   else if (!existsSync(playIcon)) problems.push(`${rel(root, playIcon)} is missing, and the apps.gov.in icon is a copy of it. Run \`node tooling/store/render-play-graphics.mjs --app ${app}\` first.`);
   else if (sha256(readFileSync(icon)) !== sha256(readFileSync(playIcon))) problems.push(`${rel(root, icon)} is not a byte copy of ${rel(root, playIcon)}. Run \`${redo}\`.`);
@@ -242,9 +295,10 @@ export function checkApp(root, app, rules = STORE_FORM_RULES[CHANNEL]) {
 }
 
 /** Derive and write one app's screenshots, icon and CAPTURE.json. */
-export function writeApp(root, app, rules = STORE_FORM_RULES[CHANNEL]) {
-  const playShots = join(storeDir(root, app, PLAY), 'screenshots');
-  const agi = storeDir(root, app, CHANNEL);
+export function writeApp(root, app, opts = {}) {
+  const { L, rules } = resolved(opts);
+  const playShots = join(root, L.sourceDir(L.shots.from.channel, app), L.shots.from.set);
+  const agi = join(root, L.dir(app));
   const shotsDir = join(agi, rules.screenshots.dir);
   const sources = existsSync(playShots) ? listDir(playShots).filter((n) => SHOT.test(n)).sort() : [];
   if (sources.length < rules.screenshots.min || sources.length > rules.screenshots.max) {
@@ -261,10 +315,31 @@ export function writeApp(root, app, rules = STORE_FORM_RULES[CHANNEL]) {
     const srcBuf = readFileSync(join(playShots, name));
     const d = deriveScreenshot(srcBuf, rules.screenshots);
     pad = d.pad;
-    writeFileSync(join(shotsDir, name), d.png);
-    files.push({ name, from: rel(root, join(playShots, name)), sourceSha256: sha256(srcBuf), sourcePixels: `${d.source.width}x${d.source.height}`, sha256: sha256(d.png), bytes: d.png.length });
+    const out = join(shotsDir, name);
+    // An image already holding exactly these pixels keeps its bytes: another
+    // zlib build encodes the same pixels differently, and a re-run must be a no-op.
+    // Read, never check-then-read: an existsSync before the read and the write is
+    // the check-then-use race CodeQL names (js/file-system-race). Absent = ENOENT.
+    let png = d.png;
+    let kept = null;
+    try {
+      kept = readFileSync(out);
+    } catch (e) {
+      if (e?.code !== 'ENOENT') throw e;
+    }
+    if (kept !== null) {
+      let same = false;
+      try {
+        same = samePixels(decodeRgba(kept), d.image);
+      } catch (e) {
+        if (!(e instanceof PngUnreadable)) throw e;
+      }
+      if (same) png = kept;
+    }
+    if (png === d.png) writeFileSync(out, png);
+    files.push({ name, from: rel(root, join(playShots, name)), sourceSha256: sha256(srcBuf), sourcePixels: `${d.source.width}x${d.source.height}`, sha256: sha256(png), bytes: png.length });
   }
-  const iconSrc = join(storeDir(root, app, PLAY), rules.icon.file);
+  const iconSrc = join(root, L.sourceDir(L.icon.from.channel, app), L.icon.from.set);
   const iconOut = join(agi, rules.icon.file);
   copyFileSync(iconSrc, iconOut);
   const iconBuf = readFileSync(iconOut);
@@ -288,6 +363,12 @@ export function writeApp(root, app, rules = STORE_FORM_RULES[CHANNEL]) {
         `pad to ${s.width}:${s.height} by repeating edge ${pad.axis} (${pad.before} before, ${pad.after} after)`,
         `area-average down to ${s.width}x${s.height}, rounded`,
         'encode as 24-bit PNG, no alpha channel',
+      ],
+      // Every file this derivation read, with its sha256 at the time: what
+      // tooling/ci/assert-derived-sets.mjs compares with the source tree.
+      sources: [
+        ...files.map((f) => ({ file: f.from, sha256: f.sourceSha256 })),
+        { file: rel(root, iconSrc), sha256: sha256(iconBuf) },
       ],
     },
     deviceType: 'phone',
@@ -313,6 +394,13 @@ export function writeApp(root, app, rules = STORE_FORM_RULES[CHANNEL]) {
   return cap;
 }
 
+/** The deriver contract tooling/store/finish-capture.mjs and
+ *  tooling/ci/assert-derived-sets.mjs read (tooling/store/derived-sets.mjs). */
+export const DERIVER = {
+  write: (root, app, opts = {}) => writeApp(root, app, opts),
+  check: (root, app, opts = {}) => checkApp(root, app, opts),
+};
+
 function coverageLost(lines) {
   console.error('');
   console.error(`FAIL COVERAGE LOST — ${lines[0]}`);
@@ -328,12 +416,17 @@ function main() {
   const APP = ai >= 0 ? argv[ai + 1] : undefined;
   const positional = argv.filter((a, i) => !a.startsWith('--') && argv[i - 1] !== '--app');
   const ROOT = resolve(positional[0] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
-  const rules = STORE_FORM_RULES[CHANNEL];
-  if (!rules?.screenshots || !rules?.icon) coverageLost([`contracts/store/vocabulary.js STORE_FORM_RULES has no "${CHANNEL}" screenshots/icon rules.`]);
+  let L;
+  let rules;
+  try {
+    ({ L, rules } = resolved());
+  } catch (e) {
+    coverageLost([e.message, 'The derivation reads its channels and its sets from those lines; without them it has nothing to derive or check.']);
+  }
 
   if (WRITE) {
     if (!APP || !/^[a-z][a-z0-9_]*$/.test(APP)) coverageLost([`--write needs --app <app> (got ${JSON.stringify(APP ?? null)}).`]);
-    const cap = writeApp(ROOT, APP, rules);
+    const cap = writeApp(ROOT, APP, { rules });
     for (const f of cap.files) console.log(`   wrote ${f.name}: ${cap.pixels}, ${f.bytes} bytes (from ${f.from})`);
     console.log(`   copied ${cap.icon.name}: ${cap.icon.pixels}, ${cap.icon.bytes} bytes`);
     console.log(`${NAME}: wrote ${cap.count} screenshot(s), the icon and CAPTURE.json for ${APP}`);
@@ -342,12 +435,12 @@ function main() {
 
   const appsDir = join(ROOT, 'apps');
   if (!existsSync(appsDir)) coverageLost([`${appsDir} does not exist; there is no tree to check.`]);
-  const apps = listDir(appsDir).filter((a) => existsSync(storeDir(ROOT, a, CHANNEL))).sort();
-  if (!apps.length) coverageLost([`no apps/*/store/${CHANNEL} tree exists under ${ROOT}.`, 'The channel is in the register; zero trees means the walk looked in the wrong place, not that everything is fine.']);
+  const apps = listDir(appsDir).filter((a) => existsSync(join(ROOT, L.dir(a)))).sort();
+  if (!apps.length) coverageLost([`no ${L.dir('*')} tree exists under ${ROOT}.`, 'The channel is in the register; zero trees means the walk looked in the wrong place, not that everything is fine.']);
   const problems = [];
   let checked = 0;
   for (const app of apps) {
-    const r = checkApp(ROOT, app, rules);
+    const r = checkApp(ROOT, app, { rules });
     problems.push(...r.problems.map((p) => `${app}: ${p}`));
     for (const n of r.notes) console.log(`   ⬜ ${n}`);
     checked += r.checked;

@@ -148,6 +148,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           _snack(l10n.signUpAgeRefused);
           return;
         }
+        // ⏱ 2026-09-28 — the fields are valid, so NOW the challenge is waited
+        // for (shown by the gate's wait line); a timeout or a widget error
+        // throws `CaptchaUnavailable`, which `_snack` says as a retry sentence.
+        await captcha.untilReady();
         await auth.signUpWithEmail(
           email: _email.text.trim(),
           password: _password.text,
@@ -176,6 +180,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           return;
         }
       } else {
+        await captcha.untilReady();
         await auth.signInWithEmail(
           email: _email.text.trim(),
           password: _password.text,
@@ -310,6 +315,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     }
     setState(() => _loading = true);
     try {
+      await captcha.untilReady();
       await ref
           .read(authRepositoryProvider)
           .sendPasswordReset(email, captchaToken: captcha.consume());
@@ -502,7 +508,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   // stopped it. Only `_loading` is re-stated here, because that
                   // is the one the button expresses by going dead and a second
                   // Enter would otherwise fire a second sign-in request.
-                  onSubmitted: (_loading || !captcha.ready) ? null : _submit,
+                  // ⛔ NEVER the captcha's readiness (2026-09-28, E2E run
+                  // 36379673890): `_submit` validates first and then WAITS
+                  // for the challenge. assert-captcha-gated-call-sites R4.
+                  onSubmitted: _loading ? null : _submit,
                 ),
                 if (!_signUp)
                   Align(
@@ -513,7 +522,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       // `_forgot` is the half that actually holds, because a
                       // second tap in the same frame reaches a button that has
                       // not been rebuilt yet. Neither is redundant.
-                      onPressed: (_loading || !captcha.ready) ? null : _forgot,
+                      onPressed: _loading ? null : _forgot,
                       child: Text(
                         l10n.forgotPasswordShort,
                         style: AppText.body.copyWith(
@@ -559,13 +568,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   // is untouched. `_signUp &&` is load-bearing: without it the
                   // sign-IN button would be dead for every returning user,
                   // which is a gate on the wrong door.
-                  // ST-A1: and while a rendered challenge has not answered —
-                  // a submit with no token is refused as "Verification
-                  // expired" before the password is even read.
-                  onPressed:
-                      (_loading ||
-                          (_signUp && !_acceptedTerms) ||
-                          !captcha.ready)
+                  // ⏱ 2026-09-28 — NOT while the challenge has not answered.
+                  // ST-T1 (#1022) gated it on that, and a Turnstile with no
+                  // token (slow, blocked, headless) left a dead button that
+                  // could not even say "Enter your email" (E2E live run
+                  // 36379673890). `_submit` validates first; a valid submit
+                  // waits for the token, shown by the status line below.
+                  onPressed: (_loading || (_signUp && !_acceptedTerms))
                       ? null
                       : _submit,
                 ),

@@ -34,9 +34,11 @@ Two things the register says that are worth knowing before you look at a frame:
 
 - **The gallery holds at most 5 items.** That is the store's own limit, read
   from its listing documentation on 2026-09-22.
-- **The capture is never resized or cropped afterwards.** 1280x800 logical at a
-  device pixel ratio of 2 is 2560x1600, and the X screen in the workflow is
-  what makes that true. If a frame ever exceeds the per-image byte cap, the
+- **The capture is never resized or cropped afterwards.** The register's
+  `capture` block (logical size times device pixel ratio) is the frame size, and
+  the X screen in the workflow is what makes that true; the capture records the
+  result in `CAPTURE.json`, which this README does not repeat
+  (`tooling/ci/assert-derived-sets.mjs` refuses a README that does). If a frame ever exceeds the per-image byte cap, the
   answer is to capture at a lower ratio — a second accepted size the register
   already names — and not to re-encode a captured frame.
 
