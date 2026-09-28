@@ -3455,6 +3455,16 @@
       ".github/workflows/ci.yml#app-brick"
     ],
     "kind": "script",
+    "ref": "tooling/kit/new-product.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app-brick"
+    ],
+    "kind": "script",
     "ref": "tooling/kit/stamp-app.mjs",
     "references": [],
     "state": "WIRED"

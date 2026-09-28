@@ -1191,6 +1191,11 @@ jobs:
           if [ "$code" -ne 1 ]; then echo "::error::assert-app-yaml exited $code with the probe's store bridge set to null; the red control requires exactly 1"; exit 1; fi
           if ! grep -qF 'apps/probe/lib/state/money_providers.dart:' "$RUNNER_TEMP/iap-red.log"; then echo "::error::assert-app-yaml exited 1 without naming apps/probe/lib/state/money_providers.dart"; exit 1; fi
           node tooling/ci/assert-app-yaml.mjs
+      # why: O-NEW-PRODUCT-HAS-NO-READOUT (15b). Read from the tree the stamp just wrote, every product step of the
+      # probe is DONE, OWNER or AFTER-LIVE except its name clearance, the one agent step a stamp cannot take (the
+      # probe dials the stores). --expect-next exits 1 on any other NEXT set, a missing one included.
+      - name: The new-product plan reads the stamped probe, and only its name clearance is the agent's
+        run: node tooling/kit/new-product.mjs plan probe --check --expect-next "name clearance"
       - name: SHOW-1 — probe is in the catalogue, and a RE-STAMP changes nothing
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"
