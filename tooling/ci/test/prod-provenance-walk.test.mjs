@@ -567,7 +567,7 @@ describe('the date windows — a listing past GitHub\'s 1,000-result ceiling is 
 // none answers everything, PR runs and an in-progress run included, and the
 // filters are the reader's job. The repository-wide list is fresh too.
 describe('a stale filtered run listing — the fresh unfiltered source is walked instead', () => {
-  const { anchoredRunRead, githubRuns, ANCHOR_LINES, makeReleasedBuildResolver } = monitor;
+  const { anchoredWalk, githubRuns, ANCHOR_LINES, makeReleasedBuildResolver } = monitor;
   const SHA = (n) => n.toString(16).padStart(7, '0') + 'c'.repeat(33);
   const ID = (n) => 900_000 + n;
   const HOUR = 3_600_000;
@@ -706,7 +706,7 @@ describe('a stale filtered run listing — the fresh unfiltered source is walked
     return {
       walks,
       log,
-      done: anchoredRunRead({
+      done: anchoredWalk({
         query,
         what: 'listing runs of ci.yml',
         walk: async (q) => (walks.push(q), q === '' ? all : page),

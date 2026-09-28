@@ -182,6 +182,10 @@
 // then each release lane's `runs?head_sha=<full>`), at most POINT_READ_CAP of
 // them; a build found that way is judged like any other run and PRINTED. Every
 // walk attempt and every point read prints one line, on success and on exit 2.
+// ⏱ 2026-09-28 — and a consistent walk may still be a STALE one: every listing
+// is then cross-read against its own unfiltered listings (run-page-anchor.mjs,
+// #1041), and a walk they outrun is replaced by the same listing walked with no
+// filter, the filters applied here — or is COVERAGE LOST. See `anchoredWalk`.
 //
 // ⏱ 2026-09-25 · A TABLE ITS MIGRATION HAS NOT REACHED YET IS NOT A FAILED READ
 // (PROV-BEFORE-MIGRATION). #930 merged 0017_ext_devices.sql; deploy-workers #186,
@@ -237,6 +241,7 @@ import { githubApiBase } from '../ci/record-deployment.mjs';
 // ⏱ 2026-09-28 — the stale-listing cross-check #1041 built for the freshness
 // readers, applied to the release-lane walk: ONE helper, not a second copy.
 import { judgeRunPage, maxRunId, repoWideRunsPath, repoWideWindow, runQueryPredicate } from '../ci/run-page-anchor.mjs';
+import { unionById } from '../ci/anchored-run-read.mjs';
 // ⏱ 2026-09-23 — which submittable channels ship a Flutter build (and so carry an
 // APP_VERSION stamp) is the surface's `flutterApp` answer, read the way six guards
 // already read it; a row on a surface that answers nothing is CouldNotLook.
@@ -1170,7 +1175,7 @@ const WALK_SETTLE_MS = 60_000;
  * A query carrying a filter the predicate cannot re-apply is walked as before,
  * says so on one line, and gets no guessed cross-read.
  */
-async function anchoredRunRead({ query, what, walk, crossRead, floor, now = () => Date.now(), log = ANCHOR_LINES }) {
+async function anchoredWalk({ query, what, walk, crossRead, floor, now = () => Date.now(), log = ANCHOR_LINES }) {
   const predicate = runQueryPredicate(query);
   const started = now();
   const page = await walk(query);
@@ -1191,9 +1196,7 @@ async function anchoredRunRead({ query, what, walk, crossRead, floor, now = () =
   const fresh = floor(all.filter(predicate));
   const second = judgeRunPage(fresh, { what: `${what}, re-walked without its filters`, cross: { runs: settledBy(again), why: cross.why }, nowMs: now() });
   if (!second.ok) throw new CouldNotLook(`${first.why} And the fresh source was outrun too: ${second.why}`);
-  const byId = new Map(page.map((r) => [r.id, r]));
-  for (const r of fresh) byId.set(r.id, r);
-  const runs = [...byId.values()];
+  const runs = unionById(page, fresh);
   log.push(
     `⚠   STALE PAGE, FRESH SOURCE WALKED · ${what}: the filtered walk ended at run ${maxRunId(page)} (${page.length} run(s)); ` +
       `the same listing without its filters ends at run ${maxRunId(fresh)} — ${all.length} row(s) walked, ${fresh.length} match ` +
@@ -1211,7 +1214,7 @@ let repoWideRead = null;
  *  exists for, and filtering it out here would put it beyond reach.
  *  ⏱ 2026-09-23 — `{ status: null }` lists runs of EVERY status (the
  *  store-capture witness); the default keeps every release-lane call as it was.
- *  ⏱ 2026-09-28 — read through `anchoredRunRead`: a stale listing is replaced
+ *  ⏱ 2026-09-28 — read through `anchoredWalk`: a stale listing is replaced
  *  by the fresh one, never graded. */
 async function githubRuns(workflowFile, { status = 'completed', filter = '' } = {}) {
   const { token, repo } = githubCredentials();
@@ -1237,7 +1240,7 @@ async function githubRuns(workflowFile, { status = 'completed', filter = '' } = 
         const runs = body?.workflow_runs;
         if (!Array.isArray(runs)) throw new CouldNotLook(`the GitHub API response for ${workflowFile} carried no workflow_runs array`);
         // The unfiltered re-walk holds runs of every status: it is floored after
-        // the filters are applied, in anchoredRunRead.
+        // the filters are applied, in anchoredWalk.
         if (q === query) floorRuns(runs, workflowFile, { requireConclusion: status === 'completed' });
         // `total_count` is this endpoint's own claim about how many completed
         // runs it holds. Handing it over is what turns a short read into a
@@ -1255,7 +1258,7 @@ async function githubRuns(workflowFile, { status = 'completed', filter = '' } = 
     ];
     return { runs: windows.flatMap((w) => w.runs), why: `a cross-read of the unfiltered listings of ${workflowFile}, its filters applied here,` };
   };
-  return anchoredRunRead({
+  return anchoredWalk({
     query,
     what,
     walk,
@@ -2891,7 +2894,7 @@ export {
   collectPaged,
   collectWindowed,
   githubRuns,
-  anchoredRunRead,
+  anchoredWalk,
   ANCHOR_LINES,
   WALKS,
   WalkTruncated,
