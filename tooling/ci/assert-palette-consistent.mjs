@@ -985,9 +985,11 @@ const DART_DECLARING_FILE = DART_OUT;
 const BRAND_FONT_DEBT = {
   'apps/subscriptiontracker/lib/features/calendar/calendar_screen.dart': 1,
   'apps/subscriptiontracker/lib/features/cancel/cancel_sheet.dart': 1,
-  'apps/subscriptiontracker/lib/features/detail/subscription_detail_screen.dart': 6,
   // ⏱ 2026-09-28 · train ST-D1: home_screen.dart 4 → 0 and OUT — Home is
   // built from the design system's components, which read the ramp.
+  // ⏱ 2026-09-28 · train ST-D5: `features/detail/subscription_detail_screen.dart`
+  // (6) came OUT — rebuilt on the design foundation, it names no family; the
+  // ramp's roles carry the faces.
   'apps/subscriptiontracker/lib/features/insights/insights_screen.dart': 1,
   'apps/subscriptiontracker/lib/features/onboarding/onboarding_screen.dart': 4,
   'apps/subscriptiontracker/lib/features/scan/scan_screen.dart': 1,

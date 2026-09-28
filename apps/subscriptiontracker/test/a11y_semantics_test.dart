@@ -4402,16 +4402,14 @@ void main() {
         //     white card (`subscription_detail_screen.dart:288`), **2.54:1**.
         //     A SECOND member of the status trio used as text on a light
         //     ground, found by this widening and owned by detail's own file.
+        // ⏱ 2026-09-28 · train ST-D5: `Active` EXPIRED — the usage word is now
+        // the scheme-forked `StatusTones` positive tone, measured 6.71:1 by
+        // this sweep, so its `except:` entry is deleted rather than left as a
+        // named hole that covers nothing.
         expectScreenTextLegible(
           tester,
           'detail',
-          covers: const <String>['PRICE', 'Payment history'],
-          except: const <String, String>{
-            'Active':
-                'AppColors.positive #10B981 as 12px w700 text on the white '
-                'card fill, from subscription_detail_screen.dart:288 — '
-                'measured 2.54:1 on 2026-08-21',
-          },
+          covers: const <String>['PRICE', 'Payment history', 'Active'],
         );
       });
     });

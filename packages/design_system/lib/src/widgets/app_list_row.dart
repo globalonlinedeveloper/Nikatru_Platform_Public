@@ -49,7 +49,13 @@ class AppListRow extends StatelessWidget {
     this.onTap,
     this.showChevron = true,
     this.selected,
+    this.titleMaxLines = 1,
+    this.subtitleMaxLines = 1,
   }) : assert(
+         titleMaxLines > 0 && subtitleMaxLines > 0,
+         'a row line needs at least one line',
+       ),
+       assert(
          status == null || subtitle != null,
          'a status needs its subtitle: it is carried by the words, then the '
          'colour',
@@ -86,6 +92,16 @@ class AppListRow extends StatelessWidget {
 
   /// The selection bar's thickness.
   static const double selectedBarWidth = 3;
+
+  /// How many lines [title] may take before it is ellipsised. One by default:
+  /// a row of NAMES scans as a column. A row whose title is a SENTENCE — a
+  /// notice, a reminder — passes more, because an ellipsis there cuts the
+  /// part of the sentence that says what happened (train ST-D5).
+  final int titleMaxLines;
+
+  /// How many lines [subtitle] may take before it is ellipsised; see
+  /// [titleMaxLines].
+  final int subtitleMaxLines;
 
   /// The row's minimum height for [density]: 64 at standard density, 56 at
   /// compact. Public and pure so the rule is testable without a platform
@@ -134,7 +150,7 @@ class AppListRow extends StatelessWidget {
                   children: <Widget>[
                     Text(
                       title,
-                      maxLines: 1,
+                      maxLines: titleMaxLines,
                       overflow: TextOverflow.ellipsis,
                       style: text.titleMedium?.copyWith(
                         color: scheme.onSurface,
@@ -159,7 +175,7 @@ class AppListRow extends StatelessWidget {
                           Flexible(
                             child: Text(
                               subtitle!,
-                              maxLines: 1,
+                              maxLines: subtitleMaxLines,
                               overflow: TextOverflow.ellipsis,
                               style: text.bodySmall?.copyWith(
                                 color: statusTone ?? scheme.onSurfaceVariant,

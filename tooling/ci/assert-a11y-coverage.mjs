@@ -853,9 +853,19 @@ const REQUIRED_COVERAGE = [
     //   surfaces  28 → 31
     //   a11yFiles  7 → 10
     //   cases     16 → 19
-    surfaces: 31,
-    a11yFiles: 10,
-    cases: 19,
+    //
+    // ⏱ RE-MEASURED 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1 (train
+    // ST-D DW1): the detail components (AppIconAction, AppMonogram,
+    // AppFigureTile, AppDetailHeader) arrived swept, by
+    // a11y_detail_components_test.dart — one body per component. Read off this
+    // guard's own output on the branch: "17 of 35 reachable surface(s) carry
+    // an a11y sweep, from 11 a11y test file(s) across 23 case(s)".
+    //   surfaces  31 → 35
+    //   a11yFiles 10 → 11
+    //   cases     19 → 23
+    surfaces: 35,
+    a11yFiles: 11,
+    cases: 23,
     label:
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, auth_field, ' +
       'destructive_confirm_dialog, two_pane and fourteen more, mounted by every stamped app',
@@ -1075,6 +1085,12 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
       'packages/design_system/lib/src/widgets/app_section_header.dart#AppSectionHeader',
       'packages/design_system/lib/src/widgets/app_list_group.dart#AppListGroup',
       'packages/design_system/lib/src/widgets/app_summary_card.dart#AppSummaryCard',
+      // ⏱ 2026-09-28 · train ST-D5: the detail components, each in the same
+      // change as its sweep.
+      'packages/design_system/lib/src/widgets/app_detail_header.dart#AppDetailHeader',
+      'packages/design_system/lib/src/widgets/app_figure_tile.dart#AppFigureTile',
+      'packages/design_system/lib/src/widgets/app_icon_action.dart#AppIconAction',
+      'packages/design_system/lib/src/widgets/app_monogram.dart#AppMonogram',
     ]),
   ],
 ]);

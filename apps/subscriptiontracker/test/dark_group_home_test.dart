@@ -517,91 +517,81 @@ void main() {
   });
 
   // ───────────────────────────────────────────────────────────────────────────
+  // ⏱ 2026-09-28 · train ST-D5: THE LIGHT HALF OF THIS GROUP WAS A PIN ON THE
+  // FROZEN LEGACY LOOK ("LIGHT is pixel-identical to the pre-dark screen":
+  // `AppColors.surface` / `AppColors.line` literals, and a scaffold override
+  // of `AppColors.bg`). The design train is the change that unfreezes it, so
+  // the pin now runs the other way: BOTH brightnesses derive from the scheme,
+  // and each case also asserts the retired light literal is GONE — the
+  // falsifier for a revert to the old arm.
   group('notifications is theme-aware', () {
-    testWidgets('LIGHT is pixel-identical to the pre-dark screen', (
-      WidgetTester tester,
-    ) async {
-      await _pumpScreen(tester, ThemeMode.light, const NotificationsScreen());
+    for (final ThemeMode mode in <ThemeMode>[ThemeMode.light, ThemeMode.dark]) {
+      testWidgets('[${mode.name}] the scaffold, the close and the nudge derive '
+          'from the scheme', (WidgetTester tester) async {
+        final ThemeData theme = buildAppTheme(
+          seed: kSublySeed,
+          brightness: mode == ThemeMode.light
+              ? Brightness.light
+              : Brightness.dark,
+        );
+        final ColorScheme scheme = theme.colorScheme;
+        await _pumpScreen(tester, mode, const NotificationsScreen());
 
-      final BoxDecoration close = _controlAround(tester, Icons.close);
-      expect(close.color, AppColors.surface);
-      expect((close.border! as Border).top.color, AppColors.line);
+        final Scaffold sheet = tester.widget<Scaffold>(
+          find.descendant(
+            of: find.byType(NotificationsScreen),
+            matching: find.byType(Scaffold),
+          ),
+        );
+        expect(
+          sheet.backgroundColor,
+          isNull,
+          reason:
+              'the sheet INHERITS the theme scaffold. An explicit override is '
+              'how this screen painted `AppColors.bg` — a near-white sheet in '
+              'front of a dark app.',
+        );
+        expect(theme.scaffoldBackgroundColor, scheme.surface);
 
-      final BoxDecoration card = tester
-          .widgetList<Container>(
-            find.descendant(
-              of: find.byType(ListView),
-              matching: find.byType(Container),
-            ),
-          )
-          .map((Container c) => c.decoration)
-          .whereType<BoxDecoration>()
-          .firstWhere((BoxDecoration d) => d.color == AppColors.surface);
-      expect(
-        card.boxShadow,
-        isNull,
-        reason:
-            'THE REASON THIS CARD IS SPELLED OUT INSTEAD OF CALLING '
-            'cardDecoration: that helper carries kCardShadow in its light '
-            'branch and this card has never had a shadow. Delegating would '
-            'have been a one-line diff that repainted the light screen.',
-      );
-      expect(
-        card.border,
-        isNull,
-        reason: 'Light gains nothing from the dark work.',
-      );
-    });
+        final BoxDecoration close = _controlAround(tester, Icons.close);
+        expect(close.color, scheme.surfaceContainerHighest);
+        expect((close.border! as Border).top.color, scheme.outlineVariant);
+        expect(
+          close.color,
+          isNot(AppColors.surface),
+          reason:
+              'the retired light literal. A revert to the old arm turns this '
+              'red in the light build, where it used to be pinned.',
+        );
 
-    testWidgets('DARK derives the scaffold, the close control and the card', (
-      WidgetTester tester,
-    ) async {
-      await _pumpScreen(tester, ThemeMode.dark, const NotificationsScreen());
-
-      final Scaffold sheet = tester.widget<Scaffold>(
-        find.descendant(
-          of: find.byType(NotificationsScreen),
-          matching: find.byType(Scaffold),
-        ),
-      );
-      expect(
-        sheet.backgroundColor,
-        isNot(AppColors.bg),
-        reason:
-            'THE DEFECT: a near-white sheet pushed in front of a dark app. '
-            'Reverting backgroundColor to the token turns this red.',
-      );
-      expect(sheet.backgroundColor, dark.surface);
-
-      final BoxDecoration close = _controlAround(tester, Icons.close);
-      expect(close.color, dark.surfaceContainerHighest);
-      expect((close.border! as Border).top.color, dark.outlineVariant);
-
-      final Iterable<BoxDecoration> cards = tester
-          .widgetList<Container>(
-            find.descendant(
-              of: find.byType(ListView),
-              matching: find.byType(Container),
-            ),
-          )
-          .map((Container c) => c.decoration)
-          .whereType<BoxDecoration>()
-          .where((BoxDecoration d) => d.color == dark.surfaceContainerHighest);
-      expect(
-        cards,
-        isNotEmpty,
-        reason:
-            'No card derived its fill from the scheme — the list is either '
-            'empty (nothing to measure) or the card branch was reverted.',
-      );
-      expect(
-        (cards.first.border! as Border).top.color,
-        dark.outlineVariant,
-        reason:
-            'Without a border the dark card has no boundary: this card carries '
-            'no shadow at all, so colour separation is the ONLY edge it has, '
-            'and the hairline is what keeps it from reading as a flat region.',
-      );
-    });
+        // The unused nudge is present on every day of the year (three demo
+        // subscriptions carry `unused: true`), so it is the card this case can
+        // measure without pinning the wall clock.
+        final Finder strip = find.byKey(
+          const Key('notifications-unused-strip'),
+        );
+        expect(strip, findsOneWidget);
+        final BoxDecoration ground =
+            tester
+                    .widget<DecoratedBox>(
+                      find
+                          .descendant(
+                            of: strip,
+                            matching: find.byType(DecoratedBox),
+                          )
+                          .first,
+                    )
+                    .decoration
+                as BoxDecoration;
+        expect(
+          ground.color,
+          StatusTones.forBrightness(theme.brightness).warnTint,
+          reason:
+              'the OPAQUE scheme-forked warn tint, whose contrast with its '
+              'text is measured once per scheme — not the 13% alpha wash '
+              'over an AppColors.warn glyph this replaced',
+        );
+      });
+    }
   });
 }

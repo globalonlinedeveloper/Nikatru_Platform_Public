@@ -700,10 +700,18 @@ const REQUIRED_COVERAGE = [
     // off the run's own line: "23 of 31 surface(s) measured — 8 PRINTED".
     //   surfaces        28 → 31
     //   coveredSurfaces 20 → 23
+    //
+    // ⏱ RE-MEASURED 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1 (train
+    // ST-D DW1) — the detail components (AppIconAction, AppMonogram,
+    // AppFigureTile, AppDetailHeader), each pumped at kPhone/kTablet/kDesktop
+    // by detail_components_test.dart. Read off the run's own line: "27 of 35
+    // surface(s) measured — 8 PRINTED" (the same eight as before).
+    //   surfaces        31 → 35
+    //   coveredSurfaces 23 → 27
     enforce: false,
-    surfaces: 31,
+    surfaces: 35,
     widthTestFiles: 19,
-    coveredSurfaces: 23,
+    coveredSurfaces: 27,
     label:
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, content_pane, two_pane and fifteen ' +
       'more, whose width decisions every stamped app inherits',

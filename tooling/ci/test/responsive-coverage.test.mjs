@@ -232,7 +232,8 @@ describe('the guard says YES on the tree as it is', () => {
     // guard's own per-root line.
     // ⏱ 2026-09-29 · trains ST-D6 + ST-D1: 17 of 25 → 23 of 31 — the form
     // sheet and Home components arrived measured; 8 PRINTED is unchanged.
-    assert.match(out, /packages\/design_system: 23 of 31 surface\(s\) measured — 8 PRINTED and not failed/);
+    // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 23 of 31 → 27 of 35.
+    assert.match(out, /packages\/design_system: 27 of 35 surface\(s\) measured — 8 PRINTED and not failed/);
   });
 
   test('the copied subject tree reproduces the subscriptiontracker reading exactly — and derives TWO roots', () => {
@@ -535,7 +536,8 @@ describe('a report-mode root can get better, never quietly worse', () => {
       out,
       // ⏱ 2026-09-28 · train ST-D0: 10 of 12 → 15 of 17 (floor re-based to 17).
       // ⏱ 2026-09-29 · trains ST-D6 + ST-D1: 15 of 17 → 21 of 23 (floor re-based to 23).
-      /COVERAGE LOST — `packages\/design_system` has 21 measured surface\(s\) and its measured floor is 23/s,
+      // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 21 of 23 → 25 of 27 (floor re-based to 27).
+      /COVERAGE LOST — `packages\/design_system` has 25 measured surface\(s\) and its measured floor is 27/s,
     );
   });
 
@@ -564,7 +566,8 @@ describe('a report-mode root can get better, never quietly worse', () => {
     assert.equal(code, 2, out);
     // ⏱ 2026-09-28 · train ST-D0: 18 of 20 → 23 of 25 (floor re-based to 25).
     // ⏱ 2026-09-29 · trains ST-D6 + ST-D1: 23 of 25 → 29 of 31 (floor re-based to 31).
-    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 29 responsive surface\(s\).*floor is 31/s);
+    // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 29 of 31 → 33 of 35 (floor re-based to 35).
+    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 33 responsive surface\(s\).*floor is 35/s);
   });
 
   test("R11c · a NEW unmeasured surface in EACH new root reaches that root's printed list", () => {
@@ -594,7 +597,8 @@ describe('a report-mode root can get better, never quietly worse', () => {
     assert.match(out, /\{\{app_id\}\}: 3 of 13 surface\(s\) measured — 1 PRINTED/);
     // ⏱ 2026-09-28 · train ST-D0: 12 of 21 → 17 of 26 (measured arrivals).
     // ⏱ 2026-09-29 · trains ST-D6 + ST-D1: 17 of 26 → 23 of 32 (measured arrivals).
-    assert.match(out, /packages\/design_system: 23 of 32 surface\(s\) measured — 9 PRINTED/);
+    // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 23 of 32 → 27 of 36 (measured arrivals).
+    assert.match(out, /packages\/design_system: 27 of 36 surface\(s\) measured — 9 PRINTED/);
   });
 });
 

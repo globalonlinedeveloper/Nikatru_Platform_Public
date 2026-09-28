@@ -44,6 +44,17 @@ class E2EKeys {
   // App shell.
   static const Key fabAdd = Key('e2e_fab_add');
 
+  // ── Subscription detail and notifications (train ST-D5) ───────────────────
+  //
+  // The e2e and the store capture found these controls by ICON
+  // (`Icons.arrow_back`, `Icons.close`) and by WORDS ('Cancel plan'). Both
+  // still work — the redesign kept the icons and the copy — and these are the
+  // anchors that survive the next one: an icon swap or a copy edit moves no
+  // key.
+  static const Key detailBack = Key('e2e_detail_back');
+  static const Key detailCancelPlan = Key('e2e_detail_cancel_plan');
+  static const Key notificationsClose = Key('e2e_notifications_close');
+
   // ── Settings → delete account (golden-path leg 6) ─────────────────────────
   //
   // The SoftButton that OPENS the confirmation carried no key at all, and its
