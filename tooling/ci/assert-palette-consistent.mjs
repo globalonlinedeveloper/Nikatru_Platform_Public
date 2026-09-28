@@ -981,10 +981,13 @@ const DART_DECLARING_FILE = DART_OUT;
  *  tell a raised number from a fixed one, so the rule is stated here and the
  *  failure message repeats it. All of these belong to `apps/subscriptiontracker`, whose
  *  screens the chassis work moves into packages — at which point the entries
- *  come out one by one and this object empties. */
+ *  come out one by one and this object empties.
+ *
+ *  ⏱ 2026-09-28 · train ST-D7: `cancel/cancel_sheet.dart` and
+ *  `scan/scan_screen.dart` came out (1 → 0 each) — both screens now take every
+ *  face from the theme's type ramp. */
 const BRAND_FONT_DEBT = {
   'apps/subscriptiontracker/lib/features/calendar/calendar_screen.dart': 1,
-  'apps/subscriptiontracker/lib/features/cancel/cancel_sheet.dart': 1,
   // ⏱ 2026-09-28 · train ST-D1: home_screen.dart 4 → 0 and OUT — Home is
   // built from the design system's components, which read the ramp.
   // ⏱ 2026-09-28 · train ST-D5: `features/detail/subscription_detail_screen.dart`
@@ -992,7 +995,6 @@ const BRAND_FONT_DEBT = {
   // ramp's roles carry the faces.
   'apps/subscriptiontracker/lib/features/insights/insights_screen.dart': 1,
   'apps/subscriptiontracker/lib/features/onboarding/onboarding_screen.dart': 4,
-  'apps/subscriptiontracker/lib/features/scan/scan_screen.dart': 1,
   'apps/subscriptiontracker/lib/features/settings/settings_screen.dart': 1,
   'apps/subscriptiontracker/lib/features/shared/widgets.dart': 4,
   'apps/subscriptiontracker/lib/features/shell/app_shell.dart': 1,

@@ -170,22 +170,6 @@ Future<void> _toResults(WidgetTester tester) async {
 Color? _textColor(WidgetTester tester, String text) =>
     tester.widget<Text>(find.text(text).first).style?.color;
 
-/// The nearest `Container` ancestor of [text] — the idiom `width_scan_test`
-/// uses for the results hero, and for the same reason: finding the row or the
-/// hero BY TYPE would match whichever Container the element tree visited first.
-BoxDecoration _boxAround(WidgetTester tester, String text) =>
-    tester
-            .widget<Container>(
-              find
-                  .ancestor(
-                    of: find.text(text),
-                    matching: find.byType(Container),
-                  )
-                  .first,
-            )
-            .decoration!
-        as BoxDecoration;
-
 void main() {
   final ThemeData lightTheme = buildAppTheme(seed: kSublySeed);
   final ThemeData darkTheme = buildAppTheme(
@@ -759,71 +743,48 @@ void main() {
   });
 
   group('scan is theme-aware', () {
-    testWidgets('LIGHT pins the literal tokens', (WidgetTester tester) async {
-      final AppLocalizations en = await AppLocalizations.delegate.load(
-        const Locale('en'),
-      );
-      await _pump(tester, const ScanScreen());
+    // ⏱ 2026-09-28 · train ST-D7 ("Import"). The LIGHT-literal pin is
+    // RETIRED deliberately: the screen moved onto the ST-D0 foundation, so both
+    // brightnesses read the same scheme slots and the old per-brightness fork
+    // (and its `AppColors.line` track, and the gradient hero's whites) is gone.
+    // The dark defect this group was written for — near-black ink on a dark
+    // first-run screen — stays pinned: the ink is `onSurface` in both.
+    for (final (String name, ThemeMode mode) in <(String, ThemeMode)>[
+      ('light', ThemeMode.light),
+      ('dark', ThemeMode.dark),
+    ]) {
+      testWidgets('[$name] the ink is the scheme\'s, never a literal', (
+        WidgetTester tester,
+      ) async {
+        final AppLocalizations en = await AppLocalizations.delegate.load(
+          const Locale('en'),
+        );
+        final ColorScheme scheme = mode == ThemeMode.light ? light : dark;
+        await _pump(tester, const ScanScreen(), mode: mode);
 
-      expect(
-        _textColor(tester, en.scanBusyTitle),
-        AppColors.ink,
-        reason: 'the title stays the literal 0xFF141420',
-      );
-      expect(
-        _textColor(tester, en.scanBusySubtitle),
-        AppColors.muted,
-        reason: 'the subtitle stays the literal 0xFF73737F',
-      );
-      expect(
-        tester
+        expect(_textColor(tester, en.scanBusyTitle), scheme.onSurface);
+        expect(_textColor(tester, en.scanBusyTitle), isNot(AppColors.ink));
+        expect(
+          _textColor(tester, en.scanBusySubtitle),
+          scheme.onSurfaceVariant,
+        );
+        expect(_textColor(tester, en.scanBusySubtitle), isNot(AppColors.muted));
+        // The bar takes the theme's own indicator colours: no track literal.
+        final LinearProgressIndicator bar = tester
             .widget<LinearProgressIndicator>(
               find.byType(LinearProgressIndicator),
-            )
-            .backgroundColor,
-        AppColors.line,
-        reason: 'the progress track stays the literal 0xFFECECF2',
-      );
-    });
+            );
+        expect(bar.backgroundColor, isNull);
+        expect(bar.color, isNull);
+      });
 
-    testWidgets('DARK derives them from the scheme', (
-      WidgetTester tester,
-    ) async {
-      final AppLocalizations en = await AppLocalizations.delegate.load(
-        const Locale('en'),
-      );
-      await _pump(tester, const ScanScreen(), mode: ThemeMode.dark);
-
-      expect(
-        _textColor(tester, en.scanBusyTitle),
-        isNot(AppColors.ink),
-        reason:
-            'THE DEFECT: near-black title ink on a dark first-run screen. '
-            'Reverting the fork turns this red.',
-      );
-      expect(_textColor(tester, en.scanBusyTitle), dark.onSurface);
-      expect(_textColor(tester, en.scanBusySubtitle), isNot(AppColors.muted));
-      expect(_textColor(tester, en.scanBusySubtitle), dark.onSurfaceVariant);
-      expect(
-        tester
-            .widget<LinearProgressIndicator>(
-              find.byType(LinearProgressIndicator),
-            )
-            .backgroundColor,
-        dark.outlineVariant,
-      );
-    });
-
-    testWidgets('the results hero and its whites are brightness-INVARIANT', (
-      WidgetTester tester,
-    ) async {
-      final AppLocalizations en = await AppLocalizations.delegate.load(
-        const Locale('en'),
-      );
-      for (final ThemeMode mode in <ThemeMode>[
-        ThemeMode.light,
-        ThemeMode.dark,
-      ]) {
+      testWidgets('[$name] the results summary is a card, in the scheme ink', (
+        WidgetTester tester,
+      ) async {
+        final AppLocalizations en = await AppLocalizations.delegate.load(
+          const Locale('en'),
+        );
+        final ColorScheme scheme = mode == ThemeMode.light ? light : dark;
         await _pump(
           tester,
           const ScanScreen(),
@@ -835,19 +796,21 @@ void main() {
         await _toResults(tester);
 
         expect(
-          _boxAround(tester, en.scanResultsHeading).gradient,
-          AppColors.brandGradient,
-          reason:
-              'a saturated indigo→violet is its own surface either way, which '
-              'is what licenses the whites on it ($mode)',
+          find.ancestor(
+            of: find.text(en.scanResultsHeading),
+            matching: find.byType(AppCard),
+          ),
+          findsOneWidget,
+          reason: 'the summary is the foundation card, not a gradient hero',
         );
+        expect(_textColor(tester, en.subscriptionCount(3)), scheme.onSurface);
         expect(
           _textColor(tester, en.subscriptionCount(3)),
-          Colors.white,
-          reason: 'the figure on the gradient stays white ($mode)',
+          isNot(Colors.white),
         );
-      }
-    });
+        expect(find.byType(AppListRow), findsNWidgets(3));
+      });
+    }
 
     testWidgets('the scaffold INHERITS instead of painting AppColors.bg', (
       WidgetTester tester,

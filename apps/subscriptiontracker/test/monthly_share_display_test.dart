@@ -278,7 +278,9 @@ void main() {
           findsOneWidget,
           reason: 'the phase sentinel: the results list is built',
         );
-        _expectRowsShowTheCharge(_yearly().name, l10n);
+        // ⏱ 2026-09-28 · train ST-D7: Import's rows are the foundation's
+        // `AppListRow`, no longer the app's `RowCard`.
+        _expectRowsShowTheCharge(_yearly().name, l10n, row: AppListRow);
         expect(tester.takeException(), isNull);
       });
     }

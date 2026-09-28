@@ -4307,6 +4307,14 @@ void main() {
         for (int i = 0; i < 6; i++) {
           await tester.pump(const Duration(milliseconds: 560));
         }
+        // ⏱ 2026-09-28 · train ST-D7: the primary action is now a theme
+        // `FilledButton`, which ANIMATES from its disabled to its enabled
+        // colours over Material's 200 ms theme-change duration (the old
+        // `GradientButton` swapped instantly). Swept on the flip frame it
+        // measured 1.49:1 — a colour halfway between the two states, never
+        // at rest on screen. One pump past the transition sweeps what the user
+        // actually reads.
+        await tester.pump(const Duration(milliseconds: 300));
         expect(
           find.text(l10n.goToDashboard),
           findsOneWidget,
@@ -4314,6 +4322,8 @@ void main() {
               'the scan never reached its results phase, so the sweep below is '
               'about the scanning screen again',
         );
+        // ⏱ train ST-D7: the gradient hero this history describes is gone —
+        // the summary is an opaque `AppCard` in the scheme's ink.
         // 6 subjects. ✅ THIS CASE WAS RED ON 2026-08-13 AND IS GREEN SINCE.
         // MEASURED THEN: `YOUR SUBSCRIPTIONS` (11px) was 3.97:1 — #6C57F7 on
         // #EAE6FE — against a 4.5 target.

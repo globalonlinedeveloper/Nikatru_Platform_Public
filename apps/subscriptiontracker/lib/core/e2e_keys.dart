@@ -54,6 +54,24 @@ class E2EKeys {
   static const Key detailBack = Key('e2e_detail_back');
   static const Key detailCancelPlan = Key('e2e_detail_cancel_plan');
   static const Key notificationsClose = Key('e2e_notifications_close');
+  // ── Stop a charge (the cancel sheet) — train ST-D7 ────────────────────────
+  //
+  // Keyed rather than found by words: 'Keep it', 'Confirm cancel' and 'Done'
+  // are translated, and 'Cancel' is a substring of half the sheet.
+  static const Key cancelKeep = Key('e2e_cancel_keep');
+  static const Key cancelConfirm = Key('e2e_cancel_confirm');
+  static const Key cancelDone = Key('e2e_cancel_done');
+
+  /// The sheet's inline failure strip — present only after a cancel that did
+  /// NOT happen, which is the state the unit suite asserts.
+  static const Key cancelFailure = Key('e2e_cancel_failure');
+
+  // ── Import (`/scan`, first-run setup) — train ST-D7 ───────────────────────
+  //
+  // The screen's ONE primary action, in all of its arms: disabled while the
+  // list loads, "Go to dashboard" once it has. (A failed load hands the way out
+  // to the failed state's own retry, keyed `DataStateView.retryKey`.)
+  static const Key scanPrimary = Key('e2e_scan_primary');
 
   // ── Settings → delete account (golden-path leg 6) ─────────────────────────
   //

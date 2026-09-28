@@ -273,7 +273,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.byType(SnackBar), findsOneWidget);
+    // ⏱ train ST-D7: said ON the sheet (its inline failure strip), no longer
+    // in a snack bar the root-mounted sheet's scrim drew over.
+    expect(find.byKey(E2EKeys.cancelFailure), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
     expect(find.textContaining('Could not remove it just now'), findsOneWidget);
     // 🔴 The confirmation step congratulates the user on savings. Showing it
     // after a failed cancel would be a lie the app tells about the user's money.

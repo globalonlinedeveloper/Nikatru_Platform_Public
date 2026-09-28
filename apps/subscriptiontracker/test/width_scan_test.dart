@@ -116,15 +116,14 @@ void main() {
             'scanning phase a second time — which is the case above, verbatim',
       );
 
-      // The hero ITSELF, not the body Column again. Found through its own copy
-      // rather than by type, because `RowCard` puts a Container on every row
-      // below it and `find.byType(Container).first` would be right by accident.
-      final Finder hero = find
-          .ancestor(
-            of: find.text('YOUR SUBSCRIPTIONS'),
-            matching: find.byType(Container),
-          )
-          .first;
+      // The summary card ITSELF, not the body Column again. Found through its
+      // own copy rather than by type, because the list below it is a second
+      // `AppCard` and `find.byType(AppCard).first` would be right by accident.
+      // (⏱ train ST-D7: it was a gradient `Container` hero.)
+      final Finder hero = find.ancestor(
+        of: find.text('YOUR SUBSCRIPTIONS'),
+        matching: find.byType(AppCard),
+      );
       expect(
         offeredWidth(tester, hero),
         lessThanOrEqualTo(AppBreakpoints.reading),

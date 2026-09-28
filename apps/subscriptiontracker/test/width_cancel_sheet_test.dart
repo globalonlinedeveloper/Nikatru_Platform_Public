@@ -8,9 +8,9 @@
 //    and §4 of the port spec decided AGAINST putting a `ContentPane` inside it.
 //    So the assertions below are deliberately the INVERSE of the other width
 //    specs': they pin that the framework's 640 is what stops the sheet and that
-//    nothing of ours narrowed it further. `640 - 44` is the button row under
-//    the container's own `fromLTRB(22, …, 22, …)` padding — if a pane ever
-//    lands in here by accident, that number moves and this goes red.
+//    nothing of ours narrowed it further. `640 - 48` is the button row under
+//    the sheet's own `AppSpacing.xl` side padding — if a pane ever lands in
+//    here by accident, that number moves and this goes red.
 //
 // 2. MOUNT LEVEL. `useRootNavigator: true` is the port's one line of product
 //    code. It is invisible in a single-navigator host — every assertion you can
@@ -33,17 +33,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show AppSpacing;
+import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/features/cancel/cancel_sheet.dart';
-import 'package:subscriptiontracker/features/shared/widgets.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 
 import 'support/width_harness.dart';
 
-/// The container's own horizontal padding — `fromLTRB(22, 26, 22, 30)` in
-/// `cancel_sheet.dart`. Named so the `640 - 44` below reads as the property it
-/// is (sheet minus padding) rather than as a magic number.
-const double kSheetHPadding = 22 * 2;
+/// The sheet's own horizontal padding — `AppSpacing.xl` each side in
+/// `cancel_sheet.dart` (train ST-D7; it was a literal 22). Named so the
+/// `640 - 48` below reads as the property it is (sheet minus padding) rather
+/// than as a magic number.
+const double kSheetHPadding = AppSpacing.xl * 2;
 
 /// The M3 framework default, `_BottomSheetDefaultsM3.constraints`. Not ours.
 const double kM3SheetMaxWidth = 640;
@@ -137,20 +140,19 @@ Finder _sheetSurface() {
 
 /// The step-0 button row ('Keep it' · 'Yes, remove').
 ///
-/// Anchored on [SoftButton] rather than on `find.byType(Row)`, which matches
-/// the rows the buttons build INSIDE themselves. There is exactly one `Row`
-/// above a `SoftButton` here, so this is unambiguous — asserted, so that a
-/// second one appearing turns into a named failure rather than a silent
-/// `.first`.
+/// Anchored on the keyed 'Keep it' button rather than on `find.byType(Row)`,
+/// which matches the rows the charge's list row builds. There is exactly one
+/// `Row` above it here, so this is unambiguous — asserted, so that a second one
+/// appearing turns into a named failure rather than a silent `.first`.
 Finder _buttonRow() {
   final Finder rows = find.ancestor(
-    of: find.byType(SoftButton),
+    of: find.byKey(E2EKeys.cancelKeep),
     matching: find.byType(Row),
   );
   expect(
     rows,
     findsOneWidget,
-    reason: 'the button row is no longer the only Row above the SoftButton',
+    reason: "the button row is no longer the only Row above 'Keep it'",
   );
   return rows;
 }
