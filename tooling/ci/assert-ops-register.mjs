@@ -2645,11 +2645,11 @@ function branchPage(repo, workflow, branch, cache) {
         const br = branch ? `branch=${encodeURIComponent(branch)}&` : '';
         const path = (n) => `/repos/${repo}/actions/workflows/${encodeURIComponent(workflow)}/runs?${br}per_page=${n}`;
         const what = `the run history of ${workflow}${branch ? ` on ${branch}` : ''}`;
-        const [narrow, wide] = await Promise.all([ghJson(path(1)), ghJson(path(RUN_PAGE_WIDE))]);
+        const [narrow, wide] = await Promise.all([branch ? branchlessPage(repo, workflow, 1) : ghJson(path(1)), ghJson(path(RUN_PAGE_WIDE))]); // ⏱ 2026-09-28: file end
         if (!Array.isArray(narrow?.workflow_runs) || !Array.isArray(wide?.workflow_runs)) {
           throw new Error(`the run list for ${what} came back without a workflow_runs array`);
         }
-        const newest = reconcileRunReads(newestOnPage(narrow.workflow_runs), newestOnPage(wide.workflow_runs), what);
+        const newest = branch ? null : reconcileRunReads(newestOnPage(narrow.workflow_runs), newestOnPage(wide.workflow_runs), what);
         const byId = new Map();
         for (const r of [...wide.workflow_runs, ...(newest ? [newest] : [])]) {
           if (r?.updated_at && !byId.has(r.id)) byId.set(r.id, r);
@@ -2683,16 +2683,16 @@ const RUN_PAGES = new Map();
 async function ghNewestRun(repo, workflow, filters, what) {
   const { branch, event, status, unknown } = splitRunFilters(filters);
   if (unknown.length === 0) {
-    const { runs, pageFull } = await branchPage(repo, workflow, branch, RUN_PAGES);
+    const { runs, pageFull, gapBelow } = await branchPage(repo, workflow, branch, RUN_PAGES);
     const hit = selectRuns(runs, { event, status })[0] ?? null;
-    if (hit || !pageFull) return hit;
+    if (hit || !pageFull) return hit; if (gapBelow) throw new StaleGap(gapBelow); // the fresh window held no match (file end)
   }
   // FALLBACK — the page was full and held no match, so the answer may be older
   // than the page. Ask the question directly, at both widths, exactly as before.
   const qs = filters.filter(Boolean).join('&');
   const path = (n) => `/repos/${repo}/actions/workflows/${encodeURIComponent(workflow)}/runs?${qs}&per_page=${n}`;
   const [narrow, wide] = await Promise.all([ghJson(path(1)), ghJson(path(RUN_READ_WIDE))]);
-  return reconcileRunReads(newestOnPage(narrow?.workflow_runs), newestOnPage(wide?.workflow_runs), what);
+  return anchoredNewest(repo, workflow, qs, wide, reconcileRunReads(newestOnPage(narrow?.workflow_runs), newestOnPage(wide?.workflow_runs), what), what); // file end
 }
 
 /** The newest SUCCESSFUL run for the declared event AND branch. `event=schedule`
@@ -3328,8 +3328,8 @@ async function unitRunsPage(q, repo, filters, what) {
     // once; the four ops-watch duty rows that each bought their own pair of reads
     // of this identical history now buy none. The branch check moved into the
     // page, where the branch filter still is.
-    const { runs, pageFull } = await branchPage(repo, q.workflow, branch, RUN_PAGES);
-    return { runs: selectRuns(runs, { event, status }), pageFull };
+    const { runs, pageFull, gapBelow } = await branchPage(repo, q.workflow, branch, RUN_PAGES);
+    return { runs: selectRuns(runs, { event, status }), pageFull, gapBelow };
   }
   const qs = filters.filter(Boolean).join('&');
   const path = (n) => `/repos/${repo}/actions/workflows/${encodeURIComponent(q.workflow)}/runs?${qs}&per_page=${n}`;
@@ -3344,7 +3344,7 @@ async function unitRunsPage(q, repo, filters, what) {
       throw new Error(`the branch filter did not hold for ${q.workflow}: asked for ${JSON.stringify(q.headBranch)} and run ${r.id} came back on ${JSON.stringify(r.head_branch ?? null)}`);
     }
   }
-  return { runs, pageFull: wide.workflow_runs.length >= UNIT_PAGE };
+  return anchoredPage(repo, q.workflow, qs, runs, wide.workflow_runs.length >= UNIT_PAGE, what); // stale-run-page anchor, see file end
 }
 
 /** Pages of 100 read before a run's job list is refused as too long to walk. */
@@ -3381,7 +3381,7 @@ function jobsOfRun(repo, runId, cache) {
 async function scanUnit(q, repo, wf, cache, filters, what) {
   const u = unitOf(q);
   if (u.kind === 'invalid' || u.kind === 'run') throw new Error(`${q?.workflow}: a unit scan was asked for a ${u.kind} unit`);
-  const { runs, pageFull } = await unitRunsPage(q, repo, filters, what);
+  const { runs, pageFull, gapBelow } = await unitRunsPage(q, repo, filters, what);
   const days = unitScheduleWeekdays(q, wf);
   const entries = [];
   for (const run of runs) {
@@ -3393,7 +3393,7 @@ async function scanUnit(q, repo, wf, cache, filters, what) {
     entries.push({ run, c });
     if (c.verdict === 'success') break;
   }
-  return { entries, pageFull };
+  return gapCheckedScan(entries, pageFull, gapBelow); // a scan that ran off a fresh window with no success is UNREAD (file end)
 }
 
 async function probeUnitFreshness(q, repo, wf, cache) {
@@ -4865,7 +4865,7 @@ async function probeGithubRedSince(q, repo, cache = new Map()) {
     }
     return { id: run.id, at: run.updated_at };
   };
-  return withQuotaCause({ success: await newest('success'), failure: await newest('failure') }, repo, cache);
+  return withQuotaCause(await redSincePair(newest), repo, cache); // a stale page's gap cannot hide a failure older than a fresh success (file end)
 }
 
 /** The impure orchestrator. One row per workflow by construction (the register
@@ -5914,7 +5914,7 @@ async function main() {
 // by exactly one line, so every `assert-ops-register.mjs:NNN` citation in the
 // corpus still lands where it did.
 // ─────────────────────────────────────────────────────────────────────────────
-import { judgeRunPage, selfRunFloor, headAnchor, pushTriggersBranch, needsCrossRead } from './run-page-anchor.mjs';
+import { judgeRunPage, selfRunFloor, headAnchor, pushTriggersBranch, needsCrossRead, runQueryPredicate, repoWideWindow, spliceFreshWindows } from './run-page-anchor.mjs';
 
 /** Per-process caches — ONE branch HEAD read and ONE repository-wide run page
  *  per branch per guard run, whatever the number of workflows. */
@@ -5943,12 +5943,17 @@ function anchorIo() {
       }
       return REPO_RUN_PAGES.get(key);
     },
+    branchlessPage: (repo, workflow, k) => branchlessPage(repo, workflow, k),
+    note: (line) => console.log(line),
   };
 }
 
-/** Applies the anchors to one cross-checked branch page. Returns the page
- *  unchanged when every anchor that applies holds; THROWS `stale page — …`
- *  when one does not. Exported so the measured stale page is a test case. */
+/** Applies the anchors to one cross-checked branch page. Returns
+ *  `{ runs, pageFull, gapBelow }`: the page unchanged when every anchor that
+ *  applies holds. ⏱ 2026-09-28: a page proven stale is no longer simply refused
+ *  — it is REPLACED by the fresh windows when they can stand in for it
+ *  (`spliceIfStale`, below), and THROWS `stale page — …` only when they cannot.
+ *  Exported so the measured stale pages are test cases. */
 export async function anchoredBranchPage(repo, workflow, branch, runs, pageFull, io = anchorIo()) {
   const what = `the run history of ${workflow}${branch ? ` on ${branch}` : ''}`;
   const floor = selfRunFloor(io.env, { repo, workflow, branch });
@@ -5956,7 +5961,6 @@ export async function anchoredBranchPage(repo, workflow, branch, runs, pageFull,
   if (branch && pushTriggersBranch(io.readWorkflow(workflow), branch)) {
     head = headAnchor(await io.branchHead(repo, branch), io.nowMs, branch);
   }
-  let cross = null;
   // THE CROSS-READ, AT REPOSITORY GRAIN. It is the weakest anchor, so it is
   // spent only on a page no stronger anchor holds — and it is ONE request per
   // branch for the whole guard run, not one per workflow: the repository-wide
@@ -5967,15 +5971,169 @@ export async function anchoredBranchPage(repo, workflow, branch, runs, pageFull,
   // branch (~33h on main, measured 2026-09-18), which is ample for the pages
   // it exists for — a page days or weeks behind. One-way, like every cross-read:
   // a run it does not hold can never make a page stale.
-  if (!floor && !head && needsCrossRead(runs, io.nowMs)) {
-    const body = await io.repoRunsPage(repo, branch);
-    if (!Array.isArray(body?.workflow_runs)) throw new Error(`the repository-wide run list${branch ? ` on ${branch}` : ''} came back without a workflow_runs array`);
-    const path = `.github/workflows/${workflow}`;
-    cross = { runs: body.workflow_runs.filter((r) => r?.path === path), why: `the repository-wide run list${branch ? ` on ${branch}` : ''}` };
+  // ⏱ 2026-09-28 — THREE windows now, and the first costs NOTHING: branchPage's
+  // narrow cross-check read is this workflow's own listing WITHOUT `branch=`
+  // (the listing that stayed fresh while every `branch=` one was days behind,
+  // run-page-anchor.mjs "THE CROSS-READ WAS STALE TOO"), so it stands in for the
+  // per_page=1 read it replaced at the same request count. Beside it, the
+  // repository list on the branch and the unfiltered repository list, one
+  // request each per guard run. They are read when a strong anchor REFUSES too:
+  // a fresh window that satisfies the refused anchor is the fresh source.
+  const strong = judgeRunPage(runs, { what, floor, head, nowMs: io.nowMs });
+  const predicate = (r) => !branch || r?.head_branch === branch;
+  const windows = !strong.ok || (!floor && !head && needsCrossRead(runs, io.nowMs)) ? await freshWindows(repo, workflow, branch, predicate, io) : [];
+  const deepen = branch && io.branchlessPage ? (k) => io.branchlessPage(repo, workflow, k) : null;
+  return spliceIfStale(runs, pageFull, windows, { what, floor, head, io, deepen, predicate });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-28 · A STALE PAGE IS GRADED ON THE FRESH SOURCE, OR NOT AT ALL.
+// Main CI 36409128416 attempt 2: six duties RED on ops-watch.yml's page ending
+// 2026-09-25 while ops-watch had succeeded at 02:17Z; at 11:06Z the same page
+// ended 2026-09-20 and ci.yml's 2026-09-24 (the measurement is in
+// run-page-anchor.mjs). Every read of a run listing in this file — the shared
+// branch page and BOTH targeted fallbacks (`ghNewestRun`, `unitRunsPage`) —
+// now goes through `spliceIfStale`:
+//   · not proven stale                → the page, exactly as before;
+//   · proven stale, window contiguous → the page joined to the fresh window;
+//   · proven stale, a gap below it    → the branchless window is paged deeper
+//     (at most BRANCHLESS_PAGES pages, only on a stale day) until it reaches the
+//     page; still a gap → the fresh window alone, with `gapBelow`, and a
+//     consumer that cannot find its answer in it throws `StaleGap`, which is
+//     `unreadable` at every call site — never FAILING;
+//   · a refused self-run or branch-head anchor the fresh result does not
+//     satisfy either → the refusal, unchanged.
+// One refinement: a whole-run RED-SINCE row whose newest SUCCESS is inside the
+// fresh window needs no failure from the gap, because any failure there is
+// older than that success (`redSincePair`).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Pages of this workflow's branchless listing read, at most, to close a gap
+ *  on a stale day: 500 runs, ~12 days of ops-watch. Never read on a fresh day. */
+export const BRANCHLESS_PAGES = 5;
+
+/** Per-process memo of the branchless listing, page by page. */
+const BRANCHLESS = new Map();
+
+/** IMPURE. This workflow's listing WITHOUT `branch=`, one page of 100. Page 1
+ *  is branchPage's narrow read, so the anchor reuses it for free. */
+function branchlessPage(repo, workflow, k) {
+  const key = `${repo}|${workflow}|${k}`;
+  if (!BRANCHLESS.has(key)) {
+    BRANCHLESS.set(key, ghJson(`/repos/${repo}/actions/workflows/${encodeURIComponent(workflow)}/runs?per_page=${RUN_PAGE_WIDE}${k > 1 ? `&page=${k}` : ''}`));
   }
+  return BRANCHLESS.get(key);
+}
+
+/** A stale page's fresh window did not hold the answer: `unreadable`, printed. */
+class StaleGap extends Error {
+  constructor(gap) {
+    super(gap.why);
+    this.floorId = gap.floorId;
+  }
+}
+
+/** IMPURE. The windows onto one workflow's question: its own branchless listing
+ *  (when the page is branch-filtered and the I/O has one), the repository list
+ *  on the branch, and the unfiltered repository list — each memoised. */
+async function freshWindows(repo, workflow, branch, predicate, io) {
+  const out = [];
+  if (branch && io.branchlessPage) out.push(repoWideWindow(await io.branchlessPage(repo, workflow, 1), { predicate, why: `${workflow}'s own run list without \`branch=\`` }));
+  if (branch) out.push(repoWideWindow(await io.repoRunsPage(repo, branch), { workflow, predicate, why: `the repository-wide run list on ${branch}` }));
+  out.push(repoWideWindow(await io.repoRunsPage(repo, null), { workflow, predicate, why: 'the unfiltered repository-wide run list' }));
+  return out;
+}
+
+/** Judges a page against its anchors and windows. A page proven stale is
+ *  replaced by the fresh windows — paged deeper while a gap remains and
+ *  `deepen` can — when the result satisfies every anchor the page refused;
+ *  otherwise the page's own refusal is thrown. One printed line when replaced.
+ *  🔴 THE REPLACEMENT IS NEVER DEEPER THAN THE PAGE IT REPLACES: the newest
+ *  `width` runs, exactly what a fresh page of that query would hold. Measured
+ *  11:20Z 2026-09-28: the joined history reached back 466.8h where a fresh page
+ *  reaches ~200h, and duty.failure-ledger (a weekly job, `firstDue` 2026-10-03)
+ *  read "no success in 466.8h" — a red no fresh page could produce, because
+ *  that row's bootstrap is stated against the page's depth. */
+async function spliceIfStale(runs, pageFull, windows, { what, floor, head, io, deepen = null, predicate = () => true, width = RUN_PAGE_WIDE }) {
+  const cross = windows.length ? { runs: windows.flatMap((w) => w.runs), why: windows.map((w) => w.why).join(' with ') } : null;
   const verdict = judgeRunPage(runs, { what, floor, head, cross, nowMs: io.nowMs });
-  if (!verdict.ok) throw new Error(verdict.why);
-  return { runs, pageFull };
+  if (verdict.ok) return { runs, pageFull, gapBelow: null };
+  if (!cross) throw new Error(verdict.why);
+  let spliced;
+  try {
+    spliced = spliceFreshWindows(runs, windows, { what });
+    // Page the branchless listing deeper while a gap remains — stale days only.
+    const bodies = [];
+    for (let k = 2; spliced.gapBelow && spliced.runs.length < width && deepen && k <= BRANCHLESS_PAGES; k++) {
+      const prev = k === 2 ? await deepen(1) : bodies[bodies.length - 1];
+      if (!Array.isArray(prev?.workflow_runs) || prev.workflow_runs.length < RUN_PAGE_WIDE) break; // the listing ended
+      bodies.push(await deepen(k));
+      const all = { workflow_runs: [...(await deepen(1)).workflow_runs, ...bodies.flatMap((b) => b?.workflow_runs ?? [])] };
+      const deeper = repoWideWindow(all, { predicate, why: windows[0].why });
+      spliced = spliceFreshWindows(runs, [deeper, ...windows.slice(1)], { what });
+    }
+  } catch {
+    throw new Error(verdict.why);
+  }
+  if (!judgeRunPage(spliced.runs, { what, floor, head, nowMs: io.nowMs }).ok) throw new Error(verdict.why);
+  let newest = spliced.runs.filter((r) => r?.updated_at).sort((a, b) => b.id - a.id);
+  let gapBelow = spliced.gapBelow;
+  let full = gapBelow ? true : pageFull;
+  // A full page's worth of fresh runs IS a fresh page: no gap below it matters
+  // that a fresh page would not also have had.
+  if (newest.length >= width) [newest, gapBelow, full] = [newest.slice(0, width), null, true];
+  const fresh = newest.sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
+  (io.note ?? console.log)(
+    `⬜  STALE PAGE, A FRESH WINDOW CARRIED THE READ: ${verdict.why.split('. GitHub served')[0]}. Graded instead on ${fresh.length} run(s): ` +
+      (gapBelow
+        ? `the fresh window alone, back to run ${gapBelow.floorId}; a question it cannot answer is UNREAD, not a finding.`
+        : `the newest ${fresh.length} of the page joined to the fresh window, one contiguous history no deeper than a fresh page.`),
+  );
+  return { runs: fresh, pageFull: full, gapBelow };
+}
+
+/** IMPURE. A targeted fallback page (`qs` is its filter string), anchored the
+ *  same way — its own filters applied to the same three windows, the first of
+ *  which is already fetched. A filter the windows cannot apply leaves the page
+ *  as it was. */
+export async function anchoredPage(repo, workflow, qs, runs, pageFull, what, io = anchorIo()) {
+  const predicate = runQueryPredicate(qs);
+  if (!predicate || !needsCrossRead(runs, io.nowMs)) return { runs, pageFull, gapBelow: null };
+  const branch = new URLSearchParams(qs).get('branch');
+  const windows = await freshWindows(repo, workflow, branch, predicate, io);
+  const deepen = branch && io.branchlessPage ? (k) => io.branchlessPage(repo, workflow, k) : null;
+  return spliceIfStale(runs, pageFull, windows, { what, floor: null, head: null, io, deepen, predicate, width: UNIT_PAGE });
+}
+
+/** IMPURE. The targeted newest-run read, anchored: the reconciled answer when
+ *  its page is not proven stale, else the newest run of the fresh window. */
+export async function anchoredNewest(repo, workflow, qs, wide, newest, what, io = anchorIo()) {
+  const runs = (wide?.workflow_runs ?? []).filter((r) => r?.updated_at);
+  const got = await anchoredPage(repo, workflow, qs, runs, false, what, io);
+  if (got.runs === runs) return newest;
+  const hit = newestOnPage(got.runs);
+  if (!hit && got.gapBelow) throw new StaleGap(got.gapBelow);
+  return hit;
+}
+
+/** PURE. A unit scan that ran off the bottom of a fresh window without a
+ *  success has no answer: the success may be in the gap. */
+export function gapCheckedScan(entries, pageFull, gapBelow) {
+  if (gapBelow && !entries.some((e) => e.c?.verdict === 'success')) throw new StaleGap(gapBelow);
+  return { entries, pageFull };
+}
+
+/** The two halves of a whole-run RED-SINCE read. A failure the fresh window
+ *  does not hold is older than a success it does, so it cannot be the newest
+ *  decisive run, and the pair is graded without it. */
+export async function redSincePair(newest) {
+  const success = await newest('success');
+  try {
+    return { success, failure: await newest('failure') };
+  } catch (e) {
+    if (e instanceof StaleGap && success && success.id >= e.floorId) return { success, failure: null };
+    throw e;
+  }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
