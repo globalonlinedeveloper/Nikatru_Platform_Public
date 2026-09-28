@@ -227,6 +227,13 @@ class _DestructiveConfirmDialogState extends State<DestructiveConfirmDialog> {
               key: widget.secretFieldKey,
               controller: widget.secret,
               obscureText: true,
+              // WCAG 2.2 SC 3.3.8 (audit D15): the re-authentication must not
+              // be a memory test. `password`, not `newPassword` — the secret is
+              // the account's CURRENT password (the brick's delete-account is
+              // the only caller), so the manager should fill, not generate.
+              // tooling/ci/assert-a11y-primitives.mjs refuses an obscured field
+              // with no hint.
+              autofillHints: const <String>[AutofillHints.password],
               enabled: !_busy,
               decoration: InputDecoration(labelText: widget.secretLabel),
             ),

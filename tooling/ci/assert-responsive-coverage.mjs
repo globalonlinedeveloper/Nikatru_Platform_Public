@@ -633,8 +633,13 @@ const REQUIRED_COVERAGE = [
     // files, RAISED IN THE CHANGE THAT EARNED THEM: PlanStatusTile,
     // PlansLoadGate, PlansLoading and RowChevron moved into the chassis with
     // test/honest_states_test.dart, which pumps each at all three classes.
+    // ⏱ RAISED 2026-09-28 · ST-T8a (ST-Y5): `widthTestFiles` 25 → 26, surfaces
+    // unchanged. `test/web_semantics_test.dart` moved in from the app with
+    // `enableWebSemantics`, and this corpus is every .dart under the package's
+    // test/ — so R14b would have cleared a floor left at 25. Read off the
+    // per-root line, `— 26 file(s)`.
     surfaces: 25,
-    widthTestFiles: 25,
+    widthTestFiles: 26,
     coveredSurfaces: 25,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +

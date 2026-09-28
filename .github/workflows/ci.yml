@@ -793,6 +793,14 @@ jobs:
       - name: Every reachable surface has an accessibility sweep, and every sweep a surface
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-a11y-coverage.mjs
+      # why beside the sweep accounting above: that guard counts which SURFACES
+      # carry a sweep; this one holds three rules over every PRIMITIVE in every
+      # tree — a tap target takes the keyboard, a password field autofills, and
+      # every stamped web app turns its screen-reader tree on. A sweep walks the
+      # router and never reaches a modal sheet; a static read reaches every file.
+      - name: Every tap target takes the keyboard, every password field autofills, every web app has a screen-reader tree
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-a11y-primitives.mjs
       - name: A first-run gate is found by its CONTROL, never by its widget type
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-modal-detection.mjs

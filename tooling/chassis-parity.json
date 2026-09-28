@@ -144,6 +144,13 @@
           "on": "2026-09-28",
           "callSiteDelta": -32,
           "measured": "ST-T2 (U5/U7) after the parity STOP on run 36387855557: the honest async states moved into packages/chassis_screens instead of growing the forks. Measured with wc -l after dart format (Flutter 3.47.5), each fork against its U5/U7 version at 26d41002: features/monetization/manage_plan_screen.dart 350 -> 322 (the three-way plan-status row is PlanStatusTile, PlanStatus.of), features/monetization/paywall_screen.dart 406 -> 373 (the once-only offerings ask, its loading flag and the repaint listener are PlansLoadGate; the spinner is PlansLoading; its dart:async import went with the ask), features/settings/settings_screen.dart 2022 -> 2009 (the actionable-only chevron is RowChevron) — -74 in the forks, +42 for this adapter file that binds the chassis states to this app's AsyncValue and strings, net -32. manage_plan and settings end exactly at their ceilings (322, 2009); paywall ends 2 below and its ceiling is lowered 375 -> 373 to bank the shrink. No ceiling rose."
+        },
+        {
+          "file": "main.dart",
+          "piece": "enableWebSemantics",
+          "on": "2026-09-28",
+          "callSiteDelta": -87,
+          "measured": "THE PIECE IS A FUNCTION, NOT A SCREEN — the authErrorText precedent above. ST-Y5 (audit D26): `apps/subscriptiontracker/lib/core/a11y/web_semantics.dart` (87 lines at e0beeb14, wc -l) moved verbatim with `git mv` to `packages/chassis_screens/lib/shell/web_semantics.dart`, where `bootstrapNikatru` now calls it for every stamped app; its unit tests moved with it to `packages/chassis_screens/test/web_semantics_test.dart`. `main.dart` stays 208 -> 208 lines: its relative import became the package import in place and its `enableWebSemantics()` call is unchanged (the app is not on `bootstrapNikatru` yet — ST-K1). So the delta is 0 - 87. Counted with wc -l; the import swap is one line for one line and cannot move dart format."
         }
       ],
       "_adoptedWhy": "⏱ 2026-09-15 · [ADR 086] ONE PIECE AT A TIME: the app now imports the package in the files listed here; tooling/ci/assert-chassis-parity.mjs holds that list equal to the scan and every callSiteDelta negative ([ADR 066]). The row is deleted when the last template file is adopted.",
