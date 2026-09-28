@@ -17,7 +17,34 @@ class DemoData {
   /// different screen. The MIXED case is exercised by the tests instead.
   static const String demoCurrency = 'USD';
 
-  static List<Subscription> subscriptions() => <Subscription>[
+  /// ⏱ 2026-09-28 · ST-T3b (ST-E1). Every demo row carries a first charge
+  /// four cycles before its stored renewal, so the payment history the seed
+  /// client DERIVES from it (`SeedApiClient.getPaymentHistory`, by the
+  /// platform's renewal rule) is a real sequence of charge dates — it used to
+  /// be four monthly rows fabricated for every row, yearly ones included.
+  static List<Subscription> subscriptions() =>
+      _rows().map(_withFirstCharge).toList();
+
+  static Subscription _withFirstCharge(Subscription s) {
+    // Four cycles before the row's NEXT REAL charge, so the derived history is
+    // exactly the four most recent charges on any day the demo is opened —
+    // the length the detail layout (and its a11y sweeps) was measured at.
+    final Cadence c = s.billingCadence;
+    final DateTime next = s.nextCharge(DateTime.now());
+    final int months = c.unit == CycleUnit.year ? c.every * 48 : c.every * 4;
+    final DateTime month = DateTime(next.year, next.month - months, 1);
+    final int last = DateTime(month.year, month.month + 1, 0).day;
+    final DateTime first = DateTime(
+      month.year,
+      month.month,
+      next.day < last ? next.day : last,
+    );
+    return s.patched(<String, dynamic>{
+      'first_charge_on': Subscription.dateOnly(first),
+    });
+  }
+
+  static List<Subscription> _rows() => <Subscription>[
     Subscription(
       id: '1',
       name: 'Netflix',

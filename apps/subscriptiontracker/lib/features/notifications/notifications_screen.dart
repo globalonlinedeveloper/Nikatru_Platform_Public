@@ -9,7 +9,7 @@ import '../../core/format/sub_math.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart'
-    show subscriptiontrackerNotificationServiceProvider;
+    show nowProvider, subscriptiontrackerNotificationServiceProvider;
 import '../shared/async_gate.dart';
 
 class NotificationsScreen extends ConsumerWidget {
@@ -151,31 +151,33 @@ class NotificationsScreen extends ConsumerWidget {
                       l10n.notifications,
                       style: text.title.copyWith(fontSize: 22),
                     ),
-                    Semantics(
-                      button: true,
+                    // ⏱ ST-T3b: `FocusableTap`, not a bare `GestureDetector`
+                    // under `Semantics(button:)` — that announced a button a
+                    // keyboard could not reach. It hid behind a one-control
+                    // sweep until ST-M3's rolled dates put Tab-able cards
+                    // beside it (keyboard_sweep_test `/notifications`).
+                    FocusableTap(
                       label: l10n.close,
-                      child: GestureDetector(
-                        onTap: () => _close(context),
-                        child: Container(
-                          width: 48,
-                          height: 48,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
+                      onTap: () => _close(context),
+                      child: Container(
+                        width: 48,
+                        height: 48,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: isLight
+                              ? AppColors.surface
+                              : scheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
                             color: isLight
-                                ? AppColors.surface
-                                : scheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: isLight
-                                  ? AppColors.line
-                                  : scheme.outlineVariant,
-                            ),
+                                ? AppColors.line
+                                : scheme.outlineVariant,
                           ),
-                          child: Icon(
-                            Icons.close,
-                            size: 18,
-                            color: isLight ? AppColors.ink : scheme.onSurface,
-                          ),
+                        ),
+                        child: Icon(
+                          Icons.close,
+                          size: 18,
+                          color: isLight ? AppColors.ink : scheme.onSurface,
                         ),
                       ),
                     ),
@@ -233,7 +235,11 @@ class NotificationsScreen extends ConsumerWidget {
                     // ever have been derived. Every row below is now computed from the
                     // subscriptions actually held, and anything that cannot be computed is not
                     // shown at all.
-                    final DateTime now = DateTime.now();
+                    // ⏱ ST-T3b (ST-M3): the injectable clock, because the
+                    // due-soon cards now come from ROLLED dates, so which rows
+                    // fall in the next seven days depends on the day — a sweep
+                    // that counts this screen's controls pins it (`nowProvider`).
+                    final DateTime now = ref.watch(nowProvider)();
 
                     final List<Subscription> dueSoon =
                         subs.where((Subscription x) {
@@ -280,7 +286,7 @@ class NotificationsScreen extends ConsumerWidget {
                                 ),
                           l10n.notifChargeOn(
                             money.format(x.price),
-                            renewalDate.format(x.nextRenewal),
+                            renewalDate.format(x.nextCharge(now)),
                           ),
                         ),
                       if (flaggedUnused.isNotEmpty)

@@ -1,5 +1,5 @@
 import 'package:nikatru_core/nikatru_core.dart'
-    show Money, MoneyBag, MoneyFormatter;
+    show Cadence, Money, MoneyBag, MoneyFormatter;
 
 /// A plan's NORMALISED monthly share: a monthly plan's price, or a yearly
 /// plan's price divided by twelve (`Money.dividedBy`, half away from zero, so
@@ -23,6 +23,17 @@ extension type const MonthlyShare._(Money _amount) {
 
   /// A yearly plan's share is a twelfth of its price.
   MonthlyShare.ofYearly(Money price) : this._(price.dividedBy(12));
+
+  /// Any cadence's share: price x (charges per year) / 12, rounded ONCE
+  /// (half away from zero). Monthly and yearly land exactly on [ofMonthly]
+  /// and [ofYearly] — 12/12 and 1/12 — so the two plans every row had before
+  /// ST-T3b print what they printed.
+  factory MonthlyShare.of(Money price, Cadence cadence) {
+    final ({int numerator, int denominator}) r = cadence.chargesPerYear;
+    final int over = r.denominator * 12;
+    if (r.numerator == over) return MonthlyShare.ofMonthly(price);
+    return MonthlyShare._(price.times(r.numerator).dividedBy(over));
+  }
 
   /// Per-currency sum; the result is a PER-MONTH total and is printed only
   /// under a per-month label.

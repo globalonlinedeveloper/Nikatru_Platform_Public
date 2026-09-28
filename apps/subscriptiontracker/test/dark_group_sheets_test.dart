@@ -63,7 +63,10 @@ const String kDefaultCurrencyCode = 'USD';
 const MoneyFormatter kMoney = MoneyFormatter('en');
 
 Subscription _sub() => Subscription(
-  id: 'sub-1',
+  // '1' is the seed's own Netflix: "Confirm cancel" now PATCHes the row
+  // (ST-E3, mark cancelled) and a row the backing store does not hold is a
+  // 404 — the old hard DELETE of an unknown id silently succeeded.
+  id: '1',
   name: 'Netflix',
   category: 'Streaming',
   price: const Money(1500, kDefaultCurrencyCode),
@@ -154,19 +157,21 @@ BoxDecoration _sheetSurface(WidgetTester tester) {
   return hits.single;
 }
 
-/// The two cycle buttons, in order — Monthly (selected by default) then Yearly.
-/// 14 is their own corner radius and is unique in the add sheet (the handle is
-/// 4, the glyph tiles 13, the fields and the submit button 16, the sheet 28).
-List<BoxDecoration> _cycleButtons(WidgetTester tester) {
-  final List<BoxDecoration> hits = _decorations(tester)
-      .where((BoxDecoration d) => d.borderRadius == BorderRadius.circular(14))
-      .toList();
-  expect(
-    hits,
-    hasLength(2),
-    reason: 'expected exactly the Monthly/Yearly pair at radius 14',
-  );
-  return hits;
+/// The cadence control's field decoration.
+///
+/// ⏱ 2026-09-28 · ST-T3b (ST-E4/E2). This found "the Monthly/Yearly pair at
+/// radius 14" — two hand-rolled `GestureDetector`s that could not say weekly
+/// and could not be reached by Tab. The cadence is a stock
+/// `DropdownButtonFormField` now, wearing the SAME field skin as every other
+/// field on the sheet, so the property is that it rests on [raised].
+InputDecoration _cycleField(WidgetTester tester, AppLocalizations l10n) {
+  final Iterable<InputDecorator> hits = tester
+      .widgetList<InputDecorator>(find.byType(InputDecorator))
+      .where(
+        (InputDecorator d) => d.decoration.labelText == l10n.fieldLabelCycle,
+      );
+  expect(hits, hasLength(1), reason: 'expected exactly one cadence field');
+  return hits.single.decoration;
 }
 
 /// The 40×4 drag handle.
@@ -227,12 +232,8 @@ void main() {
             'frozen legacy app the owner eyeballs.',
       );
       expect(_dragHandle(tester).color, AppColors.line);
-      // Monthly is selected on open: gradient, no flat fill. Yearly carries the
-      // resting fill, which is the one the dark branch has to move.
-      final List<BoxDecoration> cycle = _cycleButtons(tester);
-      expect(cycle[0].gradient, isNotNull);
-      expect(cycle[0].color, isNull);
-      expect(cycle[1].color, AppColors.surface);
+      // The cadence field rests on the same fill as every field (ST-T3b).
+      expect(_cycleField(tester, en).fillColor, AppColors.surface);
       expect(
         _styleOf(tester, _headingSized(en.addSubscriptionTitle, 22)).color,
         AppColors.ink,
@@ -274,21 +275,12 @@ void main() {
       );
       expect(_dragHandle(tester).color, dark.outlineVariant);
 
-      final List<BoxDecoration> cycle = _cycleButtons(tester);
       expect(
-        cycle[0].gradient,
-        isNotNull,
-        reason:
-            'ON-GRADIENT STAYS: the selected button is the brand gradient in '
-            'both brightnesses. The gradient IS its background, so it does not '
-            'inherit one, and the white on it is the same decision either way.',
-      );
-      expect(
-        cycle[1].color,
+        _cycleField(tester, en).fillColor,
         dark.surfaceContainerHighest,
         reason:
             'A control resting on the sheet takes the same slot cardDecoration '
-            'and RowCard use for a card resting on a page.',
+            'and RowCard use (ST-T3b: the cadence is a field now).',
       );
 
       // 🔴 THE HALF THAT WOULD HAVE REGRESSED IN SILENCE. AppText.title carries

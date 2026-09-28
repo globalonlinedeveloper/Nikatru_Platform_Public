@@ -15,6 +15,7 @@ import '../../l10n/app_localizations.dart';
 import '../../state/subscriptions_controller.dart';
 import '../add/add_subscription_sheet.dart';
 import '../shared/async_gate.dart' show dataFailedBodyFor;
+import '../shared/cadence_label.dart';
 import '../shared/painters.dart';
 import '../shared/widgets.dart';
 
@@ -581,9 +582,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                       ),
                     ),
                     Text(
-                      s.cycle == BillingCycle.yearly
-                          ? l10n.perYear
-                          : l10n.perMonth,
+                      cadenceCaption(l10n, s.cycle),
                       style: AppText.muted.copyWith(
                         fontSize: 10,
                         color: isLight

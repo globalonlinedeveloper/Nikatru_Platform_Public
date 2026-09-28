@@ -213,6 +213,9 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byKey(E2EKeys.addName), 'Hulu');
+    // ST-T3b (ST-E2): Add waits for a real price — a blank one used to save
+    // as 9.99 — so the failure path is reached with one typed.
+    await tester.enterText(find.byKey(E2EKeys.addPrice), '7.99');
     await tester.pumpAndSettle();
 
     final Finder submit = find.byKey(E2EKeys.addSubmit);

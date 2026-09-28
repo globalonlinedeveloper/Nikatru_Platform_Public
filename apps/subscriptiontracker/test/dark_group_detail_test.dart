@@ -327,19 +327,30 @@ void main() {
 
       // An icon-only button is UNUSABLE under a screen reader without one, so
       // an untranslated label is a Tamil user reaching a control that speaks
-      // English. (`more_horiz` was a stub and is gone — ST-U5, B14.)
+      // English. (`more_horiz` opens the lifecycle menu — ST-T3b, ST-E3.)
       expect(find.bySemanticsLabel(ta.back), findsOneWidget);
       expect(find.bySemanticsLabel('Back'), findsNothing);
+      expect(find.bySemanticsLabel(ta.moreOptions), findsOneWidget);
       expect(find.bySemanticsLabel('More options'), findsNothing);
       handle.dispose();
     });
   });
 
   group('detail: the date tables are gone', () {
-    // Netflix renews 2026-07-22; the seed generates four prior payments on the
-    // 22nd of each preceding month.
-    final DateTime renewal = DateTime(2026, 7, 22);
-    final DateTime firstPayment = DateTime(2026, 6, 22);
+    // ⏱ 2026-09-28 · ST-T3b. Netflix is STORED as renewing 2026-07-22; the
+    // screen shows its ROLLED next charge (ST-M3), and its history is DERIVED
+    // from the seed's first charge by the platform rule (ST-E1) — this used
+    // to pin a fabricated June row. The newest charge heads the list.
+    final Subscription netflix = DemoData.subscriptions().firstWhere(
+      (Subscription s) => s.id == kNetflixId,
+    );
+    final DateTime today = DateTime.now();
+    final DateTime renewal = netflix.nextCharge(today);
+    final DateTime firstPayment = RenewalSchedule.rollForward(
+      netflix.firstChargeOn!,
+      netflix.cycle!,
+      DateTime(today.year, today.month, today.day),
+    ).crossings.last;
 
     for (final String code in <String>['en', 'ta']) {
       testWidgets('[$code] next charge is MMMd and history is yMMMd', (

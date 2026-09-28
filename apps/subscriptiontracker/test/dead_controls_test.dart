@@ -11,7 +11,10 @@
 //   · B11 — the demo client created every new row with `usedPct: 50` and
 //     `usageNote: 'Just added.'`: fabricated usage for a plan added a second ago.
 //
-// RED CONTROLS: put the `_iconButton(Icons.more_horiz, …)` back; pass
+// ⏱ 2026-09-28 · ST-T3b (ST-E3): "More options" is BACK, with the row's
+// lifecycle menu behind it, so B14 now asserts the control DOES something.
+//
+// RED CONTROLS: make `more_horiz`'s callback a no-op again; pass
 // `dot: true` again; draw the chevron unconditionally; restore `usedPct: 50`.
 // Each turns its own case red.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -38,18 +41,22 @@ Finder _tapFor(String label) => find
     .first;
 
 void main() {
-  testWidgets(
-    'B14 · the detail hero has no "More options" that opens nothing',
-    (WidgetTester tester) async {
-      final SemanticsHandle semantics = tester.ensureSemantics();
-      await pumpAt(tester, kPhone, const SubscriptionDetailScreen(id: '1'));
-      expect(find.byIcon(Icons.more_horiz), findsNothing);
-      expect(find.bySemanticsLabel('More options'), findsNothing);
-      // The real exit is still there.
-      expect(find.bySemanticsLabel((await _en()).back), findsOneWidget);
-      semantics.dispose();
-    },
-  );
+  testWidgets('B14 · the detail hero "More options" opens the lifecycle menu', (
+    WidgetTester tester,
+  ) async {
+    final SemanticsHandle semantics = tester.ensureSemantics();
+    await pumpAt(tester, kPhone, const SubscriptionDetailScreen(id: '1'));
+    final AppLocalizations l10n = await _en();
+    expect(find.bySemanticsLabel(l10n.moreOptions), findsOneWidget);
+    // The real exit is still there.
+    expect(find.bySemanticsLabel(l10n.back), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.pumpAndSettle();
+    expect(find.text(l10n.actionPause), findsOneWidget);
+    expect(find.text(l10n.actionMarkCancelled), findsOneWidget);
+    expect(find.text(l10n.actionDeleteFromTracker), findsOneWidget);
+    semantics.dispose();
+  });
 
   testWidgets('B6 · the notification bell carries no always-on unread dot', (
     WidgetTester tester,
