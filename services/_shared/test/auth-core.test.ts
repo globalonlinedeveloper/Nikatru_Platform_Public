@@ -17,7 +17,7 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 // The auth decisions every Worker makes the same way, tested ONCE — and, because
 // `services/_shared/test/**` is in both Workers' `vitest.config.ts` include, run
-// in BOTH lanes (`worker-platform` and `worker-subscriptiontracker-api` in ci.yml). That is
+// in BOTH Workers' legs of lane-workers.yml's `worker` job. That is
 // the point: before [ADR 067] decision 2 these declarations existed three times
 // and each carrier's suite could only ever have tested its own copy.
 //

@@ -77,7 +77,9 @@
       "config.nikatru.com"
     ],
     "dsnSecret": "GLITCHTIP_DSN",
-    "_dsnSecretWhy": "The GitHub secret that holds THIS Worker's crash-sink DSN, read by tooling/ci/worker-set.mjs --for-deploy, which refuses a row without one. The platform Worker's deploy passes GLITCHTIP_DSN today (deploy-workers.yml). Added 2026-09-26, O-SERVICE-KIT-UNBUILT (E-a1)."
+    "_dsnSecretWhy": "The GitHub secret that holds THIS Worker's crash-sink DSN, read by tooling/ci/worker-set.mjs --for-deploy, which refuses a row without one. The platform Worker's deploy passes GLITCHTIP_DSN today (deploy-workers.yml). Added 2026-09-26, O-SERVICE-KIT-UNBUILT (E-a1).",
+    "cors": "every-app",
+    "_corsWhy": "Which browser origins this Worker answers: every app's web build calls it, so every catalogue app's origin, exactly, and no localhost. Read by tooling/ci/assert-cors-allowlist.mjs, which derives the Worker's required origins from it and fails the Worker if src/middleware/cors.ts binds services/_shared/src/cors.ts with a different scope. Added 2026-09-27, O-SERVICE-KIT-UNBUILT (E-b1)."
   },
   "appWorkers": [
     {
@@ -118,6 +120,8 @@
       ],
       "dsnSecret": "GLITCHTIP_DSN",
       "_dsnSecretWhy": "The GitHub secret that holds THIS Worker's crash-sink DSN, read by tooling/ci/worker-set.mjs --for-deploy, which refuses a row without one. App #1 keeps the one it deploys with today, GLITCHTIP_DSN; a second app's row names its own secret, so its crashes are filed under its own GlitchTip project. Added 2026-09-26, O-SERVICE-KIT-UNBUILT (E-a1).",
+      "cors": "own-app",
+      "_corsWhy": "Which browser origins this Worker answers: its own app's origin, exactly, plus any localhost port (the recorded per-app trade for the flutter drive -d web-server harness). Read by tooling/ci/assert-cors-allowlist.mjs, which fails the Worker if src/middleware/cors.ts binds a different scope; provision-backend.mjs step [6] writes it into a new app's row. Added 2026-09-27, O-SERVICE-KIT-UNBUILT (E-b1).",
       "clientBasePath": "/v1",
       "_clientBasePathWhy": [
         "Subly's Dart seam is constructed with `baseUrl: '${AppConfig.apiBaseUrl}/v1'`",
@@ -335,9 +339,9 @@
       "and already refuses an origin nothing justifies. Declaring one literal for it here would replace",
       "a derivation with a copy — the defect this block exists to close, committed in the other",
       "direction. The two live lists deliberately DIFFER (services/platform carries",
-      "http://localhost:3000 and services/subscriptiontracker-api does not, because subscriptiontracker-api's middleware allows any",
-      "localhost by regex and platform's has none); that asymmetry is recorded at",
-      "services/subscriptiontracker-api/src/middleware/cors.ts:20-27 and enforced by that guard's EXTRAS.",
+      "http://localhost:3000 and services/subscriptiontracker-api does not, because an own-app Worker allows any",
+      "localhost by regex and the every-app platform Worker does not); that asymmetry is recorded at",
+      "services/_shared/src/cors.ts:35-41, keyed by each row's `cors` scope, and enforced by that guard's EXTRAS.",
       "",
       "GRAMMAR of `at`, and it is the entire addressing scheme:",
       "  vars.<NAME>                      -> cfg.vars[<NAME>]",

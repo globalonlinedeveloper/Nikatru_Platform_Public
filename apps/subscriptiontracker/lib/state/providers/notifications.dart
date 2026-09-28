@@ -7,6 +7,8 @@
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show PersistedValue;
 import 'package:nikatru_notifications/nikatru_notifications.dart';
 
 import '../../core/app_config.dart';
@@ -94,38 +96,26 @@ const int kDailyReminderId = 1;
 /// carries it as an open question for P2.6b, where the settings surface merges
 /// and one of the two toggles has to be the one the user sees.
 class RemindersEnabledController extends Notifier<bool> {
-  bool _userChose = false;
+  /// Hydration never overwrites a live choice: [PersistedValue] says why.
+  late final PersistedValue<core.KeyValueStore, bool> _stored =
+      PersistedValue<core.KeyValueStore, bool>(
+        open: () => ref.read(keyValueStoreProvider.future),
+        read: (kv) => kv.read(_remindersKey),
+        write: (kv, raw) => kv.write(_remindersKey, raw),
+        decode: (raw) => raw == 'true',
+        encode: (on) => on ? 'true' : 'false',
+        apply: (on) => state = on,
+      );
 
   @override
   bool build() {
-    _hydrate();
+    // Unreadable store ⇒ reminders off. Never throw at launch.
+    _stored.hydrate();
     return false;
   }
 
-  Future<void> _hydrate() async {
-    try {
-      final core.KeyValueStore kv = await ref.read(
-        keyValueStoreProvider.future,
-      );
-      final bool stored = (await kv.read(_remindersKey)) == 'true';
-      if (_userChose) return; // the user got there first — never clobber
-      state = stored;
-    } catch (_) {
-      // Unreadable store ⇒ reminders off. Never throw at launch.
-    }
-  }
-
   Future<void> set(bool on) async {
-    _userChose = true;
-    state = on;
-    try {
-      final core.KeyValueStore kv = await ref.read(
-        keyValueStoreProvider.future,
-      );
-      await kv.write(_remindersKey, on ? 'true' : 'false');
-    } catch (_) {
-      // Best-effort: a failed write only means the choice resets next launch.
-    }
+    await _stored.set(on);
     // 🔴 OFF IS A PROMISE ABOUT THE OS, NOT ABOUT A BOOLEAN. Until this line the
     // only route to `cancelAll` was `applyReminderChoice`, reachable from exactly
     // one `SwitchListTile.onChanged` — so ANY second writer of the flag set the
@@ -293,47 +283,30 @@ const String _lastNudgeShownKey = 'nikatru.last_nudge_shown_at';
 /// [core.CatchUpNudge] so every platform row — including the web row, which
 /// `kIsWeb` makes unreachable from a widget test — is decidable from a unit test.
 class CatchUpNudgeController extends Notifier<DateTime?> {
-  bool _marked = false;
+  /// A nudge shown while the read is in flight wins: see [PersistedValue].
+  late final PersistedValue<core.KeyValueStore, DateTime?> _stored =
+      PersistedValue<core.KeyValueStore, DateTime?>(
+        open: () => ref.read(keyValueStoreProvider.future),
+        read: (kv) => kv.read(_lastNudgeShownKey),
+        write: (kv, raw) => kv.write(_lastNudgeShownKey, raw),
+        decode: (raw) => raw == null ? null : DateTime.tryParse(raw),
+        // Stored in UTC and compared in local time by [core.CatchUpNudge]: an
+        // ISO-8601 string without a zone is ambiguous the moment the device
+        // travels, and this is exactly the family of bug that made a 09:00
+        // reminder fire at 14:30 IST.
+        encode: (at) => at!.toUtc().toIso8601String(),
+        apply: (at) => state = at,
+      );
 
   @override
   DateTime? build() {
-    _hydrate();
+    // Unreadable store ⇒ "never shown": at worst one extra nudge.
+    _stored.hydrate();
     return null;
   }
 
-  Future<void> _hydrate() async {
-    try {
-      final core.KeyValueStore kv = await ref.read(
-        keyValueStoreProvider.future,
-      );
-      final String? raw = await kv.read(_lastNudgeShownKey);
-      if (_marked) return; // a nudge shown while we were reading wins
-      if (raw == null) return;
-      final DateTime? parsed = DateTime.tryParse(raw);
-      if (parsed != null) state = parsed;
-    } catch (_) {
-      // Unreadable store ⇒ "never shown". The worst case is one extra nudge,
-      // which is strictly better than crashing at launch.
-    }
-  }
-
   /// Record that the nudge has been shown for the current occurrence.
-  Future<void> markShown(DateTime at) async {
-    _marked = true;
-    state = at;
-    try {
-      final core.KeyValueStore kv = await ref.read(
-        keyValueStoreProvider.future,
-      );
-      // Stored in UTC and compared in local time by [core.CatchUpNudge]: an
-      // ISO-8601 string without a zone is ambiguous the moment the device
-      // travels, and this is exactly the family of bug that made a 09:00
-      // reminder fire at 14:30 IST.
-      await kv.write(_lastNudgeShownKey, at.toUtc().toIso8601String());
-    } catch (_) {
-      // Best-effort: a failed write means at most one repeated nudge.
-    }
-  }
+  Future<void> markShown(DateTime at) => _stored.set(at);
 }
 
 final NotifierProvider<CatchUpNudgeController, DateTime?> catchUpNudgeProvider =

@@ -360,7 +360,7 @@ describe('E-a1 step [6] — the appWorkers row, derived from the stamped mounts'
     assert.deepEqual(row.hosts, ['probeapi-api.nikatru.com']);
     assert.equal(row.dsnSecret, 'GLITCHTIP_DSN_PROBEAPI');
     assert.equal(row.clientBasePath, '/v1');
-    assert.equal(Object.hasOwn(row, 'cors'), false, '`cors` is reserved for E-b1 and not written yet');
+    assert.equal(row.cors, 'own-app', 'the stamped cors.ts binds scope own-app, and assert-cors-allowlist holds the row to it');
     assert.deepEqual(
       row.routes.map((r) => [r.id, r.method, r.path, r.auth, r.owningFile, r.client.file, r.client.expression]),
       [

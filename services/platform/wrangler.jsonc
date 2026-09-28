@@ -64,13 +64,13 @@
     //   · the preview origin the note above claims is mirrored
     //     (subscriptiontracker-7qg.pages.dev) IS mirrored, exactly, in both configs.
     //   · localhost is NOT, because it is not the same question in the two
-    //     Workers. services/subscriptiontracker-api/src/middleware/cors.ts:38,57 allows ANY
-    //     localhost origin BY REGEX — a recorded per-app trade, because
+    //     Workers. An `own-app` Worker allows ANY localhost origin BY REGEX
+    //     (services/_shared/src/cors.ts:79,102) — a recorded per-app trade, because
     //     `flutter drive -d web-server` picks a random port that cannot be named
     //     in advance — so listing one here would assert something that config
-    //     does not need to carry. THIS Worker's middleware has no such regex:
-    //     `grep -n localhost services/platform/src/middleware/cors.ts` returns
-    //     NOTHING (measured 2026-09-08, exit 1), which is why the one port local
+    //     does not need to carry. THIS Worker binds scope `every-app`, which has
+    //     no such regex (src/middleware/cors.ts, held to the register's
+    //     servingWorker.cors by assert-cors-allowlist.mjs), so the one port local
     //     web dev actually uses has to be listed explicitly.
     //
     // 🔴 AND THE ASYMMETRY IS ENFORCED, IN BOTH DIRECTIONS, so this paragraph is
@@ -479,7 +479,7 @@
         "SUPABASE_URL": "https://auth-api.nikatru.com",
         // why: src/types.ts:413.
         "API_VERSION": "v1",
-        // why: src/middleware/cors.ts:22, copied from the top level. Web stays
+        // why: ../_shared/src/cors.ts:20, copied from the top level. Web stays
         // exactly as production's.
         "ALLOWED_ORIGINS": "https://nikatru.com,https://subscriptiontracker-7qg.pages.dev,http://localhost:3000",
         // why: src/routes/money.ts:97 — THIS is the sandbox money world. The

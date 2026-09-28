@@ -24,8 +24,8 @@
 // may carry a bare import. Node, tsc and esbuild all resolve a bare specifier by
 // walking up from the FILE that writes it, and there is no `node_modules` at
 // `services/_shared/`, at `services/`, or at the repo root — each Worker runs
-// its own `npm ci` in its own directory (`ci.yml` jobs `worker-subscriptiontracker-api` and
-// `worker-platform`; `pnpm-workspace.yaml` lists neither). Measured 2026-09-06
+// its own `npm ci` in its own directory (its leg of lane-workers.yml's `worker` job;
+// `pnpm-workspace.yaml` lists neither). Measured 2026-09-06
 // with a probe module importing `jose`:
 //     services/platform $ npx tsc --noEmit
 //     ../_shared/src/_probe.ts(1,27): error TS2307: Cannot find module 'jose'

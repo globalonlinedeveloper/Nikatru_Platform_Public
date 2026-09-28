@@ -93,18 +93,15 @@ export const SERVICES = 'services';
  */
 export const CORS_MODULES = new Map([
   [
-    'services/platform/src/middleware/cors.ts',
-    'the SHARED Worker\'s CORS middleware. It reads Origin to reflect it into ' +
+    'services/_shared/src/cors.ts',
+    'the ONE CORS middleware (O-SERVICE-KIT-UNBUILT, E-b1, 2026-09-27): every Worker binds it in its ' +
+      'own src/middleware/cors.ts with a policy and implements nothing, so a Worker file that reads ' +
+      'Origin or imports `hono/cors` again is a finding here. It reads Origin to reflect it into ' +
       '`Access-Control-Allow-Origin` when it is on the exact ALLOWED_ORIGINS list (owner decision ' +
-      '2026-07-25) and to answer an OPTIONS preflight 204. It grants nothing: every /v1 data route ' +
-      'behind it is Bearer-gated, and [ADR 020] records the allowlist as hygiene.',
-  ],
-  [
-    'services/subscriptiontracker-api/src/middleware/cors.ts',
-    'the per-app Worker\'s CORS middleware. Same job, delegated to `hono/cors` with an `origin` ' +
-      'callback (plus the recorded localhost exception for the `flutter drive -d web-server` ' +
-      'harness, whose port cannot be named in advance). It, too, decides only which CORS response ' +
-      'headers are emitted.',
+      '2026-07-25; plus any localhost port for an `own-app` Worker, the recorded trade for the ' +
+      '`flutter drive -d web-server` harness) and to answer an OPTIONS preflight 204. It grants ' +
+      'nothing: every /v1 data route behind it is Bearer-gated, and [ADR 020] records the allowlist ' +
+      'as hygiene.',
   ],
 ]);
 
