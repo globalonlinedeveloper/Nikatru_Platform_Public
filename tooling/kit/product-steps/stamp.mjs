@@ -10,7 +10,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { appYamlRel, catalogRowOf } from './tree.mjs';
+import { APPS_CATALOG, appYamlRel, catalogRowOf } from './tree.mjs';
 
 export const name = 'stamp';
 export const guard = 'node tooling/sites/regen.mjs --check (a stamp post-condition of tooling/kit/stamp-app.mjs)';
@@ -23,7 +23,7 @@ export function read(root, id) {
   const c = catalogRowOf(root, id);
   if (c.lost) return { lost: c.lost };
   if (c.row === null) {
-    return { state: 'NEXT', detail: `catalog/apps.json has no "${id}" row: the site chain has not rendered this app.yaml`, command, guard };
+    return { state: 'NEXT', detail: `${APPS_CATALOG} has no "${id}" row: the site chain has not rendered this app.yaml`, command, guard };
   }
   const composer = join(root, ...COMPOSER_REL.split('/'));
   if (!existsSync(composer)) {

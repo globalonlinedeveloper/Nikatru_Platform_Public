@@ -30,6 +30,7 @@ import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { REPO, STEPS, planProduct, exitCodeOf, main } from '../../kit/new-product.mjs';
 import { main as pagesOriginMain } from '../../web/pages-origin.mjs';
+import { APPS_CATALOG } from '../../kit/product-steps/tree.mjs';
 
 const APP = 'subscriptiontracker';
 let TMP;
@@ -210,7 +211,7 @@ describe('step 2 · pages origin', () => {
 
 describe('step 3 · stamp', () => {
   test('the catalogue row missing → NEXT; regen.mjs --check is red', () => {
-    const restore = mutate('catalog/apps.json', (t) => JSON.stringify(JSON.parse(t).filter((a) => a.slug !== APP), null, 2) + '\n');
+    const restore = mutate(APPS_CATALOG, (t) => JSON.stringify(JSON.parse(t).filter((a) => a.slug !== APP), null, 2) + '\n');
     try {
       assert.equal(stepOf('stamp').state, 'NEXT');
       assert.equal(guard('tooling/sites/regen.mjs', FX, '--check').status, 1);
@@ -541,7 +542,7 @@ describe('step 12 · bundle join', () => {
   });
 
   test('a preview product → AFTER-LIVE, which --check does not count', () => {
-    const restore = mutate('catalog/apps.json', (t) => t.replace('"status": "live"', '"status": "preview"'));
+    const restore = mutate(APPS_CATALOG, (t) => t.replace('"status": "live"', '"status": "preview"'));
     try {
       assert.equal(stepOf('bundle join').state, 'AFTER-LIVE');
     } finally {

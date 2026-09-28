@@ -21,6 +21,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseYaml } from '../../app-yaml/yaml.mjs';
+import { CATALOG_DIR, readCatalogFile } from '../../catalog/read.mjs';
 
 export const appYamlRel = (id) => `apps/${id}/app.yaml`;
 
@@ -49,10 +50,13 @@ export function readAppYaml(root, id) {
   }
 }
 
-/** The catalogue row for `id`, or null; `{ lost }` when catalog/apps.json cannot be read. */
+/** The app catalogue, repo-relative. It is read through tooling/catalog/read.mjs, the one Node reader. */
+export const APPS_CATALOG = `${CATALOG_DIR}/apps.json`;
+
+/** The catalogue row for `id`, or null; `{ lost }` when the app catalogue cannot be read. */
 export function catalogRowOf(root, id) {
-  const r = readJsonAt(root, 'catalog/apps.json');
+  const r = readCatalogFile(root, APPS_CATALOG);
   if (!r.ok) return { lost: `${r.why}, so no app's catalogue row can be read` };
-  if (!Array.isArray(r.value)) return { lost: 'catalog/apps.json is not a JSON array' };
+  if (!Array.isArray(r.value)) return { lost: `${APPS_CATALOG} is not a JSON array` };
   return { row: r.value.find((a) => a?.slug === id) ?? null };
 }
