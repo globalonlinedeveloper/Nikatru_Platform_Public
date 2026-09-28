@@ -124,3 +124,56 @@ export function withinEdgeCeiling(
 ): Promise<boolean> {
   return withinRateLimit(limiter, edgeCeilingKey(c), binding);
 }
+
+/** What a FAIL-CLOSED limiter answered: under the cap, over it, or no answer at all. */
+export type StrictVerdict = 'within' | 'over' | 'unavailable';
+
+/**
+ * Ask a Rate Limiting binding about `key`, FAILING CLOSED.
+ *
+ * ⏱ 2026-09-28 · ST-N1 (routes/native-auth.ts). `withinRateLimit` above admits
+ * when the binding is absent or throws, and says why that is right for the
+ * routes it fronts: a lost analytics batch is worse than a burst. It is WRONG
+ * for a route whose limiter is the only thing standing where a captcha would
+ * stand. POST /v1/auth/native/<app>/<op> forwards a password grant with the service-role
+ * bearer, so GoTrue skips its captcha for it; a limiter that admitted on a fault
+ * would turn "Cloudflare's rate-limit service hiccuped" into "unbounded password
+ * guessing at the identity server". So here absence and a throw are
+ * `unavailable`, and the caller answers 503 — never admits.
+ *
+ * The two faults stay tellable apart, as above: ABSENT logs once per isolate
+ * (a deploy misconfiguration), THREW logs every time (a transient edge error).
+ * Neither line carries the key, which may be derived from an account.
+ */
+export async function strictRateLimit(
+  limiter: RateLimiterBinding | undefined,
+  key: string,
+  binding: string,
+): Promise<StrictVerdict> {
+  if (!limiter) {
+    if (!reportedAbsent.has(binding)) {
+      reportedAbsent.add(binding);
+      console.error(
+        `[ratelimit] ${binding} IS NOT BOUND — failing CLOSED, so every request on this path answers 503 ` +
+          'until the `ratelimits` block in wrangler.jsonc reaches the deployed script.',
+      );
+    }
+    return 'unavailable';
+  }
+  try {
+    const { success } = await limiter.limit({ key });
+    return success ? 'within' : 'over';
+  } catch (err) {
+    console.warn(`[ratelimit] ${binding} limit() threw (${err instanceof Error ? err.name : typeof err}) — failing CLOSED for this request`);
+    return 'unavailable';
+  }
+}
+
+/** The server-derived ceiling (`edgeCeilingKey`), FAILING CLOSED. See `strictRateLimit`. */
+export function strictEdgeCeiling(
+  limiter: RateLimiterBinding | undefined,
+  c: EdgeContext,
+  binding: string,
+): Promise<StrictVerdict> {
+  return strictRateLimit(limiter, edgeCeilingKey(c), binding);
+}

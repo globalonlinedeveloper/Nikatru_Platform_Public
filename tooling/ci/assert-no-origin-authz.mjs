@@ -101,7 +101,10 @@ export const CORS_MODULES = new Map([
       '2026-07-25; plus any localhost port for an `own-app` Worker, the recorded trade for the ' +
       '`flutter drive -d web-server` harness) and to answer an OPTIONS preflight 204. It grants ' +
       'nothing: every /v1 data route behind it is Bearer-gated, and [ADR 020] records the allowlist ' +
-      'as hygiene.',
+      'as hygiene. ⏱ 2026-09-28 · ST-N1: on the path prefixes a policy names in `refuseBrowsersOn` ' +
+      '(the platform POST /v1/auth/native routes) it reads Origin only to REFUSE — any request carrying one, ' +
+      'and any preflight, is a 403 and no CORS header is set — so a browser cannot use the ' +
+      'captcha-free native sign-in; a refusal widens nothing.',
   ],
 ]);
 

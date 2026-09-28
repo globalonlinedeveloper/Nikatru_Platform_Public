@@ -1710,7 +1710,9 @@ describe('the real repository', () => {
     for (const id of ['W-4', 'W-5', 'W-6', 'W-8']) {
       assert.match(r.out, new RegExp(`\\[12\\]${id}`), `${id} must be reported every run`);
     }
-    assert.match(r.out, /DEFERRED \[12\]W-8[\s\S]*?0 pack\(s\) owned by a registry slug/);
+    // ⏱ 2026-09-28 · ST-X5 (audit B27): subscriptiontracker now BUNDLES a pack
+    // (assets/content_pack/, pack_id = the app id), so W-8 is measured as FIRED.
+    assert.match(r.out, /TRIGGER FIRED \[12\]W-8[\s\S]*?1 pack\(s\) owned by a registry slug \(registry slugs: subscriptiontracker\)/);
   });
 
   test('🔴 the pack-walk CANARY still reaches the pack it names — three deferrals rest on it', () => {
@@ -1721,7 +1723,9 @@ describe('the real repository', () => {
     // and W-8 are no longer being measured — they are merely being asserted.
     const r = guard(REPO);
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /1 committed pack id\(s\) \[lingo\]/);
+    // ⏱ 2026-09-28 · ST-X5: the walk now reaches TWO packs — the lingo example
+    // and the service catalogue subscriptiontracker bundles — and names its owner.
+    assert.match(r.out, /2 committed pack id\(s\) \[lingo, subscriptiontracker\], 1 owned by a registry slug/);
   });
 });
 

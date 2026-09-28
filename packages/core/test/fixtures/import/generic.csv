@@ -1,0 +1,8 @@
+Name,Price,Currency,Billing Cycle,Next Renewal,Category,Card
+Netflix,649,INR,monthly,2026-10-15,Entertainment,HDFC
+Spotify,119,INR,Monthly,2026-10-03,Music,HDFC
+"Netflix, Premium",649,INR,monthly,2026-10-20,Entertainment,ICICI
+Amazon Prime,"1,499",INR,yearly,2027-02-01,Shopping,ICICI
+Gym,abc,INR,monthly,2026-10-01,Health,Cash
+spotify ,119.00,INR,monthly,2026-11-03,Music,HDFC
+Newspaper,99,INR,weekly,2026-10-05,News,Cash
