@@ -26,8 +26,64 @@ function parseYmd(dateYmd: string): { year: number; month0: number; day: number 
   return { year, month0, day };
 }
 
+/** The units a cadence is counted in ([ADR no.077] §5.1; 0003's `cycle_unit`). */
+export type CycleUnit = 'day' | 'week' | 'month' | 'year';
+
+/** "Every `every` `unit`s". The legacy `cycle` is (1, month) or (1, year). */
+export interface Cadence {
+  every: number;
+  unit: CycleUnit;
+}
+
+const CYCLE_UNITS: readonly CycleUnit[] = ['day', 'week', 'month', 'year'];
+/** The API's own bound on `cycle_every` (subscriptiontracker-api `MAX_CYCLE_EVERY`). */
+const MAX_EVERY = 366;
+
+/** A legacy `cycle` value, or a cadence, as the cadence it means. */
+function cadenceOfArg(cycle: Cadence | 'monthly' | 'yearly'): Cadence {
+  if (cycle === 'monthly') return { every: 1, unit: 'month' };
+  if (cycle === 'yearly') return { every: 1, unit: 'year' };
+  if (!Number.isSafeInteger(cycle.every) || cycle.every < 1 || cycle.every > MAX_EVERY) {
+    throw new RangeError(`renewals: every must be a whole number 1..${MAX_EVERY}: ${JSON.stringify(cycle.every)}`);
+  }
+  if (!CYCLE_UNITS.includes(cycle.unit)) {
+    throw new RangeError(`renewals: not a cycle unit: ${JSON.stringify(cycle.unit)}`);
+  }
+  return cycle;
+}
+
+/**
+ * The cadence a stored row bills on, or null when it has none this Worker can
+ * roll. `cycle_every` + `cycle_unit` (0003) win; a row that predates them, or an
+ * app database that has no such columns, falls back to the legacy `cycle`.
+ * Anything else — a unit this build does not know, a zero — is null, and the
+ * pass SKIPS the row rather than guessing a month.
+ */
+export function cadenceOfRow(row: {
+  cycle?: string | null;
+  cycle_every?: number | null;
+  cycle_unit?: string | null;
+}): Cadence | null {
+  const every = row.cycle_every;
+  const unit = row.cycle_unit;
+  if (every !== undefined && every !== null && unit !== undefined && unit !== null) {
+    if (!Number.isSafeInteger(every) || every < 1 || every > MAX_EVERY) return null;
+    if (!(CYCLE_UNITS as readonly string[]).includes(unit)) return null;
+    return { every, unit: unit as CycleUnit };
+  }
+  if (row.cycle === 'monthly') return { every: 1, unit: 'month' };
+  if (row.cycle === 'yearly') return { every: 1, unit: 'year' };
+  return null;
+}
+
 /**
  * Advance a 'YYYY-MM-DD' date by one billing cycle, staying in UTC.
+ *
+ * ONE RULE, TWO RUNTIMES: `packages/core`'s `RenewalSchedule.advance` is the
+ * Dart twin, and both are tested against every vector in
+ * `contracts/renewals/vectors.json`. Change one and that file reds the other.
+ *
+ * `day`/`week` add calendar days. `month`/`year` add months and CLAMP:
  *
  * 🔴 CLAMPS AT MONTH END — it does NOT use `setUTCMonth`, and that is the whole
  * point. `setUTCMonth` OVERFLOWS: Jan 31 + 1 month is "Feb 31", which JS
@@ -42,14 +98,29 @@ function parseYmd(dateYmd: string): { year: number; month0: number; day: number 
  * `anchorDay` is the original day-of-month the subscription is billed on. It MUST
  * be threaded through a chain of calls rather than re-derived from each clamped
  * result, or Jan 31 → Feb 28 → Mar 28 still loses the 31st. Defaults to the day
- * of `dateYmd` for a single standalone step.
+ * of `dateYmd` for a single standalone step. Ignored for `day` and `week`.
  */
-export function advance(dateYmd: string, cycle: 'monthly' | 'yearly', anchorDay?: number): string {
+export function advance(
+  dateYmd: string,
+  cycle: Cadence | 'monthly' | 'yearly',
+  anchorDay?: number,
+): string {
   const { year, month0, day } = parseYmd(dateYmd);
-  const anchor = Math.min(Math.max(Math.trunc(anchorDay ?? day), 1), 31);
+  const { every, unit } = cadenceOfArg(cycle);
 
-  const targetMonth0 = cycle === 'yearly' ? month0 : (month0 + 1) % 12;
-  const targetYear = cycle === 'yearly' ? year + 1 : month0 === 11 ? year + 1 : year;
+  if (unit === 'day' || unit === 'week') {
+    const days = unit === 'week' ? every * 7 : every;
+    // Date.UTC normalises an overflowing day into the right month and year,
+    // which is exactly what adding calendar days means — no clamp applies.
+    const d = new Date(Date.UTC(year, month0, day + days));
+    return `${pad(d.getUTCFullYear(), 4)}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+  }
+
+  const anchor = Math.min(Math.max(Math.trunc(anchorDay ?? day), 1), 31);
+  const months = unit === 'year' ? every * 12 : every;
+  const total = year * 12 + month0 + months;
+  const targetYear = Math.floor(total / 12);
+  const targetMonth0 = total % 12;
   // Feb 29 yearly → Feb 28 in a common year (not Mar 1); Jan 31 → Feb 28/29.
   const targetDay = Math.min(anchor, daysInUtcMonth(targetYear, targetMonth0));
 
@@ -76,12 +147,13 @@ export function advance(dateYmd: string, cycle: 'monthly' | 'yearly', anchorDay?
  */
 export function rollForward(
   next: string,
-  cycle: 'monthly' | 'yearly',
+  cycle: Cadence | 'monthly' | 'yearly',
   today: string,
+  anchor?: number,
 ): { next: string; crossings: string[] } {
   const crossings: string[] = [];
   let cur = next;
-  const anchorDay = parseYmd(next).day;
+  const anchorDay = anchor ?? parseYmd(next).day;
   let guard = 0;
   while (cur < today && guard < 240) {
     crossings.push(cur);
@@ -90,6 +162,9 @@ export function rollForward(
   }
   return { next: cur, crossings };
 }
+
+/** `payment_history.source` for a row this pass writes (0003's column). */
+export const RENEWAL_SOURCE = 'renewal';
 
 /**
  * For every subscription whose next_renewal is in the past, roll it forward and
@@ -119,14 +194,36 @@ export async function recomputeRenewals(
 ): Promise<{ ok: boolean; detail: string }> {
   const today = todayYmd();
   try {
+    // ── THE ROW'S OWN COLUMNS ARE PROBED, LIKE payment_history's BELOW ─────
+    // This pass is "generic over any app DB with subscriptions +
+    // payment_history", and only subscriptiontracker_db has 0003's cadence and
+    // lifecycle columns. A SELECT naming a column the table lacks throws, and a
+    // throw here is every renewal of that app missed tonight. So each 0003
+    // column is read — and each 0003 filter applied — only where it exists.
+    const subColumns = new Set(
+      (
+        await allRows<{ name: string }>(db.prepare("SELECT name FROM pragma_table_info('subscriptions')"))
+      ).map((col) => col.name),
+    );
+    const hasCadence = subColumns.has('cycle_every') && subColumns.has('cycle_unit');
+    const select = ['id', 'user_id', 'price', 'cycle', 'next_renewal'];
+    if (hasCadence) select.push('cycle_every', 'cycle_unit');
+    if (subColumns.has('currency')) select.push('currency');
+    const where = ['next_renewal IS NOT NULL', 'next_renewal < ?'];
+    // A row with no cadence at all has nothing to roll by: skipped, as before.
+    where.push(
+      hasCadence ? '(cycle IS NOT NULL OR (cycle_every IS NOT NULL AND cycle_unit IS NOT NULL))' : 'cycle IS NOT NULL',
+    );
+    // 🔴 ONLY A ROW THAT IS STILL CHARGING IS ROLLED ([ADR no.077] §5, ST-E3).
+    // A paused or cancelled row keeps its history and stops accruing it: rolling
+    // one would write a payment for a charge that never happens and move a date
+    // the user froze. A soft-deleted row (`deleted_at`) is gone from every list
+    // and must not keep "paying" behind the Undo window either.
+    if (subColumns.has('status')) where.push("status IN ('active', 'trialing')");
+    if (subColumns.has('deleted_at')) where.push('deleted_at IS NULL');
     const due = await allRows<Subscription>(
       db
-        .prepare(
-          `SELECT id, user_id, price, cycle, next_renewal FROM subscriptions
-             WHERE next_renewal IS NOT NULL
-               AND cycle IS NOT NULL
-               AND next_renewal < ?`,
-        )
+        .prepare(`SELECT ${select.join(', ')} FROM subscriptions WHERE ${where.join(' AND ')}`)
         .bind(today),
     );
 
@@ -164,34 +261,48 @@ export async function recomputeRenewals(
     const paymentColumns = await allRows<{ name: string }>(
       db.prepare("SELECT name FROM pragma_table_info('payment_history')"),
     );
-    const hasUpdatedAt = paymentColumns.some((col) => col.name === 'updated_at');
-    const paymentStmt = hasUpdatedAt
-      ? db.prepare(
-          `INSERT INTO payment_history (id, subscription_id, user_id, amount, paid_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-        )
-      : db.prepare(
-          `INSERT INTO payment_history (id, subscription_id, user_id, amount, paid_at)
-       VALUES (?, ?, ?, ?, ?)`,
-        );
+    const paymentHas = new Set(paymentColumns.map((col) => col.name));
+    const hasUpdatedAt = paymentHas.has('updated_at');
+    // 0003's `currency` + `source`, written where they exist (ST-E3): a payment
+    // is a record of a real charge, so it carries the unit it was charged in
+    // rather than borrowing its subscription's at read time — a later currency
+    // correction on the row must not relabel the history under it.
+    const hasProvenance = paymentHas.has('currency') && paymentHas.has('source');
+    const paymentCols = ['id', 'subscription_id', 'user_id', 'amount', 'paid_at'];
+    if (hasUpdatedAt) paymentCols.push('updated_at');
+    if (hasProvenance) paymentCols.push('currency', 'source');
+    const paymentStmt = db.prepare(
+      `INSERT INTO payment_history (${paymentCols.join(', ')})
+       VALUES (${paymentCols.map(() => '?').join(', ')})`,
+    );
 
     const ops: D1PreparedStatement[] = [];
+    let rolled = 0;
+    let skipped = 0;
     for (const sub of due) {
-      const cycle = sub.cycle as 'monthly' | 'yearly';
-      const { next, crossings } = rollForward(sub.next_renewal as string, cycle, today);
+      const cadence = cadenceOfRow(sub);
+      if (cadence === null) {
+        // A unit or count this build cannot read. Left exactly as it is, and
+        // COUNTED in the heartbeat detail, never guessed as a month.
+        skipped++;
+        continue;
+      }
+      const { next, crossings } = rollForward(sub.next_renewal as string, cadence, today);
       for (const when of crossings) {
         const paidAt = `${when}T00:00:00Z`;
-        ops.push(
-          hasUpdatedAt
-            ? paymentStmt.bind(uuid(), sub.id, sub.user_id, sub.price ?? null, paidAt, paidAt)
-            : paymentStmt.bind(uuid(), sub.id, sub.user_id, sub.price ?? null, paidAt),
-        );
+        const values: unknown[] = [uuid(), sub.id, sub.user_id, sub.price ?? null, paidAt];
+        if (hasUpdatedAt) values.push(paidAt);
+        if (hasProvenance) values.push(sub.currency ?? null, RENEWAL_SOURCE);
+        ops.push(paymentStmt.bind(...values));
       }
       ops.push(updateStmt.bind(next, ts, sub.id));
+      rolled++;
     }
 
-    await db.batch(ops);
-    console.log(`[cron] renewals(${appId}): advanced ${due.length} subscription(s)`);
+    // An empty batch is not a statement D1 accepts; a night whose every due
+    // row was skipped has nothing to write, and says so in the detail.
+    if (ops.length > 0) await db.batch(ops);
+    console.log(`[cron] renewals(${appId}): advanced ${rolled} subscription(s)`);
     return {
       ok: true,
       // The counts are the point: "advanced 0 subscription(s)" would be a
@@ -199,7 +310,8 @@ export async function recomputeRenewals(
       // advances thousands is worth seeing in the same table as a night that
       // advances three.
       detail:
-        `advanced ${due.length} subscription(s), ${ops.length} statement(s)` +
+        `advanced ${rolled} subscription(s), ${ops.length} statement(s)` +
+        (skipped > 0 ? ` — SKIPPED ${skipped} with a cadence this build cannot read` : '') +
         (hasUpdatedAt
           ? ''
           : ' — WITHOUT updated_at: this app database has no such column on payment_history, so every row written tonight carries none'),
