@@ -110,7 +110,7 @@
 //    silently satisfies R1.
 //
 // ⚠️ TWO OF THE EIGHT TEXTUAL HITS IN apps/subscriptiontracker ARE DOC COMMENTS —
-// `check_inbox_screen.dart:28` and `login_screen.dart:235` both mention a gated
+// `check_inbox_screen.dart:28` and `login_screen.dart:238` both mention a gated
 // method in prose. A grep-shaped version of this guard reports two violations
 // that do not exist, which is why the reduction is mandatory and not tidy.
 // ─────────────────────────────────────────────────────────────────────────────

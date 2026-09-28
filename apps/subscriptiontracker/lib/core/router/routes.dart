@@ -24,7 +24,6 @@ import '../../features/auth/check_inbox_screen.dart';
 import '../../features/auth/login_screen.dart';
 import '../../features/auth/reaccept_terms_screen.dart';
 import '../../features/auth/reset_password_screen.dart';
-import '../../features/auth/sign_up_screen.dart';
 import '../../features/auth/verify_email_screen.dart';
 import '../../features/detail/subscription_detail_screen.dart';
 import '../../features/monetization/manage_plan_screen.dart';
@@ -76,11 +75,18 @@ List<RouteBase> appRoutes() => <RouteBase>[
   // the URL is the stamp's, the screen is the app's. The stamped
   // `SignInScreen` twin went with this change — see the barrel's header.
   GoRoute(path: '/sign-in', builder: (_, __) => const LoginScreen()),
-  GoRoute(path: '/sign-up', builder: (_, __) => const SignUpScreen()),
+  // ⏱ 2026-09-28 · ST-T1b (audit A-5): ONE sign-up surface. `/sign-up` was a
+  // second, divergent form (plain fields, no address check, no Apple/Google)
+  // that nothing linked to; it is now the same screen, opened on its sign-up
+  // arm, so the path the stamp declares still resolves.
+  GoRoute(
+    path: '/sign-up',
+    builder: (_, __) => const LoginScreen(startInSignUp: true),
+  ),
 
   // ── THE NO-SESSION HALF OF EMAIL CONFIRMATION ─────────────────────────
-  // Reached from BOTH sign-up doors — `SignUpScreen` and `LoginScreen`'s
-  // toggle — when `signUp` returns a user but no session. `/verify-email`
+  // Reached from the ONE sign-up surface — `LoginScreen`'s sign-up arm, on
+  // `/sign-in` or `/sign-up` — when `signUp` returns a user but no session. `/verify-email`
   // cannot serve this person: its gate is `sessionIsUnverified`, which
   // answers FALSE for a null user by design, so it never fires and they
   // were left on whatever screen the code happened to name.

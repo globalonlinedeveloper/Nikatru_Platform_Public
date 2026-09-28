@@ -81,9 +81,9 @@
 // keyboard, and the two defects have been mistaken for one another before.
 //
 // The worst single instance is on the screen every signed-out visitor is routed
-// to: login's "New here? Create account" band, which `login_screen.dart:562`
+// to: login's "New here? Create account" band, which `login_screen.dart:693`
 // already documents as "the ONLY control that reaches registration from the
-// screen every signed-out visitor is routed to" — and `:553` as "the only way
+// screen every signed-out visitor is routed to" — and `:669` as "the only way
 // to reach sign-up". A keyboard-only user cannot register.
 //
 // ⚠️ THESE CASES ARE THEREFORE PINS, NOT PASSES. Each dead-control case asserts

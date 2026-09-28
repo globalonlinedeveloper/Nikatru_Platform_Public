@@ -40,7 +40,9 @@ import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/core/router.dart';
 import 'package:subscriptiontracker/features/auth/legal_consent_fields.dart';
 import 'package:subscriptiontracker/features/auth/reaccept_terms_screen.dart';
-import 'package:subscriptiontracker/features/auth/sign_up_screen.dart';
+import 'package:subscriptiontracker/features/auth/login_screen.dart';
+import 'package:subscriptiontracker/features/shared/widgets.dart'
+    show GradientButton;
 import 'package:subscriptiontracker/features/auth/verify_email_screen.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/state/providers.dart';
@@ -380,7 +382,7 @@ void main() {
     testWidgets('both boxes are UNTICKED on arrival', (
       WidgetTester tester,
     ) async {
-      await _pumpScreen(tester, const SignUpScreen());
+      await _pumpScreen(tester, const LoginScreen(startInSignUp: true));
       expect(
         tester
             .widget<Checkbox>(find.byKey(LegalConsentFields.termsCheckbox))
@@ -402,11 +404,11 @@ void main() {
     testWidgets('the terms box BLOCKS the button; the marketing box does not', (
       WidgetTester tester,
     ) async {
-      await _pumpScreen(tester, const SignUpScreen());
-      final Finder submit = find.byKey(SignUpScreen.submitButton);
+      await _pumpScreen(tester, const LoginScreen(startInSignUp: true));
+      final Finder submit = find.byKey(E2EKeys.loginSubmit);
 
       expect(
-        tester.widget<FilledButton>(submit).onPressed,
+        tester.widget<GradientButton>(submit).onPressed,
         isNull,
         reason: 'untouched terms box ⇒ no account can be created',
       );
@@ -414,10 +416,13 @@ void main() {
       // Ticking MARKETING alone changes nothing — the whole point of the
       // distinction. If this ever passes the gate, an optional consent has
       // become a condition of the service (GDPR Art 7(4)).
+      await tester.ensureVisible(
+        find.byKey(LegalConsentFields.marketingCheckbox),
+      );
       await tester.tap(find.byKey(LegalConsentFields.marketingCheckbox));
       await tester.pumpAndSettle();
       expect(
-        tester.widget<FilledButton>(submit).onPressed,
+        tester.widget<GradientButton>(submit).onPressed,
         isNull,
         reason:
             'the marketing opt-in must NEVER gate sign-up — that is '
@@ -425,10 +430,11 @@ void main() {
       );
 
       // Ticking TERMS opens it.
+      await tester.ensureVisible(find.byKey(LegalConsentFields.termsCheckbox));
       await tester.tap(find.byKey(LegalConsentFields.termsCheckbox));
       await tester.pumpAndSettle();
       expect(
-        tester.widget<FilledButton>(submit).onPressed,
+        tester.widget<GradientButton>(submit).onPressed,
         isNotNull,
         reason:
             'the open half: a clickwrap that never opens is a sign-up screen '
@@ -479,18 +485,23 @@ void main() {
               ChassisLocalizations.delegate,
             ],
             supportedLocales: AppLocalizations.supportedLocales,
-            home: const SignUpScreen(),
+            home: const LoginScreen(startInSignUp: true),
           ),
         ),
       );
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.byType(TextField).at(0), 'a@b.test');
-      await tester.enterText(find.byType(TextField).at(1), 'password123');
+      await tester.enterText(find.byKey(E2EKeys.loginEmail), 'a@b.test');
+      await tester.enterText(find.byKey(E2EKeys.loginPassword), 'password123');
+      await tester.ensureVisible(find.byKey(LegalConsentFields.termsCheckbox));
       await tester.tap(find.byKey(LegalConsentFields.termsCheckbox));
+      await tester.ensureVisible(
+        find.byKey(LegalConsentFields.marketingCheckbox),
+      );
       await tester.tap(find.byKey(LegalConsentFields.marketingCheckbox));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(SignUpScreen.submitButton));
+      await tester.ensureVisible(find.byKey(E2EKeys.loginSubmit));
+      await tester.tap(find.byKey(E2EKeys.loginSubmit));
       await tester.pumpAndSettle();
 
       // The domain, asserted first: the sign-up really was attempted and

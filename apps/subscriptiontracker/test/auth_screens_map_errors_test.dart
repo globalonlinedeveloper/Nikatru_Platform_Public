@@ -19,7 +19,8 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:subscriptiontracker/features/auth/legal_consent_fields.dart';
 import 'package:subscriptiontracker/features/auth/reset_password_screen.dart';
-import 'package:subscriptiontracker/features/auth/sign_up_screen.dart';
+import 'package:subscriptiontracker/core/e2e_keys.dart';
+import 'package:subscriptiontracker/features/auth/login_screen.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 
@@ -103,26 +104,31 @@ Future<void> _pump(
 final ChassisLocalizations _en = lookupChassisLocalizations(const Locale('en'));
 
 void main() {
-  group('SignUpScreen', () {
+  // ⏱ 2026-09-28 · ST-T1b (audit A-5): the app's one sign-up surface is
+  // `LoginScreen`'s sign-up arm — what `/sign-up` opens. These cases ran
+  // against the retired `SignUpScreen` and now run against it.
+  group('LoginScreen — the sign-up arm /sign-up opens', () {
     Future<void> submit(WidgetTester tester, {required String password}) async {
       await tester.enterText(
-        find.byType(TextField).at(0),
+        find.byKey(E2EKeys.loginEmail),
         'someone@example.com',
       );
-      await tester.enterText(find.byType(TextField).at(1), password);
+      await tester.enterText(find.byKey(E2EKeys.loginPassword), password);
+      await tester.ensureVisible(find.byKey(LegalConsentFields.termsCheckbox));
       await tester.tap(find.byKey(LegalConsentFields.termsCheckbox));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(SignUpScreen.submitButton));
+      await tester.ensureVisible(find.byKey(E2EKeys.loginSubmit));
+      await tester.tap(find.byKey(E2EKeys.loginSubmit));
       await tester.pumpAndSettle();
     }
 
-    // 🔴 THE `'$e'` ARM, and a RED CONTROL: restore `_error = '$e'` in
-    // `sign_up_screen.dart` and this case fails.
+    // 🔴 THE `'$e'` ARM, and a RED CONTROL: show `'$e'` instead of
+    // `authErrorSentence` in `login_screen.dart`'s `_snack` and this fails.
     testWidgets('a NON-AuthFailure is mapped, never printed', (
       WidgetTester tester,
     ) async {
       final _Refusing auth = _Refusing(const _RawVendorError());
-      await _pump(tester, const SignUpScreen(), auth);
+      await _pump(tester, const LoginScreen(startInSignUp: true), auth);
       await submit(tester, password: 'correct-horse');
 
       expect(auth.signUps, 1);
@@ -141,7 +147,7 @@ void main() {
           reasons: const <String>[core.AuthFailure.reasonPwned],
         ),
       );
-      await _pump(tester, const SignUpScreen(), auth);
+      await _pump(tester, const LoginScreen(startInSignUp: true), auth);
       await submit(tester, password: 'correct-horse');
 
       expect(find.text(_en.passwordBreached), findsOneWidget);
@@ -154,7 +160,7 @@ void main() {
       WidgetTester tester,
     ) async {
       final _Refusing auth = _Refusing(const _RawVendorError());
-      await _pump(tester, const SignUpScreen(), auth);
+      await _pump(tester, const LoginScreen(startInSignUp: true), auth);
       await submit(tester, password: 'short');
 
       expect(auth.signUps, 0);

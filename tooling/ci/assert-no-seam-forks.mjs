@@ -655,7 +655,6 @@ const WATCHED_PAIRS = [
   ['auth/legal_consent_fields.dart', 'auth/legal_consent_fields.dart'],
   ['auth/reaccept_terms_screen.dart', 'auth/reaccept_terms_screen.dart'],
   ['auth/reset_password_screen.dart', 'auth/reset_password_screen.dart'],
-  ['auth/sign_up_screen.dart', 'auth/sign_up_screen.dart'],
   ['auth/verify_email_screen.dart', 'auth/verify_email_screen.dart'],
   ['monetization/manage_plan_screen.dart', 'monetization/manage_plan_screen.dart'],
   ['monetization/paywall_screen.dart', 'monetization/paywall_screen.dart'],
@@ -712,8 +711,14 @@ const WATCHED_PAIRS = [
  *  ⚠️ RAISED 12 -> 14 on 2026-09-14 with the two shell pairs (lib/app.dart,
  *  lib/main.dart) added to WATCHED_PAIRS, so neither can later drop out of both
  *  lists in silence. The ARRIVE limb does not reach them — it derives its
- *  universe from lib/features only — so this floor is their only vanish limb. */
-const MIN_ACCOUNTED_PAIRS = 14;
+ *  universe from lib/features only — so this floor is their only vanish limb.
+ *
+ *  ⚠️ LOWERED 14 -> 13 on 2026-09-28, deliberately, by ST-T1b (audit A-5): the
+ *  app's `auth/sign_up_screen.dart` was RETIRED — `/sign-up` now renders
+ *  `LoginScreen` on its sign-up arm, the one sign-up surface — so the brick's
+ *  sign_up_screen.dart has no Subly counterpart and the watched pair went with
+ *  the file, in the same change. */
+const MIN_ACCOUNTED_PAIRS = 13;
 
 /** Every `caps.<field>` read in a file — comments and string literals blanked
  *  first, so neither prose nor a quoted string can satisfy the requirement.

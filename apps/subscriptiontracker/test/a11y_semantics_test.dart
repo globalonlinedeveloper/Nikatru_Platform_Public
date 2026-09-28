@@ -82,7 +82,6 @@ import 'package:subscriptiontracker/features/auth/legal_consent_fields.dart';
 import 'package:subscriptiontracker/features/auth/login_screen.dart';
 import 'package:subscriptiontracker/features/auth/reaccept_terms_screen.dart';
 import 'package:subscriptiontracker/features/auth/reset_password_screen.dart';
-import 'package:subscriptiontracker/features/auth/sign_up_screen.dart';
 import 'package:subscriptiontracker/features/auth/verify_email_screen.dart';
 import 'package:subscriptiontracker/features/budget/budget_screen.dart';
 import 'package:subscriptiontracker/features/calendar/calendar_screen.dart';
@@ -2111,7 +2110,7 @@ void main() {
   group('sign-up · the clickwrap surface', () {
     testWidgets('nothing on sign-up is naked', (WidgetTester tester) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const SignUpScreen());
+        await pumpScreen(tester, const LoginScreen(startInSignUp: true));
         // Seven, and the submit button is deliberately NOT among them: it ships
         // disabled until the terms box is ticked, and a disabled
         // ButtonStyleButton contributes no tap action at all. The floor counts
@@ -3510,7 +3509,11 @@ void main() {
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const SignUpScreen(), theme: appTheme());
+        await pumpScreen(
+          tester,
+          const LoginScreen(startInSignUp: true),
+          theme: appTheme(),
+        );
         // 4 subjects.
         await expectGuidelineHadSubjects(tester, 'sign-up');
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
@@ -4470,16 +4473,21 @@ void main() {
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const SignUpScreen(), theme: appTheme());
-        // 4 subjects. AA passes; AAA does not.
+        await pumpScreen(
+          tester,
+          const LoginScreen(startInSignUp: true),
+          theme: appTheme(),
+          // Tall enough to paint the whole arm, footer toggle included — the
+          // reason is the SIGN-UP ARM case's, above.
+          size: const Size(375, 1200),
+        );
+        // ⏱ 2026-09-28 · ST-T1b (audit A-5): what `/sign-up` opens — the login
+        // screen's sign-up arm, the one sign-up surface. AA passes; AAA does not.
         await expectOpaqueGround(tester, 'sign-up');
         await expectContrastHadSubjects(
           tester,
           'sign-up',
-          covers: const <String>[
-            'Create account',
-            'Already have an account? Sign in',
-          ],
+          covers: const <String>['Create account', 'Have an account? Sign in'],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });

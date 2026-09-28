@@ -667,10 +667,17 @@ const REQUIRED_COVERAGE = [
     // guards range over the same domain by design, so agreement is the expected
     // reading and a DISAGREEMENT is the signal that one parse has drifted. If
     // you change one, RE-MEASURE the other rather than mirroring the edit.
-    surfaces: 19,
+    //
+    // ⏱ LOWERED 19 → 18 on 2026-09-28, deliberately, by ST-T1b (audit A-5):
+    // the app's `SignUpScreen` was RETIRED and `/sign-up` renders
+    // `LoginScreen` on its sign-up arm — one surface genuinely left the app.
+    // Measured by this guard's own run: 18 reachable, 18 swept. The three cases
+    // that swept `SignUpScreen` now sweep the screen `/sign-up` opens, so
+    // `cases` does not move.
+    surfaces: 18,
     a11yFiles: 1,
     cases: 110,
-    label: 'the app P5 wrote this guard for — 19 surfaces, all nineteen swept',
+    label: 'the app P5 wrote this guard for — 18 surfaces, all eighteen swept',
   },
   {
     dir: BRICK,
@@ -922,7 +929,6 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         'features/auth/verify_email_screen.dart#VerifyEmailScreen',
         'features/auth/reaccept_terms_screen.dart#ReacceptTermsScreen',
         'features/auth/login_screen.dart#LoginScreen',
-        'features/auth/sign_up_screen.dart#SignUpScreen',
         'features/auth/reset_password_screen.dart#ResetPasswordScreen',
         'features/home/home_screen.dart#HomeScreen',
         'features/settings/settings_screen.dart#SettingsScreen',

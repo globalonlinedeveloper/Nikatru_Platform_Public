@@ -845,7 +845,7 @@ two exceptions exactly as intended:
 ```
 
 **The fix is not in this lane.** `tester.tap` does not scroll, the form *is* inside a
-`SingleChildScrollView` (login_screen.dart:360), and the suite already uses `ensureVisible` before
+`SingleChildScrollView` (login_screen.dart:375), and the suite already uses `ensureVisible` before
 the add-sheet submit for precisely this reason — so the shape of the repair is known and it belongs
 to `integration_test/store_screenshots_test.dart`, not to `tooling/store/`. Recorded here, not
 patched here.

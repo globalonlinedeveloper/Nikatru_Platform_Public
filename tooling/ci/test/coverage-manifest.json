@@ -265,7 +265,7 @@
   "setup-flutter-env.test.mjs": 4,
   "signing-seam-census.test.mjs": 9,
   "signing-seam.test.mjs": 40,
-  "signup-consent-shape.test.mjs": 33,
+  "signup-consent-shape.test.mjs": 34,
   "signup-retention.test.mjs": 12,
   "single-threaded-relaunch.test.mjs": 15,
   "sink-disclosure.test.mjs": 49,

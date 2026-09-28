@@ -189,8 +189,8 @@ passwordRecoveryProvider = NotifierProvider<PasswordRecoveryController, bool>(
 /// fail-closed-and-untested limb [pipeline C-6] is about.
 final Provider<Uri> launchUriProvider = Provider<Uri>((ref) => Uri.base);
 
-/// ⏱ 2026-09-15 · [ADR 082] §5 — the store age signal both sign-up doors read
-/// before an account is created (`login_screen.dart`, `sign_up_screen.dart`).
+/// ⏱ 2026-09-15 · [ADR 082] §5 — the store age signal the sign-up door reads
+/// before an account is created (`login_screen.dart`, both of its arms).
 /// A provider so a test can inject a store answer; the shipped value is the
 /// source for the running host: Google Play Age Signals on android, Apple
 /// Declared Age Range on ios, no signal elsewhere (`nikatru_platform_storage`). The

@@ -55,7 +55,7 @@ const SETTINGS_FORK = `${SUBLY_F}/settings/settings_screen.dart`;
 const HOME_CHASSIS = `${BRICK_F}/home/home_screen.dart`;
 const HOME_FORK = `${SUBLY_F}/home/home_screen.dart`;
 
-/** The nine WATCHED pairs — undecidable because their chassis gates on nothing.
+/** The WATCHED pairs — undecidable because their chassis gates on nothing.
  *  Every fixture tree must contain them for the same reason it must contain the
  *  parity pair: their ABSENCE is itself a failure the guard is meant to report. */
 const WATCHED = [
@@ -66,11 +66,15 @@ const WATCHED = [
   ['auth/legal_consent_fields.dart', 'auth/legal_consent_fields.dart'],
   ['auth/reaccept_terms_screen.dart', 'auth/reaccept_terms_screen.dart'],
   ['auth/reset_password_screen.dart', 'auth/reset_password_screen.dart'],
-  ['auth/sign_up_screen.dart', 'auth/sign_up_screen.dart'],
   ['auth/verify_email_screen.dart', 'auth/verify_email_screen.dart'],
   ['monetization/manage_plan_screen.dart', 'monetization/manage_plan_screen.dart'],
   ['monetization/paywall_screen.dart', 'monetization/paywall_screen.dart'],
 ];
+/** ⏱ 2026-09-28 · ST-T1b (audit A-5): brick feature files with NO app
+ *  counterpart. The app's `sign_up_screen.dart` was retired (`/sign-up` opens
+ *  `LoginScreen` on its sign-up arm), so the brick's is no longer half of a pair
+ *  — but it is still on the real brick, so the fixture keeps it. */
+const BRICK_ONLY = ['auth/sign_up_screen.dart'];
 /** …plus the two SHELL pairs (2026-09-14), which sit beside lib/features rather
  *  than under it, same file name on both sides. */
 const BRICK_LIB = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib';
@@ -173,6 +177,9 @@ function tree({ extra = {}, violations = null, omit = [] } = {}) {
   for (const [c, f] of WATCHED) {
     files[join(root, `${BRICK_F}/${c}`)] = 'class Screen {\n  Widget build() => const Empty();\n}\n';
     files[join(root, `${SUBLY_F}/${f}`)] = 'class Screen {\n  Widget build() => const Empty();\n}\n';
+  }
+  for (const c of BRICK_ONLY) {
+    files[join(root, `${BRICK_F}/${c}`)] = 'class Screen {\n  Widget build() => const Empty();\n}\n';
   }
 
   // The brick holds .dart OUTSIDE `lib/features` too — `lib/`, `lib/state/`,
@@ -487,7 +494,8 @@ describe('coverage is per ROOT — a pooled floor is satisfied by one root alone
     const { code, out } = run(checkout(tree(), { apps: 0, packages: 300, bricks: 16 }));
     assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — 1 of the 3 declared root\(s\)/);
-    assert.match(out, /`apps` yielded only 15 file\(s\) to classify, below its floor of 37/);
+    // 15 -> 14 on 2026-09-28 (ST-T1b, audit A-5): the fixture app lost sign_up_screen.dart.
+    assert.match(out, /`apps` yielded only 14 file\(s\) to classify, below its floor of 37/);
   });
 
   test('🔴 packages/ below its floor fails — with nothing homed, no fork can be a fork', () => {
@@ -537,7 +545,7 @@ describe('coverage is per ROOT — a pooled floor is satisfied by one root alone
     }
     const { code, out } = run(root);
     assert.equal(code, 2, out);
-    assert.match(out, /`apps` yielded only 15 file\(s\) to classify/);
+    assert.match(out, /`apps` yielded only 14 file\(s\) to classify/);
   });
 });
 
@@ -650,7 +658,7 @@ describe('[ADR 042] an accepted fork must follow the chassis it forked', () => {
     // reading the source, which is the difference between this and a check
     // that quietly stopped checking.
     assert.match(out, /\[ADR 042\] parity — apps\/subscriptiontracker\/lib\/features\/auth\/login_screen\.dart follows all 1 chassis/);
-    assert.match(out, /3 accepted fork\(s\) at parity, 11 watched/);
+    assert.match(out, /3 accepted fork\(s\) at parity, 10 watched/);
   });
 
   test('🔴 the chassis gains a capability the fork never hears about → EXIT 1, naming the fork', () => {
@@ -928,7 +936,9 @@ describe('the watch — the eleven pairs this guard does NOT cover, and says so'
   test('the watch is PRINTED on every clean run — a limitation nobody sees is mistaken for coverage', () => {
     const { code, out } = run(tree());
     assert.equal(code, 0, out);
-    assert.match(out, /11 chassis\/fork screen pair\(s\) are WATCHED, NOT COVERED/);
+    // 11 -> 10 on 2026-09-28 (ST-T1b, audit A-5): the sign-up pair left with
+    // the app's retired SignUpScreen.
+    assert.match(out, /10 chassis\/fork screen pair\(s\) are WATCHED, NOT COVERED/);
     assert.match(out, /They fail this guard the day that stops being true/);
     assert.match(out, /lib\/app\.dart, lib\/main\.dart\. The shell pairs .* their content is NOT compared/);
   });
@@ -1111,7 +1121,8 @@ describe('a caps gate that moved into the chassis is still compared', () => {
   // by the two watched shell pairs (O-SHELL-PAIR-UNCOMPARED), not by delegation.
   test('D6 · MIN_ACCOUNTED_PAIRS and the per-file existsSync are unchanged', () => {
     const guard = readFileSync(GUARD, 'utf8');
-    assert.match(guard, /const MIN_ACCOUNTED_PAIRS = 14;/);
+    // 14 -> 13 on 2026-09-28 (ST-T1b, audit A-5), with the sign-up pair.
+    assert.match(guard, /const MIN_ACCOUNTED_PAIRS = 13;/);
     // The adapter is a FILE. Deleting it is still loud, delegation or not.
     const root = delegating();
     rmSync(join(root, CHASSIS));

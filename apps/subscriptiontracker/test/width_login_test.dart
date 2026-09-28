@@ -10,10 +10,10 @@
 //     and a button, stretched edge to edge across a 1280 px window. The
 //     arithmetic here is DIFFERENT from `width_onboarding_test.dart`'s and the
 //     difference is deliberate: this screen keeps its 28/28 padding on the
-//     SCROLL VIEW, outside the cap (matching `features/auth/sign_up_screen.dart`
-//     — the app's other auth surface, and the only other one since the stamped
-//     `sign_in_screen.dart` twin went with the 2026-08-10 route
-//     consolidation), so the width inside the pane is `min(surface - 56, 420)`
+//     SCROLL VIEW, outside the cap (since ST-T1b, 2026-09-28, the same screen
+//     is the sign-up surface too: `/sign-up` opens it on that arm, measured by
+//     `width_auth_test.dart`), so the width inside the pane is
+//     `min(surface - 56, 420)`
 //     rather than `min(surface, 420) - 56`.
 //
 //     🔴 THAT MAKES 768 THE FALSIFYING CASE, AND IT IS FALSIFIED EARLY: the cap

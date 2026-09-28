@@ -1,8 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // age_gate_sign_up_test.dart — [ADR 082] §5 on the live app's sign-up doors.
 //
-// The app keeps its own `SignUpScreen` and `LoginScreen` (sign-up toggle and
-// Sign in with Apple), so the store age gate is proven here as well as on the
+// The app's one sign-up surface is `LoginScreen` — its sign-up arm, which
+// `/sign-up` opens (ST-T1b, audit A-5), and Sign in with Apple — so the store
+// age gate is proven here as well as on the
 // chassis views every stamped app inherits. What each case pins:
 //   · a store signal below adult → the account is NOT created (the repository is
 //     never called) and the refusal is shown;
@@ -17,9 +18,9 @@ import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show ChassisLocalizations;
+import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/features/auth/legal_consent_fields.dart';
 import 'package:subscriptiontracker/features/auth/login_screen.dart';
-import 'package:subscriptiontracker/features/auth/sign_up_screen.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 
@@ -130,12 +131,14 @@ Future<void> _pump(
   await tester.pumpAndSettle();
 }
 
-Future<void> _submitSignUpScreen(WidgetTester tester) async {
-  await tester.enterText(find.byType(TextField).at(0), 'someone@example.com');
-  await tester.enterText(find.byType(TextField).at(1), 'correct-horse');
+Future<void> _submitSignUpArm(WidgetTester tester) async {
+  await tester.enterText(find.byKey(E2EKeys.loginEmail), 'someone@example.com');
+  await tester.enterText(find.byKey(E2EKeys.loginPassword), 'correct-horse');
+  await tester.ensureVisible(find.byKey(LegalConsentFields.termsCheckbox));
   await tester.tap(find.byKey(LegalConsentFields.termsCheckbox));
   await tester.pumpAndSettle();
-  await tester.tap(find.byKey(SignUpScreen.submitButton));
+  await tester.ensureVisible(find.byKey(E2EKeys.loginSubmit));
+  await tester.tap(find.byKey(E2EKeys.loginSubmit));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 400));
 }
@@ -144,18 +147,18 @@ AppLocalizations _l10n(WidgetTester tester) =>
     AppLocalizations.of(tester.element(find.byType(Scaffold).first));
 
 void main() {
-  group('SignUpScreen — email sign-up', () {
+  group('LoginScreen — the sign-up arm /sign-up opens (email)', () {
     testWidgets(
       'a store signal BELOW ADULT creates no account and shows the refusal',
       (WidgetTester tester) async {
         final MockAuthRepository auth = MockAuthRepository();
         await _pump(
           tester,
-          const SignUpScreen(),
+          const LoginScreen(startInSignUp: true),
           signal: const core.BelowAdultAgeSignal(),
           auth: auth,
         );
-        await _submitSignUpScreen(tester);
+        await _submitSignUpArm(tester);
         expect(
           auth.currentUser,
           isNull,
@@ -171,11 +174,11 @@ void main() {
       final MockAuthRepository auth = MockAuthRepository();
       await _pump(
         tester,
-        const SignUpScreen(),
+        const LoginScreen(startInSignUp: true),
         signal: const core.NoAgeSignal(core.NoAgeSignalReason.unavailable),
         auth: auth,
       );
-      await _submitSignUpScreen(tester);
+      await _submitSignUpArm(tester);
       expect(auth.currentUser, isNotNull);
     });
   });

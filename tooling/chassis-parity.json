@@ -78,12 +78,6 @@
           "template": 74
         },
         {
-          "file": "apps/subscriptiontracker/lib/features/auth/sign_up_screen.dart",
-          "linesAtSince": 211,
-          "ceiling": 223,
-          "template": 94
-        },
-        {
           "file": "apps/subscriptiontracker/lib/features/monetization/manage_plan_screen.dart",
           "linesAtSince": 238,
           "ceiling": 322,
