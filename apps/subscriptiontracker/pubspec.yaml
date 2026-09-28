@@ -134,7 +134,7 @@ dependencies:
 
   # Running app version — drives the CFG-1 force-update kill-switch. Union item
   # (P2.4a): the chassis config/consent spine landing in P2.3/P2.6 reads it.
-  package_info_plus: ^8.0.0
+  package_info_plus: ^10.0.0
 
   # Localization — flutter_localizations + intl drive gen-l10n from lib/l10n/*.arb
   # (`generate: true` below; l10n.yaml + the .arb files land with P2.3). The intl

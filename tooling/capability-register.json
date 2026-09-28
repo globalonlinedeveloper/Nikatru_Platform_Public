@@ -767,7 +767,7 @@
         "file": "packages/platform_storage/lib/src/storage_capabilities.dart",
         "symbol": "StorageCapabilities",
         "test": "packages/platform_storage/test/storage_capabilities_test.dart",
-        "pinnedTo": "flutter_secure_storage 9.x + shared_preferences 2.x",
+        "pinnedTo": "flutter_secure_storage 10.x + shared_preferences 2.x",
         "degradesOn": "Linux secure storage is CONDITIONAL ON THE ENVIRONMENT: libsecret must be installed AND a Secret Service daemon running and unlocked. Headless, kiosk and CI sessions often have neither, so a write can fail at runtime where every other desktop succeeds. Web is not OS-backed at all."
       }
     },

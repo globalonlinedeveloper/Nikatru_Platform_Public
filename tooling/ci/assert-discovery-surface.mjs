@@ -1068,7 +1068,7 @@ let pricedSections = 0;
   }
 
   // A vendor is DECLARED only when it appears in a dependency block, never when
-  // a comment mentions it. `packages/platform_storage/pubspec.yaml:27` names
+  // a comment mentions it. `packages/platform_storage/pubspec.yaml:30` names
   // both share_plus and app_links in prose recording [2]C-4's adjudication, and
   // a bare grep reads that as adoption.
   const declares = (vendor) => {
