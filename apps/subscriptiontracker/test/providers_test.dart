@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart'
     show FlutterError, FlutterErrorDetails, FlutterExceptionHandler;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 // `show` only: this package also exports a `SupabaseAuthRepository`, and so does
 // Subly's own data layer — an unnarrowed import makes that name ambiguous.
@@ -57,7 +58,7 @@ void main() {
   // override preserves the origin. (First needed in delete_account_test.dart for
   // the same reason; generalised here to every pair rather than the one.)
   void expectResolvableFromAuthRepository<T>(
-    T Function(Ref<core.AuthRepository> ref) resolve, {
+    T Function(Ref ref) resolve, {
     required String reason,
   }) {
     late final T Function() deferred;
@@ -66,7 +67,7 @@ void main() {
         keyValueStoreProvider.overrideWith(
           (Ref ref) async => core.InMemoryKeyValueStore(),
         ),
-        authRepositoryProvider.overrideWith((Ref<core.AuthRepository> ref) {
+        authRepositoryProvider.overrideWith((Ref ref) {
           deferred = () => resolve(ref);
           return InMemoryAuthRepository();
         }),
@@ -79,7 +80,7 @@ void main() {
 
   test('🔴 the erasure closure can resolve the PLATFORM client — the #258 pair', () {
     expectResolvableFromAuthRepository<RestClient>(
-      (Ref<core.AuthRepository> ref) => ref.read(platformRestClientProvider),
+      (Ref ref) => ref.read(platformRestClientProvider),
       reason:
           'authRepositoryProvider could not read platformRestClientProvider. If this is a '
           'CircularDependencyError, something platformRestClientProvider WATCHES is the auth '
@@ -90,7 +91,7 @@ void main() {
 
   test('the erasure closure can resolve the CHASSIS client too', () {
     expectResolvableFromAuthRepository<RestClient>(
-      (Ref<core.AuthRepository> ref) => ref.read(restClientProvider),
+      (Ref ref) => ref.read(restClientProvider),
       reason:
           'restClientProvider is the second client on the same two-hop shape. It is not read by '
           'the erasure closure today, and this is what keeps that a choice rather than a trap.',
@@ -120,7 +121,7 @@ void main() {
   // of labour this pair of checks exists for.
   test('the erasure closure can resolve the TYPED api client', () {
     expectResolvableFromAuthRepository<ApiClient>(
-      (Ref<core.AuthRepository> ref) => ref.read(apiClientProvider),
+      (Ref ref) => ref.read(apiClientProvider),
       reason:
           'apiClientProvider became an ancestor of the auth repository. Its tokenProvider must be '
           'authTokenProvider, never a ref.watch(authRepositoryProvider) tear-off.',

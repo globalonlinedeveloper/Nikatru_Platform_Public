@@ -196,7 +196,7 @@ class LocalSubscriptionStore {
   /// into `List<Subscription>` would re-seed twelve demo rows onto every user
   /// who cleared their list — the same defect shape
   /// `SubscriptionsController.addSubscription` documents at
-  /// `state.valueOrNull ?? const []`.
+  /// `state.value ?? const []`.
   Future<List<Subscription>?> readSubscriptions() async {
     final String? raw = await _read(kLocalSubscriptionsKey);
     return raw == null ? null : SubscriptionCodec.decodeSubscriptions(raw);

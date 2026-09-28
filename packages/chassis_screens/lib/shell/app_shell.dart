@@ -40,7 +40,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 ///     STAMPED app supplying its own value — which is exactly what a required
 ///     parameter forces.
 ///   · The force-update DESTINATION resolves in the brick
-///     (`ref.watch(appConfigProvider).valueOrNull?.updateUrl ??
+///     (`ref.watch(appConfigProvider).value?.updateUrl ??
 ///     AppConfig.updateUrl`, anchored by
 ///     `tooling/ci/assert-vendor-portability.mjs`), and the launch itself uses
 ///     `url_launcher` — a plugin, which this package may not declare.
@@ -460,7 +460,7 @@ class OfflineBannerHost extends StatelessWidget {
 /// 🏗️ MOVED HERE BY [ADR 067] decision 2 from the brick's `AnalyticsGate`,
 /// which no longer needs to be a `WidgetsBindingObserver` at all. The adapter
 /// keeps the one Riverpod line the callback runs —
-/// `ref.read(analyticsProvider).valueOrNull?.flush()` — because the recorder is
+/// `ref.read(analyticsProvider).value?.flush()` — because the recorder is
 /// a provider and this package declares no Riverpod.
 ///
 /// 🔴 FOUR STATES, AND `inactive` IS THE ONE THAT COVERS DESKTOP — [11]E-4a.

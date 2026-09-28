@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_api_client/nikatru_api_client.dart' show RestClient;
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
@@ -52,7 +53,7 @@ void main() {
         keyValueStoreProvider.overrideWith(
           (Ref ref) async => core.InMemoryKeyValueStore(),
         ),
-        authRepositoryProvider.overrideWith((Ref<core.AuthRepository> ref) {
+        authRepositoryProvider.overrideWith((Ref ref) {
           readAsTheErasureClosureDoes = () => ref.read(restClientProvider);
           return InMemoryAuthRepository();
         }),

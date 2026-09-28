@@ -44,8 +44,7 @@ class SublyApp extends ConsumerWidget {
     // mustache, so nothing can format it — only a real stamp can, and the
     // app_brick lane runs `dart format --set-exit-if-changed` on that stamp.
     final String updateUrl =
-        ref.watch(appConfigProvider).valueOrNull?.updateUrl ??
-        AppConfig.updateUrl;
+        ref.watch(appConfigProvider).value?.updateUrl ?? AppConfig.updateUrl;
     return MaterialApp.router(
       title: AppConfig.appName,
       debugShowCheckedModeBanner: false,
@@ -410,7 +409,7 @@ class _AnalyticsGateState extends ConsumerState<AnalyticsGate>
       // its own — a page unload beats an unawaited POST, and a killed process
       // reports nothing at all. The guarantee lives in core's
       // `kFlushInterval` deadline; this only makes the common case earlier.
-      ref.read(analyticsProvider).valueOrNull?.flush();
+      ref.read(analyticsProvider).value?.flush();
     }
   }
 
@@ -525,9 +524,7 @@ class _NotificationTapGateState extends ConsumerState<_NotificationTapGate> {
   Widget build(BuildContext context) {
     if (_taps == null &&
         ref.watch(analyticsConsentProvider) == core.ConsentStatus.granted) {
-      final AnalyticsFunnel? funnel = ref
-          .watch(analyticsFunnelProvider)
-          .valueOrNull;
+      final AnalyticsFunnel? funnel = ref.watch(analyticsFunnelProvider).value;
       if (funnel != null) {
         _taps = NotificationTapObserver(
           service: ref.read(notificationTapSourceProvider),

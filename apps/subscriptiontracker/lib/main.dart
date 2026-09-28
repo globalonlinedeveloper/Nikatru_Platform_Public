@@ -2,7 +2,7 @@
 // tap-observer registration kept intact. The ORDER of everything inside
 // `appRunner` is load-bearing — each step below says why.
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
@@ -168,7 +168,7 @@ Future<void> main() async {
       }
 
       runApp(
-        ProviderScope(
+        rootProviderScope(
           overrides: <Override>[
             // The INITIALISED instance, not a fresh one — taps are delivered on
             // this object's own stream, so overriding with anything else gives

@@ -59,7 +59,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     final ChassisLocalizations l10n = context.chassisL10n;
-    final core.AppConfig? cfg = ref.watch(appConfigProvider).valueOrNull;
+    final core.AppConfig? cfg = ref.watch(appConfigProvider).value;
 
     return OnboardingView(
       onFinish: _finish,

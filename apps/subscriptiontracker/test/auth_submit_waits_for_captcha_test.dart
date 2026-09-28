@@ -17,7 +17,7 @@
 // `login_screen.dart` gates, or in `check_inbox_actions.dart`, and the matching
 // case below goes red.
 // ─────────────────────────────────────────────────────────────────────────────
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show ChassisL10nX, ChassisLocalizations;

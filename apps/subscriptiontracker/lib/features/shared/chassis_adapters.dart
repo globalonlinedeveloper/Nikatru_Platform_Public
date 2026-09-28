@@ -19,7 +19,7 @@ export 'package:nikatru_chassis_screens/settings/settings_screen.dart'
 PlanStatus planStatusOf(AsyncValue<core.Entitlements> ent) => PlanStatus.of(
   loaded: ent.hasValue,
   failed: ent.hasError,
-  pro: ent.valueOrNull?.isProAt(DateTime.now()) ?? false,
+  pro: ent.value?.isProAt(DateTime.now()) ?? false,
 );
 
 PlanStatusLabels planStatusLabels(AppLocalizations l10n) => PlanStatusLabels(

@@ -74,7 +74,7 @@ class LegalAcceptanceController extends Notifier<String?> {
       AsyncValue<core.AuthUser?> next,
     ) {
       if (next.isLoading) return;
-      final bool hasSession = next.valueOrNull != null;
+      final bool hasSession = next.value != null;
       // ⚠️ THE TRANSITION, NOT THE VALUE. `authUserProvider` resolves to null on
       // every signed-out launch, and treating THAT as a sign-out would mark a
       // re-ask before anybody had signed in — which is the "ask on every
@@ -128,7 +128,7 @@ class LegalAcceptanceController extends Notifier<String?> {
       // an `await`, so a value assigned before this line would clobber a user
       // who ticked the box while the disk was still being read — and a partial
       // clobber is still a clobber.
-      if (_userChose) return; // the user got there first — never clobber
+      if (_userChose || !ref.mounted) return; // the user got there first
       final core.ConsentArtifact? a = c.artifactOf(core.ConsentPurpose.terms);
       // A session ended on this device since the last acceptance, so whoever is
       // holding it now has to answer for themselves. The ARTIFACT is untouched:
@@ -142,7 +142,7 @@ class LegalAcceptanceController extends Notifier<String?> {
       // where the app should be. The cost is asymmetric in the same direction
       // as onboarding's — asking twice is a nuisance, never asking means
       // somebody is using the product under terms they were never shown.
-      if (!_userChose) state = '';
+      if (!_userChose && ref.mounted) state = '';
     }
   }
 

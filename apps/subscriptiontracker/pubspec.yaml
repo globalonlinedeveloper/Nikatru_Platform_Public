@@ -99,7 +99,7 @@ dependencies:
     path: ../../packages/external_links
 
   # State management
-  flutter_riverpod: ^2.5.0
+  flutter_riverpod: ^3.0.0
 
   # Navigation (real URLs on web; deep links on all 6 platforms)
   go_router: ^18.0.0

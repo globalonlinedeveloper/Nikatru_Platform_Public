@@ -520,7 +520,7 @@ const RUNTIME_MIGRATIONS = [
     surface: 'UPDATE_URL',
     anchors: [
       { file: 'packages/core/lib/src/config/app_config.dart', re: /updateUrl:\s*\n?\s*json\['update_url'\]/, what: "core's AppConfig must PARSE `update_url` from the config body" },
-      { file: 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/app.dart', re: /valueOrNull\?\.updateUrl\s*\?\?/, what: 'the brick must READ the runtime value, with the compiled-in define as the offline fallback' },
+      { file: 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/app.dart', re: /\.value\?\.updateUrl\s*\?\?/, what: 'the brick must READ the runtime value, with the compiled-in define as the offline fallback' },
     ],
     why: 'the force-update wall is the emergency exit; an exit you can only move by shipping a new build is not one',
   },

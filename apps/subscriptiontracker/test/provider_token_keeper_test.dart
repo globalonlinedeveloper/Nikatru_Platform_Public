@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 // Narrowed: Subly's own data layer declares names of its own.
 import 'package:nikatru_api_client/nikatru_api_client.dart' show RestClient;

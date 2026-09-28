@@ -35,6 +35,7 @@
 // `restoreCalls == 0`; restored byte-exact, R1 is green again.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
@@ -243,6 +244,10 @@ Future<_Harness> _pumpManagePlan(
   );
   addTearDown(c.dispose);
   await c.read(appConfigProvider.future);
+  // Riverpod 3 pauses a provider nobody listens to, and a paused stream never
+  // emits: held open here as the app's own readers hold it (the rail listens
+  // to it), or this await would wait for ever.
+  c.listen(authUserProvider, (_, _) {});
   await c.read(authUserProvider.future);
   c.read(purchaseRailProvider);
   await tester.pumpWidget(
