@@ -13,6 +13,11 @@
 //   · after mason, `flutter pub get` runs AT THE REPO ROOT and then
 //     gen-app-licence-rows.mjs --write --app <id> (LEAD RULING NP12B-R2): the
 //     new app's package files get their licence rows in the stamp itself;
+//   · 🔴 that pub get leaves the tracked tree as it found it: the
+//     analysis_options.yaml it rewrites are put back byte for byte (a person's
+//     own uncommitted edit included), and any OTHER tracked file it changes,
+//     the root pubspec.lock aside, fails the stamp by name — driven against a
+//     real throwaway git checkout;
 //   · the four post-conditions exist, in order, and a failing one makes the
 //     exit non-zero;
 //   · no workflow stamps with a raw `mason make`: a stamp step that skips this
@@ -30,8 +35,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { appIdProblems } from '../../../contracts/app-id/app-id.js';
 import { planStamp, runStamp, REPO, REGEN, TAG_OWNER, APP_LICENCE_ROWS } from '../../kit/stamp-app.mjs';
@@ -83,6 +89,48 @@ after(() => {
 
 const plan = (argv, extra = {}) => planStamp({ argv, root: ROOT, platform: 'linux', env: {}, ...extra });
 
+/** A tree keeper that keeps nothing: for the cases about step order and exit codes. */
+const INERT = { snapshot: () => ({}), settle: () => ({ restored: [], stray: [] }) };
+
+const git = (cwd, ...args) => {
+  const r = spawnSync('git', args, { cwd, encoding: 'utf8' });
+  assert.equal(r.status, 0, `git ${args.join(' ')}: ${r.stderr}`);
+};
+const put = (root, rel, body) => {
+  mkdirSync(dirname(join(root, rel)), { recursive: true });
+  writeFileSync(join(root, rel), body);
+};
+const bytes = (root, rel) => readFileSync(join(root, rel), 'utf8');
+
+/** A real git checkout — nothing committed, the index is the baseline — with
+ *  two tracked analysis_options.yaml (one carrying a person's uncommitted
+ *  edit), the root lock, a README, and the new app's untracked analysis_options.yaml. */
+function trackedTree() {
+  const root = mkdtempSync(join(tmpdir(), 'nikatru-stamp-tree-'));
+  git(root, 'init', '-q');
+  git(root, 'config', 'core.autocrlf', 'false');
+  put(root, 'packages/a/analysis_options.yaml', 'include: package:nikatru_lints/analysis_options.yaml\n');
+  put(root, 'apps/one/analysis_options.yaml', 'include: package:nikatru_lints/analysis_options.yaml\n');
+  put(root, 'pubspec.lock', 'packages: {}\n');
+  put(root, 'README.md', '# repo\n');
+  put(root, GOOD, JSON.stringify({ app_id: 'habittracker' }));
+  git(root, 'add', '-A');
+  put(root, 'apps/one/analysis_options.yaml', 'include: package:nikatru_lints/analysis_options.yaml\n# a person\'s edit\n');
+  put(root, 'apps/habittracker/analysis_options.yaml', 'include: package:nikatru_lints/analysis_options.yaml\n');
+  return root;
+}
+const MIGRATED = '\nanalyzer:\n  exclude:\n    - build/**\n';
+/** What a root `flutter pub get` does to the tree, measured (TRAPS.md, flutter class), plus `extra`. */
+const pubGetWrites = (root, extra = () => {}) => (command) => {
+  if (command !== 'flutter') return 0;
+  for (const rel of ['packages/a/analysis_options.yaml', 'apps/one/analysis_options.yaml', 'apps/habittracker/analysis_options.yaml']) {
+    writeFileSync(join(root, rel), bytes(root, rel) + MIGRATED);
+  }
+  writeFileSync(join(root, 'pubspec.lock'), 'packages: {habit: 1}\n');
+  extra();
+  return 0;
+};
+
 describe('stamp-app.mjs — one command, and loud about what it left behind', () => {
   test('mason get, mason make, the root pub get and the licence rows run in that order, all from the repo root', () => {
     const p = plan(['--vars', GOOD]);
@@ -125,6 +173,7 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
         return command === 'flutter' ? 1 : 0;
       },
       exists: () => true,
+      tree: INERT,
       log: () => {},
       error: (l) => errors.push(l),
     });
@@ -199,7 +248,7 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
     const p = plan(['--vars', GOOD]);
     const errors = [];
     const rowsRed = (command, args) => (args.includes('--check') && args[0].endsWith('gen-app-licence-rows.mjs') ? 1 : 0);
-    const code = runStamp(p, { run: rowsRed, exists: () => true, log: () => {}, error: (l) => errors.push(l) });
+    const code = runStamp(p, { run: rowsRed, exists: () => true, tree: INERT, log: () => {}, error: (l) => errors.push(l) });
     assert.equal(code, 1);
     assert.match(errors.join('\n'), /1 post-condition\(s\) failed: node tooling\/ci\/gen-app-licence-rows\.mjs --check --app habittracker/);
   });
@@ -212,15 +261,15 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
       calls.push([command, ...args].join(' '));
       return args.includes('--check') && args[0].endsWith('regen.mjs') ? 1 : 0;
     };
-    const red = runStamp(p, { run: regenFails, exists: () => true, log: () => {}, error: (l) => errors.push(l) });
+    const red = runStamp(p, { run: regenFails, exists: () => true, tree: INERT, log: () => {}, error: (l) => errors.push(l) });
     assert.equal(red, 1);
     assert.match(errors.join('\n'), /1 post-condition\(s\) failed: node tooling\/sites\/regen\.mjs --check/);
     assert.equal(calls.length, 7, `expected mason get, mason make, pub get, the --write and the three --check runs; got ${calls.join(' | ')}`);
 
-    const green = runStamp(p, { run: () => 0, exists: () => true, log: () => {}, error: () => {} });
+    const green = runStamp(p, { run: () => 0, exists: () => true, tree: INERT, log: () => {}, error: () => {} });
     assert.equal(green, 0);
 
-    const noApp = runStamp(p, { run: () => 0, exists: () => false, log: () => {}, error: () => {} });
+    const noApp = runStamp(p, { run: () => 0, exists: () => false, tree: INERT, log: () => {}, error: () => {} });
     assert.equal(noApp, 1, 'a stamp that wrote no apps/<id>/pubspec.yaml exited 0');
   });
 
@@ -230,9 +279,71 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
     assert.match(p.problems.join('\n'), /app id "habit_tracker" breaks the pattern/);
     assert.match(p.problems.join('\n'), /contracts\/app-id/);
     const ran = [];
-    const code = runStamp(p, { run: (c) => { ran.push(c); return 0; }, exists: () => true, log: () => {}, error: () => {} });
+    const code = runStamp(p, { run: (c) => { ran.push(c); return 0; }, exists: () => true, tree: INERT, log: () => {}, error: () => {} });
     assert.equal(code, 1);
     assert.deepEqual(ran, [], 'a refused stamp ran a command');
+  });
+
+  test('only the root pub get is wrapped by the tracked-tree keeper', () => {
+    const p = plan(['--vars', GOOD]);
+    assert.deepEqual(p.steps.filter((s) => s.keepsTrackedTree).map((s) => s.label), ['flutter pub get (repo root)']);
+  });
+
+  test('🔴 the analysis_options.yaml a root pub get rewrites are put back byte for byte — a person\'s own edit as they left it — and the lock is its to write', () => {
+    const root = trackedTree();
+    try {
+      const before = ['packages/a/analysis_options.yaml', 'apps/one/analysis_options.yaml', 'apps/habittracker/analysis_options.yaml'].map((r) => bytes(root, r));
+      const logs = [];
+      const code = runStamp(planStamp({ argv: ['--vars', GOOD], root, platform: 'linux', env: {} }), {
+        run: pubGetWrites(root),
+        exists: () => true,
+        log: (l) => logs.push(l),
+        error: (l) => logs.push(l),
+      });
+      assert.equal(code, 0, logs.join('\n'));
+      assert.deepEqual(
+        ['packages/a/analysis_options.yaml', 'apps/one/analysis_options.yaml', 'apps/habittracker/analysis_options.yaml'].map((r) => bytes(root, r)),
+        before,
+      );
+      assert.match(bytes(root, 'apps/one/analysis_options.yaml'), /# a person's edit/);
+      assert.equal(bytes(root, 'pubspec.lock'), 'packages: {habit: 1}\n');
+      assert.match(logs.join('\n'), /put back 3 analysis_options\.yaml it rewrote/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('🔴 RED CONTROL: any other tracked file the root pub get changes fails the stamp, named, before the licence rows', () => {
+    const root = trackedTree();
+    try {
+      const ran = [];
+      const errors = [];
+      const writes = pubGetWrites(root, () => writeFileSync(join(root, 'README.md'), '# rewritten\n'));
+      const code = runStamp(planStamp({ argv: ['--vars', GOOD], root, platform: 'linux', env: {} }), {
+        run: (command, args) => {
+          ran.push([command, ...args].join(' '));
+          return writes(command);
+        },
+        exists: () => true,
+        log: () => {},
+        error: (l) => errors.push(l),
+      });
+      assert.equal(code, 1);
+      assert.match(errors.join('\n'), /flutter pub get \(repo root\) left 1 tracked file\(s\) changed: README\.md\. Only pubspec\.lock is its to write/);
+      assert.ok(!ran.some((r) => r.includes('gen-app-licence-rows')), `the generator ran after a stray write: ${ran.join(' | ')}`);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('a tree the keeper cannot read stops the stamp BEFORE pub get runs', () => {
+    const p = plan(['--vars', GOOD]); // ROOT is not a git checkout
+    const ran = [];
+    const errors = [];
+    const code = runStamp(p, { run: (c) => { ran.push(c); return 0; }, exists: () => true, log: () => {}, error: (l) => errors.push(l) });
+    assert.equal(code, 1);
+    assert.match(errors.join('\n'), /flutter pub get \(repo root\): the tracked tree could not be read before it .*; it was not run/);
+    assert.deepEqual(ran, ['mason', 'mason']);
   });
 
   test('no workflow under .github/workflows runs mason make itself', () => {

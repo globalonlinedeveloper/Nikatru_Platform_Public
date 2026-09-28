@@ -204,8 +204,19 @@ describe('package-assets.mjs — a package\'s own declaration, read as Flutter k
     assert.match(d.unread[1], /has no `path:`/);
   });
 
+  test('🔴 `shaders:` entries are read (material_ui 1.4.0 ships ink_sparkle.frag that way), and a non-path shader line is REFUSED', () => {
+    const d = flutterAssetEntries(
+      ['flutter:', '  shaders:', '    - packages/material_ui/shaders/ink_sparkle.frag', '    - "shaders/own.frag"'].join('\n'),
+    );
+    assert.deepEqual(d.unread, []);
+    assert.deepEqual(d.shaders, ['packages/material_ui/shaders/ink_sparkle.frag', 'shaders/own.frag']);
+    const bad = flutterAssetEntries(['flutter:', '  shaders:', '    - path: shaders/x.frag'].join('\n'));
+    assert.deepEqual(bad.shaders, []);
+    assert.match(bad.unread.join('\n'), /a shader line `- path: shaders\/x\.frag` is not a plain list item/);
+  });
+
   test('a pubspec with no flutter block declares nothing, and the dependency names are the top-level block only', () => {
-    assert.deepEqual(flutterAssetEntries('name: x\ndependencies:\n  a: ^1.0.0\n'), { assets: [], fonts: [], unread: [] });
+    assert.deepEqual(flutterAssetEntries('name: x\ndependencies:\n  a: ^1.0.0\n'), { assets: [], fonts: [], shaders: [], unread: [] });
     assert.deepEqual(
       pubspecDependencyNames('name: x\ndependencies:\n  b: ^1.0.0\n  # c: ^1.0.0\n  a:\n    path: ../a\ndev_dependencies:\n  d: ^1.0.0\n'),
       ['a', 'b'],
@@ -246,6 +257,35 @@ describe('gen-app-licence-rows.mjs — the rows are born with the app', () => {
     const c = run(root, '--check');
     assert.equal(c.status, 0, out(c));
     assert.match(out(c), /ok  app:probe — 4 package file\(s\) in its web bundle; 4 row\(s\) kept/);
+  });
+
+  test('🔴 a hosted package\'s SHADER gets its row too — --check reds without it (train W55: material_ui\'s ink_sparkle.frag)', () => {
+    const root = fixture({
+      graphPatch: (g) => ({
+        ...g,
+        packages: [
+          ...g.packages.map((p) => (p.name === 'webview' ? { ...p, dependencies: [...p.dependencies, 'sparkle'] } : p)),
+          { name: 'sparkle', version: '1.0.0', dependencies: [] },
+        ],
+      }),
+    });
+    write(root, 'cache/sparkle-1.0.0/pubspec.yaml', 'name: sparkle\nflutter:\n  shaders:\n    - packages/sparkle/shaders/ink.frag\n');
+    write(root, 'cache/sparkle-1.0.0/lib/shaders/ink.frag', 'x');
+    write(root, 'cache/sparkle-1.0.0/LICENSE', MIT);
+    const cfg = JSON.parse(readFileSync(join(root, '.dart_tool', 'package_config.json'), 'utf8'));
+    cfg.packages.push({ name: 'sparkle', rootUri: pathToFileURL(join(root, 'cache', 'sparkle-1.0.0')).href, packageUri: 'lib/' });
+    write(root, '.dart_tool/package_config.json', JSON.stringify(cfg));
+    const graph = readFileSync(join(root, '.dart_tool', 'package_graph.json'), 'utf8');
+    write(root, '.dart_tool/package_graph.json', graph); // newer than every pubspec above
+    const r = run(root, '--write', '--app', 'probe');
+    assert.equal(r.status, 0, out(r));
+    const row = register(root).appScopedAssets.find((x) => x.bundlePath === 'packages/sparkle/shaders/ink.frag');
+    assert.ok(row, `no shader row was written: ${out(r)}`);
+    assert.deepEqual([row.package, row.licence, row.scope], ['sparkle', 'MIT', 'app:probe']);
+    setRows(root, register(root).appScopedAssets.filter((x) => x !== null && x.bundlePath !== row.bundlePath));
+    const red = run(root, '--check', '--app', 'probe');
+    assert.equal(red.status, 1, out(red));
+    assert.match(out(red), /packages\/sparkle\/shaders\/ink\.frag ships \(package sparkle, MIT\) and has NO row/);
   });
 
   test("a person's prose on a kept row survives --write byte for byte; only the owned fields are derived", () => {

@@ -25,10 +25,12 @@
 //     bundle carried none of app #1's five package files (prlane2, PRL-R1);
 //   · of those, only packages OUTSIDE the workspace. A workspace package's
 //     declared assets are the shared `assets` rows' domain (declared mode);
-//   · each package's `flutter: assets:` and `flutter: fonts:` entries, as Flutter
-//     keys them in the bundle: `assets/x` → `packages/<pkg>/assets/x`, while an
+//   · each package's `flutter: assets:`, `fonts:` and `shaders:` entries, as
+//     Flutter keys them in the bundle: `assets/x` → `packages/<pkg>/assets/x`, while an
 //     entry already written `packages/<p>/rest` names `<p>`'s `lib/rest` and keeps
-//     its key (flutter_inappwebview 6.1.5 declares its T-Rex page that way);
+//     its key (flutter_inappwebview 6.1.5 declares its T-Rex page that way, and
+//     material_ui 1.4.0 its `packages/material_ui/shaders/ink_sparkle.frag`, which
+//     the web build ships compiled under that same key: train W55's red 3);
 //     a directory entry ships the files directly inside it, plus any resolution
 //     variant (`2.0x/<file>`) of one of them;
 //   · an entry with `platforms:` ships in the web bundle only when the list
@@ -230,14 +232,15 @@ function readList(lines, i, indent) {
 }
 
 /**
- * The `flutter: assets:` and `flutter: fonts:` entries of one pubspec, comments
- * stripped. Returns { assets: [{entry, platforms}], fonts: [entry], unread: [] }
+ * The `flutter: assets:`, `fonts:` and `shaders:` entries of one pubspec, comments
+ * stripped. Returns { assets: [{entry, platforms}], fonts: [entry], shaders: [entry],
+ * unread: [] }
  * where `platforms` is null for an entry every platform ships. Anything this
  * reader cannot place is an `unread` reason, never a silent omission.
  */
 export function flutterAssetEntries(pubspecText) {
   const lines = stripSourceComments(pubspecText, '.yaml').split(/\r?\n/);
-  const out = { assets: [], fonts: [], unread: [] };
+  const out = { assets: [], fonts: [], shaders: [], unread: [] };
   const top = lines.findIndex((l) => /^flutter:\s*$/.test(l));
   if (top === -1) return out;
   let end = top + 1;
@@ -249,7 +252,7 @@ export function flutterAssetEntries(pubspecText) {
   for (let i = 0; i < block.length; i++) {
     const l = block[i];
     if (l.trim() === '' || lead(l) !== ci) continue;
-    const key = /^(assets|fonts):\s*(.*)$/.exec(l.trim());
+    const key = /^(assets|fonts|shaders):\s*(.*)$/.exec(l.trim());
     if (!key) continue;
     if (key[2] !== '') {
       out.unread.push(`\`flutter: ${key[1]}:\` carries an inline value (${key[2]}), which this reader does not read`);
@@ -262,6 +265,16 @@ export function flutterAssetEntries(pubspecText) {
       for (const b of body) {
         const m = /^(?:-\s*)?asset:\s*(.+)$/.exec(b.trim());
         if (m) out.fonts.push(unquote(m[1]));
+      }
+      continue;
+    }
+    if (key[1] === 'shaders') {
+      // A shader entry is a plain path; anything else is refused, not skipped.
+      for (const b of body) {
+        if (b.trim() === '') continue;
+        const m = /^-\s*(.+)$/.exec(b.trim());
+        if (m && !/^[A-Za-z_]+:(\s|$)/.test(m[1])) out.shaders.push(unquote(m[1]));
+        else out.unread.push(`a shader line \`${b.trim()}\` is not a plain list item`);
       }
       continue;
     }
@@ -388,6 +401,7 @@ export function webShippedPackageAssets({ packageConfig, graph, appPackage, show
     };
     for (const a of decl.assets) ship(a.entry, a.platforms);
     for (const f of decl.fonts) ship(f, null);
+    for (const s of decl.shaders) ship(s, null);
   }
   assets.sort((a, b) => (a.bundlePath < b.bundlePath ? -1 : a.bundlePath > b.bundlePath ? 1 : 0));
   return { assets, lost, problems };
