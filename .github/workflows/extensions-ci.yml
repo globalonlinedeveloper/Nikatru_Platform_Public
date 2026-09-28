@@ -1212,12 +1212,16 @@ jobs:
           # guard left to key on and the rule is the stricter one: every job in
           # extensions-ci.yml except this one is a constituent. Case 10 below
           # plants a job this list does not name and requires a disagreement.
+          # The one exception is an FF-2 follow-up `ff-<lane>`: it runs only
+          # after <lane> is red and checks nothing, so waiting on it would make
+          # this verdict wait on the cancel. assert-failfast-coverage.mjs refuses
+          # an `ff-` job that does anything but cancel (docs/ci/README.md §2.1).
           wf="$GITHUB_WORKSPACE/.github/workflows/extensions-ci.yml"
           jobs_of() {
             awk '/^jobs:/{f=1;next}
                  f && /^[^ #]/ {f=0}
                  f && /^  [A-Za-z0-9_-]+:[[:space:]]*$/ { job=$1; sub(/:.*/,"",job); print job }' "$1" \
-              | grep -v '^ci-required$' | sort || true
+              | grep -vE '^(ci-required|ff-[A-Za-z0-9_-]+)$' | sort || true
           }
           declared=$(jobs_of "$wf")
           required=$(printf '%s\n' "${pairs[@]}" | sed 's/=.*//' | sort)
