@@ -35,8 +35,13 @@ import {
   needsCrossRead,
   crossReadTerm,
   maxRunId,
+  runQueryPredicate,
+  repoWideWindow,
+  spliceFreshWindows,
+  repoWideRunsPath,
 } from '../run-page-anchor.mjs';
-import { anchoredBranchPage } from '../assert-ops-register.mjs';
+import { anchoredBranchPage, anchoredPage, anchoredNewest, gapCheckedScan, redSincePair, selectRuns, classifyRunHistoryAnswer } from '../assert-ops-register.mjs';
+import * as alertGuard from '../assert-alert-disposition.mjs';
 import * as platformGuard from '../assert-platform-proof-fresh.mjs';
 import * as e2eGuard from '../assert-e2e-proof-fresh.mjs';
 import {
@@ -72,19 +77,25 @@ const C1_SELF = run(35369631763, '2026-09-18T16:38:06Z', '2026-09-18T16:38:10Z',
 const C1_1444 = run(35362000000, '2026-09-18T14:44:00Z', '2026-09-18T14:50:00Z', { event: 'schedule', status: 'completed', conclusion: 'success', path: '.github/workflows/ops-watch.yml' });
 const C1_FRESH = [C1_SELF, C1_1444, ...C1_STALE];
 
-/** The I/O anchoredBranchPage needs, served from fixtures. */
-function io({ env = C1_ENV, nowMs = C1_NOW, cross = [], head = null } = {}) {
+/** The I/O anchoredBranchPage needs, served from fixtures. `cross` answers
+ *  every repository-wide list; `lists` (⏱ 2026-09-28) answers each one by its
+ *  branch (`null` = the unfiltered list) with a whole body. */
+function io({ env = C1_ENV, nowMs = C1_NOW, cross = [], head = null, lists = null } = {}) {
   const asked = [];
+  const notes = [];
   return {
     asked,
+    notes,
     env,
     nowMs,
     readWorkflow: (f) => workflow(f),
     branchHead: async () => head,
     repoRunsPage: async (repo, branch) => {
       asked.push(`${repo}|${branch}`);
+      if (lists) return lists[String(branch)];
       return { workflow_runs: cross };
     },
+    note: (line) => notes.push(line),
   };
 }
 
@@ -125,9 +136,17 @@ describe('(1) ops-watch 35369631763 — the SELF-RUN anchor, through assert-ops-
   });
 
   test('🔴 and with no self-run (a laptop run), the repository-wide CROSS-READ catches the same page', async () => {
+    // ⏱ 2026-09-28 — VERDICT CHANGED: this THREW before; the page is now REPLACED
+    // by the fresh window. The window holds only 35362000000 and reaches back no
+    // further, so a question it cannot answer is still UNREAD (the gap below).
     const i = io({ env: {}, cross: [C1_1444] });
-    await assert.rejects(anchoredBranchPage(REPO, 'ops-watch.yml', 'main', C1_STALE, false, i), /stale page .*repository-wide run list on main answered run 35362000000/);
-    assert.deepEqual(i.asked, [`${REPO}|main`]);
+    const got = await anchoredBranchPage(REPO, 'ops-watch.yml', 'main', C1_STALE, false, i);
+    assert.deepEqual(got.runs.map((r) => r.id), [35362000000]);
+    assert.equal(got.pageFull, true, 'a window with a gap below it is a truncated answer');
+    assert.equal(got.gapBelow.floorId, 35362000000);
+    assert.deepEqual(i.asked, [`${REPO}|main`, `${REPO}|null`]);
+    assert.match(i.notes[0], /^⬜ {2}STALE PAGE, A FRESH WINDOW CARRIED THE READ: stale page — the run history of ops-watch\.yml on main ends at run 33228655039, but .*answered run 35362000000/);
+    assert.throws(() => gapCheckedScan([], true, got.gapBelow), /^Error: stale page — .*reaches back only to run 35362000000/);
   });
 
   test('the repository-wide cross-read judges a workflow only by ITS runs — another workflow\'s newer run proves nothing', async () => {
@@ -178,7 +197,11 @@ describe('(2) PR #806 — the CROSS-READ anchor, through assert-platform-proof-f
     assert.ok(got.verdict.why.startsWith(STALE_PAGE), got.verdict.why);
     assert.match(got.verdict.why, /ends at run 32003607931/);
     assert.match(got.verdict.why, /answered run 35215254802/);
-    assert.deepEqual(s.asked, [C2_URL, C2_URL.replace('per_page=100', 'created=%3E%3D2026-08-17T06%3A55%3A35Z&per_page=10')]);
+    assert.deepEqual(s.asked, [
+      C2_URL,
+      C2_URL.replace('per_page=100', 'created=%3E%3D2026-08-17T06%3A55%3A35Z&per_page=10'),
+      `https://api.github.com${repoWideRunsPath(REPO)}`,
+    ]);
   });
 
   test('🟢 RE-GRADED UNDER THE UNION (E2) — VERDICT CHANGED: COVERAGE LOST before, GREEN now, on the cross-read\'s 35215254802', async () => {
@@ -242,7 +265,11 @@ describe('(4) PR #913 — the e2e guard now reads through the shared anchored re
   test('🟢 THE MEASURED SHAPE — the cross-read holds 35962444367, so the union is GREEN and says the page was stale', async () => {
     const s = served(C4_PAGE, [C4_DISPATCHED, C4_SCHEDULED]);
     const got = await e2eGuard.readRunHistory({ repo: REPO, read: s.read, nowMs: C4_NOW });
-    assert.deepEqual(s.asked, [C4_E2E_URL, C4_E2E_URL.replace('per_page=100', 'created=%3E%3D2026-09-19T06%3A41%3A00Z&per_page=10')]);
+    assert.deepEqual(s.asked, [
+      C4_E2E_URL,
+      C4_E2E_URL.replace('per_page=100', 'created=%3E%3D2026-09-19T06%3A41%3A00Z&per_page=10'),
+      `https://api.github.com${repoWideRunsPath(REPO)}`,
+    ]);
     assert.equal(got.stale, true);
     const v = e2eGuard.gradeRunHistory(got, C4_NOW);
     assert.equal(v.ok, true, v.reason);
@@ -279,7 +306,7 @@ describe('(4) PR #913 — the e2e guard now reads through the shared anchored re
       describeRead(got, e2eGuard.newestGreenOnBranch),
       `GET /repos/${REPO}/actions/workflows/e2e.yml/runs?branch=main&status=success&per_page=100 · 2 row(s) returned, per_page 100, ` +
         'saturated no · newest qualifying run 35962444367 (updated_at 2026-09-24T06:06:58Z) · cross-read created=>=2026-09-19T06:41:00Z: ' +
-        '2 row(s), newest 35962444367 · the page is PROVEN STALE',
+        '2 row(s), newest 35962444367 · repository-wide 0 row(s), newest none · the page is PROVEN STALE',
     );
   });
 });
@@ -319,9 +346,11 @@ describe('the per-request ceiling — a read that never answers is COVERAGE LOST
 
 describe('anchored-run-read — the pure edges', () => {
   test('fixtureReads — an array is a page with no cross-read; {page, cross} carries both; anything else throws', () => {
-    assert.deepEqual(fixtureReads([1]), { page: [1], cross: null });
-    assert.deepEqual(fixtureReads({ page: [1], cross: [2] }), { page: [1], cross: [2] });
-    assert.deepEqual(fixtureReads({ page: [1] }), { page: [1], cross: null });
+    assert.deepEqual(fixtureReads([1]), { page: [1], cross: null, repoWide: null });
+    assert.deepEqual(fixtureReads({ page: [1], cross: [2] }), { page: [1], cross: [2], repoWide: null });
+    assert.deepEqual(fixtureReads({ page: [1] }), { page: [1], cross: null, repoWide: null });
+    assert.deepEqual(fixtureReads({ page: [1], repoWide: { workflow_runs: [3] } }), { page: [1], cross: null, repoWide: { workflow_runs: [3] } });
+    assert.throws(() => fixtureReads({ page: [1], repoWide: [3] }), /`repoWide` that is not a run-list body/);
     assert.throws(() => fixtureReads({ page: [1], cross: 'x' }), CouldNotLook);
     assert.throws(() => fixtureReads({ workflow_runs: [] }), /neither an array of runs/);
   });
@@ -432,6 +461,23 @@ describe('the anchor is WIRED into every reader, not merely available to them', 
   test('assert-ops-register.mjs — the shared branch page returns through anchoredBranchPage', () => {
     assert.match(code('tooling/ci/assert-ops-register.mjs'), /return anchoredBranchPage\(repo, workflow, branch, runs, /);
   });
+  test('assert-ops-register.mjs — ⏱ 2026-09-28: BOTH fallbacks, the gap and the red-since pair are wired', () => {
+    const c = code('tooling/ci/assert-ops-register.mjs');
+    assert.match(c, /return anchoredNewest\(repo, workflow, qs, wide, reconcileRunReads\(/, 'ghNewestRun\'s fallback');
+    assert.match(c, /return anchoredPage\(repo, q\.workflow, qs, runs, wide\.workflow_runs\.length >= UNIT_PAGE, what\);/, 'unitRunsPage\'s fallback');
+    assert.match(c, /if \(hit \|\| !pageFull\) return hit; if \(gapBelow\) throw new StaleGap\(gapBelow\);/, 'ghNewestRun on the shared page');
+    assert.match(c, /return \{ runs: selectRuns\(runs, \{ event, status \}\), pageFull, gapBelow \};/, 'unitRunsPage passes the gap on');
+    assert.match(c, /return gapCheckedScan\(entries, pageFull, gapBelow\);/, 'scanUnit');
+    assert.match(c, /return withQuotaCause\(await redSincePair\(newest\), repo, cache\);/, 'probeGithubRedSince');
+    assert.match(c, /out\.push\(repoWideWindow\(await io\.repoRunsPage\(repo, null\), /, 'the unfiltered repository list is one of the windows');
+  });
+  test('assert-alert-disposition.mjs — ⏱ 2026-09-28: the firing history reads through the shared reader and grades the union', () => {
+    const c = code('tooling/ci/assert-alert-disposition.mjs');
+    assert.match(c, /import \{[^}]*\banchoredRunRead\b[^}]*\} from '\.\/anchored-run-read\.mjs';/);
+    assert.match(c, /const read = await anchoredRunRead\(\{ workflow: workflowFile, url: `\$\{GH_API\}\/repos\/\$\{repo\}\/actions\/workflows\/\$\{workflowFile\}\/runs\?per_page=\$\{RUN_SAMPLE\}`/);
+    assert.match(c, /return read\.union;/);
+    assert.match(c, /runsByWorkflow\.set\(s\.workflow, await fetchRuns\(repo, /);
+  });
   test('assert-platform-proof-fresh.mjs — the live read and the grade both go through the shared reader', () => {
     const c = code('tooling/ci/assert-platform-proof-fresh.mjs');
     assert.match(c, /import \{[^}]*\banchoredRunRead\b[^}]*\} from '\.\/anchored-run-read\.mjs';/);
@@ -472,9 +518,11 @@ describe('the anchor is WIRED into every reader, not merely available to them', 
 // ─────────────────────────────────────────────────────────────────────────────
 describe('E5 — every run-history URL builder under tooling/ci and extensions/scripts reads through the shared reader, or is a named exemption', () => {
   const RUNS_URL = /actions\/workflows\/[^'"`\n]*\/runs\b/;
+  // ⏱ 2026-09-28: assert-alert-disposition.mjs left this list — it reads through
+  // anchoredRunRead now — and assert-ops-register.mjs's two fallback reads are
+  // anchored (anchoredNewest, anchoredPage), pinned by the wiring case below.
   const EXEMPT = new Map([
-    ['tooling/ci/assert-alert-disposition.mjs', 'grades whether each FAILED run (a firing) was dispositioned, not how fresh a proof is; a stale page there hides firings, which is its own anchor question'],
-    ['tooling/ci/assert-ops-register.mjs', 'its shared branch page is anchored through anchoredBranchPage (kept on purpose: red-since is not a freshness claim); the two targeted fallback reads (ghNewestRun, unitRunsPage) are reconciled at two widths, not yet anchored'],
+    ['tooling/ci/assert-ops-register.mjs', 'it reads MANY questions off ONE shared page per workflow, so it anchors through its own anchoredBranchPage / anchoredPage / anchoredNewest (run-page-anchor.mjs\'s windows and splice) rather than through the one-page reader'],
   ]);
   const candidates = [];
   for (const dir of ['tooling/ci', 'extensions/scripts']) {
@@ -507,7 +555,195 @@ describe('E5 — every run-history URL builder under tooling/ci and extensions/s
     }
   });
 
-  test('the exempt list only SHRINKS — two entries at 403d7716', () => {
-    assert.ok(EXEMPT.size <= 2, `the exempt list grew to ${EXEMPT.size}; adopt the shared reader instead`);
+  test('the exempt list only SHRINKS — two entries at 403d7716, one since 2026-09-28', () => {
+    assert.ok(EXEMPT.size <= 1, `the exempt list grew to ${EXEMPT.size}; adopt the shared reader instead`);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (5) main CI 36409128416 attempt 2, 2026-09-28 ~10:35Z — THE CROSS-READ WAS
+// STALE TOO. guards-platform went red on six duties, each reading ops-watch.yml's
+// newest success as run 35422355154 (2026-09-19T04:52:07Z, 221.7h) while
+// ops-watch had succeeded at 00:00Z, 01:04Z and 02:17Z. Measured by hand at
+// ~10:40Z: `…/ops-watch.yml/runs?branch=main` → newest 2026-09-25 (stale);
+// `…&status=success` → 02:17Z; the unfiltered `/actions/runs?per_page=100`
+// filtered by name → 08:50Z. 35422355154 (the page's newest success, from the
+// failing log), 36369228689 (the 02:17Z success) and 36399752579 (08:50Z) are
+// the measured ids; the 2026-09-25 failure that tops the stale page and the
+// other workflows' rows are SYNTHETIC, dated to the measured answers.
+// ─────────────────────────────────────────────────────────────────────────────
+const C5_NOW = Date.parse('2026-09-28T10:35:22Z');
+const OW = '.github/workflows/ops-watch.yml';
+const ow = (id, created, updated, conclusion, extra = {}) => run(id, created, updated, { event: 'schedule', status: 'completed', conclusion, path: OW, ...extra });
+const C5_OK_0919 = ow(35422355154, '2026-09-19T04:40:00Z', '2026-09-19T04:52:07Z', 'success');
+const C5_RED_0925 = ow(35950000001, '2026-09-25T06:00:00Z', '2026-09-25T06:10:00Z', 'failure');
+const C5_OK_0217 = ow(36369228689, '2026-09-28T02:17:02Z', '2026-09-28T02:25:00Z', 'success');
+const C5_RED_0850 = ow(36399752579, '2026-09-28T08:50:17Z', '2026-09-28T08:58:00Z', 'failure');
+const other = (id, at) => run(id, at, at, { path: '.github/workflows/ci.yml', event: 'push', status: 'completed', conclusion: 'success' });
+/** The STALE page of ops-watch.yml on main — every read of it agreed. */
+const C5_PAGE = [C5_RED_0925, C5_OK_0919];
+/** The repository-wide list on main, served from the SAME stale snapshot. */
+const C5_BRANCH_LIST = { workflow_runs: [other(35950000500, '2026-09-25T07:00:00Z'), C5_RED_0925, other(35940000000, '2026-09-25T02:00:00Z')] };
+/** The UNFILTERED repository list — fresh, its window from 36360000000 up. */
+const C5_FRESH_LIST = { workflow_runs: [other(36409128416, '2026-09-28T10:20:00Z'), C5_RED_0850, C5_OK_0217, other(36360000000, '2026-09-28T01:00:00Z')] };
+const C5_Q = { workflow: 'ops-watch.yml', headBranch: 'main', event: 'schedule' };
+const ageH = (r) => ((C5_NOW - Date.parse(r.updated_at)) / 3_600_000).toFixed(1);
+
+describe('(5) main CI 36409128416 — the stale page AND its stale cross-read, through assert-ops-register', () => {
+  test('🟢 THE MEASURED ANSWERS — the unfiltered list carries 02:17Z: the duty reads FRESH, not 221.7h red', async () => {
+    const i = io({ env: {}, nowMs: C5_NOW, lists: { main: C5_BRANCH_LIST, null: C5_FRESH_LIST } });
+    const got = await anchoredBranchPage(REPO, 'ops-watch.yml', 'main', C5_PAGE, false, i);
+    assert.deepEqual(i.asked, [`${REPO}|main`, `${REPO}|null`]);
+    assert.deepEqual(got.runs.map((r) => r.id), [36399752579, 36369228689], 'the fresh window, newest first');
+    assert.equal(got.gapBelow.floorId, 36360000000);
+    const hit = selectRuns(got.runs, { event: 'schedule', status: 'success' })[0];
+    const v = classifyRunHistoryAnswer(C5_Q, hit, REPO);
+    assert.equal(hit.id, 36369228689);
+    assert.equal(ageH(hit), '8.2', 'inside the 36h window, where the stale page read 221.7h');
+    assert.equal(v.lastSuccessMs, Date.parse('2026-09-28T02:25:00Z'));
+    assert.match(i.notes[0], /STALE PAGE, A FRESH WINDOW CARRIED THE READ: stale page — the run history of ops-watch\.yml on main ends at run 35950000001, but the repository-wide run list on main with the unfiltered repository-wide run list answered run 36399752579/);
+    // …and a step/job unit scan that finds its success in the window is answered.
+    assert.deepEqual(gapCheckedScan([{ run: C5_RED_0850, c: { verdict: 'failure' } }, { run: C5_OK_0217, c: { verdict: 'success' } }], true, got.gapBelow).entries.length, 2);
+  });
+
+  test('🔴 RED CONTROL — the SAME page with both lists agreeing that 35422355154 is the newest success: still 221.7h, the guard still bites', async () => {
+    const agreeing = { workflow_runs: [C5_RED_0925, other(35940000000, '2026-09-25T02:00:00Z')] };
+    const i = io({ env: {}, nowMs: C5_NOW, lists: { main: agreeing, null: agreeing } });
+    const got = await anchoredBranchPage(REPO, 'ops-watch.yml', 'main', C5_PAGE, false, i);
+    assert.equal(got.runs, C5_PAGE, 'not proven stale: the page itself, untouched');
+    assert.equal(got.gapBelow, null);
+    const hit = selectRuns(got.runs, { event: 'schedule', status: 'success' })[0];
+    assert.equal(hit.id, 35422355154);
+    assert.equal(ageH(hit), '221.7', 'the measured red, reproduced when nothing proves the page stale');
+    assert.deepEqual(i.notes, []);
+  });
+
+  test('🔴 the fresh window holds no success: UNREAD (StaleGap), never FAILING — for the unit scan and for the whole-run read', async () => {
+    const noOk = { workflow_runs: [other(36409128416, '2026-09-28T10:20:00Z'), C5_RED_0850, other(36360000000, '2026-09-28T01:00:00Z')] };
+    const got = await anchoredBranchPage(REPO, 'ops-watch.yml', 'main', C5_PAGE, false, io({ env: {}, nowMs: C5_NOW, lists: { main: C5_BRANCH_LIST, null: noOk } }));
+    assert.throws(() => gapCheckedScan([{ run: C5_RED_0850, c: { verdict: 'failure' } }], true, got.gapBelow), /^Error: stale page — the run history of ops-watch\.yml on main ends at run 35950000001, and the fresh repository-wide window that proved it stale reaches back only to run 36360000000/);
+    assert.equal(selectRuns(got.runs, { status: 'success' }).length, 0);
+  });
+
+  test('RED-SINCE — a fresh success above the gap needs no failure from it; with no fresh success the gap is UNREAD', async () => {
+    const got = await anchoredBranchPage(REPO, 'ops-watch.yml', 'main', C5_PAGE, false, io({ env: {}, nowMs: C5_NOW, lists: { main: C5_BRANCH_LIST, null: { workflow_runs: [C5_OK_0217, other(36360000000, '2026-09-28T01:00:00Z')] } } }));
+    const newest = async (status) => {
+      const hit = selectRuns(got.runs, { status })[0];
+      if (!hit) gapCheckedScan([], true, got.gapBelow);
+      return { id: hit.id, at: hit.updated_at };
+    };
+    assert.deepEqual(await redSincePair(newest), { success: { id: 36369228689, at: '2026-09-28T02:25:00Z' }, failure: null });
+    const none = async () => gapCheckedScan([], true, got.gapBelow);
+    await assert.rejects(redSincePair(none), /stale page/);
+  });
+
+  test('a window that reaches back to the page joins it: ONE contiguous history, the gap closed', async () => {
+    const wide = { workflow_runs: [C5_OK_0217, C5_RED_0925, other(35940000000, '2026-09-25T02:00:00Z')] };
+    const got = await anchoredBranchPage(REPO, 'ops-watch.yml', 'main', C5_PAGE, false, io({ env: {}, nowMs: C5_NOW, lists: { main: C5_BRANCH_LIST, null: wide } }));
+    assert.equal(got.gapBelow, null);
+    assert.equal(got.pageFull, false, 'the page\'s own completeness is kept');
+    assert.deepEqual(got.runs.map((r) => r.id), [36369228689, 35950000001, 35422355154]);
+  });
+
+  test('the targeted FALLBACK read is anchored the same way (ghNewestRun\'s anchoredNewest, unitRunsPage\'s anchoredPage)', async () => {
+    const qs = 'event=schedule&branch=main&status=success';
+    const i = io({ env: {}, nowMs: C5_NOW, lists: { main: C5_BRANCH_LIST, null: C5_FRESH_LIST } });
+    const hit = await anchoredNewest(REPO, 'ops-watch.yml', qs, { workflow_runs: [C5_OK_0919] }, C5_OK_0919, 'x', i);
+    assert.equal(hit.id, 36369228689);
+    const page = await anchoredPage(REPO, 'ops-watch.yml', qs, [C5_OK_0919], true, 'x', io({ env: {}, nowMs: C5_NOW, lists: { main: C5_BRANCH_LIST, null: C5_FRESH_LIST } }));
+    assert.deepEqual(page.runs.map((r) => r.id), [36369228689]);
+    // RED CONTROL: nothing newer anywhere — the reconciled answer, untouched.
+    const agreeing = { workflow_runs: [C5_OK_0919] };
+    assert.equal(await anchoredNewest(REPO, 'ops-watch.yml', qs, agreeing, C5_OK_0919, 'x', io({ env: {}, nowMs: C5_NOW, lists: { main: agreeing, null: agreeing } })), C5_OK_0919);
+    // A filter the window cannot apply is never guessed at: the page stands.
+    const odd = await anchoredPage(REPO, 'ops-watch.yml', 'actor=someone', [C5_OK_0919], true, 'x', io({ env: {}, nowMs: C5_NOW, lists: { main: C5_BRANCH_LIST, null: C5_FRESH_LIST } }));
+    assert.deepEqual(odd.runs, [C5_OK_0919]);
+  });
+});
+
+describe('(5) the same answers, through the freshness readers (the second source in anchored-run-read.mjs)', () => {
+  // e2e.yml, branch=main&status=success: a stale page, a creation-date cross-read
+  // as stale as the page, and the unfiltered repository list carrying the green.
+  const e2e = (id, at, extra = {}) => run(id, at, at, { event: 'schedule', status: 'completed', conclusion: 'success', path: '.github/workflows/e2e.yml', ...extra });
+  const STALE = [e2e(35900000002, '2026-09-24T06:00:00Z')];
+  const FRESH = e2e(36380000000, '2026-09-28T06:05:00Z');
+  const routed = (repoWide) => {
+    const asked = [];
+    return {
+      asked,
+      read: async (u) => {
+        asked.push(u);
+        if (u.includes('/actions/runs?')) return repoWide;
+        return { workflow_runs: STALE };
+      },
+    };
+  };
+
+  test('🟢 the unfiltered list carries the proof the stale cross-read could not: GREEN, and the carried line names it', async () => {
+    const s = routed({ workflow_runs: [other(36409128416, '2026-09-28T10:20:00Z'), FRESH, e2e(36370000000, '2026-09-28T03:00:00Z', { head_branch: 'feat/x' })] });
+    const got = await e2eGuard.readRunHistory({ repo: REPO, read: s.read, nowMs: C5_NOW });
+    assert.equal(s.asked.length, 3);
+    assert.equal(s.asked[2], `https://api.github.com${repoWideRunsPath(REPO)}`);
+    assert.equal(got.stale, true);
+    assert.deepEqual(got.repoWide.runs.map((r) => r.id), [36380000000], 'the side-branch run is filtered out by the query\'s own branch=main');
+    const v = e2eGuard.gradeRunHistory(got, C5_NOW);
+    assert.equal(v.ok, true, v.reason);
+    assert.equal(v.runId, 36380000000);
+    assert.match(v.stalePageCarried, /the repository-wide list's is 36380000000 \(updated_at 2026-09-28T06:05:00Z\) over 1 row\(s\)/);
+  });
+
+  test('🔴 RED CONTROL — every source agrees the green is 4 days old: the FINDING (exit 1), not coverage lost', async () => {
+    const s = routed({ workflow_runs: [other(36409128416, '2026-09-28T10:20:00Z'), ...STALE] });
+    const got = await e2eGuard.readRunHistory({ repo: REPO, read: s.read, nowMs: C5_NOW });
+    assert.equal(got.stale, false);
+    const v = e2eGuard.gradeRunHistory(got, C5_NOW);
+    assert.equal(v.ok, false);
+    assert.notEqual(v.coverageLost, true);
+    assert.match(v.reason, /^newest green scheduled run is 4\.2 days old, ceiling is 3/);
+  });
+
+  test('🔴 the repository list without a workflow_runs array is COULD NOT LOOK, never an empty window', async () => {
+    await assert.rejects(e2eGuard.readRunHistory({ repo: REPO, read: routed({ message: 'x' }).read, nowMs: C5_NOW }), (e) => e instanceof CouldNotLook && /runs: the unfiltered repository-wide run list came back without a workflow_runs array/.test(e.message));
+  });
+
+  test('assert-alert-disposition grades the UNION: a stale page\'s red newest scheduled run no longer reads a cleared alarm as ACTIVE', () => {
+    const page = [ow(35950000001, '2026-09-25T06:00:00Z', '2026-09-25T06:10:00Z', 'failure')];
+    assert.equal(alertGuard.sourceHealth(page).state, 'red', 'the stale page alone');
+    assert.equal(alertGuard.sourceHealth([...page, C5_OK_0217]).state, 'green', 'the union with the fresh window');
+  });
+});
+
+describe('run-page-anchor — the 2026-09-28 pure edges', () => {
+  test('runQueryPredicate applies branch, event, status (state vs conclusion) and head_sha; any other filter builds NO window', () => {
+    const p = runQueryPredicate('/repos/o/r/actions/workflows/x.yml/runs?branch=main&event=schedule&status=success&per_page=100');
+    assert.equal(p(ow(1, 'a', 'a', 'success')), true);
+    assert.equal(p(ow(1, 'a', 'a', 'failure')), false);
+    assert.equal(p(ow(1, 'a', 'a', 'success', { head_branch: 'dev' })), false);
+    assert.equal(p(ow(1, 'a', 'a', 'success', { event: 'push' })), false);
+    const done = runQueryPredicate('status=completed&branch=main');
+    assert.equal(done(ow(1, 'a', 'a', 'failure')), true, '`completed` is a run STATE');
+    assert.equal(done(ow(1, 'a', 'a', null, { status: 'in_progress' })), false);
+    assert.equal(runQueryPredicate('per_page=5')(ow(1, 'a', 'a', 'success')), true);
+    assert.equal(runQueryPredicate('actor=x&per_page=5'), null);
+    assert.equal(runQueryPredicate('created=%3E%3D2026-01-01&per_page=5'), null);
+    assert.equal(runQueryPredicate('branch=main&branch=dev'), null, 'a repeated filter is not guessed at');
+  });
+
+  test('repoWideWindow — the workflow\'s rows by path, and the id range of the WHOLE list', () => {
+    const w = repoWideWindow(C5_FRESH_LIST, { workflow: 'ops-watch.yml', predicate: () => true });
+    assert.deepEqual(w.runs.map((r) => r.id), [36399752579, 36369228689]);
+    assert.equal(w.floorId, 36360000000);
+    assert.equal(w.topId, 36409128416);
+    assert.throws(() => repoWideWindow({}, { workflow: 'x.yml', predicate: () => true }), /without a workflow_runs array/);
+  });
+
+  test('spliceFreshWindows — windows chain downward only where they overlap; a staler window cannot bridge a gap', () => {
+    const win = (floorId, topId, runs = []) => ({ floorId, topId, runs });
+    const page = [run(100, 'a')];
+    assert.equal(spliceFreshWindows(page, [win(300, 400), win(90, 310)]).gapBelow, null, '300..400 joined by 90..310 reaches the page');
+    assert.equal(spliceFreshWindows(page, [win(300, 400), win(90, 250)]).gapBelow.floorId, 300, '90..250 does not reach 300');
+    assert.equal(spliceFreshWindows(page, [win(100, 400, [run(150, 'b')])]).gapBelow, null, 'a window whose floor IS the page top joins it');
+    assert.deepEqual(spliceFreshWindows(page, [win(100, 400, [run(150, 'b')])]).runs.map((r) => r.id).sort(), [100, 150]);
+    assert.throws(() => spliceFreshWindows(page, []), /^Error: stale page — .*no fresh window came back/);
   });
 });

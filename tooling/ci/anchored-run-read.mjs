@@ -59,11 +59,19 @@
 // constant of that kind is declared here. A read that outlives the plan throws
 // `CouldNotLook`, which every caller reports as COVERAGE LOST, never a finding.
 //
+// ── ⏱ 2026-09-28 · A SECOND CROSS-READ (run-page-anchor.mjs, "THE CROSS-READ
+// WAS STALE TOO") ────────────────────────────────────────────────────────────
+// Whenever the creation-date cross-read is asked, the unfiltered repository-
+// wide run list is asked too (one more request, same ceiling), filtered here by
+// `path` and by the caller's own query filters. Its runs join the union and the
+// anchor exactly as the creation-date ones do; a query carrying a filter the
+// window cannot apply gets none, and `describeRead` says why.
+//
 // Failing cases: tooling/ci/test/run-page-anchor.test.mjs (the union, the
 // ceiling, the wiring of all three callers and the class sweep) and
 // tooling/ci/test/e2e-proof-fresh.test.mjs (the PR #913 page, through the CLI).
 // ─────────────────────────────────────────────────────────────────────────────
-import { judgeRunPage, needsCrossRead, crossReadTerm, newestById, CROSS_READ_AFTER_MS } from './run-page-anchor.mjs';
+import { judgeRunPage, needsCrossRead, crossReadTerm, newestById, CROSS_READ_AFTER_MS, repoWideRunsPath, runQueryPredicate, repoWideWindow } from './run-page-anchor.mjs';
 import {
   CouldNotLook,
   readWithBoundedRetry,
@@ -113,12 +121,15 @@ export function crossReadUrl(url, term) {
 /** PURE. An offline fixture, in either of its two shapes (decision E6): an array
  *  is a page with no cross-read; `{ "page": [...], "cross": [...] }` carries
  *  both. Anything else THROWS — a fixture that cannot be read is a record that
- *  was not read. */
+ *  was not read. ⏱ 2026-09-28: `repoWide`, when present, is the BODY of the
+ *  unfiltered repository-wide run list (`{ "workflow_runs": [...] }`). */
 export function fixtureReads(doc) {
-  if (Array.isArray(doc)) return { page: doc, cross: null };
+  if (Array.isArray(doc)) return { page: doc, cross: null, repoWide: null };
   if (doc && typeof doc === 'object' && Array.isArray(doc.page)) {
-    if (doc.cross === undefined || doc.cross === null) return { page: doc.page, cross: null };
-    if (Array.isArray(doc.cross)) return { page: doc.page, cross: doc.cross };
+    const repoWide = doc.repoWide ?? null;
+    if (repoWide !== null && !Array.isArray(repoWide?.workflow_runs)) throw new CouldNotLook('the fixture carries a `repoWide` that is not a run-list body');
+    if (doc.cross === undefined || doc.cross === null) return { page: doc.page, cross: null, repoWide };
+    if (Array.isArray(doc.cross)) return { page: doc.page, cross: doc.cross, repoWide };
     throw new CouldNotLook('the fixture carries a `cross` that is not an array of runs');
   }
   throw new CouldNotLook('the fixture is neither an array of runs (a page) nor { "page": [...], "cross": [...] }');
@@ -217,6 +228,11 @@ export async function anchoredRunRead({
   let crossQuery = null;
   let term = null;
   let crossWhyNot = null;
+  let repoWide = null;
+  let repoWideWhyNot = null;
+  const predicate = runQueryPredicate(url);
+  const repoOf = /\/repos\/([^/]+\/[^/]+)\/actions\/workflows\//.exec(String(url))?.[1] ?? null;
+  const windowOf = (body, query) => ({ query, ...repoWideWindow(body, { workflow, predicate, why: 'the unfiltered repository-wide run list' }) });
   if (fixture !== undefined) {
     const f = fixtureReads(fixture);
     page = f.page;
@@ -226,6 +242,8 @@ export async function anchoredRunRead({
     } else {
       crossWhyNot = 'fixture has none';
     }
+    if (f.repoWide && predicate) repoWide = windowOf(f.repoWide, 'the fixture repoWide');
+    else if (f.repoWide) repoWideWhyNot = `${queryOf(url)} carries a filter the repository-wide window cannot apply`;
   } else {
     const get = read ?? githubRead(token, { label, userAgent });
     const bounded = (u, l) => readWithBoundedRetry((_attempt, { signal }) => get(u, { signal }), { note: noteRetry(l), ...retry });
@@ -246,12 +264,29 @@ export async function anchoredRunRead({
       cross = again.workflow_runs;
       crossQuery = queryOf(u);
     }
+    // ⏱ 2026-09-28 — the SECOND source (run-page-anchor.mjs, "THE CROSS-READ WAS
+    // STALE TOO"): the unfiltered repository-wide list, filtered HERE by path and
+    // by this query's own filters, asked whenever the creation-date one is.
+    if (crossWhyNot) repoWideWhyNot = crossWhyNot;
+    else if (!predicate || !repoOf) repoWideWhyNot = `${queryOf(url)} carries a filter the repository-wide window cannot apply`;
+    else {
+      const u = `${GITHUB_API}${repoWideRunsPath(repoOf)}`;
+      const body = await bounded(u, `${label} repository-wide cross-read`);
+      try {
+        repoWide = windowOf(body, queryOf(u));
+      } catch (e) {
+        throw new CouldNotLook(`${label}: ${e.message}`);
+      }
+    }
   }
+  const crossRuns = [...(cross ?? []), ...(repoWide?.runs ?? [])];
   const verdict = judgeRunPage(page, {
     what,
     floor,
     head,
-    cross: cross ? { runs: cross, why: 'a cross-read of the same question by creation date' } : null,
+    cross: cross || repoWide
+      ? { runs: crossRuns, why: [cross && 'a cross-read of the same question by creation date', repoWide && 'the unfiltered repository-wide run list'].filter(Boolean).join(' with ') }
+      : null,
     nowMs,
   });
   return {
@@ -262,9 +297,11 @@ export async function anchoredRunRead({
     page,
     cross: cross ? { term, query: crossQuery, runs: cross } : null,
     crossWhyNot,
+    repoWide,
+    repoWideWhyNot,
     verdict,
     stale: !verdict.ok,
-    union: unionById(page, cross),
+    union: unionById(page, crossRuns),
     fixture: fixture !== undefined,
   };
 }
@@ -280,9 +317,12 @@ export function describeRead(read, newestOf) {
   const cross = read.cross
     ? `${safeDecode(read.cross.term)}: ${read.cross.runs.length} row(s), newest ${newestById(read.cross.runs)?.id ?? 'none'}`
     : `not run (${read.crossWhyNot})`;
+  const wide = read.repoWide
+    ? ` · repository-wide ${read.repoWide.runs.length} row(s), newest ${newestById(read.repoWide.runs)?.id ?? 'none'}`
+    : read.repoWideWhyNot && read.repoWideWhyNot !== read.crossWhyNot ? ` · repository-wide not run (${read.repoWideWhyNot})` : '';
   return (
     `${src} · ${read.page.length} row(s) returned, per_page ${read.perPage}, saturated ${read.saturated ? 'yes' : 'no'} · ` +
-    `newest qualifying run ${runText(newestOf(read.union))} · cross-read ${cross}` +
+    `newest qualifying run ${runText(newestOf(read.union))} · cross-read ${cross}${wide}` +
     (read.stale ? ' · the page is PROVEN STALE' : '')
   );
 }
@@ -298,9 +338,11 @@ function safeDecode(s) {
 /** PURE. The carried-proof line: the page's newest qualifying run and the
  *  cross-read's, each with its `updated_at`, and both row counts. */
 export function staleCarriedLine(read, newestOf) {
-  const cross = read.cross
-    ? `the cross-read's is ${runText(newestOf(read.cross.runs))} over ${read.cross.runs.length} row(s)`
-    : `there was no cross-read (${read.crossWhyNot}), so the page's own runs carried it`;
+  const cross =
+    (read.cross
+      ? `the cross-read's is ${runText(newestOf(read.cross.runs))} over ${read.cross.runs.length} row(s)`
+      : `there was no cross-read (${read.crossWhyNot}), so the page's own runs carried it`) +
+    (read.repoWide ? `; the repository-wide list's is ${runText(newestOf(read.repoWide.runs))} over ${read.repoWide.runs.length} row(s)` : '');
   return (
     `${STALE_PAGE_CARRIED} the page's newest qualifying run is ${runText(newestOf(read.page))} over ${read.page.length} row(s); ` +
     `${cross}. GitHub served a page that ends before the present, and a replica can omit runs but never invent one, so the ` +

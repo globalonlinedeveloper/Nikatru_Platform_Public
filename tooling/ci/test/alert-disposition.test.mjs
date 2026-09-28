@@ -287,6 +287,10 @@ describe('[14]O-5 · LIMB A — the firing history must be READABLE (fail-closed
     }
     mkdirSync(join(root, 'tooling/app-yaml'), { recursive: true });
     cpSync(join(CI_DIR, '..', 'app-yaml', 'yaml.mjs'), join(root, 'tooling/app-yaml', 'yaml.mjs'));
+    // ⏱ 2026-09-28: the run history reads through the shared anchored reader.
+    for (const f of ['anchored-run-read.mjs', 'run-page-anchor.mjs']) cpSync(join(CI_DIR, f), join(root, 'tooling/ci', f));
+    mkdirSync(join(root, 'tooling/ops'), { recursive: true });
+    cpSync(join(CI_DIR, '..', 'ops', 'bounded-retry.mjs'), join(root, 'tooling/ops', 'bounded-retry.mjs'));
     rmSync(join(root, '.github/workflows'), { recursive: true });
     const r = spawnSync(process.execPath, [join(root, 'tooling/ci/assert-alert-disposition.mjs')], { cwd: root, encoding: 'utf8' });
     assert.match(r.stderr, /COVERAGE LOST — \.github\/workflows does not exist/);

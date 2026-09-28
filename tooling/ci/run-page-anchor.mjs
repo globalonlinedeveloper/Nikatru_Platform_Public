@@ -244,3 +244,134 @@ export function judgeRunPage(runs, { what = 'this run history', floor = null, he
   }
   return { ok: true, anchored: [floor && 'self-run', head && 'branch-head', cross && 'cross-read'].filter(Boolean) };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ APPENDED 2026-09-28 · THE CROSS-READ WAS STALE TOO — a SECOND SOURCE, and a
+// page proven stale is REPLACED by the fresh source rather than believed.
+//
+// ── THE DEFECT, MEASURED ────────────────────────────────────────────────────
+// Main CI 36409128416 attempt 2 (on 0c29df69, ~10:35Z) failed guards-platform
+// on six duties of tooling/ops/register.json, every one reading ops-watch.yml's
+// newest success as run 35422355154 of 2026-09-19 (221.7h) while ops-watch had
+// succeeded at 00:00Z, 01:04Z and 02:17Z that day; attempt 1, 14 minutes
+// earlier, read fresh data. No anchor refused: the one cross-read ops-register
+// asked — `/actions/runs?branch=main` — came back as stale as the page. Measured
+// by hand at the same minute:
+//   GET …/actions/workflows/ops-watch.yml/runs?per_page=5&branch=main  → newest 2026-09-25 (STALE)
+//   GET …/actions/workflows/ops-watch.yml/runs?…&status=success         → 2026-09-28T02:17Z (fresh)
+//   GET …/actions/runs?per_page=100, filtered by name                   → 2026-09-28T08:50Z (fresh)
+// and `gh run list -w ci.yml -b main` answered week-old runs that day. The
+// `branch=`-filtered listings were the stale ones; the unfiltered repository
+// list was not. At 10:44Z all of them answered 08:50Z again.
+//
+// ── THE RULE (lead ruling 2026-09-28) ───────────────────────────────────────
+// Every reader that grades freshness from a listing ALSO reads the repository-
+// wide run list with NO server-side filter (`repoWideRunsPath`) — one request,
+// memoised by the caller — and applies the listing's own filters HERE
+// (`runQueryPredicate`): path, head_branch, event, status. A query carrying a
+// filter this cannot apply faithfully gets no such window, never a guessed one.
+//   · page not proven stale → the page, as before: both sources agreeing that
+//                             the run is old is still the caller's RED;
+//   · page proven stale     → the FRESH source is graded (`spliceFreshWindows`):
+//       – the windows reach back to the page's newest run: the union is one
+//         contiguous history, and every question is answered from it;
+//       – they do not: only the fresh window is known. A question it answers
+//         is answered; one it cannot is UNREAD (coverage lost), never FAILING.
+// A repository-wide window is COMPLETE between its oldest row and its newest —
+// a replica omits runs after its snapshot, never between two it serves — which
+// is what lets its bottom edge (`floorId`) bound what it can vouch for.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Rows of the unfiltered repository-wide run list: the API maximum. */
+export const REPO_WIDE_PAGE = 100;
+
+/** PURE. The unfiltered repository-wide run list — no `branch=`, `status=` or
+ *  `event=`: the one listing that answered fresh on 2026-09-28. */
+export function repoWideRunsPath(repo) {
+  return `/repos/${repo}/actions/runs?per_page=${REPO_WIDE_PAGE}`;
+}
+
+/** The API's `status=` values that name a run STATE; every other is a CONCLUSION. */
+const RUN_STATES = new Set(['completed', 'in_progress', 'queued', 'requested', 'waiting', 'pending']);
+/** Query keys that filter nothing this window must reproduce. */
+const NON_FILTER_KEYS = new Set(['per_page', 'page']);
+
+/** PURE. The client-side twin of a run-list query: `(run) => boolean` applying
+ *  its `branch`, `event`, `status` and `head_sha`, or null when it carries any
+ *  other filter — a window filtered LESS than the page could let a run the page
+ *  would not hold make a stale page look fresh, so none is built. */
+export function runQueryPredicate(query) {
+  const s = String(query ?? '');
+  const qs = s.includes('?') ? s.slice(s.indexOf('?') + 1) : s;
+  const want = {};
+  for (const [k, v] of new URLSearchParams(qs)) {
+    if (NON_FILTER_KEYS.has(k)) continue;
+    if (!['branch', 'event', 'status', 'head_sha'].includes(k) || k in want) return null;
+    want[k] = v;
+  }
+  return (r) => {
+    if (!r || typeof r !== 'object') return false;
+    if (want.branch !== undefined && r.head_branch !== want.branch) return false;
+    if (want.event !== undefined && r.event !== want.event) return false;
+    if (want.head_sha !== undefined && r.head_sha !== want.head_sha) return false;
+    if (want.status !== undefined && (RUN_STATES.has(want.status) ? r.status : r.conclusion) !== want.status) return false;
+    return true;
+  };
+}
+
+/** PURE. One repository-wide listing as a window onto ONE workflow's question:
+ *  the rows of that workflow (by `path`) the predicate accepts, and the id range
+ *  the WHOLE listing spans — every run in it exists, and every run of the
+ *  workflow between `floorId` and `topId` is in it. THROWS on a body without a
+ *  workflow_runs array: an unread window is not an empty one. */
+export function repoWideWindow(body, { workflow, predicate, why = 'the repository-wide run list' }) {
+  if (!Array.isArray(body?.workflow_runs)) throw new Error(`${why} came back without a workflow_runs array`);
+  const path = `.github/workflows/${workflow}`;
+  let floorId = Infinity;
+  let topId = -Infinity;
+  for (const r of body.workflow_runs) {
+    if (!isId(r?.id)) continue;
+    if (r.id < floorId) floorId = r.id;
+    if (r.id > topId) topId = r.id;
+  }
+  const runs = body.workflow_runs.filter((r) => isId(r?.id) && r.path === path && predicate(r));
+  return { runs, floorId, topId, why };
+}
+
+/**
+ * PURE. A page `judgeRunPage` proved stale, joined to the windows that proved
+ * it. The freshest window is the present; any other window that reaches it
+ * extends it downward. When the result reaches the page's newest run the union
+ * is ONE contiguous history (`gapBelow: null`). When it does not, the runs
+ * between the page and the window are unknown, so only the window's runs are
+ * returned and `gapBelow` says where knowledge stops: a caller that cannot find
+ * its answer at or above `floorId` has NO answer — UNREAD, never a finding.
+ */
+export function spliceFreshWindows(page, windows, { what = 'this run history' } = {}) {
+  const ws = (windows ?? []).filter((w) => w && Number.isFinite(w.floorId) && Number.isFinite(w.topId));
+  if (ws.length === 0) throw new Error(`${STALE_PAGE} — ${what} was proven stale, and no fresh window came back to grade instead`);
+  ws.sort((a, b) => b.topId - a.topId);
+  let lo = ws[0].floorId;
+  for (const w of ws.slice(1)) if (w.topId >= lo && w.floorId < lo) lo = w.floorId;
+  const byId = new Map();
+  const keep = (r) => {
+    const had = byId.get(r.id);
+    if (!had || Date.parse(r.updated_at ?? '') > Date.parse(had.updated_at ?? '')) byId.set(r.id, r);
+  };
+  for (const w of ws) for (const r of w.runs) if (r.id >= lo) keep(r);
+  const top = maxRunId(page);
+  if (top !== -Infinity && top >= lo) {
+    for (const r of page ?? []) if (isId(r?.id)) keep(r);
+    return { runs: [...byId.values()], gapBelow: null };
+  }
+  return {
+    runs: [...byId.values()],
+    gapBelow: {
+      floorId: lo,
+      why:
+        `${STALE_PAGE} — ${what} ends at run ${top === -Infinity ? 'none' : top}, and the fresh repository-wide window that ` +
+        `proved it stale reaches back only to run ${lo}: the answer is not in that window, and the runs between the two ` +
+        'were served by neither read, so NO verdict is available — not a pass, not a finding.',
+    },
+  };
+}
