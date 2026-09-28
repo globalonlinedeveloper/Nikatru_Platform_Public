@@ -271,8 +271,8 @@ function result(label, r) {
   return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}${died}` };
 }
 
-function run(root) {
-  return result('guard', spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8', ...BOUND }));
+function run(root, spawnOptions = {}) {
+  return result('guard', spawnSync(process.execPath, [GUARD, root], { ...spawnOptions, encoding: 'utf8', ...BOUND }));
 }
 
 const roots = [];
@@ -306,7 +306,9 @@ describe('assert-listing-assets.mjs — the passing path', () => {
   // runs by default and in 0 of 55 with the flag. Deterministic, unlike the hang:
   // delete the relaunch and this line says ON.
   test('the working guard runs with V8 background tasks OFF, so its exit cannot deadlock', () => {
-    const r = run(build());
+    // singleThreaded: false — spawned WITHOUT the flag the spawn-ceiling preload adds,
+    // so the relaunch is what makes it single-threaded (tooling/scripts/spawn-ceiling.mjs).
+    const r = run(build(), { singleThreaded: false });
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /V8 background tasks: OFF \(--single-threaded\)/);
   });

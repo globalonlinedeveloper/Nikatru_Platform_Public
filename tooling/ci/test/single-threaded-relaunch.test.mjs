@@ -69,8 +69,10 @@ function script(body, { preamble = '', returningReporter = false } = {}) {
   return p;
 }
 
+// singleThreaded: false — R1-R5 test the relaunch itself, so the script must start WITHOUT
+// the flag the spawn-ceiling preload adds (tooling/scripts/spawn-ceiling.mjs).
 const run = (file, args = [], execArgv = []) => {
-  const r = spawnSync(process.execPath, [...execArgv, file, ...args], { encoding: 'utf8', timeout: 60_000 });
+  const r = spawnSync(process.execPath, [...execArgv, file, ...args], { encoding: 'utf8', timeout: 60_000, singleThreaded: false });
   return { code: r.status, signal: r.signal, out: `${r.stdout ?? ''}${r.stderr ?? ''}`, error: r.error };
 };
 
