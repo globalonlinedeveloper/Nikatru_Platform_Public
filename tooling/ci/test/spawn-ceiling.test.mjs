@@ -28,11 +28,12 @@
 //       with its count, so a new launch cannot quietly step out from under the flag;
 //       a fixture with an undeclared opt-out is the red control.
 //
-// Mutations run against the real tree (2026-09-28, predictions written first):
-//   · `singleThreadedArgs` returns `args` unchanged                     → (d) RED
-//   · the execSync/exec command rewrite dropped                          → (d) RED
-//   · the opt-out ignored (`optedOut` returns false)                     → (e) RED
-//   · a `singleThreaded: false` added to a test file OPT_OUTS lacks      → (f) RED
+// Mutations run against the real tree (2026-09-28, green control exit 0 first):
+//   · `singleThreadedArgs` returns `args` unchanged                  → (d) + (e) RED
+//   · the execSync/exec command rewrite dropped                       → (d) + (e) RED
+//   · the opt-out ignored (`optedOut` returns false)                  → (e) RED
+//   · `singleThreaded: false` added to no-hardcoded-strings' run()     → (f) RED
+//   · the opt-out removed from listing-assets' pinning case            → (f) RED
 //
 // Run:  node --test tooling/ci/test/spawn-ceiling.test.mjs
 // ─────────────────────────────────────────────────────────────────────────────
