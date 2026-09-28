@@ -44,7 +44,9 @@ import '../../state/subscriptions_controller.dart';
 // pane. It is still a route — `lib/core/router.dart` is untouched and a phone
 // still pushes it — this import only gives the wide layout a way to render the
 // same widget without a navigation.
+import '../add/add_subscription_sheet.dart';
 import '../detail/subscription_detail_screen.dart';
+import '../shared/async_gate.dart';
 import '../shared/due.dart';
 import '../shared/widgets.dart';
 // The shell this screen is a BRANCH of, imported for one number:
@@ -509,46 +511,41 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
         children: <Widget>[
           _header(context, l10n, user),
           const SizedBox(height: 18),
-          ...subs.when(
-            loading: () => const <Widget>[
+          // ✅ ST-U6 (B3, B4): THE LIST COLUMN GOES THROUGH THE SHARED GATE.
+          // It was a bespoke `.when` whose error arm printed
+          // `couldNotLoad('$e')` — the raw exception, at the user, with no
+          // retry — and whose data arm drew zero-figures and two empty section
+          // headings for a first-run user with nothing on the list. Now the
+          // three states are [DataStateView]'s, the failure says what failed
+          // and offers Retry, and the empty state's first step is "Add
+          // subscription". The header above stays outside the gate, so the
+          // way to notifications and settings survives every state.
+          ...switch (subscriptionsState(
+            ref,
+            l10n: l10n,
+            emptyTitle: l10n.dataEmptyTitle,
+            emptyBody: l10n.dataEmptyBody,
+            emptyActionLabel: l10n.addSubscriptionTitle,
+            onEmptyAction: () => showAddSubscriptionSheet(context),
+          )) {
+            final Widget state => <Widget>[
               Padding(
-                padding: EdgeInsets.only(top: 48),
-                child: Center(child: CircularProgressIndicator()),
+                key: const Key('home-list-state'),
+                padding: const EdgeInsets.only(top: 24),
+                child: state,
               ),
             ],
-            // ⚠️ `couldNotLoad` INTERPOLATES THE RAW EXCEPTION, and the arb
-            // key preserves that verbatim rather than quietly improving it.
-            // Leaking a stack-adjacent string at a user is a real defect
-            // (WORKORDER §1 flags it), but it is a COPY decision and this is
-            // an l10n increment: changing what the sentence says here would
-            // hide the leak behind a translation commit instead of fixing it
-            // where it can be reviewed.
-            error: (Object e, _) => <Widget>[
-              Padding(
-                padding: const EdgeInsets.only(top: 48),
-                child: Center(
-                  // `AppText.of`, not the bare const: `AppText.muted`
-                  // bakes `AppColors.muted` and paints the same grey on a
-                  // dark scaffold. An error message is the one string that
-                  // must be readable when everything else has failed.
-                  child: Text(
-                    l10n.couldNotLoad('$e'),
-                    style: AppText.of(context).muted,
-                  ),
-                ),
-              ),
-            ],
-            data: (List<Subscription> list) => _dashboard(
+            null => _dashboard(
               context,
               l10n,
               money,
-              list,
+              subs.requireValue,
               now,
               showUnused,
               heroInList: heroInList,
               twoPane: twoPane,
             ),
-          ),
+          },
         ],
       ),
     );

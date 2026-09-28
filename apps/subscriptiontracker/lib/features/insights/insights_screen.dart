@@ -21,6 +21,7 @@ import '../../core/theme/app_theme.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/settings_controller.dart';
+import '../add/add_subscription_sheet.dart';
 import '../cancel/cancel_sheet.dart';
 import '../shared/async_gate.dart';
 import '../shared/neutrals.dart';
@@ -260,6 +261,9 @@ class InsightsScreen extends ConsumerWidget {
       l10n: l10n,
       emptyTitle: l10n.dataEmptyTitle,
       emptyBody: l10n.dataEmptyBody,
+      // ST-U6 (C3): the first step, not a dead end.
+      emptyActionLabel: l10n.addSubscriptionTitle,
+      onEmptyAction: () => showAddSubscriptionSheet(context),
       builder: (List<Subscription> subs) {
         // 🔴 NO SECOND FOLD. `SubMath.totalMonthly(subs)` stood here and was
         // handed to `_categoryCard` beside `cats`, so the card rendered a

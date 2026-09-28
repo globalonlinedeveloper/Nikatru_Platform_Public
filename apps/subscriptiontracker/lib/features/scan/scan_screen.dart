@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show ContentPane;
+    show ContentPane, DataStateView;
 
 import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
@@ -13,6 +13,8 @@ import '../../core/theme/app_theme.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/subscriptions_controller.dart';
+import '../add/add_subscription_sheet.dart';
+import '../shared/async_gate.dart' show dataFailedBodyFor;
 import '../shared/painters.dart';
 import '../shared/widgets.dart';
 
@@ -420,12 +422,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
   /// The arm the screen never had — a fetch that FAILED, said so.
   ///
-  /// Mirrors `home_screen.dart`'s `error:` limb deliberately, down to the key:
-  /// `l10n.couldNotLoad('$e')`. That key interpolates the raw exception, which
-  /// that file flags as a real defect (WORKORDER §1) and deliberately does not
-  /// paper over inside an l10n increment — the same reasoning applies here, and
-  /// diverging would leave the app with two different answers to one question.
-  /// When the leak is fixed it must be fixed in the key, once.
+  /// ✅ ST-U6 (B48): the sentence is [dataFailedBodyFor]'s — the one every
+  /// list screen's failed state shows, chosen by what failed. It used to be
+  /// `l10n.couldNotLoad('$error')`, which printed the raw exception at the
+  /// user; that key is gone.
   ///
   /// The way OUT is the screen's existing primary CTA rather than a control
   /// invented here; see the `GradientButton` in [build].
@@ -448,7 +448,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
           Icon(Icons.error_outline, size: 48, color: scheme.error),
           const SizedBox(height: 16),
           Text(
-            l10n.couldNotLoad('$error'),
+            dataFailedBodyFor(l10n, error),
             textAlign: TextAlign.center,
             style: AppText.muted.copyWith(
               fontSize: 14,
@@ -468,6 +468,18 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     MoneyFormatter money,
     List<Subscription> subs,
   ) {
+    // ✅ ST-U6 (B46): NOTHING TO SUM IS NOT "ALL SET". A first run with no
+    // subscriptions rendered "0 subscriptions · $0.00 / month" under a
+    // congratulation, with no way to add one. It is the shared empty state
+    // now, with the first step on it.
+    if (subs.isEmpty) {
+      return DataStateView.empty(
+        title: l10n.dataEmptyTitle,
+        body: l10n.dataEmptyBody,
+        actionLabel: l10n.addSubscriptionTitle,
+        onAction: () => showAddSubscriptionSheet(context),
+      );
+    }
     final MoneyBag total = SubMath.totalMonthly(subs);
     final ThemeData theme = Theme.of(context);
     final bool isLight = theme.brightness == Brightness.light;

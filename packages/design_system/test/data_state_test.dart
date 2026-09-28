@@ -73,7 +73,8 @@ void main() {
       expect(
         find.text('Loading your subscriptions'),
         findsOneWidget,
-        reason: 'a spinner with no words is indistinguishable from a stalled '
+        reason:
+            'a spinner with no words is indistinguishable from a stalled '
             'screen, and to a screen reader it is indistinguishable from '
             'nothing at all',
       );
@@ -95,18 +96,73 @@ void main() {
       expect(
         find.byKey(DataStateView.retryKey),
         findsNothing,
-        reason: 'a retry control on the empty state tells a user their empty '
+        reason:
+            'a retry control on the empty state tells a user their empty '
             'account is a malfunction, and it is the single edit that would '
             'make this state look like the failed one',
       );
       expect(
         find.byType(FilledButton),
         findsNothing,
-        reason: 'not merely the keyed retry — the empty state carries no '
+        reason:
+            'not merely the keyed retry — the empty state carries no '
             'action at all, so a differently-keyed button would still be a '
             'regression',
       );
     });
+
+    // ST-U6: the RED CONTROL for the action slot. Before it, an empty state had
+    // no way to say "here is the first step" — every stamped app's first run
+    // was a message with nothing to tap (audit B3/B42/C3 and §8).
+    testWidgets('empty MAY offer a first step — keyed, working, and no retry', (
+      WidgetTester tester,
+    ) async {
+      int taps = 0;
+      await pumpAt(
+        tester,
+        kPhone,
+        DataStateView.empty(
+          title: 'No subscriptions yet',
+          actionLabel: 'Add subscription',
+          onAction: () => taps++,
+        ),
+      );
+      expectOnly(DataStateView.emptyKey);
+      expect(find.byKey(DataStateView.emptyActionKey), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(DataStateView.emptyActionKey),
+          matching: find.text('Add subscription'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(DataStateView.retryKey),
+        findsNothing,
+        reason: 'the first step out of an empty state is not a retry',
+      );
+      await tester.tap(find.byKey(DataStateView.emptyActionKey));
+      await tester.pump();
+      expect(
+        taps,
+        1,
+        reason: 'an action that is drawn but not wired is a dead end',
+      );
+    });
+
+    test(
+      'empty refuses a label without an action, and an action without a label',
+      () {
+        expect(
+          () => DataStateView.empty(title: 't', actionLabel: 'Add'),
+          throwsAssertionError,
+        );
+        expect(
+          () => DataStateView.empty(title: 't', onAction: () {}),
+          throwsAssertionError,
+        );
+      },
+    );
 
     testWidgets('failed shows its title AND a working retry', (
       WidgetTester tester,
@@ -131,7 +187,8 @@ void main() {
       expect(
         taps,
         1,
-        reason: 'a retry affordance that is drawn but not wired is a dead end '
+        reason:
+            'a retry affordance that is drawn but not wired is a dead end '
             'wearing the costume of a way out',
       );
     });
@@ -153,11 +210,7 @@ void main() {
       await pumpAt(
         tester,
         kPhone,
-        DataStateView.failed(
-          title: same,
-          retryLabel: 'Retry',
-          onRetry: () {},
-        ),
+        DataStateView.failed(title: same, retryLabel: 'Retry', onRetry: () {}),
       );
       final bool failedHasAction = find
           .byKey(DataStateView.retryKey)
@@ -170,13 +223,15 @@ void main() {
       expect(
         emptyIcon.icon,
         isNot(failedIcon.icon),
-        reason: 'the glyph is the difference a sighted user reads first, and '
+        reason:
+            'the glyph is the difference a sighted user reads first, and '
             'it must differ even when the copy does not',
       );
       expect(
         emptyIcon.color,
         isNot(failedIcon.color),
-        reason: 'and the tone is the second of the three independent '
+        reason:
+            'and the tone is the second of the three independent '
             'differences — see the widget doc',
       );
     });
@@ -208,14 +263,16 @@ void main() {
         expect(
           w,
           lessThanOrEqualTo(AppBreakpoints.form),
-          reason: 'without the cap a one-line message on a 1920 px window is a '
+          reason:
+              'without the cap a one-line message on a 1920 px window is a '
               'single sentence stretched edge to edge with nothing beside it',
         );
         if (size.width < AppBreakpoints.form) {
           expect(
             w,
             lessThanOrEqualTo(size.width),
-            reason: 'below the cap a ConstrainedBox may only tighten, so a '
+            reason:
+                'below the cap a ConstrainedBox may only tighten, so a '
                 'phone must render exactly as it would with no cap at all',
           );
         }

@@ -850,6 +850,18 @@
   "@dataFailedBody": {
     "description": "Second line of the failed-fetch state, beside the Retry control."
   },
+  "dataFailedGeneric": "Something went wrong loading your subscriptions. Try again.",
+  "@dataFailedGeneric": {
+    "description": "Consumed by features/shared/async_gate.dart dataFailedBodyFor. ST-U6 (D21): the failed-list sentence for an error that names no cause we can state (a 4xx, a malformed body, anything that is not an ApiException). Claims no cause."
+  },
+  "dataFailedServer": "Our service is having trouble right now. Try again in a moment.",
+  "@dataFailedServer": {
+    "description": "Consumed by features/shared/async_gate.dart dataFailedBodyFor. ST-U6 (D21): the failed-list sentence for a 5xx — the fault is ours, not the user's connection."
+  },
+  "dataFailedSignedOut": "Your session has ended. Sign in again to see your subscriptions.",
+  "@dataFailedSignedOut": {
+    "description": "Consumed by features/shared/async_gate.dart dataFailedBodyFor. ST-U6 (D21): the failed-list sentence for a 401. ST-U7 (D20) signs a GONE session out, which routes to sign-in; this is what shows until it does, or when the server refuses a live session."
+  },
   "dataEmptyTitle": "No subscriptions yet",
   "@dataEmptyTitle": {
     "description": "Headline when the fetch SUCCEEDED and the user genuinely has no subscriptions."
@@ -1034,16 +1046,6 @@
   "navMore": "More",
   "@navMore": {
     "description": "Consumed by app_shell.dart:34. See navCalendar. Pinned by integration_test/app_test.dart:406, integration_test/store_screenshots_test.dart:39 — the value must not change without moving those."
-  },
-  "couldNotLoad": "Could not load: {error}",
-  "@couldNotLoad": {
-    "description": "Consumed by home_screen.dart:157. ⚠️ FLAGGED: {error} is the raw exception, so this surface can leak an internal message to a user. Recorded rather than changed here — L0 is behaviour-neutral.",
-    "placeholders": {
-      "error": {
-        "type": "String",
-        "example": "SocketException"
-      }
-    }
   },
   "markedUnusedCount": "{count, plural, =1{1 marked unused} other{{count} marked unused}}",
   "@markedUnusedCount": {
