@@ -170,17 +170,20 @@ const TIMEOUT_MS = 15_000;
 // platform_db and supabase_jwks all ok. The first reads after a deploy land on
 // a COLD isolate, whose one external probe (the JWKS fetch) can miss its 2s
 // budget. So an `ok:false` at the right build gets bounded re-reads before it is
-// a failure. `HEALTH_ATTEMPTS` counts the first unwell read; `TIMEOUT_MS` is the
-// per-read ceiling; `HEALTH_DEADLINE_MS` is the total ceiling, so a string of
-// slow reads cannot stretch the wait past it.
+// a failure. They spend the SAME poll budget as the build match — `ATTEMPTS`
+// reads (the first unwell read counts) `GAP_MS` apart — because it is the same
+// kind of loop: re-asking an answer that SUCCEEDED and is still settling, which
+// ops-bounded-retry.test.mjs exempts from the shared blip-retry plan by that one
+// constant. A second attempt count here would be a rival loop. `TIMEOUT_MS` is
+// the per-read ceiling; `HEALTH_DEADLINE_MS` is the total ceiling, so a string
+// of slow reads cannot stretch the wait past it.
 //
 // ⚠️ NOTHING HERE CAN TURN A REAL FAILURE GREEN. Only a read that is at THIS
 // build AND `ok:true` passes. A read at any OTHER build fails at once — the
 // build was already seen live, so a different one now is a rollback or a
 // racing deploy, not propagation. The last unwell read's checks are printed.
-export const HEALTH_ATTEMPTS = 6;
-export const HEALTH_GAP_MS = 10_000;
 export const HEALTH_DEADLINE_MS = 90_000;
+export { ATTEMPTS, GAP_MS };
 
 /** The catalogue this script resolves the deployed app from. Overridable with
  *  --catalogue so the suite can point the limb at a tree it built. */
@@ -314,8 +317,8 @@ export async function awaitHealthy({
   read,
   field,
   expected,
-  attempts = HEALTH_ATTEMPTS,
-  gapMs = HEALTH_GAP_MS,
+  attempts = ATTEMPTS,
+  gapMs = GAP_MS,
   deadlineMs = HEALTH_DEADLINE_MS,
   sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
   now = Date.now,
@@ -1538,16 +1541,16 @@ async function main() {
         });
         if (!health.ok) {
           if (health.mismatch) {
-            console.error(`✗ ${url} served build ${verdict.actual}, then a different build on health attempt ${health.attempt}/${HEALTH_ATTEMPTS} — ${health.reason}. This build was already live, so this is not propagation.`);
+            console.error(`✗ ${url} served build ${verdict.actual}, then a different build on health attempt ${health.attempt}/${ATTEMPTS} — ${health.reason}. This build was already live, so this is not propagation.`);
           } else {
-            console.error(`✗ ${url} is serving build ${verdict.actual} and reports ok:false — it deployed, and it is unwell. Still unwell after ${health.attempt}/${HEALTH_ATTEMPTS} health attempt(s): ${health.reason}.`);
-            console.error(`    Ceiling: ${HEALTH_ATTEMPTS} attempt(s) ${HEALTH_GAP_MS / 1000}s apart, ${HEALTH_DEADLINE_MS / 1000}s total, ${TIMEOUT_MS / 1000}s per read. Judgement, not a vendor SLA.`);
+            console.error(`✗ ${url} is serving build ${verdict.actual} and reports ok:false — it deployed, and it is unwell. Still unwell after ${health.attempt}/${ATTEMPTS} health attempt(s): ${health.reason}.`);
+            console.error(`    Ceiling: ${ATTEMPTS} attempt(s) ${GAP_MS / 1000}s apart, ${HEALTH_DEADLINE_MS / 1000}s total, ${TIMEOUT_MS / 1000}s per read. Judgement, not a vendor SLA.`);
           }
           console.error('    Checks on the last unwell read:');
           for (const line of health.checks) console.error(`      ${line}`);
           process.exit(1);
         }
-        healthNote = `, ok:true on health attempt ${health.attempt}/${HEALTH_ATTEMPTS}`;
+        healthNote = `, ok:true on health attempt ${health.attempt}/${ATTEMPTS}`;
       }
       console.log(`ok  ${url} is live at ${field}=${verdict.actual} (attempt ${i + 1}/${ATTEMPTS}${healthNote})`);
 
