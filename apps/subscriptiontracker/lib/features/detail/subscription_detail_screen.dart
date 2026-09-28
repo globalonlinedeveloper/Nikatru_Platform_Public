@@ -505,7 +505,13 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                           height: 50,
                           child: FilledButton(
                             onPressed: () async {
-                              await showCancelSheet(context, s);
+                              // ST-U8 (B15): dismiss ONLY when the row was
+                              // removed. "Keep it" keeps the user here.
+                              final bool removed = await showCancelSheet(
+                                context,
+                                s,
+                              );
+                              if (!removed) return;
                               // `context.mounted` answers "is this element
                               // still in the tree", NEVER "can the router
                               // pop" — the two came apart in the pane case,

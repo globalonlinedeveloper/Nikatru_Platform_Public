@@ -551,6 +551,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
               final Subscription s = subs[i];
               return RowCard(
                 padding: 11,
+                // ST-U8 (B49): the same row opens its detail everywhere else;
+                // here it was the one list whose rows led nowhere. `push`, so
+                // back returns to these results.
+                onTap: () => context.push('/sub/${s.id}'),
                 leading: GlyphTile(glyph: s.glyph, size: 38, fontSize: 11),
                 // `s.name` and `s.category` are DATA, not copy — they come
                 // from the user's own records (or the demo seed). Nothing here

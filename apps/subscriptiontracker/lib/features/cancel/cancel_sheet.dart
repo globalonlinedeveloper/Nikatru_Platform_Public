@@ -8,16 +8,17 @@ import '../../l10n/app_localizations.dart';
 import '../../state/subscriptions_controller.dart';
 import '../shared/widgets.dart';
 
-/// ST-U3 (B32 interim) — THIS SHEET REMOVES A ROW FROM THE TRACKER, AND SAYS
-/// ONLY THAT. It used to read "Cancel {name}?", "You'll save {monthly}/mo ·
-/// {yearly}/yr. Access continues until {date}." and "You're now saving … Nicely
-/// done." — while its only effect was deleting the row from this app's list. A
-/// user could believe the provider had stopped charging them; the savings were
-/// invented; "access continues until" is a provider policy this app cannot
-/// know. It was also the ONLY delete path, so removing a mistyped entry
-/// congratulated the user on savings. Until ST-E3 splits "Mark as cancelled"
-/// from "Delete", the copy names the one thing that happens and points at the
-/// provider for the thing that does not. No money figure appears on this sheet.
+// ST-U3 (B32 interim) — THIS SHEET REMOVES A ROW FROM THE TRACKER, AND SAYS
+// ONLY THAT. It used to read "Cancel {name}?", "You'll save {monthly}/mo ·
+// {yearly}/yr. Access continues until {date}." and "You're now saving … Nicely
+// done." — while its only effect was deleting the row from this app's list. A
+// user could believe the provider had stopped charging them; the savings were
+// invented; "access continues until" is a provider policy this app cannot
+// know. It was also the ONLY delete path, so removing a mistyped entry
+// congratulated the user on savings. Until ST-E3 splits "Mark as cancelled"
+// from "Delete", the copy names the one thing that happens and points at the
+// provider for the thing that does not. No money figure appears on this sheet.
+
 /// The cancel sheet's palette. The sibling of `add_subscription_sheet.dart`'s
 /// `_SheetPalette` — read that one's doc comment for the slot choices and for
 /// why the ink moves with the fill rather than after it. This sheet needs three
@@ -57,8 +58,17 @@ class _SheetPalette {
   final Color muted;
 }
 
-Future<void> showCancelSheet(BuildContext context, Subscription sub) {
-  return showModalBottomSheet<void>(
+/// Opens the remove sheet and completes with WHETHER THE ROW WAS REMOVED.
+///
+/// ✅ ST-U8 (B15): it completed with `void`, so the detail screen dismissed
+/// itself after EVERY close — "Keep it", a swipe, a tap on the scrim — and a
+/// user who decided to keep the plan was thrown off the screen they were on.
+/// The answer is recorded by the sheet the moment the delete succeeds, not
+/// read from the pop result, so a swipe-away AFTER a successful removal still
+/// reports true.
+Future<bool> showCancelSheet(BuildContext context, Subscription sub) async {
+  bool removed = false;
+  await showModalBottomSheet<void>(
     context: context,
     // 🔴 THE SHEET HAS TWO CALLERS ON DIFFERENT NAVIGATOR LEVELS, and without
     // this they mount on different navigators. `insights_screen.dart` calls
@@ -114,13 +124,17 @@ Future<void> showCancelSheet(BuildContext context, Subscription sub) {
     // no number of ours.
     useSafeArea: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => _CancelSheet(sub: sub),
+    builder: (_) => _CancelSheet(sub: sub, onRemoved: () => removed = true),
   );
+  return removed;
 }
 
 class _CancelSheet extends ConsumerStatefulWidget {
-  const _CancelSheet({required this.sub});
+  const _CancelSheet({required this.sub, required this.onRemoved});
   final Subscription sub;
+
+  /// Called once, when the delete has succeeded — see [showCancelSheet].
+  final VoidCallback onRemoved;
 
   @override
   ConsumerState<_CancelSheet> createState() => _CancelSheetState();
@@ -139,6 +153,7 @@ class _CancelSheetState extends ConsumerState<_CancelSheet> {
       await ref
           .read(subscriptionsControllerProvider.notifier)
           .cancelSubscription(widget.sub.id);
+      widget.onRemoved();
       if (!mounted) return;
       setState(() {
         _busy = false;
