@@ -50,7 +50,7 @@
   "bundle-provenance.test.mjs": 10,
   "capability-register-seams.test.mjs": 27,
   "capability-register.test.mjs": 42,
-  "captcha-gated-call-sites.test.mjs": 22,
+  "captcha-gated-call-sites.test.mjs": 28,
   "capture-backend.test.mjs": 12,
   "capture-fallback-fonts.test.mjs": 12,
   "capture-precheck.test.mjs": 16,
