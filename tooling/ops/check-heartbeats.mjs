@@ -80,6 +80,7 @@
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { CouldNotLook, classifyThrown, transientLook, isTransientStatus, retryAfterMs, readWithBoundedRetry } from './bounded-retry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -431,6 +432,64 @@ export function evaluateJob(job, rows, cronExpr, nowMs, declaredAtMs = null) {
   };
 }
 
+// ── ⏱ 2026-09-28 · THE DECLARATION INSTANT IS MAIN'S, NOT A DRAFT'S ────────
+// Ops watch 36416498456 went red on `reminder_mail`: "NO heartbeat row has ever
+// been written … (2026-09-28T03:25:45Z -> 2026-09-28T06:00:00Z) ended its 2h
+// grace". 03:25:45Z was a cloud drafter's SANDBOX commit, which never existed on
+// main; the first MAIN commit carrying the name was the squash merge 74b5dfbf at
+// 11:33:25Z. So the register owed a 06:00Z slot the job could not have run in,
+// and nothing checked the instant against main — only that it was not future.
+//
+// THE RULE (`--declared-vs-main`, run by ci.yml's guards-platform on a full
+// clone): the first slot owed after a job's declared instant may not be EARLIER
+// than the first slot after the first commit on HEAD's first-parent (main) line
+// whose register contains that job. Slots, not instants: a drafter cannot know
+// the squash date, so a declared instant is right when it owes the same slot.
+// A job the change under test introduces is bounded by max(that commit, now) —
+// it cannot reach main before the run that is judging it.
+//
+// Pure. `crons` is the job's cron list; both instants are ms.
+export function judgeDeclaredOnMain(job, crons, declaredAtMs, onMainMs) {
+  const cronList = Array.isArray(crons) ? crons : [crons];
+  const first = (from) => {
+    const f = cronList.map((c) => firstFireAfterMs(c, from));
+    return f.length && f.every((t) => t !== null) ? Math.min(...f) : null;
+  };
+  const owed = Number.isFinite(declaredAtMs) ? first(declaredAtMs) : null;
+  const possible = Number.isFinite(onMainMs) ? first(onMainMs) : null;
+  const iso = (ms) => new Date(ms).toISOString();
+  if (owed === null || possible === null) {
+    return { lost: `COVERAGE LOST — ${job}: no first slot could be computed (cron \`${cronList.join('` `')}\`, declared ${declaredAtMs}, on main ${onMainMs}), so its declared instant is judged against nothing.` };
+  }
+  if (owed < possible) {
+    return {
+      finding:
+        `${job}: watchedJobsDeclaredAt is ${iso(declaredAtMs)}, which owes the slot ${iso(owed)} — but the job reached main ` +
+        `no earlier than ${iso(onMainMs)}, whose first slot is ${iso(possible)}. An empty record would read ABSENT for a ` +
+        'slot the job could not have run in. Set it to the committer date of the first MAIN commit whose register ' +
+        `contains "${job}" (the _watchedJobsDeclaredAtWhy command), never a draft's sandbox date.`,
+    };
+  }
+  return { ok: `${job}: declared ${iso(declaredAtMs)} owes ${iso(owed)}, no earlier than main's first slot ${iso(possible)}` };
+}
+
+/** IO for `judgeDeclaredOnMain`. `git(args)` returns a spawnSync result. A
+ *  shallow clone cannot answer "first commit on main", so it is COVERAGE LOST. */
+export function firstOnMainMs(job, git, nowMs) {
+  const shallow = git(['rev-parse', '--is-shallow-repository']);
+  if (shallow.status !== 0) return { lost: `COVERAGE LOST — git could not say whether this clone is shallow (${String(shallow.stderr ?? '').trim()}).` };
+  if (shallow.stdout.trim() !== 'false') return { lost: 'COVERAGE LOST — this clone is SHALLOW, so the first main commit carrying a job cannot be found; check out with fetch-depth: 0.' };
+  const head = git(['rev-parse', 'HEAD']);
+  const log = git(['log', '--first-parent', '--format=%H %ct', `-S"${job}"`, 'HEAD', '--', REGISTER_REL]);
+  if (head.status !== 0 || log.status !== 0) return { lost: `COVERAGE LOST — git log failed for "${job}" (${String(log.stderr ?? head.stderr ?? '').trim()}).` };
+  const lines = log.stdout.trim().split('\n').filter(Boolean);
+  if (!lines.length) return { lost: `COVERAGE LOST — no commit on HEAD's first-parent line adds "${job}" to ${REGISTER_REL}, yet the register names it.` };
+  const [sha, ct] = lines[lines.length - 1].split(' ');
+  const ms = Number(ct) * 1000;
+  if (!Number.isFinite(ms)) return { lost: `COVERAGE LOST — git printed no committer date for "${job}": ${lines[lines.length - 1]}` };
+  return sha === head.stdout.trim() ? { ms: Math.max(ms, nowMs), sha, introducedHere: true } : { ms, sha, introducedHere: false };
+}
+
 /** The watched set, DERIVED from the register + the wrangler config it anchors,
  *  never from a list in this file. Returns { jobs, problems }. */
 export function deriveWatchedJobs(root) {
@@ -762,6 +821,26 @@ async function main() {
   if (Number.isNaN(nowMs)) {
     console.error(`✗ COVERAGE LOST — --now is not a parseable date: ${nowFlag}`);
     process.exitCode = 2;
+    return;
+  }
+
+  // OFFLINE: git history only, no D1. See `judgeDeclaredOnMain`.
+  if (process.argv.includes('--declared-vs-main')) {
+    const git = (args) => spawnSync('git', ['-C', ROOT, ...args], { encoding: 'utf8', timeout: 60_000, maxBuffer: 64 * 1024 * 1024 });
+    const lost = [];
+    const findings = [];
+    for (const j of jobs) {
+      const on = firstOnMainMs(j.job, git, nowMs);
+      const v = on.lost ? on : judgeDeclaredOnMain(j.job, j.cron, j.declaredAtMs, on.ms);
+      if (v.lost) lost.push(v.lost);
+      else if (v.finding) findings.push(v.finding);
+      else console.log(`ok  ${v.ok} (${on.sha.slice(0, 8)}${on.introducedHere ? ', introduced by the change under test' : ''})`);
+    }
+    for (const l of lost) console.error(`✗ ${l}`);
+    for (const f of findings) console.error(`✗ ${f}`);
+    if (lost.length) process.exitCode = 2;
+    else if (findings.length) process.exitCode = 1;
+    else console.log(`ok  ${jobs.length} watched-since instant(s) owe no slot before their job reached main [O-4]`);
     return;
   }
 
