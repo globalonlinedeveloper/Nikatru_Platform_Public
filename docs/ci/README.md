@@ -45,48 +45,89 @@ caught by `safe-rerun`'s own suite; an **expression** mutant is not — the pars
 collapses any `${{ … }}` to "cancelling". That gap is recorded, not closed: put
 a bare `true` back and nothing in the tree goes red.
 
-### 2.1 A red job cancels its own run (FF-1)
+### 2.1 A red job cancels its own run, and stays red (FF-1, FF-2)
 
 A gate run with one red job is already a red run: `ci-gate` needs every job and
 reads `cancelled` as red, and `deploy-web` / `deploy-workers` need `ci-gate`. So
-the last step of every gate job is
+the first red job cancels the rest of the run (FF-1, #1010). **FF-2 moves the
+cancel out of the red job.** FF-1 ran it as the red job's own last step, while
+that job was still in progress, so GitHub cancelled the red job too: on six PR
+runs measured 2026-09-28 (36385207366, 36385190242, 36385455698, 36384843524,
+36381560476, 36383273759) every job read `cancelled` except the aggregators,
+the red job was found only in the annotations, and `gh run view --log-failed`
+printed nothing. Now every gate job `<lane>` has a follow-up job right after it:
 
 ```yaml
-- name: A red job cancels the rest of this run (FF-1)
-  if: failure()
-  uses: ./.github/actions/cancel-run-on-red
+ff-<lane>:
+  name: fail-fast · <lane>
+  needs: <lane>
+  if: failure() && needs.<lane>.result == 'failure'
+  runs-on: ubuntu-24.04
+  timeout-minutes: 2
+  permissions:
+    actions: write
+  steps:
+    - name: <lane> is red, so the rest of this run is cancelled (FF-2)
+      env:
+        GH_TOKEN: ${{ github.token }}
+        RED_JOB: <lane>
+      run: |
+        echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; …"
+        gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 ```
 
-That is one `gh run cancel` for the job's own run, made only on failure, and
-never a polling watcher: the `GITHUB_TOKEN` API limit is per repository and the
-guards already spend it. Because the step is **last**, the job's own report (every
-`!cancelled()` guard, every failure upload) is written before the cancel. After
-the cancel `ci-gate` still runs (`always()`) and goes red, and the deploys skip.
-The cancel fires on `main` too. By the time any deploy starts, every gate job
-has finished, so the step can no longer fire.
+GitHub starts a job only after every job it `needs` has concluded, so the
+lane's `failure` is recorded before the cancel is sent. **The red job reads
+`failure`; only the jobs still running read `cancelled`**, and the follow-up's
+`::notice` names the red job in the run summary. It is still one API call, made
+only on failure, and never a polling watcher: the `GITHUB_TOKEN` API limit is per
+repository and the guards already spend it. The cost is a runner start (seconds)
+between the red job ending and the cancel, and one skipped `fail-fast · <lane>`
+line per lane on a green run. After the cancel `ci-gate` still runs (`always()`)
+and goes red, and the deploys skip. The cancel fires on `main` too. By the time
+any deploy starts, every gate job has finished, so no follow-up can fire.
 
+- **Why not one fail-fast job over every lane:** a job starts only after ALL of
+  its `needs` have concluded, so `needs: [every lane]` would start when the
+  slowest lane ends, which is exactly the time the cancel exists to save.
+- **Why not a delayed cancel from the red job:** the runner kills a job's orphan
+  processes and the hosted VM is discarded after the job, so a cancel sent after
+  the job ends is a race with a deadline nobody has measured.
+- **`needs.<lane>.result == 'failure'`:** `failure()` alone is true when any
+  ANCESTOR failed, so when `prepare` is red every follow-up downstream of it would
+  fire as well, naming a lane that was only skipped.
+- **Matrix lanes run `fail-fast: true`** (`${{ github.event_name ==
+  'pull_request' }}` in `extensions.yml`). The follow-up needs the whole matrix,
+  so with fail-fast off the siblings of a red leg would run to the end before
+  anything cancels. FF-1 cancelled them at once, and so does this: GitHub's own
+  matrix fail-fast keeps the red leg `failure` and cancels its siblings.
 - **In scope:** `ci.yml` and its callees `lane-workers.yml` and
   `extensions-ci.yml`, on every event. `build-platforms.yml` and `extensions.yml`
-  publish on push, tag and dispatch, so there the condition is
-  `failure() && github.event_name == 'pull_request'`. `build-platforms.yml` has no
-  `pull_request` trigger today, so none of its jobs carry the step.
+  publish on push, tag and dispatch, so there the follow-up's condition adds
+  `&& github.event_name == 'pull_request'`. `build-platforms.yml` has no
+  `pull_request` trigger today, so none of its jobs has a follow-up.
 - **Never:** any job that deploys, publishes, releases, submits, migrates or
   uploads (derived from its id, its callee, its `environment:` or its steps), any
   aggregator (`ci-gate`, `ci-required`, `lane-verdict`,
   `extensions-lane-accounting`), and every workflow outside that list (ops-watch,
   e2e, deploy-\*, submit-\*, redeploy-stranded, renovate among them).
   `codeql.yml` is a **sole-job** exception: its one job has no sibling to cancel.
-- **Permissions:** each carrying job grants `actions: write` at job level. A call
-  job grants it too, because a callee job cannot hold more than its caller
-  grants, and GitHub refuses the whole run at startup when one asks. ⚠️
-  `actions: write` also authorises `workflow_dispatch`, so every carrying job now
-  holds a token that can dispatch a workflow.
-- **Not covered:** a job that hits `timeout-minutes` is marked cancelled, so
-  `failure()` is false and it cancels nothing (`ci-gate` still reads it red). The
-  job that went red may itself end `cancelled` if the cancel lands before it
-  finishes. Its failed step keeps `failure`, and the action's `::notice` names it.
-  `tooling/ops/triage-failed-runs.mjs` files such a run under that job, not under
-  a sibling it cancelled.
+  No job cancels from inside itself.
+- **Permissions:** only the follow-ups grant `actions: write`, and nothing else.
+  They check nothing out. A call job grants it too, because a callee job cannot
+  hold more than its caller grants, and GitHub refuses the whole run at startup
+  when one asks. ⚠️ `actions: write` also authorises `workflow_dispatch`; it now
+  sits on a two-line job, not on every gate job.
+- **Not a constituent:** a follow-up is skipped on every green run and decides
+  nothing. `assert-green-means-ran` exempts the class from `ci-gate`'s and the
+  callee verdicts' `needs`. The class is `failFastLane` in
+  `tooling/ci/workflow-scan.mjs`, and it is narrow on purpose: one step, and that
+  step only the notice and the cancel.
+- **Not covered:** a job that hits `timeout-minutes` is marked cancelled, so its
+  follow-up does not fire (`ci-gate` still reads it red).
+  `tooling/ops/triage-failed-runs.mjs` files a cancelled run under the job whose
+  failing step concluded `failure`. That still holds for FF-1-era runs, where the
+  red job itself read `cancelled`.
 
 `tooling/ci/assert-failfast-coverage.mjs` grades all of it.
 
@@ -94,28 +135,45 @@ has finished, so the step can no longer fire.
 
 <!-- BEGIN GENERATED: gen-ci-map lane-map -->
 <!-- why: GENERATED by node tooling/ci/gen-ci-map.mjs --write. Never hand-edit. -->
-`ci.yml` runs **22** jobs, and **19** of them are in `ci-gate`'s `needs`.
+`ci.yml` runs **39** jobs, and **19** of them are in `ci-gate`'s `needs`.
 
 | job | its `name:` | its `needs` | job-level `if:` | in `ci-gate`'s `needs` |
 |---|---|---|---|---|
 | `lane-workers` | lane-workers | — | — | yes |
 | `guard-meta` | Guards — the guards can still fail | — | — | yes |
+| `ff-guard-meta` | fail-fast · guard-meta | `guard-meta` | yes | **no** |
 | `guards-platform` | Guards — platform, data and ops | — | — | yes |
+| `ff-guards-platform` | fail-fast · guards-platform | `guards-platform` | yes | **no** |
 | `guards-legal` | Guards — privacy, legal and money | — | — | yes |
+| `ff-guards-legal` | fail-fast · guards-legal | `guards-legal` | yes | **no** |
 | `guards-store` | Guards — store, release and versioning | — | — | yes |
+| `ff-guards-store` | fail-fast · guards-store | `guards-store` | yes | **no** |
 | `guards-chassis` | Guards — chassis, app surface and packages | — | — | yes |
+| `ff-guards-chassis` | fail-fast · guards-chassis | `guards-chassis` | yes | **no** |
 | `security-scan` | Security — secret and workflow scanners | — | — | yes |
+| `ff-security-scan` | fail-fast · security-scan | `security-scan` | yes | **no** |
 | `site-tokens` | Design tokens (build + drift, all three outputs) | — | — | yes |
+| `ff-site-tokens` | fail-fast · site-tokens | `site-tokens` | yes | **no** |
 | `site-shared` | Shared site build | — | — | yes |
+| `ff-site-shared` | fail-fast · site-shared | `site-shared` | yes | **no** |
 | `content-gate` | Content pipeline (recipe -> pack -> sign -> gate) | — | — | yes |
+| `ff-content-gate` | fail-fast · content-gate | `content-gate` | yes | **no** |
 | `app-brick` | App brick (stamp both variants + analyze + validate the clone contract) | — | — | yes |
+| `ff-app-brick` | fail-fast · app-brick | `app-brick` | yes | **no** |
 | `sites` | Static sites (functions parse + required files) | — | — | yes |
+| `ff-sites` | fail-fast · sites | `sites` | yes | **no** |
 | `workspace-gate` | Workspace gate (melos analyze + test) | — | — | yes |
+| `ff-workspace-gate` | fail-fast · workspace-gate | `workspace-gate` | yes | **no** |
 | `prepare` | Derive the app set from the pub workspace | — | — | yes |
+| `ff-prepare` | fail-fast · prepare | `prepare` | yes | **no** |
 | `app-dryrun` | Store submission dry runs | `prepare` | — | yes |
+| `ff-app-dryrun` | fail-fast · app-dryrun | `app-dryrun` | yes | **no** |
 | `android-artifacts` | Android artifacts (built, inspected, discarded) | `prepare` | — | yes |
+| `ff-android-artifacts` | fail-fast · android-artifacts | `android-artifacts` | yes | **no** |
 | `web-artifacts` | Web artifacts (built, booted, discarded) | `prepare` | — | yes |
+| `ff-web-artifacts` | fail-fast · web-artifacts | `web-artifacts` | yes | **no** |
 | `linux-artifacts` | Linux artifacts (built, inspected, discarded) | `prepare` | — | yes |
+| `ff-linux-artifacts` | fail-fast · linux-artifacts | `linux-artifacts` | yes | **no** |
 | `extensions` | extensions | — | — | yes |
 | `ci-gate` | ci-gate | `lane-workers`, `guard-meta`, `guards-platform`, `guards-legal`, `guards-store`, `guards-chassis`, `security-scan`, `site-tokens`, `site-shared`, `content-gate`, `app-brick`, `sites`, `workspace-gate`, `prepare`, `app-dryrun`, `android-artifacts`, `web-artifacts`, `linux-artifacts`, `extensions` | yes | — (the aggregate: the single required status check on `main`) |
 | `deploy-web` | deploy-web | `ci-gate` | yes | **no** |
@@ -252,10 +310,12 @@ Each is enforced by a guard that will fail the build, named so you can read it:
   job carries `timeout-minutes`** — `tooling/ci/assert-workflow-hardening.mjs`.
   GitHub's `allowed_actions: selected` backs the allowlist half natively; its
   `sha_pinning_required` half **cannot be turned on here** and §7.1 says why.
-- **Every gate job ends with the FF-1 cancel step, and no deploy-type job
-  carries it** (§2.1) — `tooling/ci/assert-failfast-coverage.mjs`. A new job in
-  `ci.yml`, `lane-workers.yml` or `extensions-ci.yml` fails the build until it
-  ends with the step and grants `actions: write`.
+- **Every gate job has an FF-2 follow-up `ff-<job>`, no job cancels from
+  inside itself, and no deploy-type job cancels at all** (§2.1) —
+  `tooling/ci/assert-failfast-coverage.mjs`. A new job in `ci.yml`,
+  `lane-workers.yml` or `extensions-ci.yml` fails the build until its follow-up
+  exists. The guard also simulates the run in which each lane goes red: the lane
+  must conclude `failure`, and the rest must be cancelled.
 - **Every workflow file has a `duty` row in `tooling/ops/register.json`** and an
   owner in `tooling/ci/assert-release-lane-generic.mjs` — a new workflow file
   fails the build until both exist. Adding a *job* to an existing workflow does
@@ -748,15 +808,15 @@ naming the job it belonged to and the line it sat above.
 |---|---|---|---|---|
 | none | `.github/workflows/apple-expiry-write.yml` | Apple signing expiry write | `workflow_dispatch` | 1 |
 | [`build-platforms.md`](build-platforms.md) | `.github/workflows/build-platforms.yml` | Build apps | `workflow_dispatch`, `push`, `schedule` | 7 |
-| this page | `.github/workflows/ci.yml` | CI | `push`, `pull_request` | 22 |
+| this page | `.github/workflows/ci.yml` | CI | `push`, `pull_request` | 39 |
 | none | `.github/workflows/codeql.yml` | CodeQL | `pull_request`, `push`, `schedule`, `workflow_dispatch` | 1 |
 | none | `.github/workflows/deploy-sandbox.yml` | Deploy sandbox | `workflow_dispatch` | 2 |
 | [`deploy-web.md`](deploy-web.md) | `.github/workflows/deploy-web.yml` | Deploy web | `workflow_call` | 3 |
 | [`deploy-workers.md`](deploy-workers.md) | `.github/workflows/deploy-workers.yml` | Deploy workers | `workflow_call` | 4 |
 | [`e2e.md`](e2e.md) | `.github/workflows/e2e.yml` | E2E live | `workflow_dispatch`, `schedule` | 3 |
-| [`extensions-ci.md`](extensions-ci.md) | `.github/workflows/extensions-ci.yml` | Extensions CI | `workflow_call` | 14 |
-| [`extensions.md`](extensions.md) | `.github/workflows/extensions.yml` | Extensions | `push`, `pull_request`, `schedule`, `workflow_dispatch` | 8 |
-| none | `.github/workflows/lane-workers.yml` | Lane — workers | `workflow_call` | 3 |
+| [`extensions-ci.md`](extensions-ci.md) | `.github/workflows/extensions-ci.yml` | Extensions CI | `workflow_call` | 27 |
+| [`extensions.md`](extensions.md) | `.github/workflows/extensions.yml` | Extensions | `push`, `pull_request`, `schedule`, `workflow_dispatch` | 10 |
+| none | `.github/workflows/lane-workers.yml` | Lane — workers | `workflow_call` | 5 |
 | none | `.github/workflows/name-clearance.yml` | Name clearance | `workflow_dispatch`, `schedule` | 1 |
 | [`ops-watch.md`](ops-watch.md) | `.github/workflows/ops-watch.yml` | Ops watch | `workflow_dispatch`, `schedule` | 11 |
 | [`redeploy-stranded.md`](redeploy-stranded.md) | `.github/workflows/redeploy-stranded.yml` | Redeploy stranded lanes | `workflow_run`, `workflow_dispatch` | 1 |

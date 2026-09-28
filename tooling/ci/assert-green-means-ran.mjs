@@ -65,7 +65,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
-import { parseWorkflow, parseAllWorkflows, resolveLocalCalls, workflowEvents, POST_GATE_IF, postGateClass } from './workflow-scan.mjs';
+import { parseWorkflow, parseAllWorkflows, resolveLocalCalls, workflowEvents, POST_GATE_IF, postGateClass, failFastLane } from './workflow-scan.mjs';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 
@@ -249,7 +249,10 @@ for (const target of AGGREGATORS) {
      newlines kept. NOT `job.logical` — see the ⚠️ in the parsing note above. */
   const body = bodyOf(job).join('\n');
   const where = `${target.workflow}: job "${target.job}"`;
-  const others = [...wf.jobs.keys()].filter((j) => j !== target.job);
+  // ⏱ 2026-09-28 — FF-2's follow-up jobs (`ff-<lane>`, workflow-scan failFastLane) are
+  // not constituents: each is skipped on every green run and decides nothing, and the
+  // lane it follows is the constituent. A2 and A6 range over the rest.
+  const others = [...wf.jobs.keys()].filter((j) => j !== target.job && failFastLane(wf, j) === null);
   const needs = job.needs;
 
   // A9. ⏱ 2026-09-25 — THE POST-GATE CLASS. [ADR 095 §4] A deploy runs AFTER the gate,
@@ -476,7 +479,8 @@ for (const callee of laneCallees) {
   const job = callee.jobs.get(v);
   const where = `${callee.rel}: verdict job "${v}"`;
   const before = problems.length;
-  const missing = jobNames.filter((j) => j !== v && !job.needs.includes(j));
+  // An FF-2 follow-up (failFastLane) is exempt here as in A2: its lane is the need.
+  const missing = jobNames.filter((j) => j !== v && !job.needs.includes(j) && failFastLane(callee, j) === null);
   if (missing.length) {
     problems.push(
       `${where} does not \`need\` ${missing.map((j) => `"${j}"`).join(', ')}. ` +

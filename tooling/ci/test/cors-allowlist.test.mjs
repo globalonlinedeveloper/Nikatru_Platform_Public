@@ -55,12 +55,20 @@
 // sends that Origin. Config and EXTRAS left together, which is what the case below
 // ("dropped from a config but not from EXTRAS") exists to force.
 //
+// ⏱ 2026-09-27 — THE SCOPE MOVED INTO THE REGISTER (O-SERVICE-KIT-UNBUILT, E-b1).
+// The guard's `SERVICE_POLICY` literal is gone: each Worker's scope is its row's
+// `cors` field in tooling/platform-register.json, and every Worker's
+// src/middleware/cors.ts binds services/_shared/src/cors.ts with that scope. So
+// every fixture below also writes a register and a binding per Worker, and the
+// cases at the end are the new limbs' inputs: a Worker with no row, a row with no
+// scope, and — RC9 — a row whose scope the code does not bind.
+//
 // Run:  node --test "tooling/ci/test/cors-allowlist.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -133,6 +141,25 @@ const REAL = {
   'subscriptiontracker-api': `${APEX},${PAGES_NEW}`,
 };
 
+/** The scope the real register gives each Worker: `platform` is the shared one. */
+const scopeOf = (name) => (name === 'platform' ? 'every-app' : 'own-app');
+
+/** A Worker's src/middleware/cors.ts as the real ones are written: comments, the
+ *  two lines that bind the shared module, and one `cors({ … })` call. */
+function bindingSource({ scope, appId }) {
+  return (
+    '// Binds the one CORS middleware. The scope below is what the guard reads.\n' +
+    "// (a comment naming scope: 'every-app' must not count)\n" +
+    "import { cors } from '../../../_shared/src/cors';\n" +
+    "export * from '../../../_shared/src/cors';\n" +
+    'export const corsMiddleware = cors({\n' +
+    `  scope: '${scope}',\n` +
+    (appId === undefined ? '' : `  appId: '${appId}',\n`) +
+    "  methods: ['GET', 'OPTIONS'],\n" +
+    '});\n'
+  );
+}
+
 /**
  * Build a throwaway repo. `workers` maps a service directory either to its
  * ALLOWED_ORIGINS string (or `null` to omit the var entirely), or to a
@@ -143,11 +170,37 @@ const REAL = {
  * comment and a trailing comma — because "parse the config, never grep it" is
  * the property under test, not a detail of the fixture.
  */
-function tree({ apps = [SUBLY], workers = REAL, extraComment = '' } = {}) {
+/*
+ * `rows` overrides the register: a service directory maps to the `cors` value
+ * of its row (`undefined` writes a row with no `cors`), or to `null` for no row
+ * at all. `bindings` overrides a Worker's src/middleware/cors.ts: `{ scope, appId }`
+ * for a binding, or `null` for no file. `register: false` writes no register.
+ */
+function tree({ apps = [SUBLY], workers = REAL, extraComment = '', rows = {}, bindings = {}, register = true } = {}) {
   const root = join(TMP, `r${seq++}`);
   const dataDir = join(root, 'catalog');
   mkdirSync(dataDir, { recursive: true });
   if (apps !== null) writeFileSync(join(dataDir, 'apps.json'), JSON.stringify(apps, null, 2));
+
+  // The register the guard reads each Worker's scope from — the real file's shape,
+  // one row per Worker, matched to it by the `config` path.
+  const rowFor = (name) => {
+    const cors = Object.hasOwn(rows, name) ? rows[name] : scopeOf(name);
+    if (cors === null) return null;
+    const row = { name, config: `services/${name}/wrangler.jsonc` };
+    if (cors !== undefined) row.cors = cors;
+    return row;
+  };
+  const names = Object.keys(workers);
+  const serving = names.includes('platform') ? rowFor('platform') : null;
+  const appRows = names.filter((n) => n !== 'platform').map(rowFor).filter(Boolean);
+  if (register) {
+    mkdirSync(join(root, 'tooling'), { recursive: true });
+    writeFileSync(
+      join(root, 'tooling', 'platform-register.json'),
+      JSON.stringify({ ...(serving ? { servingWorker: serving } : {}), appWorkers: appRows }, null, 2),
+    );
+  }
 
   for (const [name, spec] of Object.entries(workers)) {
     const { allowed, appId } =
@@ -170,6 +223,13 @@ function tree({ apps = [SUBLY], workers = REAL, extraComment = '' } = {}) {
         `  },\n` + // ← trailing comma before } — jsonc, not json
         `}\n`,
     );
+    const binding = Object.hasOwn(bindings, name)
+      ? bindings[name]
+      : { scope: scopeOf(name), appId: name === 'platform' ? undefined : name.replace(/-api$/, '') };
+    if (binding !== null) {
+      mkdirSync(join(dir, 'src', 'middleware'), { recursive: true });
+      writeFileSync(join(dir, 'src', 'middleware', 'cors.ts'), bindingSource(binding));
+    }
   }
   return root;
 }
@@ -193,6 +253,7 @@ describe('assert-cors-allowlist', () => {
     // EXTRAS count is FIVE, not three, and the two it grew by are the retiring
     // subdomain in each config — the number rising is the cutover being visible.
     assert.match(out, /2 derived requirement\(s\) \+ 3 declared EXTRAS all present/);
+    assert.match(out, /2 Worker\(s\) bind the `cors` scope their tooling\/platform-register\.json row names/);
   });
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -404,12 +465,79 @@ describe('assert-cors-allowlist', () => {
     assert.match(out, /services\/platform\/wrangler\.jsonc — missing "https:\/\/nikatru\.com"/);
   });
 
-  // ── untaught scope ────────────────────────────────────────────────────────
-  test('FAILS on a Worker it has never been taught about', () => {
-    const { code, out } = run(tree({ workers: { ...REAL, 'mystery-worker': REAL['subscriptiontracker-api'] } }));
+  // ── unregistered scope ────────────────────────────────────────────────────
+  // ⏱ 2026-09-27 (E-b1). This was "FAILS on a Worker it has never been taught
+  // about", when a Worker had to be in the guard's SERVICE_POLICY literal or be
+  // named <slug>-api. The scope is the register's now, so the refusal is "no row".
+  test('FAILS on a Worker the register has no row for, naming it', () => {
+    const workers = { ...REAL, 'mystery-worker': REAL['subscriptiontracker-api'] };
+    const { code, out } = run(tree({ workers, rows: { 'mystery-worker': null } }));
     assert.equal(code, 1);
-    assert.match(out, /never been taught about services\/mystery-worker/);
-    assert.match(out, /Name it services\/<slug>-api/);
+    assert.match(out, /services\/mystery-worker\/wrangler\.jsonc — no row in tooling\/platform-register\.json names services\/mystery-worker/);
+    assert.match(out, /A Worker\s+with no row is a Worker whose allowlist nothing checks/);
+  });
+
+  test('FAILS on a register row with no cors scope', () => {
+    const { code, out } = run(tree({ rows: { 'subscriptiontracker-api': undefined } }));
+    assert.equal(code, 1);
+    assert.match(out, /appWorkers\[0\] \(services\/subscriptiontracker-api\) — `cors` is null; it must be "every-app" or "own-app"/);
+  });
+
+  test('FAILS on an own-app row for a Worker no catalogue app owns', () => {
+    const workers = { ...REAL, 'mystery-worker': REAL['subscriptiontracker-api'] };
+    const { code, out } = run(tree({ workers }));
+    assert.equal(code, 1);
+    assert.match(out, /appWorkers\[1\] says `cors: "own-app"`, and no app in\s+catalog\/apps\.json owns services\/mystery-worker/);
+  });
+
+  // ── the code binds the scope the register names (RC9) ─────────────────────
+  // 🔴 WHY THIS LIMB EXISTS: every catalogue origin is the apex [ADR 075], so an
+  // own-app row flipped to every-app requires the same origin set and nothing in
+  // the origin limbs above can see it. The code is where the scope still decides
+  // something — the localhost trade.
+  test('RC9: FAILS when app #1\'s row says every-app and its code binds own-app', () => {
+    const { code, out } = run(tree({ rows: { 'subscriptiontracker-api': 'every-app' } }));
+    assert.equal(code, 1);
+    assert.match(
+      out,
+      /services\/subscriptiontracker-api\/src\/middleware\/cors\.ts — it binds `scope: 'own-app'` and the register says "every-app"/,
+    );
+    assert.match(out, /answers every localhost port on top of its list, which the register says it does not/);
+  });
+
+  test('FAILS when the SHARED Worker binds own-app under an every-app row', () => {
+    const { code, out } = run(tree({ bindings: { platform: { scope: 'own-app', appId: undefined } } }));
+    assert.equal(code, 1);
+    assert.match(out, /services\/platform\/src\/middleware\/cors\.ts — it binds `scope: 'own-app'` and the register says "every-app"/);
+  });
+
+  test('FAILS when a Worker has no binding at all', () => {
+    const { code, out } = run(tree({ bindings: { 'subscriptiontracker-api': null } }));
+    assert.equal(code, 1);
+    assert.match(out, /services\/subscriptiontracker-api\/src\/middleware\/cors\.ts — there is no such file/);
+  });
+
+  test('FAILS when an own-app binding names another app', () => {
+    const { code, out } = run(
+      tree({ bindings: { 'subscriptiontracker-api': { scope: 'own-app', appId: 'someoneelse' } } }),
+    );
+    assert.equal(code, 1);
+    assert.match(out, /it names `appId` 'someoneelse'; an own-app Worker in services\/subscriptiontracker-api belongs to app 'subscriptiontracker'/);
+  });
+
+  test('a scope named only in a comment is not a binding', () => {
+    // bindingSource() writes "scope: 'every-app'" in a comment on every binding;
+    // the live-shape case passing proves the reader strips it, and this proves it
+    // cannot stand in for the call.
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /`scope` literal\(s\)/);
+  });
+
+  test('COVERAGE LOST when the register is absent', () => {
+    const { code, out } = run(tree({ register: false }));
+    assert.equal(code, 2);
+    assert.match(out, /COVERAGE LOST — no register at tooling\/platform-register\.json/);
   });
 
   // ── anti-vacuity [pipeline F-10] ──────────────────────────────────────────
@@ -471,9 +599,11 @@ export function refusal(): Response {
     const vars = allowed === null ? '' : `  "vars": { "ALLOWED_ORIGINS": ${JSON.stringify(allowed)} },\n`;
     writeFileSync(join(dir, 'wrangler.jsonc'), `{\n  // an edge pass-through\n  "name": "edge-x",\n  "main": "src/index.ts",\n${vars}}\n`);
     writeFileSync(join(dir, 'src', 'index.ts'), src);
-    mkdirSync(join(root, 'tooling'), { recursive: true });
     const edgeWorkers = row ? [{ name: 'edge-x', entrypoint: 'services/edge-x/src/index.ts', config: 'services/edge-x/wrangler.jsonc' }] : [];
-    writeFileSync(join(root, 'tooling', 'platform-register.json'), JSON.stringify({ edgeWorkers }, null, 2));
+    // E-b1 (NP-Eb1): tree() already wrote the register every Worker's `cors` scope is read from, so the
+    // edge entry is ADDED to it; replacing it would leave the two live Workers with no scope (COVERAGE LOST).
+    const registerPath = join(root, 'tooling', 'platform-register.json');
+    writeFileSync(registerPath, JSON.stringify({ ...JSON.parse(readFileSync(registerPath, 'utf8')), edgeWorkers }, null, 2));
     return root;
   }
 
@@ -513,6 +643,6 @@ export function refusal(): Response {
   test('the SAME Worker with no edgeWorkers row is untaught scope, and FAILS as one', () => {
     const { code, out } = run(edgeTree({ row: false }));
     assert.equal(code, 1, out);
-    assert.match(out, /never been taught about services\/edge-x/);
+    assert.match(out, /no row in tooling\/platform-register\.json names services\/edge-x/);
   });
 });

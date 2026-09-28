@@ -24,8 +24,9 @@
 //
 // ── WHAT STANDS WHERE THE CAPTCHA STOOD ─────────────────────────────────────
 //   · a request carrying `Origin` is refused 403 — a web page cannot use this
-//     route. The refusal is middleware/cors.ts's (`NO_CORS_PATH_PREFIXES`), the
-//     one module allowed to read `Origin` (tooling/ci/assert-no-origin-authz.mjs),
+//     route. The refusal is the shared CORS middleware's (services/_shared/src/
+//     cors.ts), bound in middleware/cors.ts with `refuseBrowsersOn` — the one
+//     module allowed to read `Origin` (tooling/ci/assert-no-origin-authz.mjs) —
 //     and it runs on every request before this router; it grants no CORS here;
 //   · `:app` must be a NATIVE_AUTH_APPS id (generated/app-targets.ts) with a
 //     scheme-safe id, and a redirect is kept only when it is that app's own

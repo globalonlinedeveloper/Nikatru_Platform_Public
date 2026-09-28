@@ -3,6 +3,8 @@
 library;
 
 export 'src/licences/vendored_asset_licences.dart';
+// The plumbing under the chassis's persisted controllers ([ADR 072] D1.4).
+export 'src/persisted_notifier.dart';
 export 'src/tokens/app_colors.dart';
 // The GENERATED company brand tokens — the one Dart file emitted from
 // contracts/tokens/dtcg/ ([ADR 067] decision 1). It is on the barrel for the

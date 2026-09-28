@@ -46,7 +46,7 @@
 //   · Step [6] writes the Worker's `appWorkers` row into tooling/platform-register.json
 //     (and names its config in `bindingSources.configs`): name, entrypoint, config,
 //     hosts (the config's custom domains), `dsnSecret` GLITCHTIP_DSN_<APP>,
-//     `clientBasePath` and `routes`. The routes are DERIVED from the stamped
+//     `cors` "own-app" (E-b1), `clientBasePath` and `routes`. The routes are DERIVED from the stamped
 //     entrypoint by tooling/ci/worker-routes.mjs, the parser assert-platform-register
 //     holds them to, and each route's auth, purpose, client and noLimiterReason come
 //     from tooling/bricks/app/route-clients.json. A mounted route the map does not
@@ -706,6 +706,12 @@ function appWorkerRow() {
     _dsnSecretWhy:
       "The GitHub secret holding THIS Worker's crash-sink DSN, read by tooling/ci/worker-set.mjs --for-deploy. " +
       'Named for this app so its crashes file under its own GlitchTip project; creating the project and the secret is an owner step.',
+    // The stamped src/middleware/cors.ts binds services/_shared/src/cors.ts with scope 'own-app', and
+    // assert-cors-allowlist.mjs fails the Worker if this field and that binding disagree (E-b1).
+    cors: 'own-app',
+    _corsWhy:
+      "Which browser origins this Worker answers: its own app's origin, exactly, plus any localhost port. " +
+      'Read by tooling/ci/assert-cors-allowlist.mjs, which fails the Worker if src/middleware/cors.ts binds a different scope.',
     clientBasePath: map.clientBasePath,
     routes,
   };

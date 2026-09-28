@@ -64,7 +64,7 @@ import 'package:go_router/go_router.dart' show StatefulNavigationShell;
 import 'package:integration_test/integration_test.dart';
 import 'package:intl/intl.dart' show DateFormat, Intl;
 
-import 'package:subscriptiontracker/core/a11y/web_semantics.dart'
+import 'package:nikatru_chassis_screens/shell/web_semantics.dart'
     show releaseWebSemantics;
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/core/e2e_keys.dart';
@@ -1647,7 +1647,7 @@ void main() {
     );
     // And the SemanticsHandle `app.main()` holds on web: flutter_test verifies
     // handles in the same post-body block, so a body that leaves it active fails
-    // after its last capture (lib/core/a11y/web_semantics.dart; app_test.dart's
+    // after its last capture (chassis_screens/lib/shell/web_semantics.dart; app_test.dart's
     // `launchApp` carries the nightly run that proved it).
     releaseWebSemantics();
   });

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Hono } from 'hono';
-import { corsMiddleware, NO_CORS_PATH_PREFIXES } from '../src/middleware/cors';
+import { corsMiddleware } from '../src/middleware/cors';
 import { app } from '../src/index';
 import type { AppEnv } from '../src/types';
 import raw from '../wrangler.jsonc?raw';
@@ -149,8 +149,9 @@ describe('preflight allows every method a MOUNTED route answers — derived, not
   const noCorsEndpoints = endpoints.filter((e) => isNoCors(e.path));
   const corsEndpoints = endpoints.filter((e) => !isNoCors(e.path));
 
-  it('the no-CORS list here IS the middleware\'s, and each entry covers a mounted route', () => {
-    expect(NO_CORS.map((n) => n.prefix)).toEqual([...NO_CORS_PATH_PREFIXES]);
+  it('each no-CORS entry carries a reason and covers a mounted route', () => {
+    // The middleware's own prefixes are its policy (src/middleware/cors.ts `refuseBrowsersOn`), held both ways
+    // below: each route here must be REFUSED at preflight, and every other one APPROVED.
     for (const n of NO_CORS) {
       expect(n.why.length, `${n.prefix} carries no reason`).toBeGreaterThan(40);
       expect(endpoints.some((e) => e.path.startsWith(n.prefix)), `${n.prefix} covers no mounted route — stale`).toBe(true);

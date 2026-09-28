@@ -102,7 +102,7 @@ dependencies:
   flutter_riverpod: ^2.5.0
 
   # Navigation (real URLs on web; deep links on all 6 platforms)
-  go_router: ^14.2.0
+  go_router: ^18.0.0
 
   # HTTP client for the Cloudflare Worker API (bearer-token interceptor)
   dio: ^5.4.0
@@ -111,8 +111,8 @@ dependencies:
   supabase_flutter: ^2.5.0
 
   # On-device renewal reminders (iOS/Android/macOS/Windows/Linux)
-  flutter_local_notifications: ^17.2.0
-  timezone: ^0.9.4
+  flutter_local_notifications: ^22.0.0
+  timezone: ^0.11.0
 
   # 🔴 [pipeline S-4] THE UPPER BOUND HAD TO WIDEN, and the reason is a workspace
   # one rather than a Subly one. Every STAMPED app pulls `flutter_localizations`
@@ -134,7 +134,7 @@ dependencies:
 
   # Running app version — drives the CFG-1 force-update kill-switch. Union item
   # (P2.4a): the chassis config/consent spine landing in P2.3/P2.6 reads it.
-  package_info_plus: ^8.0.0
+  package_info_plus: ^10.0.0
 
   # Localization — flutter_localizations + intl drive gen-l10n from lib/l10n/*.arb
   # (`generate: true` below; l10n.yaml + the .arb files land with P2.3). The intl

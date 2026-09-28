@@ -3,11 +3,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_notifications/nikatru_notifications.dart';
 
 void main() {
-  // This matrix is pinned to flutter_local_notifications 17.x (shared with
+  // This matrix is pinned to flutter_local_notifications 22.x (shared with
   // apps/subscriptiontracker). If these expectations change, a version bump is the likely
   // cause — re-verify against the plugin's actual per-platform support.
   group(
-      'NotificationCapabilities.forPlatform (flutter_local_notifications 17.x)',
+      'NotificationCapabilities.forPlatform (flutter_local_notifications 22.x)',
       () {
     test('mobile + macOS can show AND repeat-schedule', () {
       for (final TargetPlatform p in <TargetPlatform>[
@@ -33,7 +33,7 @@ void main() {
       expect(c.canSchedule, isFalse);
     });
 
-    test('Windows supports neither on 17.x (no Windows plugin until 18.x)', () {
+    test('Windows supports neither until an app supplies Windows init settings', () {
       final NotificationCapabilities c = NotificationCapabilities.forPlatform(
         TargetPlatform.windows,
         isWeb: false,
