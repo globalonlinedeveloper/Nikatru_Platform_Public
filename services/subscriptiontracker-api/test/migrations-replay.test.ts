@@ -153,7 +153,7 @@ const REPLAY_SAFE_STATEMENTS = ALL_STATEMENTS.filter(({ code }) =>
 
 /** Tables subscriptiontracker_db owns, from services/subscriptiontracker-api/migrations/ — the applier's own
  *  input. Used for the shape/row snapshots and as a coverage assertion. */
-const TABLES = ['budget_categories', 'budgets', 'payment_history', 'price_change', 'subscriptions'];
+const TABLES = ['budget_categories', 'budgets', 'payment_history', 'subscriptions'];
 
 const schemaOf = (db: SqliteD1) =>
   db
@@ -166,9 +166,9 @@ const rowsOf = (db: SqliteD1) =>
 /**
  * A DB with the real set applied once, then seeded with a LEGACY-SHAPED row —
  * `budget_categories` with no `id`, `payment_history` with no `updated_at`,
- * `subscriptions` with a `cycle` and no `cycle_every`/`cycle_unit`. This
- * is what 0002's and 0003's backfills exist for, and seeding it AFTER the migration is what
- * makes the replay assertions non-vacuous: against empty tables the backfills
+ * `subscriptions` with a `cycle` and no `cycle_every`/`cycle_unit`. This is
+ * what 0002's and 0003's backfills exist for, and seeding it AFTER the
+ * migration is what makes the replay assertions non-vacuous: against empty tables the backfills
  * match zero rows, so "replaying changed nothing" would be trivially true while
  * proving nothing about the backfill at all.
  */

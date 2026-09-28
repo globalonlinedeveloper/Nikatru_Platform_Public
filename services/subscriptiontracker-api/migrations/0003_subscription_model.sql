@@ -37,6 +37,15 @@
 --   · §5.1's `next_charge_on` is not added. `next_renewal` already IS the next
 --     charge date: /v1/renewals and the platform fan-out read it. Two columns
 --     for one date is how they come apart.
+--
+-- ⏳ §5.2's NEW TABLE, `price_change`, IS NOT IN THIS FILE, deliberately. Nothing
+-- writes or reads it until the Insights price-rise signal exists, and a
+-- user-owned table is not free to declare: it needs a data-inventory row, a
+-- retention row, a provenance rule and a line in the Play Data safety
+-- declaration under apps/subscriptiontracker/store/ — and that last edit sits
+-- in the web app's deploy unit, so it would ship the web app with this
+-- Workers-only train ("workers ALONE, first"). The train that writes it adds it
+-- with `CREATE TABLE IF NOT EXISTS`, which is as additive then as it is now.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- ── subscriptions: money ────────────────────────────────────────────────────
@@ -97,27 +106,6 @@ UPDATE subscriptions
 UPDATE subscriptions
    SET cycle_every = 1, cycle_unit = 'year'
  WHERE cycle = 'yearly' AND cycle_unit IS NULL;
-
--- ── price_change: the one genuinely new table ([ADR 077] §5.2) ──────────────
--- `id` and `updated_at` from the start, so it never needs 0002's repair.
--- `user_id` makes it user-owned: DELETE /v1/account derives its sweep from the
--- `user_id` column (src/lib/erase-subject.ts), so erasure reaches it with no
--- list to extend. Amounts are exact minor units, named as `price_minor` is.
-CREATE TABLE IF NOT EXISTS price_change (
-  id               TEXT PRIMARY KEY,
-  subscription_id  TEXT,
-  user_id          TEXT,
-  effective_on     TEXT,             -- 'YYYY-MM-DD'
-  old_amount_minor INTEGER,
-  new_amount_minor INTEGER,
-  currency         TEXT,
-  created_at       TEXT,
-  updated_at       TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_price_change_user
-  ON price_change (user_id);
-CREATE INDEX IF NOT EXISTS idx_price_change_subscription
-  ON price_change (subscription_id, effective_on);
 
 -- ── payment_history: extended, not created ([ADR 077] §5.2) ─────────────────
 -- Both NULL on existing rows and on rows the fan-out writes: it names its

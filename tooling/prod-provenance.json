@@ -257,10 +257,6 @@
         "payment_history": {
           "resolver": "exempt",
           "reason": "⏱ 2026-09-26 · O-PROVENANCE-WALKS-ONE-DATABASE. NO app_version COLUMN AND NO OTHER MARKER: 0001_init.sql gives this table `id`, `subscription_id`, `user_id`, `amount` and `paid_at`, and 0002_schema_debt.sql adds `updated_at`. Rows are the history of a subscription the USER tracks, not a money-rail row: the platform Worker's nightly renewals fan-out (services/platform/src/renewals.ts) inserts one when a tracked subscription's `next_renewal` passes, and no merchant-of-record or store receipt is involved, so there is no environment stamp to read. None of the six names a build, an app, a money world or a closed set a resolver could check. So it is exempt; a marker column added later re-opens this rule. ⏱ 2026-09-28 · 0003_subscription_model.sql adds `currency` (the unit of `amount`) and `source` (who recorded the payment, e.g. the renewal fan-out or the user). `source` is a closed set, but it says which WRITER recorded a real payment the user tracks, not whether the row is test residue, so it is not a provenance marker either; both are NULL until a writer sets them. The exemption stands."
-        },
-        "price_change": {
-          "resolver": "exempt",
-          "reason": "⏱ 2026-09-28 · 0003_subscription_model.sql ([ADR 077] §5.2). NO app_version COLUMN AND NO OTHER MARKER: the table has `id`, `subscription_id`, `user_id`, `effective_on`, `old_amount_minor`, `new_amount_minor`, `currency`, `created_at` and `updated_at` — a subscription the USER tracks changing price, with no merchant-of-record, store receipt or client build behind it, so there is no environment stamp or version to read. `currency` is an ISO 4217 code, which names a unit and not a writer; `user_id` is a Supabase subject this database cannot resolve. No route writes it yet (the price-rise signal is a later train), so today every row would be residue by definition — and the monitor still has nothing a resolver could check. So it is exempt; a marker column added later re-opens this rule."
         }
       }
     }

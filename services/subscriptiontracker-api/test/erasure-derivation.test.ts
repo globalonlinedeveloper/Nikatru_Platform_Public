@@ -63,11 +63,10 @@ async function deletedTablesFor(db: SqliteD1, userId = 'u-derive') {
 }
 
 describe('the delete set is derived from the real schema', () => {
-  it('🔴 names EXACTLY subscriptiontracker_db’s five user-owned tables', async () => {
+  it('🔴 names EXACTLY subscriptiontracker_db’s four user-owned tables', async () => {
     // The number production has. If a migration adds a user-owned table this
     // goes red — which is the point: the new table must be a deliberate addition
-    // to what erasure sweeps, not a silent one. `price_change` is that addition
-    // (0003_subscription_model.sql gives it a `user_id` on purpose).
+    // to what erasure sweeps, not a silent one.
     const db = realAppDb();
     const { status, body } = await deletedTablesFor(db);
     expect(status).toBe(200);
@@ -75,7 +74,6 @@ describe('the delete set is derived from the real schema', () => {
       'budget_categories',
       'budgets',
       'payment_history',
-      'price_change',
       'subscriptions',
     ]);
     expect(body.scope).toBe('subscriptiontracker_db');
