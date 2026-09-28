@@ -35,8 +35,8 @@ jobs:
   lane-workers:
     name: lane-workers
     uses: ./.github/workflows/lane-workers.yml
-    # why: `actions: write` is the ceiling the callee's jobs run under, and each of them ends
-    # with the FF-1 step (.github/actions/cancel-run-on-red), which needs it to cancel this run.
+    # why: `actions: write` is the ceiling the callee's jobs run under, and each of its gate
+    # jobs has an FF-2 follow-up job (`ff-<job>`), which needs it to cancel this run.
     permissions:
       contents: read
       actions: write
@@ -53,7 +53,6 @@ jobs:
     timeout-minutes: 25
     permissions:
       contents: read
-      actions: write
       issues: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -141,9 +140,24 @@ jobs:
         run: node tooling/ci/gen-ci-map.mjs --check
       - name: The release runbook's arming lines match the register (channel-arming --check)
         run: node tooling/ci/channel-arming.mjs --check
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-guard-meta:
+    # why: FF-2 — starts only once `guard-meta` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · guard-meta
+    needs: guard-meta
+    if: failure() && needs.guard-meta.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: guard-meta is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: guard-meta
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   guards-platform:
     name: Guards — platform, data and ops
@@ -151,7 +165,6 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      actions: write
       issues: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -379,9 +392,24 @@ jobs:
       - name: START-HERE.md is what the tree generates
         timeout-minutes: 2
         run: node --single-threaded tooling/scripts/gen-start-here.mjs --check
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-guards-platform:
+    # why: FF-2 — starts only once `guards-platform` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · guards-platform
+    needs: guards-platform
+    if: failure() && needs.guards-platform.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: guards-platform is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: guards-platform
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   guards-legal:
     name: Guards — privacy, legal and money
@@ -389,7 +417,6 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -497,9 +524,24 @@ jobs:
       - name: A legal document published twice says the same thing in both places
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-legal-text-parity.mjs
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-guards-legal:
+    # why: FF-2 — starts only once `guards-legal` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · guards-legal
+    needs: guards-legal
+    if: failure() && needs.guards-legal.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: guards-legal is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: guards-legal
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   guards-store:
     name: Guards — store, release and versioning
@@ -507,7 +549,6 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -668,9 +709,24 @@ jobs:
       - name: Every derived listing set was derived from the files in this tree
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-derived-sets.mjs
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-guards-store:
+    # why: FF-2 — starts only once `guards-store` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · guards-store
+    needs: guards-store
+    if: failure() && needs.guards-store.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: guards-store is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: guards-store
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   guards-chassis:
     name: Guards — chassis, app surface and packages
@@ -678,7 +734,6 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -760,9 +815,24 @@ jobs:
       - name: Every mutation proof still addresses the code it was run against
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-mutation-proofs.mjs
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-guards-chassis:
+    # why: FF-2 — starts only once `guards-chassis` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · guards-chassis
+    needs: guards-chassis
+    if: failure() && needs.guards-chassis.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: guards-chassis is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: guards-chassis
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   security-scan:
     # why: split out so a leaked credential is not reported as "the platform
@@ -774,7 +844,6 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -894,9 +963,24 @@ jobs:
         run: |
           set -euo pipefail
           "${RUNNER_TEMP}/trivy" fs --scanners vuln,misconfig --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress .
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-security-scan:
+    # why: FF-2 — starts only once `security-scan` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · security-scan
+    needs: security-scan
+    if: failure() && needs.security-scan.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: security-scan is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: security-scan
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   site-tokens:
     # why: the job id stays `site-tokens` even though the lane now covers three
@@ -909,7 +993,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      actions: write
     defaults:
       run:
         working-directory: packages/tokens
@@ -962,9 +1045,24 @@ jobs:
           git diff --exit-code -- ../../sites/_shared/assets/tokens.css
           git diff --exit-code -- ../design_system/lib/src/tokens/brand_tokens.dart
           git diff --exit-code -- ../../extensions/core/tokens.json
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-site-tokens:
+    # why: FF-2 — starts only once `site-tokens` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · site-tokens
+    needs: site-tokens
+    if: failure() && needs.site-tokens.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: site-tokens is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: site-tokens
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   site-shared:
     name: Shared site build
@@ -972,7 +1070,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      actions: write
     defaults:
       run:
         working-directory: sites/_shared
@@ -983,9 +1080,24 @@ jobs:
       - uses: ./.github/actions/setup-node
       - run: npm ci
       - run: npm run build && test -s _site/index.html  # eleventy exits 0 on "Wrote 0 files"
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-site-shared:
+    # why: FF-2 — starts only once `site-shared` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · site-shared
+    needs: site-shared
+    if: failure() && needs.site-shared.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: site-shared is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: site-shared
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
 
   content-gate:
@@ -994,7 +1106,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1020,9 +1131,24 @@ jobs:
         run: node tooling/ci/assert-review-gate.mjs
       - name: Publish is a gate, and an undrilled signing key cannot sign
         run: node tooling/ci/assert-publish-gate.mjs
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-content-gate:
+    # why: FF-2 — starts only once `content-gate` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · content-gate
+    needs: content-gate
+    if: failure() && needs.content-gate.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: content-gate is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: content-gate
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   app-brick:
     name: App brick (stamp both variants + analyze + validate the clone contract)
@@ -1030,7 +1156,6 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1357,9 +1482,24 @@ jobs:
           npm install
           npx tsc --noEmit
           npx wrangler deploy --dry-run
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-app-brick:
+    # why: FF-2 — starts only once `app-brick` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · app-brick
+    needs: app-brick
+    if: failure() && needs.app-brick.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: app-brick is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: app-brick
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   sites:
     name: Static sites (functions parse + required files)
@@ -1367,7 +1507,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1411,9 +1550,24 @@ jobs:
         run: node tooling/ci/assert-palette-consistent.mjs
       - name: No page claims a store channel the catalogue has not published to
         run: node tooling/ci/assert-availability.mjs
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-sites:
+    # why: FF-2 — starts only once `sites` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · sites
+    needs: sites
+    if: failure() && needs.sites.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: sites is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: sites
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   workspace-gate:
     name: Workspace gate (melos analyze + test)
@@ -1421,7 +1575,6 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
-      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1534,9 +1687,24 @@ jobs:
           export CHROME_EXECUTABLE="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser)"
           echo "Chrome: $CHROME_EXECUTABLE"
           dart test -p chrome
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-workspace-gate:
+    # why: FF-2 — starts only once `workspace-gate` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · workspace-gate
+    needs: workspace-gate
+    if: failure() && needs.workspace-gate.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: workspace-gate is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: workspace-gate
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   prepare:
     # why: the ONE app-set emitter in this file. android-artifacts and app-dryrun both
@@ -1546,7 +1714,6 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
-      actions: write
     outputs:
       apps: ${{ steps.workspace.outputs.apps }}
     steps:
@@ -1561,26 +1728,40 @@ jobs:
           set -euo pipefail
           apps="$(node tooling/ci/assert-release-lane-generic.mjs --emit-apps)"
           echo "apps=${apps}" >> "$GITHUB_OUTPUT"
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-prepare:
+    # why: FF-2 — starts only once `prepare` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · prepare
+    needs: prepare
+    if: failure() && needs.prepare.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: prepare is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: prepare
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   app-dryrun:
     # why: the five store submission dry runs, one leg per app. They ran in
     # guards-store with one app's id written into each `--app`, so app #2's
     # submission paths were walked by nothing (O-CI-AND-WORKER-LANES-NAME-ONE-APP).
-    # No job-level `if:` (green-means-ran A6); fail-fast off, so one app's red leaves
-    # every other leg's verdict. assert-release-lane-generic grades this file for a
-    # literal app id.
+    # No job-level `if:` (green-means-ran A6). fail-fast ON (FF-2, assert-failfast-coverage
+    # C8): a red leg keeps its failure and cancels its siblings, then ff-app-dryrun cancels
+    # the run. assert-release-lane-generic grades this file for a literal app id.
     name: Store submission dry runs
     needs: prepare
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
-      actions: write
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         app: ${{ fromJSON(needs.prepare.outputs.apps) }}
     steps:
@@ -1599,9 +1780,24 @@ jobs:
         run: node tooling/release/submit-snap.mjs --dry-run --app ${{ matrix.app }} --allow-missing-artifact
       - name: The Google Play submission path still walks (dry run)
         run: node tooling/release/submit-play.mjs --dry-run --app ${{ matrix.app }} --allow-missing-artifact
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-app-dryrun:
+    # why: FF-2 — starts only once `app-dryrun` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · app-dryrun
+    needs: app-dryrun
+    if: failure() && needs.app-dryrun.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: app-dryrun is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: app-dryrun
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   android-artifacts:
     name: Android artifacts (built, inspected, discarded)
@@ -1610,10 +1806,9 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      actions: write
     needs: prepare
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         app: ${{ fromJSON(needs.prepare.outputs.apps) }}
     steps:
@@ -1753,12 +1948,27 @@ jobs:
           --apk ${{ steps.agi_apk.outputs.apk }}
           --app ${{ matrix.app }}
           --posture debug
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
       # why: nothing here leaves the runner — no upload-artifact, no symbols, no GlitchTip.
       # A debug-signed PR build is discarded, and release-provenance gives a gate
       # constituent no credit for publishing (assert-release-provenance.mjs:769-805).
+
+  ff-android-artifacts:
+    # why: FF-2 — starts only once `android-artifacts` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · android-artifacts
+    needs: android-artifacts
+    if: failure() && needs.android-artifacts.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: android-artifacts is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: android-artifacts
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   # why: the web bundle users LOAD, built on every PR. Its twin is deploy-web.yml
   # `deploy-web`'s build, not build-platforms.yml's discarded web build, which lacks
@@ -1777,10 +1987,9 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
-      actions: write
     needs: prepare
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         app: ${{ fromJSON(needs.prepare.outputs.apps) }}
     steps:
@@ -1835,13 +2044,28 @@ jobs:
         run: >
           node tooling/ci/assert-artifact-shape.mjs
           --app ${{ matrix.app }} --platform web-artifacts
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
       # why: nothing here leaves the runner — no upload, no source maps sent, no
       # GlitchTip release, no deploy. The bundle and its .map files are discarded with
       # the runner, so no `.map` delete step is owed (deploy-web.yml's exists so maps
       # are never SERVED, and nothing is served here).
+
+  ff-web-artifacts:
+    # why: FF-2 — starts only once `web-artifacts` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · web-artifacts
+    needs: web-artifacts
+    if: failure() && needs.web-artifacts.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: web-artifacts is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: web-artifacts
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   # why: the Linux desktop bundle the linux-appimage row ships from, built on every PR.
   # Its twin is build-platforms.yml `linux_web_android`'s Build linux step, --obfuscate
@@ -1853,10 +2077,9 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
-      actions: write
     needs: prepare
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         app: ${{ fromJSON(needs.prepare.outputs.apps) }}
     steps:
@@ -1900,11 +2123,26 @@ jobs:
         run: >
           node tooling/ci/assert-artifact-shape.mjs
           --app ${{ matrix.app }} --platform linux-artifacts
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
       # why: nothing here leaves the runner — no AppImage signing key, no symbols upload,
       # no upload-artifact. The bundle and its symbols are discarded with the runner.
+
+  ff-linux-artifacts:
+    # why: FF-2 — starts only once `linux-artifacts` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · linux-artifacts
+    needs: linux-artifacts
+    if: failure() && needs.linux-artifacts.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: linux-artifacts is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: linux-artifacts
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   # why: the extensions CI lane, as ONE constituent of ci-gate. extensions-ci.yml runs
   # only as a call, and its jobs report inside this run; this job's result is red when
@@ -1914,8 +2152,8 @@ jobs:
   extensions:
     name: extensions
     uses: ./.github/workflows/extensions-ci.yml
-    # why: `actions: write` is the ceiling the callee's jobs run under, and each of them ends
-    # with the FF-1 step (.github/actions/cancel-run-on-red), which needs it to cancel this run.
+    # why: `actions: write` is the ceiling the callee's jobs run under, and each of its gate
+    # jobs has an FF-2 follow-up job (`ff-<job>`), which needs it to cancel this run.
     permissions:
       contents: read
       actions: write

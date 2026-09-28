@@ -396,14 +396,15 @@ describe('rows', () => {
   });
 
   test('FF-1: a run a red job cancelled is filed under the red job, not a sibling it cancelled', () => {
-    // The shape .github/actions/cancel-run-on-red leaves: run `cancelled`, one job whose
-    // failing step concluded `failure`, siblings cancelled mid-step, ci-gate red.
+    // The shape a self-cancelled red run leaves: run `cancelled`, one job whose failing
+    // step concluded `failure`, siblings cancelled mid-step, ci-gate red. Under FF-2 the
+    // red job itself concludes `failure` (its follow-up cancels); under FF-1 it lost the race.
     const run = { id: 1, path: CI, head_branch: 'main', head_sha: 'x', conclusion: 'cancelled', created_at: T('10:00:00'), updated_at: T('10:05:00') };
     const sibling = { id: 2, name: 'guard-meta', conclusion: 'cancelled', steps: [step('Guard tests', 'cancelled', '10:00:30', '10:02:00')] };
     const gate = { id: 4, name: 'ci-gate', conclusion: 'failure', steps: [step('Require all lanes green', 'failure', '10:04:00', '10:04:10')] };
     const logs = (j) => (j.id === 3 ? [line('10:01:05.0000000', 'gen-start-here — x')] : [line('10:02:00.0000000', '##[error]The operation was canceled.')]);
     for (const redJob of ['failure', 'cancelled']) {
-      // `cancelled`: the red job lost the race — its step had already failed when the cancel landed.
+      // `failure`: FF-2. `cancelled`: FF-1 — its step had already failed when its own cancel landed.
       const red = { id: 3, name: 'guards-platform', conclusion: redJob, steps: [step('START-HERE.md is what the tree generates', 'failure', '10:01:00', '10:01:30')] };
       const row = classifyRun(run, [sibling, red, gate], logs, { newerRunExists: false });
       assert.equal(row.job, 'guards-platform', `red job concluded ${redJob}`);

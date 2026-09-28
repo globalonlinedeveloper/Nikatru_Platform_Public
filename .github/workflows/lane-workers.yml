@@ -27,7 +27,6 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
-      actions: write
     outputs:
       affected: ${{ steps.detect.outputs.affected }}
       reason: ${{ steps.detect.outputs.reason }}
@@ -52,14 +51,30 @@ jobs:
           set -euo pipefail
           workers="$(node tooling/ci/worker-set.mjs --for-deploy --emit)"
           echo "workers=${workers}" >> "$GITHUB_OUTPUT"
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-detect:
+    # why: FF-2 — starts only once `detect` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · detect
+    needs: detect
+    if: failure() && needs.detect.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: detect is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: detect
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   worker:
     # why: one leg per Worker directory (the detect job's `workers` output), so a
     # Worker added under services/ is typechecked, tested and dry-run deployed with no
-    # edit here. fail-fast off: one Worker's red leaves every other leg's verdict.
+    # edit here. fail-fast ON (FF-2, assert-failfast-coverage C8): a red leg keeps its
+    # failure and cancels its siblings, then ff-worker cancels the run.
     name: ${{ matrix.worker }} Worker (typecheck + test + dry-run)
     needs: detect
     if: needs.detect.outputs.affected == 'true'
@@ -67,9 +82,8 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      actions: write
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         worker: ${{ fromJSON(needs.detect.outputs.workers) }}
     defaults:
@@ -87,9 +101,24 @@ jobs:
       # why: env.sandbox is deployed only by the manual deploy-sandbox.yml, so
       # this is the one place a broken sandbox block fails before a dispatch.
       - run: npx wrangler deploy --env sandbox --dry-run
-      - name: A red job cancels the rest of this run (FF-1)
-        if: failure()
-        uses: ./.github/actions/cancel-run-on-red
+
+  ff-worker:
+    # why: FF-2 — starts only once `worker` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · worker
+    needs: worker
+    if: failure() && needs.worker.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: worker is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: worker
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   lane-verdict:
     # why: the callee's conclusion is what ci-gate sees, and a callee whose work jobs

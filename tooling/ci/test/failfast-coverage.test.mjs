@@ -1,11 +1,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // failfast-coverage.test.mjs — the negative cases for assert-failfast-coverage.mjs
-// (FF-1: a gate run cancels itself at its first red job).
+// (FF-2: a gate run cancels itself at its first red job, and that job keeps its
+// own `failure`; only the others read cancelled).
 //
-// 🔴 EVERY CASE MUTATES A COPY OF THE REAL `.github/workflows` AND
-// `.github/actions`, never a hand-built fixture: the subject is which jobs of
-// which workflows carry the step, and a two-job fixture would encode whatever
-// its author believed that set was, then agree with itself.
+// 🔴 EVERY TREE CASE MUTATES A COPY OF THE REAL `.github/workflows`, never a
+// hand-built fixture: the subject is which jobs of which workflows have a
+// follow-up, and a two-job fixture would encode whatever its author believed
+// that set was, then agree with itself. The one small fixture below exercises
+// simulateRedRun's three shapes by themselves; the same function is then run
+// on the real tree.
 //
 // 🟢 THE GREEN CONTROL RUNS FIRST. Every other case asserts a non-zero exit,
 // and a guard that had stopped reading the tree would satisfy all of them.
@@ -14,10 +17,11 @@
 // its exit code is read: a mutation that silently failed to apply reads exactly
 // like the guard catching it.
 //
-// The two red controls the lane was briefed to prove, both LOCAL (the owner's
-// rule is no deliberately red pull request):
-//   (a) remove the step from one gate job → exit 1;
-//   (b) add the step to deploy-web → exit 1.
+// The red controls the lane was briefed to prove, all LOCAL:
+//   (a) put FF-1's in-job cancel back into one gate job → exit 1, and the
+//       simulated run reports that job `cancelled`, not `failure`;
+//   (b) remove one gate job's follow-up → exit 1;
+//   (c) add a cancel to deploy-web → exit 1.
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
@@ -32,32 +36,33 @@ import {
   levelOf,
   cancelKind,
   rawCancelLine,
+  matrixFailFast,
+  simulateRedRun,
   EXCEPTIONS,
   SCOPE,
-  ACTION_REF,
-  ACTION_REL,
   CONDITION,
+  MATRIX_FAIL_FAST,
 } from '../assert-failfast-coverage.mjs';
+import { parseWorkflow, failFastLane } from '../workflow-scan.mjs';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const GUARD = join(REPO, 'tooling', 'ci', 'assert-failfast-coverage.mjs');
+const GREEN_MEANS_RAN = join(REPO, 'tooling', 'ci', 'assert-green-means-ran.mjs');
 const WF = '.github/workflows';
-const STEP_NAME = 'A red job cancels the rest of this run (FF-1)';
+const CANCEL = 'gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true';
 
 function realTree() {
   const root = mkdtempSync(join(tmpdir(), 'nikatru-failfast-'));
-  for (const d of [WF, '.github/actions']) {
-    mkdirSync(join(root, d), { recursive: true });
-    cpSync(join(REPO, d), join(root, d), { recursive: true });
-  }
+  mkdirSync(join(root, WF), { recursive: true });
+  cpSync(join(REPO, WF), join(root, WF), { recursive: true });
   return root;
 }
 
-function withTree(mutate, fn) {
+function withTree(mutate, fn, guard = GUARD) {
   const root = realTree();
   try {
     mutate(root);
-    fn(spawnSync(process.execPath, [GUARD, root], { cwd: REPO, encoding: 'utf8' }), root);
+    fn(spawnSync(process.execPath, [guard, root], { cwd: REPO, encoding: 'utf8' }), root);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -90,17 +95,14 @@ function editJob(root, file, job, fn) {
   });
 }
 
-/** The job's FF-1 step, as its three lines' indices. */
-function stepAt(jobLines) {
-  const i = jobLines.findIndex((l) => l.trim() === `- name: ${STEP_NAME}`);
-  assert.notEqual(i, -1, 'this job no longer carries the FF-1 step — the fixture moved under this test');
-  return i;
-}
-const removeStep = (jobLines) => {
-  const i = stepAt(jobLines);
-  return [...jobLines.slice(0, i), ...jobLines.slice(i + 3)];
+/** Replace one exact line of one job, asserting it was there. */
+const swapLine = (from, to) => (jl) => {
+  assert.ok(jl.includes(from), `no line \`${from}\` in this job — the fixture moved under this test`);
+  return jl.flatMap((l) => (l === from ? (to === null ? [] : [to].flat()) : [l]));
 };
-const ffStep = (indent, cond) => [`${indent}- name: ${STEP_NAME}`, `${indent}  if: ${cond}`, `${indent}  uses: ${ACTION_REF}`];
+
+/** FF-1's shape: the cancel as the red job's own last step. */
+const inJobCancel = ['      - name: A red job cancels the rest of this run (FF-1)', '        if: failure()', '        env:', '          GH_TOKEN: ${{ github.token }}', `        run: ${CANCEL}`];
 
 const red = (r, pattern) => {
   assert.equal(r.status, 1, `expected exit 1 (a finding), got ${r.status}\n${r.stdout}${r.stderr}`);
@@ -111,86 +113,139 @@ describe('assert-failfast-coverage: the real tree', () => {
   test('GREEN CONTROL — the committed tree passes, and the ok line counts real jobs', () => {
     withTree(() => {}, (r) => {
       assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
-      const m = r.stdout.match(/(\d+) gate job\(s\) end with the cancel step \((\d+) in the tree\)/);
+      const m = r.stdout.match(/(\d+) gate job\(s\), each with one follow-up \((\d+); (\d+) cancel\(s\) in the tree, none inside a red job\); (\d+) red run\(s\) simulated/);
       assert.ok(m, r.stdout);
-      assert.ok(Number(m[1]) >= 20, `only ${m[1]} gate jobs graded — the scan lost most of ci.yml`);
-      assert.equal(m[1], m[2], 'every cancel in the tree belongs to a graded gate job');
+      assert.ok(Number(m[1]) >= 30, `only ${m[1]} gate jobs graded — the scan lost most of ci.yml`);
+      assert.equal(m[1], m[2], 'every graded gate job has a follow-up');
+      assert.equal(m[2], m[3], 'every cancel in the tree belongs to a follow-up');
+      assert.equal(m[1], m[4], 'every graded gate job had its red run simulated');
     });
   });
 
-  test('RED CONTROL (a) — removing the step from one gate job is a finding', () => {
-    withTree((root) => editJob(root, 'ci.yml', 'guards-legal', removeStep), (r) => {
-      red(r, /job `guards-legal` does not end with the FF-1 step/);
-    });
+  test('THE RED RUN, SIMULATED ON THE REAL TREE — the red job reads failure, the rest cancelled, ci-gate red', () => {
+    const wf = parseWorkflow(REPO, `${WF}/ci.yml`);
+    for (const lane of ['web-artifacts', 'guards-chassis', 'sites', 'guards-legal', 'guard-meta', 'app-brick']) {
+      // The six red jobs of the six runs measured 2026-09-28, every one reported cancelled under FF-1.
+      const sim = simulateRedRun(wf, lane);
+      assert.equal(sim.conclusion, 'failure', lane);
+      assert.equal(sim.canceller, `ff-${lane}`, lane);
+      assert.equal(sim.others.get('ci-gate'), 'failure', 'the aggregator still runs and reads the red');
+      assert.equal(sim.others.get('guards-platform'), 'cancelled');
+      assert.equal(sim.others.get(`ff-${lane === 'sites' ? 'guards-store' : 'sites'}`), 'skipped', "another lane's follow-up is skipped");
+    }
   });
 
-  test('RED CONTROL (b) — adding the step to deploy-web is a finding', () => {
+  test('RED CONTROL (a) — FF-1\'s in-job cancel put back into one gate job: the run reads it cancelled', () => {
     withTree(
-      (root) =>
-        editJob(root, 'deploy-web.yml', 'deploy-web', (jl) => {
-          const steps = jl.findIndex((l) => /^ {4}steps:\s*$/.test(l));
-          assert.notEqual(steps, -1);
-          return [...jl, ...ffStep('      ', CONDITION.every)];
-        }),
+      (root) => editJob(root, 'ci.yml', 'guards-legal', (jl) => {
+        const end = jl.length - (jl.at(-1) === '' ? 1 : 0);
+        return [...jl.slice(0, end), ...inJobCancel, ...jl.slice(end)];
+      }),
+      (r) => {
+        red(r, /job `guards-legal` cancels the run from INSIDE itself — the FF-1 shape/);
+        assert.match(r.stderr, /job `guards-legal`: a run in which it goes red reports it `cancelled`, not `failure`/);
+      },
+    );
+  });
+
+  test('RED CONTROL (b) — removing one gate job\'s follow-up is a finding', () => {
+    withTree((root) => editJob(root, 'ci.yml', 'ff-guards-legal', () => []), (r) => {
+      red(r, /job `guards-legal` has no FF-2 follow-up/);
+    });
+  });
+
+  test('RED CONTROL (c) — adding a cancel to deploy-web is a finding', () => {
+    withTree(
+      (root) => editJob(root, 'deploy-web.yml', 'deploy-web', (jl) => [...jl, ...inJobCancel]),
       (r) => red(r, /deploy-web\.yml:\d+ job `deploy-web` is deploy-type .* carries a cancel/),
     );
   });
 
   test('a cancel in a workflow outside SCOPE is a finding, whatever the job is called', () => {
-    withTree((root) => editJob(root, 'ops-watch.yml', 'status', (jl) => [...jl, ...ffStep('      ', CONDITION.every)]), (r) => {
-      red(r, /ops-watch\.yml:\d+ job `status` carries a cancel, and .* not in FF-1's SCOPE/);
+    withTree((root) => editJob(root, 'ops-watch.yml', 'status', (jl) => [...jl, ...inJobCancel]), (r) => {
+      red(r, /ops-watch\.yml:\d+ job `status` carries a cancel, and .* not in FF-2's SCOPE/);
     });
   });
 
-  test('a gate job that declares an environment becomes deploy-type, and its cancel is refused', () => {
+  test('a gate job that declares an environment becomes deploy-type, and its follow-up is refused', () => {
     withTree(
-      (root) => editJob(root, 'ci.yml', 'sites', (jl) => jl.flatMap((l) => (/^ {4}timeout-minutes:/.test(l) ? [l, '    environment: production'] : [l]))),
-      (r) => red(r, /job `sites` is deploy-type \(it declares `environment: production`\)/),
+      (root) => editJob(root, 'ci.yml', 'sites', swapLine('    timeout-minutes: 10', ['    timeout-minutes: 10', '    environment: production'])),
+      (r) => red(r, /job `ff-sites` follows `sites`, which FF-2 does not grade/),
     );
   });
 
-  test('the step must be the LAST step', () => {
+  test('the follow-up\'s `if:` is exact: a bare failure() would fire again under every red ancestor', () => {
     withTree(
-      (root) =>
-        editJob(root, 'ci.yml', 'guards-store', (jl) => {
-          const i = stepAt(jl);
-          const step = jl.slice(i, i + 3);
-          const rest = [...jl.slice(0, i), ...jl.slice(i + 3)];
-          const lastItem = rest.map((l, k) => (/^ {6}- /.test(l) ? k : -1)).filter((k) => k >= 0).at(-1);
-          return [...rest.slice(0, lastItem), ...step, ...rest.slice(lastItem)];
-        }),
-      (r) => red(r, /job `guards-store`: the FF-1 step is step \d+ of \d+, not the last/),
+      (root) => editJob(root, 'ci.yml', 'ff-web-artifacts', swapLine("    if: failure() && needs.web-artifacts.result == 'failure'", "    if: failure() && needs.web-artifacts.result == 'failure' || always()")),
+      (r) => red(r, /job `ff-web-artifacts`: its `if:` is .*; in \.github\/workflows\/ci\.yml it must be exactly/),
+    );
+    withTree((root) => editJob(root, 'ci.yml', 'ff-web-artifacts', swapLine("    if: failure() && needs.web-artifacts.result == 'failure'", '    if: failure()')), (r) => {
+      red(r, /job `ff-web-artifacts` is named as an FF-2 follow-up and is not one/);
+      assert.match(r.stderr, /job `web-artifacts` has no FF-2 follow-up/);
+    });
+  });
+
+  test('in a publishing workflow the follow-up fires on pull_request runs only', () => {
+    withTree(
+      (root) => editJob(root, 'extensions.yml', 'ff-e2e-suite', swapLine(`    if: ${CONDITION.pull_request('e2e-suite')}`, `    if: ${CONDITION.every('e2e-suite')}`)),
+      (r) => red(r, /extensions\.yml:\d+ job `ff-e2e-suite`: its `if:` is .*; in .* it must be exactly/),
     );
   });
 
-  test('the condition is exact: `always()` would cancel every run that ends', () => {
-    withTree((root) => editJob(root, 'ci.yml', 'site-shared', (jl) => jl.map((l) => (l === '        if: failure()' ? '        if: always()' : l))), (r) => {
-      red(r, /job `site-shared`: the FF-1 step's `if:` is `always\(\)`/);
+  test('a follow-up that does anything but cancel is not one — and green-means-ran then grades it as a lane', () => {
+    const mutate = (root) =>
+      editJob(root, 'ci.yml', 'ff-guards-store', swapLine(`          ${CANCEL}`, ['          node tooling/ci/some-real-check.mjs', `          ${CANCEL}`]));
+    withTree(mutate, (r) => red(r, /job `ff-guards-store` is named as an FF-2 follow-up and is not one/));
+    withTree(mutate, (r) => red(r, /job "ci-gate" does not `need` "ff-guards-store"/), GREEN_MEANS_RAN);
+  });
+
+  test('green-means-ran exempts the follow-ups on the committed tree (the green control of the line above)', () => {
+    withTree(() => {}, (r) => assert.equal(r.status, 0, `${r.stdout}${r.stderr}`), GREEN_MEANS_RAN);
+  });
+
+  test('a follow-up whose cancel can fail the job is not one', () => {
+    withTree((root) => editJob(root, 'ci.yml', 'ff-prepare', swapLine(`          ${CANCEL}`, '          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY"')), (r) => {
+      red(r, /job `ff-prepare` is named as an FF-2 follow-up and is not one/);
     });
   });
 
-  test('in a publishing workflow a bare failure() is refused: only pull_request runs may cancel', () => {
+  test('the follow-up\'s step: GH_TOKEN, RED_JOB and the notice', () => {
+    withTree((root) => editJob(root, 'ci.yml', 'ff-sites', swapLine('          GH_TOKEN: ${{ github.token }}', null)), (r) => {
+      red(r, /job `ff-sites`: the step must map `GH_TOKEN: \$\{\{ github\.token \}\}`/);
+    });
+    withTree((root) => editJob(root, 'ci.yml', 'ff-sites', swapLine('          RED_JOB: sites', '          RED_JOB: guards-store')), (r) => {
+      red(r, /job `ff-sites`: the step must map `RED_JOB: sites`/);
+    });
     withTree(
-      (root) => editJob(root, 'extensions.yml', 'e2e-suite', (jl) => jl.map((l) => (l === `        if: ${CONDITION.pull_request}` ? '        if: failure()' : l))),
-      (r) => red(r, /extensions\.yml:\d+ job `e2e-suite`: the FF-1 step's `if:` is `failure\(\)`; in .* it must be exactly/),
+      (root) => editJob(root, 'ci.yml', 'ff-sites', (jl) => jl.filter((l) => !/^ {10}echo "::notice/.test(l))),
+      (r) => red(r, /job `ff-sites`: the step no longer prints the ::notice naming \$RED_JOB/),
     );
   });
 
-  test('a carrying job that does not grant actions: write is a finding', () => {
-    withTree((root) => editJob(root, 'ci.yml', 'guards-legal', (jl) => jl.map((l) => (l === '      actions: write' ? '      actions: read' : l))), (r) => {
-      red(r, /job `guards-legal` carries the FF-1 step and grants `actions: read`/);
+  test('a follow-up in a workflow whose default run directory is not `.` must override it (no checkout)', () => {
+    withTree((root) => editJob(root, 'extensions-ci.yml', 'ff-build-free', swapLine('        working-directory: .', null)), (r) => {
+      red(r, /job `ff-build-free`: its step runs in `extensions`, which a job with no checkout does not have/);
     });
   });
 
-  test('a job-level block that drops contents: read is a finding (it replaces the workflow block)', () => {
-    withTree((root) => editJob(root, 'lane-workers.yml', 'detect', (jl) => jl.filter((l) => l !== '      contents: read')), (r) => {
-      red(r, /job `detect`: its job-level block drops `contents: read`/);
+  test('C2 — a follow-up grants exactly actions: write', () => {
+    withTree((root) => editJob(root, 'ci.yml', 'ff-guard-meta', swapLine('      actions: write', '      actions: read')), (r) => {
+      red(r, /job `ff-guard-meta` grants `actions: read`; a follow-up grants exactly `actions: write`/);
+    });
+    withTree((root) => editJob(root, 'ci.yml', 'ff-guard-meta', swapLine('      actions: write', ['      contents: read', '      actions: write'])), (r) => {
+      red(r, /job `ff-guard-meta` grants `contents: read, actions: write`/);
     });
   });
 
-  test('C3 — a call job whose callee carries the step must grant actions: write', () => {
-    withTree((root) => editJob(root, 'ci.yml', 'extensions', (jl) => jl.map((l) => (l === '      actions: write' ? '      actions: read' : l))), (r) => {
-      red(r, /job `extensions` calls \.github\/workflows\/extensions-ci\.yml, whose jobs carry the FF-1 step, and grants `actions: read`/);
+  test('C7 — a lane that grants actions: write is a finding (it cancels nothing now)', () => {
+    withTree((root) => editJob(root, 'lane-workers.yml', 'detect', swapLine('      contents: read', ['      contents: read', '      actions: write'])), (r) => {
+      red(r, /job `detect` grants `actions: write`\. Under FF-2 no lane cancels anything/);
+    });
+  });
+
+  test('C3 — a call job whose callee holds follow-ups must grant actions: write', () => {
+    withTree((root) => editJob(root, 'ci.yml', 'extensions', swapLine('      actions: write', '      actions: read')), (r) => {
+      red(r, /job `extensions` calls \.github\/workflows\/extensions-ci\.yml, whose jobs have FF-2 follow-ups, and grants `actions: read`/);
     });
   });
 
@@ -200,10 +255,13 @@ describe('assert-failfast-coverage: the real tree', () => {
     });
   });
 
-  test('C7 — an exception that grants actions: write is a finding', () => {
+  test('C8 — a matrix lane with fail-fast off is a finding (its follow-up would wait for every leg)', () => {
+    withTree((root) => editJob(root, 'ci.yml', 'android-artifacts', swapLine('      fail-fast: true', '      fail-fast: false')), (r) => {
+      red(r, /job `android-artifacts` is a matrix with `fail-fast: false`; in .* it must be `true`/);
+    });
     withTree(
-      (root) => editJob(root, 'ci.yml', 'ci-gate', (jl) => jl.flatMap((l) => (/^ {4}timeout-minutes:/.test(l) ? [l, '    permissions:', '      contents: read', '      actions: write'] : [l]))),
-      (r) => red(r, /job `ci-gate` is a declared exception \(aggregator\) and grants `actions: write`/),
+      (root) => editJob(root, 'extensions.yml', 'e2e-suite', swapLine(`      fail-fast: ${MATRIX_FAIL_FAST.pull_request}`, '      fail-fast: true')),
+      (r) => red(r, /job `e2e-suite` is a matrix with `fail-fast: true`; in .*extensions\.yml it must be/),
     );
   });
 
@@ -214,13 +272,13 @@ describe('assert-failfast-coverage: the real tree', () => {
           `${t.replace(/\n*$/, '\n')}\n  second:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n    steps:\n      - run: echo second\n`),
       (r) => {
         red(r, /EXCEPTION \.github\/workflows\/codeql\.yml#analyze \(sole-job\) no longer holds: .* now has 2 jobs/);
-        assert.match(r.stderr, /job `second` does not end with the FF-1 step/);
+        assert.match(r.stderr, /job `second` has no FF-2 follow-up/);
       },
     );
   });
 
   test('C5 — an aggregator that stops running always() is no longer excused', () => {
-    withTree((root) => editJob(root, 'ci.yml', 'ci-gate', (jl) => jl.map((l) => (l === '    if: always()' ? "    if: success()" : l))), (r) => {
+    withTree((root) => editJob(root, 'ci.yml', 'ci-gate', swapLine('    if: always()', '    if: success()')), (r) => {
       red(r, /EXCEPTION \.github\/workflows\/ci\.yml#ci-gate \(aggregator\) no longer holds/);
     });
   });
@@ -234,74 +292,6 @@ describe('assert-failfast-coverage: the real tree', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
-
-  test('C1 form — a job with a checkout cancels through the composite, not inline', () => {
-    withTree(
-      (root) =>
-        editJob(root, 'lane-workers.yml', 'detect', (jl) => {
-          const i = stepAt(jl);
-          return [
-            ...jl.slice(0, i),
-            `      - name: ${STEP_NAME}`,
-            '        if: failure()',
-            '        env:',
-            '          GH_TOKEN: ${{ github.token }}',
-            '        run: gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true',
-            ...jl.slice(i + 3),
-          ];
-        }),
-      (r) => red(r, /job `detect` has a checkout and cancels inline/),
-    );
-  });
-
-  test('C1 form — a job with NO checkout must cancel inline, and the inline form is then green', () => {
-    const dropCheckout = (jl) => {
-      const i = jl.findIndex((l) => /^ {6}- uses: actions\/checkout@/.test(l));
-      assert.notEqual(i, -1);
-      let j = i + 1;
-      while (j < jl.length && /^ {8}/.test(jl[j])) j++;
-      return [...jl.slice(0, i), ...jl.slice(j)];
-    };
-    withTree((root) => editJob(root, 'lane-workers.yml', 'detect', dropCheckout), (r) => {
-      red(r, /job `detect` has no checkout, so `\.\/\.github\/actions\/cancel-run-on-red` is not on disk/);
-    });
-    withTree(
-      (root) =>
-        editJob(root, 'lane-workers.yml', 'detect', (jl) => {
-          const out = dropCheckout(jl);
-          const i = stepAt(out);
-          return [
-            ...out.slice(0, i),
-            `      - name: ${STEP_NAME}`,
-            '        if: failure()',
-            '        env:',
-            '          GH_TOKEN: ${{ github.token }}',
-            '        run: gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true',
-            ...out.slice(i + 3),
-          ];
-        }),
-      (r) => assert.equal(r.status, 0, `${r.stdout}${r.stderr}`),
-    );
-  });
-
-  test('C6 — a composite that no longer cancels is a finding', () => {
-    withTree((root) => edit(root, ACTION_REL, (t) => t.replace(/gh run cancel "\$GITHUB_RUN_ID" --repo "\$GITHUB_REPOSITORY" \|\| true/, 'true')), (r) => {
-      red(r, /cancel-run-on-red\/action\.yml: no longer runs `gh run cancel/);
-    });
-  });
-
-  test('C6 — a composite whose cancel can fail the job is a finding', () => {
-    withTree((root) => edit(root, ACTION_REL, (t) => t.replace(/ \|\| true/, '')), (r) => {
-      red(r, /no longer runs `gh run cancel .* \|\| true`/);
-    });
-  });
-
-  test('COVERAGE LOST — the composite is gone', () => {
-    withTree((root) => unlinkSync(join(root, ACTION_REL)), (r) => {
-      assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
-      assert.match(r.stderr, /COVERAGE LOST — .*cancel-run-on-red\/action\.yml is not in the tree/);
-    });
   });
 
   test('COVERAGE LOST — a SCOPE workflow is gone', () => {
@@ -325,6 +315,54 @@ describe('assert-failfast-coverage: the real tree', () => {
 describe('assert-failfast-coverage: the readers', () => {
   const asLines = (text) => text.split('\n').map((t, i) => ({ n: i + 1, text: t }));
 
+  test('simulateRedRun — FF-1 reports the red job cancelled, FF-2 reports it failed, no cancel runs on', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'nikatru-ffsim-'));
+    try {
+      mkdirSync(join(dir, WF), { recursive: true });
+      const step = (s) => `      - run: ${s}`;
+      const follow = (lane) => [
+        `  ff-${lane}:`,
+        `    needs: ${lane}`,
+        `    if: failure() && needs.${lane}.result == 'failure'`,
+        '    runs-on: ubuntu-24.04',
+        '    steps:',
+        '      - env:',
+        '          GH_TOKEN: ${{ github.token }}',
+        `          RED_JOB: ${lane}`,
+        '        run: |',
+        `          echo "::notice title=FF-2::job '\${RED_JOB}' is red"`,
+        `          ${CANCEL}`,
+      ];
+      const lane = (id, extra = []) => [`  ${id}:`, '    runs-on: ubuntu-24.04', '    steps:', step('npm test'), ...extra];
+      const gate = ['  gate:', '    needs: [a, b]', '    if: always()', '    runs-on: ubuntu-24.04', '    steps:', step('exit 1')];
+      const write = (name, jobs) => {
+        writeFileSync(join(dir, WF, name), ['on: pull_request', 'jobs:', ...jobs.flat(), ''].join('\n'));
+        return parseWorkflow(dir, `${WF}/${name}`);
+      };
+
+      const ff1 = write('ff1.yml', [lane('a', inJobCancel), lane('b', inJobCancel), gate]);
+      const s1 = simulateRedRun(ff1, 'a');
+      assert.equal(s1.conclusion, 'cancelled', 'FF-1: the red job is still running when its own cancel lands');
+      assert.equal(s1.canceller, 'a');
+
+      const ff2 = write('ff2.yml', [lane('a'), follow('a'), lane('b'), follow('b'), gate]);
+      assert.equal(failFastLane(ff2, 'ff-a'), 'a');
+      const s2 = simulateRedRun(ff2, 'a');
+      assert.deepEqual(
+        { conclusion: s2.conclusion, canceller: s2.canceller, others: Object.fromEntries(s2.others) },
+        { conclusion: 'failure', canceller: 'ff-a', others: { 'ff-a': 'success', b: 'cancelled', 'ff-b': 'skipped', gate: 'failure' } },
+      );
+
+      const none = write('none.yml', [lane('a'), lane('b'), gate]);
+      const s3 = simulateRedRun(none, 'a');
+      assert.equal(s3.conclusion, 'failure');
+      assert.equal(s3.canceller, null, 'no cancel anywhere: the rest runs to the end');
+      assert.equal(s3.others.get('b'), 'unaffected');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('readPermissions reads block, flow, write-all and absence', () => {
     const block = readPermissions(asLines('    permissions:\n      contents: read\n      actions: write\n    steps:'), 4);
     assert.equal(levelOf(block, 'actions'), 'write');
@@ -339,17 +377,25 @@ describe('assert-failfast-coverage: the readers', () => {
     assert.equal(readPermissions(asLines('    steps:\n      permissions:\n        actions: write'), 4), null);
   });
 
+  test('matrixFailFast reads the value, the default and absence', () => {
+    const job = (text) => ({ lines: asLines(text) });
+    assert.equal(matrixFailFast(job('    strategy:\n      fail-fast: false\n      matrix:\n        a: [1]')), 'false');
+    assert.equal(matrixFailFast(job('    strategy:\n      matrix:\n        a: [1]\n    steps:')), null);
+    assert.equal(matrixFailFast(job('    runs-on: x\n    steps:')), undefined);
+  });
+
   test('cancelKind and rawCancelLine agree on the shapes, and neither reads prose', () => {
     const step = (o) => ({ uses: null, run: null, ...o });
-    assert.equal(cancelKind(step({ uses: ACTION_REF })), 'action');
+    // FF-1's composite is retired: a step that names it is a foreign cancel, refused like any other.
+    assert.equal(cancelKind(step({ uses: './.github/actions/cancel-run-on-red' })), 'foreign');
     assert.equal(cancelKind(step({ uses: 'styfle/cancel-workflow-action@abc' })), 'foreign');
     assert.equal(cancelKind(step({ run: { text: 'gh run cancel "$GITHUB_RUN_ID" || true' } })), 'inline');
     assert.equal(cancelKind(step({ run: { text: 'curl -X POST "$API/repos/o/r/actions/runs/$ID/cancel"' } })), 'inline');
     assert.equal(cancelKind(step({ run: { text: 'echo "gh run cancelled nothing"' } })), null);
     assert.equal(cancelKind(step({ uses: './.github/actions/setup-node' })), null);
-    assert.equal(rawCancelLine(`      - uses: ${ACTION_REF}`), true);
-    assert.equal(rawCancelLine(`        uses: '${ACTION_REF}'`), true);
-    assert.equal(rawCancelLine('          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true'), true);
+    assert.equal(rawCancelLine('      - uses: ./.github/actions/cancel-run-on-red'), true);
+    assert.equal(rawCancelLine("        uses: './.github/actions/cancel-run-on-red'"), true);
+    assert.equal(rawCancelLine(`          ${CANCEL}`), true);
     assert.equal(rawCancelLine('          echo "gh run cancelled nothing"'), false);
     assert.equal(rawCancelLine('    uses: ./.github/workflows/cancel-things.yml'), false);
   });
@@ -358,7 +404,7 @@ describe('assert-failfast-coverage: the readers', () => {
     for (const s of SCOPE) {
       assert.ok(readFileSync(join(REPO, s.rel), 'utf8').length > 0, s.rel);
       assert.ok(s.why.trim(), `${s.rel} carries no why`);
-      assert.ok(s.runs in CONDITION, `${s.rel} runs=${s.runs}`);
+      assert.ok(s.runs in CONDITION && s.runs in MATRIX_FAIL_FAST, `${s.rel} runs=${s.runs}`);
     }
     for (const e of EXCEPTIONS) assert.ok(SCOPE.some((s) => s.rel === e.rel) && e.why.trim(), `${e.rel}#${e.job}`);
   });
