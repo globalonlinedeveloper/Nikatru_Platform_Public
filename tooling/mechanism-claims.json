@@ -986,6 +986,12 @@
       "proves": "The case adds a plugin to .flutter-plugins-dependencies (what the build links) without an inventory row, and the guard fails naming it. That is the equality limb the sentence says derivation buys; its sibling \"limb 4 — EQUALITY, not subset\" covers the reverse direction."
     },
     {
+      "file": "tooling/ci/test/fixtures/apple-run-36229543907/privacy-manifest.json",
+      "anchor": "The plugin set is DERIVED, not listed by hand.",
+      "status": "demoted",
+      "reason": "A FROZEN BYTE COPY of the audit at main 1cd269b7, kept only as the audit the apple-run-36229543907 capture was graded against (apple-privacy-manifest.test.mjs capturedTree(), rv-c31 CF, Train W55). Nothing builds from this copy and no guard reads it as an audit; the sentence is the real audit's, judged proven at apps/subscriptiontracker/store/ios-appstore/privacy-manifest.json above. It retires with the fixture when the capture is re-taken from the first release-signed build after the train."
+    },
+    {
       "file": "apps/subscriptiontracker/test/a11y/keyboard_sweep_test.dart",
       "anchor": "cannot drift from what the app shows: re-point `/budget` at a different",
       "status": "demoted",
