@@ -63,6 +63,7 @@ import '../../state/money_providers.dart';
 import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
 import '../auth/turnstile_gate.dart';
+import '../shared/chassis_adapters.dart';
 import '../shared/widgets.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -793,23 +794,16 @@ class SettingsScreen extends ConsumerWidget {
                 children: <Widget>[
                   // Not yet wired — see the OPEN QUESTION in MANIFEST.md. Kept
                   // because deleting it is a product decision, not a merge one.
-                  // ST-U5 (D6, D2): both inert rows say so, and draw no chevron.
                   _LinkRow(
                     icon: '⇄',
                     label: l10n.connectedAccounts,
-                    subtitle: l10n.settingsNotAvailableYet,
                     last: false,
                   ),
                   // 🔴 DO NOT DELETE THIS ROW IN A MERGE. `data-safety.json`
                   // declares that a user can export their data; removing the
                   // only surface that says so turns a store declaration into a
                   // false one, and no test anywhere references this row.
-                  _LinkRow(
-                    icon: '⇩',
-                    label: l10n.exportDataCsv,
-                    subtitle: l10n.settingsNotAvailableYet,
-                    last: false,
-                  ),
+                  _LinkRow(icon: '⇩', label: l10n.exportDataCsv, last: false),
                   // The published contact PAGE — a form, reachable without a
                   // mail client, which is the route most web users take. The
                   // chassis-mandated mailto (E1) is the separate row in the
@@ -1908,7 +1902,7 @@ class _LinkRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String? sub = subtitle;
+    final String? sub = inertRowSubtitle(context, onTap, subtitle);
     final ThemeData theme = Theme.of(context);
     return Container(
       // Every `_LinkRow` sits inside a `cardDecoration` card, so the hairline
@@ -2002,17 +1996,10 @@ class _LinkRow extends StatelessWidget {
                   ],
                 ),
               ),
-              // ST-U5 (D6, D2): A CHEVRON ONLY WHERE A TAP GOES SOMEWHERE. It was
-              // drawn on every row, so "Connected accounts" and "Export data
-              // (CSV)" — inert, `onTap == null` — carried the one visual that
-              // says "tap me" while doing nothing. The role and the focus node
-              // already follow [onTap] (see above); now the glyph does too.
-              if (onTap != null)
-                Icon(
-                  Icons.chevron_right,
-                  color: AppText.of(context).muted.color,
-                  size: 18,
-                ),
+              RowChevron(
+                actionable: onTap != null,
+                color: AppText.of(context).muted.color,
+              ),
             ],
           ),
         ),

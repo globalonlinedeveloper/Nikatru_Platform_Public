@@ -86,7 +86,7 @@
         {
           "file": "apps/subscriptiontracker/lib/features/monetization/paywall_screen.dart",
           "linesAtSince": 302,
-          "ceiling": 375,
+          "ceiling": 373,
           "template": 212
         },
         {
@@ -137,6 +137,13 @@
           "on": "2026-09-27",
           "callSiteDelta": -74,
           "measured": "apps/subscriptiontracker/lib/features/auth/turnstile_gate.dart 219 -> 145 lines (wc -l, after dart format, Flutter 3.47.5). ST-A1 (audit BUG-1, D29): the gate widget, CaptchaPosture and the single-use token lifecycle (CaptchaTokenController: consume + re-challenge after every gated call, submit disabled until a token exists) moved to packages/chassis_screens/lib/auth/turnstile_gate.dart; the app file keeps only its adapter — the CloudflareTurnstile renderer the package may not import, the posture read off AppConfig, the CaptchaHost mixin and the cutover assertion."
+        },
+        {
+          "file": "features/shared/chassis_adapters.dart",
+          "piece": "PlanStatusTile, PlansLoadGate, PlansLoading, RowChevron",
+          "on": "2026-09-28",
+          "callSiteDelta": -32,
+          "measured": "ST-T2 (U5/U7) after the parity STOP on run 36387855557: the honest async states moved into packages/chassis_screens instead of growing the forks. Measured with wc -l after dart format (Flutter 3.47.5), each fork against its U5/U7 version at 26d41002: features/monetization/manage_plan_screen.dart 350 -> 322 (the three-way plan-status row is PlanStatusTile, PlanStatus.of), features/monetization/paywall_screen.dart 406 -> 373 (the once-only offerings ask, its loading flag and the repaint listener are PlansLoadGate; the spinner is PlansLoading; its dart:async import went with the ask), features/settings/settings_screen.dart 2022 -> 2009 (the actionable-only chevron is RowChevron) — -74 in the forks, +42 for this adapter file that binds the chassis states to this app's AsyncValue and strings, net -32. manage_plan and settings end exactly at their ceilings (322, 2009); paywall ends 2 below and its ceiling is lowered 375 -> 373 to bank the shrink. No ceiling rose."
         }
       ],
       "_adoptedWhy": "⏱ 2026-09-15 · [ADR 086] ONE PIECE AT A TIME: the app now imports the package in the files listed here; tooling/ci/assert-chassis-parity.mjs holds that list equal to the scan and every callSiteDelta negative ([ADR 066]). The row is deleted when the last template file is adopted.",

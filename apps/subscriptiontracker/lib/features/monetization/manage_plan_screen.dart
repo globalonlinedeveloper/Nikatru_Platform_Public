@@ -9,6 +9,7 @@ import '../../core/app_config.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/money_providers.dart';
 import '../../state/providers.dart';
+import '../shared/chassis_adapters.dart';
 
 /// Manage subscription — [pipeline 5]M-9 (ROSCA) and [pipeline 5]M-10 (restore).
 ///
@@ -166,7 +167,7 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final AsyncValue<core.Entitlements> ent = ref.watch(entitlementsProvider);
-    final bool isPro = ent.valueOrNull?.isProAt(DateTime.now()) ?? false;
+    final bool isPro = planStatusOf(ent) == PlanStatus.active;
 
     return Scaffold(
       // 🔴 THE `leading:` IS THE ONLY WAY OFF THIS SCREEN, AND UNTIL NOW THERE
@@ -240,40 +241,11 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: <Widget>[
-            // ✅ ST-U7 (C42): THREE STATES, NOT ONE. This tile read
-            // `ent.valueOrNull?.isProAt(…) ?? false` and so said "You do not
-            // have an active subscription", lock icon and all, while the
-            // entitlement was still LOADING and when it could not be fetched —
-            // a paying user saw themselves as unpaid on every slow open. The
-            // answer shows only once there is one; a refresh keeps the last
-            // answer on screen (`hasValue` first, as the list gate does).
-            if (ent.hasValue)
-              ListTile(
-                key: const Key('manage-plan-status'),
-                leading: Icon(
-                  isPro ? Icons.verified_outlined : Icons.lock_outline,
-                ),
-                title: Text(isPro ? l10n.planActive : l10n.planInactive),
-              )
-            else if (ent.hasError)
-              ListTile(
-                key: const Key('manage-plan-status-failed'),
-                leading: const Icon(Icons.cloud_off),
-                title: Text(l10n.planCheckFailed),
-                trailing: TextButton(
-                  onPressed: () => ref.invalidate(entitlementsProvider),
-                  child: Text(l10n.retry),
-                ),
-              )
-            else
-              ListTile(
-                key: const Key('manage-plan-status-loading'),
-                leading: const SizedBox.square(
-                  dimension: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                title: Text(l10n.planChecking),
-              ),
+            PlanStatusTile(
+              status: planStatusOf(ent),
+              labels: planStatusLabels(l10n),
+              onRetry: () => ref.invalidate(entitlementsProvider),
+            ),
             const Divider(),
             // [pipeline 5]M-10. The entitlement is a server row keyed
             // (user_id, app_id), so on the hosted rail a fresh install is

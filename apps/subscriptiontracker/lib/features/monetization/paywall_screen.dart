@@ -1,5 +1,3 @@
-import 'dart:async' show unawaited;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,6 +9,7 @@ import '../../core/format/money_format.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/money_providers.dart';
 import '../../state/providers.dart';
+import '../shared/chassis_adapters.dart';
 
 /// Where the paywall was opened from. A short ENUMERABLE code, because it
 /// becomes an analytics parameter — free text there is a D1 column nobody can
@@ -85,27 +84,6 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       final MoneyFunnel funnel = await ref.read(moneyFunnelProvider.future);
       await funnel.onPaywallViewed(widget.trigger.code);
     });
-    // A store rail's plans are the STORE's answer, asked for here so an open
-    // paywall shows today's price and this buyer's trial. A no-op on the web
-    // rail, whose plans are the rail config.
-    unawaited(_loadOfferings());
-  }
-
-  /// ST-U7 (C38): true while a store rail is being asked for its plans.
-  ///
-  /// A store rail's offerings are EMPTY until the store answers, and the
-  /// choosing arm used to read that as "Purchases are not available here." —
-  /// a false negative on Android and iOS for the first second or more of every
-  /// open. The web rail's plans are its config, so its refresh is a no-op and
-  /// this is true for one microtask at most.
-  bool _offeringsLoading = true;
-
-  Future<void> _loadOfferings() async {
-    // `refreshOfferingsOf` never throws (the package's contract): a store that
-    // cannot be asked leaves the list empty, which the unavailable sentence
-    // below then states truthfully.
-    await refreshOfferingsOf(ref.read(purchaseRailProvider));
-    if (mounted) setState(() => _offeringsLoading = false);
   }
 
   Future<void> _buy(Offering offering) async {
@@ -244,11 +222,11 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       // looking at slides, for a reason the user did not cause. Pinned to the
       // top it stays where it was and only the new rows appear. `.pane` is the
       // 480 this file used to hold privately.
-      // Repainted when a store rail's plans arrive or change; the web rail's
-      // never do.
-      body: ListenableBuilder(
-        listenable: offeringsChangesOf(rail),
-        builder: (BuildContext context, Widget? _) => ContentPane.pane(
+      // ST-U7 (C38): the chassis gate asks the rail once and says while it waits.
+      body: PlansLoadGate(
+        load: () => refreshOfferingsOf(rail),
+        changes: offeringsChangesOf(rail),
+        builder: (BuildContext context, bool loading) => ContentPane.pane(
           child: ListView(
             padding: const EdgeInsets.all(24),
             shrinkWrap: true,
@@ -265,7 +243,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
-              ..._body(l10n, rail, theme),
+              ..._body(l10n, rail, theme, loading),
             ],
           ),
         ),
@@ -277,6 +255,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     AppLocalizations l10n,
     PurchaseRail rail,
     ThemeData theme,
+    bool loading,
   ) {
     switch (_phase) {
       case _PaywallPhase.opening:
@@ -348,25 +327,13 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           ),
         ];
       case _PaywallPhase.choosing:
-        // NOT gated on `rail.canStartCheckout`: a store rail cannot start a
-        // checkout until its offerings arrive, which is exactly the wait.
-        if (ref.watch(sellingEnabledProvider) &&
-            rail.offerings.isEmpty &&
-            _offeringsLoading) {
-          return <Widget>[
-            Center(
-              key: const Key('paywall-offerings-loading'),
-              child: CircularProgressIndicator(
-                semanticsLabel: l10n.paywallLoadingPlans,
-              ),
-            ),
-          ];
-        }
         if (!ref.watch(sellingEnabledProvider) ||
             !rail.canStartCheckout ||
             rail.offerings.isEmpty) {
           return <Widget>[
-            Text(l10n.paywallUnavailable, textAlign: TextAlign.center),
+            loading
+                ? PlansLoading(label: l10n.paywallLoadingPlans)
+                : Text(l10n.paywallUnavailable, textAlign: TextAlign.center),
           ];
         }
         return <Widget>[
