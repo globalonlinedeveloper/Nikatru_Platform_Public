@@ -4,7 +4,7 @@
 // captured Play phone set of four synthetic 180x320 frames (the 9:16 shape at a
 // sixth of the size, as apps-gov-in-media.test.mjs draws them), its CAPTURE.json,
 // the Play store icon, and an apps-gov-in directory holding only its README.
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
@@ -79,10 +79,12 @@ export function makeTree({ edit } = {}) {
 export function snapshot(root) {
   const out = {};
   const walk = (dir, rel) => {
-    for (const n of readdirSync(dir).sort()) {
+    // Dirents, not statSync-then-read (the check-then-use race, js/file-system-race).
+    for (const ent of readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
+      const n = ent.name;
       const abs = join(dir, n);
       const r = rel ? `${rel}/${n}` : n;
-      if (statSync(abs).isDirectory()) walk(abs, r);
+      if (ent.isDirectory()) walk(abs, r);
       else out[r] = createHash('sha256').update(readFileSync(abs)).digest('hex');
     }
   };

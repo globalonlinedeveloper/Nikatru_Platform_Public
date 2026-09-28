@@ -318,9 +318,16 @@ export function writeApp(root, app, opts = {}) {
     const out = join(shotsDir, name);
     // An image already holding exactly these pixels keeps its bytes: another
     // zlib build encodes the same pixels differently, and a re-run must be a no-op.
+    // Read, never check-then-read: an existsSync before the read and the write is
+    // the check-then-use race CodeQL names (js/file-system-race). Absent = ENOENT.
     let png = d.png;
-    if (existsSync(out)) {
-      const kept = readFileSync(out);
+    let kept = null;
+    try {
+      kept = readFileSync(out);
+    } catch (e) {
+      if (e?.code !== 'ENOENT') throw e;
+    }
+    if (kept !== null) {
       let same = false;
       try {
         same = samePixels(decodeRgba(kept), d.image);
