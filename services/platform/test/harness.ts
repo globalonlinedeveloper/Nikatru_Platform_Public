@@ -53,6 +53,7 @@ import providerTokens0016 from '../migrations/0016_provider_tokens.sql?raw';
 import extDevices0017 from '../migrations/0017_ext_devices.sql?raw';
 import bundleSourceTerm0018 from '../migrations/0018_bundle_source_term.sql?raw';
 import oneTimeSource0019 from '../migrations/0019_one_time_source.sql?raw';
+import reminders0020 from '../migrations/0020_reminders.sql?raw';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
 
@@ -106,6 +107,9 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   // ADD COLUMN, so it is NOT in REPLAY_SAFE_MIGRATIONS below (that subset
   // replays without 0018).
   oneTimeSource0019,
+  // ⏱ 2026-09-28 · ST-R1/ST-R2 — the reminder preference, the sent ledger and
+  // the calendar feed.
+  reminders0020,
 ];
 
 /**
@@ -153,6 +157,8 @@ export const REPLAY_SAFE_MIGRATIONS: readonly string[] = [
   providerTokens0016,
   // 0017 is CREATE TABLE / CREATE [UNIQUE] INDEX IF NOT EXISTS only — it replays.
   extDevices0017,
+  // 0020 is CREATE TABLE / CREATE [UNIQUE] INDEX IF NOT EXISTS only — it replays.
+  reminders0020,
 ];
 
 // `node:sqlite` is fetched through `process.getBuiltinModule` rather than a

@@ -166,9 +166,11 @@ collects:
     basis: >-
       The names, amounts and renewal dates a person enters. This is the content
       the app exists to hold, so it lives as long as the account does and goes
-      with it.
+      with it. If you create a private calendar link, the same names, amounts
+      and renewal dates are shown to whichever calendar you give that link to,
+      until you turn the link off.
     source: apps/subscriptiontracker/store/android-play/data-safety.json
-    asOf: "2026-09-05"
+    asOf: "2026-09-28"
 
   - category: App info and performance
     type: Crash logs
@@ -320,6 +322,6 @@ processors:
 
   - id: resend
     role: email_delivery
-    purpose: Delivers the transactional email an account needs to exist.
+    purpose: Delivers the transactional email an account needs to exist, and the renewal reminder emails you choose to receive, which list the subscriptions about to renew.
     source: tooling/legal/provider-register.json
-    asOf: "2026-09-05"
+    asOf: "2026-09-28"

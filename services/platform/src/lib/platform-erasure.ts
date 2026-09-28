@@ -80,16 +80,78 @@ export async function purgeVerifiedSignups(
   serviceRoleKey: string,
   userId: string,
 ): Promise<SignupPurgeOutcome> {
+  const account = await readAccount(supabaseUrl, serviceRoleKey, userId);
+  if (account.kind === 'transient' || account.kind === 'failed') return account;
+  if (account.kind === 'no_account') return { kind: 'skipped', why: 'no_account' };
+  if (account.email === '') return { kind: 'skipped', why: 'no_email' };
+  // The confirmation is read HERE, in the function that deletes, and not inside
+  // `readAccount`: tooling/ci/assert-erasure-reach.mjs limb 5 grades exactly this
+  // body, so a helper that decided "confirmed" out of its sight would leave the
+  // guard green over a check it can no longer see.
+  if (account.email_confirmed_at === null) return { kind: 'skipped', why: 'unconfirmed' };
+  // `email` is the PRIMARY KEY with COLLATE NOCASE (0011_signups.sql), so `=` here
+  // matches the row however its letters were cased when the visitor signed up.
+  const out = await db.prepare('DELETE FROM signups WHERE email = ?').bind(account.email).run();
+  return { kind: 'purged', deleted: out.meta.changes ?? 0 };
+}
+
+/**
+ * ⏱ 2026-09-28 · ST-R1. How long one admin-user read may take before it counts
+ * as TRANSIENT. The read had no bound while its one caller was a request the user
+ * was waiting on; the nightly reminder job (lib/reminders.ts) now makes one per
+ * opted-in account, sequentially, inside the one nightly firing — so an identity
+ * provider that accepts the connection and never answers would otherwise hold the
+ * whole firing, and every limb after it, until the runtime killed the invocation.
+ * Ten seconds is the bound every other outbound call from the scheduler already
+ * uses (probeReachability, sendHeartbeat).
+ *
+ * @ceiling none — a per-call wait we chose, not a platform resource.
+ */
+export const ACCOUNT_READ_TIMEOUT_MS = 10_000;
+
+/**
+ * What the identity provider says about ONE account — the admin-user read, in one
+ * place. ⏱ 2026-09-28 · ST-R1: extracted from `purgeVerifiedSignups` so the reminder
+ * job reads an address the same way the signup purge does, with a timeout, and so
+ * the one file in this Worker that names the admin endpoint stays one file
+ * (tooling/ci/assert-erasure-reach.mjs limb 6).
+ *
+ *   `found`      — `email` (trimmed, '' when absent) and `email_confirmed_at`
+ *                  (null unless a non-empty string). It DECIDES NOTHING: each caller
+ *                  reads `email_confirmed_at` itself, because only a confirmed
+ *                  address is one its owner proved they read.
+ *   `no_account` — 404: the account is gone.
+ *   `transient`  — transport error, timeout, 5xx, 429, a body that is not JSON:
+ *                  NOTHING IS KNOWN, try again later.
+ *   `failed`     — any other non-2xx (e.g. a refused service-role key).
+ *
+ * The key is never echoed; the address is returned to the caller and never logged
+ * here. `fetchImpl` is injectable for tests, as in lib/report-notify.ts.
+ */
+export type AccountRead =
+  | { kind: 'found'; email: string; email_confirmed_at: string | null }
+  | { kind: 'no_account' }
+  | { kind: 'transient'; why: string }
+  | { kind: 'failed'; why: string };
+
+export async function readAccount(
+  supabaseUrl: string | undefined,
+  serviceRoleKey: string,
+  userId: string,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs: number = ACCOUNT_READ_TIMEOUT_MS,
+): Promise<AccountRead> {
   let res: Response;
   try {
-    res = await fetch(`${supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(userId)}`, {
+    res = await fetchImpl(`${supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(userId)}`, {
       method: 'GET',
       headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` },
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch {
     return { kind: 'transient', why: 'the identity provider could not be reached' };
   }
-  if (res.status === 404) return { kind: 'skipped', why: 'no_account' };
+  if (res.status === 404) return { kind: 'no_account' };
   if (res.status >= 500 || res.status === 429) return { kind: 'transient', why: `the identity provider answered ${res.status}` };
   if (!res.ok) return { kind: 'failed', why: `the identity provider answered ${res.status}` };
   let user: { email?: unknown; email_confirmed_at?: unknown };
@@ -98,15 +160,12 @@ export async function purgeVerifiedSignups(
   } catch {
     return { kind: 'transient', why: 'the identity provider answered with a body that is not JSON' };
   }
-  const email = typeof user?.email === 'string' ? user.email.trim() : '';
-  if (email === '') return { kind: 'skipped', why: 'no_email' };
-  if (typeof user.email_confirmed_at !== 'string' || user.email_confirmed_at === '') {
-    return { kind: 'skipped', why: 'unconfirmed' };
-  }
-  // `email` is the PRIMARY KEY with COLLATE NOCASE (0011_signups.sql), so `=` here
-  // matches the row however its letters were cased when the visitor signed up.
-  const out = await db.prepare('DELETE FROM signups WHERE email = ?').bind(email).run();
-  return { kind: 'purged', deleted: out.meta.changes ?? 0 };
+  const confirmedAt = user?.email_confirmed_at;
+  return {
+    kind: 'found',
+    email: typeof user?.email === 'string' ? user.email.trim() : '',
+    email_confirmed_at: typeof confirmedAt === 'string' && confirmedAt !== '' ? confirmedAt : null,
+  };
 }
 
 /** The response-body token for a purge outcome. Counts and reasons only, never the address. */

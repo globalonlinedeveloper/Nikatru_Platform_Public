@@ -326,6 +326,29 @@
       "name": "SESSIONS_LIMITER",
       "namespace_id": "1011",
       "simple": { "limit": 5, "period": 60 }
+    },
+    {
+      // ⏱ 2026-09-28 · ST-R2. The SAME server-derived ceiling, keyed
+      // `edge:<colo>:<asn>` by src/lib/edge-ceiling.ts, for the two public
+      // reminder routes whose token is the credential: GET
+      // /v1/calendar/<token>.ics and /v1/reminders/unsubscribe.
+      //
+      // 300/min per (colo, asn). ⚠️ THE KEY IS A PROVIDER, NOT A PERSON: Google,
+      // Apple and Microsoft fetch EVERY subscriber's feed from their own few
+      // networks, so this bounds a provider's whole fetch rate through one PoP.
+      // A calendar service refreshes a subscribed feed a few times a day, so
+      // 300 a minute is 432,000 fetches a day from one provider network — far
+      // above any subscriber count this portfolio has — while still ending a
+      // token-guessing flood. A 429 costs a calendar nothing: it keeps the
+      // copy it has and fetches again later. `period` is 60, one of
+      // tooling/ceilings.json's allowed values. Same honest caveat as the
+      // others: per-colo and eventually consistent, a BURST bound.
+      //
+      // 1013: a namespace_id is account-wide; env.sandbox below holds 1006-1010,
+      // 1012 and now 1014.
+      "name": "REMINDERS_CEILING_LIMITER",
+      "namespace_id": "1013",
+      "simple": { "limit": 300, "period": 60 }
     }
   ],
   "triggers": {
@@ -413,8 +436,8 @@
   // among them — a second time. tooling/ci/assert-money-config.mjs limb 1c
   // refuses both, an inherited `workers_dev`, and a production database.
   //
-  // ⚠️ `ratelimits` ARE DECLARED WITH THEIR OWN namespace_ids (1006-1010), never
-  // the top level's 1001-1005 or 1011: a shared namespace would let a public
+  // ⚠️ `ratelimits` ARE DECLARED WITH THEIR OWN namespace_ids (1006-1010, 1012, 1014), never
+  // the top level's 1001-1005, 1011 or 1013: a shared namespace would let a public
   // sandbox URL spend the budget production's callers are counted against. Every limiter
   // binding is optional and fails OPEN (src/types.ts:63), so an absent one is a
   // sandbox with no breaker at all, not an error anyone would see.
@@ -508,6 +531,14 @@
           "name": "SESSIONS_LIMITER",
           "namespace_id": "1012",
           "simple": { "limit": 5, "period": 60 }
+        },
+        {
+          // why: src/routes/calendar.ts and src/routes/reminders.ts (the public
+          // feed and the one-click unsubscribe). The top level's
+          // REMINDERS_CEILING_LIMITER (1013), same limit.
+          "name": "REMINDERS_CEILING_LIMITER",
+          "namespace_id": "1014",
+          "simple": { "limit": 300, "period": 60 }
         }
       ]
     }

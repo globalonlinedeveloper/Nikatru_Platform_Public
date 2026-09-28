@@ -235,6 +235,21 @@
           "marker": "product",
           "resolver": "extension-catalogue",
           "reason": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. NO app_version COLUMN AND NO app_id: rows are written by POST /v1/ext/token from a code whose `product` was already checked at mint, so the marker is `product`, resolved against the extension catalogue exactly as ext_codes is. The credential is stored only as a SHA-256 and is never read by a monitor."
+        },
+        "reminder_prefs": {
+          "marker": "app_id",
+          "resolver": "app-catalogue",
+          "reason": "⏱ 2026-09-28 · ST-R1. NO app_version COLUMN: rows are written by PUT /v1/reminders/prefs from an authenticated app, and `app_id` is validated before the write (isReminderApp: a catalogue app with an app database) — so the marker is app_id, resolved against the catalogue exactly as content_reports is."
+        },
+        "reminder_sent": {
+          "marker": "app_id",
+          "resolver": "app-catalogue",
+          "reason": "⏱ 2026-09-28 · ST-R1. NO app_version COLUMN: rows are written only by the nightly `reminder_mail` job, which fans out over the generated app targets, so `app_id` is always a catalogue app with an app database. The marker is app_id, resolved against the catalogue."
+        },
+        "reminder_feed": {
+          "marker": "app_id",
+          "resolver": "app-catalogue",
+          "reason": "⏱ 2026-09-28 · ST-R2. NO app_version COLUMN: rows are written by POST /v1/calendar/feed from an authenticated app, and `app_id` is validated before the write (isReminderApp). The marker is app_id, resolved against the catalogue. The feed token is stored only as a SHA-256 and is never read by a monitor."
         }
       }
     },
