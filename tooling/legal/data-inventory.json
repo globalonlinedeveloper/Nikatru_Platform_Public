@@ -683,7 +683,7 @@
       "kind": "d1-table",
       "name": "subscriptions",
       "personalData": true,
-      "holds": "The subscriptions a Subly user tracks — service name, cost, renewal date. USER-ENTERED CONTENT about the person's own finances, keyed on their user id.",
+      "holds": "The subscriptions a Subly user tracks — service name, cost and its currency, cadence, renewal and first-charge dates, lifecycle status with trial-end and cancelled-on dates, a catalogue key, a cancel link, reminder days, and the user's own labels: notes, how the charge reaches them (`rail`, `rail_holder` — user-typed, e.g. \"Google Pay · HDFC ••4471\", never read from a bank and never a full card or account number) and who they share it with (`shared_with`, a label, not an account). USER-ENTERED CONTENT about the person's own finances, keyed on their user id. The columns after `updated_at` are 0003_subscription_model.sql's ([ADR 077] §5).",
       "retention": {
         "kind": "keep",
         "reason": "This is the user's own data and the entire point of the app; it exists until they delete it or delete their account. The in-app deletion control exists in BOTH trees and is asserted — the `account-deletion-works` coverage key on the brick, and tooling/ci/assert-deletion-control.mjs over apps/subscriptiontracker with no exemption ([ADR 027]) — and since 2026-08-04 that control REACHES THESE ROWS. See `erasure` below."
@@ -695,7 +695,8 @@
       },
       "writtenBy": [
         "services/subscriptiontracker-api/migrations/0001_init.sql",
-        "services/subscriptiontracker-api/src/routes/subscriptions.ts"
+        "services/subscriptiontracker-api/src/routes/subscriptions.ts",
+        "services/subscriptiontracker-api/migrations/0003_subscription_model.sql"
       ],
       "disclosure": {
         "page": "privacy.html",
@@ -755,7 +756,7 @@
       "kind": "d1-table",
       "name": "payment_history",
       "personalData": true,
-      "holds": "Dates and amounts a user recorded against their own subscriptions. ⚠️ A record OF payments, not a payment instrument: no card, bank or account number is stored, which is the claim tooling/legal/policy-claims.json asserts against every migration in the tree.",
+      "holds": "Dates, amounts and (from 0003_subscription_model.sql) the currency and the recording source of payments recorded against their own subscriptions. ⚠️ A record OF payments, not a payment instrument: no card, bank or account number is stored, which is the claim tooling/legal/policy-claims.json asserts against every migration in the tree.",
       "retention": {
         "kind": "keep",
         "reason": "The user's own history, kept until they delete it."
@@ -767,11 +768,35 @@
       },
       "writtenBy": [
         "services/subscriptiontracker-api/migrations/0001_init.sql",
-        "services/subscriptiontracker-api/src/routes/subscriptions.ts"
+        "services/subscriptiontracker-api/src/routes/subscriptions.ts",
+        "services/subscriptiontracker-api/migrations/0003_subscription_model.sql"
       ],
       "disclosure": {
         "page": "privacy.html",
         "quote": "do not collect"
+      }
+    },
+    {
+      "id": "table:subscriptiontracker_db.price_change",
+      "kind": "d1-table",
+      "name": "price_change",
+      "personalData": true,
+      "holds": "The price rises and cuts of a subscription the user tracks — the date it took effect, the old and new amount in exact minor units, and the currency ([ADR 077] §5.2). User-entered content about the person's own finances, keyed on their user id. ⚠️ Created by 0003_subscription_model.sql with NO writer yet: the Insights price-rise signal that fills it is a later train.",
+      "retention": {
+        "kind": "keep",
+        "reason": "The user's own history of a subscription they track, kept until they delete it or delete their account. Same position as payment_history."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/subscriptiontracker-api/src/routes/account.ts",
+        "reason": "Same as table:subscriptiontracker_db.subscriptions, and by the same mechanism rather than by a second decision: 0003_subscription_model.sql gives the table a column spelled `user_id` on purpose, and the erasure route derives its table set from the schema, so `price_change` is in the sweep without being named anywhere in the code. tooling/ci/assert-erasure-reach.mjs is what refuses to let it drop back out."
+      },
+      "writtenBy": [
+        "services/subscriptiontracker-api/migrations/0003_subscription_model.sql"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "in apps that offer accounts) create an account"
       }
     },
     {

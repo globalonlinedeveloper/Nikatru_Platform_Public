@@ -5,6 +5,7 @@
 import { Hono } from 'hono';
 import type { AppEnv, Subscription } from '../types';
 import { allRows, todayYmd } from '../lib/d1';
+import { serializeSubscription } from './subscriptions';
 
 const app = new Hono<AppEnv>();
 
@@ -84,21 +85,12 @@ app.get('/', async (c) => {
     ).bind(userId, today, until),
   );
 
+  // The row is serialized by the SAME function /v1/subscriptions uses. This
+  // file used to spell the fourteen keys out a second time, so a column 0003
+  // added would have reached one endpoint and not the other — a reminder
+  // carrying no currency is ST-C1's defect again.
   const out = rows.map((row) => ({
-    id: row.id,
-    user_id: row.user_id,
-    name: row.name,
-    category: row.category,
-    price: row.price,
-    cycle: row.cycle,
-    next_renewal: row.next_renewal,
-    plan: row.plan,
-    glyph: row.glyph,
-    used_pct: row.used_pct,
-    usage_note: row.usage_note,
-    unused: row.unused === 1,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
+    ...serializeSubscription(row),
     days_left: row.next_renewal ? daysBetween(today, row.next_renewal) : null,
   }));
 
