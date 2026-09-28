@@ -242,6 +242,18 @@ const ALLOWLIST = [
       'lane. (K-15.)',
   },
   {
+    file: 'packages/core/test/money/fx_rates_test.dart',
+    rule: '@TestOn(',
+    date: '2026-09-28',
+    reason:
+      '`@TestOn(\'vm\')` REMOVES NO COVERAGE, for content_pack_fixture_test.dart\'s reason: `dart test` ' +
+      'defaults to the VM, so `melos run test` runs every case. The file reads the SHARED VECTOR ' +
+      'contracts/fx/latest.v1.example.json off disk through `dart:io` (ST-I3: the platform Worker\'s ' +
+      'fx.test.ts reads the same file), and under workspace_gate\'s `dart test -p chrome` an unannotated ' +
+      '`dart:io` test is a COMPILE FAILURE rather than a skip. FxTable itself is pure Dart and compiles ' +
+      'for the web; only this file\'s reader is VM-bound.',
+  },
+  {
     file: 'packages/analysis/lib/analysis_options.yaml',
     rule: 'analyzer.exclude',
     date: '2026-09-05',

@@ -675,6 +675,18 @@ const WIRE_CONTRACTS = [
       'NO APP CLIENT, BY CONSTRUCTION — the callers are calendar services (Google Calendar, Apple Calendar, Outlook) subscribing to the URL and browsers downloading it. The wire is RFC 5545 text/calendar, written by services/platform/src/lib/ics.ts and pinned by services/platform/test/calendar-feed.test.ts, not a JSON envelope.',
     absentFromDart: '/v1/calendar/',
   },
+  // ⏱ 2026-09-28 · ST-I3 — the ECB rate table (services/platform/src/routes/fx.ts).
+  // A gap because the TRANSPORT ships with its first consumer, not here; the
+  // payload is already held on both sides by one vector, which is stronger than
+  // an envelope pin would be. `absentFromDart` fires the day a Dart transport
+  // builds the path, which is when this entry has to become a real pin.
+  {
+    id: 'fx-latest',
+    kind: 'gap',
+    reason:
+      'NO TRANSPORT YET, AND IT IS A STATE RATHER THAN A CONSTRUCTION: `FxRatesSource` (packages/api_client) and its provider land with the first consumer, the converted totals of ST-I1 and the ST-D Home/Insights screens, so nothing ships uncalled. What stands in for a pin meanwhile is contracts/fx/latest.v1.example.json: services/platform/test/fx.test.ts asserts the Worker stores and serves exactly its `response`, and packages/core/test/money/fx_rates_test.dart reads the same `response` into FxTable.tryFromJson and converts with it — every key a Dart reader subscripts is held by both sides already.',
+    absentFromDart: '/v1/fx',
+  },
 ];
 
 /** Where limb 5's "no Dart client" claims are checked. Roots rather than the

@@ -4,9 +4,10 @@
 /// 🔴 IT IS AN [Error], NOT AN [Exception], AND THE CHOICE IS THE POINT. A
 /// caller cannot recover from this at runtime by retrying or by picking a
 /// default: there is no honest answer to "what is 10 USD plus 499 INR" without
-/// a dated rate, and this codebase deliberately has no rate table (see
-/// [Money]'s own note). Adding unlike money is a BUG IN THE CALLER — it should
-/// have grouped by currency instead — so it fails the way a bug fails.
+/// a dated rate, and [Money] never converts implicitly (see its own note).
+/// Adding unlike money is a BUG IN THE CALLER — it should have grouped by
+/// currency, or converted through a dated `FxTable` — so it fails the way a
+/// bug fails.
 class CurrencyMismatchError extends Error {
   CurrencyMismatchError(this.left, this.right, this.operation);
 
@@ -17,8 +18,9 @@ class CurrencyMismatchError extends Error {
   @override
   String toString() =>
       'CurrencyMismatchError: cannot $operation $left and $right. '
-      'Two amounts in different currencies are unlike units and no rate table '
-      'in this codebase repairs that. Group the total by currency instead.';
+      'Two amounts in different currencies are unlike units and no implicit '
+      'rate repairs that. Group the total by currency, or convert through a '
+      'dated FxTable first.';
 }
 
 /// An exact amount of money: an INTEGER count of a currency minor unit, plus
@@ -45,8 +47,12 @@ class CurrencyMismatchError extends Error {
 /// multiply every displayed figure in the app that this type serves. The
 /// measured consequence: a user in India who picked the rupee and typed 499 for
 /// a plan costing 499 rupees was shown a figure 83 times larger. A conversion
-/// is only honest with a DATED rate from a source that can be cited, and v1 has
-/// no such source. Until it does, unlike amounts are grouped, never converted.
+/// is only honest with a DATED rate from a source that can be cited, so this
+/// type never converts. ⏱ 2026-09-28 (ST-I3): that source now exists — the
+/// ECB's reference rates, cached nightly by the platform Worker — and it lives
+/// in `FxTable` (fx_rates.dart), carrying its date and its source. A caller
+/// that wants one converted number asks that table by name; everything else
+/// groups unlike amounts, as before.
 ///
 /// ## Formatting lives elsewhere, on purpose
 /// [plainFormat] is a last-resort renderer with no grouping and no locale. The

@@ -482,6 +482,10 @@ describe('the census is actually wired into the nightly cron', () => {
       // up here on an empty ledger.
       'erasure_retry',
       'events_rollup',
+      // Added 2026-09-28 (ST-I3): the ECB rate table. This env binds no
+      // CONFIG_KV, so its row is the honest no-binding ok=0 and no request goes
+      // out — the limb checks for somewhere to keep the table before it fetches.
+      'fx_rates',
       // Added 2026-09-03 with the [research/76 §C] Phase 1 dispatcher. This
       // assertion went RED the moment that limb was wired, which is the case
       // doing exactly what its header says: it is the only test in the tree

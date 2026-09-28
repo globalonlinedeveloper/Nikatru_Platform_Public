@@ -40,7 +40,8 @@ import 'money_bag.dart';
 /// comes from the [Money]'s own currency code.
 ///
 /// ## 🔴 Nothing here converts
-/// There is no rate table and there must not be one — see [Money]'s note. Where
+/// A formatter never converts — see [Money]'s note; the one dated rate table
+/// is `FxTable`, and a caller converts through it before formatting. Where
 /// unlike currencies would have to be summed, the caller hands over a
 /// [MoneyBag] and [formatBag] renders EVERY subtotal joined by [mixedJoiner],
 /// e.g. a dollar figure and a rupee figure side by side. A converted single
