@@ -986,7 +986,8 @@
         }
       ],
       "consumers": [
-        "apps/subscriptiontracker"
+        "apps/subscriptiontracker",
+        "tooling/bricks/app/__brick__/apps/{{app_id}}"
       ],
       "capabilityMatrix": {
         "file": "packages/billing_revenuecat/lib/src/revenuecat_capabilities.dart",

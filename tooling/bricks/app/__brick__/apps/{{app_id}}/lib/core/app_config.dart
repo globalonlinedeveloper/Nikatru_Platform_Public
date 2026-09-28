@@ -144,6 +144,20 @@ class AppConfig {
     'MICROSOFT_STORE_ID',
   );
 
+  // ── STORE BILLING (RevenueCat) ────────────────────────────────────────────
+  // O-BRICK-SELLS-NOTHING-IN-A-STORE (12b). `purchaseRailFor`
+  // (lib/state/money_providers.dart) reads both. The key is the RevenueCat
+  // PUBLIC SDK key the store lanes compile in from the secret this app's
+  // app.yaml `billing.mobileIap.publicKeySecrets` names; empty on every other
+  // lane, and then a store build sells nothing rather than guessing a rail.
+  // The entitlement id must equal app.yaml `billing.mobileIap.entitlementId`:
+  // `assert-app-yaml` limb 6 (f) holds the two equal.
+  static const String revenueCatApiKey = String.fromEnvironment(
+    'REVENUECAT_KEY',
+    defaultValue: '',
+  );
+  static const String proEntitlementId = 'pro';
+
   // ── REMINDERS ──────────────────────────────────────────────────────────────
   // When the daily reminder fires, in the DEVICE's local time. A plain constant
   // rather than a define: the right hour is a product decision each app makes

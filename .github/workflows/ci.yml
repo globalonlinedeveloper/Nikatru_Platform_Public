@@ -1033,8 +1033,10 @@ jobs:
 
       # why: O-NEW-APP-IS-NOT-ONE-COMMAND. Every stamp in this job runs the one
       # command, which runs `mason get` first and exits 1 when its post-conditions
-      # (regen.mjs --check, tag-owner.mjs --check) fail. stamp-app.test.mjs fails
-      # on a workflow that stamps with raw mason instead.
+      # (regen.mjs --check, tag-owner.mjs --check, gen-app-licence-rows.mjs --check)
+      # fail. stamp-app.test.mjs fails on a workflow that stamps with raw mason
+      # instead. Since NP12B-R2 the command also runs `flutter pub get` at the repo
+      # root and writes the new app's licence rows from that resolution.
       - name: Stamp the default (client-only) app
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"
@@ -1153,15 +1155,47 @@ jobs:
         run: |
           echo "import { copyFileSync, rmSync } from 'node:fs'; import { spawnSync } from 'node:child_process'; const [file, backup, ...cmd] = process.argv.slice(2); copyFileSync(file, backup); rmSync(file); const red = spawnSync(process.execPath, cmd, { encoding: 'utf8' }); const out = (red.stdout || '') + (red.stderr || ''); console.log(out); console.log('exit with ' + file + ' removed: ' + red.status); copyFileSync(backup, file); if (red.status !== 1) { console.log('::error::' + cmd[0] + ' exited ' + red.status + ' with ' + file + ' removed; the red control requires exactly 1'); process.exit(1); } if (!out.includes(file)) { console.log('::error::' + cmd[0] + ' exited 1 without naming ' + file); process.exit(1); } const green = spawnSync(process.execPath, cmd, { encoding: 'utf8' }); console.log('exit restored: ' + green.status); if (green.status !== 0) { console.log((green.stdout || '') + (green.stderr || '')); console.log('::error::restored, ' + cmd[0] + ' exited ' + green.status); process.exit(1); }" > "$RUNNER_TEMP/remove-and-restore.mjs"
           node "$RUNNER_TEMP/remove-and-restore.mjs" apps/probe/integration_test/app_test.dart "$RUNNER_TEMP/probe-app-test.dart" tooling/ci/assert-e2e-legs.mjs
+      # why: O-BRICK-SELLS-NOTHING-IN-A-STORE (12b). The brick declares billing.mobileIap `state: pending` and wires
+      # the store bridge through StoreBridgeWiring; the log must count app #1 live and the probe pending, both wired.
+      - name: The stamped probe declares mobile IAP pending and wires its store bridge
+        run: |
+          set +e
+          node tooling/ci/assert-app-yaml.mjs > "$RUNNER_TEMP/iap-green.log" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/iap-green.log"
+          echo "assert-app-yaml exit: $code"
+          if [ "$code" -ne 0 ]; then echo "::error::assert-app-yaml exited $code on the stamped probe"; exit 1; fi
+          if ! grep -qF '2 app(s) declare mobile IAP (1 live, 1 pending), each wired through StoreBridgeWiring (2 of 2)' "$RUNNER_TEMP/iap-green.log"; then echo "::error::limb 6 did not count app #1 live and the probe pending, both wired"; exit 1; fi
+      # why: the row's red control, every run. The probe's two wiring lines set back to a literal null must be
+      # refused (exit exactly 1, naming apps/probe/lib/state/money_providers.dart); restored, it passes. The edit
+      # is a .mjs under $RUNNER_TEMP, so no pattern rides in a shell string.
+      - name: RED CONTROL — the probe's store bridge set back to null is refused, naming the file
+        run: |
+          cp apps/probe/lib/state/money_providers.dart "$RUNNER_TEMP/probe-money-providers.dart"
+          echo "import { readFileSync, writeFileSync } from 'node:fs'; const p = process.argv[2]; const t = readFileSync(p, 'utf8'); const n = t.replace('iapBridge: wiring.bridge,', 'iapBridge: null,').replace('iapBridgeConfig: wiring.config,', 'iapBridgeConfig: null,'); if (n === t) { console.error('the two wiring lines were not found in ' + p); process.exit(3); } writeFileSync(p, n);" > "$RUNNER_TEMP/null-bridge.mjs"
+          node "$RUNNER_TEMP/null-bridge.mjs" apps/probe/lib/state/money_providers.dart
+          set +e
+          node tooling/ci/assert-app-yaml.mjs > "$RUNNER_TEMP/iap-red.log" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/iap-red.log"
+          echo "assert-app-yaml exit: $code"
+          cp "$RUNNER_TEMP/probe-money-providers.dart" apps/probe/lib/state/money_providers.dart
+          if [ "$code" -ne 1 ]; then echo "::error::assert-app-yaml exited $code with the probe's store bridge set to null; the red control requires exactly 1"; exit 1; fi
+          if ! grep -qF 'apps/probe/lib/state/money_providers.dart:' "$RUNNER_TEMP/iap-red.log"; then echo "::error::assert-app-yaml exited 1 without naming apps/probe/lib/state/money_providers.dart"; exit 1; fi
+          node tooling/ci/assert-app-yaml.mjs
       - name: SHOW-1 — probe is in the catalogue, and a RE-STAMP changes nothing
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"
           grep -q '"slug": "probe"' catalog/apps.json
           cp catalog/apps.json "$RUNNER_TEMP/apps-after-1.json"
           cp pubspec.yaml "$RUNNER_TEMP/pubspec-after-1.yaml"
+          cp tooling/legal/asset-register.json "$RUNNER_TEMP/asset-register-after-1.json"
           node tooling/kit/stamp-app.mjs --vars tooling/bricks/app/_probe_vars.json --overwrite
           diff -u "$RUNNER_TEMP/apps-after-1.json" catalog/apps.json
           diff -u "$RUNNER_TEMP/pubspec-after-1.yaml" pubspec.yaml
+          diff -u "$RUNNER_TEMP/asset-register-after-1.json" tooling/legal/asset-register.json
           git checkout -- catalog/apps.json sites/_shared/_data/apps.json
       - name: Default stamp claims NO Worker, NO D1 and NO R2
         run: node tooling/ci/assert-clone-contract.mjs --client probe
@@ -1256,6 +1290,23 @@ jobs:
       # fails here with the row derived from this bundle, not one copied from app #1.
       - name: Every asset the build actually shipped has a licence row
         run: node tooling/ci/assert-licence-register.mjs . --bundle apps/probe/build/web/assets --app probe
+      # why: LEAD RULING NP12B-R2 (ONE PIPELINE). The stamp WROTE the rows the step above read: stamp-app.mjs runs
+      # `flutter pub get` at the repo root and then gen-app-licence-rows.mjs --write. Here --check grades every app's
+      # rows against the resolved workspace (app #1's hand-written five, the probe's and the backend probe's): a
+      # shipped package file with no row, a row for a file no longer shipped, or a licence the package's LICENSE does
+      # not read is exit 1, before any app's own web build meets it. The repo root is passed as
+      # `${{ github.workspace }}` on purpose: the subject (stamped apps on a resolved workspace) exists only here, so
+      # guard-sweep and the pre-push smoke file this call NEEDS-CI instead of running it on an unresolved checkout,
+      # where it is COVERAGE LOST (exit 2) by design.
+      - name: Every package file each app ships has the licence row its stamp wrote
+        run: node tooling/ci/gen-app-licence-rows.mjs "${{ github.workspace }}" --check
+      # why: the rows' red control, every run. With the probe's purchases_js_hybrid_mappings.js row taken out of the
+      # register (a .mjs under $RUNNER_TEMP, so no pattern rides in a shell string), the bundle walk AND the generator's
+      # --check must each exit exactly 1 naming the file; restored, both exit 0.
+      - name: RED CONTROL — the probe's generated licence row removed, the bundle walk and the generator both refuse the file
+        run: |
+          echo "import { readFileSync, writeFileSync } from 'node:fs'; import { spawnSync } from 'node:child_process'; const reg = 'tooling/legal/asset-register.json'; const file = 'packages/purchases_flutter/assets/web/purchases_js_hybrid_mappings.js'; const green = readFileSync(reg, 'utf8'); const j = JSON.parse(green); const kept = j.appScopedAssets.filter((r) => !(r.scope === 'app:probe' && r.bundlePath === file)); if (kept.length !== j.appScopedAssets.length - 1) { console.log('::error::the register carries no app:probe row for ' + file + '; the stamp did not write it'); process.exit(1); } j.appScopedAssets = kept; writeFileSync(reg, JSON.stringify(j, null, 2) + String.fromCharCode(10)); const cmds = [['tooling/ci/assert-licence-register.mjs', '.', '--bundle', 'apps/probe/build/web/assets', '--app', 'probe'], ['tooling/ci/gen-app-licence-rows.mjs', '--check', '--app', 'probe']]; let bad = 0; for (const c of cmds) { const r = spawnSync(process.execPath, c, { encoding: 'utf8' }); const out = (r.stdout || '') + (r.stderr || ''); console.log(out); console.log(c[0] + ' exit with the row removed: ' + r.status); if (r.status !== 1 || !out.includes(file)) { console.log('::error::' + c[0] + ' exited ' + r.status + ' with the row removed; the red control requires exactly 1, naming ' + file); bad += 1; } } writeFileSync(reg, green); for (const c of cmds) { const r = spawnSync(process.execPath, c, { encoding: 'utf8' }); console.log(c[0] + ' exit restored: ' + r.status); if (r.status !== 0) { console.log((r.stdout || '') + (r.stderr || '')); console.log('::error::restored, ' + c[0] + ' exited ' + r.status); bad += 1; } } if (bad > 0) process.exit(1);" > "$RUNNER_TEMP/licence-row-red.mjs"
+          node "$RUNNER_TEMP/licence-row-red.mjs"
 
       - name: Backend stamp has a Worker + APP_DB but still no per-app R2
         run: node tooling/ci/assert-clone-contract.mjs --client probe --backend probeapi

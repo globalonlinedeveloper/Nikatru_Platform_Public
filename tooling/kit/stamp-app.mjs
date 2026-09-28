@@ -23,6 +23,16 @@
 //     caller's shell cannot turn a new stamp into a silent overwrite.
 //   · The app id is refused BEFORE mason, with the contract's own message
 //     (contracts/app-id/app-id.js appIdProblems); pre_gen refuses it too.
+//   · THE APP'S LICENCE ROWS (LEAD RULING NP12B-R2, 2026-09-27). Every file a
+//     pub package ships into the new app's web bundle needs an `app:<id>` row
+//     in tooling/legal/asset-register.json, and until this step nothing wrote
+//     one: the first web build of the stamp went red, and a row typed by hand
+//     for an app that exists only in CI was refused (train W47, #1020). So after
+//     mason, `flutter pub get` AT THE REPO ROOT resolves the workspace with the
+//     new app on it (never in the app directory: that rewrites the root lock
+//     from a subdirectory), and `gen-app-licence-rows.mjs --write --app <id>`
+//     writes the rows from that resolution. On Windows flutter is `flutter.bat`,
+//     reached through cmd.exe exactly as mason is.
 //
 // ── POST-CONDITIONS: WHERE post_gen WARNS, THIS FILE EXITS NON-ZERO ──────────
 // post_gen.dart runs the site chain and tag-owner --write, and on a failure it
@@ -30,10 +40,11 @@
 // long mason log is easy to miss, so after mason exits 0 this file requires:
 //   1. apps/<id>/pubspec.yaml exists — a stamp that wrote no app is not a stamp;
 //   2. `node tooling/sites/regen.mjs --check` exits 0;
-//   3. `node tooling/ci/tag-owner.mjs --check` exits 0.
+//   3. `node tooling/ci/tag-owner.mjs --check` exits 0;
+//   4. `node tooling/ci/gen-app-licence-rows.mjs --check --app <id>` exits 0.
 // Any one failing makes the exit 1, and the line names it.
 //
-// Exit 0 = stamped, and all three post-conditions hold (or --dry-run printed the plan).
+// Exit 0 = stamped, and all four post-conditions hold (or --dry-run printed the plan).
 // Exit 1 = refused before mason, a mason step failed, or a post-condition failed.
 // ─────────────────────────────────────────────────────────────────────────────
 import { spawnSync } from 'node:child_process';
@@ -51,6 +62,7 @@ export const SAFE_ARG = /^[A-Za-z0-9._/\\:=-]+$/;
 
 export const REGEN = 'tooling/sites/regen.mjs';
 export const TAG_OWNER = 'tooling/ci/tag-owner.mjs';
+export const APP_LICENCE_ROWS = 'tooling/ci/gen-app-licence-rows.mjs';
 const OVERWRITE_ENV = 'NIKATRU_ALLOW_OVERWRITE';
 
 /**
@@ -115,9 +127,16 @@ export function planStamp({ argv = [], platform = process.platform, env = proces
       ? { label, command: 'cmd.exe', args: ['/d', '/s', '/c', 'mason.bat', ...args], cwd: root, env: childEnv }
       : { label, command: 'mason', args, cwd: root, env: childEnv };
   };
+  const flutter = (label, args) =>
+    platform === 'win32'
+      ? { label, command: 'cmd.exe', args: ['/d', '/s', '/c', 'flutter.bat', ...args], cwd: root, env: childEnv }
+      : { label, command: 'flutter', args, cwd: root, env: childEnv };
+  const licenceRows = join(root, ...APP_LICENCE_ROWS.split('/'));
   const steps = [
     mason('mason get', ['get']),
     mason('mason make', ['make', 'app', '-c', vars, '-o', '.', '--on-conflict', 'overwrite']),
+    flutter('flutter pub get (repo root)', ['pub', 'get']),
+    { label: `node ${APP_LICENCE_ROWS} --write --app ${id}`, command: process.execPath, args: [licenceRows, '--write', '--app', id], cwd: root, env: childEnv },
   ];
   if (problems.length) return nothing(id, vars, overwrite);
 
@@ -125,6 +144,7 @@ export function planStamp({ argv = [], platform = process.platform, env = proces
     { label: `apps/${id}/pubspec.yaml exists`, kind: 'exists', path: join(root, 'apps', id, 'pubspec.yaml') },
     { label: `node ${REGEN} --check`, kind: 'spawn', command: process.execPath, args: [join(root, ...REGEN.split('/')), '--check'], cwd: root },
     { label: `node ${TAG_OWNER} --check`, kind: 'spawn', command: process.execPath, args: [join(root, ...TAG_OWNER.split('/')), '--check'], cwd: root },
+    { label: `node ${APP_LICENCE_ROWS} --check --app ${id}`, kind: 'spawn', command: process.execPath, args: [licenceRows, '--check', '--app', id], cwd: root },
   ];
   return { problems, id, vars, overwrite, steps, post };
 }
@@ -165,7 +185,7 @@ export function runStamp(plan, { run = spawnStep, exists = existsSync, log = con
     );
     return 1;
   }
-  log(`ok  stamp-app: "${plan.id}" stamped; the site chain and the release tag filter both check clean.`);
+  log(`ok  stamp-app: "${plan.id}" stamped; the site chain, the release tag filter and its licence rows all check clean.`);
   return 0;
 }
 
