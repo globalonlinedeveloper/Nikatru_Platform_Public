@@ -171,7 +171,7 @@ void main() {
           'm',
           next: today.subtract(const Duration(days: 3)),
         );
-        final DateTime rolled = RenewalSchedule.nextOnOrAfter(
+        final DateTime rolled = RecurrenceSchedule.nextOnOrAfter(
           late.nextRenewal,
           Cadence.monthly,
           today,
@@ -309,7 +309,7 @@ void main() {
       final DateTime start = DateTime(today.year, today.month - 1, today.day);
       final Subscription s = _row('s', next: start);
       final DateTime next = s.nextCharge(now);
-      expect(next, RenewalSchedule.advance(start, Cadence.monthly));
+      expect(next, RecurrenceSchedule.advance(start, Cadence.monthly));
       expect(next.isBefore(today), isFalse);
     });
 

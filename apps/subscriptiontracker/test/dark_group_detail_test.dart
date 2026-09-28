@@ -346,7 +346,7 @@ void main() {
     );
     final DateTime today = DateTime.now();
     final DateTime renewal = netflix.nextCharge(today);
-    final DateTime firstPayment = RenewalSchedule.rollForward(
+    final DateTime firstPayment = RecurrenceSchedule.rollForward(
       netflix.firstChargeOn!,
       netflix.cycle!,
       DateTime(today.year, today.month, today.day),

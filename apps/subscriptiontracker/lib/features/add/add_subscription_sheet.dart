@@ -231,7 +231,7 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
   ///
   /// ⏱ 2026-09-28 · ST-T3b (ST-E4): it may be in the PAST now — "I started
   /// this last month" — and the next renewal is DERIVED from it by the
-  /// platform's rule ([RenewalSchedule]), shown under the field.
+  /// platform's rule ([RecurrenceSchedule]), shown under the field.
   DateTime _renewal = _oneCycleFrom(DateTime.now(), Cadence.monthly);
 
   /// Whether [_renewal] is the user's choice rather than the derived default.
@@ -338,7 +338,7 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
   /// carrying a time-of-day would only make two equal dates compare unequal.
   static DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
-  /// One billing cycle after [from] — `packages/core`'s [RenewalSchedule], the
+  /// One billing cycle after [from] — `packages/core`'s [RecurrenceSchedule], the
   /// rule the platform Worker rolls the stored date by, so the default the
   /// sheet offers is a date the server would also have produced.
   ///
@@ -346,7 +346,7 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
   /// which is why this is not `DateTime(y, m + 1, d)`: the rule clamps to the
   /// last day of the month, and covers 29 February on a yearly cycle too.
   static DateTime _oneCycleFrom(DateTime from, Cadence cycle) =>
-      RenewalSchedule.advance(_dateOnly(from), cycle);
+      RecurrenceSchedule.advance(_dateOnly(from), cycle);
 
   /// The cadence the controls describe, or null while the custom count is
   /// not a whole number 1..366.
@@ -392,7 +392,7 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
   /// itself when it is today or later, or its next occurrence when the user
   /// gave a past start date (ST-E4).
   DateTime _nextRenewal(Cadence c) =>
-      RenewalSchedule.nextOnOrAfter(_renewal, c, _dateOnly(DateTime.now()));
+      RecurrenceSchedule.nextOnOrAfter(_renewal, c, _dateOnly(DateTime.now()));
 
   Future<void> _pickRenewal() async {
     final DateTime today = _dateOnly(DateTime.now());

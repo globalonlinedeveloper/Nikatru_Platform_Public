@@ -1,5 +1,5 @@
 import 'package:nikatru_core/nikatru_core.dart'
-    show Cadence, CycleUnit, Money, RenewalSchedule;
+    show Cadence, CycleUnit, Money, RecurrenceSchedule;
 
 import '../../core/format/monthly_share.dart';
 
@@ -8,7 +8,7 @@ import '../../core/format/monthly_share.dart';
 /// fewer place for the two to drift. [Cadence] and [CycleUnit] for the same
 /// reason: a row names how often it bills.
 export 'package:nikatru_core/nikatru_core.dart'
-    show Cadence, CycleUnit, Money, RenewalSchedule;
+    show Cadence, CycleUnit, Money, RecurrenceSchedule;
 
 /// The legacy name of a row's cadence.
 ///
@@ -136,12 +136,12 @@ class Subscription {
           status == SubscriptionStatus.trialing);
 
   /// The first charge on or after [now]'s date — [nextRenewal] rolled by
-  /// [cycle] through `packages/core`'s [RenewalSchedule], the rule the platform
+  /// [cycle] through `packages/core`'s [RecurrenceSchedule], the rule the platform
   /// Worker rolls the stored date by. A row with no cadence is not rolled.
   DateTime nextCharge(DateTime now) {
     final Cadence? c = cycle;
     if (c == null || !c.isValid) return nextRenewal;
-    return RenewalSchedule.nextOnOrAfter(
+    return RecurrenceSchedule.nextOnOrAfter(
       nextRenewal,
       c,
       DateTime(now.year, now.month, now.day),
@@ -241,7 +241,7 @@ class Subscription {
   static DateTime? _dateOrNull(Object? raw) {
     if (raw is! String || raw.isEmpty) return null;
     try {
-      return RenewalSchedule.parseYmd(raw);
+      return RecurrenceSchedule.parseYmd(raw);
     } on FormatException {
       return null;
     }

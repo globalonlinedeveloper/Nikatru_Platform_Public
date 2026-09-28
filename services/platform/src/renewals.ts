@@ -36,7 +36,11 @@ export interface Cadence {
 }
 
 const CYCLE_UNITS: readonly CycleUnit[] = ['day', 'week', 'month', 'year'];
-/** The API's own bound on `cycle_every` (subscriptiontracker-api `MAX_CYCLE_EVERY`). */
+/**
+ * The API's own bound on `cycle_every` (subscriptiontracker-api `MAX_CYCLE_EVERY`).
+ * @ceiling none — bounds an input SHAPE (how many units one cycle spans), not a
+ * platform resource; the per-run query spend is bounded by the crossings cap.
+ */
 const MAX_EVERY = 366;
 
 /** A legacy `cycle` value, or a cadence, as the cadence it means. */
@@ -79,7 +83,7 @@ export function cadenceOfRow(row: {
 /**
  * Advance a 'YYYY-MM-DD' date by one billing cycle, staying in UTC.
  *
- * ONE RULE, TWO RUNTIMES: `packages/core`'s `RenewalSchedule.advance` is the
+ * ONE RULE, TWO RUNTIMES: `packages/core`'s `RecurrenceSchedule.advance` is the
  * Dart twin, and both are tested against every vector in
  * `contracts/renewals/vectors.json`. Change one and that file reds the other.
  *

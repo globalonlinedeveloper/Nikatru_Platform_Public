@@ -9,7 +9,7 @@ import { realPlatformDb } from './harness';
 // the 29th/30th into February, the leap day, the carried anchor, the DST week,
 // and the rollForward regressions (a 31st crossing EVERY month, the leap-day
 // recovery, the cross-run anchor residual). Each keeps its `why`. They moved so
-// that packages/core's RenewalSchedule — what every app SHOWS between these
+// that packages/core's RecurrenceSchedule — what every app SHOWS between these
 // nightly passes — is held to the SAME answers: its test iterates the same file.
 // Flip one expected date and this suite and that one both go red.
 // ─────────────────────────────────────────────────────────────────────────────

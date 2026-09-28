@@ -3,8 +3,8 @@
   "$comment": [
     "THE RENEWAL RULE, AS DATA. Read by BOTH implementations of it:",
     "  services/platform/src/renewals.ts (the nightly fan-out that rolls next_renewal and writes payment_history)",
-    "  packages/core/lib/src/dates/renewal_schedule.dart (every app's due labels and derived next renewal)",
-    "services/platform/test/renewals.test.ts and packages/core/test/renewal_schedule_test.dart each iterate",
+    "  packages/core/lib/src/dates/recurrence_schedule.dart (every app's due labels and derived next renewal)",
+    "services/platform/test/renewals.test.ts and packages/core/test/recurrence_schedule_test.dart each iterate",
     "every vector below, so a change to the rule in one runtime and not the other is a red suite, not a",
     "screen that disagrees with the server. Edit a vector and BOTH suites must still pass.",
     "Dates are 'YYYY-MM-DD' in UTC. unit is day|week|month|year and every is 1..366 (the API's bound).",

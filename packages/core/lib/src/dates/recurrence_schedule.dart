@@ -8,7 +8,7 @@
 /// unconfigured posture where no Worker runs at all. A TypeScript function
 /// cannot be called from Dart, so what the two share is the ANSWERS:
 /// `contracts/renewals/vectors.json` holds them, and
-/// `test/renewal_schedule_test.dart` and the Worker's `renewals.test.ts` each
+/// `test/recurrence_schedule_test.dart` and the Worker's `renewals.test.ts` each
 /// iterate every vector. A change to one implementation reds the other's suite
 /// rather than shipping a screen that disagrees with the server.
 ///
@@ -85,7 +85,7 @@ class Cadence {
   ///
   /// A year is 12 months, 52 weeks and 365 days here. Those are comparison
   /// figures (a weekly plan's "per month" is 52/12 charges), never a payment:
-  /// the dates a charge actually lands on come from [RenewalSchedule].
+  /// the dates a charge actually lands on come from [RecurrenceSchedule].
   ({int numerator, int denominator}) get chargesPerYear => switch (unit) {
     CycleUnit.day => (numerator: 365, denominator: every),
     CycleUnit.week => (numerator: 52, denominator: every),
@@ -104,16 +104,16 @@ class Cadence {
   String toString() => 'Cadence($every ${unit.name})';
 }
 
-/// The result of [RenewalSchedule.rollForward]: the first charge date on or
+/// The result of [RecurrenceSchedule.rollForward]: the first charge date on or
 /// after `today`, and every charge date crossed on the way (one payment each).
-class RenewalRoll {
-  const RenewalRoll(this.next, this.crossings);
+class RecurrenceRoll {
+  const RecurrenceRoll(this.next, this.crossings);
   final DateTime next;
   final List<DateTime> crossings;
 }
 
 /// The renewal rule. See the library comment for why it exists twice.
-abstract final class RenewalSchedule {
+abstract final class RecurrenceSchedule {
   /// At most this many crossings per [rollForward] — the Worker's own guard,
   /// so a pathological backlog costs the same bound in both runtimes.
   static const int maxCrossings = 240;
@@ -163,7 +163,7 @@ abstract final class RenewalSchedule {
   /// date crossed. A date equal to [today] is NOT crossed: that charge has
   /// not happened yet. The anchor is read from [next] once (or taken from
   /// [anchorDay]) and carried through the whole chain.
-  static RenewalRoll rollForward(
+  static RecurrenceRoll rollForward(
     DateTime next,
     Cadence cadence,
     DateTime today, {
@@ -177,7 +177,7 @@ abstract final class RenewalSchedule {
       crossings.add(cur);
       cur = advance(cur, cadence, anchorDay: anchor);
     }
-    return RenewalRoll(cur, crossings);
+    return RecurrenceRoll(cur, crossings);
   }
 
   /// The first charge on or after [today] for a row whose stored next charge

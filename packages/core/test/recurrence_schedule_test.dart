@@ -61,12 +61,12 @@ void main() {
   group('advance — every vector in contracts/renewals/vectors.json', () {
     for (final Map<String, dynamic> v in advance) {
       test(_label(v), () {
-        final DateTime got = RenewalSchedule.advance(
-          RenewalSchedule.parseYmd(v['from'] as String),
+        final DateTime got = RecurrenceSchedule.advance(
+          RecurrenceSchedule.parseYmd(v['from'] as String),
           _cadence(v),
           anchorDay: v['anchorDay'] as int?,
         );
-        expect(RenewalSchedule.ymd(got), v['to']);
+        expect(RecurrenceSchedule.ymd(got), v['to']);
       });
     }
   });
@@ -74,14 +74,17 @@ void main() {
   group('rollForward — every vector in contracts/renewals/vectors.json', () {
     for (final Map<String, dynamic> v in roll) {
       test(_label(v), () {
-        final RenewalRoll r = RenewalSchedule.rollForward(
-          RenewalSchedule.parseYmd(v['next'] as String),
+        final RecurrenceRoll r = RecurrenceSchedule.rollForward(
+          RecurrenceSchedule.parseYmd(v['next'] as String),
           _cadence(v),
-          RenewalSchedule.parseYmd(v['today'] as String),
+          RecurrenceSchedule.parseYmd(v['today'] as String),
           anchorDay: v['anchorDay'] as int?,
         );
-        expect(RenewalSchedule.ymd(r.next), v['expectNext']);
-        expect(r.crossings.map(RenewalSchedule.ymd).toList(), v['crossings']);
+        expect(RecurrenceSchedule.ymd(r.next), v['expectNext']);
+        expect(
+          r.crossings.map(RecurrenceSchedule.ymd).toList(),
+          v['crossings'],
+        );
       });
     }
   });
@@ -98,7 +101,7 @@ void main() {
             checked++;
             DateTime cur = DateTime(year, month, day);
             for (int i = 0; i < 12; i++) {
-              cur = RenewalSchedule.advance(
+              cur = RecurrenceSchedule.advance(
                 cur,
                 Cadence.monthly,
                 anchorDay: day,
@@ -107,9 +110,9 @@ void main() {
             final bool leapDay = month == 2 && day == 29;
             final String want = leapDay
                 ? '${year + 1}-02-28'
-                : RenewalSchedule.ymd(DateTime(year + 1, month, day));
-            if (RenewalSchedule.ymd(cur) != want) {
-              bad.add('${RenewalSchedule.ymd(start)} x12 -> $cur');
+                : RecurrenceSchedule.ymd(DateTime(year + 1, month, day));
+            if (RecurrenceSchedule.ymd(cur) != want) {
+              bad.add('${RecurrenceSchedule.ymd(start)} x12 -> $cur');
             }
           }
         }
@@ -119,18 +122,18 @@ void main() {
     });
 
     test('the backlog guard caps a pathological gap at the Worker\'s 240', () {
-      final RenewalRoll r = RenewalSchedule.rollForward(
+      final RecurrenceRoll r = RecurrenceSchedule.rollForward(
         DateTime(1900, 1, 31),
         Cadence.monthly,
         DateTime(2026, 7, 21),
       );
-      expect(r.crossings, hasLength(RenewalSchedule.maxCrossings));
-      expect(RenewalSchedule.maxCrossings, 240);
+      expect(r.crossings, hasLength(RecurrenceSchedule.maxCrossings));
+      expect(RecurrenceSchedule.maxCrossings, 240);
     });
 
     test('an out-of-range cadence is refused, never guessed', () {
       expect(
-        () => RenewalSchedule.advance(
+        () => RecurrenceSchedule.advance(
           DateTime(2026, 1, 1),
           const Cadence(0, CycleUnit.month),
         ),
@@ -139,7 +142,10 @@ void main() {
       expect(Cadence.tryParse(0, 'month'), isNull);
       expect(Cadence.tryParse(1, 'fortnight'), isNull);
       expect(Cadence.tryParse('1', 'month'), isNull);
-      expect(() => RenewalSchedule.parseYmd('2026-02-30'), throwsFormatException);
+      expect(
+        () => RecurrenceSchedule.parseYmd('2026-02-30'),
+        throwsFormatException,
+      );
     });
 
     test('the legacy cycle maps both ways, and only for every-1', () {

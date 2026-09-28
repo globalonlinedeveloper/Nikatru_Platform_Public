@@ -1,4 +1,4 @@
-import 'package:nikatru_core/nikatru_core.dart' show RenewalRoll;
+import 'package:nikatru_core/nikatru_core.dart' show RecurrenceRoll;
 
 import '../../core/app_config.dart';
 import '../models/budget_info.dart';
@@ -92,7 +92,7 @@ class SeedApiClient implements ApiClient {
 
   /// The charges this row has DATES for: every renewal from its
   /// `firstChargeOn` up to today, by the platform's own rule
-  /// ([RenewalSchedule]) — what the nightly pass would have written. A row
+  /// ([RecurrenceSchedule]) — what the nightly pass would have written. A row
   /// with no first charge date has no history, and says so.
   ///
   /// ⏱ 2026-09-28 · ST-T3b (ST-E1). This FABRICATED four monthly payments
@@ -106,7 +106,7 @@ class SeedApiClient implements ApiClient {
     final Cadence? cadence = s.cycle;
     if (first == null || cadence == null) return const <PaymentRecord>[];
     final DateTime now = DateTime.now();
-    final RenewalRoll roll = RenewalSchedule.rollForward(
+    final RecurrenceRoll roll = RecurrenceSchedule.rollForward(
       first,
       cadence,
       DateTime(now.year, now.month, now.day),

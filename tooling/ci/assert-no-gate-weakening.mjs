@@ -231,7 +231,7 @@ const ALLOWLIST = [
       'skip. The annotation states the platform the file was always about. (K-15.)',
   },
   {
-    file: 'packages/core/test/renewal_schedule_test.dart',
+    file: 'packages/core/test/recurrence_schedule_test.dart',
     rule: '@TestOn(',
     date: '2026-09-28',
     reason:

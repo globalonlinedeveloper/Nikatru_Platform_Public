@@ -5,7 +5,7 @@ as data that two runtimes are tested against.
 
 | File | What it is | Who reads it |
 |---|---|---|
-| `vectors.json` | **the authored examples**: `advance` (one step) and `rollForward` (a past-due date rolled to today-or-later, with the charges it crossed) | `services/platform/test/renewals.test.ts` and `packages/core/test/renewal_schedule_test.dart`, each iterating EVERY vector |
+| `vectors.json` | **the authored examples**: `advance` (one step) and `rollForward` (a past-due date rolled to today-or-later, with the charges it crossed) | `services/platform/test/renewals.test.ts` and `packages/core/test/recurrence_schedule_test.dart`, each iterating EVERY vector |
 | `vectors.schema.json` | JSON Schema (2020-12) for `vectors.json` | documentation of the shape today — NO guard grades the file against it yet; what fails loudly on a malformed vector is each suite's coverage floor and its per-vector parse |
 
 ## Why vectors and not a generator
@@ -14,7 +14,7 @@ There are two implementations of the rule and there have to be: the platform
 Worker's nightly fan-out (`services/platform/src/renewals.ts`) rolls
 `next_renewal` and writes `payment_history` for every app database, and every
 app shows due labels and a derived next renewal from
-`packages/core/lib/src/dates/renewal_schedule.dart` (`RenewalSchedule`),
+`packages/core/lib/src/dates/recurrence_schedule.dart` (`RecurrenceSchedule`),
 offline and in seed mode where no Worker runs. A TypeScript function cannot be
 called from Dart, so the thing that is shared is the ANSWERS: a vector edited
 here reds whichever suite's implementation disagrees. The red control is to flip

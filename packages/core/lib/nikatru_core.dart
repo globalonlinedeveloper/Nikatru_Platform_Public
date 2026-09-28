@@ -30,7 +30,7 @@ export 'src/content/ed25519_pack_verifier.dart';
 export 'src/content/pack_verifier.dart';
 export 'src/cancellation_transport.dart';
 export 'src/content_report_transport.dart';
-export 'src/dates/renewal_schedule.dart';
+export 'src/dates/recurrence_schedule.dart';
 export 'src/entitlement_cache.dart';
 export 'src/entitlement_transport.dart';
 export 'src/result.dart';
