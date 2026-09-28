@@ -46,6 +46,8 @@ export 'src/money/money_bag.dart';
 export 'src/money/money_format.dart';
 export 'src/notifications/catch_up_nudge.dart';
 export 'src/notifications/notification_service.dart';
+export 'src/portability/backup_envelope.dart';
+export 'src/portability/csv_codec.dart';
 export 'src/promo/promo_gate.dart';
 export 'src/promo/promo_objection.dart';
 export 'src/review/review_gate.dart';
