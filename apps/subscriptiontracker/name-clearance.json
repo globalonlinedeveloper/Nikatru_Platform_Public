@@ -1,7 +1,7 @@
 {
   "_why": [
     "GENERATED — whyLines() in tooling/store/name-clearance-why.mjs computes these lines from this record's own fields, and limb 11 of tooling/ci/assert-name-clearance.mjs refuses any other text. Change a field, then regenerate offline: node tooling/store/name-clearance.mjs --why --app subscriptiontracker",
-    "\"Nikatru Subscription Tracker\", probed 2026-09-24; overall UNDETERMINED. Re-probe (networked, ~20 external calls): node tooling/store/name-clearance.mjs 'Nikatru Subscription Tracker' --app subscriptiontracker --execute",
+    "\"Nikatru Subscription Tracker\", probed 2026-09-28; overall UNDETERMINED. Re-probe (networked, ~20 external calls): node tooling/store/name-clearance.mjs 'Nikatru Subscription Tracker' --app subscriptiontracker --execute",
     "Clear (PROVEN-FREE) — an authority answered \"no such name\" with its red control green: web, amo.",
     "Held (HELD) — the owner reserved the name in that store's console and recorded its id: none.",
     "Blocked for a submission (PROVEN-TAKEN) — a live record holds the name: none.",
@@ -15,11 +15,11 @@
   "slug": "nikatrusubscriptiontracker",
   "name": {
     "value": "Nikatru Subscription Tracker",
-    "asOf": "2026-09-24",
+    "asOf": "2026-09-28",
     "verify": "node tooling/store/name-clearance.mjs 'Nikatru Subscription Tracker' --app subscriptiontracker --execute",
     "verifyKind": "remote"
   },
-  "asOf": "2026-09-24",
+  "asOf": "2026-09-28",
   "channels": {
     "web": {
       "verdict": "PROVEN-FREE",
@@ -47,7 +47,7 @@
     "ios-appstore": {
       "verdict": "UNDETERMINED",
       "uniqueness": "global",
-      "why": "No iOS listing carries this name (control green, 195 result(s) scanned). THIS IS NOT PROOF OF AVAILABILITY: the search index omits unreleased and name-reserved records, and Apple exposes no availability endpoint short of creating a record — which is forbidden here. MANUAL STEP: the App Store Connect new-app dialog, read and cancelled without saving.",
+      "why": "No iOS listing carries this name (control green, 194 result(s) scanned). THIS IS NOT PROOF OF AVAILABILITY: the search index omits unreleased and name-reserved records, and Apple exposes no availability endpoint short of creating a record — which is forbidden here. MANUAL STEP: the App Store Connect new-app dialog, read and cancelled without saving.",
       "evidence": [],
       "control": {
         "what": "itunes.apple.com/lookup?bundleId=com.google.Gmail (known present: \"Gmail - Email by Google\")",
@@ -58,7 +58,7 @@
     "macos-appstore": {
       "verdict": "UNDETERMINED",
       "uniqueness": "global",
-      "why": "No macOS listing carries this name (control green, 34 result(s) scanned). THIS IS NOT PROOF OF AVAILABILITY: the search index omits unreleased and name-reserved records, and Apple exposes no availability endpoint short of creating a record — which is forbidden here. MANUAL STEP: the App Store Connect new-app dialog, read and cancelled without saving.",
+      "why": "No macOS listing carries this name (control green, 33 result(s) scanned). THIS IS NOT PROOF OF AVAILABILITY: the search index omits unreleased and name-reserved records, and Apple exposes no availability endpoint short of creating a record — which is forbidden here. MANUAL STEP: the App Store Connect new-app dialog, read and cancelled without saving.",
       "evidence": [],
       "control": {
         "what": "itunes.apple.com/lookup?bundleId=com.google.Gmail (known present: \"Gmail - Email by Google\")",
@@ -135,7 +135,7 @@
       "control": {
         "what": "addons.mozilla.org search?q=ublock (known non-empty)",
         "green": true,
-        "detail": "HTTP 200, count 2051"
+        "detail": "HTTP 200, count 2059"
       }
     }
   },
@@ -154,7 +154,7 @@
       "declaredIn": "apps/subscriptiontracker/ios/Runner.xcodeproj/project.pbxproj",
       "value": "com.nikatru.subscriptiontracker",
       "verdict": "UNDETERMINED",
-      "why": "apps/subscriptiontracker/ios/Runner.xcodeproj/project.pbxproj declares com.nikatru.subscriptiontracker — bound PERMANENTLY at the first upload on this channel and never recycled, so this is the string that cannot be taken back. No iOS listing carries this name (control green, 195 result(s) scanned). THIS IS NOT PROOF OF AVAILABILITY: the search index omits unreleased and name-reserved records, and Apple exposes no availability endpoint short of creating a record — which is forbidden here. MANUAL STEP: the App Store Connect new-app dialog, read and cancelled without saving."
+      "why": "apps/subscriptiontracker/ios/Runner.xcodeproj/project.pbxproj declares com.nikatru.subscriptiontracker — bound PERMANENTLY at the first upload on this channel and never recycled, so this is the string that cannot be taken back. No iOS listing carries this name (control green, 194 result(s) scanned). THIS IS NOT PROOF OF AVAILABILITY: the search index omits unreleased and name-reserved records, and Apple exposes no availability endpoint short of creating a record — which is forbidden here. MANUAL STEP: the App Store Connect new-app dialog, read and cancelled without saving."
     },
     {
       "channel": "macos-appstore",
@@ -162,7 +162,7 @@
       "declaredIn": "apps/subscriptiontracker/macos/Runner/Configs/AppInfo.xcconfig",
       "value": "com.nikatru.subscriptiontracker",
       "verdict": "UNDETERMINED",
-      "why": "apps/subscriptiontracker/macos/Runner/Configs/AppInfo.xcconfig declares com.nikatru.subscriptiontracker — bound PERMANENTLY at the first upload on this channel and never recycled, so this is the string that cannot be taken back. No macOS listing carries this name (control green, 34 result(s) scanned). THIS IS NOT PROOF OF AVAILABILITY: the search index omits unreleased and name-reserved records, and Apple exposes no availability endpoint short of creating a record — which is forbidden here. MANUAL STEP: the App Store Connect new-app dialog, read and cancelled without saving."
+      "why": "apps/subscriptiontracker/macos/Runner/Configs/AppInfo.xcconfig declares com.nikatru.subscriptiontracker — bound PERMANENTLY at the first upload on this channel and never recycled, so this is the string that cannot be taken back. No macOS listing carries this name (control green, 33 result(s) scanned). THIS IS NOT PROOF OF AVAILABILITY: the search index omits unreleased and name-reserved records, and Apple exposes no availability endpoint short of creating a record — which is forbidden here. MANUAL STEP: the App Store Connect new-app dialog, read and cancelled without saving."
     },
     {
       "channel": "windows-store",
