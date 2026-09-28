@@ -33,6 +33,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
@@ -120,9 +121,10 @@ List<Override> defaultWidthOverrides() => <Override>[
 /// No router: none of these properties is about navigation, and a router would
 /// drag the redirect guards in with it.
 ///
-/// [overrides] are appended AFTER [defaultWidthOverrides], and on riverpod
-/// 2.6.1 the later entry for a provider is the one that takes effect — measured,
-/// not assumed. So a test that genuinely needs a fake repository (an empty
+/// [overrides] REPLACE [defaultWidthOverrides]' entry for any provider they
+/// name. On riverpod 2.6.1 the later entry for a provider took effect (measured);
+/// Riverpod 3 refuses a provider overridden twice in one container, so the
+/// default is dropped here instead. So a test that genuinely needs a fake repository (an empty
 /// state, a failing fetch) or a pre-seeded store can say so without losing the
 /// two seams above, and without restating them.
 Future<void> pumpAt(
@@ -133,8 +135,17 @@ Future<void> pumpAt(
 }) async {
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
+  final Set<Object> replaced = <Object>{
+    for (final Override o in overrides) o.origin,
+  };
   final ProviderContainer c = ProviderContainer(
-    overrides: <Override>[...defaultWidthOverrides(), ...overrides],
+    // As the app's root ProviderScope (main.dart): no automatic retry (Riverpod 3).
+    retry: (int retryCount, Object error) => null,
+    overrides: <Override>[
+      for (final Override o in defaultWidthOverrides())
+        if (!replaced.contains(o.origin)) o,
+      ...overrides,
+    ],
   );
   addTearDown(c.dispose);
   await tester.pumpWidget(

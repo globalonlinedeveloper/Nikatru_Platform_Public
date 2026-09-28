@@ -62,6 +62,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart' show StatefulNavigationShell;
 import 'package:nikatru_core/nikatru_core.dart' as core;
@@ -167,7 +168,7 @@ class _SignedInAuth extends core.AuthRepository {
 /// Not optional: a `StatefulNavigationShell` cannot be constructed standalone,
 /// so the FAB under test is reachable ONLY through the router. Same rig, and
 /// the same overrides, as `a11y_semantics_test.dart`'s `pumpShell`. [overrides]
-/// are appended last, so on riverpod 2.6.1 they win (see `pumpAt`).
+/// replace the harness default for the same provider (see `pumpAt`).
 ///
 /// [grab] wraps the app in ONE `RepaintBoundary` keyed [_grabKey], so [_grab]
 /// can read the pixels a camera would. It changes no layout.

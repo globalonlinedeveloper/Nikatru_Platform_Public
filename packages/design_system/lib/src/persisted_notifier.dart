@@ -9,6 +9,12 @@
 /// package that may not see a `nikatru_*` type. The caller keeps its key and
 /// its codec, and the store call that names the key stays at the call site.
 ///
+/// 🔴 [mounted] IS ASKED AFTER EVERY AWAIT, BEFORE ANY CALLBACK TOUCHES THE
+/// OWNER. Riverpod 3 THROWS on a Ref or `state` used after its provider is
+/// disposed (2.x ignored the write), and a read that lands after a container
+/// is torn down would otherwise throw from [apply], be caught, and throw again
+/// from [onUnreadable] — uncaught, out of a hydration nobody awaits.
+///
 /// Every failure is swallowed, never thrown: nothing here may take an app down
 /// at launch. An unreadable store keeps the caller's default, or runs
 /// [onUnreadable] for a caller whose default blocks a decision (null "not
@@ -23,6 +29,7 @@ class PersistedValue<S, T> {
     required this.decode,
     required this.encode,
     required this.apply,
+    required this.mounted,
     this.onUnreadable,
   });
 
@@ -44,6 +51,10 @@ class PersistedValue<S, T> {
 
   /// Puts a value into the caller's state.
   final void Function(T value) apply;
+
+  /// Whether the owner can still take a value (a notifier: `ref.mounted`).
+  /// False drops a late read or write instead of applying it.
+  final bool Function() mounted;
 
   /// Runs when the store cannot be read and nothing has been [set].
   final void Function()? onUnreadable;
@@ -68,15 +79,21 @@ class PersistedValue<S, T> {
   /// loses data: a launch counted from the first frame while hydration was in
   /// flight incremented the EMPTY default, then the read landed and overwrote
   /// it with the stored count, so the launch went uncounted. Never throws.
-  Future<void> ensureHydrated() => _hydrating ?? Future<void>.value();
+  ///
+  /// Answers [mounted] once hydration is done: a caller that gets false has
+  /// no owner left to read or write, and stops.
+  Future<bool> ensureHydrated() async {
+    await _hydrating;
+    return mounted();
+  }
 
   Future<void> _hydrate() async {
     try {
       final T stored = decode(await read(await open()));
-      if (_chosen) return; // the user got there first — never clobber
+      if (_chosen || !mounted()) return; // the user got there first
       apply(stored);
     } catch (_) {
-      if (!_chosen) onUnreadable?.call();
+      if (!_chosen && mounted()) onUnreadable?.call();
     }
   }
 
@@ -90,6 +107,7 @@ class PersistedValue<S, T> {
   /// A counter's write, made after [ensureHydrated] rather than as a choice:
   /// applied in memory, then written best-effort. It marks nothing.
   Future<void> persist(T value) async {
+    if (!mounted()) return;
     apply(value);
     try {
       await write(await open(), encode(value));

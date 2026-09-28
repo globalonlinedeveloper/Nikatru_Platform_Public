@@ -26,6 +26,8 @@ import 'package:flutter/foundation.dart'
 // valid Dart, so only a real stamp can catch it. [pipeline C-16]
 import 'package:flutter/material.dart' show Locale, ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+// StateProvider (and its StateController) moved to legacy.dart in Riverpod 3.0.
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
@@ -257,8 +259,8 @@ final FutureProvider<String?> packageVersionProvider = FutureProvider<String?>((
 /// the version is still resolving, so a slow load never blocks the app behind
 /// the update wall.
 final Provider<bool> mustForceUpdateProvider = Provider<bool>((ref) {
-  final core.AppConfig? cfg = ref.watch(appConfigProvider).valueOrNull;
-  final String? version = ref.watch(packageVersionProvider).valueOrNull;
+  final core.AppConfig? cfg = ref.watch(appConfigProvider).value;
+  final String? version = ref.watch(packageVersionProvider).value;
   if (cfg == null || version == null) return false;
   return core.mustForceUpdate(version, cfg.minSupportedVersion);
 });
@@ -380,6 +382,7 @@ class ThemeModeController extends Notifier<ThemeMode> {
         decode: _decode,
         encode: _encode,
         apply: (mode) => state = mode,
+        mounted: () => ref.mounted,
       );
 
   @override
@@ -614,7 +617,7 @@ final Provider<core.ConsentStatus> analyticsConsentProvider =
     Provider<core.ConsentStatus>((ref) {
       final core.ConsentController? c = ref
           .watch(consentControllerProvider)
-          .valueOrNull;
+          .value;
       return c?.statusOf(core.ConsentPurpose.analytics) ??
           core.ConsentStatus.unknown;
     });
@@ -636,9 +639,7 @@ final Provider<core.ConsentStatus> analyticsConsentProvider =
 ///      below this line `unknown` means "never objected" and PERMITS, because
 ///      the surface runs on legitimate interest and not on consent.
 final Provider<bool> promoObjectedProvider = Provider<bool>((ref) {
-  final core.ConsentController? c = ref
-      .watch(consentControllerProvider)
-      .valueOrNull;
+  final core.ConsentController? c = ref.watch(consentControllerProvider).value;
   if (c == null) return true; // still loading — hold, do not show
   return core.PromoObjection(c).objected;
 });
@@ -659,7 +660,7 @@ final Provider<bool> promoObjectedProvider = Provider<bool>((ref) {
 /// whether the value means anything yet. One derivation, two readings, and the
 /// asymmetry written down once instead of inferred twice.
 final Provider<bool> promoObjectionKnownProvider = Provider<bool>(
-  (ref) => ref.watch(consentControllerProvider).valueOrNull != null,
+  (ref) => ref.watch(consentControllerProvider).value != null,
 );
 
 /// Whether the consent question has been ANSWERED — distinct from answered yes.
@@ -886,7 +887,7 @@ Future<void> recordAnalyticsConsent(
     // hole: the rebuilt recorder's `hydrate` refuses to restore a queue under a
     // denied decision and deletes the persisted copy, so the disk half dies
     // either way.
-    analytics: container.read(analyticsProvider).valueOrNull,
+    analytics: container.read(analyticsProvider).value,
   );
   container.invalidate(consentControllerProvider);
 }
@@ -991,7 +992,7 @@ final FutureProvider<core.Analytics> analyticsProvider =
 
 /// Record [event].
 ///
-/// AWAITS the provider rather than reading `.valueOrNull` and giving up. At
+/// AWAITS the provider rather than reading `.value` and giving up. At
 /// launch [analyticsProvider] is still resolving, so a `valueOrNull` read would
 /// silently drop exactly the launch events the funnel's denominator is made of —
 /// the metric would look like a conversion problem rather than a wiring one.
@@ -1708,6 +1709,7 @@ class RemindersEnabledController extends Notifier<bool> {
         decode: (raw) => raw == 'true',
         encode: (on) => on ? 'true' : 'false',
         apply: (on) => state = on,
+        mounted: () => ref.mounted,
       );
 
   @override
@@ -1737,6 +1739,9 @@ class RemindersEnabledController extends Notifier<bool> {
   /// The one place anything is cancelled. Never throws: it is reached from a
   /// settings write and from the boot path, and neither may take the app down.
   Future<void> _cancelSchedules() async {
+    // Riverpod 3: a provider gone by now cannot reach the service; the stored
+    // OFF is what [resyncOnStart] cancels from at the next launch.
+    if (!ref.mounted) return;
     final core.NotificationService svc = ref.read(notificationServiceProvider);
     try {
       // `init()` first: cancel is undefined before the plugin is initialised.
@@ -1904,6 +1909,7 @@ class CatchUpNudgeController extends Notifier<DateTime?> {
         // reminder fire at 14:30 IST.
         encode: (at) => at!.toUtc().toIso8601String(),
         apply: (at) => state = at,
+        mounted: () => ref.mounted,
       );
 
   @override
@@ -1945,6 +1951,7 @@ class LocaleController extends Notifier<Locale?> {
         decode: _decode,
         encode: (locale) => locale?.languageCode ?? '',
         apply: (locale) => state = locale,
+        mounted: () => ref.mounted,
       );
 
   @override
@@ -2027,6 +2034,7 @@ class ReviewPromptController extends Notifier<core.ReviewGateState> {
               ),
         encode: (next) => jsonEncode(next.toJson()),
         apply: (next) => state = next,
+        mounted: () => ref.mounted,
       );
 
   @override
@@ -2037,7 +2045,7 @@ class ReviewPromptController extends Notifier<core.ReviewGateState> {
 
   /// Count this launch, and stamp the install date the first time we see it.
   Future<void> recordLaunch({DateTime? now}) async {
-    await _stored.ensureHydrated();
+    if (!await _stored.ensureHydrated()) return;
     final DateTime at = now ?? DateTime.now().toUtc();
     await _stored.persist(
       state.copyWith(
@@ -2049,7 +2057,7 @@ class ReviewPromptController extends Notifier<core.ReviewGateState> {
 
   /// The user has asked not to be asked again. Never cleared by the chassis.
   Future<void> suppress() async {
-    await _stored.ensureHydrated();
+    if (!await _stored.ensureHydrated()) return;
     await _stored.persist(state.copyWith(suppressed: true));
   }
 
@@ -2059,11 +2067,12 @@ class ReviewPromptController extends Notifier<core.ReviewGateState> {
   /// platform cannot" from "not yet" — three outcomes that are identical from a
   /// bool and need completely different responses.
   Future<core.ReviewRequestOutcome> maybeAsk({DateTime? now}) async {
-    await _stored.ensureHydrated();
+    if (!await _stored.ensureHydrated()) return core.ReviewRequestOutcome.gated;
     final core.ReviewPrompter prompter = ref.read(reviewPrompterProvider);
     // The DEVICE half, asked before the calendar half: on Android this depends
     // on the Play Store being installed, which no build-time fact can tell us.
     final bool canAsk = await prompter.isAvailable();
+    if (!ref.mounted) return core.ReviewRequestOutcome.gated;
     final core.ReviewGateVerdict verdict = ref
         .read(reviewGateProvider)
         .decide(
@@ -2217,11 +2226,16 @@ class PromoCardStateController extends AsyncNotifier<core.PromoGateState> {
     try {
       return await future;
     } catch (_) {
-      return state.valueOrNull ?? const core.PromoGateState();
+      // Riverpod 3: a provider disposed mid-read has no state left to read.
+      if (!ref.mounted) return const core.PromoGateState();
+      return state.value ?? const core.PromoGateState();
     }
   }
 
   Future<void> _persist(core.PromoGateState next) async {
+    // Every caller awaited [_settled] first, and the provider may be gone by
+    // then; Riverpod 3 throws on a Ref used after that.
+    if (!ref.mounted) return;
     state = AsyncValue<core.PromoGateState>.data(next);
     try {
       final core.KeyValueStore kv = await ref.read(
@@ -2335,6 +2349,7 @@ class OnboardingSeenController extends Notifier<bool?> {
         decode: (raw) => raw == 'true',
         encode: (seen) => seen ? 'true' : 'false',
         apply: (seen) => state = seen,
+        mounted: () => ref.mounted,
         // Unreadable store ⇒ SHOW onboarding. Resolving to false rather than
         // staying null matters: null blocks the decision forever, and the cost
         // is asymmetric — showing it twice is an irritation, never showing it
@@ -2433,7 +2448,7 @@ class LegalAcceptanceController extends Notifier<String?> {
       AsyncValue<core.AuthUser?> next,
     ) {
       if (next.isLoading) return;
-      final bool hasSession = next.valueOrNull != null;
+      final bool hasSession = next.value != null;
       // ⚠️ THE TRANSITION, NOT THE VALUE. `authUserProvider` resolves to null on
       // every signed-out launch, and treating THAT as a sign-out would mark a
       // re-ask before anybody had signed in — which is the "ask on every
@@ -2487,7 +2502,7 @@ class LegalAcceptanceController extends Notifier<String?> {
       // an `await`, so a value assigned before this line would clobber a user
       // who ticked the box while the disk was still being read — and a partial
       // clobber is still a clobber.
-      if (_userChose) return; // the user got there first — never clobber
+      if (_userChose || !ref.mounted) return; // the user got there first
       final core.ConsentArtifact? a = c.artifactOf(core.ConsentPurpose.terms);
       // A session ended on this device since the last acceptance, so whoever is
       // holding it now has to answer for themselves. The ARTIFACT is untouched:
@@ -2501,7 +2516,7 @@ class LegalAcceptanceController extends Notifier<String?> {
       // where the app should be. The cost is asymmetric in the same direction
       // as onboarding's — asking twice is a nuisance, never asking means
       // somebody is using the product under terms they were never shown.
-      if (!_userChose) state = '';
+      if (!_userChose && ref.mounted) state = '';
     }
   }
 

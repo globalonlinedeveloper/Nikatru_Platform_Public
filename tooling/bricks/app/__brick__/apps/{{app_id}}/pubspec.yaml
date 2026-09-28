@@ -82,8 +82,9 @@ dependencies:
   nikatru_external_links:
     path: ../../packages/external_links
 
-  # State (Riverpod 2.x-LTS, non-codegen — locked chassis choice) + routing.
-  flutter_riverpod: ^2.5.0
+  # State (Riverpod 3.x, non-codegen — locked chassis choice: the lock is
+  # non-codegen; the 2.x-LTS this said until 2026-09-27 was the version) + routing.
+  flutter_riverpod: ^3.0.0
   go_router: ^18.0.0
 
   # External URLs (support mailto, legal links) open through

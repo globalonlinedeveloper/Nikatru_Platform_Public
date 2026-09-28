@@ -27,6 +27,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
@@ -58,7 +59,6 @@ import '../../core/theme/app_theme.dart';
 // through it, so `AuthUser` and `core.AuthUser` are the same type.
 import '../../data/auth/auth_repository.dart';
 import '../../l10n/app_localizations.dart';
-import '../../state/analytics_providers.dart';
 import '../../state/money_providers.dart';
 import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
@@ -110,9 +110,9 @@ class SettingsScreen extends ConsumerWidget {
     // value the user can edit from this very screen, and a snapshot read would
     // go on showing the old name after a successful save. [pipeline C-13], and
     // the anchor `assert-stamp-properties.mjs:766` names this exact expression.
-    final core.AuthUser? user = ref.watch(authUserProvider).valueOrNull;
+    final core.AuthUser? user = ref.watch(authUserProvider).value;
     final String runningVersion =
-        ref.watch(packageVersionProvider).valueOrNull ?? AppConfig.appVersion;
+        ref.watch(packageVersionProvider).value ?? AppConfig.appVersion;
     // The purchase capability, read here so the Upgrade row below can ask the
     // same object the paywall screen asks. `purchaseRailProvider` is a plain
     // `Provider` over config, so this is a synchronous read with no loading
@@ -721,7 +721,7 @@ class SettingsScreen extends ConsumerWidget {
             // ST-U2 (C44/D17): only while selling, or for a Pro user (ROSCA).
             if (ref.watch(authRepositoryProvider).currentUser != null &&
                 (ref.watch(sellingEnabledProvider) ||
-                    (ref.watch(entitlementsProvider).valueOrNull?.isPro ??
+                    (ref.watch(entitlementsProvider).value?.isPro ??
                         false))) ...<Widget>[
               _sectionLabel(context, l10n.plan),
               Container(

@@ -3,6 +3,7 @@ import 'dart:io' show SocketException;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 // `show` only: this package also exports a `SupabaseAuthRepository`, and so
 // does Subly's own data layer — an unnarrowed import makes that name ambiguous.
@@ -341,7 +342,7 @@ void main() {
         // by the router, which is correct and is what every pre-clickwrap install
         // sees once. The gate itself is driven in legal_gates_test.dart.
         legalReacceptanceNeededProvider.overrideWithValue(false),
-        authRepositoryProvider.overrideWith((Ref<core.AuthRepository> ref) {
+        authRepositoryProvider.overrideWith((Ref ref) {
           readAsTheErasureClosureDoes = () =>
               ref.read(platformRestClientProvider);
           return _FakeAuth();

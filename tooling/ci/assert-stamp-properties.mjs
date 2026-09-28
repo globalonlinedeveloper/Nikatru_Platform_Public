@@ -1473,7 +1473,7 @@ const REQUIRED_COVERAGE = [
     key: 'update-url-resolved-from-config',
     group: /group\(\s*'property: update-url-resolved-from-config'/,
     sources: [
-      { file: APP_ROOT, re: /ref\.watch\(appConfigProvider\)\.valueOrNull\?\.updateUrl\s*\?\?/, what: 'app.dart must RESOLVE the destination at runtime and fall back to the define — dropping the runtime half restores the circular kill-switch, and dropping the fallback leaves the button with nowhere to go while config is unresolved' },
+      { file: APP_ROOT, re: /ref\.watch\(appConfigProvider\)\.value\?\.updateUrl\s*\?\?/, what: 'app.dart must RESOLVE the destination at runtime and fall back to the define — dropping the runtime half restores the circular kill-switch, and dropping the fallback leaves the button with nowhere to go while config is unresolved' },
       { file: APP_ROOT, re: /onUpdate:\s*\(\)\s*=>\s*_openUpdate\(updateUrl\)/, what: 'the BUTTON must be wired to the resolved value — wiring it to AppConfig.updateUrl leaves the resolution above computed and unused, which reads as a working feature in review' },
       { file: PLATFORM_TYPES, re: /^\s*update_url:\s*string \| null;/m, what: 'the wire contract must carry the key, or there is nothing for the client to resolve and the runtime branch is unreachable in production' },
     ],

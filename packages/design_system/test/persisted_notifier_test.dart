@@ -23,6 +23,7 @@ class _Holder {
   int state;
   final List<int> applied = <int>[];
   int unreadable = 0;
+  bool mounted = true;
 }
 
 PersistedValue<_Store, int> _value(_Store store, _Holder h) =>
@@ -44,6 +45,7 @@ PersistedValue<_Store, int> _value(_Store store, _Holder h) =>
         h.state = v;
         h.applied.add(v);
       },
+      mounted: () => h.mounted,
       onUnreadable: () => h.unreadable++,
     );
 
@@ -164,5 +166,45 @@ void main() {
     expect(h.state, 5);
     expect(store.writes, isEmpty);
     expect(store.value, '1');
+  });
+
+  // Riverpod 3 THROWS on a Ref or `state` used after its provider is disposed.
+  // An owner gone while a read is in flight must receive NOTHING: not the
+  // value, and not the unreadable fallback either (the catch arm is the one
+  // that escaped uncaught when the value's apply had already thrown).
+  test('a read that lands after the owner is gone applies nothing', () async {
+    final _Store store = _Store('7')..held = Completer<String?>();
+    final _Holder h = _Holder(-1);
+    final Future<void> hydrating = _value(store, h).hydrate();
+    h.mounted = false;
+    store.held!.complete('7');
+    await hydrating;
+    expect(h.applied, isEmpty);
+  });
+
+  test(
+    'an unreadable store after the owner is gone runs no fallback',
+    () async {
+      final _Store store = _Store()..held = Completer<String?>();
+      final _Holder h = _Holder(-1);
+      final Future<void> hydrating = _value(store, h).hydrate();
+      h.mounted = false;
+      store.held!.completeError(StateError('unreadable store'));
+      await hydrating;
+      expect(h.unreadable, 0);
+    },
+  );
+
+  test('a counter whose owner went during hydration is told to stop', () async {
+    final _Store store = _Store('20')..held = Completer<String?>();
+    final _Holder h = _Holder(0);
+    final PersistedValue<_Store, int> v = _value(store, h)..hydrate();
+    final Future<bool> live = v.ensureHydrated();
+    h.mounted = false;
+    store.held!.complete('20');
+    expect(await live, isFalse);
+    await v.persist(21);
+    expect(h.applied, isEmpty);
+    expect(store.writes, isEmpty);
   });
 }

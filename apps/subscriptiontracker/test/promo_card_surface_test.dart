@@ -26,6 +26,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
@@ -661,6 +662,10 @@ void main() {
       final _MemStore store = _MemStore();
       store.data['nikatru.promo_card'] = truncated;
       final ProviderContainer c = ProviderContainer(
+        // As the app's root ProviderScope (main.dart): no automatic retry.
+        // Riverpod 3 retries the failed read by default, and a retrying
+        // provider's future stays pending, so no mutator below would return.
+        retry: (int retryCount, Object error) => null,
         overrides: <Override>[
           keyValueStoreProvider.overrideWith((_) async => store),
           appConfigProvider.overrideWith((_) async => _config()),

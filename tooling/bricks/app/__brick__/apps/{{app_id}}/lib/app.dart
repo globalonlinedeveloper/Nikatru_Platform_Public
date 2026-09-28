@@ -46,8 +46,7 @@ class {{app_id.pascalCase()}}App extends ConsumerWidget {
     // mustache, so nothing can format it — only a real stamp can, and the
     // app_brick lane runs `dart format --set-exit-if-changed` on that stamp.
     final String updateUrl =
-        ref.watch(appConfigProvider).valueOrNull?.updateUrl ??
-        AppConfig.updateUrl;
+        ref.watch(appConfigProvider).value?.updateUrl ?? AppConfig.updateUrl;
     return NikatruApp(
       title: AppConfig.appName,
       // [ADR 067] decision 2 — the CHASSIS delegate is composed BESIDE the
@@ -232,7 +231,7 @@ class _AnalyticsGateState extends ConsumerState<AnalyticsGate> {
       // Fire-and-forget: the framework will not wait, and a failed send just
       // leaves the batch queued for next launch. The guarantee lives in core's
       // `kFlushInterval` deadline; this only makes the common case earlier.
-      onBackground: () => ref.read(analyticsProvider).valueOrNull?.flush(),
+      onBackground: () => ref.read(analyticsProvider).value?.flush(),
       child: ConsentScrim(
         asking: asking,
         prompt: const _ConsentPrompt(),
@@ -262,7 +261,7 @@ class _AnalyticsGateState extends ConsumerState<AnalyticsGate> {
 /// Three constraints, each load-bearing:
 ///  · SAME CONSENT GATE as every other emitter: `notification_opened` is an
 ///    observation about a person and must not be recorded before they said yes.
-///  · IT AWAITS `analyticsProvider.future` rather than reading `.valueOrNull`,
+///  · IT AWAITS `analyticsProvider.future` rather than reading `.value`,
 ///    for the reason `logEvent` states in providers.dart — at launch the recorder
 ///    is still resolving, and a `valueOrNull` read silently drops exactly the
 ///    events it was subscribed to collect. Worse here than there: the consent

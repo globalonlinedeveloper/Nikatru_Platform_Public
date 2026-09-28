@@ -6,7 +6,7 @@
 // 🔴 THE DEFECT THIS FILE EXISTS TO KEEP FIXED
 // ═══════════════════════════════════════════════════════════════════════════
 // Until 2026-09-10 all five of these screens opened with some spelling of
-//     ref.watch(subscriptionsControllerProvider).valueOrNull ?? const []
+//     ref.watch(subscriptionsControllerProvider).value ?? const []
 // (budget:131, calendar:116, detail:108, insights:234, notifications:47).
 // `valueOrNull` is null while a fetch is IN FLIGHT and null when it has FAILED,
 // and `?? const []` renders both as a fetch that SUCCEEDED and returned
@@ -32,7 +32,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:subscriptiontracker/data/models/budget_info.dart';

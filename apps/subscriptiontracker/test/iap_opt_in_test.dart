@@ -37,6 +37,7 @@
 //     "+ a RevenueCat key" cases go red on every store channel, not only "asks
 //     the store once, at build": nothing configures the bridge at build.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_purchases/nikatru_purchases.dart';
@@ -174,6 +175,10 @@ Future<({PurchaseRail rail, List<_FakeBridge> built})> _railFor(
   );
   addTearDown(c.dispose);
   await c.read(appConfigProvider.future);
+  // Riverpod 3 pauses a provider nobody listens to, and a paused stream never
+  // emits: held open here as the app's own readers hold it (the rail listens
+  // to it), or this await would wait for ever.
+  c.listen(authUserProvider, (_, _) {});
   await c.read(authUserProvider.future);
   final PurchaseRail rail = c.read(purchaseRailProvider);
   // Let the early store ask (configure → storePlans) run to the end.

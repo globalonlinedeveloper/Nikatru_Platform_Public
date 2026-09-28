@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subscriptiontracker/data/models/subscription.dart';
@@ -14,7 +15,7 @@ import 'package:subscriptiontracker/state/subscriptions_controller.dart';
 ///
 /// `activation` is a once-per-install signal and the denominator the whole funnel
 /// is read against. `SubscriptionsController.addSubscription` decided whether it
-/// had fired by reading `state.valueOrNull ?? const []` — so a list that was
+/// had fired by reading `state.value ?? const []` — so a list that was
 /// still LOADING, or one whose fetch had FAILED, was indistinguishable from a
 /// user who owns nothing, and an add during either state re-fired activation on
 /// an install that activated months ago. Nothing could go red: the event was

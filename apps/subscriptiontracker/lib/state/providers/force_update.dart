@@ -29,8 +29,8 @@ final FutureProvider<String?> packageVersionProvider = FutureProvider<String?>((
 /// the version is still resolving, so a slow load never blocks the app behind
 /// the update wall.
 final Provider<bool> mustForceUpdateProvider = Provider<bool>((ref) {
-  final core.AppConfig? cfg = ref.watch(appConfigProvider).valueOrNull;
-  final String? version = ref.watch(packageVersionProvider).valueOrNull;
+  final core.AppConfig? cfg = ref.watch(appConfigProvider).value;
+  final String? version = ref.watch(packageVersionProvider).value;
   if (cfg == null || version == null) return false;
   return core.mustForceUpdate(version, cfg.minSupportedVersion);
 });

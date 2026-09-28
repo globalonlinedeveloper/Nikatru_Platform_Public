@@ -13,9 +13,19 @@
 // MUTATION PROOF: render `welcomeBack` unconditionally and the first case goes
 // red; drop `ref.watch(signedInBeforeKeeperProvider)` from
 // lib/core/router/router_provider.dart and the third does.
+//
+// And the flag's hydration under Riverpod 3, which THROWS on a Ref (or
+// `state`) used after its provider is disposed: drop `&& ref.mounted` from
+// the catch arm of `SignedInBeforeController._hydrate` and the last case
+// goes red ("Cannot use the Ref of NotifierProvider<SignedInBeforeController,
+// bool?> after it has been disposed"); drop it from both arms, the code as
+// ST-T1b wrote it under 2.x, and the last two do.
 // ─────────────────────────────────────────────────────────────────────────────
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subscriptiontracker/app.dart';
@@ -28,6 +38,14 @@ import 'support/user_state_fakes.dart';
 import 'support/width_harness.dart';
 
 const String _flag = 'nikatru.signed_in_before';
+
+/// A store whose every read answers only when [answer] completes: long enough
+/// for the provider that asked to be disposed first.
+class _HeldStore extends MemStore {
+  final Completer<String?> answer = Completer<String?>();
+  @override
+  Future<String?> read(String key) => answer.future;
+}
 
 /// The heading, by its key AND its words — the key says it is the door's
 /// heading, the words are what this file is about.
@@ -111,5 +129,33 @@ void main() {
       expect(_heading('Welcome back'), findsOneWidget);
       expect(store.data[_flag], 'true', reason: 'sign-out cleared the mark');
     },
+  );
+
+  // The store has resolved and the flag read is in flight when the container
+  // goes, as a ProviderScope leaving or a test tearing down does.
+  Future<void> readOutlivesTheProvider(void Function(_HeldStore) answer) async {
+    final _HeldStore store = _HeldStore();
+    final ProviderContainer c = ProviderContainer(
+      overrides: <Override>[
+        keyValueStoreProvider.overrideWith((_) async => store),
+      ],
+    );
+    expect(c.read(signedInBeforeProvider), isNull);
+    await pumpEventQueue();
+    c.dispose();
+    answer(store);
+    await pumpEventQueue();
+  }
+
+  test(
+    'a flag read answering after its provider is gone is dropped, not thrown',
+    () => readOutlivesTheProvider((_HeldStore s) => s.answer.complete('true')),
+  );
+
+  test(
+    'a flag read failing after its provider is gone is dropped, not thrown',
+    () => readOutlivesTheProvider(
+      (_HeldStore s) => s.answer.completeError(StateError('store gone')),
+    ),
   );
 }
