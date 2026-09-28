@@ -229,6 +229,26 @@ jobs:
         id: listing
         run: node --single-threaded tooling/ci/assert-listing-assets.mjs
 
+      # why: A CAPTURE IS FINISHED WHEN EVERY SET DERIVED FROM IT IS
+      # (O-CAPTURE-LEAVES-DERIVED-SETS-STALE). The apps.gov.in set is derived from
+      # the Play phone set, and the pull request below is GITHUB_TOKEN's, so ci.yml
+      # never runs on it. finish-capture.mjs re-derives every set whose register
+      # entry declares derivedFrom on this channel and prints each path on stdout;
+      # the pull request adds them. No `if:` on either step: a dry run re-derives
+      # and checks too, and its artifact stays the capture directories (a derived
+      # set is a function of them). The lane test holds the order: capture,
+      # guards, finish, check, pull request, and the purge last.
+      - name: Re-derive every set the register derives from this capture
+        id: finish
+        run: |
+          set -euo pipefail
+          node --single-threaded tooling/store/finish-capture.mjs --app "$APP" --channel android-play > "${RUNNER_TEMP}/finish-capture.txt"
+          cat "${RUNNER_TEMP}/finish-capture.txt"
+          echo "paths=$(tr '\n' ' ' < "${RUNNER_TEMP}/finish-capture.txt")" >> "$GITHUB_OUTPUT"
+
+      - name: Every derived set was derived from the files in this tree
+        run: node tooling/ci/assert-derived-sets.mjs
+
       # why: A FAILED RUN THREW ITS PIXELS AWAY, TWICE. Runs 35483690951 and
       # 35488534460 both captured all four phone frames, failed afterwards on an
       # exception, and uploaded nothing — the upload below only runs on success,
@@ -302,13 +322,13 @@ jobs:
         if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ github.token }}
+          # why: both capture sets, for the same reason as the upload above (a PR
+          # proposing one device type leaves the listing one type short, the state
+          # assert-play-device-coverage.mjs fails the submission lane for), then
+          # every derived set the finish step printed.
+          SHOTS: apps/${{ needs.gate.outputs.app }}/store/android-play/screenshots apps/${{ needs.gate.outputs.app }}/store/android-play/screenshots-tablet ${{ steps.finish.outputs.paths }}
         run: |
           set -euo pipefail
-          # Both sets, for the same reason as the upload above: the capture
-          # produces two device types and a PR proposing one is a PR that leaves
-          # the listing one type short — which is exactly the state
-          # assert-play-device-coverage.mjs fails the submission lane for.
-          SHOTS="apps/${APP}/store/android-play/screenshots apps/${APP}/store/android-play/screenshots-tablet"
           BRANCH="chore/play-screenshots-${{ github.run_id }}"
 
           git config user.name  "github-actions[bot]"
@@ -316,7 +336,7 @@ jobs:
 
           # -f: the listing directory is not gitignored, but being explicit means
           # a future ignore rule cannot silently drop the payload of this PR.
-          git add -f $SHOTS
+          for d in $SHOTS; do git add -f "$d"; done
           if git diff --cached --quiet; then
             echo "::notice title=Nothing to propose::The captured set is byte-identical to what is already committed. The listing already carries this exact capture; no pull request is needed."
             exit 0
@@ -559,6 +579,19 @@ jobs:
       - name: The captured set satisfies the device-coverage guard
         run: node --single-threaded tooling/ci/assert-play-device-coverage.mjs
 
+      # why: the Play job's reason. No set is derived from linux-snap today, so
+      # this prints nothing; the day one is declared, this job proposes it.
+      - name: Re-derive every set the register derives from this capture
+        id: finish
+        run: |
+          set -euo pipefail
+          node --single-threaded tooling/store/finish-capture.mjs --app "$APP" --channel linux-snap > "${RUNNER_TEMP}/finish-capture.txt"
+          cat "${RUNNER_TEMP}/finish-capture.txt"
+          echo "paths=$(tr '\n' ' ' < "${RUNNER_TEMP}/finish-capture.txt")" >> "$GITHUB_OUTPUT"
+
+      - name: Every derived set was derived from the files in this tree
+        run: node tooling/ci/assert-derived-sets.mjs
+
       # why: the same retraction the Play job carries — two runs captured every
       # frame, failed afterwards, uploaded nothing, and the pixels existed
       # nowhere. A different artifact name and `if: failure()`, so bytes that did
@@ -603,7 +636,8 @@ jobs:
         if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ github.token }}
-          SHOTS: ${{ steps.reg.outputs.dir }}
+          # why: the capture directory, then every derived set the finish step printed.
+          SHOTS: ${{ steps.reg.outputs.dir }} ${{ steps.finish.outputs.paths }}
         run: |
           set -euo pipefail
           BRANCH="chore/linux-snap-screenshots-${{ github.run_id }}"
@@ -611,7 +645,7 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add -f "$SHOTS"
+          for d in $SHOTS; do git add -f "$d"; done
           if git diff --cached --quiet; then
             echo "::notice title=Nothing to propose::The captured set is byte-identical to what is already committed. The listing already carries this exact capture; no pull request is needed."
             exit 0
@@ -861,6 +895,18 @@ jobs:
       - name: The captured set satisfies the device-coverage guard
         run: node --single-threaded tooling/ci/assert-play-device-coverage.mjs
 
+      # why: the Play job's reason, for the dispatched channel.
+      - name: Re-derive every set the register derives from this capture
+        id: finish
+        run: |
+          set -euo pipefail
+          node --single-threaded tooling/store/finish-capture.mjs --app "$APP" --channel "$STORE_CHANNEL" > "${RUNNER_TEMP}/finish-capture.txt"
+          cat "${RUNNER_TEMP}/finish-capture.txt"
+          echo "paths=$(tr '\n' ' ' < "${RUNNER_TEMP}/finish-capture.txt")" >> "$GITHUB_OUTPUT"
+
+      - name: Every derived set was derived from the files in this tree
+        run: node tooling/ci/assert-derived-sets.mjs
+
       - name: Keep the frames of a FAILED run, for diagnosis only
         if: failure() && steps.reg.outputs.dir != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -901,7 +947,8 @@ jobs:
         if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ github.token }}
-          SHOTS: ${{ steps.reg.outputs.dir }}
+          # why: the capture directory, then every derived set the finish step printed.
+          SHOTS: ${{ steps.reg.outputs.dir }} ${{ steps.finish.outputs.paths }}
         run: |
           set -euo pipefail
           BRANCH="chore/${STORE_CHANNEL}-screenshots-${{ github.run_id }}"
@@ -909,7 +956,7 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add -f "$SHOTS"
+          for d in $SHOTS; do git add -f "$d"; done
           if git diff --cached --quiet; then
             echo "::notice title=Nothing to propose::The captured set is byte-identical to what is already committed. The listing already carries this exact capture; no pull request is needed."
             exit 0
@@ -1159,6 +1206,18 @@ jobs:
       - name: The captured sets satisfy the device-coverage guard
         run: node --single-threaded tooling/ci/assert-play-device-coverage.mjs
 
+      # why: the Play job's reason.
+      - name: Re-derive every set the register derives from this capture
+        id: finish
+        run: |
+          set -euo pipefail
+          node --single-threaded tooling/store/finish-capture.mjs --app "$APP" --channel ios-appstore > "${RUNNER_TEMP}/finish-capture.txt"
+          cat "${RUNNER_TEMP}/finish-capture.txt"
+          echo "paths=$(tr '\n' ' ' < "${RUNNER_TEMP}/finish-capture.txt")" >> "$GITHUB_OUTPUT"
+
+      - name: Every derived set was derived from the files in this tree
+        run: node tooling/ci/assert-derived-sets.mjs
+
       - name: Keep the frames of a FAILED run, for diagnosis only
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -1201,7 +1260,8 @@ jobs:
         if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ github.token }}
-          SHOTS: ${{ steps.reg.outputs.dirs }}
+          # why: the capture directories, then every derived set the finish step printed.
+          SHOTS: ${{ steps.reg.outputs.dirs }} ${{ steps.finish.outputs.paths }}
         run: |
           set -euo pipefail
           BRANCH="chore/ios-screenshots-${{ github.run_id }}"

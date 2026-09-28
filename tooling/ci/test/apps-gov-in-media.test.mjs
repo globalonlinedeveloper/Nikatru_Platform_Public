@@ -19,7 +19,7 @@ import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { encodeRgba, decodeRgba } from '../../store/png-codec.mjs';
-import { padToAspect, areaAverage, deriveScreenshot, checkApp, writeApp, METHOD } from '../assert-apps-gov-in-media.mjs';
+import { padToAspect, areaAverage, deriveScreenshot, checkApp, writeApp, METHOD, DERIVER } from '../assert-apps-gov-in-media.mjs';
 
 const GUARD = join(resolve(dirname(fileURLToPath(import.meta.url)), '..'), 'assert-apps-gov-in-media.mjs');
 const SHOTS = ['01-home.png', '02-calendar.png', '03-insights.png', '04-budget.png'];
@@ -164,6 +164,51 @@ describe('writeApp refuses what it must not derive from', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+// ⏱ 2026-09-27 · THE DERIVER CONTRACT (O-CAPTURE-LEAVES-DERIVED-SETS-STALE, AR-D3b).
+// tooling/store/finish-capture.mjs calls DERIVER.write after every Play capture, so
+// a write over an unchanged source must leave every byte where it was, whichever
+// zlib encoded the committed file; and the record lists what it was derived from.
+describe('writeApp as the deriver finish-capture.mjs runs', () => {
+  let root;
+  let t;
+  const sha = (b) => createHash('sha256').update(b).digest('hex');
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'agi-media-'));
+    t = makeTree(root);
+    writeApp(root, 'demo');
+  });
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  test('keeps a committed image whose pixels already equal the derivation, byte for byte', () => {
+    const out = join(t.agi, 'screenshots', '01-home.png');
+    const other = encodeRgba(decodeRgba(readFileSync(out)), { opaque: false });
+    assert.notEqual(sha(other), sha(readFileSync(out)), 'the fixture needs a second encoding of the same pixels');
+    writeFileSync(out, other);
+    const cap = writeApp(root, 'demo');
+    assert.equal(sha(readFileSync(out)), sha(other));
+    assert.equal(cap.files[0].sha256, sha(other));
+    assert.deepEqual(checkApp(root, 'demo').problems, []);
+  });
+  test('NEGATIVE: an image whose pixels are not the derivation is rewritten', () => {
+    const out = join(t.agi, 'screenshots', '01-home.png');
+    const derived = readFileSync(out);
+    writeFileSync(out, encodeRgba(image(155, 290, () => [1, 1, 1]), { opaque: true }));
+    writeApp(root, 'demo');
+    assert.equal(sha(readFileSync(out)), sha(derived));
+  });
+  test('DERIVER exposes write and check, and the record lists every source with its sha256', () => {
+    assert.equal(typeof DERIVER.write, 'function');
+    assert.equal(typeof DERIVER.check, 'function');
+    const cap = JSON.parse(readFileSync(join(t.agi, 'screenshots', 'CAPTURE.json'), 'utf8'));
+    assert.deepEqual(cap.derivation.sources.map((s) => s.file), [
+      ...SHOTS.map((n) => `apps/demo/store/android-play/screenshots/${n}`),
+      'apps/demo/store/android-play/store-icon-512.png',
+    ]);
+    assert.equal(cap.derivation.sources[4].sha256, sha(readFileSync(join(t.play, 'store-icon-512.png'))));
+    assert.deepEqual(DERIVER.check(root, 'demo').problems, []);
   });
 });
 

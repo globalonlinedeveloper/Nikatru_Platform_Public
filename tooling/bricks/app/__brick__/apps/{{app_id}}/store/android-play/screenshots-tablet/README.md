@@ -46,15 +46,20 @@ looked for.
 
 ## How to fill it
 
-1. Build and run the app for Android.
+1. Dispatch **Store screenshots** (`.github/workflows/store-screenshots.yml`) for
+   this app, channel `android-play`.
 2. `tooling/store/capture-play-screenshots.mjs` drives the SAME capture suite at
-   a second viewport — CSS 900x1600 at DPR 2 → **1800x3200**, inside the
-   expanded window class `AppBreakpoints` declares, exactly 9:16, and clear of
-   every bound above. Same suite means the same guarded shutter in
+   the second viewport the register's `tablet` row declares (its `capture`
+   block), inside the expanded window class `AppBreakpoints` declares and clear
+   of every bound above. Same suite means the same guarded shutter in
    `store_capture_guard.dart`; adding a form factor opens no second path to the
-   pixels.
-3. Commit the PNGs here, with the `CAPTURE.json` the live run writes. A
-   screenshot with no provenance is evidence about nothing.
+   pixels. The live run writes `CAPTURE.json` beside the frames, and this README
+   never repeats what that record holds (`tooling/ci/assert-derived-sets.mjs`
+   refuses it).
+3. The job then runs `tooling/store/finish-capture.mjs --app {{app_id}} --channel android-play`
+   and `tooling/ci/assert-derived-sets.mjs`, and proposes the capture directories
+   and every derived path in one pull request. A screenshot with no provenance is
+   evidence about nothing, so the frames are never committed by hand.
 
 ## 🔴 DO NOT PUT A PLACEHOLDER HERE
 

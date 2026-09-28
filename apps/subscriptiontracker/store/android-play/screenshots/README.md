@@ -1,301 +1,63 @@
-# Screenshot slot — Google Play (`android-play`)
+# Screenshot slot — Google Play (`android-play`), phone set
 
-> ## 🔴 FOUR FRAMES ARE PUBLISHED, NOT FIVE — `05-settings.png` WAS REMOVED 2026-08-05
->
-> The capture produced five. The Settings frame renders the signed-in account at the top of the card in
-> large legible type, and CI captures signed in as the end-to-end test account, so it read
-> **`subscriptiontracker-e2e+…@nikatru.com`** — an internal test address on a public marketing asset. It is not the
-> owner's PII, but it is a test artefact on a store listing, and it is the first thing a reader's eye lands
-> on in that frame. **Removed rather than published.**
->
-> **Re-running the workflow does NOT fix this.** The capture signs in as that same account, so any frame
-> showing the account card carries the address. 🔴 **This is a defect in
-> `tooling/store/capture-play-screenshots.mjs`, not in the curation** — either that frame should not be
-> captured, or the capture needs a display-safe account. Until then, every future run reproduces it.
->
-> ## ✅ FIXED IN THE CAPTURE, 2026-08-05 — the paragraph above is now history, not a standing risk
->
-> The capture no longer photographs Settings **and cannot photograph the account from any screen**:
->
-> 1. `integration_test/store_screenshots_test.dart` captures **four** frames and no longer visits
->    Settings. Nothing about the remaining four is staged, masked or edited — a store screenshot showing
->    a UI state the app never draws would be a worse problem than the one being fixed.
-> 2. Every frame goes through `captureFrame` in `integration_test/store_capture_guard.dart`, which reads
->    the **live widget tree** one instruction before the shutter and refuses to release it while the
->    session's own address or profile name is on screen. That covers what curation and a screen-by-screen
->    audit cannot: a shared widget nobody looked at, a frame added months from now, and a **local** run —
->    `E2E_EMAIL` comes from the environment, so the leak was never bounded by the CI account.
-> 3. `tooling/ci/assert-listing-assets.mjs` fails the build on **every push** if a captured frame's screen
->    reads `.email` off the session, if a capture bypasses the guarded shutter, or if a frame cannot be
->    resolved to the screen it photographs. `capture-play-screenshots.mjs` runs the same check before it
->    starts a browser.
-> 4. The refusal is unit-tested in both directions by `apps/subscriptiontracker/test/store_capture_guard_test.dart`, and
->    the static limb has recorded real-tree failing cases in `tooling/ci/test/listing-assets.test.mjs`.
->
-> ⚠️ **A display-safe account was considered and rejected.** It still puts an address on a marketing
-> asset, and it is only safe while nobody changes the provisioner or runs the live lane with their own
-> credentials — with no check downstream able to notice, because *nothing here can read text in a PNG*.
->
-> **Cost of removal: none.** `tooling/channel-register.json` sets `minCount: 2` and
-> `recommendedCount: 4`; four frames satisfy both. `CAPTURE.json` records BOTH numbers — five captured,
-> four published — because `assert-listing-assets.mjs` compares its `count` to the bytes beside it, and
-> editing that count alone would have produced provenance that passes the guard and lies about the run.
->
-> ⚠️ **The guard passed on all five.** It measures size, colour type, decodability and the demo-banner
-> band — it cannot read text. Everything below was found by a human opening the images, and that is the
-> gap: **no assertion here can see what a screenshot SAYS.**
+This file is the PROCEDURE for the Play phone screenshot set. What the set holds
+today — its frames, their size, the viewport, the count, the posture — is recorded
+by the capture in `CAPTURE.json` beside this file and measured by the guards below.
+Read those; this file restates none of it (`tooling/ci/assert-derived-sets.mjs`
+refuses a README that repeats a value `CAPTURE.json` records). The history of this
+directory is in `git log -- apps/subscriptiontracker/store/android-play/screenshots`.
 
-The Play phone screenshot set for Subly. **Nothing here is drawn by hand and
-nothing here is dropped in from a phone** — the set is an OUTPUT:
+## How the set is made
+
+Nothing here is drawn by hand or dropped in from a phone. The set is an OUTPUT of
+one workflow, and a change to it arrives as a pull request:
+
+1. **Capture.** Dispatch **Store screenshots** (`.github/workflows/store-screenshots.yml`,
+   `workflow_dispatch`, app `subscriptiontracker`, channel `android-play`). It
+   provisions a throwaway confirmed user against the sandbox Workers, drives a LIVE
+   build through `tooling/store/capture-play-screenshots.mjs --app subscriptiontracker`,
+   and writes the frames and `CAPTURE.json` here and in `../screenshots-tablet/`.
+   A `dry_run: true` dispatch does all of it and opens no pull request.
+2. **Check.** The same job runs `tooling/ci/assert-listing-assets.mjs` (count,
+   dimensions against `CAPTURE.json`, aspect, format, recorded posture, the demo
+   banner and the ink of every frame) and `tooling/ci/assert-play-device-coverage.mjs`.
+3. **Finish.** The job runs
+   `node --single-threaded tooling/store/finish-capture.mjs --app subscriptiontracker --channel android-play`,
+   which re-derives every set whose register entry declares `derivedFrom` on this
+   channel (today the apps.gov.in screenshots and icon, `../../apps-gov-in/`) and
+   prints each path, then `tooling/ci/assert-derived-sets.mjs`, which compares every
+   derived set's recorded source hashes with these files.
+4. **Propose.** The job's pull request adds both capture directories and every path
+   the finish step printed. Merging it is the human review: open the images in the
+   Files changed tab. No guard can judge whether these are the screens worth
+   showing, and Google requires screenshots to *"demonstrate the actual in-app or
+   in-game experience"*.
+5. **Purge.** The throwaway user is deleted whatever happened above.
+
+To re-derive locally after a merge that changed these frames:
 
 ```
-node tooling/store/capture-play-screenshots.mjs --app subscriptiontracker     # live → here
-node tooling/store/capture-play-screenshots.mjs --proof         # demo → temp
+node --single-threaded tooling/store/finish-capture.mjs --app subscriptiontracker --channel android-play
 ```
 
-A screenshot set nobody can regenerate is stale the first time the UI changes,
-and it goes stale **silently**: the store keeps showing last year's design and
-nothing in this repository knows. That is the same drift `[pipeline D-5]` removed
-from the listing text, applied to the pictures.
+## Rules this set is graded against
 
-## ✅ Required dimensions — FETCHED 2026-08-04, no longer UNVERIFIED
+The Play screenshot rules (count, dimensions, aspect, format, device types), each
+with its source quoted verbatim, live in `tooling/channel-register.json` →
+`storeMetadataContract.perChannel["android-play"].graphicAssets.screenshots`.
+`tooling/ci/assert-listing-assets.mjs` enforces them from there, and refuses a
+limit declared without a `source`: an invented limit fires on correct input.
 
-This table used to have six rows all reading *"⚠️ UNVERIFIED"* under the correct
-instruction *"do not fill a number in from memory"*. Every number below now comes
-from **one** primary page, read in full on **2026-08-04**:
+## Rules for editing this directory
 
-> `https://support.google.com/googleplay/android-developer/answer/9866151`
-> — *Add preview assets to showcase your app*, Play Console Help
-
-| Field | Value | Verbatim from that page |
-|---|---|---|
-| Phone screenshot count | **min 2 to publish, max 8** per device type | *"You must provide a minimum of two screenshots across different device types to publish your store listing"* · *"You can add up to 8 screenshots for each supported device type."* |
-| Phone screenshot dimensions | **min side 320px, max side 3840px** | *"Minimum dimension: 320px"* · *"Maximum dimension: 3840px"* |
-| Aspect ratio ceiling | **max side ≤ 2 × min side** | *"The maximum dimension of your screenshot can't be more than twice as long as the minimum dimension."* |
-| Accepted formats | **JPEG or 24-bit PNG, no alpha** | *"JPEG or 24-bit PNG (no alpha)"* |
-| Recommended portrait | **≥ 4 shots at ≥ 1080px, 9:16, min 1080×1920** | *"For apps, you must provide at least four screenshots with minimum 1080px resolution. These should be … 9:16 for portrait screenshots (minimum 1080x1920px)."* |
-| Feature graphic | **1024×500, JPEG or 24-bit PNG (no alpha)** — `../feature-graphic.png` | *"Dimensions: 1024px by 500px"* |
-| App icon | **512×512, 32-bit PNG (with alpha), ≤ 1024KB** — `../store-icon-512.png` | *"32-bit PNG (with alpha)"* · *"Dimensions: 512px by 512px"* · *"Maximum file size: 1024KB"* |
-
-These live in `tooling/channel-register.json` → `storeMetadataContract
-.perChannel["android-play"].graphicAssets`, **not** in this file, and
-`tooling/ci/assert-listing-assets.mjs` enforces them from there. A limit declared
-without a `source` **fails the build** rather than being applied.
-
-### ⚠️ Still UNVERIFIED, and therefore NOT enforced
-
-- **Maximum file size for a phone screenshot.** The page states one for the app
-  icon (1024KB) and for Android XR (*"up to 8 MB each"*) and **none** for phone
-  screenshots. The widely-repeated "8MB" is the XR number wearing a phone's
-  clothes, so no limit is enforced and none is written down.
-- ~~**Whether phone screenshots alone satisfy *"across different device types"*.**~~
-  ✅ **RESOLVED 2026-08-20, and the strict reading was right.** Play's minimum is
-  a count of device TYPES, not of files: four phone frames satisfied `minCount`
-  while failing the requirement outright. `assert-play-device-coverage.mjs`
-  enforces `minDistinctTypes: 2`.
-- ~~**Tablet / Chromebook / Wear / TV / Automotive / XR sets.**~~
-  ✅ **TABLET DECLARED 2026-08-21**, in the increment that added its dimension
-  rule and a re-fetched source — which is exactly what the old bullet said to do.
-  See `tooling/channel-register.json` → `android-play` → `…deviceTypeCoverage.sets.tablet`
-  and `../screenshots-tablet/README.md`. **The pixels do not exist yet**: the
-  shared lane prints the shortfall and the submission lane refuses.
-  Wear / TV / Automotive / XR remain undeclared, and the rule is unchanged — add
-  the row in the same increment that adds the form factor.
-
-  *(Both bullets are struck through rather than deleted. They were correct when
-  written and the reasoning in them is why the strict reading was enforced; a
-  reader who finds only the answer cannot tell whether it was ever in doubt.)*
-
-🔴 The rule that keeps this table honest: **an invented limit fires on correct
-input.** A made-up *"120 characters or fewer"* once rejected this repo's own
-fixture at 129.
-
-## 🔴 The capture must be a LIVE build, and that is a policy matter
-
-Measured **2026-08-04** by capturing a demo build and looking at the result:
-
-1. `app_shell.dart` paints an orange banner across **every** screen —
-   *"Demo data - sample subscriptions, not your account"* — whenever
-   `!AppConfig.isApiConfigured`.
-2. `lib/data/seed/demo_data.dart` fills the board with **twelve third-party
-   trademarks**: Netflix, Spotify, ChatGPT Plus, iCloud+, GitHub Copilot, Adobe
-   CC, Disney+, Notion, NYTimes, Equinox, YouTube Premium, 1Password.
-
-Both are visible in the first frame. A listing built from that advertises the
-product as a demo **and** puts other companies' marks on a public store page —
-which Google's own preview-asset page tells developers to avoid (*"Third-party
-trademarked characters or logos without proper permission"*) and which
-`[ADR 019]`'s NO-IP rule forbids for anything we produce. Until **#150** every
-store build of this app was a demo build, so this is a mistake already made once.
-
-So the capture suite **refuses** to run against a demo build unless
-`STORE_CAPTURE_ALLOW_DEMO` is passed, the runner sends `--proof` output to a
-throwaway directory and refuses to point it here, and the guard rejects any
-screenshot in this directory that is not accompanied by `CAPTURE.json` recording
-`posture: "live"`. A demo capture is exactly the right **size** — size checks
-alone would pass it.
-
-The illustrative rows the live capture creates are generic by construction
-(*"Video streaming"*, *"Cloud storage"*, …) and are typed into the app's **own**
-"Add subscription" sheet, so nothing in the picture is a capability the shipping
-app does not have.
-
-## 🟢 THE SET IS HERE — landed 2026-08-05 from run `30922349590`
-
-This heading read *"Why this directory is still empty"* until 2026-08-05. The
-frames the run produced are listed below; **four of them sit next to this file** (see the banner above):
-
-| file | pixels | colour type | bytes |
-| --- | --- | --- | --- |
-| `01-home.png` | 1080×1920 | 2 (24-bit, no alpha) | 472,046 |
-| `02-calendar.png` | 1080×1920 | 2 | 158,488 |
-| `03-insights.png` | 1080×1920 | 2 | 134,426 |
-| `04-budget.png` | 1080×1920 | 2 | 133,497 |
-| `05-settings.png` | 1080×1920 | 2 | 203,988 |
-
-🔴 **THE `bytes` COLUMN IS RUN `30922349590`'s, AND STOPPED BEING THIS DIRECTORY'S ON 2026-08-27.**
-The set was RE-CAPTURED that day (`#393` — *"the captured screenshot set — phone refreshed, tablet
-captured for the first time"*), so the four files beside this README are different bytes at the same
-dimensions. Measured 2026-09-08 on `main` @ `d7586e3e`: `01-home` 458,303 · `02-calendar` 149,312 ·
-`03-insights` 129,114 · `04-budget` 152,555. The table is kept as the record of the run it names
-rather than re-typed, because a hand-copied byte column beside files a workflow re-captures goes
-stale on the next merge — `store-screenshots.yml`'s PR **#542** is open right now and changes three
-of these four again. Read the bytes, never this table:
-
-```
-node -e "const fs=require('fs');for(const f of fs.readdirSync('.').filter(x=>x.endsWith('.png')))console.log(f,fs.statSync(f).size)"
-```
-
-`pixels` and `colour type` are unchanged and are recomputed on every run by
-`tooling/ci/assert-listing-assets.mjs` and `tooling/ci/assert-play-device-coverage.mjs`. The byte
-column was the only one nothing recomputes, which is why it is the only one that drifted.
-
-`CAPTURE.json` came with them and records `posture: "live"`, `count: 4` beside
-`curation.framesCaptured: 5`, `pixels: "1080x1920"`, `viewport: "360x640@3"` —
-written by the capture script on the live run, not by hand afterwards.
-
-**They were retrieved from the artifact, not re-captured.** The artifact
-`play-screenshots-subscriptiontracker` was still live (checked via `gh api`: `expired: false`,
-`expires_at 2026-11-02T15:05:41Z`), so the bytes that landed are the exact bytes
-that run produced. Re-running the workflow would have produced a *different*
-five, at a different date, for no gain.
-
-⚠️ **The last section of this file used to end "this repository's agents do not
-download", and an agent downloaded it anyway** — under an explicit instruction,
-into the working tree only, leaving the commit to the owner. That sentence was a
-policy written into a README where nothing enforced it; it is recorded here
-rather than quietly deleted. If it is a real rule it belongs in a guard, and if
-it is not, it should not have been phrased as one.
-
-The live capture needs a confirmed Supabase account, which needs
-`SUPABASE_SERVICE_ROLE_KEY` — a **CI-only** secret that is not on the owner's
-machine. To refresh the set, run **`store-screenshots.yml`**
-(`workflow_dispatch`); it provisions a throwaway confirmed user, captures the
-set, checks it against the guard, opens a pull request, and purges the user
-again.
-
-### 🔴 The set now arrives as a PULL REQUEST, not only as an artifact
-
-This section used to say the workflow *"uploads rather than commits, on
-purpose"* — the guard can prove size, format, count and posture and cannot prove
-the set is worth showing, so nothing should push pictures onto a store page that
-nobody chose. **That reasoning was right and the conclusion was wrong.**
-
-Measured **2026-08-04**: the workflow ran successfully (run `30922349590`), the
-five 1080×1920 frames were produced, and they went into an artifact that
-**expires 2026-11-02**. Not one pixel of it reached this repository. So the only
-copy of what would go on the store sat in a bucket with a 90-day timer, nobody
-had looked at it, and this file explained why the directory was empty. *"Do not
-publish unreviewed"* had quietly become *"do not review"*.
-
-**An artifact is not a review; it is a deadline.** A pull request *is* the
-review: GitHub renders PNGs in a diff, so the owner sees exactly what would be
-uploaded, in the place where approving it is one click and declining it leaves a
-record. Merging is still a human act, and nothing in the workflow contacts
-Google — `tooling/release/submit-play.mjs` remains the only path to a store. The
-artifact upload is kept as well; it costs nothing and the run log links to it.
-
-### What is machine-checked once the frames land
-
-`tooling/ci/assert-listing-assets.mjs` proves count, dimensions **against the
-set's own `CAPTURE.json`**, aspect, format, recorded posture — and the **absence
-of the demo banner in the actual pixels**, by decoding each frame and looking for
-a full-width band of `AppColors.warn` across the top. The colour is read from
-`packages/design_system/lib/src/tokens/app_colors.dart` at scan time, never
-pinned, so a palette change moves the detector with it instead of leaving it
-hunting a colour nothing draws.
-
-The detector **self-tests on every run** against two frames built in memory — one
-banded, one clean — because a check that ranges over nothing prints `ok` forever.
-That is the failure this repository has paid for more than any other. It was
-written while this directory was empty and it is **not retired now that it is
-not**: the set can be deleted, and the day it is, the self-test is again the only
-thing standing between an empty directory and a green banner limb.
-
-Measured on the landed set (2026-08-05): synthetic banded frame `0.969`, clean
-frame `0.000`, threshold `0.60` — and the worst top-band row across all five real
-frames was **`0.009`**, two orders of magnitude below the threshold. The margin is
-printed rather than asserted so a near-miss cannot hide inside a pass.
-
-The **DEBUG ribbon** is a separate, static limb: `flutter drive` builds in debug,
-so `debugShowCheckedModeBanner: false` in `lib/app.dart` is the only thing
-keeping a red ribbon out of every captured frame, and until 2026-08-04 nothing
-was holding it.
-
-What none of that can judge is whether these are the screens **worth showing**.
-Google requires screenshots to *"demonstrate the actual in-app or in-game
-experience"* — a human call, and the whole reason the PR exists.
-
-`assert-listing-assets.mjs` PRINTS the empty-directory gap rather than failing,
-because it is blocked on a workflow run. It does **not** extend that leniency to
-the feature graphic or the store icon: those are produced from brand art already
-in this tree by one command with no account and no secret, so a missing one is a
-build failure. **That print is now silent, because the gap is closed** — the
-guard reports `4 screenshot(s) measured` and `4 screenshot(s) DECODED`.
-
-### 🔴 What a human still has to decide — the guard says so itself
-
-Four things were read out of the pixels by eye on 2026-08-05 that **no assertion
-here covers**, listed so the owner reviews the images rather than the checkmark:
-
-1. ~~**`05-settings.png` shows the throwaway E2E account's address**~~ —
-   `subscriptiontracker-e2e+…@nikatru.com`, legible at full size. **CLOSED 2026-08-05, in the
-   capture rather than in the curation** (see the banner at the top): the frame
-   is no longer captured, and the shutter now refuses any frame carrying the
-   session's identity. It is left on this list rather than deleted, because it is
-   the one entry that proves what the other three are: things only a human
-   reading the picture could find, in a directory where every automated check
-   was green.
-2. **The floating `+` button overlaps a price in three frames** — `01-home`
-   (`$1▮.99`), `02-calendar` (a bare `$`), `04-budget` (`$93 / $1▮2`). The
-   capture is a real screen, so this is what the app looks like; it still reads
-   as a cropped number on a store page.
-3. **The bottom nav bar sits over the third row** in `01-home` and `02-calendar`,
-   so the last item is half-visible. Same cause, same "real but unflattering".
-4. **`03-insights` and `04-budget` are sparse** — one `Other` category at `$93`,
-   *"Nothing flagged — nice."*, `$0 Budget`, and `0% over budget` rendered in
-   red. Accurate for a five-minute-old account; thin as an advertisement.
-
-None of these is a publish blocker and none is a bug. They are the *"demonstrate
-the actual in-app or in-game experience"* judgement Google asks for, which is
-exactly what the guard's own header says it cannot make.
-
-## Naming
-
-`NN-<slug>.png`, ordered — `01-home.png`, `02-calendar.png`, … Play shows them in
-**upload order** and the order is part of the listing, so the number is the
-listing's, not the filesystem's. Google: *"prioritize UI in the first three
-screenshots as much as possible"*.
-
-## ✅ No longer missing: the app icon
-
-This file used to end with *"There is **no** Subly-specific app icon … a Play
-submission today would ship the default Flutter mark."* **#149** fixed that on
-all six platforms, and `tooling/ci/assert-launcher-icons.mjs` now fails the build
-if any launcher icon is byte-identical to Flutter's.
-
-⚠️ **What is still open is `[10]D-6`, and it is the opposite problem.** Subly's
-icon is the *Nikatru* brand mark, so app #2 stamped from the same brick inherits
-the same picture — which is the clone tell D-6 exists to prevent, and Play
-enforces against **related accounts**. Not this directory's fix, but this is
-where somebody looking at listing art will think of it.
+- **Never commit a frame by hand**, and never edit `CAPTURE.json` by hand: it is
+  the capture's record, and the guards compare the frames to it.
+- **A demo build is never captured into this directory.** The capture suite refuses
+  to run against a demo build unless `STORE_CAPTURE_ALLOW_DEMO` is passed, the
+  runner sends `--proof` output to a throwaway directory, and the listing guard
+  rejects a frame whose `CAPTURE.json` does not record a live posture.
+- **Naming is `NN-<slug>.png`, ordered.** Play shows frames in upload order and
+  the order is part of the listing. Google: *"prioritize UI in the first three
+  screenshots as much as possible"*.
+- **A proof capture** (`node tooling/store/capture-play-screenshots.mjs --proof`)
+  writes to a temporary directory, never here.

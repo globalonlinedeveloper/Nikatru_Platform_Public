@@ -27,14 +27,20 @@ frame looking for the demo banner rather than trusting `CAPTURE.json`.
 
 ## How to fill it
 
-1. Build and run the app for this platform.
-2. Capture the frames. `tooling/store/capture-play-screenshots.mjs` does it
-   for Play against a live build and writes `CAPTURE.json` recording which
-   build was photographed — a screenshot with no provenance is evidence about
-   nothing.
-3. Commit the PNGs here. `tooling/ci/assert-listing-assets.mjs` measures them
-   against the numbers in `tooling/channel-register.json`, every one of which
-   carries the primary-source URL it was read from.
+1. Dispatch **Store screenshots** (`.github/workflows/store-screenshots.yml`) for
+   this app, channel `android-play`.
+2. `tooling/store/capture-play-screenshots.mjs` captures the frames against a
+   live build and writes `CAPTURE.json` recording which build was photographed —
+   a screenshot with no provenance is evidence about nothing. This README never
+   repeats what that record holds (`tooling/ci/assert-derived-sets.mjs` refuses
+   it). `tooling/ci/assert-listing-assets.mjs` measures the frames against the
+   numbers in `tooling/channel-register.json`, every one of which carries the
+   primary-source URL it was read from.
+3. The job runs `tooling/store/finish-capture.mjs --app {{app_id}} --channel android-play`,
+   which re-derives every set declared `derivedFrom` this channel (the
+   apps.gov.in set among them), then `tooling/ci/assert-derived-sets.mjs`, and
+   proposes the capture directories and every derived path in one pull request.
+   The frames are never committed by hand.
 
 ## What must NOT be captured
 
