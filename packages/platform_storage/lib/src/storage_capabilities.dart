@@ -72,7 +72,7 @@ class StorageCapabilities {
           keyValueStore: true,
           secureStore: true,
           secureStoreIsOsBacked: true,
-          note: 'Android: KeyStore-backed EncryptedSharedPreferences.',
+          note: 'Android: AES-GCM values under an Android Keystore RSA key.',
         ),
       TargetPlatform.iOS || TargetPlatform.macOS => const StorageCapabilities(
           keyValueStore: true,

@@ -119,6 +119,15 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
   // `currentSession()`.
   final core.AuthRepository auth = ref.watch(authRepositoryProvider);
 
+  // 🔴 EVERY GoRoute BELOW PASSES `caseSensitive: false`, ON PURPOSE (go_router 18).
+  // go_router 14.8.1 matched every path case-INsensitively (path_utils.dart:50
+  // hard-codes `caseSensitive: false`); 15.0.0 made each GoRoute case-SENSITIVE
+  // by default. Every path here is a live web URL under nikatru.com/<app>/ and an
+  // app link a mail client or a person may re-case, so taking the new default
+  // would silently turn `/Settings` from the settings screen into NotFoundScreen.
+  // Decided per route and the answer is the same for all of them: keep 14.x.
+  // The flag is each route's LAST argument: `path:` stays first and `builder:`
+  // stays next to it, which is what the source-reading guards and tests anchor on.
   return GoRouter(
     navigatorKey: rootNavigatorKey,
     initialLocation: '/',
@@ -412,11 +421,13 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
             path: '/sign-in',
             builder: (BuildContext context, GoRouterState state) =>
                 const SignInScreen(),
+            caseSensitive: false,
           ),
           GoRoute(
             path: '/sign-up',
             builder: (BuildContext context, GoRouterState state) =>
                 const SignUpScreen(),
+            caseSensitive: false,
           ),
           // Onboarding is what EXPLAINS the app, before there is an account.
           // A user who could tab away from it has not been onboarded, and the
@@ -426,6 +437,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
             path: '/onboarding',
             builder: (BuildContext context, GoRouterState state) =>
                 const OnboardingScreen(),
+            caseSensitive: false,
           ),
           // ── THE TWO GATE SCREENS ────────────────────────────────────────────
           // Routed rather than dialog-shaped: both appear BECAUSE of a redirect, so
@@ -440,11 +452,13 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
             path: '/verify-email',
             builder: (BuildContext context, GoRouterState state) =>
                 const VerifyEmailScreen(),
+            caseSensitive: false,
           ),
           GoRoute(
             path: '/reaccept-terms',
             builder: (BuildContext context, GoRouterState state) =>
                 const ReacceptTermsScreen(),
+            caseSensitive: false,
           ),
           // ── THE NO-SESSION HALF OF EMAIL CONFIRMATION ────────────────────────
           // Reached from the sign-up screen when `signUp` returns a user but no
@@ -470,6 +484,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
                 _pendingAddress(state) == null ? '/sign-in' : null,
             builder: (BuildContext context, GoRouterState state) =>
                 CheckInboxScreen(email: _pendingAddress(state)!),
+            caseSensitive: false,
           ),
           // Where a password-reset link lands. Reachable by a SIGNED-OUT visitor on
           // purpose — see `signedOutMayStay` above — because a link that could not
@@ -483,13 +498,14 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
             path: '/reset-password',
             builder: (BuildContext context, GoRouterState state) =>
                 const ResetPasswordScreen(),
+            caseSensitive: false,
           ),
           // ── NO CHROME: THE CHECKOUT ([pipeline 5]M-6) ──────────────────
           //
           // NOT a gate — the only chrome-free route that is not. A purchase flow
           // with a navigation bar underneath it is a way out of a funnel
           // mid-transaction, which is apps/subscriptiontracker's reading too
-          // (`lib/core/router/routes.dart:160`). It is not a dead end: the
+          // (`lib/core/router/routes.dart:189`). It is not a dead end: the
           // screen carries its own way back (`paywall_screen.dart:251`).
           //
           // 🔴 THIS ROUTE AND `/manage-plan` ARE THE STEP-COUNT SOURCE.
@@ -502,6 +518,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
             path: '/paywall',
             builder: (BuildContext context, GoRouterState state) =>
                 const PaywallScreen(),
+            caseSensitive: false,
           ),
           // ── THE TABS ────────────────────────────────────────────────────
           // The three destinations a signed-in user moves BETWEEN, and the one
@@ -512,6 +529,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
             path: '/',
             builder: (BuildContext context, GoRouterState state) =>
                 const HomeScreen(),
+            caseSensitive: false,
           ),
           // The premium destination. It was a TAB INDEX inside the home screen
           // and never a location, so nothing could link to it, `/explore` 404ed,
@@ -521,11 +539,13 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
             path: '/explore',
             builder: (BuildContext context, GoRouterState state) =>
                 const ExploreScreen(),
+            caseSensitive: false,
           ),
           GoRoute(
             path: '/settings',
             builder: (BuildContext context, GoRouterState state) =>
                 const SettingsScreen(),
+            caseSensitive: false,
           ),
           // ── THE CANCELLATION SCREEN ([pipeline 5]M-9) ──────────────────
           // KEEPS THE CHROME, unlike the checkout above it, and the asymmetry
@@ -544,6 +564,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
             path: '/manage-plan',
             builder: (BuildContext context, GoRouterState state) =>
                 const ManagePlanScreen(),
+            caseSensitive: false,
           ),
         ],
       ),

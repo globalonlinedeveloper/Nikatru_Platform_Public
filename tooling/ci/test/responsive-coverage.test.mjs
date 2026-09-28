@@ -418,6 +418,7 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
         "    path: '/notifications',\n" +
         '    parentNavigatorKey: rootNavigatorKey,\n' +
         '    builder: (_, __) => const NotificationsScreen(),\n' +
+        '    caseSensitive: false,\n' +
         '  ),\n',
       '',
     );

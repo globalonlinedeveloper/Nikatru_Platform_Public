@@ -28,18 +28,20 @@ await notifications.scheduleDaily(
 );
 ```
 
-## Platform support (pinned `flutter_local_notifications` 17.x)
+## Platform support (pinned `flutter_local_notifications` 22.x)
 
 | Platform | `showNow` | `scheduleDaily` |
 |----------|:---------:|:---------------:|
 | Android / iOS / macOS | ✅ | ✅ |
 | Linux | ✅ | ⬜ (no `zonedSchedule` on Linux → no-op) |
-| Windows | ⬜ | ⬜ (no Windows plugin until 18.x → no-op) |
+| Windows | ⬜ | ⬜ (plugin exists since 19.0.0; no app supplies its init settings yet → no-op) |
 | Web | ⬜ | ⬜ (no plugin → `NoOpNotificationService`) |
 
 The matrix is tied to the pinned major (shared with `apps/subscriptiontracker`, which uses the
-17.x API). Windows support arrived in `flutter_local_notifications` 18.x and Linux
-has never implemented `zonedSchedule`; both would need re-review on a version bump.
+22.x API). Windows support arrived in `flutter_local_notifications` 19.0.0 but needs
+`WindowsInitializationSettings` (an AppUserModelID and GUID) that no app supplies yet, and
+Linux has never implemented `zonedSchedule` (still true in 22.3.1); both need re-review on a
+version bump.
 
 `createLocalNotificationService` returns a `NoOpNotificationService` on web (via a
 conditional import, so the package stays web-compilable). Query

@@ -111,7 +111,6 @@ Duration _hostUtcOffset() => DateTime.now().timeZoneOffset;
 /// `timezone` package binary-searches that list and takes the last entry at or
 /// before the instant it is asked about.
 tz.Location deviceOffsetLocation(Duration offset) {
-  final int ms = offset.inMilliseconds;
   final String label = _offsetLabel(offset);
   return tz.Location(
     // Not an IANA name, and deliberately shaped so it cannot be mistaken for
@@ -119,7 +118,8 @@ tz.Location deviceOffsetLocation(Duration offset) {
     'device$label',
     <int>[_minTime],
     <int>[0],
-    <tz.TimeZone>[tz.TimeZone(ms, isDst: false, abbreviation: label)],
+    // timezone 0.11 takes the offset as a Duration (0.9.x took milliseconds).
+    <tz.TimeZone>[tz.TimeZone(offset, isDst: false, abbreviation: label)],
   );
 }
 

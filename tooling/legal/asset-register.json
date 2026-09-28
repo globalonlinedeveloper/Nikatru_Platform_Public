@@ -421,6 +421,40 @@
         "note": "The purchases_flutter package's own LICENSE, read through the app's resolved package_config.json by assert-licence-register.mjs --bundle --app on every web-artifacts run; the row's licence is checked against it there. Read 2026-09-26 at 10.13.1 (pubspec.lock): 'MIT License', Copyright (c) 2019 RevenueCat. The bundle's NOTICES carries that text under the name purchases_flutter."
       },
       "shippedIn": "apps/subscriptiontracker's web bundle, through packages/billing_revenuecat → purchases_flutter ^10.13.1 (transitive), whose pubspec declares assets/web/ for the web platform only. Listed by CI run 36233164494 and by a local build on 2026-09-26."
+    },
+    {
+      "id": "subscriptiontracker-fln-web-service-worker-js",
+      "scope": "app:subscriptiontracker",
+      "bundlePath": "packages/flutter_local_notifications_web/web/notifications_service_worker.js",
+      "package": "flutter_local_notifications_web",
+      "contentFamily": null,
+      "contentFamilyWhy": "A service-worker script the notifications plugin's web implementation ships. Nothing in the content pipeline reads or produces it.",
+      "name": "notifications_service_worker.js — the web service worker the flutter_local_notifications_web package ships",
+      "origin": "third-party",
+      "licence": "BSD-3-Clause",
+      "attributionRequired": true,
+      "attributedIn": "bundle:NOTICES",
+      "source": {
+        "note": "The flutter_local_notifications_web package's own LICENSE, read through the app's resolved package_config.json by assert-licence-register.mjs --bundle --app on every web-artifacts run; the row's licence is checked against it there. Read 2026-09-28 at 1.0.0 (pubspec.lock): 'Copyright 2020 Michael Bui. All rights reserved.', the three BSD conditions including 'Neither the name of'. The file itself carries no copyright or licence line (searched 2026-09-28: 0 hits for 'copyright' and 'license'); the package pubspec declares it under flutter.assets."
+      },
+      "shippedIn": "apps/subscriptiontracker's web bundle, through packages/notifications and the app → flutter_local_notifications ^22.0.0 (22.3.1) → flutter_local_notifications_web 1.0.0 (transitive), new with Train W55 (M8). The app never initialises the web plugin (web is canNotify: false), but the asset ships because the package declares it. Listed by the web-artifacts build of CI run 36385207366 (Flutter 3.47.5)."
+    },
+    {
+      "id": "subscriptiontracker-material-ui-ink-sparkle-frag",
+      "scope": "app:subscriptiontracker",
+      "bundlePath": "packages/material_ui/shaders/ink_sparkle.frag",
+      "package": "material_ui",
+      "contentFamily": null,
+      "contentFamilyWhy": "A fragment shader (the Material 3 ink-sparkle ripple) a pub package ships. Nothing in the content pipeline reads or produces it.",
+      "name": "ink_sparkle.frag — the ink-sparkle ripple shader the material_ui package ships",
+      "origin": "third-party",
+      "licence": "BSD-3-Clause",
+      "attributionRequired": true,
+      "attributedIn": "bundle:NOTICES",
+      "source": {
+        "note": "The material_ui package's own LICENSE, read through the app's resolved package_config.json by assert-licence-register.mjs --bundle --app on every web-artifacts run; the row's licence is checked against it there. Read 2026-09-28 at 1.4.0 (pubspec.lock): 'Copyright 2013 The Flutter Authors', the three BSD conditions including 'Neither the name of'. The shader's own header says the same: 'Copyright 2013 The Flutter Authors' / 'Use of this source code is governed by a BSD-style license' (lib/shaders/ink_sparkle.frag:3-4)."
+      },
+      "shippedIn": "apps/subscriptiontracker's web bundle, through go_router ^18.0.0 (18.0.1) → material_ui 1.4.0 (transitive; 18.0.0 \"Migrates to material_ui and cupertino_ui\"), new with Train W55 (M6). The package pubspec declares it under flutter.shaders. Listed by the web-artifacts build of CI run 36385207366 (Flutter 3.47.5)."
     }
   ]
 }

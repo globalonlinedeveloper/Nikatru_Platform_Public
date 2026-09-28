@@ -20,6 +20,7 @@
 // and must come out the far end as `notification_opened`.
 // ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter/foundation.dart' show TargetPlatform;
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_notifications/src/local_notification_service_io.dart';
@@ -91,7 +92,13 @@ class _FakePlugin implements NotificationPlugin {
 }
 
 void main() {
-  setUpAll(tz_data.initializeTimeZones);
+  setUpAll(() {
+    tz_data.initializeTimeZones();
+    // flutter_local_notifications 18+ installs its platform implementation
+    // through registerWith(), which only the app's generated plugin registrant
+    // calls; 17.x did it in the plugin constructor. A test registers it itself.
+    AndroidFlutterLocalNotificationsPlugin.registerWith();
+  });
   tearDown(() => tz.setLocalLocation(tz.UTC));
 
   ({

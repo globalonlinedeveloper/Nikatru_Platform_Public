@@ -19,6 +19,7 @@
 // path is simulated except the OS.
 // ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter/services.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart';
 import 'package:nikatru_notifications/src/local_notification_service_io.dart';
@@ -33,7 +34,13 @@ const MethodChannel _channel = MethodChannel(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  setUpAll(tz_data.initializeTimeZones);
+  setUpAll(() {
+    tz_data.initializeTimeZones();
+    // flutter_local_notifications 18+ installs its platform implementation
+    // through registerWith(), which only the app's generated plugin registrant
+    // calls; 17.x did it in the plugin constructor. A test registers it itself.
+    AndroidFlutterLocalNotificationsPlugin.registerWith();
+  });
 
   late List<MethodCall> outgoing;
 

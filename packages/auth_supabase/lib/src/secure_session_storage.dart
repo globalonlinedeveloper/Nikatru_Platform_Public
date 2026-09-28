@@ -17,7 +17,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 /// leaking a password than to leaking a cookie.
 ///
 /// Routing it through core's [core.SecureStore] gets the Keychain on iOS/macOS,
-/// the KeyStore-backed EncryptedSharedPreferences on Android, DPAPI on Windows
+/// an Android Keystore-wrapped AES-GCM store on Android, DPAPI on Windows
 /// and libsecret on Linux — which is exactly the platform difference that earned
 /// `platform_storage` its own package, reused here rather than solved twice.
 ///

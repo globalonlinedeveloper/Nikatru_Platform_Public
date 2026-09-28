@@ -41,16 +41,29 @@ import 'navigator_key.dart';
 String? _pendingAddress(GoRouterState state) =>
     core.pendingAddress(state.extra);
 
+// 🔴 EVERY GoRoute BELOW PASSES `caseSensitive: false`, ON PURPOSE (go_router 18).
+// go_router 14.8.1 matched every path case-INsensitively (path_utils.dart:50
+// hard-codes `caseSensitive: false`); 15.0.0 made each GoRoute case-SENSITIVE
+// by default. Every path here is a live web URL under nikatru.com/<app>/ and an
+// app link a mail client or a person may re-case, so taking the new default
+// would silently turn `/Settings` from the settings screen into NotFoundScreen.
+// Decided per route and the answer is the same for all of them: keep 14.x.
+// The flag is each route's LAST argument: `path:` stays first and `builder:`
+// stays next to it, which is what the source-reading guards and tests anchor on.
 /// Every route above the shell, in declaration order.
 List<RouteBase> appRoutes() => <RouteBase>[
   // ── CHASSIS ENTRY PATH ────────────────────────────────────────────────
   // The stamp's home is '/'; Subly's is '/home' (inside the shell, so it
   // keeps the bottom nav). Mounting '/' as a redirect keeps the chassis
   // path resolvable without giving Subly a second, nav-less home.
-  GoRoute(path: '/', redirect: (_, __) => '/home'),
+  GoRoute(path: '/', redirect: (_, __) => '/home', caseSensitive: false),
 
   // ── LIVE AUTH FLOW ────────────────────────────────────────────────────
-  GoRoute(path: '/onboarding', builder: (_, __) => const OnboardingScreen()),
+  GoRoute(
+    path: '/onboarding',
+    builder: (_, __) => const OnboardingScreen(),
+    caseSensitive: false,
+  ),
   // ── THE OLD AUTH URL, KEPT AS A REDIRECT ──────────────────────────────
   // Not deleted. A route that 404s is worse than the duplication it
   // replaced: every link already written against `/login` — a bookmark, a
@@ -67,14 +80,23 @@ List<RouteBase> appRoutes() => <RouteBase>[
     path: '/login',
     redirect: (BuildContext context, GoRouterState state) =>
         state.uri.replace(path: '/sign-in').toString(),
+    caseSensitive: false,
   ),
-  GoRoute(path: '/scan', builder: (_, __) => const ScanScreen()),
+  GoRoute(
+    path: '/scan',
+    builder: (_, __) => const ScanScreen(),
+    caseSensitive: false,
+  ),
 
   // ── THE CANONICAL AUTH FLOW ───────────────────────────────────────────
   // `/sign-in` is the chassis path and `LoginScreen` is Subly's live form:
   // the URL is the stamp's, the screen is the app's. The stamped
   // `SignInScreen` twin went with this change — see the barrel's header.
-  GoRoute(path: '/sign-in', builder: (_, __) => const LoginScreen()),
+  GoRoute(
+    path: '/sign-in',
+    builder: (_, __) => const LoginScreen(),
+    caseSensitive: false,
+  ),
   // ⏱ 2026-09-28 · ST-T1b (audit A-5): ONE sign-up surface. `/sign-up` was a
   // second, divergent form (plain fields, no address check, no Apple/Google)
   // that nothing linked to; it is now the same screen, opened on its sign-up
@@ -82,6 +104,7 @@ List<RouteBase> appRoutes() => <RouteBase>[
   GoRoute(
     path: '/sign-up',
     builder: (_, __) => const LoginScreen(startInSignUp: true),
+    caseSensitive: false,
   ),
 
   // ── THE NO-SESSION HALF OF EMAIL CONFIRMATION ─────────────────────────
@@ -106,6 +129,7 @@ List<RouteBase> appRoutes() => <RouteBase>[
         _pendingAddress(state) == null ? '/sign-in' : null,
     builder: (BuildContext context, GoRouterState state) =>
         CheckInboxScreen(email: _pendingAddress(state)!),
+    caseSensitive: false,
   ),
 
   // ── THE TWO GATE SCREENS ──────────────────────────────────────────────
@@ -122,11 +146,13 @@ List<RouteBase> appRoutes() => <RouteBase>[
     path: '/verify-email',
     parentNavigatorKey: rootNavigatorKey,
     builder: (_, __) => const VerifyEmailScreen(),
+    caseSensitive: false,
   ),
   GoRoute(
     path: '/reaccept-terms',
     parentNavigatorKey: rootNavigatorKey,
     builder: (_, __) => const ReacceptTermsScreen(),
+    caseSensitive: false,
   ),
 
   // ── WHERE A PASSWORD-RESET LINK LANDS ─────────────────────────────────
@@ -141,6 +167,7 @@ List<RouteBase> appRoutes() => <RouteBase>[
     path: '/reset-password',
     parentNavigatorKey: rootNavigatorKey,
     builder: (_, __) => const ResetPasswordScreen(),
+    caseSensitive: false,
   ),
 
   // ── LIVE ROOT-NAVIGATOR ROUTES ────────────────────────────────────────
@@ -149,12 +176,14 @@ List<RouteBase> appRoutes() => <RouteBase>[
     path: '/notifications',
     parentNavigatorKey: rootNavigatorKey,
     builder: (_, __) => const NotificationsScreen(),
+    caseSensitive: false,
   ),
   GoRoute(
     path: '/sub/:id',
     parentNavigatorKey: rootNavigatorKey,
     builder: (_, GoRouterState state) =>
         SubscriptionDetailScreen(id: state.pathParameters['id']!),
+    caseSensitive: false,
   ),
 
   // ── THE MONEY RAIL'S TWO SCREENS ([pipeline 5]M-6, M-9) ───────────────
@@ -164,10 +193,12 @@ List<RouteBase> appRoutes() => <RouteBase>[
     path: '/paywall',
     parentNavigatorKey: rootNavigatorKey,
     builder: (_, __) => const PaywallScreen(),
+    caseSensitive: false,
   ),
   GoRoute(
     path: '/manage-plan',
     parentNavigatorKey: rootNavigatorKey,
     builder: (_, __) => const ManagePlanScreen(),
+    caseSensitive: false,
   ),
 ];
