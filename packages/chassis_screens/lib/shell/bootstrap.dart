@@ -2,6 +2,8 @@ import 'package:flutter/widgets.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
+import 'web_semantics.dart';
+
 /// THE BOOT ORDER EVERY STAMPED APP INHERITS — [ADR 067] decision 2.
 ///
 /// 🏗️ THIS IS THE BODY OF THE BRICK'S `main()`, MOVED. What stayed there is
@@ -22,7 +24,19 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 ///
 /// The five steps, in the order they must happen:
 ///
-/// 1. **Bind, then register the vendored licences.**
+/// 1. **Bind, turn the web screen-reader tree on, then register the vendored
+///    licences.**
+///    🔴 ST-Y5 (audit D26) — EVERY STAMPED WEB APP SHIPPED NO SCREEN-READER
+///    TREE. Flutter web compiles the semantics DOM only once a client asks for
+///    it; until then a reader finds a canvas and a hidden "Enable
+///    accessibility" button. `apps/subscriptiontracker` fixed it in its own
+///    `main()`, and nothing reached the brick. [enableWebSemantics] is called
+///    straight after the binding exists and BEFORE [runGuarded], so the first
+///    frame — and the error screen, which is a surface too — carries a tree.
+///    It is a no-op off web and idempotent (one handle per process), so an app
+///    that also calls it cannot stack a second handle.
+///    `tooling/ci/assert-a11y-primitives.mjs` limb 3 holds the order.
+///
 ///    🔴 [pipeline K-10/K-11] THE LICENCE CONDITION EVERY STAMPED APP WAS
 ///    BREACHING. The assets that ship in the bundle but that Flutter's NOTICES
 ///    collector never sees — today the CC BY 4.0 Material Icons font, which
@@ -122,6 +136,7 @@ Future<void> bootstrapNikatru({
   required VoidCallback run,
 }) async {
   WidgetsFlutterBinding.ensureInitialized();
+  enableWebSemantics();
   registerVendoredAssetLicences();
 
   await runGuarded(() async {
