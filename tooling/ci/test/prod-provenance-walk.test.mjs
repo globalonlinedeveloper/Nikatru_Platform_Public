@@ -37,7 +37,7 @@
 // --point-reads-file. Nothing in this file reads, and nothing may ever write,
 // production.
 // ─────────────────────────────────────────────────────────────────────────────
-import { test, describe } from 'node:test';
+import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, cpSync, rmSync } from 'node:fs';
@@ -553,5 +553,205 @@ describe('the date windows — a listing past GitHub\'s 1,000-result ceiling is 
     } finally {
       await new Promise((ok) => server.close(ok));
     }
+  });
+});
+
+// ── ⏱ 2026-09-28 · A STALE RUN LISTING IS REPLACED BY THE FRESH ONE (#1041, 2/2) ──
+// Ops watch 36430302458 (13:40Z) went exit 2: "29 distinct build(s) in
+// production are absent from the walked runs — more than the 10 this reader
+// will look up one by one". Every one of those builds had a run. GitHub served
+// the FILTERED listings (`branch=`, `event=`, `status=`) from a replica days
+// behind, while the same workflow's listing with no filter was current.
+// `fakeStaleGithub` is that API as measured: any query carrying one of those
+// filters answers the stale snapshot (main-push builds 1-100); a query with
+// none answers everything, PR runs and an in-progress run included, and the
+// filters are the reader's job. The repository-wide list is fresh too.
+describe('a stale filtered run listing — the fresh unfiltered source is walked instead', () => {
+  const { anchoredWalk, githubRuns, ANCHOR_LINES, makeReleasedBuildResolver } = monitor;
+  const SHA = (n) => n.toString(16).padStart(7, '0') + 'c'.repeat(33);
+  const ID = (n) => 900_000 + n;
+  const HOUR = 3_600_000;
+
+  /** 129 completed main-push builds an hour apart, the newest 2 h ago; a PR run
+   *  after every tenth; one main-push run still in progress, the newest of all. */
+  function history(nowMs) {
+    const runs = [];
+    const run = (n, extra) => ({
+      id: ID(n),
+      run_number: n,
+      head_sha: SHA(n),
+      head_branch: 'main',
+      event: 'push',
+      status: 'completed',
+      conclusion: 'success',
+      path: '.github/workflows/ci.yml',
+      created_at: new Date(nowMs - (131 - n) * HOUR).toISOString(),
+      updated_at: new Date(nowMs - (131 - n) * HOUR + 600_000).toISOString(),
+      ...extra,
+    });
+    for (let n = 1; n <= 129; n++) {
+      runs.push(run(n));
+      if (n % 10 === 0) runs.push(run(n + 5000, { id: ID(n) + 500, head_branch: 'feat/x', event: 'pull_request', head_sha: SHA(n + 5000) }));
+    }
+    runs.push(run(130, { status: 'in_progress', conclusion: null, created_at: new Date(nowMs - 60_000).toISOString(), updated_at: new Date(nowMs - 30_000).toISOString() }));
+    return runs.sort((a, b) => b.id - a.id);
+  }
+
+  /** The API as measured on 2026-09-28. `ownPageStatus` lets a case refuse the
+   *  cross-read of the workflow's own unfiltered page (the fresh source
+   *  unreachable). ONE server for the whole block: the monitor resolves its
+   *  GitHub origin once per process. */
+  async function fakeStaleGithub() {
+    const api = { ownPageStatus: 200 };
+    const all = history(Date.now());
+    const stale = all.filter((r) => r.head_branch === 'main' && r.event === 'push' && r.status === 'completed' && r.run_number <= 100);
+    const asked = [];
+    const server = createServer((req, res) => {
+      const u = new URL(req.url, 'http://127.0.0.1');
+      asked.push(u.pathname + u.search);
+      const send = (status, body) => {
+        res.writeHead(status, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(body));
+      };
+      const perPage = Number(u.searchParams.get('per_page') ?? 30);
+      const page = Number(u.searchParams.get('page') ?? 1);
+      const slice = (rows) => send(200, { total_count: rows.length, workflow_runs: rows.slice((page - 1) * perPage, page * perPage) });
+      if (u.searchParams.has('created')) return send(400, { message: 'this fixture holds under 1,000 runs; no date window is needed' });
+      if (u.pathname === '/repos/fixture/repo/actions/runs') return slice(all);
+      if (u.pathname !== '/repos/fixture/repo/actions/workflows/ci.yml/runs') return send(404, {});
+      const filtered = ['branch', 'event', 'status'].some((k) => u.searchParams.has(k));
+      if (!filtered && !u.searchParams.has('page') && api.ownPageStatus !== 200) return send(api.ownPageStatus, {});
+      return slice(filtered ? stale : all);
+    });
+    await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
+    return Object.assign(api, { server, asked, all, stale, base: `http://127.0.0.1:${server.address().port}` });
+  }
+  let shared = null;
+  const github = async () => (shared ??= await fakeStaleGithub());
+  after(async () => {
+    if (shared) await new Promise((ok) => shared.server.close(ok));
+  });
+
+  const withGithub = async (api, fn) => {
+    const saved = { ...process.env };
+    Object.assign(process.env, { GITHUB_API_URL: api.base, GITHUB_TOKEN: 'fixture-token', GITHUB_REPOSITORY: 'fixture/repo' });
+    try {
+      return await fn();
+    } finally {
+      for (const k of ['GITHUB_API_URL', 'GITHUB_TOKEN', 'GITHUB_REPOSITORY']) {
+        if (k in saved) process.env[k] = saved[k];
+        else delete process.env[k];
+      }
+    }
+  };
+
+  const LANE = {
+    kind: 'served',
+    workflow: 'deploy-web.yml',
+    runWorkflows: ['deploy-web.yml', 'ci.yml'],
+    host: { workflow: 'ci.yml', callJob: 'deploy-web', filter: 'branch=main&event=push' },
+    channels: ['web'],
+    environments: ['subscriptiontracker-web'],
+  };
+  const resolverOver = (runs) => makeReleasedBuildResolver(new Set(['1.0']), runs.map((r) => ({ ...r, workflow: 'ci.yml' })), { lanes: [LANE] });
+
+  test('🔴 THE 13:40Z WALK: builds 101-129 absent from the stale page are FOUND, the rows counted, and the filters applied here', { timeout: 30_000 }, async () => {
+    const api = await github();
+    const runs = await withGithub(api, () => githubRuns('ci.yml', { filter: 'branch=main&event=push' }));
+    const numbers = runs.map((r) => r.run_number).sort((a, b) => a - b);
+    assert.deepEqual(numbers, range(1, 129), 'every completed main-push build, each once — no PR run, no in-progress run');
+    const resolve = resolverOver(runs);
+    for (const n of [101, 123, 129]) assert.equal(resolve(`1.0.${n}+${SHA(n).slice(0, 7)}`), null, `build ${n} resolves`);
+    const line = ANCHOR_LINES.find((l) => l.includes('STALE PAGE, FRESH SOURCE WALKED · listing runs of ci.yml (branch=main&event=push)'));
+    assert.ok(line, ANCHOR_LINES.join('\n'));
+    assert.match(line, new RegExp(`the filtered walk ended at run ${ID(100)} \\(100 run\\(s\\)\\); the same listing without its filters ends at run ${ID(129)}`));
+    assert.match(line, / — 142 row\(s\) walked, 129 match the filters, 29 the stale walk never served, 129 graded$/);
+    const unfiltered = api.asked.filter((q) => q.startsWith('/repos/fixture/repo/actions/workflows/ci.yml/runs?') && !/[?&](branch|event|status)=/.test(q));
+    assert.ok(unfiltered.some((q) => /[?&]page=1(&|$)/.test(q)), `the fresh source was WALKED, not only sampled: ${api.asked.join(' | ')}`);
+  });
+
+  test('🔴 RED CONTROL — the same fixture read as the walker read it before: 29 builds unattributable', { timeout: 30_000 }, async () => {
+    const api = await github();
+    const body = await withGithub(api, async () =>
+      (await fetch(`${api.base}/repos/fixture/repo/actions/workflows/ci.yml/runs?branch=main&event=push&status=completed&per_page=100&page=1`)).json(),
+    );
+    const resolve = resolverOver(body.workflow_runs);
+    const missing = range(101, 129).filter((n) => resolve(`1.0.${n}+${SHA(n).slice(0, 7)}`) !== null);
+    assert.equal(missing.length, 29, 'the stale page alone leaves every build after 100 unattributable — the 13:40Z count');
+    assert.match(resolve(`1.0.123+${SHA(123).slice(0, 7)}`), /no run numbered 123 exists on any release lane/);
+  });
+
+  test('🔴 the fresh source UNREACHABLE is COULD NOT LOOK (exit 2), never the stale page graded', { timeout: 30_000 }, async () => {
+    const api = await github();
+    api.ownPageStatus = 403;
+    await withGithub(api, () =>
+      assert.rejects(githubRuns('ci.yml', { filter: 'branch=main&event=push' }), (e) => {
+        assert.ok(e instanceof CouldNotLook, `expected COVERAGE LOST, got ${e}`);
+        assert.match(e.message, /the GitHub API returned 403 reading the unfiltered newest runs of ci\.yml/);
+        return true;
+      }),
+    ).finally(() => {
+      api.ownPageStatus = 200;
+    });
+  });
+
+  // The decision itself, over fakes: no network, every branch reachable.
+  const run = (id, at, extra = {}) => ({ id, run_number: id, head_branch: 'main', event: 'push', status: 'completed', conclusion: 'success', updated_at: at, ...extra });
+  const NOW = Date.parse('2026-09-28T13:40:00Z');
+  const OLD = '2026-09-19T04:50:00Z';
+  const NEW = '2026-09-28T13:20:00Z';
+  const read = ({ query = 'branch=main&status=completed', page, all, cross }) => {
+    const walks = [];
+    const log = [];
+    return {
+      walks,
+      log,
+      done: anchoredWalk({
+        query,
+        what: 'listing runs of ci.yml',
+        walk: async (q) => (walks.push(q), q === '' ? all : page),
+        crossRead: async () => ({ runs: cross, why: 'a cross-read' }),
+        floor: (rows) => rows,
+        now: () => NOW,
+        log,
+      }),
+    };
+  };
+
+  test('a page no cross-read run outruns is returned as it was, walked ONCE', async () => {
+    const r = read({ page: [run(10, OLD), run(20, NEW)], cross: [run(20, NEW), run(15, OLD)] });
+    assert.deepEqual((await r.done).map((x) => x.id), [10, 20]);
+    assert.deepEqual(r.walks, ['branch=main&status=completed']);
+    assert.match(r.log[0], /^⬜  anchor · listing runs of ci\.yml: 2 run\(s\) up to run 20; no run of the unfiltered cross-read outruns it$/);
+  });
+
+  test('a cross-read run that settled AFTER the walk began is a race, not staleness', async () => {
+    const justNow = new Date(NOW - 10_000).toISOString();
+    const r = read({ page: [run(10, OLD)], cross: [run(30, justNow)] });
+    assert.deepEqual((await r.done).map((x) => x.id), [10]);
+    assert.equal(r.walks.length, 1);
+  });
+
+  test('the fresh walk is filtered HERE: a PR run and an in-progress run never reach the grade', async () => {
+    const all = [run(10, OLD), run(20, NEW), run(21, NEW, { event: 'pull_request', head_branch: 'feat' }), run(22, NEW, { status: 'in_progress', conclusion: null })];
+    const r = read({ page: [run(10, OLD)], cross: [run(20, NEW)], all });
+    assert.deepEqual((await r.done).map((x) => x.id).sort(), [10, 20]);
+    assert.deepEqual(r.walks, ['branch=main&status=completed', '']);
+  });
+
+  test('🔴 the fresh walk outrun TOO is COULD NOT LOOK, naming both reads', async () => {
+    const r = read({ page: [run(10, OLD)], cross: [run(40, NEW)], all: [run(10, OLD), run(20, NEW)] });
+    await assert.rejects(r.done, (e) => {
+      assert.ok(e instanceof CouldNotLook);
+      assert.match(e.message, /^stale page — listing runs of ci\.yml ends at run 10, but a cross-read answered run 40/);
+      assert.match(e.message, /And the fresh source was outrun too: stale page — listing runs of ci\.yml, re-walked without its filters ends at run 20/);
+      return true;
+    });
+  });
+
+  test('🔴 a listing with NO filter to drop, outrun, is COULD NOT LOOK — there is no fresher source', async () => {
+    const r = read({ query: '', page: [run(10, OLD)], cross: [run(40, NEW)] });
+    await assert.rejects(r.done, (e) => e instanceof CouldNotLook && /no filter to drop, so no fresher source exists/.test(e.message));
+    assert.equal(r.walks.length, 1);
   });
 });

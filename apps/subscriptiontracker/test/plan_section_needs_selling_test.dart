@@ -8,7 +8,7 @@
 // section's `if` in settings_screen.dart and the first case goes red.
 // ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:subscriptiontracker/features/settings/settings_screen.dart';
 import 'package:subscriptiontracker/state/money_providers.dart';

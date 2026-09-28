@@ -96,7 +96,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   ///
   /// This field used to be called `_done` and it was the WHOLE completion test:
   /// the timer flipped it after 560 ms × 6 = 3.36 s no matter what the fetch was
-  /// doing, and the list underneath was read as `.valueOrNull ?? const []`. So a
+  /// doing, and the list underneath was read as `.value ?? const []`. So a
   /// fetch that was merely slow, and a fetch that had FAILED, both rendered the
   /// identical congratulation — "All set", "0 subscriptions", "£0.00 per month",
   /// and a live "Go to dashboard". A first-run user whose network dropped was

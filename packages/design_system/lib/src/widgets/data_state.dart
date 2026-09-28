@@ -16,7 +16,7 @@ enum _DataState { loading, empty, failed }
 /// 🔴 WHY THIS EXISTS — A FAILED LOAD WAS RENDERING AS "YOU HAVE NOTHING"
 /// ═══════════════════════════════════════════════════════════════════════════
 /// Five surfaces in `apps/subscriptiontracker` read their list as
-/// `ref.watch(subscriptionsControllerProvider).valueOrNull ?? const []`
+/// `ref.watch(subscriptionsControllerProvider).value ?? const []`
 /// (budget:131, calendar:116, detail:108, insights:234, notifications:47).
 /// `valueOrNull` is null while a fetch is IN FLIGHT and null when it has
 /// FAILED, and `?? const []` collapses both of those into the third thing

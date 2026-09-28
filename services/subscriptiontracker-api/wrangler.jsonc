@@ -198,8 +198,8 @@
         // verifies that token against this project's JWKS.
         "SUPABASE_URL": "https://auth-api.nikatru.com",
         "API_VERSION": "v1",
-        // why: src/middleware/cors.ts:40, as at the top level. The localhost
-        // pattern a web capture sends is code (cors.ts:38), not this list.
+        // why: ../_shared/src/cors.ts:83, as at the top level. The localhost
+        // pattern a web capture sends is code (cors.ts:79), not this list.
         "ALLOWED_ORIGINS": "https://nikatru.com,https://subscriptiontracker-7qg.pages.dev",
         // why: src/routes/entitlements.ts:73 reads it and an absent world
         // answers 503; this deploy is the sandbox one ([5]M-12, limb 1b).

@@ -8,6 +8,9 @@
 //   · B6  — home's notification bell carried an unread dot that was ALWAYS on.
 //   · D6/D2 — "Connected accounts" and "Export data (CSV)" are inert rows that
 //     drew the same chevron as every row that goes somewhere.
+//     ⏱ 2026-09-28 · ST-X1 (audit D2/D31): "Export data (CSV)" is WIRED — it
+//     saves a real file (settings_export_test.dart) — so it moved from the
+//     inert list to the rows that keep their chevron.
 //   · B11 — the demo client created every new row with `usedPct: 50` and
 //     `usageNote: 'Just added.'`: fabricated usage for a plan added a second ago.
 //
@@ -80,10 +83,7 @@ void main() {
   ) async {
     await pumpAt(tester, kPhone, const SettingsScreen());
     final AppLocalizations l10n = await _en();
-    for (final String inert in <String>[
-      l10n.connectedAccounts,
-      l10n.exportDataCsv,
-    ]) {
+    for (final String inert in <String>[l10n.connectedAccounts]) {
       await tester.scrollUntilVisible(find.text(inert), 200);
       final Finder row = _tapFor(inert);
       expect(tester.widget<FocusableTap>(row).onTap, isNull, reason: inert);
@@ -101,15 +101,22 @@ void main() {
       );
     }
     // A row that DOES go somewhere keeps its chevron: the rule is "only where
-    // a tap leads", not "never".
-    await tester.scrollUntilVisible(find.text(l10n.helpAndSupport), 200);
-    expect(
-      find.descendant(
-        of: _tapFor(l10n.helpAndSupport),
-        matching: find.byIcon(Icons.chevron_right),
-      ),
-      findsOneWidget,
-    );
+    // a tap leads", not "never". The export row is one since ST-X1.
+    for (final String live in <String>[
+      l10n.exportDataCsv,
+      l10n.helpAndSupport,
+    ]) {
+      await tester.scrollUntilVisible(find.text(live), 200);
+      expect(tester.widget<FocusableTap>(_tapFor(live)).onTap, isNotNull);
+      expect(
+        find.descendant(
+          of: _tapFor(live),
+          matching: find.byIcon(Icons.chevron_right),
+        ),
+        findsOneWidget,
+        reason: live,
+      );
+    }
   });
 
   test(

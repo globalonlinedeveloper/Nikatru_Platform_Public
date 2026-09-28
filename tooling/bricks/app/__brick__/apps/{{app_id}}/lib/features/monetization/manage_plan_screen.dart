@@ -195,7 +195,7 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
     final ChassisLocalizations l10n = context.chassisL10n;
     final AppLocalizations appL10n = AppLocalizations.of(context);
     final AsyncValue<core.Entitlements> ent = ref.watch(entitlementsProvider);
-    final bool isPro = ent.valueOrNull?.isProAt(DateTime.now()) ?? false;
+    final bool isPro = ent.value?.isProAt(DateTime.now()) ?? false;
 
     return ManagePlanView(
       title: appL10n.managePlanTitle,

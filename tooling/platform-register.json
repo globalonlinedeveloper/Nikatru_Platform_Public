@@ -77,7 +77,9 @@
       "config.nikatru.com"
     ],
     "dsnSecret": "GLITCHTIP_DSN",
-    "_dsnSecretWhy": "The GitHub secret that holds THIS Worker's crash-sink DSN, read by tooling/ci/worker-set.mjs --for-deploy, which refuses a row without one. The platform Worker's deploy passes GLITCHTIP_DSN today (deploy-workers.yml). Added 2026-09-26, O-SERVICE-KIT-UNBUILT (E-a1)."
+    "_dsnSecretWhy": "The GitHub secret that holds THIS Worker's crash-sink DSN, read by tooling/ci/worker-set.mjs --for-deploy, which refuses a row without one. The platform Worker's deploy passes GLITCHTIP_DSN today (deploy-workers.yml). Added 2026-09-26, O-SERVICE-KIT-UNBUILT (E-a1).",
+    "cors": "every-app",
+    "_corsWhy": "Which browser origins this Worker answers: every app's web build calls it, so every catalogue app's origin, exactly, and no localhost. Read by tooling/ci/assert-cors-allowlist.mjs, which derives the Worker's required origins from it and fails the Worker if src/middleware/cors.ts binds services/_shared/src/cors.ts with a different scope. Added 2026-09-27, O-SERVICE-KIT-UNBUILT (E-b1)."
   },
   "appWorkers": [
     {
@@ -118,6 +120,8 @@
       ],
       "dsnSecret": "GLITCHTIP_DSN",
       "_dsnSecretWhy": "The GitHub secret that holds THIS Worker's crash-sink DSN, read by tooling/ci/worker-set.mjs --for-deploy, which refuses a row without one. App #1 keeps the one it deploys with today, GLITCHTIP_DSN; a second app's row names its own secret, so its crashes are filed under its own GlitchTip project. Added 2026-09-26, O-SERVICE-KIT-UNBUILT (E-a1).",
+      "cors": "own-app",
+      "_corsWhy": "Which browser origins this Worker answers: its own app's origin, exactly, plus any localhost port (the recorded per-app trade for the flutter drive -d web-server harness). Read by tooling/ci/assert-cors-allowlist.mjs, which fails the Worker if src/middleware/cors.ts binds a different scope; provision-backend.mjs step [6] writes it into a new app's row. Added 2026-09-27, O-SERVICE-KIT-UNBUILT (E-b1).",
       "clientBasePath": "/v1",
       "_clientBasePathWhy": [
         "Subly's Dart seam is constructed with `baseUrl: '${AppConfig.apiBaseUrl}/v1'`",
@@ -335,9 +339,9 @@
       "and already refuses an origin nothing justifies. Declaring one literal for it here would replace",
       "a derivation with a copy — the defect this block exists to close, committed in the other",
       "direction. The two live lists deliberately DIFFER (services/platform carries",
-      "http://localhost:3000 and services/subscriptiontracker-api does not, because subscriptiontracker-api's middleware allows any",
-      "localhost by regex and platform's has none); that asymmetry is recorded at",
-      "services/subscriptiontracker-api/src/middleware/cors.ts:20-27 and enforced by that guard's EXTRAS.",
+      "http://localhost:3000 and services/subscriptiontracker-api does not, because an own-app Worker allows any",
+      "localhost by regex and the every-app platform Worker does not); that asymmetry is recorded at",
+      "services/_shared/src/cors.ts:35-41, keyed by each row's `cors` scope, and enforced by that guard's EXTRAS.",
       "",
       "GRAMMAR of `at`, and it is the entire addressing scheme:",
       "  vars.<NAME>                      -> cfg.vars[<NAME>]",
@@ -393,7 +397,7 @@
       "path": "/v1/health",
       "auth": "public",
       "owningFile": "services/platform/src/index.ts",
-      "purpose": "Deploy verification AND dependency health. Answers `{ ok, status, app, version, build, time, checks }` after probing PLATFORM_DB (`SELECT 1 FROM entitlements LIMIT 1`), CONFIG_KV (a `get` of a key that does not exist) and the Supabase JWKS, each through a per-isolate memoised reading (services/_shared/src/health.ts); HTTP 200 even when `ok` is false, by design, so the judgement stays with the reader. ⚠️ CORRECTED 2026-09-10 — this field described a vars-only answer that touched no dependency, for as long as the probes had existed (services/platform/src/index.ts:115-144).",
+      "purpose": "Deploy verification AND dependency health. Answers `{ ok, status, app, version, build, time, checks }` after probing PLATFORM_DB (`SELECT 1 FROM entitlements LIMIT 1`), CONFIG_KV (a `get` of a key that does not exist) and the Supabase JWKS, each through a per-isolate memoised reading (services/_shared/src/health.ts); HTTP 200 even when `ok` is false, by design, so the judgement stays with the reader. ⚠️ CORRECTED 2026-09-10 — this field described a vars-only answer that touched no dependency, for as long as the probes had existed (services/platform/src/index.ts:145-184).",
       "unconsumedReason": "🔄 CORRECTED 2026-08-06 — IT HAS A MACHINE CONSUMER AND HAS FOR SOME TIME. `tooling/ops/post-deploy-smoke.mjs` fetches this route from `deploy-workers.yml` (twice, both Workers) and joins the deploy to a build through the `build` field; `deploy-web.yml` smokes it too. The previous text — \"no programmatic client by design … the honest state is zero clients\" — was true when written and false at head, and it PRINTED GREEN every run because limb 2 only reports unconsumed reasons rather than checking them. [4]B-14 now pins the field set the smoke joins on.",
       "noLimiterReason": "It DOES I/O — one D1 read, one KV read and one JWKS subrequest — and what bounds it is not a limiter but the MEMO: every probe is a per-isolate reading with a TTL (services/_shared/src/health.ts, READING_TTL_MS = 5 s for D1 and KV, JWKS_READING_TTL_MS for the JWKS fetch), so an unauthenticated flood buys at most one dependency fan-out per TTL per isolate — a bound health.ts states as (isolates × 1 per TTL), deliberately not as a global one — and every other request costs the Worker invocation itself, which the account-wide request ceiling already bounds. A limiter here would spend a Rate Limiting namespace to protect a memoised read. ⚠️ CORRECTED 2026-09-10: from the day the probes landed this field claimed the handler touched neither D1, nor KV, nor the network, and limb 4 of assert-platform-register.mjs printed it green because it checked only that a reason was PRESENT; limb 4b now refuses that claim over a handler that probes. [4]B-13"
     },
@@ -678,6 +682,42 @@
       "owningFile": "services/platform/src/routes/calendar.ts",
       "purpose": "⏱ 2026-09-28 · ST-R2. The private calendar feed, `/v1/calendar/<token>.ics`: RFC 5545 (services/platform/src/lib/ics.ts — CRLF, 75-octet folding, escaping, stable UIDs, a VALARM at the lead days), one all-day VEVENT per live subscription on the date src/renewals.ts `rollForward` gives. `?download=1` adds an attachment disposition. PUBLIC because the token IS the capability — Google, Apple and Microsoft fetch it from their own servers with no session of ours. A malformed, unknown or revoked token is 404. Behind REMINDERS_CEILING_LIMITER, keyed on the edge.",
       "unconsumedReason": "Consumed by CALENDAR SERVICES (Google Calendar, Apple Calendar, Outlook) subscribing to the URL, and by a browser downloading it; the URL is handed out by POST /v1/calendar/feed, whose client ships in ST-T4b."
+    },
+    {
+      "id": "native-auth-token",
+      "method": "POST",
+      "path": "/v1/auth/native/:app/token",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/native-auth.ts",
+      "purpose": "⏱ 2026-09-28 · ST-N1 (O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN). A native app's PASSWORD sign-in without a captcha: `?grant_type=password` only (any other grant is a 400 — refresh, PKCE and id_token are not captcha-gated and go straight to GoTrue), body `{email, password}` only, forwarded to GoTrue's /auth/v1/token with the service-role bearer, for which GoTrue skips its captcha (supabase/auth middleware.go verifyCaptcha). 🔐 CREDENTIALS IN TRANSIT, NEVER STORED: the email and password (or the PKCE challenge) pass through this Worker to GoTrue in the one request and are written nowhere — no D1 row, no KV key, and the one log line per call carries the route, the app, the status and the edge-shield marker, never the body. The per-account limiter key is `acct:<app>:<sha256(lowercased email)>`, held only by Cloudflare's rate-limit counter for its 60 s period. No `Origin` (403) — middleware/cors.ts grants the prefix no CORS; `:app` is a NATIVE_AUTH_APPS id (services/platform/src/generated/app-targets.ts, rendered from apps/ by tooling/scripts/render-platform-app-block.mjs), so a newly stamped native app is served with no Worker edit. Behind NATIVE_AUTH_EDGE_LIMITER (per network) and NATIVE_AUTH_ACCOUNT_LIMITER (per account), both FAIL CLOSED (503). GoTrue's status and JSON come back verbatim, Set-Cookie dropped.",
+      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T7b, which points a second gotrue-dart GoTrueClient at `/v1/auth/native/<app>` for the native builds, and lands only after this Worker deploys: the server must be live first. Until then no build of ours calls it, and every native sign-in still goes to GoTrue and is refused `captcha_failed`."
+    },
+    {
+      "id": "native-auth-signup",
+      "method": "POST",
+      "path": "/v1/auth/native/:app/signup",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/native-auth.ts",
+      "purpose": "⏱ 2026-09-28 · ST-N1. A native app's SIGN-UP without a captcha: body `{email, password, data, code_challenge, code_challenge_method}` only, and `redirect_to` kept only when it is the app's own `com.nikatru.<app>://auth-callback` (with or without `?nk_auth=<marker>`), else 400. Forwarded to GoTrue's /auth/v1/signup with the service-role bearer. 🔐 CREDENTIALS IN TRANSIT, NEVER STORED: the email and password (or the PKCE challenge) pass through this Worker to GoTrue in the one request and are written nowhere — no D1 row, no KV key, and the one log line per call carries the route, the app, the status and the edge-shield marker, never the body. The per-account limiter key is `acct:<app>:<sha256(lowercased email)>`, held only by Cloudflare's rate-limit counter for its 60 s period. No `Origin` (403) — middleware/cors.ts grants the prefix no CORS; `:app` is a NATIVE_AUTH_APPS id (services/platform/src/generated/app-targets.ts, rendered from apps/ by tooling/scripts/render-platform-app-block.mjs), so a newly stamped native app is served with no Worker edit. Behind NATIVE_AUTH_EDGE_LIMITER (per network) and NATIVE_AUTH_ACCOUNT_LIMITER (per account), both FAIL CLOSED (503). GoTrue's status and JSON come back verbatim, Set-Cookie dropped.",
+      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T7b, which points a second gotrue-dart GoTrueClient at `/v1/auth/native/<app>` for the native builds, and lands only after this Worker deploys: the server must be live first. Until then no build of ours calls it, and every native sign-in still goes to GoTrue and is refused `captcha_failed`."
+    },
+    {
+      "id": "native-auth-recover",
+      "method": "POST",
+      "path": "/v1/auth/native/:app/recover",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/native-auth.ts",
+      "purpose": "⏱ 2026-09-28 · ST-N1. A native app's PASSWORD-RESET request without a captcha: body `{email, code_challenge, code_challenge_method}` only, `redirect_to` pinned to the app's own callback as on signup. Forwarded to GoTrue's /auth/v1/recover with the service-role bearer. 🔐 CREDENTIALS IN TRANSIT, NEVER STORED: the email and password (or the PKCE challenge) pass through this Worker to GoTrue in the one request and are written nowhere — no D1 row, no KV key, and the one log line per call carries the route, the app, the status and the edge-shield marker, never the body. The per-account limiter key is `acct:<app>:<sha256(lowercased email)>`, held only by Cloudflare's rate-limit counter for its 60 s period. No `Origin` (403) — middleware/cors.ts grants the prefix no CORS; `:app` is a NATIVE_AUTH_APPS id (services/platform/src/generated/app-targets.ts, rendered from apps/ by tooling/scripts/render-platform-app-block.mjs), so a newly stamped native app is served with no Worker edit. Behind NATIVE_AUTH_EDGE_LIMITER (per network) and NATIVE_AUTH_ACCOUNT_LIMITER (per account), both FAIL CLOSED (503). GoTrue's status and JSON come back verbatim, Set-Cookie dropped.",
+      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T7b, which points a second gotrue-dart GoTrueClient at `/v1/auth/native/<app>` for the native builds, and lands only after this Worker deploys: the server must be live first. Until then no build of ours calls it, and every native sign-in still goes to GoTrue and is refused `captcha_failed`."
+    },
+    {
+      "id": "native-auth-resend",
+      "method": "POST",
+      "path": "/v1/auth/native/:app/resend",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/native-auth.ts",
+      "purpose": "⏱ 2026-09-28 · ST-N1. A native app's RE-SEND of a confirmation email without a captcha: body `{email, type, code_challenge, code_challenge_method}` only (the PKCE pair gotrue-dart 2.26.0 sends on an email resend), `type` ∈ {signup, email_change} (the phone types are refused), `redirect_to` pinned to the app's own callback. Forwarded to GoTrue's /auth/v1/resend with the service-role bearer. 🔐 CREDENTIALS IN TRANSIT, NEVER STORED: the email and password (or the PKCE challenge) pass through this Worker to GoTrue in the one request and are written nowhere — no D1 row, no KV key, and the one log line per call carries the route, the app, the status and the edge-shield marker, never the body. The per-account limiter key is `acct:<app>:<sha256(lowercased email)>`, held only by Cloudflare's rate-limit counter for its 60 s period. No `Origin` (403) — middleware/cors.ts grants the prefix no CORS; `:app` is a NATIVE_AUTH_APPS id (services/platform/src/generated/app-targets.ts, rendered from apps/ by tooling/scripts/render-platform-app-block.mjs), so a newly stamped native app is served with no Worker edit. Behind NATIVE_AUTH_EDGE_LIMITER (per network) and NATIVE_AUTH_ACCOUNT_LIMITER (per account), both FAIL CLOSED (503). GoTrue's status and JSON come back verbatim, Set-Cookie dropped.",
+      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T7b, which points a second gotrue-dart GoTrueClient at `/v1/auth/native/<app>` for the native builds, and lands only after this Worker deploys: the server must be live first. Until then no build of ours calls it, and every native sign-in still goes to GoTrue and is refused `captcha_failed`."
     }
   ],
   "bindings": [
@@ -828,6 +868,24 @@
       "purpose": "⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. The per-account bucket for the four /v1/sessions routes, keyed `sessions:<sub>` — the VERIFIED subject, never a client-chosen value. `simple: { limit: 5, period: 60 }`: a person signs a session out a handful of times, not dozens. It bounds the one KV write per revoke (kv.writesPerDay) and the service-role RPC behind every route. Its OWN namespace (1011) so it cannot spend any other route's budget.",
       "readers": [
         "services/platform/src/routes/sessions.ts"
+      ]
+    },
+    {
+      "binding": "NATIVE_AUTH_ACCOUNT_LIMITER",
+      "kind": "ratelimits",
+      "scope": "shared",
+      "purpose": "⏱ 2026-09-28 · ST-N1. The per-ACCOUNT bucket on POST /v1/auth/native/:app/*, keyed `acct:<app>:<sha256(lowercased email)>` — never the address itself. `simple: { limit: 5, period: 60 }`. Those routes call GoTrue with the service-role bearer, which skips the captcha, so this and NATIVE_AUTH_EDGE_LIMITER stand where the captcha stands, and it FAILS CLOSED: an absent binding or a limiter fault is a 503, never an admit (strictRateLimit, services/platform/src/lib/edge-ceiling.ts). Its OWN namespace (1017; the sandbox's is 1019).",
+      "readers": [
+        "services/platform/src/routes/native-auth.ts"
+      ]
+    },
+    {
+      "binding": "NATIVE_AUTH_EDGE_LIMITER",
+      "kind": "ratelimits",
+      "scope": "shared",
+      "purpose": "⏱ 2026-09-28 · ST-N1. The per-NETWORK ceiling on POST /v1/auth/native/:app/*, keyed `edge:<colo>:<asn>` by services/platform/src/lib/edge-ceiling.ts — never a client address. `simple: { limit: 60, period: 60 }`. It bounds a flood that rotates accounts, which the account bucket cannot see, and FAILS CLOSED like it. Its OWN namespace (1018; the sandbox's is 1020).",
+      "readers": [
+        "services/platform/src/routes/native-auth.ts"
       ]
     },
     {

@@ -27,7 +27,7 @@
 // 94 != 97; the same swap in `budget_screen.dart` turns the budget case red.
 // ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:subscriptiontracker/core/format/money_format.dart';
 import 'package:subscriptiontracker/core/format/sub_math.dart';

@@ -161,6 +161,19 @@
   },
   {
     "claims": [
+      "ADR 067",
+      "C-6"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-chassis"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-a11y-primitives.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
       "C-7",
       "T-6",
       "T-7"

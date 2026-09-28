@@ -111,6 +111,40 @@ void main() {
     });
   });
 
+  // ⏱ 2026-09-28 · ST-Y3 (audit D15, WCAG 2.2 SC 3.3.8 Accessible
+  // Authentication). The re-authentication asked for the account password
+  // with no autofill hint, so a password manager had nothing to fill and the
+  // user had to recall and retype it — a cognitive-function test on the one
+  // step before an account is destroyed. The brick's delete-account is the only
+  // caller, so every stamped app shipped it.
+  // MUTATION: delete the `autofillHints:` line from the dialog's TextField and
+  // this goes red (the field's hints are null); tooling/ci/assert-a11y-
+  // primitives.mjs goes red on the same edit.
+  group('the secret field autofills (SC 3.3.8)', () {
+    testWidgets('it carries the CURRENT-password hint, not newPassword', (
+      WidgetTester tester,
+    ) async {
+      final TextEditingController secret = TextEditingController();
+      addTearDown(secret.dispose);
+      await pump(
+        tester,
+        secret: secret,
+        onConfirm: () async =>
+            const DestructiveActionReport(message: 'gone', succeeded: true),
+      );
+      final TextField field = tester.widget<TextField>(find.byKey(kSecret));
+      expect(field.obscureText, isTrue);
+      expect(
+        field.autofillHints,
+        const <String>[AutofillHints.password],
+        reason:
+            'an obscured re-authentication field with no hint leaves the '
+            'password manager nothing to fill — SC 3.3.8 fails; newPassword '
+            'would offer to GENERATE a secret for an account being confirmed',
+      );
+    });
+  });
+
   group('the destructive control is inert until the form is filled', () {
     testWidgets(
         'an EMPTY form leaves the button disabled, and tapping it runs '

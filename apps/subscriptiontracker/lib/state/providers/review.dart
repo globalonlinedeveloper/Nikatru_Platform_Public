@@ -9,6 +9,8 @@ import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show PersistedValue;
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart'
     show InAppReviewPrompter;
 
@@ -54,64 +56,36 @@ final Provider<core.ReviewGate> reviewGateProvider = Provider<core.ReviewGate>(
 
 /// The persisted history plus the decision, in one place.
 class ReviewPromptController extends Notifier<core.ReviewGateState> {
-  /// 🔴 EVERY MUTATOR AWAITS THIS, and it is not tidiness — the property test
-  /// caught the bug. The other persisted controllers here guard hydration with a
-  /// `_userChose` flag, which is right for a CHOICE: last writer wins, and the
-  /// user is the last writer. These are COUNTERS, and for a counter that rule
-  /// loses data. `recordLaunch()` fired from the app's first frame while
-  /// `_hydrate()` was still in flight, incremented the EMPTY default to 1, and
-  /// then hydration completed and overwrote it with the stored 20 — so the
-  /// launch went uncounted and the write was silently discarded.
-  Future<void>? _hydrating;
+  /// COUNTERS, not a choice: every mutator awaits hydration first, and
+  /// [PersistedValue.ensureHydrated] says why.
+  late final PersistedValue<core.KeyValueStore, core.ReviewGateState> _stored =
+      PersistedValue<core.KeyValueStore, core.ReviewGateState>(
+        open: () => ref.read(keyValueStoreProvider.future),
+        read: (kv) => kv.read(_reviewStateKey),
+        write: (kv, raw) => kv.write(_reviewStateKey, raw),
+        // Unreadable or corrupt ⇒ behave like a fresh install. Never throw at
+        // launch, and never fail OPEN into asking.
+        decode: (raw) => raw == null || raw.isEmpty
+            ? const core.ReviewGateState()
+            : core.ReviewGateState.fromJson(
+                jsonDecode(raw) as Map<String, Object?>,
+              ),
+        encode: (next) => jsonEncode(next.toJson()),
+        apply: (next) => state = next,
+        mounted: () => ref.mounted,
+      );
 
   @override
   core.ReviewGateState build() {
-    _hydrating = _hydrate();
+    _stored.hydrate();
     return const core.ReviewGateState();
-  }
-
-  /// Wait for the disk read, but never let its failure become the caller's.
-  Future<void> _ensureHydrated() async {
-    try {
-      await _hydrating;
-    } catch (_) {
-      // Unreadable store ⇒ carry on as a fresh install.
-    }
-  }
-
-  Future<void> _hydrate() async {
-    try {
-      final core.KeyValueStore kv = await ref.read(
-        keyValueStoreProvider.future,
-      );
-      final String? raw = await kv.read(_reviewStateKey);
-      if (raw == null || raw.isEmpty) return;
-      state = core.ReviewGateState.fromJson(
-        jsonDecode(raw) as Map<String, Object?>,
-      );
-    } catch (_) {
-      // Unreadable or corrupt ⇒ behave like a fresh install. Never throw at
-      // launch, and never fail OPEN into asking.
-    }
-  }
-
-  Future<void> _persist(core.ReviewGateState next) async {
-    state = next;
-    try {
-      final core.KeyValueStore kv = await ref.read(
-        keyValueStoreProvider.future,
-      );
-      await kv.write(_reviewStateKey, jsonEncode(next.toJson()));
-    } catch (_) {
-      // Best-effort: a failed write only means the counter restarts.
-    }
   }
 
   /// Count this launch, and stamp the install date the first time we see it.
   Future<void> recordLaunch({DateTime? now}) async {
-    await _ensureHydrated();
+    if (!await _stored.ensureHydrated()) return;
     final DateTime at = now ?? DateTime.now().toUtc();
-    await _persist(
+    await _stored.persist(
       state.copyWith(
         launches: state.launches + 1,
         firstLaunch: state.firstLaunch ?? at,
@@ -121,8 +95,8 @@ class ReviewPromptController extends Notifier<core.ReviewGateState> {
 
   /// The user has asked not to be asked again. Never cleared by the chassis.
   Future<void> suppress() async {
-    await _ensureHydrated();
-    await _persist(state.copyWith(suppressed: true));
+    if (!await _stored.ensureHydrated()) return;
+    await _stored.persist(state.copyWith(suppressed: true));
   }
 
   /// Ask, but only if the gate agrees.
@@ -131,11 +105,12 @@ class ReviewPromptController extends Notifier<core.ReviewGateState> {
   /// platform cannot" from "not yet" — three outcomes that are identical from a
   /// bool and need completely different responses.
   Future<core.ReviewRequestOutcome> maybeAsk({DateTime? now}) async {
-    await _ensureHydrated();
+    if (!await _stored.ensureHydrated()) return core.ReviewRequestOutcome.gated;
     final core.ReviewPrompter prompter = ref.read(reviewPrompterProvider);
     // The DEVICE half, asked before the calendar half: on Android this depends
     // on the Play Store being installed, which no build-time fact can tell us.
     final bool canAsk = await prompter.isAvailable();
+    if (!ref.mounted) return core.ReviewRequestOutcome.gated;
     final core.ReviewGateVerdict verdict = ref
         .read(reviewGateProvider)
         .decide(
@@ -153,7 +128,7 @@ class ReviewPromptController extends Notifier<core.ReviewGateState> {
     // whether anything was drawn, so a crash or a kill between the request and
     // the write would let the app ask again on the next launch — and the second
     // ask is the one the store silently discards.
-    await _persist(
+    await _stored.persist(
       state.copyWith(
         lastAskedAt: now ?? DateTime.now().toUtc(),
         timesAsked: state.timesAsked + 1,

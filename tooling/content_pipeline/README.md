@@ -60,3 +60,27 @@ than a snapshot nobody re-derives.
 The two binary assets in that pack are described in `packages/core/test/fixtures/pack/README.md`. They
 are hand-constructed container headers, not third-party works and not model output — so they carry no
 licence exposure and make no marking claim they cannot support.
+
+## The second recipe is a pack an app SHIPS
+
+`examples/service-catalogue/` (ST-X5) is the Subscription Tracker's service catalogue: 35 hand-authored
+services, India-first plus global, in `en` and `ta` — each one's category, default cycle, cancel page,
+Play and App Store manage links, notice days and regions. Facts, not copy ([ADR 019]'s 🟢 tier), and no
+prices: a price enters only with the public page it was read from and the date it was read. Its
+`pack_id` is the app id, because the loader binds the bundled tier to it as `expectPackId`.
+
+The pack it produces is not a test fixture. It is bundled INTO the app at
+`apps/subscriptiontracker/assets/content_pack/` and read by `ContentPackLoader.load(bundled:)` through
+`AssetContentPackSource` (packages/platform_storage), so the catalogue loads offline while the remote
+pointer stays null. `assert-pack-roundtrip.mjs` rebuilds it byte-for-byte beside `v1/` — one declared
+(recipe -> produced pack) pair each, and a recipe or a bundled pack with no pair is COVERAGE LOST — and
+`assert-pack-inert.mjs` inspects it with the frozen fixtures. It is signed with the TEST key (`test-k1`),
+which no shipped binary pins: the bundled tier is trusted because it is inside the binary, never because
+of that signature. `make-recipe.mjs` writes the recipe, both shards, the generation log and the gates
+from one table; edit the table, re-run it, then `cli.mjs build --test-key` into the app's asset folder.
+
+Shape: a content shard is still `key -> string`, so the manifest did not change and no `v2/` fixture
+exists. The QA stage refuses two keys in one locale with identical text (`intra-pack-dedup`), which rules
+out one key per field (every `cycle` would read "monthly"); each service is therefore `svc.<id>.name`
+(localised) plus `svc.<id>.facts`, one JSON object carrying its own `id`. `ServiceCatalogue.fromPack`
+(packages/core) is the typed reader and refuses a pack it cannot read honestly.

@@ -129,11 +129,16 @@ class PromoCardStateController extends AsyncNotifier<core.PromoGateState> {
     try {
       return await future;
     } catch (_) {
-      return state.valueOrNull ?? const core.PromoGateState();
+      // Riverpod 3: a provider disposed mid-read has no state left to read.
+      if (!ref.mounted) return const core.PromoGateState();
+      return state.value ?? const core.PromoGateState();
     }
   }
 
   Future<void> _persist(core.PromoGateState next) async {
+    // Every caller awaited [_settled] first, and the provider may be gone by
+    // then; Riverpod 3 throws on a Ref used after that.
+    if (!ref.mounted) return;
     state = AsyncValue<core.PromoGateState>.data(next);
     try {
       final core.KeyValueStore kv = await ref.read(

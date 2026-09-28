@@ -140,7 +140,7 @@ function tree({ mutate = (r) => r, dart = '', env = '', wrangler = '', core = nu
     'packages/core/lib/src/config/app_config.dart':
       core ?? "final x = AppConfig(\n  updateUrl: json['update_url'] is String ? json['update_url'] as String : null,\n);\n",
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/app.dart':
-      app ?? 'final String updateUrl = ref.watch(appConfigProvider).valueOrNull?.updateUrl ?? AppConfig.updateUrl;\n',
+      app ?? 'final String updateUrl = ref.watch(appConfigProvider).value?.updateUrl ?? AppConfig.updateUrl;\n',
   };
 
   for (const [f, body] of Object.entries(files)) {

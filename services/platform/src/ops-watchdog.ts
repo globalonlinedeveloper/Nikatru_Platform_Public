@@ -84,7 +84,8 @@ export const OPS_FETCH_TIMEOUT_MS = 10_000;
  * THE EXTERNAL SUBREQUESTS ONE WATCHDOG PASS CAN SPEND, COUNTED, not estimated:
  *   1  main's HEAD commit (the branch-head anchor, read once per pass)
  * + 8  main conclusions: per OPS_MAIN_WORKFLOWS entry, OPS_MAIN_READ_ATTEMPTS
- *      attempts of (one page + one cross-read) — see "THE STALE PAGE" below
+ *      attempts of (one page + one cross-read) — see "THE STALE PAGE" below; a
+ *      cross-read that answers for a stale page spends nothing more
  * + 1  the head_sha second path, per OPS_PUSH_TRIGGERED_ON_MAIN entry, read
  *      only when every attempt was refused — see "THE SECOND PATH" below
  * + 2  GlitchTip monitor reads (OPS_GLITCHTIP_MONITORS)
@@ -237,6 +238,28 @@ export async function checkStuckRuns(env: Env, nowMs: number = Date.now()): Prom
 // exactly what ok=0 means here; it is never a FINDING. The node guards share the same three anchors
 // through tooling/ci/run-page-anchor.mjs; this is the Worker's copy of the two
 // that apply off-runner (the self-run anchor needs GITHUB_RUN_ID).
+//
+// ⏱ APPENDED 2026-09-28 · A PAGE PROVEN STALE IS REPLACED BY ITS CROSS-READ,
+// not thrown away — the #1041 rule (run-page-anchor.mjs `spliceFreshWindows`),
+// Worker copy. MEASURED: Ops watch 36464466131 (18:20Z) went red on this job's
+// 18:00Z row "target main:ops-watch.yml: ok=0, detail: unreadable: stale page:
+// the page ends at run 35477612056 but a cross-read by creation date answered
+// run 36455387316 (after 2 reads)". GitHub's `branch=main` listings had been
+// days behind since 2026-09-26; the cross-read HELD the answer (36455387316,
+// success, 17:06Z), and ops-watch.yml has no HEAD to ask, so it was discarded.
+// A replica can only OMIT runs, never invent one, and a window is complete
+// between its oldest row and its newest. So when the cross-read proves the page
+// behind (a newer run outside OPS_ANCHOR_RACE_MS), its rows ARE the fresh page
+// (`spliceCrossRead`): joined to the page when they reach back to it, alone when
+// they do not. That fresh page must still hold main HEAD's run for a
+// push-triggered workflow, and must hold a COMPLETED run — a newest-completed
+// question it cannot answer is not answered from the stale page below the gap.
+// Its newest completed run is graded as any page's is: a red one is a FINDING.
+// Otherwise the attempt is refused exactly as before (retry, then THE SECOND
+// PATH, then ok=0 "unreadable"). One-way, as ever: a cross-read holding nothing
+// newer than the page proves nothing. It costs no request: the cross-read was
+// already read. tooling/ci/test/run-page-anchor.test.mjs holds this copy and the
+// helper to the same answers ("the Worker copy").
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Workflows EVERY push to main runs — `on.push.branches: [main]`, no path
@@ -278,23 +301,61 @@ function newestRun(runs: MainRun[]): MainRun | null {
   return best;
 }
 
-/** PURE. The anchor verdict for one page of main's history. */
+/** PURE. The anchor verdict for one page of main's history. A refusal carries
+ *  `beyond`: the newest cross-read run that proves the page behind (as
+ *  run-page-anchor.mjs `judgeRunPage` picks it), or null when only the HEAD
+ *  anchor refused — only a proving cross-read is a fresh page to grade instead. */
 export function judgeMainPage(
   runs: MainRun[],
   opts: { headSha?: string | null; cross?: MainRun[] | null; nowMs: number },
-): { ok: true } | { ok: false; why: string } {
+): { ok: true } | { ok: false; why: string; beyond: MainRun | null } {
   const top = newestRun(runs);
   const ends = top ? `ends at run ${top.id}` : 'holds no run';
-  if (opts.headSha && !runs.some((r) => r?.head_sha === opts.headSha)) {
-    return { ok: false, why: `stale page: the page ${ends} and holds no run of main HEAD ${opts.headSha.slice(0, 8)}` };
-  }
+  let beyond: MainRun | null = null;
   for (const c of opts.cross ?? []) {
     if (!isRunId(c?.id) || (top && c.id <= top.id)) continue;
     const at = Date.parse(c.updated_at ?? c.created_at ?? '');
-    if (!Number.isNaN(at) && opts.nowMs - at <= OPS_ANCHOR_RACE_MS) continue;
-    return { ok: false, why: `stale page: the page ${ends} but a cross-read by creation date answered run ${c.id}` };
+    if (!Number.isNaN(at) && opts.nowMs - at <= OPS_ANCHOR_RACE_MS) continue; // a real race, not staleness
+    if (!beyond || c.id > beyond.id) beyond = c;
   }
+  if (opts.headSha && !runs.some((r) => r?.head_sha === opts.headSha)) {
+    return { ok: false, why: `stale page: the page ${ends} and holds no run of main HEAD ${opts.headSha.slice(0, 8)}`, beyond };
+  }
+  if (beyond) return { ok: false, why: `stale page: the page ${ends} but a cross-read by creation date answered run ${beyond.id}`, beyond };
   return { ok: true };
+}
+
+/**
+ * PURE. The Worker's copy of run-page-anchor.mjs `spliceFreshWindows`, for its
+ * one fresh window: the creation-date cross-read that proved the page stale.
+ * The window's rows are the present, de-duplicated by id (a run read twice
+ * keeps its later `updated_at`). When the window reaches back to the page's
+ * newest run the two are ONE contiguous history and the page's rows join it
+ * (`gapBelow: null`); when it does not, only the window's rows are known and
+ * `gapBelow` is its oldest run id: an answer below it is in neither read.
+ * THROWS on a window with no run id — an unread window is not an empty one.
+ */
+export function spliceCrossRead(page: MainRun[], cross: MainRun[]): { runs: MainRun[]; gapBelow: number | null } {
+  const window = (cross ?? []).filter((r) => isRunId(r?.id));
+  if (window.length === 0) throw new Error('stale page: the page was proven stale, and no fresh window came back to grade instead');
+  const lo = Math.min(...window.map((r) => r.id));
+  const byId = new Map<number, MainRun>();
+  const keep = (r: MainRun) => {
+    const had = byId.get(r.id);
+    if (!had || Date.parse(r.updated_at ?? '') > Date.parse(had.updated_at ?? '')) byId.set(r.id, r);
+  };
+  for (const r of window) keep(r);
+  const top = newestRun(page ?? []);
+  if (top && top.id >= lo) {
+    for (const r of page) if (isRunId(r?.id)) keep(r);
+    return { runs: [...byId.values()], gapBelow: null };
+  }
+  return { runs: [...byId.values()], gapBelow: lo };
+}
+
+/** PURE. The newest COMPLETED run by id — what a main row grades — or null. */
+export function newestCompletedRun(runs: MainRun[]): MainRun | null {
+  return newestRun(runs.filter((r) => r?.status === 'completed'));
 }
 
 /** PURE. The HEAD sha a page must hold, or null when the anchor does not apply
@@ -328,7 +389,8 @@ export function mainHeadAnchor(body: unknown, nowMs: number): string | null {
 // believed, the anchor and OPS_MAIN_PAGE_SIZE are unchanged, and a second path
 // that is unreadable or holds no run of HEAD leaves the row ok=0 "unreadable:
 // stale page" exactly as before. ops-watch.yml is schedule-only, so it has no
-// HEAD to ask about and no second path.
+// HEAD to ask about and no second path (⏱ 2026-09-28: its stale page is answered
+// by a proving cross-read instead — "A PAGE PROVEN STALE" above).
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** PURE. The second path's answer: the newest run of main HEAD in a
@@ -364,15 +426,21 @@ async function githubGet(token: string, path: string): Promise<unknown> {
   return res.json();
 }
 
-/** One anchored read of a workflow's history on main: the page, main HEAD's run
- *  from the second path when every page was refused, or an `unreadable: …`
- *  reason. Never a verdict about the workflow itself. */
+/** One anchored read of a workflow's history on main: the page; the newest
+ *  completed run of the fresh page a proving cross-read replaced it with; main
+ *  HEAD's run from the second path when every page was refused; or an
+ *  `unreadable: …` reason. Never a verdict about the workflow itself. */
 async function readMainPage(
   token: string,
   wf: string,
   head: () => Promise<string | null>,
   nowMs: number,
-): Promise<{ runs: MainRun[] } | { headRun: MainRun; headSha: string } | { unreadable: string }> {
+): Promise<
+  | { runs: MainRun[] }
+  | { freshRun: MainRun; pageTop: number | null; beyond: number }
+  | { headRun: MainRun; headSha: string }
+  | { unreadable: string }
+> {
   let last = '';
   for (let attempt = 0; attempt < OPS_MAIN_READ_ATTEMPTS; attempt++) {
     const base = `/actions/workflows/${wf}/runs?branch=main`;
@@ -389,6 +457,20 @@ async function readMainPage(
     const verdict = judgeMainPage(runs, { headSha, cross, nowMs });
     if (verdict.ok) return { runs };
     last = verdict.why;
+    // The cross-read PROVED the page behind: its rows are the fresh page (see
+    // "⏱ APPENDED 2026-09-28" above), held to the same HEAD anchor.
+    if (!verdict.beyond || !cross) continue;
+    const fresh = spliceCrossRead(runs, cross);
+    if (headSha && !fresh.runs.some((r) => r?.head_sha === headSha)) {
+      last += `; its cross-read (run ${verdict.beyond.id}) holds no run of HEAD either`;
+      continue;
+    }
+    const run = newestCompletedRun(fresh.runs);
+    if (run) return { freshRun: run, pageTop: top?.id ?? null, beyond: verdict.beyond.id };
+    last +=
+      fresh.gapBelow === null
+        ? `; its cross-read (run ${verdict.beyond.id}) and the page hold no completed run`
+        : `; its cross-read (run ${verdict.beyond.id}) holds no completed run and reaches back only to run ${fresh.gapBelow}`;
   }
   const refused = `${last} (after ${OPS_MAIN_READ_ATTEMPTS} reads)`;
   // THE SECOND PATH. head() is memoised, so HEAD costs no second read here.
@@ -419,10 +501,14 @@ export async function checkMainConclusions(env: Env, nowMs: number = Date.now())
       let row: HeartbeatRow;
       if ('headRun' in page) {
         row = gradeMainRun(wf, page.headRun, `via head_sha=${page.headSha.slice(0, 8)} (the branch=main list was a stale page)`);
+      } else if ('freshRun' in page) {
+        row = gradeMainRun(
+          wf,
+          page.freshRun,
+          `via the creation-date cross-read (the branch=main list was a stale page ending at run ${page.pageTop ?? 'none'}; the cross-read answered run ${page.beyond})`,
+        );
       } else {
-        const run = page.runs
-          .filter((r) => isRunId(r?.id) && r.status === 'completed')
-          .sort((a, b) => b.id - a.id)[0];
+        const run = newestCompletedRun(page.runs);
         if (!run) { rows.push({ target, ok: false, detail: `unreadable: no completed ${wf} run on main in the newest ${OPS_MAIN_PAGE_SIZE}` }); continue; }
         row = gradeMainRun(wf, run, 'via the branch=main list');
       }

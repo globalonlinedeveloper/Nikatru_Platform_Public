@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart'
     show PlatformDispatcher, visibleForTesting;
 import 'package:flutter/widgets.dart' show Locale, basicLocaleListResolution;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+// StateProvider (and its StateController) moved to legacy.dart in Riverpod 3.0.
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:intl/intl.dart' show DateFormat;
 
 import '../core/format/money_format.dart';
@@ -151,7 +153,7 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
     // first await, so a settings hydration landing mid-load is never missed.
     //
     // 🔴 AND ONLY WHEN A LIST HAS BEEN OBSERVED. This was
-    // `state.valueOrNull ?? const []`: a settings change while the first
+    // `state.value ?? const []`: a settings change while the first
     // fetch was still loading, or after it had failed, called
     // `syncAll(const [])` — which cancelled every renewal reminder and
     // scheduled none, on a device that still had every subscription. "Not
@@ -205,7 +207,7 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
   }
 
   Future<void> addSubscription(Subscription draft) async {
-    // 🔴 ABSENT IS NOT EMPTY. This was `state.valueOrNull ?? const []`, which
+    // 🔴 ABSENT IS NOT EMPTY. This was `state.value ?? const []`, which
     // reads a still-loading first fetch and a failed one as "the user has no
     // subscriptions" — so an add during either state looked like an empty→first
     // transition and fired ACTIVATION again, on an install that had already
@@ -223,16 +225,20 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
     final Subscription created = await ref
         .read(subscriptionRepositoryProvider)
         .add(draft);
+    // Riverpod 3: the provider may be gone by the time the write lands. The
+    // row is saved; there is no list left here to put it in.
+    if (!ref.mounted) return;
     final List<Subscription> list = <Subscription>[...?before, created];
     state = AsyncData<List<Subscription>>(list);
     await _syncReminders(list);
+    if (!ref.mounted) return; // Riverpod 3: the provider may be gone by now.
 
     // G-12 ACTIVATION. Subly's "aha" is the FIRST subscription added — the
     // single strongest predictor of retention and of paying. Fired only on a
     // real empty→first transition, so it stays a once-per-install signal rather
     // than a per-add counter, and only after the write succeeded.
     if (before != null && before.isEmpty) {
-      ref.read(analyticsFunnelProvider).valueOrNull?.onActivation();
+      ref.read(analyticsFunnelProvider).value?.onActivation();
 
       // 🔴 [pipeline 13]T-4 — THE OTHER IN-CONTEXT ASK, and the reason the
       // settings toggle alone is not enough: `alerts` DEFAULTS ON, so a user who
@@ -279,6 +285,7 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
     final Subscription updated = await ref
         .read(subscriptionRepositoryProvider)
         .update(id, changes);
+    if (!ref.mounted) return updated; // Riverpod 3: the provider may be gone.
     final List<Subscription>? before = observedList;
     if (before == null) {
       // Same rule as [cancelSubscription]: no observed list is not an empty
@@ -345,6 +352,7 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
       if (e.statusCode != 400) rethrow;
       await ref.read(subscriptionRepositoryProvider).cancel(id);
       _undoable.remove(id);
+      if (!ref.mounted) return was; // Riverpod 3: the provider may be gone.
       final List<Subscription>? before = observedList;
       if (before == null) {
         ref.invalidateSelf();
@@ -356,6 +364,7 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
         await _syncReminders(list);
       }
     }
+    if (!ref.mounted) return was;
     // The resync above ranges over the list WITHOUT the row, so its reminders
     // are already gone; this is belt and braces for a platform whose pending
     // list cannot be read back.
@@ -376,6 +385,7 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
   /// Undo [cancelSubscription]: `deleted_at: null`, and the row is back.
   Future<void> undoDelete(String id) async {
     await updateSubscription(id, <String, dynamic>{'deleted_at': null});
+    if (!ref.mounted) return;
     _undoable.remove(id);
   }
 
@@ -393,8 +403,12 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
   Future<void> _syncReminders(List<Subscription> subs) async {
     try {
       await _syncRemindersOrThrow(subs);
+      // Riverpod 3: the listeners call this unawaited, so the provider may be
+      // gone by the time the OS answers, and a Ref used then throws.
+      if (!ref.mounted) return;
       ref.read(reminderSyncFailureProvider.notifier).state = null;
     } on Object catch (e) {
+      if (!ref.mounted) return;
       ref.read(reminderSyncFailureProvider.notifier).state = e;
     }
   }

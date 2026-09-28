@@ -5,6 +5,8 @@
 import 'package:flutter/material.dart' show Locale, ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show PersistedValue;
 
 import '../analytics_providers.dart';
 
@@ -24,49 +26,28 @@ const String _themeModeKey = 'nikatru.theme_mode';
 /// Starts at [ThemeMode.system] and hydrates from storage in the background
 /// rather than awaiting it, so first paint never blocks on disk.
 class ThemeModeController extends Notifier<ThemeMode> {
-  /// Whether the user has made an explicit choice this session.
-  ///
-  /// 🔴 LOAD-BEARING, and found by the property test on its very first run.
-  /// Hydration is async, so a user tapping Dark during launch could be overtaken
-  /// by the disk read completing afterwards and resetting them to the stored
-  /// value — the setting visibly snapping back. Hydration must never overwrite a
-  /// live choice.
-  bool _userChose = false;
+  /// Hydration never overwrites a live choice: [PersistedValue] says why.
+  late final PersistedValue<core.KeyValueStore, ThemeMode> _stored =
+      PersistedValue<core.KeyValueStore, ThemeMode>(
+        open: () => ref.read(keyValueStoreProvider.future),
+        read: (kv) => kv.read(_themeModeKey),
+        write: (kv, raw) => kv.write(_themeModeKey, raw),
+        decode: _decode,
+        encode: _encode,
+        apply: (mode) => state = mode,
+        mounted: () => ref.mounted,
+      );
 
   @override
   ThemeMode build() {
     // Deliberately not awaited: see the class doc.
-    _hydrate();
+    _stored.hydrate();
     return ThemeMode.system;
-  }
-
-  Future<void> _hydrate() async {
-    try {
-      final core.KeyValueStore kv = await ref.read(
-        keyValueStoreProvider.future,
-      );
-      final ThemeMode stored = _decode(await kv.read(_themeModeKey));
-      if (_userChose) return; // the user got there first — never clobber
-      state = stored;
-    } catch (_) {
-      // Unreadable store ⇒ keep following the OS. Never throw at launch.
-    }
   }
 
   /// Persist and apply a new choice. Applied in memory first so the UI responds
   /// immediately even if the write is slow or fails.
-  Future<void> set(ThemeMode mode) async {
-    _userChose = true;
-    state = mode;
-    try {
-      final core.KeyValueStore kv = await ref.read(
-        keyValueStoreProvider.future,
-      );
-      await kv.write(_themeModeKey, _encode(mode));
-    } catch (_) {
-      // Best-effort: a failed write only means the choice resets next launch.
-    }
-  }
+  Future<void> set(ThemeMode mode) => _stored.set(mode);
 
   static String _encode(ThemeMode m) => switch (m) {
     ThemeMode.light => 'light',
@@ -94,40 +75,26 @@ const String _localeKey = 'nikatru.locale';
 /// language would find the app ignoring them. So null is the default and is a
 /// real, selectable option — not merely the absence of a choice.
 class LocaleController extends Notifier<Locale?> {
-  bool _userChose = false;
+  /// Hydration never overwrites a live choice: [PersistedValue] says why.
+  late final PersistedValue<core.KeyValueStore, Locale?> _stored =
+      PersistedValue<core.KeyValueStore, Locale?>(
+        open: () => ref.read(keyValueStoreProvider.future),
+        read: (kv) => kv.read(_localeKey),
+        write: (kv, raw) => kv.write(_localeKey, raw),
+        decode: _decode,
+        encode: (locale) => locale?.languageCode ?? '',
+        apply: (locale) => state = locale,
+        mounted: () => ref.mounted,
+      );
 
   @override
   Locale? build() {
-    _hydrate();
+    _stored.hydrate();
     return null;
   }
 
-  Future<void> _hydrate() async {
-    try {
-      final core.KeyValueStore kv = await ref.read(
-        keyValueStoreProvider.future,
-      );
-      final String? raw = await kv.read(_localeKey);
-      if (_userChose) return; // the user got there first — never clobber
-      state = _decode(raw);
-    } catch (_) {
-      // Unreadable store ⇒ follow the device. Never throw at launch.
-    }
-  }
-
   /// Pass null to go back to following the device.
-  Future<void> set(Locale? locale) async {
-    _userChose = true;
-    state = locale;
-    try {
-      final core.KeyValueStore kv = await ref.read(
-        keyValueStoreProvider.future,
-      );
-      await kv.write(_localeKey, locale?.languageCode ?? '');
-    } catch (_) {
-      // Best-effort: a failed write only means the choice resets next launch.
-    }
-  }
+  Future<void> set(Locale? locale) => _stored.set(locale);
 
   static Locale? _decode(String? raw) =>
       (raw == null || raw.isEmpty) ? null : Locale(raw);
@@ -144,7 +111,22 @@ const String _onboardingSeenKey = 'nikatru.onboarding_seen';
 /// twice is an irritation, and showing it never is a user who was dropped into
 /// an app nobody introduced.
 class OnboardingSeenController extends Notifier<bool?> {
-  bool _userChose = false;
+  /// Hydration never overwrites a live choice: [PersistedValue] says why.
+  late final PersistedValue<core.KeyValueStore, bool> _stored =
+      PersistedValue<core.KeyValueStore, bool>(
+        open: () => ref.read(keyValueStoreProvider.future),
+        read: (kv) => kv.read(_onboardingSeenKey),
+        write: (kv, raw) => kv.write(_onboardingSeenKey, raw),
+        decode: (raw) => raw == 'true',
+        encode: (seen) => seen ? 'true' : 'false',
+        apply: (seen) => state = seen,
+        mounted: () => ref.mounted,
+        // Unreadable store ⇒ SHOW onboarding. Resolving to false rather than
+        // staying null matters: null blocks the decision forever, and the cost
+        // is asymmetric — showing it twice is an irritation, never showing it
+        // drops the user into an app nobody introduced.
+        onUnreadable: () => state = false,
+      );
 
   /// 🔴 NULL MEANS "NOT KNOWN YET", AND IT IS NOT THE SAME AS FALSE. Hydration
   /// is async, so a plain `false` default meant the router's FIRST redirect —
@@ -157,42 +139,14 @@ class OnboardingSeenController extends Notifier<bool?> {
   /// is the only honest answer while the disk is still being read.
   @override
   bool? build() {
-    _hydrate();
+    _stored.hydrate();
     return null;
   }
 
-  Future<void> _hydrate() async {
-    try {
-      final core.KeyValueStore kv = await ref.read(
-        keyValueStoreProvider.future,
-      );
-      final bool stored = (await kv.read(_onboardingSeenKey)) == 'true';
-      if (_userChose) return; // the user got there first — never clobber
-      state = stored;
-    } catch (_) {
-      // Unreadable store ⇒ SHOW onboarding. Resolving to false rather than
-      // staying null matters: null blocks the decision forever, and the cost is
-      // asymmetric — showing it twice is an irritation, never showing it drops
-      // the user into an app nobody introduced.
-      if (!_userChose) state = false;
-    }
-  }
-
-  Future<void> set(bool seen) async {
-    _userChose = true;
-    // In memory FIRST: the router's redirect reads this synchronously the
-    // moment the screen navigates away, and a slow write must not bounce the
-    // user straight back into onboarding.
-    state = seen;
-    try {
-      final core.KeyValueStore kv = await ref.read(
-        keyValueStoreProvider.future,
-      );
-      await kv.write(_onboardingSeenKey, seen ? 'true' : 'false');
-    } catch (_) {
-      // Best-effort: a failed write only means it is shown once more.
-    }
-  }
+  /// In memory FIRST ([PersistedValue.set]): the router's redirect reads this
+  /// synchronously the moment the screen navigates away, and a slow write must
+  /// not bounce the user straight back into onboarding.
+  Future<void> set(bool seen) => _stored.set(seen);
 }
 
 final NotifierProvider<OnboardingSeenController, bool?> onboardingSeenProvider =

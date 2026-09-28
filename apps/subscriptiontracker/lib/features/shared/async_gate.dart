@@ -13,7 +13,7 @@ import '../../state/subscriptions_controller.dart';
 /// ═══════════════════════════════════════════════════════════════════════════
 /// 🔴 THE ONE LINE THIS REPLACES, AND WHY IT WAS A USER-FACING DEFECT
 /// ═══════════════════════════════════════════════════════════════════════════
-///     ref.watch(subscriptionsControllerProvider).valueOrNull ?? const []
+///     ref.watch(subscriptionsControllerProvider).value ?? const []
 ///
 /// stood at budget:131, calendar:116, detail:108, insights:234 and
 /// notifications:47. `valueOrNull` is null for a fetch IN FLIGHT and null for a

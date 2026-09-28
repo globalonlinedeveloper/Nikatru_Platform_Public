@@ -423,7 +423,7 @@ class _UpgradePromoCardState extends ConsumerState<UpgradePromoCard> {
   Widget build(BuildContext context) {
     final ChassisLocalizations l10n = context.chassisL10n;
     final AppLocalizations appL10n = AppLocalizations.of(context);
-    final core.AppConfig? cfg = ref.watch(appConfigProvider).valueOrNull;
+    final core.AppConfig? cfg = ref.watch(appConfigProvider).value;
     // ── THE HYDRATION BARRIER, AND IT IS THE FIRST DECISION FOR A REASON
     // 🔴 A RECORD WE HAVE NOT READ YET IS NOT A RECORD THAT SAYS "NOBODY
     // OBJECTED". The first version of this widget read a SYNCHRONOUS
@@ -440,9 +440,7 @@ class _UpgradePromoCardState extends ConsumerState<UpgradePromoCard> {
     // not-knowing — still reading, and could not read — which is the whole
     // reason the controller is an `AsyncNotifier`: a barrier that lives in the
     // TYPE cannot be forgotten by the next caller of this provider.
-    final core.PromoGateState? stored = ref
-        .watch(promoCardStateProvider)
-        .valueOrNull;
+    final core.PromoGateState? stored = ref.watch(promoCardStateProvider).value;
     if (stored == null) return const SizedBox.shrink();
 
     // ── THE SECOND HALF OF THE SAME BARRIER — THE CONSENT RAIL ─────────────
@@ -460,7 +458,7 @@ class _UpgradePromoCardState extends ConsumerState<UpgradePromoCard> {
     // rail that says nobody objected.
     final core.ConsentController? consent = ref
         .watch(consentControllerProvider)
-        .valueOrNull;
+        .value;
     if (consent == null) return const SizedBox.shrink();
 
     // ── THE LATCHES OUTRANK THE LATCH ──────────────────────────────────────
@@ -535,7 +533,7 @@ class _UpgradePromoCardState extends ConsumerState<UpgradePromoCard> {
     // Absent id (the disk read has not landed) or absent flag ⇒ variant A.
     // Never a coin flip: `resolveFlag` is deterministic per install, so a user
     // does not see a different card on every launch.
-    final String? installId = ref.watch(installIdProvider).valueOrNull;
+    final String? installId = ref.watch(installIdProvider).value;
     final bool variantB =
         installId != null &&
         core.resolveFlag(

@@ -19,7 +19,7 @@
 // in settings_screen.dart the constant `true` and the Windows, Linux and web
 // cases go red.
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/features/settings/settings_screen.dart';

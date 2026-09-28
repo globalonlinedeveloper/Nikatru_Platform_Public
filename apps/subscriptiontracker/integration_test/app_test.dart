@@ -30,7 +30,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart'
     show ChassisL10nX;
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
-import 'package:subscriptiontracker/core/a11y/web_semantics.dart'
+import 'package:nikatru_chassis_screens/shell/web_semantics.dart'
     show releaseWebSemantics;
 import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/features/auth/legal_consent_fields.dart';
@@ -638,7 +638,7 @@ void main() {
   ///
   /// 🔴 AND THE SEMANTICS HANDLE, IN THE SAME CALLBACK AND FOR THE SAME REASON.
   /// On web `app.main()` forces semantics on by holding a `SemanticsHandle`
-  /// (`lib/core/a11y/web_semantics.dart`), and `_verifySemanticsHandlesWereDisposed`
+  /// (`chassis_screens/lib/shell/web_semantics.dart`), and `_verifySemanticsHandlesWereDisposed`
   /// runs in the very post-body block described above. While `main()` dropped
   /// that handle, nightly run 34453685391 and every run after it failed the
   /// first test with `A SemanticsHandle was active at the end of the test.` —

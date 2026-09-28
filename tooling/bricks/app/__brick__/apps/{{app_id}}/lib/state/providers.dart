@@ -26,8 +26,12 @@ import 'package:flutter/foundation.dart'
 // valid Dart, so only a real stamp can catch it. [pipeline C-16]
 import 'package:flutter/material.dart' show Locale, ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+// StateProvider (and its StateController) moved to legacy.dart in Riverpod 3.0.
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show PersistedValue;
 import 'package:nikatru_external_links/nikatru_external_links.dart'
     show UrlLauncherExternalLinks;
 import 'package:nikatru_notifications/nikatru_notifications.dart';
@@ -204,6 +208,14 @@ final Provider<core.ContentPackSource?> contentPackSourceProvider =
       return DioContentPackSource(packBaseUrl: pointer);
     });
 
+/// ST-X5 — the pack shipped INSIDE the binary, as a Flutter asset. A stamped
+/// app bundles none until it declares `assets/content_pack/`, so this source
+/// reads null and the load falls through exactly as it did before it existed.
+final Provider<core.ContentPackSource?> bundledContentPackSourceProvider =
+    Provider<core.ContentPackSource?>(
+      (ref) => AssetContentPackSource('assets/content_pack'),
+    );
+
 /// The loader itself — CONSTRUCTED here, which is the thing that had never
 /// happened anywhere outside a test.
 final Provider<core.ContentPackLoader> contentPackLoaderProvider =
@@ -222,15 +234,22 @@ final Provider<core.ContentPackLoader> contentPackLoaderProvider =
 ///
 /// `expectPackId` is the app's own id: the loader refuses a pack that is
 /// perfectly valid and simply not ours.
+///
+/// ⏱ 2026-09-28 · ST-X5: "null when the pointer is null" above now reads
+/// "the BUNDLED pack when the pointer is null" — null only when neither tier
+/// verifies. A remote pack that fails still falls back, never serves.
 final FutureProvider<core.ContentPack?> contentPackProvider =
     FutureProvider<core.ContentPack?>((ref) async {
-      final core.ContentPackSource? source = ref.watch(
-        contentPackSourceProvider,
-      );
-      if (source == null) return null;
+      // ⏱ 2026-09-28 · ST-X5 (audit B27): the BUNDLED tier is passed too, so
+      // a null pointer no longer means no pack — the remote tier stays dormant
+      // and the pack shipped inside the binary serves, offline.
       final core.Result<core.ContentPack> r = await ref
           .watch(contentPackLoaderProvider)
-          .load(expectPackId: AppConfig.appId, remote: source);
+          .load(
+            expectPackId: AppConfig.appId,
+            remote: ref.watch(contentPackSourceProvider),
+            bundled: ref.watch(bundledContentPackSourceProvider),
+          );
       // A failed load is NOT an error the app shows. The pack is optional
       // content; the app must run without it. What must never happen is a
       // failed load being served as though it succeeded.
@@ -255,8 +274,8 @@ final FutureProvider<String?> packageVersionProvider = FutureProvider<String?>((
 /// the version is still resolving, so a slow load never blocks the app behind
 /// the update wall.
 final Provider<bool> mustForceUpdateProvider = Provider<bool>((ref) {
-  final core.AppConfig? cfg = ref.watch(appConfigProvider).valueOrNull;
-  final String? version = ref.watch(packageVersionProvider).valueOrNull;
+  final core.AppConfig? cfg = ref.watch(appConfigProvider).value;
+  final String? version = ref.watch(packageVersionProvider).value;
   if (cfg == null || version == null) return false;
   return core.mustForceUpdate(version, cfg.minSupportedVersion);
 });
@@ -294,6 +313,12 @@ final FutureProvider<core.KeyValueStore> keyValueStoreProvider =
 /// Do not "fix" it by adding a prefix: that would be the regression.
 final Provider<core.SecureStore> secureStoreProvider =
     Provider<core.SecureStore>((ref) => FlutterSecureStore());
+
+/// ST-X1 — hands an exported file (core `CsvCodec`, `BackupEnvelope`) to the
+/// share sheet, a browser download or the linux save dialog
+/// (`ExportCapabilities`). A seam, so a screen test can keep the bytes.
+final Provider<core.FileExporter> fileExporterProvider =
+    Provider<core.FileExporter>((ref) => ShareFileExporter());
 
 const String _installIdKey = 'nikatru.install_id';
 
@@ -369,49 +394,28 @@ const String _themeModeKey = 'nikatru.theme_mode';
 /// arrives a frame or two later, which is invisible and is the same fail-open
 /// posture the force-update gate uses.
 class ThemeModeController extends Notifier<ThemeMode> {
-  /// Whether the user has made an explicit choice this session.
-  ///
-  /// 🔴 LOAD-BEARING, and found by the property test on its very first run.
-  /// Hydration is async, so a user tapping Dark during launch could be overtaken
-  /// by the disk read completing afterwards and resetting them to the stored
-  /// value — the setting visibly snapping back. Hydration must never overwrite a
-  /// live choice.
-  bool _userChose = false;
+  /// Hydration never overwrites a live choice: [PersistedValue] says why.
+  late final PersistedValue<core.KeyValueStore, ThemeMode> _stored =
+      PersistedValue<core.KeyValueStore, ThemeMode>(
+        open: () => ref.read(keyValueStoreProvider.future),
+        read: (kv) => kv.read(_themeModeKey),
+        write: (kv, raw) => kv.write(_themeModeKey, raw),
+        decode: _decode,
+        encode: _encode,
+        apply: (mode) => state = mode,
+        mounted: () => ref.mounted,
+      );
 
   @override
   ThemeMode build() {
     // Deliberately not awaited: see the class doc.
-    _hydrate();
+    _stored.hydrate();
     return ThemeMode.system;
-  }
-
-  Future<void> _hydrate() async {
-    try {
-      final core.KeyValueStore kv = await ref.read(
-        keyValueStoreProvider.future,
-      );
-      final ThemeMode stored = _decode(await kv.read(_themeModeKey));
-      if (_userChose) return; // the user got there first — never clobber
-      state = stored;
-    } catch (_) {
-      // Unreadable store ⇒ keep following the OS. Never throw at launch.
-    }
   }
 
   /// Persist and apply a new choice. Applied in memory first so the UI responds
   /// immediately even if the write is slow or fails.
-  Future<void> set(ThemeMode mode) async {
-    _userChose = true;
-    state = mode;
-    try {
-      final core.KeyValueStore kv = await ref.read(
-        keyValueStoreProvider.future,
-      );
-      await kv.write(_themeModeKey, _encode(mode));
-    } catch (_) {
-      // Best-effort: a failed write only means the choice resets next launch.
-    }
-  }
+  Future<void> set(ThemeMode mode) => _stored.set(mode);
 
   static String _encode(ThemeMode m) => switch (m) {
     ThemeMode.light => 'light',
@@ -634,7 +638,7 @@ final Provider<core.ConsentStatus> analyticsConsentProvider =
     Provider<core.ConsentStatus>((ref) {
       final core.ConsentController? c = ref
           .watch(consentControllerProvider)
-          .valueOrNull;
+          .value;
       return c?.statusOf(core.ConsentPurpose.analytics) ??
           core.ConsentStatus.unknown;
     });
@@ -656,9 +660,7 @@ final Provider<core.ConsentStatus> analyticsConsentProvider =
 ///      below this line `unknown` means "never objected" and PERMITS, because
 ///      the surface runs on legitimate interest and not on consent.
 final Provider<bool> promoObjectedProvider = Provider<bool>((ref) {
-  final core.ConsentController? c = ref
-      .watch(consentControllerProvider)
-      .valueOrNull;
+  final core.ConsentController? c = ref.watch(consentControllerProvider).value;
   if (c == null) return true; // still loading — hold, do not show
   return core.PromoObjection(c).objected;
 });
@@ -679,7 +681,7 @@ final Provider<bool> promoObjectedProvider = Provider<bool>((ref) {
 /// whether the value means anything yet. One derivation, two readings, and the
 /// asymmetry written down once instead of inferred twice.
 final Provider<bool> promoObjectionKnownProvider = Provider<bool>(
-  (ref) => ref.watch(consentControllerProvider).valueOrNull != null,
+  (ref) => ref.watch(consentControllerProvider).value != null,
 );
 
 /// Whether the consent question has been ANSWERED — distinct from answered yes.
@@ -906,7 +908,7 @@ Future<void> recordAnalyticsConsent(
     // hole: the rebuilt recorder's `hydrate` refuses to restore a queue under a
     // denied decision and deletes the persisted copy, so the disk half dies
     // either way.
-    analytics: container.read(analyticsProvider).valueOrNull,
+    analytics: container.read(analyticsProvider).value,
   );
   container.invalidate(consentControllerProvider);
 }
@@ -1011,7 +1013,7 @@ final FutureProvider<core.Analytics> analyticsProvider =
 
 /// Record [event].
 ///
-/// AWAITS the provider rather than reading `.valueOrNull` and giving up. At
+/// AWAITS the provider rather than reading `.value` and giving up. At
 /// launch [analyticsProvider] is still resolving, so a `valueOrNull` read would
 /// silently drop exactly the launch events the funnel's denominator is made of —
 /// the metric would look like a conversion problem rather than a wiring one.
@@ -1719,38 +1721,27 @@ const int kDailyReminderId = 1;
 /// is asked for fresh each time it matters. Conflating the two is how a toggle
 /// reads ON while every notification is silently dropped.
 class RemindersEnabledController extends Notifier<bool> {
-  bool _userChose = false;
+  /// Hydration never overwrites a live choice: [PersistedValue] says why.
+  late final PersistedValue<core.KeyValueStore, bool> _stored =
+      PersistedValue<core.KeyValueStore, bool>(
+        open: () => ref.read(keyValueStoreProvider.future),
+        read: (kv) => kv.read(_remindersKey),
+        write: (kv, raw) => kv.write(_remindersKey, raw),
+        decode: (raw) => raw == 'true',
+        encode: (on) => on ? 'true' : 'false',
+        apply: (on) => state = on,
+        mounted: () => ref.mounted,
+      );
 
   @override
   bool build() {
-    _hydrate();
+    // Unreadable store ⇒ reminders off. Never throw at launch.
+    _stored.hydrate();
     return false;
   }
 
-  Future<void> _hydrate() async {
-    try {
-      final core.KeyValueStore kv = await ref.read(
-        keyValueStoreProvider.future,
-      );
-      final bool stored = (await kv.read(_remindersKey)) == 'true';
-      if (_userChose) return; // the user got there first — never clobber
-      state = stored;
-    } catch (_) {
-      // Unreadable store ⇒ reminders off. Never throw at launch.
-    }
-  }
-
   Future<void> set(bool on) async {
-    _userChose = true;
-    state = on;
-    try {
-      final core.KeyValueStore kv = await ref.read(
-        keyValueStoreProvider.future,
-      );
-      await kv.write(_remindersKey, on ? 'true' : 'false');
-    } catch (_) {
-      // Best-effort: a failed write only means the choice resets next launch.
-    }
+    await _stored.set(on);
     // 🔴 OFF IS A PROMISE ABOUT THE OS, NOT ABOUT A BOOLEAN. Until this line the
     // only route to `cancelAll` was `applyReminderChoice`, reachable from exactly
     // one `SwitchListTile.onChanged` — so ANY second writer of the flag (a
@@ -1769,6 +1760,9 @@ class RemindersEnabledController extends Notifier<bool> {
   /// The one place anything is cancelled. Never throws: it is reached from a
   /// settings write and from the boot path, and neither may take the app down.
   Future<void> _cancelSchedules() async {
+    // Riverpod 3: a provider gone by now cannot reach the service; the stored
+    // OFF is what [resyncOnStart] cancels from at the next launch.
+    if (!ref.mounted) return;
     final core.NotificationService svc = ref.read(notificationServiceProvider);
     try {
       // `init()` first: cancel is undefined before the plugin is initialised.
@@ -1923,47 +1917,31 @@ const String _lastNudgeShownKey = 'nikatru.last_nudge_shown_at';
 /// [core.CatchUpNudge] so every platform row — including the web row, which
 /// `kIsWeb` makes unreachable from a widget test — is decidable from a unit test.
 class CatchUpNudgeController extends Notifier<DateTime?> {
-  bool _marked = false;
+  /// A nudge shown while the read is in flight wins: see [PersistedValue].
+  late final PersistedValue<core.KeyValueStore, DateTime?> _stored =
+      PersistedValue<core.KeyValueStore, DateTime?>(
+        open: () => ref.read(keyValueStoreProvider.future),
+        read: (kv) => kv.read(_lastNudgeShownKey),
+        write: (kv, raw) => kv.write(_lastNudgeShownKey, raw),
+        decode: (raw) => raw == null ? null : DateTime.tryParse(raw),
+        // Stored in UTC and compared in local time by [core.CatchUpNudge]: an
+        // ISO-8601 string without a zone is ambiguous the moment the device
+        // travels, and this is exactly the family of bug that made a 09:00
+        // reminder fire at 14:30 IST.
+        encode: (at) => at!.toUtc().toIso8601String(),
+        apply: (at) => state = at,
+        mounted: () => ref.mounted,
+      );
 
   @override
   DateTime? build() {
-    _hydrate();
+    // Unreadable store ⇒ "never shown": at worst one extra nudge.
+    _stored.hydrate();
     return null;
   }
 
-  Future<void> _hydrate() async {
-    try {
-      final core.KeyValueStore kv = await ref.read(
-        keyValueStoreProvider.future,
-      );
-      final String? raw = await kv.read(_lastNudgeShownKey);
-      if (_marked) return; // a nudge shown while we were reading wins
-      if (raw == null) return;
-      final DateTime? parsed = DateTime.tryParse(raw);
-      if (parsed != null) state = parsed;
-    } catch (_) {
-      // Unreadable store ⇒ "never shown". The worst case is one extra nudge,
-      // which is strictly better than crashing at launch.
-    }
-  }
-
   /// Record that the nudge has been shown for the current occurrence.
-  Future<void> markShown(DateTime at) async {
-    _marked = true;
-    state = at;
-    try {
-      final core.KeyValueStore kv = await ref.read(
-        keyValueStoreProvider.future,
-      );
-      // Stored in UTC and compared in local time by [core.CatchUpNudge]: an
-      // ISO-8601 string without a zone is ambiguous the moment the device
-      // travels, and this is exactly the family of bug that made a 09:00
-      // reminder fire at 14:30 IST.
-      await kv.write(_lastNudgeShownKey, at.toUtc().toIso8601String());
-    } catch (_) {
-      // Best-effort: a failed write means at most one repeated nudge.
-    }
-  }
+  Future<void> markShown(DateTime at) => _stored.set(at);
 }
 
 final NotifierProvider<CatchUpNudgeController, DateTime?> catchUpNudgeProvider =
@@ -1985,40 +1963,26 @@ const String _localeKey = 'nikatru.locale';
 /// first paint must never block on disk, and hydration must never clobber a
 /// choice the user made while it was in flight.
 class LocaleController extends Notifier<Locale?> {
-  bool _userChose = false;
+  /// Hydration never overwrites a live choice: [PersistedValue] says why.
+  late final PersistedValue<core.KeyValueStore, Locale?> _stored =
+      PersistedValue<core.KeyValueStore, Locale?>(
+        open: () => ref.read(keyValueStoreProvider.future),
+        read: (kv) => kv.read(_localeKey),
+        write: (kv, raw) => kv.write(_localeKey, raw),
+        decode: _decode,
+        encode: (locale) => locale?.languageCode ?? '',
+        apply: (locale) => state = locale,
+        mounted: () => ref.mounted,
+      );
 
   @override
   Locale? build() {
-    _hydrate();
+    _stored.hydrate();
     return null;
   }
 
-  Future<void> _hydrate() async {
-    try {
-      final core.KeyValueStore kv = await ref.read(
-        keyValueStoreProvider.future,
-      );
-      final String? raw = await kv.read(_localeKey);
-      if (_userChose) return; // the user got there first — never clobber
-      state = _decode(raw);
-    } catch (_) {
-      // Unreadable store ⇒ follow the device. Never throw at launch.
-    }
-  }
-
   /// Pass null to go back to following the device.
-  Future<void> set(Locale? locale) async {
-    _userChose = true;
-    state = locale;
-    try {
-      final core.KeyValueStore kv = await ref.read(
-        keyValueStoreProvider.future,
-      );
-      await kv.write(_localeKey, locale?.languageCode ?? '');
-    } catch (_) {
-      // Best-effort: a failed write only means the choice resets next launch.
-    }
-  }
+  Future<void> set(Locale? locale) => _stored.set(locale);
 
   static Locale? _decode(String? raw) =>
       (raw == null || raw.isEmpty) ? null : Locale(raw);
@@ -2075,66 +2039,36 @@ final Provider<core.ReviewGate> reviewGateProvider = Provider<core.ReviewGate>(
 /// controller here. An unreadable store leaves the state empty, which the gate
 /// reads as a fresh install — never as "long ago, safe to ask".
 class ReviewPromptController extends Notifier<core.ReviewGateState> {
-  /// 🔴 EVERY MUTATOR AWAITS THIS, and it is not tidiness — the property test
-  /// caught the bug. The other persisted controllers here guard hydration with a
-  /// `_userChose` flag, which is right for a CHOICE: last writer wins, and the
-  /// user is the last writer. These are COUNTERS, and for a counter that rule
-  /// loses data. `recordLaunch()` fired from the app's first frame while
-  /// `_hydrate()` was still in flight, incremented the EMPTY default to 1, and
-  /// then hydration completed and overwrote it with the stored 20 — so the
-  /// launch went uncounted and the write was silently discarded. On a device
-  /// that is one lost launch per cold start, forever, and the gate would take
-  /// far longer to open than the rule says.
-  Future<void>? _hydrating;
+  /// COUNTERS, not a choice: every mutator awaits hydration first, and
+  /// [PersistedValue.ensureHydrated] says why.
+  late final PersistedValue<core.KeyValueStore, core.ReviewGateState> _stored =
+      PersistedValue<core.KeyValueStore, core.ReviewGateState>(
+        open: () => ref.read(keyValueStoreProvider.future),
+        read: (kv) => kv.read(_reviewStateKey),
+        write: (kv, raw) => kv.write(_reviewStateKey, raw),
+        // Unreadable or corrupt ⇒ behave like a fresh install. Never throw at
+        // launch, and never fail OPEN into asking.
+        decode: (raw) => raw == null || raw.isEmpty
+            ? const core.ReviewGateState()
+            : core.ReviewGateState.fromJson(
+                jsonDecode(raw) as Map<String, Object?>,
+              ),
+        encode: (next) => jsonEncode(next.toJson()),
+        apply: (next) => state = next,
+        mounted: () => ref.mounted,
+      );
 
   @override
   core.ReviewGateState build() {
-    _hydrating = _hydrate();
+    _stored.hydrate();
     return const core.ReviewGateState();
-  }
-
-  /// Wait for the disk read, but never let its failure become the caller's.
-  Future<void> _ensureHydrated() async {
-    try {
-      await _hydrating;
-    } catch (_) {
-      // Unreadable store ⇒ carry on as a fresh install.
-    }
-  }
-
-  Future<void> _hydrate() async {
-    try {
-      final core.KeyValueStore kv = await ref.read(
-        keyValueStoreProvider.future,
-      );
-      final String? raw = await kv.read(_reviewStateKey);
-      if (raw == null || raw.isEmpty) return;
-      state = core.ReviewGateState.fromJson(
-        jsonDecode(raw) as Map<String, Object?>,
-      );
-    } catch (_) {
-      // Unreadable or corrupt ⇒ behave like a fresh install. Never throw at
-      // launch, and never fail OPEN into asking.
-    }
-  }
-
-  Future<void> _persist(core.ReviewGateState next) async {
-    state = next;
-    try {
-      final core.KeyValueStore kv = await ref.read(
-        keyValueStoreProvider.future,
-      );
-      await kv.write(_reviewStateKey, jsonEncode(next.toJson()));
-    } catch (_) {
-      // Best-effort: a failed write only means the counter restarts.
-    }
   }
 
   /// Count this launch, and stamp the install date the first time we see it.
   Future<void> recordLaunch({DateTime? now}) async {
-    await _ensureHydrated();
+    if (!await _stored.ensureHydrated()) return;
     final DateTime at = now ?? DateTime.now().toUtc();
-    await _persist(
+    await _stored.persist(
       state.copyWith(
         launches: state.launches + 1,
         firstLaunch: state.firstLaunch ?? at,
@@ -2144,8 +2078,8 @@ class ReviewPromptController extends Notifier<core.ReviewGateState> {
 
   /// The user has asked not to be asked again. Never cleared by the chassis.
   Future<void> suppress() async {
-    await _ensureHydrated();
-    await _persist(state.copyWith(suppressed: true));
+    if (!await _stored.ensureHydrated()) return;
+    await _stored.persist(state.copyWith(suppressed: true));
   }
 
   /// Ask, but only if the gate agrees.
@@ -2154,11 +2088,12 @@ class ReviewPromptController extends Notifier<core.ReviewGateState> {
   /// platform cannot" from "not yet" — three outcomes that are identical from a
   /// bool and need completely different responses.
   Future<core.ReviewRequestOutcome> maybeAsk({DateTime? now}) async {
-    await _ensureHydrated();
+    if (!await _stored.ensureHydrated()) return core.ReviewRequestOutcome.gated;
     final core.ReviewPrompter prompter = ref.read(reviewPrompterProvider);
     // The DEVICE half, asked before the calendar half: on Android this depends
     // on the Play Store being installed, which no build-time fact can tell us.
     final bool canAsk = await prompter.isAvailable();
+    if (!ref.mounted) return core.ReviewRequestOutcome.gated;
     final core.ReviewGateVerdict verdict = ref
         .read(reviewGateProvider)
         .decide(
@@ -2176,7 +2111,7 @@ class ReviewPromptController extends Notifier<core.ReviewGateState> {
     // whether anything was drawn, so a crash or a kill between the request and
     // the write would let the app ask again on the next launch — and the second
     // ask is the one the store silently discards.
-    await _persist(
+    await _stored.persist(
       state.copyWith(
         lastAskedAt: now ?? DateTime.now().toUtc(),
         timesAsked: state.timesAsked + 1,
@@ -2312,11 +2247,16 @@ class PromoCardStateController extends AsyncNotifier<core.PromoGateState> {
     try {
       return await future;
     } catch (_) {
-      return state.valueOrNull ?? const core.PromoGateState();
+      // Riverpod 3: a provider disposed mid-read has no state left to read.
+      if (!ref.mounted) return const core.PromoGateState();
+      return state.value ?? const core.PromoGateState();
     }
   }
 
   Future<void> _persist(core.PromoGateState next) async {
+    // Every caller awaited [_settled] first, and the provider may be gone by
+    // then; Riverpod 3 throws on a Ref used after that.
+    if (!ref.mounted) return;
     state = AsyncValue<core.PromoGateState>.data(next);
     try {
       final core.KeyValueStore kv = await ref.read(
@@ -2421,7 +2361,22 @@ const String _onboardingSeenKey = 'nikatru.onboarding_seen';
 /// [ReviewPromptController], where that distinction cost a lost launch on every
 /// cold start.)
 class OnboardingSeenController extends Notifier<bool?> {
-  bool _userChose = false;
+  /// Hydration never overwrites a live choice: [PersistedValue] says why.
+  late final PersistedValue<core.KeyValueStore, bool> _stored =
+      PersistedValue<core.KeyValueStore, bool>(
+        open: () => ref.read(keyValueStoreProvider.future),
+        read: (kv) => kv.read(_onboardingSeenKey),
+        write: (kv, raw) => kv.write(_onboardingSeenKey, raw),
+        decode: (raw) => raw == 'true',
+        encode: (seen) => seen ? 'true' : 'false',
+        apply: (seen) => state = seen,
+        mounted: () => ref.mounted,
+        // Unreadable store ⇒ SHOW onboarding. Resolving to false rather than
+        // staying null matters: null blocks the decision forever, and the cost
+        // is asymmetric — showing it twice is an irritation, never showing it
+        // drops the user into an app nobody introduced.
+        onUnreadable: () => state = false,
+      );
 
   /// 🔴 NULL MEANS "NOT KNOWN YET", AND IT IS NOT THE SAME AS FALSE. Hydration
   /// is async, so a plain `false` default meant the router's FIRST redirect —
@@ -2434,42 +2389,14 @@ class OnboardingSeenController extends Notifier<bool?> {
   /// is the only honest answer while the disk is still being read.
   @override
   bool? build() {
-    _hydrate();
+    _stored.hydrate();
     return null;
   }
 
-  Future<void> _hydrate() async {
-    try {
-      final core.KeyValueStore kv = await ref.read(
-        keyValueStoreProvider.future,
-      );
-      final bool stored = (await kv.read(_onboardingSeenKey)) == 'true';
-      if (_userChose) return; // the user got there first — never clobber
-      state = stored;
-    } catch (_) {
-      // Unreadable store ⇒ SHOW onboarding. Resolving to false rather than
-      // staying null matters: null blocks the decision forever, and the cost is
-      // asymmetric — showing it twice is an irritation, never showing it drops
-      // the user into an app nobody introduced.
-      if (!_userChose) state = false;
-    }
-  }
-
-  Future<void> set(bool seen) async {
-    _userChose = true;
-    // In memory FIRST: the router's redirect reads this synchronously the
-    // moment the screen navigates away, and a slow write must not bounce the
-    // user straight back into onboarding.
-    state = seen;
-    try {
-      final core.KeyValueStore kv = await ref.read(
-        keyValueStoreProvider.future,
-      );
-      await kv.write(_onboardingSeenKey, seen ? 'true' : 'false');
-    } catch (_) {
-      // Best-effort: a failed write only means it is shown once more.
-    }
-  }
+  /// In memory FIRST ([PersistedValue.set]): the router's redirect reads this
+  /// synchronously the moment the screen navigates away, and a slow write must
+  /// not bounce the user straight back into onboarding.
+  Future<void> set(bool seen) => _stored.set(seen);
 }
 
 final NotifierProvider<OnboardingSeenController, bool?> onboardingSeenProvider =
@@ -2542,7 +2469,7 @@ class LegalAcceptanceController extends Notifier<String?> {
       AsyncValue<core.AuthUser?> next,
     ) {
       if (next.isLoading) return;
-      final bool hasSession = next.valueOrNull != null;
+      final bool hasSession = next.value != null;
       // ⚠️ THE TRANSITION, NOT THE VALUE. `authUserProvider` resolves to null on
       // every signed-out launch, and treating THAT as a sign-out would mark a
       // re-ask before anybody had signed in — which is the "ask on every
@@ -2596,7 +2523,7 @@ class LegalAcceptanceController extends Notifier<String?> {
       // an `await`, so a value assigned before this line would clobber a user
       // who ticked the box while the disk was still being read — and a partial
       // clobber is still a clobber.
-      if (_userChose) return; // the user got there first — never clobber
+      if (_userChose || !ref.mounted) return; // the user got there first
       final core.ConsentArtifact? a = c.artifactOf(core.ConsentPurpose.terms);
       // A session ended on this device since the last acceptance, so whoever is
       // holding it now has to answer for themselves. The ARTIFACT is untouched:
@@ -2610,7 +2537,7 @@ class LegalAcceptanceController extends Notifier<String?> {
       // where the app should be. The cost is asymmetric in the same direction
       // as onboarding's — asking twice is a nuisance, never asking means
       // somebody is using the product under terms they were never shown.
-      if (!_userChose) state = '';
+      if (!_userChose && ref.mounted) state = '';
     }
   }
 

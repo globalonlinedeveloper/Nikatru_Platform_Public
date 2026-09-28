@@ -465,11 +465,35 @@ describe('assert-cors-allowlist', () => {
     2,
   );
 
+  /** ⏱ 2026-09-28 (NP-Eb1, O-SERVICE-KIT-UNBUILT): each Worker's CORS scope is its
+   *  row's `cors` in tooling/platform-register.json, and its src/middleware/cors.ts
+   *  binds services/_shared/src/cors.ts with that scope. Without the register the
+   *  guard stops COVERAGE LOST (2) before it reads an allowlist, so every tree here
+   *  carries the live register and both bindings (cors-allowlist.test.mjs owns the
+   *  register and binding limbs themselves). */
+  const REGISTER = JSON.stringify(
+    {
+      servingWorker: { name: 'platform', config: 'services/platform/wrangler.jsonc', cors: 'every-app' },
+      appWorkers: [{ name: 'subscriptiontracker-api', config: 'services/subscriptiontracker-api/wrangler.jsonc', cors: 'own-app' }],
+    },
+    null,
+    2,
+  );
+  const binding = (scope, appId) =>
+    "import { cors } from '../../../_shared/src/cors';\nexport * from '../../../_shared/src/cors';\n" +
+    `export const corsMiddleware = cors({ scope: '${scope}',${appId ? ` appId: '${appId}',` : ''} methods: ['GET', 'OPTIONS'] });\n`;
+  const BOUND = {
+    'tooling/platform-register.json': REGISTER,
+    'services/platform/src/middleware/cors.ts': binding('every-app'),
+    'services/subscriptiontracker-api/src/middleware/cors.ts': binding('own-app', 'subscriptiontracker'),
+  };
+
   /** Both Workers, each overridable. Anything less is not a valid tree — the
    *  guard is supposed to insist that every service it knows about is present. */
   const build = (name, { platform = config(PLATFORM), subscriptiontracker = config(SUBLY, { appId: 'subscriptiontracker' }), extra = {} } = {}) =>
     fixture(name, {
       'catalog/apps.json': CATALOGUE,
+      ...BOUND,
       'services/platform/wrangler.jsonc': platform,
       'services/subscriptiontracker-api/wrangler.jsonc': subscriptiontracker,
       ...extra,
@@ -554,7 +578,7 @@ describe('assert-cors-allowlist', () => {
     });
     const { code, out } = run('assert-cors-allowlist.mjs', { cwd: dir });
     assert.equal(code, 1);
-    assert.match(out, /never been taught about services\/newthing/);
+    assert.match(out, /no row in tooling\/platform-register\.json names services\/newthing/);
   });
 
   test('FAILS its own coverage check when a Worker POLICY names is not on disk', () => {
@@ -562,6 +586,8 @@ describe('assert-cors-allowlist', () => {
     // healthy tally over whatever is left.
     const dir = fixture('cors-renamed', {
       'catalog/apps.json': CATALOGUE,
+      'tooling/platform-register.json': REGISTER,
+      'services/platform/src/middleware/cors.ts': binding('every-app'),
       'services/platform/wrangler.jsonc': config(PLATFORM),
       'services/subscriptiontracker-backend/wrangler.jsonc': config(SUBLY),
     });
@@ -5207,8 +5233,7 @@ void initState() {
 ref.watch(appleTokenKeeperProvider);
 
 final String updateUrl =
-    ref.watch(appConfigProvider).valueOrNull?.updateUrl ??
-    AppConfig.updateUrl;
+    ref.watch(appConfigProvider).value?.updateUrl ?? AppConfig.updateUrl;
 
 return MaterialApp.router(
   theme: buildAppTheme(seed: const Color(0xFF6459F5)),
@@ -5375,6 +5400,10 @@ final Provider<RestClient> platformRestClientProvider = X();
 // ST-A2 (audit BUG-2), 2026-09-27 — the flow of a failed NON-reset arrival.
 // Here for the same both-directions classification reason as the rows above.
 final StateProvider<AuthFlow?> failedAuthArrivalProvider = X();
+// ST-T6a (audit D2/D31/B27), 2026-09-28 — the file exporter (ST-X1) and the
+// bundled content-pack tier (ST-X5). Same both-directions reason as above.
+final Provider<core.FileExporter> fileExporterProvider = X();
+final Provider<core.ContentPackSource?> bundledContentPackSourceProvider = X();
 final Provider<core.ConsentStatus> analyticsConsentProvider = X();
 final Provider<bool> consentDecidedProvider = X();
 // The legal gate's anchors, and all three are load-bearing for the
@@ -6447,7 +6476,7 @@ onTap: () => _openUrl(AppConfig.refundUrl),
     const { code, out } = run('assert-stamp-properties.mjs', {
       cwd: build('sp-d8-compiled', {
         app: goodApp.replace(
-          'ref.watch(appConfigProvider).valueOrNull?.updateUrl ??\n    AppConfig.updateUrl',
+          'ref.watch(appConfigProvider).value?.updateUrl ?? AppConfig.updateUrl',
           'AppConfig.updateUrl',
         ),
       }),
@@ -8015,7 +8044,10 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // 63 since 2026-09-24: `platformRestClientProvider`, an ADMITTED gap, so the gap
       // count below moves too (11 → 12).
       // 64 since 2026-09-27: `failedAuthArrivalProvider` (ST-A2), an ADMITTED gap.
-      assert.match(out, /tracked domain: 64 chassis behaviour\(s\)/);
+      // 66 since 2026-09-28 (ST-T6a): `fileExporterProvider` (ST-X1), an ADMITTED
+      // gap, and `bundledContentPackSourceProvider` (ST-X5), classified under
+      // `content-pack-consumed`, so the gap count moves by one.
+      assert.match(out, /tracked domain: 66 chassis behaviour\(s\)/);
       // The admitted gaps must PRINT. An inventory nobody sees is a list that
       // quietly grows; this is the same reasoning as the owner-gated residual.
       // 9, not 10: [pipeline C-13] moved notificationServiceProvider out of the
@@ -8054,7 +8086,9 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // 13 since 2026-09-27: `failedAuthArrivalProvider` (ST-A2), admitted with its
       // reason — the routing is driven in the app's password_reset_test; no
       // CHASSIS property drives it yet.
-      assert.match(out, /13 chassis behaviour\(s\) a stamped app does NOT prove/);
+      // 14 since 2026-09-28: `fileExporterProvider` (ST-X1), admitted with its
+      // reason — no brick screen calls it until ST-D's Back up / Restore rows.
+      assert.match(out, /14 chassis behaviour\(s\) a stamped app does NOT prove/);
       // A gap that is STILL a gap, named — so this assertion cannot be
       // satisfied by the list going empty.
       assert.match(out, /featureFlagsProvider/);
@@ -8112,7 +8146,9 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // 2026-09-18: 60 → 61 for `contentReportTransportProvider`; MIN_DOMAIN went 61 → 62.
       // 2026-09-24: 61 → 62 for `platformRestClientProvider`; MIN_DOMAIN went 62 → 63.
       // 2026-09-27: 62 → 63 for `failedAuthArrivalProvider` (ST-A2); MIN_DOMAIN went 63 → 64.
-      assert.match(out, /COVERAGE LOST — the domain parse found 63/);
+      // 2026-09-28: 63 → 65 for `fileExporterProvider` and
+      // `bundledContentPackSourceProvider` (ST-T6a); MIN_DOMAIN went 64 → 66.
+      assert.match(out, /COVERAGE LOST — the domain parse found 65/);
     });
 
     // The scanner-stopped-scanning case, which is how this repo has been bitten

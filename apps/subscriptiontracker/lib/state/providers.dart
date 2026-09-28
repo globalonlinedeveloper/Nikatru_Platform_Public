@@ -71,6 +71,7 @@ export 'providers/preferences.dart';
 export 'providers/promo.dart';
 export 'providers/review.dart';
 export 'providers/routing.dart';
+export 'providers/scope.dart';
 export 'providers/subscriptions.dart';
 
 /// 🔴 THE AMBIGUITY FIX — see note 1 in the header. These names are declared

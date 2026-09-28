@@ -2,7 +2,7 @@
 // PATH.
 //
 // `SubscriptionsController` re-syncs the OS reminder set on every settings
-// and locale change. It used to feed the sync `state.valueOrNull ?? const []`
+// and locale change. It used to feed the sync `state.value ?? const []`
 // — so a settings change while the first fetch was still loading, or after it
 // had failed, called `syncAll(const [])`, which cancelled every renewal
 // reminder and scheduled none, on a device that still had every subscription.
@@ -11,11 +11,12 @@
 // way.
 //
 // MUTATION PROOF (run and recorded in the PR): make `observedList` return
-// `state.valueOrNull ?? const <Subscription>[]` and the mid-load, failed-load
+// `state.value ?? const <Subscription>[]` and the mid-load, failed-load
 // and cancel-with-no-list cases go red.
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subscriptiontracker/data/api/api_client.dart';
@@ -148,6 +149,8 @@ ProviderContainer _container(
   _RecordingNotificationService notifier,
 ) {
   final ProviderContainer c = ProviderContainer(
+    // As the app's root ProviderScope (main.dart): no automatic retry (Riverpod 3).
+    retry: (int retryCount, Object error) => null,
     overrides: <Override>[
       keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
       apiClientProvider.overrideWithValue(api),
@@ -272,6 +275,8 @@ void main() {
     final _ThrowingNotificationService notifier =
         _ThrowingNotificationService();
     final ProviderContainer c = ProviderContainer(
+      // As the app's root ProviderScope (main.dart): no automatic retry (Riverpod 3).
+      retry: (int retryCount, Object error) => null,
       overrides: <Override>[
         keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
         apiClientProvider.overrideWithValue(api),

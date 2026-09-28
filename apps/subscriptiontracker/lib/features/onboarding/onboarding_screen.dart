@@ -128,7 +128,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final core.AppConfig? cfg = ref.watch(appConfigProvider).valueOrNull;
+    final core.AppConfig? cfg = ref.watch(appConfigProvider).value;
     // The same reading of the chassis matrix home's catch-up nudge makes.
     final bool canSchedule = NotificationCapabilities.forPlatform(
       defaultTargetPlatform,

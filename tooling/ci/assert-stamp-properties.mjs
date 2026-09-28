@@ -1473,7 +1473,7 @@ const REQUIRED_COVERAGE = [
     key: 'update-url-resolved-from-config',
     group: /group\(\s*'property: update-url-resolved-from-config'/,
     sources: [
-      { file: APP_ROOT, re: /ref\.watch\(appConfigProvider\)\.valueOrNull\?\.updateUrl\s*\?\?/, what: 'app.dart must RESOLVE the destination at runtime and fall back to the define — dropping the runtime half restores the circular kill-switch, and dropping the fallback leaves the button with nowhere to go while config is unresolved' },
+      { file: APP_ROOT, re: /ref\.watch\(appConfigProvider\)\.value\?\.updateUrl\s*\?\?/, what: 'app.dart must RESOLVE the destination at runtime and fall back to the define — dropping the runtime half restores the circular kill-switch, and dropping the fallback leaves the button with nowhere to go while config is unresolved' },
       { file: APP_ROOT, re: /onUpdate:\s*\(\)\s*=>\s*_openUpdate\(updateUrl\)/, what: 'the BUTTON must be wired to the resolved value — wiring it to AppConfig.updateUrl leaves the resolution above computed and unused, which reads as a working feature in review' },
       { file: PLATFORM_TYPES, re: /^\s*update_url:\s*string \| null;/m, what: 'the wire contract must carry the key, or there is nothing for the client to resolve and the runtime branch is unreachable in production' },
     ],
@@ -1666,7 +1666,10 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // enter at the shared platform Worker). An ADMITTED gap in UNASSERTED, with its
 // reason; same commit as the provider.
 // 63 -> 64 on 2026-09-27: `failedAuthArrivalProvider` (ST-A2) joined the domain.
-const MIN_DOMAIN = 64;
+// 64 -> 66 on 2026-09-28 (ST-T6a): `fileExporterProvider` (ST-X1, an ADMITTED gap in
+// UNASSERTED) and `bundledContentPackSourceProvider` (ST-X5, COVERED_BY
+// content-pack-consumed) joined the domain, in the same PR as the providers.
+const MIN_DOMAIN = 66;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.
@@ -1800,6 +1803,9 @@ const COVERED_BY = {
   // .date` is the half that is a FIELD rather than a sentence — re-readable
   // even though no guard fails on it — so it is the half named.
   packVerifierProvider: 'content-pack-consumed',
+  // ⏱ 2026-09-28 · ST-X5: DRIVEN — the property overrides it with an in-memory
+  // pack and asserts a NULL pointer still serves it, and refuses another app's.
+  bundledContentPackSourceProvider: 'content-pack-consumed',
   remindersEnabledProvider: 'reminder-intent-persisted',
   notificationServiceProvider: 'reminder-intent-persisted',
   // Driven, not constructed: the property taps the banner's dismiss action and
@@ -1922,6 +1928,7 @@ const COVERED_BY = {
 // it stays uncomfortable. Per the C-16 lock, new properties arrive WITH their
 // features; nothing here is to be invented to empty the list.
 const UNASSERTED = {
+  fileExporterProvider: '2026-09-28 · ST-X1 (audit D2/D31). The brick BUILDS the exporter so a stamped app inherits it, and no brick screen calls it yet: the only caller is apps/subscriptiontracker\'s Settings "Export data (CSV)" row, driven end to end in apps/subscriptiontracker/test/settings_export_test.dart (the file parsed back), with the routing in packages/platform_storage/test/export_capabilities_test.dart. A stamped app cannot DEMONSTRATE an export it has no surface for; the brick\'s Back up / Restore rows are ST-D Settings, and the property is owed with them',
   failedAuthArrivalProvider: '2026-09-27 · ST-A2 (audit BUG-2). The flow of a failed NON-reset arrival — a sign-up confirmation or an OAuth return — which keeps it off /reset-password. The rule is packages/auth_supabase isResetLinkFailure, driven in auth_redirect_test.dart; the routing is driven end to end in apps/subscriptiontracker/test/password_reset_test.dart. No CHASSIS property drives it on a stamp: that needs chassis_properties_test.dart to pump a launch URL with a failed confirm arrival, which this hotfix lane does not edit',
   platformRestClientProvider: '2026-09-24 · O-BRICK-ERASURE-DESTROYS-THE-IDENTITY. The client account deletion and the Apple refresh token ride to the SHARED platform Worker. Its host is held statically by tooling/ci/assert-deletion-control.mjs limb 7 (built on kPlatformBaseUrl, never apiBaseUrl), and the brick\'s test/platform_client_test.dart drives the erasure closure\'s read of it (no provider cycle, #258). No CHASSIS property drives it: that needs chassis_properties_test.dart, which this lane does not edit',
   // The money rail's remaining gaps. Each is exercised in packages/purchases'

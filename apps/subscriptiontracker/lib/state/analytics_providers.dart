@@ -136,7 +136,7 @@ final Provider<core.ConsentStatus> analyticsConsentProvider =
     Provider<core.ConsentStatus>((ref) {
       final core.ConsentController? c = ref
           .watch(consentControllerProvider)
-          .valueOrNull;
+          .value;
       return c?.statusOf(core.ConsentPurpose.analytics) ??
           core.ConsentStatus.unknown;
     });
@@ -158,9 +158,7 @@ final Provider<core.ConsentStatus> analyticsConsentProvider =
 ///      `unknown` means "never objected" and permits, because the surface runs
 ///      on legitimate interest, not on consent.
 final Provider<bool> promoObjectedProvider = Provider<bool>((ref) {
-  final core.ConsentController? c = ref
-      .watch(consentControllerProvider)
-      .valueOrNull;
+  final core.ConsentController? c = ref.watch(consentControllerProvider).value;
   if (c == null) return true; // still loading — hold, do not show
   return core.PromoObjection(c).objected;
 });
@@ -181,7 +179,7 @@ final Provider<bool> promoObjectedProvider = Provider<bool>((ref) {
 /// whether the value means anything yet. One derivation, two readings, and the
 /// asymmetry written down once instead of inferred twice.
 final Provider<bool> promoObjectionKnownProvider = Provider<bool>(
-  (ref) => ref.watch(consentControllerProvider).valueOrNull != null,
+  (ref) => ref.watch(consentControllerProvider).value != null,
 );
 
 /// Whether the consent question has been ANSWERED yet — distinct from whether
@@ -430,7 +428,7 @@ Future<void> recordAnalyticsConsent(
     // point and it is unchanged: the read still happens after both awaits and
     // before the invalidate. Hoisting it up beside the container would hand
     // `applyConsentDecision` a recorder read before the decision it purges for.
-    analytics: container.read(analyticsProvider).valueOrNull,
+    analytics: container.read(analyticsProvider).value,
   );
   container.invalidate(consentControllerProvider);
 }

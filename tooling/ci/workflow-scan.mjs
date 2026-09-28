@@ -2225,6 +2225,39 @@ export function postGateClass(wf, gateJob) {
 /** The ids of `wf`'s post-gate jobs after aggregator `gateJob` (postGateClass `post`). */
 export const postGateJobs = (wf, gateJob) => postGateClass(wf, gateJob).filter((c) => c.kind === 'post').map((c) => c.id);
 
+/** THE FF-2 FOLLOW-UP CLASS. ⏱ 2026-09-28 — a red gate job no longer cancels its own
+ *  run from inside itself (FF-1 did, and GitHub then reported THAT job cancelled too,
+ *  so a cancelled run named no red job). The cancel lives in a follow-up job `ff-<lane>`
+ *  that `needs` the lane alone and starts only after the lane has CONCLUDED `failure`.
+ *  On a green run the follow-up is skipped, and it decides no verdict: the lane it
+ *  follows is the constituent. assert-green-means-ran exempts the class from A2, A6 and
+ *  A8 by THIS predicate, and assert-failfast-coverage grades its exact form: one
+ *  definition, read by both. Deliberately narrow — a job is in the class only when
+ *  ALL hold, so that a job doing real work is not in it:
+ *    · its id is `ff-<lane>`, `<lane>` is another job of `wf`, and `needs` is `[<lane>]`;
+ *    · its job-level `if:` starts with FAILFAST_IF(`<lane>`);
+ *    · it is not a call, and has exactly one step: a `run:` whose every command is the
+ *      `::notice` echo or FAILFAST_CANCEL.
+ *  Returns `<lane>`, or null. */
+export const FAILFAST_CANCEL = 'gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY"';
+export const FAILFAST_IF = (lane) => `failure() && needs.${lane}.result == 'failure'`;
+export function failFastLane(wf, id) {
+  const m = /^ff-(.+)$/.exec(id);
+  const job = wf?.jobs?.get(id);
+  if (!m || !job || !wf.jobs.has(m[1]) || job.needs.length !== 1 || job.needs[0] !== m[1]) return null;
+  if (!String(job.jobIf?.cond ?? '').startsWith(FAILFAST_IF(m[1]))) return null;
+  if (job.lines.some((l) => /^ {4}uses:/.test(l.text))) return null;
+  const steps = workflowSteps(job);
+  if (steps.length !== 1 || steps[0].uses !== null || steps[0].run === null) return null;
+  const commands = steps[0].run.text
+    .replace(/^[|>][-+]?\s*/, '')
+    .split(/\s+;\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const ok = (c) => /^echo\s+"::notice\s[^"]*"$/.test(c) || c === `${FAILFAST_CANCEL} || true`;
+  return commands.length > 0 && commands.every(ok) && commands.some((c) => c.startsWith(FAILFAST_CANCEL)) ? m[1] : null;
+}
+
 /**
  * WHERE A LANE FILE RUNS. ⏱ 2026-09-25 [ADR 095 §4] A lane names the file that
  * holds its steps. A `workflow_call`-only file never runs on its own: it runs as
