@@ -102,7 +102,7 @@ dependencies:
   flutter_riverpod: ^2.5.0
 
   # Navigation (real URLs on web; deep links on all 6 platforms)
-  go_router: ^14.2.0
+  go_router: ^18.0.0
 
   # HTTP client for the Cloudflare Worker API (bearer-token interceptor)
   dio: ^5.4.0

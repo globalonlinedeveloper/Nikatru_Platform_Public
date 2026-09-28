@@ -29,22 +29,38 @@ RouteBase appShellRoute() => StatefulShellRoute.indexedStack(
   branches: <StatefulShellBranch>[
     StatefulShellBranch(
       routes: <RouteBase>[
-        GoRoute(path: '/home', builder: (_, __) => const HomeScreen()),
+        GoRoute(
+          path: '/home',
+          builder: (_, __) => const HomeScreen(),
+          caseSensitive: false,
+        ),
       ],
     ),
     StatefulShellBranch(
       routes: <RouteBase>[
-        GoRoute(path: '/calendar', builder: (_, __) => const CalendarScreen()),
+        GoRoute(
+          path: '/calendar',
+          builder: (_, __) => const CalendarScreen(),
+          caseSensitive: false,
+        ),
       ],
     ),
     StatefulShellBranch(
       routes: <RouteBase>[
-        GoRoute(path: '/insights', builder: (_, __) => const _GatedInsights()),
+        GoRoute(
+          path: '/insights',
+          builder: (_, __) => const _GatedInsights(),
+          caseSensitive: false,
+        ),
       ],
     ),
     StatefulShellBranch(
       routes: <RouteBase>[
-        GoRoute(path: '/budget', builder: (_, __) => const BudgetScreen()),
+        GoRoute(
+          path: '/budget',
+          builder: (_, __) => const BudgetScreen(),
+          caseSensitive: false,
+        ),
       ],
     ),
     // COLLISION: the stamp mounts /settings top-level. Subly's settings
@@ -53,7 +69,11 @@ RouteBase appShellRoute() => StatefulShellRoute.indexedStack(
     // screen is lost.
     StatefulShellBranch(
       routes: <RouteBase>[
-        GoRoute(path: '/settings', builder: (_, __) => const SettingsScreen()),
+        GoRoute(
+          path: '/settings',
+          builder: (_, __) => const SettingsScreen(),
+          caseSensitive: false,
+        ),
       ],
     ),
   ],

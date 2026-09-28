@@ -75,7 +75,7 @@ dependencies:
 
   # State (Riverpod 2.x-LTS, non-codegen — locked chassis choice) + routing.
   flutter_riverpod: ^2.5.0
-  go_router: ^14.2.0
+  go_router: ^18.0.0
 
   # External URLs (support mailto, legal links) open through
   # nikatru_external_links above, which owns the app's url_launcher call.
