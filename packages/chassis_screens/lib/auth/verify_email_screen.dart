@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import 'auth_error_text.dart';
-import 'turnstile_gate.dart' show CaptchaTokenController, CaptchaWaitStatus;
+import 'turnstile_gate.dart' show CaptchaTokenController;
 
 /// "Check your inbox" — the only screen an UNVERIFIED session can reach.
 ///
@@ -60,7 +60,7 @@ class VerifyEmailView extends StatefulWidget {
 
   /// The adapter's token holder, which this view WAITS on — never gates on.
   /// A gated action validates its fields first, then awaits
-  /// `untilReady()` (showing [CaptchaWaitStatus]), then calls the adapter's
+  /// `untilReady()` (the gate shows `CaptchaWaitStatus`), then calls the adapter's
   /// callback, which spends the token with `consume()` in the same step.
   /// Null where the adapter has no captcha.
   ///
@@ -166,12 +166,6 @@ class _VerifyEmailViewState extends State<VerifyEmailView> {
                       }),
                 child: Text(l10n.verifyEmailResend),
               ),
-              if (widget.captchaController case final CaptchaTokenController c)
-                ListenableBuilder(
-                  listenable: c,
-                  builder: (BuildContext _, Widget? _) =>
-                      CaptchaWaitStatus(waiting: c.waiting),
-                ),
               const SizedBox(height: 12),
               // The only way OUT of the gate. A user who mistyped their address
               // has no other move — the account exists, they cannot reach the

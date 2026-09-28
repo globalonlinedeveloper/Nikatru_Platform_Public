@@ -76,7 +76,6 @@ class _CheckInboxActionsState extends ConsumerState<CheckInboxActions>
           onPressed: _busy ? null : _resend,
           child: Text(l10n.verifyEmailResend),
         ),
-        CaptchaWaitStatus(waiting: captcha.waiting),
         if (_notice != null) ...<Widget>[
           const SizedBox(height: 8),
           Semantics(

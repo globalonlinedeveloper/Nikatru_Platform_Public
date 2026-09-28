@@ -578,7 +578,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       ? null
                       : _submit,
                 ),
-                CaptchaWaitStatus(waiting: captcha.waiting),
                 // THE WHOLE OAUTH LIMB IS GATED, NOT JUST THE BUTTON — the
                 // chassis `SignInScreen` guard ([pipeline C-7]) that this fork
                 // never had. GATED rather than deleted: the day a provider is

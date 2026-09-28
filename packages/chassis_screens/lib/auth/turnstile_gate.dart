@@ -177,6 +177,13 @@ class CaptchaTokenController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// [untilReady], then [consume] in the same step: the one call a gated
+  /// request makes after its own validation, so a fork waits without growing.
+  Future<String?> consumeWhenReady({Duration timeout = defaultWait}) async {
+    await untilReady(timeout: timeout);
+    return consume();
+  }
+
   /// The token for ONE gated call. It is forgotten and the challenge re-runs,
   /// whatever the call's outcome — a redeemed token is dead either way.
   String? consume() {
@@ -323,22 +330,33 @@ class _TurnstileGateState extends State<TurnstileGate> {
       listenable: c,
       builder: (BuildContext context, _) => Padding(
         padding: const EdgeInsets.only(bottom: 16),
-        // 🔴 KEYED BY THE GENERATION: a spent token re-mounts the vendor widget,
-        // which is a fresh challenge. Refreshing only on EXPIRY (~300 s) is what
-        // left a failed sign-in retrying with a dead token (BUG-1).
-        child: KeyedSubtree(
-          key: ValueKey<int>(c.generation),
-          child: widget.render(
-            context,
-            TurnstileChallenge(
-              siteKey: c.siteKey,
-              onToken: c.setToken,
-              onError: (String message) {
-                c.reportError(message);
-                widget.onError?.call(message);
-              },
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            // 🔴 KEYED BY THE GENERATION: a spent token re-mounts the vendor
+            // widget, which is a fresh challenge. Refreshing only on EXPIRY
+            // (~300 s) is what left a failed sign-in retrying with a dead token
+            // (BUG-1).
+            KeyedSubtree(
+              key: ValueKey<int>(c.generation),
+              child: widget.render(
+                context,
+                TurnstileChallenge(
+                  siteKey: c.siteKey,
+                  onToken: c.setToken,
+                  onError: (String message) {
+                    c.reportError(message);
+                    widget.onError?.call(message);
+                  },
+                ),
+              ),
             ),
-          ),
+            // ⏱ 2026-09-28 — the gate SAYS it is waiting, directly above the
+            // button that is waiting on it, so no screen (and no fork, whose
+            // size is ceilinged) carries a status line of its own.
+            CaptchaWaitStatus(waiting: c.waiting),
+          ],
         ),
       ),
     );

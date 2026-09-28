@@ -5,7 +5,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'age_signal_host.dart';
 import 'auth_error_text.dart';
 import 'legal_consent_fields.dart';
-import 'turnstile_gate.dart' show CaptchaTokenController, CaptchaWaitStatus;
+import 'turnstile_gate.dart' show CaptchaTokenController;
 
 /// Sign-up — [pipeline C-13], inherited by every stamped app.
 ///
@@ -66,7 +66,7 @@ class SignUpView extends StatefulWidget {
 
   /// The adapter's token holder, which this view WAITS on — never gates on.
   /// A gated action validates its fields first, then awaits
-  /// `untilReady()` (showing [CaptchaWaitStatus]), then calls the adapter's
+  /// `untilReady()` (the gate shows `CaptchaWaitStatus`), then calls the adapter's
   /// callback, which spends the token with `consume()` in the same step.
   /// Null where the adapter has no captcha.
   ///
@@ -210,12 +210,6 @@ class _SignUpViewState extends State<SignUpView> {
                     : () => _signUp(l10n),
                 child: Text(l10n.signUp),
               ),
-              if (widget.captchaController case final CaptchaTokenController c)
-                ListenableBuilder(
-                  listenable: c,
-                  builder: (BuildContext _, Widget? _) =>
-                      CaptchaWaitStatus(waiting: c.waiting),
-                ),
               const SizedBox(height: 16),
               TextButton(
                 key: SignUpView.haveAccountButton,

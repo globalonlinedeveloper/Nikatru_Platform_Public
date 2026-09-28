@@ -23,7 +23,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show ChassisL10nX;
+    show ChassisL10nX, ContentPane;
 import 'package:nikatru_chassis_screens/auth/sign_in_screen.dart';
 import 'package:nikatru_chassis_screens/auth/turnstile_gate.dart';
 
@@ -199,10 +199,8 @@ void main() {
   });
 
   group('SignInView — live without a token; validates first', () {
-    CaptchaTokenController challenge() => CaptchaTokenController(
-      posture: CaptchaPosture.challenge,
-      siteKey: 'k',
-    );
+    CaptchaTokenController challenge() =>
+        CaptchaTokenController(posture: CaptchaPosture.challenge, siteKey: 'k');
 
     Widget view({
       CaptchaTokenController? controller,
@@ -277,6 +275,13 @@ void main() {
         kPhone,
         view(
           controller: c,
+          // The gate is what shows the wait now, so it is mounted, as the
+          // brick adapter mounts it.
+          captcha: TurnstileGate(
+            controller: c,
+            render: (BuildContext _, TurnstileChallenge _) =>
+                const SizedBox(height: 10),
+          ),
           onSignIn: (String _, String _) async => spent.add(c.consume()),
         ),
       );
@@ -347,6 +352,35 @@ void main() {
     }
 
     testWidgets('kPhone', (WidgetTester t) => pumpAt(t, kPhone));
+    testWidgets('kTablet', (WidgetTester t) => pumpAt(t, kTablet));
+    testWidgets('kDesktop', (WidgetTester t) => pumpAt(t, kDesktop));
+  });
+
+  // assert-responsive-coverage: the wait line is a chassis surface too. It sits
+  // inside the form pane, one line of text beside a spinner; at every window
+  // class it must lay out without overflow and keep its sentence on screen.
+  group('CaptchaWaitStatus fits the form pane at every window class', () {
+    Future<void> pumpAt(WidgetTester tester, Size size) async {
+      await pumpChassis(
+        tester,
+        size,
+        const Scaffold(
+          body: ContentPane.form(child: CaptchaWaitStatus(waiting: true)),
+        ),
+        settle: false,
+      );
+      expect(tester.takeException(), isNull);
+      final Finder line = find.byKey(CaptchaWaitStatus.statusLine);
+      expect(line, findsOneWidget);
+      expect(
+        tester.getRect(line).right,
+        lessThanOrEqualTo(size.width),
+        reason: 'the sentence stays on screen at ${size.width}',
+      );
+    }
+
+    testWidgets('kPhone', (WidgetTester t) => pumpAt(t, kPhone));
+    testWidgets('400', (WidgetTester t) => pumpAt(t, const Size(400, 800)));
     testWidgets('kTablet', (WidgetTester t) => pumpAt(t, kTablet));
     testWidgets('kDesktop', (WidgetTester t) => pumpAt(t, kDesktop));
   });
