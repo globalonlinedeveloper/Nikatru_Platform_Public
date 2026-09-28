@@ -1,5 +1,3 @@
-import 'dart:async' show unawaited;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,6 +9,7 @@ import '../../core/format/money_format.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/money_providers.dart';
 import '../../state/providers.dart';
+import '../shared/chassis_adapters.dart';
 
 /// Where the paywall was opened from. A short ENUMERABLE code, because it
 /// becomes an analytics parameter — free text there is a D1 column nobody can
@@ -85,10 +84,6 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       final MoneyFunnel funnel = await ref.read(moneyFunnelProvider.future);
       await funnel.onPaywallViewed(widget.trigger.code);
     });
-    // A store rail's plans are the STORE's answer, asked for here so an open
-    // paywall shows today's price and this buyer's trial. A no-op on the web
-    // rail, whose plans are the rail config.
-    unawaited(refreshOfferingsOf(ref.read(purchaseRailProvider)));
   }
 
   Future<void> _buy(Offering offering) async {
@@ -227,11 +222,11 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       // looking at slides, for a reason the user did not cause. Pinned to the
       // top it stays where it was and only the new rows appear. `.pane` is the
       // 480 this file used to hold privately.
-      // Repainted when a store rail's plans arrive or change; the web rail's
-      // never do.
-      body: ListenableBuilder(
-        listenable: offeringsChangesOf(rail),
-        builder: (BuildContext context, Widget? _) => ContentPane.pane(
+      // ST-U7 (C38): the chassis gate asks the rail once and says while it waits.
+      body: PlansLoadGate(
+        load: () => refreshOfferingsOf(rail),
+        changes: offeringsChangesOf(rail),
+        builder: (BuildContext context, bool loading) => ContentPane.pane(
           child: ListView(
             padding: const EdgeInsets.all(24),
             shrinkWrap: true,
@@ -248,7 +243,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
-              ..._body(l10n, rail, theme),
+              ..._body(l10n, rail, theme, loading),
             ],
           ),
         ),
@@ -260,6 +255,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     AppLocalizations l10n,
     PurchaseRail rail,
     ThemeData theme,
+    bool loading,
   ) {
     switch (_phase) {
       case _PaywallPhase.opening:
@@ -335,7 +331,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             !rail.canStartCheckout ||
             rail.offerings.isEmpty) {
           return <Widget>[
-            Text(l10n.paywallUnavailable, textAlign: TextAlign.center),
+            loading
+                ? PlansLoading(label: l10n.paywallLoadingPlans)
+                : Text(l10n.paywallUnavailable, textAlign: TextAlign.center),
           ];
         }
         return <Widget>[

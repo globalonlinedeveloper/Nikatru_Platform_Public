@@ -259,18 +259,18 @@
     },
     {
       "name": "cancel subscription",
-      "primaryAction": "confirming a cancel drives the repository, and a failed cancel never shows the congratulation step",
+      "primaryAction": "confirming a removal drives the repository, and a failed removal never shows the removed step",
       "test": "cancel sheet: a failed cancel never claims success",
       "effect": "lib/features/cancel/cancel_sheet.dart:_confirm",
       "mutation": {
         "symbol": "lib/features/cancel/cancel_sheet.dart:_confirm catch → _step stays 0",
         "observedRed": "cancel sheet: a failed cancel never claims success",
-        "date": "2026-09-23",
+        "date": "2026-09-28",
         "edit": {
           "find": "setState(() => _busy = false);",
           "replace": "setState(() { _busy = false; _step = 1; });"
         },
-        "codeHash": "78f486c0c8957791733cd384d8c81debf714caf0de2fc2ea2088566fb30a58ee"
+        "codeHash": "5765b5a439d6d84a3fdc941a1e208d8fcc1a59332470b55aef25d6110aa9c3cf"
       }
     }
   ],

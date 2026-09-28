@@ -124,11 +124,12 @@ PurchaseRail purchaseRailFor(
   String revenueCatKey = AppConfig.revenueCatApiKey,
   IapBridge Function() newBridge = RevenueCatBridge.new,
 }) {
-  final PurchaseChannel? channel = ChassisBilling.channelNamed(releaseChannel);
-  final bool bridged =
-      channel != null &&
-      PurchaseRailKind.forChannel(channel).isStoreBilling &&
-      revenueCatKey.isNotEmpty;
+  final wiring = StoreBridgeWiring.forChannel(
+    releaseChannel,
+    publicKey: revenueCatKey,
+    entitlementId: AppConfig.proEntitlementId,
+    newBridge: newBridge,
+  );
   final ChassisBillingConfig config = ChassisBillingConfig(
     railConfig: ref.watch(railConfigProvider),
     appId: AppConfig.appId,
@@ -144,14 +145,8 @@ PurchaseRail purchaseRailFor(
     // together. The buyer's id is NOT passed here: the SDK is configured on the
     // first store call, and by then [IdentifiesBuyer] below has handed it the
     // settled sign-in, so the first configure already carries the account.
-    iapBridge: bridged ? newBridge() : null,
-    iapBridgeConfig: bridged
-        ? IapBridgeConfig(
-            publicApiKey: revenueCatKey,
-            entitlementId: AppConfig.proEntitlementId,
-            appUserId: null,
-          )
-        : null,
+    iapBridge: wiring.bridge,
+    iapBridgeConfig: wiring.config,
   );
   final PurchaseRail rail = ChassisBilling.railForDeclared(
     releaseChannel,

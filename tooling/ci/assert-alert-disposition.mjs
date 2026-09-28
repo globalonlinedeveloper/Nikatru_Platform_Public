@@ -505,9 +505,9 @@ async function fetchOpenIssues(repo) {
 }
 
 async function fetchRuns(repo, workflowFile) {
-  const body = await ghJson(`/repos/${repo}/actions/workflows/${workflowFile}/runs?per_page=${RUN_SAMPLE}`);
-  if (!Array.isArray(body?.workflow_runs)) throw new Error('run history was not an array');
-  return body.workflow_runs;
+  const read = await anchoredRunRead({ workflow: workflowFile, url: `${GH_API}/repos/${repo}/actions/workflows/${workflowFile}/runs?per_page=${RUN_SAMPLE}`, token: ghToken(), label: `${workflowFile} runs`, userAgent: 'nikatru-alert-disposition' });
+  console.log(`   ·  ${workflowFile}: ${describeRead(read, newestScheduled)}`);
+  return read.union; // ⏱ 2026-09-28 — anchored like every freshness reader; see the file end
 }
 
 async function main() {
@@ -625,4 +625,22 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
     console.error(`FAIL  ${e.stack || e.message}`);
     process.exit(1);
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-28 · THE RUN HISTORY IS READ THROUGH THE SHARED ANCHORED READER.
+// `sourceHealth` grades the NEWEST scheduled run, which is a freshness question:
+// a stale page (GitHub served ops-watch.yml and ci.yml pages days old on
+// 2026-09-28, main CI 36409128416 attempt 2) would grade a source by a run that
+// is no longer its newest — reading a cleared alarm as ACTIVE, or a live one as
+// UNDISPOSITIONED. So `fetchRuns` reads through tooling/ci/anchored-run-read.mjs:
+// the same bounded page, the creation-date cross-read and the unfiltered
+// repository-wide list, and the UNION of them is graded. A read that could not
+// be made throws `CouldNotLook`, which lands in main's catch as COVERAGE LOST.
+// ─────────────────────────────────────────────────────────────────────────────
+import { anchoredRunRead, describeRead } from './anchored-run-read.mjs';
+
+/** PURE. The newest scheduled run of a list, for the read line. */
+function newestScheduled(runs) {
+  return (runs ?? []).filter((r) => r && r.event === 'schedule' && r.created_at).sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0] ?? null;
 }

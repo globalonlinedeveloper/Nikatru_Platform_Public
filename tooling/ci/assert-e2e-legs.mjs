@@ -396,6 +396,37 @@ for (const { dir } of APP_SET) {
   }
 }
 
+// ── every E2E_ define a suite reads, the lane passes (LEAD RULING 34) ───────
+// ⏱ 2026-09-28 (ST-T2 rider). A suite reads its inputs with
+// `String.fromEnvironment('E2E_…')`, and a define the lane does not pass
+// arrives as '' — silently. MEASURED: the brick's stamped suite asserts
+// `E2E_APP_ID` names the binary it drives (the two-leg e2e confirm), and
+// e2e.yml's `flutter drive` passed every other E2E_ define but not that one,
+// so every stamped app's e2e would fail its first line with "passed no app at
+// all". The subject is every suite of the app set plus the brick's template,
+// comment-stripped; the passed set is the workflow's `--dart-define=NAME=`.
+const brickSuiteRel = 'tooling/bricks/app/__brick__/apps/{{app_id}}/integration_test/app_test.dart';
+const definesRead = new Map(); // name -> [suite rel]
+for (const rel of [...APP_SET.map(({ dir }) => `${dir}/integration_test/app_test.dart`), brickSuiteRel]) {
+  const abs = join(ROOT, rel);
+  if (!existsSync(abs)) continue; // a missing app suite is reported above; the brick is optional here
+  const src = stripSourceComments(readFileSync(abs, 'utf8'), '.dart');
+  for (const m of src.matchAll(/\b(?:String|bool|int)\.fromEnvironment\(\s*'(E2E_[A-Z0-9_]+)'/g)) {
+    if (!definesRead.has(m[1])) definesRead.set(m[1], []);
+    if (!definesRead.get(m[1]).includes(rel)) definesRead.get(m[1]).push(rel);
+  }
+}
+const definesPassed = new Set([...workflow.matchAll(/--dart-define=(E2E_[A-Z0-9_]+)=/g)].map((m) => m[1]));
+for (const [name, readers] of [...definesRead.entries()].sort()) {
+  if (!definesPassed.has(name)) {
+    problems.push(
+      `${readers.join(', ')} read(s) --dart-define ${name}, and ${wfRel} never passes it: the suite would read '' ` +
+        'and run against an input nobody set. Pass it on the flutter drive line (and declare it in ' +
+        'tooling/publishable-inputs.json), or stop reading it.',
+    );
+  }
+}
+
 // THE EQUALITY, STATED. It follows from the per-leg checks above, and it is
 // computed and printed anyway: the two numbers are what N-6 actually asks for,
 // and a relationship nobody prints is one nobody can audit from a log.
@@ -431,5 +462,6 @@ for (const n of notes) console.log(n);
 console.log(
   `ok  e2e legs — ${asserted.length} of ${REQUIRED_LEGS.length} golden-path leg(s) claimed asserted and ` +
     `${proven} proven by ${testRel} (equality holds); ${blocked.length} blocked with a live blocker; ` +
-    `every app of the workspace set carries integration_test/app_test.dart (apps=${APP_SET.length})`,
+    `every app of the workspace set carries integration_test/app_test.dart (apps=${APP_SET.length}); ` +
+    `${definesRead.size} E2E_ define(s) the suites read, every one passed by ${wfRel}`,
 );

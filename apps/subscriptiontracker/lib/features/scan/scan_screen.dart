@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show ContentPane;
+    show ContentPane, DataStateView;
 
 import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
@@ -13,6 +13,8 @@ import '../../core/theme/app_theme.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/subscriptions_controller.dart';
+import '../add/add_subscription_sheet.dart';
+import '../shared/async_gate.dart' show dataFailedBodyFor;
 import '../shared/painters.dart';
 import '../shared/widgets.dart';
 
@@ -41,12 +43,10 @@ import '../shared/widgets.dart';
 /// that ships — kept verbatim because the honesty argument is the durable part
 /// and a dated record that gets renumbered stops being evidence.
 ///
-/// ⬜ ONE CLAIM SURVIVES AND IT IS NOT IN THIS FILE'S GIFT: the busy CTA reads
-/// `scanningEllipsis` = "Scanning…" (`app_en.arb:911`), which is the last
-/// string on the surface that asserts a scan. Fixing it is an arb edit plus
-/// `test/dark_group_detail_test.dart:620`, which asserts that exact key renders
-/// in the busy phase — neither file is owned here, so it is reported rather
-/// than half-done.
+/// ✅ ST-U3 (B44 copy): the busy CTA `scanningEllipsis` now reads "Loading…"
+/// and the ring's label `a11yScanRing` "Setting up, {percent}." — the last two
+/// strings on this surface that asserted a scan. The key names stay; their
+/// values no longer claim one.
 ///
 /// 🔴 THE BRIGHTNESS RULE FOR THIS FILE is the one stated in full on
 /// [SubscriptionDetailScreen]: LIGHT keeps the literal token, byte-identical to
@@ -336,7 +336,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
             height: 158,
             // 🔴 A `CustomPaint` AGAIN, AND THIS ONE GATES THE APP. First run
             // parks the user on this screen for the length of the scan with the
-            // CTA disabled ("Scanning…", `onPressed: null`), so the ring is the
+            // CTA disabled ("Loading…", `onPressed: null`), so the ring is the
             // only thing on the page that changes and the only evidence that
             // anything is happening. Its arc says nothing to a screen reader,
             // and the bare "45%" in the middle says a number with no noun.
@@ -422,12 +422,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
   /// The arm the screen never had — a fetch that FAILED, said so.
   ///
-  /// Mirrors `home_screen.dart`'s `error:` limb deliberately, down to the key:
-  /// `l10n.couldNotLoad('$e')`. That key interpolates the raw exception, which
-  /// that file flags as a real defect (WORKORDER §1) and deliberately does not
-  /// paper over inside an l10n increment — the same reasoning applies here, and
-  /// diverging would leave the app with two different answers to one question.
-  /// When the leak is fixed it must be fixed in the key, once.
+  /// ✅ ST-U6 (B48): the sentence is [dataFailedBodyFor]'s — the one every
+  /// list screen's failed state shows, chosen by what failed. It used to be
+  /// `l10n.couldNotLoad('$error')`, which printed the raw exception at the
+  /// user; that key is gone.
   ///
   /// The way OUT is the screen's existing primary CTA rather than a control
   /// invented here; see the `GradientButton` in [build].
@@ -450,7 +448,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
           Icon(Icons.error_outline, size: 48, color: scheme.error),
           const SizedBox(height: 16),
           Text(
-            l10n.couldNotLoad('$error'),
+            dataFailedBodyFor(l10n, error),
             textAlign: TextAlign.center,
             style: AppText.muted.copyWith(
               fontSize: 14,
@@ -470,6 +468,18 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     MoneyFormatter money,
     List<Subscription> subs,
   ) {
+    // ✅ ST-U6 (B46): NOTHING TO SUM IS NOT "ALL SET". A first run with no
+    // subscriptions rendered "0 subscriptions · $0.00 / month" under a
+    // congratulation, with no way to add one. It is the shared empty state
+    // now, with the first step on it.
+    if (subs.isEmpty) {
+      return DataStateView.empty(
+        title: l10n.dataEmptyTitle,
+        body: l10n.dataEmptyBody,
+        actionLabel: l10n.addSubscriptionTitle,
+        onAction: () => showAddSubscriptionSheet(context),
+      );
+    }
     final MoneyBag total = SubMath.totalMonthly(subs);
     final ThemeData theme = Theme.of(context);
     final bool isLight = theme.brightness == Brightness.light;
@@ -541,6 +551,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
               final Subscription s = subs[i];
               return RowCard(
                 padding: 11,
+                // ST-U8 (B49): the same row opens its detail everywhere else;
+                // here it was the one list whose rows led nowhere. `push`, so
+                // back returns to these results.
+                onTap: () => context.push('/sub/${s.id}'),
                 leading: GlyphTile(glyph: s.glyph, size: 38, fontSize: 11),
                 // `s.name` and `s.category` are DATA, not copy — they come
                 // from the user's own records (or the demo seed). Nothing here

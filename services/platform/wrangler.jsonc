@@ -270,6 +270,22 @@
       "simple": { "limit": 1200, "period": 60 }
     },
     {
+      // ST-I3 · The SAME server-derived ceiling for GET /v1/fx/latest, the
+      // public ECB rate table (src/routes/fx.ts), keyed `edge:<colo>:<asn>` by
+      // src/lib/edge-ceiling.ts.
+      //
+      // Its OWN namespace_id so a cache-busting flood on the rate table cannot
+      // spend the budget config resolution runs on, and the other way round —
+      // both are read on an app's launch path. 1200/min per (colo, asn) is
+      // CONFIG_CEILING_LIMITER's figure for CONFIG_CEILING_LIMITER's reasons:
+      // one KV read per edge-cache miss, served from an hour's edge cache, so
+      // honest origin traffic through one PoP for one ASN is a handful an hour.
+      // Same honest limit as the others: a burst bound, not accounting.
+      "name": "FX_CEILING_LIMITER",
+      "namespace_id": "1015",
+      "simple": { "limit": 1200, "period": 60 }
+    },
+    {
       // The SAME server-derived ceiling for POST /v1/money/:provider, keyed
       // `edge:<colo>:<asn>` by the shared src/lib/edge-ceiling.ts.
       //
@@ -345,7 +361,7 @@
       // others: per-colo and eventually consistent, a BURST bound.
       //
       // 1013: a namespace_id is account-wide; env.sandbox below holds 1006-1010,
-      // 1012 and now 1014.
+      // 1012, 1014 and 1016.
       "name": "REMINDERS_CEILING_LIMITER",
       "namespace_id": "1013",
       "simple": { "limit": 300, "period": 60 }
@@ -360,11 +376,11 @@
       // not an open door (src/lib/edge-ceiling.ts strictRateLimit).
       //
       // 5/min per account: a person types a password a few times, not dozens.
-      // `period` is 60, one of tooling/ceilings.json's allowed values. 1015:
-      // 1013 is REMINDERS_CEILING_LIMITER's; env.sandbox below holds 1006-1010,
-      // 1012, 1014 and 1017-1018.
+      // `period` is 60, one of tooling/ceilings.json's allowed values. 1017:
+      // 1013 and 1015 are REMINDERS' and FX's; env.sandbox below holds 1006-1010,
+      // 1012, 1014, 1016 and 1019-1020.
       "name": "NATIVE_AUTH_ACCOUNT_LIMITER",
-      "namespace_id": "1015",
+      "namespace_id": "1017",
       "simple": { "limit": 5, "period": 60 }
     },
     {
@@ -377,7 +393,7 @@
       // below a guessing run. Same honest caveat as the other ceilings: per-colo
       // and eventually consistent, a BURST bound, not accounting.
       "name": "NATIVE_AUTH_EDGE_LIMITER",
-      "namespace_id": "1016",
+      "namespace_id": "1018",
       "simple": { "limit": 60, "period": 60 }
     }
   ],
@@ -467,8 +483,8 @@
   // refuses both, an inherited `workers_dev`, and a production database.
   //
   // ⚠️ `ratelimits` ARE DECLARED WITH THEIR OWN namespace_ids (1006-1010, 1012, 1014,
-  // 1017-1018), never the top level's 1001-1005, 1011, 1013 or 1015-1016: a shared
-  // namespace would let a public
+  // 1016, 1019-1020), never the top level's 1001-1005, 1011, 1013, 1015 or 1017-1018: a
+  // shared namespace would let a public
   // sandbox URL spend the budget production's callers are counted against. Every limiter
   // binding is optional and fails OPEN (src/types.ts:63), so an absent one is a
   // sandbox with no breaker at all, not an error anyone would see.
@@ -490,9 +506,9 @@
         "APP_ID": "platform",
         // why: the SAME identity project as production (D1 identity option
         // (a)). ES256 verification reads its JWKS, and /v1/health probes it
-        // (src/index.ts:164).
+        // (src/index.ts:168).
         "SUPABASE_URL": "https://auth-api.nikatru.com",
-        // why: src/types.ts:348.
+        // why: src/types.ts:413.
         "API_VERSION": "v1",
         // why: src/middleware/cors.ts:22, copied from the top level. Web stays
         // exactly as production's.
@@ -504,7 +520,7 @@
       },
       "d1_databases": [
         {
-          // why: src/types.ts:13 and the /v1/health probe (src/index.ts:150).
+          // why: src/types.ts:13 and the /v1/health probe (src/index.ts:154).
           // `platform_db_sandbox`, created 2026-09-23 and EMPTY. This Worker is
           // its sole migration applier, as at the top level.
           "binding": "PLATFORM_DB",
@@ -515,7 +531,7 @@
       ],
       "kv_namespaces": [
         // why: REQUIRED — src/types.ts:18; src/routes/config.ts:52 reads it
-        // unguarded and /v1/health probes it (src/index.ts:161), so an absent
+        // unguarded and /v1/health probes it (src/index.ts:165), so an absent
         // binding 500s config and reports the Worker unhealthy.
         // `platform-config-sandbox`, created 2026-09-24.
         { "binding": "CONFIG_KV", "id": "7ba3a916f8a5429091dec4a39284bffb" }
@@ -550,6 +566,13 @@
           "simple": { "limit": 1200, "period": 60 }
         },
         {
+          // why: src/routes/fx.ts:31. The top level's FX_CEILING_LIMITER
+          // (1015), same limit.
+          "name": "FX_CEILING_LIMITER",
+          "namespace_id": "1016",
+          "simple": { "limit": 1200, "period": 60 }
+        },
+        {
           // why: src/routes/ext.ts (POST /v1/ext/token). The top level's
           // EXT_TOKEN_CEILING_LIMITER (1005), same limit.
           "name": "EXT_TOKEN_CEILING_LIMITER",
@@ -573,17 +596,17 @@
         },
         {
           // why: src/routes/native-auth.ts (the account bucket). The top level's
-          // NATIVE_AUTH_ACCOUNT_LIMITER (1015), same limit. 🔴 It FAILS CLOSED,
+          // NATIVE_AUTH_ACCOUNT_LIMITER (1017), same limit. 🔴 It FAILS CLOSED,
           // so without this entry every sandbox native sign-in answers 503.
           "name": "NATIVE_AUTH_ACCOUNT_LIMITER",
-          "namespace_id": "1017",
+          "namespace_id": "1019",
           "simple": { "limit": 5, "period": 60 }
         },
         {
           // why: src/routes/native-auth.ts (the edge ceiling). The top level's
-          // NATIVE_AUTH_EDGE_LIMITER (1016), same limit, and it fails closed too.
+          // NATIVE_AUTH_EDGE_LIMITER (1018), same limit, and it fails closed too.
           "name": "NATIVE_AUTH_EDGE_LIMITER",
-          "namespace_id": "1018",
+          "namespace_id": "1020",
           "simple": { "limit": 60, "period": 60 }
         }
       ]

@@ -16,6 +16,7 @@ import '../../data/api/dio_api_client.dart';
 import '../../data/api/persisted_api_client.dart';
 import '../../data/api/seed_api_client.dart';
 import '../../data/local/subscription_store.dart';
+import '../../data/models/payment_record.dart';
 import '../../data/subscriptions/subscription_repository.dart';
 import '../settings_controller.dart' show currencyCodeProvider;
 import 'auth.dart';
@@ -90,6 +91,15 @@ final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((ref) {
     DioApiClient(
       baseUrl: baseUrl,
       tokenProvider: ref.watch(authTokenProvider),
+      // ✅ ST-U7 (D20): a 401 on the list is asked whether the session is GONE,
+      // and if it is the session is signed out — which the router's auth gate
+      // turns into /sign-in. Without this an expired or revoked session (e.g.
+      // "Log out of all devices" on another device) left the list saying
+      // "Check your connection" forever. The SAME decision the chassis client
+      // makes (`restClientProvider`): a token that merely expired while offline
+      // is not a signed-out user. `read` inside the closure, never `watch`.
+      onUnauthorized: () =>
+          signOutOnlyIfSessionIsGone(ref.read(authRepositoryProvider)),
       // ST-C1: a currency-less row is read in the user's currency, asked at
       // decode time. `read` inside the closure, not `watch` here: a currency
       // change must not rebuild the client and drop its cache.
@@ -136,6 +146,23 @@ ApiClient cachedApiClientOver(
 final Provider<SubscriptionRepository> subscriptionRepositoryProvider =
     Provider<SubscriptionRepository>(
       (ref) => SubscriptionRepository(ref.watch(apiClientProvider)),
+    );
+
+/// One subscription's payment history — ST-U7 (B16).
+///
+/// The detail screen read this through a `FutureBuilder` fired on EVERY
+/// rebuild, and rendered `snap.data ?? const []`: loading and failure both
+/// became "No payments yet." — a false statement about a record of real
+/// charges. A provider gives the screen the three states apart and one fetch
+/// per subscription, and `invalidate` is its retry.
+///
+/// ⚠️ NOT `autoDispose`, measured: disposing it when the detail screen leaves
+/// schedules riverpod's zero-length disposal timer, which is still pending when
+/// a widget test's tree is torn down (`!timersPending` in two
+/// dark_group_detail cases). A history is a handful of rows per subscription.
+final FutureProviderFamily<List<PaymentRecord>, String> paymentHistoryProvider =
+    FutureProvider.family<List<PaymentRecord>, String>(
+      (ref, String id) => ref.watch(subscriptionRepositoryProvider).history(id),
     );
 
 // ── `purchasesServiceProvider` WAS HERE, AND IT IS GONE ON PURPOSE ──────────

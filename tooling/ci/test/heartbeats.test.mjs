@@ -56,6 +56,8 @@ import {
   lastExpectedFireMs,
   firstFireAfterMs,
   deriveWatchedJobs,
+  judgeDeclaredOnMain,
+  firstOnMainMs,
 } from '../../ops/check-heartbeats.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -668,7 +670,7 @@ describe('check-heartbeats — end to end through the real register', () => {
     assert.ok(WATCHED.length > 0, 'COVERAGE LOST — the real register derived ZERO watched jobs');
     // Every job the scheduler declares must be in it. Named explicitly because
     // this is the regression that hid for a whole stage.
-    for (const expected of ['supabase_keepalive', 'analytics_liveness', 'renewals']) {
+    for (const expected of ['supabase_keepalive', 'analytics_liveness', 'renewals', 'fx_rates']) {
       assert.ok(WATCHED.includes(expected), `the watched set is missing "${expected}"`);
     }
   });
@@ -855,5 +857,81 @@ describe('check-heartbeats — NOT YET DUE, and a read failure is COVERAGE LOST'
     const r = spawnSync(process.execPath, [READER], { cwd: REPO, encoding: 'utf8', env: cleanEnv({}) });
     assert.equal(r.status, 2, `${r.stdout}\n${r.stderr}`);
     assert.match(r.stderr, /are not both in the environment/);
+  });
+});
+
+// ⏱ 2026-09-28 — ops watch 36416498456: `reminder_mail` was declared at a cloud
+// draft's sandbox commit (03:25:45Z), which owed the 06:00Z slot; the first MAIN
+// commit carrying the name was 74b5dfbf at 11:33:25Z. `--declared-vs-main`.
+describe('watchedJobsDeclaredAt is judged against the first MAIN commit', () => {
+  const ms = (s) => Date.parse(s);
+  const fakeGit = (answers) => (args) => {
+    const key = args[0] === 'log' ? 'log' : args[1];
+    const a = answers[key];
+    return typeof a === 'string' ? { status: 0, stdout: a, stderr: '' } : { status: 1, stdout: '', stderr: 'boom' };
+  };
+  const logFor = (...rows) => rows.map(([sha, iso]) => `${sha} ${ms(iso) / 1000}`).join('\n') + '\n';
+  const MAIN = { '--is-shallow-repository': 'false\n', HEAD: 'head000\n' };
+
+  test('🔴 the incident: a sandbox instant that owes a slot before the main commit is a finding', () => {
+    const v = judgeDeclaredOnMain('reminder_mail', ['0 6 * * *'], ms('2026-09-28T03:25:45Z'), ms('2026-09-28T11:33:25Z'));
+    assert.match(v.finding, /owes the slot 2026-09-28T06:00:00\.000Z/);
+    assert.match(v.finding, /first slot is 2026-09-29T06:00:00\.000Z/);
+  });
+
+  test('the measured main instant is green', () => {
+    const v = judgeDeclaredOnMain('reminder_mail', ['0 6 * * *'], ms('2026-09-28T11:33:25Z'), ms('2026-09-28T11:33:25Z'));
+    assert.ok(v.ok && !v.finding, JSON.stringify(v));
+  });
+
+  test('a branch instant minutes earlier that owes the SAME slot is green (erasure_retry, 09:00:35 vs 09:07:54)', () => {
+    const v = judgeDeclaredOnMain('erasure_retry', ['0 6 * * *'], ms('2026-09-15T09:00:35Z'), ms('2026-09-15T09:07:54Z'));
+    assert.ok(v.ok, JSON.stringify(v));
+  });
+
+  test('🔴 multi-cron: the earliest owed slot is compared, so an hourly slot crossed is a finding', () => {
+    const v = judgeDeclaredOnMain('x', ['15 * * * *'], ms('2026-09-25T00:10:00Z'), ms('2026-09-25T00:43:44Z'));
+    assert.match(v.finding ?? '', /owes the slot 2026-09-25T00:15:00\.000Z/);
+  });
+
+  test('an unparseable cron is COVERAGE LOST, never a pass', () => {
+    const v = judgeDeclaredOnMain('x', ['not a cron'], ms('2026-09-25T00:10:00Z'), ms('2026-09-25T00:43:44Z'));
+    assert.match(v.lost ?? '', /^COVERAGE LOST/);
+  });
+
+  test('the OLDEST first-parent commit is the one used, and an ancestor keeps its own date', () => {
+    const git = fakeGit({ ...MAIN, log: logFor(['bbb', '2026-09-29T00:00:00Z'], ['aaa', '2026-09-28T11:33:25Z']) });
+    const on = firstOnMainMs('reminder_mail', git, ms('2026-09-30T00:00:00Z'));
+    assert.deepEqual(on, { ms: ms('2026-09-28T11:33:25Z'), sha: 'aaa', introducedHere: false });
+  });
+
+  test('🔴 a job the change under test introduces is bounded by NOW: it cannot reach main before this run', () => {
+    const git = fakeGit({ ...MAIN, log: logFor(['head000', '2026-09-28T03:25:45Z']) });
+    const on = firstOnMainMs('reminder_mail', git, ms('2026-09-28T10:00:00Z'));
+    assert.equal(on.introducedHere, true);
+    assert.equal(on.ms, ms('2026-09-28T10:00:00Z'));
+    assert.ok(judgeDeclaredOnMain('reminder_mail', ['0 6 * * *'], ms('2026-09-28T03:25:45Z'), on.ms).finding);
+  });
+
+  test('🔴 a SHALLOW clone is COVERAGE LOST — it would date every job at HEAD', () => {
+    const on = firstOnMainMs('j', fakeGit({ ...MAIN, '--is-shallow-repository': 'true\n', log: logFor(['head000', '2026-09-28T00:00:00Z']) }), 0);
+    assert.match(on.lost ?? '', /SHALLOW/);
+  });
+
+  test('🔴 no commit adding the job, or a failing git, is COVERAGE LOST', () => {
+    assert.match(firstOnMainMs('j', fakeGit({ ...MAIN, log: '' }), 0).lost ?? '', /no commit on HEAD's first-parent line/);
+    assert.match(firstOnMainMs('j', fakeGit({ ...MAIN }), 0).lost ?? '', /git log failed/);
+  });
+
+  test('the real tree (full clone) passes, with every watched job judged', () => {
+    const shallow = spawnSync('git', ['-C', REPO, 'rev-parse', '--is-shallow-repository'], { encoding: 'utf8' });
+    const r = spawnSync(process.execPath, [READER, '--declared-vs-main'], { cwd: REPO, encoding: 'utf8' });
+    if (shallow.stdout.trim() === 'true') {
+      assert.equal(r.status, 2, `${r.stdout}\n${r.stderr}`);
+      return;
+    }
+    assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
+    assert.match(r.stdout, /ok {2}reminder_mail: declared 2026-09-28T11:33:25\.000Z/);
+    assert.match(r.stdout, /ok {2}\d+ watched-since instant\(s\) owe no slot/);
   });
 });

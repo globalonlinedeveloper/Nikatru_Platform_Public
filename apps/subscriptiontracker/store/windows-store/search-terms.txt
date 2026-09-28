@@ -3,5 +3,5 @@ recurring payments
 renewal dates
 bill tracker
 spending overview
-free trial tracker
+subscription costs
 budget

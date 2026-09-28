@@ -78,6 +78,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { listDir } from './tree-walk.mjs';
 import { delegationOf as resolveChassisDelegation } from './chassis-delegation.mjs';
+import { MONEY_PROVIDERS } from './money-wiring.mjs';
 import { join } from 'node:path';
 
 const repo = process.cwd();
@@ -108,8 +109,9 @@ const HOME = 'lib/features/home/home_screen.dart';
 const WEB_INDEX = 'web/index.html';
 // [pipeline 5]M-13's wiring. A SECOND providers file, so the domain scan below
 // reads both — a new providers file with no coverage requirement is a hole the
-// size of a whole capability.
-const MONEY_PROVIDERS = 'lib/state/money_providers.dart';
+// size of a whole capability. `MONEY_PROVIDERS` is imported from
+// money-wiring.mjs, shared with assert-app-yaml limb 6 (e)
+// (O-BRICK-SELLS-NOTHING-IN-A-STORE, 12b).
 /** Trees that are shared rather than owned by an app; never re-rooted. */
 const SHARED_PREFIX = /^(packages|services|tooling)\//;
 // ── PHASE 5 · MEASURED 2026-08-12 · WHAT THIS EXEMPTION IS ACTUALLY HOLDING

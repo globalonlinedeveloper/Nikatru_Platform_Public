@@ -2217,6 +2217,11 @@
       "firstSeen": "2026-08-04",
       "evidence": []
     },
+    "tooling/ci/gen-app-licence-rows.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-28",
+      "evidence": []
+    },
     "tooling/ci/gen-ci-map.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-26",
@@ -2250,6 +2255,16 @@
     "tooling/ci/migration-tables.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-06",
+      "evidence": []
+    },
+    "tooling/ci/money-wiring.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-28",
+      "evidence": []
+    },
+    "tooling/ci/package-assets.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-28",
       "evidence": []
     },
     "tooling/ci/plan-deploy.mjs": {

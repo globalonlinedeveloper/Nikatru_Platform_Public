@@ -2884,6 +2884,18 @@
   },
   {
     "claims": [
+      "K-10"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app-brick"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/gen-app-licence-rows.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
       "R-3"
     ],
     "invokedBy": [
@@ -2970,6 +2982,24 @@
     "invokedBy": [],
     "kind": "guard",
     "ref": "tooling/ci/migration-tables.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/money-wiring.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
+    "claims": [
+      "K-10"
+    ],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/package-assets.mjs",
     "references": [],
     "state": "LIBRARY"
   },
@@ -3495,6 +3525,7 @@
       "O-4"
     ],
     "invokedBy": [
+      ".github/workflows/ci.yml#guards-platform",
       ".github/workflows/ops-watch.yml#digest",
       ".github/workflows/ops-watch.yml#heartbeats"
     ],

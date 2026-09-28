@@ -13,9 +13,14 @@
 //     paywall opening (the home promo card and the settings row read them too).
 //   · the same channels with an EMPTY key → [UnavailablePurchaseRail]: no
 //     checkout, NO offerings, and no bridge was ever built.
-//   · web, windows-store, linux-appimage, apps-gov-in and dev never build a
-//     bridge, even when a key is present.
 //   · the signed-in user's id reaches the bridge's FIRST configure ([ADR 085] B).
+//
+// ⏱ 2026-09-27 (O-BRICK-SELLS-NOTHING-IN-A-STORE, 12b): the wiring RULE moved to
+// `StoreBridgeWiring.forChannel` (packages/billing_revenuecat), which this app
+// and every stamped app call. Its five "<channel> never builds a store bridge,
+// even with a key" cases (web, windows-store, linux-appimage, apps-gov-in, dev)
+// moved with it, to packages/billing_revenuecat/test/store_bridge_wiring_test
+// .dart. Every case below needs this app's rail, sign-in and config.
 //
 // Red controls, run 2026-09-24T02:47Z against main 98527d61, each observed red
 // and reverted; the exits are recorded in the PR that closes
@@ -24,8 +29,9 @@
 //     three "+ a RevenueCat key" cases go red: "is an IapRail over the injected
 //     bridge", "asks the store once, at build — no paywall needed for plans"
 //     and "the signed-in user's id reaches the bridge's FIRST configure".
-//   · the bridge wired with an empty key (`revenueCatKey.isNotEmpty` dropped
-//     from `bridged`) → "+ an EMPTY key → sells nothing, describes nothing"
+//   · the bridge wired with an empty key (`publicKey.isNotEmpty` dropped from
+//     `StoreBridgeWiring.forChannel`'s `bridged`; `revenueCatKey.isNotEmpty` in
+//     this app before 12b) → "+ an EMPTY key → sells nothing, describes nothing"
 //     goes red on every store channel.
 //   · `unawaited(refreshOfferingsOf(rail))` dropped → the same three
 //     "+ a RevenueCat key" cases go red on every store channel, not only "asks
@@ -183,14 +189,6 @@ const List<String> _storeChannels = <String>[
   'macos-appstore',
 ];
 
-const List<String> _neverBridged = <String>[
-  'web',
-  'windows-store',
-  'linux-appimage',
-  'apps-gov-in',
-  'dev',
-];
-
 void main() {
   for (final String channel in _storeChannels) {
     group('$channel + a RevenueCat key', () {
@@ -239,13 +237,5 @@ void main() {
         expect(r.built, isEmpty);
       },
     );
-  }
-
-  for (final String channel in _neverBridged) {
-    test('$channel never builds a store bridge, even with a key', () async {
-      final r = await _railFor(channel, key: 'public-sdk-key');
-      expect(r.built, isEmpty);
-      expect(r.rail, isNot(isA<IapRail>()));
-    });
   }
 }

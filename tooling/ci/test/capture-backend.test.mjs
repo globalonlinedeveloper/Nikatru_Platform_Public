@@ -105,11 +105,12 @@ describe('capture-backend: the sandbox is computed from the wrangler configs', (
       'ratelimit:EVENTS_LIMITER': '1007',
       'ratelimit:EVENTS_CEILING_LIMITER': '1008',
       'ratelimit:CONFIG_CEILING_LIMITER': '1009',
+      'ratelimit:FX_CEILING_LIMITER': '1016', // ⏱ 2026-09-28 · ST-I3, the rate table's ceiling.
       'ratelimit:EXT_TOKEN_CEILING_LIMITER': '1010',
       'ratelimit:SESSIONS_LIMITER': '1012',
       'ratelimit:REMINDERS_CEILING_LIMITER': '1014', // ⏱ 2026-09-28 · ST-T4a, the public reminder routes' ceiling.
-      'ratelimit:NATIVE_AUTH_ACCOUNT_LIMITER': '1017',
-      'ratelimit:NATIVE_AUTH_EDGE_LIMITER': '1018',
+      'ratelimit:NATIVE_AUTH_ACCOUNT_LIMITER': '1019',
+      'ratelimit:NATIVE_AUTH_EDGE_LIMITER': '1020',
     });
     assert.deepEqual(b['subscriptiontracker-api'].sandboxIds, {
       'd1:APP_DB': '4e7c7730-3dc7-4004-9895-403b17702b91',

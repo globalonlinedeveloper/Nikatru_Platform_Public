@@ -32,7 +32,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:intl/intl.dart';
 import 'package:subscriptiontracker/core/format/money_format.dart';
 import 'package:subscriptiontracker/core/format/monthly_share.dart';
 import 'package:subscriptiontracker/core/format/sub_math.dart';
@@ -276,10 +275,11 @@ void main() {
     }
   });
 
-  group('the cancel sheet', () {
+  group('the remove sheet', () {
     for (final Size size in _widths) {
-      testWidgets('at ${size.width.toInt()} says the plan\'s own yearly '
-          'charge', (WidgetTester tester) async {
+      testWidgets('at ${size.width.toInt()} prints no money at all (ST-U3)', (
+        WidgetTester tester,
+      ) async {
         await setSurface(tester, size);
         await tester.pumpWidget(
           ProviderScope(
@@ -303,30 +303,15 @@ void main() {
         await tester.tap(find.text('open'));
         await tester.pumpAndSettle();
         final AppLocalizations l10n = await _en();
-        final Subscription s = _yearly();
 
-        final String sentence = l10n.cancelStep1Body(
-          _share,
-          _money.formatRounded(const Money(12053, 'USD')),
-          DateFormat.MMMMd(l10n.localeName).format(s.nextRenewal),
-        );
+        // The sheet deletes a row from THIS app's list. It used to print the
+        // share and the yearly charge as "savings" (B32); neither is a fact
+        // about anything the sheet does.
+        expect(find.text(l10n.removeStep1Body), findsOneWidget);
+        expect(find.textContaining(_share), findsNothing);
         expect(
-          find.textContaining(sentence),
-          findsOneWidget,
-          reason:
-              'the "/mo" slot takes the share and the "/yr" slot the yearly '
-              'charge, rounded: $sentence',
-        );
-        expect(
-          find.textContaining(
-            l10n.cancelStep1Body(
-              _share,
-              _money.formatRounded(const Money(12048, 'USD')),
-              DateFormat.MMMMd(l10n.localeName).format(s.nextRenewal),
-            ),
-          ),
+          find.textContaining(_money.formatRounded(const Money(12053, 'USD'))),
           findsNothing,
-          reason: 'twelve rounded twelfths are not the yearly charge',
         );
         expect(tester.takeException(), isNull);
       });
@@ -362,10 +347,10 @@ void main() {
         for (final File f in libSources())
           if (f.readAsStringSync().contains('formatShareFigure(')) rel(f),
       ]..sort();
-      expect(callers, <String>[
-        'lib/core/format/monthly_share.dart',
-        'lib/features/cancel/cancel_sheet.dart',
-      ]);
+      // ST-U3: the remove sheet no longer prints a share, so the figure has
+      // no caller in lib/ at all — only this file's own "must not appear"
+      // assertions compute it.
+      expect(callers, <String>['lib/core/format/monthly_share.dart']);
     });
 
     test('the old Money-typed getter is gone', () {

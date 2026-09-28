@@ -17,6 +17,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_api_client/nikatru_api_client.dart';
+import 'package:nikatru_billing_revenuecat/nikatru_billing_revenuecat.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_purchases/nikatru_purchases.dart';
 
@@ -93,7 +94,30 @@ final Provider<PurchaseRail> purchaseRailProvider = Provider<PurchaseRail>(
 /// channel — the `'dev'` default — SELLS NOTHING rather than being guessed as
 /// `web`. Every release lane passes `--dart-define=RELEASE_CHANNEL`, and
 /// `assert-channel-register` limb 6b-ii fails a release build that does not.
-PurchaseRail purchaseRailFor(Ref<PurchaseRail> ref, String releaseChannel) {
+///
+/// 🔴 THE STORE BRIDGE — every stamped app OPTS IN to `billing.mobileIap`
+/// (app.yaml, `state: pending` until its RevenueCat apps exist). [revenueCatKey]
+/// is the RevenueCat PUBLIC SDK key the store lanes compile in
+/// (`--dart-define=REVENUECAT_KEY`, from the secret app.yaml
+/// `publicKeySecrets` names, resolved per app by
+/// tooling/ci/store-key-secret.mjs). Whether a bridge is built at all is
+/// `StoreBridgeWiring.forChannel`'s rule, shared with every app: keyless, or
+/// on any channel that is not store billing, there is no bridge, the facade
+/// answers `iapBridgeMissing`, and the build sells nothing in the store — it
+/// never falls back to the web rail. Both parameters exist so a test can drive
+/// the real wiring with a key and a fake bridge; production passes neither.
+PurchaseRail purchaseRailFor(
+  Ref<PurchaseRail> ref,
+  String releaseChannel, {
+  String revenueCatKey = AppConfig.revenueCatApiKey,
+  IapBridge Function() newBridge = RevenueCatBridge.new,
+}) {
+  final wiring = StoreBridgeWiring.forChannel(
+    releaseChannel,
+    publicKey: revenueCatKey,
+    entitlementId: AppConfig.proEntitlementId,
+    newBridge: newBridge,
+  );
   final ChassisBillingConfig config = ChassisBillingConfig(
     railConfig: ref.watch(railConfigProvider),
     appId: AppConfig.appId,
@@ -104,27 +128,17 @@ PurchaseRail purchaseRailFor(Ref<PurchaseRail> ref, String releaseChannel) {
     accountId: () async => ref.read(authRepositoryProvider).currentUser?.id,
     accessToken: () => ref.read(authRepositoryProvider).currentAccessToken(),
     cancellationTransport: ref.watch(cancellationTransportProvider),
-    // A STAMPED APP SELLS NOTHING IN A STORE UNTIL IT OPTS IN, and that is the
-    // right default: an app with no store products, no RevenueCat app and no
-    // key would otherwise ship a buy button that cannot buy. So a store channel
-    // answers `iapBridgeMissing` — no price, no button, and NEVER the web rail
-    // as a fallback.
-    // `assert-app-yaml` limb 6 holds the dependency and the declaration
-    // together.
-    //
-    // ⏱ CORRECTED 2026-09-22 (O-IAP-BRIDGE-NOT-WIRED-IN-THE-APP): "no app has
-    // opted in" is stale — subscriptiontracker has. TO OPT IN, an app declares
-    // `billing.mobileIap` in its `app.yaml`, depends on
-    // `nikatru_billing_revenuecat`, and passes a bridge and an
-    // `IapBridgeConfig` here, built from a key its store workflows pass as
-    // `--dart-define=REVENUECAT_KEY=…`; keyless (a fork PR, a missing secret)
-    // it must stay `null`, which is what these two lines are. The brick stays
-    // bridgeless on purpose: it must not import a billing package a new app has
-    // no account for. See `apps/subscriptiontracker/lib/state/money_providers
-    // .dart` for the whole shape, and its `test/iap_opt_in_test.dart` for what
-    // an opted-in app has to prove.
-    iapBridge: null,
-    iapBridgeConfig: null,
+    // ⏱ 2026-09-27 (O-BRICK-SELLS-NOTHING-IN-A-STORE, 12b): WIRED, NOT NULL.
+    // The brick used to pass two literal nulls here, so every stamped app sold
+    // nothing in a store even after its owner created the store products — the
+    // opt-in was a code change nobody was told to make. It now passes what
+    // StoreBridgeWiring returns, which is itself null until the build carries
+    // a key: an app with no RevenueCat app and no key still ships no buy
+    // button that cannot buy. `assert-app-yaml` limb 6 (e) refuses a declared
+    // app that passes a literal null here, and the stamp probe in ci.yml
+    // proves it on every run.
+    iapBridge: wiring.bridge,
+    iapBridgeConfig: wiring.config,
   );
   final PurchaseRail rail = ChassisBilling.railForDeclared(
     releaseChannel,

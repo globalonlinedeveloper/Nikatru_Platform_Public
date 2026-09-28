@@ -494,6 +494,18 @@
   "@planInactive": {
     "description": "See subscriptionActive."
   },
+  "planChecking": "Checking your plan…",
+  "@planChecking": {
+    "description": "Consumed by manage_plan_screen.dart. ST-U7 (C42): the plan row while the entitlement is loading. It used to say 'You do not have an active subscription' here."
+  },
+  "planCheckFailed": "Could not check your plan.",
+  "@planCheckFailed": {
+    "description": "Consumed by manage_plan_screen.dart. ST-U7 (C42): the plan row when the entitlement could not be fetched, beside a Retry. Never 'you do not have a plan' — that was never checked."
+  },
+  "paywallLoadingPlans": "Loading plans…",
+  "@paywallLoadingPlans": {
+    "description": "Consumed by paywall_screen.dart. ST-U7 (C38): the spinner's label while a store rail is still being asked for its plans. It used to read 'Purchases are not available here.'"
+  },
   "restorePurchases": "Restore purchases",
   "@restorePurchases": {
     "description": "On a store build, asks the store for past purchases and then re-reads the entitlement from the server; on the web, the server re-read alone, because there the entitlement is a server row keyed to the account. Apple guideline 3.1.1 makes an explicit Restore control mandatory in a build that sells through StoreKit, and its absence is a documented rejection cause."
@@ -626,6 +638,10 @@
   "@exportDataCsv": {
     "description": "Data-export row. data-safety.json declares that export exists; deleting this row makes that declaration false."
   },
+  "settingsNotAvailableYet": "Not available yet",
+  "@settingsNotAvailableYet": {
+    "description": "Consumed by settings_screen.dart (_LinkRow). ST-U5 (D2, D6): the subtitle of a settings row that is shown but not yet wired (Connected accounts, Export data). With it the row says what it is; without a tap it draws no chevron."
+  },
   "helpAndSupport": "Help & support",
   "@helpAndSupport": {
     "description": "Opens the published contact page in a browser. Distinct from contactSupport, which is the mailto route."
@@ -750,13 +766,13 @@
   "@addingEllipsis": {
     "description": "Consumed by add_subscription_sheet.dart:251. The submit button while the add is in flight. Horizontal ellipsis U+2026, not three dots. Pinned by test/sheet_failure_surface_test.dart:18 — the value must not change without moving those."
   },
-  "cancelSubscriptionFailed": "Could not cancel just now — check your connection and try again.",
+  "cancelSubscriptionFailed": "Could not remove it just now — check your connection and try again.",
   "@cancelSubscriptionFailed": {
-    "description": "Consumed by cancel_sheet.dart:89. Must never advance the sheet: step 1 congratulates the user on savings from a cancellation that did not happen."
+    "description": "Consumed by cancel_sheet.dart. The remove sheet's failure snackbar. Must never advance the sheet: step 1 says the entry is gone."
   },
-  "cancelSubscriptionTitle": "Cancel {name}?",
+  "cancelSubscriptionTitle": "Remove {name} from your tracker?",
   "@cancelSubscriptionTitle": {
-    "description": "Consumed by cancel_sheet.dart:128.",
+    "description": "Consumed by cancel_sheet.dart. ST-U3 (B32): the sheet's only effect is deleting the row from THIS app's list, so it says remove, never cancel — a user who reads 'Cancel Netflix?' can believe the provider stopped charging them.",
     "placeholders": {
       "name": {
         "type": "String",
@@ -764,49 +780,29 @@
       }
     }
   },
-  "cancelledHeading": "Cancelled",
+  "cancelledHeading": "Removed from your tracker",
   "@cancelledHeading": {
-    "description": "Consumed by cancel_sheet.dart:206. The step-2 heading in Subly's own cancel sheet. Deliberately NOT the chassis `cancelExecuted` (\"Your subscription has been cancelled.\"), which is the money rail's merchant-confirmed sentence and says something this screen has no evidence for. Pinned by test/sheet_failure_surface_test.dart:168, test/width_cancel_sheet_test.dart:186, integration_test/app_test.dart:487 — the value must not change without moving those."
+    "description": "Consumed by cancel_sheet.dart. The step-2 heading of the remove sheet. States what happened here and nothing about the provider. Pinned by test/sheet_failure_surface_test.dart, test/width_cancel_sheet_test.dart, integration_test/app_test.dart — the value must not change without moving those."
   },
   "done": "Done",
   "@done": {
     "description": "Consumed by cancel_sheet.dart:229. Pinned by test/width_cancel_sheet_test.dart:258, integration_test/app_test.dart:491 — the value must not change without moving those."
   },
-  "cancelStep1Body": "You’ll save {monthly}/mo · {yearly}/yr. Access continues until {date}.",
-  "@cancelStep1Body": {
-    "description": "Consumed by cancel_sheet.dart:137-147. ONE key, not the three TextSpans the live sheet concatenates: Tamil puts the date clause in a different position, and a sentence assembled from fragments cannot be reordered by a translator. {date} is formatted by DateFormat.MMMMd, never typed.",
-    "placeholders": {
-      "monthly": {
-        "type": "String",
-        "example": "₹499"
-      },
-      "yearly": {
-        "type": "String",
-        "example": "₹5,988"
-      },
-      "date": {
-        "type": "String",
-        "example": "12 August"
-      }
-    }
+  "removeStep1Body": "This removes it from your list in this app only. It does not cancel your plan with the provider — to stop the charges, cancel with them directly.",
+  "@removeStep1Body": {
+    "description": "Consumed by cancel_sheet.dart, step 0. ST-U3 (B32 interim): no savings figure and no 'access continues until' — the app deletes a row, it does not know the provider's terms. Replaces cancelStep1Body."
   },
-  "cancelStep2Body": "You’re now saving {monthly}/mo. Nicely done.",
-  "@cancelStep2Body": {
-    "description": "Consumed by cancel_sheet.dart:212-220. See cancelStep1Body on why this is one key.",
-    "placeholders": {
-      "monthly": {
-        "type": "String",
-        "example": "₹499"
-      }
-    }
+  "removeStep2Body": "If you still pay for it, remember to cancel it with the provider too.",
+  "@removeStep2Body": {
+    "description": "Consumed by cancel_sheet.dart, step 1. Replaces cancelStep2Body ('You're now saving …'), which congratulated a user on savings from a row deletion."
   },
-  "cancellingEllipsis": "Cancelling…",
+  "cancellingEllipsis": "Removing…",
   "@cancellingEllipsis": {
-    "description": "Consumed by cancel_sheet.dart:175. Pinned by test/sheet_failure_surface_test.dart:18 — the value must not change without moving those."
+    "description": "Consumed by cancel_sheet.dart. The remove button while the delete is in flight. Pinned by test/sheet_failure_surface_test.dart — the value must not change without moving those."
   },
-  "confirmCancel": "Confirm cancel",
+  "confirmCancel": "Yes, remove",
   "@confirmCancel": {
-    "description": "Consumed by cancel_sheet.dart:175. Pinned by test/sheet_failure_surface_test.dart:160, test/width_cancel_sheet_test.dart:138, integration_test/app_test.dart:483 — the value must not change without moving those."
+    "description": "Consumed by cancel_sheet.dart. The remove sheet's confirm button. Short because the button is half the sheet wide; the title carries 'from your tracker'. Deliberately NOT the detail screen's 'Remove' (cancelPlanButton): the sheet opens over that screen, and two identical labels make every finder — and a screen reader's list of buttons — ambiguous. Pinned by test/sheet_failure_surface_test.dart, test/width_cancel_sheet_test.dart, integration_test/app_test.dart — the value must not change without moving those."
   },
   "budgetTitle": "Budget & goals",
   "@budgetTitle": {
@@ -866,6 +862,18 @@
   "@dataFailedBody": {
     "description": "Second line of the failed-fetch state, beside the Retry control."
   },
+  "dataFailedGeneric": "Something went wrong loading your subscriptions. Try again.",
+  "@dataFailedGeneric": {
+    "description": "Consumed by features/shared/async_gate.dart dataFailedBodyFor. ST-U6 (D21): the failed-list sentence for an error that names no cause we can state (a 4xx, a malformed body, anything that is not an ApiException). Claims no cause."
+  },
+  "dataFailedServer": "Our service is having trouble right now. Try again in a moment.",
+  "@dataFailedServer": {
+    "description": "Consumed by features/shared/async_gate.dart dataFailedBodyFor. ST-U6 (D21): the failed-list sentence for a 5xx — the fault is ours, not the user's connection."
+  },
+  "dataFailedSignedOut": "Your session has ended. Sign in again to see your subscriptions.",
+  "@dataFailedSignedOut": {
+    "description": "Consumed by features/shared/async_gate.dart dataFailedBodyFor. ST-U6 (D21): the failed-list sentence for a 401. ST-U7 (D20) signs a GONE session out, which routes to sign-in; this is what shows until it does, or when the server refuses a live session."
+  },
   "dataEmptyTitle": "No subscriptions yet",
   "@dataEmptyTitle": {
     "description": "Headline when the fetch SUCCEEDED and the user genuinely has no subscriptions."
@@ -894,13 +902,21 @@
   "@paymentHistory": {
     "description": "Consumed by subscription_detail_screen.dart:237."
   },
-  "cancelPlanButton": "Cancel plan",
+  "cancelPlanButton": "Remove",
   "@cancelPlanButton": {
-    "description": "Consumed by subscription_detail_screen.dart:272. MINTED rather than reusing the chassis `cancelPlan` (\"Cancel subscription\"), which is the money rail's label: reusing it would change shipped copy on this screen. De-duplicating the two is Phase-5 polish, recorded in the P4 work order §8 decision 1. Pinned by integration_test/app_test.dart:476 — the value must not change without moving those."
+    "description": "Consumed by subscription_detail_screen.dart. Opens the remove sheet. ST-U3 (B32): it was 'Cancel plan', but nothing here cancels anything at the provider. Pinned by integration_test/app_test.dart — the value must not change without moving those."
   },
   "noPaymentsYet": "No payments yet.",
   "@noPaymentsYet": {
     "description": "Consumed by subscription_detail_screen.dart:299."
+  },
+  "paymentHistoryLoading": "Loading payments…",
+  "@paymentHistoryLoading": {
+    "description": "Consumed by subscription_detail_screen.dart. ST-U7 (B16): the payment-history row while it loads. It used to read 'No payments yet.'"
+  },
+  "paymentHistoryFailed": "Could not load payments.",
+  "@paymentHistoryFailed": {
+    "description": "Consumed by subscription_detail_screen.dart. ST-U7 (B16): the payment-history row when the fetch failed, beside a Retry. It used to read 'No payments yet.' — a false statement about a record of real charges."
   },
   "editPlan": "Edit plan",
   "@editPlan": {
@@ -929,10 +945,6 @@
   "back": "Back",
   "@back": {
     "description": "Consumed by subscription_detail_screen.dart:97. The semanticLabel of the hero's icon-only back control. An icon-only button without one is unusable under a screen reader."
-  },
-  "moreOptions": "More options",
-  "@moreOptions": {
-    "description": "Consumed by subscription_detail_screen.dart:99. See back."
   },
   "insightsTitle": "Insights",
   "@insightsTitle": {
@@ -1031,9 +1043,9 @@
   "@goToDashboard": {
     "description": "Consumed by scan_screen.dart:139. Pinned by integration_test/app_test.dart:370, integration_test/store_screenshots_test.dart:206 — the value must not change without moving those."
   },
-  "scanningEllipsis": "Scanning…",
+  "scanningEllipsis": "Loading…",
   "@scanningEllipsis": {
-    "description": "Consumed by scan_screen.dart:139."
+    "description": "Consumed by scan_screen.dart. The busy CTA while the first list loads. ST-U3 (B44): it read 'Scanning…', and nothing is scanned."
   },
   "demoDataBanner": "Demo data - sample subscriptions, not your account",
   "@demoDataBanner": {
@@ -1054,16 +1066,6 @@
   "navMore": "More",
   "@navMore": {
     "description": "Consumed by app_shell.dart:34. See navCalendar. Pinned by integration_test/app_test.dart:406, integration_test/store_screenshots_test.dart:39 — the value must not change without moving those."
-  },
-  "couldNotLoad": "Could not load: {error}",
-  "@couldNotLoad": {
-    "description": "Consumed by home_screen.dart:157. ⚠️ FLAGGED: {error} is the raw exception, so this surface can leak an internal message to a user. Recorded rather than changed here — L0 is behaviour-neutral.",
-    "placeholders": {
-      "error": {
-        "type": "String",
-        "example": "SocketException"
-      }
-    }
   },
   "markedUnusedCount": "{count, plural, =1{1 marked unused} other{{count} marked unused}}",
   "@markedUnusedCount": {
@@ -1353,13 +1355,17 @@
   "@subscriptiontrackerOnboarding2Body": {
     "description": "Consumed by onboarding/onboarding_screen.dart:29. See subscriptiontrackerOnboarding1Title."
   },
+  "subscriptiontrackerOnboarding2BodyNoReminders": "Every due date sits on one calendar, so you can see each renewal coming.",
+  "@subscriptiontrackerOnboarding2BodyNoReminders": {
+    "description": "Consumed by onboarding/onboarding_screen.dart. ST-U3 (C30): slide 2 on a platform that cannot schedule a reminder (NotificationCapabilities.canSchedule false — web, Windows, Linux). It promises only the calendar, which every platform has."
+  },
   "subscriptiontrackerOnboarding3Title": "Cut what you don’t use",
   "@subscriptiontrackerOnboarding3Title": {
     "description": "Consumed by onboarding/onboarding_screen.dart:32. See subscriptiontrackerOnboarding1Title. Typographic apostrophe (U+2019), matching the live literal."
   },
-  "subscriptiontrackerOnboarding3Body": "Mark a plan unused and Subscriptions totals up what cancelling would save.",
+  "subscriptiontrackerOnboarding3Body": "See what each plan costs a month and a year, and decide what is worth keeping.",
   "@subscriptiontrackerOnboarding3Body": {
-    "description": "Consumed by onboarding/onboarding_screen.dart:33. See subscriptiontrackerOnboarding1Title."
+    "description": "Consumed by onboarding/onboarding_screen.dart. See subscriptiontrackerOnboarding1Title. ST-U3 (C30): it promised 'Mark a plan unused and Subscriptions totals up what cancelling would save', and no control anywhere marks a plan unused."
   },
   "renewalChannelName": "Renewal reminders",
   "@renewalChannelName": {
@@ -1469,9 +1475,9 @@
       }
     }
   },
-  "a11yScanRing": "Scan progress {percent}.",
+  "a11yScanRing": "Setting up, {percent}.",
   "@a11yScanRing": {
-    "description": "Consumed by scan_screen.dart. The Semantics label of the scan progress ring (a CustomPaint). The visible centre figure is an interpolated '45%' — pixels either way — so this is the only thing a screen reader can hear while the scan runs.",
+    "description": "Consumed by scan_screen.dart. The Semantics label of the setup ring (a CustomPaint). ST-U3 (B44): it read 'Scan progress', and nothing is scanned.",
     "placeholders": {
       "percent": {
         "type": "String",

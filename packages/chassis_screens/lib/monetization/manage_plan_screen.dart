@@ -154,3 +154,92 @@ class ManagePlanView extends StatelessWidget {
     );
   }
 }
+
+/// What a plan-status row can truthfully say — ST-U7 (C42).
+///
+/// "You do not have a plan" is an ANSWER, and it was shown while the
+/// entitlement was still loading and when it could not be fetched: a paying
+/// user saw themselves as unpaid on every slow open. [checking] and [failed]
+/// are states of the question, never answers to it.
+enum PlanStatus {
+  checking,
+  failed,
+  active,
+  inactive;
+
+  /// The status of an entitlement read. [loaded] wins over [failed], so a
+  /// refresh that fails keeps the last answer on screen.
+  static PlanStatus of({
+    required bool loaded,
+    required bool failed,
+    required bool pro,
+  }) {
+    if (loaded) return pro ? PlanStatus.active : PlanStatus.inactive;
+    return failed ? PlanStatus.failed : PlanStatus.checking;
+  }
+}
+
+/// The words a [PlanStatusTile] shows, handed in by the app — none is
+/// defaulted to English.
+class PlanStatusLabels {
+  const PlanStatusLabels({
+    required this.active,
+    required this.inactive,
+    required this.checking,
+    required this.failed,
+    required this.retry,
+  });
+  final String active;
+  final String inactive;
+  final String checking;
+  final String failed;
+  final String retry;
+}
+
+/// The plan-status row in each of [PlanStatus]'s four states. The failed
+/// state carries [onRetry]; the checking state a labelled spinner.
+class PlanStatusTile extends StatelessWidget {
+  const PlanStatusTile({
+    required this.status,
+    required this.labels,
+    required this.onRetry,
+    super.key,
+  });
+
+  final PlanStatus status;
+  final PlanStatusLabels labels;
+  final VoidCallback onRetry;
+
+  static const Key checkingKey = Key('manage-plan-status-loading');
+  static const Key failedKey = Key('manage-plan-status-failed');
+  static const Key answerKey = Key('manage-plan-status');
+
+  @override
+  Widget build(BuildContext context) => switch (status) {
+    PlanStatus.checking => ListTile(
+      key: checkingKey,
+      leading: const SizedBox.square(
+        dimension: 24,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      ),
+      title: Text(labels.checking),
+    ),
+    PlanStatus.failed => ListTile(
+      key: failedKey,
+      leading: const Icon(Icons.cloud_off),
+      title: Text(labels.failed),
+      trailing: TextButton(onPressed: onRetry, child: Text(labels.retry)),
+    ),
+    PlanStatus.active || PlanStatus.inactive => ListTile(
+      key: answerKey,
+      leading: Icon(
+        status == PlanStatus.active
+            ? Icons.verified_outlined
+            : Icons.lock_outline,
+      ),
+      title: Text(
+        status == PlanStatus.active ? labels.active : labels.inactive,
+      ),
+    ),
+  };
+}

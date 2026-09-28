@@ -44,7 +44,9 @@ import '../../state/subscriptions_controller.dart';
 // pane. It is still a route — `lib/core/router.dart` is untouched and a phone
 // still pushes it — this import only gives the wide layout a way to render the
 // same widget without a navigation.
+import '../add/add_subscription_sheet.dart';
 import '../detail/subscription_detail_screen.dart';
+import '../shared/async_gate.dart';
 import '../shared/due.dart';
 import '../shared/widgets.dart';
 // The shell this screen is a BRANCH of, imported for one number:
@@ -509,46 +511,41 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
         children: <Widget>[
           _header(context, l10n, user),
           const SizedBox(height: 18),
-          ...subs.when(
-            loading: () => const <Widget>[
+          // ✅ ST-U6 (B3, B4): THE LIST COLUMN GOES THROUGH THE SHARED GATE.
+          // It was a bespoke `.when` whose error arm printed
+          // `couldNotLoad('$e')` — the raw exception, at the user, with no
+          // retry — and whose data arm drew zero-figures and two empty section
+          // headings for a first-run user with nothing on the list. Now the
+          // three states are [DataStateView]'s, the failure says what failed
+          // and offers Retry, and the empty state's first step is "Add
+          // subscription". The header above stays outside the gate, so the
+          // way to notifications and settings survives every state.
+          ...switch (subscriptionsState(
+            ref,
+            l10n: l10n,
+            emptyTitle: l10n.dataEmptyTitle,
+            emptyBody: l10n.dataEmptyBody,
+            emptyActionLabel: l10n.addSubscriptionTitle,
+            onEmptyAction: () => showAddSubscriptionSheet(context),
+          )) {
+            final Widget state => <Widget>[
               Padding(
-                padding: EdgeInsets.only(top: 48),
-                child: Center(child: CircularProgressIndicator()),
+                key: const Key('home-list-state'),
+                padding: const EdgeInsets.only(top: 24),
+                child: state,
               ),
             ],
-            // ⚠️ `couldNotLoad` INTERPOLATES THE RAW EXCEPTION, and the arb
-            // key preserves that verbatim rather than quietly improving it.
-            // Leaking a stack-adjacent string at a user is a real defect
-            // (WORKORDER §1 flags it), but it is a COPY decision and this is
-            // an l10n increment: changing what the sentence says here would
-            // hide the leak behind a translation commit instead of fixing it
-            // where it can be reviewed.
-            error: (Object e, _) => <Widget>[
-              Padding(
-                padding: const EdgeInsets.only(top: 48),
-                child: Center(
-                  // `AppText.of`, not the bare const: `AppText.muted`
-                  // bakes `AppColors.muted` and paints the same grey on a
-                  // dark scaffold. An error message is the one string that
-                  // must be readable when everything else has failed.
-                  child: Text(
-                    l10n.couldNotLoad('$e'),
-                    style: AppText.of(context).muted,
-                  ),
-                ),
-              ),
-            ],
-            data: (List<Subscription> list) => _dashboard(
+            null => _dashboard(
               context,
               l10n,
               money,
-              list,
+              subs.requireValue,
               now,
               showUnused,
               heroInList: heroInList,
               twoPane: twoPane,
             ),
-          ),
+          },
         ],
       ),
     );
@@ -646,16 +643,14 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
         // [13]T-9's home entry point. `push`, not `go`: notifications is a
         // detail over the shell, and the user must come back to where they were.
         //
-        // ⬜ `dot: true` IS UNCONDITIONAL — it is a badge that is always on, so
-        // it carries no information. Pre-existing (it is live behaviour, carried
-        // verbatim) and deliberately NOT fixed here: an unread count needs a
-        // source, and inventing one inside a merge increment is how a merge
-        // stops being reviewable. Named in MANIFEST.md · OPEN QUESTION 4.
+        // ✅ ST-U5 (B6): NO DOT. This passed `dot: true` unconditionally — a
+        // badge that was always on, i.e. a permanent "something new" that
+        // carried no information. Nothing on this device knows what is unread,
+        // so the badge is off until a real unread count exists to drive it.
         _circleButton(
           context: context,
           icon: Icons.notifications_none_rounded,
           semanticLabel: l10n.notifications,
-          dot: true,
           onTap: () => context.push('/notifications'),
         ),
         const SizedBox(width: 9),
@@ -1337,7 +1332,6 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
     required BuildContext context,
     required IconData icon,
     required String semanticLabel,
-    bool dot = false,
     VoidCallback? onTap,
   }) {
     final ThemeData theme = Theme.of(context);
@@ -1359,40 +1353,23 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
     // the one to keep: they are every route OFF a screen whose rows all
     // traverse fine, so a keyboard-only user could read the list and leave by
     // no door on it. `mergeDescendants: false` because this control has no
-    // descendant text to merge — [semanticLabel] IS its name, and the dot is
-    // decoration.
+    // descendant text to merge — [semanticLabel] IS its name.
     return FocusableTap(
       label: semanticLabel,
       mergeDescendants: false,
       borderRadius: BorderRadius.circular(14),
       onTap: onTap,
-      child: Stack(
-        children: <Widget>[
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: fill,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: edge),
-            ),
-            child: Icon(icon, color: glyph, size: 20),
-          ),
-          if (dot)
-            Positioned(
-              top: 9,
-              right: 10,
-              child: Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: AppColors.warn,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: fill, width: 2),
-                ),
-              ),
-            ),
-        ],
+      // ST-U5 (B6): the always-on unread dot that sat over this icon is gone
+      // with its `dot:` parameter; see the call site.
+      child: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: fill,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: edge),
+        ),
+        child: Icon(icon, color: glyph, size: 20),
       ),
     );
   }

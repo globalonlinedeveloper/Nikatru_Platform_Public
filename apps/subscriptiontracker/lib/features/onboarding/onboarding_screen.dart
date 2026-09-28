@@ -1,9 +1,12 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show ContentPane;
+import 'package:nikatru_notifications/nikatru_notifications.dart'
+    show NotificationCapabilities;
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
@@ -49,14 +52,26 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   /// for an English phrase lands mid-word in a language whose translation is
   /// longer or shorter, and at text scale 2.0 it fights the wrap the layout
   /// already does correctly. The value is now one line and the `Text` wraps it.
-  List<List<String>> _slides(AppLocalizations l10n) => <List<String>>[
+  ///
+  /// 🔴 ST-U3 (C30) — SLIDE 2 IS CAPABILITY-AWARE. It promised "A reminder
+  /// arrives before each renewal" on every platform, and web, Windows and Linux
+  /// cannot schedule one ([NotificationCapabilities.canSchedule] is false
+  /// there, and the app gates every reminder on it). [canSchedule] picks the
+  /// sentence, so a first run promises only what that platform can deliver.
+  /// Slide 3 no longer promises a "mark unused" control that does not exist.
+  List<List<String>> _slides(
+    AppLocalizations l10n, {
+    required bool canSchedule,
+  }) => <List<String>>[
     <String>[
       l10n.subscriptiontrackerOnboarding1Title,
       l10n.subscriptiontrackerOnboarding1Body,
     ],
     <String>[
       l10n.subscriptiontrackerOnboarding2Title,
-      l10n.subscriptiontrackerOnboarding2Body,
+      canSchedule
+          ? l10n.subscriptiontrackerOnboarding2Body
+          : l10n.subscriptiontrackerOnboarding2BodyNoReminders,
     ],
     <String>[
       l10n.subscriptiontrackerOnboarding3Title,
@@ -114,7 +129,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final core.AppConfig? cfg = ref.watch(appConfigProvider).valueOrNull;
-    final List<List<String>> slides = _slides(l10n);
+    // The same reading of the chassis matrix home's catch-up nudge makes.
+    final bool canSchedule = NotificationCapabilities.forPlatform(
+      defaultTargetPlatform,
+      isWeb: kIsWeb,
+    ).canSchedule;
+    final List<List<String>> slides = _slides(l10n, canSchedule: canSchedule);
     return Scaffold(
       backgroundColor: AppColors.onboardBg,
       body: Stack(

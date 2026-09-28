@@ -4,13 +4,13 @@ already knew about.
 
 Add each service once with its price and billing cycle. The app works out what
 you spend per month and per year, shows the next payment date for each one,
-and reminds you before a free trial turns into a charge.
+and reminds you before each one renews.
 
 WHAT IT DOES
 - One list of every subscription, with price, currency and billing cycle.
 - Monthly and yearly totals, recalculated as you edit.
 - Next-renewal dates, sorted so the nearest is first.
-- Reminders before a renewal or the end of a free trial.
+- Reminders before each renewal.
 - Works offline. Your list is stored on your device and stays readable
   without a connection.
 
@@ -21,9 +21,9 @@ to a financial institution. You tell it what you subscribe to; it does the
 arithmetic and the remembering. That is the whole product.
 
 PERMISSIONS
-The app asks for notification permission so it can remind you before a renewal
-or the end of a trial. Decline it and every other feature still works — you
-just do not get reminders.
+The app asks for notification permission so it can remind you before a
+renewal. Decline it and every other feature still works — you just do not get
+reminders.
 
 PRIVACY
 It does not sell your data and does not show ads. Analytics are off until

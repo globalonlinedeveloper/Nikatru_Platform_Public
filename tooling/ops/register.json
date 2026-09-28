@@ -1064,6 +1064,9 @@
         "renewals": [
           "0 6 * * *"
         ],
+        "fx_rates": [
+          "0 6 * * *"
+        ],
         "events_rollup": [
           "0 6 * * *"
         ],
@@ -1109,6 +1112,7 @@
         "backup_export": "2026-09-05T11:11:05Z",
         "analytics_liveness": "2026-08-02T19:53:38Z",
         "renewals": "2026-08-02T19:53:38Z",
+        "fx_rates": "2026-09-28T12:15:04Z",
         "events_rollup": "2026-08-12T09:08:06Z",
         "retention_sweep": "2026-08-12T07:43:30Z",
         "cancellation_drain": "2026-08-25T04:18:24Z",
@@ -1119,7 +1123,7 @@
         "boxa_reachability": "2026-09-18T11:22:08Z",
         "ops_watchdog": "2026-09-18T11:22:08Z",
         "ops_stuck_runs": "2026-09-25T00:17:02Z",
-        "reminder_mail": "2026-09-28T03:25:45Z"
+        "reminder_mail": "2026-09-28T11:33:25Z"
       },
       "_watchedJobsDeclaredAtWhy": [
         "⏱ 2026-09-11 — WHEN THE REGISTER BEGAN WATCHING EACH JOB, so a job with NO heartbeat row at all is NOT YET DUE until the",

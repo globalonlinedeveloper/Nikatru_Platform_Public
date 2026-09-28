@@ -21,6 +21,7 @@ build when the two disagree, so this table cannot silently fall behind again.
 |---|---|---|---|
 | GET | `/v1/health` | none | Deploy verification. Returns `build` = the deployed commit |
 | GET | `/config/:app` | none | CFG-1 runtime config, KV-backed + edge-cached (below) |
+| GET | `/v1/fx/latest` | none | ST-I3: the ECB euro reference rates the nightly cron keeps in `CONFIG_KV`, edge-ceilinged + edge-cached; 503 until a valid table exists |
 | POST | `/v1/events` | none | First-party analytics ingest (G-12) |
 | POST | `/v1/consent` | none | The DPDP consent artifact |
 | POST | `/v1/money/:provider` | **HMAC over raw body** | Merchant-of-record webhook ([5]M-1) |
@@ -95,6 +96,12 @@ because a caller can get them wrong in ways the others do not offer.)
      their lead days, to a CONFIRMED address read at send time and never stored
      (`src/lib/reminders.ts`). Capped at `MAX_REMINDER_MAILS_PER_DAY` because
      Resend's free quota is shared with password resets; over the cap waits a night.
+   - **fxRates** (ST-I3, `src/fx.ts`) — one bounded GET of the ECB's daily
+     euro reference rates, parsed without a DOM and refused unless it quotes
+     USD, INR and GBP with positive rates; a good table goes to `CONFIG_KV`
+     under `fx:ecb:latest`, and on ANY failure the last good table stays and
+     the row is ok=0. No cron of its own: 06:00 UTC reads the previous
+     working day's fix.
 
 `GET /v1/health` is the deploy-verification endpoint (no auth).
 

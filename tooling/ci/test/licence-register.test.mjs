@@ -917,6 +917,79 @@ describe('app-scoped rows — every bundle file resolves to one row, and the lic
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ONE PIPELINE (LEAD RULING NP12B-R2, 2026-09-27) — the row the STAMP writes is
+// the row this guard accepts, and the file it covers is refused without it.
+//
+// gen-app-licence-rows.mjs writes `app:<id>` rows from the resolved workspace
+// when tooling/kit/stamp-app.mjs stamps an app. These cases run the REAL
+// generator over the AS fixture (app `one` resolved `pkg_a`, whose pubspec
+// declares the file the bundle carries) and then this guard over the same tree,
+// so a generator and a guard that stopped agreeing about a row's shape, its
+// licence or its key go red here rather than on an app's first web build.
+// ─────────────────────────────────────────────────────────────────────────────
+const GENERATOR = join(CI_DIR, 'gen-app-licence-rows.mjs');
+const runGen = (root, ...args) => spawnSync(process.execPath, [GENERATOR, root, ...args], { encoding: 'utf8' });
+
+/** The AS fixture, resolved the way `flutter pub get` at a workspace root
+ *  leaves it: package_config.json AND package_graph.json, app `one` → pkg_a. */
+function stampedFixture() {
+  const fx = appFixture({ rows: [], via: 'workspace' });
+  write(fx.root, join('pubcache', 'pkg_a-1.0.0', 'pubspec.yaml'), 'name: pkg_a\nflutter:\n  assets:\n    - assets/a.js\n');
+  write(fx.root, join('pubcache', 'pkg_a-1.0.0', 'assets', 'a.js'), 'x');
+  write(
+    fx.root,
+    join('.dart_tool', 'package_graph.json'),
+    JSON.stringify({
+      roots: ['one'],
+      packages: [
+        { name: 'one', version: '1.0.0', dependencies: ['pkg_a'], devDependencies: [] },
+        { name: 'pkg_a', version: '1.0.0', dependencies: [] },
+      ],
+      configVersion: 1,
+    }),
+  );
+  return fx;
+}
+
+describe('ONE PIPELINE — the row gen-app-licence-rows.mjs writes at stamp time is the row this guard accepts', () => {
+  test('GR1 · the generator writes the row, and the bundle walk then reads its licence from the package and passes', () => {
+    const fx = stampedFixture();
+    const g = runGen(fx.root, '--write', '--app', 'one');
+    assert.equal(g.status, 0, out(g));
+    const rows = JSON.parse(readFileSync(join(fx.root, 'tooling', 'legal', 'asset-register.json'), 'utf8')).appScopedAssets;
+    assert.deepEqual(
+      rows.map((r) => [r.scope, r.bundlePath, r.package, r.licence]),
+      [['app:one', 'packages/pkg_a/assets/a.js', 'pkg_a', 'MIT']],
+    );
+    const r = runApp(fx);
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /app:one · packages\/pkg_a\/assets\/a\.js — the pkg_a LICENSE reads MIT; NOTICES carries it/);
+    const declared = run(fx.root);
+    assert.equal(declared.status, 0, out(declared));
+    assert.match(out(declared), /1 app-scoped row\(s\) shape-checked/);
+  });
+
+  test('GR2 · 🔴 RED CONTROL: the written row removed, the bundle walk refuses the file AND the generator --check names it', () => {
+    const fx = stampedFixture();
+    assert.equal(runGen(fx.root, '--write', '--app', 'one').status, 0);
+    const regPath = join(fx.root, 'tooling', 'legal', 'asset-register.json');
+    const green = readFileSync(regPath, 'utf8');
+    const reg = JSON.parse(green);
+    reg.appScopedAssets = [];
+    writeFileSync(regPath, `${JSON.stringify(reg, null, 2)}\n`);
+    const r = runApp(fx);
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /packages\/pkg_a\/assets\/a\.js ships .*shipped by the hosted package pkg_a/);
+    const c = runGen(fx.root, '--check', '--app', 'one');
+    assert.equal(c.status, 1, out(c));
+    assert.match(out(c), /app:one: packages\/pkg_a\/assets\/a\.js ships \(package pkg_a, MIT\) and has NO row/);
+    writeFileSync(regPath, green);
+    assert.equal(runApp(fx).status, 0, 'restored, the walk is green again');
+    assert.equal(runGen(fx.root, '--check', '--app', 'one').status, 0, 'restored, the generator check is green again');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // licence-cross-assert.mjs — the seam between [7]P-5's register and [8]K-10's.
 //
 // 🔴 IT SHIPPED WITH NO TEST FILE NAMING IT. Created 2026-08-13, imported by

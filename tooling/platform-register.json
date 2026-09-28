@@ -393,7 +393,7 @@
       "path": "/v1/health",
       "auth": "public",
       "owningFile": "services/platform/src/index.ts",
-      "purpose": "Deploy verification AND dependency health. Answers `{ ok, status, app, version, build, time, checks }` after probing PLATFORM_DB (`SELECT 1 FROM entitlements LIMIT 1`), CONFIG_KV (a `get` of a key that does not exist) and the Supabase JWKS, each through a per-isolate memoised reading (services/_shared/src/health.ts); HTTP 200 even when `ok` is false, by design, so the judgement stays with the reader. ⚠️ CORRECTED 2026-09-10 — this field described a vars-only answer that touched no dependency, for as long as the probes had existed (services/platform/src/index.ts:141-180).",
+      "purpose": "Deploy verification AND dependency health. Answers `{ ok, status, app, version, build, time, checks }` after probing PLATFORM_DB (`SELECT 1 FROM entitlements LIMIT 1`), CONFIG_KV (a `get` of a key that does not exist) and the Supabase JWKS, each through a per-isolate memoised reading (services/_shared/src/health.ts); HTTP 200 even when `ok` is false, by design, so the judgement stays with the reader. ⚠️ CORRECTED 2026-09-10 — this field described a vars-only answer that touched no dependency, for as long as the probes had existed (services/platform/src/index.ts:145-184).",
       "unconsumedReason": "🔄 CORRECTED 2026-08-06 — IT HAS A MACHINE CONSUMER AND HAS FOR SOME TIME. `tooling/ops/post-deploy-smoke.mjs` fetches this route from `deploy-workers.yml` (twice, both Workers) and joins the deploy to a build through the `build` field; `deploy-web.yml` smokes it too. The previous text — \"no programmatic client by design … the honest state is zero clients\" — was true when written and false at head, and it PRINTED GREEN every run because limb 2 only reports unconsumed reasons rather than checking them. [4]B-14 now pins the field set the smoke joins on.",
       "noLimiterReason": "It DOES I/O — one D1 read, one KV read and one JWKS subrequest — and what bounds it is not a limiter but the MEMO: every probe is a per-isolate reading with a TTL (services/_shared/src/health.ts, READING_TTL_MS = 5 s for D1 and KV, JWKS_READING_TTL_MS for the JWKS fetch), so an unauthenticated flood buys at most one dependency fan-out per TTL per isolate — a bound health.ts states as (isolates × 1 per TTL), deliberately not as a global one — and every other request costs the Worker invocation itself, which the account-wide request ceiling already bounds. A limiter here would spend a Rate Limiting namespace to protect a memoised read. ⚠️ CORRECTED 2026-09-10: from the day the probes landed this field claimed the handler touched neither D1, nor KV, nor the network, and limb 4 of assert-platform-register.mjs printed it green because it checked only that a reason was PRESENT; limb 4b now refuses that claim over a handler that probes. [4]B-13"
     },
@@ -409,6 +409,15 @@
         "expression": "'$_base/config/$appId'",
         "note": "The URL the transport actually builds, at the assignment — not the doc comment three lines above it, which says the same thing and is stripped before matching."
       }
+    },
+    {
+      "id": "fx-latest",
+      "method": "GET",
+      "path": "/v1/fx/latest",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/fx.ts",
+      "purpose": "⏱ 2026-09-28 · ST-I3 (home-currency conversion, platform half). The ECB euro reference rates the nightly cron caches in CONFIG_KV under `fx:ecb:latest` (services/platform/src/fx.ts): `{ source, sourceUrl, base: 'EUR', asOf, fetchedAt, rates }`, the shape of contracts/fx/latest.v1.example.json's `response`. Public because the table is the same for every caller and carries no user data; edge-cached 3600 s; 503 `fx_unavailable` with `no-store` while no valid table is kept, never an empty 200. Behind FX_CEILING_LIMITER, keyed on the edge, never an IP.",
+      "unconsumedReason": "NO CLIENT IN THIS PR, DELIBERATELY. packages/core's FxTable reads this payload and is tested against the same vector, but the transport (`FxRatesSource` in packages/api_client) and its provider land with the FIRST consumer — the converted totals of ST-I1 and the ST-D Home/Insights screens — so nothing ships uncalled. Until then the route is live, filled nightly, and read by nobody."
     },
     {
       "id": "events",
@@ -748,7 +757,8 @@
       "scope": "shared",
       "purpose": "Per-app CFG-1 config overrides, keyed `config:<app>`, read on the launch path of every app and edge-cached for 300s.",
       "readers": [
-        "services/platform/src/routes/config.ts"
+        "services/platform/src/routes/config.ts",
+        "services/platform/src/routes/fx.ts"
       ]
     },
     {
@@ -821,6 +831,15 @@
       ]
     },
     {
+      "binding": "FX_CEILING_LIMITER",
+      "kind": "ratelimits",
+      "scope": "shared",
+      "purpose": "ST-I3 · The same server-derived ceiling for GET /v1/fx/latest, the public ECB rate table. Its own namespace so a cache-busting flood on the rate table cannot spend the budget config resolution depends on.",
+      "readers": [
+        "services/platform/src/routes/fx.ts"
+      ]
+    },
+    {
       "binding": "MONEY_CEILING_LIMITER",
       "kind": "ratelimits",
       "scope": "shared",
@@ -851,7 +870,7 @@
       "binding": "NATIVE_AUTH_ACCOUNT_LIMITER",
       "kind": "ratelimits",
       "scope": "shared",
-      "purpose": "⏱ 2026-09-28 · ST-N1. The per-ACCOUNT bucket on POST /v1/auth/native/:app/*, keyed `acct:<app>:<sha256(lowercased email)>` — never the address itself. `simple: { limit: 5, period: 60 }`. Those routes call GoTrue with the service-role bearer, which skips the captcha, so this and NATIVE_AUTH_EDGE_LIMITER stand where the captcha stands, and it FAILS CLOSED: an absent binding or a limiter fault is a 503, never an admit (strictRateLimit, services/platform/src/lib/edge-ceiling.ts). Its OWN namespace (1015; the sandbox's is 1017).",
+      "purpose": "⏱ 2026-09-28 · ST-N1. The per-ACCOUNT bucket on POST /v1/auth/native/:app/*, keyed `acct:<app>:<sha256(lowercased email)>` — never the address itself. `simple: { limit: 5, period: 60 }`. Those routes call GoTrue with the service-role bearer, which skips the captcha, so this and NATIVE_AUTH_EDGE_LIMITER stand where the captcha stands, and it FAILS CLOSED: an absent binding or a limiter fault is a 503, never an admit (strictRateLimit, services/platform/src/lib/edge-ceiling.ts). Its OWN namespace (1017; the sandbox's is 1019).",
       "readers": [
         "services/platform/src/routes/native-auth.ts"
       ]
@@ -860,7 +879,7 @@
       "binding": "NATIVE_AUTH_EDGE_LIMITER",
       "kind": "ratelimits",
       "scope": "shared",
-      "purpose": "⏱ 2026-09-28 · ST-N1. The per-NETWORK ceiling on POST /v1/auth/native/:app/*, keyed `edge:<colo>:<asn>` by services/platform/src/lib/edge-ceiling.ts — never a client address. `simple: { limit: 60, period: 60 }`. It bounds a flood that rotates accounts, which the account bucket cannot see, and FAILS CLOSED like it. Its OWN namespace (1016; the sandbox's is 1018).",
+      "purpose": "⏱ 2026-09-28 · ST-N1. The per-NETWORK ceiling on POST /v1/auth/native/:app/*, keyed `edge:<colo>:<asn>` by services/platform/src/lib/edge-ceiling.ts — never a client address. `simple: { limit: 60, period: 60 }`. It bounds a flood that rotates accounts, which the account bucket cannot see, and FAILS CLOSED like it. Its OWN namespace (1018; the sandbox's is 1020).",
       "readers": [
         "services/platform/src/routes/native-auth.ts"
       ]

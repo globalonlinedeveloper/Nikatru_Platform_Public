@@ -16,7 +16,7 @@ import 'package:subscriptiontracker/state/providers.dart';
 /// `_save()` and `_confirm()` awaited a call that goes through the repository to
 /// the network with no try/catch. One offline moment therefore threw out of an
 /// unawaited future: the error surfaced nowhere, the busy flag was never
-/// cleared, and the button sat disabled on 'Adding…' / 'Cancelling…' forever.
+/// cleared, and the button sat disabled on 'Adding…' / 'Removing…' forever.
 /// The user's only escape was to dismiss the sheet and start again.
 ///
 /// Every existing sheet test drives the SUCCESS path, which is why nothing was
@@ -257,17 +257,17 @@ void main() {
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Confirm cancel'));
+    await tester.tap(find.text('Yes, remove'));
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
     expect(find.byType(SnackBar), findsOneWidget);
-    expect(find.textContaining('Could not cancel just now'), findsOneWidget);
+    expect(find.textContaining('Could not remove it just now'), findsOneWidget);
     // 🔴 The confirmation step congratulates the user on savings. Showing it
     // after a failed cancel would be a lie the app tells about the user's money.
-    expect(find.text('Cancelled'), findsNothing);
-    expect(find.text('Cancelling…'), findsNothing);
-    expect(find.text('Confirm cancel'), findsOneWidget);
+    expect(find.text('Removed from your tracker'), findsNothing);
+    expect(find.text('Removing…'), findsNothing);
+    expect(find.text('Yes, remove'), findsOneWidget);
   });
 
   // ── THE CONFIRMATION SURVIVES A SHORT VIEWPORT ────────────────────────────
@@ -280,7 +280,7 @@ void main() {
   // was HEIGHT: 137 px on a 740×360 phone at 1.3× against
   // `showModalBottomSheet`'s default cap of 9/16 of the window (202.5 px). The
   // row was pushed to y 416.5–466.5 — below the bottom of a 360 px screen — so
-  // 'Keep it' and 'Confirm cancel' were both unreachable, and the only way out
+  // 'Keep it' and 'Yes, remove' were both unreachable, and the only way out
   // of a destructive confirmation was to dismiss it.
   //
   // Fixed in `showCancelSheet`, NOT by re-laying-out the row: wrapping or
@@ -317,9 +317,9 @@ void main() {
       );
       _expectOnScreen(
         tester,
-        find.widgetWithText(FilledButton, 'Confirm cancel'),
+        find.widgetWithText(FilledButton, 'Yes, remove'),
         kLandscapePhone,
-        "'Confirm cancel'",
+        "'Yes, remove'",
       );
       // 🔴 AND THE 9/16 CAP IS GONE, not merely worked around.
       // `isScrollControlled: false` caps the sheet at
@@ -353,9 +353,9 @@ void main() {
       // viewport and is still sitting on screen with nothing scrolled.
       _expectOnScreen(
         tester,
-        find.widgetWithText(FilledButton, 'Confirm cancel'),
+        find.widgetWithText(FilledButton, 'Yes, remove'),
         kShortPhone,
-        "'Confirm cancel'",
+        "'Yes, remove'",
       );
     },
   );
@@ -378,7 +378,7 @@ void main() {
     // `SingleChildScrollView` sizes itself to its child within the incoming
     // constraints rather than filling them — measured on both sides of this
     // change on an 800×600 host, the sheet is 289 px tall either way and the
-    // 'Confirm cancel' rect is identical to the pixel.
+    // 'Yes, remove' rect is identical to the pixel.
     expect(tester.takeException(), isNull);
     expect(
       tester.getSize(find.byType(BottomSheet)).height,
