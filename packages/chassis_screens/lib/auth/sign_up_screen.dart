@@ -5,7 +5,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'age_signal_host.dart';
 import 'auth_error_text.dart';
 import 'legal_consent_fields.dart';
-import 'turnstile_gate.dart' show CaptchaWaitStatus;
+import 'turnstile_gate.dart' show CaptchaTokenController, CaptchaWaitStatus;
 
 /// Sign-up — [pipeline C-13], inherited by every stamped app.
 ///
@@ -31,7 +31,7 @@ class SignUpView extends StatefulWidget {
     required this.consentFields,
     this.ageSignals,
     this.captcha,
-    this.captchaWaiting = false,
+    this.captchaController,
     super.key,
   });
 
@@ -46,7 +46,8 @@ class SignUpView extends StatefulWidget {
     required String email,
     required String password,
     required bool marketingEmail,
-  }) onSignUp;
+  })
+  onSignUp;
 
   /// "I already have an account" — the way to the sign-in door.
   final VoidCallback onHaveAccount;
@@ -63,15 +64,16 @@ class SignUpView extends StatefulWidget {
   /// owns it because it owns the token the gated callback spends.
   final Widget? captcha;
 
-  /// True while a VALID gated action waits for the challenge to answer
-  /// (`CaptchaTokenController.waiting`): shown as [CaptchaWaitStatus].
+  /// The adapter's token holder, which this view WAITS on — never gates on.
+  /// A gated action validates its fields first, then awaits
+  /// `untilReady()` (showing [CaptchaWaitStatus]), then calls the adapter's
+  /// callback, which spends the token with `consume()` in the same step.
+  /// Null where the adapter has no captcha.
   ///
-  /// ⏱ 2026-09-28 — THIS WAS `captchaReady`, AND IT DISABLED THE BUTTONS. With
-  /// no token yet the action was dead, so an empty form could not even say
-  /// "Accept the terms" (E2E live run 36379673890). Every action here is live
-  /// unless a request is in flight; it validates first, and the ADAPTER's gated
-  /// callback awaits `untilReady()` before it spends the token.
-  final bool captchaWaiting;
+  /// ⏱ 2026-09-28 — THIS WAS `captchaReady`, AND IT DISABLED THE BUTTONS: with
+  /// no token yet the action was dead, and an empty form could not even say
+  /// what was missing (E2E live run 36379673890, the #1022 regression).
+  final CaptchaTokenController? captchaController;
 
   @override
   State<SignUpView> createState() => _SignUpViewState();
@@ -131,6 +133,7 @@ class _SignUpViewState extends State<SignUpView> {
       if (core.signUpAgeGate(signal) == core.SignUpAgeGate.refuse) {
         throw core.AuthFailure.localized(l10n.signUpAgeRefused);
       }
+      await widget.captchaController?.untilReady();
       await widget.onSignUp(
         email: _email.text.trim(),
         password: _password.text,
@@ -207,7 +210,12 @@ class _SignUpViewState extends State<SignUpView> {
                     : () => _signUp(l10n),
                 child: Text(l10n.signUp),
               ),
-              CaptchaWaitStatus(waiting: widget.captchaWaiting),
+              if (widget.captchaController case final CaptchaTokenController c)
+                ListenableBuilder(
+                  listenable: c,
+                  builder: (BuildContext _, Widget? _) =>
+                      CaptchaWaitStatus(waiting: c.waiting),
+                ),
               const SizedBox(height: 16),
               TextButton(
                 key: SignUpView.haveAccountButton,

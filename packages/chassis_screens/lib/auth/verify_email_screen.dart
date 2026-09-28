@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import 'auth_error_text.dart';
-import 'turnstile_gate.dart' show CaptchaWaitStatus;
+import 'turnstile_gate.dart' show CaptchaTokenController, CaptchaWaitStatus;
 
 /// "Check your inbox" — the only screen an UNVERIFIED session can reach.
 ///
@@ -30,7 +30,7 @@ class VerifyEmailView extends StatefulWidget {
     required this.onResend,
     required this.onSignOut,
     this.captcha,
-    this.captchaWaiting = false,
+    this.captchaController,
     super.key,
   });
 
@@ -58,15 +58,16 @@ class VerifyEmailView extends StatefulWidget {
   /// owns it because it owns the token the gated callback spends.
   final Widget? captcha;
 
-  /// True while a VALID gated action waits for the challenge to answer
-  /// (`CaptchaTokenController.waiting`): shown as [CaptchaWaitStatus].
+  /// The adapter's token holder, which this view WAITS on — never gates on.
+  /// A gated action validates its fields first, then awaits
+  /// `untilReady()` (showing [CaptchaWaitStatus]), then calls the adapter's
+  /// callback, which spends the token with `consume()` in the same step.
+  /// Null where the adapter has no captcha.
   ///
-  /// ⏱ 2026-09-28 — THIS WAS `captchaReady`, AND IT DISABLED THE BUTTONS. With
-  /// no token yet the action was dead, so Resend could not even be
-  /// tried (E2E live run 36379673890). Every action here is live
-  /// unless a request is in flight; it validates first, and the ADAPTER's gated
-  /// callback awaits `untilReady()` before it spends the token.
-  final bool captchaWaiting;
+  /// ⏱ 2026-09-28 — THIS WAS `captchaReady`, AND IT DISABLED THE BUTTONS: with
+  /// no token yet the action was dead, and an empty form could not even say
+  /// what was missing (E2E live run 36379673890, the #1022 regression).
+  final CaptchaTokenController? captchaController;
 
   @override
   State<VerifyEmailView> createState() => _VerifyEmailViewState();
@@ -144,12 +145,12 @@ class _VerifyEmailViewState extends State<VerifyEmailView> {
                 onPressed: _busy
                     ? null
                     : () => _run(() async {
-                          final bool stillUnverified =
-                              await widget.onCheckConfirmed();
-                          return stillUnverified
-                              ? l10n.verifyEmailStillUnverified
-                              : null;
-                        }),
+                        final bool stillUnverified = await widget
+                            .onCheckConfirmed();
+                        return stillUnverified
+                            ? l10n.verifyEmailStillUnverified
+                            : null;
+                      }),
                 child: Text(l10n.verifyEmailContinue),
               ),
               const SizedBox(height: 12),
@@ -159,12 +160,18 @@ class _VerifyEmailViewState extends State<VerifyEmailView> {
                 onPressed: _busy
                     ? null
                     : () => _run(() async {
-                          await widget.onResend();
-                          return l10n.verifyEmailResent;
-                        }),
+                        await widget.captchaController?.untilReady();
+                        await widget.onResend();
+                        return l10n.verifyEmailResent;
+                      }),
                 child: Text(l10n.verifyEmailResend),
               ),
-              CaptchaWaitStatus(waiting: widget.captchaWaiting),
+              if (widget.captchaController case final CaptchaTokenController c)
+                ListenableBuilder(
+                  listenable: c,
+                  builder: (BuildContext _, Widget? _) =>
+                      CaptchaWaitStatus(waiting: c.waiting),
+                ),
               const SizedBox(height: 12),
               // The only way OUT of the gate. A user who mistyped their address
               // has no other move — the account exists, they cannot reach the
@@ -174,9 +181,9 @@ class _VerifyEmailViewState extends State<VerifyEmailView> {
                 onPressed: _busy
                     ? null
                     : () => _run(() async {
-                          await widget.onSignOut();
-                          return null;
-                        }),
+                        await widget.onSignOut();
+                        return null;
+                      }),
                 child: Text(l10n.signOut),
               ),
             ],

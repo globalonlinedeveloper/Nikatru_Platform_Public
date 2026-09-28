@@ -505,6 +505,19 @@ describe('R4 — no action is disabled on captcha readiness', () => {
     );
   });
 
+  test('🔴 the null-aware spelling — `captchaController?.ready` — is named too', () => {
+    withTree(
+      (root) =>
+        edit(root, CHASSIS_SIGN_IN, (s) =>
+          s.replace('onPressed: _busy ? null : () => _signIn(l10n),', 'onPressed: (_busy || !(widget.captchaController?.ready ?? true)) ? null : () => _signIn(l10n),'),
+        ),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /\[R4\] packages\/chassis_screens\/lib\/auth\/sign_in_screen\.dart:\d+ reads captcha readiness \(`captchaController\?\.ready`\)/);
+      },
+    );
+  });
+
   test('a readiness read in a DOC COMMENT is prose, not a gate', () => {
     withTree(
       (root) => edit(root, SUBLY_LOGIN, (s) => `// was: onPressed: !captcha.ready ? null : _submit\n${s}`),

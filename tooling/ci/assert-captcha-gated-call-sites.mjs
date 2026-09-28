@@ -512,7 +512,9 @@ for (const e of declaredSurfaces) {
 const R4_DOMAIN = tracked.filter(
   (p) => /^(apps|packages)\/[^/]+\/lib\//.test(p) || p.startsWith(`${BRICK_LIB}/`),
 );
-const READY_READ = /\b[A-Za-z_]*[Cc]aptcha[A-Za-z0-9_]*\s*\.\s*ready\b/g;
+// `captcha.ready`, `widget.captcha.ready`, `captchaController?.ready`, `c!.ready`
+// on a captcha-named receiver — the null-aware and null-assert spellings too.
+const READY_READ = /\b[A-Za-z_]*[Cc]aptcha[A-Za-z0-9_]*\s*[!?]?\s*\.\s*ready\b/g;
 const READY_PARAM = /\bcaptchaReady\b/g;
 let awaitsFound = 0;
 for (const f of R4_DOMAIN) {

@@ -5,7 +5,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'age_signal_host.dart';
 import 'auth_error_text.dart';
 import 'legal_consent_fields.dart';
-import 'turnstile_gate.dart' show CaptchaWaitStatus;
+import 'turnstile_gate.dart' show CaptchaTokenController, CaptchaWaitStatus;
 
 /// Sign-in — [pipeline C-13], inherited by every stamped app.
 ///
@@ -55,7 +55,7 @@ class SignInView extends StatefulWidget {
     this.deletionDetail,
     this.onDismissDeletionNotice,
     this.captcha,
-    this.captchaWaiting = false,
+    this.captchaController,
     super.key,
   });
 
@@ -138,15 +138,16 @@ class SignInView extends StatefulWidget {
   /// owns it because it owns the token: every gated callback above spends one.
   final Widget? captcha;
 
-  /// True while a VALID gated action waits for the challenge to answer
-  /// (`CaptchaTokenController.waiting`): shown as [CaptchaWaitStatus].
+  /// The adapter's token holder, which this view WAITS on — never gates on.
+  /// A gated action validates its fields first, then awaits
+  /// `untilReady()` (showing [CaptchaWaitStatus]), then calls the adapter's
+  /// callback, which spends the token with `consume()` in the same step.
+  /// Null where the adapter has no captcha.
   ///
-  /// ⏱ 2026-09-28 — THIS WAS `captchaReady`, AND IT DISABLED THE BUTTONS. With
-  /// no token yet the action was dead, so an empty form could not even say
-  /// "Enter your email" (E2E live run 36379673890). Every action here is live
-  /// unless a request is in flight; it validates first, and the ADAPTER's gated
-  /// callback awaits `untilReady()` before it spends the token.
-  final bool captchaWaiting;
+  /// ⏱ 2026-09-28 — THIS WAS `captchaReady`, AND IT DISABLED THE BUTTONS: with
+  /// no token yet the action was dead, and an empty form could not even say
+  /// what was missing (E2E live run 36379673890, the #1022 regression).
+  final CaptchaTokenController? captchaController;
 
   @override
   State<SignInView> createState() => _SignInViewState();
@@ -273,6 +274,7 @@ class _SignInViewState extends State<SignInView> {
         core.CredentialsProblem.emailMissing => l10n.emailRequired,
       });
     }
+    await widget.captchaController?.untilReady();
     await widget.onSignIn(email, _password.text);
     // No navigation here: the router's redirect guard moves the user the moment
     // the session appears. Pushing from both places is how you get two routes
@@ -284,10 +286,12 @@ class _SignInViewState extends State<SignInView> {
     if (core.passwordResetProblem(email: email) != null) {
       throw core.AuthFailure.localized(l10n.emailRequired);
     }
+    await widget.captchaController?.untilReady();
     await widget.onForgotPassword(email);
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(l10n.resetSent)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(l10n.resetSent)));
   });
 
   @override
@@ -392,14 +396,20 @@ class _SignInViewState extends State<SignInView> {
                 onPressed: _busy ? null : () => _signIn(l10n),
                 child: Text(l10n.signIn),
               ),
-              CaptchaWaitStatus(waiting: widget.captchaWaiting),
+              if (widget.captchaController case final CaptchaTokenController c)
+                ListenableBuilder(
+                  listenable: c,
+                  builder: (BuildContext _, Widget? _) =>
+                      CaptchaWaitStatus(waiting: c.waiting),
+                ),
               const SizedBox(height: 8),
               TextButton(
                 key: SignInView.forgotButton,
                 onPressed: _busy ? null : () => _forgot(l10n),
                 child: Text(l10n.forgotPassword),
               ),
-              if (widget.showAppleButton || widget.showGoogleButton) ...<Widget>[
+              if (widget.showAppleButton ||
+                  widget.showGoogleButton) ...<Widget>[
                 const SizedBox(height: 8),
                 // The SAME tick boxes and wording as sign-up, directly above the
                 // provider buttons they gate, and only while this device owes

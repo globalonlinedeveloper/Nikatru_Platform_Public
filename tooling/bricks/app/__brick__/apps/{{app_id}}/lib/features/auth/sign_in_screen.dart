@@ -47,34 +47,27 @@ class SignInScreen extends ConsumerWidget {
       lastAccountDeletionOutcomeProvider,
     );
 
-    // ST-A1: the chassis captcha gate; every gated call spends its token. A
-    // gated call AWAITS the challenge (the view validated first) — a button
-    // is never disabled on readiness (assert-captcha-gated-call-sites R4).
+    // ST-A1: the chassis captcha gate; every gated call spends its token.
     final CaptchaTokenController captcha = ref.watch(
       captchaControllerProvider('sign-in'),
     );
     return SignInView(
       captcha: TurnstileGate(controller: captcha, render: renderTurnstile),
-      captchaWaiting: captcha.waiting,
+      captchaController: captcha,
       // ⏱ 2026-09-15 · [ADR 082] §5 — the store age signal read before Sign in with
       // Apple, which can create an account. Sign-up age gate ONLY: never stored,
       // logged or sent (`ageSignalSourceProvider`).
       ageSignals: ref.watch(ageSignalSourceProvider),
-      onSignIn: (String email, String password) async {
-        await captcha.untilReady();
-        await auth.signInWithEmail(
-          email: email,
-          password: password,
-          captchaToken: captcha.consume(),
-        );
-      },
+      onSignIn: (String email, String password) => auth.signInWithEmail(
+        email: email,
+        password: password,
+        captchaToken: captcha.consume(),
+      ),
       // A CALL, NOT A TEAR-OFF — same reason as `verify_email_screen.dart`:
       // `sendPasswordReset` is one of the four captcha-gated seam methods and
       // assert-captcha-gated-call-sites matches `<method>(`.
-      onForgotPassword: (String email) async {
-        await captcha.untilReady();
-        await auth.sendPasswordReset(email, captchaToken: captcha.consume());
-      },
+      onForgotPassword: (String email) =>
+          auth.sendPasswordReset(email, captchaToken: captcha.consume()),
       onNeedAccount: () => context.go('/sign-up'),
       showAppleButton: caps.oauthRedirect && providers.any && providers.apple,
       onSignInWithApple: () => auth.signInWithApple(),

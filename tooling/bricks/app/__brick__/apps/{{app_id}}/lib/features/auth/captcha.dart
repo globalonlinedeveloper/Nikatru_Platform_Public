@@ -9,9 +9,8 @@ export 'package:nikatru_chassis_screens/auth/turnstile_gate.dart';
 
 /// The captcha ADAPTER half ([ADR 084]; ST-A1, audit D29). The gate and the
 /// token's lifecycle are the chassis's (`turnstile_gate.dart`): every gated call
-/// spends its token through `consume()`, after awaiting `untilReady()` — a
-/// rendered challenge that has not answered makes a VALID submit wait, and never
-/// disables the button (2026-09-28).
+/// spends its token through `consume()`; an unanswered challenge makes a VALID
+/// submit wait (`untilReady()`), never disables the button (2026-09-28).
 ///
 /// ⚠️ A STAMPED APP HAS NO VENDOR WIDGET YET. Rendering the challenge needs the
 /// `cloudflare_turnstile` plugin (whose web assets each owe an app-scoped
