@@ -205,6 +205,9 @@ stores:
   windows-store:
     identityName: 60210NIKATRU.NikatruSubscriptionTracker
     packageFamilyName: 60210NIKATRU.NikatruSubscriptionTracker_ab30hnb4490ma
+    # ST-R4: the Windows toast activator. Ours, never reissued; rendered into
+    # msix_config.toast_activator and lib/core/windows_notification_identity.g.dart.
+    toastActivatorClsid: f23148ad-7606-46a7-9767-e70e3f378f1d
     state: pending
     declaredOn: null
   ios-appstore:

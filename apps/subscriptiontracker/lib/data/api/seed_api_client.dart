@@ -75,11 +75,13 @@ class SeedApiClient implements ApiClient {
   ) async {
     final int i = _subs.indexWhere((Subscription s) => s.id == id);
     if (i < 0) throw ApiException(404, 'Not found');
-    _subs[i] = _subs[i].copyWith(
-      name: changes['name'] as String?,
-      price: (changes['price'] as num?)?.toDouble(),
-      unused: changes['unused'] as bool?,
-    );
+    _subs[i] = _subs[i]
+        .copyWith(
+          name: changes['name'] as String?,
+          price: (changes['price'] as num?)?.toDouble(),
+          unused: changes['unused'] as bool?,
+        )
+        .withReminderPatch(changes);
     return _subs[i];
   }
 

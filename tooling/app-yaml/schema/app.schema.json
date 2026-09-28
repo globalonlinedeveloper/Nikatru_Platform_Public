@@ -88,9 +88,14 @@
           "description": "The MSIX Package/Identity/Name and the Package Family Name Partner Center issued to THIS app (Product → Product identity), and its Store ID. None can be derived from the app id. An app with no Partner Center product yet writes the channel row's `packageIdentity.notYetConfiguredSentinel`, PARTNER-CENTER-PENDING, in both identity fields: an invented value would package and submit under an identity nobody owns. `issued` needs all three, real.",
           "type": "object",
           "additionalProperties": false,
-          "required": ["state", "declaredOn", "identityName", "packageFamilyName"],
+          "required": ["state", "declaredOn", "identityName", "packageFamilyName", "toastActivatorClsid"],
           "properties": {
             "state": { "type": "string", "enum": ["pending", "issued"] },
+            "toastActivatorClsid": {
+              "description": "ST-R4 (O-RENEWAL-REMINDERS-OFF-ON-DESKTOP): the CLSID of the COM activator a tapped Windows toast launches. It is OURS, not Partner Center's, so it exists before the product does and never changes (a changed CLSID orphans every toast already on screen). tooling/app-yaml/render.mjs writes it into msix_config.toast_activator.clsid AND into lib/core/windows_notification_identity.g.dart, so the packaged manifest and the running app name one activator. The brick derives it from the app id.",
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
             "declaredOn": { "description": "null, or the date the owner swore this app's Partner Center declarations. Written only from the owner's word.", "type": ["string", "null"], "format": "date" },
             "identityName": {
               "description": "Letters, digits, `.` and `-`: the characters the one issued identity and the sentinel both use. The pattern refuses a space or an underscore typed into the field; it cannot tell a wrong name from a right one, which is what the equality checks are for.",

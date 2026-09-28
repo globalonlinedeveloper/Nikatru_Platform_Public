@@ -1,199 +1,159 @@
-// 🔴 THE PROOF THAT A DESKTOP LIST LOAD NO LONGER THROWS.
+// The renewal reminders obey the capability matrix on every target — and on
+// Windows that matrix now says YES (ST-R4, O-RENEWAL-REMINDERS-OFF-ON-DESKTOP).
 //
-// flutter_local_notifications 17.2.4 answers `initialize` with `true` on
-// Windows and Linux and then throws `UnimplementedError` out of
-// `zonedSchedule` (lib/src/flutter_local_notifications_plugin.dart:377 — the
-// final `else` of a `defaultTargetPlatform` dispatch). The app service used to
-// set `_ready = true` on that `true` and schedule anyway, so on both desktop
-// targets EVERY list load ended in an uncaught async error — while the
-// settings screen said "Reminders are not available on this platform."
-//
-// These cases run the REAL plugin's Dart dispatch under a mocked channel with
-// `debugDefaultTargetPlatformOverride` set to the desktop target, so the
-// throw is the plugin's own and not a fake's. The service must never reach it.
-//
-// MUTATION PROOF (run and recorded in the PR): delete the
-// `if (!capabilities.canNotify) return;` line at the top of `init()` AND the
-// `!capabilities.canSchedule` half of EVERY scheduling guard — `syncAll`,
-// `scheduleRenewalReminder` and `scheduleWeeklyDigest` — and the Windows and
-// Linux cases go red with the plugin's own UnimplementedError.
-// ⚠️ Removing `syncAll`'s guard ALONE stays green, MEASURED: `syncAll`
-// schedules through `scheduleRenewalReminder`, whose own guard still refuses.
-// The gates are layered on purpose; the proof has to take all of them.
-import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart'
-    show FlutterLocalNotificationsPlugin, IOSFlutterLocalNotificationsPlugin;
+// flutter_local_notifications 17.2.4 answered `initialize` with `true` on
+// Windows and Linux and then THREW out of `zonedSchedule`, so both desktops
+// ended every list load in an uncaught error. The service was gated on the
+// matrix, and the matrix said no for both. 22.x has a Windows plugin; it needs
+// the app's identity (app.yaml → lib/core/windows_notification_identity.g.dart),
+// which this app now carries, so Windows schedules. Linux still cannot
+// (flutter_local_notifications_linux 8.0.1 has no zonedSchedule), and web has no
+// plugin — both stay a no-op, and email and the calendar feed serve them.
+import 'package:flutter/foundation.dart' show TargetPlatform;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nikatru_notifications/nikatru_notifications.dart'
-    show NotificationCapabilities;
+import 'package:nikatru_notifications/nikatru_notifications.dart';
+import 'package:subscriptiontracker/core/windows_notification_identity.g.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/services/notifications/notification_service.dart';
-import 'package:timezone/timezone.dart' as tz;
 
-const MethodChannel _channel = MethodChannel(
-  'dexterous.com/flutter/local_notifications',
+import 'support/recording_seam.dart';
+
+ReminderCopy _copy() => ReminderCopy(
+  channelName: 'Renewal reminders',
+  reminderTitle: 'Renewal coming up',
+  reminderBody: (String n, DateTime d) => '$n renews',
+  digestTitle: 'Weekly',
+  digestBody: (int c, String t) => '$c, $t',
+  cancelByTitle: (DateTime d) => 'Cancel by',
+  cancelByBody: (String n, DateTime d) => '$n by',
 );
 
-Subscription _sub(String id) => Subscription(
-  id: id,
-  name: id,
-  category: 'Entertainment',
-  price: const Money(64900, 'INR'),
-  cycle: BillingCycle.monthly,
-  nextRenewal: DateTime.now().add(const Duration(days: 30)),
-);
+final List<Subscription> _subs = <Subscription>[
+  Subscription(
+    id: 'netflix',
+    name: 'Netflix',
+    category: 'Other',
+    price: const Money(1000, 'USD'),
+    cycle: BillingCycle.monthly,
+    nextRenewal: DateTime(2026, 10, 10),
+  ),
+];
 
-final ReminderCopy _copy = ReminderCopy(
-  channelName: 'Renewals',
-  reminderTitle: 'Renewal',
-  reminderBody: (String name, DateTime _) => name,
-  digestTitle: 'Digest',
-  digestBody: (int _, String _) => '',
-);
+Future<RecordingSeam> _sync(
+  RenewalReminders Function(RecordingSeam) make,
+) async {
+  final RecordingSeam seam = RecordingSeam();
+  final RenewalReminders svc = make(seam);
+  await svc.syncAll(_subs, copy: _copy());
+  await svc.scheduleWeeklyDigest(copy: _copy(), count: 1, formattedTotal: 'x');
+  return seam;
+}
 
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
+  DateTime now() => DateTime(2026, 10, 1, 8);
 
-  late List<MethodCall> outgoing;
-
-  // 🔴 THE PLUGIN IS A PROCESS SINGLETON, AND IT PICKS ITS PLATFORM
-  // IMPLEMENTATION ONCE, AT FIRST CONSTRUCTION, FROM `defaultTargetPlatform`.
-  // Built first under the Windows override it registered NOTHING (17.x had no
-  // Windows implementation), and every later case in this file then died of a
-  // LateInitializationError that production can never reach. Since 18.x the
-  // constructor registers nothing at all and registerWith() does, so the iOS
-  // method-channel implementation the mocked channel below observes is
-  // registered here, once. Linux in production is the D-Bus
-  // implementation the Dart plugin registrant installs — never this channel —
-  // so the Linux case asserts what the SERVICE refuses, not what D-Bus hears.
-  setUpAll(() {
-    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-    IOSFlutterLocalNotificationsPlugin.registerWith();
-    FlutterLocalNotificationsPlugin();
-    debugDefaultTargetPlatformOverride = null;
+  test('this app carries a Windows identity (rendered from app.yaml)', () {
+    expect(kWindowsNotificationIdentity, isNotNull);
+    final WindowsNotificationIdentity id = kWindowsNotificationIdentity!;
+    expect(
+      RegExp(
+        r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+      ).hasMatch(id.toastActivatorClsid),
+      isTrue,
+    );
+    expect(id.appUserModelId, endsWith('!subscriptiontracker'));
   });
 
-  setUp(() {
-    outgoing = <MethodCall>[];
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(_channel, (MethodCall call) async {
-          outgoing.add(call);
-          // The host, modelled as the desktop plugin behaves: `initialize`
-          // answers true, the pending list is empty, everything else "ok".
-          if (call.method == 'pendingNotificationRequests') {
-            return <Map<String, Object?>>[];
-          }
-          return true;
-        });
-    tz.setLocalLocation(tz.UTC);
-  });
-
-  tearDown(() {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(_channel, null);
-    debugDefaultTargetPlatformOverride = null;
-  });
-
-  Iterable<String> methods() => outgoing.map((MethodCall c) => c.method);
-
-  group('🔴 a fake Windows: no plugin initialised (no init settings yet)', () {
-    test(
-      'init + syncAll COMPLETE with no throw, no schedule, no initialize',
-      () async {
-        debugDefaultTargetPlatformOverride = TargetPlatform.windows;
-        final NotificationService s = NotificationService.forTesting(
+  test(
+    '🔴 Windows WITH the identity schedules renewals and the digest',
+    () async {
+      final RecordingSeam seam = await _sync(
+        (RecordingSeam s) => RenewalReminders.forTesting(
           platform: TargetPlatform.windows,
           isWeb: false,
-        );
-        expect(s.capabilities.canNotify, isFalse);
-        expect(s.capabilities.canSchedule, isFalse);
-        expect(s.unavailability, ReminderUnavailability.noNotifications);
+          service: s,
+          now: now,
+        ),
+      );
+      expect(seam.pending, isNotEmpty);
+    },
+  );
 
-        await s.init(localTimezone: () async => 'Asia/Kolkata');
-        // The whole reason this test exists: this line used to throw
-        // UnimplementedError out of the plugin on every list load.
-        await expectLater(
-          s.syncAll(<Subscription>[
-            _sub('netflix'),
-            _sub('spotify'),
-          ], copy: _copy),
-          completes,
-        );
-        await expectLater(
-          s.scheduleWeeklyDigest(copy: _copy, count: 2, formattedTotal: ''),
-          completes,
-        );
-        expect(methods(), isNot(contains('zonedSchedule')));
-        expect(methods(), isNot(contains('initialize')));
-        expect(methods(), isNot(contains('cancelAll')));
-      },
+  test('Windows WITHOUT an identity schedules nothing', () async {
+    final RecordingSeam seam = await _sync(
+      (RecordingSeam s) => RenewalReminders(
+        service: s,
+        capabilities: NotificationCapabilities.resolve(
+          TargetPlatform.windows,
+          isWeb: false,
+        ),
+        now: now,
+      ),
     );
+    expect(seam.pending, isEmpty);
+    expect(seam.calls, isNot(contains('reconcile')));
   });
 
-  group('🔴 a fake Linux: shows, cannot schedule', () {
-    test(
-      'init runs the plugin; syncAll and the digest refuse without a throw',
-      () async {
-        debugDefaultTargetPlatformOverride = TargetPlatform.linux;
-        final NotificationService s = NotificationService.forTesting(
-          platform: TargetPlatform.linux,
-          isWeb: false,
-        );
-        expect(s.capabilities.canNotify, isTrue);
-        expect(s.capabilities.canSchedule, isFalse);
-        expect(s.unavailability, ReminderUnavailability.noScheduling);
+  for (final ({String name, TargetPlatform p, bool web}) c
+      in <({String name, TargetPlatform p, bool web})>[
+        (
+          name: 'Linux (shows, cannot schedule)',
+          p: TargetPlatform.linux,
+          web: false,
+        ),
+        (name: 'web', p: TargetPlatform.android, web: true),
+      ]) {
+    test('${c.name}: nothing reaches the seam, and nothing throws', () async {
+      final RecordingSeam seam = await _sync(
+        (RecordingSeam s) => RenewalReminders.forTesting(
+          platform: c.p,
+          isWeb: c.web,
+          service: s,
+          now: now,
+        ),
+      );
+      expect(seam.pending, isEmpty);
+      expect(seam.calls, isNot(contains('reconcile')));
+    });
+  }
 
-        await s.init(localTimezone: () async => 'Europe/Berlin');
-        await expectLater(
-          s.syncAll(<Subscription>[_sub('netflix')], copy: _copy),
-          completes,
-        );
-        await expectLater(
-          s.scheduleWeeklyDigest(copy: _copy, count: 1, formattedTotal: ''),
-          completes,
-        );
-        expect(methods(), isNot(contains('zonedSchedule')));
-      },
-    );
+  test('the matrix the service reads is the chassis matrix, resolved', () {
+    for (final TargetPlatform p in TargetPlatform.values) {
+      final RenewalReminders s = RenewalReminders.forTesting(
+        platform: p,
+        isWeb: false,
+      );
+      final NotificationCapabilities want = NotificationCapabilities.resolve(
+        p,
+        isWeb: false,
+        windows: kWindowsNotificationIdentity,
+      );
+      expect(s.capabilities.canNotify, want.canNotify, reason: '$p');
+      expect(s.capabilities.canSchedule, want.canSchedule, reason: '$p');
+    }
   });
 
-  group('the matrix the service reads is the chassis matrix', () {
-    test('every target agrees with NotificationCapabilities.forPlatform', () {
-      for (final TargetPlatform p in TargetPlatform.values) {
-        final NotificationService s = NotificationService.forTesting(
-          platform: p,
-          isWeb: false,
-        );
-        final NotificationCapabilities expected =
-            NotificationCapabilities.forPlatform(p, isWeb: false);
-        expect(s.capabilities.canNotify, expected.canNotify, reason: '$p');
-        expect(s.capabilities.canSchedule, expected.canSchedule, reason: '$p');
-      }
-      final NotificationService web = NotificationService.forTesting(
+  test('unavailability names the reason a settings screen shows', () {
+    expect(
+      RenewalReminders.forTesting(
+        platform: TargetPlatform.linux,
+        isWeb: false,
+      ).unavailability,
+      ReminderUnavailability.noScheduling,
+    );
+    expect(
+      RenewalReminders.forTesting(
         platform: TargetPlatform.android,
         isWeb: true,
-      );
-      expect(web.capabilities.canNotify, isFalse);
-      expect(web.unavailability, ReminderUnavailability.noNotifications);
-    });
-
-    test(
-      'a scheduling target (iOS) still schedules — the gate is not a blanket',
-      () async {
-        debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-        final NotificationService s = NotificationService.forTesting(
-          platform: TargetPlatform.iOS,
-          isWeb: false,
-        );
-        expect(s.unavailability, isNull);
-        await s.init(localTimezone: () async => 'Asia/Kolkata');
-        await s.syncAll(<Subscription>[_sub('netflix')], copy: _copy);
-        expect(
-          methods().where((String m) => m == 'zonedSchedule'),
-          hasLength(1),
-        );
-      },
+      ).unavailability,
+      ReminderUnavailability.noNotifications,
+    );
+    expect(
+      RenewalReminders.forTesting(
+        platform: TargetPlatform.windows,
+        isWeb: false,
+      ).unavailability,
+      isNull,
     );
   });
 }

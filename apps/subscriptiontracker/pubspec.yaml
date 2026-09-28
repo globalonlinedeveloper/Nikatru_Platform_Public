@@ -110,9 +110,9 @@ dependencies:
   # Shared identity — pure REST, works on all 6 platforms (no desktop delegate)
   supabase_flutter: ^2.5.0
 
-  # On-device renewal reminders (iOS/Android/macOS/Windows/Linux)
-  flutter_local_notifications: ^22.0.0
-  timezone: ^0.11.0
+  # On-device renewal reminders come through nikatru_notifications (ST-R4):
+  # the app no longer imports flutter_local_notifications or timezone itself,
+  # and assert-package-boundaries refuses it if it ever does again.
 
   # 🔴 [pipeline S-4] THE UPPER BOUND HAD TO WIDEN, and the reason is a workspace
   # one rather than a Subly one. Every STAMPED app pulls `flutter_localizations`
@@ -402,6 +402,10 @@ msix_config:
   display_name: Nikatru Subscription Tracker
   publisher_display_name: NIKATRU
   identity_name: 60210NIKATRU.NikatruSubscriptionTracker
+  toast_activator:
+    clsid: f23148ad-7606-46a7-9767-e70e3f378f1d
+    arguments: "-ToastActivated"
+    display_name: Nikatru Subscription Tracker
   publisher: CN=9D0DEF58-EDA2-448E-9498-42C2C3083994
   # `store: true` is the keyKind "none" half of the register row made real: the
   # Store re-signs the submitted package, so nothing here holds or needs a

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show TargetPlatform;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nikatru_core/nikatru_core.dart' show NotificationTap;
+import 'package:nikatru_core/nikatru_core.dart'
+    show NotificationChannel, NotificationTap;
 import 'package:nikatru_notifications/nikatru_notifications.dart';
 import 'package:nikatru_notifications/src/local_notification_service_io.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
@@ -156,6 +157,22 @@ class _NullPlugin implements NotificationPlugin {
     String body,
     tz.TZDateTime when,
   ) async {}
+  @override
+  Future<void> scheduleOnce(
+    int id,
+    String title,
+    String body,
+    tz.TZDateTime when, {
+    required bool exact,
+    String? payload,
+    NotificationChannel? channel,
+  }) async {}
+  @override
+  Future<bool> canScheduleExact() async => false;
+  @override
+  Future<List<int>> pendingIds() async => const <int>[];
+  @override
+  Future<NotificationTap?> launchTap() async => null;
   @override
   Future<void> cancel(int id) async {}
   @override

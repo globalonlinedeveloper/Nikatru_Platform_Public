@@ -26,6 +26,9 @@ class Subscription {
     this.usedPct = 0,
     this.usageNote = '',
     this.unused = false,
+    this.reminderDays,
+    this.noticeDays,
+    this.noticeDaysSupported = false,
   });
 
   final String id;
@@ -50,6 +53,32 @@ class Subscription {
   final int usedPct;
   final String usageNote;
   final bool unused;
+
+  /// Days before the charge to remind, e.g. `[7, 1]` — the API's
+  /// `reminder_days` (0003). NULL = the account default in Settings.
+  final List<int>? reminderDays;
+
+  /// Days of notice the plan needs to be cancelled — the API's `notice_days`
+  /// (0004, ST-R8). NULL = none; a "Cancel by" reminder is armed only for a
+  /// value.
+  final int? noticeDays;
+
+  /// Whether the wire CARRIED `notice_days` at all. The detail screen offers
+  /// the field only then: an API that predates 0004 would drop the value and
+  /// answer with a row that no longer has it, and a field the user sets that
+  /// silently un-sets itself is worse than no field. Deploy order is the API
+  /// first, so this is false for at most one deploy.
+  final bool noticeDaysSupported;
+
+  /// The last day the user can cancel without being charged again, or null
+  /// when the plan names no notice period.
+  DateTime? get cancelBy => noticeDays == null
+      ? null
+      : DateTime(
+          nextRenewal.year,
+          nextRenewal.month,
+          nextRenewal.day - noticeDays!,
+        );
 
   /// ISO 4217 for this row, e.g. `USD`. Derived from [price] rather than
   /// stored twice — two fields that can disagree about one fact is how the
@@ -110,6 +139,50 @@ class Subscription {
     usedPct: (j['used_pct'] as num?)?.toInt() ?? 0,
     usageNote: (j['usage_note'] ?? '') as String,
     unused: j['unused'] == true || j['unused'] == 1,
+    reminderDays: readReminderDays(j['reminder_days']),
+    noticeDays: readNoticeDays(j['notice_days']),
+    noticeDaysSupported: j.containsKey('notice_days'),
+  );
+
+  /// `reminder_days` off the wire: a list of whole days, deduplicated and
+  /// nearest-to-the-charge LAST (the order the reminders fire in), or null
+  /// for "the default". Anything malformed is the default, never a guess.
+  static List<int>? readReminderDays(Object? raw) {
+    if (raw is! List) return null;
+    final Set<int> days = <int>{};
+    for (final Object? d in raw) {
+      if (d is! int || d < 0) return null;
+      days.add(d);
+    }
+    if (days.isEmpty) return null;
+    return List<int>.unmodifiable(days.toList()..sort((int a, int b) => b - a));
+  }
+
+  static int? readNoticeDays(Object? raw) =>
+      raw is int && raw >= 0 ? raw : null;
+
+  /// This row with the reminder fields of a PATCH body applied — the keys
+  /// present in [changes] win, absent keys keep this row's value. For the demo
+  /// client, which has no server to echo the patch back.
+  Subscription withReminderPatch(Map<String, dynamic> changes) => Subscription(
+    id: id,
+    name: name,
+    category: category,
+    price: price,
+    cycle: cycle,
+    nextRenewal: nextRenewal,
+    plan: plan,
+    glyph: glyph,
+    usedPct: usedPct,
+    usageNote: usageNote,
+    unused: unused,
+    reminderDays: changes.containsKey('reminder_days')
+        ? readReminderDays(changes['reminder_days'])
+        : reminderDays,
+    noticeDays: changes.containsKey('notice_days')
+        ? readNoticeDays(changes['notice_days'])
+        : noticeDays,
+    noticeDaysSupported: noticeDaysSupported,
   );
 
   /// Reads the amount from a row, preferring the exact integer shape and
@@ -160,6 +233,13 @@ class Subscription {
     'used_pct': usedPct,
     'usage_note': usageNote,
     'unused': unused,
+    // Sent only when set: a NULL `reminder_days` is the default already, and
+    // an API before 0004 has no `notice_days` to receive.
+    if (reminderDays != null) 'reminder_days': reminderDays,
+    if (noticeDays != null) 'notice_days': noticeDays,
+    // The cache round-trips this row through toJson, so the capability rides
+    // with it: a cached row must not lose the field the API had emitted.
+    if (noticeDaysSupported && noticeDays == null) 'notice_days': null,
   };
 
   /// ⚠️ [price] IS A `num` OF MAJOR UNITS, NOT A [Money], AND THE ODD ONE OUT
@@ -194,6 +274,9 @@ class Subscription {
     usedPct: usedPct ?? this.usedPct,
     usageNote: usageNote,
     unused: unused ?? this.unused,
+    reminderDays: reminderDays,
+    noticeDays: noticeDays,
+    noticeDaysSupported: noticeDaysSupported,
   );
 
   /// Replaces the AMOUNT, currency and all — for a caller that really does
@@ -210,6 +293,9 @@ class Subscription {
     usedPct: usedPct,
     usageNote: usageNote,
     unused: unused,
+    reminderDays: reminderDays,
+    noticeDays: noticeDays,
+    noticeDaysSupported: noticeDaysSupported,
   );
 
   static String dateOnly(DateTime d) =>
