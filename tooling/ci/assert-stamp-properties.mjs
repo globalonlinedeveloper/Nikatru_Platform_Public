@@ -1666,7 +1666,10 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // enter at the shared platform Worker). An ADMITTED gap in UNASSERTED, with its
 // reason; same commit as the provider.
 // 63 -> 64 on 2026-09-27: `failedAuthArrivalProvider` (ST-A2) joined the domain.
-const MIN_DOMAIN = 64;
+// 64 -> 66 on 2026-09-28 (ST-T6a): `fileExporterProvider` (ST-X1, an ADMITTED gap in
+// UNASSERTED) and `bundledContentPackSourceProvider` (ST-X5, COVERED_BY
+// content-pack-consumed) joined the domain, in the same PR as the providers.
+const MIN_DOMAIN = 66;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.
