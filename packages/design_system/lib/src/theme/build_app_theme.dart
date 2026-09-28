@@ -106,6 +106,20 @@ ThemeData _themeFrom({
     // title, body and label role; display and headline roles take the display
     // face, which is the split `AppText` already makes by hand.
     textTheme: text,
+    // ⏱ 2026-09-28 · train ST-D0: NAVIGATION BADGES ARE NEUTRAL. Material's
+    // default badge is `scheme.error` — red — which reads as "something is
+    // wrong" on a tab whose badge only counts things (renewals this week,
+    // unread notices). A count is not an alarm, so the chassis paints it in
+    // the inverse-surface pair: no hue, and the highest-contrast pair the
+    // scheme has in both brightnesses. A screen with a real alarm passes its
+    // own colours to its own `Badge`. The label is the ramp's 12 px floor;
+    // Material's default is `labelSmall`, which was 11 before the ramp above.
+    badgeTheme: BadgeThemeData(
+      backgroundColor: scheme.inverseSurface,
+      textColor: scheme.onInverseSurface,
+      largeSize: 18,
+      textStyle: text.labelSmall?.copyWith(height: 1),
+    ),
     splashFactory: InkRipple.splashFactory,
     dividerColor: divider,
     extensions: <ThemeExtension<dynamic>>[tokens],
