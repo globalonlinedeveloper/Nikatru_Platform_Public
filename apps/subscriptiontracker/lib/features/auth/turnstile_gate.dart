@@ -4,7 +4,8 @@
 // ⏱ 2026-09-27 · ST-A1 (audit BUG-1, D29) — THE GATE MOVED TO THE CHASSIS.
 // `TurnstileGate`, `CaptchaPosture` and the single-use token's lifecycle
 // (`CaptchaTokenController`: consume + re-challenge after EVERY gated call,
-// submit disabled until a token exists) now live in
+// a valid submit WAITS for a token — never a button disabled on one, since
+// 2026-09-28) now live in
 // `package:nikatru_chassis_screens/auth/turnstile_gate.dart`, so the brick's
 // sign-in gets them too. What stays here is this app's ADAPTER: the one
 // `CloudflareTurnstile(...)` call the chassis may not import, and the posture
@@ -65,7 +66,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'package:cloudflare_turnstile/cloudflare_turnstile.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:nikatru_chassis_screens/auth/turnstile_gate.dart';
 
@@ -80,9 +81,16 @@ CaptchaPosture get appCaptchaPosture => captchaPostureFor(
   backendLive: AppConfig.isBackendLive,
 );
 
+/// Tests only: the posture a test build cannot otherwise reach. A widget test
+/// is never web, so without this every test sees `notOnThisChannel` and a
+/// screen that goes dead on an unanswered challenge — the #1022 regression,
+/// E2E live run 36379673890 — passes every one of them.
+@visibleForTesting
+CaptchaPosture? debugCaptchaPostureOverride;
+
 /// A fresh token holder for ONE screen. Dispose it with the screen.
 CaptchaTokenController newCaptchaController() => CaptchaTokenController(
-  posture: appCaptchaPosture,
+  posture: debugCaptchaPostureOverride ?? appCaptchaPosture,
   siteKey: AppConfig.turnstileSiteKey,
 );
 
@@ -106,26 +114,31 @@ mixin CaptchaHost<T extends StatefulWidget> on State<T> {
 }
 
 /// The vendor widget, and the only line in the app that names it.
+///
+/// Under [debugCaptchaPostureOverride] it renders nothing: a widget test has no
+/// Cloudflare, and drives the controller's `setToken` / `reportError` itself.
 Widget renderTurnstile(BuildContext context, TurnstileChallenge challenge) =>
-    CloudflareTurnstile(
-      siteKey: challenge.siteKey,
-      options: TurnstileOptions(
-        // ⏱ 2026-09-12 · `flexible` fills the column (minimum 300px, height
-        // 65), so the frame and the Flutter box agree about the width.
-        size: TurnstileSize.flexible,
-        // `auto` follows the host page — no bright block in the dark theme.
-        theme: TurnstileTheme.auto,
-        // Cloudflare retries a soft failure itself.
-        retryAutomatically: true,
-        refreshExpired: TurnstileRefreshExpired.auto,
-      ),
-      onTokenReceived: challenge.onToken,
-      // ⚠️ ALL THREE FAILURE PATHS CLEAR THE TOKEN: a stale token is worse than
-      // none, because none is at least honest about not being ready.
-      onTokenExpired: () => challenge.onToken(null),
-      onTimeout: () => challenge.onToken(null),
-      onError: (TurnstileException e) => challenge.onError(e.message),
-    );
+    debugCaptchaPostureOverride != null
+    ? const SizedBox.shrink()
+    : CloudflareTurnstile(
+        siteKey: challenge.siteKey,
+        options: TurnstileOptions(
+          // ⏱ 2026-09-12 · `flexible` fills the column (minimum 300px, height
+          // 65), so the frame and the Flutter box agree about the width.
+          size: TurnstileSize.flexible,
+          // `auto` follows the host page — no bright block in the dark theme.
+          theme: TurnstileTheme.auto,
+          // Cloudflare retries a soft failure itself.
+          retryAutomatically: true,
+          refreshExpired: TurnstileRefreshExpired.auto,
+        ),
+        onTokenReceived: challenge.onToken,
+        // ⚠️ ALL THREE FAILURE PATHS CLEAR THE TOKEN: a stale token is worse than
+        // none, because none is at least honest about not being ready.
+        onTokenExpired: () => challenge.onToken(null),
+        onTimeout: () => challenge.onToken(null),
+        onError: (TurnstileException e) => challenge.onError(e.message),
+      );
 
 /// 🔴 FOR THE CUTOVER CHECKLIST, NOT FOR THE APP.
 ///

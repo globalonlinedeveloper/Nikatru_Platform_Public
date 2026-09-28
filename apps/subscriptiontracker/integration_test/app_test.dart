@@ -26,6 +26,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show ChassisL10nX;
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
 import 'package:subscriptiontracker/core/a11y/web_semantics.dart'
@@ -1070,13 +1072,42 @@ void main() {
     final String expectedRefusal = captchaGateOn
         ? l10n.authCaptchaFailed
         : l10n.authIncorrect;
+    // ⏱ 2026-09-28 — A VALID SUBMIT NOW WAITS FOR THE CAPTCHA, AND NEVER SENDS
+    // WITHOUT A TOKEN (the ST-T1 property, kept). This run builds with the site
+    // key, so the Turnstile widget renders; in a headless browser it usually
+    // never answers, and then NO REQUEST IS SENT: after
+    // `CaptchaTokenController.defaultWait` the screen says
+    // `authCaptchaUnavailable` instead. That is the app behaving correctly, not
+    // the server refusing — so it is accepted beside the server's refusal, and
+    // the reason names which one appeared. Before this, #1022 disabled the
+    // button outright and the empty-field leg above went red (E2E live run
+    // 36379673890).
+    final String captchaUnavailable = tester
+        .element(find.byKey(E2EKeys.loginSubmit))
+        .chassisL10n
+        .authCaptchaUnavailable;
+    bool shows(String sentence) =>
+        find.textContaining(sentence).evaluate().isNotEmpty;
     expect(
-      await waitFor(tester, find.textContaining(expectedRefusal)),
+      await waitFor(
+        tester,
+        find.byWidgetPredicate(
+          (Widget w) =>
+              w is Text &&
+              ((w.data?.contains(expectedRefusal) ?? false) ||
+                  (w.data?.contains(captchaUnavailable) ?? false)),
+        ),
+        timeout: const Duration(seconds: 40),
+      ),
       isTrue,
       reason:
-          'the friendly refusal message did not appear. '
-          'E2E_EXPECT_CAPTCHA_GATE=$expectCaptchaGate, so the expected copy is '
-          '"$expectedRefusal". On screen: ${onScreen(tester)}',
+          'neither the friendly refusal nor the captcha-wait sentence appeared. '
+          'E2E_EXPECT_CAPTCHA_GATE=$expectCaptchaGate, so the server refusal '
+          'is "$expectedRefusal"; with no token the app says '
+          '"$captchaUnavailable". On screen: ${onScreen(tester)}',
+    );
+    debugPrint(
+      '00c: ${shows(expectedRefusal) ? 'the server refused ("$expectedRefusal")' : 'no captcha token in this browser, so nothing was sent ("$captchaUnavailable")'}',
     );
     expect(find.byKey(E2EKeys.loginHeading), findsOneWidget);
     await shot('00c-invalid-credentials');
