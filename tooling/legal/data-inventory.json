@@ -855,7 +855,7 @@
       "kind": "kv-namespace",
       "name": "CONFIG_KV",
       "personalData": false,
-      "holds": "Per-app configuration overrides, keyed `config:<app>`. DATA and flags, never anything about a person.",
+      "holds": "Per-app configuration overrides, keyed `config:<app>`, and the ECB euro reference-rate table, keyed `fx:ecb:latest` (ST-I3: public data, one key, replaced by the nightly cron only when a valid newer table arrives). DATA and flags, never anything about a person.",
       "retention": {
         "kind": "keep",
         "reason": "Configuration. It is the current value or it is nothing."

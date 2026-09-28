@@ -1064,6 +1064,9 @@
         "renewals": [
           "0 6 * * *"
         ],
+        "fx_rates": [
+          "0 6 * * *"
+        ],
         "events_rollup": [
           "0 6 * * *"
         ],
@@ -1109,6 +1112,7 @@
         "backup_export": "2026-09-05T11:11:05Z",
         "analytics_liveness": "2026-08-02T19:53:38Z",
         "renewals": "2026-08-02T19:53:38Z",
+        "fx_rates": "2026-09-28T12:15:04Z",
         "events_rollup": "2026-08-12T09:08:06Z",
         "retention_sweep": "2026-08-12T07:43:30Z",
         "cancellation_drain": "2026-08-25T04:18:24Z",

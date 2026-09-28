@@ -108,6 +108,18 @@ describe('wrangler.jsonc declares BOTH halves of the cost circuit breaker', () =
     expect(e!.simple?.period).toBe(60);
   });
 
+  it('declares the ceiling for GET /v1/fx/latest, the public rate table', () => {
+    // ⏱ 2026-09-28 · ST-I3. routes/fx.ts fails OPEN without it, so deleting this
+    // entry removes the only bound on how many KV reads a cache-busting caller
+    // can spend — and no runtime test can see that, because the limiter fails
+    // open. Its own namespace: config resolution's budget is not its to spend.
+    const e = byName.get('FX_CEILING_LIMITER');
+    expect(e, 'FX_CEILING_LIMITER missing — /v1/fx/latest has no ceiling').toBeDefined();
+    expect(String(e!.namespace_id)).toBe('1015');
+    expect(e!.simple?.limit).toBe(1200);
+    expect(e!.simple?.period).toBe(60);
+  });
+
   it('declares the ceiling for POST /v1/ext/token, the extension code exchange', () => {
     // ⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. routes/ext.ts fails OPEN
     // without it (src/lib/edge-ceiling.ts), so deleting this entry removes the

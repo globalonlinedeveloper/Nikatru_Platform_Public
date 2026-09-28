@@ -2,6 +2,8 @@
 // platform Worker entrypoint. Public config chassis + a consolidated cron.
 //   PUBLIC  GET    /v1/health   — deploy verification, no auth.
 //   PUBLIC  GET    /config/:app — CFG-1 runtime config (KV-backed, edge-cached).
+//   PUBLIC  GET    /v1/fx/latest — the ECB euro reference rates the nightly cron
+//                                  keeps (ST-I3). Edge-ceilinged, edge-cached.
 //   PUBLIC  POST   /v1/events   — first-party analytics ingest (G-12).
 //   PUBLIC  POST   /v1/consent  — the DPDP consent artifact.
 //   AUTHED  DELETE /v1/account  — erasure ([4]B-5). ES256/JWKS only.
@@ -27,7 +29,8 @@
 //                                  is the capability. Edge-ceilinged.
 //   AUTHED  POST/DELETE /v1/calendar/feed — mint/rotate or revoke a calendar feed.
 //   PUBLIC  GET    /v1/calendar/<token>.ics — the feed itself. Edge-ceilinged.
-//   CRON    0 6 * * *           — Supabase keep-alive + per-app renewals fan-out.
+//   CRON    0 6 * * *           — Supabase keep-alive + per-app renewals fan-out,
+//                                  and the ECB rate table (src/fx.ts).
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
 import type { AppEnv } from './types';
@@ -47,6 +50,7 @@ import { entitlementsAuth } from './middleware/ext-device-auth';
 import providerToken from './routes/provider-token';
 import account from './routes/account';
 import config from './routes/config';
+import fx from './routes/fx';
 import entitlements from './routes/entitlements';
 import ext from './routes/ext';
 import events from './routes/events';
@@ -175,6 +179,10 @@ app.get('/v1/health', async (c) => {
 
 // Public: CFG-1 runtime config.
 app.route('/config', config);
+
+// Public: the home-currency rate table (ST-I3). Public data, the same for every
+// caller, so no auth; routes/fx.ts carries its own edge ceiling like /config.
+app.route('/v1/fx', fx);
 
 // Public: first-party analytics ingest + the DPDP consent artifact (G-12).
 // Unauthenticated by design — the events are pseudonymous and the most valuable

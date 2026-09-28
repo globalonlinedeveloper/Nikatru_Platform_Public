@@ -668,7 +668,7 @@ describe('check-heartbeats — end to end through the real register', () => {
     assert.ok(WATCHED.length > 0, 'COVERAGE LOST — the real register derived ZERO watched jobs');
     // Every job the scheduler declares must be in it. Named explicitly because
     // this is the regression that hid for a whole stage.
-    for (const expected of ['supabase_keepalive', 'analytics_liveness', 'renewals']) {
+    for (const expected of ['supabase_keepalive', 'analytics_liveness', 'renewals', 'fx_rates']) {
       assert.ok(WATCHED.includes(expected), `the watched set is missing "${expected}"`);
     }
   });

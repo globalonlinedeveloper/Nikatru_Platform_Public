@@ -61,7 +61,7 @@ Every file is a single `SELECT` taking the same three positional parameters, in 
 `server_ts` is the edge receipt clock and the authoritative cohort clock — `client_ts` is
 user-settable, offline-queued and skewed, so no query here touches it. ISO-8601 UTC strings sort
 lexicographically, which is why `>=` / `<` on TEXT is a correct time comparison and no date parsing
-happens on the hot path (the same reason `src/scheduled.ts:264` compares `server_ts >= ?` directly).
+happens on the hot path (the same reason `src/scheduled.ts:430` compares `server_ts >= ?` directly).
 
 `?1` appears more than once in most files. That is SQLite's numbered-parameter form and D1 binds it
 positionally exactly as `node:sqlite` does — three bound values, however many times each is
