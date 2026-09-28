@@ -257,7 +257,7 @@
   "retired-names.test.mjs": 4,
   "rollback.test.mjs": 25,
   "rollup-lossless.test.mjs": 52,
-  "run-page-anchor.test.mjs": 42,
+  "run-page-anchor.test.mjs": 62,
   "runner-budget.test.mjs": 24,
   "safe-rerun.test.mjs": 77,
   "scan-workflows.test.mjs": 12,

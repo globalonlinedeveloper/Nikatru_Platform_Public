@@ -260,16 +260,31 @@ export function judgeRunPage(runs, { what = 'this run history', floor = null, he
 //   GET …/actions/workflows/ops-watch.yml/runs?per_page=5&branch=main  → newest 2026-09-25 (STALE)
 //   GET …/actions/workflows/ops-watch.yml/runs?…&status=success         → 2026-09-28T02:17Z (fresh)
 //   GET …/actions/runs?per_page=100, filtered by name                   → 2026-09-28T08:50Z (fresh)
-// and `gh run list -w ci.yml -b main` answered week-old runs that day. The
-// `branch=`-filtered listings were the stale ones; the unfiltered repository
-// list was not. At 10:44Z all of them answered 08:50Z again.
+// and `gh run list -w ci.yml -b main` answered week-old runs that day. At
+// 10:44Z all of them answered 08:50Z again; at 11:06Z it was back, and this
+// time EVERY listing was measured, newest run of each (per_page=100):
+//   …/ops-watch.yml/runs?branch=main              35477612056  2026-09-20  STALE
+//   …/ops-watch.yml/runs                          36412660595  10:56Z      fresh
+//   …/ops-watch.yml/runs?status=completed         36412660595  10:56Z      fresh
+//   …/ops-watch.yml/runs?event=schedule           36399752579  08:50Z      fresh
+//   …/ops-watch.yml/runs?branch=main&status=success  36369228689  02:17Z   fresh
+//   /actions/runs?branch=main                     35477612056  2026-09-20  STALE
+//   /actions/runs                                 36413577030  11:05Z      fresh
+//   …/ci.yml/runs?branch=main                     35946652352  2026-09-24  STALE
+//   …/ci.yml/runs                                 36413577030  11:05Z      fresh
+// THE `branch=` FILTER IS THE STALE VECTOR, on both endpoints. The same
+// workflow's listing WITHOUT it was fresh every time, and it holds that
+// workflow's newest 100 runs (2.5 days of ops-watch) where the repository list
+// holds ~9 hours of everything.
 //
 // ── THE RULE (lead ruling 2026-09-28) ───────────────────────────────────────
-// Every reader that grades freshness from a listing ALSO reads the repository-
-// wide run list with NO server-side filter (`repoWideRunsPath`) — one request,
-// memoised by the caller — and applies the listing's own filters HERE
-// (`runQueryPredicate`): path, head_branch, event, status. A query carrying a
-// filter this cannot apply faithfully gets no such window, never a guessed one.
+// Every reader that grades freshness from a `branch=` listing ALSO reads the
+// SAME listing without `branch=` (`withoutBranch`), and a reader whose query has
+// no branch reads the unfiltered repository list (`repoWideRunsPath`) instead;
+// assert-ops-register.mjs, which holds ten pages, reads both. The query's own
+// filters are applied HERE (`runQueryPredicate`): head_branch, event, status —
+// and `path`, for the repository list. A query carrying a filter this cannot
+// apply faithfully gets no such window, never a guessed one.
 //   · page not proven stale → the page, as before: both sources agreeing that
 //                             the run is old is still the caller's RED;
 //   · page proven stale     → the FRESH source is graded (`spliceFreshWindows`):
@@ -277,9 +292,9 @@ export function judgeRunPage(runs, { what = 'this run history', floor = null, he
 //         contiguous history, and every question is answered from it;
 //       – they do not: only the fresh window is known. A question it answers
 //         is answered; one it cannot is UNREAD (coverage lost), never FAILING.
-// A repository-wide window is COMPLETE between its oldest row and its newest —
-// a replica omits runs after its snapshot, never between two it serves — which
-// is what lets its bottom edge (`floorId`) bound what it can vouch for.
+// A window is COMPLETE between its oldest row and its newest — a replica omits
+// runs after its snapshot, never between two it serves — which is what lets its
+// bottom edge (`floorId`) bound what it can vouch for.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Rows of the unfiltered repository-wide run list: the API maximum. */
@@ -319,12 +334,26 @@ export function runQueryPredicate(query) {
   };
 }
 
-/** PURE. One repository-wide listing as a window onto ONE workflow's question:
- *  the rows of that workflow (by `path`) the predicate accepts, and the id range
- *  the WHOLE listing spans — every run in it exists, and every run of the
- *  workflow between `floorId` and `topId` is in it. THROWS on a body without a
- *  workflow_runs array: an unread window is not an empty one. */
-export function repoWideWindow(body, { workflow, predicate, why = 'the repository-wide run list' }) {
+/** PURE. `query` (a URL or a query string) with its `branch=` removed, or null
+ *  when it has none — the one listing that was fresh on 2026-09-28. */
+export function withoutBranch(query) {
+  const s = String(query ?? '');
+  const at = s.indexOf('?');
+  const head = at === -1 ? '' : s.slice(0, at + 1);
+  const sp = new URLSearchParams(at === -1 ? s : s.slice(at + 1));
+  if (!sp.has('branch')) return null;
+  sp.delete('branch');
+  return head + sp.toString();
+}
+
+/** PURE. One listing as a window onto ONE workflow's question: the rows the
+ *  predicate accepts (of `workflow`, by `path`, when the listing is the
+ *  repository's; every row, when `workflow` is null because the listing is that
+ *  workflow's own), and the id range the WHOLE listing spans — every run in it
+ *  exists, and every run of the workflow between `floorId` and `topId` is in it.
+ *  THROWS on a body without a workflow_runs array: an unread window is not an
+ *  empty one. */
+export function repoWideWindow(body, { workflow = null, predicate, why = 'the repository-wide run list' }) {
   if (!Array.isArray(body?.workflow_runs)) throw new Error(`${why} came back without a workflow_runs array`);
   const path = `.github/workflows/${workflow}`;
   let floorId = Infinity;
@@ -334,7 +363,7 @@ export function repoWideWindow(body, { workflow, predicate, why = 'the repositor
     if (r.id < floorId) floorId = r.id;
     if (r.id > topId) topId = r.id;
   }
-  const runs = body.workflow_runs.filter((r) => isId(r?.id) && r.path === path && predicate(r));
+  const runs = body.workflow_runs.filter((r) => isId(r?.id) && (workflow === null || r.path === path) && predicate(r));
   return { runs, floorId, topId, why };
 }
 
@@ -350,9 +379,17 @@ export function repoWideWindow(body, { workflow, predicate, why = 'the repositor
 export function spliceFreshWindows(page, windows, { what = 'this run history' } = {}) {
   const ws = (windows ?? []).filter((w) => w && Number.isFinite(w.floorId) && Number.isFinite(w.topId));
   if (ws.length === 0) throw new Error(`${STALE_PAGE} — ${what} was proven stale, and no fresh window came back to grade instead`);
-  ws.sort((a, b) => b.topId - a.topId);
-  let lo = ws[0].floorId;
-  for (const w of ws.slice(1)) if (w.topId >= lo && w.floorId < lo) lo = w.floorId;
+  // Coverage starts at the DEEPEST window that proves the page stale (holds a
+  // run newer than the page) — a workflow's own listing reaches days back where
+  // the repository list reaches hours — and any window overlapping it extends it.
+  const top0 = maxRunId(page);
+  const proving = ws.filter((w) => w.runs.some((r) => r.id > top0));
+  const primary = (proving.length ? proving : ws).reduce((a, b) => (proving.length ? (b.floorId < a.floorId ? b : a) : b.topId > a.topId ? b : a));
+  let lo = primary.floorId;
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const w of ws) if (w.topId >= lo && w.floorId < lo) { lo = w.floorId; grew = true; }
+  }
   const byId = new Map();
   const keep = (r) => {
     const had = byId.get(r.id);

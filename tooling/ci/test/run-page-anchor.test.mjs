@@ -80,7 +80,7 @@ const C1_FRESH = [C1_SELF, C1_1444, ...C1_STALE];
 /** The I/O anchoredBranchPage needs, served from fixtures. `cross` answers
  *  every repository-wide list; `lists` (⏱ 2026-09-28) answers each one by its
  *  branch (`null` = the unfiltered list) with a whole body. */
-function io({ env = C1_ENV, nowMs = C1_NOW, cross = [], head = null, lists = null } = {}) {
+function io({ env = C1_ENV, nowMs = C1_NOW, cross = [], head = null, lists = null, branchless = null } = {}) {
   const asked = [];
   const notes = [];
   return {
@@ -96,6 +96,14 @@ function io({ env = C1_ENV, nowMs = C1_NOW, cross = [], head = null, lists = nul
       return { workflow_runs: cross };
     },
     note: (line) => notes.push(line),
+    ...(branchless
+      ? {
+          branchlessPage: async (repo, wf, k) => {
+            asked.push(`${repo}|${wf}|branchless|${k}`);
+            return branchless[k] ?? { workflow_runs: [] };
+          },
+        }
+      : {}),
   };
 }
 
@@ -268,7 +276,7 @@ describe('(4) PR #913 — the e2e guard now reads through the shared anchored re
     assert.deepEqual(s.asked, [
       C4_E2E_URL,
       C4_E2E_URL.replace('per_page=100', 'created=%3E%3D2026-09-19T06%3A41%3A00Z&per_page=10'),
-      `https://api.github.com${repoWideRunsPath(REPO)}`,
+      C4_E2E_URL.replace('branch=main&', ''),
     ]);
     assert.equal(got.stale, true);
     const v = e2eGuard.gradeRunHistory(got, C4_NOW);
@@ -306,7 +314,7 @@ describe('(4) PR #913 — the e2e guard now reads through the shared anchored re
       describeRead(got, e2eGuard.newestGreenOnBranch),
       `GET /repos/${REPO}/actions/workflows/e2e.yml/runs?branch=main&status=success&per_page=100 · 2 row(s) returned, per_page 100, ` +
         'saturated no · newest qualifying run 35962444367 (updated_at 2026-09-24T06:06:58Z) · cross-read created=>=2026-09-19T06:41:00Z: ' +
-        '2 row(s), newest 35962444367 · repository-wide 0 row(s), newest none · the page is PROVEN STALE',
+        '2 row(s), newest 35962444367 · the same query without `branch=`: 2 row(s), newest 35962444367 · the page is PROVEN STALE',
     );
   });
 });
@@ -470,6 +478,9 @@ describe('the anchor is WIRED into every reader, not merely available to them', 
     assert.match(c, /return gapCheckedScan\(entries, pageFull, gapBelow\);/, 'scanUnit');
     assert.match(c, /return withQuotaCause\(await redSincePair\(newest\), repo, cache\);/, 'probeGithubRedSince');
     assert.match(c, /out\.push\(repoWideWindow\(await io\.repoRunsPage\(repo, null\), /, 'the unfiltered repository list is one of the windows');
+    assert.match(c, /if \(branch && io\.branchlessPage\) out\.push\(repoWideWindow\(await io\.branchlessPage\(repo, workflow, 1\), /, 'the workflow\'s own branchless list is one of the windows');
+    assert.match(c, /await Promise\.all\(\[branch \? branchlessPage\(repo, workflow, 1\) : ghJson\(path\(1\)\), ghJson\(path\(RUN_PAGE_WIDE\)\)\]\);/, 'branchPage\'s narrow read IS the branchless list');
+    assert.match(c, /branchlessPage: \(repo, workflow, k\) => branchlessPage\(repo, workflow, k\),/, 'the live I/O hands it to the anchor');
   });
   test('assert-alert-disposition.mjs — ⏱ 2026-09-28: the firing history reads through the shared reader and grades the union', () => {
     const c = code('tooling/ci/assert-alert-disposition.mjs');
@@ -645,6 +656,59 @@ describe('(5) main CI 36409128416 — the stale page AND its stale cross-read, t
     assert.deepEqual(got.runs.map((r) => r.id), [36369228689, 35950000001, 35422355154]);
   });
 
+  test('🟢 11:06Z — BOTH repository lists stale too; the workflow\'s own list WITHOUT branch= carries it, for free', async () => {
+    // Measured 11:06Z: `/actions/runs?branch=main` ended 2026-09-20 like the page;
+    // `ops-watch.yml/runs` (no branch) held 10:56Z. The unfiltered repository
+    // list's ~9h window is modelled here as holding no ops-watch run at all.
+    const stale = { workflow_runs: [C5_RED_0925] };
+    const i = io({ env: {}, nowMs: C5_NOW, lists: { main: stale, null: { workflow_runs: [other(36409128416, '2026-09-28T10:20:00Z'), other(36400000000, '2026-09-28T02:00:00Z')] } }, branchless: { 1: { workflow_runs: [C5_RED_0850, C5_OK_0217, ow(36300000000, '2026-09-27T00:00:00Z', '2026-09-27T00:05:00Z', 'success', { head_branch: 'feat/x' })] } } });
+    const got = await anchoredBranchPage(REPO, 'ops-watch.yml', 'main', C5_PAGE, false, i);
+    assert.deepEqual(got.runs.map((r) => r.id), [36399752579, 36369228689], 'the feat/x run is not main\'s');
+    assert.equal(selectRuns(got.runs, { event: 'schedule', status: 'success' })[0].id, 36369228689);
+    assert.deepEqual(i.asked.slice(0, 3), [`${REPO}|ops-watch.yml|branchless|1`, `${REPO}|main`, `${REPO}|null`]);
+    assert.match(i.notes[0], /ops-watch\.yml's own run list without `branch=`/);
+  });
+
+  test('a gap below the branchless window is closed by paging it deeper — stale days only, and at most BRANCHLESS_PAGES', async () => {
+    // ci.yml's shape: the branchless listing is mostly OTHER branches' runs, so
+    // 100 rows of it hold few runs on main and the window stays short of the page.
+    const fill = (from, n) => Array.from({ length: n }, (_, j) => ow(from - j, '2026-09-27T00:00:00Z', '2026-09-27T00:05:00Z', 'failure', { head_branch: 'feat/x' }));
+    const p1 = { workflow_runs: [C5_OK_0217, ...fill(36360000000, 99)] };
+    const p2 = { workflow_runs: [...fill(36000000000, 99), C5_RED_0925] };
+    const i = io({ env: {}, nowMs: C5_NOW, lists: { main: C5_BRANCH_LIST, null: { workflow_runs: [] } }, branchless: { 1: p1, 2: p2 } });
+    const got = await anchoredBranchPage(REPO, 'ops-watch.yml', 'main', C5_PAGE, false, i);
+    assert.equal(got.gapBelow, null, 'page 2 reaches 35950000001, the page\'s newest: one contiguous history');
+    assert.ok(got.runs.some((r) => r.id === 35422355154), 'so the page\'s own older runs answer what the window cannot');
+    assert.ok(i.asked.includes(`${REPO}|ops-watch.yml|branchless|2`));
+    assert.ok(!i.asked.includes(`${REPO}|ops-watch.yml|branchless|3`), 'no page past the one that closed the gap');
+    // RED CONTROL for the budget: a page that is NOT stale never pages at all.
+    const j = io({ env: {}, nowMs: C5_NOW, lists: { main: C5_BRANCH_LIST, null: { workflow_runs: [] } }, branchless: { 1: { workflow_runs: [C5_RED_0925] } } });
+    await anchoredBranchPage(REPO, 'ops-watch.yml', 'main', C5_PAGE, false, j);
+    assert.deepEqual(j.asked.filter((a) => a.includes('branchless')), [`${REPO}|ops-watch.yml|branchless|1`]);
+  });
+
+  test('🔴 11:20Z — the replacement is NEVER DEEPER than a fresh page: the newest 100, pageFull (the failure-ledger bootstrap regression)', async () => {
+    // Measured: the joined history reached back 466.8h where a fresh page reaches
+    // ~200h, and duty.failure-ledger (weekly, firstDue 2026-10-03) read "no
+    // success in 466.8h" — a red no fresh page could produce.
+    const main = (id) => ow(id, '2026-09-27T00:00:00Z', '2026-09-27T00:05:00Z', 'success');
+    const fresh = Array.from({ length: 60 }, (_, j) => main(36399000000 - j));
+    const stalePage = Array.from({ length: 100 }, (_, j) => main(35950000001 - j));
+    const got = await anchoredBranchPage(REPO, 'ops-watch.yml', 'main', stalePage, true, io({ env: {}, nowMs: C5_NOW, lists: { main: C5_BRANCH_LIST, null: { workflow_runs: [] } }, branchless: { 1: { workflow_runs: [...fresh, ...stalePage.slice(0, 40)] } } }));
+    assert.equal(got.runs.length, 100, 'the union held 160 runs; a fresh page holds 100');
+    assert.equal(got.pageFull, true);
+    assert.equal(got.gapBelow, null);
+    assert.equal(Math.min(...got.runs.map((r) => r.id)), 35950000001 - 39, 'the newest 100 by id, and not one older');
+  });
+
+  test('a refused BRANCH-HEAD anchor is carried too when the fresh window holds HEAD\'s run; not, when it does not', async () => {
+    const headRun = run(35340873024, '2026-09-18T11:41:25Z', '2026-09-18T11:48:02Z', { head_sha: C3_HEAD.sha, status: 'completed', conclusion: 'success', path: '.github/workflows/ci.yml' });
+    const carried = await anchoredBranchPage(REPO, 'ci.yml', 'main', C3_STALE, false, io({ env: {}, nowMs: C3_NOW, head: C3_HEAD, branchless: { 1: { workflow_runs: [headRun] } } }));
+    assert.deepEqual(carried.runs.map((r) => r.id), [35340873024]);
+    const without = { ...headRun, head_sha: '0'.repeat(40) };
+    await assert.rejects(anchoredBranchPage(REPO, 'ci.yml', 'main', C3_STALE, false, io({ env: {}, nowMs: C3_NOW, head: C3_HEAD, branchless: { 1: { workflow_runs: [without] } } })), /^Error: stale page — .*553e814a/);
+  });
+
   test('the targeted FALLBACK read is anchored the same way (ghNewestRun\'s anchoredNewest, unitRunsPage\'s anchoredPage)', async () => {
     const qs = 'event=schedule&branch=main&status=success';
     const i = io({ env: {}, nowMs: C5_NOW, lists: { main: C5_BRANCH_LIST, null: C5_FRESH_LIST } });
@@ -667,33 +731,47 @@ describe('(5) the same answers, through the freshness readers (the second source
   const e2e = (id, at, extra = {}) => run(id, at, at, { event: 'schedule', status: 'completed', conclusion: 'success', path: '.github/workflows/e2e.yml', ...extra });
   const STALE = [e2e(35900000002, '2026-09-24T06:00:00Z')];
   const FRESH = e2e(36380000000, '2026-09-28T06:05:00Z');
-  const routed = (repoWide) => {
+  const routed = (second) => {
     const asked = [];
     return {
       asked,
       read: async (u) => {
         asked.push(u);
-        if (u.includes('/actions/runs?')) return repoWide;
+        if (!u.includes('branch=') && !u.includes('created=')) return second;
         return { workflow_runs: STALE };
       },
     };
   };
 
-  test('🟢 the unfiltered list carries the proof the stale cross-read could not: GREEN, and the carried line names it', async () => {
-    const s = routed({ workflow_runs: [other(36409128416, '2026-09-28T10:20:00Z'), FRESH, e2e(36370000000, '2026-09-28T03:00:00Z', { head_branch: 'feat/x' })] });
+  test('🟢 the same query WITHOUT branch= carries the proof the stale cross-read could not: GREEN, and the carried line names it', async () => {
+    const s = routed({ workflow_runs: [FRESH, e2e(36370000000, '2026-09-28T03:00:00Z', { head_branch: 'feat/x' }), ...STALE] });
     const got = await e2eGuard.readRunHistory({ repo: REPO, read: s.read, nowMs: C5_NOW });
     assert.equal(s.asked.length, 3);
-    assert.equal(s.asked[2], `https://api.github.com${repoWideRunsPath(REPO)}`);
+    assert.equal(s.asked[2], `https://api.github.com/repos/${REPO}/actions/workflows/e2e.yml/runs?status=success&per_page=100`);
     assert.equal(got.stale, true);
-    assert.deepEqual(got.repoWide.runs.map((r) => r.id), [36380000000], 'the side-branch run is filtered out by the query\'s own branch=main');
+    assert.deepEqual(got.repoWide.runs.map((r) => r.id), [36380000000, 35900000002], 'the side-branch run is filtered out by the query\'s own branch=main');
     const v = e2eGuard.gradeRunHistory(got, C5_NOW);
     assert.equal(v.ok, true, v.reason);
     assert.equal(v.runId, 36380000000);
-    assert.match(v.stalePageCarried, /the repository-wide list's is 36380000000 \(updated_at 2026-09-28T06:05:00Z\) over 1 row\(s\)/);
+    assert.match(v.stalePageCarried, /the same query without `branch=` has 36380000000 \(updated_at 2026-09-28T06:05:00Z\) over 2 row\(s\)/);
+  });
+
+  test('a query with NO branch= asks the unfiltered repository list instead, filtered by path (the platform reader)', async () => {
+    const asked = [];
+    const bp = (id, at) => run(id, at, at, { event: 'schedule', status: 'completed', conclusion: 'success', path: '.github/workflows/build-platforms.yml' });
+    const read = async (u) => {
+      asked.push(u);
+      if (u.includes('/actions/runs?')) return { workflow_runs: [other(36409128416, '2026-09-28T10:20:00Z'), bp(36390000000, '2026-09-28T07:00:00Z')] };
+      return { workflow_runs: [bp(35900000003, '2026-09-20T07:00:00Z')] };
+    };
+    const got = await platformGuard.readRunHistory({ repo: REPO, read, nowMs: C5_NOW });
+    assert.equal(asked[2], `https://api.github.com${repoWideRunsPath(REPO)}`);
+    assert.deepEqual(got.repoWide.runs.map((r) => r.id), [36390000000], 'ci.yml\'s row is not build-platforms.yml\'s');
+    assert.equal(platformGuard.gradeRunHistory(got, C5_NOW).ok, true);
   });
 
   test('🔴 RED CONTROL — every source agrees the green is 4 days old: the FINDING (exit 1), not coverage lost', async () => {
-    const s = routed({ workflow_runs: [other(36409128416, '2026-09-28T10:20:00Z'), ...STALE] });
+    const s = routed({ workflow_runs: [...STALE] });
     const got = await e2eGuard.readRunHistory({ repo: REPO, read: s.read, nowMs: C5_NOW });
     assert.equal(got.stale, false);
     const v = e2eGuard.gradeRunHistory(got, C5_NOW);
@@ -703,7 +781,7 @@ describe('(5) the same answers, through the freshness readers (the second source
   });
 
   test('🔴 the repository list without a workflow_runs array is COULD NOT LOOK, never an empty window', async () => {
-    await assert.rejects(e2eGuard.readRunHistory({ repo: REPO, read: routed({ message: 'x' }).read, nowMs: C5_NOW }), (e) => e instanceof CouldNotLook && /runs: the unfiltered repository-wide run list came back without a workflow_runs array/.test(e.message));
+    await assert.rejects(e2eGuard.readRunHistory({ repo: REPO, read: routed({ message: 'x' }).read, nowMs: C5_NOW }), (e) => e instanceof CouldNotLook && /runs: the same query without `branch=` came back without a workflow_runs array/.test(e.message));
   });
 
   test('assert-alert-disposition grades the UNION: a stale page\'s red newest scheduled run no longer reads a cleared alarm as ACTIVE', () => {
