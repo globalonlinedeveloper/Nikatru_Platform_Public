@@ -124,6 +124,9 @@ void main() {
           await gotrue.getSessionFromUrl(Uri.parse(_callback));
           fail('an unknown code must not mint a session');
         } on sb.AuthException catch (error, stack) {
+          // The SDK's own call, verbatim: supabase_auth.dart:295-296 carries
+          // the same ignore.
+          // ignore: invalid_use_of_internal_member
           gotrue.notifyException(error, stack);
         }
       });
