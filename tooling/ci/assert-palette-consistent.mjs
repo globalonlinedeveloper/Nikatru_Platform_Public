@@ -986,7 +986,8 @@ const BRAND_FONT_DEBT = {
   'apps/subscriptiontracker/lib/features/calendar/calendar_screen.dart': 1,
   'apps/subscriptiontracker/lib/features/cancel/cancel_sheet.dart': 1,
   'apps/subscriptiontracker/lib/features/detail/subscription_detail_screen.dart': 6,
-  'apps/subscriptiontracker/lib/features/home/home_screen.dart': 4,
+  // ⏱ 2026-09-28 · train ST-D1: home_screen.dart 4 → 0 and OUT — Home is
+  // built from the design system's components, which read the ramp.
   'apps/subscriptiontracker/lib/features/insights/insights_screen.dart': 1,
   'apps/subscriptiontracker/lib/features/onboarding/onboarding_screen.dart': 4,
   'apps/subscriptiontracker/lib/features/scan/scan_screen.dart': 1,

@@ -32,6 +32,14 @@
 // a near-black card in LIGHT mode, and nothing else in this repo would notice.
 // So the hero is pinned white in both brightnesses, on purpose.
 //
+// ⏱ 2026-09-28 · train ST-D1: THE TWO PARAGRAPHS ABOVE DESCRIBE HOME BEFORE
+// THE DESIGN FOUNDATION, and are kept as the record of why the old pins
+// existed. Home's header control and its summary are now foundation surfaces
+// in both schemes (the header control is `AppCard.fillOf`, the hero is an
+// `AppSummaryCard`), so the home groups below are ONE rule asserted per
+// scheme, and the white-hero pin is inverted: nothing on the summary may be a
+// fixed white. The nav-pill and notifications pairs are unchanged.
+//
 // ⬜ WHAT THIS INCREMENT DOES **NOT** FIX, stated so the gap is not mistaken for
 // coverage.
 //
@@ -106,9 +114,6 @@ const Color kPillLightFill = Color.fromRGBO(255, 255, 255, 0.9);
 const Color kPillLightRim = Color.fromRGBO(255, 255, 255, 0.6);
 
 /// The hero's two foreground values — see the header for why they must NOT move.
-const Color kHeroInk = Colors.white;
-const Color kHeroInkFaint = Color.fromRGBO(255, 255, 255, 0.7);
-
 /// The router's onboarding gate declines to decide while the seen-flag hydrates
 /// (null), and a pump that never answers stalls pre-frame. Same override the
 /// router tests use.
@@ -234,15 +239,6 @@ BoxDecoration _controlAround(WidgetTester tester, IconData icon) {
   return c.decoration! as BoxDecoration;
 }
 
-/// The hero card, found by the one thing that is unmistakably it: its gradient.
-Finder get _hero => find.byWidgetPredicate(
-  (Widget w) =>
-      w is Container &&
-      w.decoration is BoxDecoration &&
-      (w.decoration! as BoxDecoration).gradient == AppColors.heroGradient,
-  description: 'the hero card (the AppColors.heroGradient Container)',
-);
-
 void main() {
   final ColorScheme dark = buildAppTheme(
     seed: kSublySeed,
@@ -250,79 +246,123 @@ void main() {
   ).colorScheme;
 
   // ───────────────────────────────────────────────────────────────────────────
-  group("home's header control is theme-aware", () {
-    testWidgets('LIGHT is pixel-identical to the pre-dark bell', (
-      WidgetTester tester,
-    ) async {
-      await _pumpScreen(tester, ThemeMode.light, const HomeScreen());
-      final BoxDecoration d = _controlAround(
-        tester,
-        Icons.notifications_none_rounded,
-      );
+  // ⏱ 2026-09-28 · train ST-D1 — THE TWO GROUPS THAT STOOD HERE PINNED THE
+  // DESIGN THIS TRAIN REPLACES, and are rewritten rather than deleted, because
+  // the property each one guarded still matters:
+  //   · "LIGHT is pixel-identical to the pre-dark bell" pinned the literal
+  //     `AppColors.surface` / `line` / `ink` in light and the scheme in dark.
+  //     The foundation has no light literal to keep: the control is the card's
+  //     own material (`AppCard.fillOf`) in BOTH schemes, so the rule becomes
+  //     ONE rule, asserted per scheme.
+  //   · "the hero is white in BOTH brightnesses" pinned a const near-black
+  //     gradient with white ink. The hero is an `AppSummaryCard` now — a scheme
+  //     surface — so the pin inverts: NO copy on it may be a fixed white, and
+  //     the gradient must not come back.
+  group("home's header control is the card's material, in both schemes", () {
+    for (final (String name, ThemeMode mode, Brightness b)
+        in <(String, ThemeMode, Brightness)>[
+          ('LIGHT', ThemeMode.light, Brightness.light),
+          ('DARK', ThemeMode.dark, Brightness.dark),
+        ]) {
+      testWidgets('[$name] fill, edge and glyph come from the scheme', (
+        WidgetTester tester,
+      ) async {
+        await _pumpScreen(tester, mode, const HomeScreen());
+        final ThemeData theme = buildAppTheme(seed: kSublySeed, brightness: b);
+        final BoxDecoration d = _controlAround(
+          tester,
+          Icons.notifications_none_rounded,
+        );
+        expect(
+          d.color,
+          AppCard.fillOf(theme),
+          reason:
+              'The header control and the cards under it are one material. A '
+              'fixed white square was the brightest thing on the dark screen.',
+        );
+        expect(
+          (d.border! as Border).top.color,
+          theme.colorScheme.outlineVariant,
+        );
+        expect(
+          tester
+              .widget<Icon>(find.byIcon(Icons.notifications_none_rounded))
+              .color,
+          theme.colorScheme.onSurface,
+        );
+      });
 
-      expect(
-        d.color,
-        AppColors.surface,
-        reason:
-            'The light control MUST stay the literal AppColors.surface. This '
-            'is the frozen legacy app the owner eyeballs, and the bell sits at '
-            'the top of the first screen the app opens on.',
-      );
-      expect(
-        (d.border! as Border).top.color,
-        AppColors.line,
-        reason: 'Light keeps the original hairline token, unchanged.',
-      );
-      expect(
-        tester
-            .widget<Icon>(find.byIcon(Icons.notifications_none_rounded))
-            .color,
-        AppColors.ink,
-        reason: 'And the original glyph colour.',
-      );
-    });
+      testWidgets('[$name] the bell carries NO always-on unread dot', (
+        WidgetTester tester,
+      ) async {
+        await _pumpScreen(tester, mode, const HomeScreen());
+        expect(
+          find.descendant(
+            of: find.ancestor(
+              of: find.byIcon(Icons.notifications_none_rounded),
+              matching: find.byType(FocusableTap),
+            ),
+            matching: find.byWidgetPredicate(
+              (Widget w) =>
+                  w is Container &&
+                  w.decoration is BoxDecoration &&
+                  (w.decoration! as BoxDecoration).shape == BoxShape.circle,
+            ),
+          ),
+          findsNothing,
+          reason:
+              'The dot was `dot: true`, unconditionally — a badge that is '
+              'always on carries no information. It returns with an unread '
+              'source, as a counted badge that draws nothing at zero.',
+        );
+      });
+    }
+  });
 
-    testWidgets('DARK derives fill, edge and glyph from the scheme', (
-      WidgetTester tester,
-    ) async {
-      await _pumpScreen(tester, ThemeMode.dark, const HomeScreen());
-      final BoxDecoration d = _controlAround(
-        tester,
-        Icons.notifications_none_rounded,
-      );
+  // ───────────────────────────────────────────────────────────────────────────
+  group('the summary is a scheme surface in BOTH brightnesses', () {
+    for (final (String name, ThemeMode mode, Brightness b)
+        in <(String, ThemeMode, Brightness)>[
+          ('LIGHT', ThemeMode.light, Brightness.light),
+          ('DARK', ThemeMode.dark, Brightness.dark),
+        ]) {
+      testWidgets('[$name] every word on it is a scheme slot, never white', (
+        WidgetTester tester,
+      ) async {
+        await _pumpScreen(tester, mode, const HomeScreen());
+        final ColorScheme scheme = buildAppTheme(
+          seed: kSublySeed,
+          brightness: b,
+        ).colorScheme;
+        final Finder summary = find.byKey(HomeScreen.summaryKey);
+        expect(summary, findsOneWidget);
+        final Iterable<Text> texts = tester.widgetList<Text>(
+          find.descendant(of: summary, matching: find.byType(Text)),
+        );
+        expect(
+          texts,
+          isNotEmpty,
+          reason:
+              'nothing to check — a colour assertion over an empty set is '
+              'the vacuous check this limb exists to replace',
+        );
+        for (final Text t in texts) {
+          expect(
+            t.style?.color,
+            isIn(<Color>[
+              scheme.onSurface,
+              scheme.onSurfaceVariant,
+              scheme.onSecondaryContainer,
+            ]),
+            reason:
+                '"${t.data}" under $name is not a scheme slot. A fixed white '
+                'on this card is white-on-white in LIGHT.',
+          );
+        }
+      });
+    }
 
-      expect(
-        d.color,
-        isNot(AppColors.surface),
-        reason:
-            'THE DEFECT: a 0xFFFFFFFF square is the brightest thing on a dark '
-            'screen, and it sat directly above a hero that is already dark. '
-            'Reverting _circleButton to the unconditional token turns this red.',
-      );
-      expect(
-        d.color,
-        dark.surfaceContainerHighest,
-        reason:
-            'The same slot cardDecoration and RowCard use — the header control '
-            'and the rows under it must be one material, not two.',
-      );
-      expect((d.border! as Border).top.color, dark.outlineVariant);
-      expect(
-        tester
-            .widget<Icon>(find.byIcon(Icons.notifications_none_rounded))
-            .color,
-        dark.onSurface,
-        reason:
-            'A near-black glyph on the new dark fill would be a control with '
-            'nothing visible in it — the defect moved one level in.',
-      );
-    });
-
-    // ⏱ 2026-09-28 · ST-U5 (B6): this case pinned the RING of the bell's unread
-    // dot to the dark fill. The dot itself is gone — it was always on, a
-    // permanent "something new" that meant nothing — so the case now pins its
-    // absence in the brightness it used to measure.
-    testWidgets('DARK: the bell carries no always-on unread dot', (
+    testWidgets('and the brand-gradient hero does not come back', (
       WidgetTester tester,
     ) async {
       await _pumpScreen(tester, ThemeMode.dark, const HomeScreen());
@@ -331,64 +371,13 @@ void main() {
           (Widget w) =>
               w is Container &&
               w.decoration is BoxDecoration &&
-              (w.decoration! as BoxDecoration).shape == BoxShape.circle &&
-              (w.decoration! as BoxDecoration).color == AppColors.warn,
+              (w.decoration! as BoxDecoration).gradient ==
+                  AppColors.heroGradient,
         ),
         findsNothing,
-      );
-    });
-  });
-
-  // ───────────────────────────────────────────────────────────────────────────
-  group('the hero is white in BOTH brightnesses — the anti-migration pin', () {
-    for (final (String name, ThemeMode mode) in <(String, ThemeMode)>[
-      ('LIGHT', ThemeMode.light),
-      ('DARK', ThemeMode.dark),
-    ]) {
-      testWidgets('[$name] every hero foreground stays white', (
-        WidgetTester tester,
-      ) async {
-        await _pumpScreen(tester, mode, const HomeScreen());
-        expect(_hero, findsOneWidget);
-
-        final Iterable<Text> texts = tester.widgetList<Text>(
-          find.descendant(of: _hero, matching: find.byType(Text)),
-        );
-        expect(
-          texts,
-          isNotEmpty,
-          reason:
-              'nothing to check — a colour assertion over an empty set is the '
-              'vacuous check this limb exists to replace',
-        );
-        for (final Text t in texts) {
-          expect(
-            t.style?.color,
-            anyOf(kHeroInk, kHeroInkFaint),
-            reason:
-                'Hero copy "${t.data}" left the white family under $name. The '
-                'ground here is a CONST gradient (heroA/B/C, near-black) that '
-                'is identical in both themes, so a scheme-derived foreground '
-                'is near-black-on-near-black in LIGHT — the campaign defect, '
-                'introduced backwards.',
-          );
-        }
-      });
-    }
-
-    testWidgets('and the gradient itself never becomes a scheme slot', (
-      WidgetTester tester,
-    ) async {
-      await _pumpScreen(tester, ThemeMode.dark, const HomeScreen());
-      final BoxDecoration d =
-          tester.widget<Container>(_hero).decoration! as BoxDecoration;
-      expect(
-        d.gradient,
-        AppColors.heroGradient,
         reason:
-            'If the ground ever DOES become theme-aware, the white pins above '
-            'stop being correct and must move in the same commit. This is the '
-            'assertion that makes that impossible to do quietly.',
+            'A const gradient is a surface no theme can reach and no contrast '
+            'test can measure against a slot — the reason it was retired.',
       );
     });
   });

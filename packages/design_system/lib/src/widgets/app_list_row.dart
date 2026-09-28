@@ -27,6 +27,14 @@ import '../tokens/status_tones.dart';
 ///    never carried by hue alone (WCAG 2.2 1.4.1).
 ///  * **One node per row.** Title, subtitle, figure and caption are merged, so
 ///    a reader hears one row, and a tappable row is announced as a button.
+///  * **Selection is a bar AND a state** ([selected], train ST-D1). A
+///    master-detail list has to say which row the second pane is about: a
+///    [selectedBarWidth] bar in `scheme.primary` on the START edge (so it
+///    mirrors in RTL), and `Semantics(selected: …)` on the row's one node. The
+///    row's ground does NOT change, so every contrast measured on the card
+///    still holds on the selected row. Null — the default — means the row is
+///    not selectable at all, and nothing is announced: a single-column list
+///    whose tap pushes a route has no selection to report.
 ///
 /// Every string is the app's, already localised.
 class AppListRow extends StatelessWidget {
@@ -40,6 +48,7 @@ class AppListRow extends StatelessWidget {
     this.caption,
     this.onTap,
     this.showChevron = true,
+    this.selected,
   }) : assert(
          status == null || subtitle != null,
          'a status needs its subtitle: it is carried by the words, then the '
@@ -71,6 +80,13 @@ class AppListRow extends StatelessWidget {
   /// toggles rather than navigates.
   final bool showChevron;
 
+  /// Whether this row is the one a neighbouring pane is showing. Null: the
+  /// list has no selection, and the row announces none.
+  final bool? selected;
+
+  /// The selection bar's thickness.
+  static const double selectedBarWidth = 3;
+
   /// The row's minimum height for [density]: 64 at standard density, 56 at
   /// compact. Public and pure so the rule is testable without a platform
   /// override.
@@ -79,6 +95,11 @@ class AppListRow extends StatelessWidget {
 
   /// The leading slot's side.
   static const double leadingSize = 40;
+
+  /// The most of the row's width the figure column may take before it scales
+  /// down. Half: the title is what the row is ABOUT, so it keeps the other
+  /// half and ellipsises inside it.
+  static const double figureShare = 0.5;
 
   @override
   Widget build(BuildContext context) {
@@ -99,102 +120,139 @@ class AppListRow extends StatelessWidget {
           horizontal: AppSpacing.lg,
           vertical: AppSpacing.sm,
         ),
-        child: Row(
-          children: <Widget>[
-            if (leading != null) ...<Widget>[
-              SizedBox.square(dimension: leadingSize, child: leading),
-              const SizedBox(width: AppSpacing.md),
-            ],
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: text.titleMedium?.copyWith(color: scheme.onSurface),
-                  ),
-                  if (subtitle != null)
-                    Row(
-                      children: <Widget>[
-                        if (statusTone != null) ...<Widget>[
-                          ExcludeSemantics(
-                            child: Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: statusTone,
-                                shape: BoxShape.circle,
+        child: LayoutBuilder(
+          builder: (BuildContext context, BoxConstraints c) => Row(
+            children: <Widget>[
+              if (leading != null) ...<Widget>[
+                SizedBox.square(dimension: leadingSize, child: leading),
+                const SizedBox(width: AppSpacing.md),
+              ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: text.titleMedium?.copyWith(
+                        color: scheme.onSurface,
+                      ),
+                    ),
+                    if (subtitle != null)
+                      Row(
+                        children: <Widget>[
+                          if (statusTone != null) ...<Widget>[
+                            ExcludeSemantics(
+                              child: Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: statusTone,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.xs + 2),
+                          ],
+                          Flexible(
+                            child: Text(
+                              subtitle!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: text.bodySmall?.copyWith(
+                                color: statusTone ?? scheme.onSurfaceVariant,
+                                fontWeight: statusTone == null
+                                    ? null
+                                    : FontWeight.w600,
                               ),
                             ),
                           ),
-                          const SizedBox(width: AppSpacing.xs + 2),
                         ],
-                        Flexible(
-                          child: Text(
-                            subtitle!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: text.bodySmall?.copyWith(
-                              color: statusTone ?? scheme.onSurfaceVariant,
-                              fontWeight: statusTone == null
-                                  ? null
-                                  : FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                ],
-              ),
-            ),
-            if (figure != null || caption != null) ...<Widget>[
-              const SizedBox(width: AppSpacing.md),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  if (figure != null)
-                    Text(
-                      figure!,
-                      style: text.titleMedium?.copyWith(
-                        color: scheme.onSurface,
-                        fontFeatures: tabular,
                       ),
-                    ),
-                  if (caption != null)
-                    Text(
-                      caption!,
-                      style: text.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                ],
-              ),
-            ],
-            if (onTap != null && showChevron) ...<Widget>[
-              const SizedBox(width: AppSpacing.xs),
-              ExcludeSemantics(
-                child: Icon(
-                  Icons.chevron_right,
-                  color: scheme.onSurfaceVariant,
+                  ],
                 ),
               ),
+              if (figure != null || caption != null) ...<Widget>[
+                const SizedBox(width: AppSpacing.md),
+                // 🔴 THE FIGURE IS CAPPED AT [figureShare] OF THE ROW AND SCALES
+                // DOWN PAST IT (train ST-D1). Unbounded, a price at 200 % text
+                // on a 360 px phone took the whole row and overflowed it by
+                // 20 px — measured by Home's text-scale case. Capped, the title
+                // ellipsises and the figure shrinks to fit: every digit stays
+                // on screen. Below the cap nothing moves, so at 100 % the row
+                // lays out exactly as before.
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: c.maxWidth * figureShare,
+                  ),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        if (figure != null)
+                          Text(
+                            figure!,
+                            style: text.titleMedium?.copyWith(
+                              color: scheme.onSurface,
+                              fontFeatures: tabular,
+                            ),
+                          ),
+                        if (caption != null)
+                          Text(
+                            caption!,
+                            style: text.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+              if (onTap != null && showChevron) ...<Widget>[
+                const SizedBox(width: AppSpacing.xs),
+                ExcludeSemantics(
+                  child: Icon(
+                    Icons.chevron_right,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
 
-    return MergeSemantics(
-      child: onTap == null
-          ? row
-          : Semantics(
-              button: true,
-              child: InkWell(onTap: onTap, child: row),
+    final Widget marked = selected == true
+        ? DecoratedBox(
+            decoration: BoxDecoration(
+              border: BorderDirectional(
+                start: BorderSide(
+                  color: scheme.primary,
+                  width: selectedBarWidth,
+                ),
+              ),
             ),
+            child: row,
+          )
+        : row;
+
+    return MergeSemantics(
+      child: Semantics(
+        selected: selected,
+        child: onTap == null
+            ? marked
+            : Semantics(
+                button: true,
+                child: InkWell(onTap: onTap, child: marked),
+              ),
+      ),
     );
   }
 }

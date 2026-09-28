@@ -1,6 +1,8 @@
 // AppCard and AppListRow — train ST-D0. Behaviour, semantics, the three
 // required windows, and every word on a card measured against the card.
 
+import 'dart:ui' show Tristate;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -257,5 +259,123 @@ void main() {
         });
       }
     }
+  });
+
+  // ── train ST-D1 ───────────────────────────────────────────────────────────
+  group('AppListRow · selection and the figure cap (train ST-D1)', () {
+    for (final Brightness b in Brightness.values) {
+      testWidgets(
+        '${b.name}: selected is a START-edge primary bar AND a state',
+        (WidgetTester tester) async {
+          final SemanticsHandle handle = tester.ensureSemantics();
+          await pumpAt(
+            tester,
+            kPhone,
+            AppCard(
+              padding: EdgeInsets.zero,
+              child: Column(
+                children: <Widget>[
+                  AppListRow(title: 'On', onTap: () {}, selected: true),
+                  AppListRow(title: 'Off', onTap: () {}, selected: false),
+                  AppListRow(title: 'None', onTap: () {}),
+                ],
+              ),
+            ),
+            brightness: b,
+          );
+          final ThemeData theme = Theme.of(tester.element(find.text('On')));
+          final Iterable<BoxDecoration> bars = tester
+              .widgetList<DecoratedBox>(
+                find.descendant(
+                  of: find.byType(AppListRow),
+                  matching: find.byType(DecoratedBox),
+                ),
+              )
+              .map((DecoratedBox d) => d.decoration)
+              .whereType<BoxDecoration>()
+              .where((BoxDecoration d) => d.border is BorderDirectional);
+          expect(bars, hasLength(1), reason: 'only the selected row has a bar');
+          final BorderDirectional edge =
+              bars.single.border! as BorderDirectional;
+          expect(edge.start.color, theme.colorScheme.primary);
+          expect(edge.start.width, AppListRow.selectedBarWidth);
+          // The bar is a non-text indicator: SC 1.4.11's 3:1 against the card.
+          expect(
+            contrast(edge.start.color, AppCard.fillOf(theme)),
+            greaterThanOrEqualTo(3),
+          );
+
+          final SemanticsNode on = tester.getSemantics(find.text('On'));
+          final SemanticsNode off = tester.getSemantics(find.text('Off'));
+          final SemanticsNode none = tester.getSemantics(find.text('None'));
+          expect(on.flagsCollection.isSelected, Tristate.isTrue);
+          expect(off.flagsCollection.isSelected, Tristate.isFalse);
+          expect(
+            none.flagsCollection.isSelected,
+            Tristate.none,
+            reason: 'a list with no selection must not announce "not selected"',
+          );
+          handle.dispose();
+        },
+      );
+    }
+
+    testWidgets('at 100 % the figure is untouched by the cap', (
+      WidgetTester tester,
+    ) async {
+      await pumpAt(
+        tester,
+        kPhone,
+        const AppListRow(
+          title: 'Netflix',
+          figure: r'$15.49',
+          caption: 'per month',
+        ),
+      );
+      expect(
+        find.ancestor(
+          of: find.text(r'$15.49'),
+          matching: find.byType(FittedBox),
+        ),
+        findsOneWidget,
+      );
+      final double drawn = tester.getSize(find.text(r'$15.49')).width;
+      final double natural = tester
+          .renderObject<RenderParagraph>(find.text(r'$15.49'))
+          .getMaxIntrinsicWidth(double.infinity);
+      expect(drawn, natural, reason: 'no scaling below the cap');
+    });
+
+    testWidgets(
+      '200 % text on a 360 px phone: the figure scales, no overflow',
+      (WidgetTester tester) async {
+        tester.platformDispatcher.textScaleFactorTestValue = 2;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await pumpAt(
+          tester,
+          const Size(360, 800),
+          AppCard(
+            padding: EdgeInsets.zero,
+            child: AppListRow(
+              leading: const CircleAvatar(child: Text('N')),
+              title: 'A subscription with a long name',
+              subtitle: 'Renews tomorrow',
+              status: StatusKind.warn,
+              figure: r'$1,234.56',
+              caption: 'per month',
+              onTap: () {},
+            ),
+          ),
+        );
+        expect(tester.takeException(), isNull);
+        final Rect row = tester.getRect(find.byType(AppListRow));
+        final Rect figure = tester.getRect(find.text(r'$1,234.56'));
+        expect(figure.right, lessThanOrEqualTo(row.right));
+        expect(
+          tester.getSize(find.byType(FittedBox).last).width,
+          lessThanOrEqualTo(row.width * AppListRow.figureShare),
+        );
+      },
+    );
   });
 }

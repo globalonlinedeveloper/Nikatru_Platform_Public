@@ -433,7 +433,7 @@ describe('the guard says YES on the tree as it is', () => {
     // 181 → 186 cases (a case is a `testWidgets` block as written; the scheme
     // and status loops run them more often than this parse counts them).
     // Unswept stays 18. Read off the guard's own closing line.
-    assert.match(out, /84 reachable surface\(s\); 54 swept by 12 a11y test file\(s\) across 188 case\(s\)/ /* ⏱ 2026-09-29 ST-D6: +3 design_system surfaces (AppFormSheet, AppFormField, AppFormActions) and +1 app surface (showEditSubscriptionSheet), each arriving swept, +1 file, +2 cases */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces swept, +2 cases */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate) swept, +1 case */);
+    assert.match(out, /87 reachable surface\(s\); 57 swept by 15 a11y test file\(s\) across 191 case\(s\)/ /* ⏱ 2026-09-29 ST-D1: +3 design_system surfaces (AppSectionHeader, AppListGroup, AppSummaryCard), each arriving swept by its own file, +3 cases */ /* ⏱ 2026-09-29 ST-D6: +3 design_system surfaces (AppFormSheet, AppFormField, AppFormActions) and +1 app surface (showEditSubscriptionSheet), each arriving swept, +1 file, +2 cases */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces swept, +2 cases */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate) swept, +1 case */);
     assert.match(out, /12 swept where they delegate to/);
     assert.match(out, /18 unswept and PRINTED/);
     // The per-family tally for subscriptiontracker, pinned. It read `tap-target ×0` from the
@@ -590,7 +590,8 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     // ⏱ 2026-09-15 · [ADR 083]: 1 → 2 (AppScaffold joined DataStateView).
     // ⏱ 2026-09-28 · train ST-D0: 2 of 20 → 7 of 25 — AppFab, AppCard, AppListRow, DecisionStrip, SkeletonList arrived swept.
     // ⏱ 2026-09-28 · train ST-D6: 7 of 25 → 10 of 28 — the form sheet components arrived swept.
-    assert.match(out, /packages\/design_system: 10 of 28 reachable surface\(s\) carry an a11y sweep/);
+    // ⏱ 2026-09-29 · train ST-D1, on top of ST-D6: 10 of 28 → 13 of 31 — AppSectionHeader, AppListGroup, AppSummaryCard arrived swept.
+    assert.match(out, /packages\/design_system: 13 of 31 reachable surface\(s\) carry an a11y sweep/);
     // And the gap in each is PRINTED, by name, not merely counted.
     // ⏱ 2026-09-23 (chassis home): the brick's HomeScreen now delegates into
     // the swept WelcomeView, so it is judged THERE and the brick prints no gap.
@@ -673,7 +674,10 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     assert.equal(code, 2, out);
     // ⏱ 2026-09-28 · train ST-D0: 18 of 20 → 23 of 25 — the foundation
     // components raised the floor; two_pane.dart still carries two surfaces.
-    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 26 reachable surface\(s\).*floor is 28/s);
+    // ⏱ 2026-09-29 · trains ST-D6 + ST-D1: 23 of 25 → 29 of 31 — the form
+    // sheet and Home components raised the floor; two_pane.dart still carries
+    // two surfaces.
+    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 29 reachable surface\(s\).*floor is 31/s);
   });
 
   // ── M11g · THE CHASSIS FLOOR, PINNED BY NUMBER ────────────────────────────
@@ -792,7 +796,10 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     // ⏱ 2026-09-15 · [ADR 083]: 20 → 19 of 21 — AppScaffold is swept now.
     // ⏱ 2026-09-28 · train ST-D0: 19 of 21 → 19 of 26 — the foundation
     // components joined the root swept, so the unswept count is unchanged.
-    assert.match(out, /19 of 29 reachable surface\(s\) in packages\/design_system/);
+    // ⏱ 2026-09-29 · trains ST-D6 + ST-D1: 19 of 26 → 19 of 32 — the form
+    // sheet and Home components joined the root swept, so the unswept count is
+    // unchanged.
+    assert.match(out, /19 of 32 reachable surface\(s\) in packages\/design_system/);
   });
 });
 

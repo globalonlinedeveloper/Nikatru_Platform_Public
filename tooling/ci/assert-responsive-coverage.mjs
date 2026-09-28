@@ -693,10 +693,17 @@ const REQUIRED_COVERAGE = [
     // measured — 8 PRINTED".
     //   surfaces        25 → 28
     //   coveredSurfaces 17 → 20
+    //
+    // ⏱ RE-MEASURED 2026-09-29 · train ST-D1, on top of ST-D6 (train ST-D DW1)
+    // — the Home components (AppSectionHeader, AppListGroup, AppSummaryCard),
+    // each pumped at kPhone/kTablet/kDesktop by its own component test. Read
+    // off the run's own line: "23 of 31 surface(s) measured — 8 PRINTED".
+    //   surfaces        28 → 31
+    //   coveredSurfaces 20 → 23
     enforce: false,
-    surfaces: 28,
+    surfaces: 31,
     widthTestFiles: 19,
-    coveredSurfaces: 20,
+    coveredSurfaces: 23,
     label:
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, content_pane, two_pane and fifteen ' +
       'more, whose width decisions every stamped app inherits',

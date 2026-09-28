@@ -10,7 +10,6 @@ import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/core/router.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/features/detail/subscription_detail_screen.dart';
-import 'package:subscriptiontracker/features/shared/widgets.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 import 'package:subscriptiontracker/state/subscriptions_controller.dart';
@@ -185,11 +184,13 @@ Future<ProviderContainer> _selectFirstSubscription(WidgetTester tester) async {
   // the hero — and `tap()` refuses an ambiguous finder. Any of the list rows
   // reaches the same `_subCard` tap handler, which is the thing under test, so
   // `.first` is a choice of row and not a choice of behaviour.
+  // ⏱ 2026-09-28 · train ST-D1: the rows are `AppListRow`s, and the summary
+  // has no rows in it, so the list pane holds the only two matches now.
   await tester.tap(
     find
         .descendant(
           of: find.byKey(const Key('home-list-pane')),
-          matching: find.widgetWithText(RowCard, subs.first.name),
+          matching: find.widgetWithText(AppListRow, subs.first.name),
         )
         .first,
   );

@@ -844,9 +844,18 @@ const REQUIRED_COVERAGE = [
     //   surfaces  25 → 28
     //   a11yFiles  6 → 7
     //   cases     15 → 16
-    surfaces: 28,
-    a11yFiles: 7,
-    cases: 16,
+    //
+    // ⏱ RE-MEASURED 2026-09-29 · train ST-D1, on top of ST-D6 (train ST-D DW1):
+    // the Home components (AppSectionHeader, AppListGroup, AppSummaryCard)
+    // arrived swept, by one a11y_*_test.dart file per component. Read off this
+    // guard's own output on the branch: "13 of 31 reachable surface(s) carry
+    // an a11y sweep, from 10 a11y test file(s) across 19 case(s)".
+    //   surfaces  28 → 31
+    //   a11yFiles  7 → 10
+    //   cases     16 → 19
+    surfaces: 31,
+    a11yFiles: 10,
+    cases: 19,
     label:
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, auth_field, ' +
       'destructive_confirm_dialog, two_pane and fourteen more, mounted by every stamped app',
@@ -1061,6 +1070,11 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
       // FLOOR OVER NOTHING). Its selected-state semantics are asserted by
       // form_sheet_test.dart and, in the app, a11y_semantics_test.dart.
       'packages/design_system/lib/src/widgets/form_sheet.dart#AppFormActions',
+      // ⏱ 2026-09-28 · train ST-D1: the Home components, each in the same
+      // change as its sweep.
+      'packages/design_system/lib/src/widgets/app_section_header.dart#AppSectionHeader',
+      'packages/design_system/lib/src/widgets/app_list_group.dart#AppListGroup',
+      'packages/design_system/lib/src/widgets/app_summary_card.dart#AppSummaryCard',
     ]),
   ],
 ]);

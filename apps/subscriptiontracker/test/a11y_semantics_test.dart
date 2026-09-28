@@ -66,7 +66,7 @@ import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
     show InMemoryAuthRepository;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show ChassisLocalizations, buildAppTheme;
+    show AppListRow, ChassisLocalizations, buildAppTheme;
 import 'package:nikatru_purchases/nikatru_purchases.dart';
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/core/e2e_keys.dart';
@@ -683,6 +683,91 @@ void expectRowCardsLegible(
     );
   }
   _assertLegible(texts, screen, except);
+}
+
+/// [expectRowCardsLegible] for the design system's [AppListRow] — the row
+/// Home is built from since train ST-D1.
+///
+/// The SAME measurement, and it is needed for the same structural reason:
+/// `AppListRow` ends in `MergeSemantics`, so its node's label is the composite
+/// "Netflix\nIn 3 days\n\$15.49\nper month" and the guideline beside it can
+/// match no `Text` to it. What differs is WHERE the ground is: `AppListRow`
+/// paints no fill of its own, so the ground is the nearest coloured `Material`
+/// ABOVE the row — the `AppCard` of its `AppListGroup`. An opaque
+/// `BoxDecoration` colour on the way down (the monogram's `CircleAvatar`)
+/// becomes the ground for the text inside it, so the monogram is MEASURED
+/// rather than exempted; a translucent one is left to [_assertLegible], which
+/// refuses to score alpha.
+void expectListRowsLegible(WidgetTester tester, String screen) {
+  final Finder rows = find.byType(AppListRow);
+  expect(
+    rows,
+    findsWidgets,
+    reason:
+        'COVERAGE LOST — not one AppListRow was BUILT on $screen, so this limb '
+        'ranged over the empty set. Home renders rows only when the '
+        'subscription seed resolves; the fault would be in the pump.',
+  );
+  final List<_CardText> texts = <_CardText>[];
+  final List<String> titles = <String>[];
+  for (final Element row in rows.evaluate()) {
+    titles.add((row.widget as AppListRow).title);
+    Color? ground;
+    row.visitAncestorElements((Element a) {
+      final Widget w = a.widget;
+      if (w is Material && w.color != null) {
+        ground = w.color;
+        return false;
+      }
+      return true;
+    });
+    void walk(Element element, Color? here) {
+      final Widget widget = element.widget;
+      Color? next = here;
+      if (widget is DecoratedBox) {
+        final Decoration d = widget.decoration;
+        if (d is BoxDecoration && d.color != null) next = d.color;
+        if (d is BoxDecoration && d.gradient != null) next = null;
+      }
+      if (widget is Text) {
+        final TextStyle style = DefaultTextStyle.of(
+          element,
+        ).style.merge(widget.style);
+        expect(
+          style.color,
+          isNotNull,
+          reason: '"${widget.data}" on an AppListRow resolved to no colour',
+        );
+        texts.add(
+          _CardText(
+            widget.data ?? '',
+            style.color!,
+            next,
+            style.fontSize,
+            style.fontWeight == FontWeight.bold,
+          ),
+        );
+        return;
+      }
+      element.visitChildren((Element child) => walk(child, next));
+    }
+
+    walk(row, ground);
+  }
+  final Set<String> measurable = texts
+      .where((_CardText t) => t.ground != null)
+      .map((_CardText t) => t.text)
+      .toSet();
+  for (final String title in titles) {
+    expect(
+      measurable,
+      contains(title),
+      reason:
+          'COVERAGE LOST — the row titled "$title" on $screen contributed no '
+          'measurable string: the walk no longer reaches the card fill.',
+    );
+  }
+  _assertLegible(texts, screen, const <String, String>{});
 }
 
 /// Every `Text` on the CURRENTLY PUMPED SCREEN, with the ground the real tree
@@ -4642,7 +4727,10 @@ void main() {
         // arm and the call below carries NO `except:` map at all. The paragraph
         // above is the record of why the exemption existed, not a description of
         // this call.
-        expectRowCardsLegible(tester, 'home');
+        // ⏱ 2026-09-28 · train ST-D1: Home's rows are `AppListRow`s now, so
+        // the row limb is [expectListRowsLegible] — same measurement, the
+        // ground read from the row's `AppCard` above it.
+        expectListRowsLegible(tester, 'home');
       });
     });
 
@@ -4987,7 +5075,10 @@ void main() {
           covers: const <String>['Calendar', 'Upcoming renewals'],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
-        expectRowCardsLegible(tester, 'home (dark)');
+        // ⏱ 2026-09-28 · train ST-D1: Home's rows are `AppListRow`s now, so
+        // the row limb is [expectListRowsLegible] — same measurement, the
+        // ground read from the row's `AppCard` above it.
+        expectListRowsLegible(tester, 'home (dark)');
       });
     });
 

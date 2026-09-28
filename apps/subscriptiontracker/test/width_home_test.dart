@@ -132,7 +132,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:subscriptiontracker/features/detail/subscription_detail_screen.dart';
 import 'package:subscriptiontracker/features/home/home_screen.dart';
-import 'package:subscriptiontracker/features/shared/widgets.dart';
 
 import 'support/width_harness.dart';
 
@@ -346,20 +345,27 @@ void main() {
             '438 and the list is left at its 420 floor',
       );
       expect(offeredWidth(tester, kPlaceholder), 438);
-      // The hero is in ONE column, not both. Two hero cards quoting the same
-      // monthly total is the regression a naive `if (aside) …` in the wrong
-      // place produces, and it is invisible to a width assertion.
+      // The summary is in ONE column, not both. Two summary cards quoting
+      // the same monthly total is the regression a naive `if (aside) …` in the
+      // wrong place produces, and it is invisible to a width assertion.
+      //
+      // ⏱ 2026-09-28 · train ST-D1: found by the summary's own key rather than
+      // by the hero's `Pill`s, which the `AppSummaryCard` no longer uses.
       expect(
-        find.descendant(of: kListPane, matching: find.byType(Pill)),
+        find.descendant(
+          of: kListPane,
+          matching: find.byKey(HomeScreen.summaryKey),
+        ),
         findsNothing,
-        reason:
-            'the hero\'s two Pills are the cheapest proof it is NOT in the '
-            'list column any more — nothing else on this screen renders one',
+        reason: 'the summary is NOT in the list column any more',
       );
       expect(
-        find.descendant(of: kAside, matching: find.byType(Pill)),
-        findsWidgets,
-        reason: 'and they are in the aside instead, not simply gone',
+        find.descendant(
+          of: kAside,
+          matching: find.byKey(HomeScreen.summaryKey),
+        ),
+        findsOneWidget,
+        reason: 'and it is in the aside instead, not simply gone',
       );
     });
 
@@ -536,12 +542,13 @@ void main() {
         reason: 'nothing is selected on a cold start, at any width',
       );
 
-      // A `GlyphTile` is the leading mark of a subscription row and of nothing
-      // else on this screen — the unused-plans card leads with a bare '!'
-      // Container — so this cannot accidentally tap the one control here whose
-      // callback DOES need a router (`context.go('/insights')`).
+      // An `AppListRow` is a subscription row and nothing else on this
+      // screen — the unused-plans decision is a `DecisionStrip` — so this
+      // cannot accidentally tap the one control here whose callback DOES need
+      // a router (`context.go('/insights')`). (⏱ 2026-09-28 · train ST-D1: it
+      // was a `GlyphTile` finder while the rows were `RowCard`s.)
       await tester.tap(
-        find.descendant(of: kListPane, matching: find.byType(GlyphTile)).first,
+        find.descendant(of: kListPane, matching: find.byType(AppListRow)).first,
       );
       await tester.pump();
 
@@ -578,14 +585,38 @@ void main() {
         AppBreakpoints.form,
         reason: 'and it did not move or resize when the detail arrived',
       );
+      // The row the pane is about SAYS so — in the tree a reader hears, and
+      // by the bar the component draws for it — and it is the only one.
+      final Iterable<AppListRow> rows = tester.widgetList<AppListRow>(
+        find.descendant(of: kListPane, matching: find.byType(AppListRow)),
+      );
+      expect(
+        rows.where((AppListRow r) => r.selected == true),
+        isNotEmpty,
+        reason: 'a master-detail list must say which row the pane is about',
+      );
+      expect(
+        rows.every((AppListRow r) => r.selected != null),
+        isTrue,
+        reason: 'in the split every row is selectable, so every row says so',
+      );
     });
 
     testWidgets('below the split the same row still pushes a route', (
       WidgetTester tester,
     ) async {
       await pumpAt(tester, kPhone, const HomeScreen());
+      expect(
+        tester
+            .widgetList<AppListRow>(find.byType(AppListRow))
+            .every((AppListRow r) => r.selected == null),
+        isTrue,
+        reason:
+            'one column has no selection, so no row may announce "not '
+            'selected" — the tap pushes a route and comes back',
+      );
       await tester.tap(
-        find.descendant(of: kListPane, matching: find.byType(GlyphTile)).first,
+        find.descendant(of: kListPane, matching: find.byType(AppListRow)).first,
       );
       await tester.pump();
 
