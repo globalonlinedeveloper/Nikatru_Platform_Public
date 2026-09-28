@@ -19,11 +19,13 @@ import 'auth_redirect.dart';
 class SupabaseAuthRepository implements core.AuthRepository {
   SupabaseAuthRepository({
     sb.GoTrueClient? client,
+    sb.GoTrueClient? nativeCredentials,
     Future<void> Function()? requestServerDeletion,
     DateTime Function()? clock,
     this.redirects = AuthRedirects.none,
     this.refreshSkew = const Duration(seconds: 30),
   })  : _injected = client,
+        _native = nativeCredentials,
         _requestServerDeletion = requestServerDeletion,
         _now = clock ?? (() => DateTime.now().toUtc());
 
@@ -82,6 +84,46 @@ class SupabaseAuthRepository implements core.AuthRepository {
   final Future<void> Function()? _requestServerDeletion;
 
   sb.GoTrueClient get _auth => _injected ?? sb.Supabase.instance.client.auth;
+
+  /// ⏱ 2026-09-28 · ST-N1d — the client a native build sends its CAPTCHA-GATED
+  /// calls through, or null (web, a demo build, a test that wires none).
+  ///
+  /// 🔴 WITHOUT IT EVERY NATIVE SIGN-IN IS REFUSED `captcha_failed`. Box C's
+  /// GoTrue captchas the password grant, /signup, /recover and /resend, and no
+  /// store build carries a Turnstile site key (ADR 084). This client's base is
+  /// the platform Worker's native route (`nativeCredentialClient`), which
+  /// forwards exactly those four calls without the captcha. Refresh, the PKCE
+  /// exchange, OAuth and id_token stay on [_auth], direct to GoTrue.
+  final sb.GoTrueClient? _native;
+
+  /// Where a captcha-gated call goes: the native route's client, or the main
+  /// one. EVERY core method that declares `captchaToken` calls through this —
+  /// the set `tooling/ci/assert-captcha-gated-call-sites.mjs` derives.
+  sb.GoTrueClient get _credentials => _native ?? _auth;
+
+  /// The captcha token for a gated call: dropped on the native route, which
+  /// strips `gotrue_meta_security` anyway. A token minted for the web site key
+  /// has no business leaving a native build.
+  String? _captcha(String? token) => _native == null ? token : null;
+
+  /// Hands a session the native client minted to the MAIN client, which owns
+  /// persistence, refresh and the auth stream.
+  ///
+  /// 🔴 `setSession(refresh, accessToken:)`, NOT `recoverSession`. On the pinned
+  /// gotrue-dart 2.26.0 `recoverSession` emits `tokenRefreshed`
+  /// (`gotrue_client.dart:1177-1187`), so the router would hear of a sign-in as
+  /// a refresh; `setSession` with an unexpired access token saves the session
+  /// and emits `signedIn` (`:835-880`), after one `GET /user` straight to
+  /// GoTrue, which no captcha gates. `native_credential_route_test.dart` holds
+  /// that event.
+  Future<void> _handOver(sb.Session? session) async {
+    if (_native == null || session == null) return;
+    final String? refreshToken = session.refreshToken;
+    if (refreshToken == null || refreshToken.isEmpty) {
+      throw core.AuthFailure('Sign-in failed');
+    }
+    await _auth.setSession(refreshToken, accessToken: session.accessToken);
+  }
 
   /// 🔴 `emailConfirmedAt`, NOT THE DEPRECATED `confirmedAt`, AND NOT
   /// `identities`. gotrue keeps three things that look like this answer and only
@@ -234,11 +276,12 @@ class SupabaseAuthRepository implements core.AuthRepository {
   }) async {
     final sb.AuthResponse res;
     try {
-      res = await _auth.signInWithPassword(
+      res = await _credentials.signInWithPassword(
         email: email,
         password: password,
-        captchaToken: captchaToken,
+        captchaToken: _captcha(captchaToken),
       );
+      await _handOver(res.session);
     } on sb.AuthException catch (e) {
       throw _failureOf(e);
     }
@@ -279,14 +322,16 @@ class SupabaseAuthRepository implements core.AuthRepository {
   }) async {
     final sb.AuthResponse res;
     try {
-      res = await _auth.signUp(
+      res = await _credentials.signUp(
         email: email,
         password: password,
-        captchaToken: captchaToken,
+        captchaToken: _captcha(captchaToken),
         // The confirmation mail's link. Without it the user confirms into the
         // project's Site URL — app #1's web home — whichever app they signed up in.
         emailRedirectTo: redirects(AuthFlow.signUpConfirm),
       );
+      // A project with confirmation off answers sign-up with a session.
+      await _handOver(res.session);
     } on sb.AuthException catch (e) {
       throw _failureOf(e);
     }
@@ -397,10 +442,10 @@ class SupabaseAuthRepository implements core.AuthRepository {
   @override
   Future<void> sendPasswordReset(String email, {String? captchaToken}) async {
     try {
-      await _auth.resetPasswordForEmail(
+      await _credentials.resetPasswordForEmail(
         email,
         redirectTo: redirects(AuthFlow.reset),
-        captchaToken: captchaToken,
+        captchaToken: _captcha(captchaToken),
       );
     } on sb.AuthException catch (e) {
       throw _failureOf(e);
@@ -525,10 +570,10 @@ class SupabaseAuthRepository implements core.AuthRepository {
   }) async {
     if (email.isEmpty) throw core.AuthFailure('Email is required');
     try {
-      await _auth.resend(
+      await _credentials.resend(
         type: sb.OtpType.signup,
         email: email,
-        captchaToken: captchaToken,
+        captchaToken: _captcha(captchaToken),
         emailRedirectTo: redirects(AuthFlow.signUpConfirm),
       );
     } on sb.AuthException catch (e) {
@@ -543,10 +588,10 @@ class SupabaseAuthRepository implements core.AuthRepository {
       throw core.AuthFailure('Sign in first, then we can resend the email.');
     }
     try {
-      await _auth.resend(
+      await _credentials.resend(
         type: sb.OtpType.signup,
         email: email,
-        captchaToken: captchaToken,
+        captchaToken: _captcha(captchaToken),
         // The same destination as the first confirmation mail — a resend that
         // pointed somewhere else would confirm the user into a different app.
         emailRedirectTo: redirects(AuthFlow.signUpConfirm),
