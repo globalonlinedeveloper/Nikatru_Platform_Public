@@ -1065,8 +1065,6 @@ jobs:
       - uses: ./.github/actions/setup-node
       - run: npm ci
       - run: npm run build && test -s _site/index.html  # eleventy exits 0 on "Wrote 0 files"
-      - name: FF-2 red control — deliberately red, reverted by the next commit
-        run: exit 1
 
   ff-site-shared:
     # why: FF-2 — starts only once `site-shared` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
