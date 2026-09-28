@@ -41,10 +41,10 @@ Future<void> main() async {
     dist: AppConfig.releaseChannel,
   );
 
-  // ONE adapter, init()ed once by bootstrapNikatru (step 4: a second instance
-  // is a silent tap stream), with its app.yaml Windows identity (ST-R4).
-  final core.NotificationService notifications =
-      createLocalNotificationService(windows: kWindowsNotificationIdentity);
+  // ONE adapter, init()ed by bootstrapNikatru (its step 4); ST-R4 identity.
+  final core.NotificationService notifications = createLocalNotificationService(
+    windows: kWindowsNotificationIdentity,
+  );
 
   await bootstrapNikatru(
     notifications: notifications,
