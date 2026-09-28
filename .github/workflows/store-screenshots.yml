@@ -200,6 +200,12 @@ jobs:
           TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
+          # why: the one-time token each drive signs in with, as e2e.yml's drive does, never
+          # the Turnstile-gated login form (refused `captcha_failed` in run 36315636919). The
+          # first drive spends this one; the runner mints each later drive's with the
+          # service-role key and deletes that key from its env before starting any child.
+          E2E_TOKEN_HASH: ${{ steps.user.outputs.token_hash }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           # why: the runner records each drive's consent answer and install id here;
           # the purge step below reads the same path (tooling/e2e/purge.mjs).
           E2E_CONSENT_LEDGER: ${{ runner.temp }}/store-capture-consent.json
@@ -530,6 +536,12 @@ jobs:
           # why: no API_BASE_URL. The runner computes the sandbox hosts and refuses a supplied one.
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
+          # why: the one-time token each drive signs in with, as e2e.yml's drive does, never
+          # the Turnstile-gated login form (refused `captcha_failed` in run 36315636919). The
+          # first drive spends this one; the runner mints each later drive's with the
+          # service-role key and deletes that key from its env before starting any child.
+          E2E_TOKEN_HASH: ${{ steps.user.outputs.token_hash }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           # why: the runner records each drive's consent answer and install id here;
           # the purge step below reads the same path (tooling/e2e/purge.mjs).
           E2E_CONSENT_LEDGER: ${{ runner.temp }}/store-capture-consent.json
@@ -831,6 +843,12 @@ jobs:
           # why: no API_BASE_URL. The runner computes the sandbox hosts and refuses a supplied one.
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
+          # why: the one-time token each drive signs in with, as e2e.yml's drive does, never
+          # the Turnstile-gated login form (refused `captcha_failed` in run 36315636919). The
+          # first drive spends this one; the runner mints each later drive's with the
+          # service-role key and deletes that key from its env before starting any child.
+          E2E_TOKEN_HASH: ${{ steps.user.outputs.token_hash }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           # why: the runner records each drive's consent answer and install id here;
           # the purge step below reads the same path (tooling/e2e/purge.mjs).
           E2E_CONSENT_LEDGER: ${{ runner.temp }}/store-capture-consent.json
@@ -1119,6 +1137,12 @@ jobs:
           # why: no API_BASE_URL. The runner computes the sandbox hosts and refuses a supplied one.
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
+          # why: the one-time token each drive signs in with, as e2e.yml's drive does, never
+          # the Turnstile-gated login form (refused `captcha_failed` in run 36315636919). The
+          # first drive spends this one; the runner mints each later drive's with the
+          # service-role key and deletes that key from its env before starting any child.
+          E2E_TOKEN_HASH: ${{ steps.user.outputs.token_hash }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           # why: the runner records each drive's consent answer and install id here;
           # the purge step below reads the same path (tooling/e2e/purge.mjs).
           E2E_CONSENT_LEDGER: ${{ runner.temp }}/store-capture-consent.json

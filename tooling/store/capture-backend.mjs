@@ -74,7 +74,7 @@ export const WORKERS_DEV_SUBDOMAIN = 'nikatru';
 export const SUPPLIED_HOST_KEYS = Object.freeze(['API_BASE_URL', 'PLATFORM_BASE_URL', 'CONFIG_BASE_URL']);
 
 /** Every dart-define KEY capture-play-screenshots.mjs pushes, read from its push
- *  sites: `need` (the identity four), the stamp, the Turnstile site key, the
+ *  sites: `need` (the identity five), the stamp, the Turnstile site key, the
  *  proof flag, `launchDefineArgs()`, the backend pairs below and the per-capture
  *  `storeViewDefineArgs(cap)`. A key outside this set is refused by name. */
 export const CAPTURE_DEFINE_ALLOWLIST = Object.freeze([
@@ -82,6 +82,8 @@ export const CAPTURE_DEFINE_ALLOWLIST = Object.freeze([
   'SUPABASE_ANON_KEY',
   'E2E_EMAIL',
   'E2E_PASSWORD',
+  // The one-time sign-in token each drive spends instead of the captcha-gated form.
+  'E2E_TOKEN_HASH',
   'API_BASE_URL',
   'PLATFORM_BASE_URL',
   'CONFIG_BASE_URL',

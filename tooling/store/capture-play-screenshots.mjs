@@ -161,6 +161,7 @@ import { scanCaptureSuite, selfTestAccountAddressDetector, storeViewDefineArgs, 
 import { stageFallbackFonts, unstageFallbackFonts } from './capture-fallback-fonts.mjs';
 import { boardFileFor, boardOf, boardParityProblems, boardProvenance } from './capture-board-parity.mjs';
 import { appVersionDefine, StampRefused } from '../e2e/app-version-stamp.mjs';
+import { MagicLinkRefused, mintMagicLinkTokenHash } from '../e2e/magic_link.mjs';
 import {
   launchDefineArgs,
   scanTopBand,
@@ -171,6 +172,11 @@ import { backendDefinesForRun, assertCaptureDefines, CaptureBackendRefused } fro
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(join(HERE, '..', '..'));
+
+// Read once and dropped from the env before this script can start any child.
+// See "ONE SINGLE-USE SIGN-IN TOKEN PER DRIVE" for why it is here at all.
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+delete process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const argv = process.argv.slice(2);
 const PROOF = argv.includes('--proof');
@@ -372,7 +378,10 @@ if (PROOF && (baseDir === listingBase || baseDir.startsWith(listingBase + sep)))
 // API_BASE_URL left this list on 2026-09-25 (O-STORE-CAPTURE-WRITES-UNATTRIBUTED-ROWS):
 // the capture computes its API host from the wrangler configs (see "THE BACKEND
 // IS COMPUTED" below), and a caller that still sets it is REFUSED there.
-const need = ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'E2E_EMAIL', 'E2E_PASSWORD'];
+// E2E_TOKEN_HASH joined it on 2026-09-28, after run 36315636919:
+// a live build signs in with that one-time token, never the captcha-gated form —
+// see "ONE SINGLE-USE SIGN-IN TOKEN PER DRIVE" below.
+const need = ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'E2E_EMAIL', 'E2E_PASSWORD', 'E2E_TOKEN_HASH'];
 const missing = need.filter((k) => !process.env[k]);
 if (!PROOF && missing.length) {
   fail([
@@ -741,6 +750,65 @@ try {
   ]);
 }
 
+// ── 🔴 ONE SINGLE-USE SIGN-IN TOKEN PER DRIVE (2026-09-28) ─────────────────
+// A live capture signs in the way the nightly e2e does: store_screenshots_test.dart
+// spends E2E_TOKEN_HASH at `/verify` through the helper both suites import
+// (integration_test/magic_link_sign_in.dart) and never submits the login form.
+// The form is Turnstile-gated on the production auth box, and a headless driver
+// has no captcha token: the Play capture of run 36315636919 typed the password
+// and was refused `captcha_failed`, as the nightly had been until it switched.
+//
+// The token is SINGLE USE (a replay is HTTP 403) and this script runs one drive
+// per viewport, so drive 1 spends the token the provision step minted and every
+// later drive is handed a fresh one, minted by tooling/e2e/magic_link.mjs — the
+// same request provision_user.mjs makes — after the drive before it has run.
+// GoTrue keeps one live token per user, so they cannot be minted up front.
+//
+// ⚠️ THE SERVICE-ROLE KEY NEVER REACHES A CHILD. It is read once, at the top of
+// this script, and deleted from this process's env, so neither chromedriver nor
+// `flutter` (nor any build hook flutter runs) inherits it; CAPTURE_DEFINE_ALLOWLIST already refuses it as
+// a define by name. It is required only when a later drive exists to mint for,
+// and that is refused HERE, among the checks that read only the tree, rather
+// than one full drive later.
+if (!PROOF && CAPTURES.length > 1 && !SERVICE_ROLE_KEY) {
+  fail([
+    `a live capture of ${CAPTURES.length} viewports needs SUPABASE_SERVICE_ROLE_KEY and it is not set.`,
+    '',
+    'Each drive signs in by spending a single-use magic-link token, and E2E_TOKEN_HASH is spent by the',
+    'first. Every later drive needs a fresh token for the same user, minted with the service-role key',
+    '(tooling/e2e/magic_link.mjs). Without it the second drive would fail its sign-in with HTTP 403.',
+  ]);
+}
+
+/** A refusal raised INSIDE the drive loop. `fail()` exits on the spot, which
+ *  would skip the loop's `finally` — chromedriver left running, 23 MB of fonts
+ *  left staged in the app directory — so the loop catches this, cleans up, and
+ *  only then fails with these lines. */
+class DriveRefused extends Error {
+  constructor(lines) {
+    super(lines[0]);
+    this.name = 'DriveRefused';
+    this.lines = lines;
+  }
+}
+
+/** The next drive's token, minted after the previous drive spent its own. */
+async function nextSignInToken(cap) {
+  try {
+    const token = await mintMagicLinkTokenHash({
+      url: process.env.SUPABASE_URL,
+      serviceKey: SERVICE_ROLE_KEY,
+      email: process.env.E2E_EMAIL,
+    });
+    // Masked in Actions only: on a laptop the mask line would print it in clear.
+    if (process.env.GITHUB_ACTIONS === 'true') console.log(`::add-mask::${token}`);
+    return token;
+  } catch (e) {
+    if (!(e instanceof MagicLinkRefused)) throw e;
+    throw new DriveRefused([`no sign-in token could be minted for the "${cap.type}" drive.`, e.message]);
+  }
+}
+
 // 🔴 CHROMEDRIVER IS RESOLVED BEFORE ANY BYTES ARE DELETED. It used to be
 // resolved after, which meant a machine without chromedriver — the owner's, as
 // measured 2026-08-21: not on PATH, CHROMEDRIVER unset — EMPTIED THE PUBLISHED
@@ -903,12 +971,20 @@ if (!NATIVE) await stageFallbackFonts({ appDir, log: (m) => console.log(m) });
  *  that `binding.takeScreenshot` would honour. The driver process is started
  *  once and reused, because the handshake is the slow part and a second
  *  chromedriver on the same port would simply fail to bind. */
+let driveRefusal = null;
 try {
   if (!NATIVE && !(await waitForDriver())) {
     fail([`chromedriver did not become ready on port 4444.`, cdErr.trim() || '(no stderr)']);
   }
   writeLedger();
-  for (const cap of CAPTURES) {
+  // Where E2E_TOKEN_HASH sits in `defines`; rewritten in place per drive, so
+  // the argv below still spreads `defines` itself. See "ONE SINGLE-USE
+  // SIGN-IN TOKEN PER DRIVE".
+  const tokenAt = defines.findIndex((a) => a.startsWith('E2E_TOKEN_HASH='));
+  for (const [driveIndex, cap] of CAPTURES.entries()) {
+    if (!PROOF && driveIndex > 0 && tokenAt !== -1) {
+      defines[tokenAt] = `E2E_TOKEN_HASH=${await nextSignInToken(cap)}`;
+    }
     const dir = join(baseDir, SET_DIRS[cap.type]);
     // ⚠️ THE DIMENSION LEVER IS NOT THE SAME LEVER ON A NATIVE DRIVE, and that
     // is the one thing this branch must say out loud. On web, the frame size is
@@ -1078,6 +1154,9 @@ try {
       ]);
     }
   }
+} catch (e) {
+  if (!(e instanceof DriveRefused)) throw e;
+  driveRefusal = e.lines;
 } finally {
   cd?.kill();
   // The staged fonts are ~23 MB of upstream bytes inside a tracked app
@@ -1087,6 +1166,7 @@ try {
   // point of this limb is that it cleans a directory it did not have to trust.
   unstageFallbackFonts(appDir);
 }
+if (driveRefusal) fail(driveRefusal);
 
 // ── flatten and verify, per device type ─────────────────────────────────────
 // WebDriver hands back RGBA. Google requires "24-bit PNG (no alpha)", so every

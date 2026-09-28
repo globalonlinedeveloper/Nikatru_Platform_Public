@@ -11,6 +11,7 @@
 
 import { appendFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
+import { MagicLinkRefused, mintMagicLinkTokenHash } from './magic_link.mjs';
 
 const url = need('SUPABASE_URL').replace(/\/+$/, '');
 const serviceKey = need('SUPABASE_SERVICE_ROLE_KEY');
@@ -66,28 +67,18 @@ if (!out) {
 //
 // ⚠️ The ANON key is the one the browser carries. This script holds the
 // service-role key and the app never sees it.
-const linkRes = await fetch(`${url}/auth/v1/admin/generate_link`, {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    apikey: serviceKey,
-    Authorization: `Bearer ${serviceKey}`,
-  },
-  body: JSON.stringify({ type: 'magiclink', email }),
-});
-
-if (!linkRes.ok) {
-  console.error(`generate_link failed: HTTP ${linkRes.status}\n${await linkRes.text()}`);
-  process.exit(1);
-}
-
-const link = await linkRes.json();
-const tokenHash = link.hashed_token;
-if (!tokenHash) {
-  // Fail HERE rather than emit an empty define. An empty one sends the driver
-  // back to the password form, where after the cutover it dies on a captcha
-  // with a message that says nothing about a missing token.
-  console.error(`No hashed_token in generate_link response (keys: ${Object.keys(link).sort().join(', ')})`);
+//
+// The request itself is tooling/e2e/magic_link.mjs, shared with the store
+// capture, which mints one more per drive after its first (a token is single
+// use). An empty token is refused THERE rather than emitted as an empty define:
+// an empty one sends the driver back to the password form, where after the
+// cutover it dies on a captcha with a message that says nothing about a token.
+let tokenHash;
+try {
+  tokenHash = await mintMagicLinkTokenHash({ url, serviceKey, email });
+} catch (e) {
+  if (!(e instanceof MagicLinkRefused)) throw e;
+  console.error(e.message);
   process.exit(1);
 }
 console.log(`::add-mask::${tokenHash}`);

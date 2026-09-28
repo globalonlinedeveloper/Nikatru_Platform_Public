@@ -26,7 +26,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 
-import { stripSourceComments } from '../text-reductions.mjs';
+import { stripSourceComments, stripStringLiterals } from '../text-reductions.mjs';
 import { decodeRgba, encodeRgba } from '../../store/png-codec.mjs';
 import {
   LAUNCH_DEFINES,
@@ -39,6 +39,7 @@ import {
 import { storeViewDefineArgs } from '../../store/capture-suite-scan.mjs';
 import { sandboxBackend, productionD1Ids } from '../../store/capture-backend.mjs';
 import { backendOf } from '../../e2e/backend.mjs';
+import { mintMagicLinkTokenHash, MagicLinkRefused, TOKEN_HASH_SHAPE } from '../../e2e/magic_link.mjs';
 import { parseWorkflow, workflowSteps, jobEnv, shellSegments } from '../workflow-scan.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -484,7 +485,7 @@ describe('capture-play-screenshots.mjs stamps its drive and refuses without a le
     assert.match(code, /m\[2\] === 'APP_VERSION' \|\|/);
   });
 
-  /** A bare env: only what node needs to start, the four posture-gate vars
+  /** A bare env: only what node needs to start, the five posture-gate vars
    *  dummied past that gate, and nothing that looks like Actions. PATH is node's
    *  own directory, so neither chromedriver nor flutter can be found even if a
    *  refusal under test were missing; `--out` is a throwaway directory, so no
@@ -494,7 +495,7 @@ describe('capture-play-screenshots.mjs stamps its drive and refuses without a le
     try {
       const env = { PATH: dirname(process.execPath) };
       for (const k of ['SystemRoot', 'TEMP', 'TMP']) if (process.env[k]) env[k] = process.env[k];
-      for (const k of ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'E2E_EMAIL', 'E2E_PASSWORD']) env[k] = 'x';
+      for (const k of ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'E2E_EMAIL', 'E2E_PASSWORD', 'E2E_TOKEN_HASH']) env[k] = 'x';
       Object.assign(env, extra);
       const r = spawnSync(process.execPath, [RUNNER, '--app', 'subscriptiontracker', '--out', out], {
         encoding: 'utf8',
@@ -1209,5 +1210,350 @@ describe('store-screenshots.yml: a dry run opens no pull request, and each job p
     const { findings } = checkDryRunLane(parseLaneText(lines.join('\n')));
     assert.deepEqual(findings.map((f) => f.rule), ['dry-run-input']);
     assert.match(findings[0].msg, /does not say `default: false`/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE CAPTURE SIGNS IN WITH THE ONE-TIME TOKEN, NEVER THE CAPTCHA FORM
+// (2026-09-28, after Store screenshots run 36315636919).
+//
+// The Play capture of run 36315636919 typed the provisioned password into the
+// login form, and the production auth box refused it `captcha_failed`: the
+// password grant is Turnstile-gated and a headless driver has no captcha token.
+// The nightly e2e had already moved to the single-use magic-link token its
+// provision step mints; the capture job minted the same token and never spent
+// it. These limbs hold the capture to the e2e's path, through ONE helper, and
+// red the day it goes back to the form:
+//   · the helper is declared once, in integration_test/magic_link_sign_in.dart,
+//     and both suites import it — neither declares its own;
+//   · the capture suite reads E2E_TOKEN_HASH and no E2E_PASSWORD, its
+//     `if (AppConfig.isBackendLive)` branch spends the token, and every
+//     login-form key it still touches sits in that branch's `else` — a demo build;
+//   · the runner requires the token, mints each later drive's through the one
+//     minter provision_user.mjs also calls, and deletes the service-role key
+//     from its env before its first child process;
+//   · every capture job hands its capture step the provision step's token.
+// Each limb is a pure function over TEXT, so every red case below mutates the
+// real file's text, never a hand-built fixture.
+// ─────────────────────────────────────────────────────────────────────────────
+const SIGN_IN = {
+  capture: 'apps/subscriptiontracker/integration_test/store_screenshots_test.dart',
+  e2e: 'apps/subscriptiontracker/integration_test/app_test.dart',
+  helper: 'apps/subscriptiontracker/integration_test/magic_link_sign_in.dart',
+  runner: 'tooling/store/capture-play-screenshots.mjs',
+  provision: 'tooling/e2e/provision_user.mjs',
+  minter: 'tooling/e2e/magic_link.mjs',
+  lane: '.github/workflows/store-screenshots.yml',
+};
+const readSignIn = () => Object.fromEntries(Object.entries(SIGN_IN).map(([k, rel]) => [k, readFileSync(join(REPO, rel), 'utf8')]));
+
+const HELPER_DECL = /\bFuture<bool>\s+signInWithMagicToken\s*\(/g;
+const HELPER_IMPORT = /^import\s+'magic_link_sign_in\.dart';/m;
+const LOGIN_KEY = /\bE2EKeys\.login(?:Email|Password|Submit)\b/g;
+const PROVISION_STEP = /\bnode tooling\/e2e\/provision_user\.mjs\b/;
+const RUNNER_MINTER_IMPORT = /import\s*\{[^}]*\bmintMagicLinkTokenHash\b[^}]*\}\s*from\s*'\.\.\/e2e\/magic_link\.mjs'/;
+const PROVISION_MINTER_IMPORT = /import\s*\{[^}]*\bmintMagicLinkTokenHash\b[^}]*\}\s*from\s*'\.\/magic_link\.mjs'/;
+const LATER_DRIVE_MINT =
+  /if\s*\([^)]*\bdriveIndex > 0\b[^)]*\)\s*\{\s*defines\[tokenAt\] = `E2E_TOKEN_HASH=\$\{await nextSignInToken\(cap\)\}`;/;
+
+/** The `{…}` block whose `{` is at [open], as [open, close]; null if unclosed. */
+function braceBlock(text, open) {
+  let depth = 0;
+  for (let i = open; i < text.length; i++) {
+    if (text[i] === '{') depth++;
+    else if (text[i] === '}' && --depth === 0) return [open, i];
+  }
+  return null;
+}
+
+/** Every `if (AppConfig.isBackendLive) {…} else {…}` in [bare] — comments AND
+ *  string literals blanked, offsets kept, so a brace in a string cannot
+ *  unbalance a block. */
+function liveBranches(bare) {
+  const out = [];
+  for (const m of bare.matchAll(/\bif\s*\(\s*AppConfig\.isBackendLive\s*\)\s*\{/g)) {
+    const then = braceBlock(bare, m.index + m[0].length - 1);
+    if (!then) continue;
+    const e = /^\s*else\s*\{/.exec(bare.slice(then[1] + 1));
+    out.push({ then, els: e ? braceBlock(bare, then[1] + e[0].length) : null });
+  }
+  return out;
+}
+
+const lineAt = (text, i) => text.slice(0, i).split('\n').length;
+
+/** The sign-in contract over the seven files' text. Pure. */
+function captureSignInFindings(t) {
+  const findings = [];
+  const add = (rule, msg) => findings.push({ rule, msg });
+  const dart = (src) => stripSourceComments(src, '.dart');
+  const capture = dart(t.capture);
+  const bare = stripStringLiterals(capture);
+
+  // ONE helper, imported by both suites.
+  const declared = (src) => (dart(src).match(HELPER_DECL) ?? []).length;
+  if (declared(t.helper) !== 1) add('one-helper', `${SIGN_IN.helper} declares signInWithMagicToken ${declared(t.helper)} time(s), not once`);
+  for (const k of ['capture', 'e2e']) {
+    if (declared(t[k]) !== 0) add('one-helper', `${SIGN_IN[k]} declares its own signInWithMagicToken: a fork of the shared helper`);
+    if (!HELPER_IMPORT.test(dart(t[k]))) add('one-helper', `${SIGN_IN[k]} does not import 'magic_link_sign_in.dart'`);
+  }
+
+  // The capture suite reads the token, and no password.
+  if (!/String\.fromEnvironment\(\s*'E2E_TOKEN_HASH'\s*\)/.test(capture)) add('token-define', `${SIGN_IN.capture} reads no E2E_TOKEN_HASH define`);
+  if (/fromEnvironment\(\s*'E2E_PASSWORD'\s*\)/.test(capture)) {
+    add('no-password', `${SIGN_IN.capture} reads E2E_PASSWORD: a live build would carry a password to type into the captcha-gated form`);
+  }
+
+  // The live branch spends the token; the form lives only in its `else`.
+  const spend = liveBranches(bare).find(({ then }) => /\bsignInWithMagicToken\(\s*tester\s*,\s*tokenHash\b/.test(capture.slice(then[0], then[1])));
+  if (!spend) add('token-live', `no if (AppConfig.isBackendLive) branch of ${SIGN_IN.capture} calls signInWithMagicToken(tester, tokenHash, …)`);
+  for (const m of capture.matchAll(LOGIN_KEY)) {
+    const inDemo = spend?.els && m.index > spend.els[0] && m.index < spend.els[1];
+    if (!inDemo) {
+      add('form-live', `${SIGN_IN.capture}:${lineAt(capture, m.index)} touches ${m[0]} outside the demo (else) branch of the live token sign-in: a live build would go back to the captcha-gated form`);
+    }
+  }
+
+  // The runner: requires the token, mints through the one minter, drops the key.
+  const runner = stripSourceComments(t.runner, '.mjs');
+  const need = /\bconst need = \[([^\]]*)\]/.exec(runner);
+  if (!need || !/'E2E_TOKEN_HASH'/.test(need[1])) add('runner-need', `${SIGN_IN.runner}'s posture gate \`need\` does not require E2E_TOKEN_HASH`);
+  if (!RUNNER_MINTER_IMPORT.test(runner)) add('runner-mint', `${SIGN_IN.runner} does not import mintMagicLinkTokenHash from ../e2e/magic_link.mjs`);
+  if (!LATER_DRIVE_MINT.test(runner)) add('runner-mint', `${SIGN_IN.runner} does not hand each drive after the first a freshly minted E2E_TOKEN_HASH`);
+  // chromedriverPath() is the first call that starts a child (its PATH probe).
+  const dropAt = runner.indexOf('delete process.env.SUPABASE_SERVICE_ROLE_KEY;');
+  const firstChildAt = runner.indexOf('chromedriverPath();');
+  if (dropAt === -1 || firstChildAt === -1 || dropAt > firstChildAt) {
+    add('runner-key', `${SIGN_IN.runner} does not delete SUPABASE_SERVICE_ROLE_KEY from its env before its first child process`);
+  }
+
+  // One request: the minter makes it, provision_user calls the minter.
+  const minter = stripSourceComments(t.minter, '.mjs');
+  const provision = stripSourceComments(t.provision, '.mjs');
+  if ((minter.match(/\/auth\/v1\/admin\/generate_link/g) ?? []).length !== 1) add('one-minter', `${SIGN_IN.minter} does not make the generate_link request exactly once`);
+  if (/generate_link/.test(provision) || !PROVISION_MINTER_IMPORT.test(provision)) {
+    add('one-minter', `${SIGN_IN.provision} mints its token itself rather than through ./magic_link.mjs`);
+  }
+
+  // Every capture step is handed the provision step's token.
+  const jobs = [];
+  for (const job of workflowJobs(t.lane)) {
+    const cap = job.steps.find((st) => CAPTURE_INVOCATION.test(st.text));
+    if (!cap) continue;
+    jobs.push(job.name);
+    const out = /^\$\{\{\s*steps\.([A-Za-z0-9_-]+)\.outputs\.token_hash\s*\}\}$/.exec(cap.env.E2E_TOKEN_HASH ?? '');
+    const provisioned =
+      out && job.steps.some((st) => st.line < cap.line && PROVISION_STEP.test(st.text) && new RegExp(`^ {8}id: ${out[1]}\\s*$`, 'm').test(st.text));
+    if (!provisioned) {
+      add('workflow-token', `job ${job.name}: the capture step at :${cap.line} carries E2E_TOKEN_HASH=${cap.env.E2E_TOKEN_HASH ?? '(unset)'}, not an earlier provision_user.mjs step's token_hash`);
+    }
+  }
+  return { findings, jobs, loginKeys: [...capture.matchAll(LOGIN_KEY)].length, spend: Boolean(spend) };
+}
+
+describe('the capture signs in with the one-time token, never the captcha form', () => {
+  const real = readSignIn();
+  const rules = (t) => captureSignInFindings(t).findings.map((f) => f.rule);
+  /** The real texts with ONE file's text replaced, asserting the edit took. */
+  const mutated = (key, fn) => {
+    const after = fn(real[key]);
+    assert.notEqual(after, real[key], `the mutation of ${SIGN_IN[key]} changed nothing — the case would pass vacuously`);
+    return { ...real, [key]: after };
+  };
+
+  test('GREEN CONTROL · one helper, a live token branch, the form only in the demo branch, all four jobs handed the token', () => {
+    const r = captureSignInFindings(real);
+    assert.deepEqual(r.findings, []);
+    assert.ok(r.spend, 'the live token branch was not found');
+    // Pinned by name, so a census that shrank cannot pass over less.
+    assert.deepEqual(r.jobs, ['capture', 'capture-linux', 'capture-desktop-native', 'capture-ios']);
+    assert.ok(r.loginKeys >= 3, `the demo branch touches ${r.loginKeys} login key(s); email, password and submit are expected there`);
+  });
+
+  test('🔴 the live branch going back to the form is named, with its line', () => {
+    const t = mutated('capture', (s) =>
+      s.replace('await signInWithMagicToken(tester, tokenHash, pumpFor: pumpFor);', 'await tester.tap(find.byKey(E2EKeys.loginSubmit));'),
+    );
+    const f = captureSignInFindings(t).findings;
+    assert.deepEqual([...new Set(f.map((x) => x.rule))].sort(), ['form-live', 'token-live']);
+    assert.match(f.find((x) => x.rule === 'form-live').msg, /store_screenshots_test\.dart:\d+ touches E2EKeys\.loginSubmit outside the demo/);
+  });
+
+  test('🔴 a form submit hoisted out of the if/else, ahead of the live branch, is named', () => {
+    const t = mutated('capture', (s) =>
+      s.replace('    if (AppConfig.isBackendLive) {\n      expect(\n        tokenHash,', '    await tester.tap(find.byKey(E2EKeys.loginSubmit));\n    if (AppConfig.isBackendLive) {\n      expect(\n        tokenHash,'),
+    );
+    assert.deepEqual(rules(t), ['form-live']);
+  });
+
+  test('🔴 reading E2E_PASSWORD back into the capture suite is named', () => {
+    const t = mutated('capture', (s) =>
+      s.replace(
+        "  const String tokenHash = String.fromEnvironment('E2E_TOKEN_HASH');",
+        "  const String tokenHash = String.fromEnvironment('E2E_TOKEN_HASH');\n  const String password = String.fromEnvironment('E2E_PASSWORD');",
+      ),
+    );
+    assert.deepEqual(rules(t), ['no-password']);
+  });
+
+  test('🔴 a capture suite that no longer reads the token is named', () => {
+    const t = mutated('capture', (s) => s.replace("String.fromEnvironment('E2E_TOKEN_HASH')", "String.fromEnvironment('E2E_TOKEN')"));
+    assert.deepEqual(rules(t), ['token-define']);
+  });
+
+  test('🔴 a capture suite that forks the helper instead of importing it is named', () => {
+    const t = mutated('capture', (s) =>
+      `${s.replace("import 'magic_link_sign_in.dart';\n", '')}\nFuture<bool> signInWithMagicToken(WidgetTester tester, String tokenHash) async => false;\n`,
+    );
+    assert.deepEqual(rules(t), ['one-helper', 'one-helper']);
+  });
+
+  test('🔴 the e2e suite forking it back is named too — ONE helper, both callers', () => {
+    const t = mutated('e2e', (s) => `${s}\nFuture<bool> signInWithMagicToken(WidgetTester t, String h) async => false;\n`);
+    assert.deepEqual(rules(t), ['one-helper']);
+  });
+
+  test('🔴 a runner whose posture gate stops requiring the token is named', () => {
+    const t = mutated('runner', (s) => s.replace(", 'E2E_PASSWORD', 'E2E_TOKEN_HASH'];", ", 'E2E_PASSWORD'];"));
+    assert.deepEqual(rules(t), ['runner-need']);
+  });
+
+  test('🔴 a runner that hands every drive the one spent token is named', () => {
+    const t = mutated('runner', (s) => s.replace('driveIndex > 0 && tokenAt', 'driveIndex < 0 && tokenAt'));
+    assert.deepEqual(rules(t), ['runner-mint']);
+  });
+
+  test('🔴 a runner that leaves the service-role key in its env for its children is named', () => {
+    const t = mutated('runner', (s) => s.replace('delete process.env.SUPABASE_SERVICE_ROLE_KEY;', ''));
+    assert.deepEqual(rules(t), ['runner-key']);
+  });
+
+  test('🔴 provision_user.mjs minting its own token again is named', () => {
+    const t = mutated('provision', (s) => `${s}\nawait fetch(url + '/auth/v1/admin/generate_link', { method: 'POST' });\n`);
+    assert.deepEqual(rules(t), ['one-minter']);
+  });
+
+  test('🔴 a capture job whose capture step is not handed the token is named, with its job', () => {
+    const ios = workflowJobs(real.lane).find((j) => j.name === 'capture-ios');
+    const cap = ios?.steps.find((st) => CAPTURE_INVOCATION.test(st.text));
+    const at = cap?.envLine.E2E_TOKEN_HASH;
+    assert.ok(at, 'the capture-ios capture step carries no E2E_TOKEN_HASH to remove');
+    const t = mutated('lane', (s) => s.split('\n').filter((_, i) => i !== at - 1).join('\n'));
+    const f = captureSignInFindings(t).findings;
+    assert.deepEqual(f.map((x) => x.rule), ['workflow-token']);
+    assert.match(f[0].msg, /^job capture-ios: /);
+  });
+
+  test('🔴 a token taken from a step that is not the provisioner is named', () => {
+    const t = mutated('lane', (s) =>
+      s.replace('E2E_TOKEN_HASH: ${{ steps.user.outputs.token_hash }}', 'E2E_TOKEN_HASH: ${{ steps.backend.outputs.token_hash }}'),
+    );
+    assert.deepEqual(rules(t), ['workflow-token']);
+  });
+});
+
+describe('capture-play-screenshots.mjs mints a sign-in token for every drive after the first', () => {
+  /** A live, bare env past the posture gate, the stamp, the ledger and the
+   *  sandbox backend — the refusals above the one under test — and nothing that
+   *  looks like Actions. PATH is node's own directory, so no chromedriver. */
+  const liveRun = (extra) => {
+    const out = mkdtempSync(join(tmpdir(), 'nk-lane-token-'));
+    try {
+      const env = { PATH: dirname(process.execPath) };
+      for (const k of ['SystemRoot', 'TEMP', 'TMP']) if (process.env[k]) env[k] = process.env[k];
+      for (const k of ['SUPABASE_ANON_KEY', 'E2E_EMAIL', 'E2E_PASSWORD', 'E2E_TOKEN_HASH']) env[k] = 'x';
+      Object.assign(env, {
+        SUPABASE_URL: sandboxBackend().platform.supabaseUrl,
+        STORE_CAPTURE_APP_VERSION: 'rehearsal-1790000000',
+        E2E_CONSENT_LEDGER: join(out, 'ledger.json'),
+        ...extra,
+      });
+      const r = spawnSync(process.execPath, [RUNNER, '--app', 'subscriptiontracker', '--out', join(out, 'set')], {
+        encoding: 'utf8',
+        env,
+        timeout: 120_000,
+      });
+      return { code: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+    } finally {
+      rmSync(out, { recursive: true, force: true });
+    }
+  };
+
+  test('🔴 a live Play run (two viewports) with no SUPABASE_SERVICE_ROLE_KEY REFUSES before chromedriver, naming it', () => {
+    const r = liveRun({});
+    assert.equal(r.code, 1, `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`);
+    assert.match(r.stderr, /a live capture of 2 viewports needs SUPABASE_SERVICE_ROLE_KEY and it is not set/);
+    assert.doesNotMatch(r.stderr, /chromedriver was not found/);
+    assert.doesNotMatch(r.stdout, /^flutter /m);
+  });
+
+  test('GREEN CONTROL · with the key, the same run passes that limb and stops at chromedriver', () => {
+    const r = liveRun({ SUPABASE_SERVICE_ROLE_KEY: 'x' });
+    assert.equal(r.code, 1, `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`);
+    assert.doesNotMatch(r.stderr, /SUPABASE_SERVICE_ROLE_KEY/);
+    assert.match(r.stderr, /chromedriver was not found on PATH/);
+  });
+});
+
+describe('tooling/e2e/magic_link.mjs — the one minter', () => {
+  /** A fetch that records its calls and answers [status] with [body]. */
+  const fakeFetch = (status, body) => {
+    const calls = [];
+    const f = async (url, init) => {
+      calls.push({ url, init });
+      return { ok: status >= 200 && status < 300, status, json: async () => body, text: async () => JSON.stringify(body) };
+    };
+    return { f, calls };
+  };
+  /** A hashed_token of the shape GoTrue issues: hex SHA-224, 56 characters. */
+  const HEX56 = 'a1'.repeat(28);
+
+  test('posts a magiclink generate_link for the address with the service key, and returns hashed_token', async () => {
+    const { f, calls } = fakeFetch(200, { hashed_token: HEX56, action_link: 'x' });
+    const got = await mintMagicLinkTokenHash({ url: 'https://auth.example.invalid/', serviceKey: 'k', email: 'a@b.invalid', fetchImpl: f });
+    assert.equal(got, HEX56);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, 'https://auth.example.invalid/auth/v1/admin/generate_link');
+    assert.equal(calls[0].init.method, 'POST');
+    assert.equal(calls[0].init.headers.Authorization, 'Bearer k');
+    assert.deepEqual(JSON.parse(calls[0].init.body), { type: 'magiclink', email: 'a@b.invalid' });
+  });
+
+  test('🔴 a non-2xx answer is refused with its status', async () => {
+    const { f } = fakeFetch(403, { msg: 'nope' });
+    await assert.rejects(
+      mintMagicLinkTokenHash({ url: 'https://a.invalid', serviceKey: 'k', email: 'e', fetchImpl: f }),
+      (e) => e instanceof MagicLinkRefused && /generate_link failed: HTTP 403/.test(e.message),
+    );
+  });
+
+  test('🔴 an answer with no hashed_token is refused, naming the keys it had', async () => {
+    const { f } = fakeFetch(200, { action_link: 'x', email_otp: '1' });
+    await assert.rejects(
+      mintMagicLinkTokenHash({ url: 'https://a.invalid', serviceKey: 'k', email: 'e', fetchImpl: f }),
+      (e) => e instanceof MagicLinkRefused && /No hashed_token .*keys: action_link, email_otp/.test(e.message),
+    );
+  });
+
+  test('🔴 an empty input is refused before any request is made', async () => {
+    const { f, calls } = fakeFetch(200, { hashed_token: HEX56 });
+    await assert.rejects(
+      mintMagicLinkTokenHash({ url: 'https://a.invalid', serviceKey: '', email: 'e', fetchImpl: f }),
+      (e) => e instanceof MagicLinkRefused && /serviceKey is empty/.test(e.message),
+    );
+    assert.equal(calls.length, 0);
+  });
+
+  test('🔴 a hashed_token that is not a hex digest is refused — a newline in it would write step outputs of its own', async () => {
+    assert.ok(TOKEN_HASH_SHAPE.test(HEX56), 'GREEN CONTROL: the shape GoTrue issues must pass');
+    for (const bad of [`${HEX56}\nuser_id=00000000-0000-0000-0000-000000000000`, 'short', HEX56.toUpperCase(), `${HEX56}=`]) {
+      const { f } = fakeFetch(200, { hashed_token: bad });
+      await assert.rejects(
+        mintMagicLinkTokenHash({ url: 'https://a.invalid', serviceKey: 'k', email: 'e', fetchImpl: f }),
+        // The refusal names the length, never the value: it is a credential.
+        (e) => e instanceof MagicLinkRefused && /not a hex digest \(\d+ characters\)/.test(e.message) && !e.message.includes(bad),
+        `accepted ${JSON.stringify(bad)}`,
+      );
+    }
   });
 });
