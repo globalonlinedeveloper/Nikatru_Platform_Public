@@ -109,7 +109,18 @@
     "That walk resolves every file in the bundle to exactly one row — a row above, or one scoped to THIS app —",
     "so an `app:<other>` row never satisfies an app, and a new app's rows come from its own bundle. The rows",
     "live in their own array so that every row above keeps its shape, and a guard that predates the array",
-    "reads this file exactly as it did."
+    "reads this file exactly as it did.",
+    "",
+    "🔴 THE STAMP WRITES AN APP'S ROWS (2026-09-28, LEAD RULING NP12B-R2, ONE PIPELINE). tooling/kit/stamp-app.mjs",
+    "runs `flutter pub get` at the repo root and then tooling/ci/gen-app-licence-rows.mjs --write --app <id>,",
+    "which derives one row per file the app's resolved runtime closure ships into its web bundle: each package's",
+    "own `flutter: assets:`/`fonts:` declaration, and its LICENSE read by the same classifier the walk uses",
+    "(tooling/ci/package-assets.mjs). Before it nothing wrote these rows: app #1's five were typed from a red",
+    "build, and train W47 (#1020) ejected the brick's store bridge because the probe's first package file had",
+    "no row and a hand-typed `app:probe` row names an app no committed tree holds. The generator OWNS which",
+    "files have a row and each row's package, licence, origin and attribution; the prose (id, name, source,",
+    "shippedIn, any note) is written once and is a person's to edit. Its `--check` runs over every app in the",
+    "app_brick lane, and the bundle walk above stays the second witness: it grades a real build."
   ],
   "derivation": {
     "_why": [

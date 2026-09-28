@@ -527,8 +527,12 @@ bool _writeAppDeclaration(
   for (final p in platforms) {
     buffer.writeln('  - $p');
   }
+  buffer.writeln();
+  // O-BRICK-SELLS-NOTHING-IN-A-STORE (12b). The brick depends on the store
+  // billing bridge and wires it, so the app declares it — pending, until the
+  // owner creates its RevenueCat apps.
+  _writeMobileIap(context, buffer, id: id);
   buffer
-    ..writeln()
     // A stamp cannot know a store listing URL — the store issues it, months
     // later, after a review — and inventing a plausible one publishes a link a
     // stranger follows into a 404. An empty block renders every storefront key
@@ -771,6 +775,106 @@ void _writeStoreRecords(HookContext context, StringBuffer buffer) {
       ..writeln('    declaredOn: null');
   }
   buffer.writeln();
+}
+
+/// O-BRICK-SELLS-NOTHING-IN-A-STORE (12b) — the app's `billing.mobileIap`,
+/// `state: pending`.
+///
+/// Pending because nothing exists yet: no RevenueCat app (so no
+/// `revenuecatAppIds`, which the schema refuses at pending), no key secret and
+/// no store product. What IS written is what the owner creates against:
+///   · `publicKeySecrets` — the two repository secret NAMES, this app's own
+///     (`REVENUECAT_PUBLIC_KEY_{GOOGLE,APPLE}_<ID>`, the id upper-cased with `-`
+///     as `_`); render.mjs refuses one name in two apps, because a RevenueCat
+///     key belongs to one RevenueCat app;
+///   · `storeProducts` — one per plan, in the pattern of the app that already
+///     sells in a store (the first `state: live` declaration under apps/), read
+///     at stamp time and never typed here. Every id carries THIS app's id as
+///     its prefix (the live app's own prefix swapped, or added where it has
+///     none): App Store Connect never reuses a product id across the apps of
+///     one account, so app #1's `pro_monthly` cannot be app #2's (rv-c23).
+/// With no live app to read, no block is written and CI says so: assert-app-yaml
+/// limb 6 refuses the bridge dependency without the declaration.
+void _writeMobileIap(HookContext context, StringBuffer buffer, {required String id}) {
+  final live = _liveStoreProducts(id);
+  if (live == null) {
+    context.logger.warn(
+      'billing: no app under apps/ declares a live billing.mobileIap with '
+      'storeProducts, so this app has no product pattern to follow and no '
+      'billing block was written. CI will say so (assert-app-yaml limb 6).',
+    );
+    return;
+  }
+  final suffix = id.toUpperCase().replaceAll('-', '_');
+  final ownPrefix = '${id.replaceAll('-', '_')}_';
+  final livePrefix = '${live.app.replaceAll('-', '_')}_';
+  buffer
+    ..writeln('# O-BRICK-SELLS-NOTHING-IN-A-STORE (12b). Pending: no RevenueCat app exists yet, so no')
+    ..writeln('# revenuecatAppIds. The owner creates the two RevenueCat apps (then adds their ids and')
+    ..writeln('# flips `state: live`), the two repository secrets named below, and the store products')
+    ..writeln("# below (the pattern of ${live.app}'s, read at stamp time).")
+    ..writeln('billing:')
+    ..writeln('  mobileIap:')
+    ..writeln('    provider: revenuecat')
+    ..writeln('    entitlementId: pro')
+    ..writeln('    state: pending')
+    ..writeln('    publicKeySecrets:')
+    ..writeln('      android: REVENUECAT_PUBLIC_KEY_GOOGLE_$suffix')
+    ..writeln('      ios: REVENUECAT_PUBLIC_KEY_APPLE_$suffix')
+    ..writeln('    storeProducts:');
+  for (final p in live.products) {
+    final productId = p.productId.startsWith(livePrefix)
+        ? '$ownPrefix${p.productId.substring(livePrefix.length)}'
+        : '$ownPrefix${p.productId}';
+    buffer
+      ..writeln('      - plan: ${p.plan}')
+      ..writeln('        productId: $productId');
+  }
+  buffer.writeln();
+}
+
+/// The `storeProducts` of the first app (by directory name, never [exceptId])
+/// whose app.yaml declares `billing.mobileIap` at `state: live`. Read by
+/// indentation, the one structure these lines have; null when no app sells yet.
+({String app, List<({String plan, String productId})> products})? _liveStoreProducts(String exceptId) {
+  final apps = Directory('apps');
+  if (!apps.existsSync()) return null;
+  final dirs = apps.listSync().whereType<Directory>().toList()
+    ..sort((a, b) => a.path.compareTo(b.path));
+  for (final dir in dirs) {
+    final appId = dir.uri.pathSegments.where((s) => s.isNotEmpty).last;
+    if (appId == exceptId) continue;
+    final yaml = File('${dir.path}/app.yaml');
+    if (!yaml.existsSync()) continue;
+    final lines = yaml.readAsLinesSync();
+    final at = lines.indexWhere((l) => RegExp(r'^\s+mobileIap:\s*$').hasMatch(l));
+    if (at == -1) continue;
+    int indentOf(String l) => l.length - l.trimLeft().length;
+    final block = <String>[];
+    for (var i = at + 1; i < lines.length; i++) {
+      final l = lines[i];
+      if (l.trim().isEmpty || l.trimLeft().startsWith('#')) continue;
+      if (indentOf(l) <= indentOf(lines[at])) break;
+      block.add(l);
+    }
+    if (!block.any((l) => RegExp(r'^\s+state:\s*live\s*$').hasMatch(l))) continue;
+    final products = <({String plan, String productId})>[];
+    String? plan;
+    for (final l in block) {
+      final p = RegExp(r'^\s+-\s+plan:\s*(\S+)\s*$').firstMatch(l);
+      if (p != null) {
+        plan = p.group(1);
+        continue;
+      }
+      final q = RegExp(r'^\s+productId:\s*(\S+)\s*$').firstMatch(l);
+      if (q != null && plan != null) {
+        products.add((plan: plan, productId: q.group(1)!));
+        plan = null;
+      }
+    }
+    if (products.isNotEmpty) return (app: appId, products: products);
+  }
+  return null;
 }
 
 /// The header line, kept in one place so the notice and the app it names cannot

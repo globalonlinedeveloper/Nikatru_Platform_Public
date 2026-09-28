@@ -17,3 +17,4 @@ library;
 
 export 'src/revenuecat_bridge.dart';
 export 'src/revenuecat_capabilities.dart';
+export 'src/store_bridge_wiring.dart';
