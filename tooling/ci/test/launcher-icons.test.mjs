@@ -546,8 +546,9 @@ const RUN_TIMEOUT_MS = 120_000;
 // caching exactly as it is and leaves nothing behind. All three names, because
 // os.tmpdir() reads TMPDIR on POSIX and TEMP, then TMP, on Windows.
 const fixtureTemp = () => ({ TMPDIR: TMP, TEMP: TMP, TMP });
-const run = ({ root, sdkRoot }, env = {}) => {
+const run = ({ root, sdkRoot }, env = {}, spawnOptions = {}) => {
   const r = spawnSync(process.execPath, [GUARD, root], {
+    ...spawnOptions,
     encoding: 'utf8',
     env: { ...process.env, ...fixtureTemp(), FLUTTER_ROOT: sdkRoot, ...env },
     timeout: RUN_TIMEOUT_MS,
@@ -603,7 +604,9 @@ describe('assert-launcher-icons', () => {
   // run; --single-threaded, 0 on every run. Deterministic, unlike the hang:
   // delete the relaunch and this line says ON.
   test('the working guard runs with V8 background tasks OFF, so its exit cannot deadlock', () => {
-    const { code, out } = run(world());
+    // singleThreaded: false — spawned WITHOUT the flag the spawn-ceiling preload adds,
+    // so the relaunch is what makes it single-threaded (tooling/scripts/spawn-ceiling.mjs).
+    const { code, out } = run(world(), {}, { singleThreaded: false });
     assert.equal(code, 0, out);
     assert.match(out, /V8 background tasks: OFF \(--single-threaded\)/);
   });

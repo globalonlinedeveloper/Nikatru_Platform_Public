@@ -276,7 +276,7 @@
   "smoke-web-artifact.test.mjs": 30,
   "snap-submission.test.mjs": 48,
   "snapcraft-generable.test.mjs": 92,
-  "spawn-ceiling.test.mjs": 7,
+  "spawn-ceiling.test.mjs": 11,
   "spec-guards-worktree.test.mjs": 21,
   "spec-guards.test.mjs": 9,
   "stamp-app.test.mjs": 9,

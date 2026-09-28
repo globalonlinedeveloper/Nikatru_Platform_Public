@@ -14,29 +14,56 @@
 //       preload and `--test-timeout=`, with a fixture line that lacks it as the red
 //       control, so the check is not vacuous.
 //
+// ⏱ 2026-09-28 · PR #1025 (run 36376688038, guard-meta): no-hardcoded-strings.test.mjs
+// :1033's guard child printed and never exited, and the ceiling killed it at 240 s
+// (nodejs/node#54918). The preload now starts every node child --single-threaded, the
+// flag FXH-2 (#1015) gave the extensions self-test's children. These cases hold it:
+//   (d) each launch form — spawnSync (by path and by name), execFileSync, execSync,
+//       spawn, execFile (callback and promisified), exec, fork — starts node with the
+//       flag exactly once, including a launch that already carried it; the SAME
+//       child without the preload sees no flag on any of them, the red control;
+//   (e) `singleThreaded: false` keeps V8 background tasks on, and a program that is
+//       not node keeps its arguments byte for byte;
+//   (f) every `singleThreaded: false` under a test directory is declared in OPT_OUTS
+//       with its count, so a new launch cannot quietly step out from under the flag;
+//       a fixture with an undeclared opt-out is the red control.
+//
+// Mutations run against the real tree (2026-09-28, predictions written first):
+//   · `singleThreadedArgs` returns `args` unchanged                     → (d) RED
+//   · the execSync/exec command rewrite dropped                          → (d) RED
+//   · the opt-out ignored (`optedOut` returns false)                     → (e) RED
+//   · a `singleThreaded: false` added to a test file OPT_OUTS lacks      → (f) RED
+//
 // Run:  node --test tooling/ci/test/spawn-ceiling.test.mjs
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readdirSync, readFileSync } from 'node:fs';
-import { join, dirname, resolve } from 'node:path';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname, resolve, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { CEILING_ENV, DEFAULT_CEILING_MS } from '../../scripts/spawn-ceiling.mjs';
+import { CEILING_ENV, DEFAULT_CEILING_MS, singleThreadedArgs, singleThreadedCommand } from '../../scripts/spawn-ceiling.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const PRELOAD = join(ROOT, 'tooling', 'scripts', 'spawn-ceiling.mjs');
 const WORKFLOWS = join(ROOT, '.github', 'workflows');
 
-/** Runs `source` as an ES module in a child node that loaded the preload, with
- *  NIKATRU_SPAWN_CEILING_MS set, and returns the JSON the child printed. The
- *  outer spawn has its own explicit 60 s timeout, so this file cannot hang either. */
-function inChild(ceilingMs, source) {
+/** Runs `source` as an ES module in a child node that loaded the preload (unless
+ *  `preload` is false), with NIKATRU_SPAWN_CEILING_MS set, and returns the JSON the
+ *  child printed. The outer spawn has its own explicit 60 s timeout, so this file
+ *  cannot hang either. `viaFile` hands the source over as a temporary .mjs, not
+ *  `-e`: endpoint protection on a Windows host refused (EPERM) to start a process
+ *  whose COMMAND LINE held EVERY_FORM's launch calls, 2026-09-28. */
+function inChild(ceilingMs, source, { preload = true, viaFile = false } = {}) {
+  const dir = viaFile ? mkdtempSync(join(tmpdir(), 'spawn-ceiling-src-')) : null;
+  if (dir) writeFileSync(join(dir, 'child.mjs'), source);
   const r = spawnSync(
     process.execPath,
-    ['--import', pathToFileURL(PRELOAD).href, '--input-type=module', '-e', source],
+    [...(preload ? ['--import', pathToFileURL(PRELOAD).href] : []), ...(dir ? [join(dir, 'child.mjs')] : ['--input-type=module', '-e', source])],
     { encoding: 'utf8', timeout: 60_000, env: { ...process.env, [CEILING_ENV]: String(ceilingMs) } },
   );
+  if (dir) rmSync(dir, { recursive: true, force: true });
   assert.equal(r.error, undefined, `the child did not finish (${r.error?.code ?? r.error})`);
   assert.equal(r.status, 0, `the child failed:\n${r.stdout}\n${r.stderr}`);
   return JSON.parse(r.stdout.trim().split('\n').pop());
@@ -146,5 +173,134 @@ describe('spawn-ceiling: every workflow node --test loads the preload', () => {
     // Anti-vacuity: five known lines on 2026-09-25 (ci.yml ×2, extensions-ci.yml ×3).
     assert.ok(seen >= 5, `only ${seen} node --test line(s) found: the scan stopped seeing them`);
     assert.deepEqual(bad, [], `node --test without the spawn-ceiling preload:\n${bad.join('\n')}`);
+  });
+});
+
+// The probe prints how many times --single-threaded is in its own execArgv. The flag
+// is spelled in two halves so a command that carries the probe does not itself
+// contain the flag, which would read as "already carried" and skip the rewrite.
+const PROBE = "process.stdout.write(String(process.execArgv.join(' ').split('--single' + '-threaded').length - 1))";
+const EVERY_FORM = `
+  import { spawnSync, spawn, execFileSync, execFile, execSync, exec, fork } from 'node:child_process';
+  import { promisify } from 'node:util';
+  import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+  import { tmpdir } from 'node:os';
+  import { join } from 'node:path';
+  const PROBE = ${JSON.stringify(PROBE)};
+  const node = process.execPath;
+  const cmd = '"' + node + '" -e "' + PROBE + '"';
+  const out = (c) => new Promise((ok) => { let o = ''; c.stdout.on('data', (d) => (o += d)); c.on('close', () => ok(o)); });
+  const dir = mkdtempSync(join(tmpdir(), 'spawn-ceiling-'));
+  const mod = join(dir, 'probe.cjs');
+  writeFileSync(mod, PROBE);
+  const got = {};
+  got.spawnSync = spawnSync(node, ['-e', PROBE], { encoding: 'utf8' }).stdout;
+  got.spawnSyncByName = spawnSync('node', ['-e', PROBE], { encoding: 'utf8' }).stdout;
+  got.execFileSync = execFileSync(node, ['-e', PROBE], { encoding: 'utf8' });
+  got.execSync = execSync(cmd, { encoding: 'utf8' });
+  got.spawn = await out(spawn(node, ['-e', PROBE]));
+  got.execFile = await new Promise((ok) => execFile(node, ['-e', PROBE], (e, o) => ok(o)));
+  got.execFilePromisified = (await promisify(execFile)(node, ['-e', PROBE])).stdout;
+  got.exec = await new Promise((ok) => exec(cmd, (e, o) => ok(o)));
+  got.fork = await out(fork(mod, [], { silent: true, execArgv: [] }));
+  got.alreadyFlagged = spawnSync(node, ['--single-threaded', '-e', PROBE], { encoding: 'utf8' }).stdout;
+  got.optedOut = spawnSync(node, ['-e', PROBE], { encoding: 'utf8', singleThreaded: false }).stdout;
+  rmSync(dir, { recursive: true, force: true });
+  console.log(JSON.stringify(got));
+`;
+const FORMS = ['spawnSync', 'spawnSyncByName', 'execFileSync', 'execSync', 'spawn', 'execFile', 'execFilePromisified', 'exec', 'fork'];
+
+describe('spawn-ceiling: every node child a test starts runs --single-threaded', () => {
+  test('(d) every launch form starts node with the flag exactly once; without the preload none does', () => {
+    const on = inChild(60_000, EVERY_FORM, { viaFile: true });
+    const off = inChild(60_000, EVERY_FORM, { preload: false, viaFile: true });
+    // The red control first: the same probes, no preload, no flag. Were this '1', the
+    // probe could not tell the preload's work from the child's own startup.
+    for (const f of FORMS) assert.equal(off[f], '0', `without the preload, ${f} already saw the flag: the probe proves nothing`);
+    for (const f of FORMS) assert.equal(on[f], '1', `${f} started node WITHOUT --single-threaded under the preload (nodejs/node#54918)`);
+    assert.equal(on.alreadyFlagged, '1', 'a launch that already carried the flag got it twice');
+    assert.equal(off.alreadyFlagged, '1');
+  });
+
+  test('(e) singleThreaded: false keeps background tasks on, and a program that is not node is untouched', () => {
+    const on = inChild(60_000, EVERY_FORM, { viaFile: true });
+    assert.equal(on.optedOut, '0', 'singleThreaded: false did not keep the child multi-threaded');
+    const args = ['--seed', 'a b', '-e', 'x'];
+    for (const file of ['git', '/usr/bin/nodejs-helper', 'C:\\tools\\nodemon.cmd', 'sh']) {
+      assert.deepEqual(singleThreadedArgs(file, args, {}), args, `${file} is not node, and its arguments changed`);
+    }
+    for (const file of ['node', 'node.exe', '/usr/local/bin/node', 'C:\\Program Files\\nodejs\\node.exe', process.execPath]) {
+      assert.deepEqual(singleThreadedArgs(file, args, {}), ['--single-threaded', ...args], `${file} is node and was not flagged`);
+    }
+    assert.equal(singleThreadedCommand('git status', {}), 'git status');
+    assert.equal(singleThreadedCommand('nodemon x.js', {}), 'nodemon x.js');
+    assert.equal(singleThreadedCommand('node x.mjs --y', {}), 'node --single-threaded x.mjs --y');
+    assert.equal(singleThreadedCommand('"C:\\a b\\node.exe" -e 1', {}), '"C:\\a b\\node.exe" --single-threaded -e 1');
+    assert.equal(singleThreadedCommand('node x.mjs', { singleThreaded: false }), 'node x.mjs');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (f) THE OPT-OUTS ARE DECLARED. `singleThreaded: false` is the one way a launch
+// under the preload keeps V8 background tasks on. Each is a test that proves a guard
+// relaunches ITSELF single-threaded, which it cannot prove if it starts with the flag.
+// The count is exact both ways: an undeclared opt-out is red, and so is a declared
+// one that is gone, so this list cannot outlive what it describes. This file is the
+// one not scanned: it holds the list, and spells the key in its own cases and fixtures.
+// ─────────────────────────────────────────────────────────────────────────────
+const OPT_OUTS = {
+  'tooling/ci/test/apps-gov-in-media.test.mjs': 1,
+  'tooling/ci/test/assert-frames-carry-text.test.mjs': 1,
+  'tooling/ci/test/elf-page-alignment.test.mjs': 1,
+  'tooling/ci/test/launcher-icons.test.mjs': 1,
+  'tooling/ci/test/listing-assets-ink.test.mjs': 1,
+  'tooling/ci/test/listing-assets.test.mjs': 1,
+  'tooling/ci/test/single-threaded-relaunch.test.mjs': 1,
+  'tooling/ci/test/stamp-brand-assets.test.mjs': 1,
+};
+const OPT_OUT = /['"]?\bsingleThreaded['"]?\s*:\s*false\b/g;
+
+/** Code occurrences of the opt-out in `text`; a `//` or `*` comment line is prose. */
+const optOuts = (text) =>
+  text.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).reduce((n, l) => n + (l.match(OPT_OUT)?.length ?? 0), 0);
+
+/** Every .mjs/.cjs/.js under a `test` directory below `dir`. */
+function testFiles(dir, inTest = false, acc = []) {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    if (e.name === 'node_modules' || e.name.startsWith('.')) continue;
+    const p = join(dir, e.name);
+    if (e.isDirectory()) testFiles(p, inTest || e.name === 'test', acc);
+    else if (inTest && /\.(mjs|cjs|js)$/.test(e.name)) acc.push(p);
+  }
+  return acc;
+}
+
+/** Every file whose opt-out count differs from what `declared` says, both ways. */
+function undeclared(counts, declared) {
+  const bad = [];
+  for (const [f, n] of Object.entries(counts)) if (n !== (declared[f] ?? 0)) bad.push(`${f}: ${n} opt-out(s), OPT_OUTS declares ${declared[f] ?? 0}`);
+  for (const [f, n] of Object.entries(declared)) if (!(f in counts)) bad.push(`${f}: OPT_OUTS declares ${n}, the file has none`);
+  return bad;
+}
+
+describe('spawn-ceiling: every opt-out from --single-threaded is declared', () => {
+  test('(f) the red control: an undeclared opt-out and a stale declaration are both caught', () => {
+    assert.equal(optOuts('  spawnSync(process.execPath, [G], { singleThreaded: false });\n  // singleThreaded: false — prose'), 1);
+    assert.equal(optOuts("spawnSync(node, a, { 'singleThreaded':false })"), 1);
+    assert.deepEqual(undeclared({ 'tooling/ci/test/new.test.mjs': 1 }, {}), ['tooling/ci/test/new.test.mjs: 1 opt-out(s), OPT_OUTS declares 0']);
+    assert.deepEqual(undeclared({}, { 'tooling/ci/test/gone.test.mjs': 1 }), ['tooling/ci/test/gone.test.mjs: OPT_OUTS declares 1, the file has none']);
+    assert.deepEqual(undeclared({ a: 1 }, { a: 1 }), []);
+  });
+
+  test('(f) every test file under tooling/ and extensions/scripts/: each opt-out is declared', () => {
+    const files = [...testFiles(join(ROOT, 'tooling')), ...testFiles(join(ROOT, 'extensions', 'scripts'))];
+    // Anti-vacuity: 291 tooling test files started node on 2026-09-28.
+    assert.ok(files.length >= 250, `only ${files.length} test files found: the walk stopped seeing them`);
+    const counts = {};
+    for (const f of files.filter((p) => resolve(p) !== fileURLToPath(import.meta.url))) {
+      const n = optOuts(readFileSync(f, 'utf8'));
+      if (n) counts[relative(ROOT, f).replaceAll('\\', '/')] = n;
+    }
+    assert.deepEqual(undeclared(counts, OPT_OUTS), [], 'a launch keeps V8 background tasks on without being declared');
   });
 });
