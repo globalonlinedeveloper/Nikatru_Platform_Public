@@ -195,6 +195,18 @@ const ALLOWLIST = [
       'recorded rather than fixed. If the probe is retired, delete this entry with it.',
   },
 
+  {
+    file: 'apps/subscriptiontracker/test/native_callback_outcome_test.dart',
+    rule: 'invalid_use_of_internal_member',
+    date: '2026-09-28',
+    reason:
+      'ST-N1f drives a failed native auth callback through the EXACT calls supabase_flutter makes for one: ' +
+      '`getSessionFromUrl`, then `notifyException` on the AuthException (supabase_auth.dart:283-299, 2.16.0), ' +
+      'which carries this same ignore on the same call. `notifyException` is an @internal of gotrue-dart, and it is ' +
+      'the only way an error reaches `onAuthStateChange` — the stream the seam reads. Test code, one call; delete ' +
+      'this entry if supabase_flutter stops making the call or the test stops needing it.',
+  },
+
   // ── the packages/ baseline, recorded when ADR 065 chassis step 3 brought the
   //    shared shelf into this guard's domain. Every one of these was READ before
   //    it was excused; none is a "make it green" entry.
