@@ -687,6 +687,41 @@ const WIRE_CONTRACTS = [
       'NO TRANSPORT YET, AND IT IS A STATE RATHER THAN A CONSTRUCTION: `FxRatesSource` (packages/api_client) and its provider land with the first consumer, the converted totals of ST-I1 and the ST-D Home/Insights screens, so nothing ships uncalled. What stands in for a pin meanwhile is contracts/fx/latest.v1.example.json: services/platform/test/fx.test.ts asserts the Worker stores and serves exactly its `response`, and packages/core/test/money/fx_rates_test.dart reads the same `response` into FxTable.tryFromJson and converts with it — every key a Dart reader subscripts is held by both sides already.',
     absentFromDart: '/v1/fx',
   },
+  // ⏱ 2026-09-28 · ST-N1 — the four captcha-free native credential routes
+  // (services/platform/src/routes/native-auth.ts). Gaps, because the client half
+  // (ST-T7b) lands after this Worker deploys. Their wire contract is NOT ours to
+  // invent: it is GoTrue's own, byte for byte — the paths, the query and the body
+  // fields gotrue-dart already sends to /auth/v1/<op> — so what ST-T7b pins is that
+  // its second GoTrueClient's base is `/v1/auth/native/<app>`. `absentFromDart`
+  // makes the day that base appears in Dart the day these gaps must become pins.
+  {
+    id: 'native-auth-token',
+    kind: 'gap',
+    reason:
+      "NO CLIENT YET: ST-T7b points gotrue-dart at /v1/auth/native/<app> after this Worker deploys. The wire is GoTrue's password grant unchanged — `?grant_type=password`, body `{email, password}` — and every answer is GoTrue's own status and JSON, plus this route's refusals in GoTrue's `{code, error_code, msg}` shape (400, 403 browser_origin_refused, 404 unknown_app, 429 over_request_rate_limit, 503 native_auth_unavailable).",
+    absentFromDart: '/v1/auth/native',
+  },
+  {
+    id: 'native-auth-signup',
+    kind: 'gap',
+    reason:
+      "NO CLIENT YET (ST-T7b). GoTrue's /signup wire unchanged: body `{email, password, data, code_challenge, code_challenge_method}`, `?redirect_to=` the app's own callback; the refusals as on native-auth-token.",
+    absentFromDart: '/v1/auth/native',
+  },
+  {
+    id: 'native-auth-recover',
+    kind: 'gap',
+    reason:
+      "NO CLIENT YET (ST-T7b). GoTrue's /recover wire unchanged: body `{email, code_challenge, code_challenge_method}`, `?redirect_to=` the app's own callback; the refusals as on native-auth-token.",
+    absentFromDart: '/v1/auth/native',
+  },
+  {
+    id: 'native-auth-resend',
+    kind: 'gap',
+    reason:
+      "NO CLIENT YET (ST-T7b). GoTrue's /resend wire unchanged: body `{email, type, code_challenge, code_challenge_method}` with type signup or email_change, `?redirect_to=` the app's own callback; the refusals as on native-auth-token.",
+    absentFromDart: '/v1/auth/native',
+  },
 ];
 
 /** Where limb 5's "no Dart client" claims are checked. Roots rather than the

@@ -4,6 +4,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_api_client/nikatru_api_client.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_platform_storage/nikatru_platform_storage.dart'
+    show AssetContentPackSource;
 
 import '../../core/app_config.dart';
 import 'config.dart';
@@ -21,6 +23,9 @@ import 'config.dart';
 // from the RESOLVED config, so the server can turn it on without a release.
 // `test/chassis_properties_test.dart` proves the open path by overriding
 // `appConfigProvider` with a pointer, not by relying on the compiled default.
+// ⏱ 2026-09-28 · ST-X5 (audit B27): the REMOTE tier is what stays dormant.
+// The bundled tier (`bundledContentPackSourceProvider`) now serves the service
+// catalogue shipped in `assets/content_pack/`, offline, while the pointer is null.
 // ═════════════════════════════════════════════════════════════════════════════
 
 /// The Ed25519 verifier this build trusts (ADR 016).
@@ -44,6 +49,16 @@ final Provider<core.ContentPackSource?> contentPackSourceProvider =
       return DioContentPackSource(packBaseUrl: pointer);
     });
 
+/// ST-X5 (audit B27) — the pack shipped INSIDE the binary, as a Flutter asset
+/// (`assets/content_pack/`, built by tooling/content_pipeline from
+/// examples/service-catalogue and held byte-for-byte by assert-pack-roundtrip).
+/// Trusted because the store signed it with the app, which is why the loader
+/// reads this tier without a signature check.
+final Provider<core.ContentPackSource?> bundledContentPackSourceProvider =
+    Provider<core.ContentPackSource?>(
+      (ref) => AssetContentPackSource('assets/content_pack'),
+    );
+
 /// The loader itself — CONSTRUCTED here, which is the thing that had never
 /// happened anywhere outside a test.
 final Provider<core.ContentPackLoader> contentPackLoaderProvider =
@@ -62,15 +77,22 @@ final Provider<core.ContentPackLoader> contentPackLoaderProvider =
 ///
 /// `expectPackId` is the app's own id: the loader refuses a pack that is
 /// perfectly valid and simply not ours.
+///
+/// ⏱ 2026-09-28 · ST-X5: "null when the pointer is null" above now reads
+/// "the BUNDLED pack when the pointer is null" — null only when neither tier
+/// verifies. A remote pack that fails still falls back, never serves.
 final FutureProvider<core.ContentPack?> contentPackProvider =
     FutureProvider<core.ContentPack?>((ref) async {
-      final core.ContentPackSource? source = ref.watch(
-        contentPackSourceProvider,
-      );
-      if (source == null) return null;
+      // ⏱ 2026-09-28 · ST-X5 (audit B27): the BUNDLED tier is passed too, so
+      // a null pointer no longer means no pack — the remote tier stays dormant
+      // and the pack shipped inside the binary serves, offline.
       final core.Result<core.ContentPack> r = await ref
           .watch(contentPackLoaderProvider)
-          .load(expectPackId: AppConfig.appId, remote: source);
+          .load(
+            expectPackId: AppConfig.appId,
+            remote: ref.watch(contentPackSourceProvider),
+            bundled: ref.watch(bundledContentPackSourceProvider),
+          );
       // A failed load is NOT an error the app shows. The pack is optional
       // content; the app must run without it. What must never happen is a
       // failed load being served as though it succeeded.

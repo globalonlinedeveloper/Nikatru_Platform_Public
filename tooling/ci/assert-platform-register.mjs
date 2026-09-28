@@ -84,9 +84,12 @@ const BINDING_KEYS = [
 ];
 
 /** The limiter helpers a public route must reach. Derived from the tree in the
- *  sense that both are exported by services/platform/src/lib/edge-ceiling.ts;
- *  named here because a guard cannot guess which function means "bounded". */
-const LIMITER_CALLS = ['withinRateLimit', 'withinEdgeCeiling'];
+ *  sense that all four are exported by services/platform/src/lib/edge-ceiling.ts;
+ *  named here because a guard cannot guess which function means "bounded".
+ *  ⏱ 2026-09-28 · ST-N1: `strictRateLimit` / `strictEdgeCeiling` are the
+ *  FAIL-CLOSED pair (POST /v1/auth/native/*), a stronger bound than the two
+ *  fail-open helpers, never a weaker one. */
+const LIMITER_CALLS = ['withinRateLimit', 'withinEdgeCeiling', 'strictRateLimit', 'strictEdgeCeiling'];
 
 function fail(lines) {
   for (const l of lines) console.error(l);

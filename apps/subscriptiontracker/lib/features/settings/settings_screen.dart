@@ -13,8 +13,7 @@
 //     (it was `consent_prompt.dart:70` until that dead widget was deleted on
 //     2026-08-10 — the argument is unchanged, only the file); and test-invisible,
 //     because `consent_withdrawal_test.dart:59` pumps its own harness widget;
-//   · Export data (CSV) — zero test references tree-wide, and its deletion
-//     silently falsifies `data-safety.json`'s export declaration;
+//   · Export data (CSV) — deleting it falsifies data-safety.json (now pinned);
 //   · the dedicated "Open-source licences" tile ([pipeline 8]K-11).
 // The one surface an apply DOES redden is the hardened delete dialog:
 // `delete_account_test.dart:144` pumps the real screen and drives four Keys the
@@ -799,11 +798,14 @@ class SettingsScreen extends ConsumerWidget {
                     label: l10n.connectedAccounts,
                     last: false,
                   ),
-                  // 🔴 DO NOT DELETE THIS ROW IN A MERGE. `data-safety.json`
-                  // declares that a user can export their data; removing the
-                  // only surface that says so turns a store declaration into a
-                  // false one, and no test anywhere references this row.
-                  _LinkRow(icon: '⇩', label: l10n.exportDataCsv, last: false),
+                  // 🔴 DO NOT DELETE IN A MERGE: data-safety.json declares this
+                  // export. test/settings_export_test.dart parses its file back.
+                  _LinkRow(
+                    icon: '⇩',
+                    label: l10n.exportDataCsv,
+                    last: false,
+                    onTap: exportDataTap(ref),
+                  ),
                   // The published contact PAGE — a form, reachable without a
                   // mail client, which is the route most web users take. The
                   // chassis-mandated mailto (E1) is the separate row in the
@@ -1884,8 +1886,7 @@ class _Toggle extends StatelessWidget {
 /// MERGE NOTE: the live version took a `url` and derived the tap from it, which
 /// could only ever open a browser. It now takes an `onTap` so the same row shape
 /// carries the in-app navigations (`/paywall`, `/manage-plan`) and the `mailto:`
-/// as well. `onTap == null` still renders an inert row — which is what
-/// "Connected accounts" and "Export data (CSV)" are until they are wired.
+/// as well. `onTap == null` renders an inert row ("Connected accounts").
 class _LinkRow extends StatelessWidget {
   const _LinkRow({
     required this.icon,
@@ -1923,10 +1924,9 @@ class _LinkRow extends StatelessWidget {
         ),
       ),
       // ⚠️ `button:` IS CONDITIONAL, AND THAT IS THE HONEST HALF. This class's
-      // own doc records that `onTap == null` renders an INERT row — "Connected
-      // accounts" and "Export data (CSV)" are exactly that until they are wired
-      // — and announcing "button" for a row that does nothing when activated
-      // sends somebody tapping at a dead surface and blaming their reader.
+      // own doc records that `onTap == null` renders an INERT row ("Connected
+      // accounts"), and announcing "button" for a row that does nothing when
+      // activated sends someone tapping at a dead surface, blaming their reader.
       //
       // Merged so the label and its subtitle arrive as one stop rather than two,
       // matching the profile card above.
@@ -1937,8 +1937,8 @@ class _LinkRow extends StatelessWidget {
       // above asks for one sense over: a row that does nothing when activated
       // must not collect a Tab stop either, or somebody presses Enter at a dead
       // surface and blames their keyboard. Five wired rows on this screen were
-      // among settings' eighteen keyboard-dead controls; the two inert ones
-      // stay unfocusable, by the same test.
+      // among settings' eighteen keyboard-dead controls; the inert one stays
+      // unfocusable, by the same test (the export row joined them, ST-X1).
       child: FocusableTap(
         onTap: onTap,
         child: Padding(

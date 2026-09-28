@@ -1,0 +1,653 @@
+{
+  "_readme": [
+    "[pipeline 7]P-2 + P-6. One row per produced item, rendered by make-recipe.mjs from its SERVICES table.",
+    "",
+    "🔴 EVERY ROW SAYS `none/hand-authored`, AND THAT IS THE TRUTH RATHER THAN A PLACEHOLDER. The table was",
+    "written by hand in this repository — names, categories, cycles and account-page addresses are facts, not",
+    "generated copy. No model produced any of it, so no row claims a model and no row claims a SynthID mark.",
+    "",
+    "⚠️ WHAT WAS NOT DONE, stated rather than implied: no cancel URL was fetched during this run, and no price",
+    "page was read, so no price is authored anywhere in this pack."
+  ],
+  "items": [
+    {
+      "item_id": "catalogue.services",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "List the id of every service in the catalogue table, comma-separated, in table order. India-first plus widely available global services, at most forty.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#catalogue.services"
+    },
+    {
+      "item_id": "svc.netflix.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.netflix.name"
+    },
+    {
+      "item_id": "svc.netflix.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.netflix.facts"
+    },
+    {
+      "item_id": "svc.amazon_prime.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.amazon_prime.name"
+    },
+    {
+      "item_id": "svc.amazon_prime.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.amazon_prime.facts"
+    },
+    {
+      "item_id": "svc.jiohotstar.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.jiohotstar.name"
+    },
+    {
+      "item_id": "svc.jiohotstar.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.jiohotstar.facts"
+    },
+    {
+      "item_id": "svc.spotify.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.spotify.name"
+    },
+    {
+      "item_id": "svc.spotify.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.spotify.facts"
+    },
+    {
+      "item_id": "svc.youtube_premium.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.youtube_premium.name"
+    },
+    {
+      "item_id": "svc.youtube_premium.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.youtube_premium.facts"
+    },
+    {
+      "item_id": "svc.apple_music.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.apple_music.name"
+    },
+    {
+      "item_id": "svc.apple_music.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.apple_music.facts"
+    },
+    {
+      "item_id": "svc.apple_tv_plus.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.apple_tv_plus.name"
+    },
+    {
+      "item_id": "svc.apple_tv_plus.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.apple_tv_plus.facts"
+    },
+    {
+      "item_id": "svc.icloud_plus.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.icloud_plus.name"
+    },
+    {
+      "item_id": "svc.icloud_plus.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.icloud_plus.facts"
+    },
+    {
+      "item_id": "svc.google_one.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.google_one.name"
+    },
+    {
+      "item_id": "svc.google_one.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.google_one.facts"
+    },
+    {
+      "item_id": "svc.sonyliv.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.sonyliv.name"
+    },
+    {
+      "item_id": "svc.sonyliv.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.sonyliv.facts"
+    },
+    {
+      "item_id": "svc.zee5.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.zee5.name"
+    },
+    {
+      "item_id": "svc.zee5.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.zee5.facts"
+    },
+    {
+      "item_id": "svc.jiosaavn.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.jiosaavn.name"
+    },
+    {
+      "item_id": "svc.jiosaavn.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.jiosaavn.facts"
+    },
+    {
+      "item_id": "svc.gaana.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.gaana.name"
+    },
+    {
+      "item_id": "svc.gaana.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.gaana.facts"
+    },
+    {
+      "item_id": "svc.audible.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.audible.name"
+    },
+    {
+      "item_id": "svc.audible.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.audible.facts"
+    },
+    {
+      "item_id": "svc.kindle_unlimited.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.kindle_unlimited.name"
+    },
+    {
+      "item_id": "svc.kindle_unlimited.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.kindle_unlimited.facts"
+    },
+    {
+      "item_id": "svc.microsoft_365.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.microsoft_365.name"
+    },
+    {
+      "item_id": "svc.microsoft_365.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.microsoft_365.facts"
+    },
+    {
+      "item_id": "svc.adobe_creative_cloud.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.adobe_creative_cloud.name"
+    },
+    {
+      "item_id": "svc.adobe_creative_cloud.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.adobe_creative_cloud.facts"
+    },
+    {
+      "item_id": "svc.canva.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.canva.name"
+    },
+    {
+      "item_id": "svc.canva.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.canva.facts"
+    },
+    {
+      "item_id": "svc.chatgpt_plus.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.chatgpt_plus.name"
+    },
+    {
+      "item_id": "svc.chatgpt_plus.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.chatgpt_plus.facts"
+    },
+    {
+      "item_id": "svc.dropbox.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.dropbox.name"
+    },
+    {
+      "item_id": "svc.dropbox.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.dropbox.facts"
+    },
+    {
+      "item_id": "svc.notion.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.notion.name"
+    },
+    {
+      "item_id": "svc.notion.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.notion.facts"
+    },
+    {
+      "item_id": "svc.linkedin_premium.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.linkedin_premium.name"
+    },
+    {
+      "item_id": "svc.linkedin_premium.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.linkedin_premium.facts"
+    },
+    {
+      "item_id": "svc.duolingo.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.duolingo.name"
+    },
+    {
+      "item_id": "svc.duolingo.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.duolingo.facts"
+    },
+    {
+      "item_id": "svc.swiggy_one.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.swiggy_one.name"
+    },
+    {
+      "item_id": "svc.swiggy_one.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.swiggy_one.facts"
+    },
+    {
+      "item_id": "svc.zomato_gold.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.zomato_gold.name"
+    },
+    {
+      "item_id": "svc.zomato_gold.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.zomato_gold.facts"
+    },
+    {
+      "item_id": "svc.zepto_pass.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.zepto_pass.name"
+    },
+    {
+      "item_id": "svc.zepto_pass.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.zepto_pass.facts"
+    },
+    {
+      "item_id": "svc.times_prime.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.times_prime.name"
+    },
+    {
+      "item_id": "svc.times_prime.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.times_prime.facts"
+    },
+    {
+      "item_id": "svc.tinder.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.tinder.name"
+    },
+    {
+      "item_id": "svc.tinder.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.tinder.facts"
+    },
+    {
+      "item_id": "svc.xbox_game_pass.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.xbox_game_pass.name"
+    },
+    {
+      "item_id": "svc.xbox_game_pass.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.xbox_game_pass.facts"
+    },
+    {
+      "item_id": "svc.playstation_plus.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.playstation_plus.name"
+    },
+    {
+      "item_id": "svc.playstation_plus.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.playstation_plus.facts"
+    },
+    {
+      "item_id": "svc.nintendo_switch_online.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.nintendo_switch_online.name"
+    },
+    {
+      "item_id": "svc.nintendo_switch_online.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.nintendo_switch_online.facts"
+    },
+    {
+      "item_id": "svc.crunchyroll.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.crunchyroll.name"
+    },
+    {
+      "item_id": "svc.crunchyroll.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.crunchyroll.facts"
+    },
+    {
+      "item_id": "svc.hulu.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.hulu.name"
+    },
+    {
+      "item_id": "svc.hulu.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.hulu.facts"
+    },
+    {
+      "item_id": "svc.the_hindu.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.the_hindu.name"
+    },
+    {
+      "item_id": "svc.the_hindu.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.the_hindu.facts"
+    },
+    {
+      "item_id": "svc.cultpass.name",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.cultpass.name"
+    },
+    {
+      "item_id": "svc.cultpass.facts",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-09-28",
+      "prompt": "Record the service's category from the closed set, its default billing cycle, the https address of its own account or cancel page (its home page on its own domain where a deep link was not certain), the Play and App Store subscription-management pages, one day of notice, and the regions it serves. Author no price.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#svc.cultpass.facts"
+    }
+  ]
+}

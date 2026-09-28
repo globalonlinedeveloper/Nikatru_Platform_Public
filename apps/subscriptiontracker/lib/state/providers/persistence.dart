@@ -4,10 +4,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart'
-    show FlutterSecureStore;
+    show FlutterSecureStore, ShareFileExporter;
 
 import '../../data/local/subscription_store.dart';
+import '../../data/models/subscription.dart' show Subscription;
+import '../../data/portability/subscription_columns.dart';
 import '../analytics_providers.dart';
+import '../subscriptions_controller.dart' show subscriptionsControllerProvider;
 import 'config.dart';
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -25,6 +28,41 @@ import 'config.dart';
 /// Secure store (auth tokens, the entitlement cache).
 final Provider<core.SecureStore> secureStoreProvider =
     Provider<core.SecureStore>((ref) => FlutterSecureStore());
+
+/// ST-X1 (audit D2, D31) — hands an exported file to the platform: the share
+/// sheet, a browser download, or a save dialog on linux
+/// (`ExportCapabilities`). A seam so `test/settings_export_test.dart` can keep
+/// the bytes the user would have received and parse them back.
+final Provider<core.FileExporter> fileExporterProvider =
+    Provider<core.FileExporter>((ref) => ShareFileExporter());
+
+/// ST-X1 (audit D2/D31) — what the Settings "Export data (CSV)" row does: the
+/// loaded list, as a CSV file (`subscription_columns.dart`), handed to
+/// [fileExporterProvider].
+///
+/// NULL WHILE `features.exports` IS OFF — the flag config.dart advertised and
+/// nothing read until this — which renders the row inert rather than removing
+/// it: the row is what `data-safety.json`'s export declaration points at. It
+/// lives here, not in the screen, because settings_screen.dart is a private
+/// fork of a chassis file and may not grow (assert-chassis-parity).
+///
+/// A list that failed to load exports nothing, never an empty file that reads
+/// like a user with no subscriptions. The exporter itself never throws.
+void Function()? exportDataTap(WidgetRef ref) {
+  final core.AppConfig cfg =
+      ref.watch(appConfigProvider).value ?? kAppDefaultConfig;
+  if (!cfg.feature('exports')) return null;
+  return () async {
+    final core.FileExporter exporter = ref.read(fileExporterProvider);
+    final List<Subscription> subs;
+    try {
+      subs = await ref.read(subscriptionsControllerProvider.future);
+    } catch (_) {
+      return;
+    }
+    await exporter.export(subscriptionsCsvFile(subs));
+  };
+}
 
 /// Where the subscriptions and the budget live when no backend is configured —
 /// which is the DEFAULT posture and what every unconfigured build ships as.

@@ -33,6 +33,24 @@ dependencies:
   # available on Linux or web — see ReviewCapabilities, which is consulted
   # before the plugin is ever touched.
   in_app_review: ^2.0.12
+  # ⏱ 2026-09-28 · ST-X1 (audit D2/D31) — THE FILE EXPORTER (ShareFileExporter).
+  # The smallest set that saves or shares a real file on all seven targets:
+  # share_plus hands the bytes to the OS share sheet on android, ios, macos and
+  # windows and, on web, downloads them where the browser cannot share a file.
+  # On linux share_plus shares TEXT only, so the file goes through a save
+  # dialog: file_selector_linux (GtkFileChooserNative, which is the XDG desktop
+  # PORTAL under the snap's strict confinement — a folder path would name the
+  # snap's private $HOME, never the user's). The linux implementation ALONE, not
+  # the app-facing file_selector, so no ios/macos/android binary is linked for
+  # a route those platforms do not take. [pipeline C-4] adjudicated share_plus
+  # into THIS package. All BSD-3-Clause, publishers fluttercommunity.dev and
+  # flutter.dev. share_plus is on 13.x because Train W55 (#1026) moved the
+  # workspace to win32 ^6 (package_info_plus 10), which 12.x cannot solve
+  # beside; 13.0.0 was the win32 bump and nothing else in the share API.
+  # ExportCapabilities is the matrix.
+  share_plus: ^13.3.0
+  file_selector_linux: ^0.9.4
+  file_selector_platform_interface: ^2.7.0
 
 dev_dependencies:
   # [pipeline C-12] resolves the shared ruleset in analysis_options.yaml.
