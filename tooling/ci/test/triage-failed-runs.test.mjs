@@ -357,6 +357,42 @@ describe('signatures', () => {
     assert.equal(signatureOf({ step: cases[11][0], block: cases[11][1].replace('`initialize`', '`build`') }), 'pages-freshness:git-build-failed:build');
   });
 
+  // ⏱ 2026-09-28: the blocks of the main reds ops-watch run 36447758185's ledger
+  // listed as UNEXPLAINED, each measured from the run named beside it. Every one
+  // read as `other:` or under a wider signature whose cause is a different fault.
+  test('the 2026-09-28 signatures read the measured blocks of the runs that needed them', () => {
+    const pages = "Every Pages project's newest PRODUCTION deployment succeeded, at the commit main names";
+    const cases = [
+      // 36441645933 and 36277702128: a succeeded deployment serving an older commit, per project.
+      [pages, '✗ 1 project(s) RED, 0 NOT JUDGED. A Cloudflare Git build posts no commit status\n    ok  nikatru-apex (direct) — deployment 6dfb662f succeeded at stage `deploy`, serving aa1fa42\n    ✗   subscriptiontracker (direct) — deployment 1738afce-4837-4563-93bc-2fde5de79290 succeeded, but it is serving commit 0e396d2, which does NOT carry 1d2b9ad — the newest commit', 'pages-freshness:serving-older-commit:subscriptiontracker'],
+      [pages, '✗ 1 project(s) RED, 0 NOT JUDGED.\n    ✗   nikatru (git) — deployment 7f3475d6-6082-484e-a632-ce47c4911794 succeeded, but it is serving commit e154dc6, which does NOT carry cff2c81 — the newest commit on `main` touching sites/nikatru.', 'pages-freshness:serving-older-commit:nikatru'],
+      // 36430302458
+      ['Count the rows whose provenance does not resolve', '✗ COULD NOT LOOK — 29 distinct build(s) in production are absent from the walked runs — more than the 10 this reader will look up one by one (1.0.101+e138f5b, 1.0.123+93aee1d)', 'provenance:absent-builds-past-lookup-cap'],
+      // 36445515397
+      ['Smoke — the live Worker answers at THIS commit', '✗ https://subscriptiontracker-api.nikatru.com/v1/health is serving build 0a7ab55df8ba3c0b43ffdcf24933d196f9932a0a and reports ok:false — it deployed, and it is unwell.', 'smoke:deployed-unwell:subscriptiontracker-api.nikatru.com'],
+      // 36416498456: the ⬜ watch list sits between the header and the job line in some runs.
+      ['Every scheduled duty in the D1 heartbeat table reports healthy', '✗ 1 scheduled duty is not reporting healthy:\n    reminder_mail: NO heartbeat row has ever been written, and the first slot after the register began watching it (2026-09-28T03:25:45.000Z -> 2026-09-28T06:00:00.000Z) ended its 2h grace 3.6h ago.', 'heartbeat-table:never-written:reminder_mail'],
+      // 36222497878
+      ['The Workers trust exactly one issuer (positive, both targets)', "##[error]the Worker answered 200, not 401, to a session minted by this run's hosted issuer, which the register does not name. If it answered 200 the Workers now trust TWO issuers", 'e2e:unnamed-issuer-accepted'],
+      // 36156790281
+      ['Name clearance holds for linux-snap (owner HELD or PROVEN-FREE)', '✗ 1 finding(s) over 1 clearance record(s):\n    apps/subscriptiontracker/name-clearance.json — --for-submission=linux-snap: "Nikatru Subscription Tracker" is UNDETERMINED on linux-snap, and a submission passes only on PROVEN-FREE', 'name-clearance:undetermined-for-submission:linux-snap'],
+      // 35818957977, once errorBlock picks the refusal line (below)
+      ['Run ./.github/actions/setup-flutter', 'Unable to determine Flutter version for channel: windows-store version: 3.47.5 architecture: x64\n##[error]Process completed with exit code 1.', 'setup-flutter:version-unresolved:windows-store'],
+    ];
+    for (const [step, block, want] of cases) assert.equal(signatureOf({ step, block }), want, `${step}\n${block}`);
+    // A heartbeat that STOPPED is still the wider group, never `never-written`.
+    assert.equal(signatureOf({ step: cases[4][0], block: '✗ 1 scheduled duty is not reporting healthy:\n    backup_export: newest ok row 30.1h ago, outside its window' }), 'heartbeat-table:unhealthy');
+    // A smoke that read the PREVIOUS build is still `smoke:stale-build`'s, not this one.
+    assert.equal(signatureOf({ step: cases[3][0], block: 'POST-DEPLOY SMOKE FAILED — serving build 1111111 while this run deployed 2222222' }), 'smoke:stale-build');
+    // flutter-action's refusal is the error line, not the next step's `name: FAILED-…` artifact line.
+    const eb = errorBlock([
+      'Unable to determine Flutter version for channel: windows-store version: 3.47.5 architecture: x64',
+      '##[error]Process completed with exit code 1.',
+      '  name: FAILED-not-a-listing-set-35818957977',
+    ]);
+    assert.equal(eb.line, 'Unable to determine Flutter version for channel: windows-store version: 3.47.5 architecture: x64');
+  });
+
   test('every signature id is unique and every pattern is a RegExp', () => {
     const ids = SIGNATURES.map((s) => s.id);
     assert.equal(new Set(ids).size, ids.length);

@@ -632,6 +632,9 @@ void main() {
       // ones with no `onTap` ("Connected accounts", "Export data (CSV)"): they
       // were never in the 27 either, because the inventory counts
       // `GestureDetector(onTap:)`.
+      // ⏱ 2026-09-28 · ST-X1 (audit D2/D31): "Export data (CSV)" is WIRED, so
+      // it joined the orbit — one more control, one more reachable, and
+      // "Connected accounts" is now the only inert `_LinkRow` left.
       //
       // The remaining 2 are the `en` and `ta` radios — see the 2026-08-25 block
       // in the header, and [_arrowReachesWithinTheRadioGroup] below, which is
@@ -646,10 +649,11 @@ void main() {
         // other control on the screen, measured when this was 27 with 4 chips.
         // ⏱ 2026-09-27 · ST-U1: 23 -> 22 and 21 -> 20 — the chassis daily
         // "Reminders" switch left this screen.
-        // ⏱ 2026-09-28 · ST-R3: 22 -> 24 and 20 -> 22 — the "Remind me" and
+        // ⏱ 2026-09-28 · ST-X1: 22 -> 23 and 20 -> 21 — the export row.
+        // ⏱ 2026-09-28 · ST-R3: 23 -> 25 and 21 -> 23 — the "Remind me" and
         // "At" rows under Renewal alerts, both ListTiles in the Tab orbit.
-        controls: 24 + core.Money.symbols.length,
-        reachable: 22 + core.Money.symbols.length,
+        controls: 25 + core.Money.symbols.length,
+        reachable: 23 + core.Money.symbols.length,
       );
       expect(
         s.dead.length,

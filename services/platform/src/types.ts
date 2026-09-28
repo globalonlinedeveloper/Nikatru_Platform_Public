@@ -156,6 +156,24 @@ export interface Env {
    */
   REMINDERS_CEILING_LIMITER?: RateLimiterBinding;
 
+  /**
+   * ⏱ 2026-09-28 · ST-N1. The per-ACCOUNT bucket on POST /v1/auth/native/<app>/<op>,
+   * keyed `acct:<app>:<sha256(lowercased email)>` (routes/native-auth.ts). These
+   * routes call GoTrue with the service-role bearer, which skips its captcha, so
+   * this and NATIVE_AUTH_EDGE_LIMITER are what stand where the captcha stands.
+   *
+   * 🔴 Optional in the type, but absence FAILS CLOSED (503), unlike every
+   * limiter above: `strictRateLimit` in lib/edge-ceiling.ts.
+   */
+  NATIVE_AUTH_ACCOUNT_LIMITER?: RateLimiterBinding;
+
+  /**
+   * ⏱ 2026-09-28 · ST-N1. The per-NETWORK ceiling on POST /v1/auth/native/<app>/<op>,
+   * keyed `edge:<colo>:<asn>` by lib/edge-ceiling.ts — never a client address.
+   * Absence FAILS CLOSED (503), like NATIVE_AUTH_ACCOUNT_LIMITER.
+   */
+  NATIVE_AUTH_EDGE_LIMITER?: RateLimiterBinding;
+
   // Non-secret vars (wrangler.jsonc vars).
   APP_ID: string;
 
@@ -359,6 +377,10 @@ export interface Env {
    * ⚠️ WHAT THE OWNER IS APPROVING WHEN THEY SET IT: this key bypasses RLS
    * PORTFOLIO-WIDE, and this Worker is public-facing. Set with
    * `wrangler secret put SUPABASE_SERVICE_ROLE_KEY`, never as a committed var.
+   *
+   * ⏱ 2026-09-28 · ST-N1: ALSO the bearer on POST /v1/auth/native/<app>/<op> (routes/
+   * native-auth.ts), which is what makes GoTrue skip its captcha for those four
+   * allow-listed calls. Absent, those routes answer 503.
    */
   SUPABASE_SERVICE_ROLE_KEY?: string;
 

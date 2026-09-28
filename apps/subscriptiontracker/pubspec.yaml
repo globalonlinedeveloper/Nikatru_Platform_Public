@@ -226,6 +226,14 @@ flutter:
   # lib/features/shared/widgets.dart:603-604.
   assets:
     - assets/brand/
+    # ⏱ 2026-09-28 · ST-X5 — the service catalogue as a SIGNED CONTENT PACK, the
+    # trusted BUNDLED tier ContentPackLoader falls back to while the remote pointer
+    # is null. Four members and nothing else (manifest.json, manifest.sig,
+    # content.json, PROVENANCE.json): no logo bytes, no binary asset. PRODUCED,
+    # never hand-edited — `cli.mjs build --test-key` from
+    # tooling/content_pipeline/examples/service-catalogue/, and
+    # assert-pack-roundtrip.mjs rebuilds it byte-for-byte on every push.
+    - assets/content_pack/
 
   # The design uses Manrope (body) + Space Grotesk (numerals/titles). Drop the .ttf
   # files under app/assets/fonts/ and uncomment to match the mockup exactly. Without
