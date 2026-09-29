@@ -941,6 +941,11 @@ export interface Subscription {
   price: number | null;
   cycle: 'monthly' | 'yearly' | null;
   next_renewal: string | null; // 'YYYY-MM-DD'
+  // subscriptiontracker_db's 0003 ([ADR no.077] §5). OPTIONAL because the
+  // renewals pass reads them only where the app database has them (it probes).
+  cycle_every?: number | null;
+  cycle_unit?: string | null;
+  currency?: string | null;
 }
 
 /** One app the nightly scheduler fans out to. */

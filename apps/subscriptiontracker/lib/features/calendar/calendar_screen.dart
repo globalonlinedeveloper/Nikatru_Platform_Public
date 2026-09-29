@@ -23,6 +23,7 @@ import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
 import '../../state/subscriptions_controller.dart';
 import '../add/add_subscription_sheet.dart';
+import '../shared/cadence_label.dart';
 import '../shared/due.dart';
 import '../shared/async_gate.dart';
 import '../shared/widgets.dart';
@@ -336,7 +337,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       subtitle: due.label,
       status: DueInfo.statusOf(s, now),
       figure: money.format(s.price),
-      caption: s.cycle == BillingCycle.yearly ? l10n.perYear : l10n.perMonth,
+      caption: cadenceCaption(l10n, s.cycle),
       onTap: () => context.push('/sub/${s.id}'),
     );
   }

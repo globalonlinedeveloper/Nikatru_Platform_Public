@@ -19,8 +19,8 @@
   ],
   "_rootsNote": "TWO roots since 2026-09-07 ([ADR 067] phase 2, unit app-shell). The Worker half of the template - 13 files, 917 lines every stamped backend app inherits - was outside this ledger entirely while `root` was one string, and `git ls-files -- <that one root>` could not see it to complain. assert-chassis-ledger.mjs is the authority on this list and cross-checks it; a row's `root` is optional and defaults to roots[0], which is why the 96 rows written against the single root are unchanged. ⏱ THE FIGURES IN THIS NOTE MOVED ON 2026-09-08 AND ARE CORRECTED RATHER THAN REWRITTEN: the Worker half is now 14 files and 1,021 lines, because the template gained src/lib/error-sink.ts — a stamped backend had NO crash sink at all and failed tooling/ci/assert-worker-error-sink.mjs on limbs 2, 3 and 5 at its first CI run. The guard PRINTS both figures per root on every run, which is the number to read; this sentence is prose and prose rots.",
   "totals": {
-    "files": 148,
-    "lines": 23299,
+    "files": 150,
+    "lines": 23547,
     "unclassified": 0,
     "unclassifiedLines": 0
   },
@@ -715,6 +715,18 @@
       "lines": 83,
       "verdict": "STAYS",
       "why": "⏱ 2026-09-27 (O-BRICK-STAMPS-NO-E2E-SUITE, 10b): per-app by construction — the [3]S-2 e2e suite of THIS app: E2E_APP_ID must equal its AppConfig.appId, and it drives this app's own screens. assert-e2e-legs requires integration_test/app_test.dart for every app of the workspace set (exit 1 naming it), and the app-brick probe's red control proves it on a stamp."
+    },
+    {
+      "path": "integration_test/native_auth_proof_steps.dart",
+      "lines": 100,
+      "verdict": "STAYS",
+      "why": "⏱ 2026-09-28 (ST-N1g, O-NATIVE-AUTH-CALLBACK-UNBUILT): the native sign-in proof's steps, apart from the binding so a local red run can drive the same sign-in step against a fake server; imported by integration_test/native_auth_proof_test.dart and stamped beside it; a test-only file under integration_test/, never in lib/."
+    },
+    {
+      "path": "integration_test/native_auth_proof_test.dart",
+      "lines": 148,
+      "verdict": "STAYS",
+      "why": "⏱ 2026-09-28 (ST-N1g, O-NATIVE-AUTH-CALLBACK-UNBUILT): per-app by construction — the per-target native sign-in proof of THIS app (its form, its Home, its reset screen), run by .github/workflows/native-auth-proof.yml on each target's device through tooling/e2e/native_auth_proof.mjs. App #1 adopts the same file with its own login keys."
     },
     {
       "path": "integration_test/store_capture_guard.dart",

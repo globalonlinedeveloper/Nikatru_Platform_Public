@@ -48,6 +48,8 @@ class ReminderCopy {
     required this.reminderBody,
     required this.digestTitle,
     required this.digestBody,
+    this.trialTitle,
+    this.trialBody,
   });
 
   /// The Android notification CHANNEL name — visible in the OS settings app,
@@ -63,6 +65,13 @@ class ReminderCopy {
 
   /// `(count, formatted total) → body`. PLURAL: [count] picks the arm.
   final String Function(int count, String formattedTotal) digestBody;
+
+  /// The trial-end reminder's title and body (ST-E5). Optional so a caller
+  /// that predates trials still compiles; absent, the trial reminder reuses
+  /// the renewal copy — "Netflix renews on Oct 3" is still true of a trial
+  /// that turns into a charge on Oct 3.
+  final String? trialTitle;
+  final String Function(String name, DateTime trialEnds)? trialBody;
 }
 
 /// On-device renewal reminders — the cross-platform reminder path (iOS, Android,
@@ -433,10 +442,27 @@ class NotificationService {
   /// scheduler then silently declines to post, so the user would lose a
   /// reminder they COULD have had to one they never could.
   @visibleForTesting
-  tz.TZDateTime? whenFor(Subscription sub, int daysBefore) {
-    final DateTime target = sub.nextRenewal.subtract(
-      Duration(days: daysBefore),
-    );
+  tz.TZDateTime? whenFor(Subscription sub, int daysBefore) =>
+      _nineAm(sub.nextCharge(DateTime.now()), daysBefore);
+
+  /// The instant [sub]'s TRIAL-END reminder fires — [daysBefore] its
+  /// `trialEndsOn` at 09:00 local — or null when it has no trial running or
+  /// that instant has passed (ST-E5).
+  @visibleForTesting
+  tz.TZDateTime? trialWhenFor(Subscription sub, int daysBefore) {
+    final DateTime? ends = sub.trialEndsOn;
+    if (ends == null || sub.status != SubscriptionStatus.trialing) return null;
+    return _nineAm(ends, daysBefore);
+  }
+
+  /// 09:00 local, [daysBefore] days before [day] — or null once past.
+  ///
+  /// ⏱ 2026-09-28 · ST-T3b (ST-M3): [whenFor] reads the ROLLED next charge
+  /// ([Subscription.nextCharge]), not the stored `nextRenewal`, so a row whose
+  /// stored date has passed is reminded about its next real charge instead of
+  /// being dropped as "in the past" until the nightly pass runs.
+  tz.TZDateTime? _nineAm(DateTime day, int daysBefore) {
+    final DateTime target = day.subtract(Duration(days: daysBefore));
     final tz.TZDateTime when = tz.TZDateTime(
       tz.local,
       target.year,
@@ -495,7 +521,32 @@ class NotificationService {
     await _schedule(
       id: id,
       title: copy.reminderTitle,
-      body: copy.reminderBody(sub.name, sub.nextRenewal),
+      body: copy.reminderBody(sub.name, sub.nextCharge(DateTime.now())),
+      when: when,
+      details: _detailsFor(copy),
+      mode: mode ?? await _resolveScheduleMode(),
+    );
+  }
+
+  /// A one-off reminder [daysBefore] a free trial turns into a charge (ST-E5),
+  /// under its OWN id ([trialIdFor]) so it neither replaces nor is replaced by
+  /// the same row's renewal reminder, and [cancelForSubscription] takes both.
+  Future<void> scheduleTrialReminder(
+    Subscription sub, {
+    required ReminderCopy copy,
+    int daysBefore = 2,
+    AndroidScheduleMode? mode,
+  }) async {
+    if (!_ready || !capabilities.canSchedule) return;
+    final tz.TZDateTime? when = trialWhenFor(sub, daysBefore);
+    if (when == null) return;
+    final DateTime ends = sub.trialEndsOn!;
+    final int id = trialIdFor(sub.id);
+    _scheduledThisProcess.add(id);
+    await _schedule(
+      id: id,
+      title: copy.trialTitle ?? copy.reminderTitle,
+      body: (copy.trialBody ?? copy.reminderBody)(sub.name, ends),
       when: when,
       details: _detailsFor(copy),
       mode: mode ?? await _resolveScheduleMode(),
@@ -548,9 +599,12 @@ class NotificationService {
     await _plugin.cancel(id: _digestId);
   }
 
+  /// Both of a row's reminders — the renewal and, if it had one, the trial
+  /// end. A cancelled or deleted row must not keep either.
   Future<void> cancelForSubscription(String id) async {
     if (!_ready) return;
     await _plugin.cancel(id: _idFor(id));
+    await _plugin.cancel(id: trialIdFor(id));
   }
 
   /// EVERYTHING the plugin holds — the chassis daily reminder included.
@@ -661,11 +715,12 @@ class NotificationService {
         subs.length <= renewalReminderBudget) {
       return List<Subscription>.unmodifiable(subs);
     }
+    final DateTime now = DateTime.now();
     final List<Subscription> schedulable =
         subs.where((Subscription s) => whenFor(s, daysBefore) != null).toList()
           ..sort(
             (Subscription a, Subscription b) =>
-                a.nextRenewal.compareTo(b.nextRenewal),
+                a.nextCharge(now).compareTo(b.nextCharge(now)),
           );
     return List<Subscription>.unmodifiable(
       schedulable.take(renewalReminderBudget),
@@ -709,6 +764,12 @@ class NotificationService {
         daysBefore: daysBefore,
         mode: mode,
       );
+      await scheduleTrialReminder(
+        s,
+        copy: copy,
+        daysBefore: daysBefore,
+        mode: mode,
+      );
     }
   }
 
@@ -746,6 +807,19 @@ class NotificationService {
       h = (h * 0x01000193) & 0xffffffff;
     }
     return renewalIdBase + (h % renewalIdRange);
+  }
+
+  /// The TRIAL-END reminder's id for a subscription id: the same stable hash
+  /// over a prefixed key, so it lands in the owned namespace
+  /// ([cancelOwnedRenewals] reads it back) and never equals the renewal's.
+  @visibleForTesting
+  static int trialIdFor(String id) {
+    final int trial = renewalIdFor('trial:$id');
+    // A hash collision with the row's own renewal id would make one reminder
+    // silently replace the other; step past it inside the namespace.
+    return trial == renewalIdFor(id)
+        ? renewalIdBase + ((trial - renewalIdBase + 1) % renewalIdRange)
+        : trial;
   }
 
   int _idFor(String id) => renewalIdFor(id);

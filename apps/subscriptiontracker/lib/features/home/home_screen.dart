@@ -1,26 +1,31 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// P2.6b — THE HOME MERGE.  ⚠️ DRAFT: pre-fabricated, NOT yet compiled.
+// HOME — train ST-D1, the Subscription Tracker design, built on the ST-D0
+// foundation.
 //
-// Two files became one:
+// The dashboard is FOUNDATION COMPONENTS AND DOMAIN VALUES, nothing else:
 //
-//   · the STAMPED home (chassis shell) contributed the `AppScaffold` adaptive
-//     navigation, the `PaywallGate` Explore tab — the [pipeline C-6] OPEN PATH,
-//     the only proven consumer of `paywallLockedProvider` — the
-//     `CatchUpNudgeBanner` ([pipeline T-8]), and l10n.
-//   · the LIVE home (the product) contributed everything a user came for: the
-//     hero card, upcoming renewals, the all-subscriptions list, the unused-subs
-//     warning, and the four navigation entry points that hang off them.
+//   · `AppSummaryCard`  — the monthly total, what qualifies it, and the 7- and
+//                         30-day figures. Replaces the brand-gradient hero, whose
+//                         white-on-purple literals no theme could reach.
+//   · `DecisionStrip`   — "N marked unused · cancel to save X · Review": the
+//                         one decision this screen asks. Replaces the warn-bar
+//                         `RowCard` and its hand-measured `!` glyph tone.
+//   · `AppSectionHeader` + `AppListGroup` of `AppListRow`s — upcoming renewals
+//                         and every subscription. Replace `SectionHeader` and
+//                         one `RowCard` per row.
+//   · `SkeletonList` / `DataStateView` — loading, empty and failed are three
+//                         different screens, never a bare spinner and never a
+//                         raw exception string (`couldNotLoad('$e')` is gone
+//                         from here).
 //
-// VARIANT B (the shape that shipped — see the class doc below): `AppShell`
-// kept scaffold ownership, so the stamped Explore placeholder DIED here (its
-// gate moved to the router's Insights branch) and the only `welcomeTo` left in
-// this file is the dashboard header's signed-out fallback — which is exactly
-// what keeps `test/smoke_test.dart`'s `findsOneWidget` on 'Welcome to' honest.
+// What this file still decides is domain: which subscriptions are upcoming,
+// which one is urgent, what "unused" means, where a tap goes. Every colour,
+// size and type style comes from the theme through the components.
 //
 // 🔴 THE ORDERING RULE THIS FILE ENCODES, because it is the one that bites:
 // `overrides.md` §10-11 records that home and settings must merge AS A PAIR —
-// `_showUnused` below reads `prefs['unused']`, which only the settings toggles
-// write. Merging one screen without the other severs a coupling nothing tests.
+// `showUnused` below reads `prefs['unused']`, which only the settings toggles
+// write. Changing one screen without the other severs a coupling nothing tests.
 // ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
@@ -41,61 +46,72 @@ import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
 import '../../state/subscriptions_controller.dart';
 // The `/sub/:id` screen, imported so it can be BUILT IN PLACE in the second
-// pane. It is still a route — `lib/core/router.dart` is untouched and a phone
-// still pushes it — this import only gives the wide layout a way to render the
-// same widget without a navigation.
+// pane. It is still a route — a phone still pushes it — this import only gives
+// the wide layout a way to render the same widget without a navigation.
 import '../add/add_subscription_sheet.dart';
 import '../detail/subscription_detail_screen.dart';
 import '../shared/async_gate.dart';
+import '../shared/cadence_label.dart';
 import '../shared/due.dart';
-import '../shared/widgets.dart';
 // The shell this screen is a BRANCH of, imported for one number:
 // [AppShell.pageInsetOf]. The FAB that inset reserves room for belongs to the
-// shell, so the arithmetic does too — see the constant's own doc.
+// shell, so the arithmetic does too.
 import '../shell/app_shell.dart';
 
-/// Home — branch 0's BODY, VARIANT B ([ADR 037]; decision recorded in session
-/// notes 2026-08-08): `AppShell` owns the adaptive [AppScaffold] (docked in
-/// P2.6a via the `compactNavigationBar` seam), so this screen carries NO
-/// scaffold of its own — nesting one inside the shell's body would render two
-/// navigation surfaces at every width, wrong in a way no assertion covers.
-/// The stamped 3-destination shell shape this draft originally carried lives
-/// on in the brick; Subly's 5-tab product nav won the collision.
+/// Home — branch 0's BODY ([ADR 037] Variant B): `AppShell` owns the adaptive
+/// [AppScaffold], so this screen carries NO scaffold of its own — nesting one
+/// inside the shell's body would render two navigation surfaces.
 ///
-/// The `PaywallGate` ([pipeline 5]M-5's open path) did NOT die with the shell
-/// ownership move — it wraps the INSIGHTS branch in `lib/core/router.dart`
-/// (Subly's premium-surface default until Phase 4 decides finally), so
-/// `paywallLockedProvider` keeps its one real consumer.
+/// The `PaywallGate` wraps the INSIGHTS branch in `lib/core/router.dart`, so
+/// `paywallLockedProvider` keeps its one real consumer there.
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
-  /// The narrowest BODY that holds the hero side panel beside a list/detail
-  /// split: `form` (420) + divider (1) + `expanded` (840) = 1261.
+  /// The narrowest BODY that holds the summary side column beside a
+  /// list/detail split: `form` (420) + divider (1) + `expanded` (840) = 1261.
   ///
-  /// ⏱ 2026-09-15 · [ADR 083]: THE TRIGGER IS A BODY THRESHOLD, NOT A WINDOW
-  /// BREAKPOINT. The side panel used to open on `body >= AppBreakpoints.large`
-  /// (a WINDOW class boundary, 1200) AND this arithmetic; the first clause
-  /// could never decide anything (1261 > 1200) and compared a body width to a
-  /// window number. Inside `AppScaffold`'s large-class rail the panel now opens
-  /// at a window of 1261 + the rail + 1 px, i.e. on a 1440 laptop window.
+  /// [ADR 083]: THE TRIGGER IS A BODY THRESHOLD, NOT A WINDOW BREAKPOINT. It is
+  /// the sum of the three floors, so a wider window may ADD a column and never
+  /// remove one: at a body of 1200 an aside would leave the panes 779, below
+  /// the split, and the open detail would vanish as the window grew. It is
+  /// expressed as
+  /// that arithmetic rather than as a literal 1261 so it cannot drift from
+  /// the constants it is made of.
   static const double asideMinBodyWidth =
       AppBreakpoints.form + TwoPaneSplit.dividerWidth + AppBreakpoints.expanded;
+
+  /// The list column's pane; `test/width_home_test.dart` resolves the
+  /// `ListView` through it rather than through `.first`.
+  static const Key listPaneKey = Key('home-list-pane');
+
+  /// The summary's own column, present from [asideMinBodyWidth] up.
+  static const Key asideKey = Key('home-aside');
+
+  /// The summary card, wherever it is laid out.
+  static const Key summaryKey = Key('home-summary');
+
+  /// The unused-plans decision.
+  static const Key unusedStripKey = Key('home-unused-strip');
+
+  /// The decision's one answer.
+  static const Key unusedReviewKey = Key('home-unused-review');
+
+  /// The upcoming-renewals group.
+  static const Key upcomingKey = Key('home-upcoming');
+
+  /// The every-subscription group.
+  static const Key allKey = Key('home-all');
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return const Column(
       children: <Widget>[
-        // [pipeline T-8] Above everything: a nudge the user paid to see is not
-        // a nudge. MOUNTED EXACTLY ONCE IN THE APP — chassis_properties_test
-        // pumps the whole SublyApp and asserts findsOneWidget.
+        // [pipeline T-8] Above everything. MOUNTED EXACTLY ONCE IN THE APP —
+        // chassis_properties_test pumps the whole SublyApp and asserts it.
         CatchUpNudgeBanner(),
-        // [research/44 §7 rung 3] The same-app upgrade card, the TWIN of the
-        // brick's. In the stamped chassis it sits directly above `PaywallGate`
-        // in the home body; here the gate moved to the router's Insights branch
-        // with [ADR 037]'s Variant B, so the equivalent position is this one —
-        // the same slot in the same Column, immediately under the nudge banner
-        // and above the product dashboard. It renders NOTHING while
-        // `features.promo_card_enabled` is absent, which it is.
+        // [research/44 §7 rung 3] The same-app upgrade card, in the slot the
+        // stamped chassis gives it: under the nudge, above the dashboard. It
+        // renders NOTHING while `features.promo_card_enabled` is absent.
         UpgradePromoCard(),
         Expanded(child: _HomeDashboard()),
       ],
@@ -103,20 +119,12 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
-/// Subly's product dashboard — the live `home_screen.dart` body, docked as the
-/// Home destination. Everything below this line is the live file's own code and
-/// its own comments; the merge changed four things and each is marked `🔀`.
+/// Subly's product dashboard, docked as the Home destination.
 ///
-/// 🔴 STATEFUL SINCE 2026-08-21, AND THE STATE IS ONE NULLABLE STRING.
-/// [TwoPane] renders a detail beside the list and deliberately owns NEITHER
-/// selection nor routing — its class doc says both belong to the screen and the
-/// router respectively, because both outlive the layout. So this widget holds
-/// the selected subscription id, and that is the whole reason it stopped being a
-/// `ConsumerWidget`.
-///
-/// Screen state rather than a provider, deliberately: which row the second pane
-/// is showing is not a fact about the user's data, nothing else in the app reads
-/// it, and a provider would make it outlive the screen that owns it.
+/// STATEFUL FOR ONE NULLABLE STRING: [TwoPane] renders a detail beside the
+/// list and deliberately owns neither selection nor routing, so this widget
+/// holds the selected subscription id. Screen state, not a provider: which row
+/// the second pane shows is not a fact about the user's data.
 class _HomeDashboard extends ConsumerStatefulWidget {
   const _HomeDashboard();
 
@@ -125,65 +133,12 @@ class _HomeDashboard extends ConsumerStatefulWidget {
 }
 
 class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
-  /// The row whose detail is showing in the second pane, or null for "nothing
-  /// selected" — the state every cold start opens in.
+  /// The row whose detail is showing in the second pane, or null.
   ///
-  /// KEPT rather than cleared when the layout goes back to a single column: a
-  /// window dragged narrow and wide again returns to the row the user was
-  /// reading, and it costs nothing in the meantime, because [TwoPane] does not
-  /// BUILD its `detail` below [AppBreakpoints.expanded] — no `initState`, no
-  /// fetch and no analytics event for a pane nobody can see.
+  /// KEPT when the layout returns to one column: a window dragged narrow and
+  /// wide again comes back to the row the user was reading, and [TwoPane] does
+  /// not BUILD its detail below the split, so keeping it costs nothing.
   String? _selectedId;
-
-  /// The on-LIGHT tone for the unused-subs badge's `!`. **#956006, not
-  /// [AppColors.warn] #F59E0B — and not `due.dart`'s #9C6406 either.**
-  ///
-  /// 🔴 THE GROUND IS THE WASH, NOT THE CARD, AND THAT IS THE WHOLE REASON
-  /// THIS VALUE IS A THIRD ONE. The badge paints its glyph on
-  /// `Color.fromRGBO(245, 158, 11, 0.16)` composited over `RowCard`'s own
-  /// fill, so the legibility question is asked against the COMPOSITE. Measured
-  /// 2026-08-21, both sides, over the two grounds `RowCard` actually resolves:
-  ///   · LIGHT — 0.16 warn over #FFFFFF ⇒ **#FDEFD8**
-  ///       [AppColors.warn] #F59E0B ....... **1.89:1**  ❌
-  ///       `due.dart`'s `_warnOnLight` #9C6406 ... **4.37:1**  ❌ still short
-  ///       THIS VALUE #956006 .............. **4.68:1**  ✅
-  ///   · DARK — 0.16 warn over `scheme.surfaceContainerHighest` #35343A ⇒
-  ///     **#544533**: [AppColors.warn] **4.30:1**, and it is UNTOUCHED — the
-  ///     dark arm below still paints the shipped literal, so that branch
-  ///     repaints by zero pixels and cannot regress. (The 4.31 recorded on
-  ///     2026-08-21 and the 4.30 recomputed here are the same measurement one
-  ///     rounding step apart, in the composite's blue channel.)
-  ///
-  /// ⚠️ AND THE FORK IS LOAD-BEARING IN BOTH DIRECTIONS, so this is not a value
-  /// that could quietly replace the literal: #956006 on the DARK wash measures
-  /// **1.74:1**. Adopting it unbranched would trade a light failure for a
-  /// worse dark one — the same trap `app_colors.dart:101-104` measured for the
-  /// token itself, one composite deeper.
-  ///
-  /// 🔴 SO THE PALETTE'S OWN OWED STEP DOES NOT COVER THIS GLYPH, AND THAT IS
-  /// THE FINDING WORTH CARRYING UPSTREAM. `app_colors.dart:106-112` names the
-  /// status-trio fork it owes and gives warn's light text tone as #9C6406, "a
-  /// measured minimum step that clears every real ground" — but the grounds it
-  /// measured are the white card, [AppColors.bg] #F4F4F8 and the live scaffold
-  /// #FCF8FF. A 16 % warn wash over white is DARKER than all three (#FDEFD8),
-  /// and #9C6406 lands at 4.37 on it. The owed token is not wrong; its
-  /// enumeration of grounds is incomplete, and a badge is exactly the shape it
-  /// missed. When `warnText` lands, this call site does NOT simply adopt it.
-  ///
-  /// HOW THE VALUE WAS CHOSEN, so it is a step and not a taste: identical hue
-  /// and saturation to [AppColors.warn] (HSL 37.7° / 92 %), lightness stepped
-  /// down from 50.2 % to **30.5 %** — one notch past the 31.8 % `due.dart`
-  /// uses for the same hue on the lighter white card. It is a legibility step,
-  /// not a re-tint: the badge still reads as the same amber warning, which is
-  /// what keeps it one status treatment with the `accentBar` and the wash
-  /// around it.
-  ///
-  /// 📌 IT IS A LOCAL CONST FOR THE SAME REASON `due.dart`'s is: the slot it
-  /// belongs in (`warnText` on `AppThemeX`, resolved by brightness the way
-  /// `AppText.of` resolves prose) is `packages/design_system`'s to mint, and
-  /// that is a separate increment with a separate owner. This is the single
-  /// place the value is spelled and it has exactly one reader.
-  static const Color _warnGlyphOnWash = Color(0xFF956006);
 
   @override
   Widget build(BuildContext context) {
@@ -193,111 +148,28 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
       emptyCurrencyCode: ref.watch(currencyCodeProvider),
     );
     final core.AuthUser? user = ref.watch(authRepositoryProvider).currentUser;
-    // The `unused` setting was declared in settings_controller.dart and read
-    // NOWHERE, so the switch in Settings did nothing. It now gates the surface it
-    // describes: "Flag subscriptions you don't use".
+    // Settings' "Flag subscriptions you don't use" gates the unused decision.
     final bool showUnused =
         ref.watch(settingsControllerProvider).prefs['unused'] ?? true;
-    final DateTime now = DateTime.now();
+    // The injectable clock the calendar already reads: production never
+    // overrides it, and a golden can pin the greeting and every due label.
+    final DateTime now = ref.watch(nowProvider)();
     final AsyncValue<List<Subscription>> subs = ref.watch(
       subscriptionsControllerProvider,
     );
 
-    // ── THE SECOND COLUMN, AND WHY THE MEASUREMENT IS TAKEN HERE ─────────────
-    // 🔴 IT MEASURES THE BOX, NOT THE WINDOW — the rule [TwoPane]'s header
-    // states, and it bites harder here than there. `AppShell`'s `AppScaffold`
-    // hands this body `min(W - 361, 1280)` (measured 2026-08-21), so "the window
-    // is 1200" and "this screen has 1200" are 361 px apart. Read from
-    // `MediaQuery` this `if` would open a second column inside a box that cannot
-    // hold one, and nothing would overflow to say so — the hero would simply be
-    // squeezed.
-    //
-    // ⏱ 2026-09-16 · [ADR 083]: the 361 px was the drawer's. With the slim rail
-    // from 1200 px up, the window and the body are R + 1 px apart, R being the
-    // rail's rendered width. The rule is unchanged: measure the box.
-    //
-    // 🔴 AND IT IS ABOVE THE TwoPane RATHER THAN INSIDE ITS `list`, WHICH IS THE
-    // ONLY PLACE IT CAN GO. `TwoPaneSplit` caps the list column at
-    // [AppBreakpoints.pane] (480) at every width from the split upward, and
-    // BELOW the split the whole pane is under [AppBreakpoints.expanded] (840).
-    // So `paneWidth >= large` asked anywhere inside `list` is an `if` that can
-    // never be true — dead code wearing a feature's clothes. Asked here it sees
-    // the whole body, which is the thing that actually has three columns in it.
-    //
-    // BOTH WIDTHS ARE EXISTING CONSTANTS. Neither is new:
-    //  · [AppBreakpoints.large] (1200) is the TRIGGER, and it is the correct
-    //    half of `AppBreakpoints` for this question. That class's own doc splits
-    //    its constants into "WHICH NAVIGATION?" (medium/expanded/large/
-    //    extraLarge) and "how wide may this CONTENT get?" (form/pane/reading).
-    //    "How many columns does this page have?" is the first kind — the same
-    //    reasoning the list pane's cap below uses to reach the OPPOSITE answer,
-    //    which is why both are written out rather than assumed.
-    //  · [AppBreakpoints.form] (420) is the COLUMN. The hero is one card — a
-    //    label, a figure, two pills and two stat boxes — i.e. exactly the
-    //    single-column shape `form` names, and it is the same floor [TwoPane]
-    //    gives its own list column, so a three-column home repeats one column
-    //    width rather than inventing a second.
+    // 🔴 IT MEASURES THE BOX, NOT THE WINDOW. `AppShell`'s scaffold hands this
+    // body the window minus its navigation, so a `MediaQuery` reading here
+    // would open a column inside a box that cannot hold one.
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
-        // The stated trigger: at [AppBreakpoints.large] the page WANTS a second
-        // column (see above).
-        //
-        // ⏱ 2026-09-15 · [ADR 083] — RETIRED. The two lines above and the
-        // `wantsAside` / feasibility pair below described a WINDOW breakpoint
-        // compared with a BODY width. The decision is now ONE body comparison,
-        // [HomeScreen.asideMinBodyWidth]; the arithmetic paragraphs below still
-        // explain where 1261 comes from, and "the aside opens at a window of
-        // 1622" is history — inside the large-class rail it opens far lower.
-
-        // 🔴 …AND THE FEASIBILITY CLAUSE, WITHOUT WHICH GETTING WIDER DELETES A
-        // PANE. Measured 2026-08-21 against the real widths, not reasoned about:
-        // the aside is paid for out of whatever [TwoPane] would otherwise have
-        // had, so at a body of 1200 the panes are left 1200 − 420 − 1 = 779,
-        // which is BELOW [AppBreakpoints.expanded] (840) and therefore not a
-        // split at all. A user at 1199 with a subscription open, dragging their
-        // window one pixel WIDER, would watch the detail pane vanish and the
-        // hero take its place. Growth has to be monotonic: a wider window may
-        // add a column, never remove one.
-        //
-        // 🔴 THE NUMBER IS NOT INVENTED, IT IS THE SUM OF THE THREE FLOORS —
-        // `form` (420) + `dividerWidth` (1) + `expanded` (840) = 1261, the
-        // narrowest body that can hold an aside AND a split. It is expressed as
-        // that arithmetic rather than as a literal 1261 so it cannot drift from
-        // the constants it is made of.
-        //
-        // ⚠️ SO `large` NEVER DECIDES THIS ON ITS OWN — 1261 > 1200, and that is
-        // an honest conflict between two requirements rather than a bug: "the
-        // hero sits beside the list from 1200" and "the detail sits beside the
-        // list from 840" cannot both hold in 1200…1260 with sourced widths. The
-        // detail wins that band, because it is the pane a user opened
-        // deliberately and the hero is the one they did not. `wantsAside` is
-        // kept as its own named clause anyway, because it is the POLICY and the
-        // second clause is the ARITHMETIC — collapsing them into one number
-        // would hide which of the two a future edit is changing.
-        //
-        // ⚠️ INSIDE THE CHASSIS THIS BAND IS NARROW AND IT IS NOT DEAD.
-        // `AppScaffold` hands the body `min(W − 361, 1280)`, so the aside opens
-        // at a window of 1622 and the body tops out at 1280 — an aside band of
-        // 1261…1280. Pumped without a shell (the width test, and any future
-        // re-parenting) it runs to whatever width the screen is given.
-        //
-        // ⏱ 2026-09-16 · [ADR 083] §4: STALE, and the band is gone. With the
-        // rail from 1200 px up, the body is `min(W - R - 1, 1280)`, so the
-        // aside opens at a window of 1261 + R + 1 and stays open at every wider
-        // window, because the 1280 cap is above 1261. `width_home_test.dart`
-        // pins 1200, 1440, 1599, 1600, 1621 and 1920 inside a real
-        // `AppScaffold`.
         final bool aside = constraints.maxWidth >= HomeScreen.asideMinBodyWidth;
 
         final Widget panes = TwoPane(
-          // 🔴 THE `Builder` IS LOAD-BEARING, NOT TIDINESS.
-          // `TwoPane.isTwoPaneOf` is an `InheritedWidget` lookup, so it only
-          // answers for a context BELOW the TwoPane. `build`'s own context is
-          // above it and would read `false` at every width — which is precisely
-          // the "pushed route on top of a rendered detail pane" defect that
-          // lookup exists to prevent, reintroduced by reading it one line too
-          // high. Same class of mistake as reading `MediaQuery`, different
-          // mechanism.
+          // 🔴 THE `Builder` IS LOAD-BEARING. `TwoPane.isTwoPaneOf` is an
+          // inherited lookup and only answers BELOW the TwoPane; `build`'s own
+          // context would read `false` at every width, and a row would push a
+          // route on top of an already-rendered detail pane.
           list: Builder(
             builder: (BuildContext listContext) => _listColumn(
               listContext,
@@ -307,59 +179,38 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
               subs,
               now,
               showUnused,
-              heroInList: !aside,
+              summaryInList: !aside,
             ),
           ),
-          // Null until a row is tapped, and below 840 never looked at: [TwoPane]
-          // does not build `detail` there, so a phone still pushes `/sub/:id`
-          // and still gets the detail as a full route over the shell.
+          // Null until a row is tapped; below the split never built, so a
+          // phone still pushes `/sub/:id`.
           detail: _selectedId == null
               ? null
-              // 🔴 `onClose` IS NOT OPTIONAL HERE EVEN THOUGH THE PARAMETER IS.
-              // This is the arm that mounts the detail as a WIDGET, so nothing
-              // was pushed and the location is still `/home` — a one-match
-              // stack. Without this callback the screen falls through to its
-              // router arm and every dismiss control on it throws `GoError:
-              // There is nothing to pop` (GlitchTip SUBLY-9, fatal, and the
-              // reason it was only ever seen from wide landscape windows).
-              // Clearing the selection is also what the control is FOR: the
-              // pane closes and the placeholder comes back.
-              // `test/detail_pane_pop_test.dart` pins both halves.
+              // 🔴 `onClose` IS NOT OPTIONAL HERE. Nothing was pushed, so the
+              // location is still `/home`; without it every dismiss control on
+              // the detail throws "There is nothing to pop" (GlitchTip
+              // SUBLY-9). `test/detail_pane_pop_test.dart` pins both halves.
               : SubscriptionDetailScreen(
                   id: _selectedId!,
                   onClose: () => setState(() => _selectedId = null),
                 ),
-          // ⬜ THE COPY IS AN EXISTING KEY AND NOT THE RIGHT ONE — DELIBERATE,
-          // AND NAMED SO IT IS NOT MISTAKEN FOR AN OVERSIGHT. What this column
-          // wants to say is "select a subscription to see its details", and no
-          // arb key says it; `app_en.arb` / `app_ta.arb` are not this
-          // increment's files to edit. A bare English literal here would render
-          // untranslated in `ta` — the exact regression `l10n_group_home_test`
-          // exists to catch — so the placeholder borrows the heading of the
-          // column its chevron points back at instead. Minting the real key is
-          // handed over rather than done in passing.
           placeholder: TwoPanePlaceholder(message: l10n.allSubscriptions),
         );
 
         if (!aside) return panes;
 
         return Row(
-          // `stretch`, so the rule between the aside and the panes is drawn at
-          // full height. Under the default `center` a `VerticalDivider` is
-          // handed LOOSE height constraints and collapses to nothing — an
-          // invisible divider that still reserves its width.
+          // `stretch`, so the rule between the columns is drawn at full height.
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             SizedBox(
               width: AppBreakpoints.form,
               child: _asideColumn(l10n, money, subs, now),
             ),
-            // The SAME divider [TwoPane] draws between ITS two columns, at the
-            // same thickness and off the same constant, so a three-column home
-            // has one kind of seam rather than two that nearly match.
+            // The SAME divider [TwoPane] draws between its own columns.
             const VerticalDivider(
               width: TwoPaneSplit.dividerWidth,
-              thickness: 1,
+              thickness: TwoPaneSplit.dividerWidth,
             ),
             Expanded(child: panes),
           ],
@@ -369,12 +220,9 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
   }
 
   /// The MASTER column: the account header, then everything the subscription
-  /// list is made of. Below [AppBreakpoints.expanded] this is the ENTIRE screen,
-  /// which is what [TwoPane.list] requires of it.
+  /// list is made of. Below the split this is the whole screen.
   ///
-  /// 🔴 [context] MUST COME FROM INSIDE THE TwoPane — see the `Builder` in
-  /// [build]. Passing `build`'s own context here compiles, renders identically,
-  /// and silently disables the whole master-detail behaviour.
+  /// 🔴 [context] MUST COME FROM INSIDE THE TwoPane — see the `Builder`.
   Widget _listColumn(
     BuildContext context,
     AppLocalizations l10n,
@@ -383,184 +231,111 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
     AsyncValue<List<Subscription>> subs,
     DateTime now,
     bool showUnused, {
-    required bool heroInList,
+    required bool summaryInList,
   }) {
-    // The decision [TwoPane] actually made, from the width [TwoPane] actually
-    // had. It is also a DEPENDENCY, so this column rebuilds when the pane
-    // crosses the breakpoint and cannot be left holding a stale answer after a
-    // resize.
     final bool twoPane = TwoPane.isTwoPaneOf(context);
 
-    // 🔀 MERGE CHANGE 1 of 4 — THE HEADER MOVED OUT OF `.when()`.
-    //
-    // The live file wrapped the WHOLE body in `subscriptionsControllerProvider
-    // .when(...)`, so while the first fetch was in flight the screen was a bare
-    // `CircularProgressIndicator` — no greeting, no account name, no way to
-    // reach notifications or settings. That was survivable when the shell drew
-    // the navigation; inside `AppScaffold` the header is also the only route to
-    // /notifications, and a spinner that hides it is a dead end.
-    //
-    // It is ALSO what makes `test/smoke_test.dart` deterministic: that test
-    // pumps `HomeScreen` in a bare `ProviderScope` with no overrides, so the
-    // subscriptions fetch is still LOADING on the frame it asserts. With the
-    // header inside `.when()` the tree would hold a spinner and
-    // `find.textContaining('Welcome to')` would find nothing — a red that names
-    // the copy and says nothing about the cause.
-    //
-    // Nothing in the header depends on the subscription list, so nothing is
-    // being shown early or optimistically. Only the parts that need the data
-    // wait for it.
+    // `reading` (720) caps the column between 720 and the split, where
+    // nothing above this screen caps anything; below 720 and inside the split
+    // it is a no-op. It is a CONTENT width, not a navigation breakpoint.
     return ContentPane.reading(
-      // 🔀 MERGE CHANGE 2 of 4 — THE WIDTH DECISION THIS SCREEN NEVER HAD.
-      //
-      // Same defect and same fix as PR #210's three screens. `AppScaffold` caps
-      // the body at `kMaxBodyWidth` only in its EXTRA-LARGE class (>=1600), so
-      // between 1200 and 1599 the hero card and every `RowCard` grew to the full
-      // window — a 1550 px row with a glyph at one edge and a price at the
-      // other. Nothing overflowed, nothing clipped, no assertion existed to fail.
-      //
-      // 🔴 720 (`AppBreakpoints.reading`), NOT 1280 — CORRECTED 2026-08-21,
-      // BECAUSE THE 1280 CAP NEVER ONCE BOUND ON A REAL DESKTOP.
-      //
-      // The paragraph that used to stand here said `ContentPane`'s default
-      // `kMaxBodyWidth` "makes the two agree instead of agreeing only past
-      // 1600". That was true of the NUMBER and false of the SCREEN, and it is
-      // corrected rather than deleted because the reasoning is what misled:
-      // `AppScaffold` hands its body `min(W - 361, 1280)` — a 360 px drawer and
-      // a 1 px divider are taken off the window first — so at a maximised 1440
-      // the body is 1079 and at 1920 it is 1559-capped-to-1280. Measured
-      // 2026-08-21: the 1280 cap DOES bind at 1920, and binds NOWHERE a real
-      // 1440p or 1600p desktop lives. Between 839 and 1280 this screen was a
-      // phone column that simply got wider — the exact defect the wrapper was
-      // added to prevent, surviving inside the fix for it.
-      //
-      // ⏱ 2026-09-16 · [ADR 083]: the 361 px above was the 360 px drawer and
-      // its divider, and no window class uses the drawer now. From 1200 px up
-      // the body is `min(W - R - 1, 1280)`, where R is the slim rail's rendered
-      // width (116 px for a "Settings" label on Flutter 3.47.2). So a 1440 px
-      // window gives 1439 - R (1323 px for a 116 px rail), not 1079. The 720
-      // cap chosen here still binds there.
-      //
-      // Why `reading` (720) and not a fresh 840–960:
-      //   · This body is ONE COLUMN OF CARDS — a hero card, then `RowCard`s
-      //     that put a 40 px glyph, two short lines and a price on one line.
-      //     `AppBreakpoints`' own doc splits its constants into "WHICH
-      //     NAVIGATION?" (medium/expanded/large/extraLarge) and "how wide may
-      //     this CONTENT get?" (form/pane/reading). 840 is `expanded`, a
-      //     NAVIGATION number; borrowing it as a content cap is precisely the
-      //     conflation that class exists to prevent, and a bare literal `900`
-      //     would be the sixth private copy of a width the chassis already owns.
-      //   · `reading` is the widest CONTENT width the design system has, and at
-      //     720 a RowCard's two intrinsic ends stay within an eye-span of each
-      //     other. Below 720 nothing changes (a `ConstrainedBox` may only
-      //     tighten), so every phone and small tablet renders byte-identically.
-      //
-      // ⚠️ THIS PANE MOVED INTO THE LIST COLUMN ON 2026-08-21, SO THE BAND ITS
-      // CAP BINDS IN IS NARROWER THAN IT WAS — corrected here rather than
-      // deleted, because the 720 argument above is untouched and is still why
-      // the number is 720. What changed is who hands this pane its width:
-      // [TwoPane] gives the list column at most [AppBreakpoints.pane] (480) from
-      // 840 up, and above [AppBreakpoints.large] this screen gives that column
-      // `body - 421` before TwoPane splits it again. So `reading` is the BINDING
-      // cap only between 720 and the split; above the split it is a no-op in
-      // exactly the way it is already a no-op on a phone. KEPT, not removed: the
-      // band it governs is every tablet and small-desktop window, and there it
-      // is still the only thing standing between a `RowCard` and the full width
-      // in a tree where nothing above this screen caps anything.
-      //
-      // ✅ POLICED SINCE #239 by `test/width_home_test.dart`.
-      // ⚠️ THE COUNT AND THE CASE LIST THAT STOOD HERE ARE NOW FALSE AND ARE
-      // CORRECTED, NOT DELETED. It read: "Deleting this wrapper fails all five
-      // of its cases (375 · 768 · 1280 · 1920 · 1500) on the harness's `inPane`
-      // guard; widening the cap back to `kMaxBodyWidth` fails the 768, 1280,
-      // 1920 and 1500 ones." True of the one-column screen; false of this one.
-      // At 1280/1920/1500 the list column is 420 or 480 wide and a 720 cap does
-      // not bind there at all, so widening it is invisible to those cases. The
-      // case that falsifies the CAP is now the band between 720 and the split —
-      // 768 and 839 in the test — while every case still falsifies the PANE,
-      // because they all resolve the `ListView` THROUGH this keyed pane via the
-      // harness's `inPaneOf`.
-      //
-      // 🔴 THE KEY IS NOT DECORATION. There are now up to three `ListView`s on
-      // this screen (aside · list · the detail screen's own), and
-      // `width_harness.dart`'s `inPane` resolves `.first` — "whichever the
-      // element tree happened to visit first", which is right by accident and
-      // wrong the day the columns are reordered. `inPaneOf(find.byKey(...), …)`
-      // exists for exactly this shape.
-      key: const Key('home-list-pane'),
+      key: HomeScreen.listPaneKey,
       child: ListView(
-        // 🔀 MERGE CHANGE 3 of 4 — PADDING RE-BASED FOR THE CHASSIS SHELL.
-        // Live was `fromLTRB(18, 58, 18, 108)`. Both odd numbers were paying for
-        // the old shell: 58 cleared a status bar under a `Scaffold` with no app
-        // bar, and 108 cleared `AppShell`'s floating pill bar plus its FAB.
-        // `AppScaffold._compact()` wraps the body in a `SafeArea` and puts the
-        // navigation in `bottomNavigationBar`, so both insets are now paid twice
-        // — 58 px of dead space under the notch and 108 px under the last row.
-        // 18 is `AppSpacing.gutterCompact`, the chassis's own page gutter.
-        //
-        // ⚠️ THE SENTENCE ABOVE IS HALF WRONG AND IS CORRECTED RATHER THAN
-        // DELETED, because its first half is still the reason the top is 18.
-        // The PILL is `bottomNavigationBar` and did become double-paid; the FAB
-        // is `floatingActionButton`, which reserves nothing and is laid out
-        // OVER this list. Its 72 px was dropped, not double-paid, and the "+"
-        // has been drawn across the last price row ever since — visible in
-        // `01-home.png` of the frames merged as `9f548515`. The bottom now
-        // comes from [AppShell.pageInsetOf], which states that arithmetic once
-        // for all five branches.
         padding: AppShell.pageInsetOf(context),
         children: <Widget>[
-          _header(context, l10n, user),
-          const SizedBox(height: 18),
-          // ✅ ST-U6 (B3, B4): THE LIST COLUMN GOES THROUGH THE SHARED GATE.
-          // It was a bespoke `.when` whose error arm printed
-          // `couldNotLoad('$e')` — the raw exception, at the user, with no
-          // retry — and whose data arm drew zero-figures and two empty section
-          // headings for a first-run user with nothing on the list. Now the
-          // three states are [DataStateView]'s, the failure says what failed
-          // and offers Retry, and the empty state's first step is "Add
-          // subscription". The header above stays outside the gate, so the
-          // way to notifications and settings survives every state.
-          ...switch (subscriptionsState(
-            ref,
-            l10n: l10n,
-            emptyTitle: l10n.dataEmptyTitle,
-            emptyBody: l10n.dataEmptyBody,
-            emptyActionLabel: l10n.addSubscriptionTitle,
-            onEmptyAction: () => showAddSubscriptionSheet(context),
-          )) {
-            final Widget state => <Widget>[
-              Padding(
-                key: const Key('home-list-state'),
-                padding: const EdgeInsets.only(top: 24),
-                child: state,
-              ),
-            ],
-            null => _dashboard(
-              context,
-              l10n,
-              money,
-              subs.requireValue,
-              now,
-              showUnused,
-              heroInList: heroInList,
-              twoPane: twoPane,
-            ),
-          },
+          // THE HEADER IS OUTSIDE THE DATA STATES. It is the route to
+          // notifications and settings, so no state may hide it — a spinner
+          // that ate it would be a screen with no door.
+          _header(context, l10n, user, now),
+          const SizedBox(height: AppSpacing.lg),
+          ..._states(
+            context,
+            l10n,
+            money,
+            subs,
+            now,
+            showUnused,
+            summaryInList: summaryInList,
+            twoPane: twoPane,
+          ),
         ],
       ),
     );
   }
 
-  /// The hero, lifted out of the scroller and into a column of its own at
-  /// [AppBreakpoints.large] and above.
+  /// LOADING, FAILED, EMPTY and POPULATED — four branches, exactly one on
+  /// screen. `test/home_states_test.dart` asserts each by key AND asserts the
+  /// other three absent, which is the half that can fail.
   ///
-  /// 🔴 IT READS `valueOrNull` RATHER THAN `.when`, AND THAT IS NOT A SHORTCUT.
-  /// The spinner and the error sentence belong in exactly ONE place, and that
-  /// place is the list column — the one the user is reading. A second spinner
-  /// beside the first reports one fetch as two, and a second `couldNotLoad`
-  /// reports one failure as two. While the fetch is in flight this column is
-  /// therefore EMPTY, which is the honest state: there is no monthly total yet
-  /// to put in it.
+  /// OFFLINE is not a fifth branch here, deliberately: the shell's
+  /// `OfflineBannerHost` is the one offline surface in the app, and a cached
+  /// list is still the user's list. Offline with data is POPULATED under that
+  /// banner; offline without data is FAILED, with its retry.
+  List<Widget> _states(
+    BuildContext context,
+    AppLocalizations l10n,
+    MoneyFormatter money,
+    AsyncValue<List<Subscription>> subs,
+    DateTime now,
+    bool showUnused, {
+    required bool summaryInList,
+    required bool twoPane,
+  }) {
+    if (!subs.hasValue) {
+      if (subs.hasError) {
+        // A SENTENCE, never the exception: the old `couldNotLoad('$e')` put a
+        // stack-adjacent string in front of the user. The sentence is the
+        // shared gate's (ST-U6, D21): chosen by WHAT failed, so a session the
+        // server ended is not told to check its Wi-Fi.
+        return <Widget>[
+          DataStateView.failed(
+            title: l10n.dataFailedTitle,
+            body: dataFailedBodyFor(l10n, subs.error),
+            retryLabel: l10n.retry,
+            onRetry: () => ref.invalidate(subscriptionsControllerProvider),
+          ),
+        ];
+      }
+      // The list's own outline: the rows arrive where the placeholders were.
+      return <Widget>[
+        AppCard(
+          padding: EdgeInsets.zero,
+          child: SkeletonList(label: l10n.dataLoading, rows: 4),
+        ),
+      ];
+    }
+    final List<Subscription> list = subs.requireValue;
+    if (list.isEmpty) {
+      // No retry: an empty account is not a malfunction. ✅ ST-U6 (B3): the
+      // first step is ON the empty state — "Add subscription" — so a first-run
+      // user is never handed a message with nothing on it to tap.
+      return <Widget>[
+        DataStateView.empty(
+          title: l10n.dataEmptyTitle,
+          body: l10n.dataEmptyBody,
+          actionLabel: l10n.addSubscriptionTitle,
+          onAction: () => showAddSubscriptionSheet(context),
+        ),
+      ];
+    }
+    return _dashboard(
+      context,
+      l10n,
+      money,
+      list,
+      now,
+      showUnused,
+      summaryInList: summaryInList,
+      twoPane: twoPane,
+    );
+  }
+
+  /// The summary in a column of its own, from [HomeScreen.asideMinBodyWidth].
+  ///
+  /// 🔴 `.value`, NOT `.when`: the loading and failed states belong in
+  /// ONE place — the list column the user is reading. Two skeletons would
+  /// report one fetch as two. Until data lands this column is empty, which is
+  /// honest: there is no total yet to show.
   Widget _asideColumn(
     AppLocalizations l10n,
     MoneyFormatter money,
@@ -569,46 +344,26 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
   ) {
     final List<Subscription>? data = subs.value;
     return ListView(
-      key: const Key('home-aside'),
-      // The SAME inset the list column uses, so the hero's top edge and the
-      // account header's top edge start on one line rather than a few pixels
-      // apart. A scroller, not a `Column`, because a short window must still be
-      // able to reach the bottom of the hero — and a scroller that can reach
-      // its own end under a FAB that floats at every width needs the same
-      // bottom reservation the list column takes.
+      key: HomeScreen.asideKey,
+      // The SAME inset as the list column, so the summary's top edge and the
+      // header's top edge start on one line.
       padding: AppShell.pageInsetOf(context),
       children: <Widget>[
-        if (data != null)
-          _heroCard(
-            l10n,
-            money,
-            SubMath.totalMonthly(data),
-            SubMath.totalYearly(data),
-            data.length,
-            SubMath.dueWithin(data, now, 7),
-            SubMath.dueWithin(data, now, 30),
-          ),
+        if (data != null && data.isNotEmpty) _summary(l10n, money, data, now),
       ],
     );
   }
 
-  /// Greeting, account name, notifications and the avatar shortcut. Independent
-  /// of the subscription list — see MERGE CHANGE 1.
+  /// Greeting, account name, notifications and the account shortcut.
   Widget _header(
     BuildContext context,
     AppLocalizations l10n,
     core.AuthUser? user,
+    DateTime now,
   ) {
-    // 🔴 `AppText.of(context)`, NOT THE BARE CONSTS — THE GREETING AND THE
-    // ACCOUNT NAME ARE THE FIRST TWO STRINGS THE APP EVER PAINTS.
-    //
-    // `AppText.title` / `.muted` bake `AppColors.ink` (#141420) and
-    // `AppColors.muted` into `const TextStyle`s, so they paint near-black
-    // whatever the ambient brightness is — the gap `dark_group_home_test.dart`
-    // names in its own header ("⬜ WHAT THIS INCREMENT DOES NOT FIX"). `of`
-    // returns THE SAME const objects in light (`identical`, by construction),
-    // so this repaints nothing for the owner's light build and only fixes dark.
-    final AppTextStyles text = AppText.of(context);
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme scheme = theme.colorScheme;
+    final TextTheme text = theme.textTheme;
     return Row(
       children: <Widget>[
         Expanded(
@@ -616,133 +371,62 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Text(
-                _greeting(l10n, DateTime.now()),
-                style: text.muted.copyWith(fontSize: 12),
+                _greeting(l10n, now),
+                style: text.bodyMedium?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
               ),
-              // 🔀 MERGE CHANGE 4 of 4 — THE SIGNED-OUT FALLBACK IS NOW THE
-              // LOCALISED WELCOME.
-              //
-              // Live rendered the bare literal `'Welcome'`. The stamped home's
-              // whole visible copy was `l10n.welcomeTo(appName)`, and dropping it
-              // would delete the only translated string on this surface AND turn
-              // `smoke_test.dart:29` red. Using it HERE keeps the key earning its
-              // keep on the destination the test actually pumps, and "Welcome to
-              // Subly" over "Good morning" reads better than a bare "Welcome".
-              //
-              // ⚠️ `AppConfig.appName` DIFFERS BETWEEN THE TWO CONFIGS THIS
-              // MERGE IS SANDWICHED BETWEEN — live says `Subly`, the stamp says
-              // `Subly — Subscription Tracker`. This line renders whichever
-              // P2.5's de-duplication keeps. See MANIFEST.md · FINDING 2.
+              // Signed out, the localised welcome — which is also what keeps
+              // `test/smoke_test.dart`'s 'Welcome to' honest.
               Text(
                 user?.displayName ?? l10n.welcomeTo(AppConfig.appName),
-                style: text.title.copyWith(fontSize: 24),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: text.headlineSmall?.copyWith(color: scheme.onSurface),
               ),
             ],
           ),
         ),
-        // [13]T-9's home entry point. `push`, not `go`: notifications is a
-        // detail over the shell, and the user must come back to where they were.
+        const SizedBox(width: AppSpacing.md),
+        // [13]T-9's entry point. `push`, not `go`: notifications is a detail
+        // over the shell, and the user comes back to where they were.
         //
-        // ✅ ST-U5 (B6): NO DOT. This passed `dot: true` unconditionally — a
-        // badge that was always on, i.e. a permanent "something new" that
-        // carried no information. Nothing on this device knows what is unread,
-        // so the badge is off until a real unread count exists to drive it.
-        _circleButton(
-          context: context,
+        // 🔴 NO UNREAD DOT. It was `dot: true`, unconditionally — a badge that
+        // is always on carries no information, and ST-D0's rule is that an
+        // empty count draws nothing. It comes back with a real unread source.
+        _headerButton(
+          context,
           icon: Icons.notifications_none_rounded,
-          semanticLabel: l10n.notifications,
+          label: l10n.notifications,
           onTap: () => context.push('/notifications'),
         ),
-        const SizedBox(width: 9),
-        // KEPT ALONGSIDE the Settings nav destination, deliberately. They are
-        // not redundant: the destination is the discoverable route (labelled, in
-        // the rail and the drawer at every width above 600), the avatar is the
-        // conventional one (top-right, where a user looks for their account) and
-        // it is the only one that shows WHICH account is signed in. Removing
-        // either leaves a real user group without the affordance it looks for.
-        // 🔴 ITS ONLY VISIBLE CONTENT IS ONE LETTER. `user?.initial ?? 'A'` is
-        // the account initial, so a screen reader announced this control as
-        // "R" — a letter, with no role and no destination. That is the worst of
-        // the three states an unlabelled control can be in: not silent (which at
-        // least reads as "unknown"), but confidently wrong.
+        const SizedBox(width: AppSpacing.sm),
+        // KEPT beside the Settings destination: the destination is the
+        // discoverable route, this is the conventional one (top-right) and the
+        // only one that shows WHICH account is signed in.
         //
-        // The letter is dropped rather than appended to: the initial is a
-        // visual shorthand for "your account", and hearing the shorthand AND
-        // its expansion ("Account and settings R") is the stutter [GlyphTile]
-        // records. Which account is signed in is already announced by the
-        // greeting and the display name to the left of this row.
-        //
-        // 🔴 THE EXCLUSION IS `ExcludeSemantics` AROUND THE VISUAL, NOT
-        // `excludeSemantics: true` ON THE ANNOTATION — AND THE DIFFERENCE IS
-        // THE WHOLE CONTROL. This read
-        // `Semantics(button: true, label: …, excludeSemantics: true)` wrapped
-        // around the `GestureDetector`, and that flag drops the ENTIRE subtree
-        // beneath the annotation: the account initial it was aimed at, and the
-        // gesture handler's `SemanticsAction.tap` with it. So the node
-        // announced "Account and settings, button" and had no action to
-        // perform — and a screen reader's double-tap dispatches the action to
-        // the node rather than synthesising a pointer event, so the ONE route
-        // to /settings a reader can find did nothing at all. Sighted taps were
-        // unaffected (hit-testing never consults semantics), which is why this
-        // shipped.
-        //
-        // Moving the exclusion inside the gesture handler keeps every property
-        // the old spelling was for — the annotation still supplies the role and
-        // the name, the letter is still silent — and leaves the tap action on
-        // the node that announces the button. Same shape as the settings
-        // profile card, which had it right.
-        //
-        // ✅ POLICED by the `home ·` group in `test/a11y_semantics_test.dart`:
-        // restoring `excludeSemantics: true` here fails its third limb by name.
-        // `expectNothingNaked` cannot see this defect in either direction — it
-        // ranges over nodes that HAVE a tap action, so a control missing one is
-        // exactly the control it skips.
-        //
-        // 🔴 THE THIRD KEYBOARD-DEAD CONTROL ON THIS SCREEN, AND THE
-        // SUBSTITUTION IS DELIBERATELY NARROW: `FocusableTap` re-emits the same
-        // `Semantics(button: true, label: …)` this had, keeps the
-        // `ExcludeSemantics` exactly where the paragraph above argues it
-        // belongs — INSIDE, round the visual, so the tap action stays on the
-        // node that announces the button — and adds only the `FocusNode` the
-        // pair never created. `mergeDescendants: false` preserves the previous
-        // spelling: the annotation was bare `Semantics`, not `MergeSemantics`,
-        // and there is nothing beneath it left to merge anyway.
+        // 🔴 `ExcludeSemantics` INSIDE `FocusableTap`, round the visual only.
+        // `excludeSemantics: true` on the annotation dropped the tap action
+        // with the letter, so a screen reader's double-tap did nothing
+        // (`test/a11y_semantics_test.dart`'s `home ·` group pins it). The
+        // letter is silent because "Account and settings R" is a stutter.
         FocusableTap(
           label: l10n.a11yAccountSettings,
           mergeDescendants: false,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppRadius.control),
           onTap: () => context.go('/settings'),
           child: ExcludeSemantics(
-            // 🔴 48, NOT 44 — AND THE 44 SURVIVED BECAUSE IT WAS BESIDE THE
-            // ONE ASSERTION THAT COULD NOT SEE IT. `_circleButton` nine
-            // pixels to the left is 48 and says so in its own comment ("48px,
-            // not 44: the chassis floor for an icon-only tap target"); this
-            // control does the same job in the same row and shipped at 44.
-            // `chassis_properties_test`'s 48px limb ranges over
-            // `_iconOnlyControls`, which filters to controls with NO `Text`
-            // descendant — and this one has one, the account initial. So the
-            // ONE control in the header the floor did not apply to is the one
-            // that missed it. [ADR 048] defect 1, found by the sweep that
-            // replaces the mistitled assertion: measured 44.0x44.0 against
-            // androidTapTargetGuideline's 48.
-            //
-            // The row was ALREADY 48 tall (the bell sets it), so this changes
-            // the avatar's own box and nothing around it.
             child: Container(
-              width: 48,
-              height: 48,
+              width: kMinInteractiveDimension,
+              height: kMinInteractiveDimension,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                gradient: AppColors.brandGradient,
-                borderRadius: BorderRadius.circular(14),
+                color: scheme.primary,
+                borderRadius: BorderRadius.circular(AppRadius.control),
               ),
               child: Text(
                 user?.initial ?? 'A',
-                style: const TextStyle(
-                  fontFamily: 'Manrope',
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                ),
+                style: text.titleMedium?.copyWith(color: scheme.onPrimary),
               ),
             ),
           ),
@@ -751,13 +435,40 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
     );
   }
 
-  /// Everything that needs the subscription list. Returns a list so the header
-  /// above can stay outside the async boundary.
+  /// An icon-only header control: [kMinInteractiveDimension] square, on the
+  /// card's own fill with the card's hairline, so the header controls and the
+  /// cards below are one material in both schemes. [label] IS its name.
+  Widget _headerButton(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme scheme = theme.colorScheme;
+    return FocusableTap(
+      label: label,
+      mergeDescendants: false,
+      borderRadius: BorderRadius.circular(AppRadius.control),
+      onTap: onTap,
+      child: Container(
+        width: kMinInteractiveDimension,
+        height: kMinInteractiveDimension,
+        decoration: BoxDecoration(
+          color: AppCard.fillOf(theme),
+          borderRadius: BorderRadius.circular(AppRadius.control),
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        child: Icon(icon, color: scheme.onSurface),
+      ),
+    );
+  }
+
+  /// Everything that needs a non-empty subscription list.
   ///
-  /// [heroInList] is false once the hero has its own column — see
-  /// [_asideColumn]. [twoPane] is [TwoPane.isTwoPaneOf] read inside the pane and
-  /// threaded down rather than re-derived, so every row on this screen decides
-  /// push-vs-select from the SAME measurement the layout used.
+  /// [summaryInList] is false once the summary has its own column. [twoPane] is
+  /// [TwoPane.isTwoPaneOf] read inside the pane and threaded down, so every
+  /// row decides push-vs-select from the SAME measurement the layout used.
   List<Widget> _dashboard(
     BuildContext context,
     AppLocalizations l10n,
@@ -765,622 +476,198 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
     List<Subscription> subs,
     DateTime now,
     bool showUnused, {
-    required bool heroInList,
+    required bool summaryInList,
     required bool twoPane,
   }) {
-    final MoneyBag total = SubMath.totalMonthly(subs);
-    final MoneyBag dueSoon = SubMath.dueWithin(subs, now, 7);
     final List<Subscription> unused = SubMath.unused(subs);
-    final MoneyBag savings = SubMath.savings(subs);
     final List<Subscription> upcoming = SubMath.upcoming(subs, now);
     final List<Subscription> all = SubMath.byMonthlyDesc(subs);
 
     return <Widget>[
-      // 🔴 THE HERO IS IN THIS COLUMN ONLY WHILE THERE IS NO COLUMN OF ITS OWN.
-      // At and above [AppBreakpoints.large] the same card is built by
-      // [_asideColumn]; building it in both places would put two hero cards on
-      // one screen, each quoting the same monthly total, which reads as a
-      // duplicated render rather than a layout.
-      if (heroInList) ...<Widget>[
-        _heroCard(
-          l10n,
-          money,
-          total,
-          SubMath.totalYearly(subs),
-          subs.length,
-          dueSoon,
-          SubMath.dueWithin(subs, now, 30),
-        ),
-        const SizedBox(height: 14),
+      // In this column only while there is no column of its own: two summary
+      // cards quoting one total read as a duplicated render.
+      if (summaryInList) ...<Widget>[
+        _summary(l10n, money, subs, now),
+        const SizedBox(height: AppSpacing.lg),
       ],
       if (showUnused && unused.isNotEmpty)
-        RowCard(
-          accentBar: AppColors.warn,
-          onTap: () => context.go('/insights'),
-          // ⬜ THE WARN BADGE AND ITS BAR STAY UNCONDITIONAL, AND THAT IS A
-          // DECISION RATHER THAN A MISS. The 3 px `accentBar`, the 16 % wash
-          // below and the `!` riding it are ONE deliberate status treatment in
-          // the brand's warn hue — the same hue the `unused` dot in [_subTile]
-          // uses — so they are FILLS carrying meaning, not prose that follows a
-          // ground.
-          //
-          // 🔴 THE `!` WAS ILLEGIBLE IN LIGHT, AND THE PARAGRAPH THAT STOOD
-          // HERE DIAGNOSED IT AND THEN DREW THE WRONG CONCLUSION. It read: "A
-          // BRIGHTNESS FORK CANNOT FIX WHAT IS WRONG WITH THE `!` … so it
-          // belongs to whoever owns the palette." CORRECTED 2026-08-21, not
-          // deleted, because the half that was TRUE is why the fix has the
-          // shape it has.
-          //
-          // TRUE: the failing side is the LIGHT one — the side every other fork
-          // in this file leaves byte-identical on purpose — so a fork whose
-          // light arm is the shipped literal is a no-op here, and forking that
-          // way would have shipped a dead `if` reporting healthy.
-          // FALSE: the conclusion. A fork fixes it fine; it just has to move
-          // the LIGHT arm, which is exactly what `due.dart`'s `_warnOnLight`
-          // already does for the due label on this same screen. That is a
-          // CALL-SITE change, not a token change: [AppColors.warn] does not
-          // move and must not — `app_colors.dart:76-78`'s "NO VALUE HERE CAN
-          // FIX IT" is a statement about the TOKEN, which has to serve the dark
-          // surfaces too, and warn is still the correct FILL for this wash and
-          // for the `accentBar` above.
-          //
-          // The numbers, the grounds they were taken against and why this value
-          // is not `due.dart`'s: [_warnGlyphOnWash].
-          //
-          // ⚠️ THE BAR THAT GOVERNS THIS GLYPH IS 3.0, NOT THE 4.5 THE DUE
-          // LABEL ANSWERS TO, and saying so is not a licence to relax anything.
-          // `MinimumTextContrastGuideline.targetContrastRatio(19, bold: true)`
-          // returns `kMinimumRatioLargeText` because 19 ≥ `kLargeTextMinimumSize`
-          // (18) — this is a large-text glyph, unlike the 11px w700 due label
-          // one method down. 1.89:1 failed even that, and the new light tone
-          // clears 4.5 anyway, so the fix is safe under either reading.
-          //
-          // ⬜ AND NOTHING IN `test/` MEASURES THIS GLYPH TODAY — it is a hole,
-          // named rather than assumed away. `a11y_semantics_test.dart`'s
-          // `_rowCardTexts` sets `ground = null` for any `Text` under a
-          // `DecoratedBox` that carries its own colour, and `_assertLegible`
-          // `continue`s on a null ground. The badge has a decorated ground by
-          // construction, so it is skipped — which is why 1.89:1 shipped green.
-          // Closing that hole means measuring the COMPOSITE (the helper's own
-          // translucency guard refuses to score alpha, correctly), and it lives
-          // in a test file this increment does not own.
-          leading: Container(
-            width: 40,
-            height: 40,
-            alignment: Alignment.center,
-            // UNCHANGED IN BOTH BRIGHTNESSES. Darkening the wash cannot help:
-            // with an amber glyph on it the ground would have to fall to a
-            // relative luminance of 0.059 to clear 4.5, and warn over a white
-            // card cannot reach that at ANY opacity — at 1.0 the ground IS
-            // warn, luminance 0.439. The glyph is the only end that can move.
-            decoration: BoxDecoration(
-              color: const Color.fromRGBO(245, 158, 11, 0.16),
-              borderRadius: BorderRadius.circular(12),
+        // A DECISION, NOT A NOTICE: the user has plans they marked unused,
+        // and the answer is one tap away. The tone is the scheme's warn pair
+        // on an opaque tint — measured once per scheme by the component —
+        // which retires the `_warnGlyphOnWash` #956006 this file measured by
+        // hand for a 16 % wash.
+        DecisionStrip(
+          key: HomeScreen.unusedStripKey,
+          kind: StatusKind.warn,
+          // PLURAL: the whole clause is in each arm, so a language that
+          // inflects the noun translates a sentence.
+          message: l10n.markedUnusedCount(unused.length),
+          detail: l10n.cancelToSave(money.formatBag(SubMath.savings(subs))),
+          actions: <DecisionAction>[
+            DecisionAction(
+              key: HomeScreen.unusedReviewKey,
+              label: l10n.homeReviewUnused,
+              primary: true,
+              onPressed: () => context.go('/insights'),
             ),
-            child: Text(
-              '!',
-              style: TextStyle(
-                fontFamily: 'Space Grotesk',
-                fontWeight: FontWeight.w700,
-                fontSize: 19,
-                // THE ONE LINE THAT MOVES, AND IT MOVES ON THE LIGHT SIDE.
-                // Dark keeps the shipped literal, so that branch repaints by
-                // zero pixels and its 4.30:1 cannot regress.
-                color: Theme.of(context).brightness == Brightness.light
-                    ? _warnGlyphOnWash
-                    : AppColors.warn,
-              ),
-            ),
-          ),
-          // PLURAL — one of the app's first three. `markedUnusedCount` carries
-          // the whole clause in each arm, so a language that inflects the noun
-          // (Tamil: திட்டம் → திட்டங்கள்) is translating a sentence rather than
-          // gluing a number onto a fixed word.
-          title: l10n.markedUnusedCount(unused.length),
-          // `RowCard` is theme-aware (its ground is `cardDecoration(context)`),
-          // so a const `AppText.muted` here is near-grey prose on a dark card.
-          subtitle: Text(
-            l10n.cancelToSave(money.formatBag(savings)),
-            style: AppText.of(context).muted.copyWith(fontSize: 12),
-          ),
-          // 🔴 THE ONE GLYPH THE PROSE MIGRATION COULD NOT SEE, FIXED
-          // 2026-08-21. `RowCard`'s ground forks — `AppColors.surface` in
-          // light, `scheme.surfaceContainerHighest` in dark — and this `Icon`
-          // did not. `AppColors.muted` #6F6F7B is a grey chosen against WHITE
-          // (its own token doc says so), so on the dark card #35343A it
-          // measured **2.49:1**, under SC 1.4.11's 3:1 for a meaningful
-          // non-text glyph and it is the only arrow this row has.
-          //
-          // It survived the home sweep because it is NOT an `AppText` defect:
-          // the pattern that migrated every string here (`AppText.<style>` →
-          // `AppText.of(context)`) cannot match an `Icon`. It is named as
-          // outstanding in `dark_group_home_test.dart`'s header, which cites it
-          // by its pre-merge line ("home_screen.dart:443").
-          //
-          // `onSurfaceVariant` is THE SLOT, not a second literal: it is what
-          // `AppThemeX.fromScheme` already maps `muted` to, and what
-          // `AppText.of(context).muted` one line up already gives this row's
-          // own subtitle — so the arrow and the prose beside it resolve from
-          // the same place instead of drifting apart. Measured against
-          // `buildAppTheme(seed: 0xFF6459F5, brightness: dark)`, what
-          // `app.dart:84` actually supplies: #C8C5D0 on #35343A = **7.25:1**.
-          //
-          // LIGHT KEEPS THE LITERAL AND REPAINTS BY ZERO PIXELS — 4.96:1 on the
-          // white card, already AA. Same rule, same reason, as `cardDecoration`
-          // and `RowCard`'s own light branches.
-          trailing: Icon(
-            Icons.arrow_forward,
-            color: Theme.of(context).brightness == Brightness.light
-                ? AppColors.muted
-                : Theme.of(context).colorScheme.onSurfaceVariant,
-            size: 20,
-          ),
+          ],
         ),
-      SectionHeader(
-        l10n.upcomingRenewals,
-        // 🔴 THE ARROW LEFT THE STRING, and that is the point of the key rather
-        // than a side effect. The literal was `'Calendar →'` — a LEFT-TO-RIGHT
-        // glyph baked into copy, so every RTL locale would have rendered a
-        // "forward" arrow pointing back the way the reader came, and every
-        // translator would have had to remember to flip a character. It is now
-        // an `Icons.arrow_forward`, which Flutter declares with
-        // `matchTextDirection: true` and therefore mirrors itself; the arb key
-        // (`calendarLink`) carries the word alone.
-        // The word is already there, so this needs the ROLE and not a label:
-        // merged, the node reads "Calendar, button" instead of "Calendar" as
-        // prose sitting beside a heading. The arrow contributes nothing — an
-        // `Icon` with no `semanticLabel` is silent — which is correct: it is the
-        // same direction the word already implies.
-        // 🔴 THE PAINTED WORD WAS THE WHOLE TAP TARGET, AND IT WAS 13 PIXELS
-        // TALL. Measured 112.0x13.0 against androidTapTargetGuideline's 48 —
-        // and it fails WCAG 2.5.8's 24x24 as well, so this is not merely under
-        // the stricter Android bar. NONE of 2.5.8's exceptions covers it: it is
-        // not Inline (it sits beside a heading, not inside a sentence, and its
-        // size is set by its own 12px style rather than by surrounding
-        // line-height), and Equivalent would be a claim about the shell's
-        // Calendar tab — a control that is NOT in the tree when this screen is
-        // pumped, i.e. an exclusion nothing here could falsify.
-        //
-        // So the target grows to 48 rather than being argued away. Two halves,
-        // both needed: `SizedBox` gives the SEMANTICS NODE its height (the rect
-        // a reader's switch/scan target is derived from), and
-        // `HitTestBehavior.opaque` gives the POINTER the same area — without it
-        // the node would claim 48 while a finger still had to find the 13px
-        // word, which is the announce-one-thing-do-another shape the avatar
-        // above records. The painted row is unmoved; only the header's own
-        // block is taller.
-        //
-        // 🔴 AND IT WAS KEYBOARD-DEAD, WHICH IS A THIRD PROPERTY OF THE
-        // SAME CONTROL AND WAS FIXED LAST. The two paragraphs above are about
-        // what a READER hears and what a FINGER can hit; neither implies a
-        // keyboard can get here, and it could not —
-        // `test/keyboard_traversal_test.dart` counted this as one of home's
-        // three dead controls. `FocusableTap` keeps the `MergeSemantics` +
-        // `Semantics(button: true)` and the `opaque` 48px band exactly as
-        // argued above, and adds the `FocusNode`.
-        trailing: FocusableTap(
-          onTap: () => context.go('/calendar'),
-          borderRadius: BorderRadius.circular(8),
-          child: SizedBox(
-            height: 48,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                // 🔴 THE ACCENT IS INK HERE, SO IT FORKS BY BRIGHTNESS.
-                // `AppColors.accent` (#6459F5) is a FILL colour that this
-                // row paints as 12px w700 TEXT, so SC 1.4.3's 4.5:1 governs,
-                // not 1.4.11's 3:1. On the dark scaffold #131318 it measured
-                // **3.78:1** — the whole reason `every string on home … DARK`
-                // was red. `scheme.primary` is the same seed resolved for the
-                // ambient brightness (M3 puts dark primary at tone 80), which
-                // is why the fork is a chassis lookup and not a second
-                // literal. Light keeps the literal so nothing repaints.
-                Text(
-                  l10n.calendarLink,
-                  style: AppText.body.copyWith(
-                    color: Theme.of(context).brightness == Brightness.light
-                        ? AppColors.accent
-                        : Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(width: 3),
-                Icon(
-                  Icons.arrow_forward,
-                  color: Theme.of(context).brightness == Brightness.light
-                      ? AppColors.accent
-                      : Theme.of(context).colorScheme.primary,
-                  size: 13,
-                ),
-              ],
-            ),
-          ),
-        ),
+      // The Calendar link is the section's action: a real, keyboard-reachable
+      // 48 px control whose arrow mirrors in RTL (the word used to carry a
+      // literal '→').
+      AppSectionHeader(
+        title: l10n.upcomingRenewals,
+        actionLabel: l10n.calendarLink,
+        onAction: () => context.go('/calendar'),
       ),
-      ...upcoming.map(
-        (Subscription s) => Padding(
-          padding: const EdgeInsets.only(bottom: 9),
-          child: _subTile(
-            context,
-            l10n,
-            money,
-            s,
-            now,
-            showDue: true,
-            twoPane: twoPane,
-          ),
+      if (upcoming.isNotEmpty)
+        AppListGroup(
+          key: HomeScreen.upcomingKey,
+          children: <Widget>[
+            for (final Subscription s in upcoming)
+              _row(context, l10n, money, s, now, due: true, twoPane: twoPane),
+          ],
         ),
-      ),
-      SectionHeader(
-        l10n.allSubscriptions,
-        trailing: Text(
-          '${subs.length}',
-          style: AppText.of(context).muted.copyWith(fontSize: 12),
-        ),
-      ),
-      ...all.map(
-        (Subscription s) => Padding(
-          padding: const EdgeInsets.only(bottom: 9),
-          child: _subTile(
-            context,
-            l10n,
-            money,
-            s,
-            now,
-            showDue: false,
-            twoPane: twoPane,
-          ),
-        ),
+      AppSectionHeader(title: l10n.allSubscriptions, count: '${subs.length}'),
+      AppListGroup(
+        key: HomeScreen.allKey,
+        children: <Widget>[
+          for (final Subscription s in all)
+            _row(context, l10n, money, s, now, due: false, twoPane: twoPane),
+        ],
       ),
     ];
   }
 
-  /// 🔴 THE HERO IS THE ONE SURFACE ON THIS SCREEN THAT IS ALREADY DARK IN BOTH
-  /// BRIGHTNESSES, so the six `Colors.white` / `rgba(255,255,255,…)` values in
-  /// this method and in [_statBox] STAY. They are not the light-hardcoded defect
-  /// `cardDecoration` and `RowCard` carried.
+  /// The summary: the monthly total, its two qualifiers, and the 7- and
+  /// 30-day figures.
   ///
-  /// The ground here is [AppColors.heroGradient] — `heroA/B/C`, three fixed
-  /// near-black purples — and it is a BRAND asset, not a themed surface: it
-  /// renders identically under `theme` and `darkTheme` because it is a constant
-  /// gradient, not a scheme slot. White is therefore the correct foreground in
-  /// both modes, and swapping it for `scheme.onSurface` would put near-black
-  /// text on a near-black card in LIGHT mode — the same defect this campaign is
-  /// removing, introduced in the opposite direction.
-  ///
-  /// `test/dark_group_home_test.dart` pins that in both brightnesses, because
-  /// "migrate every hardcoded colour" is exactly the tidy-up that would break it
-  /// and nothing else would notice.
-  Widget _heroCard(
+  /// `store_screenshots_test.dart` records `data.length` and
+  /// `SubMath.totalMonthly(data)` as the board the frame shows — they are the
+  /// `N active` fact and the figure here.
+  Widget _summary(
     AppLocalizations l10n,
     MoneyFormatter money,
-    MoneyBag total,
-    MoneyBag yearly,
-    int count,
-    MoneyBag dueSoon,
-    MoneyBag due30,
+    List<Subscription> subs,
+    DateTime now,
   ) {
-    return Container(
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        gradient: AppColors.heroGradient,
-        borderRadius: BorderRadius.circular(26),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: Color.fromRGBO(42, 36, 86, 0.8),
-            blurRadius: 50,
-            offset: Offset(0, 24),
-            spreadRadius: -24,
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            l10n.monthlySpend,
-            style: AppText.label.copyWith(
-              color: const Color.fromRGBO(255, 255, 255, 0.7),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            money.formatBag(total),
-            style: AppText.fig.copyWith(
-              fontSize: 44,
-              color: Colors.white,
-              height: 1,
-            ),
-          ),
-          const SizedBox(height: 12),
-          // Wrap, not Row (P2.6b route-walk finding): two intrinsic-width
-          // pills overflow a narrow card where a Wrap folds to a second line —
-          // same fix as the PoweredByNikatru legal links, same reason.
-          Wrap(
-            spacing: 7,
-            runSpacing: 7,
-            children: <Widget>[
-              // PLURAL. English collapses ("1 active" / "2 active") so the arms
-              // read the same here — which is precisely why the key has to be a
-              // plural rather than an interpolation: Tamil and every other
-              // language that inflects gets the arms it needs, and English's
-              // coincidence stops being the shape the app is built on.
-              Pill(
-                l10n.activeCount(count),
-                bg: const Color.fromRGBO(255, 255, 255, 0.13),
-                fg: Colors.white,
-              ),
-              Pill(
-                // The plans' own yearly charges, never twelve rounded
-                // twelfths: `SubMath.totalYearly` says why.
-                l10n.perYearTotal(money.formatBagRounded(yearly)),
-                bg: const Color.fromRGBO(255, 255, 255, 0.13),
-                fg: Colors.white,
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          Row(
-            children: <Widget>[
-              _statBox(l10n.dueIn7Days, money.formatBag(dueSoon), Colors.white),
-              const SizedBox(width: 12),
-              // Was 'VS LAST MONTH', computed as `total - 174`. 174 was the last
-              // element of the fabricated six-month trend array in insights, so this
-              // compared the user's real total against a number someone typed. It
-              // also hardcoded a '+', so it reported an increase every single month.
-              // The app stores no history, so no month-over-month figure can be
-              // honest. Replaced with a 30-day horizon, which is derived.
-              _statBox(l10n.dueIn30Days, money.formatBag(due30), Colors.white),
-            ],
-          ),
-        ],
-      ),
+    return AppSummaryCard(
+      key: HomeScreen.summaryKey,
+      label: l10n.monthlySpend,
+      figure: money.formatBag(SubMath.totalMonthly(subs)),
+      facts: <String>[
+        // PLURAL, so an inflecting language gets its arms.
+        l10n.activeCount(subs.length),
+        // The plans' own yearly charges, never twelve rounded twelfths.
+        l10n.perYearTotal(money.formatBagRounded(SubMath.totalYearly(subs))),
+      ],
+      stats: <SummaryStat>[
+        SummaryStat(
+          label: l10n.dueIn7Days,
+          value: money.formatBag(SubMath.dueWithin(subs, now, 7)),
+        ),
+        // A 30-day horizon, which is derived. The app stores no history, so
+        // no month-over-month figure could be honest.
+        SummaryStat(
+          label: l10n.dueIn30Days,
+          value: money.formatBag(SubMath.dueWithin(subs, now, 30)),
+        ),
+      ],
     );
   }
 
-  Widget _statBox(String label, String value, Color valueColor) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: const Color.fromRGBO(255, 255, 255, 0.08),
-          borderRadius: BorderRadius.circular(15),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(
-              label,
-              style: const TextStyle(
-                fontFamily: 'Manrope',
-                fontWeight: FontWeight.w600,
-                fontSize: 10,
-                color: Color.fromRGBO(255, 255, 255, 0.7),
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              value,
-              style: AppText.fig.copyWith(fontSize: 20, color: valueColor),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _subTile(
+  /// One subscription as an [AppListRow].
+  ///
+  /// [due] rows say WHEN it renews, and the renewal within a day is a warn
+  /// STATUS — the word first, the scheme's warn tone second. Other rows say
+  /// what it is, and a usage band where usage data exists.
+  Widget _row(
     BuildContext context,
     AppLocalizations l10n,
     MoneyFormatter money,
     Subscription s,
     DateTime now, {
-    required bool showDue,
+    required bool due,
     required bool twoPane,
   }) {
-    // [L1] `DueInfo.localized`, not `DueInfo.of` — this is one of the three call
-    // sites the retained English-only factory is waiting on, and it also picks up
-    // the shipped plural bug on the way: `of` returned "In 1 days" from both its
-    // live branches.
-    // `brightness:` is what ACTIVATES the light arm of the urgent-branch fork
-    // in due.dart. Without it the call takes the dark-safe default and paints
-    // AppColors.warn #F59E0B as small bold text on the white card — 2.15:1,
-    // against a 4.5 bar. The fork landed before these three call sites did, so
-    // a11y_semantics_test.dart carried a named exemption citing this exact line;
-    // passing brightness is what expires it.
-    final DueInfo due = DueInfo.localized(
-      l10n,
-      s,
-      now,
-      brightness: Theme.of(context).brightness,
-    );
+    final String subtitle;
+    final StatusKind? status;
+    if (due) {
+      subtitle = DueInfo.localized(l10n, s, now).label;
+      status = s.daysUntil(now) <= 1 ? StatusKind.warn : null;
+    } else {
+      // THE USAGE BAND ONLY WHERE USAGE DATA EXISTS. Nothing in the app
+      // collects `usedPct` or `unused`, so on a real row both are defaults and
+      // a band would be a fixed string dressed as a measurement. The demo set
+      // and any API that sends `used_pct` keep all three bands.
+      final bool hasUsage = s.unused || s.usedPct > 0;
+      final String? usage = !hasUsage
+          ? null
+          : (s.unused
+                ? l10n.usageRarelyUsed
+                : (s.usedPct > 60 ? l10n.usageActive : l10n.usageOccasional));
+      subtitle = usage == null ? s.category : '${s.category} · $usage';
+      status = !hasUsage
+          ? null
+          : (s.unused
+                ? StatusKind.warn
+                : (s.usedPct > 60 ? StatusKind.positive : null));
+    }
 
-    // 🔴 THE USAGE BAND IS NOW CONDITIONAL, BECAUSE ITS INPUT IS NEVER
-    // COLLECTED AND ITS `else` ARM WAS THEREFORE A CONSTANT.
-    //
-    // `usedPct` and `unused` are set in exactly two places — `DemoData` and an
-    // `unused`/`used_pct` field an API would have to send — and NOTHING in the
-    // app writes either. So on real rows `usedPct` is its `0` default and
-    // `unused` is `false`, both ternaries fell through to their last arm, and
-    // every subscription a live user has ever added has been labelled
-    // "Occasional" with a grey status dot. That is not a weak signal, it is a
-    // fixed string dressed as a measurement — the same class of defect as the
-    // hero's old "VS LAST MONTH", which compared a real total against a typed
-    // number and is recorded a few methods up.
-    //
-    // Retired rather than replaced: there is no usage source to invent one
-    // from. `hasUsage` shows the band ONLY where the data actually exists, so
-    // the demo set and any API that starts sending `used_pct` keep all three
-    // bands, and a real row shows its category alone. Same rule for the status
-    // dot — `GlyphTile` already takes a null `statusColor` (that is the
-    // `showDue` branch), so "no data" draws no dot rather than the grey one,
-    // which read as a deliberate "inactive" verdict.
-    //
-    // ⚠️ The three arb keys STAY. `usageActive` / `usageRarelyUsed` are also
-    // read by `subscription_detail_screen.dart`, and `usageOccasional` is
-    // reachable here the moment a row carries usage — deleting it would make
-    // the band unrestorable without a new translation round.
-    final bool hasUsage = s.unused || s.usedPct > 0;
-    final Color? dot = !hasUsage
-        ? null
-        : (s.unused
-              ? AppColors.warn
-              : (s.usedPct > 60
-                    ? AppColors.positive
-                    : const Color(0xFFC9C9D2)));
-    final String? usage = !hasUsage
-        ? null
-        : (s.unused
-              ? l10n.usageRarelyUsed
-              : (s.usedPct > 60 ? l10n.usageActive : l10n.usageOccasional));
-    final AppTextStyles text = AppText.of(context);
-
-    // 🔴 PUSH OR SELECT, AND THE ANSWER COMES FROM THE LAYOUT ITSELF.
-    // [twoPane] is `TwoPane.isTwoPaneOf` read from inside the pane (see
-    // [_listColumn]) and threaded down. Re-deriving it here from `MediaQuery`
-    // would decide from the WINDOW while [TwoPane] decided from the BODY — 361
-    // px apart inside the chassis — and at the boundary that pushes a full
-    // route ON TOP of an already-rendered detail pane.
-    //
-    // ⏱ 2026-09-16 · [ADR 083]: R + 1 px apart now, R being the slim rail's
-    // width. Same rule.
-    final bool selected = twoPane && s.id == _selectedId;
-
-    final Widget card = RowCard(
+    return AppListRow(
+      // The monogram is a visual shorthand; the title names the plan, so the
+      // letters are silent rather than read before the name.
+      leading: ExcludeSemantics(child: _monogram(context, s)),
+      title: s.name,
+      subtitle: subtitle,
+      status: status,
+      // The list SORTS by monthly share and the row SHOWS the charge with its
+      // own cycle: a share is not a price.
+      figure: money.format(s.price),
+      caption: cadenceCaption(l10n, s.cycle),
+      // A selection exists only where the layout has one: in a single column
+      // the tap pushes a route, and "not selected" on every row would announce
+      // a state this screen does not have.
+      selected: twoPane ? s.id == _selectedId : null,
       onTap: () {
         if (twoPane) {
-          // No navigation at all: the detail is already on screen beside this
-          // row, and pushing would cover the list the user is comparing against
-          // — the loss [TwoPane]'s header opens by naming.
+          // No navigation: the detail is already beside this row.
           setState(() => _selectedId = s.id);
         } else {
           context.push('/sub/${s.id}');
         }
       },
-      // 🔴 THE SELECTION MARK IS `accentBar`, AN EXISTING `RowCard` PARAMETER,
-      // AND NOT A NEW DECORATION. A master-detail list has to say which row the
-      // pane on the right is about, `RowCard` has no `selected` API, and the
-      // alternative was a border or a fill invented in this file — a second
-      // private opinion about card state in a repo that already has one. It is
-      // the same 3 px rule the unused-plans card above draws, in
-      // `AppColors.accent` (the emphasis hue this screen already uses for the
-      // Calendar link) rather than `AppColors.warn`, so the two bars mean two
-      // different things and look it.
-      //
-      // Null below the split, because nothing is "selected" in a single column:
-      // the tap pushes a route and the user comes back.
-      accentBar: selected ? AppColors.accent : null,
-      leading: GlyphTile(glyph: s.glyph, statusColor: showDue ? null : dot),
-      title: s.name,
-      subtitle: showDue
-          ? Text(
-              due.label,
-              style: TextStyle(
-                fontFamily: 'Manrope',
-                fontWeight: FontWeight.w700,
-                fontSize: 11,
-                color: due.color,
-              ),
-            )
-          : Text(
-              usage == null ? s.category : '${s.category} · $usage',
-              style: text.muted.copyWith(fontSize: 12),
-            ),
-      // The list SORTS by monthly share (`SubMath.byMonthlyDesc`) and the row
-      // SHOWS the charge with its own cycle: a share is not a price.
-      trailing: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: <Widget>[
-          Text(money.format(s.price), style: text.fig.copyWith(fontSize: 16)),
-          Text(
-            s.cycle == BillingCycle.yearly ? l10n.perYear : l10n.perMonth,
-            style: text.muted.copyWith(fontSize: 10),
-          ),
-        ],
-      ),
     );
-
-    // The `selected` flag ONLY where the layout has a selection. Annotating
-    // every row `selected: false` in a single column would announce a state
-    // this screen does not have there — the tap pushes a route and returns —
-    // and a screen reader would read "not selected" on twelve rows that can
-    // never be selected.
-    return twoPane ? Semantics(selected: selected, child: card) : card;
   }
 
-  /// The bell and (via the same shape) any future header control.
-  ///
-  /// 🔴 THIS IS THE HOME SCREEN'S ONE REAL DARK DEFECT, and unlike the hero it
-  /// is the [cardDecoration] / [RowCard] defect exactly: a `AppColors.surface`
-  /// fill is `0xFFFFFFFF`, so on a dark scaffold this was a WHITE 48px square
-  /// with near-black `AppColors.ink` iconography inside it — the brightest thing
-  /// on the screen, sitting next to a hero that is already dark.
-  ///
-  /// Same rule as its two siblings, so the three read as one decision:
-  ///   · LIGHT is byte-identical — the literal `surface` / `line` / `ink`,
-  ///     pinned against the literals in `test/dark_group_home_test.dart`.
-  ///   · DARK derives from the scheme: `surfaceContainerHighest` (the slot
-  ///     `cardDecoration` and `RowCard` already use, so the header control and
-  ///     the rows below it are the same material), an `outlineVariant` hairline,
-  ///     and `onSurface` for the glyph.
-  ///
-  /// The unread dot's ring follows the FILL rather than staying white: the ring
-  /// exists to punch the dot out of whatever it sits on, so a white ring on a
-  /// dark button is the same bug one size down.
-  Widget _circleButton({
-    required BuildContext context,
-    required IconData icon,
-    required String semanticLabel,
-    VoidCallback? onTap,
-  }) {
+  /// The subscription's glyph (e.g. `NFX`), or its initial when it has none,
+  /// in the scheme's `primaryContainer` pair.
+  Widget _monogram(BuildContext context, Subscription s) {
     final ThemeData theme = Theme.of(context);
-    final bool isLight = theme.brightness == Brightness.light;
     final ColorScheme scheme = theme.colorScheme;
-    final Color fill = isLight
-        ? AppColors.surface
-        : scheme.surfaceContainerHighest;
-    final Color edge = isLight ? AppColors.line : scheme.outlineVariant;
-    final Color glyph = isLight ? AppColors.ink : scheme.onSurface;
-
-    // 48px, not 44: the chassis floor for an icon-only tap target, asserted
-    // route-wide by chassis_properties_test. The Semantics wrapper is what a
-    // screen reader announces — an icon-only control without one is unusable.
-    //
-    // 🔴 AND `FocusableTap` IS WHAT A KEYBOARD REACHES. Two of home's
-    // three keyboard-dead controls are built here (notifications and calendar;
-    // the account avatar below is the third), and the register's phrasing is
-    // the one to keep: they are every route OFF a screen whose rows all
-    // traverse fine, so a keyboard-only user could read the list and leave by
-    // no door on it. `mergeDescendants: false` because this control has no
-    // descendant text to merge — [semanticLabel] IS its name.
-    return FocusableTap(
-      label: semanticLabel,
-      mergeDescendants: false,
-      borderRadius: BorderRadius.circular(14),
-      onTap: onTap,
-      // ST-U5 (B6): the always-on unread dot that sat over this icon is gone
-      // with its `dot:` parameter; see the call site.
-      child: Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          color: fill,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: edge),
+    final String mark = s.glyph.isNotEmpty
+        ? s.glyph
+        : (s.name.isEmpty ? '?' : s.name.characters.first.toUpperCase());
+    return CircleAvatar(
+      backgroundColor: scheme.primaryContainer,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.xs),
+          child: Text(
+            mark,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: scheme.onPrimaryContainer,
+            ),
+          ),
         ),
-        child: Icon(icon, color: glyph, size: 20),
       ),
     );
   }
 
-  /// The time-of-day greeting.
-  ///
-  /// ⚠️ THE BOUNDARIES STAY IN DART, and only the words move to the arb. A
-  /// locale that divides the day differently needs a different RULE, not a
-  /// different string, so encoding 12/18 as translatable copy would look like
-  /// localisation while changing nothing. Named here so the next reader does not
-  /// mistake the omission for an oversight.
+  /// The time-of-day greeting. The BOUNDARIES stay in Dart and only the words
+  /// move to the arb: a locale that divides the day differently needs a
+  /// different rule, not a different string.
   String _greeting(AppLocalizations l10n, DateTime now) {
     if (now.hour < 12) return l10n.greetingMorning;
     if (now.hour < 18) return l10n.greetingAfternoon;

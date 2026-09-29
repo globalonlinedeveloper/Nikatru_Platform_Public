@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:nikatru_api_client/nikatru_api_client.dart' show ApiException;
+import 'package:nikatru_design_system/nikatru_design_system.dart';
 
-import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_theme.dart';
+import '../../core/e2e_keys.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/subscriptions_controller.dart';
@@ -18,45 +19,10 @@ import '../shared/widgets.dart';
 // congratulated the user on savings. Until ST-E3 splits "Mark as cancelled"
 // from "Delete", the copy names the one thing that happens and points at the
 // provider for the thing that does not. No money figure appears on this sheet.
-
-/// The cancel sheet's palette. The sibling of `add_subscription_sheet.dart`'s
-/// `_SheetPalette` — read that one's doc comment for the slot choices and for
-/// why the ink moves with the fill rather than after it. This sheet needs three
-/// of the six: it has no fields, no chips and no unselected control.
-///
-/// [AppColors.danger] and [AppColors.positive] deliberately do NOT appear here.
-/// They are semantic status colours rather than surface tokens, and both clear
-/// AA against a dark scheme surface as shipped (measured ~4.2:1 and ~5.9:1), so
-/// re-pointing them at the scheme would change what the app MEANS by "this is
-/// destructive" for no legibility gain.
-class _SheetPalette {
-  const _SheetPalette({
-    required this.sheet,
-    required this.ink,
-    required this.muted,
-  });
-
-  factory _SheetPalette.of(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    if (theme.brightness == Brightness.light) {
-      return const _SheetPalette(
-        sheet: AppColors.bg,
-        ink: AppColors.ink,
-        muted: AppColors.muted,
-      );
-    }
-    final ColorScheme scheme = theme.colorScheme;
-    return _SheetPalette(
-      sheet: scheme.surfaceContainerLow,
-      ink: scheme.onSurface,
-      muted: scheme.onSurfaceVariant,
-    );
-  }
-
-  final Color sheet;
-  final Color ink;
-  final Color muted;
-}
+//
+// ⏱ 2026-09-29 · train ST-D7 ("Stop a charge") rebuilt the sheet on the ST-D0
+// foundation and kept this rule: its draft still carried the savings
+// sentences and a price figure, both dropped when it was fitted to this base.
 
 /// Opens the remove sheet and completes with WHETHER THE ROW WAS REMOVED.
 ///
@@ -129,6 +95,38 @@ Future<bool> showCancelSheet(BuildContext context, Subscription sub) async {
   return removed;
 }
 
+/// Why a stop did not happen — the two failure states this sheet tells apart.
+///
+/// OFFLINE is "the request never got an answer" ([ApiException.isOffline]);
+/// FAILED is everything else. They are different states because they have
+/// different remedies: offline, the user fixes their connection; failed, the
+/// user can only try again later. Neither is ever shown as success.
+enum _Failure { failed, offline }
+
+/// "STOP A CHARGE" — the destructive confirmation for one subscription, and
+/// its outcome (train ST-D7, on the ST-D0 foundation).
+///
+/// ## Its states
+///  * **populated** — the question: which entry ([AppListRow] in an
+///    [AppCard], the same name and glyph the user tapped to get here), what
+///    removing it does and does not do, and the two answers.
+///  * **loading** — the confirm reads "Cancelling…" and is disabled; the way
+///    out ('Keep it') stays live.
+///  * **failed / offline** — an inline [DecisionStrip] above the answers says
+///    the charge was NOT stopped, in the danger or warn tone; the confirm is the
+///    retry. It used to be a snack bar, which on this root-mounted sheet drew
+///    UNDER the scrim — the one failure a user must read, painted behind the
+///    question it failed to answer.
+///  * **done** — the entry is gone, a reminder that the provider still bills
+///    until it is cancelled there, and one way out.
+///
+/// There is no EMPTY state: the sheet is opened on one subscription, and a
+/// sheet with nothing to stop is not reachable.
+///
+/// Every colour is a scheme slot or a [StatusTones] half; every size is an
+/// [AppSpacing] / [AppRadius] step or a theme type role. The pre-dark
+/// light-palette fork (`_SheetPalette`, `AppColors.bg` in light) is gone: the
+/// foundation's scheme slots are one design in both brightnesses.
 class _CancelSheet extends ConsumerStatefulWidget {
   const _CancelSheet({required this.sub, required this.onRemoved});
   final Subscription sub;
@@ -143,13 +141,20 @@ class _CancelSheet extends ConsumerStatefulWidget {
 class _CancelSheetState extends ConsumerState<_CancelSheet> {
   int _step = 0;
   bool _busy = false;
+  _Failure? _failure;
 
   Future<void> _confirm() async {
-    setState(() => _busy = true);
-    // Resolved BEFORE the await — see the note in add_subscription_sheet.dart.
-    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
-    final AppLocalizations l10n = AppLocalizations.of(context);
+    setState(() {
+      _busy = true;
+      _failure = null;
+    });
     try {
+      // ⏱ 2026-09-28 · ST-T3b (ST-E3). This is the DELETE path ST-U3 named
+      // "Remove from tracker", and it is now a SOFT delete: `cancelSubscription`
+      // sets `deleted_at` instead of calling DELETE, so the row and its payment
+      // history survive and the caller's Undo snackbar can bring both back.
+      // "I cancelled it at the provider" is a different act — "Mark as
+      // cancelled" in the detail overflow — and keeps the row on the list.
       await ref
           .read(subscriptionsControllerProvider.notifier)
           .cancelSubscription(widget.sub.id);
@@ -159,201 +164,246 @@ class _CancelSheetState extends ConsumerState<_CancelSheet> {
         _busy = false;
         _step = 1;
       });
-    } catch (_) {
+    } catch (e) {
       // 🔴 THIS FAILURE PATH DID NOT EXIST, and the stakes here are higher than
       // in the add sheet: the awaited call reaches the network, so offline it
       // threw out of an unawaited future and the button stayed disabled on
       // 'Cancelling…' forever. Advancing to step 1 regardless would have been
       // worse still — that screen says the entry is gone when it is not.
       if (!mounted) return;
-      setState(() => _busy = false);
-      messenger.showSnackBar(
-        SnackBar(content: Text(l10n.cancelSubscriptionFailed)),
-      );
+      setState(() {
+        _busy = false;
+        _failure = ApiException.isOfflineError(e)
+            ? _Failure.offline
+            : _Failure.failed;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final AppLocalizations l10n = AppLocalizations.of(context);
-    final _SheetPalette p = _SheetPalette.of(context);
-    final Subscription s = widget.sub;
-
-    return Container(
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme scheme = theme.colorScheme;
+    return DecoratedBox(
+      // The sheet is the scheme's own bottom-sheet slot in BOTH brightnesses
+      // (Material 3's default for a modal sheet), so the [AppCard] inside it
+      // lifts off it the way a card lifts off a scaffold.
       decoration: BoxDecoration(
-        color: p.sheet,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        color: scheme.surfaceContainerLow,
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(AppRadius.xl),
+        ),
       ),
-      padding: const EdgeInsets.fromLTRB(22, 26, 22, 30),
-      child: _step == 0
-          ? Column(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xl,
+          AppSpacing.xl,
+          AppSpacing.xl,
+          AppSpacing.xxl,
+        ),
+        child: _step == 0 ? _question(context) : _outcome(context),
+      ),
+    );
+  }
+
+  Widget _question(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme scheme = theme.colorScheme;
+    final TextTheme text = theme.textTheme;
+    final StatusTones tones = StatusTones.of(context);
+    final Subscription s = widget.sub;
+    final _Failure? failure = _failure;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        // 🔴 THE COPY SCROLLS; THE ACTION ROW DOES NOT MOVE. Wrapping the
+        // WHOLE sheet in one scroll view fixed the clip and cost something
+        // that is not worth it: `MinimumTapTargetGuideline` skips any target
+        // under an ancestor with `hasImplicitScrolling`
+        // (`_accessibility_evaluations.dart:132`), so with the buttons inside
+        // the viewport `a11y_semantics_test.dart`'s 48×48 sweep of this sheet
+        // went from 2 inspected nodes to 0 — a guard that passes because it
+        // looked at nothing, which is the failure mode this repo has been
+        // bitten by most. Measured both ways on 2026-08-21.
+        //
+        // Scrolling only the copy keeps the two buttons out of the viewport,
+        // so they stay inspectable AND stay on screen: a destructive
+        // confirmation whose 'Keep it' can be scrolled out of reach is worse
+        // than one whose reason can.
+        //
+        // `Flexible` (loose fit) is what makes it shrink ONLY when it has to.
+        // With room to spare the scroll view still sizes to its child, so the
+        // sheet's height and every rect in it are unchanged.
+        Flexible(
+          child: SingleChildScrollView(
+            child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                // 🔴 THE COPY SCROLLS; THE ACTION ROW DOES NOT MOVE. Wrapping the
-                // WHOLE sheet in one scroll view fixed the clip and cost something
-                // that is not worth it: `MinimumTapTargetGuideline` skips any target
-                // under an ancestor with `hasImplicitScrolling`
-                // (`_accessibility_evaluations.dart:132`), so with the buttons inside
-                // the viewport `a11y_semantics_test.dart`'s 48×48 sweep of this sheet
-                // went from 2 inspected nodes to 0 — a guard that passes because it
-                // looked at nothing, which is the failure mode this repo has been
-                // bitten by most. Measured both ways on 2026-08-21.
-                //
-                // Scrolling only the copy keeps the two buttons out of the viewport,
-                // so they stay inspectable AND stay on screen: a destructive
-                // confirmation whose 'Keep it' can be scrolled out of reach is worse
-                // than one whose reason can.
-                //
-                // `Flexible` (loose fit) is what makes it shrink ONLY when it has to.
-                // With room to spare the scroll view still sizes to its child, so the
-                // sheet's height and every rect in it are unchanged.
-                Flexible(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        Container(
-                          width: 64,
-                          height: 64,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: const Color.fromRGBO(239, 77, 106, 0.12),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: const Icon(
-                            Icons.close,
-                            color: AppColors.danger,
-                            size: 28,
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        Text(
-                          l10n.cancelSubscriptionTitle(s.name),
-                          style: AppText.title.copyWith(
-                            fontSize: 22,
-                            color: p.ink,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          l10n.removeStep1Body,
-                          style: AppText.muted.copyWith(
-                            fontSize: 14,
-                            height: 1.55,
-                            color: p.muted,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
+                Text(
+                  l10n.cancelSubscriptionTitle(s.name),
+                  style: text.headlineSmall?.copyWith(color: scheme.onSurface),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                // THE ENTRY, as the row the user tapped to get here: the same
+                // name and glyph, so the question cannot be misread as being
+                // about a different plan. Not tappable — it is the subject of
+                // the sheet, not a way off it. No figure: see ST-U3 above.
+                AppCard(
+                  padding: EdgeInsets.zero,
+                  child: AppListRow(
+                    leading: GlyphTile(
+                      glyph: s.glyph,
+                      size: AppListRow.leadingSize,
+                      fontSize: AppTypeRamp.minimumSize,
                     ),
+                    title: s.name,
+                    subtitle: s.category,
                   ),
                 ),
-                const SizedBox(height: 22),
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: SoftButton(
-                        label: l10n.keepPlan,
-                        onPressed: () => Navigator.of(context).pop(),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: SizedBox(
-                        height: 50,
-                        child: FilledButton(
-                          onPressed: _busy ? null : _confirm,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: AppColors.danger,
-                            // 🔴 STATED, BECAUSE THE DEFAULT IS BRIGHTNESS-
-                            // DEPENDENT AND THE BACKGROUND IS NOT.
-                            // `FilledButton`'s default foreground is
-                            // `colorScheme.onPrimary` — white in a light scheme
-                            // (so this line changes NOTHING in light) and a very
-                            // dark tone in a dark one. Against the fixed
-                            // `AppColors.danger` red that would have printed
-                            // near-black on red: the destructive confirmation is
-                            // the last control on this sheet that may become
-                            // hard to read.
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                          ),
-                          child: Text(
-                            _busy
-                                ? l10n.cancellingEllipsis
-                                : l10n.confirmCancel,
-                            style: const TextStyle(
-                              fontFamily: 'Manrope',
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                const SizedBox(height: AppSpacing.lg),
+                Text(
+                  l10n.removeStep1Body,
+                  style: text.bodyMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
+                if (failure != null) ...<Widget>[
+                  const SizedBox(height: AppSpacing.lg),
+                  // The charge was NOT stopped, said where the user is looking.
+                  // No answers on the strip: the confirm below IS the retry,
+                  // and a second "try again" beside it would be two controls
+                  // for one act.
+                  DecisionStrip(
+                    key: E2EKeys.cancelFailure,
+                    kind: failure == _Failure.offline
+                        ? StatusKind.warn
+                        : StatusKind.danger,
+                    message: failure == _Failure.offline
+                        ? l10n.offlineMessage
+                        : l10n.cancelSubscriptionFailed,
+                    detail: failure == _Failure.offline
+                        ? l10n.cancelSubscriptionFailed
+                        : null,
+                  ),
+                ],
               ],
-            )
-          : Column(
+            ),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.xl),
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: OutlinedButton(
+                key: E2EKeys.cancelKeep,
+                style: _buttonShape,
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(l10n.keepPlan),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: FilledButton(
+                key: E2EKeys.cancelConfirm,
+                onPressed: _busy ? null : _confirm,
+                style: _buttonShape.merge(
+                  FilledButton.styleFrom(
+                    backgroundColor: tones.danger,
+                    // 🔴 THE LABEL IS THE DANGER TINT, NOT WHITE. The fill is
+                    // the scheme-forked danger TONE, which is a deep red in
+                    // light and a light rose in dark — white on the dark
+                    // rose is ~2:1. Its own opaque tint is the pair's other
+                    // half and reads on it in both schemes; measured in
+                    // `test/stop_a_charge_test.dart`.
+                    foregroundColor: tones.dangerTint,
+                  ),
+                ),
+                child: Text(
+                  _busy ? l10n.cancellingEllipsis : l10n.confirmCancel,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _outcome(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme scheme = theme.colorScheme;
+    final TextTheme text = theme.textTheme;
+    final StatusTones tones = StatusTones.of(context);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        // Same shape as step 0, and for the same two reasons: 'Done' is the
+        // only way out of this step, and it is the only tap target on it.
+        Flexible(
+          child: SingleChildScrollView(
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                // Same shape as step 0, and for the same two reasons: 'Done' is the
-                // only way out of this step, and it is the only tap target on it.
-                Flexible(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        Container(
-                          width: 70,
-                          height: 70,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: const Color.fromRGBO(16, 185, 129, 0.14),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.check_rounded,
-                            color: AppColors.positive,
-                            size: 34,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          l10n.cancelledHeading,
-                          style: AppText.title.copyWith(
-                            fontSize: 23,
-                            color: p.ink,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          l10n.removeStep2Body,
-                          style: AppText.muted.copyWith(
-                            fontSize: 14,
-                            height: 1.55,
-                            color: p.muted,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
+                // Decorative: the heading beside it says what happened.
+                ExcludeSemantics(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: tones.positiveTint,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      child: Icon(Icons.check_rounded, color: tones.positive),
                     ),
                   ),
                 ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: GradientButton(
-                    label: l10n.done,
-                    onPressed: () => Navigator.of(context).pop(),
+                const SizedBox(height: AppSpacing.lg),
+                Text(
+                  l10n.cancelledHeading,
+                  textAlign: TextAlign.center,
+                  style: text.headlineSmall?.copyWith(color: scheme.onSurface),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  l10n.removeStep2Body,
+                  textAlign: TextAlign.center,
+                  style: text.bodyMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
                   ),
                 ),
               ],
             ),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.xl),
+        FilledButton(
+          key: E2EKeys.cancelDone,
+          style: _buttonShape,
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.done),
+        ),
+      ],
     );
   }
+
+  /// Both answers and 'Done': a full 48 px row — the tap-target floor, as a
+  /// height — at the control radius the foundation gives anything inside a
+  /// card or a sheet.
+  static final ButtonStyle _buttonShape = ButtonStyle(
+    minimumSize: const WidgetStatePropertyAll<Size>(
+      Size.fromHeight(AppSpacing.xxxl),
+    ),
+    shape: WidgetStatePropertyAll<OutlinedBorder>(
+      RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.control),
+      ),
+    ),
+  );
 }

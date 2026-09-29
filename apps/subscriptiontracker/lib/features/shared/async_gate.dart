@@ -88,6 +88,7 @@ Widget? subscriptionsState(
   IconData? emptyIcon,
   String? emptyActionLabel,
   VoidCallback? onEmptyAction,
+  Widget? loading,
 }) {
   final AsyncValue<List<Subscription>> subs = ref.watch(
     subscriptionsControllerProvider,
@@ -115,7 +116,12 @@ Widget? subscriptionsState(
         onRetry: () => ref.invalidate(subscriptionsControllerProvider),
       );
     }
-    return DataStateView.loading(label: l10n.dataLoading);
+    // ⏱ 2026-09-28 · train ST-D5: a caller whose body is a LIST may hand in
+    // its own outline (`SkeletonList`) — the rows then arrive where the
+    // placeholders were. The mapping is unchanged: this is still the one
+    // branch for "nothing to show yet", it only lets the caller say what
+    // "nothing yet" looks like.
+    return loading ?? DataStateView.loading(label: l10n.dataLoading);
   }
 
   if (subs.requireValue.isEmpty) {
@@ -151,6 +157,7 @@ Widget subscriptionsGate(
   IconData? emptyIcon,
   String? emptyActionLabel,
   VoidCallback? onEmptyAction,
+  Widget? loading,
 }) {
   final Widget? state = subscriptionsState(
     ref,
@@ -160,6 +167,7 @@ Widget subscriptionsGate(
     emptyIcon: emptyIcon,
     emptyActionLabel: emptyActionLabel,
     onEmptyAction: onEmptyAction,
+    loading: loading,
   );
   if (state != null) return state;
   return builder(ref.watch(subscriptionsControllerProvider).requireValue);

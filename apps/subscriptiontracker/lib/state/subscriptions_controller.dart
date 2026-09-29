@@ -8,6 +8,7 @@ import 'package:intl/intl.dart' show DateFormat;
 
 import '../core/format/money_format.dart';
 import '../core/format/sub_math.dart';
+import '../data/api/api_client.dart' show ApiException;
 import '../data/models/subscription.dart';
 import '../l10n/app_localizations.dart';
 import '../services/notifications/notification_service.dart';
@@ -89,6 +90,9 @@ ReminderCopy reminderCopyFor(Locale? chosen) {
     reminderTitle: l10n.renewalReminderTitle,
     reminderBody: (String name, DateTime renewal) =>
         l10n.renewalReminderBody(name, monthDay.format(renewal)),
+    trialTitle: l10n.trialReminderTitle,
+    trialBody: (String name, DateTime ends) =>
+        l10n.trialReminderBody(name, monthDay.format(ends)),
     digestTitle: l10n.weeklyDigestTitle,
     // A tear-off, not a wrapper: `weeklyDigestBody` IS `(int, String) → String`,
     // and it is the plural — `count` picks the arm inside the .arb.
@@ -173,12 +177,21 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
       if (observed != null) _syncReminders(observed);
     });
 
-    final List<Subscription> subs = await ref
-        .watch(subscriptionRepositoryProvider)
-        .fetchAll();
+    final List<Subscription> subs = _visible(
+      await ref.watch(subscriptionRepositoryProvider).fetchAll(),
+    );
     await _syncReminders(subs);
     return subs;
   }
+
+  /// The rows a screen may show: everything but a soft-deleted one.
+  ///
+  /// ⚠️ FILTERED HERE AS WELL AS ON THE SERVER, and the server half does not
+  /// exist yet: `GET /v1/subscriptions` (ST-T3a) still returns rows whose
+  /// `deleted_at` is set. A row the user deleted must not come back on the
+  /// next refresh, so the app does not wait for that reader.
+  static List<Subscription> _visible(List<Subscription> subs) =>
+      subs.where((Subscription s) => s.deletedAt == null).toList();
 
   /// The list this controller has actually SEEN — or null while it is still
   /// loading or after a load failed.
@@ -271,22 +284,124 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
   /// and the sheet should not have to know which provider holds a preference.
   String get newRowCurrencyCode => ref.read(currencyCodeProvider);
 
-  Future<void> cancelSubscription(String id) async {
-    await ref.read(subscriptionRepositoryProvider).cancel(id);
-    if (!ref.mounted) return; // Riverpod 3: the provider may be gone by now.
-    // 🔴 SAME RULE AS THE LISTENERS: a cancel with no observed list is not
-    // "the list is now empty". The server has the cancel; the list is
-    // re-fetched rather than invented, and the resync runs from `build()`.
+  /// Apply [changes] — a PATCH body of ONLY the changed keys (see
+  /// `Subscription.changesFrom`) — and put the server's answer in the list.
+  ///
+  /// ST-E1. `SubscriptionRepository.update` existed and nothing called it, so
+  /// a row could be added and hard-deleted and never corrected. An empty
+  /// [changes] sends nothing: an edit that changed nothing is not a write.
+  Future<Subscription?> updateSubscription(
+    String id,
+    Map<String, dynamic> changes,
+  ) async {
+    if (changes.isEmpty) {
+      return observedList?.where((Subscription s) => s.id == id).firstOrNull;
+    }
+    final Subscription updated = await ref
+        .read(subscriptionRepositoryProvider)
+        .update(id, changes);
+    if (!ref.mounted) return updated; // Riverpod 3: the provider may be gone.
     final List<Subscription>? before = observedList;
     if (before == null) {
+      // Same rule as [cancelSubscription]: no observed list is not an empty
+      // one. The server has the write; the list is re-fetched.
       ref.invalidateSelf();
-      return;
+      return updated;
     }
-    final List<Subscription> list = before
-        .where((Subscription s) => s.id != id)
-        .toList();
+    final bool present = before.any((Subscription s) => s.id == id);
+    final List<Subscription> list = _visible(<Subscription>[
+      for (final Subscription s in before) s.id == id ? updated : s,
+      if (!present) updated,
+    ]);
     state = AsyncData<List<Subscription>>(list);
     await _syncReminders(list);
+    return updated;
+  }
+
+  /// The user cancelled it at the provider: the row STAYS, with its history,
+  /// and leaves every total and reminder (ST-E3). [on] defaults to today.
+  Future<void> markCancelled(String id, {DateTime? on}) =>
+      updateSubscription(id, <String, dynamic>{
+        'status': SubscriptionStatus.cancelled.name,
+        'cancelled_on': Subscription.dateOnly(on ?? DateTime.now()),
+      });
+
+  /// Stop counting it for now; the row and its history stay (ST-E3).
+  Future<void> pauseSubscription(String id) => updateSubscription(
+    id,
+    <String, dynamic>{'status': SubscriptionStatus.paused.name},
+  );
+
+  /// Back to charging, from paused or cancelled.
+  Future<void> resumeSubscription(String id) =>
+      updateSubscription(id, <String, dynamic>{
+        'status': SubscriptionStatus.active.name,
+        'cancelled_on': null,
+      });
+
+  /// Remove [id] from the tracker — a SOFT delete (ST-E3): `deleted_at` is
+  /// set, the row leaves every list, total and reminder, and
+  /// [undoDelete] brings it back. Returns the row as it was, for the Undo.
+  ///
+  /// ⏱ 2026-09-28 · ST-T3b. This was `DELETE /v1/subscriptions/:id`, which
+  /// removed the row and — through the table's foreign key — its payment
+  /// history, with no way back from a mis-tap.
+  ///
+  /// ⚠️ ONE FALLBACK, AND IT IS THE SERVER'S TO REMOVE. The ST-T3a route
+  /// (`services/subscriptiontracker-api/src/routes/subscriptions.ts`,
+  /// `validate`) still answers 400 to any non-null `deleted_at` until its own
+  /// readers skip deleted rows. A remove that then failed would be a
+  /// regression on the one delete path ST-U3 shipped, so a 400 on THIS write
+  /// falls back to the old DELETE — and that removal has no Undo
+  /// ([canUndoDelete] says so). Every other failure is rethrown.
+  Future<Subscription?> cancelSubscription(String id) async {
+    final Subscription? was = observedList
+        ?.where((Subscription s) => s.id == id)
+        .firstOrNull;
+    try {
+      await updateSubscription(id, <String, dynamic>{
+        'deleted_at': DateTime.now().toUtc().toIso8601String(),
+      });
+      _undoable.add(id);
+    } on ApiException catch (e) {
+      if (e.statusCode != 400) rethrow;
+      await ref.read(subscriptionRepositoryProvider).cancel(id);
+      _undoable.remove(id);
+      if (!ref.mounted) return was; // Riverpod 3: the provider may be gone.
+      final List<Subscription>? before = observedList;
+      if (before == null) {
+        ref.invalidateSelf();
+      } else {
+        final List<Subscription> list = before
+            .where((Subscription s) => s.id != id)
+            .toList();
+        state = AsyncData<List<Subscription>>(list);
+        await _syncReminders(list);
+      }
+    }
+    if (!ref.mounted) return was;
+    // The resync above ranges over the list WITHOUT the row, so its reminders
+    // are already gone; this is belt and braces for a platform whose pending
+    // list cannot be read back.
+    await ref
+        .read(subscriptiontrackerNotificationServiceProvider)
+        .cancelForSubscription(id);
+    return was;
+  }
+
+  /// The ids [cancelSubscription] soft-deleted this session — the only ones
+  /// an Undo can bring back.
+  final Set<String> _undoable = <String>{};
+
+  /// Whether [undoDelete] can restore [id]: false after the hard-DELETE
+  /// fallback in [cancelSubscription], where there is no row left to restore.
+  bool canUndoDelete(String id) => _undoable.contains(id);
+
+  /// Undo [cancelSubscription]: `deleted_at: null`, and the row is back.
+  Future<void> undoDelete(String id) async {
+    await updateSubscription(id, <String, dynamic>{'deleted_at': null});
+    if (!ref.mounted) return;
+    _undoable.remove(id);
   }
 
   /// Keep the OS reminder set in step with [subs] — AWAITED, and never a
@@ -333,7 +448,10 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
     // the renewal namespace, so a future widening of that namespace cannot
     // silently swallow the digest again.
     if (plan.syncRenewals) {
-      await notifier.syncAll(subs, copy: copy);
+      // ONLY CHARGING ROWS (ST-E3): a paused or cancelled row keeps its place
+      // on the list and loses its reminders, because `syncAll` cancels every
+      // owned id first and re-arms only what it is given.
+      await notifier.syncAll(SubMath.charging(subs), copy: copy);
     } else {
       // 🔴 OWNED IDS ONLY. `cancelAll()` here wiped the chassis daily
       // reminder (id 1) every time "Renewal alerts" went off — the two
@@ -352,7 +470,7 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
       );
       await notifier.scheduleWeeklyDigest(
         copy: copy,
-        count: subs.length,
+        count: SubMath.charging(subs).length,
         formattedTotal: money.formatBag(SubMath.totalMonthly(subs)),
       );
     } else {

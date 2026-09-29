@@ -70,12 +70,16 @@ import 'package:subscriptiontracker/l10n/app_localizations.dart';
 const Color kSublySeed = Color(0xFF6459F5);
 
 /// A subscription whose renewal is [days] away from [now].
+/// ⏱ 2026-09-28 · ST-T3b (ST-M3): a row WITH a cadence is rolled to its next
+/// charge, so its `d` is never negative. A negative [days] therefore builds a
+/// row with NO cadence — the only row whose date can stay in the past — and
+/// that is the "Overdue" branch the table below reaches at d < 0.
 Subscription _dueIn(int days, DateTime now) => Subscription(
   id: 's1',
   name: 'Netflix',
   category: 'Streaming',
   price: const Money(64900, 'USD'),
-  cycle: BillingCycle.monthly,
+  cycle: days < 0 ? null : BillingCycle.monthly,
   nextRenewal: now.add(Duration(days: days)),
 );
 

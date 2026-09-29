@@ -24,6 +24,11 @@
 //     unconditional light value and the matching dark case goes red on its
 //     first `expect`.
 //
+// ⏱ 2026-09-28 · train ST-D5: the two bullets above now hold for SCAN only.
+// DETAIL was rebuilt on the design foundation, which unfreezes its light
+// build: its group asserts both brightnesses against the scheme and uses the
+// retired light literals as the falsifier instead. See that group's note.
+//
 // 🔴 AND EVERY l10n ASSERTION RUNS IN TAMIL AS WELL AS ENGLISH, for the reason
 // L1 recorded: the English values are byte-identical to the literals they
 // replaced, so an implementation that never touched the arb passes [en]
@@ -164,22 +169,6 @@ Future<void> _toResults(WidgetTester tester) async {
 
 Color? _textColor(WidgetTester tester, String text) =>
     tester.widget<Text>(find.text(text).first).style?.color;
-
-/// The nearest `Container` ancestor of [text] — the idiom `width_scan_test`
-/// uses for the results hero, and for the same reason: finding the row or the
-/// hero BY TYPE would match whichever Container the element tree visited first.
-BoxDecoration _boxAround(WidgetTester tester, String text) =>
-    tester
-            .widget<Container>(
-              find
-                  .ancestor(
-                    of: find.text(text),
-                    matching: find.byType(Container),
-                  )
-                  .first,
-            )
-            .decoration!
-        as BoxDecoration;
 
 void main() {
   final ThemeData lightTheme = buildAppTheme(seed: kSublySeed);
@@ -328,19 +317,30 @@ void main() {
 
       // An icon-only button is UNUSABLE under a screen reader without one, so
       // an untranslated label is a Tamil user reaching a control that speaks
-      // English. (`more_horiz` was a stub and is gone — ST-U5, B14.)
+      // English. (`more_horiz` opens the lifecycle menu — ST-T3b, ST-E3.)
       expect(find.bySemanticsLabel(ta.back), findsOneWidget);
       expect(find.bySemanticsLabel('Back'), findsNothing);
+      expect(find.bySemanticsLabel(ta.moreOptions), findsOneWidget);
       expect(find.bySemanticsLabel('More options'), findsNothing);
       handle.dispose();
     });
   });
 
   group('detail: the date tables are gone', () {
-    // Netflix renews 2026-07-22; the seed generates four prior payments on the
-    // 22nd of each preceding month.
-    final DateTime renewal = DateTime(2026, 7, 22);
-    final DateTime firstPayment = DateTime(2026, 6, 22);
+    // ⏱ 2026-09-28 · ST-T3b. Netflix is STORED as renewing 2026-07-22; the
+    // screen shows its ROLLED next charge (ST-M3), and its history is DERIVED
+    // from the seed's first charge by the platform rule (ST-E1) — this used
+    // to pin a fabricated June row. The newest charge heads the list.
+    final Subscription netflix = DemoData.subscriptions().firstWhere(
+      (Subscription s) => s.id == kNetflixId,
+    );
+    final DateTime today = DateTime.now();
+    final DateTime renewal = netflix.nextCharge(today);
+    final DateTime firstPayment = RecurrenceSchedule.rollForward(
+      netflix.firstChargeOn!,
+      netflix.cycle!,
+      DateTime(today.year, today.month, today.day),
+    ).crossings.last;
 
     for (final String code in <String>['en', 'ta']) {
       testWidgets('[$code] next charge is MMMd and history is yMMMd', (
@@ -440,163 +440,127 @@ void main() {
     });
   });
 
+  // ⏱ 2026-09-28 · train ST-D5: THE LIGHT HALF OF THIS GROUP PINNED THE FROZEN
+  // LEGACY LOOK — `AppColors.ink`/`.muted`/`.line`/`.surface` literals, status
+  // colours that did not fork, and a hero of three fixed indigos with white
+  // ink. The design train is the change that unfreezes it, so every case below
+  // asserts BOTH brightnesses against the scheme (or [StatusTones]) and
+  // carries a falsifier against the retired light literal: a revert to the
+  // old arm goes red in the light build, where it used to be pinned green.
   group('detail is theme-aware', () {
-    testWidgets('LIGHT pins every literal token', (WidgetTester tester) async {
-      final AppLocalizations en = await AppLocalizations.delegate.load(
-        const Locale('en'),
-      );
-      await _pump(tester, const SubscriptionDetailScreen(id: kNetflixId));
+    for (final ThemeMode mode in <ThemeMode>[ThemeMode.light, ThemeMode.dark]) {
+      final ThemeData theme = mode == ThemeMode.light ? lightTheme : darkTheme;
+      final ColorScheme scheme = theme.colorScheme;
 
-      expect(
-        _textColor(tester, en.paymentHistory),
-        AppColors.ink,
-        reason:
-            'the section heading must stay the LITERAL 0xFF141420. Asserting '
-            'scheme.onSurface here would let a swap to it pass.',
-      );
-      expect(
-        _textColor(tester, en.fieldLabelPrice),
-        AppColors.muted,
-        reason: 'the mini-card label stays the literal 0xFF73737F',
-      );
-      expect(
-        tester
-            .widget<LinearProgressIndicator>(
-              find.byType(LinearProgressIndicator),
-            )
-            .backgroundColor,
-        AppColors.line,
-        reason: 'the usage meter track stays the literal 0xFFECECF2',
-      );
-      expect(
-        _boxAround(
-          tester,
-          DateFormat.yMMMd('en').format(DateTime(2026, 6, 22)),
-        ).color,
-        AppColors.surface,
-        reason:
-            'a payment row stays the literal white — and stays SHADOWLESS: '
-            'routing it through cardDecoration would add kCardShadow to a row '
-            'that has never had one',
-      );
-    });
-
-    testWidgets('DARK derives every one of them from the scheme', (
-      WidgetTester tester,
-    ) async {
-      final AppLocalizations en = await AppLocalizations.delegate.load(
-        const Locale('en'),
-      );
-      await _pump(
-        tester,
-        const SubscriptionDetailScreen(id: kNetflixId),
-        mode: ThemeMode.dark,
-      );
-
-      expect(
-        _textColor(tester, en.paymentHistory),
-        isNot(AppColors.ink),
-        reason:
-            'THE DEFECT: 0xFF141420 heading ink on a dark scaffold is a '
-            'heading nobody can read. Reverting the fork turns this red.',
-      );
-      expect(_textColor(tester, en.paymentHistory), dark.onSurface);
-      expect(_textColor(tester, en.fieldLabelPrice), isNot(AppColors.muted));
-      expect(_textColor(tester, en.fieldLabelPrice), dark.onSurfaceVariant);
-      expect(
-        tester
-            .widget<LinearProgressIndicator>(
-              find.byType(LinearProgressIndicator),
-            )
-            .backgroundColor,
-        dark.outlineVariant,
-        reason:
-            'unbranched the track is a near-white bar BRIGHTER than the meter '
-            'it is the background of',
-      );
-
-      final BoxDecoration row = _boxAround(
-        tester,
-        DateFormat.yMMMd('en').format(DateTime(2026, 6, 22)),
-      );
-      expect(
-        row.color,
-        isNot(AppColors.surface),
-        reason:
-            'a white payment row on a dark scaffold — the same defect as '
-            'cardDecoration and RowCard, in the third place it lives',
-      );
-      expect(row.color, dark.surfaceContainerHighest);
-    });
-
-    testWidgets('the status colours do NOT fork, in either brightness', (
-      WidgetTester tester,
-    ) async {
-      final AppLocalizations en = await AppLocalizations.delegate.load(
-        const Locale('en'),
-      );
-      for (final ThemeMode mode in <ThemeMode>[
-        ThemeMode.light,
-        ThemeMode.dark,
-      ]) {
+      testWidgets('[${mode.name}] every ink and fill derives from the scheme', (
+        WidgetTester tester,
+      ) async {
+        final AppLocalizations en = await AppLocalizations.delegate.load(
+          const Locale('en'),
+        );
         await _pump(
           tester,
           const SubscriptionDetailScreen(id: kNetflixId),
           mode: mode,
         );
+
+        expect(_textColor(tester, en.paymentHistory), scheme.onSurface);
+        expect(
+          _textColor(tester, en.paymentHistory),
+          isNot(AppColors.ink),
+          reason:
+              'the retired literal heading ink (0xFF141420) — near-black on a '
+              'dark scaffold, and a seed-blind colour on a light one',
+        );
+        expect(_textColor(tester, en.fieldLabelPrice), scheme.onSurfaceVariant);
+        expect(_textColor(tester, en.fieldLabelPrice), isNot(AppColors.muted));
+        expect(
+          tester
+              .widget<LinearProgressIndicator>(
+                find.byType(LinearProgressIndicator),
+              )
+              .backgroundColor,
+          scheme.surfaceContainerHighest,
+          reason: 'the meter track is an opaque container slot in both schemes',
+        );
+        final Material historyCard = tester.widget<Material>(
+          find
+              .descendant(
+                of: find.byKey(const Key('detail-history-card')),
+                matching: find.byType(Material),
+              )
+              .first,
+        );
+        expect(
+          historyCard.color,
+          AppCard.fillOf(theme),
+          reason:
+              'the payment rows sit on ONE chassis card, whose fill is the '
+              'measured container slot for this scheme',
+        );
+      });
+
+      testWidgets('[${mode.name}] the status word forks by SCHEME, not seed', (
+        WidgetTester tester,
+      ) async {
+        final AppLocalizations en = await AppLocalizations.delegate.load(
+          const Locale('en'),
+        );
+        await _pump(
+          tester,
+          const SubscriptionDetailScreen(id: kNetflixId),
+          mode: mode,
+        );
+        final StatusTones tones = StatusTones.forBrightness(theme.brightness);
+        expect(_textColor(tester, en.usageActive), tones.positive);
         expect(
           _textColor(tester, en.usageActive),
-          AppColors.positive,
+          isNot(AppColors.positive),
           reason:
-              'green means good in every app and at every brightness — '
-              'AppThemeX.fromScheme keeps positive/warn/danger literal for '
-              'exactly this reason, and re-hueing them from a brand seed would '
-              'trade a universal signal for a decoration ($mode)',
+              'AppColors.positive (#10B981) was the one literal in BOTH '
+              'schemes, and as 12px text on the white card it measured 2.54:1 '
+              '— the a11y sweep carried a named exemption for it',
         );
-      }
-    });
+      });
 
-    testWidgets('the hero gradient and its whites are brightness-INVARIANT', (
-      WidgetTester tester,
-    ) async {
-      for (final ThemeMode mode in <ThemeMode>[
-        ThemeMode.light,
-        ThemeMode.dark,
-      ]) {
+      testWidgets('[${mode.name}] the header band derives from the scheme', (
+        WidgetTester tester,
+      ) async {
         await _pump(
           tester,
           const SubscriptionDetailScreen(id: kNetflixId),
           mode: mode,
         );
-
-        final BoxDecoration hero =
-            tester
-                    .widget<Container>(
-                      find.byKey(const Key('detail-hero-gradient')),
-                    )
-                    .decoration!
-                as BoxDecoration;
-        expect(
-          hero.gradient,
-          AppColors.heroGradient,
-          reason:
-              'heroA/B/C are three DARK indigos, so the hero is its own dark '
-              'surface at either brightness. Deriving it from '
-              'AppThemeX.heroGradient would repaint the LIGHT build ($mode).',
+        final ColoredBox band = tester.widget<ColoredBox>(
+          find
+              .descendant(
+                of: find.byKey(const Key('detail-header-band')),
+                matching: find.byType(ColoredBox),
+              )
+              .first,
         );
-        expect(
-          _textColor(tester, 'Netflix'),
-          Colors.white,
-          reason:
-              'which is why the ink on it stays white and does not fork — it '
-              'is correct on this gradient both ways round ($mode)',
-        );
+        expect(band.color, scheme.surfaceContainer);
+        expect(_textColor(tester, 'Netflix'), scheme.onSurface);
         expect(
           tester.widget<Icon>(find.byIcon(Icons.arrow_back)).color,
-          Colors.white,
+          scheme.onSurface,
         );
-      }
-    });
+        expect(
+          find.byWidgetPredicate(
+            (Widget w) =>
+                w is Container &&
+                w.decoration is BoxDecoration &&
+                (w.decoration! as BoxDecoration).gradient ==
+                    AppColors.heroGradient,
+          ),
+          findsNothing,
+          reason:
+              'the fixed-indigo hero is retired: it was the one surface on '
+              'this route that did not follow the seed, and its white ink was '
+              'correct on that gradient only',
+        );
+      });
+    }
 
     testWidgets('the scaffold INHERITS instead of painting AppColors.bg', (
       WidgetTester tester,
@@ -614,11 +578,9 @@ void main() {
             'explicit override painted the whole page near-white under dark '
             'chrome. Re-adding it turns this red.',
       );
-
       // ⚠️ AND `null` ON ITS OWN IS NOT THE PROPERTY. "Inherits" would be
       // satisfied by a theme that hands back a light colour anyway, so what it
-      // inherits is asserted too — in both directions, since the light arm is
-      // the one place in this file where light DOES move.
+      // inherits is asserted too.
       expect(darkTheme.scaffoldBackgroundColor, dark.surface);
       expect(darkTheme.scaffoldBackgroundColor, isNot(AppColors.bg));
       expect(lightTheme.scaffoldBackgroundColor, light.surface);
@@ -792,71 +754,48 @@ void main() {
   });
 
   group('scan is theme-aware', () {
-    testWidgets('LIGHT pins the literal tokens', (WidgetTester tester) async {
-      final AppLocalizations en = await AppLocalizations.delegate.load(
-        const Locale('en'),
-      );
-      await _pump(tester, const ScanScreen());
+    // ⏱ 2026-09-28 · train ST-D7 ("Import"). The LIGHT-literal pin is
+    // RETIRED deliberately: the screen moved onto the ST-D0 foundation, so both
+    // brightnesses read the same scheme slots and the old per-brightness fork
+    // (and its `AppColors.line` track, and the gradient hero's whites) is gone.
+    // The dark defect this group was written for — near-black ink on a dark
+    // first-run screen — stays pinned: the ink is `onSurface` in both.
+    for (final (String name, ThemeMode mode) in <(String, ThemeMode)>[
+      ('light', ThemeMode.light),
+      ('dark', ThemeMode.dark),
+    ]) {
+      testWidgets('[$name] the ink is the scheme\'s, never a literal', (
+        WidgetTester tester,
+      ) async {
+        final AppLocalizations en = await AppLocalizations.delegate.load(
+          const Locale('en'),
+        );
+        final ColorScheme scheme = mode == ThemeMode.light ? light : dark;
+        await _pump(tester, const ScanScreen(), mode: mode);
 
-      expect(
-        _textColor(tester, en.scanBusyTitle),
-        AppColors.ink,
-        reason: 'the title stays the literal 0xFF141420',
-      );
-      expect(
-        _textColor(tester, en.scanBusySubtitle),
-        AppColors.muted,
-        reason: 'the subtitle stays the literal 0xFF73737F',
-      );
-      expect(
-        tester
+        expect(_textColor(tester, en.scanBusyTitle), scheme.onSurface);
+        expect(_textColor(tester, en.scanBusyTitle), isNot(AppColors.ink));
+        expect(
+          _textColor(tester, en.scanBusySubtitle),
+          scheme.onSurfaceVariant,
+        );
+        expect(_textColor(tester, en.scanBusySubtitle), isNot(AppColors.muted));
+        // The bar takes the theme's own indicator colours: no track literal.
+        final LinearProgressIndicator bar = tester
             .widget<LinearProgressIndicator>(
               find.byType(LinearProgressIndicator),
-            )
-            .backgroundColor,
-        AppColors.line,
-        reason: 'the progress track stays the literal 0xFFECECF2',
-      );
-    });
+            );
+        expect(bar.backgroundColor, isNull);
+        expect(bar.color, isNull);
+      });
 
-    testWidgets('DARK derives them from the scheme', (
-      WidgetTester tester,
-    ) async {
-      final AppLocalizations en = await AppLocalizations.delegate.load(
-        const Locale('en'),
-      );
-      await _pump(tester, const ScanScreen(), mode: ThemeMode.dark);
-
-      expect(
-        _textColor(tester, en.scanBusyTitle),
-        isNot(AppColors.ink),
-        reason:
-            'THE DEFECT: near-black title ink on a dark first-run screen. '
-            'Reverting the fork turns this red.',
-      );
-      expect(_textColor(tester, en.scanBusyTitle), dark.onSurface);
-      expect(_textColor(tester, en.scanBusySubtitle), isNot(AppColors.muted));
-      expect(_textColor(tester, en.scanBusySubtitle), dark.onSurfaceVariant);
-      expect(
-        tester
-            .widget<LinearProgressIndicator>(
-              find.byType(LinearProgressIndicator),
-            )
-            .backgroundColor,
-        dark.outlineVariant,
-      );
-    });
-
-    testWidgets('the results hero and its whites are brightness-INVARIANT', (
-      WidgetTester tester,
-    ) async {
-      final AppLocalizations en = await AppLocalizations.delegate.load(
-        const Locale('en'),
-      );
-      for (final ThemeMode mode in <ThemeMode>[
-        ThemeMode.light,
-        ThemeMode.dark,
-      ]) {
+      testWidgets('[$name] the results summary is a card, in the scheme ink', (
+        WidgetTester tester,
+      ) async {
+        final AppLocalizations en = await AppLocalizations.delegate.load(
+          const Locale('en'),
+        );
+        final ColorScheme scheme = mode == ThemeMode.light ? light : dark;
         await _pump(
           tester,
           const ScanScreen(),
@@ -868,19 +807,21 @@ void main() {
         await _toResults(tester);
 
         expect(
-          _boxAround(tester, en.scanResultsHeading).gradient,
-          AppColors.brandGradient,
-          reason:
-              'a saturated indigo→violet is its own surface either way, which '
-              'is what licenses the whites on it ($mode)',
+          find.ancestor(
+            of: find.text(en.scanResultsHeading),
+            matching: find.byType(AppCard),
+          ),
+          findsOneWidget,
+          reason: 'the summary is the foundation card, not a gradient hero',
         );
+        expect(_textColor(tester, en.subscriptionCount(3)), scheme.onSurface);
         expect(
           _textColor(tester, en.subscriptionCount(3)),
-          Colors.white,
-          reason: 'the figure on the gradient stays white ($mode)',
+          isNot(Colors.white),
         );
-      }
-    });
+        expect(find.byType(AppListRow), findsNWidgets(3));
+      });
+    }
 
     testWidgets('the scaffold INHERITS instead of painting AppColors.bg', (
       WidgetTester tester,

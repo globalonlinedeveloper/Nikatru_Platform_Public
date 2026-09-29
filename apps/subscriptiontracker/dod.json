@@ -247,14 +247,14 @@
       "test": "add sheet: a failed save re-arms the button and says so",
       "effect": "lib/features/add/add_subscription_sheet.dart:_save",
       "mutation": {
-        "symbol": "lib/features/add/add_subscription_sheet.dart:_save catch → setState(() => _saving = false)",
+        "symbol": "lib/features/add/add_subscription_sheet.dart:_save catch → setState(() { _saving = false; … })",
         "observedRed": "add sheet: a failed save re-arms the button and says so",
-        "date": "2026-09-28",
+        "date": "2026-09-29",
         "edit": {
-          "find": "setState(() => _saving = false);",
-          "replace": "setState(() => _saving = true);"
+          "find": "      setState(() {\n        _saving = false;",
+          "replace": "      setState(() {\n        _saving = true;"
         },
-        "codeHash": "00cbb9a40d86cfe9eb575b39a37278703f7e402db1540746d2f48be5d9cc3442"
+        "codeHash": "63f901ff713d88c58bc235849786df7ab02083f650fbed91d5826f051888e6bb"
       }
     },
     {
@@ -265,12 +265,12 @@
       "mutation": {
         "symbol": "lib/features/cancel/cancel_sheet.dart:_confirm catch → _step stays 0",
         "observedRed": "cancel sheet: a failed cancel never claims success",
-        "date": "2026-09-28",
+        "date": "2026-09-29",
         "edit": {
-          "find": "setState(() => _busy = false);",
-          "replace": "setState(() { _busy = false; _step = 1; });"
+          "find": "_failure = ApiException.isOfflineError(e)",
+          "replace": "_step = 1; _failure = ApiException.isOfflineError(e)"
         },
-        "codeHash": "5765b5a439d6d84a3fdc941a1e208d8fcc1a59332470b55aef25d6110aa9c3cf"
+        "codeHash": "a5558f91b2646200811f253ebb1d6d50c8497b1f41bcc2f68bcdcc5787ecc1f8"
       }
     }
   ],

@@ -480,6 +480,18 @@ const REQUIRED_COVERAGE = [
     // surface genuinely left the app, as `SignInScreen` did on 2026-08-10.
     // `width_auth_test.dart` now measures what `/sign-up` opens; the file
     // count does not move.
+    //
+    // ⏱ RAISED 18 → 19 (and coveredSurfaces with it) on 2026-09-28 by train
+    // ST-D6: `showEditSubscriptionSheet`, the edit entry point onto the add
+    // sheet, arrived measured by width_add_sheet_test.dart at kPhone, kTablet,
+    // kDesktop and kWide. Measured by this guard's own run: "19 surface(s)
+    // reachable, 19 measured — the two sets are EQUAL".
+    //
+    // ⏱ LOWERED 19 → 18 on 2026-09-29, deliberately, by train ST-D DW1 on
+    // ST-T3b: the edit form is `showAddSubscriptionSheet(context, initial: row)`
+    // (ST-T3b ST-E1), ONE entry point for add and edit, so ST-D6's separate
+    // `showEditSubscriptionSheet` surface is gone — merged, not lost. The edit
+    // form's own sweep case stays, and opens the same sheet with a row.
     surfaces: 18,
     // 🔴 THIS FLOOR IS ONE UNDER ITS TREE AND IT IS BEING LEFT THERE ON
     // PURPOSE, WHICH IS WORTH MORE WORDS THAN RAISING IT WOULD HAVE BEEN.
@@ -686,18 +698,39 @@ const REQUIRED_COVERAGE = [
     //   surfaces        20 → 25
     //   coveredSurfaces 12 → 17
     //
-    // ⏱ RE-MEASURED 2026-09-29 · train ST-D DW2 (ST-D2 + ST-D8) — MonthGrid
-    // and DateBadge, hoisted from apps/subscriptiontracker's calendar, each
-    // pumped at kPhone/kTablet/kDesktop by month_grid_test.dart, and
-    // `PermissionPrimingView`, pumped at 375 / 768 / 1280 by
-    // permission_priming_test.dart. Read off the run's own line: "20 of 28
-    // surface(s) measured — 8 PRINTED".
+    // ⏱ RE-MEASURED 2026-09-28 · train ST-D6 — the form sheet components
+    // (form_sheet.dart), pumped at kPhone/kTablet/kDesktop by
+    // form_sheet_test.dart. Read off the run's own line: "20 of 28 surface(s)
+    // measured — 8 PRINTED".
     //   surfaces        25 → 28
     //   coveredSurfaces 17 → 20
+    //
+    // ⏱ RE-MEASURED 2026-09-29 · train ST-D1, on top of ST-D6 (train ST-D DW1)
+    // — the Home components (AppSectionHeader, AppListGroup, AppSummaryCard),
+    // each pumped at kPhone/kTablet/kDesktop by its own component test. Read
+    // off the run's own line: "23 of 31 surface(s) measured — 8 PRINTED".
+    //   surfaces        28 → 31
+    //   coveredSurfaces 20 → 23
+    //
+    // ⏱ RE-MEASURED 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1 (train
+    // ST-D DW1) — the detail components (AppIconAction, AppMonogram,
+    // AppFigureTile, AppDetailHeader), each pumped at kPhone/kTablet/kDesktop
+    // by detail_components_test.dart. Read off the run's own line: "27 of 35
+    // surface(s) measured — 8 PRINTED" (the same eight as before).
+    //   surfaces        31 → 35
+    //   coveredSurfaces 23 → 27
+    //
+    // ⏱ RE-MEASURED 2026-09-29 · train ST-D DW2 (ST-D2 + ST-D8), on top of
+    // DW1 — MonthGrid and DateBadge (month_grid_test.dart) and
+    // `PermissionPrimingView` (permission_priming_test.dart), each pumped at
+    // kPhone/kTablet/kDesktop. Read off the run's own line: "30 of 38
+    // surface(s) measured — 8 PRINTED".
+    //   surfaces        35 → 38
+    //   coveredSurfaces 27 → 30
     enforce: false,
-    surfaces: 28,
+    surfaces: 38,
     widthTestFiles: 19,
-    coveredSurfaces: 20,
+    coveredSurfaces: 30,
     label:
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, content_pane, two_pane and fifteen ' +
       'more, whose width decisions every stamped app inherits',

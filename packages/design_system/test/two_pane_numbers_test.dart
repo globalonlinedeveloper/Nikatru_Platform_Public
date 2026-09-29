@@ -3,8 +3,8 @@
 // `two_pane_test.dart` pins the split as a function of the width TwoPane is
 // GIVEN. This pins what it is given in the chassis: a TwoPane as the body of
 // an AppScaffold, at one window per class, with the navigation control of that
-// class (ADR 083: bar at compact, slim rail at medium, extended rail at
-// expanded, slim rail from large up with the body capped at extra-large)
+// class (ADR 083: bar at compact, slim rail from medium up — expanded took
+// the extended rail until §5, D-02 — with the body capped at extra-large)
 // taking its width first. The rail's width is READ OFF THE WIDGET, never
 // assumed — it is whatever Material renders for the longest label.
 
@@ -64,15 +64,21 @@ void main() {
     );
   });
 
-  testWidgets('EXPANDED (1024): STILL one column — the extended rail leaves '
-      'the body under 840', (WidgetTester tester) async {
+  // ⏱ 2026-09-29 · [ADR 083] §5 (D-02): this case was 'EXPANDED (1024): STILL
+  // one column — the extended rail leaves the body under 840'. That was the
+  // defect D-02 names: at expanded, nothing split until a 1097 dp window. The
+  // slim rail leaves this window's body over 840, so the list and detail sit
+  // side by side — in the split TwoPane's own arithmetic gives that width.
+  testWidgets('EXPANDED (1024): TWO columns — the slim rail leaves the body '
+      'over 840', (WidgetTester tester) async {
     await _pump(tester, 1024);
     final NavigationRail rail = tester.widget(find.byType(NavigationRail));
-    expect(rail.extended, isTrue);
+    expect(rail.extended, isFalse);
     final double body = 1024 - _railWidth(tester) - 1;
-    expect(body, lessThan(AppBreakpoints.expanded));
-    expect(find.byKey(_detail), findsNothing);
-    expect(tester.getSize(find.byKey(_list)).width, body);
+    expect(body, greaterThanOrEqualTo(AppBreakpoints.expanded));
+    final TwoPaneSplit split = TwoPaneSplit.forWidth(body)!;
+    expect(tester.getSize(find.byKey(_list)).width, split.listWidth);
+    expect(tester.getSize(find.byKey(_detail)).width, split.detailWidth);
   });
 
   testWidgets('LARGE (1440): list 480 | detail 720 beside the slim rail', (
