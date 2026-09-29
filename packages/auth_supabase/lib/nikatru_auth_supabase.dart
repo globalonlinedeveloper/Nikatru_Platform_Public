@@ -15,6 +15,7 @@ export 'src/auth_capabilities.dart';
 export 'src/auth_providers.dart';
 export 'src/auth_redirect.dart';
 export 'src/in_memory_auth_repository.dart';
+export 'src/native_attestation_client.dart';
 export 'src/native_credential_client.dart';
 export 'src/secure_session_storage.dart';
 export 'src/supabase_auth_repository.dart';
