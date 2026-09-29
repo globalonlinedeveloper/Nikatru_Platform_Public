@@ -47,6 +47,7 @@ import '../../state/subscriptions_controller.dart';
 import '../add/add_subscription_sheet.dart';
 import '../detail/subscription_detail_screen.dart';
 import '../shared/async_gate.dart';
+import '../shared/cadence_label.dart';
 import '../shared/due.dart';
 import '../shared/widgets.dart';
 // The shell this screen is a BRANCH of, imported for one number:
@@ -1294,7 +1295,7 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
         children: <Widget>[
           Text(money.format(s.price), style: text.fig.copyWith(fontSize: 16)),
           Text(
-            s.cycle == BillingCycle.yearly ? l10n.perYear : l10n.perMonth,
+            cadenceCaption(l10n, s.cycle),
             style: text.muted.copyWith(fontSize: 10),
           ),
         ],

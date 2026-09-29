@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import 'package:nikatru_core/nikatru_core.dart' show MoneyParser;
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show FocusableTap;
+
 import '../../core/e2e_keys.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
+import '../../data/api/api_client.dart' show ApiException;
 import '../../data/models/budget_info.dart';
 import '../../data/models/subscription.dart';
 import '../../data/seed/demo_data.dart';
@@ -148,7 +153,13 @@ final List<String> _categories = <String>[
 /// 768 and 1280 (and the surface centred, dx 64 and 320). Adding a
 /// `ConstrainedBox` of our own would be a second cap that silently disagrees
 /// with the framework's the day either number moves.
-Future<void> showAddSubscriptionSheet(BuildContext context) {
+///
+/// [initial] opens it as the EDIT sheet (ST-E1): prefilled from the row, and
+/// saving sends one PATCH of only what changed.
+Future<void> showAddSubscriptionSheet(
+  BuildContext context, {
+  Subscription? initial,
+}) {
   return showModalBottomSheet<void>(
     context: context,
     // Load-bearing for short viewports, not just for the keyboard inset: it
@@ -165,12 +176,33 @@ Future<void> showAddSubscriptionSheet(BuildContext context) {
     // mount a property of the sheet rather than of its caller.
     useRootNavigator: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => const _AddSheet(),
+    builder: (_) => _AddSheet(initial: initial),
+  );
+}
+
+/// The cadences offered as one tap; anything else is [custom].
+enum _CyclePreset { weekly, monthly, quarterly, yearly, custom }
+
+extension _CyclePresetX on _CyclePreset {
+  Cadence? get cadence => switch (this) {
+    _CyclePreset.weekly => Cadence.weekly,
+    _CyclePreset.monthly => Cadence.monthly,
+    _CyclePreset.quarterly => Cadence.quarterly,
+    _CyclePreset.yearly => Cadence.yearly,
+    _CyclePreset.custom => null,
+  };
+
+  static _CyclePreset of(Cadence c) => _CyclePreset.values.firstWhere(
+    (_CyclePreset p) => p.cadence == c,
+    orElse: () => _CyclePreset.custom,
   );
 }
 
 class _AddSheet extends ConsumerStatefulWidget {
-  const _AddSheet();
+  const _AddSheet({this.initial});
+
+  /// The row being edited, or null for a new one.
+  final Subscription? initial;
 
   @override
   ConsumerState<_AddSheet> createState() => _AddSheetState();
@@ -179,7 +211,15 @@ class _AddSheet extends ConsumerStatefulWidget {
 class _AddSheetState extends ConsumerState<_AddSheet> {
   final TextEditingController _name = TextEditingController();
   final TextEditingController _price = TextEditingController();
-  BillingCycle _cycle = BillingCycle.monthly;
+  final TextEditingController _plan = TextEditingController();
+  final TextEditingController _notes = TextEditingController();
+  final TextEditingController _website = TextEditingController();
+
+  /// The custom cadence's count ("every [N] …").
+  final TextEditingController _every = TextEditingController(text: '1');
+
+  _CyclePreset _preset = _CyclePreset.monthly;
+  CycleUnit _unit = CycleUnit.month;
 
   /// The date the Calendar and the "Due in 7 days" figure are computed from.
   ///
@@ -188,7 +228,11 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
   /// asked — so every subscription added through this sheet landed on the
   /// calendar exactly twelve days out, and home's due-soon count was a
   /// statement about that constant rather than about the user's money.
-  DateTime _renewal = _oneCycleFrom(DateTime.now(), BillingCycle.monthly);
+  ///
+  /// ⏱ 2026-09-28 · ST-T3b (ST-E4): it may be in the PAST now — "I started
+  /// this last month" — and the next renewal is DERIVED from it by the
+  /// platform's rule ([RecurrenceSchedule]), shown under the field.
+  DateTime _renewal = _oneCycleFrom(DateTime.now(), Cadence.monthly);
 
   /// Whether [_renewal] is the user's choice rather than the derived default.
   ///
@@ -204,13 +248,89 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
   /// donut, the budget bars and the detail header all described it wrongly.
   String _category = _uncategorised;
 
+  /// The row's own currency (ST-E2). Defaults to Settings for a new row, and
+  /// to the row's for an edit.
+  late String _currency;
+
+  /// A free trial (ST-E5): the date field is then the day it ENDS, which is
+  /// also the first charge, at the price typed above.
+  bool _trial = false;
+
   bool _saving = false;
+
+  /// The price field was typed in and then emptied: blank is then an error
+  /// the field names (ST-E2), rather than a silent 9.99 — but a sheet that
+  /// has just opened does not greet the user with one.
+  bool _priceEmptied = false;
+
+  /// Field errors the API named in a 400 (ST-E2), by field. Cleared when the
+  /// field is edited.
+  final Map<String, String> _serverErrors = <String, String>{};
+
+  bool get _editing => widget.initial != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final Subscription? s = widget.initial;
+    _currency =
+        s?.currencyCode ??
+        ref.read(subscriptionsControllerProvider.notifier).newRowCurrencyCode;
+    if (s != null) {
+      _name.text = s.name;
+      _price.text = _plainAmount(s.price);
+      _plan.text = s.plan;
+      _notes.text = s.notes;
+      _website.text = s.cancelUrl ?? '';
+      final Cadence c = s.billingCadence;
+      _preset = _CyclePresetX.of(c);
+      _unit = c.unit;
+      _every.text = '${c.every}';
+      _trial = s.status == SubscriptionStatus.trialing && s.trialEndsOn != null;
+      _renewal = _dateOnly(_trial ? s.trialEndsOn! : s.nextRenewal);
+      _renewalChosen = true;
+      _category = _categories.contains(s.category)
+          ? s.category
+          : _uncategorised;
+    }
+    for (final (TextEditingController c, String key)
+        in <(TextEditingController, String)>[
+          (_name, 'name'),
+          (_price, 'price'),
+          (_plan, 'plan'),
+          (_notes, 'notes'),
+          (_website, 'cancel_url'),
+          (_every, 'cycle_every'),
+        ]) {
+      c.addListener(() {
+        _serverErrors.remove(key);
+        if (identical(c, _price)) _priceEmptied = _price.text.trim().isEmpty;
+        if (mounted) setState(() {});
+      });
+    }
+  }
 
   @override
   void dispose() {
     _name.dispose();
     _price.dispose();
+    _plan.dispose();
+    _notes.dispose();
+    _website.dispose();
+    _every.dispose();
     super.dispose();
+  }
+
+  /// A stored amount as the digits a person would type — no grouping, no sign.
+  static String _plainAmount(Money m) {
+    final int digits = m.minorUnitDigits;
+    final String whole = '${m.minorUnits ~/ Money.pow10(digits)}';
+    if (digits == 0) return whole;
+    final String frac = '${m.minorUnits % Money.pow10(digits)}'.padLeft(
+      digits,
+      '0',
+    );
+    return '$whole.$frac';
   }
 
   /// Midnight local. The sheet stores and compares whole days, and
@@ -218,35 +338,73 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
   /// carrying a time-of-day would only make two equal dates compare unequal.
   static DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
-  /// One billing cycle after [from], clamped to a day that exists.
+  /// One billing cycle after [from] — `packages/core`'s [RecurrenceSchedule], the
+  /// rule the platform Worker rolls the stored date by, so the default the
+  /// sheet offers is a date the server would also have produced.
   ///
-  /// ⚠️ `DateTime(2026, 2, 31)` DOES NOT THROW — it rolls forward to 3 March.
-  /// So a monthly plan added on the 31st would have defaulted to the 3rd of the
-  /// month AFTER next, which is not a plausible renewal date for anything.
-  /// Clamping to the last day of the target month is what a billing date
-  /// actually does, and it costs one line: day 0 of month n+1 IS the last day
-  /// of month n. The same rule covers 29 February on a yearly cycle.
-  static DateTime _oneCycleFrom(DateTime from, BillingCycle cycle) {
-    final DateTime day = _dateOnly(from);
-    final bool yearly = cycle == BillingCycle.yearly;
-    final int year = yearly ? day.year + 1 : day.year;
-    final int month = yearly ? day.month : day.month + 1;
-    final int lastDayOfMonth = DateTime(year, month + 1, 0).day;
-    return DateTime(
-      year,
-      month,
-      day.day <= lastDayOfMonth ? day.day : lastDayOfMonth,
-    );
+  /// ⚠️ `DateTime(2026, 2, 31)` DOES NOT THROW — it rolls forward to 3 March,
+  /// which is why this is not `DateTime(y, m + 1, d)`: the rule clamps to the
+  /// last day of the month, and covers 29 February on a yearly cycle too.
+  static DateTime _oneCycleFrom(DateTime from, Cadence cycle) =>
+      RecurrenceSchedule.advance(_dateOnly(from), cycle);
+
+  /// The cadence the controls describe, or null while the custom count is
+  /// not a whole number 1..366.
+  Cadence? get _cadence {
+    final Cadence? preset = _preset.cadence;
+    if (preset != null) return preset;
+    final int? every = int.tryParse(_every.text.trim());
+    if (every == null) return null;
+    final Cadence c = Cadence(every, _unit);
+    return c.isValid ? c : null;
   }
+
+  /// The price as typed, in this row's currency and the UI's locale — or
+  /// null when it is not a price (ST-E2: blank, negative, zero, or more
+  /// decimals than the currency has).
+  Money? _parsedPrice(String localeName) {
+    final Money? m = MoneyParser.parse(
+      _price.text,
+      currencyCode: _currency,
+      localeName: localeName,
+    );
+    return m == null || m.minorUnits <= 0 ? null : m;
+  }
+
+  /// Empty is fine (no website); anything else must be an http(s) address
+  /// with a host — the API refuses the rest, since the app will OPEN it.
+  bool get _websiteOk {
+    final String t = _website.text.trim();
+    if (t.isEmpty) return true;
+    final Uri? u = Uri.tryParse(t);
+    return u != null &&
+        (u.scheme == 'https' || u.scheme == 'http') &&
+        u.host.isNotEmpty;
+  }
+
+  bool _canSave(String localeName) =>
+      !_saving &&
+      _parsedPrice(localeName) != null &&
+      _cadence != null &&
+      _websiteOk;
+
+  /// The next charge the platform rule derives from [_renewal] — the date
+  /// itself when it is today or later, or its next occurrence when the user
+  /// gave a past start date (ST-E4).
+  DateTime _nextRenewal(Cadence c) =>
+      RecurrenceSchedule.nextOnOrAfter(_renewal, c, _dateOnly(DateTime.now()));
 
   Future<void> _pickRenewal() async {
     final DateTime today = _dateOnly(DateTime.now());
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _renewal,
-      // A renewal is in the future by definition, and every surface fed by this
-      // date only draws forward — a past date adds a row nothing ever shows.
-      firstDate: today,
+      // ⏱ 2026-09-28 · ST-T3b (ST-E4). This was `firstDate: today` ("a
+      // renewal is in the future by definition"), so a user who started a
+      // plan last month could not say so. A past date is the START; the next
+      // renewal is derived from it and shown under the field. A trial's end
+      // is still a future date.
+      firstDate: _trial ? today : DateTime(today.year - 10, today.month, 1),
       lastDate: DateTime(today.year + 10, today.month, today.day),
     );
     // The picker is a route, so this is an async gap and `setState` after it is
@@ -258,16 +416,46 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
     });
   }
 
-  Future<void> _save() async {
-    setState(() => _saving = true);
-    final Subscription draft = Subscription(
-      id: '',
-      name: _name.text.trim(),
+  Subscription _draft(Money price, Cadence cadence) {
+    final Subscription? was = widget.initial;
+    final String name = _name.text.trim();
+    final String website = _website.text.trim();
+    final DateTime next = _nextRenewal(cadence);
+    // The FIRST charge: the date the user gave, when they gave one in the
+    // past or for a trial; an edit that did not move the date keeps its own.
+    final bool moved = was == null || !_sameDay(_renewal, was.nextRenewal);
+    return Subscription(
+      id: was?.id ?? '',
+      name: name,
       category: _category,
-      price: _enteredPrice(),
-      cycle: _cycle,
-      nextRenewal: _renewal,
+      price: price,
+      cycle: cadence,
+      nextRenewal: next,
+      plan: _plan.text.trim(),
+      // Derived BEFORE POST by the one helper the seed client also uses, so
+      // a live row carries the same mark a demo row does (ST-E2).
+      glyph: was?.glyph ?? Subscription.glyphFor(name),
+      usedPct: was?.usedPct ?? 0,
+      usageNote: was?.usageNote ?? '',
+      unused: was?.unused ?? false,
+      status: _trial
+          ? SubscriptionStatus.trialing
+          : (was?.status == SubscriptionStatus.trialing
+                ? SubscriptionStatus.active
+                : (was?.status ?? SubscriptionStatus.active)),
+      firstChargeOn: moved ? _renewal : was.firstChargeOn,
+      trialEndsOn: _trial ? _renewal : null,
+      cancelledOn: was?.cancelledOn,
+      deletedAt: was?.deletedAt,
+      notes: _notes.text.trim(),
+      cancelUrl: website.isEmpty ? null : website,
     );
+  }
+
+  static bool _sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  Future<void> _save() async {
     // Resolved BEFORE the await. Reaching through `context` after an async gap
     // is only safe while the element is still mounted, and the failure branch
     // below is precisely the case where that is in doubt.
@@ -277,12 +465,26 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
     // failure copy is a `context` read and belongs on THIS side of the await
     // exactly as the messenger does.
     final AppLocalizations l10n = AppLocalizations.of(context);
+    final Money? price = _parsedPrice(l10n.localeName);
+    final Cadence? cadence = _cadence;
+    // 🔴 THE 9.99 FALLBACK IS GONE (ST-E2). A price that did not parse used
+    // to be saved as 9.99 without a word; now the button is disabled and the
+    // field says why, so this is only reached with a real amount.
+    if (price == null || cadence == null || !_websiteOk) return;
+    setState(() => _saving = true);
+    final Subscription draft = _draft(price, cadence);
+    final SubscriptionsController ctl = ref.read(
+      subscriptionsControllerProvider.notifier,
+    );
     try {
-      await ref
-          .read(subscriptionsControllerProvider.notifier)
-          .addSubscription(draft);
+      final Subscription? was = widget.initial;
+      if (was == null) {
+        await ctl.addSubscription(draft);
+      } else {
+        await ctl.updateSubscription(was.id, draft.changesFrom(was));
+      }
       if (mounted) Navigator.of(context).pop();
-    } catch (_) {
+    } catch (e) {
       // 🔴 THIS FAILURE PATH DID NOT EXIST. `addSubscription` goes through the
       // repository to the network, so one offline moment threw out of an
       // unawaited future: nothing caught it, `_saving` was never cleared, and
@@ -293,11 +495,45 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
       // the sheet deliberately STAYS UP so the typed draft survives — a retry
       // costs one tap, not a re-entry.
       if (!mounted) return;
-      setState(() => _saving = false);
+      // A 400 names the field it refused (`validate` in the API's
+      // routes/subscriptions.ts: "price must be …"). That is the user's to
+      // fix, so it is shown ON the field, not as a network failure (ST-E2).
+      final String? field = e is ApiException && e.statusCode == 400
+          ? _fieldOf(e.detail ?? e.message)
+          : null;
+      setState(() {
+        _saving = false;
+        if (field != null) _serverErrors[field] = l10n.checkHighlightedFields;
+      });
       messenger.showSnackBar(
-        SnackBar(content: Text(l10n.addSubscriptionFailed)),
+        SnackBar(
+          content: Text(
+            e is ApiException && e.statusCode == 400
+                ? l10n.checkHighlightedFields
+                : (_editing
+                      ? l10n.updateSubscriptionFailed
+                      : l10n.addSubscriptionFailed),
+          ),
+        ),
       );
     }
+  }
+
+  /// The sheet field a 400's detail names, or null. The API's details open
+  /// with the column (`price must be …`, `cancel_url must be …`).
+  static String? _fieldOf(String detail) {
+    for (final (String prefix, String field) in <(String, String)>[
+      ('price', 'price'),
+      ('currency', 'price'),
+      ('name', 'name'),
+      ('plan', 'plan'),
+      ('notes', 'notes'),
+      ('cancel_url', 'cancel_url'),
+      ('cycle', 'cycle_every'),
+    ]) {
+      if (detail.contains(prefix)) return field;
+    }
+    return null;
   }
 
   @override
@@ -334,7 +570,9 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
               ),
               const SizedBox(height: 16),
               Text(
-                l10n.addSubscriptionTitle,
+                _editing
+                    ? l10n.editSubscriptionTitle
+                    : l10n.addSubscriptionTitle,
                 style: AppText.title.copyWith(fontSize: 22, color: p.ink),
               ),
               const SizedBox(height: 14),
@@ -386,7 +624,11 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
                   return MergeSemantics(
                     child: Semantics(
                       button: true,
-                      child: GestureDetector(
+                      // ⏱ ST-T3b (ST-E2): FocusableTap, not a bare
+                      // GestureDetector — Tab and Enter reach the tile. Its
+                      // own merge is off: this MergeSemantics is the node.
+                      child: FocusableTap(
+                        mergeDescendants: false,
                         onTap: () => _name.text = service[0],
                         child: Column(
                           children: <Widget>[
@@ -434,9 +676,13 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
                 },
               ),
               const SizedBox(height: 16),
-              Text(
-                l10n.fieldLabelName,
-                style: AppText.label.copyWith(color: p.muted),
+              // The field's own `labelText` is what a screen reader reads now
+              // (ST-E2); the visible heading is excluded so it is read once.
+              ExcludeSemantics(
+                child: Text(
+                  l10n.fieldLabelName,
+                  style: AppText.label.copyWith(color: p.muted),
+                ),
               ),
               const SizedBox(height: 6),
               _input(_name, l10n.addNameHint, fieldKey: E2EKeys.addName),
@@ -448,17 +694,19 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
-                        Text(
-                          l10n.fieldLabelPrice,
-                          style: AppText.label.copyWith(color: p.muted),
+                        ExcludeSemantics(
+                          child: Text(
+                            l10n.fieldLabelPrice,
+                            style: AppText.label.copyWith(color: p.muted),
+                          ),
                         ),
                         const SizedBox(height: 6),
+                        // ⏱ ST-T3b (ST-E2): no '9.99' hint any more — it read
+                        // as a value, and a blank field SAVED as 9.99. The
+                        // field says what is wrong instead, and Add waits.
                         _input(
                           _price,
-                          // NOT a key: an example NUMBER, and a translator has
-                          // nothing to do to it. The digits localize through
-                          // the keyboard and the formatter, not the arb.
-                          '9.99',
+                          null,
                           keyboard: const TextInputType.numberWithOptions(
                             decimal: true,
                           ),
@@ -468,26 +716,55 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          l10n.fieldLabelCycle,
-                          style: AppText.label.copyWith(color: p.muted),
-                        ),
-                        const SizedBox(height: 6),
-                        Row(
-                          children: <Widget>[
-                            _cycleBtn(l10n.cycleMonthly, BillingCycle.monthly),
-                            const SizedBox(width: 6),
-                            _cycleBtn(l10n.cycleYearly, BillingCycle.yearly),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
+                  Expanded(child: _currencyField(l10n)),
                 ],
+              ),
+              const SizedBox(height: 12),
+              _cycleField(l10n),
+              if (_preset == _CyclePreset.custom) ...<Widget>[
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Expanded(
+                      child: _input(
+                        _every,
+                        null,
+                        keyboard: TextInputType.number,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(child: _unitField(l10n)),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 4),
+              // One merged node — "Free trial, switch, off" — rather than a
+              // ListTile, whose ink needs a Material the sheet's DecoratedBox
+              // fill would hide, and whose switch announced a second, nameless
+              // control beside its title.
+              MergeSemantics(
+                child: Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: Text(
+                        l10n.fieldLabelTrial,
+                        style: AppText.label.copyWith(color: p.muted),
+                      ),
+                    ),
+                    Switch(
+                      value: _trial,
+                      onChanged: (bool v) => setState(() {
+                        _trial = v;
+                        // A trial ends in the future; a past start is not one.
+                        final DateTime today = _dateOnly(DateTime.now());
+                        if (v && _renewal.isBefore(today)) {
+                          _renewal = _oneCycleFrom(today, Cadence.monthly);
+                        }
+                      }),
+                    ),
+                  ],
+                ),
               ),
               // ⚠️ FULL-WIDTH ROWS, NOT A PAIR LIKE PRICE/CYCLE ABOVE, and the
               // reason is text scaling rather than taste. Half of the phone
@@ -498,12 +775,15 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
               // date off. The sheet already scrolls, so height is the cheap
               // axis here and width is not.
               const SizedBox(height: 12),
-              Text(
-                l10n.fieldLabelRenews,
-                style: AppText.label.copyWith(color: p.muted),
+              ExcludeSemantics(
+                child: Text(
+                  _trial ? l10n.fieldLabelTrialEnds : l10n.fieldLabelRenews,
+                  style: AppText.label.copyWith(color: p.muted),
+                ),
               ),
               const SizedBox(height: 6),
               _renewalField(l10n),
+              ..._nextRenewalNote(l10n),
               const SizedBox(height: 12),
               Text(
                 l10n.fieldLabelCategory,
@@ -511,6 +791,12 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
               ),
               const SizedBox(height: 6),
               _categoryField(),
+              const SizedBox(height: 12),
+              _input(_plan, null),
+              const SizedBox(height: 12),
+              _input(_website, null, keyboard: TextInputType.url),
+              const SizedBox(height: 12),
+              _input(_notes, null, keyboard: TextInputType.multiline),
               const SizedBox(height: 20),
               // ✅ MEASURED CLEAN 2026-08-21 — THE CANCEL SHEET'S CLIPPED-BUTTON
               // DEFECT DOES NOT EXIST HERE. `cancel_sheet.dart` was repaired the
@@ -563,9 +849,13 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
                     child: GradientButton(
                       key: E2EKeys.addSubmit,
                       label: _saving
-                          ? l10n.addingEllipsis
-                          : l10n.addSubscriptionTitle,
-                      onPressed: _saving ? null : _save,
+                          ? (_editing
+                                ? l10n.savingEllipsis
+                                : l10n.addingEllipsis)
+                          : (_editing ? l10n.save : l10n.addSubscriptionTitle),
+                      // Disabled until the form describes a real row (ST-E2):
+                      // a price, a cadence, and a website that is a website.
+                      onPressed: _canSave(l10n.localeName) ? _save : null,
                     ),
                   ),
                 ],
@@ -577,58 +867,104 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
     );
   }
 
-  Widget _cycleBtn(String label, BillingCycle cycle) {
-    final bool sel = _cycle == cycle;
+  /// The cadence, as a stock dropdown (ST-E4, ST-E2). It replaced a pair of
+  /// hand-rolled Monthly / Yearly `GestureDetector`s: two cadences could not
+  /// describe a weekly or quarterly plan, and neither button was reachable
+  /// by Tab. A dropdown is one focus stop with its value announced.
+  Widget _cycleField(AppLocalizations l10n) {
     final _SheetPalette p = _SheetPalette.of(context);
-    // Monthly / Yearly is a two-way choice whose ONLY indication of which arm is
-    // active is the gradient fill — the same colour-only state the settings
-    // currency chips carried, one screen over. `selected:` is the whole fix; the
-    // label is the button's own `Text` and is not restated.
-    return Expanded(
-      child: MergeSemantics(
-        child: Semantics(
-          button: true,
-          selected: sel,
-          child: GestureDetector(
-            // The derived renewal default is "one cycle from today", so it has
-            // to follow the cycle — otherwise picking Yearly leaves next
-            // month's date sitting under it, which is the invented-date defect
-            // with a user gesture in front of it. `_renewalChosen` is what stops
-            // this from stamping over a date the user picked on purpose.
-            onTap: () => setState(() {
-              _cycle = cycle;
-              if (!_renewalChosen) {
-                _renewal = _oneCycleFrom(DateTime.now(), cycle);
-              }
-            }),
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 15),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                // 🔴 THE SELECTED BRANCH IS BRIGHTNESS-INDEPENDENT ON PURPOSE.
-                // It is the brand gradient, and white on that gradient is the
-                // same decision in both themes — the gradient IS the background,
-                // so it does not inherit one. Every white in this file that
-                // survives dark survives for that reason and no other.
-                gradient: sel ? AppColors.brandGradient : null,
-                color: sel ? null : p.raised,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: sel ? Colors.transparent : p.line),
-              ),
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontFamily: 'Manrope',
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                  color: sel ? Colors.white : p.ink,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
+    return DropdownButtonFormField<_CyclePreset>(
+      initialValue: _preset,
+      decoration: _fieldDecoration(p, label: l10n.fieldLabelCycle),
+      dropdownColor: p.raised,
+      isExpanded: true,
+      items: <DropdownMenuItem<_CyclePreset>>[
+        for (final (_CyclePreset v, String label) in <(_CyclePreset, String)>[
+          (_CyclePreset.weekly, l10n.cycleWeekly),
+          (_CyclePreset.monthly, l10n.cycleMonthly),
+          (_CyclePreset.quarterly, l10n.cycleQuarterly),
+          (_CyclePreset.yearly, l10n.cycleYearly),
+          (_CyclePreset.custom, l10n.cycleCustom),
+        ])
+          DropdownMenuItem<_CyclePreset>(value: v, child: Text(label)),
+      ],
+      // The derived renewal default is "one cycle from today", so it has to
+      // follow the cycle — otherwise picking Yearly leaves next month's date
+      // sitting under it, which is the invented-date defect with a user
+      // gesture in front of it. `_renewalChosen` is what stops this from
+      // stamping over a date the user picked on purpose.
+      onChanged: (_CyclePreset? v) => setState(() {
+        _preset = v ?? _CyclePreset.monthly;
+        final Cadence? c = _cadence;
+        if (!_renewalChosen && c != null) {
+          _renewal = _oneCycleFrom(DateTime.now(), c);
+        }
+      }),
     );
+  }
+
+  /// The custom cadence's unit.
+  Widget _unitField(AppLocalizations l10n) {
+    final _SheetPalette p = _SheetPalette.of(context);
+    return DropdownButtonFormField<CycleUnit>(
+      initialValue: _unit,
+      decoration: _fieldDecoration(p, label: l10n.fieldLabelUnit),
+      dropdownColor: p.raised,
+      isExpanded: true,
+      items: <DropdownMenuItem<CycleUnit>>[
+        for (final (CycleUnit u, String label) in <(CycleUnit, String)>[
+          (CycleUnit.day, l10n.unitDays),
+          (CycleUnit.week, l10n.unitWeeks),
+          (CycleUnit.month, l10n.unitMonths),
+          (CycleUnit.year, l10n.unitYears),
+        ])
+          DropdownMenuItem<CycleUnit>(value: u, child: Text(label)),
+      ],
+      onChanged: (CycleUnit? u) => setState(() => _unit = u ?? _unit),
+    );
+  }
+
+  /// The row's currency (ST-E2): the Settings choice for a new row, the row's
+  /// own for an edit, from the one table every formatter reads
+  /// (`Money.symbols`).
+  Widget _currencyField(AppLocalizations l10n) {
+    final _SheetPalette p = _SheetPalette.of(context);
+    final List<String> codes = <String>{
+      ...Money.symbols.keys,
+      _currency,
+    }.toList();
+    return DropdownButtonFormField<String>(
+      initialValue: _currency,
+      decoration: _fieldDecoration(p, label: l10n.fieldLabelCurrency),
+      dropdownColor: p.raised,
+      isExpanded: true,
+      items: <DropdownMenuItem<String>>[
+        for (final String c in codes)
+          DropdownMenuItem<String>(value: c, child: Text(c)),
+      ],
+      onChanged: (String? c) => setState(() => _currency = c ?? _currency),
+    );
+  }
+
+  /// "Next renewal Oct 3" under a PAST date: the charge the platform rule
+  /// derives from the start the user gave (ST-E4). Nothing under a future
+  /// date — that date IS the next renewal.
+  List<Widget> _nextRenewalNote(AppLocalizations l10n) {
+    final Cadence? c = _cadence;
+    if (_trial || c == null) return const <Widget>[];
+    if (!_renewal.isBefore(_dateOnly(DateTime.now()))) {
+      return const <Widget>[];
+    }
+    final _SheetPalette p = _SheetPalette.of(context);
+    return <Widget>[
+      const SizedBox(height: 6),
+      Text(
+        l10n.addNextRenewal(
+          DateFormat.yMMMd(l10n.localeName).format(_nextRenewal(c)),
+        ),
+        style: AppText.label.copyWith(color: p.muted),
+      ),
+    ];
   }
 
   /// The renewal date, as a field the user can open a calendar from.
@@ -647,7 +983,14 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
     return MergeSemantics(
       child: Semantics(
         button: true,
-        child: GestureDetector(
+        // The field's name for a reader (ST-E2): the heading above is
+        // excluded, so it is not read twice.
+        label: _trial ? l10n.fieldLabelTrialEnds : l10n.fieldLabelRenews,
+        // ⏱ ST-T3b (ST-E2): FocusableTap, not a bare GestureDetector — Tab
+        // reaches the date and Enter opens the picker. Its own merge is off:
+        // this MergeSemantics is the node.
+        child: FocusableTap(
+          mergeDescendants: false,
           key: E2EKeys.addRenewal,
           // Opaque, or the ~16 px of padding between the border and the date is
           // dead to touch and the field reads as intermittently broken. The
@@ -682,34 +1025,6 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
         ),
       ),
     );
-  }
-
-  /// What the user typed in the amount field, as money that knows what it is.
-  ///
-  /// 🔴 THE ROW IS ENTERED IN THE USER'S CHOSEN CURRENCY AND IT KEEPS IT.
-  /// Before this the amount was stored bare and every screen re-symboled it
-  /// under whatever Settings said AT RENDER TIME — so switching the picker
-  /// silently restated every subscription the user had ever added as a
-  /// different currency. Parsing is exact (integer minor units), and a field
-  /// that will not parse falls back to the same default it always did.
-  ///
-  /// The code comes from [SubscriptionsController] rather than from the
-  /// settings provider directly: the controller is what WRITES rows, so "which
-  /// currency a new row is created in" is its question, and the sheet does not
-  /// have to know which provider holds a preference.
-  ///
-  /// ⚠️ AND IT LIVES DOWN HERE, BELOW THE FIELDS, ON PURPOSE.
-  /// `store/android-play/data-safety.json` cites the LINE NUMBER of the name
-  /// field's `_input(...)` as the evidence for its free-text declaration, and
-  /// `assert-sworn-store-files.mjs` re-measures that citation on every run.
-  /// Putting these fifteen lines above `build` would move that field and
-  /// falsify a sworn store declaration — a thing this increment does not own.
-  Money _enteredPrice() {
-    final String code = ref
-        .read(subscriptionsControllerProvider.notifier)
-        .newRowCurrencyCode;
-    return Money.tryParseMajor(_price.text.trim(), code) ??
-        Money.fromMajorUnits(9.99, code);
   }
 
   /// The category, chosen from [_categories].
@@ -770,9 +1085,20 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
   /// sheet" — every other corner here is 4 (handle), 13 (glyph tiles), 16
   /// (fields, submit) or 28 (the sheet). A new field that borrowed 14 would
   /// break a test about a different widget, in a way that reads as unrelated.
-  InputDecoration _fieldDecoration(_SheetPalette p, {String? hint}) {
+  ///
+  /// ⏱ ST-T3b (ST-E2): [label] is the field's `labelText` — its NAME to a
+  /// screen reader and in the field — and [error] its `errorText`. The fields
+  /// were hint-only, so an emptied field had no name at all.
+  InputDecoration _fieldDecoration(
+    _SheetPalette p, {
+    String? hint,
+    String? label,
+    String? error,
+  }) {
     return InputDecoration(
       hintText: hint,
+      labelText: label,
+      errorText: error,
       filled: true,
       fillColor: p.raised,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
@@ -789,21 +1115,63 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
 
   Widget _input(
     TextEditingController c,
-    String hint, {
+    String? hint, {
     TextInputType keyboard = TextInputType.text,
     Key? fieldKey,
   }) {
     final _SheetPalette p = _SheetPalette.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final (String label, String? error) = _labelAndError(c, l10n);
     return TextField(
       key: fieldKey,
       controller: c,
       keyboardType: keyboard,
+      maxLines: keyboard == TextInputType.multiline ? null : 1,
       // The colour is spelled out because `AppText.body` carries a hardcoded
       // `AppColors.ink`: a white-filled field with near-black text is what this
       // widget painted on a dark sheet before, and `copyWith` is the only way a
       // const style with a colour in it can be re-pointed at the scheme.
       style: AppText.body.copyWith(fontWeight: FontWeight.w600, color: p.ink),
-      decoration: _fieldDecoration(p, hint: hint),
+      decoration: _fieldDecoration(p, hint: hint, label: label, error: error),
     );
+  }
+
+  /// Each text field's NAME and, when it has one, what is wrong with it.
+  /// Keyed by controller so the call sites stay one line — the name field's
+  /// call is a line a sworn store declaration cites, by its text.
+  (String, String?) _labelAndError(
+    TextEditingController c,
+    AppLocalizations l10n,
+  ) {
+    if (identical(c, _price)) {
+      final bool bad =
+          _price.text.isNotEmpty && _parsedPrice(l10n.localeName) == null;
+      return (
+        l10n.fieldLabelPrice,
+        _serverErrors['price'] ??
+            (bad || _priceEmptied ? l10n.priceErrorInvalid : null),
+      );
+    }
+    if (identical(c, _website)) {
+      return (
+        l10n.fieldLabelWebsite,
+        _serverErrors['cancel_url'] ??
+            (_websiteOk ? null : l10n.websiteErrorInvalid),
+      );
+    }
+    if (identical(c, _every)) {
+      return (
+        l10n.fieldLabelEvery,
+        _serverErrors['cycle_every'] ??
+            (_cadence == null ? l10n.everyErrorInvalid : null),
+      );
+    }
+    if (identical(c, _plan)) {
+      return (l10n.fieldLabelPlan, _serverErrors['plan']);
+    }
+    if (identical(c, _notes)) {
+      return (l10n.fieldLabelNotes, _serverErrors['notes']);
+    }
+    return (l10n.fieldLabelName, _serverErrors['name']);
   }
 }

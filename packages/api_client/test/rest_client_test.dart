@@ -83,6 +83,31 @@ void main() {
     );
   });
 
+  test('a refused body keeps the Worker\'s detail beside the error code', () {
+    final _FakeAdapter adapter = _FakeAdapter(
+      jsonEncode(<String, dynamic>{
+        'error': 'invalid_body',
+        'detail': 'price must be a finite number between 0 and 1000000000',
+      }),
+      status: 400,
+    );
+    expect(
+      _client(adapter).get('/things'),
+      throwsA(isA<ApiException>()
+          .having((ApiException e) => e.message, 'message', 'invalid_body')
+          .having((ApiException e) => e.detail, 'detail',
+              startsWith('price must be'))),
+    );
+    // No detail on the wire is null, never an invented sentence.
+    expect(
+      _client(_FakeAdapter(jsonEncode(<String, dynamic>{'error': 'nope'}),
+              status: 400))
+          .get('/things'),
+      throwsA(isA<ApiException>()
+          .having((ApiException e) => e.detail, 'detail', isNull)),
+    );
+  });
+
   test('decode passes a good value through and maps parse failures', () {
     final RestClient client =
         _client(_FakeAdapter(jsonEncode(<String, dynamic>{})));

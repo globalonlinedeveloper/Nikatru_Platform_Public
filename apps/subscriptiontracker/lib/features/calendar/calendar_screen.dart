@@ -22,6 +22,7 @@ import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
 import '../../state/subscriptions_controller.dart';
 import '../add/add_subscription_sheet.dart';
+import '../shared/cadence_label.dart';
 import '../shared/due.dart';
 import '../shared/async_gate.dart';
 import '../shared/neutrals.dart';
@@ -905,9 +906,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                           ),
                         ),
                         Text(
-                          s.cycle == BillingCycle.yearly
-                              ? l10n.perYear
-                              : l10n.perMonth,
+                          cadenceCaption(l10n, s.cycle),
                           style: AppText.muted.copyWith(
                             fontSize: 10,
                             color: neutral.muted,

@@ -912,7 +912,10 @@ describe('check-d1-accepts-live-sql.mjs — the exit contract', () => {
       // this Worker deploys, so it is a fourth one the live half must execute.
       // The number is the COUNT OF DEPLOYED STATEMENTS, so it moves whenever the
       // Worker gains or loses one — that is the pin working, not drifting.
-      assert.match(r.stdout, /ok {2}platform_db — 4 introspective and 2 mutating statement\(s\) executed/);
+      // ⏱ 2026-09-28 · ST-T3b (ST-M3): 5. renewals.ts probes
+      // `pragma_table_info('subscriptions')` for 0003's cadence and lifecycle
+      // columns, as it already probed payment_history's.
+      assert.match(r.stdout, /ok {2}platform_db — 5 introspective and 2 mutating statement\(s\) executed/);
     });
   });
 

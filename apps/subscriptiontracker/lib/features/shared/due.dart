@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show BrandTokensDark;
+
 import '../../core/theme/app_colors.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
@@ -164,11 +167,35 @@ class DueInfo {
     Brightness? brightness,
   }) {
     final int d = s.daysUntil(now);
-    if (d <= 0) return DueInfo(l10n.dueToday, _urgentText(brightness));
+    // ⏱ 2026-09-28 · ST-T3b (ST-M3). This was `d <= 0 → dueToday`, so EVERY
+    // past date read "Due today" — a monthly row three days late said it was
+    // due today for as long as nobody rolled it. `daysUntil` now measures to
+    // the rolled next charge, so a row with a cadence is never negative, and a
+    // negative value is a row with no cadence whose date has passed: it is
+    // overdue, and saying "today" about it would be a date the app invented.
+    if (d < 0) return DueInfo(l10n.dueOverdue, _urgentText(brightness));
+    if (d == 0) return DueInfo(l10n.dueToday, _urgentText(brightness));
     if (d == 1) {
       return DueInfo(l10n.renewsTomorrow, _urgentText(brightness));
     }
-    if (d <= 5) return DueInfo(l10n.dueInDays(d), AppColors.accent);
-    return DueInfo(l10n.dueInDays(d), AppColors.muted);
+    if (d <= 5) return DueInfo(l10n.dueInDays(d), _nearText(brightness));
+    return DueInfo(l10n.dueInDays(d), _quietText(brightness));
   }
+
+  /// The near branch's colour — the same story as [_quietText]: `accent`
+  /// measures 2.52:1 on the dark card (a11y_semantics_test, home DARK), and a
+  /// rolled demo row two days out reaches it. The dark arm is the dark
+  /// palette's existing `--text` token.
+  static Color _nearText(Brightness? brightness) =>
+      brightness == Brightness.dark ? BrandTokensDark.text : AppColors.accent;
+
+  /// The far-off branch's colour. ⏱ 2026-09-28 · ST-T3b: the "neither branch
+  /// reaches it in any state pumped" above STOPPED BEING TRUE the day dates
+  /// rolled — the demo set's July renewals used to read "Due today" and now
+  /// read their real next charge, most of them weeks out, so `AppColors.muted`
+  /// reached the dark calendar card (dark_group_list_test). The dark arm is the
+  /// dark palette's own existing `--muted` token, not a new colour; the
+  /// token-level fix for both branches stays ST-D's.
+  static Color _quietText(Brightness? brightness) =>
+      brightness == Brightness.dark ? BrandTokensDark.muted : AppColors.muted;
 }

@@ -258,10 +258,14 @@ void main() {
         // on reminders `scheduleRenewalReminder` then declines to post, and the
         // user ends up with 20 reminders instead of 40.
         final List<Subscription> subs = <Subscription>[
+          // ⏱ ST-T3b (ST-M3): a row WITH a cadence is rolled to its next
+          // charge and is never stale; a past date only stays past on a row
+          // with no cadence, so that is what a stale row is now.
           ..._subs(
             40,
             name: 'stale',
             from: DateTime.now().subtract(const Duration(days: 400)),
+            cycle: null,
           ),
           ..._subs(40, name: 'live'),
         ];
@@ -285,7 +289,12 @@ void main() {
 /// [count] subscriptions renewing on consecutive days from [from], so `name-0`
 /// renews first. The default start is far enough ahead that none is skipped by
 /// the "don't fire in the past" guard.
-List<Subscription> _subs(int count, {String name = 'sub', DateTime? from}) {
+List<Subscription> _subs(
+  int count, {
+  String name = 'sub',
+  DateTime? from,
+  Cadence? cycle = BillingCycle.monthly,
+}) {
   final DateTime start = from ?? DateTime.now().add(const Duration(days: 30));
   return <Subscription>[
     for (int i = 0; i < count; i++)
@@ -294,7 +303,7 @@ List<Subscription> _subs(int count, {String name = 'sub', DateTime? from}) {
         name: '$name-$i',
         category: 'Other',
         price: const Money(1000, 'USD'),
-        cycle: BillingCycle.monthly,
+        cycle: cycle,
         nextRenewal: start.add(Duration(days: i)),
       ),
   ];

@@ -183,6 +183,16 @@ void main() {
       'used_pct',
       'usage_note',
       'unused',
+      // ⏱ 2026-09-29 · ST-T3b: the ADR no.077 §5 columns the import engine
+      // does not model yet (`notes` it does) — kept and listed, like the rest.
+      'cycle_every',
+      'cycle_unit',
+      'status',
+      'first_charge_on',
+      'trial_ends_on',
+      'cancelled_on',
+      'deleted_at',
+      'cancel_url',
     ], reason: 'kept and listed, never dropped');
     final core.ImportPlan plan = core.ImportPlan.build(
       table,
