@@ -1851,7 +1851,12 @@ class _Toggle extends StatelessWidget {
             width: 46,
             height: 28,
             decoration: BoxDecoration(
-              color: value ? AppColors.accent : const Color(0xFFE2E2EA),
+              // 🔴 D7 (round-2 review): the OFF track was the literal #E2E2EA
+              // in both schemes — 1.3:1 on the white card, so an off switch
+              // showed no boundary (SC 1.4.11 owes 3:1). `control` is the
+              // palette's off-state boundary, chosen to clear 3:1 on its
+              // surface in each scheme (ST-D0 D0-2).
+              color: value ? AppColors.accent : AppPalette.of(context).control,
               borderRadius: BorderRadius.circular(999),
             ),
             child: AnimatedAlign(

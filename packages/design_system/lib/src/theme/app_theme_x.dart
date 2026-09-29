@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../tokens/app_colors.dart';
+import '../tokens/app_palette.dart';
 import '../tokens/status_tones.dart';
 
 /// Brand tokens that don't map cleanly onto [ColorScheme] — status colours,
@@ -110,8 +111,8 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
     positive: AppColors.positive,
     warn: AppColors.warn,
     danger: AppColors.danger,
-    muted: AppColors.muted,
-    line: AppColors.line,
+    muted: AppPalette.lightMuted,
+    line: AppPalette.lightLine,
     brandGradient: AppColors.brandGradient,
     heroGradient: AppColors.heroGradient,
     categoryRamp: AppColors.ramp,
@@ -122,7 +123,7 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
     positive: AppColors.positive,
     warn: AppColors.warn,
     danger: AppColors.danger,
-    muted: AppColors.muted,
+    muted: AppPalette.lightMuted,
     line: Color(0xFF2A2A38),
     brandGradient: AppColors.brandGradient,
     heroGradient: AppColors.heroGradient,
