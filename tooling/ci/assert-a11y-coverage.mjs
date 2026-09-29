@@ -681,10 +681,16 @@ const REQUIRED_COVERAGE = [
     // run: "19 of 19 reachable surface(s) carry an a11y sweep, from 1 a11y test
     // file(s) across 111 case(s)". assert-responsive-coverage.mjs re-measured
     // to 19 in the same change.
-    surfaces: 19,
+    //
+    // ⏱ LOWERED 19 → 18 on 2026-09-29, deliberately, by train ST-D DW1 on
+    // ST-T3b: the edit form is `showAddSubscriptionSheet(context, initial: row)`
+    // (ST-T3b ST-E1), ONE entry point for add and edit, so ST-D6's separate
+    // `showEditSubscriptionSheet` surface is gone — merged, not lost. The edit
+    // form's own sweep case stays, and opens the same sheet with a row.
+    surfaces: 18,
     a11yFiles: 1,
     cases: 111,
-    label: 'the app P5 wrote this guard for — 19 surfaces, all nineteen swept',
+    label: 'the app P5 wrote this guard for — 18 surfaces, all eighteen swept',
   },
   {
     dir: BRICK,
@@ -982,9 +988,6 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         'features/monetization/manage_plan_screen.dart#ManagePlanScreen',
         'features/onboarding/onboarding_screen.dart#OnboardingScreen',
         'features/add/add_subscription_sheet.dart#showAddSubscriptionSheet',
-        // ⏱ 2026-09-28 · train ST-D6: the edit entry point, swept in the same
-        // change.
-        'features/add/add_subscription_sheet.dart#showEditSubscriptionSheet',
         'features/cancel/cancel_sheet.dart#showCancelSheet',
       ].map((k) => `apps/subscriptiontracker/lib/${k}`),
     ),

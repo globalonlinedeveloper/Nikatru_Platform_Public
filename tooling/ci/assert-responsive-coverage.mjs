@@ -486,7 +486,13 @@ const REQUIRED_COVERAGE = [
     // sheet, arrived measured by width_add_sheet_test.dart at kPhone, kTablet,
     // kDesktop and kWide. Measured by this guard's own run: "19 surface(s)
     // reachable, 19 measured — the two sets are EQUAL".
-    surfaces: 19,
+    //
+    // ⏱ LOWERED 19 → 18 on 2026-09-29, deliberately, by train ST-D DW1 on
+    // ST-T3b: the edit form is `showAddSubscriptionSheet(context, initial: row)`
+    // (ST-T3b ST-E1), ONE entry point for add and edit, so ST-D6's separate
+    // `showEditSubscriptionSheet` surface is gone — merged, not lost. The edit
+    // form's own sweep case stays, and opens the same sheet with a row.
+    surfaces: 18,
     // 🔴 THIS FLOOR IS ONE UNDER ITS TREE AND IT IS BEING LEFT THERE ON
     // PURPOSE, WHICH IS WORTH MORE WORDS THAN RAISING IT WOULD HAVE BEEN.
     // MEASURED 2026-09-05: `ls apps/subscriptiontracker/test | grep -cE
@@ -504,7 +510,7 @@ const REQUIRED_COVERAGE = [
     // 📌 OWED, AND REPORTED TO THE OWNER RATHER THAN LEFT IN A COMMENT: raise
     // this to 17 in the same change that grows that fixture's `N`.
     widthTestFiles: 16, // 15 `width_*_test.dart` + `responsive_width_test.dart`
-    coveredSurfaces: 19,
+    coveredSurfaces: 18,
     label: 'the app this guard was written for — every surface measured, and it fails if one stops being',
   },
   {
