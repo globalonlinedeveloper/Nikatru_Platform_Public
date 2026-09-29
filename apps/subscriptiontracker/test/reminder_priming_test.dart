@@ -194,6 +194,15 @@ void main() {
       expect(find.byType(PermissionPrimingView), findsOneWidget);
     });
 
+    testWidgets('no OS prompt on this platform: the switch flips, nothing is '
+        'primed', (WidgetTester tester) async {
+      final ProviderContainer c = await pump(tester);
+      await tester.tap(_switchFor(en.prefWeeklyDigest));
+      await tester.pumpAndSettle();
+      expect(find.byType(PermissionPrimingView), findsNothing);
+      expect(prefOf(c, 'weekly'), isTrue);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.linux));
+
     testWidgets('the in-app "unused" row is not a notification: no priming', (
       WidgetTester tester,
     ) async {

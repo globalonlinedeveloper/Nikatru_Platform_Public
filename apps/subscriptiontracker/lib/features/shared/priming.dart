@@ -1,7 +1,10 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show showPermissionPriming;
+import 'package:nikatru_notifications/nikatru_notifications.dart'
+    show NotificationCapabilities;
 
 import '../../l10n/app_localizations.dart';
 import '../../state/settings_controller.dart';
@@ -15,7 +18,20 @@ import '../../state/settings_controller.dart';
 /// [reason] names what the user is turning on, in that surface's own words.
 /// Answers whether the user chose to proceed; "Not now" and every dismissal
 /// answer false and spend nothing.
+///
+/// 🔴 NO OS PROMPT, NO PRIMING. Where the platform cannot schedule a reminder
+/// (web, Windows, Linux: [NotificationCapabilities.canSchedule] is false, the
+/// same reading the onboarding slide makes) there is no prompt to explain, so
+/// this answers yes without drawing anything. Priming there would explain an
+/// ask that never comes — and on the first add it would hold the add sheet
+/// open behind a question, which is what the live web e2e would have met.
 Future<bool> primeReminders(BuildContext context, {required String reason}) {
+  if (!NotificationCapabilities.forPlatform(
+    defaultTargetPlatform,
+    isWeb: kIsWeb,
+  ).canSchedule) {
+    return Future<bool>.value(true);
+  }
   final AppLocalizations l10n = AppLocalizations.of(context);
   return showPermissionPriming(
     context,
