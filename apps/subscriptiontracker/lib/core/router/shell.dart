@@ -8,18 +8,13 @@
 // would hand two live routers the same keys.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../features/calendar/calendar_screen.dart';
 import '../../features/home/home_screen.dart';
 import '../../features/insights/insights_screen.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../features/shell/app_shell.dart';
-import '../../l10n/app_localizations.dart';
-import '../../state/money_providers.dart';
 
 /// ── THE LIVE SHELL — four branches (ST-D3 D3-3, ADR 077 §A) ──────────────
 ///
@@ -52,7 +47,7 @@ RouteBase appShellRoute() => StatefulShellRoute.indexedStack(
       routes: <RouteBase>[
         GoRoute(
           path: '/insights',
-          builder: (_, __) => const _GatedInsights(),
+          builder: (_, __) => const InsightsScreen(),
           caseSensitive: false,
         ),
       ],
@@ -73,35 +68,8 @@ RouteBase appShellRoute() => StatefulShellRoute.indexedStack(
   ],
 );
 
-/// The INSIGHTS branch behind the chassis [PaywallGate] — [pipeline 5]M-5's
-/// open path, moved here in P2.6b when VARIANT B took the AppScaffold out of
-/// HomeScreen (the stamped shell gated its Explore tab; Subly's 5-tab nav has
-/// no Explore, and Insights — the savings surface — is the premium-surface
-/// default until Phase 4 decides finally). `paywallLockedProvider` resolves
-/// from the SERVER's entitlement read; with `PaywallConfig(enabled: false)`
-/// (today's default) it locks nothing, so the gate costs Subly nothing while
-/// staying a live, consumed seam rather than the [pipeline C-6] dead shape.
-///
-/// 🔴 STILL PRIVATE, AND THE UNDERSCORE IS LOAD-BEARING TO TWO GUARDS.
-/// `assert-a11y-coverage.mjs` and `assert-responsive-coverage.mjs` both treat a
-/// builder target starting with `_` as a ROUTER-LOCAL WRAPPER and resolve one
-/// level through it to the feature surface it builds. Renaming it public makes
-/// it a builder target they cannot classify — neither a screen under
-/// `lib/features` nor an argued non-pane — and both guards fail by design
-/// rather than guess.
-class _GatedInsights extends ConsumerWidget {
-  const _GatedInsights();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final AppLocalizations l10n = AppLocalizations.of(context);
-    return PaywallGate(
-      locked: ref.watch(paywallLockedProvider),
-      onUpgrade: () => context.go('/paywall'),
-      title: l10n.paywallHeadline,
-      message: l10n.paywallGateMessage,
-      upgradeLabel: l10n.paywallUpgrade,
-      child: const InsightsScreen(),
-    );
-  }
-}
+// ⏱ ST-D3 D3-6 (ST-P2): `_GatedInsights`, the whole-tab PaywallGate that stood
+// here, is gone. It hid the FREE Insights cards from a locked user along with
+// the premium one. The lock now sits on the one Pro card, through the design
+// system's `PaywallGate.card` in `features/insights/forecast_card.dart`, and
+// `/insights` builds the screen directly.

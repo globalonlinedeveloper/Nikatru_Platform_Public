@@ -383,5 +383,9 @@
   "categoryTableAmount": "தொகை",
   "categoryTableShare": "பங்கு",
   "a11yCategoryRow": "{name}: {amount}, மொத்தத்தில் {percent}",
-  "a11yCategoryRowNoShare": "{name}: {amount}"
+  "a11yCategoryRowNoShare": "{name}: {amount}",
+  "forecastTitle": "அடுத்த 12 மாதங்கள்",
+  "forecastLocked": "அடுத்த 12 மாதங்கள் மாதந்தோறும் எவ்வளவு செலவாகும் என்று பாருங்கள்.",
+  "forecastSeePro": "ப்ரோவைப் பார்",
+  "forecastSummary": "அடுத்த 12 மாதங்களில் {total}. அதிகபட்சம்: {month}, {amount}."
 }

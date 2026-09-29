@@ -1863,5 +1863,32 @@
         "type": "String"
       }
     }
+  },
+  "forecastTitle": "Next 12 months",
+  "@forecastTitle": {
+    "description": "Consumed by features/insights/forecast_card.dart. The Pro card's title. A FORECAST from today's plans, not a trend: no spending history is kept."
+  },
+  "forecastLocked": "See what the next 12 months will cost, month by month.",
+  "@forecastLocked": {
+    "description": "Consumed by features/insights/forecast_card.dart. The locked card's message (PaywallGate.card)."
+  },
+  "forecastSeePro": "See Pro",
+  "@forecastSeePro": {
+    "description": "Consumed by features/insights/forecast_card.dart. The locked card's one action; opens the paywall."
+  },
+  "forecastSummary": "{total} over the next 12 months. Highest: {month}, {amount}.",
+  "@forecastSummary": {
+    "description": "Consumed by features/insights/forecast_card.dart. The unlocked card's sentence, and the bars' accessible name.",
+    "placeholders": {
+      "total": {
+        "type": "String"
+      },
+      "month": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
   }
 }

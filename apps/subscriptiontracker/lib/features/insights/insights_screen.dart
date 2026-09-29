@@ -25,6 +25,7 @@ import '../shared/async_gate.dart';
 import '../shell/app_shell.dart';
 import 'budget_card.dart';
 import 'category_card.dart';
+import 'forecast_card.dart';
 import 'signals.dart';
 import 'summary_tiles.dart';
 
@@ -212,6 +213,8 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
             currencyCode: currencyCode,
             perYear: _period == InsightsPeriod.year,
           ),
+          // D3-6: the Pro card, gated on its own (PaywallGate.card).
+          ForecastCard(subs: subs, money: money, currencyCode: currencyCode),
         ];
 
         final List<Widget> keyed = <Widget>[
