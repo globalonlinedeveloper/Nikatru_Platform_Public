@@ -37,6 +37,84 @@ Future<bool> pumpUntilShown(
   return target.evaluate().isNotEmpty;
 }
 
+/// Pumps in short slices until [target] is gone, for at most [timeout].
+Future<bool> pumpUntilGone(
+  WidgetTester tester,
+  Finder target, {
+  Duration timeout = const Duration(seconds: 10),
+}) async {
+  final DateTime end = DateTime.now().add(timeout);
+  while (DateTime.now().isBefore(end)) {
+    if (target.evaluate().isEmpty) return true;
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+  }
+  return target.evaluate().isEmpty;
+}
+
+/// Answers the DPDP analytics-consent prompt with [kConsentDecline] if it
+/// shows within [timeout], and returns whether it did.
+///
+/// 🔴 THE ONLY PLACE THE PROOF ANSWERS IT, AND THE INSTALL ID IS PRINTED
+/// BEFORE THE TAP. Either answer uploads a row to platform_db
+/// `consent_artifacts`, keyed by the install id alone, so the teardown
+/// (tooling/e2e/purge.mjs) can remove it only by that id. Printed first, a run
+/// that dies after the tap still names its row; and because no other step taps
+/// this control, a finished proof log with no [kConsentAnonIdToken] line shows
+/// this run wrote no row (tooling/e2e/consent_anon_id.mjs, `proofLogConsent`).
+/// [installId] reads the app's own `installIdProvider` — the id the upload
+/// reads — from the prompt's context.
+///
+/// The prompt is an inline scrim over the whole app (the stamped
+/// `_ConsentPrompt`), so until it closes every tap beneath it is swallowed:
+/// proof run 36525783687 lost its Sign in tap to it on Android and Linux.
+Future<bool> answerConsentPrompt(
+  WidgetTester tester, {
+  required Future<String> Function(BuildContext context) installId,
+  Duration timeout = const Duration(seconds: 20),
+}) async {
+  final Finder decline = find.text(kConsentDecline);
+  if (!await pumpUntilShown(tester, decline, timeout: timeout)) return false;
+  expect(
+    find.text('Allow'),
+    findsWidgets,
+    reason:
+        '"$kConsentDecline" showed without "Allow" beside it — that is not '
+        'the consent prompt this proof answers. On screen: ${onScreen()}',
+  );
+  final String? id = await tester.runAsync(
+    () => installId(tester.element(decline.first)),
+  );
+  expect(
+    id != null && id.isNotEmpty,
+    isTrue,
+    reason:
+        'the install id did not resolve, so the consent row this answer '
+        'writes could not be named for the teardown.',
+  );
+  debugPrint('$kConsentAnonIdToken=$id');
+  await tester.pump(const Duration(milliseconds: 100));
+  expect(
+    decline.first.hitTestable(),
+    findsOneWidget,
+    reason:
+        'the tap on "$kConsentDecline" would not land. '
+        'On screen: ${onScreen()}',
+  );
+  await tester.tap(decline.first);
+  expect(
+    await pumpUntilGone(tester, decline),
+    isTrue,
+    reason:
+        'the consent prompt did not close after "$kConsentDecline". '
+        'On screen: ${onScreen()}',
+  );
+  debugPrint('NK_PROOF step=consent outcome=declined');
+  return true;
+}
+
 /// Every text on screen, for a failure message.
 String onScreen() => find
     .byType(RichText)
@@ -64,6 +142,17 @@ Future<void> proveFormSignIn(
   // A phone's keyboard or a short window can put the button below the fold.
   await tester.ensureVisible(submit);
   await tester.pump(const Duration(milliseconds: 300));
+  // 🔴 A TAP THAT WOULD NOT LAND IS A FAILURE, NOT A WARNING. Proof run
+  // 36525783687 (Android, Linux) tapped Sign in through the DPDP consent scrim:
+  // flutter_test printed "would not hit test", the tap went nowhere, and the
+  // step spent 60 s waiting for a Home no request had been made for.
+  expect(
+    submit.hitTestable(),
+    findsWidgets,
+    reason:
+        'the sign-in button is covered, so a tap on it would not land. '
+        'On screen: ${onScreen()}',
+  );
   await tester.tap(submit);
   final bool landed = await pumpUntilShown(
     tester,
@@ -98,3 +187,10 @@ const String kFailedResetCallbackLine =
 /// The line the proof prints when it is ready for the OS to open the callback.
 /// The workflow waits for it before it fires the URL.
 const String kAwaitCallbackMarker = 'NK_PROOF_AWAIT_CALLBACK';
+
+/// The consent prompt's decline control (chassis l10n `consentDecline`).
+const String kConsentDecline = 'No thanks';
+
+/// The token the host reads the consent row's install id by — the same token
+/// tooling/e2e/consent_anon_id.mjs parses (`ANON_ID_TOKEN`).
+const String kConsentAnonIdToken = 'E2E_CONSENT_ANON_ID';

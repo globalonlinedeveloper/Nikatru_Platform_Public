@@ -7,7 +7,9 @@
 // ⏱ 2026-09-28 · rows O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN,
 // O-NATIVE-AUTH-CALLBACK-UNBUILT. Before ST-T7 every native sign-in answered
 // `captcha_failed`: Box C captchas the password grant and no store build
-// carries a site key (ADR 084). The four steps:
+// carries a site key (ADR 084). The steps:
+//   0. the DPDP consent prompt is declined, its install id printed FIRST so
+//      tooling/e2e/purge.mjs removes the row it writes (run 36525783687);
 //   1. the REAL form signs the user in, and Home shows;
 //   2. sign-up with the (already registered) address and a reset for an
 //      unregistered one both answer WITHOUT `captcha_failed`, and neither sends
@@ -62,10 +64,16 @@ void main() {
     final ErrorWidgetBuilder builderBeforeTest = ErrorWidget.builder;
     try {
       await app.main();
-      final List<Finder> firstRun = <Finder>[
-        find.text('Skip'),
-        find.text('No thanks'),
-      ];
+
+      // 0 ── the DPDP consent prompt, answered HERE and nowhere else, before
+      // anything under its scrim is touched (answerConsentPrompt says why).
+      Future<String> installId(BuildContext context) =>
+          ProviderScope.containerOf(context).read(installIdProvider.future);
+      bool consentAnswered = await answerConsentPrompt(
+        tester,
+        installId: installId,
+      );
+      final List<Finder> firstRun = <Finder>[find.text('Skip')];
       expect(
         await pumpUntilShown(
           tester,
@@ -75,6 +83,14 @@ void main() {
         isTrue,
         reason: 'the sign-in form never showed. On screen: ${onScreen()}',
       );
+      consentAnswered =
+          consentAnswered ||
+          await answerConsentPrompt(
+            tester,
+            installId: installId,
+            timeout: const Duration(seconds: 5),
+          );
+      if (!consentAnswered) debugPrint('NK_PROOF step=consent outcome=absent');
 
       // 1 ── the real form, the real route.
       await proveFormSignIn(
