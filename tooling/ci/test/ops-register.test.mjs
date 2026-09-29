@@ -5026,8 +5026,9 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
   const BACKUP = 'duty.laptop.nikatru-daily-backup';
   const RENOVATE_BACKLOG = 'duty.freshness.renovate-backlog';
   const LAPTOP_802 = ['duty.laptop.nikatru-ops-check', 'duty.laptop.nikatru-watchdog'];
-  const PAGE_ONLY_ROWS = [RENOVATE_BACKLOG, BACKUP, ...LAPTOP_802, DRIVER];
-  test('PAGE-ONLY - the committed register scopes exactly the four laptop duties and the Renovate backlog, and it holds', () => {
+  const CODE_SCANNING_AGE = 'duty.freshness.code-scanning-age';
+  const PAGE_ONLY_ROWS = [RENOVATE_BACKLOG, CODE_SCANNING_AGE, BACKUP, ...LAPTOP_802, DRIVER];
+  test('PAGE-ONLY - the committed register scopes exactly the four laptop duties, the Renovate backlog and the code-scanning age, and it holds', () => {
     const reg = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
     const scoped = reg.rows.filter((r) => r.liveVerdictScope !== undefined).map((r) => r.id);
     assert.deepEqual(scoped, PAGE_ONLY_ROWS);
@@ -6212,7 +6213,8 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
         assert.match(r.out, new RegExp(`\\[14\\]O-3 — ${reEscape(id)} — queried: newest success 2\\.7h ago, inside \\[1d x 1\\.5 = 36\\.0h\\]\\. run 34533663312 \\(schedule on main\\)`), `${name}: ${id} must be judged by run 34533663312's unit`);
       }
       // ⏱ 2026-09-27 — 6 -> 7: duty.freshness.renovate-backlog reads ops-watch.yml's renovate-backlog job.
-      assert.match(r.out, /\[INV3\] ops-watch\.yml — 7 duty rows, each judged by its OWN unit/);
+      // ⏱ 2026-09-29 — 7 -> 8: duty.freshness.code-scanning-age reads ops-watch.yml's code-scanning-age job.
+      assert.match(r.out, /\[INV3\] ops-watch\.yml — 8 duty rows, each judged by its OWN unit/);
     }
   });
 
@@ -6394,7 +6396,8 @@ describe('INV3 · a duty is judged by the unit that performs it — the pure hal
     assert.match(errs(row('a', { jobs: ['status'] }), row('b', { jobs: ['status'] })), /job status of ops-watch\.yml is already the unit of a/);
     assert.match(errs(row('a', { jobs: ['heartbeats'] }), row('b', { job: 'heartbeats', step: "Judge whether the analytics rail's silence is a FAULT" })), /the units overlap/);
     // ⏱ 2026-09-27 — ops-watch.yml gained the renovate-backlog job (duty.freshness.renovate-backlog).
-    assert.match(errs(row('a', { jobs: ['status'] }), row('b', { jobs: ['pages-deployments'] })), /job\(s\) supabase-drift · prod-provenance · runner-budget · glitchtip · edge-shield · failure-ledger · renovate-backlog · alert · digest are the unit of none/);
+    // ⏱ 2026-09-29 — and the code-scanning-age job (duty.freshness.code-scanning-age).
+    assert.match(errs(row('a', { jobs: ['status'] }), row('b', { jobs: ['pages-deployments'] })), /job\(s\) supabase-drift · prod-provenance · runner-budget · glitchtip · edge-shield · failure-ledger · renovate-backlog · code-scanning-age · alert · digest are the unit of none/);
     const real = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
     const out = checkRunUnits(real, files, topo);
     assert.deepEqual(out.errors, []);
@@ -6402,7 +6405,8 @@ describe('INV3 · a duty is judged by the unit that performs it — the pure hal
     assert.ok(runRows.length >= 12, `expected every workflow row and the three ops-watch duties; found ${runRows.length}`);
     for (const r of runRows) assert.ok(unitOf(r.mechanism.recordQuery).declared, `${r.id} names no unit`);
     // ⏱ 2026-09-27 — 6 -> 7: duty.freshness.renovate-backlog reads ops-watch.yml's renovate-backlog job.
-    assert.ok(out.prints.some((p) => /\[INV3\] ops-watch\.yml — 7 duty rows/.test(p)), 'the shared workflow and its units must print on every run');
+    // ⏱ 2026-09-29 — 7 -> 8: duty.freshness.code-scanning-age reads ops-watch.yml's code-scanning-age job.
+    assert.ok(out.prints.some((p) => /\[INV3\] ops-watch\.yml — 8 duty rows/.test(p)), 'the shared workflow and its units must print on every run');
   });
 
   test('jobSteps reads the committed heartbeats job the way the API names its steps', () => {

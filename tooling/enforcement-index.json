@@ -3553,6 +3553,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#code-scanning-age"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-code-scanning-age.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "K-7"
     ],

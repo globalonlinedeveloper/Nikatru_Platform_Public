@@ -926,8 +926,23 @@ jobs:
           set -euo pipefail
           node tooling/ci/install-pinned-tool.mjs gitleaks --out "${RUNNER_TEMP}"
           "${RUNNER_TEMP}/gitleaks" version
-      - name: Secret scan (self-tests, then scans)
-        run: node tooling/ci/scan-secrets.mjs . --gitleaks "${RUNNER_TEMP}/gitleaks"
+      # 🔴 THE RANGE IS THE CHANGE'S COMMITS, NOT ONLY ITS TREE. Until 2026-09-29
+      # this step scanned the working tree alone (`--no-git`), so a key added in
+      # one commit of a PR and removed in the next passed CI and stayed in the
+      # pushed history. [rv2 A-1] A PR scans merge-base(base, head)..head; a push
+      # to main scans before..after, and a before that is not an ancestor of after
+      # (a force-push) is COVERAGE LOST, exit 2 — never a pass. The values reach
+      # the shell through `env:`, never `${{ }}` inside `run:` (zizmor's
+      # template-injection rule). fetch-depth: 0 above is what puts both ends in
+      # the clone.
+      - name: Secret scan (self-tests, then the tree, then the change's commits)
+        env:
+          SCAN_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          SCAN_HEAD: ${{ github.event.pull_request.head.sha || github.event.after }}
+          SCAN_KIND: ${{ github.event_name == 'pull_request' && 'pr' || 'push' }}
+        run: >-
+          node tooling/ci/scan-secrets.mjs . --gitleaks "${RUNNER_TEMP}/gitleaks"
+          --range "${SCAN_BASE}..${SCAN_HEAD}" --range-kind "${SCAN_KIND}"
       # ⚠️ THE ASSET NAME CARRIES NO VERSION — `zizmor-x86_64-unknown-linux-gnu.tar.gz`
       # is the same string at every release, and only the `/v${ver}/` path segment
       # differs. So on this lane the digest is not a second opinion about the

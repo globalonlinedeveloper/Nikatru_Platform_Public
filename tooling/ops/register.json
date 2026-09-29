@@ -2281,6 +2281,52 @@
       }
     },
     {
+      "_whyThisRowExists": "APPENDED 2026-09-29 for finding P-9, in the same change as tooling/ops/check-code-scanning-age.mjs and the `code-scanning-age` job of .github/workflows/ops-watch.yml. Measured 2026-09-29: 146 GitHub code-scanning alerts open, 31 high and 0 critical, none dismissed with a reason, 26 new since 2026-09-24, and no reader of open alerts anywhere in tooling/ or .github/ — CodeQL wrote them and nothing judged them. 🔴 THE ANCHOR IS THE SCRIPT, NOT ops-watch.yml, for the reason duty.pages-deployment-landed records: the `anchored` map in tooling/ci/assert-ops-register.mjs is keyed by anchor. 🔴 THE CLASS IS `duty.freshness.`, AND IT IS PAGE-ONLY (liveVerdictScope), on the renovate-backlog row's terms: the alerts drain only by merged fixes or reasoned dismissals, and a verdict that froze ci-gate would freeze exactly the merges that fix them.",
+      "id": "duty.freshness.code-scanning-age",
+      "kind": "duty",
+      "what": "The open GitHub code-scanning alerts, read against a triage window. tooling/ops/check-code-scanning-age.mjs pages through GET /repos/{owner}/{repo}/code-scanning/alerts?state=open and pages when an alert of security_severity_level high or critical has stood untriaged longer than MAX_AGE_DAYS (7). Triaged means fixed, or dismissed WITH a non-empty dismissed_reason; a dismissal with no reason is graded as still open. Medium, low and quality-only alerts are counted in the summary line and never page. Runs in ops-watch.yml's `code-scanning-age` job on the Mondays 07:45 UTC slot, and on a workflow_dispatch that asks for it (inputs.code_scanning_age).",
+      "detector": "The job's own exit, three-valued: 0 the list was read and no high/critical alert is untriaged past 7 days (the summary line prints the counts by severity and state, and says '0 open alerts read' for an empty list) · 1 at least one is, each printed with number, rule id, severity, age and path:line · 2 COVERAGE LOST — no token, the API refused (403 without security-events: read, 404 with code scanning off), a page that is not a JSON array, an item missing number/state/created_at/rule, a severity outside the enum, a list still continuing after MAX_PAGES, or a non-empty list in which no alert carries rule.security_severity_level. Exit 1 and exit 2 both fail the job.",
+      "response": "EXIT 1: fix each alert the log names, or dismiss it on GitHub WITH a reason (false positive / won't fix / used in tests) and a comment saying why; a dismissal with no reason stays red. MAX_AGE_DAYS is never raised to clear the red. EXIT 2: nothing was graded, and the step log's `x COULD NOT LOOK` line names what could not be read.",
+      "cadence": "7d",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": "tooling/ops/check-code-scanning-age.mjs",
+        "record": "GitHub Actions run history for .github/workflows/ops-watch.yml, filtered to event = schedule, read at the `code-scanning-age` job — the workflow's other eleven slots skip that job by its own `if:`, and a job skipped by its own `if:` is neutral in a unit read, so only the Mondays 07:45 UTC slot can supply a verdict for this row.",
+        "failingValue": "no scheduled run on main in which the `code-scanning-age` job concluded success inside the window [7d x 1.5 = 252h]. Exit 1 (an alert past its window) and exit 2 (COVERAGE LOST) both fail the job, so untriaged alerts age this row exactly as a stopped schedule does. REACHABLE BY MUTATION OF THE REAL TREE: deleting the job while this row names it is an undeclared-job finding in tooling/ci/assert-ops-register.mjs, and dropping it from alert's `needs` is that guard's alert-needs finding; the reader's own cases in tooling/ci/test/code-scanning-age.test.mjs red on an 8-day-old high or critical alert and on every malformed input.",
+        "readBy": ".github/workflows/ops-watch.yml — the code-scanning-age job, whose non-zero exit reaches the durable issue through the alert job: this job is listed in alert's `needs`, and tooling/ci/assert-ops-register.mjs refuses an ops-watch job missing from that list.",
+        "recordQuery": {
+          "reader": "github-run-history",
+          "workflow": "ops-watch.yml",
+          "unit": {
+            "jobs": [
+              "code-scanning-age"
+            ]
+          },
+          "event": "schedule",
+          "headBranch": "main",
+          "firstDue": "2026-10-09T00:00:00Z",
+          "firstDueWhy": "⚠️ THE BOOTSTRAP, on duty.freshness.renovate-backlog's terms: the job's run history does not exist until the job is on the default branch. The first Monday 07:45 UTC slot after a merge on or after 2026-09-29 is 2026-10-05, and 2026-10-09 gives it ~88h of scheduler lateness while staying inside one window [7d x 1.5 = 252h] of any run from 2026-09-29. A merge after 2026-10-05 07:45 UTC re-sets this to the Friday 00:00 UTC after the next Monday slot. No owner step stands before the first slot: the job reads under its own workflow token. ⬜ DELETE THIS FIELD AND `firstDue` once one scheduled run has succeeded on main.",
+          "why": "🔴 `unit: { jobs: ['code-scanning-age'] }` — the job, not the run, for the reason duty.freshness.renovate-backlog gives: a run is green whenever its daily readers are, which says nothing about a job that runs on one slot a week. `event: schedule` because a workflow_dispatch run is a person pressing the button. THE MONDAY SLOT BOUNDS THIS ROW'S SHARE OF THE API QUOTA: scheduleWeekdays reads this job's weekdays out of its own `if:`, so the unit scan opens the job lists of Monday schedule runs only — the same runs duty.failure-ledger's and duty.freshness.renovate-backlog's scans already open, each fetched once per run."
+        }
+      },
+      "absenceWatcher": {
+        "substrate": "(none)",
+        "what": "NOTHING, and it is the SAME gap duty.workflow.ops-watch.yml and duty.freshness.renovate-backlog already carry: this duty is a job inside that workflow, so whatever silences the workflow silences this too. Recorded separately instead of borrowed, because a gap inherited by implication is a gap nobody counts.",
+        "ownerGated": true,
+        "gap": "🔴 NOTHING WATCHES THIS JOB'S ABSENCE from outside GitHub, with the same repair as the rows that already say so: GitHub disables scheduled workflows in inactive public repositories, and a dead Monday slot looks exactly like a week with no overdue alert. Its FAILING is loud (a non-zero exit fails the job, which reaches the durable issue through alert). Closing the absence half needs a signal hosted on a second provider: OWNER_QUEUE S-8, the same item. Declared 2026-09-29."
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "unverified",
+      "unverifiedWhy": "The job has never run, and the reader has never been run live: it lands with this row, drafted in a sandbox with no GitHub token. Verified offline only, by tooling/ci/test/code-scanning-age.test.mjs (the real script over fixture alert lists, and the paged API read over a fake fetch). NOT VERIFIED: that the workflow token with `security-events: read` answers GET /repos/{owner}/{repo}/code-scanning/alerts, and that the live alerts carry rule.security_severity_level as the fixtures do. Expected on the first slot: exit 1, because 31 high alerts were open on 2026-09-29 and most are older than 7 days. The first scheduled run is that measurement; flip this row to `verified` on its evidence.",
+      "liveVerdictScope": {
+        "blocks": "page-only",
+        "page": "ops-watch.yml",
+        "why": "freshness, not correctness: alerts drain only by merged fixes or reasoned dismissals; a frozen ci-gate would stop the merges that fix them (P-9)"
+      }
+    },
+    {
       "id": "duty.oci-console-session",
       "kind": "duty",
       "what": "The recurring Oracle Cloud console session: the memory-utilisation alarm, a CUSTOM boot-volume backup policy, Docker log rotation, the >=80% disk alert, and the console login itself.",

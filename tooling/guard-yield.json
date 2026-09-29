@@ -2508,6 +2508,11 @@
       "firstSeen": "2026-09-25",
       "evidence": []
     },
+    "tooling/ops/check-code-scanning-age.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-29",
+      "evidence": []
+    },
     "tooling/ops/check-d1-accepts-live-sql.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-09",
