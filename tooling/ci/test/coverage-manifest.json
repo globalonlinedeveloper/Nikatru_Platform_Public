@@ -86,7 +86,7 @@
   "d1-sql-inventory.test.mjs": 57,
   "data-inventory.test.mjs": 55,
   "dead-repo-names.test.mjs": 17,
-  "deletion-control.test.mjs": 38,
+  "deletion-control.test.mjs": 39,
   "deploy-ref.test.mjs": 23,
   "deploy-triggers.test.mjs": 27,
   "deploy-units.test.mjs": 7,
