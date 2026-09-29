@@ -1371,6 +1371,10 @@
   "@renewalChannelName": {
     "description": "Consumed by services/notifications/notification_service.dart:34. The Android notification CHANNEL name — shown in the OS settings app, outside any BuildContext, so it is passed in from a caller that has one."
   },
+  "renewalChannelDescription": "Alerts before a subscription charges you",
+  "@renewalChannelDescription": {
+    "description": "The Android notification channel's DESCRIPTION, the line under renewalChannelName in the OS settings app (audit C28/D16). Passed to the reminder service in ReminderCopy, like the name."
+  },
   "renewalReminderTitle": "Renewal coming up",
   "@renewalReminderTitle": {
     "description": "Consumed by services/notifications/notification_service.dart:141. See renewalChannelName on how it reaches the service."

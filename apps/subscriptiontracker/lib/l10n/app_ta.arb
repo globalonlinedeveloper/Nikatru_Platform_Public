@@ -304,6 +304,7 @@
   "subscriptiontrackerOnboarding3Title": "பயன்படுத்தாததைக் குறையுங்கள்",
   "subscriptiontrackerOnboarding3Body": "ஒவ்வொரு திட்டமும் மாதத்துக்கும் ஆண்டுக்கும் எவ்வளவு செலவாகிறது என்று பார்த்து, எதை வைத்திருப்பது என்று முடிவு செய்யுங்கள்.",
   "renewalChannelName": "புதுப்பித்தல் நினைவூட்டல்கள்",
+  "renewalChannelDescription": "சந்தா உங்களிடம் கட்டணம் வசூலிக்கும் முன் எச்சரிக்கைகள்",
   "renewalReminderTitle": "புதுப்பித்தல் நெருங்குகிறது",
   "renewalReminderBody": "{name} {date} அன்று புதுப்பிக்கப்படும்.",
   "weeklyDigestTitle": "உங்கள் வாரச் சந்தாச் சுருக்கம்",

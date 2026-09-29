@@ -32,15 +32,15 @@ class ReminderCopy {
     required this.digestBody,
     required this.cancelByTitle,
     required this.cancelByBody,
-    this.channelDescription = 'Alerts before a charge',
+    required this.channelDescription,
   });
 
   /// The Android notification CHANNEL name — visible in the OS settings app,
   /// long after the notification itself is gone.
   final String channelName;
 
-  /// 👤 STILL ENGLISH: there is no .arb key for it yet (audit C28/D16, label
-  /// ST-Y4). It now crosses the seam as data, so that fix is one key.
+  /// The line under the channel name in the OS settings app — as visible as
+  /// the name, so it is translated like it (audit C28/D16).
   final String channelDescription;
 
   final String reminderTitle;
@@ -161,16 +161,12 @@ class RenewalReminders {
     return _service.requestPermission();
   }
 
-  static const core.NotificationChannel _channelFor = core.NotificationChannel(
-    id: 'renewals',
-    name: 'Renewal reminders',
-    description: 'Alerts before a charge',
-    important: true,
-  );
+  /// Android keys the user's per-channel choices by this id: stable forever.
+  static const String _channelId = 'renewals';
 
   core.NotificationChannel _channel(ReminderCopy copy) =>
       core.NotificationChannel(
-        id: _channelFor.id,
+        id: _channelId,
         name: copy.channelName,
         description: copy.channelDescription,
         important: true,

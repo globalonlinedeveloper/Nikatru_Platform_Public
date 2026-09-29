@@ -21,6 +21,7 @@ final DateTime _now = DateTime(2026, 10, 1, 8);
 
 ReminderCopy _copy() => ReminderCopy(
   channelName: 'Renewal reminders',
+  channelDescription: 'Alerts before a charge',
   reminderTitle: 'Renewal coming up',
   reminderBody: (String n, DateTime d) => '$n renews ${d.day}/${d.month}',
   digestTitle: 'Weekly',

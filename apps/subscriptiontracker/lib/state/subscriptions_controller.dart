@@ -86,6 +86,7 @@ ReminderCopy reminderCopyFor(Locale? chosen) {
   final DateFormat monthDay = monthDayFormat(l10n.localeName);
   return ReminderCopy(
     channelName: l10n.renewalChannelName,
+    channelDescription: l10n.renewalChannelDescription,
     reminderTitle: l10n.renewalReminderTitle,
     reminderBody: (String name, DateTime renewal) =>
         l10n.renewalReminderBody(name, monthDay.format(renewal)),
