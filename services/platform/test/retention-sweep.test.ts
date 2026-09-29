@@ -51,6 +51,8 @@ import {
   CONTENT_REPORTS_RETENTION_DAYS,
   EXT_CODES_RETENTION_DAYS,
   EXT_DEVICES_RETENTION_DAYS,
+  NATIVE_ATTEST_CHALLENGES_RETENTION_DAYS,
+  NATIVE_ATTEST_KEYS_RETENTION_DAYS,
   retentionCutoff,
   retentionSweep,
 } from '../src/scheduled';
@@ -129,7 +131,7 @@ const heartbeat = (db: RealDb) =>
 /** Every SQL string the sweep asked the DB to prepare that is a DELETE. */
 const deletesPrepared = (db: RealDb) => db.sql.filter((s) => /^\s*DELETE\b/i.test(s));
 
-const NONE: RetentionPeriods = { events: null, events_daily: null, provider_notifications: null, signups: null, content_reports: null, ext_codes: null, ext_devices: null };
+const NONE: RetentionPeriods = { events: null, events_daily: null, provider_notifications: null, signups: null, content_reports: null, ext_codes: null, ext_devices: null, native_attest_challenges: null, native_attest_keys: null };
 
 // ─────────────────────────────────────────────────────────────────────────────
 describe('retentionCutoff — the pure half', () => {
@@ -172,7 +174,7 @@ describe('DORMANT — with no declared period the sweep touches nothing', () => 
 
   it('a period of 0 or a negative is treated as undeclared, not as "delete everything"', async () => {
     const db = seeded();
-    await retentionSweep(envOf(db), { events: 0, events_daily: null, provider_notifications: -1, signups: null, content_reports: null, ext_codes: null, ext_devices: null }, NOW);
+    await retentionSweep(envOf(db), { events: 0, events_daily: null, provider_notifications: -1, signups: null, content_reports: null, ext_codes: null, ext_devices: null, native_attest_challenges: null, native_attest_keys: null }, NOW);
     expect(db.count('events')).toBe(3);
     expect(db.count('provider_notifications')).toBe(3);
     expect(deletesPrepared(db)).toEqual([]);
@@ -201,7 +203,7 @@ describe('DORMANT — with no declared period the sweep touches nothing', () => 
 
 // ─────────────────────────────────────────────────────────────────────────────
 describe('ACTIVATED — one value turns the same job into a bounded deletion', () => {
-  const THIRTY: RetentionPeriods = { events: 30, events_daily: null, provider_notifications: 30, signups: null, content_reports: null, ext_codes: null, ext_devices: null };
+  const THIRTY: RetentionPeriods = { events: 30, events_daily: null, provider_notifications: 30, signups: null, content_reports: null, ext_codes: null, ext_devices: null, native_attest_challenges: null, native_attest_keys: null };
 
   it('deletes EXACTLY the rows past the period, and nothing newer', async () => {
     const db = seeded();
@@ -321,7 +323,7 @@ describe('ACTIVATED — one value turns the same job into a bounded deletion', (
 
   it('one store declared and one not is a MIXED run, not an all-or-nothing one', async () => {
     const db = seeded();
-    await retentionSweep(envOf(db), { events: 30, events_daily: null, provider_notifications: null, signups: null, content_reports: null, ext_codes: null, ext_devices: null }, NOW);
+    await retentionSweep(envOf(db), { events: 30, events_daily: null, provider_notifications: null, signups: null, content_reports: null, ext_codes: null, ext_devices: null, native_attest_challenges: null, native_attest_keys: null }, NOW);
     expect(db.count('events')).toBe(1);
     expect(db.count('provider_notifications')).toBe(3);
     expect(deletesPrepared(db)).toHaveLength(1);
@@ -348,14 +350,14 @@ describe('BOUNDED — the sweep is a catch-up job, never one unbounded DELETE', 
     expect(db.count('events')).toBe(overflow + 1);
     caughtUp(db);
 
-    await retentionSweep(envOf(db), { events: 30, events_daily: null, provider_notifications: null, signups: null, content_reports: null, ext_codes: null, ext_devices: null }, NOW);
+    await retentionSweep(envOf(db), { events: 30, events_daily: null, provider_notifications: null, signups: null, content_reports: null, ext_codes: null, ext_devices: null, native_attest_challenges: null, native_attest_keys: null }, NOW);
     expect(db.count('events')).toBe(overflow + 1 - MAX_ROWS_PER_SWEEP);
     const first = String(heartbeat(db)[0].detail);
     expect(first).toContain('capped=1');
     expect(first).toContain(`events=30d:${MAX_ROWS_PER_SWEEP}`);
 
     // The next night finishes the backlog and stops reporting capped.
-    await retentionSweep(envOf(db), { events: 30, events_daily: null, provider_notifications: null, signups: null, content_reports: null, ext_codes: null, ext_devices: null }, NOW);
+    await retentionSweep(envOf(db), { events: 30, events_daily: null, provider_notifications: null, signups: null, content_reports: null, ext_codes: null, ext_devices: null, native_attest_challenges: null, native_attest_keys: null }, NOW);
     expect(db.rows('SELECT event_id FROM events')).toEqual([{ event_id: 'keep-me' }]);
     expect(String(heartbeat(db)[1].detail)).toContain('capped=0');
   });
@@ -366,7 +368,7 @@ describe('a failing DELETE is recorded as ok=0, never as "nothing to do"', () =>
   it('records the failure instead of swallowing it', async () => {
     const db = seeded();
     db.throwOnWrite = true;
-    await retentionSweep(envOf(db), { events: 30, events_daily: null, provider_notifications: 30, signups: null, content_reports: null, ext_codes: null, ext_devices: null }, NOW);
+    await retentionSweep(envOf(db), { events: 30, events_daily: null, provider_notifications: 30, signups: null, content_reports: null, ext_codes: null, ext_devices: null, native_attest_challenges: null, native_attest_keys: null }, NOW);
     // The heartbeat write itself is best-effort and shares the same flag, so the
     // observable contract here is that the cron does not throw out of the sweep.
     db.throwOnWrite = false;
@@ -390,7 +392,7 @@ describe('signups — the nikatru.com launch list is swept on its original signu
   it('deletes exactly the signups older than the period; the one AT the cutoff and the fresh one survive', async () => {
     const db = realPlatformDb();
     seedSignups(db);
-    await retentionSweep(envOf(db), { events: null, events_daily: null, provider_notifications: null, signups: 30, content_reports: null, ext_codes: null, ext_devices: null }, NOW);
+    await retentionSweep(envOf(db), { events: null, events_daily: null, provider_notifications: null, signups: 30, content_reports: null, ext_codes: null, ext_devices: null, native_attest_challenges: null, native_attest_keys: null }, NOW);
     expect(db.rows('SELECT email FROM signups ORDER BY email')).toEqual([
       { email: 'edge@example.com' },
       { email: 'fresh@example.com' },
@@ -441,7 +443,7 @@ describe('ext_codes — a one-time code is swept a day after it expires, never b
     seedCodes(db, NOW);
     await retentionSweep(
       envOf(db),
-      { events: null, events_daily: null, provider_notifications: null, signups: null, content_reports: null, ext_codes: EXT_CODES_RETENTION_DAYS, ext_devices: null },
+      { events: null, events_daily: null, provider_notifications: null, signups: null, content_reports: null, ext_codes: EXT_CODES_RETENTION_DAYS, ext_devices: null, native_attest_challenges: null, native_attest_keys: null },
       NOW,
     );
     expect(db.rows('SELECT code_hash FROM ext_codes ORDER BY code_hash')).toEqual([
@@ -487,6 +489,8 @@ describe('ext_devices — a revoked device is swept 30 days after revocation, a 
     content_reports: null,
     ext_codes: null,
     ext_devices: EXT_DEVICES_RETENTION_DAYS,
+    native_attest_challenges: null,
+    native_attest_keys: null,
   };
   // Every token hash here is a made-up value; no credential exists in this file.
   const seedDevices = (db: RealDb, nowMs: number) => {
@@ -594,6 +598,47 @@ describe('ext_devices — a revoked device is swept 30 days after revocation, a 
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-29 · ADR no.NNN — the native sign-in attestation state. A challenge
+// is swept a day past `expires_at` (never before), a key when unused for
+// NATIVE_ATTEST_KEYS_RETENTION_DAYS (a key used yesterday survives).
+// ─────────────────────────────────────────────────────────────────────────────
+describe('native_attest_* — challenges a day past expiry, keys when long unused', () => {
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const DAY = 86400000;
+  it('the shipped sweep deletes the expired challenge and the stale key, and keeps the live ones', async () => {
+    const db = realPlatformDb();
+    const now = Date.now();
+    db.db.exec(
+      `INSERT INTO native_attest_challenges (challenge_hash, app_id, created_at, expires_at) VALUES
+        ('c-live', 'subscriptiontracker', '${iso(now)}', '${iso(now + 120_000)}'),
+        ('c-recent', 'subscriptiontracker', '${iso(now - DAY / 2)}', '${iso(now - DAY / 2 + 120_000)}'),
+        ('c-old', 'subscriptiontracker', '${iso(now - 3 * DAY)}', '${iso(now - 3 * DAY + 120_000)}')`,
+    );
+    db.db.exec(
+      `INSERT INTO native_attest_keys (app_id, key_id, kind, public_key, sign_count, created_at, last_used_at) VALUES
+        ('subscriptiontracker', 'k-used', 'install-key', 'pk', 0, '${iso(now - 400 * DAY)}', '${iso(now - DAY)}'),
+        ('subscriptiontracker', 'k-stale', 'install-key', 'pk', 0, '${iso(now - 400 * DAY)}', '${iso(now - (NATIVE_ATTEST_KEYS_RETENTION_DAYS + 1) * DAY)}')`,
+    );
+    await retentionSweep(envOf(db));
+    expect(db.rows('SELECT challenge_hash FROM native_attest_challenges ORDER BY challenge_hash')).toEqual([
+      { challenge_hash: 'c-live' },
+      { challenge_hash: 'c-recent' },
+    ]);
+    expect(db.rows('SELECT key_id FROM native_attest_keys')).toEqual([{ key_id: 'k-used' }]);
+  });
+
+  it('undeclared is INERT for both — nothing is lost', async () => {
+    const db = realPlatformDb();
+    const now = Date.now();
+    db.db.exec(
+      `INSERT INTO native_attest_challenges (challenge_hash, app_id, created_at, expires_at) VALUES ('c-old', 'subscriptiontracker', '${iso(now - 3 * DAY)}', '${iso(now - 3 * DAY)}')`,
+    );
+    await retentionSweep(envOf(db), NONE, now);
+    expect(db.count('native_attest_challenges')).toBe(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // THE SHIPPED FILE, AND THE REGISTER IT ANSWERS TO.
 //
 // Correct whether or not the owner has declared a period — see the header.
@@ -610,6 +655,8 @@ describe('the shipped constants and tooling/ops/register.json agree', () => {
     content_reports: CONTENT_REPORTS_RETENTION_DAYS,
     ext_codes: EXT_CODES_RETENTION_DAYS,
     ext_devices: EXT_DEVICES_RETENTION_DAYS,
+    native_attest_challenges: NATIVE_ATTEST_CHALLENGES_RETENTION_DAYS,
+    native_attest_keys: NATIVE_ATTEST_KEYS_RETENTION_DAYS,
   };
 
   const register = JSON.parse(registerRaw) as {
@@ -638,7 +685,8 @@ describe('the shipped constants and tooling/ops/register.json agree', () => {
   // ⏱ 2026-09-15 · `signups` ([ADR 087], 0011_signups.sql) joins the list the day it joins the sweep.
   // ⏱ 2026-09-24 · `ext_codes` (O-EXTENSION-ACCOUNT-CHECK-UNBUILT) joins the list the day it joins the sweep.
   // ⏱ 2026-09-25 · `ext_devices` (revoked devices, O-EXTENSION-ACCOUNT-CHECK-UNBUILT) joins it the same way.
-  const stores: RetentionStore[] = ['events', 'events_daily', 'provider_notifications', 'signups', 'ext_codes', 'ext_devices'];
+  // ⏱ 2026-09-29 · `native_attest_challenges` and `native_attest_keys` (ADR no.NNN) join it the same way.
+  const stores: RetentionStore[] = ['events', 'events_daily', 'provider_notifications', 'signups', 'ext_codes', 'ext_devices', 'native_attest_challenges', 'native_attest_keys'];
 
   it('duty.platform-cron WATCHES this job — otherwise it runs nightly and nothing reads its outcome', () => {
     const cron = register.rows.find((r) => r.id === 'duty.platform-cron') as

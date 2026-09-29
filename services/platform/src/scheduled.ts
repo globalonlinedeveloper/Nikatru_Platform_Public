@@ -1400,7 +1400,9 @@ export type RetentionStore =
   | 'signups'
   | 'content_reports'
   | 'ext_codes'
-  | 'ext_devices';
+  | 'ext_devices'
+  | 'native_attest_challenges'
+  | 'native_attest_keys';
 
 /** Days-to-keep per store. `null` is UNDECLARED, and undeclared is INERT. */
 export type RetentionPeriods = Record<RetentionStore, number | null>;
@@ -1556,6 +1558,26 @@ export const EXT_CODES_RETENTION_DAYS = 1;
 // the revocation readable for support, not a credential that could still work.
 // @ceiling none — a RETENTION PERIOD is a policy number, not a platform resource; nothing in tooling/ceilings.json bounds how long rows may be kept.
 export const EXT_DEVICES_RETENTION_DAYS = 30;
+
+// 🔒 DECLARED — ONE DAY PAST EXPIRY. ⏱ 2026-09-29 · ADR no.NNN. Register row:
+// retention.d1.platform_db.native_attest_challenges. A native sign-in challenge
+// lives 120 seconds and redeeming it DELETES it (lib/native-attest/index.ts), so
+// a row that is still here after `expires_at` is one nobody redeemed — worthless
+// the instant it expired. The day matches EXT_CODES_RETENTION_DAYS's reasoning;
+// the cutoff is on `expires_at`, so an unexpired challenge is never swept.
+// @ceiling none — a RETENTION PERIOD is a policy number, not a platform resource; nothing in tooling/ceilings.json bounds how long rows may be kept.
+export const NATIVE_ATTEST_CHALLENGES_RETENTION_DAYS = 1;
+
+// 🔒 DECLARED — 90 DAYS SINCE LAST USE. ⏱ 2026-09-29 · ADR no.NNN. Register row:
+// retention.d1.platform_db.native_attest_keys. A row is an install's PUBLIC key
+// and a counter, tied to no account (0021_native_attest.sql), so this is an
+// operational bound, not a personal-data one: a key unused for 90 days is swept,
+// and the install's next sign-in answers `attestation_key_unknown` once and
+// registers a fresh key — one extra round trip. It also bounds what a script
+// registering throwaway desktop keys can leave behind. Cutoff on `last_used_at`,
+// which every verified op refreshes.
+// @ceiling none — a RETENTION PERIOD is a policy number, not a platform resource; nothing in tooling/ceilings.json bounds how long rows may be kept.
+export const NATIVE_ATTEST_KEYS_RETENTION_DAYS = 90;
 
 // The per-store, per-run delete bound. A sweep is a CATCH-UP job, not a one
 // shot: hitting the bound leaves the remainder for tomorrow and says `capped=1`
@@ -1869,6 +1891,16 @@ async function deleteOlderThan(env: Env, store: RetentionStore, cutoff: string):
             // the sweep deletes only what it can date.
             "DELETE FROM ext_devices WHERE rowid IN (SELECT rowid FROM ext_devices WHERE revoked_at < ? AND revoked_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T*' ORDER BY revoked_at LIMIT ?)",
           )
+      : store === 'native_attest_challenges'
+        ? env.PLATFORM_DB.prepare(
+            // ADR no.NNN. From `expires_at` (ISO-8601 TEXT), as ext_codes.
+            'DELETE FROM native_attest_challenges WHERE rowid IN (SELECT rowid FROM native_attest_challenges WHERE expires_at < ? ORDER BY expires_at LIMIT ?)',
+          )
+      : store === 'native_attest_keys'
+        ? env.PLATFORM_DB.prepare(
+            // ADR no.NNN. From `last_used_at` (ISO-8601 TEXT, NOT NULL).
+            'DELETE FROM native_attest_keys WHERE rowid IN (SELECT rowid FROM native_attest_keys WHERE last_used_at < ? ORDER BY last_used_at LIMIT ?)',
+          )
       : store === 'events_daily'
         ? env.PLATFORM_DB.prepare(
             // Deletes on AGE ALONE, and that asymmetry with `events` is
@@ -1950,6 +1982,8 @@ export async function retentionSweep(
     content_reports: CONTENT_REPORTS_RETENTION_DAYS,
     ext_codes: EXT_CODES_RETENTION_DAYS,
     ext_devices: EXT_DEVICES_RETENTION_DAYS,
+    native_attest_challenges: NATIVE_ATTEST_CHALLENGES_RETENTION_DAYS,
+    native_attest_keys: NATIVE_ATTEST_KEYS_RETENTION_DAYS,
   },
   nowMs: number = Date.now(),
 ): Promise<void> {
@@ -1961,6 +1995,8 @@ export async function retentionSweep(
     'content_reports',
     'ext_codes',
     'ext_devices',
+    'native_attest_challenges',
+    'native_attest_keys',
   ];
   const n_stores = stores.length;
   let declared = 0;

@@ -366,6 +366,48 @@
       }
     },
     {
+      "id": "table:platform_db.native_attest_challenges",
+      "kind": "d1-table",
+      "name": "native_attest_challenges",
+      "personalData": false,
+      "holds": "⏱ 2026-09-29 · ADR no.NNN (native sign-in serves only attested app installs). One row per single-use challenge a native app asks for before a sign-in call: SHA-256 of the challenge (never the challenge), the app id, `created_at` and `expires_at` (created_at + 120 s). Redeeming a challenge DELETES its row. No account, no email, no address, no device identifier.",
+      "retention": {
+        "kind": "swept",
+        "periodDays": 1,
+        "sweptBy": "services/platform/src/scheduled.ts",
+        "reason": "One day past `expires_at`, enforced by the platform Worker's nightly `retentionSweep` (NATIVE_ATTEST_CHALLENGES_RETENTION_DAYS). A redeemed challenge is already deleted; one left after `expires_at` can never be redeemed. The cutoff is on `expires_at`, so an unexpired challenge is never swept. `swept`, not `ttl`: D1 has no expiry."
+      },
+      "erasure": {
+        "kind": "no-personal-data",
+        "reason": "A random challenge's hash, an app id and two timestamps, tied to nobody. The Worker reads no client address (ADR 011 / ADR 020), and neither table has an account, email, device-identifier or address column."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0021_native_attest.sql",
+        "services/platform/src/lib/native-attest/index.ts"
+      ]
+    },
+    {
+      "id": "table:platform_db.native_attest_keys",
+      "kind": "d1-table",
+      "name": "native_attest_keys",
+      "personalData": false,
+      "holds": "⏱ 2026-09-29 · ADR no.NNN. One row per app-install signing key registered for native sign-in: the app id, the key id (a hash of the public key, or Apple's App Attest key identifier), the kind (`app-attest` or `install-key`), the PUBLIC key, the App Attest assertion counter, `created_at` and `last_used_at`. The private key never leaves the device. The row is never linked to the account that later signs in with it.",
+      "retention": {
+        "kind": "swept",
+        "periodDays": 90,
+        "sweptBy": "services/platform/src/scheduled.ts",
+        "reason": "90 days after `last_used_at`, enforced by the nightly `retentionSweep` (NATIVE_ATTEST_KEYS_RETENTION_DAYS). An operational bound, not a personal-data one: a swept install answers `attestation_key_unknown` once and registers a fresh key. It also bounds what a script minting throwaway desktop keys leaves behind."
+      },
+      "erasure": {
+        "kind": "no-personal-data",
+        "reason": "A public key and a counter that say \"some install of this app holds this key\", tied to no account. The Worker reads no client address (ADR 011 / ADR 020), and neither table has an account, email, device-identifier or address column."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0021_native_attest.sql",
+        "services/platform/src/lib/native-attest/index.ts"
+      ]
+    },
+    {
       "id": "table:platform_db.reminder_prefs",
       "kind": "d1-table",
       "name": "reminder_prefs",
