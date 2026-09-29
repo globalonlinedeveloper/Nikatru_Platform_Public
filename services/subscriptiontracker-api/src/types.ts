@@ -148,6 +148,8 @@ export interface Subscription {
   share_denominator: number; // NOT NULL DEFAULT 1
   // ── added by 0005_lifecycle_history_categories.sql (ST-X8) ──
   category_id: string | null; // a `categories` row; `category` keeps its name in step
+  // ── added by 0004_notice_days.sql (ST-R8) ──
+  notice_days: number | null; // whole days before next_renewal to cancel by; NULL = none
 }
 
 /** A payment_history row.

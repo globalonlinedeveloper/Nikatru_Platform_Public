@@ -25,6 +25,7 @@ import { todayYmd } from '../src/lib/d1';
 import init0001 from '../migrations/0001_init.sql?raw';
 import init0002 from '../migrations/0002_schema_debt.sql?raw';
 import init0003 from '../migrations/0003_subscription_model.sql?raw';
+import init0004 from '../migrations/0004_notice_days.sql?raw';
 import init0005 from '../migrations/0005_lifecycle_history_categories.sql?raw';
 import { realAppDb, asUser, SqliteD1 } from './harness';
 
@@ -236,7 +237,8 @@ describe('OLD CLIENTS keep working', () => {
         "VALUES ('old-1', 'user-a', 'Prime', 1499, 'yearly', '2027-03-01', 0, 0)",
     );
     legacy.db.exec(init0003);
-    legacy.db.exec(init0005); // the rest of the set: GET / purges into 0005's price_change
+    legacy.db.exec(init0004); // the rest of the set: GET / purges into 0005's price_change
+    legacy.db.exec(init0005);
     const call = asUser(subscriptions, '/v1/subscriptions', { APP_DB: legacy as never });
     const [row] = (await (await call(U, '/v1/subscriptions')).json()) as Row[];
     expect(row).toMatchObject({
@@ -323,6 +325,46 @@ describe('the write rules that span keys', () => {
     ]) {
       expect((await post(body)).status, JSON.stringify(body)).toBe(201);
     }
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 0004_notice_days.sql (audit F30, ST-R8): the cancel-by notice period.
+describe('notice_days — the notice period round-trips, and null means none', () => {
+  it('POST stores it, and POST, GET /:id and GET / all serve it as an integer', async () => {
+    const created = await create({ name: 'Gym', price: 40, cycle: 'monthly', notice_days: 30 });
+    expect(created.notice_days).toBe(30);
+    expect((await getOne(created.id as string)).notice_days).toBe(30);
+    expect((await getAll())[0].notice_days).toBe(30);
+    expect(db.rows('SELECT notice_days FROM subscriptions')).toEqual([{ notice_days: 30 }]);
+  });
+
+  it('a body without it reads back null — every row that predates 0004', async () => {
+    const created = await create({ name: 'Netflix', price: 9.99, cycle: 'monthly' });
+    expect(created).toHaveProperty('notice_days', null);
+    expect(await getOne(created.id as string)).toHaveProperty('notice_days', null);
+  });
+
+  it('PATCH sets it, leaves it alone when absent, and clears it with null', async () => {
+    const { id } = await create({ name: 'Broadband', price: 30, cycle: 'monthly' });
+    const set = await patch(id as string, { notice_days: 14 });
+    expect(set.status).toBe(200);
+    expect(await set.json()).toMatchObject({ notice_days: 14 });
+
+    const untouched = await patch(id as string, { notes: 'contract ends 2027' });
+    expect(await untouched.json()).toMatchObject({ notice_days: 14, notes: 'contract ends 2027' });
+
+    const cleared = await patch(id as string, { notice_days: null });
+    expect(cleared.status).toBe(200);
+    expect(await cleared.json()).toMatchObject({ notice_days: null });
+    expect(db.rows('SELECT notice_days FROM subscriptions WHERE id = ?', id as string)).toEqual([
+      { notice_days: null },
+    ]);
+  });
+
+  it('the boundaries 0 and 365 are accepted', async () => {
+    expect(await create({ notice_days: 0 })).toMatchObject({ notice_days: 0 });
+    expect(await create({ notice_days: 365 })).toMatchObject({ notice_days: 365 });
   });
 });
 
@@ -441,6 +483,11 @@ const RED: ReadonlyArray<readonly [string, Row, string]> = [
   ['share_numerator of zero', { share_numerator: 0, share_denominator: 2 }, 'share_numerator'],
   ['share_numerator over the denominator', { share_numerator: 3, share_denominator: 2 }, 'share_numerator'],
   ['share as nulls (NOT NULL columns)', { share_numerator: null, share_denominator: null }, 'share_denominator'],
+  // notice_days (0004_notice_days.sql, ST-R8)
+  ['notice_days negative', { notice_days: -1 }, 'notice_days'],
+  ['notice_days as a decimal', { notice_days: 1.5 }, 'notice_days'],
+  ['notice_days past a year', { notice_days: 366 }, 'notice_days'],
+  ['notice_days as a numeric string', { notice_days: '7' }, 'notice_days'],
 ];
 
 describe('a RED CONTROL for every new rule — POST refuses and stores nothing', () => {

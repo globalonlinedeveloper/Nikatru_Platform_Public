@@ -319,5 +319,7 @@ describe('subscriptiontracker_db migrations re-apply cleanly', () => {
     );
     expect(cols('subscriptions')).toContain('category_id');
     expect(cols('budget_categories')).toContain('category_id');
+    // 0004_notice_days.sql — its one ADD COLUMN, asserted for the same reason.
+    expect(cols('subscriptions')).toContain('notice_days');
   });
 });

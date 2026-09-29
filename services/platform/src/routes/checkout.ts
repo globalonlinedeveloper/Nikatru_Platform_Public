@@ -90,6 +90,7 @@ import { readBoundedBody } from '../lib/body';
 import { withinEdgeCeiling } from '../lib/edge-ceiling';
 import { isMoneyEnvironment, type MoneyEnvironment } from '../lib/mor/contract';
 import { PADDLE_CUSTOM_DATA_APP_ID, PADDLE_CUSTOM_DATA_USER_ID } from '../lib/mor/paddle';
+import { PADDLE_API_BASE, PADDLE_API_KEY_PREFIX } from '../lib/mor/paddle-cancel';
 import { PADDLE_PRICE_IDS, RAIL_PRICE_AMOUNTS_MINOR, RAIL_PRICE_PENDING } from './rail-price-ids';
 
 const checkout = new Hono<AppEnv>();
@@ -128,37 +129,8 @@ export const MAX_CHECKOUT_URL_LEN = 2048;
 /** @ceiling none — an input SHAPE cap on a log field. */
 export const MAX_VENDOR_CODE_LEN = 64;
 
-/**
- * The API host per money world. V11 in `lib/mor/paddle.ts`, from
- * developer.paddle.com/api-reference/about/authentication.
- *
- * Both members are present because [MoneyEnvironment] has two and a partial
- * record would make the sandbox branch a runtime `undefined` rather than a
- * type error. `sandbox` is unreachable on the deployed config
- * (`MONEY_ENVIRONMENT: "live"`, and `tooling/ci/assert-money-config.mjs` fails
- * the build on any other value there) — it is the shape, not a live rail.
- */
-const PADDLE_API_BASE: Readonly<Record<MoneyEnvironment, string>> = {
-  live: 'https://api.paddle.com',
-  sandbox: 'https://sandbox-api.paddle.com',
-};
-
-/**
- * 🔴 THE CREDENTIAL MUST BELONG TO THE WORLD THE DEPLOY DECLARED. V11 again:
- * Paddle API keys are prefixed `pdl_live_apikey_` and `pdl_sdbx_apikey_`, and
- * unlike the destination secret (U2 — one documented prefix, no sandbox variant,
- * so the webhook guard deliberately cannot tell them apart) this pair IS
- * documented. So the one place the two worlds *can* be told apart is checked:
- * a live-declared deploy holding a sandbox key refuses rather than quietly
- * creating transactions in the wrong world. [5]M-12.
- *
- * Only the PREFIX is ever compared, and only against the key's own leading
- * characters — nothing here logs, returns or stores the value.
- */
-const PADDLE_API_KEY_PREFIX: Readonly<Record<MoneyEnvironment, string>> = {
-  live: 'pdl_live_apikey_',
-  sandbox: 'pdl_sdbx_apikey_',
-};
+// PADDLE_API_BASE and PADDLE_API_KEY_PREFIX moved to src/lib/mor/paddle-cancel.ts on 2026-09-29
+// (AB-M4-03): the cancel executor calls the same host with the same key, and one table has one home.
 
 /**
  * The env var holding the seller API key — the NAME, kept as a const because

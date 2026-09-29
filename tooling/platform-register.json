@@ -672,7 +672,7 @@
       "auth": "required",
       "owningFile": "services/platform/src/routes/reminders.ts",
       "purpose": "⏱ 2026-09-28 · ST-R1. The caller's renewal reminder EMAIL preference for one app (`?app_id=`): `{app_id, email_opt_in, lead_days}`, or the default (not opted in, 3 days) when no row exists. Mounted behind app.use('/v1/reminders/prefs', platformAuth); app_id must be a catalogue app with an app database (isReminderApp).",
-      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T4b (the packages + app half: the reminder toggle, the lead-days picker and the calendar-feed button), which launches after this Worker deploys; the server must be live first. Until then no account is opted in, so the nightly job runs live and mails no one."
+      "unconsumedReason": "CONSUMED (ST-T4b): packages/api_client/lib/src/dio_reminder_channels_transport.dart (DioReminderChannelsTransport readPrefs / writePrefs), parsed by packages/core ReminderPrefs.tryParse and driven by the \"Email me before renewals\" row in apps/subscriptiontracker Settings (ReminderChannelsCard). Wire-pinned by assert-analytics-contract (body both directions, and the PUT request literal)."
     },
     {
       "id": "reminders-prefs-put",
@@ -681,7 +681,7 @@
       "auth": "required",
       "owningFile": "services/platform/src/routes/reminders.ts",
       "purpose": "⏱ 2026-09-28 · ST-R1. Stores `{app_id, email_opt_in, lead_days?}` (lead 0-30; absent keeps the stored one) for the verified JWT subject in platform_db.reminder_prefs (migration 0020). Body bounded at 1 KiB; the per-person burst breaker is EVENTS_LIMITER keyed `reminders:<sub>`, as POST /v1/report does. The nightly `reminder_mail` job reads it.",
-      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T4b (the packages + app half: the reminder toggle, the lead-days picker and the calendar-feed button), which launches after this Worker deploys; the server must be live first. Until then no account is opted in, so the nightly job runs live and mails no one."
+      "unconsumedReason": "CONSUMED (ST-T4b): packages/api_client/lib/src/dio_reminder_channels_transport.dart (DioReminderChannelsTransport readPrefs / writePrefs), parsed by packages/core ReminderPrefs.tryParse and driven by the \"Email me before renewals\" row in apps/subscriptiontracker Settings (ReminderChannelsCard). Wire-pinned by assert-analytics-contract (body both directions, and the PUT request literal)."
     },
     {
       "id": "reminders-unsubscribe-get",
@@ -708,7 +708,7 @@
       "auth": "required",
       "owningFile": "services/platform/src/routes/calendar.ts",
       "purpose": "⏱ 2026-09-28 · ST-R2. Mints — or ROTATES — the caller's private calendar feed for one app (`{app_id}`) and answers its https and webcal URLs ONCE. The token is 256 random bits; only its SHA-256 is stored (platform_db.reminder_feed, one row per account and app), so the previous URL dies on rotation. Mounted behind app.use('/v1/calendar/feed', platformAuth).",
-      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T4b (the packages + app half: the reminder toggle, the lead-days picker and the calendar-feed button), which launches after this Worker deploys; the server must be live first. Until then no account is opted in, so the nightly job runs live and mails no one."
+      "unconsumedReason": "CONSUMED (ST-T4b): DioReminderChannelsTransport.mintCalendarFeed, parsed by packages/core CalendarFeed.tryParse (https_url, webcal_url only), behind \"Add to calendar\" and \"Reset calendar link\" (a reset is a ROTATION through this route). Wire-pinned by assert-analytics-contract."
     },
     {
       "id": "calendar-feed-delete",
@@ -717,7 +717,7 @@
       "auth": "required",
       "owningFile": "services/platform/src/routes/calendar.ts",
       "purpose": "⏱ 2026-09-28 · ST-R2. Revokes the caller's live feed for `?app_id=` (stamps revoked_at); the feed URL then answers 404. 404 when there is no live feed.",
-      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T4b (the packages + app half: the reminder toggle, the lead-days picker and the calendar-feed button), which launches after this Worker deploys; the server must be live first. Until then no account is opted in, so the nightly job runs live and mails no one."
+      "unconsumedReason": "NO CLIENT, AND IT IS A DECISION (ST-T4b): the app resets a leaked feed by ROTATING it (POST /v1/calendar/feed), so nobody is left without a link by accident. The route stays for a future \"stop the feed\" control; pinned server-side by services/platform/test/calendar-feed.test.ts."
     },
     {
       "id": "calendar-feed-ics",

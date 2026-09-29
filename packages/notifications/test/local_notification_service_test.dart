@@ -1,9 +1,12 @@
 import 'package:flutter/foundation.dart' show TargetPlatform;
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart';
 // The plugin-backed service + its test seam live in the io library (the barrel
 // deliberately does NOT export it, so web stays compilable). Tests run natively,
 // where `dart.library.io` is available.
+import 'package:nikatru_notifications/nikatru_notifications.dart'
+    show WindowsNotificationIdentity;
 import 'package:nikatru_notifications/src/local_notification_service_io.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
@@ -63,11 +66,66 @@ class _FakePlugin implements NotificationPlugin {
     scheduledFor.add(when);
   }
 
+  /// Every one-off, in order.
+  final List<_Once> once = <_Once>[];
+  bool exactAllowed = true;
+
+  /// Refuse the FIRST exact schedule the way Android does when the user
+  /// revoked "Alarms & reminders" between the check and the post.
+  bool refuseExactOnce = false;
+  List<int> pending = <int>[];
+  bool pendingThrows = false;
+
+  @override
+  Future<void> scheduleOnce(
+    int id,
+    String title,
+    String body,
+    tz.TZDateTime when, {
+    required bool exact,
+    String? payload,
+    NotificationChannel? channel,
+  }) async {
+    if (exact && refuseExactOnce) {
+      refuseExactOnce = false;
+      throw PlatformException(code: 'exact_alarms_not_permitted');
+    }
+    calls.add('scheduleOnce:$id');
+    once.add(_Once(id, when, exact, payload, channel?.id));
+  }
+
+  @override
+  Future<bool> canScheduleExact() async => exactAllowed;
+
+  /// What the OS reports as the tap that launched the process.
+  NotificationTap? launchedBy;
+
+  @override
+  Future<NotificationTap?> launchTap() async {
+    calls.add('launchTap');
+    return launchedBy;
+  }
+
+  @override
+  Future<List<int>> pendingIds() async {
+    if (pendingThrows) throw StateError('no pending list here');
+    return pending;
+  }
+
   @override
   Future<void> cancel(int id) async => calls.add('cancel:$id');
 
   @override
   Future<void> cancelAll() async => calls.add('cancelAll');
+}
+
+class _Once {
+  _Once(this.id, this.when, this.exact, this.payload, this.channel);
+  final int id;
+  final tz.TZDateTime when;
+  final bool exact;
+  final String? payload;
+  final String? channel;
 }
 
 /// One zone the resolver can name, paired with what a 02:00 reminder MUST
@@ -84,6 +142,7 @@ void main() {
     TargetPlatform platform, {
     bool isWeb = false,
     TZDateTimeNow? now,
+    WindowsNotificationIdentity? windows,
   }) =>
       LocalNotificationService(
         plugin: plugin,
@@ -91,6 +150,31 @@ void main() {
         isWeb: isWeb,
         localTimezone: () async => 'UTC',
         now: now,
+        windows: windows,
+      );
+
+  const WindowsNotificationIdentity identity = WindowsNotificationIdentity(
+    appName: 'Probe',
+    appUserModelId: 'Nikatru.Probe_0000000000000!probe',
+    toastActivatorClsid: '0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0',
+  );
+
+  // A fixed "now" so a wall clock can be asserted as an exact instant.
+  tz.TZDateTime fixedNow() => tz.TZDateTime(tz.UTC, 2026, 10, 1, 8);
+
+  ScheduledNotification one(int id, DateTime at, {String? payload}) =>
+      ScheduledNotification(
+        id: id,
+        title: 't$id',
+        body: 'b$id',
+        at: at,
+        payload: payload,
+        channel: const NotificationChannel(
+          id: 'renewals',
+          name: 'Renewals',
+          description: 'd',
+          important: true,
+        ),
       );
 
   const DailyReminder reminder = DailyReminder(
@@ -199,7 +283,150 @@ void main() {
     });
   });
 
+  // ── ST-R4: the one-off half of the seam ────────────────────────────────────
+  group('scheduleAt / reconcile (android)', () {
+    test('scheduleAt posts the wall clock, with payload and channel',
+        () async {
+      final _FakePlugin p = _FakePlugin();
+      final LocalNotificationService s =
+          build(p, TargetPlatform.android, now: fixedNow);
+      await s.init();
+      await s.scheduleAt(
+        one(5, DateTime(2026, 10, 3, 9, 30), payload: 'sub:a'),
+      );
+      expect(p.once.single.id, 5);
+      expect(
+        p.once.single.when.millisecondsSinceEpoch,
+        DateTime.utc(2026, 10, 3, 9, 30).millisecondsSinceEpoch,
+      );
+      expect(p.once.single.payload, 'sub:a');
+      expect(p.once.single.channel, 'renewals');
+      expect(p.once.single.exact, isTrue);
+    });
+
+    test('an instant already past posts nothing', () async {
+      final _FakePlugin p = _FakePlugin();
+      final LocalNotificationService s =
+          build(p, TargetPlatform.android, now: fixedNow);
+      await s.scheduleAt(one(5, DateTime(2026, 10, 1, 7, 59)));
+      expect(p.once, isEmpty);
+    });
+
+    test('exact refused mid-batch retries INEXACT and keeps going', () async {
+      final _FakePlugin p = _FakePlugin()..refuseExactOnce = true;
+      final LocalNotificationService s =
+          build(p, TargetPlatform.android, now: fixedNow);
+      await s.reconcile(<ScheduledNotification>[
+        one(1, DateTime(2026, 10, 2, 9)),
+        one(2, DateTime(2026, 10, 3, 9)),
+      ], owns: (int id) => id < 100);
+      expect(p.once.map((_Once e) => e.id), <int>[1, 2]);
+      expect(p.once.first.exact, isFalse);
+      expect(p.once.last.exact, isTrue);
+    });
+
+    test('no exact-alarm permission schedules inexact', () async {
+      final _FakePlugin p = _FakePlugin()..exactAllowed = false;
+      final LocalNotificationService s =
+          build(p, TargetPlatform.android, now: fixedNow);
+      await s.scheduleAt(one(1, DateTime(2026, 10, 2, 9)));
+      expect(p.once.single.exact, isFalse);
+    });
+
+    test('reconcile cancels owned pending ids and never an unowned one',
+        () async {
+      final _FakePlugin p = _FakePlugin()..pending = <int>[1, 7, 42, 900];
+      final LocalNotificationService s =
+          build(p, TargetPlatform.android, now: fixedNow);
+      await s.reconcile(<ScheduledNotification>[
+        one(7, DateTime(2026, 10, 2, 9)),
+      ], owns: (int id) => id >= 5 && id < 100);
+      expect(p.calls, containsAll(<String>['cancel:7', 'cancel:42']));
+      expect(p.calls, isNot(contains('cancel:1')));
+      expect(p.calls, isNot(contains('cancel:900')));
+      expect(p.calls, isNot(contains('cancelAll')));
+      expect(p.once.map((_Once e) => e.id), <int>[7]);
+    });
+
+    test('an unreadable pending list falls back to this process ids',
+        () async {
+      final _FakePlugin p = _FakePlugin();
+      final LocalNotificationService s =
+          build(p, TargetPlatform.android, now: fixedNow);
+      await s.reconcile(<ScheduledNotification>[
+        one(10, DateTime(2026, 10, 2, 9)),
+      ], owns: (int id) => true);
+      p.pendingThrows = true;
+      await s.reconcile(
+        const <ScheduledNotification>[],
+        owns: (int id) => true,
+      );
+      expect(p.calls, contains('cancel:10'));
+    });
+  });
+
+  group('takeLaunchTap (ST-R5: a tap that cold-starts the app)', () {
+    test('returns the launch tap once, then null', () async {
+      final _FakePlugin p = _FakePlugin()
+        ..launchedBy = const NotificationTap(id: 9, payload: 'sub:abc');
+      final LocalNotificationService s = build(p, TargetPlatform.android);
+      await s.init();
+      expect((await s.takeLaunchTap())?.payload, 'sub:abc');
+      expect(await s.takeLaunchTap(), isNull);
+      expect(p.calls.where((String c) => c == 'launchTap').length, 1);
+    });
+
+    test('before init, or where nothing can notify, is null', () async {
+      final _FakePlugin p = _FakePlugin()
+        ..launchedBy = const NotificationTap(id: 9, payload: 'sub:abc');
+      expect(await build(p, TargetPlatform.android).takeLaunchTap(), isNull);
+      final LocalNotificationService web =
+          build(p, TargetPlatform.android, isWeb: true);
+      await web.init();
+      expect(await web.takeLaunchTap(), isNull);
+      expect(p.calls, isNot(contains('launchTap')));
+    });
+  });
+
+  group('windows (ST-R4: on with the app identity, off without)', () {
+    test('with an identity: shows and schedules one-offs', () async {
+      final _FakePlugin p = _FakePlugin();
+      final LocalNotificationService s = build(
+        p,
+        TargetPlatform.windows,
+        now: fixedNow,
+        windows: identity,
+      );
+      expect(s.capabilities.canNotify, isTrue);
+      expect(s.capabilities.canSchedule, isTrue);
+      await s.init();
+      await s.scheduleAt(one(3, DateTime(2026, 10, 2, 9)));
+      expect(p.calls, containsAll(<String>['initialize', 'scheduleOnce:3']));
+    });
+
+    test('without one: neither, and the plugin is never touched', () async {
+      final _FakePlugin p = _FakePlugin();
+      final LocalNotificationService s = build(p, TargetPlatform.windows);
+      expect(s.capabilities.canNotify, isFalse);
+      expect(s.capabilities.canSchedule, isFalse);
+      await s.init();
+      await s.scheduleAt(one(3, DateTime(2030, 1, 1, 9)));
+      expect(p.calls, isEmpty);
+    });
+  });
+
   group('linux (show yes, repeat-schedule no)', () {
+    test('scheduleAt and reconcile no-op (no zonedSchedule on Linux)',
+        () async {
+      final _FakePlugin p = _FakePlugin();
+      final LocalNotificationService s = build(p, TargetPlatform.linux);
+      await s.scheduleAt(one(3, DateTime(2030, 1, 1, 9)));
+      await s.reconcile(<ScheduledNotification>[
+        one(4, DateTime(2030, 1, 1, 9)),
+      ], owns: (int id) => true);
+      expect(p.once, isEmpty);
+    });
+
     test('scheduleDaily is a no-op (no zonedSchedule on Linux)', () async {
       final _FakePlugin p = _FakePlugin();
       await build(p, TargetPlatform.linux).scheduleDaily(reminder);
@@ -222,10 +449,9 @@ void main() {
     );
   });
 
-  // On the pinned flutter_local_notifications 17.x both Web (no plugin) and
-  // Windows (no Windows plugin until 18.x) are fully unsupported: every op must
-  // degrade to a no-op rather than throw.
-  group('fully unsupported (web + windows on 17.x)', () {
+  // Web (no plugin) and Windows WITHOUT the app's identity (the plugin cannot
+  // start) are fully unsupported: every op must degrade to a no-op, not throw.
+  group('fully unsupported (web, and windows without an identity)', () {
     Future<void> expectAllNoOp(
       LocalNotificationService s,
       _FakePlugin p,
@@ -234,6 +460,11 @@ void main() {
       expect(await s.requestPermission(), isFalse);
       await s.showNow(title: 'a', body: 'b');
       await s.scheduleDaily(reminder);
+      await s.scheduleAt(one(2, DateTime(2030, 1, 1, 9)));
+      await s.reconcile(
+        const <ScheduledNotification>[],
+        owns: (int _) => true,
+      );
       await s.cancel(1);
       await s.cancelAll();
       expect(p.calls, isEmpty);

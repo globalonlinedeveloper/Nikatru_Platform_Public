@@ -26,6 +26,60 @@ class DailyReminder {
   final int minute;
 }
 
+/// The Android CHANNEL a notification posts on — the row the user sees under
+/// the app in the OS notification settings. Pure data, so `core` names a
+/// channel without importing a plugin; the adapter maps it. Other platforms
+/// ignore it.
+class NotificationChannel {
+  const NotificationChannel({
+    required this.id,
+    required this.name,
+    required this.description,
+    this.important = false,
+  });
+
+  /// Stable forever: Android keys the user's per-channel choices by it.
+  final String id;
+  final String name;
+  final String description;
+
+  /// High importance (heads-up) rather than the default.
+  final bool important;
+}
+
+/// A ONE-OFF notification at a local wall-clock time — a renewal due in two
+/// days, a cancel-by date — as opposed to [DailyReminder]'s repeat.
+///
+/// [at] is read as a WALL CLOCK in the device's own zone: only its year,
+/// month, day, hour and minute are used, and the adapter resolves them in the
+/// device's IANA zone (DST-correct), so `DateTime(2026, 10, 3, 9, 30)` means
+/// 09:30 where the user is on that day.
+class ScheduledNotification {
+  const ScheduledNotification({
+    required this.id,
+    required this.title,
+    required this.body,
+    required this.at,
+    this.payload,
+    this.channel,
+  });
+
+  final int id;
+  final String title;
+  final String body;
+  final DateTime at;
+
+  /// Handed back on tap as [NotificationTap.payload] — e.g. `sub:<id>`, so a
+  /// tap can open the thing the notification names.
+  final String? payload;
+
+  /// Null = the adapter's default channel.
+  final NotificationChannel? channel;
+
+  @override
+  String toString() => 'ScheduledNotification(id: $id, at: $at)';
+}
+
 /// A notification the user TAPPED — the inbound half of the seam.
 ///
 /// Pure Dart on purpose: this is what crosses the facade, so no plugin type
@@ -62,8 +116,8 @@ class NotificationTap {
 /// Seam for local notifications. Impls schedule via the OS, and **not every
 /// platform supports every operation** — the concrete impl reports its own
 /// capability matrix and no-ops what it can't do so a caller never crashes (e.g.
-/// the `flutter_local_notifications` adapter can't schedule on Web/Windows/Linux,
-/// nor even show on Web/Windows). Callers fall back to an in-app catch-up nudge
+/// the `flutter_local_notifications` adapter can't schedule on Web or Linux,
+/// nor even show on Web, nor either on Windows without an app identity). Callers fall back to an in-app catch-up nudge
 /// where an operation no-ops; the [NoOpNotificationService] covers the rest.
 abstract interface class NotificationService {
   /// One-time setup (timezone db, platform channels). Safe to call more than once.
@@ -76,8 +130,25 @@ abstract interface class NotificationService {
   Future<void> showNow({required String title, required String body});
 
   /// Schedule [reminder] to fire daily at its local time. No-op where the impl's
-  /// backend can't schedule (e.g. Web/Windows/Linux with flutter_local_notifications).
+  /// backend can't schedule (e.g. Web/Linux with flutter_local_notifications).
+  /// ⚠️ Windows schedules the NEXT instance only (the plugin cannot repeat
+  /// there); the boot-path resync re-arms it every launch.
   Future<void> scheduleDaily(DailyReminder reminder);
+
+  /// Schedule a ONE-OFF [notification] at its local wall-clock time. Replaces
+  /// a pending one with the same id; an instant already past posts nothing.
+  /// No-op where the impl cannot schedule (web, Linux).
+  Future<void> scheduleAt(ScheduledNotification notification);
+
+  /// Make the pending set of ids [owns] claims EXACTLY [wanted]: every owned
+  /// pending id not in [wanted] is cancelled, and each of [wanted] is
+  /// scheduled as by [scheduleAt]. Ids [owns] does not claim are never
+  /// touched — that is what lets two callers share one OS queue without a
+  /// `cancelAll()` taking the other's notifications.
+  Future<void> reconcile(
+    List<ScheduledNotification> wanted, {
+    required bool Function(int id) owns,
+  });
 
   /// Cancel a scheduled notification by id.
   Future<void> cancel(int id);
@@ -98,6 +169,16 @@ abstract interface class NotificationService {
   /// `declaresMethod` regex requires a paren. A getter here would be listed in
   /// the register and checked by nothing — this repo's own recurring failure.
   Stream<NotificationTap> notificationTaps();
+
+  /// The tap that LAUNCHED this process, once; null after the first call, and
+  /// null when the app was started any other way.
+  ///
+  /// 🔴 [notificationTaps] CANNOT CARRY IT. When a tap cold-starts the app the
+  /// OS delivers it as launch details, before any listener exists, and the
+  /// plugin never calls its tap callback for it — so a reminder that opens a
+  /// closed app would open the home screen instead of what it names. Call
+  /// after [init].
+  Future<NotificationTap?> takeLaunchTap();
 }
 
 /// A do-nothing [NotificationService] — the safe default before a real impl is
@@ -119,6 +200,15 @@ class NoOpNotificationService implements NotificationService {
   Future<void> scheduleDaily(DailyReminder reminder) async {}
 
   @override
+  Future<void> scheduleAt(ScheduledNotification notification) async {}
+
+  @override
+  Future<void> reconcile(
+    List<ScheduledNotification> wanted, {
+    required bool Function(int id) owns,
+  }) async {}
+
+  @override
   Future<void> cancel(int id) async {}
 
   @override
@@ -129,4 +219,7 @@ class NoOpNotificationService implements NotificationService {
   @override
   Stream<NotificationTap> notificationTaps() =>
       const Stream<NotificationTap>.empty();
+
+  @override
+  Future<NotificationTap?> takeLaunchTap() async => null;
 }

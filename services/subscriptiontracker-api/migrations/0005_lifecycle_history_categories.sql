@@ -5,11 +5,9 @@
 -- Applies to APP_DB (subscriptiontracker_db):
 --   wrangler d1 migrations apply APP_DB --local   (or --remote)
 --
--- ⚠️ NUMBERED 0005 WITH NO 0004 ON main, ON PURPOSE. ST-T4b (#1058) claims
--- 0004_notice_days.sql and had not landed when this file was written; a landed
--- migration is never renumbered, so this one leaves the slot free. Wrangler
--- applies by name in order and records each name, so either landing order is
--- safe: neither file reads anything the other adds.
+-- Follows 0004_notice_days.sql (ST-T4b, #1058). This file was written while
+-- 0004 was still in flight and numbered 0005 to leave its slot free; neither
+-- file reads anything the other adds.
 --
 -- 🔴 THE LIFECYCLE ITSELF NEEDS NO DDL. `status`, `cancelled_on` and
 -- `deleted_at` are 0003's; what kept them unusable was the route

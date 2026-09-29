@@ -13,7 +13,7 @@ import 'package:nikatru_telemetry/nikatru_telemetry.dart';
 import 'app.dart';
 import 'package:nikatru_chassis_screens/shell/web_semantics.dart';
 import 'core/app_config.dart';
-import 'services/notifications/notification_service.dart';
+import 'core/windows_notification_identity.g.dart';
 import 'state/providers.dart';
 
 Future<void> main() async {
@@ -99,27 +99,17 @@ Future<void> main() async {
       // late.
       AppErrorScreen.install();
 
-      // Local notifications work on all six platforms (web falls back to a
-      // no-op). Subly's own fork, which owns every OUTBOUND call this app makes
-      // (renewal reminders, the weekly digest).
-      await NotificationService.instance.init();
-
-      // [13]T-9 THE INBOUND HALF, AND THE ORDER IS LOAD-BEARING.
-      //
-      // `FlutterLocalNotificationsPlugin()` is a process singleton (its
-      // constructor is a `factory` returning a static instance), so the fork
-      // above and the shared adapter below drive the SAME plugin, and the LAST
-      // `initialize` call is the one whose `onDidReceiveNotificationResponse`
-      // survives. The fork registers no tap callback; this one does. Initialise
-      // it second and every notification Subly posts — including the fork's own
-      // renewal reminders — becomes tappable. Swap the two lines and taps go
-      // silently nowhere, which is the state this increment ends.
-      //
-      // The settings are a superset, not a conflict: both pass the same
-      // launcher icon, the same Darwin defaults and the same Linux
-      // `defaultActionName`, so the second call adds the callback and changes
-      // nothing else. [2]C-3's de-forking removes the duplication entirely.
-      final core.NotificationService taps = createLocalNotificationService();
+      // ⏱ 2026-09-28 (ST-R4): ONE notification adapter, and it is the chassis
+      // one. Subly's own fork used to initialise the SAME process-singleton
+      // plugin first, and this call had to come second so its tap callback
+      // survived. The fork is gone: renewal reminders schedule through this
+      // instance (renewalRemindersProvider), so there is one registration and
+      // every notification the app posts is tappable by construction.
+      // [windows] is this app's toast identity, rendered from app.yaml; without
+      // it Windows would have no notifications at all.
+      final core.NotificationService taps = createLocalNotificationService(
+        windows: kWindowsNotificationIdentity,
+      );
       await taps.init();
 
       // 🔴 [pipeline C-15 / G-43] (absent from origins.lock.json by construction — G-43 is a MASTER_PLAN §3 chassis-gap id, a different register from the pipeline ids; see Private/pre-minimal-2026-09-08:MASTER_PLAN.md) IDENTITY, BEFORE THE FIRST FRAME — and this
