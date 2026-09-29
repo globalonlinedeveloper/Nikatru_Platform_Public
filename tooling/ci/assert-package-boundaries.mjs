@@ -201,10 +201,18 @@ if (WRAPPED.size < MIN_WRAPPED) {
 // unrelated change until that refactor landed, which is how a guard gets
 // switched off. Anything NEW fails immediately.
 const KNOWN_BYPASSES = {
-  'apps/subscriptiontracker|flutter_local_notifications':
-    '2026-07-28 · Subly rolled its own NotificationService before any adapter existed and still owns every SCHEDULING call — `lib/services/notifications/notification_service.dart` is the file importing the plugin directly. ⚠️ CORRECTED 2026-08-11: this entry read "does not depend on nikatru_notifications at all", and [13]T-9 had already made that false. The adapter IS declared (apps/subscriptiontracker/pubspec.yaml) and imported by four lib files — main.dart, state/providers.dart, features/home/home_screen.dart, features/settings/settings_screen.dart — for the tap callback the fork never had. So the bypass is HALF of what it was written as: the inbound half goes through the seam, the scheduling half is still the fork. A waiver that overstates its own scope is the same defect as one that no longer applies.',
-  'apps/subscriptiontracker|timezone':
-    '2026-07-28 · same NotificationService; timezone arrives with flutter_local_notifications and leaves with it.',
+  // 🪦 ⏱ 2026-09-28 · `apps/subscriptiontracker|flutter_local_notifications` AND
+  // `apps/subscriptiontracker|timezone` LIVED HERE AND ARE RESOLVED, NOT MOVED
+  // (ST-R4, O-RENEWAL-REMINDERS-OFF-ON-DESKTOP). Both were dated 2026-07-28:
+  // Subly's own NotificationService wrapped the plugin for every SCHEDULING
+  // call, beside the shared adapter that wrapped the same process singleton for
+  // the taps. The one-off half of scheduling (scheduleAt / reconcile, the
+  // exact-alarm degradation, the OS pending list, the Windows identity) moved
+  // into packages/notifications, and the app's reminders now schedule through
+  // the core seam. The rows are DELETED, for the reason the supabase tombstone
+  // below gives: a waiver over an import that no longer exists is a standing
+  // permit to re-introduce it. A plugin or timezone import in the app is now a
+  // NEW bypass and fails.
   // 🪦 `apps/subscriptiontracker|supabase_flutter` LIVED HERE AND IS RESOLVED, NOT MOVED.
   // Its own text said the entry appearing "IS the guard working: build the
   // shared home, and the app copy becomes visible as a bypass the same hour" —

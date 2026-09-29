@@ -40,8 +40,9 @@ Future<void> _pumpAt(WidgetTester tester, Widget w, double width) async {
 }
 
 void main() {
-  // 400 is the bar; 700 the slim rail; 1024 the extended rail; 1440 the slim
-  // rail again (ADR 083). One builder serves both controls, so all four show.
+  // 400 is the bar; 700, 1024 and 1440 the slim rail (ADR 083; 1024 was the
+  // extended rail until §5, D-02). One builder serves both controls, so every
+  // width shows the count.
   for (final double width in <double>[400, 700, 1024, 1440]) {
     testWidgets('a count renders at $width, in the neutral pair', (
       WidgetTester tester,

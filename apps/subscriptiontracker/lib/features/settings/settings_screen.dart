@@ -64,6 +64,7 @@ import '../../state/settings_controller.dart';
 import '../auth/turnstile_gate.dart';
 import '../shared/chassis_adapters.dart';
 import '../shared/widgets.dart';
+import 'reminder_settings.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -131,7 +132,7 @@ class SettingsScreen extends ConsumerWidget {
     // app service's own reading of the chassis matrix, so the two reminder
     // preference rows below and the chassis tile further down agree.
     final NotificationCapabilities caps = ref
-        .watch(subscriptiontrackerNotificationServiceProvider)
+        .watch(renewalRemindersProvider)
         .capabilities;
     final bool remindersDeliverable = caps.canSchedule;
     final List<List<String>> toggles = <List<String>>[
@@ -532,6 +533,7 @@ class SettingsScreen extends ConsumerWidget {
 
             // ── PREFERENCES (live-only) ──────────────────────────────────────
             _sectionLabel(context, l10n.preferences),
+            const ReminderSyncBanner(),
             Container(
               decoration: cardDecoration(context),
               clipBehavior: Clip.antiAlias,
@@ -539,22 +541,11 @@ class SettingsScreen extends ConsumerWidget {
                 children: <Widget>[
                   for (int i = 0; i < toggles.length; i++)
                     Container(
-                      // The hairline BETWEEN preference rows, inside the card
-                      // `cardDecoration` just painted. It has to follow that
-                      // card: in dark the card is `surfaceContainerHighest`
-                      // #35343A, and #ECECF2 on it measures **10.48:1** — a
-                      // near-white grid ruled across a dark card, louder than
-                      // the labels it separates. `outlineVariant` #47464F is
-                      // **1.32:1** on the same card: a seam you see only when
-                      // you look for one, which is what a divider is for.
-                      //
-                      // NOT a re-derivation — `buildAppTheme`, the path
-                      // `app.dart:84` takes, hands `_themeFrom` `divider:
-                      // scheme.outlineVariant`, so this is the
-                      // row agreeing with the theme's own divider rather than
-                      // inventing a second answer. (`scheme.outline` #928F99
-                      // would measure 3.88:1 and draw a LOUDER line in dark than
-                      // #ECECF2 draws in light, at 1.18:1 — the wrong direction.)
+                      // The hairline BETWEEN rows follows the card: in dark
+                      // `outlineVariant` #47464F is **1.32:1** on it (a seam)
+                      // where #ECECF2 is **10.48:1** (a grid). It is the
+                      // theme's own divider (`buildAppTheme` → `_themeFrom`
+                      // `divider: scheme.outlineVariant`), not a second answer.
                       decoration: BoxDecoration(
                         border: Border(
                           bottom: BorderSide(
@@ -566,17 +557,9 @@ class SettingsScreen extends ConsumerWidget {
                           ),
                         ),
                       ),
-                      // 🔴 THE APP'S OWN REMINDER SWITCHES ARE GATED ON THE
-                      // SAME MATRIX AS THE CHASSIS TILE BELOW. "Renewal
-                      // alerts" and "Weekly digest" schedule through
-                      // `NotificationService`, which on Linux cannot
-                      // schedule and on Windows (pinned 17.x) has no plugin
-                      // at all. Until now these two rows were switches on
-                      // every target: a user on Windows could turn on a
-                      // reminder that nothing would ever deliver. Parity is
-                      // the feature everywhere or an honest sentence — the
-                      // row keeps its name so the user can see WHAT is
-                      // unavailable, and the subtitle says it is.
+                      // 🔴 GATED ON THE CAPABILITY MATRIX: where nothing can
+                      // be scheduled the row keeps its name and says what IS
+                      // there instead (reminder_settings.dart has the rest).
                       child:
                           _isReminderPref(toggles[i][0]) &&
                               !remindersDeliverable
@@ -588,20 +571,35 @@ class SettingsScreen extends ConsumerWidget {
                                 Icons.notifications_off_outlined,
                               ),
                               title: Text(toggles[i][1]),
-                              subtitle: Text(l10n.remindersUnavailable),
+                              subtitle: Text(
+                                AppConfig.isBackendLive
+                                    ? l10n.remindersElsewhere
+                                    : l10n.remindersUnavailable,
+                              ),
                               enabled: false,
                             )
                           : _prefRow(
                               context,
                               toggles[i][1],
-                              toggles[i][2],
+                              reminderPrefSubtitle(
+                                context,
+                                settings,
+                                toggles[i][0],
+                                toggles[i][2],
+                              ),
                               settings.prefs[toggles[i][0]] ?? false,
-                              () => controller.toggle(toggles[i][0]),
+                              () => toggleReminderPref(
+                                context,
+                                ref,
+                                toggles[i][0],
+                              ),
                             ),
                     ),
+                  const ReminderRuleRows(),
                 ],
               ),
             ),
+            const ReminderChannelsCard(),
 
             // ST-U1 (C22/D4): the chassis DAILY "streak" reminder left this app.
             // ── PRIVACY — THE DPDP §6(3) WITHDRAWAL PATH (live-only) ─────────

@@ -543,6 +543,13 @@ bool _writeAppDeclaration(
   // issues to THIS app, on the channel's own sentinel: a stamp cannot know it,
   // and copying another app's would package and submit as that app.
   _writeStoreRecords(context, buffer);
+  // ST-R4: the Windows toast activator is OURS, not a console's, so it is its
+  // own block (not a stores record id) and written now rather than pending.
+  // render.mjs puts it in msix_config and in lib/core/windows_notification_identity.g.dart.
+  buffer
+    ..writeln('windows:')
+    ..writeln('  toastActivatorClsid: ${toastActivatorClsidFor(id)}')
+    ..writeln();
   buffer
     ..writeln('legal:')
     ..writeln('  privacyPolicyUrl: ${urls.privacyUrl}')
@@ -775,6 +782,29 @@ void _writeStoreRecords(HookContext context, StringBuffer buffer) {
       ..writeln('    declaredOn: null');
   }
   buffer.writeln();
+}
+
+/// The Windows toast-activator CLSID for app [id] — DERIVED, so a re-stamp
+/// reproduces it byte for byte ([3]S-15) and two app ids never share one.
+/// Four FNV-1a passes over `nikatru-toast|<id>|<k>` give 128 bits, laid out as
+/// a GUID with the RFC 4122 variant bits and version 8 (custom). The CLSID only
+/// has to be unique and stable; it is not a secret.
+String toastActivatorClsidFor(String id) {
+  String word(int k) {
+    int h = 0x811c9dc5;
+    for (final int unit in 'nikatru-toast|$id|$k'.codeUnits) {
+      h ^= unit;
+      h = (h * 0x01000193) & 0xffffffff;
+    }
+    return h.toRadixString(16).padLeft(8, '0');
+  }
+
+  final hex = '${word(0)}${word(1)}${word(2)}${word(3)}'.split('');
+  hex[12] = '8';
+  hex[16] = '89ab'[int.parse(hex[16], radix: 16) & 3];
+  final h = hex.join();
+  return '${h.substring(0, 8)}-${h.substring(8, 12)}-${h.substring(12, 16)}-'
+      '${h.substring(16, 20)}-${h.substring(20)}';
 }
 
 /// O-BRICK-SELLS-NOTHING-IN-A-STORE (12b) — the app's `billing.mobileIap`,

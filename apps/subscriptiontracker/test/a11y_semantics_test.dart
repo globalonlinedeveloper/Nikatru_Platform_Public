@@ -66,7 +66,7 @@ import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
     show InMemoryAuthRepository;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show ChassisLocalizations, buildAppTheme;
+    show AppListRow, ChassisLocalizations, buildAppTheme;
 import 'package:nikatru_purchases/nikatru_purchases.dart';
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/core/e2e_keys.dart';
@@ -683,6 +683,91 @@ void expectRowCardsLegible(
     );
   }
   _assertLegible(texts, screen, except);
+}
+
+/// [expectRowCardsLegible] for the design system's [AppListRow] — the row
+/// Home is built from since train ST-D1.
+///
+/// The SAME measurement, and it is needed for the same structural reason:
+/// `AppListRow` ends in `MergeSemantics`, so its node's label is the composite
+/// "Netflix\nIn 3 days\n\$15.49\nper month" and the guideline beside it can
+/// match no `Text` to it. What differs is WHERE the ground is: `AppListRow`
+/// paints no fill of its own, so the ground is the nearest coloured `Material`
+/// ABOVE the row — the `AppCard` of its `AppListGroup`. An opaque
+/// `BoxDecoration` colour on the way down (the monogram's `CircleAvatar`)
+/// becomes the ground for the text inside it, so the monogram is MEASURED
+/// rather than exempted; a translucent one is left to [_assertLegible], which
+/// refuses to score alpha.
+void expectListRowsLegible(WidgetTester tester, String screen) {
+  final Finder rows = find.byType(AppListRow);
+  expect(
+    rows,
+    findsWidgets,
+    reason:
+        'COVERAGE LOST — not one AppListRow was BUILT on $screen, so this limb '
+        'ranged over the empty set. Home renders rows only when the '
+        'subscription seed resolves; the fault would be in the pump.',
+  );
+  final List<_CardText> texts = <_CardText>[];
+  final List<String> titles = <String>[];
+  for (final Element row in rows.evaluate()) {
+    titles.add((row.widget as AppListRow).title);
+    Color? ground;
+    row.visitAncestorElements((Element a) {
+      final Widget w = a.widget;
+      if (w is Material && w.color != null) {
+        ground = w.color;
+        return false;
+      }
+      return true;
+    });
+    void walk(Element element, Color? here) {
+      final Widget widget = element.widget;
+      Color? next = here;
+      if (widget is DecoratedBox) {
+        final Decoration d = widget.decoration;
+        if (d is BoxDecoration && d.color != null) next = d.color;
+        if (d is BoxDecoration && d.gradient != null) next = null;
+      }
+      if (widget is Text) {
+        final TextStyle style = DefaultTextStyle.of(
+          element,
+        ).style.merge(widget.style);
+        expect(
+          style.color,
+          isNotNull,
+          reason: '"${widget.data}" on an AppListRow resolved to no colour',
+        );
+        texts.add(
+          _CardText(
+            widget.data ?? '',
+            style.color!,
+            next,
+            style.fontSize,
+            style.fontWeight == FontWeight.bold,
+          ),
+        );
+        return;
+      }
+      element.visitChildren((Element child) => walk(child, next));
+    }
+
+    walk(row, ground);
+  }
+  final Set<String> measurable = texts
+      .where((_CardText t) => t.ground != null)
+      .map((_CardText t) => t.text)
+      .toSet();
+  for (final String title in titles) {
+    expect(
+      measurable,
+      contains(title),
+      reason:
+          'COVERAGE LOST — the row titled "$title" on $screen contributed no '
+          'measurable string: the walk no longer reaches the card fill.',
+    );
+  }
+  _assertLegible(texts, screen, const <String, String>{});
 }
 
 /// Every `Text` on the CURRENTLY PUMPED SCREEN, with the ground the real tree
@@ -4213,6 +4298,14 @@ void main() {
         for (int i = 0; i < 6; i++) {
           await tester.pump(const Duration(milliseconds: 560));
         }
+        // ⏱ 2026-09-28 · train ST-D7: the primary action is now a theme
+        // `FilledButton`, which ANIMATES from its disabled to its enabled
+        // colours over Material's 200 ms theme-change duration (the old
+        // `GradientButton` swapped instantly). Swept on the flip frame it
+        // measured 1.49:1 — a colour halfway between the two states, never
+        // at rest on screen. One pump past the transition sweeps what the user
+        // actually reads.
+        await tester.pump(const Duration(milliseconds: 300));
         expect(
           find.text(l10n.goToDashboard),
           findsOneWidget,
@@ -4220,6 +4313,8 @@ void main() {
               'the scan never reached its results phase, so the sweep below is '
               'about the scanning screen again',
         );
+        // ⏱ train ST-D7: the gradient hero this history describes is gone —
+        // the summary is an opaque `AppCard` in the scheme's ink.
         // 6 subjects. ✅ THIS CASE WAS RED ON 2026-08-13 AND IS GREEN SINCE.
         // MEASURED THEN: `YOUR SUBSCRIPTIONS` (11px) was 3.97:1 — #6C57F7 on
         // #EAE6FE — against a 4.5 target.
@@ -4308,16 +4403,14 @@ void main() {
         //     white card (`subscription_detail_screen.dart:288`), **2.54:1**.
         //     A SECOND member of the status trio used as text on a light
         //     ground, found by this widening and owned by detail's own file.
+        // ⏱ 2026-09-28 · train ST-D5: `Active` EXPIRED — the usage word is now
+        // the scheme-forked `StatusTones` positive tone, measured 6.71:1 by
+        // this sweep, so its `except:` entry is deleted rather than left as a
+        // named hole that covers nothing.
         expectScreenTextLegible(
           tester,
           'detail',
-          covers: const <String>['PRICE', 'Payment history'],
-          except: const <String, String>{
-            'Active':
-                'AppColors.positive #10B981 as 12px w700 text on the white '
-                'card fill, from subscription_detail_screen.dart:288 — '
-                'measured 2.54:1 on 2026-08-21',
-          },
+          covers: const <String>['PRICE', 'Payment history', 'Active'],
         );
       });
     });
@@ -4633,7 +4726,10 @@ void main() {
         // arm and the call below carries NO `except:` map at all. The paragraph
         // above is the record of why the exemption existed, not a description of
         // this call.
-        expectRowCardsLegible(tester, 'home');
+        // ⏱ 2026-09-28 · train ST-D1: Home's rows are `AppListRow`s now, so
+        // the row limb is [expectListRowsLegible] — same measurement, the
+        // ground read from the row's `AppCard` above it.
+        expectListRowsLegible(tester, 'home');
       });
     });
 
@@ -4835,6 +4931,52 @@ void main() {
       });
     });
 
+    // ⏱ train ST-D6: the EDIT entry point onto the same sheet, swept in its
+    // own right — prefilled, no POPULAR block, "Save" — so the add sheet's
+    // sweep does not stand for it. ⏱ ST-T3b: it is `showAddSubscriptionSheet`
+    // with a row (ST-E1), one entry point for both forms.
+    testWidgets('the EDIT sheet: every string AA, every tap target 48×48', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          Scaffold(
+            body: Builder(
+              builder: (BuildContext context) => Center(
+                child: TextButton(
+                  onPressed: () => showAddSubscriptionSheet(
+                    context,
+                    initial: Subscription(
+                      id: 'sub-1',
+                      name: 'Netflix',
+                      category: 'Streaming',
+                      price: const Money(1500, 'USD'),
+                      cycle: BillingCycle.yearly,
+                      nextRenewal: DateTime(2030, 3, 14),
+                    ),
+                  ),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+          theme: appTheme(),
+        );
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+        await expectOpaqueGround(tester, 'the edit sheet');
+        await expectContrastHadSubjects(
+          tester,
+          'the edit sheet',
+          covers: const <String>['Edit subscription', 'Save'],
+        );
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        await expectGuidelineHadSubjects(tester, 'the edit sheet');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      });
+    });
+
     testWidgets('every string on the cancel sheet meets WCAG AA contrast — in '
         'EITHER step', (WidgetTester tester) async {
       await semantically(tester, () async {
@@ -4936,7 +5078,10 @@ void main() {
           covers: const <String>['Calendar', 'Upcoming renewals'],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
-        expectRowCardsLegible(tester, 'home (dark)');
+        // ⏱ 2026-09-28 · train ST-D1: Home's rows are `AppListRow`s now, so
+        // the row limb is [expectListRowsLegible] — same measurement, the
+        // ground read from the row's `AppCard` above it.
+        expectListRowsLegible(tester, 'home (dark)');
       });
     });
 

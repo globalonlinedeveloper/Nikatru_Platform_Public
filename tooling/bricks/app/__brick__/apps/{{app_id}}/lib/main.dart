@@ -10,6 +10,7 @@ import 'package:nikatru_telemetry/nikatru_telemetry.dart';
 
 import 'app.dart';
 import 'core/app_config.dart';
+import 'core/windows_notification_identity.g.dart';
 import 'state/providers.dart';
 
 /// 🏗️ THE BOOT ORDER IS IN `package:nikatru_chassis_screens/shell/bootstrap.dart`
@@ -40,11 +41,10 @@ Future<void> main() async {
     dist: AppConfig.releaseChannel,
   );
 
-  // ONE adapter, constructed here and `init()`ed once by bootstrapNikatru before
-  // the first frame — see its step 4 for why a second instance is a tap stream
-  // that is silent forever.
-  final core.NotificationService notifications =
-      createLocalNotificationService();
+  // ONE adapter, init()ed by bootstrapNikatru (its step 4); ST-R4 identity.
+  final core.NotificationService notifications = createLocalNotificationService(
+    windows: kWindowsNotificationIdentity,
+  );
 
   await bootstrapNikatru(
     notifications: notifications,

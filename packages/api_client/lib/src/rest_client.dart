@@ -7,6 +7,20 @@ class ApiException implements Exception {
   final int statusCode;
   final String message;
 
+  /// True when the request never got an answer: no network, DNS, a timeout.
+  ///
+  /// The one question every screen asks of a failure before it picks its
+  /// words — "you are offline" and "the server refused" are different states
+  /// with different remedies (train ST-D7). Status 0 is this client's own
+  /// transport marker, so the rule lives beside it rather than in each app.
+  bool get isOffline => statusCode == 0;
+
+  /// [isOffline] for any thrown [error], false for anything that is not an
+  /// [ApiException]: a failure this client did not classify is never assumed
+  /// to be the network's.
+  static bool isOfflineError(Object? error) =>
+      error is ApiException && error.isOffline;
+
   /// The Worker's `detail` for a refused body, when it sent one — the
   /// sentence that NAMES the field (`{"error":"invalid_body","detail":"price
   /// must be …"}`). [message] stays the machine `error` code every caller

@@ -132,3 +132,54 @@ export function verifierFor(provider: string): MoRWebhookVerifier | null {
 // A reader who runs the rule as written now gets three, and gets, in the same
 // breath, the reason all three are inert.
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-29 · AB-M4-03 (moneyflows MF-3a) · HOW A SUBSCRIPTION ON EACH RAIL IS
+// CANCELLED — a capability of the rail, keyed by the same provider name as
+// MOR_VERIFIERS above, not a second registry: test/cancellation.test.ts fails
+// when a registered rail has no entry here.
+//
+//   api    — our Worker can carry the cancel out (Paddle, lib/mor/paddle-cancel.ts).
+//   store  — only the store that billed can stop it (Apple, Google through
+//            RevenueCat). The route answers 409 with the store's own page and
+//            records nothing: a row nothing can ever execute is not evidence.
+//   none   — no cancel is built for the rail yet (Razorpay: MF-9). The request is
+//            recorded, unexecuted, as `provider_not_configured`.
+//
+// Before this, the cancel route recorded every row as `provider_not_configured`,
+// which was untrue for a store row, and the CLIENT chose the path by build
+// channel rather than by where the person paid.
+// ─────────────────────────────────────────────────────────────────────────────
+export type RailCancelPath = 'api' | 'store' | 'none';
+
+export const RAIL_CANCEL_PATH: Readonly<Record<string, RailCancelPath>> = {
+  paddle: 'api',
+  razorpay: 'none',
+  revenuecat: 'store',
+};
+
+/** The cancel path for a row's provider; an unregistered provider has none. */
+export function cancelPathFor(provider: string): RailCancelPath {
+  return RAIL_CANCEL_PATH[provider] ?? 'none';
+}
+
+/**
+ * The store a store-rail row was billed by, from `entitlements.store` (RevenueCat's
+ * `store`, verbatim), and the page where the person cancels it. Apple's URL is the
+ * one Apple publishes for managing subscriptions; Google's is Play's documented
+ * subscriptions deep link without a product (it lists every subscription).
+ */
+export function storeCancelPage(store: string | null): {
+  cancelAt: 'app_store' | 'play_store' | 'store';
+  manageUrl: string | null;
+} {
+  switch (store) {
+    case 'APP_STORE':
+    case 'MAC_APP_STORE':
+      return { cancelAt: 'app_store', manageUrl: 'https://apps.apple.com/account/subscriptions' };
+    case 'PLAY_STORE':
+      return { cancelAt: 'play_store', manageUrl: 'https://play.google.com/store/account/subscriptions' };
+    default:
+      return { cancelAt: 'store', manageUrl: null };
+  }
+}

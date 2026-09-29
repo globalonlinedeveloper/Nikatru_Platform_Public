@@ -61,7 +61,7 @@ void main() {
   // ───────────────────────────────────────────────────────────────────────────
   // P4 L7 — THE WORDS THE OS GETS.
   //
-  // `NotificationService` has no `BuildContext` and takes a [ReminderCopy] the
+  // `RenewalReminders` has no `BuildContext` and takes a [ReminderCopy] the
   // caller renders (see the class doc). Everything below drives the REAL caller
   // path — `SubscriptionsController._syncReminders`, reached the way the app
   // reaches it, through `subscriptionsControllerProvider` and the settings
@@ -91,11 +91,24 @@ void main() {
     test(
       'the digest count reaches the plural — 1 and 2 render differently',
       () async {
-        final _RenderingNotifications one = await _driveDigest(1);
-        expect(one.digestBodies, <String>[r'1 active, $10.00 a month.']);
+        // ⏱ 2026-09-28 · ST-R7 (audit C24): the digest counts what renews in
+        // the week it OPENS on, so these rows renew inside that week.
+        final _RenderingNotifications one = await _driveDigest(
+          1,
+          renewal: _inDigestWeek(),
+        );
+        expect(one.digestBodies, <String>[r'1 renewal this week, $10.00.']);
 
-        final _RenderingNotifications two = await _driveDigest(2);
-        expect(two.digestBodies, <String>[r'2 active, $20.00 a month.']);
+        final _RenderingNotifications two = await _driveDigest(
+          2,
+          renewal: _inDigestWeek(),
+        );
+        expect(two.digestBodies, <String>[r'2 renewals this week, $20.00.']);
+
+        // A row renewing OUTSIDE that week is not counted — the old body said
+        // "N active" of every row the account held.
+        final _RenderingNotifications none = await _driveDigest(2);
+        expect(none.digestBodies, <String>['No renewals this week.']);
       },
     );
 
@@ -103,8 +116,11 @@ void main() {
       final _RenderingNotifications ta = await _driveDigest(
         2,
         locale: const Locale('ta'),
+        renewal: _inDigestWeek(),
       );
-      expect(ta.digestBodies, <String>[r'2 செயலில், மாதம் $20.00.']);
+      expect(ta.digestBodies, <String>[
+        r'இந்த வாரம் 2 புதுப்பித்தல்கள், $20.00.',
+      ]);
       expect(ta.digestTitles, <String>['உங்கள் வாரச் சந்தாச் சுருக்கம்']);
       // The Android CHANNEL name — the string that outlives the notification in
       // the OS settings app.
@@ -133,20 +149,22 @@ void main() {
       // Without the `localeProvider` listener the OS keeps the notifications it
       // was given in the language the user just left, until the list or a
       // preference next happens to change.
-      final _Harness h = _harness(1);
+      final _Harness h = _harness(1, renewal: _inDigestWeek());
       await h.container.read(subscriptionsControllerProvider.future);
       await h.container
           .read(settingsControllerProvider.notifier)
           .toggle('weekly');
-      expect(h.notifier.digestBodies, <String>[r'1 active, $10.00 a month.']);
+      expect(h.notifier.digestBodies, <String>[
+        r'1 renewal this week, $10.00.',
+      ]);
 
       await h.container.read(localeProvider.notifier).set(const Locale('ta'));
       // `.last`, and the length, together: a stale re-render posts a SECOND
       // English body rather than none, so a `contains` here would pass on the
       // exact defect this pins (measured — see reminderCopyFor's second note).
       expect(h.notifier.digestBodies, <String>[
-        r'1 active, $10.00 a month.',
-        r'1 செயலில், மாதம் $10.00.',
+        r'1 renewal this week, $10.00.',
+        r'இந்த வாரம் 1 புதுப்பித்தல், $10.00.',
       ]);
     });
   });
@@ -176,9 +194,9 @@ class _FixedRepository implements SubscriptionRepository {
       throw UnimplementedError('${invocation.memberName} is not under test');
 }
 
-/// Does with the [ReminderCopy] precisely what `NotificationService` does with
+/// Does with the [ReminderCopy] precisely what `RenewalReminders` does with
 /// it, and keeps the strings. See the group header for why.
-class _RenderingNotifications extends NotificationService {
+class _RenderingNotifications extends RenewalReminders {
   _RenderingNotifications() : super.forTesting();
 
   final List<String> channelNames = <String>[];
@@ -190,7 +208,7 @@ class _RenderingNotifications extends NotificationService {
   Future<void> syncAll(
     List<Subscription> subs, {
     required ReminderCopy copy,
-    int daysBefore = 2,
+    ReminderRules rules = const ReminderRules(),
   }) async {
     channelNames.add(copy.channelName);
     for (final Subscription s in subs) {
@@ -219,7 +237,13 @@ class _RenderingNotifications extends NotificationService {
 /// [count] monthly subscriptions at $10 each, all renewing 12 Aug 2026 — so the
 /// digest total is a figure the assertion can name (10.00 / 20.00) and the
 /// renewal date is one whose month word differs between the two locales.
-List<Subscription> _subs(int count) => <Subscription>[
+/// A day inside the week the next digest opens on (ST-R7).
+DateTime _inDigestWeek() {
+  final DateTime sunday = RenewalReminders.digestDay(DateTime.now());
+  return DateTime(sunday.year, sunday.month, sunday.day + 2);
+}
+
+List<Subscription> _subs(int count, {DateTime? renewal}) => <Subscription>[
   for (int i = 0; i < count; i++)
     Subscription(
       id: 's$i',
@@ -227,7 +251,7 @@ List<Subscription> _subs(int count) => <Subscription>[
       category: 'Other',
       price: const Money(1000, 'USD'),
       cycle: BillingCycle.monthly,
-      nextRenewal: DateTime(2026, 8, 12),
+      nextRenewal: renewal ?? DateTime(2026, 8, 12),
     ),
 ];
 
@@ -236,17 +260,15 @@ typedef _Harness = ({
   _RenderingNotifications notifier,
 });
 
-_Harness _harness(int count, {Locale? locale}) {
+_Harness _harness(int count, {Locale? locale, DateTime? renewal}) {
   final _RenderingNotifications notifier = _RenderingNotifications();
   final ProviderContainer container = ProviderContainer(
     overrides: <Override>[
       keyValueStoreProvider.overrideWith((Ref ref) async => _MemStore()),
       subscriptionRepositoryProvider.overrideWithValue(
-        _FixedRepository(_subs(count)),
+        _FixedRepository(_subs(count, renewal: renewal)),
       ),
-      subscriptiontrackerNotificationServiceProvider.overrideWithValue(
-        notifier,
-      ),
+      renewalRemindersProvider.overrideWithValue(notifier),
     ],
   );
   addTearDown(container.dispose);
@@ -265,8 +287,9 @@ _Harness _harness(int count, {Locale? locale}) {
 Future<_RenderingNotifications> _driveDigest(
   int count, {
   Locale? locale,
+  DateTime? renewal,
 }) async {
-  final _Harness h = _harness(count, locale: locale);
+  final _Harness h = _harness(count, locale: locale, renewal: renewal);
   await h.container.read(subscriptionsControllerProvider.future);
   // `syncAll` ran once on build; drop it so a digest assertion is not reading
   // the renewal pass, and so `reminderBodies` holds exactly one sweep.

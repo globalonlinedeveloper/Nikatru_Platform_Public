@@ -10,3 +10,4 @@ library;
 export 'src/device_timezone.dart';
 export 'src/local_notification_service.dart';
 export 'src/notification_capabilities.dart';
+export 'src/windows_notification_identity.dart';

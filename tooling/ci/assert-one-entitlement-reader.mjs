@@ -100,7 +100,7 @@ const DECLARED = [
   {
     file: 'services/platform/src/lib/mor/store.ts',
     role: 'writer-lookup',
-    counts: { entitlements: 5 },
+    counts: { entitlements: 6 },
     why:
       'the ONE writer, and every read decides a WRITE, never access: (1) it reads back the (user, app, entitlement) row a ' +
       'refund/chargeback lands on before it adjusts it; (2) ⏱ 2026-09-22 [ADR 092] §4.4 — the RevenueCat link upsert moves a ' +
@@ -109,7 +109,8 @@ const DECLARED = [
       '(4) ⏱ 2026-09-27 O-ONE-TIME-GRANT-UNBUILT — `liveOneTimeRow`: a subscription event, or an adjustment of another ' +
       'purchase, writes nothing over a live one-time (lifetime) grant on the same (user, app); (5) ⏱ 2026-09-27 ' +
       '`applyOneTime`: a lifetime that another purchase\'s NEWER event already holds the row against is refused by name, ' +
-      'never concluded stale by the ordering clause.',
+      'never concluded stale by the ordering clause; (6) ⏱ 2026-09-29 AB-M4-02 `moneyWentBackFor` — a subscription ' +
+      'event writes nothing over a row revoked by a refund or a chargeback unless it states a later paid-through date.',
   },
   {
     file: 'services/platform/src/lib/mor/bundle-store.ts',
@@ -122,6 +123,14 @@ const DECLARED = [
     role: 'lookup',
     counts: { entitlements: 1 },
     why: 'finds the provider subscription to cancel ([5]M-9); decides nothing about access.',
+  },
+  {
+    file: 'services/platform/src/lib/mor/cancel-on-delete.ts',
+    role: 'lookup',
+    counts: { entitlements: 1 },
+    why:
+      '⏱ 2026-09-29 AB-A5-02 — finds the live subscriptions DELETE /v1/account must cancel (or refuse over) before ' +
+      'it erases the person; decides nothing about access.',
   },
   {
     file: 'services/platform/src/routes/receipts.ts',

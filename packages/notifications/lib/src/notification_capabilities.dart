@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart' show TargetPlatform, immutable;
 
+import 'windows_notification_identity.dart';
+
 /// Resolves the device's IANA timezone name (e.g. `Asia/Kolkata`) for
 /// timezone-correct scheduling.
 ///
@@ -34,9 +36,10 @@ typedef DeviceUtcOffset = Duration Function();
 /// - **Android / iOS / macOS** — immediate display + repeating daily schedule.
 /// - **Linux** — shows immediately, but `zonedSchedule` is unimplemented (the
 ///   Linux backend can't schedule, in 17.x–22.x alike) → show yes, schedule no.
-/// - **Windows** — 22.x HAS a Windows plugin (since 19.0.0), but it needs
-///   `WindowsInitializationSettings` (app name, AppUserModelID, GUID) that no
-///   app supplies yet → both no-op until one does
+/// - **Windows** — shows and schedules ONE-OFF notifications (the 22.x Windows
+///   plugin, since 19.0.0; it cannot repeat, so a daily schedule is the next
+///   instance only and the boot-path resync re-arms it). It needs the app's
+///   [WindowsNotificationIdentity]; [resolve] reports neither without one
 ///   (O-RENEWAL-REMINDERS-OFF-ON-DESKTOP).
 /// - **Web / Fuchsia** — neither.
 ///
@@ -51,7 +54,8 @@ class NotificationCapabilities {
   /// Whether immediate notifications (`showNow`) work on this platform.
   final bool canNotify;
 
-  /// Whether repeating daily schedules (`scheduleDaily`) work on this platform.
+  /// Whether OS-brokered schedules (`scheduleAt`, `scheduleDaily`) work on
+  /// this platform.
   final bool canSchedule;
 
   /// The capabilities for [platform] (with [isWeb] taking precedence — a web
@@ -84,12 +88,12 @@ class NotificationCapabilities {
           canSchedule: false,
         );
       case TargetPlatform.windows:
-        // flutter_local_notifications 22.x HAS a Windows plugin, but it needs
-        // WindowsInitializationSettings (AppUserModelID + GUID) that no app
-        // supplies yet. Fully unsupported until one does.
+        // flutter_local_notifications 22.x's Windows plugin shows and
+        // zonedSchedules (one-off: it ignores matchDateTimeComponents). It
+        // needs the app's WindowsNotificationIdentity, which [resolve] checks.
         return const NotificationCapabilities(
-          canNotify: false,
-          canSchedule: false,
+          canNotify: true,
+          canSchedule: true,
         );
       case TargetPlatform.fuchsia:
         return const NotificationCapabilities(
@@ -97,6 +101,24 @@ class NotificationCapabilities {
           canSchedule: false,
         );
     }
+  }
+
+  /// What THIS app can do on [platform] — [forPlatform], less what the app has
+  /// not supplied. On Windows that is its [WindowsNotificationIdentity]: with
+  /// none the plugin is never initialised, so both are false. Every other
+  /// platform is [forPlatform] unchanged.
+  static NotificationCapabilities resolve(
+    TargetPlatform platform, {
+    required bool isWeb,
+    WindowsNotificationIdentity? windows,
+  }) {
+    if (!isWeb && platform == TargetPlatform.windows && windows == null) {
+      return const NotificationCapabilities(
+        canNotify: false,
+        canSchedule: false,
+      );
+    }
+    return forPlatform(platform, isWeb: isWeb);
   }
 
   @override

@@ -230,7 +230,10 @@ describe('the guard says YES on the tree as it is', () => {
     // ⏱ 2026-09-28 · train ST-D0: 12 of 20 → 17 of 25 — the foundation
     // components arrived measured; 8 PRINTED is unchanged. Read off the
     // guard's own per-root line.
-    assert.match(out, /packages\/design_system: 17 of 25 surface\(s\) measured — 8 PRINTED and not failed/);
+    // ⏱ 2026-09-29 · trains ST-D6 + ST-D1: 17 of 25 → 23 of 31 — the form
+    // sheet and Home components arrived measured; 8 PRINTED is unchanged.
+    // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 23 of 31 → 27 of 35.
+    assert.match(out, /packages\/design_system: 27 of 35 surface\(s\) measured — 8 PRINTED and not failed/);
   });
 
   test('the copied subject tree reproduces the subscriptiontracker reading exactly — and derives TWO roots', () => {
@@ -272,7 +275,7 @@ describe('the guard says YES on the tree as it is', () => {
       // ⏱ 2026-09-24 · 39 → 41 TEST FILES, SURFACES UNCHANGED: the auth error
       // mapper's suite and `support/raw_vendor_error.dart` joined the chassis
       // corpus. Both per-root equalities above are untouched.
-      /43 reachable surface\(s\), 43 measured by 44 test file\(s\); 0 measured where they delegate to/ /* ⏱ 2026-09-28 ST-T8a: +1 chassis test file (web_semantics_test.dart), surfaces unchanged */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +1 width file */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate), +1 width file */,
+      /43 reachable surface\(s\), 43 measured by 44 test file\(s\); 0 measured where they delegate to/ /* ⏱ 2026-09-29 ST-D DW1 on ST-T3b: the edit form is showAddSubscriptionSheet(initial:), so ST-D6's showEditSubscriptionSheet surface is gone (-1 app surface) */ /* ⏱ 2026-09-29 ST-D6: +1 app surface (showEditSubscriptionSheet), measured in an existing width file */ /* ⏱ 2026-09-28 ST-T8a: +1 chassis test file (web_semantics_test.dart), surfaces unchanged */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +1 width file */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate), +1 width file */,
     );
     assert.equal(fails(out).length, 0, out);
   });
@@ -532,7 +535,9 @@ describe('a report-mode root can get better, never quietly worse', () => {
     assert.match(
       out,
       // ⏱ 2026-09-28 · train ST-D0: 10 of 12 → 15 of 17 (floor re-based to 17).
-      /COVERAGE LOST — `packages\/design_system` has 15 measured surface\(s\) and its measured floor is 17/s,
+      // ⏱ 2026-09-29 · trains ST-D6 + ST-D1: 15 of 17 → 21 of 23 (floor re-based to 23).
+      // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 21 of 23 → 25 of 27 (floor re-based to 27).
+      /COVERAGE LOST — `packages\/design_system` has 25 measured surface\(s\) and its measured floor is 27/s,
     );
   });
 
@@ -560,7 +565,9 @@ describe('a report-mode root can get better, never quietly worse', () => {
     const { code, out } = run(root);
     assert.equal(code, 2, out);
     // ⏱ 2026-09-28 · train ST-D0: 18 of 20 → 23 of 25 (floor re-based to 25).
-    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 23 responsive surface\(s\).*floor is 25/s);
+    // ⏱ 2026-09-29 · trains ST-D6 + ST-D1: 23 of 25 → 29 of 31 (floor re-based to 31).
+    // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 29 of 31 → 33 of 35 (floor re-based to 35).
+    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 33 responsive surface\(s\).*floor is 35/s);
   });
 
   test("R11c · a NEW unmeasured surface in EACH new root reaches that root's printed list", () => {
@@ -589,7 +596,9 @@ describe('a report-mode root can get better, never quietly worse', () => {
     // left; HomeScreen and ExploreScreen now count through delegation.
     assert.match(out, /\{\{app_id\}\}: 3 of 13 surface\(s\) measured — 1 PRINTED/);
     // ⏱ 2026-09-28 · train ST-D0: 12 of 21 → 17 of 26 (measured arrivals).
-    assert.match(out, /packages\/design_system: 17 of 26 surface\(s\) measured — 9 PRINTED/);
+    // ⏱ 2026-09-29 · trains ST-D6 + ST-D1: 17 of 26 → 23 of 32 (measured arrivals).
+    // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 23 of 32 → 27 of 36 (measured arrivals).
+    assert.match(out, /packages\/design_system: 27 of 36 surface\(s\) measured — 9 PRINTED/);
   });
 });
 

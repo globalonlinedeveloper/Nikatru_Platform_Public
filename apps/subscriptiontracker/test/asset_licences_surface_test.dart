@@ -49,7 +49,7 @@
 //   · Imports are `package:subscriptiontracker/...`; the brick's are `{{app_id.snakeCase()}}`.
 //   · The storage and notification seams come from `test/support/width_harness.dart`
 //     rather than a local fake. Subly's settings screen drives its OWN
-//     notification fork through `subscriptiontrackerNotificationServiceProvider` — a seam the
+//     notification fork through `renewalRemindersProvider` — a seam the
 //     brick's screen has no equivalent of — so the brick's single
 //     `keyValueStoreProvider` override would leave the real plugin-backed
 //     service in place and the screen would never reach its layout.

@@ -1,43 +1,25 @@
 import 'package:flutter/foundation.dart'
     show
         TargetPlatform,
-        debugPrint,
         defaultTargetPlatform,
         immutable,
         kIsWeb,
         visibleForTesting;
-import 'package:flutter/services.dart' show PlatformException;
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_notifications/nikatru_notifications.dart'
-    show
-        LocalTimezoneResolution,
-        LocalTimezoneResolver,
-        NotificationCapabilities,
-        resolveLocalTimezone;
-import 'package:timezone/data/latest_all.dart' as tzdata;
-import 'package:timezone/timezone.dart' as tz;
+    show NotificationCapabilities;
 
+import '../../core/windows_notification_identity.g.dart';
 import '../../data/models/subscription.dart';
 
 /// Every user-visible string this service hands to the OS, already rendered in
 /// the language the app is currently showing.
 ///
 /// 🔴 THIS EXISTS BECAUSE THE SERVICE HAS NO `BuildContext` AND MUST NOT GET ONE.
-/// It is a process singleton constructed in `main()` before `runApp`, and its
-/// scheduling methods run from a Riverpod notifier — there is no element tree to
-/// read `AppLocalizations.of(context)` from at either point. The alternative
-/// shapes were measured and rejected:
-///
-///  · a `BuildContext` parameter — would tie a background scheduling seam to a
-///    mounted widget, and `SubscriptionsController.build()` has none;
-///  · `AppLocalizations` itself as the parameter — drags the generated l10n
-///    class (and `flutter_localizations`) into a file that otherwise knows only
-///    about the plugin, and this service is a candidate to move into the chassis.
-///
-/// So the CALLER renders and the service posts. The two closures are closures
-/// rather than strings because their arguments are only known per-notification:
-/// `syncAll` loops over subscriptions itself, and the digest's plural arm is
-/// chosen by a count this object cannot see. They carry the locale's
+/// Its scheduling runs from a Riverpod notifier — there is no element tree to
+/// read `AppLocalizations.of(context)` from. So the CALLER renders and the
+/// service posts. The closures are closures rather than strings because their
+/// arguments are only known per notification, and they carry the locale's
 /// `DateFormat` with them — the date belongs to the same sentence as the words
 /// around it, so it is formatted where the words are.
 @immutable
@@ -48,6 +30,9 @@ class ReminderCopy {
     required this.reminderBody,
     required this.digestTitle,
     required this.digestBody,
+    required this.cancelByTitle,
+    required this.cancelByBody,
+    required this.channelDescription,
     this.trialTitle,
     this.trialBody,
   });
@@ -56,6 +41,10 @@ class ReminderCopy {
   /// long after the notification itself is gone.
   final String channelName;
 
+  /// The line under the channel name in the OS settings app — as visible as
+  /// the name, so it is translated like it (audit C28/D16).
+  final String channelDescription;
+
   final String reminderTitle;
 
   /// `(name, renewal date) → body`. The caller owns the date format.
@@ -63,74 +52,102 @@ class ReminderCopy {
 
   final String digestTitle;
 
-  /// `(count, formatted total) → body`. PLURAL: [count] picks the arm.
+  /// `(count due this week, formatted total) → body`. PLURAL on [count].
   final String Function(int count, String formattedTotal) digestBody;
 
-  /// The trial-end reminder's title and body (ST-E5). Optional so a caller
-  /// that predates trials still compiles; absent, the trial reminder reuses
-  /// the renewal copy — "Netflix renews on Oct 3" is still true of a trial
-  /// that turns into a charge on Oct 3.
+  /// ST-R8: the "Cancel by" reminder at next renewal − notice days.
+  final String Function(DateTime cancelBy) cancelByTitle;
+  final String Function(String name, DateTime cancelBy) cancelByBody;
+
+  /// ST-T3b (ST-E5): the free-trial-ending reminder. Null falls back to the
+  /// renewal copy, which still names the right day.
   final String? trialTitle;
   final String Function(String name, DateTime trialEnds)? trialBody;
 }
 
-/// On-device renewal reminders — the cross-platform reminder path (iOS, Android,
-/// macOS, Linux, Windows). No server push, so it also covers the desktop targets
-/// where FCM has no official support. Web falls back to a no-op (use the
-/// service-worker Notification API there if needed).
+/// WHEN renewal reminders fire — the user's rules (ST-R3, audit C23/C26).
 ///
-/// NOTE: `flutter_local_notifications` is the most version-sensitive dependency
-/// in this template. The calls below target the 22.x API (named parameters since
-/// 20.0.0). If `flutter pub get` resolves a newer major, re-check
-/// `zonedSchedule` (androidScheduleMode) and the Windows init settings.
-class NotificationService {
-  NotificationService._() : _platformOverride = null, _isWebOverride = null;
-  static final NotificationService instance = NotificationService._();
+/// [leadDays] is the account default (Settings); a row's own `reminder_days`
+/// replaces it for that row. [hour]:[minute] is the local time of day every
+/// reminder fires at.
+@immutable
+class ReminderRules {
+  const ReminderRules({
+    this.leadDays = const <int>[2],
+    this.hour = 9,
+    this.minute = 0,
+  });
 
-  /// For test fakes ONLY. The singleton above cannot be replaced and the real
-  /// methods need a platform, so the reminder-wiring tests (which must prove a
-  /// settings toggle reaches this service — see settings_wiring_test.dart)
-  /// subclass via this constructor and override the scheduling methods to
-  /// record calls. Production wiring keeps using [instance].
-  ///
-  /// [platform] pins the capability matrix for a test that cannot (or must
-  /// not) flip `debugDefaultTargetPlatformOverride` for the whole process.
+  final List<int> leadDays;
+  final int hour;
+  final int minute;
+}
+
+/// Why this platform cannot schedule a renewal reminder — the key a settings
+/// screen turns into a sentence. Only ever non-null where the capability
+/// matrix says so; the app never OFFERS what it cannot deliver.
+enum ReminderUnavailability {
+  /// No notification plugin at all on this target (web; Windows without the
+  /// app's identity).
+  noNotifications,
+
+  /// Immediate notifications work but nothing can be scheduled (Linux).
+  noScheduling,
+}
+
+/// Subly's renewal reminders — the DOMAIN half, over the chassis seam.
+///
+/// ⏱ 2026-09-28 (ST-R4): THIS USED TO BE A THIRD IMPLEMENTATION OF THE SEAM —
+/// a 764-line `NotificationService` singleton wrapping
+/// `flutter_local_notifications` itself, beside the shared adapter that wrapped
+/// the SAME process-singleton plugin. The plugin half (one-off schedules, the
+/// exact-alarm degradation, the OS pending list, the Windows identity) moved
+/// into `packages/notifications` as `scheduleAt` / `reconcile`, where every
+/// stamped app gets it; what is left here is only what is Subly's: which
+/// subscription gets which reminder, on which day, in which words. It imports
+/// no plugin and no `timezone` — `assert-package-boundaries` now refuses both.
+class RenewalReminders {
+  RenewalReminders({
+    required core.NotificationService service,
+    required this.capabilities,
+    TargetPlatform? platform,
+    DateTime Function()? now,
+  }) : _service = service,
+       _platform = platform,
+       _now = now ?? DateTime.now;
+
+  /// For test fakes ONLY: a no-op seam under the real matrix for [platform],
+  /// so a subclass can override the scheduling methods to record calls. The
+  /// default seam GRANTS permission, so a switch a test turns on stays on; a
+  /// test of the refusal (ST-R5) passes a [service] that refuses.
   @visibleForTesting
-  NotificationService.forTesting({TargetPlatform? platform, bool? isWeb})
-    : _platformOverride = platform,
-      _isWebOverride = isWeb;
+  RenewalReminders.forTesting({
+    TargetPlatform? platform,
+    bool? isWeb,
+    core.NotificationService service = const _GrantingNoOp(),
+    DateTime Function()? now,
+  }) : this(
+         service: service,
+         capabilities: NotificationCapabilities.resolve(
+           platform ?? defaultTargetPlatform,
+           isWeb: isWeb ?? kIsWeb,
+           windows: kWindowsNotificationIdentity,
+         ),
+         platform: platform,
+         now: now,
+       );
 
-  final FlutterLocalNotificationsPlugin _plugin =
-      FlutterLocalNotificationsPlugin();
-  bool _ready = false;
-  final TargetPlatform? _platformOverride;
-  final bool? _isWebOverride;
-  NotificationCapabilities? _caps;
+  final core.NotificationService _service;
+  final TargetPlatform? _platform;
+  final DateTime Function() _now;
 
-  /// What THIS platform can deliver, from the chassis matrix — the same
-  /// object the shared adapter and the settings screen consult.
-  ///
-  /// 🔴 EVERY SCHEDULING CALL BELOW IS GATED ON THIS, AND IT USED NOT TO BE.
-  /// `flutter_local_notifications` 17.2.4 answers `initialize` with `true` on
-  /// Windows and Linux and then THROWS `UnimplementedError` out of
-  /// `zonedSchedule` (lib/src/flutter_local_notifications_plugin.dart:377) —
-  /// so on both desktop targets `_ready` went true and every list load ended
-  /// in an uncaught async error, while the settings screen said reminders
-  /// were unavailable. Parity is either the feature on all seven targets or
-  /// an honest per-target "not here, and why" — never a throw. Windows gained
-  /// a plugin at flutter_local_notifications 19.0.0 ("[Windows] Added
-  /// support for Windows", CHANGELOG) and the workspace is on 22.x, but that
-  /// plugin needs WindowsInitializationSettings (an AppUserModelID and a GUID)
-  /// which this service does not pass yet, so the matrix still says no and
-  /// this service obeys it (O-RENEWAL-REMINDERS-OFF-ON-DESKTOP).
-  NotificationCapabilities get capabilities =>
-      _caps ??= NotificationCapabilities.forPlatform(
-        _platformOverride ?? defaultTargetPlatform,
-        isWeb: _isWebOverride ?? kIsWeb,
-      );
+  /// What THIS platform can deliver — the same object the chassis adapter was
+  /// built from (`notificationCapabilitiesProvider`), so the settings rows and
+  /// the scheduler can never disagree.
+  final NotificationCapabilities capabilities;
 
   /// The reason, for a settings screen, that this platform schedules nothing
-  /// — `null` where it does. Keyed so the UI can pick a localised sentence.
+  /// — `null` where it does.
   ReminderUnavailability? get unavailability {
     final NotificationCapabilities c = capabilities;
     if (c.canSchedule) return null;
@@ -138,664 +155,315 @@ class NotificationService {
     return ReminderUnavailability.noScheduling;
   }
 
-  static const String _channelId = 'renewals';
-
-  /// Why `tz.local` is a fixed device offset rather than the device's IANA
-  /// zone — null when the real zone was resolved. See [init].
-  String? get timezoneFallbackReason => _timezoneFallbackReason;
-  String? _timezoneFallbackReason;
-
-  /// [localTimezone] is for tests ONLY; production takes the chassis default,
-  /// which reads the device's IANA zone through `flutter_timezone`.
-  Future<void> init({LocalTimezoneResolver? localTimezone}) async {
-    // 🔴 THE MATRIX FIRST. Where the platform cannot notify at all (web, and
-    // Windows until it has init settings) the plugin is never initialised and
-    // `_ready` stays false, so every method below is the no-op it already is
-    // for an uninitialised service. Where it can notify but not schedule
-    // (Linux) the plugin IS initialised — an immediate `show` works there —
-    // and the scheduling methods refuse individually on `canSchedule`.
-    if (!capabilities.canNotify) return;
-    tzdata.initializeTimeZones();
-    // 🔴 THIS LINE USED TO BE A COMMENT SAYING "add flutter_timezone", AND
-    // `tz.local` STAYED UTC. Every `tz.TZDateTime(tz.local, …, 9)` below was
-    // therefore 09:00 UTC — 14:30 in Chennai — and the suite was green because
-    // each app test pinned `tz.setLocalLocation(tz.UTC)`, the one zone where
-    // the bug and the fix agree. The resolution is the chassis's
-    // (`packages/notifications` device_timezone.dart) so this service and the
-    // shared adapter — which drive the SAME plugin singleton and the SAME
-    // process-global `tz.local` — can never disagree about the zone.
-    //
-    // Re-resolved on EVERY init(), which runs at every cold start: a device
-    // that changes zone mid-session keeps its already-scheduled reminders at
-    // the absolute instants they were computed at (the OS holds epoch
-    // instants, not wall clocks), and the next launch re-syncs the set in the
-    // new zone. DST needs no repair at all with an IANA location — the rules
-    // travel with the zone, which is what the fixed-offset fallback lacks and
-    // why that fallback announces itself.
-    final LocalTimezoneResolution zone = await resolveLocalTimezone(
-      resolver: localTimezone,
-    );
-    tz.setLocalLocation(zone.location);
-    _timezoneFallbackReason = zone.fallbackReason;
-
-    // 🔴 ALL THREE `request*Permission: false`, OR `init()` ASKS AFTER ALL. The
-    // plugin's Darwin defaults are true, and its `initialize` then awaits the
-    // user's answer to the OS dialog — so the [13]T-4 rule below was kept on
-    // Android and broken on iOS/macOS, and native auth proof run 36525783687's
-    // iOS and macOS jobs hung in `main()` until cancelled. Same settings as the
-    // chassis adapter's `kDarwinInitNoAsk`, which initialises this plugin next.
-    const DarwinInitializationSettings darwin = DarwinInitializationSettings(
-      requestAlertPermission: false,
-      requestSoundPermission: false,
-      requestBadgePermission: false,
-    );
-    const InitializationSettings settings = InitializationSettings(
-      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-      iOS: darwin,
-      macOS: darwin,
-      // ⚠️ THIS LITERAL IS ALREADY DEAD, AND LOCALIZING IT HERE WOULD CHANGE
-      // NOTHING — which is why `notificationActionOpen` is in the .arb and not
-      // read on this line. `FlutterLocalNotificationsPlugin()` is a process
-      // singleton (its constructor is a `factory` returning a static instance),
-      // and `main.dart` initialises the SHARED adapter immediately after this
-      // one; that adapter's `initialize` passes its own
-      // `LinuxInitializationSettings(defaultActionName: 'Open')`
-      // (packages/notifications/lib/src/local_notification_service_io.dart:266)
-      // and, being last, is the one the plugin keeps. The label a Linux user
-      // reads therefore comes from the chassis, so translating it is a chassis
-      // change — out of scope for this increment, recorded rather than faked.
-      linux: LinuxInitializationSettings(defaultActionName: 'Open'),
-      // Windows: add WindowsInitializationSettings(appName, appUserModelId, guid)
-      // once you have an AppUserModelID; omitted here to stay version-safe.
-    );
-
-    await _plugin.initialize(settings: settings);
-    // 🔴 [pipeline 13]T-4 — `init()` DOES NOT ASK. It used to end with
-    // `await _requestPermissions()`, and `init()` is called from `main()` before
-    // `runApp`, so the OS permission dialog was the first thing a new user saw:
-    // spent at first frame, before the app had shown a single subscription or
-    // any reason to say yes.
-    //
-    // WHY IT MATTERS BEYOND ONE BAD IMPRESSION: on Android 13+ a runtime
-    // permission denied a SECOND time becomes `USER_FIXED` — permanently
-    // non-promptable, no dialog ever again. A launch-time ask spends the first
-    // denial for nothing, so the install is one accidental tap from losing its
-    // return channel for good, silently. (The one-strike variant applies only to
-    // apps targeting ≤ 12L.)
-    //
-    // The shared adapter has always had this shape — `init()` and
-    // `requestPermission()` are separate seam methods in
-    // packages/notifications/lib/src/local_notification_service_io.dart — and
-    // this fork is the only place in the tree that had fused them.
-    _ready = true;
-  }
-
   /// Asks the OS for notification permission. Returns whether we may post.
   ///
   /// CALL THIS FROM A USER GESTURE ONLY — the moment the user turns on a
-  /// reminder-bearing feature. Never from `init()`, a provider `build()`, or a
-  /// widget `initState`. `tooling/ci/assert-stamp-properties.mjs` walks the call
-  /// graph from `main()` and fails the build if any path reaches here.
-  ///
-  /// `!_ready` guards the test path as every other method here does: a fake that
-  /// never ran `init()` gets `false` instead of a `MissingPluginException`.
+  /// reminder-bearing feature. Never from a provider `build()` or `initState`:
+  /// `tooling/ci/assert-stamp-properties.mjs` walks the call graph from
+  /// `main()` and fails the build if any path reaches here. Android 13+ makes
+  /// a SECOND denial permanent, so a launch-time ask can burn the permission
+  /// for the life of the install.
   Future<bool> requestPermissions() async {
-    if (kIsWeb || !_ready) return false;
-    final bool? ios = await _plugin
-        .resolvePlatformSpecificImplementation<
-          IOSFlutterLocalNotificationsPlugin
-        >()
-        ?.requestPermissions(alert: true, badge: true, sound: true);
-    final bool? macos = await _plugin
-        .resolvePlatformSpecificImplementation<
-          MacOSFlutterLocalNotificationsPlugin
-        >()
-        ?.requestPermissions(alert: true, badge: true, sound: true);
-    final bool? android = await _plugin
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >()
-        ?.requestNotificationsPermission();
-    // Exactly one of these resolves on any given platform; the rest are null.
-    // Linux and Windows have no runtime prompt, so all three are null there and
-    // the honest answer is "yes, we may post".
-    return ios ?? macos ?? android ?? true;
+    if (!capabilities.canNotify) return false;
+    return _service.requestPermission();
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // EXACT ALARMS — the permission this app does not have, and must not need
-  // ═══════════════════════════════════════════════════════════════════════════
-  //
-  // 🔴 EVERY `zonedSchedule` BELOW USED TO PASS `exactAllowWhileIdle`
-  // UNCONDITIONALLY, AND THE ANDROID MANIFEST DECLARES NO PERMISSION AT ALL.
-  // Measured, not inferred: `apps/subscriptiontracker/android/app/src/main/
-  // AndroidManifest.xml` carries zero `<uses-permission>` elements, and
-  // flutter_local_notifications 22.3.1's own plugin manifest (like 17.2.4's) adds
-  // VIBRATE and POST_NOTIFICATIONS. So SCHEDULE_EXACT_ALARM is not in the
-  // merged manifest, `AlarmManager.canScheduleExactAlarms()` is false on every
-  // Android 12+ device, and the plugin's Java side
-  // (`FlutterLocalNotificationsPlugin.setupAllowWhileIdleAlarm` →
-  // `checkCanScheduleExactAlarms`) throws `ExactAlarmPermissionException`.
-  //
-  // ⚠️ WHAT THAT COSTS IS NOT ONE REMINDER, IT IS ALL OF THEM. That exception
-  // reaches Dart as `PlatformException('exact_alarms_not_permitted')` out of
-  // `zonedSchedule`, nothing in this file or its callers catches it, and
-  // [syncAll] schedules in a `for` loop — so the FIRST subscription throws and
-  // the loop never reaches the second. An account with forty subscriptions gets
-  // zero reminders, from one uncaught throw, on a code path no test exercised.
-  //
-  // ── WHY DEGRADING IS THE FIX AND NOT A CONSOLATION ─────────────────────────
-  // SCHEDULE_EXACT_ALARM is NOT pre-granted on a fresh install from Android 13
-  // onwards, and Android 14 revokes it outright after a backup-and-restore. So
-  // "declare it and prompt" leaves a real, permanent population of users with
-  // the permission refused, and a renewal reminder that only works for the users
-  // who said yes to a dialog is a feature that silently is not there for the
-  // rest. `setAndAllowWhileIdle` still fires while the device is dozing; it just
-  // lets the OS batch the wake-up. A reminder that a charge lands in two days
-  // tolerates a ten-minute window. A missing reminder does not.
-  //
-  // ── AND `USE_EXACT_ALARM` IS DELIBERATELY NOT USED ────────────────────────
-  // It needs no prompt, which is exactly why it is tempting. Its two permitted
-  // use cases are an alarm/timer app and a calendar app that shows event
-  // notifications. A subscription tracker is neither, so declaring it is a
-  // policy violation dressed as a convenience, and the review that catches it
-  // catches it after upload.
-  //
-  // ── RECONCILED WITH THE CHASSIS ADAPTER, WHICH WAS ALREADY RIGHT ──────────
-  // `packages/notifications/lib/src/local_notification_service_io.dart:334`
-  // schedules its DAILY nudge with `inexactAllowWhileIdle` unconditionally and
-  // needs no permission at all. That is correct there and stays untouched: a
-  // daily nudge has no instant it must land on. This fork schedules a renewal
-  // reminder at 09:00 on a named day, so it takes exact precision WHEN THE OS
-  // WILL GIVE IT and the chassis's behaviour when it will not — strictly better
-  // than either extreme, and the only difference between the two files is now a
-  // reason rather than an oversight.
+  /// Android keys the user's per-channel choices by this id: stable forever.
+  static const String _channelId = 'renewals';
 
-  /// Whether the OS will honour an EXACT alarm from this app right now.
-  ///
-  /// Asked FRESH every time it matters, never cached: the user can revoke
-  /// "Alarms & reminders" from system settings at any moment, and a cached
-  /// `true` is how an app goes on scheduling alarms the OS is refusing.
-  ///
-  /// `true` on every non-Android platform, and that is an accurate answer
-  /// rather than a lenient one: `androidScheduleMode` is inert everywhere else
-  /// (the Darwin and Linux `zonedSchedule` overloads do not take it), so there
-  /// is no precision to lose.
-  Future<bool> canScheduleExactAlarms() async {
-    if (kIsWeb || !_ready) return false;
-    final AndroidFlutterLocalNotificationsPlugin? android = _plugin
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >();
-    if (android == null) return true; // not Android — nothing to permit
-    try {
-      return (await android.canScheduleExactNotifications()) ?? false;
-    } on PlatformException {
-      // An older host that does not implement the method must read as "no", not
-      // as a crash: "no" degrades to a reminder that still fires.
-      return false;
-    }
-  }
+  core.NotificationChannel _channel(ReminderCopy copy) =>
+      core.NotificationChannel(
+        id: _channelId,
+        name: copy.channelName,
+        description: copy.channelDescription,
+        important: true,
+      );
 
-  /// Sends the user to Android's "Alarms & reminders" screen for this app.
-  ///
-  /// 🔴 CALL THIS ONLY AFTER AN IN-APP EXPLANATION, AND ONLY FROM A USER
-  /// GESTURE. It is `ACTION_REQUEST_SCHEDULE_EXACT_ALARM` — not a dialog but a
-  /// full trip out to Settings, and an app that throws the user there with no
-  /// sentence explaining why gets a back-press. Unlike the notification
-  /// permission there is no "denied twice is permanent" cliff here, but there is
-  /// also no second chance at a first impression.
-  ///
-  /// ⚠️ IT IS NEVER REQUIRED. Reminders work without it — see the block above.
-  /// This buys precision, so the explanation must offer precision and must not
-  /// imply that saying no turns reminders off.
-  ///
-  /// Returns the OS's answer where the host gives one; `false` otherwise. The
-  /// honest read is [canScheduleExactAlarms] on the next resume, because the
-  /// user grants this in Settings and comes back.
-  Future<bool> requestExactAlarmPermission() async {
-    if (kIsWeb || !_ready) return false;
-    final AndroidFlutterLocalNotificationsPlugin? android = _plugin
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >();
-    if (android == null) return true; // not Android — nothing to request
-    try {
-      return (await android.requestExactAlarmsPermission()) ?? false;
-    } on PlatformException {
-      return false;
-    }
-  }
+  /// The payload every reminder about [sub] carries: a tap opens `/sub/{id}`
+  /// (state/notification_tap_observer.dart, ST-R5).
+  static String payloadFor(String subscriptionId) => 'sub:$subscriptionId';
 
-  /// The schedule mode a device that [permitted] (or refused) exact alarms gets.
+  /// The reminders [sub] is owed this cycle, nearest first — ST-R3.
   ///
-  /// A named pure function so the DEGRADATION itself is assertable without a
-  /// platform channel — the mapping is the whole decision, and a test that can
-  /// only reach it through `zonedSchedule` cannot say what it is.
+  /// One per lead day in the row's `reminder_days` (else [rules]' default),
+  /// at [rules]' time of day, skipping any instant already past. If EVERY lead
+  /// has passed but the charge has not (a row added the day before it renews,
+  /// with a two-day lead), one SAME-DAY FALLBACK: the time of day today if it
+  /// is still ahead, else on the renewal day itself. A user whose lead passed
+  /// is exactly the user a reminder is for; the old code gave them nothing.
+  ///
+  /// The charge is [Subscription.nextCharge] — the stored date ROLLED by its
+  /// cadence (ST-T3b's RecurrenceSchedule), so a row whose stored date has
+  /// passed is reminded of its real next charge, never of a day gone by.
+  ///
+  /// ⚠️ ONE CYCLE, re-armed on every sync. Arming the next N cycles is now
+  /// possible (RecurrenceSchedule landed with ST-T3b) and is a follow-up.
+  ///
+  /// A TRIALING row is also reminded before its trial ends (ST-T3b, ST-E5),
+  /// at the same leads and time of day.
   @visibleForTesting
-  static AndroidScheduleMode scheduleModeFor({required bool permitted}) =>
-      permitted
-      ? AndroidScheduleMode.exactAllowWhileIdle
-      : AndroidScheduleMode.inexactAllowWhileIdle;
+  List<core.ScheduledNotification> plannedFor(
+    Subscription sub, {
+    required ReminderCopy copy,
+    required ReminderRules rules,
+  }) {
+    final DateTime now = _now();
+    final DateTime renewal = sub.nextCharge(now);
+    final List<int> days = sub.reminderDays ?? rules.leadDays;
+    final List<core.ScheduledNotification> out = <core.ScheduledNotification>[];
+    DateTime at(DateTime day) =>
+        DateTime(day.year, day.month, day.day, rules.hour, rules.minute);
 
-  /// [scheduleModeFor] over a live reading of the OS.
-  ///
-  /// ONE reading per batch, not one per subscription: [syncAll] resolves it once
-  /// and passes it down. Eighty subscriptions must not become eighty platform
-  /// round-trips for an answer that cannot change inside one loop.
-  Future<AndroidScheduleMode> _resolveScheduleMode() async =>
-      scheduleModeFor(permitted: await canScheduleExactAlarms());
-
-  /// `zonedSchedule`, with the exact-alarm race closed.
-  ///
-  /// 🔴 THE CHECK AND THE SCHEDULE ARE TWO SEPARATE IPC CALLS, so the user can
-  /// revoke "Alarms & reminders" between them. That window is small and the
-  /// consequence is not: an uncaught `exact_alarms_not_permitted` out of the
-  /// first subscription ends [syncAll]'s loop and costs the whole reminder set.
-  /// Caught HERE rather than around the loop so the retry is per-notification
-  /// and the ones already scheduled stand.
-  Future<void> _schedule({
-    required int id,
-    required String title,
-    required String body,
-    required tz.TZDateTime when,
-    required NotificationDetails details,
-    required AndroidScheduleMode mode,
-    DateTimeComponents? matchDateTimeComponents,
-  }) async {
-    Future<void> post(AndroidScheduleMode m) => _plugin.zonedSchedule(
-      id: id,
-      title: title,
-      body: body,
-      scheduledDate: when,
-      notificationDetails: details,
-      androidScheduleMode: m,
-      matchDateTimeComponents: matchDateTimeComponents,
-    );
-    try {
-      await post(mode);
-    } on PlatformException catch (e) {
-      // The plugin's own code for it, from FlutterLocalNotificationsPlugin.java
-      // (`EXACT_ALARMS_PERMISSION_ERROR_CODE`). Anything else is a real failure
-      // and must keep travelling — swallowing every PlatformException here is
-      // how "no reminders" becomes indistinguishable from "all fine".
-      if (e.code != 'exact_alarms_not_permitted') rethrow;
-      await post(AndroidScheduleMode.inexactAllowWhileIdle);
+    final String body = copy.reminderBody(sub.name, renewal);
+    final List<int> leads = <int>{...days}.toList()
+      ..sort((int a, int b) => a - b);
+    for (final int d in leads) {
+      final DateTime when = at(
+        DateTime(renewal.year, renewal.month, renewal.day - d),
+      );
+      if (!when.isAfter(now)) continue;
+      out.add(
+        core.ScheduledNotification(
+          id: renewalIdFor('${sub.id}|$d'),
+          title: copy.reminderTitle,
+          body: body,
+          at: when,
+          payload: payloadFor(sub.id),
+          channel: _channel(copy),
+        ),
+      );
     }
-  }
+    if (out.isEmpty && leads.isNotEmpty) {
+      final DateTime today = at(now);
+      final DateTime onTheDay = at(renewal);
+      final DateTime? fallback = today.isAfter(now) && !today.isAfter(onTheDay)
+          ? today
+          : (onTheDay.isAfter(now) ? onTheDay : null);
+      if (fallback != null) {
+        out.add(
+          core.ScheduledNotification(
+            id: renewalIdFor('${sub.id}|today'),
+            title: copy.reminderTitle,
+            body: body,
+            at: fallback,
+            payload: payloadFor(sub.id),
+            channel: _channel(copy),
+          ),
+        );
+      }
+    }
 
-  /// 👤 `channelDescription` IS STILL ENGLISH, DELIBERATELY. It is the second
-  /// line under the channel name in Android's app-notification settings, so it
-  /// is as user-visible as the name above it — but there is no .arb key for it
-  /// (the P4 baseline minted `renewalChannelName` and no description), and
-  /// minting one is the arb owner's call, not this increment's. Recorded so the
-  /// gap is a decision rather than an oversight.
-  NotificationDetails _detailsFor(ReminderCopy copy) => NotificationDetails(
-    android: AndroidNotificationDetails(
-      _channelId,
-      copy.channelName,
-      channelDescription: 'Alerts a couple of days before a charge',
-      importance: Importance.high,
-      priority: Priority.high,
-    ),
-    iOS: const DarwinNotificationDetails(),
-    macOS: const DarwinNotificationDetails(),
-    linux: const LinuxNotificationDetails(),
-  );
-
-  /// The instant a reminder for [sub] should fire, or `null` when that instant
-  /// has already passed and the reminder is therefore not schedulable.
-  ///
-  /// 🔴 ONE DEFINITION, TWO CALLERS, DELIBERATELY. [scheduleRenewalReminder]
-  /// posts it and [plannedReminders] budgets against it. A second copy of this
-  /// arithmetic would drift, and the drift is not visible: the planner would
-  /// spend a scarce slot (see [renewalReminderBudget]) on a reminder the
-  /// scheduler then silently declines to post, so the user would lose a
-  /// reminder they COULD have had to one they never could.
-  @visibleForTesting
-  tz.TZDateTime? whenFor(Subscription sub, int daysBefore) =>
-      _nineAm(sub.nextCharge(DateTime.now()), daysBefore);
-
-  /// The instant [sub]'s TRIAL-END reminder fires — [daysBefore] its
-  /// `trialEndsOn` at 09:00 local — or null when it has no trial running or
-  /// that instant has passed (ST-E5).
-  @visibleForTesting
-  tz.TZDateTime? trialWhenFor(Subscription sub, int daysBefore) {
+    // ST-R8: "Cancel by {date}" at next renewal − notice days, when the plan
+    // names a notice period. No fallback: past that day it is too late, and a
+    // reminder that says so helps nobody.
     final DateTime? ends = sub.trialEndsOn;
-    if (ends == null || sub.status != SubscriptionStatus.trialing) return null;
-    return _nineAm(ends, daysBefore);
-  }
+    if (ends != null && sub.status == SubscriptionStatus.trialing) {
+      for (final int d in leads) {
+        final DateTime when = at(DateTime(ends.year, ends.month, ends.day - d));
+        if (!when.isAfter(now)) continue;
+        out.add(
+          core.ScheduledNotification(
+            id: renewalIdFor('${sub.id}|trial|$d'),
+            title: copy.trialTitle ?? copy.reminderTitle,
+            body: (copy.trialBody ?? copy.reminderBody)(sub.name, ends),
+            at: when,
+            payload: payloadFor(sub.id),
+            channel: _channel(copy),
+          ),
+        );
+      }
+    }
 
-  /// 09:00 local, [daysBefore] days before [day] — or null once past.
-  ///
-  /// ⏱ 2026-09-28 · ST-T3b (ST-M3): [whenFor] reads the ROLLED next charge
-  /// ([Subscription.nextCharge]), not the stored `nextRenewal`, so a row whose
-  /// stored date has passed is reminded about its next real charge instead of
-  /// being dropped as "in the past" until the nightly pass runs.
-  tz.TZDateTime? _nineAm(DateTime day, int daysBefore) {
-    final DateTime target = day.subtract(Duration(days: daysBefore));
-    final tz.TZDateTime when = tz.TZDateTime(
-      tz.local,
-      target.year,
-      target.month,
-      target.day,
-      9,
+    final DateTime? cancelBy = sub.cancelByFor(now);
+    if (cancelBy != null) {
+      final DateTime when = at(cancelBy);
+      if (when.isAfter(now)) {
+        out.add(
+          core.ScheduledNotification(
+            id: renewalIdFor('${sub.id}|cancel'),
+            title: copy.cancelByTitle(cancelBy),
+            body: copy.cancelByBody(sub.name, cancelBy),
+            at: when,
+            payload: payloadFor(sub.id),
+            channel: _channel(copy),
+          ),
+        );
+      }
+    }
+    out.sort(
+      (core.ScheduledNotification a, core.ScheduledNotification b) =>
+          a.at.compareTo(b.at),
     );
-    // Don't fire in the past.
-    if (when.isBefore(tz.TZDateTime.now(tz.local))) return null;
-    return when;
+    return out;
   }
 
-  /// Schedules a one-off reminder [daysBefore] the renewal, at 09:00 local.
+  /// 🔴 APPLE'S PENDING-NOTIFICATION POOL — 64 PER APP, ENFORCED BY DISCARDING.
+  /// `UNUserNotificationCenter` keeps only the 64 soonest pending requests and
+  /// silently drops the rest (macOS too). The digest lives in the same pool, so
+  /// the budget stops four short of it.
+  static const int _darwinPendingLimit = 64;
+
+  /// The most renewal reminders [syncAll] will schedule on a platform that caps
+  /// them — every lead, fallback and cancel-by reminder counts, one slot each.
+  static const int renewalReminderBudget = _darwinPendingLimit - 4;
+
+  /// Whether [platform] silently discards pending notifications past a cap.
+  /// Android (AlarmManager) has no pool, and budgeting there would delete
+  /// working reminders to solve a problem that platform does not have.
+  @visibleForTesting
+  static bool platformCapsPendingNotifications(TargetPlatform platform) =>
+      platform == TargetPlatform.iOS || platform == TargetPlatform.macOS;
+
+  /// Every reminder [syncAll] will schedule, nearest first, inside the budget.
   ///
-  /// ⚠️ "ONE-OFF" IS THE WORD THAT MATTERS, AND IT IS NOT A LIMITATION OF THE
-  /// PLATFORMS — it is what a renewal reminder IS. The obvious-looking
-  /// alternative — `matchDateTimeComponents`, which [scheduleWeeklyDigest]
-  /// genuinely does use, and which `DateTimeComponents.dayOfMonthAndTime` /
-  /// `.dateAndTime` would express for this app's two [BillingCycle] arms — was
-  /// measured and rejected here, twice over:
-  ///
-  ///  · the body is a FINISHED STRING containing a concrete date —
-  ///    `copy.reminderBody(sub.name, sub.nextRenewal)` renders "Netflix renews
-  ///    on Aug 12" once, and a repeating request re-posts those same words
-  ///    every month forever. A repeat would not carry the moving renewal date;
-  ///    it would carry a frozen one, and be wrong from its second firing on.
-  ///  · it would not buy a single slot anyway. iOS counts PENDING requests,
-  ///    and a repeating request is one pending request exactly like a one-off.
-  ///    Repetition is orthogonal to the budget below, not a way around it.
-  ///
-  /// ⚠️ AND IT DOES NOT "WORK EVERYWHERE" — this doc used to claim it did.
-  /// `FlutterLocalNotificationsPlugin.zonedSchedule` dispatches on
-  /// `defaultTargetPlatform` and its final `else` throws `UnimplementedError`
-  /// (flutter_local_notifications 17.2.4,
-  /// lib/src/flutter_local_notifications_plugin.dart:377), so Linux and Windows
-  /// reached no implementation at all. On 22.3.1 Windows has one (unused
-  /// here: no init settings) and Linux still falls through to the platform
-  /// default, which does not implement it. Recorded, not fixed here: this increment
-  /// bounds the reminder set, and the desktop gap is a separate change.
-  ///
-  /// [mode] is the exact-vs-inexact decision, resolved ONCE by [syncAll] for a
-  /// whole batch. `null` means "this is a single call, read the OS yourself" —
-  /// see the exact-alarms block above for why the answer is never cached.
-  Future<void> scheduleRenewalReminder(
-    Subscription sub, {
+  /// On a capped platform the set is narrowed on purpose: soonest first, then
+  /// [renewalReminderBudget] — the reminders a user could still act on, and
+  /// the same overflow the OS was going to impose anyway, except chosen and
+  /// countable ([remindersDroppedByBudget]).
+  @visibleForTesting
+  List<core.ScheduledNotification> plannedReminders(
+    List<Subscription> subs, {
     required ReminderCopy copy,
-    int daysBefore = 2,
-    AndroidScheduleMode? mode,
-  }) async {
-    if (!_ready || !capabilities.canSchedule) return;
-    final tz.TZDateTime? when = whenFor(sub, daysBefore);
-    if (when == null) return;
-
-    final int id = _idFor(sub.id);
-    _scheduledThisProcess.add(id);
-    await _schedule(
-      id: id,
-      title: copy.reminderTitle,
-      body: copy.reminderBody(sub.name, sub.nextCharge(DateTime.now())),
-      when: when,
-      details: _detailsFor(copy),
-      mode: mode ?? await _resolveScheduleMode(),
+    ReminderRules rules = const ReminderRules(),
+    TargetPlatform? platform,
+  }) {
+    final List<core.ScheduledNotification> all =
+        <core.ScheduledNotification>[
+          for (final Subscription s in subs)
+            ...plannedFor(s, copy: copy, rules: rules),
+        ]..sort(
+          (core.ScheduledNotification a, core.ScheduledNotification b) =>
+              a.at.compareTo(b.at),
+        );
+    final TargetPlatform target =
+        platform ?? _platform ?? defaultTargetPlatform;
+    if (kIsWeb ||
+        !platformCapsPendingNotifications(target) ||
+        all.length <= renewalReminderBudget) {
+      return List<core.ScheduledNotification>.unmodifiable(all);
+    }
+    return List<core.ScheduledNotification>.unmodifiable(
+      all.take(renewalReminderBudget),
     );
   }
 
-  /// A one-off reminder [daysBefore] a free trial turns into a charge (ST-E5),
-  /// under its OWN id ([trialIdFor]) so it neither replaces nor is replaced by
-  /// the same row's renewal reminder, and [cancelForSubscription] takes both.
-  Future<void> scheduleTrialReminder(
-    Subscription sub, {
+  /// How many reminders the last [syncAll] left out because the budget bit.
+  /// Exactly 0 on Android and on any account inside the budget.
+  int get remindersDroppedByBudget => _droppedByBudget;
+  int _droppedByBudget = 0;
+
+  /// Rebuilds the full renewal reminder set (call after edits, or on resume).
+  ///
+  /// 🔴 OWNED IDS ONLY — `reconcile(owns: isRenewalReminderId)`, never
+  /// `cancelAll()`. The chassis daily reminder shares this plugin, and each
+  /// cancels what it owns.
+  Future<void> syncAll(
+    List<Subscription> subs, {
     required ReminderCopy copy,
-    int daysBefore = 2,
-    AndroidScheduleMode? mode,
+    ReminderRules rules = const ReminderRules(),
   }) async {
-    if (!_ready || !capabilities.canSchedule) return;
-    final tz.TZDateTime? when = trialWhenFor(sub, daysBefore);
-    if (when == null) return;
-    final DateTime ends = sub.trialEndsOn!;
-    final int id = trialIdFor(sub.id);
-    _scheduledThisProcess.add(id);
-    await _schedule(
-      id: id,
-      title: copy.trialTitle ?? copy.reminderTitle,
-      body: (copy.trialBody ?? copy.reminderBody)(sub.name, ends),
-      when: when,
-      details: _detailsFor(copy),
-      mode: mode ?? await _resolveScheduleMode(),
+    if (!capabilities.canSchedule) return;
+    final int wanted = <core.ScheduledNotification>[
+      for (final Subscription s in subs)
+        ...plannedFor(s, copy: copy, rules: rules),
+    ].length;
+    final List<core.ScheduledNotification> planned = plannedReminders(
+      subs,
+      copy: copy,
+      rules: rules,
+    );
+    _droppedByBudget = wanted - planned.length;
+    await _service.reconcile(planned, owns: isRenewalReminderId);
+  }
+
+  /// Cancel every RENEWAL reminder this service owns, and nothing else.
+  Future<void> cancelOwnedRenewals() async {
+    if (!capabilities.canSchedule) return;
+    await _service.reconcile(
+      const <core.ScheduledNotification>[],
+      owns: isRenewalReminderId,
     );
   }
 
-  /// The weekly spending digest, behind the `weekly` setting.
+  /// The weekly digest, behind the `weekly` setting — ST-R7 (audit C24).
   ///
-  /// Repeats on Sundays at 18:00 local via `matchDateTimeComponents:
-  /// dayOfWeekAndTime` -- one scheduled notification, not one per week, so it
-  /// survives the app not being opened. [total] is the real monthly figure
-  /// computed from the subscriptions actually held; nothing here is invented.
-  ///
-  /// Wired 2026-07-27. The `weekly` toggle existed in settings_controller.dart
-  /// and was read NOWHERE, so switching it on did nothing at all -- a switch
-  /// that promises a feature and delivers none is the same defect class as copy
-  /// that claims one.
+  /// ONE-OFF at the next Sunday 18:00, re-armed on every sync. It used to be a
+  /// REPEATING notification with a FROZEN body, so it re-posted the same
+  /// sentence every Sunday until the app was reopened — the exact reason
+  /// renewals were never repeated. [count] and [formattedTotal] are the
+  /// renewals due in the seven days from that Sunday ([digestDay]).
   Future<void> scheduleWeeklyDigest({
     required ReminderCopy copy,
     required int count,
     required String formattedTotal,
   }) async {
-    if (!_ready || !capabilities.canSchedule) return;
-    await _plugin.cancel(id: _digestId);
-    final tz.TZDateTime now = tz.TZDateTime.now(tz.local);
-    tz.TZDateTime when = tz.TZDateTime(
-      tz.local,
-      now.year,
-      now.month,
-      now.day,
-      18,
-    );
-    // DateTime.sunday == 7; walk forward to the next Sunday 18:00.
+    if (!capabilities.canSchedule) return;
+    await _service.reconcile(<core.ScheduledNotification>[
+      core.ScheduledNotification(
+        id: digestId,
+        title: copy.digestTitle,
+        body: copy.digestBody(count, formattedTotal),
+        at: digestDay(_now()),
+        channel: _channel(copy),
+      ),
+    ], owns: (int id) => id == digestId);
+  }
+
+  /// The next Sunday 18:00 strictly after [now] — the digest's instant, and
+  /// the day its "this week" is counted from.
+  static DateTime digestDay(DateTime now) {
+    DateTime when = DateTime(now.year, now.month, now.day, 18);
     while (when.weekday != DateTime.sunday || !when.isAfter(now)) {
-      when = when.add(const Duration(days: 1));
+      when = DateTime(when.year, when.month, when.day + 1, 18);
     }
-    await _schedule(
-      id: _digestId,
-      title: copy.digestTitle,
-      body: copy.digestBody(count, formattedTotal),
-      when: when,
-      details: _detailsFor(copy),
-      mode: await _resolveScheduleMode(),
-      matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-    );
+    return when;
   }
 
   Future<void> cancelWeeklyDigest() async {
-    if (!_ready) return;
-    await _plugin.cancel(id: _digestId);
+    if (!capabilities.canNotify) return;
+    await _service.cancel(digestId);
   }
 
-  /// Both of a row's reminders — the renewal and, if it had one, the trial
-  /// end. A cancelled or deleted row must not keep either.
-  Future<void> cancelForSubscription(String id) async {
-    if (!_ready) return;
-    await _plugin.cancel(id: _idFor(id));
-    await _plugin.cancel(id: trialIdFor(id));
+  /// Cancel every reminder [subscriptionId] can hold, now — belt and braces
+  /// for a delete (ST-T3b), where the next [syncAll] also drops them. The ids
+  /// are the ones [plannedFor] mints: one per lead the app offers, the
+  /// same-day fallback, the cancel-by, each trial lead, and the one id a build
+  /// before ST-R3 used per row.
+  Future<void> cancelForSubscription(String subscriptionId) async {
+    if (!capabilities.canNotify) return;
+    for (final String key in <String>[
+      subscriptionId,
+      '$subscriptionId|today',
+      '$subscriptionId|cancel',
+      for (final int d in leadChoices) '$subscriptionId|$d',
+      for (final int d in leadChoices) '$subscriptionId|trial|$d',
+    ]) {
+      await _service.cancel(renewalIdFor(key));
+    }
   }
+
+  /// The lead days a reminder can be armed at — Settings' and the detail
+  /// chooser's one list (SettingsState.leadChoices mirrors it).
+  static const List<int> leadChoices = <int>[0, 1, 2, 3, 7, 14];
 
   /// EVERYTHING the plugin holds — the chassis daily reminder included.
-  ///
-  /// ⚠️ SIGN-OUT AND ACCOUNT DELETION ONLY (`userStateDrops`). It is no
-  /// longer what [syncAll] does: two services share one
-  /// `FlutterLocalNotificationsPlugin` singleton, and when each called this
-  /// the app's every list change wiped the chassis daily reminder (id 1) and
-  /// the chassis "reminders off" path wiped every renewal reminder. Each
-  /// service now cancels only the ids it owns — see [cancelOwnedRenewals].
+  /// ⚠️ SIGN-OUT AND ACCOUNT DELETION ONLY (`userStateDrops`).
   Future<void> cancelAll() async {
-    if (!_ready) return;
-    await _plugin.cancelAll();
+    if (!capabilities.canNotify) return;
+    await _service.cancelAll();
   }
 
-  /// Cancel every RENEWAL reminder this service owns, and nothing else.
-  ///
-  /// Owned means "in this service's id namespace" ([isRenewalReminderId]):
-  /// the ids are read back from the OS's own pending list, so a reminder
-  /// scheduled by a previous launch for a subscription that has since gone is
-  /// cancelled too, and the digest, the chassis daily reminder and anything a
-  /// future channel schedules are left standing. A platform whose pending
-  /// list cannot be read falls back to the ids THIS process scheduled.
-  Future<void> cancelOwnedRenewals() async {
-    if (!_ready) return;
-    final Set<int> owned = <int>{..._scheduledThisProcess};
-    try {
-      for (final PendingNotificationRequest r
-          in await _plugin.pendingNotificationRequests()) {
-        if (isRenewalReminderId(r.id)) owned.add(r.id);
-      }
-    } on Object catch (e) {
-      // An older host, or a platform whose channel does not implement the
-      // read: fall back to what this process knows it scheduled.
-      debugPrint('[reminders] could not read pending notifications: $e');
-    }
-    for (final int id in owned) {
-      await _plugin.cancel(id: id);
-    }
-    _scheduledThisProcess.clear();
-  }
-
-  /// The renewal-reminder ids scheduled by THIS process — the fallback set
-  /// for [cancelOwnedRenewals] where the pending list cannot be read.
-  final Set<int> _scheduledThisProcess = <int>{};
-
-  /// 🔴 APPLE'S PENDING-NOTIFICATION POOL — 64 PER APP, ENFORCED BY DISCARDING.
-  /// `UNUserNotificationCenter` keeps only the 64 soonest pending requests an
-  /// app has scheduled and drops every one after that. It does not throw, does
-  /// not call back, and does not report the drop anywhere; the only way to see
-  /// it is to ask for the pending list afterwards and find yours missing. The
-  /// limit is per APP, shared by every scheduled notification this service
-  /// owns, and it applies on macOS too — both go through
-  /// `UNUserNotificationCenter`.
-  static const int _darwinPendingLimit = 64;
-
-  /// The most renewal reminders [syncAll] will schedule on a platform that caps
-  /// them.
-  ///
-  /// 🔴 STRICTLY BELOW [_darwinPendingLimit], AND THAT GAP IS NOT ROUNDING.
-  /// [_digestId] lives in the SAME per-app pool: a renewal set filling all 64
-  /// slots would push the weekly digest out, and the digest is the one
-  /// notification that can still tell a user something when their reminders
-  /// have been capped. Four slots is room for the digest and for whatever this
-  /// service is asked to schedule next, at a cost of four reminders on an
-  /// account that already has more than 60 subscriptions.
-  static const int renewalReminderBudget = _darwinPendingLimit - 4;
-
-  /// Whether [platform] silently discards pending notifications past a cap.
-  ///
-  /// ⚠️ ANDROID IS DELIBERATELY ABSENT. It schedules through `AlarmManager`,
-  /// which has no 64-request pool, so applying the budget there would delete
-  /// working reminders to solve a problem that platform does not have — a
-  /// regression dressed as a fix. Linux and Windows are absent for a blunter
-  /// reason: `zonedSchedule` reaches no implementation at all on them (see
-  /// [scheduleRenewalReminder]), so there is nothing there to budget.
-  @visibleForTesting
-  static bool platformCapsPendingNotifications(TargetPlatform platform) =>
-      platform == TargetPlatform.iOS || platform == TargetPlatform.macOS;
-
-  /// The subscriptions [syncAll] will actually schedule a reminder for, in the
-  /// order it will schedule them.
-  ///
-  /// Below the budget, or on a platform that does not cap, this is the input
-  /// untouched — the ordinary account must behave exactly as it did. Above it,
-  /// the set is narrowed on purpose and in a defensible order:
-  ///
-  ///  1. drop the reminders that CANNOT fire — a renewal already past its
-  ///     reminder instant is skipped by [scheduleRenewalReminder] anyway, and
-  ///     letting those consume slots would spend the budget on nothing (an
-  ///     account carrying stale renewal dates is exactly the crowded account
-  ///     this cap exists for);
-  ///  2. soonest first — the reminders a user could still act on;
-  ///  3. take [renewalReminderBudget].
-  ///
-  /// The result is the same overflow the OS was going to impose regardless,
-  /// except chosen rather than arbitrary, and countable
-  /// ([remindersDroppedByBudget]) rather than invisible.
-  @visibleForTesting
-  List<Subscription> plannedReminders(
-    List<Subscription> subs, {
-    int daysBefore = 2,
-    TargetPlatform? platform,
-  }) {
-    if (kIsWeb) return List<Subscription>.unmodifiable(subs);
-    final TargetPlatform target = platform ?? defaultTargetPlatform;
-    if (!platformCapsPendingNotifications(target) ||
-        subs.length <= renewalReminderBudget) {
-      return List<Subscription>.unmodifiable(subs);
-    }
-    final DateTime now = DateTime.now();
-    final List<Subscription> schedulable =
-        subs.where((Subscription s) => whenFor(s, daysBefore) != null).toList()
-          ..sort(
-            (Subscription a, Subscription b) =>
-                a.nextCharge(now).compareTo(b.nextCharge(now)),
-          );
-    return List<Subscription>.unmodifiable(
-      schedulable.take(renewalReminderBudget),
-    );
-  }
-
-  /// How many subscriptions the last [syncAll] left out because the cap in
-  /// [plannedReminders] narrowed the set. Exactly 0 whenever the cap did not
-  /// bite — on Android, and on any account inside [renewalReminderBudget] —
-  /// because the planner returns its input untouched in both cases.
-  ///
-  /// This is the "observable" half of the cap: the OS was going to discard
-  /// these either way, but a number the app can read is the whole difference
-  /// between a deliberate limit and a silent one.
-  int get remindersDroppedByBudget => _droppedByBudget;
-  int _droppedByBudget = 0;
-
-  /// Rebuilds the full reminder set (call after edits, or on app resume).
-  Future<void> syncAll(
-    List<Subscription> subs, {
-    required ReminderCopy copy,
-    int daysBefore = 2,
-  }) async {
-    if (!_ready || !capabilities.canSchedule) return;
-    // 🔴 OWNED IDS ONLY — never `cancelAll()`. See that method for the
-    // defect: the chassis daily reminder shares this plugin instance.
-    await cancelOwnedRenewals();
-    final List<Subscription> planned = plannedReminders(
-      subs,
-      daysBefore: daysBefore,
-    );
-    _droppedByBudget = subs.length - planned.length;
-    // ONE reading of the exact-alarm permission for the whole batch. It cannot
-    // change inside this loop in any way the user would notice, and eighty
-    // subscriptions must not mean eighty extra platform round-trips.
-    final AndroidScheduleMode mode = await _resolveScheduleMode();
-    for (final Subscription s in planned) {
-      await scheduleRenewalReminder(
-        s,
-        copy: copy,
-        daysBefore: daysBefore,
-        mode: mode,
-      );
-      await scheduleTrialReminder(
-        s,
-        copy: copy,
-        daysBefore: daysBefore,
-        mode: mode,
-      );
-    }
-  }
-
-  /// Fixed id for the digest, outside the renewal namespace below, so
-  /// `cancelForSubscription` and [cancelOwnedRenewals] can never take it.
-  static const int _digestId = 0x7ffffffe;
+  /// Fixed id for the digest, outside the renewal namespace below.
+  static const int digestId = 0x7ffffffe;
 
   /// The RENEWAL id namespace: [renewalIdBase, renewalIdBase + renewalIdRange).
   ///
   /// 🔴 DISJOINT BY CONSTRUCTION from every other id on the shared plugin:
   /// the chassis daily reminder is `kDailyReminderId` (1), the chassis
-  /// immediate bucket is 0x7f000000, the digest is 0x7ffffffe. All three lie
-  /// outside [0x10000000, 0x50000000), which is what lets [cancelOwnedRenewals]
-  /// read the OS pending list and cancel by membership rather than by
-  /// `cancelAll()`.
+  /// immediate bucket is 0x7f000000, the digest is 0x7ffffffe — which is what
+  /// lets [syncAll] reconcile by membership rather than by `cancelAll()`.
+  /// Ids scheduled by builds before ST-R3 (one per subscription) are in the
+  /// same namespace, so the first sync after an update cancels them.
   static const int renewalIdBase = 0x10000000;
   static const int renewalIdRange = 0x40000000;
 
@@ -803,47 +471,28 @@ class NotificationService {
   static bool isRenewalReminderId(int id) =>
       id >= renewalIdBase && id < renewalIdBase + renewalIdRange;
 
-  /// A STABLE id for a subscription id.
+  /// A STABLE id for a key (`<subscription id>|<lead>`).
   ///
   /// FNV-1a over the UTF-16 code units rather than `String.hashCode`: Dart
   /// documents `hashCode` as an implementation detail that may change between
   /// VM versions, and an id that moves with an SDK bump orphans every alarm
-  /// the previous build scheduled — `cancelForSubscription` would cancel the
-  /// new id while the old one kept firing.
+  /// the previous build scheduled.
   @visibleForTesting
-  static int renewalIdFor(String id) {
+  static int renewalIdFor(String key) {
     int h = 0x811c9dc5;
-    for (final int unit in id.codeUnits) {
+    for (final int unit in key.codeUnits) {
       h ^= unit;
       h = (h * 0x01000193) & 0xffffffff;
     }
     return renewalIdBase + (h % renewalIdRange);
   }
-
-  /// The TRIAL-END reminder's id for a subscription id: the same stable hash
-  /// over a prefixed key, so it lands in the owned namespace
-  /// ([cancelOwnedRenewals] reads it back) and never equals the renewal's.
-  @visibleForTesting
-  static int trialIdFor(String id) {
-    final int trial = renewalIdFor('trial:$id');
-    // A hash collision with the row's own renewal id would make one reminder
-    // silently replace the other; step past it inside the namespace.
-    return trial == renewalIdFor(id)
-        ? renewalIdBase + ((trial - renewalIdBase + 1) % renewalIdRange)
-        : trial;
-  }
-
-  int _idFor(String id) => renewalIdFor(id);
 }
 
-/// Why this platform cannot schedule a renewal reminder — the key a settings
-/// screen turns into a sentence. Only ever non-null where the capability
-/// matrix says so; the app never OFFERS what it cannot deliver.
-enum ReminderUnavailability {
-  /// No notification plugin at all on this target (web; Windows until an app
-  /// supplies the 22.x Windows plugin its init settings).
-  noNotifications,
+/// [RenewalReminders.forTesting]'s default seam: schedules nothing, and says
+/// yes when asked, like a device where the user allowed notifications.
+class _GrantingNoOp extends core.NoOpNotificationService {
+  const _GrantingNoOp();
 
-  /// Immediate notifications work but nothing can be scheduled (Linux).
-  noScheduling,
+  @override
+  Future<bool> requestPermission() async => true;
 }

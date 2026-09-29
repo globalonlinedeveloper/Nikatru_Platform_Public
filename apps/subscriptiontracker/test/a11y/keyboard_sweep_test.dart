@@ -484,7 +484,9 @@ kExpected = <String, ({int controls, int reachable})>{
   // options" opened nothing and was removed rather than kept reachable.
   // ⏱ 2026-09-28 · ST-T3b (ST-E3): 3 -> 4. "More options" is back, and it
   // opens the row's lifecycle menu (Pause, Mark as cancelled, Delete).
-  '/sub/:id': (controls: 4, reachable: 4),
+  // ⏱ 2026-09-28 · ST-R3: 4 -> 5, the detail's own Reminders row (the notice
+  // row appears only once the API emits notice_days; the seed does not).
+  '/sub/:id': (controls: 5, reachable: 5),
   // ⏱ 2026-09-27 · ST-U2 (audit C34): the paywall's back button.
   '/paywall': (controls: 1, reachable: 1),
   // 2 -> 3 on 2026-08-26, and NO WIDGET CHANGED. The third control was
@@ -1416,15 +1418,17 @@ void main() {
             'in the app bar',
       );
       // The hero is identified by the key the SCREEN publishes, not by a label
-      // and not by a widget class: `detail-hero-gradient` is checked in, and if
+      // and not by a widget class: `detail-header-band` is checked in, and if
       // it is renamed this goes red with a sentence rather than silently
-      // measuring nothing.
-      final Finder heroFinder = find.byKey(const Key('detail-hero-gradient'));
+      // measuring nothing. (⏱ 2026-09-28 · train ST-D5: it was
+      // `detail-hero-gradient` until the gradient hero became the chassis
+      // `AppDetailHeader` band; the two controls in it are unchanged.)
+      final Finder heroFinder = find.byKey(const Key('detail-header-band'));
       expect(
         heroFinder,
         findsOneWidget,
         reason:
-            'the detail screen no longer publishes a `detail-hero-gradient` '
+            'the detail screen no longer publishes a `detail-header-band` '
             'key, so this case cannot tell the app bar from the body and every '
             'sentence below is about a screen it can no longer find',
       );
@@ -1455,8 +1459,9 @@ void main() {
             'the detail app bar owns ${heroStops.length} stops on the Tab '
             'orbit, not one each. THAT is the SC 2.1.1 failure this case was '
             'written to report and reported until 2026-08-26: a keyboard user '
-            'can read the whole screen and leave by no door on it. Rebuild '
-            '_iconButton on design_system\'s FocusableTap — do NOT hand-roll a '
+            'can read the whole screen and leave by no door on it. Build the '
+            'header controls on design_system\'s AppIconAction (a FocusableTap) '
+            '— do NOT hand-roll a '
             'Focus widget at the call site',
       );
       // 🔴 THE POSITIONAL HALF, WHICH THE COUNTS CANNOT SAY. The app bar is the
