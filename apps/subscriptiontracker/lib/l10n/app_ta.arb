@@ -389,5 +389,7 @@
   "undo": "செயல்தவிர்",
   "statusPaused": "இடைநிறுத்தப்பட்டது",
   "statusCancelled": "ரத்து செய்யப்பட்டது",
-  "statusTrialing": "{date} வரை இலவச சோதனை"
+  "statusTrialing": "{date} வரை இலவச சோதனை",
+  "formOfflineNotice": "நீங்கள் ஆஃப்லைனில் உள்ளீர்கள். நீங்கள் உள்ளிட்டவை வைக்கப்பட்டுள்ளன — சேமிக்க இணைப்பு தேவை.",
+  "homeReviewUnused": "மதிப்பாய்வு செய்"
 }

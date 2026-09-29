@@ -65,7 +65,9 @@ class AppBreakpoints {
   /// Phone portrait and split-screen panes. Below this → bottom [NavigationBar].
   static const double medium = 600;
 
-  /// Small tablets, half-screen desktop. → collapsed [NavigationRail].
+  /// Small tablets, half-screen desktop. → the SLIM (collapsed)
+  /// [NavigationRail] — [ADR 083] §5, 2026-09-28 (D-02); it was the extended
+  /// 256 dp rail.
   static const double expanded = 840;
 
   /// Large tablets, ordinary desktop windows. → extended [NavigationRail].
@@ -162,6 +164,10 @@ WindowClass windowClassFor(double width) {
 /// ⏱ 2026-09-16 · [ADR 083] §4: extra-large → slim rail with the body capped.
 /// The drawer is gone from every class, so the map is: compact → bar; expanded
 /// → extended rail; medium, large and extra-large → slim rail.
+///
+/// ⏱ 2026-09-29 · [ADR 083] §5 (D-02): expanded → slim rail too. The map is
+/// now: compact → bar; every wider class → slim rail, the body capped from
+/// extra-large.
 class AppScaffold extends StatelessWidget {
   const AppScaffold({
     super.key,
@@ -172,8 +178,10 @@ class AppScaffold extends StatelessWidget {
     this.title,
     this.floatingActionButton,
     this.compactNavigationBar,
-  }) : assert(destinations.length >= 2,
-            'AppScaffold needs at least 2 destinations');
+  }) : assert(
+         destinations.length >= 2,
+         'AppScaffold needs at least 2 destinations',
+       );
 
   /// The navigation destinations (>= 2).
   final List<AppDestination> destinations;
@@ -227,7 +235,11 @@ class AppScaffold extends StatelessWidget {
           case WindowClass.medium:
             return _rail(extended: false);
           case WindowClass.expanded:
-            return _rail(extended: true);
+            // ⏱ 2026-09-29 · [ADR 083] §5 (design row D-02): the SLIM rail.
+            // The extended 256 dp rail left a 900 dp window a 643 dp body, and
+            // nothing split until 1097; the slim rail gives the body about
+            // 168 dp back. 1200 and up is unchanged (§4).
+            return _rail(extended: false);
           case WindowClass.large:
             // ⏱ 2026-09-15 · [ADR 083]: a SLIM rail, not the 360 px drawer.
             // The body is window − rail − 1 px divider instead of window − 361,
@@ -254,7 +266,8 @@ class AppScaffold extends StatelessWidget {
       // The app's own bar when it supplied one — see [compactNavigationBar].
       // Reached ONLY from here, so a custom bar cannot leak into the rail or
       // drawer classes.
-      bottomNavigationBar: compactNavigationBar ??
+      bottomNavigationBar:
+          compactNavigationBar ??
           NavigationBar(
             selectedIndex: selectedIndex,
             onDestinationSelected: onDestinationSelected,
@@ -273,6 +286,10 @@ class AppScaffold extends StatelessWidget {
   // MEDIUM (600–839): collapsed rail. EXPANDED (840–1199): the same rail,
   // extended — labels beside the icons rather than under them, which is what
   // the extra width buys.
+  //
+  // ⏱ 2026-09-29 · EXPANDED takes the COLLAPSED rail too ([ADR 083] §5, D-02):
+  // at 900 the extended rail left a 643 dp body. `extended: true` has no
+  // caller now; the parameter stays so the choice is one argument.
   //
   // ⏱ 2026-09-15 · LARGE (1200–1599) takes the COLLAPSED rail too ([ADR 083]).
   // Collapsed rather than extended because the point of the change is body

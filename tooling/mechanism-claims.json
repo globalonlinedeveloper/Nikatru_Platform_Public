@@ -924,18 +924,6 @@
       "reason": "True by inspection: `telemetryRelease = '$appId@$appVersion'`. The brick's copy of this sentence is proven by stamp-text-fidelity, but that guard runs only on the probe stamp (ci.yml --vars _probe_vars.json); nothing reads this app's app_config.dart and no test in apps/subscriptiontracker/test pins telemetryRelease. (The \"NOT WIRED YET\" paragraph that sat under it was corrected 2026-09-19: main.dart passes AppConfig.telemetryRelease.) judged 2026-09-18."
     },
     {
-      "file": "apps/subscriptiontracker/lib/features/add/add_subscription_sheet.dart",
-      "anchor": "merely resembling it — the two cannot drift when one of them is edited.",
-      "status": "demoted",
-      "reason": "True by construction today (the renewal InputDecorator wears _fieldDecoration). No test compares the renewal field's decoration with the text fields'; dark_group_sheets_test.dart pins radii of BoxDecorations, not the InputDecoration they share. A hand-rolled replacement that looked the same would stay green. judged 2026-09-18."
-    },
-    {
-      "file": "apps/subscriptiontracker/lib/features/add/add_subscription_sheet.dart",
-      "anchor": "and the category dropdown all wear it, so the four cannot drift apart.",
-      "status": "demoted",
-      "reason": "Same judgement as the renewal-field sentence above: _fieldDecoration is shared by construction, and no widget test asserts the four fields resolve to one decoration. judged 2026-09-18."
-    },
-    {
       "file": "apps/subscriptiontracker/lib/features/home/home_screen.dart",
       "anchor": "that arithmetic rather than as a literal 1261 so it cannot drift from",
       "status": "demoted",

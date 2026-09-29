@@ -74,7 +74,6 @@ import 'package:subscriptiontracker/core/format/sub_math.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/data/subscriptions/subscription_repository.dart';
 import 'package:subscriptiontracker/features/detail/subscription_detail_screen.dart';
-import 'package:subscriptiontracker/features/shared/widgets.dart';
 import 'package:subscriptiontracker/features/shell/app_shell.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/state/providers.dart';
@@ -407,7 +406,8 @@ int _offGround(_Frame f, int x, int y, Color ground) {
 Finder _pageCards(String path) {
   final Finder list = find.byType(ListView).first;
   if (path == '/home') {
-    return find.descendant(of: list, matching: find.byType(RowCard));
+    // ⏱ 2026-09-28 · train ST-D1: Home's rows are `AppListRow`s.
+    return find.descendant(of: list, matching: find.byType(AppListRow));
   }
   final RegExp barKey = RegExp(r'^budget\.bar\.\d+$');
   return find.descendant(
@@ -640,7 +640,7 @@ void main() {
         find
             .descendant(
               of: find.byKey(const Key('home-list-pane')),
-              matching: find.widgetWithText(RowCard, soonest),
+              matching: find.widgetWithText(AppListRow, soonest),
             )
             .first,
       );
@@ -683,12 +683,12 @@ void main() {
       );
       await _scrollToEnd(tester, s);
 
-      final Finder rows = find.byType(RowCard);
+      final Finder rows = find.byType(AppListRow);
       expect(
         rows,
         findsWidgets,
         reason:
-            'home rendered no RowCard at all, so this case is measuring '
+            'home rendered no AppListRow at all, so this case is measuring '
             'nothing — the seed data or the list changed',
       );
       final Rect lowest = _lowest(tester, rows);

@@ -1414,7 +1414,6 @@
   "@notificationActionOpen": {
     "description": "Consumed by services/notifications/notification_service.dart:47. The Linux notification's default action label — a button the desktop shell renders, so it is user-facing."
   },
-
   "a11yCategoryDonut": "Spending by category. {total} a month in total. {breakdown}",
   "@a11yCategoryDonut": {
     "description": "Consumed by insights_screen.dart. The Semantics label of the category donut. A CustomPaint announces NOTHING on its own — it is pixels — so without this key the one figure that matters on the insights screen is inaudible. {breakdown} is a11yCategoryShare joined per category, from the SAME list the painter is handed, so the sentence cannot drift from the chart.",
@@ -1868,5 +1867,13 @@
         "example": "Oct 3, 2026"
       }
     }
+  },
+  "formOfflineNotice": "You're offline. Your entries are kept — saving needs a connection.",
+  "@formOfflineNotice": {
+    "description": "Consumed by add_subscription_sheet.dart (train ST-D6). The warn banner at the top of the add/edit sheet while the app knows the network is unreachable. Must not claim the save will happen later: nothing queues it."
+  },
+  "homeReviewUnused": "Review",
+  "@homeReviewUnused": {
+    "description": "The one answer on Home's unused-plans DecisionStrip: opens Insights, where the unused plans are listed with their savings. A verb, short: it sits beside the message on a wide strip."
   }
 }

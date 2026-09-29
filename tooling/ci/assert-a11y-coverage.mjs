@@ -674,9 +674,22 @@ const REQUIRED_COVERAGE = [
     // Measured by this guard's own run: 18 reachable, 18 swept. The three cases
     // that swept `SignUpScreen` now sweep the screen `/sign-up` opens, so
     // `cases` does not move.
+    //
+    // ⏱ RAISED 18 → 19 on 2026-09-28 by train ST-D6: `showEditSubscriptionSheet`
+    // is a new entry point onto the add sheet (the EDIT form) and arrived swept
+    // by its own case in a11y_semantics_test.dart. Measured by this guard's own
+    // run: "19 of 19 reachable surface(s) carry an a11y sweep, from 1 a11y test
+    // file(s) across 111 case(s)". assert-responsive-coverage.mjs re-measured
+    // to 19 in the same change.
+    //
+    // ⏱ LOWERED 19 → 18 on 2026-09-29, deliberately, by train ST-D DW1 on
+    // ST-T3b: the edit form is `showAddSubscriptionSheet(context, initial: row)`
+    // (ST-T3b ST-E1), ONE entry point for add and edit, so ST-D6's separate
+    // `showEditSubscriptionSheet` surface is gone — merged, not lost. The edit
+    // form's own sweep case stays, and opens the same sheet with a row.
     surfaces: 18,
     a11yFiles: 1,
-    cases: 110,
+    cases: 111,
     label: 'the app P5 wrote this guard for — 18 surfaces, all eighteen swept',
   },
   {
@@ -829,9 +842,36 @@ const REQUIRED_COVERAGE = [
     //   surfaces  20 → 25
     //   a11yFiles  2 → 6
     //   cases      7 → 15
-    surfaces: 25,
-    a11yFiles: 6,
-    cases: 15,
+    //
+    // ⏱ RE-MEASURED 2026-09-28 · train ST-D6: the chassis FORM SHEET components
+    // (form_sheet.dart) arrived swept by a11y_form_sheet_test.dart. Read off
+    // this guard's own output on the branch: "10 of 28 reachable surface(s)
+    // carry an a11y sweep, from 7 a11y test file(s) across 16 case(s)".
+    //   surfaces  25 → 28
+    //   a11yFiles  6 → 7
+    //   cases     15 → 16
+    //
+    // ⏱ RE-MEASURED 2026-09-29 · train ST-D1, on top of ST-D6 (train ST-D DW1):
+    // the Home components (AppSectionHeader, AppListGroup, AppSummaryCard)
+    // arrived swept, by one a11y_*_test.dart file per component. Read off this
+    // guard's own output on the branch: "13 of 31 reachable surface(s) carry
+    // an a11y sweep, from 10 a11y test file(s) across 19 case(s)".
+    //   surfaces  28 → 31
+    //   a11yFiles  7 → 10
+    //   cases     16 → 19
+    //
+    // ⏱ RE-MEASURED 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1 (train
+    // ST-D DW1): the detail components (AppIconAction, AppMonogram,
+    // AppFigureTile, AppDetailHeader) arrived swept, by
+    // a11y_detail_components_test.dart — one body per component. Read off this
+    // guard's own output on the branch: "17 of 35 reachable surface(s) carry
+    // an a11y sweep, from 11 a11y test file(s) across 23 case(s)".
+    //   surfaces  31 → 35
+    //   a11yFiles 10 → 11
+    //   cases     19 → 23
+    surfaces: 35,
+    a11yFiles: 11,
+    cases: 23,
     label:
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, auth_field, ' +
       'destructive_confirm_dialog, two_pane and fourteen more, mounted by every stamped app',
@@ -1033,6 +1073,27 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
       'packages/design_system/lib/src/widgets/app_list_row.dart#AppListRow',
       'packages/design_system/lib/src/widgets/decision_strip.dart#DecisionStrip',
       'packages/design_system/lib/src/widgets/skeleton_list.dart#SkeletonList',
+      // ⏱ 2026-09-28 · train ST-D6: the form sheet components, in the same
+      // change as their sweep.
+      'packages/design_system/lib/src/widgets/form_sheet.dart#AppFormSheet',
+      'packages/design_system/lib/src/widgets/form_sheet.dart#AppFormField',
+      // ⚠️ `AppSegmentedChoice<T>` is swept by the same case but is NOT
+      // listed: it is GENERIC, and this guard's surface scan does not reach a
+      // `class Name<T> extends` declaration (measured: listing it reads as
+      // FLOOR OVER NOTHING). Its selected-state semantics are asserted by
+      // form_sheet_test.dart and, in the app, a11y_semantics_test.dart.
+      'packages/design_system/lib/src/widgets/form_sheet.dart#AppFormActions',
+      // ⏱ 2026-09-28 · train ST-D1: the Home components, each in the same
+      // change as its sweep.
+      'packages/design_system/lib/src/widgets/app_section_header.dart#AppSectionHeader',
+      'packages/design_system/lib/src/widgets/app_list_group.dart#AppListGroup',
+      'packages/design_system/lib/src/widgets/app_summary_card.dart#AppSummaryCard',
+      // ⏱ 2026-09-28 · train ST-D5: the detail components, each in the same
+      // change as its sweep.
+      'packages/design_system/lib/src/widgets/app_detail_header.dart#AppDetailHeader',
+      'packages/design_system/lib/src/widgets/app_figure_tile.dart#AppFigureTile',
+      'packages/design_system/lib/src/widgets/app_icon_action.dart#AppIconAction',
+      'packages/design_system/lib/src/widgets/app_monogram.dart#AppMonogram',
     ]),
   ],
 ]);
