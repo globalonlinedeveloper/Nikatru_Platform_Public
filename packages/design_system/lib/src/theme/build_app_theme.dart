@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../tokens/app_colors.dart';
-import '../tokens/brand_tokens.dart';
+import '../tokens/app_type_ramp.dart';
 import 'app_theme_x.dart';
 
 /// Builds the NIKATRU [ThemeData] for a [seed] colour and [brightness].
@@ -88,19 +88,37 @@ ThemeData _themeFrom({
     ),
     textButtonTheme: const TextButtonThemeData(style: standardDensity),
   );
+  final TextTheme text = AppTypeRamp.apply(
+    base.textTheme,
+  ).apply(bodyColor: ink, displayColor: ink);
   return base.copyWith(
     scaffoldBackgroundColor: scaffoldBackground,
     colorScheme: scheme,
-    textTheme: base.textTheme.apply(
-      // The APP-WIDE text face, and it is a brand fact, so it is read from the
-      // contract rather than typed. It was the literal `'Manrope'` until
-      // 2026-09-05, one line away from `app_text.dart`, which had already been
-      // repointed — so a change to contracts/tokens/dtcg/font.json would have
-      // moved the six named styles and left every unnamed Material style on the
-      // old face. Half a repaint is worse than none: it looks deliberate.
-      fontFamily: BrandTokens.fontBody,
-      bodyColor: ink,
-      displayColor: ink,
+    // The APP-WIDE text faces and sizes. The faces are brand facts, so they
+    // are read from the contract rather than typed: this was the literal
+    // `'Manrope'` until 2026-09-05, one line away from `app_text.dart`, which
+    // had already been repointed — so a change to contracts/tokens/dtcg/font.json
+    // would have moved the six named styles and left every unnamed Material
+    // style on the old face. Half a repaint is worse than none.
+    //
+    // ⏱ 2026-09-28 · train ST-D0: the SIZES are the chassis ramp too
+    // ([AppTypeRamp]), with its 12 px floor. The body face still covers every
+    // title, body and label role; display and headline roles take the display
+    // face, which is the split `AppText` already makes by hand.
+    textTheme: text,
+    // ⏱ 2026-09-28 · train ST-D0: NAVIGATION BADGES ARE NEUTRAL. Material's
+    // default badge is `scheme.error` — red — which reads as "something is
+    // wrong" on a tab whose badge only counts things (renewals this week,
+    // unread notices). A count is not an alarm, so the chassis paints it in
+    // the inverse-surface pair: no hue, and the highest-contrast pair the
+    // scheme has in both brightnesses. A screen with a real alarm passes its
+    // own colours to its own `Badge`. The label is the ramp's 12 px floor;
+    // Material's default is `labelSmall`, which was 11 before the ramp above.
+    badgeTheme: BadgeThemeData(
+      backgroundColor: scheme.inverseSurface,
+      textColor: scheme.onInverseSurface,
+      largeSize: 18,
+      textStyle: text.labelSmall?.copyWith(height: 1),
     ),
     splashFactory: InkRipple.splashFactory,
     dividerColor: divider,

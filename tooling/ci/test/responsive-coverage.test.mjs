@@ -227,7 +227,10 @@ describe('the guard says YES on the tree as it is', () => {
     // HomeScreen and ExploreScreen count through delegation — so the guard now
     // prints its EQUAL line. `enforce` stays false by the guard's own dated note.
     assert.match(out, /\{\{app_id\}\}: 12 surface\(s\) reachable, 3 measured — the two sets are EQUAL/);
-    assert.match(out, /packages\/design_system: 12 of 20 surface\(s\) measured — 8 PRINTED and not failed/);
+    // ⏱ 2026-09-28 · train ST-D0: 12 of 20 → 17 of 25 — the foundation
+    // components arrived measured; 8 PRINTED is unchanged. Read off the
+    // guard's own per-root line.
+    assert.match(out, /packages\/design_system: 17 of 25 surface\(s\) measured — 8 PRINTED and not failed/);
   });
 
   test('the copied subject tree reproduces the subscriptiontracker reading exactly — and derives TWO roots', () => {
@@ -528,7 +531,8 @@ describe('a report-mode root can get better, never quietly worse', () => {
     assert.equal(code, 2, out);
     assert.match(
       out,
-      /COVERAGE LOST — `packages\/design_system` has 10 measured surface\(s\) and its measured floor is 12/s,
+      // ⏱ 2026-09-28 · train ST-D0: 10 of 12 → 15 of 17 (floor re-based to 17).
+      /COVERAGE LOST — `packages\/design_system` has 15 measured surface\(s\) and its measured floor is 17/s,
     );
   });
 
@@ -555,7 +559,8 @@ describe('a report-mode root can get better, never quietly worse', () => {
     rmSync(join(root, `${DS}/lib/src/widgets/two_pane.dart`));
     const { code, out } = run(root);
     assert.equal(code, 2, out);
-    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 18 responsive surface\(s\).*floor is 20/s);
+    // ⏱ 2026-09-28 · train ST-D0: 18 of 20 → 23 of 25 (floor re-based to 25).
+    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 23 responsive surface\(s\).*floor is 25/s);
   });
 
   test("R11c · a NEW unmeasured surface in EACH new root reaches that root's printed list", () => {
@@ -583,7 +588,8 @@ describe('a report-mode root can get better, never quietly worse', () => {
     // ⏱ 2026-09-23 (chassis home): 3 → 1 PRINTED — only this case's probe sheet is
     // left; HomeScreen and ExploreScreen now count through delegation.
     assert.match(out, /\{\{app_id\}\}: 3 of 13 surface\(s\) measured — 1 PRINTED/);
-    assert.match(out, /packages\/design_system: 12 of 21 surface\(s\) measured — 9 PRINTED/);
+    // ⏱ 2026-09-28 · train ST-D0: 12 of 21 → 17 of 26 (measured arrivals).
+    assert.match(out, /packages\/design_system: 17 of 26 surface\(s\) measured — 9 PRINTED/);
   });
 });
 

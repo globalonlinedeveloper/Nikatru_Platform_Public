@@ -84,6 +84,12 @@ class AppSpacing {
 }
 
 /// Corner-radius scale.
+///
+/// ⏱ 2026-09-28 · train ST-D0: the five steps are MIRRORED by
+/// `contracts/tokens/dtcg/scale.json` (`radius.*`, with `lg` as the contract's
+/// `size.radius`), and `test/scale_mirror_test.dart` now compares them — the
+/// "nothing compares a Dart literal with a JSON one" exposure the emitter's
+/// header records is closed for this class and for [AppSpacing].
 class AppRadius {
   AppRadius._();
 
@@ -92,4 +98,20 @@ class AppRadius {
   static const double lg = 16;
   static const double xl = 22;
   static const double pill = 999;
+
+  // ── ROLES ──────────────────────────────────────────────────────────────────
+  // Which step a COMPONENT takes, named once so the foundation components and
+  // the screens that adopt them cannot each pick their own corner. They are
+  // aliases, never new numbers: a role that needed a sixth radius would be a
+  // scale change, made above and mirrored in scale.json in the same commit.
+
+  /// A card, a decision strip, a list-row group: [lg], the brand radius.
+  static const double card = lg;
+
+  /// A control inside a card — a button, a field, a skeleton row: [md].
+  static const double control = md;
+
+  /// The floating action button: [lg], so it reads as the same family of
+  /// shape as the cards it floats over.
+  static const double fab = lg;
 }
