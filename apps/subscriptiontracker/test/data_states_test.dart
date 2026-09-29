@@ -38,7 +38,6 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:subscriptiontracker/data/models/budget_info.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/data/subscriptions/subscription_repository.dart';
-import 'package:subscriptiontracker/features/budget/budget_screen.dart';
 import 'package:subscriptiontracker/features/calendar/calendar_screen.dart';
 import 'package:subscriptiontracker/features/detail/subscription_detail_screen.dart';
 import 'package:subscriptiontracker/features/insights/insights_screen.dart';
@@ -126,7 +125,6 @@ void main() {
   // genuine outcome is "no such record", and that is the state it must show
   // rather than a failure.
   final Map<String, Widget> screens = <String, Widget>{
-    'budget': const BudgetScreen(),
     'calendar': const CalendarScreen(),
     'insights': const InsightsScreen(),
     'notifications': const NotificationsScreen(),

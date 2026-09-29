@@ -397,7 +397,7 @@ void main() {
         final AppLocalizations l = await _l10n(code);
         await _pumpShell(tester, Locale(code));
 
-        // The five labels. `_tabs` stopped being a `static const` for exactly
+        // The four labels (ST-D3 D3-3: no Budget tab, Settings named). `_tabs` stopped being a `static const` for exactly
         // this: a const list cannot hold a value that depends on the resolved
         // Localizations, and `destinations:` is what the rail, the drawer and
         // every screen reader read.
@@ -405,8 +405,7 @@ void main() {
           l.navHome,
           l.navCalendar,
           l.navInsights,
-          l.navBudget,
-          l.navMore,
+          l.navSettings,
         ]) {
           expect(
             find.descendant(

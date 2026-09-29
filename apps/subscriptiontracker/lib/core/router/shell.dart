@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// THE SHELL AND ITS FIVE BRANCHES — the bottom-nav half of the route table, and
+// THE SHELL AND ITS FOUR BRANCHES — the bottom-nav half of the route table, and
 // the one router-local wrapper (`_GatedInsights`) that stands between a branch
 // and its screen.
 //
@@ -13,7 +13,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
-import '../../features/budget/budget_screen.dart';
 import '../../features/calendar/calendar_screen.dart';
 import '../../features/home/home_screen.dart';
 import '../../features/insights/insights_screen.dart';
@@ -22,7 +21,11 @@ import '../../features/shell/app_shell.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/money_providers.dart';
 
-/// ── THE LIVE SHELL — five branches, unchanged ─────────────────────────
+/// ── THE LIVE SHELL — four branches (ST-D3 D3-3, ADR 077 §A) ──────────────
+///
+/// Home, Calendar, Insights, Settings. The Budget branch is GONE, not hidden:
+/// its card and its editor live on Insights, and `/budget` is a redirect in
+/// `routes.dart` so every link already written against it still lands.
 RouteBase appShellRoute() => StatefulShellRoute.indexedStack(
   builder: (_, __, StatefulNavigationShell navShell) =>
       AppShell(navigationShell: navShell),
@@ -50,15 +53,6 @@ RouteBase appShellRoute() => StatefulShellRoute.indexedStack(
         GoRoute(
           path: '/insights',
           builder: (_, __) => const _GatedInsights(),
-          caseSensitive: false,
-        ),
-      ],
-    ),
-    StatefulShellBranch(
-      routes: <RouteBase>[
-        GoRoute(
-          path: '/budget',
-          builder: (_, __) => const BudgetScreen(),
           caseSensitive: false,
         ),
       ],

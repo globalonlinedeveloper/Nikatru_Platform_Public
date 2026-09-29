@@ -299,11 +299,19 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
 
         // The page's card STACK, in reading order — built ONCE, then laid out
         // in one column or two, so no arm can gain a card the other lacks.
+        // Every card is keyed `insights.card.<n>` so a test can find the
+        // LOWEST card whatever it is (the FAB and fold cases in
+        // `width_shell_fab_test.dart`).
         final List<Widget> cards = <Widget>[
           BudgetCard(subs: subs, currencyCode: currencyCode),
           _categoryCard(context, l10n, money, currencyCode, cats),
           if (unused.isNotEmpty)
             _savingsCard(context, l10n, money, unused, savings),
+        ];
+
+        final List<Widget> keyed = <Widget>[
+          for (int i = 0; i < cards.length; i++)
+            KeyedSubtree(key: Key('insights.card.$i'), child: cards[i]),
         ];
 
         // 🔴 THE `LayoutBuilder` SITS OUTSIDE THE PANE: inside a `ContentPane`
@@ -324,11 +332,11 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
                   SummaryTiles(subs: subs, money: money, now: DateTime.now()),
                   const SizedBox(height: AppSpacing.lg),
                   if (twoUp)
-                    _twoColumnCards(cards, _cardGap)
+                    _twoColumnCards(keyed, _cardGap)
                   else
-                    for (int i = 0; i < cards.length; i++) ...<Widget>[
+                    for (int i = 0; i < keyed.length; i++) ...<Widget>[
                       if (i > 0) const SizedBox(height: _cardGap),
-                      cards[i],
+                      keyed[i],
                     ],
                 ],
               ),

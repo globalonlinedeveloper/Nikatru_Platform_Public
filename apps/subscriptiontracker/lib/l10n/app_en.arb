@@ -804,33 +804,9 @@
   "@confirmCancel": {
     "description": "Consumed by cancel_sheet.dart. The remove sheet's confirm button. Short because the button is half the sheet wide; the title carries 'from your tracker'. Deliberately NOT the detail screen's 'Remove' (cancelPlanButton): the sheet opens over that screen, and two identical labels make every finder — and a screen reader's list of buttons — ambiguous. Pinned by test/sheet_failure_surface_test.dart, test/width_cancel_sheet_test.dart, integration_test/app_test.dart — the value must not change without moving those."
   },
-  "budgetTitle": "Budget & goals",
-  "@budgetTitle": {
-    "description": "Consumed by budget_screen.dart:87."
-  },
-  "overBudget": "over budget",
-  "@overBudget": {
-    "description": "Consumed by budget_screen.dart:119. Sits under the percentage in the ring. Half of a pair with ofBudget — the ring shows one or the other."
-  },
-  "ofBudget": "of budget",
-  "@ofBudget": {
-    "description": "Consumed by budget_screen.dart:119. See overBudget."
-  },
-  "statSpent": "Spent",
-  "@statSpent": {
-    "description": "Consumed by budget_screen.dart:131."
-  },
-  "statLeft": "Left",
-  "@statLeft": {
-    "description": "Consumed by budget_screen.dart:134."
-  },
-  "statBudget": "Budget",
-  "@statBudget": {
-    "description": "Consumed by budget_screen.dart:137. Pinned by integration_test/app_test.dart:400, integration_test/store_screenshots_test.dart:310 — the value must not change without moving those."
-  },
   "byCategory": "By category",
   "@byCategory": {
-    "description": "Consumed by budget_screen.dart:143. SHARED with insights_screen.dart:112 — the same heading over the same breakdown."
+    "description": "Consumed by features/insights/insights_screen.dart: the heading over the category breakdown."
   },
   "calendarTitle": "Renewal calendar",
   "@calendarTitle": {
@@ -1058,14 +1034,6 @@
   "navInsights": "Insights",
   "@navInsights": {
     "description": "Consumed by app_shell.dart:32. See navCalendar. Pinned by test/chassis_properties_test.dart:3384, integration_test/app_test.dart:393, integration_test/store_screenshots_test.dart:301 — the value must not change without moving those."
-  },
-  "navBudget": "Budget",
-  "@navBudget": {
-    "description": "Consumed by app_shell.dart:33. See navCalendar. Pinned by integration_test/app_test.dart:400, integration_test/store_screenshots_test.dart:310 — the value must not change without moving those."
-  },
-  "navMore": "More",
-  "@navMore": {
-    "description": "Consumed by app_shell.dart:34. See navCalendar. Pinned by integration_test/app_test.dart:406, integration_test/store_screenshots_test.dart:39 — the value must not change without moving those."
   },
   "markedUnusedCount": "{count, plural, =1{1 marked unused} other{{count} marked unused}}",
   "@markedUnusedCount": {
@@ -1435,42 +1403,6 @@
       "amount": {
         "type": "String",
         "example": "₹960"
-      }
-    }
-  },
-  "a11yBudgetRing": "Budget used. {spent} of {budget}, {percent}.",
-  "@a11yBudgetRing": {
-    "description": "Consumed by budget_screen.dart. The Semantics label of the budget progress arc (a CustomPaint, so silent on its own). The UNDER-budget arm — see a11yBudgetRingOver for the other.",
-    "placeholders": {
-      "spent": {
-        "type": "String",
-        "example": "₹1,800"
-      },
-      "budget": {
-        "type": "String",
-        "example": "₹2,500"
-      },
-      "percent": {
-        "type": "String",
-        "example": "72%"
-      }
-    }
-  },
-  "a11yBudgetRingOver": "Over budget. {spent} of {budget}, {percent}.",
-  "@a11yBudgetRingOver": {
-    "description": "Consumed by budget_screen.dart. The OVER-budget arm of a11yBudgetRing. A WHOLE SECOND SENTENCE and not a fragment prepended to the first: the two differ by a clause a translator must be free to place, and the percent is clamped at 100% in this arm so the figures carry the overspend, not the ring.",
-    "placeholders": {
-      "spent": {
-        "type": "String",
-        "example": "₹2,900"
-      },
-      "budget": {
-        "type": "String",
-        "example": "₹2,500"
-      },
-      "percent": {
-        "type": "String",
-        "example": "100%"
       }
     }
   },

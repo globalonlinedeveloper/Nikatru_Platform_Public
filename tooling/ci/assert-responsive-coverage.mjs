@@ -483,7 +483,10 @@ const REQUIRED_COVERAGE = [
     // ⏱ RAISED 18 → 19 (and coveredSurfaces with it) on 2026-09-29 by ST-D3
     // D3-2: the budget editor sheet is a new surface, measured at every window
     // class by `width_budget_editor_test.dart`.
-    surfaces: 19,
+    // ⏱ LOWERED 19 → 18 the same day by ST-D3 D3-3, deliberately: `BudgetScreen`
+    // is RETIRED (ADR 077 §A) and `width_budget_test.dart` went with it; the
+    // file count stays above its floor (17 files, floor 16).
+    surfaces: 18,
     // 🔴 THIS FLOOR IS ONE UNDER ITS TREE AND IT IS BEING LEFT THERE ON
     // PURPOSE, WHICH IS WORTH MORE WORDS THAN RAISING IT WOULD HAVE BEEN.
     // MEASURED 2026-09-05: `ls apps/subscriptiontracker/test | grep -cE
@@ -501,7 +504,7 @@ const REQUIRED_COVERAGE = [
     // 📌 OWED, AND REPORTED TO THE OWNER RATHER THAN LEFT IN A COMMENT: raise
     // this to 17 in the same change that grows that fixture's `N`.
     widthTestFiles: 16, // 15 `width_*_test.dart` + `responsive_width_test.dart`
-    coveredSurfaces: 19,
+    coveredSurfaces: 18,
     label: 'the app this guard was written for — every surface measured, and it fails if one stops being',
   },
   {

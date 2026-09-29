@@ -678,10 +678,16 @@ const REQUIRED_COVERAGE = [
     // ⏱ RAISED 18 → 19 and cases 110 → 112 on 2026-09-29 by ST-D3 D3-2: the budget
     // editor (`showBudgetEditorSheet`) is a new modal surface and arrives swept
     // by two cases. Measured by this guard's own run: 19 reachable, 19 swept.
-    surfaces: 19,
+    //
+    // ⏱ LOWERED 19 → 18 the same day by ST-D3 D3-3, deliberately: the Budget tab
+    // and `BudgetScreen` are RETIRED (ADR 077 §A — the budget is a card on
+    // Insights) and `/budget` is a redirect with no builder. Its five cases now
+    // sweep the budget card and the budget editor, so `cases` does not move.
+    // Measured by this guard's own run: 18 reachable, 18 swept.
+    surfaces: 18,
     a11yFiles: 1,
     cases: 112,
-    label: 'the app P5 wrote this guard for — 19 surfaces, all nineteen swept',
+    label: 'the app P5 wrote this guard for — 18 surfaces, all eighteen swept',
   },
   {
     dir: BRICK,
@@ -936,7 +942,6 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
     new Set(
       [
         'features/insights/insights_screen.dart#InsightsScreen',
-        'features/budget/budget_screen.dart#BudgetScreen',
         'features/scan/scan_screen.dart#ScanScreen',
         'features/calendar/calendar_screen.dart#CalendarScreen',
         'features/detail/subscription_detail_screen.dart#SubscriptionDetailScreen',

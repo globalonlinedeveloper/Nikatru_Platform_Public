@@ -34,7 +34,6 @@ import 'package:subscriptiontracker/core/format/sub_math.dart';
 import 'package:subscriptiontracker/data/models/budget_info.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/data/subscriptions/subscription_repository.dart';
-import 'package:subscriptiontracker/features/budget/budget_screen.dart';
 import 'package:subscriptiontracker/features/insights/insights_screen.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 
@@ -149,53 +148,5 @@ void main() {
           'legend are the same six subscriptions',
     );
     expect(centre, r'$97', reason: '39.49 + 20.20 + … + 3.49 = 96.65');
-  });
-
-  testWidgets('BUDGET — the category bars add up to the spend above them', (
-    WidgetTester tester,
-  ) async {
-    await pumpAt(
-      tester,
-      const Size(800, 2400),
-      const BudgetScreen(),
-      overrides: _overrides(),
-    );
-
-    final List<String> bars = <String>[
-      for (int i = 0; i < _lossy.length; i++)
-        (tester.widget<Text>(find.byKey(Key('budget.bar.figure.$i'))).textSpan!
-                as TextSpan)
-            .text!,
-    ];
-
-    expect(
-      bars,
-      hasLength(6),
-      reason: 'COVERAGE LOST — six categories were seeded and fewer drew a bar',
-    );
-    // The whole these bars are parts of, printed on the summary card two cards
-    // up. It is the EXACT figure, cents and all, which is why the bars must sum
-    // to its whole-unit reading rather than to itself.
-    expect(
-      find.text(r'$96.65'),
-      findsOneWidget,
-      reason:
-          'COVERAGE LOST — the "Spent" stat is the whole this case is about; '
-          'if it is not on screen the bars are parts of nothing',
-    );
-    expect(
-      naiveSumOfRounded(),
-      isNot(97),
-      reason:
-          'COVERAGE LOST — the fixture must be one the old rendering missed',
-    );
-
-    expect(
-      bars.map(dollarsIn).reduce((int a, int b) => a + b),
-      97,
-      reason:
-          'a reader adding $bars must reach the \$96.65 printed above them, '
-          'read at the precision the bars are printed in',
-    );
   });
 }

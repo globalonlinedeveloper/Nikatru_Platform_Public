@@ -401,7 +401,12 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
     for (const f of readdirSync(join(root, ROUTER_DIR))) {
       if (f.endsWith('.dart')) writeIn(root, `${ROUTER_DIR}/${f}`, 'const int routerStub = 0;\n');
     }
-    for (const sheet of ['add/add_subscription_sheet.dart', 'cancel/cancel_sheet.dart']) {
+    // ⏱ 2026-09-29 (ST-D3 D3-2): the budget editor is the third sheet.
+    for (const sheet of [
+      'add/add_subscription_sheet.dart',
+      'cancel/cancel_sheet.dart',
+      'insights/budget_editor.dart',
+    ]) {
       writeIn(root, `${FEATURES}/${sheet}`, 'const int stub = 0;\n');
     }
     const { code, out } = run(root);

@@ -83,7 +83,6 @@ import 'package:subscriptiontracker/features/auth/login_screen.dart';
 import 'package:subscriptiontracker/features/auth/reaccept_terms_screen.dart';
 import 'package:subscriptiontracker/features/auth/reset_password_screen.dart';
 import 'package:subscriptiontracker/features/auth/verify_email_screen.dart';
-import 'package:subscriptiontracker/features/budget/budget_screen.dart';
 import 'package:subscriptiontracker/features/calendar/calendar_screen.dart';
 import 'package:subscriptiontracker/features/cancel/cancel_sheet.dart';
 import 'package:subscriptiontracker/features/detail/subscription_detail_screen.dart';
@@ -1199,47 +1198,6 @@ String expectedDonutLabel(ProviderContainer c, AppLocalizations l10n) {
   );
 }
 
-/// The budget arc's expected sentence, from the same two providers the screen
-/// reads.
-String expectedRingLabel(ProviderContainer c, AppLocalizations l10n) {
-  final List<Subscription> subs =
-      c.read(subscriptionsControllerProvider).value ?? const <Subscription>[];
-  final BudgetInfo? budget = c.read(budgetProvider).value;
-  expect(
-    budget,
-    isNotNull,
-    reason:
-        'COVERAGE LOST — budgetProvider had not resolved, so the screen was '
-        'still its CircularProgressIndicator branch and there was no ring to '
-        'describe. Check the pump count before believing any failure below.',
-  );
-  final MoneyFormatter money = MoneyFormatter(l10n.localeName);
-  final String currencyCode = c.read(currencyCodeProvider);
-  // Mirrors the screen exactly: the PRINTED figure is every subtotal, the
-  // MEASURED one is only the part in the budget's own currency.
-  final MoneyBag spent = SubMath.totalMonthly(subs);
-  final BudgetInfo shown = budget!.inCurrency(currencyCode);
-  final Money spentHere = shown.usageOf(spent).spentHere;
-  final Money budgetVal = shown.monthlyBudget;
-  final bool over = spentHere > budgetVal;
-  final String percent = NumberFormat.percentPattern(l10n.localeName).format(
-    budgetVal.minorUnits <= 0
-        ? 0
-        : (spentHere.minorUnits / budgetVal.minorUnits).clamp(0, 1),
-  );
-  return over
-      ? l10n.a11yBudgetRingOver(
-          money.formatBag(spent),
-          money.formatRounded(budgetVal),
-          percent,
-        )
-      : l10n.a11yBudgetRing(
-          money.formatBag(spent),
-          money.formatRounded(budgetVal),
-          percent,
-        );
-}
-
 /// 🔴 THE CALENDAR SCREEN IS PINNED TO A KNOWN DATE, AND IT HAS TO BE.
 ///
 /// `CalendarScreen` renders "the month `DateTime.now()` falls in", while
@@ -1521,56 +1479,69 @@ void main() {
     });
   });
 
-  // ═══ TIER 1 · BUDGET ═══════════════════════════════════════════════════════
-  group('budget · the arc says spent-of-budget', () {
-    testWidgets('[en] the ring announces both figures, not just the percent', (
+  // ═══ TIER 1 · BUDGET CARD (Insights, ST-D3) ═══════════════════════════════
+  // The Budget screen is retired (ADR 077 §A); its ring cases move to the card
+  // that replaced it. The meter is ONE node whose label says what it measures
+  // and whose value says how much, in words (decision D-08).
+  group('budget card · the meter says what it measures, in words', () {
+    testWidgets('[en] the meter is announced as "Budget used" with a value', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        final ProviderContainer c = await pumpScreen(
+        await pumpScreen(
           tester,
-          const BudgetScreen(),
+          const InsightsScreen(),
+          size: const Size(420, 2400),
+        );
+        final AppLocalizations l10n = await _load('en');
+        final List<SemanticsData> meter = _nodes(tester)
+            .map((SemanticsNode n) => n.getSemanticsData())
+            .where((SemanticsData d) => d.label == l10n.budgetMeterLabel)
+            .toList();
+        expect(meter, hasLength(1), reason: 'the meter is silent or doubled');
+        expect(
+          meter.single.value,
+          endsWith('used'),
+          reason: 'a bare number is not what a reader needs to hear',
+        );
+      });
+    });
+
+    testWidgets('[ta] the same node, in Tamil', (WidgetTester tester) async {
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          const InsightsScreen(),
+          size: const Size(420, 2400),
+          locale: const Locale('ta'),
+        );
+        final AppLocalizations ta = await _load('ta');
+        final AppLocalizations en = await _load('en');
+        expect(announced(tester), contains(ta.budgetMeterLabel));
+        expect(
+          announced(tester),
+          isNot(contains(en.budgetMeterLabel)),
+          reason: 'the English meter name survived into a Tamil build',
+        );
+      });
+    });
+
+    testWidgets('the Edit control names what it edits', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          const InsightsScreen(),
+          size: const Size(420, 2400),
         );
         final AppLocalizations l10n = await _load('en');
         expect(
           announced(tester),
-          contains(expectedRingLabel(c, l10n)),
-          reason:
-              'the visible percent is CLAMPED to 100%, so a user well over '
-              'budget hears a figure that is also true of being exactly on it. '
-              'The spent/budget pair is the part that cannot be clamped.',
+          contains(l10n.budgetEditA11y),
+          reason: '"Edit" alone does not say WHAT a screen reader user edits',
         );
-      });
-    });
-
-    testWidgets('[ta] the same sentence, in Tamil', (
-      WidgetTester tester,
-    ) async {
-      await semantically(tester, () async {
-        final ProviderContainer c = await pumpScreen(
-          tester,
-          const BudgetScreen(),
-          locale: const Locale('ta'),
-        );
-        expect(
-          announced(tester),
-          contains(expectedRingLabel(c, await _load('ta'))),
-        );
-        expect(
-          announced(tester),
-          isNot(contains(expectedRingLabel(c, await _load('en')))),
-          reason: 'the English ring description survived into a Tamil build',
-        );
-      });
-    });
-
-    testWidgets('nothing on budget is naked', (WidgetTester tester) async {
-      await semantically(tester, () async {
-        await pumpScreen(tester, const BudgetScreen());
-        // The floor is 0 and stated: budget is the one Tier-1 screen with no
-        // control on it at all — it is a report. Passing 1 here would be a
-        // requirement invented by the test.
-        expect(nakedControls(tester), isEmpty);
+        expectNothingNaked(tester, 'insights (budget card)');
       });
     });
   });
@@ -1865,8 +1836,7 @@ void main() {
             l10n.navHome,
             l10n.navCalendar,
             l10n.navInsights,
-            l10n.navBudget,
-            l10n.navMore,
+            l10n.navSettings,
           ];
           // ⚠️ SCOPED BY "HAS A SELECTED STATE", NOT BY LABEL ALONE, AND THAT
           // IS A REAL FINDING RATHER THAN A CONVENIENCE. `navCalendar`'s value
@@ -3914,23 +3884,41 @@ void main() {
     // control lands on budget, or a Flutter upgrade changes the traversal — the
     // suite goes red and says "now write the sweep" instead of leaving a
     // permanent hole nobody re-checks.
-    testWidgets('budget hands the tap-target guideline NOTHING — pinned', (
+    testWidgets('every tap target on the budget editor is at least 48×48', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const BudgetScreen());
-        // Budget is the one Tier-1 screen with no control on it at all — it is a
-        // report, and its naked case says the same thing with a floor of 0. A
-        // tap-target sweep here would range over an empty set forever.
-        expect(
-          await tapTargetSubjects(tester),
-          0,
-          reason:
-              'budget now offers the tap-target guideline something to measure, '
-              'and this family skips it on the grounds that it does not. Add '
-              '`meetsGuideline(androidTapTargetGuideline)` for this screen and '
-              'delete this case — the exception has expired.',
+        await pumpScreen(
+          tester,
+          Scaffold(
+            body: Builder(
+              builder: (BuildContext context) => Center(
+                child: TextButton(
+                  onPressed: () => showBudgetEditorSheet(
+                    context,
+                    budget: const BudgetInfo(
+                      monthlyBudget: Money(550000, 'INR'),
+                      categories: <BudgetCap>[],
+                    ),
+                    spent: MoneyBag.sum(const <Money>[Money(504900, 'INR')]),
+                    categories: <CategoryTotal>[
+                      CategoryTotal(
+                        'Video',
+                        MoneyBag.sum(const <Money>[Money(129700, 'INR')]),
+                      ),
+                    ],
+                  ),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+          theme: appTheme(),
         );
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+        await expectGuidelineHadSubjects(tester, 'the budget editor');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       });
     });
 
@@ -4304,22 +4292,43 @@ void main() {
       });
     });
 
-    testWidgets('every string on budget meets WCAG AA contrast', (
+    testWidgets('every string on the budget editor meets WCAG AA contrast', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
         await pumpScreen(
           tester,
-          const BudgetScreen(),
+          Scaffold(
+            body: Builder(
+              builder: (BuildContext context) => Center(
+                child: TextButton(
+                  onPressed: () => showBudgetEditorSheet(
+                    context,
+                    budget: const BudgetInfo(
+                      monthlyBudget: Money(550000, 'INR'),
+                      categories: <BudgetCap>[],
+                    ),
+                    spent: MoneyBag.sum(const <Money>[Money(504900, 'INR')]),
+                    categories: <CategoryTotal>[
+                      CategoryTotal(
+                        'Video',
+                        MoneyBag.sum(const <Money>[Money(129700, 'INR')]),
+                      ),
+                    ],
+                  ),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
           theme: appTheme(),
-          paintBackground: true,
         );
-        // 3 subjects. AA passes; AAA does not.
-        await expectOpaqueGround(tester, 'budget');
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
         await expectContrastHadSubjects(
           tester,
-          'budget',
-          covers: const <String>['Budget & goals', 'By category'],
+          'the budget editor',
+          covers: const <String>['Monthly budget', 'Save budget'],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
