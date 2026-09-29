@@ -733,40 +733,26 @@ const WIRE_CONTRACTS = [
     absentFromDart: '/v1/fx',
   },
   // ⏱ 2026-09-28 · ST-N1 — the four captcha-free native credential routes
-  // (services/platform/src/routes/native-auth.ts). Gaps, because the client half
-  // (ST-T7b) lands after this Worker deploys. Their wire contract is NOT ours to
-  // invent: it is GoTrue's own, byte for byte — the paths, the query and the body
-  // fields gotrue-dart already sends to /auth/v1/<op> — so what ST-T7b pins is that
-  // its second GoTrueClient's base is `/v1/auth/native/<app>`. `absentFromDart`
-  // makes the day that base appears in Dart the day these gaps must become pins.
-  {
-    id: 'native-auth-token',
-    kind: 'gap',
-    reason:
-      "NO CLIENT YET: ST-T7b points gotrue-dart at /v1/auth/native/<app> after this Worker deploys. The wire is GoTrue's password grant unchanged — `?grant_type=password`, body `{email, password}` — and every answer is GoTrue's own status and JSON, plus this route's refusals in GoTrue's `{code, error_code, msg}` shape (400, 403 browser_origin_refused, 404 unknown_app, 429 over_request_rate_limit, 503 native_auth_unavailable).",
-    absentFromDart: '/v1/auth/native',
-  },
-  {
-    id: 'native-auth-signup',
-    kind: 'gap',
-    reason:
-      "NO CLIENT YET (ST-T7b). GoTrue's /signup wire unchanged: body `{email, password, data, code_challenge, code_challenge_method}`, `?redirect_to=` the app's own callback; the refusals as on native-auth-token.",
-    absentFromDart: '/v1/auth/native',
-  },
-  {
-    id: 'native-auth-recover',
-    kind: 'gap',
-    reason:
-      "NO CLIENT YET (ST-T7b). GoTrue's /recover wire unchanged: body `{email, code_challenge, code_challenge_method}`, `?redirect_to=` the app's own callback; the refusals as on native-auth-token.",
-    absentFromDart: '/v1/auth/native',
-  },
-  {
-    id: 'native-auth-resend',
-    kind: 'gap',
-    reason:
-      "NO CLIENT YET (ST-T7b). GoTrue's /resend wire unchanged: body `{email, type, code_challenge, code_challenge_method}` with type signup or email_change, `?redirect_to=` the app's own callback; the refusals as on native-auth-token.",
-    absentFromDart: '/v1/auth/native',
-  },
+  // (services/platform/src/routes/native-auth.ts). They were gaps until ST-T7b
+  // (ST-N1d) shipped their client: a second gotrue-dart GoTrueClient based at
+  // `/v1/auth/native/<app>`. The wire is NOT ours to pin key by key — it is
+  // GoTrue's own, byte for byte, built by the vendored SDK (pubspec.lock) — so
+  // the `sdk` kind pins what IS ours: the server still serves the op, the
+  // client still points the SDK at the route base, and the package test drives
+  // the op through the real SDK to that base.
+  ...['token', 'signup', 'recover', 'resend'].map((op) => ({
+    id: `native-auth-${op}`,
+    kind: 'sdk',
+    op,
+    sdk: 'gotrue-dart',
+    server: { file: 'services/platform/src/routes/native-auth.ts', marker: `nativeAuth.post('/auth/native/:app/${op}'` },
+    client: {
+      file: 'packages/auth_supabase/lib/src/native_credential_client.dart',
+      marker: "'$root/v1/auth/native/$appId'",
+      test: 'packages/auth_supabase/test/native_credential_route_test.dart',
+      drives: `'POST $_route/${op}'`,
+    },
+  })),
 ];
 
 /** Where limb 5's "no Dart client" claims are checked. Roots rather than the
@@ -1847,6 +1833,47 @@ for (const contract of WIRE_CONTRACTS) {
     }
     wirePinned++;
     ok(`wire ${contract.id} — pinned by limbs 1-4 of this guard (\`${contract.table}\`)`);
+    continue;
+  }
+
+  // ── ⏱ 2026-09-28 · ST-N1 · THE WIRE IS A VENDORED SDK'S; ITS BASE IS OURS ──
+  // A route that re-serves a third-party SDK's own wire (the native credential
+  // routes serve GoTrue's /token, /signup, /recover and /resend under a new
+  // base) has no key list of ours to compare: the SDK builds every body. What
+  // can drift is ours, and each half is read:
+  //   · the server stops serving the op              ⇒ COVERAGE LOST (stale row)
+  //   · the client stops pointing the SDK at the base ⇒ FAIL
+  //   · no test drives the op through the SDK to it   ⇒ FAIL
+  if (contract.kind === 'sdk') {
+    const server = has(contract.server.file) ? stripSourceComments(read(contract.server.file), '.ts') : '';
+    if (!server.includes(contract.server.marker)) {
+      coverageLost(
+        `${contract.id}: ${contract.server.file} no longer serves \`${contract.server.marker}\`. The row pins an op ` +
+          'the Worker does not answer, so its pin would grade nothing.',
+      );
+      continue;
+    }
+    const client = has(contract.client.file) ? stripSourceComments(read(contract.client.file), '.dart') : '';
+    const driven = has(contract.client.test) ? stripSourceComments(read(contract.client.test), '.dart') : '';
+    let pinned = true;
+    if (!client.includes(contract.client.marker)) {
+      pinned = false;
+      fail(
+        `${contract.id}: ${contract.client.file} no longer builds the route base \`${contract.client.marker}\`. ` +
+          `${contract.sdk} would send the ${contract.op} call somewhere this Worker does not serve.`,
+      );
+    }
+    if (!driven.includes(contract.client.drives)) {
+      pinned = false;
+      fail(
+        `${contract.id}: ${contract.client.test} never drives \`${contract.client.drives}\`. The route serves ` +
+          `${contract.op}, and no test proves ${contract.sdk} reaches it from the client this repo ships.`,
+      );
+    }
+    if (pinned) {
+      wirePinned++;
+      ok(`wire ${contract.id} — ${contract.sdk}'s own wire, pinned at its base: ${contract.client.file} + ${contract.client.test}`);
+    }
     continue;
   }
 

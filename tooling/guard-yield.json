@@ -2453,6 +2453,11 @@
       "firstSeen": "2026-09-26",
       "evidence": []
     },
+    "tooling/e2e/native_auth_proof.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-28",
+      "evidence": []
+    },
     "tooling/e2e/provision_user.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-21",

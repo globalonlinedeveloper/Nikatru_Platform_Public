@@ -1,0 +1,396 @@
+name: Native auth proof
+
+run-name: "Native auth proof — ${{ inputs.app }} by @${{ github.actor }}"
+
+# ST-N1g (rows O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN,
+# O-NATIVE-AUTH-CALLBACK-UNBUILT). Each job signs the provisioned throwaway user
+# in through the REAL form of a live native build on its own device, against
+# PRODUCTION auth as e2e.yml does, and purges the user after. The driver is
+# tooling/e2e/native_auth_proof.mjs; the suite is each app's
+# integration_test/native_auth_proof_test.dart (the brick stamps it).
+# tooling/channel-register.json flips a row's nativeAuth only on a green job
+# that ran on that row's own artifact format, citing the run id.
+
+on:
+  # why: dispatch ONLY. It spends production auth calls and five runners
+  # (an emulator, a simulator, macOS, Windows, Linux) to answer one question
+  # per auth change: does each native target sign in without a captcha.
+  workflow_dispatch:
+    inputs:
+      app:
+        description: 'The app to prove: one id of the workspace app set (tooling/ci/assert-release-lane-generic.mjs --emit-apps). The gate job refuses any other value.'
+        required: true
+        type: string
+
+concurrency:
+  group: native-auth-proof-${{ inputs.app }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: The app input names one app of the workspace
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      app: ${{ steps.app.outputs.app }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The app input names one app of the workspace
+        id: app
+        env:
+          APP_INPUT: ${{ inputs.app }}
+        run: |
+          set -euo pipefail
+          node tooling/ci/assert-release-lane-generic.mjs --emit-apps --app "$APP_INPUT"
+          echo "app=${APP_INPUT}" >> "$GITHUB_OUTPUT"
+
+  # ── ANDROID: an emulator, the app's APK, the callback through adb ──────────
+  android:
+    name: Android — emulator, form to Home, adb opens the callback
+    needs: gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    # why: the gate's checked output, never inputs.app.
+    env:
+      APP: ${{ needs.gate.outputs.app }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - uses: ./.github/actions/setup-flutter
+      - name: flutter pub get
+        working-directory: apps/${{ needs.gate.outputs.app }}
+        run: flutter pub get --enforce-lockfile
+      - name: Resolve this app's databases from its Worker's wrangler file
+        id: backend
+        run: node tooling/e2e/backend.mjs --app "$APP" --emit-output
+      - name: The app's API base, from the composer's rule
+        run: node tooling/ci/flutter-release-build.mjs --emit-env API_BASE_URL "$APP" >> "$GITHUB_ENV"
+
+      # why: the raw SDK tools, as symbolication-proof.yml boots its emulator:
+      # the repository allows only `selected` actions and
+      # reactivecircus/android-emulator-runner is not one. ANDROID_AVD_HOME is
+      # pinned for both tools (run 35451496350). The emulator outlives this
+      # step; the proof step below drives it.
+      - name: Boot an emulator
+        env:
+          API_LEVEL: '34'
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+            ls -l /dev/kvm || true
+            echo "::error title=Emulator::/dev/kvm is not usable by this user; an x86_64 emulator without KVM does not boot inside the ceiling"
+            exit 1
+          fi
+          sdk="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          export ANDROID_AVD_HOME="${RUNNER_TEMP}/avd"
+          echo "ANDROID_AVD_HOME=${ANDROID_AVD_HOME}" >> "$GITHUB_ENV"
+          mkdir -p "$ANDROID_AVD_HOME"
+          emu_log="${RUNNER_TEMP}/emulator.log"
+          image="system-images;android-${API_LEVEL};google_apis;x86_64"
+          why() {
+            echo "::error title=Emulator::$1"
+            echo "── emulator.log (tail) ──"
+            tail -n 60 "$emu_log" 2>/dev/null || echo "(no emulator.log)"
+            exit 1
+          }
+          yes | "$sdk/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          timeout 600 "$sdk/cmdline-tools/latest/bin/sdkmanager" --install emulator platform-tools "$image" > /dev/null
+          echo no | "$sdk/cmdline-tools/latest/bin/avdmanager" create avd --force -n proof -k "$image" --device pixel_6
+          "$sdk/emulator/emulator" -list-avds | grep -qx proof || why "avdmanager created no AVD the emulator can see in ANDROID_AVD_HOME=${ANDROID_AVD_HOME}"
+          nohup "$sdk/emulator/emulator" -avd proof -no-window -no-audio -no-boot-anim -no-snapshot \
+            -gpu swiftshader_indirect -accel on > "$emu_log" 2>&1 &
+          emu_pid=$!
+          echo "$sdk/platform-tools" >> "$GITHUB_PATH"
+          adb="$sdk/platform-tools/adb"
+          "$adb" start-server
+          deadline=$((SECONDS + 420))
+          phase="waiting for the device to appear"
+          while :; do
+            kill -0 "$emu_pid" 2>/dev/null || why "the emulator process exited during: ${phase}"
+            state="$("$adb" get-state 2>/dev/null | tr -d '\r' || true)"
+            if [ "$state" = "device" ]; then
+              phase="waiting for sys.boot_completed"
+              [ "$("$adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)" = "1" ] && break
+            fi
+            [ "$SECONDS" -gt "$deadline" ] && why "not booted within 420 s (last phase: ${phase}; adb state: ${state:-none})"
+            sleep 5
+          done
+          echo "emulator booted at ${SECONDS}s"
+
+      - name: Provision throwaway confirmed user
+        id: user
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node tooling/e2e/provision_user.mjs
+      - name: The proof — sign in, the gated calls, sign out, the callback
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          E2E_EMAIL: ${{ steps.user.outputs.email }}
+          E2E_PASSWORD: ${{ steps.user.outputs.password }}
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target android --device emulator-5554 --callback
+      - name: Purge the throwaway user
+        if: always() && steps.user.outcome != 'skipped'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          E2E_USER_ID: ${{ steps.user.outputs.user_id }}
+          E2E_APP_ID: ${{ needs.gate.outputs.app }}
+          PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}
+        run: node tooling/e2e/purge.mjs
+
+  # ── iOS: a simulator, the callback through simctl ──────────────────────────
+  ios:
+    name: iOS — simulator, form to Home, simctl opens the callback
+    needs: gate
+    runs-on: macos-26
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      APP: ${{ needs.gate.outputs.app }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - uses: ./.github/actions/setup-flutter
+      - name: flutter pub get
+        working-directory: apps/${{ needs.gate.outputs.app }}
+        run: flutter pub get --enforce-lockfile
+      - name: Resolve this app's databases from its Worker's wrangler file
+        id: backend
+        run: node tooling/e2e/backend.mjs --app "$APP" --emit-output
+      - name: The app's API base, from the composer's rule
+        run: node tooling/ci/flutter-release-build.mjs --emit-env API_BASE_URL "$APP" >> "$GITHUB_ENV"
+      # why: the first available iPhone of the image's iOS runtime; the proof
+      # needs a phone, not a particular size class.
+      - name: Boot an iPhone simulator
+        id: sim
+        run: |
+          set -euo pipefail
+          udid="$(xcrun simctl list devices available -j | node -e 'const d = JSON.parse(require("fs").readFileSync(0, "utf8")).devices; for (const [rt, list] of Object.entries(d)) { if (!/iOS/.test(rt)) continue; const p = list.find((x) => /^iPhone/.test(x.name)); if (p) { console.log(p.udid); process.exit(0); } } process.exit(1);')"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          echo "udid=${udid}" >> "$GITHUB_OUTPUT"
+      - name: Provision throwaway confirmed user
+        id: user
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node tooling/e2e/provision_user.mjs
+      - name: The proof — sign in, the gated calls, sign out, the callback
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          E2E_EMAIL: ${{ steps.user.outputs.email }}
+          E2E_PASSWORD: ${{ steps.user.outputs.password }}
+          SIM: ${{ steps.sim.outputs.udid }}
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target ios --device "$SIM" --callback
+      - name: Purge the throwaway user
+        if: always() && steps.user.outcome != 'skipped'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          E2E_USER_ID: ${{ steps.user.outputs.user_id }}
+          E2E_APP_ID: ${{ needs.gate.outputs.app }}
+          PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}
+        run: node tooling/e2e/purge.mjs
+
+  # ── macOS: the .app, the callback through LaunchServices ───────────────────
+  macos:
+    name: macOS — the .app, form to Home, LaunchServices opens the callback
+    needs: gate
+    runs-on: macos-26
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      APP: ${{ needs.gate.outputs.app }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - uses: ./.github/actions/setup-flutter
+      - name: Enable the macOS desktop target
+        run: flutter config --enable-macos-desktop
+      - name: flutter pub get
+        working-directory: apps/${{ needs.gate.outputs.app }}
+        run: flutter pub get --enforce-lockfile
+      - name: Resolve this app's databases from its Worker's wrangler file
+        id: backend
+        run: node tooling/e2e/backend.mjs --app "$APP" --emit-output
+      - name: The app's API base, from the composer's rule
+        run: node tooling/ci/flutter-release-build.mjs --emit-env API_BASE_URL "$APP" >> "$GITHUB_ENV"
+      - name: Provision throwaway confirmed user
+        id: user
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node tooling/e2e/provision_user.mjs
+      - name: The proof — sign in, the gated calls, sign out, the callback
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          E2E_EMAIL: ${{ steps.user.outputs.email }}
+          E2E_PASSWORD: ${{ steps.user.outputs.password }}
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target macos --device macos --callback
+      - name: Purge the throwaway user
+        if: always() && steps.user.outcome != 'skipped'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          E2E_USER_ID: ${{ steps.user.outputs.user_id }}
+          E2E_APP_ID: ${{ needs.gate.outputs.app }}
+          PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}
+        run: node tooling/e2e/purge.mjs
+
+  # ── WINDOWS: sign-in only ──────────────────────────────────────────────────
+  # why: protocol activation reaches a Windows app only through its installed
+  # MSIX, and a runner build is not one. The job proves sign-in and the gated
+  # calls; windows-store keeps nativeAuth false until the callback is proven on
+  # a machine with the MSIX installed.
+  windows:
+    name: Windows — form to Home (callback needs the MSIX, proven off-runner)
+    needs: gate
+    runs-on: windows-2025
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      APP: ${{ needs.gate.outputs.app }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - uses: ./.github/actions/setup-flutter
+      - name: Enable the Windows desktop target
+        run: flutter config --enable-windows-desktop
+      - name: flutter pub get
+        working-directory: apps/${{ needs.gate.outputs.app }}
+        run: flutter pub get --enforce-lockfile
+      - name: Resolve this app's databases from its Worker's wrangler file
+        id: backend
+        run: node tooling/e2e/backend.mjs --app "$APP" --emit-output
+      - name: The app's API base, from the composer's rule
+        run: node tooling/ci/flutter-release-build.mjs --emit-env API_BASE_URL "$APP" >> "$GITHUB_ENV"
+      - name: Provision throwaway confirmed user
+        id: user
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node tooling/e2e/provision_user.mjs
+      - name: The proof — sign in, the gated calls, sign out
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          E2E_EMAIL: ${{ steps.user.outputs.email }}
+          E2E_PASSWORD: ${{ steps.user.outputs.password }}
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target windows --device windows
+      - name: Purge the throwaway user
+        if: always() && steps.user.outcome != 'skipped'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          E2E_USER_ID: ${{ steps.user.outputs.user_id }}
+          E2E_APP_ID: ${{ needs.gate.outputs.app }}
+          PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}
+        run: node tooling/e2e/purge.mjs
+
+  # ── LINUX: the bundle under xvfb, the callback through xdg-open ────────────
+  linux:
+    name: Linux — the bundle under xvfb, form to Home, xdg-open opens the callback
+    needs: gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      APP: ${{ needs.gate.outputs.app }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - uses: ./.github/actions/setup-flutter
+      # why: build-platforms.yml's Linux list, plus xvfb (a display), and the
+      # three a signed-in desktop session needs: gnome-keyring (the Secret
+      # Service libsecret stores the session in), desktop-file-utils and
+      # xdg-utils (the scheme handler and the open).
+      - name: Linux build and session deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
+            libsecret-1-dev libjsoncpp-dev libcurl4-openssl-dev \
+            xvfb gnome-keyring dbus-x11 desktop-file-utils xdg-utils
+      - name: Enable the Linux desktop target
+        run: flutter config --enable-linux-desktop
+      - name: flutter pub get
+        working-directory: apps/${{ needs.gate.outputs.app }}
+        run: flutter pub get --enforce-lockfile
+      - name: Resolve this app's databases from its Worker's wrangler file
+        id: backend
+        run: node tooling/e2e/backend.mjs --app "$APP" --emit-output
+      - name: The app's API base, from the composer's rule
+        run: node tooling/ci/flutter-release-build.mjs --emit-env API_BASE_URL "$APP" >> "$GITHUB_ENV"
+      - name: Provision throwaway confirmed user
+        id: user
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node tooling/e2e/provision_user.mjs
+      # why: ONE D-Bus session for the keyring, the app and xdg-open, so the
+      # second instance xdg-open starts finds the first (GApplication
+      # uniqueness rides the session bus) and hands it the URL.
+      - name: The proof — sign in, the gated calls, sign out, the callback
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          E2E_EMAIL: ${{ steps.user.outputs.email }}
+          E2E_PASSWORD: ${{ steps.user.outputs.password }}
+        run: |
+          dbus-run-session -- bash -c '
+            set -euo pipefail
+            eval "$(printf "" | gnome-keyring-daemon --unlock --components=secrets)"
+            export GNOME_KEYRING_CONTROL
+            xvfb-run -a -s "-screen 0 1920x1200x24" \
+              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --callback
+          '
+      - name: Purge the throwaway user
+        if: always() && steps.user.outcome != 'skipped'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          E2E_USER_ID: ${{ steps.user.outputs.user_id }}
+          E2E_APP_ID: ${{ needs.gate.outputs.app }}
+          PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}
+        run: node tooling/e2e/purge.mjs
