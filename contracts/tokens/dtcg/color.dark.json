@@ -12,6 +12,12 @@
     "strong": { "$value": "#F1F5F9" },
     "muted": { "$value": "#93A1BC" },
     "line": { "$value": "#22304D" },
-    "soft": { "$value": "#0E1830" }
+    "soft": { "$value": "#0E1830" },
+    "positive": { "$value": "#34D399", "$description": "STATUS PAIR, dark half. 8.83:1 on dark.card, 9.74:1 on dark.bg, 7.60:1 on dark.positive-tint." },
+    "warn": { "$value": "#FBBF24", "$description": "STATUS PAIR, dark half. 10.16:1 on dark.card, 11.22:1 on dark.bg, 8.84:1 on dark.warn-tint." },
+    "danger": { "$value": "#FF8A9E", "$description": "STATUS PAIR, dark half. 7.58:1 on dark.card, 8.36:1 on dark.bg, 7.13:1 on dark.danger-tint. Lighter than a mid red because a dark Material 3 surfaceContainerHighest is the brightest ground it is painted on (5.48:1 there)." },
+    "positive-tint": { "$value": "#0F2E25", "$description": "The OPAQUE dark container behind a positive message." },
+    "warn-tint": { "$value": "#33260C", "$description": "The OPAQUE dark container behind a warning." },
+    "danger-tint": { "$value": "#3A1620", "$description": "The OPAQUE dark container behind a danger message." }
   }
 }

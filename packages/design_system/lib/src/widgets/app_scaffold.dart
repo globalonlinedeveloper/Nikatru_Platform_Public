@@ -7,7 +7,12 @@ class AppDestination {
     required this.icon,
     required this.label,
     IconData? selectedIcon,
-  }) : selectedIcon = selectedIcon ?? icon;
+    this.badgeCount,
+  }) : assert(
+         badgeCount == null || badgeCount >= 0,
+         'badgeCount is a count; pass null for no badge',
+       ),
+       selectedIcon = selectedIcon ?? icon;
 
   /// Icon shown when the destination is not selected.
   final IconData icon;
@@ -17,6 +22,26 @@ class AppDestination {
 
   /// Human-readable label.
   final String label;
+
+  /// A NEUTRAL count badge on the icon, in the bar and the rail alike — or
+  /// none when null or zero (train ST-D0).
+  ///
+  /// Neutral because a count is not an alarm: `buildAppTheme`'s `badgeTheme`
+  /// paints it in the inverse-surface pair rather than Material's red. Zero
+  /// renders NO badge rather than a "0", because an empty count is the
+  /// absence of news, not news.
+  final int? badgeCount;
+}
+
+/// The destination's icon, badged when it carries a count.
+///
+/// ONE builder for the bar and the rail, so the two controls cannot disagree
+/// about when a badge shows. Numbers past 99 read "99+": Material's default
+/// cap is 999, and a four-glyph badge on a 24 px icon covers the icon.
+Widget _destinationIcon(AppDestination d, IconData icon) {
+  final int count = d.badgeCount ?? 0;
+  if (count == 0) return Icon(icon);
+  return Badge.count(count: count, maxCount: 99, child: Icon(icon));
 }
 
 /// Material 3's FIVE window size classes, at their exact boundaries.
@@ -236,8 +261,8 @@ class AppScaffold extends StatelessWidget {
             destinations: <Widget>[
               for (final AppDestination d in destinations)
                 NavigationDestination(
-                  icon: Icon(d.icon),
-                  selectedIcon: Icon(d.selectedIcon),
+                  icon: _destinationIcon(d, d.icon),
+                  selectedIcon: _destinationIcon(d, d.selectedIcon),
                   label: d.label,
                 ),
             ],
@@ -303,8 +328,8 @@ class AppScaffold extends StatelessWidget {
               destinations: <NavigationRailDestination>[
                 for (final AppDestination d in destinations)
                   NavigationRailDestination(
-                    icon: Icon(d.icon),
-                    selectedIcon: Icon(d.selectedIcon),
+                    icon: _destinationIcon(d, d.icon),
+                    selectedIcon: _destinationIcon(d, d.selectedIcon),
                     label: Text(d.label),
                   ),
               ],

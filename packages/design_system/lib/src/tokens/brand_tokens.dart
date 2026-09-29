@@ -8,6 +8,10 @@
 // `ColorScheme.fromSeed`. Do not repaint a screen from these constants; see
 // packages/tokens/style-dictionary.config.mjs for why `app_colors.dart` is
 // hand-written and is a different palette on purpose.
+//
+// THE ONE EXCEPTION is the six status tokens (positive, warn, danger and their
+// opaque tints): status is not a brand, so every app paints them - through
+// `StatusTones.of(context)`, which picks the scheme half, never directly.
 
 import 'package:flutter/material.dart';
 
@@ -53,6 +57,24 @@ class BrandTokens {
 
   /// `--soft` in the light palette.
   static const Color soft = Color(0xFFF6F8FC);
+
+  /// `--positive` in the light palette.
+  static const Color positive = Color(0xFF05694C);
+
+  /// `--warn` in the light palette.
+  static const Color warn = Color(0xFF94480A);
+
+  /// `--danger` in the light palette.
+  static const Color danger = Color(0xFFB3123B);
+
+  /// `--positive-tint` in the light palette.
+  static const Color positiveTint = Color(0xFFE3F4EC);
+
+  /// `--warn-tint` in the light palette.
+  static const Color warnTint = Color(0xFFFBEFDD);
+
+  /// `--danger-tint` in the light palette.
+  static const Color dangerTint = Color(0xFFFBE7EB);
 
   /// The display face, used for numerals and headings.
   static const String fontDisplay = 'Space Grotesk';
@@ -105,4 +127,22 @@ class BrandTokensDark {
 
   /// `--soft` in the dark palette.
   static const Color soft = Color(0xFF0E1830);
+
+  /// `--positive` in the dark palette.
+  static const Color positive = Color(0xFF34D399);
+
+  /// `--warn` in the dark palette.
+  static const Color warn = Color(0xFFFBBF24);
+
+  /// `--danger` in the dark palette.
+  static const Color danger = Color(0xFFFF8A9E);
+
+  /// `--positive-tint` in the dark palette.
+  static const Color positiveTint = Color(0xFF0F2E25);
+
+  /// `--warn-tint` in the dark palette.
+  static const Color warnTint = Color(0xFF33260C);
+
+  /// `--danger-tint` in the dark palette.
+  static const Color dangerTint = Color(0xFF3A1620);
 }
