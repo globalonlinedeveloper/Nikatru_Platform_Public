@@ -33,6 +33,8 @@ class ReminderCopy {
     required this.cancelByTitle,
     required this.cancelByBody,
     required this.channelDescription,
+    this.trialTitle,
+    this.trialBody,
   });
 
   /// The Android notification CHANNEL name — visible in the OS settings app,
@@ -56,6 +58,11 @@ class ReminderCopy {
   /// ST-R8: the "Cancel by" reminder at next renewal − notice days.
   final String Function(DateTime cancelBy) cancelByTitle;
   final String Function(String name, DateTime cancelBy) cancelByBody;
+
+  /// ST-T3b (ST-E5): the free-trial-ending reminder. Null falls back to the
+  /// renewal copy, which still names the right day.
+  final String? trialTitle;
+  final String Function(String name, DateTime trialEnds)? trialBody;
 }
 
 /// WHEN renewal reminders fire — the user's rules (ST-R3, audit C23/C26).
@@ -185,10 +192,15 @@ class RenewalReminders {
   /// is still ahead, else on the renewal day itself. A user whose lead passed
   /// is exactly the user a reminder is for; the old code gave them nothing.
   ///
-  /// ⚠️ ONE CYCLE. "Arm the next N cycles" needs the cadence engine
-  /// (`RecurrenceSchedule`, ST-T3b / ST-M3), which is not on this base; a
-  /// second date engine here is the thing the brief forbids. It re-arms on
-  /// every sync, and the cycle after this one is ST-T3b's follow-up.
+  /// The charge is [Subscription.nextCharge] — the stored date ROLLED by its
+  /// cadence (ST-T3b's RecurrenceSchedule), so a row whose stored date has
+  /// passed is reminded of its real next charge, never of a day gone by.
+  ///
+  /// ⚠️ ONE CYCLE, re-armed on every sync. Arming the next N cycles is now
+  /// possible (RecurrenceSchedule landed with ST-T3b) and is a follow-up.
+  ///
+  /// A TRIALING row is also reminded before its trial ends (ST-T3b, ST-E5),
+  /// at the same leads and time of day.
   @visibleForTesting
   List<core.ScheduledNotification> plannedFor(
     Subscription sub, {
@@ -196,7 +208,7 @@ class RenewalReminders {
     required ReminderRules rules,
   }) {
     final DateTime now = _now();
-    final DateTime renewal = sub.nextRenewal;
+    final DateTime renewal = sub.nextCharge(now);
     final List<int> days = sub.reminderDays ?? rules.leadDays;
     final List<core.ScheduledNotification> out = <core.ScheduledNotification>[];
     DateTime at(DateTime day) =>
@@ -244,7 +256,25 @@ class RenewalReminders {
     // ST-R8: "Cancel by {date}" at next renewal − notice days, when the plan
     // names a notice period. No fallback: past that day it is too late, and a
     // reminder that says so helps nobody.
-    final DateTime? cancelBy = sub.cancelBy;
+    final DateTime? ends = sub.trialEndsOn;
+    if (ends != null && sub.status == SubscriptionStatus.trialing) {
+      for (final int d in leads) {
+        final DateTime when = at(DateTime(ends.year, ends.month, ends.day - d));
+        if (!when.isAfter(now)) continue;
+        out.add(
+          core.ScheduledNotification(
+            id: renewalIdFor('${sub.id}|trial|$d'),
+            title: copy.trialTitle ?? copy.reminderTitle,
+            body: (copy.trialBody ?? copy.reminderBody)(sub.name, ends),
+            at: when,
+            payload: payloadFor(sub.id),
+            channel: _channel(copy),
+          ),
+        );
+      }
+    }
+
+    final DateTime? cancelBy = sub.cancelByFor(now);
     if (cancelBy != null) {
       final DateTime when = at(cancelBy);
       if (when.isAfter(now)) {
@@ -393,6 +423,28 @@ class RenewalReminders {
     if (!capabilities.canNotify) return;
     await _service.cancel(digestId);
   }
+
+  /// Cancel every reminder [subscriptionId] can hold, now — belt and braces
+  /// for a delete (ST-T3b), where the next [syncAll] also drops them. The ids
+  /// are the ones [plannedFor] mints: one per lead the app offers, the
+  /// same-day fallback, the cancel-by, each trial lead, and the one id a build
+  /// before ST-R3 used per row.
+  Future<void> cancelForSubscription(String subscriptionId) async {
+    if (!capabilities.canNotify) return;
+    for (final String key in <String>[
+      subscriptionId,
+      '$subscriptionId|today',
+      '$subscriptionId|cancel',
+      for (final int d in leadChoices) '$subscriptionId|$d',
+      for (final int d in leadChoices) '$subscriptionId|trial|$d',
+    ]) {
+      await _service.cancel(renewalIdFor(key));
+    }
+  }
+
+  /// The lead days a reminder can be armed at — Settings' and the detail
+  /// chooser's one list (SettingsState.leadChoices mirrors it).
+  static const List<int> leadChoices = <int>[0, 1, 2, 3, 7, 14];
 
   /// EVERYTHING the plugin holds — the chassis daily reminder included.
   /// ⚠️ SIGN-OUT AND ACCOUNT DELETION ONLY (`userStateDrops`).

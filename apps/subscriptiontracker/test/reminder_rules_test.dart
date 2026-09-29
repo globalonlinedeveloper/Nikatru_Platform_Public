@@ -137,13 +137,28 @@ void main() {
       ]);
     });
 
-    test('a charge already past gets nothing', () {
+    // ⏱ 2026-09-28 (ST-T3b merged): a stored date that has passed is ROLLED
+    // by the row's cadence to its real next charge, and reminded of THAT.
+    test('a past stored date is reminded of its next charge, rolled', () {
+      final List<core.ScheduledNotification> p = _svc(now).plannedFor(
+        _sub('netflix', DateTime(2026, 9, 30)),
+        copy: _copy(),
+        rules: _at0930,
+      );
+      expect(p.single.at, DateTime(2026, 10, 28, 9, 30));
+    });
+
+    test('a row with no cadence whose charge has passed gets nothing', () {
+      final Subscription once = Subscription(
+        id: 'once',
+        name: 'once',
+        category: 'Other',
+        price: const Money(1000, 'USD'),
+        cycle: null,
+        nextRenewal: DateTime(2026, 9, 30),
+      );
       expect(
-        _svc(now).plannedFor(
-          _sub('netflix', DateTime(2026, 9, 30)),
-          copy: _copy(),
-          rules: _at0930,
-        ),
+        _svc(now).plannedFor(once, copy: _copy(), rules: _at0930),
         isEmpty,
       );
     });

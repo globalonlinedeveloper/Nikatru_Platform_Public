@@ -28,10 +28,20 @@ class CategoryTotal {
 class SubMath {
   SubMath._();
 
+  /// The rows that are still CHARGING — active or trialing, not deleted.
+  ///
+  /// ⏱ 2026-09-28 · ST-T3b (ST-E3). Mark cancelled and Pause keep a row and
+  /// its history on screen, so the list the screens hold is no longer "what
+  /// the user pays for". Every figure below that means MONEY goes through
+  /// this first; the list-shaped helpers ([byMonthlyDesc], [unused]) do not,
+  /// because a paused row still belongs on the list.
+  static List<Subscription> charging(List<Subscription> s) =>
+      s.where((Subscription x) => x.isCharging).toList();
+
   /// The per-month total of every plan's [MonthlyShare]. A PER-MONTH figure:
   /// it is printed only under a per-month label, never as a charge.
   static MoneyBag totalMonthly(List<Subscription> s) =>
-      MonthlyShare.sum(s.map((Subscription x) => x.monthlyShare));
+      MonthlyShare.sum(charging(s).map((Subscription x) => x.monthlyShare));
 
   /// What the plans charge in a year: each row's [Subscription.yearlyCharge].
   ///
@@ -39,7 +49,7 @@ class SubMath {
   /// price are not the price (120.53 a year is a 10.04 share, and 12 x 10.04
   /// is 120.48), so a yearly figure is summed from the charges themselves.
   static MoneyBag totalYearly(List<Subscription> s) =>
-      MoneyBag.sum(s.map((Subscription x) => x.yearlyCharge));
+      MoneyBag.sum(charging(s).map((Subscription x) => x.yearlyCharge));
 
   /// The money that leaves the account in [month] of [year]: the whole
   /// [Subscription.price] of every row whose one renewal falls in it.
@@ -49,14 +59,14 @@ class SubMath {
   /// summed the twelfth and read 12x short in the month the money went.
   static MoneyBag chargedInMonth(List<Subscription> s, int year, int month) =>
       MoneyBag.sum(
-        s
+        charging(s)
             .where((Subscription x) => x.renewsIn(year, month))
             .map((Subscription x) => x.price),
       );
 
   static List<CategoryTotal> categoryTotals(List<Subscription> s) {
     final Map<String, List<MonthlyShare>> m = <String, List<MonthlyShare>>{};
-    for (final Subscription x in s) {
+    for (final Subscription x in charging(s)) {
       (m[x.category] ??= <MonthlyShare>[]).add(x.monthlyShare);
     }
     final List<CategoryTotal> list = m.entries
@@ -175,12 +185,15 @@ class SubMath {
   static double chartWeight(MoneyBag bag, String currencyCode) =>
       bag.inCurrency(currencyCode).minorUnits.toDouble();
 
+  /// The next [take] charges, soonest first — by the ROLLED date
+  /// ([Subscription.daysUntil]), so a row whose stored date passed yesterday
+  /// sorts by its next real charge, not to the top as "due".
   static List<Subscription> upcoming(
     List<Subscription> s,
     DateTime now, {
     int take = 4,
   }) {
-    final List<Subscription> l = List<Subscription>.of(s);
+    final List<Subscription> l = charging(s);
     l.sort((Subscription a, Subscription b) {
       final int byDate = a.daysUntil(now).compareTo(b.daysUntil(now));
       return byDate != 0 ? byDate : _tieBreak(a, b);
@@ -237,11 +250,17 @@ class SubMath {
   /// direction.
   static MoneyBag dueWithin(List<Subscription> s, DateTime now, int days) =>
       MoneyBag.sum(
-        s
-            .where((Subscription x) {
-              final int d = x.daysUntil(now);
-              return d >= 0 && d <= days;
-            })
-            .map((Subscription x) => x.price),
+        dueWithinRows(s, now, days).map((Subscription x) => x.price),
       );
+
+  /// The rows [dueWithin] sums — ONE predicate for the hero's figure and any
+  /// list that claims to show what makes it up, so the two cannot disagree.
+  static List<Subscription> dueWithinRows(
+    List<Subscription> s,
+    DateTime now,
+    int days,
+  ) => charging(s).where((Subscription x) {
+    final int d = x.daysUntil(now);
+    return d >= 0 && d <= days;
+  }).toList();
 }

@@ -150,6 +150,12 @@ class _CancelSheetState extends ConsumerState<_CancelSheet> {
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
     final AppLocalizations l10n = AppLocalizations.of(context);
     try {
+      // ⏱ 2026-09-28 · ST-T3b (ST-E3). This is the DELETE path ST-U3 named
+      // "Remove from tracker", and it is now a SOFT delete: `cancelSubscription`
+      // sets `deleted_at` instead of calling DELETE, so the row and its payment
+      // history survive and the caller's Undo snackbar can bring both back.
+      // "I cancelled it at the provider" is a different act — "Mark as
+      // cancelled" in the detail overflow — and keeps the row on the list.
       await ref
           .read(subscriptionsControllerProvider.notifier)
           .cancelSubscription(widget.sub.id);

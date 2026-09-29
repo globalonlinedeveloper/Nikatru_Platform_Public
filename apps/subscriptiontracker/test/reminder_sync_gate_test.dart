@@ -107,11 +107,24 @@ class _GatedApi implements ApiClient {
   @override
   Future<Subscription> getSubscription(String id) async =>
       subs.firstWhere((Subscription s) => s.id == id);
+
+  /// Applies the PATCH like the route does — `cancelSubscription` is a soft
+  /// delete (`deleted_at`) since ST-T3b, so a fake that ignored the body
+  /// would leave the row in every later fetch.
   @override
   Future<Subscription> updateSubscription(
     String id,
     Map<String, dynamic> changes,
-  ) async => subs.firstWhere((Subscription s) => s.id == id);
+  ) async {
+    final Subscription updated = subs
+        .firstWhere((Subscription s) => s.id == id)
+        .patched(changes);
+    subs = <Subscription>[
+      for (final Subscription s in subs) s.id == id ? updated : s,
+    ];
+    return updated;
+  }
+
   @override
   Future<void> deleteSubscription(String id) async {
     subs = subs.where((Subscription s) => s.id != id).toList();

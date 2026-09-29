@@ -70,6 +70,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/core/router.dart';
 import 'package:subscriptiontracker/data/models/budget_info.dart';
+import 'package:subscriptiontracker/core/format/sub_math.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/data/subscriptions/subscription_repository.dart';
 import 'package:subscriptiontracker/features/detail/subscription_detail_screen.dart';
@@ -631,11 +632,15 @@ void main() {
           .read(subscriptionsControllerProvider)
           .requireValue;
       expect(subs, isNotEmpty, reason: 'no seed rows to select');
+      // The soonest charge. ⏱ ST-T3b (ST-M3): home lists the next charges
+      // by their ROLLED date, so which seed row is on screen depends on the
+      // day — `subs.first` (Netflix) is no longer always one of them.
+      final String soonest = SubMath.upcoming(subs, DateTime.now()).first.name;
       await tester.tap(
         find
             .descendant(
               of: find.byKey(const Key('home-list-pane')),
-              matching: find.widgetWithText(RowCard, subs.first.name),
+              matching: find.widgetWithText(RowCard, soonest),
             )
             .first,
       );

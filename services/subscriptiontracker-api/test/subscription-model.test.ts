@@ -151,20 +151,25 @@ describe('THE CONTRACT — a non-USD, weekly, trialing row round-trips', () => {
     });
   });
 
-  it('🔴 the platform fan-out leaves a weekly row alone instead of rolling it a month', async () => {
-    // services/platform/src/renewals.ts rolls `next_renewal` by the legacy
-    // `cycle` and skips NULL. Were the route to write `cycle = 'monthly'` for a
-    // weekly row, the nightly job would advance it a month and invent a payment.
+  it('🔴 the platform fan-out rolls a weekly row by a WEEK, never by a month', async () => {
+    // ⏱ 2026-09-28 · ST-T3b (ST-M3). Until then services/platform/src/renewals.ts
+    // rolled by the legacy `cycle` alone and SKIPPED NULL, and this case pinned
+    // that a weekly row was left alone. The fan-out now reads `cycle_every` +
+    // `cycle_unit` (contracts/renewals/vectors.json), so the weekly row IS
+    // rolled — by seven days. What stays pinned is the route's half: `cycle`
+    // is NULL for a weekly row, so a Worker that predates the pair still
+    // cannot roll it a month and invent a payment.
     const weekly = await create({ ...INR_WEEKLY_TRIAL, next_renewal: inDays(-3) });
     const monthly = await create({ name: 'Netflix', price: 9.99, cycle: 'monthly', next_renewal: inDays(-3) });
+    expect(db.rows('SELECT cycle FROM subscriptions WHERE id = ?', weekly.id as string)[0].cycle).toBeNull();
     await recomputeRenewals(db as never, 'subscriptiontracker');
     const next = (id: unknown) =>
       db.rows('SELECT next_renewal FROM subscriptions WHERE id = ?', id as string)[0].next_renewal;
-    expect(next(weekly.id), 'the weekly row was rolled by the monthly/yearly roller').toBe(inDays(-3));
+    expect(next(weekly.id), 'the weekly row moves by seven days, not a month').toBe(inDays(4));
     expect(next(monthly.id), 'the control: a monthly row IS advanced').not.toBe(inDays(-3));
-    expect(db.rows('SELECT subscription_id FROM payment_history').map((r) => r.subscription_id)).toEqual([
-      monthly.id,
-    ]);
+    expect(
+      db.rows('SELECT subscription_id FROM payment_history ORDER BY subscription_id').map((r) => r.subscription_id),
+    ).toEqual([weekly.id, monthly.id].sort());
   });
 });
 
@@ -361,16 +366,23 @@ describe('notice_days — the notice period round-trips, and null means none', (
 // ═════════════════════════════════════════════════════════════════════════════
 describe('payment history is served in its subscription’s currency', () => {
   /** An overdue monthly INR row, rolled by the REAL platform fan-out — the
-   *  only writer of payment_history, which does not write `currency`. */
+   *  only writer of payment_history. ⏱ 2026-09-28 · ST-T3b (ST-E3): the
+   *  fan-out now writes the row's `currency` itself; the rows below whose
+   *  `currency` is cleared stand for every payment written BEFORE that, which
+   *  is what the COALESCE in routes/subscriptions.ts still serves. */
   async function rolled(body: Row): Promise<Row[]> {
     const { id } = await create({ name: 'Hotstar', cycle: 'monthly', next_renewal: inDays(-40), ...body });
     await recomputeRenewals(db as never, 'subscriptiontracker');
     const history = (await getOne(id as string)).payment_history as Row[];
     expect(history.length, 'the fan-out wrote no payment, so this proves nothing').toBeGreaterThan(0);
-    expect(db.rows('SELECT DISTINCT currency FROM payment_history'), 'the fan-out now writes currency').toEqual([
-      { currency: null },
+    // The fan-out's own write: the subscription's currency, and who recorded it.
+    expect(db.rows('SELECT DISTINCT currency, source FROM payment_history')).toEqual([
+      { currency: (body.currency as string | undefined) ?? null, source: 'renewal' },
     ]);
-    return history;
+    // …then the pre-T3b shape, so the READ side's fallback is still what is
+    // under test: a payment with no currency of its own.
+    db.db.exec('UPDATE payment_history SET currency = NULL, source = NULL');
+    return (await getOne(id as string)).payment_history as Row[];
   }
 
   it('🔴 a fan-out payment under an INR row reads INR, not the user’s currency', async () => {

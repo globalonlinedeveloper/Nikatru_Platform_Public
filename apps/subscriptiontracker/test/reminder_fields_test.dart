@@ -47,7 +47,7 @@ class _Repo implements SubscriptionRepository {
   @override
   Future<Subscription> update(String id, Map<String, dynamic> changes) async {
     patches.add(changes);
-    return row = row.withReminderPatch(changes);
+    return row = row.patched(changes);
   }
 
   @override
@@ -79,7 +79,7 @@ void main() {
       expect(s.noticeDays, 14);
       expect(s.noticeDaysSupported, isTrue);
       expect(s.reminderDays, <int>[7, 1]);
-      expect(s.cancelBy, DateTime(2026, 10, 6));
+      expect(s.cancelByFor(DateTime(2026, 9, 29)), DateTime(2026, 10, 6));
       final Subscription back = Subscription.fromJson(s.toJson());
       expect(back.noticeDays, 14);
       expect(back.reminderDays, <int>[7, 1]);

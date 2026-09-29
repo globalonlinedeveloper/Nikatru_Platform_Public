@@ -1677,7 +1677,7 @@ void main() {
 
   // ═══ TIER 1 · DETAIL ═══════════════════════════════════════════════════════
   group('detail · the icon-only hero controls', () {
-    testWidgets('[en] back announces its arb value; no dead "More options"', (
+    testWidgets('[en] back and More options announce their arb values', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
@@ -1687,8 +1687,9 @@ void main() {
         final AppLocalizations l10n = await _load('en');
         final List<String> labels = announced(tester);
         expect(labels, contains(l10n.back));
-        // ST-U5 (B14): the no-op "More options" button was removed.
-        expect(labels, isNot(contains('More options')));
+        // ST-U5 (B14) removed a no-op "More options"; ST-T3b (ST-E3) put it
+        // back with the lifecycle menu behind it (dead_controls_test B14).
+        expect(labels, contains(l10n.moreOptions));
       });
     });
 
@@ -2472,55 +2473,54 @@ void main() {
       });
     });
 
-    testWidgets('the notification CARDS are read but are not controls', (
-      WidgetTester tester,
-    ) async {
-      await semantically(tester, () async {
-        await pumpScreen(tester, const NotificationsScreen());
-        final AppLocalizations l10n = await _load('en');
-        // Every card is an inert `Container` — nothing on this screen navigates
-        // anywhere. Announcing a role for one would send somebody tapping at a
-        // surface that does nothing, which is the `RowCard` lie in the opposite
-        // direction, and it is the shape a future "tap to open the plan" would
-        // arrive in.
-        expect(
-          _nodes(tester)
-              .map((SemanticsNode n) => n.getSemanticsData())
+    testWidgets(
+      'a card about ONE plan is a control; the aggregate card is not',
+      (WidgetTester tester) async {
+        await semantically(tester, () async {
+          await pumpScreen(tester, const NotificationsScreen());
+          final AppLocalizations l10n = await _load('en');
+          // ⏱ 2026-09-28 · ST-T3b. This asserted "the only button is Close",
+          // which ST-U8 (C16) made false — a card that names one subscription
+          // opens it — and which held on main only because every seed date
+          // was in the past, so no due-soon card was ever built. With ST-M3's
+          // rolled dates there ARE due-soon cards, and how many depends on the
+          // day, so this asserts the RULE and not a count: Close is a button,
+          // every other button is a renewal card, and the flagged-unused
+          // aggregate — which names no single plan — is read and is inert.
+          final List<SemanticsData> data = _nodes(
+            tester,
+          ).map((SemanticsNode n) => n.getSemanticsData()).toList();
+          final List<String> buttons = data
               .where((SemanticsData d) => d.announcesButton)
-              .map((SemanticsData d) => d.label),
-          <String>[l10n.close],
-          reason:
-              'a card that announces itself as a button is a control the '
-              'screen does not have',
-        );
-        // COVERAGE, and it is the half that makes the assertion above mean
-        // something: "the only button is Close" is ALSO true of a screen that
-        // rendered nothing but its own chrome — the empty state
-        // (`notifNothingDue`) is exactly that shape, and it would pass. So the
-        // card has to be positively there.
-        //
-        // Asked as "a label that is neither the title nor the button", not as a
-        // count and not by re-typing a card's sentence: the due-soon rows are
-        // built from `daysUntil(now)` and would pin this case to the wall
-        // clock. The flagged-unused row is not — three of the twelve demo
-        // subscriptions carry `unused: true` and that row is built from
-        // `flaggedUnused.isNotEmpty` alone — so there is a card on every day of
-        // the year, and nothing here has to know what it says.
-        final List<String> labels = announced(tester);
-        expect(labels, contains(l10n.notifications));
-        expect(
-          labels.where(
-            (String l) => l != l10n.notifications && l != l10n.close,
-          ),
-          isNotEmpty,
-          reason:
-              'COVERAGE LOST — the screen announced its title and its close '
-              'button and NOTHING ELSE, so it is in its empty state and the '
-              'assertion above ranged over a screen with no cards on it. '
-              'Found: $labels',
-        );
-      });
-    });
+              .map((SemanticsData d) => d.label)
+              .toList();
+          expect(buttons, contains(l10n.close));
+          expect(
+            buttons.where((String l) => l != l10n.close),
+            everyElement(contains(' renews ')),
+            reason: 'only a card about one plan may announce itself a button',
+          );
+          // COVERAGE: the aggregate card is there on every day of the year
+          // (three demo rows carry `unused: true`), and it is NOT a button.
+          final List<String> inert = data
+              .where((SemanticsData d) => !d.announcesButton)
+              .map((SemanticsData d) => d.label)
+              .where(
+                (String l) =>
+                    l.isNotEmpty && l != l10n.notifications && l != l10n.close,
+              )
+              .toList();
+          expect(
+            inert,
+            isNotEmpty,
+            reason:
+                'COVERAGE LOST — the aggregate card was not found, so the '
+                'inert half of this case ranged over nothing. Buttons: '
+                '$buttons',
+          );
+        });
+      },
+    );
 
     testWidgets('nothing on notifications is naked', (
       WidgetTester tester,
@@ -2879,87 +2879,69 @@ void main() {
       });
     });
 
-    testWidgets('the cycle toggle reports WHICH arm is current, and it moves', (
-      WidgetTester tester,
-    ) async {
-      await semantically(tester, () async {
-        await pumpScreen(
-          tester,
-          Scaffold(
-            body: Builder(
-              builder: (BuildContext context) => Center(
-                child: TextButton(
-                  onPressed: () => showAddSubscriptionSheet(context),
-                  child: const Text('open'),
+    // ⏱ 2026-09-28 · ST-T3b (ST-E4/E2). The Monthly/Yearly pair this case
+    // was written for is gone: two arms could not describe a weekly or
+    // quarterly plan. The cadence is ONE stock dropdown, and the property is
+    // the same one — a reader is told WHICH cadence is current, by the field's
+    // own name, and the announcement FOLLOWS the choice.
+    testWidgets(
+      'the cadence field reports WHICH cycle is current, and it moves',
+      (WidgetTester tester) async {
+        await semantically(tester, () async {
+          await pumpScreen(
+            tester,
+            Scaffold(
+              body: Builder(
+                builder: (BuildContext context) => Center(
+                  child: TextButton(
+                    onPressed: () => showAddSubscriptionSheet(context),
+                    child: const Text('open'),
+                  ),
                 ),
               ),
             ),
-          ),
-        );
-        await tester.tap(find.text('open'));
-        await tester.pumpAndSettle();
-        final AppLocalizations l10n = await _load('en');
+          );
+          await tester.tap(find.text('open'));
+          await tester.pumpAndSettle();
+          final AppLocalizations l10n = await _load('en');
 
-        // Scoped by "has a selected STATE", the same way the shell's pill case
-        // is: Monthly/Yearly is a two-way choice whose only visual indication
-        // is a gradient fill, and a reader has no gradient.
-        List<SemanticsData> arms() => _nodes(tester)
-            .map((SemanticsNode n) => n.getSemanticsData())
-            .where(
-              (SemanticsData d) =>
-                  <String>[
-                    l10n.cycleMonthly,
-                    l10n.cycleYearly,
-                  ].contains(d.label) &&
-                  d.announcesSelectedState,
-            )
-            .toList();
+          List<String> cadenceLabels() => _nodes(tester)
+              .map((SemanticsNode n) => n.getSemanticsData())
+              .where(
+                (SemanticsData d) =>
+                    d.label.contains(l10n.fieldLabelCycle) &&
+                    d.hasAction(SemanticsAction.tap),
+              )
+              .map((SemanticsData d) => d.label)
+              .toList();
 
-        expect(
-          arms(),
-          hasLength(2),
-          reason:
-              'both arms must REPORT a selection state — the tri-state is the '
-              'point, and an arm with no state at all is announced as an '
-              'ordinary button that happens to share the word. '
-              'Found: ${announced(tester)}',
-        );
-        expect(arms().every((SemanticsData d) => d.announcesButton), isTrue);
-        expect(
-          arms()
-              .where((SemanticsData d) => d.announcesSelected)
-              .map((SemanticsData d) => d.label),
-          <String>[l10n.cycleMonthly],
-          reason: 'the sheet opens on Monthly, and exactly one arm may say so',
-        );
+          expect(
+            cadenceLabels(),
+            hasLength(1),
+            reason:
+                'the cadence is one named control. Found: ${announced(tester)}',
+          );
+          expect(cadenceLabels().single, contains(l10n.cycleMonthly));
 
-        // 🔴 THE HALF THAT MAKES THE FIRST HALF MEAN ANYTHING. A hardcoded
-        // `selected: true` on the monthly arm passes everything above.
-        //
-        // ⚠️ `ensureVisible` FIRST, AND IT IS NOT DEFENSIVE PADDING. The
-        // sheet's `maxHeight` is `MediaQuery.size.height * 0.86`, and
-        // `setSurfaceSize` pins LAYOUT CONSTRAINTS WITHOUT MOVING MediaQuery
-        // (`width_harness.dart:166-178` measures both halves) — so the sheet is
-        // 516 tall whatever surface this runs at, its `SingleChildScrollView`
-        // clips the last ~80 px, and a bare `tap` derives an offset that hit
-        // tests onto the sheet's own padding. That failure prints as a WARNING
-        // and the tap silently does nothing, which reads exactly like a
-        // `selected` flag that refused to move.
-        await tester.ensureVisible(find.text(l10n.cycleYearly));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text(l10n.cycleYearly));
-        await tester.pumpAndSettle();
-        expect(
-          arms()
-              .where((SemanticsData d) => d.announcesSelected)
-              .map((SemanticsData d) => d.label),
-          <String>[l10n.cycleYearly],
-          reason:
-              'the selected flag did not FOLLOW the choice, so a reader is '
-              'told the wrong billing cycle is current',
-        );
-      });
-    });
+          // 🔴 THE HALF THAT MAKES THE FIRST HALF MEAN ANYTHING: a hardcoded
+          // "Monthly" passes everything above. `ensureVisible` first — see the
+          // history of this case for why a bare tap can land on padding.
+          await tester.ensureVisible(find.text(l10n.cycleMonthly));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text(l10n.cycleMonthly));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text(l10n.cycleWeekly).last);
+          await tester.pumpAndSettle();
+          expect(
+            cadenceLabels().single,
+            contains(l10n.cycleWeekly),
+            reason:
+                'the announced cadence did not FOLLOW the choice, so a reader is '
+                'told the wrong billing cycle is current',
+          );
+        });
+      },
+    );
 
     testWidgets('nothing on the add sheet is naked', (
       WidgetTester tester,
@@ -3079,7 +3061,10 @@ void main() {
         // a pure function of the object handed to `showCancelSheet`, so the
         // seed would only add a dependency the surface does not have.
         final Subscription sub = Subscription(
-          id: 'sub-1',
+          // '1' is the seed's own Netflix: "Confirm cancel" now PATCHes the row
+          // (ST-E3, mark cancelled) and a row the backing store does not hold is a
+          // 404 — the old hard DELETE of an unknown id silently succeeded.
+          id: '1',
           name: 'Netflix',
           category: 'Streaming',
           price: const Money(1500, 'USD'),
@@ -3168,7 +3153,10 @@ void main() {
     ) async {
       await semantically(tester, () async {
         final Subscription sub = Subscription(
-          id: 'sub-1',
+          // '1' is the seed's own Netflix: "Confirm cancel" now PATCHes the row
+          // (ST-E3, mark cancelled) and a row the backing store does not hold is a
+          // 404 — the old hard DELETE of an unknown id silently succeeded.
+          id: '1',
           name: 'Netflix',
           category: 'Streaming',
           price: const Money(1500, 'USD'),
@@ -3740,7 +3728,10 @@ void main() {
         'EITHER step', (WidgetTester tester) async {
       await semantically(tester, () async {
         final Subscription sub = Subscription(
-          id: 'sub-1',
+          // '1' is the seed's own Netflix: "Confirm cancel" now PATCHes the row
+          // (ST-E3, mark cancelled) and a row the backing store does not hold is a
+          // 404 — the old hard DELETE of an unknown id silently succeeded.
+          id: '1',
           name: 'Netflix',
           category: 'Streaming',
           price: const Money(1500, 'USD'),
@@ -4848,7 +4839,10 @@ void main() {
         'EITHER step', (WidgetTester tester) async {
       await semantically(tester, () async {
         final Subscription sub = Subscription(
-          id: 'sub-1',
+          // '1' is the seed's own Netflix: "Confirm cancel" now PATCHes the row
+          // (ST-E3, mark cancelled) and a row the backing store does not hold is a
+          // 404 — the old hard DELETE of an unknown id silently succeeded.
+          id: '1',
           name: 'Netflix',
           category: 'Streaming',
           price: const Money(1500, 'USD'),

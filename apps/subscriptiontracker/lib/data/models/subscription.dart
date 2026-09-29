@@ -1,13 +1,44 @@
-import 'package:nikatru_core/nikatru_core.dart' show Money;
+import 'package:nikatru_core/nikatru_core.dart'
+    show Cadence, CycleUnit, Money, RecurrenceSchedule;
 
 import '../../core/format/monthly_share.dart';
 
 /// Re-exported: a file that constructs a [Subscription] necessarily
 /// names the type its price is in, and one import for the pair is one
-/// fewer place for the two to drift.
-export 'package:nikatru_core/nikatru_core.dart' show Money;
+/// fewer place for the two to drift. [Cadence] and [CycleUnit] for the same
+/// reason: a row names how often it bills.
+export 'package:nikatru_core/nikatru_core.dart'
+    show Cadence, CycleUnit, Money, RecurrenceSchedule;
 
-enum BillingCycle { monthly, yearly }
+/// The legacy name of a row's cadence.
+///
+/// ⏱ 2026-09-28 · ST-T3b (ST-E4). This was `enum BillingCycle { monthly,
+/// yearly }` — two members, so a weekly, quarterly or every-10-days plan could
+/// not be written down at all. It is `packages/core`'s (every, unit)
+/// [Cadence] now, the one the platform Worker rolls renewals by
+/// (`contracts/renewals/`). The alias keeps `BillingCycle.monthly` and
+/// `BillingCycle.yearly` meaning exactly what they meant — (1, month) and
+/// (1, year) — so a caller that only ever knew the two is untouched.
+typedef BillingCycle = Cadence;
+
+/// Where a row is in its life ([ADR no.077] §5.1, 0003's `status`).
+///
+/// Only [active] and [trialing] are CHARGING: a paused or cancelled row keeps
+/// its history on screen and leaves every total and every reminder.
+enum SubscriptionStatus {
+  active,
+  trialing,
+  paused,
+  cancelled;
+
+  /// The wire value; an unknown one decodes as [active], which is what 0003's
+  /// `DEFAULT 'active'` makes every row that predates the column.
+  static SubscriptionStatus parse(Object? raw) =>
+      SubscriptionStatus.values.firstWhere(
+        (SubscriptionStatus s) => s.name == raw,
+        orElse: () => SubscriptionStatus.active,
+      );
+}
 
 /// A single tracked subscription. JSON is snake_case to match the Worker/D1 API.
 ///
@@ -26,6 +57,13 @@ class Subscription {
     this.usedPct = 0,
     this.usageNote = '',
     this.unused = false,
+    this.status = SubscriptionStatus.active,
+    this.firstChargeOn,
+    this.trialEndsOn,
+    this.cancelledOn,
+    this.deletedAt,
+    this.notes = '',
+    this.cancelUrl,
     this.reminderDays,
     this.noticeDays,
     this.noticeDaysSupported = false,
@@ -46,7 +84,19 @@ class Subscription {
   /// [SubMath] and `MoneyBag`.
   final Money price;
 
-  final BillingCycle cycle;
+  /// How often this row bills, or NULL when the wire carried no cadence at
+  /// all (0001's `cycle` is nullable, and 0003 lets a body clear the pair).
+  ///
+  /// 🔴 NULL IS NOT "MONTHLY" FOR THE DATE. A row with no cadence cannot be
+  /// rolled forward, so a past [nextRenewal] on it reads "Overdue" rather than
+  /// being invented into a next month. Its TOTALS still count it as monthly
+  /// ([billingCadence]) — the figure every total showed for it before, kept
+  /// rather than silently dropped out of the user's spend.
+  final Cadence? cycle;
+
+  /// The next charge date AS STORED. The server rolls it nightly; between
+  /// passes (and always, in the unconfigured posture) a screen reads
+  /// [nextCharge], never this, or a row three days past reads "Due today".
   final DateTime nextRenewal;
   final String plan;
   final String glyph;
@@ -54,8 +104,55 @@ class Subscription {
   final String usageNote;
   final bool unused;
 
+  /// Where the row is in its life. See [SubscriptionStatus].
+  final SubscriptionStatus status;
+
+  /// The first charge ('YYYY-MM-DD' on the wire), when the user said so.
+  final DateTime? firstChargeOn;
+
+  /// The day a free trial turns into [price] every [cycle]. Set with
+  /// [SubscriptionStatus.trialing]; the trial-end reminder is armed off it.
+  final DateTime? trialEndsOn;
+
+  /// The day the user marked it cancelled.
+  final DateTime? cancelledOn;
+
+  /// A soft delete: set, the row is gone from every list, and an Undo clears
+  /// it. The server keeps the row and its history either way.
+  final DateTime? deletedAt;
+
+  /// Free text the user keeps about it.
+  final String notes;
+
+  /// Where to cancel it — an http(s) URL the API validated.
+  final String? cancelUrl;
+
+  /// The cadence every MONEY figure is computed with: [cycle], or monthly for
+  /// a row that has none (see [cycle] on why the date does not do the same).
+  Cadence get billingCadence => cycle ?? Cadence.monthly;
+
+  /// Whether this row is still charging: active or trialing, and not deleted.
+  /// Totals, due counts and reminders range over these rows only.
+  bool get isCharging =>
+      deletedAt == null &&
+      (status == SubscriptionStatus.active ||
+          status == SubscriptionStatus.trialing);
+
+  /// The first charge on or after [now]'s date — [nextRenewal] rolled by
+  /// [cycle] through `packages/core`'s [RecurrenceSchedule], the rule the platform
+  /// Worker rolls the stored date by. A row with no cadence is not rolled.
+  DateTime nextCharge(DateTime now) {
+    final Cadence? c = cycle;
+    if (c == null || !c.isValid) return nextRenewal;
+    return RecurrenceSchedule.nextOnOrAfter(
+      nextRenewal,
+      c,
+      DateTime(now.year, now.month, now.day),
+    );
+  }
+
   /// Days before the charge to remind, e.g. `[7, 1]` — the API's
-  /// `reminder_days` (0003). NULL = the account default in Settings.
+  /// `reminder_days` (0003). NULL = the account default in Settings (ST-R3).
   final List<int>? reminderDays;
 
   /// Days of notice the plan needs to be cancelled — the API's `notice_days`
@@ -65,20 +162,17 @@ class Subscription {
 
   /// Whether the wire CARRIED `notice_days` at all. The detail screen offers
   /// the field only then: an API that predates 0004 would drop the value and
-  /// answer with a row that no longer has it, and a field the user sets that
-  /// silently un-sets itself is worse than no field. Deploy order is the API
-  /// first, so this is false for at most one deploy.
+  /// answer with a row that no longer has it. Deploy order is the API first.
   final bool noticeDaysSupported;
 
-  /// The last day the user can cancel without being charged again, or null
-  /// when the plan names no notice period.
-  DateTime? get cancelBy => noticeDays == null
-      ? null
-      : DateTime(
-          nextRenewal.year,
-          nextRenewal.month,
-          nextRenewal.day - noticeDays!,
-        );
+  /// The last day to cancel before the charge on or after [now]
+  /// ([nextCharge]), or null when the plan names no notice period.
+  DateTime? cancelByFor(DateTime now) {
+    final int? notice = noticeDays;
+    if (notice == null) return null;
+    final DateTime next = nextCharge(now);
+    return DateTime(next.year, next.month, next.day - notice);
+  }
 
   /// ISO 4217 for this row, e.g. `USD`. Derived from [price] rather than
   /// stored twice — two fields that can disagree about one fact is how the
@@ -92,14 +186,21 @@ class Subscription {
   /// comparison figure and wrong for a payment; nothing here splits a payment.
   /// It is a [MonthlyShare], not a [Money], so it cannot be printed where a
   /// charge belongs: a ROW prints [price] with its cycle label.
-  MonthlyShare get monthlyShare => cycle == BillingCycle.yearly
-      ? MonthlyShare.ofYearly(price)
-      : MonthlyShare.ofMonthly(price);
+  ///
+  /// Any other cadence is its charges per year over twelve
+  /// ([Cadence.chargesPerYear]), rounded ONCE: a weekly plan's share is
+  /// price x 52 / 12, an every-10-days plan's price x 365 / 120.
+  MonthlyShare get monthlyShare => MonthlyShare.of(price, billingCadence);
 
-  /// What this plan charges in a year: the yearly price, or twelve monthly
-  /// charges. Computed from [price], never from [monthlyShare].
-  Money get yearlyCharge =>
-      cycle == BillingCycle.yearly ? price : price.times(12);
+  /// What this plan charges in a year: the yearly price, twelve monthly
+  /// charges, 52 weekly ones. Computed from [price], never from
+  /// [monthlyShare].
+  Money get yearlyCharge {
+    final ({int numerator, int denominator}) r = billingCadence.chargesPerYear;
+    return r.denominator == 1
+        ? price.times(r.numerator)
+        : price.times(r.numerator).dividedBy(r.denominator);
+  }
 
   /// Whether this row's one renewal falls in [month] of [year]. The calendar's
   /// list and its month total both ask this, so they cannot disagree.
@@ -108,13 +209,19 @@ class Subscription {
 
   bool get isActive => !unused && usedPct > 60;
 
+  /// Whole days from [now]'s date to [nextCharge]. Never negative for a row
+  /// with a cadence — its next charge is rolled to today or later — so a
+  /// negative value means exactly one thing: a row with no cadence whose date
+  /// has passed, which the due label reads as "Overdue".
+  ///
+  /// ⏱ 2026-09-28 · ST-T3b (ST-M3). This measured to the STORED [nextRenewal],
+  /// so a monthly row three days past its date read -3, and `DueInfo` printed
+  /// "Due today" for it — and for every past date — until the nightly pass
+  /// happened to run. In the unconfigured posture no pass ever runs.
   int daysUntil(DateTime now) {
-    final DateTime a = DateTime(now.year, now.month, now.day);
-    final DateTime b = DateTime(
-      nextRenewal.year,
-      nextRenewal.month,
-      nextRenewal.day,
-    );
+    final DateTime a = DateTime.utc(now.year, now.month, now.day);
+    final DateTime next = nextCharge(now);
+    final DateTime b = DateTime.utc(next.year, next.month, next.day);
     return b.difference(a).inDays;
   }
 
@@ -130,15 +237,20 @@ class Subscription {
     name: (j['name'] ?? '') as String,
     category: (j['category'] ?? 'Other') as String,
     price: readPrice(j, fallbackCurrencyCode: fallbackCurrencyCode),
-    cycle: (j['cycle'] == 'yearly')
-        ? BillingCycle.yearly
-        : BillingCycle.monthly,
+    cycle: readCadence(j),
     nextRenewal: DateTime.parse(j['next_renewal'] as String),
     plan: (j['plan'] ?? '') as String,
     glyph: (j['glyph'] ?? '') as String,
     usedPct: (j['used_pct'] as num?)?.toInt() ?? 0,
     usageNote: (j['usage_note'] ?? '') as String,
     unused: j['unused'] == true || j['unused'] == 1,
+    status: SubscriptionStatus.parse(j['status']),
+    firstChargeOn: _dateOrNull(j['first_charge_on']),
+    trialEndsOn: _dateOrNull(j['trial_ends_on']),
+    cancelledOn: _dateOrNull(j['cancelled_on']),
+    deletedAt: _instantOrNull(j['deleted_at']),
+    notes: (j['notes'] ?? '') as String,
+    cancelUrl: j['cancel_url'] as String?,
     reminderDays: readReminderDays(j['reminder_days']),
     noticeDays: readNoticeDays(j['notice_days']),
     noticeDaysSupported: j.containsKey('notice_days'),
@@ -161,29 +273,28 @@ class Subscription {
   static int? readNoticeDays(Object? raw) =>
       raw is int && raw >= 0 ? raw : null;
 
-  /// This row with the reminder fields of a PATCH body applied — the keys
-  /// present in [changes] win, absent keys keep this row's value. For the demo
-  /// client, which has no server to echo the patch back.
-  Subscription withReminderPatch(Map<String, dynamic> changes) => Subscription(
-    id: id,
-    name: name,
-    category: category,
-    price: price,
-    cycle: cycle,
-    nextRenewal: nextRenewal,
-    plan: plan,
-    glyph: glyph,
-    usedPct: usedPct,
-    usageNote: usageNote,
-    unused: unused,
-    reminderDays: changes.containsKey('reminder_days')
-        ? readReminderDays(changes['reminder_days'])
-        : reminderDays,
-    noticeDays: changes.containsKey('notice_days')
-        ? readNoticeDays(changes['notice_days'])
-        : noticeDays,
-    noticeDaysSupported: noticeDaysSupported,
-  );
+  /// The row's cadence: 0003's (`cycle_every`, `cycle_unit`) pair when it is
+  /// there, else the legacy `cycle` — every row a pre-0003 server, or this
+  /// app's own local store before ST-T3b, ever wrote. NULL when neither is.
+  ///
+  /// ⚠️ THE LEGACY DECODE USED TO MAP EVERYTHING THAT WAS NOT 'yearly' TO
+  /// MONTHLY, a null `cycle` included. The TOTALS keep that reading
+  /// ([billingCadence]); the DATE no longer invents a month for it.
+  static Cadence? readCadence(Map<String, dynamic> j) =>
+      Cadence.tryParse(j['cycle_every'], j['cycle_unit']) ??
+      Cadence.fromLegacy(j['cycle']);
+
+  static DateTime? _dateOrNull(Object? raw) {
+    if (raw is! String || raw.isEmpty) return null;
+    try {
+      return RecurrenceSchedule.parseYmd(raw);
+    } on FormatException {
+      return null;
+    }
+  }
+
+  static DateTime? _instantOrNull(Object? raw) =>
+      raw is String && raw.isNotEmpty ? DateTime.tryParse(raw) : null;
 
   /// Reads the amount from a row, preferring the exact integer shape and
   /// falling back to the decimal one.
@@ -226,13 +337,26 @@ class Subscription {
     'price': price.toMajorUnits(),
     'price_minor': price.minorUnits,
     'currency': price.currencyCode,
-    'cycle': cycle.name,
+    // The pair AND the legacy value it means — the API 400s a body where the
+    // two disagree, and derives `cycle` itself when only the pair is sent, so
+    // sending both (consistently) keeps an old local store readable by an old
+    // build too. NULL for both halves when the row has no cadence.
+    'cycle': cycle?.legacyCycle,
+    'cycle_every': cycle?.every,
+    'cycle_unit': cycle?.unit.name,
     'next_renewal': dateOnly(nextRenewal),
     'plan': plan,
     'glyph': glyph,
     'used_pct': usedPct,
     'usage_note': usageNote,
     'unused': unused,
+    'status': status.name,
+    'first_charge_on': firstChargeOn == null ? null : dateOnly(firstChargeOn!),
+    'trial_ends_on': trialEndsOn == null ? null : dateOnly(trialEndsOn!),
+    'cancelled_on': cancelledOn == null ? null : dateOnly(cancelledOn!),
+    'deleted_at': deletedAt?.toUtc().toIso8601String(),
+    'notes': notes,
+    'cancel_url': cancelUrl,
     // Sent only when set: a NULL `reminder_days` is the default already, and
     // an API before 0004 has no `notice_days` to receive.
     if (reminderDays != null) 'reminder_days': reminderDays,
@@ -243,25 +367,26 @@ class Subscription {
   };
 
   /// ⚠️ [price] IS A `num` OF MAJOR UNITS, NOT A [Money], AND THE ODD ONE OUT
-  /// HAS A REASON. The only caller that passes it is `SeedApiClient.update`,
-  /// which relays a `changes` map straight off the wire (`changes['price'] as
-  /// num?`) and lives behind the frozen `data/api/` boundary. A `Money?`
-  /// parameter would not compile there, and inventing a second setter so that
-  /// this one could be typed differently is two ways to set one field.
+  /// HAS A REASON: it keeps THIS row's currency, because a change that names a
+  /// number without naming a currency has not changed the currency. A caller
+  /// that has a [Money] uses [withPrice].
   ///
-  /// The amount keeps THIS row's currency, because a patch that changes the
-  /// number without naming a currency has not changed the currency.
+  /// Only the fields a caller would set to a VALUE are here. A nullable field
+  /// that has to be CLEARED (`deletedAt` on Undo, a trial end) goes through
+  /// [patched], which reads an explicit null as "clear" exactly as the API's
+  /// PATCH does.
   Subscription copyWith({
     String? name,
     String? category,
     num? price,
-    BillingCycle? cycle,
+    Cadence? cycle,
     DateTime? nextRenewal,
     String? plan,
     int? usedPct,
     bool? unused,
-  }) => Subscription(
-    id: id,
+    SubscriptionStatus? status,
+    String? notes,
+  }) => _with(
     name: name ?? this.name,
     category: category ?? this.category,
     price: price == null
@@ -270,33 +395,125 @@ class Subscription {
     cycle: cycle ?? this.cycle,
     nextRenewal: nextRenewal ?? this.nextRenewal,
     plan: plan ?? this.plan,
+    usedPct: usedPct ?? this.usedPct,
+    unused: unused ?? this.unused,
+    status: status ?? this.status,
+    notes: notes ?? this.notes,
+  );
+
+  /// Replaces the AMOUNT, currency and all — for a caller that really does
+  /// have a [Money] (the add sheet, a currency correction).
+  Subscription withPrice(Money amount) => _with(price: amount);
+
+  /// This row with a PATCH body applied — the in-memory twin of
+  /// `PATCH /v1/subscriptions/:id` (services/subscriptiontracker-api
+  /// `validate`), for the seed client and for an optimistic update.
+  ///
+  /// Every key [changes] carries is applied, an explicit null clears, and the
+  /// route's two cross-key rules are mirrored so the twin cannot answer
+  /// differently from the server:
+  ///   · a `price` or `currency` without `price_minor` drops the stored exact
+  ///     amount — [readPrice] prefers `price_minor`, so a stale one would
+  ///     outrank the new decimal;
+  ///   · a legacy `cycle` without the pair re-derives the pair from it.
+  Subscription patched(Map<String, dynamic> changes) {
+    final Map<String, dynamic> merged = <String, dynamic>{
+      ...toJson(),
+      ...changes,
+    };
+    if (!changes.containsKey('price_minor') &&
+        (changes.containsKey('price') || changes.containsKey('currency'))) {
+      merged.remove('price_minor');
+    }
+    if (changes.containsKey('cycle') && !changes.containsKey('cycle_unit')) {
+      final Cadence? legacy = Cadence.fromLegacy(changes['cycle']);
+      merged['cycle_every'] = legacy?.every;
+      merged['cycle_unit'] = legacy?.unit.name;
+    }
+    merged['id'] = id;
+    return Subscription.fromJson(
+      merged,
+      fallbackCurrencyCode: price.currencyCode,
+    );
+  }
+
+  /// The PATCH body that turns [before] into this row: ONLY the keys whose
+  /// wire value changed (ST-E1), so an edit that renames a row sends a name
+  /// and nothing else — never a whole row that would stamp stale values over
+  /// a concurrent change.
+  ///
+  /// Keys that the API judges TOGETHER travel together, because it 400s them
+  /// apart ([ADR no.077] §5, `validate` in routes/subscriptions.ts):
+  ///   · `price`, `price_minor`, `currency` — the exact amount must be sent
+  ///     with the decimal and the currency it is an amount of;
+  ///   · `cycle`, `cycle_every`, `cycle_unit` — half a cadence is not one.
+  Map<String, dynamic> changesFrom(Subscription before) {
+    final Map<String, dynamic> a = before.toJson();
+    final Map<String, dynamic> b = toJson();
+    final Map<String, dynamic> out = <String, dynamic>{};
+    for (final String k in b.keys) {
+      if (k == 'id') continue;
+      if (a[k] != b[k]) out[k] = b[k];
+    }
+    for (final List<String> group in _togetherKeys) {
+      if (group.any(out.containsKey)) {
+        for (final String k in group) {
+          out[k] = b[k];
+        }
+      }
+    }
+    return out;
+  }
+
+  static const List<List<String>> _togetherKeys = <List<String>>[
+    <String>['price', 'price_minor', 'currency'],
+    <String>['cycle', 'cycle_every', 'cycle_unit'],
+  ];
+
+  Subscription _with({
+    String? name,
+    String? category,
+    Money? price,
+    Cadence? cycle,
+    DateTime? nextRenewal,
+    String? plan,
+    int? usedPct,
+    bool? unused,
+    SubscriptionStatus? status,
+    String? notes,
+  }) => Subscription(
+    id: id,
+    name: name ?? this.name,
+    category: category ?? this.category,
+    price: price ?? this.price,
+    cycle: cycle ?? this.cycle,
+    nextRenewal: nextRenewal ?? this.nextRenewal,
+    plan: plan ?? this.plan,
     glyph: glyph,
     usedPct: usedPct ?? this.usedPct,
     usageNote: usageNote,
     unused: unused ?? this.unused,
+    status: status ?? this.status,
+    firstChargeOn: firstChargeOn,
+    trialEndsOn: trialEndsOn,
+    cancelledOn: cancelledOn,
+    deletedAt: deletedAt,
+    notes: notes ?? this.notes,
+    cancelUrl: cancelUrl,
     reminderDays: reminderDays,
     noticeDays: noticeDays,
     noticeDaysSupported: noticeDaysSupported,
   );
 
-  /// Replaces the AMOUNT, currency and all — for a caller that really does
-  /// have a [Money] (the add sheet, a currency correction).
-  Subscription withPrice(Money amount) => Subscription(
-    id: id,
-    name: name,
-    category: category,
-    price: amount,
-    cycle: cycle,
-    nextRenewal: nextRenewal,
-    plan: plan,
-    glyph: glyph,
-    usedPct: usedPct,
-    usageNote: usageNote,
-    unused: unused,
-    reminderDays: reminderDays,
-    noticeDays: noticeDays,
-    noticeDaysSupported: noticeDaysSupported,
-  );
+  /// The mark a row wears when nobody chose one: the first three letters of
+  /// its name, upper case, padded with X. ONE rule, applied by the add sheet
+  /// before POST (so the Worker stores it) and by the seed client for a draft
+  /// that arrives without one — they used to be one inline copy in the seed
+  /// client, so a live row carried no glyph at all (ST-E2).
+  static String glyphFor(String name) {
+    final String trimmed = name.trim();
+    return trimmed.padRight(3, 'X').substring(0, 3).toUpperCase();
+  }
 
   static String dateOnly(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-'

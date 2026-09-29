@@ -6,7 +6,8 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
-import '../services/notifications/notification_service.dart' show ReminderRules;
+import '../services/notifications/notification_service.dart'
+    show ReminderRules, RenewalReminders;
 import 'analytics_providers.dart';
 import 'providers.dart' show renewalRemindersProvider;
 
@@ -36,7 +37,7 @@ class SettingsState {
   static const int defaultLeadDays = 2;
 
   /// The lead times the chooser offers, and the only ones a store may hold.
-  static const List<int> leadChoices = <int>[0, 1, 2, 3, 7, 14];
+  static const List<int> leadChoices = RenewalReminders.leadChoices;
 
   /// ST-R3: the local time of day every reminder fires at, as minutes after
   /// midnight. 09:00 is what the app always did.

@@ -122,9 +122,11 @@ describe('the real tree', () => {
       assert.equal(exempt.filter((l) => /legal_consent_fields\.dart:\d+ .*under ExcludeSemantics/.test(l)).length, 2);
       assert.equal(exempt.filter((l) => l.includes(`${FOCUSABLE_TAP}:`) && l.includes('FocusableActionDetector')).length, 1);
       const known = r.stdout.split('\n').filter((l) => l.startsWith('known '));
-      assert.equal(known.length, 7, r.stdout);
+      // 7 -> 3 on 2026-09-29: ST-T3b converted the add sheet's three Y2 sites and
+      // the notifications Close, and deleted their rows (the list only shrinks).
+      assert.equal(known.length, 3, r.stdout);
       for (const l of known) assert.match(l, /; owner [A-Z]\d+ — /);
-      assert.match(r.stdout, /ST-Y2: 7 gesture detector\(s\), 0 without a tap callback, 7 in scope, 3 exempt/);
+      assert.match(r.stdout, /ST-Y2: 3 gesture detector\(s\), 0 without a tap callback, 3 in scope, 3 exempt/);
       assert.match(r.stdout, /ST-Y3: 10 obscured field\(s\), 1 without hints, all baselined/);
     });
   });
@@ -151,23 +153,19 @@ describe('limb 1 · ST-Y2 · every tap target takes the keyboard', () => {
     );
   });
 
-  test('RED: the real tree with an EMPTY Y2 baseline names exactly the four known sites', () => {
-    withPatchedGuard(
-      (src) => src.replace(
-        /\nconst problems = \[\];/,
-        "\nBASELINE.splice(0, BASELINE.length, ...BASELINE.filter((r) => r.limb !== 'ST-Y2'));\nconst problems = [];",
-      ),
-      (guard) => withTree(() => {}, (r) => {
-        assert.equal(r.status, 1, r.stdout + r.stderr);
-        const y2 = fails(r).filter((l) => l.includes('ST-Y2'));
-        assert.equal(y2.length, 4, r.stderr);
-        assert.equal(y2.filter((l) => l.includes(`${ADD_SHEET}:`)).length, 3, r.stderr);
-        assert.equal(y2.filter((l) => l.includes(`${NOTIFICATIONS}:`)).length, 1, r.stderr);
-        // All four carry a role and no keyboard path — the B23/C17 shape.
-        for (const l of y2) assert.match(l, /wrapped in Semantics\(button: true\)/);
-        assert.equal(fails(r).length, 4, 'nothing but the four');
-      }, guard),
-    );
+  test('the real tree has NO Y2 site left to baseline: all four known sites were converted', () => {
+    // ⏱ 2026-09-29 · ST-T3b. This case read "an EMPTY Y2 baseline names exactly
+    // the four known sites" — the add sheet's chips, cycle and date field (B23)
+    // and the notifications Close (C17). ST-T3b converted all four to
+    // FocusableTap / SegmentedButton and deleted their rows, so the Y2 baseline
+    // IS empty and the real tree must pass without one. A new pointer-only
+    // control anywhere in scope turns this red (the fixture case above is the
+    // refusal's own red control).
+    withTree(() => {}, (r) => {
+      assert.equal(r.status, 0, r.stdout + r.stderr);
+      assert.equal(fails(r).filter((l) => l.includes('ST-Y2')).length, 0, r.stderr);
+      assert.match(r.stdout, /ST-Y2: .* 0 baselined, 0 refused/);
+    });
   });
 
   test('RED: a RawGestureDetector with a TapGestureRecognizer is refused', () => {
@@ -236,24 +234,28 @@ Semantics(button: true, child: GestureDetector(onTap: () {}))
     )`)),
       (r) => {
         assert.equal(r.status, 0, r.stderr);
-        assert.match(r.stdout, /ST-Y2: 9 gesture detector\(s\), 2 without a tap callback, 7 in scope/);
+        assert.match(r.stdout, /ST-Y2: 5 gesture detector\(s\), 2 without a tap callback, 3 in scope/);
       },
     );
   });
 
   test('RED: a baseline row whose instance is converted fails "delete this row"', () => {
-    withTree(
-      (root) => edit(root, ADD_SHEET, (s) => {
-        const at = s.indexOf('onTap: () => _name.text = service[0]');
-        const gd = s.lastIndexOf('GestureDetector(', at);
-        return `${s.slice(0, gd)}FocusableTap(${s.slice(gd + 'GestureDetector('.length)}`;
-      }),
-      (r) => {
+    // ⏱ 2026-09-29 · ST-T3b: the real rows this case converted are gone (their
+    // owner converted them), so the stale row is injected: an anchor that IS in
+    // the add sheet but is no refused detector — exactly what a converted
+    // instance's row looks like.
+    withPatchedGuard(
+      (src) => src.replace(
+        /\nconst BASELINE = \[\n/,
+        "\nconst BASELINE = [\n  { limb: 'ST-Y2', file: 'apps/subscriptiontracker/lib/features/add/add_subscription_sheet.dart', " +
+          "anchor: 'setState(() => _saving = true);', what: 'the POPULAR service chips', owner: 'B23 — a converted row' },\n",
+      ),
+      (guard) => withTree(() => {}, (r) => {
         assert.equal(r.status, 1, r.stderr);
         const f = fails(r);
         assert.equal(f.length, 1, r.stderr);
         assert.match(f[0], /ST-Y2: BASELINE row for the POPULAR service chips .* Delete this row/);
-      },
+      }, guard),
     );
   });
 

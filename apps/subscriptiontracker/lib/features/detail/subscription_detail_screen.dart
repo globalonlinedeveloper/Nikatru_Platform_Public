@@ -10,8 +10,10 @@ import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
 import '../../state/subscriptions_controller.dart';
+import '../add/add_subscription_sheet.dart';
 import '../cancel/cancel_sheet.dart';
 import '../shared/async_gate.dart';
+import '../shared/cadence_label.dart';
 import '../shared/due.dart';
 import '../shared/widgets.dart';
 import '../shell/app_shell.dart';
@@ -227,18 +229,23 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    // ST-U5 (B14): the `more_horiz` "More options" control that
-                    // stood at the other end of this row was a STUB — focusable,
-                    // announced as a button, and it opened nothing. A control a
-                    // user can reach and activate to no effect is removed, not
-                    // labelled; the actions this screen has are the buttons
-                    // below the history.
+                    // ST-U5 (B14) removed the `more_horiz` "More options" STUB
+                    // — focusable, announced as a button, opening nothing.
+                    // ST-T3b (ST-E3) puts it back with a real menu behind it.
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: <Widget>[
                         _iconButton(
                           Icons.arrow_back,
                           l10n.back,
                           () => _dismiss(context),
+                        ),
+                        // ⏱ ST-T3b (ST-E3): the row's lifecycle — Pause /
+                        // Resume, Mark as cancelled and Delete from tracker.
+                        _iconButton(
+                          Icons.more_horiz,
+                          l10n.moreOptions,
+                          () => _showMoreOptions(context, ref, s, _dismiss),
                         ),
                       ],
                     ),
@@ -283,7 +290,10 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                       ),
                     ),
                     Text(
-                      '${s.category} · ${s.plan}',
+                      // ⏱ ST-T3b (ST-E1): no dangling " · " for a row with no
+                      // plan ("Streaming · "), and a row that is not charging
+                      // says so here.
+                      detailSubtitle(l10n, s),
                       style: const TextStyle(
                         fontFamily: 'Manrope',
                         fontWeight: FontWeight.w600,
@@ -356,9 +366,7 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                           context,
                           l10n.fieldLabelPrice,
                           money.format(s.price),
-                          s.cycle == BillingCycle.yearly
-                              ? l10n.perYear
-                              : l10n.perMonth,
+                          cadenceCaption(l10n, s.cycle),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -370,9 +378,11 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                           // English abbreviation table. `MMMd` is the same
                           // shape in English and the correct one everywhere
                           // else — Tamil does not put the month first.
+                          // The ROLLED next charge (ST-M3), the date
+                          // `due.label` beside it is measured to.
                           DateFormat.MMMd(
                             l10n.localeName,
-                          ).format(s.nextRenewal),
+                          ).format(s.nextCharge(DateTime.now())),
                           due.label,
                           valueSub: due.color,
                         ),
@@ -495,9 +505,12 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                   Row(
                     children: <Widget>[
                       Expanded(
+                        // ⏱ ST-T3b (ST-E1): "Edit plan" closed the screen and
+                        // edited nothing. It opens the sheet, prefilled.
                         child: SoftButton(
                           label: l10n.editPlan,
-                          onPressed: () => _dismiss(context),
+                          onPressed: () =>
+                              showAddSubscriptionSheet(context, initial: s),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -506,6 +519,13 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                           height: 50,
                           child: FilledButton(
                             onPressed: () async {
+                              // Resolved BEFORE the await: the snackbar
+                              // outlives this screen.
+                              final ScaffoldMessengerState messenger =
+                                  ScaffoldMessenger.of(context);
+                              final SubscriptionsController ctl = ref.read(
+                                subscriptionsControllerProvider.notifier,
+                              );
                               // ST-U8 (B15): dismiss ONLY when the row was
                               // removed. "Keep it" keeps the user here.
                               final bool removed = await showCancelSheet(
@@ -513,6 +533,22 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                                 s,
                               );
                               if (!removed) return;
+                              // ST-T3b (ST-E3): the removal is a SOFT delete,
+                              // so it can be undone — the same Undo as the
+                              // overflow's "Delete from tracker".
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    l10n.subscriptionDeleted(s.name),
+                                  ),
+                                  action: ctl.canUndoDelete(s.id)
+                                      ? SnackBarAction(
+                                          label: l10n.undo,
+                                          onPressed: () => ctl.undoDelete(s.id),
+                                        )
+                                      : null,
+                                ),
+                              );
                               // `context.mounted` answers "is this element
                               // still in the tree", NEVER "can the router
                               // pop" — the two came apart in the pane case,
@@ -813,4 +849,99 @@ class SubscriptionDetailScreen extends ConsumerWidget {
   // an .arb can close: it bakes the ORDER of the parts as well as their names,
   // so no set of month keys would have made "June 15, 2026" correct in a
   // locale that writes the day first.
+}
+
+/// The detail header's second line: category, plan and — when the row is not
+/// simply active — its status, joined by " · " with no empty part (ST-E1).
+@visibleForTesting
+String detailSubtitle(AppLocalizations l10n, Subscription s) => <String>[
+  s.category,
+  if (s.plan.trim().isNotEmpty) s.plan.trim(),
+  if (s.status == SubscriptionStatus.paused) l10n.statusPaused,
+  if (s.status == SubscriptionStatus.cancelled) l10n.statusCancelled,
+  if (s.status == SubscriptionStatus.trialing && s.trialEndsOn != null)
+    l10n.statusTrialing(
+      DateFormat.yMMMd(l10n.localeName).format(s.trialEndsOn!),
+    ),
+].join(' · ');
+
+/// "More options" (ST-E3): the row's lifecycle, as stock Material list tiles
+/// in a modal sheet, so the design programme restyles them by token.
+///
+/// Mark as cancelled and Pause KEEP the row and its history; Delete is a soft
+/// delete with an Undo, and the UI never calls DELETE.
+Future<void> _showMoreOptions(
+  BuildContext context,
+  WidgetRef ref,
+  Subscription s,
+  void Function(BuildContext) dismiss,
+) async {
+  final AppLocalizations l10n = AppLocalizations.of(context);
+  final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+  final SubscriptionsController ctl = ref.read(
+    subscriptionsControllerProvider.notifier,
+  );
+  final bool stopped =
+      s.status == SubscriptionStatus.paused ||
+      s.status == SubscriptionStatus.cancelled;
+  final Future<void> Function()?
+  action = await showModalBottomSheet<Future<void> Function()>(
+    context: context,
+    useRootNavigator: true,
+    builder: (BuildContext sheet) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          if (stopped)
+            ListTile(
+              leading: const Icon(Icons.play_arrow),
+              title: Text(l10n.actionResume),
+              onTap: () =>
+                  Navigator.of(sheet).pop(() => ctl.resumeSubscription(s.id)),
+            )
+          else
+            ListTile(
+              leading: const Icon(Icons.pause),
+              title: Text(l10n.actionPause),
+              onTap: () =>
+                  Navigator.of(sheet).pop(() => ctl.pauseSubscription(s.id)),
+            ),
+          if (s.status != SubscriptionStatus.cancelled)
+            ListTile(
+              leading: const Icon(Icons.cancel_outlined),
+              title: Text(l10n.actionMarkCancelled),
+              onTap: () =>
+                  Navigator.of(sheet).pop(() => ctl.markCancelled(s.id)),
+            ),
+          ListTile(
+            leading: const Icon(Icons.delete_outline),
+            title: Text(l10n.actionDeleteFromTracker),
+            onTap: () => Navigator.of(sheet).pop(() async {
+              await ctl.cancelSubscription(s.id);
+              messenger.showSnackBar(
+                SnackBar(
+                  content: Text(l10n.subscriptionDeleted(s.name)),
+                  action: ctl.canUndoDelete(s.id)
+                      ? SnackBarAction(
+                          label: l10n.undo,
+                          onPressed: () => ctl.undoDelete(s.id),
+                        )
+                      : null,
+                ),
+              );
+              if (context.mounted) dismiss(context);
+            }),
+          ),
+        ],
+      ),
+    ),
+  );
+  if (action == null) return;
+  try {
+    await action();
+  } on Object {
+    messenger.showSnackBar(
+      SnackBar(content: Text(l10n.updateSubscriptionFailed)),
+    );
+  }
 }

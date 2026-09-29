@@ -9,7 +9,7 @@ import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
-import '../../state/providers.dart' show renewalRemindersProvider;
+import '../../state/providers.dart' show nowProvider, renewalRemindersProvider;
 import '../../state/subscriptions_controller.dart' show monthDayFormat;
 import '../shared/async_gate.dart';
 
@@ -167,12 +167,14 @@ class NotificationsScreen extends ConsumerWidget {
                           l10n.notifications,
                           style: text.title.copyWith(fontSize: 22),
                         ),
-                        // ST-R6 (audit C17): a FocusableTap, so Tab reaches it and
-                        // Enter/Space press it (it was a GestureDetector).
+                        // ⏱ ST-T3b: `FocusableTap`, not a bare `GestureDetector`
+                        // under `Semantics(button:)` — that announced a button a
+                        // keyboard could not reach. It hid behind a one-control
+                        // sweep until ST-M3's rolled dates put Tab-able cards
+                        // beside it (keyboard_sweep_test `/notifications`).
                         FocusableTap(
                           label: l10n.close,
                           onTap: () => _close(context),
-                          borderRadius: BorderRadius.circular(14),
                           child: Container(
                             width: 48,
                             height: 48,
@@ -249,7 +251,11 @@ class NotificationsScreen extends ConsumerWidget {
                         // ever have been derived. Every row below is now computed from the
                         // subscriptions actually held, and anything that cannot be computed is not
                         // shown at all.
-                        final DateTime now = DateTime.now();
+                        // ⏱ ST-T3b (ST-M3): the injectable clock, because the
+                        // due-soon cards now come from ROLLED dates, so which rows
+                        // fall in the next seven days depends on the day — a sweep
+                        // that counts this screen's controls pins it (`nowProvider`).
+                        final DateTime now = ref.watch(nowProvider)();
 
                         final List<Subscription> dueSoon =
                             subs.where((Subscription x) {
@@ -260,14 +266,25 @@ class NotificationsScreen extends ConsumerWidget {
                                   a.daysUntil(now).compareTo(b.daysUntil(now)),
                             );
 
-                        // ST-R6 (audit C19): a renewal whose date has PASSED and
-                        // the server has not rolled forward yet was silently
-                        // omitted. It is shown, and it asks the question — for
-                        // the week the list covers, mirroring the 7 days ahead;
-                        // older than that is a stale row, not a recent charge.
+                        // ST-R6 (audit C19): a charge that happened in the last week
+                        // — the stored date has passed and the row ROLLED to its
+                        // next charge (ST-T3b) — was never said. It is, and it asks
+                        // the question. Older than the week the list covers is not
+                        // news.
+                        final DateTime today = DateTime(
+                          now.year,
+                          now.month,
+                          now.day,
+                        );
                         final List<Subscription> renewed =
                             subs.where((Subscription x) {
-                              final int d = x.daysUntil(now);
+                              if (x.cycle == null) return false;
+                              final DateTime r = DateTime(
+                                x.nextRenewal.year,
+                                x.nextRenewal.month,
+                                x.nextRenewal.day,
+                              );
+                              final int d = r.difference(today).inDays;
                               return d < 0 && d >= -7;
                             }).toList()..sort(
                               (Subscription a, Subscription b) =>
@@ -310,7 +327,7 @@ class NotificationsScreen extends ConsumerWidget {
                                     ),
                               l10n.notifChargeOn(
                                 money.format(x.price),
-                                renewalDate.format(x.nextRenewal),
+                                renewalDate.format(x.nextCharge(now)),
                               ),
                             ),
                           for (final Subscription x in renewed)

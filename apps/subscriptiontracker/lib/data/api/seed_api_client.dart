@@ -1,3 +1,5 @@
+import 'package:nikatru_core/nikatru_core.dart' show RecurrenceRoll;
+
 import '../../core/app_config.dart';
 import '../models/budget_info.dart';
 import '../models/entitlement.dart';
@@ -40,26 +42,28 @@ class SeedApiClient implements ApiClient {
   Future<List<Subscription>> getSubscriptions() async =>
       List<Subscription>.unmodifiable(_subs);
 
+  /// ⏱ 2026-09-28 · ST-T3b (ST-E1/E2). The row is the DRAFT, as the API
+  /// stores it — this used to invent a 'Standard' plan (so the detail header
+  /// read "Streaming · Standard" for a plan nobody named), a usage of 50% and
+  /// a 'Just added.' note. The glyph is derived by [Subscription.glyphFor],
+  /// the one rule the add sheet applies before POST, so the seed and the live
+  /// Worker show the same mark.
   @override
   Future<Subscription> createSubscription(Subscription draft) async {
-    final Subscription created = Subscription(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      name: draft.name.isEmpty ? 'New subscription' : draft.name,
-      category: draft.category,
-      price: draft.price,
-      cycle: draft.cycle,
-      nextRenewal: draft.nextRenewal,
-      plan: draft.plan.isEmpty ? 'Standard' : draft.plan,
-      glyph: draft.glyph.isEmpty
-          ? draft.name.padRight(3, 'X').substring(0, 3).toUpperCase()
+    final Subscription created = Subscription.fromJson(<String, dynamic>{
+      ...draft.toJson(),
+      'id': DateTime.now().microsecondsSinceEpoch.toString(),
+      'name': draft.name.isEmpty ? 'New subscription' : draft.name,
+      'glyph': draft.glyph.isEmpty
+          ? Subscription.glyphFor(draft.name)
           : draft.glyph,
       // ST-U5 (B11): a new row has NO usage. This said `usedPct: 50` and
       // `usageNote: 'Just added.'` — an English literal in data, and a
       // fabricated "Occasional" band on home and an "Active 50 %" card on
       // detail for a plan the user added a second ago.
-      usedPct: 0,
-      usageNote: '',
-    );
+      'used_pct': 0,
+      'usage_note': '',
+    }, fallbackCurrencyCode: draft.price.currencyCode);
     _subs.add(created);
     return created;
   }
@@ -75,13 +79,10 @@ class SeedApiClient implements ApiClient {
   ) async {
     final int i = _subs.indexWhere((Subscription s) => s.id == id);
     if (i < 0) throw ApiException(404, 'Not found');
-    _subs[i] = _subs[i]
-        .copyWith(
-          name: changes['name'] as String?,
-          price: (changes['price'] as num?)?.toDouble(),
-          unused: changes['unused'] as bool?,
-        )
-        .withReminderPatch(changes);
+    // EVERY key the body carries, with the route's cross-key rules — this
+    // applied `name`, `price` and `unused` and silently dropped the rest, so
+    // an edit of the cycle or the date "saved" and changed nothing.
+    _subs[i] = _subs[i].patched(changes);
     return _subs[i];
   }
 
@@ -89,17 +90,31 @@ class SeedApiClient implements ApiClient {
   Future<void> deleteSubscription(String id) async =>
       _subs.removeWhere((Subscription s) => s.id == id);
 
+  /// The charges this row has DATES for: every renewal from its
+  /// `firstChargeOn` up to today, by the platform's own rule
+  /// ([RecurrenceSchedule]) — what the nightly pass would have written. A row
+  /// with no first charge date has no history, and says so.
+  ///
+  /// ⏱ 2026-09-28 · ST-T3b (ST-E1). This FABRICATED four monthly payments
+  /// counted back from the next renewal, for every row: a yearly plan showed
+  /// four monthly charges, a row added a minute ago showed four months of
+  /// payments it never made, and each in a price it may never have had.
   @override
   Future<List<PaymentRecord>> getPaymentHistory(String id) async {
     final Subscription s = _subs.firstWhere((Subscription s) => s.id == id);
-    return List<PaymentRecord>.generate(4, (int i) {
-      final DateTime d = DateTime(
-        s.nextRenewal.year,
-        s.nextRenewal.month - (i + 1),
-        s.nextRenewal.day,
-      );
-      return PaymentRecord(date: d, amount: s.price);
-    });
+    final DateTime? first = s.firstChargeOn;
+    final Cadence? cadence = s.cycle;
+    if (first == null || cadence == null) return const <PaymentRecord>[];
+    final DateTime now = DateTime.now();
+    final RecurrenceRoll roll = RecurrenceSchedule.rollForward(
+      first,
+      cadence,
+      DateTime(now.year, now.month, now.day),
+    );
+    return <PaymentRecord>[
+      for (final DateTime d in roll.crossings.reversed)
+        PaymentRecord(date: d, amount: s.price),
+    ];
   }
 
   @override

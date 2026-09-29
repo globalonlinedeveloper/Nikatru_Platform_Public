@@ -142,27 +142,6 @@ const PRIMITIVES = [
 // make a new instance pass — convert it.
 const BASELINE = [
   {
-    limb: 'ST-Y2',
-    file: 'apps/subscriptiontracker/lib/features/add/add_subscription_sheet.dart',
-    anchor: 'onTap: () => _name.text = service[0]',
-    what: 'the POPULAR service chips',
-    owner: 'B23 — ST-T3b (ST-E2) converts it',
-  },
-  {
-    limb: 'ST-Y2',
-    file: 'apps/subscriptiontracker/lib/features/add/add_subscription_sheet.dart',
-    anchor: '_cycle = cycle;',
-    what: 'the billing-cycle segments',
-    owner: 'B23 — ST-T3b (ST-E2) converts it',
-  },
-  {
-    limb: 'ST-Y2',
-    file: 'apps/subscriptiontracker/lib/features/add/add_subscription_sheet.dart',
-    anchor: 'onTap: _pickRenewal',
-    what: 'the renewal date field',
-    owner: 'B23 — ST-T3b (ST-E2) converts it',
-  },
-  {
     limb: 'ST-Y3',
     file: 'apps/subscriptiontracker/lib/features/settings/settings_screen.dart',
     anchor: 'key: E2EKeys.deleteAccountPassword',
