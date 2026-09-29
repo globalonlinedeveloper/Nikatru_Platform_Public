@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nikatru_chassis_screens/monetization/manage_plan_screen.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:nikatru_purchases/nikatru_purchases.dart';
@@ -30,6 +31,12 @@ import '../shared/chassis_adapters.dart';
 /// it is the same path: nothing here branches on whether the subscription is in
 /// its trial. That is deliberate — a separate trial-cancel flow is a second
 /// thing to get wrong, and the trial case is covered by the same test set.
+///
+/// ⏱ 2026-09-29 · train ST-D9 ([ADR 086] one piece at a time): the RENDERING
+/// is the chassis [ManagePlanView], as it already is in the brick. What stays
+/// here names a provider or this app's words: `_cancel`, `_restore` and the
+/// hoisted container, the four outcome sentences and their tones, and the way
+/// to the plans for a user without one (only while this build sells).
 class ManagePlanScreen extends ConsumerStatefulWidget {
   const ManagePlanScreen({super.key});
 
@@ -167,119 +174,59 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final AsyncValue<core.Entitlements> ent = ref.watch(entitlementsProvider);
-    final bool isPro = planStatusOf(ent) == PlanStatus.active;
+    // ST-U7 (C42): one read decides all four states, so "still asking" and
+    // "could not ask" are never drawn as "you have no plan".
+    final PlanStatus status = planStatusOf(ent);
+    final bool isPro = status == PlanStatus.active;
+    // The way to the plans: the same answer the settings Upgrade row reads,
+    // so this screen never offers a paywall that could only say "not here".
+    final bool offerPlans =
+        ref.watch(sellingEnabledProvider) &&
+        ref.watch(purchaseRailProvider).canStartCheckout;
 
-    return Scaffold(
-      // 🔴 THE `leading:` IS THE ONLY WAY OFF THIS SCREEN, AND UNTIL NOW THERE
-      // WAS NONE. Measured 2026-08-21: this file contained no navigation call
-      // of any kind, and both entries (`settings_screen.dart:575` and
-      // `home_screen.dart:1111`) arrive by `context.go('/manage-plan')` onto a
-      // `parentNavigatorKey: rootNavigatorKey` route — so `go` replaces the
-      // stack with a single match, the shell and its bottom nav bar are gone,
-      // and `Navigator` has nothing to pop. A bare `AppBar` then renders NO
-      // implicit back button (Flutter only synthesises one when the route can
-      // pop). On Android the system back gesture found nothing either; on
-      // desktop and web there is no system gesture at all. The screen the app
-      // must be able to reach in one tap was a screen you could not leave.
+    return ManagePlanView(
+      title: l10n.managePlanTitle,
+      isPro: isPro,
+      planStatusLabel: isPro ? l10n.planActive : l10n.planInactive,
+      planDetail: isPro ? l10n.planActiveDetail : l10n.planInactiveDetail,
+      restoreHint: l10n.restorePurchasesHint,
+      cancelLabel: l10n.cancelPlan,
+      upgradeLabel: offerPlans ? l10n.seeProPlans : null,
+      onUpgrade: offerPlans ? () => context.go('/paywall') : null,
+      busy: _busy,
+      loading: status == PlanStatus.checking,
+      onReload: status == PlanStatus.failed
+          ? () => ref.invalidate(entitlementsProvider)
+          : null,
+      offline: ref.watch(networkUnreachableProvider),
+      onReconnect: () => ref.invalidate(appConfigProvider),
+      outcomeMessage: switch ((_outcome, _restored)) {
+        (final CancellationOutcome o, _) => _outcomeMessage(l10n, o),
+        (null, final _Restored r) => _restoreMessage(l10n, r),
+        (null, null) => null,
+      },
+      outcomeKind: switch ((_outcome, _restored)) {
+        (CancellationOutcome.executed, _) => StatusKind.positive,
+        (CancellationOutcome.failed, _) => StatusKind.danger,
+        (null, (outcome: _, planActive: true)) => StatusKind.positive,
+        _ => StatusKind.warn,
+      },
+      // 🔴 THE `onBack:` IS THE ONLY WAY OFF THIS SCREEN, AND UNTIL 2026-08-21
+      // THERE WAS NONE. Both entries (settings and the home promo card) arrive
+      // by `context.go('/manage-plan')` onto a `parentNavigatorKey:
+      // rootNavigatorKey` route — so `go` replaces the stack, the shell and
+      // its bottom nav bar are gone, and `Navigator` has nothing to pop. On
+      // desktop and web there is no system gesture at all.
       //
-      // ⚠️ A BACK CONTROL, DELIBERATELY NOT A BOTTOM NAV BAR. `core/router.dart`
-      // puts this route above the shell on the recorded ground that "a purchase
-      // flow with a bottom nav bar underneath it is a way out of a funnel
-      // mid-transaction". One labelled exit that lands on the surface the user
-      // came through keeps the funnel; five branch tabs dissolve it.
+      // ⚠️ A BACK CONTROL, DELIBERATELY NOT A BOTTOM NAV BAR: a purchase flow
+      // with tabs underneath it is a way out of a funnel mid-transaction.
       //
-      // `canPop` first, `/settings` second: nothing pushes this route today, so
-      // the fallback is the live arm — and `/settings` rather than `/home`
-      // because Settings is the parent this screen's own ROSCA step count is
-      // measured from (Settings → Manage → Cancel → confirm), and
-      // `assert-purchase-path.mjs` derives that count from the same
-      // `/settings` → `/manage-plan` hop. Sending the user anywhere else would
-      // make the way out disagree with the way in that the guard counts.
-      appBar: AppBar(
-        title: Text(l10n.managePlanTitle),
-        leading: IconButton(
-          // 🔴 `semanticLabel` ON THE ICON, NOT ONLY `tooltip` ON THE BUTTON.
-          // Measured: with `tooltip:` alone, `a11y_semantics_test.dart`'s
-          // manage-plan sweep reported `«» NO NAME` — the tooltip's label sits
-          // on its own node and does not merge into the tappable button node,
-          // so a screen reader announces the only exit from this screen as
-          // nothing at all. The `Icon`'s label does merge. `tooltip:` stays
-          // because it is also the desktop hover affordance, which the icon
-          // label is not.
-          icon: Icon(Icons.arrow_back, semanticLabel: l10n.back),
-          tooltip: l10n.back,
-          onPressed: () =>
-              context.canPop() ? context.pop() : context.go('/settings'),
-        ),
-      ),
-      // Bare `Scaffold` + `ListView` before this, the same shape as settings —
-      // and this is the WORSE of the two to leave unconstrained. The screen
-      // whose only job is "cancel must be no harder than subscribe" was, on a
-      // desktop, a cancel row whose label sat a full window away from the icon
-      // that identifies it. ROSCA is a rule about the difficulty of finding the
-      // control, and layout is part of how hard something is to find.
-      //
-      // Same cap as settings, for the same reason: a page of controls. Settings
-      // moved from the bare 1280 default to `reading` (720) on 2026-08-21 because
-      // the default NEVER BOUND — `AppScaffold` hands the body min(W-361, 1280),
-      // so at 1440 it is already 1079 and the "ceiling" was decorative. This
-      // screen was left bare in that pass and this comment went false with it:
-      // it claimed parity with settings while being 560px wider.
-      //
-      // ⏱ 2026-09-16 · [ADR 083]: the 361 px above was the 360 px drawer and
-      // its divider, and no window class uses the drawer now. From 1200 px up
-      // the body is `min(W - R - 1, 1280)`, where R is the slim rail's rendered
-      // width (116 px for a "Settings" label on Flutter 3.47.2). So a 1440 px
-      // window gives 1439 - R (1323 px for a 116 px rail), not 1079. The 720
-      // cap chosen here still binds there.
-      //
-      // ROSCA argues for the tighter cap rather than against it. The rule is
-      // about how hard the cancel control is to FIND, and a 1280px row whose
-      // label sits a window away from its icon is harder to find than a 720px
-      // one, not easier.
-      body: ContentPane.reading(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: <Widget>[
-            PlanStatusTile(
-              status: planStatusOf(ent),
-              labels: planStatusLabels(l10n),
-              onRetry: () => ref.invalidate(entitlementsProvider),
-            ),
-            const Divider(),
-            // [pipeline 5]M-10. The entitlement is a server row keyed
-            // (user_id, app_id), so on the hosted rail a fresh install is
-            // unlocked by signing in and this re-reads it. On a store build
-            // Apple guideline 3.1.1 makes the control mandatory, and there it
-            // asks the store first — see `_restore`.
-            ListTile(
-              leading: const Icon(Icons.refresh),
-              title: Text(l10n.restorePurchases),
-              subtitle: Text(l10n.restorePurchasesHint),
-              enabled: !_busy,
-              onTap: _busy ? null : _restore,
-            ),
-            if (isPro)
-              ListTile(
-                leading: const Icon(Icons.cancel_outlined),
-                title: Text(l10n.cancelPlan),
-                enabled: !_busy,
-                onTap: _busy ? null : _cancel,
-              ),
-            if (_busy) const LinearProgressIndicator(),
-            if (_outcome != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 16),
-                child: Text(_outcomeMessage(l10n, _outcome!)),
-              ),
-            if (_restored != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 16),
-                child: Text(_restoreMessage(l10n, _restored!)),
-              ),
-          ],
-        ),
-      ),
+      // `canPop` first, `/settings` second — Settings is the parent this
+      // screen's own ROSCA step count is measured from (Settings → Manage →
+      // Cancel → confirm), so the way out agrees with the way in.
+      onBack: () => context.canPop() ? context.pop() : context.go('/settings'),
+      onRestore: _restore,
+      onCancel: _cancel,
     );
   }
 

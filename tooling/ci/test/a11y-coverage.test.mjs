@@ -467,9 +467,12 @@ describe('the guard says YES on the tree as it is', () => {
     // which is the whole reason the guard carries that list. ONE today
     // (`ReacceptTermsScreen`); this number rises as the parity debt is paid, and
     // it rising is the thing to notice rather than to gloss.
+    // ⏱ 2026-09-29 · train ST-D9: THREE — `ManagePlanScreen` and `PaywallScreen`
+    // now delegate to `ManagePlanView` / `PaywallView` and are SWEPT there
+    // (`a11y_firstrun_money_settings_test.dart`). Read off the guard's own output.
     assert.match(
       out,
-      /⬜ 1 reachable surface\(s\) in apps\/subscriptiontracker DELEGATE into `packages\/chassis_screens` and are judged there/,
+      /⬜ 3 reachable surface\(s\) in apps\/subscriptiontracker DELEGATE into `packages\/chassis_screens` and are judged there/,
     );
     assert.deepEqual(sweptList(out).sort(), ALL_19_SWEPT);
     assert.equal(printedUnswept(out).length, 0);

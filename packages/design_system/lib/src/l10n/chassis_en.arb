@@ -546,6 +546,34 @@
       }
     }
   },
+  "paywallProAdds": "What Pro adds",
+  "@paywallProAdds": {
+    "description": "Heading over the list of what a plan adds on the paywall (train ST-D9). The list itself is the app's, chosen from config."
+  },
+  "paywallAlwaysFree": "Always free",
+  "@paywallAlwaysFree": {
+    "description": "Heading over what stays free without a plan, drawn under paywallProAdds so a buyer sees what they are NOT being asked to pay for."
+  },
+  "paywallLoadingPlans": "Loading plans",
+  "@paywallLoadingPlans": {
+    "description": "Announced to a screen reader while the plans are still being fetched (a store rail before the store has answered). Never shown as visible text."
+  },
+  "paywallTerms": "Renews automatically until you cancel. You can cancel at any time in Settings.",
+  "@paywallTerms": {
+    "description": "The terms line under the plans. 🔴 Names no price difference, no fee and no other place to buy: a store build shows it. Says how to cancel because ROSCA requires the buyer to be told before they pay."
+  },
+  "paywallTermsTrial": "Your free trial turns into a paid plan when it ends, unless you cancel before then. You can cancel at any time in Settings.",
+  "@paywallTermsTrial": {
+    "description": "The terms line when a plan carries a free trial. 🔴 DRAWN ONLY BEHIND THE CONFIG FLAG (ruling D-25): no trial copy is shown until the store has a trial configured. Same constraints as paywallTerms."
+  },
+  "managePlanLoading": "Loading your plan",
+  "@managePlanLoading": {
+    "description": "Announced to a screen reader while the plan status is being read from the server. Never shown as visible text."
+  },
+  "managePlanLoadFailed": "Could not check your plan",
+  "@managePlanLoadFailed": {
+    "description": "Shown where the plan status goes when the server could not be asked. Restore stays available beneath it."
+  },
   "restorePurchases": "Restore purchases",
   "@restorePurchases": {
     "description": "Re-reads the entitlement from the server. On this rail the entitlement is a server row keyed to the account, so signing in IS the restore — but Apple guideline 3.1.1 makes an explicit control mandatory the day a native IAP rail ships, and its absence is a documented rejection cause."

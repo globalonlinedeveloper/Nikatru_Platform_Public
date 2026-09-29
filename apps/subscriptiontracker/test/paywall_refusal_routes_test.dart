@@ -35,6 +35,8 @@ import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show ChassisLocalizations;
 import 'package:nikatru_purchases/nikatru_purchases.dart';
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/features/monetization/paywall_screen.dart';
@@ -247,7 +249,11 @@ Future<GoRouter> _pumpPaywall(
       container: c,
       child: MaterialApp.router(
         routerConfig: router,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        // ⏱ ST-D9: the paywall BODY is the chassis view, as in app.dart.
+        localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+          ...AppLocalizations.localizationsDelegates,
+          ChassisLocalizations.delegate,
+        ],
         supportedLocales: AppLocalizations.supportedLocales,
       ),
     ),

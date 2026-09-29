@@ -638,8 +638,12 @@ const REQUIRED_COVERAGE = [
     // `enableWebSemantics`, and this corpus is every .dart under the package's
     // test/ — so R14b would have cleared a floor left at 25. Read off the
     // per-root line, `— 26 file(s)`.
+    // ⏱ RAISED `widthTestFiles` 26 → 27 ON 2026-09-29 (train ST-D9), surfaces
+    // unchanged: `test/plan_golden_test.dart` (the paywall and manage-plan
+    // goldens) joined the corpus, and R14b caught the slack — deleting a width
+    // suite left 26 and cleared 26. Read off the per-root line, `— 27 file(s)`.
     surfaces: 25,
-    widthTestFiles: 26,
+    widthTestFiles: 27,
     coveredSurfaces: 25,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
@@ -740,12 +744,18 @@ const WIDTH_EXEMPT = new Map([
   [
     'apps/subscriptiontracker/lib/features/monetization/paywall_screen.dart#PaywallScreen',
     new Map([
+      // ⏱ 2026-09-29 · train ST-D9: RE-ARGUED, NOT DROPPED. With a served pitch
+      // the paywall is two columns from 840 up, capped at `wideMaxWidth` (984),
+      // so "480 at every width" stopped being the whole claim. The omission
+      // still holds, for the same reason one level up: 840 sits between kTablet
+      // and kDesktop, and the file measures both layouts at 1920 as well as the
+      // one column at 768.
       [
         'kDesktop',
-        'is capped at `AppBreakpoints.pane` (480), not at `kMaxBodyWidth` — so the cap has ALREADY engaged ' +
-          'at 768 and the file asserts the flat 480 there and again at 1920. 1280 is not a boundary for a ' +
-          '480 cap the way it is for a 1280 one; a case there would assert the same constant, bound the ' +
-          'same way, between two surfaces that already bracket it.',
+        'has two caps and both have ALREADY engaged below 1280: `AppBreakpoints.pane` (480) with no pitch ' +
+          'served, and `PaywallView.wideMaxWidth` (984) from 840 up with one. The file asserts the flat 480 at ' +
+          '768 and at 1920, and the two-column 984 at 1920; a case at 1280 would assert the same constants, ' +
+          'bound the same way, between two surfaces that already bracket them.',
       ],
     ]),
   ],

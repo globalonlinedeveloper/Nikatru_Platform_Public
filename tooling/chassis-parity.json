@@ -80,13 +80,13 @@
         {
           "file": "apps/subscriptiontracker/lib/features/monetization/manage_plan_screen.dart",
           "linesAtSince": 238,
-          "ceiling": 322,
+          "ceiling": 269,
           "template": 183
         },
         {
           "file": "apps/subscriptiontracker/lib/features/monetization/paywall_screen.dart",
           "linesAtSince": 302,
-          "ceiling": 373,
+          "ceiling": 294,
           "template": 212
         },
         {
@@ -151,6 +151,20 @@
           "on": "2026-09-28",
           "callSiteDelta": -87,
           "measured": "THE PIECE IS A FUNCTION, NOT A SCREEN — the authErrorText precedent above. ST-Y5 (audit D26): `apps/subscriptiontracker/lib/core/a11y/web_semantics.dart` (87 lines at e0beeb14, wc -l) moved verbatim with `git mv` to `packages/chassis_screens/lib/shell/web_semantics.dart`, where `bootstrapNikatru` now calls it for every stamped app; its unit tests moved with it to `packages/chassis_screens/test/web_semantics_test.dart`. `main.dart` stays 208 -> 208 lines: its relative import became the package import in place and its `enableWebSemantics()` call is unchanged (the app is not on `bootstrapNikatru` yet — ST-K1). So the delta is 0 - 87. Counted with wc -l; the import swap is one line for one line and cannot move dart format."
+        },
+        {
+          "file": "features/monetization/manage_plan_screen.dart",
+          "piece": "ManagePlanView",
+          "on": "2026-09-29",
+          "callSiteDelta": -53,
+          "measured": "Train ST-D9. apps/subscriptiontracker/lib/features/monetization/manage_plan_screen.dart 322 -> 269 lines, `wc -l` against `git show origin/main:<path>` at 600cc6dc, both after `dart format` (Flutter 3.47.5). The Scaffold, the back control, the ContentPane.reading cap and every row moved into the chassis ManagePlanView, which ST-D9 redrew on the ST-D0 foundation (a status AppCard, AppListRow controls, a DecisionStrip outcome, and loading / failed / offline states). What stayed names a provider or this app's words: `_cancel` with its hoisted ProviderContainer and the `.requestCancellation()` call, `_restore` / `_converge` (restorePurchasesOf first, then the server re-read), the four outcome sentences and the restore sentence, now each with a tone, and the way to the plans (`context.go('/paywall')`) only while `sellingEnabledProvider` and the rail both say this build sells, and ST-T2's `planStatusOf` deciding checking / failed / answered (the chassis draws the first two under PlanStatusTile's keys). `restorePurchases` is byte-identical between the app and chassis arb files in both shipped locales; `managePlanTitle`, `planActive`/`planInactive`, `cancelPlan` and `restorePurchasesHint` stay app strings and cross as parameters."
+        },
+        {
+          "file": "features/monetization/paywall_screen.dart",
+          "piece": "PaywallView",
+          "on": "2026-09-29",
+          "callSiteDelta": -79,
+          "measured": "Train ST-D9. apps/subscriptiontracker/lib/features/monetization/paywall_screen.dart 373 -> 294 lines, `wc -l` against `git show origin/main:<path>` at 600cc6dc, both after `dart format` (Flutter 3.47.5). The whole `_body` phase switch and the layout moved into the chassis PaywallView, which ST-D9 redrew on the ST-D0 foundation (AppCard plans, DecisionStrip pending / unlocked / refused, a config-driven features card, two columns from 840 up). The private `_PaywallPhase` and `_RefusedView` enums became the chassis PaywallPhase (a typedef, as in the brick) and PaywallRefusalView. ST-T2's `PlansLoadGate` still asks the rail once and feeds the view's loading flag (the chassis skeleton carries PlansLoading's key), so `_asking` never landed. What stayed: the phase machine, the four funnel emissions, `startCheckout` + `awaitUnlock`, the price under the reader's locale (`MoneyFormatter(l10n.localeName).format(o.price)`, handed to the view as its formatted price), and the D-11 pitch codes resolved through this app's catalogue. Every paywall string the view draws was already byte-identical between the app and chassis arb files in both shipped locales."
         }
       ],
       "_adoptedWhy": "⏱ 2026-09-15 · [ADR 086] ONE PIECE AT A TIME: the app now imports the package in the files listed here; tooling/ci/assert-chassis-parity.mjs holds that list equal to the scan and every callSiteDelta negative ([ADR 066]). The row is deleted when the last template file is adopted.",
