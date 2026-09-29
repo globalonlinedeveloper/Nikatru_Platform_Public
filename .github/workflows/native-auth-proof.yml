@@ -141,7 +141,7 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
-        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target android --device emulator-5554 --callback
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target android --device emulator-5554 --log "$RUNNER_TEMP/native-auth-proof.log" --callback
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'
         env:
@@ -152,6 +152,9 @@ jobs:
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
           E2E_APP_ID: ${{ needs.gate.outputs.app }}
           PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}
+          # why: the proof's own log — the consent row's install id, or proof
+          # that no row was written (tooling/e2e/consent_anon_id.mjs).
+          E2E_PROOF_LOG: ${{ runner.temp }}/native-auth-proof.log
         run: node tooling/e2e/purge.mjs
 
   # ── iOS: a simulator, the callback through simctl ──────────────────────────
@@ -201,7 +204,7 @@ jobs:
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
           SIM: ${{ steps.sim.outputs.udid }}
-        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target ios --device "$SIM" --callback
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target ios --device "$SIM" --log "$RUNNER_TEMP/native-auth-proof.log" --callback
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'
         env:
@@ -212,6 +215,9 @@ jobs:
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
           E2E_APP_ID: ${{ needs.gate.outputs.app }}
           PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}
+          # why: the proof's own log — the consent row's install id, or proof
+          # that no row was written (tooling/e2e/consent_anon_id.mjs).
+          E2E_PROOF_LOG: ${{ runner.temp }}/native-auth-proof.log
         run: node tooling/e2e/purge.mjs
 
   # ── macOS: the .app, the callback through LaunchServices ───────────────────
@@ -252,7 +258,7 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
-        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target macos --device macos --callback
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target macos --device macos --log "$RUNNER_TEMP/native-auth-proof.log" --callback
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'
         env:
@@ -263,6 +269,9 @@ jobs:
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
           E2E_APP_ID: ${{ needs.gate.outputs.app }}
           PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}
+          # why: the proof's own log — the consent row's install id, or proof
+          # that no row was written (tooling/e2e/consent_anon_id.mjs).
+          E2E_PROOF_LOG: ${{ runner.temp }}/native-auth-proof.log
         run: node tooling/e2e/purge.mjs
 
   # ── WINDOWS: sign-in only ──────────────────────────────────────────────────
@@ -288,6 +297,17 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-flutter
+      # why: sentry_flutter's CMake clones sentry-native with its submodules, and
+      # crashpad's mini_chromium pack path is 262 characters under this repo's
+      # checkout — git refuses it ("Filename too long") unless core.longpaths is
+      # on, which killed run 36525783687's build before the app ever launched.
+      # build-platforms.yml's "Git may write paths past MAX_PATH" measured it;
+      # --global, because CMake's clone is a new repository. Read back so a
+      # config that wrote nothing cannot pass.
+      - name: Git may write paths past MAX_PATH
+        run: |
+          git config --global core.longpaths true
+          git config --global --get core.longpaths
       - name: Enable the Windows desktop target
         run: flutter config --enable-windows-desktop
       - name: flutter pub get
@@ -310,7 +330,7 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
-        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target windows --device windows
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target windows --device windows --log "$RUNNER_TEMP/native-auth-proof.log"
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'
         env:
@@ -321,6 +341,9 @@ jobs:
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
           E2E_APP_ID: ${{ needs.gate.outputs.app }}
           PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}
+          # why: the proof's own log — the consent row's install id, or proof
+          # that no row was written (tooling/e2e/consent_anon_id.mjs).
+          E2E_PROOF_LOG: ${{ runner.temp }}/native-auth-proof.log
         run: node tooling/e2e/purge.mjs
 
   # ── LINUX: the bundle under xvfb, the callback through xdg-open ────────────
@@ -381,7 +404,7 @@ jobs:
             eval "$(printf "" | gnome-keyring-daemon --unlock --components=secrets)"
             export GNOME_KEYRING_CONTROL
             xvfb-run -a -s "-screen 0 1920x1200x24" \
-              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --callback
+              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --log "$RUNNER_TEMP/native-auth-proof.log" --callback
           '
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'
@@ -393,4 +416,7 @@ jobs:
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
           E2E_APP_ID: ${{ needs.gate.outputs.app }}
           PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}
+          # why: the proof's own log — the consent row's install id, or proof
+          # that no row was written (tooling/e2e/consent_anon_id.mjs).
+          E2E_PROOF_LOG: ${{ runner.temp }}/native-auth-proof.log
         run: node tooling/e2e/purge.mjs

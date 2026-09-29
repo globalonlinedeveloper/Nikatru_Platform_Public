@@ -51,7 +51,10 @@
 // Env: E2E_USER_ID, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, E2E_APP_ID,
 //      SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 //      and, for the consent artifact only: PLATFORM_D1_DATABASE_ID,
-//      E2E_RESPONSE_DATA / E2E_DRIVE_LOG (the run's exported anon_id).
+//      E2E_RESPONSE_DATA / E2E_DRIVE_LOG (the run's exported anon_id), or
+//      E2E_PROOF_LOG — the NATIVE AUTH PROOF's log (native-auth-proof.yml,
+//      added 2026-09-29), read by resolveProofLogConsent, which alone can show
+//      a run wrote NO row; exclusive with the other three sources.
 //      The app's database id is not an env key (O-E2E-LANE-WIRED-TO-ONE-APP,
 //      2026-09-25): E2E_APP_ID resolves it through tooling/e2e/backend.mjs —
 //      the Worker's `env.sandbox` block when E2E_CONSENT_LEDGER is set (a store
@@ -77,7 +80,7 @@
 // exactly one of them; see the branch at the bottom for why that asymmetry is
 // the only thing keeping the hard failure off a green run.
 // NOTE: CLOUDFLARE_API_TOKEN must have D1 WRITE access for this account.
-import { resolveConsentAnonId, resolveCaptureConsentIds } from './consent_anon_id.mjs';
+import { resolveConsentAnonId, resolveCaptureConsentIds, resolveProofLogConsent } from './consent_anon_id.mjs';
 import { stampDeletable } from './app-version-stamp.mjs';
 import { sandboxBackend, productionD1Ids, CaptureBackendRefused } from '../store/capture-backend.mjs';
 import { e2eTargetOrExit } from './backend.mjs';
@@ -87,6 +90,15 @@ const userId = process.env.E2E_USER_ID;
 // The store capture's consent source (see the env header). All three refusals
 // below run before the first request, so `process.exit()` is still safe here.
 const ledgerPath = process.env.E2E_CONSENT_LEDGER || null;
+const proofLogPath = process.env.E2E_PROOF_LOG || null;
+if (proofLogPath && (ledgerPath || process.env.E2E_RESPONSE_DATA || process.env.E2E_DRIVE_LOG)) {
+  console.error(
+    "REFUSED: E2E_PROOF_LOG (the native auth proof's consent source) is set together with another " +
+      'consent source (E2E_CONSENT_LEDGER / E2E_RESPONSE_DATA / E2E_DRIVE_LOG). The two describe different ' +
+      'drives; this is a wiring defect in the calling step. Nothing was purged.',
+  );
+  process.exit(1);
+}
 if (ledgerPath && (process.env.E2E_RESPONSE_DATA || process.env.E2E_DRIVE_LOG)) {
   console.error(
     "REFUSED: E2E_CONSENT_LEDGER (the store capture's consent source) is set together with " +
@@ -136,14 +148,17 @@ if (ledgerPath) {
 // consent artifact belongs to the browser PROFILE, not to either throwaway user,
 // so a run that never provisioned one can still have written it.
 const capture = process.env.PLATFORM_D1_DATABASE_ID && ledgerPath ? resolveCaptureConsentIds(ledgerPath) : null;
+const proof = process.env.PLATFORM_D1_DATABASE_ID && proofLogPath ? resolveProofLogConsent(proofLogPath) : null;
 const consent = capture
   ? { id: null, source: null, notes: [] }
-  : process.env.PLATFORM_D1_DATABASE_ID
-    ? resolveConsentAnonId({
-        responsePath: process.env.E2E_RESPONSE_DATA,
-        logPath: process.env.E2E_DRIVE_LOG,
-      })
-    : { id: null, source: null, notes: ['PLATFORM_D1_DATABASE_ID unset — this step does not purge consent'] };
+  : proof
+    ? { id: proof.id, source: proof.id ? `proof log (${proofLogPath})` : null, notes: proof.notes }
+    : process.env.PLATFORM_D1_DATABASE_ID
+      ? resolveConsentAnonId({
+          responsePath: process.env.E2E_RESPONSE_DATA,
+          logPath: process.env.E2E_DRIVE_LOG,
+        })
+      : { id: null, source: null, notes: ['PLATFORM_D1_DATABASE_ID unset — this step does not purge consent'] };
 
 // The build identity the run stamped into every row it wrote: e2e.yml's
 // `e2e-<run_number>-<sha7>` (derived ONCE into $GITHUB_ENV, added 2026-08-28),
@@ -328,6 +343,13 @@ if (capture) {
     );
     for (const u of capture.unresolved) console.error(`  unresolved — ${u}`);
   }
+} else if (!consent.id && proof?.noRow) {
+  // A NATIVE AUTH PROOF that provably wrote no row (resolveProofLogConsent):
+  // the one state the hard failure below could never separate, separated —
+  // the proof prints its install id BEFORE the only tap that answers the
+  // prompt, so a finished log without one is a run that never answered it.
+  console.log('no consent anon_id to purge — the native auth proof wrote no consent row:');
+  for (const n of consent.notes) console.log(`  anon_id lookup — ${n}`);
 } else if (!consent.id && process.env.PLATFORM_D1_DATABASE_ID) {
   // 🔴 A HARD FAILURE SINCE 2026-08-28. IT WAS A PRINTED LINE THAT PASSED, AND
   // THAT IS WHAT LET SIX ROWS SIT IN PRODUCTION FOR A DAY.

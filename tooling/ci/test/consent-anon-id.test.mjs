@@ -30,6 +30,8 @@ import { spawnSync } from 'node:child_process';
 import {
   resolveConsentAnonId,
   resolveCaptureConsentIds,
+  resolveProofLogConsent,
+  PROOF_LOG_END,
   ANON_ID_TOKEN,
   ANON_ID_SHAPE,
 } from '../../e2e/consent_anon_id.mjs';
@@ -286,6 +288,50 @@ describe('resolveCaptureConsentIds', () => {
 // so no request can be made whatever the script does. Without the refusal the
 // script would still exit 1 — on the first missing credential — so the
 // assertion is on WHAT stderr names, not on the exit code alone.
+// The native auth proof's log (added 2026-09-29, after proof run 36525783687's
+// purges each failed on "no consent anon_id resolved"). The proof prints the id
+// BEFORE its only tap on the prompt, so a FINISHED log without one is a run that
+// wrote no row — and only a finished one.
+describe('resolveProofLogConsent', () => {
+  const proofLog = (name, ...lines) =>
+    write(name, ['native_auth_proof: demo/android — flutter test output follows', ...lines].join('\n'));
+  const END = `${PROOF_LOG_END} flutter_exit=1`;
+
+  test('an answered prompt: the id printed before the tap is the one to delete by', () => {
+    const r = resolveProofLogConsent(
+      proofLog('proof-answered.log', `${ANON_ID_TOKEN}=${ID_A}`, 'NK_PROOF step=consent outcome=declined', END),
+    );
+    assert.deepEqual([r.id, r.noRow], [ID_A, false]);
+  });
+
+  test('🔴 a run that died AFTER printing the id still names its row, with no end line', () => {
+    const r = resolveProofLogConsent(proofLog('proof-cut-after.log', `${ANON_ID_TOKEN}=${ID_B}`));
+    assert.equal(r.id, ID_B);
+  });
+
+  test('a finished log without an id: the prompt was never answered, so no row', () => {
+    const r = resolveProofLogConsent(proofLog('proof-build-failed.log', 'Unable to generate build files', END));
+    assert.deepEqual([r.id, r.noRow], [null, true]);
+    assert.match(r.notes.join('\n'), /never answered/);
+  });
+
+  test('no log at all: the driver never started flutter, so no row', () => {
+    const r = resolveProofLogConsent(join(TMP, 'proof-never-written.log'));
+    assert.deepEqual([r.id, r.noRow], [null, true]);
+  });
+
+  test('🔴 a log cut off mid-run with no id is UNRESOLVED, never "no row"', () => {
+    const r = resolveProofLogConsent(proofLog('proof-cut-before.log', 'Building macOS application...'));
+    assert.deepEqual([r.id, r.noRow], [null, false]);
+    assert.match(r.notes.join('\n'), /cut off mid-run/);
+  });
+
+  test('🔴 a malformed id is UNRESOLVED even in a finished log — the token was there', () => {
+    const r = resolveProofLogConsent(proofLog('proof-malformed.log', `${ANON_ID_TOKEN}=null`, END));
+    assert.deepEqual([r.id, r.noRow], [null, false]);
+  });
+});
+
 describe('purge.mjs refuses a miswired consent source', () => {
   const PURGE = join(REPO, 'tooling', 'e2e', 'purge.mjs');
   const bare = (extra) => ({
@@ -306,6 +352,21 @@ describe('purge.mjs refuses a miswired consent source', () => {
     });
     assert.equal(r.status, 1, r.stderr);
     assert.match(r.stderr, /REFUSED: E2E_CONSENT_LEDGER .* E2E_RESPONSE_DATA \/ E2E_DRIVE_LOG/);
+    assert.doesNotMatch(r.stderr, /Missing required env var/);
+  });
+
+  test('🔴 E2E_PROOF_LOG mixed with E2E_DRIVE_LOG is refused and named', () => {
+    const r = spawnSync(process.execPath, [PURGE], {
+      encoding: 'utf8',
+      timeout: 60_000,
+      env: bare({
+        E2E_PROOF_LOG: join(TMP, 'mixed-proof.log'),
+        E2E_DRIVE_LOG: join(TMP, 'mixed-drive.log'),
+        PLATFORM_D1_DATABASE_ID: 'not-a-real-database',
+      }),
+    });
+    assert.equal(r.status, 1, r.stderr);
+    assert.match(r.stderr, /REFUSED: E2E_PROOF_LOG .* another consent source/);
     assert.doesNotMatch(r.stderr, /Missing required env var/);
   });
 

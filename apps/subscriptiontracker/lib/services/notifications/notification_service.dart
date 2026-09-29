@@ -178,10 +178,21 @@ class NotificationService {
     tz.setLocalLocation(zone.location);
     _timezoneFallbackReason = zone.fallbackReason;
 
+    // 🔴 ALL THREE `request*Permission: false`, OR `init()` ASKS AFTER ALL. The
+    // plugin's Darwin defaults are true, and its `initialize` then awaits the
+    // user's answer to the OS dialog — so the [13]T-4 rule below was kept on
+    // Android and broken on iOS/macOS, and native auth proof run 36525783687's
+    // iOS and macOS jobs hung in `main()` until cancelled. Same settings as the
+    // chassis adapter's `kDarwinInitNoAsk`, which initialises this plugin next.
+    const DarwinInitializationSettings darwin = DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestSoundPermission: false,
+      requestBadgePermission: false,
+    );
     const InitializationSettings settings = InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-      iOS: DarwinInitializationSettings(),
-      macOS: DarwinInitializationSettings(),
+      iOS: darwin,
+      macOS: darwin,
       // ⚠️ THIS LITERAL IS ALREADY DEAD, AND LOCALIZING IT HERE WOULD CHANGE
       // NOTHING — which is why `notificationActionOpen` is in the .arb and not
       // read on this line. `FlutterLocalNotificationsPlugin()` is a process

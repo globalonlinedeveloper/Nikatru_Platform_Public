@@ -17,8 +17,24 @@ export 'device_timezone.dart' show deviceOffsetLocation;
 /// import when `dart.library.io` is available.
 NotificationService createPlatformNotificationService({
   LocalTimezoneResolver? localTimezone,
-}) =>
-    LocalNotificationService(localTimezone: localTimezone);
+}) => LocalNotificationService(localTimezone: localTimezone);
+
+/// iOS/macOS init settings that ask the OS for NOTHING.
+///
+/// 🔴 THE PLUGIN'S DEFAULTS ASK. `DarwinInitializationSettings()` defaults
+/// alert, sound and badge to true, and `initialize` then calls
+/// `requestAuthorizationWithOptions` and completes only when the user answers
+/// the dialog — so `init()`, which `main()` awaits before `runApp`, blocked on
+/// a launch-time permission prompt. On a runner nobody answers it: native auth
+/// proof run 36525783687's iOS and macOS jobs built, launched and then printed
+/// nothing until cancelled at 60 and 45 min. Permission is asked only by
+/// [LocalNotificationService.requestPermission], from a user gesture.
+const DarwinInitializationSettings kDarwinInitNoAsk =
+    DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestSoundPermission: false,
+      requestBadgePermission: false,
+    );
 
 /// Returns a [tz.TZDateTime] a fixed clock — injected in tests for determinism.
 typedef TZDateTimeNow = tz.TZDateTime Function();
@@ -59,14 +75,14 @@ class LocalNotificationService implements NotificationService {
     LocalTimezoneResolver? localTimezone,
     TZDateTimeNow? now,
     DeviceUtcOffset? deviceUtcOffset,
-  })  : _plugin = plugin ?? _FlutterLocalNotificationsAdapter(),
-        _caps = NotificationCapabilities.forPlatform(
-          platform ?? defaultTargetPlatform,
-          isWeb: isWeb,
-        ),
-        _resolveTimezone = localTimezone,
-        _now = now,
-        _deviceUtcOffset = deviceUtcOffset ?? _hostUtcOffset;
+  }) : _plugin = plugin ?? _FlutterLocalNotificationsAdapter(),
+       _caps = NotificationCapabilities.forPlatform(
+         platform ?? defaultTargetPlatform,
+         isWeb: isWeb,
+       ),
+       _resolveTimezone = localTimezone,
+       _now = now,
+       _deviceUtcOffset = deviceUtcOffset ?? _hostUtcOffset;
 
   final NotificationPlugin _plugin;
   final NotificationCapabilities _caps;
@@ -202,12 +218,12 @@ class _FlutterLocalNotificationsAdapter implements NotificationPlugin {
 
   static const AndroidNotificationDetails _androidDetails =
       AndroidNotificationDetails(
-    'nikatru_reminders',
-    'Reminders',
-    channelDescription: 'Daily streak and goal reminders',
-    importance: Importance.defaultImportance,
-    priority: Priority.defaultPriority,
-  );
+        'nikatru_reminders',
+        'Reminders',
+        channelDescription: 'Daily streak and goal reminders',
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+      );
 
   static const NotificationDetails _details = NotificationDetails(
     android: _androidDetails,
@@ -220,8 +236,8 @@ class _FlutterLocalNotificationsAdapter implements NotificationPlugin {
   Future<void> initialize(void Function(NotificationTap tap) onTap) async {
     const InitializationSettings settings = InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-      iOS: DarwinInitializationSettings(),
-      macOS: DarwinInitializationSettings(),
+      iOS: kDarwinInitNoAsk,
+      macOS: kDarwinInitNoAsk,
       linux: LinuxInitializationSettings(defaultActionName: 'Open'),
     );
     await _fln.initialize(
@@ -237,15 +253,17 @@ class _FlutterLocalNotificationsAdapter implements NotificationPlugin {
 
   @override
   Future<bool> requestPermission() async {
-    final AndroidFlutterLocalNotificationsPlugin? android =
-        _fln.resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
+    final AndroidFlutterLocalNotificationsPlugin? android = _fln
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
     if (android != null) {
       return (await android.requestNotificationsPermission()) ?? false;
     }
-    final IOSFlutterLocalNotificationsPlugin? ios =
-        _fln.resolvePlatformSpecificImplementation<
-            IOSFlutterLocalNotificationsPlugin>();
+    final IOSFlutterLocalNotificationsPlugin? ios = _fln
+        .resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin
+        >();
     if (ios != null) {
       return (await ios.requestPermissions(
             alert: true,
@@ -254,9 +272,10 @@ class _FlutterLocalNotificationsAdapter implements NotificationPlugin {
           )) ??
           false;
     }
-    final MacOSFlutterLocalNotificationsPlugin? macos =
-        _fln.resolvePlatformSpecificImplementation<
-            MacOSFlutterLocalNotificationsPlugin>();
+    final MacOSFlutterLocalNotificationsPlugin? macos = _fln
+        .resolvePlatformSpecificImplementation<
+          MacOSFlutterLocalNotificationsPlugin
+        >();
     if (macos != null) {
       return (await macos.requestPermissions(
             alert: true,
@@ -270,13 +289,12 @@ class _FlutterLocalNotificationsAdapter implements NotificationPlugin {
   }
 
   @override
-  Future<void> showNow(int id, String title, String body) =>
-      _fln.show(
-        id: id,
-        title: title,
-        body: body,
-        notificationDetails: _details,
-      );
+  Future<void> showNow(int id, String title, String body) => _fln.show(
+    id: id,
+    title: title,
+    body: body,
+    notificationDetails: _details,
+  );
 
   @override
   Future<void> scheduleDaily(
@@ -284,20 +302,19 @@ class _FlutterLocalNotificationsAdapter implements NotificationPlugin {
     String title,
     String body,
     tz.TZDateTime when,
-  ) =>
-      _fln.zonedSchedule(
-        id: id,
-        title: title,
-        body: body,
-        scheduledDate: when,
-        notificationDetails: _details,
-        // inexact = no SCHEDULE_EXACT_ALARM permission needed (a daily nudge
-        // tolerates OS batching); matchDateTimeComponents.time repeats it daily at
-        // the same local time. flutter_local_notifications 19 removed
-        // uiLocalNotificationDateInterpretation (absolute time is the only mode).
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        matchDateTimeComponents: DateTimeComponents.time,
-      );
+  ) => _fln.zonedSchedule(
+    id: id,
+    title: title,
+    body: body,
+    scheduledDate: when,
+    notificationDetails: _details,
+    // inexact = no SCHEDULE_EXACT_ALARM permission needed (a daily nudge
+    // tolerates OS batching); matchDateTimeComponents.time repeats it daily at
+    // the same local time. flutter_local_notifications 19 removed
+    // uiLocalNotificationDateInterpretation (absolute time is the only mode).
+    androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    matchDateTimeComponents: DateTimeComponents.time,
+  );
 
   @override
   Future<void> cancel(int id) => _fln.cancel(id: id);

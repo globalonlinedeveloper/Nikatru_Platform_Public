@@ -19,24 +19,34 @@
 //      the target's own mechanism (adb / simctl / LaunchServices / xdg-open);
 //   3. reads the run's output back: every NK_PROOF step, and on a callback
 //      target the line `nk_auth_callback flow=reset outcome=failed`. A missing
-//      line fails the run even when `flutter test` exited 0.
+//      line fails the run even when `flutter test` exited 0;
+//   4. tees every byte `flutter test` prints to --log <path>, ending it with
+//      the PROOF_LOG_END line once flutter has exited — tooling/e2e/purge.mjs
+//      reads the consent row's install id off it (E2E_PROOF_LOG), and a
+//      finished log with none shows this run wrote no row (run 36525783687:
+//      all four purges failed on "no consent anon_id resolved");
+//   5. kills `flutter test` after SILENCE_LIMIT_MS with no output, so a hung
+//      launch (run 36525783687: macOS printed nothing for 40 min after
+//      "Failed to foreground app" and the job was cancelled) fails as a named
+//      finding with its purge still inside the job's ceiling.
 //
 // Windows runs WITHOUT --callback: protocol activation needs the MSIX
 // installed, and a runner build is not one, so windows-store keeps
 // nativeAuth false until the callback is proven on a device that has it.
 //
 //   node tooling/e2e/native_auth_proof.mjs --app <id> --target <t>
-//        [--device <id>] [--callback]
+//        [--device <id>] [--callback] [--log <path>]
 //
 // Env: E2E_EMAIL, E2E_PASSWORD, SUPABASE_URL, SUPABASE_ANON_KEY, API_BASE_URL.
 // Exit 0 = every step read back · 1 = a step failed or is missing · 2 = the
 // run could not start (bad arguments, a missing define).
 // ─────────────────────────────────────────────────────────────────────────────
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PROOF_LOG_END } from './consent_anon_id.mjs';
 
 const NAME = 'native_auth_proof';
 
@@ -45,6 +55,10 @@ export const PROOF_TEST = 'integration_test/native_auth_proof_test.dart';
 export const AWAIT_MARKER = 'NK_PROOF_AWAIT_CALLBACK';
 export const FAILED_CALLBACK_LINE = 'nk_auth_callback flow=reset outcome=failed';
 export const TRACE_URL = 'https://platform.nikatru.com/cdn-cgi/trace';
+/** How long `flutter test` may print nothing before the proof calls it hung.
+ *  The longest silent stretch of a healthy run is a cold Gradle build (≈ 4.5
+ *  min in run 36525783687); an iOS xcodebuild is the next. */
+export const SILENCE_LIMIT_MS = 20 * 60_000;
 
 /** The unusable reset callback the OS opens: a real marker, a code no flow minted. */
 export const callbackUrl = (app) => `com.nikatru.${app}://auth-callback?nk_auth=reset&code=st-n1-invalid`;
@@ -132,7 +146,7 @@ function args(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--callback') o.callback = true;
-    else if (a === '--app' || a === '--target' || a === '--device') o[a.slice(2)] = argv[++i];
+    else if (a === '--app' || a === '--target' || a === '--device' || a === '--log') o[a.slice(2)] = argv[++i];
     else throw new Error(`unknown argument ${a}`);
   }
   return o;
@@ -183,21 +197,48 @@ async function main() {
 
   const flutterArgs = [
     'test', PROOF_TEST,
+    // why: on CI flutter picks the `github` reporter, which holds a test's
+    // output until the test ENDS — so a hung or killed run left no line at all
+    // (run 36525783687), and the consent id printed before the tap would never
+    // reach the log. `expanded` streams each line as it is printed.
+    '--reporter', 'expanded',
     ...(o.device ? ['-d', o.device] : []),
     ...defines.map((k) => `--dart-define=${k}=${process.env[k]}`),
     `--dart-define=NK_PROOF_CALLBACK=${o.callback}`,
   ];
   const url = callbackUrl(o.app);
+  // Created BEFORE the spawn and never after it: a missing log is how the purge
+  // knows no app ran (consent_anon_id.mjs, resolveProofLogConsent).
+  const log = o.log ? resolve(root, o.log) : null;
+  if (log) {
+    mkdirSync(resolve(log, '..'), { recursive: true });
+    writeFileSync(log, `${NAME}: ${o.app}/${o.target} — flutter test output follows\n`);
+  }
   let out = '';
   let opened = false;
+  let hung = false;
   const child = spawn('flutter', flutterArgs, {
     cwd: join(root, 'apps', o.app),
     shell: process.platform === 'win32',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  let silence;
+  const arm = () => {
+    clearTimeout(silence);
+    silence = setTimeout(() => {
+      hung = true;
+      console.error(`${NAME}: flutter test printed nothing for ${SILENCE_LIMIT_MS / 60_000} min — killing it`);
+      // On Windows `shell: true` makes the child cmd.exe, and flutter its child.
+      if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F']);
+      else child.kill();
+    }, SILENCE_LIMIT_MS);
+  };
+  arm();
   const onData = (stream) => (chunk) => {
     const s = chunk.toString();
+    arm();
     out += s;
+    if (log) appendFileSync(log, s);
     stream.write(s);
     if (o.callback && !opened && out.includes(AWAIT_MARKER)) {
       opened = true;
@@ -207,9 +248,12 @@ async function main() {
   child.stdout.on('data', onData(process.stdout));
   child.stderr.on('data', onData(process.stderr));
   const code = await new Promise((r) => child.on('close', r));
+  clearTimeout(silence);
+  if (log) appendFileSync(log, `\n${PROOF_LOG_END} flutter_exit=${code}${hung ? ' killed=silence' : ''}\n`);
 
   const problems = readProof(out, { callback: o.callback });
   if (code !== 0) problems.unshift(`flutter test exited ${code}`);
+  if (hung) problems.unshift(`flutter test printed nothing for ${SILENCE_LIMIT_MS / 60_000} min and was killed — the app never reported back (a launch that hung, not a sign-in that failed)`);
   if (problems.length) {
     for (const p of problems) console.error(`FAIL ${p}`);
     console.error(`${NAME}: ${o.app}/${o.target} FAILED`);

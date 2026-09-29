@@ -3,7 +3,7 @@
 // reading that cannot fail would flip a row on no evidence.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
@@ -92,5 +92,51 @@ describe('native_auth_proof — how each OS is handed the callback', () => {
 
   test('an unknown target is refused', () => {
     assert.throws(() => openCommands('fuchsia', url, { app: 'demoapp', root: '.' }), /unknown target/);
+  });
+});
+
+// Proof run 36525783687: the consent scrim ate the Sign in tap on Android and
+// Linux, and every purge failed because nothing named the consent row. The
+// purge's "no row" verdict (consent_anon_id.mjs, resolveProofLogConsent) holds
+// only while the prompt is answered in ONE place, id printed before the tap.
+describe('native_auth_proof — the consent prompt is answered once, id first', () => {
+  const REPO = join(import.meta.dirname, '..', '..', '..');
+  const BRICK = join(REPO, 'tooling', 'bricks', 'app', '__brick__', 'apps', '{{app_id}}', 'integration_test');
+  const APPS = readdirSync(join(REPO, 'apps')).filter((a) =>
+    existsSync(join(REPO, 'apps', a, 'integration_test', 'native_auth_proof_test.dart')),
+  );
+  const suites = [BRICK, ...APPS.map((a) => join(REPO, 'apps', a, 'integration_test'))];
+
+  test('every copy of the steps file is the brick\'s, byte for byte', () => {
+    assert.ok(APPS.length > 0, 'no app carries the proof — this check would pass on nothing');
+    const brick = readFileSync(join(BRICK, 'native_auth_proof_steps.dart'), 'utf8');
+    for (const a of APPS) {
+      assert.equal(readFileSync(join(REPO, 'apps', a, 'integration_test', 'native_auth_proof_steps.dart'), 'utf8'), brick, a);
+    }
+  });
+
+  test('🔴 no proof suite names the decline control — only answerConsentPrompt taps it', () => {
+    for (const dir of suites) {
+      assert.doesNotMatch(readFileSync(join(dir, 'native_auth_proof_test.dart'), 'utf8'), /No thanks|kConsentDecline/, dir);
+      assert.match(readFileSync(join(dir, 'native_auth_proof_test.dart'), 'utf8'), /answerConsentPrompt\(/, dir);
+    }
+  });
+
+  test('🔴 the steps file prints the install id BEFORE its one tap on the prompt', () => {
+    const steps = readFileSync(join(BRICK, 'native_auth_proof_steps.dart'), 'utf8');
+    const body = steps.slice(steps.indexOf('Future<bool> answerConsentPrompt('));
+    const printed = body.indexOf("debugPrint('$kConsentAnonIdToken=$id')");
+    const tapped = body.indexOf('await tester.tap(decline.first)');
+    assert.ok(printed > 0 && tapped > 0, 'answerConsentPrompt no longer prints the id or taps the prompt');
+    assert.ok(printed < tapped, 'the id is printed after the tap — a run that dies between them leaves an unnamed row');
+    assert.equal(steps.split('tester.tap(decline').length - 1, 1, 'the decline control is tapped in more than one place');
+    assert.match(steps, /const String kConsentAnonIdToken = 'E2E_CONSENT_ANON_ID';/);
+  });
+
+  test('🔴 the Sign in tap is refused when something covers the button', () => {
+    const steps = readFileSync(join(BRICK, 'native_auth_proof_steps.dart'), 'utf8');
+    const body = steps.slice(steps.indexOf('Future<void> proveFormSignIn('));
+    assert.ok(body.indexOf('submit.hitTestable()') > 0, 'proveFormSignIn taps without checking the tap would land');
+    assert.ok(body.indexOf('submit.hitTestable()') < body.indexOf('await tester.tap(submit)'));
   });
 });

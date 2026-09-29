@@ -79,7 +79,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { listDir } from './tree-walk.mjs';
 import { delegationOf as resolveChassisDelegation } from './chassis-delegation.mjs';
 import { MONEY_PROVIDERS } from './money-wiring.mjs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 
 const repo = process.cwd();
 /** Declared, dated limbs of a property that this guard cannot assert. */
@@ -3313,6 +3313,55 @@ for (const root of bootRoots) {
     );
   }
 }
+// Limb D (2026-09-29). THE PLUGIN-MEDIATED ASK the header admits limbs A-C
+// cannot see — and it shipped. `DarwinInitializationSettings()` defaults
+// alert, sound and badge to TRUE, and flutter_local_notifications' iOS/macOS
+// `initialize` then calls `requestAuthorizationWithOptions` and completes only
+// when the user answers. `init()` was awaited in `main()`, so every iOS/macOS
+// launch opened the OS dialog — the exact ask this property forbids — with no
+// `requestPermission(` token anywhere on the path. Native auth proof run
+// 36525783687 found it: its iOS and macOS jobs hung in `main()` until
+// cancelled, because a runner answers no dialog. So every construction, in
+// every app, the brick and every package, must pass all three as `false`.
+const DARWIN_INIT_RE = /\bDarwinInitializationSettings\s*\(/g;
+const DARWIN_NO_ASK = ['requestAlertPermission', 'requestSoundPermission', 'requestBadgePermission'];
+const darwinRoots = [...bootRoots];
+try {
+  for (const e of listDir(join(repo, 'packages'), { withFileTypes: true })) {
+    if (e.isDirectory()) darwinRoots.push(`packages/${e.name}`);
+  }
+} catch { /* an unreadable packages/ leaves the sweep smaller; the zero check below still speaks */ }
+let darwinSites = 0;
+let darwinAsking = 0;
+for (const root of darwinRoots) {
+  for (const abs of dartFilesUnder(join(repo, root, 'lib'))) {
+    const src = stripDartComments(readFileSync(abs, 'utf8'));
+    for (const m of src.matchAll(DARWIN_INIT_RE)) {
+      darwinSites++;
+      const open = m.index + m[0].length - 1;
+      const args = src.slice(open, matchDelim(src, open, '(', ')'));
+      const asks = DARWIN_NO_ASK.filter((f) => !new RegExp(`\\b${f}\\s*:\\s*false\\b`).test(args));
+      if (asks.length) {
+        darwinAsking++;
+        fail(
+          `[13]T-4 ${relative(repo, abs).replaceAll('\\', '/')}: DarwinInitializationSettings(...) leaves ` +
+            `${asks.join(', ')} at the plugin default TRUE, so initialize() opens the OS permission dialog on ` +
+            'iOS/macOS and waits for the answer — a launch-time ask with no requestPermission( call to see. ' +
+            'Pass all three as false; ask from the enable gesture.',
+        );
+      }
+    }
+  }
+}
+if (darwinSites === 0 && workspaceRead) {
+  fail(
+    'COVERAGE LOST — no DarwinInitializationSettings( construction found under any app, the brick or ' +
+      'packages/*/lib, yet packages/notifications initialises the plugin with one. The limb-D sweep saw nothing.',
+  );
+} else if (!darwinAsking) {
+  ok(`[13]T-4 limb D — ${darwinSites} DarwinInitializationSettings construction(s) ask the OS for nothing at init`);
+}
+
 // Zero and one must not read the same. The exempt app is on this list precisely
 // because it is the one that shipped the defect, so an empty scan is a red flag.
 if (bootRootsScanned === 0 && workspaceRead) {
