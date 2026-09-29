@@ -349,5 +349,18 @@
   "resetPasswordLinkDead": "இந்த மீட்டமைப்பு இணைப்பை இங்கே பயன்படுத்த முடியாது.",
   "resetPasswordLinkExpiredHint": "மீட்டமைப்பு இணைப்புகள் சிறிது நேரத்திற்குப் பிறகு செயலிழக்கும்; ஒவ்வொன்றையும் ஒரு முறை மட்டுமே பயன்படுத்த முடியும். உள்நுழையும் திரையிலிருந்து புதிய இணைப்பைக் கேட்கவும்.",
   "resetPasswordSameDeviceHint": "நீங்கள் கேட்ட அதே சாதனத்திலும் உலாவியிலும் இணைப்பைத் திறக்கவும், அல்லது உள்நுழைவுத் திரையிலிருந்து புதிய இணைப்பைக் கேட்கவும்.",
-  "reacceptTermsAccept": "ஏற்றுக்கொண்டு தொடரவும்"
+  "reacceptTermsAccept": "ஏற்றுக்கொண்டு தொடரவும்",
+  "insightsPeriodMonth": "மாதம்",
+  "insightsPeriodYear": "ஆண்டு",
+  "insightsPeriodLabel": "தொகைகளைக் காட்டு",
+  "insightsPerMonthLabel": "மாதத்திற்கு",
+  "insightsOnAverage": "சராசரியாக",
+  "insightsPerYearLabel": "ஆண்டுக்கு",
+  "insightsActiveCount": "{count, plural, =1{1 சந்தா} other{{count} சந்தாக்கள்}}",
+  "insightsNext30Label": "அடுத்த 30 நாட்கள்",
+  "insightsChargeCount": "{count, plural, =0{கட்டணம் இல்லை} =1{1 கட்டணம்} other{{count} கட்டணங்கள்}}",
+  "insightsBiggestLabel": "மிகப் பெரியது",
+  "insightsNoneYet": "இன்னும் இல்லை",
+  "perYearShort": "/ ஆண்டு",
+  "perYearAmount": "{amount}/ஆண்டு"
 }

@@ -28,6 +28,7 @@ import '../shared/neutrals.dart';
 import '../shared/painters.dart';
 import '../shared/widgets.dart';
 import '../shell/app_shell.dart';
+import 'summary_tiles.dart';
 
 /// 📌 THE PRIVATE `_neutrals(BuildContext)` THAT STOOD HERE IS HOISTED
 /// (2026-08-25) into `features/shared/neutrals.dart` as `neutrals(context)`,
@@ -229,13 +230,45 @@ Widget _twoColumnCards(List<Widget> cards, double gap) {
   );
 }
 
-class InsightsScreen extends ConsumerWidget {
+/// Which unit the category breakdown reads in — the canvas's Month / Year
+/// switch (D3-1). The summary tiles print both, so the switch moves only the
+/// breakdown; the budget is a monthly figure and never moves with it.
+enum InsightsPeriod { month, year }
+
+class InsightsScreen extends ConsumerStatefulWidget {
   const InsightsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<InsightsScreen> createState() => _InsightsScreenState();
+}
+
+class _InsightsScreenState extends ConsumerState<InsightsScreen> {
+  InsightsPeriod _period = InsightsPeriod.month;
+
+  /// The breakdown for [period], ranked by the MONTHLY ranking in both units so
+  /// flipping the switch never reorders the rows under the reader's eye.
+  static List<CategoryTotal> _categoryTotals(
+    List<Subscription> subs,
+    InsightsPeriod period,
+  ) {
+    final List<CategoryTotal> monthly = SubMath.categoryTotals(subs);
+    if (period == InsightsPeriod.month) return monthly;
+    return <CategoryTotal>[
+      for (final CategoryTotal c in monthly)
+        CategoryTotal(
+          c.name,
+          MoneyBag.sum(<Money>[
+            for (final Subscription s in subs)
+              if (s.category == c.name) s.yearlyCharge,
+          ]),
+        ),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final WidgetRef ref = this.ref;
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final ({Color ink, Color muted, Color line}) neutral = neutrals(context);
     // The currency the DONUT is drawn in — see [SubMath.chartWeight] — and the
     // one an empty total reads as. Every figure printed beside the donut still
     // carries every subtotal.
@@ -245,17 +278,11 @@ class InsightsScreen extends ConsumerWidget {
       emptyCurrencyCode: currencyCode,
     );
     // 🔴 `valueOrNull ?? const []` STOOD HERE (insights:234) AND IT MADE THE
-    // DONUT LIE. Every figure on this screen is DERIVED from the list —
-    // `totalMonthly`, `categoryTotals`, `unused`, `savings` — so an absent
-    // list did not blank the page, it produced a fully composed, confident
-    // report whose every number was 0.00. A spinner is obviously incomplete;
-    // a finished chart reading zero is not, and a user whose network had
-    // dropped was shown a spending breakdown of nothing and no reason to
-    // doubt it.
-    //
-    // The gate wraps the WHOLE body here, which is safe for the same reason
-    // it is safe on budget and not on notifications: this is a shell TAB, so
-    // `AppScaffold` owns the navigation and every state below keeps it.
+    // DONUT LIE. Every figure on this screen is DERIVED from the list, so an
+    // absent list did not blank the page, it produced a fully composed,
+    // confident report whose every number was 0.00. The gate wraps the WHOLE
+    // body, which is safe because this is a shell TAB: `AppScaffold` owns the
+    // navigation and every state below keeps it.
     return subscriptionsGate(
       ref,
       l10n: l10n,
@@ -265,93 +292,35 @@ class InsightsScreen extends ConsumerWidget {
       emptyActionLabel: l10n.addSubscriptionTitle,
       onEmptyAction: () => showAddSubscriptionSheet(context),
       builder: (List<Subscription> subs) {
-        // 🔴 NO SECOND FOLD. `SubMath.totalMonthly(subs)` stood here and was
-        // handed to `_categoryCard` beside `cats`, so the card rendered a
-        // centre and a legend from two independent numbers. They agreed in
-        // minor units and disagreed on screen — see `_categoryCard`. The card
-        // now derives its own total from the very categories it paints.
-        final List<CategoryTotal> cats = SubMath.categoryTotals(subs);
+        final List<CategoryTotal> cats = _categoryTotals(subs, _period);
         final List<Subscription> unused = SubMath.unused(subs);
         final MoneyBag savings = SubMath.savings(subs);
 
-        // The page's card STACK, in reading order — built ONCE, then laid out in
-        // one column or two. Building it once is the whole trick: the commonest way
-        // a responsive branch rots is that one arm gains a card and the other does
-        // not, and nothing goes red because both arms still render something.
+        // The page's card STACK, in reading order — built ONCE, then laid out
+        // in one column or two, so no arm can gain a card the other lacks.
         final List<Widget> cards = <Widget>[
           _categoryCard(context, l10n, money, currencyCode, cats),
-          // 🔴 THE SAVINGS CARD IS GATED ON THERE BEING SOMETHING TO SAVE.
-          // `SubMath.savings` sums rows carrying `unused == true`, and NOTHING in
-          // this app ever sets `unused` — the add sheet constructs every draft
-          // without it and the API never writes it back. So for every real user the
-          // figure is exactly 0.00, and the card rendered a green "money you could
-          // keep" Pill saying `0.00/mo` immediately above the line that says nothing
-          // is flagged. Two opposite claims, one screen.
-          //
-          // Gated rather than deleted: the arithmetic is correct and the surface
-          // becomes true the moment anything writes `unused`. Inventing a usage
-          // signal to populate it would be the other, worse repair.
-          //
-          // ⚠️ IT IS ALSO WHAT DECIDES THE COLUMN COUNT. With the gate closed there
-          // is ONE card, and `_twoUp` refuses a second column for one card — so the
-          // shape every real user sees is unchanged by the two-column work below.
           if (unused.isNotEmpty)
             _savingsCard(context, l10n, money, unused, savings),
         ];
 
-        // 🔴 THE `LayoutBuilder` SITS OUTSIDE THE PANE, AND THAT IS NOT STYLE.
-        // `app_spacing.dart`'s `pagePadding` tombstone records this exact trap: a
-        // `LayoutBuilder` INSIDE a `ContentPane` measures the PANE, so on a 1920
-        // window it reads 720 and every branch taken on it is confidently wrong
-        // with nothing to show for it. Out here it reads the body width the chassis
-        // handed down, which is the width there actually is to divide.
+        // 🔴 THE `LayoutBuilder` SITS OUTSIDE THE PANE: inside a `ContentPane`
+        // it would measure the PANE, not the body the chassis handed down.
         return LayoutBuilder(
           builder: (BuildContext _, BoxConstraints constraints) {
-            // TWO COLUMNS FROM `AppBreakpoints.large` (1200) UP — see `_twoUp` for
-            // why the card count is half the condition and why 1200 of BODY is
-            // 1561 of WINDOW.
             final bool twoUp = _twoUp(constraints.maxWidth, cards.length);
-
             return _pane(
               twoUp: twoUp,
               child: ListView(
-                // P3 PORT — PADDING RE-BASED FOR THE CHASSIS SHELL (home's
-                // precedent). Live was `fromLTRB(18, 58, 18, 108)`. Both odd
-                // numbers paid for the old shell: 58 cleared a status bar under a
-                // `Scaffold` with no app bar, 108 cleared `AppShell`'s floating
-                // pill bar plus its FAB. The chassis wraps the body in a `SafeArea`
-                // and puts navigation in `bottomNavigationBar`, so both insets
-                // would now be paid twice. 18 is `AppSpacing.gutterCompact`, the
-                // chassis's own page gutter.
-                //
-                // ⚠️ HALF OF THAT WAS WRONG AND IS CORRECTED HERE RATHER THAN
-                // DELETED. The pill is `bottomNavigationBar` and WAS
-                // double-paid; the FAB is `floatingActionButton`, which
-                // reserves nothing and floats over this list, so its 72 px was
-                // dropped instead. [AppShell.pageInsetOf] carries the
-                // arithmetic for all five branches — and this surface matters
-                // twice over, because [ADR 077] §A moves the budget card here.
                 padding: AppShell.pageInsetOf(context),
                 children: <Widget>[
-                  // The heading stays FULL WIDTH in both layouts. It is the page's
-                  // one label, not a card, and splitting a title across a column
-                  // boundary would make the grid look like two pages.
-                  Text(
-                    l10n.insightsTitle,
-                    style: AppText.title.copyWith(
-                      fontSize: 26,
-                      color: neutral.ink,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    l10n.insightsSubtitle,
-                    style: AppText.muted.copyWith(
-                      fontSize: 12,
-                      color: neutral.muted,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
+                  // The heading and the summary stay FULL WIDTH in both
+                  // layouts: they are the page's label and its headline
+                  // figures, not cards of the grid.
+                  _header(context, l10n),
+                  const SizedBox(height: AppSpacing.lg),
+                  SummaryTiles(subs: subs, money: money, now: DateTime.now()),
+                  const SizedBox(height: AppSpacing.lg),
                   if (twoUp)
                     _twoColumnCards(cards, _cardGap)
                   else
@@ -365,6 +334,49 @@ class InsightsScreen extends ConsumerWidget {
           },
         );
       },
+    );
+  }
+
+  /// The title and the Month / Year switch on one line; the switch drops under
+  /// the title when the two do not fit (a phone at 200 % text).
+  Widget _header(BuildContext context, AppLocalizations l10n) {
+    final ThemeData theme = Theme.of(context);
+    return Wrap(
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: AppSpacing.md,
+      runSpacing: AppSpacing.sm,
+      children: <Widget>[
+        Semantics(
+          header: true,
+          child: Text(
+            l10n.insightsTitle,
+            style: theme.textTheme.headlineMedium?.copyWith(
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
+        ),
+        Semantics(
+          label: l10n.insightsPeriodLabel,
+          container: true,
+          child: SegmentedButton<InsightsPeriod>(
+            key: const Key('insights.period'),
+            segments: <ButtonSegment<InsightsPeriod>>[
+              ButtonSegment<InsightsPeriod>(
+                value: InsightsPeriod.month,
+                label: Text(l10n.insightsPeriodMonth),
+              ),
+              ButtonSegment<InsightsPeriod>(
+                value: InsightsPeriod.year,
+                label: Text(l10n.insightsPeriodYear),
+              ),
+            ],
+            selected: <InsightsPeriod>{_period},
+            onSelectionChanged: (Set<InsightsPeriod> next) =>
+                setState(() => _period = next.single),
+          ),
+        ),
+      ],
     );
   }
 
@@ -553,7 +565,9 @@ class InsightsScreen extends ConsumerWidget {
                             ),
                           ),
                           Text(
-                            l10n.perMonthShort,
+                            _period == InsightsPeriod.month
+                                ? l10n.perMonthShort
+                                : l10n.perYearShort,
                             style: AppText.muted.copyWith(
                               fontSize: 9,
                               color: neutral.muted,
