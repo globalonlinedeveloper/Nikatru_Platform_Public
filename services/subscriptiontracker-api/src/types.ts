@@ -146,6 +146,8 @@ export interface Subscription {
   shared_with: string | null;
   share_numerator: number; // NOT NULL DEFAULT 1
   share_denominator: number; // NOT NULL DEFAULT 1
+  // ── added by 0004_notice_days.sql (ST-R8) ──
+  notice_days: number | null; // whole days before next_renewal to cancel by; NULL = none
 }
 
 /** A payment_history row.

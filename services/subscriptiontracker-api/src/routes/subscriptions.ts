@@ -79,6 +79,9 @@ export function serializeSubscription(row: Subscription) {
     shared_with: row.shared_with,
     share_numerator: row.share_numerator,
     share_denominator: row.share_denominator,
+    // 0004_notice_days.sql (ST-R8). `?? null`: a DB 0004 has not reached yields
+    // no such key on the row, and the wire says null ("no notice period").
+    notice_days: row.notice_days ?? null,
   };
 }
 
@@ -165,6 +168,9 @@ const MAX_CYCLE_EVERY = 366;
 const MAX_REMINDERS = 5;
 /** @ceiling none — a VALUE bound: a reminder at most a year before the charge. */
 const MAX_REMINDER_DAY = 365;
+/** @ceiling none — a VALUE bound: a notice period at most a year before the
+ *  charge, the same year MAX_REMINDER_DAY allows a reminder (0004, ST-R8). */
+const MAX_NOTICE_DAYS = 365;
 /** @ceiling none — a VALUE bound: "your share of N", N people at most. */
 const MAX_SHARE_DENOMINATOR = 100;
 
@@ -228,7 +234,8 @@ type Column =
   | 'reminder_days'
   | 'shared_with'
   | 'share_numerator'
-  | 'share_denominator';
+  | 'share_denominator'
+  | 'notice_days';
 
 /** Only the keys the body actually carried — PATCH must not touch the others. */
 type Fields = Partial<Record<Column, string | number | null>>;
@@ -462,6 +469,19 @@ function validate(body: unknown): ValidatedSubscription {
     }
   }
 
+  // ── 0004: the notice period (ST-R8) ────────────────────────────────────────
+  const notice = body.notice_days;
+  if (notice !== undefined) {
+    if (notice === null) {
+      // NULL = no notice period: the plan can be cancelled up to the charge.
+      fields.notice_days = null;
+    } else if (!isWholeNumber(notice, 0, MAX_NOTICE_DAYS)) {
+      return invalid(`notice_days must be a whole number of days, 0 to ${MAX_NOTICE_DAYS}`);
+    } else {
+      fields.notice_days = notice;
+    }
+  }
+
   // ── 0003: rules that span two keys ─────────────────────────────────────────
   // Each reads only THIS body, never the stored row, so POST and PATCH share
   // them and a PATCH needs no read before it can be judged.
@@ -657,9 +677,10 @@ app.post('/', async (c) => {
           currency, price_minor, cycle_every, cycle_unit, first_charge_on,
           status, trial_ends_on, cancelled_on, deleted_at, notes, service_id,
           cancel_url, rail, rail_holder, reminder_days, shared_with,
-          share_numerator, share_denominator)
+          share_numerator, share_denominator, notice_days)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+               ?)`,
     ).bind(
       id,
       userId,
@@ -693,6 +714,7 @@ app.post('/', async (c) => {
       f.shared_with ?? null,
       f.share_numerator ?? 1,
       f.share_denominator ?? 1,
+      f.notice_days ?? null,
     ),
   );
 

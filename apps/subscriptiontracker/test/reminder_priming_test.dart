@@ -12,9 +12,11 @@
 // cases COUNT the OS asks, so each "spends nothing" is an equality on a number
 // that the "spends once" case beside it proves can move.
 //
-// MUTATION PROOF (run and recorded with the draft): make `primeThenToggle` in
-// lib/features/shared/priming.dart skip the priming (its `if (!on && …)` limb
-// `false`) and the settings cases go red (the priming view is never found);
+// ⏱ 2026-09-29: the Settings half now runs through ST-T4b's
+// `toggleReminderPref`, whose dialog is rendered by `primeReminders` here.
+// MUTATION PROOF: make `toggleReminderPref` skip the priming (its
+// `turningOn && …` limb `false`) and the settings cases go red (the priming
+// view is never found);
 // make the
 // `primeReminders != null && await primeReminders()` limb in
 // subscriptions_controller.dart `true` and the "Not now" and "no primer" cases
@@ -28,45 +30,15 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/data/subscriptions/subscription_repository.dart';
 import 'package:subscriptiontracker/features/settings/settings_screen.dart';
+import 'package:subscriptiontracker/features/shared/priming.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/services/notifications/notification_service.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 import 'package:subscriptiontracker/state/settings_controller.dart';
 import 'package:subscriptiontracker/state/subscriptions_controller.dart';
 
+import 'support/recording_seam.dart';
 import 'support/width_harness.dart';
-
-/// A silent service on a scheduling platform that COUNTS the OS asks.
-class _CountingNotifications extends NotificationService {
-  _CountingNotifications() : super.forTesting(platform: TargetPlatform.android);
-
-  int asks = 0;
-
-  @override
-  Future<bool> requestPermissions() async {
-    asks++;
-    return true;
-  }
-
-  @override
-  Future<void> syncAll(
-    List<Subscription> subs, {
-    required ReminderCopy copy,
-    int daysBefore = 2,
-  }) async {}
-  @override
-  Future<void> cancelOwnedRenewals() async {}
-  @override
-  Future<void> cancelAll() async {}
-  @override
-  Future<void> scheduleWeeklyDigest({
-    required ReminderCopy copy,
-    required int count,
-    required String formattedTotal,
-  }) async {}
-  @override
-  Future<void> cancelWeeklyDigest() async {}
-}
 
 /// Tall enough that every settings row is built, not merely laid out.
 const Size _tall = Size(800, 9000);
@@ -120,16 +92,18 @@ void main() {
   final AppLocalizations en = lookupAppLocalizations(const Locale('en'));
 
   group('settings: a reminder switch primes before it asks', () {
-    late _CountingNotifications svc;
+    late RecordingSeam svc;
 
     Future<ProviderContainer> pump(WidgetTester tester) async {
-      svc = _CountingNotifications();
+      svc = RecordingSeam();
       await pumpAt(
         tester,
         _tall,
         const SettingsScreen(),
         overrides: <Override>[
-          subscriptiontrackerNotificationServiceProvider.overrideWithValue(svc),
+          renewalRemindersProvider.overrideWithValue(
+            RenewalReminders.forTesting(service: svc),
+          ),
         ],
       );
       return ProviderScope.containerOf(
@@ -148,13 +122,11 @@ void main() {
 
       await tester.tap(_switchFor(en.prefWeeklyDigest));
       await tester.pumpAndSettle();
+      // ST-T4b's Settings path (`toggleReminderPref`), drawn by the design
+      // system's view under T4b's key.
       expect(find.byType(PermissionPrimingView), findsOneWidget);
-      // The priming names what THIS row does.
       expect(
-        find.descendant(
-          of: find.byType(PermissionPrimingView),
-          matching: find.text(en.prefWeeklyDigestDesc),
-        ),
+        find.byKey(const Key('settings.reminder.priming')),
         findsOneWidget,
       );
 
@@ -162,7 +134,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(PermissionPrimingView), findsNothing);
       expect(prefOf(c, 'weekly'), isFalse);
-      expect(svc.asks, 0);
+      expect(svc.permissionAsks, 0);
     });
 
     testWidgets('"Continue" turns the switch ON and asks the OS once', (
@@ -174,7 +146,7 @@ void main() {
       await tester.tap(find.byKey(PermissionPrimingView.allowButton));
       await tester.pumpAndSettle();
       expect(prefOf(c, 'weekly'), isTrue);
-      expect(svc.asks, 1);
+      expect(svc.permissionAsks, 1);
     });
 
     testWidgets('turning a reminder OFF never primes and never asks', (
@@ -186,22 +158,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(PermissionPrimingView), findsNothing);
       expect(prefOf(c, 'alerts'), isFalse);
-      expect(svc.asks, 0);
+      expect(svc.permissionAsks, 0);
 
       // …and back ON is an ask, so it is primed.
       await tester.tap(_switchFor(en.prefRenewalAlerts));
       await tester.pumpAndSettle();
       expect(find.byType(PermissionPrimingView), findsOneWidget);
     });
-
-    testWidgets('no OS prompt on this platform: the switch flips, nothing is '
-        'primed', (WidgetTester tester) async {
-      final ProviderContainer c = await pump(tester);
-      await tester.tap(_switchFor(en.prefWeeklyDigest));
-      await tester.pumpAndSettle();
-      expect(find.byType(PermissionPrimingView), findsNothing);
-      expect(prefOf(c, 'weekly'), isTrue);
-    }, variant: TargetPlatformVariant.only(TargetPlatform.linux));
 
     testWidgets('the in-app "unused" row is not a notification: no priming', (
       WidgetTester tester,
@@ -212,18 +175,41 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(PermissionPrimingView), findsNothing);
       expect(prefOf(c, 'unused'), !before);
-      expect(svc.asks, 0);
+      expect(svc.permissionAsks, 0);
     });
   });
 
+  testWidgets('no OS prompt on this platform: primeReminders answers yes and '
+      'draws nothing — the first add is never held open behind a question', (
+    WidgetTester tester,
+  ) async {
+    bool? answer;
+    await pumpAt(
+      tester,
+      _tall,
+      Builder(
+        builder: (BuildContext context) => TextButton(
+          onPressed: () async => answer = await primeReminders(context),
+          child: const Text('go'),
+        ),
+      ),
+    );
+    await tester.tap(find.text('go'));
+    await tester.pumpAndSettle();
+    expect(find.byType(PermissionPrimingView), findsNothing);
+    expect(answer, isTrue);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.linux));
+
   group('first add: the ask is primed', () {
-    ({ProviderContainer c, _CountingNotifications svc}) harness() {
-      final _CountingNotifications svc = _CountingNotifications();
+    ({ProviderContainer c, RecordingSeam svc}) harness() {
+      final RecordingSeam svc = RecordingSeam();
       final ProviderContainer c = ProviderContainer(
         overrides: <Override>[
           keyValueStoreProvider.overrideWith((Ref ref) async => _MemStore()),
           subscriptionRepositoryProvider.overrideWithValue(_EmptyRepository()),
-          subscriptiontrackerNotificationServiceProvider.overrideWithValue(svc),
+          renewalRemindersProvider.overrideWithValue(
+            RenewalReminders.forTesting(service: svc),
+          ),
         ],
       );
       addTearDown(c.dispose);
@@ -231,12 +217,12 @@ void main() {
     }
 
     Future<int> firstAdd({Future<bool> Function()? prime}) async {
-      final ({ProviderContainer c, _CountingNotifications svc}) h = harness();
+      final ({ProviderContainer c, RecordingSeam svc}) h = harness();
       await h.c.read(subscriptionsControllerProvider.future);
       await h.c
           .read(subscriptionsControllerProvider.notifier)
           .addSubscription(_draft(), primeReminders: prime);
-      return h.svc.asks;
+      return h.svc.permissionAsks;
     }
 
     test('a primed yes asks the OS once', () async {
@@ -252,7 +238,7 @@ void main() {
     });
 
     test('the primer is asked ONLY on the empty→first transition', () async {
-      final ({ProviderContainer c, _CountingNotifications svc}) h = harness();
+      final ({ProviderContainer c, RecordingSeam svc}) h = harness();
       int primed = 0;
       Future<bool> prime() async {
         primed++;
@@ -266,7 +252,7 @@ void main() {
       await ctl.addSubscription(_draft(), primeReminders: prime);
       await ctl.addSubscription(_draft(), primeReminders: prime);
       expect(primed, 1);
-      expect(h.svc.asks, 1);
+      expect(h.svc.permissionAsks, 1);
     });
   });
 

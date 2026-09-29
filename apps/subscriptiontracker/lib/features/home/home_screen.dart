@@ -39,6 +39,7 @@ import 'package:nikatru_purchases/nikatru_purchases.dart';
 import '../../core/app_config.dart';
 import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
+import '../../core/windows_notification_identity.g.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/money_providers.dart';
@@ -710,9 +711,10 @@ class CatchUpNudgeBanner extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final NotificationCapabilities caps = NotificationCapabilities.forPlatform(
+    final NotificationCapabilities caps = NotificationCapabilities.resolve(
       defaultTargetPlatform,
       isWeb: kIsWeb,
+      windows: kWindowsNotificationIdentity,
     );
     final AppLocalizations l10n = AppLocalizations.of(context);
     final DateTime now = (clock ?? DateTime.now)();

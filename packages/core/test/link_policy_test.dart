@@ -200,6 +200,29 @@ void main() {
       expect(identical(p.withHttpsUrl('javascript:alert(1)'), p), isTrue);
     });
 
+    test('webcal: opens only for the calendar feed host (ST-T4a client)', () {
+      final LinkPolicy base = _policy();
+      final LinkPolicy p = base.withCalendarFeedUrl('https://api.nikatru.com');
+      final Uri feed = Uri.parse('webcal://api.nikatru.com/v1/calendar/t.ics');
+      expect(base.check(feed).allowed, isFalse);
+      expect(p.check(feed).allowed, isTrue);
+      expect(
+        p.check(Uri.parse('https://api.nikatru.com/v1/calendar/t.ics')).allowed,
+        isTrue,
+        reason: 'web downloads the same feed over https',
+      );
+      expect(
+        p.check(Uri.parse('webcal://evil.invalid/x.ics')).allowed,
+        isFalse,
+      );
+      expect(
+        p.check(Uri.parse('webcal://u:p@api.nikatru.com/x.ics')).allowed,
+        isFalse,
+      );
+      expect(identical(base.withCalendarFeedUrl('http://x.invalid'), base),
+          isTrue);
+    });
+
     test('the support address is compared case-insensitively', () {
       expect(
         LinkPolicy(supportEmail: 'Support@Nikatru.com')

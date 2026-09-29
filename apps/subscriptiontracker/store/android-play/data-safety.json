@@ -1865,7 +1865,7 @@
           "Email address",
           "User IDs"
         ],
-        "why": "First-party. Wires the Supabase session through OS-backed secure storage so the refresh token is not written in plaintext. Under demo it is never initialised (main.dart:157 gates on isBackendLive)."
+        "why": "First-party. Wires the Supabase session through OS-backed secure storage so the refresh token is not written in plaintext. Under demo it is never initialised (main.dart:147 gates on isBackendLive)."
       },
       "nikatru_telemetry": {
         "introduces": [
@@ -1896,15 +1896,7 @@
       },
       "nikatru_notifications": {
         "introduces": [],
-        "why": "First-party wrapper (packages/notifications) over the flutter_local_notifications + timezone pair already declared below — [13]T-9 routes the retention-touch attribution through it so a tap is attributable to its reminder. It schedules LOCAL notifications only: no new permission, no network, no data category beyond what its two wrapped deps (both already in this surface) declare. Added 2026-08-08 with PR #195 under [ADR 036]."
-      },
-      "flutter_local_notifications": {
-        "introduces": [],
-        "why": "Schedules renewal reminders ON THE DEVICE. Nothing is sent anywhere — there is no push service, no token registration and no Firebase. It is the source of the merged VIBRATE and POST_NOTIFICATIONS permissions — which stopped being an inference on 2026-08-26: both were read out of a built .aab and both were traced back to this package's own plugin manifest. See androidPermissions.merged."
-      },
-      "timezone": {
-        "introduces": [],
-        "why": "Local timezone database for scheduling the reminders above. Offline data, no I/O."
+        "why": "First-party adapter (packages/notifications) over flutter_local_notifications + timezone. ⏱ 2026-09-28 (ST-R4): it is the app's ONLY path to both — the app's own direct dependency on each was removed when its reminder fork became RenewalReminders over this adapter, so both now arrive transitively through here and are answered for here. flutter_local_notifications: Schedules renewal reminders ON THE DEVICE. Nothing is sent anywhere — there is no push service, no token registration and no Firebase. It is the source of the merged VIBRATE and POST_NOTIFICATIONS permissions — which stopped being an inference on 2026-08-26: both were read out of a built .aab and both were traced back to this package's own plugin manifest. See androidPermissions.merged. timezone: local timezone database for scheduling those reminders; offline data, no I/O. The adapter itself schedules LOCAL notifications only: no new permission, no network, no data category. First added 2026-08-08 with PR #195 under [ADR 036]; its previous text read: \"First-party wrapper (packages/notifications) over the flutter_local_notifications + timezone pair already declared below — [13]T-9 routes the retention-touch attribution through it so a tap is attributable to its reminder. It schedules LOCAL notifications only: no new permission, no network, no data category beyond what its two wrapped deps (both already in this surface) declare. Added 2026-08-08 with PR #195 under [ADR 036].\""
       },
       "intl": {
         "introduces": [],

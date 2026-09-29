@@ -150,7 +150,7 @@ _harness(_FakeAuth auth) {
       analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
       secureStoreProvider.overrideWithValue(secure),
       notificationServiceProvider.overrideWithValue(chassis),
-      subscriptiontrackerNotificationServiceProvider.overrideWithValue(fork),
+      renewalRemindersProvider.overrideWithValue(fork),
     ],
   );
   addTearDown(container.dispose);

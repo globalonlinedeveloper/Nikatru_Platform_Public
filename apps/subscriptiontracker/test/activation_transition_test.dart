@@ -80,13 +80,13 @@ class _FakeRepository implements SubscriptionRepository {
       throw UnimplementedError('${invocation.memberName} is not under test');
 }
 
-class _SilentNotifications extends NotificationService {
+class _SilentNotifications extends RenewalReminders {
   _SilentNotifications() : super.forTesting();
   @override
   Future<void> syncAll(
     List<Subscription> subs, {
     required ReminderCopy copy,
-    int daysBefore = 2,
+    ReminderRules rules = const ReminderRules(),
   }) async {}
   @override
   Future<void> cancelAll() async {}
@@ -117,9 +117,7 @@ Subscription _draft() => Subscription(
     overrides: <Override>[
       keyValueStoreProvider.overrideWith((Ref ref) async => _MemStore()),
       subscriptionRepositoryProvider.overrideWithValue(repo),
-      subscriptiontrackerNotificationServiceProvider.overrideWithValue(
-        _SilentNotifications(),
-      ),
+      renewalRemindersProvider.overrideWithValue(_SilentNotifications()),
       analyticsFunnelProvider.overrideWith(
         (Ref ref) async => AnalyticsFunnel(analytics: analytics),
       ),

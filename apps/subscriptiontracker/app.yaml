@@ -201,6 +201,12 @@ listings:
 # console. It is null on every channel: the owner, 2026-09-26, "not yet". It
 # never makes these store files a preview (each file's own "sworn" key does);
 # it gates a REAL submission only, which is refused while it is null.
+# ST-R4: what this app mints for itself on Windows — not a console id, so not
+# under `stores`. The toast activator's CLSID: ours, never reissued; rendered
+# into msix_config.toast_activator and lib/core/windows_notification_identity.g.dart.
+windows:
+  toastActivatorClsid: f23148ad-7606-46a7-9767-e70e3f378f1d
+
 stores:
   windows-store:
     identityName: 60210NIKATRU.NikatruSubscriptionTracker

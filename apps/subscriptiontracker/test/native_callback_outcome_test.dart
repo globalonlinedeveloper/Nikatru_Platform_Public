@@ -89,7 +89,7 @@ void main() {
         launchUriProvider.overrideWithValue(_nativeLaunch),
         secureStoreProvider.overrideWithValue(MemSecureStore()),
         notificationServiceProvider.overrideWithValue(FakeNotifications()),
-        subscriptiontrackerNotificationServiceProvider.overrideWithValue(
+        renewalRemindersProvider.overrideWithValue(
           RecordingSublyNotifications(),
         ),
       ],

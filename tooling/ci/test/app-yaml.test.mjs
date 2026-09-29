@@ -109,6 +109,10 @@ function tree() {
     // LOST, so a fixture without these two would exercise that refusal instead.
     'apps/subscriptiontracker/lib/state/money_providers.dart',
     'apps/subscriptiontracker/lib/core/app_config.dart',
+    // ⏱ 2026-09-28 (ST-R4): render.mjs owns this file for every app with a
+    // lib/core/, so a fixture that carries lib/core/ must carry its rendering,
+    // or --check reads it as stale on every case.
+    'apps/subscriptiontracker/lib/core/windows_notification_identity.g.dart',
   ]) {
     mkdirSync(join(root, dirname(rel)), { recursive: true });
     cpSync(join(REPO, rel), join(root, rel));
@@ -2626,7 +2630,9 @@ describe('limb 8 — an export-compliance `false` holds to the code the app ship
       const { code, out } = spawn(GUARD, [root]);
       assert.equal(code, 0, `expected a clean tree, got ${code}:\n${out}`);
       // 4: main.dart, the recorded verifier, and the money provider and AppConfig limb 6 (e)/(f) read (12b).
-      assert.match(out, /limb 8 — 1 app\(s\) declare no non-exempt encryption; 4 shipped Dart file\(s\) carry no cipher class/);
+      // ⏱ 2026-09-28 (ST-R4): 4 -> 5, the fixture carries the rendered
+      // lib/core/windows_notification_identity.g.dart now (see tree()).
+      assert.match(out, /limb 8 — 1 app\(s\) declare no non-exempt encryption; 5 shipped Dart file\(s\) carry no cipher class/);
     } finally { kill(root); }
   });
 

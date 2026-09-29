@@ -6,8 +6,10 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
+import '../services/notifications/notification_service.dart'
+    show ReminderRules, RenewalReminders;
 import 'analytics_providers.dart';
-import 'providers.dart' show subscriptiontrackerNotificationServiceProvider;
+import 'providers.dart' show renewalRemindersProvider;
 
 /// Where the settings live on disk — the same [core.KeyValueStore] seam the
 /// consent decision and the install id use ([ADR 005]). Namespaced like
@@ -23,7 +25,37 @@ class SettingsState {
       'unused': true,
       'weekly': false,
     },
+    this.reminderLeadDays = defaultLeadDays,
+    this.reminderMinuteOfDay = defaultMinuteOfDay,
+    this.blocked = const <String>{},
   });
+
+  /// ST-R3 (audit C26): the account DEFAULT lead — days before a renewal the
+  /// reminder fires — for every row without its own `reminder_days`. 2 is
+  /// what the app always did.
+  final int reminderLeadDays;
+  static const int defaultLeadDays = 2;
+
+  /// The lead times the chooser offers, and the only ones a store may hold.
+  static const List<int> leadChoices = RenewalReminders.leadChoices;
+
+  /// ST-R3: the local time of day every reminder fires at, as minutes after
+  /// midnight. 09:00 is what the app always did.
+  final int reminderMinuteOfDay;
+  static const int defaultMinuteOfDay = 9 * 60;
+
+  /// ST-R5 (audit C25/D9): the reminder prefs the OS REFUSED permission for in
+  /// this session. The switch reads OFF and the row says why. NOT persisted:
+  /// the OS answer is asked fresh at the next switch-on, because the user can
+  /// grant it in system settings at any time.
+  final Set<String> blocked;
+
+  /// The rules [RenewalReminders] schedules by.
+  ReminderRules get reminderRules => ReminderRules(
+    leadDays: <int>[reminderLeadDays],
+    hour: reminderMinuteOfDay ~/ 60,
+    minute: reminderMinuteOfDay % 60,
+  );
 
   /// The user's currency as an ISO 4217 code — the unit a NEW subscription is
   /// entered in, and the unit a stored figure that never carried a currency
@@ -71,15 +103,25 @@ class SettingsState {
     return fallback;
   }
 
-  SettingsState copyWith({String? currencyCode, Map<String, bool>? prefs}) =>
-      SettingsState(
-        currencyCode: currencyCode ?? this.currencyCode,
-        prefs: prefs ?? this.prefs,
-      );
+  SettingsState copyWith({
+    String? currencyCode,
+    Map<String, bool>? prefs,
+    int? reminderLeadDays,
+    int? reminderMinuteOfDay,
+    Set<String>? blocked,
+  }) => SettingsState(
+    currencyCode: currencyCode ?? this.currencyCode,
+    prefs: prefs ?? this.prefs,
+    reminderLeadDays: reminderLeadDays ?? this.reminderLeadDays,
+    reminderMinuteOfDay: reminderMinuteOfDay ?? this.reminderMinuteOfDay,
+    blocked: blocked ?? this.blocked,
+  );
 
   Map<String, Object?> toJson() => <String, Object?>{
     'currencyCode': currencyCode,
     'prefs': prefs,
+    'reminderLeadDays': reminderLeadDays,
+    'reminderMinuteOfDay': reminderMinuteOfDay,
   };
 
   /// [fallbackCurrencyCode] is the currency when the store holds no choice —
@@ -95,8 +137,17 @@ class SettingsState {
   }) {
     const SettingsState defaults = SettingsState();
     final Object? prefs = json['prefs'];
+    final Object? lead = json['reminderLeadDays'];
+    final Object? minute = json['reminderMinuteOfDay'];
     return SettingsState(
       currencyCode: _currencyFrom(json, fallback: fallbackCurrencyCode),
+      // A value outside what the chooser offers is junk, not a choice.
+      reminderLeadDays: lead is int && leadChoices.contains(lead)
+          ? lead
+          : defaultLeadDays,
+      reminderMinuteOfDay: minute is int && minute >= 0 && minute < 24 * 60
+          ? minute
+          : defaultMinuteOfDay,
       prefs: <String, bool>{
         ...defaults.prefs,
         if (prefs is Map<String, Object?>)
@@ -193,22 +244,47 @@ class SettingsController extends Notifier<SettingsState> {
   /// The prefs that cause something to be posted to the OS notification centre.
   /// `unused` only changes what the app draws for itself, so switching it on is
   /// not the user asking for notifications and must not spend the prompt.
-  static const Set<String> _reminderBearing = <String>{'alerts', 'weekly'};
+  static const Set<String> reminderBearing = <String>{'alerts', 'weekly'};
 
   /// Whether switching [key] ON is the user asking for notifications — the
   /// question the settings screen asks before it PRIMES (train ST-D8), so the
   /// screen and this controller cannot disagree about which rows spend the
   /// prompt.
-  static bool isReminderBearing(String key) => _reminderBearing.contains(key);
+  static bool isReminderBearing(String key) => reminderBearing.contains(key);
 
-  Future<void> toggle(String key) async {
+  /// ST-R3: the account default lead, one of [SettingsState.leadChoices].
+  Future<void> setReminderLead(int days) {
+    if (!SettingsState.leadChoices.contains(days)) {
+      throw ArgumentError.value(days, 'days', 'not a lead the app offers');
+    }
+    _touched = true;
+    state = state.copyWith(reminderLeadDays: days);
+    return _persist();
+  }
+
+  /// ST-R3: the time of day every reminder fires at.
+  Future<void> setReminderTime(int hour, int minute) {
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+      throw ArgumentError('not a time of day: $hour:$minute');
+    }
+    _touched = true;
+    state = state.copyWith(reminderMinuteOfDay: hour * 60 + minute);
+    return _persist();
+  }
+
+  /// Flip [key]. Returns what the switch now IS — which, for a reminder pref
+  /// the OS refuses, is OFF although ON was asked for.
+  Future<bool> toggle(String key) async {
     _touched = true;
     final Map<String, bool> next = Map<String, bool>.of(state.prefs);
     final bool on = !(next[key] ?? false);
     next[key] = on;
-    state = state.copyWith(prefs: next);
+    state = state.copyWith(
+      prefs: next,
+      blocked: <String>{...state.blocked}..remove(key),
+    );
     await _persist();
-    if (!ref.mounted) return; // Riverpod 3: the provider may be gone by now.
+    if (!ref.mounted) return on; // Riverpod 3: the provider may be gone.
 
     // 🔴 [pipeline 13]T-4 — THE IN-CONTEXT ASK. This is one of the only two
     // places in the app allowed to reach `requestPermissions()`, and it is
@@ -218,11 +294,24 @@ class SettingsController extends Notifier<SettingsState> {
     // outright unless it happens inside a user-gesture handler.
     //
     // Off is never an ask: turning a feature OFF cannot be a reason to prompt.
-    if (on && _reminderBearing.contains(key)) {
-      await ref
-          .read(subscriptiontrackerNotificationServiceProvider)
+    if (on && reminderBearing.contains(key)) {
+      final bool granted = await ref
+          .read(renewalRemindersProvider)
           .requestPermissions();
+      if (!ref.mounted) return on;
+      // 🔴 ST-R5 (audit C25/D9): THE ANSWER IS READ. It used to be discarded,
+      // so after an OS refusal the switch read ON over a channel that
+      // delivers nothing. A refusal puts it back OFF and says why.
+      if (!granted) {
+        state = state.copyWith(
+          prefs: <String, bool>{...state.prefs, key: false},
+          blocked: <String>{...state.blocked, key},
+        );
+        await _persist();
+        return false;
+      }
     }
+    return on;
   }
 
   /// Fire-and-forget from the UI's point of view (the callbacks are

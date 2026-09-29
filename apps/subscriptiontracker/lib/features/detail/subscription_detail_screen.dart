@@ -17,6 +17,7 @@ import '../shared/async_gate.dart';
 import '../shared/cadence_label.dart';
 import '../shared/due.dart';
 import '../shell/app_shell.dart';
+import 'reminder_rows.dart';
 
 /// The page about ONE subscription: what it costs, when it next charges, what
 /// it has charged, and the two things a user can do about it.
@@ -354,6 +355,9 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                       ),
                     ],
                   ),
+                  // ST-R3 / ST-R8: when this one reminds, and its notice.
+                  // Last, below the actions, so nothing above it moves.
+                  SubscriptionReminderRows(sub: s),
                 ],
               ),
             ),

@@ -471,6 +471,21 @@ void main() {
           .toList();
       expect(kinds, <StatusKind?>[StatusKind.warn, null, null, null]);
 
+      // ST-R6 (audit C19): the two that renewed already are said, in a card
+      // of their own, oldest first.
+      final List<AppListRow> renewedRows = tester
+          .widgetList<AppListRow>(
+            find.descendant(
+              of: find.byKey(const Key('notifications-renewed-card')),
+              matching: find.byType(AppListRow),
+            ),
+          )
+          .toList();
+      expect(renewedRows.map((AppListRow r) => r.title), <String>[
+        'Spotify',
+        'ChatGPT Plus',
+      ]);
+
       final DecisionStrip strip = tester.widget<DecisionStrip>(
         find.byKey(const Key('notifications-unused-strip')),
       );

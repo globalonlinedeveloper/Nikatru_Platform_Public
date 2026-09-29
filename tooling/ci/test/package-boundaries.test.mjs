@@ -126,10 +126,13 @@ function tree({
   // Present so the "is it excluded?" question is answered by the fixture too.
   files[join(root, 'packages/analysis/pubspec.yaml')] = spec('nikatru_analysis', '  flutter_lints: ^6.0.0\n');
 
-  // Subly, carrying the three real grandfathered bypasses.
+  // Subly, carrying the ONE real grandfathered bypass (dio, below).
+  // ⏱ 2026-09-28 (ST-R4): the reminders file imports the seam and the adapter,
+  // never the plugin — the flutter_local_notifications and timezone rows left
+  // KNOWN_BYPASSES in that change, and the fixture follows the tree.
   files[join(root, 'apps/subscriptiontracker/lib/services/notifications/notification_service.dart')] =
     subscriptiontrackerImports ??
-    "import 'package:flutter_local_notifications/flutter_local_notifications.dart';\nimport 'package:timezone/timezone.dart' as tz;\n";
+    "import 'package:nikatru_core/nikatru_core.dart' as core;\nimport 'package:nikatru_notifications/nikatru_notifications.dart';\n";
   // 🪦 `apps/subscriptiontracker/lib/data/auth/supabase_auth_repository.dart` STOOD HERE and
   // is gone with the thing it modelled. The cut-1 reversal (owner 2026-08-09)
   // deleted that file from the real tree, `KNOWN_BYPASSES` lost its
@@ -193,8 +196,13 @@ describe('assert-package-boundaries', () => {
     // 🔻 5 → 3 ON 2026-09-24 (O-LINK-LAUNCHER-SEAM-UNOWNED): both
     // `|url_launcher` rows are paid — Subly and the template open every link
     // through packages/external_links.
-    assert.match(out, /3 grandfathered adapter bypass\(es\)/);
+    //
+    // 🔻 3 → 1 ON 2026-09-28 (ST-R4): the `|flutter_local_notifications` and
+    // `|timezone` rows are paid — Subly's reminders schedule through the core
+    // seam packages/notifications implements. Only `|dio` is left.
+    assert.match(out, /1 grandfathered adapter bypass\(es\)/);
     assert.doesNotMatch(out, /package:url_launcher/);
+    assert.doesNotMatch(out, /package:flutter_local_notifications —/);
   });
 
   // ── A · core stays pure Dart ───────────────────────────────────────────────
@@ -354,6 +362,29 @@ describe('assert-package-boundaries', () => {
       assert.match(out, /`packages\/external_links`/);
     });
 
+    // ST-R4's red control: the waivers are gone, so the imports they excused
+    // are findings — in the app's own reminders file, and anywhere else in lib/.
+    test('RC3 · FAILS on a direct flutter_local_notifications import in the app — the bypass is closed', () => {
+      const { code, out } = run(tree({
+        subscriptiontrackerImports:
+          "import 'package:flutter_local_notifications/flutter_local_notifications.dart';\n",
+      }));
+      assert.equal(code, 1, out);
+      assert.match(out, /apps\/subscriptiontracker imports `package:flutter_local_notifications` directly/);
+      assert.match(out, /`packages\/notifications`/);
+    });
+
+    test('RC4 · FAILS on a direct timezone import anywhere in the app lib/', () => {
+      const { code, out } = run(tree({
+        extra: {
+          'apps/subscriptiontracker/lib/state/subscriptions_controller.dart':
+            "import 'package:timezone/timezone.dart' as tz;\n",
+        },
+      }));
+      assert.equal(code, 1, out);
+      assert.match(out, /apps\/subscriptiontracker imports `package:timezone` directly/);
+    });
+
     test('FAILS on a NEW bypass written with DOUBLE quotes — limb C', () => {
       const { code, out } = run(tree({
         brickImports: "import 'package:flutter/material.dart';\nimport \"package:dio/dio.dart\";\n",
@@ -374,9 +405,14 @@ describe('assert-package-boundaries', () => {
     // Debt that has been paid must leave the list, or the list stops meaning
     // anything — the same discipline as a stale coverage claim.
     test('FAILS on a stale grandfather entry once the bypass is fixed', () => {
-      const { code, out } = run(tree({ subscriptiontrackerImports: "import 'package:timezone/timezone.dart' as tz;\n" }));
+      const { code, out } = run(tree({
+        extra: {
+          'apps/subscriptiontracker/lib/data/api/dio_api_client.dart':
+            "import 'package:nikatru_api_client/nikatru_api_client.dart';\n",
+        },
+      }));
       assert.equal(code, 1);
-      assert.match(out, /KNOWN_BYPASSES still lists `apps\/subscriptiontracker\|flutter_local_notifications`/);
+      assert.match(out, /KNOWN_BYPASSES still lists `apps\/subscriptiontracker\|dio`/);
       assert.match(out, /It was fixed — delete the entry/);
     });
 

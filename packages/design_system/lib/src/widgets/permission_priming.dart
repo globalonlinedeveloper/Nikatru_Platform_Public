@@ -180,8 +180,10 @@ Future<bool> showPermissionPriming(
   required String notNowLabel,
   List<String> reasons = const <String>[],
   IconData icon = Icons.notifications_active_outlined,
+  Key? key,
 }) async {
   Widget view(BuildContext c) => PermissionPrimingView(
+    key: key,
     title: title,
     body: body,
     reasons: reasons,

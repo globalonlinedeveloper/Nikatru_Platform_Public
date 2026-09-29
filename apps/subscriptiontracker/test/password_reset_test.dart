@@ -114,9 +114,7 @@ ProviderContainer _container(
     // throws, and the drop list throws with it.
     secureStoreProvider.overrideWithValue(MemSecureStore()),
     notificationServiceProvider.overrideWithValue(FakeNotifications()),
-    subscriptiontrackerNotificationServiceProvider.overrideWithValue(
-      RecordingSublyNotifications(),
-    ),
+    renewalRemindersProvider.overrideWithValue(RecordingSublyNotifications()),
   ],
 );
 
