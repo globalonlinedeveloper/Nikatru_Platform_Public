@@ -1995,6 +1995,12 @@
   "errRestrictedWebstore": {
     "message": "Chrome વેબ સ્ટોર એક્સ્ટેન્શનને તેનાં પેજ વાંચવા દેતું નથી, એટલે આ પેજ કૅપ્ચર થઈ શકે નહીં."
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "આ પેજ બ્રાઉઝર દ્વારા સુરક્ષિત છે અને કૅપ્ચર થઈ શકતું નથી."
   },

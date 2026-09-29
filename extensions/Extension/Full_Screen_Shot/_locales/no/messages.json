@@ -1995,6 +1995,12 @@
   "errRestrictedWebstore": {
     "message": "Chrome Web Store hindrer utvidelser i å lese sidene sine, så denne kan ikke tas."
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "Denne siden er beskyttet av nettleseren og kan ikke tas."
   },

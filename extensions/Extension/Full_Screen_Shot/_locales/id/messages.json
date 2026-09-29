@@ -1890,6 +1890,12 @@
   "errRestrictedWebstore": {
     "message": "Chrome Web Store melarang ekstensi membaca halamannya, jadi halaman ini tidak bisa ditangkap."
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "Halaman ini dilindungi browser dan tidak bisa ditangkap."
   },

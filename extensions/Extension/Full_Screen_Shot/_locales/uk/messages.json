@@ -2205,6 +2205,12 @@
   "errRestrictedWebstore": {
     "message": "Chrome Web Store забороняє розширенням читати свої сторінки, тому цю сторінку зняти не вдасться."
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "Ця сторінка захищена браузером і не може бути знята."
   },

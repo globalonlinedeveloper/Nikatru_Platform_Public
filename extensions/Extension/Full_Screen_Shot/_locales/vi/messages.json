@@ -1890,6 +1890,12 @@
   "errRestrictedWebstore": {
     "message": "Chrome Web Store không cho tiện ích đọc các trang của mình, vì vậy không thể chụp trang này."
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "Trang này được trình duyệt bảo vệ nên không thể chụp."
   },

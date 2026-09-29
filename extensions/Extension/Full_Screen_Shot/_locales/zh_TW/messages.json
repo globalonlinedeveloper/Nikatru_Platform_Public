@@ -1890,6 +1890,12 @@
   "errRestrictedWebstore": {
     "message": "Chrome 線上應用程式商店不讓擴充功能讀取自家頁面，因此這個頁面無法擷取。"
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "這個頁面受瀏覽器保護，無法擷取。"
   },
