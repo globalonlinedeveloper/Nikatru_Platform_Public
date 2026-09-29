@@ -79,6 +79,18 @@
       "additionalProperties": { "type": ["string", "null"], "format": "https-url" },
       "properties": {}
     },
+    "windows": {
+      "description": "OPTIONAL. What THIS app mints for itself on Windows — nothing a store console issues, which is why it is not in `stores.windows-store` (every key there but state/declaredOn is a console-issued id, tooling/store/store-record.mjs). ST-R4 (O-RENEWAL-REMINDERS-OFF-ON-DESKTOP): `toastActivatorClsid` is the CLSID of the COM activator a tapped toast launches; tooling/app-yaml/render.mjs writes it into msix_config.toast_activator.clsid AND into lib/core/windows_notification_identity.g.dart, so the packaged manifest and the running app name one activator. It is never reissued (a changed CLSID orphans every toast on screen). The brick derives it from the app id.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["toastActivatorClsid"],
+      "properties": {
+        "toastActivatorClsid": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        }
+      }
+    },
     "stores": {
       "description": "OPTIONAL. What each store CONSOLE issued to this app, one closed record per store channel, keyed by the tooling/channel-register.json channel id and read through tooling/store/store-record.mjs storeRecordOf (the one reader; it never returns a default). O-SECOND-APP-SIGNS-AS-THE-FIRST limb (1): the Windows identity was one value on the windows-store channel row, and tooling/bricks/app/hooks/post_gen.dart copied that row into every app it stamped, so a second app would package and submit as the first. It is a top-level key and not `listings.windows-store.identity` because `listings` types every value as an https URL. The account-wide facts (`publisher`, `publisherDisplayName`) stay on the channel row. ⏱ 2026-09-25 (B4a-2): the channel row's copy is gone and this record is the one declaration of the app's Windows identity. tooling/app-yaml/render.mjs renders msix_config.identity_name from it, every Windows identity reader reads it through tooling/ci/read-identity.mjs windowsIdentityOf, and tooling/ci/assert-channel-register.mjs §6e recomputes its packageFamilyName from the row's publisher. ⏱ 2026-09-26 (O-STORE-RECORDS-ARE-ONE-PER-CHANNEL, 9a): every store channel has its record. Each carries `state` (pending: the console has not been read for every id; issued: it has) and `declaredOn` (null, or the date the owner swore THIS app's declarations in that console). TWO FACTS, NEVER MERGED (O-APP1-CONSOLE-DECLARATIONS-UNSUBMITTED): whether the store FILES are final or the brick's preview is each sworn file's own `sworn` key, graded by tooling/ci/assert-sworn-store-files.mjs; `declaredOn` gates a REAL submission only (that guard's --for-submission --real-submission). The bundle id and the Android package name are derived (tooling/apple-provisioning.json bundleIdOf; com.nikatru.<id>) and never stored. tooling/ci/assert-store-identity.mjs fails two apps sharing a record id, an iOS record id that is not the macOS one, and an issued record with a missing id.",
       "type": "object",
@@ -88,14 +100,9 @@
           "description": "The MSIX Package/Identity/Name and the Package Family Name Partner Center issued to THIS app (Product → Product identity), and its Store ID. None can be derived from the app id. An app with no Partner Center product yet writes the channel row's `packageIdentity.notYetConfiguredSentinel`, PARTNER-CENTER-PENDING, in both identity fields: an invented value would package and submit under an identity nobody owns. `issued` needs all three, real.",
           "type": "object",
           "additionalProperties": false,
-          "required": ["state", "declaredOn", "identityName", "packageFamilyName", "toastActivatorClsid"],
+          "required": ["state", "declaredOn", "identityName", "packageFamilyName"],
           "properties": {
             "state": { "type": "string", "enum": ["pending", "issued"] },
-            "toastActivatorClsid": {
-              "description": "ST-R4 (O-RENEWAL-REMINDERS-OFF-ON-DESKTOP): the CLSID of the COM activator a tapped Windows toast launches. It is OURS, not Partner Center's, so it exists before the product does and never changes (a changed CLSID orphans every toast already on screen). tooling/app-yaml/render.mjs writes it into msix_config.toast_activator.clsid AND into lib/core/windows_notification_identity.g.dart, so the packaged manifest and the running app name one activator. The brick derives it from the app id.",
-              "type": "string",
-              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-            },
             "declaredOn": { "description": "null, or the date the owner swore this app's Partner Center declarations. Written only from the owner's word.", "type": ["string", "null"], "format": "date" },
             "identityName": {
               "description": "Letters, digits, `.` and `-`: the characters the one issued identity and the sentinel both use. The pattern refuses a space or an underscore typed into the field; it cannot tell a wrong name from a right one, which is what the equality checks are for.",

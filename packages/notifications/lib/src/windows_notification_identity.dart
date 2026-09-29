@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart' show immutable;
 ///
 /// Pure data and plugin-free, so an app can hold one without importing
 /// `flutter_local_notifications`. Every stamped app gets its own from its
-/// `app.yaml` (`stores.windows-store.toastActivatorClsid`, beside the MSIX
+/// `app.yaml` (`windows.toastActivatorClsid`, beside the MSIX
 /// `identityName`): tooling/app-yaml/render.mjs writes the same CLSID into
 /// `msix_config.toast_activator` and this value into
 /// `lib/core/windows_notification_identity.g.dart`, so the packaged manifest

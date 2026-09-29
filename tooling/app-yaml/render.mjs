@@ -351,7 +351,8 @@ export const MSIX_IDENTITY_TARGET = {
 
 /**
  * ⏱ 2026-09-28 — ST-R4 (O-RENEWAL-REMINDERS-OFF-ON-DESKTOP). The Windows toast
- * activator, from `stores.windows-store.toastActivatorClsid`, written twice:
+ * activator, from `windows.toastActivatorClsid` (not a console id, so not in
+ * the `stores` record), written twice:
  *
  *  · into the pubspec's msix_config as a `toast_activator:` block (UPSERTED:
  *    the brick's block and a hand-written one both lack it until the first
@@ -861,7 +862,7 @@ export function plan(root) {
   // Store and gets no manifest block.
   for (const { id, doc } of declarations) {
     const record = doc?.stores?.['windows-store'];
-    const clsid = typeof record?.toastActivatorClsid === 'string' ? record.toastActivatorClsid : null;
+    const clsid = typeof doc?.windows?.toastActivatorClsid === 'string' ? doc.windows.toastActivatorClsid : null;
     const rel = `${APPS_DIR}/${id}/pubspec.yaml`;
     const pubspec = files.get(rel) ?? read(root, rel);
     if (isDir(join(root, APPS_DIR, id, 'lib', 'core'))) {

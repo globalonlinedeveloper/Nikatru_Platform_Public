@@ -543,6 +543,13 @@ bool _writeAppDeclaration(
   // issues to THIS app, on the channel's own sentinel: a stamp cannot know it,
   // and copying another app's would package and submit as that app.
   _writeStoreRecords(context, buffer);
+  // ST-R4: the Windows toast activator is OURS, not a console's, so it is its
+  // own block (not a stores record id) and written now rather than pending.
+  // render.mjs puts it in msix_config and in lib/core/windows_notification_identity.g.dart.
+  buffer
+    ..writeln('windows:')
+    ..writeln('  toastActivatorClsid: ${toastActivatorClsidFor(id)}')
+    ..writeln();
   buffer
     ..writeln('legal:')
     ..writeln('  privacyPolicyUrl: ${urls.privacyUrl}')
@@ -769,13 +776,6 @@ void _writeStoreRecords(HookContext context, StringBuffer buffer) {
       buffer
         ..writeln('    identityName: $sentinel')
         ..writeln('    packageFamilyName: $sentinel');
-    }
-    // ST-R4: the Windows toast activator is OURS, not the console's, so it is
-    // written now rather than pending. render.mjs puts it in msix_config and in
-    // lib/core/windows_notification_identity.g.dart.
-    if (channel == 'windows-store') {
-      final id = (context.vars['app_id'] ?? '').toString();
-      buffer.writeln('    toastActivatorClsid: ${toastActivatorClsidFor(id)}');
     }
     buffer
       ..writeln('    state: pending')
