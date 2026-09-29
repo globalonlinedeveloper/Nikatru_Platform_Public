@@ -126,14 +126,15 @@ class _Loaded extends StatelessWidget {
                   ),
                 ),
               ),
-              Semantics(
-                label: hasBudget ? l10n.budgetEditA11y : null,
-                excludeSemantics: hasBudget,
-                button: true,
-                child: TextButton(
-                  key: BudgetCard.editButton,
-                  onPressed: edit,
-                  child: Text(hasBudget ? l10n.budgetEdit : l10n.budgetSet),
+              // The button keeps its OWN node (role + tap); only its NAME is
+              // widened, through the label's semanticsLabel, so a screen
+              // reader hears "Edit monthly budget" and can still activate it.
+              TextButton(
+                key: BudgetCard.editButton,
+                onPressed: edit,
+                child: Text(
+                  hasBudget ? l10n.budgetEdit : l10n.budgetSet,
+                  semanticsLabel: hasBudget ? l10n.budgetEditA11y : null,
                 ),
               ),
             ],

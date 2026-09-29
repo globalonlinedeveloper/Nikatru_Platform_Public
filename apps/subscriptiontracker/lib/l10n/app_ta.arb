@@ -374,7 +374,7 @@
   "signalAnnualTitle": "{days, plural, =0{ஆண்டுக் கட்டணம் இன்று} =1{ஆண்டுக் கட்டணம் நாளை} other{{days} நாட்களில் ஆண்டுக் கட்டணம்}}",
   "signalAnnualBody": "{name} · {date} அன்று {amount}",
   "signalStillUsingTitle": "{name} இன்னும் பயன்படுத்துகிறீர்களா?",
-  "signalStillUsingBody": "மாதத்திற்கு {amount}. நாங்கள் கேட்கிறோம் — எங்களால் அறிய முடியாது.",
+  "signalStillUsingBody": "{amount}. நாங்கள் கேட்கிறோம் — எங்களால் அறிய முடியாது.",
   "signalStillUsingYes": "ஆம்",
   "signalStillUsingYesA11y": "ஆம், {name} ஐப் பயன்படுத்துகிறேன்",
   "categoryShowTable": "அட்டவணையாகக் காட்டு",

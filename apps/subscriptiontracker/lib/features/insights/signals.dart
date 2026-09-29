@@ -25,11 +25,11 @@ import 'package:intl/intl.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../core/format/money_format.dart';
-import '../../core/format/monthly_share.dart';
 import '../../core/format/sub_math.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
+import 'summary_tiles.dart' show chargeWithCycle;
 
 /// How far ahead a yearly renewal is worth flagging.
 const int kAnnualSoonDays = 60;
@@ -227,7 +227,7 @@ class SignalsSection extends ConsumerWidget {
                 leading: const _SignalIcon(Icons.help_outline),
                 title: l10n.signalStillUsingTitle(sub.name),
                 subtitle: l10n.signalStillUsingBody(
-                  money.formatShareFigure(sub.monthlyShare),
+                  chargeWithCycle(l10n, money, sub),
                 ),
                 onTap: () => context.push('/sub/${sub.id}'),
                 showChevron: false,

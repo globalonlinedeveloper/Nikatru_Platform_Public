@@ -19,7 +19,6 @@ import 'package:flutter/material.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../core/format/money_format.dart';
-import '../../core/format/monthly_share.dart';
 import '../../core/format/sub_math.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
@@ -32,6 +31,15 @@ import '../../l10n/app_localizations.dart';
 /// of a tablet (720) and the large grid are one row.
 const double kSummaryOneRowFrom =
     AppBreakpoints.medium - AppSpacing.xxl - AppSpacing.sm;
+
+/// A plan's real charge with its cycle — "US$20.00/mo", "₹4,899/yr".
+String chargeWithCycle(
+  AppLocalizations l10n,
+  MoneyFormatter money,
+  Subscription s,
+) => s.cycle == BillingCycle.yearly
+    ? l10n.perYearAmount(money.format(s.price))
+    : l10n.perMonthAmount(money.format(s.price));
 
 /// The four summary tiles, laid out for the width they are handed.
 class SummaryTiles extends StatelessWidget {
@@ -76,14 +84,12 @@ class SummaryTiles extends StatelessWidget {
       SummaryTile(
         key: const Key('insights.tile.biggest'),
         label: l10n.insightsBiggestLabel,
-        // The monthly SHARE, labelled as one: "biggest" ranks by monthly cost,
-        // so printing a yearly plan's whole price here would compare a year
-        // with a month.
+        // RANKED by monthly share, PRINTED as the plan's real charge with its
+        // cycle: a MonthlyShare is a comparison figure and never printed
+        // (monthly_share_display_test, "the share stays unprintable").
         figure: ranked.isEmpty
             ? money.formatBagRounded(const MoneyBag(<String, Money>{}))
-            : l10n.perMonthAmount(
-                money.formatShareFigure(ranked.first.monthlyShare),
-              ),
+            : chargeWithCycle(l10n, money, ranked.first),
         caption: ranked.isEmpty ? l10n.insightsNoneYet : ranked.first.name,
       ),
     ];

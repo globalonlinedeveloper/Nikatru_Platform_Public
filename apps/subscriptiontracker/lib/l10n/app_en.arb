@@ -1795,9 +1795,9 @@
       }
     }
   },
-  "signalStillUsingBody": "{amount} a month. We ask — we cannot tell.",
+  "signalStillUsingBody": "{amount}. We ask — we cannot tell.",
   "@signalStillUsingBody": {
-    "description": "Consumed by features/insights/signals.dart. Says plainly that the question is a question.",
+    "description": "Consumed by features/insights/signals.dart. {amount} is the plan's real charge with its cycle (\"$20.00/mo\"); says plainly that the question is a question.",
     "placeholders": {
       "amount": {
         "type": "String"
