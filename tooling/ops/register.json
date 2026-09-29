@@ -1881,6 +1881,27 @@
       "source": "verified"
     },
     {
+      "_whyThisRowExists": "APPENDED 2026-09-28 for ST-N1g (O-NATIVE-AUTH-CALLBACK-UNBUILT). assert-ops-register.mjs holds every workflow file to a duty row anchored at it, so the file and this row land together.",
+      "id": "duty.workflow.native-auth-proof.yml",
+      "kind": "duty",
+      "what": "The per-target native sign-in proof: for the dispatched app, five jobs (Android emulator, iOS simulator, macOS, Windows, Linux under xvfb) each provision a throwaway user, drive integration_test/native_auth_proof_test.dart against production auth through tooling/e2e/native_auth_proof.mjs (the real form signs in through the platform Worker's captcha-free native route; sign-up and recovery answer without captcha_failed; sign-out; on callback targets the OS opens an unusable reset callback and the dead-link sentence shows), print the runner's egress IP, and purge the user.",
+      "detector": "Attended: whoever dispatched it reads each job. The driver exits 1 when a step line is missing or a gated call answered captcha_failed, even when flutter test exited 0, and 2 when a define it needs is absent. tooling/ci/test/native-auth-proof.test.mjs holds the read-back logic and the per-OS open commands on every push.",
+      "response": "A green job on a row's own artifact format is the evidence tooling/channel-register.json needs to flip that row's nativeAuth to true, citing the run id. A red job names its step: sign-in (the route, Box C or the app's form), a gated call (its measured answer is printed), sign-out, or the callback (the OS delivery or the dead-link screen). Fix the cause; never flip a row on a job that did not run on its own format.",
+      "cadence": "on-demand",
+      "why": "The answer changes when the auth path changes (the native route, GoTrue, the auth package or an app's sign-in screen), not on a clock. Each run spends production auth calls and five runners, including an emulator and two macOS machines.",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/native-auth-proof.yml",
+        "record": "GitHub Actions run history for native-auth-proof.yml, one job per target",
+        "failingValue": "conclusion = failure: the gate on an app outside the workspace set, a device that did not boot, or native_auth_proof.mjs exiting 1 (a step missing or captcha_failed) or 2 (a missing define)",
+        "readBy": "the dispatching human"
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "verified"
+    },
+    {
       "_whyThisRowExists": "APPENDED 2026-09-24 for O-APPLE-SIGNING-EXPIRY-UNWATCHED. assert-ops-register.mjs holds every workflow file to a duty row anchored at it, so the file and this row land together (measured: without it the guard reports `.github/workflows/apple-expiry-write.yml has NO duty row anchored at it`).",
       "id": "duty.workflow.apple-expiry-write.yml",
       "kind": "duty",
