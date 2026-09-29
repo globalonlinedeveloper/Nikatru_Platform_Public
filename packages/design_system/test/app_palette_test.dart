@@ -8,7 +8,7 @@
 
 // The deprecated `AppColors` neutrals are read on purpose below (their
 // analyzer infos are expected): this file pins them to the palette's light
-// half, so the alias cannot drift for the release it is kept.
+// half for the release the alias is kept.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
