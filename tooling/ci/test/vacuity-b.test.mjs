@@ -363,7 +363,13 @@ describe('assert-no-tls-pinning refuses a subject that emptied under it', () => 
     // (26 → 33 under lib/), so the old pair kept 44 — ABOVE the floor of 40 —
     // and the mutation stopped thinning anything. One package still leaves
     // every root standing, which is the case this pins.
-    provesRefusal(G, () => keepOnlyPackages(['design_system']), [
+    //
+    // ⏱ 2026-09-29 · train ST-D DW1: chassis_screens alone, not design_system.
+    // The D-screens added nine shipped files to design_system (34 → 43 under
+    // lib/), above the floor of 40 on their own, so the mutation had stopped
+    // thinning anything again. chassis_screens (19) is the smallest UI package
+    // that still leaves every root standing.
+    provesRefusal(G, () => keepOnlyPackages(['chassis_screens']), [
       /`packages` yielded only \d+ shipped \.dart file\(s\), below its floor of \d+/,
     ], 2);
   });
