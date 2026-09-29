@@ -104,7 +104,7 @@
         {
           "file": "apps/subscriptiontracker/lib/features/settings/settings_screen.dart",
           "linesAtSince": 1969,
-          "ceiling": 2009,
+          "ceiling": 1951,
           "template": 616
         }
       ],
@@ -151,6 +151,13 @@
           "on": "2026-09-28",
           "callSiteDelta": -87,
           "measured": "THE PIECE IS A FUNCTION, NOT A SCREEN — the authErrorText precedent above. ST-Y5 (audit D26): `apps/subscriptiontracker/lib/core/a11y/web_semantics.dart` (87 lines at e0beeb14, wc -l) moved verbatim with `git mv` to `packages/chassis_screens/lib/shell/web_semantics.dart`, where `bootstrapNikatru` now calls it for every stamped app; its unit tests moved with it to `packages/chassis_screens/test/web_semantics_test.dart`. `main.dart` stays 208 -> 208 lines: its relative import became the package import in place and its `enableWebSemantics()` call is unchanged (the app is not on `bootstrapNikatru` yet — ST-K1). So the delta is 0 - 87. Counted with wc -l; the import swap is one line for one line and cannot move dart format."
+        },
+        {
+          "file": "features/shared/chassis_adapters.dart",
+          "piece": "EditProfileDialog",
+          "on": "2026-09-29",
+          "callSiteDelta": -79,
+          "measured": "Train ST-D DW2 (ST-D4) after its parity STOP: the Privacy card's new privacy-notice row took apps/subscriptiontracker/lib/features/settings/settings_screen.dart from its ceiling 2009 to 2030. Instead of raising the ceiling, the fork's private `_EditProfileDialog` + `_EditProfileDialogState` (the display-name editor ADR 067 already moved into packages/chassis_screens as `EditProfileDialog`) was deleted and the call site builds the chassis dialog, re-exported through features/shared/chassis_adapters.dart beside RowChevron (same line). 2030 -> 1951 = -79, wc -l after dart format (0 changed), Flutter 3.47.5; net against the base 2009 -> 1951 = -58. The ceiling falls 2009 -> 1951 in the same commit. The controller stays caller-owned, as in the brick adapter."
         }
       ],
       "_adoptedWhy": "⏱ 2026-09-15 · [ADR 086] ONE PIECE AT A TIME: the app now imports the package in the files listed here; tooling/ci/assert-chassis-parity.mjs holds that list equal to the scan and every callSiteDelta negative ([ADR 066]). The row is deleted when the last template file is adopted.",

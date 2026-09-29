@@ -433,8 +433,10 @@ describe('the guard says YES on the tree as it is', () => {
     // ⏱ 2026-09-29 · train ST-D2: +2 design_system surface(s) (MonthGrid,
     // DateBadge), both arriving swept by one new file and one case:
     // 80 → 82 reachable, 50 → 52 swept, 11 → 12 files, 186 → 187 cases.
+    // ⏱ 2026-09-29 · train ST-D4: +1 chassis surface (SettingsSection), swept
+    // by one new case: 82 → 83 reachable, 52 → 53 swept, 187 → 188 cases.
     // Unswept stays 18. Read off the guard's own closing line.
-    assert.match(out, /82 reachable surface\(s\); 52 swept by 12 a11y test file\(s\) across 187 case\(s\)/ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces swept, +2 cases */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate) swept, +1 case */);
+    assert.match(out, /83 reachable surface\(s\); 53 swept by 12 a11y test file\(s\) across 188 case\(s\)/ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces swept, +2 cases */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate) swept, +1 case */);
     assert.match(out, /12 swept where they delegate to/);
     assert.match(out, /18 unswept and PRINTED/);
     // The per-family tally for subscriptiontracker, pinned. It read `tap-target ×0` from the
@@ -466,7 +468,7 @@ describe('the guard says YES on the tree as it is', () => {
       /apps\/subscriptiontracker: 18 of 18 reachable surface\(s\) carry an a11y sweep, from 1 a11y test file\(s\) across 110 case\(s\)/,
     );
     // ⏱ 2026-09-23 (O-CHASSIS-PHASE-2B, unit chassis-home): WelcomeView + CatchUpBannerView joined packages/chassis_screens and a11y_home_test.dart sweeps both (+1 file, +4 cases). Read off the guard's own output.
-    assert.match(out, /43 reachable surface\(s\); 43 swept by 5 a11y test file\(s\) across 171 case\(s\)/ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +2 cases */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate) swept, +1 case */);
+    assert.match(out, /44 reachable surface\(s\); 44 swept by 5 a11y test file\(s\) across 172 case\(s\)/ /* ⏱ 2026-09-29 ST-D4: +1 chassis surface (SettingsSection) swept, +1 case */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +2 cases */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate) swept, +1 case */);
     // The adapter is PRINTED as judged elsewhere rather than silently dropped —
     // which is the whole reason the guard carries that list. ONE today
     // (`ReacceptTermsScreen`); this number rises as the parity debt is paid, and
@@ -504,7 +506,7 @@ describe('the guard says YES on the tree as it is', () => {
     // ⏱ 2026-09-20 · the aggregate spans TWO roots since the app adopted the
     // chassis ([ADR 086]); the app's own half is pinned by the `1 of 20` line
     // above, which is what this case is actually about.
-    assert.match(out, /44 reachable surface\(s\); 43 swept by 5 a11y test file\(s\) across 171 case\(s\)/ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +2 cases */ /* ⏱ 2026-09-23: +2 chassis home surfaces, +1 file, +4 cases */);
+    assert.match(out, /45 reachable surface\(s\); 44 swept by 5 a11y test file\(s\) across 172 case\(s\)/ /* ⏱ 2026-09-29 ST-D4: +1 chassis surface (SettingsSection) swept, +1 case */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +2 cases */ /* ⏱ 2026-09-23: +2 chassis home surfaces, +1 file, +4 cases */);
     assert.match(out, /1 unswept and PRINTED/);
   });
 
@@ -542,7 +544,7 @@ describe('the guard says YES on the tree as it is', () => {
       /apps\/subscriptiontracker: 19 of 19 reachable surface\(s\) carry an a11y sweep, from 1 a11y test file\(s\) across 111 case\(s\)/,
     );
     // ⏱ 2026-09-23 (O-CHASSIS-PHASE-2B, unit chassis-home): WelcomeView + CatchUpBannerView joined packages/chassis_screens and a11y_home_test.dart sweeps both (+1 file, +4 cases). Read off the guard's own output.
-    assert.match(out, /44 swept by 5 a11y test file\(s\) across 172 case\(s\)/ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +2 cases */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate) swept, +1 case */);
+    assert.match(out, /45 swept by 5 a11y test file\(s\) across 173 case\(s\)/ /* ⏱ 2026-09-29 ST-D4: +1 chassis surface (SettingsSection) swept, +1 case */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +2 cases */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate) swept, +1 case */);
     assert.match(out, /0 unswept and PRINTED/);
   });
 });
@@ -575,7 +577,7 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     // ⏱ 2026-09-23 (O-CHASSIS-PHASE-2B, unit chassis-home): WelcomeView + CatchUpBannerView joined packages/chassis_screens and a11y_home_test.dart sweeps both (+1 file, +4 cases). Read off the guard's own output.
     assert.match(
       out,
-      /packages\/chassis_screens: 25 of 25 reachable surface\(s\) carry an a11y sweep, from 4 a11y test file\(s\) across 61 case\(s\)/,
+      /packages\/chassis_screens: 26 of 26 reachable surface\(s\) carry an a11y sweep, from 4 a11y test file\(s\) across 62 case\(s\)/ /* ⏱ 2026-09-29 ST-D4: SettingsSection swept, +1 case */,
     );
     // And the ten brick adapters that delegate here are judged HERE, which is
     // the delegation resolver's whole reason and reads `SWEPT there` only once
@@ -714,7 +716,7 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     assert.equal(code, 1, out);
     assert.match(
       out,
-      /COVERAGE LOST — `packages\/chassis_screens` has only 24 reachable surface\(s\).*floor is 25/s, // ⏱ 2026-09-23: 18 → 20 (chassis home)
+      /COVERAGE LOST — `packages\/chassis_screens` has only 25 reachable surface\(s\).*floor is 26/s, // ⏱ 2026-09-23: 18 → 20 (chassis home); 2026-09-29 ST-D4: → 26 (SettingsSection)
     );
     // ~~AND ALONE — the property M11e records and M7 cannot have. This root's
     // SWEPT_FLOOR is empty (it carries no a11y sweep at all yet), so nothing
@@ -750,7 +752,7 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     // reads as a floor that fires.
     const { code, out } = run(treeWithNewRoots());
     assert.equal(code, 0, out);
-    assert.match(out, /packages\/chassis_screens: 25 of 25 reachable surface\(s\)/); // ⏱ 2026-09-23: 18 → 20 (chassis home)
+    assert.match(out, /packages\/chassis_screens: 26 of 26 reachable surface\(s\)/); // ⏱ 2026-09-23: 18 → 20 (chassis home); 2026-09-29 ST-D4: → 26 (SettingsSection)
   });
 
   test("M12 · a NEW surface in EACH new root reaches that root's printed list", () => {
@@ -835,7 +837,7 @@ describe('the chassis floors, which were zero until its first sweeps landed', ()
     // ⏱ 2026-09-23 (O-CHASSIS-PHASE-2B, unit chassis-home): WelcomeView + CatchUpBannerView joined packages/chassis_screens and a11y_home_test.dart sweeps both (+1 file, +4 cases). Read off the guard's own output.
     assert.match(
       out,
-      /packages\/chassis_screens: 25 of 25 reachable surface\(s\) carry an a11y sweep, from 4 a11y test file\(s\) across 61 case\(s\)/,
+      /packages\/chassis_screens: 26 of 26 reachable surface\(s\) carry an a11y sweep, from 4 a11y test file\(s\) across 62 case\(s\)/ /* ⏱ 2026-09-29 ST-D4: SettingsSection swept, +1 case */,
     );
   });
 
@@ -915,7 +917,7 @@ describe('the chassis floors, which were zero until its first sweeps landed', ()
     assert.equal(code, 2, out);
     assert.match(
       out,
-      /COVERAGE LOST — only 57 a11y case\(s\) were found across 4 file\(s\) under `packages\/chassis_screens`, and the checked-in floor is 61/, // ⏱ 2026-09-23: 54 → 58
+      /COVERAGE LOST — only 58 a11y case\(s\) were found across 4 file\(s\) under `packages\/chassis_screens`, and the checked-in floor is 62/, // ⏱ 2026-09-23: 54 → 58; 2026-09-29 ST-D4: 61 → 62
     );
     // ALONE — every surface keeps a light and a kDesktop case, so both sets are
     // byte-identical and only the count moved. That is the whole reason a count

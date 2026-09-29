@@ -781,9 +781,12 @@ const REQUIRED_COVERAGE = [
     // ⏱ 2026-09-28 · ST-T2 (U5/U7): 21 → 25 surfaces, 59 → 61 cases, RAISED IN
     // THE CHANGE THAT EARNED THEM — the four honest states moved into the
     // chassis arrived swept (a11y_firstrun_money_settings_test.dart).
-    surfaces: 25,
+    // ⏱ 2026-09-29 · ST-D4: 25 -> 26 surfaces, 61 -> 62 cases — the chassis
+    // SettingsSection arrived swept (`a11y: settings-section`, light + dark
+    // kPhone). Read off the per-root line: `26 of 26 … across 62 case(s)`.
+    surfaces: 26,
     a11yFiles: 4,
-    cases: 61,
+    cases: 62,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens plus the ' +
       'money/settings bodies and the app shell, mounted by every stamped app, all seventeen swept',
@@ -1007,6 +1010,8 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         'monetization/paywall_screen.dart#PaywallView',
         'settings/report_content_dialog.dart#ReportContentDialog',
         'settings/settings_screen.dart#EditProfileDialog',
+        // 2026-09-29 (ST-D4): the settings group, in the same change as its sweep.
+        'settings/settings_screen.dart#SettingsSection',
         'settings/settings_screen.dart#SettingsView',
         'shell/app_shell.dart#AppLifecycleFlush',
         'shell/app_shell.dart#ConsentPromptCard',

@@ -638,9 +638,14 @@ const REQUIRED_COVERAGE = [
     // `enableWebSemantics`, and this corpus is every .dart under the package's
     // test/ — so R14b would have cleared a floor left at 25. Read off the
     // per-root line, `— 26 file(s)`.
-    surfaces: 25,
-    widthTestFiles: 26,
-    coveredSurfaces: 25,
+    // ⏱ RAISED 2026-09-29 · ST-D4: surfaces 25 → 26, coveredSurfaces 25 → 26
+    // and `widthTestFiles` 26 → 27, IN THE CHANGE THAT EARNED THEM: the
+    // chassis `SettingsSection` arrived with test/settings_design_test.dart,
+    // which pumps it at kPhone/kTablet/kDesktop. Read off the per-root lines,
+    // `26 surface(s) reachable, 26 measured` and `— 27 file(s)`.
+    surfaces: 26,
+    widthTestFiles: 27,
+    coveredSurfaces: 26,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
       'app inherits, each measured at all three window classes',

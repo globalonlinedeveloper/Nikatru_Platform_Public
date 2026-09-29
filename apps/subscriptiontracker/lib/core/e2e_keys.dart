@@ -42,6 +42,12 @@ class E2EKeys {
   // is ambiguous exactly at the moment the E2E needs to tell them apart.
   static const Key settingsDeleteAccount = Key('e2e_settings_delete_account');
 
+  /// ⏱ 2026-09-28 · train ST-D4. The Privacy card's link to Subly's own
+  /// privacy notice. Keyed so a test finds the ROW, not the words: "Privacy
+  /// notice" sits one card away from "Privacy policy", and the Tamil build
+  /// shares a stem between them.
+  static const Key settingsPrivacyNotice = Key('e2e_settings_privacy_notice');
+
   // 🔴 THE THREE BELOW KEEP THEIR ORIGINAL STRING VALUES ON PURPOSE.
   // `test/delete_account_test.dart` drives this dialog by LITERAL
   // `const Key('deleteAccountPassword')` in eleven places, and a `Key` compares

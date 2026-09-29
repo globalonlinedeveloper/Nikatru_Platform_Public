@@ -562,6 +562,14 @@
   "@privacy": {
     "description": "Settings section holding the analytics consent control. Separate from legal, which is links out."
   },
+  "privacyNotice": "Privacy notice",
+  "@privacyNotice": {
+    "description": "Train ST-D4. Opens THIS app's own privacy notice (the page generated from its privacy.yaml: what it collects, why, for how long, and who else touches it). Sits at the top of the Privacy section, beside the consent control it informs; distinct from the portfolio-wide privacy policy in Legal."
+  },
+  "privacyNoticeSubtitle": "What this app collects, why, and for how long",
+  "@privacyNoticeSubtitle": {
+    "description": "Second line of the privacy-notice row. Describes the page; makes no claim about its contents."
+  },
   "usageStatistics": "Usage statistics",
   "@usageStatistics": {
     "description": "The analytics consent toggle. This row IS the DPDP 6(3) withdrawal path — the assert-seams-wired withdrawal limb fails the build without it."

@@ -116,6 +116,7 @@ class SettingsView extends StatelessWidget {
     required this.onOpenPrivacyPolicy,
     required this.onOpenTerms,
     required this.onOpenRefundPolicy,
+    this.onOpenPrivacyNotice,
     required this.supportEmail,
     required this.onContactSupport,
     required this.onSignOut,
@@ -160,6 +161,7 @@ class SettingsView extends StatelessWidget {
   static const Key editProfileTile = Key('settingsEditProfile');
   static const Key privacyPolicyTile = Key('settingsPrivacyPolicy');
   static const Key termsTile = Key('settingsTerms');
+  static const Key privacyNoticeTile = Key('settingsPrivacyNotice');
 
   /// The signed-in identity, or null when there is none. Offering "edit your
   /// name" to a signed-out user is an offer the app cannot honour — the same
@@ -252,6 +254,17 @@ class SettingsView extends StatelessWidget {
   final VoidCallback onOpenTerms;
   final VoidCallback onOpenRefundPolicy;
 
+  /// ⏱ 2026-09-28 · train ST-D4. Opens THIS app's own privacy notice — the
+  /// page `tooling/app-yaml/render-privacy.mjs` generates from the app's
+  /// `privacy.yaml` (what it collects, why, for how long, who else touches
+  /// it) — as opposed to [onOpenPrivacyPolicy], the portfolio-wide policy.
+  ///
+  /// OPTIONAL, and null draws no row: until an app's declaration is
+  /// published its notice page says "not yet published", and a Settings row
+  /// that opens a page saying there is nothing to read is a dead end dressed
+  /// as a disclosure. The adapter passes it once the app's notice is live.
+  final VoidCallback? onOpenPrivacyNotice;
+
   final String supportEmail;
   final VoidCallback onContactSupport;
   final VoidCallback onSignOut;
@@ -279,126 +292,170 @@ class SettingsView extends StatelessWidget {
     final ChassisLocalizations l10n = context.chassisL10n;
     final TextTheme text = Theme.of(context).textTheme;
 
-    Widget heading(String label) => Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      child: Text(label, style: text.labelLarge),
-    );
-
+    // ⏱ 2026-09-28 · train ST-D4: every group is a [SettingsSection] — a
+    // heading and ONE [AppCard] holding its rows — instead of a heading, bare
+    // tiles and a full-bleed `Divider`. The rows themselves are unchanged
+    // Material tiles (the card is their `Material` ancestor), so every key,
+    // callback and gate below is the one that was here; what moved is the
+    // grouping, and the gutters now come from `AppSpacing` rather than from
+    // each tile's own inset.
     return Scaffold(
       appBar: AppBar(title: Text(l10n.settingsTitle)),
       body: ContentPane(
         child: ListView(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.gutterCompact,
+            0,
+            AppSpacing.gutterCompact,
+            AppSpacing.xl,
+          ),
           children: <Widget>[
             // ── PROFILE ──────────────────────────────────────────────────────
-            if (profile != null) ...<Widget>[
-              heading(l10n.profile),
-              ListTile(
-                key: editProfileTile,
-                leading: CircleAvatar(child: Text(profile!.initial)),
-                title: Text(
-                  profile!.displayName.isEmpty
-                      ? l10n.displayNameNotSet
-                      : profile!.displayName,
-                ),
-                subtitle: Text(profile!.email),
-                trailing: const Icon(Icons.edit_outlined),
-                onTap: onEditProfile,
+            if (profile != null)
+              SettingsSection(
+                title: l10n.profile,
+                children: <Widget>[
+                  ListTile(
+                    key: editProfileTile,
+                    leading: CircleAvatar(child: Text(profile!.initial)),
+                    title: Text(
+                      profile!.displayName.isEmpty
+                          ? l10n.displayNameNotSet
+                          : profile!.displayName,
+                    ),
+                    subtitle: Text(profile!.email),
+                    trailing: const Icon(Icons.edit_outlined),
+                    onTap: onEditProfile,
+                  ),
+                ],
               ),
-              const Divider(),
-            ],
             // [pipeline C-16] The on-switch for the persisted themeMode. A stored
             // preference with no control is a dead setting — the same shape as the
             // consent recorder that had no prompt and silently discarded every
             // event. Shipped together, or not at all.
-            heading(l10n.appearance),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-              child: SegmentedButton<ThemeMode>(
-                key: themePicker,
-                segments: <ButtonSegment<ThemeMode>>[
-                  ButtonSegment<ThemeMode>(
-                    value: ThemeMode.system,
-                    label: Text(l10n.themeSystem),
+            SettingsSection(
+              title: l10n.appearance,
+              children: <Widget>[
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.md,
+                    vertical: AppSpacing.sm,
                   ),
-                  ButtonSegment<ThemeMode>(
-                    value: ThemeMode.light,
-                    label: Text(l10n.themeLight),
+                  child: SegmentedButton<ThemeMode>(
+                    key: themePicker,
+                    segments: <ButtonSegment<ThemeMode>>[
+                      ButtonSegment<ThemeMode>(
+                        value: ThemeMode.system,
+                        label: Text(l10n.themeSystem),
+                      ),
+                      ButtonSegment<ThemeMode>(
+                        value: ThemeMode.light,
+                        label: Text(l10n.themeLight),
+                      ),
+                      ButtonSegment<ThemeMode>(
+                        value: ThemeMode.dark,
+                        label: Text(l10n.themeDark),
+                      ),
+                    ],
+                    selected: <ThemeMode>{themeMode},
+                    onSelectionChanged: (Set<ThemeMode> s) =>
+                        onThemeModeChanged(s.first),
                   ),
-                  ButtonSegment<ThemeMode>(
-                    value: ThemeMode.dark,
-                    label: Text(l10n.themeDark),
-                  ),
-                ],
-                selected: <ThemeMode>{themeMode},
-                onSelectionChanged: (Set<ThemeMode> s) =>
-                    onThemeModeChanged(s.first),
-              ),
+                ),
+              ],
             ),
-            const Divider(),
 
             // ── LANGUAGE ─────────────────────────────────────────────────────
             // Language names are shown in their OWN language, so a speaker can
             // find theirs without first being able to read the current one.
-            heading(l10n.language),
-            RadioGroup<String>(
-              key: languagePicker,
-              groupValue: languageCode,
-              onChanged: (String? code) => onLanguageChanged(code ?? ''),
-              child: Column(
-                children: <Widget>[
-                  RadioListTile<String>(
-                    value: '',
-                    title: Text(l10n.languageSystem),
+            SettingsSection(
+              title: l10n.language,
+              children: <Widget>[
+                RadioGroup<String>(
+                  key: languagePicker,
+                  groupValue: languageCode,
+                  onChanged: (String? code) => onLanguageChanged(code ?? ''),
+                  child: Column(
+                    children: <Widget>[
+                      RadioListTile<String>(
+                        value: '',
+                        title: Text(l10n.languageSystem),
+                      ),
+                      RadioListTile<String>(
+                        value: 'en',
+                        title: Text(l10n.languageEnglish),
+                      ),
+                      RadioListTile<String>(
+                        value: 'ta',
+                        title: Text(l10n.languageTamil),
+                      ),
+                    ],
                   ),
-                  RadioListTile<String>(
-                    value: 'en',
-                    title: Text(l10n.languageEnglish),
-                  ),
-                  RadioListTile<String>(
-                    value: 'ta',
-                    title: Text(l10n.languageTamil),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-            const Divider(),
 
             // ── NOTIFICATIONS ────────────────────────────────────────────────
-            if (offersDailyReminder) heading(l10n.notifications),
-            if (!offersDailyReminder)
-              const SizedBox.shrink()
-            else if (!remindersAvailable)
-              ListTile(
-                leading: const Icon(Icons.notifications_off_outlined),
-                title: Text(l10n.remindersUnavailable),
-                enabled: false,
-              )
-            else
-              SwitchListTile(
-                secondary: const Icon(Icons.notifications_outlined),
-                title: Text(l10n.remindersEnabled),
-                value: remindersEnabled,
-                onChanged: onRemindersChanged,
+            if (offersDailyReminder)
+              SettingsSection(
+                title: l10n.notifications,
+                children: <Widget>[
+                  if (!remindersAvailable)
+                    ListTile(
+                      leading: const Icon(Icons.notifications_off_outlined),
+                      title: Text(l10n.remindersUnavailable),
+                      enabled: false,
+                    )
+                  else
+                    SwitchListTile(
+                      secondary: const Icon(Icons.notifications_outlined),
+                      title: Text(l10n.remindersEnabled),
+                      value: remindersEnabled,
+                      onChanged: onRemindersChanged,
+                    ),
+                ],
               ),
-            if (offersDailyReminder) const Divider(),
 
             // ── PRIVACY ──────────────────────────────────────────────────────
-            heading(l10n.privacy),
-            SwitchListTile(
-              key: analyticsConsentSwitch,
-              secondary: const Icon(Icons.insights_outlined),
-              title: Text(l10n.usageStatistics),
-              subtitle: Text(
-                analyticsGranted
-                    ? l10n.usageStatisticsOn
-                    : l10n.usageStatisticsOff,
-              ),
-              value: analyticsGranted,
-              // Not awaited by the adapter, for the same reason app.dart's
-              // `_answer` is not: the decision applies in memory immediately and
-              // the upload is best-effort, so blocking the switch on a network
-              // round trip would make a withdrawal feel like a broken control.
-              onChanged: onAnalyticsConsentChanged,
+            SettingsSection(
+              title: l10n.privacy,
+              children: <Widget>[
+                // ⏱ 2026-09-28 · train ST-D4: THE APP'S OWN PRIVACY NOTICE, and
+                // it sits HERE rather than in Legal on purpose. The switch
+                // below asks for a decision; the notice is what that decision
+                // is about (what is collected, why, for how long). A consent
+                // control whose explanation is one section away, filed under
+                // "Legal" beside the portfolio-wide policy, is a choice asked
+                // for without its facts. Null in an app whose notice is not
+                // published yet — then there is no row, rather than a link to
+                // a "not yet published" page.
+                if (onOpenPrivacyNotice != null)
+                  ListTile(
+                    key: privacyNoticeTile,
+                    leading: const Icon(Icons.policy_outlined),
+                    title: Text(l10n.privacyNotice),
+                    subtitle: Text(l10n.privacyNoticeSubtitle),
+                    trailing: const Icon(Icons.open_in_new),
+                    onTap: onOpenPrivacyNotice,
+                  ),
+                SwitchListTile(
+                  key: analyticsConsentSwitch,
+                  secondary: const Icon(Icons.insights_outlined),
+                  title: Text(l10n.usageStatistics),
+                  subtitle: Text(
+                    analyticsGranted
+                        ? l10n.usageStatisticsOn
+                        : l10n.usageStatisticsOff,
+                  ),
+                  value: analyticsGranted,
+                  // Not awaited by the adapter, for the same reason app.dart's
+                  // `_answer` is not: the decision applies in memory immediately
+                  // and the upload is best-effort, so blocking the switch on a
+                  // network round trip would make a withdrawal feel like a
+                  // broken control.
+                  onChanged: onAnalyticsConsentChanged,
+                ),
+              ],
             ),
 
             // ── PROMOTIONAL OFFERS — THE GDPR Art 21 OBJECTION ───────────────
@@ -406,23 +463,33 @@ class SettingsView extends StatelessWidget {
             // a private flag: one append-only artifact trail, one server route,
             // one place the objection lives. `PromoGateState.suppressed` is a
             // projection of this value — see `PromoObjection`.
-            heading(l10n.promotionalOffers),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-              child: Text(l10n.promoObjectionExplain, style: text.bodySmall),
+            SettingsSection(
+              title: l10n.promotionalOffers,
+              children: <Widget>[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.lg,
+                    AppSpacing.md,
+                    AppSpacing.lg,
+                    AppSpacing.xs,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(l10n.promoObjectionExplain, style: text.bodySmall),
+                      PromoObjectionControl(
+                        objected: promoObjected,
+                        known: promoObjectionKnown,
+                        onChanged: onPromoObjectionChanged,
+                        stopLabel: l10n.promoStopOffers,
+                        resumeLabel: l10n.promoResumeOffers,
+                        objectedNotice: l10n.promoOffersOff,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 0, 16, 8),
-              child: PromoObjectionControl(
-                objected: promoObjected,
-                known: promoObjectionKnown,
-                onChanged: onPromoObjectionChanged,
-                stopLabel: l10n.promoStopOffers,
-                resumeLabel: l10n.promoResumeOffers,
-                objectedNotice: l10n.promoOffersOff,
-              ),
-            ),
-            const Divider(),
 
             // ── SUBSCRIPTION ([pipeline 5]M-6 · M-9) ──────────────────────────
             //
@@ -431,100 +498,111 @@ class SettingsView extends StatelessWidget {
             // cheapest way to be sure of that is to reach both from the same
             // place, one tap each. A cancel path buried a level deeper than the
             // upgrade path is the specific pattern the rule exists to stop.
-            if (hasSession) ...<Widget>[
-              heading(planSectionLabel),
-              ListTile(
-                key: upgradeTile,
-                leading: const Icon(Icons.workspace_premium_outlined),
-                title: Text(l10n.paywallUpgrade),
-                onTap: onUpgrade,
+            if (hasSession)
+              SettingsSection(
+                title: planSectionLabel,
+                children: <Widget>[
+                  ListTile(
+                    key: upgradeTile,
+                    leading: const Icon(Icons.workspace_premium_outlined),
+                    title: Text(l10n.paywallUpgrade),
+                    onTap: onUpgrade,
+                  ),
+                  ListTile(
+                    key: managePlanTile,
+                    leading: const Icon(Icons.receipt_long_outlined),
+                    title: Text(managePlanLabel),
+                    onTap: onManagePlan,
+                  ),
+                ],
               ),
-              ListTile(
-                key: managePlanTile,
-                leading: const Icon(Icons.receipt_long_outlined),
-                title: Text(managePlanLabel),
-                onTap: onManagePlan,
-              ),
-              const Divider(),
-            ],
 
             // ── LEGAL. Both stores require these to be reachable IN-APP, not
             //    only from a store listing. [pipeline C-13]
-            heading(l10n.legal),
-            ListTile(
-              key: privacyPolicyTile,
-              leading: const Icon(Icons.privacy_tip_outlined),
-              title: Text(l10n.privacyPolicy),
-              trailing: const Icon(Icons.open_in_new, size: 18),
-              onTap: onOpenPrivacyPolicy,
+            SettingsSection(
+              title: l10n.legal,
+              children: <Widget>[
+                ListTile(
+                  key: privacyPolicyTile,
+                  leading: const Icon(Icons.privacy_tip_outlined),
+                  title: Text(l10n.privacyPolicy),
+                  trailing: const Icon(Icons.open_in_new),
+                  onTap: onOpenPrivacyPolicy,
+                ),
+                ListTile(
+                  key: termsTile,
+                  leading: const Icon(Icons.description_outlined),
+                  title: Text(l10n.termsOfService),
+                  trailing: const Icon(Icons.open_in_new),
+                  onTap: onOpenTerms,
+                ),
+                // [pipeline 8]K-6. The third published legal page, and the one
+                // that was missing: the site publishes privacy, terms AND refund,
+                // the brick linked the first two, and nothing compared the sets.
+                // A refund policy a buyer cannot reach from inside the app they
+                // bought in is the page a store reviewer looks for first when a
+                // charge is disputed.
+                ListTile(
+                  leading: const Icon(Icons.currency_exchange_outlined),
+                  title: Text(l10n.refundPolicy),
+                  trailing: const Icon(Icons.open_in_new),
+                  onTap: onOpenRefundPolicy,
+                ),
+                ListTile(
+                  key: contactSupportTile,
+                  leading: const Icon(Icons.mail_outline),
+                  title: Text(l10n.contactSupport),
+                  subtitle: Text(supportEmail),
+                  trailing: const Icon(Icons.open_in_new),
+                  onTap: onContactSupport,
+                ),
+                if (onReportContent != null)
+                  ListTile(
+                    key: reportContentTile,
+                    leading: const Icon(Icons.flag_outlined),
+                    title: Text(l10n.reportContent),
+                    onTap: onReportContent,
+                  ),
+              ],
             ),
-            ListTile(
-              key: termsTile,
-              leading: const Icon(Icons.description_outlined),
-              title: Text(l10n.termsOfService),
-              trailing: const Icon(Icons.open_in_new, size: 18),
-              onTap: onOpenTerms,
-            ),
-            // [pipeline 8]K-6. The third published legal page, and the one that
-            // was missing: the site publishes privacy, terms AND refund, the
-            // brick linked the first two, and nothing compared the sets. A refund
-            // policy a buyer cannot reach from inside the app they bought in is
-            // the page a store reviewer looks for first when a charge is
-            // disputed.
-            ListTile(
-              leading: const Icon(Icons.currency_exchange_outlined),
-              title: Text(l10n.refundPolicy),
-              trailing: const Icon(Icons.open_in_new, size: 18),
-              onTap: onOpenRefundPolicy,
-            ),
-            const Divider(),
-            ListTile(
-              key: contactSupportTile,
-              leading: const Icon(Icons.mail_outline),
-              title: Text(l10n.contactSupport),
-              subtitle: Text(supportEmail),
-              trailing: const Icon(Icons.open_in_new, size: 18),
-              onTap: onContactSupport,
-            ),
-            if (onReportContent != null)
-              ListTile(
-                key: reportContentTile,
-                leading: const Icon(Icons.flag_outlined),
-                title: Text(l10n.reportContent),
-                onTap: onReportContent,
-              ),
+
+            // ── ACCOUNT ──────────────────────────────────────────────────────
             // Sign out sits ABOVE delete: it is the action a user wants
             // hundreds of times more often, and putting the irreversible one
             // first invites a misfire.
             if (hasSession)
-              ListTile(
-                key: signOutTile,
-                leading: const Icon(Icons.logout),
-                title: Text(l10n.signOut),
-                onTap: onSignOut,
-              ),
-            // Below the ordinary sign-out and above delete, for the same reason
-            // that order exists: the commoner, narrower action first. Gated on a
-            // session because with none there is nothing to revoke anywhere —
-            // the server call is keyed to the session in hand.
-            if (hasSession)
-              ListTile(
-                key: signOutEverywhereTile,
-                leading: const Icon(Icons.devices_outlined),
-                title: Text(l10n.signOutEverywhere),
-                subtitle: Text(l10n.signOutEverywhereSubtitle),
-                onTap: () => _confirmSignOutEverywhere(context),
-              ),
-            // [pipeline C-13] Only when there is an account to delete. Both
-            // stores require an in-app deletion path where accounts EXIST; an
-            // entry shown to a signed-out user is an offer the app cannot honour.
-            if (hasSession)
-              ListTile(
-                key: deleteAccountTile,
-                leading: const Icon(Icons.delete_outline),
-                title: Text(l10n.deleteAccount),
-                subtitle: Text(l10n.deleteAccountSubtitle),
-                onTap: onDeleteAccount,
+              SettingsSection(
+                children: <Widget>[
+                  ListTile(
+                    key: signOutTile,
+                    leading: const Icon(Icons.logout),
+                    title: Text(l10n.signOut),
+                    onTap: onSignOut,
+                  ),
+                  // Below the ordinary sign-out and above delete, for the same
+                  // reason that order exists: the commoner, narrower action
+                  // first. Gated on a session because with none there is
+                  // nothing to revoke anywhere — the server call is keyed to the
+                  // session in hand.
+                  ListTile(
+                    key: signOutEverywhereTile,
+                    leading: const Icon(Icons.devices_outlined),
+                    title: Text(l10n.signOutEverywhere),
+                    subtitle: Text(l10n.signOutEverywhereSubtitle),
+                    onTap: () => _confirmSignOutEverywhere(context),
+                  ),
+                  // [pipeline C-13] Only when there is an account to delete.
+                  // Both stores require an in-app deletion path where accounts
+                  // EXIST; an entry shown to a signed-out user is an offer the
+                  // app cannot honour.
+                  ListTile(
+                    key: deleteAccountTile,
+                    leading: const Icon(Icons.delete_outline),
+                    title: Text(l10n.deleteAccount),
+                    subtitle: Text(l10n.deleteAccountSubtitle),
+                    onTap: onDeleteAccount,
+                  ),
+                ],
               ),
             // ── OPEN-SOURCE LICENCES ([pipeline 8]K-11) ─────────────────────
             //
@@ -549,26 +627,31 @@ class SettingsView extends StatelessWidget {
             // the vendored font entries Flutter's collector never sees — so
             // this list stays correct as dependencies change, instead of being
             // a list somebody must remember to update.
-            ListTile(
-              leading: const Icon(Icons.copyright_outlined),
-              title: Text(l10n.openSourceLicences),
-              onTap: () => showLicensePage(
-                context: context,
-                applicationName: applicationName,
-                applicationVersion: applicationVersion,
-                applicationLegalese: l10n.legalese,
-              ),
-            ),
-            // 🔴 [pipeline C-13] `applicationVersion` WAS MISSING, and the
-            // register row for this screen has always promised "version and
-            // legalese". Flutter does not complain: `showAboutDialog` simply
-            // renders no version line, so the dialog looked complete and told a
-            // user reporting a bug nothing about WHICH BUILD they were running.
-            AboutListTile(
-              applicationName: applicationName,
-              applicationVersion: applicationVersion,
-              applicationLegalese: l10n.legalese,
-              child: Text(l10n.about),
+            SettingsSection(
+              children: <Widget>[
+                ListTile(
+                  leading: const Icon(Icons.copyright_outlined),
+                  title: Text(l10n.openSourceLicences),
+                  onTap: () => showLicensePage(
+                    context: context,
+                    applicationName: applicationName,
+                    applicationVersion: applicationVersion,
+                    applicationLegalese: l10n.legalese,
+                  ),
+                ),
+                // 🔴 [pipeline C-13] `applicationVersion` WAS MISSING, and the
+                // register row for this screen has always promised "version and
+                // legalese". Flutter does not complain: `showAboutDialog` simply
+                // renders no version line, so the dialog looked complete and
+                // told a user reporting a bug nothing about WHICH BUILD they
+                // were running.
+                AboutListTile(
+                  applicationName: applicationName,
+                  applicationVersion: applicationVersion,
+                  applicationLegalese: l10n.legalese,
+                  child: Text(l10n.about),
+                ),
+              ],
             ),
           ],
         ),
@@ -643,4 +726,136 @@ class RowChevron extends StatelessWidget {
   Widget build(BuildContext context) => actionable
       ? Icon(Icons.chevron_right, color: color, size: 18)
       : const SizedBox.shrink();
+}
+
+/// A titled group of settings rows on ONE [AppCard] (train ST-D4).
+///
+/// ```
+/// TITLE
+/// ╭──────────────────────────────╮
+/// │ row                          │
+/// ├──────────────────────────────┤
+/// │ row                          │
+/// ╰──────────────────────────────╯
+/// footer
+/// ```
+///
+/// 🏗️ CHASSIS, NOT APP. Every settings page this factory stamps is a list of
+/// groups, and the group is where the design decisions live — the heading's
+/// role and tone, the card, the seam between rows. Written once here, a
+/// stamped app ADOPTS it and holds only its own rows; the shipping app's
+/// hand-rolled `_sectionLabel` + `cardDecoration` pair was exactly the copy
+/// this replaces.
+///
+/// ## What it decides, and from which token
+///  * **The heading is a `header` node** in `labelLarge`, painted
+///    `onSurfaceVariant` — a real heading a screen reader can jump between,
+///    not styled text. The case is the translator's: nothing here upper-cases
+///    a string, because Tamil has no case and an English-only transform is a
+///    locale decision made in a widget.
+///  * **The card is [AppCard] with no padding**, so each row's own inset
+///    rules and a `ListTile`, `SwitchListTile` or [AppListRow] finds the
+///    `Material` ancestor it asserts on.
+///  * **The seam between rows is the theme's divider** (`outlineVariant`),
+///    one logical pixel, and there is none after the last row — the card's
+///    own edge closes the group.
+///  * **Rhythm from [AppSpacing]**: [AppSpacing.lg] above a heading (the
+///    inset the bare headings had, so a page of sections is no taller than
+///    the page of headings and full-bleed dividers it replaces),
+///    [AppSpacing.xs] between it and the card it names — closer to its own
+///    card than to the one above, which is what makes it read as that card's.
+///
+/// A null [title] draws the card alone — for a group whose rows name
+/// themselves (the account actions, the About pair).
+class SettingsSection extends StatelessWidget {
+  const SettingsSection({
+    required this.children,
+    this.title,
+    this.footer,
+    super.key,
+  });
+
+  /// The group's heading, already localised.
+  final String? title;
+
+  /// The rows, top to bottom. Empty draws nothing at all.
+  final List<Widget> children;
+
+  /// One line under the card, e.g. what a choice applies to.
+  final String? footer;
+
+  @override
+  Widget build(BuildContext context) {
+    if (children.isEmpty) return const SizedBox.shrink();
+    final ThemeData theme = Theme.of(context);
+    final TextTheme text = theme.textTheme;
+    final Color quiet = theme.colorScheme.onSurfaceVariant;
+    return Padding(
+      padding: EdgeInsets.only(
+        top: title == null ? AppSpacing.sm : AppSpacing.lg,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          if (title != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.xs,
+                0,
+                AppSpacing.xs,
+                AppSpacing.xs,
+              ),
+              // `container: true` HERE AND ON THE CARD BELOW, AS A PAIR. With
+              // neither, a bare `header:` is an annotation that bubbles up to
+              // the nearest node — inside one ListView item, the whole
+              // section — and the reader heard "Profile, S, Someone,
+              // someone@…" as ONE stop (measured 2026-09-28). The CARD's is
+              // the one `settings_design_test.dart` reds without (the row is
+              // then read BEFORE its heading); this one keeps the heading its
+              // own node whatever a caller puts in the card.
+              child: Semantics(
+                container: true,
+                header: true,
+                child: Text(
+                  title!,
+                  style: text.labelLarge?.copyWith(color: quiet),
+                ),
+              ),
+            ),
+          // A container too, for the heading's reason in reverse: without it
+          // a row's text bubbles up into the SECTION's node, which the
+          // heading is a child of — and a reader then heard the first row
+          // BEFORE the heading that names it.
+          Semantics(
+            container: true,
+            child: AppCard(
+              padding: EdgeInsets.zero,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  for (int i = 0; i < children.length; i++) ...<Widget>[
+                    if (i > 0) const Divider(height: 1, thickness: 1),
+                    children[i],
+                  ],
+                ],
+              ),
+            ),
+          ),
+          if (footer != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.xs,
+                AppSpacing.sm,
+                AppSpacing.xs,
+                0,
+              ),
+              child: Text(
+                footer!,
+                style: text.bodySmall?.copyWith(color: quiet),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
