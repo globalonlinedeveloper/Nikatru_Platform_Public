@@ -5,7 +5,7 @@
 import { Hono } from 'hono';
 import type { AppEnv, Subscription } from '../types';
 import { allRows, todayYmd } from '../lib/d1';
-import { CHARGING_STATUSES, serializeSubscription } from './subscriptions';
+import { serializeSubscription } from './subscriptions';
 
 const app = new Hono<AppEnv>();
 
@@ -76,7 +76,9 @@ app.get('/', async (c) => {
 
   // ⏱ 2026-09-29 · ST-E3 (round-2 F04): only a row that will actually be
   // CHARGED is due. A paused, cancelled or soft-deleted row is not, so it gets
-  // no reminder — the same two filters the platform fan-out charges by.
+  // no reminder — the same two filters the platform fan-out charges by. The set
+  // is spelled out as SQL literals (tooling/ci/assert-d1-sql-inventory.mjs R3)
+  // and test/lifecycle.test.ts holds it to subscriptions.ts CHARGING_STATUSES.
   const rows = await allRows<Subscription>(
     c.env.APP_DB.prepare(
       `SELECT * FROM subscriptions
@@ -85,9 +87,9 @@ app.get('/', async (c) => {
            AND next_renewal >= ?
            AND next_renewal <= ?
            AND deleted_at IS NULL
-           AND status IN (${CHARGING_STATUSES.map(() => '?').join(', ')})
+           AND status IN ('active', 'trialing')
          ORDER BY next_renewal ASC`,
-    ).bind(userId, today, until, ...CHARGING_STATUSES),
+    ).bind(userId, today, until),
   );
 
   // The row is serialized by the SAME function /v1/subscriptions uses. This

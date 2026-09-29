@@ -7,10 +7,11 @@
 // Every test below FAILS on main 454dd415 (the red control): the status and
 // deleted_at PATCHes return 400, and DELETE leaves no row to restore.
 // ─────────────────────────────────────────────────────────────────────────────
+import renewalsSrc from '../src/routes/renewals.ts?raw';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { recomputeRenewals } from '../../platform/src/renewals';
 import renewals from '../src/routes/renewals';
-import subscriptions, { SOFT_DELETE_PURGE_DAYS } from '../src/routes/subscriptions';
+import subscriptions, { CHARGING_STATUSES, SOFT_DELETE_PURGE_DAYS } from '../src/routes/subscriptions';
 import { todayYmd } from '../src/lib/d1';
 import { realAppDb, asUser, SqliteD1 } from './harness';
 
@@ -84,6 +85,17 @@ describe('F04 — Pause and Mark cancelled are accepted, and stop the row being 
     expect(outcome.ok, outcome.detail).toBe(true);
     const charged = db.rows('SELECT DISTINCT subscription_id FROM payment_history').map((r) => r.subscription_id);
     expect(charged).toEqual([active]);
+  });
+});
+
+describe('the charging set is ONE set', () => {
+  it('/v1/renewals spells out exactly CHARGING_STATUSES', () => {
+    // renewals.ts writes the set as SQL literals (a D1 statement may not
+    // interpolate it); this keeps the literals and the constant from drifting.
+    const src = renewalsSrc;
+    const set = /status IN \(([^)]*)\)/.exec(src)?.[1];
+    expect(set, 'renewals.ts no longer filters on status').toBeDefined();
+    expect(set?.split(',').map((s) => s.trim().replace(/'/g, ''))).toEqual([...CHARGING_STATUSES]);
   });
 });
 

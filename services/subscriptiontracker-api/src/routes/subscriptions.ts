@@ -14,6 +14,7 @@ import {
   isPlainObject,
   type Invalid,
 } from '../lib/validate';
+import { visibleCategory } from './categories';
 
 const app = new Hono<AppEnv>();
 
@@ -79,6 +80,8 @@ export function serializeSubscription(row: Subscription) {
     shared_with: row.shared_with,
     share_numerator: row.share_numerator,
     share_denominator: row.share_denominator,
+    // 0005 (ST-X8). `?? null`: a DB 0005 has not reached has no such key.
+    category_id: row.category_id ?? null,
   };
 }
 
@@ -135,6 +138,8 @@ const MAX_SHARED_WITH = 200;
 const MAX_SERVICE_ID = 64;
 /** @ceiling none — column width; the longest URL browsers reliably keep. */
 const MAX_CANCEL_URL = 2048;
+/** @ceiling none — column width; a built-in slug or a 32-hex / UUID id. */
+const MAX_CATEGORY_ID = 64;
 /**
  * Upper bound on `price`. Deliberately generous: the app ships to six platforms
  * worldwide — a real yearly subscription is ~2 600 000 in VND and ~1 800 000 in
@@ -245,7 +250,8 @@ type Column =
   | 'reminder_days'
   | 'shared_with'
   | 'share_numerator'
-  | 'share_denominator';
+  | 'share_denominator'
+  | 'category_id';
 
 /** Only the keys the body actually carried — PATCH must not touch the others. */
 type Fields = Partial<Record<Column, string | number | null>>;
@@ -481,6 +487,19 @@ function validate(body: unknown): ValidatedSubscription {
     }
   }
 
+  // ── 0005: the category by id (ST-X8) — shape only here; `resolveCategory`
+  // checks it names a category this user can use, which needs a read.
+  const categoryId = body.category_id;
+  if (categoryId !== undefined) {
+    if (categoryId === null) {
+      fields.category_id = null;
+    } else if (!isBoundedString(categoryId, MAX_CATEGORY_ID) || categoryId === '') {
+      return invalid(`category_id must be a category id of at most ${MAX_CATEGORY_ID} characters, or null`);
+    } else {
+      fields.category_id = categoryId;
+    }
+  }
+
   // A cancel with no date is a cancel TODAY: the detail screen says "Cancelled
   // on …", and a cancelled row with no date would have nothing to say.
   if (fields.status === 'cancelled' && fields.cancelled_on === undefined) {
@@ -498,6 +517,46 @@ function validate(body: unknown): ValidatedSubscription {
   if (amount) return amount;
 
   return { ok: true, fields };
+}
+
+/**
+ * THE CATEGORY, BY ID AND BY NAME, KEPT IN STEP (ST-X8). Mutates [f].
+ *
+ *   · `category_id` sent: it must be a built-in or one of this user's own
+ *     (404-shaped as a 400 — the caller named a category it cannot use), and
+ *     `category` is written as that category's name, whatever the body said,
+ *     so every client that reads only the name reads the right one;
+ *   · `category` alone — every client before this change: the id is looked up
+ *     by name (a built-in first), and a name no category has is stored as the
+ *     free text it always was, with no id;
+ *   · null clears both.
+ */
+async function resolveCategory(db: D1Database, userId: string, f: Fields): Promise<Invalid | null> {
+  if (f.category_id !== undefined) {
+    if (f.category_id === null) {
+      f.category = null;
+      return null;
+    }
+    const cat = await visibleCategory(db, userId, String(f.category_id));
+    if (!cat) return invalid(`category_id '${String(f.category_id)}' is not a category you can use`);
+    f.category = cat.name;
+    return null;
+  }
+  if (f.category === undefined) return null;
+  if (f.category === null) {
+    f.category_id = null;
+    return null;
+  }
+  const byName = await firstRow<{ id: string }>(
+    db
+      .prepare(
+        `SELECT id FROM categories WHERE name = ? AND (user_id IS NULL OR user_id = ?)
+          ORDER BY builtin DESC LIMIT 1`,
+      )
+      .bind(f.category, userId),
+  );
+  f.category_id = byName?.id ?? null;
+  return null;
 }
 
 /** A value from a closed set. */
@@ -700,6 +759,8 @@ app.post('/', async (c) => {
   if (f.deleted_at !== undefined && f.deleted_at !== null) {
     return c.json({ error: 'invalid_body', detail: 'deleted_at cannot be set on create' }, 400);
   }
+  const category = await resolveCategory(c.env.APP_DB, userId, f);
+  if (category) return c.json({ error: 'invalid_body', detail: category.detail }, 400);
 
   const id = uuid();
   const ts = nowIso();
@@ -715,9 +776,9 @@ app.post('/', async (c) => {
           currency, price_minor, cycle_every, cycle_unit, first_charge_on,
           status, trial_ends_on, cancelled_on, deleted_at, notes, service_id,
           cancel_url, rail, rail_holder, reminder_days, shared_with,
-          share_numerator, share_denominator)
+          share_numerator, share_denominator, category_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       id,
       userId,
@@ -751,6 +812,7 @@ app.post('/', async (c) => {
       f.shared_with ?? null,
       f.share_numerator ?? 1,
       f.share_denominator ?? 1,
+      f.category_id ?? null,
     ),
   );
 
@@ -925,6 +987,8 @@ app.patch('/:id', async (c) => {
     ).bind(id, userId),
   );
   if (!existing) return c.json({ error: 'not_found' }, 404);
+  const category = await resolveCategory(c.env.APP_DB, userId, checked.fields);
+  if (category) return c.json({ error: 'invalid_body', detail: category.detail }, 400);
 
   const sets: string[] = [];
   const values: unknown[] = [];
