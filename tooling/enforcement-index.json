@@ -2887,6 +2887,7 @@
       ".github/workflows/ci.yml#web-artifacts",
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/e2e.yml#e2e",
+      ".github/workflows/e2e.yml#native",
       ".github/workflows/native-auth-proof.yml#android",
       ".github/workflows/native-auth-proof.yml#ios",
       ".github/workflows/native-auth-proof.yml#linux",
@@ -3377,6 +3378,7 @@
     "claims": [],
     "invokedBy": [
       ".github/workflows/e2e.yml#e2e",
+      ".github/workflows/e2e.yml#native",
       ".github/workflows/native-auth-proof.yml#android",
       ".github/workflows/native-auth-proof.yml#ios",
       ".github/workflows/native-auth-proof.yml#linux",
@@ -3415,7 +3417,8 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/e2e.yml#e2e"
+      ".github/workflows/e2e.yml#e2e",
+      ".github/workflows/e2e.yml#reset-revokes"
     ],
     "kind": "script",
     "ref": "tooling/e2e/derive_expectation.mjs",
@@ -3425,6 +3428,7 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/e2e.yml#native",
       ".github/workflows/native-auth-proof.yml#android",
       ".github/workflows/native-auth-proof.yml#ios",
       ".github/workflows/native-auth-proof.yml#linux",
@@ -3440,6 +3444,7 @@
     "claims": [],
     "invokedBy": [
       ".github/workflows/e2e.yml#e2e",
+      ".github/workflows/e2e.yml#native",
       ".github/workflows/native-auth-proof.yml#android",
       ".github/workflows/native-auth-proof.yml#ios",
       ".github/workflows/native-auth-proof.yml#linux",
@@ -3462,6 +3467,7 @@
     ],
     "invokedBy": [
       ".github/workflows/e2e.yml#e2e",
+      ".github/workflows/e2e.yml#native",
       ".github/workflows/native-auth-proof.yml#android",
       ".github/workflows/native-auth-proof.yml#ios",
       ".github/workflows/native-auth-proof.yml#linux",
@@ -3899,6 +3905,16 @@
     ],
     "kind": "script",
     "ref": "tooling/ops/verify-monitors.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/e2e.yml#reset-revokes"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/verify-password-reset-revokes.mjs",
     "references": [],
     "state": "WIRED"
   },

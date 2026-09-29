@@ -2648,6 +2648,11 @@
       "firstSeen": "2026-08-02",
       "evidence": []
     },
+    "tooling/ops/verify-password-reset-revokes.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-29",
+      "evidence": []
+    },
     "tooling/ops/verify-supabase-templates.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-04",

@@ -92,6 +92,10 @@
       "reads": "whether a workflow runs the IndexNow ping"
     },
     {
+      "path": "tooling/ci/assert-e2e-legs.mjs",
+      "property": "workflow-scan"
+    },
+    {
       "path": "tooling/ci/assert-e2e-proof-fresh.mjs",
       "property": "refuses-blind",
       "evidence": "This guard is watching a workflow that is gone",
