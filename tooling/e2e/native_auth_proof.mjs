@@ -161,6 +161,34 @@ async function printEgressIp() {
   }
 }
 
+/**
+ * What the OS did with the callback, read 25 s after it was opened — or null
+ * where the target's own output already says. iOS only: proof run
+ * 36546306851's simctl openurl exited 0 and the app never saw the URL (no
+ * `handle deeplink uri`), and nothing a runner prints could say why. So the
+ * simulator's own log and a screenshot of what was on screen.
+ */
+export function afterOpenDiagnostics(target, { device, dir }) {
+  if (target !== 'ios') return null;
+  const dev = device || 'booted';
+  return {
+    screenshot: ['xcrun', 'simctl', 'io', dev, 'screenshot', join(dir, 'nk-proof-ios-after-open.png')],
+    log: ['xcrun', 'simctl', 'spawn', dev, 'log', 'show', '--last', '2m', '--style', 'compact', '--predicate',
+      'eventMessage CONTAINS[c] "nikatru" OR eventMessage CONTAINS[c] "openurl" OR eventMessage CONTAINS "app_links" ' +
+        'OR eventMessage CONTAINS "Flutter application in debug" OR process == "SpringBoard" AND eventMessage CONTAINS[c] "url"'],
+  };
+}
+
+function runDiagnostics(d, root) {
+  if (!d) return;
+  console.log(`${NAME}: $ ${d.screenshot.join(' ')}`);
+  spawnSync(d.screenshot[0], d.screenshot.slice(1), { cwd: root, stdio: 'inherit' });
+  const r = spawnSync(d.log[0], d.log.slice(1), { cwd: root, encoding: 'utf8', maxBuffer: 64 << 20 });
+  const lines = String(r.stdout ?? '').split('\n').filter((l) => l.trim());
+  console.log(`${NAME}: simulator log after the open — last ${Math.min(lines.length, 150)} of ${lines.length} line(s):`);
+  for (const l of lines.slice(-150)) console.log(`  ${l}`);
+}
+
 function runOpen(commands, root) {
   for (const [cmd, ...rest] of commands) {
     if (cmd === '__write__') {
@@ -188,9 +216,18 @@ async function main() {
     process.exit(2);
   }
   const defines = ['E2E_EMAIL', 'E2E_PASSWORD', 'SUPABASE_URL', 'SUPABASE_ANON_KEY', 'API_BASE_URL'];
+  // Created FIRST, before any refusal and before the spawn: to the purge a
+  // proof step that ran and left no log is UNRESOLVED (consent_anon_id.mjs,
+  // resolveProofLogConsent), so a path that starts no app must say so here.
+  const log = o.log ? resolve(root, o.log) : null;
+  if (log) {
+    mkdirSync(resolve(log, '..'), { recursive: true });
+    writeFileSync(log, `${NAME}: ${o.app}/${o.target} — flutter test output follows\n`);
+  }
   const missing = defines.filter((k) => !process.env[k]);
   if (missing.length) {
     console.error(`${NAME}: missing env ${missing.join(', ')} — the build would run in demo posture or without the user`);
+    if (log) appendFileSync(log, `\n${PROOF_LOG_END} flutter_exit=none refused=env\n`);
     process.exit(2);
   }
   await printEgressIp();
@@ -207,13 +244,6 @@ async function main() {
     `--dart-define=NK_PROOF_CALLBACK=${o.callback}`,
   ];
   const url = callbackUrl(o.app);
-  // Created BEFORE the spawn and never after it: a missing log is how the purge
-  // knows no app ran (consent_anon_id.mjs, resolveProofLogConsent).
-  const log = o.log ? resolve(root, o.log) : null;
-  if (log) {
-    mkdirSync(resolve(log, '..'), { recursive: true });
-    writeFileSync(log, `${NAME}: ${o.app}/${o.target} — flutter test output follows\n`);
-  }
   let out = '';
   let opened = false;
   let hung = false;
@@ -243,6 +273,8 @@ async function main() {
     if (o.callback && !opened && out.includes(AWAIT_MARKER)) {
       opened = true;
       setTimeout(() => runOpen(openCommands(o.target, url, { app: o.app, root, device: o.device }), root), 3_000);
+      const diag = afterOpenDiagnostics(o.target, { device: o.device, dir: process.env.RUNNER_TEMP || root });
+      if (diag) setTimeout(() => runDiagnostics(diag, root), 28_000);
     }
   };
   child.stdout.on('data', onData(process.stdout));

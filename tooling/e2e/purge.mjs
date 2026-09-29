@@ -55,6 +55,8 @@
 //      E2E_PROOF_LOG — the NATIVE AUTH PROOF's log (native-auth-proof.yml,
 //      added 2026-09-29), read by resolveProofLogConsent, which alone can show
 //      a run wrote NO row; exclusive with the other three sources.
+//      E2E_PROOF_RAN ('true'/'false', the proof step's outcome was not
+//      `skipped`): a missing proof log is 'no row' only when it is 'false'.
 //      The app's database id is not an env key (O-E2E-LANE-WIRED-TO-ONE-APP,
 //      2026-09-25): E2E_APP_ID resolves it through tooling/e2e/backend.mjs —
 //      the Worker's `env.sandbox` block when E2E_CONSENT_LEDGER is set (a store
@@ -148,7 +150,7 @@ if (ledgerPath) {
 // consent artifact belongs to the browser PROFILE, not to either throwaway user,
 // so a run that never provisioned one can still have written it.
 const capture = process.env.PLATFORM_D1_DATABASE_ID && ledgerPath ? resolveCaptureConsentIds(ledgerPath) : null;
-const proof = process.env.PLATFORM_D1_DATABASE_ID && proofLogPath ? resolveProofLogConsent(proofLogPath) : null;
+const proof = process.env.PLATFORM_D1_DATABASE_ID && proofLogPath ? resolveProofLogConsent(proofLogPath, { proofRan: process.env.E2E_PROOF_RAN !== 'false' }) : null;
 const consent = capture
   ? { id: null, source: null, notes: [] }
   : proof

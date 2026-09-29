@@ -3339,7 +3339,18 @@ for (const root of darwinRoots) {
     for (const m of src.matchAll(DARWIN_INIT_RE)) {
       darwinSites++;
       const open = m.index + m[0].length - 1;
-      const args = src.slice(open, matchDelim(src, open, '(', ')'));
+      const close = matchDelim(src, open, '(', ')');
+      // Unbalanced: there is no call to read, and slicing to -1 would read the
+      // REST OF THE FILE, where any later `false` could satisfy this one.
+      if (close === -1) {
+        darwinAsking++;
+        fail(
+          `[13]T-4 ${relative(repo, abs).replaceAll('\\', '/')}: a DarwinInitializationSettings( whose parentheses ` +
+            'never close — its arguments cannot be read, so it cannot be shown to ask for nothing.',
+        );
+        continue;
+      }
+      const args = src.slice(open, close);
       const asks = DARWIN_NO_ASK.filter((f) => !new RegExp(`\\b${f}\\s*:\\s*false\\b`).test(args));
       if (asks.length) {
         darwinAsking++;

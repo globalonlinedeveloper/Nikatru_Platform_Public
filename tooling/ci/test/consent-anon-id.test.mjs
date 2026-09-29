@@ -21,7 +21,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -315,9 +315,26 @@ describe('resolveProofLogConsent', () => {
     assert.match(r.notes.join('\n'), /never answered/);
   });
 
-  test('no log at all: the driver never started flutter, so no row', () => {
-    const r = resolveProofLogConsent(join(TMP, 'proof-never-written.log'));
+  test('no log, and the proof step never ran: no app ran, so no row', () => {
+    const r = resolveProofLogConsent(join(TMP, 'proof-never-written.log'), { proofRan: false });
     assert.deepEqual([r.id, r.noRow], [null, true]);
+  });
+
+  test('🔴 no log, yet the proof step RAN: UNRESOLVED — the driver writes it first', () => {
+    const r = resolveProofLogConsent(join(TMP, 'proof-never-written.log'), { proofRan: true });
+    assert.deepEqual([r.id, r.noRow], [null, false]);
+    assert.match(r.notes.join('\n'), /yet the proof step ran/);
+    // The default is the fail-closed one: a caller that says nothing is told "unresolved".
+    assert.equal(resolveProofLogConsent(join(TMP, 'proof-never-written.log')).noRow, false);
+  });
+
+  test('🔴 an unreadable log is UNRESOLVED and never throws — purge must reach its user delete', () => {
+    // A directory at the log path: existsSync is true and every read fails (EISDIR).
+    const dir = join(TMP, 'proof-log-is-a-dir.log');
+    mkdirSync(dir, { recursive: true });
+    const r = resolveProofLogConsent(dir);
+    assert.deepEqual([r.id, r.noRow], [null, false]);
+    assert.match(r.notes.join('\n'), /could not be read/);
   });
 
   test('🔴 a log cut off mid-run with no id is UNRESOLVED, never "no row"', () => {

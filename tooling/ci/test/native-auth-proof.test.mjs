@@ -6,7 +6,9 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
 import {
+  afterOpenDiagnostics,
   callbackUrl,
   egressIpOf,
   FAILED_CALLBACK_LINE,
@@ -138,5 +140,28 @@ describe('native_auth_proof — the consent prompt is answered once, id first', 
     const body = steps.slice(steps.indexOf('Future<void> proveFormSignIn('));
     assert.ok(body.indexOf('submit.hitTestable()') > 0, 'proveFormSignIn taps without checking the tap would land');
     assert.ok(body.indexOf('submit.hitTestable()') < body.indexOf('await tester.tap(submit)'));
+  });
+});
+
+// The purge reads the proof's log (consent_anon_id.mjs, resolveProofLogConsent),
+// and a proof step that RAN and left no log is unresolved there — so a driver
+// that refuses must still leave a FINISHED log saying no app ran.
+describe('native_auth_proof — the log is written before anything can refuse', () => {
+  test('🔴 a run refused for missing env leaves a log that ends, and starts no app', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'nk-proof-log-'));
+    const log = join(dir, 'proof.log');
+    const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot ?? process.env.SYSTEMROOT ?? '' };
+    const r = spawnSync(process.execPath, [join(import.meta.dirname, '..', '..', 'e2e', 'native_auth_proof.mjs'), '--app', 'demo', '--target', 'linux', '--log', log], { encoding: 'utf8', env, timeout: 60_000 });
+    assert.equal(r.status, 2, r.stderr);
+    const text = readFileSync(log, 'utf8');
+    assert.match(text, /NK_PROOF_LOG_END flutter_exit=none refused=env/);
+    assert.doesNotMatch(text, /E2E_CONSENT_ANON_ID=/);
+  });
+
+  test('the post-open diagnostics exist for iOS alone, and name the device', () => {
+    const d = afterOpenDiagnostics('ios', { device: 'SIM-1', dir: '/tmp' });
+    assert.deepEqual(d.screenshot.slice(0, 5), ['xcrun', 'simctl', 'io', 'SIM-1', 'screenshot']);
+    assert.deepEqual(d.log.slice(0, 6), ['xcrun', 'simctl', 'spawn', 'SIM-1', 'log', 'show']);
+    for (const t of ['android', 'macos', 'linux', 'windows']) assert.equal(afterOpenDiagnostics(t, {}), null, t);
   });
 });

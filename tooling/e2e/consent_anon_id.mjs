@@ -216,23 +216,40 @@ export const PROOF_LOG_END = 'NK_PROOF_LOG_END';
  *  BEFORE its tap. So, unlike a web drive, a FINISHED proof log separates the
  *  two null-id states purge.mjs's hard failure cannot:
  *    · a token → the id to delete by (the last one, as `fromDriveLog`);
- *    · no log at all → the driver never started `flutter test` (it creates the
- *      log before the spawn, and exits 2 if it cannot), so no app ran;
+ *    · no log, and the proof step never ran (`proofRan` false) → no app ran;
+ *    · no log, but the proof step RAN → UNRESOLVED: the driver writes the log
+ *      as its first act, so a missing one is a failure this reader cannot see
+ *      into, and "no row" would be a guess;
  *    · no token and the {@link PROOF_LOG_END} line → the app never reached the
  *      tap, so this run wrote no row;
- *    · no token and no end line → the log was cut off mid-run: UNRESOLVED.
+ *    · no token and no end line → the log was cut off mid-run: UNRESOLVED;
+ *    · an unreadable log → UNRESOLVED, never a throw: purge.mjs resolves this
+ *      before its user delete, and a throw would skip that delete.
  *
  *  Returns `{ id, noRow, notes }`. `noRow` is true only for the two proven
  *  no-row states; a malformed token is unresolved, never deleted by. */
-export function resolveProofLogConsent(logPath) {
+export function resolveProofLogConsent(logPath, { proofRan = true } = {}) {
   const notes = [];
   if (!logPath || !existsSync(logPath)) {
-    notes.push(`proof log: none at ${logPath ?? '(no path)'} — the driver never started \`flutter test\`, so no app answered the prompt`);
-    return { id: null, noRow: true, notes };
+    if (!proofRan) {
+      notes.push(`proof log: none at ${logPath ?? '(no path)'}, and the proof step never ran, so no app answered the prompt`);
+      return { id: null, noRow: true, notes };
+    }
+    notes.push(
+      `proof log: none at ${logPath ?? '(no path)'}, yet the proof step ran — the driver writes it first, ` +
+        'so whether the prompt was answered is unknown',
+    );
+    return { id: null, noRow: false, notes };
   }
   const id = fromDriveLog(logPath, 'proof log', notes);
   if (id) return { id, noRow: false, notes };
-  const text = readFileSync(logPath, 'utf8');
+  let text;
+  try {
+    text = readFileSync(logPath, 'utf8');
+  } catch (e) {
+    notes.push(`proof log: ${logPath} could not be read (${e.code ?? e.message}), so whether the prompt was answered is unknown`);
+    return { id: null, noRow: false, notes };
+  }
   if (new RegExp(`${ANON_ID_TOKEN}=`).test(text)) return { id: null, noRow: false, notes };
   if (text.includes(PROOF_LOG_END)) {
     notes.push('proof log: finished, and the prompt was never answered (no install id was printed before a tap), so this run wrote no consent row');

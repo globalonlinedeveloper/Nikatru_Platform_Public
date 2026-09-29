@@ -7008,6 +7008,52 @@ onTap: () => _openUrl(AppConfig.refundUrl),
     assert.match(out, /the \[13\]T-4 permission pattern no longer matches any call/);
   });
 
+  // Limb D (2026-09-29): the PLUGIN-MEDIATED ask. `DarwinInitializationSettings()`
+  // defaults alert/sound/badge to true and `initialize` then waits on the OS
+  // dialog — native auth proof run 36525783687's iOS and macOS jobs hung in
+  // main() on exactly this, with no `requestPermission(` on the path.
+  const darwinInit = (args) => `${goodPermissionProbe}
+const InitializationSettings settings = InitializationSettings(
+  iOS: DarwinInitializationSettings(${args}),
+);
+`;
+  const NO_ASK = 'requestAlertPermission: false, requestSoundPermission: false, requestBadgePermission: false';
+
+  test('limb D FAILS on a bare DarwinInitializationSettings() — the defaults ask', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-t4d-bare', { permissionProbe: darwinInit('') }),
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /DarwinInitializationSettings\(\.\.\.\) leaves requestAlertPermission, requestSoundPermission, requestBadgePermission at the plugin default TRUE/);
+  });
+
+  test('limb D FAILS when ONE of the three is left at its default', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-t4d-one', { permissionProbe: darwinInit('requestAlertPermission: false, requestBadgePermission: false') }),
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /leaves requestSoundPermission at the plugin default TRUE/);
+  });
+
+  test('limb D passes when all three are false', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-t4d-ok', { permissionProbe: darwinInit(NO_ASK) }),
+    });
+    assert.equal(code, 0, out);
+    assert.match(out, /limb D — 1 DarwinInitializationSettings construction\(s\) ask the OS for nothing at init/);
+  });
+
+  test('limb D FAILS on a construction whose parentheses never close — it scans the call, not the file', () => {
+    // The `false` flags AFTER the broken call must not satisfy it.
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-t4d-unbalanced', {
+        permissionProbe: `${goodPermissionProbe}\nfinal a = DarwinInitializationSettings(;\n// ${NO_ASK}\nconst b = f(${NO_ASK});\n`,
+      }),
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /DarwinInitializationSettings\( whose parentheses never close/);
+  });
+
   // The RUNTIME limb this static walk defers to. Weakening the matcher leaves
   // `flutter test` green — the classic gate-weakening move — so the guard
   // compares against the literal zero, not merely the identifier's presence.
