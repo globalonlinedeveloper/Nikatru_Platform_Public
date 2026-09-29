@@ -79,6 +79,12 @@ describe('F04 — Pause and Mark cancelled are accepted, and stop the row being 
     expect(await dueIds()).toEqual([id]);
   });
 
+  it('a cancel with an explicit null date is dated today too (finding 3)', async () => {
+    const id = await create();
+    const out = (await (await patch(id, { status: 'cancelled', cancelled_on: null })).json()) as Row;
+    expect([out.status, out.cancelled_on]).toEqual(['cancelled', todayYmd()]);
+  });
+
   it('the platform fan-out charges neither a paused nor a cancelled row', async () => {
     const paused = await create({ next_renewal: '2020-01-15' });
     const cancelled = await create({ next_renewal: '2020-01-15' });
@@ -122,9 +128,9 @@ describe('the charging set is ONE set', () => {
 describe('F03 — soft delete: PATCH {deleted_at} hides the row, null brings it back', () => {
   it('is 200, and GET / plus /v1/renewals omit the row', async () => {
     const id = await create();
-    const res = await patch(id, { deleted_at: '2026-09-29T10:00:00Z' });
+    const res = await patch(id, { deleted_at: new Date().toISOString() });
     expect(res.status, "main answers 400: 'deleted_at cannot be set yet'").toBe(200);
-    expect(((await res.json()) as Row).deleted_at).toBe('2026-09-29T10:00:00.000Z');
+    expect(((await res.json()) as Row).deleted_at).not.toBeNull();
     expect(await listIds()).toEqual([]);
     expect(await dueIds()).toEqual([]);
     // …and the row is still THERE, which is what Undo needs.
@@ -136,6 +142,40 @@ describe('F03 — soft delete: PATCH {deleted_at} hides the row, null brings it 
     await patch(id, { deleted_at: new Date().toISOString() });
     expect((await patch(id, { deleted_at: null })).status).toBe(200);
     expect(await listIds()).toEqual([id]);
+  });
+
+  // Review of #1063, finding 1: the client's instant is the DEVICE clock.
+  for (const [label, sent] of [
+    ['a past instant (a clock a year behind)', '2025-09-29T10:00:00Z'],
+    ['a future instant (a clock a year ahead)', '2027-09-29T10:00:00Z'],
+  ] as const) {
+    it(`${label} is stored as SERVER now, never trusted — and the next list purges nothing`, async () => {
+      const id = await create();
+      const before = new Date().toISOString();
+      expect((await patch(id, { deleted_at: sent })).status).toBe(200);
+      const after = new Date().toISOString();
+      const stored = db.rows('SELECT deleted_at FROM subscriptions WHERE id = ?', id)[0]?.deleted_at as string;
+      expect(stored, `stored the client's ${sent}`).not.toBe(new Date(sent).toISOString());
+      expect(stored >= before && stored <= after, `${stored} is not server-now`).toBe(true);
+      await subs(U, '/v1/subscriptions');
+      expect(db.rows('SELECT id FROM subscriptions'), 'a past instant made the soft delete a hard one').toHaveLength(1);
+      // …and Undo still brings it back (a future instant would have hidden it for good).
+      await patch(id, { deleted_at: null });
+      expect(await listIds()).toEqual([id]);
+    });
+  }
+
+  it('a second PATCH {deleted_at} keeps the first stamp, as DELETE does', async () => {
+    const id = await create();
+    db.db.exec(`UPDATE subscriptions SET deleted_at = '2026-09-01T00:00:00.000Z' WHERE id = '${id}'`);
+    await patch(id, { deleted_at: new Date().toISOString() });
+    expect(db.rows('SELECT deleted_at FROM subscriptions')[0]?.deleted_at).toBe('2026-09-01T00:00:00.000Z');
+  });
+
+  it('GET /:id of a removed row is a 404, like POST /:id/payments', async () => {
+    const id = await create();
+    await subs(U, `/v1/subscriptions/${id}`, { method: 'DELETE' });
+    expect((await subs(U, `/v1/subscriptions/${id}`)).status).toBe(404);
   });
 
   it('a create may not arrive already deleted', async () => {
@@ -192,7 +232,9 @@ describe('B33 — DELETE is soft, keeps the history, and the purge removes both 
     const other = await create();
     for (const id of [old, recent, other]) seedHistory(id);
     const longAgo = new Date(Date.now() - (SOFT_DELETE_PURGE_DAYS + 1) * 86_400_000).toISOString();
-    await patch(old, { deleted_at: longAgo });
+    // Seeded in SQL: the route never stores a client instant (finding 1), so
+    // an old stamp can only be one the server wrote a month ago.
+    db.db.exec(`UPDATE subscriptions SET deleted_at = '${longAgo}' WHERE id = '${old}'`);
     await patch(recent, { deleted_at: new Date().toISOString() });
     // Another user's expired row is not this user's list's to purge.
     db.db.exec(
@@ -207,5 +249,15 @@ describe('B33 — DELETE is soft, keeps the history, and the purge removes both 
       db.rows('SELECT subscription_id FROM payment_history').map((r) => r.subscription_id).sort(),
       'the purged row took its history; the restorable one kept it',
     ).toEqual([other, recent].sort());
+  });
+
+  it('a purge that fails does not take the list down (best-effort, finding 2)', async () => {
+    const id = await create();
+    db.batch = async () => {
+      throw new Error('D1_ERROR: simulated purge failure');
+    };
+    const res = await subs(U, '/v1/subscriptions');
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as Row[]).map((r) => r.id)).toEqual([id]);
   });
 });

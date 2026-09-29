@@ -72,6 +72,32 @@ describe('a category of the user’s own, by id (B29)', () => {
     expect(db.rows("SELECT id FROM subscriptions WHERE name = 'X'")).toHaveLength(0);
   });
 
+  it('user B can neither rename nor delete user A’s category (review finding 5)', async () => {
+    const mine = await newCategory('Gym');
+    const sub = await json(
+      await subs(U, '/v1/subscriptions', { method: 'POST', body: { name: 'Cult', category_id: mine.id } }),
+    );
+    await bud(U, '/v1/budget', {
+      method: 'PUT',
+      body: { monthly_budget: 1, categories: [{ name: 'Gym', cap: 700, category_id: mine.id }] },
+    });
+
+    const renamed = await cats('user-b', `/v1/categories/${mine.id as string}`, { method: 'PATCH', body: { name: 'Mine now' } });
+    expect(renamed.status).toBe(404);
+    await cats('user-b', `/v1/categories/${mine.id as string}`, { method: 'DELETE' });
+
+    expect(db.rows('SELECT name, user_id FROM categories WHERE id = ?', mine.id as string)).toEqual([
+      { name: 'Gym', user_id: U },
+    ]);
+    expect(await json(await subs(U, `/v1/subscriptions/${sub.id as string}`))).toMatchObject({
+      category: 'Gym',
+      category_id: mine.id,
+    });
+    expect(db.rows('SELECT name, cap, category_id FROM budget_categories')).toEqual([
+      { name: 'Gym', cap: 700, category_id: mine.id },
+    ]);
+  });
+
   it('a name already taken — by the user or by a built-in — is a 409', async () => {
     await newCategory('Gym');
     expect((await cats(U, '/v1/categories', { method: 'POST', body: { name: 'Gym' } })).status).toBe(409);

@@ -469,7 +469,13 @@ function validate(body: unknown): ValidatedSubscription {
     // `deleted_at` set leaves GET /, /v1/renewals and the platform fan-out, and
     // `null` brings it back (the app's Undo). It is kept, history and all, for
     // SOFT_DELETE_PURGE_DAYS, then `purgeExpired` removes the two together.
-    // Stored as `toISOString()` so the purge's string comparison is exact.
+    //
+    // 🔴 THE CLIENT'S INSTANT IS CHECKED FOR SHAPE AND THEN NOT TRUSTED. It is
+    // the device clock: one a month behind (or any past instant) would make
+    // the next GET / purge the row AND its history at once, with no Undo, and
+    // a future one would hide the row forever. So a non-null value means
+    // "delete now" and PATCH stamps the SERVER's time, keeping an existing
+    // stamp exactly as DELETE /:id does (review of #1063, finding 1).
     if (deletedAt === null) {
       fields.deleted_at = null;
     } else if (
@@ -517,7 +523,8 @@ function validate(body: unknown): ValidatedSubscription {
 
   // A cancel with no date is a cancel TODAY: the detail screen says "Cancelled
   // on …", and a cancelled row with no date would have nothing to say.
-  if (fields.status === 'cancelled' && fields.cancelled_on === undefined) {
+  // An explicit `cancelled_on: null` beside a cancel is the same missing date.
+  if (fields.status === 'cancelled' && fields.cancelled_on == null) {
     fields.cancelled_on = todayYmd();
   }
 
@@ -759,7 +766,14 @@ async function purgeExpired(db: D1Database, userId: string): Promise<void> {
 // paused or cancelled one is (it stays, with its history — ST-E3).
 app.get('/', async (c) => {
   const userId = c.get('userId');
-  await purgeExpired(c.env.APP_DB, userId);
+  // BEST-EFFORT: housekeeping must never take the user's list down. A purge
+  // that fails is logged and retried on the next list; the rows it would have
+  // removed stay soft-deleted, which is the safe side of the failure.
+  try {
+    await purgeExpired(c.env.APP_DB, userId);
+  } catch (err) {
+    console.error(`[purgeExpired] rid=${c.get('requestId') ?? '-'}`, err);
+  }
   const rows = await allRows<Subscription>(
     c.env.APP_DB.prepare(
       'SELECT * FROM subscriptions WHERE user_id = ? AND deleted_at IS NULL ORDER BY price DESC',
@@ -852,14 +866,17 @@ app.post('/', async (c) => {
   return c.json(row ? serializeSubscription(row) : { error: 'not_found' }, 201);
 });
 
-// GET /:id — one subscription (must be owned) + its payment history.
+// GET /:id — one subscription (must be owned, and not removed) + its history.
+// A soft-deleted row is a 404 here, as it is to POST /:id/payments: removed
+// means removed everywhere a client reads, and PATCH {deleted_at: null} (Undo)
+// is the one way back.
 app.get('/:id', async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
 
   const row = await firstRow<Subscription>(
     c.env.APP_DB.prepare(
-      'SELECT * FROM subscriptions WHERE id = ? AND user_id = ?',
+      'SELECT * FROM subscriptions WHERE id = ? AND user_id = ? AND deleted_at IS NULL',
     ).bind(id, userId),
   );
   if (!row) return c.json({ error: 'not_found' }, 404);
@@ -1027,11 +1044,20 @@ app.patch('/:id', async (c) => {
     values.push(val);
   };
 
+  const ts = nowIso();
+
   // Only the columns the body actually carried — `validate` drops the rest, so
   // this cannot widen to a column the validator has not checked.
-  for (const [col, val] of Object.entries(checked.fields)) put(col, val);
+  for (const [col, val] of Object.entries(checked.fields)) {
+    if (col === 'deleted_at' && val !== null) {
+      // Server time, and the FIRST delete's time — see `validate`.
+      sets.push('deleted_at = COALESCE(deleted_at, ?)');
+      values.push(ts);
+    } else {
+      put(col, val);
+    }
+  }
 
-  const ts = nowIso();
   put('updated_at', ts);
 
   values.push(id, userId);
