@@ -22,6 +22,9 @@
 //   C9  (live only: a body edit on a real PR re-runs guard-meta; not a unit case)
 //   and the automated bodies name-clearance.yml and store-screenshots.yml
 //   write each carry a valid line, read out of the workflows themselves.
+//   C10 (2026-09-29) Renovate writes its own body; renovate.json's prBodyNotes is
+//       what puts the line in it. A Renovate-shaped body with the configured note
+//       passes, and the same body without it is missing (the red control).
 //
 // Every case builds its repository with `git init` in a temp directory: no
 // network, no real history.
@@ -41,6 +44,7 @@ const GUARD = join(CI_DIR, 'assert-pr-rows.mjs');
 const TEMPLATE = join(REPO, '.github', 'PULL_REQUEST_TEMPLATE.md');
 const NAME_CLEARANCE = join(REPO, '.github', 'workflows', 'name-clearance.yml');
 const SCREENSHOTS = join(REPO, '.github', 'workflows', 'store-screenshots.yml');
+const RENOVATE = join(REPO, 'renovate.json');
 
 /** This PR's own body, as the brief wrote it: the guard's first real subject. */
 const PR_TEXT = [
@@ -496,5 +500,75 @@ describe('the automated PR bodies carry a valid line', () => {
     const literal = screenshotBodies('--body "Captured by run 1.\\n\\nRows: none — automated store screenshot capture, reviewed by eye"')[0];
     assert.equal(literal.includes('\n'), false);
     assert.equal(parseRows(literal).problem, 'missing');
+  });
+});
+
+// ── Renovate ─────────────────────────────────────────────────────────────────
+// Renovate writes its own PR body and takes no template. Its body is a header, an
+// update table, each `prBodyNotes` entry as a paragraph, then the release notes
+// in <details> blocks, a config line and a footer. This is that shape, built from
+// the notes renovate.json actually carries, so removing or mis-writing the note
+// there reds this file and not only the next dependency PR.
+
+/** A Renovate body: the shape it writes, with `notes` where Renovate puts them. */
+function renovateBody(notes) {
+  return [
+    'This PR contains the following updates:',
+    '',
+    '| Package | Change | Age | Confidence |',
+    '|---|---|---|---|',
+    '| [undici](https://undici.nodejs.org) | `7.16.0` -> `7.24.0` | ![age](https://developer.mend.io/api/mc/badges/age/npm/undici/7.24.0) | ![confidence](https://developer.mend.io/api/mc/badges/confidence/npm/undici/7.16.0/7.24.0) |',
+    '',
+    ...notes.flatMap((n) => [n, '']),
+    '---',
+    '',
+    '### Release Notes',
+    '',
+    '<details>',
+    '<summary>nodejs/undici (undici)</summary>',
+    '',
+    '### v7.24.0',
+    '',
+    '- fix: a thing',
+    '',
+    '</details>',
+    '',
+    '---',
+    '',
+    '### Configuration',
+    '',
+    '📅 **Schedule**: Branch creation - On Monday (Asia/Kolkata)',
+    '',
+    '♻ **Rebasing**: Whenever PR becomes conflicted, or you tick the rebase/retry checkbox.',
+    '',
+    '<!--renovate-debug:eyJjcmVhdGVkSW5WZXIiOiIzOS4wLjAifQ==-->',
+  ].join('\n');
+}
+
+describe('a Renovate body carries a valid line', () => {
+  const notes = () => {
+    const cfg = JSON.parse(readFileSync(RENOVATE, 'utf8'));
+    assert.ok(Array.isArray(cfg.prBodyNotes), 'renovate.json has no prBodyNotes array: Renovate PR bodies will carry no Rows: line');
+    return cfg.prBodyNotes;
+  };
+
+  test('green control: the body built from renovate.json prBodyNotes names `none` with its reason', () => {
+    const v = parseRows(renovateBody(notes()));
+    assert.equal(v.ok, true, JSON.stringify(v));
+    assert.equal(v.kind, 'none');
+    assert.equal(v.reason, 'Renovate dependency bump; no register row moves');
+  });
+
+  test('the same body without the note is missing', () => {
+    assert.equal(parseRows(renovateBody([])).problem, 'missing');
+  });
+
+  test('the CLI: the note passes on a post-rule base, and the body without it exits 1', () => {
+    const { root, sha } = baseRepo();
+    const ok = run(root, { PR_BODY: renovateBody(notes()), PR_CREATED_AT: LATER, BASE_SHA: sha });
+    assert.equal(ok.code, 0, ok.out);
+    const red = run(root, { PR_BODY: renovateBody([]), PR_CREATED_AT: LATER, BASE_SHA: sha });
+    assert.equal(red.code, 1, red.out);
+    assert.match(red.out, /no `Rows:` line/);
   });
 });
