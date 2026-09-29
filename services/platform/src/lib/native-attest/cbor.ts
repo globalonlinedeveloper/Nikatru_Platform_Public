@@ -11,6 +11,7 @@
 
 export type Cbor = number | Uint8Array | string | boolean | null | Cbor[] | Map<string | number, Cbor>;
 
+/** @ceiling none — an INPUT SHAPE bound on attacker-supplied CBOR, not a platform resource: an App Attest object nests three deep. */
 const MAX_DEPTH = 8;
 
 export class CborError extends Error {}

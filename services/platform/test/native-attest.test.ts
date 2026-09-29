@@ -5,7 +5,7 @@
 // WHAT IS BEING PROVEN, each case the shape of a way this could be wrong:
 //   · THE BINDING matches the wire protocol's published test vector, byte for
 //     byte — the Dart client (packages/core native_attest.dart) asserts the same
-//     literals, so the two runtimes cannot drift apart silently;
+//     literals: both runtimes are held to the one vector;
 //   · APP ATTEST: a genuine attestation — a real certificate chain, built here
 //     with a test CA because Apple signs nothing for a test — verifies, and the
 //     SAME attestation is refused against the pinned Apple root (red control);

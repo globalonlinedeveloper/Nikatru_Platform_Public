@@ -134,7 +134,10 @@
       "auth",
       "native",
       "signup",
-      "recover"
+      "recover",
+      "attest",
+      "challenge",
+      "install"
     ],
     "_subject": [
       "🟢 `subject` ADDED 2026-09-09, AND THIS LIMB CAUGHT IT AGAIN. GET /v1/entitlements/subject is the",
@@ -220,7 +223,13 @@
         "provider": "resend",
         "why": "⏱ 2026-09-28 · ST-N1. POST /v1/auth/native/<app>/resend is GoTrue's own `/resend` endpoint (re-send a sign-up or email-change confirmation), called by our native builds and forwarded to our self-hosted GoTrue. It is NOT a Resend webhook: Resend never calls it and it takes no Resend signature. The one real link is the other way round — GoTrue sends that email through Resend, which is already this register's `resend` row (role email_delivery, disclosed); this route adds no new party."
       }
-    }
+    },
+    "_attest": [
+      "⏱ 2026-09-29 · ADR no.NNN (native sign-in serves only attested app installs). `attest`, `challenge` and `install` are RESOURCES OF OURS under",
+      "POST /v1/auth/native/:app/attest/{challenge,install}: a single-use challenge the native sign-in",
+      "attestation binds to, and an app install registering its signing key. Neither is a provider tell:",
+      "no payment or identity provider posts to them, and both are behind the fail-closed native limiters."
+    ]
   },
   "roles": {
     "_why": "The vocabulary rows are validated against, declared once HERE rather than inside the guard — the same reason keyKinds lives in tooling/channel-register.json. Renaming a role out from under the rows still using it fails.",

@@ -734,7 +734,33 @@
         "expression": "'$root/v1/auth/native/$appId'",
         "note": "⏱ 2026-09-28 · ST-T7b (ST-N1d). The route BASE of the second gotrue-dart GoTrueClient every native build sends its captcha-gated calls through (nativeCredentialClient); gotrue-dart appends /resend itself. packages/auth_supabase/test/native_credential_route_test.dart drives the resend call through the real SDK to this base on each native target, and assert-analytics-contract.mjs pins it as an sdk wire."
       }
-    }
+    },
+      {
+        "id": "native-auth-attest-challenge",
+        "method": "POST",
+        "path": "/v1/auth/native/:app/attest/challenge",
+        "auth": "public",
+        "owningFile": "services/platform/src/routes/native-auth.ts",
+        "purpose": "⏱ 2026-09-29 · ADR no.NNN (native sign-in serves only attested app installs). A single-use, 120-second challenge that every native sign-in op's attestation binds to (with the app, the op and the exact body). 32 random bytes; only SHA-256 of it is stored (platform_db.native_attest_challenges), and the first request that presents it DELETES it, pass or fail — so a replayed request finds nothing. No `Origin` (403). Behind NATIVE_AUTH_EDGE_LIMITER, FAILING CLOSED; refused 403 when NATIVE_AUTH_ATTEST_KINDS lists no kind, so a closed route mints nothing.",
+        "client": {
+          "file": "packages/auth_supabase/lib/src/native_credential_client.dart",
+          "expression": "'$root/v1/auth/native/$appId'",
+          "note": "⏱ 2026-09-29 · ADR no.NNN (native sign-in serves only attested app installs). The same native route BASE; packages/auth_supabase NativeAttestationClient (the http.Client under that GoTrueClient) appends /attest/challenge and /attest/install to it before every op. packages/auth_supabase/test/native_attestation_client_test.dart drives both."
+        }
+      },
+      {
+        "id": "native-auth-attest-install",
+        "method": "POST",
+        "path": "/v1/auth/native/:app/attest/install",
+        "auth": "public",
+        "owningFile": "services/platform/src/routes/native-auth.ts",
+        "purpose": "⏱ 2026-09-29 · ADR no.NNN (native sign-in serves only attested app installs). An app install registers its signing key ONCE: an App Attest attestation (verified offline to the pinned Apple root: chain, nonce, App ID, AAGUID, counter 0, key id), or a desktop Ed25519 public key signing its own registration (proof of possession). Stores the PUBLIC key and a counter in platform_db.native_attest_keys — no account, no email, no address. Consumes a challenge like every op. Behind NATIVE_AUTH_EDGE_LIMITER and NATIVE_AUTH_INSTALL_LIMITER, both FAILING CLOSED.",
+        "client": {
+          "file": "packages/auth_supabase/lib/src/native_credential_client.dart",
+          "expression": "'$root/v1/auth/native/$appId'",
+          "note": "⏱ 2026-09-29 · ADR no.NNN (native sign-in serves only attested app installs). The same native route BASE; packages/auth_supabase NativeAttestationClient (the http.Client under that GoTrueClient) appends /attest/challenge and /attest/install to it before every op. packages/auth_supabase/test/native_attestation_client_test.dart drives both."
+        }
+      }
   ],
   "bindings": [
     {
@@ -904,6 +930,24 @@
         "services/platform/src/routes/native-auth.ts"
       ]
     },
+      {
+        "binding": "NATIVE_AUTH_UNATTESTED_LIMITER",
+        "kind": "ratelimits",
+        "scope": "shared",
+        "purpose": "⏱ 2026-09-29 · ADR no.NNN (native sign-in serves only attested app installs). The UNATTESTED channel's per-NETWORK ceiling on the four native ops (kind install-key: Windows, Linux, macOS outside the Mac App Store), keyed `edge:<colo>:<asn>`, checked IN ADDITION to NATIVE_AUTH_EDGE_LIMITER. `simple: { limit: 10, period: 60 }` — a sixth of the attested channels' 60, because that channel proves nothing about the binary. FAILS CLOSED (strictRateLimit). Its own namespace (1021; the sandbox's is 1023).",
+        "readers": [
+          "services/platform/src/routes/native-auth.ts"
+        ]
+      },
+      {
+        "binding": "NATIVE_AUTH_INSTALL_LIMITER",
+        "kind": "ratelimits",
+        "scope": "shared",
+        "purpose": "⏱ 2026-09-29 · ADR no.NNN (native sign-in serves only attested app installs). The per-NETWORK ceiling on key registration (POST /v1/auth/native/:app/attest/install), every kind, keyed `edge:<colo>:<asn>`. `simple: { limit: 5, period: 60 }`: an install registers once, so a burst is a script minting keys. FAILS CLOSED. Its own namespace (1022; the sandbox's is 1024).",
+        "readers": [
+          "services/platform/src/routes/native-auth.ts"
+        ]
+      },
     {
       "binding": "AUTH_CREDENTIAL_GLOBAL_LIMITER",
       "kind": "ratelimits",
