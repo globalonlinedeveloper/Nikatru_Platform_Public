@@ -19,6 +19,9 @@
 //   support_url                                    ← store/_shared/support-url.txt
 //   version.custom_license                         ← LICENSE (lib/licence.mjs)
 //   version.approval_notes                         ← store/firefox/reviewer-notes.txt
+//   version.compatibility                          ← the Firefox overlay (tool.json
+//                                                    targets.firefox.overlay): "android"
+//                                                    only when it declares gecko_android
 // web-ext merges `version.upload` in itself (lib/util/submit-addon.js,
 // `doNewAddonSubmit`, in the tooling/web-ext island), so this payload never
 // names an upload.
@@ -148,6 +151,23 @@ export function buildAmoMetadata({ toolId, root = EXTENSIONS_ROOT }) {
     else licenceName = heading;
   }
 
+  /* ⏱ 2026-09-29 (rv2 EXB-11): the apps the listing is offered on, named rather
+     than left to AMO's default, and derived from the package: Firefox for Android
+     only when the overlay declares gecko_android, which
+     publish/verify-firefox-package.node.js allows only for a tool with an Android
+     e2e leg. AMO's version create takes "an array of applications, where min/max
+     versions from the manifest, or defaults, will be used" (PRIMARY_SOURCES.addonsApi). */
+  let compatibility = null;
+  const overlayRel = tool?.targets?.firefox?.overlay;
+  const overlayText = typeof overlayRel === 'string' ? readIf(path.join(dir, overlayRel)) : null;
+  try {
+    const bss = overlayText === null ? null : JSON.parse(overlayText).browser_specific_settings;
+    if (bss === null || typeof bss !== 'object') why.push(`${rel(String(overlayRel))} carries no browser_specific_settings, so the listing's apps cannot be derived.`);
+    else compatibility = 'gecko_android' in bss ? ['firefox', 'android'] : ['firefox'];
+  } catch (e) {
+    why.push(`${rel(String(overlayRel))} does not parse — ${e.message}`);
+  }
+
   let identity = null;
   const idText = readIf(path.join(dir, 'publish', 'identity.json'));
   try {
@@ -181,6 +201,7 @@ export function buildAmoMetadata({ toolId, root = EXTENSIONS_ROOT }) {
     version: {
       custom_license: { name: tr(licenceName), text: tr(licenceText) },
       approval_notes: approvalNotes,
+      compatibility,
     },
   };
   return { ok: true, payload };

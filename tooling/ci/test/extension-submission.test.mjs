@@ -664,7 +664,7 @@ const FS_DIR = join(REPO, 'extensions', 'Extension', 'Full_Screen_Shot');
 function metaRoot(mutate = () => {}) {
   const root = join(TMP, `amometa${seq++}`);
   const tool = join(root, 'Extension', 'Full_Screen_Shot');
-  for (const rel of ['tool.json', 'LICENSE', 'publish/identity.json', 'store/firefox', 'store/_shared/support-url.txt']) {
+  for (const rel of ['tool.json', 'LICENSE', 'publish/identity.json', 'publish/manifest.firefox.json', 'store/firefox', 'store/_shared/support-url.txt']) {
     cpSync(join(FS_DIR, rel), join(tool, rel), { recursive: true });
   }
   mutate(tool);
@@ -693,6 +693,26 @@ describe('EXT-3 — the AMO first submit carries the listing, and the store step
     assert.equal(p.version.custom_license.name['en-US'], 'PolyForm Shield License 1.0.0');
     assert.match(p.version.custom_license.text['en-US'], /^Required Notice: Copyright Rajasekar Selvam, trading as NIKATRU \(https:\/\/nikatru\.com\)$/m);
     assert.ok(p.version.approval_notes.trim().length > 0, 'reviewer notes are the approval_notes');
+  });
+
+  test('EXB-11 the listing is offered on desktop Firefox only: no Android leg runs this add-on', async () => {
+    const { buildAmoMetadata } = await import(pathToFileURL(AMO_META).href);
+    const r = buildAmoMetadata({ toolId: 'fullshot' });
+    assert.equal(r.ok, true, JSON.stringify(r.why));
+    assert.deepEqual(r.payload.version.compatibility, ['firefox']);
+  });
+
+  test('EXB-11 RED: an overlay that declares gecko_android offers the listing on Android too', async () => {
+    const { buildAmoMetadata } = await import(pathToFileURL(AMO_META).href);
+    const root = metaRoot((tool) => {
+      const p = join(tool, 'publish', 'manifest.firefox.json');
+      const m = JSON.parse(readFileSync(p, 'utf8'));
+      m.browser_specific_settings.gecko_android = { strict_min_version: '142.0' };
+      writeFileSync(p, JSON.stringify(m));
+    });
+    const r = buildAmoMetadata({ toolId: 'fullshot', root });
+    assert.equal(r.ok, true, JSON.stringify(r.why));
+    assert.deepEqual(r.payload.version.compatibility, ['firefox', 'android']);
   });
 
   test('E3-3 RED: a LICENSE whose Required Notice is a placeholder refuses the payload', async () => {
