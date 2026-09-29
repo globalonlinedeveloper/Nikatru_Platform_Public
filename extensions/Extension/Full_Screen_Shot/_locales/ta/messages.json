@@ -459,13 +459,16 @@
     "message": "முழுப் பக்கம்: $KEYFULL$ · தெரியும் பகுதி: $KEYVISIBLE$. $URL$ இல் தனிப்பயனாக்குங்கள்",
     "placeholders": {
       "keyfull": {
-        "content": "Alt+Shift+P"
+        "content": "$1",
+        "example": "Alt+Shift+P"
       },
       "keyvisible": {
-        "content": "Alt+Shift+V"
+        "content": "$2",
+        "example": "Alt+Shift+V"
       },
       "url": {
-        "content": "chrome://extensions/shortcuts"
+        "content": "$3",
+        "example": "chrome://extensions/shortcuts"
       }
     }
   },

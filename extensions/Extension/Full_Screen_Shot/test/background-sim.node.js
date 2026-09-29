@@ -898,7 +898,11 @@ function gestureRequest(env) {
 function makeEl(id, tagName) {
   const el = {
     id: id || '', tagName: tagName || 'DIV', className: '', hidden: false,
-    textContent: '', value: '', checked: false, dataset: {}, listeners: {},
+    textContent: '', value: '', checked: false, dataset: {}, listeners: {}, attrs: {}, kbd: null,
+    getAttribute(n) { return n in el.attrs ? el.attrs[n] : null; },
+    setAttribute(n, v) { el.attrs[n] = String(v); },
+    removeAttribute(n) { delete el.attrs[n]; },
+    querySelector(sel) { return sel === 'kbd' ? el.kbd : null; },
     addEventListener(type, fn) { (el.listeners[type] = el.listeners[type] || []).push(fn); },
     async dispatch(type, ev) {
       const fns = (el.listeners[type] || []).slice();
@@ -914,6 +918,13 @@ function makeDoc() {
   const modes = POPUP_MODES.map(m => {
     const b = makeEl('', 'BUTTON');
     b.className = 'mode'; b.dataset.mode = m;
+    /* The button's shipped aria-keyshortcuts and <kbd>, read from popup.html,
+       so the shortcut limb (EXB-08) grades a change FROM the real markup. */
+    const block = (new RegExp('<button[^>]*data-mode="' + m + '"[^>]*>[\\s\\S]*?</button>').exec(POPUP_HTML) || [''])[0];
+    const aks = /aria-keyshortcuts="([^"]*)"/.exec(block);
+    if (aks) b.attrs['aria-keyshortcuts'] = aks[1];
+    const kbd = /<kbd[^>]*>([^<]*)<\/kbd>/.exec(block);
+    if (kbd) { b.kbd = makeEl('', 'KBD'); b.kbd.textContent = kbd[1]; }
     return b;
   });
   return {
@@ -938,11 +949,18 @@ function makeDoc() {
 
 /* The popup is an extension page: runtime.sendMessage reaches the worker's
    router, and permissions.request is its own to make (the worker's must not). */
+/* commands.getAll as a PAGE sees it: whatever the case set in env.pageCommands
+   (EXB-08), and [] otherwise — the worker's own stub stays as it was. */
+function pageCommands(env) {
+  return { async getAll() { return (env.pageCommands || []).map(c => Object.assign({}, c)); } };
+}
+
 function popupChrome(env) {
   return {
+    commands: pageCommands(env),
     runtime: {
       id: EXT_ID,
-      getURL: p => EXT_URL + p,
+      getURL: p => (env.extUrl || EXT_URL) + p,
       sendMessage: msg => env.send(msg, env.fromPage('popup/popup.html')),
       openOptionsPage: async () => { env.trace.push('popup:options'); }
     },
@@ -1100,9 +1118,10 @@ function makeOptionsDoc() {
 function pageChrome(env) {
   return {
     i18n: env.chrome.i18n,
+    commands: pageCommands(env),
     runtime: {
       id: EXT_ID,
-      getURL: p => EXT_URL + p,
+      getURL: p => (env.extUrl || EXT_URL) + p,
       getManifest: env.chrome.runtime.getManifest,
       sendMessage: msg => env.send(msg, env.fromPage('pages/options.html')),
       openOptionsPage: async () => { env.trace.push('page:options'); }
@@ -4383,6 +4402,68 @@ const quotaError = (message) => {
   check('the storage-full sentence is a key in the English message file',
     !!EN_MESSAGES.errStorageFull && EN_MESSAGES.errStorageFull.message === R_STORAGE_FULL,
     JSON.stringify(EN_MESSAGES.errStorageFull && EN_MESSAGES.errStorageFull.message));
+
+  /* ================= the shortcuts, as assigned (EXB-08) ================= */
+  /* ⏱ 2026-09-29. The popup's <kbd> chords and aria-keyshortcuts, and the
+     Options line, were static markup: a remapped or cleared shortcut was shown
+     and announced as the default, and Firefox users were sent to
+     chrome://extensions/shortcuts. Both pages now read commands.getAll() and
+     name the shortcuts page of the browser they run in. Graded remapped, cleared,
+     on a moz-extension origin and under an Edge user agent. */
+  console.log('\n=== the shortcuts, as assigned ===');
+  const REMAPPED = [
+    { name: 'capture-full-page', shortcut: 'Ctrl+Shift+1' },
+    { name: 'capture-visible', shortcut: '' },
+    { name: 'capture-region', shortcut: '⌥⇧R' },
+    { name: 'capture-element', shortcut: '' }
+  ];
+  {
+    const env = newEnv();
+    const pop = await bootPopup(env);
+    const full = pop.doc._modes.filter(b => b.dataset.mode === 'full')[0];
+    check('with no answer from commands.getAll the popup keeps its shipped chord',
+      full && full.kbd && full.kbd.textContent === 'Alt+Shift+P' && full.attrs['aria-keyshortcuts'] === 'Alt+Shift+P',
+      JSON.stringify(full && [full.kbd && full.kbd.textContent, full.attrs]));
+  }
+  {
+    const env = newEnv();
+    env.pageCommands = REMAPPED;
+    const pop = await bootPopup(env);
+    const btn = m => pop.doc._modes.filter(b => b.dataset.mode === m)[0] || { attrs: {} };
+    const [full, visible, region] = [btn('full'), btn('visible'), btn('region')];
+    check('a remapped shortcut is what the popup shows and announces',
+      full.kbd && full.kbd.textContent === 'Ctrl+Shift+1' && !full.kbd.hidden && full.attrs['aria-keyshortcuts'] === 'Control+Shift+1',
+      JSON.stringify([full.kbd && full.kbd.textContent, full.attrs]));
+    check('a cleared shortcut is neither shown nor announced',
+      visible.kbd && visible.kbd.hidden === true && !('aria-keyshortcuts' in visible.attrs),
+      JSON.stringify([visible.kbd, visible.attrs]));
+    check('a macOS chord is announced in aria-keyshortcuts form',
+      region.attrs['aria-keyshortcuts'] === 'Alt+Shift+R', JSON.stringify(region.attrs));
+  }
+  {
+    const env = await awake(newEnv({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36' }));
+    env.pageCommands = REMAPPED;
+    const page = await bootOptions(env);
+    const line = page.text('shortcutsDesc');
+    check('Options names the remapped shortcut and a cleared one as unset',
+      line === 'Full page: Ctrl+Shift+1 · Visible: —. Customize at chrome://extensions/shortcuts', JSON.stringify(line));
+  }
+  {
+    const env = await awake(newEnv({ userAgent: 'Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0' }));
+    env.extUrl = 'moz-extension://0c8e3a5e-5b8b-4d1e-9b52-6a1f3c2d7e90/';
+    const page = await bootOptions(env);
+    const line = page.text('shortcutsDesc');
+    check('on a moz-extension origin Options points at about:addons, never a Chrome page',
+      /Customize at about:addons$/.test(line) && line.indexOf('chrome://') < 0, JSON.stringify(line));
+    check('...and with no answer from commands.getAll it names the manifest\'s suggested keys',
+      line.indexOf('Full page: Alt+Shift+P · Visible: Alt+Shift+V.') === 0, JSON.stringify(line));
+  }
+  {
+    const env = await awake(newEnv({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 Edg/128.0.0.0' }));
+    const page = await bootOptions(env);
+    check('under Edge, Options points at edge://extensions/shortcuts',
+      /Customize at edge:\/\/extensions\/shortcuts$/.test(page.text('shortcutsDesc')), JSON.stringify(page.text('shortcutsDesc')));
+  }
 
   /* ================= your data, on the options page ================= */
   /* The shipped pages/options.js, running for real over the shipped

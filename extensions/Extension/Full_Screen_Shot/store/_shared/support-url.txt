@@ -1,1 +1,12 @@
-https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/issues
+https://nikatru.com/support
+
+# The first line that is neither blank nor a `#` comment IS the URL, pasted into
+# the Chrome, Edge and AMO dashboards verbatim (amo-metadata.mjs sends it as
+# support_url). check-store-metadata.mjs requires an https URL here and refuses
+# a code-hosting host (github.com and its subdomains) at any served state.
+#
+# ⏱ 2026-09-29 (EXL-13): this file held the public code repository's GitHub
+# issues page. That is a user-facing GitHub URL, and it 404s the day the
+# repository goes private — after a first publish, changing it is a live
+# listing edit. The support page is served from sites/nikatru/support.html,
+# the same Cloudflare-fronted domain as privacy-policy-url.txt.

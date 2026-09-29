@@ -459,13 +459,16 @@
     "message": "전체 페이지: $KEYFULL$ · 보이는 영역: $KEYVISIBLE$. $URL$에서 바꿀 수 있습니다",
     "placeholders": {
       "keyfull": {
-        "content": "Alt+Shift+P"
+        "content": "$1",
+        "example": "Alt+Shift+P"
       },
       "keyvisible": {
-        "content": "Alt+Shift+V"
+        "content": "$2",
+        "example": "Alt+Shift+V"
       },
       "url": {
-        "content": "chrome://extensions/shortcuts"
+        "content": "$3",
+        "example": "chrome://extensions/shortcuts"
       }
     }
   },

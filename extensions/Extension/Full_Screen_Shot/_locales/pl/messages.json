@@ -459,13 +459,16 @@
     "message": "Cała strona: $KEYFULL$ · Widoczny obszar: $KEYVISIBLE$. Zmień na $URL$",
     "placeholders": {
       "keyfull": {
-        "content": "Alt+Shift+P"
+        "content": "$1",
+        "example": "Alt+Shift+P"
       },
       "keyvisible": {
-        "content": "Alt+Shift+V"
+        "content": "$2",
+        "example": "Alt+Shift+V"
       },
       "url": {
-        "content": "chrome://extensions/shortcuts"
+        "content": "$3",
+        "example": "chrome://extensions/shortcuts"
       }
     }
   },

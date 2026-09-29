@@ -569,16 +569,19 @@
   },
   "optionsShortcutsDesc": {
     "message": "Full page: $KEYFULL$ · Visible: $KEYVISIBLE$. Customize at $URL$",
-    "description": "Lists the default capture shortcuts and points at the browser page where they can be changed. The two key combinations and the address must be copied through exactly — do not translate key names or the address.",
+    "description": "Lists the capture shortcuts as they are currently assigned and points at the browser page where they can be changed. pages/options.js passes the live shortcuts (commands.getAll) and the page for the browser it runs in, so keep all three tokens exactly as they are — do not translate key names or the address.",
     "placeholders": {
       "keyfull": {
-        "content": "Alt+Shift+P"
+        "content": "$1",
+        "example": "Alt+Shift+P"
       },
       "keyvisible": {
-        "content": "Alt+Shift+V"
+        "content": "$2",
+        "example": "Alt+Shift+V"
       },
       "url": {
-        "content": "chrome://extensions/shortcuts"
+        "content": "$3",
+        "example": "chrome://extensions/shortcuts"
       }
     }
   },

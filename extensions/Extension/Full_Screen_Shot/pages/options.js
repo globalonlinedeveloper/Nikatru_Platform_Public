@@ -59,6 +59,7 @@
     $('jpegQuality').addEventListener('input', showQuality);
     showQuality();
     showPaperDesc();
+    await showShortcuts();
 
     // "Expand scrollable content": cross-site frames need the optional
     // <all_urls> grant. Ask when the feature is switched on; without it the
@@ -111,6 +112,46 @@
     const auto = fsMessage('optionsPaperAuto', null, 'Image size');
     $('pdfPaperDesc').textContent = fsMessage('optionsPdfPaperDesc', [auto],
       '"$IMAGESIZE$" makes one page exactly the size of the screenshot.');
+  }
+
+  /* ⏱ 2026-09-29 (EXB-08). This line used to be static markup: the default
+     chords and chrome://extensions/shortcuts, in every browser and all 55
+     locales. Firefox users were sent to a Chrome page, and a shortcut the user
+     had remapped was announced as the default. It now spends what
+     commands.getAll() says is assigned (the manifest's suggested keys only
+     where the browser gives no answer) and the shortcuts page of the browser
+     this page runs in. popup/popup.js carries a copy of commandShortcuts() for
+     the reason its header gives: the popup does not load common.js.
+     test/background-sim.node.js grades both, remapped and on a moz-extension
+     origin. */
+  const SHORTCUT_UNSET = '—';
+  async function commandShortcuts() {
+    const out = {};
+    try {
+      const cmds = (chrome.runtime.getManifest() || {}).commands || {};
+      for (const name of Object.keys(cmds)) {
+        out[name] = (cmds[name].suggested_key && cmds[name].suggested_key.default) || '';
+      }
+    } catch (_) {}
+    try {
+      if (chrome.commands && chrome.commands.getAll) {
+        for (const c of (await chrome.commands.getAll()) || []) if (c && c.name) out[c.name] = c.shortcut || '';
+      }
+    } catch (_) {}
+    return out;
+  }
+  function shortcutsPage() {
+    let base = '';
+    try { base = chrome.runtime.getURL(''); } catch (_) {}
+    if (/^moz-extension:/i.test(base)) return 'about:addons';
+    const ua = typeof navigator !== 'undefined' && navigator.userAgent ? navigator.userAgent : '';
+    return /\bEdg\//.test(ua) ? 'edge://extensions/shortcuts' : 'chrome://extensions/shortcuts';
+  }
+  async function showShortcuts() {
+    const keys = await commandShortcuts();
+    $('shortcutsDesc').textContent = fsMessage('optionsShortcutsDesc',
+      [keys['capture-full-page'] || SHORTCUT_UNSET, keys['capture-visible'] || SHORTCUT_UNSET, shortcutsPage()],
+      'Full page: $KEYFULL$ · Visible: $KEYVISIBLE$. Customize at $URL$');
   }
 
   async function refreshExpandPermRow() {

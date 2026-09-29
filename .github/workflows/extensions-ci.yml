@@ -562,8 +562,11 @@ jobs:
       matrix:
         tool: ${{ fromJSON(needs.discover.outputs.tools) }}
     steps:
+      # why: check-version.mjs names the commit that stamped the version (git blame on the
+      # CHANGELOG's top heading) and fails a shipped-file commit after it (EXL-15); a
+      # shallow checkout holds neither, and the script refuses one with exit 2.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with: { persist-credentials: false }
+        with: { fetch-depth: 0, persist-credentials: false }
       - uses: ./.github/actions/setup-node
       - name: Syntax check every shipped script
         run: node scripts/lint.mjs ${{ matrix.tool }}

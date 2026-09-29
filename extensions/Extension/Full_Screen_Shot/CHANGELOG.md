@@ -22,6 +22,33 @@ dated entries begin at session 12 (16 July 2026); the source carries `v1.9.1`–
 one reference to `v1.6.1`, but nothing in this repo dates them or says what shipped in each. An
 invented stanza is worse than a missing one, so they are left out and named here instead.
 
+## [1.10.3] — 2026-09-29
+
+A build milestone, like every entry here: the manifest is stamped because the shipped files moved
+after 1.10.2 was stamped, and `node scripts/check-version.mjs fullshot` now fails a tree whose
+packaged files changed after the commit that last touched the top heading (EXL-15). The sources are
+the monorepo commits that touched a packaged file since then — `git log` over the files
+`packagedFiles()` selects, which is the list that check prints.
+
+### Changed
+
+- **The Chromium build's content security policy is strict.** `default-src 'none'` and
+  `style-src 'self'` joined `connect-src 'none'`; the inline styles of the Options, result and
+  scroll-clip pages moved into their own stylesheets so the policy could hold (#952).
+- **LICENSE ships in every package, and its Required Notice names the licensor** (#917, #936).
+- **Messages that shipped as their English fallback in the other locale catalogues are translated**
+  — the storage, delete and redaction-status lines among them (EXT-4, #943).
+
+### Fixed
+
+- **Redaction paints only the visible part of a match**, and a match wholly clipped by an ancestor
+  is counted as not covered rather than masked over nothing (#826).
+- **The popup and Options show the capture shortcuts as they are assigned.** Both read
+  `commands.getAll()`, so a remapped or cleared shortcut is no longer shown — or announced through
+  `aria-keyshortcuts` — as the default, and Options names the shortcuts page of the browser it runs
+  in: `about:addons` in Firefox, where it used to say `chrome://extensions/shortcuts` in all 55
+  locales (EXB-08).
+
 ## [1.10.2] — 2026-08-15
 
 Clears the last thing the 1.10.1 entry below named as standing between this tree and a submission:
