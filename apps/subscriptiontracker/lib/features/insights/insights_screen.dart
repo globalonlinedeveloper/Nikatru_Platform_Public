@@ -29,27 +29,20 @@ import 'forecast_card.dart';
 import 'signals.dart';
 import 'summary_tiles.dart';
 
-/// 📌 THE PRIVATE `_neutrals(BuildContext)` THAT STOOD HERE IS HOISTED
-/// (2026-08-25) into `features/shared/neutrals.dart` as `neutrals(context)`,
-/// together with the whole doc that recorded why light is the literal token and
-/// why dark derives from the seed. The triplication was deliberate for exactly
-/// one increment and its own doc said so; this is the closing cleanup it named,
-/// landed with the deletion of `DueInfo.of`. Read the argument there.
-
-/// The gap this page has always spent between its two cards.
-///
-/// Named rather than left as a bare `14` because the two-column layout below
-/// spends it on the HORIZONTAL axis too: one number, so the grid has one
-/// rhythm, and no new number enters the file to do it.
-const double _cardGap = 14;
+/// The gap between cards, on both axes of the large grid — the canvas's 16,
+/// which is the ST-D0 token rather than the old literal 14 (D3-7).
+const double _cardGap = AppSpacing.lg;
 
 /// Whether a stack of [cardCount] cards should be laid out two-up in [width].
 ///
 /// 🔴 THE SECOND CONDITION IS NOT DEFENSIVE PADDING. Width alone is not enough:
-/// one card in a two-column grid is a card beside a hole. On THIS screen that
-/// is the ordinary case rather than an edge one — the savings card is gated on
-/// `unused.isNotEmpty`, and nothing in this app ever sets `unused`, so every
-/// real user has exactly one card here and stays in one column at any width.
+/// one card in a two-column grid is a card beside a hole.
+///
+/// ⏱ ST-D3 D3-7 (canvas `DesktopInsights`): the page now always holds FOUR
+/// cards — budget, worth-a-look, by-category, the Pro forecast — so from 1200
+/// of body the grid is budget + category on the left and the signals + the
+/// forecast on the right, which is exactly the alternating deal below. (The
+/// savings card that used to decide the column count is gone — D3-4.)
 ///
 /// ⚠️ 1200 IS A BODY WIDTH, NOT A WINDOW WIDTH, AND THE TWO ARE 361px APART.
 /// `AppScaffold` hands the body `min(W - 361, 1280)` — the 360px drawer and its
@@ -85,16 +78,8 @@ bool _twoUp(double width, int cardCount) =>
 /// wherever their own content does — they are not forced to equal heights,
 /// which would stretch whichever column has less in it.
 ///
-/// ⚠️ Duplicated verbatim in `budget_screen.dart`, for the reason the hoisted
-/// `neutrals` helper recorded when it stood above this one: each P4 file-group
-/// increment has to stay independently compilable, and the hoist into
-/// `features/shared/` belongs to the campaign's closing cleanup.
-///
-/// (CORRECTION 2026-08-25: `_neutrals` took that hoist —
-/// `features/shared/neutrals.dart`. THIS helper did NOT, and is still
-/// duplicated. It is a layout function with no theme input, and it was outside
-/// the file set of the due/neutrals cleanup. The duplication is unresolved,
-/// not resolved.)
+/// (⏱ ST-D3 D3-3: its duplicate in `budget_screen.dart` left with that
+/// screen, so this is the one copy.)
 Widget _twoColumnCards(List<Widget> cards, double gap) {
   final List<Widget> left = <Widget>[];
   final List<Widget> right = <Widget>[];
@@ -338,7 +323,7 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
   // 🔴 TWO COLUMNS → the default `kMaxBodyWidth` (1280), AND THAT IS NOT A
   // REVERSAL OF THE LINE ABOVE. `reading` bounds a COLUMN of cards, and in the
   // two-up layout there are two of them: 1280 less the 18/18 page gutters less
-  // the 14px column gap leaves 615 per column — comfortably inside `reading`,
+  // the 16px column gap (AppSpacing.lg, D3-7) leaves 614 per column — inside `reading`,
   // so the number that justifies 720 is still being honoured, once per column.
   // Capping the two-up layout at 720 instead would give 353px columns, which is
   // narrower than the 375px phone this page is designed for.

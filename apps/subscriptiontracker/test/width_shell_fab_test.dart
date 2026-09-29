@@ -441,15 +441,30 @@ Future<Rect?> _straddle(WidgetTester tester, Finder cards, double foldY) async {
   }
   // Elements, not indexes: a jump rebuilds the list and would re-point
   // `cards.at(i)`.
-  for (final Element e in cards.evaluate().toList()) {
-    final Rect r = tester.getRect(_exactly(e));
-    if (r.height <= AppShell.foldFade + _straddleLead) continue;
-    final double target = s.position.pixels + r.top - top;
-    if (target < 0 || target > s.position.maxScrollExtent) continue;
-    s.position.jumpTo(target);
+  //
+  // ⏱ 2026-09-29 · ST-D3: Insights' first card (the budget) sits ABOVE the
+  // fade at offset 0, so it cannot be scrolled up to it (target < 0), and at
+  // phone 360 the next card was not yet built. Step on and try again rather
+  // than giving up after the cards the first frame happened to build.
+  for (int attempt = 0; attempt < 8; attempt++) {
+    for (final Element e in cards.evaluate().toList()) {
+      final Rect r = tester.getRect(_exactly(e));
+      if (r.height <= AppShell.foldFade + _straddleLead) continue;
+      final double target = s.position.pixels + r.top - top;
+      if (target < 0 || target > s.position.maxScrollExtent) continue;
+      s.position.jumpTo(target);
+      await tester.pumpAndSettle();
+      final Rect after = tester.getRect(_exactly(e));
+      return after.top <= top + 0.5 && after.bottom > foldY ? after : null;
+    }
+    if (s.position.pixels >= s.position.maxScrollExtent) break;
+    s.position.jumpTo(
+      (s.position.pixels + s.position.viewportDimension / 2).clamp(
+        0.0,
+        s.position.maxScrollExtent,
+      ),
+    );
     await tester.pumpAndSettle();
-    final Rect after = tester.getRect(_exactly(e));
-    return after.top <= top + 0.5 && after.bottom > foldY ? after : null;
   }
   return null;
 }

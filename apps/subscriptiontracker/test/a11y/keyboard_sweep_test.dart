@@ -482,7 +482,8 @@ kExpected = <String, ({int controls, int reachable})>{
   // its own icon in `/manage-plan · a keyboard reaches the cancel-plan row`.
   '/manage-plan': (controls: 3, reachable: 3),
   '/calendar': (controls: 7, reachable: 7),
-  '/insights': (controls: 3, reachable: 3),
+  // ⏱ ST-D3: 3 -> 6, measured by this suite on the rebuilt Insights.
+  '/insights': (controls: 6, reachable: 6),
 };
 
 /// Every [GoRoute] in the tree, including the ones nested under a shell.

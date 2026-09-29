@@ -179,7 +179,34 @@ void main() {
 
   // ───────────────────────────────────────────────────────────────────────────
   group('dark: the grouped-list screens derive from the scheme', () {
-    for (int i = 0; i < 2; i++) {
+    // ⏱ ST-D3: Insights paints its cards with the ST-D0 `AppCard` (a Material
+    // on `AppCard.fillOf`), not the app's `cardDecoration` Container, so the
+    // Container-fill checks below run on calendar; Insights has its own case.
+    testWidgets('[insights] every card is the foundation AppCard fill', (
+      WidgetTester tester,
+    ) async {
+      await _pumpScreen(tester, const InsightsScreen(), theme: darkTheme);
+      // The FIRST Material under each AppCard is the card itself; buttons
+      // inside it carry their own.
+      final List<Color?> fills = <Color?>[
+        for (final Element card in find.byType(AppCard).evaluate())
+          tester
+              .widget<Material>(
+                find
+                    .descendant(
+                      of: find.byWidget(card.widget),
+                      matching: find.byType(Material),
+                    )
+                    .first,
+              )
+              .color,
+      ];
+      expect(fills, isNotEmpty, reason: 'NOT VACUOUS: no AppCard rendered');
+      expect(fills, everyElement(AppCard.fillOf(darkTheme)));
+      expect(fills, isNot(contains(AppColors.surface)));
+    });
+
+    for (int i = 0; i < 1; i++) {
       final ({
         String name,
         Widget screen,
