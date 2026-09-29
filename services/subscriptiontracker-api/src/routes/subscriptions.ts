@@ -6,7 +6,7 @@
 
 import { Hono } from 'hono';
 import type { AppEnv, Payment, Subscription } from '../types';
-import { allRows, firstRow, nowIso, run, uuid } from '../lib/d1';
+import { allRows, firstRow, nowIso, run, todayYmd, uuid } from '../lib/d1';
 import {
   isBoundedString,
   isCalendarDate,
@@ -172,15 +172,32 @@ const MAX_SHARE_DENOMINATOR = 100;
  *  a new member here is a code change, where in SQL it would be a rebuild. */
 const STATUSES = ['active', 'trialing', 'paused', 'cancelled'] as const;
 /**
- * ⏳ THE STATUSES A ROW MAY BE GIVEN TODAY — not yet `paused` or `cancelled`.
- * Nothing that reads rows skips them yet: the platform fan-out
- * (services/platform/src/renewals.ts) would keep rolling a cancelled row's
- * `next_renewal` and writing payments for charges that never happen, and
- * /v1/renewals would keep listing it as due. ST-E3 ("Mark cancelled / Pause
- * keep the row") widens this in the same change that teaches those readers.
- * `deleted_at` waits for the same readers — see `validate`.
+ * ⏱ 2026-09-29 · ST-E3 (round-2 F04). ALL FOUR ARE WRITABLE NOW. This was a
+ * narrower `STATUSES_ACCEPTED = ['active', 'trialing']`, held back until every
+ * reader skipped a paused or cancelled row — and the app shipped Pause and Mark
+ * as cancelled (#1045) against it, so both answered 400 on the live Worker.
+ * The readers that must skip them, and do:
+ *   · the platform fan-out (services/platform/src/renewals.ts) charges only
+ *     these two statuses and `deleted_at IS NULL` (#1045);
+ *   · /v1/renewals (./renewals.ts) filters on the same two, from here.
+ * GET / still LISTS a paused or cancelled row — it stays, with its history —
+ * and hides only a deleted one.
  */
-const STATUSES_ACCEPTED = ['active', 'trialing'] as const;
+export const CHARGING_STATUSES = ['active', 'trialing'] as const;
+
+/**
+ * How long a soft-deleted row stays restorable before `purgeExpired` removes it
+ * with its history. The app's Undo is a snackbar, so the window only has to
+ * outlast a mis-tap noticed later; 30 days is the recovery window the data
+ * inventory declares for it (tooling/legal/data-inventory.json).
+ *
+ * @ceiling none — a retention PERIOD in days, not a platform resource.
+ */
+export const SOFT_DELETE_PURGE_DAYS = 30;
+/** @ceiling none — column width; an ISO-8601 instant is 24 characters. */
+const MAX_INSTANT = 40;
+/** An ISO-8601 instant with an explicit zone: what `toISOString()` writes. */
+const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/;
 const RAILS = [
   'upi_autopay',
   'card_emandate',
@@ -384,11 +401,6 @@ function validate(body: unknown): ValidatedSubscription {
     if (!isOneOf(status, STATUSES)) {
       return invalid(`status must be one of ${STATUSES.join(', ')}`);
     }
-    if (!isOneOf(status, STATUSES_ACCEPTED)) {
-      return invalid(
-        `status '${status}' is not accepted yet: the renewals readers would keep charging the row (ST-E3); use ${STATUSES_ACCEPTED.join(' or ')}`,
-      );
-    }
     fields.status = status;
   }
 
@@ -432,15 +444,22 @@ function validate(body: unknown): ValidatedSubscription {
 
   const deletedAt = body.deleted_at;
   if (deletedAt !== undefined) {
-    // ⏳ SERVED, NOT YET WRITABLE. A soft-deleted row would still be listed by
-    // GET /, still be due in /v1/renewals and still be charged by the platform
-    // fan-out, so setting it today would hide nothing and keep charging. ST-E3
-    // (soft delete with Undo) makes it writable with those readers. `null` is
-    // accepted: it is what every row already holds.
-    if (deletedAt !== null) {
-      return invalid('deleted_at cannot be set yet: nothing that lists or charges rows skips a deleted one (ST-E3)');
+    // ⏱ 2026-09-29 · ST-E3 (round-2 F03): SOFT DELETE, WRITABLE. A row with
+    // `deleted_at` set leaves GET /, /v1/renewals and the platform fan-out, and
+    // `null` brings it back (the app's Undo). It is kept, history and all, for
+    // SOFT_DELETE_PURGE_DAYS, then `purgeExpired` removes the two together.
+    // Stored as `toISOString()` so the purge's string comparison is exact.
+    if (deletedAt === null) {
+      fields.deleted_at = null;
+    } else if (
+      !isBoundedString(deletedAt, MAX_INSTANT) ||
+      !INSTANT.test(deletedAt) ||
+      Number.isNaN(Date.parse(deletedAt))
+    ) {
+      return invalid('deleted_at must be an ISO-8601 instant with a zone, e.g. 2026-09-29T10:00:00Z, or null');
+    } else {
+      fields.deleted_at = new Date(deletedAt).toISOString();
     }
-    fields.deleted_at = null;
   }
 
   const reminders = body.reminder_days;
@@ -460,6 +479,12 @@ function validate(body: unknown): ValidatedSubscription {
     } else {
       fields.reminder_days = JSON.stringify(reminders);
     }
+  }
+
+  // A cancel with no date is a cancel TODAY: the detail screen says "Cancelled
+  // on …", and a cancelled row with no date would have nothing to say.
+  if (fields.status === 'cancelled' && fields.cancelled_on === undefined) {
+    fields.cancelled_on = todayYmd();
   }
 
   // ── 0003: rules that span two keys ─────────────────────────────────────────
@@ -615,12 +640,42 @@ function checkExactAmount(body: Record<string, unknown>, fields: Fields): Invali
   return null;
 }
 
-// GET / — list, most expensive first.
+/**
+ * Remove THIS user's rows that were soft-deleted more than
+ * SOFT_DELETE_PURGE_DAYS ago, with the history that belongs to them, in ONE
+ * batch (one implicit transaction): a row never goes without its history or
+ * the history without its row.
+ *
+ * 🔴 THIS IS THE ONE PLACE A SUBSCRIPTION IS EVER HARD-DELETED outside account
+ * erasure. It runs on the user's own list read, so it needs no cron and touches
+ * no one else's rows; a user who never opens the app again keeps their removed
+ * rows until they do, or until erasure takes everything.
+ */
+async function purgeExpired(db: D1Database, userId: string): Promise<void> {
+  const cutoff = new Date(Date.now() - SOFT_DELETE_PURGE_DAYS * 86_400_000).toISOString();
+  const expired =
+    'SELECT id FROM subscriptions WHERE user_id = ? AND deleted_at IS NOT NULL AND deleted_at < ?';
+  await db.batch([
+    db
+      .prepare(`DELETE FROM payment_history WHERE user_id = ? AND subscription_id IN (${expired})`)
+      .bind(userId, userId, cutoff),
+    db
+      .prepare(`DELETE FROM price_change WHERE user_id = ? AND subscription_id IN (${expired})`)
+      .bind(userId, userId, cutoff),
+    db
+      .prepare('DELETE FROM subscriptions WHERE user_id = ? AND deleted_at IS NOT NULL AND deleted_at < ?')
+      .bind(userId, cutoff),
+  ]);
+}
+
+// GET / — list, most expensive first. A soft-deleted row is not listed; a
+// paused or cancelled one is (it stays, with its history — ST-E3).
 app.get('/', async (c) => {
   const userId = c.get('userId');
+  await purgeExpired(c.env.APP_DB, userId);
   const rows = await allRows<Subscription>(
     c.env.APP_DB.prepare(
-      'SELECT * FROM subscriptions WHERE user_id = ? ORDER BY price DESC',
+      'SELECT * FROM subscriptions WHERE user_id = ? AND deleted_at IS NULL ORDER BY price DESC',
     ).bind(userId),
   );
   return c.json(rows.map(serializeSubscription));
@@ -642,6 +697,9 @@ app.post('/', async (c) => {
     return c.json({ error: 'invalid_body', detail: checked.detail }, 400);
   }
   const f = checked.fields;
+  if (f.deleted_at !== undefined && f.deleted_at !== null) {
+    return c.json({ error: 'invalid_body', detail: 'deleted_at cannot be set on create' }, 400);
+  }
 
   const id = uuid();
   const ts = nowIso();
@@ -803,14 +861,23 @@ app.patch('/:id', async (c) => {
   return c.json(row ? serializeSubscription(row) : { error: 'not_found' });
 });
 
-// DELETE /:id — cancel/remove.
+// DELETE /:id — remove, SOFTLY (ST-E3, round-2 B33).
+//
+// ⏱ 2026-09-29. This was `DELETE FROM subscriptions`: the row went, and its
+// payment_history stayed behind with a subscription_id nothing matched (0001
+// has no foreign key, so nothing cascaded) — history no screen could reach and
+// only erasure would ever remove. Now it sets `deleted_at` exactly as
+// PATCH {deleted_at} does, so an older client's DELETE is restorable too, and
+// `purgeExpired` removes the row WITH its history once the window has passed.
+// Idempotent: a second DELETE keeps the first instant.
 app.delete('/:id', async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
+  const ts = nowIso();
   await run(
     c.env.APP_DB.prepare(
-      'DELETE FROM subscriptions WHERE id = ? AND user_id = ?',
-    ).bind(id, userId),
+      'UPDATE subscriptions SET deleted_at = COALESCE(deleted_at, ?), updated_at = ? WHERE id = ? AND user_id = ?',
+    ).bind(ts, ts, id, userId),
   );
   return c.json({ ok: true });
 });

@@ -5,7 +5,7 @@
 import { Hono } from 'hono';
 import type { AppEnv, Subscription } from '../types';
 import { allRows, todayYmd } from '../lib/d1';
-import { serializeSubscription } from './subscriptions';
+import { CHARGING_STATUSES, serializeSubscription } from './subscriptions';
 
 const app = new Hono<AppEnv>();
 
@@ -74,6 +74,9 @@ app.get('/', async (c) => {
     .toISOString()
     .slice(0, 10);
 
+  // ⏱ 2026-09-29 · ST-E3 (round-2 F04): only a row that will actually be
+  // CHARGED is due. A paused, cancelled or soft-deleted row is not, so it gets
+  // no reminder — the same two filters the platform fan-out charges by.
   const rows = await allRows<Subscription>(
     c.env.APP_DB.prepare(
       `SELECT * FROM subscriptions
@@ -81,8 +84,10 @@ app.get('/', async (c) => {
            AND next_renewal IS NOT NULL
            AND next_renewal >= ?
            AND next_renewal <= ?
+           AND deleted_at IS NULL
+           AND status IN (${CHARGING_STATUSES.map(() => '?').join(', ')})
          ORDER BY next_renewal ASC`,
-    ).bind(userId, today, until),
+    ).bind(userId, today, until, ...CHARGING_STATUSES),
   );
 
   // The row is serialized by the SAME function /v1/subscriptions uses. This
