@@ -990,7 +990,8 @@ const BRAND_FONT_DEBT = {
   'apps/subscriptiontracker/lib/features/detail/subscription_detail_screen.dart': 6,
   'apps/subscriptiontracker/lib/features/home/home_screen.dart': 4,
   'apps/subscriptiontracker/lib/features/insights/insights_screen.dart': 1,
-  'apps/subscriptiontracker/lib/features/onboarding/onboarding_screen.dart': 4,
+  // onboarding_screen.dart: 4 → OUT, 2026-09-28 (train ST-D8) — the screen
+  // adopted the chassis OnboardingView; its one remaining face reads BrandTokens.
   'apps/subscriptiontracker/lib/features/scan/scan_screen.dart': 1,
   'apps/subscriptiontracker/lib/features/settings/settings_screen.dart': 1,
   'apps/subscriptiontracker/lib/features/shared/widgets.dart': 4,

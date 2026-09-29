@@ -195,6 +195,12 @@ class SettingsController extends Notifier<SettingsState> {
   /// not the user asking for notifications and must not spend the prompt.
   static const Set<String> _reminderBearing = <String>{'alerts', 'weekly'};
 
+  /// Whether switching [key] ON is the user asking for notifications — the
+  /// question the settings screen asks before it PRIMES (train ST-D8), so the
+  /// screen and this controller cannot disagree about which rows spend the
+  /// prompt.
+  static bool isReminderBearing(String key) => _reminderBearing.contains(key);
+
   Future<void> toggle(String key) async {
     _touched = true;
     final Map<String, bool> next = Map<String, bool>.of(state.prefs);

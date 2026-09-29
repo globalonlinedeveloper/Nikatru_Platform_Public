@@ -51,7 +51,6 @@ import '../../core/app_config.dart';
 // live integration suite and `test/delete_account_test.dart` both resolve
 // against. The VALUES are unchanged from the literals that were here.
 import '../../core/e2e_keys.dart';
-import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 // `auth_repository.dart` is the F0-4 re-export shim: `AuthRepository`,
 // `AuthUser`, `AuthSession` and `AuthFailure` all come from `packages/core`
@@ -63,6 +62,7 @@ import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
 import '../auth/turnstile_gate.dart';
 import '../shared/chassis_adapters.dart';
+import '../shared/priming.dart';
 import '../shared/widgets.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -596,7 +596,7 @@ class SettingsScreen extends ConsumerWidget {
                               toggles[i][1],
                               toggles[i][2],
                               settings.prefs[toggles[i][0]] ?? false,
-                              () => controller.toggle(toggles[i][0]),
+                              () => primeThenToggle(context, ref, toggles[i]),
                             ),
                     ),
                 ],

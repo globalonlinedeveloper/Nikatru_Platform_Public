@@ -466,6 +466,20 @@
   "@onboardingStart": {
     "description": "Finishes onboarding on the last page."
   },
+  "onboardingPageIndicator": "Page {current} of {total}",
+  "@onboardingPageIndicator": {
+    "description": "Spoken position of the onboarding carousel (train ST-D8). The dots carry the position in pixel width alone and announce nothing, so this is that position as a sentence, on ONE node for the whole row.",
+    "placeholders": {
+      "current": {
+        "type": "int",
+        "example": "2"
+      },
+      "total": {
+        "type": "int",
+        "example": "3"
+      }
+    }
+  },
   "paywallTitle": "Upgrade",
   "@paywallTitle": {
     "description": "App-bar title of the paywall screen."

@@ -833,17 +833,20 @@ const REQUIRED_COVERAGE = [
     //   a11yFiles  2 → 6
     //   cases      7 → 15
     //
-    // ⏱ RE-MEASURED 2026-09-28 · train ST-D2: MonthGrid and DateBadge (the
-    // calendar's grid and row date, hoisted from apps/subscriptiontracker)
-    // arrived swept by a11y_month_grid_test.dart. Read off this guard's own
-    // output on the branch: "9 of 27 reachable surface(s) carry an a11y sweep,
-    // from 7 a11y test file(s) across 16 case(s)".
-    //   surfaces  25 → 27
-    //   a11yFiles  6 → 7
-    //   cases     15 → 16
-    surfaces: 27,
-    a11yFiles: 7,
-    cases: 16,
+    // ⏱ RE-MEASURED 2026-09-29 · train ST-D DW2 (ST-D2 + ST-D8): MonthGrid and
+    // DateBadge (the calendar's grid and row date, hoisted from
+    // apps/subscriptiontracker) arrived swept by a11y_month_grid_test.dart, and
+    // `PermissionPrimingView` by a11y_permission_priming_test.dart (both
+    // schemes at a phone, a tablet and a desktop width; three cases as
+    // written). Read off this guard's own output on the branch: "10 of 28
+    // reachable surface(s) carry an a11y sweep, from 8 a11y test file(s)
+    // across 19 case(s)".
+    //   surfaces  25 → 28
+    //   a11yFiles  6 → 8
+    //   cases     15 → 19
+    surfaces: 28,
+    a11yFiles: 8,
+    cases: 19,
     label:
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, auth_field, ' +
       'destructive_confirm_dialog, two_pane and fourteen more, mounted by every stamped app',
@@ -1051,6 +1054,9 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
       // (a11y_month_grid_test.dart).
       'packages/design_system/lib/src/widgets/month_grid.dart#MonthGrid',
       'packages/design_system/lib/src/widgets/month_grid.dart#DateBadge',
+      // ⏱ 2026-09-28 · train ST-D8, in the same change as its sweep
+      // (a11y_permission_priming_test.dart).
+      'packages/design_system/lib/src/widgets/permission_priming.dart#PermissionPrimingView',
     ]),
   ],
 ]);

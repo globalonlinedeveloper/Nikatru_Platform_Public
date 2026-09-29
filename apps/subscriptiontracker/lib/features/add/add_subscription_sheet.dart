@@ -10,6 +10,7 @@ import '../../data/models/subscription.dart';
 import '../../data/seed/demo_data.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/subscriptions_controller.dart';
+import '../shared/priming.dart';
 import '../shared/widgets.dart';
 
 /// The add sheet's own palette, resolved once per build.
@@ -258,6 +259,18 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
     });
   }
 
+  /// The PRIMING before the first-subscription ask (train ST-D8). The
+  /// controller calls this only on the empty→first transition, while this
+  /// sheet is still up — so the explanation opens over the sheet the user just
+  /// tapped Save on, and the OS prompt follows only a yes.
+  Future<bool> _primeReminders() async {
+    if (!mounted) return false;
+    return primeReminders(
+      context,
+      reason: AppLocalizations.of(context).prefRenewalAlertsDesc,
+    );
+  }
+
   Future<void> _save() async {
     setState(() => _saving = true);
     final Subscription draft = Subscription(
@@ -280,7 +293,7 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
     try {
       await ref
           .read(subscriptionsControllerProvider.notifier)
-          .addSubscription(draft);
+          .addSubscription(draft, primeReminders: _primeReminders);
       if (mounted) Navigator.of(context).pop();
     } catch (_) {
       // 🔴 THIS FAILURE PATH DID NOT EXIST. `addSubscription` goes through the

@@ -435,8 +435,11 @@ describe('the guard says YES on the tree as it is', () => {
     // 80 → 82 reachable, 50 → 52 swept, 11 → 12 files, 186 → 187 cases.
     // ⏱ 2026-09-29 · train ST-D4: +1 chassis surface (SettingsSection), swept
     // by one new case: 82 → 83 reachable, 52 → 53 swept, 187 → 188 cases.
+    // ⏱ 2026-09-29 · train ST-D8: +1 design_system surface
+    // (PermissionPrimingView), swept by one new file and three cases:
+    // 83 → 84 reachable, 53 → 54 swept, 12 → 13 files, 188 → 191 cases.
     // Unswept stays 18. Read off the guard's own closing line.
-    assert.match(out, /83 reachable surface\(s\); 53 swept by 12 a11y test file\(s\) across 188 case\(s\)/ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces swept, +2 cases */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate) swept, +1 case */);
+    assert.match(out, /84 reachable surface\(s\); 54 swept by 13 a11y test file\(s\) across 191 case\(s\)/ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces swept, +2 cases */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate) swept, +1 case */);
     assert.match(out, /12 swept where they delegate to/);
     assert.match(out, /18 unswept and PRINTED/);
     // The per-family tally for subscriptiontracker, pinned. It read `tap-target ×0` from the
@@ -473,9 +476,11 @@ describe('the guard says YES on the tree as it is', () => {
     // which is the whole reason the guard carries that list. ONE today
     // (`ReacceptTermsScreen`); this number rises as the parity debt is paid, and
     // it rising is the thing to notice rather than to gloss.
+    // ⏱ 2026-09-28 · ST-D8: 1 → 2 — `OnboardingScreen` now ADOPTS the chassis
+    // `OnboardingView` and is judged there. Paid parity debt, noticed.
     assert.match(
       out,
-      /⬜ 1 reachable surface\(s\) in apps\/subscriptiontracker DELEGATE into `packages\/chassis_screens` and are judged there/,
+      /⬜ 2 reachable surface\(s\) in apps\/subscriptiontracker DELEGATE into `packages\/chassis_screens` and are judged there/,
     );
     assert.deepEqual(sweptList(out).sort(), ALL_19_SWEPT);
     assert.equal(printedUnswept(out).length, 0);
@@ -590,7 +595,8 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     // ⏱ 2026-09-15 · [ADR 083]: 1 → 2 (AppScaffold joined DataStateView).
     // ⏱ 2026-09-28 · train ST-D0: 2 of 20 → 7 of 25 — AppFab, AppCard, AppListRow, DecisionStrip, SkeletonList arrived swept.
     // ⏱ 2026-09-28 · train ST-D2: 7 of 25 → 9 of 27 — MonthGrid and DateBadge arrived swept.
-    assert.match(out, /packages\/design_system: 9 of 27 reachable surface\(s\) carry an a11y sweep/);
+    // ⏱ 2026-09-29 · train ST-D8: 9 of 27 → 10 of 28 — PermissionPrimingView arrived swept.
+    assert.match(out, /packages\/design_system: 10 of 28 reachable surface\(s\) carry an a11y sweep/);
     // And the gap in each is PRINTED, by name, not merely counted.
     // ⏱ 2026-09-23 (chassis home): the brick's HomeScreen now delegates into
     // the swept WelcomeView, so it is judged THERE and the brick prints no gap.
@@ -675,7 +681,8 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     // components raised the floor; two_pane.dart still carries two surfaces.
     // ⏱ 2026-09-28 · train ST-D2: 23 of 25 → 25 of 27 — MonthGrid and
     // DateBadge raised the floor with them.
-    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 25 reachable surface\(s\).*floor is 27/s);
+    // ⏱ 2026-09-29 · train ST-D8: 26 of 28 — PermissionPrimingView raised it again.
+    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 26 reachable surface\(s\).*floor is 28/s);
   });
 
   // ── M11g · THE CHASSIS FLOOR, PINNED BY NUMBER ────────────────────────────
@@ -796,7 +803,9 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     // components joined the root swept, so the unswept count is unchanged.
     // ⏱ 2026-09-28 · train ST-D2: 19 of 26 → 19 of 28 — MonthGrid and
     // DateBadge joined the root swept; the unswept count is unchanged.
-    assert.match(out, /19 of 28 reachable surface\(s\) in packages\/design_system/);
+    // ⏱ 2026-09-29 · train ST-D8: 19 of 28 → 19 of 29 — PermissionPrimingView
+    // joined swept, so the unswept count is unchanged again.
+    assert.match(out, /19 of 29 reachable surface\(s\) in packages\/design_system/);
   });
 });
 

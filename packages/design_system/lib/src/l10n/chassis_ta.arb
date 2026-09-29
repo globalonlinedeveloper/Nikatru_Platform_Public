@@ -114,6 +114,7 @@
   "onboardingSkip": "தவிர்",
   "onboardingNext": "அடுத்து",
   "onboardingStart": "தொடங்கு",
+  "onboardingPageIndicator": "பக்கம் {current} / {total}",
   "paywallTitle": "மேம்படுத்து",
   "updateRequiredTitle": "புதுப்பிப்பு தேவை",
   "updateRequiredMessage": "இந்தப் பதிப்பு இனி ஆதரிக்கப்படாது. தொடர்ந்து பயன்படுத்த புதுப்பிக்கவும்.",
