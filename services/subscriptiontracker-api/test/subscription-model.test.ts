@@ -115,8 +115,9 @@ describe('THE CONTRACT — a non-USD, weekly, trialing row round-trips', () => {
     const created = await create(INR_WEEKLY_TRIAL);
     const id = created.id as string;
     const one = await getOne(id);
-    const { payment_history: history, ...oneRow } = one;
+    const { payment_history: history, price_history: prices, ...oneRow } = one;
     expect(history).toEqual([]);
+    expect(prices).toEqual([]);
     expect(oneRow).toEqual(created);
     expect(await getAll()).toEqual([created]);
 

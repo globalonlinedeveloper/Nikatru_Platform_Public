@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { Hono } from 'hono';
-import type { AppEnv, Payment, Subscription } from '../types';
+import type { AppEnv, Payment, PriceChange, Subscription } from '../types';
 import { allRows, firstRow, nowIso, run, todayYmd, uuid } from '../lib/d1';
 import {
   isBoundedString,
@@ -800,10 +800,100 @@ app.get('/:id', async (c) => {
     ).bind(row.currency, id, userId),
   );
 
+  // Every price edit, newest first (0005, ST-I4). Named columns, for the same
+  // reason as the payments above: the wire shape is decided here.
+  const priceHistory = await allRows<PriceChange>(
+    c.env.APP_DB.prepare(
+      `SELECT id, subscription_id, old_price, new_price, old_price_minor,
+              new_price_minor, old_currency, new_currency, changed_at
+         FROM price_change
+         WHERE subscription_id = ? AND user_id = ?
+         ORDER BY changed_at DESC`,
+    ).bind(id, userId),
+  );
+
   return c.json({
     ...serializeSubscription(row),
     payment_history: payments,
+    price_history: priceHistory,
   });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /:id/payments — the user records a payment by hand (ST-R5, round-2 X06:
+// "mark as paid"). Until now the nightly fan-out was the table's only writer, so
+// a charge the user paid off-cycle, or on a rail the fan-out never rolls (a
+// weekly row, a paused one), had no way into the history.
+//
+// Body: { amount, paid_on: 'YYYY-MM-DD', currency? }. `currency` defaults to the
+// subscription's, for the reason GET /:id serves a NULL one in it. Stored with
+// `source` = 'manual' and `paid_at` at midnight UTC, the same shape the fan-out
+// writes (`${date}T00:00:00Z`), so one ORDER BY paid_at sorts both.
+// ─────────────────────────────────────────────────────────────────────────────
+const MANUAL_SOURCE = 'manual';
+
+app.post('/:id/payments', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid_json' }, 400);
+  }
+  if (!isPlainObject(body)) {
+    return c.json({ error: 'invalid_body', detail: 'body must be a JSON object' }, 400);
+  }
+  const { amount, paid_on: paidOn, currency } = body;
+  if (!isFiniteNumber(amount) || amount < 0 || amount > MAX_PRICE) {
+    return c.json(
+      { error: 'invalid_body', detail: `amount must be a finite number between 0 and ${MAX_PRICE}` },
+      400,
+    );
+  }
+  if (!isCalendarDate(paidOn)) {
+    return c.json({ error: 'invalid_body', detail: 'paid_on must be a real calendar date as YYYY-MM-DD' }, 400);
+  }
+  if (currency !== undefined && currency !== null && (typeof currency !== 'string' || !CURRENCY.test(currency))) {
+    return c.json({ error: 'invalid_body', detail: 'currency must be a three-letter ISO 4217 code, e.g. INR' }, 400);
+  }
+
+  // A payment against a row that is not yours, or that you removed, is a 404:
+  // a soft-deleted row takes no new history.
+  const sub = await firstRow<Pick<Subscription, 'id' | 'currency'>>(
+    c.env.APP_DB.prepare(
+      'SELECT id, currency FROM subscriptions WHERE id = ? AND user_id = ? AND deleted_at IS NULL',
+    ).bind(id, userId),
+  );
+  if (!sub) return c.json({ error: 'not_found' }, 404);
+
+  const payment: Payment = {
+    id: uuid(),
+    subscription_id: id,
+    user_id: userId,
+    amount,
+    paid_at: `${paidOn}T00:00:00Z`,
+    updated_at: nowIso(),
+    currency: typeof currency === 'string' ? currency.toUpperCase() : sub.currency,
+    source: MANUAL_SOURCE,
+  };
+  await run(
+    c.env.APP_DB.prepare(
+      `INSERT INTO payment_history
+         (id, subscription_id, user_id, amount, paid_at, updated_at, currency, source)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      payment.id,
+      payment.subscription_id,
+      payment.user_id,
+      payment.amount,
+      payment.paid_at,
+      payment.updated_at,
+      payment.currency,
+      payment.source,
+    ),
+  );
+  return c.json(payment, 201);
 });
 
 // PATCH /:id — update a whitelisted set of fields.
@@ -827,10 +917,11 @@ app.patch('/:id', async (c) => {
     return c.json({ error: 'invalid_body', detail: checked.detail }, 400);
   }
 
-  // Ownership check up front.
-  const existing = await firstRow<Subscription>(
+  // Ownership check up front. It also reads the amount, so a price edit can be
+  // logged against what it replaced (price_change, below).
+  const existing = await firstRow<Pick<Subscription, 'id' | 'price' | 'price_minor' | 'currency'>>(
     c.env.APP_DB.prepare(
-      'SELECT id FROM subscriptions WHERE id = ? AND user_id = ?',
+      'SELECT id, price, price_minor, currency FROM subscriptions WHERE id = ? AND user_id = ?',
     ).bind(id, userId),
   );
   if (!existing) return c.json({ error: 'not_found' }, 404);
@@ -846,14 +937,54 @@ app.patch('/:id', async (c) => {
   // this cannot widen to a column the validator has not checked.
   for (const [col, val] of Object.entries(checked.fields)) put(col, val);
 
-  put('updated_at', nowIso());
+  const ts = nowIso();
+  put('updated_at', ts);
 
   values.push(id, userId);
-  await run(
-    c.env.APP_DB.prepare(
-      `UPDATE subscriptions SET ${sets.join(', ')} WHERE id = ? AND user_id = ?`,
-    ).bind(...values),
-  );
+  const update = c.env.APP_DB.prepare(
+    `UPDATE subscriptions SET ${sets.join(', ')} WHERE id = ? AND user_id = ?`,
+  ).bind(...values);
+
+  // ── THE PRICE HISTORY ([ADR 077] §5.2, ST-I4, round-2 F14) ─────────────────
+  // One price_change row per edit that MOVED the amount, in the SAME batch as
+  // the edit, so the log can never hold a change the row does not, or miss one
+  // it does. What counts as a move: a different `price`, or a different
+  // `currency` where the row already had one. A legacy row (currency NULL)
+  // being stamped with its currency by the client is not a price change, and
+  // `price_minor` alone is only the exact form of an unchanged `price`.
+  const f = checked.fields;
+  const next = {
+    price: f.price !== undefined ? f.price : existing.price,
+    price_minor: f.price_minor !== undefined ? f.price_minor : existing.price_minor,
+    currency: f.currency !== undefined ? f.currency : existing.currency,
+  };
+  const moved =
+    next.price !== existing.price ||
+    (existing.currency !== null && next.currency !== existing.currency);
+  if (moved) {
+    await c.env.APP_DB.batch([
+      update,
+      c.env.APP_DB.prepare(
+        `INSERT INTO price_change
+           (id, subscription_id, user_id, old_price, new_price, old_price_minor,
+            new_price_minor, old_currency, new_currency, changed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(
+        uuid(),
+        id,
+        userId,
+        existing.price,
+        next.price,
+        existing.price_minor,
+        next.price_minor,
+        existing.currency,
+        next.currency,
+        ts,
+      ),
+    ]);
+  } else {
+    await run(update);
+  }
 
   const row = await firstRow<Subscription>(
     c.env.APP_DB.prepare('SELECT * FROM subscriptions WHERE id = ?').bind(id),
