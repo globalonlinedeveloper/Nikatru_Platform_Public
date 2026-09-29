@@ -33,7 +33,6 @@ const String _base = '$_origin/v1/auth/native/$_app';
 class _FakeAttestor implements core.NativeAttestor {
   _FakeAttestor({
     this.needsInstall = true,
-    this.registered = false,
     this.kindName = core.kNativeAttestKindInstallKey,
     this.keyId = 'KEY',
   });
@@ -42,7 +41,7 @@ class _FakeAttestor implements core.NativeAttestor {
   final bool needsInstall;
   final String kindName;
   final String? keyId;
-  bool registered;
+  bool registered = false;
   bool failProve = false;
   int registers = 0;
   int forgets = 0;

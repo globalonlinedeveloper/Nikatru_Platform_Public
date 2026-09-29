@@ -11,9 +11,8 @@
 //     proof-less success;
 //   · platformNativeAttestor: the kind for every target.
 import 'dart:convert';
-import 'dart:typed_data';
+import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
@@ -210,7 +209,7 @@ void main() {
       expect(calls.single.method, 'appAttestAssert');
       expect(
         args['clientDataHash'],
-        base64Url.decode('${_requestHash}='),
+        base64Url.decode('$_requestHash='),
         reason: 'the contract vector\'s clientDataHash',
       );
     });
@@ -343,6 +342,81 @@ void main() {
     });
     test('fuchsia: none', () {
       expect(on(TargetPlatform.fuchsia), isNull);
+    });
+  });
+
+  // The Kotlin and Swift cannot be compiled on the Windows host, and a channel
+  // nobody registered answers MissingPluginException — which on android is a
+  // sign-in that fails for everyone. So the native half of the channel contract
+  // is read here: the one pluginClass registers the handler, on this channel,
+  // and the handler answers every method name the Dart side calls.
+  group('the native sources answer what the Dart side calls', () {
+    const String kotlinDir =
+        'android/src/main/kotlin/com/nikatru/platform_storage';
+    const String swiftDir =
+        'ios/nikatru_platform_storage/Sources/nikatru_platform_storage';
+    String read(String path) => File(path).readAsStringSync();
+
+    test('android: AgeSignalsPlugin registers NativeAttestHandler on '
+        'nikatru/native_attest, which answers playIntegrityToken', () {
+      final String plugin = read('$kotlinDir/AgeSignalsPlugin.kt');
+      expect(
+        plugin,
+        contains(
+          'MethodChannel(binding.binaryMessenger, "nikatru/native_attest")',
+        ),
+      );
+      expect(
+        plugin,
+        contains(
+          'setMethodCallHandler(NativeAttestHandler(binding.applicationContext))',
+        ),
+      );
+      final String handler = read('$kotlinDir/NativeAttestHandler.kt');
+      expect(handler, contains('"playIntegrityToken"'));
+      expect(handler, contains('call.argument<String>("nonce")'));
+      expect(handler, contains('call.argument<Number>("cloudProjectNumber")'));
+    });
+
+    test('ios: AgeSignalsPlugin registers NativeAttestPlugin, which answers '
+        'the four App Attest methods on nikatru/native_attest', () {
+      expect(
+        read('$swiftDir/AgeSignalsPlugin.swift'),
+        contains('NativeAttestPlugin.register(with: registrar)'),
+      );
+      final String swift = read('$swiftDir/NativeAttestPlugin.swift');
+      expect(swift, contains('name: "nikatru/native_attest"'));
+      for (final String method in <String>[
+        'appAttestSupported',
+        'appAttestGenerateKey',
+        'appAttestAttestKey',
+        'appAttestAssert',
+      ]) {
+        expect(swift, contains('case "$method":'), reason: method);
+      }
+      expect(swift, contains('args["keyId"]'));
+      expect(swift, contains('args["clientDataHash"]'));
+    });
+
+    test('neither logs nor stores what it handles', () {
+      final RegExp forbidden = RegExp(
+        r'\bLog\.|\bprintln\(|\bprint\(|\bNSLog\(|\bos_log\(|\bLogger\(|'
+        r'SharedPreferences|UserDefaults|FileOutputStream|\bwrite\(to',
+      );
+      for (final String path in <String>[
+        '$kotlinDir/NativeAttestHandler.kt',
+        '$swiftDir/NativeAttestPlugin.swift',
+      ]) {
+        final String code = read(path)
+            .split('\n')
+            .where((String l) => !RegExp(r'^\s*(//|\*|/\*\*)').hasMatch(l))
+            .join('\n');
+        expect(
+          forbidden.hasMatch(code),
+          isFalse,
+          reason: '$path: ${forbidden.firstMatch(code)?.group(0)}',
+        );
+      }
     });
   });
 }
