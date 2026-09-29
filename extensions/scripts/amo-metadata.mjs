@@ -207,6 +207,71 @@ export function buildAmoMetadata({ toolId, root = EXTENSIONS_ROOT }) {
   return { ok: true, payload };
 }
 
+/* ⏱ 2026-09-29 (rv2 EXL-12, O-AMO-FIRST-SUBMIT-SENDS-NO-SCREENSHOTS-OR-POLICY):
+   the two things the payload above cannot carry, because AMO takes neither on
+   the add-on create. "Image files cannot be uploaded as JSON" — a preview is a
+   multipart POST to …/addon/<id>/previews/, one per image — and the privacy
+   policy is the TEXT of a translated field PATCHed to …/addon/<id>/eula_policy/
+   (PRIMARY_SOURCES.addonsApi, fetched 2026-09-29). publish-amo.mjs sends both
+   after the sign; this builds them from files the repository grades:
+     previews        ← store/_shared/screenshots/*.png (check-listing-assets.mjs)
+     privacy_policy  ← publish/PRIVACY-POLICY.html, the policy's SOURCE, as text,
+                       closed by the served URL (store/_shared/privacy-policy-url.txt,
+                       held equal to publish/identity.json by check-store-metadata.mjs)
+   Refused, never filled in: no screenshot, no policy source, or a URL that is not
+   https, is exit 1 — a public listing without them is the defect. */
+
+/** The policy page as plain text: headings, paragraphs and list items as lines,
+ *  tags gone, the few entities the page uses decoded. AMO renders this field as
+ *  text; markup sent into it is shown as markup. */
+export function policyText(html) {
+  const body = (/<body[^>]*>([\s\S]*?)<\/body>/i.exec(html) || [null, html])[1]
+    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '');
+  const text = body
+    .replace(/<li[^>]*>/gi, '\n• ')
+    .replace(/<\/(h[1-6]|p|li|ul|ol|div|table|tr)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<h[1-6][^>]*>/gi, '\n\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+  return text.split('\n').map((l) => l.replace(/[ \t]+/g, ' ').trim()).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/**
+ * The previews and the privacy-policy text the first submit's listing needs.
+ * @param {{ toolId: string, root?: string }} args  root = the extensions root
+ * @returns {{ ok: true, previews: string[], privacyPolicy: object, policyUrl: string } | { ok: false, why: string[] }}
+ */
+export function buildAmoListingAssets({ toolId, root = EXTENSIONS_ROOT }) {
+  const dir = toolDir(root, toolId);
+  if (dir === null) return { ok: false, why: [`no Extension/*/tool.json under ${root} declares id "${toolId}".`] };
+  const rel = (p) => path.relative(root, path.join(dir, p)).split(path.sep).join('/');
+  const tool = JSON.parse(fs.readFileSync(path.join(dir, 'tool.json'), 'utf8'));
+  const sharedDir = tool?.storeMetadata?.sharedDir;
+  if (typeof sharedDir !== 'string') return { ok: false, why: [`${rel('tool.json')} declares no storeMetadata.sharedDir.`] };
+  const why = [];
+  const shotsRel = `${sharedDir}/screenshots`;
+  const shotsAbs = path.join(dir, shotsRel);
+  const previews = fs.existsSync(shotsAbs)
+    ? fs.readdirSync(shotsAbs).filter((f) => /\.png$/i.test(f)).sort().map((f) => path.join(shotsAbs, f))
+    : [];
+  if (!previews.length) why.push(`${rel(shotsRel)} holds no .png — the listing would go public with no screenshots.`);
+  const policyUrl = valueLines(readIf(path.join(dir, sharedDir, 'privacy-policy-url.txt')) ?? '')[0] ?? null;
+  if (!policyUrl || !/^https:\/\//.test(policyUrl)) why.push(`${rel(`${sharedDir}/privacy-policy-url.txt`)} names no https URL (${JSON.stringify(policyUrl)}).`);
+  const html = readIf(path.join(dir, 'publish', 'PRIVACY-POLICY.html'));
+  const text = html === null ? '' : policyText(html);
+  if (html === null) why.push(`${rel('publish/PRIVACY-POLICY.html')} is absent — it is the policy's source.`);
+  else if (text.length < 200 || /[<⟨]\s*(TODO|FILL|REPLACE)/i.test(text)) why.push(`${rel('publish/PRIVACY-POLICY.html')} renders to ${text.length} characters of text, or carries a placeholder — not a policy AMO can publish.`);
+  if (why.length) return { ok: false, why };
+  return {
+    ok: true,
+    previews,
+    policyUrl,
+    privacyPolicy: { [AMO_LOCALE]: `${text}\n\nThis policy is also published at ${policyUrl}` },
+  };
+}
+
 // ── CLI ─────────────────────────────────────────────────────────────────────
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
   const argv = process.argv.slice(2);
