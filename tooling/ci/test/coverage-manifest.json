@@ -111,7 +111,7 @@
   "entitlement-contract.test.mjs": 104,
   "erasure-reach.test.mjs": 53,
   "extension-publish.test.mjs": 57,
-  "extension-submission.test.mjs": 56,
+  "extension-submission.test.mjs": 64,
   "extension-tool-identity.test.mjs": 79,
   "extensions-build-free.test.mjs": 14,
   "extensions-shared-constants.test.mjs": 13,
