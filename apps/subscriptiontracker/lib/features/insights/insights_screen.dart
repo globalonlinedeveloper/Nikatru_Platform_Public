@@ -16,18 +16,15 @@ import 'package:nikatru_design_system/nikatru_design_system.dart'
 
 import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
-import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/settings_controller.dart';
 import '../add/add_subscription_sheet.dart';
 import '../shared/async_gate.dart';
-import '../shared/neutrals.dart';
-import '../shared/painters.dart';
-import '../shared/widgets.dart';
 import '../shell/app_shell.dart';
 import 'budget_card.dart';
+import 'category_card.dart';
 import 'signals.dart';
 import 'summary_tiles.dart';
 
@@ -209,7 +206,12 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
           // D3-4: what the rows can prove, and one question — never the
           // `unused` / `usedPct` fields nothing writes.
           SignalsSection(subs: subs, money: money),
-          _categoryCard(context, l10n, money, currencyCode, cats),
+          CategoryCard(
+            categories: cats,
+            money: money,
+            currencyCode: currencyCode,
+            perYear: _period == InsightsPeriod.year,
+          ),
         ];
 
         final List<Widget> keyed = <Widget>[
@@ -353,192 +355,4 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
   //
   // Everything left on this screen is computed from the subscriptions actually
   // held. When real history exists, a trend can come back and be true.
-
-  Widget _categoryCard(
-    BuildContext context,
-    AppLocalizations l10n,
-    MoneyFormatter money,
-    String currencyCode,
-    List<CategoryTotal> cats,
-  ) {
-    final ({Color ink, Color muted, Color line}) neutral = neutrals(context);
-    // 🔴 ONE ROUNDING DECISION FOR THE WHOLE CARD, AND THAT IS THE FIX.
-    // The centre used to be `formatBagRounded(total)` and each legend row
-    // `formatBagRounded(c.value)`, computed independently — so the centre
-    // showed ROUNDED-SUM and the column showed SUM-OF-ROUNDED, which differ
-    // whenever the discarded fractions add past a unit. The Play listing
-    // captured on 2026-09-20 read $93 in the ring with a legend summing to $94,
-    // on the same six subscriptions: no arithmetic was wrong and the product
-    // still contradicted itself in front of a store reviewer.
-    //
-    // `formatBreakdownRounded` folds the total from these very categories and
-    // apportions the rows against it (largest remainder, per currency), so the
-    // column adds up to the centre by construction. It is the same argument
-    // `segments` below already rests on: a figure derived from `cats` cannot
-    // drift from the `cats` beside it, and a second source could.
-    final ({List<String> parts, String total}) figures = money
-        .formatBreakdownRounded(<MoneyBag>[
-          for (final CategoryTotal c in cats) c.value,
-        ]);
-    final List<MapEntry<double, Color>> segments = <MapEntry<double, Color>>[
-      for (int i = 0; i < cats.length; i++)
-        MapEntry<double, Color>(
-          SubMath.chartWeight(cats[i].value, currencyCode),
-          AppColors.ramp[i % AppColors.ramp.length],
-        ),
-    ];
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: cardDecoration(context),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          // `byCategory` is SHARED with `budget_screen.dart` — the same heading
-          // over the same breakdown, so one key rather than two that drift.
-          Text(
-            l10n.byCategory,
-            style: AppText.title.copyWith(fontSize: 16, color: neutral.ink),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: <Widget>[
-              SizedBox(
-                width: 126,
-                height: 126,
-                // 🔴 A `CustomPaint` IS PIXELS. It contributes NOTHING to the
-                // semantics tree — no label, no value, no role — so the chart
-                // that is the whole point of this screen was, to a screen
-                // reader, a 126×126 hole with a bare currency figure floating in
-                // the middle of it. The `Center` child below is real text, so
-                // "₹2,340" and "/mo" were audible, but nothing said what they
-                // were the total OF, and the SHAPE — which categories, in what
-                // proportion — existed only as arcs.
-                //
-                // 🔴 THE LABEL IS BUILT FROM `cats` AND `total`, WHICH IS THE
-                // SAME DATA `DonutPainter` IS HANDED. `segments` is derived from
-                // `cats` two statements up, so the sentence and the arcs cannot
-                // disagree: a category that stops being painted stops being
-                // announced in the same edit. Reading the figures back out of
-                // the widget tree, or restating them from a second query, is how
-                // a chart description drifts from its chart.
-                //
-                // ⚠️ `excludeSemantics: true` IS DELIBERATE AND IT IS NOT A LOSS.
-                // The centre's two `Text`s say `{total}` and "/mo", and
-                // `a11yCategoryDonut` already opens with `{total} a month in
-                // total` — keeping both would announce the same figure twice,
-                // once as a fragment. The legend to the RIGHT of the donut is
-                // outside this subtree and is untouched, so a reader who wants
-                // the per-category rows one at a time still has them.
-                //
-                // ⚠️ The join is `', '` and NOT an arb key, matching the rule
-                // this file group already records for `' / '` in
-                // `budget_screen.dart`: it separates two formatted values, both
-                // of which are themselves localized (`a11yCategoryShare` carries
-                // the name/figure order, `Currency` carries the figure). A key
-                // for a comma asks a translator for punctuation, not language.
-                //
-                // 🔴 `container: true` IS LOAD-BEARING AND WAS MEASURED, not
-                // assumed. Without it this annotation has no conflicting
-                // sibling, so Flutter's fragment compiler ABSORBS it upward:
-                // the whole card became ONE node reading "By category ·
-                // <this sentence> · Fitness · $255 · Creative · $60 · …" — the
-                // description and the legend it summarises glued into a single
-                // stop, the chart no longer a thing you can land on, and the
-                // figures said twice. `container: true` makes the chart its own
-                // element, which is what it is.
-                child: Semantics(
-                  container: true,
-                  label: l10n.a11yCategoryDonut(
-                    figures.total,
-                    <String>[
-                      for (int i = 0; i < cats.length; i++)
-                        l10n.a11yCategoryShare(cats[i].name, figures.parts[i]),
-                    ].join(', '),
-                  ),
-                  excludeSemantics: true,
-                  child: CustomPaint(
-                    painter: DonutPainter(segments: segments),
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: <Widget>[
-                          Text(
-                            // Keyed, with the legend figures below, so a test
-                            // can read the two STRINGS back and add the column
-                            // up. That is the only way this property is
-                            // falsifiable: the minor units behind them always
-                            // summed exactly, so an assertion on `Money` values
-                            // passes against the very defect it is for.
-                            key: const Key('insights.donut.total'),
-                            figures.total,
-                            style: AppText.fig.copyWith(
-                              fontSize: 18,
-                              color: neutral.ink,
-                            ),
-                          ),
-                          Text(
-                            _period == InsightsPeriod.month
-                                ? l10n.perMonthShort
-                                : l10n.perYearShort,
-                            style: AppText.muted.copyWith(
-                              fontSize: 9,
-                              color: neutral.muted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 18),
-              Expanded(
-                child: Column(
-                  children: <Widget>[
-                    for (int i = 0; i < cats.length; i++)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 9),
-                        child: Row(
-                          children: <Widget>[
-                            Container(
-                              width: 10,
-                              height: 10,
-                              decoration: BoxDecoration(
-                                color:
-                                    AppColors.ramp[i % AppColors.ramp.length],
-                                borderRadius: BorderRadius.circular(3),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                cats[i].name,
-                                style: AppText.body.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 12,
-                                  color: neutral.ink,
-                                ),
-                              ),
-                            ),
-                            Text(
-                              key: Key('insights.legend.figure.$i'),
-                              figures.parts[i],
-                              style: AppText.fig.copyWith(
-                                fontSize: 12,
-                                color: neutral.muted,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
 }

@@ -904,7 +904,7 @@
   },
   "perYear": "per year",
   "@perYear": {
-    "description": "Consumed by subscription_detail_screen.dart:169. SHARED with home_screen.dart:494 — the per-cycle caption under a price."
+    "description": "Consumed by features/insights/category_card.dart. Caption beside By category when the switch reads Year; the twin of perMonth."
   },
   "perMonth": "per month",
   "@perMonth": {
@@ -925,22 +925,6 @@
   "insightsTitle": "Insights",
   "@insightsTitle": {
     "description": "Consumed by insights_screen.dart:68. Pinned by test/chassis_properties_test.dart:3384, integration_test/app_test.dart:393, integration_test/store_screenshots_test.dart:301 — the value must not change without moving those."
-  },
-  "insightsSubtitle": "Where your money goes",
-  "@insightsSubtitle": {
-    "description": "Consumed by insights_screen.dart:71."
-  },
-  "perMonthShort": "/ mo",
-  "@perMonthShort": {
-    "description": "Consumed by insights_screen.dart:130. The caption under the donut total. Short because it renders at 9 pt inside a 126 px ring."
-  },
-  "savingsOpportunities": "Savings opportunities",
-  "@savingsOpportunities": {
-    "description": "Consumed by insights_screen.dart:204."
-  },
-  "insightsNothingFlagged": "Nothing flagged — nice.",
-  "@insightsNothingFlagged": {
-    "description": "Consumed by insights_screen.dart:269. Pinned by test/width_insights_test.dart:68 — the value must not change without moving those."
   },
   "perMonthAmount": "{amount}/mo",
   "@perMonthAmount": {
@@ -1378,34 +1362,6 @@
   "@notificationActionOpen": {
     "description": "Consumed by services/notifications/notification_service.dart:47. The Linux notification's default action label — a button the desktop shell renders, so it is user-facing."
   },
-  "a11yCategoryDonut": "Spending by category. {total} a month in total. {breakdown}",
-  "@a11yCategoryDonut": {
-    "description": "Consumed by insights_screen.dart. The Semantics label of the category donut. A CustomPaint announces NOTHING on its own — it is pixels — so without this key the one figure that matters on the insights screen is inaudible. {breakdown} is a11yCategoryShare joined per category, from the SAME list the painter is handed, so the sentence cannot drift from the chart.",
-    "placeholders": {
-      "total": {
-        "type": "String",
-        "example": "₹2,340"
-      },
-      "breakdown": {
-        "type": "String",
-        "example": "Entertainment ₹960, Work ₹720"
-      }
-    }
-  },
-  "a11yCategoryShare": "{name} {amount}",
-  "@a11yCategoryShare": {
-    "description": "Consumed by insights_screen.dart. ONE category inside a11yCategoryDonut's {breakdown}. Its own key rather than an interpolation because a language may need a particle or a different order between the name and the figure.",
-    "placeholders": {
-      "name": {
-        "type": "String",
-        "example": "Entertainment"
-      },
-      "amount": {
-        "type": "String",
-        "example": "₹960"
-      }
-    }
-  },
   "a11yScanRing": "Setting up, {percent}.",
   "@a11yScanRing": {
     "description": "Consumed by scan_screen.dart. The Semantics label of the setup ring (a CustomPaint). ST-U3 (B44): it read 'Scan progress', and nothing is scanned.",
@@ -1646,10 +1602,6 @@
   "@insightsNoneYet": {
     "description": "Consumed by features/insights/summary_tiles.dart. Caption of the Biggest tile when there is nothing to rank."
   },
-  "perYearShort": "/ yr",
-  "@perYearShort": {
-    "description": "Consumed by features/insights/insights_screen.dart. The per-year twin of perMonthShort, under the category total when the switch reads Year."
-  },
   "perYearAmount": "{amount}/yr",
   "@perYearAmount": {
     "description": "Consumed by features/insights/insights_screen.dart. The per-year twin of perMonthAmount.",
@@ -1861,6 +1813,53 @@
     "description": "Consumed by features/insights/signals.dart. The accessible name of the Yes button, so it is not a bare Yes out of context.",
     "placeholders": {
       "name": {
+        "type": "String"
+      }
+    }
+  },
+  "categoryShowTable": "Show as table",
+  "@categoryShowTable": {
+    "description": "Consumed by features/insights/category_card.dart. Switches the ranked bars to a table (R3 §4: every chart has a table view)."
+  },
+  "categoryShowChart": "Show as bars",
+  "@categoryShowChart": {
+    "description": "Consumed by features/insights/category_card.dart. Switches the table back to the ranked bars."
+  },
+  "categoryTableCategory": "Category",
+  "@categoryTableCategory": {
+    "description": "Consumed by features/insights/category_card.dart. Table column header."
+  },
+  "categoryTableAmount": "Amount",
+  "@categoryTableAmount": {
+    "description": "Consumed by features/insights/category_card.dart. Table column header."
+  },
+  "categoryTableShare": "Share",
+  "@categoryTableShare": {
+    "description": "Consumed by features/insights/category_card.dart. Table column header: the category's share of the total."
+  },
+  "a11yCategoryRow": "{name}: {amount}, {percent} of the total",
+  "@a11yCategoryRow": {
+    "description": "Consumed by features/insights/category_card.dart. One ranked bar read as one sentence; the bar itself is excluded.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      },
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
+  "a11yCategoryRowNoShare": "{name}: {amount}",
+  "@a11yCategoryRowNoShare": {
+    "description": "Consumed by features/insights/category_card.dart. A category billed only in another currency has no share of the display-currency total, so none is claimed.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "amount": {
         "type": "String"
       }
     }

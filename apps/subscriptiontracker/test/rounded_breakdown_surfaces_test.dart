@@ -104,7 +104,7 @@ int naiveSumOfRounded() {
 }
 
 void main() {
-  testWidgets('INSIGHTS — the legend adds up to the number in the ring', (
+  testWidgets('INSIGHTS — the category rows add up to the total above them', (
     WidgetTester tester,
   ) async {
     await pumpAt(
@@ -115,11 +115,13 @@ void main() {
     );
 
     final String centre = tester
-        .widget<Text>(find.byKey(const Key('insights.donut.total')))
+        .widget<Text>(find.byKey(const Key('insights.category.total')))
         .data!;
     final List<String> legend = <String>[
       for (int i = 0; i < _lossy.length; i++)
-        tester.widget<Text>(find.byKey(Key('insights.legend.figure.$i'))).data!,
+        tester
+            .widget<Text>(find.byKey(Key('insights.category.figure.$i')))
+            .data!,
     ];
 
     // 🔴 VACUITY FIRST. Without this the two assertions below would also hold
@@ -147,6 +149,6 @@ void main() {
           'a reader adding $legend must get $centre — the ring and its own '
           'legend are the same six subscriptions',
     );
-    expect(centre, r'$97', reason: '39.49 + 20.20 + … + 3.49 = 96.65');
+    expect(centre, r'$97/mo', reason: '39.49 + 20.20 + … + 3.49 = 96.65');
   });
 }

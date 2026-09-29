@@ -1156,6 +1156,7 @@ Future<AppLocalizations> _load(String code) =>
 /// The donut's expected sentence, composed from the same providers the screen
 /// read. See [pumpScreen].
 String expectedDonutLabel(ProviderContainer c, AppLocalizations l10n) {
+  // Returns every row sentence joined by '|'; callers split it.
   final List<Subscription> subs =
       c.read(subscriptionsControllerProvider).value ?? const <Subscription>[];
   // The SAME two axes the screen formats under: the reader's locale, and each
@@ -1189,13 +1190,25 @@ String expectedDonutLabel(ProviderContainer c, AppLocalizations l10n) {
       .formatBreakdownRounded(<MoneyBag>[
         for (final CategoryTotal cat in cats) cat.value,
       ]);
-  return l10n.a11yCategoryDonut(
-    figures.total,
-    <String>[
-      for (int i = 0; i < cats.length; i++)
-        l10n.a11yCategoryShare(cats[i].name, figures.parts[i]),
-    ].join(', '),
-  );
+  // ⏱ ST-D3 D3-5: the donut is RANKED BARS now, one node per category. The
+  // expected sentence is still derived independently, from the same
+  // breakdown and the same display-currency weights the card reads.
+  final List<double> w = <double>[
+    for (final CategoryTotal cat in cats)
+      SubMath.chartWeight(cat.value, currencyCode),
+  ];
+  final double sum = w.fold(0, (double x, double y) => x + y);
+  final NumberFormat pct = NumberFormat.percentPattern(l10n.localeName);
+  return <String>[
+    for (int i = 0; i < cats.length; i++)
+      sum <= 0 || w[i] <= 0
+          ? l10n.a11yCategoryRowNoShare(cats[i].name, figures.parts[i])
+          : l10n.a11yCategoryRow(
+              cats[i].name,
+              figures.parts[i],
+              pct.format(w[i] / sum),
+            ),
+  ].join('|');
 }
 
 /// 🔴 THE CALENDAR SCREEN IS PINNED TO A KNOWN DATE, AND IT HAS TO BE.
@@ -1428,7 +1441,7 @@ void main() {
   });
 
   // ═══ TIER 1 · INSIGHTS ═════════════════════════════════════════════════════
-  group('insights · the donut says what it draws', () {
+  group('insights · each category row says what it draws', () {
     testWidgets('[en] the chart announces the total AND every category', (
       WidgetTester tester,
     ) async {
@@ -1436,14 +1449,15 @@ void main() {
         final ProviderContainer c = await pumpScreen(
           tester,
           const InsightsScreen(),
+          size: const Size(420, 3200),
         );
         final AppLocalizations l10n = await _load('en');
         expect(
           announced(tester),
-          contains(expectedDonutLabel(c, l10n)),
+          containsAll(expectedDonutLabel(c, l10n).split('|')),
           reason:
-              'a CustomPaint contributes NOTHING to semantics, so without this '
-              'wrapper the only chart in the app is a 126x126 silent hole',
+              'every ranked bar is ONE node saying name, amount and share; '
+              'the bar itself only repeats the words',
         );
       });
     });
@@ -1456,16 +1470,20 @@ void main() {
           tester,
           const InsightsScreen(),
           locale: const Locale('ta'),
+          size: const Size(420, 3200),
         );
         final AppLocalizations ta = await _load('ta');
         final AppLocalizations en = await _load('en');
-        expect(announced(tester), contains(expectedDonutLabel(c, ta)));
+        expect(
+          announced(tester),
+          containsAll(expectedDonutLabel(c, ta).split('|')),
+        );
         // THE FALSIFIER. Every figure in the sentence is locale-independent, so
         // an implementation that hardcoded the English prose would pass the
         // positive case on the numbers alone.
         expect(
           announced(tester),
-          isNot(contains(expectedDonutLabel(c, en))),
+          isNot(contains(expectedDonutLabel(c, en).split('|').first)),
           reason: 'the English chart description survived into a Tamil build',
         );
       });
@@ -4246,7 +4264,7 @@ void main() {
         await expectContrastHadSubjects(
           tester,
           'insights',
-          covers: const <String>['Insights', 'Where your money goes'],
+          covers: const <String>['Insights'],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
         // 🔴 32 strings, against the sweep above's 5 — and the three this limb
@@ -5112,7 +5130,7 @@ void main() {
         await expectContrastHadSubjects(
           tester,
           'insights (dark)',
-          covers: const <String>['Insights', 'Where your money goes'],
+          covers: const <String>['Insights'],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
         // 🔴 THIS IS THE HALF THAT PROVES THE FORK DID NOT TRADE ONE GROUND
