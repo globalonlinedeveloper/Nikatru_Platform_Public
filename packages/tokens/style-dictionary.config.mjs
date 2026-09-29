@@ -144,9 +144,26 @@
 /* --------------------------------------------------------------------- */
 /* Canonical ordering - locked so output is deterministic and reviewable. */
 
+/**
+ * THE STATUS PAIRS, added 2026-09-28 (train ST-D0, which absorbs ST-Y1): a
+ * foreground tone and an OPAQUE tint per status, forked by scheme exactly as
+ * `primary` and `teal` are, because no single green, amber or red clears WCAG
+ * 2.2 AA on a light ground and a dark one at once (the arithmetic is recorded
+ * in `packages/design_system/lib/src/tokens/app_colors.dart`).
+ *
+ * 🔴 UNLIKE EVERY COLOUR ABOVE, THESE ARE AN APP'S PAINT. Status is not a brand
+ * decision - green means good in every app - so the multi-brand argument that
+ * keeps the company palette off the apps' screens does not apply to them. Every
+ * stamped app reads them through `StatusTones.of(context)`, and
+ * `packages/design_system/test/status_contrast_test.dart` measures each tone on
+ * its own tint and on every surface slot of the seeded schemes it sweeps.
+ */
+const STATUS_COLORS = ['positive', 'warn', 'danger', 'positive-tint', 'warn-tint', 'danger-tint'];
+
 const LIGHT_COLORS = [
   'ink', 'ink-2', 'primary', 'teal', 'on-accent', 'bg', 'card', 'card-2',
   'text', 'strong', 'muted', 'line', 'soft',
+  ...STATUS_COLORS,
 ];
 // `primary` and `teal` joined this list on 2026-09-09. They used to be
 // light-only, on the premise that the brand hues are scheme-independent — and
@@ -160,7 +177,10 @@ const LIGHT_COLORS = [
 // 2.69:1 (primary) and 2.24:1 (teal) behind white. A colour used as a fill and a
 // colour used on top of it are one decision; splitting one and not the other is
 // how a contrast repair trades a light failure for a dark one.
-const DARK_COLORS = ['primary', 'teal', 'on-accent', 'bg', 'card', 'card-2', 'text', 'strong', 'muted', 'line', 'soft'];
+const DARK_COLORS = [
+  'primary', 'teal', 'on-accent', 'bg', 'card', 'card-2', 'text', 'strong', 'muted', 'line', 'soft',
+  ...STATUS_COLORS,
+];
 
 /**
  * THE NON-COLOUR SCALES, added 2026-09-09 from contracts/tokens/dtcg/scale.json.
@@ -417,6 +437,10 @@ function formatDart({ dictionary }) {
     '// `ColorScheme.fromSeed`. Do not repaint a screen from these constants; see',
     '// packages/tokens/style-dictionary.config.mjs for why `app_colors.dart` is',
     '// hand-written and is a different palette on purpose.',
+    '//',
+    '// THE ONE EXCEPTION is the six status tokens (positive, warn, danger and their',
+    '// opaque tints): status is not a brand, so every app paints them - through',
+    '// `StatusTones.of(context)`, which picks the scheme half, never directly.',
     '',
     "import 'package:flutter/material.dart';",
     '',

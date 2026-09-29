@@ -958,7 +958,12 @@ describe('assert-modal-detection · the shared chassis is inside the domain [ADR
   test('the chassis suite directory emptied is COVERAGE LOST, not a smaller job', () => {
     withTree(
       (root) => {
-        for (const f of readdirSync(join(root, DS, 'test'))) rmSync(join(root, DS, 'test', f), { force: true });
+        // `recursive` since 2026-09-28 (train ST-D0): the suite now holds a
+        // `goldens/` directory, and a non-recursive rm of a directory throws
+        // EISDIR — the mutation died before the guard ever ran.
+        for (const f of readdirSync(join(root, DS, 'test'))) {
+          rmSync(join(root, DS, 'test', f), { force: true, recursive: true });
+        }
       },
       (r) => {
         assert.equal(r.status, 2, r.out);

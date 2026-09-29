@@ -19,8 +19,8 @@
   ],
   "_rootsNote": "TWO roots since 2026-09-07 ([ADR 067] phase 2, unit app-shell). The Worker half of the template - 13 files, 917 lines every stamped backend app inherits - was outside this ledger entirely while `root` was one string, and `git ls-files -- <that one root>` could not see it to complain. assert-chassis-ledger.mjs is the authority on this list and cross-checks it; a row's `root` is optional and defaults to roots[0], which is why the 96 rows written against the single root are unchanged. ⏱ THE FIGURES IN THIS NOTE MOVED ON 2026-09-08 AND ARE CORRECTED RATHER THAN REWRITTEN: the Worker half is now 14 files and 1,021 lines, because the template gained src/lib/error-sink.ts — a stamped backend had NO crash sink at all and failed tooling/ci/assert-worker-error-sink.mjs on limbs 2, 3 and 5 at its first CI run. The guard PRINTS both figures per root on every run, which is the number to read; this sentence is prose and prose rots.",
   "totals": {
-    "files": 147,
-    "lines": 23189,
+    "files": 148,
+    "lines": 23308,
     "unclassified": 0,
     "unclassifiedLines": 0
   },
@@ -661,6 +661,12 @@
       "lines": 320,
       "verdict": "STAYS",
       "why": "MEASURED: pinned by NOTHING but this ledger. Stays on value: it is the proof for B-6, that withdrawal completes after its widget is disposed mid-upload — a real release-mode StateError."
+    },
+    {
+      "path": "test/design_foundation_test.dart",
+      "lines": 119,
+      "verdict": "STAYS",
+      "why": "MEASURED 2026-09-28 (train ST-D0): per-app by construction — it measures the design foundation (12 px type floor, scheme-forked status pairs and their contrast on every surface slot, the neutral badge) on THIS stamp's own seed_hex, the one input packages/design_system cannot sweep for every app. The package's own suite covers six stress seeds; this row is the seventh, per stamp."
     },
     {
       "path": "test/l10n_parity_test.dart",

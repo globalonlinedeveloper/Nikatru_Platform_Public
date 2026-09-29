@@ -17,6 +17,12 @@
     "soft": {
       "$value": "#F6F8FC",
       "$description": "Recessed panel tint used INSIDE a card - .note/.plan/.privacy/.c/.shots img, all of which sit in a main element whose background is var(--card). Declared by 13 pages, 17 var(--soft) uses. DELIBERATELY A LITERAL, NOT AN ALIAS, measured 2026-08-17: it equals bg in light (#F6F8FC) but NOT in dark (soft #0E1830 vs bg #0B1220), so aliasing to color.bg would be false on the dark side; and it equals card-2 in dark exactly but not in light (#F6F8FC vs #F8FAFD), so aliasing to dark.card-2 would be false on the light side. It is an alias of neither. NOTE: do not write curly-brace token paths in a $description - Style Dictionary parses braces in ANY string field as a reference and fails the build with an unresolved-reference error. See style-dictionary.config.mjs for the open soft-vs-card-2 collapse question."
-    }
+    },
+    "positive": { "$value": "#05694C", "$description": "STATUS PAIR, light half (train ST-D0, which absorbs ST-Y1). The FOREGROUND tone for good news - text, an icon, a dot beside a word. It forks by scheme because no single value clears WCAG 2.2 AA 1.4.3 on a light ground and a dark one at once; the arithmetic is in packages/design_system/lib/src/tokens/app_colors.dart. Measured 6.71:1 on card, 6.31:1 on bg and 5.88:1 on positive-tint; status_contrast_test.dart re-measures it on every light Material 3 surface slot of the seeds it sweeps." },
+    "warn": { "$value": "#94480A", "$description": "STATUS PAIR, light half: the foreground tone for a warning. 6.58:1 on card, 6.19:1 on bg, 5.80:1 on warn-tint. The shared amber #F59E0B it replaces as text measured 2.15:1 on white." },
+    "danger": { "$value": "#B3123B", "$description": "STATUS PAIR, light half: the foreground tone for danger and destructive outcomes. 6.85:1 on card, 6.44:1 on bg, 5.78:1 on danger-tint." },
+    "positive-tint": { "$value": "#E3F4EC", "$description": "The OPAQUE container behind a positive message (the decision strip, a status pill). Opaque on purpose: an alpha wash composites to a different colour on every ground it lands on, so its contrast cannot be measured once and trusted." },
+    "warn-tint": { "$value": "#FBEFDD", "$description": "The OPAQUE container behind a warning. See positive-tint." },
+    "danger-tint": { "$value": "#FBE7EB", "$description": "The OPAQUE container behind a danger message. See positive-tint." }
   }
 }
