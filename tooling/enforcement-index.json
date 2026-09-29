@@ -1778,6 +1778,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-legal"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-paywall-flip-ready.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "F-4",
       "R-1",
