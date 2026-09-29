@@ -39,7 +39,11 @@
     "not the window, were what fell short. These limits assume BOTH runs: if the Worker target",
     "(services/platform/src/scheduled.ts, workflow renovate.yml) is removed, Monday capacity halves",
     "and the limits must be re-derived. A reader of #417 that goes red when the queue outruns them",
-    "is the second half of O-RENOVATE-BACKLOG-OUTRUNS-ITS-LIMITS and lands separately."
+    "is the second half of O-RENOVATE-BACKLOG-OUTRUNS-ITS-LIMITS and lands separately.",
+    "",
+    "PR BODY (2026-09-29). Renovate writes its own PR body, and tooling/ci/assert-pr-rows.mjs fails a body",
+    "with no `Rows:` line: every dependency PR opened since the guard landed (2026-09-25) was red. The guard",
+    "stays universal; prBodyNotes gives every Renovate body the `none` form. Tests: tooling/ci/test/pr-rows.test.mjs."
   ],
   "extends": [
     "config:recommended",
@@ -57,6 +61,9 @@
   "prConcurrentLimit": 12,
   "prHourlyLimit": 6,
   "branchPrefix": "chore/renovate-",
+  "prBodyNotes": [
+    "Rows: none — Renovate dependency bump; no register row moves"
+  ],
   "vulnerabilityAlerts": {
     "description": "Security fixes bypass the weekly window entirely.",
     "labels": [

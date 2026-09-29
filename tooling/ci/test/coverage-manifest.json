@@ -213,7 +213,7 @@
   "policy-archive.test.mjs": 31,
   "policy-claims.test.mjs": 62,
   "post-deploy-smoke.test.mjs": 157,
-  "pr-rows.test.mjs": 47,
+  "pr-rows.test.mjs": 50,
   "precommit-pii.test.mjs": 5,
   "preflight-hung-leg.test.mjs": 5,
   "preflight-smoke.test.mjs": 26,
