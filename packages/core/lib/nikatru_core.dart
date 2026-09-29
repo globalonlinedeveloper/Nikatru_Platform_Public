@@ -34,6 +34,7 @@ export 'src/content_report_transport.dart';
 export 'src/dates/recurrence_schedule.dart';
 export 'src/entitlement_cache.dart';
 export 'src/entitlement_transport.dart';
+export 'src/reminder_channels_transport.dart';
 export 'src/result.dart';
 export 'src/config/app_config.dart';
 export 'src/config/config_loader.dart';

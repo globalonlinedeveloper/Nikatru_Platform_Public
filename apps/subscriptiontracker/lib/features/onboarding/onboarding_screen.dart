@@ -10,6 +10,7 @@ import 'package:nikatru_notifications/nikatru_notifications.dart'
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/windows_notification_identity.g.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
 import '../shared/widgets.dart';
@@ -130,9 +131,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final core.AppConfig? cfg = ref.watch(appConfigProvider).value;
     // The same reading of the chassis matrix home's catch-up nudge makes.
-    final bool canSchedule = NotificationCapabilities.forPlatform(
+    final bool canSchedule = NotificationCapabilities.resolve(
       defaultTargetPlatform,
       isWeb: kIsWeb,
+      windows: kWindowsNotificationIdentity,
     ).canSchedule;
     final List<List<String>> slides = _slides(l10n, canSchedule: canSchedule);
     return Scaffold(

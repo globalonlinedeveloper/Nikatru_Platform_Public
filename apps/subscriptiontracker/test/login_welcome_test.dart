@@ -104,7 +104,7 @@ void main() {
           analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
           secureStoreProvider.overrideWithValue(MemSecureStore()),
           notificationServiceProvider.overrideWithValue(FakeNotifications()),
-          subscriptiontrackerNotificationServiceProvider.overrideWithValue(
+          renewalRemindersProvider.overrideWithValue(
             RecordingSublyNotifications(),
           ),
         ],

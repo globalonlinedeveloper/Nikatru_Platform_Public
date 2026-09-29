@@ -39,8 +39,8 @@ void main() {
       kPhone,
       const NotificationsScreen(),
       overrides: <Override>[
-        subscriptiontrackerNotificationServiceProvider.overrideWithValue(
-          NotificationService.forTesting(isWeb: true),
+        renewalRemindersProvider.overrideWithValue(
+          RenewalReminders.forTesting(isWeb: true),
         ),
       ],
     );
@@ -58,8 +58,8 @@ void main() {
       kPhone,
       const NotificationsScreen(),
       overrides: <Override>[
-        subscriptiontrackerNotificationServiceProvider.overrideWithValue(
-          NotificationService.forTesting(
+        renewalRemindersProvider.overrideWithValue(
+          RenewalReminders.forTesting(
             platform: TargetPlatform.android,
             isWeb: false,
           ),

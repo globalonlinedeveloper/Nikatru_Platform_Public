@@ -636,19 +636,47 @@ const WIRE_CONTRACTS = [
   // builds one of these paths, the gap turns false and this fails, which is
   // exactly when its wire contract has to be pinned. The shapes are pinned by
   // services/platform/test/reminder-mail.test.ts and calendar-feed.test.ts until then.
+  // ⏱ 2026-09-28 · ST-T4b — the client arrived (packages/api_client
+  // DioReminderChannelsTransport, read by core ReminderPrefs.tryParse), so the
+  // two prefs routes and the feed mint are PINNED; the DELETE and the .ics stay
+  // gaps whose claim is now scoped to a CALL (`absentCall`), because the path
+  // string alone is shared with the pinned POST.
   {
     id: 'reminders-prefs-get',
-    kind: 'gap',
-    reason:
-      'NO CLIENT YET: the client ships in ST-T4b (the packages + app half), which launches after this Worker deploys: the server must be live first. There is no released client of ours to break. The answer is `{app_id, email_opt_in, lead_days}`.',
-    absentFromDart: '/v1/reminders/prefs',
+    kind: 'body',
+    server: 'services/platform/src/routes/reminders.ts',
+    client: {
+      file: 'packages/core/lib/src/reminder_channels_transport.dart',
+      member: 'static ReminderPrefs? tryParse(',
+      reader: 'j',
+    },
+    requiredBoth: ['email_opt_in', 'lead_days'],
+    clientOnly: {},
+    serverOnly: {
+      app_id: 'the echo of the `?app_id=` the client asked with. The client already knows which app it asked about, and a reply for another app would be a server bug no key read here could repair.',
+    },
   },
   {
     id: 'reminders-prefs-put',
-    kind: 'gap',
-    reason:
-      'NO CLIENT YET: the client ships in ST-T4b (the packages + app half), which launches after this Worker deploys: the server must be live first. There is no released client of ours to break. The request is `{app_id, email_opt_in, lead_days?}` and the answer is the stored `{app_id, email_opt_in, lead_days}`.',
-    absentFromDart: '/v1/reminders/prefs',
+    kind: 'body',
+    server: 'services/platform/src/routes/reminders.ts',
+    client: {
+      file: 'packages/core/lib/src/reminder_channels_transport.dart',
+      member: 'static ReminderPrefs? tryParse(',
+      reader: 'j',
+    },
+    requiredBoth: ['email_opt_in', 'lead_days'],
+    clientOnly: {},
+    serverOnly: {
+      app_id: 'the echo of the `app_id` the client sent; see reminders-prefs-get.',
+    },
+    /** The REQUEST half: the first request literal in the transport is the
+     *  PUT body. `lead_days` is null-aware (`?leadDays`): absent keeps the
+     *  stored lead, which is why the server reads it as optional. */
+    request: {
+      client: { file: 'packages/api_client/lib/src/dio_reminder_channels_transport.dart', marker: 'data: <String, Object?>' },
+      keys: ['app_id', 'email_opt_in', 'lead_days'],
+    },
   },
   {
     id: 'reminders-unsubscribe-get',
@@ -666,24 +694,41 @@ const WIRE_CONTRACTS = [
   },
   {
     id: 'calendar-feed-post',
-    kind: 'gap',
-    reason:
-      'NO CLIENT YET: the client ships in ST-T4b (the packages + app half), which launches after this Worker deploys: the server must be live first. There is no released client of ours to break. The request is `{app_id}` and the 201 answer is `{app_id, https_url, webcal_url, created_at}`.',
-    absentFromDart: '/v1/calendar/feed',
+    kind: 'body',
+    server: 'services/platform/src/routes/calendar.ts',
+    client: {
+      file: 'packages/core/lib/src/reminder_channels_transport.dart',
+      member: 'static CalendarFeed? tryParse(',
+      reader: 'j',
+    },
+    requiredBoth: ['https_url', 'webcal_url'],
+    clientOnly: {},
+    serverOnly: {
+      app_id: 'the echo of the `app_id` the client posted; the client opens a URL and needs nothing else.',
+      created_at: 'when the token was minted, for support. The client shows no date: a feed has no expiry, and "reset" is a rotation, not a renewal.',
+    },
+    /** The REQUEST half. The feed mint's body is the transport's SECOND
+     *  literal, so the marker is the path that precedes it. */
+    request: {
+      client: { file: 'packages/api_client/lib/src/dio_reminder_channels_transport.dart', marker: "'$_base/v1/calendar/feed'," },
+      keys: ['app_id'],
+    },
   },
   {
     id: 'calendar-feed-delete',
     kind: 'gap',
     reason:
-      'NO CLIENT YET: the client ships in ST-T4b (the packages + app half), which launches after this Worker deploys: the server must be live first. There is no released client of ours to break. `?app_id=`; success is a 204 with no body, and 404 `no_feed` when there is no live feed.',
+      'NO CLIENT, AND IT IS A DECISION: the app RESETS a feed by ROTATING it (POST, pinned above), so a leaked link dies and nobody is left without one by accident. `?app_id=`; success is a 204 with no body, and 404 `no_feed` when there is no live feed — pinned by services/platform/test/calendar-feed.test.ts until a client revokes.',
     absentFromDart: '/v1/calendar/feed',
+    absentCall: 'delete',
   },
   {
     id: 'calendar-feed-ics',
     kind: 'gap',
     reason:
-      'NO APP CLIENT, BY CONSTRUCTION — the callers are calendar services (Google Calendar, Apple Calendar, Outlook) subscribing to the URL and browsers downloading it. The wire is RFC 5545 text/calendar, written by services/platform/src/lib/ics.ts and pinned by services/platform/test/calendar-feed.test.ts, not a JSON envelope.',
+      'NO APP CLIENT, BY CONSTRUCTION — the callers are calendar services (Google Calendar, Apple Calendar, Outlook) subscribing to the URL and browsers downloading it; the app only hands the server-returned URL to the OS. The wire is RFC 5545 text/calendar, written by services/platform/src/lib/ics.ts and pinned by services/platform/test/calendar-feed.test.ts, not a JSON envelope.',
     absentFromDart: '/v1/calendar/',
+    absentCall: 'get',
   },
   // ⏱ 2026-09-28 · ST-I3 — the ECB rate table (services/platform/src/routes/fx.ts).
   // A gap because the TRANSPORT ships with its first consumer, not here; the
@@ -1854,7 +1899,18 @@ for (const contract of WIRE_CONTRACTS) {
           'An absence proved by a scan that read nothing is not an absence.',
       );
     }
-    const clients = dartFiles.filter((f) => stripSourceComments(read(f), '.dart').includes(contract.absentFromDart));
+    // ⏱ 2026-09-28 · `absentCall`: when a path is shared by a pinned route and
+    // a gap (POST vs DELETE /v1/calendar/feed), the claim is scoped to a CALL of
+    // that method whose first argument builds the path — `.delete<T>('…/path`.
+    // Without it, the gap reads the pinned route's client as its own.
+    const escaped = contract.absentFromDart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const callRe = contract.absentCall
+      ? new RegExp(`\\.${contract.absentCall}(?:<[^>]*>)?\\(\\s*['"][^'"]*${escaped}`)
+      : null;
+    const clients = dartFiles.filter((f) => {
+      const code = stripSourceComments(read(f), '.dart');
+      return callRe ? callRe.test(code) : code.includes(contract.absentFromDart);
+    });
     if (clients.length) {
       fail(
         `${contract.id} is declared to have no in-repo client, and ${clients.join(', ')} now builds \`${contract.absentFromDart}\`. ` +

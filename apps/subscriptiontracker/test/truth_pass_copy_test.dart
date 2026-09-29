@@ -87,11 +87,19 @@ void main() {
       );
     }, variant: TargetPlatformVariant.only(TargetPlatform.linux));
 
-    testWidgets('windows cannot schedule either', (WidgetTester tester) async {
+    // ⏱ 2026-09-28 (ST-R4): Windows schedules now — the app carries its toast
+    // identity — so slide 2 keeps its promise there. The logic did not move:
+    // it follows canSchedule, and canSchedule is what changed.
+    testWidgets('windows can now, and keeps the reminder sentence', (
+      WidgetTester tester,
+    ) async {
       await pumpAt(tester, kPhone, const OnboardingScreen());
       await _toSlide(tester, 1);
       final AppLocalizations l10n = await _en();
-      expect(find.text(l10n.subscriptiontrackerOnboarding2Body), findsNothing);
+      expect(
+        find.text(l10n.subscriptiontrackerOnboarding2Body),
+        findsOneWidget,
+      );
     }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
 
     testWidgets('android can, and keeps the reminder sentence', (

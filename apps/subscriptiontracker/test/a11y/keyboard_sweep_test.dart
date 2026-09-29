@@ -484,7 +484,9 @@ kExpected = <String, ({int controls, int reachable})>{
   // options" opened nothing and was removed rather than kept reachable.
   // ⏱ 2026-09-28 · ST-T3b (ST-E3): 3 -> 4. "More options" is back, and it
   // opens the row's lifecycle menu (Pause, Mark as cancelled, Delete).
-  '/sub/:id': (controls: 4, reachable: 4),
+  // ⏱ 2026-09-28 · ST-R3: 4 -> 5, the detail's own Reminders row (the notice
+  // row appears only once the API emits notice_days; the seed does not).
+  '/sub/:id': (controls: 5, reachable: 5),
   // ⏱ 2026-09-27 · ST-U2 (audit C34): the paywall's back button.
   '/paywall': (controls: 1, reachable: 1),
   // 2 -> 3 on 2026-08-26, and NO WIDGET CHANGED. The third control was
