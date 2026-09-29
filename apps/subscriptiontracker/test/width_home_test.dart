@@ -444,6 +444,30 @@ void main() {
   // ⏱ 2026-09-16 · [ADR 083] §4: and at 1600, 1621 and 1920, where the
   // extra-large class now takes the same rail.
   group('ADR 083 · Home inside AppScaffold, at window widths', () {
+    // ⏱ 2026-09-29 · [ADR 083] §5 (D-02), built with ST-D1 label D1-6: the
+    // EXPANDED class (840–1199) navigates by the SLIM rail. The extended 256 dp
+    // rail left a 900 dp window a 643 dp body and split nothing below 1097;
+    // each window below reads the rail off the widget and holds Home's list
+    // to window − rail − 1, split exactly where TwoPane's arithmetic says.
+    for (final double width in <double>[840, 900, 1199]) {
+      testWidgets('${width.toInt()} window (expanded): the slim rail, and the '
+          'body it leaves', (WidgetTester tester) async {
+        await pumpAt(tester, Size(width, 900), _shell());
+        final NavigationRail rail = tester.widget<NavigationRail>(
+          find.byType(NavigationRail),
+        );
+        expect(rail.extended, isFalse, reason: 'D-02: slim at 840–1199');
+        final double railWidth = tester
+            .getSize(find.byType(NavigationRail))
+            .width;
+        expect(railWidth, lessThan(256));
+        final double body = width - railWidth - 1;
+        final TwoPaneSplit? split = TwoPaneSplit.forWidth(body);
+        expect(kPlaceholder, split == null ? findsNothing : findsOneWidget);
+        expect(kAside, findsNothing, reason: 'the side panel starts at 1261');
+      });
+    }
+
     testWidgets('1200 window: the rail, a split, and no side panel yet', (
       WidgetTester tester,
     ) async {
