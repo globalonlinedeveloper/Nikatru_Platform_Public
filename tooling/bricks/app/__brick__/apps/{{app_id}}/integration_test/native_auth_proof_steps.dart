@@ -133,6 +133,8 @@ Future<void> proveFormSignIn(
   required Finder passwordField,
   required Finder submit,
   required Finder home,
+  required Finder reacceptButton,
+  required Finder reacceptTick,
   List<Finder> tapThrough = const <Finder>[],
   Duration timeout = const Duration(seconds: 60),
 }) async {
@@ -154,12 +156,23 @@ Future<void> proveFormSignIn(
         'On screen: ${onScreen()}',
   );
   await tester.tap(submit);
-  final bool landed = await pumpUntilShown(
-    tester,
-    home,
-    timeout: timeout,
-    tapThrough: tapThrough,
-  );
+  final DateTime end = DateTime.now().add(timeout);
+  bool landed = false;
+  while (!landed && DateTime.now().isBefore(end)) {
+    landed = await pumpUntilShown(
+      tester,
+      home,
+      timeout: const Duration(seconds: 2),
+      tapThrough: tapThrough,
+    );
+    if (!landed && reacceptButton.evaluate().isNotEmpty) {
+      await acceptUpdatedTerms(
+        tester,
+        accept: reacceptButton,
+        tick: reacceptTick,
+      );
+    }
+  }
   expect(
     landed,
     isTrue,
@@ -167,6 +180,49 @@ Future<void> proveFormSignIn(
         'the sign-in form did not reach Home within ${timeout.inSeconds}s. '
         'On screen: ${onScreen()}',
   );
+}
+
+/// The updated-terms interstitial a signed-in user must pass before Home:
+/// tick the clickwrap box, then Accept and continue.
+///
+/// 🔴 THE TICK FIRST. The accept button is disabled until the box is ticked,
+/// and a tap on a disabled button does nothing: proof run 36533541325 signed in
+/// on iOS, macOS, Windows and Linux and then sat on "Our terms have changed"
+/// for 60 s, tapping [accept] and nothing else. The e2e suite's
+/// `acceptTermsIfShown` does the same two taps.
+Future<void> acceptUpdatedTerms(
+  WidgetTester tester, {
+  required Finder accept,
+  required Finder tick,
+}) async {
+  await tester.ensureVisible(tick.first);
+  await tester.pump(const Duration(milliseconds: 300));
+  expect(
+    tick.first.hitTestable(),
+    findsOneWidget,
+    reason:
+        'the updated-terms box cannot be ticked — a tap would not land. '
+        'On screen: ${onScreen()}',
+  );
+  await tester.tap(tick.first);
+  await tester.pump(const Duration(milliseconds: 300));
+  await tester.ensureVisible(accept.first);
+  await tester.pump(const Duration(milliseconds: 300));
+  expect(
+    accept.first.hitTestable(),
+    findsOneWidget,
+    reason:
+        'the updated-terms accept button is covered. On screen: ${onScreen()}',
+  );
+  await tester.tap(accept.first);
+  expect(
+    await pumpUntilGone(tester, accept, timeout: const Duration(seconds: 30)),
+    isTrue,
+    reason:
+        'accepting the updated terms did not leave the interstitial (is the '
+        'box ticked, did the acceptance POST land?). On screen: ${onScreen()}',
+  );
+  debugPrint('NK_PROOF step=reaccept outcome=accepted');
 }
 
 /// What GoTrue answered a gated call: `ok`, or the failure's code (else its

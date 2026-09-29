@@ -30,6 +30,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:nikatru_chassis_screens/auth/legal_consent_fields.dart';
 import 'package:nikatru_chassis_screens/auth/reaccept_terms_screen.dart';
 import 'package:nikatru_chassis_screens/auth/sign_in_screen.dart';
 import 'package:nikatru_chassis_screens/shell/web_semantics.dart'
@@ -101,10 +102,9 @@ void main() {
         passwordField: find.byKey(SignInView.passwordField),
         submit: find.byKey(SignInView.submitButton),
         home: find.byType(HomeScreen),
-        tapThrough: <Finder>[
-          find.byKey(ReacceptTermsView.acceptButton),
-          ...firstRun,
-        ],
+        reacceptButton: find.byKey(ReacceptTermsView.acceptButton),
+        reacceptTick: find.byKey(LegalConsentFieldsView.termsCheckbox),
+        tapThrough: firstRun,
       );
       debugPrint('NK_PROOF step=sign-in outcome=ok');
 

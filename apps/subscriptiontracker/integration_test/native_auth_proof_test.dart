@@ -34,6 +34,7 @@ import 'package:nikatru_chassis_screens/shell/web_semantics.dart'
     show releaseWebSemantics;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subscriptiontracker/core/e2e_keys.dart';
+import 'package:subscriptiontracker/features/auth/legal_consent_fields.dart';
 import 'package:subscriptiontracker/features/auth/reaccept_terms_screen.dart';
 import 'package:subscriptiontracker/features/auth/reset_password_screen.dart';
 import 'package:subscriptiontracker/features/home/home_screen.dart';
@@ -101,10 +102,9 @@ void main() {
         passwordField: find.byKey(E2EKeys.loginPassword),
         submit: find.byKey(E2EKeys.loginSubmit),
         home: find.byType(HomeScreen),
-        tapThrough: <Finder>[
-          find.byKey(ReacceptTermsScreen.acceptButton),
-          ...firstRun,
-        ],
+        reacceptButton: find.byKey(ReacceptTermsScreen.acceptButton),
+        reacceptTick: find.byKey(LegalConsentFields.termsCheckbox),
+        tapThrough: firstRun,
       );
       debugPrint('NK_PROOF step=sign-in outcome=ok');
 
