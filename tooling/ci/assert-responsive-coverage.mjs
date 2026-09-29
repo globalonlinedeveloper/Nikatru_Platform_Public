@@ -480,7 +480,10 @@ const REQUIRED_COVERAGE = [
     // surface genuinely left the app, as `SignInScreen` did on 2026-08-10.
     // `width_auth_test.dart` now measures what `/sign-up` opens; the file
     // count does not move.
-    surfaces: 18,
+    // ⏱ RAISED 18 → 19 (and coveredSurfaces with it) on 2026-09-29 by ST-D3
+    // D3-2: the budget editor sheet is a new surface, measured at every window
+    // class by `width_budget_editor_test.dart`.
+    surfaces: 19,
     // 🔴 THIS FLOOR IS ONE UNDER ITS TREE AND IT IS BEING LEFT THERE ON
     // PURPOSE, WHICH IS WORTH MORE WORDS THAN RAISING IT WOULD HAVE BEEN.
     // MEASURED 2026-09-05: `ls apps/subscriptiontracker/test | grep -cE
@@ -498,7 +501,7 @@ const REQUIRED_COVERAGE = [
     // 📌 OWED, AND REPORTED TO THE OWNER RATHER THAN LEFT IN A COMMENT: raise
     // this to 17 in the same change that grows that fixture's `N`.
     widthTestFiles: 16, // 15 `width_*_test.dart` + `responsive_width_test.dart`
-    coveredSurfaces: 18,
+    coveredSurfaces: 19,
     label: 'the app this guard was written for — every surface measured, and it fails if one stops being',
   },
   {

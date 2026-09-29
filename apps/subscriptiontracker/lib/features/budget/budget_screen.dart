@@ -10,18 +10,17 @@ import '../../core/format/sub_math.dart';
 import '../../data/models/budget_info.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
-import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
 import '../../state/subscriptions_controller.dart';
 import '../shared/async_gate.dart';
 import '../shared/neutrals.dart';
 import '../shared/painters.dart';
 import '../shared/widgets.dart';
+import '../insights/budget_editor.dart' show budgetProvider;
 import '../shell/app_shell.dart';
 
-final FutureProvider<BudgetInfo> budgetProvider = FutureProvider<BudgetInfo>(
-  (ref) => ref.watch(subscriptionRepositoryProvider).budget(),
-);
+// `budgetProvider` moved to `features/insights/budget_editor.dart` (ST-D3
+// D3-2): the editor that WRITES the budget owns the read it invalidates.
 
 /// 📌 THE PRIVATE `_neutrals(BuildContext)` THAT STOOD HERE IS HOISTED
 /// (2026-08-25) into `features/shared/neutrals.dart` as `neutrals(context)`,

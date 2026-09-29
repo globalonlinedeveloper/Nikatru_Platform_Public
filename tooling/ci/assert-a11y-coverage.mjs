@@ -674,10 +674,14 @@ const REQUIRED_COVERAGE = [
     // Measured by this guard's own run: 18 reachable, 18 swept. The three cases
     // that swept `SignUpScreen` now sweep the screen `/sign-up` opens, so
     // `cases` does not move.
-    surfaces: 18,
+    //
+    // ⏱ RAISED 18 → 19 and cases 110 → 112 on 2026-09-29 by ST-D3 D3-2: the budget
+    // editor (`showBudgetEditorSheet`) is a new modal surface and arrives swept
+    // by two cases. Measured by this guard's own run: 19 reachable, 19 swept.
+    surfaces: 19,
     a11yFiles: 1,
-    cases: 110,
-    label: 'the app P5 wrote this guard for — 18 surfaces, all eighteen swept',
+    cases: 112,
+    label: 'the app P5 wrote this guard for — 19 surfaces, all nineteen swept',
   },
   {
     dir: BRICK,
@@ -949,6 +953,9 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         'features/onboarding/onboarding_screen.dart#OnboardingScreen',
         'features/add/add_subscription_sheet.dart#showAddSubscriptionSheet',
         'features/cancel/cancel_sheet.dart#showCancelSheet',
+        // 2026-09-29 (ST-D3 D3-2): the budget editor, the first surface that
+        // can WRITE a budget, swept in a11y_semantics_test.dart.
+        'features/insights/budget_editor.dart#showBudgetEditorSheet',
       ].map((k) => `apps/subscriptiontracker/lib/${k}`),
     ),
   ],

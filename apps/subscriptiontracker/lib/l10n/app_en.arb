@@ -1726,5 +1726,124 @@
         "type": "String"
       }
     }
+  },
+  "budgetCardTitle": "Monthly budget",
+  "@budgetCardTitle": {
+    "description": "Consumed by features/insights/budget_card.dart and budget_editor.dart. The budget card's label and the editor's title (ADR 077 §2.1: the budget lives on Insights)."
+  },
+  "budgetEdit": "Edit",
+  "@budgetEdit": {
+    "description": "Consumed by features/insights/budget_card.dart. Opens the budget editor when a budget is set."
+  },
+  "budgetEditA11y": "Edit monthly budget",
+  "@budgetEditA11y": {
+    "description": "Consumed by features/insights/budget_card.dart. The accessible name of the Edit button, so a screen reader hears what is edited."
+  },
+  "budgetSet": "Set a budget",
+  "@budgetSet": {
+    "description": "Consumed by features/insights/budget_card.dart. Opens the budget editor when no budget is set."
+  },
+  "budgetNoneBody": "Set a monthly budget to see what is left each month.",
+  "@budgetNoneBody": {
+    "description": "Consumed by features/insights/budget_card.dart. The card's body when no budget is set."
+  },
+  "budgetOfAmount": "of {amount}",
+  "@budgetOfAmount": {
+    "description": "Consumed by features/insights/budget_card.dart. Beside the spent figure: of the budget amount.",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "budgetLeft": "{amount} left this month",
+  "@budgetLeft": {
+    "description": "Consumed by features/insights/budget_card.dart. Decision D-08: the meter's meaning in WORDS, so colour never carries it alone (WCAG 1.4.1).",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "budgetOver": "{amount} over budget",
+  "@budgetOver": {
+    "description": "Consumed by features/insights/budget_card.dart. The over-budget twin of budgetLeft.",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "budgetUsedPercent": "{percent} used",
+  "@budgetUsedPercent": {
+    "description": "Consumed by features/insights/budget_card.dart. The percent is formatted by NumberFormat.percentPattern for the locale.",
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
+  "budgetMeterLabel": "Budget used",
+  "@budgetMeterLabel": {
+    "description": "Consumed by features/insights/budget_card.dart. The meter's accessible name; its value is budgetUsedPercent."
+  },
+  "budgetOtherCurrencies": "Plans in other currencies are not counted in this budget.",
+  "@budgetOtherCurrencies": {
+    "description": "Consumed by features/insights/budget_card.dart. Shown only when a plan is billed in a currency other than the budget's, because no exchange rate is applied (ST-T5 I3 has not landed)."
+  },
+  "budgetAmountLabel": "Budget per month",
+  "@budgetAmountLabel": {
+    "description": "Consumed by features/insights/budget_editor.dart. Label of the amount field."
+  },
+  "budgetAverageHint": "Your subscriptions average {amount} a month.",
+  "@budgetAverageHint": {
+    "description": "Consumed by features/insights/budget_editor.dart. Helper under the amount field.",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "budgetAmountInvalid": "Enter an amount, like 5500.",
+  "@budgetAmountInvalid": {
+    "description": "Consumed by features/insights/budget_editor.dart. Error under a field that does not parse as money."
+  },
+  "budgetCapsTitle": "Category caps",
+  "@budgetCapsTitle": {
+    "description": "Consumed by features/insights/budget_editor.dart. Heading of the per-category cap rows."
+  },
+  "budgetCapUsed": "{amount} used",
+  "@budgetCapUsed": {
+    "description": "Consumed by features/insights/budget_editor.dart. Under a category name: its monthly spend.",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "budgetNoCap": "No cap",
+  "@budgetNoCap": {
+    "description": "Consumed by features/insights/budget_editor.dart. Hint in an empty cap field."
+  },
+  "budgetCapLabel": "Cap for {category}",
+  "@budgetCapLabel": {
+    "description": "Consumed by features/insights/budget_editor.dart. The accessible name of a category's cap field.",
+    "placeholders": {
+      "category": {
+        "type": "String"
+      }
+    }
+  },
+  "budgetSave": "Save budget",
+  "@budgetSave": {
+    "description": "Consumed by features/insights/budget_editor.dart. The editor's one primary action."
+  },
+  "budgetSaveFailed": "The budget could not be saved. Check your connection and try again.",
+  "@budgetSaveFailed": {
+    "description": "Consumed by features/insights/budget_editor.dart. Shown in the editor, which stays open with what was typed, when the write fails."
+  },
+  "proBadge": "Pro",
+  "@proBadge": {
+    "description": "Consumed by features/insights/budget_editor.dart and insights_screen.dart. The chip on a Pro-only part of a screen."
   }
 }

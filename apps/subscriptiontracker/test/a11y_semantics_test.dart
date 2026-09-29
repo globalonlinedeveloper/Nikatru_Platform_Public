@@ -88,6 +88,7 @@ import 'package:subscriptiontracker/features/calendar/calendar_screen.dart';
 import 'package:subscriptiontracker/features/cancel/cancel_sheet.dart';
 import 'package:subscriptiontracker/features/detail/subscription_detail_screen.dart';
 import 'package:subscriptiontracker/features/home/home_screen.dart';
+import 'package:subscriptiontracker/features/insights/budget_editor.dart';
 import 'package:subscriptiontracker/features/insights/insights_screen.dart';
 import 'package:subscriptiontracker/features/monetization/manage_plan_screen.dart';
 import 'package:subscriptiontracker/features/monetization/paywall_screen.dart';
@@ -1570,6 +1571,117 @@ void main() {
         // control on it at all — it is a report. Passing 1 here would be a
         // requirement invented by the test.
         expect(nakedControls(tester), isEmpty);
+      });
+    });
+  });
+
+  // ═══ TIER 1 · BUDGET EDITOR (modal, ST-D3 D3-2) ═══════════════════════════
+  // The first surface that can WRITE a budget. Opened, not routed to, so the
+  // host is a launcher button on `pumpScreen`'s container, as the add sheet's.
+  group('budget editor · every field and the one action are named', () {
+    const BudgetInfo budget = BudgetInfo(
+      monthlyBudget: Money(550000, 'INR'),
+      categories: <BudgetCap>[BudgetCap('Video', Money(150000, 'INR'))],
+    );
+    final MoneyBag spent = MoneyBag.sum(const <Money>[Money(504900, 'INR')]);
+    final List<CategoryTotal> cats = <CategoryTotal>[
+      CategoryTotal('Video', MoneyBag.sum(const <Money>[Money(129700, 'INR')])),
+      CategoryTotal(
+        'AI tools',
+        MoneyBag.sum(const <Money>[Money(177000, 'INR')]),
+      ),
+    ];
+
+    // The launcher is passed IN, so each case names `showBudgetEditorSheet`
+    // itself — the coverage guard attributes a sweep per testWidgets block.
+    Future<void> openEditor(
+      WidgetTester tester,
+      void Function(BuildContext) launch,
+    ) async {
+      await pumpScreen(
+        tester,
+        Scaffold(
+          body: Builder(
+            builder: (BuildContext context) => Center(
+              child: TextButton(
+                onPressed: () => launch(context),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('nothing on the budget editor is naked', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await openEditor(
+          tester,
+          (BuildContext context) => showBudgetEditorSheet(
+            context,
+            budget: budget,
+            spent: spent,
+            categories: cats,
+          ),
+        );
+        // The modal scrim is stepped around by the property that identifies
+        // it (a dismiss action), exactly as the add-sheet sweep argues: it is
+        // the framework's barrier, named but role-less in every Flutter app.
+        final List<SemanticsNode> tappable = _nodes(tester)
+            .where(
+              (SemanticsNode n) =>
+                  n.getSemanticsData().hasAction(SemanticsAction.tap),
+            )
+            .toList();
+        final List<SemanticsNode> barrier = tappable
+            .where(
+              (SemanticsNode n) =>
+                  n.getSemanticsData().hasAction(SemanticsAction.dismiss),
+            )
+            .toList();
+        expect(barrier, hasLength(1));
+        expect(_spoken(barrier.single), isNotEmpty);
+        final List<NakedControl> naked = tappable
+            .where(
+              (SemanticsNode n) =>
+                  !n.getSemanticsData().hasAction(SemanticsAction.dismiss),
+            )
+            .map(NakedControl.new)
+            .where((NakedControl n) => n.missesRole || n.missesName)
+            .toList();
+        // Drag handle, Close, the amount, two caps and Save: six controls.
+        expect(tappable.length - barrier.length, greaterThanOrEqualTo(6));
+        expect(naked, isEmpty, reason: naked.join(', '));
+        // The family marker the coverage guard reads, over the same tree with
+        // the scrim counted in: exactly the barrier and nothing else.
+        expect(nakedControls(tester), hasLength(1));
+      });
+    });
+
+    testWidgets('each cap field is announced with its category', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await openEditor(
+          tester,
+          (BuildContext context) => showBudgetEditorSheet(
+            context,
+            budget: budget,
+            spent: spent,
+            categories: cats,
+          ),
+        );
+        final List<String> labels = announced(tester);
+        expect(labels.any((String l) => l.contains('Cap for Video')), isTrue);
+        expect(
+          labels.any((String l) => l.contains('Cap for AI tools')),
+          isTrue,
+          reason: 'two identical "No cap" fields are two unnamed fields',
+        );
       });
     });
   });

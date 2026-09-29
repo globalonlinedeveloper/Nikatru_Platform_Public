@@ -24,6 +24,7 @@ export 'src/theme/form_tones.dart';
 export 'src/widgets/app_card.dart';
 export 'src/widgets/app_fab.dart';
 export 'src/widgets/app_list_row.dart';
+export 'src/widgets/adaptive_sheet.dart';
 export 'src/widgets/app_scaffold.dart';
 export 'src/widgets/brand_lockup.dart';
 export 'src/widgets/auth_field.dart';

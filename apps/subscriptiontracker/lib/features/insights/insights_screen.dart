@@ -28,6 +28,7 @@ import '../shared/neutrals.dart';
 import '../shared/painters.dart';
 import '../shared/widgets.dart';
 import '../shell/app_shell.dart';
+import 'budget_card.dart';
 import 'summary_tiles.dart';
 
 /// 📌 THE PRIVATE `_neutrals(BuildContext)` THAT STOOD HERE IS HOISTED
@@ -299,6 +300,7 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
         // The page's card STACK, in reading order — built ONCE, then laid out
         // in one column or two, so no arm can gain a card the other lacks.
         final List<Widget> cards = <Widget>[
+          BudgetCard(subs: subs, currencyCode: currencyCode),
           _categoryCard(context, l10n, money, currencyCode, cats),
           if (unused.isNotEmpty)
             _savingsCard(context, l10n, money, unused, savings),
