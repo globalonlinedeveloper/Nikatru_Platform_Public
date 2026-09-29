@@ -19,7 +19,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync, execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, cpSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, cpSync, readdirSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,6 +37,32 @@ const BOOTSTRAP = 'packages/chassis_screens/lib/shell/bootstrap.dart';
 const APP_MAIN = `${APP}/main.dart`;
 const FIXTURE = `${APP}/features/zz_a11y_primitives_fixture.dart`;
 const APP_HARNESS = 'apps/subscriptiontracker/integration_test/app_test.dart';
+
+/** The real tree's integration harnesses, counted the plain way: a file under
+ *  apps/<app>/integration_test/ or the brick's that calls `app.main()` on a line
+ *  that is not a comment, and how many of those also call releaseWebSemantics(). */
+function realHarnesses() {
+  const dirs = [
+    ...readdirSync(join(REPO, 'apps'), { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => join(REPO, 'apps', d.name, 'integration_test')),
+    join(REPO, 'tooling/bricks/app/__brick__/apps/{{app_id}}/integration_test'),
+  ].filter((d) => existsSync(d));
+  let boots = 0;
+  let releases = 0;
+  for (const d of dirs) {
+    for (const f of readdirSync(d).filter((n) => n.endsWith('.dart'))) {
+      const code = readFileSync(join(d, f), 'utf8')
+        .split('\n')
+        .filter((l) => !/^\s*\/\//.test(l))
+        .join('\n');
+      if (!/^\s*await app\.main\(\);/m.test(code)) continue;
+      boots++;
+      if (/^\s*releaseWebSemantics\(\);/m.test(code)) releases++;
+    }
+  }
+  return { boots, releases };
+}
 const BRICK_HARNESS = 'tooling/bricks/app/__brick__/apps/{{app_id}}/integration_test/app_test.dart';
 
 const git = (cwd, ...a) => execFileSync('git', a, { cwd, encoding: 'utf8' });
@@ -408,7 +434,14 @@ describe('limb 3 · ST-Y5 · every stamped web app has a screen-reader tree', ()
         ),
       (r) => {
         assert.equal(r.status, 0, r.stderr);
-        assert.match(r.stdout, /4 harness\(es\) boot main\(\), 2 release the handle, 2 baselined/);
+        // ⏱ 2026-09-29 (ST-N1g) — DERIVED, not a literal: every real harness is a
+        // file that boots main() on an uncommented line, and this literal broke on
+        // each new one (4 → 6 with the two native-auth proofs). The fixture above
+        // adds a commented boot and a string, which must add NOTHING to the count;
+        // the brick's two baseline rows stay a literal pin.
+        const { boots, releases } = realHarnesses();
+        assert.equal(boots - releases, 2, 'the two brick baseline rows moved — re-read them, do not re-pin here');
+        assert.match(r.stdout, new RegExp(`${boots} harness\\(es\\) boot main\\(\\), ${releases} release the handle, 2 baselined`));
       },
     );
   });

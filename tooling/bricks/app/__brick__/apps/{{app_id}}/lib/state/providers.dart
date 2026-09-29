@@ -1112,22 +1112,22 @@ authRepositoryProvider = Provider<core.AuthRepository>((ref) {
   return SupabaseAuthRepository(
     requestServerDeletion: () =>
         requestAccountDeletion(ref.read(platformRestClientProvider)),
-    // 🔴 WITHOUT THIS EVERY AUTH MAIL POINTS AT THE PROJECT'S SITE URL, which
-    // is ONE URL for the whole portfolio — so a stamped app's users would
-    // confirm, reset and return from OAuth into a DIFFERENT app. Nothing
-    // inside this app could see it: the mail sends, the link resolves, the
-    // page loads.
-    //
-    // ⏱ 2026-09-23 — one derivation for all five link-sending calls. On web it
-    // is resolved from the running origin rather than compiled in, so a
-    // preview deployment and a local run each send their own users back to
-    // themselves. Off web it is `com.nikatru.<appId>://auth-callback` — which
-    // a stamped app does NOT register yet: the brick stamps web only
-    // (O-BRICK-STAMPS-WEB-ONLY), so no native manifest here carries the
-    // scheme, gotrue replaces the unlisted redirect with the Site URL, and
-    // `authCapabilitiesProvider` below keeps the OAuth door closed off web.
-    // Stamping the native registrations is that row's work, not this line's.
+    // 🔴 WITHOUT THIS EVERY AUTH MAIL POINTS AT THE PROJECT'S SITE URL — ONE URL
+    // for the whole portfolio — so a stamped app's users would land, invisibly,
+    // in a DIFFERENT app. ⏱ 2026-09-23 — one derivation for all five
+    // link-sending calls: the running origin on web (a preview and a local run
+    // each get their own users back); off web
+    // `com.nikatru.<appId>://auth-callback`, which a stamped app does NOT
+    // register yet (O-BRICK-STAMPS-WEB-ONLY): gotrue replaces the unlisted
+    // redirect with the Site URL, and `authCapabilitiesProvider` below keeps
+    // the OAuth door closed off web.
     redirects: AuthRedirects.current(appId: AppConfig.appId),
+    // ⏱ 2026-09-28 · ST-N1 — off web the captcha-gated calls go through the
+    // platform Worker's native route (any app with a native target); null on web.
+    nativeCredentials: nativeCredentialClient(
+      platformBaseUrl: kPlatformBaseUrl,
+      appId: AppConfig.appId,
+    ),
   );
 });
 

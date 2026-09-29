@@ -338,8 +338,8 @@ describe('assert-auth-callbacks — link-sending calls', () => {
   test('FAILS when signUp drops emailRedirectTo, naming file and line', () => {
     const root = fixture();
     const src = readFileSync(join(root, REPOSITORY), 'utf8');
-    const line = src.slice(0, src.indexOf('_auth.signUp(')).split('\n').length;
-    mutate(root, REPOSITORY, /(_auth\.signUp\([\s\S]*?)\n\s*emailRedirectTo: redirects\(AuthFlow\.signUpConfirm\),/, '$1');
+    const line = src.slice(0, src.indexOf('_credentials.signUp(')).split('\n').length;
+    mutate(root, REPOSITORY, /(_credentials\.signUp\([\s\S]*?)\n\s*emailRedirectTo: redirects\(AuthFlow\.signUpConfirm\),/, '$1');
     const r = run(root);
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, new RegExp(`supabase_auth_repository\\.dart:${line}: \\.signUp\\( passes no \`emailRedirectTo\``));
@@ -420,6 +420,29 @@ describe('assert-auth-callbacks — derivation and wiring', () => {
       (root) => mutate(root, `${A}/lib/state/providers/auth.dart`, /redirects: AuthRedirects\.current\([^)]*\),/, ''),
       1,
       /providers\/auth\.dart:\d+: SupabaseAuthRepository\( is built without/,
+    );
+  });
+
+  // ⏱ 2026-09-28 · ST-N1e — the native route's client, wired in both places.
+  test('FAILS when the brick builds the repository without nativeCredentials', () => {
+    red(
+      (root) =>
+        mutate(
+          root,
+          'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart',
+          /nativeCredentials: nativeCredentialClient\([^)]*\),/,
+          '',
+        ),
+      1,
+      /__brick__\/apps\/\{\{app_id\}\}\/lib\/state\/providers\.dart:\d+: SupabaseAuthRepository\( is built without `nativeCredentials: nativeCredentialClient/,
+    );
+  });
+
+  test('FAILS when the app builds the repository without nativeCredentials', () => {
+    red(
+      (root) => mutate(root, `${A}/lib/state/providers/auth.dart`, /nativeCredentials: nativeCredentialClient\([^)]*\),/, ''),
+      1,
+      /providers\/auth\.dart:\d+: SupabaseAuthRepository\( is built without `nativeCredentials/,
     );
   });
 

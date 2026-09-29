@@ -414,6 +414,9 @@ const GRADED_LANES = new Map([
   // by id. Graded as per-app since 2026-09-26; before that it sat in
   // CLASSIFIED_ELSEWHERE, printed and never failed.
   ['store-screenshots.yml', { owner: 'O-STORE-LANES-HARD-WIRE-ONE-APP', deployPath: false, dispatch: 'per-app' }],
+  // ⏱ 2026-09-28 · ST-N1g — the per-target native sign-in proof, dispatched per app
+  // like store-screenshots.yml: its gate job refuses an app outside the workspace set.
+  ['native-auth-proof.yml', { owner: 'O-NATIVE-AUTH-CALLBACK-UNBUILT', deployPath: false, dispatch: 'per-app' }],
 ]);
 const GRADED = [...GRADED_LANES.keys()];
 const DEPLOY_PATH_LANES = [...GRADED_LANES].filter(([, v]) => v.deployPath).map(([k]) => k);

@@ -33,6 +33,7 @@ import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
         InMemoryAuthRepository,
         SupabaseAuthRepository,
         failedArrivalFlowOf,
+        nativeCredentialClient,
         passwordResetArrivalOf;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_platform_storage/age_signals.dart'
@@ -131,6 +132,13 @@ final Provider<AuthRepository> authRepositoryProvider =
               // target in [kAuthCallbackTargets] registers and
               // `tooling/ci/assert-auth-callbacks.mjs` proves.
               redirects: AuthRedirects.current(appId: AppConfig.appId),
+              // ⏱ 2026-09-28 · ST-N1 — off web, sign-in, sign-up, reset and
+              // resend go through the platform Worker's native route, which
+              // GoTrue does not captcha; null on web, which keeps Turnstile.
+              nativeCredentials: nativeCredentialClient(
+                platformBaseUrl: AppConfig.platformBaseUrl,
+                appId: AppConfig.appId,
+              ),
             )
           : InMemoryAuthRepository(),
     );
