@@ -125,6 +125,14 @@ const DECLARED = [
     why: 'finds the provider subscription to cancel ([5]M-9); decides nothing about access.',
   },
   {
+    file: 'services/platform/src/lib/mor/cancel-on-delete.ts',
+    role: 'lookup',
+    counts: { entitlements: 1 },
+    why:
+      '⏱ 2026-09-29 AB-A5-02 — finds the live subscriptions DELETE /v1/account must cancel (or refuse over) before ' +
+      'it erases the person; decides nothing about access.',
+  },
+  {
     file: 'services/platform/src/routes/receipts.ts',
     role: 'lookup',
     counts: { entitlements: 1 },
