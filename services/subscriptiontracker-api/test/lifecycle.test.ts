@@ -11,7 +11,11 @@ import renewalsSrc from '../src/routes/renewals.ts?raw';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { recomputeRenewals } from '../../platform/src/renewals';
 import renewals from '../src/routes/renewals';
-import subscriptions, { CHARGING_STATUSES, SOFT_DELETE_PURGE_DAYS } from '../src/routes/subscriptions';
+import subscriptions, {
+  CHARGING_STATUSES,
+  MAX_BATCH_STATEMENTS,
+  SOFT_DELETE_PURGE_DAYS,
+} from '../src/routes/subscriptions';
 import { todayYmd } from '../src/lib/d1';
 import { realAppDb, asUser, SqliteD1 } from './harness';
 
@@ -85,6 +89,22 @@ describe('F04 — Pause and Mark cancelled are accepted, and stop the row being 
     expect(outcome.ok, outcome.detail).toBe(true);
     const charged = db.rows('SELECT DISTINCT subscription_id FROM payment_history').map((r) => r.subscription_id);
     expect(charged).toEqual([active]);
+  });
+});
+
+describe('every batch on this router is within MAX_BATCH_STATEMENTS (tooling/ceilings.json)', () => {
+  it('the purge and a price-moving PATCH send at most that many statements, and the purge sends exactly it', async () => {
+    const sizes: number[] = [];
+    const real = db.batch.bind(db);
+    db.batch = async (statements) => {
+      sizes.push(statements.length);
+      return real(statements);
+    };
+    const id = await create();
+    await subs(U, '/v1/subscriptions');
+    await patch(id, { price: 999 });
+    expect(sizes, 'the list must purge and the price edit must log').toHaveLength(2);
+    expect(Math.max(...sizes)).toBe(MAX_BATCH_STATEMENTS);
   });
 });
 

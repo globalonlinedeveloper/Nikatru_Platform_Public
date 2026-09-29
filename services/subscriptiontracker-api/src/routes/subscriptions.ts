@@ -199,6 +199,14 @@ export const CHARGING_STATUSES = ['active', 'trialing'] as const;
  * @ceiling none — a retention PERIOD in days, not a platform resource.
  */
 export const SOFT_DELETE_PURGE_DAYS = 30;
+/**
+ * The most statements any `.batch()` on this router sends: `purgeExpired`'s
+ * three (PATCH's price-change batch is two). FIXED BY THE CODE, not sized by
+ * input, and test/lifecycle.test.ts counts every batch against it.
+ *
+ * @ceiling d1.queriesPerInvocation lte
+ */
+export const MAX_BATCH_STATEMENTS = 3;
 /** @ceiling none — column width; an ISO-8601 instant is 24 characters. */
 const MAX_INSTANT = 40;
 /** An ISO-8601 instant with an explicit zone: what `toISOString()` writes. */

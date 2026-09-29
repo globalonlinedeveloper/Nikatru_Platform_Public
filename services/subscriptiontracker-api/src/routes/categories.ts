@@ -35,6 +35,14 @@ const MAX_NAME = 120;
  * MAX_CATEGORIES, and sits at that same 200.
  */
 const MAX_OWN = 200;
+/**
+ * The most statements any `.batch()` on this router sends: a rename and a
+ * delete are three each (the category, its subscriptions, its cap). FIXED BY
+ * THE CODE, not sized by input; test/categories.test.ts counts every batch.
+ *
+ * @ceiling d1.queriesPerInvocation lte
+ */
+export const MAX_CATEGORY_BATCH_STATEMENTS = 3;
 
 export function serializeCategory(row: Category) {
   return {

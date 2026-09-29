@@ -8,7 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect, beforeEach } from 'vitest';
 import budget from '../src/routes/budget';
-import categories from '../src/routes/categories';
+import categories, { MAX_CATEGORY_BATCH_STATEMENTS } from '../src/routes/categories';
 import subscriptions from '../src/routes/subscriptions';
 import { realAppDb, asUser, SqliteD1 } from './harness';
 
@@ -84,6 +84,21 @@ describe('a category of the user’s own, by id (B29)', () => {
     expect((await cats(U, '/v1/categories', { method: 'POST', body: { name: '  ' } })).status).toBe(400);
     expect((await cats(U, '/v1/categories', { method: 'POST', body: { name: 'g'.repeat(121) } })).status).toBe(400);
     expect(db.rows('SELECT id FROM categories WHERE user_id IS NOT NULL')).toHaveLength(0);
+  });
+});
+
+describe('every batch on this router is MAX_CATEGORY_BATCH_STATEMENTS (tooling/ceilings.json)', () => {
+  it('a rename and a delete each send exactly that many statements', async () => {
+    const sizes: number[] = [];
+    const real = db.batch.bind(db);
+    db.batch = async (statements) => {
+      sizes.push(statements.length);
+      return real(statements);
+    };
+    const mine = await newCategory('Gym');
+    await cats(U, `/v1/categories/${mine.id as string}`, { method: 'PATCH', body: { name: 'Gym 2' } });
+    await cats(U, `/v1/categories/${mine.id as string}`, { method: 'DELETE' });
+    expect(sizes).toEqual([MAX_CATEGORY_BATCH_STATEMENTS, MAX_CATEGORY_BATCH_STATEMENTS]);
   });
 });
 
