@@ -26,6 +26,7 @@ import io.flutter.plugin.common.MethodChannel
  */
 class AgeSignalsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware {
     private var channel: MethodChannel? = null
+    private var attestChannel: MethodChannel? = null
     private var context: Context? = null
     private var activity: Activity? = null
 
@@ -34,11 +35,18 @@ class AgeSignalsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activit
         channel = MethodChannel(binding.binaryMessenger, "nikatru/age_signals").also {
             it.setMethodCallHandler(this)
         }
+        // ⏱ 2026-09-29 · native sign-in attestation rides the package's one
+        // pluginClass: a pubspec platform names exactly one (NativeAttestHandler).
+        attestChannel = MethodChannel(binding.binaryMessenger, "nikatru/native_attest").also {
+            it.setMethodCallHandler(NativeAttestHandler(binding.applicationContext))
+        }
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel?.setMethodCallHandler(null)
         channel = null
+        attestChannel?.setMethodCallHandler(null)
+        attestChannel = null
         context = null
     }
 
