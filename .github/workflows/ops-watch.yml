@@ -17,6 +17,11 @@ on:
         description: 'Also run the weekly failed-run ledger (about 200 API requests; off for post-merge dispatches)'
         type: boolean
         default: false
+      # why: the same rule for the Renovate backlog reader, which is red for as long as the queue outruns its floors.
+      renovate_backlog:
+        description: 'Also read the Renovate backlog against its floors (red while the queue outruns them; off for post-merge dispatches)'
+        type: boolean
+        default: false
   # why: TWELVE slots, and every gap was COMPUTED including the wrap past midnight --
   # a sorted list shows every gap except the circular one. GitHub delivers this
   # repository's scheduled runs 10.1% on time, so density is what buys the alarm
@@ -716,10 +721,42 @@ jobs:
           fi
           exit "$code"
 
+  renovate-backlog:
+    name: The Renovate queue drains at least as fast as it fills
+    # why: the ledger's Monday slot: the register's unit scan then opens Monday runs only (scheduleWeekdays), and the read lands after Renovate's first Monday run.
+    if: github.event.schedule == '45 7 * * 1' || (github.event_name == 'workflow_dispatch' && inputs.renovate_backlog)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    # why: the reader's one GraphQL query reads #417 and its edit history (issues) and the open pull requests it counts as still waiting (pull-requests), under this job's own token.
+    permissions:
+      issues: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Read the Dependency Dashboard against its two floors
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          node tooling/ops/check-renovate-backlog.mjs
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            echo "::error title=The Renovate backlog is UNKNOWN - could not read #417::COVERAGE LOST, not clean. No token, the API refused, the issue is not an open Dependency Dashboard, the entry grammar changed, the floor file is unreadable, or an age could only be bounded from below. The step log names which."
+          elif [ "$code" -eq 1 ]; then
+            echo "::error title=The Renovate queue outruns its floor::The waiting count or the oldest entry's age is past tooling/ops/renovate-backlog-floor.json. Merge the waiting PRs and approve the majors waiting on the dashboard; NEVER tick create-all."
+          fi
+          exit "$code"
+
   alert:
     name: Open or refresh the ops-watch issue
     needs:
-      [heartbeats, status, supabase-drift, prod-provenance, pages-deployments, runner-budget, glitchtip, edge-shield, failure-ledger]
+      [heartbeats, status, supabase-drift, prod-provenance, pages-deployments, runner-budget, glitchtip, edge-shield, failure-ledger, renovate-backlog]
     # why: schedule only, and the issue is REUSED rather than reopened -- later
     # failures arrive as comments and it is never closed automatically, so closing it
     # is the acknowledgement that a human looked.

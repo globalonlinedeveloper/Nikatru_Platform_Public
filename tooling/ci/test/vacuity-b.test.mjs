@@ -358,7 +358,12 @@ describe('assert-no-tls-pinning refuses a subject that emptied under it', () => 
   });
 
   test('packages/ thinned BELOW its floor while every root still exists', () => {
-    provesRefusal(G, () => keepOnlyPackages(['design_system', 'api_client']), [
+    // ⏱ 2026-09-28 · train ST-D0: design_system alone, not design_system +
+    // api_client. The foundation added seven shipped files to design_system
+    // (26 → 33 under lib/), so the old pair kept 44 — ABOVE the floor of 40 —
+    // and the mutation stopped thinning anything. One package still leaves
+    // every root standing, which is the case this pins.
+    provesRefusal(G, () => keepOnlyPackages(['design_system']), [
       /`packages` yielded only \d+ shipped \.dart file\(s\), below its floor of \d+/,
     ], 2);
   });

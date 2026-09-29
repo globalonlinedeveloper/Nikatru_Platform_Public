@@ -68,7 +68,8 @@ and the exact extent of the change is:
 | Token | Reaches |
 |---|---|
 | `font.display`, `font.body` | **the Flutter apps, live, in three places.** `app_text.dart`'s six named `TextStyle`s, `build_app_theme.dart`'s **app-wide** `textTheme` (every unnamed Material style in every stamped app), and `brand_lockup.dart`'s publisher footer all read `BrandTokens.fontDisplay` / `fontBody`. All three were string literals until 2026-09-05. `BrandTokens` is exported from `nikatru_design_system.dart`, so an app can read it too — nothing in `apps/` imports a `src/` path, so a token that is not on that barrel is a token no app can reach. |
-| every colour, `size.radius` | the two static sites (through `tokens.css` and the palette guard, which compares the 18 inline `:root` blocks against it) and the extension subtree (through `tokens.json`). They reach Dart **as constants**, and nothing paints with them yet — see below. |
+| `positive`, `warn`, `danger` and their `-tint`s (light and dark) | **every Flutter app, live** — added 2026-09-28 (train ST-D0). Status is not a brand, so these six ARE an app's paint: `StatusTones.of(context)` picks the scheme half, `AppThemeX.fromScheme` carries the trio, and `DecisionStrip` / `AppListRow` paint them. `packages/design_system/test/status_contrast_test.dart` measures each tone on its opaque tint and on every seeded surface slot, both schemes; the brick's `test/design_foundation_test.dart` re-measures on each stamp's own seed. |
+| every other colour, `size.radius` | the two static sites (through `tokens.css` and the palette guard, which compares the 18 inline `:root` blocks against it) and the extension subtree (through `tokens.json`). They reach Dart **as constants**, and nothing paints with them yet — see below. |
 
 🔴 **A colour here is NOT an app's paint, and must not become one.** The app
 factory is multi-brand: every stamped app derives its Material 3 scheme from its

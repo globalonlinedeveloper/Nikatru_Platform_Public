@@ -674,10 +674,16 @@ const REQUIRED_COVERAGE = [
     // kDesktop/kWide are declared inline in the two new files, so the run reads
     // them from `test/*` and DOES apply the requirement. That is the stronger
     // form arriving, not a floor being loosened.
+    //
+    // ⏱ RE-MEASURED 2026-09-28 · train ST-D0 — the foundation components
+    // (AppFab, AppCard, AppListRow, DecisionStrip, SkeletonList), each pumped at kPhone/kTablet/kDesktop by their own component tests. Read off
+    // the run's own line: "17 of 25 surface(s) measured — 8 PRINTED".
+    //   surfaces        20 → 25
+    //   coveredSurfaces 12 → 17
     enforce: false,
-    surfaces: 20,
+    surfaces: 25,
     widthTestFiles: 19,
-    coveredSurfaces: 12,
+    coveredSurfaces: 17,
     label:
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, content_pane, two_pane and fifteen ' +
       'more, whose width decisions every stamped app inherits',

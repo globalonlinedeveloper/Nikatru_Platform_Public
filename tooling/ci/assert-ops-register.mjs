@@ -3177,6 +3177,28 @@ export function decideUnitRedSince(q, entries, pageFull) {
   return { success: null, failure };
 }
 
+/** ⏱ 2026-09-27 · O-RENOVATE-BACKLOG-OUTRUNS-ITS-LIMITS (ADR no.064). THE PAGE-ONLY
+ *  CLASSES, ONE MAP. Each key is a row-id prefix; its value is the owner's stamp,
+ *  printed on every verdict of that class the router prints. `checkLiveVerdictScopes`
+ *  (the structure) and `routeLiveVerdicts` (the routing) both ask `pageOnlyEligible`
+ *  and nothing else: each used to hold its own `'duty.laptop.'` literal, and
+ *  widening one of the two without the other would let a row pass the structure
+ *  and still block, or be refused and still print. */
+export const PAGE_ONLY_CLASSES = Object.freeze({
+  'duty.laptop.': 'owner 2026-09-18 - laptop-bound by construction (O-LAPTOP-ROUTINES-DIE-OVERNIGHT)',
+  'duty.freshness.': 'owner 2026-09-26 (delegated to the lead) - freshness, not correctness: drains only by merges, which a frozen ci-gate would stop (O-RENOVATE-BACKLOG-OUTRUNS-ITS-LIMITS)',
+});
+
+/** PURE. The page-only class `id` belongs to, or null. */
+export function pageOnlyClassOf(id) {
+  return Object.keys(PAGE_ONLY_CLASSES).find((p) => String(id).startsWith(p)) ?? null;
+}
+
+/** PURE. The one predicate both halves read: may `id` carry a page-only scope? */
+export function pageOnlyEligible(id) {
+  return pageOnlyClassOf(id) !== null;
+}
+
 /** ⏱ 2026-09-18 · O-LAPTOP-ROUTINES-DIE-OVERNIGHT. PURE. A `duty.laptop.*` row may
  *  carry `liveVerdictScope: { blocks: 'page-only', page: '<workflow>.yml', why }`:
  *  its RED live verdict then BLOCKS only in that page host and PRINTS everywhere
@@ -3190,7 +3212,12 @@ export function decideUnitRedSince(q, entries, pageFull) {
  *  page must be a workflow this guard actually runs in (`topology.guardHosts`) —
  *  otherwise the verdict would block NOWHERE, which is deletion by another name;
  *  and `why` must say why. Every scoped row is PRINTED on every run.
- *  Returns `{ errors, prints }`. */
+ *  Returns `{ errors, prints }`.
+ *
+ *  ⏱ 2026-09-27 · "only `duty.laptop.*` rows" now reads "only rows of a class in
+ *  PAGE_ONLY_CLASSES", through `pageOnlyEligible`, the predicate the router reads
+ *  too. A new class is one key there, with the owner's stamp as its value; the
+ *  other three refusals are unchanged and apply to every class. */
 export function checkLiveVerdictScopes(reg, topology) {
   const errors = [];
   const prints = [];
@@ -3198,8 +3225,9 @@ export function checkLiveVerdictScopes(reg, topology) {
     const sc = r?.liveVerdictScope;
     if (sc === undefined) continue;
     const id = String(r?.id ?? '<no id>');
-    if (!id.startsWith('duty.laptop.')) {
-      errors.push(`${id}: carries \`liveVerdictScope\` and is not a duty.laptop.* row. The page-only scope exists for work that only a sleeping laptop can do; on any other row it would quietly stop a live verdict from gating deploys.`);
+    if (!pageOnlyEligible(id)) {
+      const classes = Object.keys(PAGE_ONLY_CLASSES).map((p) => `not a ${p}* row`).join(' and ');
+      errors.push(`${id}: carries \`liveVerdictScope\` and is ${classes}. The page-only scope exists only for the classes the owner named (PAGE_ONLY_CLASSES in tooling/ci/assert-ops-register.mjs); on any other row it would quietly stop a live verdict from gating deploys.`);
       continue;
     }
     if (sc?.blocks !== 'page-only') {
@@ -4279,6 +4307,63 @@ export function checkReaderIndependence(wf) {
   return { errors, prints, lost: null };
 }
 
+// ⏱ 2026-09-27 · O-RENOVATE-BACKLOG-OUTRUNS-ITS-LIMITS, limb 3a — THE ALERT CHAIN IS
+// HELD, NOT REMEMBERED. READER_WORKFLOW pages through ONE job: ALERT_JOB runs on
+// `failure()` of the jobs in its `needs` and of nothing else. A job left out of that
+// list goes red on its slot and files no issue: `checkRunUnits` still grades it, and
+// its row ages, but the page it exists to send never goes out, and every test stays
+// green. Nothing held the list before this limb — assert-green-means-ran's
+// needs-completeness ranges over its named aggregators (ci-gate, all_platforms),
+// and its `always()` rule does not fit a `failure()`-gated alert job.
+//
+// THE RULE: every job of READER_WORKFLOW except ALERT_NEEDS_EXEMPT is in
+// `alert.needs`, and every name there is a job of the file. Each finding names the
+// job and the register row whose unit it is. `digest` is exempt: it is a delivery
+// job that exits 0 by design (docs/ci/ops-watch.md, job `digest`), so it has no red
+// to page. A READER_WORKFLOW with no ALERT_JOB, or no READER_WORKFLOW at all, is not
+// decided here: `duty.workflow.ops-watch.yml` names `alert` in its unit, so
+// `checkRunUnits` already refuses the first, and a fixture tree without the file
+// has no alert chain to judge.
+export const ALERT_JOB = 'alert';
+export const ALERT_NEEDS_EXEMPT = Object.freeze(['alert', 'digest']);
+
+/** PURE, over the parsed READER_WORKFLOW (or `null`) and the register, which says
+ *  which row grades each job. `{ errors, prints }`; every error blocks in every host. */
+export function checkAlertNeeds(wf, reg) {
+  const errors = [];
+  const prints = [];
+  const alert = wf?.jobs?.get?.(ALERT_JOB);
+  if (!alert) return { errors, prints };
+  const rel = wf.rel ?? `${WORKFLOW_DIR_REL}/${READER_WORKFLOW}`;
+  const graders = new Map();
+  for (const r of reg?.rows ?? []) {
+    const q = r?.mechanism?.recordQuery;
+    if (q?.reader !== 'github-run-history' || String(q.workflow ?? '') !== READER_WORKFLOW) continue;
+    const u = unitOf(q);
+    const ids = u.kind === 'jobs' ? u.jobs : u.kind === 'step' ? [u.job] : [];
+    for (const id of ids) graders.set(id, [...(graders.get(id) ?? []), r.id]);
+  }
+  const gradedBy = (id) => (graders.has(id) ? `graded by ${graders.get(id).join(' · ')}` : 'graded by no register row');
+  const needs = new Set(alert.needs ?? []);
+  for (const id of wf.jobs.keys()) {
+    if (ALERT_NEEDS_EXEMPT.includes(id) || needs.has(id)) continue;
+    errors.push(
+      `${rel} — job \`${id}\` (${gradedBy(id)}) is not in \`${ALERT_JOB}.needs\`. ${ALERT_JOB} runs on \`failure()\` of the ` +
+        `jobs it needs and of nothing else, so a red \`${id}\` would file no issue and page nobody. Add \`${id}\` to ` +
+        `\`${ALERT_JOB}.needs\`; only ${ALERT_NEEDS_EXEMPT.join(' and ')} stay out of it.`,
+    );
+  }
+  for (const id of needs) {
+    if (!wf.jobs.has(id)) {
+      errors.push(`${rel} — \`${ALERT_JOB}.needs\` names \`${id}\`, which is not a job of this file (it declares ${[...wf.jobs.keys()].join(' · ')}). GitHub refuses the whole workflow over a \`needs\` that names nothing.`);
+    }
+  }
+  if (errors.length === 0) {
+    prints.push(`[ALERT] ${READER_WORKFLOW} — ${ALERT_JOB}.needs holds all ${needs.size} job(s) of the file but ${ALERT_NEEDS_EXEMPT.join(' and ')}, so a red in any of them pages`);
+  }
+  return { errors, prints };
+}
+
 /** PURE. Why this unit's conclusion CONTAINS this guard's own verdict inside its
  *  own workflow, or `null`. The whole run of a guard host does; so does the job
  *  that runs this guard; so does any job that `needs:` it, and any later step in
@@ -4413,16 +4498,18 @@ export function routeLiveVerdicts(live, policy, topology, reg, parsedByFile) {
   const rows = new Map((reg?.rows ?? []).map((r) => [r.id, r]));
   // ⏱ 2026-09-18 — page-only rows (checkLiveVerdictScopes). Structure is refused
   // in every host by that check, so here only a well-formed scope is honoured.
+  // ⏱ 2026-09-27 — the class is asked of `pageOnlyEligible`, the predicate the
+  // structural check reads, and the printed stamp is the class's own.
   const scoped = [];
   const rest = [];
   for (const v of verdicts) {
     const sc = rows.get(v.id)?.liveVerdictScope;
-    const ok = String(v.id).startsWith('duty.laptop.') && sc?.blocks === 'page-only' && topology.guardHosts?.has(sc?.page);
+    const ok = pageOnlyEligible(v.id) && sc?.blocks === 'page-only' && topology.guardHosts?.has(sc?.page);
     if (ok && sc.page !== host) scoped.push(v);
     else rest.push(v);
   }
   for (const v of scoped) {
-    printed.push({ ...v, why: `PAGE-ONLY (owner, 2026-09-18) — ${v.id} blocks only in ${rows.get(v.id).liveVerdictScope.page}; in ${host} it PRINTS.` });
+    printed.push({ ...v, why: `PAGE-ONLY (${PAGE_ONLY_CLASSES[pageOnlyClassOf(v.id)]}) — ${v.id} blocks only in ${rows.get(v.id).liveVerdictScope.page}; in ${host} it PRINTS.` });
   }
   return routeRest(rest);
   function routeRest(verdictsLeft) {
@@ -5823,6 +5910,10 @@ async function main() {
   errors.push(...readerSteps.errors);
   prints.push(...readerSteps.prints);
   if (readerSteps.lost) coverageLost(readerSteps.lost);
+  // ⏱ 2026-09-27 — the alert chain is held (see `checkAlertNeeds`). STRUCTURAL.
+  const alertNeeds = checkAlertNeeds(parsedByFile.get(READER_WORKFLOW) ?? null, reg);
+  errors.push(...alertNeeds.errors);
+  prints.push(...alertNeeds.prints);
   const scopes = checkLiveVerdictScopes(reg, topology);
   errors.push(...scopes.errors);
   prints.push(...scopes.prints);
