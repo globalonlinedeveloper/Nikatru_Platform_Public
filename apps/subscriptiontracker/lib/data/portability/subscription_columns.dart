@@ -210,12 +210,11 @@ final String Function(core.ImportCandidate) subscriptionImportKey =
     );
 
 /// [s] under [subscriptionImportKey], for `ImportPlan.build(existingKeys:)`.
-String subscriptionExistingKey(Subscription s) =>
-    core.ImportPlan.keyFor(
-      name: s.name,
-      price: s.price,
-      cycle: subscriptionCycleCell(s),
-    );
+String subscriptionExistingKey(Subscription s) => core.ImportPlan.keyFor(
+  name: s.name,
+  price: s.price,
+  cycle: subscriptionCycleCell(s),
+);
 
 /// The `cycle` cell for [s]. ⏱ 2026-09-29 · ST-T3b (ST-E4): a row's cycle is a
 /// `Cadence` (every, unit), not the two-value `BillingCycle` this sheet was
