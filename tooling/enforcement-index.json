@@ -2621,6 +2621,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-store"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-versions.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "F-10"
     ],
@@ -3678,6 +3688,16 @@
     ],
     "kind": "script",
     "ref": "tooling/ops/check-retired-names-live.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#tech-currency"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-tech-currency.mjs",
     "references": [],
     "state": "WIRED"
   },

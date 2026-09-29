@@ -323,6 +323,12 @@
       "reads": "each release lane's workflow file and, for a lane that is only a `workflow_call` callee, its one caller (laneRunHost), to name the workflow whose run_number a build stamp carries"
     },
     {
+      "path": "tooling/ops/check-tech-currency.mjs",
+      "property": "refuses-blind",
+      "evidence": "pins a remote action; the tree walk read nothing.",
+      "reads": "every `uses:` of each workflow and local composite action, to find the remote actions whose `runs.using` a vendor retirement would reach"
+    },
+    {
       "path": "tooling/ops/redeploy-stranded.mjs",
       "property": "workflow-scan",
       "reads": "each deploy lane (push on main + workflow_dispatch + a named assert-gate-passed.mjs step), ci.yml's ci-gate job name, and redeploy-stranded.yml's workflow_run list, to derive which lanes a ci-gate cascade can strand"

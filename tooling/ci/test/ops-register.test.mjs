@@ -5024,11 +5024,15 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
   // class (O-RENOVATE-BACKLOG-OUTRUNS-ITS-LIMITS; register order, so it comes first).
   // The #802 assertion stays on the two laptop routines it is about.
   const BACKUP = 'duty.laptop.nikatru-daily-backup';
+  // ⏱ 2026-09-29 · EDITED DELIBERATELY again: duty.freshness.tech-currency joins the
+  // freshness class (findings B-9/B-11, C-PIPELINE-ADAPTS-AND-STAYS-CURRENT), in
+  // register order right after the Renovate backlog.
   const RENOVATE_BACKLOG = 'duty.freshness.renovate-backlog';
+  const TECH_CURRENCY = 'duty.freshness.tech-currency';
   const LAPTOP_802 = ['duty.laptop.nikatru-ops-check', 'duty.laptop.nikatru-watchdog'];
   const CODE_SCANNING_AGE = 'duty.freshness.code-scanning-age';
-  const PAGE_ONLY_ROWS = [RENOVATE_BACKLOG, CODE_SCANNING_AGE, BACKUP, ...LAPTOP_802, DRIVER];
-  test('PAGE-ONLY - the committed register scopes exactly the four laptop duties, the Renovate backlog and the code-scanning age, and it holds', () => {
+  const PAGE_ONLY_ROWS = [RENOVATE_BACKLOG, CODE_SCANNING_AGE, TECH_CURRENCY, BACKUP, ...LAPTOP_802, DRIVER];
+  test('PAGE-ONLY - the committed register scopes exactly the four laptop duties, the Renovate backlog, the code-scanning age and tech currency, and it holds', () => {
     const reg = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
     const scoped = reg.rows.filter((r) => r.liveVerdictScope !== undefined).map((r) => r.id);
     assert.deepEqual(scoped, PAGE_ONLY_ROWS);
@@ -6214,7 +6218,8 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
       }
       // ⏱ 2026-09-27 — 6 -> 7: duty.freshness.renovate-backlog reads ops-watch.yml's renovate-backlog job.
       // ⏱ 2026-09-29 — 7 -> 8: duty.freshness.code-scanning-age reads ops-watch.yml's code-scanning-age job.
-      assert.match(r.out, /\[INV3\] ops-watch\.yml — 8 duty rows, each judged by its OWN unit/);
+      // ⏱ 2026-09-29 — 8 -> 9: duty.freshness.tech-currency reads ops-watch.yml's tech-currency job.
+      assert.match(r.out, /\[INV3\] ops-watch\.yml — 9 duty rows, each judged by its OWN unit/);
     }
   });
 
@@ -6397,7 +6402,8 @@ describe('INV3 · a duty is judged by the unit that performs it — the pure hal
     assert.match(errs(row('a', { jobs: ['heartbeats'] }), row('b', { job: 'heartbeats', step: "Judge whether the analytics rail's silence is a FAULT" })), /the units overlap/);
     // ⏱ 2026-09-27 — ops-watch.yml gained the renovate-backlog job (duty.freshness.renovate-backlog).
     // ⏱ 2026-09-29 — and the code-scanning-age job (duty.freshness.code-scanning-age).
-    assert.match(errs(row('a', { jobs: ['status'] }), row('b', { jobs: ['pages-deployments'] })), /job\(s\) supabase-drift · prod-provenance · runner-budget · glitchtip · edge-shield · failure-ledger · renovate-backlog · code-scanning-age · alert · digest are the unit of none/);
+    // ⏱ 2026-09-29 — and the tech-currency job (duty.freshness.tech-currency).
+    assert.match(errs(row('a', { jobs: ['status'] }), row('b', { jobs: ['pages-deployments'] })), /job\(s\) supabase-drift · prod-provenance · runner-budget · glitchtip · edge-shield · failure-ledger · renovate-backlog · code-scanning-age · tech-currency · alert · digest are the unit of none/);
     const real = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
     const out = checkRunUnits(real, files, topo);
     assert.deepEqual(out.errors, []);
@@ -6406,7 +6412,8 @@ describe('INV3 · a duty is judged by the unit that performs it — the pure hal
     for (const r of runRows) assert.ok(unitOf(r.mechanism.recordQuery).declared, `${r.id} names no unit`);
     // ⏱ 2026-09-27 — 6 -> 7: duty.freshness.renovate-backlog reads ops-watch.yml's renovate-backlog job.
     // ⏱ 2026-09-29 — 7 -> 8: duty.freshness.code-scanning-age reads ops-watch.yml's code-scanning-age job.
-    assert.ok(out.prints.some((p) => /\[INV3\] ops-watch\.yml — 8 duty rows/.test(p)), 'the shared workflow and its units must print on every run');
+    // ⏱ 2026-09-29 — 8 -> 9: duty.freshness.tech-currency reads ops-watch.yml's tech-currency job.
+    assert.ok(out.prints.some((p) => /\[INV3\] ops-watch\.yml — 9 duty rows/.test(p)), 'the shared workflow and its units must print on every run');
   });
 
   test('jobSteps reads the committed heartbeats job the way the API names its steps', () => {

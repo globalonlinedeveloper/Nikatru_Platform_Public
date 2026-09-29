@@ -18,6 +18,11 @@
 //   O1-O7 (2026-09-27, train WD1) an OPEN Renovate PR stays in the queue: it
 //      counts once, keeps the days it waited before it opened, and a PR list
 //      that did not come back is exit 2 - a red major left open is LOUDER
+//   M1-M5 (2026-09-29, finding B-7) a major has ceilings of its own: majors
+//      over maxWaitingMajors are exit 1 while the whole queue is under
+//      maxWaiting, a major is aged against maxOldestMajorDays, an open PR whose
+//      branch was ever held for approval is a major, and a floor whose majors
+//      ceilings could never fire is refused
 //   G5 (in an enforcing host a backlog verdict prints and does not block) is NOT
 //      here: it depends on the wiring decision recorded in the lane notes.
 //
@@ -34,6 +39,7 @@ import {
   readFloor,
   readDashboard,
   waitingEntries,
+  approvalBranches,
   CouldNotLook,
   DAY_MS,
   BRANCH_PREFIX,
@@ -43,7 +49,7 @@ import { READ_ATTEMPTS } from '../../ops/bounded-retry.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OPS = resolve(HERE, '..', '..', 'ops');
 const SCRIPT = join(OPS, 'check-renovate-backlog.mjs');
-const FLOOR = { issue: 417, maxWaiting: 15, maxOldestDays: 14 };
+const FLOOR = { issue: 417, maxWaiting: 15, maxOldestDays: 14, maxWaitingMajors: 7, maxOldestMajorDays: 14 };
 const NOW = Date.parse('2026-09-22T12:00:00Z');
 const iso = (daysAgo) => new Date(NOW - daysAgo * DAY_MS).toISOString();
 
@@ -229,6 +235,20 @@ describe('F1 - the committed floor', () => {
   test('no ceiling sits below 0.7 x its measurement', () => {
     assert.ok(floor.maxWaiting >= 0.7 * file.measured.waiting);
     assert.ok(floor.maxOldestDays >= 0.7 * file.measured.oldestDays);
+    assert.ok(floor.maxWaitingMajors >= 0.7 * file.measured.majors.waiting);
+  });
+  test('the majors age ceiling is the one exception, and it loosens nothing: at most maxOldestDays', () => {
+    assert.ok(floor.maxOldestMajorDays <= floor.maxOldestDays);
+    assert.match(file.maxOldestMajorDays.basis, /must not loosen/);
+  });
+  test('it is RED on the measured majors state (10 waiting for approval, the oldest 24.1 days)', () => {
+    const joined = many(file.measured.majors.waiting, 2);
+    joined['chore/renovate-dep-0'] = file.measured.majors.oldestDays;
+    const v = judge({ issue: issueWith(joined, { heading: 'Pending Approval', kind: 'approve-branch' }), floor, now: NOW });
+    assert.equal(v.code, 1, v.lines.join('\n'));
+    const text = v.lines.join('\n');
+    assert.match(text, /10 MAJORS WAIT FOR A PERSON, past their own ceiling of 7/);
+    assert.match(text, /1 MAJOR\(S\) HAVE WAITED LONGER THAN 14 DAYS/);
   });
   test('it is RED on the measured state it was written against (21 waiting, oldest 19 days)', () => {
     const joined = many(file.measured.waiting, 2);
@@ -240,6 +260,67 @@ describe('F1 - the committed floor', () => {
     const bad = JSON.parse(raw);
     delete bad.maxWaiting.basis;
     assert.match(readFloor(bad).error, /basis is missing/);
+  });
+});
+
+describe('M - a major has ceilings of its own (2026-09-29, finding B-7)', () => {
+  const PENDING = { heading: 'Pending Approval', kind: 'approve-branch' };
+  test('M1 RED CONTROL - eight majors against maxWaitingMajors 7 are exit 1 while the whole queue (8) is under maxWaiting 15', () => {
+    const v = judge({ issue: issueWith(many(8, 2), PENDING), floor: FLOOR, now: NOW });
+    assert.equal(v.code, 1, v.lines.join('\n'));
+    const text = v.lines.join('\n');
+    assert.match(text, /8 MAJORS WAIT FOR A PERSON, past their own ceiling of 7/);
+    assert.doesNotMatch(text, /THE RENOVATE QUEUE IS/, 'the queue itself is under its ceiling; only the majors limb fires');
+    assert.equal(v.measured.majors, 8);
+  });
+  test('M1 control: seven majors are green and SAY their count', () => {
+    const v = judge({ issue: issueWith(many(7, 2), PENDING), floor: FLOOR, now: NOW });
+    assert.equal(v.code, 0, v.lines.join('\n'));
+    assert.match(v.lines[0], /majors 7 <= 7, oldest major 2d <= 14d/);
+  });
+  test('M1 control: eight NON-majors are not majors', () => {
+    const v = judge({ issue: issueWith(many(8, 2)), floor: FLOOR, now: NOW });
+    assert.equal(v.code, 0, v.lines.join('\n'));
+    assert.equal(v.measured.majors, 0);
+  });
+  test('M2 a major is aged against maxOldestMajorDays, not maxOldestDays', () => {
+    const floor = { ...FLOOR, maxOldestMajorDays: 10 };
+    const v = judge({ issue: issueWith({ 'chore/renovate-go_router-18.x': 12 }, PENDING), floor, now: NOW });
+    assert.equal(v.code, 1, v.lines.join('\n'));
+    assert.match(v.lines.join('\n'), /1 MAJOR\(S\) HAVE WAITED LONGER THAN 10 DAYS \(renovate-backlog-floor\.json maxOldestMajorDays\)/);
+    const other = judge({ issue: issueWith({ 'chore/renovate-go_router-18.x': 12 }), floor, now: NOW });
+    assert.equal(other.code, 0, 'the same age on a non-major stays under maxOldestDays 14');
+  });
+  test('M3 an open Renovate PR whose branch a revision held for approval is a major, and keeps counting as one', () => {
+    const issue = issueWith({ 'chore/renovate-jose-6.x': 3 }, PENDING);
+    // The current body has moved the branch to "Open"; the history still shows it held for approval.
+    issue.body = '## Open\n\n - [ ] <!-- rebase-branch=chore/renovate-jose-6.x -->[update](../pull/1)\n';
+    issue.openPullRequests = pulls([pr('chore/renovate-jose-6.x', 1, 960)]);
+    const v = judge({ issue, floor: { ...FLOOR, maxWaitingMajors: 0.5 }, now: NOW });
+    assert.equal(v.code, 1, v.lines.join('\n'));
+    assert.equal(v.measured.majors, 1);
+    assert.match(v.lines.join('\n'), /1 MAJORS WAIT FOR A PERSON/);
+  });
+  test('M4 approvalBranches reads the approval marker and nothing else', () => {
+    const b = [' - [ ] <!-- approve-branch=chore/renovate-a-2.x -->a', ' - [ ] <!-- unschedule-branch=chore/renovate-b -->b'].join('\n');
+    assert.deepEqual([...approvalBranches(b)], ['chore/renovate-a-2.x']);
+  });
+  test('M5 a floor whose majors ceilings could never fire, or would loosen the age, is refused', () => {
+    const raw = readFileSync(join(OPS, 'renovate-backlog-floor.json'), 'utf8');
+    const same = JSON.parse(raw);
+    same.maxWaitingMajors.value = same.maxWaiting.value;
+    assert.match(readFloor(same).error, /maxWaitingMajors\.value is not below maxWaiting/);
+    const looser = JSON.parse(raw);
+    looser.maxOldestMajorDays.value = looser.maxOldestDays.value + 1;
+    assert.match(readFloor(looser).error, /must not loosen/);
+    const missing = JSON.parse(raw);
+    delete missing.maxWaitingMajors;
+    assert.match(readFloor(missing).error, /maxWaitingMajors\.value is not a positive number/);
+  });
+  test('M5 a floor handed to judge with no majors ceiling is exit 2, never a silent pass', () => {
+    const { maxWaitingMajors, ...partial } = FLOOR;
+    assert.equal(maxWaitingMajors, 7);
+    assert.equal(judge({ issue: issueWith(many(8, 2), PENDING), floor: partial, now: NOW }).code, 2);
   });
 });
 

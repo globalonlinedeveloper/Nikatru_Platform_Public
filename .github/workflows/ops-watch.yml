@@ -27,6 +27,11 @@ on:
         description: 'Also read the open code-scanning alerts against their 7-day triage window (off for post-merge dispatches)'
         type: boolean
         default: false
+      # why: the same rule for the tech-currency reader, which is red for as long as a proposal stands.
+      tech_currency:
+        description: 'Also read what the pipeline runs on against what its vendors retire (red while a proposal stands; off for post-merge dispatches)'
+        type: boolean
+        default: false
   # why: TWELVE slots, and every gap was COMPUTED including the wrap past midnight --
   # a sorted list shows every gap except the circular one. GitHub delivers this
   # repository's scheduled runs 10.1% on time, so density is what buys the alarm
@@ -790,10 +795,39 @@ jobs:
           fi
           exit "$code"
 
+  tech-currency:
+    name: What the pipeline runs on is not being retired by its vendors
+    # why: the Monday slot, for the reason the renovate-backlog job gives: the register's unit scan opens Monday runs only (scheduleWeekdays).
+    if: github.event.schedule == '45 7 * * 1' || (github.event_name == 'workflow_dispatch' && inputs.tech_currency)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # why: every source is public (the GitHub changelog, raw action metadata, the Node.js schedule, the duty matrix's vendor pages), so no token is read.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Read the vendors' retirements against the tree
+        run: |
+          set +e
+          node tooling/ops/check-tech-currency.mjs
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            echo "::error title=Tech currency is UNKNOWN - a source could not be read::COVERAGE LOST, not current. A read failed after the bounded plan, the changelog grammar changed or never reached its window, an action's metadata is gone, the Node schedule lacks a major the tree runs on, or a dated vendor page carried no date. The step log names which."
+          elif [ "$code" -eq 1 ]; then
+            echo "::error title=A vendor is retiring something the pipeline runs on::The step log names each proposal with its evidence and who uses it: a retired runtime or runner image, a Node major near end of life, or a duty-matrix source whose vendor page changed (or whose deadline passed) since it was read. Move the pin, or re-read the page and advance the row."
+          fi
+          exit "$code"
+
   alert:
     name: Open or refresh the ops-watch issue
     needs:
-      [heartbeats, status, supabase-drift, prod-provenance, pages-deployments, runner-budget, glitchtip, edge-shield, failure-ledger, renovate-backlog, code-scanning-age]
+      [heartbeats, status, supabase-drift, prod-provenance, pages-deployments, runner-budget, glitchtip, edge-shield, failure-ledger, renovate-backlog, code-scanning-age, tech-currency]
     # why: schedule only, and the issue is REUSED rather than reopened -- later
     # failures arrive as comments and it is never closed automatically, so closing it
     # is the acknowledgement that a human looked.

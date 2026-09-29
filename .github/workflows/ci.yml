@@ -563,6 +563,9 @@ jobs:
       - name: Build versions all match versions.json
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-version-consistency.mjs
+      - name: Every pin in versions.json carries its reason, and every retire condition is read at the flutter pin
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-versions.mjs
       - name: Every Renovate bump reaches every copy the version guard reads
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-renovate-reach.mjs

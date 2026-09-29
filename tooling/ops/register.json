@@ -2327,6 +2327,52 @@
       }
     },
     {
+      "_whyThisRowExists": "APPENDED 2026-09-29 for findings B-9 and B-11 of the round-2 review, in the same commit as the `tech-currency` job of .github/workflows/ops-watch.yml and tooling/ops/check-tech-currency.mjs. The owner constraint C-PIPELINE-ADAPTS-AND-STAYS-CURRENT was LOCKED with no reader and no row (state.mjs: 'a technology-currency reader item; it is not built'), so a vendor retiring something the pipeline runs on was seen only when a build broke. 🔴 THE ANCHOR IS THE SCRIPT, NOT ops-watch.yml, for the reason duty.freshness.renovate-backlog records: the `anchored` map in tooling/ci/assert-ops-register.mjs is keyed by anchor. 🔴 THE CLASS IS `duty.freshness.`, AND IT IS PAGE-ONLY (liveVerdictScope): a retirement is answered by merging a pin move or a re-read duty row, and a verdict that froze ci-gate would freeze exactly that merge.",
+      "id": "duty.freshness.tech-currency",
+      "kind": "duty",
+      "what": "What the pipeline runs on, read against what its vendors retire. tooling/ops/check-tech-currency.mjs reads (1) the GitHub changelog, Actions label, paged back 120 days, against every remote action's `runs.using` at its pinned ref (composites followed) and the node, java, xcode and runner_* pins of tooling/versions.json; (2) the Node.js release schedule against every Node major the tree runs on, 120 days ahead; (3) every primary-source row of tooling/legal/duty-matrix.json: its page is re-read, a vendor date after the row's `fetched` is a proposal, and an `enforced` date (inForceFrom, extensionAvailableTo) that passed after `fetched` is a proposal. Runs in ops-watch.yml's `tech-currency` job on the Mondays 07:45 UTC slot, and on a workflow_dispatch that asks for it (inputs.tech_currency).",
+      "detector": "The job's own exit, three-valued: 0 every source was read and nothing proposes a change · 1 at least one proposal, each printed with its evidence (the changelog sentence, the end-of-life date, the vendor date) and who in the tree uses the subject · 2 COVERAGE LOST — a read outlived the bounded plan, the changelog grammar changed or the feed never reached its window, an action's metadata is gone, the schedule lacks a Node major the tree runs on, or a dated vendor page carried no date. Exit 1 and exit 2 both fail the job.",
+      "response": "EXIT 1: for a retired runtime or runner image, or a Node major near end of life, move the pin (an action to a release on the new runtime, a runner label, the versions.json key) in a pull request. For a duty source, re-read the vendor page: if the rule still says what the row quotes, set `source.fetched` to the day it was read; if it moved, update the row's `enforced` values and the guard that reads them in the same change. Never edit the reader to clear a proposal. EXIT 2: nothing was graded; the step log's `x COULD NOT LOOK` block names each read that did not answer.",
+      "cadence": "7d",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": "tooling/ops/check-tech-currency.mjs",
+        "record": "GitHub Actions run history for .github/workflows/ops-watch.yml, filtered to event = schedule, read at the `tech-currency` job — the workflow's other eleven slots skip that job by its own `if:`, and a job skipped by its own `if:` is neutral in a unit read, so only the Mondays 07:45 UTC slot can supply a verdict for this row.",
+        "failingValue": "no scheduled run on main in which the `tech-currency` job concluded success inside the window [7d x 1.5 = 252h]. Exit 1 (a proposal stands) and exit 2 (COVERAGE LOST) both fail the job, so an unanswered retirement ages this row exactly as a stopped schedule does. REACHABLE BY MUTATION OF THE REAL TREE: deleting the job while this row names it is an undeclared-job finding in tooling/ci/assert-ops-register.mjs, and dropping it from alert's `needs` is that guard's alert-needs finding; the reader's own cases in tooling/ci/test/tech-currency.test.mjs red on a retired node20 runtime (B9) and on a duty source dated after its fetch (B11).",
+        "readBy": ".github/workflows/ops-watch.yml — the tech-currency job, whose non-zero exit reaches the durable issue through the alert job: this job is listed in alert's `needs`, and tooling/ci/assert-ops-register.mjs refuses an ops-watch job missing from that list.",
+        "recordQuery": {
+          "reader": "github-run-history",
+          "workflow": "ops-watch.yml",
+          "unit": {
+            "jobs": [
+              "tech-currency"
+            ]
+          },
+          "event": "schedule",
+          "headBranch": "main",
+          "firstDue": "2026-10-09T00:00:00Z",
+          "firstDueWhy": "⚠️ THE BOOTSTRAP, on the same terms as duty.freshness.renovate-backlog's and set to the same instant for the same reason: the job's run history does not exist until the job is on the default branch. The first Monday 07:45 UTC slot after a merge from 2026-09-29 to 2026-10-05 07:45 UTC is 2026-10-05, and 2026-10-09 gives it ~88h of scheduler lateness while staying inside one window [7d x 1.5 = 252h] of any run grading it from 2026-09-28T12:00Z. A merge after 2026-10-05 07:45 UTC re-sets this date to the Friday 00:00 UTC after the next Monday slot. No owner step stands before the first slot: every source is public and the job reads no token. ⬜ DELETE THIS FIELD AND `firstDue` once one scheduled run has succeeded on main.",
+          "why": "🔴 `unit: { jobs: ['tech-currency'] }` — the job, not the run, for the reason duty.freshness.renovate-backlog gives: ops-watch.yml runs twelve slots a day and a run is green whenever its daily readers are. `event: schedule` because a workflow_dispatch run is a person pressing the button, not the cadence. 🔴 THE MONDAY SLOT IS WHAT BOUNDS THIS ROW'S SHARE OF THE API QUOTA: the unit scan reads this job's weekdays out of its own `if:` (scheduleWeekdays) and opens the job list of a Monday schedule run only — the same runs duty.failure-ledger's and duty.freshness.renovate-backlog's scans already open, and the guard fetches each job list once per run, so this row adds no job-list read."
+        }
+      },
+      "absenceWatcher": {
+        "substrate": "(none)",
+        "what": "NOTHING, and it is the SAME gap duty.workflow.ops-watch.yml, duty.failure-ledger and duty.freshness.renovate-backlog already carry: this duty is a job inside that workflow, so whatever silences the workflow silences this too. Recorded separately instead of borrowed, because a gap inherited by implication is a gap nobody counts.",
+        "ownerGated": true,
+        "gap": "🔴 NOTHING WATCHES THIS JOB'S ABSENCE from outside GitHub, with the same repair as the rows that already say so: GitHub disables scheduled workflows in inactive public repositories, and a dead Monday slot looks exactly like a week no vendor retired anything. Its FAILING is loud (a non-zero exit fails the job, which reaches the durable issue through alert). Closing the absence half needs a signal hosted on a second provider: OWNER_QUEUE S-8, the same item. Declared 2026-09-29."
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "unverified",
+      "unverifiedWhy": "The job has never run: it lands with this row. The reader itself was run live on 2026-09-29 from a sandbox with public network access: 13 pinned actions and the one a composite uses (12 on node24, 2 composite), 27 changelog entries over 3 pages (the Node 20 removal of 2026-09-23 among them, retiring nothing the tree still runs on), Node 24 ending 2028-04-30; before the re-read below it proposed the three duty sources whose vendor pages were dated after their `fetched` (store-policies ms.date 2026-09-14 vs 2026-07-29; target-sdk and page-sizes 'Last updated 2026-09-16' vs 2026-08-04 and 2026-08-20) and the target-sdk inForceFrom that passed after its fetch. The two developer.android.com rows were re-read that day and their quotes still hold, so their `fetched` is 2026-09-29 in the same change; the Microsoft row is left for a re-read that also moves its Private ledger entry. NOT VERIFIED: the same reads from a GitHub-hosted runner. The first scheduled run is that measurement; flip this row to `verified` on its evidence.",
+      "liveVerdictScope": {
+        "blocks": "page-only",
+        "page": "ops-watch.yml",
+        "why": "freshness, not correctness: a retirement is answered only by merging a pin move or a re-read duty row; a frozen ci-gate would stop that merge (C-PIPELINE-ADAPTS-AND-STAYS-CURRENT, B-9)"
+      }
+    },
+    {
       "id": "duty.oci-console-session",
       "kind": "duty",
       "what": "The recurring Oracle Cloud console session: the memory-utilisation alarm, a CUSTOM boot-volume backup policy, Docker log rotation, the >=80% disk alert, and the console login itself.",
