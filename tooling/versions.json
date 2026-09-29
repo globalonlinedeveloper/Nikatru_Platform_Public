@@ -307,7 +307,7 @@
     "5.20260921.1 does not satisfy, so npm moved workers-types with it (to 5.20260927.1), the",
     "same line the 4.129.0 bump above had to make."
   ],
-  "wrangler": "4.141.0",
+  "wrangler": "4.143.0",
 
   "$glitchtip_cli_comment": [
     "ADDED 2026-09-03. THE TOOL THAT MAKES A WEB CRASH READABLE, and until this key existed there was",

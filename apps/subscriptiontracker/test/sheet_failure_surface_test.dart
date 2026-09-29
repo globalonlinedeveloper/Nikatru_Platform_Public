@@ -219,17 +219,23 @@ void main() {
     await tester.ensureVisible(submit);
     await tester.pumpAndSettle();
     await tester.tap(submit);
-    // `pump()` with no duration runs NO timers, and the SnackBar needs them.
     await tester.pumpAndSettle();
 
     // 1. The error did not escape as an unhandled async error.
     expect(tester.takeException(), isNull);
-    // 2. The user is told.
-    expect(find.byType(SnackBar), findsOneWidget);
+    // 2. The user is told — ON the sheet (train ST-D6). The SnackBar this was
+    //    lands on the scaffold under the modal barrier; the banner is the
+    //    sheet's own danger strip, so the message is where the user looks.
+    final Finder banner = find.byKey(E2EKeys.addBanner);
+    expect(banner, findsOneWidget);
     expect(
-      find.textContaining('Could not add that subscription'),
+      find.descendant(
+        of: banner,
+        matching: find.textContaining('Could not add that subscription'),
+      ),
       findsOneWidget,
     );
+    expect(find.byType(SnackBar), findsNothing);
     // 3. The button is usable again and the typed draft survived, so a retry is
     //    one tap rather than a re-entry.
     expect(find.text('Adding…'), findsNothing);
@@ -261,7 +267,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.byType(SnackBar), findsOneWidget);
+    // ⏱ train ST-D7: said ON the sheet (its inline failure strip), no longer
+    // in a snack bar the root-mounted sheet's scrim drew over.
+    expect(find.byKey(E2EKeys.cancelFailure), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
     expect(find.textContaining('Could not remove it just now'), findsOneWidget);
     // 🔴 The confirmation step congratulates the user on savings. Showing it
     // after a failed cancel would be a lie the app tells about the user's money.

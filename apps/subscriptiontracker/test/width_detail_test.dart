@@ -1,6 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // SUBSCRIPTION DETAIL — the TWO-PANE width property.
 //
+// ⏱ 2026-09-28 · train ST-D5: the gradient hero is now the chassis
+// `AppDetailHeader`'s full-bleed `surfaceContainer` BAND (key
+// `detail-header-band`). The split below is the same property with the same
+// three bullets; "gradient" in them now reads "band".
+//
 // This screen is the only Phase-3 port with a SPLIT: the hero `Container` must
 // keep painting edge to edge while the header CONTENT inside it is capped at
 // the same `kMaxBodyWidth` as the body `ListView` below. That is two assertions
@@ -137,7 +142,7 @@ void main() {
     });
   });
 
-  group('detail header content is capped while the gradient stays full-bleed', () {
+  group('detail header content is capped while the band stays full-bleed', () {
     testWidgets('at 1920 the header pane caps its content at reading', (
       WidgetTester tester,
     ) async {
@@ -175,15 +180,15 @@ void main() {
     // 🔴 THE INVERSE REGRESSION. No pane edit can redden this one; it is
     // falsified by somebody CAPPING the gradient — wrapping the Container in a
     // ContentPane, or moving it inside one of the two panes above.
-    testWidgets('at 1920 the gradient itself still spans the whole surface', (
+    testWidgets('at 1920 the band itself still spans the whole surface', (
       WidgetTester tester,
     ) async {
       await pumpAt(tester, kWide, screen);
       expect(
-        tester.getSize(find.byKey(const Key('detail-hero-gradient'))).width,
+        tester.getSize(find.byKey(const Key('detail-header-band'))).width,
         1920,
         reason:
-            'the hero paints the full window; capped at 1280 it becomes a '
+            'the band paints the full window; capped at 720 it becomes a '
             'floating block on the page background, which reads as a broken '
             'image rather than a header',
       );
