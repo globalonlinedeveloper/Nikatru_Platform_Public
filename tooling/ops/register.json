@@ -4781,6 +4781,50 @@
       "source": "verified"
     },
     {
+      "id": "retention.d1.subscriptiontracker_db.price_change",
+      "kind": "retention",
+      "store": "d1:subscriptiontracker_db:price_change",
+      "what": "The user's own price history: one row per edit that moved a tracked subscription's price or currency (ST-I4).",
+      "rule": "keep",
+      "keepWhy": "User content, kept with its subscription: purged with it 30 days after a soft delete, and with the account on erasure. Same reasoning as retention.d1.subscriptiontracker_db.payment_history.",
+      "detector": "tooling/ci/assert-retention-coverage.mjs.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/subscriptiontracker-api/migrations/0005_lifecycle_history_categories.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.subscriptiontracker_db.categories",
+      "kind": "retention",
+      "store": "d1:subscriptiontracker_db:categories",
+      "what": "The user's own category names, beside ten shared built-in rows that hold nothing about anyone (ST-X8).",
+      "rule": "keep",
+      "keepWhy": "User content, kept until the user deletes the category or the account. Same reasoning as retention.d1.subscriptiontracker_db.budget_categories.",
+      "detector": "tooling/ci/assert-retention-coverage.mjs.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/subscriptiontracker-api/migrations/0005_lifecycle_history_categories.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
       "id": "retention.kv.platform.SIGNUPS",
       "kind": "retention",
       "store": "kv:platform:SIGNUPS",
