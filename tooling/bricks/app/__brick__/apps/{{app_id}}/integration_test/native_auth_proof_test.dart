@@ -46,6 +46,9 @@ import 'native_auth_proof_steps.dart';
 const String _email = String.fromEnvironment('E2E_EMAIL');
 const String _password = String.fromEnvironment('E2E_PASSWORD');
 const bool _awaitCallback = bool.fromEnvironment('NK_PROOF_CALLBACK');
+// iOS: the URL the APP opens itself (tooling/e2e/native_auth_proof.mjs,
+// appOpensCallback); empty where the host's OS opens it.
+const String _openFromApp = String.fromEnvironment('NK_PROOF_OPEN_FROM_APP');
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -139,6 +142,9 @@ void main() {
       // 4 ── the OS delivers an unusable callback.
       if (_awaitCallback) {
         debugPrint(kAwaitCallbackMarker);
+        if (_openFromApp.isNotEmpty) {
+          await openCallbackFromApp(tester, _openFromApp);
+        }
         expect(
           await pumpUntilShown(
             tester,

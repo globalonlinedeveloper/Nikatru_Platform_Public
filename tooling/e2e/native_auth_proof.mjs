@@ -86,7 +86,12 @@ export function openCommands(target, url, { app, root, device, home = homedir() 
     case 'android':
       return [['adb', ...(device ? ['-s', device] : []), 'shell', `am start -W -a android.intent.action.VIEW -d '${url}'`]];
     case 'ios':
-      return [['xcrun', 'simctl', 'openurl', device || 'booted', url]];
+      // 🔴 NOT `simctl openurl`: iOS holds a custom-scheme URL from outside
+      // the app behind a system "Open in “<app>”?" sheet that nothing on a
+      // runner answers — run 36637965865's screenshot, 25 s after the open.
+      // The app opens its own callback instead (appOpensCallback below), which
+      // iOS routes through the same scene → app_links → supabase_flutter path.
+      return [];
     case 'macos': {
       const products = join(root, 'apps', app, 'build', 'macos', 'Build', 'Products', 'Debug');
       const bundle = existsSync(products) ? readdirSync(products).find((f) => f.endsWith('.app')) : undefined;
@@ -119,6 +124,10 @@ export function openCommands(target, url, { app, root, device, home = homedir() 
       throw new Error(`unknown target "${target}" — one of ${TARGETS.join(', ')}`);
   }
 }
+
+/** Whether the APP opens the callback itself (`NK_PROOF_OPEN_FROM_APP`)
+ *  rather than the host — iOS alone; see the `ios` arm of openCommands. */
+export const appOpensCallback = (target) => target === 'ios';
 
 /** What the run's output proves, and what it does not. */
 export function readProof(out, { callback }) {
@@ -242,6 +251,7 @@ async function main() {
     ...(o.device ? ['-d', o.device] : []),
     ...defines.map((k) => `--dart-define=${k}=${process.env[k]}`),
     `--dart-define=NK_PROOF_CALLBACK=${o.callback}`,
+    ...(o.callback && appOpensCallback(o.target) ? [`--dart-define=NK_PROOF_OPEN_FROM_APP=${callbackUrl(o.app)}`] : []),
   ];
   const url = callbackUrl(o.app);
   let out = '';

@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import {
   afterOpenDiagnostics,
+  appOpensCallback,
   callbackUrl,
   egressIpOf,
   FAILED_CALLBACK_LINE,
@@ -71,8 +72,10 @@ describe('native_auth_proof — how each OS is handed the callback', () => {
     assert.match(cmd[4], /^am start -W -a android\.intent\.action\.VIEW -d '.+&code=st-n1-invalid'$/);
   });
 
-  test('ios: simctl openurl on the booted device', () => {
-    assert.deepEqual(openCommands('ios', url, { app: 'demoapp', root: '.', device: 'UDID' }), [['xcrun', 'simctl', 'openurl', 'UDID', url]]);
+  test('🔴 ios: NO host command — simctl openurl stops at a system "Open in" sheet; the app opens it', () => {
+    assert.deepEqual(openCommands('ios', url, { app: 'demoapp', root: '.', device: 'UDID' }), []);
+    assert.equal(appOpensCallback('ios'), true);
+    for (const t of ['android', 'macos', 'linux', 'windows']) assert.equal(appOpensCallback(t), false, t);
   });
 
   test('linux: a .desktop with %u and the scheme, set default, then xdg-open', () => {

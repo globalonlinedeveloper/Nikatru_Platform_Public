@@ -9,6 +9,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:url_launcher/url_launcher.dart' show LaunchMode, launchUrl;
 
 /// Pumps in short slices until [target] shows, tapping through first-run
 /// screens that stand in its way, for at most [timeout].
@@ -234,6 +235,30 @@ Future<String> answerOf(Future<Object?> Function() call) async {
   } on core.AuthFailure catch (e) {
     return e.code ?? e.message;
   }
+}
+
+/// Step 4 on iOS: the APP opens its own callback [url], so iOS delivers it
+/// through the scene (`scene(_:openURLContexts:)` → app_links →
+/// supabase_flutter), the path an email link takes.
+///
+/// 🔴 NOT `simctl openurl`. iOS holds a custom-scheme URL opened from outside
+/// the app behind a system "Open in “<app>”?" sheet, and nothing on a runner
+/// taps Open: proof run 36637965865's screenshot, 25 s after the open, showed
+/// the sheet over the sign-in form, and the app never saw the URL. The launch
+/// still resolves the scheme through the OS, so an unregistered one fails
+/// here as `launched=false`.
+Future<void> openCallbackFromApp(WidgetTester tester, String url) async {
+  final bool? launched = await tester.runAsync(
+    () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
+  );
+  debugPrint('NK_PROOF callback_opened_by=app launched=$launched');
+  expect(
+    launched,
+    isTrue,
+    reason:
+        'iOS did not open the app's own callback URL — is its scheme in '
+        'Info.plist CFBundleURLSchemes? On screen: ${onScreen()}',
+  );
 }
 
 /// The line the native repository writes for a failed callback exchange.
