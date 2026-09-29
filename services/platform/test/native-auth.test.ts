@@ -90,12 +90,14 @@ beforeAll(() => {
 });
 afterAll(() => vi.unstubAllGlobals());
 
+const exportRaw = async (k: CryptoKey) => (await crypto.subtle.exportKey('raw', k)) as ArrayBuffer;
+
 /** The desktop install every call below attests with, unless a case says otherwise. */
 let installKey: CryptoKeyPair;
 let installKeyId: string;
 beforeAll(async () => {
   installKey = (await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])) as CryptoKeyPair;
-  const raw = new Uint8Array(await crypto.subtle.exportKey('raw', installKey.publicKey));
+  const raw = new Uint8Array(await exportRaw(installKey.publicKey));
   installKeyId = b64url(await sha256(raw));
 });
 
@@ -116,7 +118,7 @@ beforeEach(async () => {
   db = realPlatformDb();
   // The install's key, registered for both apps the suite serves — the
   // registration route itself is proven in its own block below.
-  const pk = b64url(new Uint8Array(await crypto.subtle.exportKey('raw', installKey.publicKey)));
+  const pk = b64url(new Uint8Array(await exportRaw(installKey.publicKey)));
   for (const a of [APP, 'budgetbuddy']) {
     db.db
       .prepare('INSERT INTO native_attest_keys (app_id, key_id, kind, public_key, sign_count, created_at, last_used_at) VALUES (?, ?, ?, ?, 0, ?, ?)')
@@ -555,7 +557,7 @@ describe('ST-A · the attestation gate (ADR no.NNN)', () => {
     );
 
     const stranger = (await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])) as CryptoKeyPair;
-    const strangerId = b64url(await sha256(new Uint8Array(await crypto.subtle.exportKey('raw', stranger.publicKey))));
+    const strangerId = b64url(await sha256(new Uint8Array(await exportRaw(stranger.publicKey))));
     const unknown = await call(`${BASE}/token?grant_type=password`, text, {
       attest: false,
       headers: await attestHeaders(`${BASE}/token?grant_type=password`, text, stranger, strangerId),
@@ -649,7 +651,7 @@ describe('ST-A · the attestation gate (ADR no.NNN)', () => {
 describe('ST-A · key registration (POST …/attest/install)', () => {
   const installPath = `${BASE}/attest/install`;
   async function register(key: CryptoKeyPair, over: { body?: string; proofKey?: CryptoKeyPair } = {}) {
-    const raw = new Uint8Array(await crypto.subtle.exportKey('raw', key.publicKey));
+    const raw = new Uint8Array(await exportRaw(key.publicKey));
     const text = over.body ?? JSON.stringify({ kind: 'install-key', public_key: b64url(raw) });
     const headers = await attestHeaders(installPath, text, over.proofKey ?? key, 'unused');
     delete (headers as Record<string, string | undefined>)['X-NK-Attest-Key'];
@@ -661,7 +663,7 @@ describe('ST-A · key registration (POST …/attest/install)', () => {
     const first = await register(fresh);
     expect(first.status).toBe(201);
     const { key_id } = (await first.json()) as { key_id: string };
-    expect(key_id).toBe(b64url(await sha256(new Uint8Array(await crypto.subtle.exportKey('raw', fresh.publicKey)))));
+    expect(key_id).toBe(b64url(await sha256(new Uint8Array(await exportRaw(fresh.publicKey)))));
     expect((await register(fresh)).status).toBe(200);
     const text = JSON.stringify(password());
     const res = await call(`${BASE}/token?grant_type=password`, text, {

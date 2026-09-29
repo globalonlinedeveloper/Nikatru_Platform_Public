@@ -20,7 +20,6 @@
 // Nothing here reaches a network: Google and GoTrue are fakes behind `fetch`.
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
-import { generateKeyPairSync, sign as nodeSign, createVerify, type KeyObject } from 'node:crypto';
 import { app } from '../src/index';
 import type { AppEnv, RateLimiterBinding } from '../src/types';
 import { realPlatformDb, type RealDb } from './harness';
@@ -64,6 +63,22 @@ const der = (tag: number, ...parts: Uint8Array[]): Uint8Array => {
 };
 const hexBytes = (h: string) => Uint8Array.from(h.match(/../g)!.map((b) => parseInt(b, 16)));
 const oid = (h: string) => der(0x06, hexBytes(h));
+const b64std = (b: Uint8Array) => btoa(String.fromCharCode(...b));
+/** WebCrypto's r ‖ s → the DER ECDSA-Sig-Value certificates and App Attest carry. */
+const rawToDer = (raw: Uint8Array) => {
+  const half = raw.length / 2;
+  const int = (v: Uint8Array) => {
+    let i = 0;
+    while (i < v.length - 1 && v[i] === 0) i++;
+    const t = v.subarray(i);
+    return der(0x02, t[0]! & 0x80 ? concat(Uint8Array.of(0), t) : t);
+  };
+  return seq(int(raw.subarray(0, half)), int(raw.subarray(half)));
+};
+const ecPair = (curve: 'P-256' | 'P-384') => crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: curve }, true, ['sign', 'verify']) as Promise<CryptoKeyPair>;
+const ecSign = async (hash: 'sha256' | 'sha384', data: Uint8Array, key: CryptoKey) =>
+  rawToDer(new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: hash === 'sha256' ? 'SHA-256' : 'SHA-384' }, key, data)));
+const spkiOf = async (k: CryptoKey) => new Uint8Array((await crypto.subtle.exportKey('spki', k)) as ArrayBuffer);
 const seq = (...p: Uint8Array[]) => der(0x30, ...p);
 const name = (cn: string) => seq(der(0x31, seq(oid('550403'), der(0x0c, new TextEncoder().encode(cn)))));
 const gtime = (ms: number) => der(0x18, new TextEncoder().encode(new Date(ms).toISOString().replace(/[-:T]/g, '').slice(0, 14) + 'Z'));
@@ -71,19 +86,19 @@ const ALG = { sha256: seq(oid('2a8648ce3d040302')), sha384: seq(oid('2a8648ce3d0
 
 interface TestCert {
   der: Uint8Array;
-  key: KeyObject;
+  key: CryptoKey;
   subject: string;
 }
-function makeCert(opts: {
+async function makeCert(opts: {
   subject: string;
   issuer?: TestCert;
   curve: 'P-256' | 'P-384';
   hash: 'sha256' | 'sha384';
   notAfter?: number;
   nonce?: Uint8Array;
-}): TestCert & { publicKey: KeyObject } {
-  const pair = generateKeyPairSync('ec', { namedCurve: opts.curve === 'P-256' ? 'prime256v1' : 'secp384r1' });
-  const spki = new Uint8Array(pair.publicKey.export({ type: 'spki', format: 'der' }));
+}): Promise<TestCert> {
+  const pair = await ecPair(opts.curve);
+  const spki = await spkiOf(pair.publicKey);
   const exts = opts.nonce
     ? [der(0xa3, seq(seq(oid('2a864886f763640802'), der(0x04, seq(der(0xa1, der(0x04, opts.nonce)))))))]
     : [];
@@ -98,8 +113,8 @@ function makeCert(opts: {
     ...exts,
   );
   const signer = opts.issuer?.key ?? pair.privateKey;
-  const sig = new Uint8Array(nodeSign(opts.hash, tbs, { key: signer, dsaEncoding: 'der' }));
-  return { der: seq(tbs, ALG[opts.hash], der(0x03, Uint8Array.of(0), sig)), key: pair.privateKey, publicKey: pair.publicKey, subject: opts.subject };
+  const sig = await ecSign(opts.hash, tbs, signer);
+  return { der: seq(tbs, ALG[opts.hash], der(0x03, Uint8Array.of(0), sig)), key: pair.privateKey, subject: opts.subject };
 }
 
 const cbor = (v: unknown): Uint8Array => {
@@ -122,11 +137,11 @@ const AAGUID_DEV = new TextEncoder().encode('appattestdevelop');
 const NOW = Date.UTC(2026, 8, 29);
 
 async function attestationFor(clientDataHash: Uint8Array, over: { appId?: string; aaguid?: Uint8Array; counter?: number; leafNotAfter?: number; nonceOverride?: Uint8Array } = {}) {
-  const root = makeCert({ subject: 'Test App Attestation Root CA', curve: 'P-384', hash: 'sha384' });
-  const intermediate = makeCert({ subject: 'Test App Attestation CA 1', issuer: root, curve: 'P-384', hash: 'sha384' });
+  const root = await makeCert({ subject: 'Test App Attestation Root CA', curve: 'P-384', hash: 'sha384' });
+  const intermediate = await makeCert({ subject: 'Test App Attestation CA 1', issuer: root, curve: 'P-384', hash: 'sha384' });
   // The leaf's key must exist before its nonce (which covers authData, which names the key id).
-  const leafPair = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
-  const spki = new Uint8Array(leafPair.publicKey.export({ type: 'spki', format: 'der' }));
+  const leafPair = await ecPair('P-256');
+  const spki = await spkiOf(leafPair.publicKey);
   const point = spki.subarray(spki.length - 65);
   const keyId = await sha256(point);
   const counter = new Uint8Array(4);
@@ -153,17 +168,17 @@ async function attestationFor(clientDataHash: Uint8Array, over: { appId?: string
     spki,
     exts,
   );
-  const leaf = seq(tbs, ALG.sha256, der(0x03, Uint8Array.of(0), new Uint8Array(nodeSign('sha256', tbs, { key: intermediate.key, dsaEncoding: 'der' }))));
+  const leaf = seq(tbs, ALG.sha256, der(0x03, Uint8Array.of(0), await ecSign('sha256', tbs, intermediate.key)));
   const attestation = cbor({ fmt: 'apple-appattest', attStmt: { x5c: [leaf, intermediate.der], receipt: new Uint8Array(4) }, authData });
   return { attestation, keyId, root: root.der, leafKey: leafPair.privateKey, spki };
 }
 
-async function assertionFor(leafKey: KeyObject, clientData: string, counter: number, appId = APP_ID) {
+async function assertionFor(leafKey: CryptoKey, clientData: string, counter: number, appId = APP_ID) {
   const c = new Uint8Array(4);
   new DataView(c.buffer).setUint32(0, counter);
   const authenticatorData = concat(await sha256(appId), Uint8Array.of(0x40), c);
   const nonce = await sha256(concat(authenticatorData, await sha256(clientData)));
-  const signature = new Uint8Array(nodeSign('sha256', nonce, { key: leafKey, dsaEncoding: 'der' }));
+  const signature = await ecSign('sha256', nonce, leafKey);
   return cbor({ signature, authenticatorData });
 }
 
@@ -301,17 +316,24 @@ class Limiter implements RateLimiterBinding {
 
 const SUPABASE_URL = 'https://native-attest-test.gotrue.example';
 const BASE = '/v1/auth/native/subscriptiontracker';
-const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 });
-const SERVICE_ACCOUNT = JSON.stringify({
-  client_email: 'play-integrity@test-project.iam.gserviceaccount.com',
-  private_key: rsa.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
-});
+let rsa: CryptoKeyPair;
+let SERVICE_ACCOUNT: string;
 
 let db: RealDb;
 let google: { tokens: string[]; decodes: Array<{ url: string; auth: string | null; token: string }>; status: number };
 let gotrueSeen: number;
 
-beforeAll(() => {
+beforeAll(async () => {
+  rsa = (await crypto.subtle.generateKey(
+    { name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: Uint8Array.of(1, 0, 1), hash: 'SHA-256' },
+    true,
+    ['sign', 'verify'],
+  )) as CryptoKeyPair;
+  const pkcs8 = new Uint8Array((await crypto.subtle.exportKey('pkcs8', rsa.privateKey)) as ArrayBuffer);
+  SERVICE_ACCOUNT = JSON.stringify({
+    client_email: 'play-integrity@test-project.iam.gserviceaccount.com',
+    private_key: ['-----BEGIN PRIVATE KEY-----', ...b64std(pkcs8).match(/.{1,64}/g)!, '-----END PRIVATE KEY-----', ''].join('\n'),
+  });
   vi.stubGlobal('fetch', async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const url = String(input);
     if (url === 'https://oauth2.googleapis.com/token') {
@@ -378,15 +400,14 @@ describe('the route — Play Integrity', () => {
     expect(google.decodes[0]!.url).toBe(`https://playintegrity.googleapis.com/v1/${PKG}:decodeIntegrityToken`);
     expect(google.decodes[0]!.auth).toBe('Bearer google-access-token');
     const [h, p, s] = google.tokens[0]!.split('.');
-    expect(JSON.parse(Buffer.from(h!, 'base64url').toString())).toEqual({ alg: 'RS256', typ: 'JWT' });
-    expect(JSON.parse(Buffer.from(p!, 'base64url').toString())).toMatchObject({
+    const utf8 = (x: string) => new TextDecoder().decode(fromB64url(x)!);
+    expect(JSON.parse(utf8(h!))).toEqual({ alg: 'RS256', typ: 'JWT' });
+    expect(JSON.parse(utf8(p!))).toMatchObject({
       iss: 'play-integrity@test-project.iam.gserviceaccount.com',
       scope: 'https://www.googleapis.com/auth/playintegrity',
       aud: 'https://oauth2.googleapis.com/token',
     });
-    const verifier = createVerify('RSA-SHA256');
-    verifier.update(`${h}.${p}`);
-    expect(verifier.verify(rsa.publicKey, Buffer.from(s!, 'base64url'))).toBe(true);
+    expect(await crypto.subtle.verify('RSASSA-PKCS1-v1_5', rsa.publicKey, fromB64url(s!)!, new TextEncoder().encode(`${h}.${p}`))).toBe(true);
     // An attested channel is not held to the unattested channel's session rule.
     expect(await res.json()).toMatchObject({ access_token: 'a' });
   });
@@ -432,7 +453,7 @@ describe('the route — App Attest ops', () => {
 
   it('a genuine assertion passes and moves the counter; 🔴 a counter that does not move is refused', async () => {
     const a = await attestationFor(await sha256('install'));
-    const keyId = Buffer.from(a.keyId).toString('base64');
+    const keyId = b64std(a.keyId);
     db.db
       .prepare('INSERT INTO native_attest_keys (app_id, key_id, kind, public_key, sign_count, created_at, last_used_at) VALUES (?, ?, ?, ?, 0, ?, ?)')
       .run('subscriptiontracker', keyId, 'app-attest', b64url(a.spki), '2026-09-29T00:00:00.000Z', '2026-09-29T00:00:00.000Z');
@@ -463,7 +484,7 @@ describe('the route — App Attest ops', () => {
     // placeholder, then re-built for the real body with a fresh pair. Either way
     // the chain ends at the test CA, which is the point.
     const probe = await attestationFor(new Uint8Array(32));
-    const body = JSON.stringify({ kind: 'app-attest', key_id: Buffer.from(probe.keyId).toString('base64') });
+    const body = JSON.stringify({ kind: 'app-attest', key_id: b64std(probe.keyId) });
     const challenge = await issueChallenge(db as unknown as D1Database, 'subscriptiontracker', Date.now());
     const cdh = await sha256(await clientDataFor('subscriptiontracker', 'install', challenge, new TextEncoder().encode(body)));
     const res = await post(`${BASE}/attest/install`, body, {

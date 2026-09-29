@@ -2003,6 +2003,7 @@ export async function retentionSweep(
   let deleted = 0;
   let capped = 0;
   const per: string[] = [];
+  let quiet = 0;
   const inert: string[] = [];
 
   try {
@@ -2035,7 +2036,11 @@ export async function retentionSweep(
       const n = await deleteOlderThan(env, store, store === 'events_daily' ? bounded.slice(0, 10) : bounded);
       deleted += n;
       if (n >= MAX_ROWS_PER_SWEEP) capped++;
-      per.push(`${store}=${String(periods[store])}d:${n}`);
+      // ⏱ 2026-09-29 · with nine stores the full token list outgrew the
+      // heartbeat's 200-character detail (recordHeartbeat slices there), so a
+      // store that deleted nothing is COUNTED in `quiet=` rather than named.
+      if (n > 0) per.push(`${store}=${String(periods[store])}d:${n}`);
+      else quiet++;
     }
   } catch (err) {
     // ok=0 means THE WORK FAILED. A sweep that could not run is a retention
@@ -2070,7 +2075,7 @@ export async function retentionSweep(
             // One word, because a reader who cannot tell them apart will go
             // looking for a missing number that is not missing.
             ? `stores=${n_stores} declared=0 deleted=0 capped=0 — INERT: ${inert.join(', ')} (a bare store name = no period declared, owner: one value each in services/platform/src/scheduled.ts; \`events(unrolled)\` = the rollup watermark is null, which is the interlock refusing to delete unrolled-up history and needs no action).`
-            : `stores=${n_stores} declared=${declared} deleted=${deleted} capped=${capped} ${per.join(' ')}${inert.length > 0 ? ` inert=${inert.join(',')}` : ''}`,
+            : `stores=${n_stores} declared=${declared} deleted=${deleted} capped=${capped}${per.length > 0 ? ` ${per.join(' ')}` : ''}${quiet > 0 ? ` quiet=${quiet}` : ''}${inert.length > 0 ? ` inert=${inert.join(',')}` : ''}`,
       },
     ],
     RETENTION_SWEEP_JOB,
