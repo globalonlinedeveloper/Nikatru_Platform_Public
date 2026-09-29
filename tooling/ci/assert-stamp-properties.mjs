@@ -3353,10 +3353,20 @@ for (const root of darwinRoots) {
     }
   }
 }
-if (darwinSites === 0 && workspaceRead) {
+// The self-check keys on the PROBE, the adapter that really initialises the
+// plugin: if it constructs Darwin settings and the sweep saw none, the sweep is
+// blind. A tree whose adapter constructs none (a guard-test fixture) has
+// nothing for this limb to judge.
+let probeHasDarwinInit = false;
+try {
+  probeHasDarwinInit = /\bDarwinInitializationSettings\s*\(/.test(
+    stripDartComments(readFileSync(join(repo, PERMISSION_ASK_PROBE), 'utf8')),
+  );
+} catch { /* a missing probe already fails the [13]T-4 self-check */ }
+if (darwinSites === 0 && probeHasDarwinInit) {
   fail(
     'COVERAGE LOST — no DarwinInitializationSettings( construction found under any app, the brick or ' +
-      'packages/*/lib, yet packages/notifications initialises the plugin with one. The limb-D sweep saw nothing.',
+      `packages/*/lib, yet ${PERMISSION_ASK_PROBE} constructs one. The limb-D sweep saw nothing.`,
   );
 } else if (!darwinAsking) {
   ok(`[13]T-4 limb D — ${darwinSites} DarwinInitializationSettings construction(s) ask the OS for nothing at init`);
