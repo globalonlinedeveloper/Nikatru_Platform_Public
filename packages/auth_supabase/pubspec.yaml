@@ -26,6 +26,13 @@ dependencies:
   # `package:supabase_flutter/...` directly goes around the seam, and
   # assert-package-boundaries.mjs fails the build for it.
   supabase_flutter: ^2.16.0
+  # ⏱ 2026-09-29 · native sign-in attestation. gotrue-dart takes a
+  # `package:http` Client (`GoTrueClient(httpClient:)`, gotrue 2.26.0
+  # gotrue_client.dart:156), and NativeAttestationClient is one: it binds each
+  # native op to a fresh challenge and its exact body. Already in the workspace
+  # lock through gotrue; declared because this package now imports it. The
+  # constraint is packages/telemetry's, COPIED, so the two cannot drift.
+  http: ^1.2.0
 
 dev_dependencies:
   # [pipeline C-12] resolves the shared ruleset in analysis_options.yaml.

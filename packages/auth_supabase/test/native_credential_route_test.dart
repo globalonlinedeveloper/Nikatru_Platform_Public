@@ -17,6 +17,12 @@
 // RED BEFORE (recorded in the lane report): with `_credentials` answering the
 // main client, the password request arrives at GoTrue's `/auth/v1/token` —
 // the endpoint Box C refuses without a captcha — and the route sees nothing.
+//
+// ⏱ 2026-09-29 · AND EVERY OP ARRIVES ATTESTED. The route now refuses an op
+// with no attestation, so the loopback route also serves `/attest/challenge`
+// and `/attest/install`, the native client is built with a REAL
+// `InstallKeyAttestor`, and every op is checked for its headers and for an
+// Ed25519 proof over clientData recomputed from the bytes that ARRIVED.
 // ─────────────────────────────────────────────────────────────────────────────
 import 'dart:async';
 import 'dart:convert';
@@ -33,11 +39,14 @@ const String _gotrue = '/auth/v1';
 const String _route = '/v1/auth/native/$_app';
 
 class _Seen {
-  _Seen(this.method, this.uri, this.headers, this.body);
+  _Seen(this.method, this.uri, this.headers, this.body, this.bytes);
   final String method;
   final Uri uri;
   final HttpHeaders headers;
   final Map<String, Object?> body;
+
+  /// The body exactly as it arrived — what an attestation is bound to.
+  final List<int> bytes;
   @override
   String toString() => '$method ${uri.path}';
 }
@@ -95,8 +104,14 @@ class _Server {
     'user': _user(),
   };
 
+  int _challenges = 0;
+
   Future<void> _handle(HttpRequest req) async {
-    final String raw = await utf8.decoder.bind(req).join();
+    final List<int> bytes = await req.fold<List<int>>(
+      <int>[],
+      (List<int> all, List<int> chunk) => all..addAll(chunk),
+    );
+    final String raw = utf8.decode(bytes);
     final Object? parsed = raw.isEmpty ? null : jsonDecode(raw);
     seen.add(
       _Seen(
@@ -104,6 +119,7 @@ class _Server {
         req.uri,
         req.headers,
         parsed is Map<String, Object?> ? parsed : <String, Object?>{},
+        bytes,
       ),
     );
     final String path = req.uri.path;
@@ -122,6 +138,14 @@ class _Server {
         ('POST', '/recover') => (200, <String, Object?>{}),
         ('POST', '/resend') => (200, <String, Object?>{}),
         ('GET', '/user') => (200, _user()),
+        ('POST', '/attest/challenge') => (
+          200,
+          <String, Object?>{
+            'challenge': 'ch-${++_challenges}',
+            'expires_in': 120,
+          },
+        ),
+        ('POST', '/attest/install') => (201, <String, Object?>{'key_id': 'k'}),
         _ => (404, <String, Object?>{'msg': 'not faked'}),
       };
     }
@@ -223,7 +247,13 @@ void main() {
   });
 
   late _Server server;
-  setUp(() async => server = await _Server.start());
+  // The REAL install-key attestor, over a store that is empty at each test:
+  // the first op of every test registers a fresh key.
+  late core.InstallKeyAttestor attestor;
+  setUp(() async {
+    server = await _Server.start();
+    attestor = core.InstallKeyAttestor(store: core.InMemorySecureStore());
+  });
   tearDown(() async => server.close());
 
   /// A repository wired as a live build on [platform] wires it: the main client
@@ -248,6 +278,7 @@ void main() {
     final sb.GoTrueClient? native = nativeCredentialClient(
       platformBaseUrl: server.origin,
       appId: _app,
+      attestor: attestor,
       isWeb: isWeb,
       platform: platform,
       pkceStorage: store,
@@ -306,13 +337,60 @@ void main() {
               .at(_route)
               .map((_Seen s) => '${s.method} ${s.uri.path}')
               .toList();
+          // One registration, then one fresh challenge before every op.
           expect(routed, <String>[
+            'POST $_route/attest/challenge',
+            'POST $_route/attest/install',
+            'POST $_route/attest/challenge',
             'POST $_route/token',
+            'POST $_route/attest/challenge',
             'POST $_route/signup',
+            'POST $_route/attest/challenge',
             'POST $_route/recover',
+            'POST $_route/attest/challenge',
             'POST $_route/resend',
+            'POST $_route/attest/challenge',
             'POST $_route/resend',
           ]);
+          // ⏱ 2026-09-29 · every op carries the install key's attestation,
+          // bound to its own challenge and to the bytes that ARRIVED. Ed25519
+          // signatures are deterministic, so the attestor re-signing the
+          // recomputed clientData must give the proof on the wire.
+          final String keyId = await attestor.keyId();
+          final Set<String> challenges = <String>{};
+          for (final _Seen s in server.at(_route)) {
+            final String op = s.uri.path.substring(_route.length + 1);
+            if (!core.kNativeAttestOps.contains(op)) continue;
+            final String? challenge = s.headers.value(
+              core.kNativeAttestChallengeHeader,
+            );
+            expect(challenge, isNotNull, reason: '$s carried no challenge');
+            expect(challenges.add(challenge!), isTrue, reason: 'reused');
+            expect(
+              s.headers.value(core.kNativeAttestKindHeader),
+              'install-key',
+            );
+            expect(s.headers.value(core.kNativeAttestKeyHeader), keyId);
+            final core.NativeAttestProof expected = await attestor.prove(
+              clientData: core.nativeAttestClientData(
+                app: _app,
+                op: op,
+                challenge: challenge,
+                body: s.bytes,
+              ),
+            );
+            expect(
+              s.headers.value(core.kNativeAttestProofHeader),
+              expected.proof,
+              reason: '$s: the proof is not over the bytes that arrived',
+            );
+          }
+          expect(challenges, hasLength(5));
+          final _Seen install = server.at('$_route/attest/install').single;
+          expect(install.body, <String, Object?>{
+            'kind': 'install-key',
+            'public_key': await attestor.publicKey(),
+          });
           expect(
             server
                 .at(_route)
