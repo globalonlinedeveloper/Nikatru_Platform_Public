@@ -763,6 +763,29 @@ const WIRE_CONTRACTS = [
       drives: `'POST $_route/${op}'`,
     },
   })),
+  // ⏱ 2026-09-29 · ADR no.NNN (native sign-in serves only attested app
+  // installs) — the two attestation endpoints under the same base. Their wire
+  // is ours but tiny (`{}` → `{challenge, expires_in}`; `{kind, public_key |
+  // key_id}` → `{key_id}`) and is built by ONE client, packages/auth_supabase
+  // NativeAttestationClient, from core's path constants; the `sdk` kind pins
+  // the same three things: the Worker serves it, the client names it, and the
+  // package test drives it.
+  ...[
+    ['challenge', 'kNativeAttestChallengePath'],
+    ['install', 'kNativeAttestInstallPath'],
+  ].map(([op, constant]) => ({
+    id: `native-auth-attest-${op}`,
+    kind: 'sdk',
+    op: `attest/${op}`,
+    sdk: 'NativeAttestationClient',
+    server: { file: 'services/platform/src/routes/native-auth.ts', marker: `nativeAuth.post('/auth/native/:app/attest/${op}'` },
+    client: {
+      file: 'packages/core/lib/src/auth/native_attest.dart',
+      marker: `const String ${constant} = '/attest/${op}';`,
+      test: 'packages/auth_supabase/test/native_attestation_client_test.dart',
+      drives: `'/v1/auth/native/$_app/attest/${op}'`,
+    },
+  })),
 ];
 
 /** Where limb 5's "no Dart client" claims are checked. Roots rather than the

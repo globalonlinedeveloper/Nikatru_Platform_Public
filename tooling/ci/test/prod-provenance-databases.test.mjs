@@ -175,7 +175,7 @@ describe('the real tree: every database the register\'s Workers own, and only th
     const platformMigrations = readdirSync(join(REPO, 'services/platform/migrations')).filter((f) => f.endsWith('.sql')).length;
     assert.match(
       r.stdout,
-      new RegExp(`MONITOR · \\[pipeline B-17\\] · platform_db: 25 table\\(s\\) enumerated from services/platform/migrations \\(${platformMigrations} migration file\\(s\\)\\), 0 row\\(s\\)\\n`),
+      new RegExp(`MONITOR · \\[pipeline B-17\\] · platform_db: 27 table\\(s\\) enumerated from services/platform/migrations \\(${platformMigrations} migration file\\(s\\)\\), 0 row\\(s\\)\\n`),
     );
     // ⏱ 2026-09-28 · the same for subscriptiontracker_db, whose literal `2` went
     // stale with 0003_subscription_model.sql. The table count stays pinned.
@@ -184,7 +184,7 @@ describe('the real tree: every database the register\'s Workers own, and only th
       r.stdout,
       new RegExp(`MONITOR · \\[pipeline B-17\\] · subscriptiontracker_db: 4 table\\(s\\) enumerated from services/subscriptiontracker-api/migrations \\(${appMigrations} migration file\\(s\\)\\), 0 row\\(s\\) · 4 exempt table\\(s\\), not queried`),
     );
-    assert.match(r.stdout, /MONITOR · \[pipeline B-17\] · 2 database\(s\) walked \(platform_db, subscriptiontracker_db\): 29 table\(s\), 0 row\(s\)/); // ⏱ 2026-09-28: 26 -> 29 and platform_db 22 -> 25, 0020's three reminder tables (ST-T4a).
+    assert.match(r.stdout, /MONITOR · \[pipeline B-17\] · 2 database\(s\) walked \(platform_db, subscriptiontracker_db\): 31 table\(s\), 0 row\(s\)/); // ⏱ 2026-09-29: 29 -> 31 and platform_db 25 -> 27, 0021's two native_attest tables (ADR no.NNN). ⏱ 2026-09-28: 26 -> 29 and platform_db 22 -> 25, 0020's three reminder tables (ST-T4a).
     assert.match(r.stdout, /subscriptiontracker_db migration ledger: NOT READ \(fixture mode, no --schema-file\)/);
     assert.match(r.stdout, /⬜ {2}payment_history {10}exempt — not queried {3}\[no marker · exempt\]/);
     assert.match(r.stdout, /4 exempt table\(s\) were not queried, and say so above/);

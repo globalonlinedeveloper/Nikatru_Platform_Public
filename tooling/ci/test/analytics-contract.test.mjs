@@ -261,6 +261,10 @@ const LIMB5_FILES = [
   'services/platform/src/routes/native-auth.ts',
   'packages/auth_supabase/lib/src/native_credential_client.dart',
   'packages/auth_supabase/test/native_credential_route_test.dart',
+  // ⏱ 2026-09-29 · ADR no.NNN: the `sdk` pins of the two attestation endpoints —
+  // core's path constants, and the transport test that drives both.
+  'packages/core/lib/src/auth/native_attest.dart',
+  'packages/auth_supabase/test/native_attestation_client_test.dart',
   // ⏱ 2026-09-28 · ST-T4b: the reminder-prefs and calendar-feed body pins.
   'services/platform/src/routes/reminders.ts',
   'services/platform/src/routes/calendar.ts',
@@ -706,7 +710,7 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
   // The numbers are PINNED rather than derived on purpose — a derived count
   // agrees with any register, including one that quietly stopped enumerating —
   // so they move in the same change as the routes that moved them.
-  test('PASSES on the real tree: 33 routes, 14 pinned, 19 printed gaps', () => {
+  test('PASSES on the real tree: 35 routes, 19 pinned, 16 printed gaps', () => {
     const r = run(makeRepo());
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /wire health — deploy-smoke fields/);
@@ -739,7 +743,8 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     // ⏱ 2026-09-28 (ST-I3): 28 -> 29 routes, 18 -> 19 gaps with GET /v1/fx/latest, a gap until its transport ships with the first consumer.
     assert.match(r.out, /GAP {2}wire fx-latest/);
     // ⏱ 2026-09-28: ST-T7b 10 -> 14 pinned (four native credential routes), then ST-T4b 14 -> 17 (the two prefs routes and the feed mint); 23 -> 16 gaps.
-    assert.match(r.out, /33 shared route\(s\) from tooling\/platform-register\.json: 17 pinned, 16 printed gap/); // ⏱ 2026-09-18: POST /v1/report joined as a gap, then became a body pin the same day when the chassis transport landed (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: PUT /v1/account/provider-token joined as a request pin (O-GOOGLE-SIGN-IN-NOT-BUILT).
+    // ⏱ 2026-09-29 (ADR no.NNN): 33 -> 35 routes, 17 -> 19 pinned — the two attestation endpoints arrive as `sdk` pins with their client.
+    assert.match(r.out, /35 shared route\(s\) from tooling\/platform-register\.json: 19 pinned, 16 printed gap/); // ⏱ 2026-09-18: POST /v1/report joined as a gap, then became a body pin the same day when the chassis transport landed (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: PUT /v1/account/provider-token joined as a request pin (O-GOOGLE-SIGN-IN-NOT-BUILT).
     // ⏱ 2026-09-28 (ST-N1): 29 -> 33 routes, 19 -> 23 gaps with the four /v1/auth/native routes, gaps until ST-T7b ships their client.
     // ⏱ 2026-09-28 (ST-T7b): 10 -> 14 pinned, 23 -> 19 gaps — the client shipped,
     // so the four gaps became `sdk` pins (gotrue-dart's own wire, pinned at its base).
@@ -766,6 +771,18 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     const r = run(makeRepo((f) => mutate(f, CLIENT, "'$root/v1/auth/native/$appId'", "'$root/auth/v1'")));
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /native-auth-token: .*native_credential_client\.dart no longer builds the route base/);
+  });
+
+  // ⏱ 2026-09-29 · ADR no.NNN — the attestation endpoints' pins go red the same two ways.
+  test('FAILS when no test drives an attestation endpoint, or core stops naming its path (sdk pin)', () => {
+    const TEST = 'packages/auth_supabase/test/native_attestation_client_test.dart';
+    const undriven = run(makeRepo((f) => mutate(f, TEST, "'/v1/auth/native/$_app/attest/install'", "'/v1/auth/native/$_app/attest/elsewhere'")));
+    assert.equal(undriven.code, 1, undriven.out);
+    assert.match(undriven.out, /native-auth-attest-install: .*never drives/);
+    const CORE = 'packages/core/lib/src/auth/native_attest.dart';
+    const moved = run(makeRepo((f) => mutate(f, CORE, "'/attest/challenge';", "'/attest/nonce';")));
+    assert.equal(moved.code, 1, moved.out);
+    assert.match(moved.out, /native-auth-attest-challenge: .*no longer builds the route base/);
   });
 
   test('FAILS when the server adds a response key nobody declared — MW1 replayed', () => {
@@ -1154,7 +1171,7 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     // ⏱ 2026-09-25 (AUTH-REVOKE-AT-WORKERS): 7 -> 11 gaps with the four /v1/sessions routes.
     // ⏱ 2026-09-28 (ST-I3): 18 -> 19 gaps with GET /v1/fx/latest; (ST-N1) 19 -> 23, the four /v1/auth/native routes.
     // ⏱ 2026-09-28 (ST-T4b): 13 -> 16 pinned, 19 -> 16 gaps (the prefs routes and the feed mint), on top of ST-T7b below.
-    assert.match(r.out, /16 pinned, 16 printed gap/); // ⏱ 2026-09-28 (ST-T7b): 9 -> 13 pinned, 23 -> 19 gaps, the four native credential routes became sdk pins. ⏱ 2026-09-28: 11 -> 18 gaps, the seven ST-T4a reminder routes. ⏱ 2026-09-18: POST /v1/report is now a body pin, not a gap (O-PLAY-AI-CONTENT-REPORTING chassis half). ⏱ 2026-09-24: +1 for the provider-token request pin.
+    assert.match(r.out, /18 pinned, 16 printed gap/); // ⏱ 2026-09-29 (ADR no.NNN): +2, the two attestation endpoints. ⏱ 2026-09-28 (ST-T7b): 9 -> 13 pinned, 23 -> 19 gaps, the four native credential routes became sdk pins. ⏱ 2026-09-28: 11 -> 18 gaps, the seven ST-T4a reminder routes. ⏱ 2026-09-18: POST /v1/report is now a body pin, not a gap (O-PLAY-AI-CONTENT-REPORTING chassis half). ⏱ 2026-09-24: +1 for the provider-token request pin.
   });
 
   test('FAILS when the brick drops a key the server still requires', () => {
