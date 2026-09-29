@@ -625,6 +625,75 @@ async function applyTransfer(
   };
 }
 
+/**
+ * The revocations that mean THE MONEY WENT BACK. Each arrives on its own
+ * authority (a Paddle adjustment, a RevenueCat CUSTOMER_SUPPORT cancellation),
+ * and the rail's subscription entity is not changed by it: Paddle documents no
+ * effect of a refund on the subscription, which stays `active`.
+ */
+const MONEY_WENT_BACK: ReadonlySet<string> = new Set(['refund_approved', 'chargeback']);
+
+/**
+ * ⏱ 2026-09-29 · AB-M4-02 (moneyflows MF-2) · A REFUND OR A CHARGEBACK IS NOT
+ * UNDONE BY A LATER STATE NOTICE.
+ *
+ * The defect: the ordering clause admits any NEWER event, and a subscription
+ * event decides access from the entity's own status. After a refund revoked the
+ * row, Paddle's next `subscription.updated` — which "covers a wide range of
+ * changes, including billing detail updates … scheduled changes being created
+ * or removed" (developer.paddle.com, read 2026-09-27) — still says `active` for
+ * the period that was refunded, and it re-granted Pro to the refunded customer.
+ * Scheduling the cancel that should follow a refund was itself enough.
+ *
+ * The rule: while the row is revoked for a reason in MONEY_WENT_BACK, a
+ * subscription event for the SAME rail subscription writes nothing unless it
+ * states a paid-through date LATER than the revoked row's — a new period, which
+ * is a new payment. Concluded as `ignored`, never refused: the notice was read
+ * and decided, and retrying it would decide the same. Only a restoring
+ * adjustment (`chargeback_reversed`, applyAdjustment) gives access back inside
+ * the refunded period.
+ *
+ * Returns the ignore detail, or null when the event may be applied.
+ */
+async function moneyWentBackFor(
+  deps: MoneyStoreDeps,
+  account: { userId: string; appId: string },
+  n: NormalizedNotification,
+  subscriptionId: string,
+  incomingPeriodEnd: string | null,
+): Promise<string | null> {
+  const provider = n.provider;
+  const row = await deps.db
+    .prepare(
+      `SELECT provider, provider_subscription_id, current_period_end, occurred_at, revoked_at, revocation_reason
+         FROM entitlements
+        WHERE user_id = ? AND app_id = ? AND entitlement = ?`,
+    )
+    .bind(account.userId, account.appId, MONEY_ENTITLEMENT)
+    .first<{
+      provider: string | null;
+      provider_subscription_id: string | null;
+      current_period_end: string | null;
+      occurred_at: string | null;
+      revoked_at: string | null;
+      revocation_reason: string | null;
+    }>();
+  if (row === null || row.revoked_at === null || row.revocation_reason === null) return null;
+  if (!MONEY_WENT_BACK.has(row.revocation_reason)) return null;
+  if (row.provider !== provider || row.provider_subscription_id !== subscriptionId) return null;
+  // An OLDER event is the ordering clause's to refuse (`stale`), exactly as before.
+  if (row.occurred_at !== null && !(n.occurredAt > row.occurred_at)) return null;
+  const heldTo = row.current_period_end === null ? Number.NaN : Date.parse(row.current_period_end);
+  const offered = incomingPeriodEnd === null ? Number.NaN : Date.parse(incomingPeriodEnd);
+  // A new period is the only thing that outranks the refund. An unreadable or
+  // absent date on either side cannot show one, so the refund stands.
+  if (Number.isFinite(heldTo) && Number.isFinite(offered) && offered > heldTo) return null;
+  return (
+    `money_went_back: ${provider} subscription ${subscriptionId} was revoked as ${row.revocation_reason}, ` +
+    `and this event states no period later than the one that was paid back (${row.current_period_end ?? 'none'})`
+  );
+}
+
 async function applySubscription(
   deps: MoneyStoreDeps,
   n: NormalizedNotification,
@@ -674,6 +743,8 @@ async function applySubscription(
       userId: account.userId,
     };
   }
+  const paidBack = await moneyWentBackFor(deps, account, n, s.subscriptionId, decision.decision.currentPeriodEnd);
+  if (paidBack !== null) return { outcome: 'ignored', detail: paidBack, userId: account.userId };
   const written = await upsertEntitlement(deps, n, account, decision, {
     subscriptionId: s.subscriptionId,
     transactionId: s.transactionId,
