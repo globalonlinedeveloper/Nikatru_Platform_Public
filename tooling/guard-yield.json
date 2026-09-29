@@ -1420,6 +1420,11 @@
       "firstSeen": "2026-08-17",
       "evidence": []
     },
+    "tooling/ci/assert-paywall-flip-ready.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-29",
+      "evidence": []
+    },
     "tooling/ci/assert-platform-proof-fresh.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-27",

@@ -1,0 +1,97 @@
+{
+  "_readme": [
+    "THE PAYWALL-FLIP CHECKLIST — every precondition of turning `paywall.enabled` to true for an app in services/platform/src/app-config-data.json. Row AB-M2-01 (full-review round 2, 2026-09-29).",
+    "READ by tooling/ci/assert-paywall-flip-ready.mjs, which exits 1 while ANY app whose served config says `paywall.enabled: true` has a precondition here with `open: true` that applies to it (`apps` names the app, or is [\"*\"]). With every app's paywall off the guard passes and prints what is still open.",
+    "A precondition is CLOSED only with `verify`: repo-relative paths, each of which must exist in the tree — the test, guard or record that proves it. Closing a row by editing this file alone, with no evidence path, is refused.",
+    "WHAT THIS DOES NOT SEE: the KV override services/platform/src/config.ts lets an operator set at runtime. That switch is owner-gated, and this list is what the owner reads before touching it.",
+    "ADD a row when a new precondition is found; never delete one — close it, with its evidence."
+  ],
+  "preconditions": [
+    {
+      "id": "AB-M4-01",
+      "what": "A real Paddle subscription.canceled (no period) ends access and records a revocation, instead of 503 on every delivery.",
+      "apps": ["*"],
+      "open": false,
+      "verify": ["services/platform/src/lib/mor/paddle.ts", "services/platform/test/money.test.ts"]
+    },
+    {
+      "id": "AB-M4-02",
+      "what": "An approved refund or chargeback stays revoked: a later subscription.updated for the paid-back period does not re-grant.",
+      "apps": ["*"],
+      "open": false,
+      "verify": ["services/platform/src/lib/mor/store.ts", "services/platform/test/money.test.ts"]
+    },
+    {
+      "id": "AB-M4-03-server",
+      "what": "POST /v1/plan/cancel carries out a Paddle cancel at the period end, and answers a store row with the store's page instead of a false 'provider_not_configured'.",
+      "apps": ["*"],
+      "open": false,
+      "verify": ["services/platform/src/lib/mor/paddle-cancel.ts", "services/platform/test/cancellation.test.ts"]
+    },
+    {
+      "id": "AB-M4-03-client",
+      "what": "The app picks the cancel path from where the person paid (the entitlement's provider/store), maps the server's 409 to a store outcome with its own copy, and a 404 to 'no active plan' (moneyflows MF-3b). Needs new strings in apps/subscriptiontracker/lib/l10n/app_{en,ta}.arb.",
+      "apps": ["*"],
+      "open": true,
+      "blockedOn": "the arb files were owned by the open ST-T4b PR #1058 on 2026-09-29"
+    },
+    {
+      "id": "AB-M3-01",
+      "what": "One signed purchase per rail unlocks is_pro for its payer through GET /v1/entitlements, and not for anyone else.",
+      "apps": ["*"],
+      "open": false,
+      "verify": ["services/platform/test/cross-rail-entitlement.test.ts"]
+    },
+    {
+      "id": "AB-A5-02-server",
+      "what": "DELETE /v1/account cancels a live Paddle subscription before erasure, or refuses with a sentence when it cannot.",
+      "apps": ["*"],
+      "open": false,
+      "verify": ["services/platform/src/lib/mor/cancel-on-delete.ts", "services/platform/test/account-billing.test.ts"]
+    },
+    {
+      "id": "AB-A5-02-client",
+      "what": "The delete-account dialog says what happens to billing (Paddle cancelled at period end; an App Store / Google Play subscription must be cancelled in the store), in en and ta, and shows the sentence the server's 503 `subscription_still_billing` carries in `message`.",
+      "apps": ["*"],
+      "open": true,
+      "blockedOn": "apps/subscriptiontracker/lib/l10n/app_{en,ta}.arb and settings_screen.dart were owned by the open ST-T4b PR #1058 on 2026-09-29"
+    },
+    {
+      "id": "AB-M4-07",
+      "what": "A store-receipt rail cannot be configured while nothing revokes a bundle_grants row.",
+      "apps": ["*"],
+      "open": false,
+      "verify": ["tooling/ci/assert-money-config.mjs", "tooling/ci/test/money-config.test.mjs"]
+    },
+    {
+      "id": "T-11",
+      "what": "A renewal / end-of-trial notice reaches the buyer through a declared medium before a 30-day trial renews (the offerings carry trial_days 30). tooling/ci/assert-purchase-path.mjs refuses the flip without `renewal_notice` on the config contract.",
+      "apps": ["*"],
+      "open": true
+    },
+    {
+      "id": "REVENUECAT-LEG-A",
+      "what": "RevenueCat leg (a): a signed store build completes a sandbox purchase and the webhook grants through POST /v1/money/revenuecat (waits on A-20, a signed Apple build).",
+      "apps": ["*"],
+      "open": true
+    },
+    {
+      "id": "SANDBOX-PURCHASE-PROOF",
+      "what": "Every rail the app sells on has an end-to-end sandbox purchase proof: purchase, entitlement flip, feature unlock (e2e legs purchase-sandbox, entitlement-flip, feature-unlock).",
+      "apps": ["*"],
+      "open": true
+    },
+    {
+      "id": "PRICES-READ-BACK",
+      "what": "Every served offering's price is read back from each rail's own dashboard/API and matches app-config-data.json `prices` (no price is trusted from our copy alone).",
+      "apps": ["*"],
+      "open": true
+    },
+    {
+      "id": "PADDLE-CANCEL-SANDBOX",
+      "what": "The Paddle cancel call (lib/mor/paddle-cancel.ts) is exercised once against a Paddle sandbox subscription and the terminal subscription.canceled is seen to end access.",
+      "apps": ["*"],
+      "open": true
+    }
+  ]
+}

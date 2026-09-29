@@ -136,6 +136,9 @@ enum CancellationOutcome {
   /// endpoint shape has never been read against a primary source in this repo,
   /// and a guessed call would 404 for the first real subscriber. See
   /// services/platform/src/routes/cancellation.ts.
+  /// ⏱ 2026-09-29 · AB-M4-03: REACHABLE NOW FOR A PADDLE ROW. The endpoint shape
+  /// was read on 2026-09-27 and the Worker carries the cancel out
+  /// (lib/mor/paddle-cancel.ts), answering 200 `executed: true`.
   executed,
 
   /// There is nothing to cancel for this user and app.

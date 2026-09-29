@@ -284,6 +284,9 @@ function accessForStatus(status: string): {
       // revoke on cancel-at-period-end". That route was retired 2026-09-16; its
       // ENTITLEMENT LIFECYCLE header reads back with
       // `git show 9698fdce:services/subscriptiontracker-api/src/routes/webhooks.ts`.
+      // ⏱ 2026-09-27: Paddle sends `canceled` only once the period has ended or
+      // the cancel was immediate, with NO period — `parseSubscription` reads that
+      // body as ended-now. This mapping stands for a body that states a period.
       return { access: 'until_end', endsWithReason: 'cancelled_at_period_end' };
     case 'past_due':
       // A charge failed and the rail is retrying. Access continues to the end of
@@ -373,6 +376,24 @@ function parseSubscription(data: Record<string, unknown>): ParseOutcome | Subjec
     periodEnd = end.iso;
   }
 
+  // ⏱ 2026-09-27 · AB-M4-01 (moneyflows MF-1) · `canceled` IS TERMINAL ON THIS RAIL. developer.paddle.com
+  // (cancel-subscription, read 2026-09-27): a cancel "creates a scheduled_change
+  // … Its status remains active until after the effective date of the scheduled
+  // change, at which point it changes to canceled", and an immediate cancel
+  // answers "the status of canceled" at once; V9 says `current_billing_period`
+  // is "null for paused and canceled subscriptions". So a real `canceled` body
+  // carries no period to honour — the paid period, if any, was honoured while
+  // the status was still `active`. Read as `until_end` it had no end and was
+  // REFUSED on every delivery (503, 60 retries, then the nightly re-derive), so
+  // the row kept `is_active = 1` until its old date ran out and no revocation was
+  // ever recorded. Access ends now, as `paused` does. A `canceled` body that DOES
+  // carry a future period keeps the `until_end` reading: honouring a stated
+  // paid-through date is never the unsafe direction.
+  const access =
+    status === 'canceled' && periodEnd === null
+      ? { access: 'suspended' as const, endsWithReason: mapped.endsWithReason }
+      : mapped;
+
   const trial = trialEndOf(data);
   if (!trial.ok) return { ok: false, reason: 'a data.items[].trial_dates.ends_at could not be read as a date' };
 
@@ -383,8 +404,8 @@ function parseSubscription(data: Record<string, unknown>): ParseOutcome | Subjec
     kind: 'subscription',
     subscriptionId,
     statusVerbatim: status,
-    access: mapped.access,
-    endsWithReason: mapped.endsWithReason,
+    access: access.access,
+    endsWithReason: access.endsWithReason,
     currentPeriodEnd: periodEnd,
     trialEnd: trial.iso,
     transactionId: idOrNull(data.transaction_id),

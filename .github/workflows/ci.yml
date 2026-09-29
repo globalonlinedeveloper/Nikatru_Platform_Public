@@ -509,6 +509,11 @@ jobs:
       - name: The purchase path is whole, bounded, declared and cancellable
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-purchase-path.mjs
+      # why: AB-M2-01 — the paywall switch in app-config-data.json is refused while any
+      # precondition in tooling/paywall-flip.json is open for the app it turns on.
+      - name: The paywall is not switched on while a precondition of the switch is open
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-paywall-flip-ready.mjs
       - name: No price is typed into app code
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-no-price-literals.mjs

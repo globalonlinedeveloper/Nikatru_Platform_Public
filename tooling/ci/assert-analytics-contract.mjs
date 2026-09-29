@@ -484,6 +484,16 @@ const WIRE_CONTRACTS = [
     serverOnly: {
       not_executed_reason:
         'a recovery hint for a human (`no_provider_on_row` vs `provider_not_configured`), stored on the row and returned for support. The receipt models three INDEPENDENT booleans on purpose; a client that branched on the reason would be re-deriving "did it happen" from a string.',
+      // ⏱ 2026-09-29 · AB-M4-03 — the three keys the rail-aware cancel added. No
+      // released client reads them YET: the client half (moneyflows MF-3b) is an
+      // OPEN precondition in tooling/paywall-flip.json, and when it lands each
+      // key moves from here to `requiredBoth` with its Dart reader.
+      cancel_at:
+        'AB-M4-03: on a 409 for a store row, which store bills the subscription (`app_store` | `play_store` | `store`). Read by no client until MF-3b (tooling/paywall-flip.json AB-M4-03-client); a released client maps the 409 to `failed`, which says nothing untrue.',
+      manage_url:
+        "AB-M4-03: on a 409 for a store row, the store's own subscriptions page, or null. Read by no client until MF-3b (tooling/paywall-flip.json AB-M4-03-client).",
+      effective_at:
+        "AB-M4-03: on a 200 executed Paddle cancel, Paddle's `scheduled_change.effective_at` — when access ends. Read by no client until MF-3b; `executed` alone already decides the outcome.",
     },
     /** The REQUEST half. The client posts exactly this literal and the host
      *  resolves the plan from the session — never from a body field — so the one

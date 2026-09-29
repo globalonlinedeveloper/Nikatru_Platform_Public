@@ -834,6 +834,87 @@ for (const svc of doorConfigs.filter((c) => c.deployed).map((c) => c.service)) {
   }
 }
 
+// ── LIMB 6 · a receipt rail is not configured while nothing revokes its grants ─
+// ⏱ 2026-09-29 · AB-M4-07 (moneyflows MF-11). POST /v1/receipts writes
+// `bundle_grants` rows with `revokedAt: null`, and nothing in the Worker ever
+// revokes one: no refund, no expiry re-poll, no push (Microsoft has none). That
+// is safe ONLY because no receipt rail is configured — every verifier answers
+// 503 until its credentials exist. The day somebody declares one, every grant it
+// writes is a lifetime unlock that a refund cannot take back.
+//
+// So: the credential names each receipt verifier reads (`credentialEnvVars`,
+// comment-stripped, from services/platform/src/lib/receipts/*.ts) must not be
+// DECLARED anywhere this guard can see — a committed `vars` entry of any
+// config or environment, or a row of tooling/channel-register.json
+// `ciSecretRegister.nonSigning` (the list a deploy lane may name a secret from)
+// — while no source under services/platform/src writes `revoked_at` on
+// `bundle_grants`. A `wrangler secret put` made by hand is invisible here, and
+// that gap is stated rather than hidden. With no receipts directory the limb
+// ranges over nothing and says so.
+const RECEIPTS_DIR = 'services/platform/src/lib/receipts';
+let receiptVars = [];
+let receiptRevokePath = false;
+{
+  const dir = join(ROOT, RECEIPTS_DIR);
+  if (existsSync(dir)) {
+    for (const f of listDir(dir).filter((n) => n.endsWith(".ts")).sort()) {
+      const src = stripSourceComments(readFileSync(join(dir, f), 'utf8'), '.ts');
+      for (const m of src.matchAll(/credentialEnvVars\s*:\s*\[([^\]]*)\]/g)) {
+        for (const v of m[1].matchAll(/'([A-Z][A-Z0-9_]*)'/g)) receiptVars.push(v[1]);
+      }
+    }
+    receiptVars = [...new Set(receiptVars)];
+    if (receiptVars.length === 0) {
+      coverageLost(`${RECEIPTS_DIR} exists and no \`credentialEnvVars\` was derived from it, so limb 6 has no credential to look for.`);
+    }
+    const walkSrc = (d) => {
+      for (const e of listDir(d, { withFileTypes: true })) {
+        const full = join(d, e.name);
+        if (e.isDirectory()) walkSrc(full);
+        else if (e.name.endsWith('.ts')) {
+          const src = stripSourceComments(readFileSync(full, 'utf8'), '.ts');
+          if (/UPDATE\s+bundle_grants\s+SET\b[^;`]*\brevoked_at\s*=/i.test(src)) receiptRevokePath = true;
+        }
+      }
+    };
+    walkSrc(join(ROOT, 'services/platform/src'));
+  }
+}
+if (receiptVars.length > 0 && !receiptRevokePath) {
+  const declaredAt = [];
+  for (const c of configs) {
+    const cfg = parsedConfig(c);
+    if (cfg === null) continue;
+    for (const v of receiptVars) {
+      if (isObject(cfg?.vars) && cfg.vars[v] !== undefined) declaredAt.push(`${v} in ${c.rel} vars`);
+      for (const [name, e] of environmentsOf(c, cfg)) {
+        if (isObject(e?.vars) && e.vars[v] !== undefined) declaredAt.push(`${v} in ${c.rel} env.${name}.vars`);
+      }
+    }
+  }
+  const registerPath = join(ROOT, CHANNEL_REGISTER);
+  if (existsSync(registerPath)) {
+    try {
+      const rows = JSON.parse(readFileSync(registerPath, 'utf8'))?.ciSecretRegister?.nonSigning;
+      if (Array.isArray(rows)) {
+        for (const r of rows) {
+          const n = typeof r?.name === 'string' ? r.name.trim() : '';
+          if (receiptVars.includes(n)) declaredAt.push(`${n} in ${CHANNEL_REGISTER} ciSecretRegister.nonSigning`);
+        }
+      }
+    } catch {
+      // Limb 3c already reports an unparseable register as COVERAGE LOST.
+    }
+  }
+  for (const where of declaredAt) {
+    fail(
+      `a store-receipt credential is declared (${where}) while nothing under services/platform/src revokes a ` +
+        '`bundle_grants` row. Every grant POST /v1/receipts writes would be a lifetime unlock a refund cannot take back ' +
+        '(AB-M4-07, moneyflows MF-11). Build the revoke path first.',
+    );
+  }
+}
+
 // ── report ───────────────────────────────────────────────────────────────────
 if (environmentCount === 0) {
   // A vacuous pass is not coverage, so it is printed and never claimed.
@@ -857,5 +938,8 @@ console.log(
     (environmentCount === 0
       ? 'no wrangler environments; '
       : `${environmentCount} wrangler environment(s), ${sandboxEnvironmentCount} sandbox, each with its own money world; `) +
-    `each deployed door refuses an undeclared environment and its own tests fire the 503`,
+    `each deployed door refuses an undeclared environment and its own tests fire the 503; ` +
+    (receiptVars.length === 0
+      ? 'no receipt rail to check (limb 6 ranged over nothing)'
+      : `${receiptVars.length} receipt credential name(s) declared nowhere while no bundle_grants revoke path exists`),
 );
