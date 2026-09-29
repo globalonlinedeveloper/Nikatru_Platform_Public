@@ -829,9 +829,18 @@ const REQUIRED_COVERAGE = [
     //   surfaces  20 → 25
     //   a11yFiles  2 → 6
     //   cases      7 → 15
-    surfaces: 25,
-    a11yFiles: 6,
-    cases: 15,
+    //
+    // ⏱ RE-MEASURED 2026-09-28 · train ST-D2: MonthGrid and DateBadge (the
+    // calendar's grid and row date, hoisted from apps/subscriptiontracker)
+    // arrived swept by a11y_month_grid_test.dart. Read off this guard's own
+    // output on the branch: "9 of 27 reachable surface(s) carry an a11y sweep,
+    // from 7 a11y test file(s) across 16 case(s)".
+    //   surfaces  25 → 27
+    //   a11yFiles  6 → 7
+    //   cases     15 → 16
+    surfaces: 27,
+    a11yFiles: 7,
+    cases: 16,
     label:
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, auth_field, ' +
       'destructive_confirm_dialog, two_pane and fourteen more, mounted by every stamped app',
@@ -1033,6 +1042,10 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
       'packages/design_system/lib/src/widgets/app_list_row.dart#AppListRow',
       'packages/design_system/lib/src/widgets/decision_strip.dart#DecisionStrip',
       'packages/design_system/lib/src/widgets/skeleton_list.dart#SkeletonList',
+      // ⏱ 2026-09-28 · train ST-D2: in the same change as their sweep
+      // (a11y_month_grid_test.dart).
+      'packages/design_system/lib/src/widgets/month_grid.dart#MonthGrid',
+      'packages/design_system/lib/src/widgets/month_grid.dart#DateBadge',
     ]),
   ],
 ]);

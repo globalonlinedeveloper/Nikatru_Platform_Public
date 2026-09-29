@@ -984,7 +984,8 @@ const DART_DECLARING_FILE = DART_OUT;
  *  come out one by one and this object empties. */
 const BRAND_FONT_DEBT = {
   'apps/subscriptiontracker/lib/features/add/add_subscription_sheet.dart': 2,
-  'apps/subscriptiontracker/lib/features/calendar/calendar_screen.dart': 1,
+  // ⏱ 2026-09-28 · train ST-D2: calendar_screen.dart 1 → 0, entry removed —
+  // the screen reads every face from the theme's type ramp now.
   'apps/subscriptiontracker/lib/features/cancel/cancel_sheet.dart': 1,
   'apps/subscriptiontracker/lib/features/detail/subscription_detail_screen.dart': 6,
   'apps/subscriptiontracker/lib/features/home/home_screen.dart': 4,

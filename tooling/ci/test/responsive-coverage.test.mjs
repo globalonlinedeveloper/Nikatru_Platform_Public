@@ -230,7 +230,10 @@ describe('the guard says YES on the tree as it is', () => {
     // ⏱ 2026-09-28 · train ST-D0: 12 of 20 → 17 of 25 — the foundation
     // components arrived measured; 8 PRINTED is unchanged. Read off the
     // guard's own per-root line.
-    assert.match(out, /packages\/design_system: 17 of 25 surface\(s\) measured — 8 PRINTED and not failed/);
+    // ⏱ 2026-09-28 · train ST-D2: 17 of 25 → 19 of 27 — MonthGrid and
+    // DateBadge arrived measured (month_grid_test.dart pumps both at
+    // kPhone/kTablet/kDesktop); 8 PRINTED is unchanged.
+    assert.match(out, /packages\/design_system: 19 of 27 surface\(s\) measured — 8 PRINTED and not failed/);
   });
 
   test('the copied subject tree reproduces the subscriptiontracker reading exactly — and derives TWO roots', () => {
@@ -532,7 +535,8 @@ describe('a report-mode root can get better, never quietly worse', () => {
     assert.match(
       out,
       // ⏱ 2026-09-28 · train ST-D0: 10 of 12 → 15 of 17 (floor re-based to 17).
-      /COVERAGE LOST — `packages\/design_system` has 15 measured surface\(s\) and its measured floor is 17/s,
+      // ⏱ 2026-09-28 · train ST-D2: 15 of 17 → 17 of 19 (floor re-based to 19).
+      /COVERAGE LOST — `packages\/design_system` has 17 measured surface\(s\) and its measured floor is 19/s,
     );
   });
 
@@ -560,7 +564,8 @@ describe('a report-mode root can get better, never quietly worse', () => {
     const { code, out } = run(root);
     assert.equal(code, 2, out);
     // ⏱ 2026-09-28 · train ST-D0: 18 of 20 → 23 of 25 (floor re-based to 25).
-    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 23 responsive surface\(s\).*floor is 25/s);
+    // ⏱ 2026-09-28 · train ST-D2: 23 of 25 → 25 of 27 (floor re-based to 27).
+    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 25 responsive surface\(s\).*floor is 27/s);
   });
 
   test("R11c · a NEW unmeasured surface in EACH new root reaches that root's printed list", () => {
@@ -589,7 +594,8 @@ describe('a report-mode root can get better, never quietly worse', () => {
     // left; HomeScreen and ExploreScreen now count through delegation.
     assert.match(out, /\{\{app_id\}\}: 3 of 13 surface\(s\) measured — 1 PRINTED/);
     // ⏱ 2026-09-28 · train ST-D0: 12 of 21 → 17 of 26 (measured arrivals).
-    assert.match(out, /packages\/design_system: 17 of 26 surface\(s\) measured — 9 PRINTED/);
+    // ⏱ 2026-09-28 · train ST-D2: 17 of 26 → 19 of 28 (measured arrivals).
+    assert.match(out, /packages\/design_system: 19 of 28 surface\(s\) measured — 9 PRINTED/);
   });
 });
 

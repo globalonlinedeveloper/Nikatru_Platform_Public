@@ -186,12 +186,12 @@
     {
       "name": "calendar",
       "primaryAction": "the renewal calendar draws a real month grid whose day cells stay the designed size at every window width",
-      "test": "at 1280 a day cell is 44 px tall, not ~170",
-      "effect": "lib/features/calendar/calendar_screen.dart:mainAxisExtent",
+      "test": "at 1280 a day cell is cellExtent tall, not ~170",
+      "effect": "lib/features/calendar/calendar_screen.dart:MonthGrid(",
       "mutation": {
-        "symbol": "lib/features/calendar/calendar_screen.dart:mainAxisExtent: 44",
-        "observedRed": "at 1280 a day cell is 44 px tall, not ~170",
-        "date": "2026-08-08"
+        "symbol": "packages/design_system/lib/src/widgets/month_grid.dart:mainAxisExtent: cellExtent",
+        "observedRed": "at 1280 a day cell is cellExtent tall, not ~170",
+        "date": "2026-09-28"
       }
     },
     {

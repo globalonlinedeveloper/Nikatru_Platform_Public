@@ -680,10 +680,17 @@ const REQUIRED_COVERAGE = [
     // the run's own line: "17 of 25 surface(s) measured — 8 PRINTED".
     //   surfaces        20 → 25
     //   coveredSurfaces 12 → 17
+    //
+    // ⏱ RE-MEASURED 2026-09-28 · train ST-D2 — MonthGrid and DateBadge,
+    // hoisted from apps/subscriptiontracker's calendar, each pumped at
+    // kPhone/kTablet/kDesktop by month_grid_test.dart. Read off the run's own
+    // line: "19 of 27 surface(s) measured — 8 PRINTED".
+    //   surfaces        25 → 27
+    //   coveredSurfaces 17 → 19
     enforce: false,
-    surfaces: 25,
+    surfaces: 27,
     widthTestFiles: 19,
-    coveredSurfaces: 17,
+    coveredSurfaces: 19,
     label:
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, content_pane, two_pane and fifteen ' +
       'more, whose width decisions every stamped app inherits',
