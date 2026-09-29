@@ -256,7 +256,7 @@ Future<void> openCallbackFromApp(WidgetTester tester, String url) async {
     launched,
     isTrue,
     reason:
-        'iOS did not open the app's own callback URL — is its scheme in '
+        "iOS did not open the app's own callback URL — is its scheme in "
         'Info.plist CFBundleURLSchemes? On screen: ${onScreen()}',
   );
 }
