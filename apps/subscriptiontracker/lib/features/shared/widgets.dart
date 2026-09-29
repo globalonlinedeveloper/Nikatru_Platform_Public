@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:nikatru_core/nikatru_core.dart' show ExternalLinkLauncherUrl;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show AppPalette, BrandFooter, BrandFooterLink, BrandWordmark;
+    show AppListRow, AppPalette, BrandFooter, BrandFooterLink, BrandWordmark;
 
 import '../../core/app_config.dart';
 import '../../core/theme/app_colors.dart';
@@ -301,7 +301,12 @@ class _RowCardState extends State<RowCard> {
                 style: AppText.of(
                   context,
                 ).body.copyWith(fontWeight: FontWeight.w700, fontSize: 15),
-                maxLines: 1,
+                // B51: a second line above 1.3× text — the chassis row's rule,
+                // adopted rather than restated (ST-D0 D0-4).
+                maxLines: AppListRow.titleLinesFor(
+                  MediaQuery.textScalerOf(context),
+                  1,
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
               if (widget.subtitle != null) ...<Widget>[
