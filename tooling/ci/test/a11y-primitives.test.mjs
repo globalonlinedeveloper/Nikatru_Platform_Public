@@ -31,7 +31,6 @@ const APP = 'apps/subscriptiontracker/lib';
 const BRICK_LIB = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib';
 const ADD_SHEET = `${APP}/features/add/add_subscription_sheet.dart`;
 const NOTIFICATIONS = `${APP}/features/notifications/notifications_screen.dart`;
-const SETTINGS = `${APP}/features/settings/settings_screen.dart`;
 const DIALOG = 'packages/design_system/lib/src/widgets/destructive_confirm_dialog.dart';
 const FOCUSABLE_TAP = 'packages/design_system/lib/src/widgets/focusable_tap.dart';
 const BOOTSTRAP = 'packages/chassis_screens/lib/shell/bootstrap.dart';
@@ -73,6 +72,22 @@ function withTree(mutate, fn, guard = GUARD) {
   }
 }
 
+/** A copy of the guard with `patch` applied to its source — how a case empties
+ *  the baseline without a test-only switch in the shipped guard. */
+function withPatchedGuard(patch, fn) {
+  const dir = mkdtempSync(join(tmpdir(), 'nikatru-a11y-primitives-guard-'));
+  try {
+    const src = readFileSync(GUARD, 'utf8');
+    const out = patch(src);
+    assert.notEqual(out, src, 'the guard patch changed nothing — the case would pass vacuously');
+    writeFileSync(join(dir, 'assert-a11y-primitives.mjs'), out);
+    cpSync(join(REPO, 'tooling', 'ci', 'dart-source.mjs'), join(dir, 'dart-source.mjs'));
+    fn(join(dir, 'assert-a11y-primitives.mjs'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 const edit = (root, rel, fn) => {
   const p = join(root, rel);
   const before = readFileSync(p, 'utf8');
@@ -107,12 +122,11 @@ describe('the real tree', () => {
       assert.equal(exempt.filter((l) => /legal_consent_fields\.dart:\d+ .*under ExcludeSemantics/.test(l)).length, 2);
       assert.equal(exempt.filter((l) => l.includes(`${FOCUSABLE_TAP}:`) && l.includes('FocusableActionDetector')).length, 1);
       const known = r.stdout.split('\n').filter((l) => l.startsWith('known '));
-      // ⏱ 2026-09-29 · train ST-D DW1: 7 → 3 known rows and 7 → 3 detectors —
-      // ST-D6 (the add sheet's chips, cycle and renewal field) and ST-D5
-      // (notifications' Close) converted the four ST-Y2 baseline instances.
+      // 7 -> 3 on 2026-09-29: ST-T3b converted the add sheet's three Y2 sites and
+      // the notifications Close, and deleted their rows (the list only shrinks).
       assert.equal(known.length, 3, r.stdout);
       for (const l of known) assert.match(l, /; owner [A-Z]\d+ — /);
-      assert.match(r.stdout, /ST-Y2: 3 gesture detector\(s\), 0 without a tap callback, 3 in scope, 3 exempt and PRINTED, 0 baselined, 0 refused/);
+      assert.match(r.stdout, /ST-Y2: 3 gesture detector\(s\), 0 without a tap callback, 3 in scope, 3 exempt/);
       assert.match(r.stdout, /ST-Y3: 10 obscured field\(s\), 1 without hints, all baselined/);
     });
   });
@@ -139,16 +153,18 @@ describe('limb 1 · ST-Y2 · every tap target takes the keyboard', () => {
     );
   });
 
-  // ⏱ 2026-09-29 · train ST-D DW1: this case named the four ST-Y2 sites the
-  // baseline held (three in the add sheet, B23; notifications' Close, C17). The
-  // train converted all four and the rows are deleted, so the Y2 baseline is
-  // EMPTY and the real guard is the patched guard this case used to build. What
-  // it pins now is the fact the rows were waiting for: the real tree, with no
-  // Y2 baseline at all, has no tap target a keyboard cannot reach.
-  test('GREEN: the real tree needs no ST-Y2 baseline — the four known sites are converted', () => {
+  test('the real tree has NO Y2 site left to baseline: all four known sites were converted', () => {
+    // ⏱ 2026-09-29 · ST-T3b. This case read "an EMPTY Y2 baseline names exactly
+    // the four known sites" — the add sheet's chips, cycle and date field (B23)
+    // and the notifications Close (C17). ST-T3b converted all four to
+    // FocusableTap / SegmentedButton and deleted their rows, so the Y2 baseline
+    // IS empty and the real tree must pass without one. A new pointer-only
+    // control anywhere in scope turns this red (the fixture case above is the
+    // refusal's own red control).
     withTree(() => {}, (r) => {
+      assert.equal(r.status, 0, r.stdout + r.stderr);
       assert.equal(fails(r).filter((l) => l.includes('ST-Y2')).length, 0, r.stderr);
-      assert.doesNotMatch(r.stdout, new RegExp(`known {2}(${ADD_SHEET}|${NOTIFICATIONS}):`));
+      assert.match(r.stdout, /ST-Y2: .* 0 baselined, 0 refused/);
     });
   });
 
@@ -218,27 +234,28 @@ Semantics(button: true, child: GestureDetector(onTap: () {}))
     )`)),
       (r) => {
         assert.equal(r.status, 0, r.stderr);
-        assert.match(r.stdout, /ST-Y2: 5 gesture detector\(s\), 2 without a tap callback, 3 in scope/ /* ⏱ 2026-09-29 ST-D DW1: the real tree's 7 → 3 */);
+        assert.match(r.stdout, /ST-Y2: 5 gesture detector\(s\), 2 without a tap callback, 3 in scope/);
       },
     );
   });
 
-  // ⏱ 2026-09-29 · train ST-D DW1: the Y2 rows this case converted are gone, so
-  // it converts the remaining ST-Y3 row (the delete-account password field gains
-  // its hint) — the same "delete this row" clause, on a row that still exists.
   test('RED: a baseline row whose instance is converted fails "delete this row"', () => {
-    withTree(
-      (root) => edit(root, SETTINGS, (s) => {
-        const anchor = 'key: E2EKeys.deleteAccountPassword,';
-        assert.ok(s.includes(anchor), 'the ST-Y3 baseline anchor left settings_screen.dart');
-        return s.replace(anchor, `${anchor}\n              autofillHints: const <String>[AutofillHints.password],`);
-      }),
-      (r) => {
+    // ⏱ 2026-09-29 · ST-T3b: the real rows this case converted are gone (their
+    // owner converted them), so the stale row is injected: an anchor that IS in
+    // the add sheet but is no refused detector — exactly what a converted
+    // instance's row looks like.
+    withPatchedGuard(
+      (src) => src.replace(
+        /\nconst BASELINE = \[\n/,
+        "\nconst BASELINE = [\n  { limb: 'ST-Y2', file: 'apps/subscriptiontracker/lib/features/add/add_subscription_sheet.dart', " +
+          "anchor: 'setState(() => _saving = true);', what: 'the POPULAR service chips', owner: 'B23 — a converted row' },\n",
+      ),
+      (guard) => withTree(() => {}, (r) => {
         assert.equal(r.status, 1, r.stderr);
         const f = fails(r);
         assert.equal(f.length, 1, r.stderr);
-        assert.match(f[0], /ST-Y3: BASELINE row for the delete-account password field .* Delete this row/);
-      },
+        assert.match(f[0], /ST-Y2: BASELINE row for the POPULAR service chips .* Delete this row/);
+      }, guard),
     );
   });
 

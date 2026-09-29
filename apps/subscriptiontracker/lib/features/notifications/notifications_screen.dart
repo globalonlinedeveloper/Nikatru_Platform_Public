@@ -310,7 +310,7 @@ class NotificationsScreen extends ConsumerWidget {
       titleMaxLines: 2,
       subtitle: l10n.notifChargeOn(
         money.format(x.price),
-        renewalDate.format(x.nextRenewal),
+        renewalDate.format(x.nextCharge(now)),
       ),
       subtitleMaxLines: 3,
       onTap: () => context.push('/sub/${x.id}'),

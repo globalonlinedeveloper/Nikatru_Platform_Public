@@ -41,10 +41,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { listDir } from './tree-walk.mjs';
 
-import { DECLARED_GATES, publishPreconditionProblems } from '../content_pipeline/src/gates.mjs';
+import { DECLARED_GATES, producedPackFor, publishPreconditionProblems } from '../content_pipeline/src/gates.mjs';
 import { DRILL_RECORD_REL, TEST_KEY_ID, drillStatus, signPack, testSeed } from '../content_pipeline/src/sign.mjs';
 import { inspectPack } from '../content_pipeline/src/inert.mjs';
 import { runQa } from '../content_pipeline/src/qa.mjs';
@@ -99,7 +99,12 @@ if (existsSync(EXAMPLES)) {
     const gatesDir = join(EXAMPLES, e.name, 'gates');
     if (!existsSync(recipePath) || !existsSync(gatesDir)) continue;
     const recipe = JSON.parse(readFileSync(recipePath, 'utf8'));
-    const packDir = join(FIXTURES, `v${recipe.pack_version.split('.')[0]}`);
+    // ⏱ 2026-09-28 · ST-X5: the pack a recipe REALLY produces, from the one
+    // declared pair list — `fixtures/pack/v<major>` named the lingo pack for
+    // the second recipe. The v<major> rule stays the fallback for a recipe
+    // with no pair, which assert-pack-roundtrip refuses as COVERAGE LOST.
+    const produced = producedPackFor(relative(repoRoot, recipePath).split('\\').join('/'));
+    const packDir = produced ? join(repoRoot, ...produced.split('/')) : join(FIXTURES, `v${recipe.pack_version.split('.')[0]}`);
     if (!existsSync(join(packDir, 'manifest.json'))) continue;
     subjects.push({ name: e.name, recipe, gatesDir, packDir });
   }

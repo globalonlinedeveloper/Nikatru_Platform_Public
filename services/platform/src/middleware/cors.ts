@@ -22,4 +22,12 @@ import { cors } from '../../../_shared/src/cors';
 
 export * from '../../../_shared/src/cors';
 
-export const corsMiddleware = cors({ scope: 'every-app', methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'] });
+// ⏱ 2026-09-28 · ST-N1: `refuseBrowsersOn` names the captcha-free native sign-in
+// (routes/native-auth.ts, POST /v1/auth/native/<app>/<op>). Every browser request
+// there, and every preflight, is a 403 with no CORS header; services/_shared/src/cors.ts
+// says why. test/cors.test.ts declares those endpoints no-CORS, with the reason.
+export const corsMiddleware = cors({
+  scope: 'every-app',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  refuseBrowsersOn: ['/v1/auth/native/'],
+});

@@ -281,6 +281,9 @@ void main() {
         reason: 'the edit sheet did not open on the row the pane shows',
       );
 
+      // ST-T3b's form is taller than the window: Cancel is below the fold.
+      await tester.ensureVisible(find.byKey(E2EKeys.addCancel));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(E2EKeys.addCancel));
       await tester.pumpAndSettle();
       expect(find.text(l10n.editSubscriptionTitle), findsNothing);

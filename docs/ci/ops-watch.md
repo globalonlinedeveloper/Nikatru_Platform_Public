@@ -491,6 +491,51 @@ runner has no `.claude/`; the script asserts the key's own
 `client_email` is the account ADR 033 is about, so a swapped secret
 fails loudly instead of proving a 403 about somebody else.
 
+## job `renovate-backlog`
+
+### above `renovate-backlog:`
+
+── O-RENOVATE-BACKLOG-OUTRUNS-ITS-LIMITS, limb 3 · A GREEN RENOVATE RUN IS NOT A DRAINING QUEUE ──
+
+🔴 WHY THIS JOB EXISTS. On 2026-09-22 the Dependency Dashboard (#417) held 21
+updates Renovate had found and not opened, up from 16 on 2026-09-03, while every
+`renovate.yml` run reported success; on 2026-09-27 it held 23, the oldest
+waiting 23.9 days. `tooling/ops/check-renovate-backlog.mjs` reads that queue
+against the two floors in `tooling/ops/renovate-backlog-floor.json`, and until
+this job nothing ran it. Its row is `duty.freshness.renovate-backlog`.
+
+PAGE-ONLY, BY CLASS. The row carries `liveVerdictScope: page-only`: a red
+verdict fails this workflow, which is the page, and PRINTS in `ci.yml`'s push
+run instead of blocking it. The queue drains only by merging Renovate's pull
+requests, and a verdict that froze `ci-gate` would freeze exactly those merges
+(the reader's own header: "IT MUST NOT FREEZE THE MERGE THAT DRAINS IT").
+`duty.freshness.` is the second page-only class after `duty.laptop.`; both
+halves of `tooling/ci/assert-ops-register.mjs` (the structure and the router)
+read one predicate, `pageOnlyEligible`, over one map, `PAGE_ONLY_CLASSES`.
+
+ONE SLOT A WEEK, the Monday 07:45 UTC slot the failure ledger and the digest
+use, for two reasons. The register's unit scan opens the job list of a schedule
+run only on the weekdays the job's own `if:` admits, so a Monday-only job costs
+the guard the Monday runs it already opens for the ledger; a daily slot admits
+every weekday, and while this job is red, or before it has ever run, the scan
+would open the job list of every schedule run on the page on every guard run.
+And Renovate's own window is Monday (Asia/Kolkata), with its first Monday run
+near 06:00 UTC, so the read lands after the drain the floors are measured
+against. A red here pages once a week; `renovate.yml` is not touched.
+
+A DISPATCH RUNS IT ONLY WHEN IT ASKS (`inputs.renovate_backlog`): the land
+scripts dispatch this workflow after every merge, and a reader that is red for
+as long as the queue outruns its floors must not turn each of those runs red.
+
+### before step **Read the Dependency Dashboard against its two floors**
+
+The same three-valued exit as the readers above: 2 is COVERAGE LOST, never a
+clean queue. The token is this job's own (`issues: read` for #417,
+`pull-requests: read` for the open Renovate pull requests the reader still
+counts); no secret is named.
+NEVER tick "create all" on #417 to clear a red: every pull request at once runs
+full CI and exhausts the GitHub API.
+
 ## job `alert`
 
 ### above `alert:`
@@ -537,6 +582,13 @@ unattributable row in production is a scheduled duty reporting unhealthy.
 Leaving it out would have made B-17's monitor the one reader in this file
 whose red nobody is told about — a check that runs, fails, and is read by
 no one is the same as no check, which is B-17's own subject.
+
+`renovate-backlog` joins them (2026-09-27), and from that day the list is
+HELD rather than remembered: `tooling/ci/assert-ops-register.mjs` fails when
+a job of this file other than `alert` and `digest` is missing from `needs`,
+naming the job and the register row that grades it, and when `needs` names
+a job the file does not have. Before it, dropping a job here silenced its
+page while every test stayed green.
 
 ## job `alert`
 

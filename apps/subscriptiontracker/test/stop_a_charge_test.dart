@@ -35,7 +35,9 @@ import 'support/width_harness.dart';
 const Color kSublySeed = Color(0xFF6459F5);
 
 Subscription _sub() => Subscription(
-  id: 'sub-1',
+  // '1' is the seed's own Netflix: the removal PATCHes the row (ST-T3b ST-E3,
+  // a soft delete), and a row the backing store does not hold is a 404.
+  id: '1',
   name: 'Netflix',
   category: 'Streaming',
   glyph: 'N',
@@ -44,13 +46,23 @@ Subscription _sub() => Subscription(
   nextRenewal: DateTime.utc(2026, 9, 12),
 );
 
-/// A repository whose `cancel` does whatever [onCancel] says.
+/// A repository whose removal does whatever [onCancel] says.
+///
+/// ⏱ ST-T3b (ST-E3): the removal is a SOFT delete — a PATCH of `deleted_at`
+/// through [update] — with the hard DELETE ([cancel]) only as the fallback
+/// for a server that refuses it. Both go through [onCancel].
 class _CancelRepository implements SubscriptionRepository {
   _CancelRepository(this.onCancel);
   final Future<void> Function() onCancel;
 
   @override
   Future<List<Subscription>> fetchAll() async => <Subscription>[_sub()];
+
+  @override
+  Future<Subscription> update(String id, Map<String, dynamic> changes) async {
+    await onCancel();
+    return _sub().patched(changes);
+  }
 
   @override
   Future<void> cancel(String id) => onCancel();

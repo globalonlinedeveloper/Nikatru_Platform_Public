@@ -8,10 +8,16 @@
 //   · B6  — home's notification bell carried an unread dot that was ALWAYS on.
 //   · D6/D2 — "Connected accounts" and "Export data (CSV)" are inert rows that
 //     drew the same chevron as every row that goes somewhere.
+//     ⏱ 2026-09-28 · ST-X1 (audit D2/D31): "Export data (CSV)" is WIRED — it
+//     saves a real file (settings_export_test.dart) — so it moved from the
+//     inert list to the rows that keep their chevron.
 //   · B11 — the demo client created every new row with `usedPct: 50` and
 //     `usageNote: 'Just added.'`: fabricated usage for a plan added a second ago.
 //
-// RED CONTROLS: put the `_iconButton(Icons.more_horiz, …)` back; pass
+// ⏱ 2026-09-28 · ST-T3b (ST-E3): "More options" is BACK, with the row's
+// lifecycle menu behind it, so B14 now asserts the control DOES something.
+//
+// RED CONTROLS: make `more_horiz`'s callback a no-op again; pass
 // `dot: true` again; draw the chevron unconditionally; restore `usedPct: 50`.
 // Each turns its own case red.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -38,18 +44,22 @@ Finder _tapFor(String label) => find
     .first;
 
 void main() {
-  testWidgets(
-    'B14 · the detail hero has no "More options" that opens nothing',
-    (WidgetTester tester) async {
-      final SemanticsHandle semantics = tester.ensureSemantics();
-      await pumpAt(tester, kPhone, const SubscriptionDetailScreen(id: '1'));
-      expect(find.byIcon(Icons.more_horiz), findsNothing);
-      expect(find.bySemanticsLabel('More options'), findsNothing);
-      // The real exit is still there.
-      expect(find.bySemanticsLabel((await _en()).back), findsOneWidget);
-      semantics.dispose();
-    },
-  );
+  testWidgets('B14 · the detail hero "More options" opens the lifecycle menu', (
+    WidgetTester tester,
+  ) async {
+    final SemanticsHandle semantics = tester.ensureSemantics();
+    await pumpAt(tester, kPhone, const SubscriptionDetailScreen(id: '1'));
+    final AppLocalizations l10n = await _en();
+    expect(find.bySemanticsLabel(l10n.moreOptions), findsOneWidget);
+    // The real exit is still there.
+    expect(find.bySemanticsLabel(l10n.back), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.pumpAndSettle();
+    expect(find.text(l10n.actionPause), findsOneWidget);
+    expect(find.text(l10n.actionMarkCancelled), findsOneWidget);
+    expect(find.text(l10n.actionDeleteFromTracker), findsOneWidget);
+    semantics.dispose();
+  });
 
   testWidgets('B6 · the notification bell carries no always-on unread dot', (
     WidgetTester tester,
@@ -73,10 +83,7 @@ void main() {
   ) async {
     await pumpAt(tester, kPhone, const SettingsScreen());
     final AppLocalizations l10n = await _en();
-    for (final String inert in <String>[
-      l10n.connectedAccounts,
-      l10n.exportDataCsv,
-    ]) {
+    for (final String inert in <String>[l10n.connectedAccounts]) {
       await tester.scrollUntilVisible(find.text(inert), 200);
       final Finder row = _tapFor(inert);
       expect(tester.widget<FocusableTap>(row).onTap, isNull, reason: inert);
@@ -94,15 +101,22 @@ void main() {
       );
     }
     // A row that DOES go somewhere keeps its chevron: the rule is "only where
-    // a tap leads", not "never".
-    await tester.scrollUntilVisible(find.text(l10n.helpAndSupport), 200);
-    expect(
-      find.descendant(
-        of: _tapFor(l10n.helpAndSupport),
-        matching: find.byIcon(Icons.chevron_right),
-      ),
-      findsOneWidget,
-    );
+    // a tap leads", not "never". The export row is one since ST-X1.
+    for (final String live in <String>[
+      l10n.exportDataCsv,
+      l10n.helpAndSupport,
+    ]) {
+      await tester.scrollUntilVisible(find.text(live), 200);
+      expect(tester.widget<FocusableTap>(_tapFor(live)).onTap, isNotNull);
+      expect(
+        find.descendant(
+          of: _tapFor(live),
+          matching: find.byIcon(Icons.chevron_right),
+        ),
+        findsOneWidget,
+        reason: live,
+      );
+    }
   });
 
   test(

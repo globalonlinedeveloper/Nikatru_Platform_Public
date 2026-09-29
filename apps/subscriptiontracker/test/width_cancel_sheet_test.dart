@@ -52,7 +52,10 @@ const double kSheetHPadding = AppSpacing.xl * 2;
 const double kM3SheetMaxWidth = 640;
 
 Subscription _sub() => Subscription(
-  id: 'sub-1',
+  // '1' is the seed's own Netflix: "Confirm cancel" now PATCHes the row
+  // (ST-E3, mark cancelled) and a row the backing store does not hold is a
+  // 404 — the old hard DELETE of an unknown id silently succeeded.
+  id: '1',
   name: 'Netflix',
   category: 'Streaming',
   price: const Money(1500, 'USD'),

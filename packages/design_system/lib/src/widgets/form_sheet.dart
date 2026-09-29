@@ -111,12 +111,6 @@ class AppFormSheet extends StatelessWidget {
             top: Radius.circular(AppRadius.xl),
           ),
         ),
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.gutterCompact,
-          AppSpacing.md,
-          AppSpacing.gutterCompact,
-          AppSpacing.xl,
-        ),
         child: CallbackShortcuts(
           bindings: <ShortcutActivator, VoidCallback>{
             if (submit != null) ...<ShortcutActivator, VoidCallback>{
@@ -127,6 +121,20 @@ class AppFormSheet extends StatelessWidget {
             },
           },
           child: SingleChildScrollView(
+            // 🔴 THE INSET IS THE SCROLL VIEW'S OWN PADDING, NOT THE SHEET'S.
+            // Same pixels either way; the difference is what the scrollable
+            // BOUNDS. Outside it, every full-width field touched the
+            // scrollable's edge, and flutter_test's tap-target guideline skips
+            // any target at a scrollable's boundary ("it might be partially
+            // scrolled offscreen") — so a sweep of a form of full-width fields
+            // inspected NOTHING and reported it clean (measured 2026-09-29 on
+            // the ST-T3b add/edit form).
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.gutterCompact,
+              AppSpacing.md,
+              AppSpacing.gutterCompact,
+              AppSpacing.xl,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -228,10 +236,17 @@ abstract final class AppFieldDecoration {
   /// focus is shown by weight as well as by hue.
   static const double borderWidth = 1;
 
-  /// The skin, with an optional [hint] (an example value) and [errorText].
+  /// The skin, with an optional [hint] (an example value), [label] and
+  /// [errorText].
+  ///
+  /// [label] is the field's NAME — its `labelText`, which is what a screen
+  /// reader announces for the control itself. A field on its own carries it
+  /// here; a field under an [AppFormField] heading leaves it null, since the
+  /// heading already names it on screen.
   static InputDecoration of(
     BuildContext context, {
     String? hint,
+    String? label,
     String? errorText,
   }) {
     final ThemeData theme = Theme.of(context);
@@ -243,6 +258,10 @@ abstract final class AppFieldDecoration {
     );
     return InputDecoration(
       hintText: hint,
+      labelText: label,
+      labelStyle: theme.textTheme.bodyLarge?.copyWith(
+        color: scheme.onSurfaceVariant,
+      ),
       hintStyle: theme.textTheme.bodyLarge?.copyWith(
         color: scheme.onSurfaceVariant,
       ),
@@ -434,8 +453,10 @@ class AppFormActions extends StatelessWidget {
   /// The primary action's label — "Add subscription", "Save changes".
   final String submitLabel;
 
-  /// What the primary action does.
-  final VoidCallback onSubmit;
+  /// What the primary action does — null while the form cannot be saved
+  /// (a required field empty or invalid), which disables the button the way
+  /// [busy] does, with its idle label.
+  final VoidCallback? onSubmit;
 
   /// Whether the primary action is in flight.
   final bool busy;

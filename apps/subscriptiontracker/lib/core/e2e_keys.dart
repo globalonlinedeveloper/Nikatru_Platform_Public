@@ -53,6 +53,9 @@ class E2EKeys {
   // key.
   static const Key detailBack = Key('e2e_detail_back');
   static const Key detailCancelPlan = Key('e2e_detail_cancel_plan');
+
+  /// The header's "More options" — the row's lifecycle menu (ST-T3b ST-E3).
+  static const Key detailMoreOptions = Key('e2e_detail_more_options');
   static const Key notificationsClose = Key('e2e_notifications_close');
   // ── Stop a charge (the cancel sheet) — train ST-D7 ────────────────────────
   //

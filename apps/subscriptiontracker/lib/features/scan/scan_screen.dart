@@ -13,6 +13,7 @@ import '../../l10n/app_localizations.dart';
 import '../../state/subscriptions_controller.dart';
 import '../add/add_subscription_sheet.dart';
 import '../shared/async_gate.dart' show dataFailedBodyFor;
+import '../shared/cadence_label.dart';
 import '../shared/widgets.dart';
 
 /// First-run setup screen. It loads subscriptions from the repository and
@@ -441,9 +442,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                   title: subs[i].name,
                   subtitle: subs[i].category,
                   figure: money.format(subs[i].price),
-                  caption: subs[i].cycle == BillingCycle.yearly
-                      ? l10n.perYear
-                      : l10n.perMonth,
+                  caption: cadenceCaption(l10n, subs[i].cycle),
                   // B49: a result row opens the subscription it names.
                   onTap: () => context.push('/sub/${subs[i].id}'),
                 ),

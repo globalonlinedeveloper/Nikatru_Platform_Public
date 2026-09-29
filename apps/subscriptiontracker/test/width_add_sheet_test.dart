@@ -74,9 +74,9 @@ Widget _host({bool edit = false}) {
           builder: (BuildContext context) => Center(
             child: TextButton(
               onPressed: () => edit
-                  ? showEditSubscriptionSheet(
+                  ? showAddSubscriptionSheet(
                       context,
-                      Subscription(
+                      initial: Subscription(
                         id: 'sub-1',
                         name: 'Netflix',
                         category: 'Streaming',

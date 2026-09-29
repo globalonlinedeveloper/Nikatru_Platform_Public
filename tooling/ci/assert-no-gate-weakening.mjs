@@ -231,6 +231,38 @@ const ALLOWLIST = [
       'skip. The annotation states the platform the file was always about. (K-15.)',
   },
   {
+    file: 'packages/core/test/recurrence_schedule_test.dart',
+    rule: '@TestOn(',
+    date: '2026-09-28',
+    reason:
+      '`@TestOn(\'vm\')` here REMOVES NO COVERAGE, for the reason content_pack_fixture_test.dart gives: ' +
+      'the suite reads contracts/renewals/vectors.json off DISK through `dart:io` — the SAME file the ' +
+      'platform Worker\'s renewals.test.ts iterates, which is the whole point of the vectors (ST-T3b, ST-M3) — ' +
+      'and under workspace_gate\'s `dart test -p chrome` an unannotated `dart:io` test is a compile ' +
+      'FAILURE. `dart test` defaults to the VM, so every vector still runs there.',
+  },
+  {
+    file: 'packages/core/test/portability/csv_import_test.dart',
+    rule: '@TestOn(',
+    date: '2026-09-28',
+    reason:
+      'ST-X2 — the same shape as content_pack_fixture_test.dart above, and it REMOVES NO COVERAGE: the VM ' +
+      'lane runs every case. The file reads the hand-authored sheets under test/fixtures/import/ with ' +
+      '`dart:io`, which is a COMPILE FAILURE under `dart test -p chrome`. The reader, the mapping and the ' +
+      'plan are pure Dart, and csv_codec_test.dart / backup_restore_test.dart / money_parse_localized_test.dart ' +
+      'drive them in BOTH lanes without annotation.',
+  },
+  {
+    file: 'packages/core/test/service_catalogue_test.dart',
+    rule: '@TestOn(',
+    date: '2026-09-28',
+    reason:
+      'ST-X5 — the same shape as content_pack_fixture_test.dart above, and it REMOVES NO COVERAGE: the VM ' +
+      'lane runs every case. It loads the PRODUCED pack (apps/subscriptiontracker/assets/content_pack/) off ' +
+      'disk with `dart:io` so the real loader reads the real bytes, which is a COMPILE FAILURE under ' +
+      '`dart test -p chrome`.',
+  },
+  {
     file: 'packages/core/test/privacy_signal_browser_test.dart',
     rule: '@TestOn(',
     date: '2026-09-05',

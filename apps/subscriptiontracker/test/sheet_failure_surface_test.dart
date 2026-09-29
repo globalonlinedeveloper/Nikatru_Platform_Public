@@ -214,10 +214,8 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byKey(E2EKeys.addName), 'Hulu');
-    // ⏱ train ST-D6: an amount is typed because the sheet now VALIDATES one —
-    // an empty price was silently saved as 9.99 before. Without it this case
-    // would stop at the inline "Enter an amount" error and never reach the
-    // write whose failure it is about.
+    // ST-T3b (ST-E2): Add waits for a real price — a blank one used to save
+    // as 9.99 — so the failure path is reached with one typed.
     await tester.enterText(find.byKey(E2EKeys.addPrice), '7.99');
     await tester.pumpAndSettle();
 

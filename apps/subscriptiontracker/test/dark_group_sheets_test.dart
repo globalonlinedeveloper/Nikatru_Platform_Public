@@ -66,7 +66,10 @@ const String kDefaultCurrencyCode = 'USD';
 const MoneyFormatter kMoney = MoneyFormatter('en');
 
 Subscription _sub() => Subscription(
-  id: 'sub-1',
+  // '1' is the seed's own Netflix: "Confirm cancel" now PATCHes the row
+  // (ST-E3, mark cancelled) and a row the backing store does not hold is a
+  // 404 — the old hard DELETE of an unknown id silently succeeded.
+  id: '1',
   name: 'Netflix',
   category: 'Streaming',
   price: const Money(1500, kDefaultCurrencyCode),
@@ -234,15 +237,17 @@ void main() {
           scheme.onSurfaceVariant,
         );
 
-        // The cycle arms: selection is a FILL the scheme derives, never the
-        // brand gradient with a literal white on it.
-        Material arm(String label) => tester.widget<Material>(
-          find
-              .ancestor(of: find.text(label), matching: find.byType(Material))
-              .first,
-        );
-        expect(arm(en.cycleMonthly).color, scheme.secondaryContainer);
-        expect(arm(en.cycleYearly).color, AppCard.fillOf(theme));
+        // ⏱ ST-T3b (ST-E4): the cadence is a FIELD now — a dropdown that can
+        // say weekly or quarterly — on the one field skin, so it rests on the
+        // card fill like every other field, never the brand gradient.
+        final Iterable<InputDecorator> cycle = tester
+            .widgetList<InputDecorator>(find.byType(InputDecorator))
+            .where(
+              (InputDecorator d) =>
+                  d.decoration.labelText == en.fieldLabelCycle,
+            );
+        expect(cycle, hasLength(1), reason: 'expected one cadence field');
+        expect(cycle.single.decoration.fillColor, AppCard.fillOf(theme));
         expect(tester.takeException(), isNull);
       });
     }

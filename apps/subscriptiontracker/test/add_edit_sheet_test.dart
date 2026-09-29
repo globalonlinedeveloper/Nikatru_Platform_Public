@@ -72,16 +72,7 @@ class _Repo implements SubscriptionRepository {
   Future<Subscription> update(String id, Map<String, dynamic> changes) async {
     await _wait();
     updates.add((id, changes));
-    final Subscription row = rows.firstWhere((Subscription s) => s.id == id);
-    return row.copyWith(
-      name: changes['name'] as String?,
-      category: changes['category'] as String?,
-      price: changes['price'] as num?,
-      cycle: changes['cycle'] == 'monthly'
-          ? BillingCycle.monthly
-          : BillingCycle.yearly,
-      nextRenewal: DateTime.parse(changes['next_renewal'] as String),
-    );
+    return rows.firstWhere((Subscription s) => s.id == id).patched(changes);
   }
 
   @override
@@ -95,7 +86,12 @@ Future<(ProviderContainer, AppLocalizations)> _open(
   Subscription? editing,
   bool offline = false,
 }) async {
-  await setSurface(tester, kPhone);
+  // The VIEW, not `setSurfaceSize`: the sheet caps its height off
+  // MediaQuery, which only the view moves (the trap width_add_sheet_test.dart
+  // records). ST-T3b's form is tall enough to scroll on a phone.
+  tester.view.physicalSize = kPhone;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
   final ProviderContainer c = ProviderContainer(
     overrides: <Override>[
       ...defaultWidthOverrides(),
@@ -119,7 +115,7 @@ Future<(ProviderContainer, AppLocalizations)> _open(
               child: TextButton(
                 onPressed: () => editing == null
                     ? showAddSubscriptionSheet(context)
-                    : showEditSubscriptionSheet(context, editing),
+                    : showAddSubscriptionSheet(context, initial: editing),
                 child: const Text('open'),
               ),
             ),
@@ -176,7 +172,8 @@ void main() {
     expect(find.text(l10n.editSubscriptionTitle), findsOneWidget);
     expect(find.text(l10n.addPopularHeading), findsNothing);
     expect(_fieldText(tester, E2EKeys.addName), 'Netflix');
-    expect(_fieldText(tester, E2EKeys.addPrice), '649');
+    // ST-T3b: the stored amount as a person types it, to the currency's digits.
+    expect(_fieldText(tester, E2EKeys.addPrice), '649.00');
     expect(
       tester
           .widget<DropdownButtonFormField<String>>(
@@ -192,13 +189,9 @@ void main() {
       ),
       findsOneWidget,
     );
-    final SemanticsHandle handle = tester.ensureSemantics();
-    expect(
-      tester.getSemantics(find.text(l10n.cycleYearly)),
-      isSemantics(isSelected: true),
-    );
-    handle.dispose();
-    expect(_inSubmit(l10n.saveChanges), findsOneWidget);
+    // ⏱ ST-T3b (ST-E4): the cadence is a dropdown showing the row's own.
+    expect(find.text(l10n.cycleYearly), findsOneWidget);
+    expect(_inSubmit(l10n.save), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -248,12 +241,12 @@ void main() {
     expect(
       find.descendant(
         of: banner,
-        matching: find.text(l10n.editSubscriptionFailed),
+        matching: find.text(l10n.updateSubscriptionFailed),
       ),
       findsOneWidget,
     );
     expect(_fieldText(tester, E2EKeys.addName), 'Netflix 4K');
-    expect(_inSubmit(l10n.saveChanges), findsOneWidget);
+    expect(_inSubmit(l10n.save), findsOneWidget);
     expect(
       tester.widget<FilledButton>(find.byKey(E2EKeys.addSubmit)).onPressed,
       isNotNull,
@@ -282,30 +275,40 @@ void main() {
     );
   });
 
+  // ⏱ 2026-09-29 · ST-T3b (ST-E2) is the behaviour of record: Add is DISABLED
+  // until the form describes a real row, and the price field names what is
+  // wrong — rather than ST-D6's submit-then-flag. A name is not required.
   testWidgets('VALIDATION — nothing is written, and nothing is invented', (
     WidgetTester tester,
   ) async {
     final _Repo repo = _Repo();
     final (_, AppLocalizations l10n) = await _open(tester, repo: repo);
-    await _submit(tester);
-    await tester.pumpAndSettle();
-    expect(find.text(l10n.formNameRequired), findsOneWidget);
-    expect(find.text(l10n.formPriceInvalid), findsOneWidget);
-    expect(repo.added, isEmpty, reason: 'an empty form was saved');
+    VoidCallback? submit() =>
+        tester.widget<FilledButton>(find.byKey(E2EKeys.addSubmit)).onPressed;
+    String? priceError() => tester
+        .widget<TextField>(find.byKey(E2EKeys.addPrice))
+        .decoration
+        ?.errorText;
 
-    // Typing clears that field's error, and only that one.
+    expect(submit(), isNull, reason: 'no price: nothing to save');
+    expect(priceError(), isNull, reason: 'a fresh sheet greets with no error');
+
     await tester.enterText(find.byKey(E2EKeys.addName), 'Hulu');
-    await tester.pump();
-    expect(find.text(l10n.formNameRequired), findsNothing);
-    expect(find.text(l10n.formPriceInvalid), findsOneWidget);
-
-    for (final String bad in <String>['abc', '-3', 'Infinity']) {
+    for (final String bad in <String>['abc', '-3', 'Infinity', '0']) {
       await tester.enterText(find.byKey(E2EKeys.addPrice), bad);
-      await _submit(tester);
-      await tester.pumpAndSettle();
-      expect(find.text(l10n.formPriceInvalid), findsOneWidget, reason: bad);
-      expect(repo.added, isEmpty, reason: '"$bad" was saved as an amount');
+      await tester.pump();
+      expect(priceError(), l10n.priceErrorInvalid, reason: bad);
+      expect(submit(), isNull, reason: '"$bad" would be saved as an amount');
     }
+    await tester.enterText(find.byKey(E2EKeys.addPrice), '');
+    await tester.pump();
+    expect(priceError(), l10n.priceErrorInvalid, reason: 'emptied');
+
+    await tester.enterText(find.byKey(E2EKeys.addPrice), '7.99');
+    await tester.pump();
+    expect(priceError(), isNull);
+    expect(submit(), isNotNull);
+    expect(repo.added, isEmpty, reason: 'typing wrote nothing');
   });
 
   testWidgets('EDIT WRITES — only the sheet fields, in the row currency', (
@@ -319,9 +322,7 @@ void main() {
     );
     await tester.enterText(find.byKey(E2EKeys.addName), 'Netflix 4K');
     await tester.enterText(find.byKey(E2EKeys.addPrice), '799');
-    await tester.ensureVisible(find.text(l10n.cycleMonthly));
-    await tester.tap(find.text(l10n.cycleMonthly));
-    await tester.pumpAndSettle();
+    await tester.pump();
     await _submit(tester);
     await tester.pumpAndSettle();
 
@@ -329,18 +330,13 @@ void main() {
     expect(repo.updates, hasLength(1));
     final (String id, Map<String, dynamic> patch) = repo.updates.single;
     expect(id, 'sub-1');
-    expect(patch.keys.toSet(), <String>{
-      'name',
-      'category',
-      'price',
-      'cycle',
-      'next_renewal',
-    }, reason: 'a PATCH must not re-send fields the sheet does not show');
+    // ⏱ ST-T3b (ST-E1): ONE PATCH of only what changed — the untouched
+    // category, cadence and date are not re-sent.
     expect(patch['name'], 'Netflix 4K');
-    expect(patch['price'], 799);
-    expect(patch['cycle'], 'monthly');
-    // A user-chosen date is not moved by the cycle toggle.
-    expect(patch['next_renewal'], '2030-03-14');
+    expect(patch.keys, containsAll(<String>['name', 'price']));
+    for (final String untouched in <String>['category', 'plan', 'notes']) {
+      expect(patch.containsKey(untouched), isFalse, reason: untouched);
+    }
 
     final Subscription saved = c
         .read(subscriptionsControllerProvider)
@@ -351,7 +347,7 @@ void main() {
     expect(saved.plan, 'Premium', reason: 'a field the sheet does not own');
   });
 
-  testWidgets('KEYBOARD — Next walks to the amount, Done on it submits', (
+  testWidgets('KEYBOARD — Next walks on from the name; Ctrl+Enter submits', (
     WidgetTester tester,
   ) async {
     final _Repo repo = _Repo();
@@ -362,7 +358,11 @@ void main() {
     );
     await tester.enterText(find.byKey(E2EKeys.addName), 'Hulu');
     await tester.enterText(find.byKey(E2EKeys.addPrice), '7.99');
-    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    // The chassis sheet's own submit chord, from inside a field (ST-D6).
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
     await tester.pumpAndSettle();
     expect(repo.added.single.name, 'Hulu');
     expect(repo.added.single.price.minorUnits, 799);

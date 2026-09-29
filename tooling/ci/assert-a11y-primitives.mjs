@@ -141,10 +141,6 @@ const PRIMITIVES = [
 // instance; this guard then fails until the row is deleted. Never add a row to
 // make a new instance pass — convert it.
 const BASELINE = [
-  // ⏱ 2026-09-29 · train ST-D DW1: the four ST-Y2 rows (the add sheet's POPULAR
-  // chips, cycle segments and renewal field — B23; notifications' Close — C17)
-  // are gone: ST-D6 rebuilt the add sheet on AppFormSheet / AppSegmentedChoice
-  // and ST-D5 put Close on AppIconAction, both FocusableTap underneath.
   {
     limb: 'ST-Y3',
     file: 'apps/subscriptiontracker/lib/features/settings/settings_screen.dart',

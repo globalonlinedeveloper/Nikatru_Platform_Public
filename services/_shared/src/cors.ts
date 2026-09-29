@@ -74,6 +74,20 @@ export interface CorsPolicy {
    *  Worker's test/cors.test.ts derives the mounted set from the real route
    *  table and preflights every route, so a method missing here is red there. */
   readonly methods: readonly string[];
+  /**
+   * ⏱ 2026-09-28 · ST-N1 — path prefixes that REFUSE EVERY BROWSER, whatever the
+   * origin. The platform's POST /v1/auth/native/<app>/<op> calls GoTrue with the
+   * service-role bearer, which skips the captcha web sign-in is held to, so a
+   * browser page must not be able to use it. On these prefixes no
+   * `Access-Control-Allow-*` header is ever set, a preflight answers 403, and ANY
+   * request carrying `Origin` — which every browser sends on a cross-origin POST,
+   * listed origin or not — answers 403 before the route runs. A native HTTP
+   * stack sends no `Origin` and passes through untouched. It refuses; it never
+   * grants. The refusal lives HERE because this is the one module allowed to read
+   * `Origin` (tooling/ci/assert-no-origin-authz.mjs), and a Worker's binding may
+   * hold data only (services/platform/test/twinned-worker-modules.test.ts).
+   */
+  readonly refuseBrowsersOn?: readonly string[];
 }
 
 const LOCALHOST = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
@@ -105,7 +119,7 @@ export function resolveOrigin(
 
 /** The members of Hono's request context this middleware uses, and no more. */
 export interface CorsContext {
-  readonly req: { header(name: string): string | undefined; readonly method: string };
+  readonly req: { header(name: string): string | undefined; readonly method: string; readonly path: string };
   readonly env: { readonly ALLOWED_ORIGINS?: string };
   header(name: string, value: string): void;
   body(data: null, status: 204): Response;
@@ -114,7 +128,20 @@ export interface CorsContext {
 /** The CORS middleware for one Worker, bound to its policy. */
 export function cors(policy: CorsPolicy) {
   const methods = policy.methods.join(', ');
+  const noBrowsers = policy.refuseBrowsersOn ?? [];
   return async <C extends CorsContext>(c: C, next: () => Promise<void>): Promise<Response | void> => {
+    if (noBrowsers.some((p) => c.req.path.startsWith(p))) {
+      if (c.req.method === 'OPTIONS' || c.req.header('Origin') !== undefined) {
+        console.log('[cors] browser request refused on a no-CORS path status=403');
+        // GoTrue's own error shape: the only callers of these paths are gotrue-dart clients.
+        return new Response(
+          JSON.stringify({ code: 403, error_code: 'browser_origin_refused', msg: 'This route serves native apps only' }),
+          { status: 403, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      await next();
+      return;
+    }
     const origin = c.req.header('Origin') ?? '';
     // No Origin header ⇒ a non-browser caller (server-to-server, curl, the
     // Flutter desktop/mobile HTTP stack). CORS is a browser mechanism and there

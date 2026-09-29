@@ -3,7 +3,7 @@ import 'package:dio/dio.dart';
 /// Raised when an API call fails — carries the HTTP [statusCode] (0 for a
 /// transport-level error) and a human-readable [message].
 class ApiException implements Exception {
-  ApiException(this.statusCode, this.message);
+  ApiException(this.statusCode, this.message, {this.detail});
   final int statusCode;
   final String message;
 
@@ -21,6 +21,12 @@ class ApiException implements Exception {
   static bool isOfflineError(Object? error) =>
       error is ApiException && error.isOffline;
 
+  /// The Worker's `detail` for a refused body, when it sent one — the
+  /// sentence that NAMES the field (`{"error":"invalid_body","detail":"price
+  /// must be …"}`). [message] stays the machine `error` code every caller
+  /// already matches on; this is additive, so a form can put the refusal on
+  /// the field it is about (ST-E2) instead of reporting a network failure.
+  final String? detail;
   @override
   String toString() => 'ApiException($statusCode): $message';
 }
@@ -122,7 +128,8 @@ class RestClient {
       final String msg = (data is Map && data['error'] != null)
           ? data['error'].toString()
           : e.message ?? 'Network error';
-      throw ApiException(code, msg);
+      final Object? detail = data is Map ? data['detail'] : null;
+      throw ApiException(code, msg, detail: detail?.toString());
     }
     throw ApiException(0, e.toString());
   }

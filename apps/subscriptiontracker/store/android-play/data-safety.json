@@ -1123,7 +1123,7 @@
       },
       "evidence": [],
       "inventoryRows": [],
-      "basis": "No storage permission, no file-picker or share package, and no direct path_provider dependency — the app performs no file I/O of its own. The Settings 'Export data (CSV)' row is an INERT placeholder with a null onTap (apps/subscriptiontracker/lib/features/settings/settings_screen.dart), so nothing is written or read."
+      "basis": "No storage permission and no file-picker package in the Android build (file_selector_linux is linked on linux alone), and nothing is collected: the app reads no file of the user's. ⏱ 2026-09-28 (ST-X1, audit D2/D31) — the sentence that stood here said the app had no share package and performed no file I/O, and the Settings 'Export data (CSV)' row was an INERT placeholder. Both are now false and are replaced, not kept: the row WRITES a CSV of the user's own list and hands it to the OS through packages/platform_storage (ShareFileExporter), which depends on share_plus 12.0.2 (the share sheet on android, ios, macos and windows; a download on web) and file_selector_linux 0.9.4+1 (a save dialog on linux, and linux only). On Android the file goes to the system share sheet via a FileProvider URI with a temporary read grant, so no storage permission is requested; the user picks the destination. The bytes are the user's own data leaving at the user's own request to a place the user chose, never to the developer, so this is not collection or sharing in the Data safety sense. The import engine (packages/core src/portability) has no screen and reads no file yet."
     },
     {
       "category": "Calendar",
@@ -1309,7 +1309,7 @@
       "inventoryRows": [
         "table:subscriptiontracker_db.subscriptions"
       ],
-      "basis": "The subscription NAME is free text the user types (add_subscription_sheet.dart:333). Under backend-live it is transmitted and stored in subscriptiontracker_db.subscriptions; under demo it stays on the device, in the app's own namespaced key-value store, and is never transmitted. Required — an app for tracking subscriptions cannot work without the subscription. The price and cycle from the same form are declared under Financial info > Other financial info; the same input is not double-counted, it is split by what each field IS."
+      "basis": "The subscription NAME is free text the user types (add_subscription_sheet.dart:688). Under backend-live it is transmitted and stored in subscriptiontracker_db.subscriptions; under demo it stays on the device, in the app's own namespaced key-value store, and is never transmitted. Required — an app for tracking subscriptions cannot work without the subscription. The price and cycle from the same form are declared under Financial info > Other financial info; the same input is not double-counted, it is split by what each field IS."
     },
     {
       "category": "App activity",
@@ -1858,7 +1858,7 @@
       },
       "nikatru_platform_storage": {
         "introduces": [],
-        "why": "First-party. shared_preferences and flutter_secure_storage adapters. Writes ON the device only — nothing here transmits. ⏱ 2026-09-15 · [ADR 082] §5: also the store age-signal adapter (android: com.google.android.play:age-signals 0.0.4, the Play Age Signals API beta). The age range Google Play returns is used ONLY for the sign-up age gate — never analytics, advertising, marketing or profiling (Play Age Signals terms, accepted by the owner 2026-09-15) — and is read on the device, decided on and discarded: nothing is stored, logged or sent off the device, so it introduces no collected or shared data type. packages/platform_storage/test/age_signals_test.dart proves the Dart side logs and sends nothing and scans the Kotlin for logging, storage and network calls."
+        "why": "First-party. shared_preferences and flutter_secure_storage adapters. Writes ON the device only — nothing here transmits. ⏱ 2026-09-15 · [ADR 082] §5: also the store age-signal adapter (android: com.google.android.play:age-signals 0.0.4, the Play Age Signals API beta). The age range Google Play returns is used ONLY for the sign-up age gate — never analytics, advertising, marketing or profiling (Play Age Signals terms, accepted by the owner 2026-09-15) — and is read on the device, decided on and discarded: nothing is stored, logged or sent off the device, so it introduces no collected or shared data type. packages/platform_storage/test/age_signals_test.dart proves the Dart side logs and sends nothing and scans the Kotlin for logging, storage and network calls. ⏱ 2026-09-28 · ST-X1 (audit D2/D31): also the FILE EXPORTER, over share_plus 12.0.2 (and file_selector_linux 0.9.4+1, linked on linux only). It writes the user's own list to a file and hands it to the OS share sheet (android: share_plus's own FileProvider, a content URI with a temporary read grant, no storage permission — its AndroidManifest.xml declares none, read in the pub cache 2026-09-28), a browser download or a linux save dialog, at the user's request and to the destination the user picks — nothing reaches the developer, so it introduces no collected or shared data type. See the Files and docs row's basis."
       },
       "nikatru_auth_supabase": {
         "introduces": [

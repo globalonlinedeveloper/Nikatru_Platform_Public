@@ -3597,6 +3597,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#renovate-backlog"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-renovate-backlog.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 079"
     ],

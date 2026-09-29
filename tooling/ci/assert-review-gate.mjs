@@ -36,7 +36,7 @@ import { join, relative, resolve } from 'node:path';
 import { listDir } from './tree-walk.mjs';
 
 import { REVIEW_CHECKLIST, checklistProblems, deriveSample } from '../content_pipeline/src/sample.mjs';
-import { readReviewLog } from '../content_pipeline/src/gates.mjs';
+import { producedPackFor, readReviewLog } from '../content_pipeline/src/gates.mjs';
 
 const repoRoot = resolve(process.argv[2] ?? process.cwd());
 const EXAMPLES = join(repoRoot, 'tooling', 'content_pipeline', 'examples');
@@ -101,7 +101,12 @@ if (existsSync(EXAMPLES)) {
     const logPath = join(EXAMPLES, e.name, 'gates', 'review.jsonl');
     if (!existsSync(recipePath)) continue;
     const recipe = JSON.parse(readFileSync(recipePath, 'utf8'));
-    const packDir = join(FIXTURES, `v${recipe.pack_version.split('.')[0]}`);
+    // ⏱ 2026-09-28 · ST-X5: the pack a recipe REALLY produces, from the one
+    // declared pair list — `fixtures/pack/v<major>` named the lingo pack for
+    // the second recipe. The v<major> rule stays the fallback for a recipe
+    // with no pair, which assert-pack-roundtrip refuses as COVERAGE LOST.
+    const produced = producedPackFor(relative(repoRoot, recipePath).split('\\').join('/'));
+    const packDir = produced ? join(repoRoot, ...produced.split('/')) : join(FIXTURES, `v${recipe.pack_version.split('.')[0]}`);
     if (!existsSync(join(packDir, 'PROVENANCE.json'))) continue;
     if (!existsSync(logPath)) {
       problems.push(`${e.name}: no gates/review.jsonl — the human sample gate has nothing to read, and a pack cannot publish without it`);

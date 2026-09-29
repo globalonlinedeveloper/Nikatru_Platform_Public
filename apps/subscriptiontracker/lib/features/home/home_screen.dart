@@ -51,6 +51,7 @@ import '../../state/subscriptions_controller.dart';
 import '../add/add_subscription_sheet.dart';
 import '../detail/subscription_detail_screen.dart';
 import '../shared/async_gate.dart';
+import '../shared/cadence_label.dart';
 import '../shared/due.dart';
 // The shell this screen is a BRANCH of, imported for one number:
 // [AppShell.pageInsetOf]. The FAB that inset reserves room for belongs to the
@@ -623,7 +624,7 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
       // The list SORTS by monthly share and the row SHOWS the charge with its
       // own cycle: a share is not a price.
       figure: money.format(s.price),
-      caption: s.cycle == BillingCycle.yearly ? l10n.perYear : l10n.perMonth,
+      caption: cadenceCaption(l10n, s.cycle),
       // A selection exists only where the layout has one: in a single column
       // the tap pushes a route, and "not selected" on every row would announce
       // a state this screen does not have.

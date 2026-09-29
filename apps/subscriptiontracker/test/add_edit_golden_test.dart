@@ -68,7 +68,7 @@ Future<void> _pump(
                 onPressed: () => showAppFormSheet<void>(
                   context,
                   builder: (_) => SubscriptionFormSheet(
-                    editing: edit ? _row() : null,
+                    initial: edit ? _row() : null,
                     now: _today,
                   ),
                 ),
