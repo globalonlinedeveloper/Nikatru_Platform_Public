@@ -226,6 +226,8 @@ const PER_APP_LANES = {
   'submit-windows-store.yml': perAppLane(),
   'submit-snap.yml': perAppLane(),
   'store-screenshots.yml': perAppLane(),
+  // ⏱ 2026-09-28 · ST-N1g — the per-target native sign-in proof, a per-app dispatch lane.
+  'native-auth-proof.yml': perAppLane(),
 };
 
 /** The two lanes R-1 owns, plus whatever else a case needs. Every fixture root
@@ -810,8 +812,9 @@ ${extra}        run: node tooling/e2e/verify_purged.mjs
     assert.match(r.out, /deploy-web\.yml \(\[pipeline 10\]D-2b\) — limb D-all: /);
     // ⏱ 2026-09-26: deploy-workers.yml is graded (O-SERVICE-KIT-UNBUILT), and the four submit lanes and
     // store-screenshots are graded as per-app (O-STORE-LANES-HARD-WIRE-ONE-APP): 3 → 9.
+    // ⏱ 2026-09-28 (ST-N1g): native-auth-proof.yml joins as a per-app lane: 9 → 10.
     assert.match(r.out, /deploy-workers\.yml \(O-SERVICE-KIT-UNBUILT\) — limb D-all: /);
-    assert.match(r.out, /limb D-all read \d+ key\(s\) and \d+ value\(s\) across 9 lane\(s\)/);
+    assert.match(r.out, /limb D-all read \d+ key\(s\) and \d+ value\(s\) across 10 lane\(s\)/);
   });
 
   test('RC1 · THE CLOSES\' CONTROL — the app-named key with a UUID, back in e2e.yml, fails naming both hits', () => {
@@ -997,7 +1000,8 @@ describe("assert-release-lane-generic.mjs — limb I (a per-app lane takes its a
     assert.match(r.out, /submit-windows-store\.yml \(O-STORE-LANES-HARD-WIRE-ONE-APP\) — limb I: /);
     assert.match(r.out, /submit-snap\.yml \(O-STORE-LANES-HARD-WIRE-ONE-APP\) — limb I: /);
     assert.match(r.out, /store-screenshots\.yml \(O-STORE-LANES-HARD-WIRE-ONE-APP\) — limb I: /);
-    assert.match(r.out, /limb I read \d+ line\(s\) across 5 per-app lane\(s\)/);
+    // ⏱ 2026-09-28 (ST-N1g): native-auth-proof.yml is the sixth per-app lane.
+    assert.match(r.out, /limb I read \d+ line\(s\) across 6 per-app lane\(s\)/);
   });
 
   test("RC1 · THE CLOSES' CONTROL — `--app <id>` planted in the dry run fails, naming submit-play.yml and the line", () => {

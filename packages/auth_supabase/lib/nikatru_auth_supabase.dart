@@ -8,12 +8,14 @@ library;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
+import 'src/native_credential_client.dart';
 import 'src/secure_session_storage.dart';
 
 export 'src/auth_capabilities.dart';
 export 'src/auth_providers.dart';
 export 'src/auth_redirect.dart';
 export 'src/in_memory_auth_repository.dart';
+export 'src/native_credential_client.dart';
 export 'src/secure_session_storage.dart';
 export 'src/supabase_auth_repository.dart';
 
@@ -79,5 +81,10 @@ sb.FlutterAuthClientOptions nikatruAuthOptions({
     // implicit flow puts the token in the URL where history and referrers can
     // see it.
     authFlowType: sb.AuthFlowType.pkce,
+    // ⏱ 2026-09-28 · ST-N1d — the SAME verifier store the native credential
+    // client is handed (`nativeCredentialClient`): a sign-up or a reset sent
+    // through the native route stores the verifier, and this client's exchange
+    // has to find it when the link comes back.
+    pkceAsyncStorage: nikatruPkceStorage,
   );
 }
