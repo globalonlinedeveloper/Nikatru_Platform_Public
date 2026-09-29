@@ -6,8 +6,9 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 ///
 /// - `GET|PUT {platformBaseUrl}/v1/reminders/prefs` — the email preference
 ///   (`services/platform/src/routes/reminders.ts`);
-/// - `POST|DELETE {platformBaseUrl}/v1/calendar/feed` — mint (or rotate) and
-///   revoke the private calendar feed (`routes/calendar.ts`).
+/// - `POST {platformBaseUrl}/v1/calendar/feed` — mint, or rotate (which is
+///   also how a leaked link is reset), the private calendar feed
+///   (`routes/calendar.ts`).
 ///
 /// AUTHENTICATED, like [DioEntitlementTransport]: every route is about a
 /// PERSON, and the host scopes each row by `(user_id, app_id)`.
@@ -144,40 +145,6 @@ class DioReminderChannelsTransport implements core.ReminderChannelsTransport {
     } catch (e) {
       return core.Result<core.CalendarFeed>.err(
         core.Failure('calendar feed mint failed', cause: e),
-      );
-    }
-  }
-
-  @override
-  Future<core.Result<void>> revokeCalendarFeed({
-    required String appId,
-    required String? accessToken,
-  }) async {
-    if (_signedOut(accessToken)) {
-      return const core.Result<void>.err(_noSession);
-    }
-    try {
-      await _dio.delete<dynamic>(
-        '$_base/v1/calendar/feed',
-        queryParameters: <String, Object?>{'app_id': appId},
-        options: _options(accessToken!),
-      );
-      return const core.Result<void>.ok(null);
-    } on DioException catch (e) {
-      // 404 `no_feed` means there is no live feed — already revoked, or
-      // never minted. That is the state a revoke asks for, so it is ok. Any
-      // OTHER 404 (`unknown_app`) is a real fault and stays a failure.
-      final Response<dynamic>? r = e.response;
-      final Object? body = r?.data;
-      if (r?.statusCode == 404 && body is Map && body['error'] == 'no_feed') {
-        return const core.Result<void>.ok(null);
-      }
-      return core.Result<void>.err(
-        core.Failure('calendar feed revoke failed', cause: e),
-      );
-    } catch (e) {
-      return core.Result<void>.err(
-        core.Failure('calendar feed revoke failed', cause: e),
       );
     }
   }

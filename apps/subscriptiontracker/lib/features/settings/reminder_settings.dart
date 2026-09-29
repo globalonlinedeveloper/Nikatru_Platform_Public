@@ -305,10 +305,13 @@ class _ReminderChannelsCardState extends ConsumerState<ReminderChannelsCard> {
     await ref.read(calendarLinkLauncherProvider).open(open);
   }
 
+  /// RESET is a ROTATION: POST /v1/calendar/feed replaces the token, so the
+  /// old URL (a leaked or shared one) stops working at once. The new URL is
+  /// not opened — the person asked to cut the old one off, not to subscribe.
   Future<void> _reset() async {
-    final core.Result<void>? r = await _run(
+    final core.Result<core.CalendarFeed>? r = await _run(
       (String? t) =>
-          _transport.revokeCalendarFeed(appId: AppConfig.appId, accessToken: t),
+          _transport.mintCalendarFeed(appId: AppConfig.appId, accessToken: t),
     );
     if (r == null || !r.isOk || !mounted) return;
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(

@@ -1823,7 +1823,7 @@
   },
   "calendarResetTitle": "Reset calendar link",
   "@calendarResetTitle": {
-    "description": "ST-T4a client. Revokes the feed URL; a shared or leaked link stops working."
+    "description": "ST-T4a client. Rotates the feed URL (POST mints a new token); a shared or leaked link stops working."
   },
   "calendarResetDone": "The old calendar link no longer works. Add to calendar again to get a new one.",
   "@calendarResetDone": {

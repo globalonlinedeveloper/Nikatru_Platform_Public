@@ -11,7 +11,6 @@ void main() {
         await t.readPrefs(appId: 'demo', accessToken: 'tok'),
         await t.writePrefs(appId: 'demo', accessToken: 'tok', emailOptIn: true),
         await t.mintCalendarFeed(appId: 'demo', accessToken: 'tok'),
-        await t.revokeCalendarFeed(appId: 'demo', accessToken: 'tok'),
       ];
       for (final Result<Object?> r in results) {
         expect(r.isOk, isFalse);

@@ -130,15 +130,10 @@ abstract interface class ReminderChannelsTransport {
   });
 
   /// Mint the calendar feed — or ROTATE it: a second call replaces the token,
-  /// and the URL the first call answered stops working at once.
+  /// and the URL the first call answered stops working at once. Rotation is
+  /// also how an app RESETS a leaked link; nothing here revokes without a
+  /// replacement (the route's DELETE has no in-repo client).
   Future<Result<CalendarFeed>> mintCalendarFeed({
-    required String appId,
-    required String? accessToken,
-  });
-
-  /// Revoke the calendar feed. Ok when there is no live feed afterwards,
-  /// including when there was none to revoke.
-  Future<Result<void>> revokeCalendarFeed({
     required String appId,
     required String? accessToken,
   });
@@ -147,8 +142,8 @@ abstract interface class ReminderChannelsTransport {
 /// The default for demo builds, widget tests and any app with no backend: it
 /// cannot ask, and says so.
 ///
-/// Deliberately NOT [ReminderPrefs.defaults] and NOT an ok revoke — those are
-/// answers, and this transport has none. A settings screen must be able to
+/// Deliberately NOT [ReminderPrefs.defaults] — that is an answer, and this
+/// transport has none. A settings screen must be able to
 /// tell "you are not opted in" from "this build has no host".
 class UnavailableReminderChannelsTransport
     implements ReminderChannelsTransport {
@@ -177,10 +172,4 @@ class UnavailableReminderChannelsTransport
     required String appId,
     required String? accessToken,
   }) async => const Result<CalendarFeed>.err(_unavailable);
-
-  @override
-  Future<Result<void>> revokeCalendarFeed({
-    required String appId,
-    required String? accessToken,
-  }) async => const Result<void>.err(_unavailable);
 }

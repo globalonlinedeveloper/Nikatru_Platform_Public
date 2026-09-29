@@ -195,10 +195,6 @@ void main() {
         (await t.mintCalendarFeed(appId: 'demo', accessToken: token)).isOk,
         isFalse,
       );
-      expect(
-        (await t.revokeCalendarFeed(appId: 'demo', accessToken: token)).isOk,
-        isFalse,
-      );
     }
     expect(
       (await t.writePrefs(
@@ -210,42 +206,5 @@ void main() {
       isFalse,
     );
     expect(adapter.calls, 0);
-  });
-
-  group('revoke', () {
-    Future<core.Result<void>> revoke(_FakeAdapter a) =>
-        _transport(a).revokeCalendarFeed(appId: 'demo', accessToken: 'tok');
-
-    test('204 is ok, sent as DELETE with the bearer', () async {
-      final _FakeAdapter adapter = _FakeAdapter('', status: 204);
-      expect((await revoke(adapter)).isOk, isTrue);
-      final RequestOptions req = adapter.lastRequest!;
-      expect(req.method, 'DELETE');
-      expect(req.uri.toString(), '$_base/v1/calendar/feed?app_id=demo');
-      expect(req.headers['authorization'], 'Bearer tok');
-    });
-
-    test('404 no_feed is ok: there is no live feed either way', () async {
-      final _FakeAdapter adapter = _FakeAdapter(
-        _json(<String, Object?>{'error': 'no_feed'}),
-        status: 404,
-      );
-      expect((await revoke(adapter)).isOk, isTrue);
-    });
-
-    test('404 unknown_app and 500 are failures', () async {
-      for (final _FakeAdapter adapter in <_FakeAdapter>[
-        _FakeAdapter(
-          _json(<String, Object?>{'error': 'unknown_app'}),
-          status: 404,
-        ),
-        _FakeAdapter(
-          _json(<String, Object?>{'error': 'internal'}),
-          status: 500,
-        ),
-      ]) {
-        expect((await revoke(adapter)).isOk, isFalse);
-      }
-    });
   });
 }

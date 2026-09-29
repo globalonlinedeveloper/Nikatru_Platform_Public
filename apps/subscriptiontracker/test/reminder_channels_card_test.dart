@@ -5,7 +5,7 @@
 //  · "Email me before renewals" PUTs /v1/reminders/prefs;
 //  · "Add to calendar" mints the feed and opens its webcal: URL (a browser tab
 //    cannot subscribe, so web downloads the https file instead);
-//  · "Reset calendar link" revokes it.
+//  · "Reset calendar link" ROTATES it (a second mint kills the old URL).
 // The transport and the launcher are fakes; the Dio transport's wire shape is
 // proven in packages/api_client/test.
 import 'package:flutter/material.dart';
@@ -83,15 +83,6 @@ class _Transport implements core.ReminderChannelsTransport {
         webcalUrl: Uri.parse('webcal://api.test/v1/calendar/abc.ics'),
       ),
     );
-  }
-
-  @override
-  Future<core.Result<void>> revokeCalendarFeed({
-    required String appId,
-    required String? accessToken,
-  }) async {
-    calls.add('revoke:$appId:$accessToken');
-    return const core.Result<void>.ok(null);
   }
 }
 
@@ -176,13 +167,14 @@ void main() {
     ]);
   });
 
-  testWidgets('Reset calendar link revokes and says so', (
+  testWidgets('Reset calendar link rotates the feed, opens nothing, says so', (
     WidgetTester tester,
   ) async {
     final w = await _pump(tester);
     await tester.tap(find.byKey(const Key('settings.reminder.calendar.reset')));
     await tester.pumpAndSettle();
-    expect(w.t.calls.last, 'revoke:subscriptiontracker:tok');
+    expect(w.t.calls.last, 'mint:subscriptiontracker:tok');
+    expect(w.l.opened, isEmpty);
     expect(find.textContaining('no longer works'), findsOneWidget);
   });
 

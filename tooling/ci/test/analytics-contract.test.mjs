@@ -255,6 +255,11 @@ const LIMB5_FILES = [
   'services/platform/src/routes/report.ts',
   'packages/core/lib/src/content_report_transport.dart',
   'packages/api_client/lib/src/dio_content_report_transport.dart',
+  // ⏱ 2026-09-28 · ST-T4b: the reminder-prefs and calendar-feed body pins.
+  'services/platform/src/routes/reminders.ts',
+  'services/platform/src/routes/calendar.ts',
+  'packages/core/lib/src/reminder_channels_transport.dart',
+  'packages/api_client/lib/src/dio_reminder_channels_transport.dart',
 ];
 
 const realFiles = () =>
@@ -727,7 +732,8 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     assert.match(r.out, /GAP {2}wire sessions-list/);
     // ⏱ 2026-09-28 (ST-I3): 28 -> 29 routes, 18 -> 19 gaps with GET /v1/fx/latest, a gap until its transport ships with the first consumer.
     assert.match(r.out, /GAP {2}wire fx-latest/);
-    assert.match(r.out, /33 shared route\(s\) from tooling\/platform-register\.json: 10 pinned, 23 printed gap/); // ⏱ 2026-09-18: POST /v1/report joined as a gap, then became a body pin the same day when the chassis transport landed (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: PUT /v1/account/provider-token joined as a request pin (O-GOOGLE-SIGN-IN-NOT-BUILT).
+    // ⏱ 2026-09-28 (ST-T4b): 10 -> 13 pinned, 23 -> 20 gaps — the two prefs routes and the feed mint gained their client.
+    assert.match(r.out, /33 shared route\(s\) from tooling\/platform-register\.json: 13 pinned, 20 printed gap/); // ⏱ 2026-09-18: POST /v1/report joined as a gap, then became a body pin the same day when the chassis transport landed (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: PUT /v1/account/provider-token joined as a request pin (O-GOOGLE-SIGN-IN-NOT-BUILT).
     // ⏱ 2026-09-28 (ST-N1): 29 -> 33 routes, 19 -> 23 gaps with the four /v1/auth/native routes, gaps until ST-T7b ships their client.
     assert.match(r.out, /GAP {2}wire native-auth-token/);
     assert.match(r.out, /wire account-provider-token — request pinned: client sends \{provider, refreshToken, appId\}/);
@@ -988,6 +994,27 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     assert.match(r.out, /money-webhook is declared to have no in-repo client/);
   });
 
+  // ⏱ 2026-09-28 (ST-T4b) · `absentCall`: POST and DELETE share /v1/calendar/feed,
+  // and only the POST has a client. The DELETE gap is scoped to a .delete CALL.
+  test('absentCall: a Dart DELETE of /v1/calendar/feed fails the DELETE gap', () => {
+    const r = run(makeRepo((f) => ({
+      ...f,
+      'packages/api_client/lib/src/dio_feed_revoke.dart':
+        "await _dio.delete<dynamic>(\n  '$_base/v1/calendar/feed',\n);\n",
+    })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /calendar-feed-delete is declared to have no in-repo client/);
+  });
+
+  test('…and the pinned POST of the same path does not', () => {
+    const r = run(makeRepo((f) => ({
+      ...f,
+      'packages/api_client/lib/src/dio_feed_mint.dart':
+        "await _dio.post<dynamic>('$_base/v1/calendar/feed');\n",
+    })));
+    assert.doesNotMatch(r.out, /calendar-feed-delete is declared to have no in-repo client/);
+  });
+
   test('…and a COMMENT naming /v1/money does not fail it — prose is not a client', () => {
     const r = run(makeRepo((f) => ({
       ...f,
@@ -1100,7 +1127,8 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     // ⏱ 2026-09-25: 4 -> 7 gaps with the three extension account-check routes.
     // ⏱ 2026-09-25 (AUTH-REVOKE-AT-WORKERS): 7 -> 11 gaps with the four /v1/sessions routes.
     // ⏱ 2026-09-28 (ST-I3): 18 -> 19 gaps with GET /v1/fx/latest; (ST-N1) 19 -> 23, the four /v1/auth/native routes.
-    assert.match(r.out, /9 pinned, 23 printed gap/); // ⏱ 2026-09-28: 11 -> 18 gaps, the seven ST-T4a reminder routes. ⏱ 2026-09-18: POST /v1/report is now a body pin, not a gap (O-PLAY-AI-CONTENT-REPORTING chassis half). ⏱ 2026-09-24: +1 for the provider-token request pin.
+    // ⏱ 2026-09-28 (ST-T4b): 9 -> 12 pinned, 23 -> 20 gaps (the prefs routes and the feed mint).
+    assert.match(r.out, /12 pinned, 20 printed gap/); // ⏱ 2026-09-28: 11 -> 18 gaps, the seven ST-T4a reminder routes. ⏱ 2026-09-18: POST /v1/report is now a body pin, not a gap (O-PLAY-AI-CONTENT-REPORTING chassis half). ⏱ 2026-09-24: +1 for the provider-token request pin.
   });
 
   test('FAILS when the brick drops a key the server still requires', () => {
