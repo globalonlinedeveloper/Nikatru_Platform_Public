@@ -810,7 +810,7 @@ naming the job it belonged to and the line it sat above.
 | [`build-platforms.md`](build-platforms.md) | `.github/workflows/build-platforms.yml` | Build apps | `workflow_dispatch`, `push`, `schedule` | 7 |
 | this page | `.github/workflows/ci.yml` | CI | `push`, `pull_request` | 39 |
 | none | `.github/workflows/codeql.yml` | CodeQL | `pull_request`, `push`, `schedule`, `workflow_dispatch` | 1 |
-| none | `.github/workflows/deploy-sandbox.yml` | Deploy sandbox | `workflow_dispatch` | 2 |
+| none | `.github/workflows/deploy-sandbox.yml` | Deploy sandbox | `workflow_dispatch` | 3 |
 | [`deploy-web.md`](deploy-web.md) | `.github/workflows/deploy-web.yml` | Deploy web | `workflow_call` | 3 |
 | [`deploy-workers.md`](deploy-workers.md) | `.github/workflows/deploy-workers.yml` | Deploy workers | `workflow_call` | 4 |
 | [`e2e.md`](e2e.md) | `.github/workflows/e2e.yml` | E2E live | `workflow_dispatch`, `schedule` | 5 |

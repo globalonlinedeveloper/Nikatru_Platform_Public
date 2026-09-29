@@ -830,8 +830,8 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/deploy-sandbox.yml#app-worker",
       ".github/workflows/deploy-sandbox.yml#platform",
-      ".github/workflows/deploy-sandbox.yml#subscriptiontracker-api",
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/deploy-web.yml#site",
       ".github/workflows/deploy-workers.yml#app-worker",
@@ -1059,8 +1059,8 @@
     ],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#gate",
+      ".github/workflows/deploy-sandbox.yml#app-worker",
       ".github/workflows/deploy-sandbox.yml#platform",
-      ".github/workflows/deploy-sandbox.yml#subscriptiontracker-api",
       ".github/workflows/extensions.yml#release",
       ".github/workflows/submit-appstore.yml#gate",
       ".github/workflows/submit-play.yml#gate",
@@ -2089,7 +2089,8 @@
       ".github/workflows/submit-appstore.yml#gate",
       ".github/workflows/submit-play.yml#gate",
       ".github/workflows/submit-snap.yml#gate",
-      ".github/workflows/submit-windows-store.yml#gate"
+      ".github/workflows/submit-windows-store.yml#gate",
+      ".github/workflows/symbolication-proof.yml#gate"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-release-lane-generic.mjs",
@@ -3289,6 +3290,7 @@
       "ADR 095"
     ],
     "invokedBy": [
+      ".github/workflows/deploy-sandbox.yml#workers",
       ".github/workflows/deploy-workers.yml#workers",
       ".github/workflows/lane-workers.yml#detect"
     ],
@@ -3756,8 +3758,8 @@
     ],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#release",
+      ".github/workflows/deploy-sandbox.yml#app-worker",
       ".github/workflows/deploy-sandbox.yml#platform",
-      ".github/workflows/deploy-sandbox.yml#subscriptiontracker-api",
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/deploy-workers.yml#app-worker",
       ".github/workflows/deploy-workers.yml#platform",
@@ -4206,8 +4208,8 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/deploy-sandbox.yml#app-worker",
       ".github/workflows/deploy-sandbox.yml#platform",
-      ".github/workflows/deploy-sandbox.yml#subscriptiontracker-api",
       ".github/workflows/store-screenshots.yml#capture",
       ".github/workflows/store-screenshots.yml#capture-desktop-native",
       ".github/workflows/store-screenshots.yml#capture-ios",
