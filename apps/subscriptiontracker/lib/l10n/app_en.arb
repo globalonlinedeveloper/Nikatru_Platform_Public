@@ -1777,5 +1777,92 @@
   "proBadge": "Pro",
   "@proBadge": {
     "description": "Consumed by features/insights/budget_editor.dart and insights_screen.dart. The chip on a Pro-only part of a screen."
+  },
+  "insightsWorthALook": "Worth a look",
+  "@insightsWorthALook": {
+    "description": "Consumed by features/insights/signals.dart. Heading over the signal rows (ST-D3 D3-4)."
+  },
+  "insightsNoSignals": "Nothing to look at right now.",
+  "@insightsNoSignals": {
+    "description": "Consumed by features/insights/signals.dart. Shown under the heading when no signal applies."
+  },
+  "signalDuplicateTitle": "{count} plans in {category}",
+  "@signalDuplicateTitle": {
+    "description": "Consumed by features/insights/signals.dart. Two or more subscriptions share a category — a possible overlap, stated as a fact, not a verdict.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "category": {
+        "type": "String"
+      }
+    }
+  },
+  "signalDuplicateBody": "{names} · {amount} a month",
+  "@signalDuplicateBody": {
+    "description": "Consumed by features/insights/signals.dart. The names in the category and their monthly total.",
+    "placeholders": {
+      "names": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "signalAnnualTitle": "{days, plural, =0{Annual charge today} =1{Annual charge tomorrow} other{Annual charge in {days} days}}",
+  "@signalAnnualTitle": {
+    "description": "Consumed by features/insights/signals.dart. A yearly plan renews within 60 days.",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "signalAnnualBody": "{name} · {amount} on {date}",
+  "@signalAnnualBody": {
+    "description": "Consumed by features/insights/signals.dart. The date is CLDR-formatted for the locale (decision D-13).",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "signalStillUsingTitle": "Still using {name}?",
+  "@signalStillUsingTitle": {
+    "description": "Consumed by features/insights/signals.dart. ASKED, never inferred: the app measures no usage, so it asks.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "signalStillUsingBody": "{amount} a month. We ask — we cannot tell.",
+  "@signalStillUsingBody": {
+    "description": "Consumed by features/insights/signals.dart. Says plainly that the question is a question.",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "signalStillUsingYes": "Yes",
+  "@signalStillUsingYes": {
+    "description": "Consumed by features/insights/signals.dart. Answers the still-using question; the row then leaves."
+  },
+  "signalStillUsingYesA11y": "Yes, still using {name}",
+  "@signalStillUsingYesA11y": {
+    "description": "Consumed by features/insights/signals.dart. The accessible name of the Yes button, so it is not a bare Yes out of context.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
   }
 }

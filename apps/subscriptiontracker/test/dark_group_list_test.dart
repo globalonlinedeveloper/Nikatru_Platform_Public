@@ -260,34 +260,22 @@ void main() {
     // screen. The Insights budget meter's track is `surfaceContainerHighest`,
     // pinned by the Insights goldens in both schemes.
 
-    testWidgets('[insights] the unused-row outlines are a scheme edge', (
+    // ⏱ ST-D3 D3-4: the unused-row outlines left with the savings card (its
+    // `unused` field is written by nothing). The ground this case now pins is
+    // the budget meter's TRACK — the one bar on the rebuilt screen.
+    testWidgets('[insights] the budget meter track is a scheme slot', (
       WidgetTester tester,
     ) async {
       await _pumpScreen(tester, const InsightsScreen(), theme: darkTheme);
-
-      final List<Color> borders = tester
-          .widgetList<Container>(find.byType(Container))
-          .map((Container c) => c.decoration)
-          .whereType<BoxDecoration>()
-          .map((BoxDecoration d) => d.border)
-          .whereType<Border>()
-          .map((Border b) => b.top.color)
+      final List<Color?> tracks = tester
+          .widgetList<LinearProgressIndicator>(
+            find.byType(LinearProgressIndicator),
+          )
+          .map((LinearProgressIndicator p) => p.backgroundColor)
           .toList();
-
-      expect(
-        borders,
-        isNot(contains(AppColors.line)),
-        reason:
-            'A #ECECF2 outline GLARES on a dark card instead of receding — '
-            'the inverse of the invisible-shadow problem cardDecoration fixes.',
-      );
-      expect(
-        borders,
-        contains(dark.outlineVariant),
-        reason:
-            'NOT VACUOUS: the savings card must be in its POPULATED branch, so '
-            'there are outlined rows to measure at all.',
-      );
+      expect(tracks, isNotEmpty, reason: 'NOT VACUOUS: the meter must exist.');
+      expect(tracks, isNot(contains(AppColors.line)));
+      expect(tracks, contains(dark.surfaceContainerHighest));
     });
   });
 

@@ -4283,11 +4283,7 @@ void main() {
         expectScreenTextLegible(
           tester,
           'insights',
-          covers: const <String>[
-            'Insights',
-            'By category',
-            'Not opened in 47 days.',
-          ],
+          covers: const <String>['Insights', 'By category', 'Worth a look'],
         );
       });
     });
@@ -5131,11 +5127,7 @@ void main() {
         expectScreenTextLegible(
           tester,
           'insights (dark)',
-          covers: const <String>[
-            'Insights',
-            'By category',
-            'Not opened in 47 days.',
-          ],
+          covers: const <String>['Insights', 'By category', 'Worth a look'],
         );
       });
     });

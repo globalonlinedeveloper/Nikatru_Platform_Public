@@ -22,13 +22,13 @@ import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/settings_controller.dart';
 import '../add/add_subscription_sheet.dart';
-import '../cancel/cancel_sheet.dart';
 import '../shared/async_gate.dart';
 import '../shared/neutrals.dart';
 import '../shared/painters.dart';
 import '../shared/widgets.dart';
 import '../shell/app_shell.dart';
 import 'budget_card.dart';
+import 'signals.dart';
 import 'summary_tiles.dart';
 
 /// 📌 THE PRIVATE `_neutrals(BuildContext)` THAT STOOD HERE IS HOISTED
@@ -37,102 +37,6 @@ import 'summary_tiles.dart';
 /// why dark derives from the seed. The triplication was deliberate for exactly
 /// one increment and its own doc said so; this is the closing cleanup it named,
 /// landed with the deletion of `DueInfo.of`. Read the argument there.
-
-/// The on-LIGHT TEXT tone for the unused-plan usage note. **#9C6406, not
-/// [AppColors.warn] #F59E0B.**
-///
-/// 🔴 THE DEFECT THIS FIXES, MEASURED 2026-08-21 OFF THE REAL PUMPED TREE.
-/// `_savingsCard` paints each unused plan's `usageNote` ("Not opened in 47
-/// days.") at 11px w700 in [AppColors.warn], on the card fill under it — and
-/// that fill is opaque #FFFFFF in light (`cardDecoration`,
-/// `features/shared/widgets.dart:54-69`, light arm `:56-61`; the row's own
-/// `Container` carries a BORDER only, no colour, so it changes no pixel behind
-/// the text). #F59E0B on
-/// #FFFFFF is **2.15:1** against WCAG 2.1 SC 1.4.3 AA's 4.5:1 for normal-size
-/// text. 11px w700 is NOT large text — the framework's bar is >18px, or >14px
-/// when bold (`accessibility.dart`'s `targetContrastRatio`) — so 4.5 governs,
-/// not 3.
-///
-/// 📌 IT IS THE SAME DEFECT `due.dart` FIXED, BY A DIFFERENT ROUTE, AND THAT
-/// IS WHY THIS FILE NEEDED ITS OWN FIX: a FILL token used as TEXT on a light
-/// ground. But these strings never pass through `DueInfo` — they are this
-/// file's own literal — so forking `DueInfo._urgentText` moved nothing here.
-/// `a11y_semantics_test.dart` kept the two exemptions named separately for
-/// exactly that reason, and the split paid off: the due entries expired when
-/// home/calendar/detail migrated while insights' correctly SURVIVED that day —
-/// a shared reason would have been deleted with them and this defect would have
-/// gone quiet. Insights' entry then expired on its own, against this fix, and
-/// is deleted too; NEITHER exemption exists any more.
-///
-/// ⚠️ [AppColors.warn] ITSELF DOES NOT MOVE, and must not: it is correct as a
-/// fill (the savings pill beside it, badges, meters), `AppThemeX.fromScheme`
-/// deliberately refuses to re-hue the status trio, and the same literal is
-/// CORRECT as text on this screen's DARK card — 5.74:1 on
-/// `scheme.surfaceContainerHighest` #35343A, which is what `cardDecoration`
-/// paints in dark. What is wrong is the LIGHT ground, so the fork is by
-/// brightness and not a new value for the token.
-///
-/// 🔴 AND NO SINGLE COLOUR COULD SERVE BOTH — arithmetic, not taste. Text has
-/// to clear 4.5:1 on #FFFFFF (luminance 1.0) AND on #35343A (0.0352):
-///   · white   ⇒ luminance ≤ 1.05/4.5 − 0.05 = **0.1833**
-///   · #35343A ⇒ luminance ≥ 4.5·(0.0352+0.05) − 0.05 = **0.3333**
-/// 0.1833 < 0.3333, so the satisfying set is EMPTY at any hue or saturation.
-/// The same proof `due.dart:60-70` and
-/// `packages/design_system/lib/src/tokens/app_colors.dart:97-109` record.
-///
-/// 📌 THE VALUE IS REUSED, NOT REINVENTED. #9C6406 is the warn step
-/// `packages/design_system/lib/src/tokens/app_colors.dart:106-109` already
-/// named as the on-light tone owed to the status trio, and it is the literal
-/// `due.dart:56` picked for the IDENTICAL
-/// pair of grounds — this screen's cards are the same #FFFFFF and the same
-/// `surfaceContainerHighest` a `RowCard` is, because both come from
-/// `cardDecoration`. A second amber here would be a second thing to keep in
-/// step for no measured gain. Hue and saturation are untouched from
-/// [AppColors.warn] (HSL 38°/100%), so this is a legibility step, not a
-/// re-tint — the note still reads as the same amber warning.
-///
-/// ✅ MEASURED FOR THIS VALUE ON THE GROUNDS INSIGHTS ACTUALLY PAINTS, IN BOTH
-/// BRIGHTNESSES, BY AN ASSERTION RATHER THAN A CALCULATOR — so these numbers
-/// rot loudly instead of quietly. `a11y_semantics_test.dart`'s "every string
-/// on insights meets WCAG AA contrast" and its `— DARK` twin walk the real
-/// pumped tree and score every `Text` against the opaque ground the tree
-/// resolved for it:
-///   · light — this const on the #FFFFFF card fill ([AppColors.surface]) —
-///     **4.95:1**
-///   · dark  — [AppColors.warn] #F59E0B, UNMOVED, on
-///     `scheme.surfaceContainerHighest` #35343A — **5.74:1**
-/// Both clear the 4.5 bar `MinimumTextContrastGuideline.targetContrastRatio`
-/// sets for 11px w700, and the dark figure agrees with the independent one
-/// `…/app_colors.dart:104` recorded for warn on a dark card. Both were read
-/// off the run that EXPIRED the old `except:` entries on 2026-08-21: the
-/// exemptions went red — "THE EXEMPTION HAS EXPIRED … now measures 4.95:1" /
-/// "… 5.74:1" — and were deleted, which is what asserting that an exemption
-/// is still needed buys.
-///
-/// 📌 IT IS A LOCAL CONST FOR THE SAME TWO REASONS `due.dart`'s is. The right
-/// long-term home is a `warnText` slot on `AppThemeX` resolved by brightness,
-/// and `packages/design_system` is a separate increment with a separate owner;
-/// and `due.dart`'s copy is PRIVATE to its class, so there is nothing here to
-/// import even if the hoist had landed. Both copies die in the same cleanup.
-const Color _warnOnLight = Color(0xFF9C6406);
-
-/// [AppColors.warn] as TEXT, resolved for the ambient brightness — see
-/// [_warnOnLight].
-///
-/// Takes the [BuildContext] rather than a [Brightness] because every call site
-/// is inside this file's own build methods and already holds one, the same way
-/// `neutrals(context)` in `features/shared/neutrals.dart` does; `due.dart`'s
-/// twin takes a [Brightness] instead only because it is a context-free factory
-/// three other files call.
-///
-/// (CORRECTION 2026-08-25: that reference read `[_neutrals] above` until the
-/// helper was hoisted out of this file. The comparison itself is unchanged —
-/// the hoisted helper still takes a [BuildContext] and still resolves off
-/// `Theme.of`.)
-Color _warnAsText(BuildContext context) =>
-    Theme.of(context).brightness == Brightness.light
-    ? _warnOnLight
-    : AppColors.warn;
 
 /// The gap this page has always spent between its two cards.
 ///
@@ -294,8 +198,6 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
       onEmptyAction: () => showAddSubscriptionSheet(context),
       builder: (List<Subscription> subs) {
         final List<CategoryTotal> cats = _categoryTotals(subs, _period);
-        final List<Subscription> unused = SubMath.unused(subs);
-        final MoneyBag savings = SubMath.savings(subs);
 
         // The page's card STACK, in reading order — built ONCE, then laid out
         // in one column or two, so no arm can gain a card the other lacks.
@@ -304,9 +206,10 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
         // `width_shell_fab_test.dart`).
         final List<Widget> cards = <Widget>[
           BudgetCard(subs: subs, currencyCode: currencyCode),
+          // D3-4: what the rows can prove, and one question — never the
+          // `unused` / `usedPct` fields nothing writes.
+          SignalsSection(subs: subs, money: money),
           _categoryCard(context, l10n, money, currencyCode, cats),
-          if (unused.isNotEmpty)
-            _savingsCard(context, l10n, money, unused, savings),
         ];
 
         final List<Widget> keyed = <Widget>[
@@ -634,138 +537,6 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
               ),
             ],
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _savingsCard(
-    BuildContext context,
-    AppLocalizations l10n,
-    MoneyFormatter money,
-    List<Subscription> unused,
-    MoneyBag savings,
-  ) {
-    final ({Color ink, Color muted, Color line}) neutral = neutrals(context);
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: cardDecoration(context),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              // Expanded + ellipsis (P2.6b route-walk finding): an intrinsic
-              // title beside an intrinsic pill overflows narrow cards.
-              Expanded(
-                child: Text(
-                  l10n.savingsOpportunities,
-                  style: AppText.title.copyWith(
-                    fontSize: 16,
-                    color: neutral.ink,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Pill(
-                // A KEY, not an interpolation: `/mo` is an abbreviation of a
-                // word, and where it sits relative to the amount is the
-                // translator's call.
-                l10n.perMonthAmount(money.formatBag(savings)),
-                // The savings pill is a STATUS surface — green means "money you
-                // could keep" in either brightness — so both halves stay the
-                // literal tokens, the same call `AppThemeX.fromScheme` makes
-                // when it refuses to re-hue positive/warn/danger.
-                bg: const Color.fromRGBO(16, 185, 129, 0.12),
-                fg: AppColors.positive,
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          for (final Subscription s in unused)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 9),
-              child: Container(
-                padding: const EdgeInsets.all(11),
-                decoration: BoxDecoration(
-                  // The row outline is a neutral, so it has to move with the
-                  // surface: `AppColors.line` (#ECECF2) is a near-white
-                  // hairline that GLARES on a dark card instead of receding.
-                  border: Border.all(color: neutral.line),
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: Row(
-                  children: <Widget>[
-                    GlyphTile(glyph: s.glyph, size: 40, fontSize: 11),
-                    const SizedBox(width: 11),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
-                            s.name,
-                            style: AppText.body.copyWith(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
-                              color: neutral.ink,
-                            ),
-                          ),
-                          Text(
-                            // [DATA], not a key — `usageNote` is a field on the
-                            // subscription, so localizing it is the demo-data
-                            // decision the workorder records as out of scope.
-                            s.usageNote,
-                            style: TextStyle(
-                              fontFamily: 'Manrope',
-                              fontWeight: FontWeight.w700,
-                              fontSize: 11,
-                              // 🔴 FORKED BY BRIGHTNESS, NOT A CONSTANT — the
-                              // literal here was [AppColors.warn], 2.15:1 as
-                              // 11px w700 on the light card; measured 4.95:1
-                              // light / 5.74:1 dark after the fork. See
-                              // [_warnOnLight] for both measurements and for
-                              // why the token itself does not move.
-                              color: _warnAsText(context),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    // 🔴 48, NOT 36 — MEASURED 73.5x36.0 AGAINST
-                    // androidTapTargetGuideline. This is the control that opens
-                    // the cancel sheet, i.e. the one destructive path on this
-                    // screen, and it shipped as the smallest button in the app.
-                    // No WCAG 2.5.8 exception reaches it: there is one per row
-                    // and no equivalent control anywhere on insights, it is not
-                    // inline in text, and nothing about a savings card makes 36
-                    // essential. Both numbers move together — `GradientButton`
-                    // sizes its own `SizedBox`, so leaving the outer one at 36
-                    // would clip the button rather than shrink it.
-                    SizedBox(
-                      height: 48,
-                      child: GradientButton(
-                        // REUSES the shared `cancel` key. The label is painted
-                        // white on `AppColors.brandGradient` inside
-                        // `GradientButton`, which is correct in both
-                        // brightnesses — an on-gradient colour must not follow
-                        // the scheme, because the surface under it does not.
-                        label: l10n.cancel,
-                        height: 48,
-                        fontSize: 12,
-                        onPressed: () => showCancelSheet(context, s),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          if (unused.isEmpty)
-            Text(
-              l10n.insightsNothingFlagged,
-              style: AppText.muted.copyWith(color: neutral.muted),
-            ),
         ],
       ),
     );

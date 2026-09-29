@@ -373,5 +373,15 @@
   "budgetCapLabel": "{category} க்கான வரம்பு",
   "budgetSave": "பட்ஜெட்டைச் சேமி",
   "budgetSaveFailed": "பட்ஜெட்டைச் சேமிக்க முடியவில்லை. இணைப்பைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்.",
-  "proBadge": "ப்ரோ"
+  "proBadge": "ப்ரோ",
+  "insightsWorthALook": "கவனிக்க வேண்டியவை",
+  "insightsNoSignals": "இப்போது கவனிக்க எதுவும் இல்லை.",
+  "signalDuplicateTitle": "{category} இல் {count} திட்டங்கள்",
+  "signalDuplicateBody": "{names} · மாதத்திற்கு {amount}",
+  "signalAnnualTitle": "{days, plural, =0{ஆண்டுக் கட்டணம் இன்று} =1{ஆண்டுக் கட்டணம் நாளை} other{{days} நாட்களில் ஆண்டுக் கட்டணம்}}",
+  "signalAnnualBody": "{name} · {date} அன்று {amount}",
+  "signalStillUsingTitle": "{name} இன்னும் பயன்படுத்துகிறீர்களா?",
+  "signalStillUsingBody": "மாதத்திற்கு {amount}. நாங்கள் கேட்கிறோம் — எங்களால் அறிய முடியாது.",
+  "signalStillUsingYes": "ஆம்",
+  "signalStillUsingYesA11y": "ஆம், {name} ஐப் பயன்படுத்துகிறேன்"
 }
