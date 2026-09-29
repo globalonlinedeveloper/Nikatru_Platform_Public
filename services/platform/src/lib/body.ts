@@ -21,9 +21,9 @@
 // be four UTF-8 bytes.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Either the fully-read body text, or the status/error the route must return. */
+/** Either the fully-read body (text, and the exact bytes a signature may cover), or the status/error the route must return. */
 export type BoundedBody =
-  | { ok: true; text: string }
+  | { ok: true; text: string; bytes: Uint8Array }
   | { ok: false; status: 400 | 413; error: string };
 
 /**
@@ -47,7 +47,7 @@ export async function readBoundedBody(req: Request, maxBytes: number): Promise<B
   }
 
   const body = req.body;
-  if (!body) return { ok: true, text: '' };
+  if (!body) return { ok: true, text: '', bytes: new Uint8Array(0) };
 
   const reader = body.getReader();
   const chunks: Uint8Array[] = [];
@@ -77,5 +77,5 @@ export async function readBoundedBody(req: Request, maxBytes: number): Promise<B
     buf.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  return { ok: true, text: new TextDecoder().decode(buf) };
+  return { ok: true, text: new TextDecoder().decode(buf), bytes: buf };
 }

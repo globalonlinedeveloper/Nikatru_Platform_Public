@@ -16,13 +16,24 @@
 //   POST /v1/auth/native/:app/signup
 //   POST /v1/auth/native/:app/recover
 //   POST /v1/auth/native/:app/resend
+//   POST /v1/auth/native/:app/attest/challenge   (⏱ 2026-09-29, ADR no.NNN)
+//   POST /v1/auth/native/:app/attest/install     (⏱ 2026-09-29, ADR no.NNN)
 //
-// These are exactly the paths gotrue-dart builds from a base URL, so the client
+// The first four are exactly the paths gotrue-dart builds from a base URL, so the client
 // half (ST-T7b) points a second GoTrueClient at `/v1/auth/native/<app>`. Refresh,
 // PKCE and id_token grants never come here: GoTrue does not captcha them, and
 // the client sends them straight to GoTrue.
 //
 // ── WHAT STANDS WHERE THE CAPTCHA STOOD ─────────────────────────────────────
+//   · 🔴 ⏱ 2026-09-29 (ADR no.NNN) AN ATTESTATION, on every op. Until then the
+//     list below was the whole defence, and a missing `Origin` is something any
+//     script can send: captcha-free password sign-in and sign-up for anybody.
+//     Now each op carries a proof bound to a single-use challenge from
+//     `POST …/attest/challenge` and to the exact body — Play Integrity (android),
+//     App Attest (ios, macos App Store), or a registered per-install Ed25519
+//     key (desktop, the weakest, with its own tighter ceilings and no session
+//     before email verification). lib/native-attest/index.ts says what each
+//     proves and what it does not; no proof is a 401 and GoTrue never hears it;
 //   · a request carrying `Origin` is refused 403 — a web page cannot use this
 //     route. The refusal is the shared CORS middleware's (services/_shared/src/
 //     cors.ts), bound in middleware/cors.ts with `refuseBrowsersOn` — the one
@@ -51,6 +62,20 @@ import type { AppEnv } from '../types';
 import { NATIVE_AUTH_APPS } from '../generated/app-targets';
 import { strictEdgeCeiling, strictRateLimit, type StrictVerdict } from '../lib/edge-ceiling';
 import { readBoundedBody } from '../lib/body';
+import {
+  clientDataFor,
+  configured,
+  consumeChallenge,
+  enabledKinds,
+  isKind,
+  issueChallenge,
+  NATIVE_ATTEST_CHALLENGE_TTL_SECONDS,
+  readHeaders,
+  registerKey,
+  verifyOp,
+  type AttestKind,
+  type AttestOp,
+} from '../lib/native-attest';
 
 /**
  * How long one GoTrue call may take before the route gives up on it.
@@ -114,7 +139,7 @@ function gotrueError(status: number, errorCode: string, msg: string, extra: Reco
 }
 
 /** One log line per call. Never the email, the password, the body or a token. */
-function logged(c: Context<AppEnv>, op: NativeAuthOp | '-', res: Response, shield = '-'): Response {
+function logged(c: Context<AppEnv>, op: NativeAuthOp | 'challenge' | 'install' | '-', res: Response, shield = '-'): Response {
   console.log(
     `[native-auth] rid=${c.get('requestId') ?? '-'} route=${op} app=${c.get('appId') ?? '-'} status=${res.status} shield=${shield}`,
   );
@@ -149,13 +174,96 @@ function refusedBy(verdict: StrictVerdict): Response | null {
 }
 
 /**
- * Everything after the per-network ceiling: the body, the redirect, the
- * per-account bucket, and the forward itself.
+ * THE ATTESTATION GATE (⏱ 2026-09-29, ADR no.NNN), for an op or a key
+ * registration: the headers, the kind this deploy accepts, the kind's own
+ * config, the unattested ceilings, the body, the single-use challenge, and the
+ * proof — in that order, so the cheap refusals cost no D1 read and no crypto,
+ * and a challenge is burned by any request that reaches it, pass or fail.
+ *
+ * Answers the kind, the exact body and the clientData, or the refusal.
+ */
+async function admit(
+  c: Context<AppEnv>,
+  op: AttestOp,
+): Promise<{ kind: AttestKind; text: string; bytes: Uint8Array; clientData: string; headers: NonNullable<ReturnType<typeof readHeaders>> } | Response> {
+  const app = c.get('appId') as string;
+  const h = readHeaders(c.req.raw.headers);
+  if (!h) return gotrueError(401, 'attestation_required', 'This request carries no app attestation');
+  if (!isKind(h.kind) || !enabledKinds(c.env).has(h.kind)) {
+    return gotrueError(403, 'attestation_kind_refused', 'This server does not accept that attestation');
+  }
+  const kind = h.kind;
+  if (!configured(c.env, kind, app)) {
+    console.error(`[native-auth] rid=${c.get('requestId') ?? '-'} attestation kind ${kind} is enabled but not configured`);
+    return gotrueError(503, 'native_auth_unavailable', 'Sign-in is unavailable. Try again shortly.');
+  }
+  // The unattested channel's own, much tighter per-network ceiling; and key
+  // registration's, for every kind. Both FAIL CLOSED, like the two above.
+  if (op === 'install') {
+    const r = refusedBy(await strictEdgeCeiling(c.env.NATIVE_AUTH_INSTALL_LIMITER, c, 'NATIVE_AUTH_INSTALL_LIMITER'));
+    if (r) return r;
+  } else if (kind === 'install-key') {
+    const r = refusedBy(await strictEdgeCeiling(c.env.NATIVE_AUTH_UNATTESTED_LIMITER, c, 'NATIVE_AUTH_UNATTESTED_LIMITER'));
+    if (r) return r;
+  }
+
+  const bounded = await readBoundedBody(c.req.raw, NATIVE_AUTH_MAX_BODY_BYTES);
+  if (!bounded.ok) return gotrueError(bounded.status, bounded.status === 413 ? 'request_too_large' : 'bad_json', bounded.error);
+
+  const now = Date.now();
+  if (!(await consumeChallenge(c.env.PLATFORM_DB, app, h.challenge, now))) {
+    return gotrueError(401, 'attestation_challenge_invalid', 'The attestation challenge is unknown, expired or already used');
+  }
+  const clientData = await clientDataFor(app, op, h.challenge, bounded.bytes);
+  if (op !== 'install') {
+    const v = await verifyOp(c.env, app, kind, h, clientData, now);
+    if (!v.ok) {
+      console.warn(`[native-auth] rid=${c.get('requestId') ?? '-'} attestation refused kind=${kind} (${v.why})`);
+      return gotrueError(v.status, v.code, v.status === 503 ? 'Sign-in is unavailable. Try again shortly.' : 'The app attestation did not verify');
+    }
+  }
+  return { kind, text: bounded.text, bytes: bounded.bytes, clientData, headers: h };
+}
+
+/**
+ * ⏱ 2026-09-29 (ADR no.NNN) — NO SESSION BEFORE EMAIL VERIFICATION on the
+ * unattested channel. GoTrue already answers a sign-up with no session and
+ * refuses a password grant for an unconfirmed address (`mailer_autoconfirm`
+ * false, which tooling/ops/auth-cutover-preflight.mjs grades); this holds the
+ * property for `install-key` even if that setting ever drifts: a sign-up's
+ * session is withheld (the user alone is returned, as GoTrue itself does when it
+ * sends a confirmation), and a password grant whose user has no
+ * `email_confirmed_at` is refused.
+ */
+async function unattestedSessionRule(op: NativeAuthOp, upstream: Response): Promise<Response | null> {
+  if (!upstream.ok || (op !== 'signup' && op !== 'token')) return null;
+  let body: Record<string, unknown>;
+  try {
+    body = (await upstream.clone().json()) as Record<string, unknown>;
+  } catch {
+    return gotrueError(502, 'native_auth_unavailable', 'Sign-in is unavailable. Try again shortly.');
+  }
+  if (op === 'signup') {
+    if (!('access_token' in body) && !('refresh_token' in body)) return null;
+    const user = isPlainObject(body.user) ? body.user : {};
+    return new Response(JSON.stringify(user), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+  const user = isPlainObject(body.user) ? body.user : null;
+  if (user && typeof user.email_confirmed_at === 'string' && user.email_confirmed_at !== '') return null;
+  return gotrueError(403, 'email_not_confirmed', 'Email not confirmed');
+}
+
+/**
+ * Everything after the per-network ceiling: the attestation, the redirect, the
+ * body, the per-account bucket, and the forward itself.
  */
 async function relay(c: Context<AppEnv>, op: NativeAuthOp, edge: StrictVerdict): Promise<Response> {
   const app = c.get('appId') as string;
   const edgeRefusal = refusedBy(edge);
   if (edgeRefusal) return logged(c, op, edgeRefusal);
+
+  const admitted = await admit(c, op);
+  if (admitted instanceof Response) return logged(c, op, admitted);
 
   // The redirect: kept only when it is this app's own callback. `email_redirect_to`
   // is accepted as a spelling of the same thing and forwarded as `redirect_to`,
@@ -172,11 +280,9 @@ async function relay(c: Context<AppEnv>, op: NativeAuthOp, edge: StrictVerdict):
     return logged(c, op, gotrueError(400, 'validation_failed', 'redirect_to and email_redirect_to disagree'));
   }
 
-  const bounded = await readBoundedBody(c.req.raw, NATIVE_AUTH_MAX_BODY_BYTES);
-  if (!bounded.ok) return logged(c, op, gotrueError(bounded.status, bounded.status === 413 ? 'request_too_large' : 'bad_json', bounded.error));
   let parsed: unknown;
   try {
-    parsed = JSON.parse(bounded.text);
+    parsed = JSON.parse(admitted.text);
   } catch {
     return logged(c, op, gotrueError(400, 'bad_json', 'The request body is not JSON'));
   }
@@ -242,6 +348,11 @@ async function relay(c: Context<AppEnv>, op: NativeAuthOp, edge: StrictVerdict):
     return logged(c, op, gotrueError(503, 'native_auth_unavailable', 'Sign-in is unavailable. Try again shortly.'));
   }
 
+  if (admitted.kind === 'install-key') {
+    const withheld = await unattestedSessionRule(op, upstream);
+    if (withheld) return logged(c, op, withheld, upstream.headers.get('x-nikatru-shield') ?? '-');
+  }
+
   // The status and the JSON go back verbatim — gotrue-dart maps `error_code`, and
   // reads `x-supabase-api-version` to know which error shape it holds — with no
   // cookie of GoTrue's set on the app.
@@ -295,6 +406,46 @@ export function createNativeAuth(apps: readonly string[]): Hono<AppEnv> {
   nativeAuth.post('/auth/native/:app/resend', async (c) =>
     relay(c, 'resend', await strictEdgeCeiling(c.env.NATIVE_AUTH_EDGE_LIMITER, c, 'NATIVE_AUTH_EDGE_LIMITER')),
   );
+
+  // ⏱ 2026-09-29 (ADR no.NNN) — a single-use challenge every proof binds to.
+  // Under the per-network ceiling; refused outright when this deploy accepts no
+  // kind at all, so a closed route mints nothing.
+  nativeAuth.post('/auth/native/:app/attest/challenge', async (c) => {
+    const edgeRefusal = refusedBy(await strictEdgeCeiling(c.env.NATIVE_AUTH_EDGE_LIMITER, c, 'NATIVE_AUTH_EDGE_LIMITER'));
+    if (edgeRefusal) return logged(c, 'challenge', edgeRefusal);
+    if (enabledKinds(c.env).size === 0 || !c.env.PLATFORM_DB) {
+      return logged(c, 'challenge', gotrueError(403, 'attestation_kind_refused', 'This server does not accept native sign-in'));
+    }
+    const challenge = await issueChallenge(c.env.PLATFORM_DB, c.get('appId') as string, Date.now());
+    return logged(c, 'challenge', c.json({ challenge, expires_in: NATIVE_ATTEST_CHALLENGE_TTL_SECONDS }));
+  });
+
+  // ⏱ 2026-09-29 (ADR no.NNN) — an install registers its key once: an App
+  // Attest attestation, or a desktop Ed25519 key signing its own registration.
+  nativeAuth.post('/auth/native/:app/attest/install', async (c) => {
+    const edgeRefusal = refusedBy(await strictEdgeCeiling(c.env.NATIVE_AUTH_EDGE_LIMITER, c, 'NATIVE_AUTH_EDGE_LIMITER'));
+    if (edgeRefusal) return logged(c, 'install', edgeRefusal);
+    const admitted = await admit(c, 'install');
+    if (admitted instanceof Response) return logged(c, 'install', admitted);
+    if (admitted.kind === 'play-integrity') {
+      return logged(c, 'install', gotrueError(400, 'validation_failed', 'play-integrity registers no key'));
+    }
+    let body: unknown;
+    try {
+      body = JSON.parse(admitted.text);
+    } catch {
+      return logged(c, 'install', gotrueError(400, 'bad_json', 'The request body is not JSON'));
+    }
+    if (!isPlainObject(body) || body.kind !== admitted.kind) {
+      return logged(c, 'install', gotrueError(400, 'validation_failed', 'kind must match X-NK-Attest-Kind'));
+    }
+    const r = await registerKey(c.env, c.get('appId') as string, admitted.kind, body, admitted.headers, admitted.clientData, Date.now());
+    if (!r.ok) {
+      console.warn(`[native-auth] rid=${c.get('requestId') ?? '-'} key registration refused kind=${admitted.kind} (${r.why})`);
+      return logged(c, 'install', gotrueError(r.status, r.code, r.status === 400 ? r.why : 'The app attestation did not verify'));
+    }
+    return logged(c, 'install', c.json({ key_id: r.keyId }, r.created ? 201 : 200));
+  });
 
   return nativeAuth;
 }
