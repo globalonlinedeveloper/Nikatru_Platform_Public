@@ -31,6 +31,7 @@
     clipboardFit: 'checked',
     autoDownload: 'checked',
     autoOpenEditor: 'checked',
+    singleKeyShortcuts: 'checked',
     theme: 'value'
   };
 

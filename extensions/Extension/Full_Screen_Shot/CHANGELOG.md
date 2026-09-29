@@ -22,6 +22,25 @@ dated entries begin at session 12 (16 July 2026); the source carries `v1.9.1`–
 one reference to `v1.6.1`, but nothing in this repo dates them or says what shipped in each. An
 invented stanza is worse than a missing one, so they are left out and named here instead.
 
+## [Unreleased]
+
+Shipped-file changes after 1.10.3 was stamped, recorded here so `node scripts/check-version.mjs
+fullshot` does not read them as a build of new bytes under the old number (EXL-15). They take the
+next version number when one is stamped.
+
+### Added
+
+- **Single-key tool shortcuts can be switched off** (WCAG 2.1 SC 2.1.4, Level A; EXB-03). A new
+  Options setting, on by default; when it is off, the letter keys and `+ = - ?` act only while the
+  editor canvas has focus.
+- **The region and element picker can be driven from the keyboard** (EXB-04). Its hint is a
+  `role=status` live region, and Enter captures the visible area, or the highlighted element.
+
+### Fixed
+
+- **Editor colour swatches and the zoom button have spoken names**: the swatches were named by
+  their hex code and the zoom button by a bare "100%" (found by the new keyboard walk, EXB-05).
+
 ## [1.10.3] — 2026-09-29
 
 A build milestone, like every entry here: the manifest is stamped because the shipped files moved

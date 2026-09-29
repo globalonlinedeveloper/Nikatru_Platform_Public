@@ -142,6 +142,7 @@ const DEFAULTS = {
   clipboardFit: true,        // downscale clipboard copies past 25MP (Google Docs limit)
   autoDownload: false,
   autoOpenEditor: false,
+  singleKeyShortcuts: true, // editor tool letters and + - ? on the whole page; off = only while the canvas has focus (WCAG 2.1.4)
   theme: 'system'
 };
 

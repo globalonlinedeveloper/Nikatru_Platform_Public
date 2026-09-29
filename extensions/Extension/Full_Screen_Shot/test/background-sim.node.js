@@ -4998,10 +4998,13 @@ const quotaError = (message) => {
     const env = newEnv();
     await fire(env.onInstalled, { reason: 'install' });
     await pump(env);
-    check('a fresh install seeds every default', Object.keys(env.sync).length === 27, Object.keys(env.sync).length + ' keys');
+    /* 28 since 2026-09-29: singleKeyShortcuts (EXB-03, WCAG 2.1.4), seeded ON so
+       an upgrade never takes the editor's letter keys away from anybody. */
+    check('a fresh install seeds every default', Object.keys(env.sync).length === 28, Object.keys(env.sync).length + ' keys');
     check('the seeded defaults are the shipped values',
-      env.sync.expandInner === true && env.sync.captureDelay === 150 && env.sync.theme === 'system',
-      JSON.stringify([env.sync.expandInner, env.sync.captureDelay, env.sync.theme]));
+      env.sync.expandInner === true && env.sync.captureDelay === 150 && env.sync.theme === 'system' &&
+      env.sync.singleKeyShortcuts === true,
+      JSON.stringify([env.sync.expandInner, env.sync.captureDelay, env.sync.theme, env.sync.singleKeyShortcuts]));
   }
   {
     // 1.3.0 flipped expandInner on for old installs — exactly once.

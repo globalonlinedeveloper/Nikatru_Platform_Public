@@ -984,6 +984,122 @@ jobs:
           echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
           gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
+  # why: EXB-12 (2026-09-29). Every job above drives Playwright's BUNDLED Chromium on
+  # ubuntu-24.04, so Edge and branded Chrome had never run the extension, and "Edge
+  # gets the same zip" was a declaration with no check behind it. This leg runs the
+  # suites that OPT IN, on windows-2025, on the msedge and chrome channels already on
+  # that image. A suite opts in with an `e2e-branded:` line in its own source, the
+  # way `e2e-display: headful` works above; the line may carry FS_E2E_* settings for
+  # this leg (run.mjs narrows itself to one capture). Derived, not listed: no tool or
+  # file is named here. How a branded build loads an unpacked extension, and why it
+  # is not --load-extension, is measured in test/e2e/channel-lib.mjs, which also
+  # refuses (exit 2) a browser that does not carry the brand the channel names.
+  e2e-branded:
+    name: e2e-branded · ${{ matrix.channel }} · ${{ matrix.suite.dir }}
+    needs: e2e-discover
+    if: (!startsWith(github.ref, 'refs/tags/') && (github.event_name == 'schedule' || (github.event_name == 'pull_request' && github.event.label.name == 'run-e2e') || (github.event_name == 'workflow_dispatch' && inputs.lane == 'e2e'))) && (needs.e2e-discover.result == 'success' && needs.e2e-discover.outputs.count != '0')
+    runs-on: windows-2025
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+        working-directory: extensions
+    strategy:
+      fail-fast: ${{ github.event_name == 'pull_request' }}
+      matrix:
+        suite: ${{ fromJSON(needs.e2e-discover.outputs.suites) }}
+        channel: [msedge, chrome]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: ./.github/actions/setup-node
+        with:
+          cache-dependency-path: extensions/${{ matrix.suite.dir }}/test/e2e/package-lock.json
+
+      - name: Install e2e dependencies
+        working-directory: extensions/${{ matrix.suite.dir }}/test/e2e
+        run: npm ci
+
+      # why: HEADFUL on purpose. The windows-2025 image has a desktop session, real-copy.mjs
+      # reads the real Windows clipboard, and a headless user agent says HeadlessChrome,
+      # which is not the browser a user runs.
+      - name: Run every suite that opts into the branded leg (derived, not listed)
+        working-directory: extensions/${{ matrix.suite.dir }}/test/e2e
+        env:
+          FS_E2E_CHANNEL: ${{ matrix.channel }}
+          HEADFUL: '1'
+          SUITE_DIR: ${{ matrix.suite.dir }}
+        run: |
+          node -e '
+            const fs = require("fs"), cp = require("child_process");
+            const MARK = /\be2e-branded:([^\n]*)/;
+            const SETTING = /^FS_E2E_[A-Z_]+=[A-Za-z0-9,._-]+$/;
+            const files = fs.readdirSync(".").filter(f => f.endsWith(".mjs")).sort();
+            const src = new Map(files.map(f => [f, fs.readFileSync(f, "utf8")]));
+            /* The library rule of the e2e-suite step: a file another file imports is not a suite. */
+            const suites = files.filter(g => !files.some(f => f !== g && src.get(f).includes("./" + g)));
+            const picked = [];
+            for (const f of suites) {
+              const m = MARK.exec(src.get(f));
+              if (!m) continue;
+              const words = m[1].trim().split(/\s+/).filter(Boolean);
+              const bad = words.filter(w => !SETTING.test(w));
+              if (bad.length) {
+                console.log(`::error::${f} carries e2e-branded: with ${bad.join(" ")}, which is not an FS_E2E_NAME=value setting. The line would have run the suite with settings nobody can read off it.`);
+                process.exit(1);
+              }
+              picked.push({ f, env: Object.fromEntries(words.map(w => [w.slice(0, w.indexOf("=")), w.slice(w.indexOf("=") + 1)])) });
+            }
+            /* Zero is not a pass: a leg that ran nothing on Edge would read as Edge being fine. */
+            if (!picked.length) {
+              console.log(`::error::no .mjs in ${process.env.SUITE_DIR}/test/e2e carries an e2e-branded: line, so this leg would run nothing on ${process.env.FS_E2E_CHANNEL} and report success.`);
+              process.exit(1);
+            }
+            const failed = [];
+            for (const p of picked) {
+              const t = Date.now();
+              console.log(`::group::node ${p.f} on ${process.env.FS_E2E_CHANNEL} ${JSON.stringify(p.env)}`);
+              const r = cp.spawnSync(process.execPath, [p.f], { stdio: "inherit", timeout: 15 * 60 * 1000, env: { ...process.env, ...p.env } });
+              console.log("::endgroup::");
+              const code = r.error ? 1 : (r.status === null ? 1 : r.status);
+              console.log(`e2e-branded ${code === 0 ? "PASS" : "FAIL"}  ${p.f}  channel=${process.env.FS_E2E_CHANNEL}  exit=${code}  ${Math.round((Date.now() - t) / 1000)}s`);
+              if (code !== 0) failed.push(`${p.f} exit ${code}`);
+            }
+            if (failed.length) {
+              console.log(`::error::${failed.length} of ${picked.length} suite(s) failed on ${process.env.FS_E2E_CHANNEL}: ${failed.join("; ")}`);
+              process.exit(1);
+            }
+          '
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: e2e-branded-out-${{ matrix.channel }}-${{ matrix.suite.slug }}
+          path: extensions/${{ matrix.suite.dir }}/test/e2e/out/**
+          retention-days: 7
+          if-no-files-found: ignore
+
+  ff-e2e-branded:
+    # why: FF-2 — starts only once `e2e-branded` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · e2e-branded
+    needs: e2e-branded
+    if: failure() && needs.e2e-branded.result == 'failure' && github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: e2e-branded is red, so the rest of this run is cancelled (FF-2)
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: e2e-branded
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
+
   release:
     if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.lane == 'release')
     runs-on: ubuntu-24.04
@@ -1983,6 +2099,7 @@ jobs:
     needs:
       - ci
       - e2e-suite
+      - e2e-branded
       - release
       - store-publish
       - cws-token-keepalive
@@ -1999,6 +2116,7 @@ jobs:
         env:
           CI: ${{ needs.ci.result }}
           E2E: ${{ needs.e2e-suite.result }}
+          BRANDED: ${{ needs.e2e-branded.result }}
           RELEASE: ${{ needs.release.result }}
           STORE: ${{ needs.store-publish.result }}
           KEEPALIVE: ${{ needs.cws-token-keepalive.result }}
@@ -2023,7 +2141,7 @@ jobs:
           # So the guards are not trusted: the lane is derived here, separately,
           # from the event, and the results are required to match it.
           echo "event=$EVENT ref=$REF action=${ACTION:-none} label=${LABEL:-none} lane_input=${LANE:-none}"
-          echo "ci=$CI e2e=$E2E release=$RELEASE store-publish=$STORE keepalive=$KEEPALIVE store-key-keepalive=$STORE_KEEPALIVE"
+          echo "ci=$CI e2e=$E2E e2e-branded=$BRANDED release=$RELEASE store-publish=$STORE keepalive=$KEEPALIVE store-key-keepalive=$STORE_KEEPALIVE"
 
           # ⏱ 2026-09-24: the CI lane left this file for extensions-ci.yml, which ci.yml
           # calls on every pull request and push to main. Here it runs only on a dispatch
@@ -2066,6 +2184,7 @@ jobs:
           [ "$want" = none ] || {
             expect ci          "$CI"      "$([ "$want" = ci ] && echo yes || echo no)"
             expect e2e-suite   "$E2E"     "$([ "$want" = e2e ] && echo yes || echo no)"
+            expect e2e-branded "$BRANDED" "$([ "$want" = e2e ] && echo yes || echo no)"
             expect release     "$RELEASE" "$([ "$want" = release ] && echo yes || echo no)"
           }
 

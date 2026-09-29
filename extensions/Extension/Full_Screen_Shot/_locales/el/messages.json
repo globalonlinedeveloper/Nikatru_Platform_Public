@@ -437,6 +437,12 @@
   "optionsAutoOpenEditorDesc": {
     "message": "Απευθείας στον σχολιασμό (μόνο για στιγμιότυπα ενός μέρους)."
   },
+  "optionsSingleKeyShortcuts": {
+    "message": "Single-key shortcuts in the editor"
+  },
+  "optionsSingleKeyShortcutsDesc": {
+    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+  },
   "optionsTheme": {
     "message": "Θέμα"
   },
@@ -1237,6 +1243,39 @@
   "editorZoomFit": {
     "message": "Προσαρμογή"
   },
+  "editorZoomLevelName": {
+    "message": "$PERCENT$ zoom",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "100%"
+      }
+    }
+  },
+  "editorColorRed": {
+    "message": "Red"
+  },
+  "editorColorAmber": {
+    "message": "Amber"
+  },
+  "editorColorGreen": {
+    "message": "Green"
+  },
+  "editorColorBlue": {
+    "message": "Blue"
+  },
+  "editorColorViolet": {
+    "message": "Violet"
+  },
+  "editorColorPink": {
+    "message": "Pink"
+  },
+  "editorColorBlack": {
+    "message": "Black"
+  },
+  "editorColorWhite": {
+    "message": "White"
+  },
   "editorZoomTipToHundred": {
     "message": "Προσαρμογή στο παράθυρο — κάντε κλικ για 100%"
   },
@@ -1980,6 +2019,14 @@
     "placeholders": {
       "esc": {
         "content": "Esc"
+      }
+    }
+  },
+  "regionHintEnter": {
+    "message": "$ENTER$ captures the whole visible area",
+    "placeholders": {
+      "enter": {
+        "content": "Enter"
       }
     }
   },
