@@ -3645,6 +3645,16 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/ops-watch.yml#edge-shield"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-jwks-error-rate.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
       ".github/workflows/ops-watch.yml#supabase-drift"
     ],
     "kind": "script",
