@@ -14,6 +14,8 @@
    the adopting tool's, in the one file its tool.json policy names, and it is
    handed in here as `transport` — a function that takes {method, path, bearer,
    query, body} and resolves {status, body}, or rejects when nothing answered.
+   `body` is the parsed object ONLY when the response declared JSON and parsed
+   as JSON; anything else (an HTML page, text, nothing) arrives as null.
    The sim scans these bytes for every network API name and fails on one.
 
    WHAT IT DECIDES
@@ -26,7 +28,15 @@
                              200 is_pro:true  → cache refreshed
                              200 is_pro:false → Pro DROPS ON THE SAME TICK (a
                                                 refund, a chargeback, a lapse)
-                             401 / 403        → credential AND cache deleted
+                             401 {error:'invalid_link'} or
+                             403 {error:'wrong_product'}
+                                              → credential AND cache deleted —
+                                                ONLY on OUR API's own JSON code
+                             any other 401/403 → cache HELD, effect 'retry': a
+                                                WAF page, a captive portal or a
+                                                proxy is not our server saying
+                                                the credential is dead (round-2
+                                                re-review finding 7)
                              anything else    → cache HELD; isPro's 7-day
                                                 ceiling decides. An outage on
                                                 our side never takes Pro away
@@ -45,6 +55,14 @@
      `store` is the tool's chrome.storage.local area, handed in. Never
      storage.sync: a credential is per device, and the server revokes it per
      device. The one key is CACHE_KEY.
+     ⚠️ THE TRADE-OFF, RECORDED FOR THE ADOPTION PR (re-review nit 12):
+     storage.local is readable by the tool's content scripts by default, and
+     FullShot injects content scripts. storage.session can be restricted to
+     trusted contexts but dies with the browser, which would sign Pro out every
+     restart. So the adopting tool must create this client in its service
+     worker ONLY, and its content scripts must never read storage — the
+     adoption PR adds the guard that holds that. The credential can read one
+     product's entitlement and revoke itself, nothing more.
 
    Classic script, attaching SKENT to the global, like SKDB and SKJOBS.
 */
@@ -121,7 +139,8 @@
     var c = readCache(cacheIn);
     if (c === null) return { cache: null, effect: 'signed_out' };
     var status = isObj(answer) && typeof answer.status === 'number' ? answer.status : 0;
-    if (status === 401 || status === 403) return { cache: null, effect: 'signed_out' };
+    if (isOurDeadCredential(status, answer)) return { cache: null, effect: 'signed_out' };
+    if (status === 401 || status === 403) return { cache: withFailure(c, now), effect: 'retry' };
     if (status === 200 && isObj(answer.body) && typeof answer.body.is_pro === 'boolean') {
       var next = {
         v: CACHE_VERSION,
@@ -134,10 +153,23 @@
       };
       return { cache: next, effect: answer.body.is_pro ? 'updated' : 'dropped' };
     }
+    return { cache: withFailure(c, now), effect: 'held' };
+  }
+
+  /* OUR server's word that the credential is dead: a JSON body carrying our own
+     code (services/platform/src/middleware/ext-device-auth.ts). A 401 or 403
+     from anything in front of it carries no such body and is never obeyed. */
+  var DEAD_CODES = { 401: 'invalid_link', 403: 'wrong_product' };
+  function isOurDeadCredential(status, answer) {
+    var want = DEAD_CODES[status];
+    return typeof want === 'string' && isObj(answer.body) && answer.body.error === want;
+  }
+
+  function withFailure(c, now) {
     var held = {};
     for (var k in c) if (Object.prototype.hasOwnProperty.call(c, k)) held[k] = c[k];
     held.failedAt = now;
-    return { cache: held, effect: 'held' };
+    return held;
   }
 
   function needsCheck(cacheIn, now) {

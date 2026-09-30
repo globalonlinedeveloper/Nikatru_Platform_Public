@@ -20,7 +20,7 @@
 'use strict';
 
 const H = require('./harness.js');
-const { check, section, note } = H;
+const { check, section } = H;
 
 const MODULE = 'v1/entitlement-client.js';
 const SRC = H.readCore(MODULE);
@@ -122,10 +122,21 @@ async function main() {
     const refund = E.applyAnswer(cache(), { status: 200, body: { is_pro: false, entitlements: [] } }, later);
     check('🔴 200 is_pro:false → Pro DROPPED on the same tick', refund.effect === 'dropped' && E.isPro(refund.cache, later) === false, JSON.stringify(refund));
     check('...and the credential is kept (still signed in)', refund.cache !== null && refund.cache.token === cache().token);
-    const dead = E.applyAnswer(cache(), { status: 401, body: { error: 'unauthorized' } }, later);
-    check('🔴 401 → credential AND cache deleted', dead.effect === 'signed_out' && dead.cache === null);
+    const dead = E.applyAnswer(cache(), { status: 401, body: { error: 'invalid_link' } }, later);
+    check('🔴 401 {error: invalid_link} → credential AND cache deleted', dead.effect === 'signed_out' && dead.cache === null);
     const wrong = E.applyAnswer(cache(), { status: 403, body: { error: 'wrong_product' } }, later);
-    check('403 → credential and cache deleted', wrong.cache === null);
+    check('403 {error: wrong_product} → credential and cache deleted', wrong.cache === null);
+    // Re-review finding 7: a 401/403 that is not OUR JSON is never obeyed.
+    const waf = E.applyAnswer(cache(), { status: 403, body: null }, later);
+    check('🔴 an HTML 403 (a WAF page: body null) KEEPS the credential, effect retry',
+      waf.effect === 'retry' && waf.cache !== null && waf.cache.token === cache().token && waf.cache.failedAt === later, JSON.stringify(waf));
+    const portal = E.applyAnswer(cache(), { status: 401, body: null }, later);
+    check('an HTML 401 (a captive portal) keeps the credential', portal.effect === 'retry' && portal.cache !== null);
+    const foreign = E.applyAnswer(cache(), { status: 403, body: { error: 'forbidden' } }, later);
+    check('a JSON 403 without our code keeps the credential', foreign.effect === 'retry' && foreign.cache !== null);
+    const swapped = E.applyAnswer(cache(), { status: 401, body: { error: 'wrong_product' } }, later);
+    check('our code on the wrong status keeps the credential', swapped.effect === 'retry' && swapped.cache !== null);
+    check('a retry still honours the 7-day ceiling', E.isPro(waf.cache, later) === true && E.isPro(waf.cache, T + 7 * DAY + 1) === false);
     for (const status of [404, 429, 500, 503, 0]) {
       const r = E.applyAnswer(cache(), { status }, later);
       check(`${status} → held: the cache keeps its answer and its checkedAt`, r.effect === 'held' && r.cache.checkedAt === T && r.cache.isPro === true);
@@ -200,7 +211,7 @@ async function main() {
       out.revoked === false && store.data[E.CACHE_KEY] === undefined && (await c.status()).signedIn === false);
 
     const store2 = area({ [E.CACHE_KEY]: cache({ checkedAt: T - 2 * DAY }) });
-    const tp2 = transport({ '/v1/entitlements': { status: 401, body: { error: 'unauthorized' } } });
+    const tp2 = transport({ '/v1/entitlements': { status: 401, body: { error: 'invalid_link' } } });
     const c2 = E.createClient({ transport: tp2, store: store2, product: 'fullshot', now: () => T });
     const r2 = await c2.check();
     check('🔴 a revoked credential (401) signs the device out and deletes the cache',
@@ -254,9 +265,13 @@ async function main() {
       const r = M1.applyAnswer(cache(), { status: 200, body: { is_pro: false, entitlements: [] } }, later);
       return M1.isPro(r.cache, later) === false;
     });
-    const M2 = boot(H.mutate(SRC, "if (status === 401 || status === 403) return { cache: null, effect: 'signed_out' };", ''));
-    await H.expectBroken('a 401 holds the credential → the "deleted" check goes red', () => {
-      return M2.applyAnswer(cache(), { status: 401 }, later).cache === null;
+    const M2 = boot(H.mutate(SRC, "    if (isOurDeadCredential(status, answer)) return { cache: null, effect: 'signed_out' };\n", ''));
+    await H.expectBroken('our 401 holds the credential → the "deleted" check goes red', () => {
+      return M2.applyAnswer(cache(), { status: 401, body: { error: 'invalid_link' } }, later).cache === null;
+    });
+    const M6 = boot(H.mutate(SRC, "return typeof want === 'string' && isObj(answer.body) && answer.body.error === want;", "return typeof want === 'string';"));
+    await H.expectBroken('any 401/403 obeyed (the first cut) → the "HTML 403 keeps the credential" check goes red', () => {
+      return M6.applyAnswer(cache(), { status: 403, body: null }, later).cache !== null;
     });
     const M3 = boot(H.mutate(SRC, 'if (now - c.checkedAt > OFFLINE_CEILING_MS) return false;', ''));
     await H.expectBroken('no offline ceiling → the "gone past 7 days" check goes red', () => {
