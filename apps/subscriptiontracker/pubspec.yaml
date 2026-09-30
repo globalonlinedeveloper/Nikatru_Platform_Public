@@ -180,6 +180,10 @@ dev_dependencies:
   # (integration_test/). Works regardless of the web renderer (canvas).
   integration_test:
     sdk: flutter
+  # integration_test/native_auth_proof_steps.dart ONLY: on iOS the proof's
+  # app opens its own auth callback (simctl openurl stops at a system sheet).
+  # lib/ opens links through nikatru_external_links, never this.
+  url_launcher: ^6.3.0
 
   flutter_lints: ^6.0.0
 

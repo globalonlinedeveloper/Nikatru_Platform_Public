@@ -4,7 +4,8 @@
 // APP_DB — tooling/e2e/backend.mjs), then deletes the Supabase auth user,
 // and — when the run exported one — the consent artifact the drive wrote into
 // platform_db. Runs even when the test fails (workflow `if: always()`). Node 20
-// fetch only.
+// fetch only, and every request goes through tooling/e2e/purge_requests.mjs:
+// the bounded retry, the per-request ceiling, and why a retried delete is safe.
 //
 // ⚠️ IT IS RUN ONCE PER THROWAWAY USER, AND ONE OF THEM IS ALREADY GONE.
 // Since [pipeline N-6 leg 6] the nightly provisions a SECOND user whose account
@@ -51,7 +52,12 @@
 // Env: E2E_USER_ID, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, E2E_APP_ID,
 //      SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 //      and, for the consent artifact only: PLATFORM_D1_DATABASE_ID,
-//      E2E_RESPONSE_DATA / E2E_DRIVE_LOG (the run's exported anon_id).
+//      E2E_RESPONSE_DATA / E2E_DRIVE_LOG (the run's exported anon_id), or
+//      E2E_PROOF_LOG — the NATIVE AUTH PROOF's log (native-auth-proof.yml,
+//      added 2026-09-29), read by resolveProofLogConsent, which alone can show
+//      a run wrote NO row; exclusive with the other three sources.
+//      E2E_PROOF_RAN ('true'/'false', the proof step's outcome was not
+//      `skipped`): a missing proof log is 'no row' only when it is 'false'.
 //      The app's database id is not an env key (O-E2E-LANE-WIRED-TO-ONE-APP,
 //      2026-09-25): E2E_APP_ID resolves it through tooling/e2e/backend.mjs —
 //      the Worker's `env.sandbox` block when E2E_CONSENT_LEDGER is set (a store
@@ -77,16 +83,26 @@
 // exactly one of them; see the branch at the bottom for why that asymmetry is
 // the only thing keeping the hard failure off a green run.
 // NOTE: CLOUDFLARE_API_TOKEN must have D1 WRITE access for this account.
-import { resolveConsentAnonId, resolveCaptureConsentIds } from './consent_anon_id.mjs';
+import { resolveConsentAnonId, resolveCaptureConsentIds, resolveProofLogConsent } from './consent_anon_id.mjs';
 import { stampDeletable } from './app-version-stamp.mjs';
 import { sandboxBackend, productionD1Ids, CaptureBackendRefused } from '../store/capture-backend.mjs';
 import { e2eTargetOrExit } from './backend.mjs';
+import { purgeClient, purgeUserTables, purgeAuthUser, PLAIN_TABLE } from './purge_requests.mjs';
 
 const userId = process.env.E2E_USER_ID;
 
 // The store capture's consent source (see the env header). All three refusals
 // below run before the first request, so `process.exit()` is still safe here.
 const ledgerPath = process.env.E2E_CONSENT_LEDGER || null;
+const proofLogPath = process.env.E2E_PROOF_LOG || null;
+if (proofLogPath && (ledgerPath || process.env.E2E_RESPONSE_DATA || process.env.E2E_DRIVE_LOG)) {
+  console.error(
+    "REFUSED: E2E_PROOF_LOG (the native auth proof's consent source) is set together with another " +
+      'consent source (E2E_CONSENT_LEDGER / E2E_RESPONSE_DATA / E2E_DRIVE_LOG). The two describe different ' +
+      'drives; this is a wiring defect in the calling step. Nothing was purged.',
+  );
+  process.exit(1);
+}
 if (ledgerPath && (process.env.E2E_RESPONSE_DATA || process.env.E2E_DRIVE_LOG)) {
   console.error(
     "REFUSED: E2E_CONSENT_LEDGER (the store capture's consent source) is set together with " +
@@ -136,14 +152,17 @@ if (ledgerPath) {
 // consent artifact belongs to the browser PROFILE, not to either throwaway user,
 // so a run that never provisioned one can still have written it.
 const capture = process.env.PLATFORM_D1_DATABASE_ID && ledgerPath ? resolveCaptureConsentIds(ledgerPath) : null;
+const proof = process.env.PLATFORM_D1_DATABASE_ID && proofLogPath ? resolveProofLogConsent(proofLogPath, { proofRan: process.env.E2E_PROOF_RAN !== 'false' }) : null;
 const consent = capture
   ? { id: null, source: null, notes: [] }
-  : process.env.PLATFORM_D1_DATABASE_ID
-    ? resolveConsentAnonId({
-        responsePath: process.env.E2E_RESPONSE_DATA,
-        logPath: process.env.E2E_DRIVE_LOG,
-      })
-    : { id: null, source: null, notes: ['PLATFORM_D1_DATABASE_ID unset — this step does not purge consent'] };
+  : proof
+    ? { id: proof.id, source: proof.id ? `proof log (${proofLogPath})` : null, notes: proof.notes }
+    : process.env.PLATFORM_D1_DATABASE_ID
+      ? resolveConsentAnonId({
+          responsePath: process.env.E2E_RESPONSE_DATA,
+          logPath: process.env.E2E_DRIVE_LOG,
+        })
+      : { id: null, source: null, notes: ['PLATFORM_D1_DATABASE_ID unset — this step does not purge consent'] };
 
 // The build identity the run stamped into every row it wrote: e2e.yml's
 // `e2e-<run_number>-<sha7>` (derived ONCE into $GITHUB_ENV, added 2026-08-28),
@@ -207,52 +226,33 @@ if (userId) {
     process.exit(1);
   }
   // D1 cannot bind a table name, so each is checked here, where the DELETE is built.
-  const bad = userTables.filter((t) => !/^[A-Za-z_][A-Za-z0-9_$]*$/.test(t));
+  const bad = userTables.filter((t) => !PLAIN_TABLE.test(t));
   if (bad.length > 0) {
     console.error(`REFUSED: ${JSON.stringify(bad)} in ${appId}'s userTables is not a plain table name. Nothing was purged.`);
     process.exit(1);
   }
 }
 
+const client = purgeClient({ acct, token, supaUrl, serviceKey });
 let failures = 0;
 
 if (userId) {
-  // The register lists child tables first, though all are keyed by user_id so
-  // order is cosmetic.
-  for (const table of userTables) {
-    try {
-      const result = await d1(dbId, `DELETE FROM ${table} WHERE user_id = ?`, [userId]);
-      const changes = result?.[0]?.meta?.changes ?? 0;
-      console.log(`purged ${table}: ${changes} row(s)`);
-    } catch (e) {
-      failures++;
-      console.error(`WARN: failed to purge ${table}: ${e.message}`);
-    }
-  }
-
-  const del = await fetch(`${supaUrl}/auth/v1/admin/users/${userId}`, {
-    method: 'DELETE',
-    headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
-  });
-  console.log(
-    del.status === 404
-      ? 'auth user delete: HTTP 404 — the identity was already gone (expected when the suite deleted this account from inside the app)'
-      : `auth user delete: HTTP ${del.status}`,
-  );
-  if (!del.ok && del.status !== 404) {
-    failures++;
-    console.error(`WARN: user delete returned ${del.status}\n${await del.text()}`);
-  }
+  // Neither call throws: a failure, an exhausted retry included, is counted and
+  // named, so one unreachable request cannot skip the identity delete or the
+  // consent purge below it (run 36739638735 lost both to one closed socket).
+  failures += await purgeUserTables(client, { dbId, userTables, userId });
+  failures += await purgeAuthUser(client, userId);
 } else {
   console.log('E2E_USER_ID unset (user was never provisioned) — no app-database rows or identity to purge.');
 }
 
 for (const id of ids) {
   try {
-    const result = await d1(
+    const result = await client.d1(
       process.env.PLATFORM_D1_DATABASE_ID,
       'DELETE FROM consent_artifacts WHERE app_id = ? AND anon_id = ?',
       [appId, id],
+      'purge consent_artifacts',
     );
     const changes = result?.[0]?.meta?.changes ?? 0;
     console.log(`purged consent_artifacts for install ${id} (${idSource}): ${changes} row(s)`);
@@ -280,10 +280,11 @@ if (capture) {
   let removed = 0;
   if (stampDeletable(capture.stamp)) {
     try {
-      const result = await d1(
+      const result = await client.d1(
         process.env.PLATFORM_D1_DATABASE_ID,
         'DELETE FROM consent_artifacts WHERE app_id = ? AND app_version = ?',
         [appId, capture.stamp],
+        'purge consent_artifacts by stamp',
       );
       const changes = result?.[0]?.meta?.changes ?? 0;
       removed += changes;
@@ -293,10 +294,11 @@ if (capture) {
       console.error(`WARN: failed to purge consent_artifacts stamped '${capture.stamp}': ${e.message}`);
     }
     try {
-      const result = await d1(
+      const result = await client.d1(
         process.env.PLATFORM_D1_DATABASE_ID,
         'DELETE FROM events WHERE app_id = ? AND app_version = ?',
         [appId, capture.stamp],
+        'purge events by stamp',
       );
       const changes = result?.[0]?.meta?.changes ?? 0;
       removed += changes;
@@ -328,6 +330,13 @@ if (capture) {
     );
     for (const u of capture.unresolved) console.error(`  unresolved — ${u}`);
   }
+} else if (!consent.id && proof?.noRow) {
+  // A NATIVE AUTH PROOF that provably wrote no row (resolveProofLogConsent):
+  // the one state the hard failure below could never separate, separated —
+  // the proof prints its install id BEFORE the only tap that answers the
+  // prompt, so a finished log without one is a run that never answered it.
+  console.log('no consent anon_id to purge — the native auth proof wrote no consent row:');
+  for (const n of consent.notes) console.log(`  anon_id lookup — ${n}`);
 } else if (!consent.id && process.env.PLATFORM_D1_DATABASE_ID) {
   // 🔴 A HARD FAILURE SINCE 2026-08-28. IT WAS A PRINTED LINE THAT PASSED, AND
   // THAT IS WHAT LET SIX ROWS SIT IN PRODUCTION FOR A DAY.
@@ -400,25 +409,6 @@ if (failures > 0) {
   process.exitCode = 1;
 } else {
   console.log('Purge complete.');
-}
-
-async function d1(dbId, sql, params) {
-  const res = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${acct}/d1/database/${dbId}/query`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ sql, params }),
-    },
-  );
-  const json = await res.json();
-  if (!res.ok || !json.success) {
-    throw new Error(`HTTP ${res.status} ${JSON.stringify(json.errors ?? json)}`);
-  }
-  return json.result;
 }
 
 function need(name) {

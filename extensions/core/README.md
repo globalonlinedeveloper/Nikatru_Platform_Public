@@ -18,9 +18,12 @@ the source of truth those two copy from, and the rules below.
 
 ## What is actually here, today
 
-`core/` is **0.2.0**, not 1.0.0. The directory `v1` is the major version (a breaking change becomes
+`core/` is **0.3.0**, not 1.0.0. The directory `v1` is the major version (a breaking change becomes
 `core/v2/` beside it); the version *number* is a claim about how much of that channel exists.
 
+> **0.2.0 -> 0.3.0 on 2026-09-30**, when `v1/entitlement-client.js` (the account-checked Pro entitlement,
+> network-free; no tool adopts it yet) joined the surface — additive, not specified, counts unmoved.
+>
 > **0.1.0 -> 0.2.0 on 2026-09-06**, when `v1/entitlement-contract.js` joined the surface — additive
 > within the channel, so nothing already vendored changed and no pin broke. It is not one of the
 > eleven specified modules, so the specified counts below did not move with it. It is also the one

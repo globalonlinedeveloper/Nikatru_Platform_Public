@@ -1768,7 +1768,14 @@ const b = Text('Hardcoded right after a URL');
         // fails the brick lane when it disagrees with the stamped display name.
         // Filing it beside errorTitle would invite a delete that reddens CI, so
         // the bucket it lands in is asserted, not just its presence.
-        assert.match(out, /appTitle \[declared in 2 of 3 enforced tree\(s\)\] — read at tooling\/ci\/assert-stamp-text-fidelity\.mjs:\d+/);
+        // ⏱ 2026-09-29 · ST-D10 — appTitle IS RENDERED NOW, so it left this
+        // list. The shared auth frame's brand lockup and wide panel read
+        // `l10n.appTitle` (apps/subscriptiontracker/lib/features/auth/
+        // auth_panel.dart), which is the surface the owner line was asking
+        // for, and the delete the line above warned against is no longer on
+        // offer. Pinned ABSENT, so the day it goes unrendered again it is
+        // re-filed here instead of drifting back in unread.
+        assert.doesNotMatch(out, /^\s+appTitle \[declared in/m);
         assert.match(out, /ships as a hardcoded LITERAL at packages\/design_system\/lib\/src\/widgets\/system_screens\.dart:\d+/);
         assert.doesNotMatch(out, /COVERAGE LOST/);
 

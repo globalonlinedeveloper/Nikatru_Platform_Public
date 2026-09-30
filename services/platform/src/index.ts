@@ -22,6 +22,8 @@
 //   PUBLIC  POST   /v1/ext/token  — the extension exchanges that code (PKCE S256)
 //                                  for its per-device credential. Edge-ceilinged.
 //   DEVICE  POST   /v1/ext/revoke — a device credential revokes itself.
+//   AUTHED  GET    /v1/ext/devices — the account lists its live browser links.
+//   AUTHED  DELETE /v1/ext/devices/:link_id — the account ends ONE link (EXA-11).
 //   DEVICE  GET    /v1/entitlements — the ONE read route that also accepts the
 //                                  device credential (ADR 059 D10); JWT otherwise.
 //   NATIVE  POST   /v1/auth/native/:app/{token,signup,recover,resend} — a native
@@ -38,6 +40,7 @@
 //                                  and the ECB rate table (src/fx.ts).
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
+import { isCapabilityRequest, requestLog, routeOf } from './lib/request-log';
 import type { AppEnv } from './types';
 import { nowIso } from './lib/d1';
 import {
@@ -72,6 +75,8 @@ import { scheduled } from './scheduled';
 
 const app = new Hono<AppEnv>();
 
+// One line per request: the route PATTERN, status, ms, colo (lib/request-log.ts).
+app.use('*', requestLog);
 // Correlation id: stamp/propagate + echo.
 app.use('*', async (c, next) => {
   const rid = c.req.header('x-request-id') ?? crypto.randomUUID();
@@ -363,11 +368,13 @@ app.onError((err, c) => {
   // shares meant an unhandled error could be read, correlated to a request —
   // and never attributed to a product. `-` where the request failed before an
   // app was named, deliberately: see `Variables.appId`.
-  console.error(
-    `[unhandled] rid=${c.get('requestId') ?? '-'} app=${c.get('appId') ?? '-'} release=${c.env.RELEASE ?? '-'}`,
-    err,
-  );
-  const url = new URL(c.req.url);
+  // Not on a capability route: its console event carries the URL (lib/request-log.ts).
+  if (!isCapabilityRequest(c)) {
+    console.error(
+      `[unhandled] rid=${c.get('requestId') ?? '-'} app=${c.get('appId') ?? '-'} release=${c.env.RELEASE ?? '-'}`,
+      err,
+    );
+  }
   const report = reportWorkerError(
     err,
     {
@@ -376,7 +383,9 @@ app.onError((err, c) => {
       appId: c.get('appId'),
       requestId: c.get('requestId'),
       method: c.req.method,
-      path: url.pathname, // pathname only — never the query string
+      // The route PATTERN, never the query string and never a path value: the
+      // calendar feed's token IS a path segment (O-CALENDAR-TOKEN-SHIPPED-TO-ERROR-SINK).
+      path: routeOf(c),
     },
     c.env,
   );

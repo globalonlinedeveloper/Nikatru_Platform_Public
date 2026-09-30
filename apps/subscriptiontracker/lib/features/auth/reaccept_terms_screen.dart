@@ -5,6 +5,7 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
+import 'auth_panel.dart';
 import 'legal_consent_fields.dart';
 
 /// The MATERIAL-CHANGE re-acceptance interstitial — the ADAPTER half.
@@ -26,11 +27,9 @@ import 'legal_consent_fields.dart';
 ///
 /// ⏱ 2026-09-20 · [ADR 086] ONE PIECE AT A TIME — the first whole SCREEN of
 /// `tooling/chassis-parity.json`'s smallest-first plan for this app to be
-/// adopted (the plan's smaller first entry, check_inbox, was built, measured and
-/// then DEFERRED; that row says why, and it is a guard-test reason rather than a
-/// screen one). The measured before/after is in that row's `adopted` entry, not
-/// here, because a line count written in prose is a measurement that stopped
-/// being taken. The
+/// adopted (check_inbox, first in that plan, was DEFERRED for a guard-test
+/// reason; that row says why). The measured before/after is in its `adopted`
+/// entry, not here: a line count in prose stops being taken. The
 /// strings are the same strings (`reacceptTermsTitle` / `reacceptTermsBody` /
 /// `reacceptTermsAccept` are byte-identical in `chassis_en.arb` /
 /// `chassis_ta.arb` and `app_en.arb` / `app_ta.arb`), all three key constants
@@ -60,6 +59,7 @@ class ReacceptTermsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => ReacceptTermsView(
+    panel: const AuthPanel(),
     // `acceptTermsOnly`, never `accept(marketingEmail: false)`: this screen
     // shows no marketing box, so it must not speak for that decision.
     // Recording a fresh `granted: false` marketing artifact would silently

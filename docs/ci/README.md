@@ -565,7 +565,7 @@ The tree uses **5** third-party actions and **8** GitHub-owned ones, read from e
 | `actions/download-artifact` | GitHub | `build-platforms.yml`, `submit-play.yml`, `submit-windows-store.yml`, `update-goldens.yml` |
 | `actions/setup-java` | GitHub | `build-platforms.yml`, `ci.yml`, `submit-play.yml` |
 | `actions/setup-node` | GitHub | `.github/actions/setup-node/action.yml` |
-| `actions/upload-artifact` | GitHub | `build-platforms.yml`, `ci.yml`, `e2e.yml`, `extensions-ci.yml`, `extensions.yml`, `name-clearance.yml`, `store-screenshots.yml`, `submit-appstore.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml`, `symbolication-proof.yml`, `update-goldens.yml` |
+| `actions/upload-artifact` | GitHub | `build-platforms.yml`, `ci.yml`, `e2e.yml`, `extensions-ci.yml`, `extensions.yml`, `name-clearance.yml`, `native-auth-proof.yml`, `store-screenshots.yml`, `submit-appstore.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml`, `symbolication-proof.yml`, `update-goldens.yml` |
 | `github/codeql-action/analyze` | GitHub | `codeql.yml` |
 | `github/codeql-action/init` | GitHub | `codeql.yml` |
 <!-- END GENERATED: gen-ci-map actions -->

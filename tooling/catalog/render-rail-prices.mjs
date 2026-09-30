@@ -57,12 +57,18 @@
 //       tooling/channel-register.json, derived from tooling/catalog/fee-register.json
 //       (dated reads of each vendor's published fee), never typed. A fee cell the
 //       sheet needs is {value, asOf, verify} with a non-null value, or exit 1: a
-//       null Paddle sub-$10 cell is a net nobody measured. A channel that can sell
+//       null Paddle sub-$10 cell is a net nobody measured. Its `asOf` is a day that
+//       has happened and at most 90 days old (30 for a LIMITED-TIME offer, read
+//       off the cell's `offer` or `quote`), or exit 1: nothing runs `verify`, so
+//       the age is the only thing that makes a cell get re-read. A fixed part of a
+//       fee (`fixedMinor`) applies only to a price in its `fixedCurrency`, or
+//       exit 1. A channel that can sell
 //       and nets below the `web` row of the same plan is exit 1 — [ADR 093] §2's
 //       ×1.20 exists so a store sale nets at least a web sale, and this is the
 //       limb that checks the outcome instead of the ratio. ONE EXCEPTION, printed
 //       on every run and never silent: an `apple-iap` channel while
-//       `apple-small-business-enrolment` carries no date nets at the standard rate
+//       `apple-small-business-enrolment` carries no approval date (judged by
+//       tooling/catalog/sbp-enrolment.mjs, the gate's own check) nets at the standard rate
 //       (below web) and is GATED rather than failed, because
 //       tooling/ci/assert-small-business-program.mjs refuses a real App Store
 //       submission until the owner records the enrolment (A-18, AB-M5-02).
@@ -206,6 +212,9 @@
 //         node tooling/catalog/render-rail-prices.mjs [root] --check         compare, write nothing
 //         node tooling/catalog/render-rail-prices.mjs [root] --store-sheet <app>
 //         node tooling/catalog/render-rail-prices.mjs [root] --net-sheet [--check]   print net per channel
+//         [--now=<ISO instant ending Z>]   the clock limb G grades fee-cell ages and the enrolment date
+//                                          against; default the real one. Tests pass it so no case
+//                                          depends on the day it runs (#1088 review, minor 2).
 // Exit:   0 ok · 1 a finding (nothing written) · 2 COVERAGE LOST
 // Tests:  tooling/ci/test/rail-prices.test.mjs
 // ─────────────────────────────────────────────────────────────────────────────
@@ -214,6 +223,7 @@ import { dirname, join, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readCatalogFile, BUNDLES_REGISTER } from './read.mjs';
 import { readDeclaration } from '../app-yaml/render.mjs';
+import { SBP_ENROLMENT_CELL, readEnrolment } from './sbp-enrolment.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -252,8 +262,14 @@ export const FEE_CELLS = Object.freeze({
   razorpaySubscription: 'razorpay-subscription-add-on',
   indiaGst: 'india-gst',
 });
-/** The owner-attested Small Business Program enrolment date (A-18): it selects the Apple cell. */
-export const SBP_ENROLMENT_CELL = 'apple-small-business-enrolment';
+/** The owner-attested Small Business Program approval date (A-18): it selects the Apple cell. */
+export { SBP_ENROLMENT_CELL };
+/** A fee cell's `asOf` may be at most this old (days); a limited-time offer's, the shorter. */
+export const MAX_FEE_AGE_DAYS = 90;
+export const MAX_OFFER_AGE_DAYS = 30;
+const DAY_MS = 86400000;
+/** A cell whose rate is a vendor's time-limited offer, read off its own `offer` or quoted words. */
+const isLimitedTime = (c) => /limited[\s-]time/i.test(`${c?.value?.offer ?? ''} ${c?.quote ?? ''}`);
 /** app.yaml `revenuecatAppIds` key → the store whose read-back limb H requires. */
 const STORE_OF_RC_KEY = Object.freeze({ ios: 'apple', android: 'google' });
 const ISO_DAY_OR_INSTANT = /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)?$/;
@@ -627,6 +643,17 @@ export function netAfterFee(priceMinor, { percentBps, fixedMinor = 0 }) {
 }
 
 /**
+ * Why a fee cannot be applied to a price in `currency`, or null. A fixed part is minor units of ONE currency: 50
+ * cents subtracted from an INR price is 50 paise, a different fee, and the net would print as if it were right.
+ */
+export function feeCurrencyProblem({ fixedMinor = 0, fixedCurrency }, currency) {
+  if (!fixedMinor) return null;
+  if (typeof fixedCurrency !== 'string') return `carries a fixed ${fixedMinor} minor with no fixedCurrency, so it cannot be applied to a ${currency} price.`;
+  if (fixedCurrency !== currency) return `carries a fixed ${fixedMinor} minor ${fixedCurrency}, applied to a ${currency} price. Read the vendor's ${currency} fee; never convert.`;
+  return null;
+}
+
+/**
  * Net of an India web sale ([ADR 076] §10.1): Nikatru is the seller of record, so the GST inside the price is
  * remitted, and the rail's fee is charged on the whole price while the GST on that fee returns as input tax credit.
  */
@@ -641,7 +668,7 @@ const pct = (bps) => `${bps / 100}%`;
  * Limb G. Every plan's net on every app channel, and the India web book beside it.
  * @returns {{ lost: string[], problems: string[], gated: string[], lines: string[], rows: object[] }}
  */
-export function netSheet(root, data, book) {
+export function netSheet(root, data, book, now = Date.now()) {
   const lost = [];
   const problems = [];
   const gated = [];
@@ -682,13 +709,28 @@ export function netSheet(root, data, book) {
     if (!nullable && (!isObj(c.value) || !Number.isInteger(c.value.percentBps) || c.value.percentBps < 0 || c.value.percentBps >= BPS)) {
       return bad(`has value ${JSON.stringify(c.value)}; a fee is { percentBps (integer basis points), fixedMinor? }.`);
     }
+    // A fee's read has an age limit: nothing runs `verify`, so a cell nobody re-reads prices every sale at a rate
+    // the vendor may have moved. A stale cell is a finding, and still applied, so the sheet shows what it nets.
+    const t = Date.parse(c.asOf);
+    if (!Number.isFinite(t) || t > now) return bad(`has asOf ${JSON.stringify(c.asOf)}, which is not a day that has happened.`);
+    if (!nullable && !flagged.has(`${id}#age`)) {
+      const limited = isLimitedTime(c);
+      const max = limited ? MAX_OFFER_AGE_DAYS : MAX_FEE_AGE_DAYS;
+      const age = Math.floor((now - t) / DAY_MS);
+      if (age > max) {
+        flagged.add(`${id}#age`);
+        problems.push(
+          `${FEE_REGISTER} cells.${id} was read ${c.asOf}, ${age} days ago; a ${limited ? 'LIMITED-TIME offer' : 'fee'} cell is ` +
+            `re-read within ${max} days. Run its \`verify\`, and record the value it shows with a new asOf.`,
+        );
+      }
+    }
     return c;
   };
-  const enrolment = cell(SBP_ENROLMENT_CELL, { nullable: true });
-  const enrolled = enrolment !== null && typeof enrolment.value === 'string' && ISO_DAY_OR_INSTANT.test(enrolment.value);
-  if (enrolment !== null && enrolment.value !== null && !enrolled) {
-    problems.push(`${FEE_REGISTER} cells.${SBP_ENROLMENT_CELL}.value is ${JSON.stringify(enrolment.value)}; it is null or the enrolment date (YYYY-MM-DD).`);
-  }
+  const enrolmentCell = cell(SBP_ENROLMENT_CELL, { nullable: true });
+  const enrolment = enrolmentCell === null ? { enrolled: false, problem: null } : readEnrolment(enrolmentCell.value, new Date(now).toISOString().slice(0, 10));
+  const enrolled = enrolment.enrolled;
+  if (enrolment.problem !== null) problems.push(`${FEE_REGISTER} cells.${SBP_ENROLMENT_CELL}.value ${enrolment.problem}`);
 
   // The plans: every priced app offering, then every bundle plan.
   const plans = [];
@@ -751,6 +793,12 @@ export function netSheet(root, data, book) {
       if (!Number.isInteger(price)) continue; // limbs A and D name a price that is not an integer
       const f = feeOf(rail, price, plan);
       if (f === null) continue;
+      const currencyProblem = feeCurrencyProblem(f.fee, 'USD');
+      if (currencyProblem !== null) {
+        if (!flagged.has(`${f.id}#currency`)) problems.push(`${FEE_REGISTER} cells.${f.id} ${currencyProblem}`);
+        flagged.add(`${f.id}#currency`);
+        continue;
+      }
       const net = netAfterFee(price, f.fee);
       const row = { plan: plan.label, channel: ch.id, rail, currency: 'USD', priceMinor: price, netMinor: net, cell: f.id };
       rows.push(row);
@@ -800,7 +848,7 @@ export function netSheet(root, data, book) {
   if (gated.length) {
     lines.push(
       `⬜ ${gated.length} Apple row(s) net below web at the standard rate until ${FEE_REGISTER} cells.${SBP_ENROLMENT_CELL} ` +
-        'carries the owner\'s enrolment date (A-18); tooling/ci/assert-small-business-program.mjs refuses a real App Store submission meanwhile',
+        'carries the day Apple approved the owner\'s enrolment (A-18); tooling/ci/assert-small-business-program.mjs refuses a real App Store submission meanwhile',
     );
   }
   return { lost, problems, gated, lines, rows };
@@ -953,7 +1001,7 @@ function readRendered(abs) {
 }
 
 /** One run. Returns the exit code and the lines to print; writes only in render mode with no finding. */
-export function run(root, { check = false, sheet = null, net = false } = {}) {
+export function run(root, { check = false, sheet = null, net = false, now = Date.now() } = {}) {
   const out = [];
   const err = [];
   const reg = readRegister(root);
@@ -967,7 +1015,7 @@ export function run(root, { check = false, sheet = null, net = false } = {}) {
     return { code: 2, out, err };
   }
   // G · the net of every plan on every channel, graded on every run.
-  const n = netSheet(root, reg.data, p.book);
+  const n = netSheet(root, reg.data, p.book, now);
   if (n.lost.length) {
     for (const l of n.lost) err.push(`FAIL COVERAGE LOST — ${l}`);
     return { code: 2, out, err };
@@ -1028,6 +1076,12 @@ if (invokedDirectly) {
   const net = args.includes('--net-sheet');
   const si = args.indexOf('--store-sheet');
   const sheet = si >= 0 ? args[si + 1] ?? '' : null;
+  const nowArg = args.find((a) => a === '--now' || a.startsWith('--now='));
+  const now = nowArg === undefined ? Date.now() : Date.parse(nowArg.slice('--now='.length));
+  if (nowArg !== undefined && (!ISO_INSTANT.test(nowArg.slice('--now='.length)) || !Number.isFinite(now))) {
+    console.error(`FAIL COVERAGE LOST — --now needs an ISO instant ending Z, got ${JSON.stringify(nowArg)}`);
+    process.exit(2);
+  }
   const positional = args.filter((a, i) => !a.startsWith('--') && !(si >= 0 && i === si + 1));
   const root = resolve(positional[0] ?? join(HERE, '..', '..'));
   if (sheet === '' || (sheet !== null && !/^[a-z][a-z0-9-]*$/.test(sheet))) {
@@ -1038,7 +1092,7 @@ if (invokedDirectly) {
     console.error('FAIL COVERAGE LOST — --net-sheet and --store-sheet are two reports; ask for one.');
     process.exit(2);
   }
-  const r = run(root, { check, sheet, net });
+  const r = run(root, { check, sheet, net, now });
   for (const l of r.out) console.log(l);
   for (const l of r.err) console.error(l);
   process.exit(r.code);

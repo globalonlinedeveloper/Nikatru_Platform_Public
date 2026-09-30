@@ -21,7 +21,16 @@
   "name": "platform",
   "main": "src/index.ts",
   "compatibility_date": "2026-07-01",
-  "observability": { "enabled": true },
+  // ⏱ 2026-09-30 · O-CALENDAR-TOKEN-SHIPPED-TO-ERROR-SINK — NO INVOCATION LOGS.
+  // Workers Logs' per-request invocation log records the FULL request URL, and
+  // two of this Worker's URLs are capabilities: `/v1/calendar/<token>.ics` (the
+  // token is the path) and `/v1/reminders/unsubscribe?t=<token>`. Nothing can
+  // redact a field of that log, so it is switched off. Per-route timing comes
+  // from src/lib/request-log.ts instead: one console line per request carrying
+  // the route PATTERN, status, ms and colo — and NO line on the two capability
+  // routes, because a console event carries its invocation's request metadata.
+  // test/wrangler-breaker.test.ts and test/request-log.test.ts hold this.
+  "observability": { "enabled": true, "logs": { "enabled": true, "invocation_logs": false } },
   "vars": {
     "APP_ID": "platform",
     "SUPABASE_URL": "https://auth-api.nikatru.com",
@@ -545,7 +554,7 @@
           "simple": { "limit": 120, "period": 60 }
         },
         {
-          // why: src/routes/events.ts:257 and :369, src/routes/report.ts:126.
+          // why: src/routes/events.ts:257 and :369, src/routes/report.ts:127.
           // The top level's EVENTS_LIMITER (1001), same limit.
           "name": "EVENTS_LIMITER",
           "namespace_id": "1007",

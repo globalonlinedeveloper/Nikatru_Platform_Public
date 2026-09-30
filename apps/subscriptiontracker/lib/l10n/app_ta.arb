@@ -469,5 +469,16 @@
   "forecastTitle": "அடுத்த 12 மாதங்கள்",
   "forecastLocked": "அடுத்த 12 மாதங்கள் மாதந்தோறும் எவ்வளவு செலவாகும் என்று பாருங்கள்.",
   "forecastSeePro": "ப்ரோவைப் பார்",
-  "forecastSummary": "அடுத்த 12 மாதங்களில் {total}. அதிகபட்சம்: {month}, {amount}."
+  "forecastSummary": "அடுத்த 12 மாதங்களில் {total}. அதிகபட்சம்: {month}, {amount}.",
+  "authBrandMark": "S",
+  "authPanelHeadline": "எதிர்பாராத கட்டணம் இனி இல்லை.",
+  "authPanelBody": "ஒவ்வொரு புதுப்பிப்பும், சோதனைக் காலமும், விலை உயர்வும், உங்கள் தொலைபேசி, கணினி மற்றும் இணையத்தில், ஒரே கணக்காக.",
+  "authPanelFootnote": "வங்கி உள்நுழைவு இல்லை · SMS வாசிப்பு இல்லை · Android, iPhone, Mac, Windows, Linux மற்றும் இணையம்",
+  "authShow": "காட்டு",
+  "authHide": "மறை",
+  "authShowPassword": "கடவுச்சொல்லைக் காட்டு",
+  "authHidePassword": "கடவுச்சொல்லை மறை",
+  "authPasswordRuleLength": "குறைந்தது {count} எழுத்துகள்",
+  "authPasswordRuleBreach": "அறியப்பட்ட தரவுக் கசிவுகளில் இல்லை",
+  "checkInboxResendIn": "{time} இல் மீண்டும் அனுப்பலாம்"
 }

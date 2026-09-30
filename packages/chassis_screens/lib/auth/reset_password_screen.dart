@@ -122,13 +122,12 @@ class _ResetPasswordViewState extends State<ResetPasswordView> {
   String? _problemMessage(
     ChassisLocalizations l10n,
     core.NewPasswordProblem? p,
-  ) =>
-      switch (p) {
-        core.NewPasswordProblem.empty => l10n.resetPasswordEnterOne,
-        core.NewPasswordProblem.tooShort => l10n.passwordTooShort,
-        core.NewPasswordProblem.mismatched => l10n.resetPasswordMismatch,
-        null => null,
-      };
+  ) => switch (p) {
+    core.NewPasswordProblem.empty => l10n.resetPasswordEnterOne,
+    core.NewPasswordProblem.tooShort => l10n.passwordTooShort,
+    core.NewPasswordProblem.mismatched => l10n.resetPasswordMismatch,
+    null => null,
+  };
 
   Future<void> _submit(ChassisLocalizations l10n) async {
     if (_busy) return;
@@ -168,18 +167,9 @@ class _ResetPasswordViewState extends State<ResetPasswordView> {
   Widget build(BuildContext context) {
     final ChassisLocalizations l10n = context.chassisL10n;
 
-    return Scaffold(
-      appBar: AppBar(title: Text(l10n.resetPasswordTitle)),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: ContentPane.form(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: _body(context, l10n),
-          ),
-        ),
-      ),
+    return AuthFrame(
+      title: l10n.resetPasswordTitle,
+      children: _body(context, l10n),
     );
   }
 
@@ -267,10 +257,10 @@ class _ResetPasswordViewState extends State<ResetPasswordView> {
       ),
       if (_error != null) ...<Widget>[
         const SizedBox(height: 12),
-        Text(
-          _error!,
-          key: ResetPasswordView.statusLine,
-          style: TextStyle(color: Theme.of(context).colorScheme.error),
+        AuthMessage(
+          message: _error!,
+          textKey: ResetPasswordView.statusLine,
+          kind: StatusKind.danger,
         ),
       ],
       const SizedBox(height: 20),
