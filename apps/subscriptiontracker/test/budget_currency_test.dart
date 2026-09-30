@@ -2,8 +2,8 @@
 //
 // Review item 4: `BudgetInfo.inCurrency(code)` rebuilt `Money(minorUnits, code)`
 // — so a ₹5,000 budget became $5,000 the moment the user tapped the dollar
-// chip, with no rate anywhere. The fix is in the MODEL (the Budget screen folds
-// into Insights in a later wave, ADR 077): a budget whose currency was RECORDED
+// chip, with no rate anywhere. The fix is in the MODEL (the Budget screen folded
+// into the Insights budget card in ST-D3, ADR 077): a budget whose currency was RECORDED
 // keeps it; only figures that arrived bare (the server's `/budget` returns a
 // number with no currency) take the reader's choice, because for them that is
 // the only unit the digits could mean.
@@ -19,7 +19,7 @@ import 'package:nikatru_core/nikatru_core.dart' show MoneyBag;
 import 'package:subscriptiontracker/data/models/budget_info.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/data/subscriptions/subscription_repository.dart';
-import 'package:subscriptiontracker/features/budget/budget_screen.dart';
+import 'package:subscriptiontracker/features/insights/insights_screen.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 import 'package:subscriptiontracker/state/settings_controller.dart';
 
@@ -121,29 +121,32 @@ void main() {
     });
   });
 
-  testWidgets('🔴 the Budget screen shows the ₹ budget to a reader who chose '
-      'USD, and never a \$5,000', (WidgetTester tester) async {
-    final MemStore store = MemStore();
-    await pumpAt(
-      tester,
-      const Size(800, 2400),
-      const BudgetScreen(),
-      overrides: <Override>[
-        keyValueStoreProvider.overrideWith((_) async => store),
-        subscriptionRepositoryProvider.overrideWithValue(
-          _Repo(_inr, <Subscription>[_usd('netflix', 1599)]),
-        ),
-      ],
-    );
-    final ProviderContainer c = ProviderScope.containerOf(
-      tester.element(find.byType(BudgetScreen)),
-    );
-    await c.read(settingsControllerProvider.notifier).setCurrency('USD');
-    for (int i = 0; i < 6; i++) {
-      await tester.pump();
-    }
+  testWidgets(
+    '🔴 the Insights budget card shows the ₹ budget to a reader who chose '
+    'USD, and never a \$5,000',
+    (WidgetTester tester) async {
+      final MemStore store = MemStore();
+      await pumpAt(
+        tester,
+        const Size(800, 2400),
+        const InsightsScreen(),
+        overrides: <Override>[
+          keyValueStoreProvider.overrideWith((_) async => store),
+          subscriptionRepositoryProvider.overrideWithValue(
+            _Repo(_inr, <Subscription>[_usd('netflix', 1599)]),
+          ),
+        ],
+      );
+      final ProviderContainer c = ProviderScope.containerOf(
+        tester.element(find.byType(InsightsScreen)),
+      );
+      await c.read(settingsControllerProvider.notifier).setCurrency('USD');
+      for (int i = 0; i < 6; i++) {
+        await tester.pump();
+      }
 
-    expect(find.textContaining('₹5,000'), findsWidgets);
-    expect(find.textContaining(r'$5,000'), findsNothing);
-  });
+      expect(find.textContaining('₹5,000'), findsWidgets);
+      expect(find.textContaining(r'$5,000'), findsNothing);
+    },
+  );
 }

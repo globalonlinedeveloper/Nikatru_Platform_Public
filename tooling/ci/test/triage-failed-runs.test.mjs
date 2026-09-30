@@ -1662,7 +1662,7 @@ describe('B-4: recurring causes carry firstSeen/lastSeen or a guard/row', () => 
   test('GREEN: the same class dated, or owned by a guard or a row, or matched once, is no finding', () => {
     assert.deepEqual(unrankedRecurring([group({ ...bare, firstSeen: '2026-09-01', lastSeen: '2026-09-20' }, 5)]), []);
     assert.deepEqual(unrankedRecurring([group({ ...bare, guard: 'tooling/ci/assert-ops-register.mjs' }, 5)]), []);
-    assert.deepEqual(unrankedRecurring([group({ ...bare, row: 'O-FAILED-RUN-LEDGER' }, 5)]), []);
+    assert.deepEqual(unrankedRecurring([group({ ...bare, row: 'O-FAILURE-LEDGER-NEVER-RUNS' }, 5)]), []);
     assert.deepEqual(unrankedRecurring([group(bare, 1)]), []);
     assert.deepEqual(unrankedRecurring([{ signature: 'x', count: 9, cause: null }]), [], 'an UNEXPLAINED group is the other finding, not this one');
   });
@@ -1678,7 +1678,7 @@ describe('B-4: recurring causes carry firstSeen/lastSeen or a guard/row', () => 
     assert.ok(p.some((x) => /`guard` "the ops register" is not a tooling/.test(x)));
     assert.ok(p.some((x) => /`row` "ledger row" is not a platform-state row id/.test(x)));
     assert.ok(validateCauses([{ ...bare, firstSeen: '2026-09-02', lastSeen: '2026-09-01' }]).some((x) => /is after lastSeen/.test(x)));
-    assert.deepEqual(validateCauses([{ ...bare, firstSeen: '2026-09-01', lastSeen: '2026-09-02', hits: 3, guard: 'tooling/ci/assert-ops-register.mjs', row: 'O-FAILED-RUN-LEDGER' }]), []);
+    assert.deepEqual(validateCauses([{ ...bare, firstSeen: '2026-09-01', lastSeen: '2026-09-02', hits: 3, guard: 'tooling/ci/assert-ops-register.mjs', row: 'O-FAILURE-LEDGER-NEVER-RUNS' }]), []);
   });
 
   test('every `guard` the REAL register names is a ref of the REAL enforcement index', () => {
