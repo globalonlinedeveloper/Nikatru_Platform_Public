@@ -147,6 +147,35 @@ const CEILING_EPSILON_USD = 0.01;
 // make it in a diff that says so.
 const CURRENT_PERIOD_MACOS_MINUTES_CEILING = 200;
 
+// ── DATED, PERIOD-SCOPED EXCEPTIONS to the macOS ceiling ──────────────────────
+// Raising the ceiling above is a STANDING decision to spend macOS minutes. A
+// period that ran over for a MEASURED cause can instead carry an exception that
+// names its period, its number and that cause, and EXPIRES with the period: the
+// next month is graded at CURRENT_PERIOD_MACOS_MINUTES_CEILING again with no edit.
+// Never add an exception for a period that has not started; that is raising the
+// ceiling under another name.
+export const MACOS_CEILING_EXCEPTIONS = Object.freeze({
+  // 2026-09 (lead db0cc7, 2026-09-30 03:30Z): 873 macOS minutes, measured per
+  // workflow from job durations on 2026-09-30:
+  //   build-platforms.yml   ~542 (the iOS/macOS legs on main pushes),
+  //   native-auth-proof.yml ~282 (the native sign-in proof's Darwin legs, #1034/#1062),
+  //   store-screenshots.yml  ~17.
+  // Net $0.00 (the public-repo discount). The only way to go green without this
+  // was to wait for the 2026-10 reset with every merge frozen for ~20 h. The
+  // follow-up that removes the cause: build the Darwin legs only when Darwin
+  // inputs change.
+  '2026-09': Object.freeze({
+    minutes: 1000,
+    why: '873 measured: build-platforms ~542, native-auth-proof ~282, store-screenshots ~17; net $0.00',
+  }),
+});
+
+/** The macOS minutes ceiling that applies to one billing period (`YYYY-MM`). */
+export function macosCeilingFor(period) {
+  const e = MACOS_CEILING_EXCEPTIONS[period];
+  return e ? e.minutes : CURRENT_PERIOD_MACOS_MINUTES_CEILING;
+}
+
 /** A runner SKU's operating system. `null` is "no OS this guard knows", which the
  *  caller turns into COVERAGE LOST: a renamed macOS SKU filed as `other` would be
  *  a macOS total of zero for the wrong reason. */
@@ -223,7 +252,7 @@ export function evaluateUsage(
   body,
   nowMs,
   ceilingUsd = CURRENT_PERIOD_NET_BILLED_CEILING_USD,
-  macosCeilingMinutes = CURRENT_PERIOD_MACOS_MINUTES_CEILING,
+  macosCeilingMinutes = undefined, // undefined = macosCeilingFor(the period being graded)
 ) {
   if (body === null || typeof body !== 'object' || Array.isArray(body)) {
     throw new CouldNotLook('the usage report is not a JSON object');
@@ -317,6 +346,7 @@ export function evaluateUsage(
   }
 
   const period = billingPeriod(nowMs);
+  const macosCeiling = macosCeilingMinutes ?? macosCeilingFor(period);
   const current =
     periods.get(period) ??
     { period, net: 0, netMinutes: 0, netStorage: 0, gross: 0, discount: 0, minutes: 0, macosMinutes: 0, byRepo: new Map(), bySku: new Map() };
@@ -331,8 +361,11 @@ export function evaluateUsage(
     // The ceiling applies to MINUTES. Storage is reported (see `netStorage`) but
     // cannot stop a workflow from STARTING, which is the risk this guard names.
     over: current.netMinutes > ceilingUsd + CEILING_EPSILON_USD,
-    macosCeilingMinutes,
-    macosOver: current.macosMinutes > macosCeilingMinutes,
+    macosCeilingMinutes: macosCeiling,
+    macosOver: current.macosMinutes > macosCeiling,
+    // Non-null only when a dated exception set this period's ceiling (never
+    // when a caller passed one explicitly): the report must say which it is.
+    macosException: macosCeilingMinutes === undefined ? (MACOS_CEILING_EXCEPTIONS[period]?.why ?? null) : null,
     rowsRead: actions.length,
   };
 }
@@ -510,6 +543,9 @@ async function main() {
     `⬜  by runner SKU, ${verdict.period} (macOS ${c.macosMinutes.toLocaleString('en-US')} of ` +
       `${verdict.macosCeilingMinutes.toLocaleString('en-US')} minute(s) allowed):`,
   );
+  if (verdict.macosException) {
+    say(`      dated exception for ${verdict.period} (expires with the period): ${verdict.macosException}`);
+  }
   for (const [sku, s] of [...c.bySku.entries()].sort((a, b) => b[1].minutes - a[1].minutes)) {
     say(`      · sku ${sku} [${s.os}]: ${s.minutes.toLocaleString('en-US')} minute(s), gross ${usd(s.gross)}, net ${usd(s.net)}`);
   }
