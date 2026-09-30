@@ -176,7 +176,7 @@ any deploy starts, every gate job has finished, so no follow-up can fire.
 | `ff-linux-artifacts` | fail-fast · linux-artifacts | `linux-artifacts` | yes | **no** |
 | `extensions` | extensions | — | — | yes |
 | `ci-gate` | ci-gate | `lane-workers`, `guard-meta`, `guards-platform`, `guards-legal`, `guards-store`, `guards-chassis`, `security-scan`, `site-tokens`, `site-shared`, `content-gate`, `app-brick`, `sites`, `workspace-gate`, `prepare`, `app-dryrun`, `android-artifacts`, `web-artifacts`, `linux-artifacts`, `extensions` | yes | — (the aggregate: the single required status check on `main`) |
-| `deploy-web` | deploy-web | `ci-gate` | yes | **no** |
+| `deploy-web` | deploy-web | `ci-gate`, `deploy-workers` | yes | **no** |
 | `deploy-workers` | deploy-workers | `ci-gate` | yes | **no** |
 <!-- END GENERATED: gen-ci-map lane-map -->
 

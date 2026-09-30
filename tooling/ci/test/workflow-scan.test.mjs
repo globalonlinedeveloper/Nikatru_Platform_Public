@@ -127,6 +127,20 @@ ${body}
     });
   }
 
+  // Lead ruling on #1075 (review finding 11): the API deploys BEFORE the web,
+  // on the same commit. Read off the REAL ci.yml through the shared parse, so
+  // dropping the edge (or the Worker job) is red here.
+  test('deploy-web waits for deploy-workers on the same run (API first, then web)', () => {
+    const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+    const wf = parseWorkflow(repo, '.github/workflows/ci.yml');
+    const web = wf.jobs.get('deploy-web');
+    const workers = wf.jobs.get('deploy-workers');
+    assert.ok(web && workers, 'both deploy jobs exist in ci.yml');
+    assert.ok(web.needs.includes('deploy-workers'), `deploy-web needs ${JSON.stringify(web.needs)}`);
+    assert.ok(web.needs.includes('ci-gate'), 'and still the gate (A9)');
+    assert.ok(!workers.needs.includes('deploy-web'), 'never the other way round');
+  });
+
   test('the SCALAR form — the one the first version missed, on a real production workflow', () => {
     const root = fixture({
       'a.yml': `name: A
