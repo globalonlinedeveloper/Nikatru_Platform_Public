@@ -171,9 +171,10 @@ jobs:
           E2E_PROOF_RAN: ${{ steps.proof.outcome != 'skipped' }}
         run: node tooling/e2e/purge.mjs
 
-  # ── iOS: a simulator, the callback through simctl ──────────────────────────
+  # ── iOS: a simulator; the app opens its own callback (simctl openurl stops
+  # at a system "Open in" sheet a runner cannot answer) ────────────────────
   ios:
-    name: iOS — simulator, form to Home, simctl opens the callback
+    name: iOS — simulator, form to Home, the app opens its own callback
     needs: gate
     runs-on: macos-26
     timeout-minutes: 60

@@ -165,8 +165,9 @@ class AppShell extends StatelessWidget {
     _TabSpec(Icons.home_rounded, l10n.navHome),
     _TabSpec(Icons.calendar_month_rounded, l10n.navCalendar),
     _TabSpec(Icons.insights_rounded, l10n.navInsights),
-    _TabSpec(Icons.account_balance_wallet_rounded, l10n.navBudget),
-    _TabSpec(Icons.menu_rounded, l10n.navMore),
+    // ST-D3 D3-3: four tabs, Settings NAMED (it was "More" behind a
+    // hamburger), and no Budget tab — ADR 077 §A folds it into Insights.
+    _TabSpec(Icons.settings_rounded, l10n.navSettings),
   ];
 
   @override
