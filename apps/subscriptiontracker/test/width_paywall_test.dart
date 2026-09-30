@@ -63,6 +63,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nikatru_chassis_screens/monetization/paywall_screen.dart'
+    show PaywallView;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:nikatru_purchases/nikatru_purchases.dart';
@@ -163,8 +165,9 @@ void main() {
             'pane existed. The 24/24 gutters are the ListView\'s OWN padding, '
             'inside the pane, so they do not come off this number',
       );
+      // ⏱ ST-D9: a plan is the foundation's `AppCard`, no longer a `Card`.
       expect(
-        find.byType(Card),
+        find.byType(AppCard),
         findsNWidgets(2),
         reason:
             'the state sentinel: with the shipped rail this screen renders one '
@@ -175,9 +178,8 @@ void main() {
         tester.takeException(),
         isNull,
         reason:
-            'the price ListTile puts a formatted price, a term-with-trial '
-            'subtitle and an Upgrade button on one line — 375 is where that '
-            'first complains if it is going to',
+            'a plan card stacks a formatted price, its term and an Upgrade '
+            'button — 375 is where that first complains if it is going to',
       );
     });
 
@@ -207,7 +209,7 @@ void main() {
       // of nothing between them. `pane - 48` is the ListView's own padding,
       // which is inside the cap.
       expect(
-        offeredWidth(tester, find.byType(Card).first),
+        offeredWidth(tester, find.byType(AppCard).first),
         AppBreakpoints.pane - 48,
         reason:
             'the offering card is offered the capped width less the '
@@ -233,6 +235,37 @@ void main() {
             'at 1920 as at 768',
       );
       expect(AppBreakpoints.pane, 480);
+    });
+
+    // ⏱ ST-D9: WITH A PITCH FROM CONFIG, from 840 up the features sit BESIDE
+    // the plans, and the cap is two panes and their gap — the one wider paywall.
+    // Without one (the cases above: the default config pitches nothing) it is
+    // the 480 pane at every width, which is what those cases still hold. No
+    // kDesktop case, argued in `assert-responsive-coverage.mjs` WIDTH_EXEMPT:
+    // both caps have already engaged below 1280, so 1920 asserts the same.
+    testWidgets('at 1920 with a pitch: two columns, capped at wideMaxWidth', (
+      WidgetTester tester,
+    ) async {
+      await pumpAt(
+        tester,
+        kWide,
+        const PaywallScreen(),
+        overrides: <Override>[
+          ..._moneyOverrides(),
+          paywallPitchProvider.overrideWithValue((
+            pro: <String>['plan', 'save'],
+            free: <String>['sync'],
+            trialCopy: false,
+          )),
+        ],
+      );
+      expect(offeredWidth(tester, inPane(ListView)), PaywallView.wideMaxWidth);
+      final Rect features = tester.getRect(
+        find.byKey(PaywallView.featuresCard),
+      );
+      final Rect plan = tester.getRect(find.byType(AppCard).last);
+      expect(features.right, lessThan(plan.left));
+      expect(tester.takeException(), isNull);
     });
   });
 }

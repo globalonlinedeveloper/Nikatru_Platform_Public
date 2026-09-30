@@ -61,6 +61,11 @@ const String kLocalSubscriptionsKey = 'nikatru.subscriptions';
 /// The user's budget (monthly cap + per-category caps), as one JSON object.
 const String kLocalBudgetKey = 'nikatru.budget';
 
+/// The subscriptions the user has ANSWERED "yes, still using" for on Insights
+/// (ST-D3 D3-4). A JSON list of ids. Asked, never inferred: nothing in the app
+/// measures usage, so the only signal is the one the user gives.
+const String kLocalStillUsingKey = 'nikatru.still_using';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 🔴 THE SERIALIZATION BOUNDARY, AND IT IS DELIBERATELY THE ONLY ONE.
 //
@@ -222,6 +227,31 @@ class LocalSubscriptionStore {
   Future<void> writeBudget(BudgetInfo budget) =>
       _write(kLocalBudgetKey, SubscriptionCodec.encodeBudget(budget));
 
+  /// The ids answered "still using", or an empty set when none is stored or
+  /// the stored text is unreadable — a lost answer is asked again, never
+  /// invented.
+  Future<Set<String>> readStillUsing() async {
+    final String? raw = await _read(kLocalStillUsingKey);
+    if (raw == null) return <String>{};
+    try {
+      final Object? decoded = jsonDecode(raw);
+      return decoded is List
+          ? <String>{
+              for (final Object? e in decoded)
+                if (e is String) e,
+            }
+          : <String>{};
+    } catch (_) {
+      return <String>{};
+    }
+  }
+
+  /// Replace the stored answers with [ids].
+  ///
+  /// Throws [LocalStoreWriteFailure] when the store refuses — never silently.
+  Future<void> writeStillUsing(Set<String> ids) =>
+      _write(kLocalStillUsingKey, jsonEncode(ids.toList()..sort()));
+
   /// Forget everything this store owns.
   ///
   /// Exists so account deletion and a consent withdrawal have one call to make
@@ -240,6 +270,7 @@ class LocalSubscriptionStore {
     try {
       await kv.remove(kLocalSubscriptionsKey);
       await kv.remove(kLocalBudgetKey);
+      await kv.remove(kLocalStillUsingKey);
     } catch (e) {
       throw LocalStoreWriteFailure(kLocalSubscriptionsKey, e);
     }

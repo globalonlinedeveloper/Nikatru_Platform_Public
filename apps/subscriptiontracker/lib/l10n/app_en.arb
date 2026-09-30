@@ -494,17 +494,45 @@
   "@planInactive": {
     "description": "See subscriptionActive."
   },
-  "planChecking": "Checking your plan…",
-  "@planChecking": {
-    "description": "Consumed by manage_plan_screen.dart. ST-U7 (C42): the plan row while the entitlement is loading. It used to say 'You do not have an active subscription' here."
+  "planActiveDetail": "Planning and savings tools are on.",
+  "@planActiveDetail": {
+    "description": "Second line on the manage-subscription status card while the SERVER reports an active plan (train ST-D9). Names what the plan gives (ruling D-11: Pro is plan and save), never a price."
   },
-  "planCheckFailed": "Could not check your plan.",
-  "@planCheckFailed": {
-    "description": "Consumed by manage_plan_screen.dart. ST-U7 (C42): the plan row when the entitlement could not be fetched, beside a Retry. Never 'you do not have a plan' — that was never checked."
+  "planInactiveDetail": "Tracking, reminders and sync stay free.",
+  "@planInactiveDetail": {
+    "description": "Second line on the manage-subscription status card with no active plan (train ST-D9). Ruling D-11: sync is free, so it is named as free here."
   },
-  "paywallLoadingPlans": "Loading plans…",
-  "@paywallLoadingPlans": {
-    "description": "Consumed by paywall_screen.dart. ST-U7 (C38): the spinner's label while a store rail is still being asked for its plans. It used to read 'Purchases are not available here.'"
+  "seeProPlans": "See plans",
+  "@seeProPlans": {
+    "description": "Manage-subscription row that opens the paywall, shown only to a user without a plan and only while this build sells. Names no price and no place to buy."
+  },
+  "paywallFeaturePlan": "Plan ahead",
+  "@paywallFeaturePlan": {
+    "description": "Paywall feature, config code `plan` (ruling D-11: Pro is plan and save). Which codes are shown is served config, never this file."
+  },
+  "paywallFeaturePlanBody": "Set budgets and see every charge before it lands.",
+  "@paywallFeaturePlanBody": {
+    "description": "One sentence under paywallFeaturePlan."
+  },
+  "paywallFeatureSave": "Find savings",
+  "@paywallFeatureSave": {
+    "description": "Paywall feature, config code `save` (ruling D-11)."
+  },
+  "paywallFeatureSaveBody": "See what you do not use and what you could cut.",
+  "@paywallFeatureSaveBody": {
+    "description": "One sentence under paywallFeatureSave."
+  },
+  "paywallFeatureTrack": "Track every subscription",
+  "@paywallFeatureTrack": {
+    "description": "Paywall free feature, config code `track`, listed under Always free."
+  },
+  "paywallFeatureRemind": "Renewal reminders",
+  "@paywallFeatureRemind": {
+    "description": "Paywall free feature, config code `remind`, listed under Always free."
+  },
+  "paywallFeatureSync": "Sync across your devices",
+  "@paywallFeatureSync": {
+    "description": "Paywall free feature, config code `sync`. Ruling D-11: sync is FREE, because sign-in is mandatory."
   },
   "restorePurchases": "Restore purchases",
   "@restorePurchases": {
@@ -812,33 +840,9 @@
   "@confirmCancel": {
     "description": "Consumed by cancel_sheet.dart. The remove sheet's confirm button. Short because the button is half the sheet wide; the title carries 'from your tracker'. Deliberately NOT the detail screen's 'Remove' (cancelPlanButton): the sheet opens over that screen, and two identical labels make every finder — and a screen reader's list of buttons — ambiguous. Pinned by test/sheet_failure_surface_test.dart, test/width_cancel_sheet_test.dart, integration_test/app_test.dart — the value must not change without moving those."
   },
-  "budgetTitle": "Budget & goals",
-  "@budgetTitle": {
-    "description": "Consumed by budget_screen.dart:87."
-  },
-  "overBudget": "over budget",
-  "@overBudget": {
-    "description": "Consumed by budget_screen.dart:119. Sits under the percentage in the ring. Half of a pair with ofBudget — the ring shows one or the other."
-  },
-  "ofBudget": "of budget",
-  "@ofBudget": {
-    "description": "Consumed by budget_screen.dart:119. See overBudget."
-  },
-  "statSpent": "Spent",
-  "@statSpent": {
-    "description": "Consumed by budget_screen.dart:131."
-  },
-  "statLeft": "Left",
-  "@statLeft": {
-    "description": "Consumed by budget_screen.dart:134."
-  },
-  "statBudget": "Budget",
-  "@statBudget": {
-    "description": "Consumed by budget_screen.dart:137. Pinned by integration_test/app_test.dart:400, integration_test/store_screenshots_test.dart:310 — the value must not change without moving those."
-  },
   "byCategory": "By category",
   "@byCategory": {
-    "description": "Consumed by budget_screen.dart:143. SHARED with insights_screen.dart:112 — the same heading over the same breakdown."
+    "description": "Consumed by features/insights/insights_screen.dart: the heading over the category breakdown."
   },
   "calendarTitle": "Renewal calendar",
   "@calendarTitle": {
@@ -936,7 +940,7 @@
   },
   "perYear": "per year",
   "@perYear": {
-    "description": "Consumed by subscription_detail_screen.dart:169. SHARED with home_screen.dart:494 — the per-cycle caption under a price."
+    "description": "Consumed by features/insights/category_card.dart. Caption beside By category when the switch reads Year; the twin of perMonth."
   },
   "perMonth": "per month",
   "@perMonth": {
@@ -961,22 +965,6 @@
   "insightsTitle": "Insights",
   "@insightsTitle": {
     "description": "Consumed by insights_screen.dart:68. Pinned by test/chassis_properties_test.dart:3384, integration_test/app_test.dart:393, integration_test/store_screenshots_test.dart:301 — the value must not change without moving those."
-  },
-  "insightsSubtitle": "Where your money goes",
-  "@insightsSubtitle": {
-    "description": "Consumed by insights_screen.dart:71."
-  },
-  "perMonthShort": "/ mo",
-  "@perMonthShort": {
-    "description": "Consumed by insights_screen.dart:130. The caption under the donut total. Short because it renders at 9 pt inside a 126 px ring."
-  },
-  "savingsOpportunities": "Savings opportunities",
-  "@savingsOpportunities": {
-    "description": "Consumed by insights_screen.dart:204."
-  },
-  "insightsNothingFlagged": "Nothing flagged — nice.",
-  "@insightsNothingFlagged": {
-    "description": "Consumed by insights_screen.dart:269. Pinned by test/width_insights_test.dart:68 — the value must not change without moving those."
   },
   "perMonthAmount": "{amount}/mo",
   "@perMonthAmount": {
@@ -1070,14 +1058,6 @@
   "navInsights": "Insights",
   "@navInsights": {
     "description": "Consumed by app_shell.dart:32. See navCalendar. Pinned by test/chassis_properties_test.dart:3384, integration_test/app_test.dart:393, integration_test/store_screenshots_test.dart:301 — the value must not change without moving those."
-  },
-  "navBudget": "Budget",
-  "@navBudget": {
-    "description": "Consumed by app_shell.dart:33. See navCalendar. Pinned by integration_test/app_test.dart:400, integration_test/store_screenshots_test.dart:310 — the value must not change without moving those."
-  },
-  "navMore": "More",
-  "@navMore": {
-    "description": "Consumed by app_shell.dart:34. See navCalendar. Pinned by integration_test/app_test.dart:406, integration_test/store_screenshots_test.dart:39 — the value must not change without moving those."
   },
   "markedUnusedCount": "{count, plural, =1{1 marked unused} other{{count} marked unused}}",
   "@markedUnusedCount": {
@@ -1421,70 +1401,6 @@
   "notificationActionOpen": "Open",
   "@notificationActionOpen": {
     "description": "Consumed by services/notifications/notification_service.dart:47. The Linux notification's default action label — a button the desktop shell renders, so it is user-facing."
-  },
-  "a11yCategoryDonut": "Spending by category. {total} a month in total. {breakdown}",
-  "@a11yCategoryDonut": {
-    "description": "Consumed by insights_screen.dart. The Semantics label of the category donut. A CustomPaint announces NOTHING on its own — it is pixels — so without this key the one figure that matters on the insights screen is inaudible. {breakdown} is a11yCategoryShare joined per category, from the SAME list the painter is handed, so the sentence cannot drift from the chart.",
-    "placeholders": {
-      "total": {
-        "type": "String",
-        "example": "₹2,340"
-      },
-      "breakdown": {
-        "type": "String",
-        "example": "Entertainment ₹960, Work ₹720"
-      }
-    }
-  },
-  "a11yCategoryShare": "{name} {amount}",
-  "@a11yCategoryShare": {
-    "description": "Consumed by insights_screen.dart. ONE category inside a11yCategoryDonut's {breakdown}. Its own key rather than an interpolation because a language may need a particle or a different order between the name and the figure.",
-    "placeholders": {
-      "name": {
-        "type": "String",
-        "example": "Entertainment"
-      },
-      "amount": {
-        "type": "String",
-        "example": "₹960"
-      }
-    }
-  },
-  "a11yBudgetRing": "Budget used. {spent} of {budget}, {percent}.",
-  "@a11yBudgetRing": {
-    "description": "Consumed by budget_screen.dart. The Semantics label of the budget progress arc (a CustomPaint, so silent on its own). The UNDER-budget arm — see a11yBudgetRingOver for the other.",
-    "placeholders": {
-      "spent": {
-        "type": "String",
-        "example": "₹1,800"
-      },
-      "budget": {
-        "type": "String",
-        "example": "₹2,500"
-      },
-      "percent": {
-        "type": "String",
-        "example": "72%"
-      }
-    }
-  },
-  "a11yBudgetRingOver": "Over budget. {spent} of {budget}, {percent}.",
-  "@a11yBudgetRingOver": {
-    "description": "Consumed by budget_screen.dart. The OVER-budget arm of a11yBudgetRing. A WHOLE SECOND SENTENCE and not a fragment prepended to the first: the two differ by a clause a translator must be free to place, and the percent is clamped at 100% in this arm so the figures carry the overspend, not the ring.",
-    "placeholders": {
-      "spent": {
-        "type": "String",
-        "example": "₹2,900"
-      },
-      "budget": {
-        "type": "String",
-        "example": "₹2,500"
-      },
-      "percent": {
-        "type": "String",
-        "example": "100%"
-      }
-    }
   },
   "a11yScanRing": "Setting up, {percent}.",
   "@a11yScanRing": {
@@ -2063,5 +1979,348 @@
   "homeReviewUnused": "Review",
   "@homeReviewUnused": {
     "description": "The one answer on Home's unused-plans DecisionStrip: opens Insights, where the unused plans are listed with their savings. A verb, short: it sits beside the message on a wide strip."
+  },
+  "insightsPeriodMonth": "Month",
+  "@insightsPeriodMonth": {
+    "description": "Consumed by features/insights/insights_screen.dart. One segment of the Month / Year switch; it chooses whether the category breakdown reads per month or per year."
+  },
+  "insightsPeriodYear": "Year",
+  "@insightsPeriodYear": {
+    "description": "Consumed by features/insights/insights_screen.dart. The other segment of the Month / Year switch."
+  },
+  "insightsPeriodLabel": "Show amounts per",
+  "@insightsPeriodLabel": {
+    "description": "Consumed by features/insights/insights_screen.dart. The accessible name of the Month / Year switch, read before the selected segment."
+  },
+  "insightsPerMonthLabel": "Per month",
+  "@insightsPerMonthLabel": {
+    "description": "Consumed by features/insights/summary_tiles.dart. Label of the tile holding the normalised monthly total."
+  },
+  "insightsOnAverage": "on average",
+  "@insightsOnAverage": {
+    "description": "Consumed by features/insights/summary_tiles.dart. Caption under the monthly total: yearly plans are divided by twelve, so the figure is an average, not a ledger."
+  },
+  "insightsPerYearLabel": "Per year",
+  "@insightsPerYearLabel": {
+    "description": "Consumed by features/insights/summary_tiles.dart. Label of the tile holding what every plan charges in a year."
+  },
+  "insightsActiveCount": "{count, plural, =1{1 subscription} other{{count} subscriptions}}",
+  "@insightsActiveCount": {
+    "description": "Consumed by features/insights/summary_tiles.dart. Caption under the yearly total: how many subscriptions it adds up.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "insightsNext30Label": "Next 30 days",
+  "@insightsNext30Label": {
+    "description": "Consumed by features/insights/summary_tiles.dart. Label of the tile holding the renewals due in the next thirty days, today included."
+  },
+  "insightsChargeCount": "{count, plural, =0{No charges} =1{1 charge} other{{count} charges}}",
+  "@insightsChargeCount": {
+    "description": "Consumed by features/insights/summary_tiles.dart. Caption under the next-30-days total.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "insightsBiggestLabel": "Biggest",
+  "@insightsBiggestLabel": {
+    "description": "Consumed by features/insights/summary_tiles.dart. Label of the tile naming the subscription with the largest monthly cost."
+  },
+  "insightsNoneYet": "None yet",
+  "@insightsNoneYet": {
+    "description": "Consumed by features/insights/summary_tiles.dart. Caption of the Biggest tile when there is nothing to rank."
+  },
+  "perYearAmount": "{amount}/yr",
+  "@perYearAmount": {
+    "description": "Consumed by features/insights/insights_screen.dart. The per-year twin of perMonthAmount.",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "budgetCardTitle": "Monthly budget",
+  "@budgetCardTitle": {
+    "description": "Consumed by features/insights/budget_card.dart and budget_editor.dart. The budget card's label and the editor's title (ADR 077 §2.1: the budget lives on Insights)."
+  },
+  "budgetEdit": "Edit",
+  "@budgetEdit": {
+    "description": "Consumed by features/insights/budget_card.dart. Opens the budget editor when a budget is set."
+  },
+  "budgetEditA11y": "Edit monthly budget",
+  "@budgetEditA11y": {
+    "description": "Consumed by features/insights/budget_card.dart. The accessible name of the Edit button, so a screen reader hears what is edited."
+  },
+  "budgetSet": "Set a budget",
+  "@budgetSet": {
+    "description": "Consumed by features/insights/budget_card.dart. Opens the budget editor when no budget is set."
+  },
+  "budgetNoneBody": "Set a monthly budget to see what is left each month.",
+  "@budgetNoneBody": {
+    "description": "Consumed by features/insights/budget_card.dart. The card's body when no budget is set."
+  },
+  "budgetOfAmount": "of {amount}",
+  "@budgetOfAmount": {
+    "description": "Consumed by features/insights/budget_card.dart. Beside the spent figure: of the budget amount.",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "budgetLeft": "{amount} left this month",
+  "@budgetLeft": {
+    "description": "Consumed by features/insights/budget_card.dart. Decision D-08: the meter's meaning in WORDS, so colour never carries it alone (WCAG 1.4.1).",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "budgetOver": "{amount} over budget",
+  "@budgetOver": {
+    "description": "Consumed by features/insights/budget_card.dart. The over-budget twin of budgetLeft.",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "budgetUsedPercent": "{percent} used",
+  "@budgetUsedPercent": {
+    "description": "Consumed by features/insights/budget_card.dart. The percent is formatted by NumberFormat.percentPattern for the locale.",
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
+  "budgetMeterLabel": "Budget used",
+  "@budgetMeterLabel": {
+    "description": "Consumed by features/insights/budget_card.dart. The meter's accessible name; its value is budgetUsedPercent."
+  },
+  "budgetOtherCurrencies": "Plans in other currencies are not counted in this budget.",
+  "@budgetOtherCurrencies": {
+    "description": "Consumed by features/insights/budget_card.dart. Shown only when a plan is billed in a currency other than the budget's, because no exchange rate is applied (ST-T5 I3 has not landed)."
+  },
+  "budgetAmountLabel": "Budget per month",
+  "@budgetAmountLabel": {
+    "description": "Consumed by features/insights/budget_editor.dart. Label of the amount field."
+  },
+  "budgetAverageHint": "Your subscriptions average {amount} a month.",
+  "@budgetAverageHint": {
+    "description": "Consumed by features/insights/budget_editor.dart. Helper under the amount field.",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "budgetAmountInvalid": "Enter an amount, like 5500.",
+  "@budgetAmountInvalid": {
+    "description": "Consumed by features/insights/budget_editor.dart. Error under a field that does not parse as money."
+  },
+  "budgetCapsTitle": "Category caps",
+  "@budgetCapsTitle": {
+    "description": "Consumed by features/insights/budget_editor.dart. Heading of the per-category cap rows."
+  },
+  "budgetCapUsed": "{amount} used",
+  "@budgetCapUsed": {
+    "description": "Consumed by features/insights/budget_editor.dart. Under a category name: its monthly spend.",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "budgetNoCap": "No cap",
+  "@budgetNoCap": {
+    "description": "Consumed by features/insights/budget_editor.dart. Hint in an empty cap field."
+  },
+  "budgetCapLabel": "Cap for {category}",
+  "@budgetCapLabel": {
+    "description": "Consumed by features/insights/budget_editor.dart. The accessible name of a category's cap field.",
+    "placeholders": {
+      "category": {
+        "type": "String"
+      }
+    }
+  },
+  "budgetSave": "Save budget",
+  "@budgetSave": {
+    "description": "Consumed by features/insights/budget_editor.dart. The editor's one primary action."
+  },
+  "budgetSaveFailed": "The budget could not be saved. Check your connection and try again.",
+  "@budgetSaveFailed": {
+    "description": "Consumed by features/insights/budget_editor.dart. Shown in the editor, which stays open with what was typed, when the write fails."
+  },
+  "proBadge": "Pro",
+  "@proBadge": {
+    "description": "Consumed by features/insights/budget_editor.dart and insights_screen.dart. The chip on a Pro-only part of a screen."
+  },
+  "insightsWorthALook": "Worth a look",
+  "@insightsWorthALook": {
+    "description": "Consumed by features/insights/signals.dart. Heading over the signal rows (ST-D3 D3-4)."
+  },
+  "insightsNoSignals": "Nothing to look at right now.",
+  "@insightsNoSignals": {
+    "description": "Consumed by features/insights/signals.dart. Shown under the heading when no signal applies."
+  },
+  "signalDuplicateTitle": "{count} plans in {category}",
+  "@signalDuplicateTitle": {
+    "description": "Consumed by features/insights/signals.dart. Two or more subscriptions share a category — a possible overlap, stated as a fact, not a verdict.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "category": {
+        "type": "String"
+      }
+    }
+  },
+  "signalDuplicateBody": "{names} · {amount} a month",
+  "@signalDuplicateBody": {
+    "description": "Consumed by features/insights/signals.dart. The names in the category and their monthly total.",
+    "placeholders": {
+      "names": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "signalAnnualTitle": "{days, plural, =0{Annual charge today} =1{Annual charge tomorrow} other{Annual charge in {days} days}}",
+  "@signalAnnualTitle": {
+    "description": "Consumed by features/insights/signals.dart. A yearly plan renews within 60 days.",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "signalAnnualBody": "{name} · {amount} on {date}",
+  "@signalAnnualBody": {
+    "description": "Consumed by features/insights/signals.dart. The date is CLDR-formatted for the locale (decision D-13).",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "signalStillUsingTitle": "Still using {name}?",
+  "@signalStillUsingTitle": {
+    "description": "Consumed by features/insights/signals.dart. ASKED, never inferred: the app measures no usage, so it asks.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "signalStillUsingBody": "{amount}. We ask — we cannot tell.",
+  "@signalStillUsingBody": {
+    "description": "Consumed by features/insights/signals.dart. {amount} is the plan's real charge with its cycle (\"$20.00/mo\"); says plainly that the question is a question.",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "signalStillUsingYes": "Yes",
+  "@signalStillUsingYes": {
+    "description": "Consumed by features/insights/signals.dart. Answers the still-using question; the row then leaves."
+  },
+  "signalStillUsingYesA11y": "Yes, still using {name}",
+  "@signalStillUsingYesA11y": {
+    "description": "Consumed by features/insights/signals.dart. The accessible name of the Yes button, so it is not a bare Yes out of context.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "categoryShowTable": "Show as table",
+  "@categoryShowTable": {
+    "description": "Consumed by features/insights/category_card.dart. Switches the ranked bars to a table (R3 §4: every chart has a table view)."
+  },
+  "categoryShowChart": "Show as bars",
+  "@categoryShowChart": {
+    "description": "Consumed by features/insights/category_card.dart. Switches the table back to the ranked bars."
+  },
+  "categoryTableCategory": "Category",
+  "@categoryTableCategory": {
+    "description": "Consumed by features/insights/category_card.dart. Table column header."
+  },
+  "categoryTableAmount": "Amount",
+  "@categoryTableAmount": {
+    "description": "Consumed by features/insights/category_card.dart. Table column header."
+  },
+  "categoryTableShare": "Share",
+  "@categoryTableShare": {
+    "description": "Consumed by features/insights/category_card.dart. Table column header: the category's share of the total."
+  },
+  "a11yCategoryRow": "{name}: {amount}, {percent} of the total",
+  "@a11yCategoryRow": {
+    "description": "Consumed by features/insights/category_card.dart. One ranked bar read as one sentence; the bar itself is excluded.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      },
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
+  "a11yCategoryRowNoShare": "{name}: {amount}",
+  "@a11yCategoryRowNoShare": {
+    "description": "Consumed by features/insights/category_card.dart. A category billed only in another currency has no share of the display-currency total, so none is claimed.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "forecastTitle": "Next 12 months",
+  "@forecastTitle": {
+    "description": "Consumed by features/insights/forecast_card.dart. The Pro card's title. A FORECAST from today's plans, not a trend: no spending history is kept."
+  },
+  "forecastLocked": "See what the next 12 months will cost, month by month.",
+  "@forecastLocked": {
+    "description": "Consumed by features/insights/forecast_card.dart. The locked card's message (PaywallGate.card)."
+  },
+  "forecastSeePro": "See Pro",
+  "@forecastSeePro": {
+    "description": "Consumed by features/insights/forecast_card.dart. The locked card's one action; opens the paywall."
+  },
+  "forecastSummary": "{total} over the next 12 months. Highest: {month}, {amount}.",
+  "@forecastSummary": {
+    "description": "Consumed by features/insights/forecast_card.dart. The unlocked card's sentence, and the bars' accessible name.",
+    "placeholders": {
+      "total": {
+        "type": "String"
+      },
+      "month": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
   }
 }

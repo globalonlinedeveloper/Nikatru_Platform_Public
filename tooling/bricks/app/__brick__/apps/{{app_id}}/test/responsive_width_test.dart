@@ -238,8 +238,11 @@ void main() {
     });
   });
 
-  // ── MANAGE PLAN · ContentPane (kMaxBodyWidth, 1280) ───────────────────────
-  group('manage-plan is capped at the body width', () {
+  // ── MANAGE PLAN · ContentPane.reading (720) ───────────────────────────────
+  // ⏱ ST-D9: the chassis `ManagePlanView` is capped at `reading` (720), the
+  // cap the shipping app already chose — ROSCA is about how hard the cancel
+  // row is to FIND, and a 720 page of controls is easier to scan than 1280.
+  group('manage-plan is capped at the reading width', () {
     testWidgets('at 375 the cap is a no-op and nothing overflows', (
       WidgetTester tester,
     ) async {
@@ -248,26 +251,23 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('at 768 the cap is still a no-op', (WidgetTester tester) async {
+    testWidgets('at 768 the cap has engaged', (WidgetTester tester) async {
       await pumpAt(tester, kTablet, const ManagePlanScreen());
-      expect(offeredWidth(tester, inPane(ListView)), 768);
+      expect(offeredWidth(tester, inPane(ListView)), AppBreakpoints.reading);
     });
 
     testWidgets('at 1280 the list is at the cap', (WidgetTester tester) async {
       await pumpAt(tester, kDesktop, const ManagePlanScreen());
-      expect(
-        offeredWidth(tester, inPane(ListView)),
-        lessThanOrEqualTo(AppBreakpoints.kMaxBodyWidth),
-      );
+      expect(offeredWidth(tester, inPane(ListView)), AppBreakpoints.reading);
     });
 
-    testWidgets('at 1920 the list stops at AppBreakpoints.kMaxBodyWidth', (
+    testWidgets('at 1920 the list stops at AppBreakpoints.reading', (
       WidgetTester tester,
     ) async {
       await pumpAt(tester, kWide, const ManagePlanScreen());
       expect(
         offeredWidth(tester, inPane(ListView)),
-        AppBreakpoints.kMaxBodyWidth,
+        AppBreakpoints.reading,
         reason:
             'the screen whose entire job is "cancelling must be no harder than '
             'subscribing" had its cancel row spread across the whole display',

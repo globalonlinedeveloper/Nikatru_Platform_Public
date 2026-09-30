@@ -4,6 +4,7 @@
   "adapter-capabilities.test.mjs": 32,
   "adapter-set.test.mjs": 6,
   "ads-declarations.test.mjs": 62,
+  "affected-guards.test.mjs": 8,
   "agent-docs.test.mjs": 21,
   "alert-disposition.test.mjs": 29,
   "analytics-contract.test.mjs": 78,
