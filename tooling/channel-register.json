@@ -1378,7 +1378,7 @@
         "repositoryFallback": {
           "via": ["CLOUDFLARE_READ_TOKEN", "CLOUDFLARE_D1_TOKEN"],
           "until": "2026-11-30",
-          "why": "Corrected 2026-09-30 (rv2-security-001): the old repositoryWhy named deploy jobs as env-less, but every deploy job reading this token is bound to `production` (deploy-web.yml, deploy-workers.yml, rollback.yml) or `sandbox` (deploy-sandbox.yml). The env-less readers left are ops-watch.yml's Cloudflare readers (read-only: they take CLOUDFLARE_READ_TOKEN) and the e2e.yml / native-auth-proof.yml / store-screenshots.yml purges (D1 writes: they take CLOUDFLARE_D1_TOKEN). Each reads `secrets.<narrow> || secrets.CLOUDFLARE_API_TOKEN`, so it works before the owner mints the narrow token (the repository copy answers) and after the owner moves this one into its environments (the narrow token answers). No pull_request-reachable job may read it at all (limb 8d). The fallback expires on `until`; after that the `|| secrets.CLOUDFLARE_API_TOKEN` half must be deleted."
+          "why": "Corrected 2026-09-30 (rv2-security-001): the old repositoryWhy named deploy jobs as env-less, but every deploy job reading this token is bound to `production` (deploy-web.yml, deploy-workers.yml, rollback.yml) or `sandbox` (deploy-sandbox.yml). The env-less readers left are ops-watch.yml's Cloudflare readers (read-only: they take CLOUDFLARE_READ_TOKEN, except the D1 statement-acceptance reader, which writes) and the e2e.yml / native-auth-proof.yml / store-screenshots.yml purges (D1 writes: they take CLOUDFLARE_D1_TOKEN). Each reads `secrets.<narrow> || secrets.CLOUDFLARE_API_TOKEN`, so it works before the owner mints the narrow token (the repository copy answers) and after the owner moves this one into its environments (the narrow token answers). No pull_request-reachable job may read it at all (limb 8d). The fallback expires on `until`; after that the `|| secrets.CLOUDFLARE_API_TOKEN` half must be deleted."
         }
       },
       {
@@ -1394,7 +1394,7 @@
       {
         "name": "CLOUDFLARE_D1_TOKEN",
         "kind": "service-credential",
-        "why": "A D1-EDIT-ONLY Cloudflare token (rv2-security-001) for the jobs that seed, verify and purge live e2e rows: e2e.yml, native-auth-proof.yml and store-screenshots.yml. No Workers, Pages or DNS scope, so it cannot deploy. Read only by scheduled or dispatched jobs, never by a pull_request-reachable one."
+        "why": "A D1-EDIT-ONLY Cloudflare token (rv2-security-001) for the jobs that seed, verify and purge live e2e rows (e2e.yml, native-auth-proof.yml, store-screenshots.yml) and for ops-watch.yml's D1 statement-acceptance reader, which executes guarded writes. No Workers, Pages or DNS scope, so it cannot deploy. Read only by scheduled or dispatched jobs, never by a pull_request-reachable one."
       },
       {
         "name": "SUBSCRIBE_RATE_LIMIT_SALT",
