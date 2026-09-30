@@ -14,10 +14,11 @@
 -- same shape `withRevokedBefore` is for JWTs:
 --
 --   auth_at        on ext_codes and ext_devices: when the session that minted
---                  the code last AUTHENTICATED (platformAuth's `authRecency` —
---                  the newest `amr` timestamp, which a refresh does not move;
---                  the token's `iat` only when it carries no `amr`). Copied from
---                  the code into the link at exchange.
+--                  the code STARTED (middleware/auth.ts `sessionStartedAtOf` —
+--                  the OLDEST `amr` timestamp, which neither a refresh nor a
+--                  TOTP step-up moves; NULL when the token carries no `amr`,
+--                  never the refreshable `iat`). Copied from the code into the
+--                  link at exchange.
 --   ext_link_floor one row per account: `not_before`. POST /v1/sessions/revoke-all
 --                  and a recovery session raise it to the server's now.
 --

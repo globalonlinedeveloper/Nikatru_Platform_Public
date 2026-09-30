@@ -55,6 +55,20 @@ export function returnUrl(serverRedirectUri, code, state) {
   return u.href;
 }
 
+/**
+ * ⏱ 2026-09-30 · EXA-11 (review 2, nit 4). What the page says when the mint is
+ * refused. A 401 carrying `link_needs_fresh_signin` means the session began
+ * before the account's last password reset or "sign out everywhere"
+ * (services/platform/src/routes/ext.ts): the fix is a NEW sign-in, so the page
+ * returns to the sign-in form rather than telling the user to start over.
+ */
+export function mintFailure(status, body) {
+  if (status === 401 && body !== null && typeof body === 'object' && body.error === 'link_needs_fresh_signin') {
+    return { signInAgain: true, message: 'For your security, sign in again to connect this browser.' };
+  }
+  return { signInAgain: false, message: 'This browser could not be connected. Close this tab and start again from the extension.' };
+}
+
 /** The extension's request, validated for display. Null when it is unusable. */
 export function readRequest(search) {
   const q = new URLSearchParams(search);
@@ -139,14 +153,19 @@ if (typeof document !== 'undefined') {
     } catch {
       res = null;
     }
-    const body = res && res.ok ? await res.json() : null;
+    let body = null;
+    try {
+      body = res ? await res.json() : null;
+    } catch {
+      body = null;
+    }
     // The session has done its one job. Drop it whatever happened next.
     session = null;
-    const to = body ? returnUrl(body.redirect_uri, body.code, request.state) : null;
+    const to = res && res.ok && body ? returnUrl(body.redirect_uri, body.code, request.state) : null;
     if (to === null) {
       $('connect').disabled = false;
       render();
-      say('This browser could not be connected. Close this tab and start again from the extension.');
+      say(mintFailure(res ? res.status : 0, res && res.ok ? null : body).message);
       return;
     }
     say('Connected. Returning you to the extension…');

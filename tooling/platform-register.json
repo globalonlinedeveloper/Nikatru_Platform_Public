@@ -673,7 +673,7 @@
       "path": "/v1/sessions/revoke-all",
       "auth": "required",
       "owningFile": "services/platform/src/routes/sessions.ts",
-      "purpose": "⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. Moves the caller's `before` watermark to now, so every Worker refuses every token issued to this account up to now, the caller's own included. Deletes no auth.sessions row: the client's GoTrue signOut({scope:'global'}) does that. 503 when the list cannot be written, because a 204 would claim a sign-out that did not happen.",
+      "purpose": "⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. Moves the caller's `before` watermark to now, so every Worker refuses every token issued to this account up to now, the caller's own included. Deletes no auth.sessions row: the client's GoTrue signOut({scope:'global'}) does that. 503 when the list cannot be written, because a 204 would claim a sign-out that did not happen. ⏱ 2026-09-30 · EXA-11: it also raises the browser-extension link floor (services/platform/src/lib/ext-links.ts), KV FIRST and D1 second; when only D1 fails it answers 200 {d1Pending: true}. CLIENT CONTRACT: `d1Pending: true` means RETRY — a client that reads any 2xx as done leaves the extension links alive until the next revoke-all.",
       "unconsumedReason": "client half (requestSessionRevocation + the sessions list) ships in the web PR after this Worker deploys; the server must be live first"
     },
     {

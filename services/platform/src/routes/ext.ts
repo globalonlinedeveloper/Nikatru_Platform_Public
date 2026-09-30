@@ -59,7 +59,10 @@ import { EXT_TOKEN_PREFIX, deviceBearer, extDeviceAuth, sha256Hex } from '../mid
 import { withinEdgeCeiling, withinRateLimit } from '../lib/edge-ceiling';
 import { readBoundedBody } from '../lib/body';
 import { extensionRedirectUri, isExtChannel } from '../lib/ext-redirects';
-import { extLinkExpired, linkFloorOf, predatesFloor } from '../lib/ext-links';
+import { EXT_LINK_IDLE_DAYS, EXT_LINK_MAX_AGE_DAYS, extLinkExpired, linkFloorOf, predatesFloor } from '../lib/ext-links';
+
+// @ceiling none — a unit conversion (milliseconds in a day), not a cap on any platform resource.
+const MS_PER_DAY = 86400000;
 
 const ext = new Hono<AppEnv>();
 
@@ -99,6 +102,14 @@ export const MAX_LISTED_LINKS = 100;
 async function extLimited(c: Context<AppEnv>): Promise<boolean> {
   return !(await withinRateLimit(c.env.SESSIONS_LIMITER, `ext:${c.get('userId')}`, 'SESSIONS_LIMITER'));
 }
+
+/**
+ * ⏱ 2026-09-30 · EXA-11 (review 2, nit 4). The mint's answer to a session that
+ * started before the account's link floor. Only an authenticated caller can
+ * receive it, and it says nothing about anyone else, so it is no oracle.
+ * sites/nikatru/ext/connect.js turns it into "sign in again".
+ */
+export const LINK_NEEDS_FRESH_SIGNIN = { error: 'link_needs_fresh_signin' } as const;
 
 /** The one body every failed exchange gets — no oracle. */
 const INVALID_GRANT = { error: 'invalid_grant' } as const;
@@ -166,11 +177,13 @@ ext.post('/ext/codes', platformAuth, async (c) => {
     return c.json({ error: 'invalid_code_challenge' }, 400);
   }
 
-  // ⏱ 2026-09-30 · EXA-11 — A SESSION OLDER THAN THE ACCOUNT'S LINK FLOOR MINTS
-  // NOTHING. A reset or "sign out everywhere" raised the floor; a token that
-  // authenticated before it is still inside its hour, and must not be able to
-  // link a browser (lib/ext-links.ts). Same plain 401 as any refused session.
-  const authAt = c.get('signedInAt') ?? null;
+  // ⏱ 2026-09-30 · EXA-11 — A SESSION THAT STARTED BEFORE THE ACCOUNT'S LINK
+  // FLOOR MINTS NOTHING. A reset or "sign out everywhere" raised the floor; a
+  // session begun before it may still hold a valid token (and may even step up
+  // with TOTP), and must not be able to link a browser (lib/ext-links.ts). The
+  // answer is 401 with its OWN code, LINK_NEEDS_FRESH_SIGNIN, so the connect page
+  // can say "sign in again" rather than "something went wrong".
+  const authAt = c.get('sessionStartedAt') ?? null;
   let floor: string | null;
   try {
     floor = await linkFloorOf(c.env.PLATFORM_DB, c.get('userId'));
@@ -178,7 +191,7 @@ ext.post('/ext/codes', platformAuth, async (c) => {
     console.warn(`[ext] rid=${c.get('requestId') ?? '-'} floor read failed — 503`);
     return c.json({ error: 'service_unavailable' }, 503);
   }
-  if (predatesFloor(authAt, floor)) return c.json({ error: 'unauthorized' }, 401);
+  if (predatesFloor(authAt, floor)) return c.json(LINK_NEEDS_FRESH_SIGNIN, 401);
 
   const code = randomToken(16);
   // ONE clock read for both instants, both ISO-8601 TEXT.
@@ -297,7 +310,10 @@ ext.post('/ext/revoke', extDeviceAuth, async (c) => {
 // GET /v1/ext/devices — the account's linked browsers, from the account side.
 // ⏱ 2026-09-30 · EXA-11. A link past its lifetime or below the account's floor
 // is dead already and is not listed; a revoked one is not listed. Never the
-// token hash, never user_id. At most MAX_LISTED_LINKS.
+// token hash, never user_id. At most MAX_LISTED_LINKS — counted AFTER the dead
+// links are filtered out, IN THE STATEMENT (review 2, nit 5): a LIMIT before
+// the filter would let 100 unstamped dead rows hide every live link. The JS
+// `liveLink` pass stays as a second, identical check.
 // ─────────────────────────────────────────────────────────────────────────────
 type LinkRow = {
   link_id: string;
@@ -309,6 +325,15 @@ type LinkRow = {
   not_before: string | null;
 };
 
+/** [maxAgeCutoff, idleCutoff] — the lifetime rule of `extLinkExpired` as two
+ *  ISO bounds, so the list statement can filter by it before its LIMIT. */
+function liveCutoffs(nowMs: number): [string, string] {
+  return [
+    new Date(nowMs - EXT_LINK_MAX_AGE_DAYS * MS_PER_DAY).toISOString(),
+    new Date(nowMs - EXT_LINK_IDLE_DAYS * MS_PER_DAY).toISOString(),
+  ];
+}
+
 /** A link the account may still see and act on: alive by age and by floor. */
 const liveLink = (r: LinkRow, now: number) => !extLinkExpired(r, now) && !predatesFloor(r.auth_at, r.not_before);
 
@@ -318,9 +343,9 @@ ext.get('/ext/devices', platformAuth, async (c) => {
   let rows: LinkRow[];
   try {
     const got = await c.env.PLATFORM_DB.prepare(
-      'SELECT d.link_id, d.product, d.channel, d.created_at, d.last_seen_at, d.auth_at, f.not_before FROM ext_devices d LEFT JOIN ext_link_floor f ON f.user_id = d.user_id WHERE d.user_id = ? AND d.revoked_at IS NULL ORDER BY d.created_at LIMIT ?',
+      'SELECT d.link_id, d.product, d.channel, d.created_at, d.last_seen_at, d.auth_at, f.not_before FROM ext_devices d LEFT JOIN ext_link_floor f ON f.user_id = d.user_id WHERE d.user_id = ? AND d.revoked_at IS NULL AND d.created_at > ? AND COALESCE(d.last_seen_at, d.created_at) > ? AND (f.not_before IS NULL OR (d.auth_at IS NOT NULL AND d.auth_at >= f.not_before)) ORDER BY d.created_at DESC LIMIT ?',
     )
-      .bind(c.get('userId'), MAX_LISTED_LINKS)
+      .bind(c.get('userId'), ...liveCutoffs(Date.now()), MAX_LISTED_LINKS)
       .all<LinkRow>();
     rows = got.results ?? [];
   } catch {

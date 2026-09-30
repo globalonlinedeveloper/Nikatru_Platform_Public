@@ -26,7 +26,7 @@ import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest
 import { Hono } from 'hono';
 import { SignJWT, exportJWK, generateKeyPair, type JWK, type KeyLike } from 'jose';
 import { app } from '../src/index';
-import { platformAuth } from '../src/middleware/auth';
+import { platformAuth, sessionStartedAtOf } from '../src/middleware/auth';
 import { entitlementsAuth, extDeviceAuth, sha256Hex } from '../src/middleware/ext-device-auth';
 import { EXT_CODE_TTL_MS } from '../src/routes/ext';
 import { EXT_CHANNELS } from '../src/lib/ext-redirects';
@@ -747,6 +747,7 @@ describe('EXA-11 — a password reset ends every link minted by a session older 
     const { challenge } = await pkce();
     const minted = await h.mint('user-rl', { challenge, claims: attacker });
     expect(minted.status).toBe(401);
+    expect(await minted.json()).toEqual({ error: 'link_needs_fresh_signin' });
     expect(h.db.count('ext_codes', "user_id = 'user-rl'")).toBe(1); // only L1's, from before
   });
 
@@ -828,6 +829,80 @@ describe('EXA-11 — a password reset ends every link minted by a session older 
     const link = await connect(h, 'user-bystander');
     expect((await h.devices('user-resetter', recoverySession('user-resetter', Date.now(), 's-other'))).status).toBe(200);
     expect((await h.read(link.token)).status).toBe(200);
+  });
+});
+
+describe('EXA-11 review 2 — the link carries when the SESSION STARTED, not its newest step-up', () => {
+  it('🔴 TOTP STEP-UP: a pre-reset session that verifies TOTP after the floor still cannot mint', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    const h = harness();
+    expect((await h.devices('user-totp', recoverySession('user-totp', T0, 's-totp-reset'))).status).toBe(200);
+    vi.setSystemTime(T0 + 60_000);
+    // GoTrue appends the step-up to the SAME session, newest first
+    // (internal/models/sessions.go sorts AMREntry by timestamp, descending).
+    const steppedUp = {
+      amr: [
+        { method: 'totp', timestamp: secs(T0 + 60_000) },
+        { method: 'password', timestamp: secs(T0 - DAY) },
+      ],
+      session_id: 's-totp-stolen',
+    };
+    const { challenge } = await pkce();
+    const res = await h.mint('user-totp', { challenge, claims: steppedUp });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: 'link_needs_fresh_signin' });
+    expect(h.db.count('ext_codes')).toBe(0);
+  });
+
+  it('🔴 a token with NO amr is refused once a floor exists — no fallback to the refreshable iat', async () => {
+    const h = harness();
+    // `jwt()` carries no amr. With no floor there is nothing to predate: it mints.
+    const res = await h.mint('user-noamr', { challenge: (await pkce()).challenge });
+    expect(res.status).toBe(200);
+    // A floor a minute in the PAST: the token's iat (now) is newer than it, and
+    // it is still refused — iat says nothing about when the session began.
+    h.db.db.exec(`INSERT INTO ext_link_floor (user_id, not_before, recovery_session, updated_at) VALUES ('user-noamr', '${new Date(Date.now() - 60_000).toISOString()}', NULL, '${new Date().toISOString()}')`);
+    const refused = await h.mint('user-noamr', { challenge: (await pkce()).challenge });
+    expect(refused.status).toBe(401);
+    expect(await refused.json()).toEqual({ error: 'link_needs_fresh_signin' });
+  });
+
+  it('sessionStartedAtOf: the OLDEST amr timestamp; null without amr, whatever iat says', () => {
+    expect(sessionStartedAtOf({ amr: [{ method: 'totp', timestamp: 2000 }, { method: 'password', timestamp: 1000 }] })).toBe(new Date(1000 * 1000).toISOString());
+    expect(sessionStartedAtOf({ iat: 5000 })).toBeNull();
+    expect(sessionStartedAtOf({ amr: [], iat: 5000 })).toBeNull();
+    expect(sessionStartedAtOf({ amr: [{ method: 'password', timestamp: 'x' }], iat: 5000 })).toBeNull();
+  });
+
+  it('a fresh post-reset sign-in (one amr entry, after the floor) still links', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    const h = harness();
+    expect((await h.devices('user-fresh', recoverySession('user-fresh', T0, 's-fresh-reset'))).status).toBe(200);
+    vi.setSystemTime(T0 + 120_000);
+    const link = await connect(h, 'user-fresh', 'amo', passwordSession('user-fresh', T0 + 120_000, 's-fresh-new'));
+    expect((await h.read(link.token)).status).toBe(200);
+  });
+});
+
+describe('EXA-11 review 2 — the list limit counts LIVE links only', () => {
+  it(`🔴 ${MAX_LISTED_LINKS + 5} unstamped dead links (expired and floored) do not hide the one live link`, async () => {
+    const h = harness();
+    const now = Date.now();
+    const iso = (ms: number) => new Date(ms).toISOString();
+    const rows: string[] = [];
+    for (let i = 0; i < MAX_LISTED_LINKS + 5; i++) {
+      // Half expired by age (created 200 days ago), half floored (auth_at before the floor).
+      const created = i % 2 === 0 ? iso(now - 200 * DAY) : iso(now - DAY);
+      const authAt = i % 2 === 0 ? iso(now - 200 * DAY) : iso(now - 2 * DAY);
+      rows.push(`('00000000-0000-4000-8000-${String(i).padStart(12, '0')}', 'user-dead', 'fullshot', 'amo', 'th-dead-${i}', '${created}', NULL, NULL, '${authAt}')`);
+    }
+    h.db.db.exec(`INSERT INTO ext_devices (link_id, user_id, product, channel, token_hash, created_at, last_seen_at, revoked_at, auth_at) VALUES ${rows.join(',')}`);
+    h.db.db.exec(`INSERT INTO ext_link_floor (user_id, not_before, recovery_session, updated_at) VALUES ('user-dead', '${iso(now - 36 * 3600_000)}', NULL, '${iso(now)}')`);
+    const live = await connect(h, 'user-dead', 'chrome-webstore', passwordSession('user-dead', now, 's-dead-live'));
+    const { devices } = (await (await h.devices('user-dead', passwordSession('user-dead', now, 's-dead-live'))).json()) as { devices: Array<{ link_id: string }> };
+    expect(devices.map((d) => d.link_id)).toEqual([live.link_id]);
   });
 });
 

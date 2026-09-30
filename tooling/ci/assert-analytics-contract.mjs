@@ -635,7 +635,7 @@ const WIRE_CONTRACTS = [
     id: 'sessions-revoke-all',
     kind: 'gap',
     reason:
-      'NO CLIENT YET: sign-out-everywhere ships in the web PR after this Worker deploys. No request body; success is a 204 with no body, and a refusal is a status with `{error}` (429 rate_limited, 503 revocation_unavailable).',
+      'NO CLIENT YET: sign-out-everywhere ships in the web PR after this Worker deploys. No request body; success is a 204 with no body, and a refusal is a status with `{error}` (429 rate_limited, 503 revocation_unavailable). ⏱ 2026-09-30 · EXA-11: ONE MORE ANSWER, AND IT IS A RETRY — 200 {d1Pending: true} means every token IS refused but the browser-extension link floor could not be written; the client MUST treat it as \"retry\", never as done.',
     absentFromDart: '/v1/sessions/revoke-all',
   },
   {

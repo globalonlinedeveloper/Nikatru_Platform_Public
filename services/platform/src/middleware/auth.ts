@@ -315,16 +315,34 @@ async function raiseFloorOnRecovery(
 }
 
 /**
- * ⏱ 2026-09-30 · EXA-11. When the verified token's session last AUTHENTICATED,
- * ISO: the newest `amr` timestamp (`authRecencyOf` — a refresh does not move
- * it), else the token's `iat`, else null. routes/ext.ts stamps it on every
- * code it mints, and the link floor is compared against it.
+ * ⏱ 2026-09-30 · EXA-11 (review 2, finding 1). When the verified token's
+ * SESSION STARTED, ISO: the OLDEST `amr` timestamp. routes/ext.ts stamps it on
+ * every code it mints as `auth_at`, and the link floor is compared against it.
+ *
+ * 🔴 THE OLDEST, NEVER THE NEWEST. GoTrue appends an `amr` entry to an EXISTING
+ * session whenever it steps up (a `totp` entry after an MFA verify), so the
+ * newest timestamp moves past a reset's floor without anybody signing in again —
+ * a session stolen before the reset could enrol TOTP and then link a browser.
+ * The oldest entry is the session's start, which no step-up moves. (The
+ * deletion-recency check keeps the NEWEST, `authRecencyOf`, on purpose: there
+ * the question is "authenticated lately", here it is "began before the reset".)
+ *
+ * 🔴 NO `amr`, NO START — AND NO `iat` FALLBACK. Every silent refresh rewrites
+ * `iat`, so it says nothing about when the session began. A token without a
+ * numeric `amr` timestamp answers null, and a null `auth_at` is older than ANY
+ * floor (lib/ext-links.ts `predatesFloor`): fail closed. GoTrue always sets
+ * `amr` (internal/tokens/service.go), so this refuses only a token GoTrue did
+ * not shape.
  */
-export function signedInAtOf(payload: Record<string, unknown>): string | null {
-  const amrAt = authRecencyOf(payload).lastAuthenticatedAt;
-  const seconds = amrAt ?? (typeof payload.iat === 'number' && Number.isFinite(payload.iat) ? payload.iat : null);
-  if (seconds === null) return null;
-  const d = new Date(seconds * 1000);
+export function sessionStartedAtOf(payload: Record<string, unknown>): string | null {
+  if (!Array.isArray(payload.amr)) return null;
+  let oldest: number | null = null;
+  for (const entry of payload.amr) {
+    const ts = entry && typeof entry === 'object' ? (entry as { timestamp?: unknown }).timestamp : undefined;
+    if (typeof ts === 'number' && Number.isFinite(ts)) oldest = oldest === null ? ts : Math.min(oldest, ts);
+  }
+  if (oldest === null) return null;
+  const d = new Date(oldest * 1000);
   return Number.isFinite(d.getTime()) ? d.toISOString() : null;
 }
 
@@ -378,7 +396,7 @@ export const platformAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
     const email = (payload as { email?: unknown }).email;
     if (typeof email === 'string') c.set('userEmail', email);
     c.set('authRecency', authRecencyOf(payload as Record<string, unknown>));
-    c.set('signedInAt', signedInAtOf(payload as Record<string, unknown>) ?? undefined);
+    c.set('sessionStartedAt', sessionStartedAtOf(payload as Record<string, unknown>) ?? undefined);
     c.set('linkedProviders', linkedProvidersOf(payload as Record<string, unknown>));
     await next();
     return;

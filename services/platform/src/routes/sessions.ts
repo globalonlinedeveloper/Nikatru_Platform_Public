@@ -258,7 +258,11 @@ export const LINK_FLOOR_ATTEMPTS = 2;
 //   · both done → 204 (unchanged)
 //   · KV failed → 503 revocation_unavailable (unchanged; the client retries)
 //   · KV done, D1 failed → 200 {d1Pending: true}: every token IS refused; the
-//     extension links are not yet ended, and the client may retry to finish.
+//     extension links are not yet ended. 🔴 CLIENT CONTRACT: a client MUST read
+//     `d1Pending: true` as "RETRY", never as done — a generic "any 2xx is done"
+//     client would leave the links alive until the next revoke-all. Recorded in
+//     tooling/platform-register.json (sessions-revoke-all) and the analytics
+//     contract's gap reason, for the first client that calls this route.
 // The partial state is logged with the request id and the error's name only.
 sessions.post('/sessions/revoke-all', async (c) => {
   if (await limited(c)) return c.json({ error: 'rate_limited' }, 429);

@@ -16,7 +16,8 @@
 // The page module is imported as it ships — its DOM half is behind
 // `typeof document !== 'undefined'`, so node loads only the functions.
 //
-// Red control: a returnUrl that accepts `http:` → the http case fails.
+// Red control: a returnUrl that accepts `http:` → the http case fails; a
+// mintFailure that ignores the error code → the "sign in again" case fails.
 //
 // Run:  node --test tooling/ci/test/ext-connect.test.mjs
 // ─────────────────────────────────────────────────────────────────────────────
@@ -26,7 +27,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
-const { returnUrl, readRequest } = await import(pathToFileURL(resolve(ROOT, 'sites/nikatru/ext/connect.js')).href);
+const { returnUrl, readRequest, mintFailure } = await import(pathToFileURL(resolve(ROOT, 'sites/nikatru/ext/connect.js')).href);
 
 const CHROME = 'https://abcdefghijklmnopabcdefghijklmnop.chromiumapp.org/';
 const CODE = 'AbCdEfGhIjKlMnOpQrStUv';
@@ -72,6 +73,22 @@ describe('returnUrl — the one navigation that carries a code', () => {
     const u = new URL(returnUrl(`${CHROME}?code=planted&state=planted`, CODE, 'mine'));
     assert.deepEqual(u.searchParams.getAll('code'), [CODE]);
     assert.deepEqual(u.searchParams.getAll('state'), ['mine']);
+  });
+});
+
+describe('mintFailure — what a refused mint tells the user (EXA-11 review 2)', () => {
+  test('🔴 401 link_needs_fresh_signin → sign in again, back to the form', () => {
+    const r = mintFailure(401, { error: 'link_needs_fresh_signin' });
+    assert.equal(r.signInAgain, true);
+    assert.match(r.message, /sign in again/);
+  });
+
+  test('any other failure → start again from the extension', () => {
+    for (const [status, body] of [[401, { error: 'unauthorized' }], [400, { error: 'redirect_uri_mismatch' }], [503, null], [0, null], [401, null], [401, 'link_needs_fresh_signin']]) {
+      const r = mintFailure(status, body);
+      assert.equal(r.signInAgain, false, JSON.stringify([status, body]));
+      assert.match(r.message, /start again from the extension/);
+    }
   });
 });
 

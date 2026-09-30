@@ -11,9 +11,10 @@
 // once. A session that signed in before the reset still holds a valid access
 // token for up to an hour, and with it could mint a link AFTER the reset. So:
 //
-//   · every code and link carries `auth_at` — when the minting session last
-//     AUTHENTICATED (middleware/auth.ts `signedInAt`: the newest `amr`
-//     timestamp, which a refresh does not move; `iat` only without `amr`);
+//   · every code and link carries `auth_at` — when the minting session
+//     STARTED (middleware/auth.ts `sessionStartedAt`: the OLDEST `amr`
+//     timestamp, which neither a refresh nor a TOTP step-up moves; null, and so
+//     older than any floor, when the token carries no `amr`);
 //   · every account may carry a floor, `ext_link_floor.not_before`
 //     (0021_ext_link_floor.sql), raised to the server's now by
 //       - POST /v1/sessions/revoke-all ("sign out everywhere"), and
