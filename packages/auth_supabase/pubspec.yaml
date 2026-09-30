@@ -31,7 +31,7 @@ dependencies:
   # gotrue_client.dart:156), and NativeAttestationClient is one: it binds each
   # native op to a fresh challenge and its exact body. Already in the workspace
   # lock through gotrue; declared because this package now imports it. The
-  # constraint is packages/telemetry's, COPIED, so the two cannot drift.
+  # constraint is packages/telemetry's, COPIED, to keep the two in step.
   http: ^1.2.0
 
 dev_dependencies:

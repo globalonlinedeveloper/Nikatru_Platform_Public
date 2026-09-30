@@ -27,6 +27,7 @@ import { clientDataFor, issueChallenge } from '../src/lib/native-attest';
 import { b64url, concat, fromB64url, sha256 } from '../src/lib/native-attest/bytes';
 import { APPLE_APP_ATTEST_ROOT_PEM, appleRootDer, verifyAssertion, verifyAttestation } from '../src/lib/native-attest/app-attest';
 import { issuedBy, parseCertificate, pemToDer } from '../src/lib/native-attest/x509';
+import { decodeCbor } from '../src/lib/native-attest/cbor';
 import { gradeVerdict, resetPlayIntegrityTokenCache, verifyPlayIntegrity, type CertPins } from '../src/lib/native-attest/play-integrity';
 
 // ── the wire protocol's test vector (scratch: protocol v1, "Test vector") ──────
@@ -51,6 +52,29 @@ describe('the binding — the published vector, byte for byte', () => {
     expect(b64url(sig)).toBe('sXemf003ur6yGpxrN1ZBAnOmflYWJdjMcLVGP9dNx7KQO-olH_EwF7FvyROu2eX9iO5CELDKf58HkCKRdDMUAQ');
     const pub = fromB64url('6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw')!;
     expect(b64url(await sha256(pub))).toBe('_oEsEvOrTOasXbaaw1L5BssbEe9D-zPiUu9_9VImOIk');
+  });
+});
+
+// ── the CBOR reader refuses rather than guesses (attacker bytes, unauthenticated route) ──
+describe('decodeCbor — refuses what it does not understand', () => {
+  it('reads the shapes App Attest uses: maps, text, bytes, arrays, small and large integers', () => {
+    const m = decodeCbor(Uint8Array.from([0xa2, 0x61, 0x61, 0x42, 1, 2, 0x61, 0x62, 0x82, 0x18, 0xff, 0x20]));
+    expect(m).toBeInstanceOf(Map);
+    expect((m as Map<string, unknown>).get('a')).toEqual(Uint8Array.from([1, 2]));
+    expect((m as Map<string, unknown>).get('b')).toEqual([255, -1]);
+  });
+  it('🔴 throws on indefinite length, a tag, a float, truncation, trailing bytes, a duplicate key and deep nesting', () => {
+    const cases: Array<[string, number[]]> = [
+      ['indefinite', [0x5f, 0x41, 0x00, 0xff]],
+      ['tag', [0xc0, 0x60]],
+      ['float', [0xfb, 0, 0, 0, 0, 0, 0, 0, 0]],
+      ['truncated', [0x44, 1, 2]],
+      ['trailing', [0x01, 0x02]],
+      ['duplicate key', [0xa2, 0x61, 0x61, 0x01, 0x61, 0x61, 0x02]],
+      ['too deep', [0x81, 0x81, 0x81, 0x81, 0x81, 0x81, 0x81, 0x81, 0x81, 0x81, 0x00]],
+      ['huge length', [0x5b, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]],
+    ];
+    for (const [why, bytes] of cases) expect(() => decodeCbor(Uint8Array.from(bytes)), why).toThrow();
   });
 });
 

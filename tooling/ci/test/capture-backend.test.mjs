@@ -111,6 +111,8 @@ describe('capture-backend: the sandbox is computed from the wrangler configs', (
       'ratelimit:REMINDERS_CEILING_LIMITER': '1014', // ⏱ 2026-09-28 · ST-T4a, the public reminder routes' ceiling.
       'ratelimit:NATIVE_AUTH_ACCOUNT_LIMITER': '1019',
       'ratelimit:NATIVE_AUTH_EDGE_LIMITER': '1020',
+      'ratelimit:NATIVE_AUTH_UNATTESTED_LIMITER': '1023', // ⏱ 2026-09-29 · ADR no.NNN, the unattested channel's ceiling.
+      'ratelimit:NATIVE_AUTH_INSTALL_LIMITER': '1024', // ⏱ 2026-09-29 · ADR no.NNN, key registration's ceiling.
     });
     assert.deepEqual(b['subscriptiontracker-api'].sandboxIds, {
       'd1:APP_DB': '4e7c7730-3dc7-4004-9895-403b17702b91',
