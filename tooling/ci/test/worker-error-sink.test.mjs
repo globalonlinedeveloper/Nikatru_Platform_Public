@@ -137,9 +137,16 @@ describe('assert-worker-error-sink — the wire is connected', () => {
   });
 
   test('FAILS when a Worker has no onError at all', () => {
+    // Cut by position, and refuse a fixture the cut does not find: a removal
+    // that silently matches nothing would leave this a second PASS case.
+    const withoutOnError = (src) => {
+      const m = /app\.onError\([\s\S]*?\n\}\);\n/.exec(src);
+      assert.ok(m, 'the fixture must carry an app.onError block for this test to remove');
+      return src.slice(0, m.index) + src.slice(m.index + m[0].length);
+    };
     const r = run(makeRepo((f) => ({
       ...f,
-      'services/platform/src/index.ts': f['services/platform/src/index.ts'].replace(/app\.onError\([\s\S]*?\n\}\);\n/, ''),
+      'services/platform/src/index.ts': withoutOnError(f['services/platform/src/index.ts']),
     })));
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /declares no `app\.onError\(`/);

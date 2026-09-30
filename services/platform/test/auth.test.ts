@@ -150,7 +150,9 @@ beforeAll(async () => {
       });
       return new Response(null, { status: identityStatus });
     }
-    if (url.startsWith(APP_ORIGIN)) {
+    // The parsed origin, compared exactly: a prefix `https://api.test` also
+    // matches `https://api.test.evil` (CodeQL js/incomplete-url-substring-sanitization).
+    if (new URL(url).origin === APP_ORIGIN) {
       ORDER.push('app');
       appCalls.push({
         url,

@@ -227,7 +227,9 @@ ${full.stderr ?? ''}`.replace(ANSI, '');
     console.error(`✗ a rule this repo has already cleaned up is back: ${reintroduced.join(', ')}`);
     console.error('');
     for (const line of fullText.split('\n')) {
-      if (reintroduced.some((r) => line.includes(`[${r}]`)) || /^\s*-->/.test(line)) {
+      // `-->` is zizmor's rustc-style location arrow ("  --> .github/workflows/x.yml:L:C"),
+      // echoed so each finding carries its file:line — not an HTML comment end (CodeQL js/bad-tag-filter).
+      if (reintroduced.some((r) => line.includes(`[${r}]`)) || line.trimStart().startsWith('-->')) {
         console.error(`    ${line.trim()}`);
       }
     }

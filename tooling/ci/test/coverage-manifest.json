@@ -21,7 +21,7 @@
     21,
 
   "alert-disposition.test.mjs":
-    29,
+    42,
 
   "analytics-contract.test.mjs":
     79,
@@ -186,7 +186,7 @@
     40,
 
   "catalog-reachable.test.mjs":
-    22,
+    24,
 
   "ceiling-budget.test.mjs":
     73,
@@ -226,6 +226,9 @@
 
   "code-scanning-age.test.mjs":
     15,
+
+  "codeql-pr-no-new-high.test.mjs":
+    22,
 
   "config-registry.test.mjs":
     61,
@@ -379,6 +382,9 @@
 
   "flutter-release-build.test.mjs":
     33,
+
+  "flutter-stock-assets-injection.test.mjs":
+    1,
 
   "free-api-scope-transient.test.mjs":
     8,
@@ -981,7 +987,7 @@
     75,
 
   "tech-currency.test.mjs":
-    43,
+    44,
 
   "test-clock-mix.test.mjs":
     25,

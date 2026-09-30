@@ -102,9 +102,10 @@ describe('smoke-web-artifact.mjs — it refuses before it ever opens a browser',
     assert.doesNotMatch(r.out, /^::/m, r.out);
   });
 
-  test('oneLine folds a CR, an LF and a CRLF, each into its own mark (CodeQL #326)', () => {
-    // Each terminator is replaced on its own, so a lone CR cannot survive; a character class read
-    // as no sanitizer at all to CodeQL, which is what raised #326 on the detail loop.
+  test('oneLine folds a CR, an LF and a CRLF, each into its own mark (CodeQL #326, #440)', () => {
+    // Each terminator gets its mark and is then removed, so a lone CR cannot survive; the removal of
+    // "\n" is the shape CodeQL reads as a sanitizer — a character class (#326) or a replace of "\n"
+    // with the mark (#440) was read as none, on the detail loop.
     assert.equal(oneLine('a\nb'), 'a ⏎ b');
     assert.equal(oneLine('a\rb'), 'a ⏎ b');
     assert.equal(oneLine('a\r\nb'), 'a ⏎ b');

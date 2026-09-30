@@ -76,8 +76,8 @@
 // Exit 0 = the submission path is walkable. 1 = it is not, or --submit.
 //       2 = COVERAGE LOST: an input it must read is absent or unreadable (submit-common.mjs).
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, statSync } from 'node:fs';
-import { join, resolve, dirname } from 'node:path';
+import { existsSync, statSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { readAppleBundleId } from '../ci/read-identity.mjs';
