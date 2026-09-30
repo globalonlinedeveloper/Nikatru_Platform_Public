@@ -129,7 +129,7 @@ import { join, resolve, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments } from './text-reductions.mjs';
-import { isObject, sandboxEnvironmentFindings } from './wrangler-environments.mjs';
+import { isObject, sandboxEnvironmentFindings, sandboxWorkflowSecretFindings } from './wrangler-environments.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
@@ -525,6 +525,21 @@ for (const c of configs) {
     for (const m of sandboxEnvironmentFindings(where, cfg, e)) fail(m);
     // LIMB 1d
     for (const m of limiterParityFindings(where, cfg, e)) fail(m);
+  }
+}
+
+// ── LIMB 1e · the sandbox deploy workflow never puts the service-role key ───
+// ⏱ 2026-09-30 · ADR no.NNN (review of #1070). Limb 1c refuses the key in a
+// sandbox environment's own block; a secret is usually put by the DEPLOY, so the
+// workflow that deploys the sandbox is read too. Absent, it is COVERAGE LOST in
+// the only form this guard has — a failure naming the file it could not read.
+{
+  const rel = '.github/workflows/deploy-sandbox.yml';
+  const p = join(ROOT, rel);
+  if (!existsSync(p)) {
+    fail(`${rel} is missing, so limb 1e cannot say the sandbox deploy puts no service-role key. [ADR no.NNN]`);
+  } else {
+    for (const m of sandboxWorkflowSecretFindings(rel, readFileSync(p, 'utf8'))) fail(m);
   }
 }
 

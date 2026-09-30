@@ -18,7 +18,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { isObject, routeHosts, d1Of, sandboxEnvironmentFindings } from '../wrangler-environments.mjs';
+import { isObject, routeHosts, d1Of, sandboxEnvironmentFindings, sandboxWorkflowSecretFindings } from '../wrangler-environments.mjs';
 import { parseJsonc } from '../d1-sql-inventory.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -68,6 +68,27 @@ describe('wrangler-environments — sandboxEnvironmentFindings', () => {
       assert.ok(isObject(cfg.env?.sandbox), `${rel} declares env.sandbox`);
       assert.deepEqual(sandboxEnvironmentFindings(`${rel} env.sandbox`, cfg, cfg.env.sandbox), [], rel);
     }
+  });
+
+  // ⏱ 2026-09-30 · ADR no.NNN (review of #1070): a sandbox never holds the service-role key.
+  test('RED: the service-role key in a sandbox environment\'s vars or secrets', () => {
+    const inVars = sandbox();
+    inVars.vars = { ...(inVars.vars ?? {}), SUPABASE_SERVICE_ROLE_KEY: 'x' };
+    const a = sandboxEnvironmentFindings('w env.sandbox', TOP, inVars);
+    assert.equal(a.length, 1);
+    assert.match(a[0], /carries SUPABASE_SERVICE_ROLE_KEY in its `vars`/);
+    const inSecrets = sandbox();
+    inSecrets.secrets = { required: ['SUPABASE_SERVICE_ROLE_KEY'] };
+    assert.match(sandboxEnvironmentFindings('w env.sandbox', TOP, inSecrets)[0], /in its `secrets`/);
+  });
+
+  test('sandboxWorkflowSecretFindings: RED when the sandbox deploy names the key, GREEN on the real deploy-sandbox.yml', () => {
+    const red = sandboxWorkflowSecretFindings('deploy-sandbox.yml', 'secrets: |\n  SUPABASE_SERVICE_ROLE_KEY\n');
+    assert.equal(red.length, 1);
+    assert.match(red[0], /^deploy-sandbox\.yml names SUPABASE_SERVICE_ROLE_KEY/);
+    const real = readFileSync(join(REPO, '.github/workflows/deploy-sandbox.yml'), 'utf8');
+    assert.ok(real.length > 100, 'deploy-sandbox.yml was read');
+    assert.deepEqual(sandboxWorkflowSecretFindings('deploy-sandbox.yml', real), []);
   });
 
   test('RED: no `routes` inherits the production host', () => {

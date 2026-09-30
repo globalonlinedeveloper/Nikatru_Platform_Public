@@ -190,10 +190,29 @@ export interface Env {
   NATIVE_AUTH_INSTALL_LIMITER?: RateLimiterBinding;
 
   /**
+   * ⏱ 2026-09-30 · ADR no.NNN (review of #1070). The per-network ceiling on
+   * Play Integrity verifications, spent BEFORE a decode is asked of Google, so
+   * one network cannot spend the Cloud project's daily quota. Keyed
+   * `edge:<colo>:<asn>`. Absence FAILS CLOSED (503).
+   */
+  NATIVE_AUTH_PLAY_VERIFY_LIMITER?: RateLimiterBinding;
+
+  /**
+   * ⏱ 2026-09-30 · ADR no.NNN (review of #1070). The HMAC-SHA256 key native
+   * sign-in challenges are signed with, so issuing one writes nothing (32+
+   * characters of randomness, `wrangler secret put NATIVE_ATTEST_CHALLENGE_KEY`;
+   * ours, not a vendor's). Absent or short, the challenge endpoint and every
+   * native op answer 503. Rotating it invalidates only challenges in flight.
+   */
+  NATIVE_ATTEST_CHALLENGE_KEY?: string;
+
+  /**
    * ⏱ 2026-09-29 · ADR no.NNN. THE FLAG: the attestation kinds this deploy
    * accepts on the native route, comma-separated, from `play-integrity`,
    * `app-attest`, `install-key`. ABSENT OR EMPTY ACCEPTS NONE — every native op
    * is then 403, never open. A listed kind whose config below is missing is 503.
+   * ⏱ 2026-09-30 (review of #1070): no deploy lists `install-key`, and even a
+   * listed one authorises only the password grant (KIND_OPS).
    */
   NATIVE_AUTH_ATTEST_KINDS?: string;
 

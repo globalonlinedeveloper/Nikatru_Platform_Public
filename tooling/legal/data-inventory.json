@@ -366,20 +366,20 @@
       }
     },
     {
-      "id": "table:platform_db.native_attest_challenges",
+      "id": "table:platform_db.native_attest_redeemed",
       "kind": "d1-table",
-      "name": "native_attest_challenges",
+      "name": "native_attest_redeemed",
       "personalData": false,
-      "holds": "⏱ 2026-09-29 · ADR no.NNN (native sign-in serves only attested app installs). One row per single-use challenge a native app asks for before a sign-in call: SHA-256 of the challenge (never the challenge), the app id, `created_at` and `expires_at` (created_at + 120 s). Redeeming a challenge DELETES its row. No account, no email, no address, no device identifier.",
+      "holds": "⏱ 2026-09-30 · ADR no.NNN (native sign-in serves only attested app installs), reshaped on the independent review of #1070. A native sign-in challenge is a STATELESS HMAC-signed token and is never stored; one row here is the random nonce of a challenge a request has presented, the app id, and the challenge's own expiry (issued + 120 s). It is what makes a challenge single-use. Every redemption deletes the expired rows first. No account, no email, no address, no device identifier.",
       "retention": {
         "kind": "swept",
         "periodDays": 1,
         "sweptBy": "services/platform/src/scheduled.ts",
-        "reason": "One day past `expires_at`, enforced by the platform Worker's nightly `retentionSweep` (NATIVE_ATTEST_CHALLENGES_RETENTION_DAYS). A redeemed challenge is already deleted; one left after `expires_at` can never be redeemed. The cutoff is on `expires_at`, so an unexpired challenge is never swept. `swept`, not `ttl`: D1 has no expiry."
+        "reason": "Pruned INLINE on every redemption (expired rows deleted before the insert), and swept in full by the nightly `retentionSweep` one day past `expires_at` (NATIVE_ATTEST_REDEEMED_RETENTION_DAYS) with no per-run row cap. Once expired, the MAC check refuses the challenge anyway, so the row guards nothing. `swept`, not `ttl`: D1 has no expiry."
       },
       "erasure": {
         "kind": "no-personal-data",
-        "reason": "A random challenge's hash, an app id and two timestamps, tied to nobody. The Worker reads no client address (ADR 011 / ADR 020), and neither table has an account, email, device-identifier or address column."
+        "reason": "A random nonce, an app id and a timestamp, tied to nobody. The Worker reads no client address (ADR 011 / ADR 020), and no attestation table has an account, email, device-identifier or address column."
       },
       "writtenBy": [
         "services/platform/migrations/0021_native_attest.sql",
@@ -396,11 +396,32 @@
         "kind": "swept",
         "periodDays": 90,
         "sweptBy": "services/platform/src/scheduled.ts",
-        "reason": "90 days after `last_used_at`, enforced by the nightly `retentionSweep` (NATIVE_ATTEST_KEYS_RETENTION_DAYS). An operational bound, not a personal-data one: a swept install answers `attestation_key_unknown` once and registers a fresh key. It also bounds what a script minting throwaway desktop keys leaves behind."
+        "reason": "90 days after `last_used_at`, enforced by the nightly `retentionSweep` (NATIVE_ATTEST_KEYS_RETENTION_DAYS), and pruned INLINE by every registration write (up to 100 idle keys deleted before the insert). An operational bound, not a personal-data one: a swept install answers `attestation_key_unknown` once and registers a fresh key. Registration writes are also capped per network per UTC day (NATIVE_ATTEST_INSTALLS_PER_NETWORK_PER_DAY)."
       },
       "erasure": {
         "kind": "no-personal-data",
         "reason": "A public key and a counter that say \"some install of this app holds this key\", tied to no account. The Worker reads no client address (ADR 011 / ADR 020), and neither table has an account, email, device-identifier or address column."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0021_native_attest.sql",
+        "services/platform/src/lib/native-attest/index.ts"
+      ]
+    },
+    {
+      "id": "table:platform_db.native_attest_counters",
+      "kind": "d1-table",
+      "name": "native_attest_counters",
+      "personalData": false,
+      "holds": "⏱ 2026-09-30 · ADR no.NNN (native sign-in serves only attested app installs). One row per (UTC day, scope): today's count of Play Integrity decodes (`play-integrity:decode`, the ceiling below Google's quota) and today's key registrations per network (`install:edge:<colo>:<asn>` — a Cloudflare PoP code and an autonomous-system number, the same key the rate limiters use, never an address). A number, a day and a scope.",
+      "retention": {
+        "kind": "swept",
+        "periodDays": 1,
+        "sweptBy": "services/platform/src/scheduled.ts",
+        "reason": "Only today's row is ever read. Every bump deletes the previous days' rows inline, and the nightly `retentionSweep` deletes any row a day old in full (NATIVE_ATTEST_COUNTERS_RETENTION_DAYS), with no per-run row cap."
+      },
+      "erasure": {
+        "kind": "no-personal-data",
+        "reason": "A count per day per scope; the network scope is a PoP and an AS number shared by everyone on that network. The Worker reads no client address (ADR 011 / ADR 020), and no attestation table has an account, email, device-identifier or address column."
       },
       "writtenBy": [
         "services/platform/migrations/0021_native_attest.sql",

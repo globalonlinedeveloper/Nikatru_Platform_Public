@@ -1401,8 +1401,9 @@ export type RetentionStore =
   | 'content_reports'
   | 'ext_codes'
   | 'ext_devices'
-  | 'native_attest_challenges'
-  | 'native_attest_keys';
+  | 'native_attest_redeemed'
+  | 'native_attest_keys'
+  | 'native_attest_counters';
 
 /** Days-to-keep per store. `null` is UNDECLARED, and undeclared is INERT. */
 export type RetentionPeriods = Record<RetentionStore, number | null>;
@@ -1559,14 +1560,24 @@ export const EXT_CODES_RETENTION_DAYS = 1;
 // @ceiling none — a RETENTION PERIOD is a policy number, not a platform resource; nothing in tooling/ceilings.json bounds how long rows may be kept.
 export const EXT_DEVICES_RETENTION_DAYS = 30;
 
-// 🔒 DECLARED — ONE DAY PAST EXPIRY. ⏱ 2026-09-29 · ADR no.NNN. Register row:
-// retention.d1.platform_db.native_attest_challenges. A native sign-in challenge
-// lives 120 seconds and redeeming it DELETES it (lib/native-attest/index.ts), so
-// a row that is still here after `expires_at` is one nobody redeemed — worthless
-// the instant it expired. The day matches EXT_CODES_RETENTION_DAYS's reasoning;
-// the cutoff is on `expires_at`, so an unexpired challenge is never swept.
+// 🔒 DECLARED — ONE DAY PAST EXPIRY. ⏱ 2026-09-30 · ADR no.NNN (review of
+// #1070). Register row: retention.d1.platform_db.native_attest_redeemed. A
+// challenge is a signed token that is never stored; a row here is a REDEEMED
+// nonce, kept only so a replay inside the challenge's own 120 seconds finds it.
+// Once `expires_at` has passed the MAC check refuses the token anyway, so the
+// row guards nothing. Every redemption already deletes expired rows inline;
+// this limb deletes whatever is a day past expiry, IN FULL — no
+// MAX_ROWS_PER_SWEEP cap. (A day, not zero: retentionCutoff reads 0 as undeclared.)
 // @ceiling none — a RETENTION PERIOD is a policy number, not a platform resource; nothing in tooling/ceilings.json bounds how long rows may be kept.
-export const NATIVE_ATTEST_CHALLENGES_RETENTION_DAYS = 1;
+export const NATIVE_ATTEST_REDEEMED_RETENTION_DAYS = 1;
+
+// 🔒 DECLARED — ONE DAY. ⏱ 2026-09-30 · ADR no.NNN (review of #1070). Register
+// row: retention.d1.platform_db.native_attest_counters. One row per (UTC day,
+// scope): today's Play Integrity decodes and today's key registrations per
+// network. Only today's row is ever read; every bump deletes the previous days'
+// inline, and this limb deletes any older row IN FULL — no per-run cap.
+// @ceiling none — a RETENTION PERIOD is a policy number, not a platform resource; nothing in tooling/ceilings.json bounds how long rows may be kept.
+export const NATIVE_ATTEST_COUNTERS_RETENTION_DAYS = 1;
 
 // 🔒 DECLARED — 90 DAYS SINCE LAST USE. ⏱ 2026-09-29 · ADR no.NNN. Register row:
 // retention.d1.platform_db.native_attest_keys. A row is an install's PUBLIC key
@@ -1891,10 +1902,19 @@ async function deleteOlderThan(env: Env, store: RetentionStore, cutoff: string):
             // the sweep deletes only what it can date.
             "DELETE FROM ext_devices WHERE rowid IN (SELECT rowid FROM ext_devices WHERE revoked_at < ? AND revoked_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T*' ORDER BY revoked_at LIMIT ?)",
           )
-      : store === 'native_attest_challenges'
+      : store === 'native_attest_redeemed'
         ? env.PLATFORM_DB.prepare(
-            // ADR no.NNN. From `expires_at` (ISO-8601 TEXT), as ext_codes.
-            'DELETE FROM native_attest_challenges WHERE rowid IN (SELECT rowid FROM native_attest_challenges WHERE expires_at < ? ORDER BY expires_at LIMIT ?)',
+            // ADR no.NNN (review of #1070). From `expires_at` (ISO-8601 TEXT),
+            // and IN FULL: the `? IS NOT NULL` takes the per-run bound's slot so
+            // the bind list stays the shared (cutoff, limit) — no row cap here.
+            'DELETE FROM native_attest_redeemed WHERE expires_at < ? AND ? IS NOT NULL',
+          )
+      : store === 'native_attest_counters'
+        ? env.PLATFORM_DB.prepare(
+            // ADR no.NNN (review of #1070). `day` is 'YYYY-MM-DD' against the
+            // full ISO cutoff, which sorts correctly (a day string is a prefix of
+            // its own instants). IN FULL, as above.
+            'DELETE FROM native_attest_counters WHERE day < ? AND ? IS NOT NULL',
           )
       : store === 'native_attest_keys'
         ? env.PLATFORM_DB.prepare(
@@ -1982,8 +2002,9 @@ export async function retentionSweep(
     content_reports: CONTENT_REPORTS_RETENTION_DAYS,
     ext_codes: EXT_CODES_RETENTION_DAYS,
     ext_devices: EXT_DEVICES_RETENTION_DAYS,
-    native_attest_challenges: NATIVE_ATTEST_CHALLENGES_RETENTION_DAYS,
+    native_attest_redeemed: NATIVE_ATTEST_REDEEMED_RETENTION_DAYS,
     native_attest_keys: NATIVE_ATTEST_KEYS_RETENTION_DAYS,
+    native_attest_counters: NATIVE_ATTEST_COUNTERS_RETENTION_DAYS,
   },
   nowMs: number = Date.now(),
 ): Promise<void> {
@@ -1995,8 +2016,9 @@ export async function retentionSweep(
     'content_reports',
     'ext_codes',
     'ext_devices',
-    'native_attest_challenges',
+    'native_attest_redeemed',
     'native_attest_keys',
+    'native_attest_counters',
   ];
   const n_stores = stores.length;
   let declared = 0;
@@ -2035,7 +2057,8 @@ export async function retentionSweep(
       // ISO instant. Narrowing here keeps the DELETE a plain string literal.
       const n = await deleteOlderThan(env, store, store === 'events_daily' ? bounded.slice(0, 10) : bounded);
       deleted += n;
-      if (n >= MAX_ROWS_PER_SWEEP) capped++;
+      // The two uncapped limbs delete in full, so a large count is not a cap.
+      if (n >= MAX_ROWS_PER_SWEEP && store !== 'native_attest_redeemed' && store !== 'native_attest_counters') capped++;
       // ⏱ 2026-09-29 · with nine stores the full token list outgrew the
       // heartbeat's 200-character detail (recordHeartbeat slices there), so a
       // store that deleted nothing is COUNTED in `quiet=` rather than named.

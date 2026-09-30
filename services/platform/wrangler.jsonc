@@ -42,11 +42,15 @@
     // ⏱ 2026-09-29 · ADR no.NNN — THE NATIVE SIGN-IN ATTESTATION FLAG: the kinds
     // POST /v1/auth/native/<app>/<op> accepts (src/lib/native-attest/index.ts).
     // ABSENT OR EMPTY ACCEPTS NONE — the route then refuses every op, never
-    // opens. `play-integrity` is deliberately NOT listed: its service-account
-    // key and the Play app-signing digest are owner-provisioned and do not
-    // exist yet, so Android sign-in stays closed until both do (the PR lists the
-    // owner step). `app-attest` answers 503 until APP_ATTEST_TEAM_ID is put.
-    "NATIVE_AUTH_ATTEST_KINDS": "app-attest,install-key",
+    // opens. ⏱ 2026-09-30 (LEAD RULING db0cc7, review of #1070): ONLY the kinds
+    // whose proof this server verifies. `install-key` is NOT listed and must
+    // not be — a script can mint and register a key exactly as a desktop build
+    // does — and KIND_OPS would confine it to the password grant even here.
+    // Each listed kind FAILS CLOSED (503) until its config exists:
+    // `play-integrity` until the owner's service-account key and Play
+    // app-signing digest are put, `app-attest` until APP_ATTEST_TEAM_ID is, and
+    // both until NATIVE_ATTEST_CHALLENGE_KEY is (the PR lists each step).
+    "NATIVE_AUTH_ATTEST_KINDS": "app-attest,play-integrity",
     // ⚠️ EXACT allowlist — no pattern matching, and an EMPTY value now DENIES
     // every browser origin rather than falling back to '*'. This Worker is no
     // longer config-read-only: it serves /v1/events and /v1/consent, and will
@@ -427,6 +431,16 @@
       "name": "NATIVE_AUTH_INSTALL_LIMITER",
       "namespace_id": "1022",
       "simple": { "limit": 5, "period": 60 }
+    },
+    {
+      // ⏱ 2026-09-30 · ADR no.NNN (review of #1070). The per-NETWORK ceiling on
+      // Play Integrity verifications, spent BEFORE a decode is asked of Google,
+      // keyed `edge:<colo>:<asn>`. One network cannot spend the Cloud project's
+      // daily quota (the global ceiling below it is PLAY_INTEGRITY_DAILY_CEILING,
+      // a D1 counter). FAILS CLOSED.
+      "name": "NATIVE_AUTH_PLAY_VERIFY_LIMITER",
+      "namespace_id": "1025",
+      "simple": { "limit": 10, "period": 60 }
     }
   ],
   "triggers": {
@@ -549,8 +563,12 @@
         // top level's value stays "live" (limb 1), and this one must be
         // exactly "sandbox" (limb 1b).
         "MONEY_ENVIRONMENT": "sandbox",
-        // why: src/lib/native-attest/index.ts — the top level's kinds, copied.
-        "NATIVE_AUTH_ATTEST_KINDS": "app-attest,install-key",
+        // why: src/lib/native-attest/index.ts. ⏱ 2026-09-30 (review of #1070):
+        // EMPTY — the sandbox accepts no attestation kind, so its native route
+        // refuses every op. The sandbox shares production's identity project,
+        // and it carries no service-role key (tooling/ci/wrangler-environments.mjs
+        // refuses one in any sandbox environment).
+        "NATIVE_AUTH_ATTEST_KINDS": "",
         // why: src/lib/native-attest/index.ts — a development-signed build's
         // App Attest key carries the `appattestdevelop` AAGUID; only the
         // sandbox accepts it. The top level never sets this.
@@ -660,6 +678,13 @@
           "name": "NATIVE_AUTH_INSTALL_LIMITER",
           "namespace_id": "1024",
           "simple": { "limit": 5, "period": 60 }
+        },
+        {
+          // why: src/routes/native-auth.ts (Play Integrity verifications). The
+          // top level's NATIVE_AUTH_PLAY_VERIFY_LIMITER (1025), same limit.
+          "name": "NATIVE_AUTH_PLAY_VERIFY_LIMITER",
+          "namespace_id": "1026",
+          "simple": { "limit": 10, "period": 60 }
         }
       ]
     }

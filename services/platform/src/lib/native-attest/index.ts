@@ -1,6 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // native-attest — WHO may use the captcha-free native sign-in route
-// (⏱ 2026-09-29, ADR no.NNN "native sign-in serves only attested app installs").
+// (⏱ 2026-09-29, ADR no.NNN "native sign-in serves only attested app installs";
+// ⏱ 2026-09-30 revised on the independent review of #1070, LEAD RULING db0cc7).
 //
 // 🔴 THE DEFECT THIS CLOSES. routes/native-auth.ts forwards the password grant,
 // /signup, /recover and /resend to GoTrue with the service-role bearer, which
@@ -8,31 +9,37 @@
 // caller was an app was a MISSING `Origin` header — any script could send the
 // request and get captcha-free sign-in and sign-up, bounded by rate limits alone.
 //
-// Every op now carries an ATTESTATION bound to a single-use server challenge and
-// to the exact request body (the wire protocol is in the ADR; the client half is
-// packages/core native_attest.dart + packages/auth_supabase):
+// Every op now carries an ATTESTATION bound to a single-use server challenge, to
+// the request's path and query, and to the exact body (wire protocol v2; the
+// client half is packages/core native_attest.dart + packages/auth_supabase):
 //
-//   clientData = "nk-native-auth/v1\n<app>\n<op>\n<challenge>\n<b64url SHA-256(body)>"
+//   clientData = "nk-native-auth/v2\n<app>\n<op>\n<challenge>\n<target>\n<b64url SHA-256(body)>"
+//   target     = <path>[?<every query pair, decoded, sorted by key then value,
+//                 each encodeURIComponent(k)=encodeURIComponent(v), joined by &>]
 //
-//   kind            proof                                         strength
-//   play-integrity  Play Integrity verdict, nonce = SHA-256(cD)   the app binary + device, Google-signed
-//   app-attest      App Attest assertion over SHA-256(cD)         the app binary + device, Apple-signed
-//   install-key     Ed25519 signature by a per-install key        NONE about the binary — see below
+//   kind            proof                                         who verifies
+//   play-integrity  Play Integrity verdict, nonce = SHA-256(cD)   Google signs, this server grades
+//   app-attest      App Attest assertion over SHA-256(cD)         Apple's chain, verified HERE
+//   install-key     Ed25519 signature by a per-install key        NOBODY vouches for the binary
 //
-// ⚠️ THE RESIDUAL RISK, STATED WHERE IT LIVES. Windows, Linux and a macOS build
-// outside the Mac App Store have no platform attestation. `install-key` proves
-// only "the same install that registered this key", and a script can register
-// keys too. What bounds it instead: a much tighter per-network ceiling on its
-// ops (NATIVE_AUTH_UNATTESTED_LIMITER) and on key registration
-// (NATIVE_AUTH_INSTALL_LIMITER), and NO SESSION BEFORE EMAIL VERIFICATION on
-// that channel — the route withholds any session a sign-up would return, and a
-// password grant for an unconfirmed address. A bot that picks this channel gets
-// rate-limited sign-up that ends in an unclicked email, and password guessing at
-// a fraction of a network's budget. That is the floor the ADR records.
+// 🔴 `install-key` PROVES NOTHING A SCRIPT CANNOT DO (review finding 1). A script
+// mints a key and registers it exactly as a desktop build would. So:
+//   · it is NOT listed in NATIVE_AUTH_ATTEST_KINDS in any deploy (wrangler.jsonc);
+//   · and even when listed, KIND_OPS lets it authorise ONLY the password grant
+//     (and its own key registration) — never signup, recover or resend. Desktop
+//     sign-up and reset go through the web Turnstile flow. A desktop channel is
+//     served only after desktop BINARY attestation exists (the PR's row).
 //
-// FAIL CLOSED, EVERYWHERE: a kind not listed in NATIVE_AUTH_ATTEST_KINDS is
-// 403; a listed kind whose server config is missing is 503; a challenge is
-// consumed by the first request that presents it, pass or fail.
+// CHALLENGES ARE STATELESS (review finding 2). Issuing one writes nothing: it is
+// an HMAC-SHA256 token over (app, expiry, nonce) under NATIVE_ATTEST_CHALLENGE_KEY.
+// Only a REDEEMED nonce is written (native_attest_redeemed), which is what makes
+// it single-use, and every redemption first deletes the expired ones — so the
+// table holds at most the nonces redeemed in the last NATIVE_ATTEST_CHALLENGE_TTL_SECONDS.
+//
+// FAIL CLOSED, EVERYWHERE: a kind not in NATIVE_AUTH_ATTEST_KINDS is 403; a kind
+// asked to authorise an op KIND_OPS does not give it is 403; a listed kind whose
+// server config is missing is 503; a challenge is burned by the first request
+// that presents it, pass or fail.
 // ─────────────────────────────────────────────────────────────────────────────
 import type { Env } from '../../types';
 import { b64url, fromB64, fromB64url, sha256 } from './bytes';
@@ -42,7 +49,20 @@ import { parseServiceAccount, pinsFor, verifyPlayIntegrity } from './play-integr
 export const ATTEST_KINDS = ['play-integrity', 'app-attest', 'install-key'] as const;
 export type AttestKind = (typeof ATTEST_KINDS)[number];
 
-export const BINDING_PREFIX = 'nk-native-auth/v1';
+export type AttestOp = 'token' | 'signup' | 'recover' | 'resend' | 'install';
+
+/**
+ * THE OP TABLE: which calls each kind may authorise. Structural, not config —
+ * no value of NATIVE_AUTH_ATTEST_KINDS lets `install-key` reach signup, recover
+ * or resend. `play-integrity` registers no key, so it has no `install`.
+ */
+export const KIND_OPS: Readonly<Record<AttestKind, ReadonlySet<AttestOp>>> = {
+  'play-integrity': new Set<AttestOp>(['token', 'signup', 'recover', 'resend']),
+  'app-attest': new Set<AttestOp>(['token', 'signup', 'recover', 'resend', 'install']),
+  'install-key': new Set<AttestOp>(['token', 'install']),
+};
+
+export const BINDING_PREFIX = 'nk-native-auth/v2';
 
 /**
  * How long an issued challenge stays redeemable.
@@ -53,6 +73,25 @@ export const BINDING_PREFIX = 'nk-native-auth/v1';
  */
 export const NATIVE_ATTEST_CHALLENGE_TTL_SECONDS = 120;
 
+/**
+ * Play Integrity decodes this deploy asks Google for, per UTC day, across every
+ * app and network. Over it the kind answers 503 until midnight UTC.
+ *
+ * @ceiling none — a self-imposed budget BELOW Google's default Play Integrity
+ * quota for classic requests (10,000 calls a day per Cloud project), not a
+ * Cloudflare resource; the owner raises the Google quota before Android is served.
+ */
+export const PLAY_INTEGRITY_DAILY_CEILING = 8_000;
+
+/**
+ * Key registrations one network (`edge:<colo>:<asn>`) may write per UTC day.
+ *
+ * @ceiling none — a WRITE bound on an unauthenticated route into platform_db,
+ * not a platform limit: an install registers once, so a network registering
+ * more than this in a day is minting keys, not installing an app.
+ */
+export const NATIVE_ATTEST_INSTALLS_PER_NETWORK_PER_DAY = 100;
+
 export const HEADER = {
   kind: 'x-nk-attest-kind',
   challenge: 'x-nk-attest-challenge',
@@ -60,11 +99,16 @@ export const HEADER = {
   proof: 'x-nk-attest-proof',
 } as const;
 
-export type AttestOp = 'token' | 'signup' | 'recover' | 'resend' | 'install';
+/** The request's path and canonical query — the part of the URL every proof covers. */
+export function requestTarget(url: URL): string {
+  const pairs = [...url.searchParams].sort(([ka, va], [kb, vb]) => (ka < kb ? -1 : ka > kb ? 1 : va < vb ? -1 : va > vb ? 1 : 0));
+  if (pairs.length === 0) return url.pathname;
+  return `${url.pathname}?${pairs.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&')}`;
+}
 
 /** The binding every proof covers. */
-export async function clientDataFor(app: string, op: AttestOp, challenge: string, body: Uint8Array): Promise<string> {
-  return [BINDING_PREFIX, app, op, challenge, b64url(await sha256(body))].join('\n');
+export async function clientDataFor(app: string, op: AttestOp, challenge: string, target: string, body: Uint8Array): Promise<string> {
+  return [BINDING_PREFIX, app, op, challenge, target, b64url(await sha256(body))].join('\n');
 }
 
 /** The kinds this deploy accepts: NATIVE_AUTH_ATTEST_KINDS, comma-separated. Absent ⇒ none. */
@@ -73,9 +117,16 @@ export function enabledKinds(env: Pick<Env, 'NATIVE_AUTH_ATTEST_KINDS'>): Set<At
   return new Set(ATTEST_KINDS.filter((k) => listed.includes(k)));
 }
 
+/** The challenge-signing secret, when it is long enough to be one. */
+const challengeSecret = (env: Pick<Env, 'NATIVE_ATTEST_CHALLENGE_KEY'>) =>
+  typeof env.NATIVE_ATTEST_CHALLENGE_KEY === 'string' && env.NATIVE_ATTEST_CHALLENGE_KEY.length >= 32 ? env.NATIVE_ATTEST_CHALLENGE_KEY : null;
+
+/** Whether the server can mint and redeem challenges at all. */
+export const challengesConfigured = (env: Env): boolean => !!env.PLATFORM_DB && challengeSecret(env) !== null;
+
 /** Whether the server holds what `kind` needs to verify anything for `app`. */
 export function configured(env: Env, kind: AttestKind, app: string): boolean {
-  if (!env.PLATFORM_DB) return false;
+  if (!challengesConfigured(env)) return false;
   if (kind === 'play-integrity') {
     return parseServiceAccount(env.PLAY_INTEGRITY_SERVICE_ACCOUNT) !== null && pinsFor(env.PLAY_INTEGRITY_CERT_DIGESTS, app) !== null;
   }
@@ -83,7 +134,8 @@ export function configured(env: Env, kind: AttestKind, app: string): boolean {
   return true;
 }
 
-const CHALLENGE = /^[A-Za-z0-9_-]{43}$/;
+/** `c1.<app>.<expiry, unix seconds>.<nonce, 16 bytes>.<HMAC-SHA256, 32 bytes>`. */
+const CHALLENGE = /^c1\.([a-z][a-z0-9]{0,39})\.(\d{10})\.([A-Za-z0-9_-]{22})\.([A-Za-z0-9_-]{43})$/;
 
 export interface AttestHeaders {
   kind: string;
@@ -107,23 +159,70 @@ export const isKind = (k: string): k is AttestKind => (ATTEST_KINDS as readonly 
 
 const iso = (ms: number) => new Date(ms).toISOString();
 
-/** Mints and stores a challenge. Only its SHA-256 is written. */
-export async function issueChallenge(db: D1Database, app: string, now: number): Promise<string> {
-  const challenge = b64url(crypto.getRandomValues(new Uint8Array(32)));
-  await db
-    .prepare('INSERT INTO native_attest_challenges (challenge_hash, app_id, created_at, expires_at) VALUES (?, ?, ?, ?)')
-    .bind(b64url(await sha256(challenge)), app, iso(now), iso(now + NATIVE_ATTEST_CHALLENGE_TTL_SECONDS * 1000))
-    .run();
-  return challenge;
+let hmacKey: { secret: string; key: Promise<CryptoKey> } | null = null;
+function macKey(secret: string): Promise<CryptoKey> {
+  if (hmacKey?.secret !== secret) {
+    hmacKey = {
+      secret,
+      key: crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']),
+    };
+  }
+  return hmacKey.key;
 }
 
-/** Deletes the challenge if it is this app's and unexpired. True exactly once per challenge. */
-export async function consumeChallenge(db: D1Database, app: string, challenge: string, now: number): Promise<boolean> {
-  const r = await db
-    .prepare('DELETE FROM native_attest_challenges WHERE challenge_hash = ? AND app_id = ? AND expires_at > ?')
-    .bind(b64url(await sha256(challenge)), app, iso(now))
-    .run();
-  return r.meta.changes === 1;
+/** Mints a challenge. STATELESS: nothing is written — the MAC is what makes it the server's. */
+export async function issueChallenge(env: Env, app: string, now: number): Promise<string> {
+  const secret = challengeSecret(env);
+  if (!secret) throw new Error('NATIVE_ATTEST_CHALLENGE_KEY is not set');
+  const exp = Math.floor(now / 1000) + NATIVE_ATTEST_CHALLENGE_TTL_SECONDS;
+  const body = `c1.${app}.${exp}.${b64url(crypto.getRandomValues(new Uint8Array(16)))}`;
+  const mac = new Uint8Array(await crypto.subtle.sign('HMAC', await macKey(secret), new TextEncoder().encode(body)));
+  return `${body}.${b64url(mac)}`;
+}
+
+/**
+ * Redeems a challenge: its MAC is this server's, it names this app, it has not
+ * expired — and its nonce has never been redeemed. The nonce is then written
+ * (with its expiry) so a replay finds it; every redemption first deletes the
+ * expired ones, so the table is bounded by what was redeemed inside one TTL.
+ * True exactly once per challenge.
+ */
+export async function redeemChallenge(env: Env, app: string, challenge: string, now: number): Promise<boolean> {
+  const secret = challengeSecret(env);
+  const m = CHALLENGE.exec(challenge);
+  if (!secret || !m) return false;
+  const [, forApp, expRaw, nonce, macRaw] = m;
+  const exp = Number(expRaw) * 1000;
+  if (forApp !== app || exp <= now || exp > now + (NATIVE_ATTEST_CHALLENGE_TTL_SECONDS + 60) * 1000) return false;
+  const mac = fromB64url(macRaw!);
+  if (!mac) return false;
+  const body = challenge.slice(0, challenge.length - macRaw!.length - 1);
+  if (!(await crypto.subtle.verify('HMAC', await macKey(secret), mac, new TextEncoder().encode(body)))) return false;
+  const [, inserted] = await env.PLATFORM_DB.batch([
+    env.PLATFORM_DB.prepare('DELETE FROM native_attest_redeemed WHERE expires_at < ?').bind(iso(now)),
+    env.PLATFORM_DB.prepare(
+      'INSERT INTO native_attest_redeemed (nonce, app_id, expires_at) VALUES (?, ?, ?) ON CONFLICT(nonce) DO NOTHING',
+    ).bind(nonce!, app, iso(exp)),
+  ]);
+  return inserted?.meta.changes === 1;
+}
+
+/**
+ * Adds one to today's counter for `scope` and answers the new total. Every call
+ * first deletes the previous days' rows, so the table holds one UTC day.
+ */
+export async function bumpDailyCounter(db: D1Database, scope: string, now: number): Promise<number> {
+  const day = iso(now).slice(0, 10);
+  const [, bumped] = await db.batch<{ calls: number }>([
+    db.prepare('DELETE FROM native_attest_counters WHERE day < ?').bind(day),
+    db
+      .prepare(
+        'INSERT INTO native_attest_counters (day, scope, calls) VALUES (?, ?, 1) ON CONFLICT(day, scope) DO UPDATE SET calls = calls + 1 RETURNING calls',
+      )
+      .bind(day, scope),
+  ]);
+  const calls = bumped?.results?.[0]?.calls;
+  return typeof calls === 'number' ? calls : Number.POSITIVE_INFINITY;
 }
 
 interface KeyRow {
@@ -137,20 +236,25 @@ export type Outcome =
   | { ok: false; status: 401 | 503; code: 'attestation_invalid' | 'attestation_key_unknown' | 'native_auth_unavailable'; why: string };
 
 const invalid = (why: string): Outcome => ({ ok: false, status: 401, code: 'attestation_invalid', why });
+const unavailable = (why: string): Outcome => ({ ok: false, status: 503, code: 'native_auth_unavailable', why });
 
 /** The App ID App Attest binds: `<TEAM ID>.com.nikatru.<app>`. */
 const appleAppId = (env: Env, app: string) => `${env.APP_ATTEST_TEAM_ID}.com.nikatru.${app}`;
 
-/** Verifies an op's proof. The challenge has already been consumed. */
+/** Verifies an op's proof. The challenge has already been redeemed. */
 export async function verifyOp(env: Env, app: string, kind: AttestKind, h: AttestHeaders, clientData: string, now: number): Promise<Outcome> {
   const db = env.PLATFORM_DB;
   if (kind === 'play-integrity') {
     const sa = parseServiceAccount(env.PLAY_INTEGRITY_SERVICE_ACCOUNT);
     const pins = pinsFor(env.PLAY_INTEGRITY_CERT_DIGESTS, app);
-    if (!sa || !pins) return { ok: false, status: 503, code: 'native_auth_unavailable', why: 'play-integrity unconfigured' };
+    if (!sa || !pins) return unavailable('play-integrity unconfigured');
+    // The daily ceiling below Google's quota, counted BEFORE the call is made.
+    if ((await bumpDailyCounter(db, 'play-integrity:decode', now)) > PLAY_INTEGRITY_DAILY_CEILING) {
+      return unavailable('play-integrity daily ceiling reached');
+    }
     const v = await verifyPlayIntegrity(h.proof, `com.nikatru.${app}`, b64url(await sha256(clientData)), sa, pins, now);
     if (v.ok) return { ok: true };
-    return v.unavailable ? { ok: false, status: 503, code: 'native_auth_unavailable', why: v.why } : invalid(v.why);
+    return v.unavailable ? unavailable(v.why) : invalid(v.why);
   }
 
   if (!h.key) return invalid('no key id');
@@ -174,7 +278,7 @@ export async function verifyOp(env: Env, app: string, kind: AttestKind, h: Attes
     return cas.meta.changes === 1 ? { ok: true } : invalid('counter raced');
   }
 
-  // install-key
+  // install-key (KIND_OPS has already confined it to the password grant)
   if (!(await ed25519Verify(publicKey, proof, clientData))) return invalid('signature');
   await db.prepare('UPDATE native_attest_keys SET last_used_at = ? WHERE app_id = ? AND key_id = ?').bind(iso(now), app, h.key).run();
   return { ok: true };
@@ -190,12 +294,21 @@ async function ed25519Verify(publicKey: Uint8Array, signature: Uint8Array, messa
   }
 }
 
-export type InstallOutcome = { ok: true; keyId: string; created: boolean } | Exclude<Outcome, { ok: true }> | { ok: false; status: 400; code: 'validation_failed'; why: string };
+/** Days a registered key may go unused before a registration write prunes it (the nightly sweep's period too). */
+export const NATIVE_ATTEST_KEY_IDLE_DAYS = 90;
+
+export type InstallOutcome =
+  | { ok: true; keyId: string; created: boolean }
+  | Exclude<Outcome, { ok: true }>
+  | { ok: false; status: 400; code: 'validation_failed'; why: string }
+  | { ok: false; status: 429; code: 'over_request_rate_limit'; why: string };
 
 /**
  * Registers an install's key. The body names the key; the proof is the
  * attestation (app-attest) or a signature by the key itself (install-key,
- * proof of possession). The challenge has already been consumed.
+ * proof of possession). The challenge has already been redeemed. The write is
+ * held to NATIVE_ATTEST_INSTALLS_PER_NETWORK_PER_DAY for `network`, and prunes
+ * long-idle keys before it inserts.
  */
 export async function registerKey(
   env: Env,
@@ -204,6 +317,7 @@ export async function registerKey(
   body: Record<string, unknown>,
   h: AttestHeaders,
   clientData: string,
+  network: string,
   now: number,
 ): Promise<InstallOutcome> {
   const bad = (why: string) => ({ ok: false as const, status: 400 as const, code: 'validation_failed' as const, why });
@@ -232,10 +346,16 @@ export async function registerKey(
     publicKey = r.spki;
   }
 
-  const ins = await env.PLATFORM_DB.prepare(
-    'INSERT INTO native_attest_keys (app_id, key_id, kind, public_key, sign_count, created_at, last_used_at) VALUES (?, ?, ?, ?, 0, ?, ?) ON CONFLICT(app_id, key_id) DO NOTHING',
-  )
-    .bind(app, keyId, kind, b64url(publicKey), iso(now), iso(now))
-    .run();
-  return { ok: true, keyId, created: ins.meta.changes === 1 };
+  if ((await bumpDailyCounter(env.PLATFORM_DB, `install:${network}`, now)) > NATIVE_ATTEST_INSTALLS_PER_NETWORK_PER_DAY) {
+    return { ok: false, status: 429, code: 'over_request_rate_limit', why: 'daily registrations for this network' };
+  }
+  const [, ins] = await env.PLATFORM_DB.batch([
+    env.PLATFORM_DB.prepare(
+      'DELETE FROM native_attest_keys WHERE rowid IN (SELECT rowid FROM native_attest_keys WHERE last_used_at < ? ORDER BY last_used_at LIMIT 100)',
+    ).bind(iso(now - NATIVE_ATTEST_KEY_IDLE_DAYS * 86_400_000)),
+    env.PLATFORM_DB.prepare(
+      'INSERT INTO native_attest_keys (app_id, key_id, kind, public_key, sign_count, created_at, last_used_at) VALUES (?, ?, ?, ?, 0, ?, ?) ON CONFLICT(app_id, key_id) DO NOTHING',
+    ).bind(app, keyId, kind, b64url(publicKey), iso(now), iso(now)),
+  ]);
+  return { ok: true, keyId, created: ins?.meta.changes === 1 };
 }

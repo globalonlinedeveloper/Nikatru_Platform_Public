@@ -4625,15 +4625,15 @@
       "source": "verified"
     },
     {
-      "id": "retention.d1.platform_db.native_attest_challenges",
+      "id": "retention.d1.platform_db.native_attest_redeemed",
       "kind": "retention",
-      "store": "d1:platform_db:native_attest_challenges",
-      "what": "⏱ 2026-09-29 · ADR no.NNN. One row per single-use native sign-in challenge: SHA-256 of the challenge, the app id, `created_at`, `expires_at` (created_at + 120 s). Written by POST /v1/auth/native/<app>/attest/challenge and DELETED by the first request that redeems it (services/platform/src/lib/native-attest/index.ts).",
+      "store": "d1:platform_db:native_attest_redeemed",
+      "what": "⏱ 2026-09-30 · ADR no.NNN (native sign-in serves only attested app installs), reshaped on the review of #1070. One row per REDEEMED native sign-in challenge nonce: the nonce, the app id, the challenge's expiry. Challenges themselves are stateless HMAC-signed tokens (POST /v1/auth/native/<app>/attest/challenge writes nothing); a row is written only when a request presents one, and every such write first deletes the expired rows (services/platform/src/lib/native-attest/index.ts redeemChallenge).",
       "rule": "period",
       "periodDays": 1,
-      "declaredBy": "ADR no.NNN: a challenge lives 120 s and is swept a day past `expires_at`, as ext_codes is. The value lives in services/platform/src/scheduled.ts `NATIVE_ATTEST_CHALLENGES_RETENTION_DAYS`, and this row and that constant are cross-checked by services/platform/test/retention-sweep.test.ts",
+      "declaredBy": "ADR no.NNN: a redeemed nonce is worthless once its challenge has expired; swept in full a day past `expires_at`. The value lives in services/platform/src/scheduled.ts `NATIVE_ATTEST_REDEEMED_RETENTION_DAYS`, and this row and that constant are cross-checked by services/platform/test/retention-sweep.test.ts",
       "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
-      "response": "n/a — a redeemed challenge is already deleted, and an expired one can never be redeemed, so nothing live is lost. Erasure: not applicable — no account, email or address column (tooling/legal/data-inventory.json `table:platform_db.native_attest_challenges`, erasure `no-personal-data`).",
+      "response": "n/a — an expired challenge fails its own MAC-and-expiry check, so a swept nonce cannot be replayed. Erasure: not applicable — no account, email or address column (tooling/legal/data-inventory.json `table:platform_db.native_attest_redeemed`, erasure `no-personal-data`).",
       "cadence": "365d",
       "mechanism": {
         "substrate": "cloudflare-d1",
@@ -4642,7 +4642,7 @@
         "failingValue": "a row whose `expires_at` is more than 1 day in the past",
         "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half); the deletion half is `deletingJob`"
       },
-      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. The `native_attest_challenges` limb deletes rows whose `expires_at` is older than NATIVE_ATTEST_CHALLENGES_RETENTION_DAYS, at most 1000 per run (MAX_ROWS_PER_SWEEP). Held by services/platform/test/retention-sweep.test.ts, which keeps an unexpired and a half-day-expired challenge through the sweep.",
+      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. The `native_attest_redeemed` limb deletes rows whose `expires_at` is older than NATIVE_ATTEST_REDEEMED_RETENTION_DAYS, IN FULL — no MAX_ROWS_PER_SWEEP cap. Held by services/platform/test/retention-sweep.test.ts, which keeps an unexpired and a half-day-expired nonce through the sweep, and deletes 1050 expired ones in one run.",
       "accessProviders": [
         "cloudflare"
       ],
@@ -4667,6 +4667,30 @@
         "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half); the deletion half is `deletingJob`"
       },
       "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. The `native_attest_keys` limb deletes rows whose `last_used_at` is older than NATIVE_ATTEST_KEYS_RETENTION_DAYS, at most 1000 per run (MAX_ROWS_PER_SWEEP). Held by services/platform/test/retention-sweep.test.ts, which keeps a key used yesterday through the sweep.",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.platform_db.native_attest_counters",
+      "kind": "retention",
+      "store": "d1:platform_db:native_attest_counters",
+      "what": "⏱ 2026-09-30 · ADR no.NNN (native sign-in serves only attested app installs). One row per (UTC day, scope): today's Play Integrity decodes (`play-integrity:decode`) and today's key registrations per network (`install:edge:<colo>:<asn>`). Written by bumpDailyCounter (services/platform/src/lib/native-attest/index.ts), which deletes the previous days' rows first.",
+      "rule": "period",
+      "periodDays": 1,
+      "declaredBy": "ADR no.NNN: only today's row is read; swept in full once a day old. The value lives in services/platform/src/scheduled.ts `NATIVE_ATTEST_COUNTERS_RETENTION_DAYS`, and this row and that constant are cross-checked by services/platform/test/retention-sweep.test.ts",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a — a past day's count is never read again. Erasure: not applicable — a count per day and scope, no account, email or address column (tooling/legal/data-inventory.json `table:platform_db.native_attest_counters`, erasure `no-personal-data`).",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0021_native_attest.sql",
+        "record": "the table itself",
+        "failingValue": "a row whose `day` is more than 1 day in the past",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half); the deletion half is `deletingJob`"
+      },
+      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. The `native_attest_counters` limb deletes rows whose `day` is older than NATIVE_ATTEST_COUNTERS_RETENTION_DAYS, IN FULL — no MAX_ROWS_PER_SWEEP cap. Held by services/platform/test/retention-sweep.test.ts, which keeps today's counter and deletes one three days old.",
       "accessProviders": [
         "cloudflare"
       ],

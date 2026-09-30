@@ -14,6 +14,15 @@
 // What an environment inherits was READ, not assumed (the limb 1b/1c block in
 // assert-money-config.mjs): `routes`, `triggers` and `workers_dev` ARE
 // inherited; `vars` and `d1_databases` are not.
+//
+// ⏱ 2026-09-30 · ADR no.NNN (LEAD RULING db0cc7, review of #1070): a sandbox
+// NEVER carries the service-role key. The sandbox Worker shares production's
+// identity project, and that bearer is what makes GoTrue skip its captcha — a
+// sandbox holding it would be a second captcha-free door onto real accounts.
+// Two readings, both pure: `sandboxEnvironmentFindings` refuses it in the
+// environment's `vars` or `secrets`, and `sandboxWorkflowSecretFindings`
+// refuses a sandbox deploy workflow that names it at all (assert-money-config.mjs
+// limb 1e hands it deploy-sandbox.yml).
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -30,6 +39,20 @@ export function routeHosts(block) {
   return out;
 }
 export const d1Of = (block) => (Array.isArray(block?.d1_databases) ? block.d1_databases.filter(isObject) : []);
+
+/** Secrets no sandbox environment may hold (see the header). */
+export const SANDBOX_FORBIDDEN_SECRETS = Object.freeze(['SUPABASE_SERVICE_ROLE_KEY']);
+
+/** Every forbidden secret a sandbox deploy workflow's TEXT names — comments
+ *  included on purpose: a workflow line commented out today is one uncomment
+ *  from putting the secret. `where` prefixes each message. */
+export function sandboxWorkflowSecretFindings(where, text) {
+  return SANDBOX_FORBIDDEN_SECRETS.filter((name) => String(text).includes(name)).map(
+    (name) =>
+      `${where} names ${name}. A sandbox deploy must never put the service-role key: the sandbox shares production's ` +
+      'identity project, and that bearer is what makes GoTrue skip its captcha (ADR no.NNN).',
+  );
+}
 
 /** Every reason `e` (the block at `env.<name>` of the parsed top-level
  *  config `cfg`) is NOT a sandbox that stays off production: routes that
@@ -86,6 +109,16 @@ export function sandboxEnvironmentFindings(where, cfg, e) {
       out.push(`${where} binds no PLATFORM_DB. Wrangler does not inherit \`d1_databases\`, so the sandbox money door would have no store to record a notification in. [5]M-12`);
     } else if (typeof envPlatformDb.database_id !== 'string' || envPlatformDb.database_id.trim() === '') {
       out.push(`${where} binds PLATFORM_DB with no \`database_id\`. Wrangler 4 can PROVISION a database for a binding that names none, on deploy — a resource nobody decided to create. Name the sandbox database. [5]M-12`);
+    }
+  }
+  for (const name of SANDBOX_FORBIDDEN_SECRETS) {
+    const inVars = isObject(e?.vars) && Object.hasOwn(e.vars, name);
+    const inSecrets = JSON.stringify(e?.secrets ?? null).includes(`"${name}"`);
+    if (inVars || inSecrets) {
+      out.push(
+        `${where} carries ${name} in its ${inVars ? '`vars`' : '`secrets`'}. A sandbox never holds the service-role key: it ` +
+          'shares production\'s identity project, and that bearer is what makes GoTrue skip its captcha (ADR no.NNN).',
+      );
     }
   }
   for (const d of d1Of(e)) {

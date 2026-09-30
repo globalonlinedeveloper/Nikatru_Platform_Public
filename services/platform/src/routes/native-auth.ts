@@ -29,11 +29,13 @@
 //     list below was the whole defence, and a missing `Origin` is something any
 //     script can send: captcha-free password sign-in and sign-up for anybody.
 //     Now each op carries a proof bound to a single-use challenge from
-//     `POST …/attest/challenge` and to the exact body — Play Integrity (android),
-//     App Attest (ios, macos App Store), or a registered per-install Ed25519
-//     key (desktop, the weakest, with its own tighter ceilings and no session
-//     before email verification). lib/native-attest/index.ts says what each
-//     proves and what it does not; no proof is a 401 and GoTrue never hears it;
+//     `POST …/attest/challenge`, to the path and query, and to the exact body —
+//     Play Integrity (android) or App Attest (ios, macos App Store), the only
+//     kinds any deploy lists. ⏱ 2026-09-30 (review of #1070): the per-install
+//     Ed25519 kind proves nothing a script cannot do, so no deploy lists it, and
+//     KIND_OPS confines it to the password grant even where one would; desktop
+//     sign-up and reset go through the web Turnstile flow. lib/native-attest/
+//     index.ts says what each proves; no proof is a 401 and GoTrue never hears it;
 //   · a request carrying `Origin` is refused 403 — a web page cannot use this
 //     route. The refusal is the shared CORS middleware's (services/_shared/src/
 //     cors.ts), bound in middleware/cors.ts with `refuseBrowsersOn` — the one
@@ -60,18 +62,22 @@
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import type { AppEnv } from '../types';
 import { NATIVE_AUTH_APPS } from '../generated/app-targets';
-import { strictEdgeCeiling, strictRateLimit, type StrictVerdict } from '../lib/edge-ceiling';
+import { edgeCeilingKey, strictEdgeCeiling, strictRateLimit, type StrictVerdict } from '../lib/edge-ceiling';
 import { readBoundedBody } from '../lib/body';
 import {
+  challengesConfigured,
   clientDataFor,
   configured,
-  consumeChallenge,
   enabledKinds,
+  HEADER,
   isKind,
   issueChallenge,
+  KIND_OPS,
   NATIVE_ATTEST_CHALLENGE_TTL_SECONDS,
   readHeaders,
+  redeemChallenge,
   registerKey,
+  requestTarget,
   verifyOp,
   type AttestKind,
   type AttestOp,
@@ -126,9 +132,26 @@ const MARKER = /^[a-z][a-z-]*$/;
 /** The request headers never forwarded: the caller's cookie and GoTrue
  *  credentials; `referer`, GoTrue's fallback redirect source (a pinned
  *  `redirect_to` must not be bypassable through it); `host` and `content-length`,
- *  which describe THIS request, not the one sent upstream; and `origin`, which
- *  middleware/cors.ts has already refused. */
-const DROPPED_REQUEST_HEADERS = ['cookie', 'authorization', 'apikey', 'referer', 'host', 'content-length', 'origin'];
+ *  which describe THIS request, not the one sent upstream; `origin`, which
+ *  middleware/cors.ts has already refused; ⏱ 2026-09-30 (review of #1070) the
+ *  two caller-writable address claims, so the only address GoTrue sees is the
+ *  one Cloudflare stamps on the subrequest (never read here); and the four
+ *  attestation headers, which are this Worker's business, not GoTrue's. */
+const DROPPED_REQUEST_HEADERS = [
+  'cookie',
+  'authorization',
+  'apikey',
+  'referer',
+  'host',
+  'content-length',
+  'origin',
+  'x-forwarded-for',
+  'x-real-ip',
+  HEADER.kind,
+  HEADER.challenge,
+  HEADER.key,
+  HEADER.proof,
+];
 
 /** A refusal in GoTrue's own (pre-2024-01-01) error shape, which gotrue-dart maps by `error_code`. */
 function gotrueError(status: number, errorCode: string, msg: string, extra: Record<string, string> = {}): Response {
@@ -175,10 +198,11 @@ function refusedBy(verdict: StrictVerdict): Response | null {
 
 /**
  * THE ATTESTATION GATE (⏱ 2026-09-29, ADR no.NNN), for an op or a key
- * registration: the headers, the kind this deploy accepts, the kind's own
- * config, the unattested ceilings, the body, the single-use challenge, and the
- * proof — in that order, so the cheap refusals cost no D1 read and no crypto,
- * and a challenge is burned by any request that reaches it, pass or fail.
+ * registration: the headers, the op table (KIND_OPS — structural, before any
+ * config is read), the kind this deploy accepts, the kind's own config, the
+ * kind's per-network ceiling, the body, the single-use challenge, and the proof
+ * — in that order, so the cheap refusals cost no D1 read and no crypto, and a
+ * challenge is burned by any request that reaches it, pass or fail.
  *
  * Answers the kind, the exact body and the clientData, or the refusal.
  */
@@ -189,6 +213,9 @@ async function admit(
   const app = c.get('appId') as string;
   const h = readHeaders(c.req.raw.headers);
   if (!h) return gotrueError(401, 'attestation_required', 'This request carries no app attestation');
+  if (isKind(h.kind) && !KIND_OPS[h.kind].has(op)) {
+    return gotrueError(403, 'attestation_kind_refused', 'That attestation cannot authorise this call');
+  }
   if (!isKind(h.kind) || !enabledKinds(c.env).has(h.kind)) {
     return gotrueError(403, 'attestation_kind_refused', 'This server does not accept that attestation');
   }
@@ -197,13 +224,17 @@ async function admit(
     console.error(`[native-auth] rid=${c.get('requestId') ?? '-'} attestation kind ${kind} is enabled but not configured`);
     return gotrueError(503, 'native_auth_unavailable', 'Sign-in is unavailable. Try again shortly.');
   }
-  // The unattested channel's own, much tighter per-network ceiling; and key
-  // registration's, for every kind. Both FAIL CLOSED, like the two above.
+  // Each kind's own per-network ceiling, all FAIL CLOSED like the two above:
+  // key registration's for every kind; the unattested kind's, far tighter; and
+  // Play Integrity's, spent BEFORE a decode is asked of Google (review of #1070).
   if (op === 'install') {
     const r = refusedBy(await strictEdgeCeiling(c.env.NATIVE_AUTH_INSTALL_LIMITER, c, 'NATIVE_AUTH_INSTALL_LIMITER'));
     if (r) return r;
   } else if (kind === 'install-key') {
     const r = refusedBy(await strictEdgeCeiling(c.env.NATIVE_AUTH_UNATTESTED_LIMITER, c, 'NATIVE_AUTH_UNATTESTED_LIMITER'));
+    if (r) return r;
+  } else if (kind === 'play-integrity') {
+    const r = refusedBy(await strictEdgeCeiling(c.env.NATIVE_AUTH_PLAY_VERIFY_LIMITER, c, 'NATIVE_AUTH_PLAY_VERIFY_LIMITER'));
     if (r) return r;
   }
 
@@ -211,10 +242,10 @@ async function admit(
   if (!bounded.ok) return gotrueError(bounded.status, bounded.status === 413 ? 'request_too_large' : 'bad_json', bounded.error);
 
   const now = Date.now();
-  if (!(await consumeChallenge(c.env.PLATFORM_DB, app, h.challenge, now))) {
+  if (!(await redeemChallenge(c.env, app, h.challenge, now))) {
     return gotrueError(401, 'attestation_challenge_invalid', 'The attestation challenge is unknown, expired or already used');
   }
-  const clientData = await clientDataFor(app, op, h.challenge, bounded.bytes);
+  const clientData = await clientDataFor(app, op, h.challenge, requestTarget(new URL(c.req.url)), bounded.bytes);
   if (op !== 'install') {
     const v = await verifyOp(c.env, app, kind, h, clientData, now);
     if (!v.ok) {
@@ -227,26 +258,20 @@ async function admit(
 
 /**
  * ⏱ 2026-09-29 (ADR no.NNN) — NO SESSION BEFORE EMAIL VERIFICATION on the
- * unattested channel. GoTrue already answers a sign-up with no session and
- * refuses a password grant for an unconfirmed address (`mailer_autoconfirm`
- * false, which tooling/ops/auth-cutover-preflight.mjs grades); this holds the
- * property for `install-key` even if that setting ever drifts: a sign-up's
- * session is withheld (the user alone is returned, as GoTrue itself does when it
- * sends a confirmation), and a password grant whose user has no
- * `email_confirmed_at` is refused.
+ * unattested channel. KIND_OPS already keeps `install-key` off signup, recover
+ * and resend; for the one op it may reach, the password grant, GoTrue refuses
+ * an unconfirmed address (`mailer_autoconfirm` false, which
+ * tooling/ops/auth-cutover-preflight.mjs grades), and this holds the property
+ * even if that setting drifts: a grant whose user has no `email_confirmed_at`
+ * is refused and its session withheld.
  */
 async function unattestedSessionRule(op: NativeAuthOp, upstream: Response): Promise<Response | null> {
-  if (!upstream.ok || (op !== 'signup' && op !== 'token')) return null;
+  if (!upstream.ok || op !== 'token') return null;
   let body: Record<string, unknown>;
   try {
     body = (await upstream.clone().json()) as Record<string, unknown>;
   } catch {
     return gotrueError(502, 'native_auth_unavailable', 'Sign-in is unavailable. Try again shortly.');
-  }
-  if (op === 'signup') {
-    if (!('access_token' in body) && !('refresh_token' in body)) return null;
-    const user = isPlainObject(body.user) ? body.user : {};
-    return new Response(JSON.stringify(user), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
   const user = isPlainObject(body.user) ? body.user : null;
   if (user && typeof user.email_confirmed_at === 'string' && user.email_confirmed_at !== '') return null;
@@ -413,10 +438,15 @@ export function createNativeAuth(apps: readonly string[]): Hono<AppEnv> {
   nativeAuth.post('/auth/native/:app/attest/challenge', async (c) => {
     const edgeRefusal = refusedBy(await strictEdgeCeiling(c.env.NATIVE_AUTH_EDGE_LIMITER, c, 'NATIVE_AUTH_EDGE_LIMITER'));
     if (edgeRefusal) return logged(c, 'challenge', edgeRefusal);
-    if (enabledKinds(c.env).size === 0 || !c.env.PLATFORM_DB) {
+    if (enabledKinds(c.env).size === 0) {
       return logged(c, 'challenge', gotrueError(403, 'attestation_kind_refused', 'This server does not accept native sign-in'));
     }
-    const challenge = await issueChallenge(c.env.PLATFORM_DB, c.get('appId') as string, Date.now());
+    if (!challengesConfigured(c.env)) {
+      console.error(`[native-auth] rid=${c.get('requestId') ?? '-'} NATIVE_ATTEST_CHALLENGE_KEY or PLATFORM_DB is not set`);
+      return logged(c, 'challenge', gotrueError(503, 'native_auth_unavailable', 'Sign-in is unavailable. Try again shortly.'));
+    }
+    // STATELESS (review of #1070): a signed token, and no row written.
+    const challenge = await issueChallenge(c.env, c.get('appId') as string, Date.now());
     return logged(c, 'challenge', c.json({ challenge, expires_in: NATIVE_ATTEST_CHALLENGE_TTL_SECONDS }));
   });
 
@@ -439,10 +469,13 @@ export function createNativeAuth(apps: readonly string[]): Hono<AppEnv> {
     if (!isPlainObject(body) || body.kind !== admitted.kind) {
       return logged(c, 'install', gotrueError(400, 'validation_failed', 'kind must match X-NK-Attest-Kind'));
     }
-    const r = await registerKey(c.env, c.get('appId') as string, admitted.kind, body, admitted.headers, admitted.clientData, Date.now());
+    const r = await registerKey(c.env, c.get('appId') as string, admitted.kind, body, admitted.headers, admitted.clientData, edgeCeilingKey(c), Date.now());
     if (!r.ok) {
       console.warn(`[native-auth] rid=${c.get('requestId') ?? '-'} key registration refused kind=${admitted.kind} (${r.why})`);
-      return logged(c, 'install', gotrueError(r.status, r.code, r.status === 400 ? r.why : 'The app attestation did not verify'));
+      if (r.status === 429) {
+        return logged(c, 'install', gotrueError(429, r.code, 'Request rate limit reached', { 'Retry-After': '86400' }));
+      }
+      return logged(c, 'install', gotrueError(r.status, r.code, r.status === 400 ? r.why : r.status === 503 ? 'Sign-in is unavailable. Try again shortly.' : 'The app attestation did not verify'));
     }
     return logged(c, 'install', c.json({ key_id: r.keyId }, r.created ? 201 : 200));
   });
