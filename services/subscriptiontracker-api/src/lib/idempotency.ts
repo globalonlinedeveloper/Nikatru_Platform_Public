@@ -9,14 +9,23 @@
 // replays writes on reconnect turns that one-off into a duplicate generator,
 // which is why this lands first and the app's outbox second.
 //
-// 🔴 THE ROW ID IS DERIVED FROM (user, key), SO THE PRIMARY KEY IS THE LOCK.
+// 🔴 THE ROW ID IS DERIVED FROM (user, key), AND A LEDGER ROW IS THE LOCK.
 // With a key, the id is SHA-256("subscriptiontracker/create", user id, key),
-// formatted as a UUID. The first attempt inserts that id; a repeat finds it and
-// is answered with the row, 200 instead of 201. Two attempts racing both miss
-// the lookup, one INSERT wins and the other hits the primary key — and is
-// answered with the winner's row rather than a 500. No new column and no
-// migration: the id space is the one every row already lives in, and the user
-// id inside the hash means two accounts can never meet on one key.
+// formatted as a UUID, and the key is CLAIMED in `idempotency_keys`
+// (migrations/0006) before the handler runs — `INSERT … ON CONFLICT DO
+// NOTHING`, so exactly one attempt wins and no attempt ever reaches the insert
+// race (review finding 5: the loser used to throw through app.onError and be
+// reported to GlitchTip as "unhandled" on a request that succeeded). What a
+// later attempt with the same key is told, from the claim:
+//   · the body hashes differently  → 422 idempotency_key_reused (finding 6a);
+//   · 'done' and the row is there  → 200 with the row as it is NOW (6c: a
+//     replay is not the original response, and skips validation — its body
+//     was validated when the claim was made);
+//   · 'done' and the row is gone   → 410 idempotent_create_gone: the tombstone,
+//     so a late replay never re-creates a deleted row (6b);
+//   · 'pending'                    → 409 idempotency_in_progress, a retry later.
+// A claim whose handler did not create the row is released, so a retry can.
+// A lost claim race is logged at INFO, never as an error.
 //
 // ⚠️ A KEY IS OPTIONAL. A request without one behaves exactly as before (a
 // fresh `uuid()`), so an old client keeps working through the deploy. A key
@@ -29,6 +38,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import type { Context, MiddlewareHandler } from 'hono';
 import type { AppEnv } from '../types';
+import { firstRow, nowIso, run } from './d1';
 
 export const IDEMPOTENCY_HEADER = 'Idempotency-Key';
 
@@ -57,10 +67,34 @@ export function reservedCreateId(c: Context<AppEnv>): string | undefined {
   return reserved.get(c.req.raw);
 }
 
+/** JSON with object keys sorted, so a re-serialised body hashes the same. */
+function canonical(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(canonical).join(',')}]`;
+  if (v !== null && typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    return `{${Object.keys(o)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${canonical(o[k])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(v) ?? 'null';
+}
+
+async function sha256Hex(text: string): Promise<string> {
+  const d = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)));
+  return Array.from(d, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+interface Claim {
+  body_hash: string;
+  row_id: string;
+  state: 'pending' | 'done';
+}
+
 /**
- * Middleware in front of a create handler. With a valid key it answers a
- * repeat from [existing] (200), otherwise reserves the derived id for the
- * handler, and turns a lost insert race into the winner's row.
+ * Middleware in front of a create handler: claims the key, answers a repeat
+ * from the claim and [existing], and reserves the derived id for the handler.
+ * See the header for every answer.
  */
 export function idempotentCreate(
   existing: (c: Context<AppEnv>, id: string) => Promise<Response | null>,
@@ -74,20 +108,66 @@ export function idempotentCreate(
         400,
       );
     }
-    const id = await idempotentRowId(c.get('userId'), key);
-    const replay = await existing(c, id);
-    if (replay) return replay;
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return next(); // the handler answers invalid_json; nothing is claimed
+    }
+    const userId = c.get('userId');
+    const db = c.env.APP_DB;
+    const bodyHash = await sha256Hex(canonical(body));
+    const id = await idempotentRowId(userId, key);
+
+    const answer = async (claim: Claim): Promise<Response> => {
+      if (claim.body_hash !== bodyHash) {
+        return c.json(
+          {
+            error: 'idempotency_key_reused',
+            detail: 'this Idempotency-Key was used with a different request body',
+          },
+          422,
+        );
+      }
+      if (claim.state === 'pending') {
+        c.header('Retry-After', '2');
+        return c.json({ error: 'idempotency_in_progress' }, 409);
+      }
+      return (await existing(c, claim.row_id)) ?? c.json({ error: 'idempotent_create_gone' }, 410);
+    };
+    const lookup = () =>
+      firstRow<Claim>(
+        db
+          .prepare('SELECT body_hash, row_id, state FROM idempotency_keys WHERE user_id = ? AND key = ?')
+          .bind(userId, key),
+      );
+
+    const prior = await lookup();
+    if (prior) return answer(prior);
+
+    const claimed = await run(
+      db
+        .prepare(
+          `INSERT INTO idempotency_keys (user_id, key, body_hash, row_id, state, created_at)
+             VALUES (?, ?, ?, ?, 'pending', ?)
+             ON CONFLICT (user_id, key) DO NOTHING`,
+        )
+        .bind(userId, key, bodyHash, id, nowIso()),
+    );
+    if ((claimed.meta?.changes ?? 0) === 0) {
+      // A concurrent attempt claimed the key between our read and our insert.
+      console.info(`[idempotency] lost the claim race rid=${c.get('requestId') ?? '-'}`);
+      const winner = await lookup();
+      return winner ? answer(winner) : c.json({ error: 'idempotency_in_progress' }, 409);
+    }
 
     reserved.set(c.req.raw, id);
     await next();
-    if (c.error) {
-      // Lost the race to a concurrent attempt with the same key: its row is
-      // the answer. Anything else is a real failure and keeps its 500.
-      const winner = await existing(c, id);
-      if (winner) {
-        c.res = undefined;
-        c.res = winner;
-      }
-    }
+    const created = !c.error && c.res.status >= 200 && c.res.status < 300;
+    await run(
+      created
+        ? db.prepare("UPDATE idempotency_keys SET state = 'done' WHERE user_id = ? AND key = ?").bind(userId, key)
+        : db.prepare('DELETE FROM idempotency_keys WHERE user_id = ? AND key = ?').bind(userId, key),
+    );
   };
 }

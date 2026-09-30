@@ -162,6 +162,7 @@ const TABLES = [
   'budget_categories',
   'budgets',
   'categories',
+  'idempotency_keys',
   'payment_history',
   'price_change',
   'subscriptions',
