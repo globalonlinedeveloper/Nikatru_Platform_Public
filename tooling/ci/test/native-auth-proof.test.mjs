@@ -3,10 +3,13 @@
 // reading that cannot fail would flip a row on no evidence.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
 import {
+  afterOpenDiagnostics,
+  appOpensCallback,
   callbackUrl,
   egressIpOf,
   FAILED_CALLBACK_LINE,
@@ -20,9 +23,9 @@ import {
   gradeRefusal,
   runRefusalLeg,
 } from '../../e2e/native_auth_proof.mjs';
+import { PROOF_LOG_END as END, resolveProofLogConsent } from '../../e2e/consent_anon_id.mjs';
 import { jobEnv, parseWorkflow, workflowSteps } from '../workflow-scan.mjs';
 
-const END = 'NK_PROOF_LOG_END';
 const REPO = join(import.meta.dirname, '..', '..', '..');
 
 const GREEN = [
@@ -110,8 +113,10 @@ describe('native_auth_proof — how each OS is handed the callback', () => {
     assert.match(cmd[4], /^am start -W -a android\.intent\.action\.VIEW -d '.+&code=st-n1-invalid'$/);
   });
 
-  test('ios: simctl openurl on the booted device', () => {
-    assert.deepEqual(openCommands('ios', url, { app: 'demoapp', root: '.', device: 'UDID' }), [['xcrun', 'simctl', 'openurl', 'UDID', url]]);
+  test('🔴 ios: NO host command — simctl openurl stops at a system "Open in" sheet; the app opens it', () => {
+    assert.deepEqual(openCommands('ios', url, { app: 'demoapp', root: '.', device: 'UDID' }), []);
+    assert.equal(appOpensCallback('ios'), true);
+    for (const t of ['android', 'macos', 'linux', 'windows']) assert.equal(appOpensCallback(t), false, t);
   });
 
   test('linux: a .desktop with %u and the scheme, set default, then xdg-open', () => {
@@ -191,7 +196,7 @@ describe('native_auth_proof --expect-refusal — the leg proves the gate', () =>
     const leg = async (name, { env = { E2E_EMAIL: 'e', E2E_PASSWORD: 'p' }, probe }) => {
       const log = join(dir, `${name}.log`);
       writeFileSync(log, 'native_auth_proof: demoapp/android — flutter test output follows\n');
-      const code = await runRefusalLeg({ app: 'demoapp', target: 'android' }, { log, logEnd: END, env, probe, egress: async () => {}, out: quiet });
+      const code = await runRefusalLeg({ app: 'demoapp', target: 'android' }, { log, env, probe, egress: async () => {}, out: quiet });
       return { code, text: readFileSync(log, 'utf8') };
     };
     const cases = [
@@ -204,11 +209,23 @@ describe('native_auth_proof --expect-refusal — the leg proves the gate', () =>
       const { code, text } = await leg(name, opts);
       assert.equal(code, want, name);
       assert.match(text, new RegExp(`\\n${END} flutter_exit=none mode=expect-refusal exit=${want}`), `${name}: the log is not finished`);
+      assert.equal(resolveProofLogConsent(join(dir, `${name}.log`)).noRow, true, `${name}: the purge does not read "no row"`);
     }
   });
 
-  test('🔴 RED CONTROL: a log without its end marker is refused up front', async () => {
-    await assert.rejects(runRefusalLeg({ app: 'demoapp', target: 'android' }, { log: join(tmpdir(), 'never.log') }), /needs its end marker/);
+  test('🔴 RED CONTROL: the same log, cut off before the leg finished, is UNRESOLVED to the purge', () => {
+    const log = join(mkdtempSync(join(tmpdir(), 'nk-refusal-cut-')), 'proof.log');
+    writeFileSync(log, 'native_auth_proof: demoapp/android — flutter test output follows\nNK_PROOF step=token-unattested answer=401/attestation_required\n');
+    assert.equal(resolveProofLogConsent(log).noRow, false);
+  });
+
+  test('🔴 the REAL driver: --expect-refusal --log with no credentials exits 2 and still finishes the log', () => {
+    const log = join(mkdtempSync(join(tmpdir(), 'nk-refusal-cli-')), 'proof.log');
+    const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot ?? process.env.SYSTEMROOT ?? '' };
+    const r = spawnSync(process.execPath, [join(import.meta.dirname, '..', '..', 'e2e', 'native_auth_proof.mjs'), '--app', 'demo', '--target', 'linux', '--log', log, '--expect-refusal'], { encoding: 'utf8', env, timeout: 60_000 });
+    assert.equal(r.status, 2, r.stderr);
+    assert.match(readFileSync(log, 'utf8'), new RegExp(`${END} flutter_exit=none mode=expect-refusal exit=2 refused=env`));
+    assert.equal(resolveProofLogConsent(log).noRow, true);
   });
 
   test('WORKFLOW-SCAN: every native leg in e2e.yml and native-auth-proof.yml runs the driver with --expect-refusal', () => {
@@ -230,7 +247,7 @@ describe('native_auth_proof --expect-refusal — the leg proves the gate', () =>
 
   // Third review of #1070: a refusal leg probes over HTTP, so a leg that still
   // installs Flutter and boots a device spends its ceiling on nothing.
-  const DEVICE_STEP = /setup-flutter|^flutter pub get$|build and session deps|desktop target|^Boot an /;
+  const DEVICE_STEP = /setup-flutter|^flutter pub get$|build and session deps|desktop target|^Boot an |past MAX_PATH/;
   const GATED = /env\.PROOF_NEEDS_DEVICE == 'true'/;
   function ungatedDeviceSteps(root) {
     const found = [];
@@ -263,5 +280,74 @@ describe('native_auth_proof --expect-refusal — the leg proves the gate', () =>
       writeFileSync(join(root, rel), text);
     }
     assert.deepEqual(ungatedDeviceSteps(root).found, ['.github/workflows/native-auth-proof.yml android: "Boot an emulator" runs in refusal mode']);
+  });
+});
+
+// Proof run 36525783687: the consent scrim ate the Sign in tap on Android and
+// Linux, and every purge failed because nothing named the consent row. The
+// purge's "no row" verdict (consent_anon_id.mjs, resolveProofLogConsent) holds
+// only while the prompt is answered in ONE place, id printed before the tap.
+describe('native_auth_proof — the consent prompt is answered once, id first', () => {
+  const REPO = join(import.meta.dirname, '..', '..', '..');
+  const BRICK = join(REPO, 'tooling', 'bricks', 'app', '__brick__', 'apps', '{{app_id}}', 'integration_test');
+  const APPS = readdirSync(join(REPO, 'apps')).filter((a) =>
+    existsSync(join(REPO, 'apps', a, 'integration_test', 'native_auth_proof_test.dart')),
+  );
+  const suites = [BRICK, ...APPS.map((a) => join(REPO, 'apps', a, 'integration_test'))];
+
+  test('every copy of the steps file is the brick\'s, byte for byte', () => {
+    assert.ok(APPS.length > 0, 'no app carries the proof — this check would pass on nothing');
+    const brick = readFileSync(join(BRICK, 'native_auth_proof_steps.dart'), 'utf8');
+    for (const a of APPS) {
+      assert.equal(readFileSync(join(REPO, 'apps', a, 'integration_test', 'native_auth_proof_steps.dart'), 'utf8'), brick, a);
+    }
+  });
+
+  test('🔴 no proof suite names the decline control — only answerConsentPrompt taps it', () => {
+    for (const dir of suites) {
+      assert.doesNotMatch(readFileSync(join(dir, 'native_auth_proof_test.dart'), 'utf8'), /No thanks|kConsentDecline/, dir);
+      assert.match(readFileSync(join(dir, 'native_auth_proof_test.dart'), 'utf8'), /answerConsentPrompt\(/, dir);
+    }
+  });
+
+  test('🔴 the steps file prints the install id BEFORE its one tap on the prompt', () => {
+    const steps = readFileSync(join(BRICK, 'native_auth_proof_steps.dart'), 'utf8');
+    const body = steps.slice(steps.indexOf('Future<bool> answerConsentPrompt('));
+    const printed = body.indexOf("debugPrint('$kConsentAnonIdToken=$id')");
+    const tapped = body.indexOf('await tester.tap(decline.first)');
+    assert.ok(printed > 0 && tapped > 0, 'answerConsentPrompt no longer prints the id or taps the prompt');
+    assert.ok(printed < tapped, 'the id is printed after the tap — a run that dies between them leaves an unnamed row');
+    assert.equal(steps.split('tester.tap(decline').length - 1, 1, 'the decline control is tapped in more than one place');
+    assert.match(steps, /const String kConsentAnonIdToken = 'E2E_CONSENT_ANON_ID';/);
+  });
+
+  test('🔴 the Sign in tap is refused when something covers the button', () => {
+    const steps = readFileSync(join(BRICK, 'native_auth_proof_steps.dart'), 'utf8');
+    const body = steps.slice(steps.indexOf('Future<void> proveFormSignIn('));
+    assert.ok(body.indexOf('submit.hitTestable()') > 0, 'proveFormSignIn taps without checking the tap would land');
+    assert.ok(body.indexOf('submit.hitTestable()') < body.indexOf('await tester.tap(submit)'));
+  });
+});
+
+// The purge reads the proof's log (consent_anon_id.mjs, resolveProofLogConsent),
+// and a proof step that RAN and left no log is unresolved there — so a driver
+// that refuses must still leave a FINISHED log saying no app ran.
+describe('native_auth_proof — the log is written before anything can refuse', () => {
+  test('🔴 a run refused for missing env leaves a log that ends, and starts no app', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'nk-proof-log-'));
+    const log = join(dir, 'proof.log');
+    const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot ?? process.env.SYSTEMROOT ?? '' };
+    const r = spawnSync(process.execPath, [join(import.meta.dirname, '..', '..', 'e2e', 'native_auth_proof.mjs'), '--app', 'demo', '--target', 'linux', '--log', log], { encoding: 'utf8', env, timeout: 60_000 });
+    assert.equal(r.status, 2, r.stderr);
+    const text = readFileSync(log, 'utf8');
+    assert.match(text, /NK_PROOF_LOG_END flutter_exit=none refused=env/);
+    assert.doesNotMatch(text, /E2E_CONSENT_ANON_ID=/);
+  });
+
+  test('the post-open diagnostics exist for iOS alone, and name the device', () => {
+    const d = afterOpenDiagnostics('ios', { device: 'SIM-1', dir: '/tmp' });
+    assert.deepEqual(d.screenshot.slice(0, 5), ['xcrun', 'simctl', 'io', 'SIM-1', 'screenshot']);
+    assert.deepEqual(d.log.slice(0, 6), ['xcrun', 'simctl', 'spawn', 'SIM-1', 'log', 'show']);
+    for (const t of ['android', 'macos', 'linux', 'windows']) assert.equal(afterOpenDiagnostics(t, {}), null, t);
   });
 });

@@ -66,6 +66,7 @@ import {
   DEFAULT_MAX_REQUESTS,
   newestCompleted,
   selfRunIdFrom,
+  anchoredNewest,
 } from '../../ops/triage-failed-runs.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -75,6 +76,11 @@ const SAFE_RERUN = join(REPO, 'tooling', 'ops', 'safe-rerun.mjs');
 // A COPY of the script lives in a temp dir, so both sibling imports are
 // re-pointed at the real files.
 const BOUNDED_RETRY = join(REPO, 'tooling', 'ops', 'bounded-retry.mjs');
+const RUN_PAGE_ANCHOR = join(REPO, 'tooling', 'ci', 'run-page-anchor.mjs');
+// ⏱ 2026-09-29 (rv2-pipe-a P-6): a stub page whose newest run is under
+// CROSS_READ_AFTER_MS old, so newestRun sends exactly ONE request, as before.
+// An OLD page is cross-read; that is its own suite at the end of this file.
+const RECENT = new Date().toISOString();
 
 const temps = [];
 function temp() {
@@ -594,7 +600,8 @@ describe('the ledger, end to end (fixture transport, no network)', () => {
     const mutated = original
       .replace(needle, "{ id: 'start-here:drift', re: /^THIS-LINE-NEVER-MATCHES-ANYTHING/ },")
       .replace("from './safe-rerun.mjs'", `from ${JSON.stringify(pathToFileURL(SAFE_RERUN).href)}`)
-      .replace("from './bounded-retry.mjs'", `from ${JSON.stringify(pathToFileURL(BOUNDED_RETRY).href)}`);
+      .replace("from './bounded-retry.mjs'", `from ${JSON.stringify(pathToFileURL(BOUNDED_RETRY).href)}`)
+      .replace("from '../ci/run-page-anchor.mjs'", `from ${JSON.stringify(pathToFileURL(RUN_PAGE_ANCHOR).href)}`);
     assert.notEqual(mutated, original);
     const copy = join(dir, 'triage-failed-runs.mutated.mjs');
     writeFileSync(copy, mutated);
@@ -946,7 +953,8 @@ describe('transport hardening', () => {
       .replaceAll('\r\n', '\n')
       .replace(block, "  let raw = null;\n  if (fs.existsSync(p)) raw = fs.readFileSync(p, 'utf8');\n")
       .replace("from './safe-rerun.mjs'", `from ${JSON.stringify(pathToFileURL(SAFE_RERUN).href)}`)
-      .replace("from './bounded-retry.mjs'", `from ${JSON.stringify(pathToFileURL(BOUNDED_RETRY).href)}`);
+      .replace("from './bounded-retry.mjs'", `from ${JSON.stringify(pathToFileURL(BOUNDED_RETRY).href)}`)
+      .replace("from '../ci/run-page-anchor.mjs'", `from ${JSON.stringify(pathToFileURL(RUN_PAGE_ANCHOR).href)}`);
     const copy = join(temp(), 'triage-failed-runs.race-mutated.mjs');
     writeFileSync(copy, mutated);
     const m = await import(pathToFileURL(copy).href);
@@ -1101,7 +1109,7 @@ describe('a cache never serves an answer that changes', () => {
     writeFileSync(join(dir, STALE_NAME), JSON.stringify({ id: 1, conclusion: null, created_at: '2026-09-10T06:03:13Z' }));
     return dir;
   };
-  const today = { workflow_runs: [{ id: 2, status: 'completed', conclusion: 'success', created_at: '2026-09-11T09:00:00Z' }] };
+  const today = { workflow_runs: [{ id: 2, status: 'completed', conclusion: 'success', created_at: RECENT }] };
 
   test("newestRun asks GitHub every time, even with yesterday's answer on disk", async () => {
     const dir = staleDir();
@@ -1133,7 +1141,8 @@ describe('a cache never serves an answer that changes', () => {
     const mutated = flat
       .replace(line, "    newestRun: (workflowId, branch, key) => cached('newest-' + key.split('/').join('_').split('|').join('_') + '.json', () => fetchNewest(workflowId, branch)),\n")
       .replace("from './safe-rerun.mjs'", `from ${JSON.stringify(pathToFileURL(SAFE_RERUN).href)}`)
-      .replace("from './bounded-retry.mjs'", `from ${JSON.stringify(pathToFileURL(BOUNDED_RETRY).href)}`);
+      .replace("from './bounded-retry.mjs'", `from ${JSON.stringify(pathToFileURL(BOUNDED_RETRY).href)}`)
+      .replace("from '../ci/run-page-anchor.mjs'", `from ${JSON.stringify(pathToFileURL(RUN_PAGE_ANCHOR).href)}`);
     const copy = join(temp(), 'triage-failed-runs.newest-cached.mjs');
     writeFileSync(copy, mutated);
     const m = await import(pathToFileURL(copy).href);
@@ -1154,7 +1163,8 @@ describe('a cache never serves an answer that changes', () => {
     const mutated = flat
       .replace(keyed, '`${id}.jobs.json`')
       .replace("from './safe-rerun.mjs'", `from ${JSON.stringify(pathToFileURL(SAFE_RERUN).href)}`)
-      .replace("from './bounded-retry.mjs'", `from ${JSON.stringify(pathToFileURL(BOUNDED_RETRY).href)}`);
+      .replace("from './bounded-retry.mjs'", `from ${JSON.stringify(pathToFileURL(BOUNDED_RETRY).href)}`)
+      .replace("from '../ci/run-page-anchor.mjs'", `from ${JSON.stringify(pathToFileURL(RUN_PAGE_ANCHOR).href)}`);
     const copy = join(temp(), 'triage-failed-runs.jobs-unkeyed.mjs');
     writeFileSync(copy, mutated);
     const m = await import(pathToFileURL(copy).href);
@@ -1216,7 +1226,8 @@ describe('D1 — the quota floor and the hard request ceiling', () => {
     mkdirSync(ops, { recursive: true });
     const src = mutate(readFileSync(SCRIPT, 'utf8').replaceAll('\r\n', '\n'))
       .replace("from './safe-rerun.mjs'", `from ${JSON.stringify(pathToFileURL(SAFE_RERUN).href)}`)
-      .replace("from './bounded-retry.mjs'", `from ${JSON.stringify(pathToFileURL(BOUNDED_RETRY).href)}`);
+      .replace("from './bounded-retry.mjs'", `from ${JSON.stringify(pathToFileURL(BOUNDED_RETRY).href)}`)
+      .replace("from '../ci/run-page-anchor.mjs'", `from ${JSON.stringify(pathToFileURL(RUN_PAGE_ANCHOR).href)}`);
     writeFileSync(join(ops, 'triage-failed-runs.mjs'), src);
     writeFileSync(join(ops, 'failed-run-causes.json'), JSON.stringify({ causes }));
     // GIT_* is dropped: an inherited GIT_DIR (a hook sets one) would point this
@@ -1306,7 +1317,7 @@ describe('D1 — the quota floor and the hard request ceiling', () => {
   });
 
   test('GET /rate_limit is not counted, and the request past the ceiling is refused UNSENT', async () => {
-    const today = { workflow_runs: [{ id: 2, status: 'completed', conclusion: 'success', created_at: '2026-09-11T09:00:00Z' }] };
+    const today = { workflow_runs: [{ id: 2, status: 'completed', conclusion: 'success', created_at: RECENT }] };
     await stubFetch((path) => (path === '/rate_limit' ? json(core(900)) : json(today)), async (calls) => {
       const api = liveApi(SLUG, TOKEN, null, { maxRequests: 2 });
       assert.equal((await api.rateLimit()).remaining, 900);
@@ -1336,7 +1347,7 @@ describe('D1 — the quota floor and the hard request ceiling', () => {
   test('a body still arriving at the per-request ceiling is re-asked inside the retry plan, and the re-ask completes', async () => {
     const before = process.env.OPS_REQUEST_TIMEOUT_MS;
     process.env.OPS_REQUEST_TIMEOUT_MS = '100';
-    const today = JSON.stringify({ workflow_runs: [{ id: 2, status: 'completed', conclusion: 'success', created_at: '2026-09-11T09:00:00Z' }] });
+    const today = JSON.stringify({ workflow_runs: [{ id: 2, status: 'completed', conclusion: 'success', created_at: RECENT }] });
     const delays = [];
     const real = globalThis.fetch;
     globalThis.fetch = async (_url, { signal } = {}) => {
@@ -1517,14 +1528,14 @@ describe('D1 — the quota floor and the hard request ceiling', () => {
   const selfOps = opsWatch(603, 'in_progress', null, '28');
   const startupCause = { signature: 'startup:failure', rootCause: 'fixture: a failed run whose jobs the API withheld', fix: 'fixture', fixedBy: { kind: 'infrastructure' } };
   const LEDGER_ARGS = ['--repo', 'fixture/fixture', '--since', '2026-09-17T00:00:00Z', '--no-prs', '--branch', 'main'];
+  // ⏱ 2026-09-29 (rv2-pipe-a P-6): fetchNewest reads through anchoredNewest; the
+  // mutation below restores the ORIGINAL unanchored, unfiltered per_page=1 read.
   const NEW_QUERY = [
-    '    const body = await get(`/repos/${repo}/actions/workflows/${workflowId}/runs?branch=${encodeURIComponent(branch)}&status=completed&per_page=2`);',
-    '    return newestCompleted(body.workflow_runs, { selfRunId });',
+    '    anchoredNewest(get, `/repos/${repo}/actions/workflows/${workflowId}/runs?branch=${encodeURIComponent(branch)}&status=completed&per_page=2`, { selfRunId });',
     '',
   ].join('\n');
   const OLD_QUERY = [
-    '    const body = await get(`/repos/${repo}/actions/workflows/${workflowId}/runs?branch=${encodeURIComponent(branch)}&per_page=1`);',
-    '    return body.workflow_runs?.[0] ?? null;',
+    '    (await get(`/repos/${repo}/actions/workflows/${workflowId}/runs?branch=${encodeURIComponent(branch)}&per_page=1`)).workflow_runs?.[0] ?? null;',
     '',
   ].join('\n');
 
@@ -1570,6 +1581,69 @@ describe('D1 — the quota floor and the hard request ceiling', () => {
   });
 });
 
+// ═════════════════════════════════════════════════════════════════════════════
+// ⏱ 2026-09-29 (rv2-pipe-a P-6) — A BRANCH'S NEWEST RUN IS READ THROUGH THE
+// STALE-LISTING ANCHOR. On 2026-09-28 the branch=-filtered listing served a page
+// 9 days stale (newest 2026-09-19T04:50:13Z) while the unfiltered and the
+// created-range reads were current. The ledger read only the filtered page, so
+// its newest run was an old red (a false OPEN) or an old green (a false
+// later-green). It is now COVERAGE LOST, exit 2, naming the run that proves it.
+// ═════════════════════════════════════════════════════════════════════════════
+describe('a stale branch listing is COVERAGE LOST, never a later-green or an OPEN', () => {
+  const Q = '/repos/owner/name/actions/workflows/7/runs?branch=main&status=completed&per_page=2';
+  const NOW = Date.parse('2026-09-28T09:00:00Z');
+  const run = (id, conclusion, created_at, head_branch = 'main') => ({ id, status: 'completed', conclusion, created_at, updated_at: created_at, head_branch });
+  const stalePage = { workflow_runs: [run(100, 'failure', '2026-09-19T04:50:13Z')] };
+  const current = run(180, 'success', '2026-09-28T06:00:00Z');
+  const stub = (routes) => {
+    const calls = [];
+    const get = async (path) => {
+      calls.push(path);
+      if (path.includes('created=')) return routes.cross;
+      if (!path.includes('branch=')) return routes.bare;
+      return routes.page;
+    };
+    return { get, calls };
+  };
+
+  test('RED CONTROL: the filtered page is 9 days behind the creation-date read → STALE (exit 2), not OPEN', async () => {
+    const { get, calls } = stub({ page: stalePage, cross: { workflow_runs: [current] }, bare: { workflow_runs: [] } });
+    await assert.rejects(anchoredNewest(get, Q, { nowMs: NOW }), (e) => e instanceof CoverageLost && /^STALE — stale page/.test(e.message) && /run 180/.test(e.message));
+    assert.equal(calls.length, 3);
+    assert.ok(calls[1].includes('created=%3E%3D2026-09-19T04%3A50%3A13Z'), calls[1]);
+    assert.ok(!calls[2].includes('branch='), calls[2]);
+  });
+
+  test('RED CONTROL: only the unfiltered read (the listing that stayed fresh) holds the newer run → STALE', async () => {
+    const other = run(190, 'success', '2026-09-28T07:00:00Z', 'feature');
+    const { get } = stub({ page: stalePage, cross: { workflow_runs: [] }, bare: { workflow_runs: [other, current] } });
+    await assert.rejects(anchoredNewest(get, Q, { nowMs: NOW }), (e) => e instanceof CoverageLost && /run 180/.test(e.message));
+  });
+
+  test('GREEN CONTROL: an old page that no cross-read contradicts is a quiet branch, and its newest run is the answer', async () => {
+    const other = run(190, 'success', '2026-09-28T07:00:00Z', 'feature');
+    const { get } = stub({ page: stalePage, cross: { workflow_runs: [run(100, 'failure', '2026-09-19T04:50:13Z')] }, bare: { workflow_runs: [other] } });
+    assert.equal((await anchoredNewest(get, Q, { nowMs: NOW })).id, 100);
+  });
+
+  test('a page whose newest run is recent costs ONE request, as before', async () => {
+    const { get, calls } = stub({ page: { workflow_runs: [current] } });
+    assert.equal((await anchoredNewest(get, Q, { nowMs: NOW })).id, 180);
+    assert.equal(calls.length, 1);
+  });
+
+  test('a cross-read without a workflow_runs array is COVERAGE LOST, not a pass', async () => {
+    const { get } = stub({ page: stalePage, cross: {}, bare: { workflow_runs: [] } });
+    await assert.rejects(anchoredNewest(get, Q, { nowMs: NOW }), (e) => e instanceof CoverageLost);
+  });
+
+  test('MUTATION: the pre-P-6 read (the filtered page alone) returns the stale red — the false OPEN', async () => {
+    const { get } = stub({ page: stalePage, cross: { workflow_runs: [current] }, bare: { workflow_runs: [current] } });
+    const old = async () => newestCompleted((await get(Q)).workflow_runs);
+    assert.equal((await old()).conclusion, 'failure');
+  });
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // B-4 (2026-09-29) — a recurring class must be rankable: dated, or owned
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1588,7 +1662,7 @@ describe('B-4: recurring causes carry firstSeen/lastSeen or a guard/row', () => 
   test('GREEN: the same class dated, or owned by a guard or a row, or matched once, is no finding', () => {
     assert.deepEqual(unrankedRecurring([group({ ...bare, firstSeen: '2026-09-01', lastSeen: '2026-09-20' }, 5)]), []);
     assert.deepEqual(unrankedRecurring([group({ ...bare, guard: 'tooling/ci/assert-ops-register.mjs' }, 5)]), []);
-    assert.deepEqual(unrankedRecurring([group({ ...bare, row: 'O-FAILED-RUN-LEDGER' }, 5)]), []);
+    assert.deepEqual(unrankedRecurring([group({ ...bare, row: 'O-FAILURE-LEDGER-NEVER-RUNS' }, 5)]), []);
     assert.deepEqual(unrankedRecurring([group(bare, 1)]), []);
     assert.deepEqual(unrankedRecurring([{ signature: 'x', count: 9, cause: null }]), [], 'an UNEXPLAINED group is the other finding, not this one');
   });
@@ -1604,7 +1678,7 @@ describe('B-4: recurring causes carry firstSeen/lastSeen or a guard/row', () => 
     assert.ok(p.some((x) => /`guard` "the ops register" is not a tooling/.test(x)));
     assert.ok(p.some((x) => /`row` "ledger row" is not a platform-state row id/.test(x)));
     assert.ok(validateCauses([{ ...bare, firstSeen: '2026-09-02', lastSeen: '2026-09-01' }]).some((x) => /is after lastSeen/.test(x)));
-    assert.deepEqual(validateCauses([{ ...bare, firstSeen: '2026-09-01', lastSeen: '2026-09-02', hits: 3, guard: 'tooling/ci/assert-ops-register.mjs', row: 'O-FAILED-RUN-LEDGER' }]), []);
+    assert.deepEqual(validateCauses([{ ...bare, firstSeen: '2026-09-01', lastSeen: '2026-09-02', hits: 3, guard: 'tooling/ci/assert-ops-register.mjs', row: 'O-FAILURE-LEDGER-NEVER-RUNS' }]), []);
   });
 
   test('every `guard` the REAL register names is a ref of the REAL enforcement index', () => {

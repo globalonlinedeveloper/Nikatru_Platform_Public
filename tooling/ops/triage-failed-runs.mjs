@@ -189,6 +189,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { token } from './safe-rerun.mjs';
 import { fetchWithBoundedRetry } from './bounded-retry.mjs';
+import { judgeRunPage, needsCrossRead, crossReadTerm, withoutBranch, runQueryPredicate, repoWideWindow } from '../ci/run-page-anchor.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..', '..');
@@ -1029,6 +1030,50 @@ export function newestCompleted(runs, { selfRunId = null } = {}) {
   return runs.find((r) => r?.status === 'completed' && String(r.id) !== self) ?? null;
 }
 
+/** Rows each cross-read of a branch's newest run asks for. */
+export const NEWEST_CROSS_PAGE = 10;
+
+/**
+ * A branch's newest COMPLETED run, read THROUGH the stale-listing anchor
+ * (run-page-anchor.mjs, #1041) like every other reader of run history here.
+ * ⏱ 2026-09-29 (rv2-pipe-a P-6): the `branch=`-filtered listing served a page
+ * 9 days stale (newest 2026-09-19T04:50:13Z) while the unfiltered and the
+ * created-range reads were current, and this ledger read ONLY the filtered one.
+ * A stale page's newest run is then an old red (a false OPEN) or an old green
+ * (a false later-green) — a verdict built on a page that ends before the present.
+ *
+ * When the page's newest is older than CROSS_READ_AFTER_MS, two more reads are
+ * asked, as anchored-run-read.mjs asks them: the same query by creation date
+ * (`created>=` the page's newest), and the same query WITHOUT `branch=`,
+ * filtered here. Either holding a matching run newer than the page proves the
+ * page stale, and that is COVERAGE LOST (exit 2) naming both runs — never a
+ * later-green and never an OPEN. `get(path)` is the caller's counted GET.
+ */
+export async function anchoredNewest(get, query, { selfRunId = null, nowMs = Date.now() } = {}) {
+  const page = (await get(query))?.workflow_runs;
+  if (!Array.isArray(page)) throw new CoverageLost(`GET ${query} came back without a workflow_runs array`);
+  const term = needsCrossRead(page, nowMs) ? crossReadTerm(page) : null;
+  if (term) {
+    const cross = (await get(query.replace(/per_page=\d+/, `${term}&per_page=${NEWEST_CROSS_PAGE}`)))?.workflow_runs;
+    if (!Array.isArray(cross)) throw new CoverageLost(`the creation-date cross-read of ${query} came back without a workflow_runs array`);
+    const bare = withoutBranch(query).replace(/per_page=\d+/, `per_page=${NEWEST_CROSS_PAGE}`);
+    let wide;
+    try {
+      wide = repoWideWindow(await get(bare), { predicate: runQueryPredicate(query), why: 'the same query without `branch=`' });
+    } catch (e) {
+      if (e instanceof CoverageLost) throw e;
+      throw new CoverageLost(`the second-source cross-read of ${query}: ${e.message}`);
+    }
+    const verdict = judgeRunPage(page, {
+      what: `GET ${query}`,
+      cross: { runs: [...cross, ...wide.runs], why: 'a cross-read by creation date with the same query without `branch=`' },
+      nowMs,
+    });
+    if (!verdict.ok) throw new CoverageLost(`STALE — ${verdict.why}`);
+  }
+  return newestCompleted(page, { selfRunId });
+}
+
 /** GITHUB_RUN_ID as a run id, or null when it is absent or not numeric. */
 export const selfRunIdFrom = (env) => (/^[0-9]{1,20}$/.test(String(env?.GITHUB_RUN_ID ?? '')) ? env.GITHUB_RUN_ID : null);
 
@@ -1129,12 +1174,11 @@ export function liveApi(repo, tok, cacheDir, { maxRequests = DEFAULT_MAX_REQUEST
     return text ? res.text() : res.json();
   };
   const cached = (name, fetcher, { text = false } = {}) => readThroughCache(cacheDir, name, fetcher, { text });
-  /** A branch's newest COMPLETED run (newestCompleted, above). NEVER cached —
-   *  see --cache-dir in the header. */
-  const fetchNewest = async (workflowId, branch) => {
-    const body = await get(`/repos/${repo}/actions/workflows/${workflowId}/runs?branch=${encodeURIComponent(branch)}&status=completed&per_page=2`);
-    return newestCompleted(body.workflow_runs, { selfRunId });
-  };
+  /** A branch's newest COMPLETED run (newestCompleted, above), read through the
+   *  stale-listing anchor (anchoredNewest, above). NEVER cached — see
+   *  --cache-dir in the header. */
+  const fetchNewest = async (workflowId, branch) =>
+    anchoredNewest(get, `/repos/${repo}/actions/workflows/${workflowId}/runs?branch=${encodeURIComponent(branch)}&status=completed&per_page=2`, { selfRunId });
   return {
     live: true,
     /** GET /rate_limit's `resources.core` bucket, read before the first counted

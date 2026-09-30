@@ -715,6 +715,11 @@ jobs:
       TARGET: ${{ matrix.target }}
       DEVICE: ${{ matrix.device }}
       CALLBACK: ${{ matrix.callback }}
+      # why: the proof's own log, written by the proof step and read by the
+      # purge — the consent row's install id, or proof that none was written
+      # (tooling/e2e/consent_anon_id.mjs, resolveProofLogConsent). Relative to
+      # the checkout: a job-level env cannot read `runner`.
+      E2E_PROOF_LOG: native-auth-proof.log
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -806,6 +811,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node tooling/e2e/provision_user.mjs
       - name: The native leg — first run, sign in, the list offline, sign out
+        id: proof
         if: matrix.target != 'linux'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -816,8 +822,9 @@ jobs:
         # serves native sign-in only to a VERIFIED attestation, and a CI device
         # cannot attest, so this leg now proves the gate: every call such a build
         # sends is refused and no session comes back. A 2xx is the leg's red.
-        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target "$TARGET" --device "${SIM_UDID:-$DEVICE}" $CALLBACK --expect-refusal
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target "$TARGET" --device "${SIM_UDID:-$DEVICE}" --log "$E2E_PROOF_LOG" $CALLBACK --expect-refusal
       - name: The native leg — the bundle under xvfb, one D-Bus session
+        id: proof_linux
         if: matrix.target == 'linux'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -827,7 +834,7 @@ jobs:
         run: |
           # why: no display and no keyring in refusal mode — the probe never opens the bundle.
           if [ "$PROOF_NEEDS_DEVICE" != true ]; then
-            node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --callback --expect-refusal
+            node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --log "$E2E_PROOF_LOG" --callback --expect-refusal
             exit
           fi
           dbus-run-session -- bash -c '
@@ -835,7 +842,7 @@ jobs:
             eval "$(printf "" | gnome-keyring-daemon --unlock --components=secrets)"
             export GNOME_KEYRING_CONTROL
             xvfb-run -a -s "-screen 0 1920x1200x24" \
-              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --callback --expect-refusal
+              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --log "$E2E_PROOF_LOG" --callback --expect-refusal
           '
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'
@@ -847,6 +854,8 @@ jobs:
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
           E2E_APP_ID: ${{ matrix.app }}
           PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}
+          # why: a missing proof log is "no row" only when neither proof step ran.
+          E2E_PROOF_RAN: ${{ steps.proof.outcome != 'skipped' || steps.proof_linux.outcome != 'skipped' }}
         run: node tooling/e2e/purge.mjs
 
   # why: THE RESET-REVOKES CHECK, ON A SCHEDULE, AGAINST BOX C (AB-A4-02).

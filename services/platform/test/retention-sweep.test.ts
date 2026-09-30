@@ -35,6 +35,8 @@
 //           written as integer milliseconds, is swept at once)
 //   N7 sweep ext_devices on `created_at` instead of `revoked_at`
 //        -> the never-revoked case goes red (a live credential is deleted)
+//   N8 (⏱ 2026-09-30, EXA-11) drop the expired limb from the ext_devices DELETE
+//        -> the expired-and-never-presented cases go red (kept forever)
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect } from 'vitest';
 
@@ -51,6 +53,7 @@ import {
   CONTENT_REPORTS_RETENTION_DAYS,
   EXT_CODES_RETENTION_DAYS,
   EXT_DEVICES_RETENTION_DAYS,
+  extDevicesExpiredCutoffs,
   NATIVE_ATTEST_REDEEMED_RETENTION_DAYS,
   NATIVE_ATTEST_COUNTERS_RETENTION_DAYS,
   NATIVE_ATTEST_KEYS_RETENTION_DAYS,
@@ -500,7 +503,7 @@ describe('ext_devices — a revoked device is swept 30 days after revocation, a 
       `INSERT INTO ext_devices (link_id, user_id, product, channel, token_hash, created_at, last_seen_at, revoked_at) VALUES
          ('l-revoked-31d', 'u1', 'fullshot', 'amo', 'th-fixture-1', '${iso(nowMs - 400 * DAY)}', '${iso(nowMs - 32 * DAY)}', '${iso(nowMs - 31 * DAY)}'),
          ('l-revoked-29d', 'u1', 'fullshot', 'amo', 'th-fixture-2', '${iso(nowMs - 400 * DAY)}', '${iso(nowMs - 30 * DAY)}', '${iso(nowMs - 29 * DAY)}'),
-         ('l-live-400d',   'u2', 'fullshot', 'amo', 'th-fixture-3', '${iso(nowMs - 400 * DAY)}', '${iso(nowMs - DAY)}', NULL)`,
+         ('l-live-100d',   'u2', 'fullshot', 'amo', 'th-fixture-3', '${iso(nowMs - 100 * DAY)}', '${iso(nowMs - DAY)}', NULL)`,
     );
     // UNQUOTED on purpose: an integer literal, milliseconds for "revoked yesterday".
     db.db.exec(
@@ -527,11 +530,60 @@ describe('ext_devices — a revoked device is swept 30 days after revocation, a 
     expect(db.count('ext_devices', 'link_id = ?', 'l-revoked-29d')).toBe(1);
   });
 
-  it('keeps a device created 400 days ago and never revoked — a live credential is never swept', async () => {
+  it('keeps a never-revoked device inside its lifetime (created 100 days ago, used yesterday) — a live credential is never swept', async () => {
     const db = realPlatformDb();
     seedDevices(db, NOW);
     await retentionSweep(envOf(db), ONLY_DEVICES, NOW);
-    expect(db.count('ext_devices', 'link_id = ?', 'l-live-400d')).toBe(1);
+    expect(db.count('ext_devices', 'link_id = ?', 'l-live-100d')).toBe(1);
+  });
+
+  // ⏱ 2026-09-30 · EXA-11 (re-review finding 5). A link whose lifetime ended
+  // (lib/ext-links.ts: 180 days at most, 30 days idle) and that was never
+  // presented again is deleted 30 days after that end, as a revoked one is.
+  const seedExpired = (db: RealDb, nowMs: number) => {
+    db.db.exec(
+      `INSERT INTO ext_devices (link_id, user_id, product, channel, token_hash, created_at, last_seen_at, revoked_at) VALUES
+         ('l-age-211d',  'u4', 'fullshot', 'amo', 'th-fixture-5', '${iso(nowMs - 211 * DAY)}', '${iso(nowMs - DAY)}', NULL),
+         ('l-age-209d',  'u4', 'fullshot', 'amo', 'th-fixture-6', '${iso(nowMs - 209 * DAY)}', '${iso(nowMs - DAY)}', NULL),
+         ('l-idle-61d',  'u5', 'fullshot', 'amo', 'th-fixture-7', '${iso(nowMs - 70 * DAY)}', '${iso(nowMs - 61 * DAY)}', NULL),
+         ('l-idle-59d',  'u5', 'fullshot', 'amo', 'th-fixture-8', '${iso(nowMs - 70 * DAY)}', '${iso(nowMs - 59 * DAY)}', NULL),
+         ('l-never-61d', 'u6', 'fullshot', 'amo', 'th-fixture-9', '${iso(nowMs - 61 * DAY)}', NULL, NULL)`,
+    );
+  };
+
+  it('🔴 deletes a never-revoked link older than 180 + 30 days, however recently used', async () => {
+    const db = realPlatformDb();
+    seedExpired(db, NOW);
+    await retentionSweep(envOf(db), ONLY_DEVICES, NOW);
+    expect(db.count('ext_devices', 'link_id = ?', 'l-age-211d')).toBe(0);
+    expect(db.count('ext_devices', 'link_id = ?', 'l-age-209d')).toBe(1);
+  });
+
+  it('🔴 deletes a never-revoked link idle for more than 30 + 30 days; keeps one idle 59 days', async () => {
+    const db = realPlatformDb();
+    seedExpired(db, NOW);
+    await retentionSweep(envOf(db), ONLY_DEVICES, NOW);
+    expect(db.count('ext_devices', 'link_id = ?', 'l-idle-61d')).toBe(0);
+    expect(db.count('ext_devices', 'link_id = ?', 'l-idle-59d')).toBe(1);
+  });
+
+  it('a link never used at all counts its idleness from created_at', async () => {
+    const db = realPlatformDb();
+    seedExpired(db, NOW);
+    await retentionSweep(envOf(db), ONLY_DEVICES, NOW);
+    expect(db.count('ext_devices', 'link_id = ?', 'l-never-61d')).toBe(0);
+  });
+
+  it('the expired limb is bounded per run like every other store (LIMIT ?)', async () => {
+    const db = realPlatformDb();
+    const rows: string[] = [];
+    for (let i = 0; i < MAX_ROWS_PER_SWEEP + 5; i++) {
+      rows.push(`('l-bulk-${i}', 'u7', 'fullshot', 'amo', 'th-bulk-${i}', '${iso(NOW - 300 * DAY)}', NULL, NULL)`);
+    }
+    db.db.exec(`INSERT INTO ext_devices (link_id, user_id, product, channel, token_hash, created_at, last_seen_at, revoked_at) VALUES ${rows.join(',')}`);
+    await retentionSweep(envOf(db), ONLY_DEVICES, NOW);
+    expect(db.count('ext_devices')).toBe(5);
+    expect(String(heartbeat(db)[0].detail)).toContain('capped=1');
   });
 
   it('binds an ISO-8601 TEXT cutoff, never a number', async () => {
@@ -540,13 +592,17 @@ describe('ext_devices — a revoked device is swept 30 days after revocation, a 
     await retentionSweep(envOf(db), ONLY_DEVICES, NOW);
     const deletes = deletesPrepared(db);
     expect(deletes).toHaveLength(1);
-    expect(deletes[0]).toContain('FROM ext_devices WHERE revoked_at < ?');
-    // The DELETE's tuple is the one bound as (cutoff, MAX_ROWS_PER_SWEEP).
-    const tuples = db.bound.filter((t) => t.length === 2 && t[1] === MAX_ROWS_PER_SWEEP);
+    expect(deletes[0]).toContain('FROM ext_devices WHERE (revoked_at < ?');
+    // The DELETE's tuple is (cutoff, maxAgeCutoff, idleCutoff, MAX_ROWS_PER_SWEEP).
+    const tuples = db.bound.filter((t) => t.length === 4 && t[3] === MAX_ROWS_PER_SWEEP);
     expect(tuples).toHaveLength(1);
-    expect(typeof tuples[0][0]).toBe('string');
-    expect(tuples[0][0]).toBe(retentionCutoff(EXT_DEVICES_RETENTION_DAYS, NOW));
-    expect(String(tuples[0][0])).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    const cutoff = retentionCutoff(EXT_DEVICES_RETENTION_DAYS, NOW);
+    expect(tuples[0][0]).toBe(cutoff);
+    expect(tuples[0].slice(1, 3)).toEqual(extDevicesExpiredCutoffs(String(cutoff)));
+    for (const v of tuples[0].slice(0, 3)) {
+      expect(typeof v).toBe('string');
+      expect(String(v)).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    }
   });
 
   it('🔴 an INTEGER `revoked_at` is stored as TEXT and would match a bare `<` — the sweep keeps it anyway', async () => {
@@ -580,7 +636,7 @@ describe('ext_devices — a revoked device is swept 30 days after revocation, a 
     seedDevices(db, NOW);
     await retentionSweep(envOf(db), undefined, NOW);
     expect(db.rows('SELECT link_id FROM ext_devices ORDER BY link_id')).toEqual([
-      { link_id: 'l-live-400d' },
+      { link_id: 'l-live-100d' },
       { link_id: 'l-revoked-29d' },
       { link_id: 'l-revoked-integer' },
     ]);

@@ -8,6 +8,8 @@
 // O-NATIVE-AUTH-CALLBACK-UNBUILT. Before ST-T7 every native sign-in answered
 // `captcha_failed`: Box C captchas the password grant and no store build
 // carries a site key (ADR 084). The steps:
+//   0. the DPDP consent prompt is declined, its install id printed FIRST so
+//      tooling/e2e/purge.mjs removes the row it writes (run 36525783687);
 //   1. the REAL form signs the user in, and Home shows;
 //   1b. (AB-O1-05) a row written online is read back with the network off,
 //      from this target's own shared_preferences backend
@@ -35,6 +37,7 @@ import 'package:nikatru_chassis_screens/shell/web_semantics.dart'
     show releaseWebSemantics;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subscriptiontracker/core/e2e_keys.dart';
+import 'package:subscriptiontracker/features/auth/legal_consent_fields.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/data/subscriptions/subscription_repository.dart';
 import 'package:subscriptiontracker/features/auth/reaccept_terms_screen.dart';
@@ -49,6 +52,9 @@ import 'offline_read_steps.dart';
 const String _email = String.fromEnvironment('E2E_EMAIL');
 const String _password = String.fromEnvironment('E2E_PASSWORD');
 const bool _awaitCallback = bool.fromEnvironment('NK_PROOF_CALLBACK');
+// iOS: the URL the APP opens itself (tooling/e2e/native_auth_proof.mjs,
+// appOpensCallback); empty where the host's OS opens it.
+const String _openFromApp = String.fromEnvironment('NK_PROOF_OPEN_FROM_APP');
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -68,10 +74,16 @@ void main() {
     final ErrorWidgetBuilder builderBeforeTest = ErrorWidget.builder;
     try {
       await app.main();
-      final List<Finder> firstRun = <Finder>[
-        find.text('Skip'),
-        find.text('No thanks'),
-      ];
+
+      // 0 ── the DPDP consent prompt, answered HERE and nowhere else, before
+      // anything under its scrim is touched (answerConsentPrompt says why).
+      Future<String> installId(BuildContext context) =>
+          ProviderScope.containerOf(context).read(installIdProvider.future);
+      bool consentAnswered = await answerConsentPrompt(
+        tester,
+        installId: installId,
+      );
+      final List<Finder> firstRun = <Finder>[find.text('Skip')];
       expect(
         await pumpUntilShown(
           tester,
@@ -81,6 +93,14 @@ void main() {
         isTrue,
         reason: 'the sign-in form never showed. On screen: ${onScreen()}',
       );
+      consentAnswered =
+          consentAnswered ||
+          await answerConsentPrompt(
+            tester,
+            installId: installId,
+            timeout: const Duration(seconds: 5),
+          );
+      if (!consentAnswered) debugPrint('NK_PROOF step=consent outcome=absent');
 
       // 1 ── the real form, the real route.
       await proveFormSignIn(
@@ -91,10 +111,9 @@ void main() {
         passwordField: find.byKey(E2EKeys.loginPassword),
         submit: find.byKey(E2EKeys.loginSubmit),
         home: find.byType(HomeScreen),
-        tapThrough: <Finder>[
-          find.byKey(ReacceptTermsScreen.acceptButton),
-          ...firstRun,
-        ],
+        reacceptButton: find.byKey(ReacceptTermsScreen.acceptButton),
+        reacceptTick: find.byKey(LegalConsentFields.termsCheckbox),
+        tapThrough: firstRun,
       );
       debugPrint('NK_PROOF step=sign-in outcome=ok');
 
@@ -156,6 +175,9 @@ void main() {
       // 4 ── the OS delivers an unusable callback.
       if (_awaitCallback) {
         debugPrint(kAwaitCallbackMarker);
+        if (_openFromApp.isNotEmpty) {
+          await openCallbackFromApp(tester, _openFromApp);
+        }
         expect(
           await pumpUntilShown(
             tester,

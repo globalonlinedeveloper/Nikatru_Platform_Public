@@ -175,8 +175,7 @@ describe('the real tree: every database the register\'s Workers own, and only th
     const platformMigrations = readdirSync(join(REPO, 'services/platform/migrations')).filter((f) => f.endsWith('.sql')).length;
     assert.match(
       r.stdout,
-      // ⏱ 2026-09-30 (ADR no.NNN): 27 -> 28, and platform_db's first exempt table (native_attest_counters).
-      new RegExp(`MONITOR · \\[pipeline B-17\\] · platform_db: 28 table\\(s\\) enumerated from services/platform/migrations \\(${platformMigrations} migration file\\(s\\)\\), 0 row\\(s\\) · 1 exempt table\\(s\\), not queried\\n`),
+      new RegExp(`MONITOR · \\[pipeline B-17\\] · platform_db: 29 table\\(s\\) enumerated from services/platform/migrations \\(${platformMigrations} migration file\\(s\\)\\), 0 row\\(s\\) · 2 exempt table\\(s\\), not queried\\n`), // ⏱ 2026-09-30 (ADR no.NNN): 26 -> 29 tables and 1 -> 2 exempt, 0022 (native_attest_counters is exempt). ⏱ 2026-09-30: ext_link_floor is exempt (EXA-11).
     );
     // ⏱ 2026-09-28 · the same for subscriptiontracker_db, whose literal `2` went
     // stale with 0003_subscription_model.sql. The table count stays pinned.
@@ -185,11 +184,10 @@ describe('the real tree: every database the register\'s Workers own, and only th
       r.stdout,
       new RegExp(`MONITOR · \\[pipeline B-17\\] · subscriptiontracker_db: 6 table\\(s\\) enumerated from services/subscriptiontracker-api/migrations \\(${appMigrations} migration file\\(s\\)\\), 0 row\\(s\\) · 6 exempt table\\(s\\), not queried`),
     );
-    assert.match(r.stdout, /MONITOR · \[pipeline B-17\] · 2 database\(s\) walked \(platform_db, subscriptiontracker_db\): 34 table\(s\), 0 row\(s\)/); // ⏱ 2026-09-30 (ADR no.NNN, merged with main): 31 -> 34, platform_db 25 -> 28 (0022, three native_attest tables). ⏱ 2026-09-29: 29 -> 31, 0005 adds categories + price_change. ⏱ 2026-09-28: 26 -> 29 and platform_db 22 -> 25, 0020's three reminder tables (ST-T4a).
+    assert.match(r.stdout, /MONITOR · \[pipeline B-17\] · 2 database\(s\) walked \(platform_db, subscriptiontracker_db\): 35 table\(s\), 0 row\(s\)/); // ⏱ 2026-09-30 (ADR no.NNN): +3, 0022 native_attest_redeemed + native_attest_keys + native_attest_counters. ⏱ 2026-09-30: 31 -> 32, 0021 ext_link_floor (EXA-11). ⏱ 2026-09-29: 29 -> 31, 0005 adds categories + price_change. ⏱ 2026-09-28: 26 -> 29 and platform_db 22 -> 25, 0020's three reminder tables (ST-T4a).
     assert.match(r.stdout, /subscriptiontracker_db migration ledger: NOT READ \(fixture mode, no --schema-file\)/);
     assert.match(r.stdout, /⬜ {2}payment_history {10}exempt — not queried {3}\[no marker · exempt\]/);
-    // ⏱ 2026-09-30 (ADR no.NNN): 6 -> 7, platform_db's native_attest_counters is exempt (a count per day and scope, no marker).
-    assert.match(r.stdout, /7 exempt table\(s\) were not queried, and say so above/);
+    assert.match(r.stdout, /8 exempt table\(s\) were not queried, and say so above/); // ⏱ 2026-09-30 (ADR no.NNN): 7 -> 8, native_attest_counters. ⏱ 2026-09-30: 6 -> 7, ext_link_floor (EXA-11).
   });
 
   test('the gate prints both databases', () => {

@@ -541,6 +541,21 @@ const WIRE_CONTRACTS = [
       'NO DART CLIENT, BY CONSTRUCTION — the caller is the FullShot browser extension signing ITSELF out (PR-X). It reads the status code (200, or 401 for a credential already dead), not the body.',
     absentFromDart: '/v1/ext/revoke',
   },
+  // ⏱ 2026-09-30 · EXA-11 — the account-side list and revoke of linked browsers.
+  {
+    id: 'ext-devices-list',
+    kind: 'gap',
+    reason:
+      'NO CLIENT YET, AND IT IS A STATE RATHER THAN A CONSTRUCTION — the account page that lists linked browsers is unbuilt, and when it comes it is plain JavaScript on nikatru.com like the connect page, not Dart. The envelope is pinned where it is served: services/platform/test/ext-auth.test.ts asserts each device carries exactly five keys and never the token hash or user_id.',
+    absentFromDart: '/v1/ext/devices',
+  },
+  {
+    id: 'ext-devices-revoke',
+    kind: 'gap',
+    reason:
+      'NO CLIENT YET — the same unbuilt account page. It answers 204 or 404 with no body a client could come to depend on; ext-auth.test.ts holds both, and that revoking one link leaves the others at 200.',
+    absentFromDart: '/v1/ext/devices/',
+  },
   {
     id: 'receipts',
     kind: 'gap',
@@ -620,7 +635,7 @@ const WIRE_CONTRACTS = [
     id: 'sessions-revoke-all',
     kind: 'gap',
     reason:
-      'NO CLIENT YET: sign-out-everywhere ships in the web PR after this Worker deploys. No request body; success is a 204 with no body, and a refusal is a status with `{error}` (429 rate_limited, 503 revocation_unavailable).',
+      'NO CLIENT YET: sign-out-everywhere ships in the web PR after this Worker deploys. No request body; success is a 204 with no body, and a refusal is a status with `{error}` (429 rate_limited, 503 revocation_unavailable). ⏱ 2026-09-30 · EXA-11: ONE MORE ANSWER, AND IT IS A RETRY — 200 {d1Pending: true} means every token IS refused but the browser-extension link floor could not be written; the client MUST treat it as \"retry\", never as done.',
     absentFromDart: '/v1/sessions/revoke-all',
   },
   {

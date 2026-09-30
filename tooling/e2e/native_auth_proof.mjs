@@ -19,8 +19,17 @@
 //      the target's own mechanism (adb / simctl / LaunchServices / xdg-open);
 //   3. reads the run's output back: every NK_PROOF step, and on a callback
 //      target the line `nk_auth_callback flow=reset outcome=failed`. A missing
-//      line fails the run even when `flutter test` exited 0.
-//   4. ⏱ 2026-09-29 (AB-O1-05): when the app's proof suite declares the
+//      line fails the run even when `flutter test` exited 0;
+//   4. tees every byte `flutter test` prints to --log <path>, ending it with
+//      the PROOF_LOG_END line once flutter has exited — tooling/e2e/purge.mjs
+//      reads the consent row's install id off it (E2E_PROOF_LOG), and a
+//      finished log with none shows this run wrote no row (run 36525783687:
+//      all four purges failed on "no consent anon_id resolved");
+//   5. kills `flutter test` after SILENCE_LIMIT_MS with no output, so a hung
+//      launch (run 36525783687: macOS printed nothing for 40 min after
+//      "Failed to foreground app" and the job was cancelled) fails as a named
+//      finding with its purge still inside the job's ceiling.
+//   6. ⏱ 2026-09-29 (AB-O1-05): when the app's proof suite declares the
 //      offline read (it prints OFFLINE_READ_LINE), requires that line too — the
 //      list read back with the network off from this target's own store. An app
 //      whose suite has no such step is not asked for it; one whose suite has it
@@ -47,7 +56,7 @@
 // what is proved is the gate, and a flaky emulator boot must not redden it.
 //
 //   node tooling/e2e/native_auth_proof.mjs --app <id> --target <t>
-//        [--device <id>] [--callback] [--expect-refusal]
+//        [--device <id>] [--callback] [--log <path>] [--expect-refusal]
 //
 // Env: E2E_EMAIL, E2E_PASSWORD, SUPABASE_URL, SUPABASE_ANON_KEY, API_BASE_URL.
 // Exit 0 = every step read back · 1 = a step failed or is missing · 2 = the
@@ -58,6 +67,7 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, write
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PROOF_LOG_END } from './consent_anon_id.mjs';
 
 const NAME = 'native_auth_proof';
 
@@ -66,6 +76,11 @@ export const PROOF_TEST = 'integration_test/native_auth_proof_test.dart';
 export const AWAIT_MARKER = 'NK_PROOF_AWAIT_CALLBACK';
 export const FAILED_CALLBACK_LINE = 'nk_auth_callback flow=reset outcome=failed';
 export const TRACE_URL = 'https://platform.nikatru.com/cdn-cgi/trace';
+/** How long `flutter test` may print nothing before the proof calls it hung.
+ *  The longest silent stretch of a healthy run is a cold Gradle build (≈ 4.5
+ *  min in run 36525783687); an iOS xcodebuild is the next. */
+export const SILENCE_LIMIT_MS = 20 * 60_000;
+
 export const OFFLINE_READ_LINE = 'NK_PROOF step=offline-read outcome=ok';
 /** The platform Worker's origin — the host TRACE_URL reads, and the native route's. */
 export const PLATFORM_ORIGIN = new URL(TRACE_URL).origin;
@@ -161,14 +176,13 @@ export async function probeRefusals(app, { email, password, doFetch = fetch, ori
 /**
  * IMPURE. The whole --expect-refusal leg: probe, grade, print. Returns the exit
  * code — 0 the gate held, 1 it did not, 2 the leg could not run. With [log] it
- * FINISHES the proof log with [logEnd] on every one of those exits: the leg
+ * FINISHES the proof log with PROOF_LOG_END on every one of those exits: the leg
  * starts no app, so no consent prompt was answered, and the purge after it must
  * read a finished log as "no row" rather than a cut-off one as unresolved.
  */
-export async function runRefusalLeg(o, { log = null, logEnd = null, env = process.env, probe = probeRefusals, egress = printEgressIp, out = console } = {}) {
-  if (log && !logEnd) throw new Error('runRefusalLeg: a log needs its end marker');
+export async function runRefusalLeg(o, { log = null, env = process.env, probe = probeRefusals, egress = printEgressIp, out = console } = {}) {
   const finish = (code, refused) => {
-    if (log) appendFileSync(log, `\n${logEnd} flutter_exit=none mode=expect-refusal exit=${code}${refused ? ` refused=${refused}` : ''}\n`);
+    if (log) appendFileSync(log, `\n${PROOF_LOG_END} flutter_exit=none mode=expect-refusal exit=${code}${refused ? ` refused=${refused}` : ''}\n`);
     return code;
   };
   for (const k of ['E2E_EMAIL', 'E2E_PASSWORD']) {
@@ -234,7 +248,12 @@ export function openCommands(target, url, { app, root, device, home = homedir() 
     case 'android':
       return [['adb', ...(device ? ['-s', device] : []), 'shell', `am start -W -a android.intent.action.VIEW -d '${url}'`]];
     case 'ios':
-      return [['xcrun', 'simctl', 'openurl', device || 'booted', url]];
+      // 🔴 NOT `simctl openurl`: iOS holds a custom-scheme URL from outside
+      // the app behind a system "Open in “<app>”?" sheet that nothing on a
+      // runner answers — run 36637965865's screenshot, 25 s after the open.
+      // The app opens its own callback instead (appOpensCallback below), which
+      // iOS routes through the same scene → app_links → supabase_flutter path.
+      return [];
     case 'macos': {
       const products = join(root, 'apps', app, 'build', 'macos', 'Build', 'Products', 'Debug');
       const bundle = existsSync(products) ? readdirSync(products).find((f) => f.endsWith('.app')) : undefined;
@@ -268,6 +287,10 @@ export function openCommands(target, url, { app, root, device, home = homedir() 
   }
 }
 
+/** Whether the APP opens the callback itself (`NK_PROOF_OPEN_FROM_APP`)
+ *  rather than the host — iOS alone; see the `ios` arm of openCommands. */
+export const appOpensCallback = (target) => target === 'ios';
+
 /** What the run's output proves, and what it does not. */
 export function readProof(out, { callback, offlineRead = false }) {
   const text = String(out ?? '');
@@ -296,7 +319,7 @@ function args(argv) {
     const a = argv[i];
     if (a === '--callback') o.callback = true;
     else if (a === '--expect-refusal') o.expectRefusal = true;
-    else if (a === '--app' || a === '--target' || a === '--device') o[a.slice(2)] = argv[++i];
+    else if (a === '--app' || a === '--target' || a === '--device' || a === '--log') o[a.slice(2)] = argv[++i];
     else throw new Error(`unknown argument ${a}`);
   }
   return o;
@@ -309,6 +332,34 @@ async function printEgressIp() {
   } catch (e) {
     console.log(`NK_PROOF egress_ip=unread (${e?.message ?? e})`);
   }
+}
+
+/**
+ * What the OS did with the callback, read 25 s after it was opened — or null
+ * where the target's own output already says. iOS only: proof run
+ * 36546306851's simctl openurl exited 0 and the app never saw the URL (no
+ * `handle deeplink uri`), and nothing a runner prints could say why. So the
+ * simulator's own log and a screenshot of what was on screen.
+ */
+export function afterOpenDiagnostics(target, { device, dir }) {
+  if (target !== 'ios') return null;
+  const dev = device || 'booted';
+  return {
+    screenshot: ['xcrun', 'simctl', 'io', dev, 'screenshot', join(dir, 'nk-proof-ios-after-open.png')],
+    log: ['xcrun', 'simctl', 'spawn', dev, 'log', 'show', '--last', '2m', '--style', 'compact', '--predicate',
+      'eventMessage CONTAINS[c] "nikatru" OR eventMessage CONTAINS[c] "openurl" OR eventMessage CONTAINS "app_links" ' +
+        'OR eventMessage CONTAINS "Flutter application in debug" OR process == "SpringBoard" AND eventMessage CONTAINS[c] "url"'],
+  };
+}
+
+function runDiagnostics(d, root) {
+  if (!d) return;
+  console.log(`${NAME}: $ ${d.screenshot.join(' ')}`);
+  spawnSync(d.screenshot[0], d.screenshot.slice(1), { cwd: root, stdio: 'inherit' });
+  const r = spawnSync(d.log[0], d.log.slice(1), { cwd: root, encoding: 'utf8', maxBuffer: 64 << 20 });
+  const lines = String(r.stdout ?? '').split('\n').filter((l) => l.trim());
+  console.log(`${NAME}: simulator log after the open — last ${Math.min(lines.length, 150)} of ${lines.length} line(s):`);
+  for (const l of lines.slice(-150)) console.log(`  ${l}`);
 }
 
 function runOpen(commands, root) {
@@ -337,15 +388,27 @@ async function main() {
     console.error(`${NAME}: ${e.message}`);
     process.exit(2);
   }
+  const defines = ['E2E_EMAIL', 'E2E_PASSWORD', 'SUPABASE_URL', 'SUPABASE_ANON_KEY', 'API_BASE_URL'];
+  // Created FIRST, before any refusal and before the spawn: to the purge a
+  // proof step that ran and left no log is UNRESOLVED (consent_anon_id.mjs,
+  // resolveProofLogConsent), so a path that starts no app must say so here.
+  const log = o.log ? resolve(root, o.log) : null;
+  if (log) {
+    mkdirSync(resolve(log, '..'), { recursive: true });
+    writeFileSync(log, `${NAME}: ${o.app}/${o.target} — flutter test output follows\n`);
+  }
+  // ⏱ 2026-09-30 (third review of #1070): the refusal leg starts no app, and it
+  // runs HERE — after the log exists, before the flutter defines are asked for —
+  // so it finishes the log on every exit and the purge reads "no row".
   if (o.expectRefusal) {
-    const code = await runRefusalLeg(o);
+    const code = await runRefusalLeg(o, { log });
     if (code !== 0) process.exit(code);
     return;
   }
-  const defines = ['E2E_EMAIL', 'E2E_PASSWORD', 'SUPABASE_URL', 'SUPABASE_ANON_KEY', 'API_BASE_URL'];
   const missing = defines.filter((k) => !process.env[k]);
   if (missing.length) {
     console.error(`${NAME}: missing env ${missing.join(', ')} — the build would run in demo posture or without the user`);
+    if (log) appendFileSync(log, `\n${PROOF_LOG_END} flutter_exit=none refused=env\n`);
     process.exit(2);
   }
   const offlineRead = offlineReadDeclared(root, o.app);
@@ -354,33 +417,59 @@ async function main() {
 
   const flutterArgs = [
     'test', PROOF_TEST,
+    // why: on CI flutter picks the `github` reporter, which holds a test's
+    // output until the test ENDS — so a hung or killed run left no line at all
+    // (run 36525783687), and the consent id printed before the tap would never
+    // reach the log. `expanded` streams each line as it is printed.
+    '--reporter', 'expanded',
     ...(o.device ? ['-d', o.device] : []),
     ...defines.map((k) => `--dart-define=${k}=${process.env[k]}`),
     `--dart-define=NK_PROOF_CALLBACK=${o.callback}`,
+    ...(o.callback && appOpensCallback(o.target) ? [`--dart-define=NK_PROOF_OPEN_FROM_APP=${callbackUrl(o.app)}`] : []),
   ];
   const url = callbackUrl(o.app);
   let out = '';
   let opened = false;
+  let hung = false;
   const child = spawn('flutter', flutterArgs, {
     cwd: join(root, 'apps', o.app),
     shell: process.platform === 'win32',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  let silence;
+  const arm = () => {
+    clearTimeout(silence);
+    silence = setTimeout(() => {
+      hung = true;
+      console.error(`${NAME}: flutter test printed nothing for ${SILENCE_LIMIT_MS / 60_000} min — killing it`);
+      // On Windows `shell: true` makes the child cmd.exe, and flutter its child.
+      if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F']);
+      else child.kill();
+    }, SILENCE_LIMIT_MS);
+  };
+  arm();
   const onData = (stream) => (chunk) => {
     const s = chunk.toString();
+    arm();
     out += s;
+    if (log) appendFileSync(log, s);
     stream.write(s);
     if (o.callback && !opened && out.includes(AWAIT_MARKER)) {
       opened = true;
       setTimeout(() => runOpen(openCommands(o.target, url, { app: o.app, root, device: o.device }), root), 3_000);
+      const diag = afterOpenDiagnostics(o.target, { device: o.device, dir: process.env.RUNNER_TEMP || root });
+      if (diag) setTimeout(() => runDiagnostics(diag, root), 28_000);
     }
   };
   child.stdout.on('data', onData(process.stdout));
   child.stderr.on('data', onData(process.stderr));
   const code = await new Promise((r) => child.on('close', r));
+  clearTimeout(silence);
+  if (log) appendFileSync(log, `\n${PROOF_LOG_END} flutter_exit=${code}${hung ? ' killed=silence' : ''}\n`);
 
   const problems = readProof(out, { callback: o.callback, offlineRead });
   if (code !== 0) problems.unshift(`flutter test exited ${code}`);
+  if (hung) problems.unshift(`flutter test printed nothing for ${SILENCE_LIMIT_MS / 60_000} min and was killed — the app never reported back (a launch that hung, not a sign-in that failed)`);
   if (problems.length) {
     for (const p of problems) console.error(`FAIL ${p}`);
     console.error(`${NAME}: ${o.app}/${o.target} FAILED`);

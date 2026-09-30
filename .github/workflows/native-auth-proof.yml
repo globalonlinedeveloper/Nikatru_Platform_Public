@@ -65,6 +65,11 @@ jobs:
       # weight: their steps run only when this is 'true'. It goes back to 'true'
       # with the proof's --expect-refusal flags, when attested CI builds exist.
       PROOF_NEEDS_DEVICE: 'false'
+      # why: ONE path per job — the proof step writes it, the purge step reads
+      # it (the consent row's install id, or proof that none was written).
+      # Relative to the checkout, where both steps run: `runner` is not
+      # available to a job-level env (dispatch refused it with HTTP 422).
+      E2E_PROOF_LOG: native-auth-proof.log
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -96,6 +101,14 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+          # why: `trigger` only QUEUES the event. Run 36533541325 checked before
+          # the rule applied, failed, then `ls` in the same branch printed
+          # crw-rw-rw-. Settle the queue, then allow the mode a few seconds.
+          sudo udevadm settle --timeout=30
+          for _ in 1 2 3 4 5; do
+            [ -r /dev/kvm ] && [ -w /dev/kvm ] && break
+            sleep 2
+          done
           if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
             ls -l /dev/kvm || true
             echo "::error title=Emulator::/dev/kvm is not usable by this user; an x86_64 emulator without KVM does not boot inside the ceiling"
@@ -144,12 +157,13 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node tooling/e2e/provision_user.mjs
       - name: The proof — sign in, the gated calls, sign out, the callback
+        id: proof
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
-        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target android --device emulator-5554 --callback --expect-refusal
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target android --device emulator-5554 --log "$E2E_PROOF_LOG" --callback --expect-refusal
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'
         env:
@@ -160,11 +174,15 @@ jobs:
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
           E2E_APP_ID: ${{ needs.gate.outputs.app }}
           PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}
+          # why: a missing proof log is "no row" only when the proof never ran
+          # (tooling/e2e/consent_anon_id.mjs, resolveProofLogConsent).
+          E2E_PROOF_RAN: ${{ steps.proof.outcome != 'skipped' }}
         run: node tooling/e2e/purge.mjs
 
-  # ── iOS: a simulator, the callback through simctl ──────────────────────────
+  # ── iOS: a simulator; the app opens its own callback (simctl openurl stops
+  # at a system "Open in" sheet a runner cannot answer) ────────────────────
   ios:
-    name: iOS — simulator, form to Home, simctl opens the callback
+    name: iOS — simulator, form to Home, the app opens its own callback
     needs: gate
     runs-on: macos-26
     timeout-minutes: 60
@@ -177,6 +195,11 @@ jobs:
       # weight: their steps run only when this is 'true'. It goes back to 'true'
       # with the proof's --expect-refusal flags, when attested CI builds exist.
       PROOF_NEEDS_DEVICE: 'false'
+      # why: ONE path per job — the proof step writes it, the purge step reads
+      # it (the consent row's install id, or proof that none was written).
+      # Relative to the checkout, where both steps run: `runner` is not
+      # available to a job-level env (dispatch refused it with HTTP 422).
+      E2E_PROOF_LOG: native-auth-proof.log
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -211,13 +234,25 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node tooling/e2e/provision_user.mjs
       - name: The proof — sign in, the gated calls, sign out, the callback
+        id: proof
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
           SIM: ${{ steps.sim.outputs.udid }}
-        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target ios --device "$SIM" --callback --expect-refusal
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target ios --device "$SIM" --log "$E2E_PROOF_LOG" --callback --expect-refusal
+      # why: what the simulator showed 25 s after simctl openurl (the driver's
+      # afterOpenDiagnostics). Run 36546306851's callback never reached the app
+      # and the job log could not say whether iOS held it behind a prompt.
+      - name: The simulator's screen after the callback was opened
+        if: always() && steps.proof.outcome != 'skipped'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-auth-proof-ios-after-open
+          path: ${{ runner.temp }}/nk-proof-ios-after-open.png
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'
         env:
@@ -228,6 +263,9 @@ jobs:
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
           E2E_APP_ID: ${{ needs.gate.outputs.app }}
           PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}
+          # why: a missing proof log is "no row" only when the proof never ran
+          # (tooling/e2e/consent_anon_id.mjs, resolveProofLogConsent).
+          E2E_PROOF_RAN: ${{ steps.proof.outcome != 'skipped' }}
         run: node tooling/e2e/purge.mjs
 
   # ── macOS: the .app, the callback through LaunchServices ───────────────────
@@ -245,6 +283,11 @@ jobs:
       # weight: their steps run only when this is 'true'. It goes back to 'true'
       # with the proof's --expect-refusal flags, when attested CI builds exist.
       PROOF_NEEDS_DEVICE: 'false'
+      # why: ONE path per job — the proof step writes it, the purge step reads
+      # it (the consent row's install id, or proof that none was written).
+      # Relative to the checkout, where both steps run: `runner` is not
+      # available to a job-level env (dispatch refused it with HTTP 422).
+      E2E_PROOF_LOG: native-auth-proof.log
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -271,12 +314,13 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node tooling/e2e/provision_user.mjs
       - name: The proof — sign in, the gated calls, sign out, the callback
+        id: proof
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
-        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target macos --device macos --callback --expect-refusal
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target macos --device macos --log "$E2E_PROOF_LOG" --callback --expect-refusal
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'
         env:
@@ -287,6 +331,9 @@ jobs:
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
           E2E_APP_ID: ${{ needs.gate.outputs.app }}
           PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}
+          # why: a missing proof log is "no row" only when the proof never ran
+          # (tooling/e2e/consent_anon_id.mjs, resolveProofLogConsent).
+          E2E_PROOF_RAN: ${{ steps.proof.outcome != 'skipped' }}
         run: node tooling/e2e/purge.mjs
 
   # ── WINDOWS: sign-in only ──────────────────────────────────────────────────
@@ -311,6 +358,11 @@ jobs:
       # weight: their steps run only when this is 'true'. It goes back to 'true'
       # with the proof's --expect-refusal flags, when attested CI builds exist.
       PROOF_NEEDS_DEVICE: 'false'
+      # why: ONE path per job — the proof step writes it, the purge step reads
+      # it (the consent row's install id, or proof that none was written).
+      # Relative to the checkout, where both steps run: `runner` is not
+      # available to a job-level env (dispatch refused it with HTTP 422).
+      E2E_PROOF_LOG: native-auth-proof.log
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -318,6 +370,18 @@ jobs:
       - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-flutter
         if: env.PROOF_NEEDS_DEVICE == 'true'
+      # why: sentry_flutter's CMake clones sentry-native with its submodules, and
+      # crashpad's mini_chromium pack path is 262 characters under this repo's
+      # checkout — git refuses it ("Filename too long") unless core.longpaths is
+      # on, which killed run 36525783687's build before the app ever launched.
+      # build-platforms.yml's "Git may write paths past MAX_PATH" measured it;
+      # --global, because CMake's clone is a new repository. Read back so a
+      # config that wrote nothing cannot pass.
+      - name: Git may write paths past MAX_PATH
+        if: env.PROOF_NEEDS_DEVICE == 'true'
+        run: |
+          git config --global core.longpaths true
+          git config --global --get core.longpaths
       - name: Enable the Windows desktop target
         if: env.PROOF_NEEDS_DEVICE == 'true'
         run: flutter config --enable-windows-desktop
@@ -337,12 +401,13 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node tooling/e2e/provision_user.mjs
       - name: The proof — sign in, the gated calls, sign out
+        id: proof
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
-        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target windows --device windows --expect-refusal
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target windows --device windows --log "$E2E_PROOF_LOG" --expect-refusal
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'
         env:
@@ -353,6 +418,9 @@ jobs:
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
           E2E_APP_ID: ${{ needs.gate.outputs.app }}
           PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}
+          # why: a missing proof log is "no row" only when the proof never ran
+          # (tooling/e2e/consent_anon_id.mjs, resolveProofLogConsent).
+          E2E_PROOF_RAN: ${{ steps.proof.outcome != 'skipped' }}
         run: node tooling/e2e/purge.mjs
 
   # ── LINUX: the bundle under xvfb, the callback through xdg-open ────────────
@@ -370,6 +438,11 @@ jobs:
       # weight: their steps run only when this is 'true'. It goes back to 'true'
       # with the proof's --expect-refusal flags, when attested CI builds exist.
       PROOF_NEEDS_DEVICE: 'false'
+      # why: ONE path per job — the proof step writes it, the purge step reads
+      # it (the consent row's install id, or proof that none was written).
+      # Relative to the checkout, where both steps run: `runner` is not
+      # available to a job-level env (dispatch refused it with HTTP 422).
+      E2E_PROOF_LOG: native-auth-proof.log
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -411,6 +484,7 @@ jobs:
       # second instance xdg-open starts finds the first (GApplication
       # uniqueness rides the session bus) and hands it the URL.
       - name: The proof — sign in, the gated calls, sign out, the callback
+        id: proof
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
@@ -419,7 +493,7 @@ jobs:
         run: |
           # why: no display and no keyring in refusal mode — the probe never opens the bundle.
           if [ "$PROOF_NEEDS_DEVICE" != true ]; then
-            node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --callback --expect-refusal
+            node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --log "$E2E_PROOF_LOG" --callback --expect-refusal
             exit
           fi
           dbus-run-session -- bash -c '
@@ -427,7 +501,7 @@ jobs:
             eval "$(printf "" | gnome-keyring-daemon --unlock --components=secrets)"
             export GNOME_KEYRING_CONTROL
             xvfb-run -a -s "-screen 0 1920x1200x24" \
-              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --callback --expect-refusal
+              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --log "$E2E_PROOF_LOG" --callback --expect-refusal
           '
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'
@@ -439,4 +513,7 @@ jobs:
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
           E2E_APP_ID: ${{ needs.gate.outputs.app }}
           PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}
+          # why: a missing proof log is "no row" only when the proof never ran
+          # (tooling/e2e/consent_anon_id.mjs, resolveProofLogConsent).
+          E2E_PROOF_RAN: ${{ steps.proof.outcome != 'skipped' }}
         run: node tooling/e2e/purge.mjs

@@ -475,9 +475,12 @@ describe('the guard says YES on the tree as it is', () => {
     // it rising is the thing to notice rather than to gloss.
     // ⏱ 2026-09-28 · ST-D8: 1 → 2 — `OnboardingScreen` now ADOPTS the chassis
     // `OnboardingView` and is judged there. Paid parity debt, noticed.
+    // ⏱ 2026-09-29 · train ST-D9: 2 → 4 — `ManagePlanScreen` and `PaywallScreen`
+    // now delegate to `ManagePlanView` / `PaywallView` and are SWEPT there
+    // (`a11y_firstrun_money_settings_test.dart`). Read off the guard's own output.
     assert.match(
       out,
-      /⬜ 2 reachable surface\(s\) in apps\/subscriptiontracker DELEGATE into `packages\/chassis_screens` and are judged there/,
+      /⬜ 4 reachable surface\(s\) in apps\/subscriptiontracker DELEGATE into `packages\/chassis_screens` and are judged there/,
     );
     assert.deepEqual(sweptList(out).sort(), ALL_19_SWEPT);
     assert.equal(printedUnswept(out).length, 0);

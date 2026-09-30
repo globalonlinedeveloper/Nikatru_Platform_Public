@@ -3185,6 +3185,11 @@
         }
       ]
     },
+    "tooling/ci/coverage-manifest-format.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-30",
+      "evidence": []
+    },
     "tooling/ci/d1-sql-inventory.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-09",
@@ -3669,6 +3674,11 @@
     "tooling/ops/guard-yield.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-29",
+      "evidence": []
+    },
+    "tooling/ops/land-gate.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-30",
       "evidence": []
     },
     "tooling/ops/money-dry-run.mjs": {

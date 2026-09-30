@@ -24,6 +24,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show ChassisLocalizations;
 import 'package:nikatru_purchases/nikatru_purchases.dart';
 import 'package:subscriptiontracker/data/models/payment_record.dart';
 import 'package:subscriptiontracker/features/detail/subscription_detail_screen.dart';
@@ -147,7 +149,11 @@ void main() {
         find.byKey(const Key('manage-plan-status-failed')),
         findsOneWidget,
       );
-      expect(find.text(l10n.planCheckFailed), findsOneWidget);
+      // ⏱ ST-D9: the failure is the chassis ManagePlanView's own sentence
+      // (one catalogue for every stamped app), still under C42's key.
+      final ChassisLocalizations chassis = await ChassisLocalizations.delegate
+          .load(const Locale('en'));
+      expect(find.text(chassis.managePlanLoadFailed), findsOneWidget);
       expect(find.text(l10n.planInactive), findsNothing);
     });
   });
