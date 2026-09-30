@@ -234,7 +234,7 @@
     38,
 
   "consent-anon-id.test.mjs":
-    26,
+    35,
 
   "consent-withdrawal-surface.test.mjs":
     45,
@@ -423,7 +423,7 @@
     18,
 
   "guards.test.mjs":
-    487,
+    491,
 
   "heartbeats.test.mjs":
     87,
@@ -546,7 +546,7 @@
     39,
 
   "native-auth-proof.test.mjs":
-    17,
+    23,
 
   "native-symbol-upload.test.mjs":
     25,

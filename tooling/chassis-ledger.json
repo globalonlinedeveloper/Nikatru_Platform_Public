@@ -712,13 +712,13 @@
     },
     {
       "path": "integration_test/native_auth_proof_steps.dart",
-      "lines": 100,
+      "lines": 277,
       "verdict": "STAYS",
       "why": "⏱ 2026-09-28 (ST-N1g, O-NATIVE-AUTH-CALLBACK-UNBUILT): the native sign-in proof's steps, apart from the binding so a local red run can drive the same sign-in step against a fake server; imported by integration_test/native_auth_proof_test.dart and stamped beside it; a test-only file under integration_test/, never in lib/."
     },
     {
       "path": "integration_test/native_auth_proof_test.dart",
-      "lines": 148,
+      "lines": 170,
       "verdict": "STAYS",
       "why": "⏱ 2026-09-28 (ST-N1g, O-NATIVE-AUTH-CALLBACK-UNBUILT): per-app by construction — the per-target native sign-in proof of THIS app (its form, its Home, its reset screen), run by .github/workflows/native-auth-proof.yml on each target's device through tooling/e2e/native_auth_proof.mjs. App #1 adopts the same file with its own login keys."
     },
