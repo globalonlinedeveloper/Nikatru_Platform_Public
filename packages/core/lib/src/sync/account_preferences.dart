@@ -332,9 +332,10 @@ class AccountPreferencesSync {
   bool _stale(String owner) => _disposed || _currentUser() != owner;
 
   /// The keys [owner]'s ACCOUNT holds — a version above 0 on this device's
-  /// record. Read BEFORE [forget]: a sign-out resets only these (they come back
-  /// at the next sign-in); every other key is a device choice the account never
-  /// held, and is left alone (review #1080 delta finding 1). Never throws.
+  /// record. Read BEFORE [forget]: a sign-out resets these and [pendingKeys]
+  /// (they come back at the next sign-in); every other key is a device choice
+  /// the account never held, and is left alone (review #1080 delta finding 1).
+  /// Never throws.
   Future<Set<String>> heldKeys(String owner) async {
     try {
       final _Versions doc = await _locked(() => _load(owner));
@@ -347,12 +348,31 @@ class AccountPreferencesSync {
     }
   }
 
-  /// [owner] signed out: forget their dirty set and versions. Never throws.
+  /// The keys [owner] changed on this device that the account has NOT yet
+  /// acknowledged — offline, in backoff, or waiting on an older Worker. Read
+  /// BEFORE a sign-out: they are the leaving account's too, so they are reset
+  /// on this device with the held ones (review 3 of #1080, finding 1 — the
+  /// lead's decision). Never throws.
+  Future<Set<String>> pendingKeys(String owner) async {
+    try {
+      return <String>{
+        for (final OutboxEntry e in await _outbox.pending(owner: owner))
+          if (e.kind == kPreferenceOutboxKind) e.recordId,
+      };
+    } catch (_) {
+      return <String>{};
+    }
+  }
+
+  /// [owner] signed out: forget their versions — this device's record of what
+  /// the account holds. Never throws.
+  ///
+  /// 🔴 THEIR PENDING SENDS ARE KEPT (review 3 of #1080, finding 1 — the lead's
+  /// decision). Each is bound to [owner] in the shared queue, so no other
+  /// account's replay ever sends it, and [owner]'s next sign-in delivers it.
+  /// Dropping it would lose a change the user made while signed in.
   Future<void> forget(String owner) async {
     _changedAt.clear();
-    try {
-      await _outbox.discardOwner(owner);
-    } catch (_) {}
     try {
       await _locked(() async => (await _store).remove(versionsKey(owner)));
     } catch (_) {}

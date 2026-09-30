@@ -600,9 +600,9 @@ List<UserStateDrop> userStateDrops(WidgetRef ref) => <UserStateDrop>[
   // never sends them, because the outbox replays only its signed-in owner's
   // entries. Resolved here, before any await, like every other drop.
   if (AppConfig.isApiConfigured) discardQueuedWritesOf(ref),
-  // ⏱ 2026-09-30 · ST-N6 (D11): the preferences are ACCOUNT state too — that
-  // user's unsent changes and versions are forgotten, and the device stores go
-  // back to their defaults (review #1080 findings 4, 7).
+  // ⏱ 2026-09-30 · ST-N6 (D11): the preferences the ACCOUNT holds or has a
+  // change pending for are reset on this device (they come back at the next
+  // sign-in, pending sends included); a device-only choice keeps its value.
   forgetAccountPreferences(ref),
 ];
 

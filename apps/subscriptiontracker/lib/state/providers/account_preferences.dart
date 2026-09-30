@@ -199,19 +199,28 @@ Future<void> setThemeModeByUserWith(
 }
 
 /// The language chooser: the user's own choice, stored and reported.
-Future<void> setLocaleByUser(WidgetRef ref, Locale? locale) async {
-  await ref.read(localeProvider.notifier).set(locale);
-  ref
-      .read(accountPreferencesSyncProvider)
-      ?.changed(kPrefLocale, locale?.languageCode ?? '');
+Future<void> setLocaleByUser(WidgetRef ref, Locale? locale) =>
+    setLocaleByUserWith(ref.read, locale);
+
+/// [setLocaleByUser] over any provider reader.
+Future<void> setLocaleByUserWith(
+  T Function<T>(ProviderListenable<T> provider) read,
+  Locale? locale,
+) async {
+  await read(localeProvider.notifier).set(locale);
+  read(
+    accountPreferencesSyncProvider,
+  )?.changed(kPrefLocale, locale?.languageCode ?? '');
 }
 
-/// The explicit sign-out's drop (review #1080 findings 4, 7): that user's
-/// dirty set and versions are forgotten, and the three stores go back to the
-/// device's defaults, so nothing of theirs is shown to — or could ever be
-/// reported by — the next person to sign in here. Resolved BEFORE the sign-out
-/// (see `userStateDrops`), so the user id is the one leaving. A forced 401 does
-/// not run it: the same user's unsent changes wait for their return.
+/// The explicit sign-out's drop (review #1080 findings 4, 7; delta finding 1;
+/// review 3 finding 1): the keys the leaving account HOLDS or has a change
+/// PENDING for go back to the device's defaults, so the next person to sign in
+/// here is shown nothing of theirs; every key the account never had — chosen
+/// before this build or while signed out — keeps its value. The leaving user's
+/// pending sends stay queued, bound to them, and are delivered at their next
+/// sign-in. Resolved BEFORE the sign-out (see `userStateDrops`), so the user
+/// id is the one leaving. A forced 401 does not run it at all.
 UserStateDrop forgetAccountPreferences(WidgetRef ref) =>
     forgetAccountPreferencesWith(ref.read);
 
@@ -228,15 +237,19 @@ UserStateDrop forgetAccountPreferencesWith(
   final LocaleController locale = read(localeProvider.notifier);
   return () async {
     if (sync == null || owner == null) return; // no account copy to forget
-    // 🔴 ONLY WHAT THE ACCOUNT HOLDS (review #1080 delta finding 1). Those keys
-    // come back at the next sign-in. Every other key — chosen before this build,
-    // or while signed out — was never sent and lives only on this device, so
-    // resetting it would erase it for good (and quietly move the reminder
-    // schedule). Read BEFORE forget, which deletes the record it is read from.
-    final Set<String> held = await sync.heldKeys(owner);
+    // 🔴 ONLY THE ACCOUNT'S KEYS: held (a version above 0) or pending (changed
+    // while signed in as this user, not yet acknowledged). Those come back at
+    // the next sign-in — the pending ones are sent then. Every other key was
+    // never the account's and lives only on this device, so resetting it would
+    // erase it for good (and quietly move the reminder schedule). Read BEFORE
+    // forget, which deletes the record `heldKeys` reads.
+    final Set<String> reset = <String>{
+      ...await sync.heldKeys(owner),
+      ...await sync.pendingKeys(owner),
+    };
     await sync.forget(owner);
-    await settings.resetKeys(held);
-    if (held.contains(kPrefThemeMode)) await theme.set(ThemeMode.system);
-    if (held.contains(kPrefLocale)) await locale.set(null);
+    await settings.resetKeys(reset);
+    if (reset.contains(kPrefThemeMode)) await theme.set(ThemeMode.system);
+    if (reset.contains(kPrefLocale)) await locale.set(null);
   };
 }

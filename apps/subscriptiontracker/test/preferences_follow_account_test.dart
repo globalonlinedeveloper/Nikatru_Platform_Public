@@ -285,6 +285,97 @@ void main() {
     },
   );
 
+  test(
+    '🔴 review 3 finding 1: A signs out before the sync — B sees the default and never sends it; A signs back in and gets it',
+    () async {
+      final _Server server = _Server();
+      final _Device d = _Device(server);
+      await _settle();
+      server.failWith = 0; // A is offline
+      await setLocaleByUserWith(d.c.read, const Locale('ta'));
+      await _settle();
+      expect(d.c.read(localeProvider), const Locale('ta'));
+
+      final UserStateDrop drop = forgetAccountPreferencesWith(d.c.read);
+      d.users.add(null);
+      await drop();
+      await _settle();
+      server.failWith = null; // online again before B arrives
+      d.users.add(const core.AuthUser(id: 'b', email: 'b@example.test'));
+      await _settle();
+      await d.sync.sync();
+      await _settle();
+      expect(
+        d.c.read(localeProvider),
+        isNull,
+        reason: "B is not shown A's language",
+      );
+      expect(
+        server.patches,
+        0,
+        reason: "A's queued change is never sent under B",
+      );
+      expect(server.values.containsKey('locale'), isFalse);
+
+      final UserStateDrop dropB = forgetAccountPreferencesWith(d.c.read);
+      d.users.add(null);
+      await dropB();
+      d.users.add(_me); // A signs back in
+      await _settle();
+      await d.sync.sync();
+      await _settle();
+      expect(
+        server.values['locale'],
+        'ta',
+        reason: "A's change is delivered to A",
+      );
+      expect(d.c.read(localeProvider), const Locale('ta'));
+    },
+  );
+
+  test(
+    '🔴 review 3 finding 2: held and unheld keys together — only the held and pending ones reset',
+    () async {
+      final _Server server = _Server();
+      final _Device a = _Device(server, user: null);
+      await _settle();
+      // Device choices, made while signed out: never the account's.
+      await a.settings.setCurrency('EUR');
+      await a.settings.setReminderLead(7);
+      await a.settings.setReminderTime(7, 0);
+      await a.settings.toggle('priceHike'); // true -> false
+      await _settle();
+
+      a.users.add(_me);
+      await _settle();
+      await setThemeModeByUserWith(a.c.read, ThemeMode.dark); // held
+      await a.settings.toggle('unused'); // true -> false, held
+      await _settle();
+      expect(server.values['themeMode'], 'dark');
+      expect(server.values['switch.unused'], false);
+
+      final UserStateDrop drop = forgetAccountPreferencesWith(a.c.read);
+      a.users.add(null);
+      await drop();
+      await _settle();
+      final SettingsState s = a.c.read(settingsControllerProvider);
+      expect(
+        a.c.read(themeModeProvider),
+        ThemeMode.system,
+        reason: 'held: reset',
+      );
+      expect(
+        s.prefs['unused'],
+        isTrue,
+        reason: 'held switch: back to its default',
+      );
+      expect(s.currencyCode, 'EUR', reason: 'never the account: kept');
+      expect(s.reminderLeadDays, 7);
+      expect(s.reminderMinuteOfDay, 7 * 60);
+      expect(s.prefs['priceHike'], isFalse, reason: 'unheld switch: kept');
+    },
+  );
+
   testWidgets(
     '🔴 delta finding 3: a conflict the server won is one line naming the setting',
     (WidgetTester tester) async {
