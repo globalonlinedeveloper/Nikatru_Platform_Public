@@ -869,9 +869,14 @@ const REQUIRED_COVERAGE = [
     //   surfaces  31 → 35
     //   a11yFiles 10 → 11
     //   cases     19 → 23
-    surfaces: 35,
-    a11yFiles: 11,
-    cases: 23,
+    // ⏱ 2026-09-29 · ST-D10: 35 → 40 surfaces, 11 → 12 files, 23 → 24 cases,
+    // RAISED IN THE CHANGE THAT EARNED THEM — the five auth-frame parts arrived
+    // swept with AuthField (a11y_auth_frame_test.dart, one case body looped over
+    // two widths and two schemes). Read off the per-root line: `23 of 40 …
+    // from 12 a11y test file(s) across 24 case(s)`.
+    surfaces: 40,
+    a11yFiles: 12,
+    cases: 24,
     label:
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, auth_field, ' +
       'destructive_confirm_dialog, two_pane and fourteen more, mounted by every stamped app',
@@ -1094,6 +1099,14 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
       'packages/design_system/lib/src/widgets/app_figure_tile.dart#AppFigureTile',
       'packages/design_system/lib/src/widgets/app_icon_action.dart#AppIconAction',
       'packages/design_system/lib/src/widgets/app_monogram.dart#AppMonogram',
+      // ⏱ 2026-09-29 · ST-D10: the shared auth frame and the field it hosts,
+      // swept together in a11y_auth_frame_test.dart (375 and 1440, both schemes).
+      'packages/design_system/lib/src/widgets/auth_field.dart#AuthField',
+      'packages/design_system/lib/src/widgets/auth_frame.dart#AuthFrame',
+      'packages/design_system/lib/src/widgets/auth_frame.dart#AuthBrandPanel',
+      'packages/design_system/lib/src/widgets/auth_frame.dart#AuthMessage',
+      'packages/design_system/lib/src/widgets/auth_frame.dart#AuthOrDivider',
+      'packages/design_system/lib/src/widgets/auth_frame.dart#AuthPasswordChecklist',
     ]),
   ],
 ]);

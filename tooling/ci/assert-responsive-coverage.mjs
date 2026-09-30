@@ -714,10 +714,19 @@ const REQUIRED_COVERAGE = [
     // surface(s) measured — 8 PRINTED" (the same eight as before).
     //   surfaces        31 → 35
     //   coveredSurfaces 23 → 27
+    //
+    // ⏱ RE-MEASURED 2026-09-29 · train ST-D10 — the shared auth frame
+    // (AuthFrame, AuthBrandPanel, AuthMessage, AuthOrDivider,
+    // AuthPasswordChecklist: five new surfaces) and AuthField, which was
+    // printed as unmeasured until now, each pumped at 375 / 768 / 1280 / 1440
+    // by auth_frame_test.dart. Read off the run's own line: "33 of 40
+    // surface(s) measured — 7 PRINTED".
+    //   surfaces        35 → 40
+    //   coveredSurfaces 27 → 33
     enforce: false,
-    surfaces: 35,
+    surfaces: 40,
     widthTestFiles: 19,
-    coveredSurfaces: 27,
+    coveredSurfaces: 33,
     label:
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, content_pane, two_pane and fifteen ' +
       'more, whose width decisions every stamped app inherits',

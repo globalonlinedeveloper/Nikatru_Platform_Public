@@ -10,22 +10,29 @@ import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show
+        AppRadius,
+        AppSpacing,
         AuthField,
+        AuthFrame,
+        AuthMessage,
+        AuthOrDivider,
+        AuthPasswordChecklist,
+        AuthRevealLabels,
+        AuthRule,
+        AuthRuleState,
         ChassisL10nX,
         ChassisLocalizations,
-        ContentPane,
         FocusableTap,
-        FormTones,
-        formTones;
+        StatusKind,
+        StatusTones;
 
 import '../../core/app_config.dart';
 import '../../core/e2e_keys.dart';
 import '../../core/router/gates.dart' show afterSignInDestination;
-import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_theme.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
 import '../shared/widgets.dart';
+import 'auth_panel.dart';
 import 'legal_consent_fields.dart';
 import 'auth_error_sentence.dart';
 
@@ -79,6 +86,31 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   /// the node the email field asked to focus would already have been discarded.
   final FocusNode _passwordFocus = FocusNode();
 
+  /// ⏱ 2026-09-29 · ST-D10 (M1 §2.26 "errors arrive only as SnackBars"). The
+  /// answer to the last action, INLINE under the fields and a live region
+  /// (`AuthMessage`), where a SnackBar vanished after four seconds and was tied
+  /// to nothing. Same sentences, same mapper, same moments — only where they
+  /// are painted moved. Null is "nothing to say".
+  String? _message;
+  StatusKind _messageKind = StatusKind.danger;
+
+  /// Whether the server refused THIS password as breached — the one fact the
+  /// sign-up checklist cannot know before the request. Forgotten on the next
+  /// keystroke in the password box, because it was about the old password.
+  bool _breached = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _password.addListener(_passwordEdited);
+  }
+
+  /// The sign-up checklist reads the password as it is typed.
+  void _passwordEdited() {
+    if (!mounted || !_signUp) return;
+    setState(() => _breached = false);
+  }
+
   // ⏱ 2026-09-27 · ST-A1 (BUG-1): the Turnstile token lives in [captcha]
   // ([CaptchaHost]) and is SPENT through `consume()` on every gated call, which
   // forgets it and re-challenges. Re-sending the token a failed sign-in had
@@ -86,6 +118,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   @override
   void dispose() {
     _email.dispose();
+    _password.removeListener(_passwordEdited);
     _password.dispose();
     _passwordFocus.dispose();
     super.dispose();
@@ -93,6 +126,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   Future<void> _submit() async {
     final AppLocalizations l10n = AppLocalizations.of(context);
+    _hush();
     final String email = _email.text.trim();
     // 🏗️ THE TWO CHECKS THAT WERE WRITTEN OUT HERE ARE NOW `core.signInProblem`
     // ([ADR 065], chassis step 2). Same rules, same order, same two sentences —
@@ -201,6 +235,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   /// (⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT).
   Future<void> _oauth({required bool google}) async {
     final AppLocalizations l10n = AppLocalizations.of(context);
+    _hush();
     // ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP — Sign in with Apple can CREATE an account,
     // and whether this tap will is only knowable after the redirect returns. So
     // a device that still owes the terms (nothing current accepted here; "not
@@ -308,6 +343,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   Future<void> _forgot() async {
     if (_loading) return;
     final AppLocalizations l10n = AppLocalizations.of(context);
+    _hush();
     final String email = _email.text.trim();
     if (core.passwordResetProblem(email: email) != null) {
       _snack(l10n.emailRequired);
@@ -324,7 +360,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       // it does not know whether that address has an account, and saying so
       // either way is an account-enumeration oracle. `resetSent` is the
       // existing key that says neither.
-      _snack(l10n.resetSent);
+      _snack(l10n.resetSent, kind: StatusKind.positive);
     } catch (e) {
       _snack(e);
     } finally {
@@ -340,20 +376,29 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   /// which passes a sentence this screen already wrote straight through. The
   /// mapping began here as a private `_friendlyMessage`, the only one any auth
   /// screen had; the thin wrapper it left behind went on 2026-09-24.
-  void _snack(Object e) {
+  ///
+  /// ⏱ 2026-09-29 · ST-D10: painted inline (see [_message]), not snacked.
+  void _snack(Object e, {StatusKind kind = StatusKind.danger}) {
     if (!mounted) return;
     // Read INSIDE the mounted check, not at the call site: this runs from a
     // `catch` after an await, and reading localizations on a disposed element
     // throws where the old string literal simply could not.
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(authErrorSentence(context, e))));
+    final String sentence = authErrorSentence(context, e);
+    setState(() {
+      _message = sentence;
+      _messageKind = kind;
+      _breached = sentence == AppLocalizations.of(context).passwordBreached;
+    });
+  }
+
+  /// A new attempt clears the answer to the last one.
+  void _hush() {
+    if (_message != null) setState(() => _message = null);
   }
 
   @override
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final FormTones t = formTones(context);
     // What identity can actually do HERE — declared, not assumed
     // ([pipeline C-7]). Offering an OAuth button on a platform that cannot
     // complete the redirect is promising something the app cannot deliver.
@@ -375,378 +420,339 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     );
     // Null (not read yet) is a first visit — see [SignedInBeforeController].
     final bool returning = ref.watch(signedInBeforeProvider) ?? false;
-    return Scaffold(
-      backgroundColor: t.bg,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(28, 40, 28, 28),
-          // 🔴 THE FORM CAP, and this is the screen the argument for it is
-          // easiest to see on: an email field, a password field and a button,
-          // stretched edge to edge across a 1280 px window. `ContentPane.form`
-          // (420) is the same idiom every other auth form here
-          // already uses, and the same 420 that was hand-written six times
-          // before the chassis owned it.
+    // ⏱ 2026-09-29 · ST-D10 (`SignIn`, `SignUp`, `DesktopSignIn`): the page is
+    // the shared `AuthFrame` — top-aligned under the 420 form cap, the heading
+    // a real heading, the wide split at 1200 dp. What stood here was this
+    // screen's own Scaffold, a 28/40 inset and a gradient glyph tile that a
+    // screen reader read aloud (M1 §2.26). The notices stay ABOVE the heading.
+    return AuthFrame(
+      showBack: false,
+      // The inset this screen always had (28 / 40), so the 420 cap is a no-op
+      // on the narrowest phone and the fields sit where they sat.
+      inset: const EdgeInsets.fromLTRB(
+        AppSpacing.xl + AppSpacing.xs,
+        AppSpacing.xxl + AppSpacing.sm,
+        AppSpacing.xl + AppSpacing.xs,
+        AppSpacing.xl + AppSpacing.xs,
+      ),
+      brand: authBrandOf(context),
+      panel: const AuthPanel(),
+      // 🔴 WHAT HAPPENED TO THE ACCOUNT THEY JUST ASKED US TO DELETE — the
+      // deletion redirect lands here and takes every SnackBar with it, so this
+      // is the one surface the outcome is readable on. [ADR 027]
+      notices: const <Widget>[_AccountDeletionNotice(), _AuthArrivalNotice()],
+      // ST-T1b (audit A-7): "Welcome back" only where a session has been seen
+      // on this device. The key is the anchor every suite reads, never words.
+      title: _signUp
+          ? l10n.signUpTitle
+          : (returning ? l10n.welcomeBack : l10n.welcomeFirstVisit),
+      titleKey: E2EKeys.loginHeading,
+      subtitle: _signUp ? l10n.signUpSubtitle : l10n.signInSubtitle,
+      children: <Widget>[
+        // The field labels are the arb's `email` / `password` PUT INTO
+        // CAPITALS BY THE LAYOUT, not two more keys shouting in the arb.
+        // A translator should never have to decide whether Tamil has an
+        // upper case (it does not — `toUpperCase()` is a no-op on Tamil
+        // script, which is the correct rendering, and it would be frozen
+        // wrong if the capitals lived in the value).
+        //
+        // ⚠️ THE `toUpperCase()` MOVED INSIDE `_field`, and it is not a
+        // tidy-up: the capitals belong to the PAINTED label only. The
+        // same word, in sentence case, is now what the field ANNOUNCES
+        // (see [_field]), and a reader handed "E-M-A-I-L" is handed a
+        // layout compromise read out one letter at a time.
+        //
+        // 🔴 THE FIRST THING A WEB USER TOUCHES, AND IT ANSWERED
+        // NEITHER OF THE TWO THINGS A BROWSER TRIES. Without
+        // `autofillHints` the engine emits an `<input>` with no
+        // `autocomplete` attribute, so Chrome/Safari/1Password have
+        // nothing to match on and the saved credential for this site is
+        // never offered — on the ONE screen every signed-out visitor is
+        // routed to. And with no `textInputAction`/`onSubmitted`, Enter
+        // in the password box did nothing at all: the only way in was
+        // to leave the keyboard and hit the button.
+        AuthField(
+          label: l10n.email,
+          controller: _email,
+          keyboardType: TextInputType.emailAddress,
+          fieldKey: E2EKeys.loginEmail,
+          hint: l10n.emailHint,
+          autofillHints: const <String>[AutofillHints.email],
+          // Enter here ADVANCES rather than submits — a submit from the
+          // email box would always be the "enter both" snack, since the
+          // password box is by definition still empty.
+          textInputAction: TextInputAction.next,
+          onSubmitted: _passwordFocus.requestFocus,
+        ),
+        const SizedBox(height: AppSpacing.md),
+        AuthField(
+          label: l10n.password,
+          controller: _password,
+          keyboardType: TextInputType.text,
+          obscure: true,
+          fieldKey: E2EKeys.loginPassword,
+          // ST-D10: Show / Hide, beside the merged field (`AuthField`).
+          reveal: AuthRevealLabels(
+            show: l10n.authShow,
+            hide: l10n.authHide,
+            showName: l10n.authShowPassword,
+            hideName: l10n.authHidePassword,
+          ),
+          hint: l10n.passwordHint,
+          focusNode: _passwordFocus,
+          // 🔴 `password`, NOT `newPassword`, ON BOTH ARMS OF THE
+          // TOGGLE. `newPassword` tells the browser to offer a GENERATED
+          // secret and to suppress the stored one — correct on a
+          // dedicated registration form, wrong here, because this widget
+          // is the sign-IN box that `_signUp` re-labels in place. The
+          // hint is read when the input connection opens, so a value
+          // chosen for the arm the user might toggle to would be the
+          // value the returning user's password manager sees first, and
+          // sign-in is the dominant path on this screen by a wide
+          // margin.
+          autofillHints: const <String>[AutofillHints.password],
+          textInputAction: TextInputAction.done,
+          // Enter is the SAME DOOR as the button, lock included: it
+          // routes through `_submit`, which owns the empty-field, bad-
+          // address, clickwrap and length guards and says which one
+          // stopped it. Only `_loading` is re-stated here, because that
+          // is the one the button expresses by going dead and a second
+          // Enter would otherwise fire a second sign-in request.
+          // ⛔ NEVER the captcha's readiness (2026-09-28, E2E run
+          // 36379673890): `_submit` validates first and then WAITS
+          // for the challenge. assert-captcha-gated-call-sites R4.
+          onSubmitted: _loading ? null : _submit,
+        ),
+        // ST-D10 (`SignUp`): the rules, readable BEFORE a refusal. It
+        // shows them and gates nothing — `_submit` keeps its length
+        // refusal and the server keeps the breach check.
+        if (_signUp) ...<Widget>[
+          const SizedBox(height: AppSpacing.sm),
+          AuthPasswordChecklist(
+            rules: <AuthRule>[
+              AuthRule(
+                label: l10n.authPasswordRuleLength(core.kMinPasswordLength),
+                state: _password.text.length >= core.kMinPasswordLength
+                    ? AuthRuleState.met
+                    : AuthRuleState.pending,
+              ),
+              AuthRule(
+                label: l10n.authPasswordRuleBreach,
+                state: _breached ? AuthRuleState.failed : AuthRuleState.pending,
+              ),
+            ],
+          ),
+        ],
+        if (_message case final String said) ...<Widget>[
+          const SizedBox(height: AppSpacing.md),
+          AuthMessage(message: said, kind: _messageKind),
+        ],
+        if (!_signUp)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              // Gated like every other control on this screen. This is
+              // the half the user can SEE; the latch at the top of
+              // `_forgot` is the half that actually holds, because a
+              // second tap in the same frame reaches a button that has
+              // not been rebuilt yet. Neither is redundant.
+              onPressed: _loading ? null : _forgot,
+              child: Text(l10n.forgotPasswordShort),
+            ),
+          ),
+        // ⚠️ SIGN-UP ONLY. Rendering the boxes on the sign-IN arm would
+        // ask a returning user to re-accept on every visit, which is
+        // the pattern research/43 declined — and it would put a
+        // marketing box in front of somebody who already answered it.
+        if (_signUp) ...<Widget>[
+          const SizedBox(height: AppSpacing.lg),
+          LegalConsentFields(
+            termsAccepted: _acceptedTerms,
+            marketingAccepted: _marketingEmail,
+            enabled: !_loading,
+            onTermsChanged: (bool v) => setState(() => _acceptedTerms = v),
+            onMarketingChanged: (bool v) => setState(() => _marketingEmail = v),
+          ),
+        ],
+        const SizedBox(height: AppSpacing.md),
+        // Directly above the button, which is where a challenge belongs:
+        // the user meets it at the moment they are about to submit, not
+        // half a form earlier where an expiring token can go stale while
+        // they are still typing. Renders NOTHING when no site key is
+        // compiled in, which is every build today.
+        TurnstileGate(
+          controller: captcha,
+          render: renderTurnstile,
+          onError: _snack,
+        ),
+        GradientButton(
+          key: E2EKeys.loginSubmit,
+          label: _loading
+              ? l10n.pleaseWait
+              : (_signUp ? l10n.signUp : l10n.signIn),
+          // Disabled while the sign-up arm is showing and the terms box
+          // is untouched. `_signUp &&` is load-bearing: without it the
+          // sign-IN button would be dead for every returning user,
+          // which is a gate on the wrong door.
+          // ⏱ 2026-09-28 — NOT while the challenge has not answered.
+          // ST-T1 (#1022) gated it on that, and a Turnstile with no
+          // token (slow, blocked, headless) left a dead button that
+          // could not even say "Enter your email" (E2E live run
+          // 36379673890). `_submit` validates first; a valid submit
+          // waits for the token, shown by the status line below.
+          onPressed: (_loading || (_signUp && !_acceptedTerms))
+              ? null
+              : _submit,
+        ),
+        // THE WHOLE OAUTH LIMB IS GATED, NOT JUST THE BUTTON — the
+        // chassis `SignInScreen` guard ([pipeline C-7]) that this fork
+        // never had. GATED rather than deleted: the day a provider is
+        // switched on, the limb returns on its own.
+        //
+        // 🔴 TWO CONDITIONS, BECAUSE THERE ARE TWO INDEPENDENT FACTS —
+        // and the previous version of this gate had only one of them,
+        // which is why it changed nothing a user could see.
+        //   · `caps.oauthRedirect` — can THIS PLATFORM complete the
+        //     redirect back into the app?
+        //   · `providers.any`      — will THE SERVER honour an OAuth
+        //     request for any provider at all?
+        // The first is true for web, android, iOS, macOS, windows and
+        // linux; only fuchsia says false, and fuchsia is not a target.
+        // So `caps.oauthRedirect` ALONE hid this limb on no shipping
+        // platform — it read as a fix and shipped the defect intact.
+        // Measured on the live project 2026-08-11 via
+        // `GET /auth/v1/settings`: every key under `external` is false
+        // except `email`. `apple: false`. So the limb is hidden NOW,
+        // on every target, which is the whole point of the change.
+        // See `AuthProviders` for the probe and for the CI guard that
+        // fails if this declaration and the server ever disagree.
+        //
+        // ⚠️ THE DIVIDER IS INSIDE THE GATE BECAUSE IT IS THE OTHER
+        // HALF OF THE SENTENCE. "or" with nothing after it is a rule
+        // with a dangling caption; hiding the button alone would trade
+        // a dead control for a stray one.
+        if (caps.oauthRedirect && providers.any) ...<Widget>[
+          const SizedBox(height: AppSpacing.lg),
+          AuthOrDivider(label: l10n.orDivider),
+          const SizedBox(height: AppSpacing.lg),
+          // ⚠️ THE TWO-SPACE GUTTER IS GONE, and it could not survive
+          // translation: the literal was '  Continue with Apple', and
+          // `SoftButton` CENTRES its label, so the spaces were only
+          // ever a ~4 px optical nudge left over from a design that had
+          // a glyph in front of the words. Leading whitespace inside an
+          // arb value is invisible in review, is the first thing a
+          // translator drops, and would therefore render differently
+          // per locale for no stated reason. The reused key is the
+          // chassis's plain `continueWithApple`.
+          if (providers.apple || providers.google) ...<Widget>[
+            // ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP. On the sign-IN arm, a
+            // device that owes the terms gets the SAME boxes directly
+            // above the Apple button; the sign-up arm already shows them
+            // above, and both doors read the same two flags.
+            // ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT — ONE set of boxes
+            // above BOTH provider buttons: one tick, one acceptance.
+            if (!_signUp && appleTermsOwed) ...<Widget>[
+              LegalConsentFields(
+                termsAccepted: _acceptedTerms,
+                marketingAccepted: _marketingEmail,
+                enabled: !_loading,
+                onTermsChanged: (bool v) => setState(() => _acceptedTerms = v),
+                onMarketingChanged: (bool v) =>
+                    setState(() => _marketingEmail = v),
+              ),
+              const SizedBox(height: AppSpacing.md),
+            ],
+            if (providers.apple)
+              SoftButton(
+                label: l10n.continueWithApple,
+                onPressed: (_loading || (appleTermsOwed && !_acceptedTerms))
+                    ? null
+                    : () => _oauth(google: false),
+              ),
+            if (providers.apple && providers.google)
+              const SizedBox(height: AppSpacing.md),
+            if (providers.google)
+              SoftButton(
+                label: l10n.continueWithGoogle,
+                onPressed: (_loading || (appleTermsOwed && !_acceptedTerms))
+                    ? null
+                    : () => _oauth(google: true),
+              ),
+          ],
+        ],
+        const SizedBox(height: AppSpacing.xl),
+        Center(
+          // `button:` merged with the sentence below. The whole line is
+          // the tap target (see the note further down), and it reads as
+          // prose — "New here? Create account" — so without a role a
+          // reader announces it as body copy that happens to sit at the
+          // bottom of a form. It is the only way to reach sign-up.
+          // 🔴 `FocusableTap`, NOT `Semantics` + `GestureDetector`.
+          // THE PAIR THAT STOOD HERE WAS THE WORST SINGLE INSTANCE OF
+          // SC 2.1.1 IN THE APP, and the comment right below already
+          // said why without anyone noticing: this is the ONLY control
+          // that reaches registration from the screen every signed-out
+          // visitor is routed to. `Semantics(button: true)` gave a
+          // screen reader a ROLE and gave a keyboard NOTHING — it
+          // creates no `FocusNode` — so a keyboard-only user could not
+          // create an account at all. Measured 2026-08-21 and again
+          // 2026-08-25 by `test/keyboard_traversal_test.dart`; the
+          // primitive is `packages/design_system`'s, so the fix is one
+          // widget rather than one per call site.
           //
-          // ⚠️ THE PADDING STAYS ON THE SCROLL VIEW, OUTSIDE THE CAP — matching
-          // the other auth forms, not the onboarding twin. So the cap engages at
-          // 420 + 56 = 476 px, well below a tablet, and the width measured
-          // inside the pane is `min(surface - 56, 420)`.
-          //
-          // ⚠️ topCenter, NOT `Center`: `_AccountDeletionNotice` appears and
-          // disappears above the fields and the error SnackBar changes nothing
-          // vertically, but the sign-in/sign-up toggle changes the column's
-          // height on every tap — vertically centred, that would slide the two
-          // fields under the user's finger mid-form. `ContentPane` refuses to.
-          child: ContentPane.form(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                Container(
-                  width: 52,
-                  height: 52,
-                  alignment: Alignment.center,
-                  decoration: const BoxDecoration(
-                    // Brand, not neutral: the gradient and the glyph on it are
-                    // the same in both brightnesses. An on-gradient white stays
-                    // white — `scheme.onPrimary` would be a dark glyph on a
-                    // dark-mode primary, i.e. the mark disappearing into itself.
-                    gradient: AppColors.brandGradient,
-                    borderRadius: BorderRadius.all(Radius.circular(16)),
-                  ),
-                  child: const Text(
-                    '◈',
-                    style: TextStyle(fontSize: 24, color: Colors.white),
-                  ),
-                ),
-                const SizedBox(height: 22),
-                // 🔴 WHAT HAPPENED TO THE ACCOUNT THEY JUST ASKED US TO DELETE.
-                //
-                // `deleteAccount()` signs out whichever way the request went, so
-                // the router lands the user HERE — and takes the settings screen,
-                // its dialog and any SnackBar with it. Measured, not assumed: the
-                // router-driven test in test/delete_account_test.dart found ZERO
-                // result widgets after the redirect settled. So the message that
-                // matters most (502: your data is gone and your login still
-                // works) was the one message nobody ever saw. [ADR 027]
-                const _AccountDeletionNotice(),
-                const _AuthArrivalNotice(),
-                // ST-T1b (audit A-7): "Welcome back" only where a session has
-                // been seen on this device. The key is the anchor every suite
-                // reads — never the words.
-                Text(
-                  _signUp
-                      ? l10n.signUpTitle
-                      : (returning ? l10n.welcomeBack : l10n.welcomeFirstVisit),
-                  key: E2EKeys.loginHeading,
-                  style: AppText.title.copyWith(fontSize: 34, color: t.ink),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  _signUp ? l10n.signUpSubtitle : l10n.signInSubtitle,
-                  style: AppText.muted.copyWith(fontSize: 15, color: t.muted),
-                ),
-                const SizedBox(height: 28),
-                // The field labels are the arb's `email` / `password` PUT INTO
-                // CAPITALS BY THE LAYOUT, not two more keys shouting in the arb.
-                // A translator should never have to decide whether Tamil has an
-                // upper case (it does not — `toUpperCase()` is a no-op on Tamil
-                // script, which is the correct rendering, and it would be frozen
-                // wrong if the capitals lived in the value).
-                //
-                // ⚠️ THE `toUpperCase()` MOVED INSIDE `_field`, and it is not a
-                // tidy-up: the capitals belong to the PAINTED label only. The
-                // same word, in sentence case, is now what the field ANNOUNCES
-                // (see [_field]), and a reader handed "E-M-A-I-L" is handed a
-                // layout compromise read out one letter at a time.
-                //
-                // 🔴 THE FIRST THING A WEB USER TOUCHES, AND IT ANSWERED
-                // NEITHER OF THE TWO THINGS A BROWSER TRIES. Without
-                // `autofillHints` the engine emits an `<input>` with no
-                // `autocomplete` attribute, so Chrome/Safari/1Password have
-                // nothing to match on and the saved credential for this site is
-                // never offered — on the ONE screen every signed-out visitor is
-                // routed to. And with no `textInputAction`/`onSubmitted`, Enter
-                // in the password box did nothing at all: the only way in was
-                // to leave the keyboard and hit the button.
-                AuthField(
-                  label: l10n.email,
-                  controller: _email,
-                  keyboardType: TextInputType.emailAddress,
-                  fieldKey: E2EKeys.loginEmail,
-                  hint: l10n.emailHint,
-                  autofillHints: const <String>[AutofillHints.email],
-                  // Enter here ADVANCES rather than submits — a submit from the
-                  // email box would always be the "enter both" snack, since the
-                  // password box is by definition still empty.
-                  textInputAction: TextInputAction.next,
-                  onSubmitted: _passwordFocus.requestFocus,
-                ),
-                const SizedBox(height: 14),
-                AuthField(
-                  label: l10n.password,
-                  controller: _password,
-                  keyboardType: TextInputType.text,
-                  obscure: true,
-                  fieldKey: E2EKeys.loginPassword,
-                  hint: l10n.passwordHint,
-                  focusNode: _passwordFocus,
-                  // 🔴 `password`, NOT `newPassword`, ON BOTH ARMS OF THE
-                  // TOGGLE. `newPassword` tells the browser to offer a GENERATED
-                  // secret and to suppress the stored one — correct on a
-                  // dedicated registration form, wrong here, because this widget
-                  // is the sign-IN box that `_signUp` re-labels in place. The
-                  // hint is read when the input connection opens, so a value
-                  // chosen for the arm the user might toggle to would be the
-                  // value the returning user's password manager sees first, and
-                  // sign-in is the dominant path on this screen by a wide
-                  // margin.
-                  autofillHints: const <String>[AutofillHints.password],
-                  textInputAction: TextInputAction.done,
-                  // Enter is the SAME DOOR as the button, lock included: it
-                  // routes through `_submit`, which owns the empty-field, bad-
-                  // address, clickwrap and length guards and says which one
-                  // stopped it. Only `_loading` is re-stated here, because that
-                  // is the one the button expresses by going dead and a second
-                  // Enter would otherwise fire a second sign-in request.
-                  // ⛔ NEVER the captcha's readiness (2026-09-28, E2E run
-                  // 36379673890): `_submit` validates first and then WAITS
-                  // for the challenge. assert-captcha-gated-call-sites R4.
-                  onSubmitted: _loading ? null : _submit,
-                ),
-                if (!_signUp)
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      // Gated like every other control on this screen. This is
-                      // the half the user can SEE; the latch at the top of
-                      // `_forgot` is the half that actually holds, because a
-                      // second tap in the same frame reaches a button that has
-                      // not been rebuilt yet. Neither is redundant.
-                      onPressed: _loading ? null : _forgot,
-                      child: Text(
-                        l10n.forgotPasswordShort,
-                        style: AppText.body.copyWith(
-                          color: t.accent,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ),
-                // ⚠️ SIGN-UP ONLY. Rendering the boxes on the sign-IN arm would
-                // ask a returning user to re-accept on every visit, which is
-                // the pattern research/43 declined — and it would put a
-                // marketing box in front of somebody who already answered it.
-                if (_signUp) ...<Widget>[
-                  const SizedBox(height: 18),
-                  LegalConsentFields(
-                    termsAccepted: _acceptedTerms,
-                    marketingAccepted: _marketingEmail,
-                    enabled: !_loading,
-                    onTermsChanged: (bool v) =>
-                        setState(() => _acceptedTerms = v),
-                    onMarketingChanged: (bool v) =>
-                        setState(() => _marketingEmail = v),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                // Directly above the button, which is where a challenge belongs:
-                // the user meets it at the moment they are about to submit, not
-                // half a form earlier where an expiring token can go stale while
-                // they are still typing. Renders NOTHING when no site key is
-                // compiled in, which is every build today.
-                TurnstileGate(
-                  controller: captcha,
-                  render: renderTurnstile,
-                  onError: _snack,
-                ),
-                GradientButton(
-                  key: E2EKeys.loginSubmit,
-                  label: _loading
-                      ? l10n.pleaseWait
-                      : (_signUp ? l10n.signUp : l10n.signIn),
-                  // Disabled while the sign-up arm is showing and the terms box
-                  // is untouched. `_signUp &&` is load-bearing: without it the
-                  // sign-IN button would be dead for every returning user,
-                  // which is a gate on the wrong door.
-                  // ⏱ 2026-09-28 — NOT while the challenge has not answered.
-                  // ST-T1 (#1022) gated it on that, and a Turnstile with no
-                  // token (slow, blocked, headless) left a dead button that
-                  // could not even say "Enter your email" (E2E live run
-                  // 36379673890). `_submit` validates first; a valid submit
-                  // waits for the token, shown by the status line below.
-                  onPressed: (_loading || (_signUp && !_acceptedTerms))
-                      ? null
-                      : _submit,
-                ),
-                // THE WHOLE OAUTH LIMB IS GATED, NOT JUST THE BUTTON — the
-                // chassis `SignInScreen` guard ([pipeline C-7]) that this fork
-                // never had. GATED rather than deleted: the day a provider is
-                // switched on, the limb returns on its own.
-                //
-                // 🔴 TWO CONDITIONS, BECAUSE THERE ARE TWO INDEPENDENT FACTS —
-                // and the previous version of this gate had only one of them,
-                // which is why it changed nothing a user could see.
-                //   · `caps.oauthRedirect` — can THIS PLATFORM complete the
-                //     redirect back into the app?
-                //   · `providers.any`      — will THE SERVER honour an OAuth
-                //     request for any provider at all?
-                // The first is true for web, android, iOS, macOS, windows and
-                // linux; only fuchsia says false, and fuchsia is not a target.
-                // So `caps.oauthRedirect` ALONE hid this limb on no shipping
-                // platform — it read as a fix and shipped the defect intact.
-                // Measured on the live project 2026-08-11 via
-                // `GET /auth/v1/settings`: every key under `external` is false
-                // except `email`. `apple: false`. So the limb is hidden NOW,
-                // on every target, which is the whole point of the change.
-                // See `AuthProviders` for the probe and for the CI guard that
-                // fails if this declaration and the server ever disagree.
-                //
-                // ⚠️ THE DIVIDER IS INSIDE THE GATE BECAUSE IT IS THE OTHER
-                // HALF OF THE SENTENCE. "or" with nothing after it is a rule
-                // with a dangling caption; hiding the button alone would trade
-                // a dead control for a stray one.
-                if (caps.oauthRedirect && providers.any) ...<Widget>[
-                  const SizedBox(height: 20),
-                  Row(
-                    children: <Widget>[
-                      Expanded(child: Divider(color: t.line)),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Text(
-                          l10n.orDivider,
-                          style: TextStyle(color: t.muted),
-                        ),
-                      ),
-                      Expanded(child: Divider(color: t.line)),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  // ⚠️ THE TWO-SPACE GUTTER IS GONE, and it could not survive
-                  // translation: the literal was '  Continue with Apple', and
-                  // `SoftButton` CENTRES its label, so the spaces were only
-                  // ever a ~4 px optical nudge left over from a design that had
-                  // a glyph in front of the words. Leading whitespace inside an
-                  // arb value is invisible in review, is the first thing a
-                  // translator drops, and would therefore render differently
-                  // per locale for no stated reason. The reused key is the
-                  // chassis's plain `continueWithApple`.
-                  if (providers.apple || providers.google) ...<Widget>[
-                    // ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP. On the sign-IN arm, a
-                    // device that owes the terms gets the SAME boxes directly
-                    // above the Apple button; the sign-up arm already shows them
-                    // above, and both doors read the same two flags.
-                    // ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT — ONE set of boxes
-                    // above BOTH provider buttons: one tick, one acceptance.
-                    if (!_signUp && appleTermsOwed) ...<Widget>[
-                      LegalConsentFields(
-                        termsAccepted: _acceptedTerms,
-                        marketingAccepted: _marketingEmail,
-                        enabled: !_loading,
-                        onTermsChanged: (bool v) =>
-                            setState(() => _acceptedTerms = v),
-                        onMarketingChanged: (bool v) =>
-                            setState(() => _marketingEmail = v),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    if (providers.apple)
-                      SoftButton(
-                        label: l10n.continueWithApple,
-                        onPressed:
-                            (_loading || (appleTermsOwed && !_acceptedTerms))
-                            ? null
-                            : () => _oauth(google: false),
-                      ),
-                    if (providers.apple && providers.google)
-                      const SizedBox(height: 12),
-                    if (providers.google)
-                      SoftButton(
-                        label: l10n.continueWithGoogle,
-                        onPressed:
-                            (_loading || (appleTermsOwed && !_acceptedTerms))
-                            ? null
-                            : () => _oauth(google: true),
-                      ),
-                  ],
-                ],
-                const SizedBox(height: 24),
-                Center(
-                  // `button:` merged with the sentence below. The whole line is
-                  // the tap target (see the note further down), and it reads as
-                  // prose — "New here? Create account" — so without a role a
-                  // reader announces it as body copy that happens to sit at the
-                  // bottom of a form. It is the only way to reach sign-up.
-                  // 🔴 `FocusableTap`, NOT `Semantics` + `GestureDetector`.
-                  // THE PAIR THAT STOOD HERE WAS THE WORST SINGLE INSTANCE OF
-                  // SC 2.1.1 IN THE APP, and the comment right below already
-                  // said why without anyone noticing: this is the ONLY control
-                  // that reaches registration from the screen every signed-out
-                  // visitor is routed to. `Semantics(button: true)` gave a
-                  // screen reader a ROLE and gave a keyboard NOTHING — it
-                  // creates no `FocusNode` — so a keyboard-only user could not
-                  // create an account at all. Measured 2026-08-21 and again
-                  // 2026-08-25 by `test/keyboard_traversal_test.dart`; the
-                  // primitive is `packages/design_system`'s, so the fix is one
-                  // widget rather than one per call site.
-                  //
-                  // Nothing a reader hears changes: `FocusableTap` re-emits the
-                  // same `MergeSemantics` + `Semantics(button: true)` it
-                  // replaces, and paints its ring as a foreground decoration so
-                  // the 48px band below keeps every pixel it had.
-                  child: FocusableTap(
-                    onTap: () => setState(() => _signUp = !_signUp),
-                    borderRadius: BorderRadius.circular(8),
-                    // 🔴 THE TAP TARGET IS THE BAND, NOT THE INK.
-                    // Measured 319.0x40.0 against
-                    // androidTapTargetGuideline: eight pixels short, on the
-                    // ONLY control that reaches registration from the screen
-                    // every signed-out visitor is routed to. `opaque` is
-                    // half the fix — `deferToChild` would leave the pointer
-                    // hunting the glyphs while the semantics rect claimed
-                    // the whole band. `minHeight` rather than a fixed
-                    // height because `haveAccountPrompt` is a different
-                    // sentence in every locale and some of them wrap to
-                    // three lines; a `SizedBox(height: 48)` would clip those
-                    // instead of growing.
-                    behavior: HitTestBehavior.opaque,
-                    // 🔴 ONE WHOLE SENTENCE PER KEY, NOT A LEAD-IN PLUS A LINK.
-                    // This was two `TextSpan`s — "New here? " + "Create account"
-                    // — which is a concatenation wearing a rich-text costume: it
-                    // fixes English word order, and in a language that puts the
-                    // verb last the "link" half would have to move to the front
-                    // of the sentence. `newHerePrompt` / `haveAccountPrompt`
-                    // each carry the complete line, so the translator controls
-                    // the order.
-                    //
-                    // ⚠️ The whole line is the tap target either way — the
-                    // tap wrapper above always was the button, and the
-                    // second span was never independently tappable (no
-                    // `TapGestureRecognizer`), so nothing about the interaction
-                    // changed. What is lost is the accent colouring of the last
-                    // two words; a per-locale substring hunt to restore it would
-                    // be exactly the fixed-word-order assumption this removes.
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(minHeight: 48),
-                      child: Align(
-                        child: Text(
-                          _signUp ? l10n.haveAccountPrompt : l10n.newHerePrompt,
-                          textAlign: TextAlign.center,
-                          style: AppText.muted.copyWith(
-                            fontSize: 14,
-                            color: t.muted,
-                          ),
-                        ),
-                      ),
-                    ),
+          // Nothing a reader hears changes: `FocusableTap` re-emits the
+          // same `MergeSemantics` + `Semantics(button: true)` it
+          // replaces, and paints its ring as a foreground decoration so
+          // the 48px band below keeps every pixel it had.
+          child: FocusableTap(
+            onTap: () => setState(() => _signUp = !_signUp),
+            borderRadius: BorderRadius.circular(8),
+            // 🔴 THE TAP TARGET IS THE BAND, NOT THE INK.
+            // Measured 319.0x40.0 against
+            // androidTapTargetGuideline: eight pixels short, on the
+            // ONLY control that reaches registration from the screen
+            // every signed-out visitor is routed to. `opaque` is
+            // half the fix — `deferToChild` would leave the pointer
+            // hunting the glyphs while the semantics rect claimed
+            // the whole band. `minHeight` rather than a fixed
+            // height because `haveAccountPrompt` is a different
+            // sentence in every locale and some of them wrap to
+            // three lines; a `SizedBox(height: 48)` would clip those
+            // instead of growing.
+            behavior: HitTestBehavior.opaque,
+            // 🔴 ONE WHOLE SENTENCE PER KEY, NOT A LEAD-IN PLUS A LINK.
+            // This was two `TextSpan`s — "New here? " + "Create account"
+            // — which is a concatenation wearing a rich-text costume: it
+            // fixes English word order, and in a language that puts the
+            // verb last the "link" half would have to move to the front
+            // of the sentence. `newHerePrompt` / `haveAccountPrompt`
+            // each carry the complete line, so the translator controls
+            // the order.
+            //
+            // ⚠️ The whole line is the tap target either way — the
+            // tap wrapper above always was the button, and the
+            // second span was never independently tappable (no
+            // `TapGestureRecognizer`), so nothing about the interaction
+            // changed. What is lost is the accent colouring of the last
+            // two words; a per-locale substring hunt to restore it would
+            // be exactly the fixed-word-order assumption this removes.
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: Align(
+                child: Text(
+                  _signUp ? l10n.haveAccountPrompt : l10n.newHerePrompt,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
-                const SizedBox(height: 30),
-                const Center(child: PoweredByNikatru()),
-              ],
+              ),
             ),
           ),
         ),
-      ),
+        const SizedBox(height: AppSpacing.xl),
+        const Center(child: PoweredByNikatru()),
+      ],
     );
   }
 }
@@ -763,17 +769,21 @@ class _AuthArrivalNotice extends ConsumerWidget {
     final AuthFlow? flow = ref.watch(failedAuthArrivalProvider);
     if (flow == null) return const SizedBox.shrink();
     final ChassisLocalizations l10n = context.chassisL10n;
-    final FormTones t = formTones(context);
+    final ThemeData theme = Theme.of(context);
     final bool provider =
         flow == AuthFlow.oauth || flow == AuthFlow.linkIdentity;
     return Container(
       key: const Key('authArrivalNotice'),
-      margin: const EdgeInsets.only(bottom: 18),
-      padding: const EdgeInsets.fromLTRB(16, 8, 4, 8),
+      margin: const EdgeInsets.only(bottom: AppSpacing.lg),
+      padding: const EdgeInsetsDirectional.fromSTEB(
+        AppSpacing.lg,
+        AppSpacing.sm,
+        AppSpacing.xs,
+        AppSpacing.sm,
+      ),
       decoration: BoxDecoration(
-        color: t.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: t.line),
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: Row(
         children: <Widget>[
@@ -784,7 +794,9 @@ class _AuthArrivalNotice extends ConsumerWidget {
                 provider
                     ? l10n.authProviderSignInCancelled
                     : l10n.authLinkFailedSignIn,
-                style: AppText.muted.copyWith(fontSize: 13, color: t.ink),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurface,
+                ),
               ),
             ),
           ),
@@ -812,7 +824,11 @@ class _AccountDeletionNotice extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final FormTones t = formTones(context);
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme scheme = theme.colorScheme;
+    final TextStyle? small = theme.textTheme.bodySmall?.copyWith(
+      color: scheme.onSurfaceVariant,
+    );
     final core.AccountDeletionOutcome? outcome = ref.watch(
       lastAccountDeletionOutcomeProvider,
     );
@@ -820,14 +836,18 @@ class _AccountDeletionNotice extends ConsumerWidget {
     if (outcome == null) return const SizedBox.shrink();
     return Container(
       key: E2EKeys.accountDeletionNotice,
-      margin: const EdgeInsets.only(bottom: 18),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: AppSpacing.lg),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
-        color: t.surface,
-        borderRadius: BorderRadius.circular(16),
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(AppRadius.card),
         // The FAILED case keeps its danger edge in both brightnesses; only the
         // token it resolves through changes.
-        border: Border.all(color: outcome.accountIsGone ? t.line : t.danger),
+        border: Border.all(
+          color: outcome.accountIsGone
+              ? scheme.outlineVariant
+              : StatusTones.of(context).danger,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -836,24 +856,24 @@ class _AccountDeletionNotice extends ConsumerWidget {
             outcome.accountIsGone
                 ? l10n.deleteAccountResultGone
                 : l10n.deleteAccountResultNotDeleted,
-            style: AppText.body.copyWith(
+            style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w800,
-              color: t.ink,
+              color: scheme.onSurface,
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: AppSpacing.sm),
           Text(
             outcome.plainMessage,
             key: const Key('accountDeletionNoticeText'),
-            style: AppText.muted.copyWith(fontSize: 13, color: t.muted),
+            style: small,
           ),
           if (!outcome.accountIsGone) ...<Widget>[
-            const SizedBox(height: 6),
+            const SizedBox(height: AppSpacing.sm),
             // No turnaround time and no retention period: the published page
             // states none, and an app inventing one commits us to it.
             Text(
               l10n.deleteAccountEmailRoute(AppConfig.supportEmail),
-              style: AppText.muted.copyWith(fontSize: 13, color: t.muted),
+              style: small,
             ),
           ],
           // 🔴 WHY IT FAILED, IN A DEBUG BUILD ONLY — never localised, never
@@ -867,11 +887,11 @@ class _AccountDeletionNotice extends ConsumerWidget {
           // — which is exactly how the 2026-08-09 delete leg stayed unexplained
           // across three sessions. [ADR 027]
           if (kDebugMode && detail != null) ...<Widget>[
-            const SizedBox(height: 6),
+            const SizedBox(height: AppSpacing.sm),
             Text(
               'debug: $detail',
               key: E2EKeys.accountDeletionNoticeDetail,
-              style: AppText.muted.copyWith(fontSize: 11, color: t.muted),
+              style: small,
             ),
           ],
           Align(

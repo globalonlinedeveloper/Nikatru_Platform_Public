@@ -226,6 +226,9 @@ void main() {
     // Measured at 60b63fb9: these seven, and only these, were identical.
     const Map<String, String> sameInBothLocales = <String, String>{
       'appTitle': 'the product name, which is a name and is not translated',
+      'authBrandMark':
+          'the letter on the brand tile beside the product name (ST-D10); it '
+          'is the initial of the name, which is not translated either',
       'legalese': 'the copyright mark and the company name',
       'languageEnglish':
           'the language picker names each language in itself, so a reader '

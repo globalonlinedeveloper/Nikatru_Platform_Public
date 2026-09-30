@@ -156,18 +156,27 @@ void main() {
 
   // ───────────────────────────────────────────────────────────────────────────
   group('login is theme-aware', () {
-    testWidgets('LIGHT is pixel-identical to the pre-dark screen', (
+    // ⏱ 2026-09-29 · ST-D10 — THIS CASE PINNED THE LEGACY LIGHT PAINT, AND THE
+    // TRAIN THAT REPAINTS IT IS THIS ONE. It asserted the literal AppColors.bg
+    // scaffold and AppColors.ink heading, "the frozen legacy app"; the design
+    // programme's auth train (design-trains.md §ST-D10, M1 §2.26 gap "Indigo
+    // form tones", fixed by `SignIn`) puts the door on the same scheme every
+    // other screen already stands on since ST-D0/D1. So the pin now says the
+    // light door AGREES WITH THE THEME — the property the dark case below
+    // already held — and the field fill, which the shared `AuthField` still
+    // resolves through `formTones`, keeps its pin.
+    testWidgets('LIGHT stands on the theme the rest of the app stands on', (
       WidgetTester tester,
     ) async {
       await pumpLogin(tester, kPhone, ThemeMode.light);
+      final ColorScheme light = buildAppTheme(seed: kSublySeed).colorScheme;
 
       expect(
         _scaffoldBackground(tester),
-        AppColors.bg,
+        light.surface,
         reason:
-            'The light scaffold MUST stay the literal AppColors.bg. This is '
-            'the frozen legacy app the owner eyeballs; swapping it for '
-            'scheme.surface repaints the first screen every user sees.',
+            'the light door agrees with buildAppTheme, whose '
+            'scaffoldBackgroundColor is scheme.surface — not a second answer',
       );
       expect(
         _fieldFill(tester),
@@ -176,10 +185,8 @@ void main() {
       );
       expect(
         _headingColor(tester),
-        AppColors.ink,
-        reason:
-            'The light heading colour is the value AppText.title already '
-            'carried — the copyWith must be a no-op in light, not a repaint.',
+        light.onSurface,
+        reason: 'the heading is ink on that surface: scheme.onSurface',
       );
     });
 

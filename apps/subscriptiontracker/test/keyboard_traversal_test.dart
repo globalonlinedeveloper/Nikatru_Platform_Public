@@ -497,7 +497,7 @@ void main() {
       return s;
     }
 
-    testWidgets('login · 14 of 14, registration included', (
+    testWidgets('login · 15 of 15, registration included', (
       WidgetTester tester,
     ) async {
       // ⏱ 2026-09-16 — 8 BECAME 14 WHEN SIGN IN WITH APPLE WAS ENABLED, and the
@@ -527,12 +527,18 @@ void main() {
       // the inventory for the same reason. If this case goes red on the day
       // Google is switched on, read WHICH number moved before changing it. The
       // dead list below stays exact.
+      // ⏱ 2026-09-29 · ST-D10 — 14 BECAME 15, AND REACHABLE MOVED WITH IT: the
+      // password field gained its Show / Hide control (`AuthField.reveal`,
+      // canvas `SignIn`, M1 §2.26 "no password reveal"). It is a TextButton
+      // stacked beside the merged field, so it is ONE more control and it is
+      // Tab-reachable: 12 + 1 = 13 of 14 + 1 = 15. The dead list below is
+      // unchanged — the reveal is not in it.
       final _Sweep s = await pin(
         tester,
         'login',
         const LoginScreen(),
-        controls: 14,
-        reachable: 12,
+        controls: 15,
+        reachable: 13,
       );
       // 🔴 THIS CASE USED TO ASSERT THE OPPOSITE, AND THE INVERSION IS THE
       // POINT. Until 2026-08-25 it read `expect(deadLabels.where(contains

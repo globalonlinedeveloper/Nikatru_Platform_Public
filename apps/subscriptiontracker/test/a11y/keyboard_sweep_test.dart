@@ -465,7 +465,10 @@ kExpected = <String, ({int controls, int reachable})>{
   // `/sign-up` now opens `LoginScreen` on its sign-up arm — the one sign-up
   // surface — which carries the footer's Privacy, Terms and Refund links. The
   // two off-orbit controls are still the two consent SENTENCES.
-  '/sign-up': (controls: 12, reachable: 10),
+  // ⏱ 2026-09-29 · ST-D10: 12 -> 13 and 10 -> 11. The password field gained
+  // its Show / Hide control (`AuthField.reveal`, canvas `SignUp`), which is a
+  // button beside the merged field, on the Tab orbit.
+  '/sign-up': (controls: 13, reachable: 11),
   // ⏱ 2026-09-27 · ST-A5 (audit A-6): + resend and "wrong address?".
   '/check-inbox': (controls: 3, reachable: 3),
   '/verify-email': (controls: 3, reachable: 3),
@@ -1228,9 +1231,10 @@ void main() {
       );
       expect(
         s.controls.length - s.dead.length,
-        10,
+        11,
         reason:
-            'sign-up reachable: the two text fields, the two consent boxes, the '
+            'sign-up reachable: the two text fields, the password field\'s Show '
+            '/ Hide control (since 2026-09-29, ST-D10), the two consent boxes, the '
             '"Have an account? Sign in" toggle, the Terms and Privacy links '
             'beside the boxes (since 2026-08-26) and the footer\'s Privacy, '
             'Terms and Refund links (since 2026-09-28, when /sign-up became '

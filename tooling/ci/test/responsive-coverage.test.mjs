@@ -233,7 +233,8 @@ describe('the guard says YES on the tree as it is', () => {
     // ⏱ 2026-09-29 · trains ST-D6 + ST-D1: 17 of 25 → 23 of 31 — the form
     // sheet and Home components arrived measured; 8 PRINTED is unchanged.
     // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 23 of 31 → 27 of 35.
-    assert.match(out, /packages\/design_system: 27 of 35 surface\(s\) measured — 8 PRINTED and not failed/);
+    // ⏱ 2026-09-29 · train ST-D10: 27 of 35 → 33 of 40 — the auth frame's five parts and AuthField, pumped at 375 / 768 / 1280 / 1440 by auth_frame_test.dart.
+    assert.match(out, /packages\/design_system: 33 of 40 surface\(s\) measured — 7 PRINTED and not failed/);
   });
 
   test('the copied subject tree reproduces the subscriptiontracker reading exactly — and derives TWO roots', () => {
@@ -537,7 +538,8 @@ describe('a report-mode root can get better, never quietly worse', () => {
       // ⏱ 2026-09-28 · train ST-D0: 10 of 12 → 15 of 17 (floor re-based to 17).
       // ⏱ 2026-09-29 · trains ST-D6 + ST-D1: 15 of 17 → 21 of 23 (floor re-based to 23).
       // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 21 of 23 → 25 of 27 (floor re-based to 27).
-      /COVERAGE LOST — `packages\/design_system` has 25 measured surface\(s\) and its measured floor is 27/s,
+      // ⏱ 2026-09-29 · train ST-D10: the measured floor rose 27 → 33, so the same deletion reads 31 against 33.
+      /COVERAGE LOST — `packages\/design_system` has 31 measured surface\(s\) and its measured floor is 33/s,
     );
   });
 
@@ -567,7 +569,8 @@ describe('a report-mode root can get better, never quietly worse', () => {
     // ⏱ 2026-09-28 · train ST-D0: 18 of 20 → 23 of 25 (floor re-based to 25).
     // ⏱ 2026-09-29 · trains ST-D6 + ST-D1: 23 of 25 → 29 of 31 (floor re-based to 31).
     // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 29 of 31 → 33 of 35 (floor re-based to 35).
-    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 33 responsive surface\(s\).*floor is 35/s);
+    // ⏱ 2026-09-29 · train ST-D10: 33 of 35 → 38 of 40 — the auth frame raised the surfaces floor.
+    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 38 responsive surface\(s\).*floor is 40/s);
   });
 
   test("R11c · a NEW unmeasured surface in EACH new root reaches that root's printed list", () => {
@@ -598,7 +601,8 @@ describe('a report-mode root can get better, never quietly worse', () => {
     // ⏱ 2026-09-28 · train ST-D0: 12 of 21 → 17 of 26 (measured arrivals).
     // ⏱ 2026-09-29 · trains ST-D6 + ST-D1: 17 of 26 → 23 of 32 (measured arrivals).
     // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 23 of 32 → 27 of 36 (measured arrivals).
-    assert.match(out, /packages\/design_system: 27 of 36 surface\(s\) measured — 9 PRINTED/);
+    // ⏱ 2026-09-29 · train ST-D10: 27 of 36 → 33 of 41 — six more measured; the probe is the one new unmeasured surface.
+    assert.match(out, /packages\/design_system: 33 of 41 surface\(s\) measured — 8 PRINTED/);
   });
 });
 
