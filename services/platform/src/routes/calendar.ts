@@ -38,7 +38,7 @@ import {
   TOKEN_SHAPE,
   appName,
   clampLead,
-  leadFor,
+  leadsFor,
   mintToken,
   nextOccurrence,
   priceLabel,
@@ -149,7 +149,8 @@ calendar.get('/calendar/:file', async (c) => {
       date,
       summary: `${name} renews`,
       description: [sub.cycle ? `Renews ${sub.cycle}` : null, price ? `Amount ${price}` : null].filter(Boolean).join(' · ') || undefined,
-      alarmDaysBefore: leadFor(sub, personLead),
+      // The subscription's own leads (`[]` = no alarm), else the account's one.
+      alarmDaysBefore: leadsFor(sub, personLead),
     });
   }
   const headers: Record<string, string> = {

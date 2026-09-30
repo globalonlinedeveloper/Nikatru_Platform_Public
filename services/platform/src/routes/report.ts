@@ -18,16 +18,17 @@
 //   1. body bounded, then parsed, then validated — nothing touches D1 on a bad body;
 //   2. the burst breaker (EVENTS_LIMITER, keyed `report:<user>`) — fail-open by the
 //      helper's design, so it is a breaker, not the cap;
-//   3. THE CAP: at most MAX_REPORTS_PER_USER_PER_HOUR rows in the last hour, read
-//      from D1 — a real limit that a missing binding cannot switch off;
-//   4. INSERT — the report exists from here, whatever happens next;
+//   3+4. THE CAP AND THE INSERT, AS ONE STATEMENT: the row lands only while the
+//      reporter has fewer than MAX_REPORTS_PER_USER_PER_HOUR in the last hour — a
+//      real limit that a missing binding cannot switch off and a parallel burst
+//      cannot overshoot. The report exists from here, whatever happens next;
 //   5. the support notice, under `waitUntil`, after the response. The user never
 //      waits on email and never learns whether it went (lib/report-notify.ts).
 // 202, because the report is RECEIVED, not yet reviewed.
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
-import { firstRow, nowIso } from '../lib/d1';
+import { nowIso } from '../lib/d1';
 import { isKnownApp } from '../config';
 import { readBoundedBody } from '../lib/body';
 import { withinRateLimit } from '../lib/edge-ceiling';
@@ -128,22 +129,34 @@ report.post('/report', async (c) => {
   }
   const now = nowIso();
   const hourAgo = new Date(Date.parse(now) - 3600_000).toISOString();
-  const recent = await firstRow<{ n: number }>(
-    c.env.PLATFORM_DB.prepare('SELECT COUNT(*) AS n FROM content_reports WHERE user_id = ? AND created_at >= ?').bind(
-      userId,
-      hourAgo,
-    ),
-  );
-  if ((recent?.n ?? 0) >= MAX_REPORTS_PER_USER_PER_HOUR) return c.json({ error: 'rate_limited' }, 429);
-
+  // ⏱ 2026-09-30 · O-REPORT-CAPS-ARE-READ-THEN-WRITE (rv2-services-004). THE CAP
+  // AND THE INSERT ARE ONE STATEMENT. They were a COUNT and then an INSERT, so a
+  // parallel wave of valid reports all read the same count before any sibling's
+  // row landed, and every one of them was stored. D1 runs one statement at a
+  // time, so a conditional INSERT … SELECT … WHERE count < cap cannot be
+  // overtaken: the row lands only if the count it saw was under the cap, and
+  // `changes = 0` is the 429.
   const id = crypto.randomUUID();
-  await c.env.PLATFORM_DB.prepare(
+  const inserted = await c.env.PLATFORM_DB.prepare(
     `INSERT INTO content_reports
        (id, user_id, app_id, reason, content_ref, content_excerpt, note, status, created_at, notified_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, NULL)`,
+     SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, 'open', ?8, NULL
+     WHERE (SELECT COUNT(*) FROM content_reports WHERE user_id = ?2 AND created_at >= ?9) < ?10`,
   )
-    .bind(id, userId, parsed.appId, parsed.reason, parsed.contentRef, parsed.excerpt, parsed.note, now)
+    .bind(
+      id,
+      userId,
+      parsed.appId,
+      parsed.reason,
+      parsed.contentRef,
+      parsed.excerpt,
+      parsed.note,
+      now,
+      hourAgo,
+      MAX_REPORTS_PER_USER_PER_HOUR,
+    )
     .run();
+  if (Number(inserted.meta?.changes ?? 0) === 0) return c.json({ error: 'rate_limited' }, 429);
 
   c.executionCtx.waitUntil(
     notifyReport(c.env.PLATFORM_DB, c.env.RESEND_API_KEY, { id, appId: parsed.appId, reason: parsed.reason, createdAt: now }),

@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import app from '../src/index';
-import { buildEnvelope, parseDsn, reportWorkerError } from '../src/lib/error-sink';
+import { buildEnvelope, parseDsn, reportWorkerError, reportablePath } from '../src/lib/error-sink';
 import { realPlatformDb } from './harness';
+import { sha256Hex } from '../src/middleware/ext-device-auth';
+import { mintToken } from '../src/lib/reminders';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // [pipeline 11]E-8 — a Worker's unhandled error is CAPTURED, not console-only.
@@ -411,5 +413,69 @@ describe('the sink fails open', () => {
     // Cloudflare's edge rejects any client request carrying this header with
     // error 1000, before the origin is reached.
     expect(Object.keys(headers).map((h) => h.toLowerCase())).not.toContain('cf-connecting-ip');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-30 · O-CALENDAR-TOKEN-SHIPPED-TO-ERROR-SINK (rv2-services-002).
+//
+// 🔴 THE PRIVACY RULE ABOVE ASSUMED A SECRET COULD ONLY LIVE IN THE QUERY
+// STRING. The calendar feed's 256-bit capability token is a PATH segment
+// (`/v1/calendar/<token>.ics`), and onError reported the concrete pathname, so
+// any unhandled error on that route sent the live token to GlitchTip — where
+// anyone who could read the issue could fetch that person's subscriptions.
+//
+// RED ON MAIN, GREEN AFTER: driven through the REAL app, with a real feed row and
+// no subscriptiontracker_db bound — the route's own configuration-fault throw
+// (routes/calendar.ts, "no database binding for app") reaches the real onError.
+// On the tree before this change the captured envelope contains the token.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('a path-segment capability never reaches the sink', () => {
+  // Minted by the route's own minter, so it is exactly the shape a live feed carries.
+  const TOKEN = mintToken();
+
+  it('🔴 an error on GET /v1/calendar/<token>.ics reports the ROUTE PATTERN, and the token appears nowhere in the envelope', async () => {
+    expect(TOKEN).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    const platform = realPlatformDb();
+    platform.db
+      .prepare('INSERT INTO reminder_feed (user_id, app_id, token_hash, created_at, revoked_at) VALUES (?, ?, ?, ?, NULL)')
+      .run('u-sink', 'subscriptiontracker', await sha256Hex(TOKEN), '2026-09-30T00:00:00Z');
+    const sent: string[] = [];
+    vi.stubGlobal('fetch', async (_u: string, init: RequestInit) => {
+      sent.push(String(init.body));
+      return new Response('', { status: 200 });
+    });
+    const res = await app.fetch(
+      new Request(`https://platform.example.test/v1/calendar/${TOKEN}.ics?download=1`),
+      // PLATFORM_DB bound, so the token is found; SUBSCRIPTIONTRACKER_DB not, so
+      // the route throws AFTER the token check — the case the finding names.
+      { GLITCHTIP_DSN: DSN, RELEASE: 'sha123', PLATFORM_DB: platform } as never,
+      { waitUntil: (p: Promise<unknown>) => void p, passThroughOnException: () => {} } as never,
+    );
+    expect(res.status).toBe(500);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).not.toContain(TOKEN);
+    expect(sent[0]).not.toContain(TOKEN.slice(0, 16));
+    const event = JSON.parse(sent[0].split('\n')[2]);
+    expect(event.transaction).toBe('GET /v1/calendar/:file');
+  });
+
+  it('with no matched handler, a capability-shaped segment is scrubbed from the concrete path', () => {
+    expect(reportablePath(`/v1/calendar/${TOKEN}.ics`)).toBe('/v1/calendar/:redacted');
+    expect(reportablePath('/v1/events')).toBe('/v1/events');
+    // Middleware (`ALL`) and wildcard routes name no handler: fall back to the scrub.
+    expect(reportablePath(`/v1/calendar/${TOKEN}.ics`, [{ method: 'ALL', path: '*' }])).toBe('/v1/calendar/:redacted');
+    expect(
+      reportablePath(`/v1/calendar/${TOKEN}.ics`, [
+        { method: 'ALL', path: '*' },
+        { method: 'GET', path: '/v1/calendar/:file' },
+      ]),
+    ).toBe('/v1/calendar/:file');
+  });
+
+  it('the envelope scrubs a concrete token path whatever the caller passed', () => {
+    const envelope = buildEnvelope(new Error('x'), { ...CTX, method: 'GET', path: `/v1/calendar/${TOKEN}.ics` }, DSN, NOW);
+    expect(envelope).not.toContain(TOKEN);
+    expect(JSON.parse(envelope.split('\n')[2]).transaction).toBe('GET /v1/calendar/:redacted');
   });
 });
