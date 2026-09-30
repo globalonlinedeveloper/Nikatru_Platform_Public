@@ -11,6 +11,7 @@ import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/data/subscriptions/subscription_repository.dart';
 import 'package:subscriptiontracker/state/money_providers.dart';
 import 'package:subscriptiontracker/state/providers.dart';
+import 'package:subscriptiontracker/state/refresh_on_return.dart';
 import 'package:subscriptiontracker/state/subscriptions_controller.dart';
 
 /// ⏱ 2026-09-30 · ST-N6 (D23, F37) and AB-M3-03 — a return to the app
@@ -134,6 +135,9 @@ void main() {
           keyValueStoreProvider.overrideWith((_) async => _MemStore()),
           secureStoreProvider.overrideWithValue(_MemSecureStore()),
           nowProvider.overrideWithValue(() => now),
+          resumeElapsedProvider.overrideWithValue(
+            () => now.difference(DateTime.utc(2026)),
+          ),
           subscriptionRepositoryProvider.overrideWithValue(repo),
           appConfigProvider.overrideWith((_) async => _selling),
           entitlementTransportProvider.overrideWithValue(server),

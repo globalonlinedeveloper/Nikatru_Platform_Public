@@ -13,7 +13,10 @@ void main() {
   setUp(() {
     now = DateTime.utc(2026, 9, 30, 12);
     runs = 0;
-    resume = ResumeRefresh(refresh: () async => runs++, clock: () => now);
+    resume = ResumeRefresh(
+      refresh: () async => runs++,
+      elapsed: () => now.difference(DateTime.utc(2026)),
+    );
   });
 
   test(
@@ -49,7 +52,7 @@ void main() {
         started++;
         return gate.future;
       },
-      clock: () => now,
+      elapsed: () => now.difference(DateTime.utc(2026)),
     );
     final Future<void> a = slow.refreshNow();
     final Future<void> b = slow.refreshNow();
@@ -69,7 +72,7 @@ void main() {
         attempts++;
         throw StateError('offline');
       },
-      clock: () => now,
+      elapsed: () => now.difference(DateTime.utc(2026)),
     );
     await failing.refreshNow();
     await Future<void>.delayed(Duration.zero);

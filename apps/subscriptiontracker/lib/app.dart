@@ -251,7 +251,7 @@ class _OfflineBanner extends ConsumerWidget {
       onRetry: () => ref.invalidate(appConfigProvider),
       child: RefreshOnResume(
         onRefresh: () => refreshOnReturn(ref),
-        clock: ref.read(nowProvider), // so a test can step past the floor
+        elapsed: ref.read(resumeElapsedProvider), // a test steps the floor
         child: child,
       ),
     );

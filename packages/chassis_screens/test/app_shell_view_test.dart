@@ -40,7 +40,7 @@ void main() {
     void Function({required bool granted})? onAnswer,
     ThemeMode themeMode = ThemeMode.light,
     Future<void> Function()? onReturn,
-    DateTime Function()? clock,
+    Duration Function()? elapsed,
   }) {
     return NikatruApp(
       title: 'Probe',
@@ -60,7 +60,7 @@ void main() {
       onUpdate: () {},
       shell: (Widget routed) => RefreshOnResume(
         onRefresh: onReturn ?? () async {},
-        clock: clock,
+        elapsed: elapsed,
         child: AppLifecycleFlush(
           onBackground: onBackground ?? () {},
           child: ConsentScrim(
@@ -91,7 +91,7 @@ void main() {
     void Function({required bool granted})? onAnswer,
     TextScaler? incomingScale,
     Future<void> Function()? onReturn,
-    DateTime Function()? clock,
+    Duration Function()? elapsed,
   }) async {
     await tester.binding.setSurfaceSize(size);
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -103,7 +103,7 @@ void main() {
       onRetry: onRetry,
       onAnswer: onAnswer,
       onReturn: onReturn,
-      clock: clock,
+      elapsed: elapsed,
     );
     await tester.pumpWidget(
       incomingScale == null
@@ -339,7 +339,7 @@ void main() {
         tester,
         kPhone,
         onReturn: () async => runs++,
-        clock: () => now,
+        elapsed: () => now.difference(DateTime.utc(2026)),
       );
       now = now.add(const Duration(minutes: 5));
       for (final AppLifecycleState state in <AppLifecycleState>[
@@ -370,7 +370,7 @@ void main() {
         tester,
         kPhone,
         onReturn: () async => runs++,
-        clock: () => now,
+        elapsed: () => now.difference(DateTime.utc(2026)),
       );
       await tester.pumpWidget(const SizedBox.shrink());
       now = now.add(const Duration(minutes: 5));

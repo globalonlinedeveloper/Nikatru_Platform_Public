@@ -27,10 +27,10 @@ class ResumeRefresh {
   ResumeRefresh({
     required Future<void> Function() refresh,
     this.minInterval = defaultMinInterval,
-    DateTime Function()? clock,
+    Duration Function()? elapsed,
   }) : _refresh = refresh,
-       _now = clock ?? DateTime.now {
-    _last = _now();
+       _elapsed = elapsed ?? _monotonic() {
+    _last = _elapsed();
   }
 
   /// Long enough that window switching is not traffic; short enough that a
@@ -38,7 +38,15 @@ class ResumeRefresh {
   static const Duration defaultMinInterval = Duration(seconds: 30);
 
   final Future<void> Function() _refresh;
-  final DateTime Function() _now;
+
+  /// Time since an arbitrary origin, MONOTONIC: a device clock set back must
+  /// not stop refresh-on-return until it catches up (review #1080 nit 12).
+  final Duration Function() _elapsed;
+
+  static Duration Function() _monotonic() {
+    final Stopwatch watch = Stopwatch()..start();
+    return () => watch.elapsed;
+  }
 
   /// The floor between two resume-driven re-reads.
   final Duration minInterval;
@@ -47,7 +55,7 @@ class ResumeRefresh {
   /// app's first frame has just read everything.
   /// Set in the constructor, NOT lazily: a `late` initialiser would run at
   /// the first resume and read that moment as the launch.
-  late DateTime _last;
+  late Duration _last;
 
   /// The re-read in flight, shared by every caller that arrives during it.
   Future<void>? _inFlight;
@@ -55,7 +63,7 @@ class ResumeRefresh {
   /// The platform said the app is in front again. Returns whether a re-read
   /// was started (false inside [minInterval] of the last one).
   Future<bool> onResumed() async {
-    if (_now().difference(_last) < minInterval) return false;
+    if (_elapsed() - _last < minInterval) return false;
     await refreshNow();
     return true;
   }
@@ -67,7 +75,7 @@ class ResumeRefresh {
   Future<void> refreshNow() {
     final Future<void>? running = _inFlight;
     if (running != null) return running;
-    _last = _now();
+    _last = _elapsed();
     final Future<void> run = _run();
     _inFlight = run;
     // Cleared by identity, AFTER it is set: a refresh that throws before its

@@ -564,7 +564,7 @@ class RefreshOnResume extends StatefulWidget {
     required this.onRefresh,
     required this.child,
     this.minInterval = ResumeRefresh.defaultMinInterval,
-    this.clock,
+    this.elapsed,
     super.key,
   });
 
@@ -575,8 +575,8 @@ class RefreshOnResume extends StatefulWidget {
   /// The floor between two resume-driven re-reads ([ResumeRefresh]).
   final Duration minInterval;
 
-  /// Injectable for tests; production reads the wall clock.
-  final DateTime Function()? clock;
+  /// Injectable for tests; production reads a monotonic stopwatch.
+  final Duration Function()? elapsed;
 
   final Widget child;
 
@@ -598,7 +598,7 @@ class _RefreshOnResumeState extends State<RefreshOnResume> {
     _resume = ResumeRefresh(
       refresh: () => widget.onRefresh(),
       minInterval: widget.minInterval,
-      clock: widget.clock,
+      elapsed: widget.elapsed,
     );
     _listener = AppLifecycleListener(onResume: () => _resume.onResumed());
   }
