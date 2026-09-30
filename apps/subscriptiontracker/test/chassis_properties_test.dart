@@ -3610,13 +3610,22 @@ void main() {
       expect(find.byType(PaywallGate), findsNothing);
       expect(find.text('Unlock the full experience'), findsNothing);
 
-      // The Insights branch IS gated — same property, different surface: the
-      // stamped shell gated its Explore tab; Subly's 5-tab shell has no
-      // Explore, and Insights is the premium surface (_GatedInsights).
+      // Insights IS gated — same property, different surface. ⏱ ST-D3 D3-6:
+      // the lock moved from the whole tab (`_GatedInsights`) to its ONE Pro
+      // card (`PaywallGate.card`, the forecast), so the free cards stay
+      // readable and the locked card is scrolled to rather than filling the tab.
       await tester.tap(find.text('Insights'));
       await _turnsAndSettleRoute(tester);
+      await tester.scrollUntilVisible(
+        find.byType(PaywallGate),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(find.byType(PaywallGate), findsOneWidget);
-      expect(find.text('Unlock the full experience'), findsOneWidget);
+      expect(
+        find.text('See what the next 12 months will cost, month by month.'),
+        findsOneWidget,
+      );
     });
   });
 

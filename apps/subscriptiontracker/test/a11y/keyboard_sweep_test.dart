@@ -497,8 +497,8 @@ kExpected = <String, ({int controls, int reachable})>{
   // its own icon in `/manage-plan · a keyboard reaches the cancel-plan row`.
   '/manage-plan': (controls: 3, reachable: 3),
   '/calendar': (controls: 7, reachable: 7),
-  '/insights': (controls: 3, reachable: 3),
-  '/budget': (controls: 0, reachable: 0),
+  // ⏱ ST-D3: 3 -> 6, measured by this suite on the rebuilt Insights.
+  '/insights': (controls: 6, reachable: 6),
 };
 
 /// Every [GoRoute] in the tree, including the ones nested under a shell.
@@ -748,7 +748,7 @@ void main() {
       .toSet();
 
   group('the router is the only declaration of the route set', () {
-    test('19 routes, 17 of them build a screen, 2 are redirect-only', () {
+    test('19 routes, 16 of them build a screen, 3 are redirect-only', () {
       expect(
         declared.length,
         19,
@@ -760,10 +760,11 @@ void main() {
             'Declared: ${declaredPaths.toList()..sort()}',
       );
       expect(
+        // ⏱ ST-D3 D3-3: 17 → 16 — `/budget` is a redirect to `/insights` now.
         screenBearing.length,
-        17,
+        16,
         reason:
-            '${screenBearing.length} routes build a screen, not 17. Screen '
+            '${screenBearing.length} routes build a screen, not 16. Screen '
             'paths: ${screenPaths.toList()..sort()}',
       );
       for (final GoRoute r in declared) {

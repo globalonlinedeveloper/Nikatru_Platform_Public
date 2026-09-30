@@ -70,6 +70,11 @@ const String kLocalBudgetKey = 'nikatru.budget';
 /// `DurableOutbox` (audit D22), one document of user-scoped entries.
 const String kLocalOutboxKey = 'nikatru.subscriptions.outbox';
 
+/// The subscriptions the user has ANSWERED "yes, still using" for on Insights
+/// (ST-D3 D3-4). A JSON list of ids. Asked, never inferred: nothing in the app
+/// measures usage, so the only signal is the one the user gives.
+const String kLocalStillUsingKey = 'nikatru.still_using';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 🔴 THE SERIALIZATION BOUNDARY, AND IT IS DELIBERATELY THE ONLY ONE.
 //
@@ -234,6 +239,31 @@ class LocalSubscriptionStore {
   Future<void> writeBudget(BudgetInfo budget) =>
       json.write(kLocalBudgetKey, budget, SubscriptionCodec.budget);
 
+  /// The ids answered "still using", or an empty set when none is stored or
+  /// the stored text is unreadable — a lost answer is asked again, never
+  /// invented.
+  Future<Set<String>> readStillUsing() async {
+    final String? raw = await _read(kLocalStillUsingKey);
+    if (raw == null) return <String>{};
+    try {
+      final Object? decoded = jsonDecode(raw);
+      return decoded is List
+          ? <String>{
+              for (final Object? e in decoded)
+                if (e is String) e,
+            }
+          : <String>{};
+    } catch (_) {
+      return <String>{};
+    }
+  }
+
+  /// Replace the stored answers with [ids].
+  ///
+  /// Throws [LocalStoreWriteFailure] when the store refuses — never silently.
+  Future<void> writeStillUsing(Set<String> ids) =>
+      _write(kLocalStillUsingKey, jsonEncode(ids.toList()..sort()));
+
   /// Forget everything this store owns.
   ///
   /// Exists so account deletion and a consent withdrawal have one call to make
@@ -245,9 +275,16 @@ class LocalSubscriptionStore {
   Future<void> clear() => json.remove(<String>[
     kLocalSubscriptionsKey,
     kLocalBudgetKey,
+    kLocalStillUsingKey,
     // NOT kLocalOutboxKey: the outbox is per user. An explicit sign-out drops
     // THAT user's entries (`discardPendingOf`); a forced 401 keeps them for
     // the same user's return; nobody else's replay ever sends them.
     kCacheIndexKey, // the shared cache's list of what it wrote: key names only
   ]);
+
+  // The still-using answers (ST-D3 D3-4) read and write through the shared
+  // store, with its read-degrades / write-throws contract.
+  Future<String?> _read(String key) => json.readRaw(key);
+
+  Future<void> _write(String key, String value) => json.writeRaw(key, value);
 }
