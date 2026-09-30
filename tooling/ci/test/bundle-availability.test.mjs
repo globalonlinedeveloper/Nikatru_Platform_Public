@@ -58,6 +58,9 @@ const SUBJECT_FILES = [
   'tooling/catalog/reader-floor.json',
   // R-4 · the minted-membership lock limb H reads.
   'catalog/bundle-membership.lock.json',
+  // EXM-05 · limb I: the entitlement host, and the one extension member's contract.
+  'services/platform/src/app-config-data.json',
+  'extensions/Extension/Full_Screen_Shot/tool.json',
 ];
 
 let TMP;
@@ -593,5 +596,82 @@ describe('tooling/bundle-availability.mjs — the derivation itself', () => {
     // A channel nobody decided is a PROBLEM, not a quiet false — the caller has
     // to be able to tell "not steerable" from "this derivation stopped reading".
     assert.ok(a.problems.length > 0, JSON.stringify(a.problems));
+  });
+});
+
+// ── EXM-05 · LIMB I — A LIVE MEMBER CAN READ ITS ENTITLEMENT ────────────────
+describe('limb I — a live member can read its entitlement (EXM-05)', () => {
+  const TOOL = 'extensions/Extension/Full_Screen_Shot/tool.json';
+  const EXTS = 'extensions/catalog/extensions.json';
+  const goLive = (d) => editJson(d, EXTS, (rows) => rows.map((r) => (r.slug === 'fullshot' ? { ...r, status: 'live' } : r)));
+
+  test('GREEN CONTROL — today fullshot is not live, so its empty allowlist is printed, not failed', () => {
+    const r = run(tree());
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /⬜ limb I \[nikatru_all\]: `fullshot` is not live yet and cannot read its entitlement/);
+  });
+
+  test('RED CONTROL — a scratch catalog with FullShot live and an empty networkAllowlist reports the bundle NOT PURCHASABLE (exit 1)', () => {
+    const r = run(tree((d) => goLive(d)));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /\[nikatru_all\] NOT PURCHASABLE: member `fullshot` is live and cannot read its entitlement/);
+    assert.match(r.out, /does not name platform\.nikatru\.com/);
+  });
+
+  test('FullShot live WITH the entitlement host in its allowlist clears limb I', () => {
+    const r = run(
+      tree((d) => {
+        goLive(d);
+        editJson(d, TOOL, (t) => {
+          t.policy.networkAllowlist = ['platform.nikatru.com'];
+        });
+      }),
+    );
+    // Limb C still refuses a live second product with no bundle price; limb I is what is under test.
+    assert.doesNotMatch(r.out, /NOT PURCHASABLE: member `fullshot`/);
+    assert.match(r.out, /limb I: every live bundle member can read its entitlement from platform\.nikatru\.com/);
+  });
+
+  test('an allowlist naming some OTHER host is still unreadable', () => {
+    const r = run(
+      tree((d) => {
+        goLive(d);
+        editJson(d, TOOL, (t) => {
+          t.policy.networkAllowlist = ['api.example.test'];
+        });
+      }),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /NOT PURCHASABLE: member `fullshot`/);
+  });
+
+  test('an extension member with no tool.json is COVERAGE LOST, never readable', () => {
+    const r = run(tree((d) => rmSync(join(d, TOOL))));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — limb I \[nikatru_all\]: no extensions\/Extension\/\*\/tool\.json declares id "fullshot"/);
+  });
+
+  test('a served config with no sharedApiBaseUrl is COVERAGE LOST', () => {
+    const r = run(
+      tree((d) =>
+        editJson(d, 'services/platform/src/app-config-data.json', (c) => {
+          delete c.sharedApiBaseUrl;
+        }),
+      ),
+    );
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — limb I .*sharedApiBaseUrl is undefined/);
+  });
+
+  test('the derivation reports the unreadable member with its reason', async () => {
+    const dir = tree();
+    const { memberEntitlementReach } = await derivationIn(dir);
+    const reach = memberEntitlementReach(dir, [
+      { slug: 'subscriptiontracker', kind: 'app' },
+      { slug: 'fullshot', kind: 'extension' },
+    ]);
+    assert.deepEqual(reach.problems, []);
+    assert.equal(reach.entitlementHost, 'platform.nikatru.com');
+    assert.deepEqual(reach.unreadable.map((u) => u.slug), ['fullshot']);
   });
 });

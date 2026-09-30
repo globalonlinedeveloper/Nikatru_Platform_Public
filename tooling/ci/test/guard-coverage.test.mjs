@@ -1605,3 +1605,94 @@ describe('the coverage manifest is diffed by CI', () => {
     );
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// A-5 (2026-09-29) — limb 1 refuses a comment; the exemptions and the
+// named-only set are ratchets, not lists that grow for free
+// ═══════════════════════════════════════════════════════════════════════════
+describe('A-5: a recorded failing case is code, and the exemption lists have ceilings', () => {
+  /** A test file that EXERCISES every compliant guard (it spawns each), and
+   *  names `assert-comment-only.mjs` in `how` — a trailing comment, a block
+   *  comment, or a spawn (the green control). */
+  const exercising = (names, how) =>
+    [
+      "import { test } from 'node:test';",
+      "import { spawnSync } from 'node:child_process';",
+      ...names.map((n) => `test('runs ${n}', () => { spawnSync(process.execPath, ['tooling/ci/${n}']); });`),
+      how,
+      '',
+    ].join('\n');
+  const GUARDS = Object.keys(compliant());
+  const withSubject = (how) =>
+    repo(compliant({ 'assert-comment-only.mjs': 'if (x) throw new Error("COVERAGE LOST");\n' }), {
+      mentionAll: false,
+      files: { 'tooling/ci/test/exercise.test.mjs': exercising(GUARDS, how) },
+    });
+
+  test('RED: a guard named only in a TRAILING comment of a test file is refused by limb 1, naming the file', () => {
+    const r = run(withSubject("test('something else', () => {}); // assert-comment-only.mjs is covered elsewhere"));
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /assert-comment-only\.mjs — no test file mentions it in code \(exercise\.test\.mjs names it only in a COMMENT, which runs nothing\)/);
+  });
+
+  test('RED: a mid-line BLOCK comment is the same comment', () => {
+    const r = run(withSubject("test('something else', () => { /* assert-comment-only.mjs */ });"));
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /assert-comment-only\.mjs — no test file mentions it in code/);
+  });
+
+  test('GREEN CONTROL: the same guard SPAWNED by that file is covered, and the run is clean', () => {
+    const r = run(withSubject("test('runs it', () => { spawnSync(process.execPath, ['tooling/ci/assert-comment-only.mjs']); });"));
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+  });
+
+  test('RED: more guards NAMED in code and exercised by none than the ceiling of 13 is a finding, listing them', () => {
+    // The generated test files name each guard in a string and run none: 14 of them.
+    const r = run(repo(compliant({}, 14)));
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /14 guard\(s\) are NAMED by a test and exercised by none, over the ceiling of 13/);
+  });
+
+  test('GREEN CONTROL: four named-only guards sit under the ceiling and are PRINTED, not hidden', () => {
+    const r = run(repo(compliant()));
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /⬜ 4 guard\(s\) NAMED by a test and exercised by none \(ceiling 13, falling only\)/);
+  });
+
+  const seeded = (opts) => {
+    const root = repo(compliant(), { real: true, excused: EXCUSED, unrunnable: UNRUNNABLE, ...opts });
+    const seed = run(root);
+    assert.equal(seed.status, 0, `fixture-mode seed failed: ${seed.stderr}`);
+    gitify(root);
+    return root;
+  };
+  const ANCHOR = 'const NOT_A_SCANNER = new Map([';
+  const LONG = 'is a fixture entry whose reason is long enough to pass the reason floor, so that the ONLY thing this mutation changes is the size of the map against its ceiling.';
+
+  test('RED: a 40th NOT_A_SCANNER entry beyond the ratchet reds, naming the size and the ceiling', () => {
+    const r = runReal(
+      seeded({
+        mutateGuard: (s) => {
+          assert.ok(s.includes(ANCHOR), 'the map moved — this mutation no longer reaches it');
+          return s.replace(ANCHOR, `${ANCHOR}\n  ['zz-fortieth.mjs', '${LONG}'],`);
+        },
+      }),
+    );
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /NOT_A_SCANNER holds 40 entries and its ceiling is 39/);
+  });
+
+  test('RED: an exemption whose reason is a label, not a paragraph, is refused', () => {
+    const r = runReal(
+      seeded({
+        mutateGuard: (s) => {
+          const re = /\[\s*'record-deployment\.mjs',\s*'[^']*',\s*\]/;
+          assert.ok(re.test(s), 'the record-deployment entry moved — this mutation no longer reaches it');
+          return s.replace(re, "['record-deployment.mjs', 'writes a record.']");
+        },
+      }),
+    );
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /NOT_A_SCANNER entry record-deployment\.mjs carries a reason of 16 character\(s\); the floor is 120/);
+  });
+});

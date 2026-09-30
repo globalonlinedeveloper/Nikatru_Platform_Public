@@ -42,7 +42,7 @@
     32,
 
   "app-dod.test.mjs":
-    32,
+    38,
 
   "app-id-contract.test.mjs":
     13,
@@ -113,6 +113,9 @@
   "assert-release-json.test.mjs":
     60,
 
+  "assert-versions.test.mjs":
+    30,
+
   "auth-callbacks.test.mjs":
     50,
 
@@ -141,7 +144,7 @@
     15,
 
   "bundle-availability.test.mjs":
-    35,
+    42,
 
   "bundle-contract-limbs.test.mjs":
     18,
@@ -218,6 +221,9 @@
   "clone-contract.test.mjs":
     46,
 
+  "code-scanning-age.test.mjs":
+    15,
+
   "config-registry.test.mjs":
     61,
 
@@ -264,7 +270,7 @@
     39,
 
   "deploy-ref.test.mjs":
-    23,
+    31,
 
   "deploy-triggers.test.mjs":
     27,
@@ -300,7 +306,7 @@
     27,
 
   "e2e-legs.test.mjs":
-    34,
+    46,
 
   "e2e-proof-fresh.test.mjs":
     61,
@@ -336,7 +342,7 @@
     57,
 
   "extension-submission.test.mjs":
-    56,
+    64,
 
   "extension-tool-identity.test.mjs":
     79,
@@ -399,7 +405,7 @@
     48,
 
   "guard-coverage.test.mjs":
-    74,
+    81,
 
   "guard-declaration.test.mjs":
     8,
@@ -408,7 +414,7 @@
     12,
 
   "guard-yield.test.mjs":
-    41,
+    56,
 
   "guards-refuse-empty.test.mjs":
     18,
@@ -537,7 +543,7 @@
     39,
 
   "native-auth-proof.test.mjs":
-    12,
+    17,
 
   "native-symbol-upload.test.mjs":
     25,
@@ -546,7 +552,7 @@
     41,
 
   "new-tool-chain.test.mjs":
-    10,
+    12,
 
   "no-clone-tells.test.mjs":
     45,
@@ -594,7 +600,7 @@
     116,
 
   "ops-register.test.mjs":
-    430,
+    435,
 
   "ops-status.test.mjs":
     53,
@@ -621,7 +627,7 @@
     56,
 
   "password-reset-revokes.test.mjs":
-    9,
+    14,
 
   "paywall-flip-ready.test.mjs":
     9,
@@ -659,11 +665,14 @@
   "precommit-pii.test.mjs":
     5,
 
+  "preflight-ci-gate-coverage.test.mjs":
+    19,
+
   "preflight-hung-leg.test.mjs":
     5,
 
   "preflight-smoke.test.mjs":
-    26,
+    28,
 
   "preflight-sweep-regression.test.mjs":
     15,
@@ -726,7 +735,7 @@
     133,
 
   "rail-prices.test.mjs":
-    28,
+    42,
 
   "redeploy-stranded.test.mjs":
     50,
@@ -744,13 +753,13 @@
     7,
 
   "release-lane-generic.test.mjs":
-    103,
+    105,
 
   "release-provenance.test.mjs":
-    156,
+    159,
 
   "release-tag-lanes.test.mjs":
-    22,
+    24,
 
   "render-payload.test.mjs":
     56,
@@ -759,7 +768,7 @@
     2,
 
   "renovate-backlog.test.mjs":
-    43,
+    53,
 
   "renovate-reach.test.mjs":
     25,
@@ -795,10 +804,13 @@
     67,
 
   "runner-budget.test.mjs":
-    24,
+    33,
 
   "safe-rerun.test.mjs":
     77,
+
+  "scan-secrets.test.mjs":
+    12,
 
   "scan-workflows.test.mjs":
     12,
@@ -834,7 +846,7 @@
     12,
 
   "single-threaded-relaunch.test.mjs":
-    15,
+    16,
 
   "sink-disclosure.test.mjs":
     49,
@@ -844,6 +856,9 @@
 
   "site-integrity.test.mjs":
     109,
+
+  "small-business-program.test.mjs":
+    14,
 
   "smoke-site-deploy.test.mjs":
     14,
@@ -947,6 +962,9 @@
   "symbolication-proof.test.mjs":
     73,
 
+  "tech-currency.test.mjs":
+    43,
+
   "test-clock-mix.test.mjs":
     25,
 
@@ -954,7 +972,7 @@
     46,
 
   "triage-failed-runs.test.mjs":
-    108,
+    114,
 
   "turnstile-hosts.test.mjs":
     14,
@@ -1008,16 +1026,19 @@
     11,
 
   "worker-set.test.mjs":
-    34,
+    37,
 
   "worker-shared-modules.test.mjs":
     13,
+
+  "workflow-hardening.test.mjs":
+    11,
 
   "workflow-readers.test.mjs":
     19,
 
   "workflow-scan.test.mjs":
-    85,
+    89,
 
   "workflow-timeouts.test.mjs":
     21,

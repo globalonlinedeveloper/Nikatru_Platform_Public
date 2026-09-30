@@ -648,6 +648,18 @@ const NOT_A_SCANNER = new Map([
   ],
 ]);
 
+/** ⏱ 2026-09-29 (A-5) · THE RATCHET THIS MAP NEVER HAD. It held ELEVEN entries on
+ *  2026-08-26 and THIRTY-NINE on 2026-09-29 — every one of the twenty-eight added
+ *  since arrived with a reason, and nothing ever asked whether the list should be
+ *  that long. "Adding to this list should feel expensive" was prose. Now it is a
+ *  ceiling: the map's size may not exceed NOT_A_SCANNER_CEILING, and it moves UP
+ *  only in its own commit that names the entry and why no importer can carry its
+ *  coverage question; it moves DOWN whenever an entry leaves. Each reason must
+ *  also be a paragraph, not a label: REASON_MIN characters, measured against the
+ *  shortest reason on the day this landed (record-deployment.mjs, 139). */
+const NOT_A_SCANNER_CEILING = 39;
+const REASON_MIN = 120;
+
 /** [pipeline S-12r] (absent from origins.lock.json by construction — S-12r is a residual of S-12, raised by Private/pre-minimal-2026-09-08:plans/03-stamper-plan.md after the pipeline harvest was frozen) EXECUTABLES OUTSIDE tooling/ci THAT A WORKFLOW RUNS, and
  *  which are NOT required to carry a negative test — with the reason.
  *
@@ -1307,7 +1319,6 @@ if (uninvoked.length) {
   process.exit(1);
 }
 
-const rawCorpus = testFiles.map((f) => readFileSync(join(TESTS, f), 'utf8')).join('\n');
 
 // Only EXECUTABLE lines count as evidence. `includes()` over the raw text was
 // satisfied by a guard's name sitting in a comment — so a test file could be
@@ -1341,12 +1352,13 @@ const executable = (text) =>
 // and the ratchet still read 5791 case(s) across 148 file(s) — the figure before
 // this change added its own tests, unchanged by the move itself.
 
-const testCorpus = executable(rawCorpus);
-/** The same corpus KEPT SPLIT, comments stripped. The concatenation above can
- *  say a name appears somewhere in test/; only the per-file map can say WHICH
+/** The corpus KEPT SPLIT, comments stripped. A concatenation (`testCorpus`,
+ *  retired as limb 1's evidence on 2026-09-29, A-5) can only say a name
+ *  appears somewhere in test/; only the per-file map can say WHICH
  *  file claims a subject, and an unattributable credit is how a test of one
  *  guard came to be the recorded failing case of another file entirely. */
-const testSource = new Map(testFiles.map((f) => [f, executable(readFileSync(join(TESTS, f), 'utf8'))]));
+const rawTestSource = new Map(testFiles.map((f) => [f, readFileSync(join(TESTS, f), 'utf8')]));
+const testSource = new Map(testFiles.map((f) => [f, executable(rawTestSource.get(f))]));
 /** ⏱ REPAIRED 2026-08-27 — this counted DECLARATIONS SPELLED INSIDE STRING
  *  LITERALS. A Dart or JS fixture body carrying `test('m1', () {});` is the same
  *  bytes as a real declaration, and 57 of them across six test files were sitting
@@ -1379,8 +1391,8 @@ const testSource = new Map(testFiles.map((f) => [f, executable(readFileSync(join
  *  Measured: countCases over the reduced text says 19 for that file and
  *  `node --test` runs 32. Over the raw file it says 32. The mask needs no help
  *  here — a comment is NON_CODE to it already, which is the whole reason it can
- *  be trusted with the raw bytes. `testCorpus` below still uses the reducer
- *  because it is a bare `includes()` with no mask to protect it. */
+ *  be trusted with the raw bytes. `testSource` above still uses the reducer,
+ *  and every reader of it asks the mask where a match starts. */
 const CASE_DECL = /^\s*(test|it)\s*\(/gm;
 const countCases = (text) => {
   const mask = codeMask(text);
@@ -1561,18 +1573,29 @@ const throwStopProblems = (owner, h) => {
   return out;
 };
 
+if (NOT_A_SCANNER.size > NOT_A_SCANNER_CEILING) {
+  problems.push(
+    `NOT_A_SCANNER holds ${NOT_A_SCANNER.size} entries and its ceiling is ${NOT_A_SCANNER_CEILING}. An exemption is ` +
+      'a claim that a file has no coverage question of its own; the list only grows in a commit that raises the ' +
+      'ceiling ALONE and names the entry. Give the file a COVERAGE LOST stop instead, or remove an entry that no longer applies.',
+  );
+}
+for (const [name, reason] of NOT_A_SCANNER) {
+  if (typeof reason !== 'string' || reason.trim().length < REASON_MIN) {
+    problems.push(
+      `NOT_A_SCANNER entry ${name} carries a reason of ${String(reason ?? '').trim().length} character(s); the floor is ` +
+        `${REASON_MIN}. Say what the file does, who carries its coverage question, and where its failing cases are.`,
+    );
+  }
+}
+
 let scanners = 0;
 let exempt = 0;
 /** Guards that carry the marker but no helper by name — limb 2b cannot read their exit. Printed, never hidden. */
 const noNamedHelper = [];
 for (const guard of guards) {
-  // 1. a recorded failing case
-  if (!testCorpus.includes(guard)) {
-    problems.push(
-      `${guard} — no test file mentions it. It has only ever run against the real repo, ` +
-        'which is valid input by definition, so nothing exercises its failing path.',
-    );
-  }
+  // 1. a recorded failing case — graded below, once `exercisedBy` exists
+  //    (A-5, 2026-09-29): it is a `const` declared further down this file.
 
   // 2. a coverage self-check, unless it genuinely has nothing to scan
   const source = readFileSync(join(CI, guard), 'utf8');
@@ -1899,6 +1922,49 @@ if (canary(CANARY_NAMED_ONLY) || !canary(CANARY_RUNS_IT) || canary(CANARY_IMPORT
 // this scan reads. A filing accident was deciding what got covered.
 let covered = 0;
 const scriptExempt = [];
+// ── LIMB 1 · A RECORDED FAILING CASE, and a comment is not one ─────────────
+// ⏱ 2026-09-29 (A-5). Until today this limb was `testCorpus.includes(guard)`:
+// the basename anywhere in the line-filtered corpus. `executable` drops a line
+// that STARTS as a comment, so `foo(); // assert-x.mjs` or `/* assert-x.mjs */`
+// mid-line still counted — a test file that named a guard in a trailing
+// comment was that guard's "recorded failing case". Now, in order:
+//   · EXERCISED — a test file imports or spawns it (`exercisedBy`, the same
+//     detector that credits scripts outside tooling/ci): credited;
+//   · NAMED IN CODE — its basename sits in a test file's code or a string, with
+//     every comment stripped (`stripSourceComments`), but nothing imports or
+//     spawns it: accepted, PRINTED by name, and capped at NAMED_ONLY_CEILING —
+//     the thirteen measured on this day, which only fall;
+//   · otherwise — in a comment only, or nowhere: refused.
+const NAMED_ONLY_CEILING = 13;
+const namedOnly = [];
+for (const guard of guards) {
+  let exercised = false;
+  for (const [, text] of testSource) {
+    if (exercisedBy(text, guard)) {
+      exercised = true;
+      break;
+    }
+  }
+  if (exercised) continue;
+  const inCode = testFiles.filter((f) => stripSourceComments(rawTestSource.get(f), '.mjs').includes(guard));
+  if (inCode.length) {
+    namedOnly.push(`${guard} (${inCode.slice(0, 2).join(', ')}${inCode.length > 2 ? ', …' : ''})`);
+    continue;
+  }
+  const inComment = testFiles.filter((f) => rawTestSource.get(f).includes(guard));
+  problems.push(
+    `${guard} — no test file mentions it` +
+      (inComment.length ? ` in code (${inComment.join(', ')} name${inComment.length === 1 ? 's' : ''} it only in a COMMENT, which runs nothing)` : '') +
+      '. It has only ever run against the real repo, which is valid input by definition, so nothing exercises its failing path.',
+  );
+}
+if (namedOnly.length > NAMED_ONLY_CEILING) {
+  problems.push(
+    `${namedOnly.length} guard(s) are NAMED by a test and exercised by none, over the ceiling of ${NAMED_ONLY_CEILING}: ` +
+      `${namedOnly.join('; ')}. Import or spawn the new one from its test.`,
+  );
+}
+
 const creditOverridesException = [];
 for (const rel of [...invokedOutside].sort()) {
   if (!existsSync(join(ROOT, rel))) {
@@ -2035,13 +2101,17 @@ console.log(
     `${throwEntries} entr(ies) of a throwing stop graded, ${throwCalls} call(s) of a carrier each caught and mapped to exit 2`,
 );
 
+if (namedOnly.length) {
+  console.log(`⬜ ${namedOnly.length} guard(s) NAMED by a test and exercised by none (ceiling ${NAMED_ONLY_CEILING}, falling only) — printed, not hidden:`);
+  console.log(`    ${namedOnly.join('; ')}`);
+}
 console.log(
   `ok  guard coverage — ${guards.length} file(s) in tooling/ci, all accounted for: ${invokedGuards.size} invoked by ` +
     `${workflowFiles.length} workflow(s), ${reached.size - invokedGuards.size} imported by one that is, and ` +
     `${notCiRunnable.size} recorded not CI-runnable and re-verified refusing ` +
     '(identity holds, no floor involved); all named in ' +
-    `${testFiles.length} test file(s); ${scanners} carry a coverage self-check ` +
+    `${testFiles.length} test file(s), ${guards.length - namedOnly.length} of them exercised and ${namedOnly.length} (ceiling ${NAMED_ONLY_CEILING}) only named in code; ${scanners} carry a coverage self-check ` +
     `(${scanners - noNamedHelper.length} with a named stop read as exit 2), ${exempt} exempt with a ` +
-    `recorded reason; ${covered} workflow-invoked script(s) outside tooling/ci also covered, ` +
+    `recorded reason (ceiling ${NOT_A_SCANNER_CEILING}); ${covered} workflow-invoked script(s) outside tooling/ci also covered, ` +
     `${scriptExempt.length} excused; ratchet holds at ${totalCases} test case(s) across ${testFiles.length} file(s)`,
 );

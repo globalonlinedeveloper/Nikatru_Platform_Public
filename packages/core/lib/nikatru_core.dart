@@ -56,6 +56,7 @@ export 'src/portability/column_mapping.dart';
 export 'src/portability/csv_codec.dart';
 export 'src/portability/csv_reader.dart';
 export 'src/portability/import_plan.dart';
+export 'src/portability/receipt_parser.dart';
 export 'src/promo/promo_gate.dart';
 export 'src/promo/promo_objection.dart';
 export 'src/review/review_gate.dart';

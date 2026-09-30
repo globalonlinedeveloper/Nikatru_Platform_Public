@@ -53,9 +53,32 @@
 //       cannot see it.
 //   F · RENDERED (--check) — rail-price-ids.ts is byte-for-byte this renderer's
 //       output. A hand edit to it is exit 1 (the row's own red control).
+//   G · NET (AB-M5-01, AB-M5-03) — every plan's NET on every app channel of
+//       tooling/channel-register.json, derived from tooling/catalog/fee-register.json
+//       (dated reads of each vendor's published fee), never typed. A fee cell the
+//       sheet needs is {value, asOf, verify} with a non-null value, or exit 1: a
+//       null Paddle sub-$10 cell is a net nobody measured. A channel that can sell
+//       and nets below the `web` row of the same plan is exit 1 — [ADR 093] §2's
+//       ×1.20 exists so a store sale nets at least a web sale, and this is the
+//       limb that checks the outcome instead of the ratio. ONE EXCEPTION, printed
+//       on every run and never silent: an `apple-iap` channel while
+//       `apple-small-business-enrolment` carries no date nets at the standard rate
+//       (below web) and is GATED rather than failed, because
+//       tooling/ci/assert-small-business-program.mjs refuses a real App Store
+//       submission until the owner records the enrolment (A-18, AB-M5-02).
+//       `--net-sheet` prints the whole table; the India web book (Razorpay, INR,
+//       GST out of the price, [ADR 076] §10.1) is printed beside it.
+//   H · STORE READ-BACK (AB-M5-05) — a plan an app declares live on a store
+//       (apps/<id>/app.yaml `billing.mobileIap.state: live`, its
+//       `storeProducts`, one store per `revenuecatAppIds` key) carries that
+//       store's `store.readBack.<apple|google>` as { USD, INR, readAt }: the
+//       store accepted a price, so the register records what it accepted rather
+//       than leaving the target to stand in for the fact.
 //   COVERAGE LOST (exit 2) — the register missing or unparseable, no `prices`
 //   section, zero served offerings or zero price-book entries read, no
-//   TypeScript source to sweep, or catalog/bundles.json unreadable.
+//   TypeScript source to sweep, or catalog/bundles.json unreadable; the fee
+//   register or the channel register unreadable, no `web` channel row, or zero
+//   net rows derived; an app.yaml that limb H needs unreadable.
 //
 // ⬜ RAZORPAY IS PENDING ON EVERY PLAN, AND EVERY RUN SAYS SO. Razorpay PR B (the
 // creator registry and rail resolution in the door) is designed, not briefed,
@@ -182,6 +205,7 @@
 // Usage:  node tooling/catalog/render-rail-prices.mjs [root]                 render (write)
 //         node tooling/catalog/render-rail-prices.mjs [root] --check         compare, write nothing
 //         node tooling/catalog/render-rail-prices.mjs [root] --store-sheet <app>
+//         node tooling/catalog/render-rail-prices.mjs [root] --net-sheet [--check]   print net per channel
 // Exit:   0 ok · 1 a finding (nothing written) · 2 COVERAGE LOST
 // Tests:  tooling/ci/test/rail-prices.test.mjs
 // ─────────────────────────────────────────────────────────────────────────────
@@ -211,6 +235,29 @@ export const STORE_CURRENCIES = ['USD', 'INR'];
 export const STORE_READERS = ['apple', 'google'];
 /** [ADR 093] §2: store ≥ web × 1.20, in integer percent so no float rounds a cent. */
 export const MARKUP_PERCENT = 120;
+/** Limb G's fee cells: dated reads of each vendor's published fee (AB-M5-01). */
+export const FEE_REGISTER = 'tooling/catalog/fee-register.json';
+/** Limb G's channels: every `surface: app` row and its `purchaseRail`. */
+export const CHANNEL_REGISTER = 'tooling/channel-register.json';
+/** The row every other channel's net is compared to. */
+export const WEB_CHANNEL = 'web';
+/** The fee cells limb G applies, by what they price. */
+export const FEE_CELLS = Object.freeze({
+  paddle: 'paddle-checkout',
+  paddleUnderThreshold: 'paddle-under-10',
+  appleStandard: 'apple-iap-standard',
+  appleSmallBusiness: 'apple-iap-small-business',
+  playSubscription: 'play-billing-subscription',
+  razorpayPlatform: 'razorpay-platform',
+  razorpaySubscription: 'razorpay-subscription-add-on',
+  indiaGst: 'india-gst',
+});
+/** The owner-attested Small Business Program enrolment date (A-18): it selects the Apple cell. */
+export const SBP_ENROLMENT_CELL = 'apple-small-business-enrolment';
+/** app.yaml `revenuecatAppIds` key → the store whose read-back limb H requires. */
+const STORE_OF_RC_KEY = Object.freeze({ ios: 'apple', android: 'google' });
+const ISO_DAY_OR_INSTANT = /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)?$/;
+const BPS = 10000;
 /** The map names limb E refuses anywhere but the rendered module. */
 export const MAP_NAMES = [
   'PADDLE_PRICE_IDS',
@@ -298,10 +345,20 @@ function gradeStore(where, entry, web, lifetime, problems) {
     const got = rb[who];
     if (got === null || got === undefined) continue;
     if (!isObj(got)) {
-      problems.push(`${where}.store.readBack.${who} is ${JSON.stringify(got)}; it is null or { USD, INR } as the store accepted them.`);
+      problems.push(`${where}.store.readBack.${who} is ${JSON.stringify(got)}; it is null or { USD, INR, readAt } as the store accepted them.`);
       continue;
     }
+    if (typeof got.readAt !== 'string' || !ISO_DAY_OR_INSTANT.test(got.readAt)) {
+      problems.push(
+        `${where}.store.readBack.${who}.readAt is ${JSON.stringify(got.readAt)}; a read-back says when the store console ` +
+          'was read (YYYY-MM-DD, or an ISO instant ending Z).',
+      );
+    }
+    for (const cur of STORE_CURRENCIES) {
+      if (!(cur in got)) problems.push(`${where}.store.readBack.${who} carries no ${cur}; a read-back records every currency the store column sets.`);
+    }
     for (const [cur, v] of Object.entries(got)) {
+      if (cur === 'readAt') continue;
       if (!STORE_CURRENCIES.includes(cur)) {
         problems.push(`${where}.store.readBack.${who} carries "${cur}"; only ${STORE_CURRENCIES.join(', ')}.`);
       } else if (!Number.isInteger(v) || v < store[cur]) {
@@ -372,7 +429,7 @@ export function plan(root, data) {
   const lost = [];
   const problems = [];
   const book = [];
-  const counts = { served: 0, entries: 0, bundles: 0, razorpayPending: 0, razorpayTotal: 0, sources: 0 };
+  const counts = { served: 0, entries: 0, bundles: 0, razorpayPending: 0, razorpayTotal: 0, sources: 0, readBacks: 0 };
   const prices = isObj(data?.prices) ? data.prices : null;
   if (!prices) {
     lost.push(`${REGISTER} has no \`prices\` section, so there is nothing to render and nothing to grade.`);
@@ -422,7 +479,7 @@ export function plan(root, data) {
       if (isObj(rz) && 'pending' in rz) counts.razorpayPending++;
       // D · the store column.
       gradeStore(where, entry, web, o.term === 'one_time', problems);
-      rows.push({ id, entry });
+      rows.push({ id, entry, webUsd: o.amount_minor, term: o.term });
     }
     book.push({ app, offerings: rows });
   }
@@ -490,6 +547,9 @@ export function plan(root, data) {
     }
   }
 
+  // H · a plan live on a store records what the store accepted.
+  counts.readBacks = gradeReadBacks(root, book, problems, lost);
+
   if (counts.served === 0) lost.push(`${REGISTER} serves zero offerings, so no rail map has anything to render.`);
   if (counts.entries === 0) lost.push(`${REGISTER} prices zero served offerings: the price book read as empty.`);
   if (counts.sources === 0) lost.push(`${SOURCE_DIR} yielded no TypeScript file, so limb E swept nothing.`);
@@ -504,6 +564,246 @@ function walkTs(dir) {
     else if (e.isFile() && e.name.endsWith('.ts')) out.push(p);
   }
   return out.sort();
+}
+
+/**
+ * Limb H (AB-M5-05). A plan an app declares live on a store carries that store's read-back. The store is
+ * named by app.yaml `billing.mobileIap.revenuecatAppIds` (ios → apple, android → google): a RevenueCat app
+ * exists for a store only once its console holds the products. Returns how many read-backs were required.
+ */
+function gradeReadBacks(root, book, problems, lost) {
+  let required = 0;
+  for (const { app, offerings } of book) {
+    if (!offerings.some(({ entry }) => isObj(entry.store))) continue;
+    let decl;
+    try {
+      decl = readDeclaration(root, app);
+    } catch (e) {
+      lost.push(`apps/${app}/app.yaml could not be read (${e.message}), so limb H cannot tell which plan a store sells.`);
+      continue;
+    }
+    const iap = decl?.billing?.mobileIap;
+    if (iap?.state !== 'live') continue;
+    const stores = Object.keys(isObj(iap.revenuecatAppIds) ? iap.revenuecatAppIds : {})
+      .map((k) => STORE_OF_RC_KEY[k])
+      .filter(Boolean);
+    const byPlan = new Map(offerings.map(({ id, entry }) => [entry.plan, { id, entry }]));
+    for (const p of Array.isArray(iap.storeProducts) ? iap.storeProducts : []) {
+      const hit = byPlan.get(p?.plan);
+      if (!hit || !isObj(hit.entry.store)) continue; // limb D and the store sheet own a plan with no store column
+      for (const who of stores) {
+        required++;
+        const rb = hit.entry.store.readBack;
+        if (!isObj(rb) || rb[who] === null || rb[who] === undefined) {
+          problems.push(
+            `${REGISTER} prices.apps.${app}.${hit.id}.store.readBack.${who} is null while apps/${app}/app.yaml declares ` +
+              `${p.productId} live on the ${who === 'apple' ? 'App Store' : 'Play'} console (billing.mobileIap.state: live). ` +
+              'The store accepted a price, so record what it accepted — { USD, INR, readAt } from the console read — ' +
+              'rather than leaving the target to stand in for the fact.',
+          );
+        }
+      }
+    }
+  }
+  return required;
+}
+
+/** The fee register, parsed. */
+export function readFees(root) {
+  const p = join(root, FEE_REGISTER);
+  if (!existsSync(p)) return { ok: false, cells: null, why: `${FEE_REGISTER} does not exist` };
+  try {
+    const doc = JSON.parse(readFileSync(p, 'utf8'));
+    if (!isObj(doc?.cells)) return { ok: false, cells: null, why: `${FEE_REGISTER} has no \`cells\` object` };
+    return { ok: true, cells: doc.cells, why: null };
+  } catch (e) {
+    return { ok: false, cells: null, why: `${FEE_REGISTER} is not valid JSON (${e.message})` };
+  }
+}
+
+/** Net of a sale after a percent-and-fixed fee, in minor units, rounded to the nearest one. */
+export function netAfterFee(priceMinor, { percentBps, fixedMinor = 0 }) {
+  return Math.round((priceMinor * (BPS - percentBps) - fixedMinor * BPS) / BPS);
+}
+
+/**
+ * Net of an India web sale ([ADR 076] §10.1): Nikatru is the seller of record, so the GST inside the price is
+ * remitted, and the rail's fee is charged on the whole price while the GST on that fee returns as input tax credit.
+ */
+export function netOfIndiaSale(priceMinor, gstBps, feeBps) {
+  return Math.round((priceMinor * BPS * BPS - priceMinor * feeBps * (BPS + gstBps)) / ((BPS + gstBps) * BPS));
+}
+
+const money = (minor) => `${minor < 0 ? '-' : ''}${Math.trunc(Math.abs(minor) / 100)}.${String(Math.abs(minor) % 100).padStart(2, '0')}`;
+const pct = (bps) => `${bps / 100}%`;
+
+/**
+ * Limb G. Every plan's net on every app channel, and the India web book beside it.
+ * @returns {{ lost: string[], problems: string[], gated: string[], lines: string[], rows: object[] }}
+ */
+export function netSheet(root, data, book) {
+  const lost = [];
+  const problems = [];
+  const gated = [];
+  const lines = [];
+  const rows = [];
+  const fees = readFees(root);
+  if (!fees.ok) return { lost: [`${fees.why}, so no net can be derived.`], problems, gated, lines, rows };
+  let register;
+  try {
+    register = JSON.parse(readFileSync(join(root, CHANNEL_REGISTER), 'utf8'));
+  } catch (e) {
+    return { lost: [`${CHANNEL_REGISTER} could not be read (${e.message}), so there is no channel to net.`], problems, gated, lines, rows };
+  }
+  const channels = (Array.isArray(register?.channels) ? register.channels : []).filter((c) => c?.surface === 'app');
+  if (!channels.some((c) => c.id === WEB_CHANNEL)) {
+    return { lost: [`${CHANNEL_REGISTER} has no \`${WEB_CHANNEL}\` app row, so no net has a row to be compared to.`], problems, gated, lines, rows };
+  }
+
+  // A cell the sheet applies is {value, asOf, verify} with a value; a missing or null one is a finding, named once.
+  const flagged = new Set();
+  const cell = (id, { nullable = false } = {}) => {
+    const c = fees.cells[id];
+    const bad = (why) => {
+      if (!flagged.has(id)) problems.push(`${FEE_REGISTER} cells.${id} ${why}`);
+      flagged.add(id);
+      return null;
+    };
+    if (!isObj(c)) return bad('is missing. Every fee the net sheet applies is a dated read: {value, asOf, verify}.');
+    if (typeof c.asOf !== 'string' || !ISO_DAY_OR_INSTANT.test(c.asOf)) return bad(`has asOf ${JSON.stringify(c.asOf)}; it is the day or instant the source was read.`);
+    if (typeof c.verify !== 'string' || c.verify.trim().length < MIN_REASON) return bad('has no `verify`: the command that re-reads it.');
+    if (c.value === null || c.value === undefined) {
+      if (nullable) return { value: null };
+      return bad(
+        'has a null value, so every sale it prices has a net nobody measured. Read the vendor and record the value ' +
+          'with its asOf and verify; never type a figure to make a net come out right.',
+      );
+    }
+    if (!nullable && (!isObj(c.value) || !Number.isInteger(c.value.percentBps) || c.value.percentBps < 0 || c.value.percentBps >= BPS)) {
+      return bad(`has value ${JSON.stringify(c.value)}; a fee is { percentBps (integer basis points), fixedMinor? }.`);
+    }
+    return c;
+  };
+  const enrolment = cell(SBP_ENROLMENT_CELL, { nullable: true });
+  const enrolled = enrolment !== null && typeof enrolment.value === 'string' && ISO_DAY_OR_INSTANT.test(enrolment.value);
+  if (enrolment !== null && enrolment.value !== null && !enrolled) {
+    problems.push(`${FEE_REGISTER} cells.${SBP_ENROLMENT_CELL}.value is ${JSON.stringify(enrolment.value)}; it is null or the enrolment date (YYYY-MM-DD).`);
+  }
+
+  // The plans: every priced app offering, then every bundle plan.
+  const plans = [];
+  for (const { app, offerings } of book) {
+    for (const { id, entry, webUsd, term } of offerings) {
+      plans.push({ label: `${app} ${id}`, plan: entry.plan, webUsd, store: entry.store, webInr: entry.webInrMinor, recurring: term !== 'one_time' });
+    }
+  }
+  const bundles = isObj(data?.prices?.bundles) ? data.prices.bundles : {};
+  for (const key of dataKeys(bundles)) {
+    const b = bundles[key];
+    if (isObj(b)) plans.push({ label: `bundle ${key}`, plan: b.plan, webUsd: b.amount_minor, store: b.store, webInr: b.webInrMinor, recurring: true });
+  }
+
+  const feeOf = (rail, price, plan) => {
+    if (rail === 'paddle') {
+      const under = fees.cells[FEE_CELLS.paddleUnderThreshold];
+      const threshold = Number.isInteger(under?.thresholdMinor) ? under.thresholdMinor : null;
+      if (threshold === null) {
+        cell(FEE_CELLS.paddleUnderThreshold);
+        if (!flagged.has(`${FEE_CELLS.paddleUnderThreshold}#t`)) {
+          problems.push(`${FEE_REGISTER} cells.${FEE_CELLS.paddleUnderThreshold} carries no integer thresholdMinor, so no sale can be placed above or below it.`);
+          flagged.add(`${FEE_CELLS.paddleUnderThreshold}#t`);
+        }
+        return null;
+      }
+      const id = price < threshold ? FEE_CELLS.paddleUnderThreshold : FEE_CELLS.paddle;
+      const c = cell(id);
+      return c && { id, fee: c.value };
+    }
+    if (rail === 'play-billing') {
+      const c = cell(FEE_CELLS.playSubscription);
+      return c && { id: FEE_CELLS.playSubscription, fee: c.value };
+    }
+    if (rail === 'apple-iap') {
+      const id = enrolled ? FEE_CELLS.appleSmallBusiness : FEE_CELLS.appleStandard;
+      const c = cell(id);
+      return c && { id, fee: c.value };
+    }
+    problems.push(`${plan.label}: the net sheet has no fee model for rail "${rail}". Add its cells to ${FEE_REGISTER} and its arm here.`);
+    return null;
+  };
+
+  lines.push(`net sheet — every plan on every app channel, from ${FEE_REGISTER} × ${REGISTER} \`prices\` (minor units shown as decimals)`);
+  for (const plan of plans) {
+    lines.push(`  ${plan.label} (${plan.plan})`);
+    const byChannel = new Map();
+    for (const ch of channels) {
+      const rail = ch?.purchaseRail?.rail;
+      if (rail === 'none') {
+        lines.push(`    ${ch.id.padEnd(16)} none          sells nothing (purchaseRail none)`);
+        continue;
+      }
+      const onStore = rail === 'play-billing' || rail === 'apple-iap';
+      if (onStore && !isObj(plan.store)) {
+        lines.push(`    ${ch.id.padEnd(16)} ${rail.padEnd(13)} not sold in-app ([ADR 093] §2: web only)`);
+        continue;
+      }
+      const price = onStore ? plan.store.USD : plan.webUsd;
+      if (!Number.isInteger(price)) continue; // limbs A and D name a price that is not an integer
+      const f = feeOf(rail, price, plan);
+      if (f === null) continue;
+      const net = netAfterFee(price, f.fee);
+      const row = { plan: plan.label, channel: ch.id, rail, currency: 'USD', priceMinor: price, netMinor: net, cell: f.id };
+      rows.push(row);
+      byChannel.set(ch.id, row);
+    }
+    const web = byChannel.get(WEB_CHANNEL);
+    for (const row of byChannel.values()) {
+      let mark = '';
+      if (web && row.channel !== WEB_CHANNEL && row.netMinor < web.netMinor) {
+        if (row.rail === 'apple-iap' && !enrolled) {
+          mark = `  ⬜ below web ${money(web.netMinor)} until A-18 (Small Business Program); a real App Store submission is refused`;
+          gated.push(`${plan.label} on ${row.channel}`);
+        } else {
+          mark = `  ✗ below web ${money(web.netMinor)}`;
+          problems.push(
+            `${plan.label} nets ${money(row.netMinor)} on ${row.channel} (${row.rail}, ${row.currency} ${money(row.priceMinor)} after ` +
+              `${FEE_REGISTER} ${row.cell}) and ${money(web.netMinor)} on ${WEB_CHANNEL}. A channel that sells a plan nets at ` +
+              'least its web sale ([ADR 093] §2); raise the store price or re-read the fee, never lower the web row to match.',
+          );
+        }
+      }
+      const f = fees.cells[row.cell].value;
+      const feeText = `${pct(f.percentBps)}${f.fixedMinor ? ` + ${f.fixedMinor} minor` : ''}`;
+      lines.push(
+        `    ${row.channel.padEnd(16)} ${row.rail.padEnd(13)} ${row.currency} ${money(row.priceMinor).padStart(7)} → net ${money(row.netMinor).padStart(7)}  (${row.cell}: ${feeText})${mark}`,
+      );
+    }
+    // The India web book: one row per plan, Razorpay, for every channel whose regionRails carry IN.
+    const inChannels = channels.filter((c) => (c?.purchaseRail?.regionRails ?? []).some((r) => r?.region === 'IN' && r?.rail === 'razorpay'));
+    if (inChannels.length && Number.isInteger(plan.webInr)) {
+      const gst = cell(FEE_CELLS.indiaGst);
+      const platform = cell(FEE_CELLS.razorpayPlatform);
+      const addOn = plan.recurring ? cell(FEE_CELLS.razorpaySubscription) : { value: { percentBps: 0 } };
+      if (gst && platform && addOn) {
+        const feeBps = platform.value.percentBps + addOn.value.percentBps;
+        const net = netOfIndiaSale(plan.webInr, gst.value.percentBps, feeBps);
+        rows.push({ plan: plan.label, channel: `${WEB_CHANNEL}·IN`, rail: 'razorpay', currency: 'INR', priceMinor: plan.webInr, netMinor: net, cell: FEE_CELLS.razorpayPlatform });
+        lines.push(
+          `    ${`${WEB_CHANNEL}·IN`.padEnd(16)} ${'razorpay'.padEnd(13)} INR ${money(plan.webInr).padStart(7)} → net ${money(net).padStart(7)}  ` +
+            `(${FEE_CELLS.indiaGst} ${pct(gst.value.percentBps)} out of the price; ${pct(feeBps)} fee${plan.recurring ? ' incl. the subscription add-on' : ''}; ` +
+            `every IN regionRails channel: ${inChannels.map((c) => c.id).join(', ')})`,
+        );
+      }
+    }
+  }
+  if (rows.length === 0) lost.push(`limb G derived zero net rows from ${plans.length} plan(s) and ${channels.length} channel(s).`);
+  if (gated.length) {
+    lines.push(
+      `⬜ ${gated.length} Apple row(s) net below web at the standard rate until ${FEE_REGISTER} cells.${SBP_ENROLMENT_CELL} ` +
+        'carries the owner\'s enrolment date (A-18); tooling/ci/assert-small-business-program.mjs refuses a real App Store submission meanwhile',
+    );
+  }
+  return { lost, problems, gated, lines, rows };
 }
 
 const q = (s) => `'${String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
@@ -653,7 +953,7 @@ function readRendered(abs) {
 }
 
 /** One run. Returns the exit code and the lines to print; writes only in render mode with no finding. */
-export function run(root, { check = false, sheet = null } = {}) {
+export function run(root, { check = false, sheet = null, net = false } = {}) {
   const out = [];
   const err = [];
   const reg = readRegister(root);
@@ -666,11 +966,20 @@ export function run(root, { check = false, sheet = null } = {}) {
     for (const l of p.lost) err.push(`FAIL COVERAGE LOST — ${l}`);
     return { code: 2, out, err };
   }
-  if (p.problems.length) {
-    for (const x of p.problems) err.push(`✗ ${x}`);
-    err.push(`\nrender-rail-prices: ${p.problems.length} problem(s) in ${REGISTER} \`prices\` — nothing was written.`);
+  // G · the net of every plan on every channel, graded on every run.
+  const n = netSheet(root, reg.data, p.book);
+  if (n.lost.length) {
+    for (const l of n.lost) err.push(`FAIL COVERAGE LOST — ${l}`);
+    return { code: 2, out, err };
+  }
+  if (net) out.push(...n.lines);
+  const problems = [...p.problems, ...n.problems];
+  if (problems.length) {
+    for (const x of problems) err.push(`✗ ${x}`);
+    err.push(`\nrender-rail-prices: ${problems.length} problem(s) in ${REGISTER} \`prices\` and ${FEE_REGISTER} — nothing was written.`);
     return { code: 1, out, err };
   }
+  if (net) return { code: 0, out, err };
   out.push(
     `⬜ razorpay: ${p.counts.razorpayPending} of ${p.counts.razorpayTotal} offering(s) pending — no Razorpay plan exists ` +
       'until Razorpay PR B (designed, not briefed) and the owner\'s plans; RAZORPAY_PLAN_IDS renders empty for them',
@@ -693,7 +1002,9 @@ export function run(root, { check = false, sheet = null } = {}) {
   const have = readRendered(abs);
   const summary =
     `${p.counts.entries} offering(s) across ${p.book.length} app(s), ${p.counts.bundles} bundle plan(s); ` +
-    `[ADR 093] store column holds; ${p.counts.sources} TypeScript file(s) swept for a second home`;
+    `[ADR 093] store column holds; ${p.counts.readBacks} store read-back(s) recorded; ` +
+    `${n.rows.length} net row(s) derived, none below web${n.gated.length ? ` but ${n.gated.length} Apple row(s) gated on A-18` : ''}; ` +
+    `${p.counts.sources} TypeScript file(s) swept for a second home`;
   if (check) {
     if (have !== want) {
       err.push(
@@ -714,6 +1025,7 @@ const invokedDirectly = process.argv[1] && resolve(process.argv[1]) === resolve(
 if (invokedDirectly) {
   const args = process.argv.slice(2);
   const check = args.includes('--check');
+  const net = args.includes('--net-sheet');
   const si = args.indexOf('--store-sheet');
   const sheet = si >= 0 ? args[si + 1] ?? '' : null;
   const positional = args.filter((a, i) => !a.startsWith('--') && !(si >= 0 && i === si + 1));
@@ -722,7 +1034,11 @@ if (invokedDirectly) {
     console.error(`FAIL COVERAGE LOST — --store-sheet needs an app id, got ${JSON.stringify(sheet)}`);
     process.exit(2);
   }
-  const r = run(root, { check, sheet });
+  if (net && sheet !== null) {
+    console.error('FAIL COVERAGE LOST — --net-sheet and --store-sheet are two reports; ask for one.');
+    process.exit(2);
+  }
+  const r = run(root, { check, sheet, net });
   for (const l of r.out) console.log(l);
   for (const l of r.err) console.error(l);
   process.exit(r.code);

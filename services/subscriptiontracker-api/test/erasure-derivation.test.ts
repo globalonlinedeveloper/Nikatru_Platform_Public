@@ -63,7 +63,7 @@ async function deletedTablesFor(db: SqliteD1, userId = 'u-derive') {
 }
 
 describe('the delete set is derived from the real schema', () => {
-  it('🔴 names EXACTLY subscriptiontracker_db’s four user-owned tables', async () => {
+  it('🔴 names EXACTLY subscriptiontracker_db’s six user-owned tables', async () => {
     // The number production has. If a migration adds a user-owned table this
     // goes red — which is the point: the new table must be a deliberate addition
     // to what erasure sweeps, not a silent one.
@@ -73,9 +73,14 @@ describe('the delete set is derived from the real schema', () => {
     expect(Object.keys(body.deleted as Record<string, number>).sort()).toEqual([
       'budget_categories',
       'budgets',
+      'categories',
       'payment_history',
+      'price_change',
       'subscriptions',
     ]);
+    // 0005's built-in categories carry user_id NULL: shared vocabulary, never
+    // a person's row, so the WHERE user_id = ? walk leaves every one of them.
+    expect(db.rows('SELECT COUNT(*) AS n FROM categories WHERE builtin = 1')[0]?.n).toBe(10);
     expect(body.scope).toBe('subscriptiontracker_db');
   });
 

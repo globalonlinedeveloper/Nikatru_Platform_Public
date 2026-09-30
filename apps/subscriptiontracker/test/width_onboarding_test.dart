@@ -41,8 +41,13 @@ import 'package:subscriptiontracker/features/onboarding/onboarding_screen.dart';
 
 import 'support/width_harness.dart';
 
-/// The 30/30 gutters this screen already had, now applied inside the cap.
-const double kGutters = 60;
+/// The two [AppSpacing.xxl] gutters, applied inside the cap.
+///
+/// ⏱ 2026-09-28 · train ST-D8: this screen now ADOPTS the chassis
+/// `OnboardingView`, so the 30/30 above became the chassis's 32/32 — a token,
+/// not a literal — and the arithmetic in the header reads `- 64` from here on.
+/// The cap, the pane and the falsifying 768 case are unchanged.
+const double kGutters = 2 * AppSpacing.xxl;
 
 void main() {
   group('the routed onboarding carousel is capped at reading width', () {

@@ -42,6 +42,7 @@ import {
   newerRunDuring,
   loadCauses,
   validateCauses,
+  unrankedRecurring,
   FIXED_BY_FIELDS,
   mergeShas,
   checkFixesOnMain,
@@ -1640,5 +1641,51 @@ describe('a stale branch listing is COVERAGE LOST, never a later-green or an OPE
     const { get } = stub({ page: stalePage, cross: { workflow_runs: [current] }, bare: { workflow_runs: [current] } });
     const old = async () => newestCompleted((await get(Q)).workflow_runs);
     assert.equal((await old()).conclusion, 'failure');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// B-4 (2026-09-29) — a recurring class must be rankable: dated, or owned
+// ═══════════════════════════════════════════════════════════════════════════
+describe('B-4: recurring causes carry firstSeen/lastSeen or a guard/row', () => {
+  const bare = { signature: 'recurring-x:*', rootCause: 'A recurring fixture class.', fix: 'superseded: fixed on the branch before merge', fixedBy: { kind: 'superseded', by: 'the branch' } };
+  const group = (cause, count) => ({ signature: `${cause.signature.replace('*', '')}one`, count, cause });
+
+  test('RED: a cause matched by 2 runs with no firstSeen/lastSeen and no guard/row is a finding', () => {
+    assert.deepEqual(unrankedRecurring([group(bare, 2)]), [{ signature: 'recurring-x:*', runs: 2 }]);
+  });
+
+  test('RED: one prefix row matched by two DIFFERENT signatures once each is recurring too', () => {
+    assert.deepEqual(unrankedRecurring([{ signature: 'recurring-x:a', count: 1, cause: bare }, { signature: 'recurring-x:b', count: 1, cause: bare }]), [{ signature: 'recurring-x:*', runs: 2 }]);
+  });
+
+  test('GREEN: the same class dated, or owned by a guard or a row, or matched once, is no finding', () => {
+    assert.deepEqual(unrankedRecurring([group({ ...bare, firstSeen: '2026-09-01', lastSeen: '2026-09-20' }, 5)]), []);
+    assert.deepEqual(unrankedRecurring([group({ ...bare, guard: 'tooling/ci/assert-ops-register.mjs' }, 5)]), []);
+    assert.deepEqual(unrankedRecurring([group({ ...bare, row: 'O-FAILED-RUN-LEDGER' }, 5)]), []);
+    assert.deepEqual(unrankedRecurring([group(bare, 1)]), []);
+    assert.deepEqual(unrankedRecurring([{ signature: 'x', count: 9, cause: null }]), [], 'an UNEXPLAINED group is the other finding, not this one');
+  });
+
+  test('half a pair is not dated: firstSeen without lastSeen still ranks nothing', () => {
+    assert.equal(unrankedRecurring([group({ ...bare, firstSeen: '2026-09-01' }, 2)]).length, 1);
+  });
+
+  test('validateCauses refuses a malformed firstSeen, an inverted pair, a zero hits, a guard that is not a path, a row that is not an id', () => {
+    const p = validateCauses([{ ...bare, firstSeen: '1 Sept', lastSeen: '2026-09-01', hits: 0, guard: 'the ops register', row: 'ledger row' }]);
+    assert.ok(p.some((x) => /`firstSeen` "1 Sept" is not YYYY-MM-DD/.test(x)), p.join('\n'));
+    assert.ok(p.some((x) => /`hits` 0 is not a positive count/.test(x)));
+    assert.ok(p.some((x) => /`guard` "the ops register" is not a tooling/.test(x)));
+    assert.ok(p.some((x) => /`row` "ledger row" is not a platform-state row id/.test(x)));
+    assert.ok(validateCauses([{ ...bare, firstSeen: '2026-09-02', lastSeen: '2026-09-01' }]).some((x) => /is after lastSeen/.test(x)));
+    assert.deepEqual(validateCauses([{ ...bare, firstSeen: '2026-09-01', lastSeen: '2026-09-02', hits: 3, guard: 'tooling/ci/assert-ops-register.mjs', row: 'O-FAILED-RUN-LEDGER' }]), []);
+  });
+
+  test('every `guard` the REAL register names is a ref of the REAL enforcement index', () => {
+    const causes = JSON.parse(readFileSync(join(REPO, 'tooling', 'ops', 'failed-run-causes.json'), 'utf8')).causes;
+    const refs = new Set(JSON.parse(readFileSync(join(REPO, 'tooling', 'enforcement-index.json'), 'utf8')).map((r) => r.ref));
+    const named = causes.filter((c) => c.guard !== undefined);
+    assert.ok(named.length > 0, 'the register names no guard at all — rule 3 of guard-yield has nothing to read');
+    for (const c of named) assert.ok(refs.has(c.guard), `${c.signature} names guard ${c.guard}, which is not an index ref`);
   });
 });

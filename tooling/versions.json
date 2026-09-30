@@ -146,7 +146,29 @@
   ],
   "flutter": "3.47.5",
   "node": "24",
+  "$java_comment": [
+    "THE JDK THAT RUNS GRADLE AND CI, AND THE ANDROID BYTECODE TARGET — ONE KEY DRIVES BOTH, and that is why it is 17.",
+    "tooling/ci/assert-version-consistency.mjs holds every copy to this value: the workflows' `java-version:` inputs,",
+    "the Gradle `sourceCompatibility`/`targetCompatibility` and Kotlin `jvmTarget` constants of the Android app, and",
+    "the WSL setup's JDK path and apt package. 17 is the bytecode target Android documents for the API levels this",
+    "app targets (developer.android.com/build/jdks, read by the Renovate drain triage of 2026-09-26: its",
+    "Android-to-Java table tops out at API 34 / Java 17), and Temurin 17 is supported until at least October 2027",
+    "(adoptium.net/support). What CAN move is the JDK that runs Gradle, once one key no longer drives both.",
+    "java MAJORS ARE DISABLED in renovate.json until a review on 2026-10-26 (the java-majors rule records why: a bot",
+    "rewrites this line and five of its copies cannot take a bot's edit), so nothing proposes a java major now.",
+    "Reason written 2026-09-29 (finding B-8: this pin had none; tooling/ci/assert-versions.mjs now refuses that)."
+  ],
   "java": "17",
+  "$melos_comment": [
+    "THE WORKSPACE RUNNER. `melos run gate` is how CI analyzes and tests every Dart member of the workspace",
+    "(TRAPS git-10: one package's analyze is not the workspace), so the melos version decides what the Dart",
+    "gate RUNS. It is written in three places, and tooling/ci/assert-version-consistency.mjs holds all three to",
+    "this value: the root pubspec's dev_dependency (the melos the gate RESOLVES), and the global activation CI",
+    "and the README's build block run before it. EXACT, not a range, for the reason `mason_cli` is: a runner",
+    "that floats means two runs of one commit can gate differently with nothing in the repo to explain it.",
+    "Advanced by Renovate on ONE branch for every copy (renovate.json's melos group rule), because each copy's",
+    "branch is red without the others. Reason written 2026-09-29 (finding B-8: this pin had none)."
+  ],
   "melos": "8.9.0",
   "mason_cli": "0.1.4",
   "$dart_language_comment": [
@@ -170,8 +192,18 @@
     "VM-isolate removal (0.7.0, 2026-09-07, \"Adjusts snapshot readers for the removal of the VM isolate\").",
     "The 3.47.4 engine already writes `_kDartSnapshotText` frames and `vm_dso_base: 0`, so the bundled",
     "tool failed on its own build's trace in run 35463786607: \"Cannot locate isolate instructions",
-    "section in snapshot\". When the Flutter pin moves to a tool that pins >= 0.7.0, this key can retire."
+    "section in snapshot\". When the Flutter pin moves to a tool that pins >= 0.7.0, this key can retire.",
+    "⏱ 2026-09-29 (finding B-8) — the sentences above were written at 3.47.4 and are a dated record. The retire",
+    "condition itself now lives in $native_stack_traces_retire below, where tooling/ci/assert-versions.mjs holds",
+    "it to the CURRENT `flutter` pin: a pin that moves reds that guard until the condition is re-read."
   ],
+  "$native_stack_traces_retire": {
+    "when": "the `flutter` pin's own flutter_tools pins native_stack_traces >= 0.7.0; then `flutter symbolize` can decode its own build's trace, and this key and the decoder install in symbolication-proof.yml can retire.",
+    "atFlutter": "3.47.5",
+    "checked": "2026-09-29",
+    "measured": "packages/flutter_tools/pubspec.yaml at tag 3.47.5 pins native_stack_traces 0.6.1 (and at 3.47.4, 0.6.1), so the condition does not hold and the key stays.",
+    "verify": "curl -sS https://raw.githubusercontent.com/flutter/flutter/<the flutter pin>/packages/flutter_tools/pubspec.yaml | grep native_stack_traces"
+  },
   "native_stack_traces": "0.7.0",
 
   "$xcode_comment": [
@@ -531,6 +563,20 @@
   "runner_windows": "windows-2025",
   "runner_macos": "macos-26",
 
+  "$reasonsIn": {
+    "_why": [
+      "Finding B-8, 2026-09-29. Every pin carries its REASON, and tooling/ci/assert-versions.mjs refuses one that does",
+      "not: its own `$<key>_comment`, an $updateExemptions entry with a why, or a listing HERE under the group comment",
+      "that holds it. The named comment must name the key, so a pointer cannot outlive the prose it points at; and a",
+      "listing for a key that has its own comment, or is no longer a pin, is refused, so a waiver cannot outlive its pin.",
+      "🔴 KEYED BY THE COMMENT, WITH THE PINS AS AN ARRAY, NEVER `\"<pin>\": \"<comment>\"`: renovate.json's customManagers",
+      "match `\"<pin>\":\\s*\"<value>\"` anywhere in this file, so that shape would hand Renovate a second, bogus copy of",
+      "the pin (tooling/ci/test/update-coverage.test.mjs U13 caught it on the first draft)."
+    ],
+    "$comment": ["node", "mason_cli"],
+    "$scanners_comment": ["gitleaks", "zizmor", "osv_scanner", "trivy"],
+    "$store_publishing_comment": ["msstore_cli"]
+  },
   "$updateExemptions_comment": [
     "[pipeline 14]O-9 — EVERY KEY ABOVE MUST BE REACHED BY AN UPDATE MECHANISM, OR APPEAR HERE WITH A",
     "WRITTEN REASON. tooling/ci/assert-update-coverage.mjs enforces both directions: an unreached pin",

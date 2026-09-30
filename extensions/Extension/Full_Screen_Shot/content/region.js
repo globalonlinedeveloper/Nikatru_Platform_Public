@@ -2,7 +2,14 @@
    Region: drag a rectangle. Element: hover highlights the DOM element under
    the cursor, click captures its bounding box. Either way the overlay hides
    itself and reports the rect (CSS px, viewport-relative) to the background
-   worker for capture. */
+   worker for capture.
+
+   KEYBOARD (EXB-04). Dragging and hovering need a pointer, so the overlay also
+   answers Enter: it captures what the pointer has highlighted (element mode)
+   or, with nothing highlighted, the whole visible area, which the editor can
+   then crop from the keyboard. The hint is a role=status live region and says
+   so, so a screen-reader user hears both the instruction and the Enter route.
+   test/a11y-sim.node.js grades both. */
 
 (function () {
   'use strict';
@@ -90,10 +97,17 @@
       direction: 'ltr', unicodeBidi: 'isolate'   // a measurement, not a sentence
     });
 
+    /* A polite live region: the overlay appears on somebody else's page with
+       nothing that takes focus, so without it a screen reader says nothing at
+       all. The text is written AFTER the node is in the document, because a
+       live region announces changes, and text it was born with is not one. */
     const hint = document.createElement('div');
-    hint.textContent = elementMode
+    hint.setAttribute('role', 'status');
+    hint.setAttribute('aria-live', 'polite');
+    const hintText = (elementMode
       ? fsMessage('regionHintElement', 'Click an element to capture it — Esc to cancel')
-      : fsMessage('regionHintDrag', 'Drag to select a region — Esc to cancel');
+      : fsMessage('regionHintDrag', 'Drag to select a region — Esc to cancel')) +
+      ' · ' + fsMessage('regionHintEnter', 'Enter captures the whole visible area');
     Object.assign(hint.style, {
       position: 'fixed', top: '16px', left: '50%',
       transform: 'translateX(-50%)',
@@ -105,6 +119,7 @@
 
     overlay.append(sel, label, hint);
     document.documentElement.appendChild(overlay);
+    setTimeout(() => { hint.textContent = hintText; }, 0);
 
     let startX = 0, startY = 0, dragging = false;
     let hoverRect = null;
@@ -205,11 +220,28 @@
       label.style.top = ly + 'px';
     }
 
+    /* The whole visible area, less any scrollbar: clientWidth/clientHeight of
+       the root are the viewport the page is laid out in. */
+    function visibleArea() {
+      const de = document.documentElement;
+      return { x: 0, y: 0, w: de.clientWidth || window.innerWidth, h: de.clientHeight || window.innerHeight };
+    }
+
     function onKey(e) {
       if (e.key === 'Escape') {
         e.preventDefault();
         cleanup();
         chrome.runtime.sendMessage({ type: 'FS_REGION_CANCEL' });
+        return;
+      }
+      /* Enter is the keyboard's way to the same output. Captured before the
+         page sees it, so a form or a link under the overlay is not activated
+         as well; ignored while a pointer drag is in progress, which finishes
+         on its own mouseup. */
+      if (e.key === 'Enter' && !dragging && overlay) {
+        e.preventDefault();
+        e.stopPropagation();
+        finish(elementMode && hoverRect ? hoverRect : visibleArea());
       }
     }
     window.addEventListener('keydown', onKey, true);
@@ -219,7 +251,10 @@
       if (overlay) { overlay.remove(); overlay = null; }
     }
 
+    let finishing = false;
     async function finish(r) {
+      if (finishing) return;   // a second Enter, or Enter racing a mouseup
+      finishing = true;
       // Hide the overlay completely before the screenshot is taken.
       overlay.style.display = 'none';
       await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));

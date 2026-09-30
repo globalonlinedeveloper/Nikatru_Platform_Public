@@ -417,6 +417,18 @@ const GRADED_LANES = new Map([
   // ⏱ 2026-09-28 · ST-N1g — the per-target native sign-in proof, dispatched per app
   // like store-screenshots.yml: its gate job refuses an app outside the workspace set.
   ['native-auth-proof.yml', { owner: 'O-NATIVE-AUTH-CALLBACK-UNBUILT', deployPath: false, dispatch: 'per-app' }],
+  // ⏱ 2026-09-29 · B-12 (row O-SERVICE-KIT-UNBUILT) — the two lanes this map CLASSIFIED
+  // while they carried 17 hand-wired app literals between them. deploy-sandbox.yml was
+  // one hand-written job per Worker (a dispatch `options:` list, four
+  // `workingDirectory:` fields, a migration binding); it is now a `workers` job over
+  // tooling/ci/worker-set.mjs --for-deploy --json --app-workers --env sandbox and one
+  // `app-worker` matrix, graded as deploy-workers.yml is. symbolication-proof.yml named
+  // its app on nine lines; it takes the app at dispatch now, as native-auth-proof.yml
+  // does. Red control: either row moved back to CLASSIFIED_ELSEWHERE with its BASE
+  // workflow is invisible here; graded with its BASE workflow, it exits 1 naming the
+  // literal (tooling/ci/test/release-lane-generic.test.mjs).
+  ['deploy-sandbox.yml', { owner: 'O-SERVICE-KIT-UNBUILT', deployPath: true, appSet: false }],
+  ['symbolication-proof.yml', { owner: 'O-GLITCHTIP-FLUTTER-SYMBOLICATION-UNPROVEN', deployPath: false, dispatch: 'per-app' }],
 ]);
 const GRADED = [...GRADED_LANES.keys()];
 const DEPLOY_PATH_LANES = [...GRADED_LANES].filter(([, v]) => v.deployPath).map(([k]) => k);
@@ -482,19 +494,6 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'tooling/ops/register.json. [ADR 095].',
   ],
 
-  [
-    // Classified 2026-09-25 (capsand-b), the round the workflow landed.
-    'deploy-sandbox.yml',
-    'deploys the `env.sandbox` block of services/platform and services/subscriptiontracker-api, which are ' +
-      'Workers and not apps, by dispatch only, to the workers.dev hosts the store capture writes to. It ' +
-      'builds no app and ships nothing a user reaches. R-1 quantifies over the workspace APP set, so this ' +
-      'lane has nothing for this guard to compare and would report a permanent empty-set pass if it were ' +
-      'graded. (deploy-workers.yml, the production Workers lane, is graded since E-a2, appSet: false.) ' +
-      'Its deploys are held by assert-release-provenance.mjs limb 2b (gated, and excused ' +
-      'from the ledger only as proven-sandbox `--env` deploys) and by assert-money-config.mjs limb 1c. The ' +
-      'owning stage is stage 14 ops, through the duty row `duty.workflow.deploy-sandbox.yml` in ' +
-      'tooling/ops/register.json.',
-  ],
   [
     'ops-watch.yml',
     'reads a D1 table and files an issue. It builds nothing, ships nothing and names no app; [14]O-4 owns ' +
@@ -572,6 +571,19 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'Classified 2026-09-24, the round the workflow landed.',
   ],
   [
+    'mutation-proofs.yml',
+    'runs the EXECUTED half of tooling/ci/assert-mutation-proofs.mjs weekly: it applies each recorded ' +
+      'mutation of every tracked dod.json row that carries one to the tree, runs the named test green-control-' +
+      'first and requires it red. It builds no release, produces no artifact and names no app id: the rows it ' +
+      'executes are DERIVED from every tracked dod.json by the guard, wherever it lives, so a new app\'s rows ' +
+      'join by existing. R-1 quantifies over the workspace APP set to prove a lane is generic, so a lane that ' +
+      'ships no app would sit in the denominator as a permanent empty-set pass, the reason already written out ' +
+      'for renovate.yml. The owning stage is stage 14 ops, through the duty row ' +
+      '`duty.workflow.mutation-proofs.yml` in tooling/ops/register.json. What holds its behaviour correct is ' +
+      'tooling/ci/test/mutation-proofs.test.mjs, and assert-ops-register.mjs\'s checkNamedLanes limb holds the ' +
+      'lane to exist. Classified 2026-09-29 (A-2), the round the workflow landed.',
+  ],
+  [
     'redeploy-stranded.yml',
     're-enters a deploy lane whose newest run on main failed only on its ci-gate step, once ci-gate at ' +
       "main's head is green. It builds no app, produces no release artifact and names no app id: the lanes " +
@@ -603,13 +615,15 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'is tooling/ci/test/apple-signing-expiry.test.mjs. Classified 2026-09-24, the round the workflow landed.',
   ],
   [
-    'symbolication-proof.yml',
-    'a dispatch-only PROOF, not a release lane: it builds a crash probe (live_probe/, never lib/main.dart), ' +
-      'debug-signed, for one emulator ABI, ships it nowhere and publishes nothing. [9]R-7 owns it (the ' +
-      'native symbol limb: does the crash sink turn the kept symbols back into the right line). It names ' +
-      'subscriptiontracker because the probe is a file IN that app and uses its telemetry chassis; grading it ' +
-      'against the workspace app set would compare a proof harness against the release set. Row ' +
-      'O-GLITCHTIP-FLUTTER-SYMBOLICATION-UNPROVEN.',
+    'update-goldens.yml',
+    're-renders golden PNGs on the Linux runner for a dispatched branch and test list, dispatch-only and ' +
+      'never on main, and pushes only the changed golden PNGs to that branch. It builds no app, produces no ' +
+      'release artifact and names no app id: the packages are derived from the dispatched test paths, so R-1 ' +
+      'would carry it in the denominator as a permanent empty-set pass, the reason already written out for ' +
+      'apple-expiry-write.yml. The owning stage is stage 14 ops, through the duty row ' +
+      '`duty.workflow.update-goldens.yml` in tooling/ops/register.json. What holds its output correct is ' +
+      'ci.yml workspace-gate, which renders the same goldens on the pull request. Classified 2026-09-30, the ' +
+      'round the workflow landed.',
   ],
   [
     'rollback.yml',

@@ -22,6 +22,16 @@ on:
         description: 'Also read the Renovate backlog against its floors (red while the queue outruns them; off for post-merge dispatches)'
         type: boolean
         default: false
+      # why: the same rule for the code-scanning age reader, which is red while a high/critical alert stands untriaged past 7 days.
+      code_scanning_age:
+        description: 'Also read the open code-scanning alerts against their 7-day triage window (off for post-merge dispatches)'
+        type: boolean
+        default: false
+      # why: the same rule for the tech-currency reader, which is red for as long as a proposal stands.
+      tech_currency:
+        description: 'Also read what the pipeline runs on against what its vendors retire (red while a proposal stands; off for post-merge dispatches)'
+        type: boolean
+        default: false
   # why: TWELVE slots, and every gap was COMPUTED including the wrap past midnight --
   # a sorted list shows every gap except the circular one. GitHub delivers this
   # repository's scheduled runs 10.1% on time, so density is what buys the alarm
@@ -351,7 +361,7 @@ jobs:
           if [ "$code" -eq 2 ]; then
             echo "::error title=Actions quota is UNKNOWN — the duty did not run::NOTHING read the account's Actions billing ledger, so 'can the scheduled proofs still run tomorrow?' is unanswered. This fails on purpose: 'I could not look' must never read as 'I looked and it was fine'. OWNER ACTION — add a GH_BILLING_TOKEN repository secret from a token with billing read (classic PAT with the 'user' scope, or a fine-grained token with the account-level 'Plan' read permission). GITHUB_TOKEN is repository-scoped and is not expected to carry a billing dimension."
           elif [ "$code" -eq 1 ]; then
-            echo "::error title=Actions usage is being BILLED — quota can now stop the schedules::The current billing period's net-billed Actions spend is over the declared ceiling, so a spending limit can stop runs from STARTING and every scheduled proof in this repository goes dark together. Establish WHICH assumption broke — did the repository go private, did a lane move to a larger runner class, or did another repository on this account exhaust the shared allowance — before touching the ceiling."
+            echo "::error title=Actions usage is over a declared ceiling — billed spend or macOS minutes::Read the FAIL line(s) above: either the current billing period's net-billed Actions spend is over the declared ceiling, so a spending limit can stop runs from STARTING and every scheduled proof in this repository goes dark together; or its macOS minutes are over CURRENT_PERIOD_MACOS_MINUTES_CEILING, which nets \$0.00 while the public-repo discount holds and costs ten free minutes each the day it does not. For spend, establish WHICH assumption broke — did the repository go private, did a lane move to a larger runner class, or did another repository on this account exhaust the shared allowance — before touching the ceiling. For macOS, the per-SKU and per-repo lines name the lane."
           fi
           exit "$code"
 
@@ -648,7 +658,9 @@ jobs:
           exit "$code"
 
   failure-ledger:
-    name: Failed-run ledger (weekly, print-only)
+    # why (B-5, 2026-09-29): this job REDS and `alert` pages on it, so its name says so. It was "print-only"
+    # while its step ended `exit "$code"`; workflow-scan's printOnlyJobsThatFail refuses that contradiction.
+    name: Failed-run ledger and guard yield (weekly; red pages the ops-watch issue)
     # why: the digest's slot predicate, verbatim. The ledger reads eight days of
     # failed runs, so one run a week is its whole cadence; every other slot skips.
     # why (2026-09-26): a dispatch runs the ledger only when it asks for it (inputs.failure_ledger); the digest
@@ -717,7 +729,24 @@ jobs:
           if [ "$code" -eq 2 ]; then
             echo "::error title=The failed-run ledger is UNKNOWN - nothing was graded::The quota floor refused to start, the request ceiling was reached, a 403, a capped run list, an unreadable log, a malformed causes register, or a clone that cannot answer the merge-base check. The count above, if any, is over a SUBSET. The step log names which."
           elif [ "$code" -eq 1 ]; then
-            echo "::error title=A failed run has no recorded cause, or a recorded fix is not on main::The step log lists each unexplained run with its signature, or each cause whose merge commit is not an ancestor of origin/main. Add the cause to tooling/ops/failed-run-causes.json with its fixedBy, or fix the run."
+            echo "::error title=A failed run has no recorded cause, a recurring cause cannot be ranked, or a recorded fix is not on main::The step log lists each unexplained run with its signature, each cause matched by two or more runs with no firstSeen/lastSeen and no guard/row, or each cause whose merge commit is not an ancestor of origin/main. Add or complete the cause in tooling/ops/failed-run-causes.json, or fix the run."
+          fi
+          exit "$code"
+
+      # why (B-1, B-2, B-3, 2026-09-29): the yield file is re-derived by one deliberate, credentialled fetch
+      # (the job token's hourly quota is under that walk's ceiling), so the SCHEDULE's part is to say when it is
+      # due and when it is not acted on: offline, no request. always(): a red ledger must not hide a stale yield.
+      - name: The guard yield is fresh, attributed, and every zero-catch guard is dispositioned
+        if: always()
+        run: |
+          set +e
+          node tooling/ops/guard-yield.mjs --check
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            echo "::error title=The guard yield is UNKNOWN::tooling/guard-yield.json or tooling/enforcement-index.json could not be read, so nothing about guard yield is known from this run. The step log names which."
+          elif [ "$code" -eq 1 ]; then
+            echo "::error title=The guard yield is stale, blind, or not acted on::asOf is past MAX_AGE_DAYS (re-fetch with triage-failed-runs.mjs --yield), the unattributed share is over its limit (give the signatures a guard, then guard-yield.mjs --reattribute), or a zero-catch guard has no KEEP/MERGE/RETIRE. The step log names each."
           fi
           exit "$code"
 
@@ -753,10 +782,71 @@ jobs:
           fi
           exit "$code"
 
+  code-scanning-age:
+    name: No high or critical code-scanning alert stands untriaged past its window
+    # why: the ledger's Monday slot, for the reason renovate-backlog gives: the register's unit scan then opens Monday runs only (scheduleWeekdays).
+    if: github.event.schedule == '45 7 * * 1' || (github.event_name == 'workflow_dispatch' && inputs.code_scanning_age)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    # why: GET /repos/{owner}/{repo}/code-scanning/alerts needs security-events: read, and nothing else, under this job's own token.
+    permissions:
+      security-events: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Read the open code-scanning alerts against their triage window
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set +e
+          node tooling/ops/check-code-scanning-age.mjs
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            echo "::error title=The code-scanning alerts are UNKNOWN - could not read them::COVERAGE LOST, not clean. No token, the API refused (security-events: read, or code scanning off), a page that is not an alert array, an item missing its fields, or a truncated list. The step log names which."
+          elif [ "$code" -eq 1 ]; then
+            echo "::error title=A high or critical code-scanning alert is untriaged past its window::The step log lists each one with its rule, age and path:line. Fix it, or dismiss it on GitHub WITH a reason; a dismissal with no reason is graded as still open."
+          fi
+          exit "$code"
+
+  tech-currency:
+    name: What the pipeline runs on is not being retired by its vendors
+    # why: the Monday slot, for the reason the renovate-backlog job gives: the register's unit scan opens Monday runs only (scheduleWeekdays).
+    if: github.event.schedule == '45 7 * * 1' || (github.event_name == 'workflow_dispatch' && inputs.tech_currency)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # why: every source is public (the GitHub changelog, raw action metadata, the Node.js schedule, the duty matrix's vendor pages), so no token is read.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Read the vendors' retirements against the tree
+        run: |
+          set +e
+          node tooling/ops/check-tech-currency.mjs
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            echo "::error title=Tech currency is UNKNOWN - a source could not be read::COVERAGE LOST, not current. A read failed after the bounded plan, the changelog grammar changed or never reached its window, an action's metadata is gone, the Node schedule lacks a major the tree runs on, or a dated vendor page carried no date. The step log names which."
+          elif [ "$code" -eq 1 ]; then
+            echo "::error title=A vendor is retiring something the pipeline runs on::The step log names each proposal with its evidence and who uses it: a retired runtime or runner image, a Node major near end of life, or a duty-matrix source whose vendor page changed (or whose deadline passed) since it was read. Move the pin, or re-read the page and advance the row."
+          fi
+          exit "$code"
+
   alert:
     name: Open or refresh the ops-watch issue
     needs:
-      [heartbeats, status, supabase-drift, prod-provenance, pages-deployments, runner-budget, glitchtip, edge-shield, failure-ledger, renovate-backlog]
+      [heartbeats, status, supabase-drift, prod-provenance, pages-deployments, runner-budget, glitchtip, edge-shield, failure-ledger, renovate-backlog, code-scanning-age, tech-currency]
     # why: schedule only, and the issue is REUSED rather than reopened -- later
     # failures arrive as comments and it is never closed automatically, so closing it
     # is the acknowledgement that a human looked.
