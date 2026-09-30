@@ -50,7 +50,7 @@ export type D1DumpLine =
   | { kind: 'schema'; table: string; sql: string }
   | { kind: 'index'; name: string; sql: string }
   | { kind: 'row'; table: string; data: Record<string, unknown> }
-  | { kind: 'table-end'; table: string; rows: number; truncated: boolean }
+  | { kind: 'table-end'; table: string; rows: number; truncated: boolean; ephemeral?: true }
   | { kind: 'end'; tables: number; rows: number; truncated: boolean; queries: number };
 
 export interface D1DumpResult {
@@ -85,6 +85,16 @@ export interface D1QueryPool {
  * table in a backup. Refusing loudly is the only safe answer to that.
  */
 const SAFE_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * ⏱ 2026-09-30 · ADR no.NNN (native sign-in attestation). Tables whose rows are
+ * EPHEMERAL by design and worthless after a restore: a redeemed challenge nonce
+ * guards a replay for the challenge's own 120 seconds, and a daily counter only
+ * counts today. Their SCHEMA is exported (a restore recreates them, empty) and
+ * their rows are not — which spends no query on them, and keeps the nightly
+ * export inside MAX_D1_QUERIES_PER_RUN's warn line (test/backup-export.test.ts).
+ */
+export const EPHEMERAL_TABLES: ReadonlySet<string> = new Set(['native_attest_redeemed', 'native_attest_counters']);
 
 /** Tables that are the vendor's bookkeeping, not the portfolio's data. */
 function isInternalTable(name: string): boolean {
@@ -164,6 +174,10 @@ export async function dumpD1Database(
 
   let rows = 0;
   for (const table of tables) {
+    if (EPHEMERAL_TABLES.has(table)) {
+      lines.push({ kind: 'table-end', table, rows: 0, truncated: false, ephemeral: true });
+      continue;
+    }
     let tableRows = 0;
     let tableTruncated = false;
     for (;;) {

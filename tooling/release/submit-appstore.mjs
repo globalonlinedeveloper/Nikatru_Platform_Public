@@ -29,7 +29,10 @@
 // `--dry-run`  validates the metadata tree, the artifact and the bundle
 //              identifier the Xcode project actually builds, and exits 0 WITHOUT
 //              one byte leaving the machine. This is the mode CI runs.
-// `--submit`   REFUSES, loudly, with `UNVERIFIED: <what>`. The App Store Connect
+// `--submit`   runs the Small Business Program gate
+//              (assert-small-business-program.mjs --real-submission) and prints
+//              its verdict, exiting there if it refuses; only then REFUSES,
+//              loudly, with `UNVERIFIED: <what>`. The App Store Connect
 //              API's endpoints, payload shapes and JWT parameters were not
 //              fetched from a primary source in this increment, and this repo's
 //              standing rule is that an unsourced fact is marked UNVERIFIED
@@ -142,6 +145,41 @@ const UNVERIFIED = [
   'the exact JWT claim set, algorithm and expiry the API accepts for a .p8 key (issuer id, key id, audience)',
   'whether the App Store Connect API, `xcrun altool` or Transporter is the supported UPLOAD path today for each of .ipa and .pkg, and which one the Xcode 26 floor requires',
 ];
+// 🔴 THE ONE CHECK THAT RUNS BEFORE THE REFUSAL: the Small Business Program gate
+// (AB-M5-02). It reads two registers and sends nothing, and it guards the
+// SUBMISSION rather than the bytes: a submission made from a laptop, or through
+// the App Store Connect API once the calls below are sourced, sells at the
+// standard commission unless the enrolment is recorded. CI publish jobs carry it
+// through submit-preconditions.mjs; this path had nothing. It stays here, in
+// front, when the refusal below is replaced by real calls. Resolved from THIS
+// FILE, like the D-6 preflight below, so `--repo-root` points only its reads.
+const SBP_GATE = join(dirname(fileURLToPath(import.meta.url)), '..', 'ci', 'assert-small-business-program.mjs');
+const sbpCommand = `node tooling/ci/assert-small-business-program.mjs --for-submission=${CHANNEL_ID} --real-submission`;
+const SBP_GATE_TIMEOUT_MS = 120000;
+// 🔴 A GATE, NOT A REPORT: a non-zero status exits HERE, in its own block, before
+// the refusal below. Whoever replaces that refusal with real App Store Connect
+// calls replaces a different block, and this one still stops a submission the
+// gate refused (#1088 review, minor 1). A gate that did not answer (timeout,
+// signal) is a refusal too: its status is null, never 0.
+if (SUBMIT) {
+  const g = spawnSync(process.execPath, [SBP_GATE, `--for-submission=${CHANNEL_ID}`, '--real-submission', ROOT], {
+    encoding: 'utf8',
+    timeout: SBP_GATE_TIMEOUT_MS,
+  });
+  console.error('');
+  console.error(
+    g.status === 0
+      ? `ok   the Small Business Program gate passed (${sbpCommand}).`
+      : `FAIL the Small Business Program gate REFUSED this submission (${sbpCommand} exited ${g.status}${g.error ? `, ${g.error.code ?? g.error.message}` : ''}):`,
+  );
+  for (const l of `${g.stdout ?? ''}${g.stderr ?? ''}`.trimEnd().split('\n')) console.error(`     ${l}`);
+  if (g.status !== 0) {
+    console.error('\nsubmit-appstore: FAILED — nothing was submitted.');
+    // The gate's COVERAGE LOST (2) is not folded into a refusal's 1: it could not read the enrolment at all.
+    process.exit(g.status === 2 ? 2 : 1);
+  }
+}
+
 if (SUBMIT) {
   console.error('');
   console.error('FAIL --submit is NOT IMPLEMENTED, and refusing is the implementation.');
@@ -153,8 +191,10 @@ if (SUBMIT) {
   console.error('     account, mid-upload. Source them (URL + date, the way the D-5 limits table does),');
   console.error('     then write the calls. Until then the console path in the runbook is the submission');
   console.error('     path:  Private/runbooks/store-submission-apple.md');
+  console.error(`     and that console submission is gated too: before it, run  ${sbpCommand}`);
+  console.error('     and submit only if it exits 0.');
   console.error('');
-  console.error('     Nothing was validated: this refusal is BEFORE the checks on purpose, so there is no');
+  console.error('     Nothing else was validated: this refusal is BEFORE the checks on purpose, so there is no');
   console.error('     path on which a submission gets halfway.');
   console.error('\nsubmit-appstore: FAILED');
   process.exit(1);

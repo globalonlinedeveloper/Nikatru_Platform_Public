@@ -561,6 +561,11 @@
       {
         "file": "services/_shared/src/erasure.ts",
         "unboundedReason": "⏱ 2026-09-18 · O-ERASURE-WALK-ROUND-TRIPS. TWO batches, both sized by the SCHEMA, not by caller input: `erasureTargets` sends one `pragma_table_info` per table, and `eraseTargets` one DELETE per `user_id` table plus one UPDATE per `*_user_id` column. Every table comes from a migration in this repo, so the size moves only with a source edit that is visible in review — the same class as scheduled.ts’s compiled-in target list. MEASURED 2026-09-18 against production (read-only): platform_db 18 tables, 5 user-owned, 1 reference; subscriptiontracker_db 4 tables, 4 user-owned, 0 references. Under the WORST-CASE reading this file mandates (one statement = one query) the platform erasure spends 1 + 18 + 6 = 25 queries, under the Free 50 and far under the Paid 1000 this account runs on. 🔴 AND IT IS A REDUCTION, NOT A NEW SPEND: the walk it replaced made 44 SEPARATE queries for the same erasure (a sqlite_master read and one pragma per table, TWICE, then one call per write), so this batch lowers the count under BOTH readings — 44 -> 25 worst case, 44 -> 3 calls best case — and grows by one statement per new table where the old walk grew by two. It is not chunked: a batch is the ONE transaction that makes the erasure all-or-nothing, and splitting it would bring back the half-erased person this change exists to prevent. The first place a chunk would be needed is past ~44 user tables in one database under the Free reading, and the platform is not on Free."
+      },
+      {
+        "file": "services/platform/src/lib/native-attest/index.ts",
+        "boundedBy": "NATIVE_ATTEST_BATCH_STATEMENTS",
+        "note": "⏱ 2026-09-30 · ADR no.NNN (native sign-in attestation). ONE batch shape, pruneThenWrite: a prune of expired rows, then one write — redeeming a challenge nonce, bumping a daily counter, or registering a key. Exactly two statements each, typed as a two-tuple; a request sends at most three."
       }
     ]
   },

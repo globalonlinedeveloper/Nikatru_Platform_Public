@@ -24,7 +24,7 @@
     42,
 
   "analytics-contract.test.mjs":
-    78,
+    79,
 
   "analytics-liveness.test.mjs":
     28,
@@ -93,7 +93,7 @@
     25,
 
   "appstore-submission.test.mjs":
-    49,
+    52,
 
   "artifact-shape.test.mjs":
     32,
@@ -320,6 +320,9 @@
   "e2e-proof-fresh.test.mjs":
     61,
 
+  "e2e-purge-retry.test.mjs":
+    15,
+
   "e2e-run-resolver.test.mjs":
     17,
 
@@ -533,6 +536,9 @@
   "mechanism-claims.test.mjs":
     47,
 
+  "migration-numbers.test.mjs":
+    3,
+
   "modal-detection.test.mjs":
     44,
 
@@ -558,7 +564,7 @@
     39,
 
   "native-auth-proof.test.mjs":
-    23,
+    34,
 
   "native-symbol-upload.test.mjs":
     25,
@@ -750,7 +756,7 @@
     133,
 
   "rail-prices.test.mjs":
-    42,
+    54,
 
   "redeploy-stranded.test.mjs":
     50,
@@ -824,6 +830,9 @@
   "safe-rerun.test.mjs":
     77,
 
+  "sandbox-service-role.test.mjs":
+    5,
+
   "scan-secrets.test.mjs":
     12,
 
@@ -873,7 +882,7 @@
     109,
 
   "small-business-program.test.mjs":
-    14,
+    17,
 
   "smoke-site-deploy.test.mjs":
     14,
@@ -1059,7 +1068,7 @@
     21,
 
   "wrangler-environments.test.mjs":
-    15,
+    17,
 
   "xcode-floor.test.mjs":
     21

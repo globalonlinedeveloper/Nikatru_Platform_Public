@@ -18,6 +18,7 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { BUNDLES_REGISTER } from '../../catalog/read.mjs';
+import { netAfterFee } from '../../catalog/render-rail-prices.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SCRIPT = join(REPO, 'tooling', 'catalog', 'render-rail-prices.mjs');
@@ -38,13 +39,31 @@ after(() => {
   rmSync(TMP, { recursive: true, force: true });
 });
 
-/** A copy of exactly the files the renderer reads, from the real tree. */
+// ── THE CLOCK IS PINNED (#1088 review, minor 2) ──────────────────────────────
+// Limb G grades a fee cell's age against a clock. On the real clock, with the real
+// fee register's dates, every case that expects exit 0 went red on the day the
+// LIMITED-TIME Razorpay cell turned 31 days old. So every fixture's fee cells are
+// read at FIXTURE_READ_AT, every run is graded at FIXTURE_NOW (`--now`), and only the
+// age cases, which set their own asOf, depend on age at all.
+const FIXTURE_NOW = '2026-10-01T00:00:00Z';
+const FIXTURE_READ_AT = '2026-09-29T00:00:00Z';
+/** The real tree is graded as of its own newest fee read: its age is the production check's job, not this file's. */
+const REAL_NOW = new Date(
+  Math.max(...Object.values(JSON.parse(readFileSync(join(REPO, FEES), 'utf8')).cells).map((c) => Date.parse(c.asOf))),
+)
+  .toISOString()
+  .replace(/\.\d+Z$/, 'Z');
+
+/** A copy of exactly the files the renderer reads, from the real tree, with every fee cell read at FIXTURE_READ_AT. */
 function fixture() {
   const root = join(TMP, `f${++seq}`);
   for (const rel of [REGISTER, RENDERED, CHECKOUT, BUNDLES_REGISTER, APP_YAML, FEES, CHANNELS]) {
     mkdirSync(dirname(join(root, rel)), { recursive: true });
     copyFileSync(join(REPO, rel), join(root, rel));
   }
+  mutateFees(root, (cells) => {
+    for (const c of Object.values(cells)) c.asOf = FIXTURE_READ_AT;
+  });
   return root;
 }
 
@@ -57,8 +76,10 @@ function mutate(root, fn) {
   return data;
 }
 
+/** Every run names its clock: FIXTURE_NOW for a fixture, REAL_NOW for the real tree. */
 function run(root, ...args) {
-  const r = spawnSync(process.execPath, [SCRIPT, ...(root ? [root] : []), ...args], { encoding: 'utf8' });
+  const clock = args.some((a) => a.startsWith('--now')) ? [] : [`--now=${root ? FIXTURE_NOW : REAL_NOW}`];
+  const r = spawnSync(process.execPath, [SCRIPT, ...(root ? [root] : []), ...args, ...clock], { encoding: 'utf8' });
   return { code: r.status, out: r.stdout, err: r.stderr, all: `${r.stdout}\n${r.stderr}` };
 }
 
@@ -422,7 +443,7 @@ describe('limb G — net per channel from the fee register (AB-M5-01, AB-M5-03, 
   test('with the enrolment recorded, Apple nets at the Small Business rate and nothing is gated', () => {
     const root = fixture();
     mutateFees(root, (c) => {
-      c['apple-small-business-enrolment'].value = '2026-10-01';
+      c['apple-small-business-enrolment'].value = '2026-09-28';
     });
     const r = run(root, '--net-sheet', '--check');
     assert.equal(r.code, 0, r.all);
@@ -433,7 +454,7 @@ describe('limb G — net per channel from the fee register (AB-M5-01, AB-M5-03, 
   test('with the enrolment recorded, an Apple row below web is a FINDING, not gated', () => {
     const root = fixture();
     mutateFees(root, (c) => {
-      c['apple-small-business-enrolment'].value = '2026-10-01';
+      c['apple-small-business-enrolment'].value = '2026-09-28';
       c['apple-iap-small-business'].value.percentBps = 3000;
     });
     const r = run(root, '--check');
@@ -479,6 +500,130 @@ describe('limb G — net per channel from the fee register (AB-M5-01, AB-M5-03, 
     const r = run(root, '--net-sheet');
     assert.equal(r.code, 0, r.all);
     assert.match(netLine(r.out, `${APP} pro_yearly`, 'web·IN'), /INR +999\.00 → net +817\.64/);
+  });
+
+  // ── #1072 review: the enrolment is judged by the gate's own check (sbp-enrolment.mjs) ──
+  test('an enrolment written as an ISO instant is exit 1, as the gate refuses it', () => {
+    const root = fixture();
+    mutateFees(root, (c) => {
+      c['apple-small-business-enrolment'].value = '2026-09-28T00:00:00Z';
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /apple-small-business-enrolment\.value is "2026-09-28T00:00:00Z"; it is null, or the enrolment APPROVAL date/);
+  });
+
+  test('an enrolment dated after today is exit 1, and does not select the Small Business rate', () => {
+    const root = fixture();
+    mutateFees(root, (c) => {
+      c['apple-small-business-enrolment'].value = '2999-01-01';
+    });
+    const r = run(root, '--net-sheet', '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /apple-small-business-enrolment\.value is 2999-01-01, after today/);
+    assert.match(netLine(r.out, `${APP} pro_monthly`, 'ios-appstore'), /\(apple-iap-standard: 30%\)/);
+  });
+
+  // ── #1072 review: a fee cell's read has an age limit ──
+  const daysAgo = (n) => new Date(Date.parse(FIXTURE_NOW) - n * 86400000).toISOString().replace(/\.\d+Z$/, 'Z');
+
+  test('RED CONTROL: a fee cell read 91 days ago is exit 1, naming its age and the 90-day limit', () => {
+    const root = fixture();
+    mutateFees(root, (c) => {
+      c['paddle-checkout'].asOf = daysAgo(91);
+    });
+    const r = run(root, '--net-sheet', '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /cells\.paddle-checkout was read .*, 91 days ago; a fee cell is re-read within 90 days/);
+    assert.match(netLine(r.out, `${APP} pro_yearly`, 'web'), /net +32\.74/, 'a stale cell is still applied, so the sheet shows its net');
+  });
+
+  test('GREEN CONTROL: a fee cell read 89 days ago is within its limit', () => {
+    const root = fixture();
+    mutateFees(root, (c) => {
+      c['paddle-checkout'].asOf = daysAgo(89);
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 0, r.all);
+  });
+
+  test('RED CONTROL: the LIMITED-TIME Razorpay offer read 31 days ago is exit 1 at the 30-day limit', () => {
+    const root = fixture();
+    mutateFees(root, (c) => {
+      c['razorpay-subscription-add-on'].asOf = daysAgo(31);
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /cells\.razorpay-subscription-add-on was read .*, 31 days ago; a LIMITED-TIME offer cell is re-read within 30 days/);
+  });
+
+  test('GREEN CONTROL: the LIMITED-TIME offer read 29 days ago is within its limit', () => {
+    const root = fixture();
+    mutateFees(root, (c) => {
+      c['razorpay-subscription-add-on'].asOf = daysAgo(29);
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 0, r.all);
+  });
+
+  test('--now is the clock: the same fixture graded at 2026-11-15 is exit 1 on the LIMITED-TIME cell alone', () => {
+    const r = run(fixture(), '--check', '--now=2026-11-15T00:00:00Z');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /cells\.razorpay-subscription-add-on was read 2026-09-29T00:00:00Z, 47 days ago; a LIMITED-TIME offer cell/);
+    assert.doesNotMatch(r.err, /cells\.paddle-checkout was read/);
+  });
+
+  test('a --now that is not an ISO instant is COVERAGE LOST (exit 2), never the real clock', () => {
+    const r = run(fixture(), '--check', '--now=yesterday');
+    assert.equal(r.code, 2, r.all);
+    assert.match(r.err, /--now needs an ISO instant ending Z/);
+  });
+
+  test('a fee cell read in the future is exit 1', () => {
+    const root = fixture();
+    mutateFees(root, (c) => {
+      c['play-billing-subscription'].asOf = '2999-01-01';
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /cells\.play-billing-subscription has asOf "2999-01-01", which is not a day that has happened/);
+  });
+
+  // ── #1072 review: rounding. Every real price nets to a fraction under .5, so floor and round agreed on all of them ──
+  test('RED CONTROL for rounding: a net whose fraction is .5 or more rounds UP (620.5 → 621, 612.85 → 613)', () => {
+    assert.equal(netAfterFee(730, { percentBps: 1500 }), 621);
+    assert.equal(netAfterFee(721, { percentBps: 1500 }), 613);
+    assert.equal(netAfterFee(1001, { percentBps: 500, fixedMinor: 50 }), 901);
+    const root = fixture();
+    mutate(root, (d) => {
+      const s = monthly(d).store;
+      s.USD = 730;
+      for (const who of ['apple', 'google']) s.readBack[who].USD = 730;
+    });
+    const r = run(root, '--net-sheet', '--check');
+    assert.equal(r.code, 0, r.all);
+    assert.match(netLine(r.out, `${APP} pro_monthly`, 'android-play'), /USD +7\.30 → net +6\.21 /);
+  });
+
+  // ── #1072 review: a fixed fee applies only in its own currency ──
+  test("a Paddle fee whose fixedCurrency is not the price's currency is exit 1", () => {
+    const root = fixture();
+    mutateFees(root, (c) => {
+      c['paddle-checkout'].value.fixedCurrency = 'EUR';
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /cells\.paddle-checkout carries a fixed 50 minor EUR, applied to a USD price/);
+  });
+
+  test('a fixed fee with no fixedCurrency is exit 1', () => {
+    const root = fixture();
+    mutateFees(root, (c) => {
+      delete c['paddle-under-10'].value.fixedCurrency;
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /cells\.paddle-under-10 carries a fixed 50 minor with no fixedCurrency/);
   });
 
   test('a fee register that is absent is COVERAGE LOST (exit 2), never a clean sheet', () => {

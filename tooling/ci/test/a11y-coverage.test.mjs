@@ -435,9 +435,11 @@ describe('the guard says YES on the tree as it is', () => {
     // and status loops run them more often than this parse counts them).
     // Unswept stays 18. Read off the guard's own closing line.
     // ⏱ 2026-09-29 · train ST-D DW2 (D2 + D4 + D8) on top of DW1: +3 design_system surfaces (MonthGrid, DateBadge, PermissionPrimingView) and +1 chassis (SettingsSection), all swept: +2 files, +5 cases.
-    assert.match(out, /94 reachable surface\(s\); 64 swept by 18 a11y test file\(s\) across 202 case\(s\)/ /* ⏱ 2026-09-29 ST-D DW1 on ST-T3b: the edit form is showAddSubscriptionSheet(initial:), so ST-D6's showEditSubscriptionSheet surface is gone (-1 app surface) */ /* ⏱ 2026-09-29 ST-D5: +4 design_system surfaces (AppIconAction, AppMonogram, AppFigureTile, AppDetailHeader), each arriving swept, +1 file, +4 cases */ /* ⏱ 2026-09-29 ST-D1: +3 design_system surfaces (AppSectionHeader, AppListGroup, AppSummaryCard), each arriving swept by its own file, +3 cases */ /* ⏱ 2026-09-29 ST-D6: +3 design_system surfaces (AppFormSheet, AppFormField, AppFormActions) and +1 app surface (showEditSubscriptionSheet), each arriving swept, +1 file, +2 cases */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces swept, +2 cases */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate) swept, +1 case */);
+    // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): +5 design_system surfaces (AuthFrame, AuthBrandPanel, AuthMessage, AuthOrDivider, AuthPasswordChecklist), each arriving swept, and AuthField swept for the first time, by a11y_auth_frame_test.dart (+1 file, +1 case).
+    assert.match(out, /99 reachable surface\(s\); 70 swept by 19 a11y test file\(s\) across 203 case\(s\)/ /* ⏱ 2026-09-29 ST-D DW1 on ST-T3b: the edit form is showAddSubscriptionSheet(initial:), so ST-D6's showEditSubscriptionSheet surface is gone (-1 app surface) */ /* ⏱ 2026-09-29 ST-D5: +4 design_system surfaces (AppIconAction, AppMonogram, AppFigureTile, AppDetailHeader), each arriving swept, +1 file, +4 cases */ /* ⏱ 2026-09-29 ST-D1: +3 design_system surfaces (AppSectionHeader, AppListGroup, AppSummaryCard), each arriving swept by its own file, +3 cases */ /* ⏱ 2026-09-29 ST-D6: +3 design_system surfaces (AppFormSheet, AppFormField, AppFormActions) and +1 app surface (showEditSubscriptionSheet), each arriving swept, +1 file, +2 cases */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces swept, +2 cases */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate) swept, +1 case */);
     assert.match(out, /12 swept where they delegate to/);
-    assert.match(out, /18 unswept and PRINTED/);
+    // ⏱ 2026-09-29 · train ST-D10: 18 → 17 — AuthField, on the printed list since 2026-09-05, is swept.
+    assert.match(out, /17 unswept and PRINTED/);
     // The per-family tally for subscriptiontracker, pinned. It read `tap-target ×0` from the
     // day this guard was written until 2026-08-13, and a family that has never
     // been non-zero is a limb nothing has exercised — so the number that proves
@@ -603,7 +605,8 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     // ⏱ 2026-09-28 · train ST-D6: 7 of 25 → 10 of 28 — the form sheet components arrived swept.
     // ⏱ 2026-09-29 · train ST-D1, on top of ST-D6: 10 of 28 → 13 of 31 — AppSectionHeader, AppListGroup, AppSummaryCard arrived swept.
     // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 13 of 31 → 17 of 35 — the detail components arrived swept.
-    assert.match(out, /packages\/design_system: 20 of 38 reachable surface\(s\) carry an a11y sweep/);
+    // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): 20 of 38 → 26 of 43 — the auth frame's five parts arrived swept, and AuthField with them.
+    assert.match(out, /packages\/design_system: 26 of 43 reachable surface\(s\) carry an a11y sweep/);
     // And the gap in each is PRINTED, by name, not merely counted.
     // ⏱ 2026-09-23 (chassis home): the brick's HomeScreen now delegates into
     // the swept WelcomeView, so it is judged THERE and the brick prints no gap.
@@ -691,7 +694,8 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     // sheet and Home components raised the floor; two_pane.dart still carries
     // two surfaces.
     // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 29 of 31 → 33 of 35.
-    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 36 reachable surface\(s\).*floor is 38/s);
+    // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): 36 of 38 → 41 of 43 — the auth frame raised the floor.
+    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 41 reachable surface\(s\).*floor is 43/s);
   });
 
   // ── M11g · THE CHASSIS FLOOR, PINNED BY NUMBER ────────────────────────────
@@ -815,7 +819,8 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     // sheet and Home components joined the root swept, so the unswept count is
     // unchanged.
     // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 19 of 32 → 19 of 36.
-    assert.match(out, /19 of 39 reachable surface\(s\) in packages\/design_system/);
+    // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): 19 of 39 → 18 of 44 — five swept parts joined the root and AuthField left the unswept list.
+    assert.match(out, /18 of 44 reachable surface\(s\) in packages\/design_system/);
   });
 });
 

@@ -3726,6 +3726,16 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/ops-watch.yml#glitchtip"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-sandbox-service-role.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
       ".github/workflows/ops-watch.yml#tech-currency"
     ],
     "kind": "script",

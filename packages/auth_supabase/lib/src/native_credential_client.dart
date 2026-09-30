@@ -19,11 +19,24 @@
 ///
 /// Amendment to ADR 084 / ADR 059 lock 5 ruled 2026-09-28; ADR pending in
 /// Private.
+///
+/// ⏱ 2026-09-29 · 🔴 AND IT NOW ATTESTS. The route took no captcha, so it took
+/// any script: a sign-up / reset-mail cannon behind nothing but a rate limit.
+/// The server now refuses every op that carries no attestation (wire protocol
+/// v1, `core`'s `native_attest.dart`), so this client sends through
+/// [NativeAttestationClient], which binds each op to a fresh challenge and to
+/// its exact body with the build's [core.NativeAttestor] — Play Integrity on
+/// android, App Attest on ios/macos, a per-install Ed25519 key elsewhere
+/// (`platformNativeAttestor` in `nikatru_platform_storage`).
 library;
 
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
+import 'package:http/http.dart' as http;
+import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
+
+import 'native_attestation_client.dart';
 
 /// The five targets that register `com.nikatru.<app>://auth-callback` — the
 /// only ones the native route's pinned redirect can send a mail link back to.
@@ -65,7 +78,8 @@ String? nativeCredentialBaseUrl(
   return '$root/v1/auth/native/$appId';
 }
 
-/// The second client for [appId], or null wherever [nativeCredentialBaseUrl] is.
+/// The second client for [appId], or null wherever [nativeCredentialBaseUrl] is
+/// — and wherever [attestor] is.
 ///
 /// 🔴 IT SHARES THE MAIN CLIENT'S PKCE STORE, AND THAT IS WHAT MAKES A MAIL LINK
 /// WORK. gotrue-dart 2.26.0 keeps the code verifier under ONE fixed key,
@@ -79,12 +93,23 @@ String? nativeCredentialBaseUrl(
 /// `autoRefreshToken: false` because this client never owns a session: it
 /// hands each one to the main client, which refreshes it directly at GoTrue.
 /// No `apikey` header: the route adds its own and drops any it is sent.
+///
+/// ⏱ 2026-09-29 · [attestor] is REQUIRED, and null means NO client. A native
+/// build with no attestor has no route to use — the server refuses every
+/// unattested op — so it gets none rather than one that fails every call; it
+/// falls back to the main client and GoTrue's captcha, exactly as web does.
+/// Required rather than defaulted so that no call site can forget it: the one
+/// argument that decides whether sign-in works on five targets is written at
+/// each of them. [transport] is the attesting client's inner transport, for
+/// tests; production takes `package:http`'s default.
 sb.GoTrueClient? nativeCredentialClient({
   required String platformBaseUrl,
   required String appId,
+  required core.NativeAttestor? attestor,
   bool isWeb = kIsWeb,
   TargetPlatform? platform,
   sb.GotrueAsyncStorage? pkceStorage,
+  http.Client? transport,
 }) {
   final String? url = nativeCredentialBaseUrl(
     platformBaseUrl,
@@ -92,12 +117,18 @@ sb.GoTrueClient? nativeCredentialClient({
     isWeb: isWeb,
     platform: platform,
   );
-  if (url == null) return null;
+  if (url == null || attestor == null) return null;
   return sb.GoTrueClient(
     url: url,
     autoRefreshToken: false,
     flowType: sb.AuthFlowType.pkce,
     asyncStorage: pkceStorage ?? nikatruPkceStorage,
+    httpClient: NativeAttestationClient(
+      baseUrl: url,
+      appId: appId,
+      attestor: attestor,
+      inner: transport,
+    ),
   );
 }
 

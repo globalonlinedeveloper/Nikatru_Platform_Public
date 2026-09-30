@@ -203,11 +203,18 @@ procedure is `Private/runbooks/store-submission-apple.md`.
 ```
 node tooling/ci/assert-store-metadata.mjs                                    # the D-5 guard
 node tooling/release/submit-appstore.mjs --dry-run --channel ios-appstore --app subscriptiontracker
+node tooling/ci/assert-small-business-program.mjs --for-submission=ios-appstore --real-submission   # BEFORE any real submission
 ```
 
 The dry run validates this tree, the artifact and the credential configuration,
 and exits 0 **without contacting Apple**. `--submit` refuses with `UNVERIFIED:`
 lines rather than guessing at App Store Connect API endpoints.
+
+🔴 **Every real submission runs the Small Business Program gate first and submits only on exit 0** —
+the console path in `Private/runbooks/store-submission-apple.md` included, since it is the path in use
+while `--submit` refuses. `--submit` runs the gate itself before refusing. Until the owner records the day
+Apple APPROVED the enrolment (A-18) in `tooling/catalog/fee-register.json`, it exits 1: a first-year
+subscriber would pay the standard commission and the Apple rows net below web.
 
 ## ⬜ What is still owner-gated
 

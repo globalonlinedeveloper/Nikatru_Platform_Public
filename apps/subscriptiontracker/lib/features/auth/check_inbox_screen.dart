@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show ContentPane;
+    show AuthFrame;
 
 import '../../l10n/app_localizations.dart';
+import 'auth_panel.dart';
 import 'check_inbox_actions.dart';
 
 /// "Check your inbox" for a sign-up that produced NO SESSION.
@@ -41,48 +42,41 @@ class CheckInboxScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
 
-    return Scaffold(
-      appBar: AppBar(title: Text(l10n.checkInboxTitle)),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: ContentPane.form(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Text(
-                l10n.checkInboxBody(email),
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                l10n.checkInboxThenSignIn,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 8),
-              // The same sentence `/verify-email` shows, reused rather than
-              // written twice: two spellings of one instruction age apart, and a
-              // translator would have to render both.
-              Text(
-                l10n.verifyEmailSpamHint,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const SizedBox(height: 20),
-              // 🔴 THE WAY OUT, AND IT IS THE PRIMARY ACTION. Confirming happens
-              // in a mail client; the next thing this app can do for them is
-              // take their password. Without this control the screen is a
-              // dead end, which is the defect it was built to remove.
-              FilledButton(
-                key: CheckInboxScreen.backToSignInButton,
-                onPressed: () => context.go('/sign-in'),
-                child: Text(l10n.checkInboxBackToSignIn),
-              ),
-              const SizedBox(height: 12),
-              CheckInboxActions(email: email),
-            ],
-          ),
+    return AuthFrame(
+      icon: Icons.mark_email_unread_outlined,
+      panel: const AuthPanel(),
+      title: l10n.checkInboxTitle,
+      children: <Widget>[
+        Text(
+          l10n.checkInboxBody(email),
+          style: Theme.of(context).textTheme.bodyLarge,
         ),
-      ),
+        const SizedBox(height: 8),
+        Text(
+          l10n.checkInboxThenSignIn,
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+        const SizedBox(height: 8),
+        // The same sentence `/verify-email` shows, reused rather than
+        // written twice: two spellings of one instruction age apart, and a
+        // translator would have to render both.
+        Text(
+          l10n.verifyEmailSpamHint,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 20),
+        // 🔴 THE WAY OUT, AND IT IS THE PRIMARY ACTION. Confirming happens
+        // in a mail client; the next thing this app can do for them is
+        // take their password. Without this control the screen is a
+        // dead end, which is the defect it was built to remove.
+        FilledButton(
+          key: CheckInboxScreen.backToSignInButton,
+          onPressed: () => context.go('/sign-in'),
+          child: Text(l10n.checkInboxBackToSignIn),
+        ),
+        const SizedBox(height: 12),
+        CheckInboxActions(email: email),
+      ],
     );
   }
 }

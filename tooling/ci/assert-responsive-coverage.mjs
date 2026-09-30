@@ -665,8 +665,12 @@ const REQUIRED_COVERAGE = [
     // onto ST-D4), surfaces unchanged: `test/plan_golden_test.dart` (the
     // paywall and manage-plan goldens) joined the corpus, and R14b caught the
     // slack. Read off the per-root line, `— 28 file(s)`.
+    // ⏱ RAISED `widthTestFiles` 28 → 29 ON 2026-09-29 (train ST-D10),
+    // surfaces unchanged: `test/auth_frame_adoption_test.dart` (every chassis
+    // auth view on the shared AuthFrame, pumped at kPhone and 1440) joined the
+    // corpus. Read off the per-root line, `— 29 file(s)`.
     surfaces: 26,
-    widthTestFiles: 28,
+    widthTestFiles: 29,
     coveredSurfaces: 26,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
@@ -737,10 +741,19 @@ const REQUIRED_COVERAGE = [
     // surface(s) measured — 8 PRINTED".
     //   surfaces        35 → 38
     //   coveredSurfaces 27 → 30
+    //
+    // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9) — the shared auth frame
+    // (AuthFrame, AuthBrandPanel, AuthMessage, AuthOrDivider,
+    // AuthPasswordChecklist: five new surfaces) and AuthField, printed as
+    // unmeasured until now, each pumped at 375 / 768 / 1280 / 1440 by
+    // auth_frame_test.dart. Read off the run's own line: "36 of 43 surface(s)
+    // measured — 7 PRINTED".
+    //   surfaces        38 → 43
+    //   coveredSurfaces 30 → 36
     enforce: false,
-    surfaces: 38,
+    surfaces: 43,
     widthTestFiles: 19,
-    coveredSurfaces: 30,
+    coveredSurfaces: 36,
     label:
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, content_pane, two_pane and fifteen ' +
       'more, whose width decisions every stamped app inherits',
