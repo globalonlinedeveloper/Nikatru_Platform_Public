@@ -95,6 +95,8 @@ const appleRow = (id, over = {}) => ({
     declaredIn: id === 'ios-appstore' ? 'apps/{app}/ios/Runner.xcodeproj/project.pbxproj' : 'apps/{app}/macos/Runner/Configs/AppInfo.xcconfig',
   },
   submission: { runbook: 'Private/runbooks/store-submission-apple.md' },
+  // The Small Business Program gate --submit runs selects its channels by this rail.
+  purchaseRail: { rail: 'apple-iap' },
   signing: { seam: { artifactGlob: id === 'ios-appstore' ? 'apps/*/build/ios/ipa/*.ipa' : 'apps/*/build/macos/pkg/*.pkg' } },
   ...over,
 });
@@ -137,6 +139,8 @@ function tree({
   omitApple = false,
   records = ISSUED,
   omitAppYaml = false,
+  enrolment = null,
+  omitFees = false,
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   const write = (rel, body) => {
@@ -167,6 +171,13 @@ function tree({
   }
 
   if (!omitAppYaml) write('apps/subscriptiontracker/app.yaml', storesYaml(records));
+  // The one cell the Small Business Program gate reads; `enrolment` is its value (the approval date, or null).
+  if (!omitFees) {
+    write(
+      'tooling/catalog/fee-register.json',
+      JSON.stringify({ cells: { 'apple-small-business-enrolment': { value: enrolment, asOf: '2026-09-29', verify: 'the owner reads App Store Connect' } } }),
+    );
+  }
 
   if (!omitProject) {
     // The iOS shape: a pbxproj carrying the app bundle AND the test bundles, so
@@ -247,8 +258,31 @@ describe('submit-appstore — both Apple channels are walkable, and --submit ref
     assert.equal(code, 1, out);
     assert.match(out, /--submit is NOT IMPLEMENTED, and refusing is the implementation/);
     assert.match(out, /UNVERIFIED: the App Store Connect API base URL/);
-    assert.match(out, /Nothing was validated/);
+    assert.match(out, /Nothing else was validated/);
     assert.doesNotMatch(out, /metadata tree .* field\(s\) present/);
+  });
+
+  // #1072 review: the Small Business Program gate guarded only a CI publish job. --submit runs it first.
+  test('RED CONTROL: --submit runs the Small Business Program gate first, and it refuses while the enrolment is null', () => {
+    const { code, out } = run(tree(), ['--submit', '--channel', 'ios-appstore', '--app', 'subscriptiontracker']);
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL the Small Business Program gate REFUSED this submission \(node tooling\/ci\/assert-small-business-program\.mjs --for-submission=ios-appstore --real-submission exited 1\)/);
+    assert.match(out, /REFUSED {2}a real ios-appstore submission: .*owner step A-18/);
+    assert.ok(out.indexOf('Small Business Program gate') < out.indexOf('--submit is NOT IMPLEMENTED'), out);
+  });
+
+  test('GREEN CONTROL: with an approval date recorded the gate passes, and --submit still refuses', () => {
+    const { code, out } = run(tree({ enrolment: '2026-09-28' }), ['--submit', '--channel', 'macos-appstore', '--app', 'subscriptiontracker']);
+    assert.equal(code, 1, out);
+    assert.match(out, /ok {3}the Small Business Program gate passed \(node tooling\/ci\/assert-small-business-program\.mjs --for-submission=macos-appstore --real-submission\)/);
+    assert.match(out, /--submit is NOT IMPLEMENTED/);
+    assert.match(out, /that console submission is gated too: before it, run {2}node tooling\/ci\/assert-small-business-program\.mjs --for-submission=macos-appstore --real-submission/);
+  });
+
+  test("--submit with no fee register is COVERAGE LOST (exit 2), not the refusal's 1", () => {
+    const { code, out } = run(tree({ omitFees: true }), ['--submit', '--channel', 'ios-appstore', '--app', 'subscriptiontracker']);
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — tooling\/catalog\/fee-register\.json does not exist/);
   });
 
   test('the refusal names the JWT claim set as UNVERIFIED, not just the endpoints', () => {
