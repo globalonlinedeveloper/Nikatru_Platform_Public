@@ -6,7 +6,7 @@ rendered on Windows or macOS differs by antialiasing and fails there. No laptop
 here has a Linux Flutter any more, so this workflow is how any lane re-renders
 goldens: a pipeline capability, not a machine.
 
-## Dispatch
+## The dispatch command
 
 ```
 gh workflow run update-goldens.yml -R globalonlinedeveloper/Nikatru_Platform_Public \
