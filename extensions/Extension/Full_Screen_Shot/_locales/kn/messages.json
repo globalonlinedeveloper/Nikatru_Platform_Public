@@ -437,6 +437,12 @@
   "optionsAutoOpenEditorDesc": {
     "message": "ನೇರವಾಗಿ ಟಿಪ್ಪಣಿ ಬರೆಯುವ ಕೆಲಸಕ್ಕೆ ಹೋಗುತ್ತದೆ (ಒಂದೇ ಭಾಗದ ಸೆರೆಹಿಡಿಯುವಿಕೆಗಳಿಗೆ ಮಾತ್ರ)."
   },
+  "optionsSingleKeyShortcuts": {
+    "message": "Single-key shortcuts in the editor"
+  },
+  "optionsSingleKeyShortcutsDesc": {
+    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+  },
   "optionsTheme": {
     "message": "ಥೀಮ್"
   },
@@ -459,13 +465,16 @@
     "message": "ಪೂರ್ಣ ಪುಟ: $KEYFULL$ · ಗೋಚರ ಪ್ರದೇಶ: $KEYVISIBLE$. $URL$ ನಲ್ಲಿ ಬದಲಿಸಿಕೊಳ್ಳಿ",
     "placeholders": {
       "keyfull": {
-        "content": "Alt+Shift+P"
+        "content": "$1",
+        "example": "Alt+Shift+P"
       },
       "keyvisible": {
-        "content": "Alt+Shift+V"
+        "content": "$2",
+        "example": "Alt+Shift+V"
       },
       "url": {
-        "content": "chrome://extensions/shortcuts"
+        "content": "$3",
+        "example": "chrome://extensions/shortcuts"
       }
     }
   },
@@ -1234,6 +1243,39 @@
   "editorZoomFit": {
     "message": "ಹೊಂದಿಸು"
   },
+  "editorZoomLevelName": {
+    "message": "$PERCENT$ zoom",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "100%"
+      }
+    }
+  },
+  "editorColorRed": {
+    "message": "Red"
+  },
+  "editorColorAmber": {
+    "message": "Amber"
+  },
+  "editorColorGreen": {
+    "message": "Green"
+  },
+  "editorColorBlue": {
+    "message": "Blue"
+  },
+  "editorColorViolet": {
+    "message": "Violet"
+  },
+  "editorColorPink": {
+    "message": "Pink"
+  },
+  "editorColorBlack": {
+    "message": "Black"
+  },
+  "editorColorWhite": {
+    "message": "White"
+  },
   "editorZoomTipToHundred": {
     "message": "ಕಿಟಕಿಗೆ ಹೊಂದಿಸಲಾಗಿದೆ — 100% ಗೆ ಕ್ಲಿಕ್ ಮಾಡಿ"
   },
@@ -1977,6 +2019,14 @@
     "placeholders": {
       "esc": {
         "content": "Esc"
+      }
+    }
+  },
+  "regionHintEnter": {
+    "message": "$ENTER$ captures the whole visible area",
+    "placeholders": {
+      "enter": {
+        "content": "Enter"
       }
     }
   },

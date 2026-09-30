@@ -125,6 +125,38 @@
       }
     },
 
+    "parity": {
+      "type": "object",
+      "description": "The FEATURE x BUILD-TARGET table (EXB-13, 2026-09-29). One row per user-facing feature, one cell per key of `targets`. check-catalog.mjs refuses a tool that declares targets and no table, a row missing a target's column, and a `works` cell whose `proof` is not a suite this tool.json wires (`tests` or `gates[].run`). render-listing.mjs renders each store's `fallback` cells into its long description where store/listing.json carries a `{\"parity\": \"<heading>\"}` line.",
+      "required": ["features"],
+      "properties": {
+        "features": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "object",
+            "required": ["label"],
+            "properties": {
+              "label": { "type": "string", "minLength": 1, "description": "The feature as a listing names it." }
+            },
+            "additionalProperties": {
+              "type": "object",
+              "required": ["state"],
+              "properties": {
+                "state": {
+                  "enum": ["works", "fallback", "unproven"],
+                  "description": "works: a wired suite grades it (proof required). fallback: the feature behaves differently on this target (note required, and rendered into the store listing). unproven: no suite can grade it (note required, never rendered as a claim)."
+                },
+                "proof": { "type": "string", "description": "A test file relative to the tool directory, listed in `tests` or run by a `gates` entry." },
+                "note": { "type": "string", "description": "What happens instead (fallback) or why nothing proves it (unproven)." }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      }
+    },
+
     "build": {
       "type": "object",
       "description": "Per-tool opt-in bundler, never a repo-wide decision. The repo must still clone-and-load with zero npm install (spec §2.4).",
