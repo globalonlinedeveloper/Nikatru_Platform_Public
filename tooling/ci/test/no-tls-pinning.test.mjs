@@ -29,7 +29,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -198,5 +198,126 @@ describe('assert-no-tls-pinning', () => {
       fixture(base({ 'apps/subscriptiontracker/build/web/snapshot.dart': 'x.badCertificateCallback = (a, b, c) => true;\n' })),
     );
     assert.equal(code, 0, out);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The platform-config limb (rv2-security-016). A pin in Android network security
+// config or an Info.plist needs no Dart at all, and passed this guard until
+// 2026-09-30.
+//
+// 🔴 REAL-TREE RUN FIRST, 2026-09-30, in place, each mutation restored before the next:
+//   A. apps/subscriptiontracker/android/app/src/main/res/xml/network_security_config.xml
+//      with a <pin-set> for nikatru.com ⇒ EXIT 1, naming the file and line 5.
+//   B. the main AndroidManifest.xml naming android:networkSecurityConfig=
+//      "@xml/network_security_config" with no such file ⇒ EXIT 2.
+//   C. NSAppTransportSecurity › NSPinnedDomains added to ios/Runner/Info.plist ⇒ EXIT 1.
+//   D. ios/Runner/Info.plist moved away ⇒ EXIT 2 (structural + floor).
+//   Green control before and after: EXIT 0, "10 android .xml + 7 ios/macos .plist".
+describe('assert-no-tls-pinning · platform config (network security config, Info.plist)', () => {
+  const REPO = resolve(CI_DIR, '..', '..');
+  const MANIFEST =
+    '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n  <application android:label="x">\n  </application>\n</manifest>\n';
+  const PLIST =
+    '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">\n<dict>\n\t<key>CFBundleName</key>\n\t<string>x</string>\n</dict>\n</plist>\n';
+  const APP = 'apps/subscriptiontracker';
+  const platform = (extra = {}) =>
+    base({
+      [`${APP}/android/app/src/main/AndroidManifest.xml`]: MANIFEST,
+      [`${APP}/ios/Runner/Info.plist`]: PLIST,
+      [`${APP}/macos/Runner/Info.plist`]: PLIST,
+      ...extra,
+    });
+  const NSC = (inner) =>
+    '<?xml version="1.0" encoding="utf-8"?>\n<network-security-config>\n  <domain-config>\n' +
+    `    <domain includeSubdomains="true">nikatru.com</domain>\n${inner}  </domain-config>\n</network-security-config>\n`;
+  const PIN_SET = '    <pin-set expiration="2027-01-01">\n      <pin digest="SHA-256">AAAA=</pin>\n    </pin-set>\n';
+  const WITH_ATS = (plist, key) =>
+    plist.replace('<dict>\n', `<dict>\n\t<key>NSAppTransportSecurity</key>\n\t<dict>\n\t\t<key>${key}</key>\n\t\t<dict/>\n\t</dict>\n`);
+  const NSC_MANIFEST = MANIFEST.replace('<application ', '<application android:networkSecurityConfig="@xml/network_security_config" ');
+
+  test('passes on platform config that pins nothing, and says how much it read', () => {
+    const { code, out } = run(fixture(platform()));
+    assert.equal(code, 0, out);
+    assert.match(out, /1 android \.xml \+ 2 ios\/macos \.plist platform-config file\(s\) read/);
+  });
+
+  test('🔴 FAILS on a network-security-config <pin-set>', () => {
+    const { code, out } = run(fixture(platform({ [`${APP}/android/app/src/main/res/xml/network_security_config.xml`]: NSC(PIN_SET) })));
+    assert.equal(code, 1, out);
+    assert.match(out, /network_security_config\.xml:5 declares a network-security-config <pin-set>/);
+  });
+
+  test('FAILS on a trust anchor compiled in from @raw/', () => {
+    const anchor = '    <trust-anchors>\n      <certificates src="@raw/my_ca"/>\n    </trust-anchors>\n';
+    const { code, out } = run(fixture(platform({ [`${APP}/android/app/src/main/res/xml/nsc.xml`]: NSC(anchor) })));
+    assert.equal(code, 1, out);
+    assert.match(out, /trust anchor compiled in from @raw\//);
+  });
+
+  test('a system trust anchor and a COMMENTED-OUT pin-set do not fire', () => {
+    const ok = `    <trust-anchors>\n      <certificates src="system"/>\n    </trust-anchors>\n    <!--\n${PIN_SET}    -->\n`;
+    const { code, out } = run(fixture(platform({ [`${APP}/android/app/src/main/res/xml/nsc.xml`]: NSC(ok) })));
+    assert.equal(code, 0, out);
+  });
+
+  for (const key of ['NSPinnedDomains', 'NSPinnedLeafIdentities', 'NSPinnedCAIdentities', 'TSKPinnedDomains']) {
+    test(`🔴 FAILS on ${key} in an Info.plist`, () => {
+      const { code, out } = run(fixture(platform({ [`${APP}/macos/Runner/Info.plist`]: WITH_ATS(PLIST, key) })));
+      assert.equal(code, 1, out);
+      assert.match(out, /macos\/Runner\/Info\.plist:\d+ declares an App Transport Security pinned identity/);
+    });
+  }
+
+  test('COVERAGE LOST when an app has an android/ directory and no main AndroidManifest.xml', () => {
+    const files = platform({ [`${APP}/android/build.gradle.kts`]: '// gradle\n' });
+    delete files[`${APP}/android/app/src/main/AndroidManifest.xml`];
+    const { code, out } = run(fixture(files));
+    assert.equal(code, 2, out);
+    assert.match(out, /android exists and .*AndroidManifest\.xml was not read/);
+  });
+
+  test('COVERAGE LOST when an app has an ios/ directory and no Runner/Info.plist', () => {
+    const files = platform({ [`${APP}/ios/Podfile`]: '# pods\n' });
+    delete files[`${APP}/ios/Runner/Info.plist`];
+    const { code, out } = run(fixture(files));
+    assert.equal(code, 2, out);
+    assert.match(out, /ios exists and .*ios\/Runner\/Info\.plist was not read/);
+  });
+
+  test('🔴 COVERAGE LOST when the manifest names a network security config the walk never read', () => {
+    const { code, out } = run(fixture(platform({ [`${APP}/android/app/src/main/AndroidManifest.xml`]: NSC_MANIFEST })));
+    assert.equal(code, 2, out);
+    assert.match(out, /names android:networkSecurityConfig="@xml\/network_security_config" and no res\/xml\/network_security_config\.xml/);
+  });
+
+  test('the same manifest with its config present is read, and a pin in that config fires', () => {
+    const withNsc = (inner) =>
+      platform({
+        [`${APP}/android/app/src/main/AndroidManifest.xml`]: NSC_MANIFEST,
+        [`${APP}/android/app/src/main/res/xml/network_security_config.xml`]: NSC(inner),
+      });
+    const clean = run(fixture(withNsc('')));
+    assert.equal(clean.code, 0, clean.out);
+    const pinned = run(fixture(withNsc(PIN_SET)));
+    assert.equal(pinned.code, 1, pinned.out);
+  });
+
+  // THE REAL FILES, copied into a fixture, so the suite notices them drifting.
+  const real = (rel) => readFileSync(join(REPO, ...rel.split('/')), 'utf8');
+  test('🔴 the REAL manifest and Info.plists PASS, and NSPinnedDomains injected into the real ios plist goes RED', () => {
+    const files = {
+      [`${APP}/android/app/src/main/AndroidManifest.xml`]: real(`${APP}/android/app/src/main/AndroidManifest.xml`),
+      [`${APP}/ios/Runner/Info.plist`]: real(`${APP}/ios/Runner/Info.plist`),
+      [`${APP}/macos/Runner/Info.plist`]: real(`${APP}/macos/Runner/Info.plist`),
+    };
+    const green = run(fixture(base(files)));
+    assert.equal(green.code, 0, green.out);
+    const iosPlist = files[`${APP}/ios/Runner/Info.plist`];
+    const pinned = iosPlist.replace(/<dict>/, '<dict>\n\t<key>NSAppTransportSecurity</key>\n\t<dict>\n\t\t<key>NSPinnedDomains</key>\n\t\t<dict/>\n\t</dict>');
+    assert.notEqual(pinned, iosPlist, 'the real Info.plist has no <dict>; re-read this test');
+    const red = run(fixture(base({ ...files, [`${APP}/ios/Runner/Info.plist`]: pinned })));
+    assert.equal(red.code, 1, red.out);
+    assert.match(red.out, /ios\/Runner\/Info\.plist:\d+ declares an App Transport Security pinned identity/);
   });
 });
