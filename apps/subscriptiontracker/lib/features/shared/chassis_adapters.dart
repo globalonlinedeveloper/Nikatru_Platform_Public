@@ -6,7 +6,7 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 import '../../l10n/app_localizations.dart';
 
 export 'package:nikatru_chassis_screens/settings/settings_screen.dart'
-    show RowChevron;
+    show EditProfileDialog, RowChevron;
 
 /// ST-U7/U5 adapters: this app's entitlement read and strings, handed to the
 /// chassis states that own the rendering — plan status (C42) and the chevron

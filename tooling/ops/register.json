@@ -1777,8 +1777,8 @@
       "_whyThisRowExists": "APPENDED 2026-09-25 for O-FAILURE-LEDGER-NEVER-RUNS, in the same commit as the `failure-ledger` job of .github/workflows/ops-watch.yml. tooling/ops/triage-failed-runs.mjs existed as a laptop tool that no workflow ran, so every failed run of the last week was graded against tooling/ops/failed-run-causes.json only when a person remembered to run it. The job makes that a weekly duty, and this row is what makes its ABSENCE a finding: without it the job could stop running and nothing in the register would say so. 🔴 THE ANCHOR IS THE SCRIPT, NOT ops-watch.yml, for the reason duty.pages-deployment-landed records: the `anchored` map in tooling/ci/assert-ops-register.mjs is keyed by anchor, so a fifth row anchored at ops-watch.yml would overwrite whichever row got there first.",
       "id": "duty.failure-ledger",
       "kind": "duty",
-      "what": "The weekly failed-run ledger: tooling/ops/triage-failed-runs.mjs lists every failed Actions run of the last eight days on this repository, maps each to a recorded cause in tooling/ops/failed-run-causes.json, and prints the ones that map to nothing as UNEXPLAINED. Before it reads the API it asks `git merge-base --is-ancestor <sha> origin/main` of every `fixedBy: {kind: merge}` sha in that file, so a recorded fix that never reached main is a finding rather than a closed cause. Print-only: it grades, it never re-runs, cancels or edits anything. Runs in ops-watch.yml's `failure-ledger` job on the Mondays 07:45 UTC slot, and on workflow_dispatch.",
-      "detector": "The job's own exit, three-valued: 0 every failed run on main (push, schedule, workflow_dispatch) in the window maps to a recorded cause and every merge fix is on main · 1 at least one failed run is UNEXPLAINED, or a merge fix is not an ancestor of origin/main (the line names the cause row and the sha) · 2 COVERAGE LOST — the quota floor refused to start (GET /rate_limit: the remaining quota minus the request ceiling is under 400), the request ceiling (--max-requests, default 300) was reached, the API refused, the clone was shallow, or failed-run-causes.json does not validate. The digest job prints the exit and the UNEXPLAINED count under \"## Failed-run ledger\" on the same Monday slot, and `did not run (…)` when the job was skipped or cancelled.",
+      "what": "The weekly failed-run ledger: tooling/ops/triage-failed-runs.mjs lists every failed Actions run of the last eight days on this repository, maps each to a recorded cause in tooling/ops/failed-run-causes.json, and prints the ones that map to nothing as UNEXPLAINED. Before it reads the API it asks `git merge-base --is-ancestor <sha> origin/main` of every `fixedBy: {kind: merge}` sha in that file, so a recorded fix that never reached main is a finding rather than a closed cause. Read-only: it grades, it never re-runs, cancels or edits anything — and it goes RED, which `alert` pages on, so the job is named for that (B-5, 2026-09-29; it was \"print-only\"). A second step of the same job runs node tooling/ops/guard-yield.mjs --check, offline (B-1, B-2, B-3). Runs in ops-watch.yml's `failure-ledger` job on the Mondays 07:45 UTC slot, and on workflow_dispatch.",
+      "detector": "The job's own exit, three-valued: 0 every failed run on main (push, schedule, workflow_dispatch) in the window maps to a recorded cause and every merge fix is on main · 1 at least one failed run is UNEXPLAINED, or a merge fix is not an ancestor of origin/main (the line names the cause row and the sha), or a cause matched by two or more runs carries neither firstSeen/lastSeen nor a guard/row (RECURRING UNRANKED, B-4) · 2 COVERAGE LOST — the quota floor refused to start (GET /rate_limit: the remaining quota minus the request ceiling is under 400), the request ceiling (--max-requests, default 300) was reached, the API refused, the clone was shallow, or failed-run-causes.json does not validate. The digest job prints the exit and the UNEXPLAINED count under \"## Failed-run ledger\" on the same Monday slot, and `did not run (…)` when the job was skipped or cancelled.",
       "response": "EXIT 1, UNEXPLAINED: read the named run, find its cause, and add a row to tooling/ops/failed-run-causes.json with a typed `fixedBy` in the same pull request as the fix (or as `infrastructure` / `not-a-defect` / `live-action` / `lost-race` when no code change is the fix). EXIT 1, A FIX NOT ON MAIN: the cause row names a sha that never merged; correct the row to the sha that did, or reopen the cause. EXIT 2: nothing was graded, and the step log's `✗ COVERAGE LOST — …` line names the limb that refused. A quota-floor refusal means the quota the job token shares was already low when the slot ran; the ledger spent none of it, and a workflow_dispatch once the quota has reset grades the week, though only a scheduled run records this duty. A request-ceiling refusal means the window needed more than --max-requests; read the REQUESTS line of the last run that finished before raising the ceiling, and raise it only with the floor in view.",
       "cadence": "7d",
       "mechanism": {
@@ -1881,6 +1881,27 @@
       "source": "verified"
     },
     {
+      "_whyThisRowExists": "APPENDED 2026-09-28 for ST-N1g (O-NATIVE-AUTH-CALLBACK-UNBUILT). assert-ops-register.mjs holds every workflow file to a duty row anchored at it, so the file and this row land together.",
+      "id": "duty.workflow.native-auth-proof.yml",
+      "kind": "duty",
+      "what": "The per-target native sign-in proof: for the dispatched app, five jobs (Android emulator, iOS simulator, macOS, Windows, Linux under xvfb) each provision a throwaway user, drive integration_test/native_auth_proof_test.dart against production auth through tooling/e2e/native_auth_proof.mjs (the real form signs in through the platform Worker's captcha-free native route; sign-up and recovery answer without captcha_failed; sign-out; on callback targets the OS opens an unusable reset callback and the dead-link sentence shows), print the runner's egress IP, and purge the user.",
+      "detector": "Attended: whoever dispatched it reads each job. The driver exits 1 when a step line is missing or a gated call answered captcha_failed, even when flutter test exited 0, and 2 when a define it needs is absent. tooling/ci/test/native-auth-proof.test.mjs holds the read-back logic and the per-OS open commands on every push.",
+      "response": "A green job on a row's own artifact format is the evidence tooling/channel-register.json needs to flip that row's nativeAuth to true, citing the run id. A red job names its step: sign-in (the route, Box C or the app's form), a gated call (its measured answer is printed), sign-out, or the callback (the OS delivery or the dead-link screen). Fix the cause; never flip a row on a job that did not run on its own format.",
+      "cadence": "on-demand",
+      "why": "The answer changes when the auth path changes (the native route, GoTrue, the auth package or an app's sign-in screen), not on a clock. Each run spends production auth calls and five runners, including an emulator and two macOS machines.",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/native-auth-proof.yml",
+        "record": "GitHub Actions run history for native-auth-proof.yml, one job per target",
+        "failingValue": "conclusion = failure: the gate on an app outside the workspace set, a device that did not boot, or native_auth_proof.mjs exiting 1 (a step missing or captcha_failed) or 2 (a missing define)",
+        "readBy": "the dispatching human"
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "verified"
+    },
+    {
       "_whyThisRowExists": "APPENDED 2026-09-24 for O-APPLE-SIGNING-EXPIRY-UNWATCHED. assert-ops-register.mjs holds every workflow file to a duty row anchored at it, so the file and this row land together (measured: without it the guard reports `.github/workflows/apple-expiry-write.yml has NO duty row anchored at it`).",
       "id": "duty.workflow.apple-expiry-write.yml",
       "kind": "duty",
@@ -1902,6 +1923,28 @@
       ],
       "source": "unverified",
       "unverifiedWhy": "The workflow has not run yet. Its first dispatch, after this row reaches main, is the first read of App Store Connect with the repository's key, and whether that key may read v1/certificates and v1/profiles is unmeasured until then."
+    },
+    {
+      "_whyThisRowExists": "APPENDED 2026-09-30 for lane fix-ci-update-goldens. assert-ops-register.mjs holds every workflow file to a duty row anchored at it, so .github/workflows/update-goldens.yml and this row land together.",
+      "id": "duty.workflow.update-goldens.yml",
+      "kind": "duty",
+      "what": "Re-renders golden PNGs on GitHub's Linux runner for a dispatched branch and test list: the same setup-flutter action (so the same tooling/versions.json Flutter pin) and the same ubuntu-24.04 image as ci.yml workspace-gate, `flutter test --update-goldens <tests>` from each package root, then the same tests again WITHOUT --update-goldens. mode=commit pushes one `test(goldens): regenerate on linux (<run url>)` commit of the changed PNGs to the branch; mode=artifact uploads them.",
+      "detector": "Attended: whoever dispatched it reads the run. It fails, and commits nothing, when ref is main or not a branch at the checked-out commit, when a test path is not apps/<id>/test/..._test.dart or packages/<name>/test/..._test.dart, when the re-render changed anything other than a golden PNG of a tested package, or when the tests do not pass without --update-goldens. The commit job re-checks every staged path and PNG signature against the dispatch inputs before it adds anything.",
+      "response": "Read the run. A refusal names the ref, the path or the changed file. A red second pass means the goldens are not the only thing wrong: fix the test on the branch. After a green commit-mode run, re-trigger CI on the pull request (edit its body, or push any commit): a push by GITHUB_TOKEN starts no workflow.",
+      "cadence": "on-demand",
+      "why": "Goldens change when a screen changes, on a branch, never on a clock. The laptops here have no Linux Flutter, and CI renders goldens on Linux, so this dispatch is how any lane re-renders them. Dispatch-only, and never on main.",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/update-goldens.yml",
+        "record": "GitHub Actions run history for update-goldens.yml, plus the goldens-<run id> artifact and, in commit mode, the one commit it pushes to the dispatched branch",
+        "failingValue": "conclusion = failure: a refused input, a non-PNG or out-of-package change, or a red second pass, with nothing committed",
+        "readBy": "the dispatching agent or human, plus ci.yml workspace-gate on the pull request that carries the commit"
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "unverified",
+      "unverifiedWhy": "A workflow_dispatch workflow can be dispatched only once it is on the default branch, so its first real run is the lead's dispatch after this row reaches main."
     },
     {
       "_whyThisRowExists": "APPENDED 2026-09-23 for O-CI-GATE-CASCADE-STRANDS-THE-DEPLOY-LANES. On 2026-09-22 a red ci-gate on 2c4540fa failed `Deploy web` #426 and `Deploy workers` #168 on their gate step; the repair commit 35147514 turned CI green but matched neither lane's push paths, so nothing re-entered them and production served the previous build until a scheduled Ops watch noticed. This workflow is the re-entry. assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions, so the file and this row land together. WIDENED 2026-09-23 for O-REDEPLOY-STRANDED-MISSES-THE-BUILD-LANE: Build apps #102 (run 35800063831, the Worker's 00:00Z dispatch) failed its gate step and was not re-entered, because the derivation took push-on-main lanes only and the run's always() aggregate `all-platforms` failed beside the gate.",
@@ -2162,6 +2205,44 @@
       "unverifiedWhy": "The workflow has never run: it lands with this row, so no scheduled run, no pull request it opened and no auto-merge it armed has been observed. Verified before the push, by mutation of the real tree: deleting this row, and renaming the workflow file with this row kept, each turn assert-ops-register.mjs's both-directions limb red naming the file; writeRecord carrying all five owner trademark fields is tooling/ci/test/name-clearance.test.mjs D6, red when `ruling` is dropped. NOT VERIFIED: that the sweep's ~20 store calls answer from a GitHub-hosted runner — the probe was measured from the owner's machine, and a store that refuses runner addresses is COVERAGE LOST every week. The first scheduled run is that measurement; flip this row to `verified` on its evidence."
     },
     {
+      "_whyThisRowExists": "APPENDED 2026-09-29 for finding A-2 of the round-2 review, in the same commit as .github/workflows/mutation-proofs.yml, because assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions. tooling/ci/assert-mutation-proofs.mjs said its --execute half was for a nightly lane that no workflow ran, so the executed half of the Dart mutation proofs ran only when a person remembered to; the same commit adds the limb (checkNamedLanes) that refuses a guard naming a lane no scheduled workflow runs.",
+      "id": "duty.workflow.mutation-proofs.yml",
+      "kind": "duty",
+      "what": "The weekly EXECUTED half of the Dart mutation proofs: node tooling/ci/assert-mutation-proofs.mjs . --execute applies each recorded `mutation.edit` of every tracked dod.json row that carries one to the real tree, runs the named test UNMUTATED first (green control), then mutated, and requires red WITH the recorded message; the tree is restored on every path. Rows with no re-runnable edit (tooling/dod-register.json unprovenFloor, 18 of 20 on 2026-09-29) are printed by the static half on every push and are not executed. Sundays 04:20 UTC.",
+      "detector": "The run history for mutation-proofs.yml filtered to event = schedule, and the run's own red exit: 1 when a recorded mutation no longer turns its test red, or turns it red without the recorded message (a stale proof); 2 when COVERAGE LOST (a green control was red, the test did not load, or the output carried a loader/analyzer failure, so no mutant's red can be read).",
+      "response": "EXIT 1: the step log names the row. Re-earn it from a terminal — `node tooling/ci/assert-mutation-proofs.mjs . --execute --only \"<row>\"` — and record the new hash and edit in the app's dod.json in one pull request, never by editing the hash alone. EXIT 2: the tree is already red or the toolchain did not load; the green control's output in the step log says which, and nothing about any proof is known until it is fixed. A run that times out at 60 minutes has outgrown one job: shard it by `--only`, never raise the cap.",
+      "cadence": "7d",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/mutation-proofs.yml",
+        "record": "GitHub Actions run history for mutation-proofs.yml, filtered to event = schedule",
+        "failingValue": "no scheduled success inside the window. A run that exits 1 (a stale proof) or 2 (COVERAGE LOST) is not a success, so a proof nobody re-earns ages this row exactly as a stopped timer does.",
+        "readBy": "nothing in-tree reads this cadence specifically — see `freshnessGap` below",
+        "recordQuery": {
+          "reader": "github-run-history",
+          "workflow": "mutation-proofs.yml",
+          "unit": "run",
+          "event": "schedule",
+          "headBranch": "main",
+          "firstDue": "2026-10-08T00:00:00Z",
+          "firstDueWhy": "⚠️ THE BOOTSTRAP, on the same terms as duty.workflow.name-clearance.yml's (TRAPS ci-18): a run history does not exist until the file is on the default branch, so the row and its record cannot both be true on the day of the merge. The first slot after a merge on or before 2026-10-04 04:20 UTC is that Sunday; 2026-10-08 gives it ~92h of scheduler lateness and sits inside this row's own [7d x 1.5 = 252h] window from 2026-09-29. ⚠️ IF THIS MERGES AFTER 2026-10-04 04:20 UTC the first slot is 2026-10-11, so this date must move to 2026-10-15 in the same pull request. No owner step stands before the first slot: the job needs only `contents: read` under its own token. ⬜ DELETE THIS FIELD AND `firstDue` once one scheduled run has succeeded on main.",
+          "why": "🔴 `event: schedule` — the workflow's other trigger is workflow_dispatch, which is a person re-earning or re-checking a row, not the cadence. `headBranch: main` is stated rather than left implied. `unit: run` because the workflow has one job and no other row reads it."
+        }
+      },
+      "absenceWatcher": {
+        "substrate": "github-actions",
+        "what": "Nothing outside GitHub watches this workflow's absence.",
+        "ownerGated": true,
+        "gap": "⚠️ THE WATCHER IS ON THE PROVIDER IT WATCHES — the same circularity as every other workflow row here. It DOES catch a schedule GitHub disables in an inactive public repository, because the [14]O-3 limb reads this record on every CI run. It does NOT catch GitHub Actions ceasing to run this repository's jobs at all. Closing it needs a heartbeat on a second provider: OWNER_QUEUE S-8."
+      },
+      "freshnessGap": "🔴 NO DEDICATED IN-TREE FRESHNESS READER for the 7d cadence, the same choice as duty.workflow.name-clearance.yml. What reads the EFFECT on every push is the static half of tooling/ci/assert-mutation-proofs.mjs in ci.yml's guard-meta job: each proof's content hash against the code it probed, and the unproven ratchet. WEEKLY rather than nightly because a full sweep was measured at 90–140 minutes; the cost is stated: ONE missed or red Sunday puts this row past its 252h window. Declared 2026-09-29.",
+      "accessProviders": [
+        "github"
+      ],
+      "source": "unverified",
+      "unverifiedWhy": "The workflow has never run: it lands with this row, so no scheduled run has been observed, and the draft that wrote it could not run Flutter. Verified before the push, by mutation of the real tree: with the workflow absent, assert-ops-register.mjs's checkNamedLanes limb names tooling/ci/assert-mutation-proofs.mjs; with the workflow and without this row, its both-directions limb names the file. NOT VERIFIED: the executed half's wall time on a GitHub-hosted runner. The first scheduled run is that measurement; flip this row to `verified` on its evidence."
+    },
+    {
       "_whyThisRowExists": "APPENDED 2026-09-25 for O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 4. assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions, so .github/workflows/rollback.yml and this row land together.",
       "id": "duty.workflow.rollback.yml",
       "kind": "duty",
@@ -2257,6 +2338,98 @@
         "blocks": "page-only",
         "page": "ops-watch.yml",
         "why": "freshness, not correctness: the queue drains only by merges; a frozen ci-gate would stop the deploys those merges feed (O-RENOVATE-BACKLOG-OUTRUNS-ITS-LIMITS)"
+      }
+    },
+    {
+      "_whyThisRowExists": "APPENDED 2026-09-29 for finding P-9, in the same change as tooling/ops/check-code-scanning-age.mjs and the `code-scanning-age` job of .github/workflows/ops-watch.yml. Measured 2026-09-29: 146 GitHub code-scanning alerts open, 31 high and 0 critical, none dismissed with a reason, 26 new since 2026-09-24, and no reader of open alerts anywhere in tooling/ or .github/ — CodeQL wrote them and nothing judged them. 🔴 THE ANCHOR IS THE SCRIPT, NOT ops-watch.yml, for the reason duty.pages-deployment-landed records: the `anchored` map in tooling/ci/assert-ops-register.mjs is keyed by anchor. 🔴 THE CLASS IS `duty.freshness.`, AND IT IS PAGE-ONLY (liveVerdictScope), on the renovate-backlog row's terms: the alerts drain only by merged fixes or reasoned dismissals, and a verdict that froze ci-gate would freeze exactly the merges that fix them.",
+      "id": "duty.freshness.code-scanning-age",
+      "kind": "duty",
+      "what": "The open GitHub code-scanning alerts, read against a triage window. tooling/ops/check-code-scanning-age.mjs pages through GET /repos/{owner}/{repo}/code-scanning/alerts?state=open and pages when an alert of security_severity_level high or critical has stood untriaged longer than MAX_AGE_DAYS (7). Triaged means fixed, or dismissed WITH a non-empty dismissed_reason; a dismissal with no reason is graded as still open. Medium, low and quality-only alerts are counted in the summary line and never page. Runs in ops-watch.yml's `code-scanning-age` job on the Mondays 07:45 UTC slot, and on a workflow_dispatch that asks for it (inputs.code_scanning_age).",
+      "detector": "The job's own exit, three-valued: 0 the list was read and no high/critical alert is untriaged past 7 days (the summary line prints the counts by severity and state, and says '0 open alerts read' for an empty list) · 1 at least one is, each printed with number, rule id, severity, age and path:line · 2 COVERAGE LOST — no token, the API refused (403 without security-events: read, 404 with code scanning off), a page that is not a JSON array, an item missing number/state/created_at/rule, a severity outside the enum, a list still continuing after MAX_PAGES, or a non-empty list in which no alert carries rule.security_severity_level. Exit 1 and exit 2 both fail the job.",
+      "response": "EXIT 1: fix each alert the log names, or dismiss it on GitHub WITH a reason (false positive / won't fix / used in tests) and a comment saying why; a dismissal with no reason stays red. MAX_AGE_DAYS is never raised to clear the red. EXIT 2: nothing was graded, and the step log's `x COULD NOT LOOK` line names what could not be read.",
+      "cadence": "7d",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": "tooling/ops/check-code-scanning-age.mjs",
+        "record": "GitHub Actions run history for .github/workflows/ops-watch.yml, filtered to event = schedule, read at the `code-scanning-age` job — the workflow's other eleven slots skip that job by its own `if:`, and a job skipped by its own `if:` is neutral in a unit read, so only the Mondays 07:45 UTC slot can supply a verdict for this row.",
+        "failingValue": "no scheduled run on main in which the `code-scanning-age` job concluded success inside the window [7d x 1.5 = 252h]. Exit 1 (an alert past its window) and exit 2 (COVERAGE LOST) both fail the job, so untriaged alerts age this row exactly as a stopped schedule does. REACHABLE BY MUTATION OF THE REAL TREE: deleting the job while this row names it is an undeclared-job finding in tooling/ci/assert-ops-register.mjs, and dropping it from alert's `needs` is that guard's alert-needs finding; the reader's own cases in tooling/ci/test/code-scanning-age.test.mjs red on an 8-day-old high or critical alert and on every malformed input.",
+        "readBy": ".github/workflows/ops-watch.yml — the code-scanning-age job, whose non-zero exit reaches the durable issue through the alert job: this job is listed in alert's `needs`, and tooling/ci/assert-ops-register.mjs refuses an ops-watch job missing from that list.",
+        "recordQuery": {
+          "reader": "github-run-history",
+          "workflow": "ops-watch.yml",
+          "unit": {
+            "jobs": [
+              "code-scanning-age"
+            ]
+          },
+          "event": "schedule",
+          "headBranch": "main",
+          "firstDue": "2026-10-09T00:00:00Z",
+          "firstDueWhy": "⚠️ THE BOOTSTRAP, on duty.freshness.renovate-backlog's terms: the job's run history does not exist until the job is on the default branch. The first Monday 07:45 UTC slot after a merge on or after 2026-09-29 is 2026-10-05, and 2026-10-09 gives it ~88h of scheduler lateness while staying inside one window [7d x 1.5 = 252h] of any run from 2026-09-29. A merge after 2026-10-05 07:45 UTC re-sets this to the Friday 00:00 UTC after the next Monday slot. No owner step stands before the first slot: the job reads under its own workflow token. ⬜ DELETE THIS FIELD AND `firstDue` once one scheduled run has succeeded on main.",
+          "why": "🔴 `unit: { jobs: ['code-scanning-age'] }` — the job, not the run, for the reason duty.freshness.renovate-backlog gives: a run is green whenever its daily readers are, which says nothing about a job that runs on one slot a week. `event: schedule` because a workflow_dispatch run is a person pressing the button. THE MONDAY SLOT BOUNDS THIS ROW'S SHARE OF THE API QUOTA: scheduleWeekdays reads this job's weekdays out of its own `if:`, so the unit scan opens the job lists of Monday schedule runs only — the same runs duty.failure-ledger's and duty.freshness.renovate-backlog's scans already open, each fetched once per run."
+        }
+      },
+      "absenceWatcher": {
+        "substrate": "(none)",
+        "what": "NOTHING, and it is the SAME gap duty.workflow.ops-watch.yml and duty.freshness.renovate-backlog already carry: this duty is a job inside that workflow, so whatever silences the workflow silences this too. Recorded separately instead of borrowed, because a gap inherited by implication is a gap nobody counts.",
+        "ownerGated": true,
+        "gap": "🔴 NOTHING WATCHES THIS JOB'S ABSENCE from outside GitHub, with the same repair as the rows that already say so: GitHub disables scheduled workflows in inactive public repositories, and a dead Monday slot looks exactly like a week with no overdue alert. Its FAILING is loud (a non-zero exit fails the job, which reaches the durable issue through alert). Closing the absence half needs a signal hosted on a second provider: OWNER_QUEUE S-8, the same item. Declared 2026-09-29."
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "unverified",
+      "unverifiedWhy": "The job has never run, and the reader has never been run live: it lands with this row, drafted in a sandbox with no GitHub token. Verified offline only, by tooling/ci/test/code-scanning-age.test.mjs (the real script over fixture alert lists, and the paged API read over a fake fetch). NOT VERIFIED: that the workflow token with `security-events: read` answers GET /repos/{owner}/{repo}/code-scanning/alerts, and that the live alerts carry rule.security_severity_level as the fixtures do. Expected on the first slot: exit 1, because 31 high alerts were open on 2026-09-29 and most are older than 7 days. The first scheduled run is that measurement; flip this row to `verified` on its evidence.",
+      "liveVerdictScope": {
+        "blocks": "page-only",
+        "page": "ops-watch.yml",
+        "why": "freshness, not correctness: alerts drain only by merged fixes or reasoned dismissals; a frozen ci-gate would stop the merges that fix them (P-9)"
+      }
+    },
+    {
+      "_whyThisRowExists": "APPENDED 2026-09-29 for findings B-9 and B-11 of the round-2 review, in the same commit as the `tech-currency` job of .github/workflows/ops-watch.yml and tooling/ops/check-tech-currency.mjs. The owner constraint C-PIPELINE-ADAPTS-AND-STAYS-CURRENT was LOCKED with no reader and no row (state.mjs: 'a technology-currency reader item; it is not built'), so a vendor retiring something the pipeline runs on was seen only when a build broke. 🔴 THE ANCHOR IS THE SCRIPT, NOT ops-watch.yml, for the reason duty.freshness.renovate-backlog records: the `anchored` map in tooling/ci/assert-ops-register.mjs is keyed by anchor. 🔴 THE CLASS IS `duty.freshness.`, AND IT IS PAGE-ONLY (liveVerdictScope): a retirement is answered by merging a pin move or a re-read duty row, and a verdict that froze ci-gate would freeze exactly that merge.",
+      "id": "duty.freshness.tech-currency",
+      "kind": "duty",
+      "what": "What the pipeline runs on, read against what its vendors retire. tooling/ops/check-tech-currency.mjs reads (1) the GitHub changelog, Actions label, paged back 120 days, against every remote action's `runs.using` at its pinned ref (composites followed) and the node, java, xcode and runner_* pins of tooling/versions.json; (2) the Node.js release schedule against every Node major the tree runs on, 120 days ahead; (3) every primary-source row of tooling/legal/duty-matrix.json: its page is re-read, a vendor date after the row's `fetched` is a proposal, and an `enforced` date (inForceFrom, extensionAvailableTo) that passed after `fetched` is a proposal. Runs in ops-watch.yml's `tech-currency` job on the Mondays 07:45 UTC slot, and on a workflow_dispatch that asks for it (inputs.tech_currency).",
+      "detector": "The job's own exit, three-valued: 0 every source was read and nothing proposes a change · 1 at least one proposal, each printed with its evidence (the changelog sentence, the end-of-life date, the vendor date) and who in the tree uses the subject · 2 COVERAGE LOST — a read outlived the bounded plan, the changelog grammar changed or the feed never reached its window, an action's metadata is gone, the schedule lacks a Node major the tree runs on, or a dated vendor page carried no date. Exit 1 and exit 2 both fail the job.",
+      "response": "EXIT 1: for a retired runtime or runner image, or a Node major near end of life, move the pin (an action to a release on the new runtime, a runner label, the versions.json key) in a pull request. For a duty source, re-read the vendor page: if the rule still says what the row quotes, set `source.fetched` to the day it was read; if it moved, update the row's `enforced` values and the guard that reads them in the same change. Never edit the reader to clear a proposal. EXIT 2: nothing was graded; the step log's `x COULD NOT LOOK` block names each read that did not answer.",
+      "cadence": "7d",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": "tooling/ops/check-tech-currency.mjs",
+        "record": "GitHub Actions run history for .github/workflows/ops-watch.yml, filtered to event = schedule, read at the `tech-currency` job — the workflow's other eleven slots skip that job by its own `if:`, and a job skipped by its own `if:` is neutral in a unit read, so only the Mondays 07:45 UTC slot can supply a verdict for this row.",
+        "failingValue": "no scheduled run on main in which the `tech-currency` job concluded success inside the window [7d x 1.5 = 252h]. Exit 1 (a proposal stands) and exit 2 (COVERAGE LOST) both fail the job, so an unanswered retirement ages this row exactly as a stopped schedule does. REACHABLE BY MUTATION OF THE REAL TREE: deleting the job while this row names it is an undeclared-job finding in tooling/ci/assert-ops-register.mjs, and dropping it from alert's `needs` is that guard's alert-needs finding; the reader's own cases in tooling/ci/test/tech-currency.test.mjs red on a retired node20 runtime (B9) and on a duty source dated after its fetch (B11).",
+        "readBy": ".github/workflows/ops-watch.yml — the tech-currency job, whose non-zero exit reaches the durable issue through the alert job: this job is listed in alert's `needs`, and tooling/ci/assert-ops-register.mjs refuses an ops-watch job missing from that list.",
+        "recordQuery": {
+          "reader": "github-run-history",
+          "workflow": "ops-watch.yml",
+          "unit": {
+            "jobs": [
+              "tech-currency"
+            ]
+          },
+          "event": "schedule",
+          "headBranch": "main",
+          "firstDue": "2026-10-09T00:00:00Z",
+          "firstDueWhy": "⚠️ THE BOOTSTRAP, on the same terms as duty.freshness.renovate-backlog's and set to the same instant for the same reason: the job's run history does not exist until the job is on the default branch. The first Monday 07:45 UTC slot after a merge from 2026-09-29 to 2026-10-05 07:45 UTC is 2026-10-05, and 2026-10-09 gives it ~88h of scheduler lateness while staying inside one window [7d x 1.5 = 252h] of any run grading it from 2026-09-28T12:00Z. A merge after 2026-10-05 07:45 UTC re-sets this date to the Friday 00:00 UTC after the next Monday slot. No owner step stands before the first slot: every source is public and the job reads no token. ⬜ DELETE THIS FIELD AND `firstDue` once one scheduled run has succeeded on main.",
+          "why": "🔴 `unit: { jobs: ['tech-currency'] }` — the job, not the run, for the reason duty.freshness.renovate-backlog gives: ops-watch.yml runs twelve slots a day and a run is green whenever its daily readers are. `event: schedule` because a workflow_dispatch run is a person pressing the button, not the cadence. 🔴 THE MONDAY SLOT IS WHAT BOUNDS THIS ROW'S SHARE OF THE API QUOTA: the unit scan reads this job's weekdays out of its own `if:` (scheduleWeekdays) and opens the job list of a Monday schedule run only — the same runs duty.failure-ledger's and duty.freshness.renovate-backlog's scans already open, and the guard fetches each job list once per run, so this row adds no job-list read."
+        }
+      },
+      "absenceWatcher": {
+        "substrate": "(none)",
+        "what": "NOTHING, and it is the SAME gap duty.workflow.ops-watch.yml, duty.failure-ledger and duty.freshness.renovate-backlog already carry: this duty is a job inside that workflow, so whatever silences the workflow silences this too. Recorded separately instead of borrowed, because a gap inherited by implication is a gap nobody counts.",
+        "ownerGated": true,
+        "gap": "🔴 NOTHING WATCHES THIS JOB'S ABSENCE from outside GitHub, with the same repair as the rows that already say so: GitHub disables scheduled workflows in inactive public repositories, and a dead Monday slot looks exactly like a week no vendor retired anything. Its FAILING is loud (a non-zero exit fails the job, which reaches the durable issue through alert). Closing the absence half needs a signal hosted on a second provider: OWNER_QUEUE S-8, the same item. Declared 2026-09-29."
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "unverified",
+      "unverifiedWhy": "The job has never run: it lands with this row. The reader itself was run live on 2026-09-29 from a sandbox with public network access: 13 pinned actions and the one a composite uses (12 on node24, 2 composite), 27 changelog entries over 3 pages (the Node 20 removal of 2026-09-23 among them, retiring nothing the tree still runs on), Node 24 ending 2028-04-30; before the re-read below it proposed the three duty sources whose vendor pages were dated after their `fetched` (store-policies ms.date 2026-09-14 vs 2026-07-29; target-sdk and page-sizes 'Last updated 2026-09-16' vs 2026-08-04 and 2026-08-20) and the target-sdk inForceFrom that passed after its fetch. The two developer.android.com rows were re-read that day and their quotes still hold, so their `fetched` is 2026-09-29 in the same change; the Microsoft row is left for a re-read that also moves its Private ledger entry. NOT VERIFIED: the same reads from a GitHub-hosted runner. The first scheduled run is that measurement; flip this row to `verified` on its evidence.",
+      "liveVerdictScope": {
+        "blocks": "page-only",
+        "page": "ops-watch.yml",
+        "why": "freshness, not correctness: a retirement is answered only by merging a pin move or a re-read duty row; a frozen ci-gate would stop that merge (C-PIPELINE-ADAPTS-AND-STAYS-CURRENT, B-9)"
       }
     },
     {
@@ -4750,6 +4923,50 @@
       "mechanism": {
         "substrate": "cloudflare-d1",
         "anchor": "services/subscriptiontracker-api/migrations/0001_init.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.subscriptiontracker_db.price_change",
+      "kind": "retention",
+      "store": "d1:subscriptiontracker_db:price_change",
+      "what": "The user's own price history: one row per edit that moved a tracked subscription's price or currency (ST-I4).",
+      "rule": "keep",
+      "keepWhy": "User content, kept with its subscription: purged with it 30 days after a soft delete, and with the account on erasure. Same reasoning as retention.d1.subscriptiontracker_db.payment_history.",
+      "detector": "tooling/ci/assert-retention-coverage.mjs.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/subscriptiontracker-api/migrations/0005_lifecycle_history_categories.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.subscriptiontracker_db.categories",
+      "kind": "retention",
+      "store": "d1:subscriptiontracker_db:categories",
+      "what": "The user's own category names, beside ten shared built-in rows that hold nothing about anyone (ST-X8).",
+      "rule": "keep",
+      "keepWhy": "User content, kept until the user deletes the category or the account. Same reasoning as retention.d1.subscriptiontracker_db.budget_categories.",
+      "detector": "tooling/ci/assert-retention-coverage.mjs.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/subscriptiontracker-api/migrations/0005_lifecycle_history_categories.sql",
         "record": "the table itself",
         "failingValue": "not applicable to a reasoned keep",
         "readBy": "tooling/ci/assert-retention-coverage.mjs"

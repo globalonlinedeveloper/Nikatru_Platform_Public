@@ -17,6 +17,11 @@
    the shape that would run out of it. The outcome is graded against
    clipboard-expect.json; the table is printed for the §13 row either way.
 
+   ⏱ 2026-09-29 (rv2 EXB-10): a row may carry `text`, and is then the AI
+   hand-off copy result.js makes — ONE ClipboardItem with image/png AND
+   text/plain. It is 'ok' only when both types read back and the text is
+   byte-identical; image-only rows grade exactly as before.
+
    Exit: 0 every outcome as expected · 1 one differs · 2 coverage lost (no
    Firefox, older than 140, BiDi refused, or no size graded).
 
@@ -72,16 +77,22 @@ try {
       ' const g = c.getContext("2d"); g.fillStyle = "#2a6"; g.fillRect(0, 0, c.width, c.height); g.fillStyle = "#123"; g.fillRect(0, 0, 16, 16);' +
       ' window.__clipSrc = await new Promise(r => c.toBlob(r, "image/png")); return true; })()');
     const r = await evalJson(ff, ctx, '(async () => { const t0 = performance.now();' +
-      ' try { await fsCopyBlobToClipboard(window.__clipSrc, true); }' +
+      ' try { await fsCopyBlobToClipboard(window.__clipSrc, true' + (s.text ? ', ' + JSON.stringify(s.text) : '') + '); }' +
       ' catch (e) { return { outcome: "refused", ms: Math.round(performance.now() - t0), error: (e && e.name) + ": " + (e && e.message) }; }' +
       ' const ms = Math.round(performance.now() - t0);' +
       ' try { const items = await navigator.clipboard.read(); const it = items.find(i => i.types.includes("image/png"));' +
       '   if (!it) return { outcome: "unverified", ms, error: "no image/png on the clipboard; types: " + items.map(i => i.types.join("+")).join(",") };' +
       '   const bmp = await createImageBitmap(await it.getType("image/png"));' +
-      '   return { outcome: bmp.width === ' + s.w + ' && bmp.height === ' + s.h + ' ? "ok" : "unverified", ms, back: bmp.width + "x" + bmp.height };' +
+      '   if (bmp.width !== ' + s.w + ' || bmp.height !== ' + s.h + ') return { outcome: "unverified", ms, back: bmp.width + "x" + bmp.height };' +
+      /* A row with a text sidecar is the AI hand-off copy (result.js passes the
+         envelope text): BOTH types must come back, the text byte for byte. */
+      (s.text ? '   if (!it.types.includes("text/plain")) return { outcome: "unverified", ms, error: "image/png back, no text/plain; types: " + it.types.join("+") };' +
+        '   const t = await (await it.getType("text/plain")).text();' +
+        '   if (t !== ' + JSON.stringify(s.text) + ') return { outcome: "unverified", ms, error: "text/plain came back as " + JSON.stringify(t.slice(0, 80)) };' : '') +
+      '   return { outcome: "ok", ms, back: bmp.width + "x" + bmp.height' + (s.text ? ' + " + text/plain"' : '') + ' };' +
       ' } catch (e) { return { outcome: "unverified", ms, error: "read-back: " + (e && e.name) + ": " + (e && e.message) }; } })()',
     { userActivation: true });
-    rows.push({ size: s.w + 'x' + s.h, expect: s.expect, ...r });
+    rows.push({ size: s.w + 'x' + s.h + (s.text ? '+text' : ''), expect: s.expect, ...r });
   }
 
   console.log('\nFirefox ' + v.major + ' clipboard, packed add-on, shipped permissions ' + JSON.stringify(ext.packedManifest.permissions));

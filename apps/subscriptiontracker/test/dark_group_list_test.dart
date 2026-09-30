@@ -43,7 +43,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
-import 'package:subscriptiontracker/features/budget/budget_screen.dart';
 import 'package:subscriptiontracker/features/calendar/calendar_screen.dart';
 import 'package:subscriptiontracker/features/insights/insights_screen.dart';
 import 'package:subscriptiontracker/features/shared/widgets.dart';
@@ -172,11 +171,6 @@ void main() {
           title: (AppLocalizations l) => l.calendarTitle,
         ),
         (
-          name: 'budget',
-          screen: const BudgetScreen(),
-          title: (AppLocalizations l) => l.budgetTitle,
-        ),
-        (
           name: 'insights',
           screen: const InsightsScreen(),
           title: (AppLocalizations l) => l.insightsTitle,
@@ -185,7 +179,34 @@ void main() {
 
   // ───────────────────────────────────────────────────────────────────────────
   group('dark: the grouped-list screens derive from the scheme', () {
-    for (int i = 0; i < 3; i++) {
+    // ⏱ ST-D3: Insights paints its cards with the ST-D0 `AppCard` (a Material
+    // on `AppCard.fillOf`), not the app's `cardDecoration` Container, so the
+    // Container-fill checks below run on calendar; Insights has its own case.
+    testWidgets('[insights] every card is the foundation AppCard fill', (
+      WidgetTester tester,
+    ) async {
+      await _pumpScreen(tester, const InsightsScreen(), theme: darkTheme);
+      // The FIRST Material under each AppCard is the card itself; buttons
+      // inside it carry their own.
+      final List<Color?> fills = <Color?>[
+        for (final Element card in find.byType(AppCard).evaluate())
+          tester
+              .widget<Material>(
+                find
+                    .descendant(
+                      of: find.byWidget(card.widget),
+                      matching: find.byType(Material),
+                    )
+                    .first,
+              )
+              .color,
+      ];
+      expect(fills, isNotEmpty, reason: 'NOT VACUOUS: no AppCard rendered');
+      expect(fills, everyElement(AppCard.fillOf(darkTheme)));
+      expect(fills, isNot(contains(AppColors.surface)));
+    });
+
+    for (int i = 0; i < 1; i++) {
       final ({
         String name,
         Widget screen,
@@ -193,30 +214,35 @@ void main() {
       })
       s = screenOf(i);
 
-      testWidgets('[${s.name}] no card is still the light surface', (
-        WidgetTester tester,
-      ) async {
-        await _pumpScreen(tester, s.screen, theme: darkTheme);
-        final List<Color?> fills = _containerFills(tester);
+      // ⏱ 2026-09-28 · train ST-D2: calendar left `cardDecoration` for
+      // `AppCard` (a Material, not a Container); its card is asserted by the
+      // ST-D2 group at the end of this file.
+      if (s.name != 'calendar') {
+        testWidgets('[${s.name}] no card is still the light surface', (
+          WidgetTester tester,
+        ) async {
+          await _pumpScreen(tester, s.screen, theme: darkTheme);
+          final List<Color?> fills = _containerFills(tester);
 
-        expect(
-          fills,
-          isNot(contains(AppColors.surface)),
-          reason:
-              'A white card on a dark scaffold is the defect W0 fixed in '
-              'cardDecoration. If it is back on ${s.name} it is because the '
-              'screen stopped going through cardDecoration, not because the '
-              'shared function regressed.',
-        );
-        expect(
-          fills,
-          contains(dark.surfaceContainerHighest),
-          reason:
-              'NOT VACUOUS: ${s.name} must actually have painted a card. With '
-              'no card on screen the assertion above would pass on an empty '
-              'page.',
-        );
-      });
+          expect(
+            fills,
+            isNot(contains(AppColors.surface)),
+            reason:
+                'A white card on a dark scaffold is the defect W0 fixed in '
+                'cardDecoration. If it is back on ${s.name} it is because the '
+                'screen stopped going through cardDecoration, not because the '
+                'shared function regressed.',
+          );
+          expect(
+            fills,
+            contains(dark.surfaceContainerHighest),
+            reason:
+                'NOT VACUOUS: ${s.name} must actually have painted a card. With '
+                'no card on screen the assertion above would pass on an empty '
+                'page.',
+          );
+        });
+      }
 
       testWidgets('[${s.name}] no text is still painted a light literal', (
         WidgetTester tester,
@@ -262,68 +288,36 @@ void main() {
       });
     }
 
-    testWidgets('[budget] the unfilled half of a category bar is a scheme edge', (
-      WidgetTester tester,
-    ) async {
-      await _pumpScreen(tester, const BudgetScreen(), theme: darkTheme);
+    // ⏱ ST-D3 D3-3: the [budget] category-bar track case left with the Budget
+    // screen. The Insights budget meter's track is `surfaceContainerHighest`,
+    // pinned by the Insights goldens in both schemes.
 
-      final Iterable<Color?> tracks = tester
-          .widgetList<LinearProgressIndicator>(
-            find.byType(LinearProgressIndicator),
-          )
-          .map((LinearProgressIndicator p) => p.backgroundColor);
-
-      expect(tracks, isNotEmpty, reason: 'NOT VACUOUS: the bars must exist.');
-      expect(
-        tracks,
-        everyElement(dark.outlineVariant),
-        reason:
-            'AppColors.line is #ECECF2 — a near-WHITE hairline. As a progress '
-            "track on a dark card it reads as a FULL bar, so every category "
-            'looks maxed out. This is the one dark defect on this screen that '
-            'is not about text.',
-      );
-      expect(
-        tracks,
-        isNot(contains(AppColors.line)),
-        reason: 'The falsifier for the line above.',
-      );
-    });
-
-    testWidgets('[insights] the unused-row outlines are a scheme edge', (
+    // ⏱ ST-D3 D3-4: the unused-row outlines left with the savings card (its
+    // `unused` field is written by nothing). The ground this case now pins is
+    // the budget meter's TRACK — the one bar on the rebuilt screen.
+    testWidgets('[insights] the budget meter track is a scheme slot', (
       WidgetTester tester,
     ) async {
       await _pumpScreen(tester, const InsightsScreen(), theme: darkTheme);
-
-      final List<Color> borders = tester
-          .widgetList<Container>(find.byType(Container))
-          .map((Container c) => c.decoration)
-          .whereType<BoxDecoration>()
-          .map((BoxDecoration d) => d.border)
-          .whereType<Border>()
-          .map((Border b) => b.top.color)
+      final List<Color?> tracks = tester
+          .widgetList<LinearProgressIndicator>(
+            find.byType(LinearProgressIndicator),
+          )
+          .map((LinearProgressIndicator p) => p.backgroundColor)
           .toList();
-
-      expect(
-        borders,
-        isNot(contains(AppColors.line)),
-        reason:
-            'A #ECECF2 outline GLARES on a dark card instead of receding — '
-            'the inverse of the invisible-shadow problem cardDecoration fixes.',
-      );
-      expect(
-        borders,
-        contains(dark.outlineVariant),
-        reason:
-            'NOT VACUOUS: the savings card must be in its POPULATED branch, so '
-            'there are outlined rows to measure at all.',
-      );
+      expect(tracks, isNotEmpty, reason: 'NOT VACUOUS: the meter must exist.');
+      expect(tracks, isNot(contains(AppColors.line)));
+      expect(tracks, contains(dark.surfaceContainerHighest));
     });
   });
 
   // ───────────────────────────────────────────────────────────────────────────
   group('light stays pinned to the literal tokens', () {
-    for (int i = 0; i < 3; i++) {
+    // ⏱ ST-D3: Insights is rebuilt on the ST-D0 foundation — scheme roles and
+    // the type ramp, never a colour literal — so the "light is the literal
+    // token" pin applies to calendar only; the Insights goldens pin its light
+    // pixels instead.
+    for (int i = 0; i < 1; i++) {
       final ({
         String name,
         Widget screen,
@@ -331,32 +325,39 @@ void main() {
       })
       s = screenOf(i);
 
-      testWidgets('[${s.name}] the page title is still AppColors.ink exactly', (
-        WidgetTester tester,
-      ) async {
-        final AppLocalizations en = await AppLocalizations.delegate.load(
-          const Locale('en'),
-        );
-        await _pumpScreen(tester, s.screen, theme: lightTheme);
+      // ⏱ 2026-09-28 · train ST-D2: the legacy pin is RETIRED for calendar and
+      // for calendar only — the design train repaints it from the ST-D0
+      // foundation in both schemes, on purpose. The ST-D2 group at the end of
+      // this file asserts the scheme slots the foundation promises instead; a
+      // pin on the literal would now be the regression.
+      if (s.name != 'calendar') {
+        testWidgets('[${s.name}] the page title is still AppColors.ink exactly', (
+          WidgetTester tester,
+        ) async {
+          final AppLocalizations en = await AppLocalizations.delegate.load(
+            const Locale('en'),
+          );
+          await _pumpScreen(tester, s.screen, theme: lightTheme);
 
-        final Text title = tester.widget<Text>(find.text(s.title(en)));
-        expect(
-          title.style?.color,
-          AppColors.ink,
-          reason:
-              'THE LEGACY PIN. apps/subscriptiontracker is the frozen rail-prover the owner '
-              'eyeballed at 1.0.151; light must stay byte-identical through '
-              'the dark work. Asserting against lightTheme.colorScheme.onSurface '
-              'instead would make the natural regression — tidying the light '
-              'branch to a scheme slot — pass, because both sides of the '
-              'comparison would move together.',
-        );
-        expect(
-          _containerFills(tester),
-          contains(AppColors.surface),
-          reason: 'And the light cards are still the literal white surface.',
-        );
-      });
+          final Text title = tester.widget<Text>(find.text(s.title(en)));
+          expect(
+            title.style?.color,
+            AppColors.ink,
+            reason:
+                'THE LEGACY PIN. apps/subscriptiontracker is the frozen rail-prover the owner '
+                'eyeballed at 1.0.151; light must stay byte-identical through '
+                'the dark work. Asserting against lightTheme.colorScheme.onSurface '
+                'instead would make the natural regression — tidying the light '
+                'branch to a scheme slot — pass, because both sides of the '
+                'comparison would move together.',
+          );
+          expect(
+            _containerFills(tester),
+            contains(AppColors.surface),
+            reason: 'And the light cards are still the literal white surface.',
+          );
+        });
+      }
     }
   });
 
@@ -372,30 +373,21 @@ void main() {
       // 🔴 THE CROSS-CHECK IS THE POINT. `find.text(en.calendarTitle)` alone
       // passes if the screen kept the hardcoded literal, because the arb value
       // is byte-identical to it. What it CANNOT survive is the wrong key: swap
-      // `l10n.calendarTitle` for `l10n.budgetTitle` in calendar_screen.dart and
+      // `l10n.calendarTitle` for `l10n.insightsTitle` in calendar_screen.dart and
       // the first pair below goes red naming both strings.
       await _pumpScreen(tester, const CalendarScreen(), theme: lightTheme);
       expect(find.text(en.calendarTitle), findsOneWidget);
       expect(
-        find.text(en.budgetTitle),
+        find.text(en.insightsTitle),
         findsNothing,
-        reason: 'calendar must not be showing budget\'s heading.',
+        reason: 'calendar must not be showing insights\'s heading.',
       );
       expect(find.text(en.calendarByDate), findsOneWidget);
 
-      await _pumpScreen(tester, const BudgetScreen(), theme: lightTheme);
-      expect(find.text(en.budgetTitle), findsOneWidget);
-      expect(find.text(en.calendarTitle), findsNothing);
-      expect(find.text(en.byCategory), findsOneWidget);
-
       await _pumpScreen(tester, const InsightsScreen(), theme: lightTheme);
       expect(find.text(en.insightsTitle), findsOneWidget);
-      expect(find.text(en.budgetTitle), findsNothing);
-      // `byCategory` is deliberately SHARED between budget and insights — the
-      // same heading over the same breakdown. This is the assertion that says
-      // the sharing is intended rather than a paste.
+      expect(find.text(en.calendarTitle), findsNothing);
       expect(find.text(en.byCategory), findsOneWidget);
-      expect(find.text(en.insightsSubtitle), findsOneWidget);
     });
 
     testWidgets('[ta] the month name comes from intl, not a deleted table', (
@@ -454,23 +446,58 @@ void main() {
         findsNothing,
         reason: 'The pre-l10n English literal must not survive into Tamil.',
       );
-
-      await _pumpScreen(
-        tester,
-        const BudgetScreen(),
-        theme: lightTheme,
-        locale: const Locale('ta'),
-      );
-      expect(find.text(taMonth), findsOneWidget);
-      expect(find.text(enMonth), findsNothing);
-      expect(find.text(ta.budgetTitle), findsOneWidget);
-      expect(
-        find.text(en.budgetTitle),
-        findsNothing,
-        reason:
-            'Same falsifier for budget: the English heading must not appear in '
-            'a Tamil build.',
-      );
     });
+  });
+
+  // ── ST-D2 · THE CALENDAR IS PAINTED FROM THE FOUNDATION, IN BOTH SCHEMES ───
+  //
+  // Replaces the legacy light pin for this one screen (see the two
+  // `s.name != 'calendar'` guards above). Every expectation is a scheme slot
+  // or an ST-D0 component's own answer, and each has a falsifier: a literal
+  // colour, the old `cardDecoration`, or a bare `AppColors` neutral turns it
+  // red.
+  group('ST-D2: calendar derives every paint from the scheme', () {
+    for (final Brightness b in Brightness.values) {
+      testWidgets('[calendar] ${b.name}: title, cards and text are scheme '
+          'slots', (WidgetTester tester) async {
+        final ThemeData theme = b == Brightness.light ? lightTheme : darkTheme;
+        final ColorScheme scheme = theme.colorScheme;
+        final AppLocalizations en = await AppLocalizations.delegate.load(
+          const Locale('en'),
+        );
+        await _pumpScreen(tester, const CalendarScreen(), theme: theme);
+
+        expect(
+          tester.widget<Text>(find.text(en.calendarTitle)).style?.color,
+          scheme.onSurface,
+        );
+        final Iterable<Color?> cards = tester
+            .widgetList<Material>(
+              find.descendant(
+                of: find.byType(AppCard),
+                matching: find.byType(Material),
+              ),
+            )
+            .map((Material m) => m.color)
+            .whereType<Color>();
+        expect(
+          cards,
+          isNotEmpty,
+          reason: 'NOT VACUOUS: the grid card and the rows card must exist.',
+        );
+        expect(cards, everyElement(AppCard.fillOf(theme)));
+        expect(
+          _containerFills(tester),
+          isNot(contains(AppColors.surface)),
+          reason: 'no cardDecoration-era white card survives on this screen',
+        );
+
+        final List<Color> colors = _paintedTextColors(tester);
+        expect(colors, contains(scheme.onSurface));
+        expect(colors, contains(scheme.onSurfaceVariant));
+        expect(colors, isNot(contains(AppColors.ink)));
+        expect(colors, isNot(contains(AppColors.muted)));
+      });
+    }
   });
 }

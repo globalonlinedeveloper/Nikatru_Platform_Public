@@ -10,15 +10,14 @@ run-name: "Deploy sandbox (${{ inputs.worker }}) from ${{ github.ref_name }}"
 on:
   workflow_dispatch:
     inputs:
+      # why: A STRING, NOT A CHOICE LIST (B-12, row O-SERVICE-KIT-UNBUILT). The list named
+      # every Worker by hand, so app #2's Worker had no sandbox until somebody edited it.
+      # The `workers` job below checks the value against the set worker-set.mjs prints.
       worker:
-        description: "Which sandbox Worker to deploy"
+        description: "Which sandbox Worker to deploy: all, platform, or one app Worker name that tooling/ci/worker-set.mjs --for-deploy --json --app-workers --env sandbox prints. The workers job refuses any other value."
         required: false
         default: all
-        type: choice
-        options:
-          - all
-          - platform
-          - subscriptiontracker-api
+        type: string
 
 concurrency:
   group: deploy-sandbox
@@ -29,9 +28,57 @@ permissions:
   checks: read
 
 jobs:
+  # why: THE SET IS READ, NEVER WRITTEN HERE (B-12, row O-SERVICE-KIT-UNBUILT). One leg per
+  # `appWorkers` row of tooling/platform-register.json whose Worker config declares an
+  # `env.sandbox` block, printed by tooling/ci/worker-set.mjs after it has held EVERY
+  # Worker to its row, its committed lockfile and its `dsnSecret` — the reader
+  # deploy-workers.yml's matrix comes from. The serving Worker (platform) deploys in its
+  # own job first, as there. The input is checked here and nowhere else: only this job
+  # reads it, and only through `env:`.
+  workers:
+    name: The sandbox Worker set comes from the register
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      workers: ${{ steps.set.outputs.workers }}
+      count: ${{ steps.set.outputs.count }}
+      platform: ${{ steps.set.outputs.platform }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The matrix comes from worker-set.mjs, and the input names one of it
+        id: set
+        env:
+          WORKER_INPUT: ${{ inputs.worker }}
+        run: |
+          set -euo pipefail
+          all="$(node tooling/ci/worker-set.mjs --for-deploy --json --app-workers --env sandbox)"
+          if [ "$WORKER_INPUT" = "all" ]; then
+            workers="$all"
+            platform=true
+          elif [ "$WORKER_INPUT" = "platform" ]; then
+            workers='[]'
+            platform=true
+          elif printf '%s' "$all" | jq -e --arg w "$WORKER_INPUT" 'any(.[]; .worker == $w)' > /dev/null; then
+            workers="$(printf '%s' "$all" | jq -c --arg w "$WORKER_INPUT" 'map(select(.worker == $w))')"
+            platform=false
+          else
+            echo "::error::the worker input was '${WORKER_INPUT}', which is not all, platform, or an app Worker worker-set.mjs prints with an env.sandbox block: $(printf '%s' "$all" | jq -r 'map(.worker) | join(", ")'). Nothing was deployed."
+            exit 1
+          fi
+          count="$(printf '%s' "$workers" | jq 'length')"
+          echo "sandbox app Workers this run deploys (${count}): $(printf '%s' "$workers" | jq -r 'map(.worker) | join(", ")'); platform: ${platform}"
+          {
+            echo "workers=${workers}"
+            echo "count=${count}"
+            echo "platform=${platform}"
+          } >> "$GITHUB_OUTPUT"
+
   platform:
     name: Deploy platform-sandbox
-    if: ${{ inputs.worker == 'all' || inputs.worker == 'platform' }}
+    needs: workers
+    if: ${{ needs.workers.outputs.platform == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: sandbox
@@ -60,7 +107,7 @@ jobs:
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          wranglerVersion: '4.141.0'   # why: package.json says ^4.0.0, which floats. [F-2]
+          wranglerVersion: '4.143.0'   # why: package.json says ^4.0.0, which floats. [F-2]
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: services/platform
           command: d1 migrations apply PLATFORM_DB --env sandbox --remote
@@ -69,7 +116,7 @@ jobs:
       - uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          wranglerVersion: '4.141.0'   # why: package.json says ^4.0.0, which floats. [F-2]
+          wranglerVersion: '4.143.0'   # why: package.json says ^4.0.0, which floats. [F-2]
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: services/platform
           command: deploy --env sandbox --var RELEASE:${{ github.sha }}
@@ -79,15 +126,25 @@ jobs:
           host="$(node tooling/store/capture-backend.mjs --print-host platform)"
           node tooling/ops/post-deploy-smoke.mjs --url "$host/v1/health" --field build --expect "$GITHUB_SHA" --require-ok
 
-  subscriptiontracker-api:
-    name: Deploy subscriptiontracker-api-sandbox
-    # why: after platform. The API's health probes PLATFORM_DB, and only the
-    # platform job migrates platform_db_sandbox. A skipped platform job is fine.
-    needs: platform
-    if: ${{ !cancelled() && (inputs.worker == 'all' || inputs.worker == 'subscriptiontracker-api') && (needs.platform.result == 'success' || needs.platform.result == 'skipped') }}
+  # why: EVERY APP WORKER WITH A SANDBOX, ONE LEG EACH (B-12). After platform: an app
+  # Worker's health probes PLATFORM_DB, and only the platform job migrates
+  # platform_db_sandbox. A skipped platform job is fine; a failed one stops every leg.
+  # fail-fast off: one Worker's red leaves the other legs' deploys.
+  app-worker:
+    name: Deploy ${{ matrix.worker.worker }}-sandbox
+    needs: [workers, platform]
+    if: ${{ !cancelled() && needs.workers.result == 'success' && needs.workers.outputs.count != '0' && (needs.platform.result == 'success' || needs.platform.result == 'skipped') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: sandbox
+    strategy:
+      fail-fast: false
+      matrix:
+        # why: ONE dimension whose values are worker-set.mjs's entries ({worker, dir,
+        # migrations, smokeUrl, origin, dsnSecret}), so every key a step reads is
+        # `matrix.worker.<field>` of a dimension declared right here (limb A′ of
+        # assert-release-lane-generic.mjs reads the declaration).
+        worker: ${{ fromJSON(needs.workers.outputs.workers) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -105,24 +162,30 @@ jobs:
         run: node tooling/ci/assert-gate-passed.mjs ${{ github.sha }}
       - uses: ./.github/actions/setup-node
       - run: npm ci
-        working-directory: services/subscriptiontracker-api
-      - name: Apply APP_DB migrations to the sandbox (before deploy)
+        working-directory: ${{ matrix.worker.dir }}
+      # why: migrations before deploy, only when the Worker's own config migrates a
+      # D1 (worker-set.mjs `migrations`), as in deploy-workers.yml.
+      - name: Apply the Worker's D1 migrations to the sandbox (before deploy)
+        if: matrix.worker.migrations
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          wranglerVersion: '4.141.0'   # why: package.json says ^4.0.0, which floats. [F-2]
+          wranglerVersion: '4.143.0'   # why: package.json says ^4.0.0, which floats. [F-2]
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: services/subscriptiontracker-api
-          command: d1 migrations apply APP_DB --env sandbox --remote
+          workingDirectory: ${{ matrix.worker.dir }}
+          command: d1 migrations apply ${{ matrix.worker.migrations }} --env sandbox --remote
       # why: RELEASE only, as in the platform job.
       - uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          wranglerVersion: '4.141.0'   # why: package.json says ^4.0.0, which floats. [F-2]
+          wranglerVersion: '4.143.0'   # why: package.json says ^4.0.0, which floats. [F-2]
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: services/subscriptiontracker-api
+          workingDirectory: ${{ matrix.worker.dir }}
           command: deploy --env sandbox --var RELEASE:${{ github.sha }}
+      # why: the host is computed from the wrangler config, never typed here.
       - name: Smoke — the sandbox Worker answers at THIS commit
+        env:
+          WORKER: ${{ matrix.worker.worker }}
         run: |
-          host="$(node tooling/store/capture-backend.mjs --print-host subscriptiontracker-api)"
+          host="$(node tooling/store/capture-backend.mjs --print-host "$WORKER")"
           node tooling/ops/post-deploy-smoke.mjs --url "$host/v1/health" --field build --expect "$GITHUB_SHA" --require-ok

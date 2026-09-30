@@ -14,7 +14,7 @@ import 'package:subscriptiontracker/services/notifications/notification_service.
 /// returned clean over the still-pending future. So the screen simply stops
 /// half-way through, which reads exactly like a handler that was never wired.
 ///
-/// Subly's own [subscriptiontracker.NotificationService] fork needs no such care — its methods
+/// Subly's own [subscriptiontracker.RenewalReminders] fork needs no such care — its methods
 /// return early until `init()` has run — but it is faked here anyway, because
 /// "it happens not to touch the plugin today" is not something a test should
 /// depend on, and the renewal reminders it owns are what part (b) is about.
@@ -75,13 +75,24 @@ class FakeNotifications implements core.NotificationService {
 
   @override
   Stream<core.NotificationTap> notificationTaps() => taps.stream;
+
+  @override
+  Future<void> scheduleAt(core.ScheduledNotification notification) async {}
+
+  @override
+  Future<void> reconcile(
+    List<core.ScheduledNotification> wanted, {
+    required bool Function(int id) owns,
+  }) async {}
+
+  @override
+  Future<core.NotificationTap?> takeLaunchTap() async => null;
 }
 
 /// Subly's frozen fork, recording. Subclassed through `forTesting()` — the same
 /// route `settings_wiring_test.dart` takes, because the production object is a
 /// singleton that cannot be replaced.
-class RecordingSublyNotifications
-    extends subscriptiontracker.NotificationService {
+class RecordingSublyNotifications extends subscriptiontracker.RenewalReminders {
   RecordingSublyNotifications() : super.forTesting();
 
   int cancelAllCalls = 0;

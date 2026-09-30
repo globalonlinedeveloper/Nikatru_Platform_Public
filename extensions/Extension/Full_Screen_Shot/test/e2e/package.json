@@ -9,7 +9,8 @@
     "test:review": "node review-keyboard.mjs",
     "test:batch": "node batch-artifact.mjs",
     "test:giveup": "node giveup-verify.mjs",
-    "test:adv": "node adversarial-claim.mjs"
+    "test:adv": "node adversarial-claim.mjs",
+    "test:a11y": "node a11y-walk.mjs"
   },
   "devDependencies": {
     "playwright": "^1.49.0"

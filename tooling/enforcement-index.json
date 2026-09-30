@@ -45,6 +45,7 @@
   {
     "claims": [
       "ADR 044",
+      "ADR 076",
       "ADR 093",
       "ADR 094",
       "B-2",
@@ -830,8 +831,8 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/deploy-sandbox.yml#app-worker",
       ".github/workflows/deploy-sandbox.yml#platform",
-      ".github/workflows/deploy-sandbox.yml#subscriptiontracker-api",
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/deploy-web.yml#site",
       ".github/workflows/deploy-workers.yml#app-worker",
@@ -1059,8 +1060,8 @@
     ],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#gate",
+      ".github/workflows/deploy-sandbox.yml#app-worker",
       ".github/workflows/deploy-sandbox.yml#platform",
-      ".github/workflows/deploy-sandbox.yml#subscriptiontracker-api",
       ".github/workflows/extensions.yml#release",
       ".github/workflows/submit-appstore.yml#gate",
       ".github/workflows/submit-play.yml#gate",
@@ -1438,7 +1439,8 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/ci.yml#guards-chassis"
+      ".github/workflows/ci.yml#guards-chassis",
+      ".github/workflows/mutation-proofs.yml#execute"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-mutation-proofs.mjs",
@@ -1778,6 +1780,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-legal"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-paywall-flip-ready.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "F-4",
       "R-1",
@@ -2074,11 +2086,13 @@
       ".github/workflows/ci.yml#prepare",
       ".github/workflows/deploy-web.yml#prepare",
       ".github/workflows/e2e.yml#prepare",
+      ".github/workflows/native-auth-proof.yml#gate",
       ".github/workflows/store-screenshots.yml#gate",
       ".github/workflows/submit-appstore.yml#gate",
       ".github/workflows/submit-play.yml#gate",
       ".github/workflows/submit-snap.yml#gate",
-      ".github/workflows/submit-windows-store.yml#gate"
+      ".github/workflows/submit-windows-store.yml#gate",
+      ".github/workflows/symbolication-proof.yml#gate"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-release-lane-generic.mjs",
@@ -2309,6 +2323,18 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-site-bindings.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 093"
+    ],
+    "invokedBy": [
+      ".github/workflows/submit-appstore.yml#dry-run"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-small-business-program.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -2609,6 +2635,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-store"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-versions.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "F-10"
     ],
@@ -2876,6 +2912,12 @@
       ".github/workflows/ci.yml#web-artifacts",
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/e2e.yml#e2e",
+      ".github/workflows/e2e.yml#native",
+      ".github/workflows/native-auth-proof.yml#android",
+      ".github/workflows/native-auth-proof.yml#ios",
+      ".github/workflows/native-auth-proof.yml#linux",
+      ".github/workflows/native-auth-proof.yml#macos",
+      ".github/workflows/native-auth-proof.yml#windows",
       ".github/workflows/submit-appstore.yml#dry-run",
       ".github/workflows/submit-play.yml#dry-run",
       ".github/workflows/submit-snap.yml#dry-run",
@@ -3272,6 +3314,7 @@
       "ADR 095"
     ],
     "invokedBy": [
+      ".github/workflows/deploy-sandbox.yml#workers",
       ".github/workflows/deploy-workers.yml#workers",
       ".github/workflows/lane-workers.yml#detect"
     ],
@@ -3361,6 +3404,12 @@
     "claims": [],
     "invokedBy": [
       ".github/workflows/e2e.yml#e2e",
+      ".github/workflows/e2e.yml#native",
+      ".github/workflows/native-auth-proof.yml#android",
+      ".github/workflows/native-auth-proof.yml#ios",
+      ".github/workflows/native-auth-proof.yml#linux",
+      ".github/workflows/native-auth-proof.yml#macos",
+      ".github/workflows/native-auth-proof.yml#windows",
       ".github/workflows/store-screenshots.yml#capture",
       ".github/workflows/store-screenshots.yml#capture-desktop-native",
       ".github/workflows/store-screenshots.yml#capture-ios",
@@ -3394,7 +3443,8 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/e2e.yml#e2e"
+      ".github/workflows/e2e.yml#e2e",
+      ".github/workflows/e2e.yml#reset-revokes"
     ],
     "kind": "script",
     "ref": "tooling/e2e/derive_expectation.mjs",
@@ -3404,7 +3454,28 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/e2e.yml#native",
+      ".github/workflows/native-auth-proof.yml#android",
+      ".github/workflows/native-auth-proof.yml#ios",
+      ".github/workflows/native-auth-proof.yml#linux",
+      ".github/workflows/native-auth-proof.yml#macos",
+      ".github/workflows/native-auth-proof.yml#windows"
+    ],
+    "kind": "script",
+    "ref": "tooling/e2e/native_auth_proof.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
       ".github/workflows/e2e.yml#e2e",
+      ".github/workflows/e2e.yml#native",
+      ".github/workflows/native-auth-proof.yml#android",
+      ".github/workflows/native-auth-proof.yml#ios",
+      ".github/workflows/native-auth-proof.yml#linux",
+      ".github/workflows/native-auth-proof.yml#macos",
+      ".github/workflows/native-auth-proof.yml#windows",
       ".github/workflows/store-screenshots.yml#capture",
       ".github/workflows/store-screenshots.yml#capture-desktop-native",
       ".github/workflows/store-screenshots.yml#capture-ios",
@@ -3422,6 +3493,12 @@
     ],
     "invokedBy": [
       ".github/workflows/e2e.yml#e2e",
+      ".github/workflows/e2e.yml#native",
+      ".github/workflows/native-auth-proof.yml#android",
+      ".github/workflows/native-auth-proof.yml#ios",
+      ".github/workflows/native-auth-proof.yml#linux",
+      ".github/workflows/native-auth-proof.yml#macos",
+      ".github/workflows/native-auth-proof.yml#windows",
       ".github/workflows/store-screenshots.yml#capture",
       ".github/workflows/store-screenshots.yml#capture-desktop-native",
       ".github/workflows/store-screenshots.yml#capture-ios",
@@ -3504,6 +3581,16 @@
     ],
     "kind": "script",
     "ref": "tooling/ops/check-apple-signing-expiry.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#code-scanning-age"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-code-scanning-age.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -3619,6 +3706,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#tech-currency"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-tech-currency.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 075",
       "ADR 079"
@@ -3665,6 +3762,18 @@
     "state": "WIRED"
   },
   {
+    "claims": [
+      "ADR 053"
+    ],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#failure-ledger"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/guard-yield.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [],
     "invokedBy": [
       ".github/workflows/ci.yml#guards-legal"
@@ -3695,8 +3804,8 @@
     ],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#release",
+      ".github/workflows/deploy-sandbox.yml#app-worker",
       ".github/workflows/deploy-sandbox.yml#platform",
-      ".github/workflows/deploy-sandbox.yml#subscriptiontracker-api",
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/deploy-workers.yml#app-worker",
       ".github/workflows/deploy-workers.yml#platform",
@@ -3844,6 +3953,16 @@
     ],
     "kind": "script",
     "ref": "tooling/ops/verify-monitors.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/e2e.yml#reset-revokes"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/verify-password-reset-revokes.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -4135,8 +4254,8 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/deploy-sandbox.yml#app-worker",
       ".github/workflows/deploy-sandbox.yml#platform",
-      ".github/workflows/deploy-sandbox.yml#subscriptiontracker-api",
       ".github/workflows/store-screenshots.yml#capture",
       ".github/workflows/store-screenshots.yml#capture-desktop-native",
       ".github/workflows/store-screenshots.yml#capture-ios",

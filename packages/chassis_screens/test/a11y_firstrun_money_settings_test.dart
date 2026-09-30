@@ -32,11 +32,7 @@ import 'support/width_harness.dart';
 /// sweep.
 void main() {
   const List<PaywallOffer> offers = <PaywallOffer>[
-    PaywallOffer(
-      id: 'pro_monthly',
-      formattedPrice: r'$4.99',
-      term: 'month',
-    ),
+    PaywallOffer(id: 'pro_monthly', formattedPrice: r'$4.99', term: 'month'),
     PaywallOffer(
       id: 'pro_yearly',
       formattedPrice: r'$39.99',
@@ -475,12 +471,7 @@ void main() {
             applicationVersion: '1.2.3',
           ),
         );
-        expectSweepHadSubjects(
-          tester,
-          'settings',
-          tappable: 12,
-          labelled: 21,
-        );
+        expectSweepHadSubjects(tester, 'settings', tappable: 12, labelled: 21);
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
         await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
         await expectLater(tester, meetsGuideline(textContrastGuideline));
@@ -600,62 +591,112 @@ void main() {
       }
     }, variant: kTapTargetPlatforms);
 
-    testWidgets('light, kDesktop — where the page cap engages and the rows stop '
-        'stretching', (WidgetTester tester) async {
-      final SemanticsHandle handle = tester.ensureSemantics();
-      try {
-        await pumpForA11y(
-          tester,
-          kDesktop,
-          SettingsView(
-            profile: const SettingsProfile(
-              initial: 'S',
-              displayName: 'Someone',
-              email: 'someone@example.com',
+    testWidgets(
+      'light, kDesktop — where the page cap engages and the rows stop '
+      'stretching',
+      (WidgetTester tester) async {
+        final SemanticsHandle handle = tester.ensureSemantics();
+        try {
+          await pumpForA11y(
+            tester,
+            kDesktop,
+            SettingsView(
+              profile: const SettingsProfile(
+                initial: 'S',
+                displayName: 'Someone',
+                email: 'someone@example.com',
+              ),
+              onEditProfile: () {},
+              themeMode: ThemeMode.system,
+              onThemeModeChanged: (ThemeMode _) {},
+              languageCode: '',
+              onLanguageChanged: (String _) {},
+              remindersAvailable: true,
+              remindersEnabled: false,
+              onRemindersChanged: (bool _) {},
+              analyticsGranted: false,
+              onAnalyticsConsentChanged: (bool _) {},
+              promoObjected: false,
+              promoObjectionKnown: true,
+              onPromoObjectionChanged: (bool _) {},
+              hasSession: true,
+              planSectionLabel: 'Plan',
+              managePlanLabel: 'Manage plan',
+              onUpgrade: () {},
+              onManagePlan: () {},
+              onOpenPrivacyPolicy: () {},
+              onOpenTerms: () {},
+              onOpenRefundPolicy: () {},
+              supportEmail: 'support@example.com',
+              onContactSupport: () {},
+              onSignOut: () {},
+              onSignOutEverywhere: () {},
+              onDeleteAccount: () {},
+              applicationName: 'Probe',
+              applicationVersion: '1.2.3',
             ),
-            onEditProfile: () {},
-            themeMode: ThemeMode.system,
-            onThemeModeChanged: (ThemeMode _) {},
-            languageCode: '',
-            onLanguageChanged: (String _) {},
-            remindersAvailable: true,
-            remindersEnabled: false,
-            onRemindersChanged: (bool _) {},
-            analyticsGranted: false,
-            onAnalyticsConsentChanged: (bool _) {},
-            promoObjected: false,
-            promoObjectionKnown: true,
-            onPromoObjectionChanged: (bool _) {},
-            hasSession: true,
-            planSectionLabel: 'Plan',
-            managePlanLabel: 'Manage plan',
-            onUpgrade: () {},
-            onManagePlan: () {},
-            onOpenPrivacyPolicy: () {},
-            onOpenTerms: () {},
-            onOpenRefundPolicy: () {},
-            supportEmail: 'support@example.com',
-            onContactSupport: () {},
-            onSignOut: () {},
-            onSignOutEverywhere: () {},
-            onDeleteAccount: () {},
-            applicationName: 'Probe',
-            applicationVersion: '1.2.3',
-          ),
-        );
-        expectSweepHadSubjects(
-          tester,
-          'settings (kDesktop)',
-          tappable: 14,
-          labelled: 24,
-        );
-        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-        await expectLater(tester, meetsGuideline(textContrastGuideline));
-      } finally {
-        handle.dispose();
-      }
-    }, variant: kTapTargetPlatforms);
+          );
+          expectSweepHadSubjects(
+            tester,
+            'settings (kDesktop)',
+            tappable: 14,
+            labelled: 24,
+          );
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+          await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+          await expectLater(tester, meetsGuideline(textContrastGuideline));
+        } finally {
+          handle.dispose();
+        }
+      },
+      variant: kTapTargetPlatforms,
+    );
+  });
+
+  // ── SettingsSection (ST-D4) ───────────────────────────────────────────────
+  // The group every settings page is built from: a heading node, one card of
+  // rows, an optional footer. Swept with a tappable row and a switch in it.
+  group('a11y: settings-section', () {
+    for (final Brightness b in Brightness.values) {
+      testWidgets('${b.name}, kPhone', (WidgetTester tester) async {
+        final SemanticsHandle handle = tester.ensureSemantics();
+        try {
+          // On a Scaffold, as on every settings page: under a bare `home:`
+          // the heading and footer sit on no painted ground and the contrast
+          // sweep reads them against transparent black.
+          await pumpForA11y(
+            tester,
+            kPhone,
+            const Scaffold(
+              body: SettingsSection(
+                title: 'Privacy',
+                footer: 'Applies on this device.',
+                children: <Widget>[
+                  ListTile(title: Text('Privacy notice'), onTap: _noop),
+                  SwitchListTile(
+                    title: Text('Usage statistics'),
+                    value: true,
+                    onChanged: _noopBool,
+                  ),
+                ],
+              ),
+            ),
+            brightness: b,
+          );
+          expectSweepHadSubjects(
+            tester,
+            'settings-section (${b.name})',
+            tappable: 2,
+            labelled: 4,
+          );
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+          await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+          await expectLater(tester, meetsGuideline(textContrastGuideline));
+        } finally {
+          handle.dispose();
+        }
+      }, variant: kTapTargetPlatforms);
+    }
   });
 
   // ── EditProfileDialog ─────────────────────────────────────────────────────
@@ -877,3 +918,7 @@ void main() {
     });
   });
 }
+
+void _noop() {}
+
+void _noopBool(bool _) {}

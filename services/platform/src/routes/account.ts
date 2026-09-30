@@ -10,6 +10,7 @@ import {
   erasureBindingFor,
   recordPendingErasure,
 } from '../lib/erasure-ledger';
+import { cancelBillingBeforeDelete } from '../lib/mor/cancel-on-delete';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DELETE /v1/account — the shared server's erasure route.
@@ -249,6 +250,30 @@ account.delete('/account', async (c) => {
       `[account] rid=${rid} app=${c.env.APP_ID} refusing deletion: APP_ERASURE_ENDPOINTS names no app, so every app-owned row would survive this deletion`,
     );
     return c.json({ error: 'account_deletion_unconfigured' }, 501);
+  }
+
+  // ⏱ 2026-09-29 · AB-A5-02 (moneyflows MF-4): THE BILLING STOPS BEFORE THE
+  // PERSON IS ERASED. Erasure removes the only link from a Paddle subscription
+  // to an account, so a subscription left running renews into
+  // `unclaimed_payments` and the person's only lever is a chargeback. A live
+  // Paddle subscription is cancelled at the period end here; one this server
+  // cannot cancel refuses the deletion with a sentence, BEFORE anything is
+  // destroyed. A store (Apple/Google) subscription does not block: the store
+  // bills its own account. src/lib/mor/cancel-on-delete.ts.
+  let billing: Awaited<ReturnType<typeof cancelBillingBeforeDelete>>;
+  try {
+    billing = await cancelBillingBeforeDelete(c.env.PLATFORM_DB, userId, c.env.PADDLE_API_KEY);
+  } catch (err) {
+    console.error(`[account] rid=${rid} app=${c.env.APP_ID} refusing deletion: the live-subscription read failed`, err);
+    return c.json({ error: 'account_deletion_failed' }, 503);
+  }
+  if (!billing.ok) {
+    console.error(`[account] rid=${rid} app=${c.env.APP_ID} refusing deletion: ${billing.why}`);
+    // 503, not 409: nothing was destroyed, and the released client maps 503 to
+    // "Your account was not deleted … nothing was removed" (account_deletion.dart
+    // `forStatus`), which is true. `message` carries the billing sentence for the
+    // delete dialog that will show it (tooling/paywall-flip.json AB-A5-02-client).
+    return c.json({ error: 'subscription_still_billing', message: billing.sentence }, 503);
   }
 
   // ⏱ 2026-09-15 · [ADR 081]: LIMBS 1 AND 2 MOVED TO src/lib/platform-erasure.ts,

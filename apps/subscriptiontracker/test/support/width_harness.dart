@@ -56,21 +56,21 @@ class MemStore implements core.KeyValueStore {
   Future<void> write(String key, String value) async => data[key] = value;
 }
 
-/// A [NotificationService] that schedules nothing.
+/// A [RenewalReminders] that schedules nothing.
 ///
 /// The real one reaches `flutter_local_notifications` through a platform
 /// channel, so a screen that syncs reminders on build throws in a widget test
-/// before it has laid anything out. `NotificationService.forTesting()` is the
+/// before it has laid anything out. `RenewalReminders.forTesting()` is the
 /// constructor that skips plugin init; the overrides below then make every
 /// outbound call a no-op, because a width test has no opinion about reminders —
 /// it only needs the screen to reach its layout.
-class SilentNotifications extends NotificationService {
+class SilentNotifications extends RenewalReminders {
   SilentNotifications() : super.forTesting();
   @override
   Future<void> syncAll(
     List<Subscription> subs, {
     required ReminderCopy copy,
-    int daysBefore = 2,
+    ReminderRules rules = const ReminderRules(),
   }) async {}
   @override
   Future<void> cancelAll() async {}
@@ -111,9 +111,7 @@ const Size kWide = Size(1920, 1080);
 /// assertion that cannot fail.
 List<Override> defaultWidthOverrides() => <Override>[
   keyValueStoreProvider.overrideWith((_) async => MemStore()),
-  subscriptiontrackerNotificationServiceProvider.overrideWithValue(
-    SilentNotifications(),
-  ),
+  renewalRemindersProvider.overrideWithValue(SilentNotifications()),
 ];
 
 /// Pins the surface to [size] and hosts [screen] on its own `MaterialApp`.

@@ -30,7 +30,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import { tmpdir } from 'node:os';
 import { join, dirname, delimiter } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { run, captureSync, LEG_TIMEOUT_MS } from '../../scripts/preflight.mjs';
+import { run, captureSync, LEG_TIMEOUT_MS, CI_GATE_LEGS, NOT_REPRODUCIBLE } from '../../scripts/preflight.mjs';
 
 const SCRIPTS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'scripts');
 const PREFLIGHT = join(SCRIPTS, 'preflight.mjs');
@@ -145,6 +145,19 @@ describe('end to end: preflight releases the machine lock though a hung descenda
     // ⏱ 2026-09-26: workflow-scan.mjs imports the release-build composer and the app set (O-FLUTTER-BUILD-TYPED-PER-LINE)
     mkdirSync(join(root, 'tooling', 'app-yaml'), { recursive: true });
     copyFileSync(join(SCRIPTS, '..', 'app-yaml', 'yaml.mjs'), join(root, 'tooling', 'app-yaml', 'yaml.mjs'));
+    // ⏱ 2026-09-29: the full run refuses (exit 2, before the lock) a ci.yml whose
+    // ci-gate needs are not exactly its coverage table, so the skeleton's ci-gate
+    // needs every need that table names, read from the module under test.
+    const needs = [...Object.keys(CI_GATE_LEGS), ...Object.keys(NOT_REPRODUCIBLE)];
+    mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
+    writeFileSync(join(root, '.github', 'workflows', 'ci.yml'), [
+      'jobs:',
+      ...needs.flatMap((n) => [`  ${n}:`, '    runs-on: ubuntu-24.04']),
+      '  ci-gate:',
+      `    needs: [${needs.join(', ')}]`,
+      '    runs-on: ubuntu-24.04',
+      '',
+    ].join('\n'), 'utf8');
     git('init', '-q', '-b', 'main');
     git('add', '-A');
     git('commit', '-q', '-m', 'base');

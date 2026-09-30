@@ -67,6 +67,49 @@
    the machine that committed and the machine that checks, which says nothing
    about the picture.
 
+   ── IT RUNS WITH V8 BACKGROUND TASKS OFF, WHOEVER STARTS IT (EXL-03) ─────
+   O-EXTENSIONS-CATALOGUE-HUNG-PAST-ITS-CAP: this program printed `3 passed`
+   and never exited — as the catalogue STEP (run 36273003792) and as a CHILD
+   of the gate self-test (run 36316375328). The cause is not in this file: it
+   is synchronous, spawns nothing, holds no handle and ends process.exit().
+   It is nodejs/node#54918, and a LIVE HUNG PROCESS of this file says so
+   (2026-09-29, node 22.22.2, gdb `thread apply all bt` on a run that had
+   printed `3 passed`):
+     main    process.exit -> Environment::Exit -> NodePlatform::Shutdown
+             -> WorkerThreadsTaskRunner::Shutdown -> pthread_join(worker)
+     worker  PlatformWorkerThread -> <V8 background task>
+             -> CollectionBarrier::AwaitCollectionBackground -> cond_wait
+   The worker waits for a main-thread GC; the main thread, exiting, waits for
+   the worker. The background task is whatever V8 posted — a compile of this
+   file's hot pixel loops (roundRect's 4x4 supersampling, resample, the
+   --check diff) in the wild, a stress allocation task under the amplifier.
+   MEASURED the same day, 4 cores, `--all --check`, 8 s bound per run:
+     before the relaunch below:
+       node --stress-concurrent-allocation              1 of 24 hung
+       node --single-threaded --stress-concurrent-alloc 0 of 24
+       node (plain)                                     0 of 40
+     after it (sequential runs, the hung process identified):
+       node --single-threaded --stress-concurrent-alloc 0 of 24  (the CI step)
+       node --stress-concurrent-allocation              1 of 24 — the
+         relaunching PARENT, its single-threaded child already done: the
+         amplifier posts tasks even to an idle parent, the limit
+         single-threaded-relaunch.mjs itself records. Unamplified the parent
+         compiles nothing, and:
+       node (plain)                                     0 of 40
+   So the CI step keeps `node --single-threaded` (no parent at all), and the
+   relaunch is for every caller that does not pass it.
+   Each fix so far lived in a CALLER — the step's `node --single-threaded`,
+   the self-test's spawn flag — and a caller that forgets it is exposed:
+   scripts/new-tool.mjs runs `render-extension-graphics --check` in its chain
+   with a bare process.execPath. So the second party is removed HERE, by the
+   same shared mechanism the tooling/ci pixel guards use
+   (tooling/ci/single-threaded-relaunch.mjs): started without the flag, this
+   file re-runs itself with it and computes nothing in the first process;
+   started with it (the CI step), it runs at once. The report says which, so
+   a test can pin it (tooling/ci/test/single-threaded-relaunch.test.mjs).
+   The step's 2-minute bound in extensions-ci.yml stays: a hang this misses
+   still fails one named step.
+
    Exit codes: 0 rendered/agrees · 1 --check disagrees · 2 could not run. */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -74,6 +117,14 @@ import { fileURLToPath } from 'node:url';
 import { Report, parseArgs, die } from './lib/report.mjs';
 import { repoRoot, resolveTool, loadAllTools } from './lib/toolinfo.mjs';
 import { decode, encode, resample } from './lib/png.mjs';
+import { relaunchSingleThreaded, backgroundTasksNote } from '../../tooling/ci/single-threaded-relaunch.mjs';
+
+/* First statement after the imports, before a single pixel is touched: the
+   relaunching parent must give V8 nothing to compile in the background. */
+{
+  const relaunched = relaunchSingleThreaded(import.meta.url, process.argv.slice(2), (lines) => die(lines.join('\n')));
+  if (relaunched !== null) process.exit(relaunched);
+}
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SPEC_REL = 'scripts/store-graphics.json';
@@ -106,6 +157,7 @@ if (args.bool('all')) {
 if (!tools.length) die('no tool resolved — nothing to render.');
 
 const r = new Report('render-extension-graphics · ' + tools.map((t) => t.id).join(', '));
+r.note(backgroundTasksNote());
 
 /* ── the brand, parsed out of the product ────────────────────────────────── */
 const HEX = /^#([0-9a-fA-F]{6})$/;

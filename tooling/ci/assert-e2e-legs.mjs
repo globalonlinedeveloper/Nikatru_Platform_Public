@@ -55,6 +55,20 @@
 // demands the leg be covered or restated. An assertion that could only pass by
 // luck would inflate apparent coverage, which this repo deletes on sight.
 //
+// ── THE TARGET AXIS (limb NATIVE, ⏱ 2026-09-29, AB-E2E-02) ──────────────────
+// Every leg above is graded on web only, and until today nothing graded a
+// target at all. The native targets are DERIVED — the platforms of every
+// `surface: app` channel of tooling/channel-register.json, minus web — never
+// listed here, so a target the catalog gains is ungraded by nobody's choice.
+// For each, the register's `nativeTargets.targets` must say, for anonymous,
+// sign-in AND account-delete-purges, either `leg` (e2e.yml's native job runs
+// the native-auth-proof drive there on a declared schedule) or `equivalent`
+// (a named web leg that is asserted, and why it carries over). A target with
+// neither is COVERAGE LOST (exit 2): the golden path was not checked there at
+// all. A `leg` nothing runs — the job gone, the target out of its matrix, the
+// drive not called, or an `if:` naming a cron the workflow does not declare —
+// is a finding (exit 1), as is an anchor that stopped resolving.
+//
 // Usage:  node tooling/ci/assert-e2e-legs.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
@@ -64,6 +78,7 @@ import { fileURLToPath } from 'node:url';
 import { stripSourceComments } from './text-reductions.mjs';
 import { listDir } from './tree-walk.mjs';
 import { requireAppSet } from './app-set.mjs';
+import { parseWorkflow } from './workflow-scan.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/e2e-leg-register.json';
@@ -427,6 +442,163 @@ for (const [name, readers] of [...definesRead.entries()].sort()) {
   }
 }
 
+// ── limb NATIVE: every native catalog target, leg or declared equivalent ────
+// (AB-E2E-02; see the header). Exit 2 for a target nothing declares, exit 1
+// for a declaration the tree does not back.
+const CHANNELS_REL = 'tooling/channel-register.json';
+const NATIVE_LEGS = ['anonymous', 'sign-in', 'account-delete-purges'];
+let channels;
+try {
+  channels = JSON.parse(readFileSync(join(ROOT, CHANNELS_REL), 'utf8')).channels;
+} catch (e) {
+  coverageLost([
+    `${CHANNELS_REL} could not be read (${e.message}).`,
+    'It is the catalog of targets the native legs are graded against. Without it there is no target axis.',
+  ]);
+}
+const nativeTargets = [
+  ...new Set(
+    (Array.isArray(channels) ? channels : [])
+      .filter((c) => c && c.surface === 'app')
+      .flatMap((c) => (Array.isArray(c.platforms) ? c.platforms : []))
+      .filter((p) => p !== 'web'),
+  ),
+].sort();
+if (nativeTargets.length === 0) {
+  coverageLost([
+    `${CHANNELS_REL} names no native platform on any \`surface: app\` channel.`,
+    'A target axis over nothing grades nothing, and would print ok over a catalog it never read.',
+  ]);
+}
+const NT = reg.nativeTargets && typeof reg.nativeTargets === 'object' ? reg.nativeTargets : {};
+const declaredTargets = NT.targets && typeof NT.targets === 'object' ? NT.targets : {};
+const undeclared = [];
+for (const t of nativeTargets) {
+  const row = declaredTargets[t];
+  const gaps = NATIVE_LEGS.filter((l) => !row || (row[l] !== 'leg' && row[l] !== 'equivalent'));
+  if (gaps.length) undeclared.push(`${t}: ${gaps.join(', ')}`);
+}
+if (undeclared.length) {
+  coverageLost([
+    `${nativeTargets.length} native catalog target(s) (${nativeTargets.join(', ')}) and ${undeclared.length} with a golden-path leg that has neither a leg nor a declared equivalent:`,
+    ...undeclared.map((u) => `  · ${u}`),
+    `Declare each in ${REGISTER_REL} nativeTargets.targets as "leg" (e2e.yml's native job runs it there) or`,
+    '"equivalent" (nativeTargets.equivalents names the asserted web leg that carries over, and why).',
+    'Until then the target\'s golden path was not checked at all — that is not a pass.',
+  ]);
+}
+for (const t of Object.keys(declaredTargets)) {
+  if (!nativeTargets.includes(t)) {
+    problems.push(
+      `${REGISTER_REL} nativeTargets.targets declares "${t}", which no \`surface: app\` channel of ${CHANNELS_REL} ships to. ` +
+        'A declaration for a target the catalog does not have is a leg graded against nothing.',
+    );
+  }
+}
+
+const legTargets = nativeTargets.filter((t) => NATIVE_LEGS.some((l) => declaredTargets[t][l] === 'leg'));
+const eqLegs = [...new Set(nativeTargets.flatMap((t) => NATIVE_LEGS.filter((l) => declaredTargets[t][l] === 'equivalent')))];
+for (const l of eqLegs) {
+  const eq = NT.equivalents?.[l];
+  const webLeg = legs.find((x) => x && x.id === l);
+  if (!eq || eq.provenBy !== 'web' || !Array.isArray(eq.why) || eq.why.join('').trim() === '') {
+    problems.push(
+      `a native target declares "${l}" as an equivalent, and nativeTargets.equivalents["${l}"] does not name ` +
+        '`provenBy: "web"` with a non-empty `why`. An equivalent nobody can trace is an excuse.',
+    );
+  } else if (!webLeg || (webLeg.status !== 'asserted' && webLeg.status !== 'blocked')) {
+    problems.push(
+      `a native target declares "${l}" as proven on web, and the web leg "${l}" is ${webLeg ? `\`${webLeg.status}\`` : 'absent'}, not asserted. ` +
+        'An equivalent to a leg nobody proves is no proof on either target.',
+    );
+  } else if (webLeg.status === 'blocked') {
+    // Graded by the leg loop above (its blocker must still be real); on every
+    // target it is then the same gap, and it prints as one — never a pass.
+    notes.push(`⬜ native targets inherit "${l}" from web, where it is BLOCKED (${webLeg.blockedBy}): unproven on every target.`);
+  }
+}
+
+let nativeJobCrons = [];
+if (legTargets.length) {
+  const nwfRel = NT.workflow;
+  const nwf = typeof nwfRel === 'string' ? parseWorkflow(ROOT, nwfRel) : null;
+  const job = nwf?.jobs.get(NT.job);
+  if (!nwf) {
+    problems.push(`nativeTargets.workflow ${JSON.stringify(nwfRel)} does not exist, and ${legTargets.join(', ')} declare legs it would run.`);
+  } else if (!job) {
+    problems.push(`${nwfRel} has no job \`${NT.job}\`, and ${legTargets.join(', ')} declare native legs it runs: undeclared-by-the-tree legs nothing runs.`);
+  } else {
+    const body = job.lines.map((l) => l.text);
+    // The matrix `target:` block list — `- android` items under a bare `target:`.
+    const listed = [];
+    const at = body.findIndex((l) => /^\s+target:\s*$/.test(l));
+    if (at !== -1) {
+      for (const l of body.slice(at + 1)) {
+        const m = l.match(/^\s+-\s+([a-z0-9_-]+)\s*$/);
+        if (!m) break;
+        listed.push(m[1]);
+      }
+    }
+    const notListed = legTargets.filter((t) => !listed.includes(t));
+    if (notListed.length) {
+      problems.push(
+        `${nwfRel} job \`${NT.job}\` does not list ${notListed.join(', ')} in its matrix \`target:\`, and the register says ` +
+          'a leg runs there. A leg the matrix never schedules is a leg that never runs.',
+      );
+    }
+    const drive = typeof NT.drive === 'string' ? NT.drive : '';
+    if (!drive || !job.logical.some((l) => l.text.includes(`node ${drive}`))) {
+      problems.push(`${nwfRel} job \`${NT.job}\` does not run \`node ${drive || '(nativeTargets.drive unset)'}\` — the drive the register says proves the native legs.`);
+    }
+    const declaredCrons = [...nwf.lines.map((l) => l.text).join('\n').matchAll(/-\s*cron:\s*['"]([^'"]+)['"]/g)].map((m) => m[1].trim());
+    nativeJobCrons = [...(job.jobIf?.cond ?? '').matchAll(/github\.event\.schedule\s*==\s*'([^']+)'/g)].map((m) => m[1].trim());
+    const cond = job.jobIf?.cond ?? null;
+    const onTimer =
+      cond === null ||
+      /github\.event_name\s*==\s*'schedule'/.test(cond) ||
+      (nativeJobCrons.length > 0 && nativeJobCrons.every((c) => declaredCrons.includes(c)));
+    if (!onTimer) {
+      problems.push(
+        `${nwfRel} job \`${NT.job}\` starts only on \`${cond}\`, which no declared cron (${declaredCrons.join(', ') || 'none'}) satisfies. ` +
+          'The native legs it carries never run: declared, and never run.',
+      );
+    }
+  }
+  // The anchors, in every graded app's native suite, comment-stripped.
+  const suiteRel = `${APP_DIR}/${NT.suite}`;
+  if (typeof NT.suite !== 'string' || !existsSync(join(ROOT, suiteRel))) {
+    problems.push(`the native suite ${suiteRel} does not exist, and ${legTargets.join(', ')} declare legs it proves.`);
+  } else {
+    const nsuite = stripSourceComments(readFileSync(join(ROOT, suiteRel), 'utf8'), '.dart');
+    const legIds = [...new Set(legTargets.flatMap((t) => NATIVE_LEGS.filter((l) => declaredTargets[t][l] === 'leg')))];
+    for (const l of legIds) {
+      const anchors = Array.isArray(NT.legAnchors?.[l]) ? NT.legAnchors[l] : [];
+      const unresolved = anchors.filter((a) => !nsuite.includes(a));
+      if (anchors.length === 0) problems.push(`native leg "${l}" has no nativeTargets.legAnchors: an unanchored native claim cannot fail.`);
+      else if (unresolved.length) {
+        problems.push(
+          `native leg "${l}": ${unresolved.length} of ${anchors.length} anchor(s) no longer resolve in ${suiteRel} (comment-stripped): ` +
+            `${unresolved.map((u) => JSON.stringify(u)).join(', ')}.`,
+        );
+      }
+    }
+    // AB-O1-05 — the offline read, on the native suite and the web suite.
+    const off = NT.offlineRead;
+    if (off) {
+      for (const [where, src, list] of [[suiteRel, nsuite, off.anchors], [testRel, suite, off.webAnchors]]) {
+        const a = Array.isArray(list) ? list : [];
+        const miss = a.filter((x) => !src.includes(x));
+        if (a.length === 0 || miss.length) {
+          problems.push(
+            `nativeTargets.offlineRead: ${a.length === 0 ? 'no anchors' : `${miss.map((m) => JSON.stringify(m)).join(', ')} no longer resolve`} in ${where} (comment-stripped). ` +
+              'The list surviving with the network off is then proven on no real target.',
+          );
+        }
+      }
+    }
+  }
+}
+
 // THE EQUALITY, STATED. It follows from the per-leg checks above, and it is
 // computed and printed anyway: the two numbers are what N-6 actually asks for,
 // and a relationship nobody prints is one nobody can audit from a log.
@@ -453,9 +625,14 @@ if (blocked.length) {
   for (const l of blocked) notes.push(`   · ${l.id} — ${l.blockedBy} (declared ${l.declaredOn ?? 'undated'})`);
 }
 notes.push(
-  `⬜ web only, by policy, dated ${E2E?.declaredOn ?? 'undated'} — Apple 3.1.1 / Play billing make a web ` +
-    'checkout structurally invalid as the unlock path on iOS and Android; the other four platforms are a ' +
-    'cost cut, not a tooling limit. (Guideline numbers COULD-NOT-ESTABLISH — carried from research, not re-read.)',
+  `⬜ the money legs are web only, by policy, dated ${E2E?.declaredOn ?? 'undated'} — Apple 3.1.1 / Play billing make a web ` +
+    'checkout structurally invalid as the unlock path on iOS and Android. (Guideline numbers COULD-NOT-ESTABLISH — ' +
+    'carried from research, not re-read.)',
+);
+notes.push(
+  `⬜ native targets (${nativeTargets.join(', ')}): ${legTargets.length} run the anonymous/sign-in legs in ` +
+    `${NT.workflow} job \`${NT.job}\` on ${nativeJobCrons.join(', ') || 'no named cron'}; account delete is declared ` +
+    `proven on web (${eqLegs.join(', ') || 'none'}), declared ${NT.declaredOn ?? 'undated'}.`,
 );
 for (const n of notes) console.log(n);
 
@@ -463,5 +640,6 @@ console.log(
   `ok  e2e legs — ${asserted.length} of ${REQUIRED_LEGS.length} golden-path leg(s) claimed asserted and ` +
     `${proven} proven by ${testRel} (equality holds); ${blocked.length} blocked with a live blocker; ` +
     `every app of the workspace set carries integration_test/app_test.dart (apps=${APP_SET.length}); ` +
-    `${definesRead.size} E2E_ define(s) the suites read, every one passed by ${wfRel}`,
+    `${definesRead.size} E2E_ define(s) the suites read, every one passed by ${wfRel}; ` +
+    `${nativeTargets.length} native catalog target(s), each leg run or declared equivalent`,
 );

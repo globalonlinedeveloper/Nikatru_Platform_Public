@@ -64,6 +64,10 @@
 //               for ITS flow; floor MIN_LINK_CALLS
 //   wiring      each in-scope app and the brick's providers.dart construct
 //               SupabaseAuthRepository with `redirects: AuthRedirects.current(`
+//               and (⏱ 2026-09-28 · ST-N1e) `nativeCredentials:
+//               nativeCredentialClient(` — without it every native sign-in,
+//               sign-up, reset and resend goes to GoTrue, which refuses it
+//               `captcha_failed` (O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN)
 //   policy      (PROVIDER-POLICY) auth_providers.dart `AuthProviders.configured`
 //               never declares `google: true` while `apple: false` — App Store
 //               Review Guideline 4.8
@@ -624,6 +628,10 @@ export function checkWiring(root, apps) {
     const v = namedArg(args, 'redirects');
     if (v === null || !v.startsWith('AuthRedirects.current(')) {
       problems.push(`${rel}:${lineAt(src, at)}: SupabaseAuthRepository( is built without \`redirects: AuthRedirects.current(…)\` — the default sends no redirect, so every link lands on the Site URL.`);
+    }
+    const n = namedArg(args, 'nativeCredentials');
+    if (n === null || !n.startsWith('nativeCredentialClient(')) {
+      problems.push(`${rel}:${lineAt(src, at)}: SupabaseAuthRepository( is built without \`nativeCredentials: nativeCredentialClient(…)\` — a native build then sends sign-in, sign-up, reset and resend to GoTrue, which refuses them \`captcha_failed\`.`);
     }
   }
   return problems;

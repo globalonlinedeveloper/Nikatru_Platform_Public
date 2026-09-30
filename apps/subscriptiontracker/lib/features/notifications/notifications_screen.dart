@@ -1,17 +1,45 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
+import '../../core/e2e_keys.dart';
 import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
-import '../../state/providers.dart'
-    show nowProvider, subscriptiontrackerNotificationServiceProvider;
+import '../../state/providers.dart' show nowProvider, renewalRemindersProvider;
+import '../../state/subscriptions_controller.dart' show monthDayFormat;
 import '../shared/async_gate.dart';
 
+/// What is coming up, derived from the subscriptions the user holds.
+///
+/// ⏱ 2026-09-28 · train ST-D5 — REBUILT ON THE DESIGN FOUNDATION. Every
+/// colour, size and face now comes from the scheme, the type ramp,
+/// [AppSpacing]/[AppRadius] or [StatusTones], with no `isLight` fork left:
+///
+///   · THE CLOSE is the chassis [AppIconAction]. It was
+///     `Semantics(button: true)` over a bare `GestureDetector` — announced as
+///     a button, with no `FocusNode` behind it.
+///   · THE RENEWALS are ONE card of [AppListRow]s, one row per plan due within
+///     a week, each led by an icon [AppMonogram] that takes the warn tint when
+///     the charge is today or tomorrow. The title and the sentence under it
+///     may wrap (`titleMaxLines`/`subtitleMaxLines`): they are sentences, and
+///     an ellipsis cuts the part that says when.
+///   · THE UNUSED NUDGE is a [DecisionStrip] of kind warn — an opaque,
+///     measured tint instead of a 13% alpha wash under an `AppColors.warn`
+///     glyph that was 2.15:1 on white. It offers no answers yet: nothing in
+///     the app records usage, so the only honest strip is one that informs.
+///   · LOADING is a [SkeletonList] in the card the rows will arrive in, and
+///     "nothing due" is the shared empty treatment, not a bare line of text.
+///
+/// ⚠️ THE NOTICES ARE STILL INERT, ON PURPOSE. Making a due-soon row open its
+/// plan is the obvious next affordance, but those rows are built from
+/// `daysUntil(now)`, so every control count the a11y and keyboard sweeps pin
+/// for this route would become a function of the wall clock. That wants the
+/// sweeps moved onto `nowProvider` first, in its own change.
 class NotificationsScreen extends ConsumerWidget {
   /// Closing this screen, guarded the way `subscription_detail_screen.dart`'s
   /// [SubscriptionDetailScreen._dismiss] is guarded and for the second of the
@@ -44,421 +72,319 @@ class NotificationsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final MoneyFormatter money = MoneyFormatter(l10n.localeName);
-
     final ThemeData theme = Theme.of(context);
-    final bool isLight = theme.brightness == Brightness.light;
     final ColorScheme scheme = theme.colorScheme;
+    final TextTheme text = theme.textTheme;
 
-    // 🔴 THE TEXT ON THIS SCREEN WAS NEAR-BLACK IN DARK MODE, AND IT WAS THE
-    // ONLY THING LEFT THAT WAS. Every surface here already forks on `isLight`
-    // — the scaffold, the close button, the divider, the card — but the three
-    // `Text` styles did not, and a bare `AppText.<style>` const bakes
-    // `AppColors.ink` (#141420) or `AppColors.muted` regardless of theme. So the
-    // fix above (dark scaffold) made the defect WORSE: near-black titles on a
-    // near-black sheet that had previously been near-black on white.
+    // 🔴 D/M/Y WAS HARDCODED, and it was wrong for most of the world rather
+    // than merely untranslated: `'${d.day}/${d.month}/${d.year}'` gave every
+    // locale day-first, including `en`, where 9/8/2026 means September 8th to
+    // the reader and August 9th to the code. Only a formatter can localise a
+    // date. `toString()` (not `toLanguageTag()`) because intl keys its symbol
+    // tables with the underscore form.
     //
-    // `AppText.of(context)` is the additive seam for exactly this. In LIGHT it
-    // returns the const objects THEMSELVES — `identical(AppText.of(c).title,
-    // AppText.title)` — so the light build this app is eyeballed in is
-    // byte-identical; in dark it re-points ink at `scheme.onSurface` and muted
-    // at `scheme.onSurfaceVariant`, derived from the seed rather than pinned.
-    // Resolved once here rather than per `Text`: `_card` takes its own, because
-    // it is a separate method and re-reading `Theme.of` there is cheaper than
-    // threading a parameter through a private builder.
-    final AppTextStyles text = AppText.of(context);
-
-    // 🔴 D/M/Y WAS HARDCODED, and it was wrong for most of the world rather than
-    // merely untranslated. The line read
-    // `'${x.nextRenewal.day}/${x.nextRenewal.month}/${x.nextRenewal.year}'`,
-    // so every locale got day-first — including `en`, where 9/8/2026 means
-    // September 8th to the reader and August 9th to the code. A date built by
-    // string concatenation cannot be localised at all; only a formatter can.
-    //
-    // The locale comes from `Localizations.localeOf`, and `toString()` (not
-    // `toLanguageTag()`) is deliberate: intl keys its symbol tables with the
-    // underscore form (`en_US`), while the BCP-47 tag uses a hyphen. The symbol
-    // data itself is loaded by `GlobalMaterialLocalizations`, which is in
-    // `AppLocalizations.localizationsDelegates` — so any host that can build
-    // this screen at all has already initialised the formatter's data.
-    final DateFormat renewalDate = DateFormat.yMd(
+    // ⏱ ST-R6 (audit C18): and not `yMd` either — "9/29/2026" reads two ways
+    // between US and Indian readers. It is the OS reminder's own month-day
+    // formatter now, so the two surfaces say the same date the same way.
+    final DateFormat renewalDate = monthDayFormat(
       Localizations.localeOf(context).toString(),
     );
 
     return Scaffold(
-      // Light byte-identical (the literal AppColors.bg); dark takes
-      // `scheme.surface`, which is what `buildAppTheme` gives
-      // `scaffoldBackgroundColor` — so this screen stops being a pale sheet in
-      // front of a dark app.
-      backgroundColor: isLight ? AppColors.bg : scheme.surface,
-      body: SafeArea(
-        // ── THE CONTENT PANE ──────────────────────────────────────────────────
-        // Same defect and same fix as home and PR #210's three screens: this is
-        // a pushed full-screen route, so NOTHING capped it. On a 1920px desktop
-        // the header put the title at one edge and the close button at the
-        // other, ~1850px apart, and every notification card became a 1900px
-        // band with a 40px glyph at the left and two lines of text beside it.
-        //
-        // 🔴 CORRECTED 2026-08-21 — THE CAP CHOSEN HERE NEVER BOUND. This read
-        // "the DEFAULT cap (`AppBreakpoints.kMaxBodyWidth`) rather than
-        // `.reading`: these are cards in a list, the same shape home caps, not
-        // continuous prose." Two things were wrong with it. First, 1280 is not
-        // reachable on the desktops people actually use: `AppScaffold` hands the
-        // body `min(W - 361, 1280)` — a 360 px drawer plus a 1 px divider —
-        // so a 1440 px window offers 1079 and the cap is a no-op everywhere
-        // between 839 and 1280. (This screen is pushed OVER the shell on its own
-        // `Scaffold`, so it does see the raw window; the point is that the
-        // number was picked to match a sibling cap that itself does not bind.)
-        // Second, the card CONTENT is prose: `notifRenewsInDays` and
-        // `notifCancellingSaves` are whole sentences, and the Tamil arms are
-        // longer than the English. A 1280 px band puts a 40 px glyph at one edge
-        // and a sentence that stops a third of the way across.
-        //
-        // ⏱ 2026-09-16 · [ADR 083]: the 361 px above was the 360 px drawer and
-        // its divider, and no window class uses the drawer now. From 1200 px up
-        // the body is `min(W - R - 1, 1280)`, where R is the slim rail's
-        // rendered width (116 px for a "Settings" label on Flutter 3.47.2). So
-        // a 1440 px window gives 1439 - R (1323 px for a 116 px rail), not
-        // 1079. The 720 cap chosen here still binds there.
-        //
-        // `.reading` (720) is the design system's own number for exactly that —
-        // 45–75 characters before the eye loses the line return — and it is the
-        // narrower of the two candidates the audit offered (840–960 suits a
-        // DENSE row list; this is a two-line card stack with one glyph, so it
-        // reaches its natural width sooner). At 720 a card is 720 less two 18 px
-        // gutters = 684, of which the glyph and its gap take 52, leaving 632 for
-        // the sentence — about 70 characters at 13–14 pt, which is the top of
-        // that range rather than past it.
-        //
-        // The pane still wraps the WHOLE column — header, rule and list together
-        // — because capping only the list would leave the title and the close
-        // button hanging off the edges of a centred list, which is worse than
-        // not capping at all. `test/width_notifications_test.dart` pins both
-        // halves.
-        child: ContentPane.reading(
-          child: Column(
-            children: <Widget>[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.gutterCompact,
-                  8,
-                  AppSpacing.gutterCompact,
-                  14,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: <Widget>[
-                    Text(
-                      l10n.notifications,
-                      style: text.title.copyWith(fontSize: 22),
+      // No `backgroundColor`: the scaffold inherits `scheme.surface` from
+      // `buildAppTheme` in both brightnesses. The light-literal override that
+      // stood here (`AppColors.bg`) is retired with the rest of the forks.
+      // ST-R6 (audit C17): Esc closes, as the Close button does. Autofocused
+      // so the key reaches it without a first click on web and desktop.
+      body: CallbackShortcuts(
+        bindings: <ShortcutActivator, VoidCallback>{
+          const SingleActivator(LogicalKeyboardKey.escape): () =>
+              _close(context),
+        },
+        child: Focus(
+          autofocus: true,
+          // Holds focus for the shortcut without being a Tab stop itself.
+          skipTraversal: true,
+          child: SafeArea(
+            // ── THE CONTENT PANE ────────────────────────────────────────────────
+            // `.reading` (720): the card content is PROSE — `notifRenewsInDays`
+            // and `notifCancellingSaves` are whole sentences, and the Tamil arms
+            // are longer — so the design system's reading width, 45–75 characters
+            // before the eye loses the line return. The default `kMaxBodyWidth`
+            // never bound on a real desktop.
+            //
+            // The pane wraps the WHOLE column — header, rule and list together —
+            // because capping only the list would leave the title and the close
+            // button hanging off the edges of a centred list.
+            // `test/width_notifications_test.dart` pins both halves.
+            child: ContentPane.reading(
+              child: Column(
+                children: <Widget>[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.gutterCompact,
+                      AppSpacing.sm,
+                      AppSpacing.gutterCompact,
+                      AppSpacing.md,
                     ),
-                    // ⏱ ST-T3b: `FocusableTap`, not a bare `GestureDetector`
-                    // under `Semantics(button:)` — that announced a button a
-                    // keyboard could not reach. It hid behind a one-control
-                    // sweep until ST-M3's rolled dates put Tab-able cards
-                    // beside it (keyboard_sweep_test `/notifications`).
-                    FocusableTap(
-                      label: l10n.close,
-                      onTap: () => _close(context),
-                      child: Container(
-                        width: 48,
-                        height: 48,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: isLight
-                              ? AppColors.surface
-                              : scheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: isLight
-                                ? AppColors.line
-                                : scheme.outlineVariant,
+                    child: Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Semantics(
+                            header: true,
+                            child: Text(
+                              l10n.notifications,
+                              style: text.headlineSmall?.copyWith(
+                                color: scheme.onSurface,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
                           ),
                         ),
-                        child: Icon(
-                          Icons.close,
-                          size: 18,
-                          color: isLight ? AppColors.ink : scheme.onSurface,
+                        const SizedBox(width: AppSpacing.md),
+                        AppIconAction(
+                          key: E2EKeys.notificationsClose,
+                          icon: Icons.close,
+                          label: l10n.close,
+                          onPressed: () => _close(context),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // ST-U1 (audit C20): this list is DERIVED, not an inbox, and on a
+                  // target that cannot schedule (web — the live one — Windows and
+                  // Linux) it is the only reminder there is. Said once, here.
+                  if (!ref
+                      .watch(renewalRemindersProvider)
+                      .capabilities
+                      .canSchedule)
+                    Padding(
+                      key: const Key('notificationsNoRemindersHere'),
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.gutterCompact,
+                        0,
+                        AppSpacing.gutterCompact,
+                        AppSpacing.md,
+                      ),
+                      child: Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: Text(
+                          l10n.notificationsNoRemindersHere,
+                          style: text.bodyMedium?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
                     ),
-                  ],
-                ),
-              ),
-              // ST-U1 (audit C20): this list is DERIVED, not an inbox, and on a
-              // target that cannot schedule (web — the live one — Windows and
-              // Linux) it is the only reminder there is. Said once, here.
-              if (!ref
-                  .watch(subscriptiontrackerNotificationServiceProvider)
-                  .capabilities
-                  .canSchedule)
-                Padding(
-                  key: const Key('notificationsNoRemindersHere'),
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.gutterCompact,
-                    0,
-                    AppSpacing.gutterCompact,
-                    12,
-                  ),
-                  child: Text(
-                    l10n.notificationsNoRemindersHere,
-                    style: text.muted,
-                  ),
-                ),
-              Divider(
-                height: 1,
-                color: isLight ? AppColors.line : scheme.outlineVariant,
-              ),
-              Expanded(
-                // 🔴 THE GATE IS INSIDE THE CHROME, NOT AROUND IT, AND THAT
-                // PLACEMENT IS THE WHOLE POINT ON THIS SCREEN. The title row
-                // above carries the ONLY close control, and `_close` is the only
-                // way back to /home from a URL a user can reload directly (see
-                // its own note on GoError). Wrapping the `Scaffold` instead would
-                // take that control away for the entire duration of a failed
-                // fetch — a dead end reached precisely when the user most needs
-                // out. Header, rule and close button therefore survive all three
-                // states; only the list region below changes.
-                child: subscriptionsGate(
-                  ref,
-                  l10n: l10n,
-                  emptyTitle: l10n.dataEmptyTitle,
-                  emptyBody: l10n.dataEmptyBody,
-                  builder: (List<Subscription> subs) {
-                    final MoneyBag savings = SubMath.savings(subs);
-                    // 2026-07-27 - this list was FIVE HARDCODED entries naming real brands and
-                    // inventing facts about the user's own accounts: "Adobe CC and Disney+
-                    // haven't been opened in weeks", "Netflix price increased from 13.99 to
-                    // 15.49", renewals for plans the user may not even track. It rendered
-                    // identically for everyone, because none of it came from their data.
-                    //
-                    // The app has no usage tracking and no price history, so neither claim could
-                    // ever have been derived. Every row below is now computed from the
-                    // subscriptions actually held, and anything that cannot be computed is not
-                    // shown at all.
-                    // ⏱ ST-T3b (ST-M3): the injectable clock, because the
-                    // due-soon cards now come from ROLLED dates, so which rows
-                    // fall in the next seven days depends on the day — a sweep
-                    // that counts this screen's controls pins it (`nowProvider`).
-                    final DateTime now = ref.watch(nowProvider)();
-
-                    final List<Subscription> dueSoon =
-                        subs.where((Subscription x) {
-                          final int d = x.daysUntil(now);
-                          return d >= 0 && d <= 7;
-                        }).toList()..sort(
-                          (Subscription a, Subscription b) =>
-                              a.daysUntil(now).compareTo(b.daysUntil(now)),
-                        );
-
-                    final List<Subscription> flaggedUnused = subs
-                        .where((Subscription x) => x.unused)
-                        .toList();
-
-                    // 🔴 THE PLURAL ARMS CARRY WHOLE CLAUSES, NOT A NOUN.
-                    //
-                    // What was here glued fragments together with inline ternaries:
-                    //   '${n} ${n == 1 ? "plan is" : "plans are"} marked unused'
-                    //   'Cancelling ${n == 1 ? "it" : "them"} would save …'
-                    // Both are English grammar written as Dart. The first agrees a VERB with a
-                    // count, the second swaps a PRONOUN — and neither agreement is a property of
-                    // the number, it is a property of the language. Tamil inflects the noun in a
-                    // different position and does not have the pronoun split at all, so a
-                    // translator handed the fragments "plan is" / "plans are" has been handed a
-                    // puzzle rather than a sentence.
-                    //
-                    // So each arm of `notifUnusedCount` and `notifCancellingSaves` is a complete
-                    // clause. The count still selects the arm; the arm is what a translator
-                    // rewrites freely.
-                    final List<_Notif> items = <_Notif>[
-                      for (final Subscription x in dueSoon)
-                        _Notif(
-                          Icons.notifications_none,
-                          AppColors.accent,
-                          const Color.fromRGBO(100, 89, 245, 0.12),
-                          subId: x.id,
-                          x.daysUntil(now) == 0
-                              ? l10n.notifRenewsToday(x.name)
-                              // (name, count) — gen-l10n orders the parameters by the arb's
-                              // placeholder map, and the plural SELECTOR is the second one here.
-                              : l10n.notifRenewsInDays(
-                                  x.name,
-                                  x.daysUntil(now),
-                                ),
-                          l10n.notifChargeOn(
-                            money.format(x.price),
-                            renewalDate.format(x.nextCharge(now)),
+                  const Divider(height: 1),
+                  Expanded(
+                    // 🔴 THE GATE IS INSIDE THE CHROME, NOT AROUND IT. The title
+                    // row above carries the ONLY close control, and `_close` is the
+                    // only way back to /home from a URL a user can reload directly.
+                    // Wrapping the `Scaffold` instead would take that control away
+                    // for the whole of a failed fetch — a dead end reached
+                    // precisely when the user most needs out.
+                    child: subscriptionsGate(
+                      ref,
+                      l10n: l10n,
+                      emptyTitle: l10n.dataEmptyTitle,
+                      emptyBody: l10n.dataEmptyBody,
+                      // The list's own outline, in the card the rows arrive in.
+                      loading: ListView(
+                        padding: const EdgeInsets.all(AppSpacing.gutterCompact),
+                        children: <Widget>[
+                          AppCard(
+                            padding: EdgeInsets.zero,
+                            child: SkeletonList(label: l10n.dataLoading),
                           ),
-                        ),
-                      if (flaggedUnused.isNotEmpty)
-                        _Notif(
-                          Icons.priority_high,
-                          AppColors.warn,
-                          const Color.fromRGBO(245, 158, 11, 0.13),
-                          l10n.notifUnusedCount(flaggedUnused.length),
-                          l10n.notifCancellingSaves(
-                            flaggedUnused.length,
-                            money.formatBag(savings),
-                          ),
-                        ),
-                    ];
-                    return items.isEmpty
-                        ? Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(32),
-                              child: Text(
-                                l10n.notifNothingDue,
-                                textAlign: TextAlign.center,
-                                // ⚠️ THIS ONE CARRIED A `color:` AND WAS STILL THE
-                                // SAME BUG. `AppColors.muted` is a light-mode
-                                // literal, so the empty state was mid-grey on a dark
-                                // sheet whichever way the theme went. `body` +
-                                // `AppColors.muted` and `muted` are the SAME
-                                // TextStyle by value — Manrope, w500, muted — so
-                                // naming the muted style instead of re-colouring the
-                                // body one changes no pixel in light and picks up
-                                // `scheme.onSurfaceVariant` in dark.
-                                style: text.muted,
-                              ),
-                            ),
-                          )
-                        : ListView.separated(
-                            // Rebased onto the chassis gutter, matching home: the
-                            // horizontal 18 was already `AppSpacing.gutterCompact`
-                            // by value and is now so by name, and the bottom grows
-                            // to `AppSpacing.xl` so the last card is not flush
-                            // against the safe-area edge.
-                            padding: const EdgeInsets.fromLTRB(
-                              AppSpacing.gutterCompact,
-                              AppSpacing.gutterCompact,
-                              AppSpacing.gutterCompact,
-                              AppSpacing.xl,
-                            ),
-                            itemCount: items.length,
-                            separatorBuilder: (_, _) =>
-                                const SizedBox(height: 10),
-                            itemBuilder: (BuildContext context, int i) =>
-                                _card(context, items[i]),
-                          );
-                  },
-                ),
+                        ],
+                      ),
+                      builder: (List<Subscription> subs) => _body(
+                        context,
+                        ref,
+                        subs,
+                        l10n: l10n,
+                        money: money,
+                        renewalDate: renewalDate,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  /// ✅ ST-U8 (C16): A CARD ABOUT ONE SUBSCRIPTION OPENS IT. "Netflix renews
-  /// in 2 days" was a dead end — the screen could inform and never act. A
-  /// card with a [_Notif.subId] is now one tap stop that pushes `/sub/:id`
-  /// (back returns here); the aggregate "unused" card names no single
-  /// subscription and stays inert.
-  Widget _card(BuildContext context, _Notif n) {
-    final String? id = n.subId;
-    return FocusableTap(
-      onTap: id == null ? null : () => context.push('/sub/$id'),
-      borderRadius: BorderRadius.circular(18),
-      child: _cardBody(context, n),
-    );
-  }
+  /// The derived notices, or the "nothing due" state.
+  ///
+  /// 2026-07-27 — this list was FIVE HARDCODED entries naming real brands and
+  /// inventing facts about the user's own accounts. Every row is now computed
+  /// from the subscriptions actually held, and anything that cannot be
+  /// computed is not shown at all.
+  Widget _body(
+    BuildContext context,
+    WidgetRef ref,
+    List<Subscription> subs, {
+    required AppLocalizations l10n,
+    required MoneyFormatter money,
+    required DateFormat renewalDate,
+  }) {
+    // The wall clock through `nowProvider`, so a golden and a state test can
+    // pin the day instead of rotting when the demo renewal dates pass.
+    final DateTime now = ref.watch(nowProvider)();
+    final MoneyBag savings = SubMath.savings(subs);
 
-  Widget _cardBody(BuildContext context, _Notif n) {
-    final ThemeData theme = Theme.of(context);
-    final bool isLight = theme.brightness == Brightness.light;
-    final ColorScheme scheme = theme.colorScheme;
-    // Same seam as `build`'s; see the note there for why light is
-    // byte-identical. Resolved from `theme` rather than `context` so the
-    // brightness fork above and the text below provably read the same
-    // `ThemeData` — `AppText.resolve` exists for precisely this.
-    final AppTextStyles text = AppText.resolve(theme);
+    final List<Subscription> dueSoon =
+        subs.where((Subscription x) {
+          final int d = x.daysUntil(now);
+          return d >= 0 && d <= 7;
+        }).toList()..sort(
+          (Subscription a, Subscription b) =>
+              a.daysUntil(now).compareTo(b.daysUntil(now)),
+        );
 
-    return Container(
-      padding: const EdgeInsets.all(14),
-      // Spelled out rather than delegating to `cardDecoration`: that helper's
-      // LIGHT branch carries `kCardShadow`, and this card has never had one.
-      // Calling it would have been a one-line diff that repainted the light
-      // screen — the exact repaint the pinned light branches exist to prevent.
-      // The DARK branch is identical to the helper's, so the two stay one look.
-      decoration: isLight
-          ? BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(18),
-            )
-          : BoxDecoration(
-              color: scheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: scheme.outlineVariant),
+    // ST-R6 (audit C19): a charge that happened in the last week — the stored
+    // date has passed and the row ROLLED to its next charge (ST-T3b) — was
+    // never said. It is, and it asks the question. Older than the week the
+    // list covers is not news.
+    final DateTime today = DateTime(now.year, now.month, now.day);
+    final List<Subscription> renewed =
+        subs.where((Subscription x) {
+          if (x.cycle == null) return false;
+          final DateTime r = DateTime(
+            x.nextRenewal.year,
+            x.nextRenewal.month,
+            x.nextRenewal.day,
+          );
+          final int d = r.difference(today).inDays;
+          return d < 0 && d >= -7;
+        }).toList()..sort(
+          (Subscription a, Subscription b) =>
+              a.nextRenewal.compareTo(b.nextRenewal),
+        );
+
+    final List<Subscription> flaggedUnused = subs
+        .where((Subscription x) => x.unused)
+        .toList();
+
+    if (dueSoon.isEmpty && renewed.isEmpty && flaggedUnused.isEmpty) {
+      return DataStateView.empty(
+        title: l10n.notifNothingDue,
+        icon: Icons.notifications_none,
+      );
+    }
+
+    // 🔴 THE PLURAL ARMS CARRY WHOLE CLAUSES, NOT A NOUN. The count selects
+    // the arm of `notifUnusedCount` / `notifCancellingSaves`; the arm is what
+    // a translator rewrites freely. Gluing "plan is" / "plans are" fragments
+    // with an inline ternary is English grammar written as Dart.
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.gutterCompact,
+        AppSpacing.gutterCompact,
+        AppSpacing.gutterCompact,
+        AppSpacing.xl,
+      ),
+      children: <Widget>[
+        if (flaggedUnused.isNotEmpty) ...<Widget>[
+          DecisionStrip(
+            key: const Key('notifications-unused-strip'),
+            kind: StatusKind.warn,
+            message: l10n.notifUnusedCount(flaggedUnused.length),
+            detail: l10n.notifCancellingSaves(
+              flaggedUnused.length,
+              money.formatBag(savings),
             ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Container(
-            width: 40,
-            height: 40,
-            alignment: Alignment.center,
-            // `n.bg` is a TRANSLUCENT accent/warn tint (12–13% alpha), so it
-            // composites over whatever the card is and works in both
-            // brightnesses. It is not a light-hardcoded fill and is left alone
-            // deliberately.
-            decoration: BoxDecoration(
-              color: n.bg,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(n.icon, color: n.color, size: 18),
           ),
-          const SizedBox(width: 12),
-          Expanded(
+          if (dueSoon.isNotEmpty || renewed.isNotEmpty)
+            const SizedBox(height: AppSpacing.lg),
+        ],
+        if (dueSoon.isNotEmpty)
+          AppCard(
+            key: const Key('notifications-due-card'),
+            padding: EdgeInsets.zero,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(
-                  n.title,
-                  style: text.body.copyWith(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  n.body,
-                  style: text.muted.copyWith(fontSize: 13, height: 1.45),
-                ),
-                // 🔴 A THIRD `Text` LIVED HERE AND RENDERED NOTHING, for as long
-                // as this screen has been data-driven. It was
-                // `Text(n.time.toUpperCase(), style: AppText.label…)`, and BOTH
-                // construction sites above passed `''` — the field was the last
-                // remnant of the five hardcoded entries ("2 HOURS AGO") deleted
-                // on 2026-07-27. `''.toUpperCase()` is `''`, so it laid out a
-                // zero-width Text plus a 6px gap on every card, invisible and
-                // untestable. Deleted here WITH its field (WORKORDER §1 flags
-                // it): a struct member every caller passes empty is not data, it
-                // is a leftover, and leaving it would have meant l10n-ing a
-                // string nobody can see.
+                for (int i = 0; i < dueSoon.length; i++) ...<Widget>[
+                  if (i > 0) const Divider(height: 1),
+                  _dueRow(context, dueSoon[i], now, l10n, money, renewalDate),
+                ],
+              ],
+            ),
+          ),
+        // Past charges in their own card: the due card is what is COMING.
+        if (renewed.isNotEmpty) ...<Widget>[
+          if (dueSoon.isNotEmpty) const SizedBox(height: AppSpacing.lg),
+          AppCard(
+            key: const Key('notifications-renewed-card'),
+            padding: EdgeInsets.zero,
+            child: Column(
+              children: <Widget>[
+                for (int i = 0; i < renewed.length; i++) ...<Widget>[
+                  if (i > 0) const Divider(height: 1),
+                  _renewedRow(context, renewed[i], l10n, renewalDate),
+                ],
               ],
             ),
           ),
         ],
-      ),
+      ],
     );
   }
-}
 
-class _Notif {
-  const _Notif(
-    this.icon,
-    this.color,
-    this.bg,
-    this.title,
-    this.body, {
-    this.subId,
-  });
+  /// One renewal notice: the plan and when, then what it will charge.
+  ///
+  /// ✅ ST-U8 (C16): A NOTICE ABOUT ONE SUBSCRIPTION OPENS IT. "Netflix renews
+  /// in 2 days" was a dead end — the screen could inform and never act. The
+  /// row pushes `/sub/:id` (back returns here); the aggregate "unused" strip
+  /// names no single subscription and stays inert.
+  Widget _dueRow(
+    BuildContext context,
+    Subscription x,
+    DateTime now,
+    AppLocalizations l10n,
+    MoneyFormatter money,
+    DateFormat renewalDate,
+  ) {
+    final int days = x.daysUntil(now);
+    return AppListRow(
+      leading: AppMonogram.icon(
+        Icons.notifications_none,
+        // Today or tomorrow is the last chance to act before the charge, so
+        // it is the one notice drawn as a warning; the sentence says so too.
+        status: days <= 1 ? StatusKind.warn : null,
+      ),
+      title: days == 0
+          ? l10n.notifRenewsToday(x.name)
+          // (name, count) — gen-l10n orders the parameters by the arb's
+          // placeholder map, and the plural SELECTOR is the second one here.
+          : l10n.notifRenewsInDays(x.name, days),
+      titleMaxLines: 2,
+      subtitle: l10n.notifChargeOn(
+        money.format(x.price),
+        renewalDate.format(x.nextCharge(now)),
+      ),
+      subtitleMaxLines: 3,
+      onTap: () => context.push('/sub/${x.id}'),
+    );
+  }
 
-  /// The subscription this card is about, or null for an aggregate card.
-  final String? subId;
-  final IconData icon;
-  final Color color;
-  final Color bg;
-  final String title;
-  final String body;
+  Widget _renewedRow(
+    BuildContext context,
+    Subscription x,
+    AppLocalizations l10n,
+    DateFormat renewalDate,
+  ) {
+    return AppListRow(
+      leading: AppMonogram.icon(Icons.history),
+      title: x.name,
+      titleMaxLines: 2,
+      subtitle: l10n.notificationsRenewedOn(renewalDate.format(x.nextRenewal)),
+      subtitleMaxLines: 3,
+      onTap: () => context.push('/sub/${x.id}'),
+    );
+  }
 }

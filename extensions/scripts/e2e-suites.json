@@ -18,9 +18,15 @@
     "suite is a red that names it, so a new suite is protected from the first day",
     "rather than whenever somebody remembers.",
     "",
-    "This key is ignored by the gate; `suites` is the whole subject."
+    "This key is ignored by the gate; `suites` is the whole subject.",
+    "",
+    "geckoAndroidLegs (2026-09-29, rv2 EXB-11): the tools an e2e leg runs on Firefox for",
+    "Android. EMPTY: none does. publish/verify-firefox-package.node.js refuses",
+    "browser_specific_settings.gecko_android for a tool not listed here, so the package",
+    "never claims a platform no suite has run."
   ],
   "suites": [
     "Extension/Full_Screen_Shot"
-  ]
+  ],
+  "geckoAndroidLegs": []
 }

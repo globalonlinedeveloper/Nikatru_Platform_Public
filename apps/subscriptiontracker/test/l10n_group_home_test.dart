@@ -397,7 +397,7 @@ void main() {
         final AppLocalizations l = await _l10n(code);
         await _pumpShell(tester, Locale(code));
 
-        // The five labels. `_tabs` stopped being a `static const` for exactly
+        // The four labels (ST-D3 D3-3: no Budget tab, Settings named). `_tabs` stopped being a `static const` for exactly
         // this: a const list cannot hold a value that depends on the resolved
         // Localizations, and `destinations:` is what the rail, the drawer and
         // every screen reader read.
@@ -405,8 +405,7 @@ void main() {
           l.navHome,
           l.navCalendar,
           l.navInsights,
-          l.navBudget,
-          l.navMore,
+          l.navSettings,
         ]) {
           expect(
             find.descendant(
@@ -506,7 +505,9 @@ void main() {
         final AppLocalizations l = await _l10n(code);
         await _pumpScreen(tester, Locale(code), const NotificationsScreen());
         final MoneyFormatter money = MoneyFormatter(l.localeName);
-        final DateFormat fmt = DateFormat.yMd(code);
+        // ⏱ 2026-09-28 · ST-R6 (audit C18): month-day, the OS reminder's own
+        // format — "9/29/2026" read two ways between US and Indian readers.
+        final DateFormat fmt = DateFormat.MMMd(code);
 
         expect(find.text(l.notifications), findsOneWidget);
 

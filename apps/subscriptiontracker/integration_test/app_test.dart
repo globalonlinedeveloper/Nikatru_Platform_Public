@@ -35,9 +35,10 @@ import 'package:nikatru_chassis_screens/shell/web_semantics.dart'
 import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/features/auth/legal_consent_fields.dart';
 import 'package:subscriptiontracker/features/auth/reaccept_terms_screen.dart';
-import 'package:subscriptiontracker/features/budget/budget_screen.dart';
 import 'package:subscriptiontracker/features/calendar/calendar_screen.dart';
 import 'package:subscriptiontracker/features/home/home_screen.dart';
+import 'package:subscriptiontracker/features/insights/budget_card.dart';
+import 'package:subscriptiontracker/features/insights/budget_editor.dart';
 import 'package:subscriptiontracker/features/insights/insights_screen.dart';
 import 'package:subscriptiontracker/features/settings/settings_screen.dart';
 import 'package:subscriptiontracker/features/shell/app_shell.dart';
@@ -48,6 +49,7 @@ import 'package:subscriptiontracker/state/analytics_providers.dart'
 
 import 'consent.dart';
 import 'magic_link_sign_in.dart';
+import 'offline_read_steps.dart';
 
 void main() {
   final IntegrationTestWidgetsFlutterBinding binding =
@@ -411,6 +413,54 @@ void main() {
         .where((String s) => s.trim().isNotEmpty)
         .take(25);
     return texts.isEmpty ? '(no Text widgets in the tree)' : texts.join(' | ');
+  }
+
+  /// Submit the add sheet — and PROVE it closed, which is what a saved row does.
+  ///
+  /// 🔬 LIVE E2E 36513585035 (600cc6dc, #1045 ST-T3b), BOTH TESTS RED. T3b grew
+  /// the sheet (currency, trial, category, plan, website, notes), and at this
+  /// suite's 430x932 window the submit button now lays out at y 1153-1205,
+  /// below the viewport: measured with the real sheet, not inferred. The bare
+  /// `tester.tap(addSubmit)` it replaced therefore missed, silently
+  /// (`warnIfMissed` is a print nobody reads), and the sheet stayed open.
+  ///
+  /// 🔴 AND THE READ-BACK AFTER IT STILL PASSED, which is why the failure
+  /// surfaced three steps later as `Found 0 widgets with text "Remove"`.
+  /// `find.text` also matches an `EditableText`, so "the subscription just
+  /// created, on Home" was found in the still-open sheet's OWN NAME FIELD —
+  /// no POST, no D1 row, a green round-trip assertion. The same miss in the
+  /// delete test left the sheet over the shell, so `tap('More')` never opened
+  /// Settings (`Found 0 widgets with type "SettingsScreen"`). The
+  /// `findsNothing` below closes that hole: the sheet pops only after the
+  /// POST succeeds (`_save` in add_subscription_sheet.dart), and while it is
+  /// up nothing downstream may read its fields as evidence.
+  ///
+  /// The sheet scrolls on purpose (its note on the button row says so, and
+  /// `add_sheet_t3b_test.dart` makes the same `ensureVisible` call), so this
+  /// is the suite catching up with the app, not the app regressing.
+  Future<void> submitAddSheet(WidgetTester tester, String what) async {
+    final Finder submit = find.byKey(E2EKeys.addSubmit);
+    await tester.ensureVisible(submit);
+    await pumpFor(tester, const Duration(milliseconds: 500));
+    await tapWhenHittable(
+      tester,
+      submit,
+      'the add sheet\'s submit button ($what)',
+      scrollable: find
+          .ancestor(of: submit, matching: find.byType(Scrollable))
+          .first,
+    );
+    // POST /v1/subscriptions → Worker → D1, then the sheet closes.
+    await pumpFor(tester, const Duration(seconds: 8));
+    expect(
+      submit,
+      findsNothing,
+      reason:
+          'The add sheet is still open 8s after its submit was tapped for '
+          '$what: the sheet pops only once the POST succeeds, so either the '
+          'save failed (a SnackBar says which) or the button was disabled. '
+          'On screen: ${onScreen(tester)}',
+    );
   }
 
   /// 🔴 THE FAILURE THIS SUITE MUST NAME OUT LOUD — AND THE SECOND TIME IT GOT
@@ -819,7 +869,7 @@ void main() {
     // manufacture the very failure it exists to prevent.
     await pumpFor(tester, const Duration(seconds: 2));
     if (shell.evaluate().isEmpty) return false;
-    await tester.tap(find.text('More'));
+    await tester.tap(find.text('Settings'));
     await pumpFor(tester, const Duration(seconds: 2));
     final Finder settings = find.byType(SettingsScreen);
     expect(
@@ -1247,8 +1297,8 @@ void main() {
     //
     // `Icons.calendar_month_rounded` is used in exactly one place in the app
     // (`app_shell.dart`'s tab spec), so it is the unambiguous handle. The other
-    // four labels are untouched: no screen renders "Home", "Insights", "Budget"
-    // or "More" alongside its tab. Pinned by
+    // three labels are untouched: no screen renders "Home", "Insights" or
+    // "Settings" alongside its tab. Pinned by
     // `test/l10n_group_home_test.dart` → '"Calendar" is now ambiguous on /home'.
     await tester.tap(find.byIcon(Icons.calendar_month_rounded));
     await pumpFor(tester, const Duration(seconds: 2));
@@ -1263,17 +1313,17 @@ void main() {
     expect(find.byType(InsightsScreen), findsWidgets);
     await shot('06-insights');
 
-    // ── 07 Budget (loads over the network first) ─────────────────────────────
-    await tester.tap(find.text('Budget'));
-    await pumpFor(tester, const Duration(seconds: 4));
-    expect(shellIndex(), 3);
-    expect(find.byType(BudgetScreen), findsWidgets);
-    await shot('07-budget');
+    // ── 07 Budget: MOVED to 11b, after the first subscription exists ────────
+    // 🔬 ST-D3 put the budget card INSIDE Insights' subscription builder, so a
+    // fresh account (no subscriptions yet, as here) gets Insights' EMPTY state
+    // and no budget card at all. Runs 36698011430, 36699356737 and 36700658677
+    // all failed here for that reason ("Nothing to scroll ... On screen: No
+    // subscriptions"). The budget is exercised at 11b, once one row exists.
 
-    // ── 08 Settings (the 5th tab is labelled "More") ─────────────────────────
-    await tester.tap(find.text('More'));
+    // ── 08 Settings (the 4th tab, named) ─────────────────────────────────────
+    await tester.tap(find.text('Settings'));
     await pumpFor(tester, const Duration(seconds: 2));
-    expect(shellIndex(), 4);
+    expect(shellIndex(), 3);
     expect(find.byType(SettingsScreen), findsWidgets);
     expect(find.text('CURRENCY'), findsWidgets);
     await shot('08-settings');
@@ -1307,9 +1357,7 @@ void main() {
     await tester.enterText(find.byKey(E2EKeys.addPrice), '12.34');
     await pumpFor(tester, const Duration(milliseconds: 500));
     await shot('10-add-sheet');
-    await tester.tap(find.byKey(E2EKeys.addSubmit));
-    // POST /v1/subscriptions → Worker → D1, then the sheet closes.
-    await pumpFor(tester, const Duration(seconds: 8));
+    await submitAddSheet(tester, 'the first subscription');
 
     // ── 11 Read-back on Home (proves the row round-tripped through D1) ────────
     // Home is a lazy ListView — scroll the new row into view before asserting.
@@ -1329,6 +1377,56 @@ void main() {
           'read-back failed',
     );
     await shot('11-home-after-create');
+
+    // ── 11b Budget: the editor on Insights (ST-D3: no Budget tab) ────────────
+    // Only now does Insights render its card stack (one subscription exists).
+    await tester.tap(find.text('Insights'));
+    await pumpFor(tester, const Duration(seconds: 2));
+    expect(shellIndex(), 2);
+    // Insights is a LAZY ListView: at the E2E viewport (430x932) the header and
+    // summary tiles can push the budget card below the fold, unbuilt. Scroll to
+    // `insights.budget`, which keys the card while loading and when loaded.
+    await scrollUntilFound(
+      tester,
+      target: find.byKey(const Key('insights.budget')),
+      scrollable: scrollableWithin(find.byType(InsightsScreen)),
+      what: 'the Insights budget card',
+      maxScrolls: 20,
+      delta: 200,
+    );
+    // Then wait for the button itself, never a fixed pump: BudgetCard renders no
+    // Edit until the budget request HAS A VALUE (a load or an error both hide it).
+    expect(
+      await waitFor(
+        tester,
+        find.byKey(BudgetCard.editButton),
+        timeout: const Duration(seconds: 30),
+      ),
+      isTrue,
+      reason:
+          'the Insights budget card never offered Edit within 30 s: '
+          'the budget request is still loading or FAILED',
+    );
+    await tester.ensureVisible(find.byKey(BudgetCard.editButton));
+    await tester.tap(find.byKey(BudgetCard.editButton));
+    await pumpFor(tester, const Duration(seconds: 2));
+    expect(find.byType(BudgetEditor), findsWidgets);
+    await shot('07-budget');
+    await tester.tap(find.byTooltip('Close'));
+    await pumpFor(tester, const Duration(seconds: 2));
+    expect(find.byType(BudgetEditor), findsNothing);
+
+    // Back to Home, and the row back into view, for the detail step.
+    await tester.tap(find.text('Home'));
+    await pumpFor(tester, const Duration(seconds: 2));
+    expect(shellIndex(), 0);
+    await scrollUntilFound(
+      tester,
+      target: subFinder.first,
+      scrollable: find.byType(Scrollable),
+      what: 'the subscription just created, back on Home',
+      maxScrolls: 40,
+    );
 
     // ── 12 Detail (subscription A) ───────────────────────────────────────────
     await tester.tap(subFinder.first);
@@ -1385,8 +1483,7 @@ void main() {
     await tester.enterText(find.byKey(E2EKeys.addName), subNameB);
     await tester.enterText(find.byKey(E2EKeys.addPrice), '7.77');
     await pumpFor(tester, const Duration(milliseconds: 500));
-    await tester.tap(find.byKey(E2EKeys.addSubmit));
-    await pumpFor(tester, const Duration(seconds: 8));
+    await submitAddSheet(tester, 'the SECOND subscription');
     final Finder subFinderB = find.text(subNameB);
     await scrollUntilFound(
       tester,
@@ -1402,10 +1499,19 @@ void main() {
     );
     await shot('14-second-sub');
 
+    // ── 14b The list survives with the network off (AB-O1-05) ────────────────
+    // The row above went to the live Worker and was mirrored into this
+    // browser's localStorage by the app's own cache client; a second client
+    // over a dead transport must still read it (offline_read_steps.dart).
+    await tester.runAsync(() => expectListSurvivesOffline(subNameB));
+
     // ── 15 Settings: switch currency (client-state propagation) ──────────────
-    await tester.tap(find.text('More'));
+    await tester.tap(find.text('Settings'));
     await pumpFor(tester, const Duration(seconds: 2));
-    expect(shellIndex(), 4);
+    expect(
+      shellIndex(),
+      3,
+    ); // ST-D3: Settings is the 4th tab (index 3); 'More' is gone
     await tester.tap(find.text('€'));
     await pumpFor(tester, const Duration(seconds: 1));
     await shot('15-settings-currency');
@@ -1422,7 +1528,7 @@ void main() {
     await shot('16-home-currency');
 
     // ── 17 Sign out → back to the login screen ───────────────────────────────
-    await tester.tap(find.text('More'));
+    await tester.tap(find.text('Settings'));
     await pumpFor(tester, const Duration(seconds: 2));
     // 🔬 THIS IS THE LINE THAT FAILED ON 2026-08-08, and it failed as
     // `Bad state: No element` — flutter_test's `scrollUntilVisible` ending in
@@ -1668,8 +1774,7 @@ void main() {
     await tester.enterText(find.byKey(E2EKeys.addName), doomed);
     await tester.enterText(find.byKey(E2EKeys.addPrice), '3.21');
     await pumpFor(tester, const Duration(milliseconds: 500));
-    await tester.tap(find.byKey(E2EKeys.addSubmit));
-    await pumpFor(tester, const Duration(seconds: 8));
+    await submitAddSheet(tester, 'the doomed subscription');
     final Finder doomedFinder = find.text(doomed);
     await scrollUntilFound(
       tester,
@@ -1688,7 +1793,7 @@ void main() {
     await shot('18-doomed-subscription');
 
     // ── 19 Settings → Delete account ─────────────────────────────────────────
-    await tester.tap(find.text('More'));
+    await tester.tap(find.text('Settings'));
     await pumpFor(tester, const Duration(seconds: 2));
     expect(find.byType(SettingsScreen), findsWidgets);
     final Finder deleteButton = find.byKey(E2EKeys.settingsDeleteAccount);

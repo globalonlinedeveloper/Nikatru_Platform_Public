@@ -16,8 +16,6 @@ import 'package:subscriptiontracker/data/models/payment_record.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/features/add/add_subscription_sheet.dart';
 import 'package:subscriptiontracker/features/detail/subscription_detail_screen.dart';
-import 'package:subscriptiontracker/features/shared/widgets.dart'
-    show GradientButton;
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 
@@ -117,8 +115,11 @@ Future<void> _openSheet(
   await tester.pumpAndSettle();
 }
 
+// ⏱ 2026-09-29 · train ST-D6 on ST-T3b: the primary is the chassis
+// `AppFormActions` FilledButton (it was a GradientButton); the key and the
+// disabled-until-valid contract are unchanged.
 VoidCallback? _submit(WidgetTester tester) =>
-    tester.widget<GradientButton>(find.byKey(E2EKeys.addSubmit)).onPressed;
+    tester.widget<FilledButton>(find.byKey(E2EKeys.addSubmit)).onPressed;
 
 String? _errorOf(WidgetTester tester, Key key) =>
     tester.widget<TextField>(find.byKey(key)).decoration?.errorText;
@@ -245,9 +246,11 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(E2EKeys.addSubmit));
         await tester.pumpAndSettle();
+        // ⏱ train ST-D6: said on the sheet's banner, not in a SnackBar the
+        // modal barrier drew over.
         expect(
           find.descendant(
-            of: find.byType(SnackBar),
+            of: find.byKey(E2EKeys.addBanner),
             matching: find.text(en.checkHighlightedFields),
           ),
           findsOneWidget,

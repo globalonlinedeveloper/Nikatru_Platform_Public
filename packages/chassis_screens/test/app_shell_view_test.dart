@@ -486,4 +486,16 @@ class _OrderRecorder implements core.NotificationService {
   @override
   Stream<core.NotificationTap> notificationTaps() =>
       const Stream<core.NotificationTap>.empty();
+
+  @override
+  Future<void> scheduleAt(core.ScheduledNotification notification) async {}
+
+  @override
+  Future<void> reconcile(
+    List<core.ScheduledNotification> wanted, {
+    required bool Function(int id) owns,
+  }) async {}
+
+  @override
+  Future<core.NotificationTap?> takeLaunchTap() async => null;
 }

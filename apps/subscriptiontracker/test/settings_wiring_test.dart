@@ -32,7 +32,7 @@ class _MemStore implements core.KeyValueStore {
 
 /// Records which scheduling seams the wiring drives, instead of touching the
 /// plugin (which needs a real device — the DECISION is what is under test).
-class _RecordingNotificationService extends NotificationService {
+class _RecordingNotificationService extends RenewalReminders {
   _RecordingNotificationService() : super.forTesting();
 
   final List<String> calls = <String>[];
@@ -41,7 +41,7 @@ class _RecordingNotificationService extends NotificationService {
   Future<void> syncAll(
     List<Subscription> subs, {
     required ReminderCopy copy,
-    int daysBefore = 2,
+    ReminderRules rules = const ReminderRules(),
   }) async {
     calls.add('syncAll');
   }
@@ -78,9 +78,7 @@ ProviderContainer _container(
   final ProviderContainer c = ProviderContainer(
     overrides: <Override>[
       keyValueStoreProvider.overrideWith((ref) async => store),
-      subscriptiontrackerNotificationServiceProvider.overrideWithValue(
-        notifier,
-      ),
+      renewalRemindersProvider.overrideWithValue(notifier),
     ],
   );
   addTearDown(c.dispose);

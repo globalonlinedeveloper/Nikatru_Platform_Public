@@ -135,6 +135,11 @@ const REPLAY_SAFE_FORMS: ReadonlyArray<{ label: string; re: RegExp }> = [
   // (`WHERE id IS NULL` — the SET falsifies the WHERE) from a churning one.
   // An unfiltered UPDATE is separately banned outright by check-migrations.mjs.
   { label: 'UPDATE … WHERE (self-limiting backfill)', re: /^UPDATE\s+\S+\s+SET\b[\s\S]*\bWHERE\b/i },
+  // 0005's seeds. `OR IGNORE` proves only the FORM again: a random id on a
+  // table with no UNIQUE key to collide on would insert a second row every pass.
+  // The PROPERTY is proven by the same execution below — the built-ins collide
+  // on their PRIMARY KEY slug, a person's own names on idx_categories_user_name.
+  { label: 'INSERT OR IGNORE (seed)', re: /^INSERT OR IGNORE INTO\b/i },
 ];
 
 /** The one form that is LEDGER-PROTECTED rather than replay-safe. */
@@ -153,7 +158,14 @@ const REPLAY_SAFE_STATEMENTS = ALL_STATEMENTS.filter(({ code }) =>
 
 /** Tables subscriptiontracker_db owns, from services/subscriptiontracker-api/migrations/ — the applier's own
  *  input. Used for the shape/row snapshots and as a coverage assertion. */
-const TABLES = ['budget_categories', 'budgets', 'payment_history', 'subscriptions'];
+const TABLES = [
+  'budget_categories',
+  'budgets',
+  'categories',
+  'payment_history',
+  'price_change',
+  'subscriptions',
+];
 
 const schemaOf = (db: SqliteD1) =>
   db
@@ -182,9 +194,9 @@ function seededDb(): SqliteD1 {
       "VALUES ('p1', 's1', 'u1', 9.99, '2026-08-01T00:00:00Z')",
   );
   db.db.exec(
-    "INSERT INTO subscriptions (id, user_id, name, price, cycle, next_renewal) " +
-      "VALUES ('s1', 'u1', 'Netflix', 9.99, 'monthly', '2026-09-01'), " +
-      "('s2', 'u1', 'Domain', 12, 'yearly', '2027-01-15')",
+    "INSERT INTO subscriptions (id, user_id, name, category, price, cycle, next_renewal) " +
+      "VALUES ('s1', 'u1', 'Netflix', 'Streaming', 9.99, 'monthly', '2026-09-01'), " +
+      "('s2', 'u1', 'Domain', 'Web stuff', 12, 'yearly', '2027-01-15')",
   );
   return db;
 }
@@ -238,6 +250,18 @@ describe('subscriptiontracker_db migrations re-apply cleanly', () => {
       { id: 's1', cycle_every: 1, cycle_unit: 'month' },
       { id: 's2', cycle_every: 1, cycle_unit: 'year' },
     ]);
+
+    // 0005's category backfill: a built-in name gets the built-in's slug, and
+    // every other name a person used becomes THEIR category, with a random id.
+    const catOf = (id: string) =>
+      db.rows('SELECT category_id FROM subscriptions WHERE id = ?', id)[0]?.category_id;
+    expect(catOf('s1'), 'the built-in backfill did not fire').toBe('streaming');
+    const own = db.rows("SELECT id FROM categories WHERE user_id = 'u1' ORDER BY name");
+    expect(own.length, 'the per-user seed did not fire — its replay assertion would be vacuous').toBe(2);
+    expect(catOf('s2')).toBe(db.rows("SELECT id FROM categories WHERE name = 'Web stuff'")[0]?.id);
+    expect(db.rows('SELECT category_id FROM budget_categories')[0]?.category_id).toBe(
+      db.rows("SELECT id FROM categories WHERE name = 'food'")[0]?.id,
+    );
 
     const schema = schemaOf(db);
     const rows = rowsOf(db);
@@ -293,5 +317,9 @@ describe('subscriptiontracker_db migrations re-apply cleanly', () => {
     expect(cols('subscriptions')).toEqual(
       expect.arrayContaining(['currency', 'price_minor', 'cycle_every', 'cycle_unit', 'status', 'deleted_at']),
     );
+    expect(cols('subscriptions')).toContain('category_id');
+    expect(cols('budget_categories')).toContain('category_id');
+    // 0004_notice_days.sql — its one ADD COLUMN, asserted for the same reason.
+    expect(cols('subscriptions')).toContain('notice_days');
   });
 });

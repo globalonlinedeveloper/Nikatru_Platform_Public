@@ -437,6 +437,12 @@
   "optionsAutoOpenEditorDesc": {
     "message": "Направо към редактирането (само при снимки от една част)."
   },
+  "optionsSingleKeyShortcuts": {
+    "message": "Single-key shortcuts in the editor"
+  },
+  "optionsSingleKeyShortcutsDesc": {
+    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+  },
   "optionsTheme": {
     "message": "Тема"
   },
@@ -459,13 +465,16 @@
     "message": "Цяла страница: $KEYFULL$ · Видима област: $KEYVISIBLE$. Променете ги на $URL$",
     "placeholders": {
       "keyfull": {
-        "content": "Alt+Shift+P"
+        "content": "$1",
+        "example": "Alt+Shift+P"
       },
       "keyvisible": {
-        "content": "Alt+Shift+V"
+        "content": "$2",
+        "example": "Alt+Shift+V"
       },
       "url": {
-        "content": "chrome://extensions/shortcuts"
+        "content": "$3",
+        "example": "chrome://extensions/shortcuts"
       }
     }
   },
@@ -1234,6 +1243,39 @@
   "editorZoomFit": {
     "message": "Побери"
   },
+  "editorZoomLevelName": {
+    "message": "$PERCENT$ zoom",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "100%"
+      }
+    }
+  },
+  "editorColorRed": {
+    "message": "Red"
+  },
+  "editorColorAmber": {
+    "message": "Amber"
+  },
+  "editorColorGreen": {
+    "message": "Green"
+  },
+  "editorColorBlue": {
+    "message": "Blue"
+  },
+  "editorColorViolet": {
+    "message": "Violet"
+  },
+  "editorColorPink": {
+    "message": "Pink"
+  },
+  "editorColorBlack": {
+    "message": "Black"
+  },
+  "editorColorWhite": {
+    "message": "White"
+  },
   "editorZoomTipToHundred": {
     "message": "Побрано в прозореца — щракнете за 100%"
   },
@@ -1980,6 +2022,14 @@
       }
     }
   },
+  "regionHintEnter": {
+    "message": "$ENTER$ captures the whole visible area",
+    "placeholders": {
+      "enter": {
+        "content": "Enter"
+      }
+    }
+  },
   "errRestrictedBrowserPage": {
     "message": "Страниците на браузъра като Настройки, Разширения и Нов раздел са недостъпни за всички разширения. Опитайте FullShot на обикновена уебстраница."
   },
@@ -1994,6 +2044,12 @@
   },
   "errRestrictedWebstore": {
     "message": "Chrome Web Store не позволява на разширенията да четат страниците му, затова тази страница не може да бъде заснета."
+  },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
   },
   "errRestrictedGeneric": {
     "message": "Тази страница е защитена от браузъра и не може да бъде заснета."

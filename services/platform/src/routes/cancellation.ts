@@ -19,6 +19,11 @@
 // Encoding a guessed cancel call would ship a button that 404s at the vendor for
 // the first real subscriber, and nothing would go red.
 //
+// ⏱ 2026-09-29 · AB-M4-03: THE SHAPE IS READ, AND A PADDLE ROW IS NOW CANCELLED.
+// lib/mor/paddle-cancel.ts carries the call; lib/mor/registry.ts `RAIL_CANCEL_PATH`
+// says which rail can be cancelled by whom. What follows is what the route did
+// before that day, and is still what it does for a rail with no executor:
+//
 // So the route does the half that is real and says so precisely:
 //   1 · RECORD the request in `cancellation_requests`, ours, append-only. This
 //       is what makes "I cancelled and you kept billing me" a checkable claim
@@ -89,6 +94,8 @@ import { allRows, nowIso } from '../lib/d1';
 import { isKnownApp } from '../config';
 import { isMoneyEnvironment } from '../lib/mor/contract';
 import { readBoundedBody } from '../lib/body';
+import { cancelPathFor, storeCancelPage } from '../lib/mor/registry';
+import { cancelPaddleSubscription } from '../lib/mor/paddle-cancel';
 
 const cancellation = new Hono<AppEnv>();
 
@@ -104,12 +111,13 @@ export const MAX_CANCEL_BODY_BYTES = 1024;
  * is read by support and by CI, and a free-text error string in a column is a
  * value nobody can query and occasionally a value that leaks a URL or a key.
  */
-export type NotExecutedReason = 'provider_not_configured' | 'no_provider_on_row';
+export type NotExecutedReason = 'provider_not_configured' | 'no_provider_on_row' | 'provider_error';
 
 interface LiveRow {
   entitlement: string;
   provider: string | null;
   provider_subscription_id: string | null;
+  store: string | null;
 }
 
 cancellation.post('/plan/cancel', async (c) => {
@@ -150,7 +158,7 @@ cancellation.post('/plan/cancel', async (c) => {
   // this deploy's subscription to cancel.
   const rows = await allRows<LiveRow>(
     c.env.PLATFORM_DB.prepare(
-      `SELECT entitlement, provider, provider_subscription_id
+      `SELECT entitlement, provider, provider_subscription_id, store
          FROM entitlements
         WHERE user_id = ? AND app_id = ? AND is_active = 1
           AND provider_environment = ?
@@ -167,19 +175,57 @@ cancellation.post('/plan/cancel', async (c) => {
 
   const row = rows[0];
 
-  // Executing on the rail. NOTHING CAN, TODAY, and the reason is stored rather
-  // than logged: `provider_not_configured` means the seller credential does not
-  // exist (A-1), `no_provider_on_row` means the row predates the rail knowing
-  // which provider wrote it. Both are recoverable by a human; neither is an
-  // error the user caused.
-  const notExecutedReason: NotExecutedReason =
-    row.provider === null ? 'no_provider_on_row' : 'provider_not_configured';
+  // ⏱ 2026-09-29 · AB-M4-03 · A STORE ROW IS THE STORE'S TO CANCEL. Apple and
+  // Google bill through their own accounts and expose no cancel to a seller, so
+  // the honest answer is WHERE, not a recorded row nothing can ever execute
+  // (which read `provider_not_configured`, untrue for these rows). 409, and
+  // nothing written.
+  if (row.provider !== null && cancelPathFor(row.provider) === 'store') {
+    const page = storeCancelPage(row.store);
+    return c.json(
+      {
+        has_active_plan: true,
+        recorded: false,
+        executed: false,
+        cancel_at: page.cancelAt,
+        manage_url: page.manageUrl,
+      },
+      409,
+    );
+  }
 
+  // Executing on the rail. `no_provider_on_row` means the row predates the rail
+  // knowing which provider wrote it; `provider_not_configured` that the rail has
+  // no executor (Razorpay, MF-9) or this deploy holds no key for it;
+  // `provider_error` that the rail was asked and did not confirm. All three are
+  // recoverable by a human; none is an error the user caused.
+  let notExecutedReason: NotExecutedReason | null;
+  let effectiveAt: string | null = null;
+  if (row.provider === null) {
+    notExecutedReason = 'no_provider_on_row';
+  } else if (cancelPathFor(row.provider) === 'api' && row.provider === 'paddle') {
+    const done = await cancelPaddleSubscription({
+      environment,
+      apiKey: c.env.PADDLE_API_KEY,
+      subscriptionId: row.provider_subscription_id ?? '',
+    });
+    if (done.kind === 'executed') {
+      notExecutedReason = null;
+      effectiveAt = done.effectiveAt;
+    } else {
+      console.error(`[cancel] rid=${rid} app=${appId} paddle cancel not executed: ${done.why}`);
+      notExecutedReason = done.kind === 'not_configured' ? 'provider_not_configured' : 'provider_error';
+    }
+  } else {
+    notExecutedReason = 'provider_not_configured';
+  }
+
+  const requestedAt = nowIso();
   await c.env.PLATFORM_DB.prepare(
     `INSERT INTO cancellation_requests
        (request_id, user_id, app_id, environment, provider,
         provider_subscription_id, requested_at, executed_at, not_executed_reason)
-     VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       crypto.randomUUID(),
@@ -188,10 +234,20 @@ cancellation.post('/plan/cancel', async (c) => {
       environment,
       row.provider,
       row.provider_subscription_id,
-      nowIso(),
+      requestedAt,
+      notExecutedReason === null ? requestedAt : null,
       notExecutedReason,
     )
     .run();
+
+  if (notExecutedReason === null) {
+    // 200 ONLY HERE: the rail confirmed the cancel. Access continues to the end
+    // of the paid period (`effective_at`), and the terminal webhook ends it.
+    return c.json(
+      { has_active_plan: true, recorded: true, executed: true, effective_at: effectiveAt },
+      200,
+    );
+  }
 
   // 202 ACCEPTED, and the status code is part of the honesty: the request has
   // been recorded and has NOT been carried out. A 200 would say it is done.

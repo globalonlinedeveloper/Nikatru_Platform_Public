@@ -33,6 +33,7 @@ import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
         InMemoryAuthRepository,
         SupabaseAuthRepository,
         failedArrivalFlowOf,
+        nativeCredentialClient,
         passwordResetArrivalOf;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_platform_storage/age_signals.dart'
@@ -131,6 +132,13 @@ final Provider<AuthRepository> authRepositoryProvider =
               // target in [kAuthCallbackTargets] registers and
               // `tooling/ci/assert-auth-callbacks.mjs` proves.
               redirects: AuthRedirects.current(appId: AppConfig.appId),
+              // ⏱ 2026-09-28 · ST-N1 — off web, sign-in, sign-up, reset and
+              // resend go through the platform Worker's native route, which
+              // GoTrue does not captcha; null on web, which keeps Turnstile.
+              nativeCredentials: nativeCredentialClient(
+                platformBaseUrl: AppConfig.platformBaseUrl,
+                appId: AppConfig.appId,
+              ),
             )
           : InMemoryAuthRepository(),
     );
@@ -537,7 +545,7 @@ typedef UserStateDrop = Future<void> Function();
 ///
 /// ⚠️ BOTH NOTIFICATION SERVICES, and they are not the same object.
 /// [notificationServiceProvider] is the chassis seam (the daily reminder);
-/// [subscriptiontrackerNotificationServiceProvider] is Subly's frozen fork, and it is the one
+/// [renewalRemindersProvider] is Subly's frozen fork, and it is the one
 /// that schedules the RENEWAL reminders and the weekly digest — the notifications
 /// a deleted user would actually keep receiving. Cancelling only the chassis one
 /// would look like a fix and change nothing about the reported symptom.
@@ -558,7 +566,7 @@ typedef UserStateDrop = Future<void> Function();
 List<UserStateDrop> userStateDrops(WidgetRef ref) => <UserStateDrop>[
   ref.read(entitlementCacheProvider).clear,
   ref.read(notificationServiceProvider).cancelAll,
-  ref.read(subscriptiontrackerNotificationServiceProvider).cancelAll,
+  ref.read(renewalRemindersProvider).cancelAll,
   // 🔴 THE CACHED SUBSCRIPTION LIST IS ACCOUNT STATE. In the configured
   // posture `CachedApiClient` mirrors the server's last answer for THIS
   // account into the device store, and serves it offline. Left behind, the

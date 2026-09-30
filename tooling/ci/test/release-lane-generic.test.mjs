@@ -176,6 +176,58 @@ jobs:
           command: deploy --var RELEASE:\${{ github.sha }}
 `;
 
+/** deploy-sandbox.yml in the shape B-12 gave it (row O-SERVICE-KIT-UNBUILT): a `workers`
+ *  job reading the set from worker-set.mjs with `--env sandbox`, and one `app-worker`
+ *  matrix job deploying each leg by `matrix.worker.<field>`. A DEFAULT every fixture
+ *  carries, because GRADED_LANES names it. */
+const DEPLOY_SANDBOX = `name: Deploy sandbox
+on:
+  workflow_dispatch:
+    inputs:
+      worker:
+        required: false
+        default: all
+        type: string
+jobs:
+  workers:
+    runs-on: ubuntu-24.04
+    outputs:
+      workers: \${{ steps.set.outputs.workers }}
+    steps:
+      - id: set
+        run: echo "workers=$(node tooling/ci/worker-set.mjs --for-deploy --json --app-workers --env sandbox)" >> "$GITHUB_OUTPUT"
+  app-worker:
+    needs: workers
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        worker: \${{ fromJSON(needs.workers.outputs.workers) }}
+    steps:
+      - run: npm ci
+        working-directory: \${{ matrix.worker.dir }}
+      - uses: cloudflare/wrangler-action@0000000000000000000000000000000000000000
+        with:
+          workingDirectory: \${{ matrix.worker.dir }}
+          command: deploy --env sandbox --var RELEASE:\${{ github.sha }}
+`;
+
+/** deploy-sandbox.yml as it was on the BASE: one hand-written job per Worker, the app's
+ *  Worker directory typed into the job. RED once graded (B-12's red control). */
+const HAND_WIRED_SANDBOX = (app) => `name: Deploy sandbox
+on:
+  workflow_dispatch:
+jobs:
+  ${app}-api:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: npm ci
+        working-directory: services/${app}-api
+      - uses: cloudflare/wrangler-action@0000000000000000000000000000000000000000
+        with:
+          workingDirectory: services/${app}-api
+          command: deploy --env sandbox --var RELEASE:\${{ github.sha }}
+`;
+
 /** A store lane in the per-app shape limb I grades (O-STORE-LANES-HARD-WIRE-ONE-APP): a
  *  required `app` input with no default, a `gate` job that alone reads it (through
  *  `env:`), checks it with `--emit-apps --app` and emits it, and a job that needs the
@@ -226,6 +278,10 @@ const PER_APP_LANES = {
   'submit-windows-store.yml': perAppLane(),
   'submit-snap.yml': perAppLane(),
   'store-screenshots.yml': perAppLane(),
+  // ⏱ 2026-09-28 · ST-N1g — the per-target native sign-in proof, a per-app dispatch lane.
+  'native-auth-proof.yml': perAppLane(),
+  // ⏱ 2026-09-29 · B-12 — the symbolication proof, a per-app dispatch lane.
+  'symbolication-proof.yml': perAppLane(),
 };
 
 /** The two lanes R-1 owns, plus whatever else a case needs. Every fixture root
@@ -241,7 +297,14 @@ function fixture({ workspace = [APP_PATH], workflows = {}, guards = {} } = {}) {
     join(root, 'pubspec.yaml'),
     `name: ws\nworkspace:\n${workspace.map((w) => `  - ${w}\n`).join('')}\ndev_dependencies:\n  melos: ^8.2.2\n`,
   );
-  const all = { 'ci.yml': CI_YML, 'deploy-web.yml': DEPLOY_WEB, 'deploy-workers.yml': DEPLOY_WORKERS, ...PER_APP_LANES, ...workflows };
+  const all = {
+    'ci.yml': CI_YML,
+    'deploy-web.yml': DEPLOY_WEB,
+    'deploy-workers.yml': DEPLOY_WORKERS,
+    'deploy-sandbox.yml': DEPLOY_SANDBOX,
+    ...PER_APP_LANES,
+    ...workflows,
+  };
   for (const [name, body] of Object.entries(all)) writeFileSync(join(root, '.github', 'workflows', name), body);
   writeFileSync(join(root, 'tooling', 'ci', 'assert-gate-passed.mjs'), GATE_STUB);
   for (const [name, body] of Object.entries(guards)) writeFileSync(join(root, 'tooling', 'ci', name), body);
@@ -810,8 +873,26 @@ ${extra}        run: node tooling/e2e/verify_purged.mjs
     assert.match(r.out, /deploy-web\.yml \(\[pipeline 10\]D-2b\) — limb D-all: /);
     // ⏱ 2026-09-26: deploy-workers.yml is graded (O-SERVICE-KIT-UNBUILT), and the four submit lanes and
     // store-screenshots are graded as per-app (O-STORE-LANES-HARD-WIRE-ONE-APP): 3 → 9.
+    // ⏱ 2026-09-28 (ST-N1g): native-auth-proof.yml joins as a per-app lane: 9 → 10.
+    // ⏱ 2026-09-29 (B-12): deploy-sandbox.yml and symbolication-proof.yml leave the classified list: 10 → 12.
     assert.match(r.out, /deploy-workers\.yml \(O-SERVICE-KIT-UNBUILT\) — limb D-all: /);
-    assert.match(r.out, /limb D-all read \d+ key\(s\) and \d+ value\(s\) across 9 lane\(s\)/);
+    assert.match(r.out, /deploy-sandbox\.yml \(O-SERVICE-KIT-UNBUILT\) — limb D-all: /);
+    assert.match(r.out, /limb D-all read \d+ key\(s\) and \d+ value\(s\) across 12 lane\(s\)/);
+  });
+
+  // B-12's red control: the sandbox lane as the BASE wrote it, one job per Worker with the
+  // app's directory typed in, is refused by name now that the lane is graded.
+  test('RC-B12 · deploy-sandbox.yml hand-wired to one app Worker fails limb D, naming the literal', () => {
+    const body = HAND_WIRED_SANDBOX(APP);
+    const r = run(fixture({ workflows: { ...R1, 'deploy-sandbox.yml': body } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, new RegExp(`O-SERVICE-KIT-UNBUILT · deploy-sandbox\\.yml:${lineOf(body, `working-directory: services/${APP}-api`)} names the app id "${rx(APP)}" literally in \`working-directory\``));
+  });
+  test('RC-B12 · symbolication-proof.yml naming its app in a working directory fails limb I, naming the line', () => {
+    const body = perAppLane({ dryRun: `node tooling/ops/symbolication-proof.mjs expect --source apps/${APP}/live_probe/p.dart` });
+    const r = run(fixture({ workflows: { ...R1, 'symbolication-proof.yml': body } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, new RegExp(`O-GLITCHTIP-FLUTTER-SYMBOLICATION-UNPROVEN · symbolication-proof\\.yml:${lineOf(body, `apps/${APP}/live_probe`)} — limb I: names the app id "${rx(APP)}" literally`));
   });
 
   test('RC1 · THE CLOSES\' CONTROL — the app-named key with a UUID, back in e2e.yml, fails naming both hits', () => {
@@ -997,7 +1078,10 @@ describe("assert-release-lane-generic.mjs — limb I (a per-app lane takes its a
     assert.match(r.out, /submit-windows-store\.yml \(O-STORE-LANES-HARD-WIRE-ONE-APP\) — limb I: /);
     assert.match(r.out, /submit-snap\.yml \(O-STORE-LANES-HARD-WIRE-ONE-APP\) — limb I: /);
     assert.match(r.out, /store-screenshots\.yml \(O-STORE-LANES-HARD-WIRE-ONE-APP\) — limb I: /);
-    assert.match(r.out, /limb I read \d+ line\(s\) across 5 per-app lane\(s\)/);
+    // ⏱ 2026-09-28 (ST-N1g): native-auth-proof.yml is the sixth per-app lane.
+    // ⏱ 2026-09-29 (B-12): symbolication-proof.yml is the seventh.
+    assert.match(r.out, /symbolication-proof\.yml \(O-GLITCHTIP-FLUTTER-SYMBOLICATION-UNPROVEN\) — limb I: /);
+    assert.match(r.out, /limb I read \d+ line\(s\) across 7 per-app lane\(s\)/);
   });
 
   test("RC1 · THE CLOSES' CONTROL — `--app <id>` planted in the dry run fails, naming submit-play.yml and the line", () => {

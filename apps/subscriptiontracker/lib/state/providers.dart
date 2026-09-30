@@ -32,7 +32,7 @@
 //
 //  3. 🔴 `notificationServiceProvider` IS THE CHASSIS ONE (`core.NotificationService`).
 //     Subly's own `flutter_local_notifications` fork moved to
-//     [subscriptiontrackerNotificationServiceProvider]. The name had to go to the chassis: the
+//     [renewalRemindersProvider]. The name had to go to the chassis: the
 //     stamped `RemindersEnabledController` below reads it three times, the
 //     stamped `chassis_properties_test.dart` overrides it by that name, and
 //     `tooling/ci/assert-stamp-properties.mjs:1083` maps it to the

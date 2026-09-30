@@ -3,10 +3,7 @@
 // One file per train keeps the red controls findable: each group below names
 // the label it pins (ST-M3, ST-E1, ST-E3, ST-E4, ST-E5), and each case is one
 // the pre-T3b tree FAILS — measured by reverting the lib change it names.
-import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart' show Locale;
-import 'package:flutter_local_notifications/flutter_local_notifications.dart'
-    show AndroidFlutterLocalNotificationsPlugin;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
@@ -22,7 +19,8 @@ import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/services/notifications/notification_service.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 import 'package:subscriptiontracker/state/subscriptions_controller.dart';
-import 'package:timezone/timezone.dart' as tz;
+
+import 'support/recording_seam.dart';
 
 DateTime _day(DateTime d) => DateTime(d.year, d.month, d.day);
 
@@ -115,7 +113,7 @@ class _MemStore implements core.KeyValueStore {
 }
 
 /// Records what the controller hands the OS-facing seam.
-class _RecordingNotifier extends NotificationService {
+class _RecordingNotifier extends RenewalReminders {
   _RecordingNotifier() : super.forTesting();
   final List<List<Subscription>> synced = <List<Subscription>>[];
   final List<String> cancelledFor = <String>[];
@@ -124,7 +122,7 @@ class _RecordingNotifier extends NotificationService {
   Future<void> syncAll(
     List<Subscription> subs, {
     required ReminderCopy copy,
-    int daysBefore = 2,
+    ReminderRules rules = const ReminderRules(),
   }) async => synced.add(List<Subscription>.of(subs));
   @override
   Future<void> cancelForSubscription(String id) async => cancelledFor.add(id);
@@ -145,16 +143,12 @@ ProviderContainer _container(_RecordingApi api, _RecordingNotifier n) {
     overrides: <Override>[
       keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
       apiClientProvider.overrideWithValue(api),
-      subscriptiontrackerNotificationServiceProvider.overrideWithValue(n),
+      renewalRemindersProvider.overrideWithValue(n),
     ],
   );
   addTearDown(c.dispose);
   return c;
 }
-
-const MethodChannel _channel = MethodChannel(
-  'dexterous.com/flutter/local_notifications',
-);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -573,34 +567,16 @@ void main() {
 
   // ═══════════════════════════════════════════════════════════════════════════
   group('ST-E5 · trials', () {
-    late List<MethodCall> outgoing;
-    setUp(() {
-      outgoing = <MethodCall>[];
-      // flutter_local_notifications 18+ installs its platform implementation
-      // through registerWith(), which only the app's generated plugin
-      // registrant calls (W55, #1026). The test host's default platform is
-      // Android, so that is the implementation registered here.
-      AndroidFlutterLocalNotificationsPlugin.registerWith();
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(_channel, (MethodCall call) async {
-            outgoing.add(call);
-            if (call.method == 'pendingNotificationRequests') {
-              return <Map<String, Object?>>[];
-            }
-            return true;
-          });
-    });
-    tearDown(() {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(_channel, null);
-      tz.setLocalLocation(tz.UTC);
-    });
-
+    // ⏱ 2026-09-28 (ST-R4): over the core seam — the app no longer wraps the
+    // plugin, so the plan is what is asserted, and the seam's pending set.
     test(
       'a trialing row arms a reminder at trial end minus the lead, with its own id',
       () async {
-        final NotificationService service = NotificationService.forTesting();
-        await service.init();
+        final RecordingSeam seam = RecordingSeam();
+        final RenewalReminders service = RenewalReminders.forTesting(
+          service: seam,
+          now: () => DateTime(today.year, today.month, today.day, 8),
+        );
         final DateTime ends = today.add(const Duration(days: 10));
         final Subscription trial = _row(
           'trial-1',
@@ -608,55 +584,47 @@ void main() {
           status: SubscriptionStatus.trialing,
           trialEndsOn: ends,
         );
-        final tz.TZDateTime? when = service.trialWhenFor(trial, 2);
-        expect(when, isNotNull);
-        expect(
-          DateTime(when!.year, when.month, when.day, when.hour),
-          DateTime(ends.year, ends.month, ends.day - 2, 9),
+        final List<core.ScheduledNotification> plan = service.plannedFor(
+          trial,
+          copy: _copy,
+          rules: const ReminderRules(),
         );
-        expect(
-          NotificationService.trialIdFor(trial.id),
-          isNot(NotificationService.renewalIdFor(trial.id)),
+        final int trialId = RenewalReminders.renewalIdFor('trial-1|trial|2');
+        final core.ScheduledNotification t2 = plan.singleWhere(
+          (core.ScheduledNotification n) => n.id == trialId,
         );
+        expect(t2.at, DateTime(ends.year, ends.month, ends.day - 2, 9));
+        expect(trialId, isNot(RenewalReminders.renewalIdFor('trial-1|2')));
         expect(
-          NotificationService.isRenewalReminderId(
-            NotificationService.trialIdFor(trial.id),
-          ),
+          RenewalReminders.isRenewalReminderId(trialId),
           isTrue,
           reason: 'outside the owned namespace, cancelOwnedRenewals misses it',
         );
 
-        outgoing.clear();
         await service.syncAll(<Subscription>[trial], copy: _copy);
-        final List<int> ids = outgoing
-            .where((MethodCall c) => c.method == 'zonedSchedule')
-            .map(
-              (MethodCall c) =>
-                  (c.arguments as Map<Object?, Object?>)['id']! as int,
-            )
-            .toList();
-        expect(ids.toSet(), <int>{
-          NotificationService.renewalIdFor(trial.id),
-          NotificationService.trialIdFor(trial.id),
+        expect(seam.pending.keys.toSet(), <int>{
+          RenewalReminders.renewalIdFor('trial-1|2'),
+          trialId,
         });
 
         // An ACTIVE row with a stale trial date arms no trial reminder.
         expect(
-          service.trialWhenFor(_row('a', next: ends, trialEndsOn: ends), 2),
-          isNull,
+          service
+              .plannedFor(
+                _row('a', next: ends, trialEndsOn: ends),
+                copy: _copy,
+                rules: const ReminderRules(),
+              )
+              .where(
+                (core.ScheduledNotification n) =>
+                    n.id == RenewalReminders.renewalIdFor('a|trial|2'),
+              ),
+          isEmpty,
         );
 
         // Cancelling the row cancels BOTH.
-        outgoing.clear();
         await service.cancelForSubscription(trial.id);
-        final List<Object?> cancelled = outgoing
-            .where((MethodCall c) => c.method == 'cancel')
-            .map((MethodCall c) => (c.arguments as Map<Object?, Object?>)['id'])
-            .toList();
-        expect(cancelled.toSet(), <Object?>{
-          NotificationService.renewalIdFor(trial.id),
-          NotificationService.trialIdFor(trial.id),
-        });
+        expect(seam.pending, isEmpty);
       },
     );
   });
@@ -668,4 +636,7 @@ final ReminderCopy _copy = ReminderCopy(
   reminderBody: (String name, DateTime renewal) => name,
   digestTitle: 'Digest',
   digestBody: (int count, String total) => '$count',
+  cancelByTitle: (DateTime d) => 'Cancel by',
+  cancelByBody: (String name, DateTime d) => name,
+  channelDescription: 'Alerts',
 );

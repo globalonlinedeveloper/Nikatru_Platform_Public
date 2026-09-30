@@ -38,6 +38,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:subscriptiontracker/core/theme/app_theme.dart';
+import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/data/seed/demo_data.dart';
 import 'package:subscriptiontracker/features/add/add_subscription_sheet.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
@@ -61,7 +62,7 @@ import 'support/width_harness.dart';
 /// before it lays anything out, and every measurement below becomes a
 /// `Bad state` rather than a width. See `sheet_failure_surface_test.dart`, which
 /// carries the same two lines for the same reason.
-Widget _host() {
+Widget _host({bool edit = false}) {
   return ProviderScope(
     overrides: defaultWidthOverrides(),
     child: MaterialApp(
@@ -72,7 +73,19 @@ Widget _host() {
         body: Builder(
           builder: (BuildContext context) => Center(
             child: TextButton(
-              onPressed: () => showAddSubscriptionSheet(context),
+              onPressed: () => edit
+                  ? showAddSubscriptionSheet(
+                      context,
+                      initial: Subscription(
+                        id: 'sub-1',
+                        name: 'Netflix',
+                        category: 'Streaming',
+                        price: const Money(1549, 'USD'),
+                        cycle: BillingCycle.monthly,
+                        nextRenewal: DateTime(2030, 1, 1),
+                      ),
+                    )
+                  : showAddSubscriptionSheet(context),
               child: const Text('open'),
             ),
           ),
@@ -195,4 +208,32 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  // ⏱ train ST-D6: THE SAME SHEET AS AN EDIT. `showEditSubscriptionSheet` is a
+  // second entry point onto the one surface, so it gets the same width
+  // decision measured rather than inherited: the full window below 640, M3's
+  // 640 cap centred above it, at every window class including the 1920 one.
+  for (final (Size window, double width, double dx) in <(Size, double, double)>[
+    (kPhone, 375, 0),
+    (kTablet, 640, 64),
+    (kDesktop, 640, 320),
+    (kWide, 640, 640),
+  ]) {
+    testWidgets(
+      '${window.width.toInt()} — the EDIT sheet is capped the same way',
+      (WidgetTester tester) async {
+        await setSurface(tester, window);
+        await tester.pumpWidget(_host(edit: true));
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+
+        expect(surfaceCapWidth(tester), width);
+        expect(tester.getSize(_surface()).width, width);
+        expect(tester.getTopLeft(_surface()).dx, dx);
+        // An edit offers no POPULAR shortcuts: they name a NEW service.
+        expect(find.byType(GridView), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 }

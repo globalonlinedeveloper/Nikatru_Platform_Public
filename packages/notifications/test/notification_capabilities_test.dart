@@ -33,13 +33,39 @@ void main() {
       expect(c.canSchedule, isFalse);
     });
 
-    test('Windows supports neither until an app supplies Windows init settings', () {
+    test('Windows shows and schedules (the 22.x Windows plugin)', () {
       final NotificationCapabilities c = NotificationCapabilities.forPlatform(
         TargetPlatform.windows,
         isWeb: false,
       );
-      expect(c.canNotify, isFalse);
-      expect(c.canSchedule, isFalse);
+      expect(c.canNotify, isTrue);
+      expect(c.canSchedule, isTrue);
+    });
+
+    test('resolve: Windows is on WITH the app identity, off without', () {
+      const WindowsNotificationIdentity id = WindowsNotificationIdentity(
+        appName: 'Probe',
+        appUserModelId: 'Nikatru.Probe_0000000000000!probe',
+        toastActivatorClsid: '0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0',
+      );
+      final NotificationCapabilities on = NotificationCapabilities.resolve(
+        TargetPlatform.windows,
+        isWeb: false,
+        windows: id,
+      );
+      final NotificationCapabilities off = NotificationCapabilities.resolve(
+        TargetPlatform.windows,
+        isWeb: false,
+      );
+      expect(on.canNotify && on.canSchedule, isTrue);
+      expect(off.canNotify || off.canSchedule, isFalse);
+      // Every other platform is forPlatform unchanged, identity or not.
+      final NotificationCapabilities linux = NotificationCapabilities.resolve(
+        TargetPlatform.linux,
+        isWeb: false,
+        windows: id,
+      );
+      expect(linux.canSchedule, isFalse);
     });
 
     test('web supports neither, even on a notify-capable host platform', () {

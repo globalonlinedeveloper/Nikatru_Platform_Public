@@ -141,13 +141,13 @@ class _MemStore implements core.KeyValueStore {
   Future<void> write(String key, String value) async => data[key] = value;
 }
 
-class _SilentNotifications extends NotificationService {
+class _SilentNotifications extends RenewalReminders {
   _SilentNotifications() : super.forTesting();
   @override
   Future<void> syncAll(
     List<Subscription> subs, {
     required ReminderCopy copy,
-    int daysBefore = 2,
+    ReminderRules rules = const ReminderRules(),
   }) async {}
   @override
   Future<void> cancelAll() async {}
@@ -168,9 +168,7 @@ void main() {
     overrides: <Override>[
       keyValueStoreProvider.overrideWith((Ref ref) async => _MemStore()),
       subscriptionRepositoryProvider.overrideWithValue(repo),
-      subscriptiontrackerNotificationServiceProvider.overrideWithValue(
-        _SilentNotifications(),
-      ),
+      renewalRemindersProvider.overrideWithValue(_SilentNotifications()),
     ],
     // The delegates are load-bearing: `l10n.yaml` sets `nullable-getter:
     // false`, so the first line of anything in this tree that reads a string

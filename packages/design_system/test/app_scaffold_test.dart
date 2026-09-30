@@ -50,12 +50,15 @@ void main() {
     expect(find.byType(NavigationDrawer), findsNothing);
   });
 
-  testWidgets('expanded width → extended NavigationRail',
+  // ⏱ 2026-09-29 · [ADR 083] §5 (D-02): this case was 'expanded width →
+  // extended NavigationRail'. The expanded class takes the SLIM rail now; the
+  // 840 / 900 / 1199 edge cases are in the rail group below.
+  testWidgets('expanded width → slim NavigationRail',
       (WidgetTester tester) async {
     await pumpAt(tester, const Size(1000, 900), harness(index: 2));
     expect(find.byType(NavigationRail), findsOneWidget);
     expect(tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
-        isTrue);
+        isFalse);
     expect(find.byType(NavigationDrawer), findsNothing);
   });
 
@@ -240,6 +243,25 @@ void main() {
 
     double railWidth(WidgetTester tester) =>
         tester.getSize(find.byType(NavigationRail)).width;
+
+    // ⏱ 2026-09-29 · [ADR 083] §5 (D-02): THE EXPANDED CLASS, AT ITS EDGES AND
+    // AT THE MEASURED WINDOW. The extended 256 dp rail left a 900 dp window a
+    // 643 dp body; the slim rail gives it back. Each case fails on the old
+    // code: the rail there was extended, and the body 256 − slim narrower.
+    for (final double width in <double>[840, 900, 1199]) {
+      testWidgets('${width.toInt()} (expanded) — the SLIM rail, body = window − rail − 1',
+          (WidgetTester tester) async {
+        await pumpAt(tester, Size(width, 900), railHarness());
+        expect(find.byType(NavigationBar), findsNothing);
+        expect(find.byType(NavigationDrawer), findsNothing);
+        final NavigationRail rail =
+            tester.widget<NavigationRail>(find.byType(NavigationRail));
+        expect(rail.extended, isFalse, reason: 'D-02: slim at 840–1199');
+        expect(railWidth(tester), lessThan(256),
+            reason: 'narrower than the extended rail it replaced');
+        expect(bodyWidth(tester), width - railWidth(tester) - 1);
+      });
+    }
 
     testWidgets('1200 — rail, no drawer, body = window − rail − 1',
         (WidgetTester tester) async {

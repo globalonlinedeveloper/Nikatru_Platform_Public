@@ -58,7 +58,9 @@
 //
 // ── EXIT CONTRACT ───────────────────────────────────────────────────────────
 //   0 = every non-green run enumerated is explained (UNEXPLAINED: 0).
-//   1 = UNEXPLAINED: N with N > 0 — the individual rows are printed above it.
+//   1 = UNEXPLAINED: N with N > 0 — the individual rows are printed above it —
+//       or RECURRING UNRANKED: N with N > 0: a cause matched by two or more
+//       runs that carries neither firstSeen/lastSeen nor a guard/row (B-4).
 //   2 = COVERAGE LOST — a 403 (the shared installation quota, measured
 //       exhausted on 2026-09-09), a paged list that stopped short of
 //       `total_count`, a job log that could not be read, no credential, the
@@ -646,6 +648,10 @@ function mergeProblems(m, where) {
   return out;
 }
 
+const CAUSE_DAY = /^\d{4}-\d{2}-\d{2}$/;
+const CAUSE_GUARD = /^tooling\/[\w./-]+\.mjs$/;
+const CAUSE_ROW = /^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$/;
+
 /** PURE. Every shape problem in the causes register, one line each, naming the
  *  row by its signature. An empty list is a register this ledger can read. */
 export function validateCauses(rows) {
@@ -659,6 +665,16 @@ export function validateCauses(rows) {
     if (c?.scope !== undefined && c.scope !== 'main' && c.scope !== 'feature-branches') {
       problems.push(`${id} — scope \`${c.scope}\`; only "main" or "feature-branches" are readable`);
     }
+    // B-4 (2026-09-29): the fields that let a recurring class be RANKED and
+    // OWNED. Each is optional here; a class the ledger matches twice without
+    // either pair is the finding `unrankedRecurring` names.
+    for (const k of ['firstSeen', 'lastSeen']) {
+      if (c?.[k] !== undefined && !(typeof c[k] === 'string' && CAUSE_DAY.test(c[k]))) problems.push(`${id} — \`${k}\` ${JSON.stringify(c[k])} is not YYYY-MM-DD`);
+    }
+    if (CAUSE_DAY.test(c?.firstSeen ?? '') && CAUSE_DAY.test(c?.lastSeen ?? '') && c.firstSeen > c.lastSeen) problems.push(`${id} — firstSeen ${c.firstSeen} is after lastSeen ${c.lastSeen}`);
+    if (c?.hits !== undefined && !(Number.isInteger(c.hits) && c.hits > 0)) problems.push(`${id} — \`hits\` ${JSON.stringify(c.hits)} is not a positive count`);
+    if (c?.guard !== undefined && !(typeof c.guard === 'string' && CAUSE_GUARD.test(c.guard))) problems.push(`${id} — \`guard\` ${JSON.stringify(c.guard)} is not a tooling/….mjs path (an enforcement-index ref)`);
+    if (c?.row !== undefined && !(typeof c.row === 'string' && CAUSE_ROW.test(c.row))) problems.push(`${id} — \`row\` ${JSON.stringify(c.row)} is not a platform-state row id`);
     const f = c?.fixedBy;
     if (f === undefined) {
       problems.push(`${id} — lacks \`fixedBy\`; the prose \`fix\` is not a kind a machine can hold`);
@@ -783,6 +799,28 @@ export function proofFor(row, { newest, branches, prs }) {
 }
 
 export const isExplained = (cause, proof) => Boolean(cause) && proof.kind !== 'none';
+
+/** B-4 (2026-09-29). PURE. A cause this ledger matched to `min` or more runs is
+ *  a RECURRING class. One that carries neither its dates (`firstSeen` AND
+ *  `lastSeen`) nor an owner (`guard` — the index ref that refused — or `row`,
+ *  the platform-state row that tracks it) cannot be ranked against the others
+ *  or handed to anyone: it recurs in prose only. Counted per CAUSE ROW, so a
+ *  prefix row matched by two different signatures once each is recurring. */
+export function unrankedRecurring(groups, min = 2) {
+  const byCause = new Map();
+  for (const g of groups ?? []) {
+    if (!g?.cause) continue;
+    byCause.set(g.cause, (byCause.get(g.cause) ?? 0) + g.count);
+  }
+  const out = [];
+  for (const [c, runs] of byCause) {
+    if (runs < min) continue;
+    const dated = CAUSE_DAY.test(c.firstSeen ?? '') && CAUSE_DAY.test(c.lastSeen ?? '');
+    const owned = nonEmpty(c.guard) || nonEmpty(c.row);
+    if (!dated && !owned) out.push({ signature: c.signature, runs });
+  }
+  return out.sort((a, b) => b.runs - a.runs || a.signature.localeCompare(b.signature));
+}
 
 export function groupRows(rows, causes, ctx) {
   const groups = new Map();
@@ -1617,13 +1655,20 @@ async function main(argv) {
     writeFileSync(resolve(args.json), JSON.stringify({ range, capped, rows: result.rows, groups: groups.map((g) => ({ ...g, proofs: [...g.proofs] })), unexplained }, null, 1));
     console.log(`wrote ${args.json}`);
   }
+  const unranked = unrankedRecurring(groups);
+  if (unranked.length) {
+    console.log('');
+    console.log('RECURRING CAUSES THAT CANNOT BE RANKED — matched by 2+ runs, with no firstSeen/lastSeen and no guard/row:');
+    for (const u of unranked) console.log(`  · ${u.signature} · ${u.runs} run(s) — add firstSeen and lastSeen (YYYY-MM-DD), or the guard/row that owns it, in ${CAUSES_REL}`);
+  }
   console.log('');
+  console.log(`RECURRING UNRANKED: ${unranked.length}`);
   console.log(`UNEXPLAINED: ${unexplained.length}`);
   if (capped.length) {
     console.error('✗ COVERAGE LOST — the enumeration was capped; the count above is over a SUBSET. Pass --since to bound it.');
     return 2;
   }
-  return unexplained.length > 0 ? 1 : 0;
+  return unexplained.length > 0 || unranked.length > 0 ? 1 : 0;
 }
 
 /** --yield: read, hand to guard-yield.mjs, write. Imported here and only here,
@@ -1642,8 +1687,13 @@ async function yieldMain(api, args, causes) {
   let indexRows;
   let merged;
   let added;
+  let attribution;
+  let previous = null;
   try {
     indexRows = gy.readIndexRows(root);
+    // Rule 3 reads the ledger's own register and the guard-test corpus of the
+    // checkout the file is written into: one attribution, fetched or offline.
+    attribution = gy.readAttribution(root, indexRows, causes);
     if (api.live) {
       merged = mergedPrsFromGit(root, args.mergedRef, since, until);
       added = addedDatesFromGit(root, args.mergedRef, since);
@@ -1655,13 +1705,20 @@ async function yieldMain(api, args, causes) {
     // A failed `git log` says why on stderr; its message is only the command line.
     return lost(String(e.stderr ?? '').trim().split('\n')[0] || e.message.split('\n')[0]);
   }
+  // An OWNER disposition is a person's decision and outlives the fetch that
+  // replaces the file; an absent or unreadable previous file carries none.
+  try {
+    previous = gy.readYield(root);
+  } catch {
+    previous = null;
+  }
   let fetched;
   try {
     fetched = await yieldRecords(api, { since, until, causes, maxCalls, log: (m) => console.log(m) });
   } catch (e) {
     return lost(e.message);
   }
-  const doc = gy.buildYield({ records: fetched.records, indexRows, merged, added, since, until, apiCalls: api.requestsSent() });
+  const doc = gy.buildYield({ records: fetched.records, indexRows, merged, added, since, until, apiCalls: api.requestsSent(), attribution, previous });
   const { problems } = gy.checkYield(doc, indexRows);
   if (problems.length) {
     for (const p of problems) console.error(`✗ ${p}`);
@@ -1676,7 +1733,7 @@ async function yieldMain(api, args, causes) {
   console.log('TOP 10 BY CATCHES:');
   for (const t of gy.topRefs(doc, 10)) console.log(`  ${t.catches}  ${t.ref}`);
   console.log(`ZERO CATCH: ${doc.zeroCatch} of ${wired} guard/WIRED`);
-  console.log(`UNATTRIBUTED: ${doc.unattributed}`);
+  console.log(`UNATTRIBUTED: ${doc.unattributed} (${gy.unattributedPct(doc).toFixed(2)}% of ${doc.runs.considered}, limit ${gy.UNATTRIBUTED_MAX_PCT}%)`);
   console.log(`API CALLS: ${api.requestsSent()}`);
   console.log(`wrote ${gy.YIELD_REL} under ${root}`);
   return 0;

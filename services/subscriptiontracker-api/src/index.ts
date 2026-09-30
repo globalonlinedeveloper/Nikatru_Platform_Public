@@ -39,6 +39,7 @@ import account from './routes/account';
 import subscriptions from './routes/subscriptions';
 import renewals from './routes/renewals';
 import budget from './routes/budget';
+import categories from './routes/categories';
 import entitlements from './routes/entitlements';
 
 const app = new Hono<AppEnv>();
@@ -188,6 +189,7 @@ api.use('*', supabaseAuth);
 api.route('/subscriptions', subscriptions);
 api.route('/renewals', renewals);
 api.route('/budget', budget);
+api.route('/categories', categories);
 api.route('/entitlements', entitlements);
 app.route('/v1', api);
 

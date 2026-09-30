@@ -38,7 +38,6 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:subscriptiontracker/data/models/budget_info.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/data/subscriptions/subscription_repository.dart';
-import 'package:subscriptiontracker/features/budget/budget_screen.dart';
 import 'package:subscriptiontracker/features/calendar/calendar_screen.dart';
 import 'package:subscriptiontracker/features/detail/subscription_detail_screen.dart';
 import 'package:subscriptiontracker/features/insights/insights_screen.dart';
@@ -126,7 +125,6 @@ void main() {
   // genuine outcome is "no such record", and that is the state it must show
   // rather than a failure.
   final Map<String, Widget> screens = <String, Widget>{
-    'budget': const BudgetScreen(),
     'calendar': const CalendarScreen(),
     'insights': const InsightsScreen(),
     'notifications': const NotificationsScreen(),
@@ -134,11 +132,28 @@ void main() {
   };
 
   group('a fetch IN FLIGHT is a loading state, on every screen', () {
+    // ⏱ 2026-09-28 · train ST-D5: NOTIFICATIONS' loading state is the LIST'S
+    // OWN OUTLINE — a `SkeletonList` in the card the rows arrive in — not the
+    // whole-surface spinner. Its case asserts THAT key, and still asserts the
+    // other three state keys absent: a skeleton beside "failed" or "empty" is
+    // two states at once, the defect the whole file exists to catch.
+    const Set<String> skeletonLoaders = <String>{'notifications'};
     screens.forEach((String name, Widget screen) {
       testWidgets('$name shows loading, and neither empty nor failed', (
         WidgetTester tester,
       ) async {
         await pumpAt(tester, kPhone, screen, overrides: _repo(_Pending()));
+        if (skeletonLoaders.contains(name)) {
+          expect(find.byKey(SkeletonList.skeletonKey), findsOneWidget);
+          for (final Key k in <Key>[
+            DataStateView.loadingKey,
+            DataStateView.emptyKey,
+            DataStateView.failedKey,
+          ]) {
+            expect(find.byKey(k), findsNothing, reason: '$name: $k');
+          }
+          return;
+        }
         expectOnlyState(DataStateView.loadingKey, name);
         expect(find.byType(CircularProgressIndicator), findsWidgets);
       });

@@ -575,8 +575,14 @@ for each host (`--print-host`) and requires `"ok":true` from its
 deploy-sandbox.yml".
 
 **How it is deployed: `.github/workflows/deploy-sandbox.yml`.** Dispatch only,
-input `worker` (`all`, `platform`, `subscriptiontracker-api`), one run at a
-time (`concurrency: deploy-sandbox`). It is its own workflow rather than an
+input `worker` (`all`, `platform`, or one app Worker name), one run at a
+time (`concurrency: deploy-sandbox`). The app Workers are not listed in the
+file (B-12, row O-SERVICE-KIT-UNBUILT): its `workers` job reads them from
+`tooling/ci/worker-set.mjs --for-deploy --json --app-workers --env sandbox`
+(every `appWorkers` row whose config declares `env.sandbox`), refuses a
+`worker` input that is none of them, and its `app-worker` job deploys one
+matrix leg each, so app #2's Worker has a sandbox the day its config
+declares one. It is its own workflow rather than an
 input on deploy-workers.yml because a push that touches deploy-workers.yml
 redeploys production, and the sandbox must never ride a production merge.
 Per Worker, in order:

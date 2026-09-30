@@ -218,12 +218,21 @@
           "path": "/v1/subscriptions/:id",
           "auth": "required",
           "owningFile": "services/subscriptiontracker-api/src/routes/subscriptions.ts",
-          "purpose": "Delete one subscription the user owns. Ownership is in the SQL, so a foreign id deletes nothing and says so.",
+          "purpose": "Remove one subscription the user owns — a SOFT delete since 2026-09-29 (ST-E3): it sets `deleted_at`, the row leaves every list and reminder, `PATCH {deleted_at: null}` restores it, and GET /v1/subscriptions purges it with its payment_history and price_change rows 30 days later. Ownership is in the SQL, so a foreign id touches nothing and says so.",
           "client": {
             "file": "apps/subscriptiontracker/lib/data/api/dio_api_client.dart",
             "expression": "_rest.delete('/subscriptions/$id')",
             "note": "The real call inside `deleteSubscription()`."
           }
+        },
+        {
+          "id": "subscriptiontracker-subscription-payment-create",
+          "method": "POST",
+          "path": "/v1/subscriptions/:id/payments",
+          "auth": "required",
+          "owningFile": "services/subscriptiontracker-api/src/routes/subscriptions.ts",
+          "purpose": "The user records a payment by hand (ST-R5, round-2 X06: mark as paid). Writes one payment_history row with `source` = manual against a subscription the user owns and has not removed; ownership is in the SQL, so a foreign or removed id is a 404.",
+          "unconsumedReason": "⏱ 2026-09-29: SERVED AHEAD OF ITS BUTTON. The API half of ST-R5 landed first on purpose (fix-rv2-st-api-lifecycle); the \"Mark as paid\" control is drawn by the design train dw1 (D5-3), which adds the client call. Until then nothing in the app issues this request."
         },
         {
           "id": "subscriptiontracker-renewals",
@@ -259,6 +268,42 @@
             "expression": "_rest.put('/budget', body: budget.toJson())",
             "note": "The real call inside `updateBudget()`. ⚠️ MEASURED 2026-08-25 AND WORTH SAYING PLAINLY: the URL is built here, which is what limb 2 checks and it is genuinely the code that would issue this request — but the method that builds it has no live caller. `SubscriptionRepository.saveBudget` (subscription_repository.dart:19) wraps it and has no caller; `budget_screen.dart:20` reads the budget and nothing writes one back yet. The route is complete, tested and unreached."
           }
+        },
+        {
+          "id": "subscriptiontracker-categories-list",
+          "method": "GET",
+          "path": "/v1/categories",
+          "auth": "required",
+          "owningFile": "services/subscriptiontracker-api/src/routes/categories.ts",
+          "purpose": "Categories by ID (ST-X8, round-2 F16/B29/C11): the ten built-ins (`user_id` NULL, stable slug ids a client translates by) and the user's own.",
+          "unconsumedReason": "⏱ 2026-09-29: SERVED AHEAD OF ITS SCREENS. The API half of ST-X8 landed first on purpose (fix-rv2-st-api-lifecycle, \"the API half has no design dependency and can go first\"); the add sheet, budget and settings screens that read it belong to dw2 D4-1, dw1 D6-4 and ST-D3, which add the client call."
+        },
+        {
+          "id": "subscriptiontracker-categories-create",
+          "method": "POST",
+          "path": "/v1/categories",
+          "auth": "required",
+          "owningFile": "services/subscriptiontracker-api/src/routes/categories.ts",
+          "purpose": "Create a category of the user's own. A name the user already sees (their own or a built-in) is a 409.",
+          "unconsumedReason": "⏱ 2026-09-29: served ahead of its screen — same reason as subscriptiontracker-categories-list."
+        },
+        {
+          "id": "subscriptiontracker-categories-rename",
+          "method": "PATCH",
+          "path": "/v1/categories/:id",
+          "auth": "required",
+          "owningFile": "services/subscriptiontracker-api/src/routes/categories.ts",
+          "purpose": "Rename one of the user's own categories. Its id stays, and the rename rewrites `subscriptions.category` and `budget_categories.name` in the same batch, so every cap and subscription keyed to it follows. A built-in is a 403.",
+          "unconsumedReason": "⏱ 2026-09-29: served ahead of its screen — same reason as subscriptiontracker-categories-list."
+        },
+        {
+          "id": "subscriptiontracker-categories-delete",
+          "method": "DELETE",
+          "path": "/v1/categories/:id",
+          "auth": "required",
+          "owningFile": "services/subscriptiontracker-api/src/routes/categories.ts",
+          "purpose": "Delete one of the user's own categories: its subscriptions become uncategorised and its cap is removed, in one batch. A built-in is a 403.",
+          "unconsumedReason": "⏱ 2026-09-29: served ahead of its screen — same reason as subscriptiontracker-categories-list."
         },
         {
           "id": "subscriptiontracker-entitlements",
@@ -627,7 +672,7 @@
       "auth": "required",
       "owningFile": "services/platform/src/routes/reminders.ts",
       "purpose": "⏱ 2026-09-28 · ST-R1. The caller's renewal reminder EMAIL preference for one app (`?app_id=`): `{app_id, email_opt_in, lead_days}`, or the default (not opted in, 3 days) when no row exists. Mounted behind app.use('/v1/reminders/prefs', platformAuth); app_id must be a catalogue app with an app database (isReminderApp).",
-      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T4b (the packages + app half: the reminder toggle, the lead-days picker and the calendar-feed button), which launches after this Worker deploys; the server must be live first. Until then no account is opted in, so the nightly job runs live and mails no one."
+      "unconsumedReason": "CONSUMED (ST-T4b): packages/api_client/lib/src/dio_reminder_channels_transport.dart (DioReminderChannelsTransport readPrefs / writePrefs), parsed by packages/core ReminderPrefs.tryParse and driven by the \"Email me before renewals\" row in apps/subscriptiontracker Settings (ReminderChannelsCard). Wire-pinned by assert-analytics-contract (body both directions, and the PUT request literal)."
     },
     {
       "id": "reminders-prefs-put",
@@ -636,7 +681,7 @@
       "auth": "required",
       "owningFile": "services/platform/src/routes/reminders.ts",
       "purpose": "⏱ 2026-09-28 · ST-R1. Stores `{app_id, email_opt_in, lead_days?}` (lead 0-30; absent keeps the stored one) for the verified JWT subject in platform_db.reminder_prefs (migration 0020). Body bounded at 1 KiB; the per-person burst breaker is EVENTS_LIMITER keyed `reminders:<sub>`, as POST /v1/report does. The nightly `reminder_mail` job reads it.",
-      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T4b (the packages + app half: the reminder toggle, the lead-days picker and the calendar-feed button), which launches after this Worker deploys; the server must be live first. Until then no account is opted in, so the nightly job runs live and mails no one."
+      "unconsumedReason": "CONSUMED (ST-T4b): packages/api_client/lib/src/dio_reminder_channels_transport.dart (DioReminderChannelsTransport readPrefs / writePrefs), parsed by packages/core ReminderPrefs.tryParse and driven by the \"Email me before renewals\" row in apps/subscriptiontracker Settings (ReminderChannelsCard). Wire-pinned by assert-analytics-contract (body both directions, and the PUT request literal)."
     },
     {
       "id": "reminders-unsubscribe-get",
@@ -663,7 +708,7 @@
       "auth": "required",
       "owningFile": "services/platform/src/routes/calendar.ts",
       "purpose": "⏱ 2026-09-28 · ST-R2. Mints — or ROTATES — the caller's private calendar feed for one app (`{app_id}`) and answers its https and webcal URLs ONCE. The token is 256 random bits; only its SHA-256 is stored (platform_db.reminder_feed, one row per account and app), so the previous URL dies on rotation. Mounted behind app.use('/v1/calendar/feed', platformAuth).",
-      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T4b (the packages + app half: the reminder toggle, the lead-days picker and the calendar-feed button), which launches after this Worker deploys; the server must be live first. Until then no account is opted in, so the nightly job runs live and mails no one."
+      "unconsumedReason": "CONSUMED (ST-T4b): DioReminderChannelsTransport.mintCalendarFeed, parsed by packages/core CalendarFeed.tryParse (https_url, webcal_url only), behind \"Add to calendar\" and \"Reset calendar link\" (a reset is a ROTATION through this route). Wire-pinned by assert-analytics-contract."
     },
     {
       "id": "calendar-feed-delete",
@@ -672,7 +717,7 @@
       "auth": "required",
       "owningFile": "services/platform/src/routes/calendar.ts",
       "purpose": "⏱ 2026-09-28 · ST-R2. Revokes the caller's live feed for `?app_id=` (stamps revoked_at); the feed URL then answers 404. 404 when there is no live feed.",
-      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T4b (the packages + app half: the reminder toggle, the lead-days picker and the calendar-feed button), which launches after this Worker deploys; the server must be live first. Until then no account is opted in, so the nightly job runs live and mails no one."
+      "unconsumedReason": "NO CLIENT, AND IT IS A DECISION (ST-T4b): the app resets a leaked feed by ROTATING it (POST /v1/calendar/feed), so nobody is left without a link by accident. The route stays for a future \"stop the feed\" control; pinned server-side by services/platform/test/calendar-feed.test.ts."
     },
     {
       "id": "calendar-feed-ics",
@@ -690,7 +735,11 @@
       "auth": "public",
       "owningFile": "services/platform/src/routes/native-auth.ts",
       "purpose": "⏱ 2026-09-28 · ST-N1 (O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN). A native app's PASSWORD sign-in without a captcha: `?grant_type=password` only (any other grant is a 400 — refresh, PKCE and id_token are not captcha-gated and go straight to GoTrue), body `{email, password}` only, forwarded to GoTrue's /auth/v1/token with the service-role bearer, for which GoTrue skips its captcha (supabase/auth middleware.go verifyCaptcha). 🔐 CREDENTIALS IN TRANSIT, NEVER STORED: the email and password (or the PKCE challenge) pass through this Worker to GoTrue in the one request and are written nowhere — no D1 row, no KV key, and the one log line per call carries the route, the app, the status and the edge-shield marker, never the body. The per-account limiter key is `acct:<app>:<sha256(lowercased email)>`, held only by Cloudflare's rate-limit counter for its 60 s period. No `Origin` (403) — middleware/cors.ts grants the prefix no CORS; `:app` is a NATIVE_AUTH_APPS id (services/platform/src/generated/app-targets.ts, rendered from apps/ by tooling/scripts/render-platform-app-block.mjs), so a newly stamped native app is served with no Worker edit. Behind NATIVE_AUTH_EDGE_LIMITER (per network) and NATIVE_AUTH_ACCOUNT_LIMITER (per account), both FAIL CLOSED (503). GoTrue's status and JSON come back verbatim, Set-Cookie dropped.",
-      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T7b, which points a second gotrue-dart GoTrueClient at `/v1/auth/native/<app>` for the native builds, and lands only after this Worker deploys: the server must be live first. Until then no build of ours calls it, and every native sign-in still goes to GoTrue and is refused `captcha_failed`."
+      "client": {
+        "file": "packages/auth_supabase/lib/src/native_credential_client.dart",
+        "expression": "'$root/v1/auth/native/$appId'",
+        "note": "⏱ 2026-09-28 · ST-T7b (ST-N1d). The route BASE of the second gotrue-dart GoTrueClient every native build sends its captcha-gated calls through (nativeCredentialClient); gotrue-dart appends /token itself. packages/auth_supabase/test/native_credential_route_test.dart drives the token call through the real SDK to this base on each native target, and assert-analytics-contract.mjs pins it as an sdk wire."
+      }
     },
     {
       "id": "native-auth-signup",
@@ -699,7 +748,11 @@
       "auth": "public",
       "owningFile": "services/platform/src/routes/native-auth.ts",
       "purpose": "⏱ 2026-09-28 · ST-N1. A native app's SIGN-UP without a captcha: body `{email, password, data, code_challenge, code_challenge_method}` only, and `redirect_to` kept only when it is the app's own `com.nikatru.<app>://auth-callback` (with or without `?nk_auth=<marker>`), else 400. Forwarded to GoTrue's /auth/v1/signup with the service-role bearer. 🔐 CREDENTIALS IN TRANSIT, NEVER STORED: the email and password (or the PKCE challenge) pass through this Worker to GoTrue in the one request and are written nowhere — no D1 row, no KV key, and the one log line per call carries the route, the app, the status and the edge-shield marker, never the body. The per-account limiter key is `acct:<app>:<sha256(lowercased email)>`, held only by Cloudflare's rate-limit counter for its 60 s period. No `Origin` (403) — middleware/cors.ts grants the prefix no CORS; `:app` is a NATIVE_AUTH_APPS id (services/platform/src/generated/app-targets.ts, rendered from apps/ by tooling/scripts/render-platform-app-block.mjs), so a newly stamped native app is served with no Worker edit. Behind NATIVE_AUTH_EDGE_LIMITER (per network) and NATIVE_AUTH_ACCOUNT_LIMITER (per account), both FAIL CLOSED (503). GoTrue's status and JSON come back verbatim, Set-Cookie dropped.",
-      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T7b, which points a second gotrue-dart GoTrueClient at `/v1/auth/native/<app>` for the native builds, and lands only after this Worker deploys: the server must be live first. Until then no build of ours calls it, and every native sign-in still goes to GoTrue and is refused `captcha_failed`."
+      "client": {
+        "file": "packages/auth_supabase/lib/src/native_credential_client.dart",
+        "expression": "'$root/v1/auth/native/$appId'",
+        "note": "⏱ 2026-09-28 · ST-T7b (ST-N1d). The route BASE of the second gotrue-dart GoTrueClient every native build sends its captcha-gated calls through (nativeCredentialClient); gotrue-dart appends /signup itself. packages/auth_supabase/test/native_credential_route_test.dart drives the signup call through the real SDK to this base on each native target, and assert-analytics-contract.mjs pins it as an sdk wire."
+      }
     },
     {
       "id": "native-auth-recover",
@@ -708,7 +761,11 @@
       "auth": "public",
       "owningFile": "services/platform/src/routes/native-auth.ts",
       "purpose": "⏱ 2026-09-28 · ST-N1. A native app's PASSWORD-RESET request without a captcha: body `{email, code_challenge, code_challenge_method}` only, `redirect_to` pinned to the app's own callback as on signup. Forwarded to GoTrue's /auth/v1/recover with the service-role bearer. 🔐 CREDENTIALS IN TRANSIT, NEVER STORED: the email and password (or the PKCE challenge) pass through this Worker to GoTrue in the one request and are written nowhere — no D1 row, no KV key, and the one log line per call carries the route, the app, the status and the edge-shield marker, never the body. The per-account limiter key is `acct:<app>:<sha256(lowercased email)>`, held only by Cloudflare's rate-limit counter for its 60 s period. No `Origin` (403) — middleware/cors.ts grants the prefix no CORS; `:app` is a NATIVE_AUTH_APPS id (services/platform/src/generated/app-targets.ts, rendered from apps/ by tooling/scripts/render-platform-app-block.mjs), so a newly stamped native app is served with no Worker edit. Behind NATIVE_AUTH_EDGE_LIMITER (per network) and NATIVE_AUTH_ACCOUNT_LIMITER (per account), both FAIL CLOSED (503). GoTrue's status and JSON come back verbatim, Set-Cookie dropped.",
-      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T7b, which points a second gotrue-dart GoTrueClient at `/v1/auth/native/<app>` for the native builds, and lands only after this Worker deploys: the server must be live first. Until then no build of ours calls it, and every native sign-in still goes to GoTrue and is refused `captcha_failed`."
+      "client": {
+        "file": "packages/auth_supabase/lib/src/native_credential_client.dart",
+        "expression": "'$root/v1/auth/native/$appId'",
+        "note": "⏱ 2026-09-28 · ST-T7b (ST-N1d). The route BASE of the second gotrue-dart GoTrueClient every native build sends its captcha-gated calls through (nativeCredentialClient); gotrue-dart appends /recover itself. packages/auth_supabase/test/native_credential_route_test.dart drives the recover call through the real SDK to this base on each native target, and assert-analytics-contract.mjs pins it as an sdk wire."
+      }
     },
     {
       "id": "native-auth-resend",
@@ -717,7 +774,11 @@
       "auth": "public",
       "owningFile": "services/platform/src/routes/native-auth.ts",
       "purpose": "⏱ 2026-09-28 · ST-N1. A native app's RE-SEND of a confirmation email without a captcha: body `{email, type, code_challenge, code_challenge_method}` only (the PKCE pair gotrue-dart 2.26.0 sends on an email resend), `type` ∈ {signup, email_change} (the phone types are refused), `redirect_to` pinned to the app's own callback. Forwarded to GoTrue's /auth/v1/resend with the service-role bearer. 🔐 CREDENTIALS IN TRANSIT, NEVER STORED: the email and password (or the PKCE challenge) pass through this Worker to GoTrue in the one request and are written nowhere — no D1 row, no KV key, and the one log line per call carries the route, the app, the status and the edge-shield marker, never the body. The per-account limiter key is `acct:<app>:<sha256(lowercased email)>`, held only by Cloudflare's rate-limit counter for its 60 s period. No `Origin` (403) — middleware/cors.ts grants the prefix no CORS; `:app` is a NATIVE_AUTH_APPS id (services/platform/src/generated/app-targets.ts, rendered from apps/ by tooling/scripts/render-platform-app-block.mjs), so a newly stamped native app is served with no Worker edit. Behind NATIVE_AUTH_EDGE_LIMITER (per network) and NATIVE_AUTH_ACCOUNT_LIMITER (per account), both FAIL CLOSED (503). GoTrue's status and JSON come back verbatim, Set-Cookie dropped.",
-      "unconsumedReason": "THE CLIENT ARRIVES IN ST-T7b, which points a second gotrue-dart GoTrueClient at `/v1/auth/native/<app>` for the native builds, and lands only after this Worker deploys: the server must be live first. Until then no build of ours calls it, and every native sign-in still goes to GoTrue and is refused `captcha_failed`."
+      "client": {
+        "file": "packages/auth_supabase/lib/src/native_credential_client.dart",
+        "expression": "'$root/v1/auth/native/$appId'",
+        "note": "⏱ 2026-09-28 · ST-T7b (ST-N1d). The route BASE of the second gotrue-dart GoTrueClient every native build sends its captcha-gated calls through (nativeCredentialClient); gotrue-dart appends /resend itself. packages/auth_supabase/test/native_credential_route_test.dart drives the resend call through the real SDK to this base on each native target, and assert-analytics-contract.mjs pins it as an sdk wire."
+      }
     }
   ],
   "bindings": [

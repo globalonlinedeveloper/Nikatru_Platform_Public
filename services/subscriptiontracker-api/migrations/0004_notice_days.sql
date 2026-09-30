@@ -1,0 +1,26 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 0004_notice_days.sql — a subscription can carry its notice period
+-- (audit row F30, label ST-R8: the "cancel-by" reminder, the API half).
+-- Applies to APP_DB (subscriptiontracker_db):
+--   wrangler d1 migrations apply APP_DB --local   (or --remote)
+--
+-- Some plans must be cancelled N days BEFORE the charge (a gym, a broadband
+-- contract, an annual plan with a notice clause). `next_renewal` says when the
+-- charge lands; this says how long before it the user has to act, so the client
+-- can remind on the cancel-by date instead of the renewal date.
+--
+-- NULL = no notice period, which is what every row that exists today holds.
+--
+-- STRICTLY ADDITIVE, like 0002 and 0003: one ADD COLUMN, no DROP, no RENAME, no
+-- type change, no table rebuild (tooling/ci/check-migrations.mjs bans all four).
+-- NO CHECK, for 0003's reason: the route validates the range
+-- (src/routes/subscriptions.ts `validate`, MAX_NOTICE_DAYS), where a new bound
+-- is a code change and not a table rebuild.
+--
+-- DEPLOY ORDER api → web IS SAFE. The client shows the field only once the API
+-- emits `notice_days`, so a web build that lands first shows nothing new. As
+-- with 0003, this file is applied before the Worker that names the column.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- Whole days before `next_renewal` by which the user must cancel, 0..365.
+ALTER TABLE subscriptions ADD COLUMN notice_days INTEGER;

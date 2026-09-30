@@ -856,5 +856,112 @@ console.log('\n=== reflow at 200% zoom and under a long translation ===');
     /#saveNote\s*\{[^}]*max-width:/.test(stripCssComments(pageCss('pages/options.html'))), '');
 }
 
-console.log('\n' + (FAILS ? 'FAILURES: ' + FAILS : 'ALL PASS'));
-process.exit(FAILS ? 1 : 0);
+/* ============================================================================
+   content/region.js — the region / element overlay (EXB-04)
+   ============================================================================
+   The one piece of FullShot UI that lives in SOMEBODY ELSE'S page, and until
+   this section no a11y tier read content/ at all. The overlay is pointer-first
+   by nature (drag a rectangle, hover an element), so what is graded is the
+   keyboard's way to the same output and the one sentence it speaks:
+     · the hint is a live region (role=status, aria-live=polite) and its text
+       arrives AFTER it is in the document, which is what makes it announced;
+     · the hint names the Enter route;
+     · Enter, with nothing highlighted, sends FS_REGION_SELECTED with the whole
+       visible area, and Escape still cancels.
+   Not a regex over the source: the file is RUN, in a vm, against a fake
+   document just big enough to hold it, so a comment or a dead branch cannot
+   satisfy a check. Red on a tree whose hint is silent or whose overlay
+   ignores Enter. */
+console.log('\n=== content/region.js: the overlay speaks, and answers Enter ===');
+async function runRegion(pick) {
+  const vm = require('vm');
+  const made = [];
+  const winOn = {};
+  const sent = [];
+  let onMessage = null;
+  const mkEl = tag => {
+    const el = {
+      tagName: tag.toUpperCase(), style: {}, attrs: {}, kids: [], textContent: '', parent: null,
+      setAttribute(k, v) { this.attrs[k] = String(v); },
+      getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; },
+      append(...k) { for (const c of k) { c.parent = this; this.kids.push(c); } },
+      appendChild(c) { c.parent = this; this.kids.push(c); return c; },
+      addEventListener() {}, contains(c) { for (let n = c; n; n = n.parent) if (n === this) return true; return false; },
+      remove() { this.removed = true; }
+    };
+    made.push(el);
+    return el;
+  };
+  const root = mkEl('html');
+  root.clientWidth = 1264; root.clientHeight = 800;
+  const sandbox = {
+    console: { warn() {}, log() {} }, setTimeout, Promise,
+    /* setImmediate, not setTimeout(fn, 0): finish() chains two frames, and on
+       Windows each 0 ms timer can wait a whole ~15.6 ms clock tick, so two of
+       them overran key()'s 20 ms settle and the Enter limbs read "sent []" on
+       roughly half the runs. setImmediate is one event-loop turn, no clock. */
+    requestAnimationFrame: fn => setImmediate(fn),
+    document: { createElement: mkEl, documentElement: root, body: mkEl('body'), elementsFromPoint: () => [] },
+    addEventListener(t, fn) { (winOn[t] = winOn[t] || []).push(fn); },
+    removeEventListener(t, fn) { winOn[t] = (winOn[t] || []).filter(f => f !== fn); },
+    innerWidth: 1280, innerHeight: 800, devicePixelRatio: 1,
+    chrome: {
+      i18n: { getMessage: () => '' },
+      runtime: {
+        onMessage: { addListener(fn) { onMessage = fn; } },
+        sendMessage(m) { sent.push(m); return Promise.resolve({ ok: true }); }
+      }
+    }
+  };
+  sandbox.window = sandbox;
+  vm.createContext(sandbox);
+  vm.runInContext(read('content/region.js'), sandbox, { filename: 'region.js' });
+  if (!onMessage) throw new Error('region.js registered no runtime message listener');
+  onMessage({ type: 'FS_REGION_START', pick }, {}, () => {});
+  const hint = made.find(e => e.getAttribute('role') === 'status');
+  const bornWith = hint ? hint.textContent : null;
+  await new Promise(r => setTimeout(r, 5));
+  const key = async k => {
+    const ev = { key: k, prevented: false, stopped: false,
+      preventDefault() { this.prevented = true; }, stopPropagation() { this.stopped = true; } };
+    for (const fn of (winOn.keydown || []).slice()) fn(ev);
+    /* Settle by event-loop turns, not by the clock alone: a timer that fires
+       late under load can land between finish()'s two frames. Ten turns after
+       it outlast the two frames and the sendMessage they lead to. */
+    await new Promise(r => setTimeout(r, 20));
+    for (let i = 0; i < 10; i++) await new Promise(r => setImmediate(r));
+    return ev;
+  };
+  return { hint, bornWith, key, sent, root };
+}
+(async () => {
+  for (const pick of ['region', 'element']) {
+    let r;
+    try { r = await runRegion(pick); }
+    catch (e) { check('region.js (' + pick + ') runs against the fake document', false, String(e && e.message || e)); continue; }
+    check('region.js (' + pick + '): the hint is a role=status live region',
+      !!r.hint && r.hint.getAttribute('aria-live') === 'polite', r.hint ? JSON.stringify(r.hint.attrs) : 'no element with role=status');
+    const said = r.hint ? r.hint.textContent : '';
+    check('region.js (' + pick + '): the hint text is written after it is in the page, so it is announced',
+      r.bornWith === '' && said.length > 0, JSON.stringify(r.bornWith) + ' -> ' + JSON.stringify(said));
+    check('region.js (' + pick + '): the hint names the Enter route', /Enter/.test(said), said || 'no live hint');
+    const ev = await r.key('Enter');
+    const sel = r.sent.find(m => m.type === 'FS_REGION_SELECTED');
+    check('region.js (' + pick + '): Enter with nothing highlighted captures the whole visible area',
+      !!sel && sel.rect.x === 0 && sel.rect.y === 0 && sel.rect.w === 1264 && sel.rect.h === 800,
+      sel ? JSON.stringify(sel.rect) : 'sent ' + JSON.stringify(r.sent.map(m => m.type)));
+    check('region.js (' + pick + '): ...and the page under the overlay does not also get that Enter',
+      ev.prevented && ev.stopped, 'prevented=' + ev.prevented + ' stopped=' + ev.stopped);
+    await r.key('Enter');
+    check('region.js (' + pick + '): a second Enter does not capture twice',
+      r.sent.filter(m => m.type === 'FS_REGION_SELECTED').length === 1, r.sent.map(m => m.type).join(','));
+  }
+  const c = await runRegion('region');
+  await c.key('Escape');
+  check('region.js: Escape still cancels',
+    c.sent.some(m => m.type === 'FS_REGION_CANCEL') && !c.sent.some(m => m.type === 'FS_REGION_SELECTED'),
+    c.sent.map(m => m.type).join(','));
+})().catch(e => check('content/region.js section completed', false, String(e && e.stack || e))).then(() => {
+  console.log('\n' + (FAILS ? 'FAILURES: ' + FAILS : 'ALL PASS'));
+  process.exit(FAILS ? 1 : 0);
+});

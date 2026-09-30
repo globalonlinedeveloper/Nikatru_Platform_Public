@@ -650,8 +650,12 @@ void main() {
         // ⏱ 2026-09-27 · ST-U1: 23 -> 22 and 21 -> 20 — the chassis daily
         // "Reminders" switch left this screen.
         // ⏱ 2026-09-28 · ST-X1: 22 -> 23 and 20 -> 21 — the export row.
-        controls: 23 + core.Money.symbols.length,
-        reachable: 21 + core.Money.symbols.length,
+        // ⏱ 2026-09-28 · ST-R3: 23 -> 25 and 21 -> 23 — the "Remind me" and
+        // "At" rows under Renewal alerts, both ListTiles in the Tab orbit.
+        // ⏱ 2026-09-29 · ST-D4 on ST-R3: 25 -> 26 and 23 -> 24 — the Privacy
+        // card's "Privacy notice" _LinkRow, wired, a control AND in the orbit.
+        controls: 26 + core.Money.symbols.length,
+        reachable: 24 + core.Money.symbols.length,
       );
       expect(
         s.dead.length,

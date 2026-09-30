@@ -34,6 +34,9 @@ final class LinkVerdict {
 /// - `mailto:` opens only for the ONE configured support address, and may
 ///   carry a `subject` and a `body` and no other header: a `cc`, `bcc` or `to`
 ///   would add a recipient the policy never named.
+/// - `webcal:` opens only for a host added by [withCalendarFeedUrl] — the
+///   platform's private calendar feed (ST-T4a), which a calendar app
+///   subscribes to by that scheme. Same authority rules as `https:`.
 /// - Every other scheme is refused: `http:`, `javascript:`, `file:`, `data:`,
 ///   `intent:` and a link with no scheme at all.
 ///
@@ -51,8 +54,14 @@ final class LinkPolicy {
   LinkPolicy({
     Iterable<String> httpsHosts = const <String>[],
     String? supportEmail,
+    Iterable<String> webcalHosts = const <String>[],
   })  : _httpsHosts = Set<String>.unmodifiable(
           httpsHosts
+              .map((String h) => h.trim().toLowerCase())
+              .where((String h) => h.isNotEmpty),
+        ),
+        _webcalHosts = Set<String>.unmodifiable(
+          webcalHosts
               .map((String h) => h.trim().toLowerCase())
               .where((String h) => h.isNotEmpty),
         ),
@@ -75,6 +84,7 @@ final class LinkPolicy {
   }
 
   final Set<String> _httpsHosts;
+  final Set<String> _webcalHosts;
 
   /// The support address `mailto:` may reach, lower-cased; null when the app
   /// configures none, and then every `mailto:` is refused.
@@ -95,6 +105,21 @@ final class LinkPolicy {
     return LinkPolicy(
       httpsHosts: <String>{..._httpsHosts, host},
       supportEmail: supportEmail,
+      webcalHosts: _webcalHosts,
+    );
+  }
+
+  /// This policy, plus the host of the platform's calendar feed, for BOTH
+  /// `webcal:` (a calendar app subscribes) and `https:` (a browser downloads
+  /// the same file). [baseUrl] is the platform origin the app is configured
+  /// with; anything but absolute https leaves the policy as it was.
+  LinkPolicy withCalendarFeedUrl(String? baseUrl) {
+    final String? host = baseUrl == null ? null : _httpsHostOf(baseUrl);
+    if (host == null) return this;
+    return LinkPolicy(
+      httpsHosts: <String>{..._httpsHosts, host},
+      supportEmail: supportEmail,
+      webcalHosts: <String>{..._webcalHosts, host},
     );
   }
 
@@ -105,6 +130,8 @@ final class LinkPolicy {
         return _checkHttps(uri);
       case 'mailto':
         return _checkMailto(uri);
+      case 'webcal':
+        return _checkWebcal(uri);
       case '':
         return const LinkVerdict.refused('a link with no scheme is not opened');
       default:
@@ -134,6 +161,21 @@ final class LinkPolicy {
     if (!_httpsHosts.contains(uri.host)) {
       return LinkVerdict.refused(
         'the host ${uri.host} is not one this app configures',
+      );
+    }
+    return const LinkVerdict.allowed();
+  }
+
+  LinkVerdict _checkWebcal(Uri uri) {
+    if (uri.host.isEmpty || uri.userInfo.isNotEmpty) {
+      return const LinkVerdict.refused('a webcal: link with no plain host');
+    }
+    if (uri.hasPort && uri.port != 443) {
+      return const LinkVerdict.refused('a webcal: link on a non-default port');
+    }
+    if (!_webcalHosts.contains(uri.host)) {
+      return LinkVerdict.refused(
+        'the host ${uri.host} is not a calendar feed this app configures',
       );
     }
     return const LinkVerdict.allowed();

@@ -466,6 +466,20 @@
   "@onboardingStart": {
     "description": "Finishes onboarding on the last page."
   },
+  "onboardingPageIndicator": "Page {current} of {total}",
+  "@onboardingPageIndicator": {
+    "description": "Spoken position of the onboarding carousel (train ST-D8). The dots carry the position in pixel width alone and announce nothing, so this is that position as a sentence, on ONE node for the whole row.",
+    "placeholders": {
+      "current": {
+        "type": "int",
+        "example": "2"
+      },
+      "total": {
+        "type": "int",
+        "example": "3"
+      }
+    }
+  },
   "paywallTitle": "Upgrade",
   "@paywallTitle": {
     "description": "App-bar title of the paywall screen."
@@ -589,6 +603,14 @@
   "privacy": "Privacy",
   "@privacy": {
     "description": "Settings section holding the analytics consent control. Separate from legal, which is links out."
+  },
+  "privacyNotice": "Privacy notice",
+  "@privacyNotice": {
+    "description": "Train ST-D4. Opens THIS app's own privacy notice (the page generated from its privacy.yaml: what it collects, why, for how long, and who else touches it). Sits at the top of the Privacy section, beside the consent control it informs; distinct from the portfolio-wide privacy policy in Legal."
+  },
+  "privacyNoticeSubtitle": "What this app collects, why, and for how long",
+  "@privacyNoticeSubtitle": {
+    "description": "Second line of the privacy-notice row. Describes the page; makes no claim about its contents."
   },
   "usageStatistics": "Usage statistics",
   "@usageStatistics": {

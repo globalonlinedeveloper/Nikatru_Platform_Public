@@ -66,7 +66,7 @@ import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
     show InMemoryAuthRepository;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show ChassisLocalizations, buildAppTheme;
+    show AppListRow, ChassisLocalizations, buildAppTheme;
 import 'package:nikatru_purchases/nikatru_purchases.dart';
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/core/e2e_keys.dart';
@@ -83,11 +83,11 @@ import 'package:subscriptiontracker/features/auth/login_screen.dart';
 import 'package:subscriptiontracker/features/auth/reaccept_terms_screen.dart';
 import 'package:subscriptiontracker/features/auth/reset_password_screen.dart';
 import 'package:subscriptiontracker/features/auth/verify_email_screen.dart';
-import 'package:subscriptiontracker/features/budget/budget_screen.dart';
 import 'package:subscriptiontracker/features/calendar/calendar_screen.dart';
 import 'package:subscriptiontracker/features/cancel/cancel_sheet.dart';
 import 'package:subscriptiontracker/features/detail/subscription_detail_screen.dart';
 import 'package:subscriptiontracker/features/home/home_screen.dart';
+import 'package:subscriptiontracker/features/insights/budget_editor.dart';
 import 'package:subscriptiontracker/features/insights/insights_screen.dart';
 import 'package:subscriptiontracker/features/monetization/manage_plan_screen.dart';
 import 'package:subscriptiontracker/features/monetization/paywall_screen.dart';
@@ -685,6 +685,91 @@ void expectRowCardsLegible(
   _assertLegible(texts, screen, except);
 }
 
+/// [expectRowCardsLegible] for the design system's [AppListRow] — the row
+/// Home is built from since train ST-D1.
+///
+/// The SAME measurement, and it is needed for the same structural reason:
+/// `AppListRow` ends in `MergeSemantics`, so its node's label is the composite
+/// "Netflix\nIn 3 days\n\$15.49\nper month" and the guideline beside it can
+/// match no `Text` to it. What differs is WHERE the ground is: `AppListRow`
+/// paints no fill of its own, so the ground is the nearest coloured `Material`
+/// ABOVE the row — the `AppCard` of its `AppListGroup`. An opaque
+/// `BoxDecoration` colour on the way down (the monogram's `CircleAvatar`)
+/// becomes the ground for the text inside it, so the monogram is MEASURED
+/// rather than exempted; a translucent one is left to [_assertLegible], which
+/// refuses to score alpha.
+void expectListRowsLegible(WidgetTester tester, String screen) {
+  final Finder rows = find.byType(AppListRow);
+  expect(
+    rows,
+    findsWidgets,
+    reason:
+        'COVERAGE LOST — not one AppListRow was BUILT on $screen, so this limb '
+        'ranged over the empty set. Home renders rows only when the '
+        'subscription seed resolves; the fault would be in the pump.',
+  );
+  final List<_CardText> texts = <_CardText>[];
+  final List<String> titles = <String>[];
+  for (final Element row in rows.evaluate()) {
+    titles.add((row.widget as AppListRow).title);
+    Color? ground;
+    row.visitAncestorElements((Element a) {
+      final Widget w = a.widget;
+      if (w is Material && w.color != null) {
+        ground = w.color;
+        return false;
+      }
+      return true;
+    });
+    void walk(Element element, Color? here) {
+      final Widget widget = element.widget;
+      Color? next = here;
+      if (widget is DecoratedBox) {
+        final Decoration d = widget.decoration;
+        if (d is BoxDecoration && d.color != null) next = d.color;
+        if (d is BoxDecoration && d.gradient != null) next = null;
+      }
+      if (widget is Text) {
+        final TextStyle style = DefaultTextStyle.of(
+          element,
+        ).style.merge(widget.style);
+        expect(
+          style.color,
+          isNotNull,
+          reason: '"${widget.data}" on an AppListRow resolved to no colour',
+        );
+        texts.add(
+          _CardText(
+            widget.data ?? '',
+            style.color!,
+            next,
+            style.fontSize,
+            style.fontWeight == FontWeight.bold,
+          ),
+        );
+        return;
+      }
+      element.visitChildren((Element child) => walk(child, next));
+    }
+
+    walk(row, ground);
+  }
+  final Set<String> measurable = texts
+      .where((_CardText t) => t.ground != null)
+      .map((_CardText t) => t.text)
+      .toSet();
+  for (final String title in titles) {
+    expect(
+      measurable,
+      contains(title),
+      reason:
+          'COVERAGE LOST — the row titled "$title" on $screen contributed no '
+          'measurable string: the walk no longer reaches the card fill.',
+    );
+  }
+  _assertLegible(texts, screen, const <String, String>{});
+}
+
 /// Every `Text` on the CURRENTLY PUMPED SCREEN, with the ground the real tree
 /// resolved for it — the same token measurement [_rowCardTexts] makes, rooted
 /// at the screen instead of at a [RowCard].
@@ -1156,6 +1241,7 @@ Future<AppLocalizations> _load(String code) =>
 /// The donut's expected sentence, composed from the same providers the screen
 /// read. See [pumpScreen].
 String expectedDonutLabel(ProviderContainer c, AppLocalizations l10n) {
+  // Returns every row sentence joined by '|'; callers split it.
   final List<Subscription> subs =
       c.read(subscriptionsControllerProvider).value ?? const <Subscription>[];
   // The SAME two axes the screen formats under: the reader's locale, and each
@@ -1189,54 +1275,25 @@ String expectedDonutLabel(ProviderContainer c, AppLocalizations l10n) {
       .formatBreakdownRounded(<MoneyBag>[
         for (final CategoryTotal cat in cats) cat.value,
       ]);
-  return l10n.a11yCategoryDonut(
-    figures.total,
-    <String>[
-      for (int i = 0; i < cats.length; i++)
-        l10n.a11yCategoryShare(cats[i].name, figures.parts[i]),
-    ].join(', '),
-  );
-}
-
-/// The budget arc's expected sentence, from the same two providers the screen
-/// reads.
-String expectedRingLabel(ProviderContainer c, AppLocalizations l10n) {
-  final List<Subscription> subs =
-      c.read(subscriptionsControllerProvider).value ?? const <Subscription>[];
-  final BudgetInfo? budget = c.read(budgetProvider).value;
-  expect(
-    budget,
-    isNotNull,
-    reason:
-        'COVERAGE LOST — budgetProvider had not resolved, so the screen was '
-        'still its CircularProgressIndicator branch and there was no ring to '
-        'describe. Check the pump count before believing any failure below.',
-  );
-  final MoneyFormatter money = MoneyFormatter(l10n.localeName);
-  final String currencyCode = c.read(currencyCodeProvider);
-  // Mirrors the screen exactly: the PRINTED figure is every subtotal, the
-  // MEASURED one is only the part in the budget's own currency.
-  final MoneyBag spent = SubMath.totalMonthly(subs);
-  final BudgetInfo shown = budget!.inCurrency(currencyCode);
-  final Money spentHere = shown.usageOf(spent).spentHere;
-  final Money budgetVal = shown.monthlyBudget;
-  final bool over = spentHere > budgetVal;
-  final String percent = NumberFormat.percentPattern(l10n.localeName).format(
-    budgetVal.minorUnits <= 0
-        ? 0
-        : (spentHere.minorUnits / budgetVal.minorUnits).clamp(0, 1),
-  );
-  return over
-      ? l10n.a11yBudgetRingOver(
-          money.formatBag(spent),
-          money.formatRounded(budgetVal),
-          percent,
-        )
-      : l10n.a11yBudgetRing(
-          money.formatBag(spent),
-          money.formatRounded(budgetVal),
-          percent,
-        );
+  // ⏱ ST-D3 D3-5: the donut is RANKED BARS now, one node per category. The
+  // expected sentence is still derived independently, from the same
+  // breakdown and the same display-currency weights the card reads.
+  final List<double> w = <double>[
+    for (final CategoryTotal cat in cats)
+      SubMath.chartWeight(cat.value, currencyCode),
+  ];
+  final double sum = w.fold(0, (double x, double y) => x + y);
+  final NumberFormat pct = NumberFormat.percentPattern(l10n.localeName);
+  return <String>[
+    for (int i = 0; i < cats.length; i++)
+      sum <= 0 || w[i] <= 0
+          ? l10n.a11yCategoryRowNoShare(cats[i].name, figures.parts[i])
+          : l10n.a11yCategoryRow(
+              cats[i].name,
+              figures.parts[i],
+              pct.format(w[i] / sum),
+            ),
+  ].join('|');
 }
 
 /// 🔴 THE CALENDAR SCREEN IS PINNED TO A KNOWN DATE, AND IT HAS TO BE.
@@ -1469,7 +1526,7 @@ void main() {
   });
 
   // ═══ TIER 1 · INSIGHTS ═════════════════════════════════════════════════════
-  group('insights · the donut says what it draws', () {
+  group('insights · each category row says what it draws', () {
     testWidgets('[en] the chart announces the total AND every category', (
       WidgetTester tester,
     ) async {
@@ -1477,14 +1534,15 @@ void main() {
         final ProviderContainer c = await pumpScreen(
           tester,
           const InsightsScreen(),
+          size: const Size(420, 3200),
         );
         final AppLocalizations l10n = await _load('en');
         expect(
           announced(tester),
-          contains(expectedDonutLabel(c, l10n)),
+          containsAll(expectedDonutLabel(c, l10n).split('|')),
           reason:
-              'a CustomPaint contributes NOTHING to semantics, so without this '
-              'wrapper the only chart in the app is a 126x126 silent hole',
+              'every ranked bar is ONE node saying name, amount and share; '
+              'the bar itself only repeats the words',
         );
       });
     });
@@ -1497,16 +1555,20 @@ void main() {
           tester,
           const InsightsScreen(),
           locale: const Locale('ta'),
+          size: const Size(420, 3200),
         );
         final AppLocalizations ta = await _load('ta');
         final AppLocalizations en = await _load('en');
-        expect(announced(tester), contains(expectedDonutLabel(c, ta)));
+        expect(
+          announced(tester),
+          containsAll(expectedDonutLabel(c, ta).split('|')),
+        );
         // THE FALSIFIER. Every figure in the sentence is locale-independent, so
         // an implementation that hardcoded the English prose would pass the
         // positive case on the numbers alone.
         expect(
           announced(tester),
-          isNot(contains(expectedDonutLabel(c, en))),
+          isNot(contains(expectedDonutLabel(c, en).split('|').first)),
           reason: 'the English chart description survived into a Tamil build',
         );
       });
@@ -1520,56 +1582,180 @@ void main() {
     });
   });
 
-  // ═══ TIER 1 · BUDGET ═══════════════════════════════════════════════════════
-  group('budget · the arc says spent-of-budget', () {
-    testWidgets('[en] the ring announces both figures, not just the percent', (
+  // ═══ TIER 1 · BUDGET CARD (Insights, ST-D3) ═══════════════════════════════
+  // The Budget screen is retired (ADR 077 §A); its ring cases move to the card
+  // that replaced it. The meter is ONE node whose label says what it measures
+  // and whose value says how much, in words (decision D-08).
+  group('budget card · the meter says what it measures, in words', () {
+    testWidgets('[en] the meter is announced as "Budget used" with a value', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        final ProviderContainer c = await pumpScreen(
+        await pumpScreen(
           tester,
-          const BudgetScreen(),
+          const InsightsScreen(),
+          size: const Size(420, 2400),
+        );
+        final AppLocalizations l10n = await _load('en');
+        final List<SemanticsData> meter = _nodes(tester)
+            .map((SemanticsNode n) => n.getSemanticsData())
+            .where((SemanticsData d) => d.label == l10n.budgetMeterLabel)
+            .toList();
+        expect(meter, hasLength(1), reason: 'the meter is silent or doubled');
+        expect(
+          meter.single.value,
+          endsWith('used'),
+          reason: 'a bare number is not what a reader needs to hear',
+        );
+      });
+    });
+
+    testWidgets('[ta] the same node, in Tamil', (WidgetTester tester) async {
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          const InsightsScreen(),
+          size: const Size(420, 2400),
+          locale: const Locale('ta'),
+        );
+        final AppLocalizations ta = await _load('ta');
+        final AppLocalizations en = await _load('en');
+        expect(announced(tester), contains(ta.budgetMeterLabel));
+        expect(
+          announced(tester),
+          isNot(contains(en.budgetMeterLabel)),
+          reason: 'the English meter name survived into a Tamil build',
+        );
+      });
+    });
+
+    testWidgets('the Edit control names what it edits', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          const InsightsScreen(),
+          size: const Size(420, 2400),
         );
         final AppLocalizations l10n = await _load('en');
         expect(
           announced(tester),
-          contains(expectedRingLabel(c, l10n)),
-          reason:
-              'the visible percent is CLAMPED to 100%, so a user well over '
-              'budget hears a figure that is also true of being exactly on it. '
-              'The spent/budget pair is the part that cannot be clamped.',
+          contains(l10n.budgetEditA11y),
+          reason: '"Edit" alone does not say WHAT a screen reader user edits',
         );
+        expectNothingNaked(tester, 'insights (budget card)');
       });
     });
+  });
 
-    testWidgets('[ta] the same sentence, in Tamil', (
+  // ═══ TIER 1 · BUDGET EDITOR (modal, ST-D3 D3-2) ═══════════════════════════
+  // The first surface that can WRITE a budget. Opened, not routed to, so the
+  // host is a launcher button on `pumpScreen`'s container, as the add sheet's.
+  group('budget editor · every field and the one action are named', () {
+    const BudgetInfo budget = BudgetInfo(
+      monthlyBudget: Money(550000, 'INR'),
+      categories: <BudgetCap>[BudgetCap('Video', Money(150000, 'INR'))],
+    );
+    final MoneyBag spent = MoneyBag.sum(const <Money>[Money(504900, 'INR')]);
+    final List<CategoryTotal> cats = <CategoryTotal>[
+      CategoryTotal('Video', MoneyBag.sum(const <Money>[Money(129700, 'INR')])),
+      CategoryTotal(
+        'AI tools',
+        MoneyBag.sum(const <Money>[Money(177000, 'INR')]),
+      ),
+    ];
+
+    // The launcher is passed IN, so each case names `showBudgetEditorSheet`
+    // itself — the coverage guard attributes a sweep per testWidgets block.
+    Future<void> openEditor(
+      WidgetTester tester,
+      void Function(BuildContext) launch,
+    ) async {
+      await pumpScreen(
+        tester,
+        Scaffold(
+          body: Builder(
+            builder: (BuildContext context) => Center(
+              child: TextButton(
+                onPressed: () => launch(context),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('nothing on the budget editor is naked', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        final ProviderContainer c = await pumpScreen(
+        await openEditor(
           tester,
-          const BudgetScreen(),
-          locale: const Locale('ta'),
+          (BuildContext context) => showBudgetEditorSheet(
+            context,
+            budget: budget,
+            spent: spent,
+            categories: cats,
+          ),
         );
-        expect(
-          announced(tester),
-          contains(expectedRingLabel(c, await _load('ta'))),
-        );
-        expect(
-          announced(tester),
-          isNot(contains(expectedRingLabel(c, await _load('en')))),
-          reason: 'the English ring description survived into a Tamil build',
-        );
+        // The modal scrim is stepped around by the property that identifies
+        // it (a dismiss action), exactly as the add-sheet sweep argues: it is
+        // the framework's barrier, named but role-less in every Flutter app.
+        final List<SemanticsNode> tappable = _nodes(tester)
+            .where(
+              (SemanticsNode n) =>
+                  n.getSemanticsData().hasAction(SemanticsAction.tap),
+            )
+            .toList();
+        final List<SemanticsNode> barrier = tappable
+            .where(
+              (SemanticsNode n) =>
+                  n.getSemanticsData().hasAction(SemanticsAction.dismiss),
+            )
+            .toList();
+        expect(barrier, hasLength(1));
+        expect(_spoken(barrier.single), isNotEmpty);
+        final List<NakedControl> naked = tappable
+            .where(
+              (SemanticsNode n) =>
+                  !n.getSemanticsData().hasAction(SemanticsAction.dismiss),
+            )
+            .map(NakedControl.new)
+            .where((NakedControl n) => n.missesRole || n.missesName)
+            .toList();
+        // Drag handle, Close, the amount, two caps and Save: six controls.
+        expect(tappable.length - barrier.length, greaterThanOrEqualTo(6));
+        expect(naked, isEmpty, reason: naked.join(', '));
+        // The family marker the coverage guard reads, over the same tree with
+        // the scrim counted in: exactly the barrier and nothing else.
+        expect(nakedControls(tester), hasLength(1));
       });
     });
 
-    testWidgets('nothing on budget is naked', (WidgetTester tester) async {
+    testWidgets('each cap field is announced with its category', (
+      WidgetTester tester,
+    ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const BudgetScreen());
-        // The floor is 0 and stated: budget is the one Tier-1 screen with no
-        // control on it at all — it is a report. Passing 1 here would be a
-        // requirement invented by the test.
-        expect(nakedControls(tester), isEmpty);
+        await openEditor(
+          tester,
+          (BuildContext context) => showBudgetEditorSheet(
+            context,
+            budget: budget,
+            spent: spent,
+            categories: cats,
+          ),
+        );
+        final List<String> labels = announced(tester);
+        expect(labels.any((String l) => l.contains('Cap for Video')), isTrue);
+        expect(
+          labels.any((String l) => l.contains('Cap for AI tools')),
+          isTrue,
+          reason: 'two identical "No cap" fields are two unnamed fields',
+        );
       });
     });
   });
@@ -1754,8 +1940,7 @@ void main() {
             l10n.navHome,
             l10n.navCalendar,
             l10n.navInsights,
-            l10n.navBudget,
-            l10n.navMore,
+            l10n.navSettings,
           ];
           // ⚠️ SCOPED BY "HAS A SELECTED STATE", NOT BY LABEL ALONE, AND THAT
           // IS A REAL FINDING RATHER THAN A CONVENIENCE. `navCalendar`'s value
@@ -3800,23 +3985,41 @@ void main() {
     // control lands on budget, or a Flutter upgrade changes the traversal — the
     // suite goes red and says "now write the sweep" instead of leaving a
     // permanent hole nobody re-checks.
-    testWidgets('budget hands the tap-target guideline NOTHING — pinned', (
+    testWidgets('every tap target on the budget editor is at least 48×48', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const BudgetScreen());
-        // Budget is the one Tier-1 screen with no control on it at all — it is a
-        // report, and its naked case says the same thing with a floor of 0. A
-        // tap-target sweep here would range over an empty set forever.
-        expect(
-          await tapTargetSubjects(tester),
-          0,
-          reason:
-              'budget now offers the tap-target guideline something to measure, '
-              'and this family skips it on the grounds that it does not. Add '
-              '`meetsGuideline(androidTapTargetGuideline)` for this screen and '
-              'delete this case — the exception has expired.',
+        await pumpScreen(
+          tester,
+          Scaffold(
+            body: Builder(
+              builder: (BuildContext context) => Center(
+                child: TextButton(
+                  onPressed: () => showBudgetEditorSheet(
+                    context,
+                    budget: const BudgetInfo(
+                      monthlyBudget: Money(550000, 'INR'),
+                      categories: <BudgetCap>[],
+                    ),
+                    spent: MoneyBag.sum(const <Money>[Money(504900, 'INR')]),
+                    categories: <CategoryTotal>[
+                      CategoryTotal(
+                        'Video',
+                        MoneyBag.sum(const <Money>[Money(129700, 'INR')]),
+                      ),
+                    ],
+                  ),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+          theme: appTheme(),
         );
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+        await expectGuidelineHadSubjects(tester, 'the budget editor');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       });
     });
 
@@ -4144,7 +4347,7 @@ void main() {
         await expectContrastHadSubjects(
           tester,
           'insights',
-          covers: const <String>['Insights', 'Where your money goes'],
+          covers: const <String>['Insights'],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
         // 🔴 32 strings, against the sweep above's 5 — and the three this limb
@@ -4181,31 +4384,48 @@ void main() {
         expectScreenTextLegible(
           tester,
           'insights',
-          covers: const <String>[
-            'Insights',
-            'By category',
-            'Not opened in 47 days.',
-          ],
+          covers: const <String>['Insights', 'By category', 'Worth a look'],
         );
       });
     });
 
-    testWidgets('every string on budget meets WCAG AA contrast', (
+    testWidgets('every string on the budget editor meets WCAG AA contrast', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
         await pumpScreen(
           tester,
-          const BudgetScreen(),
+          Scaffold(
+            body: Builder(
+              builder: (BuildContext context) => Center(
+                child: TextButton(
+                  onPressed: () => showBudgetEditorSheet(
+                    context,
+                    budget: const BudgetInfo(
+                      monthlyBudget: Money(550000, 'INR'),
+                      categories: <BudgetCap>[],
+                    ),
+                    spent: MoneyBag.sum(const <Money>[Money(504900, 'INR')]),
+                    categories: <CategoryTotal>[
+                      CategoryTotal(
+                        'Video',
+                        MoneyBag.sum(const <Money>[Money(129700, 'INR')]),
+                      ),
+                    ],
+                  ),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
           theme: appTheme(),
-          paintBackground: true,
         );
-        // 3 subjects. AA passes; AAA does not.
-        await expectOpaqueGround(tester, 'budget');
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
         await expectContrastHadSubjects(
           tester,
-          'budget',
-          covers: const <String>['Budget & goals', 'By category'],
+          'the budget editor',
+          covers: const <String>['Monthly budget', 'Save budget'],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
@@ -4220,6 +4440,14 @@ void main() {
         for (int i = 0; i < 6; i++) {
           await tester.pump(const Duration(milliseconds: 560));
         }
+        // ⏱ 2026-09-28 · train ST-D7: the primary action is now a theme
+        // `FilledButton`, which ANIMATES from its disabled to its enabled
+        // colours over Material's 200 ms theme-change duration (the old
+        // `GradientButton` swapped instantly). Swept on the flip frame it
+        // measured 1.49:1 — a colour halfway between the two states, never
+        // at rest on screen. One pump past the transition sweeps what the user
+        // actually reads.
+        await tester.pump(const Duration(milliseconds: 300));
         expect(
           find.text(l10n.goToDashboard),
           findsOneWidget,
@@ -4227,6 +4455,8 @@ void main() {
               'the scan never reached its results phase, so the sweep below is '
               'about the scanning screen again',
         );
+        // ⏱ train ST-D7: the gradient hero this history describes is gone —
+        // the summary is an opaque `AppCard` in the scheme's ink.
         // 6 subjects. ✅ THIS CASE WAS RED ON 2026-08-13 AND IS GREEN SINCE.
         // MEASURED THEN: `YOUR SUBSCRIPTIONS` (11px) was 3.97:1 — #6C57F7 on
         // #EAE6FE — against a 4.5 target.
@@ -4315,16 +4545,14 @@ void main() {
         //     white card (`subscription_detail_screen.dart:288`), **2.54:1**.
         //     A SECOND member of the status trio used as text on a light
         //     ground, found by this widening and owned by detail's own file.
+        // ⏱ 2026-09-28 · train ST-D5: `Active` EXPIRED — the usage word is now
+        // the scheme-forked `StatusTones` positive tone, measured 6.71:1 by
+        // this sweep, so its `except:` entry is deleted rather than left as a
+        // named hole that covers nothing.
         expectScreenTextLegible(
           tester,
           'detail',
-          covers: const <String>['PRICE', 'Payment history'],
-          except: const <String, String>{
-            'Active':
-                'AppColors.positive #10B981 as 12px w700 text on the white '
-                'card fill, from subscription_detail_screen.dart:288 — '
-                'measured 2.54:1 on 2026-08-21',
-          },
+          covers: const <String>['PRICE', 'Payment history', 'Active'],
         );
       });
     });
@@ -4640,7 +4868,10 @@ void main() {
         // arm and the call below carries NO `except:` map at all. The paragraph
         // above is the record of why the exemption existed, not a description of
         // this call.
-        expectRowCardsLegible(tester, 'home');
+        // ⏱ 2026-09-28 · train ST-D1: Home's rows are `AppListRow`s now, so
+        // the row limb is [expectListRowsLegible] — same measurement, the
+        // ground read from the row's `AppCard` above it.
+        expectListRowsLegible(tester, 'home');
       });
     });
 
@@ -4842,6 +5073,52 @@ void main() {
       });
     });
 
+    // ⏱ train ST-D6: the EDIT entry point onto the same sheet, swept in its
+    // own right — prefilled, no POPULAR block, "Save" — so the add sheet's
+    // sweep does not stand for it. ⏱ ST-T3b: it is `showAddSubscriptionSheet`
+    // with a row (ST-E1), one entry point for both forms.
+    testWidgets('the EDIT sheet: every string AA, every tap target 48×48', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          Scaffold(
+            body: Builder(
+              builder: (BuildContext context) => Center(
+                child: TextButton(
+                  onPressed: () => showAddSubscriptionSheet(
+                    context,
+                    initial: Subscription(
+                      id: 'sub-1',
+                      name: 'Netflix',
+                      category: 'Streaming',
+                      price: const Money(1500, 'USD'),
+                      cycle: BillingCycle.yearly,
+                      nextRenewal: DateTime(2030, 3, 14),
+                    ),
+                  ),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+          theme: appTheme(),
+        );
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+        await expectOpaqueGround(tester, 'the edit sheet');
+        await expectContrastHadSubjects(
+          tester,
+          'the edit sheet',
+          covers: const <String>['Edit subscription', 'Save'],
+        );
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        await expectGuidelineHadSubjects(tester, 'the edit sheet');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      });
+    });
+
     testWidgets('every string on the cancel sheet meets WCAG AA contrast — in '
         'EITHER step', (WidgetTester tester) async {
       await semantically(tester, () async {
@@ -4943,7 +5220,10 @@ void main() {
           covers: const <String>['Calendar', 'Upcoming renewals'],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
-        expectRowCardsLegible(tester, 'home (dark)');
+        // ⏱ 2026-09-28 · train ST-D1: Home's rows are `AppListRow`s now, so
+        // the row limb is [expectListRowsLegible] — same measurement, the
+        // ground read from the row's `AppCard` above it.
+        expectListRowsLegible(tester, 'home (dark)');
       });
     });
 
@@ -4996,7 +5276,7 @@ void main() {
         await expectContrastHadSubjects(
           tester,
           'insights (dark)',
-          covers: const <String>['Insights', 'Where your money goes'],
+          covers: const <String>['Insights'],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
         // 🔴 THIS IS THE HALF THAT PROVES THE FORK DID NOT TRADE ONE GROUND
@@ -5011,11 +5291,7 @@ void main() {
         expectScreenTextLegible(
           tester,
           'insights (dark)',
-          covers: const <String>[
-            'Insights',
-            'By category',
-            'Not opened in 47 days.',
-          ],
+          covers: const <String>['Insights', 'By category', 'Worth a look'],
         );
       });
     });

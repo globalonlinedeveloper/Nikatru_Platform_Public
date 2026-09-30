@@ -54,6 +54,27 @@ because no other file imports it; `packed-lib.mjs` and `bidi-lib.mjs` are librar
 reason. Local Chromium: `FS_E2E_CHROMIUM=<path to chrome> node network-audit.mjs`. Local Firefox:
 `FS_E2E_FIREFOX=<path to firefox> node gecko-smoke.mjs`.
 
+## Branded browsers and the keyboard walk (2026-09-29, EXB-12 / EXB-05)
+
+`channel-lib.mjs` is the one way `run.mjs`, `real-copy.mjs` and `a11y-walk.mjs` start a browser.
+`FS_E2E_CHANNEL` picks it (`chromium`, the default, or `msedge` / `chrome`), and a branded build gets
+the extension through CDP `Extensions.loadUnpacked`, because branded Chrome ignores
+`--load-extension` (measured: Chrome 154 exit 2 with the flag, exit 0 through CDP; Edge 154 accepted
+both). Each run prints a `BROWSER` line, and a branded channel whose browser does not carry its own
+brand exits 2.
+
+The `e2e-branded` job in `.github/workflows/extensions.yml` runs every suite whose source carries an
+`e2e-branded:` line, on `windows-2025`, once per channel, headful. The line may carry `FS_E2E_*`
+settings for that leg; `run.mjs` narrows itself to one capture with `FS_E2E_ONLY=appshell`.
+
+| suite | browser | what it proves | exit 2 when |
+|---|---|---|---|
+| `a11y-walk.mjs` | Chromium, Edge, Chrome | Tab through the popup, Options and the editor (with a real shot): every stop has a role, and a name that is a word (not a glyph, not a colour code), read from the browser's accessibility tree; every enabled interactive control is reached (a radiogroup is one stop) | Tab reaches nothing, or the walk does not finish |
+
+The walk's first run found two names on the editor that no static tier could see: the colour
+swatches were named by hex code and the zoom button by a bare `100%`. Both are fixed in
+`pages/editor.js`. Local: `FS_E2E_CHANNEL=msedge node a11y-walk.mjs`.
+
 ## The redact block captures the page TWICE — on purpose
 
 `redact-e2e.html` is captured once with `redactPII` **off** (`out/redact-baseline.png`)
