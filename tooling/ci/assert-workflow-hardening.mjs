@@ -95,6 +95,10 @@
 //      .github/actions/*, and every action repository resolves to ONE ref across
 //      the workflows and those composites (⏱ 2026-09-27, O-SETUP-ACTIONS-ARE-OPTIONAL).
 //      See "limb 14".
+//  15. every SHA pin carries Renovate's `# vX.Y.Z` comment, and tooling/ci/action-pins.json
+//      holds one row per pinned action — its sha and version equal to the pin, its
+//      recorded `runs.using` node24, composite or docker (⏱ 2026-09-29, audit A-6/B-10).
+//      See "limb 15".
 //
 // ⚠️ TRADE-OFF ON RECORD: a pinned action stops receiving updates, including
 // security fixes. That is the deliberate exchange — "silently gets new code"
@@ -119,7 +123,8 @@
 // cancel that reaches main, a failure-path input that can resolve to empty, a
 // publishing job with no `environment:` or no first-step ref check, a
 // wrangler-action `secrets:` input, a setup action used outside the composites,
-// an action repository at two refs).
+// an action repository at two refs, a pin without a `# vX.Y.Z` comment, a pin
+// and its action-pins.json row that disagree, a recorded runtime older than node24).
 // 2 = COVERAGE LOST or REFUSED — the repo-wide convention (AGENTS.md; the
 // markerInCode self-check in assert-guard-coverage.mjs holds it). COVERAGE LOST:
 // a lost coverage relationship, including a workflow GitHub holds that this
@@ -295,8 +300,12 @@ let notPinnable = 0;
 let unparsedUses = 0;
 let looseSeen = 0;
 /** Every strict USES match limb 1 (workflows) and limb 9 (our composites) account for,
- *  as `{ action, ref, at, composite }` — limb 14's whole subject. */
+ *  as `{ action, ref, at, composite, comment }` — limb 14's and limb 15's whole subject. */
 const pins = [];
+/** The trailing comment after a 40-hex pin, read off the RAW line (the matchers above
+ *  read a comment-stripped copy): `''` for a bare `#`, null for no `#` at all. */
+const PIN_COMMENT = /@[0-9a-f]{40}[ \t]+#[ \t]*(.*?)\s*$/;
+const pinComment = (line) => PIN_COMMENT.exec(line)?.[1] ?? null;
 
 /** The workflow-level `permissions:` block: either `permissions: <value>` inline
  *  or a mapping of `scope: level` lines under it. Parsed, never grepped — a
@@ -372,7 +381,7 @@ for (const f of files) {
     }
     usesCount++;
     const [, action, ref] = m;
-    pins.push({ action, ref, at: `.github/workflows/${f}:${i + 1}`, composite: false });
+    pins.push({ action, ref, at: `.github/workflows/${f}:${i + 1}`, composite: false, comment: pinComment(line) });
     if (!/^[0-9a-f]{40}$/.test(ref)) {
       problems.push(`${f}:${i + 1} \`${action}@${ref}\` is a movable reference — pin it to a 40-char commit SHA`);
     }
@@ -2161,7 +2170,7 @@ for (const rel of actionFiles) {
     }
     actionUses++;
     const [, action, ref] = m;
-    pins.push({ action, ref, at: `${rel}:${i + 1}`, composite: true });
+    pins.push({ action, ref, at: `${rel}:${i + 1}`, composite: true, comment: pinComment(line) });
     if (!/^[0-9a-f]{40}$/.test(ref)) {
       problems.push(`${rel}:${i + 1} \`${action}@${ref}\` is a movable reference — pin it to a 40-char commit SHA`);
     }
@@ -2361,6 +2370,97 @@ if (scanningRealRepo && unhomed.length) {
   ]);
 }
 
+// ── limb 15: every pin says its version, and has a row with its runtime ──────
+// ⏱ 2026-09-29 — audit A-6 and B-10. Limb 1 grades the SHA and nothing after it:
+// renovate.yml's pin carried no comment at all and setup-flutter's read `# v2`, a
+// major, so neither said what code it is. And no guard read the runtime
+// (`runs.using`) of any action we pin — workflow-scan's composite reader stops at
+// a `not-composite` action, and a third-party one is never opened (ADR 067 A3).
+// Over the same `pins` limb 14 reads, each at a 40-hex ref (a movable one is limb 1's):
+//   (a) the raw line ends `# vX.Y.Z`, strict semver, as Renovate writes it;
+//   (b) tooling/ci/action-pins.json has exactly one row per pinned action path whose
+//       `sha` and `version` equal the pin and its comment, and no row names an action
+//       the tree does not pin — held both ways, so the register cannot rot silently;
+//   (c) every row's `using` is in RUNTIMES. It is RECORDED, not fetched: it cannot be
+//       read offline, so it is as true as the read behind it, and the ok line names
+//       every row whose `readAt` is null. The row moves in the same PR as its pin.
+// ARMED on the real tree (no register there is exit 2) and on any root that has the
+// register; a fixture root without it prints NOT armed. A register that parses to
+// zero rows is exit 2: "every pin has a row" would be true of nothing.
+// Not caught: a runtime that changed while the row's `using` was carried over unread.
+const PIN_REGISTER = 'tooling/ci/action-pins.json';
+const RUNTIMES = new Set(['node24', 'composite', 'docker']);
+const SEMVER_COMMENT = /^v\d+\.\d+\.\d+$/;
+const shaPins = pins.filter((p) => /^[0-9a-f]{40}$/.test(p.ref));
+const pinRowsArmed = scanningRealRepo || existsSync(join(repoRoot, PIN_REGISTER));
+const pinRows = new Map();
+const unreadRows = [];
+if (pinRowsArmed) {
+  if (!existsSync(join(repoRoot, PIN_REGISTER))) {
+    coverageLost([`limb 15 found no ${PIN_REGISTER}.`, 'Without it no pin has a recorded runtime, and "every pinned action runs node24" would be true of nothing.']);
+  }
+  let reg;
+  try {
+    reg = JSON.parse(readFileSync(join(repoRoot, PIN_REGISTER), 'utf8'));
+  } catch (e) {
+    refuse([`limb 15 cannot read ${PIN_REGISTER}: ${e.message}`]);
+  }
+  const rows = Array.isArray(reg?.pins) ? reg.pins : null;
+  if (rows === null || rows.length === 0) {
+    coverageLost([
+      `limb 15 read ${rows === null ? 'no `pins` array' : 'ZERO rows'} in ${PIN_REGISTER}.`,
+      `${shaPins.length} SHA pin(s) are in this tree; an empty register grades none of them.`,
+    ]);
+  }
+  for (const [k, row] of rows.entries()) {
+    const at = `${PIN_REGISTER} pins[${k}]`;
+    const shapeOk =
+      typeof row?.action === 'string' &&
+      /^[0-9a-f]{40}$/.test(row.sha ?? '') &&
+      typeof row.version === 'string' &&
+      typeof row.using === 'string' &&
+      typeof row.source === 'string' && row.source.trim() !== '' &&
+      (row.readAt === null || /^\d{4}-\d{2}-\d{2}$/.test(row.readAt ?? ''));
+    if (!shapeOk) {
+      problems.push(`${at} is not a row: it needs \`action\`, a 40-hex \`sha\`, \`version\`, \`using\`, a non-empty \`source\` and \`readAt\` (YYYY-MM-DD or null).`);
+      continue;
+    }
+    if (pinRows.has(row.action)) {
+      problems.push(`${at} repeats \`${row.action}\`: one row per pinned action path.`);
+      continue;
+    }
+    pinRows.set(row.action, row);
+    if (!RUNTIMES.has(row.using)) {
+      problems.push(
+        `${at} records \`${row.action}\` at runs.using \`${row.using}\`, outside ${[...RUNTIMES].join(', ')}. ` +
+          'Move the pin to a release on a current runtime (and re-read `using` there) — GitHub is retiring the older Node runtimes under it.',
+      );
+    }
+    if (row.readAt === null) unreadRows.push(row.action);
+  }
+  for (const p of shaPins) {
+    if (p.comment === null || !SEMVER_COMMENT.test(p.comment)) {
+      problems.push(
+        `${p.at} \`uses: ${p.action}@${p.ref}\` ${p.comment === null ? 'carries no version comment' : `is commented \`# ${p.comment}\``}. ` +
+          'Write the full tag the SHA peels to, as Renovate does (`@<sha> # vX.Y.Z`), so the line says what code it is.',
+      );
+    }
+    const row = pinRows.get(p.action);
+    if (row === undefined) {
+      problems.push(`${p.at} \`${p.action}\` has no row in ${PIN_REGISTER}. Add one, with \`using\` read from its action.yml at ${p.ref}.`);
+    } else if (row.sha !== p.ref || (p.comment !== null && row.version !== p.comment)) {
+      problems.push(
+        `${p.at} \`${p.action}@${p.ref}${p.comment === null ? '' : ` # ${p.comment}`}\` disagrees with its ${PIN_REGISTER} row ` +
+          `(${row.sha} ${row.version}). The row moves with the pin, and its \`using\` is re-read at the new SHA.`,
+      );
+    }
+  }
+  const pinned = new Set(shaPins.map((p) => p.action));
+  for (const a of pinRows.keys()) {
+    if (!pinned.has(a)) problems.push(`${PIN_REGISTER} has a row for \`${a}\`, which no workflow or composite action pins. Delete it.`);
+  }
+}
+
 if (problems.length) {
   console.error(`✗ ${problems.length} workflow hardening problem(s):`);
   for (const p of problems) console.error(`    ${p}`);
@@ -2429,4 +2529,11 @@ console.log(
     (unhomed.length === 0
       ? `${[...SETUP_HOMES.keys()].join(' and ')} used only inside the composites`
       : `no workflow uses ${[...SETUP_HOMES.keys()].join(' or ')} directly; not armed: ${unhomed.join(' and ')} in no composite of this tree`),
+);
+console.log(
+  pinRowsArmed
+    ? `    limb 15 — ${shaPins.length} SHA pin(s), each \`# vX.Y.Z\` and matching one of ${pinRows.size} ${PIN_REGISTER} row(s), ` +
+        `every recorded runtime ${[...RUNTIMES].join('/')}; ${unreadRows.length} row(s) record a runtime nobody read at the SHA` +
+        `${unreadRows.length ? ` (${unreadRows.join(', ')})` : ''}`
+    : `    limb 15 — NOT armed: no ${PIN_REGISTER} under this root`,
 );

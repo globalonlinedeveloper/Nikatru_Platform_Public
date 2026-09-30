@@ -235,6 +235,16 @@
 // a `--config` override, an `--env` spelled as an expression) withdraws the
 // excuse for the whole job, and the FAIL line names which one did.
 //
+// ⏱ 2026-09-29 (B-12, row O-SERVICE-KIT-UNBUILT) — A MATRIX LEG IS EVERY WORKER IT
+// CAN BE. deploy-sandbox.yml's app Workers deploy from one matrix whose
+// `workingDirectory` is `${{ matrix.<dim>.dir }}`, which names no directory this
+// guard can open. The excuse then holds only when the SAME workflow feeds that
+// matrix from `worker-set.mjs --for-deploy --json --app-workers --env <name>`
+// with the `--env` the deploy names, and it is read over every entry that reader
+// gives on this tree (worker-set.mjs envEntries(), imported, never restated):
+// each one's `env.<name>` is held to the predicate above. A matrix expression fed
+// by anything else, or a reader that gives no entry, withdraws the excuse.
+//
 // Usage:  node tooling/ci/assert-release-provenance.mjs [repoRoot]
 // Exit 0 = every release build is gated and every publish is recorded.
 // Exit 1 = a finding. 2 = COVERAGE LOST (EXIT 1 in the dated measurements below, before 2026-09-16).
@@ -270,6 +280,8 @@ import { parseResolvedWorkflows, lineAt, placeOf, refusalText, storePublishSteps
 // limb 2b. The repo's one JSONC reader, and the one sandbox predicate.
 import { parseJsonc } from './d1-sql-inventory.mjs';
 import { isObject, sandboxEnvironmentFindings } from './wrangler-environments.mjs';
+// limb 2b, a sandbox MATRIX leg (B-12): the one reader of the Worker set.
+import { workerSet, deploySet, appWorkerEntries, envEntries } from './worker-set.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const WORKFLOWS = '.github/workflows';
@@ -793,37 +805,67 @@ function sandboxExemption(wf, job) {
       reasons.push(`${at} passes \`--config\`, so the config it deploys is not the one in its working directory`);
       continue;
     }
-    const dir = (p.dir ?? '.').replace(/^\.\/+/, '').replace(/\/+$/, '') || '.';
-    const cfgRel = ['wrangler.jsonc', 'wrangler.json'].map((f) => (dir === '.' ? f : `${dir}/${f}`)).find((r) => existsSync(join(ROOT, r)));
-    if (cfgRel === undefined) {
-      reasons.push(`${at} deploys \`--env ${name}\` from ${dir}, which holds no wrangler.jsonc or wrangler.json`);
+    const rawDir = (p.dir ?? '.').replace(/^\.\/+/, '').replace(/\/+$/, '') || '.';
+    const legs = matrixDirs(wf, rawDir, name);
+    if (legs.why) {
+      reasons.push(`${at} deploys \`--env ${name}\` from ${rawDir}: ${legs.why}`);
       continue;
     }
-    let cfg;
-    try {
-      cfg = parseJsonc(readFileSync(join(ROOT, cfgRel), 'utf8'));
-    } catch (err) {
-      reasons.push(`${cfgRel} does not parse (${err.message}), so \`--env ${name}\` at ${at} cannot be read`);
-      continue;
-    }
-    const e = isObject(cfg?.env) ? cfg.env[name] : undefined;
-    if (!isObject(e)) {
-      reasons.push(`${at} deploys \`--env ${name}\` and ${cfgRel} declares no \`env.${name}\``);
-      continue;
-    }
-    const world = isObject(e.vars) ? e.vars.MONEY_ENVIRONMENT : undefined;
-    if (world !== 'sandbox') {
-      reasons.push(`${cfgRel} env.${name} (deployed at ${at}) declares MONEY_ENVIRONMENT = ${JSON.stringify(world)}, not "sandbox"`);
-      continue;
-    }
-    const findings = sandboxEnvironmentFindings(`${cfgRel} env.${name}`, cfg, e);
-    if (findings.length > 0) {
-      reasons.push(...findings);
-      continue;
-    }
-    targets.push(`${cfgRel} env.${name}`);
+    for (const dir of legs.dirs) checkEnv(at, dir, name, reasons, targets);
   }
   return { exempt: job.publishes.length > 0 && reasons.length === 0, tried, reasons, targets };
+}
+
+/** `${{ matrix.<dim>.dir }}`, the one shape a Worker matrix leg names its directory in. */
+const MATRIX_DIR = /^\$\{\{\s*matrix\.[A-Za-z_][A-Za-z0-9_-]*\.dir\s*\}\}$/;
+
+/** The directories one deploy's `workingDirectory` stands for: `{ dirs }`, or `{ why }`
+ *  when a matrix expression cannot be resolved to the Worker set (see the header). */
+function matrixDirs(wf, dir, envName) {
+  if (!/[${}]/.test(dir)) return { dirs: [dir] };
+  if (!MATRIX_DIR.test(dir)) return { why: 'an expression that is not a Worker matrix leg\'s `${{ matrix.<dim>.dir }}`, which only the run can resolve' };
+  const feed = new RegExp(`worker-set\\.mjs\\s+--for-deploy\\s+--json\\s+--app-workers\\s+--env\\s+${envName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![A-Za-z0-9_-])`);
+  // A JOB's line, never the `on:` block: a dispatch input's description may quote the command.
+  if (![...wf.jobs.values()].some((j) => j.lines.some((l) => feed.test(l.text)))) {
+    return { why: `a matrix leg, and no step of this workflow reads the matrix from \`worker-set.mjs --for-deploy --json --app-workers --env ${envName}\`, so nothing says which Worker it is` };
+  }
+  const d = deploySet(ROOT, workerSet(ROOT), { lockfiles: false });
+  if (d.lost.length || d.problems.length) return { why: `tooling/ci/worker-set.mjs could not read the set (${d.lost[0] ?? d.problems[0]})` };
+  const dirs = envEntries(ROOT, appWorkerEntries(d), envName).map((e) => e.dir);
+  if (dirs.length === 0) return { why: `a matrix leg, and worker-set.mjs gives no app Worker with an \`env.${envName}\` block on this tree` };
+  return { dirs };
+}
+
+/** Limb 2b's predicate over ONE directory's config, as before the matrix legs. */
+function checkEnv(at, dir, name, reasons, targets) {
+  const cfgRel = ['wrangler.jsonc', 'wrangler.json'].map((f) => (dir === '.' ? f : `${dir}/${f}`)).find((r) => existsSync(join(ROOT, r)));
+  if (cfgRel === undefined) {
+    reasons.push(`${at} deploys \`--env ${name}\` from ${dir}, which holds no wrangler.jsonc or wrangler.json`);
+    return;
+  }
+  let cfg;
+  try {
+    cfg = parseJsonc(readFileSync(join(ROOT, cfgRel), 'utf8'));
+  } catch (err) {
+    reasons.push(`${cfgRel} does not parse (${err.message}), so \`--env ${name}\` at ${at} cannot be read`);
+    return;
+  }
+  const e = isObject(cfg?.env) ? cfg.env[name] : undefined;
+  if (!isObject(e)) {
+    reasons.push(`${at} deploys \`--env ${name}\` and ${cfgRel} declares no \`env.${name}\``);
+    return;
+  }
+  const world = isObject(e.vars) ? e.vars.MONEY_ENVIRONMENT : undefined;
+  if (world !== 'sandbox') {
+    reasons.push(`${cfgRel} env.${name} (deployed at ${at}) declares MONEY_ENVIRONMENT = ${JSON.stringify(world)}, not "sandbox"`);
+    return;
+  }
+  const findings = sandboxEnvironmentFindings(`${cfgRel} env.${name}`, cfg, e);
+  if (findings.length > 0) {
+    reasons.push(...findings);
+    return;
+  }
+  targets.push(`${cfgRel} env.${name}`);
 }
 const exemptJobs = [];
 

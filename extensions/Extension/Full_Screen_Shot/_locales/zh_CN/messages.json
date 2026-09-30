@@ -1890,6 +1890,12 @@
   "errRestrictedWebstore": {
     "message": "Chrome 应用商店禁止扩展程序读取其页面，因此无法截取此页。"
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "此页面受浏览器保护，无法截取。"
   },

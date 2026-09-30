@@ -27,7 +27,30 @@ const List<String> kSubscriptionCsvHeader = <String>[
   'used_pct',
   'usage_note',
   'unused',
+  // ⏱ 2026-09-29 · ST-T3b: the ADR no.077 §5 fields, each written as
+  // `Subscription.toJson()` writes it (see [_modelCells]).
+  ..._kModelColumns,
 ];
+
+/// The ADR no.077 §5 columns (ST-T3b), cell = the wire value, empty for null.
+const List<String> _kModelColumns = <String>[
+  'cycle_every',
+  'cycle_unit',
+  'status',
+  'first_charge_on',
+  'trial_ends_on',
+  'cancelled_on',
+  'deleted_at',
+  'notes',
+  'cancel_url',
+];
+
+/// [s]'s [_kModelColumns] cells, read off `toJson()` so the file and the wire
+/// cannot spell a field two ways.
+List<String> _modelCells(Subscription s) {
+  final Map<String, dynamic> j = s.toJson();
+  return <String>[for (final String k in _kModelColumns) '${j[k] ?? ''}'];
+}
 
 /// One subscription as one row, in [kSubscriptionCsvHeader] order. Cells are
 /// raw strings: `CsvCodec` does the quoting and the formula neutralising.
@@ -39,13 +62,14 @@ List<String> subscriptionCsvRow(Subscription s) {
     s.category,
     money[0],
     money[1],
-    s.cycle.name,
+    subscriptionCycleCell(s),
     Subscription.dateOnly(s.nextRenewal),
     s.plan,
     s.glyph,
     '${s.usedPct}',
     s.usageNote,
     '${s.unused}',
+    ..._modelCells(s),
   ];
 }
 
@@ -186,5 +210,20 @@ final String Function(core.ImportCandidate) subscriptionImportKey =
     );
 
 /// [s] under [subscriptionImportKey], for `ImportPlan.build(existingKeys:)`.
-String subscriptionExistingKey(Subscription s) =>
-    core.ImportPlan.keyFor(name: s.name, price: s.price, cycle: s.cycle.name);
+String subscriptionExistingKey(Subscription s) => core.ImportPlan.keyFor(
+  name: s.name,
+  price: s.price,
+  cycle: subscriptionCycleCell(s),
+);
+
+/// The `cycle` cell for [s]. ⏱ 2026-09-29 · ST-T3b (ST-E4): a row's cycle is a
+/// `Cadence` (every, unit), not the two-value `BillingCycle` this sheet was
+/// written against. A monthly or yearly row still writes `monthly`/`yearly`
+/// — the two values the import side reads back — and any other cadence
+/// writes `<every> <unit>` ("2 week"), which an import refuses by name rather
+/// than coercing to monthly. A row with no cadence writes an empty cell.
+String subscriptionCycleCell(Subscription s) {
+  final core.Cadence? c = s.cycle;
+  if (c == null) return '';
+  return c.legacyCycle ?? '${c.every} ${c.unit.name}';
+}

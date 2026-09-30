@@ -2100,6 +2100,12 @@
   "errRestrictedWebstore": {
     "message": "Il Chrome Web Store impedisce alle estensioni di leggere le sue pagine, quindi questa non può essere catturata."
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "Questa pagina è protetta dal browser e non può essere catturata."
   },

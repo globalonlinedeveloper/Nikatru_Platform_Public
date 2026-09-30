@@ -156,7 +156,7 @@ void main() {
         // go on passing while asserting only the first half of the action.
         secureStoreProvider.overrideWithValue(MemSecureStore()),
         notificationServiceProvider.overrideWithValue(FakeNotifications()),
-        subscriptiontrackerNotificationServiceProvider.overrideWithValue(
+        renewalRemindersProvider.overrideWithValue(
           RecordingSublyNotifications(),
         ),
       ],
@@ -323,9 +323,7 @@ void main() {
           analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
           secureStoreProvider.overrideWithValue(secure),
           notificationServiceProvider.overrideWithValue(chassis),
-          subscriptiontrackerNotificationServiceProvider.overrideWithValue(
-            fork,
-          ),
+          renewalRemindersProvider.overrideWithValue(fork),
         ],
       );
       addTearDown(container.dispose);

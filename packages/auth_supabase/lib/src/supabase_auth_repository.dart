@@ -1,6 +1,7 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
+import 'package:flutter/foundation.dart'
+    show debugPrint, kIsWeb, visibleForTesting;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
@@ -19,11 +20,15 @@ import 'auth_redirect.dart';
 class SupabaseAuthRepository implements core.AuthRepository {
   SupabaseAuthRepository({
     sb.GoTrueClient? client,
+    sb.GoTrueClient? nativeCredentials,
     Future<void> Function()? requestServerDeletion,
     DateTime Function()? clock,
     this.redirects = AuthRedirects.none,
     this.refreshSkew = const Duration(seconds: 30),
+    Uri Function()? launchUri,
   })  : _injected = client,
+        _launchUri = launchUri ?? (() => Uri.base),
+        _native = nativeCredentials,
         _requestServerDeletion = requestServerDeletion,
         _now = clock ?? (() => DateTime.now().toUtc());
 
@@ -83,6 +88,46 @@ class SupabaseAuthRepository implements core.AuthRepository {
 
   sb.GoTrueClient get _auth => _injected ?? sb.Supabase.instance.client.auth;
 
+  /// ⏱ 2026-09-28 · ST-N1d — the client a native build sends its CAPTCHA-GATED
+  /// calls through, or null (web, a demo build, a test that wires none).
+  ///
+  /// 🔴 WITHOUT IT EVERY NATIVE SIGN-IN IS REFUSED `captcha_failed`. Box C's
+  /// GoTrue captchas the password grant, /signup, /recover and /resend, and no
+  /// store build carries a Turnstile site key (ADR 084). This client's base is
+  /// the platform Worker's native route (`nativeCredentialClient`), which
+  /// forwards exactly those four calls without the captcha. Refresh, the PKCE
+  /// exchange, OAuth and id_token stay on [_auth], direct to GoTrue.
+  final sb.GoTrueClient? _native;
+
+  /// Where a captcha-gated call goes: the native route's client, or the main
+  /// one. EVERY core method that declares `captchaToken` calls through this —
+  /// the set `tooling/ci/assert-captcha-gated-call-sites.mjs` derives.
+  sb.GoTrueClient get _credentials => _native ?? _auth;
+
+  /// The captcha token for a gated call: dropped on the native route, which
+  /// strips `gotrue_meta_security` anyway. A token minted for the web site key
+  /// has no business leaving a native build.
+  String? _captcha(String? token) => _native == null ? token : null;
+
+  /// Hands a session the native client minted to the MAIN client, which owns
+  /// persistence, refresh and the auth stream.
+  ///
+  /// 🔴 `setSession(refresh, accessToken:)`, NOT `recoverSession`. On the pinned
+  /// gotrue-dart 2.26.0 `recoverSession` emits `tokenRefreshed`
+  /// (`gotrue_client.dart:1177-1187`), so the router would hear of a sign-in as
+  /// a refresh; `setSession` with an unexpired access token saves the session
+  /// and emits `signedIn` (`:835-880`), after one `GET /user` straight to
+  /// GoTrue, which no captcha gates. `native_credential_route_test.dart` holds
+  /// that event.
+  Future<void> _handOver(sb.Session? session) async {
+    if (_native == null || session == null) return;
+    final String? refreshToken = session.refreshToken;
+    if (refreshToken == null || refreshToken.isEmpty) {
+      throw core.AuthFailure('Sign-in failed');
+    }
+    await _auth.setSession(refreshToken, accessToken: session.accessToken);
+  }
+
   /// 🔴 `emailConfirmedAt`, NOT THE DEPRECATED `confirmedAt`, AND NOT
   /// `identities`. gotrue keeps three things that look like this answer and only
   /// one of them is it:
@@ -136,8 +181,69 @@ class SupabaseAuthRepository implements core.AuthRepository {
   @override
   core.AuthUser? get currentUser => _map(_auth.currentUser);
 
+  /// The URL this process was launched with — the only place a WEB arrival's
+  /// `nk_auth` marker can be read. Injectable because `Uri.base` is a property
+  /// of the process.
+  final Uri Function() _launchUri;
+
+  /// ⏱ 2026-09-28 · ST-N1f (O-NATIVE-AUTH-CALLBACK-UNBUILT follow-up 3) — the
+  /// one subscription that says, in the device log, what became of an auth
+  /// callback. Started by the first [authEvents] or [authStateChanges] call,
+  /// which every app makes at launch, and never twice: each of those streams
+  /// is listened to by several providers, and a line per listener would count
+  /// one callback three times.
+  StreamSubscription<sb.AuthState>? _callbackLog;
+
+  /// Whether the launch URL's own arrival has been reported ok already.
+  bool _launchArrivalLogged = false;
+
+  /// Starts [_callbackLog]. Writes ONE line per outcome:
+  /// `nk_auth_callback flow=<marker> outcome=<ok|failed>` — never a code, a
+  /// token or an address, so a device log or a CI artefact can carry it.
+  ///
+  ///   · failed — the SDK re-emits every failed link exchange as a stream
+  ///     ERROR (see [authEvents]); the flow is the one the router shows it as
+  ///     ([failedArrivalFlowOf], else reset — ST-A2's rule).
+  ///   · ok — `passwordRecovery` is only ever a reset link's exchange; a web
+  ///     arrival's `signedIn` is the launch URL's marked flow, once.
+  ///
+  /// ⚠️ A NATIVE confirm / OAuth / link SUCCESS IS NOT LOGGED, and a native
+  /// failure is classed by that same rule, because off web the marked URL
+  /// reaches only `supabase_flutter`'s own `app_links` listener: Flutter's deep
+  /// linking is off on every target (the router must not see the callback),
+  /// and reading the URL here would add `app_links` as a dependency.
+  void _watchCallbacks() {
+    _callbackLog ??= _auth.onAuthStateChange.listen(
+      (sb.AuthState s) {
+        if (s.event == sb.AuthChangeEvent.passwordRecovery) {
+          _logCallback(AuthFlow.reset, ok: true);
+        } else if (s.event == sb.AuthChangeEvent.signedIn &&
+            !_launchArrivalLogged) {
+          final AuthFlow? flow = authArrivalOf(_launchUri()).flow;
+          if (flow != null && flow != AuthFlow.reset) {
+            _launchArrivalLogged = true;
+            _logCallback(flow, ok: true);
+          }
+        }
+      },
+      onError: (Object _) => _logCallback(
+        failedArrivalFlowOf(_launchUri()) ?? AuthFlow.reset,
+        ok: false,
+      ),
+    );
+  }
+
+  static void _logCallback(AuthFlow flow, {required bool ok}) => debugPrint(
+        'nk_auth_callback flow=${flow.marker} outcome=${ok ? 'ok' : 'failed'}',
+      );
+
   @override
-  Stream<core.AuthUser?> authStateChanges() => _auth.onAuthStateChange
+  Stream<core.AuthUser?> authStateChanges() {
+    _watchCallbacks();
+    return _authStateChanges();
+  }
+
+  Stream<core.AuthUser?> _authStateChanges() => _auth.onAuthStateChange
       .map((sb.AuthState s) => _map(s.session?.user))
       // 🔴 THE ERROR IS DROPPED HERE AND REPORTED ON [authEvents], WHICH IS NOT
       // A SHRUG. `onAuthStateChange` carries ERRORS as well as states, and this
@@ -179,7 +285,12 @@ class SupabaseAuthRepository implements core.AuthRepository {
   /// sentence. Nothing is swallowed — the failure is louder than it was, because
   /// before this it reached a crash reporter and never reached the user.
   @override
-  Stream<core.AuthEvent> authEvents() =>
+  Stream<core.AuthEvent> authEvents() {
+    _watchCallbacks();
+    return _authEvents();
+  }
+
+  Stream<core.AuthEvent> _authEvents() =>
       _auth.onAuthStateChange.map(_event).transform(
             StreamTransformer<core.AuthEvent, core.AuthEvent>.fromHandlers(
               handleData: (core.AuthEvent e, EventSink<core.AuthEvent> sink) =>
@@ -234,11 +345,12 @@ class SupabaseAuthRepository implements core.AuthRepository {
   }) async {
     final sb.AuthResponse res;
     try {
-      res = await _auth.signInWithPassword(
+      res = await _credentials.signInWithPassword(
         email: email,
         password: password,
-        captchaToken: captchaToken,
+        captchaToken: _captcha(captchaToken),
       );
+      await _handOver(res.session);
     } on sb.AuthException catch (e) {
       throw _failureOf(e);
     }
@@ -279,14 +391,16 @@ class SupabaseAuthRepository implements core.AuthRepository {
   }) async {
     final sb.AuthResponse res;
     try {
-      res = await _auth.signUp(
+      res = await _credentials.signUp(
         email: email,
         password: password,
-        captchaToken: captchaToken,
+        captchaToken: _captcha(captchaToken),
         // The confirmation mail's link. Without it the user confirms into the
         // project's Site URL — app #1's web home — whichever app they signed up in.
         emailRedirectTo: redirects(AuthFlow.signUpConfirm),
       );
+      // A project with confirmation off answers sign-up with a session.
+      await _handOver(res.session);
     } on sb.AuthException catch (e) {
       throw _failureOf(e);
     }
@@ -397,10 +511,10 @@ class SupabaseAuthRepository implements core.AuthRepository {
   @override
   Future<void> sendPasswordReset(String email, {String? captchaToken}) async {
     try {
-      await _auth.resetPasswordForEmail(
+      await _credentials.resetPasswordForEmail(
         email,
         redirectTo: redirects(AuthFlow.reset),
-        captchaToken: captchaToken,
+        captchaToken: _captcha(captchaToken),
       );
     } on sb.AuthException catch (e) {
       throw _failureOf(e);
@@ -525,10 +639,10 @@ class SupabaseAuthRepository implements core.AuthRepository {
   }) async {
     if (email.isEmpty) throw core.AuthFailure('Email is required');
     try {
-      await _auth.resend(
+      await _credentials.resend(
         type: sb.OtpType.signup,
         email: email,
-        captchaToken: captchaToken,
+        captchaToken: _captcha(captchaToken),
         emailRedirectTo: redirects(AuthFlow.signUpConfirm),
       );
     } on sb.AuthException catch (e) {
@@ -543,10 +657,10 @@ class SupabaseAuthRepository implements core.AuthRepository {
       throw core.AuthFailure('Sign in first, then we can resend the email.');
     }
     try {
-      await _auth.resend(
+      await _credentials.resend(
         type: sb.OtpType.signup,
         email: email,
-        captchaToken: captchaToken,
+        captchaToken: _captcha(captchaToken),
         // The same destination as the first confirmation mail — a resend that
         // pointed somewhere else would confirm the user into a different app.
         emailRedirectTo: redirects(AuthFlow.signUpConfirm),

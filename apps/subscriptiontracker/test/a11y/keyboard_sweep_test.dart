@@ -404,6 +404,13 @@ final Map<String, List<Override>> kSweptAs = <String, List<Override>>{
   '/calendar': <Override>[
     nowProvider.overrideWithValue(() => DateTime(2026, 8, 21, 10, 0)),
   ],
+  // ⏱ 2026-09-28 · ST-T3b (ST-M3): /notifications joins it for the same
+  // reason. Its due-soon cards (each a control since ST-U8) are built from
+  // ROLLED renewal dates, so how many fall in the next seven days moved with
+  // the real calendar. Pinned to the same day as /calendar.
+  '/notifications': <Override>[
+    nowProvider.overrideWithValue(() => DateTime(2026, 8, 21, 10, 0)),
+  ],
   '/manage-plan': <Override>[
     entitlementsProvider.overrideWith(
       (_) async => const core.Entitlements(
@@ -466,12 +473,20 @@ kExpected = <String, ({int controls, int reachable})>{
   // `LegalConsentFields` too, so one widget fix moved two routes.
   '/reaccept-terms': (controls: 5, reachable: 4),
   '/reset-password': (controls: 1, reachable: 1),
-  '/notifications': (controls: 1, reachable: 1),
+  // ⏱ 2026-09-28 · ST-T3b (ST-M3): 1 -> 5. Close, plus the four renewal cards
+  // due within seven days of the pinned 2026-08-21 (see [kSweptAs]); each
+  // opens its plan (ST-U8, C16). On stored dates every seed row was in the
+  // past, so no card was ever built and this read 1.
+  '/notifications': (controls: 5, reachable: 5),
   // 2 -> 4, i.e. NOTHING on this route is off the orbit any more. `Back`
   // and `More options` were the app bar; `_iconButton` now builds on
   // `FocusableTap`. ⏱ 2026-09-28 · ST-U5 (B14): 4 -> 3, because "More
   // options" opened nothing and was removed rather than kept reachable.
-  '/sub/:id': (controls: 3, reachable: 3),
+  // ⏱ 2026-09-28 · ST-T3b (ST-E3): 3 -> 4. "More options" is back, and it
+  // opens the row's lifecycle menu (Pause, Mark as cancelled, Delete).
+  // ⏱ 2026-09-28 · ST-R3: 4 -> 5, the detail's own Reminders row (the notice
+  // row appears only once the API emits notice_days; the seed does not).
+  '/sub/:id': (controls: 5, reachable: 5),
   // ⏱ 2026-09-27 · ST-U2 (audit C34): the paywall's back button.
   '/paywall': (controls: 1, reachable: 1),
   // 2 -> 3 on 2026-08-26, and NO WIDGET CHANGED. The third control was
@@ -1404,15 +1419,17 @@ void main() {
             'in the app bar',
       );
       // The hero is identified by the key the SCREEN publishes, not by a label
-      // and not by a widget class: `detail-hero-gradient` is checked in, and if
+      // and not by a widget class: `detail-header-band` is checked in, and if
       // it is renamed this goes red with a sentence rather than silently
-      // measuring nothing.
-      final Finder heroFinder = find.byKey(const Key('detail-hero-gradient'));
+      // measuring nothing. (⏱ 2026-09-28 · train ST-D5: it was
+      // `detail-hero-gradient` until the gradient hero became the chassis
+      // `AppDetailHeader` band; the two controls in it are unchanged.)
+      final Finder heroFinder = find.byKey(const Key('detail-header-band'));
       expect(
         heroFinder,
         findsOneWidget,
         reason:
-            'the detail screen no longer publishes a `detail-hero-gradient` '
+            'the detail screen no longer publishes a `detail-header-band` '
             'key, so this case cannot tell the app bar from the body and every '
             'sentence below is about a screen it can no longer find',
       );
@@ -1421,13 +1438,15 @@ void main() {
           .where((Element e) => _isUnder(e, hero))
           .toList();
       // ⏱ 2026-09-28 · ST-U5 (B14): ONE control, "Back". "More options" was
-      // the second and opened nothing, so it was removed.
+      // the second and opened nothing, so it was removed. ST-T3b (ST-E3): TWO
+      // again — "More options" now opens the lifecycle menu.
       expect(
         heroControls,
-        hasLength(1),
+        hasLength(2),
         reason:
-            'the detail hero is expected to carry exactly one control — '
-            '"Back". It carries ${heroControls.length}. If it carries none, the '
+            'the detail hero is expected to carry exactly two controls — '
+            '"Back" and "More options". It carries ${heroControls.length}. If '
+            'it carries none, the '
             'exit was DELETED rather than fixed, which the empty dead set above '
             'would happily report as success',
       );
@@ -1436,13 +1455,14 @@ void main() {
       ];
       expect(
         heroStops,
-        hasLength(1),
+        hasLength(2),
         reason:
             'the detail app bar owns ${heroStops.length} stops on the Tab '
             'orbit, not one each. THAT is the SC 2.1.1 failure this case was '
             'written to report and reported until 2026-08-26: a keyboard user '
-            'can read the whole screen and leave by no door on it. Rebuild '
-            '_iconButton on design_system\'s FocusableTap — do NOT hand-roll a '
+            'can read the whole screen and leave by no door on it. Build the '
+            'header controls on design_system\'s AppIconAction (a FocusableTap) '
+            '— do NOT hand-roll a '
             'Focus widget at the call site',
       );
       // 🔴 THE POSITIONAL HALF, WHICH THE COUNTS CANNOT SAY. The app bar is the

@@ -406,6 +406,37 @@ expect('--assert-generic reds on a `when.os` no workflow names', {
   contains: 'goodtool/one is declared for os "macos-15"',
   root: withGates([gate('one', 'package', 0, { os: 'macos-15' })], GENERIC_WORKFLOWS)
 });
+/* ⏱ 2026-09-29 (EXL-17): the store-publish ref check spelled `tag:fullshot-v…` in
+   its run: line, so a second tool's tag was refused by name. RED ON THE BASE: the
+   scan above only knew `==` / `!=`, and this line compares nothing. */
+const RUN_NAMES_TOOL = "      - run: node tooling/ci/assert-deploy-ref.mjs --allow 'tag:" + 'goodtool' + "-v[0-9]+.[0-9]+.[0-9]+'\n";
+expect('--assert-generic reds on a one-line run: value that spells a tool id, naming the line', {
+  script: 'discover.mjs', argv: ['--assert-generic'], code: 1,
+  contains: '.github/workflows/extensions.yml:4  a run: line names tool goodtool',
+  root: withGates(TWO_STAGES, Object.assign({}, GENERIC_WORKFLOWS, {
+    'extensions.yml': GENERIC_WORKFLOWS['extensions.yml'].replace('    steps:\n', '    steps:\n' + RUN_NAMES_TOOL)
+  }))
+});
+expect('--assert-generic passes the same ref check reading the generated trigger list', {
+  script: 'discover.mjs', argv: ['--assert-generic'], code: 0, contains: 'one-line run: value(s) scanned for the 1 tool id(s) on disk (goodtool)',
+  root: withGates(TWO_STAGES, Object.assign({}, GENERIC_WORKFLOWS, {
+    'extensions.yml': GENERIC_WORKFLOWS['extensions.yml'].replace('    steps:\n',
+      '    steps:\n      - run: node tooling/ci/assert-deploy-ref.mjs --allow trigger:.github/workflows/extensions.yml\n')
+  }))
+});
+expect('--assert-generic does not read a tool id inside a longer word as the id', {
+  script: 'discover.mjs', argv: ['--assert-generic'], code: 0, contains: 'no extension workflow names a tool',
+  root: withGates(TWO_STAGES, Object.assign({}, GENERIC_WORKFLOWS, {
+    'extensions.yml': GENERIC_WORKFLOWS['extensions.yml'].replace('    steps:\n', '    steps:\n      - run: node scripts/pack.mjs --out notgoodtool_dir\n')
+  }))
+});
+expect('--assert-generic with no one-line run: value at all is COVERAGE LOST', {
+  script: 'discover.mjs', argv: ['--assert-generic'], code: 2, contains: 'COVERAGE LOST — extensions-ci.yml and extensions.yml hold no one-line `run:` value',
+  root: withGates(TWO_STAGES, {
+    'extensions-ci.yml': GENERIC_WORKFLOWS['extensions-ci.yml'].replace(/- run: (.*)\n/g, '- run: |\n          $1\n'),
+    'extensions.yml': GENERIC_WORKFLOWS['extensions.yml'].replace(/run: (.*)\n/g, 'run: |\n          $1\n')
+  })
+});
 expect('--assert-generic with no gate declared anywhere is COVERAGE LOST, not a pass', {
   script: 'discover.mjs', argv: ['--assert-generic'], code: 2,
   contains: 'COVERAGE LOST — no tool declares a gate',

@@ -42,7 +42,8 @@
             "pr": 593
           }
         ]
-      }
+      },
+      "guard": "tooling/ci/assert-ops-register.mjs"
     },
     {
       "signature": "ops-register:red-since:duty.workflow.ops-watch.yml",
@@ -70,7 +71,8 @@
             "pr": 1046
           }
         ]
-      }
+      },
+      "guard": "tooling/ci/assert-ops-register.mjs"
     },
     {
       "signature": "ops-register:red-since:duty.workflow.e2e.yml",
@@ -86,7 +88,8 @@
             "pr": 1039
           }
         ]
-      }
+      },
+      "guard": "tooling/ci/assert-ops-register.mjs"
     },
     {
       "signature": "ops-register:red-since:duty.workflow.deploy-web.yml",
@@ -96,7 +99,8 @@
         "kind": "merge",
         "sha": "846d90a0",
         "pr": 593
-      }
+      },
+      "guard": "tooling/ci/assert-ops-register.mjs"
     },
     {
       "signature": "ops-register:red-since:*",
@@ -106,7 +110,8 @@
         "kind": "merge",
         "sha": "846d90a0",
         "pr": 593
-      }
+      },
+      "guard": "tooling/ci/assert-ops-register.mjs"
     },
     {
       "signature": "ops-register:duty-stale:duty.laptop.nikatru-daily-backup",
@@ -115,7 +120,8 @@
       "fixedBy": {
         "kind": "not-a-defect",
         "reason": "an owner-authorised sync paused the beat; it resumed with no change to the tree"
-      }
+      },
+      "guard": "tooling/ci/assert-ops-register.mjs"
     },
     {
       "signature": "ops-register:duty-stale:duty.laptop.nikatru-watchdog",
@@ -124,7 +130,8 @@
       "fixedBy": {
         "kind": "not-a-defect",
         "reason": "the routine beat again with no change to the tree"
-      }
+      },
+      "guard": "tooling/ci/assert-ops-register.mjs"
     },
     {
       "signature": "ops-register:duty-stale:*",
@@ -133,7 +140,8 @@
       "fixedBy": {
         "kind": "live-action",
         "what": "the duty's next successful beat, read live by the register"
-      }
+      },
+      "guard": "tooling/ci/assert-ops-register.mjs"
     },
     {
       "signature": "ops-register:alert-disposition-403",
@@ -143,7 +151,8 @@
         "kind": "merge",
         "sha": "bffae635",
         "pr": 607
-      }
+      },
+      "guard": "tooling/ci/assert-ops-register.mjs"
     },
     {
       "signature": "ops-register:firing-history-403",
@@ -153,7 +162,8 @@
         "kind": "merge",
         "sha": "bffae635",
         "pr": 607
-      }
+      },
+      "guard": "tooling/ci/assert-ops-register.mjs"
     },
     {
       "signature": "github-api:403-installation-quota",
@@ -191,7 +201,8 @@
         "kind": "superseded",
         "by": "PR #587 78777a2b, registered on the branch before the merge"
       },
-      "scope": "feature-branches"
+      "scope": "feature-branches",
+      "guard": "tooling/ci/assert-platform-register.mjs"
     },
     {
       "signature": "platform-register:unregistered-route:POST /v1/receipts/:store",
@@ -201,7 +212,8 @@
         "kind": "superseded",
         "by": "PR #603 9b520606, registered on the branch before the merge"
       },
-      "scope": "feature-branches"
+      "scope": "feature-branches",
+      "guard": "tooling/ci/assert-platform-register.mjs"
     },
     {
       "signature": "policy-claims:unclaimed-route-segment",
@@ -211,7 +223,8 @@
         "kind": "superseded",
         "by": "PR #587 78777a2b, claimed on the branch before the merge"
       },
-      "scope": "feature-branches"
+      "scope": "feature-branches",
+      "guard": "tooling/ci/assert-policy-claims.mjs"
     },
     {
       "signature": "policy-claims:unrowed-emphasis",
@@ -221,7 +234,8 @@
         "kind": "superseded",
         "by": "PR #579 bf04fc64, rows added on the branch before the merge"
       },
-      "scope": "feature-branches"
+      "scope": "feature-branches",
+      "guard": "tooling/ci/assert-policy-claims.mjs"
     },
     {
       "signature": "start-here:drift",
@@ -241,7 +255,8 @@
         "kind": "superseded",
         "by": "its own pull request, regenerated on the branch before the merge"
       },
-      "scope": "feature-branches"
+      "scope": "feature-branches",
+      "guard": "tooling/ci/assert-enforcement-index.mjs"
     },
     {
       "signature": "monitor-register:drift",
@@ -411,7 +426,8 @@
         "kind": "superseded",
         "by": "its own pull request, on the branch before the merge"
       },
-      "scope": "feature-branches"
+      "scope": "feature-branches",
+      "guard": "tooling/ci/assert-retention-coverage.mjs"
     },
     {
       "signature": "site-integrity",
@@ -421,7 +437,8 @@
         "kind": "superseded",
         "by": "its own pull request, on the branch before the merge"
       },
-      "scope": "feature-branches"
+      "scope": "feature-branches",
+      "guard": "tooling/ci/check-site-integrity.mjs"
     },
     {
       "signature": "deploy-triggers:unreachable",
@@ -431,7 +448,8 @@
         "kind": "superseded",
         "by": "its own pull request, on the branch before the merge"
       },
-      "scope": "feature-branches"
+      "scope": "feature-branches",
+      "guard": "tooling/ci/assert-deploy-triggers.mjs"
     },
     {
       "signature": "catalogue:reachability",
@@ -460,7 +478,8 @@
       "fixedBy": {
         "kind": "live-action",
         "what": "the live template was pushed from the repository"
-      }
+      },
+      "guard": "tooling/ci/assert-supabase-templates.mjs"
     },
     {
       "signature": "surfaces:unhealthy",
@@ -626,7 +645,8 @@
       "fixedBy": {
         "kind": "live-action",
         "what": "the duty record went green again on main once the analytics silence closed"
-      }
+      },
+      "guard": "tooling/ci/assert-ops-register.mjs"
     },
     {
       "signature": "ops-register:duty-stale:duty.workflow.e2e.yml",
@@ -654,7 +674,8 @@
             "pr": 593
           }
         ]
-      }
+      },
+      "guard": "tooling/ci/assert-ops-register.mjs"
     },
     {
       "signature": "e2e:leg-failed:*",
@@ -971,7 +992,8 @@
         "kind": "merge",
         "sha": "3ae20c3e",
         "pr": 514
-      }
+      },
+      "guard": "tooling/ci/check-site-integrity.mjs"
     },
     {
       "signature": "no-log:*",
@@ -999,7 +1021,8 @@
       "fixedBy": {
         "kind": "superseded",
         "by": "its own pull request, on the branch before the merge"
-      }
+      },
+      "guard": "tooling/ci/assert-version-consistency.mjs"
     },
     {
       "signature": "secret-scan:found",
@@ -1039,7 +1062,8 @@
       "fixedBy": {
         "kind": "superseded",
         "by": "its own pull request, on the branch before the merge"
-      }
+      },
+      "guard": "tooling/ci/assert-guard-coverage.mjs"
     },
     {
       "signature": "actions-cache:not-allowed",
@@ -1079,7 +1103,8 @@
       "fixedBy": {
         "kind": "superseded",
         "by": "its own pull request, on the branch before the merge"
-      }
+      },
+      "guard": "tooling/ci/assert-workspace-coverage.mjs"
     },
     {
       "signature": "tokens-css:drift",
@@ -1119,7 +1144,8 @@
       "fixedBy": {
         "kind": "superseded",
         "by": "its own pull request, on the branch before the merge"
-      }
+      },
+      "guard": "tooling/ci/assert-no-clone-tells.mjs"
     },
     {
       "signature": "launcher-icons:vacuous-compare",
@@ -1129,7 +1155,8 @@
       "fixedBy": {
         "kind": "superseded",
         "by": "its own pull request, on the branch before the merge"
-      }
+      },
+      "guard": "tooling/ci/assert-launcher-icons.mjs"
     },
     {
       "signature": "brand-assets:no-platform-claim",
@@ -1139,7 +1166,8 @@
       "fixedBy": {
         "kind": "superseded",
         "by": "its own pull request, on the branch before the merge"
-      }
+      },
+      "guard": "tooling/ci/assert-stamp-brand-assets.mjs"
     },
     {
       "signature": "wrangler-jsonc:missing",
@@ -1199,7 +1227,8 @@
       "fixedBy": {
         "kind": "superseded",
         "by": "its own pull request, on the branch before the merge"
-      }
+      },
+      "guard": "tooling/ci/assert-ops-register.mjs"
     },
     {
       "signature": "dart:pub-resolve",
@@ -1531,7 +1560,8 @@
       "fixedBy": {
         "kind": "not-a-defect",
         "reason": "the reader refused to grade a main CI run superseded before its deploy jobs existed; nothing was deployed wrong"
-      }
+      },
+      "guard": "tooling/ci/assert-ops-register.mjs"
     },
     {
       "signature": "e2e:unnamed-issuer-accepted",
@@ -1556,7 +1586,8 @@
       "fixedBy": {
         "kind": "not-a-defect",
         "reason": "the submission name gate refused an UNDETERMINED name, as designed"
-      }
+      },
+      "guard": "tooling/ci/assert-name-clearance.mjs"
     },
     {
       "signature": "setup-flutter:version-unresolved:windows-store",

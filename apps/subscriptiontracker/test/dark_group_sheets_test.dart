@@ -30,11 +30,14 @@
 // Nothing here measures a width; the phone is chosen because it is the
 // narrowest, so the Tamil sentences are also being asked to fit.
 // ─────────────────────────────────────────────────────────────────────────────
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
+import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/core/format/money_format.dart';
 import 'package:subscriptiontracker/core/format/monthly_share.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
@@ -63,7 +66,10 @@ const String kDefaultCurrencyCode = 'USD';
 const MoneyFormatter kMoney = MoneyFormatter('en');
 
 Subscription _sub() => Subscription(
-  id: 'sub-1',
+  // '1' is the seed's own Netflix: "Confirm cancel" now PATCHes the row
+  // (ST-E3, mark cancelled) and a row the backing store does not hold is a
+  // 404 — the old hard DELETE of an unknown id silently succeeded.
+  id: '1',
   name: 'Netflix',
   category: 'Streaming',
   price: const Money(1500, kDefaultCurrencyCode),
@@ -130,68 +136,34 @@ List<BoxDecoration> _decorations(WidgetTester tester) => tester
     .whereType<BoxDecoration>()
     .toList();
 
-/// The sheet's own surface, identified by its signature rounding: BOTH sheets
-/// round only the top two corners at 28, and nothing else in either tree does.
-///
-/// Found by that property rather than by `.first` on purpose — `.first` is right
-/// by accident and wrong the day a wrapper Container is added above it, and it
-/// would go on reporting a colour either way.
-BoxDecoration _sheetSurface(WidgetTester tester) {
-  final List<BoxDecoration> hits = _decorations(tester)
+/// The cancel sheet's own surface (train ST-D7): the one decoration in its
+/// tree rounded on the top two corners only, at [AppRadius.xl].
+BoxDecoration _cancelSurface(WidgetTester tester) {
+  final List<BoxDecoration> hits = tester
+      .widgetList<DecoratedBox>(
+        find.descendant(
+          of: find.byType(BottomSheet),
+          matching: find.byType(DecoratedBox),
+        ),
+      )
+      .map((DecoratedBox d) => d.decoration)
+      .whereType<BoxDecoration>()
       .where(
         (BoxDecoration d) =>
             d.borderRadius ==
-            const BorderRadius.vertical(top: Radius.circular(28)),
+            const BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
       )
       .toList();
-  expect(
-    hits,
-    hasLength(1),
-    reason:
-        'the sheet surface is no longer the one top-rounded-28 decoration in '
-        'the tree, so this test is about to measure something else',
-  );
+  expect(hits, hasLength(1), reason: 'the cancel sheet surface is not unique');
   return hits.single;
 }
 
-/// The two cycle buttons, in order — Monthly (selected by default) then Yearly.
-/// 14 is their own corner radius and is unique in the add sheet (the handle is
-/// 4, the glyph tiles 13, the fields and the submit button 16, the sheet 28).
-List<BoxDecoration> _cycleButtons(WidgetTester tester) {
-  final List<BoxDecoration> hits = _decorations(tester)
-      .where((BoxDecoration d) => d.borderRadius == BorderRadius.circular(14))
-      .toList();
-  expect(
-    hits,
-    hasLength(2),
-    reason: 'expected exactly the Monthly/Yearly pair at radius 14',
-  );
-  return hits;
+/// WCAG relative-luminance contrast of two opaque colours.
+double _contrast(Color a, Color b) {
+  final double la = a.computeLuminance();
+  final double lb = b.computeLuminance();
+  return (math.max(la, lb) + 0.05) / (math.min(la, lb) + 0.05);
 }
-
-/// The 40×4 drag handle.
-BoxDecoration _dragHandle(WidgetTester tester) {
-  final Iterable<Container> hits = tester
-      .widgetList<Container>(
-        find.descendant(
-          of: find.byType(BottomSheet),
-          matching: find.byType(Container),
-        ),
-      )
-      .where(
-        (Container c) =>
-            c.constraints == BoxConstraints.tightFor(width: 40, height: 4),
-      );
-  expect(hits, hasLength(1), reason: 'the 40x4 drag handle is gone');
-  return hits.single.decoration! as BoxDecoration;
-}
-
-/// The add sheet's heading — disambiguated from the submit button, which reads
-/// the SAME key (`addSubscriptionTitle`) by design, on its 22 px size.
-Finder _headingSized(String label, double fontSize) => find.byWidgetPredicate(
-  (Widget w) => w is Text && w.data == label && w.style?.fontSize == fontSize,
-  description: 'a Text "$label" at fontSize $fontSize',
-);
 
 TextStyle _styleOf(WidgetTester tester, Finder finder) {
   expect(finder, findsOneWidget);
@@ -203,189 +175,137 @@ void main() {
     seed: kSublySeed,
     brightness: Brightness.dark,
   );
-  final ColorScheme dark = darkTheme.colorScheme;
 
   // ───────────────────────────────────────────────────────────────────────────
+  // ⏱ 2026-09-28 · train ST-D6: THE ADD SHEET IS ON THE CHASSIS FORM
+  // COMPONENTS, AND ITS LIGHT ARM IS NO LONGER FROZEN. The "LIGHT is
+  // pixel-identical" case that stood here pinned the literal `AppColors` light
+  // palette; the design train repaints the sheet from the scheme in BOTH
+  // brightnesses, so both arms now assert the same slots — and each still names
+  // the defect it would catch (a literal light colour leaking into dark, ink
+  // left behind when the fill moved).
   group('add sheet · surface', () {
-    testWidgets('LIGHT is pixel-identical to the pre-dark sheet', (
-      WidgetTester tester,
-    ) async {
-      final AppLocalizations en = await AppLocalizations.delegate.load(
-        const Locale('en'),
-      );
-      await _openSheet(
-        tester,
-        mode: ThemeMode.light,
-        open: (BuildContext c) => showAddSubscriptionSheet(c),
-      );
+    for (final (String name, ThemeMode mode, ThemeData theme)
+        in <(String, ThemeMode, ThemeData)>[
+          ('light', ThemeMode.light, buildAppTheme(seed: kSublySeed)),
+          ('dark', ThemeMode.dark, darkTheme),
+        ]) {
+      testWidgets('[$name] every paint is a scheme slot, fill AND ink', (
+        WidgetTester tester,
+      ) async {
+        final ColorScheme scheme = theme.colorScheme;
+        final AppLocalizations en = await AppLocalizations.delegate.load(
+          const Locale('en'),
+        );
+        await _openSheet(
+          tester,
+          mode: mode,
+          open: (BuildContext c) => showAddSubscriptionSheet(c),
+        );
 
-      expect(
-        _sheetSurface(tester).color,
-        AppColors.bg,
-        reason:
-            'The light sheet MUST stay the literal AppColors.bg. This is the '
-            'frozen legacy app the owner eyeballs.',
-      );
-      expect(_dragHandle(tester).color, AppColors.line);
-      // Monthly is selected on open: gradient, no flat fill. Yearly carries the
-      // resting fill, which is the one the dark branch has to move.
-      final List<BoxDecoration> cycle = _cycleButtons(tester);
-      expect(cycle[0].gradient, isNotNull);
-      expect(cycle[0].color, isNull);
-      expect(cycle[1].color, AppColors.surface);
-      expect(
-        _styleOf(tester, _headingSized(en.addSubscriptionTitle, 22)).color,
-        AppColors.ink,
-      );
-      expect(
-        _styleOf(tester, find.text(en.addPopularHeading)).color,
-        AppColors.muted,
-      );
-      expect(tester.takeException(), isNull);
-    });
+        final List<BoxDecoration> surfaces = _decorations(tester)
+            .where(
+              (BoxDecoration d) =>
+                  d.borderRadius ==
+                  const BorderRadius.vertical(
+                    top: Radius.circular(AppRadius.xl),
+                  ),
+            )
+            .toList();
+        expect(surfaces, hasLength(1), reason: 'the sheet surface moved');
+        expect(
+          surfaces.single.color,
+          scheme.surfaceContainerLow,
+          reason:
+              "M3's own bottom-sheet slot; in dark it sits ABOVE the "
+              'scaffold, so the sheet lifts off the page it covers.',
+        );
+        if (mode == ThemeMode.dark) {
+          expect(surfaces.single.color, isNot(AppColors.bg));
+        }
 
-    testWidgets('DARK derives the fill AND the ink from the scheme', (
-      WidgetTester tester,
-    ) async {
-      final AppLocalizations en = await AppLocalizations.delegate.load(
-        const Locale('en'),
-      );
-      await _openSheet(
-        tester,
-        mode: ThemeMode.dark,
-        open: (BuildContext c) => showAddSubscriptionSheet(c),
-      );
+        // The title: the ink moved with the fill, or dark is near-black text
+        // on a dark sheet. Deleting the colour from the chassis title turns
+        // the dark case red.
+        final TextStyle title = _styleOf(
+          tester,
+          find.text(en.addSubscriptionTitle).first,
+        );
+        expect(title.color, scheme.onSurface);
+        expect(
+          _styleOf(tester, find.text(en.addPopularHeading)).color,
+          scheme.onSurfaceVariant,
+        );
 
-      final BoxDecoration surface = _sheetSurface(tester);
-      expect(
-        surface.color,
-        isNot(AppColors.bg),
-        reason:
-            'THE DEFECT: a light sheet over dark chassis chrome. Reverting the '
-            'decoration to the unconditional AppColors.bg turns this red.',
-      );
-      expect(
-        surface.color,
-        dark.surfaceContainerLow,
-        reason:
-            "M3's own bottom-sheet container slot, and in a dark scheme it sits "
-            'ABOVE scheme.surface — which buildAppTheme paints the scaffold '
-            'with — so the sheet lifts off the page it covers.',
-      );
-      expect(_dragHandle(tester).color, dark.outlineVariant);
-
-      final List<BoxDecoration> cycle = _cycleButtons(tester);
-      expect(
-        cycle[0].gradient,
-        isNotNull,
-        reason:
-            'ON-GRADIENT STAYS: the selected button is the brand gradient in '
-            'both brightnesses. The gradient IS its background, so it does not '
-            'inherit one, and the white on it is the same decision either way.',
-      );
-      expect(
-        cycle[1].color,
-        dark.surfaceContainerHighest,
-        reason:
-            'A control resting on the sheet takes the same slot cardDecoration '
-            'and RowCard use for a card resting on a page.',
-      );
-
-      // 🔴 THE HALF THAT WOULD HAVE REGRESSED IN SILENCE. AppText.title carries
-      // a hardcoded AppColors.ink, so a dark fill with the ink left alone is
-      // near-black text on a dark sheet — worse than the light sheet it
-      // replaced. Deleting the `color:` from the title's copyWith turns this
-      // red and leaves every fill assertion above green.
-      expect(
-        _styleOf(tester, _headingSized(en.addSubscriptionTitle, 22)).color,
-        isNot(AppColors.ink),
-      );
-      expect(
-        _styleOf(tester, _headingSized(en.addSubscriptionTitle, 22)).color,
-        dark.onSurface,
-      );
-      expect(
-        _styleOf(tester, find.text(en.addPopularHeading)).color,
-        dark.onSurfaceVariant,
-      );
-      expect(tester.takeException(), isNull);
-    });
+        // ⏱ ST-T3b (ST-E4): the cadence is a FIELD now — a dropdown that can
+        // say weekly or quarterly — on the one field skin, so it rests on the
+        // card fill like every other field, never the brand gradient.
+        final Iterable<InputDecorator> cycle = tester
+            .widgetList<InputDecorator>(find.byType(InputDecorator))
+            .where(
+              (InputDecorator d) =>
+                  d.decoration.labelText == en.fieldLabelCycle,
+            );
+        expect(cycle, hasLength(1), reason: 'expected one cadence field');
+        expect(cycle.single.decoration.fillColor, AppCard.fillOf(theme));
+        expect(tester.takeException(), isNull);
+      });
+    }
   });
 
   // ───────────────────────────────────────────────────────────────────────────
   group('cancel sheet · surface', () {
-    testWidgets('LIGHT is pixel-identical to the pre-dark sheet', (
-      WidgetTester tester,
-    ) async {
-      final AppLocalizations en = await AppLocalizations.delegate.load(
-        const Locale('en'),
-      );
-      await _openSheet(
-        tester,
-        mode: ThemeMode.light,
-        open: (BuildContext c) => showCancelSheet(c, _sub()),
-      );
-
-      expect(_sheetSurface(tester).color, AppColors.bg);
-      expect(
-        _styleOf(
+    // ⏱ 2026-09-28 · train ST-D7 ("Stop a charge"). The sheet moved onto the
+    // ST-D0 foundation, so the pre-dark LIGHT pin (`AppColors.bg` fill,
+    // `AppColors.ink` heading, a literal 22 px) is RETIRED deliberately: both
+    // brightnesses now read the SAME scheme slots, and what is pinned is the
+    // slot, per brightness, against the theme the app really builds. The dark
+    // half's original defect (a dark fill under near-black ink) stays covered
+    // — the ink is asserted to be `onSurface` in both.
+    for (final (String name, ThemeMode mode, Brightness b)
+        in <(String, ThemeMode, Brightness)>[
+          ('light', ThemeMode.light, Brightness.light),
+          ('dark', ThemeMode.dark, Brightness.dark),
+        ]) {
+      testWidgets('[$name] fill, ink and heading role are the scheme\'s', (
+        WidgetTester tester,
+      ) async {
+        final AppLocalizations en = await AppLocalizations.delegate.load(
+          const Locale('en'),
+        );
+        final ThemeData theme = buildAppTheme(seed: kSublySeed, brightness: b);
+        await _openSheet(
           tester,
-          _headingSized(en.cancelSubscriptionTitle('Netflix'), 22),
-        ).color,
-        AppColors.ink,
-      );
-      expect(tester.takeException(), isNull);
-    });
+          mode: mode,
+          open: (BuildContext c) => showCancelSheet(c, _sub()),
+        );
 
-    testWidgets('DARK derives the fill AND the ink from the scheme', (
-      WidgetTester tester,
-    ) async {
-      final AppLocalizations en = await AppLocalizations.delegate.load(
-        const Locale('en'),
-      );
-      await _openSheet(
-        tester,
-        mode: ThemeMode.dark,
-        open: (BuildContext c) => showCancelSheet(c, _sub()),
-      );
-
-      expect(_sheetSurface(tester).color, isNot(AppColors.bg));
-      expect(_sheetSurface(tester).color, dark.surfaceContainerLow);
-      expect(
-        _styleOf(
+        expect(
+          _cancelSurface(tester).color,
+          theme.colorScheme.surfaceContainerLow,
+        );
+        expect(_cancelSurface(tester).color, isNot(AppColors.bg));
+        final TextStyle heading = _styleOf(
           tester,
-          _headingSized(en.cancelSubscriptionTitle('Netflix'), 22),
-        ).color,
-        isNot(AppColors.ink),
-      );
-      expect(
-        _styleOf(
-          tester,
-          _headingSized(en.cancelSubscriptionTitle('Netflix'), 22),
-        ).color,
-        dark.onSurface,
-      );
-      expect(tester.takeException(), isNull);
-    });
+          find.text(en.cancelSubscriptionTitle('Netflix')),
+        );
+        expect(heading.color, theme.colorScheme.onSurface);
+        expect(heading.color, isNot(AppColors.ink));
+        expect(heading.fontSize, theme.textTheme.headlineSmall!.fontSize);
+        expect(tester.takeException(), isNull);
+      });
 
-    // 🔴 FilledButton's default foreground is `colorScheme.onPrimary`: white in
-    // a light scheme, a very dark tone in a dark one. The background is the
-    // FIXED AppColors.danger red, so the default would have printed near-black
-    // on red for the one control on this sheet that must not be misread.
-    // Stating `foregroundColor: Colors.white` changes nothing in light — which
-    // is exactly what the light case pins.
-    //
-    // ⚠️ ONE MODE PER CASE, NOT A LOOP INSIDE ONE. `pumpWidget` reuses the
-    // MaterialApp element, so its Navigator keeps the route stack: a second
-    // `pumpWidget` in the same case leaves the FIRST sheet mounted above the
-    // launcher and the tap lands on the scrim. Measured here — the loop version
-    // failed with `Bad state: No element`, which reads like a missing widget
-    // rather than like a leaked route.
-    for (final (String name, ThemeMode mode) in <(String, ThemeMode)>[
-      ('light', ThemeMode.light),
-      ('dark', ThemeMode.dark),
-    ]) {
-      testWidgets('[$name] the destructive confirm keeps a WHITE label', (
+      // 🔴 THE CONFIRM IS THE DANGER PAIR, AND IT IS MEASURED. It was the fixed
+      // `AppColors.danger` fill with a stated white label. The fill is now the
+      // scheme-forked danger TONE — a light rose in dark — and white on that
+      // is ~2:1, so the label is the pair's own opaque tint. Setting it back to
+      // `Colors.white` turns the contrast line red in dark.
+      //
+      // ⚠️ ONE MODE PER CASE, NOT A LOOP INSIDE ONE. `pumpWidget` reuses the
+      // MaterialApp element, so its Navigator keeps the route stack: a second
+      // `pumpWidget` in the same case leaves the FIRST sheet mounted above the
+      // launcher and the tap lands on the scrim.
+      testWidgets('[$name] the destructive confirm is the danger pair', (
         WidgetTester tester,
       ) async {
         await _openSheet(
@@ -393,17 +313,22 @@ void main() {
           mode: mode,
           open: (BuildContext c) => showCancelSheet(c, _sub()),
         );
+        final StatusTones tones = StatusTones.forBrightness(b);
         final FilledButton confirm = tester.widget<FilledButton>(
-          find.byType(FilledButton),
+          find.byKey(E2EKeys.cancelConfirm),
         );
+        final Color fg = confirm.style!.foregroundColor!.resolve(
+          <WidgetState>{},
+        )!;
+        final Color bg = confirm.style!.backgroundColor!.resolve(
+          <WidgetState>{},
+        )!;
+        expect(bg, tones.danger);
+        expect(fg, tones.dangerTint);
         expect(
-          confirm.style!.foregroundColor!.resolve(<WidgetState>{}),
-          Colors.white,
-          reason: '$name: the confirm label must stay white on the danger fill',
-        );
-        expect(
-          confirm.style!.backgroundColor!.resolve(<WidgetState>{}),
-          AppColors.danger,
+          _contrast(fg, bg),
+          greaterThanOrEqualTo(4.5),
+          reason: '$name: the confirm label must clear AA on its fill',
         );
       });
     }

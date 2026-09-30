@@ -30,8 +30,51 @@ class E2EKeys {
   /// the sheet's one-cycle default (2026-09-22).
   static const Key addRenewal = Key('e2e_add_renewal');
 
+  /// The category dropdown, the Cancel button and the state banner (offline,
+  /// a failed save) on the same sheet — which since train ST-D6 is the EDIT
+  /// sheet too, so every add-sheet key above anchors the edit form as well.
+  static const Key addCategory = Key('e2e_add_category');
+  static const Key addCancel = Key('e2e_add_cancel');
+  static const Key addBanner = Key('e2e_add_banner');
+
+  // Subscription detail. The button that opens the edit sheet (train ST-D6);
+  // its label is `l10n.editPlan`.
+  static const Key detailEdit = Key('e2e_detail_edit');
+
   // App shell.
   static const Key fabAdd = Key('e2e_fab_add');
+
+  // ── Subscription detail and notifications (train ST-D5) ───────────────────
+  //
+  // The e2e and the store capture found these controls by ICON
+  // (`Icons.arrow_back`, `Icons.close`) and by WORDS ('Cancel plan'). Both
+  // still work — the redesign kept the icons and the copy — and these are the
+  // anchors that survive the next one: an icon swap or a copy edit moves no
+  // key.
+  static const Key detailBack = Key('e2e_detail_back');
+  static const Key detailCancelPlan = Key('e2e_detail_cancel_plan');
+
+  /// The header's "More options" — the row's lifecycle menu (ST-T3b ST-E3).
+  static const Key detailMoreOptions = Key('e2e_detail_more_options');
+  static const Key notificationsClose = Key('e2e_notifications_close');
+  // ── Stop a charge (the cancel sheet) — train ST-D7 ────────────────────────
+  //
+  // Keyed rather than found by words: 'Keep it', 'Confirm cancel' and 'Done'
+  // are translated, and 'Cancel' is a substring of half the sheet.
+  static const Key cancelKeep = Key('e2e_cancel_keep');
+  static const Key cancelConfirm = Key('e2e_cancel_confirm');
+  static const Key cancelDone = Key('e2e_cancel_done');
+
+  /// The sheet's inline failure strip — present only after a cancel that did
+  /// NOT happen, which is the state the unit suite asserts.
+  static const Key cancelFailure = Key('e2e_cancel_failure');
+
+  // ── Import (`/scan`, first-run setup) — train ST-D7 ───────────────────────
+  //
+  // The screen's ONE primary action, in all of its arms: disabled while the
+  // list loads, "Go to dashboard" once it has. (A failed load hands the way out
+  // to the failed state's own retry, keyed `DataStateView.retryKey`.)
+  static const Key scanPrimary = Key('e2e_scan_primary');
 
   // ── Settings → delete account (golden-path leg 6) ─────────────────────────
   //
@@ -41,6 +84,12 @@ class E2EKeys {
   // before the dialog opens and TWO after, so a finder written against the text
   // is ambiguous exactly at the moment the E2E needs to tell them apart.
   static const Key settingsDeleteAccount = Key('e2e_settings_delete_account');
+
+  /// ⏱ 2026-09-28 · train ST-D4. The Privacy card's link to Subly's own
+  /// privacy notice. Keyed so a test finds the ROW, not the words: "Privacy
+  /// notice" sits one card away from "Privacy policy", and the Tamil build
+  /// shares a stem between them.
+  static const Key settingsPrivacyNotice = Key('e2e_settings_privacy_notice');
 
   // 🔴 THE THREE BELOW KEEP THEIR ORIGINAL STRING VALUES ON PURPOSE.
   // `test/delete_account_test.dart` drives this dialog by LITERAL

@@ -2100,6 +2100,12 @@
   "errRestrictedWebstore": {
     "message": "Chrome Web Store neļauj paplašinājumiem lasīt savas lapas, tāpēc šo lapu nevar uzņemt."
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "Šo lapu aizsargā pārlūks, un to nevar uzņemt."
   },

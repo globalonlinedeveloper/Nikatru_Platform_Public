@@ -2380,6 +2380,14 @@
     "message": "The Chrome Web Store blocks extensions from reading its pages, so this one cannot be captured.",
     "description": "Refusal shown when the user tries to capture the extension store. \"Chrome Web Store\" is a product name — use the store's own name in your language if it has one."
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured.",
+    "description": "AWAITING-TRANSLATION (added 2026-09-29, rv2 EXB-16). Refusal shown in Microsoft Edge when the user tries to capture a page of Edge's own extension store. \"Microsoft Edge Add-ons\" is a product name — use the store's own name in your language if it has one."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured.",
+    "description": "AWAITING-TRANSLATION (added 2026-09-29, rv2 EXB-16). Refusal shown in Firefox when the user tries to capture a page of Firefox's own extension store. \"Firefox Add-ons\" is a product name — use the store's own name in your language if it has one. Keep \"addons.mozilla.org\" exactly as written."
+  },
   "errRestrictedGeneric": {
     "message": "This page is protected by the browser and cannot be captured.",
     "description": "Refusal shown for any other page the browser will not let an extension read."

@@ -505,7 +505,9 @@ void main() {
         final AppLocalizations l = await _l10n(code);
         await _pumpScreen(tester, Locale(code), const NotificationsScreen());
         final MoneyFormatter money = MoneyFormatter(l.localeName);
-        final DateFormat fmt = DateFormat.yMd(code);
+        // ⏱ 2026-09-28 · ST-R6 (audit C18): month-day, the OS reminder's own
+        // format — "9/29/2026" read two ways between US and Indian readers.
+        final DateFormat fmt = DateFormat.MMMd(code);
 
         expect(find.text(l.notifications), findsOneWidget);
 

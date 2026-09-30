@@ -2100,6 +2100,12 @@
   "errRestrictedWebstore": {
     "message": "חנות האינטרנט של Chrome חוסמת תוספים מקריאת עמודיה, ולכן לא ניתן לצלם את העמוד הזה."
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "העמוד הזה מוגן על ידי הדפדפן ולא ניתן לצלם אותו."
   },

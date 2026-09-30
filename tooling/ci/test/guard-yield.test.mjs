@@ -11,6 +11,12 @@
 //                                                      unattributed 0
 //   R5  a failing step with no FAILED line whose Run header runs TWO scripts
 //                                                    → unattributed 1
+//   R6  (B-1) a guard/WIRED ref with 0 catches over a full 90-day exposure and
+//       no KEEP/MERGE/RETIRE                         → --check exit 1
+//   R7  (B-2) 1 of 2 considered runs unattributed    → --check exit 1, "50.00%";
+//       a `guard-test:<title>` failure whose test file the coverage manifest
+//       keys is attributed to the ONE guard that file exercises (rule 3)
+//   R8  (B-3) asOf older than MAX_AGE_DAYS           → --check exit 1
 // R1 and R3 (the index guard's limb) are in enforcement-index.test.mjs.
 //
 // ⚠️ NOTHING HERE TOUCHES THE NETWORK OR GITHUB. The CLI runs through the
@@ -40,6 +46,14 @@ import {
   syncYield,
   recountZero,
   serialiseYield,
+  signatureRefs,
+  testTitleIndex,
+  reattribute,
+  loopProblems,
+  classify,
+  parseCli,
+  FULL_EXPOSURE_DAYS,
+  MAX_AGE_DAYS,
 } from '../../ops/guard-yield.mjs';
 import { isNonDefect, prOfRun, mergedPrsFromSubjects, yieldRecords, liveApi, parseArgs, CoverageLost } from '../../ops/triage-failed-runs.mjs';
 
@@ -191,12 +205,29 @@ function r5Fixture() {
   return dir;
 }
 
+/** Rule 3's corpus: ONE guard test, keyed by the coverage manifest, whose
+ *  only guard module is BETA — so its titles are BETA's red controls. The
+ *  text is data written into a fixture; nothing here runs it. */
+const BETA_TEST = [
+  "import { test } from 'node:test';",
+  "import { judge } from '../assert-yield-beta.mjs';",
+  "test('beta refuses a subject it cannot read', () => { judge(); });",
+  '',
+].join('\n');
+
 function rootWith(index = INDEX) {
   const root = temp();
-  mkdirSync(join(root, 'tooling'), { recursive: true });
+  mkdirSync(join(root, 'tooling', 'ci', 'test'), { recursive: true });
   writeFileSync(join(root, 'tooling', 'enforcement-index.json'), `${JSON.stringify(index, null, 2)}\n`);
+  writeFileSync(join(root, 'tooling', 'ci', 'test', 'coverage-manifest.json'), `${JSON.stringify({ 'yield-beta.test.mjs': 1 }, null, 2)}\n`);
+  writeFileSync(join(root, 'tooling', 'ci', 'test', 'yield-beta.test.mjs'), BETA_TEST);
   return root;
 }
+
+/** The day `--check` measures age against: fixed, so no case here is a time
+ *  bomb. The R4 window ends 2026-09-20, so asOf is one day old. */
+const TODAY = '2026-09-21';
+const check = (root, today = TODAY) => run(YIELD, ['--check', '--today', today, root]);
 
 const yieldRun = (fixture, root) =>
   run(TRIAGE, ['--yield', '--fixture-dir', fixture, '--causes', join(fixture, 'causes.json'), '--root', root, '--since', '2026-09-01T00:00:00Z', '--until', '2026-09-20T00:00:00Z']);
@@ -270,7 +301,7 @@ describe('--yield over the fixture transport (R4, R5)', () => {
 
   test('the file a fixture fetch writes passes --check', () => {
     const root = writtenRoot();
-    const r = run(YIELD, ['--check', root]);
+    const r = check(root);
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /ok {2}guard-yield — 6 ref\(s\) keyed/);
   });
@@ -300,7 +331,7 @@ describe('guard-yield.mjs --check (R2) and --zero-count', () => {
     const doc = readDoc(root);
     doc.perRef[ALPHA].catches = doc.perRef[ALPHA].evidence.length + 1;
     writeDoc(root, doc);
-    const r = run(YIELD, ['--check', root]);
+    const r = check(root);
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /"tooling\/ci\/assert-yield-alpha\.mjs" says catches 2 and lists 1 evidence row/);
   });
@@ -310,7 +341,7 @@ describe('guard-yield.mjs --check (R2) and --zero-count', () => {
     const doc = readDoc(root);
     delete doc.perRef[GAMMA];
     writeDoc(root, doc);
-    const r = run(YIELD, ['--check', root]);
+    const r = check(root);
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /"tooling\/ci\/assert-yield-gamma\.mjs" is an index ref and tooling\/guard-yield\.json has no entry/);
     assert.match(r.out, /node tooling\/ops\/guard-yield\.mjs --sync/);
@@ -321,7 +352,7 @@ describe('guard-yield.mjs --check (R2) and --zero-count', () => {
     const doc = readDoc(root);
     doc.perRef['tooling/ci/assert-yield-ghost.mjs'] = { catches: 0, firstSeen: '2026-09-01', evidence: [] };
     writeDoc(root, doc);
-    const r = run(YIELD, ['--check', root]);
+    const r = check(root);
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /keys "tooling\/ci\/assert-yield-ghost\.mjs", which is not an index ref/);
   });
@@ -331,7 +362,7 @@ describe('guard-yield.mjs --check (R2) and --zero-count', () => {
     const doc = readDoc(root);
     doc.zeroCatch = 3;
     writeDoc(root, doc);
-    const r = run(YIELD, ['--check', root]);
+    const r = check(root);
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /says zeroCatch 3; recounted over the index's guard\/WIRED rows it is 2/);
   });
@@ -342,7 +373,7 @@ describe('guard-yield.mjs --check (R2) and --zero-count', () => {
     doc.perRef[ALPHA].evidence.push({ pr: 1, runId: 2002, signature: 'guard-failed:assert-yield-alpha' });
     doc.perRef[ALPHA].catches = 2;
     writeDoc(root, doc);
-    const r = run(YIELD, ['--check', root]);
+    const r = check(root);
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /lists one PR twice/);
   });
@@ -352,13 +383,13 @@ describe('guard-yield.mjs --check (R2) and --zero-count', () => {
     const doc = readDoc(root);
     doc.unattributed = 1;
     writeDoc(root, doc);
-    const r = run(YIELD, ['--check', root]);
+    const r = check(root);
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /says unattributed 1 and lists 0 unattributed run/);
   });
 
   test('the file ABSENT is COVERAGE LOST, exit 2 — never a pass', () => {
-    const r = run(YIELD, ['--check', rootWith()]);
+    const r = check(rootWith());
     assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — tooling\/guard-yield\.json could not be read/);
   });
@@ -366,7 +397,7 @@ describe('guard-yield.mjs --check (R2) and --zero-count', () => {
   test('the file UNPARSEABLE is COVERAGE LOST, exit 2', () => {
     const root = rootWith();
     writeFileSync(join(root, YIELD_REL), '{ "perRef": { }\n');
-    const r = run(YIELD, ['--check', root]);
+    const r = check(root);
     assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — tooling\/guard-yield\.json is not valid JSON/);
   });
@@ -394,7 +425,7 @@ describe('guard-yield.mjs --sync', () => {
     const root = writtenRoot();
     const grown = [...INDEX.filter((r) => r.ref !== GAMMA), row('tooling/ci/assert-yield-delta.mjs', 'guard', 'WIRED')];
     writeFileSync(join(root, 'tooling', 'enforcement-index.json'), `${JSON.stringify(grown, null, 2)}\n`);
-    assert.equal(run(YIELD, ['--check', root]).code, 1, 'the green control: the unsynced file must be red first');
+    assert.equal(check(root).code, 1, 'the green control: the unsynced file must be red first');
     const s = run(YIELD, ['--sync', root]);
     assert.equal(s.code, 0, s.out);
     assert.match(s.out, /\+ tooling\/ci\/assert-yield-delta\.mjs/);
@@ -404,7 +435,7 @@ describe('guard-yield.mjs --sync', () => {
     assert.equal(doc.perRef['tooling/ci/assert-yield-delta.mjs'].catches, 0);
     assert.equal(doc.perRef['tooling/ci/assert-yield-delta.mjs'].firstSeen, new Date().toISOString().slice(0, 10));
     assert.deepEqual(doc.perRef[ALPHA].evidence, [{ pr: 1, runId: 2001, signature: 'guard-failed:assert-yield-alpha' }], 'an existing entry is kept untouched');
-    assert.equal(run(YIELD, ['--check', root]).code, 0);
+    assert.equal(check(root).code, 0);
   });
 
   test('syncYield: the new ref is dated by the day given, and zeroCatch is recounted without it (unmeasured, PE2-F3)', () => {
@@ -427,7 +458,7 @@ describe('guard-yield.mjs --sync', () => {
     const after = run(YIELD, ['--zero-count', root]);
     assert.equal(after.code, 0, after.out);
     assert.equal(after.out.trim(), before.out.trim(), 'a guard added after the window is not a zero');
-    const c = run(YIELD, ['--check', root]);
+    const c = check(root);
     assert.equal(c.code, 0, c.out);
     assert.match(c.out, /unmeasured: tooling\/ci\/assert-yield-delta\.mjs/);
   });
@@ -498,6 +529,215 @@ describe('attribution', () => {
 
   test('recountZero ignores a guard/WIRED ref the file does not key', () => {
     assert.equal(recountZero({ [ALPHA]: { catches: 0 } }, INDEX), 1);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THE LEARNING LOOP — rows B-1, B-2, B-3 (2026-09-29)
+// ═══════════════════════════════════════════════════════════════════════════
+const BETA_TITLE = 'beta refuses a subject it cannot read';
+
+/** R7's world: ONE run whose guard TEST failed — no FAILED line, a Run header
+ *  that runs the test runner and no guard, and a `✖ <title>` the ledger reads
+ *  as `guard-test:<title>`. Rules 1 and 2 cannot name it; rule 3 can. */
+function r7Fixture(title = BETA_TITLE) {
+  const dir = temp();
+  const runs = [
+    failedRun(dir, {
+      id: 4001,
+      pr: 6,
+      d: '10',
+      stepName: 'Guard tests',
+      log: [
+        ['10:01:00.1000000', '##[group]Run node --test "tooling/ci/test/*.test.mjs"'],
+        ['10:01:00.2000000', '##[endgroup]'],
+        ['10:01:05.0000000', `✖ ${title} (3.1ms)`],
+        ['10:01:05.3000000', '##[error]Process completed with exit code 1.'],
+      ],
+    }),
+  ];
+  writeFileSync(join(dir, 'runs.json'), JSON.stringify(runs));
+  writeFileSync(join(dir, 'merged.json'), JSON.stringify([6]));
+  writeFileSync(join(dir, 'causes.json'), JSON.stringify({ causes: CAUSES }));
+  return dir;
+}
+
+/** A doc over a window LONGER than FULL_EXPOSURE_DAYS, so a guard present from
+ *  the first day has been exposed in full: GAMMA (and ALPHA) owe an owner's
+ *  decision; BETA, added late, is young and KEEPs by itself. */
+function fullWindowRoot(mutate = (d) => d) {
+  const root = rootWith();
+  const doc = buildYield({
+    records: [],
+    indexRows: INDEX,
+    merged: new Set(),
+    added: new Map([[BETA, '2026-09-15']]),
+    since: '2026-06-01T00:00:00Z',
+    until: '2026-09-20T00:00:00Z',
+  });
+  writeDoc(root, mutate(doc));
+  return root;
+}
+const owner = (verdict, extra = {}) => ({ verdict, basis: 'owner', decided: '2026-09-21', reason: 'read the evidence list and the guard; decided on it', ...extra });
+
+describe('the learning loop: dispositions (B-1), attribution (B-2), age (B-3)', () => {
+  test('R6 (B-1): a zero-catch guard exposed a FULL window with no KEEP/MERGE/RETIRE is exit 1, naming it', () => {
+    const root = fullWindowRoot();
+    const r = check(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /"tooling\/ci\/assert-yield-gamma\.mjs" is a guard\/WIRED ref with 0 catches over 111 days of exposure and no disposition/);
+    assert.match(r.out, /KEEP, MERGE or RETIRE/);
+    assert.doesNotMatch(r.out, /"tooling\/ci\/assert-yield-beta\.mjs" is a guard/, 'BETA is young: its KEEP is automatic');
+  });
+
+  test('R6 GREEN CONTROL: the same file with an OWNER decision on each is exit 0, and prints the verdicts', () => {
+    const root = fullWindowRoot((d) => {
+      d.perRef[ALPHA].disposition = owner('KEEP');
+      d.perRef[GAMMA].disposition = owner('MERGE', { into: ALPHA });
+      return d;
+    });
+    const r = check(root);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /dispositioned \{"KEEP\/owner":1,"MERGE\/owner":1,"KEEP\/exposure":1\}|dispositioned \{[^}]*"MERGE\/owner":1[^}]*\}/);
+  });
+
+  test('R6: an automatic KEEP past a full exposure has EXPIRED, a MERGE names no ref, a verdict outside the three — each exit 1', () => {
+    const cases = [
+      [(d) => ({ ...d.perRef[GAMMA], disposition: { verdict: 'KEEP', basis: 'exposure', reason: 'exposed 3 of the 90 days, re-judged later' } }), /automatic KEEP has EXPIRED: exposed 111 days/],
+      [(d) => ({ ...d.perRef[GAMMA], disposition: owner('MERGE') }), /a MERGE names no other index ref `into`/],
+      [(d) => ({ ...d.perRef[GAMMA], disposition: owner('WAIVE') }), /verdict "WAIVE" is not one of KEEP · MERGE · RETIRE/],
+      [(d) => ({ ...d.perRef[GAMMA], disposition: { ...owner('KEEP'), decided: undefined } }), /an owner decision carries no `decided`/],
+    ];
+    for (const [entry, re] of cases) {
+      const root = fullWindowRoot((d) => {
+        d.perRef[ALPHA].disposition = owner('KEEP');
+        d.perRef[GAMMA] = entry(d);
+        return d;
+      });
+      const r = check(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, re);
+    }
+  });
+
+  test('R6: a disposition on a guard that CAUGHT something is stale, exit 1', () => {
+    const root = writtenRoot();
+    const doc = readDoc(root);
+    doc.perRef[ALPHA].disposition = owner('RETIRE');
+    writeDoc(root, doc);
+    const r = check(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /"tooling\/ci\/assert-yield-alpha\.mjs" carries a disposition and owes none/);
+  });
+
+  test('classify: young refs KEEP on exposure, a full exposure gets nothing, an owner decision is kept as written', () => {
+    const doc = buildYield({ records: [], indexRows: INDEX, merged: new Set(), added: new Map([[BETA, '2026-09-15']]), since: '2026-06-01T00:00:00Z', until: '2026-09-20T00:00:00Z' });
+    assert.equal(doc.perRef[BETA].disposition.verdict, 'KEEP');
+    assert.equal(doc.perRef[BETA].disposition.basis, 'exposure');
+    assert.match(doc.perRef[BETA].disposition.reason, /exposed 5 of the 90 days/);
+    assert.equal(doc.perRef[GAMMA].disposition, undefined);
+    assert.equal(doc.perRef[HELPER].disposition, undefined, 'a LIBRARY guard owes none');
+    doc.perRef[GAMMA].disposition = owner('RETIRE');
+    assert.deepEqual(classify(doc.perRef, INDEX, doc.window.until)[GAMMA].disposition, owner('RETIRE'));
+    assert.equal(FULL_EXPOSURE_DAYS, 90);
+  });
+
+  test('an OWNER disposition survives the next fetch; an exposure one is re-derived', () => {
+    const previous = { perRef: { [GAMMA]: { catches: 0, firstSeen: '2026-06-01', evidence: [], disposition: owner('KEEP') } } };
+    const doc = buildYield({ records: [], indexRows: INDEX, merged: new Set(), since: '2026-06-01T00:00:00Z', until: '2026-09-20T00:00:00Z', previous });
+    assert.deepEqual(doc.perRef[GAMMA].disposition, owner('KEEP'));
+  });
+
+  test('R7 (B-2): 1 of 2 considered runs unattributed is exit 1, and the share is printed', () => {
+    const root = rootWith();
+    assert.equal(yieldRun(r5Fixture(), root).code, 0);
+    const r = check(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /1 of 2 failed run\(s\) are unattributed \(50\.00%\), over the 10% limit/);
+  });
+
+  test('R7 GREEN CONTROL (B-2): a guard-TEST failure is attributed through the coverage manifest to the ONE guard its file exercises', () => {
+    const root = rootWith();
+    const r = yieldRun(r7Fixture(), root);
+    assert.equal(r.code, 0, r.out);
+    const doc = readDoc(root);
+    assert.equal(doc.unattributed, 0, r.out);
+    assert.deepEqual(doc.perRef[BETA].evidence, [{ pr: 6, runId: 4001, signature: `guard-test:${BETA_TITLE}` }]);
+    assert.equal(doc.perRef[BETA].disposition, undefined, 'BETA caught something: it owes no disposition');
+    assert.equal(check(root).code, 0);
+  });
+
+  test('R7: a guard-test title NO keyed test file declares stays unattributed — the manifest is the corpus', () => {
+    const root = rootWith();
+    const r = yieldRun(r7Fixture('a title no test declares'), root);
+    assert.equal(r.code, 0, r.out);
+    assert.equal(readDoc(root).unattributed, 1);
+  });
+
+  test('rule 3: a causes row naming its `guard` attributes the signature; exact beats prefix; a guard that is not a ref is nobody', () => {
+    const refSet = new Set(INDEX.map((r) => r.ref));
+    const causes = [
+      { signature: 'yield-x:*', guard: ALPHA },
+      { signature: 'yield-x:exact', guard: GAMMA },
+      { signature: 'yield-y:*', guard: 'tooling/ci/assert-not-indexed.mjs' },
+      { signature: 'yield-z:*' },
+    ];
+    assert.deepEqual(signatureRefs('yield-x:anything', { causes }, refSet), [ALPHA]);
+    assert.deepEqual(signatureRefs('yield-x:exact', { causes }, refSet), [GAMMA]);
+    assert.deepEqual(signatureRefs('yield-y:anything', { causes }, refSet), []);
+    assert.deepEqual(signatureRefs('yield-z:anything', { causes }, refSet), []);
+  });
+
+  test('rule 3: a test file importing TWO guards credits neither, unless its own stem names one', () => {
+    const two = "import '../assert-yield-alpha.mjs';\nimport '../assert-yield-gamma.mjs';\ntest('two guards', () => {});\n";
+    assert.equal(testTitleIndex([{ name: 'unrelated.test.mjs', text: two }], INDEX).has('two guards'), false);
+    assert.equal(testTitleIndex([{ name: 'yield-gamma.test.mjs', text: two }], INDEX).get('two guards'), GAMMA);
+    const shared = [
+      { name: 'yield-alpha.test.mjs', text: "import '../assert-yield-alpha.mjs';\ntest('same title', () => {});\n" },
+      { name: 'yield-gamma.test.mjs', text: "import '../assert-yield-gamma.mjs';\ntest('same title', () => {});\n" },
+    ];
+    assert.equal(testTitleIndex(shared, INDEX).get('same title'), null, 'a title two guards declare is nobody');
+  });
+
+  test('reattribute: an unattributed guard-test run moves to its guard; a merged PR is a catch, the rest stay listed', () => {
+    const root = rootWith();
+    assert.equal(yieldRun(r7Fixture('a title no test declares'), root).code, 0);
+    const doc = readDoc(root);
+    doc.unattributedRuns = [
+      { pr: 6, runId: 4001, signature: `guard-test:${BETA_TITLE}` },
+      { pr: 7, runId: 4002, signature: 'guard-test:still nobody' },
+    ];
+    doc.unattributed = 2;
+    doc.runs = { ...doc.runs, considered: 2 };
+    const attribution = { causes: CAUSES, testTitles: testTitleIndex([{ name: 'yield-beta.test.mjs', text: BETA_TEST }], INDEX) };
+    const { doc: next, moved } = reattribute(doc, INDEX, attribution, new Set([6]));
+    assert.equal(moved.length, 1);
+    assert.equal(next.unattributed, 1);
+    assert.equal(next.runs.attributed, doc.runs.attributed + 1);
+    assert.equal(next.perRef[BETA].catches, 1);
+    assert.equal(next.perRef[BETA].disposition, undefined);
+    assert.deepEqual(checkYield(next, INDEX).problems, []);
+  });
+
+  test(`R8 (B-3): asOf older than MAX_AGE_DAYS (${MAX_AGE_DAYS}) is exit 1; one day inside it is exit 0`, () => {
+    const root = writtenRoot();
+    const stale = check(root, '2026-10-21');
+    assert.equal(stale.code, 1, stale.out);
+    assert.match(stale.out, /asOf 2026-09-20 is 31 days old, past MAX_AGE_DAYS 30: the yield is due/);
+    assert.equal(check(root, '2026-10-20').code, 0);
+  });
+
+  test('R8: a --today before asOf is COVERAGE LOST, never a younger file; --today belongs to --check alone', () => {
+    const r = check(writtenRoot(), '2026-09-01');
+    assert.equal(r.code, 2, r.out);
+    assert.match(parseCli(['--sync', '--today', '2026-09-01']).error, /--today belongs to --check/);
+    assert.match(parseCli(['--check', '--today', 'soon']).error, /YYYY-MM-DD/);
+  });
+
+  test('loopProblems over the COMMITTED file on its own asOf day is empty — the real tree is classified and inside its limits', () => {
+    const doc = JSON.parse(readFileSync(join(REPO, YIELD_REL), 'utf8'));
+    const rows = JSON.parse(readFileSync(join(REPO, 'tooling', 'enforcement-index.json'), 'utf8'));
+    assert.deepEqual(loopProblems(doc, rows, doc.asOf), []);
   });
 });
 

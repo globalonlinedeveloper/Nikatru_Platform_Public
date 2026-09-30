@@ -594,8 +594,13 @@ function makeEnv(opts) {
         const tab = tabs.get(tabId);
         if (!tab) throw new Error('No tab with id: ' + tabId + '.');
         if (tab.blockInject) {
-          throw new Error('Cannot access contents of the page at "' + tab.url +
-            '". Extension manifest must request permission to access this host.');
+          /* Each engine's OWN wording. Gecko's is measured, not guessed:
+             test/e2e/gecko-capture.mjs asked Firefox 156.0.1 to inject into a
+             page its restrictedDomains keeps from extensions (2026-09-29, rv2
+             EXB-16) and it answered exactly this sentence. */
+          throw new Error(ENGINE === 'gecko' ? 'Missing host permission for the tab'
+            : 'Cannot access contents of the page at "' + tab.url +
+              '". Extension manifest must request permission to access this host.');
         }
         files.forEach(f => { if (tab.scripts.indexOf(f) < 0) tab.scripts.push(f); });
         return [{ frameId: 0, result: null }];
@@ -2667,6 +2672,31 @@ const quotaError = (message) => {
     check('every refusal is parked for the popup too', parked === FAMILIES.length, parked + '/' + FAMILIES.length);
   }
   {
+    /* rv2 EXB-16 (2026-09-29): the other two stores. Each blocks extensions from
+       its OWN pages in its OWN browser, so each is refused up front with its own
+       sentence there — and captured like any page everywhere else. */
+    const UA = {
+      edge: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 Edg/128.0.2739.42',
+      firefox: 'Mozilla/5.0 (X11; Linux x86_64; rv:156.0) Gecko/20100101 Firefox/156.0',
+      chrome: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.6613.120 Safari/537.36'
+    };
+    const EDGE_STORE = 'https://microsoftedge.microsoft.com/addons/detail/fullshot/abcdefghijklmnop';
+    const AMO_PAGE = 'https://addons.mozilla.org/en-US/firefox/addon/fullshot/';
+    for (const [url, ua, re] of [[EDGE_STORE, UA.edge, /Edge Add-ons blocks extensions/], [AMO_PAGE, UA.firefox, /Firefox Add-ons \(addons\.mozilla\.org\) blocks extensions/]]) {
+      const env = newEnv({ userAgent: ua });
+      const res = await startCapture(env, env.addTab({ url }).id, 'full');
+      check("a store page in its own browser is refused with that store's own sentence (" + url.split('/')[2] + ')',
+        res && res.ok === false && re.test(String(res.error)) && !env.injects.length, JSON.stringify(res) + ' injects ' + env.injects.length);
+      check('...never "reload the page", which cannot help there', !/Reload the page/.test(String(res && res.error)), String(res && res.error));
+    }
+    for (const [url, ua] of [[EDGE_STORE, UA.chrome], [AMO_PAGE, UA.chrome], [AMO_PAGE, UA.edge], [EDGE_STORE, UA.firefox]]) {
+      const env = newEnv({ userAgent: ua });
+      const res = await startCapture(env, env.addTab({ url }).id, 'full');
+      check('the same store page in ANOTHER browser is an ordinary page (' + url.split('/')[2] + ' under ' + (/Edg\//.test(ua) ? 'Edge' : /Firefox/.test(ua) ? 'Firefox' : 'Chrome') + ')',
+        res && res.ok === true && env.injects.length > 0, JSON.stringify(res));
+    }
+  }
+  {
     const env = newEnv();
     const tab = env.addTab({ url: undefined });
     const res = await startCapture(env, tab.id, 'full');
@@ -3512,6 +3542,10 @@ const quotaError = (message) => {
       ['errRestrictedViewSource', {}, async env => (await startCapture(env, env.addTab({ url: 'view-source:https://example.com/' }).id, 'full')).error],
       ['errRestrictedExtensionPage', {}, async env => (await startCapture(env, env.addTab({ url: 'moz-extension://abc/x.html' }).id, 'full')).error],
       ['errRestrictedWebstore', {}, async env => (await startCapture(env, env.addTab({ url: 'https://chromewebstore.google.com/detail/foo' }).id, 'full')).error],
+      ['errRestrictedEdgeAddons', { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 Edg/128.0.2739.42' },
+        async env => (await startCapture(env, env.addTab({ url: 'https://microsoftedge.microsoft.com/addons/detail/x/abc' }).id, 'full')).error],
+      ['errRestrictedAmo', { userAgent: 'Mozilla/5.0 (X11; Linux x86_64; rv:156.0) Gecko/20100101 Firefox/156.0' },
+        async env => (await startCapture(env, env.addTab({ url: 'https://addons.mozilla.org/en-US/firefox/' }).id, 'full')).error],
       ['errRestrictedGeneric', {}, async env => (await startCapture(env, env.addTab({ url: undefined }).id, 'full')).error],
       ['errBlocked', {}, async env => (await startCapture(env, env.addTab({ blockInject: true }).id, 'full')).error],
       ['errNoStart', { hooks: { inject: () => new Error('disk on fire') } }, async env => (await startCapture(env, env.addTab({}).id, 'full')).error],

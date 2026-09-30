@@ -2100,6 +2100,12 @@
   "errRestrictedWebstore": {
     "message": "Chrome Web Store не дозвољава екстензијама да читају његове странице, па ова страница не може да се сними."
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "Ову страницу штити прегледач и не може да се сними."
   },

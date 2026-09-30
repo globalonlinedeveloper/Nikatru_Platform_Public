@@ -1995,6 +1995,12 @@
   "errRestrictedWebstore": {
     "message": "De Chrome Web Store staat niet toe dat extensies zijn pagina's lezen, dus deze pagina kan niet worden vastgelegd."
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "Deze pagina wordt door de browser beschermd en kan niet worden vastgelegd."
   },

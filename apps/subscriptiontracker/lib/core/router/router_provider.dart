@@ -4,12 +4,15 @@
 // decision is in the file it came from.
 // ═══════════════════════════════════════════════════════════════════════════
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../state/notification_tap_observer.dart' show NotificationTapRouter;
 import '../../state/providers.dart';
 import 'gates.dart';
 import 'navigator_key.dart';
@@ -25,7 +28,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
   // ceiling (assert-chassis-parity). Marks the device once a session is seen.
   ref.watch(signedInBeforeKeeperProvider);
 
-  return GoRouter(
+  final GoRouter router = GoRouter(
     navigatorKey: rootNavigatorKey,
     // LIVE entry point kept. The stamp starts at '/', but Subly's first frame
     // is the onboarding carousel and three tests drive that assumption.
@@ -61,4 +64,16 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
     // file had, and `go_router` matches in declaration order.
     routes: <RouteBase>[...appRoutes(), appShellRoute()],
   );
+
+  // ST-R5 (audit C27): a tapped reminder opens the subscription it names —
+  // here because the router is what opens it and lives as long as the app
+  // (lib/app.dart is a chassis fork at its ceiling). The gate chain still runs
+  // on the way: a signed-out tap lands on sign-in first.
+  final NotificationTapRouter taps = NotificationTapRouter(
+    service: ref.read(notificationTapSourceProvider),
+    open: router.go,
+  );
+  unawaited(taps.start());
+  ref.onDispose(taps.stop);
+  return router;
 });

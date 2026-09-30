@@ -165,6 +165,18 @@ class _FakeNotifications implements core.NotificationService {
   @override
   Stream<core.NotificationTap> notificationTaps() => taps.stream;
 
+  @override
+  Future<void> scheduleAt(core.ScheduledNotification notification) async {}
+
+  @override
+  Future<void> reconcile(
+    List<core.ScheduledNotification> wanted, {
+    required bool Function(int id) owns,
+  }) async {}
+
+  @override
+  Future<core.NotificationTap?> takeLaunchTap() async => null;
+
   int requestPermissionCalls = 0;
 
   @override
@@ -3394,7 +3406,8 @@ void main() {
     testWidgets('a platform that cannot schedule still respects the opt-out', (
       WidgetTester tester,
     ) async {
-      await onPlatform(TargetPlatform.windows, () async {
+      // ⏱ 2026-09-28 (ST-R4): Linux, not Windows — Windows schedules now.
+      await onPlatform(TargetPlatform.linux, () async {
         final ProviderContainer c = _container(_MemStore());
         addTearDown(c.dispose);
 
@@ -3417,7 +3430,8 @@ void main() {
     testWidgets('dismissing it persists, and it does not come back today', (
       WidgetTester tester,
     ) async {
-      await onPlatform(TargetPlatform.windows, () async {
+      // ⏱ 2026-09-28 (ST-R4): Linux, not Windows — Windows schedules now.
+      await onPlatform(TargetPlatform.linux, () async {
         final _MemStore store = _MemStore();
         store.data['nikatru.reminders_enabled'] = 'true';
         final ProviderContainer c = _container(store);
@@ -3447,7 +3461,8 @@ void main() {
     testWidgets('it comes back for TOMORROW\'s reminder', (
       WidgetTester tester,
     ) async {
-      await onPlatform(TargetPlatform.windows, () async {
+      // ⏱ 2026-09-28 (ST-R4): Linux, not Windows — Windows schedules now.
+      await onPlatform(TargetPlatform.linux, () async {
         final _MemStore store = _MemStore();
         store.data['nikatru.reminders_enabled'] = 'true';
         store.data['nikatru.last_nudge_shown_at'] = DateTime(
@@ -5815,6 +5830,27 @@ class _FakeTapPlugin implements NotificationPlugin {
     String body,
     Object when,
   ) async {}
+
+  /// `Object when` for the reason [scheduleDaily] gives.
+  @override
+  Future<void> scheduleOnce(
+    int id,
+    String title,
+    String body,
+    Object when, {
+    required bool exact,
+    String? payload,
+    core.NotificationChannel? channel,
+  }) async {}
+
+  @override
+  Future<bool> canScheduleExact() async => false;
+
+  @override
+  Future<List<int>> pendingIds() async => const <int>[];
+
+  @override
+  Future<core.NotificationTap?> launchTap() async => null;
 
   @override
   Future<void> cancel(int id) async {}

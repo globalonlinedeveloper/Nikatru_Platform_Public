@@ -1890,6 +1890,12 @@
   "errRestrictedWebstore": {
     "message": "Chrome Web Store ไม่อนุญาตให้ส่วนขยายอ่านหน้าเว็บของตนเอง จึงจับภาพหน้านี้ไม่ได้"
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "หน้านี้ได้รับการป้องกันจากเบราว์เซอร์และจับภาพไม่ได้"
   },

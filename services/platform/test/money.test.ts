@@ -507,13 +507,16 @@ describe('[5]M-3 · the entitlement record is complete', () => {
 });
 
 describe('the money boundary FAILS CLOSED — undecidable ⇒ deny', () => {
-  it('a cancel with NO paid-through date is REFUSED, not read as a lifetime grant', async () => {
+  it('a winding-down status with NO paid-through date is REFUSED, not read as a lifetime grant', async () => {
     // The exact fail-open this session fixed on both ends: a missing/unreadable
     // end date spelled "no expiry", i.e. FOREVER. Here it must write nothing.
+    // ⏱ 2026-09-27: driven by `past_due`, which is `until_end`. It was driven by
+    // `canceled` until Paddle's own shape was read back: a real `canceled` body
+    // carries no period ever, and is decided by the case below.
     const { send, db } = harness();
     await send(subscriptionBody({ eventId: 'g', occurredAt: '2026-08-01T00:00:00.000Z', status: 'active', periodEnd: FUTURE, userId: USER, appId: APP }));
     const before = entRow(db);
-    const res = await send(subscriptionBody({ eventId: 'c', occurredAt: '2026-08-02T00:00:00.000Z', status: 'canceled', periodEnd: null }));
+    const res = await send(subscriptionBody({ eventId: 'c', occurredAt: '2026-08-02T00:00:00.000Z', status: 'past_due', periodEnd: null }));
     // 503, not 200: a refusal is not a conclusion, and only a non-200 makes
     // Paddle bring the notification back.
     expect(res.status).toBe(503);
@@ -562,6 +565,20 @@ describe('the money boundary FAILS CLOSED — undecidable ⇒ deny', () => {
     expect(db.count('entitlements')).toBe(0);
   });
 
+  it("a terminal 'canceled' with NO period (Paddle's real shape) ENDS access now — no refusal loop, no lifetime grant", async () => {
+    // developer.paddle.com: `current_billing_period` is "null for paused and
+    // canceled subscriptions", and a scheduled cancel keeps `active` until it takes
+    // effect. RED CONTROL on 646e00c1: this body answered 503 `refused` on every
+    // delivery and the row kept is_active = 1.
+    const { send, db } = harness();
+    await send(subscriptionBody({ eventId: 'g', occurredAt: '2026-08-01T00:00:00.000Z', status: 'active', periodEnd: FUTURE, userId: USER, appId: APP }));
+    const res = await send(subscriptionBody({ eventId: 'c', occurredAt: '2026-08-02T00:00:00.000Z', status: 'canceled', periodEnd: null, eventType: 'subscription.canceled' }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, derived: 'applied' });
+    expect(entRow(db)).toMatchObject({ is_active: 0, provider_status: 'canceled', revocation_reason: 'cancelled_at_period_end' });
+    expect(entRow(db).revoked_at).not.toBeNull();
+  });
+
   it("'canceled' with a FUTURE period end KEEPS access — cancel-at-period-end never revokes early", async () => {
     const { send, db } = harness();
     await send(subscriptionBody({ eventId: 'g', occurredAt: '2026-08-01T00:00:00.000Z', status: 'active', periodEnd: FUTURE, userId: USER, appId: APP }));
@@ -603,6 +620,50 @@ describe('refunds, chargebacks and the one path that gives access back', () => {
     expect(entRow(db).is_active).toBe(0);
     expect(entRow(db).revocation_reason).toBe('refund_approved');
     expect(entRow(db).revoked_at).not.toBeNull();
+  });
+
+  it('🔴 a LATER state notice for the REFUNDED period does not re-grant — the money went back', async () => {
+    // Paddle's `subscription.updated` fires for "scheduled changes being created"
+    // and billing-detail updates, and a refund leaves the subscription `active`.
+    // RED CONTROL on 646e00c1: the T3 notice below re-granted Pro (is_active 1).
+    const { send, db } = harness();
+    await grant(send);
+    await send(adjustmentBody({ eventId: 'r', occurredAt: '2026-08-02T00:00:00.000Z', action: 'refund' }));
+    const res = await send(subscriptionBody({ eventId: 'u', occurredAt: '2026-08-03T00:00:00.000Z', status: 'active', periodEnd: FUTURE }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, derived: 'ignored' });
+    expect(entRow(db)).toMatchObject({ is_active: 0, revocation_reason: 'refund_approved' });
+    const note = db.rows("SELECT derive_error, user_id FROM provider_notifications WHERE provider_event_id = 'u'")[0];
+    expect(String(note.derive_error)).toMatch(/^ignored: money_went_back/);
+    expect(note.user_id).toBe(USER);
+  });
+
+  it('the terminal cancel that follows a refund keeps the refund as the reason', async () => {
+    const { send, db } = harness();
+    await grant(send);
+    await send(adjustmentBody({ eventId: 'r', occurredAt: '2026-08-02T00:00:00.000Z', action: 'refund' }));
+    await send(subscriptionBody({ eventId: 'c', occurredAt: '2026-08-03T00:00:00.000Z', status: 'canceled', periodEnd: null }));
+    expect(entRow(db)).toMatchObject({ is_active: 0, revocation_reason: 'refund_approved' });
+  });
+
+  it('a NEW paid period after a refund grants — a later period end is a new payment', async () => {
+    const { send, db } = harness();
+    await grant(send);
+    await send(adjustmentBody({ eventId: 'r', occurredAt: '2026-08-02T00:00:00.000Z', action: 'refund' }));
+    const LATER = '2027-02-01T00:00:00.000Z';
+    await send(subscriptionBody({ eventId: 'n', occurredAt: '2026-08-04T00:00:00.000Z', status: 'active', periodEnd: LATER }));
+    expect(entRow(db)).toMatchObject({ is_active: 1, current_period_end: LATER });
+    expect(entRow(db).revocation_reason).toBeNull();
+  });
+
+  it('a chargeback holds the same way, and its reversal still restores', async () => {
+    const { send, db } = harness();
+    await grant(send);
+    await send(adjustmentBody({ eventId: 'cb', occurredAt: '2026-08-02T00:00:00.000Z', action: 'chargeback' }));
+    await send(subscriptionBody({ eventId: 'u', occurredAt: '2026-08-03T00:00:00.000Z', status: 'active', periodEnd: FUTURE }));
+    expect(entRow(db)).toMatchObject({ is_active: 0, revocation_reason: 'chargeback' });
+    await send(adjustmentBody({ eventId: 'cbr', occurredAt: '2026-08-04T00:00:00.000Z', action: 'chargeback_reverse' }));
+    expect(entRow(db)).toMatchObject({ is_active: 1, revocation_reason: 'chargeback_reversed' });
   });
 
   it('a PENDING refund changes nothing — a request that may still be rejected', async () => {

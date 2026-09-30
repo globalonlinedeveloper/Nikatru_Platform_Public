@@ -41,7 +41,7 @@ class _MemStore implements core.KeyValueStore {
 }
 
 /// Records every list the wiring hands to the OS-facing seams.
-class _RecordingNotificationService extends NotificationService {
+class _RecordingNotificationService extends RenewalReminders {
   _RecordingNotificationService() : super.forTesting();
 
   final List<List<Subscription>> synced = <List<Subscription>>[];
@@ -52,7 +52,7 @@ class _RecordingNotificationService extends NotificationService {
   Future<void> syncAll(
     List<Subscription> subs, {
     required ReminderCopy copy,
-    int daysBefore = 2,
+    ReminderRules rules = const ReminderRules(),
   }) async {
     synced.add(List<Subscription>.unmodifiable(subs));
   }
@@ -107,11 +107,24 @@ class _GatedApi implements ApiClient {
   @override
   Future<Subscription> getSubscription(String id) async =>
       subs.firstWhere((Subscription s) => s.id == id);
+
+  /// Applies the PATCH like the route does — `cancelSubscription` is a soft
+  /// delete (`deleted_at`) since ST-T3b, so a fake that ignored the body
+  /// would leave the row in every later fetch.
   @override
   Future<Subscription> updateSubscription(
     String id,
     Map<String, dynamic> changes,
-  ) async => subs.firstWhere((Subscription s) => s.id == id);
+  ) async {
+    final Subscription updated = subs
+        .firstWhere((Subscription s) => s.id == id)
+        .patched(changes);
+    subs = <Subscription>[
+      for (final Subscription s in subs) s.id == id ? updated : s,
+    ];
+    return updated;
+  }
+
   @override
   Future<void> deleteSubscription(String id) async {
     subs = subs.where((Subscription s) => s.id != id).toList();
@@ -141,9 +154,7 @@ ProviderContainer _container(
     overrides: <Override>[
       keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
       apiClientProvider.overrideWithValue(api),
-      subscriptiontrackerNotificationServiceProvider.overrideWithValue(
-        notifier,
-      ),
+      renewalRemindersProvider.overrideWithValue(notifier),
     ],
   );
   addTearDown(c.dispose);
@@ -267,9 +278,7 @@ void main() {
       overrides: <Override>[
         keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
         apiClientProvider.overrideWithValue(api),
-        subscriptiontrackerNotificationServiceProvider.overrideWithValue(
-          notifier,
-        ),
+        renewalRemindersProvider.overrideWithValue(notifier),
       ],
     );
     addTearDown(c.dispose);
@@ -282,14 +291,14 @@ void main() {
 }
 
 /// The desktop plugin as it was: a throw out of the schedule.
-class _ThrowingNotificationService extends NotificationService {
+class _ThrowingNotificationService extends RenewalReminders {
   _ThrowingNotificationService() : super.forTesting();
 
   @override
   Future<void> syncAll(
     List<Subscription> subs, {
     required ReminderCopy copy,
-    int daysBefore = 2,
+    ReminderRules rules = const ReminderRules(),
   }) async {
     throw UnimplementedError('zonedSchedule() has not been implemented');
   }

@@ -58,13 +58,13 @@ class SocketFailure implements Exception {
   String toString() => 'SocketException: Failed host lookup';
 }
 
-class _SilentNotifications extends NotificationService {
+class _SilentNotifications extends RenewalReminders {
   _SilentNotifications() : super.forTesting();
   @override
   Future<void> syncAll(
     List<Subscription> subs, {
     required ReminderCopy copy,
-    int daysBefore = 2,
+    ReminderRules rules = const ReminderRules(),
   }) async {}
   @override
   Future<void> cancelAll() async {}
@@ -83,9 +83,7 @@ Widget _app(void Function(BuildContext) open) {
     overrides: <Override>[
       keyValueStoreProvider.overrideWith((Ref ref) async => _MemStore()),
       subscriptionRepositoryProvider.overrideWithValue(_WriteFailsRepository()),
-      subscriptiontrackerNotificationServiceProvider.overrideWithValue(
-        _SilentNotifications(),
-      ),
+      renewalRemindersProvider.overrideWithValue(_SilentNotifications()),
     ],
     // 🔴 THE DELEGATES ARE NOT DECORATION — WITHOUT THEM THIS HOST THROWS.
     // `l10n.yaml` sets `nullable-getter: false`, so the generated
@@ -129,9 +127,7 @@ Widget _appScaled(void Function(BuildContext) open, double scale) {
     overrides: <Override>[
       keyValueStoreProvider.overrideWith((Ref ref) async => _MemStore()),
       subscriptionRepositoryProvider.overrideWithValue(_WriteFailsRepository()),
-      subscriptiontrackerNotificationServiceProvider.overrideWithValue(
-        _SilentNotifications(),
-      ),
+      renewalRemindersProvider.overrideWithValue(_SilentNotifications()),
     ],
     child: MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -214,23 +210,32 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byKey(E2EKeys.addName), 'Hulu');
+    // ST-T3b (ST-E2): Add waits for a real price — a blank one used to save
+    // as 9.99 — so the failure path is reached with one typed.
+    await tester.enterText(find.byKey(E2EKeys.addPrice), '7.99');
     await tester.pumpAndSettle();
 
     final Finder submit = find.byKey(E2EKeys.addSubmit);
     await tester.ensureVisible(submit);
     await tester.pumpAndSettle();
     await tester.tap(submit);
-    // `pump()` with no duration runs NO timers, and the SnackBar needs them.
     await tester.pumpAndSettle();
 
     // 1. The error did not escape as an unhandled async error.
     expect(tester.takeException(), isNull);
-    // 2. The user is told.
-    expect(find.byType(SnackBar), findsOneWidget);
+    // 2. The user is told — ON the sheet (train ST-D6). The SnackBar this was
+    //    lands on the scaffold under the modal barrier; the banner is the
+    //    sheet's own danger strip, so the message is where the user looks.
+    final Finder banner = find.byKey(E2EKeys.addBanner);
+    expect(banner, findsOneWidget);
     expect(
-      find.textContaining('Could not add that subscription'),
+      find.descendant(
+        of: banner,
+        matching: find.textContaining('Could not add that subscription'),
+      ),
       findsOneWidget,
     );
+    expect(find.byType(SnackBar), findsNothing);
     // 3. The button is usable again and the typed draft survived, so a retry is
     //    one tap rather than a re-entry.
     expect(find.text('Adding…'), findsNothing);
@@ -262,7 +267,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.byType(SnackBar), findsOneWidget);
+    // ⏱ train ST-D7: said ON the sheet (its inline failure strip), no longer
+    // in a snack bar the root-mounted sheet's scrim drew over.
+    expect(find.byKey(E2EKeys.cancelFailure), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
     expect(find.textContaining('Could not remove it just now'), findsOneWidget);
     // 🔴 The confirmation step congratulates the user on savings. Showing it
     // after a failed cancel would be a lie the app tells about the user's money.

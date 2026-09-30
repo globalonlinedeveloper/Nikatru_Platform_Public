@@ -1995,6 +1995,12 @@
   "errRestrictedWebstore": {
     "message": "فروشگاه وب کروم اجازه نمی‌دهد افزونه‌ها صفحه‌هایش را بخوانند، بنابراین این صفحه قابل ثبت نیست."
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "این صفحه توسط مرورگر محافظت می‌شود و قابل ثبت نیست."
   },

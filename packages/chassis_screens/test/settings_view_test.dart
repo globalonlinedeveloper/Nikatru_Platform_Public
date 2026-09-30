@@ -233,6 +233,13 @@ void main() {
         find.byKey(SettingsView.contactSupportTile),
         200,
       );
+      // …and FULLY on screen, for the reason `tapReaches` below records:
+      // `scrollUntilVisible` stops once the row is BUILT. Measured 2026-09-28
+      // (train ST-D4): with the rows grouped into cards the tile was built in
+      // the cache extent with its centre at y == 1124 on a 1080 window, the
+      // tap landed outside the render tree and this passed only by luck before.
+      await tester.ensureVisible(find.byKey(SettingsView.contactSupportTile));
+      await tester.pump();
       expect(find.text('support@example.com'), findsOneWidget);
       await tester.tap(find.byKey(SettingsView.contactSupportTile));
       expect(mailed, isTrue);

@@ -125,6 +125,18 @@
 // this machine's state; it is not one of the guards the smoke's verdict counts,
 // and a red one refuses the push after the smoke has printed.
 //
+// 🔴 2026-09-29 — EVERY ci-gate NEED IS A LEG OR A REASON (A-3, and row
+// O-PRE-PUSH-RUNS-NO-CI-GATE-LEG's `closes`). The full run reproduced only the guard
+// jobs, and a node-only step outside tooling/ci — content_pipeline's suites, the
+// extensions-ci checks, the store dry runs — ran nowhere before CI. Now CI_GATE_LEGS
+// names the legs that run each need it reproduces, NOT_REPRODUCIBLE gives each other
+// need its reason, and `ciGateCoverage` holds both to ci-gate's needs AS PARSED: a
+// need in neither list, or an entry that is no longer a need, stops the full run
+// before any leg (exit 2). The run ends with a measured CI-GATE COVERAGE line. The
+// hooks are checked too — a loud warning when core.hooksPath is not this tree's
+// .githooks — and --smoke's budget has a floor (SMOKE_BUDGET_FLOOR_S), so a tiny
+// NIKATRU_SMOKE_BUDGET_S can no longer cut most guards and pass the push (A-7).
+//
 // Usage:  node tooling/scripts/preflight.mjs [--fast] [--sweep-only] [--untracked-only] [--base <ref>] [--lock-wait <min>]
 //         node tooling/scripts/preflight.mjs --smoke [--sha <rev>] [--base <ref>]
 //         --fast skips the stamped-app leg (mason + flutter analyze), which is
@@ -145,11 +157,13 @@
 //         2 = a usage error, or COVERAGE LOST: the heavy-run lock or the backup
 //             did not free up within --lock-wait, and no heavy leg ran; or ci.yml's
 //             ci-gate needs could not be read, so no NOT CI-GATE line can be
-//             generated; or (--smoke) the commit could not be checked out
+//             generated; or a need is in neither CI_GATE_LEGS nor NOT_REPRODUCIBLE,
+//             or an entry is not a need; or (--smoke) the commit could not be
+//             checked out, or NIKATRU_SMOKE_BUDGET_S is under the floor
 // ─────────────────────────────────────────────────────────────────────────────
 import { spawnSync } from 'node:child_process';
 import { existsSync, rmSync, readFileSync, mkdtempSync, openSync, closeSync } from 'node:fs';
-import { resolve, dirname, join } from 'node:path';
+import { resolve, dirname, join, posix } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 // The ONE workflow parse (tooling/workflow-readers.json): ci-gate's needs, for the NOT CI-GATE line.
@@ -160,7 +174,7 @@ const FAST = process.argv.includes('--fast');
 const SWEEP_ONLY = process.argv.includes('--sweep-only');
 const UNTRACKED_ONLY = process.argv.includes('--untracked-only');
 const SMOKE = process.argv.includes('--smoke');
-const SWEEP_LEG = 'guard sweep (every guard run or explained; reds judged against main)';
+export const SWEEP_LEG = 'guard sweep (every guard run or explained; reds judged against main)';
 const UNTRACKED_LEG = 'no untracked files (the index CI commits is the index the guards read)';
 /** Imported by tooling/ci/test/preflight-sweep-regression.test.mjs for its
  *  exports; only a direct `node preflight.mjs` runs the legs. */
@@ -601,25 +615,266 @@ export function notCiGateLine({ needs, doc, besides = [] }) {
   for (const row of all.filter((r) => !ran(r))) notRun[row.verdict] = (notRun[row.verdict] ?? 0) + 1;
   const notRunText = Object.entries(notRun).map(([k, v]) => `${v} ${k}`).join(' · ') || 'none';
   const tail = besides.length
-    ? `Besides guards this run ran ${besides.length} other leg(s); every build, upload and runner-only step of those jobs is CI's alone.`
+    ? `Besides guards this run ran ${besides.length} other leg(s); the CI-GATE COVERAGE lines above name the need each reaches, and every step of those jobs that no leg runs is CI's alone.`
     : 'Only tooling/ci guards ran here; every build, test suite, upload and runner-only step of those jobs is CI\'s alone.';
   return `⬜ NOT CI-GATE — ci-gate needs ${needs.length} job(s) in ${CI_WORKFLOW}. This run ran ${all.filter(ran).length} of the ` +
     `${all.length} tooling/ci guard(s) they invoke (not run: ${notRunText}) and reached ${reached.length} of the ${needs.length}. ` +
     `No guard ran for: ${unreached.join(', ') || '(none)'}. ${tail}`;
 }
 
+// ── what this run IS: every ci-gate need, a leg or a reason (2026-09-29) ─────
+
+export const GUARD_SUITES_LEG = 'guard suites (whole glob, as ci.yml runs it)';
+export const FORMAT_LEG = 'format drift in tracked Dart (fails on CI-gated paths, prints the rest)';
+export const CITATIONS_LEG = 'sworn store citations (re-checked AFTER format)';
+export const STAMP_LEG = 'stamped probe (mason + dart format + app DoD)';
+export const CONTENT_LEG = 'content pipeline (its suites, then validate + build the example pack)';
+export const EXTENSIONS_LEG = "extensions (extensions-ci.yml's node-only checks)";
+export const DRYRUN_LEG = 'store submission dry runs (every app prepare derives)';
+export const SECURITY_LEG = 'secret and workflow scanners (gitleaks / zizmor from PATH)';
+
+/** Each ci-gate need this run REPRODUCES: the legs that run its substance, and
+ *  what of the job stays CI's. A need is in exactly one of this table and
+ *  NOT_REPRODUCIBLE, and `ciGateCoverage` refuses the run otherwise. */
+export const CI_GATE_LEGS = {
+  'guard-meta': { legs: [GUARD_SUITES_LEG, SWEEP_LEG], ciOnly: 'the junit reporter and its artifact upload' },
+  'guards-platform': { legs: [SWEEP_LEG], ciOnly: 'nothing' },
+  'guards-legal': { legs: [SWEEP_LEG], ciOnly: 'nothing' },
+  'guards-store': { legs: [SWEEP_LEG, CITATIONS_LEG], ciOnly: 'the discovery-surface generation step' },
+  'guards-chassis': { legs: [SWEEP_LEG], ciOnly: 'nothing' },
+  'content-gate': { legs: [CONTENT_LEG, SWEEP_LEG], ciOnly: 'nothing' },
+  sites: { legs: [SWEEP_LEG], ciOnly: 'the delete-regenerate-diff steps for the feed and the render payload, and regen --check' },
+  prepare: { legs: [DRYRUN_LEG], ciOnly: 'nothing' },
+  'app-dryrun': { legs: [DRYRUN_LEG], ciOnly: 'nothing' },
+  extensions: { legs: [EXTENSIONS_LEG], ciOnly: 'the per-tool gates / sims / package matrix, the templates probe and Playwright tier, the hang-guard test, the catalogue publish-and-diff and the e2e proof-freshness check' },
+  'security-scan': { legs: [SECURITY_LEG], ciOnly: "OSV-Scanner and Trivy, and the pinned scanner versions (this run uses PATH's)" },
+  'app-brick': { legs: [STAMP_LEG], ciOnly: 'flutter analyze / test / build web of both stamps, the backend stamp, its Worker (npm, tsc, wrangler) and the RED CONTROL mutations' },
+};
+
+/** Each ci-gate need this run does NOT reproduce, and why. A reason is a fact
+ *  about this machine or this script, never "slow". */
+export const NOT_REPRODUCIBLE = {
+  'lane-workers': "each Worker's own `npm ci` (a network install into services/<worker>), then tsc, its suite and two `wrangler deploy --dry-run`s — this script installs nothing",
+  'site-tokens': '`npm ci` into packages/tokens (a network install), then a build that rewrites three tracked files — this script installs nothing',
+  'site-shared': '`npm ci` into sites/_shared (a network install), then the site build — this script installs nothing',
+  'workspace-gate': 'melos run analyze + melos run test over the whole Flutter workspace, flutter gen-l10n and a Chrome `dart test -p chrome` — Flutter and a browser; its format step is the format-drift leg and its node guards run in the sweep',
+  'android-artifacts': 'a release Android build needs the Android SDK and a JVM, and the Windows host cannot run the JVM (docs/environment.md: a JVM defect, not Gradle)',
+  'web-artifacts': 'a release `flutter build web` per app, then a boot of the bundle — the Flutter toolchain building artifacts, not a check',
+  'linux-artifacts': 'a release Linux build needs apt build packages (clang, cmake, GTK) and builds in WSL, never on the Windows host (docs/environment.md)',
+};
+
+/** The coverage table, judged against ci-gate's REAL needs (ciGateNeeds().needs).
+ *  Pure. Returns { ok: true } or { ok: false, problems: [sentence] }:
+ *    · a need in neither list — this run would say nothing about it;
+ *    · a need in both — the two sentences contradict each other;
+ *    · an entry that is not a need — stale, and it counts a job ci-gate dropped;
+ *    · a reproduced need with no leg, or a not-reproducible one with no reason. */
+export function ciGateCoverage(needs, legs = CI_GATE_LEGS, notReproducible = NOT_REPRODUCIBLE) {
+  const problems = [];
+  const want = new Set(needs);
+  for (const need of needs) {
+    const inLegs = Object.hasOwn(legs, need);
+    const inNr = Object.hasOwn(notReproducible, need);
+    if (!inLegs && !inNr) problems.push(`ci-gate needs \`${need}\`, which is in neither CI_GATE_LEGS nor NOT_REPRODUCIBLE — add the leg that runs it, or the reason it cannot run here`);
+    if (inLegs && inNr) problems.push(`\`${need}\` is in both CI_GATE_LEGS and NOT_REPRODUCIBLE — it is one or the other`);
+  }
+  for (const [name, list] of [['CI_GATE_LEGS', legs], ['NOT_REPRODUCIBLE', notReproducible]]) {
+    for (const key of Object.keys(list)) {
+      if (!want.has(key)) problems.push(`${name} names \`${key}\`, which is not a ci-gate need (stale — remove it)`);
+    }
+  }
+  for (const [need, e] of Object.entries(legs)) {
+    if (!Array.isArray(e?.legs) || e.legs.length === 0) problems.push(`CI_GATE_LEGS \`${need}\` names no leg`);
+  }
+  for (const [need, why] of Object.entries(notReproducible)) {
+    if (typeof why !== 'string' || !why.trim()) problems.push(`NOT_REPRODUCIBLE \`${need}\` gives no reason`);
+  }
+  return problems.length ? { ok: false, problems } : { ok: true };
+}
+
+/** THE CI-GATE COVERAGE LINE, measured from what this run did. `ran` is the set
+ *  of leg names that ran; `skipped` maps a leg that did not run to why. A need
+ *  is RUN HERE only when every one of its legs ran. */
+export function ciGateCoverageLine({ needs, ran, skipped = new Map(), legs = CI_GATE_LEGS, notReproducible = NOT_REPRODUCIBLE }) {
+  const here = [];
+  const notNow = [];
+  const nr = [];
+  for (const need of needs) {
+    if (Object.hasOwn(notReproducible, need)) { nr.push(`${need} — ${notReproducible[need]}`); continue; }
+    const missing = (legs[need]?.legs ?? []).filter((l) => !ran.has(l));
+    if (missing.length === 0) here.push(need);
+    else notNow.push(`${need} — ${missing.map((l) => `${l}: ${skipped.get(l) ?? 'did not run'}`).join('; ')}`);
+  }
+  return [
+    `⬜ CI-GATE COVERAGE — ci-gate needs ${needs.length} · run here ${here.length} · not run this time ${notNow.length} · not reproducible ${nr.length}`,
+    `   run here: ${here.join(', ') || '(none)'}`,
+    ...(notNow.length ? [`   not run this time: ${notNow.join(' · ')}`] : []),
+    ...nr.map((l) => `   not reproducible: ${l}`),
+  ].join('\n');
+}
+
+/** The first `bin` on env.PATH (PATHEXT on Windows), or null. */
+export function onPath(bin, env = process.env) {
+  const exts = process.platform === 'win32' ? (env.PATHEXT ?? '.EXE;.CMD;.BAT').split(';').concat('') : [''];
+  for (const dir of String(env.PATH ?? '').split(process.platform === 'win32' ? ';' : ':').filter(Boolean)) {
+    for (const ext of exts) {
+      const p = join(dir, bin + ext);
+      if (existsSync(p)) return p;
+    }
+  }
+  return null;
+}
+
+/** The node-only commands a leg runs, as ci.yml's steps run them: `cwd` is the
+ *  step's working directory, `subject` the file or directory (under cwd) that
+ *  must exist — a missing one FAILS the leg, never skips it. `{TMP}` is a fresh
+ *  temp directory; `{app}` is each app prepare derives. */
+export const LEG_COMMANDS = {
+  [CONTENT_LEG]: [
+    { cwd: '.', subject: 'tooling/content_pipeline/test', args: ['--import', './tooling/scripts/spawn-ceiling.mjs', '--test-timeout=600000', '--test', 'tooling/content_pipeline/test/*.test.mjs'] },
+    { cwd: '.', subject: 'tooling/content_pipeline/cli.mjs', args: ['tooling/content_pipeline/cli.mjs', 'validate', '--recipe', 'tooling/content_pipeline/examples/lingo-phrases/recipe.json'] },
+    { cwd: '.', subject: 'tooling/content_pipeline/cli.mjs', args: ['tooling/content_pipeline/cli.mjs', 'build', '--recipe', 'tooling/content_pipeline/examples/lingo-phrases/recipe.json', '--out', '{TMP}/pack', '--test-key'] },
+  ],
+  [EXTENSIONS_LEG]: [
+    { cwd: '.', subject: 'contracts/entitlement/generate.mjs', args: ['contracts/entitlement/generate.mjs', '--check'] },
+    { cwd: '.', subject: 'contracts/entitlement/generate-dart.mjs', args: ['contracts/entitlement/generate-dart.mjs', '--check'] },
+    { cwd: '.', subject: 'contracts/entitlement/generate-bundle.mjs', args: ['contracts/entitlement/generate-bundle.mjs', '--check'] },
+    { cwd: 'extensions', subject: 'scripts/discover.mjs', args: ['scripts/discover.mjs', '--assert-generic'] },
+    { cwd: 'extensions', subject: 'scripts/secret-scan.mjs', args: ['scripts/secret-scan.mjs', '.'] },
+    { cwd: 'extensions', subject: 'scripts/check-catalog.mjs', args: ['scripts/check-catalog.mjs'] },
+    { cwd: 'extensions', subject: 'scripts/gen-catalog.mjs', args: ['scripts/gen-catalog.mjs', '--check'] },
+    { cwd: 'extensions', subject: 'scripts/render-extension-graphics.mjs', args: ['--single-threaded', 'scripts/render-extension-graphics.mjs', '--all', '--check'] },
+    { cwd: 'extensions', subject: 'scripts/check-contracts-sync.mjs', args: ['scripts/check-contracts-sync.mjs'] },
+    { cwd: 'extensions', subject: 'scripts/test/contracts-sync.test.mjs', args: ['--import', '../tooling/scripts/spawn-ceiling.mjs', '--test-timeout=600000', '--test', 'scripts/test/contracts-sync.test.mjs'] },
+    { cwd: 'extensions', subject: 'scripts/test/listing-assets.test.mjs', args: ['--import', '../tooling/scripts/spawn-ceiling.mjs', '--test-timeout=600000', '--test', 'scripts/test/listing-assets.test.mjs'] },
+    { cwd: 'extensions', subject: 'scripts/test/selftest.node.js', args: ['--single-threaded', 'scripts/test/selftest.node.js'] },
+    { cwd: 'extensions', subject: 'scripts/test/amo-gate-zip.test.mjs', args: ['--import', '../tooling/scripts/spawn-ceiling.mjs', '--test-timeout=600000', '--test', 'scripts/test/amo-gate-zip.test.mjs'] },
+  ],
+  // prepare's one step, then app-dryrun's five, per app.
+  [DRYRUN_LEG]: [
+    { cwd: '.', subject: 'tooling/ci/assert-release-lane-generic.mjs', args: ['tooling/ci/assert-release-lane-generic.mjs', '--emit-apps'], emitsApps: true },
+    { cwd: '.', subject: 'tooling/release/submit-windows-store.mjs', args: ['tooling/release/submit-windows-store.mjs', '--dry-run', '--app', '{app}', '--allow-missing-artifact'] },
+    { cwd: '.', subject: 'tooling/release/submit-appstore.mjs', args: ['tooling/release/submit-appstore.mjs', '--dry-run', '--channel', 'ios-appstore', '--app', '{app}', '--allow-missing-artifact'] },
+    { cwd: '.', subject: 'tooling/release/submit-appstore.mjs', args: ['tooling/release/submit-appstore.mjs', '--dry-run', '--channel', 'macos-appstore', '--app', '{app}', '--allow-missing-artifact'] },
+    { cwd: '.', subject: 'tooling/release/submit-snap.mjs', args: ['tooling/release/submit-snap.mjs', '--dry-run', '--app', '{app}', '--allow-missing-artifact'] },
+    { cwd: '.', subject: 'tooling/release/submit-play.mjs', args: ['tooling/release/submit-play.mjs', '--dry-run', '--app', '{app}', '--allow-missing-artifact'] },
+  ],
+};
+
+/** security-scan's two scanners that run from a binary on PATH. CI installs a
+ *  PINNED version (install-pinned-tool.mjs, a download); this script downloads
+ *  nothing, so it runs the scanner only when this machine already has one. */
+export const SECURITY_SCANNERS = [
+  { bin: 'gitleaks', script: 'tooling/ci/scan-secrets.mjs', flag: '--gitleaks' },
+  { bin: 'zizmor', script: 'tooling/ci/scan-workflows.mjs', flag: '--zizmor' },
+];
+
+/** Run a LEG_COMMANDS list from `root`. Returns { code, out }: 0 when every
+ *  command exits 0; 1 on a red one, a missing subject, or (the dry runs)
+ *  prepare's app list unreadable or empty — "no app" must not read as "every
+ *  app walked". */
+export function commandLeg(commands, { root = ROOT } = {}) {
+  const tmp = mkdtempSync(join(tmpdir(), 'preflight-cmd-'));
+  const lines = [];
+  let code = 0;
+  let apps = null;
+  try {
+    for (const c of commands) {
+      const cwd = join(root, c.cwd);
+      if (!existsSync(join(cwd, c.subject))) {
+        lines.push(`✗ ${posix.join(c.cwd, c.subject)} does not exist — this leg reproduces a step CI runs, and its subject is gone`);
+        code = 1;
+        continue;
+      }
+      const each = c.args.some((a) => a.includes('{app}')) ? (apps ?? []) : [null];
+      if (each.length === 0) continue;
+      for (const app of each) {
+        const argv = c.args.map((a) => a.replaceAll('{TMP}', tmp).replaceAll('{app}', app ?? ''));
+        const r = exec(process.execPath, argv, { cwd });
+        const shown = `(${c.cwd}) node ${argv.join(' ').replaceAll(tmp, '<tmp>')}`;
+        if (r.status !== 0) {
+          code = 1;
+          lines.push(`✗ exit ${r.status ?? `none (${r.error?.code ?? 'killed'})`}  ${shown}`, ...String(r.out ?? '').trim().split(/\r?\n/).slice(-15).map((l) => `      ${l}`));
+          continue;
+        }
+        lines.push(`ok  ${shown}`);
+        if (c.emitsApps) {
+          try { apps = JSON.parse(String(r.out).trim().split(/\r?\n/).pop()); } catch { apps = null; }
+          if (!Array.isArray(apps) || apps.length === 0 || !apps.every((a) => typeof a === 'string' && a)) {
+            lines.push(`✗ COVERAGE LOST — ${c.subject} --emit-apps gave no app list (${firstLine(r.out) || '(no output)'}), so no dry run walked`);
+            return { code: 1, out: lines.join('\n') };
+          }
+        }
+      }
+    }
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch {}
+  }
+  return { code, out: lines.join('\n') };
+}
+
+/** security-scan's leg. { skip: reason } when neither scanner is on PATH, so
+ *  the coverage line says so; otherwise { code, out } over the ones present,
+ *  with a ⬜ line naming any absent one. */
+export function securityLeg({ root = ROOT, env = process.env, scanners = SECURITY_SCANNERS } = {}) {
+  const found = scanners.map((s) => ({ ...s, path: onPath(s.bin, env) }));
+  if (found.every((s) => !s.path)) return { skip: `none of ${scanners.map((s) => s.bin).join(', ')} is on PATH` };
+  const lines = [];
+  let code = 0;
+  for (const s of found) {
+    if (!s.path) { lines.push(`⬜ ${s.bin} is not on PATH — ${s.script} NOT run here; CI runs it with the pinned binary`); continue; }
+    const r = exec(process.execPath, [join(root, s.script), root, s.flag, s.path], { cwd: root });
+    if (r.status !== 0) code = 1;
+    lines.push(`${r.status === 0 ? 'ok ' : `✗ exit ${r.status}`} ${s.script} ${s.flag} ${s.path}`, ...(r.status === 0 ? [] : String(r.out ?? '').trim().split(/\r?\n/).slice(-15).map((l) => `      ${l}`)));
+  }
+  return { code, out: lines.join('\n') };
+}
+
+/** Are this checkout's git hooks installed? `value` / `status` are `git config
+ *  --get core.hooksPath`'s output and exit (1 = unset). Pure. Installed means
+ *  what tooling/scripts/install-hooks.mjs writes: a hooksPath resolving (from the
+ *  work tree, as git resolves a relative one) to this tree's .githooks, holding
+ *  pre-commit and pre-push. Returns { ok: true } or { warning }. */
+export function hooksVerdict({ value, status, root = ROOT, exists = existsSync }) {
+  const fix = 'run `node tooling/scripts/install-hooks.mjs`';
+  if (status !== 0 && status !== 1) return { warning: `could not read core.hooksPath (git exit ${status}) — whether the spec guards run on commit and push is unknown; ${fix}` };
+  const v = String(value ?? '').trim();
+  if (status === 1 || !v) return { warning: `core.hooksPath is unset — no spec guard runs on commit, and no ci-gate smoke on push; ${fix}` };
+  const dir = resolve(root, v);
+  const missing = ['pre-commit', 'pre-push'].filter((h) => !exists(join(dir, h)));
+  if (resolve(dir) !== resolve(root, '.githooks')) return { warning: `core.hooksPath is \`${v}\`, not this tree's .githooks; ${fix}` };
+  if (missing.length) return { warning: `core.hooksPath \`${v}\` holds no ${missing.join(' or ')}; ${fix}` };
+  return { ok: true };
+}
+
+export function hooksInstalled({ root = ROOT } = {}) {
+  const r = exec('git', ['config', '--get', 'core.hooksPath'], { cwd: root, timeout: 30_000 });
+  return hooksVerdict({ value: r.out, status: r.status, root });
+}
+
 // ── --smoke: the pre-push leg (2026-09-24, see the header) ──────────────────
 
 export const SMOKE_BUDGET_ENV = 'NIKATRU_SMOKE_BUDGET_S';
 export const SMOKE_BUDGET_DEFAULT_S = 60;
+/** ⏱ 2026-09-29 — THE FLOOR. The budget starts no guard once it is spent, and a
+ *  cut guard is not run, not red and not a failure, so `NIKATRU_SMOKE_BUDGET_S=1`
+ *  was a smoke that ran a guard or two and let the push through green. Below the
+ *  floor it refuses (exit 2). MEASURED 2026-09-29, one full guard-sweep --times
+ *  on a Linux checkout, cumulative in the sweep's order: 5 s ran 5 guards reaching
+ *  3 ci-gate needs, 10 s the same, 20 s ran 38 reaching 12 — the 12 the 60 s
+ *  default reaches too (73 guards). 20 s is where the needs a smoke reaches stop
+ *  growing; below it, whole jobs go unreached. */
+export const SMOKE_BUDGET_FLOOR_S = 20;
 
-/** The smoke's sweep budget in ms: $NIKATRU_SMOKE_BUDGET_S seconds, default 60.
- *  Returns { ms } or { error } — a value that is set and unusable refuses. */
+/** The smoke's sweep budget in ms: $NIKATRU_SMOKE_BUDGET_S seconds, default 60,
+ *  never below SMOKE_BUDGET_FLOOR_S. Returns { ms } or { error } — a value that
+ *  is set and unusable, or under the floor, refuses. */
 export function smokeBudgetMs(env = process.env) {
   const v = env[SMOKE_BUDGET_ENV];
   if (v === undefined || v === '') return { ms: SMOKE_BUDGET_DEFAULT_S * 1000 };
   const n = Number(v);
   if (!Number.isFinite(n) || n <= 0) return { error: `${SMOKE_BUDGET_ENV}=\`${v}\` is not a positive number of seconds` };
+  if (n < SMOKE_BUDGET_FLOOR_S) return { error: `${SMOKE_BUDGET_ENV}=\`${v}\` is under the ${SMOKE_BUDGET_FLOOR_S} s floor — a budget that small cuts most of ci-gate's guards and the smoke still passes` };
   return { ms: Math.round(n * 1000) };
 }
 
@@ -697,7 +952,37 @@ if (IS_MAIN && SMOKE) {
   process.exit(r.code || h.code);
 }
 
+// ── the full run's preconditions: its coverage table, and the hooks (2026-09-29) ──
+// 🔴 A ci-gate need in neither CI_GATE_LEGS nor NOT_REPRODUCIBLE, or an entry
+// ci-gate no longer needs, stops the run BEFORE any leg (exit 2): the coverage
+// line it ends with would otherwise be silent about a job, or count a dead one.
+// Only the full run claims coverage; --smoke, --sweep-only and --untracked-only
+// print no coverage line and are not held to the table.
+let GATE = null;
+if (IS_MAIN && !UNTRACKED_ONLY && !SWEEP_ONLY) {
+  GATE = ciGateNeeds(ROOT);
+  const cov = GATE.error ? { ok: false, problems: [GATE.error] } : ciGateCoverage(GATE.needs);
+  if (!cov.ok) {
+    console.log(`🔴 COVERAGE LOST — preflight's ci-gate coverage table does not match ${CI_WORKFLOW}:`);
+    for (const p of cov.problems) console.log(`   · ${p}`);
+    console.log('preflight: STOPPED before the first leg — exit 2: this run could not say what of ci-gate it covers.');
+    process.exit(2);
+  }
+  // ⚠️ A WARNING, NOT A FAILURE. The hooks are this MACHINE's config, which no CI
+  // job sees; this script's verdict is about the TREE, and a fresh clone or a
+  // throwaway repository is not a red tree. `install-hooks.mjs --check` is the
+  // failing check. Skipped with CI set: a hosted runner has no hooks.
+  if (!process.env.CI) {
+    const hk = hooksInstalled();
+    if (hk.warning) console.log(`⚠️ HOOKS NOT INSTALLED — ${hk.warning}.`);
+    GATE.hooks = hk;
+  }
+}
+
 const results = [];
+/** Legs that did not run this time, and why — the coverage line names them. */
+const skippedLegs = new Map();
+if (FAST) skippedLegs.set(STAMP_LEG, '--fast skips it');
 function step(name, why, fn) {
   // Imported for its exports (the test suite), or --sweep-only / --untracked-only
   // for another leg: run nothing. The untracked leg runs under --sweep-only too.
@@ -713,7 +998,13 @@ function step(name, why, fn) {
   let code;
   let out;
   try {
-    ({ code, out } = fn());
+    const r = fn();
+    if (r?.skip) {
+      skippedLegs.set(name, r.skip);
+      process.stdout.write(`skip ${name} — ${r.skip}\n`);
+      return;
+    }
+    ({ code, out } = r);
   } catch (e) {
     code = 1;
     out = `🔴 THE LEG THREW instead of returning a verdict — graded as a failure:\n${e?.stack ?? e}`;
@@ -811,7 +1102,7 @@ try {
 // ── 1 · the guard test suite, THE WHOLE GLOB ────────────────────────────────
 // 🔴 THE GLOB, NOT A FILE. Running one suite is how 4358 tests reported as 323.
 step(
-  'guard suites (whole glob, as ci.yml runs it)',
+  GUARD_SUITES_LEG,
   'ci.yml runs `node --test "tooling/ci/test/*.test.mjs"`. Running a single file is a SUBSET and hides every other suite.',
   // The same preload and ceilings as ci.yml (tooling/scripts/spawn-ceiling.mjs);
   // on a slower host set NIKATRU_SPAWN_CEILING_MS rather than drop the preload.
@@ -832,6 +1123,31 @@ step(
     sweepDoc = r.doc ?? null;
     return r;
   },
+);
+
+// ── 2b · the node-only steps of the other ci-gate needs (2026-09-29) ────────
+// See CI_GATE_LEGS. Each runs a step ci.yml (or extensions-ci.yml) runs, with
+// the same working directory and arguments; none installs, downloads or writes
+// the tree (the example pack is built into a temp directory).
+step(
+  CONTENT_LEG,
+  "content-gate runs the pipeline's own suites and builds the example pack through the CLI; the sweep reaches only its tooling/ci guards.",
+  () => commandLeg(LEG_COMMANDS[CONTENT_LEG]),
+);
+step(
+  EXTENSIONS_LEG,
+  "ci-gate needs extensions-ci.yml, whose checks live under contracts/ and extensions/scripts — outside tooling/ci, so the sweep never runs them.",
+  () => commandLeg(LEG_COMMANDS[EXTENSIONS_LEG]),
+);
+step(
+  DRYRUN_LEG,
+  "prepare derives the app set and app-dryrun walks five store submission paths per app, node-only and sending nothing.",
+  () => commandLeg(LEG_COMMANDS[DRYRUN_LEG]),
+);
+step(
+  SECURITY_LEG,
+  'security-scan runs gitleaks and zizmor through their self-testing wrappers. Run only with a scanner on PATH; CI installs pinned ones.',
+  () => securityLeg(),
 );
 
 // ── 3 · format drift, PRINTED, NEVER FAILED ─────────────────────────────────
@@ -865,7 +1181,7 @@ step(
 // the same directory (O-CI-AND-WORKER-LANES-NAME-ONE-APP).
 const CI_FORMAT_GATED = ['apps/'];
 step(
-  'format drift in tracked Dart (fails on CI-gated paths, prints the rest)',
+  FORMAT_LEG,
   'ci.yml format-gates the stamped apps (leg 5) and every app under apps/ (workspace-gate). Drift there fails; drift elsewhere is real but NOT a CI failure, so it is printed and never blocks.',
   () => {
     const files = run('git', ['ls-files', '*.dart']).out.split(/\r?\n/).filter(Boolean)
@@ -928,7 +1244,7 @@ step(
 // ── 4 · citations, RE-CHECKED AFTER FORMATTING ──────────────────────────────
 // This is the one that has failed twice, the second time BECAUSE of step 3.
 step(
-  'sworn store citations (re-checked AFTER format)',
+  CITATIONS_LEG,
   'A `file.dart:NNN` citation is true only until something edits above it. `dart format` is something. Order matters: this must run after any formatting.',
   () => run('node', ['tooling/ci/assert-sworn-store-files.mjs']),
 );
@@ -936,7 +1252,7 @@ step(
 // ── 5 · the stamped app: format + DoD ───────────────────────────────────────
 if (!FAST) {
   step(
-    'stamped probe (mason + dart format + app DoD)',
+    STAMP_LEG,
     'CI stamps a throwaway probe and formats it; the brick template cannot be formatted directly, so this is the only place that check is real.',
     () => {
       const pub = process.env.LOCALAPPDATA
@@ -1080,13 +1396,15 @@ if (IS_MAIN) {
     }
     // 2026-09-24: "CI should agree." was a promise about ci-gate that no leg here
     // keeps — see the header. The line that replaces it is generated from ci.yml.
-    const gate = ciGateNeeds(ROOT);
+    const gate = GATE ?? ciGateNeeds(ROOT);
     console.log(`preflight: ok — ${results.length} leg(s) green${FAST ? ' (--fast: stamped-app leg skipped)' : ''}.`);
+    if (gate.hooks?.warning) console.log(`⚠️ HOOKS NOT INSTALLED — ${gate.hooks.warning}.`);
     if (gate.error) {
       console.log(`🔴 COVERAGE LOST — ${gate.error}, so this run cannot say what of ci-gate it did not cover. Exit 2: the legs are green, and that is not "safe to push".`);
       process.exit(2);
     }
     const besides = results.map((r) => r.name).filter((n) => n !== SWEEP_LEG && n !== UNTRACKED_LEG);
+    console.log(ciGateCoverageLine({ needs: gate.needs, ran: new Set(results.map((r) => r.name)), skipped: skippedLegs }));
     console.log(notCiGateLine({ needs: gate.needs, doc: sweepDoc, besides }));
     process.exit(0);
   }

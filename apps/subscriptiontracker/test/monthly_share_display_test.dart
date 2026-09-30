@@ -33,6 +33,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:subscriptiontracker/core/format/money_format.dart';
 import 'package:subscriptiontracker/core/format/monthly_share.dart';
 import 'package:subscriptiontracker/core/format/sub_math.dart';
@@ -107,12 +108,19 @@ const List<Size> _widths = <Size>[
 Future<AppLocalizations> _en() =>
     AppLocalizations.delegate.load(const Locale('en'));
 
-/// Every `RowCard` that holds [name], asserted to show the charge with the
-/// per-year label and never the share.
-void _expectRowsShowTheCharge(String name, AppLocalizations l10n) {
+/// Every [row]-typed widget that holds [name], asserted to show the charge
+/// with the per-year label and never the share.
+///
+/// ⏱ 2026-09-28 · train ST-D1: [row] is `AppListRow` on Home, whose rows are
+/// the design system's now, and stays `RowCard` on Scan.
+void _expectRowsShowTheCharge(
+  String name,
+  AppLocalizations l10n, {
+  Type row = RowCard,
+}) {
   final Finder rows = find.ancestor(
     of: find.text(name),
-    matching: find.byType(RowCard),
+    matching: find.byType(row),
   );
   expect(rows, findsWidgets, reason: 'the yearly row did not render');
   for (final Element row in rows.evaluate()) {
@@ -208,7 +216,7 @@ void main() {
         await pumpAt(tester, size, const HomeScreen(), overrides: _overrides());
         final AppLocalizations l10n = await _en();
 
-        _expectRowsShowTheCharge(_yearly().name, l10n);
+        _expectRowsShowTheCharge(_yearly().name, l10n, row: AppListRow);
         expect(
           find.text(
             l10n.perYearTotal(
@@ -270,7 +278,9 @@ void main() {
           findsOneWidget,
           reason: 'the phase sentinel: the results list is built',
         );
-        _expectRowsShowTheCharge(_yearly().name, l10n);
+        // ⏱ 2026-09-28 · train ST-D7: Import's rows are the foundation's
+        // `AppListRow`, no longer the app's `RowCard`.
+        _expectRowsShowTheCharge(_yearly().name, l10n, row: AppListRow);
         expect(tester.takeException(), isNull);
       });
     }

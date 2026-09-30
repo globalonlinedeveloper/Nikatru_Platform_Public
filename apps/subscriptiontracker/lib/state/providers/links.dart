@@ -12,11 +12,13 @@
 // (`test/consent_clickwrap_a11y_test.dart`, the footer parity test), and the
 // tests observe the launch at the PLATFORM CHANNEL, which is unchanged.
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_external_links/nikatru_external_links.dart'
     show UrlLauncherExternalLinks;
 
 import '../../core/app_config.dart';
+import 'analytics_envelope.dart' show kPlatformBaseUrl;
 
 /// Every link this app's configuration names, and its one support address.
 /// A constant that is not absolute https widens nothing
@@ -48,4 +50,15 @@ final core.ExternalLinkLauncher externalLinks = UrlLauncherExternalLinks(
 core.ExternalLinkLauncher updateLinkLauncher(String resolvedUpdateUrl) =>
     UrlLauncherExternalLinks(
       policy: appLinkPolicy.withHttpsUrl(resolvedUpdateUrl),
+    );
+
+/// The calendar feed's launcher (ST-T4a client): [appLinkPolicy] plus the
+/// platform host, for `webcal:` (a calendar app subscribes) and `https:` (web
+/// downloads the file). A PROVIDER, unlike the two above, so a test can see
+/// which URL "Add to calendar" opened without a platform channel.
+final Provider<core.ExternalLinkLauncher> calendarLinkLauncherProvider =
+    Provider<core.ExternalLinkLauncher>(
+      (ref) => UrlLauncherExternalLinks(
+        policy: appLinkPolicy.withCalendarFeedUrl(kPlatformBaseUrl),
+      ),
     );

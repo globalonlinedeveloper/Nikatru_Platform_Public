@@ -195,6 +195,18 @@ const ALLOWLIST = [
       'recorded rather than fixed. If the probe is retired, delete this entry with it.',
   },
 
+  {
+    file: 'apps/subscriptiontracker/test/native_callback_outcome_test.dart',
+    rule: 'invalid_use_of_internal_member',
+    date: '2026-09-28',
+    reason:
+      'ST-N1f drives a failed native auth callback through the EXACT calls supabase_flutter makes for one: ' +
+      '`getSessionFromUrl`, then `notifyException` on the AuthException (supabase_auth.dart:283-299, 2.16.0), ' +
+      'which carries this same ignore on the same call. `notifyException` is an @internal of gotrue-dart, and it is ' +
+      'the only way an error reaches `onAuthStateChange` — the stream the seam reads. Test code, one call; delete ' +
+      'this entry if supabase_flutter stops making the call or the test stops needing it.',
+  },
+
   // ── the packages/ baseline, recorded when ADR 065 chassis step 3 brought the
   //    shared shelf into this guard's domain. Every one of these was READ before
   //    it was excused; none is a "make it green" entry.
@@ -229,6 +241,17 @@ const ALLOWLIST = [
       'runs every case. It exists because workspace_gate also runs `dart test -p chrome` over this package ' +
       'for the GPC web arm, and there an unannotated `dart:io` test is a COMPILE FAILURE rather than a ' +
       'skip. The annotation states the platform the file was always about. (K-15.)',
+  },
+  {
+    file: 'packages/core/test/recurrence_schedule_test.dart',
+    rule: '@TestOn(',
+    date: '2026-09-28',
+    reason:
+      '`@TestOn(\'vm\')` here REMOVES NO COVERAGE, for the reason content_pack_fixture_test.dart gives: ' +
+      'the suite reads contracts/renewals/vectors.json off DISK through `dart:io` — the SAME file the ' +
+      'platform Worker\'s renewals.test.ts iterates, which is the whole point of the vectors (ST-T3b, ST-M3) — ' +
+      'and under workspace_gate\'s `dart test -p chrome` an unannotated `dart:io` test is a compile ' +
+      'FAILURE. `dart test` defaults to the VM, so every vector still runs there.',
   },
   {
     file: 'packages/core/test/portability/csv_import_test.dart',

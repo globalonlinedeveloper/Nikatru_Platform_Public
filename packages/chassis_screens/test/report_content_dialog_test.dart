@@ -192,6 +192,9 @@ void main() {
         200,
         scrollable: find.byType(Scrollable).first,
       );
+      // Built is not on screen — see `tapReaches` in settings_view_test.dart.
+      await tester.ensureVisible(find.byKey(SettingsView.reportContentTile));
+      await tester.pump();
       await tester.tap(find.byKey(SettingsView.reportContentTile));
       expect(taps, 1);
     });

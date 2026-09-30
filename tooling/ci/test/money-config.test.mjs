@@ -335,6 +335,8 @@ function run(o = {}) {
   if (o.subscriptiontrackerTest) write(root, 'services/subscriptiontracker-api/test/webhooks.test.ts', o.subscriptiontrackerTest);
   // `channelRegister: null` means the register is ABSENT (limb 3c's COVERAGE LOST case).
   if (o.channelRegister !== null) write(root, 'tooling/channel-register.json', o.channelRegister ?? CHANNEL_REGISTER_JSON);
+  if (o.receipts) write(root, 'services/platform/src/lib/receipts/google.ts', o.receipts);
+  if (o.receiptRevoke) write(root, 'services/platform/src/lib/mor/bundle-revoke.ts', o.receiptRevoke);
   const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
   return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
@@ -854,5 +856,53 @@ describe('assert-money-config — limb 1d, a sandbox declares every limiter on i
   test('a config with no top-level limiters asks nothing of its sandbox', () => {
     const r = run({ platformWrangler: platformWithEnv({ sandbox: SANDBOX_ENV }) });
     assert.equal(r.code, 0, r.out);
+  });
+});
+
+// ⏱ 2026-09-29 · AB-M4-07 — limb 6: a receipt rail is not configured while nothing
+// revokes its grants.
+const GOOGLE_RECEIPTS_TS = `
+// credentialEnvVars: ['A_COMMENTED_OUT_NAME'] — a comment never counts.
+export const googlePlayVerifier = {
+  store: 'google_play',
+  credentialEnvVars: ['GOOGLE_PLAY_PACKAGE_NAME', 'GOOGLE_PLAY_OAUTH_BEARER'],
+};
+`;
+const withReceiptVar = JSON.stringify({
+  name: 'platform',
+  vars: { APP_ID: 'platform', MONEY_ENVIRONMENT: 'live', GOOGLE_PLAY_OAUTH_BEARER: 'x' },
+});
+
+describe('assert-money-config limb 6 — receipt rails stay unconfigured until a refund can revoke', () => {
+  test('PASSES with the receipt rail registered and none of its credentials declared', () => {
+    const r = run({ receipts: GOOGLE_RECEIPTS_TS });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /2 receipt credential name\(s\) declared nowhere/);
+  });
+
+  test('🔴 FAILS when a Google Play receipt credential is configured and no bundle_grants revoke path exists', () => {
+    const r = run({ receipts: GOOGLE_RECEIPTS_TS, platformWrangler: withReceiptVar });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /GOOGLE_PLAY_OAUTH_BEARER in services\/platform\/wrangler\.jsonc vars/);
+    assert.match(r.out, /AB-M4-07/);
+  });
+
+  test('...and PASSES the same config once a revoke path writes revoked_at on bundle_grants', () => {
+    const r = run({
+      receipts: GOOGLE_RECEIPTS_TS,
+      platformWrangler: withReceiptVar,
+      receiptRevoke: "export const q = `UPDATE bundle_grants SET revoked_at = ?, updated_at = ? WHERE id = ?`;",
+    });
+    assert.equal(r.code, 0, r.out);
+    assert.doesNotMatch(r.out, /AB-M4-07/);
+  });
+
+  test('a revoke path that exists only in a COMMENT does not count', () => {
+    const r = run({
+      receipts: GOOGLE_RECEIPTS_TS,
+      platformWrangler: withReceiptVar,
+      receiptRevoke: '// UPDATE bundle_grants SET revoked_at = ? — not built yet\nexport const q = 1;',
+    });
+    assert.equal(r.code, 1, r.out);
   });
 });

@@ -1995,6 +1995,12 @@
   "errRestrictedWebstore": {
     "message": "Chrome Web Store ತನ್ನ ಪುಟಗಳನ್ನು ವಿಸ್ತರಣೆಗಳು ಓದದಂತೆ ತಡೆಯುತ್ತದೆ, ಆದ್ದರಿಂದ ಇದನ್ನು ಸೆರೆಹಿಡಿಯಲಾಗದು."
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "ಈ ಪುಟವನ್ನು ಬ್ರೌಸರ್ ರಕ್ಷಿಸುತ್ತದೆ, ಆದ್ದರಿಂದ ಇದನ್ನು ಸೆರೆಹಿಡಿಯಲಾಗದು."
   },

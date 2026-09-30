@@ -49,6 +49,7 @@ import 'package:subscriptiontracker/state/analytics_providers.dart'
 
 import 'consent.dart';
 import 'magic_link_sign_in.dart';
+import 'offline_read_steps.dart';
 
 void main() {
   final IntegrationTestWidgetsFlutterBinding binding =
@@ -412,6 +413,54 @@ void main() {
         .where((String s) => s.trim().isNotEmpty)
         .take(25);
     return texts.isEmpty ? '(no Text widgets in the tree)' : texts.join(' | ');
+  }
+
+  /// Submit the add sheet — and PROVE it closed, which is what a saved row does.
+  ///
+  /// 🔬 LIVE E2E 36513585035 (600cc6dc, #1045 ST-T3b), BOTH TESTS RED. T3b grew
+  /// the sheet (currency, trial, category, plan, website, notes), and at this
+  /// suite's 430x932 window the submit button now lays out at y 1153-1205,
+  /// below the viewport: measured with the real sheet, not inferred. The bare
+  /// `tester.tap(addSubmit)` it replaced therefore missed, silently
+  /// (`warnIfMissed` is a print nobody reads), and the sheet stayed open.
+  ///
+  /// 🔴 AND THE READ-BACK AFTER IT STILL PASSED, which is why the failure
+  /// surfaced three steps later as `Found 0 widgets with text "Remove"`.
+  /// `find.text` also matches an `EditableText`, so "the subscription just
+  /// created, on Home" was found in the still-open sheet's OWN NAME FIELD —
+  /// no POST, no D1 row, a green round-trip assertion. The same miss in the
+  /// delete test left the sheet over the shell, so `tap('More')` never opened
+  /// Settings (`Found 0 widgets with type "SettingsScreen"`). The
+  /// `findsNothing` below closes that hole: the sheet pops only after the
+  /// POST succeeds (`_save` in add_subscription_sheet.dart), and while it is
+  /// up nothing downstream may read its fields as evidence.
+  ///
+  /// The sheet scrolls on purpose (its note on the button row says so, and
+  /// `add_sheet_t3b_test.dart` makes the same `ensureVisible` call), so this
+  /// is the suite catching up with the app, not the app regressing.
+  Future<void> submitAddSheet(WidgetTester tester, String what) async {
+    final Finder submit = find.byKey(E2EKeys.addSubmit);
+    await tester.ensureVisible(submit);
+    await pumpFor(tester, const Duration(milliseconds: 500));
+    await tapWhenHittable(
+      tester,
+      submit,
+      'the add sheet\'s submit button ($what)',
+      scrollable: find
+          .ancestor(of: submit, matching: find.byType(Scrollable))
+          .first,
+    );
+    // POST /v1/subscriptions → Worker → D1, then the sheet closes.
+    await pumpFor(tester, const Duration(seconds: 8));
+    expect(
+      submit,
+      findsNothing,
+      reason:
+          'The add sheet is still open 8s after its submit was tapped for '
+          '$what: the sheet pops only once the POST succeeds, so either the '
+          'save failed (a SnackBar says which) or the button was disabled. '
+          'On screen: ${onScreen(tester)}',
+    );
   }
 
   /// 🔴 THE FAILURE THIS SUITE MUST NAME OUT LOUD — AND THE SECOND TIME IT GOT
@@ -1313,9 +1362,7 @@ void main() {
     await tester.enterText(find.byKey(E2EKeys.addPrice), '12.34');
     await pumpFor(tester, const Duration(milliseconds: 500));
     await shot('10-add-sheet');
-    await tester.tap(find.byKey(E2EKeys.addSubmit));
-    // POST /v1/subscriptions → Worker → D1, then the sheet closes.
-    await pumpFor(tester, const Duration(seconds: 8));
+    await submitAddSheet(tester, 'the first subscription');
 
     // ── 11 Read-back on Home (proves the row round-tripped through D1) ────────
     // Home is a lazy ListView — scroll the new row into view before asserting.
@@ -1391,8 +1438,7 @@ void main() {
     await tester.enterText(find.byKey(E2EKeys.addName), subNameB);
     await tester.enterText(find.byKey(E2EKeys.addPrice), '7.77');
     await pumpFor(tester, const Duration(milliseconds: 500));
-    await tester.tap(find.byKey(E2EKeys.addSubmit));
-    await pumpFor(tester, const Duration(seconds: 8));
+    await submitAddSheet(tester, 'the SECOND subscription');
     final Finder subFinderB = find.text(subNameB);
     await scrollUntilFound(
       tester,
@@ -1407,6 +1453,12 @@ void main() {
       reason: 'Second subscription did not round-trip to Home',
     );
     await shot('14-second-sub');
+
+    // ── 14b The list survives with the network off (AB-O1-05) ────────────────
+    // The row above went to the live Worker and was mirrored into this
+    // browser's localStorage by the app's own cache client; a second client
+    // over a dead transport must still read it (offline_read_steps.dart).
+    await tester.runAsync(() => expectListSurvivesOffline(subNameB));
 
     // ── 15 Settings: switch currency (client-state propagation) ──────────────
     await tester.tap(find.text('More'));
@@ -1674,8 +1726,7 @@ void main() {
     await tester.enterText(find.byKey(E2EKeys.addName), doomed);
     await tester.enterText(find.byKey(E2EKeys.addPrice), '3.21');
     await pumpFor(tester, const Duration(milliseconds: 500));
-    await tester.tap(find.byKey(E2EKeys.addSubmit));
-    await pumpFor(tester, const Duration(seconds: 8));
+    await submitAddSheet(tester, 'the doomed subscription');
     final Finder doomedFinder = find.text(doomed);
     await scrollUntilFound(
       tester,

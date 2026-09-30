@@ -2100,6 +2100,12 @@
   "errRestrictedWebstore": {
     "message": "Magazinul web Chrome nu permite extensiilor să îi citească paginile, așa că aceasta nu poate fi capturată."
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "Această pagină este protejată de browser și nu poate fi capturată."
   },
