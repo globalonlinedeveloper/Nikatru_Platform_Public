@@ -72,7 +72,7 @@
     66,
 
   "apple-provisioning.test.mjs":
-    77,
+    78,
 
   "apple-signing-2026-09-09.test.mjs":
     22,
@@ -251,6 +251,9 @@
   "cors-allowlist.test.mjs":
     33,
 
+  "credential-origin.test.mjs":
+    23,
+
   "d1-bindings.test.mjs":
     9,
 
@@ -408,7 +411,7 @@
     35,
 
   "glitchtip-release-create.test.mjs":
-    19,
+    20,
 
   "green-means-ran.test.mjs":
     48,
@@ -618,7 +621,7 @@
     53,
 
   "ops-verifiers.test.mjs":
-    21,
+    22,
 
   "ops-watch-readers.test.mjs":
     13,
@@ -639,7 +642,7 @@
     56,
 
   "password-reset-revokes.test.mjs":
-    14,
+    16,
 
   "paywall-flip-ready.test.mjs":
     9,
@@ -951,7 +954,7 @@
     19,
 
   "store-screenshots-lane.test.mjs":
-    92,
+    93,
 
   "store-vocabulary.test.mjs":
     28,
@@ -975,7 +978,7 @@
     102,
 
   "symbolication-proof.test.mjs":
-    73,
+    75,
 
   "tech-currency.test.mjs":
     43,
@@ -1020,7 +1023,7 @@
     5,
 
   "web-sourcemaps.test.mjs":
-    21,
+    22,
 
   "well-known-shape.test.mjs":
     31,

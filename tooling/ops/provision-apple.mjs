@@ -170,6 +170,10 @@ export function ascClient({ jwt, dryRun, protectedIds = new Set(), protectedCert
       if (Array.isArray(data)) out.push(...data);
       else return data;
       const link = r.json?.links?.next;
+      // ⏱ 2026-09-30 · CodeQL js/file-access-to-http #361/#466: `${API}${path}` carries the
+      // JWT, and API has no trailing path, so a `next` of `https://api.appstoreconnect.apple.com.x.example/…`
+      // sliced to `.x.example/…` would send it to another host. Only a link under API/ is followed.
+      if (link && !String(link).startsWith(`${API}/`)) throw new CoverageLost(`GET ${next} answered a links.next outside ${API}/: ${String(link).slice(0, 120)}`);
       next = link ? link.slice(API.length) : null;
     }
     return out;

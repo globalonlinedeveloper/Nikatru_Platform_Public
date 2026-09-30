@@ -380,6 +380,20 @@ describe('the live client’s safety rails', () => {
     assert.deepEqual(calls, ['POST https://api.appstoreconnect.apple.com/v1/profiles']);
     assert.equal(api.counts.mutating, 1);
   });
+  test('a links.next outside the API origin is refused before the JWT follows it (CodeQL #361/#466)', async () => {
+    const pages = [
+      { data: [{ id: 'A' }], links: { next: 'https://api.appstoreconnect.apple.com/v1/bundleIds?cursor=2' } },
+      { data: [{ id: 'B' }], links: { next: 'https://api.appstoreconnect.apple.com.x.example/v1/bundleIds?cursor=3' } },
+    ];
+    const calls = [];
+    const fetchImpl = async (url, init) => {
+      calls.push(`${init.method} ${url}`);
+      return { status: 200, json: async () => pages[calls.length - 1] };
+    };
+    const api = ascClient({ jwt: 't', dryRun: true, fetchImpl });
+    await assert.rejects(api.read('/v1/bundleIds'), /links\.next outside https:\/\/api\.appstoreconnect\.apple\.com\//);
+    assert.deepEqual(calls, ['GET https://api.appstoreconnect.apple.com/v1/bundleIds', 'GET https://api.appstoreconnect.apple.com/v1/bundleIds?cursor=2']);
+  });
   test('the JWT is ES256 with an IEEE P1363 signature and a 900 s life', () => {
     const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
     const jwt = ascJwt({ issuerId: 'iss', keyId: 'KID', privateKey, now: 1000 });

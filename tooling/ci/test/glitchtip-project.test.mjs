@@ -297,6 +297,9 @@ function copyWorkflowScanImports(shadow) {
   cpSync(join(REPO, 'tooling', 'ci', 'app-set.mjs'), join(shadow, 'tooling', 'ci', 'app-set.mjs'));
   mkdirSync(join(shadow, 'tooling', 'app-yaml'), { recursive: true });
   cpSync(join(REPO, 'tooling', 'app-yaml', 'yaml.mjs'), join(shadow, 'tooling', 'app-yaml', 'yaml.mjs'));
+  // The --live limb pins GLITCHTIP_URL through ../ops/credential-origin.mjs (2026-09-30).
+  mkdirSync(join(shadow, 'tooling', 'ops'), { recursive: true });
+  cpSync(join(REPO, 'tooling', 'ops', 'credential-origin.mjs'), join(shadow, 'tooling', 'ops', 'credential-origin.mjs'));
 }
 
 describe('the declaration itself is graded', () => {
