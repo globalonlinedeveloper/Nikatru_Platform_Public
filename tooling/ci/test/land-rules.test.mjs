@@ -15,6 +15,7 @@ import { spawnSync } from 'node:child_process';
 import {
   GATE_CHECK,
   MAIN_WORKFLOW,
+  MAIN_WORKFLOW_PATH,
   MAIN_HEALTH_CONTEXT,
   INFLIGHT_CAP,
   runIdOf,
@@ -26,6 +27,8 @@ import {
   mayTakeLock,
   mainRunsFreeze,
   newReds,
+  percentile,
+  serialTiming,
 } from '../../ops/land-rules.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -124,7 +127,9 @@ describe('rule (b): main is healthy when the newest CI run on the newest main sh
   const sha = 'a'.repeat(40);
   const run = (over = {}) => ({
     id: 500,
-    name: MAIN_WORKFLOW,
+    // what GitHub actually sends: ci.yml's run-name, not the workflow name
+    name: 'CI on main by @globalonlinedeveloper',
+    path: MAIN_WORKFLOW_PATH,
     event: 'push',
     head_branch: 'main',
     head_sha: sha,
@@ -148,7 +153,7 @@ describe('rule (b): main is healthy when the newest CI run on the newest main sh
       { conclusion: 'cancelled' },
       { event: 'pull_request' },
       { head_repository: { full_name: 'someone/fork' } },
-      { name: 'CodeQL' },
+      { path: '.github/workflows/codeql.yml', name: 'CodeQL (push)' },
       { status: 'in_progress', conclusion: null },
       { head_branch: 'feature' },
       { head_sha: 'not-a-sha' },
@@ -170,8 +175,15 @@ describe('rule (b): main is healthy when the newest CI run on the newest main sh
   });
 
   test('MAIN_WORKFLOW is ci.yml\'s own `name:` — a rename cannot leave main-healthy watching nothing', () => {
-    const ci = readFileSync(join(ROOT, '.github', 'workflows', 'ci.yml'), 'utf8');
+    const ci = readFileSync(join(ROOT, MAIN_WORKFLOW_PATH), 'utf8');
     assert.equal(/^name:\s*(.+)$/m.exec(ci)?.[1].trim(), MAIN_WORKFLOW);
+  });
+
+  test('a run is matched by its PATH: ci.yml sets run-name, so a run\'s `name` is never "CI"', () => {
+    const ci = readFileSync(join(ROOT, MAIN_WORKFLOW_PATH), 'utf8');
+    assert.match(ci, /^run-name:/m, 'red control: while ci.yml sets run-name, matching a run on name === "CI" posts nothing, ever');
+    assert.equal(statusForRun(run({ path: `${MAIN_WORKFLOW_PATH}@refs/heads/main` }), { repo: REPO }).post.body.state, 'success');
+    assert.equal(statusForRun(run({ name: 'CI', path: '.github/workflows/e2e.yml' }), { repo: REPO }).post, null);
   });
 
   test('main-healthy.yml posts on every completed CI run on main and runs the in-repo publisher', () => {
@@ -240,5 +252,23 @@ describe('land-gate.mjs, the CLI a lander calls', () => {
     const r = cli(['pr'], 'not json');
     assert.equal(r.status, 2);
     assert.match(r.stdout, /^NONE /);
+  });
+});
+
+describe('P-3: the serial minutes one landing costs', () => {
+  const at = (m) => new Date(Date.parse('2026-09-28T00:00:00Z') + m * 60_000).toISOString();
+
+  test('p50 gate→merge plus p50 merge→main green; a missing timestamp is left out, never a zero', () => {
+    const t = serialTiming([
+      { pr: 1, gateGreenAt: at(0), mergedAt: at(4), mainGreenAt: at(20) },
+      { pr: 2, gateGreenAt: at(0), mergedAt: at(2), mainGreenAt: at(28) },
+      { pr: 3, gateGreenAt: at(0), mergedAt: at(6), mainGreenAt: null },
+      { pr: 4, gateGreenAt: null, mergedAt: at(0), mainGreenAt: at(10) },
+    ]);
+    assert.deepEqual(t.gateToMerge, { n: 3, p50: 4, p90: 6 });
+    assert.deepEqual(t.mergeToMainGreen, { n: 3, p50: 16, p90: 26 });
+    assert.equal(t.serialP50, 20);
+    assert.equal(serialTiming([]).serialP50, null);
+    assert.equal(percentile([5, 1, 3], 50), 3);
   });
 });

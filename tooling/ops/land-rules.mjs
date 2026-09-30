@@ -30,8 +30,20 @@
 /** The one required check on main (docs/ci/README.md §4). */
 export const GATE_CHECK = 'ci-gate';
 
-/** The workflow whose run on a main push decides main's health: ci.yml's `name:`. */
+/** The workflow whose run on a main push decides main's health: ci.yml's `name:`
+ *  (what a check rollup calls `workflowName`, and what main-healthy.yml's
+ *  `workflow_run.workflows` names). */
 export const MAIN_WORKFLOW = 'CI';
+
+/** The same workflow as a run object names it. A run's `name` is NOT the
+ *  workflow's: ci.yml sets `run-name:` ("CI on main by @…"), and the REST run
+ *  and the workflow_run payload both carry that as `name`. Only `path` is
+ *  stable, so run objects are matched on it. */
+export const MAIN_WORKFLOW_PATH = '.github/workflows/ci.yml';
+
+/** Does this run object belong to MAIN_WORKFLOW_PATH? (`path` may carry an
+ *  `@<ref>` suffix.) */
+export const isMainWorkflowRun = (r) => String(r?.path ?? '').split('@')[0] === MAIN_WORKFLOW_PATH;
 
 /** The commit-status context main-healthy.yml writes on each main commit. */
 export const MAIN_HEALTH_CONTEXT = 'main-healthy';
@@ -177,7 +189,7 @@ export function statusForRun(run, { repo }) {
   if (run.event !== 'push') return { post: null, why: `run ${run.id} is a ${run.event} run, not a push to main` };
   if (run.head_branch !== 'main') return { post: null, why: `run ${run.id} is on ${run.head_branch}, not main` };
   if (from !== repo) return { post: null, why: `run ${run.id} is from ${from}, not ${repo}` };
-  if (run.name !== MAIN_WORKFLOW) return { post: null, why: `run ${run.id} is ${run.name}, not ${MAIN_WORKFLOW}` };
+  if (!isMainWorkflowRun(run)) return { post: null, why: `run ${run.id} is ${run.path}, not ${MAIN_WORKFLOW_PATH}` };
   if (!/^[0-9a-f]{40}$/.test(String(run.head_sha))) return { post: null, why: `run ${run.id} carries no 40-hex head_sha` };
   if (run.status !== 'completed') return { post: null, why: `run ${run.id} is ${run.status}, not completed` };
   const c = String(run.conclusion ?? '');
@@ -268,4 +280,39 @@ export function mainRunsFreeze(runs, { pr, mainSha, newerMainSha = null }) {
 export function newReds(baseline, now) {
   const before = new Set(baseline ?? []);
   return [...new Set(now ?? [])].filter((j) => !before.has(j)).sort();
+}
+
+// ── P-3 — the serial minutes each landing costs ─────────────────────────────
+
+/** Nearest-rank percentile of a list of numbers, or null for an empty list. */
+export function percentile(xs, p) {
+  const v = (xs ?? []).filter((x) => Number.isFinite(x)).sort((a, b) => a - b);
+  if (!v.length) return null;
+  return v[Math.min(v.length - 1, Math.max(0, Math.ceil((p / 100) * v.length) - 1))];
+}
+
+/**
+ * The serial part of landing one PR, from timestamps GitHub already holds:
+ *   gateToMerge       its newest ci-gate completing → the merge
+ *   mergeToMainGreen  the merge → the push CI run on its merge sha completing
+ *                     green (the lock was held until then; land-v13/v14)
+ * `samples` [{ pr, gateGreenAt, mergedAt, mainGreenAt }]; a sample missing a
+ * timestamp is left out of that measure, never counted as zero. The serial
+ * minutes per PR is p50 gateToMerge + p50 mergeToMainGreen.
+ */
+export function serialTiming(samples) {
+  const mins = (a, b) => (Date.parse(b) - Date.parse(a)) / 60_000;
+  const g = [];
+  const m = [];
+  for (const s of samples ?? []) {
+    const x = mins(s.gateGreenAt, s.mergedAt);
+    const y = mins(s.mergedAt, s.mainGreenAt);
+    if (Number.isFinite(x) && x >= 0) g.push(x);
+    if (Number.isFinite(y) && y >= 0) m.push(y);
+  }
+  const round = (x) => (x === null ? null : Math.round(x * 10) / 10);
+  const gateToMerge = { n: g.length, p50: round(percentile(g, 50)), p90: round(percentile(g, 90)) };
+  const mergeToMainGreen = { n: m.length, p50: round(percentile(m, 50)), p90: round(percentile(m, 90)) };
+  const serialP50 = gateToMerge.p50 === null || mergeToMainGreen.p50 === null ? null : round(gateToMerge.p50 + mergeToMainGreen.p50);
+  return { gateToMerge, mergeToMainGreen, serialP50 };
 }

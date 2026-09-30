@@ -15,6 +15,15 @@
 //   freeze --file <path>        the freeze file (rule c): FROZEN or OPEN.
 //   publish-main-health         main-healthy.yml only: posts the status for the
 //                               completed CI run in GITHUB_EVENT_PATH.
+//   timing [--last N] [--repo]  P-3: the serial minutes one landing costs over
+//                               the last N merged PRs (default 30): p50/p90 of
+//                               ci-gate green → merge and merge → main CI green,
+//                               and `serialMinutesPerPr=<p50 sum>` on its own
+//                               line, the value a platform-state row records.
+//                               Reads by sha only (check-runs of the head, the
+//                               push runs of the merge sha), never a listing
+//                               filtered by branch. Exit 0, or 2 when fewer
+//                               than half the PRs could be measured.
 //
 // ── EXIT CONTRACT (same three meanings as the guards) ───────────────────────
 //   0  GREEN (pr, main) · OPEN (freeze) · posted, or nothing to post (publish)
@@ -29,7 +38,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { gateVerdict, redChecks, mainHealth, readFreeze, statusForRun } from './land-rules.mjs';
+import { gateVerdict, redChecks, mainHealth, readFreeze, statusForRun, serialTiming, GATE_CHECK, isMainWorkflowRun } from './land-rules.mjs';
 import { fetchWithBoundedRetry } from './bounded-retry.mjs';
 
 const API = 'https://api.github.com';
@@ -139,6 +148,45 @@ async function main(argv) {
       return 2;
     }
   }
+  if (cmd === 'timing') {
+    const repo = arg(argv, '--repo') ?? process.env.GITHUB_REPOSITORY ?? 'globalonlinedeveloper/Nikatru_Platform_Public';
+    const last = Number(arg(argv, '--last') ?? 30);
+    if (!REPO_SHAPE.test(repo) || !Number.isInteger(last) || last < 1 || last > 100) {
+      say(['NONE timing needs an owner/name --repo and a whole --last from 1 to 100']);
+      return 2;
+    }
+    const tok = await tokenFromEnvOrVault();
+    if (!tok) {
+      say(['NONE no GitHub credential (GH_TOKEN, GITHUB_TOKEN or the vault)']);
+      return 2;
+    }
+    try {
+      const pulls = await getJson(`/repos/${repo}/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=100`, tok);
+      const merged = pulls.filter((p) => p.merged_at).sort((a, b) => b.merged_at.localeCompare(a.merged_at)).slice(0, last);
+      const samples = [];
+      for (const p of merged) {
+        const checks = await getJson(`/repos/${repo}/commits/${p.head.sha}/check-runs?check_name=${GATE_CHECK}&per_page=100`, tok);
+        const g = gateVerdict(checks.check_runs ?? []);
+        const runs = await getJson(`/repos/${repo}/actions/runs?head_sha=${p.merge_commit_sha}&event=push&per_page=20`, tok);
+        const ci = (runs.workflow_runs ?? []).filter((r) => isMainWorkflowRun(r) && r.conclusion === 'success').sort((a, b) => b.id - a.id)[0];
+        const gateAt = (checks.check_runs ?? []).find((c) => c.name === GATE_CHECK && g.gate && String(c.details_url ?? '').includes(`/runs/${g.gate.run}/`))?.completed_at ?? null;
+        samples.push({ pr: p.number, gateGreenAt: g.verdict === 'GREEN' ? gateAt : null, mergedAt: p.merged_at, mainGreenAt: ci?.updated_at ?? null });
+      }
+      const t = serialTiming(samples);
+      const measured = Math.min(t.gateToMerge.n, t.mergeToMainGreen.n);
+      const code = measured * 2 >= merged.length && t.serialP50 !== null ? 0 : 2;
+      say([
+        `${code === 0 ? 'MEASURED' : 'NONE'} ${merged.length} merged PR(s), newest #${merged[0]?.number ?? '-'} @ ${merged[0]?.merged_at ?? '-'}`,
+        `gate green → merge: n ${t.gateToMerge.n}, p50 ${t.gateToMerge.p50} min, p90 ${t.gateToMerge.p90} min`,
+        `merge → main CI green: n ${t.mergeToMainGreen.n}, p50 ${t.mergeToMainGreen.p50} min, p90 ${t.mergeToMainGreen.p90} min`,
+        `serialMinutesPerPr=${t.serialP50}`,
+      ]);
+      return code;
+    } catch (e) {
+      say([`NONE the timing could not be read (${e.message})`]);
+      return 2;
+    }
+  }
   if (cmd === 'publish-main-health') {
     const repo = process.env.GITHUB_REPOSITORY ?? '';
     const tok = process.env.GITHUB_TOKEN ?? '';
@@ -181,7 +229,7 @@ async function main(argv) {
     say([`POSTED ${s.post.body.context}=${s.post.body.state} on ${s.post.sha.slice(0, 8)}: ${s.why}`]);
     return 0;
   }
-  say(['NONE usage: land-gate.mjs pr [--file f] | main [--repo o/n] | freeze --file f | publish-main-health']);
+  say(['NONE usage: land-gate.mjs pr [--file f] | main [--repo o/n] | freeze --file f | timing [--last N] | publish-main-health']);
   return 2;
 }
 

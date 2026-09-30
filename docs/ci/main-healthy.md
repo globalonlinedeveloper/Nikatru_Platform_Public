@@ -37,6 +37,14 @@ node tooling/ops/land-gate.mjs freeze --file <path to land.freeze>
 
 Exit `0` GREEN/OPEN, `1` RED/FROZEN, `2` not a verdict (PENDING, STALE, NONE, unreadable).
 
+A run object's `name` is ci.yml's `run-name` ("CI on main by @…"), never `CI`, so runs are
+matched on `path` (`.github/workflows/ci.yml`), not on name.
+
+`node tooling/ops/land-gate.mjs timing --last 30` measures what one landing costs serially:
+p50/p90 of ci-gate green → merge and merge → main CI green, and `serialMinutesPerPr=<n>`
+(the two p50s summed). Measured 2026-09-30 over the 30 merges to #1067: 5.8 + 16.3 = 22.1
+minutes (gate → merge p90 86.6, freezes included; merge → main green p90 30.1, n 26 of 30).
+
 ## Proposed to the owner (A-4), not applied
 
 The laptop lander exists because a merge needs someone to press it after `ci-gate` goes green
