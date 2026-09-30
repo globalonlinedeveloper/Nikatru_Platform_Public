@@ -66,8 +66,9 @@
 // A red guard or test is re-run at merge-base(HEAD, --base) in a detached checkout
 // (preflight.mjs's detachedCheckout / classifyRed): red there with the same exit
 // code is ENVIRONMENTAL — this machine, not this branch — and printed, not failed.
-// A Dart or Worker red is not re-run (a base checkout has no resolved workspace or
-// node_modules, and building them costs minutes): it is a finding.
+// A Worker red is re-run there too (`npm ci` first: a base checkout has no node_modules),
+// because a vitest case timed out by load is red on main as well. A Dart red is not
+// re-run (the base has no resolved workspace, and pub get costs minutes): a finding.
 // The tree is snapshotted before and after: a check that rewrote a tracked file
 // (assert-guard-coverage's ratchet, a generator's output) is a finding, because CI
 // runs the same check and fails on the same diff.
@@ -93,7 +94,7 @@
 // Tests:  tooling/ci/test/affected-guards.test.mjs
 // ─────────────────────────────────────────────────────────────────────────────
 import { spawn, spawnSync } from 'node:child_process';
-import { appendFileSync, closeSync, existsSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, closeSync, existsSync, lstatSync, mkdtempSync, openSync, readFileSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { availableParallelism, tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { dirname, join, posix, resolve } from 'node:path';
@@ -667,7 +668,7 @@ export function buildChecks(root, tree, { parsed, readSource = (rel) => readFile
     for (const g of workersLane?.globs ?? []) if (!g.glob.startsWith('services/')) subjects.push({ kind: 'lane', path: g.glob, re: g.re });
     subjects.push({ kind: 'dir', path: 'services/_shared', tier: 1 });
     checks.push({ kind: 'worker', id: `worker:${m[1]}`, dir, label: `tsc --noEmit + npm test (${dir})`, subjects,
-      ceilingMs: 600_000, baseComparable: false });
+      ceilingMs: 600_000, baseComparable: true }); // a load-timed-out vitest case is red on main too (measured 2026-09-30)
   }
   return { checks, blocked };
 }
@@ -875,6 +876,16 @@ function flutterPrecondition(root, env) {
   return null;
 }
 
+/** node_modules finished installing, from the package-lock.json beside it. */
+function installedAsLocked(dir) {
+  try {
+    const want = JSON.parse(readFileSync(join(dir, 'package-lock.json'), 'utf8')).packages ?? {};
+    const have = JSON.parse(readFileSync(join(dir, 'node_modules', '.package-lock.json'), 'utf8')).packages ?? {};
+    return Object.keys(want).filter((k) => k.startsWith('node_modules/') && !want[k].optional)
+      .every((k) => have[k]?.version === want[k].version);
+  } catch { return false; }
+}
+
 /** Commands for one check. A worker check is a sequence. */
 function commandsFor(check, root) {
   const shell = process.platform === 'win32';
@@ -889,7 +900,9 @@ function commandsFor(check, root) {
   if (check.kind === 'worker') {
     const cwd = join(root, check.dir);
     const seq = [];
-    if (!existsSync(join(cwd, 'node_modules'))) seq.push({ cmd: 'npm', args: ['ci', '--no-audit', '--no-fund'], cwd, shell });
+    // npm writes node_modules/.package-lock.json LAST: a directory without it is an
+    // install that was killed half way (measured 2026-09-30: tsc missing, a 29 s red).
+    if (!installedAsLocked(cwd)) seq.push({ cmd: 'npm', args: ['ci', '--no-audit', '--no-fund'], cwd, shell });
     seq.push({ cmd: 'npx', args: ['tsc', '--noEmit'], cwd, shell });
     seq.push({ cmd: 'npm', args: ['test'], cwd, shell });
     return seq;
@@ -961,11 +974,24 @@ async function rerunOnBase(reds, root, baseRef, width) {
   // The base phase is bounded too: a red the base cannot answer in BASE_MS is COVERAGE
   // LOST, never a pass.
   const deadline = Date.now() + BASE_MS;
+  // A Worker at the base borrows this tree's node_modules through a link when its
+  // package-lock.json is byte-identical — `npm ci` per Worker would spend the whole
+  // base limit. Each link is removed BEFORE the checkout is, so the removal never
+  // walks into the borrowed directory.
+  const links = [];
   try {
     await pool(reds, width, async (check) => {
-      if (!existsSync(join(co.dir, check.rel))) {
+      if (!existsSync(join(co.dir, check.rel ?? check.dir))) {
         results.set(check.id, { evaluable: false, reason: 'the script does not exist at the base — it is new on this branch, so main cannot vouch for its red' });
         return;
+      }
+      if (check.kind === 'worker') {
+        const lock = (d) => { try { return readFileSync(join(d, check.dir, 'package-lock.json'), 'utf8'); } catch { return null; } };
+        const mine = join(root, check.dir, 'node_modules');
+        const theirs = join(co.dir, check.dir, 'node_modules');
+        if (lock(root) !== null && lock(root) === lock(co.dir) && installedAsLocked(join(root, check.dir)) && !existsSync(theirs)) {
+          try { symlinkSync(mine, theirs, 'junction'); links.push(theirs); } catch {}
+        }
       }
       const r = await runCheck(check, co.dir, {}, deadline);
       if (r.budgetCut) results.set(check.id, { evaluable: false, reason: `the base re-run was stopped at its ${BASE_MS / 1000} s limit` });
@@ -976,6 +1002,14 @@ async function rerunOnBase(reds, root, baseRef, width) {
       }
     });
   } finally {
+    for (const l of links) { try { unlinkSync(l); } catch { try { rmdirSync(l); } catch {} } }
+    const stillLinked = links.filter((l) => { try { lstatSync(l); return true; } catch { return false; } });
+    if (stillLinked.length) {
+      // never remove a checkout that still links into this tree
+      results.cleanup = `the base checkout ${co.dir} still links ${stillLinked.join(', ')} into this tree, so it was NOT removed — unlink those, then: git worktree remove --force "${co.dir}"`;
+      try { writeFileSync(cachePath, JSON.stringify(cache, null, 1)); } catch {}
+      return { sha, error: null, results, cached: results.size - reds.length };
+    }
     const why = removeCheckout({ root, dir: co.dir });
     if (why) results.cleanup = why;
     try { writeFileSync(cachePath, JSON.stringify(cache, null, 1)); } catch {}
