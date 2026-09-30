@@ -37,6 +37,7 @@ import { readAccount } from './platform-erasure';
 import { sendResendMail } from './report-notify';
 import { sha256Hex } from '../middleware/ext-device-auth';
 import { catalogueApp } from './catalog';
+import { parseReminderDays } from '../../../_shared/src/reminder-days';
 
 /**
  * [ADR 029] §2 — everything a machine sends leaves Resend from mail.nikatru.com,
@@ -46,7 +47,13 @@ import { catalogueApp } from './catalog';
  */
 export const REMINDER_FROM = 'Nikatru reminders <reminders@mail.nikatru.com>';
 
-/** The `kind` column of `reminder_sent`. A closed set, enforced here (0020 has no CHECK). */
+/**
+ * The `kind` column of `reminder_sent`. A closed set, enforced here (0020 has
+ * no CHECK): `renewal` for a reminder at the ACCOUNT's lead, and
+ * `renewal:<days>` (reminderKind below) for one at a lead the SUBSCRIPTION
+ * chose — each of its own leads is its own reminder, so each needs its own claim
+ * under the UNIQUE (user, app, subscription, due date, kind).
+ */
 export const REMINDER_KIND_RENEWAL = 'renewal';
 
 /** Where the one-click unsubscribe link points. The mail is sent from the cron,
@@ -63,8 +70,11 @@ export const REMINDER_LINK_ORIGIN = 'https://platform.nikatru.com';
 export const DEFAULT_LEAD_DAYS = 3;
 
 /**
- * The longest lead a person may choose (and the longest per-subscription
- * `reminder_days` honoured). A month covers a monthly plan's whole cycle.
+ * The longest ACCOUNT-WIDE lead a person may choose. A month covers a monthly
+ * plan's whole cycle. A per-subscription `reminder_days` entry is NOT held to
+ * it: that list is bounded by the column's own contract (MAX_REMINDER_DAY,
+ * services/_shared/src/reminder-days.ts), which the API already enforced when it
+ * stored the value — that file says why it is honoured, not clamped.
  *
  * @ceiling none — an input bound we chose, not a platform resource.
  */
@@ -179,8 +189,9 @@ export interface LiveSubscription {
   price: number | null;
   cycle: string | null;
   next_renewal: string;
-  /** subscriptiontracker_db's own lead, where that column exists (ST-T3a). */
-  reminder_days: number | null;
+  /** subscriptiontracker_db's own leads, where that column exists (ST-T3a):
+   *  null = the account lead, [] = no reminder, else one reminder per entry. */
+  reminder_days: number[] | null;
 }
 
 /**
@@ -221,7 +232,8 @@ export async function readLiveSubscriptions(db: D1Database, userIds: readonly st
         price: typeof r.price === 'number' ? r.price : null,
         cycle: typeof r.cycle === 'string' ? r.cycle : null,
         next_renewal: String(r.next_renewal),
-        reminder_days: typeof r.reminder_days === 'number' ? r.reminder_days : null,
+        // JSON TEXT, not a number: the one reading both Workers share.
+        reminder_days: parseReminderDays(r.reminder_days),
       });
     }
   }
@@ -248,11 +260,36 @@ export function nextOccurrence(sub: Pick<LiveSubscription, 'cycle' | 'next_renew
   return next >= today ? next : null;
 }
 
-/** The lead for one subscription: its own `reminder_days` where the column exists
- *  and holds a valid lead, else the person's. */
-export function leadFor(sub: Pick<LiveSubscription, 'reminder_days'>, personLead: number): number {
-  const own = sub.reminder_days;
-  return typeof own === 'number' && Number.isInteger(own) && own >= 0 && own <= MAX_LEAD_DAYS ? own : personLead;
+/** The leads for one subscription: its own `reminder_days` where the column
+ *  exists and holds a valid list (`[]` = none), else the person's one lead. */
+export function leadsFor(sub: Pick<LiveSubscription, 'reminder_days'>, personLead: number): number[] {
+  return sub.reminder_days ?? [personLead];
+}
+
+/** The `reminder_sent.kind` of a reminder at `lead` days: the account's lead
+ *  keeps the original `renewal`, a subscription's own lead is `renewal:<days>`. */
+export function reminderKind(lead: number, own: boolean): string {
+  return own ? `${REMINDER_KIND_RENEWAL}:${lead}` : REMINDER_KIND_RENEWAL;
+}
+
+/**
+ * The reminder due tonight for a renewal on `due`, or null. Of the leads whose
+ * window `today` is inside (`due` ≤ today + lead), the NEAREST is the window
+ * entered most recently, and it is the one reminded: with `[7,1]` a renewal is
+ * mailed once 7 days out and once 1 day out, and a night inside the 7-day window
+ * but not the 1-day one finds `renewal:7` already claimed. A window missed
+ * entirely (the daily cap deferred it) is not mailed late on top of the nearer one.
+ */
+export function dueReminder(
+  sub: Pick<LiveSubscription, 'reminder_days'>,
+  due: string,
+  today: string,
+  personLead: number,
+): { lead: number; kind: string } | null {
+  const reached = leadsFor(sub, personLead).filter((l) => due <= addDays(today, l));
+  if (reached.length === 0) return null;
+  const lead = Math.min(...reached);
+  return { lead, kind: reminderKind(lead, sub.reminder_days !== null) };
 }
 
 /** "649.00" for a number, nothing for anything else. The currency is not stored. */
@@ -268,6 +305,8 @@ export interface DueItem {
   cycle: string | null;
   price: number | null;
   lead: number;
+  /** The claim's `reminder_sent.kind`: reminderKind(lead, …). */
+  kind: string;
 }
 
 function escapeHtml(s: string): string {
@@ -389,19 +428,46 @@ async function pendingFor(env: Env, target: AppTarget, db: D1Database, today: st
   const subs = await readLiveSubscriptions(db, prefs.map((p) => p.user_id));
   // What this app has already mailed for a renewal still ahead — the digest is
   // built without them, and the claim below is the backstop if this read is stale.
-  const sent = await allRows<{ user_id: string; subscription_id: string; due_on: string }>(
+  const sent = await allRows<{ user_id: string; subscription_id: string; due_on: string; kind: string; sent_at: string }>(
     env.PLATFORM_DB.prepare(
-      'SELECT user_id, subscription_id, due_on FROM reminder_sent WHERE app_id = ? AND kind = ? AND due_on >= ?',
-    ).bind(target.appId, REMINDER_KIND_RENEWAL, today),
+      'SELECT user_id, subscription_id, due_on, kind, sent_at FROM reminder_sent WHERE app_id = ? AND due_on >= ?',
+    ).bind(target.appId, today),
   );
-  const already = new Set(sent.map((s) => `${s.user_id}\u0000${s.subscription_id}\u0000${s.due_on}`));
+  // ⏱ 2026-09-30 · review of #1090, minor 1. A WINDOW IS COVERED BY ANY MAIL SENT
+  // INSIDE IT, WHATEVER KIND CLAIMED IT. Keyed on the kind alone, a `renewal`
+  // claim (the account lead — every claim written before per-subscription leads
+  // were read) did not cover `renewal:<days>`, so a subscription whose own list
+  // matched the account lead was mailed twice when this went live, and a list
+  // switched on inside an already-mailed window was mailed again. So the latest
+  // day each renewal was mailed is kept, and a reminder at lead L is skipped when
+  // that day is on or after `due − L`. The per-kind UNIQUE claim stays the
+  // backstop against two runs racing.
+  //
+  // ⏱ delta review of #1090, nit — AND THE EXACT KIND STILL COVERS ITSELF. A lead
+  // LOWERED after its mail (7 → 3) leaves a `renewal` claim dated outside the new
+  // window, which the window rule alone calls uncovered: the item would then spend
+  // one of MAX_ADDRESS_READS_PER_RUN every night on a send the UNIQUE claim
+  // refuses. So a reminder is skipped when EITHER holds.
+  const lastMailed = new Map<string, string>();
+  const claimedKinds = new Set<string>();
+  for (const s of sent) {
+    const key = `${s.user_id}\u0000${s.subscription_id}\u0000${s.due_on}`;
+    claimedKinds.add(`${key}\u0000${s.kind}`);
+    const day = String(s.sent_at).slice(0, 10);
+    const prev = lastMailed.get(key);
+    if (prev === undefined || day > prev) lastMailed.set(key, day);
+  }
   const byUser = new Map<string, Pending>();
   for (const sub of subs) {
     const due = nextOccurrence(sub, today);
     if (due === null) continue;
-    const lead = leadFor(sub, personLead.get(sub.user_id) ?? DEFAULT_LEAD_DAYS);
-    if (due > addDays(today, lead)) continue;
-    if (already.has(`${sub.user_id}\u0000${sub.id}\u0000${due}`)) continue;
+    const reminder = dueReminder(sub, due, today, personLead.get(sub.user_id) ?? DEFAULT_LEAD_DAYS);
+    if (reminder === null) continue;
+    const { lead, kind } = reminder;
+    const key = `${sub.user_id}\u0000${sub.id}\u0000${due}`;
+    if (claimedKinds.has(`${key}\u0000${kind}`)) continue;
+    const mailedOn = lastMailed.get(key);
+    if (mailedOn !== undefined && mailedOn >= addDays(due, -lead)) continue;
     const item: DueItem = {
       subscriptionId: sub.id,
       name: (sub.name ?? '').trim() || 'A subscription',
@@ -409,6 +475,7 @@ async function pendingFor(env: Env, target: AppTarget, db: D1Database, today: st
       cycle: sub.cycle,
       price: sub.price,
       lead,
+      kind,
     };
     const since = addDays(due, -lead);
     const p = byUser.get(sub.user_id) ?? { userId: sub.user_id, items: [], since };
@@ -446,22 +513,22 @@ async function claim(
   sentAt: string,
   unsubscribeHash: string,
 ): Promise<DueItem[]> {
-  const landed = await allRows<{ subscription_id: string; due_on: string }>(
+  const landed = await allRows<{ subscription_id: string; due_on: string; kind: string }>(
     env.PLATFORM_DB.prepare(
       `INSERT INTO reminder_sent (user_id, app_id, subscription_id, due_on, kind, sent_at, unsubscribe_hash)
-       SELECT ?1, ?2, json_extract(j.value, '$.s'), json_extract(j.value, '$.d'), ?3, ?4, ?5 FROM json_each(?6) AS j WHERE true
-       ON CONFLICT DO NOTHING RETURNING subscription_id, due_on`,
+       SELECT ?1, ?2, json_extract(j.value, '$.s'), json_extract(j.value, '$.d'), json_extract(j.value, '$.k'), ?3, ?4
+       FROM json_each(?5) AS j WHERE true
+       ON CONFLICT DO NOTHING RETURNING subscription_id, due_on, kind`,
     ).bind(
       p.userId,
       appId,
-      REMINDER_KIND_RENEWAL,
       sentAt,
       unsubscribeHash,
-      JSON.stringify(items.map((i) => ({ s: i.subscriptionId, d: i.dueOn }))),
+      JSON.stringify(items.map((i) => ({ s: i.subscriptionId, d: i.dueOn, k: i.kind }))),
     ),
   );
-  const keys = new Set(landed.map((r) => `${r.subscription_id}\u0000${r.due_on}`));
-  return items.filter((i) => keys.has(`${i.subscriptionId}\u0000${i.dueOn}`));
+  const keys = new Set(landed.map((r) => `${r.subscription_id}\u0000${r.due_on}\u0000${r.kind}`));
+  return items.filter((i) => keys.has(`${i.subscriptionId}\u0000${i.dueOn}\u0000${i.kind}`));
 }
 
 /** One app's pass. Never throws: the caller is a loop over every app. */

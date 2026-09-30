@@ -36,6 +36,19 @@ import {
 import { NATIVE_AUTH_APPS } from '../src/generated/app-targets';
 import type { AppEnv, RateLimiterBinding } from '../src/types';
 import source from '../src/routes/native-auth.ts?raw';
+import { realPlatformDb, type RealDb } from './harness';
+import {
+  clientDataFor,
+  issueChallenge,
+  KIND_OPS,
+  NATIVE_ATTEST_INSTALLS_PER_NETWORK_PER_DAY,
+  NATIVE_ATTEST_OPS_PER_KEY_PER_DAY,
+  requestTarget,
+  type AttestOp,
+} from '../src/lib/native-attest';
+import { b64url, sha256 } from '../src/lib/native-attest/bytes';
+import { assertionFor, b64std, ecPair, spkiOf, TEAM } from './native-attest-fixtures';
+import wranglerRaw from '../wrangler.jsonc?raw';
 
 const SUPABASE_URL = 'https://native-auth-test.gotrue.example';
 const SERVICE_KEY = 'service-role-key-made-up-for-this-test';
@@ -87,19 +100,79 @@ beforeAll(() => {
 });
 afterAll(() => vi.unstubAllGlobals());
 
+const exportRaw = async (k: CryptoKey) => (await crypto.subtle.exportKey('raw', k)) as ArrayBuffer;
+
+/**
+ * The installs every call below attests with. ⏱ 2026-09-30 (review of #1070):
+ * the DEFAULT is a real App Attest assertion — the kind that may authorise all
+ * four ops — built on a test key (test/native-attest-fixtures.ts). The desktop
+ * Ed25519 key is kept for the cases that prove what `install-key` can and
+ * cannot do.
+ */
+let appleKey: CryptoKeyPair;
+let appleSpki: Uint8Array;
+let appleKeyId: string;
+let installKey: CryptoKeyPair;
+let installKeyId: string;
+beforeAll(async () => {
+  appleKey = await ecPair('P-256');
+  appleSpki = await spkiOf(appleKey.publicKey);
+  appleKeyId = b64std(await sha256(appleSpki.subarray(appleSpki.length - 65)));
+  installKey = (await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])) as CryptoKeyPair;
+  const raw = new Uint8Array(await exportRaw(installKey.publicKey));
+  installKeyId = b64url(await sha256(raw));
+});
+
+/** A session GoTrue would answer a password grant with, for a CONFIRMED address. */
+const SESSION = {
+  access_token: 'access-token-value',
+  refresh_token: 'refresh-token-value',
+  token_type: 'bearer',
+  user: { id: 'user-1', email_confirmed_at: '2026-09-01T00:00:00Z' },
+};
+
+const CHALLENGE_KEY = 'challenge-key-made-up-for-this-test-0123456789';
+
 let account: FakeLimiter;
 let edge: FakeLimiter;
-beforeEach(() => {
+let unattested: FakeLimiter;
+let installs: FakeLimiter;
+let db: RealDb;
+/** The App Attest assertion counter per app: it must rise on every op. */
+let counters: Map<string, number>;
+beforeEach(async () => {
+  db = realPlatformDb();
+  counters = new Map();
+  // Both installs' keys, registered for both apps the suite serves — the
+  // registration route itself is proven in its own block below.
+  const pk = b64url(new Uint8Array(await exportRaw(installKey.publicKey)));
+  for (const a of [APP, 'budgetbuddy']) {
+    const ins = db.db.prepare(
+      'INSERT INTO native_attest_keys (app_id, key_id, kind, public_key, sign_count, created_at, last_used_at) VALUES (?, ?, ?, ?, 0, ?, ?)',
+    );
+    ins.run(a, appleKeyId, 'app-attest', b64url(appleSpki), '2026-09-29T00:00:00.000Z', '2026-09-29T00:00:00.000Z');
+    ins.run(a, installKeyId, 'install-key', pk, '2026-09-29T00:00:00.000Z', '2026-09-29T00:00:00.000Z');
+  }
   gotrue.seen = [];
-  gotrue.answer = answerJson(200, { access_token: 'access-token-value', refresh_token: 'refresh-token-value', token_type: 'bearer' }, {
+  gotrue.answer = answerJson(200, SESSION, {
     'Set-Cookie': 'sb=1; Path=/',
     'x-nikatru-shield': '1',
     'x-supabase-api-version': '2024-01-01',
   });
   account = new FakeLimiter(5);
   edge = new FakeLimiter(60);
+  // Roomy by default so the ST-N1 cases measure what they did before; the
+  // tighter ceilings are proven on their own in the ST-A block.
+  unattested = new FakeLimiter(1000);
+  installs = new FakeLimiter(1000);
 });
 afterEach(() => vi.restoreAllMocks());
+
+// ⏱ 2026-09-30: every call now mints a signed challenge and signs a real App
+// Attest assertion, and the busiest cases make eighteen calls — measured at
+// 3-5 s on a loaded runner against vitest's 5 s default. The budget is per
+// case and generous on purpose; a HANG still fails, a slow runner does not.
+vi.setConfig({ testTimeout: 30_000 });
 
 function env(over: Partial<AppEnv['Bindings']> = {}): AppEnv['Bindings'] {
   return {
@@ -108,16 +181,67 @@ function env(over: Partial<AppEnv['Bindings']> = {}): AppEnv['Bindings'] {
     ALLOWED_ORIGINS: 'https://nikatru.com',
     NATIVE_AUTH_ACCOUNT_LIMITER: account,
     NATIVE_AUTH_EDGE_LIMITER: edge,
+    NATIVE_AUTH_UNATTESTED_LIMITER: unattested,
+    NATIVE_AUTH_INSTALL_LIMITER: installs,
+    // TEST ONLY: `install-key` is listed here so the cases below can prove what
+    // it may and may not do when listed. No deploy lists it (the config case).
+    NATIVE_AUTH_ATTEST_KINDS: 'app-attest,install-key',
+    NATIVE_ATTEST_CHALLENGE_KEY: CHALLENGE_KEY,
+    APP_ATTEST_TEAM_ID: TEAM,
+    PLATFORM_DB: db,
     ...over,
   } as AppEnv['Bindings'];
 }
 
-/** A request as gotrue-dart sends it: its own apikey and anon bearer, no Origin. */
-function call(
+type Signer = { kind: 'app-attest' } | { kind: 'install-key'; key?: CryptoKeyPair; keyId?: string };
+
+/**
+ * The four attestation headers for `path` and `text`, as the app's attesting
+ * client sends them: a fresh challenge, and a proof over the binding of THIS
+ * app, op, challenge, path + query and body — an App Attest assertion with a
+ * rising counter by default, or the install key's Ed25519 signature.
+ */
+async function attestHeaders(path: string, text: string, signer: Signer = { kind: 'app-attest' }, at = Date.now()): Promise<Record<string, string>> {
+  const url = new URL(path, 'https://x.example');
+  const [, , , , app, ...rest] = url.pathname.split('/');
+  const op = (rest[0] === 'attest' ? 'install' : rest[0]) as AttestOp;
+  const challenge = await issueChallenge(env(), app!, at);
+  const clientData = await clientDataFor(app!, op, challenge, requestTarget(url), new TextEncoder().encode(text));
+  if (signer.kind === 'app-attest') {
+    const n = (counters.get(app!) ?? 0) + 1;
+    counters.set(app!, n);
+    const assertion = await assertionFor(appleKey.privateKey, clientData, n, `${TEAM}.com.nikatru.${app}`);
+    return {
+      'X-NK-Attest-Kind': 'app-attest',
+      'X-NK-Attest-Challenge': challenge,
+      'X-NK-Attest-Key': appleKeyId,
+      'X-NK-Attest-Proof': b64url(assertion),
+    };
+  }
+  const key = signer.key ?? installKey;
+  const sig = new Uint8Array(await crypto.subtle.sign({ name: 'Ed25519' }, key.privateKey, new TextEncoder().encode(clientData)));
+  return {
+    'X-NK-Attest-Kind': 'install-key',
+    'X-NK-Attest-Challenge': challenge,
+    'X-NK-Attest-Key': signer.keyId ?? installKeyId,
+    'X-NK-Attest-Proof': b64url(sig),
+  };
+}
+
+/** A request as gotrue-dart sends it through the attesting client: its own apikey and anon bearer, no Origin. */
+async function call(
   path: string,
   body: unknown,
-  { headers = {}, bindings = {}, via = app }: { headers?: Record<string, string>; bindings?: Partial<AppEnv['Bindings']>; via?: Hono<AppEnv> } = {},
+  {
+    headers = {},
+    bindings = {},
+    via = app,
+    attest = true,
+    signer,
+  }: { headers?: Record<string, string>; bindings?: Partial<AppEnv['Bindings']>; via?: Hono<AppEnv>; attest?: boolean; signer?: Signer } = {},
 ) {
+  const text = typeof body === 'string' ? body : JSON.stringify(body);
+  const proof = attest ? await attestHeaders(path, text, signer) : {};
   return via.request(
     path,
     {
@@ -128,9 +252,10 @@ function call(
         'X-Supabase-Api-Version': '2024-01-01',
         apikey: ANON_KEY,
         Authorization: `Bearer ${ANON_KEY}`,
+        ...proof,
         ...headers,
       },
-      body: typeof body === 'string' ? body : JSON.stringify(body),
+      body: text,
     },
     env(bindings),
   );
@@ -152,7 +277,7 @@ describe('ST-N1a · the route is mounted, per app, from the generated register',
   it('🔴 a password call reaches GoTrue with the service-role bearer and without gotrue_meta_security', async () => {
     const res = await call(`${BASE}/token?grant_type=password`, password());
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ access_token: 'access-token-value', refresh_token: 'refresh-token-value', token_type: 'bearer' });
+    expect(await res.json()).toEqual(SESSION);
     expect(gotrue.seen).toHaveLength(1);
     const [s] = gotrue.seen;
     expect(s!.url.pathname).toBe('/auth/v1/token');
@@ -165,20 +290,25 @@ describe('ST-N1a · the route is mounted, per app, from the generated register',
     expect(NATIVE_AUTH_UPSTREAM_TIMEOUT_MS).toBeGreaterThan(0);
   });
 
-  it('forwards the incoming headers as they arrived, minus the caller\'s credentials, cookie and referer', async () => {
+  it('forwards the incoming headers as they arrived, minus the caller\'s credentials, cookie, referer, address claims and attestation', async () => {
     await call(`${BASE}/token?grant_type=password`, password(), {
       headers: {
         Cookie: 'sb-access-token=stolen',
         Referer: 'https://elsewhere.example/landing',
         'X-Request-Id': 'rid-1',
-        // What Cloudflare puts on the request this Worker receives; on the
-        // same-zone subrequest it becomes GoTrue's CF-Connecting-IP (edge-shield's
-        // header comment). Passed through as it arrived — never read here.
+        // ⏱ 2026-09-30 (review of #1070): the two caller-writable address
+        // claims are DROPPED; the only address GoTrue sees is the one Cloudflare
+        // stamps, which passes through as it arrived and is never read here.
         'X-Real-IP': '203.0.113.7',
+        'X-Forwarded-For': '198.51.100.9, 203.0.113.7',
+        'CF-Connecting-IP': '203.0.113.7',
       },
     });
     const h = gotrue.seen[0]!.headers;
-    expect(h.get('x-real-ip')).toBe('203.0.113.7');
+    expect(h.get('x-real-ip')).toBeNull();
+    expect(h.get('x-forwarded-for')).toBeNull();
+    expect(h.get('cf-connecting-ip')).toBe('203.0.113.7');
+    for (const a of ['x-nk-attest-kind', 'x-nk-attest-challenge', 'x-nk-attest-key', 'x-nk-attest-proof']) expect(h.get(a), a).toBeNull();
     expect(h.get('user-agent')).toBe(UA);
     expect(h.get('x-supabase-api-version')).toBe('2024-01-01');
     expect(h.get('x-request-id')).toBe('rid-1');
@@ -337,6 +467,10 @@ describe('ST-N1a · the route is mounted, per app, from the generated register',
     // read, and a guard over prose would fail on the explanation.
     const code = stripComments(source);
     expect(code.length).toBeGreaterThan(1000);
+    // ⏱ 2026-09-30 (review of #1070): the route forwards an ALLOWLIST, so the
+    // caller-writable address claims are dropped without the source naming them —
+    // and Cloudflare's own connecting address passes as a `cf-` header, unnamed too.
+    expect(code).toContain('const GOTRUE_BOUND_HEADERS = new Set([');
     for (const header of ['cf-connecting-ip', 'x-forwarded-for', 'x-real-ip', 'true-client-ip', 'forwarded']) {
       expect(code.toLowerCase(), header).not.toContain(header);
     }
@@ -405,6 +539,311 @@ describe('ST-N1b · the limiters, which fail CLOSED', () => {
     };
     const down = await call(`${BASE}/token?grant_type=password`, password('x@example.test'));
     expect(down.status).toBe(503);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-29 · ADR no.NNN — ST-A · ONLY AN ATTESTED INSTALL GETS THROUGH.
+// The defect: until this block, a script that simply left `Origin` off got
+// captcha-free password sign-in and sign-up. Every case below is a way a
+// script could still try, and each must stop BEFORE GoTrue and before an
+// account's bucket is spent.
+// ─────────────────────────────────────────────────────────────────────────────
+const errorCode = async (res: Response) => ((await res.json()) as { error_code: string }).error_code;
+
+describe('ST-A · the attestation gate (ADR no.NNN)', () => {
+  it('🔴 red control — THE ORIGINAL BYPASS: the exact request that worked before, with no attestation, is 401 on all four ops', async () => {
+    for (const [path, body] of [
+      [`${BASE}/token?grant_type=password`, password()],
+      [`${BASE}/signup`, { email: 'bot@example.test', password: 'pw' }],
+      [`${BASE}/recover`, { email: 'bot@example.test' }],
+      [`${BASE}/resend`, { email: 'bot@example.test', type: 'signup' }],
+    ] as const) {
+      const res = await call(path, body, { attest: false });
+      expect(res.status, path).toBe(401);
+      expect(await errorCode(res)).toBe('attestation_required');
+    }
+    expect(gotrue.seen).toHaveLength(0);
+    expect(account.keys, 'an unattested call spends no account bucket — no lockout by script').toHaveLength(0);
+  });
+
+  it('🔴 BLOCKER 1 · install-key may NOT sign up, reset or resend — 403 even with the kind listed, before any config, challenge or crypto', async () => {
+    expect([...KIND_OPS['install-key']].sort()).toEqual(['install', 'token']);
+    for (const [path, body] of [
+      [`${BASE}/signup`, { email: 'bot@example.test', password: 'pw' }],
+      [`${BASE}/recover`, { email: 'bot@example.test' }],
+      [`${BASE}/resend`, { email: 'bot@example.test', type: 'signup' }],
+    ] as const) {
+      for (const kinds of ['install-key', 'app-attest,install-key,play-integrity']) {
+        const res = await call(path, body, { signer: { kind: 'install-key' }, bindings: { NATIVE_AUTH_ATTEST_KINDS: kinds } });
+        expect(res.status, `${path} ${kinds}`).toBe(403);
+        expect(await errorCode(res)).toBe('attestation_kind_refused');
+      }
+    }
+    expect(gotrue.seen).toHaveLength(0);
+    expect(account.keys).toHaveLength(0);
+    // The attested kind still may.
+    expect((await call(`${BASE}/signup`, { email: 'person@example.test', password: 'pw' })).status).toBe(200);
+  });
+
+  it('🔴 BLOCKER 1 · no deploy lists install-key: production lists only server-verified kinds, the sandbox none', () => {
+    const listed = [...wranglerRaw.matchAll(/"NATIVE_AUTH_ATTEST_KINDS":\s*"([^"]*)"/g)].map((m) => m[1]);
+    expect(listed).toEqual(['app-attest,play-integrity', '']);
+    for (const v of listed) expect(v).not.toContain('install-key');
+  });
+
+  it('🔴 SECOND REVIEW nit 10 · production never accepts App Attest DEVELOPMENT keys: only the sandbox block sets the flag', () => {
+    const at = [...wranglerRaw.matchAll(/"APP_ATTEST_ALLOW_DEVELOPMENT"/g)].map((m) => m.index!);
+    expect(at).toHaveLength(1);
+    const sandbox = wranglerRaw.indexOf('"sandbox": {');
+    expect(sandbox).toBeGreaterThan(0);
+    expect(at[0]!, 'the one occurrence sits inside env.sandbox, after the top-level vars').toBeGreaterThan(sandbox);
+  });
+
+  it('🔴 SECOND REVIEW nit 9 · a key stops at its daily call budget; another key still passes', async () => {
+    const day = new Date().toISOString().slice(0, 10);
+    db.db.prepare('INSERT INTO native_attest_counters (day, scope, calls) VALUES (?, ?, ?)').run(day, `key:${APP}:${appleKeyId}`, NATIVE_ATTEST_OPS_PER_KEY_PER_DAY);
+    const capped = await call(`${BASE}/token?grant_type=password`, password());
+    expect(capped.status).toBe(429);
+    expect(await errorCode(capped)).toBe('over_request_rate_limit');
+    expect(Number(capped.headers.get('retry-after'))).toBeGreaterThan(0);
+    expect(gotrue.seen).toHaveLength(0);
+    const other = await call(`${BASE}/token?grant_type=password`, password(), { signer: { kind: 'install-key' } });
+    expect(other.status).toBe(200);
+  });
+
+  it('SECOND REVIEW nit 11 · an unconfigured kind is reported ONCE per isolate, not per request', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const text = JSON.stringify(password());
+    const path = `${BASE}/token?grant_type=password`;
+    for (let i = 0; i < 3; i++) {
+      const headers = { ...(await attestHeaders(path, text)), 'X-NK-Attest-Kind': 'play-integrity' };
+      expect((await call(path, text, { attest: false, headers, bindings: { NATIVE_AUTH_ATTEST_KINDS: 'play-integrity' } })).status).toBe(503);
+    }
+    expect(err.mock.calls.filter((a) => String(a[0]).includes('play-integrity is enabled but not configured')).length).toBeLessThanOrEqual(1);
+  });
+
+  it('a genuine App Attest assertion passes every op, and moves the key\'s counter and last use', async () => {
+    expect((await call(`${BASE}/token?grant_type=password`, password())).status).toBe(200);
+    expect((await call(`${BASE}/recover`, { email: 'a@example.test' })).status).toBe(200);
+    const row = db.rows('SELECT sign_count, last_used_at FROM native_attest_keys WHERE app_id = ? AND key_id = ?', APP, appleKeyId)[0];
+    expect(row!.sign_count).toBe(2);
+    expect(String(row!.last_used_at) > '2026-09-29T00:00:00.000Z').toBe(true);
+  });
+
+  it('a genuine install-key signature passes the password grant (the one op it may authorise when listed)', async () => {
+    const res = await call(`${BASE}/token?grant_type=password`, password(), { signer: { kind: 'install-key' } });
+    expect(res.status).toBe(200);
+  });
+
+  it('🔴 a REPLAYED request — same challenge, same proof, same body — is 401 the second time', async () => {
+    const text = JSON.stringify(password());
+    const headers = await attestHeaders(`${BASE}/token?grant_type=password`, text);
+    const first = await call(`${BASE}/token?grant_type=password`, text, { attest: false, headers });
+    expect(first.status).toBe(200);
+    const replay = await call(`${BASE}/token?grant_type=password`, text, { attest: false, headers });
+    expect(replay.status).toBe(401);
+    expect(await errorCode(replay)).toBe('attestation_challenge_invalid');
+    expect(gotrue.seen).toHaveLength(1);
+  });
+
+  it('🔴 a proof over a DIFFERENT body, or a DIFFERENT query, is 401 — it covers the exact bytes, the path and the query', async () => {
+    const headers = await attestHeaders(`${BASE}/token?grant_type=password`, JSON.stringify(password('victim@example.test')));
+    const res = await call(`${BASE}/token?grant_type=password`, password('other@example.test'), { attest: false, headers });
+    expect(res.status).toBe(401);
+    expect(await errorCode(res)).toBe('attestation_invalid');
+
+    const own = encodeURIComponent(`${OWN}?nk_auth=reset`);
+    const other = encodeURIComponent(`${OWN}?nk_auth=confirm`);
+    const text = JSON.stringify({ email: 'a@example.test' });
+    const forOwn = await attestHeaders(`${BASE}/recover?redirect_to=${own}`, text);
+    const moved = await call(`${BASE}/recover?redirect_to=${other}`, text, { attest: false, headers: forOwn });
+    expect(moved.status).toBe(401);
+    expect(await errorCode(moved)).toBe('attestation_invalid');
+    expect(gotrue.seen).toHaveLength(0);
+  });
+
+  it('🔴 a proof for one op does not open another, and a challenge for another app does not redeem here', async () => {
+    const text = JSON.stringify({ email: 'a@example.test', password: 'pw' });
+    const asSignup = await attestHeaders(`${BASE}/signup`, text);
+    const res = await call(`${BASE}/token?grant_type=password`, text, { attest: false, headers: asSignup });
+    expect(res.status).toBe(401);
+    expect(await errorCode(res)).toBe('attestation_invalid');
+
+    const fixture = new Hono<AppEnv>().route('/v1', createNativeAuth([APP, 'budgetbuddy']));
+    const forBudget = await attestHeaders('/v1/auth/native/budgetbuddy/signup', text);
+    const cross = await call(`${BASE}/signup`, text, { attest: false, headers: forBudget, via: fixture });
+    expect(cross.status).toBe(401);
+    expect(await errorCode(cross)).toBe('attestation_challenge_invalid');
+    expect(gotrue.seen).toHaveLength(0);
+  });
+
+  it('🔴 an expired challenge, a forged challenge, an unregistered key and a forged key id are each refused', async () => {
+    const text = JSON.stringify(password());
+    const path = `${BASE}/token?grant_type=password`;
+    const stale = await attestHeaders(path, text, { kind: 'app-attest' }, Date.now() - 10 * 60_000);
+    expect(await errorCode(await call(path, text, { attest: false, headers: stale }))).toBe('attestation_challenge_invalid');
+
+    // Well-formed, but its MAC is not this server's.
+    const genuine = await attestHeaders(path, text);
+    const forged = { ...genuine, 'X-NK-Attest-Challenge': genuine['X-NK-Attest-Challenge']!.replace(/\.[A-Za-z0-9_-]{43}$/, `.${'A'.repeat(43)}`) };
+    expect(await errorCode(await call(path, text, { attest: false, headers: forged }))).toBe('attestation_challenge_invalid');
+    // A challenge minted under ANOTHER key is not this server's either.
+    const otherKey = await attestHeaders(path, text);
+    const rekeyed = await call(path, text, { attest: false, headers: otherKey, bindings: { NATIVE_ATTEST_CHALLENGE_KEY: 'a-different-challenge-key-0123456789abcdef' } });
+    expect(await errorCode(rekeyed)).toBe('attestation_challenge_invalid');
+
+    const stranger = (await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])) as CryptoKeyPair;
+    const strangerId = b64url(await sha256(new Uint8Array(await exportRaw(stranger.publicKey))));
+    const unknown = await call(path, text, { signer: { kind: 'install-key', key: stranger, keyId: strangerId } });
+    expect(unknown.status).toBe(401);
+    expect(await errorCode(unknown)).toBe('attestation_key_unknown');
+    const forgedKey = await call(path, text, { signer: { kind: 'install-key', key: stranger, keyId: installKeyId } });
+    expect(await errorCode(forgedKey)).toBe('attestation_invalid');
+    expect(gotrue.seen).toHaveLength(0);
+  });
+
+  it('🔴 THE FLAG: a kind this deploy does not list is 403, and a deploy that lists none refuses everything, challenges included', async () => {
+    const onlyApple = await call(`${BASE}/token?grant_type=password`, password(), {
+      signer: { kind: 'install-key' },
+      bindings: { NATIVE_AUTH_ATTEST_KINDS: 'app-attest' },
+    });
+    expect(onlyApple.status).toBe(403);
+    expect(await errorCode(onlyApple)).toBe('attestation_kind_refused');
+    for (const off of [undefined, '', 'nonsense']) {
+      const res = await call(`${BASE}/signup`, { email: 'a@example.test', password: 'pw' }, { bindings: { NATIVE_AUTH_ATTEST_KINDS: off } });
+      expect(res.status, String(off)).toBe(403);
+      const ch = await app.request(`${BASE}/attest/challenge`, { method: 'POST', body: '{}' }, env({ NATIVE_AUTH_ATTEST_KINDS: off }));
+      expect(ch.status, String(off)).toBe(403);
+    }
+    expect(gotrue.seen).toHaveLength(0);
+  });
+
+  it('🔴 a listed kind whose server config is missing is 503 — no Play key, no team id, no challenge key — never a pass', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const text = JSON.stringify(password());
+    const path = `${BASE}/token?grant_type=password`;
+    for (const [kind, bindings] of [
+      ['play-integrity', { NATIVE_AUTH_ATTEST_KINDS: 'play-integrity' }],
+      ['app-attest', { APP_ATTEST_TEAM_ID: undefined }],
+      ['app-attest', { NATIVE_ATTEST_CHALLENGE_KEY: undefined }],
+      ['app-attest', { NATIVE_ATTEST_CHALLENGE_KEY: 'too-short' }],
+    ] as const) {
+      const headers = { ...(await attestHeaders(path, text)), 'X-NK-Attest-Kind': kind };
+      const res = await call(path, text, { attest: false, headers, bindings });
+      expect(res.status, `${kind} ${JSON.stringify(bindings)}`).toBe(503);
+      expect(await errorCode(res)).toBe('native_auth_unavailable');
+    }
+    const ch = await app.request(`${BASE}/attest/challenge`, { method: 'POST', body: '{}' }, env({ NATIVE_ATTEST_CHALLENGE_KEY: undefined }));
+    expect(ch.status).toBe(503);
+    expect(gotrue.seen).toHaveLength(0);
+  });
+
+  it('🔴 the UNATTESTED kind has its own, tighter per-network ceiling; over it is 429, and absent it is 503', async () => {
+    unattested = new FakeLimiter(10);
+    for (let i = 0; i < 10; i++) {
+      expect((await call(`${BASE}/token?grant_type=password`, password(`p${i}@example.test`), { signer: { kind: 'install-key' } })).status, `call ${i}`).toBe(200);
+    }
+    const over = await call(`${BASE}/token?grant_type=password`, password('p10@example.test'), { signer: { kind: 'install-key' } });
+    expect(over.status).toBe(429);
+    expect(new Set(unattested.keys)).toEqual(new Set(['edge:-:-']));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const unbound = await call(`${BASE}/token?grant_type=password`, password('x@example.test'), {
+      signer: { kind: 'install-key' },
+      bindings: { NATIVE_AUTH_UNATTESTED_LIMITER: undefined },
+    });
+    expect(unbound.status).toBe(503);
+    expect(gotrue.seen).toHaveLength(10);
+  });
+
+  it('🔴 NO SESSION BEFORE EMAIL VERIFICATION on the unattested kind: an unconfirmed password grant is 403 and its session withheld', async () => {
+    gotrue.answer = answerJson(200, { ...SESSION, user: { id: 'new', email_confirmed_at: null } });
+    const token = await call(`${BASE}/token?grant_type=password`, password('new@example.test'), { signer: { kind: 'install-key' } });
+    expect(token.status).toBe(403);
+    expect(await errorCode(token)).toBe('email_not_confirmed');
+    // The attested kind is GoTrue's own answer, verbatim.
+    const attested = await call(`${BASE}/token?grant_type=password`, password('new2@example.test'));
+    expect(attested.status).toBe(200);
+  });
+
+  it('🔴 REVIEW FINDING 2 · challenges are STATELESS: issuing 25 writes no row anywhere; redeeming writes one nonce, pruned once expired', async () => {
+    const tables = db.rows("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").map((r) => String(r.name));
+    const total = () => tables.reduce((n, t) => n + db.count(t), 0);
+    const before = total();
+    const minted: string[] = [];
+    for (let i = 0; i < 25; i++) {
+      const res = await app.request(`${BASE}/attest/challenge`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }, env());
+      expect(res.status).toBe(200);
+      const { challenge, expires_in } = (await res.json()) as { challenge: string; expires_in: number };
+      expect(challenge).toMatch(/^c1\.subscriptiontracker\.\d{10}\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}$/);
+      expect(expires_in).toBe(120);
+      minted.push(challenge);
+    }
+    expect(new Set(minted).size).toBe(25);
+    expect(total(), 'issuing a challenge writes nothing').toBe(before);
+    expect(edge.keys).toHaveLength(25);
+
+    // A redemption writes exactly one nonce row, after deleting the expired ones.
+    db.db.prepare('INSERT INTO native_attest_redeemed (nonce, app_id, expires_at) VALUES (?, ?, ?)').run('n-expired', APP, '2020-01-01T00:00:00.000Z');
+    expect((await call(`${BASE}/token?grant_type=password`, password())).status).toBe(200);
+    expect(db.rows('SELECT nonce FROM native_attest_redeemed').map((r) => r.nonce)).not.toContain('n-expired');
+    expect(db.count('native_attest_redeemed')).toBe(1);
+
+    // A browser still cannot use any of it.
+    const browser = await app.request(`${BASE}/attest/challenge`, { method: 'POST', headers: { Origin: 'https://nikatru.com' }, body: '{}' }, env());
+    expect(browser.status).toBe(403);
+  });
+});
+
+describe('ST-A · key registration (POST …/attest/install)', () => {
+  const installPath = `${BASE}/attest/install`;
+  async function register(key: CryptoKeyPair, over: { body?: string; proofKey?: CryptoKeyPair } = {}) {
+    const raw = new Uint8Array(await exportRaw(key.publicKey));
+    const text = over.body ?? JSON.stringify({ kind: 'install-key', public_key: b64url(raw) });
+    const headers = await attestHeaders(installPath, text, { kind: 'install-key', key: over.proofKey ?? key, keyId: 'unused' });
+    delete (headers as Record<string, string | undefined>)['X-NK-Attest-Key'];
+    return app.request(installPath, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: text }, env());
+  }
+  const fresh = async () => (await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])) as CryptoKeyPair;
+
+  it('a new install registers its key once (201), again is 200, and the key then signs the password grant', async () => {
+    const k = await fresh();
+    const first = await register(k);
+    expect(first.status).toBe(201);
+    const { key_id } = (await first.json()) as { key_id: string };
+    expect(key_id).toBe(b64url(await sha256(new Uint8Array(await exportRaw(k.publicKey)))));
+    expect((await register(k)).status).toBe(200);
+    const res = await call(`${BASE}/token?grant_type=password`, password(), { signer: { kind: 'install-key', key: k, keyId: key_id } });
+    expect(res.status).toBe(200);
+  });
+
+  it('🔴 a registration signed by a DIFFERENT key (no proof of possession) is 401, and nothing is stored', async () => {
+    const res = await register(await fresh(), { proofKey: installKey });
+    expect(res.status).toBe(401);
+    expect(db.count('native_attest_keys')).toBe(4);
+  });
+
+  it('🔴 registrations have their own per-network ceiling: the 6th in a minute is 429', async () => {
+    installs = new FakeLimiter(5);
+    for (let i = 0; i < 5; i++) expect((await register(await fresh())).status).toBe(201);
+    expect((await register(await fresh())).status).toBe(429);
+  });
+
+  it('🔴 REVIEW FINDING 2 · a network\'s registrations are capped per UTC day, and a registration prunes long-idle keys first', async () => {
+    const day = new Date().toISOString().slice(0, 10);
+    db.db.prepare('INSERT INTO native_attest_keys (app_id, key_id, kind, public_key, sign_count, created_at, last_used_at) VALUES (?, ?, ?, ?, 0, ?, ?)')
+      .run(APP, 'k-idle', 'install-key', 'pk', '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z');
+    expect((await register(await fresh())).status).toBe(201);
+    expect(db.count('native_attest_keys', 'key_id = ?', 'k-idle'), 'the idle key was pruned by the write').toBe(0);
+    db.db.prepare('UPDATE native_attest_counters SET calls = ? WHERE day = ? AND scope = ?').run(NATIVE_ATTEST_INSTALLS_PER_NETWORK_PER_DAY, day, 'install:edge:-:-');
+    const capped = await register(await fresh());
+    expect(capped.status).toBe(429);
+    expect(capped.headers.get('retry-after')).toBe('86400');
+  });
+
+  it('refuses a body whose kind disagrees with the header, and a key that is not 32 bytes', async () => {
+    expect((await register(installKey, { body: JSON.stringify({ kind: 'app-attest', key_id: 'x' }) })).status).toBe(400);
+    expect((await register(installKey, { body: JSON.stringify({ kind: 'install-key', public_key: 'AAAA' }) })).status).toBe(400);
   });
 });
 

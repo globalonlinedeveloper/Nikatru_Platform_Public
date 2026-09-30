@@ -174,6 +174,79 @@ export interface Env {
    */
   NATIVE_AUTH_EDGE_LIMITER?: RateLimiterBinding;
 
+  /**
+   * ⏱ 2026-09-29 · ADR no.NNN. The UNATTESTED channel's own per-network ceiling
+   * on the four ops (`install-key`: Windows, Linux, macOS outside the Mac App
+   * Store), keyed `edge:<colo>:<asn>` like the one above and far tighter —
+   * that channel proves nothing about the binary, so its budget is the bound.
+   * Absence FAILS CLOSED (503).
+   */
+  NATIVE_AUTH_UNATTESTED_LIMITER?: RateLimiterBinding;
+
+  /**
+   * ⏱ 2026-09-29 · ADR no.NNN. The per-network ceiling on key registration
+   * (POST /v1/auth/native/<app>/attest/install), every kind. Absence FAILS CLOSED.
+   */
+  NATIVE_AUTH_INSTALL_LIMITER?: RateLimiterBinding;
+
+  /**
+   * ⏱ 2026-09-30 · ADR no.NNN (review of #1070). The per-network BURST ceiling
+   * on Play Integrity verifications (10/min), spent before a decode is asked of
+   * Google. It does not bound a day (10/min is 14,400 a day); the daily bounds
+   * are PLAY_INTEGRITY_DAILY_PER_NETWORK and PLAY_INTEGRITY_DAILY_CEILING
+   * (lib/native-attest/index.ts). Keyed `edge:<colo>:<asn>`. Absence FAILS CLOSED (503).
+   */
+  NATIVE_AUTH_PLAY_VERIFY_LIMITER?: RateLimiterBinding;
+
+  /**
+   * ⏱ 2026-09-30 · ADR no.NNN (review of #1070). The HMAC-SHA256 key native
+   * sign-in challenges are signed with, so issuing one writes nothing (32+
+   * characters of randomness, `wrangler secret put NATIVE_ATTEST_CHALLENGE_KEY`;
+   * ours, not a vendor's). Absent or short, the challenge endpoint and every
+   * native op answer 503. Rotating it invalidates only challenges in flight.
+   */
+  NATIVE_ATTEST_CHALLENGE_KEY?: string;
+
+  /**
+   * ⏱ 2026-09-29 · ADR no.NNN. THE FLAG: the attestation kinds this deploy
+   * accepts on the native route, comma-separated, from `play-integrity`,
+   * `app-attest`, `install-key`. ABSENT OR EMPTY ACCEPTS NONE — every native op
+   * is then 403, never open. A listed kind whose config below is missing is 503.
+   * ⏱ 2026-09-30 (review of #1070): no deploy lists `install-key`, and even a
+   * listed one authorises only the password grant (KIND_OPS).
+   */
+  NATIVE_AUTH_ATTEST_KINDS?: string;
+
+  /**
+   * ⏱ 2026-09-29 · ADR no.NNN. OWNER-PROVISIONED: the Google Cloud service-account
+   * key JSON (client_email, private_key) with the Play Integrity API enabled and
+   * the app linked in Play Console — `wrangler secret put`. Absent, the
+   * `play-integrity` kind answers 503.
+   */
+  PLAY_INTEGRITY_SERVICE_ACCOUNT?: string;
+
+  /**
+   * ⏱ 2026-09-29 · ADR no.NNN. The signing-certificate SHA-256 digests a Play
+   * Integrity verdict must carry, per app:
+   * `{"<app>":{"play":["AB:CD:…"],"sideload":["…"]}}`. `play` is the Play
+   * APP-SIGNING key's certificate (Play Console → App integrity), not the upload
+   * key; `sideload` is a self-signed channel's (apps.gov.in), whose .apk Play
+   * never saw. Public values, not secrets. Absent for an app, `play-integrity`
+   * answers 503 for it.
+   */
+  PLAY_INTEGRITY_CERT_DIGESTS?: string;
+
+  /**
+   * ⏱ 2026-09-29 · ADR no.NNN. The 10-character Apple Team ID whose App ID
+   * (`<TEAM>.com.nikatru.<app>`) App Attest binds. An identifier, kept out of
+   * the public tree as the build secrets keep it (`wrangler secret put`).
+   * Absent, the `app-attest` kind answers 503.
+   */
+  APP_ATTEST_TEAM_ID?: string;
+
+  /** ⏱ 2026-09-29 · ADR no.NNN. `true` accepts App Attest DEVELOPMENT keys — the sandbox deploy only. */
+  APP_ATTEST_ALLOW_DEVELOPMENT?: string;
+
   // Non-secret vars (wrangler.jsonc vars).
   APP_ID: string;
 

@@ -23,7 +23,7 @@
 //   · a UID per event that is STABLE across fetches (§3.8.4.7), so a client that
 //     re-reads the feed updates the event it has instead of adding a second one;
 //   · all-day events: DTSTART;VALUE=DATE and an exclusive DTEND the day after
-//     (§3.6.1), and a DISPLAY VALARM `lead` days before (§3.6.6).
+//     (§3.6.1), and one DISPLAY VALARM per lead, `lead` days before (§3.6.6).
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** One all-day event. `date` is 'YYYY-MM-DD'. */
@@ -32,8 +32,9 @@ export interface IcsEvent {
   date: string;
   summary: string;
   description?: string;
-  /** Days before `date` the alarm fires; null for no alarm. */
-  alarmDaysBefore: number | null;
+  /** Days before `date` each alarm fires, one VALARM per entry; `[]` for no
+   *  alarm (a subscription whose `reminder_days` is `[]`). */
+  alarmDaysBefore: readonly number[];
 }
 
 export interface IcsCalendar {
@@ -133,12 +134,12 @@ export function writeCalendar(cal: IcsCalendar): string {
       'TRANSP:TRANSPARENT',
     );
     if (e.description) lines.push(`DESCRIPTION:${escapeText(e.description)}`);
-    if (e.alarmDaysBefore !== null) {
+    for (const days of e.alarmDaysBefore) {
       lines.push(
         'BEGIN:VALARM',
         'ACTION:DISPLAY',
         `DESCRIPTION:${escapeText(e.summary)}`,
-        `TRIGGER:${beforeTrigger(e.alarmDaysBefore)}`,
+        `TRIGGER:${beforeTrigger(days)}`,
         'END:VALARM',
       );
     }

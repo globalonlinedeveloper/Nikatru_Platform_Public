@@ -103,6 +103,9 @@ function tree() {
     // one app file, and the one exempt importer.
     'apps/subscriptiontracker/lib/main.dart',
     'packages/core/lib/src/content/ed25519_pack_verifier.dart',
+    // ⏱ 2026-09-30 · ADR no.NNN: the second exempt importer (Ed25519 signing
+    // of native sign-in calls), so its EXEMPT_CIPHER_IMPORTS row has its file.
+    'packages/core/lib/src/auth/native_attest.dart',
     // ── limb 6 (e) and (f) (12b) ──────────────────────────────────────────
     // A declared app's money provider must wire its store bridge, and its
     // AppConfig must carry the entitlement id: a missing provider is COVERAGE
@@ -2632,7 +2635,8 @@ describe('limb 8 — an export-compliance `false` holds to the code the app ship
       // 4: main.dart, the recorded verifier, and the money provider and AppConfig limb 6 (e)/(f) read (12b).
       // ⏱ 2026-09-28 (ST-R4): 4 -> 5, the fixture carries the rendered
       // lib/core/windows_notification_identity.g.dart now (see tree()).
-      assert.match(out, /limb 8 — 1 app\(s\) declare no non-exempt encryption; 5 shipped Dart file\(s\) carry no cipher class/);
+      // ⏱ 2026-09-30 (ADR no.NNN): 5 -> 6, the second exempt importer, native_attest.dart.
+      assert.match(out, /limb 8 — 1 app\(s\) declare no non-exempt encryption; 6 shipped Dart file\(s\) carry no cipher class/);
     } finally { kill(root); }
   });
 

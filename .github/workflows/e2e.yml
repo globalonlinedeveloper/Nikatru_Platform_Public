@@ -707,6 +707,11 @@ jobs:
             callback: --callback
     env:
       APP: ${{ matrix.app }}
+      # why: --expect-refusal probes the native route over HTTP and never opens
+      # the app (ADR no.NNN), so the toolchain, the build and the device are dead
+      # weight: their steps run only when this is 'true'. It goes back to 'true'
+      # with the proof's --expect-refusal flags, when attested CI builds exist.
+      PROOF_NEEDS_DEVICE: 'false'
       TARGET: ${{ matrix.target }}
       DEVICE: ${{ matrix.device }}
       CALLBACK: ${{ matrix.callback }}
@@ -721,8 +726,9 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-flutter
+        if: env.PROOF_NEEDS_DEVICE == 'true'
       - name: Linux build and session deps
-        if: matrix.target == 'linux'
+        if: env.PROOF_NEEDS_DEVICE == 'true' && (matrix.target == 'linux')
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -730,9 +736,10 @@ jobs:
             libsecret-1-dev libjsoncpp-dev libcurl4-openssl-dev \
             xvfb gnome-keyring dbus-x11 desktop-file-utils xdg-utils
       - name: Enable the desktop target
-        if: matrix.target == 'macos' || matrix.target == 'windows' || matrix.target == 'linux'
+        if: env.PROOF_NEEDS_DEVICE == 'true' && (matrix.target == 'macos' || matrix.target == 'windows' || matrix.target == 'linux')
         run: flutter config "--enable-${TARGET}-desktop"
       - name: flutter pub get
+        if: env.PROOF_NEEDS_DEVICE == 'true'
         working-directory: apps/${{ matrix.app }}
         run: flutter pub get --enforce-lockfile
       - name: Resolve this app's databases from its Worker's wrangler file
@@ -741,7 +748,7 @@ jobs:
       - name: The app's API base, from the composer's rule
         run: node tooling/ci/flutter-release-build.mjs --emit-env API_BASE_URL "$APP" >> "$GITHUB_ENV"
       - name: Boot an emulator
-        if: matrix.target == 'android'
+        if: env.PROOF_NEEDS_DEVICE == 'true' && (matrix.target == 'android')
         env:
           API_LEVEL: '34'
         run: |
@@ -790,7 +797,7 @@ jobs:
           done
           echo "emulator booted at ${SECONDS}s"
       - name: Boot an iPhone simulator
-        if: matrix.target == 'ios'
+        if: env.PROOF_NEEDS_DEVICE == 'true' && (matrix.target == 'ios')
         run: |
           set -euo pipefail
           udid="$(xcrun simctl list devices available -j | node -e 'const d = JSON.parse(require("fs").readFileSync(0, "utf8")).devices; for (const [rt, list] of Object.entries(d)) { if (!/iOS/.test(rt)) continue; const p = list.find((x) => /^iPhone/.test(x.name)); if (p) { console.log(p.udid); process.exit(0); } } process.exit(1);')"
@@ -811,7 +818,11 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
-        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target "$TARGET" --device "${SIM_UDID:-$DEVICE}" --log "$E2E_PROOF_LOG" $CALLBACK
+        # why: --expect-refusal (ADR no.NNN, lead ruling 2026-09-30): production
+        # serves native sign-in only to a VERIFIED attestation, and a CI device
+        # cannot attest, so this leg now proves the gate: every call such a build
+        # sends is refused and no session comes back. A 2xx is the leg's red.
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target "$TARGET" --device "${SIM_UDID:-$DEVICE}" --log "$E2E_PROOF_LOG" $CALLBACK --expect-refusal
       - name: The native leg — the bundle under xvfb, one D-Bus session
         id: proof_linux
         if: matrix.target == 'linux'
@@ -821,12 +832,17 @@ jobs:
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
         run: |
+          # why: no display and no keyring in refusal mode — the probe never opens the bundle.
+          if [ "$PROOF_NEEDS_DEVICE" != true ]; then
+            node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --log "$E2E_PROOF_LOG" --callback --expect-refusal
+            exit
+          fi
           dbus-run-session -- bash -c '
             set -euo pipefail
             eval "$(printf "" | gnome-keyring-daemon --unlock --components=secrets)"
             export GNOME_KEYRING_CONTROL
             xvfb-run -a -s "-screen 0 1920x1200x24" \
-              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --log "$E2E_PROOF_LOG" --callback
+              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --log "$E2E_PROOF_LOG" --callback --expect-refusal
           '
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'

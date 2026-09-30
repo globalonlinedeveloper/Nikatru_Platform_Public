@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// A single navigation destination for [AppScaffold].
 @immutable
@@ -178,6 +179,8 @@ class AppScaffold extends StatelessWidget {
     this.title,
     this.floatingActionButton,
     this.compactNavigationBar,
+    this.onPrimaryAction,
+    this.onSearch,
   }) : assert(
          destinations.length >= 2,
          'AppScaffold needs at least 2 destinations',
@@ -222,8 +225,25 @@ class AppScaffold extends StatelessWidget {
   /// to ignore.
   final Widget? compactNavigationBar;
 
+  /// What **N** does: the screen's primary action (Subly: add a
+  /// subscription). Null: N is not bound. See `_ShellShortcuts` below.
+  final VoidCallback? onPrimaryAction;
+
+  /// What **/** does: focus the screen's search. Null: / is not bound.
+  final VoidCallback? onSearch;
+
   @override
   Widget build(BuildContext context) {
+    return _ShellShortcuts(
+      destinationCount: destinations.length,
+      onDestinationSelected: onDestinationSelected,
+      onPrimaryAction: onPrimaryAction,
+      onSearch: onSearch,
+      child: _layout(),
+    );
+  }
+
+  Widget _layout() {
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         // Five classes, and each one must be OBSERVABLY different or the
@@ -355,6 +375,176 @@ class AppScaffold extends StatelessWidget {
             Expanded(child: content),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// THE SHELL'S KEYBOARD — ST-D0 D0-6, the keyboard half of ST-N3 (C48, round-2
+/// review): there was no `Shortcuts` anywhere in the shell, so on web and
+/// desktop every tab switch and every "add" was a pointer trip.
+///
+/// | key      | does                                                    |
+/// |----------|---------------------------------------------------------|
+/// | **N**    | [onPrimaryAction] — the screen's primary action          |
+/// | **/**    | [onSearch] — focus the search                            |
+/// | **Esc**  | in a field: leaves it; focus returns to the shell        |
+/// | **1–9**  | the destination at that position (1 = the first)         |
+///
+/// Built into [AppScaffold], so every stamped app gets it with its
+/// destinations; an app binds N and / by passing the two callbacks.
+///
+/// 🔴 TYPING IS NEVER A SHORTCUT. While focus is inside an [EditableText], N,
+/// / and the digits are DISABLED, so the key reaches the field: "Netflix"
+/// types an n, and a price types its digits. Esc is the reverse: it is live
+/// ONLY there — it is how a keyboard user gets back out of the field to the
+/// shortcuts — and stands aside everywhere else, so a sheet or dialog above
+/// still gets its own Esc-to-dismiss.
+///
+/// 🔴 THE SHELL TAKES FOCUS WHEN NOTHING HAS IT (`autofocus`, skipped by
+/// traversal). Shortcuts only hear keys from focus at or below them; on a
+/// fresh page nothing is focused, so without this the first key after load
+/// went nowhere. A focused descendant still wins: keys bubble up to here.
+class _ShellShortcuts extends StatefulWidget {
+  const _ShellShortcuts({
+    required this.destinationCount,
+    required this.onDestinationSelected,
+    required this.child,
+    this.onPrimaryAction,
+    this.onSearch,
+  });
+
+  /// How many destinations the digits may select (at most nine are bound).
+  final int destinationCount;
+
+  /// Called with the zero-based index a digit names.
+  final ValueChanged<int> onDestinationSelected;
+
+  /// N. Null: unbound.
+  final VoidCallback? onPrimaryAction;
+
+  /// /. Null: unbound.
+  final VoidCallback? onSearch;
+
+  /// The shell.
+  final Widget child;
+
+  /// The digit keys, in destination order.
+  static const List<LogicalKeyboardKey> digitKeys = <LogicalKeyboardKey>[
+    LogicalKeyboardKey.digit1,
+    LogicalKeyboardKey.digit2,
+    LogicalKeyboardKey.digit3,
+    LogicalKeyboardKey.digit4,
+    LogicalKeyboardKey.digit5,
+    LogicalKeyboardKey.digit6,
+    LogicalKeyboardKey.digit7,
+    LogicalKeyboardKey.digit8,
+    LogicalKeyboardKey.digit9,
+  ];
+
+  @override
+  State<_ShellShortcuts> createState() => _ShellShortcutsState();
+}
+
+class _PrimaryActionIntent extends Intent {
+  const _PrimaryActionIntent();
+}
+
+class _SearchIntent extends Intent {
+  const _SearchIntent();
+}
+
+class _LeaveFieldIntent extends Intent {
+  const _LeaveFieldIntent();
+}
+
+class _DestinationIntent extends Intent {
+  const _DestinationIntent(this.index);
+  final int index;
+}
+
+/// Whether the primary focus is inside a text field.
+bool _typing() {
+  final BuildContext? focused = FocusManager.instance.primaryFocus?.context;
+  if (focused == null) return false;
+  return focused.widget is EditableText ||
+      focused.findAncestorWidgetOfExactType<EditableText>() != null;
+}
+
+/// An action that stands aside while the user is typing.
+class _NotWhileTyping<T extends Intent> extends CallbackAction<T> {
+  _NotWhileTyping({required super.onInvoke});
+
+  @override
+  bool isEnabled(T intent) => !_typing();
+}
+
+/// An action that is live only while the user is typing.
+class _OnlyWhileTyping<T extends Intent> extends CallbackAction<T> {
+  _OnlyWhileTyping({required super.onInvoke});
+
+  @override
+  bool isEnabled(T intent) => _typing();
+}
+
+class _ShellShortcutsState extends State<_ShellShortcuts> {
+  final FocusNode _shell = FocusNode(
+    debugLabel: 'AppScaffold shortcuts',
+    skipTraversal: true,
+  );
+
+  @override
+  void dispose() {
+    _shell.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final int digits = widget.destinationCount.clamp(
+      0,
+      _ShellShortcuts.digitKeys.length,
+    );
+    return Shortcuts(
+      shortcuts: <ShortcutActivator, Intent>{
+        if (widget.onPrimaryAction != null)
+          const SingleActivator(LogicalKeyboardKey.keyN):
+              const _PrimaryActionIntent(),
+        if (widget.onSearch != null)
+          const CharacterActivator('/'): const _SearchIntent(),
+        const SingleActivator(LogicalKeyboardKey.escape):
+            const _LeaveFieldIntent(),
+        for (int i = 0; i < digits; i++)
+          SingleActivator(_ShellShortcuts.digitKeys[i]): _DestinationIntent(i),
+      },
+      child: Actions(
+        actions: <Type, Action<Intent>>{
+          _PrimaryActionIntent: _NotWhileTyping<_PrimaryActionIntent>(
+            onInvoke: (_) {
+              widget.onPrimaryAction?.call();
+              return null;
+            },
+          ),
+          _SearchIntent: _NotWhileTyping<_SearchIntent>(
+            onInvoke: (_) {
+              widget.onSearch?.call();
+              return null;
+            },
+          ),
+          _DestinationIntent: _NotWhileTyping<_DestinationIntent>(
+            onInvoke: (_DestinationIntent intent) {
+              widget.onDestinationSelected(intent.index);
+              return null;
+            },
+          ),
+          _LeaveFieldIntent: _OnlyWhileTyping<_LeaveFieldIntent>(
+            onInvoke: (_) {
+              _shell.requestFocus();
+              return null;
+            },
+          ),
+        },
+        child: Focus(focusNode: _shell, autofocus: true, child: widget.child),
       ),
     );
   }
