@@ -54,9 +54,10 @@
 // ORDER AND BUDGET. Each selected check carries the TIER of its tightest tie to the
 // change: 0 its own file changed, 1 a file its entry names (for a test, also the
 // guard it runs), 2 a file a module it imports names, 3 a directory or glob. The run
-// starts the tightest first and starts nothing after --budget-s (default
-// DEFAULT_BUDGET_S, env NIKATRU_AFFECTED_BUDGET_S, floor BUDGET_FLOOR_S); a running
-// check finishes. The cut is printed by name as NOT RUN (budget) — CI runs them —
+// starts the tightest first (the cheap guards before the slow tests within a tier)
+// and starts nothing after --budget-s (default DEFAULT_BUDGET_S, env
+// NIKATRU_AFFECTED_BUDGET_S, floor BUDGET_FLOOR_S); a check still running GRACE_MS
+// later is stopped. The cut is printed by name as NOT RUN (budget) — CI runs them —
 // and is not a pass of those checks: it is the same bargain as preflight --smoke's.
 // Measured 2026-09-30 on this laptop while other lanes held all four cores: single
 // guard tests took 4–375 s, so an unbudgeted run of a register-wide change (~200
@@ -105,6 +106,10 @@ const CI_WORKFLOW = 'ci.yml';
 export const DEFAULT_BUDGET_S = 240;
 /** Like preflight's SMOKE_BUDGET_FLOOR_S: a tiny budget would cut most checks and pass. */
 export const BUDGET_FLOOR_S = 60;
+/** The hard stop: a check still running this long after the budget is stopped and
+ *  reported by name, so the added wall time is bounded by budget + grace, not by the
+ *  slowest ceiling (a 262 s test started at 239 s took the first dogfood run to 448 s). */
+const GRACE_MS = 60_000;
 
 // ── the tracked tree ─────────────────────────────────────────────────────────
 
@@ -854,20 +859,26 @@ function commandsFor(check, root) {
   return [];
 }
 
-async function runCheck(check, root, envs) {
+/** Run one check's commands under its ceiling, and under `deadline` (an epoch ms, or
+ *  null): a check the deadline stops is `budgetCut`, not a timeout — it was not given
+ *  its time, so it has no verdict, and the run says so by name. */
+async function runCheck(check, root, envs, deadline = null) {
   const started = Date.now();
   let out = '';
   let status = 0;
   let timedOut = false;
+  let budgetCut = false;
   for (const c of commandsFor(check, root)) {
-    const left = check.ceilingMs - (Date.now() - started);
-    if (left <= 0) { timedOut = true; status = null; break; }
+    const own = check.ceilingMs - (Date.now() - started);
+    const left = deadline === null ? own : Math.min(own, deadline - Date.now());
+    if (left <= 0) { if (own > 0) budgetCut = true; else timedOut = true; status = null; break; }
     const r = await runOne(c.cmd, c.args, { cwd: c.cwd, shell: c.shell, env: c.env === 'dart' ? envs.dart : process.env, timeoutMs: left });
     out += `$ ${c.cmd} ${c.args.join(' ')}\n${r.out}\n`;
-    if (r.timedOut) { timedOut = true; status = null; break; }
+    if (r.timedOut) { if (deadline !== null && Date.now() >= deadline - 50 && check.ceilingMs - (Date.now() - started) > 0) budgetCut = true; else timedOut = true; status = null; break; }
     if (r.status !== 0) { status = r.status; break; }
   }
-  return { status, out, ms: Date.now() - started, timedOut };
+  return budgetCut ? { status: 0, out, ms: Date.now() - started, timedOut: false, budgetCut: true, stopped: true }
+    : { status, out, ms: Date.now() - started, timedOut };
 }
 
 /** Porcelain status plus a content hash of every dirty path: what the checks wrote. */
@@ -1012,9 +1023,11 @@ export async function main(argv = process.argv.slice(2), { root = ROOT, log = co
       `selected: ${[...selectedIds].sort().join(', ')}`);
     return 2;
   }
-  // Tightest tie first, so a budget cuts the loosest; within a tier the slow kinds
-  // start first, so they are not the tail the budget waits on.
-  const KIND_ORDER = { 'dart-test': 0, 'dart-analyze': 1, worker: 2, test: 3, guard: 4 };
+  // Tightest tie first, so a budget cuts the loosest; within a tier the CHEAP kinds
+  // first. Measured on this branch's own diff under load (2026-09-30): with slow tests
+  // first, six 130–260 s tests ate the budget and 19 guards of 1–5 s each — the meta
+  // guards CI fails on most — were cut.
+  const KIND_ORDER = { guard: 0, worker: 1, 'dart-analyze': 2, test: 3, 'dart-test': 4 };
   const toRun = sel.selected.filter((c) => !skipIds.includes(c.id))
     .sort((a, b) => (sel.tiers.get(a.id) - sel.tiers.get(b.id)) || (KIND_ORDER[a.kind] - KIND_ORDER[b.kind]) || a.id.localeCompare(b.id));
 
@@ -1060,7 +1073,8 @@ export async function main(argv = process.argv.slice(2), { root = ROOT, log = co
   const results = await pool(toRun, width, async (check) => {
     if (budgetMs !== null && Date.now() - tRun > budgetMs) return { status: 0, out: '', ms: 0, timedOut: false, budgetCut: true };
     if (check.kind.startsWith('dart-') && dartBlocked) return { status: null, out: dartBlocked, ms: 0, timedOut: false, blocked: true };
-    const r = await runCheck(check, root, envs);
+    const r = await runCheck(check, root, envs, budgetMs === null ? null : tRun + budgetMs + GRACE_MS);
+    if (r.stopped) { log(`⏭ ${'STOPPED'.padStart(7)}  ${secs(r.ms).padStart(7)}  ${check.id} — still running at the hard stop (budget + ${GRACE_MS / 1000} s)`); return r; }
     const mark = r.status === 0 ? '✓' : '✗';
     log(`${mark} ${String(r.status === null ? (r.timedOut ? 'TIMEOUT' : 'null') : r.status).padStart(7)}  ${secs(r.ms).padStart(7)}  ${check.id}`);
     return r;
