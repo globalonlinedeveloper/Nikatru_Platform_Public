@@ -198,7 +198,7 @@
     50,
 
   "channel-register.test.mjs":
-    341,
+    356,
 
   "channel-surface.test.mjs":
     7,
@@ -312,7 +312,7 @@
     46,
 
   "e2e-proof-fresh.test.mjs":
-    61,
+    67,
 
   "e2e-run-resolver.test.mjs":
     17,
@@ -468,7 +468,7 @@
     8,
 
   "install-pinned-tool.test.mjs":
-    22,
+    27,
 
   "land-rules.test.mjs":
     22,
@@ -511,6 +511,9 @@
 
   "local-chromedriver.test.mjs":
     12,
+
+  "lockfile-discipline.test.mjs":
+    9,
 
   "mail-auth-dns.test.mjs":
     35,
@@ -591,7 +594,7 @@
     14,
 
   "no-tls-pinning.test.mjs":
-    13,
+    26,
 
   "obfuscation-coupled.test.mjs":
     40,
@@ -618,7 +621,7 @@
     13,
 
   "package-boundaries.test.mjs":
-    28,
+    33,
 
   "package-earned.test.mjs":
     25,
@@ -815,8 +818,11 @@
   "safe-rerun.test.mjs":
     77,
 
+  "scan-dependencies.test.mjs":
+    25,
+
   "scan-secrets.test.mjs":
-    12,
+    22,
 
   "scan-workflows.test.mjs":
     12,
@@ -838,6 +844,9 @@
 
   "setup-flutter-env.test.mjs":
     4,
+
+  "signing-inputs-pinned.test.mjs":
+    14,
 
   "signing-seam-census.test.mjs":
     9,
@@ -1005,7 +1014,7 @@
     42,
 
   "web-cache-policy.test.mjs":
-    46,
+    73,
 
   "web-drive-stages-fonts.test.mjs":
     5,

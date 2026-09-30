@@ -929,11 +929,15 @@ describe('assert-lockfile-discipline', () => {
     assert.match(out, /npm ci/);
   });
 
-  test('ALLOWS npm install for a mason-stamped app — the one deliberate exception', () => {
+  // ⏱ 2026-09-30 · rv2-security-020: the "mason-stamped app" exception is RETIRED —
+  // the brick stamps its lockfile, so a bare `npm install` there is a finding like
+  // anywhere else. The directory limb (2b) is tested in lockfile-discipline.test.mjs.
+  test('FAILS npm install for a mason-stamped app — the retired exception no longer excuses it', () => {
     const wf =
       'jobs:\n  a:\n    steps:\n      - name: stamped service\n        working-directory: services/probeapi-api\n        run: |\n          npm install\n';
     const { code, out } = run('assert-lockfile-discipline.mjs', { args: [build('ld-excused', { workflow: wf })] });
-    assert.equal(code, 0, out);
+    assert.equal(code, 1, out);
+    assert.match(out, /ci\.yml:7 installs non-reproducibly/);
   });
 
   test('does NOT trip on npm install mentioned in a comment', () => {
@@ -3176,13 +3180,16 @@ const RULES = [];
 let cur = null, inAllow = false;
 for (const raw of cfg.split(/\\r?\\n/)) {
   const line = raw.trim();
-  if (line === '[[rules]]') { cur = { id: null, re: null, group: 0, allow: [] }; RULES.push(cur); inAllow = false; continue; }
+  if (line === '[[rules]]') { cur = { id: null, re: null, path: null, group: 0, allow: [] }; RULES.push(cur); inAllow = false; continue; }
   if (line === '[rules.allowlist]') { inAllow = true; continue; }
   if (!cur) continue;
   let m;
   if ((m = line.match(/^id = "(.+)"$/))) { cur.id = m[1]; continue; }
   if ((m = line.match(/^secretGroup = (\\d+)$/))) { cur.group = Number(m[1]); continue; }
   if ((m = line.match(/^regex = '''(.*)'''$/))) { if (!inAllow) cur.re = m[1]; continue; }
+  // A PATH-ONLY rule (no regex) fires on the file NAME alone, as gitleaks' does
+  // (rv2-security-019's nikatru-signing-key-file). Go's leading (?i) becomes the i flag.
+  if ((m = line.match(/^path = '''(.*)'''$/))) { if (!inAllow) cur.path = m[1]; continue; }
   if ((m = line.match(/^regexes = \\[(.*)\\]$/))) {
     if (inAllow) for (const r of m[1].split(/''',\\s*'''/)) cur.allow.push(r.replace(/'''/g, ''));
     continue;
@@ -3202,6 +3209,13 @@ for (const f of walk(src)) {
   let t;
   try { t = readFileSync(f, 'utf8'); } catch { continue; }
   scannedBytes += Buffer.byteLength(t);
+  for (const r of RULES) {
+    if (r.re || !r.path || !r.id) continue;
+    const ci = r.path.startsWith('(?i)');
+    if (new RegExp(ci ? r.path.slice(4) : r.path, ci ? 'i' : '').test(f)) {
+      findings.push({ RuleID: r.id, File: f, StartLine: 0, Description: r.id });
+    }
+  }
   for (const r of RULES) {
     if (!r.re || !r.id) continue;
     let re;
