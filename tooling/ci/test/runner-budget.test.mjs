@@ -215,6 +215,34 @@ describe('assert-runner-budget — minutes by runner SKU, macOS ceiling', () => 
     assert.match(out, /macOS 200 minute\(s\) within 200/);
   });
 
+  // A dated exception (MACOS_CEILING_EXCEPTIONS) applies to ITS period only and
+  // says so; the same minutes one month later are graded at 200 again.
+  const macRowAt = (date, qty, repo) => row(date, 'Actions macOS 3-core', 'Minutes', qty, qty * 0.062, qty * 0.062, 0, repo);
+
+  test('a DATED exception lifts the ceiling for its own period (2026-09) and prints why', () => {
+    const { code, out } = run([
+      '--usage-file',
+      fixture({ usageItems: [macRowAt('2026-09-01T00:00:00Z', 873, 'Nikatru_Platform_Public')] }),
+      '--now',
+      '2026-09-30T03:00:00Z',
+    ]);
+    assert.equal(code, EXIT_OK, out);
+    assert.match(out, /by runner SKU, 2026-09 \(macOS 873 of 1,000 minute\(s\) allowed\)/);
+    assert.match(out, /dated exception for 2026-09 \(expires with the period\): 873 measured/);
+  });
+
+  test('the exception EXPIRES with its period: the same minutes in 2026-10 fail at 200', () => {
+    const { code, out } = run([
+      '--usage-file',
+      fixture({ usageItems: [macRowAt('2026-10-01T00:00:00Z', 873, 'Nikatru_Platform_Public')] }),
+      '--now',
+      '2026-10-02T03:00:00Z',
+    ]);
+    assert.equal(code, EXIT_OVER_CEILING, out);
+    assert.match(out, /spent 873 macOS minute\(s\), over the declared ceiling of 200/);
+    assert.doesNotMatch(out, /dated exception/);
+  });
+
   // A row the limb cannot attribute must stop the count, never be skipped.
   test('exit 2 on a Minutes row with no sku', () => {
     const bad = macRow(500, 'Nikatru_Platform_Public');

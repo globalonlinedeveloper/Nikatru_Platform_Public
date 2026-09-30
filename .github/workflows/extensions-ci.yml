@@ -453,6 +453,12 @@ jobs:
       # party; the bound makes a hang the flag misses fail THIS step, by name, in 2 min.
       # Every zlib step in this file is held to the same shape, derived, by
       # tooling/ci/test/single-threaded-relaunch.test.mjs E1/E2.
+      # EXL-03 (2026-09-29): DIAGNOSED from a live hung process with gdb -- main thread in
+      # process.exit -> NodePlatform::Shutdown -> pthread_join, the worker it joins parked in
+      # CollectionBarrier::AwaitCollectionBackground waiting for a GC the main thread no
+      # longer runs. The renderer now relaunches ITSELF single-threaded (G1 in that test
+      # file), so a caller without the flag (scripts/new-tool.mjs) is covered too. The flag
+      # and the 2-minute bound stay here: this is the process CI starts.
       - name: The listing graphics are what the renderer derives from each tool
         timeout-minutes: 2
         run: node --single-threaded scripts/render-extension-graphics.mjs --all --check
@@ -562,8 +568,11 @@ jobs:
       matrix:
         tool: ${{ fromJSON(needs.discover.outputs.tools) }}
     steps:
+      # why: check-version.mjs names the commit that stamped the version (git blame on the
+      # CHANGELOG's top heading) and fails a shipped-file commit after it (EXL-15); a
+      # shallow checkout holds neither, and the script refuses one with exit 2.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with: { persist-credentials: false }
+        with: { fetch-depth: 0, persist-credentials: false }
       - uses: ./.github/actions/setup-node
       - name: Syntax check every shipped script
         run: node scripts/lint.mjs ${{ matrix.tool }}
