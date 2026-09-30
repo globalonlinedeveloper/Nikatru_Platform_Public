@@ -109,9 +109,13 @@ const git = (cwd, ...args) => {
 function stageRealReader(dir, { remaining }) {
   const at = join(dir, 'tooling', 'ops');
   mkdirSync(at, { recursive: true });
-  const src = readFileSync(join(OPS, 'triage-failed-runs.mjs'), 'utf8')
-    .replace("from './safe-rerun.mjs'", `from ${JSON.stringify(pathToFileURL(join(OPS, 'safe-rerun.mjs')).href)}`)
-    .replace("from './bounded-retry.mjs'", `from ${JSON.stringify(pathToFileURL(join(OPS, 'bounded-retry.mjs')).href)}`);
+  // ⏱ 2026-09-30: EVERY relative import is re-pointed at the real file it names,
+  // resolved from the real reader's directory — not a list of known siblings, so
+  // a new import (#1076 added '../ci/run-page-anchor.mjs') cannot break the copy.
+  const src = readFileSync(join(OPS, 'triage-failed-runs.mjs'), 'utf8').replace(
+    /from '(\.\.?\/[^']+)'/g,
+    (_, rel) => `from ${JSON.stringify(pathToFileURL(resolve(OPS, rel)).href)}`,
+  );
   assert.doesNotMatch(src, /from '\.\.?\//, 'the reader imports a relative module this copy does not re-point');
   writeFileSync(join(at, 'triage-failed-runs.mjs'), src);
   const cause = { signature: 'cancelled:by-hand-or-unknown', rootCause: 'Cancelled with no successor in its concurrency group.', fix: 'not a defect', fixedBy: { kind: 'not-a-defect', reason: 'no verdict rendered' } };

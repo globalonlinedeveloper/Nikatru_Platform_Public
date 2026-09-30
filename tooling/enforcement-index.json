@@ -2842,6 +2842,14 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/coverage-manifest-format.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
     "claims": [
       "ADR 057",
       "ADR 067"
@@ -3770,6 +3778,16 @@
     ],
     "kind": "script",
     "ref": "tooling/ops/guard-yield.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/main-healthy.yml#publish"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/land-gate.mjs",
     "references": [],
     "state": "WIRED"
   },
