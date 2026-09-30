@@ -167,6 +167,32 @@ export function reportablePath(pathname: string, matched: readonly MatchedRoute[
   return scrubPath(handler ? handler.path : pathname);
 }
 
+/** What `requestSinkContext` reads from a request: Hono's `Context`, described
+ *  structurally because nothing here may carry a bare import (see the header). */
+export interface SinkRequest {
+  req: { method: string; url: string };
+  env: { RELEASE?: string };
+  get(key: 'requestId'): string | undefined;
+}
+
+/**
+ * The context of one request's report, built ONCE. `app.onError` sends it, and
+ * so does a route that answers around a failure (so onError never sees it) but
+ * still owes a report — a purge that failed under a list that loaded. Two copies
+ * of this block drift, and the pathname-only line is the one that must not. The
+ * `reportWorkerError(` call itself stays inline in `app.onError`, where
+ * assert-worker-error-sink limb 2 reads it.
+ */
+export function requestSinkContext(service: string, c: SinkRequest): SinkContext {
+  return {
+    service,
+    release: c.env.RELEASE,
+    requestId: c.get('requestId'),
+    method: c.req.method,
+    path: new URL(c.req.url).pathname, // pathname only — never the query string
+  };
+}
+
 /** The Sentry envelope for one unhandled error: headers, item header, item. */
 export function buildEnvelope(err: unknown, ctx: SinkContext, dsn: string, now: Date): string {
   const id = eventId();

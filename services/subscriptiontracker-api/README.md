@@ -30,9 +30,9 @@ all six Flutter targets. Auth is **Supabase** — the Worker verifies Supabase J
 | GET | `/v1/subscriptions` | Supabase JWT | List subscriptions (price desc); hides soft-deleted rows and purges those past 30 days (a failed purge is reported to GlitchTip; the list still loads) |
 | POST | `/v1/subscriptions` | Supabase JWT | Create subscription |
 | GET | `/v1/subscriptions/:id` | Supabase JWT | One subscription + payment_history + price_history |
-| PATCH | `/v1/subscriptions/:id` | Supabase JWT | Update fields — incl. `status` paused/cancelled and `deleted_at` (soft delete; `null` restores); a price edit logs a `price_change` row read from the row in the same batch; a dateless cancel is dated today only on the transition into `cancelled`; a removed row is a 404 to everything but `{deleted_at: null}` |
+| PATCH | `/v1/subscriptions/:id` | Supabase JWT | Update fields — incl. `status` paused/cancelled and `deleted_at` (soft delete; `null` restores); a price edit logs a `price_change` row read from the row in the same batch; a dateless cancel is dated today only on the transition into `cancelled`, and `{cancelled_on: null}` alone keeps a cancelled row's date; a removed row is a 404 to everything but `{deleted_at: null}` (restore) and `{deleted_at: <any>}` alone (a repeat removal: 200, the first stamp kept, as `DELETE`) |
 | DELETE | `/v1/subscriptions/:id` | Supabase JWT | Soft delete (sets `deleted_at`; restorable for 30 days, then purged with its history) |
-| POST | `/v1/subscriptions/:id/payments` | Supabase JWT | Record a manual payment (`source: manual`) |
+| POST | `/v1/subscriptions/:id/payments` | Supabase JWT | Record a manual payment (`source: manual`); `paid_on` is 2000-01-01 to tomorrow (UTC) |
 | GET | `/v1/renewals?withinDays=7` | Supabase JWT | Upcoming renewals + `days_left` |
 | GET | `/v1/budget` | Supabase JWT | Monthly budget + category caps |
 | PUT | `/v1/budget` | Supabase JWT | Upsert budget + caps (a cap may name its `category_id`) |

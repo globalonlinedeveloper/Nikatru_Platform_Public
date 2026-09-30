@@ -4,13 +4,14 @@
 // and `reminder_days` (JSON text) to the list it holds.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import type { AppEnv, Payment, PriceChange, Subscription } from '../types';
 import { allRows, firstRow, nowIso, run, todayYmd, uuid } from '../lib/d1';
-import { reportWorkerError } from '../lib/error-sink';
+import { reportWorkerError, requestSinkContext } from '../lib/error-sink';
 import {
   isBoundedString,
   isCalendarDate,
+  isCalendarDateBetween,
   isFiniteNumber,
   isPlainObject,
   type Invalid,
@@ -775,23 +776,14 @@ app.get('/', async (c) => {
   // catch answers around the failure, so `app.onError` never sees it, and a
   // `console.error` alone is a `wrangler tail` nobody watches: a purge failing
   // on every list for a month looked exactly like one that worked. It goes to
-  // the Worker's one error sink with the context `app.onError` sends
-  // (src/index.ts), under `waitUntil` so the list is not held open behind it.
+  // the Worker's one error sink with the context `app.onError` sends — built by
+  // the same `requestSinkContext`, not a copy of it — under `waitUntil` so the
+  // list is not held open behind it.
   try {
     await purgeExpired(c.env.APP_DB, userId);
   } catch (err) {
     console.error(`[purgeExpired] rid=${c.get('requestId') ?? '-'}`, err);
-    const report = reportWorkerError(
-      err,
-      {
-        service: 'subscriptiontracker-api',
-        release: c.env.RELEASE,
-        requestId: c.get('requestId'),
-        method: c.req.method,
-        path: new URL(c.req.url).pathname, // pathname only — never the query string
-      },
-      c.env,
-    );
+    const report = reportWorkerError(err, requestSinkContext('subscriptiontracker-api', c), c.env);
     try {
       c.executionCtx.waitUntil(report);
     } catch {
@@ -968,6 +960,21 @@ app.get('/:id', async (c) => {
 // ─────────────────────────────────────────────────────────────────────────────
 const MANUAL_SOURCE = 'manual';
 
+/**
+ * THE WINDOW A PAID DATE MAY FALL IN (review of #1063, minor 5, its half that
+ * needs no idempotency helper). A payment is a thing that HAPPENED, so `paid_on`
+ * is at the latest tomorrow in UTC: one day of skew, because a user east of UTC
+ * paying on their local today is already on UTC's tomorrow (up to +14 h). A
+ * future date was stored as spent and sorted FIRST in `ORDER BY paid_at DESC`,
+ * so '2099-01-01' both inflated spend and sat on top of the history for good.
+ * The floor refuses the absurd past (a year typed as 0026, a zeroed date) that
+ * would sort last and still count; no subscription the app tracks was paid
+ * before this century.
+ */
+const EARLIEST_PAID_ON = '2000-01-01';
+// @ceiling none — clock-skew tolerance on a user-entered date, not a platform resource
+const PAID_ON_SKEW_DAYS = 1;
+
 app.post('/:id/payments', async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
@@ -989,6 +996,16 @@ app.post('/:id/payments', async (c) => {
   }
   if (!isCalendarDate(paidOn)) {
     return c.json({ error: 'invalid_body', detail: 'paid_on must be a real calendar date as YYYY-MM-DD' }, 400);
+  }
+  const latestPaidOn = new Date(Date.now() + PAID_ON_SKEW_DAYS * 86_400_000).toISOString().slice(0, 10);
+  if (!isCalendarDateBetween(paidOn, EARLIEST_PAID_ON, latestPaidOn)) {
+    return c.json(
+      {
+        error: 'invalid_body',
+        detail: `paid_on must be between ${EARLIEST_PAID_ON} and ${latestPaidOn}: a payment is a date that has happened`,
+      },
+      400,
+    );
   }
   if (currency !== undefined && currency !== null && (typeof currency !== 'string' || !CURRENCY.test(currency))) {
     return c.json({ error: 'invalid_body', detail: 'currency must be a three-letter ISO 4217 code, e.g. INR' }, 400);
@@ -1061,17 +1078,30 @@ app.patch('/:id', async (c) => {
   // that body carries). The same condition is repeated in the write's WHERE
   // (`target`, below), so a DELETE landing between this read and the write
   // cannot be edited through either.
+  //
+  // 🔴 …EXCEPT A BODY THAT ONLY REMOVES IT AGAIN (review of #1089, finding 1).
+  // `{deleted_at: <instant>}` and nothing else is `DELETE /:id` spelled as a
+  // PATCH, and it is idempotent the way DELETE is: 200, the FIRST stamp kept.
+  // Refusing it made a delete that SUCCEEDED read as a failure three ways — the
+  // `run()` retry after a commit whose acknowledgement was lost (the retried
+  // UPDATE matched no live row), a client retry after a lost response, and a
+  // second device removing a row the first already had. So: on a row already
+  // removed it writes nothing and answers the stored row, and its write is not
+  // limited to live rows (`target`), so a retried or racing removal still
+  // matches and the COALESCE keeps the first stamp.
   const f = checked.fields;
   const restoring = f.deleted_at === null;
+  const removing = f.deleted_at != null && Object.keys(f).length === 1;
   const existing = await firstRow<Pick<Subscription, 'id' | 'deleted_at'>>(
     c.env.APP_DB.prepare('SELECT id, deleted_at FROM subscriptions WHERE id = ? AND user_id = ?').bind(
       id,
       userId,
     ),
   );
-  if (!existing || (existing.deleted_at !== null && !restoring)) {
+  if (!existing || (existing.deleted_at !== null && !restoring && !removing)) {
     return c.json({ error: 'not_found' }, 404);
   }
+  if (removing && existing.deleted_at !== null) return answerRow(c, id);
   const category = await resolveCategory(c.env.APP_DB, userId, f);
   if (category) return c.json({ error: 'invalid_body', detail: category.detail }, 400);
 
@@ -1088,6 +1118,16 @@ app.patch('/:id', async (c) => {
   // CANCEL_DATED_ON_TRANSITION. An explicit date is the user's and is written.
   const datedByRow = f.status === 'cancelled' && f.cancelled_on == null;
   if (datedByRow) delete f.cancelled_on;
+  // 🔴 AND A DATE CLEARED ALONE CANNOT LEAVE A CANCELLED ROW UNDATED (review of
+  // #1089, finding 2). `{cancelled_on: null}` with no `status` is judged against
+  // the stored row, as a dateless cancel is: a cancelled row keeps its date (or,
+  // a legacy one with none, gets today), and any other row is cleared as asked.
+  // Kept rather than refused because that is what this API already does with a
+  // missing cancel date — the server supplies it (POST, and the transition
+  // above) — and because refusing would need the stored status, a read that can
+  // go stale before the write; the CASE reads it inside the write.
+  const dateClearedAlone = f.status === undefined && f.cancelled_on === null;
+  if (dateClearedAlone) delete f.cancelled_on;
 
   // Only the columns the body actually carried — `validate` drops the rest, so
   // this cannot widen to a column the validator has not checked.
@@ -1104,10 +1144,22 @@ app.patch('/:id', async (c) => {
     sets.push(CANCEL_DATED_ON_TRANSITION);
     values.push(todayYmd());
   }
+  if (dateClearedAlone) {
+    sets.push("cancelled_on = CASE WHEN status = 'cancelled' THEN COALESCE(cancelled_on, ?) ELSE NULL END");
+    values.push(todayYmd());
+  }
 
-  put('updated_at', ts);
+  if (removing) {
+    // A removal that matches an already-removed row (a retry, a racing device)
+    // changes nothing, so it does not move `updated_at` either.
+    sets.push('updated_at = CASE WHEN deleted_at IS NULL THEN ? ELSE updated_at END');
+    values.push(ts);
+  } else {
+    put('updated_at', ts);
+  }
 
-  const target = restoring ? 'id = ? AND user_id = ?' : 'id = ? AND user_id = ? AND deleted_at IS NULL';
+  const target =
+    restoring || removing ? 'id = ? AND user_id = ?' : 'id = ? AND user_id = ? AND deleted_at IS NULL';
   const update = c.env.APP_DB.prepare(`UPDATE subscriptions SET ${sets.join(', ')} WHERE ${target}`).bind(
     ...values,
     id,
@@ -1170,11 +1222,17 @@ app.patch('/:id', async (c) => {
   // matched nothing, and the answer is the one a removed row gets.
   if (changes === 0) return c.json({ error: 'not_found' }, 404);
 
-  const row = await firstRow<Subscription>(
-    c.env.APP_DB.prepare('SELECT * FROM subscriptions WHERE id = ?').bind(id),
-  );
-  return c.json(row ? serializeSubscription(row) : { error: 'not_found' });
+  return answerRow(c, id);
 });
+
+/** PATCH's answer: the caller's row as it now stands, or the 404 a row that is
+ *  gone gets (never a 200 carrying `{error}`). */
+async function answerRow(c: Context<AppEnv>, id: string) {
+  const row = await firstRow<Subscription>(
+    c.env.APP_DB.prepare('SELECT * FROM subscriptions WHERE id = ? AND user_id = ?').bind(id, c.get('userId')),
+  );
+  return row ? c.json(serializeSubscription(row)) : c.json({ error: 'not_found' }, 404);
+}
 
 // DELETE /:id — remove, SOFTLY (ST-E3, round-2 B33).
 //
