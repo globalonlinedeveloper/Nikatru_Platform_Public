@@ -18,7 +18,8 @@ const BODY = {
   cycle: 'monthly',
   next_renewal: '2026-10-01',
 };
-// Low-entropy on purpose: gitleaks reads a random UUID in a  constant as a secret.
+// Low-entropy on purpose: gitleaks reads a random UUID in a constant named KEY
+// as a leaked secret (generic-api-key).
 const CLIENT_ID = 'offline-add-0001';
 
 let db: ReturnType<typeof realAppDb>;
