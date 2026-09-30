@@ -12,7 +12,9 @@
 //
 //   GET    /v1/sessions               the account's sessions, the caller's marked
 //   DELETE /v1/sessions/:id           sign ONE other session out
-//   POST   /v1/sessions/revoke-all    refuse every token issued before now
+//   POST   /v1/sessions/revoke-all    refuse every token issued before now, AND
+//                                     end every linked browser extension
+//                                     (⏱ 2026-09-30 · EXA-11, lib/ext-links.ts)
 //   POST   /v1/sessions/revoke-others list every session but the caller's
 //
 // 🔴 THIS FILE IS THE ONLY WRITER OF SESSION_REVOKED, and every put carries
@@ -35,6 +37,7 @@ import { Hono, type Context } from 'hono';
 import type { AppEnv } from '../types';
 import { REVOCATION_TTL_SECONDS, revocationKey, withRevokedBefore, withRevokedSessions } from '../../../_shared/src/auth';
 import { withinRateLimit } from '../lib/edge-ceiling';
+import { revokeUserLinks } from '../lib/ext-links';
 
 const sessions = new Hono<AppEnv>();
 
@@ -236,6 +239,17 @@ sessions.delete('/sessions/:id', async (c) => {
 
 sessions.post('/sessions/revoke-all', async (c) => {
   if (await limited(c)) return c.json({ error: 'rate_limited' }, 429);
+  // ⏱ 2026-09-30 · EXA-11 — "sign out everywhere" includes every browser the
+  // account linked: an extension credential is not a Supabase session, so the
+  // KV record below never reached it. D1 FIRST, and a failure is a 503 before
+  // anything is written, so the caller never reads 204 while a link survives.
+  // Both writes are idempotent; a retry after a 503 finishes the job.
+  try {
+    await revokeUserLinks(c.env.PLATFORM_DB, c.get('userId'), new Date().toISOString());
+  } catch (err) {
+    console.error(`${logPrefix(c)} revocation_unavailable: revoke-all could not end the extension links (${errName(err)})`);
+    return c.json({ error: 'revocation_unavailable' }, 503);
+  }
   try {
     await writeRevocation(c.env.SESSION_REVOKED, c.get('userId'), withRevokedBefore);
   } catch (err) {

@@ -29,17 +29,21 @@ import { app } from '../src/index';
 import { platformAuth } from '../src/middleware/auth';
 import { entitlementsAuth, extDeviceAuth, sha256Hex } from '../src/middleware/ext-device-auth';
 import { EXT_CODE_TTL_MS } from '../src/routes/ext';
+import { EXT_CHANNELS } from '../src/lib/ext-redirects';
+import { EXT_LINK_IDLE_DAYS, EXT_LINK_MAX_AGE_DAYS } from '../src/lib/ext-links';
+import { erasePlatformRows } from '../src/lib/platform-erasure';
 import type { AppEnv } from '../src/types';
 import { mountedEndpoints, probePath } from '../../_shared/test/preflight';
 import { realPlatformDb, type RealDb } from './harness';
 
 // ── the fixture register ─────────────────────────────────────────────────────
 // Shapes only: 32 a-p characters for a Chromium id, a 40-hex host for Firefox.
-// `edge-addons` stays null so R12 has a real null to be refused on.
+// ⏱ 2026-09-30 · EXA-04: all three are non-null so the success path runs on
+// EVERY channel; R12 nulls one inside its own case (`withNull`) and restores it.
 const { FIXTURE } = vi.hoisted(() => ({
   FIXTURE: {
     'chrome-webstore': 'https://abcdefghijklmnopabcdefghijklmnop.chromiumapp.org/',
-    'edge-addons': null,
+    'edge-addons': 'https://ponmlkjihgfedcbaponmlkjihgfedcba.chromiumapp.org/',
     amo: 'https://0123456789abcdef0123456789abcdef01234567.extensions.allizom.org/',
   } as Record<string, string | null>,
 }));
@@ -78,8 +82,8 @@ afterEach(() => {
 
 const KV = { get: async () => null, put: async () => undefined } as unknown as KVNamespace;
 
-async function jwt(sub: string) {
-  return new SignJWT({ sub, email: `${sub}@example.com` })
+async function jwt(sub: string, claims: Record<string, unknown> = {}) {
+  return new SignJWT({ sub, email: `${sub}@example.com`, ...claims })
     .setProtectedHeader({ alg: 'ES256', kid: 'test-key-1' })
     .setIssuedAt()
     .setExpirationTime('1h')
@@ -112,6 +116,10 @@ function harness({ db = realPlatformDb() as RealDb | D1Database, limiter }: { db
     MONEY_ENVIRONMENT: 'live',
     ALLOWED_ORIGINS: 'https://nikatru.com',
     EXT_TOKEN_CEILING_LIMITER: limiter,
+    // POST /v1/sessions/revoke-all (EXA-11) writes the KV record too; the
+    // no-op store answers every read with null, so no token is refused by it.
+    SESSION_REVOKED: KV,
+    SESSIONS_LIMITER: { limit: async () => ({ success: true }) },
   } as unknown as AppEnv['Bindings'];
   const send = (method: string, path: string, init: { authz?: string; body?: unknown; origin?: string } = {}) =>
     app.request(
@@ -141,6 +149,10 @@ function harness({ db = realPlatformDb() as RealDb | D1Database, limiter }: { db
           ...(o.method === undefined ? {} : { code_challenge_method: o.method }),
         },
       }),
+    devices: async (sub: string, claims: Record<string, unknown> = {}) =>
+      send('GET', '/v1/ext/devices', { authz: `Bearer ${await jwt(sub, claims)}` }),
+    unlink: async (sub: string, linkId: string) =>
+      send('DELETE', `/v1/ext/devices/${linkId}`, { authz: `Bearer ${await jwt(sub)}` }),
     exchange: (code: string, verifier: string, redirect_uri = CHROME) =>
       send('POST', '/v1/ext/token', { body: { code, code_verifier: verifier, redirect_uri } }),
     read: (token: string, appId = 'fullshot') =>
@@ -150,15 +162,27 @@ function harness({ db = realPlatformDb() as RealDb | D1Database, limiter }: { db
 }
 type H = ReturnType<typeof harness>;
 
-/** Sign in, mint, exchange: a live device credential for `sub`. */
-async function connect(h: H, sub: string) {
+/** Sign in, mint, exchange: a live device credential for `sub` on `channel`. */
+async function connect(h: H, sub: string, channel = 'chrome-webstore') {
+  const redirect = FIXTURE[channel] as string;
   const { verifier, challenge } = await pkce();
-  const minted = await h.mint(sub, { challenge });
+  const minted = await h.mint(sub, { challenge, channel, redirect_uri: redirect });
   expect(minted.status).toBe(200);
   const { code } = (await minted.json()) as { code: string };
-  const res = await h.exchange(code, verifier);
+  const res = await h.exchange(code, verifier, redirect);
   expect(res.status).toBe(200);
   return (await res.json()) as { token: string; link_id: string };
+}
+
+/** Runs `fn` with `channel`'s fixture redirect set to null — the dark state. */
+async function withNull<T>(channel: string, fn: () => Promise<T>): Promise<T> {
+  const was = FIXTURE[channel];
+  FIXTURE[channel] = null;
+  try {
+    return await fn();
+  } finally {
+    FIXTURE[channel] = was;
+  }
 }
 
 /** The handlers the REAL app's router matches for one request, in order. */
@@ -305,7 +329,9 @@ describe('the one-time code — minting (POST /v1/ext/codes)', () => {
   it('R12 — refuses a channel whose extensionRedirectUri is null', async () => {
     const h = harness();
     const { challenge } = await pkce();
-    const res = await h.mint('user-r12', { challenge, channel: 'edge-addons', redirect_uri: 'https://x.example/' });
+    const res = await withNull('edge-addons', () =>
+      h.mint('user-r12', { challenge, channel: 'edge-addons', redirect_uri: 'https://x.example/' }),
+    );
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: 'channel_not_enabled' });
     expect(h.db.count('ext_codes')).toBe(0);
@@ -537,11 +563,230 @@ describe('the device credential — read, revoke, and the status codes the exten
   });
 
   it('account erasure removes every code and every device, so the credential dies with the account', async () => {
+    // ⏱ 2026-09-30 · EXA-10 — THROUGH THE ERASURE CODE ITSELF. This case ran its
+    // own DELETE until the round-2 review, which proved only that a missing row
+    // reads 401. It now calls the walk DELETE /v1/account and the nightly retry
+    // run (lib/platform-erasure.ts), so it goes red the day that walk's
+    // schema derivation stops reaching ext_devices or ext_codes.
     const h = harness();
     const { token } = await connect(h, 'user-erase');
-    // The erasure walk deletes by `user_id`; drive the same predicate it derives.
-    h.db.db.exec("DELETE FROM ext_devices WHERE user_id = 'user-erase'; DELETE FROM ext_codes WHERE user_id = 'user-erase';");
+    const other = await connect(h, 'user-kept');
+    const { challenge } = await pkce();
+    expect((await h.mint('user-erase', { challenge })).status).toBe(200); // an unexchanged code too
+    const erased = await erasePlatformRows(h.db as unknown as D1Database, 'user-erase');
+    expect(erased.ok).toBe(true);
+    if (!erased.ok) return;
+    expect(erased.deleted.ext_devices).toBe(1);
+    expect(erased.deleted.ext_codes).toBe(2);
+    expect(h.db.count('ext_devices', "user_id = 'user-erase'")).toBe(0);
+    expect(h.db.count('ext_codes', "user_id = 'user-erase'")).toBe(0);
     expect((await h.read(token)).status).toBe(401);
+    expect((await h.read(other.token)).status).toBe(200);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ⏱ 2026-09-30 · EXA-04 — THE SUCCESS PATH ON EVERY CHANNEL. It ran on
+// chrome-webstore only, with the amo fixture declared and unused. The loop is
+// over the REAL EXT_CHANNELS, so a fourth channel joins it by construction.
+describe.each(EXT_CHANNELS.map((ch) => [ch]))('EXA-04 — mint, exchange, read, revoke on %s', (channel) => {
+  it('links, reads 200, revokes itself, then reads 401 — and the link records its channel', async () => {
+    const h = harness();
+    const { token, link_id } = await connect(h, `user-ch-${channel}`, channel);
+    expect(h.db.rows('SELECT channel FROM ext_devices WHERE link_id = ?', link_id)[0].channel).toBe(channel);
+    expect((await h.read(token)).status).toBe(200);
+    expect((await h.revoke(token)).status).toBe(200);
+    expect((await h.read(token)).status).toBe(401);
+  });
+
+  it("🔴 a code minted for this channel is refused at exchange with ANOTHER channel's redirect_uri", async () => {
+    const h = harness();
+    const other = EXT_CHANNELS.find((c) => c !== channel) as string;
+    const { verifier, challenge } = await pkce();
+    const minted = await h.mint(`user-x-${channel}`, { challenge, channel, redirect_uri: FIXTURE[channel] as string });
+    const { code } = (await minted.json()) as { code: string };
+    const res = await h.exchange(code, verifier, FIXTURE[other] as string);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'invalid_grant' });
+    expect(h.db.count('ext_devices')).toBe(0);
+  });
+});
+
+describe('EXA-04 — the channel is bound at mint: a redirect_uri of another channel is refused there too', () => {
+  it.each(EXT_CHANNELS.map((ch) => [ch]))("%s refuses every other channel's redirect_uri", async (channel) => {
+    const h = harness();
+    for (const other of EXT_CHANNELS.filter((c) => c !== channel)) {
+      const { challenge } = await pkce();
+      const res = await h.mint('user-bind', { challenge, channel, redirect_uri: FIXTURE[other] as string });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: 'redirect_uri_mismatch' });
+    }
+    expect(h.db.count('ext_codes')).toBe(0);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ⏱ 2026-09-30 · EXA-11 — A LINK ENDS FROM THE ACCOUNT SIDE, AND ON ITS OWN.
+// Red on the base: no route listed or revoked a link, revoke-all and a
+// recovery session never touched ext_devices, and nothing read a link's age.
+const T0 = Date.parse('2026-09-30T12:00:00.000Z');
+const DAY = 86400000;
+
+describe('EXA-11 — a password reset ends every browser linked before it', () => {
+  it('🔴 a recovery session reaching the Worker revokes the earlier links; a link made after it survives', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    const h = harness();
+    const before = await connect(h, 'user-reset');
+    expect((await h.read(before.token)).status).toBe(200);
+    // The owner follows the reset link a minute later: GoTrue's token for that
+    // session carries amr [{method: 'recovery', timestamp}].
+    vi.setSystemTime(T0 + 60_000);
+    const recoveryAmr = { amr: [{ method: 'recovery', timestamp: Math.floor((T0 + 60_000) / 1000) }] };
+    expect((await h.devices('user-reset', recoveryAmr)).status).toBe(200);
+    expect((await h.read(before.token)).status).toBe(401);
+    // The owner re-links with the new password; the same recovery session's
+    // later requests leave the new link alone.
+    vi.setSystemTime(T0 + 120_000);
+    const after = await connect(h, 'user-reset');
+    expect((await h.devices('user-reset', recoveryAmr)).status).toBe(200);
+    expect((await h.read(after.token)).status).toBe(200);
+  });
+
+  it('a password sign-in (amr password) revokes nothing', async () => {
+    const h = harness();
+    const link = await connect(h, 'user-pw');
+    const amr = { amr: [{ method: 'password', timestamp: Math.floor(Date.now() / 1000) + 60 }] };
+    expect((await h.devices('user-pw', amr)).status).toBe(200);
+    expect((await h.read(link.token)).status).toBe(200);
+  });
+
+  it("another account's recovery session leaves this account's links alone", async () => {
+    const h = harness();
+    const link = await connect(h, 'user-bystander');
+    const amr = { amr: [{ method: 'recovery', timestamp: Math.floor(Date.now() / 1000) + 60 }] };
+    expect((await h.devices('user-resetter', amr)).status).toBe(200);
+    expect((await h.read(link.token)).status).toBe(200);
+  });
+});
+
+describe('EXA-11 — sign out everywhere (POST /v1/sessions/revoke-all) ends every link', () => {
+  it("🔴 every link of the account reads 401 after it; another account's link reads 200", async () => {
+    const h = harness();
+    const a = await connect(h, 'user-all');
+    const b = await connect(h, 'user-all', 'amo');
+    const other = await connect(h, 'user-not-all');
+    const res = await h.send('POST', '/v1/sessions/revoke-all', { authz: `Bearer ${await jwt('user-all')}` });
+    expect(res.status).toBe(204);
+    expect((await h.read(a.token)).status).toBe(401);
+    expect((await h.read(b.token)).status).toBe(401);
+    expect((await h.read(other.token)).status).toBe(200);
+  });
+
+  it('D1 fails ⇒ 503 revocation_unavailable, never a 204 while a link survives', async () => {
+    const h = harness();
+    const a = await connect(h, 'user-all-503');
+    const real = h.db;
+    const broken = {
+      prepare(sql: string) {
+        if (sql.startsWith('UPDATE ext_devices SET revoked_at')) throw new Error('D1_ERROR: simulated outage');
+        return real.prepare(sql);
+      },
+      batch: (st: never) => real.batch(st),
+    } as unknown as D1Database;
+    const res = await harness({ db: broken }).send('POST', '/v1/sessions/revoke-all', {
+      authz: `Bearer ${await jwt('user-all-503')}`,
+    });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: 'revocation_unavailable' });
+    expect((await h.read(a.token)).status).toBe(200);
+  });
+});
+
+describe('EXA-11 — the account lists its links and revokes ONE (GET / DELETE /v1/ext/devices)', () => {
+  it('🔴 revoke B from the account: B reads 401, A still reads 200', async () => {
+    const h = harness();
+    const a = await connect(h, 'user-acct');
+    const b = await connect(h, 'user-acct', 'edge-addons');
+    const listed = await h.devices('user-acct');
+    expect(listed.status).toBe(200);
+    expect(listed.headers.get('Cache-Control')).toBe('no-store');
+    const { devices } = (await listed.json()) as { devices: Array<Record<string, unknown>> };
+    expect(devices.map((d) => d.link_id).sort()).toEqual([a.link_id, b.link_id].sort());
+    // Nothing that could authenticate or identify leaves: exactly five keys.
+    for (const d of devices) expect(Object.keys(d).sort()).toEqual(['channel', 'created_at', 'last_seen_at', 'link_id', 'product']);
+    expect(JSON.stringify(devices)).not.toContain('user-acct');
+    expect((await h.unlink('user-acct', b.link_id)).status).toBe(204);
+    expect((await h.read(b.token)).status).toBe(401);
+    expect((await h.read(a.token)).status).toBe(200);
+    const after = (await (await h.devices('user-acct')).json()) as { devices: Array<{ link_id: string }> };
+    expect(after.devices.map((d) => d.link_id)).toEqual([a.link_id]);
+  });
+
+  it("🔴 another account's link id is a 404 that revokes nothing", async () => {
+    const h = harness();
+    const theirs = await connect(h, 'user-victim');
+    expect((await h.unlink('user-attacker', theirs.link_id)).status).toBe(404);
+    expect((await h.read(theirs.token)).status).toBe(200);
+    const list = (await (await h.devices('user-attacker')).json()) as { devices: unknown[] };
+    expect(list.devices).toEqual([]);
+  });
+
+  it('a malformed or already-revoked link id is a 404', async () => {
+    const h = harness();
+    const a = await connect(h, 'user-404');
+    expect((await h.unlink('user-404', 'not-a-uuid')).status).toBe(404);
+    expect((await h.unlink('user-404', a.link_id)).status).toBe(204);
+    expect((await h.unlink('user-404', a.link_id)).status).toBe(404);
+  });
+
+  it('both routes refuse a device credential and an anonymous caller (401)', async () => {
+    const h = harness();
+    const a = await connect(h, 'user-dev');
+    expect((await h.send('GET', '/v1/ext/devices', { authz: `Bearer ${a.token}` })).status).toBe(401);
+    expect((await h.send('DELETE', `/v1/ext/devices/${a.link_id}`, { authz: `Bearer ${a.token}` })).status).toBe(401);
+    expect((await h.send('GET', '/v1/ext/devices')).status).toBe(401);
+  });
+});
+
+describe('EXA-11 — the credential expires on its own', () => {
+  it(`🔴 unused for ${EXT_LINK_IDLE_DAYS} days: 401, stamped revoked, and no longer listed`, async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    const h = harness();
+    const a = await connect(h, 'user-idle');
+    vi.setSystemTime(T0 + (EXT_LINK_IDLE_DAYS - 1) * DAY);
+    expect(((await (await h.devices('user-idle')).json()) as { devices: unknown[] }).devices).toHaveLength(1);
+    vi.setSystemTime(T0 + EXT_LINK_IDLE_DAYS * DAY);
+    expect(((await (await h.devices('user-idle')).json()) as { devices: unknown[] }).devices).toHaveLength(0);
+    expect((await h.read(a.token)).status).toBe(401);
+    expect(h.db.count('ext_devices', 'revoked_at IS NOT NULL')).toBe(1);
+  });
+
+  it('a link read within every idle window stays alive — idleness counts from last_seen_at', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    const h = harness();
+    const a = await connect(h, 'user-busy');
+    for (let d = 20; d < EXT_LINK_MAX_AGE_DAYS; d += 20) {
+      vi.setSystemTime(T0 + d * DAY);
+      expect((await h.read(a.token)).status, `day ${d}`).toBe(200);
+    }
+  });
+
+  it(`🔴 older than ${EXT_LINK_MAX_AGE_DAYS} days: 401 however often it is used`, async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    const h = harness();
+    const a = await connect(h, 'user-old');
+    for (let d = 20; d < EXT_LINK_MAX_AGE_DAYS; d += 20) {
+      vi.setSystemTime(T0 + d * DAY);
+      await h.read(a.token);
+    }
+    vi.setSystemTime(T0 + EXT_LINK_MAX_AGE_DAYS * DAY - 1);
+    expect((await h.read(a.token)).status).toBe(200);
+    vi.setSystemTime(T0 + EXT_LINK_MAX_AGE_DAYS * DAY);
+    expect((await h.read(a.token)).status).toBe(401);
   });
 });
 

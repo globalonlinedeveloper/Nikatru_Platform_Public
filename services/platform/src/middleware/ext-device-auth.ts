@@ -16,7 +16,8 @@
 // echoed or put in an error body — only its hash is compared.
 //
 // ── THE STATUS CODES ARE A CONTRACT WITH THE EXTENSION ───────────────────────
-//   401  the credential is dead (unknown, or revoked) — the extension DELETES it.
+//   401  the credential is dead (unknown, revoked, or past its lifetime —
+//        lib/ext-links.ts) — the extension DELETES it.
 //   403  the credential is alive but for another product.
 //   503  D1 could not answer — the extension HOLDS its last answer.
 // 🔴 A D1 FAILURE MUST NEVER READ AS 401: the extension deletes its credential
@@ -31,6 +32,7 @@ import type { Context, MiddlewareHandler } from 'hono';
 import { bearer } from '../../../_shared/src/auth';
 import type { AppEnv } from '../types';
 import { platformAuth } from './auth';
+import { extLinkExpired } from '../lib/ext-links';
 
 /** The device credential's prefix. A version tag, so a future format is a new
  *  prefix rather than a guess about which shape a string is. */
@@ -59,6 +61,7 @@ interface DeviceRow {
   link_id: string;
   user_id: string;
   product: string;
+  created_at: string;
   last_seen_at: string | null;
   revoked_at: string | null;
 }
@@ -70,7 +73,7 @@ export const extDeviceAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
   let row: DeviceRow | null;
   try {
     row = await c.env.PLATFORM_DB.prepare(
-      'SELECT link_id, user_id, product, last_seen_at, revoked_at FROM ext_devices WHERE token_hash = ?',
+      'SELECT link_id, user_id, product, created_at, last_seen_at, revoked_at FROM ext_devices WHERE token_hash = ?',
     )
       .bind(await sha256Hex(token))
       .first<DeviceRow>();
@@ -82,6 +85,22 @@ export const extDeviceAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
   }
   if (row === null || row.revoked_at !== null) return c.json({ error: 'unauthorized' }, 401);
 
+  // ⏱ 2026-09-30 · EXA-11 — THE CREDENTIAL HAS A LIFETIME (lib/ext-links.ts).
+  // Past it the answer is the same 401 as a revoked link, and the row is
+  // stamped revoked so the nightly sweep can date it. The stamp is
+  // best-effort: the refusal does not depend on it.
+  const now = Date.now();
+  if (extLinkExpired(row, now)) {
+    try {
+      await c.env.PLATFORM_DB.prepare('UPDATE ext_devices SET revoked_at = ? WHERE link_id = ? AND revoked_at IS NULL')
+        .bind(new Date(now).toISOString(), row.link_id)
+        .run();
+    } catch {
+      console.warn(`[ext-device-auth] rid=${c.get('requestId') ?? '-'} expiry stamp failed — refused anyway`);
+    }
+    return c.json({ error: 'unauthorized' }, 401);
+  }
+
   // A device is linked to ONE product. `app_id` is how GET /v1/entitlements
   // names the product it asks about; a request that names another is refused
   // here, before any read, and a request that names none reaches no read that
@@ -92,7 +111,6 @@ export const extDeviceAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
   // `last_seen_at` at most once per UTC day, by a GUARDED write, so a busy
   // device costs one D1 write a day rather than one per read. Best-effort: a
   // failed write never changes the answer.
-  const now = Date.now();
   const dayStart = utcDayStart(now);
   if (row.last_seen_at === null || row.last_seen_at < dayStart) {
     try {

@@ -39,10 +39,11 @@
 // is a recorded failing input in test/auth.test.ts rather than a claim.
 //
 // 📌 AND SINCE [ADR 067] THAT IS A PROPERTY OF THIS FILE'S IMPORTS, NOT ONLY OF
-// ITS BODY. `services/_shared/src/auth.ts` names no secret, and it is the only
-// non-library module this file imports, so "nothing reachable from here can read
-// SUPABASE_JWT_SECRET" is checkable by reading four import lines.
-// `tooling/ci/assert-erasure-reach.mjs` limb 3 walks exactly that.
+// ITS BODY. `services/_shared/src/auth.ts` names no secret, and neither does
+// `../lib/ext-links` (⏱ 2026-09-30, EXA-11 — one D1 statement, no env read), so
+// "nothing reachable from here can read SUPABASE_JWT_SECRET" is checkable by
+// reading five import lines. `tooling/ci/assert-erasure-reach.mjs` limb 3 walks
+// exactly that.
 //
 // ── THE CACHE, AND THE ROTATION IT MUST SURVIVE ──────────────────────────────
 // ⚠️ The project has exactly ONE ES256 key today, which means a stale JWKS cache
@@ -73,6 +74,7 @@ import {
   revocationRefusal,
 } from '../../../_shared/src/auth';
 import type { AppEnv, Env } from '../types';
+import { revokeUserLinks } from '../lib/ext-links';
 
 /** The remote JWKS *getter*, cached per SUPABASE_URL for the isolate's life.
  *  `createRemoteJWKSet` keeps its own in-memory cache with request coalescing
@@ -217,6 +219,50 @@ export function linkedProvidersOf(payload: Record<string, unknown>): string[] {
 }
 
 /**
+ * ⏱ 2026-09-30 · EXA-11. The instant (ms) GoTrue recorded a `recovery`
+ * authentication on this token's session — the session a password-reset link
+ * opens — or null. `amr[]` is GoTrue's own claim, signed with the token; the
+ * newest recovery entry wins, and a non-numeric timestamp is no entry.
+ */
+export function recoveryAuthenticatedAt(payload: Record<string, unknown>): number | null {
+  if (!Array.isArray(payload.amr)) return null;
+  let at: number | null = null;
+  for (const entry of payload.amr) {
+    if (!entry || typeof entry !== 'object') continue;
+    const { method, timestamp } = entry as { method?: unknown; timestamp?: unknown };
+    if (method === 'recovery' && typeof timestamp === 'number' && Number.isFinite(timestamp)) {
+      at = at === null ? timestamp * 1000 : Math.max(at, timestamp * 1000);
+    }
+  }
+  return at;
+}
+
+/**
+ * ⏱ 2026-09-30 · EXA-11 — A PASSWORD RESET ENDS EVERY BROWSER LINKED BEFORE IT.
+ * GoTrue performs the reset and revokes its own refresh tokens; it tells this
+ * Worker nothing, and a linked extension's credential is not a GoTrue session.
+ * What the Worker CAN see is the reset's session: a verified token whose `amr`
+ * says `recovery`. Every extension link created before that instant is revoked
+ * (lib/ext-links.ts). A link made after it — the owner re-linking with the new
+ * password — is untouched, so the statement is safe to repeat on every request
+ * of that session.
+ *
+ * 🔴 BEST-EFFORT AND NEVER A REFUSAL. A D1 failure here logs one line and the
+ * request proceeds: this middleware guards every JWT route, and an extension
+ * link is not what they authorise. The credential's own lifetime bounds a reset
+ * whose session never reaches this Worker.
+ */
+async function endLinksOnRecovery(c: Parameters<MiddlewareHandler<AppEnv>>[0], sub: string, payload: Record<string, unknown>, logPrefix: string) {
+  const at = recoveryAuthenticatedAt(payload);
+  if (at === null || !c.env.PLATFORM_DB) return;
+  try {
+    await revokeUserLinks(c.env.PLATFORM_DB, sub, new Date().toISOString(), new Date(at).toISOString());
+  } catch (err) {
+    console.warn(`${logPrefix} ext_links_recovery_revoke_failed: ${err instanceof Error ? err.name : typeof err}; admitted`);
+  }
+}
+
+/**
  * Hono middleware. On success sets `userId` (+ `userEmail` when the token
  * carries one, + `sessionId`) and calls next(). On ANY failure it answers 401 with
  * `{ error: 'unauthorized' }` and nothing else — the reason a token was refused
@@ -257,6 +303,7 @@ export const platformAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
     if (await sessionRevoked(c.env.SESSION_REVOKED, payload.sub, payload as Record<string, unknown>, logPrefix)) {
       return c.json({ error: 'unauthorized' }, 401);
     }
+    await endLinksOnRecovery(c, payload.sub, payload as Record<string, unknown>, logPrefix);
     c.set('userId', payload.sub);
     // The session this token belongs to — GoTrue's `session_id` claim, absent on
     // a token that carries none. /v1/sessions uses it to mark "this device" and to

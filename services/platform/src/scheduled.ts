@@ -1558,15 +1558,15 @@ export const EXT_CODES_RETENTION_DAYS = 1;
 //
 // WHY 30 AND NOT "CREDENTIAL LIFETIME + 7". The rule was: if the longest-lived
 // credential the code accepts outlives 23 days, keep a revoked row for that
-// lifetime plus 7 days. The device credential has NO lifetime: it is minted with
-// no expiry (routes/ext.ts — the INSERT writes no expiry column, and
-// 0017_ext_devices.sql declares none), and middleware/ext-device-auth.ts refuses
-// it ONLY when the row is absent or `revoked_at` is set — nothing reads
-// `created_at` or `last_seen_at` as an age limit. So no window outlives the
-// revocation: a revoked row refuses by its own `revoked_at` from the instant it
-// is written, and once swept an absent row gives the same 401, which the
-// extension treats as "delete this credential". The 30 days keep the record of
-// the revocation readable for support, not a credential that could still work.
+// lifetime plus 7 days. ⏱ 2026-09-30 · EXA-11: the device credential now HAS a
+// lifetime (lib/ext-links.ts — 30 days idle, 180 days at most), but the rule's
+// premise does not hold for it: middleware/ext-device-auth.ts refuses a revoked
+// row by its own `revoked_at` from the instant it is written, whatever the
+// lifetime left, and once swept an absent row gives the same 401, which the
+// extension treats as "delete this credential". So no window outlives the
+// revocation. An expired link is stamped `revoked_at` when it is next presented,
+// and then follows the same 30 days. The 30 days keep the record of the
+// revocation readable for support, not a credential that could still work.
 // @ceiling none — a RETENTION PERIOD is a policy number, not a platform resource; nothing in tooling/ceilings.json bounds how long rows may be kept.
 export const EXT_DEVICES_RETENTION_DAYS = 30;
 

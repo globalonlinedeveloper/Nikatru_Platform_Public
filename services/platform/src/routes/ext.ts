@@ -19,6 +19,14 @@
 //                        returned ONCE and only its SHA-256 is stored.
 //   POST /v1/ext/revoke  the device credential (extDeviceAuth). Revokes the
 //                        CALLING device only.
+//   GET  /v1/ext/devices JWT (platformAuth). The ACCOUNT's live links — no
+//                        credential, no hash, no user id; {link_id, product,
+//                        channel, created_at, last_seen_at} each.
+//   DELETE /v1/ext/devices/:link_id
+//                        JWT (platformAuth). The account revokes ONE browser;
+//                        every other link keeps working. ⏱ 2026-09-30 · EXA-11
+//                        (lib/ext-links.ts names the other two account-side
+//                        doors and the credential's lifetime).
 //
 // 🔴 EACH ROUTE CARRIES ITS AUTH AT THE HANDLER, NOT THROUGH `app.use`. A
 // handler-level middleware cannot leak onto a sibling path — which is exactly how
@@ -51,6 +59,7 @@ import { EXT_TOKEN_PREFIX, deviceBearer, extDeviceAuth, sha256Hex } from '../mid
 import { withinEdgeCeiling } from '../lib/edge-ceiling';
 import { readBoundedBody } from '../lib/body';
 import { extensionRedirectUri, isExtChannel } from '../lib/ext-redirects';
+import { extLinkExpired } from '../lib/ext-links';
 
 const ext = new Hono<AppEnv>();
 
@@ -238,6 +247,60 @@ ext.post('/ext/revoke', extDeviceAuth, async (c) => {
     return c.json({ error: 'service_unavailable' }, 503);
   }
   return c.json({ revoked: true });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /v1/ext/devices — the account's linked browsers, from the account side.
+// ⏱ 2026-09-30 · EXA-11. A link past its lifetime is dead already and is not
+// listed; a revoked one is not listed. Never the token hash, never user_id.
+// ─────────────────────────────────────────────────────────────────────────────
+ext.get('/ext/devices', platformAuth, async (c) => {
+  c.header('Cache-Control', 'no-store');
+  let rows: { link_id: string; product: string; channel: string; created_at: string; last_seen_at: string | null }[];
+  try {
+    const got = await c.env.PLATFORM_DB.prepare(
+      'SELECT link_id, product, channel, created_at, last_seen_at FROM ext_devices WHERE user_id = ? AND revoked_at IS NULL ORDER BY created_at',
+    )
+      .bind(c.get('userId'))
+      .all<{ link_id: string; product: string; channel: string; created_at: string; last_seen_at: string | null }>();
+    rows = got.results ?? [];
+  } catch {
+    console.warn(`[ext] rid=${c.get('requestId') ?? '-'} device list failed — 503`);
+    return c.json({ error: 'service_unavailable' }, 503);
+  }
+  const now = Date.now();
+  const devices = rows
+    .filter((r) => !extLinkExpired(r, now))
+    .map((r) => ({ link_id: r.link_id, product: r.product, channel: r.channel, created_at: r.created_at, last_seen_at: r.last_seen_at }));
+  return c.json({ devices });
+});
+
+/** A link id as POST /v1/ext/token mints it: crypto.randomUUID(). */
+const LINK_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE /v1/ext/devices/:link_id — the account revokes ONE linked browser.
+// ⏱ 2026-09-30 · EXA-11. Scoped by user_id in the statement itself, so another
+// account's link id is indistinguishable from one that never existed (404).
+// ─────────────────────────────────────────────────────────────────────────────
+ext.delete('/ext/devices/:link_id', platformAuth, async (c) => {
+  c.header('Cache-Control', 'no-store');
+  const linkId = c.req.param('link_id');
+  if (!LINK_ID_RE.test(linkId)) return c.json({ error: 'not_found' }, 404);
+  let changes: number;
+  try {
+    const res = await c.env.PLATFORM_DB.prepare(
+      'UPDATE ext_devices SET revoked_at = ? WHERE link_id = ? AND user_id = ? AND revoked_at IS NULL',
+    )
+      .bind(new Date().toISOString(), linkId.toLowerCase(), c.get('userId'))
+      .run();
+    changes = Number(res.meta?.changes ?? 0);
+  } catch {
+    console.warn(`[ext] rid=${c.get('requestId') ?? '-'} device revoke failed — 503`);
+    return c.json({ error: 'service_unavailable' }, 503);
+  }
+  if (changes !== 1) return c.json({ error: 'not_found' }, 404);
+  return c.body(null, 204);
 });
 
 export default ext;
