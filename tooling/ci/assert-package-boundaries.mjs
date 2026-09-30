@@ -285,6 +285,81 @@ for (const root of appRoots) {
   }
 }
 
+// ── C2 · no PACKAGE goes around another package's adapter either ─────────────
+// ⏱ 2026-09-30 · rv2-security-006 (O-DART-HAS-NO-SECURITY-READER). Limb (c)
+// scanned apps and the brick only, so a shared package — which every stamped app
+// inherits — could import flutter_secure_storage or shared_preferences directly
+// and skip the one storage seam the keystore guarantee rests on. The rule is the
+// app rule one level down: a vendor an adapter wraps is imported only by the
+// adapter(s) that wrap it. No waiver list: the real tree has no instance.
+const packageLibs = [];
+for (const name of listDir(join(ROOT, 'packages'))) {
+  if (existsSync(join(ROOT, 'packages', name, 'pubspec.yaml')) && existsSync(join(ROOT, 'packages', name, 'lib'))) packageLibs.push(name);
+}
+if (packageLibs.length < 3) {
+  coverageLost(`limb (c2) found only ${packageLibs.length} package(s) with a pubspec and a lib/ under packages/ (core, design_system and the adapters make many more). It would range over almost nothing.`);
+}
+for (const pkg of packageLibs) {
+  for (const [name, files] of packageImports(`packages/${pkg}/lib`)) {
+    const wrappers = WRAPPED.get(name);
+    if (!wrappers || wrappers.includes(pkg)) continue;
+    problems.push(
+      `packages/${pkg} imports \`package:${name}\` directly (${files.join(', ')}), but ${wrappers.map((a) => `\`packages/${a}\``).join(', ')} wrap${wrappers.length === 1 ? 's' : ''} it behind a seam. A shared package is inherited by every stamped app, so going around the adapter here goes around it everywhere [c2].`,
+    );
+  }
+}
+if (packageLibs.length >= 3) ok(`limb (c2) scans ${packageLibs.length} package lib/ root(s); no package imports a vendor another package wraps`);
+
+// ── C3 · a DENY set for shipped Dart: no WebView, no child processes ─────────
+// ⏱ 2026-09-30 · rv2-security-006. codeql.yml says Dart is covered by
+// `melos run analyze`, and the analyzer raises nothing on either class. Neither
+// exists in shipped code today (measured: zero `package:` WebView imports and
+// zero `Process.` calls under apps/*/lib, the brick's lib and packages/*/lib),
+// so this is a tripwire, not a cleanup: a WebView is a second browser with its
+// own JavaScript bridge and cookie jar outside the app's CSP, and a child
+// process is arbitrary code execution on desktop. Either arriving is a design
+// decision that needs an ADR, never an import that slips through. The Turnstile
+// widget's transitive flutter_inappwebview is not an import in OUR code and is
+// not graded. Tooling Dart (the brick's hooks/) is not shipped and not scanned.
+const DENIED_IMPORTS = {
+  webview_flutter: 'an embedded browser: its own JavaScript bridge and cookie jar, outside the app CSP',
+  webview_flutter_android: 'the Android half of webview_flutter',
+  webview_flutter_wkwebview: 'the Apple half of webview_flutter',
+  flutter_inappwebview: 'an embedded browser with a JavaScript bridge (the Turnstile widget uses it internally; our code may not)',
+  webview_windows: 'an embedded Edge WebView2 browser on Windows',
+  desktop_webview_window: 'an embedded browser window on desktop',
+  webview_cookie_manager: 'reads and writes an embedded browser\'s cookie jar',
+};
+const PROCESS_CALL = /\bProcess\s*\.\s*(?:run|runSync|start|killPid)\b/;
+const shippedRoots = [...appRoots, ...packageLibs.map((p) => `packages/${p}/lib`)];
+let processFilesRead = 0;
+for (const root of shippedRoots) {
+  for (const [name, files] of packageImports(root)) {
+    if (!Object.hasOwn(DENIED_IMPORTS, name)) continue;
+    problems.push(`${root} imports \`package:${name}\` (${files.join(', ')}) — ${DENIED_IMPORTS[name]}. Shipped Dart carries no WebView without an ADR that says why and what bounds it [c3].`);
+  }
+  const walk = (d) => {
+    if (!existsSync(d)) return;
+    for (const de of listDir(d, { withFileTypes: true })) {
+      const full = join(d, de.name);
+      if (de.isDirectory()) walk(full);
+      else if (de.name.endsWith('.dart')) {
+        processFilesRead += 1;
+        const src = readFileSync(full, 'utf8').replace(/\/\/.*$/gm, '');
+        if (PROCESS_CALL.test(src)) {
+          problems.push(`${relative(ROOT, full).replace(/\\/g, '/')} starts a child process (\`dart:io\` Process). On desktop that is arbitrary code execution from shipped code; it needs an ADR, never an import [c3].`);
+        }
+      }
+    }
+  };
+  walk(join(ROOT, root));
+}
+if (processFilesRead === 0) {
+  coverageLost('limb (c3) read ZERO .dart files across the shipped roots, so "no WebView, no child process" was asked of nothing.');
+} else {
+  ok(`limb (c3) read ${processFilesRead} shipped .dart file(s) across ${shippedRoots.length} root(s): no WebView import, no child process`);
+}
+
 // A grandfathered entry for a bypass that no longer happens is a stale claim,
 // and stale claims inflate apparent debt exactly as badly as they hide it.
 for (const key of Object.keys(KNOWN_BYPASSES)) {

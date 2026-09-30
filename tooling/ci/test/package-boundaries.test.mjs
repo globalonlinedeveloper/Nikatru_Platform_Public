@@ -101,6 +101,10 @@ function tree({
     '  flutter:\n    sdk: flutter\n  nikatru_core:\n    path: ../core\n  shared_preferences: ^2.2.0\n  flutter_secure_storage: ^9.0.0\n',
   );
   files[join(root, 'packages/auth_supabase/pubspec.yaml')] = spec('nikatru_auth_supabase', authDeps);
+  // ⏱ 2026-09-30 · limbs (c2) and (c3) read every package lib/, with a floor of 3, so two
+  // adapters carry the import that makes them adapters — as the real ones do.
+  files[join(root, 'packages/api_client/lib/src/client.dart')] = "import 'package:dio/dio.dart';\n";
+  files[join(root, 'packages/platform_storage/lib/src/store.dart')] = "import 'package:shared_preferences/shared_preferences.dart';\n";
   files[join(root, 'packages/telemetry/pubspec.yaml')] = spec(
     'nikatru_telemetry',
     '  flutter:\n    sdk: flutter\n  sentry_flutter: ^9.24.0\n',
@@ -473,6 +477,45 @@ describe('assert-package-boundaries', () => {
       const { code, out } = run(tree({ workspace: ['packages/core'] }));
       assert.equal(code, 2, out);
       assert.match(out, /COVERAGE LOST — assert-package-boundaries: .*declares no `workspace:` entry under apps\//);
+    });
+
+    // ⏱ 2026-09-30 · rv2-security-006: limb (c) one level down, and the deny set.
+    test('RC6 · (c2) FAILS when a shared PACKAGE imports a vendor another package wraps', () => {
+      const { code, out } = run(tree({ extra: { 'packages/auth_supabase/lib/src/session.dart': "import 'package:flutter_secure_storage/flutter_secure_storage.dart';\n" } }));
+      assert.equal(code, 1, out);
+      assert.match(out, /packages\/auth_supabase imports `package:flutter_secure_storage` directly .*`packages\/platform_storage` wraps it behind a seam/);
+    });
+
+    test('(c2) the wrapping adapter itself may import its own vendor', () => {
+      const { code, out } = run(tree());
+      assert.equal(code, 0, out);
+      assert.match(out, /limb \(c2\) scans 4 package lib\/ root\(s\)/);
+    });
+
+    test('RC7 · (c3) FAILS on a WebView import in a package, and on one in the app', () => {
+      let r = run(tree({ extra: { 'packages/api_client/lib/src/web.dart': "import 'package:webview_flutter/webview_flutter.dart';\n" } }));
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /packages\/api_client\/lib imports `package:webview_flutter` .*an embedded browser/);
+      r = run(tree({ extra: { 'apps/subscriptiontracker/lib/web.dart': "import 'package:flutter_inappwebview/flutter_inappwebview.dart';\n" } }));
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /apps\/subscriptiontracker\/lib imports `package:flutter_inappwebview`/);
+    });
+
+    test('RC8 · (c3) FAILS on a child process in shipped Dart; a commented-out call does not count', () => {
+      let r = run(tree({ extra: { 'packages/core/lib/src/run.dart': "import 'dart:io';\nvoid go() { Process.runSync('sh', []); }\n" } }));
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /packages\/core\/lib\/src\/run\.dart starts a child process/);
+      r = run(tree({ extra: { 'packages/core/lib/src/run.dart': '// Process.run is deliberately not used here\n' } }));
+      assert.equal(r.code, 0, r.out);
+    });
+
+    test('(c2) COVERAGE LOST when fewer than 3 packages carry a lib/', () => {
+      const root = tree();
+      rmSync(join(root, 'packages/api_client/lib'), { recursive: true, force: true });
+      rmSync(join(root, 'packages/platform_storage/lib'), { recursive: true, force: true });
+      const { code, out } = run(root);
+      assert.equal(code, 2, out);
+      assert.match(out, /limb \(c2\) found only 2 package\(s\) with a pubspec and a lib\//);
     });
   });
 });
