@@ -226,7 +226,7 @@ class AppScaffold extends StatelessWidget {
   final Widget? compactNavigationBar;
 
   /// What **N** does: the screen's primary action (Subly: add a
-  /// subscription). Null: N is not bound. See [AppShellShortcuts].
+  /// subscription). Null: N is not bound. See `_ShellShortcuts` below.
   final VoidCallback? onPrimaryAction;
 
   /// What **/** does: focus the screen's search. Null: / is not bound.
@@ -234,7 +234,7 @@ class AppScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AppShellShortcuts(
+    return _ShellShortcuts(
       destinationCount: destinations.length,
       onDestinationSelected: onDestinationSelected,
       onPrimaryAction: onPrimaryAction,
@@ -405,9 +405,8 @@ class AppScaffold extends StatelessWidget {
 /// traversal). Shortcuts only hear keys from focus at or below them; on a
 /// fresh page nothing is focused, so without this the first key after load
 /// went nowhere. A focused descendant still wins: keys bubble up to here.
-class AppShellShortcuts extends StatefulWidget {
-  const AppShellShortcuts({
-    super.key,
+class _ShellShortcuts extends StatefulWidget {
+  const _ShellShortcuts({
     required this.destinationCount,
     required this.onDestinationSelected,
     required this.child,
@@ -444,7 +443,7 @@ class AppShellShortcuts extends StatefulWidget {
   ];
 
   @override
-  State<AppShellShortcuts> createState() => _AppShellShortcutsState();
+  State<_ShellShortcuts> createState() => _ShellShortcutsState();
 }
 
 class _PrimaryActionIntent extends Intent {
@@ -488,9 +487,9 @@ class _OnlyWhileTyping<T extends Intent> extends CallbackAction<T> {
   bool isEnabled(T intent) => _typing();
 }
 
-class _AppShellShortcutsState extends State<AppShellShortcuts> {
+class _ShellShortcutsState extends State<_ShellShortcuts> {
   final FocusNode _shell = FocusNode(
-    debugLabel: 'AppShellShortcuts',
+    debugLabel: 'AppScaffold shortcuts',
     skipTraversal: true,
   );
 
@@ -504,7 +503,7 @@ class _AppShellShortcutsState extends State<AppShellShortcuts> {
   Widget build(BuildContext context) {
     final int digits = widget.destinationCount.clamp(
       0,
-      AppShellShortcuts.digitKeys.length,
+      _ShellShortcuts.digitKeys.length,
     );
     return Shortcuts(
       shortcuts: <ShortcutActivator, Intent>{
@@ -516,8 +515,7 @@ class _AppShellShortcutsState extends State<AppShellShortcuts> {
         const SingleActivator(LogicalKeyboardKey.escape):
             const _LeaveFieldIntent(),
         for (int i = 0; i < digits; i++)
-          SingleActivator(AppShellShortcuts.digitKeys[i]):
-              _DestinationIntent(i),
+          SingleActivator(_ShellShortcuts.digitKeys[i]): _DestinationIntent(i),
       },
       child: Actions(
         actions: <Type, Action<Intent>>{
