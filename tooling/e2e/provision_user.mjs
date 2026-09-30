@@ -12,9 +12,28 @@
 import { appendFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { MagicLinkRefused, mintMagicLinkTokenHash } from './magic_link.mjs';
+import { CredentialOriginRefused, credentialOrigin } from '../ops/credential-origin.mjs';
 
-const url = need('SUPABASE_URL').replace(/\/+$/, '');
 const serviceKey = need('SUPABASE_SERVICE_ROLE_KEY');
+// ⏱ 2026-09-30 — 🔴 THE SERVICE-ROLE KEY GOES TO ITS ISSUER OR NOWHERE (CodeQL
+// #68 audit): SUPABASE_URL is pinned by tooling/ops/credential-origin.mjs before
+// the first request — the self-hosted GoTrue, a hosted *.supabase.co project, or
+// loopback. Any other value is exit 1, as a missing variable is, and nothing is sent.
+let url;
+try {
+  url = credentialOrigin(need('SUPABASE_URL'), 'supabase');
+} catch (e) {
+  if (!(e instanceof CredentialOriginRefused)) throw e;
+  console.error(`SUPABASE_URL: ${e.message}`);
+  process.exit(1);
+}
+
+/** The shape GoTrue issues a user id in: a UUID. user_id is written into
+ *  $GITHUB_OUTPUT, one output per line, and the purge deletes by it — so an id
+ *  carrying a newline would forge outputs of its own (a second `user_id=`, a
+ *  `token_hash=`). Held to this shape, as magic_link.mjs holds token_hash to
+ *  TOKEN_HASH_SHAPE, no response text but a UUID reaches that file. */
+const USER_ID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // GoTrue rejects @example.com; use a clearly-labelled @nikatru.com test address.
 const email = `subscriptiontracker-e2e+${Date.now()}@nikatru.com`;
@@ -40,6 +59,11 @@ const body = await res.json();
 const userId = body.id ?? body.user?.id;
 if (!userId) {
   console.error(`No user id in GoTrue response:\n${JSON.stringify(body)}`);
+  process.exit(1);
+}
+if (typeof userId !== 'string' || !USER_ID_SHAPE.test(userId)) {
+  // The length, never the value: it is not a UUID, so nothing vouches for it.
+  console.error(`GoTrue returned a user id that is not a UUID (${String(userId).length} characters), so it is never written to a step output`);
   process.exit(1);
 }
 

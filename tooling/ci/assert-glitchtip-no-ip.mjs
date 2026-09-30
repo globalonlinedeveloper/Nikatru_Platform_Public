@@ -101,6 +101,7 @@ import { fileURLToPath } from 'node:url';
 // a nested checkout and reads another repository's sources as this tree's.
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments } from './text-reductions.mjs';
+import { CredentialOriginRefused, credentialOrigin } from '../ops/credential-origin.mjs';
 
 const NAME = 'assert-glitchtip-no-ip';
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -403,7 +404,17 @@ if (LIVE) {
     console.error(`${NAME}: --live needs GLITCHTIP_TOKEN in the environment. Refusing to report a pass it did not make.`);
     process.exit(2);
   }
-  const base = (process.env.GLITCHTIP_URL ?? `https://${GLITCHTIP_HOST}`).replace(/\/+$/, '');
+  // ⏱ 2026-09-30 — and the environment override is pinned too (CodeQL #342):
+  // tooling/ops/credential-origin.mjs accepts the instance or http loopback and
+  // nothing else. A refusal is exit 2, as a missing token is — nothing was sent.
+  let base;
+  try {
+    base = credentialOrigin(process.env.GLITCHTIP_URL || `https://${GLITCHTIP_HOST}`, 'glitchtip');
+  } catch (e) {
+    if (!(e instanceof CredentialOriginRefused)) throw e;
+    console.error(`${NAME}: GLITCHTIP_URL: ${e.message}. Refusing to report a pass it did not make.`);
+    process.exit(2);
+  }
   const declPath = join(ROOT, 'tooling', 'ops', 'glitchtip-project.json');
   if (!existsSync(declPath)) {
     coverageLost(['tooling/ops/glitchtip-project.json is not there, so --live has no project to probe.']);

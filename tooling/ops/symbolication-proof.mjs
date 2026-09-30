@@ -56,6 +56,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { fetchWithBoundedRetry } from './bounded-retry.mjs';
+import { CredentialOriginRefused, credentialOrigin, GLITCHTIP_ORIGIN } from './credential-origin.mjs';
 
 export const THROW_SITE_MARKER = 'SYMBOLICATION-PROBE-THROW-SITE';
 export const LINE_PREFIX = 'SYMPROBE|';
@@ -466,11 +467,26 @@ if (RUN_DIRECTLY) {
     const token = process.env.GLITCHTIP_TOKEN;
     if (!token) lost('GLITCHTIP_TOKEN is not set; the sink was not read');
     const gt = JSON.parse(readFileSync(join(here, 'glitchtip-project.json'), 'utf8'));
+    // ⏱ 2026-09-30 — 🔴 THE TOKEN GOES TO THE PINNED INSTANCE, NEVER TO THE
+    // REGISTER'S (CodeQL js/file-access-to-http #407–#409). `instance` is data in a
+    // file any PR can edit — the defect assert-glitchtip-project.mjs records as #293
+    // — so it is only CHECKED against GLITCHTIP_ORIGIN here, loopback included in
+    // the refusal (a file edit is never a test seam), and every request below is
+    // built on the pinned origin. A mismatch is COVERAGE LOST before any request.
+    let instance = GLITCHTIP_ORIGIN;
+    if (gt.instance !== undefined) {
+      try {
+        instance = credentialOrigin(String(gt.instance), 'glitchtip', { loopback: false });
+      } catch (e) {
+        if (!(e instanceof CredentialOriginRefused)) throw e;
+        lost(`tooling/ops/glitchtip-project.json names its instance wrongly: ${e.message}`);
+      }
+    }
     const deadline = Date.now() + Number(a['wait-seconds'] ?? 300) * 1000;
     let event = null;
     let seen = [];
     while (event === null) {
-      seen = await fetchProjectEvents({ ...gt, token });
+      seen = await fetchProjectEvents({ org: gt.org, project: gt.project, instance, token });
       event = findEvent(seen, a.marker);
       if (event !== null) break;
       if (Date.now() > deadline) {
@@ -496,7 +512,7 @@ if (RUN_DIRECTLY) {
     let liveVersion = null;
     let versionError = null;
     try {
-      liveVersion = await fetchInstanceVersion({ instance: gt.instance, token });
+      liveVersion = await fetchInstanceVersion({ instance, token });
     } catch (e) {
       versionError = e.message;
     }

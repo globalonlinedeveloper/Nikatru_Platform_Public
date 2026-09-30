@@ -491,12 +491,12 @@ function replayWorldFile(fixturePath, mutate = null) {
 //     replay must red on it too, and the two cases below hold that line.
 // Only the fields the guard itself refuses for being in the future are touched:
 // `absenceWatcher.downTransitionDrill.date` and the per-kind HUMAN_DATED field
-// (assert-ops-register.mjs:300). `drillDue`, `degradedUntil` and `expires` are
+// (assert-ops-register.mjs:302). `drillDue`, `degradedUntil` and `expires` are
 // dated tripwires that are SUPPOSED to be in the future and are never rewritten.
 // Pure, and in the TEST, never in the guard (INV5).
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The guard's HUMAN_DATED map (assert-ops-register.mjs:300): the kinds whose
+/** The guard's HUMAN_DATED map (assert-ops-register.mjs:302): the kinds whose
  *  "when was this last done" is a hand-written date rather than a machine record. */
 const REPLAY_HUMAN_DATED = new Map([
   ['recovery-path', 'lastDrill'],

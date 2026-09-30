@@ -84,6 +84,7 @@ import { fileURLToPath } from 'node:url';
 // creates no worktrees, and red on the one machine actually looking at it.
 import { listDir } from './tree-walk.mjs';
 import { parseWorkflow, stepShell, shellSegments } from './workflow-scan.mjs';
+import { CredentialOriginRefused, credentialOrigin } from '../ops/credential-origin.mjs';
 
 const NAME = 'assert-glitchtip-project';
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -339,7 +340,18 @@ if (LIVE) {
     console.error(`${NAME}: COVERAGE LOST — --live needs GLITCHTIP_TOKEN in the environment. Refusing to report a pass it did not make.`);
     coverageLost([]);
   }
-  const base = (process.env.GLITCHTIP_URL ?? `https://${GLITCHTIP_HOST}`).replace(/\/+$/, '');
+  // ⏱ 2026-09-30 — AND THE ENVIRONMENT OVERRIDE IS PINNED TOO (CodeQL #293, second
+  // half). The register's instance was pinned above; GLITCHTIP_URL was not, so the
+  // token still went to any origin it named. tooling/ops/credential-origin.mjs
+  // accepts the instance or http loopback (the tests' stub) and nothing else. A
+  // refusal is COVERAGE LOST, as a missing token is: the project was never asked.
+  let base;
+  try {
+    base = credentialOrigin(process.env.GLITCHTIP_URL || `https://${GLITCHTIP_HOST}`, 'glitchtip');
+  } catch (e) {
+    if (!(e instanceof CredentialOriginRefused)) throw e;
+    coverageLost([`COVERAGE LOST — GLITCHTIP_URL: ${e.message}. Nothing was sent.`]);
+  }
   const url = `${base}/api/0/projects/${DECLARED_ORG}/${DECLARED}/`;
   let res;
   try {

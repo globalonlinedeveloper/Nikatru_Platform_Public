@@ -81,14 +81,16 @@
 // Usage:  node tooling/ops/verify-password-reset-revokes.mjs [repoRoot] [--sessions password|verify]
 // Exit 0 = the reset revoked the other session's refresh token.
 //      1 = IT DID NOT — a pre-existing session still refreshes after a reset.
-//      2 = UNKNOWN: no credential, or a leg could not be measured (which
-//          includes a failed control). NOT a pass.
+//      2 = UNKNOWN: no credential, a SUPABASE_URL that is not the auth issuer
+//          (tooling/ops/credential-origin.mjs), or a leg could not be measured
+//          (which includes a failed control). NOT a pass.
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 
 import { MagicLinkRefused, mintMagicLinkTokenHash } from '../e2e/magic_link.mjs';
+import { CredentialOriginRefused, credentialOrigin } from './credential-origin.mjs';
 
 const NAME = 'verify-password-reset-revokes';
 const argv = process.argv.slice(2);
@@ -125,7 +127,7 @@ const unknown = (why, detail) => {
 };
 class Halt extends Error {}
 
-const url = (cred('SUPABASE_URL') ?? '').replace(/\/+$/, '');
+const configuredUrl = cred('SUPABASE_URL') ?? '';
 const anon = cred('SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_ANON_KEY');
 const service = cred('SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_Secret_key');
 
@@ -133,11 +135,23 @@ const main = async () => {
   if (SESSIONS !== 'password' && SESSIONS !== 'verify') {
     unknown(`--sessions ${JSON.stringify(SESSIONS)} is neither \`password\` nor \`verify\`.`);
   }
-  if (!url || !anon || !service) {
+  if (!configuredUrl || !anon || !service) {
     unknown(
       'no credential.',
       'Needs SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY and the service-role key, from the environment or the vault.',
     );
+  }
+  // ⏱ 2026-09-30 — 🔴 THE SERVICE-ROLE KEY GOES TO ITS ISSUER OR NOWHERE (CodeQL
+  // js/file-access-to-http #345–#357, #525–#528). SUPABASE_URL is pinned here,
+  // before the first request, by tooling/ops/credential-origin.mjs; every fetch
+  // below is built on the origin it returns. A wrong host is a configuration the
+  // probe cannot run under: exit 2, like a missing credential, and nothing sent.
+  let url;
+  try {
+    url = credentialOrigin(configuredUrl, 'supabase');
+  } catch (e) {
+    if (!(e instanceof CredentialOriginRefused)) throw e;
+    unknown('SUPABASE_URL is not the auth issuer, so no request was made.', e.message);
   }
 
   const adminHeaders = { 'Content-Type': 'application/json', apikey: service, Authorization: `Bearer ${service}` };
