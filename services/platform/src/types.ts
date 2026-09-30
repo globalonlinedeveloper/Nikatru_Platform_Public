@@ -190,10 +190,11 @@ export interface Env {
   NATIVE_AUTH_INSTALL_LIMITER?: RateLimiterBinding;
 
   /**
-   * ⏱ 2026-09-30 · ADR no.NNN (review of #1070). The per-network ceiling on
-   * Play Integrity verifications, spent BEFORE a decode is asked of Google, so
-   * one network cannot spend the Cloud project's daily quota. Keyed
-   * `edge:<colo>:<asn>`. Absence FAILS CLOSED (503).
+   * ⏱ 2026-09-30 · ADR no.NNN (review of #1070). The per-network BURST ceiling
+   * on Play Integrity verifications (10/min), spent before a decode is asked of
+   * Google. It does not bound a day (10/min is 14,400 a day); the daily bounds
+   * are PLAY_INTEGRITY_DAILY_PER_NETWORK and PLAY_INTEGRITY_DAILY_CEILING
+   * (lib/native-attest/index.ts). Keyed `edge:<colo>:<asn>`. Absence FAILS CLOSED (503).
    */
   NATIVE_AUTH_PLAY_VERIFY_LIMITER?: RateLimiterBinding;
 

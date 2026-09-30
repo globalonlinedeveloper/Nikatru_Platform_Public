@@ -23,7 +23,14 @@ import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vites
 import { app } from '../src/index';
 import type { AppEnv, RateLimiterBinding } from '../src/types';
 import { realPlatformDb, type RealDb } from './harness';
-import { bumpDailyCounter, clientDataFor, issueChallenge, PLAY_INTEGRITY_DAILY_CEILING, requestTarget } from '../src/lib/native-attest';
+import {
+  bumpDailyCounter,
+  clientDataFor,
+  issueChallenge,
+  PLAY_INTEGRITY_DAILY_CEILING,
+  PLAY_INTEGRITY_DAILY_PER_NETWORK,
+  requestTarget,
+} from '../src/lib/native-attest';
 import { b64url, concat, fromB64url, sha256 } from '../src/lib/native-attest/bytes';
 import { APPLE_APP_ATTEST_ROOT_PEM, appleRootDer, verifyAssertion, verifyAttestation } from '../src/lib/native-attest/app-attest';
 import { issuedBy, parseCertificate, pemToDer } from '../src/lib/native-attest/x509';
@@ -263,19 +270,21 @@ beforeAll(async () => {
   });
   vi.stubGlobal('fetch', async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const url = String(input);
+    // Routed by ORIGIN, never by string prefix (CodeQL js/incomplete-url-substring-sanitization).
+    const origin = new URL(url).origin;
     if (url === 'https://oauth2.googleapis.com/token') {
       const assertion = new URLSearchParams(String(init.body)).get('assertion')!;
       google.tokens.push(assertion);
       return new Response(JSON.stringify({ access_token: 'google-access-token', expires_in: 3600 }), { status: 200 });
     }
-    if (url.startsWith('https://playintegrity.googleapis.com/')) {
+    if (origin === 'https://playintegrity.googleapis.com') {
       const token = (JSON.parse(String(init.body)) as { integrity_token: string }).integrity_token;
       google.decodes.push({ url, auth: new Headers(init.headers).get('authorization'), token });
       if (google.status !== 200) return new Response('{}', { status: google.status });
-      // The fake Google "decrypts" a token of the form `tok.<nonce>` into a genuine verdict for that nonce.
+      // The fake Google "decrypts" a JWE-shaped token whose second segment is the nonce into a genuine verdict for it.
       return new Response(JSON.stringify({ tokenPayloadExternal: verdict(token.split('.')[1]!) }), { status: 200 });
     }
-    if (url.startsWith(SUPABASE_URL)) {
+    if (origin === new URL(SUPABASE_URL).origin) {
       gotrueSeen++;
       return new Response(JSON.stringify({ access_token: 'a', refresh_token: 'r', user: { id: 'u', email_confirmed_at: null } }), { status: 200 });
     }
@@ -311,8 +320,20 @@ function env(over: Partial<AppEnv['Bindings']> = {}): AppEnv['Bindings'] {
   } as AppEnv['Bindings'];
 }
 
-const post = (path: string, text: string, headers: Record<string, string>, bindings: Partial<AppEnv['Bindings']> = {}) =>
-  app.request(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': 'Dart/3.9', ...headers }, body: text }, env(bindings));
+/** A request as from network `asn` (lib/edge-ceiling.ts keys on request.cf), or the no-cf `edge:-:-` bucket. */
+const post = (path: string, text: string, headers: Record<string, string>, bindings: Partial<AppEnv['Bindings']> = {}, asn?: number) => {
+  const req = new Request(new URL(path, 'https://platform.test'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'User-Agent': 'Dart/3.9', ...headers },
+    body: text,
+  });
+  if (asn !== undefined) Object.defineProperty(req, 'cf', { value: { colo: 'SIN', asn } });
+  return app.request(req, undefined, env(bindings));
+};
+
+/** A classic integrity token's SHAPE — a compact JWE — carrying `nonce` where the fake Google reads it. */
+const JWE_HEADER = b64url(new TextEncoder().encode('{"alg":"A256KW","enc":"A256GCM"}'));
+const jwe = (nonce: string) => `${JWE_HEADER}.${nonce}.aXYtaXYtaXYtaXY.Y2lwaGVydGV4dA.dGFndGFndGFndGFn`;
 
 describe('the route — Play Integrity', () => {
   const text = JSON.stringify({ email: 'a@example.test', password: 'pw' });
@@ -322,7 +343,7 @@ describe('the route — Play Integrity', () => {
     const path = op === 'token' ? `${BASE}/token?grant_type=password` : `${BASE}/${op}`;
     const target = requestTarget(new URL(path, 'https://x.example'));
     const requestHash = b64url(await sha256(await clientDataFor('subscriptiontracker', op, challenge, target, new TextEncoder().encode(body))));
-    return { 'X-NK-Attest-Kind': 'play-integrity', 'X-NK-Attest-Challenge': challenge, 'X-NK-Attest-Proof': `tok.${requestHash}` };
+    return { 'X-NK-Attest-Kind': 'play-integrity', 'X-NK-Attest-Challenge': challenge, 'X-NK-Attest-Proof': jwe(requestHash) };
   }
 
   it('a genuine verdict passes, decoded at Google with a correctly signed service-account JWT', async () => {
@@ -397,11 +418,52 @@ describe('the route — Play Integrity', () => {
     expect(db.count('native_attest_counters', 'day = ?', '2020-01-01')).toBe(0);
   });
 
+  const counter = (scope: string) =>
+    Number(db.rows('SELECT calls FROM native_attest_counters WHERE scope = ?', scope)[0]?.calls ?? 0);
+
+  it('🔴 SECOND REVIEW 1a · a proof not shaped like an integrity token is 400, and moves NO counter, limiter or Google call', async () => {
+    const good = await signedFor('token');
+    for (const junk of ['x', 'tok.abc', 'a.b.c.d.e', `${JWE_HEADER}.k..ct.tag`,`${b64url(new TextEncoder().encode('{}'))}.k.iv.ct.tag`, 'A'.repeat(16_000)]) {
+      const res = await post(`${BASE}/token?grant_type=password`, text, { ...good, 'X-NK-Attest-Proof': junk });
+      expect(res.status, junk.slice(0, 20)).toBe(400);
+      expect(((await res.json()) as { error_code: string }).error_code).toBe('attestation_invalid');
+    }
+    expect(counter('play-integrity:decode')).toBe(0);
+    expect(db.count('native_attest_counters')).toBe(0);
+    expect(playVerify.calls, 'the per-minute Play budget is not spent either').toBe(0);
+    expect(google.decodes).toHaveLength(0);
+    expect(gotrueSeen).toBe(0);
+  });
+
+  it('🔴 SECOND REVIEW 1b · one network stops at its daily share (5% of the ceiling) while another network still passes', async () => {
+    expect(PLAY_INTEGRITY_DAILY_PER_NETWORK).toBe(PLAY_INTEGRITY_DAILY_CEILING / 20);
+    const day = new Date().toISOString().slice(0, 10);
+    db.db.prepare('INSERT INTO native_attest_counters (day, scope, calls) VALUES (?, ?, ?)').run(day, 'play:edge:SIN:64500', PLAY_INTEGRITY_DAILY_PER_NETWORK);
+    const capped = await post(`${BASE}/token?grant_type=password`, text, await signedFor('token'), {}, 64500);
+    expect(capped.status).toBe(429);
+    expect(Number(capped.headers.get('retry-after'))).toBeGreaterThan(0);
+    expect(google.decodes, 'the capped network reached no Google call').toHaveLength(0);
+    expect(counter('play-integrity:decode'), 'nor the global ceiling').toBe(0);
+    const other = await post(`${BASE}/token?grant_type=password`, text, await signedFor('token'), {}, 64501);
+    expect(other.status).toBe(200);
+    expect(counter('play:edge:SIN:64501')).toBe(1);
+    expect(counter('play-integrity:decode')).toBe(1);
+  });
+
+  it('🔴 SECOND REVIEW nit 8 · a forged challenge spends none of the network\'s Play budget', async () => {
+    const good = await signedFor('token');
+    const forged = { ...good, 'X-NK-Attest-Challenge': good['X-NK-Attest-Challenge'].replace(/\.[A-Za-z0-9_-]{43}$/, `.${'A'.repeat(43)}`) };
+    const res = await post(`${BASE}/token?grant_type=password`, text, forged);
+    expect(res.status).toBe(401);
+    expect(playVerify.calls).toBe(0);
+    expect(db.count('native_attest_counters')).toBe(0);
+  });
+
   it('a direct verify call reuses one OAuth token across decodes', async () => {
     const sa = { client_email: 'play-integrity@test-project.iam.gserviceaccount.com', private_key: JSON.parse(SERVICE_ACCOUNT).private_key as string };
     const H = 'vhEcb1KdwBN_Qi1H40RTtnWH4fDw60TeZxBYTwvGb8M';
-    expect((await verifyPlayIntegrity(`tok.${H}`, PKG, H, sa, PINS, Date.now())).ok).toBe(true);
-    expect((await verifyPlayIntegrity(`tok.${H}`, PKG, H, sa, PINS, Date.now())).ok).toBe(true);
+    expect((await verifyPlayIntegrity(jwe(H), PKG, H, sa, PINS, Date.now())).ok).toBe(true);
+    expect((await verifyPlayIntegrity(jwe(H), PKG, H, sa, PINS, Date.now())).ok).toBe(true);
     expect(google.tokens).toHaveLength(1);
   });
 });

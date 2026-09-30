@@ -37,7 +37,15 @@ import { NATIVE_AUTH_APPS } from '../src/generated/app-targets';
 import type { AppEnv, RateLimiterBinding } from '../src/types';
 import source from '../src/routes/native-auth.ts?raw';
 import { realPlatformDb, type RealDb } from './harness';
-import { clientDataFor, issueChallenge, KIND_OPS, NATIVE_ATTEST_INSTALLS_PER_NETWORK_PER_DAY, requestTarget, type AttestOp } from '../src/lib/native-attest';
+import {
+  clientDataFor,
+  issueChallenge,
+  KIND_OPS,
+  NATIVE_ATTEST_INSTALLS_PER_NETWORK_PER_DAY,
+  NATIVE_ATTEST_OPS_PER_KEY_PER_DAY,
+  requestTarget,
+  type AttestOp,
+} from '../src/lib/native-attest';
 import { b64url, sha256 } from '../src/lib/native-attest/bytes';
 import { assertionFor, b64std, ecPair, spkiOf, TEAM } from './native-attest-fixtures';
 import wranglerRaw from '../wrangler.jsonc?raw';
@@ -582,6 +590,37 @@ describe('ST-A · the attestation gate (ADR no.NNN)', () => {
     const listed = [...wranglerRaw.matchAll(/"NATIVE_AUTH_ATTEST_KINDS":\s*"([^"]*)"/g)].map((m) => m[1]);
     expect(listed).toEqual(['app-attest,play-integrity', '']);
     for (const v of listed) expect(v).not.toContain('install-key');
+  });
+
+  it('🔴 SECOND REVIEW nit 10 · production never accepts App Attest DEVELOPMENT keys: only the sandbox block sets the flag', () => {
+    const at = [...wranglerRaw.matchAll(/"APP_ATTEST_ALLOW_DEVELOPMENT"/g)].map((m) => m.index!);
+    expect(at).toHaveLength(1);
+    const sandbox = wranglerRaw.indexOf('"sandbox": {');
+    expect(sandbox).toBeGreaterThan(0);
+    expect(at[0]!, 'the one occurrence sits inside env.sandbox, after the top-level vars').toBeGreaterThan(sandbox);
+  });
+
+  it('🔴 SECOND REVIEW nit 9 · a key stops at its daily call budget; another key still passes', async () => {
+    const day = new Date().toISOString().slice(0, 10);
+    db.db.prepare('INSERT INTO native_attest_counters (day, scope, calls) VALUES (?, ?, ?)').run(day, `key:${APP}:${appleKeyId}`, NATIVE_ATTEST_OPS_PER_KEY_PER_DAY);
+    const capped = await call(`${BASE}/token?grant_type=password`, password());
+    expect(capped.status).toBe(429);
+    expect(await errorCode(capped)).toBe('over_request_rate_limit');
+    expect(Number(capped.headers.get('retry-after'))).toBeGreaterThan(0);
+    expect(gotrue.seen).toHaveLength(0);
+    const other = await call(`${BASE}/token?grant_type=password`, password(), { signer: { kind: 'install-key' } });
+    expect(other.status).toBe(200);
+  });
+
+  it('SECOND REVIEW nit 11 · an unconfigured kind is reported ONCE per isolate, not per request', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const text = JSON.stringify(password());
+    const path = `${BASE}/token?grant_type=password`;
+    for (let i = 0; i < 3; i++) {
+      const headers = { ...(await attestHeaders(path, text)), 'X-NK-Attest-Kind': 'play-integrity' };
+      expect((await call(path, text, { attest: false, headers, bindings: { NATIVE_AUTH_ATTEST_KINDS: 'play-integrity' } })).status).toBe(503);
+    }
+    expect(err.mock.calls.filter((a) => String(a[0]).includes('play-integrity is enabled but not configured')).length).toBeLessThanOrEqual(1);
   });
 
   it('a genuine App Attest assertion passes every op, and moves the key\'s counter and last use', async () => {

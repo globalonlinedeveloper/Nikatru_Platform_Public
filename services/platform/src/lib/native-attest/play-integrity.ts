@@ -142,6 +142,30 @@ export function gradeVerdict(p: Payload, pkg: string, requestHash: string, pins:
   return { ok: true, channel };
 }
 
+/**
+ * ⏱ 2026-09-30 (second review of #1070, finding 1a): whether `token` is even
+ * SHAPED like a classic integrity token — a JWE in compact form: five base64url
+ * segments, a protected header that decodes to JSON naming `alg` and `enc`,
+ * and a non-empty IV, ciphertext and tag — inside the length bound. Pure and
+ * cheap, so the route answers a malformed proof 400 BEFORE any counter, limiter
+ * or Google call is spent on it.
+ */
+export function plausibleIntegrityToken(token: string): boolean {
+  if (token.length < 16 || token.length > 16_384) return false;
+  const parts = token.split('.');
+  if (parts.length !== 5 || parts.some((p) => !/^[A-Za-z0-9_-]*$/.test(p))) return false;
+  const [header, , iv, ciphertext, tag] = parts;
+  if (!header || !iv || !ciphertext || !tag) return false;
+  const raw = fromB64url(header);
+  if (!raw) return false;
+  try {
+    const h = JSON.parse(new TextDecoder().decode(raw)) as { alg?: unknown; enc?: unknown };
+    return typeof h.alg === 'string' && typeof h.enc === 'string';
+  } catch {
+    return false;
+  }
+}
+
 /** Decodes `token` at Google and grades it. A Google fault is `unavailable` (503), never a pass. */
 export async function verifyPlayIntegrity(
   token: string,
@@ -151,7 +175,7 @@ export async function verifyPlayIntegrity(
   pins: CertPins,
   now: number,
 ): Promise<PlayVerdict> {
-  if (token.length < 16 || token.length > 16_384 || !/^[A-Za-z0-9._-]+$/.test(token)) return { ok: false, why: 'token shape' };
+  if (!plausibleIntegrityToken(token)) return { ok: false, why: 'token shape' };
   let payload: Payload;
   try {
     const res = await fetch(`https://playintegrity.googleapis.com/v1/${encodeURIComponent(pkg)}:decodeIntegrityToken`, {

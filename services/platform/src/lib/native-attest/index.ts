@@ -44,7 +44,7 @@
 import type { Env } from '../../types';
 import { b64url, fromB64, fromB64url, sha256 } from './bytes';
 import { appleRootDer, verifyAssertion, verifyAttestation } from './app-attest';
-import { parseServiceAccount, pinsFor, verifyPlayIntegrity } from './play-integrity';
+import { parseServiceAccount, pinsFor, plausibleIntegrityToken, verifyPlayIntegrity } from './play-integrity';
 
 export const ATTEST_KINDS = ['play-integrity', 'app-attest', 'install-key'] as const;
 export type AttestKind = (typeof ATTEST_KINDS)[number];
@@ -82,6 +82,30 @@ export const NATIVE_ATTEST_CHALLENGE_TTL_SECONDS = 120;
  * Cloudflare resource; the owner raises the Google quota before Android is served.
  */
 export const PLAY_INTEGRITY_DAILY_CEILING = 8_000;
+
+/**
+ * Play Integrity decodes ONE network (`edge:<colo>:<asn>`) may spend per UTC
+ * day. ⏱ 2026-09-30 (second review of #1070, finding 1b): the per-minute
+ * NATIVE_AUTH_PLAY_VERIFY_LIMITER bounds a burst, not a day (10/min × 1,440 =
+ * 14,400, above the ceiling), so without this one network could use up the whole
+ * PLAY_INTEGRITY_DAILY_CEILING and switch Android sign-in off for everyone.
+ * DERIVED, not chosen: 5% of the ceiling, so it takes at least twenty networks
+ * to exhaust it — 8,000 / 20 = 400.
+ *
+ * @ceiling none — a share of PLAY_INTEGRITY_DAILY_CEILING, not a platform resource.
+ */
+export const PLAY_INTEGRITY_DAILY_PER_NETWORK = PLAY_INTEGRITY_DAILY_CEILING / 20;
+
+/**
+ * Native sign-in calls ONE registered key (one app install) may authorise per
+ * UTC day, for the key kinds (`app-attest`, `install-key`). ⏱ 2026-09-30
+ * (second review of #1070, nit 9): a hooked or jailbroken device holds a genuine
+ * key and could otherwise sign unlimited calls; a person signs in a few times a
+ * day, so fifty is room for every retry and still a bound.
+ *
+ * @ceiling none — a per-install USAGE bound, not a platform resource.
+ */
+export const NATIVE_ATTEST_OPS_PER_KEY_PER_DAY = 50;
 
 /**
  * Key registrations one network (`edge:<colo>:<asn>`) may write per UTC day.
@@ -198,6 +222,25 @@ export async function issueChallenge(env: Env, app: string, now: number): Promis
 }
 
 /**
+ * Whether `challenge` is one THIS server minted for `app` and has not expired:
+ * the shape, the app, the expiry window and the MAC. PURE — no D1 — so the route
+ * runs it before any limiter is spent (second review of #1070, nit 8): a forged
+ * challenge must not cost a network its Play or install budget.
+ */
+export async function challengeIsOurs(env: Env, app: string, challenge: string, now: number): Promise<boolean> {
+  const secret = challengeSecret(env);
+  const m = CHALLENGE.exec(challenge);
+  if (!secret || !m) return false;
+  const [, forApp, expRaw, , macRaw] = m;
+  const exp = Number(expRaw) * 1000;
+  if (forApp !== app || exp <= now || exp > now + (NATIVE_ATTEST_CHALLENGE_TTL_SECONDS + 60) * 1000) return false;
+  const mac = fromB64url(macRaw!);
+  if (!mac) return false;
+  const body = challenge.slice(0, challenge.length - macRaw!.length - 1);
+  return crypto.subtle.verify('HMAC', await macKey(secret), mac, new TextEncoder().encode(body));
+}
+
+/**
  * Redeems a challenge: its MAC is this server's, it names this app, it has not
  * expired — and its nonce has never been redeemed. The nonce is then written
  * (with its expiry) so a replay finds it; every redemption first deletes the
@@ -205,16 +248,9 @@ export async function issueChallenge(env: Env, app: string, now: number): Promis
  * True exactly once per challenge.
  */
 export async function redeemChallenge(env: Env, app: string, challenge: string, now: number): Promise<boolean> {
-  const secret = challengeSecret(env);
-  const m = CHALLENGE.exec(challenge);
-  if (!secret || !m) return false;
-  const [, forApp, expRaw, nonce, macRaw] = m;
+  if (!(await challengeIsOurs(env, app, challenge, now))) return false;
+  const [, , expRaw, nonce] = CHALLENGE.exec(challenge)!;
   const exp = Number(expRaw) * 1000;
-  if (forApp !== app || exp <= now || exp > now + (NATIVE_ATTEST_CHALLENGE_TTL_SECONDS + 60) * 1000) return false;
-  const mac = fromB64url(macRaw!);
-  if (!mac) return false;
-  const body = challenge.slice(0, challenge.length - macRaw!.length - 1);
-  if (!(await crypto.subtle.verify('HMAC', await macKey(secret), mac, new TextEncoder().encode(body)))) return false;
   const inserted = await pruneThenWrite(
     env.PLATFORM_DB,
     env.PLATFORM_DB.prepare('DELETE FROM native_attest_redeemed WHERE expires_at < ?').bind(iso(now)),
@@ -252,22 +288,51 @@ interface KeyRow {
 
 export type Outcome =
   | { ok: true }
-  | { ok: false; status: 401 | 503; code: 'attestation_invalid' | 'attestation_key_unknown' | 'native_auth_unavailable'; why: string };
+  | {
+      ok: false;
+      status: 400 | 401 | 429 | 503;
+      code: 'attestation_invalid' | 'attestation_key_unknown' | 'native_auth_unavailable' | 'over_request_rate_limit';
+      why: string;
+    };
 
 const invalid = (why: string): Outcome => ({ ok: false, status: 401, code: 'attestation_invalid', why });
+const malformed = (why: string): Outcome => ({ ok: false, status: 400, code: 'attestation_invalid', why });
 const unavailable = (why: string): Outcome => ({ ok: false, status: 503, code: 'native_auth_unavailable', why });
+const overBudget = (why: string): Outcome => ({ ok: false, status: 429, code: 'over_request_rate_limit', why });
+
+/** Whether a Play Integrity proof is worth spending anything on (see plausibleIntegrityToken). */
+export const playProofPlausible = (h: AttestHeaders): boolean => plausibleIntegrityToken(h.proof);
 
 /** The App ID App Attest binds: `<TEAM ID>.com.nikatru.<app>`. */
 const appleAppId = (env: Env, app: string) => `${env.APP_ATTEST_TEAM_ID}.com.nikatru.${app}`;
 
-/** Verifies an op's proof. The challenge has already been redeemed. */
-export async function verifyOp(env: Env, app: string, kind: AttestKind, h: AttestHeaders, clientData: string, now: number): Promise<Outcome> {
+/**
+ * Verifies an op's proof. The challenge has already been redeemed. `network` is
+ * the caller's `edge:<colo>:<asn>` (lib/edge-ceiling.ts), for the per-network
+ * daily Play budget.
+ */
+export async function verifyOp(
+  env: Env,
+  app: string,
+  kind: AttestKind,
+  h: AttestHeaders,
+  clientData: string,
+  network: string,
+  now: number,
+): Promise<Outcome> {
   const db = env.PLATFORM_DB;
   if (kind === 'play-integrity') {
     const sa = parseServiceAccount(env.PLAY_INTEGRITY_SERVICE_ACCOUNT);
     const pins = pinsFor(env.PLAY_INTEGRITY_CERT_DIGESTS, app);
     if (!sa || !pins) return unavailable('play-integrity unconfigured');
-    // The daily ceiling below Google's quota, counted BEFORE the call is made.
+    // In order, each BEFORE anything costlier (second review of #1070, finding 1):
+    // a proof not even shaped like an integrity token moves no counter; one
+    // network stops at its daily share; and only then is the global ceiling below
+    // Google's quota counted, and the call made.
+    if (!plausibleIntegrityToken(h.proof)) return malformed('token shape');
+    if ((await bumpDailyCounter(db, `play:${network}`, now)) > PLAY_INTEGRITY_DAILY_PER_NETWORK) {
+      return overBudget('play-integrity daily share for this network');
+    }
     if ((await bumpDailyCounter(db, 'play-integrity:decode', now)) > PLAY_INTEGRITY_DAILY_CEILING) {
       return unavailable('play-integrity daily ceiling reached');
     }
@@ -294,13 +359,21 @@ export async function verifyOp(env: Env, app: string, kind: AttestKind, h: Attes
       .prepare('UPDATE native_attest_keys SET sign_count = ?, last_used_at = ? WHERE app_id = ? AND key_id = ? AND sign_count < ?')
       .bind(r.counter, iso(now), app, h.key, r.counter)
       .run();
-    return cas.meta.changes === 1 ? { ok: true } : invalid('counter raced');
+    if (cas.meta.changes !== 1) return invalid('counter raced');
+    return withinKeyBudget(db, app, h.key, now);
   }
 
   // install-key (KIND_OPS has already confined it to the password grant)
   if (!(await ed25519Verify(publicKey, proof, clientData))) return invalid('signature');
   await db.prepare('UPDATE native_attest_keys SET last_used_at = ? WHERE app_id = ? AND key_id = ?').bind(iso(now), app, h.key).run();
-  return { ok: true };
+  return withinKeyBudget(db, app, h.key, now);
+}
+
+/** A VERIFIED key's daily budget (NATIVE_ATTEST_OPS_PER_KEY_PER_DAY), counted only once its proof has passed. */
+async function withinKeyBudget(db: D1Database, app: string, keyId: string, now: number): Promise<Outcome> {
+  return (await bumpDailyCounter(db, `key:${app}:${keyId}`, now)) > NATIVE_ATTEST_OPS_PER_KEY_PER_DAY
+    ? overBudget('daily calls for this key')
+    : { ok: true };
 }
 
 async function ed25519Verify(publicKey: Uint8Array, signature: Uint8Array, message: string): Promise<boolean> {
