@@ -59,6 +59,9 @@ const write = (abs, text) => { mkdirSync(dirname(abs), { recursive: true }); wri
 const stubRunner = (label) => `console.log('stub runner ${label}');\nprocess.exit(0);\n`;
 /** The stub smoke: `--smoke --sha <sha>` prints `stub smoke <sha>` and passes (PF1-3). */
 const STUB_PREFLIGHT = "const i = process.argv.indexOf('--sha');\nconsole.log('stub smoke ' + process.argv[i + 1]);\nprocess.exit(0);\n";
+/** The stub affected run: pre-push calls affected-guards.mjs beside the runner before
+ *  the smoke, and refuses when it is missing (2026-09-30, fix-prepush-affected-guards). */
+const STUB_AFFECTED = "const i = process.argv.indexOf('--sha');\nconsole.log('stub affected ' + process.argv[i + 1]);\nprocess.exit(0);\n";
 
 /** Author one commit in SEED, push it as origin/main, and fetch it into PUB — the
  *  only way origin/main moves in real life. `hookText` replaces pre-commit when given. */
@@ -107,6 +110,7 @@ before(() => {
   write(join(SEED, 'tooling', 'scripts', 'spec-guards.mjs'), stubRunner('v1'));
   // pre-push finds the smoke as `$(dirname "$RUNNER")/preflight.mjs` (PF1-3).
   write(join(SEED, 'tooling', 'scripts', 'preflight.mjs'), STUB_PREFLIGHT);
+  write(join(SEED, 'tooling', 'scripts', 'affected-guards.mjs'), STUB_AFFECTED);
   git(SEED, 'add', '-A');
   git(SEED, 'commit', '-q', '-m', 'v1');
   git(SEED, 'remote', 'add', 'origin', ORIGIN);
@@ -326,4 +330,5 @@ test('pre-push: a current runner reads the pushed refs and smokes the commit onc
   assert.equal(r.code, 0, r.out);
   assert.doesNotMatch(r.out, /hook runner: advanced/, r.out);
   assert.equal((r.out.match(new RegExp(`stub smoke ${PUSHED_SHA}`, 'g')) ?? []).length, 1, `a current runner must smoke the pushed commit exactly once:\n${r.out}`);
+  assert.equal((r.out.match(new RegExp(`stub affected ${PUSHED_SHA}`, 'g')) ?? []).length, 1, `the affected checks must run once, on the pushed commit:\n${r.out}`);
 });
