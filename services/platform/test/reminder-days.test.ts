@@ -171,6 +171,76 @@ describe('the e-mail digest honours each subscription’s reminder_days', () => 
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-30 · review of #1090, minor 1 — A WINDOW ALREADY MAILED IS COVERED,
+// WHATEVER KIND CLAIMED IT. Keyed on the kind alone, the account-lead claim
+// (`renewal`, every claim written before this change) did not cover the same
+// window claimed as `renewal:<days>`: a subscription whose own list equals the
+// account lead was mailed a second time the night after go-live, and a list
+// switched on inside an already-mailed window mailed again. RED before the
+// window rule, GREEN after.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('a reminder window already mailed is not mailed again', () => {
+  /** A claim as the job wrote it before per-subscription leads were read. */
+  function legacyClaim(platform: RealDb, userId: string, subId: string, due: string, sentAtMs: number): void {
+    platform.db
+      .prepare(
+        'INSERT INTO reminder_sent (user_id, app_id, subscription_id, due_on, kind, sent_at, unsubscribe_hash) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      )
+      .run(userId, APP, subId, due, 'renewal', new Date(sentAtMs).toISOString(), `h-legacy-${subId}`);
+  }
+
+  it('🔴 own list [3] = account lead 3, mailed under `renewal` the night before go-live: EXACTLY ONE mail across the switch-over', async () => {
+    const platform = realPlatformDb();
+    const app = appDb();
+    seedPerson(platform, 'u-same', 3);
+    const due = addDays(TODAY, 3);
+    seedSub(app, 'u-same', 's-same', 'Same', due, '[3]');
+    legacyClaim(platform, 'u-same', 's-same', due, NOW); // night 0: the pre-deploy job mailed it
+    let sends = 0;
+    for (let n = 1; n <= 3; n++) {
+      const net = network();
+      await runReminderMail(envOf(platform, app), target(app), NOW + n * DAY, net.fetchImpl);
+      sends += net.sends.length;
+    }
+    expect(sends).toBe(0);
+    expect(platform.db.prepare('SELECT kind FROM reminder_sent').all()).toEqual([{ kind: 'renewal' }]);
+  });
+
+  it('🔴 a list switched on mid-window sends no second mail for the same due date', async () => {
+    const platform = realPlatformDb();
+    const app = appDb();
+    seedPerson(platform, 'u-switch', 3);
+    const due = addDays(TODAY, 3);
+    seedSub(app, 'u-switch', 's-switch', 'Switch', due, null);
+    const first = network();
+    await runReminderMail(envOf(platform, app), target(app), NOW, first.fetchImpl);
+    expect(first.sends).toHaveLength(1); // the account lead's window, claimed `renewal`
+
+    // The person now chooses their own lead for it, inside the window just mailed.
+    app.db.prepare('UPDATE subscriptions SET reminder_days = ? WHERE id = ?').run('[5]', 's-switch');
+    let later = 0;
+    for (let n = 1; n <= 3; n++) {
+      const net = network();
+      await runReminderMail(envOf(platform, app), target(app), NOW + n * DAY, net.fetchImpl);
+      later += net.sends.length;
+    }
+    expect(later).toBe(0);
+  });
+
+  it('a NEARER lead in the list is still its own window: [7] mailed at 7 days out does not cover [7,1]’s 1-day reminder', async () => {
+    const platform = realPlatformDb();
+    const app = appDb();
+    seedPerson(platform, 'u-near', 3);
+    const due = addDays(TODAY, 1);
+    seedSub(app, 'u-near', 's-near', 'Near', due, '[7,1]');
+    legacyClaim(platform, 'u-near', 's-near', due, NOW - 6 * DAY); // mailed 7 days out
+    const net = network();
+    await runReminderMail(envOf(platform, app), target(app), NOW, net.fetchImpl);
+    expect(net.sends).toHaveLength(1);
+  });
+});
+
 describe('the calendar feed carries one alarm per reminder_days entry', () => {
   /** Mint a feed through the REAL app's route and return its token. */
   async function mintFeed(platform: RealDb, app: RealDb, userId: string): Promise<string> {
