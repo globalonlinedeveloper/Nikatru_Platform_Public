@@ -33,6 +33,10 @@ const Map<String, String> _remaining = <String, String>{
   'lib/core/format/sub_math.dart': 'defines SubMath.unused / savings',
   'lib/data/models/subscription.dart': 'defines the fields',
   'lib/data/portability/subscription_columns.dart': 'export columns',
+  // ST-T3b's edit form (merged 2026-09-29) copies the three fields from the
+  // row being edited into the saved draft, so an edit never erases them. It
+  // passes them through; it does not present them.
+  'lib/features/add/add_subscription_sheet.dart': 'ST-T3b edit pass-through',
   'lib/features/detail/subscription_detail_screen.dart': 'ST-D5',
   'lib/features/home/home_screen.dart': 'ST-D1',
   'lib/features/notifications/notifications_screen.dart': 'ST-D5',
