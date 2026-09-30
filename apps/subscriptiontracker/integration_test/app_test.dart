@@ -869,7 +869,7 @@ void main() {
     // manufacture the very failure it exists to prevent.
     await pumpFor(tester, const Duration(seconds: 2));
     if (shell.evaluate().isEmpty) return false;
-    await tester.tap(find.text('More'));
+    await tester.tap(find.text('Settings'));
     await pumpFor(tester, const Duration(seconds: 2));
     final Finder settings = find.byType(SettingsScreen);
     expect(
@@ -1506,9 +1506,12 @@ void main() {
     await tester.runAsync(() => expectListSurvivesOffline(subNameB));
 
     // ── 15 Settings: switch currency (client-state propagation) ──────────────
-    await tester.tap(find.text('More'));
+    await tester.tap(find.text('Settings'));
     await pumpFor(tester, const Duration(seconds: 2));
-    expect(shellIndex(), 4);
+    expect(
+      shellIndex(),
+      3,
+    ); // ST-D3: Settings is the 4th tab (index 3); 'More' is gone
     await tester.tap(find.text('€'));
     await pumpFor(tester, const Duration(seconds: 1));
     await shot('15-settings-currency');
@@ -1525,7 +1528,7 @@ void main() {
     await shot('16-home-currency');
 
     // ── 17 Sign out → back to the login screen ───────────────────────────────
-    await tester.tap(find.text('More'));
+    await tester.tap(find.text('Settings'));
     await pumpFor(tester, const Duration(seconds: 2));
     // 🔬 THIS IS THE LINE THAT FAILED ON 2026-08-08, and it failed as
     // `Bad state: No element` — flutter_test's `scrollUntilVisible` ending in
@@ -1790,7 +1793,7 @@ void main() {
     await shot('18-doomed-subscription');
 
     // ── 19 Settings → Delete account ─────────────────────────────────────────
-    await tester.tap(find.text('More'));
+    await tester.tap(find.text('Settings'));
     await pumpFor(tester, const Duration(seconds: 2));
     expect(find.byType(SettingsScreen), findsWidgets);
     final Finder deleteButton = find.byKey(E2EKeys.settingsDeleteAccount);
