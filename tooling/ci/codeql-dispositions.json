@@ -1288,6 +1288,14 @@
         "*.supabase.co"
       ],
       "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 538,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ci/assert-codeql-pr-no-new-high.mjs",
+      "disposition": "by-design",
+      "host": "api.github.com",
+      "reason": "Reads the pull_request event payload Actions writes (GITHUB_EVENT_PATH) for the PR number and head SHA, and asks the GitHub API — the constant GITHUB_API origin, https://api.github.com — for that PR's CodeQL analysis and alerts with the job's own token. The number and SHA are shape-checked (integer, 40 hex) before they reach a URL path."
     }
   ]
 }
