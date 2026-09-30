@@ -101,6 +101,7 @@ interface Claim {
  * dies in between, or a final write that fails, left the key answering 409
  * forever. Ten minutes is far past any Worker's wall-time limit.
  */
+// @ceiling none — the age after which an unfinished claim is abandoned, not a platform resource
 export const PENDING_CLAIM_TTL_MS = 10 * 60 * 1000;
 
 /**
