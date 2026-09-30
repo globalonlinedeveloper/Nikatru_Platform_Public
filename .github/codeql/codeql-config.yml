@@ -1,13 +1,26 @@
 # CodeQL configuration, read by .github/workflows/codeql.yml (`config-file:`).
 #
-# ONE exclusion, and why (2026-09-30, lead ruling for lane fix-codeql-alerts):
-# tooling/bricks/**/__brick__/** holds mason TEMPLATES, not JavaScript. Their
-# paths carry `{{app_id}}` and their bodies carry mustache (the app brick's
-# web/flutter_bootstrap.js opens with a `{{=<% %>=}}` delimiter change), so the
-# extractor reports a syntax error on source that is never run as written
-# (alert #330). What a brick STAMPS is still scanned: the stamped app copy,
-# apps/subscriptiontracker/web/flutter_bootstrap.js, is byte-identical to the
-# template's output (tooling/ci/test/self-host-fallback-fonts.test.mjs), and it
-# is not excluded. Add nothing here without the same kind of reason.
+# TWO exclusions, each with its reason (2026-09-30, lead rulings for lane
+# fix-codeql-alerts). Add nothing here without the same kind of reason.
+#
+# 1. tooling/bricks/**/__brick__/** holds mason TEMPLATES, not JavaScript. Their
+#    paths carry `{{app_id}}` and their bodies carry mustache (the app brick's
+#    web/flutter_bootstrap.js opens with a `{{=<% %>=}}` delimiter change), so
+#    the extractor reports a syntax error on source that is never run as written
+#    (alert #330).
+#
+# 2. apps/*/web/flutter_bootstrap.js is GENERATED, twice over, and is a template
+#    even after that. `mason make` stamps it from the brick above, byte for byte
+#    (asserted by tooling/ci/test/self-host-fallback-fonts.test.mjs), and
+#    `flutter build web` then replaces its `{{flutter_js}}` and
+#    `{{flutter_build_config}}` lines with Flutter's own loader. Before that
+#    substitution those two lines parse as blocks holding an identifier, which
+#    CodeQL reports as useless expressions (#322, #323). The lines cannot change:
+#    they ARE the template's contract with Flutter. A generated-file banner did
+#    not close them (full analysis of fix/codeql-alerts, 2026-09-30), so the file
+#    is excluded by path. What the file does beyond the tokens — the
+#    fontFallbackBaseUrl call — is graded by deploy-web's fonts step
+#    (tooling/web/self-host-fallback-fonts.mjs --check) on every web deploy.
 paths-ignore:
   - tooling/bricks/**/__brick__/**
+  - apps/*/web/flutter_bootstrap.js
