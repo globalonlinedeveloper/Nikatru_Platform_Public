@@ -8,6 +8,7 @@ import '../../l10n/app_localizations.dart';
 import '../add/add_subscription_sheet.dart';
 import '../settings/preference_refused_notice.dart';
 import '../shared/widgets.dart';
+import 'sync_problems_strip.dart';
 
 /// Tabbed shell: hosts the branch content inside the chassis's adaptive
 /// [AppScaffold], supplying Subly's floating pill bar through the
@@ -178,12 +179,17 @@ class AppShell extends StatelessWidget {
     // and it is this widget's only child, so these are the same constraints.
     // Not `MediaQuery`: a window is not always the size of the screen, and
     // the width harness pins layout without moving `MediaQuery` at all.
-    // D11: an account refusal of a preference change is said here, once.
+    // The offline outbox's dead letters sit under the shell (review #1075
+    // finding 9); the bare shell while there are none. D11: an account
+    // refusal of a preference change is said here, once.
     return PreferenceRefusedNotice(
-      child: LayoutBuilder(
-        builder: (BuildContext context, BoxConstraints constraints) => _build(
-          context,
-          compact: windowClassFor(constraints.maxWidth) == WindowClass.compact,
+      child: SyncProblemsStrip(
+        child: LayoutBuilder(
+          builder: (BuildContext context, BoxConstraints constraints) => _build(
+            context,
+            compact:
+                windowClassFor(constraints.maxWidth) == WindowClass.compact,
+          ),
         ),
       ),
     );

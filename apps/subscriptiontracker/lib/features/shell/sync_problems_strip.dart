@@ -17,8 +17,9 @@ import '../../state/subscriptions_controller.dart'
 /// bare [child] while there are none.
 ///
 /// App-side WIRING only: the queue is packages/core's `DurableOutbox`, the
-/// strip is design_system's `DecisionStrip`. Mounted by the router's shell
-/// (`core/router/shell.dart`) rather than `app.dart`, whose fork ceiling holds.
+/// strip is design_system's `DecisionStrip`. Mounted inside [AppShell]
+/// (`app_shell.dart`) rather than `app.dart`, whose fork ceiling holds, or the
+/// router, whose builder target the surface guards read.
 class SyncProblemsStrip extends ConsumerWidget {
   const SyncProblemsStrip({required this.child, super.key});
 
