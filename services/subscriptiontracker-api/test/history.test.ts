@@ -7,6 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect, beforeEach } from 'vitest';
 import subscriptions from '../src/routes/subscriptions';
+import { todayYmd } from '../src/lib/d1';
 import { realAppDb, asUser, SqliteD1 } from './harness';
 
 const U = 'user-a';
@@ -82,6 +83,41 @@ describe('X06 — POST /v1/subscriptions/:id/payments records a manual payment',
     expect((await pay(id, { amount: 1, paid_on: '2026-09-20' })).status).toBe(404);
     expect(db.rows('SELECT id FROM payment_history')).toHaveLength(0);
   });
+});
+
+describe('review of #1089, finding 3 — paid_on is a date that has happened (one day of skew)', () => {
+  const inDays = (days: number) =>
+    new Date(Date.parse(`${todayYmd()}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+
+  // Red control: drop the `isCalendarDateBetween` check — every refused date
+  // below is stored, and '2099-01-01' tops the history as spent.
+  for (const [label, paidOn] of [
+    ['the day after tomorrow', inDays(2)],
+    ['a year typed far ahead', '2099-01-01'],
+    ['the day before the floor', '1999-12-31'],
+    ['a zeroed year', '0026-09-20'],
+  ] as const) {
+    it(`400s on ${label} (${paidOn}), storing nothing`, async () => {
+      const id = await create();
+      const res = await pay(id, { amount: 649, paid_on: paidOn });
+      expect(res.status, `${paidOn} was stored as a payment`).toBe(400);
+      expect(((await res.json()) as Row).detail).toMatch(/\bpaid_on\b/);
+      expect(db.rows('SELECT id FROM payment_history')).toHaveLength(0);
+    });
+  }
+
+  // Red control: a ceiling of today (no skew) — a user east of UTC paying on
+  // their local today is refused.
+  for (const [label, paidOn] of [
+    ['today', inDays(0)],
+    ['tomorrow (a user east of UTC, on their today)', inDays(1)],
+    ['the floor itself', '2000-01-01'],
+  ] as const) {
+    it(`201s on ${label} (${paidOn})`, async () => {
+      const id = await create();
+      expect((await pay(id, { amount: 649, paid_on: paidOn })).status).toBe(201);
+    });
+  }
 });
 
 describe('F14 — every price edit writes one price_change row', () => {
