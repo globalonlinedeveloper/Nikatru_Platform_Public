@@ -17,14 +17,22 @@
 // subscriptions at twice the commission with every guard green.
 //
 // So the enrolment is a DATED CELL, `apple-small-business-enrolment` in
-// tooling/catalog/fee-register.json ({value, asOf, verify}, value the date the
-// console shows, written by the owner), and this gate reads it. The same cell
-// selects the Apple rate the net sheet applies, so the gate and the arithmetic
-// can never disagree about whether the program applies.
+// tooling/catalog/fee-register.json ({value, asOf, verify}, value the day Apple
+// APPROVED the enrolment as the console shows it, written by the owner), and
+// this gate reads it. The same cell selects the Apple rate the net sheet
+// applies, and both judge its value through ONE date check,
+// tooling/catalog/sbp-enrolment.mjs `readEnrolment`: a value one of them treats
+// as enrolled, the other does too. (Until 2026-09-30 each carried its own check
+// and they differed — the net sheet took an ISO instant or a future date, this
+// gate a plain date no later than today — while this comment said they could
+// never disagree.) What the approval date does NOT say is when the 15% starts:
+// Apple adjusts proceeds 15 days after the end of the fiscal month of approval,
+// which neither tool models.
 //
 // ── WHAT IT GRADES ───────────────────────────────────────────────────────────
 //   1 · SHAPE — the cell exists and carries asOf and verify; its value is null
-//       or a YYYY-MM-DD date no later than today. Exit 1 otherwise.
+//       or a plain YYYY-MM-DD calendar date no later than today
+//       (sbp-enrolment.mjs). Exit 1 otherwise.
 //   2 · THE GATE — under `--real-submission`, a null value is exit 1: the
 //       refusal names A-18. A dry run (no --real-submission) prints the same
 //       sentence as a ⬜ note and exits 0, because a dry run rehearses the
@@ -45,12 +53,11 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { SBP_ENROLMENT_CELL as CELL, readEnrolment, todayUtc } from '../catalog/sbp-enrolment.mjs';
 
 const FEE_REGISTER = 'tooling/catalog/fee-register.json';
 const CHANNEL_REGISTER = 'tooling/channel-register.json';
-const CELL = 'apple-small-business-enrolment';
 const RAIL = 'apple-iap';
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 const ARGS = process.argv.slice(2);
 const REAL = ARGS.includes('--real-submission');
@@ -121,13 +128,8 @@ if (lost.length) done();
 const where = `${FEE_REGISTER} cells.${CELL}`;
 if (typeof cell.asOf !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(cell.asOf)) problems.push(`${where}.asOf is ${JSON.stringify(cell.asOf)}; it is the day the cell was last read.`);
 if (typeof cell.verify !== 'string' || cell.verify.trim() === '') problems.push(`${where} has no \`verify\`: how the owner re-reads the enrolment.`);
-const today = new Date().toISOString().slice(0, 10);
-const enrolled = typeof cell.value === 'string' && DAY.test(cell.value);
-if (cell.value !== null && !enrolled) {
-  problems.push(`${where}.value is ${JSON.stringify(cell.value)}; it is null, or the enrolment date (YYYY-MM-DD) the console shows.`);
-} else if (enrolled && cell.value > today) {
-  problems.push(`${where}.value is ${cell.value}, after today (${today}). An enrolment is recorded once the console shows it, not before.`);
-}
+const { enrolled, problem } = readEnrolment(cell.value, todayUtc());
+if (problem !== null) problems.push(`${where}.value ${problem}`);
 
 // 2 · the gate.
 const channels = CHANNEL === null ? appleChannels.map((c) => c.id) : [CHANNEL];
@@ -136,7 +138,7 @@ if (enrolled && problems.length === 0) {
 } else if (cell.value === null) {
   const sentence =
     `the Apple Small Business Program enrolment is not recorded (${where}.value is null): owner step A-18 — enrol in App ` +
-    'Store Connect (Account Holder only, free), then write the enrolment date into that cell. Until then a first-year ' +
+    'Store Connect (Account Holder only, free), then write the day Apple APPROVED the enrolment into that cell. Until then a first-year ' +
     'subscriber pays the standard commission and the Apple rows net below web (render-rail-prices.mjs --net-sheet).';
   for (const id of channels) {
     if (REAL) problems.push(`REFUSED  a real ${id} submission: ${sentence}`);
