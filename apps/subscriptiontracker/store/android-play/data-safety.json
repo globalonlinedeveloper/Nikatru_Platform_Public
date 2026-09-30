@@ -518,6 +518,8 @@
         "table:subscriptiontracker_db.budgets",
         "table:subscriptiontracker_db.budget_categories",
         "table:subscriptiontracker_db.payment_history",
+        "table:subscriptiontracker_db.price_change",
+        "table:subscriptiontracker_db.categories",
         "table:platform_db.pending_erasures",
         "table:platform_db.apple_provider_tokens",
         "table:platform_db.provider_tokens",
@@ -788,7 +790,9 @@
         "table:subscriptiontracker_db.subscriptions",
         "table:subscriptiontracker_db.budgets",
         "table:subscriptiontracker_db.budget_categories",
-        "table:subscriptiontracker_db.payment_history"
+        "table:subscriptiontracker_db.payment_history",
+        "table:subscriptiontracker_db.price_change",
+        "table:subscriptiontracker_db.categories"
       ],
       "basis": "DECLARED ON THE WIDE READING ON PURPOSE. What the user enters is the cost and billing cycle of services they subscribe to, plus an optional monthly budget and per-category caps. Play's 'Other financial info' is open-ended ('any other financial information'), and a recurring-spend total is a fact about somebody's money. Under backend-live these rows are transmitted to services/subscriptiontracker-api and stored in subscriptiontracker_db keyed on user_id. REQUIRED, because entering a subscription is the app. Under demo they live only on the device: SeedApiClient's working set (apps/subscriptiontracker/lib/data/api/seed_api_client.dart:20-21) mirrored by PersistedApiClient into the app's own namespaced key-value store (apps/subscriptiontracker/lib/data/local/subscription_store.dart). ⚠️ THEY NOW SURVIVE A RESTART, AND THAT DOES NOT CHANGE THIS ANSWER — Play defines collection as data TRANSMITTED OFF THE DEVICE, and the demo posture opens no socket for them at all. The previous wording rested this row on 'lost on restart', which was true of the old in-memory list but was never the criterion; resting it on 'never transmitted' is the same conclusion on the ground Play actually states. Nothing is shared, and no server holds a copy."
     },

@@ -74,6 +74,11 @@ app.get('/', async (c) => {
     .toISOString()
     .slice(0, 10);
 
+  // ⏱ 2026-09-29 · ST-E3 (round-2 F04): only a row that will actually be
+  // CHARGED is due. A paused, cancelled or soft-deleted row is not, so it gets
+  // no reminder — the same two filters the platform fan-out charges by. The set
+  // is spelled out as SQL literals (tooling/ci/assert-d1-sql-inventory.mjs R3)
+  // and test/lifecycle.test.ts holds it to subscriptions.ts CHARGING_STATUSES.
   const rows = await allRows<Subscription>(
     c.env.APP_DB.prepare(
       `SELECT * FROM subscriptions
@@ -81,6 +86,8 @@ app.get('/', async (c) => {
            AND next_renewal IS NOT NULL
            AND next_renewal >= ?
            AND next_renewal <= ?
+           AND deleted_at IS NULL
+           AND status IN ('active', 'trialing')
          ORDER BY next_renewal ASC`,
     ).bind(userId, today, until),
   );
