@@ -512,4 +512,37 @@ void main() {
       expect(await a.sync.heldKeys('me'), isEmpty);
     },
   );
+
+  test(
+    '🔴 review finding 4 (#1075 outbox): a change made while its key PATCH answer is written back is not lost',
+    () async {
+      // The window is a few microtasks wide (the in-flight mark clears before
+      // the write-back takes the lock), so the second change is swept across
+      // it: 0..60 microtasks after the answer, a fresh device each time.
+      final List<int> lost = <int>[];
+      for (int k = 0; k <= 60; k++) {
+        final _Server server = _Server();
+        final _Device a = _Device(server);
+        final Completer<void> gate = Completer<void>();
+        server.holdPatch = gate;
+        a.shown['themeMode'] = 'dark';
+        await a.sync.changed('themeMode', 'dark');
+        await a.settle(); // the PATCH for 'dark' is out
+        gate.complete();
+        for (int m = 0; m < k; m++) {
+          await Future<void>.value();
+        }
+        a.shown['themeMode'] = 'light';
+        await a.sync.changed('themeMode', 'light');
+        await a.settle();
+        await a.sync.sync();
+        if (server.values['themeMode'] != 'light') lost.add(k);
+      }
+      expect(
+        lost,
+        isEmpty,
+        reason: 'the second change was lost at these offsets',
+      );
+    },
+  );
 }
