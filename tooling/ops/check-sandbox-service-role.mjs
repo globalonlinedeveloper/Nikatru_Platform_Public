@@ -33,10 +33,43 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { fileURLToPath } from 'node:url';
 import { sandboxBackend } from '../store/capture-backend.mjs';
-import { CouldNotLook } from './bounded-retry.mjs';
-import { cf } from './check-retired-names-live.mjs';
+import { CouldNotLook, classifyThrown, isTransientStatus, readWithBoundedRetry, retryAfterMs, transientLook } from './bounded-retry.mjs';
 
 export { CouldNotLook } from './bounded-retry.mjs';
+
+export const CF_API = 'https://api.cloudflare.com/client/v4';
+
+/**
+ * ONE Cloudflare read on the shared bounded plan (tooling/ops/bounded-retry.mjs):
+ * a dropped connection or a 429/5xx is asked again, any other refusal is an
+ * answer. Same shape as check-retired-names-live.mjs `cf`; the 404 of a
+ * never-deployed script is left to the caller to read.
+ */
+export async function cf(path, token, { sleep, note, doFetch = fetch } = {}) {
+  return readWithBoundedRetry(
+    async (_attempt, { signal }) => {
+      let res;
+      try {
+        res = await doFetch(`${CF_API}${path}`, { headers: { Authorization: `Bearer ${token}` }, signal });
+      } catch (err) {
+        throw classifyThrown(err, `the Cloudflare API could not be reached (${err.message})`);
+      }
+      if (!res.ok) {
+        const line = `the Cloudflare API answered HTTP ${res.status} for ${path}`;
+        throw isTransientStatus(res.status) ? transientLook(line, { retryAfterMs: retryAfterMs(res) }) : new CouldNotLook(line);
+      }
+      let body;
+      try {
+        body = await res.json();
+      } catch (err) {
+        throw classifyThrown(err, `the Cloudflare API answer for ${path} was not JSON (${err.message})`);
+      }
+      if (body?.success !== true) throw new CouldNotLook(`the Cloudflare API refused ${path}`);
+      return body.result;
+    },
+    { sleep, note },
+  );
+}
 
 /** The binding no sandbox Worker may hold. */
 export const FORBIDDEN_BINDING = 'SUPABASE_SERVICE_ROLE_KEY';
