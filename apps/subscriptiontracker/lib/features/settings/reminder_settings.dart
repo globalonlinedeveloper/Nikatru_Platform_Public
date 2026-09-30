@@ -18,6 +18,7 @@ import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
 import '../../state/subscriptions_controller.dart';
+import '../shared/priming.dart';
 import '../shared/widgets.dart' show cardDecoration;
 
 /// Turn the pref [key] — asking first, for a reminder-bearing one going ON.
@@ -41,28 +42,14 @@ Future<void> toggleReminderPref(
 }
 
 /// The priming dialog. True = go on to the OS prompt.
-Future<bool> primeReminderPermission(BuildContext context) async {
-  final AppLocalizations l10n = AppLocalizations.of(context);
-  return await showDialog<bool>(
-        context: context,
-        builder: (BuildContext c) => AlertDialog(
-          key: const Key('settings.reminder.priming'),
-          title: Text(l10n.permissionPrimingTitle),
-          content: Text(l10n.permissionPrimingBody),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.pop(c, false),
-              child: Text(l10n.notNow),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(c, true),
-              child: Text(l10n.continueLabel),
-            ),
-          ],
-        ),
-      ) ??
-      false;
-}
+///
+/// ⏱ 2026-09-29 · train ST-D8 (DW2): rendered by the design system's
+/// `PermissionPrimingView` through `primeReminders` — one priming surface for
+/// Settings and the first add — keeping this dialog's key and its "Not now" /
+/// "Continue" words. Where the platform has no OS prompt it answers yes and
+/// draws nothing.
+Future<bool> primeReminderPermission(BuildContext context) =>
+    primeReminders(context, key: const Key('settings.reminder.priming'));
 
 /// The line under a preference switch: why it is OFF when the OS refused it
 /// (ST-R5), the rule it applies when it is ON (ST-R3), else [desc].

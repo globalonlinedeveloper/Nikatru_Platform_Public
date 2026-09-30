@@ -43,12 +43,16 @@
 // tooling/ci/assert-bundle-availability.mjs, on the model of limb 4 of
 // assert-entitlement-contract.mjs.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { BUNDLE_KIND, MIN_LIVE_PRODUCTS_FOR_BUNDLE, PRODUCT_REGISTERS } from '../contracts/entitlement/bundle.js';
 
 export const BUNDLES_REGISTER = 'catalog/bundles.json';
 export const CHANNEL_REGISTER = 'tooling/channel-register.json';
+/** Where each browser tool declares its contract, `tool.json`, one directory per tool. */
+export const EXTENSION_TOOLS_DIR = 'extensions/Extension';
+/** The served config; its `sharedApiBaseUrl` host is where an entitlement is read. */
+export const PLATFORM_CONFIG = 'services/platform/src/app-config-data.json';
 
 /** @typedef {{ slug: string, kind: string, status: string, register: string }} LiveProduct */
 
@@ -267,4 +271,77 @@ function verdictFor(bundle, { channel, live, railRow, problems }) {
     /** Non-empty = the derivation could not read something it needed. NEVER the same as `false`. */
     problems,
   };
+}
+
+/**
+ * ⏱ 2026-09-29 · EXM-05. CAN EACH MEMBER READ ITS ENTITLEMENT? A bundle sold with a
+ * member that cannot ask whether its buyer owns it delivers nothing for that member,
+ * and nothing above noticed: `purchasable` counts a member live from its catalogue
+ * status alone.
+ *
+ * An APP reads its entitlement through the platform client the chassis ships in every
+ * build, so an app member is readable by construction and is not listed. An EXTENSION
+ * declares every host it may reach in its tool.json `policy.networkAllowlist`; one whose
+ * allowlist does not name the entitlement host (the host of `sharedApiBaseUrl` in
+ * PLATFORM_CONFIG) cannot make the call, and is returned in `unreadable` with the reason.
+ *
+ * NOT A CONJUNCT OF `purchasable`, on purpose: the Worker twin cannot read a tool.json,
+ * and a conjunct one copy has and the other lacks is the drift limb E exists to refuse.
+ * tooling/ci/assert-bundle-availability.mjs limb I fails the TREE instead — a live
+ * member in `unreadable` is exit 1 — so the state can never merge, and neither
+ * derivation ever meets it.
+ *
+ * 🔴 A MEMBER WHOSE tool.json CANNOT BE FOUND OR READ IS A PROBLEM, NEVER READABLE.
+ *
+ * @param {string} root repo root
+ * @param {unknown[]} members a bundle row's `members`
+ * @returns {{ entitlementHost: string | null, extensionsRead: number, unreadable: { slug: string, why: string }[], problems: string[] }}
+ */
+export function memberEntitlementReach(root, members) {
+  const problems = [];
+  const unreadable = [];
+  let entitlementHost = null;
+  const cfg = readJson(root, PLATFORM_CONFIG);
+  if (!cfg.ok) problems.push(`${cfg.why} — the entitlement host cannot be named.`);
+  else {
+    try {
+      entitlementHost = new URL(cfg.value?.sharedApiBaseUrl).hostname;
+    } catch {
+      problems.push(`${PLATFORM_CONFIG} sharedApiBaseUrl is ${JSON.stringify(cfg.value?.sharedApiBaseUrl)}, not a URL — the entitlement host cannot be named.`);
+    }
+  }
+  const extensionSlugs = (Array.isArray(members) ? members : [])
+    .filter((m) => m?.kind === 'extension' && typeof m?.slug === 'string')
+    .map((m) => m.slug);
+  const tools = new Map();
+  if (extensionSlugs.length > 0) {
+    const dir = join(root, EXTENSION_TOOLS_DIR);
+    const dirs = existsSync(dir) ? readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()) : [];
+    for (const d of dirs) {
+      const rel = `${EXTENSION_TOOLS_DIR}/${d.name}/tool.json`;
+      const r = readJson(root, rel);
+      if (r.ok && typeof r.value?.id === 'string') tools.set(r.value.id, { rel, tool: r.value });
+    }
+  }
+  let extensionsRead = 0;
+  for (const slug of extensionSlugs) {
+    const hit = tools.get(slug);
+    if (hit === undefined) {
+      problems.push(`no ${EXTENSION_TOOLS_DIR}/*/tool.json declares id "${slug}", so whether that member can read its entitlement is unknown.`);
+      continue;
+    }
+    extensionsRead += 1;
+    const allow = hit.tool?.policy?.networkAllowlist;
+    if (!Array.isArray(allow)) {
+      problems.push(`${hit.rel} declares no policy.networkAllowlist array, so its reach is unknown.`);
+    } else if (entitlementHost !== null && !allow.includes(entitlementHost)) {
+      unreadable.push({
+        slug,
+        why:
+          `${hit.rel} policy.networkAllowlist is ${JSON.stringify(allow)} and does not name ${entitlementHost}, the host ` +
+          'an entitlement is read from — so the extension cannot ask whether its buyer owns the bundle.',
+      });
+    }
+  }
+  return { entitlementHost, extensionsRead, unreadable, problems };
 }

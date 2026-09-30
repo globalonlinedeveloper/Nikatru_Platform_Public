@@ -794,9 +794,12 @@ const REQUIRED_COVERAGE = [
     // ⏱ 2026-09-28 · ST-T2 (U5/U7): 21 → 25 surfaces, 59 → 61 cases, RAISED IN
     // THE CHANGE THAT EARNED THEM — the four honest states moved into the
     // chassis arrived swept (a11y_firstrun_money_settings_test.dart).
-    surfaces: 25,
+    // ⏱ 2026-09-29 · ST-D4: 25 -> 26 surfaces, 61 -> 62 cases — the chassis
+    // SettingsSection arrived swept (`a11y: settings-section`, light + dark
+    // kPhone). Read off the per-root line: `26 of 26 … across 62 case(s)`.
+    surfaces: 26,
     a11yFiles: 4,
-    cases: 61,
+    cases: 62,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens plus the ' +
       'money/settings bodies and the app shell, mounted by every stamped app, all seventeen swept',
@@ -869,9 +872,19 @@ const REQUIRED_COVERAGE = [
     //   surfaces  31 → 35
     //   a11yFiles 10 → 11
     //   cases     19 → 23
-    surfaces: 35,
-    a11yFiles: 11,
-    cases: 23,
+    //
+    // ⏱ RE-MEASURED 2026-09-29 · train ST-D DW2 (ST-D2 + ST-D8), on top of
+    // DW1: MonthGrid and DateBadge arrived swept by a11y_month_grid_test.dart
+    // (one case), and `PermissionPrimingView` by
+    // a11y_permission_priming_test.dart (three cases). Read off this guard's
+    // own output on the branch: "20 of 38 reachable surface(s) carry an a11y
+    // sweep, from 13 a11y test file(s) across 27 case(s)".
+    //   surfaces  35 → 38
+    //   a11yFiles 11 → 13
+    //   cases     23 → 27
+    surfaces: 38,
+    a11yFiles: 13,
+    cases: 27,
     label:
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, auth_field, ' +
       'destructive_confirm_dialog, two_pane and fourteen more, mounted by every stamped app',
@@ -1038,6 +1051,8 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         'monetization/paywall_screen.dart#PaywallView',
         'settings/report_content_dialog.dart#ReportContentDialog',
         'settings/settings_screen.dart#EditProfileDialog',
+        // 2026-09-29 (ST-D4): the settings group, in the same change as its sweep.
+        'settings/settings_screen.dart#SettingsSection',
         'settings/settings_screen.dart#SettingsView',
         'shell/app_shell.dart#AppLifecycleFlush',
         'shell/app_shell.dart#ConsentPromptCard',
@@ -1094,6 +1109,13 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
       'packages/design_system/lib/src/widgets/app_figure_tile.dart#AppFigureTile',
       'packages/design_system/lib/src/widgets/app_icon_action.dart#AppIconAction',
       'packages/design_system/lib/src/widgets/app_monogram.dart#AppMonogram',
+      // ⏱ 2026-09-28 · train ST-D2: in the same change as their sweep
+      // (a11y_month_grid_test.dart).
+      'packages/design_system/lib/src/widgets/month_grid.dart#MonthGrid',
+      'packages/design_system/lib/src/widgets/month_grid.dart#DateBadge',
+      // ⏱ 2026-09-28 · train ST-D8, in the same change as its sweep
+      // (a11y_permission_priming_test.dart).
+      'packages/design_system/lib/src/widgets/permission_priming.dart#PermissionPrimingView',
     ]),
   ],
 ]);

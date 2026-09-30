@@ -817,7 +817,16 @@
         "paragraphs name is closed. The re-disclosure is no longer a human duty alone: the razorpay",
         "`seller-by-rail` row of tooling/legal/policy-claims.json makes assert-policy-claims fail any of",
         "privacy, terms and refund that stops naming Razorpay with Nikatru as the seller. Switching",
-        "processor now costs a re-disclosure on three pages, and on privacy.html that is a version bump."
+        "processor now costs a re-disclosure on three pages, and on privacy.html that is a version bump.",
+        "",
+        "⏱ 2026-09-29 (AB-M5-04) — THE 0.5% SUBSCRIPTIONS ADD-ON ABOVE WAS RE-READ VERBATIM, AND IT IS AN OFFER, NOT THE",
+        "LIST RATE. EVERYTHING ABOVE IS LEFT AS WRITTEN. https://razorpay.com/subscriptions/ read 2026-09-29T07:42:39Z:",
+        "\"LIMITED TIME OFFER Standard Plan\", 0.9% struck through (an <s> element) beside 0.5%, \"Charged as an addon to",
+        "every payment made towards a Subscription\". So 0.5% is the rate charged today and 0.9% is what it returns to when",
+        "the offer ends; a round-2 reading of 0.9% as the live rate came from a summarising fetch that dropped the strike.",
+        "The rate is no longer carried in prose: tooling/catalog/fee-register.json `razorpay-subscription-add-on` holds both",
+        "figures as a dated read with its verify command, and `render-rail-prices.mjs --net-sheet` derives the India nets",
+        "from it (the yearly moves from its 0.5% net to its 0.9% net the day the offer ends and that cell is re-read)."
       ]
     },
     {

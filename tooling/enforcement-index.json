@@ -45,6 +45,7 @@
   {
     "claims": [
       "ADR 044",
+      "ADR 076",
       "ADR 093",
       "ADR 094",
       "B-2",
@@ -2320,6 +2321,18 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-site-bindings.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 093"
+    ],
+    "invokedBy": [
+      ".github/workflows/submit-appstore.yml#dry-run"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-small-business-program.mjs",
     "references": [],
     "state": "WIRED"
   },
