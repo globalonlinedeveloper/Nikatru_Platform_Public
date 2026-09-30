@@ -1781,6 +1781,12 @@ if (typeof module !== 'undefined' && module.exports) {
     fsAiLuhnOk, fsAiPiiSpans, fsAiMaskText, fsAiRowCeiling, fsAiFitDims, fsAiRound2,
     fsAiTokenCount, fsAiTokens,
     fsAiPlanTiles, fsAiLegend, fsAiBundle, fsAiText, fsAiLegendLine,
-    fsCopyBlobToClipboard
+    fsCopyBlobToClipboard,
+    // The page globals other page scripts call. A page never reaches this branch;
+    // listing them here is what tells CodeQL, which reads this file as a module
+    // because of this very guard, that they are used (js/unused-local-variable
+    // #140-#148, 2026-09-30).
+    fsMime, fsExt, fsGetSettings, fsToggleTheme, fsBuildFilename,
+    fsFormatBytes, fsDownloadBlob, fsLoadImage, fsToast
   };
 }

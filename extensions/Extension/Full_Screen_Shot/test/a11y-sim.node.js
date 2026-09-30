@@ -634,7 +634,6 @@ console.log('\n=== a live region, so finishing and failing are not silent ===');
      A modal that gates the one irreversible-ish action on this page. Four
      properties, and the last is the one a sighted review never catches. */
   {
-    const html = read('pages/result.html');
     const rjs = stripJsComments(read('pages/result.js'));
     const els = elements('pages/result.html');
     const dlg = els.find(e => e.attrs.id === 'reviewDlg');

@@ -37,11 +37,22 @@ run-name: "CodeQL (${{ github.event_name }})"
 # off, which is the reasoning ci.yml's Trivy step already records in prose. If a
 # finding ever needs to block, the way to do it is a named, reviewed rule — not
 # turning this whole lane into a required check.
+#
+# ⏱ 2026-09-30 · THAT RULE NOW EXISTS, AND THIS LANE IS STILL A SINK. 160 alerts
+# were open and growing ~7 a day, because nothing read them. Two readers, both in
+# ci.yml, neither of them this workflow:
+#   · security-scan runs tooling/ci/assert-codeql-pr-no-new-high.mjs — a PR whose
+#     OWN analysis here adds a high or critical alert fails ci-gate;
+#   · guards-platform runs tooling/ci/assert-alert-disposition.mjs limb C — every
+#     open alert on main is fixed in code or has an entry in
+#     tooling/ci/codeql-dispositions.json.
+# The first reads this workflow's analysis of refs/pull/<N>/merge, so a change to
+# the `category` above or to the pull_request trigger must move it too.
 # ─────────────────────────────────────────────────────────────────────────────
 
 on:
+  # why: every base (2026-09-30) — a stacked PR must carry its own analysis for assert-codeql-pr-no-new-high.mjs.
   pull_request:
-    branches: [main]
   push:
     branches: [main]
   schedule:
@@ -102,6 +113,8 @@ jobs:
           # of the subject set, so the quality queries are reading the code that
           # decides whether every other check is honest.
           queries: security-and-quality
+          # One paths-ignore (mason templates), with its reason in the file.
+          config-file: ./.github/codeql/codeql-config.yml
 
       - name: Analyze
         uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2

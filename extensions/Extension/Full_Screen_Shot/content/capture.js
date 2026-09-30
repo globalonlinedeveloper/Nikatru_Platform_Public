@@ -966,34 +966,9 @@
     }
     return num.length > 0 && sum % 10 === 0;
   }
-  function fsHasCard(s) {
-    const re = /\d(?:[ -]?\d){12,18}/g; let m;
-    while ((m = re.exec(s))) {
-      const d = m[0].replace(/[ -]/g, '');
-      if (d.length >= 13 && d.length <= 19 && fsLuhnOk(d)) return true;
-    }
-    return false;
-  }
-  function fsHasPhone(s) {
-    const re = /\+?\d[\d().\-\s]{5,}\d/g; let m;
-    while ((m = re.exec(s))) {
-      const raw = m[0], d = raw.replace(/\D/g, '');
-      if (d.length >= 7 && d.length <= 15 && /[+().\-\s]/.test(raw)) return true;
-    }
-    return false;
-  }
-  const FS_PII = [
-    ['email', s => /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/.test(s)],
-    ['ssn',   s => /\b\d{3}-\d{2}-\d{4}\b/.test(s)],
-    ['token', s => /\b(?:AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,})\b/.test(s)],
-    ['card',  fsHasCard],
-    ['phone', fsHasPhone]
-  ];
-  function fsPiiKind(s) {
-    if (!s) return null;
-    for (const pair of FS_PII) { try { if (pair[1](s)) return pair[0]; } catch (_) {} }
-    return null;
-  }
+  /* fsPiiMatches below is the detector. fsPiiKind (first kind per leaf) and the
+     FS_PII / fsHasCard / fsHasPhone table only it read had no caller left and were
+     removed (CodeQL js/unused-local-variable); fsLuhnOk above is still used. */
   function fsOwnLeafText(el) {
     if (el.children && el.children.length) return '';
     return el.textContent || '';

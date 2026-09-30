@@ -161,14 +161,20 @@ const JS_STR = '(?:\'([^\'\\\\]*)\'|"([^"\\\\]*)"|`([^`\\\\$]*)`)';
 const litAt = (m, i) => (m[i] !== undefined ? m[i] : m[i + 1] !== undefined ? m[i + 1] : m[i + 2]);
 
 const RAW_TEXT_TAGS = /<(script|style)\b[\s\S]*?<\/\1\s*>/gi;
+/* Removed to a FIXED POINT: one pass over `<scr<script></script>ipt>x</script>`
+   removes the inner pair and leaves a whole script element, whose body would then
+   be graded as page text (CodeQL js/incomplete-multi-character-sanitization). */
+function stripRawText(h) {
+  for (let prev = null; h !== prev;) { prev = h; h = h.replace(RAW_TEXT_TAGS, ''); }
+  return h;
+}
 const VOID_HTML = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
   'link', 'meta', 'param', 'source', 'track', 'wbr']);
 
 function hardcodedPageText(html) {
   /* Comments and <script>/<style> bodies are not visible text. The doctype is
      not an element and must not be read as one. */
-  const h = stripHtmlComments(String(html))
-    .replace(RAW_TEXT_TAGS, '')
+  const h = stripRawText(stripHtmlComments(String(html)))
     .replace(/<!doctype[^>]*>/gi, '');
   const found = [];
   const stack = [];              // open elements, innermost last
@@ -227,7 +233,7 @@ function parseI18nAttrSpec(spec) {
 }
 
 function hardcodedPageAttrs(html) {
-  const h = stripHtmlComments(String(html)).replace(RAW_TEXT_TAGS, '');
+  const h = stripRawText(stripHtmlComments(String(html)));
   const out = [];
   const re = /<([a-zA-Z][\w-]*)\b([^>]*?)\/?>/g;
   let m;
