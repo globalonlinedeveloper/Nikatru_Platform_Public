@@ -44,21 +44,24 @@ const firstEntryReader = (rs) => {
 };
 
 describe('rule (a): the gate is the ci-gate of the NEWEST run of its workflow on the head', () => {
-  for (const [pr, older, newer] of [
-    [1031, 36384843524, 36385974851],
-    [1029, 36523628152, 36523632923],
-  ]) {
-    test(`#${pr} (recorded): older run's gate FAILED and listed first, newer run green → GREEN`, () => {
-      const rs = load(pr).statusCheckRollup;
-      // The fixture still carries the shape it was recorded for, or this test proves nothing.
-      assert.equal(gateOf(rs, older)?.conclusion, 'FAILURE');
-      assert.equal(gateOf(rs, newer)?.conclusion, 'SUCCESS');
-      assert.equal(firstEntryReader(rs), 'COMPLETED/FAILURE', 'red control: the first-entry reader (land-v12) reads this head as FAILED');
-      const v = gateVerdict(rs);
-      assert.equal(v.verdict, 'GREEN', v.why);
-      assert.equal(v.gate.run, newer);
-    });
-  }
+  const twoRunsOneHead = (pr, older, newer) => {
+    const rs = load(pr).statusCheckRollup;
+    // The fixture still carries the shape it was recorded for, or this test proves nothing.
+    assert.equal(gateOf(rs, older)?.conclusion, 'FAILURE');
+    assert.equal(gateOf(rs, newer)?.conclusion, 'SUCCESS');
+    assert.equal(firstEntryReader(rs), 'COMPLETED/FAILURE', 'red control: the first-entry reader (land-v12) reads this head as FAILED');
+    const v = gateVerdict(rs);
+    assert.equal(v.verdict, 'GREEN', v.why);
+    assert.equal(v.gate.run, newer);
+  };
+
+  test("#1031 (recorded, body-edit second run): older run's gate FAILED and listed first, newer run green → GREEN", () => {
+    twoRunsOneHead(1031, 36384843524, 36385974851);
+  });
+
+  test("#1029 (recorded, run cancelled by Renovate's rebase): older run's gate FAILED and listed first, newer run green → GREEN", () => {
+    twoRunsOneHead(1029, 36523628152, 36523632923);
+  });
 
   test('#1031 before the newer gate reported: the only gate is the OLDER run\'s FAILURE → STALE, never RED (v15.1)', () => {
     const rs = load(1031).statusCheckRollup.filter((c) => !(c.name === GATE_CHECK && runIdOf(c.detailsUrl) === 36385974851));
