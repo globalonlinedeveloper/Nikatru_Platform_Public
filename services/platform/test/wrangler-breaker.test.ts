@@ -194,6 +194,9 @@ describe('Workers Logs keep no request URL', () => {
   it('env.sandbox does not switch them back on', () => {
     const sandbox = (parseJsonc(raw) as { env?: { sandbox?: { observability?: { logs?: { invocation_logs?: unknown } } } } })
       .env?.sandbox?.observability;
-    expect(sandbox?.logs?.invocation_logs ?? false).toBe(false);
+    // wrangler REPLACES `observability` per environment, it does not merge it: a
+    // sandbox block that omits `invocation_logs` gets Cloudflare's default, ON.
+    // So the sandbox either inherits the top-level block whole, or says false itself.
+    expect(sandbox === undefined || sandbox.logs?.invocation_logs === false).toBe(true);
   });
 });

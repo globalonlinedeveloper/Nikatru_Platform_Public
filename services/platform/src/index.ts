@@ -38,7 +38,7 @@
 //                                  and the ECB rate table (src/fx.ts).
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
-import { matchedRoutes } from 'hono/route';
+import { isCapabilityRequest, requestLog, routeOf } from './lib/request-log';
 import type { AppEnv } from './types';
 import { nowIso } from './lib/d1';
 import {
@@ -49,7 +49,7 @@ import {
   JWKS_READING_TTL_MS,
   READING_TTL_MS,
 } from './lib/health';
-import { reportWorkerError, reportablePath } from './lib/error-sink';
+import { reportWorkerError } from './lib/error-sink';
 import { corsMiddleware } from './middleware/cors';
 import { platformAuth } from './middleware/auth';
 import { entitlementsAuth } from './middleware/ext-device-auth';
@@ -73,6 +73,8 @@ import { scheduled } from './scheduled';
 
 const app = new Hono<AppEnv>();
 
+// One line per request: the route PATTERN, status, ms, colo (lib/request-log.ts).
+app.use('*', requestLog);
 // Correlation id: stamp/propagate + echo.
 app.use('*', async (c, next) => {
   const rid = c.req.header('x-request-id') ?? crypto.randomUUID();
@@ -364,11 +366,13 @@ app.onError((err, c) => {
   // shares meant an unhandled error could be read, correlated to a request —
   // and never attributed to a product. `-` where the request failed before an
   // app was named, deliberately: see `Variables.appId`.
-  console.error(
-    `[unhandled] rid=${c.get('requestId') ?? '-'} app=${c.get('appId') ?? '-'} release=${c.env.RELEASE ?? '-'}`,
-    err,
-  );
-  const url = new URL(c.req.url);
+  // Not on a capability route: its console event carries the URL (lib/request-log.ts).
+  if (!isCapabilityRequest(c)) {
+    console.error(
+      `[unhandled] rid=${c.get('requestId') ?? '-'} app=${c.get('appId') ?? '-'} release=${c.env.RELEASE ?? '-'}`,
+      err,
+    );
+  }
   const report = reportWorkerError(
     err,
     {
@@ -379,7 +383,7 @@ app.onError((err, c) => {
       method: c.req.method,
       // The route PATTERN, never the query string and never a path value: the
       // calendar feed's token IS a path segment (O-CALENDAR-TOKEN-SHIPPED-TO-ERROR-SINK).
-      path: reportablePath(url.pathname, matchedRoutes(c)),
+      path: routeOf(c),
     },
     c.env,
   );
