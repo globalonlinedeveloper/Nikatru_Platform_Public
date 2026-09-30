@@ -196,14 +196,16 @@
     },
     {
       "name": "insights",
-      "primaryAction": "insights works out which subscriptions are unused and offers a real Cancel on each of them",
-      "test": "at 375 the cap is a no-op and the donut row still fits",
-      "effect": "lib/features/insights/insights_screen.dart:SubMath.unused",
+      "primaryAction": "insights states the signals the held rows prove and ASKS \"still using?\" — the answer is stored on the device and the question moves on (ST-D3 D3-4: the unused/Cancel card it replaced read fields nothing writes)",
+      "test": "Yes is stored on the device and the question moves on",
+      "effect": "lib/features/insights/signals.dart:signalsFor",
       "mutation": {
-        "symbol": "lib/features/insights/insights_screen.dart:SubMath.unused(subs)",
-        "observedRed": "at 375 the cap is a no-op and the donut row still fits",
-        "date": "2026-08-08"
-      }
+        "symbol": "lib/features/insights/signals.dart:signalsFor → the returned signal list",
+        "observedRed": "Yes is stored on the device and the question moves on",
+        "date": "2026-09-29"
+      },
+      "testFile": "test/insights_signals_test.dart",
+      "note": "⏱ MOVED 2026-09-29 by ST-D3 D3-4/D3-7: the savings card (SubMath.unused + Cancel) is retired and the width case this row named was rewritten. Mutation RE-RUN on this tree, not carried over: signalsFor made to return an empty list; `flutter test test/insights_signals_test.dart --plain-name \"Yes is stored on the device\"` exited 1 with `Found 0 widgets with text \"Still using Plan big?\"`. Restored byte-exact. No `edit`/`codeHash` recorded, so the row stays inside mutationProofs.unprovenFloor."
     },
     {
       "name": "budget",
