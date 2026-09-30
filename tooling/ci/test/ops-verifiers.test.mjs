@@ -197,6 +197,13 @@ describe('verify-monitors / verify-alarm-chains — the GlitchTip pair', () => {
     assert.match(out, /GLITCHTIP_TOKEN is not set/);
   });
 
+  test('RED: verify-monitors refuses a GLITCHTIP_URL that is not its issuer — exit 2, before any request', () => {
+    const { code, out } = run('verify-monitors.mjs', { GLITCHTIP_TOKEN: 'fixture-token', GLITCHTIP_URL: 'https://glitchtip.nikatru.com.evil.invalid' });
+    assert.equal(code, 2, out);
+    assert.match(out, /refusing to send the GlitchTip credential to https:\/\/glitchtip\.nikatru\.com\.evil\.invalid/);
+    assert.doesNotMatch(out, /fixture-token/);
+  });
+
   test('verify-alarm-chains without a token is exit 2', () => {
     const { code, out } = run('verify-alarm-chains.mjs', { GLITCHTIP_TOKEN: '' });
     assert.equal(code, 2, out);
